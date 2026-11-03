@@ -112,6 +112,9 @@ class PluginExecutionProvider : public IExecutionProvider {
                                                    DataLayout target_data_layout) const override;
 
   bool ConcurrentRunSupported() const override;
+#if !defined(ORT_MINIMAL_BUILD)
+  bool SupportsMoeOffload() const override;
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   Status OnRunStart(const RunOptions& run_options) override;
 

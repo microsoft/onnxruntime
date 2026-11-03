@@ -122,7 +122,9 @@ qmoe::SpinPool& SharedSpinPool(int threads);
 
 template <typename Function>
 void OffloadParallelFor(OpKernelContext* context, ptrdiff_t count, Function& function) {
-#ifdef ORT_USE_EP_API_ADAPTERS
+  // Keyed on BUILD_CUDA_EP_AS_PLUGIN, not ORT_USE_EP_API_ADAPTERS: in-tree builds can define the latter globally,
+  // but only the CUDA plugin target uses the adapter OpKernelInfo/OpKernelContext types.
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
   context->ParallelFor(
       [](void* data, size_t task) {
         (*static_cast<Function*>(data))(static_cast<ptrdiff_t>(task));
@@ -141,6 +143,88 @@ size_t AddSlab(size_t bytes, size_t& total) {
   const size_t offset = (SafeInt<size_t>(total) + 255) / 256 * 256;
   total = SafeInt<size_t>(offset) + bytes;
   return offset;
+}
+
+struct StreamScratchShape {
+  int hidden_size;
+  int inter_size;
+  int num_experts;
+  int top_k;
+  int min_rows;
+  bool has_bias;
+  bool stage_scales;
+  std::array<size_t, 6> bank_bytes;
+};
+
+struct StreamTileWave {
+  int tile;
+  int wave;
+};
+
+// Mirrors the streaming layout that ComputeShared plans for a call filling a whole tile: GPU scratch, pinned
+// scratch and the double-buffered landing slabs. The optional CUTLASS workspace is excluded because the runner
+// shrinks its capacity or falls back to GEMV when it does not fit. Keep this in sync with ComputeShared.
+bool StreamScratchFits(const StreamScratchShape& shape, StreamTileWave tile_wave, size_t gpu_limit, size_t pinned_limit) {
+  constexpr size_t kElemSize = sizeof(uint16_t);
+  const int route_cap = SafeInt<int>(tile_wave.tile) * shape.top_k;
+  const int route_slots = std::max(route_cap, kGroupedMoeMinRows);
+  const int wave_route_slots = std::min(route_slots, 4096);
+  const int cpu_row_cap = std::min(route_cap, (shape.min_rows - 1) * shape.num_experts);
+  const int wave_groups = (shape.num_experts + tile_wave.wave - 1) / tile_wave.wave;
+  const size_t route_bytes = SafeInt<size_t>(route_slots) * sizeof(int);
+  const size_t contribution_bytes = SafeInt<size_t>(route_cap) * shape.hidden_size * kElemSize;
+  const size_t cpu_row_bytes = SafeInt<size_t>(std::max(cpu_row_cap, 1)) * shape.hidden_size * kElemSize;
+  const size_t wave_row_bytes = SafeInt<size_t>(wave_route_slots) * shape.hidden_size * kElemSize;
+  const size_t inter_bytes = SafeInt<size_t>(wave_route_slots) * shape.inter_size * kElemSize;
+  const size_t meta_bytes = SafeInt<size_t>(route_slots + wave_groups * kGroupedMoeMinRows) * sizeof(int);
+
+  size_t gpu_bytes = 0;
+  for (int slab = 0; slab < 4; ++slab) AddSlab(route_bytes, gpu_bytes);  // scales, indices, unit scales, identity
+  AddSlab(contribution_bytes, gpu_bytes);
+  if (shape.has_bias) AddSlab(contribution_bytes, gpu_bytes);
+  for (int slab = 0; slab < 3; ++slab) AddSlab(route_bytes, gpu_bytes);  // hit ids, hit compact, cpu ids
+  AddSlab(SafeInt<size_t>(wave_route_slots) * sizeof(int), gpu_bytes);   // permutation
+  AddSlab(wave_row_bytes, gpu_bytes);                                    // gathered
+  AddSlab(wave_row_bytes, gpu_bytes);                                    // wave output
+  AddSlab(inter_bytes, gpu_bytes);
+  AddSlab(cpu_row_bytes, gpu_bytes);
+  AddSlab(meta_bytes, gpu_bytes);  // stream ids
+  AddSlab(meta_bytes, gpu_bytes);  // stream compact
+
+  size_t pinned_bytes = 0;
+  AddSlab(route_bytes, pinned_bytes);                                                      // indices
+  AddSlab(tile_wave.tile, pinned_bytes);                                                   // phases
+  AddSlab(SafeInt<size_t>(tile_wave.tile) * shape.hidden_size * kElemSize, pinned_bytes);  // input rows
+  AddSlab(cpu_row_bytes, pinned_bytes);                                                    // cpu results
+  for (int slab = 0; slab < 3; ++slab) AddSlab(route_bytes, pinned_bytes);                 // hit ids, hit compact, cpu ids
+  AddSlab(meta_bytes, pinned_bytes);                                                       // stream ids
+  AddSlab(meta_bytes, pinned_bytes);                                                       // stream compact
+  if (shape.stage_scales) {
+    AddSlab(SafeInt<size_t>(2) * tile_wave.wave * (shape.bank_bytes[2] + shape.bank_bytes[3]), pinned_bytes);
+  }
+
+  size_t landing_bytes = 0;
+  for (int buffer = 0; buffer < 2; ++buffer) {
+    for (const size_t bank_bytes : shape.bank_bytes) {
+      AddSlab(SafeInt<size_t>(bank_bytes) * tile_wave.wave, landing_bytes);
+    }
+  }
+  return pinned_bytes <= pinned_limit && SafeInt<size_t>(gpu_bytes) + landing_bytes <= gpu_limit;
+}
+
+// Picks the largest tile, then the largest wave, that fits, halving from the requested values down to the
+// floors. A smaller tile saves more transfer passes than a larger wave saves launches, so it is kept first.
+// When nothing fits it returns the floors and lets ComputeShared report the limit error.
+StreamTileWave FitStreamTileAndWave(const StreamScratchShape& shape, StreamTileWave requested, StreamTileWave floors,
+                                    size_t gpu_limit, size_t pinned_limit) {
+  for (int tile = requested.tile;; tile = std::max(tile / 2, floors.tile)) {
+    for (int wave = requested.wave;; wave = std::max(wave / 2, floors.wave)) {
+      if (StreamScratchFits(shape, {tile, wave}, gpu_limit, pinned_limit)) return {tile, wave};
+      if (wave == floors.wave) break;
+    }
+    if (tile == floors.tile) break;
+  }
+  return floors;
 }
 
 qmoe::SpinPoolRegistry& SharedSpinPools() {
@@ -274,6 +358,8 @@ struct QMoEOffload::CpuWork {
   InlinedVector<InlinedVector<int>> expert_routes;
   InlinedVector<ExpertCall> calls;
   std::unique_ptr<PaddedAtomicInt[]> fc1_done = std::make_unique<PaddedAtomicInt[]>(kMaxGroupSlots);
+  std::unique_ptr<PaddedAtomicInt[]> slot_ready = std::make_unique<PaddedAtomicInt[]>(kMaxGroupSlots);
+  std::array<uint8_t*, kMaxGroupSlots> slot_load_dst{};
   std::array<const float*, kMaxGroupSlots> slot_act_in{};
   std::array<qmoe_shared::Nvfp4ExpertView, kMaxGroupSlots> slot_view{};
 
@@ -340,6 +426,7 @@ class SessionPromotionBudget {
       st.promotions_in_step = 0;
       st.bytes_in_step = 0;
       st.step_epoch ^= 1;
+      st.WaitSlotIdle(st.step_epoch);
     }
     if (max_promotions > 0 && st.promotions_in_step >= max_promotions) return false;
     if (max_bytes > 0 && st.promotions_in_step > 0 && st.bytes_in_step + aligned_promo_bytes > max_bytes) return false;
@@ -365,6 +452,22 @@ class SessionPromotionBudget {
     return true;
   }
 
+  void ReleaseIdleBounce(const void* session_key) noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = sessions_.find(session_key);
+    if (it == sessions_.end()) return;
+    it->second.FreeBounce();
+  }
+
+  void RecordBounceCopy(const void* session_key, cudaStream_t stream) noexcept {
+    if (stream == nullptr) return;
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = sessions_.find(session_key);
+    if (it == sessions_.end()) return;
+    SessionState& st = it->second;
+    st.RecordSlotEvent(st.step_epoch, stream);
+  }
+
  private:
   struct SessionState {
     int refs = 0;
@@ -376,25 +479,81 @@ class SessionPromotionBudget {
     uint8_t* pinned_bounce[2]{nullptr, nullptr};
     size_t pinned_cap[2]{0, 0};
     size_t pinned_accounted[2]{0, 0};
+    std::vector<cudaEvent_t> slot_events[2];
+    size_t active_events[2]{0, 0};
     std::shared_ptr<CudaDeviceMemoryBudget> session_pinned_budget;
 
-    void ReleaseSlot(int b) noexcept {
-      if (pinned_bounce[b] == nullptr) return;
-      auto host_ledger = GetCudaHostPinnedMemoryBudget();
-      const size_t acct = pinned_accounted[b];
-      if (acct > 0) {
-        if (session_pinned_budget) session_pinned_budget->BeginFree(acct);
-        if (host_ledger) host_ledger->BeginFreeAllocated(acct);
+    void RecordSlotEvent(int b, cudaStream_t stream) noexcept {
+      if (b < 0 || b > 1 || stream == nullptr) return;
+      cudaEvent_t ev = nullptr;
+      if (active_events[b] < slot_events[b].size()) {
+        ev = slot_events[b][active_events[b]];
+      } else if (cudaEventCreateWithFlags(&ev, cudaEventDisableTiming) == cudaSuccess && ev != nullptr) {
+        slot_events[b].push_back(ev);
+      } else {
+        static_cast<void>(cudaGetLastError());
+        DrainOrQuarantine(b, stream);
+        return;
       }
-      const bool ok = (cudaFreeHost(pinned_bounce[b]) == cudaSuccess);
-      if (!ok) static_cast<void>(cudaGetLastError());
-      if (acct > 0) {
-        if (session_pinned_budget) session_pinned_budget->FinishFree(acct, ok);
-        if (host_ledger) host_ledger->FinishFreeAllocated(acct, ok);
+      if (cudaEventRecord(ev, stream) == cudaSuccess) {
+        ++active_events[b];
+      } else {
+        static_cast<void>(cudaGetLastError());
+        DrainOrQuarantine(b, stream);
+      }
+    }
+
+    // A bounce buffer is reused or freed only after every queued copy reading it is confirmed complete. When a wait
+    // fails, completion is unknown, so the buffer is quarantined: dropped from the slot without being freed, so
+    // nothing can hand it out again.
+    void WaitSlotIdle(int b) noexcept {
+      if (b < 0 || b > 1) return;
+      for (size_t i = 0; i < active_events[b]; ++i) {
+        if (slot_events[b][i] != nullptr && cudaEventSynchronize(slot_events[b][i]) != cudaSuccess) {
+          static_cast<void>(cudaGetLastError());
+          DetachSlot(b, /*free_memory=*/false);
+          break;
+        }
+      }
+      active_events[b] = 0;
+    }
+
+    // Fallback fence when no event can be recorded: draining the stream is the only way left to confirm the copies.
+    void DrainOrQuarantine(int b, cudaStream_t stream) noexcept {
+      if (cudaStreamSynchronize(stream) != cudaSuccess) {
+        static_cast<void>(cudaGetLastError());
+        DetachSlot(b, /*free_memory=*/false);
+      }
+    }
+
+    // Drops the slot's buffer. A buffer that is not freed is leaked on purpose and its budget charge is kept as
+    // quarantined, exactly as after a failed driver free.
+    void DetachSlot(int b, bool free_memory) noexcept {
+      if (pinned_bounce[b] != nullptr) {
+        auto host_ledger = GetCudaHostPinnedMemoryBudget();
+        const size_t acct = pinned_accounted[b];
+        if (acct > 0) {
+          if (session_pinned_budget) session_pinned_budget->BeginFree(acct);
+          if (host_ledger) host_ledger->BeginFreeAllocated(acct);
+        }
+        bool ok = false;
+        if (free_memory) {
+          ok = (cudaFreeHost(pinned_bounce[b]) == cudaSuccess);
+          if (!ok) static_cast<void>(cudaGetLastError());
+        }
+        if (acct > 0) {
+          if (session_pinned_budget) session_pinned_budget->FinishFree(acct, ok);
+          if (host_ledger) host_ledger->FinishFreeAllocated(acct, ok);
+        }
       }
       pinned_bounce[b] = nullptr;
       pinned_cap[b] = 0;
       pinned_accounted[b] = 0;
+    }
+
+    void ReleaseSlot(int b) noexcept {
+      WaitSlotIdle(b);
+      DetachSlot(b, /*free_memory=*/true);
     }
 
     void EnsureCapacity(int b, size_t bytes) noexcept {
@@ -424,6 +583,13 @@ class SessionPromotionBudget {
     void FreeBounce() noexcept {
       for (int b = 0; b < 2; ++b) {
         ReleaseSlot(b);
+        for (cudaEvent_t ev : slot_events[b]) {
+          if (ev != nullptr) {
+            static_cast<void>(cudaEventDestroy(ev));
+          }
+        }
+        slot_events[b].clear();
+        active_events[b] = 0;
       }
       session_pinned_budget.reset();
     }
@@ -1125,6 +1291,7 @@ bool TryPrepareQMoEPrefillDmaLayer(
         if (it->first.first != device_id) continue;
         auto locked = it->second.lock();
         if (locked && locked->owner && locked->slab_ptr != nullptr &&
+            !locked->owner->int4_bank_mode_ && !locked->owner->int3_bank_mode_ &&
             (req_session_scope == nullptr || locked->session_scope == req_session_scope)) {
           owners_to_lend.push_back(locked->owner);
           layers_to_lend.push_back(it->first.second);
@@ -2045,8 +2212,13 @@ class QMoEOffload::DoorbellService {
     }
     if (!worker_started_) {
       worker_started_ = true;
+#if defined(_WIN32)
+      const int default_cross_layer_promo = 0;
+#else
+      const int default_cross_layer_promo = 0;
+#endif
       cross_layer_promo_enabled_ =
-          ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_CROSS_LAYER_PROMO", 0) == 1;
+          ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_CROSS_LAYER_PROMO", default_cross_layer_promo) == 1;
       if (cross_layer_promo_enabled_ && !promo_bounce_buf_) {
         constexpr size_t kBounceBytes = 3u * 1024u * 1024u;
         void* hptr = nullptr;
@@ -2473,12 +2645,15 @@ QMoEOffload::QMoEOffload(const OpKernelInfo& info,
     static_cast<void>(cudaGetDevice(&device_id_));
   }
 
+  int4_bank_mode_ = (desc.quant_type == "int" && desc.weight_bits == 4 && desc.weights_prepacked == 1);
+  int3_bank_mode_ = (desc.quant_type == "int" && desc.weight_bits == 3 && desc.weights_prepacked == 0);
+  int3_block_size_ = static_cast<int>(desc.block_size > 0 ? desc.block_size : 32);
   mxfp4_mode_ = (desc.quant_type == "mxfp4" || desc.quant_type == "fp4");
-  nvfp4_mode_ = (desc.quant_type == "nvfp4") || mxfp4_mode_;
+  nvfp4_mode_ = (desc.quant_type == "nvfp4") || mxfp4_mode_ || int4_bank_mode_ || int3_bank_mode_;
   doorbell_enabled_ = plan.enable_hybrid_cpu_decode && nvfp4_mode_;
   overlap_shared_expert_ = true;
   fuse_merge_finalize_ = true;
-#ifdef ORT_USE_EP_API_ADAPTERS
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
   if (info.GetKernelInfo().GetOutputCount() > 0) {
     output0_name_ = info.GetKernelInfo().GetOutputName(0);
   }
@@ -2489,7 +2664,7 @@ QMoEOffload::QMoEOffload(const OpKernelInfo& info,
 #endif
   static_cast<void>(GetQMoESharedExpertBridge());
 
-  ORT_ENFORCE(nvfp4_mode_, "QMoEOffload v4 planned backend currently requires quant_type in {'nvfp4', 'fp4'}.");
+  ORT_ENFORCE(nvfp4_mode_, "QMoEOffload v4 planned backend currently requires quant_type in {'nvfp4', 'fp4', 'int'}.");
   InitializeNvfp4Offload(info);
 }
 
@@ -2593,7 +2768,7 @@ QMoEOffload::QMoEOffload(const OpKernelInfo& info)
   doorbell_enabled_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_DOORBELL", nvfp4_mode_ ? 1 : 0) == 1;
   overlap_shared_expert_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_OVERLAP_SHARED_EXPERT", 1) == 1;
   fuse_merge_finalize_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_FUSE_MERGE_FINALIZE", 1) == 1;
-#ifdef ORT_USE_EP_API_ADAPTERS
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
   if (info.GetKernelInfo().GetOutputCount() > 0) {
     output0_name_ = info.GetKernelInfo().GetOutputName(0);
   }
@@ -2884,6 +3059,10 @@ QMoEOffload::~QMoEOffload() {
     static_cast<void>(slot_table_dev_.release());
     static_cast<void>(fc2_bias_gpu_.release());
     static_cast<void>(complement_host_slab_.release());
+    for (auto& buf : staged_scale_buffers_) {
+      static_cast<void>(buf.release());
+    }
+    staged_scale_buffers_.clear();
     if (decode_state_) {
       static_cast<void>(decode_state_->scratch.release());
       decode_state_->ReleasePinned(false);
@@ -2896,6 +3075,13 @@ QMoEOffload::~QMoEOffload() {
       registered_host_ptrs_.clear();
     }
   } else {
+    for (auto& buf : staged_scale_buffers_) {
+      if (buf && buf->done_event) {
+        static_cast<void>(cudaEventDestroy(buf->done_event));
+        buf->done_event = nullptr;
+      }
+    }
+    staged_scale_buffers_.clear();
     if (final_device_done_) cudaEventDestroy(final_device_done_);
     if (slot_reader_done_) cudaEventDestroy(slot_reader_done_);
     if (join_event_) cudaEventDestroy(join_event_);
@@ -2967,6 +3153,11 @@ QMoEOffload::~QMoEOffload() {
                    static_cast<unsigned long long>(phase_hit_routes_[phase]),
                    static_cast<unsigned long long>(phase_total_routes_[phase]));
     }
+  }
+  if (resident_log_) {
+    std::fprintf(stderr, "QMoEOffload async layer=%lld doorbell_runs=%llu callback_runs=%llu\n",
+                 static_cast<long long>(layer_index_), static_cast<unsigned long long>(doorbell_runs_),
+                 static_cast<unsigned long long>(callback_runs_));
   }
   if (stream_rows_ > 0 && resident_log_) {
     std::fprintf(stderr,
@@ -3156,28 +3347,44 @@ Status QMoEOffload::ComputeInternal(OpKernelContext* context) const {
 }
 
 void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
-  const int64_t expected_block_size = mxfp4_mode_ ? 32 : 16;
+  const int64_t expected_block_size = int3_bank_mode_
+                                          ? static_cast<int64_t>(int3_block_size_)
+                                          : ((mxfp4_mode_ || int4_bank_mode_) ? 32 : 16);
   // MoEBase defaults an omitted block_size to 0, whereas QMoE (which admitted this node) treats an omitted value as
   // -1 and normalizes it to the quant_type's fixed block size. Re-read with the QMoE default so both agree.
   const int64_t declared_block_size = info.GetAttrOrDefault<int64_t>("block_size", -1);
-  ORT_ENFORCE(declared_block_size == -1 || declared_block_size == expected_block_size,
-              "QMoEOffload FP4 mode requires block_size=", expected_block_size, ", got ", declared_block_size, ".");
+  if (int4_bank_mode_ || int3_bank_mode_) {
+    ORT_ENFORCE(declared_block_size == expected_block_size,
+                "QMoEOffload INT4/INT3 mode requires explicit block_size=", expected_block_size, ", got ", declared_block_size, ".");
+  } else {
+    ORT_ENFORCE(declared_block_size == -1 || declared_block_size == expected_block_size,
+                "QMoEOffload FP4 mode requires block_size=", expected_block_size, ", got ", declared_block_size, ".");
+  }
   block_size_ = expected_block_size;
   const auto prepacked = info.GetAttrOrDefault<int64_t>("weights_prepacked", -1);
-  ORT_ENFORCE(prepacked == 1, "QMoEOffload FP4 mode requires weights_prepacked=1 (row-major FP4).");
+  if (int3_bank_mode_) {
+    ORT_ENFORCE(prepacked == 0, "QMoEOffload INT3 mode requires weights_prepacked=0.");
+  } else {
+    ORT_ENFORCE(prepacked == 1, "QMoEOffload FP4/INT4 mode requires weights_prepacked=1.");
+  }
   ORT_ENFORCE(activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu &&
-                  (swiglu_fusion_ == 0 || swiglu_fusion_ == 1) && !use_sparse_mixer_,
-              "QMoEOffload FP4 mode requires interleaved SwiGLU activation and use_sparse_mixer=0.");
+                  (int3_bank_mode_ ? (swiglu_fusion_ == 1) : (swiglu_fusion_ == 0 || swiglu_fusion_ == 1)) &&
+                  !use_sparse_mixer_,
+              "QMoEOffload FP4/INT4/INT3 mode requires interleaved SwiGLU activation and use_sparse_mixer=0.");
+  // QMoE has no separate FC3 and the offload banks are always interleaved, so an omitted/zero swiglu_fusion means
+  // interleaved (as in the non-offload QMoE path). CUTLASS reads 0 as separate gate/value halves, so normalize it
+  // before the value reaches workspace planning or the runner activation parameters.
+  swiglu_fusion_ = 1;
 
   for (int index : {8, 9, 10, 11, 12, 13, 14, 17, 18, 19, 20}) {
-    ORT_ENFORCE(!InputExists(info, index), "QMoEOffload FP4 unsupported input slot ", index, " is present.");
+    ORT_ENFORCE(!InputExists(info, index), "QMoEOffload FP4/INT4 unsupported input slot ", index, " is present.");
   }
 
   layer_index_ = v4_planned_mode_ ? static_cast<int64_t>(v4_plan_.layer_index)
                                   : info.GetAttrOrDefault<int64_t>("layer_index", 0);
   if (layer_index_ < 0) layer_index_ = 0;
 
-  // Check if using contiguous expert_blocks or 6-input NVFP4/MXFP4 CPU bank tensors.
+  // Check if using contiguous expert_blocks or 6-input NVFP4/MXFP4/INT4 CPU bank tensors.
   const bool has_blocks_21 = !v4_planned_mode_ && InputExists(info, 21);
   const bool has_blocks_2 = !v4_planned_mode_ && !has_blocks_21 &&
                             info.GetAttrOrDefault<int64_t>("layout_version", -1) == 1 &&
@@ -3187,8 +3394,9 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
     v3_compact_shared_ = has_blocks_2;
     const auto hidden = info.GetAttrOrDefault<int64_t>("hidden_size", 0);
     const auto inter = info.GetAttrOrDefault<int64_t>("inter_size", 0);
-    const bool layout_ok = mxfp4_mode_ ? qmoe_shared::MakeMxfp4ExpertBlockLayout(hidden, inter, &nvfp4_layout_)
-                                       : qmoe_shared::MakeNvfp4ExpertBlockLayout(hidden, inter, &nvfp4_layout_);
+    const bool layout_ok = (mxfp4_mode_ && !int4_bank_mode_)
+                               ? qmoe_shared::MakeMxfp4ExpertBlockLayout(hidden, inter, &nvfp4_layout_)
+                               : qmoe_shared::MakeNvfp4ExpertBlockLayout(hidden, inter, &nvfp4_layout_);
     ORT_ENFORCE(layout_ok, "QMoEOffload FP4 shared mode has invalid dimensions.");
     ORT_ENFORCE(info.TryGetConstantInput(blk_slot, &expert_blocks_) && expert_blocks_ &&
                     expert_blocks_->IsDataType<uint8_t>() &&
@@ -3205,8 +3413,14 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
                     info.TryGetConstantInput(3, &nvfp4_fc1_s_) && nvfp4_fc1_s_ &&
                     info.TryGetConstantInput(5, &nvfp4_fc2_w_) && nvfp4_fc2_w_ &&
                     info.TryGetConstantInput(6, &nvfp4_fc2_s_) && nvfp4_fc2_s_,
-                "QMoEOffload FP4 bank mode requires constant CPU initializers for slots 2, 3, 5, 6.");
-    if (mxfp4_mode_) {
+                "QMoEOffload bank mode requires constant CPU initializers for slots 2, 3, 5, 6.");
+    if (int4_bank_mode_ || int3_bank_mode_) {
+      ORT_ENFORCE((nvfp4_fc1_s_->IsDataType<BFloat16>() || nvfp4_fc1_s_->IsDataType<MLFloat16>()) &&
+                      nvfp4_fc1_s_->GetElementType() == nvfp4_fc2_s_->GetElementType(),
+                  "QMoEOffload INT4/INT3 bank mode requires FP16 or BF16 block scales.");
+      ORT_ENFORCE(is_bf16_ ? nvfp4_fc1_s_->IsDataType<BFloat16>() : nvfp4_fc1_s_->IsDataType<MLFloat16>(),
+                  "QMoEOffload INT4/INT3 scale dtype must match activation dtype.");
+    } else if (mxfp4_mode_) {
       ORT_ENFORCE(nvfp4_fc1_s_->IsDataType<Float8E8M0>() && nvfp4_fc2_s_->IsDataType<Float8E8M0>(),
                   "QMoEOffload MXFP4 requires Float8E8M0 block scales.");
     } else {
@@ -3215,44 +3429,74 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
     }
     for (const Tensor* t : {nvfp4_fc1_w_, nvfp4_fc1_s_, nvfp4_fc2_w_, nvfp4_fc2_s_}) {
       ORT_ENFORCE(t->Location().device.Type() == OrtDevice::CPU && t->DataRaw() != nullptr,
-                  "QMoEOffload FP4 expert weights/scales must be on CPU.");
+                  "QMoEOffload expert weights/scales must be on CPU.");
     }
     const auto& fc1_shape = nvfp4_fc1_w_->Shape();
     const auto& fc2_shape = nvfp4_fc2_w_->Shape();
-    const auto bank_dims = qmoe::ResolveNvfp4BankDims(fc1_shape, fc2_shape, expected_block_size,
-                                                      nvfp4_fc1_s_->SizeInBytes(), nvfp4_fc2_s_->SizeInBytes());
+    const uint64_t scale_elem_bytes = (int4_bank_mode_ || int3_bank_mode_) ? sizeof(uint16_t) : sizeof(uint8_t);
+    const int64_t min_k_tile = int4_bank_mode_ ? 64 : 32;
+    const auto bank_dims =
+        int3_bank_mode_
+            ? qmoe::ResolveInt3BankDims(fc1_shape, fc2_shape, expected_block_size,
+                                        nvfp4_fc1_s_->SizeInBytes(), nvfp4_fc2_s_->SizeInBytes(), scale_elem_bytes)
+            : qmoe::ResolveNvfp4BankDims(fc1_shape, fc2_shape, expected_block_size,
+                                         nvfp4_fc1_s_->SizeInBytes(), nvfp4_fc2_s_->SizeInBytes(), scale_elem_bytes,
+                                         min_k_tile);
     ORT_ENFORCE(bank_dims.valid,
-                "QMoEOffload FP4 weight/scale banks are inconsistent: fc1_weights=", fc1_shape,
+                "QMoEOffload weight/scale banks are inconsistent: fc1_weights=", fc1_shape,
                 ", fc2_weights=", fc2_shape, ", fc1_scales_bytes=", nvfp4_fc1_s_->SizeInBytes(),
                 ", fc2_scales_bytes=", nvfp4_fc2_s_->SizeInBytes(),
-                ". Expected the standard (FC1 [E,2*I,H/2], FC2 [E,H,I/2]) or legacy (FC1 [E,H,I], FC2 [E,I,H/2]) "
-                "weight shapes with [E,N,K/",
+                ". Expected valid weight shapes with [E,N,K/",
                 expected_block_size, "] block scales.");
     num_experts_ = static_cast<int>(fc1_shape[0]);
     hidden_size_ = static_cast<int>(bank_dims.hidden);
     inter_size_ = static_cast<int>(bank_dims.inter);
-    const bool layout_ok = mxfp4_mode_
-                               ? qmoe_shared::MakeMxfp4ExpertBlockLayout(hidden_size_, inter_size_, &nvfp4_layout_)
-                               : qmoe_shared::MakeNvfp4ExpertBlockLayout(hidden_size_, inter_size_, &nvfp4_layout_);
-    ORT_ENFORCE(layout_ok, "QMoEOffload FP4 dimensions are invalid.");
-    if (InputExists(info, 15)) {
-      ORT_ENFORCE(info.TryGetConstantInput(15, &nvfp4_fc1_g_) && nvfp4_fc1_g_ &&
-                      nvfp4_fc1_g_->Location().device.Type() == OrtDevice::CPU,
-                  "QMoEOffload FP4 fc1_global_scale must be a constant CPU initializer.");
-    } else {
-      ORT_ENFORCE(mxfp4_mode_, "QMoEOffload NVFP4 requires fc1_global_scale at slot 15.");
-    }
-    if (InputExists(info, 16)) {
-      ORT_ENFORCE(info.TryGetConstantInput(16, &nvfp4_fc2_g_) && nvfp4_fc2_g_ &&
-                      nvfp4_fc2_g_->Location().device.Type() == OrtDevice::CPU,
-                  "QMoEOffload FP4 fc2_global_scale must be a constant CPU initializer.");
-    } else {
-      ORT_ENFORCE(mxfp4_mode_, "QMoEOffload NVFP4 requires fc2_global_scale at slot 16.");
+    const bool layout_ok = (!int4_bank_mode_ || (hidden_size_ % 64 == 0 && inter_size_ % 64 == 0)) &&
+                           (int3_bank_mode_
+                                ? qmoe_shared::MakeInt3ExpertBlockLayout(
+                                      hidden_size_, inter_size_, int3_block_size_, &nvfp4_layout_)
+                                : ((mxfp4_mode_ && !int4_bank_mode_)
+                                       ? qmoe_shared::MakeMxfp4ExpertBlockLayout(hidden_size_, inter_size_, &nvfp4_layout_)
+                                       : qmoe_shared::MakeNvfp4ExpertBlockLayout(hidden_size_, inter_size_, &nvfp4_layout_)));
+    ORT_ENFORCE(layout_ok, "QMoEOffload dimensions are invalid.");
+    const auto& fc1_s_shape = nvfp4_fc1_s_->Shape();
+    const auto& fc2_s_shape = nvfp4_fc2_s_->Shape();
+    const int64_t scale_group = int3_bank_mode_
+                                    ? static_cast<int64_t>(int3_block_size_)
+                                    : ((mxfp4_mode_ || int4_bank_mode_) ? 32 : 16);
+    ORT_ENFORCE(fc1_s_shape.NumDimensions() == 3 && fc2_s_shape.NumDimensions() == 3 &&
+                    fc1_s_shape[0] == num_experts_ && fc2_s_shape[0] == num_experts_ &&
+                    fc1_s_shape[1] == 2 * static_cast<int64_t>(inter_size_) &&
+                    fc1_s_shape[2] == static_cast<int64_t>(hidden_size_) / scale_group &&
+                    fc2_s_shape[1] == static_cast<int64_t>(hidden_size_) &&
+                    fc2_s_shape[2] == static_cast<int64_t>(inter_size_) / scale_group,
+                "QMoEOffload block scale shapes must be [E, 2*I, H/block_size] and [E, H, I/block_size].");
+    if (!int4_bank_mode_ && !int3_bank_mode_) {
+      if (InputExists(info, 15)) {
+        ORT_ENFORCE(info.TryGetConstantInput(15, &nvfp4_fc1_g_) && nvfp4_fc1_g_ &&
+                        nvfp4_fc1_g_->Location().device.Type() == OrtDevice::CPU &&
+                        nvfp4_fc1_g_->IsDataType<float>() &&
+                        nvfp4_fc1_g_->Shape().Size() >= static_cast<int64_t>(num_experts_),
+                    "QMoEOffload fc1_global_scale must be a constant CPU float initializer with at least E elements.");
+      } else {
+        ORT_ENFORCE(mxfp4_mode_,
+                    "QMoEOffload NVFP4 requires fc1_global_scale at slot 15.");
+      }
+      if (InputExists(info, 16)) {
+        ORT_ENFORCE(info.TryGetConstantInput(16, &nvfp4_fc2_g_) && nvfp4_fc2_g_ &&
+                        nvfp4_fc2_g_->Location().device.Type() == OrtDevice::CPU &&
+                        nvfp4_fc2_g_->IsDataType<float>() &&
+                        nvfp4_fc2_g_->Shape().Size() >= static_cast<int64_t>(num_experts_),
+                    "QMoEOffload fc2_global_scale must be a constant CPU float initializer with at least E elements.");
+      } else {
+        ORT_ENFORCE(mxfp4_mode_,
+                    "QMoEOffload NVFP4 requires fc2_global_scale at slot 16.");
+      }
     }
     if (!nvfp4_fc1_g_ || !nvfp4_fc2_g_) {
       default_global_scales_.assign(static_cast<size_t>(num_experts_), 1.0f);
     }
-    if (!mxfp4_mode_) {
+    if (!mxfp4_mode_ && !int4_bank_mode_ && !int3_bank_mode_) {
       auto check_fast_scales = [this](const Tensor* g_tensor) -> bool {
         const float* scales = g_tensor ? g_tensor->Data<float>() : default_global_scales_.data();
         if (!scales) return false;
@@ -3267,12 +3511,26 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
       nvfp4_fc2_decode_scale_eligible_ = check_fast_scales(nvfp4_fc2_g_);
     }
     if (InputExists(info, 4)) {
-      ORT_ENFORCE(info.TryGetConstantInput(4, &nvfp4_fc1_b_) && nvfp4_fc1_b_ != nullptr,
-                  "QMoEOffload NVFP4 fc1_bias must be constant.");
+      ORT_ENFORCE(info.TryGetConstantInput(4, &nvfp4_fc1_b_) && nvfp4_fc1_b_ != nullptr &&
+                      nvfp4_fc1_b_->Location().device.Type() == OrtDevice::CPU &&
+                      nvfp4_fc1_b_->DataRaw() != nullptr,
+                  "QMoEOffload fc1_bias must be a constant CPU initializer.");
+      ORT_ENFORCE(is_bf16_ ? nvfp4_fc1_b_->IsDataType<BFloat16>() : nvfp4_fc1_b_->IsDataType<MLFloat16>(),
+                  "QMoEOffload fc1_bias dtype must match activation dtype.");
+      ORT_ENFORCE(nvfp4_fc1_b_->Shape().NumDimensions() == 2 &&
+                      nvfp4_fc1_b_->Shape()[0] == num_experts_ &&
+                      nvfp4_fc1_b_->Shape()[1] == 2 * static_cast<int64_t>(inter_size_),
+                  "QMoEOffload fc1_bias shape must be [E, 2*I].");
     }
     if (InputExists(info, 7)) {
       ORT_ENFORCE(info.TryGetConstantInput(7, &nvfp4_fc2_b_) && nvfp4_fc2_b_ != nullptr,
-                  "QMoEOffload NVFP4 fc2_bias must be constant.");
+                  "QMoEOffload fc2_bias must be constant.");
+      ORT_ENFORCE(is_bf16_ ? nvfp4_fc2_b_->IsDataType<BFloat16>() : nvfp4_fc2_b_->IsDataType<MLFloat16>(),
+                  "QMoEOffload fc2_bias dtype must match activation dtype.");
+      ORT_ENFORCE(nvfp4_fc2_b_->Shape().NumDimensions() == 2 &&
+                      nvfp4_fc2_b_->Shape()[0] == num_experts_ &&
+                      nvfp4_fc2_b_->Shape()[1] == static_cast<int64_t>(hidden_size_),
+                  "QMoEOffload fc2_bias shape must be [E, H].");
       if (nvfp4_fc2_b_->Location().device.Type() == OrtDevice::CPU) {
         fc2_bias_gpu_bytes_ = nvfp4_fc2_b_->SizeInBytes();
         fc2_bias_gpu_ = GetTransientScratchBuffer<uint8_t>(fc2_bias_gpu_bytes_);
@@ -3291,17 +3549,20 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
                                 ? static_cast<int64_t>(v4_policy_.pinned_bytes)
                                 : info.GetAttrOrDefault<int64_t>("pinned_staging_bytes", int64_t{32} << 20);
   token_tile_size_ = static_cast<int>(tile);
+  const int default_max_sync_tile = (int4_bank_mode_ || int3_bank_mode_) ? 256 : token_tile_size_;
   max_sync_tile_tokens_ = static_cast<int>(
       info.GetAttrOrDefault<int64_t>("max_sync_tile_tokens",
-                                     ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_MAX_SYNC_TILE_TOKENS", token_tile_size_)));
+                                     ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_MAX_SYNC_TILE_TOKENS", default_max_sync_tile)));
   async_max_tokens_ = v4_planned_mode_
                           ? static_cast<int>(v4_policy_.async_max_tokens)
                           : static_cast<int>(
                                 info.GetAttrOrDefault<int64_t>("async_max_tokens",
-                                                               ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_ASYNC_MAX_TOKENS", 4)));
+                                                               ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_ASYNC_MAX_TOKENS", 8)));
+  const int default_stream_min_tokens =
+      (int4_bank_mode_ || int3_bank_mode_) ? std::max(1, max_sync_tile_tokens_ + 1) : (token_tile_size_ + 1);
   stream_min_tokens_ = static_cast<int>(
       info.GetAttrOrDefault<int64_t>("stream_min_tokens",
-                                     ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_STREAM_MIN_TOKENS", token_tile_size_ + 1)));
+                                     ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_STREAM_MIN_TOKENS", default_stream_min_tokens)));
   max_routes_ = SafeInt<int>(std::max(max_sync_tile_tokens_, async_max_tokens_)) * k_;
   shared_gpu_limit_ = static_cast<size_t>(gpu_limit);
   shared_pinned_limit_ = static_cast<size_t>(pinned_limit);
@@ -3372,7 +3633,29 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
   last_cold_routes_.resize(num_experts_);
   expert_presence_ema_.assign(num_experts_, 0.0f);
 
-  group_calls_ = std::clamp(ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_GROUPED_CALLS", 32), 1, 64);
+  const bool is_int_bank = int4_bank_mode_ || int3_bank_mode_;
+  if (int3_bank_mode_) {
+    resident_bank_bytes_ = {
+        static_cast<size_t>(SafeInt<size_t>(2) * inter_size_ * ((hidden_size_ * 3) / 8)),
+        static_cast<size_t>(SafeInt<size_t>(hidden_size_) * ((inter_size_ * 3) / 8)),
+        static_cast<size_t>(SafeInt<size_t>(2) * inter_size_ * (hidden_size_ / int3_block_size_) * sizeof(uint16_t)),
+        static_cast<size_t>(SafeInt<size_t>(hidden_size_) * (inter_size_ / int3_block_size_) * sizeof(uint16_t)),
+        sizeof(float),
+        sizeof(float)};
+  } else {
+    const size_t fp4_scale_group = (mxfp4_mode_ && !int4_bank_mode_) ? 32 : 16;
+    resident_bank_bytes_ = {
+        static_cast<size_t>(SafeInt<size_t>(2) * inter_size_ * (hidden_size_ / 2)),
+        static_cast<size_t>(SafeInt<size_t>(hidden_size_) * (inter_size_ / 2)),
+        static_cast<size_t>(SafeInt<size_t>(2) * inter_size_ * (hidden_size_ / fp4_scale_group)),
+        static_cast<size_t>(SafeInt<size_t>(hidden_size_) * (inter_size_ / fp4_scale_group)),
+        sizeof(float),
+        sizeof(float)};
+  }
+
+  const int default_group_calls = is_int_bank ? 64 : 32;
+  group_calls_ = std::clamp(
+      ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_GROUPED_CALLS", default_group_calls), 1, 64);
   const int default_async = v4_planned_mode_
                                 ? ((v4_plan_.enable_hybrid_cpu_decode || resident_slots_ == num_experts_) ? 1 : 0)
                                 : ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_ASYNC", allow_cuda_graph_ ? 1 : 0);
@@ -3387,32 +3670,49 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
   continuous_decay_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_CONTINUOUS_DECAY", 1) == 1;
   bg_promo_stream_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_BG_PROMO_STREAM", 1) == 1;
   cpu_fp16_boundaries_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_CPU_FP16_BOUNDARIES", 0) == 1;
-  const int default_stream_rows = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_STREAM_ROWS", 0);
-  if (v4_planned_mode_ &&
-      v4_policy_.cpu_execution == onnxruntime::moe_offload::CpuExecutionMode::kDisabled &&
-      resident_slots_ < num_experts_) {
+  // Integer-bank tile and wave defaults shrink to fit the working budgets below; explicit settings are honored.
+  // Planned non-integer banks (NVFP4/MXFP4) always shrink, as before, and disable streaming if nothing fits.
+  bool shrink_stream_tile = false;
+  bool shrink_stream_wave = false;
+  const int default_stream_rows =
+      ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_STREAM_ROWS", is_int_bank ? 2048 : 0);
+  const bool cpu_disabled_streaming =
+      (v4_planned_mode_ &&
+       v4_policy_.cpu_execution == onnxruntime::moe_offload::CpuExecutionMode::kDisabled &&
+       resident_slots_ < num_experts_);
+  if (cpu_disabled_streaming) {
     async_ = false;
     doorbell_enabled_ = false;
     stream_rows_ = std::max({token_tile_size_, max_sync_tile_tokens_, std::max(1, async_max_tokens_)});
     stream_min_tokens_ = 1;
     stream_min_rows_ = 1;
-    stream_wave_ = std::clamp(static_cast<int>(v4_policy_.prefill_wave_experts), 1, num_experts_);
+    const int default_disabled_wave =
+        (is_int_bank && shared_pinned_limit_ <= (size_t{128} << 20))
+            ? std::min(16, static_cast<int>(v4_policy_.prefill_wave_experts))
+            : static_cast<int>(v4_policy_.prefill_wave_experts);
+    stream_wave_ = std::clamp(default_disabled_wave, 1, num_experts_);
+    shrink_stream_tile = !is_int_bank;
+    shrink_stream_wave = true;
     stream_promotions_ = 0;
     stream_gpu_limit_ = shared_gpu_limit_;
     stream_pinned_limit_ = shared_pinned_limit_;
   } else {
     stream_rows_ = std::clamp(
         static_cast<int>(info.GetAttrOrDefault<int64_t>("stream_rows", default_stream_rows)), 0, 8192);
+    if (is_int_bank && stream_rows_ > 0 && resident_slots_ >= num_experts_) {
+      stream_rows_ = 0;
+    }
   }
   prefill_chunk_tokens_ = static_cast<int>(
       info.GetAttrOrDefault<int64_t>("prefill_chunk_tokens",
                                      ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_PREFILL_CHUNK_TOKENS", stream_rows_)));
   stream_promotion_reuse_ = !deterministic_replay_ && (ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_STREAM_PROMOTION_REUSE", 0) == 1);
-  if (stream_rows_ > 0 && !(v4_planned_mode_ &&
-                            v4_policy_.cpu_execution == onnxruntime::moe_offload::CpuExecutionMode::kDisabled &&
-                            resident_slots_ < num_experts_)) {
-    const int default_min_rows = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_STREAM_MIN_ROWS", 16);
-    int default_wave = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_STREAM_WAVE", 32);
+  if (stream_rows_ > 0 && !cpu_disabled_streaming) {
+    const int default_min_rows = ParseEnvironmentVariableWithDefault<int>(
+        "ORT_QMOE_SHARED_STREAM_MIN_ROWS", is_int_bank ? 8 : 16);
+    int default_wave = ParseEnvironmentVariableWithDefault<int>(
+        "ORT_QMOE_SHARED_STREAM_WAVE",
+        (is_int_bank && shared_pinned_limit_ <= (size_t{128} << 20)) ? 16 : 32);
     if (v4_planned_mode_ && std::getenv("ORT_QMOE_SHARED_STREAM_WAVE") == nullptr &&
         v4_policy_.prefill_wave_experts > 0) {
       default_wave = std::min(default_wave, static_cast<int>(v4_policy_.prefill_wave_experts));
@@ -3421,29 +3721,150 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
         static_cast<int>(info.GetAttrOrDefault<int64_t>("stream_min_rows", default_min_rows)), 1, 8192);
     stream_wave_ = std::clamp(
         static_cast<int>(info.GetAttrOrDefault<int64_t>("stream_wave", default_wave)), 1, num_experts_);
+    int64_t explicit_attr = 0;
+    shrink_stream_tile = is_int_bank ? (std::getenv("ORT_QMOE_SHARED_STREAM_ROWS") == nullptr &&
+                                        !info.GetAttr<int64_t>("stream_rows", &explicit_attr).IsOK())
+                                     : v4_planned_mode_;
+    shrink_stream_wave = is_int_bank ? (std::getenv("ORT_QMOE_SHARED_STREAM_WAVE") == nullptr &&
+                                        !info.GetAttr<int64_t>("stream_wave", &explicit_attr).IsOK())
+                                     : v4_planned_mode_;
     stream_promotions_ = deterministic_replay_ ? 0 : std::clamp(ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_STREAM_PROMOTIONS", 0), 0, 64);
-    stream_gpu_limit_ = v4_planned_mode_
+    stream_gpu_limit_ = (v4_planned_mode_ || is_int_bank)
                             ? shared_gpu_limit_
                             : (static_cast<size_t>(std::max(ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_STREAM_GPU_MIB", 1024), 1)) << 20);
-    stream_pinned_limit_ = v4_planned_mode_
+    stream_pinned_limit_ = (v4_planned_mode_ || is_int_bank)
                                ? shared_pinned_limit_
                                : (static_cast<size_t>(std::max(ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_STREAM_PINNED_MIB", 128), 1)) << 20);
+  }
+  if ((v4_planned_mode_ || is_int_bank) && stream_rows_ > 0) {
+    const bool has_res = resident_slots_ > 0;
+    const bool has_b2 = (nvfp4_fc2_b_ != nullptr) || InputExists(info, 7);
+    auto estimate_working_bytes = [&](int rows_cap, int wave_cap, bool is_streaming,
+                                      size_t& out_gpu_bytes, size_t& out_host_bytes) {
+      constexpr size_t kElemBytes = sizeof(uint16_t);
+      const int r_cap = SafeInt<int>(rows_cap) * static_cast<int>(k_);
+      const int r_slots = std::max(r_cap, kGroupedMoeMinRows);
+      const size_t r_bytes = SafeInt<size_t>(r_slots) * sizeof(int);
+      const int c_row_cap = is_streaming ? std::min(r_cap, (stream_min_rows_ - 1) * num_experts_) : r_cap;
+      const size_t contrib_bytes = SafeInt<size_t>(r_cap) * hidden_size_ * kElemBytes;
+      const size_t c_row_bytes = SafeInt<size_t>(std::max(c_row_cap, 1)) * hidden_size_ * kElemBytes;
+      const size_t res_row_bytes = SafeInt<size_t>(r_slots) * hidden_size_ * kElemBytes;
+      const size_t inter_bytes = SafeInt<size_t>(r_slots) * inter_size_ * kElemBytes;
+      const int waves_max = is_streaming ? ((num_experts_ + wave_cap - 1) / wave_cap) : 0;
+      const size_t meta_bytes =
+          is_streaming
+              ? static_cast<size_t>(SafeInt<size_t>(r_slots + waves_max * kGroupedMoeMinRows) * sizeof(int))
+              : size_t{0};
+      size_t g_bytes = 0;
+      for (int i = 0; i < 4; ++i) static_cast<void>(AddSlab(r_bytes, g_bytes));
+      static_cast<void>(AddSlab(contrib_bytes, g_bytes));
+      if (has_b2) static_cast<void>(AddSlab(contrib_bytes, g_bytes));
+      if (has_res) {
+        static_cast<void>(AddSlab(r_bytes, g_bytes));
+        static_cast<void>(AddSlab(r_bytes, g_bytes));
+      }
+      if (has_res || is_streaming) static_cast<void>(AddSlab(r_bytes, g_bytes));
+      if (has_res) static_cast<void>(AddSlab(r_bytes, g_bytes));
+      if (has_res || is_streaming) {
+        static_cast<void>(AddSlab(res_row_bytes, g_bytes));
+        static_cast<void>(AddSlab(res_row_bytes, g_bytes));
+        static_cast<void>(AddSlab(inter_bytes, g_bytes));
+        static_cast<void>(AddSlab(is_streaming ? c_row_bytes : contrib_bytes, g_bytes));
+      }
+      if (is_streaming) {
+        static_cast<void>(AddSlab(meta_bytes, g_bytes));
+        static_cast<void>(AddSlab(meta_bytes, g_bytes));
+      }
+      size_t landing_bytes = 0;
+      if (is_streaming) {
+        for (int b = 0; b < 2; ++b) {
+          for (size_t bank = 0; bank < resident_bank_bytes_.size(); ++bank) {
+            static_cast<void>(AddSlab(SafeInt<size_t>(resident_bank_bytes_[bank]) * wave_cap, landing_bytes));
+          }
+        }
+      }
+      size_t h_bytes = 0;
+      static_cast<void>(AddSlab(r_bytes, h_bytes));
+      static_cast<void>(AddSlab(rows_cap, h_bytes));
+      static_cast<void>(AddSlab(SafeInt<size_t>(rows_cap) * hidden_size_ * kElemBytes, h_bytes));
+      static_cast<void>(AddSlab(is_streaming ? c_row_bytes : contrib_bytes, h_bytes));
+      if (has_res) {
+        static_cast<void>(AddSlab(r_bytes, h_bytes));
+        static_cast<void>(AddSlab(r_bytes, h_bytes));
+      }
+      if (has_res || is_streaming) static_cast<void>(AddSlab(r_bytes, h_bytes));
+      if (is_streaming) {
+        static_cast<void>(AddSlab(meta_bytes, h_bytes));
+        static_cast<void>(AddSlab(meta_bytes, h_bytes));
+        if (int4_bank_mode_) {
+          const size_t wave_scale_bytes =
+              static_cast<size_t>(SafeInt<size_t>(wave_cap) * (resident_bank_bytes_[2] + resident_bank_bytes_[3]));
+          static_cast<void>(AddSlab(wave_scale_bytes * 2, h_bytes));
+        }
+      }
+      out_gpu_bytes = g_bytes + landing_bytes;
+      out_host_bytes = h_bytes;
+    };
+    size_t est_gpu = 0, est_host = 0;
+    estimate_working_bytes(max_sync_tile_tokens_, 1, /*is_streaming=*/false, est_gpu, est_host);
+    while (max_sync_tile_tokens_ > 1 && (est_gpu > shared_gpu_limit_ || est_host > shared_pinned_limit_)) {
+      max_sync_tile_tokens_ = std::max(1, max_sync_tile_tokens_ / 2);
+      estimate_working_bytes(max_sync_tile_tokens_, 1, /*is_streaming=*/false, est_gpu, est_host);
+    }
+    max_routes_ = SafeInt<int>(std::max(max_sync_tile_tokens_, async_max_tokens_)) * k_;
   }
   if (async_) {
     async_aux_ = resident_slots_ > 0 && ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_AUX_STREAM", 1) == 1;
     async_work_ = std::make_unique<CpuWork>(group_calls_, num_experts_, hidden_size_, inter_size_);
   }
 
-  const size_t fp4_scale_group = mxfp4_mode_ ? 32 : 16;
-  resident_bank_bytes_ = {
-      static_cast<size_t>(SafeInt<size_t>(2) * inter_size_ * (hidden_size_ / 2)),
-      static_cast<size_t>(SafeInt<size_t>(hidden_size_) * (inter_size_ / 2)),
-      static_cast<size_t>(SafeInt<size_t>(2) * inter_size_ * (hidden_size_ / fp4_scale_group)),
-      static_cast<size_t>(SafeInt<size_t>(hidden_size_) * (inter_size_ / fp4_scale_group)),
-      sizeof(float),
-      sizeof(float)};
-
+  for (const Tensor* t : {nvfp4_fc1_w_, nvfp4_fc2_w_, nvfp4_fc1_s_, nvfp4_fc2_s_,
+                          nvfp4_fc1_b_, nvfp4_fc2_b_, nvfp4_fc1_g_, nvfp4_fc2_g_, expert_blocks_}) {
+    if (t != nullptr && t->Location().device.Type() == OrtDevice::CPU && t->SizeInBytes() > 0) {
+      static_cast<void>(onnxruntime::moe_offload::PromoteFileMappingToSharedReadOnly(
+          t->DataRaw(), t->SizeInBytes()));
+    }
+  }
   if (host_cache_bytes_ > 0) InitializeBoundedHostCache();
+
+  if (int4_bank_mode_ && ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_INT4_PREFILL_GEMM", 1) == 1) {
+    if (is_bf16_) {
+      runner_ = std::make_unique<ck::CutlassMoeFCRunner<__nv_bfloat16, cutlass::uint4b_t, __nv_bfloat16>>(
+          sm_, activation_type_, false, false);
+    } else {
+      runner_ = std::make_unique<ck::CutlassMoeFCRunner<half, cutlass::uint4b_t, half>>(
+          sm_, activation_type_, false, false);
+    }
+    const auto tactics = runner_->getTactics();
+    if (!tactics.empty()) {
+      using onnxruntime::llm::cutlass_extensions::CutlassGemmConfig;
+      using onnxruntime::llm::cutlass_extensions::CutlassTileConfig;
+      auto find_ampere = [&](CutlassTileConfig tile) -> std::optional<CutlassGemmConfig> {
+        std::optional<CutlassGemmConfig> best;
+        for (const auto& t : tactics) {
+#if defined(ORT_QUICK_BUILD)
+          if (t.stages != 4) continue;
+#endif
+          if (!t.is_tma_warp_specialized && t.sm_version < 90 && t.tile_config_sm80 == tile &&
+              (!best.has_value() || t.stages >= best->stages)) {
+            best = t;
+          }
+        }
+        return best;
+      };
+      std::optional<CutlassGemmConfig> chosen =
+          find_ampere(CutlassTileConfig::CtaShape64x128x64_WarpShape64x32x64);
+      if (!chosen) {
+        chosen = find_ampere(CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64);
+      }
+      if (!chosen) {
+        chosen = tactics[0];
+      }
+      runner_->setTactic(chosen, chosen);
+    } else {
+      runner_.reset();
+    }
+  }
 
 #if defined(__linux__)
   const int default_pin_experts = (host_cache_bytes_ == 0 && resident_slots_ < num_experts_) ? 1 : 0;
@@ -3506,8 +3927,10 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
                           is_registered(nvfp4_fc2_w_) && is_registered(nvfp4_fc2_s_));
   }
 
-  fc1_cols_ = std::clamp(ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_FC1_COLS", 64), 32, 1024) / 32 * 32;
-  fc2_cols_ = std::clamp(ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_FC2_COLS", 128), 32, 1024) / 32 * 32;
+  const int default_fc1_cols = is_int_bank ? 128 : 64;
+  const int default_fc2_cols = is_int_bank ? 256 : 128;
+  fc1_cols_ = std::clamp(ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_FC1_COLS", default_fc1_cols), 32, 1024) / 32 * 32;
+  fc2_cols_ = std::clamp(ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_FC2_COLS", default_fc2_cols), 32, 1024) / 32 * 32;
   cpu_timing_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_CPU_TIMING", 0) == 1;
 
   if (resident_slots_ > 0) {
@@ -3743,7 +4166,8 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
       }
     }
     SharedLayerCache::Register(owned_layer_cache_);
-    if (nvfp4_mode_ && nvfp4_fc1_w_ && nvfp4_fc1_s_ && nvfp4_fc2_w_ && nvfp4_fc2_s_) {
+    if (nvfp4_mode_ && !mxfp4_mode_ && !int4_bank_mode_ && !int3_bank_mode_ &&
+        nvfp4_fc1_w_ && nvfp4_fc1_s_ && nvfp4_fc2_w_ && nvfp4_fc2_s_) {
       const float* fc1_g_base = nvfp4_fc1_g_ ? nvfp4_fc1_g_->Data<float>() : default_global_scales_.data();
       const float* fc2_g_base = nvfp4_fc2_g_ ? nvfp4_fc2_g_->Data<float>() : default_global_scales_.data();
       RegisterQMoEDenseLayerHostWeights(
@@ -3785,16 +4209,44 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
     owned_layer_cache_->session_scope = session_controller_.get();
     owned_layer_cache_->fc1_w_id = static_cast<const uint8_t*>(nvfp4_fc1_w_->DataRaw());
     SharedLayerCache::Register(owned_layer_cache_);
-    const float* fc1_g_base = nvfp4_fc1_g_ ? nvfp4_fc1_g_->Data<float>() : default_global_scales_.data();
-    const float* fc2_g_base = nvfp4_fc2_g_ ? nvfp4_fc2_g_->Data<float>() : default_global_scales_.data();
-    RegisterQMoEDenseLayerHostWeights(
-        dev_id, layer_index_, num_experts_, hidden_size_, inter_size_,
-        static_cast<const uint8_t*>(nvfp4_fc1_w_->DataRaw()),
-        static_cast<const uint8_t*>(nvfp4_fc1_s_->DataRaw()),
-        fc1_g_base,
-        static_cast<const uint8_t*>(nvfp4_fc2_w_->DataRaw()),
-        static_cast<const uint8_t*>(nvfp4_fc2_s_->DataRaw()),
-        fc2_g_base);
+    if (!mxfp4_mode_ && !int4_bank_mode_ && !int3_bank_mode_) {
+      const float* fc1_g_base = nvfp4_fc1_g_ ? nvfp4_fc1_g_->Data<float>() : default_global_scales_.data();
+      const float* fc2_g_base = nvfp4_fc2_g_ ? nvfp4_fc2_g_->Data<float>() : default_global_scales_.data();
+      RegisterQMoEDenseLayerHostWeights(
+          dev_id, layer_index_, num_experts_, hidden_size_, inter_size_,
+          static_cast<const uint8_t*>(nvfp4_fc1_w_->DataRaw()),
+          static_cast<const uint8_t*>(nvfp4_fc1_s_->DataRaw()),
+          fc1_g_base,
+          static_cast<const uint8_t*>(nvfp4_fc2_w_->DataRaw()),
+          static_cast<const uint8_t*>(nvfp4_fc2_s_->DataRaw()),
+          fc2_g_base);
+    }
+  }
+
+  if (stream_rows_ > 0 && (shrink_stream_tile || shrink_stream_wave)) {
+    const StreamScratchShape shape{hidden_size_, inter_size_, num_experts_, static_cast<int>(k_), stream_min_rows_,
+                                   nvfp4_fc2_b_ != nullptr, int4_bank_mode_, resident_bank_bytes_};
+    const StreamTileWave requested{stream_rows_, stream_wave_};
+    // Streaming serves calls above the synchronous tile, so stream_min_tokens_ is the smallest useful tile.
+    const int tile_floor = is_int_bank ? std::min(stream_rows_, stream_min_tokens_) : 1;
+    const StreamTileWave floors{shrink_stream_tile ? tile_floor : stream_rows_,
+                                shrink_stream_wave ? 1 : stream_wave_};
+    const StreamTileWave fitted =
+        FitStreamTileAndWave(shape, requested, floors, shared_gpu_limit_, shared_pinned_limit_);
+    const bool fitted_fits = StreamScratchFits(shape, fitted, shared_gpu_limit_, shared_pinned_limit_);
+    if ((fitted.tile != requested.tile || fitted.wave != requested.wave) &&
+        ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_RESIDENT_LOG", 0) == 1) {
+      std::fprintf(stderr, "QMoEOffload stream budget layer=%lld tile=%d->%d wave=%d->%d\n",
+                   static_cast<long long>(layer_index_), requested.tile, fitted.tile, requested.wave, fitted.wave);
+    }
+    stream_rows_ = fitted.tile;
+    stream_wave_ = fitted.wave;
+    if (!is_int_bank && !cpu_disabled_streaming && !fitted_fits) {
+      stream_rows_ = 0;
+    }
+    prefill_chunk_tokens_ = static_cast<int>(
+        info.GetAttrOrDefault<int64_t>("prefill_chunk_tokens",
+                                       ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_PREFILL_CHUNK_TOKENS", stream_rows_)));
   }
 
   if (stream_rows_ > 0) {
@@ -4165,10 +4617,128 @@ void QMoEOffload::InitializeComplementMode() {
   }
 }
 
+void QMoEOffload::CopyOrTransposeScaleBankToHost(size_t bank, const uint8_t* src, uint8_t* dst) const noexcept {
+  if (int4_bank_mode_ && (bank == 2 || bank == 3)) {
+    const int64_t rows = (bank == 2) ? (int64_t{2} * inter_size_) : int64_t{hidden_size_};
+    const int64_t cols = (bank == 2) ? (int64_t{hidden_size_} / 32) : (int64_t{inter_size_} / 32);
+    qmoe_shared::TransposeInt4Scales(reinterpret_cast<const uint16_t*>(src),
+                                     reinterpret_cast<uint16_t*>(dst), rows, cols);
+  } else {
+    std::memcpy(dst, src, resident_bank_bytes_[bank]);
+  }
+}
+
+uint8_t* QMoEOffload::AcquireStagedScaleBuffer(size_t bytes) const {
+  constexpr size_t kMaxStagedScaleBuffers = 8;
+  std::lock_guard<std::mutex> lock(staged_scales_mutex_);
+  for (auto& buf : staged_scale_buffers_) {
+    if (!buf || buf->pending_event) continue;
+    if (buf->in_flight) {
+      if (buf->done_event != nullptr && cudaEventQuery(buf->done_event) == cudaSuccess) {
+        buf->in_flight = false;
+      } else {
+        static_cast<void>(cudaGetLastError());
+        continue;
+      }
+    }
+    if (buf->data.size() < bytes) {
+      buf->data.resize(bytes);
+    }
+    buf->pending_event = true;
+    buf->use_seq = ++staged_scales_seq_;
+    return buf->data.data();
+  }
+  if (staged_scale_buffers_.size() >= kMaxStagedScaleBuffers) {
+    StagedScaleBuffer* oldest = nullptr;
+    for (auto& buf : staged_scale_buffers_) {
+      if (buf && !buf->pending_event && buf->in_flight && buf->done_event != nullptr) {
+        if (oldest == nullptr || buf->use_seq < oldest->use_seq) {
+          oldest = buf.get();
+        }
+      }
+    }
+    if (oldest != nullptr) {
+      CUDA_CALL_THROW(cudaEventSynchronize(oldest->done_event));
+      oldest->in_flight = false;
+      if (oldest->data.size() < bytes) {
+        oldest->data.resize(bytes);
+      }
+      oldest->pending_event = true;
+      oldest->use_seq = ++staged_scales_seq_;
+      return oldest->data.data();
+    }
+  }
+  auto buf = std::make_unique<StagedScaleBuffer>();
+  buf->data.resize(bytes);
+  buf->pending_event = true;
+  buf->use_seq = ++staged_scales_seq_;
+  uint8_t* ptr = buf->data.data();
+  staged_scale_buffers_.push_back(std::move(buf));
+  return ptr;
+}
+
+void QMoEOffload::RecordStagedScaleCompletion(cudaStream_t stream) const noexcept {
+  std::lock_guard<std::mutex> lock(staged_scales_mutex_);
+  for (auto& buf : staged_scale_buffers_) {
+    if (!buf || !buf->pending_event) continue;
+    buf->pending_event = false;
+    if (stream == nullptr) {
+      buf->in_flight = false;
+      continue;
+    }
+    if (buf->done_event == nullptr &&
+        cudaEventCreateWithFlags(&buf->done_event, cudaEventDisableTiming) != cudaSuccess) {
+      static_cast<void>(cudaGetLastError());
+      buf->done_event = nullptr;
+    }
+    if (buf->done_event != nullptr && cudaEventRecord(buf->done_event, stream) == cudaSuccess) {
+      buf->in_flight = true;
+    } else {
+      static_cast<void>(cudaGetLastError());
+      if (cudaStreamSynchronize(stream) == cudaSuccess) {
+        buf->in_flight = false;
+      } else {
+        static_cast<void>(cudaGetLastError());
+        buf->in_flight = true;
+      }
+    }
+  }
+}
+
+void QMoEOffload::TrimStagedScaleBuffers(size_t max_retained) const noexcept {
+  std::lock_guard<std::mutex> lock(staged_scales_mutex_);
+  for (auto it = staged_scale_buffers_.begin();
+       it != staged_scale_buffers_.end() && staged_scale_buffers_.size() > max_retained;) {
+    auto& buf = *it;
+    if (!buf) {
+      it = staged_scale_buffers_.erase(it);
+      continue;
+    }
+    if (buf->pending_event) {
+      ++it;
+      continue;
+    }
+    if (buf->in_flight) {
+      if (buf->done_event != nullptr && cudaEventQuery(buf->done_event) == cudaSuccess) {
+        buf->in_flight = false;
+      } else {
+        static_cast<void>(cudaGetLastError());
+        ++it;
+        continue;
+      }
+    }
+    if (buf->done_event != nullptr) {
+      static_cast<void>(cudaEventDestroy(buf->done_event));
+      buf->done_event = nullptr;
+    }
+    it = staged_scale_buffers_.erase(it);
+  }
+}
+
 void QMoEOffload::InitializeBoundedHostCache() {
-  ORT_ENFORCE(nvfp4_mode_ && !expert_blocks_ && (mxfp4_mode_ || (nvfp4_fc1_g_ && nvfp4_fc2_g_)) &&
+  ORT_ENFORCE(nvfp4_mode_ && !expert_blocks_ && (mxfp4_mode_ || int4_bank_mode_ || int3_bank_mode_ || (nvfp4_fc1_g_ && nvfp4_fc2_g_)) &&
                   (stream_rows_ == 0 || v4_planned_mode_),
-              "Bounded host cache requires file-backed FP4 banks, valid global scales, and no shared streaming.");
+              "Bounded host cache requires file-backed banks, valid global scales, and no legacy shared streaming.");
   // A deterministic per-layer share is independent of construction order and other sessions.
   // Unused shares require a session-owned planner before they can safely be redistributed.
   const size_t max_cold_slots = static_cast<size_t>(std::max(1, num_experts_ - base_resident_slots_));
@@ -4217,7 +4787,7 @@ void QMoEOffload::InitializeBoundedHostCache() {
 
 bool QMoEOffload::SwapHostCandidateForVictim(int candidate, int evicted, int victim_slab_slot,
                                              cudaStream_t stream) const {
-  if (!nvfp4_mode_ || host_cache_bytes_ == 0 || !resident_slab_ || evicted < 0 || victim_slab_slot < 0 ||
+  if (!nvfp4_mode_ || int4_bank_mode_ || int3_bank_mode_ || host_cache_bytes_ == 0 || !resident_slab_ || evicted < 0 || victim_slab_slot < 0 ||
       !swap_victim_to_host_cache_) {
     return false;
   }
@@ -4618,7 +5188,7 @@ bool QMoEOffload::ExecuteCrossLayerPromotionDma(const CrossLayerPromoRequest& re
   }
 
   for (size_t bank = 0; bank < 6; ++bank) {
-    std::memcpy(pinned_bounce_buf + bounce_offs[bank], host_sources[bank], resident_bank_bytes_[bank]);
+    CopyOrTransposeScaleBankToHost(bank, host_sources[bank], pinned_bounce_buf + bounce_offs[bank]);
   }
   uint8_t* slab = resident_slab_.get();
   for (size_t bank = 0; bank < 6; ++bank) {
@@ -4802,17 +5372,23 @@ Status QMoEOffload::StepBetweenRuns(cudaStream_t stream) const {
             : 4;
     g_step_prefill_remaining_tokens.store(std::max<int64_t>(0, rem_prefill - step_rows), std::memory_order_release);
   }
+#if defined(_WIN32)
+  const int default_cross_layer_promo = 0;
+#else
+  const int default_cross_layer_promo = 0;
+#endif
   const bool cross_layer_promo =
       doorbell_enabled_ && spare_slots_ > 0 && bg_promo_stream_ &&
-      ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_CROSS_LAYER_PROMO", 0) == 1;
+      ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_CROSS_LAYER_PROMO", default_cross_layer_promo) == 1;
   const bool prev_doorbell_in_flight =
       doorbell_enabled_ && decode_state_ && decode_state_->doorbell_done_host &&
       (*decode_state_->doorbell_done_host < decode_state_->launched_seq);
   const bool should_promote_step =
       !in_step_prefill && !prev_doorbell_in_flight &&
-      (!doorbell_enabled_ || !decode_state_ || decode_state_->last_promoted_seq < decode_state_->launched_seq);
+      (!doorbell_enabled_ || !decode_state_ || last_promoted_async_seq_ < async_launched_seq_);
   if (resident_slots_ > 0 && !IsInQMoEWarmup(session_controller_.get()) && async_work_ && !cross_layer_promo &&
       should_promote_step) {
+    last_promoted_async_seq_ = async_launched_seq_;
     if (decode_state_) {
       decode_state_->last_promoted_seq = decode_state_->launched_seq;
     }
@@ -4878,6 +5454,7 @@ Status QMoEOffload::StepBetweenRuns(cudaStream_t stream) const {
       session_controller_->RegisterInvocation(inv);
     }
     ++decode_state_->launched_seq;
+    ++async_launched_seq_;
     DoorbellService::Instance().NotifyPending(1);
   }
   if (cpu_timing_ && layer_index_ == 47) {
@@ -5148,13 +5725,35 @@ void QMoEOffload::CopyExpertToResidentSlot(int expert, int slot, cudaStream_t st
     src_ptrs[4] = reinterpret_cast<const uint8_t*>(fc1_g_base + expert);
     src_ptrs[5] = reinterpret_cast<const uint8_t*>(fc2_g_base + expert);
   }
+  thread_local std::vector<uint8_t> scale_transpose_buf;
+  bool used_staged_scales = false;
+  auto staged_guard = gsl::finally([this, stream, &used_staged_scales]() noexcept {
+    if (used_staged_scales) {
+      RecordStagedScaleCompletion(stream);
+    }
+  });
   for (size_t bank = 0; bank < 6; ++bank) {
     const size_t dst_off = resident_bank_offsets_[bank] + SafeInt<size_t>(slot) * resident_bank_bytes_[bank];
+    const uint8_t* copy_src = src_ptrs[bank];
+    if (int4_bank_mode_ && (bank == 2 || bank == 3)) {
+      if (stream) {
+        uint8_t* staged = AcquireStagedScaleBuffer(resident_bank_bytes_[bank]);
+        CopyOrTransposeScaleBankToHost(bank, src_ptrs[bank], staged);
+        copy_src = staged;
+        used_staged_scales = true;
+      } else {
+        if (scale_transpose_buf.size() < resident_bank_bytes_[bank]) {
+          scale_transpose_buf.resize(resident_bank_bytes_[bank]);
+        }
+        CopyOrTransposeScaleBankToHost(bank, src_ptrs[bank], scale_transpose_buf.data());
+        copy_src = scale_transpose_buf.data();
+      }
+    }
     if (stream) {
-      CUDA_CALL_THROW(cudaMemcpyAsync(slab + dst_off, src_ptrs[bank], resident_bank_bytes_[bank],
+      CUDA_CALL_THROW(cudaMemcpyAsync(slab + dst_off, copy_src, resident_bank_bytes_[bank],
                                       cudaMemcpyHostToDevice, stream));
     } else {
-      CUDA_CALL_THROW(cudaMemcpy(slab + dst_off, src_ptrs[bank], resident_bank_bytes_[bank],
+      CUDA_CALL_THROW(cudaMemcpy(slab + dst_off, copy_src, resident_bank_bytes_[bank],
                                  cudaMemcpyHostToDevice));
     }
   }
@@ -5281,6 +5880,7 @@ void QMoEOffload::BatchCopyExpertsToResidentSlots(
       if (acquired[static_cast<size_t>(i)]) lease_guards[static_cast<size_t>(i)].MarkDeviceReadsQueued();
     }
   }
+  thread_local std::vector<uint8_t> batch_scale_transpose_buf;
   for (int i = 0; i < count; ++i) {
     const int slot = slots[i];
     if (slot < 0 || slot >= physical_slots_) continue;
@@ -5288,13 +5888,35 @@ void QMoEOffload::BatchCopyExpertsToResidentSlots(
     const uint8_t* base = acquired[static_cast<size_t>(i)]
                               ? leases[static_cast<size_t>(i)].data
                               : (dma_state.host_staging[m & 1] + (m >> 1) * nvfp4_layout_.stride);
+    bool used_staged_scales = false;
+    auto staged_guard = gsl::finally([this, stream, &used_staged_scales]() noexcept {
+      if (used_staged_scales) {
+        RecordStagedScaleCompletion(stream);
+      }
+    });
     for (size_t bank = 0; bank < 6; ++bank) {
       const size_t dst_off = resident_bank_offsets_[bank] + SafeInt<size_t>(slot) * resident_bank_bytes_[bank];
+      const uint8_t* copy_src = base + offsets[bank];
+      const bool xpose = int4_bank_mode_ && (bank == 2 || bank == 3);
+      if (xpose) {
+        if (stream) {
+          uint8_t* staged = AcquireStagedScaleBuffer(resident_bank_bytes_[bank]);
+          CopyOrTransposeScaleBankToHost(bank, copy_src, staged);
+          copy_src = staged;
+          used_staged_scales = true;
+        } else {
+          if (batch_scale_transpose_buf.size() < resident_bank_bytes_[bank]) {
+            batch_scale_transpose_buf.resize(resident_bank_bytes_[bank]);
+          }
+          CopyOrTransposeScaleBankToHost(bank, copy_src, batch_scale_transpose_buf.data());
+          copy_src = batch_scale_transpose_buf.data();
+        }
+      }
       if (stream) {
-        CUDA_CALL_THROW(cudaMemcpyAsync(slab + dst_off, base + offsets[bank], resident_bank_bytes_[bank],
+        CUDA_CALL_THROW(cudaMemcpyAsync(slab + dst_off, copy_src, resident_bank_bytes_[bank],
                                         cudaMemcpyHostToDevice, stream));
       } else {
-        CUDA_CALL_THROW(cudaMemcpy(slab + dst_off, base + offsets[bank], resident_bank_bytes_[bank],
+        CUDA_CALL_THROW(cudaMemcpy(slab + dst_off, copy_src, resident_bank_bytes_[bank],
                                    cudaMemcpyHostToDevice));
       }
     }
@@ -5315,6 +5937,7 @@ void QMoEOffload::BatchCopyExpertsToResidentSlots(
   if (stream) {
     CUDA_CALL_THROW(cudaStreamSynchronize(stream));
   }
+  TrimStagedScaleBuffers(2);
   for (int i = 0; i < count; ++i) {
     if (acquired[static_cast<size_t>(i)]) {
       auto& guard = lease_guards[static_cast<size_t>(i)];
@@ -5383,6 +6006,7 @@ void QMoEOffload::RestoreAndSeedResidentSlab(
       }
       decode_state_->launched_seq = *decode_state_->doorbell_done_host;
       decode_state_->last_promoted_seq = decode_state_->launched_seq;
+      last_promoted_async_seq_ = async_launched_seq_;
     }
     const float init_ema = static_cast<float>(k_) / static_cast<float>(std::max(1, num_experts_));
     for (int e = 0; e < num_experts_; ++e) {
@@ -5417,7 +6041,7 @@ void QMoEOffload::RestoreAndSeedResidentSlab(
       }
       BatchCopyExpertsToResidentSlots(restore_experts.data(), restore_slots.data(), init_slots, stream);
     } else {
-      DoorbellService::Instance().CancelPendingPromo(this);
+      DoorbellService::Instance().WaitForNodeIdle(this);
       if (async_work_) {
         for (auto& r : async_work_->expert_routes) r.clear();
       }
@@ -5701,7 +6325,8 @@ void QMoEOffload::CommitInvocationObservation(const std::array<int, 5>& phase_ro
 
 Status QMoEOffload::PromoteResident(cudaStream_t stream, const InlinedVector<InlinedVector<int>>& cold_routes,
                                     int max_promotions, const int* streamed_experts, int streamed_count) const {
-  const int promotion_limit = max_promotions > 0 ? max_promotions : resident_promotions_;
+  const int promotion_limit =
+      max_promotions > 0 ? max_promotions : (max_promotions < 0 ? 0 : resident_promotions_);
   if (pending_promotions_.empty() && promotion_limit <= 0) return Status::OK();
   constexpr float kMinScore = 2.0f;
   constexpr float kMargin = 2.0f;
@@ -5855,9 +6480,13 @@ Status QMoEOffload::PromoteResident(cudaStream_t stream, const InlinedVector<Inl
         if (best < threshold) break;
       }
 
-      const uint64_t step_seq = (decode_state_ && decode_state_->last_serviced_seq > 0)
-                                    ? decode_state_->last_serviced_seq
-                                    : (resident_total_routes_ / static_cast<uint64_t>(std::max<int64_t>(1, k_)));
+      const uint64_t route_epoch =
+          resident_total_routes_ / static_cast<uint64_t>(std::max<int64_t>(1, k_));
+      const uint64_t doorbell_seq =
+          (decode_state_ && decode_state_->last_serviced_seq > 0) ? decode_state_->last_serviced_seq : 0;
+      const uint64_t step_seq =
+          session_controller_ ? session_controller_->CurrentRunId()
+                              : std::max({doorbell_seq, async_launched_seq_, route_epoch});
       const bool use_ssd = !host_complement_mode_ && file_expert_store_.IsInitialized();
       const bool source_is_pinned =
           (all_expert_banks_registered_ || host_complement_mode_) && !use_ssd;
@@ -5872,6 +6501,14 @@ Status QMoEOffload::PromoteResident(cudaStream_t stream, const InlinedVector<Inl
               session_controller_ ? session_controller_->PinnedBudget() : nullptr)) {
         break;
       }
+      // Once a copy reading the bounce buffer is queued, every exit path (including a later copy failing) must fence
+      // it. The fence either records an event the next reuse waits on, or quarantines the buffer.
+      bool bounce_reads_queued = false;
+      auto bounce_fence = gsl::finally([this, &bounce_reads_queued]() noexcept {
+        if (bounce_reads_queued) {
+          SessionPromotionBudget::Instance().RecordBounceCopy(session_controller_.get(), promo_stream_);
+        }
+      });
 
       if (!promo_stream_) {
         int least_prio = 0, greatest_prio = 0;
@@ -5990,6 +6627,10 @@ Status QMoEOffload::PromoteResident(cudaStream_t stream, const InlinedVector<Inl
                         host_sources[b] + byte_off, copy_len);
           };
           SharedSpinPool(cpu_threads_).ParallelFor(total_chunks, copy_chunk, 1);
+          if (int4_bank_mode_) {
+            CopyOrTransposeScaleBankToHost(2, host_sources[2], pinned_bounce_slot + bounce_offs[2]);
+            CopyOrTransposeScaleBankToHost(3, host_sources[3], pinned_bounce_slot + bounce_offs[3]);
+          }
           for (size_t bank = 4; bank < 6; ++bank) {
             std::memcpy(pinned_bounce_slot + bounce_offs[bank], host_sources[bank], resident_bank_bytes_[bank]);
           }
@@ -5999,9 +6640,24 @@ Status QMoEOffload::PromoteResident(cudaStream_t stream, const InlinedVector<Inl
           ssd_lease_guard.Release();
         }
         ssd_lease_guard.MarkDeviceReadsQueued();
+        bool used_staged_scales = false;
+        auto staged_guard = gsl::finally([this, &used_staged_scales]() noexcept {
+          if (used_staged_scales) {
+            RecordStagedScaleCompletion(promo_stream_);
+          }
+        });
+        bounce_reads_queued = pinned_bounce_slot != nullptr;
         for (size_t bank = 0; bank < 6; ++bank) {
           const size_t slot_offset = resident_bank_offsets_[bank] + static_cast<size_t>(SafeInt<size_t>(target_slot) * resident_bank_bytes_[bank]);
-          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(slab + slot_offset, host_sources[bank], resident_bank_bytes_[bank],
+          const uint8_t* copy_src = host_sources[bank];
+          const bool need_sync_xpose = int4_bank_mode_ && pinned_bounce_slot == nullptr && (bank == 2 || bank == 3);
+          if (need_sync_xpose) {
+            uint8_t* staged = AcquireStagedScaleBuffer(resident_bank_bytes_[bank]);
+            CopyOrTransposeScaleBankToHost(bank, copy_src, staged);
+            copy_src = staged;
+            used_staged_scales = true;
+          }
+          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(slab + slot_offset, copy_src, resident_bank_bytes_[bank],
                                                cudaMemcpyHostToDevice, promo_stream_));
         }
         if (nvfp4_fc1_b_ && resident_fc1_bias_slab_) {
@@ -6031,6 +6687,7 @@ Status QMoEOffload::PromoteResident(cudaStream_t stream, const InlinedVector<Inl
           if (ssd_lease_guard.held()) {
             ssd_lease_guard.Release();
           }
+          bounce_reads_queued = true;
           for (size_t bank = 0; bank < sources.size(); ++bank) {
             const size_t slot_offset = resident_bank_offsets_[bank] + SafeInt<size_t>(target_slot) * resident_bank_bytes_[bank];
             CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(slab + slot_offset, pinned_bounce_slot + bounce_offs[bank],
@@ -6198,12 +6855,25 @@ Status QMoEOffload::PromoteResident(cudaStream_t stream, const InlinedVector<Inl
         host_sources[4] = reinterpret_cast<const uint8_t*>(fc1_g_base + candidate);
         host_sources[5] = reinterpret_cast<const uint8_t*>(fc2_g_base + candidate);
       }
+      bool used_staged_scales = false;
+      auto staged_guard = gsl::finally([this, stream, &used_staged_scales]() noexcept {
+        if (used_staged_scales) {
+          RecordStagedScaleCompletion(stream);
+        }
+      });
       for (size_t bank = 0; bank < 6; ++bank) {
         const size_t slot_offset = resident_bank_offsets_[bank] + SafeInt<size_t>(target_slot) * resident_bank_bytes_[bank];
         const uint8_t* source = host_sources[bank];
         if (reuse) {
           const size_t landing_offset = SafeInt<size_t>(landing.slot) * resident_bank_bytes_[bank];
           source = stream_shared_->landing + stream_bank_offsets_[landing.buffer][bank] + landing_offset;
+        }
+        const bool need_sync_xpose = int4_bank_mode_ && !reuse && (bank == 2 || bank == 3);
+        if (need_sync_xpose) {
+          uint8_t* staged = AcquireStagedScaleBuffer(resident_bank_bytes_[bank]);
+          CopyOrTransposeScaleBankToHost(bank, source, staged);
+          source = staged;
+          used_staged_scales = true;
         }
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(slab + slot_offset, source, resident_bank_bytes_[bank],
                                              reuse ? cudaMemcpyDeviceToDevice : cudaMemcpyHostToDevice, stream));
@@ -6314,7 +6984,7 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
   const bool use_ssd = !host_complement_mode_ && file_expert_store_.IsInitialized();
   const int fc1_tasks = (2 * inter_size_ + fc1_cols_ - 1) / fc1_cols_;
   const int fc2_tasks = (hidden_size_ + fc2_cols_ - 1) / fc2_cols_;
-  const bool timed = cpu_timing_ && tile_rows <= 4;
+  const bool timed = cpu_timing_ && tile_rows <= async_max_tokens_;
   auto now = [] { return std::chrono::steady_clock::now(); };
   auto ns = [](std::chrono::steady_clock::time_point a, std::chrono::steady_clock::time_point b) {
     return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(b - a).count());
@@ -6344,6 +7014,10 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
         const size_t bias_off = SafeInt<size_t>(expert) * 2 * inter_size_;
         v.fc1_bias = reinterpret_cast<const uint16_t*>(nvfp4_fc1_b_->DataRaw()) + bias_off;
       }
+      if (nvfp4_fc2_b_ && nvfp4_fc2_b_->Location().device.Type() == OrtDevice::CPU) {
+        const size_t fc2_b_off = SafeInt<size_t>(expert) * hidden_size_;
+        v.fc2_bias = reinterpret_cast<const uint16_t*>(nvfp4_fc2_b_->DataRaw()) + fc2_b_off;
+      }
     } else {
       const float* fc1_g_base = nvfp4_fc1_g_ ? nvfp4_fc1_g_->Data<float>() : default_global_scales_.data();
       const float* fc2_g_base = nvfp4_fc2_g_ ? nvfp4_fc2_g_->Data<float>() : default_global_scales_.data();
@@ -6356,6 +7030,10 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
       if (nvfp4_fc1_b_) {
         const size_t bias_off = SafeInt<size_t>(expert) * 2 * inter_size_;
         v.fc1_bias = reinterpret_cast<const uint16_t*>(nvfp4_fc1_b_->DataRaw()) + bias_off;
+      }
+      if (nvfp4_fc2_b_ && nvfp4_fc2_b_->Location().device.Type() == OrtDevice::CPU) {
+        const size_t fc2_b_off = SafeInt<size_t>(expert) * hidden_size_;
+        v.fc2_bias = reinterpret_cast<const uint16_t*>(nvfp4_fc2_b_->DataRaw()) + fc2_b_off;
       }
     }
     return v;
@@ -6380,27 +7058,102 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
     const ExpertCall* group = calls.data() + first_call;
     const int group_size = static_cast<int>(std::min(group_calls, calls.size() - first_call));
     InlinedVector<int32_t> group_expert_ids;
+    InlinedVector<uint8_t> lease_held;
+    InlinedVector<int> miss_load_slots;
+    struct GroupLeaseGuard {
+      const QMoEOffload* self;
+      InlinedVector<int32_t>* expert_ids;
+      InlinedVector<uint8_t>* held;
+      InlinedVector<int>* miss_slots;
+      ~GroupLeaseGuard() noexcept {
+        if (miss_slots && expert_ids && held) {
+          for (int m_slot : *miss_slots) {
+            if (m_slot >= 0 && static_cast<size_t>(m_slot) < expert_ids->size()) {
+              static_cast<void>(self->file_expert_store_.FinishLoadExpert((*expert_ids)[m_slot], false, nullptr));
+              (*held)[m_slot] = 0;
+            }
+          }
+          miss_slots->clear();
+        }
+        if (held && expert_ids) {
+          for (size_t s = 0; s < held->size(); ++s) {
+            if ((*held)[s]) {
+              self->file_expert_store_.ReleaseLease((*expert_ids)[s]);
+              (*held)[s] = 0;
+            }
+          }
+        }
+      }
+    } group_lease_guard{this, &group_expert_ids, &lease_held, &miss_load_slots};
+    const bool allow_fused_miss_load =
+        use_ssd && per_expert_ready && static_cast<size_t>(group_size) <= CpuWork::kMaxGroupSlots &&
+        static_cast<size_t>(group_size) <= file_expert_store_.CacheSlots();
     if (use_ssd) {
       group_expert_ids.resize(group_size);
+      lease_held.assign(static_cast<size_t>(group_size), 0);
+      // Leases from the previous group were released; a pending load must not expose them to duplicate copies or
+      // to view setup while background prefetch may be filling that cache slot for another expert.
+      std::fill(group_ssd_leases.begin(), group_ssd_leases.begin() + group_size, qmoe_shared::ExpertBlockLease{});
       for (int slot = 0; slot < group_size; ++slot) {
         group_expert_ids[slot] = static_cast<int32_t>(group[slot].expert);
       }
-      if (!file_expert_store_.TryAcquireGroupCached(
+      if (file_expert_store_.TryAcquireGroupCached(
               group_expert_ids.data(), static_cast<size_t>(group_size), group_ssd_leases.data())) {
+        std::fill(lease_held.begin(), lease_held.end(), uint8_t{1});
+      } else {
         if (host_cache_bytes_ > 0) host_slot_table_dirty_ = true;
-        if (group_size > 1 && static_cast<size_t>(group_size) <= file_expert_store_.CacheSlots()) {
+        if (allow_fused_miss_load) {
+          InlinedVector<int> sync_miss_slots;
+          for (int slot = 0; slot < group_size; ++slot) {
+            int dup_leader = -1;
+            for (int prev = 0; prev < slot; ++prev) {
+              if (group_expert_ids[prev] == group_expert_ids[slot]) {
+                dup_leader = prev;
+                break;
+              }
+            }
+            if (dup_leader >= 0) {
+              group_ssd_leases[slot] = group_ssd_leases[dup_leader];
+              continue;
+            }
+            if (file_expert_store_.TryAcquireCached(group_expert_ids[slot], &group_ssd_leases[slot])) {
+              lease_held[slot] = 1;
+            } else {
+              const int st = file_expert_store_.BeginLoadExpert(
+                  group_expert_ids[slot], &work.slot_load_dst[slot], &group_ssd_leases[slot]);
+              if (st == 0) {
+                lease_held[slot] = 1;
+              } else if (st == 1) {
+                lease_held[slot] = 1;
+                miss_load_slots.push_back(slot);
+              } else {
+                sync_miss_slots.push_back(slot);
+              }
+            }
+          }
+          for (int s : sync_miss_slots) {
+            if (!file_expert_store_.AcquireReady(group_expert_ids[s], &group_ssd_leases[s])) {
+              ORT_THROW("QMoEOffload FileExpertStore AcquireReady failed for expert ", group_expert_ids[s]);
+            }
+            lease_held[s] = 1;
+            for (int dup = s + 1; dup < group_size; ++dup) {
+              if (group_expert_ids[dup] == group_expert_ids[s]) {
+                group_ssd_leases[dup] = group_ssd_leases[s];
+              }
+            }
+          }
+        } else if (group_size > 1 && static_cast<size_t>(group_size) <= file_expert_store_.CacheSlots()) {
           InlinedVector<int> miss_slots;
-          InlinedVector<uint8_t> acquired(static_cast<size_t>(group_size), 0);
           for (int slot = 0; slot < group_size; ++slot) {
             if (file_expert_store_.TryAcquireCached(group_expert_ids[slot], &group_ssd_leases[slot])) {
-              acquired[slot] = 1;
+              lease_held[slot] = 1;
             } else {
               miss_slots.push_back(slot);
             }
           }
           auto acquire_task = [&](ptrdiff_t idx) noexcept {
             const int s = miss_slots[static_cast<size_t>(idx)];
-            acquired[s] = file_expert_store_.AcquireReady(group_expert_ids[s], &group_ssd_leases[s]);
+            lease_held[s] = file_expert_store_.AcquireReady(group_expert_ids[s], &group_ssd_leases[s]) ? 1 : 0;
           };
           if (miss_slots.size() > 1) {
             run_parallel(static_cast<ptrdiff_t>(miss_slots.size()), acquire_task);
@@ -6408,12 +7161,8 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
             acquire_task(0);
           }
           for (int slot = 0; slot < group_size; ++slot) {
-            if (!acquired[slot]) {
-              // Worker jobs must not throw: SpinPool has no exception boundary. Join first,
-              // release only successful acquisitions, then report failure on the caller.
-              for (int s = 0; s < group_size; ++s) {
-                if (acquired[s]) file_expert_store_.ReleaseLease(group_expert_ids[s]);
-              }
+            if (!lease_held[slot]) {
+              // Worker jobs must not throw. The guard releases acquisitions after the workers join.
               ORT_THROW("QMoEOffload FileExpertStore AcquireReady failed for expert ", group_expert_ids[slot]);
             }
           }
@@ -6421,6 +7170,7 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
           ORT_ENFORCE(file_expert_store_.AcquireGroupReady(
                           group_expert_ids.data(), static_cast<size_t>(group_size), group_ssd_leases.data()),
                       "QMoEOffload FileExpertStore AcquireGroupReady failed.");
+          std::fill(lease_held.begin(), lease_held.end(), uint8_t{1});
         }
       }
       const size_t next_first = first_call + static_cast<size_t>(group_size);
@@ -6434,6 +7184,15 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
         file_expert_store_.Prefetch(next_ids.data(), next_ids.size(), ++ssd_prefetch_gen_);
       }
     }
+    constexpr int kReadyDoneVal = qmoe_shared::FileExpertStore::kLoadChunksPerExpert + 1;
+    // A pending load owns its cache slot only through slot_load_dst; any lease still visible here would let view
+    // setup read a slot that background prefetch may be refilling for another expert.
+    for (int m_slot : miss_load_slots) {
+      for (int s = m_slot; s < group_size; ++s) {
+        ORT_ENFORCE(group_expert_ids[s] != group_expert_ids[m_slot] || group_ssd_leases[s].data == nullptr,
+                    "QMoEOffload pending expert load exposes a stale cache lease for expert ", group_expert_ids[m_slot]);
+      }
+    }
     for (int slot = 0; slot < group_size; ++slot) {
       const auto& assignments = expert_routes[group[slot].expert];
       const int cnt = group[slot].count;
@@ -6443,11 +7202,15 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
         const int token = assignments[group[slot].first + row] / static_cast<int>(k_);
         float* token_row = work.token_rows.data() + static_cast<size_t>(token) * hidden_size_;
         if (!work.token_ready[token]) {
-          ActToFloatRow(host_input + static_cast<size_t>(token) * hidden_size_, work.natural.data(), hidden_size_);
-          if (nvfp4_mode_) {
-            qmoe_shared::ReorderNvfp4ActivationRow(work.natural.data(), token_row, hidden_size_);
+          if (int3_bank_mode_) {
+            ActToFloatRow(host_input + static_cast<size_t>(token) * hidden_size_, token_row, hidden_size_);
           } else {
-            qmoe_shared::ReorderActivationRow(work.natural.data(), token_row, hidden_size_);
+            ActToFloatRow(host_input + static_cast<size_t>(token) * hidden_size_, work.natural.data(), hidden_size_);
+            if (nvfp4_mode_ && !int4_bank_mode_) {
+              qmoe_shared::ReorderNvfp4ActivationRow(work.natural.data(), token_row, hidden_size_);
+            } else {
+              qmoe_shared::ReorderActivationRow(work.natural.data(), token_row, hidden_size_);
+            }
           }
           work.token_ready[token] = 1;
         }
@@ -6458,11 +7221,19 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
       }
       if (static_cast<size_t>(slot) < CpuWork::kMaxGroupSlots) {
         work.fc1_done[slot].value.store(0, std::memory_order_relaxed);
+        work.slot_ready[slot].value.store(kReadyDoneVal, std::memory_order_relaxed);
         work.slot_act_in[slot] = contiguous_tokens
                                      ? (work.token_rows.data() + static_cast<size_t>(t0) * hidden_size_)
                                      : (work.reordered.data() + slot * call_rows * hidden_size_);
-        if (nvfp4_mode_) {
+        if (nvfp4_mode_ && (!use_ssd || group_ssd_leases[slot].data != nullptr)) {
           work.slot_view[slot] = make_nvfp4_view(group[slot].expert, use_ssd ? group_ssd_leases[slot].data : nullptr);
+        }
+      }
+    }
+    for (int m_slot : miss_load_slots) {
+      for (int s = m_slot; s < group_size; ++s) {
+        if (group_expert_ids[s] == group_expert_ids[m_slot]) {
+          work.slot_ready[s].value.store(0, std::memory_order_relaxed);
         }
       }
     }
@@ -6476,7 +7247,44 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
                                 ? work.slot_act_in[slot]
                                 : (work.reordered.data() + slot * call_rows * hidden_size_);
       const uint8_t* ssd_blk = use_ssd ? group_ssd_leases[slot].data : nullptr;
-      if (nvfp4_mode_) {
+      if (int3_bank_mode_) {
+        const auto nv_view = (static_cast<size_t>(slot) < CpuWork::kMaxGroupSlots)
+                                 ? work.slot_view[slot]
+                                 : make_nvfp4_view(group[slot].expert, ssd_blk);
+        qmoe_shared::Int3ExpertView i3v{};
+        i3v.fc1_weights = nv_view.fc1_weights;
+        i3v.fc1_scales = reinterpret_cast<const uint16_t*>(nv_view.fc1_scales);
+        i3v.fc1_bias = nv_view.fc1_bias;
+        i3v.fc2_weights = nv_view.fc2_weights;
+        i3v.fc2_scales = reinterpret_cast<const uint16_t*>(nv_view.fc2_scales);
+        i3v.fc2_bias = nv_view.fc2_bias;
+        i3v.block_size = int3_block_size_;
+        i3v.scale_is_bf16 = is_bf16_;
+        i3v.bias_is_bf16 = is_bf16_;
+        qmoe_shared::Int3Fc1SwiGluRange(
+            hidden_size_, inter_size_, i3v, act_in,
+            cnt, activation, work.intermediate.data() + slot * call_rows * inter_size_,
+            begin, end, false, /*bf16_boundaries=*/is_bf16_, /*fp16_boundaries=*/!is_bf16_);
+      } else if (int4_bank_mode_) {
+        const auto nv_view = (static_cast<size_t>(slot) < CpuWork::kMaxGroupSlots)
+                                 ? work.slot_view[slot]
+                                 : make_nvfp4_view(group[slot].expert, ssd_blk);
+        qmoe_shared::Int4ExpertView iv{};
+        iv.fc1_weights = nv_view.fc1_weights;
+        iv.fc1_scales = reinterpret_cast<const uint16_t*>(nv_view.fc1_scales);
+        iv.fc1_bias = nv_view.fc1_bias;
+        iv.fc2_weights = nv_view.fc2_weights;
+        iv.fc2_scales = reinterpret_cast<const uint16_t*>(nv_view.fc2_scales);
+        iv.fc2_bias = nv_view.fc2_bias;
+        iv.scales_are_block_major = false;
+        iv.weights_are_prepacked = true;
+        iv.scale_is_bf16 = is_bf16_;
+        iv.bias_is_bf16 = is_bf16_;
+        qmoe_shared::Int4Fc1SwiGluRange(
+            hidden_size_, inter_size_, iv, act_in,
+            cnt, activation, work.intermediate.data() + slot * call_rows * inter_size_,
+            begin, end, false, /*bf16_boundaries=*/is_bf16_, /*fp16_boundaries=*/!is_bf16_);
+      } else if (nvfp4_mode_) {
         const auto view = (static_cast<size_t>(slot) < CpuWork::kMaxGroupSlots)
                               ? work.slot_view[slot]
                               : make_nvfp4_view(group[slot].expert, ssd_blk);
@@ -6501,7 +7309,44 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
       const int begin = (static_cast<int>(task) % fc2_tasks) * fc2_cols_;
       const int end = std::min(begin + fc2_cols_, hidden_size_);
       const uint8_t* ssd_blk = use_ssd ? group_ssd_leases[slot].data : nullptr;
-      if (nvfp4_mode_) {
+      if (int3_bank_mode_) {
+        const auto nv_view = (static_cast<size_t>(slot) < CpuWork::kMaxGroupSlots)
+                                 ? work.slot_view[slot]
+                                 : make_nvfp4_view(group[slot].expert, ssd_blk);
+        qmoe_shared::Int3ExpertView i3v{};
+        i3v.fc1_weights = nv_view.fc1_weights;
+        i3v.fc1_scales = reinterpret_cast<const uint16_t*>(nv_view.fc1_scales);
+        i3v.fc1_bias = nv_view.fc1_bias;
+        i3v.fc2_weights = nv_view.fc2_weights;
+        i3v.fc2_scales = reinterpret_cast<const uint16_t*>(nv_view.fc2_scales);
+        i3v.fc2_bias = nv_view.fc2_bias;
+        i3v.block_size = int3_block_size_;
+        i3v.scale_is_bf16 = is_bf16_;
+        i3v.bias_is_bf16 = is_bf16_;
+        qmoe_shared::Int3Fc2Range(
+            hidden_size_, inter_size_, i3v, work.intermediate.data() + slot * call_rows * inter_size_,
+            group[slot].count, work.result.data() + slot * call_rows * hidden_size_,
+            begin, end, false, /*apply_bias=*/(i3v.fc2_bias != nullptr));
+      } else if (int4_bank_mode_) {
+        const auto nv_view = (static_cast<size_t>(slot) < CpuWork::kMaxGroupSlots)
+                                 ? work.slot_view[slot]
+                                 : make_nvfp4_view(group[slot].expert, ssd_blk);
+        qmoe_shared::Int4ExpertView iv{};
+        iv.fc1_weights = nv_view.fc1_weights;
+        iv.fc1_scales = reinterpret_cast<const uint16_t*>(nv_view.fc1_scales);
+        iv.fc1_bias = nv_view.fc1_bias;
+        iv.fc2_weights = nv_view.fc2_weights;
+        iv.fc2_scales = reinterpret_cast<const uint16_t*>(nv_view.fc2_scales);
+        iv.fc2_bias = nv_view.fc2_bias;
+        iv.scales_are_block_major = false;
+        iv.weights_are_prepacked = true;
+        iv.scale_is_bf16 = is_bf16_;
+        iv.bias_is_bf16 = is_bf16_;
+        qmoe_shared::Int4Fc2Range(
+            hidden_size_, inter_size_, iv, work.intermediate.data() + slot * call_rows * inter_size_,
+            group[slot].count, work.result.data() + slot * call_rows * hidden_size_,
+            begin, end, false, /*apply_bias=*/false);
+      } else if (nvfp4_mode_) {
         const auto view = (static_cast<size_t>(slot) < CpuWork::kMaxGroupSlots)
                               ? work.slot_view[slot]
                               : make_nvfp4_view(group[slot].expert, ssd_blk);
@@ -6533,16 +7378,58 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
       }
     };
     std::chrono::steady_clock::time_point t_fc2{};
+    const ptrdiff_t total_load =
+        static_cast<ptrdiff_t>(miss_load_slots.size()) * qmoe_shared::FileExpertStore::kLoadChunksPerExpert;
     const ptrdiff_t total_fc1 = static_cast<ptrdiff_t>(group_size) * fc1_tasks;
     const ptrdiff_t total_fc2 = static_cast<ptrdiff_t>(group_size) * fc2_tasks;
+    std::atomic<bool> load_failed{false};
     if (per_expert_ready && static_cast<size_t>(group_size) <= CpuWork::kMaxGroupSlots) {
       auto fused_task = [&](ptrdiff_t task) {
-        if (task < total_fc1) {
-          const int slot = static_cast<int>(task) / fc1_tasks;
-          fc1_task(task);
+        if (task < total_load) {
+          const int m_idx = static_cast<int>(task) / qmoe_shared::FileExpertStore::kLoadChunksPerExpert;
+          const int chunk_idx = static_cast<int>(task) % qmoe_shared::FileExpertStore::kLoadChunksPerExpert;
+          const int slot = miss_load_slots[static_cast<size_t>(m_idx)];
+          const int32_t exp_id = group_expert_ids[slot];
+          if (!file_expert_store_.LoadExpertChunk(exp_id, work.slot_load_dst[slot], chunk_idx)) {
+            load_failed.store(true, std::memory_order_relaxed);
+          }
+          if (work.slot_ready[slot].value.fetch_add(1, std::memory_order_acq_rel) + 1 ==
+              qmoe_shared::FileExpertStore::kLoadChunksPerExpert) {
+            const bool ok = !load_failed.load(std::memory_order_relaxed) &&
+                            file_expert_store_.FinishLoadExpert(exp_id, true, &group_ssd_leases[slot]);
+            if (!ok) {
+              static_cast<void>(file_expert_store_.FinishLoadExpert(exp_id, false, nullptr));
+              lease_held[slot] = 0;
+              load_failed.store(true, std::memory_order_relaxed);
+            }
+            for (int s = slot; s < group_size; ++s) {
+              if (group_expert_ids[s] == exp_id) {
+                if (s != slot) {
+                  group_ssd_leases[s] = group_ssd_leases[slot];
+                }
+                if (ok && nvfp4_mode_) {
+                  work.slot_view[s] = make_nvfp4_view(group[s].expert, group_ssd_leases[slot].data);
+                }
+                work.slot_ready[s].value.store(kReadyDoneVal, std::memory_order_release);
+              }
+            }
+          }
+        } else if (task < total_load + total_fc1) {
+          const ptrdiff_t fc1_idx = task - total_load;
+          const int slot = static_cast<int>(fc1_idx) / fc1_tasks;
+          while (work.slot_ready[slot].value.load(std::memory_order_acquire) < kReadyDoneVal) {
+#if defined(_MSC_VER) && (defined(_M_AMD64) || defined(_M_IX86))
+            _mm_pause();
+#elif defined(__x86_64__) || defined(__i386__)
+            __builtin_ia32_pause();
+#endif
+          }
+          if (!load_failed.load(std::memory_order_relaxed)) {
+            fc1_task(fc1_idx);
+          }
           work.fc1_done[slot].value.fetch_add(1, std::memory_order_release);
         } else {
-          const ptrdiff_t fc2_idx = task - total_fc1;
+          const ptrdiff_t fc2_idx = task - total_load - total_fc1;
           const int slot = static_cast<int>(fc2_idx) / fc2_tasks;
           while (work.fc1_done[slot].value.load(std::memory_order_acquire) < fc1_tasks) {
 #if defined(_MSC_VER) && (defined(_M_AMD64) || defined(_M_IX86))
@@ -6551,10 +7438,12 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
             __builtin_ia32_pause();
 #endif
           }
-          fc2_task(fc2_idx);
+          if (!load_failed.load(std::memory_order_relaxed)) {
+            fc2_task(fc2_idx);
+          }
         }
       };
-      run_parallel(total_fc1 + total_fc2, fused_task);
+      run_parallel(total_load + total_fc1 + total_fc2, fused_task);
       t_fc2 = timed ? now() : std::chrono::steady_clock::time_point{};
     } else {
       run_parallel(total_fc1, fc1_task);
@@ -6562,7 +7451,15 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
       run_parallel(total_fc2, fc2_task);
     }
     if (use_ssd) {
-      file_expert_store_.ReleaseGroupLeases(group_expert_ids.data(), static_cast<size_t>(group_size));
+      for (int slot = 0; slot < group_size; ++slot) {
+        if (lease_held[slot]) {
+          file_expert_store_.ReleaseLease(group_expert_ids[slot]);
+          lease_held[slot] = 0;
+        }
+      }
+      miss_load_slots.clear();
+      ORT_ENFORCE(!load_failed.load(std::memory_order_relaxed),
+                  "QMoEOffload FileExpertStore parallel chunk load failed.");
     }
     const auto t_write = timed ? now() : std::chrono::steady_clock::time_point{};
     if (compact) {
@@ -6679,6 +7576,11 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
     return ComputeSharedAsync(context, input, router, bias, phase, output, route_rows, route_calls, counts,
                               static_cast<int>(rows));
   }
+  if (layer_index_ == 0 && !IsInQMoEWarmup(session_controller_.get()) &&
+      ConsumeQMoEPrefillNewTurn(session_controller_.get())) {
+    g_step_prefill_remaining_tokens.store(0, std::memory_order_release);
+    FinalizeQMoEPrefillAndSeedDecode(device_id_, stream, session_controller_.get());
+  }
   if (nvfp4_mode_ && prefill_qmoe_ != nullptr) {
     if (async_in_flight_.load(std::memory_order_acquire)) {
       if (aux_stream_) CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(aux_stream_));
@@ -6725,7 +7627,8 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
   const auto& eff_bank_offsets = borrowed_cache ? borrowed_cache->bank_offsets : resident_bank_offsets_;
   const InlinedVector<int>& eff_expert_slot = borrowed_cache ? *borrowed_cache->expert_slot_ptr : expert_slot_;
   const bool streaming = stream_rows_ > 0 && rows >= stream_min_tokens_;
-  const int tile_limit = streaming ? static_cast<int>(std::min<int64_t>(stream_rows_, rows)) : max_sync_tile_tokens_;
+  const int tile_limit = static_cast<int>(std::min<int64_t>(
+      streaming ? stream_rows_ : max_sync_tile_tokens_, rows));
   const int route_cap = SafeInt<int>(tile_limit) * static_cast<int>(k_);
   std::unique_lock<std::mutex> resident_lock;
   if (resident) resident_lock = std::unique_lock<std::mutex>(borrowed_cache && borrowed_cache->owner ? borrowed_cache->owner->mutex_ : mutex_);
@@ -6736,6 +7639,20 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
   if (async_in_flight_.load(std::memory_order_acquire)) {
     if (aux_stream_) CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(aux_stream_));
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+  }
+  if (doorbell_enabled_) {
+    if (decode_state_ && decode_state_->doorbell_done_host && decode_state_->doorbell_req_host) {
+      if (*decode_state_->doorbell_done_host < *decode_state_->doorbell_req_host) {
+        CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+        while (*decode_state_->doorbell_done_host < *decode_state_->doorbell_req_host) {
+          std::this_thread::yield();
+        }
+      }
+      decode_state_->launched_seq = *decode_state_->doorbell_done_host;
+      decode_state_->last_promoted_seq = decode_state_->launched_seq;
+      last_promoted_async_seq_ = async_launched_seq_;
+    }
+    DoorbellService::Instance().WaitForNodeIdle(this);
   }
   if (!pending_promotions_.empty()) {
     if (promo_stream_) CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(promo_stream_));
@@ -6777,11 +7694,15 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
   size_t gpu_bytes = 0;
   const int route_slots = std::max(route_cap, kGroupedMoeMinRows);
   const size_t route_bytes = SafeInt<size_t>(route_slots) * sizeof(int);
+  const bool int4_runner_eligible = int4_bank_mode_ && runner_ != nullptr && route_cap >= 256 &&
+                                    ((resident && route_cap / 8 >= eff_physical_slots) ||
+                                     (streaming && route_cap / 8 >= stream_wave_));
+  int wave_route_slots = (nvfp4_mode_ && route_slots > 4096) ? 4096 : route_slots;
   const int cpu_row_cap = streaming ? std::min(route_cap, (stream_min_rows_ - 1) * num_experts_) : route_cap;
   const size_t contribution_bytes = SafeInt<size_t>(route_cap) * hidden_size_ * elem_size;
   const size_t cpu_row_bytes = SafeInt<size_t>(std::max(cpu_row_cap, 1)) * hidden_size_ * elem_size;
-  const size_t resident_row_bytes = SafeInt<size_t>(route_slots) * hidden_size_ * elem_size;
-  const size_t nvfp4_inter_bytes = nvfp4_mode_ ? static_cast<size_t>(SafeInt<size_t>(route_slots) * inter_size_ * elem_size) : size_t{0};
+  const size_t resident_row_bytes = SafeInt<size_t>(wave_route_slots) * hidden_size_ * elem_size;
+  const size_t nvfp4_inter_bytes = nvfp4_mode_ ? static_cast<size_t>(SafeInt<size_t>(wave_route_slots) * inter_size_ * elem_size) : size_t{0};
   const int stream_waves_max = streaming ? ((num_experts_ + stream_wave_ - 1) / stream_wave_) : 0;
   const size_t stream_meta_bytes = streaming
                                        ? static_cast<size_t>(SafeInt<size_t>(route_slots + stream_waves_max * kGroupedMoeMinRows) * sizeof(int))
@@ -6797,14 +7718,48 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
   const size_t hit_ids_offset = resident ? AddSlab(route_bytes, gpu_bytes) : 0;
   const size_t hit_compact_offset = resident ? AddSlab(route_bytes, gpu_bytes) : 0;
   const size_t cpu_ids_offset = (resident || streaming) ? AddSlab(route_bytes, gpu_bytes) : 0;
-  const size_t permutation_offset = resident ? AddSlab(route_bytes, gpu_bytes) : 0;
+  const size_t permutation_offset =
+      ((resident || streaming) && (!nvfp4_mode_ || int4_runner_eligible))
+          ? AddSlab(SafeInt<size_t>(wave_route_slots) * sizeof(int), gpu_bytes)
+          : 0;
   const size_t gathered_offset = (resident || streaming) ? AddSlab(resident_row_bytes, gpu_bytes) : 0;
   const size_t wave_output_offset = (resident || streaming) ? AddSlab(resident_row_bytes, gpu_bytes) : 0;
   const size_t nvfp4_inter_offset = (nvfp4_mode_ && (resident || streaming)) ? AddSlab(nvfp4_inter_bytes, gpu_bytes) : 0;
   const size_t cpu_rows_offset = (resident || streaming) ? AddSlab(streaming ? cpu_row_bytes : contribution_bytes, gpu_bytes) : 0;
-  const size_t workspace_offset = (!nvfp4_mode_ && resident) ? AddSlab(streaming ? stream_workspace_bytes_ : resident_workspace_bytes_, gpu_bytes) : 0;
   const size_t stream_ids_offset = streaming ? AddSlab(stream_meta_bytes, gpu_bytes) : 0;
   const size_t stream_compact_offset = streaming ? AddSlab(stream_meta_bytes, gpu_bytes) : 0;
+
+  const size_t effective_gpu_limit =
+      streaming ? (v4_planned_mode_ ? shared_gpu_limit_ : std::max(shared_gpu_limit_, stream_gpu_limit_))
+                : shared_gpu_limit_;
+  const size_t landing_bytes = streaming && v4_planned_mode_ ? stream_landing_bytes_ : 0;
+  size_t workspace_bytes = 0;
+  bool use_int4_runner = false;
+  if (int4_runner_eligible && (resident || streaming)) {
+    const ck::MOEParallelismConfig parallelism;
+    for (int capacity = wave_route_slots; capacity >= 256; capacity /= 2) {
+      const int resident_experts = resident && capacity / 8 >= eff_physical_slots ? eff_physical_slots : 0;
+      const int stream_experts = streaming && capacity / 8 >= stream_wave_ ? stream_wave_ : 0;
+      if (resident_experts == 0 && stream_experts == 0) break;
+      const int workspace_experts = std::max({resident ? eff_physical_slots : 0, streaming ? stream_wave_ : 0, 1});
+      // The INT4 invocation passes weight scales only, so runMoe resolves use_awq=false; plan the same.
+      const size_t candidate_bytes = runner_->getWorkspaceSize(
+          capacity, hidden_size_, inter_size_, workspace_experts, 1,
+          activation_type_, parallelism, /*use_awq=*/false, swiglu_fusion_);
+      // Leave the GEMV buffers intact so an ineligible or over-budget wave can use the fallback.
+      size_t required_bytes = gpu_bytes;
+      AddSlab(candidate_bytes, required_bytes);
+      if (landing_bytes <= effective_gpu_limit && required_bytes <= effective_gpu_limit - landing_bytes) {
+        wave_route_slots = capacity;
+        workspace_bytes = candidate_bytes;
+        use_int4_runner = true;
+        break;
+      }
+    }
+  } else if (!nvfp4_mode_ && (resident || streaming)) {
+    workspace_bytes = streaming ? stream_workspace_bytes_ : resident_workspace_bytes_;
+  }
+  const size_t workspace_offset = workspace_bytes > 0 ? AddSlab(workspace_bytes, gpu_bytes) : 0;
 
   size_t host_bytes = 0;
   const size_t host_index_offset = AddSlab(route_bytes, host_bytes);
@@ -6816,15 +7771,17 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
   const size_t host_cpu_ids_offset = (resident || streaming) ? AddSlab(route_bytes, host_bytes) : 0;
   const size_t host_stream_ids_offset = streaming ? AddSlab(stream_meta_bytes, host_bytes) : 0;
   const size_t host_stream_compact_offset = streaming ? AddSlab(stream_meta_bytes, host_bytes) : 0;
+  const size_t wave_scale_bank_bytes =
+      (streaming && int4_bank_mode_)
+          ? static_cast<size_t>(SafeInt<size_t>(stream_wave_) * (resident_bank_bytes_[2] + resident_bank_bytes_[3]))
+          : size_t{0};
+  const size_t wave_stage_offset =
+      (streaming && int4_bank_mode_) ? AddSlab(wave_scale_bank_bytes * 2, host_bytes) : 0;
 
-  const size_t total_working_gpu_bytes = streaming ? (gpu_bytes + stream_landing_bytes_) : gpu_bytes;
-  const size_t effective_gpu_limit =
-      streaming ? (v4_planned_mode_ ? shared_gpu_limit_ : std::max(shared_gpu_limit_, stream_gpu_limit_))
-                : shared_gpu_limit_;
   const size_t effective_pinned_limit =
       streaming ? (v4_planned_mode_ ? shared_pinned_limit_ : std::max(shared_pinned_limit_, stream_pinned_limit_))
                 : shared_pinned_limit_;
-  ORT_RETURN_IF((v4_planned_mode_ ? total_working_gpu_bytes : gpu_bytes) > effective_gpu_limit ||
+  ORT_RETURN_IF(SafeInt<size_t>(gpu_bytes) + landing_bytes > effective_gpu_limit ||
                     host_bytes > effective_pinned_limit,
                 "QMoEOffload shared scratch exceeds configured GPU or pinned limits.");
 
@@ -6835,14 +7792,31 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
   if (streaming) {
     int dev_id = 0;
     static_cast<void>(cudaGetDevice(&dev_id));
-    ORT_RETURN_IF_ERROR(stream_shared_->Ensure(dev_id, stream_landing_bytes_, host_bytes, static_cast<size_t>(stream_waves_max)));
+    auto ensure_st = stream_shared_->Ensure(dev_id, stream_landing_bytes_, host_bytes, static_cast<size_t>(stream_waves_max));
+    if (!ensure_st.IsOK()) {
+      SessionPromotionBudget::Instance().ReleaseIdleBounce(session_controller_.get());
+      ReleasePersistentDecodePinned();
+      ensure_st = stream_shared_->Ensure(dev_id, stream_landing_bytes_, host_bytes, static_cast<size_t>(stream_waves_max));
+    }
+    ORT_RETURN_IF_ERROR(ensure_st);
     pinned_base = stream_shared_->pinned;
   } else {
     const bool reuse_pinned =
         (session_controller_ != nullptr) ||
         (ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_PINNED_REUSE", 0) == 1);
-    pinned = reuse_pinned ? AllocateReusableQMoEPinnedBuffer(host_bytes, shared_pinned_limit_, completed)
-                          : AllocateBufferOnCPUPinned<uint8_t>(host_bytes);
+    if (reuse_pinned) {
+      try {
+        pinned = AllocateReusableQMoEPinnedBuffer(host_bytes, shared_pinned_limit_, completed);
+      } catch (const std::exception&) {
+        if (aux_stream_) CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(aux_stream_));
+        CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+        SessionPromotionBudget::Instance().ReleaseIdleBounce(session_controller_.get());
+        ReleasePersistentDecodePinned();
+        pinned = AllocateReusableQMoEPinnedBuffer(host_bytes, shared_pinned_limit_, completed);
+      }
+    } else {
+      pinned = AllocateBufferOnCPUPinned<uint8_t>(host_bytes);
+    }
     pinned_base = pinned.get();
   }
   ORT_RETURN_IF_NOT(scratch && pinned_base, "QMoEOffload cannot allocate bounded shared scratch.");
@@ -6913,11 +7887,97 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
 
   auto launch_nvfp4_gemv_pair = [&](const void* act_in, const uint8_t* w_base, const std::array<size_t, 6>& bank_offs,
                                     const void* fc1_bias_dev,
-                                    const int* expert_map, int num_exp, int num_r, void* out_buf) -> Status {
+                                    const int* expert_map, const int* route_ids_dev,
+                                    int num_exp, int num_r, void* out_buf) -> Status {
     const uint8_t* fc1_w = w_base + bank_offs[0];
     const uint8_t* fc2_w = w_base + bank_offs[1];
     const uint8_t* fc1_s = w_base + bank_offs[2];
     const uint8_t* fc2_s = w_base + bank_offs[3];
+    if (int3_bank_mode_) {
+      Int3MoeParams p{};
+      p.input = act_in;
+      p.output = nullptr;
+      p.activation = nvfp4_inter_buf;
+      p.fc2_partial = out_buf;
+      p.experts = expert_map;
+      p.num_experts = num_exp;
+      p.fc1 = {fc1_w, fc1_s, nullptr, fc1_bias_dev, 3};
+      p.fc2 = {fc2_w, fc2_s, nullptr, bias_gpu_ptr, 3};
+      p.rows = num_r;
+      p.hidden = hidden_size_;
+      p.intermediate = inter_size_;
+      p.top_k = 1;
+      p.block_size = int3_block_size_;
+      p.alpha = activation_alpha_;
+      p.beta = activation_beta_;
+      p.limit = swiglu_limit_;
+      p.is_bfloat16 = is_bf16_;
+      p.source_route_ids = nullptr;
+      p.fc2_bias_route_ids = route_ids_dev;
+      p.fc2_bias_expert_indices = indices;
+      p.input_is_gathered = true;
+      p.total_routes_override = num_r;
+      CUDA_RETURN_IF_ERROR(LaunchInt3Moe(p, stream));
+      return Status::OK();
+    }
+    if (int4_bank_mode_) {
+      if (use_int4_runner && num_r >= 256 && num_r >= num_exp * 8 && num_r <= wave_route_slots) {
+        const auto int4_quant = is_bf16_
+                                    ? ck::QuantParams::GroupWise(32, reinterpret_cast<const __nv_bfloat16*>(fc1_s),
+                                                                 reinterpret_cast<const __nv_bfloat16*>(fc2_s))
+                                    : ck::QuantParams::GroupWise(32, reinterpret_cast<const half*>(fc1_s),
+                                                                 reinterpret_cast<const half*>(fc2_s));
+        if (resident_log_) {
+          std::fprintf(stderr, "QMoEOffload INT4 CUTLASS layer=%lld routes=%d capacity=%d workspace_bytes=%zu\n",
+                       static_cast<long long>(layer_index_), num_r, wave_route_slots, workspace_bytes);
+        }
+        runner_->runMoe(act_in, nullptr, expert_map, unit_scales,
+                        fc1_w, fc1_bias_dev, activation_type_,
+                        fc2_w, nullptr, int4_quant, num_r, hidden_size_, inter_size_,
+                        num_exp, 1, workspace, out_buf, permutation, parallelism,
+                        runner_activation, {}, stream);
+        CUDA_RETURN_IF_ERROR(cudaGetLastError());
+        return Status::OK();
+      }
+      if (is_bf16_) {
+        gemv::launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, cutlass::uint4b_t>(
+            static_cast<const __nv_bfloat16*>(act_in),
+            reinterpret_cast<const cutlass::uint4b_t*>(fc1_w),
+            reinterpret_cast<const __nv_bfloat16*>(fc1_s),
+            static_cast<const __nv_bfloat16*>(fc1_bias_dev),
+            reinterpret_cast<__nv_bfloat16*>(nvfp4_inter_buf),
+            nullptr, expert_map, num_exp, num_r, inter_size_, hidden_size_, 32, sm_,
+            runner_activation, nullptr, num_r, nullptr, stream);
+        CUDA_RETURN_IF_ERROR(cudaGetLastError());
+        gemv::launch_moe_gemv_int_symmetric<__nv_bfloat16, cutlass::uint4b_t>(
+            reinterpret_cast<const __nv_bfloat16*>(nvfp4_inter_buf),
+            reinterpret_cast<const cutlass::uint4b_t*>(fc2_w),
+            reinterpret_cast<const __nv_bfloat16*>(fc2_s),
+            nullptr,
+            static_cast<__nv_bfloat16*>(out_buf),
+            nullptr, expert_map, num_exp, num_r, hidden_size_, inter_size_, 32, sm_, stream);
+        CUDA_RETURN_IF_ERROR(cudaGetLastError());
+      } else {
+        gemv::launch_moe_gemv_int_symmetric_interleaved_swiglu<half, cutlass::uint4b_t>(
+            static_cast<const half*>(act_in),
+            reinterpret_cast<const cutlass::uint4b_t*>(fc1_w),
+            reinterpret_cast<const half*>(fc1_s),
+            static_cast<const half*>(fc1_bias_dev),
+            reinterpret_cast<half*>(nvfp4_inter_buf),
+            nullptr, expert_map, num_exp, num_r, inter_size_, hidden_size_, 32, sm_,
+            runner_activation, nullptr, num_r, nullptr, stream);
+        CUDA_RETURN_IF_ERROR(cudaGetLastError());
+        gemv::launch_moe_gemv_int_symmetric<half, cutlass::uint4b_t>(
+            reinterpret_cast<const half*>(nvfp4_inter_buf),
+            reinterpret_cast<const cutlass::uint4b_t*>(fc2_w),
+            reinterpret_cast<const half*>(fc2_s),
+            nullptr,
+            static_cast<half*>(out_buf),
+            nullptr, expert_map, num_exp, num_r, hidden_size_, inter_size_, 32, sm_, stream);
+        CUDA_RETURN_IF_ERROR(cudaGetLastError());
+      }
+      return Status::OK();
+    }
     const float* fc1_g = reinterpret_cast<const float*>(w_base + bank_offs[4]);
     const float* fc2_g = reinterpret_cast<const float*>(w_base + bank_offs[5]);
     const int fp4_group = mxfp4_mode_ ? 32 : 16;
@@ -6989,8 +8049,10 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
       const int8_t inferred_phase = (rows > async_max_tokens_) ? 0 : 1;
       std::fill_n(host_phases, tile_rows, inferred_phase);
     }
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_input, static_cast<const uint8_t*>(input->DataRaw()) + activation_start * elem_size,
-                                         SafeInt<size_t>(tile_rows) * hidden_size_ * elem_size, cudaMemcpyDeviceToHost, stream));
+    if (!(streaming && stream_min_rows_ <= 1)) {
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_input, static_cast<const uint8_t*>(input->DataRaw()) + activation_start * elem_size,
+                                           SafeInt<size_t>(tile_rows) * hidden_size_ * elem_size, cudaMemcpyDeviceToHost, stream));
+    }
     CUDA_RETURN_IF_ERROR(drain.Synchronize());
 
     for (auto& assignments : expert_routes) assignments.clear();
@@ -7033,54 +8095,89 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
         return left.slot != right.slot ? left.slot < right.slot : left.route < right.route;
       });
       const int hit_count = static_cast<int>(hits.size());
-      const int compute_rows = nvfp4_mode_ ? hit_count : std::max(hit_count, kGroupedMoeMinRows);
-      for (int row = 0; row < compute_rows; ++row) {
-        const auto& hit = hits[row < hit_count ? row : 0];
-        host_hit_ids[row] = hit.route;
-        host_hit_compact[row] = hit.slot;
+      for (int row = 0; row < hit_count; ++row) {
+        host_hit_ids[row] = hits[row].route;
+        host_hit_compact[row] = hits[row].slot;
       }
-      const size_t metadata_bytes = SafeInt<size_t>(compute_rows) * sizeof(int);
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(hit_ids, host_hit_ids, metadata_bytes, cudaMemcpyHostToDevice, stream));
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(hit_compact, host_hit_compact, metadata_bytes, cudaMemcpyHostToDevice, stream));
-      if (is_bf16_) {
-        CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadGather(
-            reinterpret_cast<const __nv_bfloat16*>(input->DataRaw()) + activation_start,
-            hit_ids, reinterpret_cast<__nv_bfloat16*>(gathered), compute_rows, hidden_size_, static_cast<int>(k_), stream));
-      } else {
-        CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadGather(
-            reinterpret_cast<const half*>(input->DataRaw()) + activation_start,
-            hit_ids, reinterpret_cast<half*>(gathered), compute_rows, hidden_size_, static_cast<int>(k_), stream));
-      }
-      if (nvfp4_mode_) {
-        ORT_RETURN_IF_ERROR(launch_nvfp4_gemv_pair(
-            gathered, slab, eff_bank_offsets,
-            resident_fc1_bias_slab_ ? resident_fc1_bias_slab_.get() : nullptr,
-            hit_compact, eff_physical_slots, compute_rows, wave_output));
-      } else {
-        runner_->runMoe(reinterpret_cast<half*>(gathered), nullptr, hit_compact, unit_scales,
-                        slab + eff_bank_offsets[0], reinterpret_cast<const void*>(slab + eff_bank_offsets[4]), activation_type_,
-                        slab + eff_bank_offsets[1], nullptr, quantization, compute_rows, hidden_size_, inter_size_,
-                        eff_physical_slots, 1, workspace, reinterpret_cast<half*>(wave_output), permutation, parallelism, runner_activation, {}, stream);
-        CUDA_RETURN_IF_ERROR(cudaGetLastError());
-      }
-      if (is_bf16_) {
-        CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatter(
-            reinterpret_cast<const __nv_bfloat16*>(wave_output), hit_ids,
-            reinterpret_cast<__nv_bfloat16*>(contributions), hit_count, hidden_size_, tile_rows, static_cast<int>(k_), stream));
-      } else {
-        CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatter(
-            reinterpret_cast<const half*>(wave_output), hit_ids,
-            reinterpret_cast<half*>(contributions), hit_count, hidden_size_, tile_rows, static_cast<int>(k_), stream));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(hit_ids, host_hit_ids, SafeInt<size_t>(hit_count) * sizeof(int), cudaMemcpyHostToDevice, stream));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(hit_compact, host_hit_compact, SafeInt<size_t>(hit_count) * sizeof(int), cudaMemcpyHostToDevice, stream));
+      for (int h_off = 0; h_off < hit_count; h_off += wave_route_slots) {
+        const int chunk_hits = std::min(wave_route_slots, hit_count - h_off);
+        const int compute_rows = nvfp4_mode_ ? chunk_hits : std::max(chunk_hits, kGroupedMoeMinRows);
+        if (compute_rows > chunk_hits) {
+          for (int row = chunk_hits; row < compute_rows; ++row) {
+            host_hit_ids[h_off + row] = host_hit_ids[h_off];
+            host_hit_compact[h_off + row] = host_hit_compact[h_off];
+          }
+          const size_t metadata_bytes = SafeInt<size_t>(compute_rows) * sizeof(int);
+          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(hit_ids + h_off, host_hit_ids + h_off, metadata_bytes, cudaMemcpyHostToDevice, stream));
+          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(hit_compact + h_off, host_hit_compact + h_off, metadata_bytes, cudaMemcpyHostToDevice, stream));
+        }
+        if (is_bf16_) {
+          CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadGather(
+              reinterpret_cast<const __nv_bfloat16*>(input->DataRaw()) + activation_start,
+              hit_ids + h_off, reinterpret_cast<__nv_bfloat16*>(gathered), compute_rows, hidden_size_, static_cast<int>(k_), stream));
+        } else {
+          CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadGather(
+              reinterpret_cast<const half*>(input->DataRaw()) + activation_start,
+              hit_ids + h_off, reinterpret_cast<half*>(gathered), compute_rows, hidden_size_, static_cast<int>(k_), stream));
+        }
+        if (nvfp4_mode_) {
+          ORT_RETURN_IF_ERROR(launch_nvfp4_gemv_pair(
+              gathered, slab, eff_bank_offsets,
+              resident_fc1_bias_slab_ ? resident_fc1_bias_slab_.get() : nullptr,
+              hit_compact + h_off, hit_ids + h_off, eff_physical_slots, compute_rows, wave_output));
+        } else {
+          runner_->runMoe(reinterpret_cast<half*>(gathered), nullptr, hit_compact + h_off, unit_scales,
+                          slab + eff_bank_offsets[0], reinterpret_cast<const void*>(slab + eff_bank_offsets[4]), activation_type_,
+                          slab + eff_bank_offsets[1], nullptr, quantization, compute_rows, hidden_size_, inter_size_,
+                          eff_physical_slots, 1, workspace, reinterpret_cast<half*>(wave_output), permutation, parallelism, runner_activation, {}, stream);
+          CUDA_RETURN_IF_ERROR(cudaGetLastError());
+        }
+        if (is_bf16_) {
+          CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatter(
+              reinterpret_cast<const __nv_bfloat16*>(wave_output), hit_ids + h_off,
+              reinterpret_cast<__nv_bfloat16*>(contributions), chunk_hits, hidden_size_, tile_rows, static_cast<int>(k_), stream));
+        } else {
+          CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatter(
+              reinterpret_cast<const half*>(wave_output), hit_ids + h_off,
+              reinterpret_cast<half*>(contributions), chunk_hits, hidden_size_, tile_rows, static_cast<int>(k_), stream));
+        }
       }
     }
 
+    auto parallel_runner = [&](ptrdiff_t count, auto& function) {
+      if (unified_cpu_service_ && cpu_threads_ > 0) {
+        SharedSpinPool(cpu_threads_).ParallelFor(count, function, pool_task_batch_);
+      } else {
+        OffloadParallelFor(context, count, function);
+      }
+    };
     const char* skip_experts = nullptr;
+    int cpu_rows_written = 0;
+    bool cpu_tail_executed = false;
+    auto run_cpu_tail_experts = [&]() {
+      if (cpu_tail_executed) return;
+      cpu_tail_executed = true;
+      cpu_rows_written = is_bf16_
+                             ? RunColdExperts(cpu_work, group_calls, reinterpret_cast<const BFloat16*>(host_input),
+                                              tile_rows, reinterpret_cast<BFloat16*>(host_result), host_cpu_ids,
+                                              resident || streaming, parallel_runner, skip_experts)
+                             : RunColdExperts(cpu_work, group_calls, reinterpret_cast<const MLFloat16*>(host_input),
+                                              tile_rows, reinterpret_cast<MLFloat16*>(host_result), host_cpu_ids,
+                                              resident || streaming, parallel_runner, skip_experts);
+    };
+
     uint64_t tile_stream_routes = 0;
     if (streaming) {
       stream_skip.assign(num_experts_, 0);
       stream_list.clear();
+      const int eff_stream_min_rows =
+          (tile_rows < 512 && stream_min_rows_ > 2)
+              ? std::max(2, (stream_min_rows_ * tile_rows + 511) / 512)
+              : stream_min_rows_;
       for (int expert = 0; expert < num_experts_; ++expert) {
-        if (static_cast<int>(expert_routes[expert].size()) >= stream_min_rows_) {
+        if (static_cast<int>(expert_routes[expert].size()) >= eff_stream_min_rows) {
           stream_list.push_back(expert);
           stream_skip[expert] = 1;
         }
@@ -7109,7 +8206,104 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
           }
         }
 
-        if (nvfp4_mode_) {
+        if (int4_bank_mode_) {
+          if (wave >= 2) {
+            CUDA_RETURN_IF_ERROR(cudaEventSynchronize(shared.copy_done[wave - 2]));
+          }
+          const size_t s1_span = static_cast<size_t>(SafeInt<size_t>(stream_wave_) * resident_bank_bytes_[2]);
+          const size_t s2_span = static_cast<size_t>(SafeInt<size_t>(stream_wave_) * resident_bank_bytes_[3]);
+          uint8_t* wave_s1_pinned =
+              pinned_base + wave_stage_offset + static_cast<size_t>(bank_idx) * (s1_span + s2_span);
+          uint8_t* wave_s2_pinned = wave_s1_pinned + s1_span;
+          if (host_cache_bytes_ > 0 && file_expert_store_.IsInitialized()) {
+            host_slot_table_dirty_ = true;
+            const std::array<size_t, 4> sources{nvfp4_layout_.fc1_weights, nvfp4_layout_.fc2_weights,
+                                                nvfp4_layout_.fc1_scales, nvfp4_layout_.fc2_scales};
+            for (int r = 0; r < count; ++r) {
+              const int exp_id = stream_list[first + r];
+              qmoe_shared::ExpertBlockLease lease{};
+              qmoe_shared::ScopedExpertLease lease_guard;
+              ORT_RETURN_IF_NOT(lease_guard.AcquireReady(file_expert_store_, exp_id, &lease),
+                                "QMoEOffload FileExpertStore AcquireReady failed during GPU streaming.");
+              lease_guard.SetDeviceReadBarrier(&SynchronizeStreamBarrier, shared.copy_stream);
+              lease_guard.MarkDeviceReadsQueued();
+              for (size_t bank = 0; bank < 2; ++bank) {
+                const size_t dst = offsets[bank] + static_cast<size_t>(SafeInt<size_t>(r) * resident_bank_bytes_[bank]);
+                CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(shared.landing + dst, lease.data + sources[bank],
+                                                     resident_bank_bytes_[bank],
+                                                     cudaMemcpyHostToDevice, shared.copy_stream));
+              }
+              CopyOrTransposeScaleBankToHost(
+                  2, lease.data + sources[2],
+                  wave_s1_pinned + static_cast<size_t>(SafeInt<size_t>(r) * resident_bank_bytes_[2]));
+              CopyOrTransposeScaleBankToHost(
+                  3, lease.data + sources[3],
+                  wave_s2_pinned + static_cast<size_t>(SafeInt<size_t>(r) * resident_bank_bytes_[3]));
+              CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(shared.copy_stream));
+              lease_guard.MarkDeviceReadsComplete();
+              lease_guard.Release();
+            }
+          } else {
+            const uint8_t* fc1_w_base = static_cast<const uint8_t*>(nvfp4_fc1_w_->DataRaw());
+            const uint8_t* fc2_w_base = static_cast<const uint8_t*>(nvfp4_fc2_w_->DataRaw());
+            const uint8_t* fc1_s_base = static_cast<const uint8_t*>(nvfp4_fc1_s_->DataRaw());
+            const uint8_t* fc2_s_base = static_cast<const uint8_t*>(nvfp4_fc2_s_->DataRaw());
+            auto stage_scales_fn = [&](ptrdiff_t r_idx) noexcept {
+              const int r = static_cast<int>(r_idx);
+              const int exp_id = stream_list[first + r];
+              CopyOrTransposeScaleBankToHost(
+                  2, fc1_s_base + static_cast<size_t>(SafeInt<size_t>(exp_id) * resident_bank_bytes_[2]),
+                  wave_s1_pinned + static_cast<size_t>(SafeInt<size_t>(r) * resident_bank_bytes_[2]));
+              CopyOrTransposeScaleBankToHost(
+                  3, fc2_s_base + static_cast<size_t>(SafeInt<size_t>(exp_id) * resident_bank_bytes_[3]),
+                  wave_s2_pinned + static_cast<size_t>(SafeInt<size_t>(r) * resident_bank_bytes_[3]));
+            };
+            if (count > 1 && unified_cpu_service_ && cpu_threads_ > 0) {
+              SharedSpinPool(cpu_threads_).ParallelFor(static_cast<ptrdiff_t>(count), stage_scales_fn, 1);
+            } else {
+              for (int r = 0; r < count; ++r) stage_scales_fn(r);
+            }
+            for (int begin = 0; begin < count;) {
+              int end = begin + 1;
+              while (end < count && stream_list[first + end] == stream_list[first + end - 1] + 1) ++end;
+              const int run_len = end - begin;
+              const int first_exp = stream_list[first + begin];
+              CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+                  shared.landing + offsets[0] + static_cast<size_t>(SafeInt<size_t>(begin) * resident_bank_bytes_[0]),
+                  fc1_w_base + static_cast<size_t>(SafeInt<size_t>(first_exp) * resident_bank_bytes_[0]),
+                  static_cast<size_t>(SafeInt<size_t>(run_len) * resident_bank_bytes_[0]),
+                  cudaMemcpyHostToDevice, shared.copy_stream));
+              CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+                  shared.landing + offsets[1] + static_cast<size_t>(SafeInt<size_t>(begin) * resident_bank_bytes_[1]),
+                  fc2_w_base + static_cast<size_t>(SafeInt<size_t>(first_exp) * resident_bank_bytes_[1]),
+                  static_cast<size_t>(SafeInt<size_t>(run_len) * resident_bank_bytes_[1]),
+                  cudaMemcpyHostToDevice, shared.copy_stream));
+              begin = end;
+            }
+          }
+          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+              shared.landing + offsets[2], wave_s1_pinned,
+              static_cast<size_t>(SafeInt<size_t>(count) * resident_bank_bytes_[2]),
+              cudaMemcpyHostToDevice, shared.copy_stream));
+          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+              shared.landing + offsets[3], wave_s2_pinned,
+              static_cast<size_t>(SafeInt<size_t>(count) * resident_bank_bytes_[3]),
+              cudaMemcpyHostToDevice, shared.copy_stream));
+          if (nvfp4_fc1_b_ && stream_fc1_bias_slab_[bank_idx]) {
+            const size_t bias_row_bytes = static_cast<size_t>(SafeInt<size_t>(2) * inter_size_ * sizeof(uint16_t));
+            for (int r = 0; r < count; ++r) {
+              const int exp_id = stream_list[first + r];
+              const uint8_t* src_b =
+                  static_cast<const uint8_t*>(nvfp4_fc1_b_->DataRaw()) +
+                  static_cast<size_t>(SafeInt<size_t>(exp_id) * bias_row_bytes);
+              uint8_t* dst_b =
+                  stream_fc1_bias_slab_[bank_idx].get() + static_cast<size_t>(SafeInt<size_t>(r) * bias_row_bytes);
+              CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+                  dst_b, src_b, bias_row_bytes, cudaMemcpyHostToDevice, shared.copy_stream));
+            }
+          }
+          static_cast<void>(cudaStreamQuery(shared.copy_stream));
+        } else if (nvfp4_mode_) {
           for (int begin = 0; begin < count;) {
             int end = begin + 1;
             while (end < count && stream_list[first + end] == stream_list[first + end - 1] + 1) ++end;
@@ -7212,59 +8406,74 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
             ++wave_routes;
           }
         }
-        const int compute_rows = nvfp4_mode_ ? static_cast<int>(wave_routes)
-                                             : std::max(static_cast<int>(wave_routes), kGroupedMoeMinRows);
-        for (int row = static_cast<int>(wave_routes); row < compute_rows; ++row) {
-          host_stream_ids[meta_offset + row] = host_stream_ids[meta_offset];
-          host_stream_compact[meta_offset + row] = host_stream_compact[meta_offset];
-        }
-        const size_t metadata_bytes = SafeInt<size_t>(compute_rows) * sizeof(int);
+        const int wave_route_cnt = static_cast<int>(wave_routes);
+        const size_t metadata_bytes = SafeInt<size_t>(wave_route_cnt) * sizeof(int);
         CUDA_RETURN_IF_ERROR(cudaStreamWaitEvent(stream, shared.copy_done[wave], 0));
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(stream_ids + meta_offset, host_stream_ids + meta_offset, metadata_bytes,
                                              cudaMemcpyHostToDevice, stream));
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(stream_compact + meta_offset, host_stream_compact + meta_offset, metadata_bytes,
                                              cudaMemcpyHostToDevice, stream));
-        if (is_bf16_) {
-          CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadGather(
-              reinterpret_cast<const __nv_bfloat16*>(input->DataRaw()) + activation_start,
-              stream_ids + meta_offset, reinterpret_cast<__nv_bfloat16*>(gathered), compute_rows, hidden_size_,
-              static_cast<int>(k_), stream));
-        } else {
-          CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadGather(
-              reinterpret_cast<const half*>(input->DataRaw()) + activation_start,
-              stream_ids + meta_offset, reinterpret_cast<half*>(gathered), compute_rows, hidden_size_,
-              static_cast<int>(k_), stream));
-        }
         uint8_t* landing = shared.landing;
-        if (nvfp4_mode_) {
-          ORT_RETURN_IF_ERROR(launch_nvfp4_gemv_pair(
-              gathered, landing, offsets,
-              stream_fc1_bias_slab_[bank_idx] ? stream_fc1_bias_slab_[bank_idx].get() : nullptr,
-              stream_compact + meta_offset, count, compute_rows, wave_output));
-        } else {
-          const auto wave_quantization = ck::QuantParams::GroupWise(32, landing + offsets[2], landing + offsets[3]);
-          runner_->runMoe(reinterpret_cast<half*>(gathered), nullptr, stream_compact + meta_offset, unit_scales,
-                          landing + offsets[0], reinterpret_cast<const void*>(landing + offsets[4]), activation_type_,
-                          landing + offsets[1], nullptr, wave_quantization, compute_rows, hidden_size_, inter_size_,
-                          count, 1, workspace, reinterpret_cast<half*>(wave_output), permutation, parallelism, runner_activation, {}, stream);
-          CUDA_RETURN_IF_ERROR(cudaGetLastError());
-        }
-        if (is_bf16_) {
-          CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatter(
-              reinterpret_cast<const __nv_bfloat16*>(wave_output), stream_ids + meta_offset,
-              reinterpret_cast<__nv_bfloat16*>(contributions), static_cast<int>(wave_routes), hidden_size_,
-              tile_rows, static_cast<int>(k_), stream));
-        } else {
-          CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatter(
-              reinterpret_cast<const half*>(wave_output), stream_ids + meta_offset,
-              reinterpret_cast<half*>(contributions), static_cast<int>(wave_routes), hidden_size_,
-              tile_rows, static_cast<int>(k_), stream));
+        for (int w_off = 0; w_off < wave_route_cnt; w_off += wave_route_slots) {
+          const int chunk_w_routes = std::min(wave_route_slots, wave_route_cnt - w_off);
+          const int compute_rows = nvfp4_mode_ ? chunk_w_routes : std::max(chunk_w_routes, kGroupedMoeMinRows);
+          if (compute_rows > chunk_w_routes) {
+            for (int row = chunk_w_routes; row < compute_rows; ++row) {
+              host_stream_ids[meta_offset + w_off + row] = host_stream_ids[meta_offset + w_off];
+              host_stream_compact[meta_offset + w_off + row] = host_stream_compact[meta_offset + w_off];
+            }
+            const size_t pad_meta_bytes = SafeInt<size_t>(compute_rows) * sizeof(int);
+            CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(stream_ids + meta_offset + w_off, host_stream_ids + meta_offset + w_off,
+                                                 pad_meta_bytes, cudaMemcpyHostToDevice, stream));
+            CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(stream_compact + meta_offset + w_off, host_stream_compact + meta_offset + w_off,
+                                                 pad_meta_bytes, cudaMemcpyHostToDevice, stream));
+          }
+          if (is_bf16_) {
+            CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadGather(
+                reinterpret_cast<const __nv_bfloat16*>(input->DataRaw()) + activation_start,
+                stream_ids + meta_offset + w_off, reinterpret_cast<__nv_bfloat16*>(gathered), compute_rows, hidden_size_,
+                static_cast<int>(k_), stream));
+          } else {
+            CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadGather(
+                reinterpret_cast<const half*>(input->DataRaw()) + activation_start,
+                stream_ids + meta_offset + w_off, reinterpret_cast<half*>(gathered), compute_rows, hidden_size_,
+                static_cast<int>(k_), stream));
+          }
+          if (nvfp4_mode_) {
+            ORT_RETURN_IF_ERROR(launch_nvfp4_gemv_pair(
+                gathered, landing, offsets,
+                stream_fc1_bias_slab_[bank_idx] ? stream_fc1_bias_slab_[bank_idx].get() : nullptr,
+                stream_compact + meta_offset + w_off, stream_ids + meta_offset + w_off, count, compute_rows, wave_output));
+          } else {
+            const auto wave_quantization = ck::QuantParams::GroupWise(32, landing + offsets[2], landing + offsets[3]);
+            runner_->runMoe(reinterpret_cast<half*>(gathered), nullptr, stream_compact + meta_offset + w_off, unit_scales,
+                            landing + offsets[0], reinterpret_cast<const void*>(landing + offsets[4]), activation_type_,
+                            landing + offsets[1], nullptr, wave_quantization, compute_rows, hidden_size_, inter_size_,
+                            count, 1, workspace, reinterpret_cast<half*>(wave_output), permutation, parallelism, runner_activation, {}, stream);
+            CUDA_RETURN_IF_ERROR(cudaGetLastError());
+          }
+          if (is_bf16_) {
+            CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatter(
+                reinterpret_cast<const __nv_bfloat16*>(wave_output), stream_ids + meta_offset + w_off,
+                reinterpret_cast<__nv_bfloat16*>(contributions), chunk_w_routes, hidden_size_,
+                tile_rows, static_cast<int>(k_), stream));
+          } else {
+            CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatter(
+                reinterpret_cast<const half*>(wave_output), stream_ids + meta_offset + w_off,
+                reinterpret_cast<half*>(contributions), chunk_w_routes, hidden_size_,
+                tile_rows, static_cast<int>(k_), stream));
+          }
         }
         CUDA_RETURN_IF_ERROR(cudaEventRecord(shared.gemm_done[wave], stream));
         CUDA_RETURN_IF_ERROR(cudaEventRecord(shared.last_gemm_done[bank_idx], stream));
         shared.bank_has_gemm[bank_idx] = true;
-        meta_offset += compute_rows;
+        meta_offset += std::max(wave_route_cnt, nvfp4_mode_ ? wave_route_cnt : kGroupedMoeMinRows);
         tile_stream_routes += wave_routes;
+        if (!cpu_tail_executed && (wave == 1 || waves == 1)) {
+          static_cast<void>(cudaStreamQuery(shared.copy_stream));
+          static_cast<void>(cudaStreamQuery(stream));
+          run_cpu_tail_experts();
+        }
       }
       ++stream_tiles_;
       stream_experts_ += stream_count;
@@ -7273,20 +8482,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
       stream_cpu_routes_ += static_cast<uint64_t>(routes) - hits.size() - tile_stream_routes;
     }
 
-    auto parallel_runner = [&](ptrdiff_t count, auto& function) {
-      if (unified_cpu_service_ && cpu_threads_ > 0) {
-        SharedSpinPool(cpu_threads_).ParallelFor(count, function, pool_task_batch_);
-      } else {
-        OffloadParallelFor(context, count, function);
-      }
-    };
-    const int cpu_rows_written = is_bf16_
-                                     ? RunColdExperts(cpu_work, group_calls, reinterpret_cast<const BFloat16*>(host_input),
-                                                      tile_rows, reinterpret_cast<BFloat16*>(host_result), host_cpu_ids,
-                                                      resident || streaming, parallel_runner, skip_experts)
-                                     : RunColdExperts(cpu_work, group_calls, reinterpret_cast<const MLFloat16*>(host_input),
-                                                      tile_rows, reinterpret_cast<MLFloat16*>(host_result), host_cpu_ids,
-                                                      resident || streaming, parallel_runner, skip_experts);
+    run_cpu_tail_experts();
     if (resident || streaming) {
       if (cpu_rows_written > 0) {
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_ids, host_cpu_ids, SafeInt<size_t>(cpu_rows_written) * sizeof(int), cudaMemcpyHostToDevice, stream));
@@ -7305,14 +8501,15 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(contributions, host_result, SafeInt<size_t>(routes) * hidden_size_ * elem_size, cudaMemcpyHostToDevice, stream));
     }
 
-    if (bias_gpu_ptr) {
+    const void* finalize_bias_gpu_ptr = int3_bank_mode_ ? nullptr : bias_gpu_ptr;
+    if (finalize_bias_gpu_ptr) {
       if (is_bf16_) {
         CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatterBias(
-            reinterpret_cast<const __nv_bfloat16*>(bias_gpu_ptr), indices, identity,
+            reinterpret_cast<const __nv_bfloat16*>(finalize_bias_gpu_ptr), indices, identity,
             reinterpret_cast<__nv_bfloat16*>(route_bias), routes, hidden_size_, num_experts_, stream));
       } else {
         CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatterBias(
-            reinterpret_cast<const half*>(bias_gpu_ptr), indices, identity,
+            reinterpret_cast<const half*>(finalize_bias_gpu_ptr), indices, identity,
             reinterpret_cast<half*>(route_bias), routes, hidden_size_, num_experts_, stream));
       }
     }
@@ -7320,14 +8517,14 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
       ck::finalizeMoeRoutingKernelLauncher<__nv_bfloat16, __nv_bfloat16, __nv_bfloat16>(
           reinterpret_cast<const __nv_bfloat16*>(contributions),
           reinterpret_cast<__nv_bfloat16*>(output->MutableDataRaw()) + activation_start,
-          bias_gpu_ptr ? reinterpret_cast<const __nv_bfloat16*>(route_bias) : nullptr,
+          finalize_bias_gpu_ptr ? reinterpret_cast<const __nv_bfloat16*>(route_bias) : nullptr,
           scales, identity, nullptr, identity, nullptr, tile_rows, hidden_size_,
           static_cast<int>(k_), routes, parallelism, false, stream);
     } else {
       ck::finalizeMoeRoutingKernelLauncher<half, half, half>(
           reinterpret_cast<const half*>(contributions),
           reinterpret_cast<half*>(output->MutableDataRaw()) + activation_start,
-          bias_gpu_ptr ? reinterpret_cast<const half*>(route_bias) : nullptr,
+          finalize_bias_gpu_ptr ? reinterpret_cast<const half*>(route_bias) : nullptr,
           scales, identity, nullptr, identity, nullptr, tile_rows, hidden_size_,
           static_cast<int>(k_), routes, parallelism, false, stream);
     }
@@ -7357,7 +8554,13 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
           std::lock_guard<std::mutex> lock(SharedLayerCache::Mutex());
           owned_layer_cache_->slot_table_dev_ptr = dst_table;
         }
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_table, expert_slot_.data(),
+        const int* src_table = expert_slot_.data();
+        if (decode_state_ && decode_state_->pinned_slot_table) {
+          std::memcpy(decode_state_->pinned_slot_table, expert_slot_.data(),
+                      SafeInt<size_t>(num_experts_) * sizeof(int));
+          src_table = decode_state_->pinned_slot_table;
+        }
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_table, src_table,
                                              SafeInt<size_t>(num_experts_) * sizeof(int), cudaMemcpyHostToDevice, stream));
         slot_table_dirty_ = false;
       }
@@ -7396,7 +8599,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
 }
 
 void QMoEOffload::RunAsyncCpu(AsyncTile& tile) const {
-  const bool timed = cpu_timing_ && tile.tile_rows <= 4;
+  const bool timed = cpu_timing_ && tile.tile_rows <= async_max_tokens_;
   const auto start = timed ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
   if (timed) {
     const int64_t now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(start.time_since_epoch()).count();
@@ -7666,8 +8869,26 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
       FinalizeQMoEPrefillAndSeedDecode(device_id_, stream, session_controller_.get());
     }
     if (resident_slots_ > 0 && !IsInQMoEWarmup(session_controller_.get())) {
-      const auto& prev_routes = sync_routes_pending_ ? last_cold_routes_ : async_work_->expert_routes;
-      ORT_RETURN_IF_ERROR(PromoteResident(stream, prev_routes));
+      const bool cross_layer_promo =
+          doorbell_enabled_ && spare_slots_ > 0 && bg_promo_stream_ &&
+          ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_CROSS_LAYER_PROMO", 0) == 1;
+      const bool prev_doorbell_in_flight =
+          doorbell_enabled_ && decode_state_ && decode_state_->doorbell_done_host &&
+          (*decode_state_->doorbell_done_host < decode_state_->launched_seq);
+      const bool should_promote_step =
+          !prev_doorbell_in_flight &&
+          (!doorbell_enabled_ || !decode_state_ || last_promoted_async_seq_ < async_launched_seq_);
+      const bool allow_new_promo = !cross_layer_promo && should_promote_step;
+      if (allow_new_promo) {
+        last_promoted_async_seq_ = async_launched_seq_;
+        if (decode_state_) {
+          decode_state_->last_promoted_seq = decode_state_->launched_seq;
+        }
+      }
+      if (!pending_promotions_.empty() || (allow_new_promo && (sync_routes_pending_ || async_work_ != nullptr))) {
+        const auto& prev_routes = sync_routes_pending_ ? last_cold_routes_ : async_work_->expert_routes;
+        ORT_RETURN_IF_ERROR(PromoteResident(stream, prev_routes, allow_new_promo ? 0 : -1));
+      }
       sync_routes_pending_ = false;
       if (slot_table_dirty_) {
         int* dst_table = CurrentSlotTableDev();
@@ -7711,7 +8932,7 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
                                     !has_diag_outputs && !trace_call && (phase == nullptr);
   const bool use_persistent_decode =
       !static_full_resident &&
-      ((tile_rows <= 4 && !has_diag_outputs && !trace_call && (phase == nullptr) &&
+      ((tile_rows <= async_max_tokens_ && !has_diag_outputs && !trace_call && (phase == nullptr) &&
         (!bias || fc2_bias_gpu_ != nullptr || bias->Location().device.Type() == OrtDevice::GPU)) ||
        is_capturing);
 
@@ -7719,7 +8940,7 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
   const int routes = SafeInt<int>(tile_rows) * k_;
   // The persistent decode state is shared by every captured graph, so its layout must not depend on the shape being
   // captured; size it for the largest row count that can use it.
-  const int persistent_cap_rows = std::max(4, async_max_tokens_);
+  const int persistent_cap_rows = std::max(8, async_max_tokens_);
   const int cap_rows = use_persistent_decode ? std::max(tile_rows, persistent_cap_rows) : tile_rows;
   const int cap_routes = SafeInt<int>(cap_rows) * k_;
   const int route_slots = nvfp4_mode_ ? cap_routes : std::max(max_routes_, kGroupedMoeMinRows);
@@ -7818,6 +9039,8 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
     bias_gpu_ptr = transient_bias_gpu.get();
   }
 
+  const void* finalize_bias_gpu_ptr = int3_bank_mode_ ? nullptr : bias_gpu_ptr;
+
   std::unique_ptr<AsyncTile> owned;
   bool failed = false;
   bool aux_used = false;
@@ -7853,10 +9076,79 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
       const uint8_t* fc2_w = slab + resident_bank_offsets_[1];
       const uint8_t* fc1_s = slab + resident_bank_offsets_[2];
       const uint8_t* fc2_s = slab + resident_bank_offsets_[3];
+      const void* fc1_bias_dev = resident_fc1_bias_slab_ ? resident_fc1_bias_slab_.get() : nullptr;
+      if (int3_bank_mode_) {
+        Int3MoeParams p{};
+        p.input = input->DataRaw();
+        p.output = nullptr;
+        p.activation = nvfp4_inter_buf;
+        p.fc2_partial = wave_output;
+        p.experts = hit_compact;
+        p.num_experts = physical_slots_;
+        p.fc1 = {fc1_w, fc1_s, nullptr, fc1_bias_dev, 3};
+        p.fc2 = {fc2_w, fc2_s, nullptr, bias_gpu_ptr, 3};
+        p.rows = tile_rows;
+        p.hidden = hidden_size_;
+        p.intermediate = inter_size_;
+        p.top_k = static_cast<int>(k_);
+        p.block_size = int3_block_size_;
+        p.alpha = activation_alpha_;
+        p.beta = activation_beta_;
+        p.limit = swiglu_limit_;
+        p.is_bfloat16 = is_bf16_;
+        p.source_route_ids = hit_ids;
+        // hit_ids holds input token indices here (route / k), not original route indices. Rows are already indexed by
+        // original route, so a null map lets the kernels look up the FC2 bias with indices[route].
+        p.fc2_bias_route_ids = nullptr;
+        p.fc2_bias_expert_indices = indices;
+        p.input_is_gathered = false;
+        p.total_routes_override = routes;
+        CUDA_RETURN_IF_ERROR(LaunchInt3Moe(p, stream));
+        return Status::OK();
+      }
+      if (int4_bank_mode_) {
+        if (is_bf16_) {
+          gemv::launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, cutlass::uint4b_t>(
+              reinterpret_cast<const __nv_bfloat16*>(input->DataRaw()),
+              reinterpret_cast<const cutlass::uint4b_t*>(fc1_w),
+              reinterpret_cast<const __nv_bfloat16*>(fc1_s),
+              static_cast<const __nv_bfloat16*>(fc1_bias_dev),
+              reinterpret_cast<__nv_bfloat16*>(nvfp4_inter_buf),
+              nullptr, hit_compact, physical_slots_, routes, inter_size_, hidden_size_, 32, sm_,
+              runner_activation, hit_ids, tile_rows, nullptr, stream);
+          CUDA_RETURN_IF_ERROR(cudaGetLastError());
+          gemv::launch_moe_gemv_int_symmetric<__nv_bfloat16, cutlass::uint4b_t>(
+              reinterpret_cast<const __nv_bfloat16*>(nvfp4_inter_buf),
+              reinterpret_cast<const cutlass::uint4b_t*>(fc2_w),
+              reinterpret_cast<const __nv_bfloat16*>(fc2_s),
+              nullptr,
+              reinterpret_cast<__nv_bfloat16*>(wave_output),
+              nullptr, hit_compact, physical_slots_, routes, hidden_size_, inter_size_, 32, sm_, stream);
+          CUDA_RETURN_IF_ERROR(cudaGetLastError());
+        } else {
+          gemv::launch_moe_gemv_int_symmetric_interleaved_swiglu<half, cutlass::uint4b_t>(
+              reinterpret_cast<const half*>(input->DataRaw()),
+              reinterpret_cast<const cutlass::uint4b_t*>(fc1_w),
+              reinterpret_cast<const half*>(fc1_s),
+              static_cast<const half*>(fc1_bias_dev),
+              reinterpret_cast<half*>(nvfp4_inter_buf),
+              nullptr, hit_compact, physical_slots_, routes, inter_size_, hidden_size_, 32, sm_,
+              runner_activation, hit_ids, tile_rows, nullptr, stream);
+          CUDA_RETURN_IF_ERROR(cudaGetLastError());
+          gemv::launch_moe_gemv_int_symmetric<half, cutlass::uint4b_t>(
+              reinterpret_cast<const half*>(nvfp4_inter_buf),
+              reinterpret_cast<const cutlass::uint4b_t*>(fc2_w),
+              reinterpret_cast<const half*>(fc2_s),
+              nullptr,
+              reinterpret_cast<half*>(wave_output),
+              nullptr, hit_compact, physical_slots_, routes, hidden_size_, inter_size_, 32, sm_, stream);
+          CUDA_RETURN_IF_ERROR(cudaGetLastError());
+        }
+        return Status::OK();
+      }
       const float* fc1_g = reinterpret_cast<const float*>(slab + resident_bank_offsets_[4]);
       const float* fc2_g = reinterpret_cast<const float*>(slab + resident_bank_offsets_[5]);
       const int fp4_group = mxfp4_mode_ ? 32 : 16;
-      const void* fc1_bias_dev = resident_fc1_bias_slab_ ? resident_fc1_bias_slab_.get() : nullptr;
       if (is_bf16_) {
         gemv::launch_moe_gemv_fp4_symmetric_interleaved_swiglu<__nv_bfloat16>(
             reinterpret_cast<const __nv_bfloat16*>(input->DataRaw()), fc1_w,
@@ -7949,14 +9241,14 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
             reinterpret_cast<half*>(contributions), routes, hidden_size_,
             tile_rows, static_cast<int>(k_), stream));
       }
-      if (bias_gpu_ptr) {
+      if (finalize_bias_gpu_ptr) {
         if (is_bf16_) {
           CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatterBias(
-              reinterpret_cast<const __nv_bfloat16*>(bias_gpu_ptr), indices, identity,
+              reinterpret_cast<const __nv_bfloat16*>(finalize_bias_gpu_ptr), indices, identity,
               reinterpret_cast<__nv_bfloat16*>(route_bias), routes, hidden_size_, num_experts_, stream));
         } else {
           CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatterBias(
-              reinterpret_cast<const half*>(bias_gpu_ptr), indices, identity,
+              reinterpret_cast<const half*>(finalize_bias_gpu_ptr), indices, identity,
               reinterpret_cast<half*>(route_bias), routes, hidden_size_, num_experts_, stream));
         }
       }
@@ -7964,14 +9256,14 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
         ck::finalizeMoeRoutingKernelLauncher<__nv_bfloat16, __nv_bfloat16, __nv_bfloat16>(
             reinterpret_cast<const __nv_bfloat16*>(contributions),
             reinterpret_cast<__nv_bfloat16*>(output->MutableDataRaw()),
-            bias_gpu_ptr ? reinterpret_cast<const __nv_bfloat16*>(route_bias) : nullptr,
+            finalize_bias_gpu_ptr ? reinterpret_cast<const __nv_bfloat16*>(route_bias) : nullptr,
             scales, identity, nullptr, identity, nullptr, tile_rows, hidden_size_,
             static_cast<int>(k_), routes, parallelism, false, stream);
       } else {
         ck::finalizeMoeRoutingKernelLauncher<half, half, half>(
             reinterpret_cast<const half*>(contributions),
             reinterpret_cast<half*>(output->MutableDataRaw()),
-            bias_gpu_ptr ? reinterpret_cast<const half*>(route_bias) : nullptr,
+            finalize_bias_gpu_ptr ? reinterpret_cast<const half*>(route_bias) : nullptr,
             scales, identity, nullptr, identity, nullptr, tile_rows, hidden_size_,
             static_cast<int>(k_), routes, parallelism, false, stream);
       }
@@ -8013,6 +9305,8 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
       tile.staged_for_run_end = (session_controller_ != nullptr && !is_capturing);
       if (!is_capturing) {
         ++decode_state_->launched_seq;
+        ++async_launched_seq_;
+        ++doorbell_runs_;
         DoorbellService::Instance().NotifyPending(1);
       }
       const int input_vec4_count =
@@ -8025,14 +9319,14 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
           decode_state_->doorbell_seq_dev, decode_state_->doorbell_req_host,
           decode_state_->doorbell_tile_rows_host, tile_rows));
       ORT_RETURN_IF_ERROR(enqueue_hits());
-      if (bias_gpu_ptr) {
+      if (finalize_bias_gpu_ptr) {
         if (is_bf16_) {
           CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatterBias(
-              reinterpret_cast<const __nv_bfloat16*>(bias_gpu_ptr), indices, identity,
+              reinterpret_cast<const __nv_bfloat16*>(finalize_bias_gpu_ptr), indices, identity,
               reinterpret_cast<__nv_bfloat16*>(route_bias), routes, hidden_size_, num_experts_, stream));
         } else {
           CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatterBias(
-              reinterpret_cast<const half*>(bias_gpu_ptr), indices, identity,
+              reinterpret_cast<const half*>(finalize_bias_gpu_ptr), indices, identity,
               reinterpret_cast<half*>(route_bias), routes, hidden_size_, num_experts_, stream));
         }
       }
@@ -8048,7 +9342,7 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
         decode_state_->deferred_tile_rows = tile_rows;
         auto* bridge = GetQMoESharedExpertBridge();
         const bool defer_to_shared_expert =
-            overlap_shared_expert_ && !bias_gpu_ptr && (hidden_size_ & 7) == 0 && k_ <= 16 &&
+            overlap_shared_expert_ && !finalize_bias_gpu_ptr && (hidden_size_ & 7) == 0 && k_ <= 16 &&
             bridge != nullptr && bridge->IsRoutedNameRegistered(output0_name_.c_str());
         if (defer_to_shared_expert) {
           bridge->pending = true;
@@ -8058,7 +9352,7 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
           bridge->hidden_size = hidden_size_;
           bridge->ctx = const_cast<QMoEOffload*>(this);
           bridge->launch_deferred = &QMoEOffload::LaunchDeferredMergeStatic;
-        } else if (!bias_gpu_ptr && fuse_merge_finalize_ && (hidden_size_ & 7) == 0 && k_ <= 16) {
+        } else if (!finalize_bias_gpu_ptr && fuse_merge_finalize_ && (hidden_size_ & 7) == 0 && k_ <= 16) {
           ORT_RETURN_IF(LaunchDeferredMerge(stream, nullptr, 0) != 0,
                         "QMoEOffload fused merge+finalize launch failed.");
         } else {
@@ -8071,7 +9365,7 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
           ck::finalizeMoeRoutingKernelLauncher<__nv_bfloat16, __nv_bfloat16, __nv_bfloat16>(
               reinterpret_cast<const __nv_bfloat16*>(contributions),
               reinterpret_cast<__nv_bfloat16*>(output->MutableDataRaw()),
-              bias_gpu_ptr ? reinterpret_cast<const __nv_bfloat16*>(route_bias) : nullptr,
+              finalize_bias_gpu_ptr ? reinterpret_cast<const __nv_bfloat16*>(route_bias) : nullptr,
               scales, identity, nullptr, identity, nullptr, tile_rows, hidden_size_,
               static_cast<int>(k_), routes, parallelism, false, stream);
         }
@@ -8085,7 +9379,7 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
         ck::finalizeMoeRoutingKernelLauncher<half, half, half>(
             reinterpret_cast<const half*>(contributions),
             reinterpret_cast<half*>(output->MutableDataRaw()),
-            bias_gpu_ptr ? reinterpret_cast<const half*>(route_bias) : nullptr,
+            finalize_bias_gpu_ptr ? reinterpret_cast<const half*>(route_bias) : nullptr,
             scales, identity, nullptr, identity, nullptr, tile_rows, hidden_size_,
             static_cast<int>(k_), routes, parallelism, false, stream);
       }
@@ -8211,6 +9505,8 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
       tile_ptr = owned.get();
     }
     if (!is_capturing) {
+      ++async_launched_seq_;
+      ++callback_runs_;
       async_in_flight_.store(true, std::memory_order_release);
     }
 
@@ -8344,14 +9640,14 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
         owned.release();
       }
       ORT_RETURN_IF_ERROR(enqueue_hits());
-      if (bias_gpu_ptr) {
+      if (finalize_bias_gpu_ptr) {
         if (is_bf16_) {
           CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatterBias(
-              reinterpret_cast<const __nv_bfloat16*>(bias_gpu_ptr), indices, identity,
+              reinterpret_cast<const __nv_bfloat16*>(finalize_bias_gpu_ptr), indices, identity,
               reinterpret_cast<__nv_bfloat16*>(route_bias), routes, hidden_size_, num_experts_, stream));
         } else {
           CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatterBias(
-              reinterpret_cast<const half*>(bias_gpu_ptr), indices, identity,
+              reinterpret_cast<const half*>(finalize_bias_gpu_ptr), indices, identity,
               reinterpret_cast<half*>(route_bias), routes, hidden_size_, num_experts_, stream));
         }
       }
@@ -8376,14 +9672,14 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
       }
       trace(qmoe::CallbackEvent::MergeEnqueueEnd);
     }
-    if (bias_gpu_ptr && !aux) {
+    if (finalize_bias_gpu_ptr && !aux) {
       if (is_bf16_) {
         CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatterBias(
-            reinterpret_cast<const __nv_bfloat16*>(bias_gpu_ptr), indices, identity,
+            reinterpret_cast<const __nv_bfloat16*>(finalize_bias_gpu_ptr), indices, identity,
             reinterpret_cast<__nv_bfloat16*>(route_bias), routes, hidden_size_, num_experts_, stream));
       } else {
         CUDA_RETURN_IF_ERROR(LaunchQMoEOffloadScatterBias(
-            reinterpret_cast<const half*>(bias_gpu_ptr), indices, identity,
+            reinterpret_cast<const half*>(finalize_bias_gpu_ptr), indices, identity,
             reinterpret_cast<half*>(route_bias), routes, hidden_size_, num_experts_, stream));
       }
     }
@@ -8391,14 +9687,14 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
       ck::finalizeMoeRoutingKernelLauncher<__nv_bfloat16, __nv_bfloat16, __nv_bfloat16>(
           reinterpret_cast<const __nv_bfloat16*>(contributions),
           reinterpret_cast<__nv_bfloat16*>(output->MutableDataRaw()),
-          bias_gpu_ptr ? reinterpret_cast<const __nv_bfloat16*>(route_bias) : nullptr,
+          finalize_bias_gpu_ptr ? reinterpret_cast<const __nv_bfloat16*>(route_bias) : nullptr,
           scales, identity, nullptr, identity, nullptr, tile_rows, hidden_size_,
           static_cast<int>(k_), routes, parallelism, false, stream);
     } else {
       ck::finalizeMoeRoutingKernelLauncher<half, half, half>(
           reinterpret_cast<const half*>(contributions),
           reinterpret_cast<half*>(output->MutableDataRaw()),
-          bias_gpu_ptr ? reinterpret_cast<const half*>(route_bias) : nullptr,
+          finalize_bias_gpu_ptr ? reinterpret_cast<const half*>(route_bias) : nullptr,
           scales, identity, nullptr, identity, nullptr, tile_rows, hidden_size_,
           static_cast<int>(k_), routes, parallelism, false, stream);
     }

@@ -8,6 +8,7 @@
 
 #include "common.h"
 #include "ort_instance_data.h"
+#include "ort_singleton_data.h"
 #include "tensor_helper.h"
 #include "inference_session_wrap.h"
 
@@ -120,8 +121,45 @@ const std::unordered_map<std::string, ONNXTensorElementDataType> DATA_TYPE_NAME_
     {"uint64", ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64},
 };
 
+namespace {
+struct GpuAllocationOwner {
+  GpuAllocationOwner(OrtValue* value,
+                     std::shared_ptr<Ort::Session> session,
+                     std::shared_ptr<void> upstream_owner)
+      : value(value),
+        session(std::move(session)),
+        upstream_owner(std::move(upstream_owner)) {}
+  GpuAllocationOwner(const GpuAllocationOwner&) = delete;
+  GpuAllocationOwner& operator=(const GpuAllocationOwner&) = delete;
+
+  OrtValue* value;
+  std::shared_ptr<Ort::Session> session;
+  std::shared_ptr<void> upstream_owner;
+
+  ~GpuAllocationOwner() {
+    if (value != nullptr && OrtSingletonData::GetOrtObjects()) {
+      Ort::GetApi().ReleaseValue(value);
+    }
+  }
+};
+
+struct GpuTensorLease {
+  std::shared_ptr<GpuAllocationOwner> allocation;
+
+  void Dispose() {
+    allocation.reset();
+  }
+
+  ~GpuTensorLease() {
+    Dispose();
+  }
+};
+}  // namespace
+
 // currently only support tensor
-Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* cpu_memory_info, OrtMemoryInfo* webgpu_memory_info) {
+Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* cpu_memory_info,
+                               OrtMemoryInfo* webgpu_memory_info,
+                               std::shared_ptr<void>* allocation_owner) {
   ORT_NAPI_THROW_TYPEERROR_IF(!value.IsObject(), env, "Tensor must be an object.");
 
   // check 'dims'
@@ -226,9 +264,14 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
       ORT_NAPI_THROW_TYPEERROR_IF(tensorLocation != DATA_LOCATION_GPU_BUFFER, env, "Tensor.location must be 'gpu-buffer' for IO binding.");
 
       auto gpuBufferValue = tensorObject.Get("gpuBuffer");
-      // nodejs: tensor.gpuBuffer is no longer a GPUBuffer in nodejs. we assume it is an external object (bind the OrtValue pointer).
+      // Node.js stores a native lease in tensor.gpuBuffer instead of a JavaScript GPUBuffer.
       ORT_NAPI_THROW_TYPEERROR_IF(!gpuBufferValue.IsExternal(), env, "Tensor.gpuBuffer must be an external object.");
-      Ort::Value dataValue(gpuBufferValue.As<Napi::External<OrtValue>>().Data());
+      auto* lease = gpuBufferValue.As<Napi::External<GpuTensorLease>>().Data();
+      ORT_NAPI_THROW_ERROR_IF(lease == nullptr || !lease->allocation, env, "GPU tensor has been disposed.");
+      if (allocation_owner != nullptr) {
+        *allocation_owner = lease->allocation;
+      }
+      Ort::Value dataValue(lease->allocation->value);
       void* gpuBuffer = dataValue.GetTensorMutableRawData();
       dataValue.release();
 
@@ -238,7 +281,28 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
   }
 }
 
-Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
+Napi::Value TestGpuBuffersAlias(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+  ORT_NAPI_THROW_TYPEERROR_IF(info.Length() != 2 || !info[0].IsObject() || !info[1].IsObject(),
+                              env, "Expected two tensor objects.");
+
+  auto get_buffer = [&](const Napi::Value& tensor) {
+    const auto gpu_buffer = tensor.As<Napi::Object>().Get("gpuBuffer");
+    ORT_NAPI_THROW_TYPEERROR_IF(!gpu_buffer.IsExternal(), env, "Tensor must contain a GPU buffer.");
+    auto* lease = gpu_buffer.As<Napi::External<GpuTensorLease>>().Data();
+    ORT_NAPI_THROW_ERROR_IF(lease == nullptr || !lease->allocation, env, "GPU tensor has been disposed.");
+    Ort::Value value{lease->allocation->value};
+    void* buffer = value.GetTensorMutableRawData();
+    value.release();
+    return buffer;
+  };
+
+  return Napi::Boolean::New(env, get_buffer(info[0]) == get_buffer(info[1]));
+}
+
+Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value,
+                                std::shared_ptr<Ort::Session> session,
+                                std::shared_ptr<void> allocation_owner) {
   Napi::EscapableHandleScope scope(env);
 
   auto typeInfo = value.GetTypeInfo();
@@ -305,24 +369,34 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
                                                .Value()
                                                .Get("fromGpuBuffer")
                                                .As<Napi::Function>();
-      OrtValue* underlyingOrtValue = value.release();
+      auto lease = std::make_unique<GpuTensorLease>();
+      lease->allocation = std::make_shared<GpuAllocationOwner>(
+          value.release(), std::move(session), std::move(allocation_owner));
+      auto* lease_data = lease.get();
+      auto gpu_buffer = Napi::External<GpuTensorLease>::New(
+          env, lease_data,
+          [](Napi::Env /*env*/, GpuTensorLease* lease) {
+            delete lease;
+          });
+      lease.release();
 
       auto options = Napi::Object::New(env);
       options.Set("dataType", type);
       options.Set("dims", dims);
       options.Set("dispose", Napi::Function::New(
                                  env, [](const Napi::CallbackInfo& info) {
-                                   Ort::GetApi().ReleaseValue(reinterpret_cast<OrtValue*>(info.Data()));
+                                   auto* lease = reinterpret_cast<GpuTensorLease*>(info.Data());
+                                   lease->Dispose();
                                    return info.Env().Undefined();
                                  },
-                                 "dispose", underlyingOrtValue));
+                                 "dispose", lease_data));
       options.Set("download", Napi::Function::New(
                                   env, [](const Napi::CallbackInfo& info) {
-                                    NAPI_THROW("not implemented");
+                                    ORT_NAPI_THROW_ERROR(info.Env(), "GPU tensor download is not implemented.");
                                   },
-                                  "download", underlyingOrtValue));
+                                  "download", lease_data));
 
-      return scope.Escape(tensorFromGpuBuffer.Call({Napi::External<OrtValue>::New(env, underlyingOrtValue), options}));
+      return scope.Escape(tensorFromGpuBuffer.Call({gpu_buffer, options}));
     } else {
       // TODO: optimize memory
       auto arrayBuffer = Napi::ArrayBuffer::New(env, size * DATA_TYPE_ELEMENT_SIZE_MAP[elemType]);

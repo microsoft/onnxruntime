@@ -258,6 +258,12 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "GroupQueryAttention: q_norm_weight / k_norm_weight require do_rotary=1.");
   }
+  // Input 16 is query_seqlens (right-padded query chunks), which WebGPU does not implement. Reject it
+  // instead of treating the padded rows of the chunk as real tokens.
+  if (context.InputCount() > 16 && context.Input<Tensor>(16) != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "GroupQueryAttention (WebGPU): query_seqlens input is not supported.");
+  }
 
   GroupQueryAttentionParameters params = {};
 
