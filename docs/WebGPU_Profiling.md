@@ -77,7 +77,7 @@ trace and the checked-in report templates; no model, tokenizer, input manifest, 
 `onnxruntime-node` installation is needed for post-processing:
 
 ```powershell
-node onnxruntime/test/webgpu/visualize_profile.mjs webgpu_profile_<timestamp>.json --output build/profile/timeline.html
+node onnxruntime/test/webgpu/profiling/visualize_profile.mjs webgpu_profile_<timestamp>.json --output build/profile/timeline.html
 ```
 
 This writes self-contained `timeline.html` and `timeline.summary.json`, preserving the original
@@ -122,7 +122,7 @@ GPU-utilization measurement. Measure throughput separately with profiling off.
 Run the Node post-processing tests without an ORT build:
 
 ```powershell
-node --test onnxruntime/test/webgpu/test_visualize_profile.mjs
+node --test onnxruntime/test/webgpu/profiling/test_visualize_profile.mjs
 ```
 
 ## Test an external Dawn host
