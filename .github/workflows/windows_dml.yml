@@ -28,12 +28,12 @@ jobs:
     runs-on: [ort-github-win-6-a10-scus-ss]
     timeout-minutes: 210
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # Fetch all history for all tags and branches
           submodules: 'none'
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
           architecture: x64
@@ -54,7 +54,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         shell: cmd
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24.x'
 
@@ -74,11 +74,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         shell: cmd
 
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        env:
-          PROCESSOR_ARCHITECTURE: x64
-        with:
-          dotnet-version: '8.x'
+      - uses: ./.github/actions/setup-dotnet
 
       - name: Use Nuget 6.x
         uses: nuget/setup-nuget@d105a947828025cd7a980103c35ba2bfae586d0f # v2.0.2

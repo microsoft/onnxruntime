@@ -352,5 +352,47 @@ TEST(PagedAttentionHelperTest, SanitizeSequenceLengthsSupportsBatchAboveFormerBl
                          actual.begin() + cumulative_seqlens_q.size() + past_seqlens.size() * 2));
 }
 
+TEST(PagedAttentionHelperTest, GetCumulativeSeqlensKVMatchesSanitizedForSmallAndLargeBatches) {
+  for (int batch_size : {4, 255, 256, 260}) {
+    std::vector<int32_t> cumulative_seqlens_q(batch_size + 1, 0);
+    std::vector<int32_t> past_seqlens(batch_size);
+    std::vector<int32_t> expected_cumulative_seqlens_kv(batch_size + 1, 0);
+    for (int b = 0; b < batch_size; ++b) {
+      const int32_t q_len = b % 4;
+      cumulative_seqlens_q[b + 1] = cumulative_seqlens_q[b] + q_len;
+      past_seqlens[b] = (b * 5) % 11;
+      expected_cumulative_seqlens_kv[b + 1] =
+          expected_cumulative_seqlens_kv[b] + past_seqlens[b] + q_len;
+    }
+
+    int32_t* input_device = nullptr;
+    int32_t* output_device = nullptr;
+    const size_t input_count = cumulative_seqlens_q.size() + past_seqlens.size();
+    ASSERT_EQ(cudaSuccess, cudaMalloc(&input_device, input_count * sizeof(int32_t)));
+    ASSERT_EQ(cudaSuccess, cudaMalloc(&output_device, cumulative_seqlens_q.size() * sizeof(int32_t)));
+    auto cleanup = gsl::finally([&]() {
+      cudaFree(input_device);
+      cudaFree(output_device);
+    });
+
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(input_device, cumulative_seqlens_q.data(),
+                         cumulative_seqlens_q.size() * sizeof(int32_t), cudaMemcpyHostToDevice));
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(input_device + cumulative_seqlens_q.size(), past_seqlens.data(),
+                         past_seqlens.size() * sizeof(int32_t), cudaMemcpyHostToDevice));
+
+    const auto status = onnxruntime::contrib::cuda::LaunchGetCumulativeSeqlensKV(
+        output_device, input_device, input_device + cumulative_seqlens_q.size(),
+        batch_size, nullptr);
+    ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+    std::vector<int32_t> actual(cumulative_seqlens_q.size());
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(actual.data(), output_device, actual.size() * sizeof(int32_t), cudaMemcpyDeviceToHost));
+    EXPECT_EQ(actual, expected_cumulative_seqlens_kv) << "batch_size=" << batch_size;
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime

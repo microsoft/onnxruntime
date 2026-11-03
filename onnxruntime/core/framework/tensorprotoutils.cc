@@ -1878,8 +1878,11 @@ Status GetExtDataFromTensorProto(const Env& env,
                   " size to read: ", static_cast<size_t>(raw_data_safe_len), " given file_length: ", file_length,
                   " are out of bounds or can not be read in full.");
 
-    IAllocatorUniquePtr<void> ext_data_buf;
-    ORT_RETURN_IF_ERROR(GetFileContent(*external_data_file, file_offset, raw_data_safe_len, ext_data_buf));
+    // Zero bytes here denotes an empty tensor, not GetFileContent's whole-file sentinel.
+    IAllocatorUniquePtr<void> ext_data_buf{nullptr, [](void*) {}};
+    if (raw_data_safe_len != 0) {
+      ORT_RETURN_IF_ERROR(GetFileContent(*external_data_file, file_offset, raw_data_safe_len, ext_data_buf));
+    }
 
     // Data on disk is little endian
     if constexpr (endian::native != endian::little) {

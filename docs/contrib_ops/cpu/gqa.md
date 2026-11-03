@@ -275,6 +275,78 @@ Constraints specific to `sliding_window_cache=1` on CPU:
 - For quantized caches, `head_size` must be a multiple of 16 for 8-bit and of 32 for 4-bit, because
   the compaction and staging copies move whole rows with vectorized loads.
 
+## Right-Padded Prefill Chunks
+
+Fixed-shape execution runs every prefill chunk with one `sequence_length = S`, so the last chunk is
+padded: only its first `Q` rows are real tokens and the padding rows follow. The optional
+`query_seqlens` input (input 16, a `(batch_size,)` int32 tensor) gives `Q` for every batch entry. The
+CPU kernel supports it with a full-length or a windowed (`sliding_window_cache=1`) cache, with and
+without a quantized cache, and on both the naive and the flash paths. The operator contract is in the
+schema and in the [CUDA notes](../cuda/gqa.md#right-padded-prefill-chunks); this section covers what
+is specific to the CPU kernel.
+
+### Length inputs
+
+For batch entry `b`, let `T = seqlens_k[b] + 1` be the number of tokens in the cache after the step,
+`Q = query_seqlens[b]`, and `P = T - Q` the number of tokens cached before the chunk. The scalar
+`total_sequence_length` is only an upper bound of `T`: the cache capacity is a valid value. It is not
+used to tell a first chunk from a later one and it does not determine `P`.
+
+| Chunk (prompt of 300, `S=128`, capacity 512) | `P` | `Q` | `seqlens_k` | `query_seqlens` | `total_sequence_length` |
+| --- | --- | --- | --- | --- | --- |
+| 0 | 0 | 128 | 127 | 128 | 512 |
+| 1 | 128 | 128 | 255 | 128 | 512 |
+| 2 (last, padded) | 256 | 44 | 299 | 44 | 512 |
+| decode (`S = 1`) | 300 | 1 | 300 | omitted | 512 |
+
+`attention_bias`, when present, has shape `(batch_size or 1, num_heads or 1, S, total_sequence_length)`
+and the kernel reads its first `T` columns. `position_ids` has `S` entries per batch entry and every
+entry is honoured, also for the first chunk (`P = 0`), whereas a first prompt without `query_seqlens`
+reads only `position_ids[0]`. The entries of the padding rows are ignored but must be valid indices
+into the rotary caches.
+
+Without `query_seqlens` nothing changes: `Q = min(S, T)`, the past length is
+`seqlens_k + 1 - sequence_length`, and `total_sequence_length` keeps telling a first prompt from a
+later chunk.
+
+### Validation
+
+The CPU kernel reads `query_seqlens` on the host and rejects every violation with
+`INVALID_ARGUMENT` instead of clamping it (the CUDA kernel clamps, because its values live on the
+device). Besides the shape, the kernel requires:
+
+- `causal=1`, `past_key` / `past_value` present, and the `present_key` / `present_value` outputs (also
+  for `S == 1`, where the input is otherwise ignored);
+- new key/value with `kv_sequence_length == sequence_length`;
+- `batch_size == 1` when `S > 1`, which is the existing restriction on multi-token steps with past
+  context;
+- `1 <= Q <= min(S, T)` and `T <= total_sequence_length` for every batch entry (so `Q == 1` when
+  `S == 1`);
+- for a cache that is not windowed, the `P` cached tokens in `past_key` / `past_value` (`P` is at most
+  their sequence dimension, so a cache that grows between steps may bind shorter past buffers than
+  present buffers) and room for the whole padded chunk: `P + S <= C`, where `C` is the sequence
+  dimension of `present_key`.
+
+A single-token step (`S == 1`) is an ordinary decode: the input is validated and then ignored.
+
+### Effect on the cache and attention
+
+The kernel passes the per-entry past length `P` to the attention code in place of
+`seqlens_k + 1 - sequence_length`:
+
+- Only the `Q` valid new rows are copied (or quantized) into the KV cache, at rows `[P, T)`. Padding
+  rows never overwrite resident rows and never run past the end of the cache, which matters when the
+  cache is already close to its capacity. Cache rows at or beyond `T` are unspecified.
+- The causal and local-window masks and the flash block ranges use `P` as the offset of the first
+  query row. Output rows `[Q, S)` are unspecified.
+- The default RoPE position of query row `s` is `P + s`; padding rows use position 0.
+- `output_qk`, when requested, keeps the shape `(batch_size, num_heads, S, total_sequence_length)`.
+  For batch entry `b` the columns `[T, total_sequence_length)` are zero.
+- Windowed planning (`PlanWindowedKvCache`) evaluates `end_before = L(P)` and `end_after = L(P + Q)`,
+  so a padded chunk evicts exactly what the same `Q` tokens would evict unpadded, the staging cache
+  (when the step needs one) holds `L(P) + Q` rows, and the resulting layout is identical to the
+  unpadded run.
+
 ## Naive Path: QK GEMM + Softmax + SV GEMM
 
 The naive (full materialization) path executes attention as three separate stages:
