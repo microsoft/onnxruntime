@@ -502,6 +502,7 @@ inline bool DeviceSupportsBf16Mma() {
   int major = 0;
   if (cudaGetDevice(&device) != cudaSuccess ||
       cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device) != cudaSuccess) {
+    (void)cudaGetLastError();
     return false;
   }
   return major >= 8;
@@ -550,6 +551,7 @@ inline bool TryLaunchInt4Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
   cudaFuncAttributes attributes{};
   const auto kernel = swiglu ? MoeGemvTcInt4Kernel<true, 4, 4> : MoeGemvTcInt4Kernel<false, 1, 1>;
   if (cudaFuncGetAttributes(&attributes, kernel) != cudaSuccess || attributes.ptxVersion < 80) {
+    (void)cudaGetLastError();
     return false;
   }
 
@@ -985,6 +987,7 @@ inline bool TryLaunchInt2Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
                                                : (use_2warps_k ? MoeGemvTcInt2Kernel<true, 2, 2, 128>
                                                                : MoeGemvTcInt2Kernel<false, 1, 1, 128>);
   if (cudaFuncGetAttributes(&attributes, check_kernel) != cudaSuccess || attributes.ptxVersion < 80) {
+    (void)cudaGetLastError();
     return false;
   }
 

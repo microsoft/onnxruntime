@@ -821,7 +821,11 @@ TEST(CUDA_EP_Unittest, Int3GroupedPrefill_AlignedAndUnalignedFp16Parity) {
     params.grouped_workspace = d_workspace.As<int>();
     CUDA_CALL_THROW(cudaMemset(d_workspace.data, 0xa5, d_workspace.bytes));
     ASSERT_EQ(SelectInt3DecodeKernel(params), test_case.grouped ? Int3DecodeKernel::kGrouped : Int3DecodeKernel::kFast);
-    CUDA_CALL_THROW(LaunchInt3Moe(params, nullptr));
+    bool used_grouped = !test_case.grouped;
+    bool used_tc = true;
+    CUDA_CALL_THROW(LaunchInt3Moe(params, nullptr, &used_grouped, &used_tc));
+    EXPECT_EQ(used_grouped, test_case.grouped);
+    EXPECT_FALSE(used_tc);
     CUDA_CALL_THROW(cudaStreamSynchronize(nullptr));
     uint32_t num_tiles = 0;
     CUDA_CALL_THROW(cudaMemcpy(&num_tiles, d_workspace.As<int>() + rows, sizeof(num_tiles), cudaMemcpyDeviceToHost));
