@@ -57,4 +57,10 @@ struct OrtCUDAProviderOptionsV2 {
   size_t external_data_loader_pinned_memory_bytes = kDefaultExternalDataLoaderPinnedMemoryBytes;               // Total pinned host staging memory across the two reusable buffers.
   size_t external_data_loader_chunk_bytes = kDefaultExternalDataLoaderChunkBytes;                              // Maximum per-transfer chunk size for parallel external-data reads.
   int min_num_runs_before_cuda_graph_capture = 2;                                                              // Number of regular (warm-up) runs before CUDA graph capture starts. Only used when enable_cuda_graph is set.
+
+  // Set when the corresponding external-data loader option was explicitly supplied, even if it equals the default.
+  // Explicitly supplied provider options take precedence over session config entries.
+  int external_data_loader_reading_threads_explicit = 0;
+  int external_data_loader_pinned_memory_bytes_explicit = 0;
+  int external_data_loader_chunk_bytes_explicit = 0;
 };

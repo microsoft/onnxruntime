@@ -105,6 +105,12 @@ CudaDataTransfer::CudaDataTransfer(const OrtApi& ort_api, const OrtEpApi& ep_api
     }
 
     if (active_device != gpu_device_id) {
+      // cudaStreamSynchronize(nullptr) only drains the current device, so drain pending
+      // default-stream copies before switching away from it.
+      if (need_stream_sync) {
+        PL_CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(nullptr));
+        need_stream_sync = false;
+      }
       PL_CUDA_RETURN_IF_ERROR(cudaSetDevice(gpu_device_id));
       active_device = gpu_device_id;
     }

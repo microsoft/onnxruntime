@@ -3166,6 +3166,15 @@ class TestCudaPluginEP(unittest.TestCase):
             expected_y = (x @ w1) @ w2
             expected_m = np.logical_and(m_in, bool_expected)
 
+            def assert_matmuls_on_plugin(sess):
+                assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
+                matmul_count = sum(1 for node in assigned_nodes if node.op_type == "MatMul")
+                self.assertEqual(
+                    matmul_count,
+                    2,
+                    f"Expected both MatMul nodes on {CUDA_PLUGIN_EP_NAME}: {_format_assignment_summary(assignment_info)}",
+                )
+
             baseline_y = None
             for threads in ("0", "1", "4", "16"):
                 sess_options = _create_session_options()
@@ -3174,6 +3183,7 @@ class TestCudaPluginEP(unittest.TestCase):
                     _plugin_provider_options({"external_data_loader_reading_threads": threads, "use_tf32": "0"}),
                 )
                 sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
+                assert_matmuls_on_plugin(sess)
                 y_out, m_out = sess.run(["Y", "M_out"], {"X": x, "M": m_in})
                 np.testing.assert_allclose(y_out, expected_y, rtol=1e-3, atol=1e-2)
                 np.testing.assert_array_equal(m_out, expected_m)
@@ -3215,6 +3225,7 @@ class TestCudaPluginEP(unittest.TestCase):
                     sess_options.add_session_config_entry(k, v)
                 sess_options.add_provider_for_devices([target_device], _plugin_provider_options(ep_cfg))
                 sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
+                assert_matmuls_on_plugin(sess)
                 y_out, m_out = sess.run(["Y", "M_out"], {"X": x, "M": m_in})
                 np.testing.assert_array_equal(y_out, baseline_y)
                 np.testing.assert_array_equal(m_out, expected_m)

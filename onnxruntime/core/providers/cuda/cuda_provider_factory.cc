@@ -346,14 +346,17 @@ struct CUDA_Provider : Provider {
     info.external_data_loader_pinned_memory_bytes = params->external_data_loader_pinned_memory_bytes;
     info.external_data_loader_chunk_bytes = params->external_data_loader_chunk_bytes;
     info.external_data_loader_reading_threads_explicit =
+        params->external_data_loader_reading_threads_explicit != 0 ||
         params->external_data_loader_reading_threads !=
-        OrtCUDAProviderOptionsV2::kDefaultExternalDataLoaderReadingThreadCount;
+            OrtCUDAProviderOptionsV2::kDefaultExternalDataLoaderReadingThreadCount;
     info.external_data_loader_pinned_memory_bytes_explicit =
+        params->external_data_loader_pinned_memory_bytes_explicit != 0 ||
         params->external_data_loader_pinned_memory_bytes !=
-        OrtCUDAProviderOptionsV2::kDefaultExternalDataLoaderPinnedMemoryBytes;
+            OrtCUDAProviderOptionsV2::kDefaultExternalDataLoaderPinnedMemoryBytes;
     info.external_data_loader_chunk_bytes_explicit =
+        params->external_data_loader_chunk_bytes_explicit != 0 ||
         params->external_data_loader_chunk_bytes !=
-        OrtCUDAProviderOptionsV2::kDefaultExternalDataLoaderChunkBytes;
+            OrtCUDAProviderOptionsV2::kDefaultExternalDataLoaderChunkBytes;
 
     return std::make_shared<CUDAProviderFactory>(info);
   }
@@ -396,6 +399,12 @@ struct CUDA_Provider : Provider {
         internal_options.external_data_loader_pinned_memory_bytes;
     cuda_options.external_data_loader_chunk_bytes =
         internal_options.external_data_loader_chunk_bytes;
+    cuda_options.external_data_loader_reading_threads_explicit =
+        internal_options.external_data_loader_reading_threads_explicit ? 1 : 0;
+    cuda_options.external_data_loader_pinned_memory_bytes_explicit =
+        internal_options.external_data_loader_pinned_memory_bytes_explicit ? 1 : 0;
+    cuda_options.external_data_loader_chunk_bytes_explicit =
+        internal_options.external_data_loader_chunk_bytes_explicit ? 1 : 0;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {

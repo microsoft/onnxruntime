@@ -778,6 +778,7 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
       {min_runs_key, "ep.cuda.min_num_runs_before_cuda_graph_capture"},
       config.min_num_runs_before_cuda_graph_capture);
 
+#if !defined(ORT_MINIMAL_BUILD)
   const std::string ext_loader_threads_key = ep_options_prefix + "external_data_loader_reading_threads";
   for (std::string_view key : {std::string_view{ext_loader_threads_key},
                                std::string_view{"ep.cuda.external_data_loader_reading_threads"},
@@ -832,6 +833,8 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
       return factory->ort_api_.CreateStatus(ORT_INVALID_ARGUMENT, st.ErrorMessage().c_str());
     }
   }
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   const bool use_env_allocators =
       try_get_session_config("session.use_env_allocators").value_or("0") == "1";

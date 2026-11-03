@@ -8,7 +8,18 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "test/util/include/asserts.h"
 #include "test/util/include/test_environment.h"
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(__wasm__) && !defined(ORT_NO_EXCEPTIONS)
+#include <array>
+#include <atomic>
+#include <functional>
+#include <limits>
+#include <stdexcept>
+
+#include "core/framework/external_data_loader_thread_pool.h"
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
 
@@ -25,7 +36,6 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/test_environment.h"
 #include "test/unittest_util/framework_test_utils.h"
-#include "test/util/include/asserts.h"
 #include "test/util/include/file_util.h"
 #endif
 
@@ -509,6 +519,93 @@ TEST(ExternalDataLoaderManagerTest, CommitCandidatesFailureEndsEveryLoader) {
 }
 #endif
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(__wasm__) && !defined(ORT_NO_EXCEPTIONS)
+class ThrowingReadFile final : public RandomAccessFile {
+ public:
+  explicit ThrowingReadFile(size_t successful_reads) : successful_reads_{successful_reads} {}
+
+  common::Status GetLength(uint64_t& length) const override {
+    length = std::numeric_limits<uint64_t>::max();
+    return common::Status::OK();
+  }
+
+  common::Status GetCanonicalPath(PathString&) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "not supported");
+  }
+
+  common::Status Map(FileOffsetType, size_t, MappedMemoryPtr&) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "not supported");
+  }
+
+  common::Status Read(FileOffsetType, gsl::span<char> buffer) const override {
+    if (reads_.fetch_add(1) >= successful_reads_) {
+      throw std::runtime_error("simulated read exception");
+    }
+    std::fill(buffer.begin(), buffer.end(), 0);
+    return common::Status::OK();
+  }
+
+ private:
+  size_t successful_reads_;
+  mutable std::atomic<size_t> reads_{0};
+};
+
+// A throwing read after a successful async copy submission must still drain every used stream.
+void VerifyStreamsDrainedAfterThrowingRead(size_t reading_threads, size_t total_bytes, size_t single_buffer_size,
+                                           size_t successful_reads) {
+  constexpr size_t kMaxStreams = 16;
+  std::array<std::atomic<bool>, kMaxStreams> in_flight{};
+  std::atomic<size_t> copies_submitted{0};
+
+  std::vector<uint8_t> staging0(single_buffer_size);
+  std::vector<uint8_t> staging1(single_buffer_size);
+  const std::array<void*, 2> buffers{staging0.data(), staging1.data()};
+  std::vector<uint8_t> destination(total_bytes);
+
+  ThrowingReadFile file(successful_reads);
+  const ExternalDataLoadTask task{&file, 0, destination.data(), total_bytes, 1, false};
+  std::unique_ptr<ExternalDataLoaderThreadPool> reader_pool;
+
+  const auto status = ExecuteExternalDataLoadTasks(
+      gsl::span<const ExternalDataLoadTask>(&task, 1),
+      /*allow_small_parallel=*/false,
+      reading_threads,
+      reading_threads,
+      single_buffer_size,
+      /*max_chunk_bytes=*/single_buffer_size,
+      buffers,
+      reader_pool,
+      std::function<bool()>{},
+      [](size_t) { return common::Status::OK(); },
+      [&](size_t stream_index) {
+        in_flight[stream_index] = false;
+        return common::Status::OK();
+      },
+      [&](void*, void*, size_t, size_t stream_index) {
+        in_flight[stream_index] = true;
+        ++copies_submitted;
+        return common::Status::OK();
+      });
+
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("simulated read exception"), std::string::npos) << status.ErrorMessage();
+  EXPECT_GT(copies_submitted.load(), 0U);
+  for (size_t i = 0; i < kMaxStreams; ++i) {
+    EXPECT_FALSE(in_flight[i].load()) << "stream " << i << " was not drained after the read exception";
+  }
+}
+
+TEST(ExternalDataLoadTasksTest, SerialPathDrainsStreamsWhenReadThrows) {
+  VerifyStreamsDrainedAfterThrowingRead(/*reading_threads=*/1, /*total_bytes=*/3 * 1024 * 1024,
+                                        /*single_buffer_size=*/1024 * 1024, /*successful_reads=*/1);
+}
+
+TEST(ExternalDataLoadTasksTest, ParallelPathDrainsStreamsWhenReadThrows) {
+  VerifyStreamsDrainedAfterThrowingRead(/*reading_threads=*/2, /*total_bytes=*/16 * 1024 * 1024,
+                                        /*single_buffer_size=*/1024 * 1024, /*successful_reads=*/3);
+}
+#endif
 
 }  // namespace
 }  // namespace test

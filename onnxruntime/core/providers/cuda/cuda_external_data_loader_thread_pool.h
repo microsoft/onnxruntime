@@ -8,7 +8,9 @@
 namespace onnxruntime {
 namespace cuda {
 
+#if !defined(ORT_MINIMAL_BUILD)
 using ::onnxruntime::ExternalDataLoaderThreadPool;
+#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

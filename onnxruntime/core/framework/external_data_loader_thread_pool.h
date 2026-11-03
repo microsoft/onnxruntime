@@ -157,6 +157,26 @@ inline void TransformExternalDataStagingBuffer(uint8_t* buffer, size_t length, b
 }
 
 #if !defined(__wasm__)
+// Converts exceptions into a Status so callers can still drain asynchronous copies before unwinding.
+template <typename Fn>
+common::Status RunExternalDataLoadStep(Fn&& fn) {
+  common::Status status;
+  ORT_TRY {
+    status = fn();
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load external data: ", ex.what());
+    });
+  }
+  ORT_CATCH(...) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load external data: unknown exception");
+    });
+  }
+  return status;
+}
+
 struct ExternalDataLoadTask {
   const RandomAccessFile* file{nullptr};
   FileOffsetType file_offset{0};
@@ -272,59 +292,67 @@ common::Status ExecuteExternalDataLoadTasks(
             return sync_result;
           };
 
-          common::Status worker_status = common::Status::OK();
-          for (;;) {
-            if (stop_on_error.load(std::memory_order_relaxed)) {
-              break;
-            }
-            if (is_canceled && is_canceled()) {
-              worker_status = ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+          // Exceptions must not skip the stream drain: in-flight copies still read the staging buffers.
+          const auto worker_status = RunExternalDataLoadStep([&]() -> common::Status {
+            common::Status loop_status = common::Status::OK();
+            for (;;) {
+              if (stop_on_error.load(std::memory_order_relaxed)) {
+                break;
+              }
+              if (is_canceled && is_canceled()) {
+                loop_status = ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
                                               "Saving session state weights is canceled due to user request.");
-              stop_on_error.store(true, std::memory_order_relaxed);
-              break;
-            }
-
-            const size_t chunk_idx = next_chunk_idx.fetch_add(1, std::memory_order_relaxed);
-            if (chunk_idx >= chunks.size()) {
-              break;
-            }
-
-            const ExternalDataLoadTask& chunk = chunks[chunk_idx];
-            auto* staging = static_cast<uint8_t*>(buffers[slot]) + worker_id * slice_size;
-            const size_t stream_idx = worker_id * 2 + slot;
-
-            if (stream_used[slot]) {
-              const auto sync_st = sync_stream(stream_idx);
-              stream_used[slot] = false;
-              if (!sync_st.IsOK()) {
-                worker_status = sync_st;
                 stop_on_error.store(true, std::memory_order_relaxed);
                 break;
               }
+
+              const size_t chunk_idx = next_chunk_idx.fetch_add(1, std::memory_order_relaxed);
+              if (chunk_idx >= chunks.size()) {
+                break;
+              }
+
+              const ExternalDataLoadTask& chunk = chunks[chunk_idx];
+              auto* staging = static_cast<uint8_t*>(buffers[slot]) + worker_id * slice_size;
+              const size_t stream_idx = worker_id * 2 + slot;
+
+              if (stream_used[slot]) {
+                const auto sync_st = sync_stream(stream_idx);
+                stream_used[slot] = false;
+                if (!sync_st.IsOK()) {
+                  loop_status = sync_st;
+                  stop_on_error.store(true, std::memory_order_relaxed);
+                  break;
+                }
+              }
+
+              const auto read_st = chunk.file->Read(
+                  chunk.file_offset, gsl::span<char>{reinterpret_cast<char*>(staging), chunk.length});
+              if (!read_st.IsOK()) {
+                loop_status = read_st;
+                stop_on_error.store(true, std::memory_order_relaxed);
+                break;
+              }
+
+              TransformExternalDataStagingBuffer(staging, chunk.length, chunk.is_bool, chunk.element_size);
+
+              // Mark the stream used before submitting so a throwing copy is still drained.
+              stream_used[slot] = true;
+              const auto copy_st = copy_async(chunk.destination, staging, chunk.length, stream_idx);
+              if (!copy_st.IsOK()) {
+                loop_status = copy_st;
+                stop_on_error.store(true, std::memory_order_relaxed);
+                break;
+              }
+
+              slot ^= 1;
             }
-
-            const auto read_st = chunk.file->Read(
-                chunk.file_offset, gsl::span<char>{reinterpret_cast<char*>(staging), chunk.length});
-            if (!read_st.IsOK()) {
-              worker_status = read_st;
-              stop_on_error.store(true, std::memory_order_relaxed);
-              break;
-            }
-
-            TransformExternalDataStagingBuffer(staging, chunk.length, chunk.is_bool, chunk.element_size);
-
-            const auto copy_st = copy_async(chunk.destination, staging, chunk.length, stream_idx);
-            if (!copy_st.IsOK()) {
-              worker_status = copy_st;
-              stop_on_error.store(true, std::memory_order_relaxed);
-              break;
-            }
-
-            stream_used[slot] = true;
-            slot ^= 1;
+            return loop_status;
+          });
+          if (!worker_status.IsOK()) {
+            stop_on_error.store(true, std::memory_order_relaxed);
           }
 
-          const auto drain_st = sync_worker_streams();
+          const auto drain_st = RunExternalDataLoadStep(sync_worker_streams);
           return worker_status.IsOK() ? drain_st : worker_status;
         });
       }
@@ -346,49 +374,43 @@ common::Status ExecuteExternalDataLoadTasks(
     return status;
   };
 
-  size_t chunk_index = 0;
-  for (const auto& task : tasks) {
-    for (size_t offset = 0; offset < task.length; ++chunk_index) {
-      if (is_canceled && is_canceled()) {
-        ORT_IGNORE_RETURN_VALUE(synchronize_streams());
-        return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
-                               "Saving session state weights is canceled due to user request.");
-      }
-
-      const size_t buffer_index = chunk_index % 2;
-      const size_t chunk_size = std::min(single_buffer_size, task.length - offset);
-
-      if (stream_used[buffer_index]) {
-        const auto sync_status = sync_stream(buffer_index);
-        stream_used[buffer_index] = false;
-        if (!sync_status.IsOK()) {
-          ORT_IGNORE_RETURN_VALUE(synchronize_streams());
-          return sync_status;
+  // Exceptions must not skip the stream drain: in-flight copies still read the staging buffers.
+  const auto submit_status = RunExternalDataLoadStep([&]() -> common::Status {
+    size_t chunk_index = 0;
+    for (const auto& task : tasks) {
+      for (size_t offset = 0; offset < task.length; ++chunk_index) {
+        if (is_canceled && is_canceled()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                                 "Saving session state weights is canceled due to user request.");
         }
-      }
 
-      auto* staging = static_cast<uint8_t*>(buffers[buffer_index]);
-      const auto read_status = task.file->Read(
-          task.file_offset + static_cast<FileOffsetType>(offset),
-          gsl::span<char>{reinterpret_cast<char*>(staging), chunk_size});
-      if (!read_status.IsOK()) {
-        ORT_IGNORE_RETURN_VALUE(synchronize_streams());
-        return read_status;
-      }
+        const size_t buffer_index = chunk_index % 2;
+        const size_t chunk_size = std::min(single_buffer_size, task.length - offset);
 
-      TransformExternalDataStagingBuffer(staging, chunk_size, task.is_bool, task.element_size);
+        if (stream_used[buffer_index]) {
+          const auto sync_status = sync_stream(buffer_index);
+          stream_used[buffer_index] = false;
+          ORT_RETURN_IF_ERROR(sync_status);
+        }
 
-      const auto copy_status = copy_async(task.destination + offset, staging, chunk_size, buffer_index);
-      if (!copy_status.IsOK()) {
-        ORT_IGNORE_RETURN_VALUE(synchronize_streams());
-        return copy_status;
+        auto* staging = static_cast<uint8_t*>(buffers[buffer_index]);
+        ORT_RETURN_IF_ERROR(task.file->Read(
+            task.file_offset + static_cast<FileOffsetType>(offset),
+            gsl::span<char>{reinterpret_cast<char*>(staging), chunk_size}));
+
+        TransformExternalDataStagingBuffer(staging, chunk_size, task.is_bool, task.element_size);
+
+        // Mark the stream used before submitting so a throwing copy is still drained.
+        stream_used[buffer_index] = true;
+        ORT_RETURN_IF_ERROR(copy_async(task.destination + offset, staging, chunk_size, buffer_index));
+        offset += chunk_size;
       }
-      stream_used[buffer_index] = true;
-      offset += chunk_size;
     }
-  }
+    return common::Status::OK();
+  });
 
-  return synchronize_streams();
+  const auto drain_status = RunExternalDataLoadStep(synchronize_streams);
+  return submit_status.IsOK() ? drain_status : submit_status;
 }
 #endif  // !defined(__wasm__)
 

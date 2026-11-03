@@ -425,7 +425,8 @@ common::Status SaveInitializedTensors(
       session_options.config_options.GetConfigOrDefault(
           kOrtSessionOptionsUseDeviceAllocatorForInitializers, "0") == "1";
 
-  // Keep opened external-data file handles alive until after EndLoad() drains any queued work.
+  // Keep opened external-data file handles alive until the loaders drain their queued work.
+  [[maybe_unused]] constexpr size_t kMaxCachedExternalDataFiles = 64;
   utils::ExternalDataFileCache external_file_cache;
 #if !defined(ORT_MINIMAL_BUILD) || defined(ENABLE_D3D12_FILE_LOADING)
   ORT_RETURN_IF_ERROR(external_data_loader_mgr.BeginLoad());
@@ -572,6 +573,16 @@ common::Status SaveInitializedTensors(
       } else {
         // if in memory we were expecting to find it above.
         ORT_ENFORCE(!utils::HasExternalDataInMemory(tensor_proto));
+
+#if !defined(ORT_MINIMAL_BUILD)
+        // Queued loads hold raw file pointers, so handles can only be released after the loaders have drained.
+        // Flush periodically to keep the number of open files bounded for models with many external files.
+        if (external_file_cache.files.size() >= kMaxCachedExternalDataFiles) {
+          ORT_RETURN_IF_ERROR(external_data_loader_mgr.FinalizeLoad(
+              [&session_options]() { return session_options.IsLoadCancellationFlagSet(); }));
+          external_file_cache.files.clear();
+        }
+#endif
 
         // We need to deserialize the tensor proto into an OrtValue
         // using the preallocated buffer or allocator.
