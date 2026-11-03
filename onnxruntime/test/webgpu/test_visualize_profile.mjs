@@ -2,10 +2,12 @@
 // Licensed under the MIT License.
 
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 import { buildReport, laneOf, mergedDuration, renderReport } from './visualize_profile.mjs';
 
@@ -85,13 +87,12 @@ test('matches unprofiled workload and excludes warmup from baseline means', () =
   };
   assert.equal(buildReport(trace, capture, baseline).baseline.inference, 15);
   assert.throws(() => buildReport(trace, capture, { ...baseline, backend: 'Vulkan' }), /backend/);
-  assert.throws(() => buildReport(trace, capture, { ...baseline, trace: 'profile.json' }), /no-profile/);
+  assert.throws(() => buildReport(trace, capture, { ...baseline, trace: 'profile.json' }), /unprofiled/);
   assert.throws(() => buildReport(trace, {}, baseline), /model_sha256/);
   for (const [key, value] of Object.entries({
     capture_schema: 2,
     inputs_sha256: 'changed',
     session_options: { intraOpNumThreads: 1 },
-    ort_module: '/build/node',
   })) {
     assert.throws(() => buildReport(trace, { ...capture, [key]: value }, baseline), new RegExp(key));
     assert.equal(
@@ -120,10 +121,66 @@ test('standalone payload round trips safely and summary omits bulky event data',
     assert.equal(summary.events, undefined);
     assert.equal(summary.strings, undefined);
     assert.equal(summary.runs[0].indices, undefined);
+    assert.equal(summary.wholeTrace.indices, undefined);
+    assert.equal(report.title, 'trace.summary.json');
     await assert.rejects(renderReport(source, source), /overwrite/);
     if (process.platform === 'win32') await assert.rejects(renderReport(source, source.toUpperCase()), /overwrite/);
     await assert.rejects(renderReport(source, join(root, 'trace.html')), /overwrite/);
     assert.equal(JSON.parse(await readFile(source, 'utf8')).length, 2);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('raw application traces retain gaps and events outside individual inference runs', () => {
+  const raw = [
+    event('model_run', 100, 50),
+    gpu(110, 10),
+    event('WebGPU::Wait', 250, 10, { execution_side: 'cpu' }),
+    event('model_run', 300, 50),
+    gpu(320, 10),
+    gpu(370, 10),
+  ];
+  const report = buildReport(raw);
+  assert.deepEqual(
+    report.runs.map((run) => [run.start, run.duration, run.stage]),
+    [
+      [100, 50, 'inference'],
+      [300, 50, 'inference'],
+    ],
+  );
+  assert.equal(report.wholeTrace.start, 100);
+  assert.equal(report.wholeTrace.duration, 280);
+  assert.equal(report.wholeTrace.busy, 30);
+  assert.equal(report.wholeTrace.gap, 250);
+  assert.equal(report.wholeTrace.cpu[7], 10);
+  assert.equal(report.wholeTrace.indices.length, raw.length);
+  const withPoint = buildReport([...raw, gpu(380, 0)]);
+  assert.equal(withPoint.wholeTrace.indices.length, raw.length + 1);
+  assert.equal(
+    report.runs.reduce((total, run) => total + run.busy, 0),
+    20,
+  );
+});
+
+test('CLI processes a saved profiling log without metadata, models or runtime dependencies', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'ort-webgpu-raw-log-'));
+  try {
+    const source = join(root, 'application-profile.json');
+    const output = join(root, 'timeline.html');
+    await writeFile(source, JSON.stringify({ traceEvents: trace }));
+    const stdout = execFileSync(
+      process.execPath,
+      [fileURLToPath(new URL('./visualize_profile.mjs', import.meta.url)), source, '--output', output],
+      { cwd: root, env: { ...process.env, PATH: dirname(process.execPath) }, encoding: 'utf8', windowsHide: true },
+    );
+    assert.equal(JSON.parse(stdout).gpuEvents, 3);
+    const summary = JSON.parse(await readFile(join(root, 'timeline.summary.json'), 'utf8'));
+    assert.equal(summary.title, 'application-profile.json');
+    assert.equal(summary.runs.length, 1);
+    assert.equal(summary.wholeTrace.start, 90);
+    assert.equal(summary.wholeTrace.duration, 130);
+    assert.ok((await readFile(output, 'utf8')).includes('id="whole-trace"'));
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -101,18 +101,19 @@ export function buildReport(trace, metadata = {}, baseline = {}) {
       ];
     })
     .sort((a, b) => a[0] - b[0]);
-  const summaries = runs.map((run, index) => {
+  const summarize = (run, index, label = {}) => {
     const start = run.ts;
     const stop = start + run.dur;
+    const excludeEnd = index !== -1 && run.dur > 0;
     const indices = [];
     const busy = [];
     const programs = new Map();
     const cpu = Array(lanes.length).fill(0);
     for (let id = 0; id < compact.length; id++) {
       const event = compact[id];
-      if (event[0] > stop || (event[0] === stop && run.dur > 0)) break;
+      if (event[0] > stop || (event[0] === stop && excludeEnd)) break;
       const overlap = Math.min(stop, event[0] + event[1]) - Math.max(start, event[0]);
-      if (overlap < 0 || (overlap === 0 && (event[0] < start || (event[0] >= stop && run.dur > 0)))) continue;
+      if (overlap < 0 || (overlap === 0 && (event[0] < start || (event[0] >= stop && excludeEnd)))) continue;
       indices.push(id);
       if (event[2] === 10) {
         busy.push([Math.max(start, event[0]), Math.min(stop, event[0] + event[1])]);
@@ -125,7 +126,6 @@ export function buildReport(trace, metadata = {}, baseline = {}) {
         cpu[event[2]] += overlap;
       }
     }
-    const label = captures[index] ?? {};
     const busyUs = mergedDuration(busy);
     return {
       index,
@@ -142,15 +142,19 @@ export function buildReport(trace, metadata = {}, baseline = {}) {
       cpu,
       programs: [...programs.values()].sort((a, b) => b.us - a.us),
     };
-  });
+  };
+  const summaries = runs.map((run, index) => summarize(run, index, captures[index] ?? {}));
+  const traceStart = compact[0][0];
+  const traceEnd = compact.reduce((end, event) => Math.max(end, event[0] + event[1]), traceStart);
+  const wholeTrace = summarize({ ts: traceStart, dur: traceEnd - traceStart }, -1, { stage: 'whole trace' });
   if (Object.keys(baseline).length) {
-    if (baseline.trace) throw new Error('Baseline must be captured with --no-profile.');
+    if (baseline.trace) throw new Error('Baseline must describe unprofiled measurements (trace must be null).');
     for (const key of ['model_sha256', 'ort_version', 'backend', 'workload']) {
       if (metadata[key] === undefined || baseline[key] !== metadata[key]) {
         throw new Error(`Baseline capture is missing or differs in ${key}.`);
       }
     }
-    for (const key of ['capture_schema', 'inputs_sha256', 'session_options', 'ort_module']) {
+    for (const key of ['capture_schema', 'inputs_sha256', 'session_options']) {
       if (
         (metadata[key] !== undefined || baseline[key] !== undefined) &&
         JSON.stringify(metadata[key]) !== JSON.stringify(baseline[key])
@@ -177,6 +181,7 @@ export function buildReport(trace, metadata = {}, baseline = {}) {
     strings,
     events: compact,
     runs: summaries,
+    wholeTrace,
     syntheticRun,
     alignment: [...new Set(gpu.map((event) => event.args.clock_alignment))].sort(),
     baseline: baselineMeans,
@@ -191,7 +196,6 @@ export function buildReport(trace, metadata = {}, baseline = {}) {
       repeat: metadata.repeat,
       inputsSha256: metadata.inputs_sha256,
       sessionOptions: metadata.session_options,
-      ortModule: metadata.ort_module,
     },
   };
 }
@@ -206,7 +210,9 @@ export async function renderReport(tracePath, output, { metadata, baseline } = {
   }
   if (pathKey(output) === pathKey(summaryPath)) throw new Error('HTML and summary paths must differ.');
   const json = async (path) => (path ? JSON.parse(await readFile(path, 'utf8')) : {});
-  const report = buildReport(await json(tracePath), await json(metadata), await json(baseline));
+  const annotations = await json(metadata);
+  const report = buildReport(await json(tracePath), annotations, await json(baseline));
+  if (!annotations.model) report.title = basename(tracePath);
   const root = dirname(fileURLToPath(import.meta.url));
   const template = await readFile(resolve(root, 'profile_report.html'), 'utf8');
   const client = await readFile(resolve(root, 'profile_report.js'), 'utf8');
@@ -220,6 +226,7 @@ export async function renderReport(tracePath, output, { metadata, baseline } = {
     strings: undefined,
     events: undefined,
     runs: report.runs.map(({ indices, ...run }) => run),
+    wholeTrace: { ...report.wholeTrace, indices: undefined },
   };
   await writeFile(summaryPath, JSON.stringify(summary, null, 2));
   return { output: resolve(output), summary: resolve(summaryPath), report };
@@ -229,7 +236,7 @@ async function main() {
   const argv = process.argv.slice(2);
   if (!argv.length || argv.includes('--help')) {
     console.log(
-      'node visualize_profile.mjs <ORT-trace.json> --output <report.html> [--metadata capture.json] [--baseline capture.json]',
+      'node visualize_profile.mjs <ORT-trace.json> --output <report.html> [--metadata annotations.json] [--baseline baseline.json]',
     );
     return;
   }

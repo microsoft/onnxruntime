@@ -23,7 +23,7 @@
     const tooltip = $('tooltip');
     const labels = report.lanes;
     const { events, strings } = report;
-    let active = report.runs.find((run) => !run.warmup) ?? report.runs[0];
+    let active = report.wholeTrace;
     let filtered = [];
     let stage = null;
     let selected = null;
@@ -38,7 +38,8 @@
     const top = 43;
     const rowHeight = 34;
     const plotHeight = labels.length * rowHeight;
-    const label = (run) => `Run ${run.index} · ${run.stage}${run.warmup ? ' · warmup' : ''}`;
+    const label = (run) =>
+      run === report.wholeTrace ? 'Whole trace' : `Run ${run.index} · ${run.stage}${run.warmup ? ' · warmup' : ''}`;
     const bounds = () =>
       active
         ? [active.start - Math.max(1, active.duration * 0.008), active.start + Math.max(1, active.duration * 1.008)]
@@ -62,7 +63,7 @@
     $('capture-details').textContent = JSON.stringify({ ...report.capture, alignment: report.alignment }, null, 2);
     if (report.syntheticRun)
       $('measurement-note').prepend(
-        'No CPU model_run event was recorded; the selected interval covers GPU timestamps only. ',
+        'No CPU model_run event was recorded; inference run boundaries cannot be determined. ',
       );
     $('warmup').checked = !report.runs.some((run) => !run.warmup);
 
@@ -191,7 +192,11 @@
       ctx.restore();
       ctx.fillStyle = '#8799a6';
       ctx.font = '10px "Segoe UI", sans-serif';
-      ctx.fillText(`Run-relative axis · session origin ${ms(active.start)} ms`, left, height - 19);
+      ctx.fillText(
+        `${active === report.wholeTrace ? 'Trace' : 'Run'}-relative axis · profiler origin ${ms(active.start)} ms`,
+        left,
+        height - 19,
+      );
       $('view-label').textContent = `${ms(view[1] - view[0])} ms visible`;
     }
 
@@ -209,8 +214,8 @@
         $('event-hint').textContent = `${labels[event[2]][1]} · ${labels[event[2]][0]}`;
         for (const [key, value] of [
           ['Duration', `${ms(event[1])} ms (${event[1]} µs)`],
-          ['Start in run', `${ms(event[0] - active.start)} ms`],
-          ['Session timestamp', `${ms(event[0])} ms`],
+          ['Start in selected interval', `${ms(event[0] - active.start)} ms`],
+          ['Profiler timestamp', `${ms(event[0])} ms`],
           ['Process / thread', `${event[5] ?? '—'} / ${event[6] ?? '—'}`],
         ]) {
           $('event-times').append(element('dt', key), element('dd', value));
@@ -276,7 +281,10 @@
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, width, height);
       overviewBoxes = [];
-      if (!filtered.length) return;
+      if (!filtered.length) {
+        $('overview-label').textContent = 'No runs match this filter.';
+        return;
+      }
       const max = filtered.reduce((value, run) => Math.max(value, run.duration), 1);
       const slot = (width - 32) / filtered.length;
       for (let index = 0; index < filtered.length; index++) {
@@ -309,7 +317,8 @@
       $('metric-gpu').textContent = ms(run.busy);
       $('metric-gap').textContent = ms(run.gap);
       $('run-caption').textContent = label(run);
-      $('gpu-caption').textContent = `${percent(run.busy, run.duration)}% of run · compute interval union`;
+      $('gpu-caption').textContent =
+        `${percent(run.busy, run.duration)}% of selected interval · compute interval union`;
       const baseline = Object.hasOwn(report.baseline, run.stage) ? report.baseline[run.stage] : undefined;
       $('metric-baseline').textContent = baseline === undefined ? '—' : baseline.toFixed(2);
       $('baseline-caption').textContent =
@@ -317,6 +326,7 @@
           ? 'No separate unprofiled capture provided'
           : `${run.stage} · separate capture, no profiling`;
       $('run-select').value = String(run.index);
+      $('whole-trace').setAttribute('aria-pressed', String(run === report.wholeTrace));
       for (const item of $('run-list').children)
         item.setAttribute('aria-current', item.dataset.run === String(run.index));
       $('previous').disabled = filtered.indexOf(run) <= 0;
@@ -332,10 +342,11 @@
       filtered = report.runs.filter(
         (run) => (stage === null || run.stage === stage) && ($('warmup').checked || !run.warmup),
       );
-      for (const id of ['run-select', 'search', 'zoom-in', 'zoom-out', 'reset', 'export-image'])
-        $(id).disabled = !filtered.length;
       $('run-list').replaceChildren();
       $('run-select').replaceChildren();
+      const wholeOption = element('option', 'Whole trace');
+      wholeOption.value = '-1';
+      $('run-select').append(wholeOption);
       for (const run of filtered) {
         const button = element('button', undefined, 'run-item');
         button.dataset.run = String(run.index);
@@ -358,21 +369,15 @@
         $('run-select').append(option);
       }
       if (!filtered.length) {
-        active = null;
-        tooltip.style.display = 'none';
-        updateMatches();
-        inspect(null);
-        for (const id of ['metric-run', 'metric-gpu', 'metric-gap', 'metric-baseline']) $(id).textContent = '—';
-        for (const id of ['run-caption', 'gpu-caption', 'baseline-caption', 'overview-label']) $(id).textContent = '';
-        $('programs').replaceChildren();
-        $('cpu-steps').replaceChildren();
         $('run-list').append(element('p', 'No runs match this filter.', 'empty'));
-        $('previous').disabled = true;
-        $('next').disabled = true;
-        drawOverview();
-        return;
       }
-      selectRun(filtered.includes(active) ? active : filtered[0]);
+      selectRun(
+        active === report.wholeTrace || !filtered.length
+          ? report.wholeTrace
+          : filtered.includes(active)
+            ? active
+            : filtered[0],
+      );
     }
 
     const point = (event) => {
@@ -449,9 +454,10 @@
       if (box) selectRun(box.run);
     });
     $('run-select').addEventListener('change', () => {
-      const run = filtered.find((item) => item.index === Number($('run-select').value));
+      const run = [report.wholeTrace, ...filtered].find((item) => item.index === Number($('run-select').value));
       if (run) selectRun(run);
     });
+    $('whole-trace').addEventListener('click', () => selectRun(report.wholeTrace));
     const nextRun = (offset) => {
       const run = filtered[filtered.indexOf(active) + offset];
       if (run) selectRun(run);
@@ -528,7 +534,7 @@
       if (!active) return;
       const index = active.index;
       canvas.toBlob((blob) => {
-        if (blob) download(blob, `webgpu-run-${index}.png`);
+        if (blob) download(blob, index === -1 ? 'webgpu-trace.png' : `webgpu-run-${index}.png`);
       });
     });
     $('export-summary').addEventListener('click', () => {
@@ -537,6 +543,7 @@
         alignment: report.alignment,
         baseline: report.baseline,
         runs: report.runs.map(({ indices, ...run }) => run),
+        wholeTrace: { ...report.wholeTrace, indices: undefined },
       };
       download(new Blob([JSON.stringify(summary, null, 2)], { type: 'application/json' }), 'webgpu-summary.json');
     });

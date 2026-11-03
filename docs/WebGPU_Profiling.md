@@ -1,7 +1,8 @@
 # WebGPU CPU and GPU timelines
 
-Enable ONNX Runtime profiling through the native Node.js capture tool described below,
-or through the usual profiling API in your application.
+Enable ONNX Runtime profiling in the application that runs your workload, including applications
+using ONNX Runtime GenAI. Save the profiling JSON, then process it offline with Node.js to generate
+an interactive webpage. The reporting script does not load models or run inference.
 
 Open the resulting JSON trace in Perfetto or a Chrome trace viewer. GPU dispatch events use the same
 microsecond time origin as the CPU events. On Windows D3D12 with bundled Dawn and an ORT-created device,
@@ -34,78 +35,95 @@ profiled wall times should not be treated as normal inference throughput.
 CPU timing gates are inline: disabled execution skips clock reads and event-recording calls and
 allocates no event data.
 
-## Capture and visualize a model with Node.js
+## Enable profiling in the application
 
-The generic capture runner and dependency-free report generator require Node.js 20 or newer. Capture requires
-an `onnxruntime-node` package built with native WebGPU and this change; the reporting tool needs no
-ORT package. The default package path is this checkout's `js/node` directory. Use `--ort-module`
-to select another local native Node package. A CPU-only package fails explicitly.
+Use the application's existing generation loop, inputs, provider configuration and graph-capture
+settings. Its ORT runtime must contain this WebGPU profiling change. Console/verbose logging is
+separate from profiling: the reporting tool consumes ORT profiling JSON files.
 
-For source builds, follow the normal [Node.js binding build instructions](../js/node/README.md).
-The existing ORT build toolchain is unchanged; capture, report generation and viewing require no
-Python installation. An external Dawn API-only package still requires a host that supplies a
-compatible Dawn proc table in the same process. A self-hosted capture needs bundled Dawn.
-
-Describe every model input in `inputs.json`, with a tensor type, dimensions and either a flat data
-array or `data_file` containing raw little-endian tensor bytes. File paths in the manifest are relative
-to the manifest's directory. For example, an Abs model with float32 input `x` of shape `[2, 2]` uses:
+For ONNX Runtime GenAI, add a profiling file prefix to the existing
+`model.decoder.session_options` object in `genai_config.json`. This fragment shows the field to merge;
+keep the rest of the model configuration:
 
 ```json
 {
-  "x": { "type": "float32", "dims": [2, 2], "data": [-1, 2, -3, 4] }
+  "model": {
+    "decoder": {
+      "session_options": {
+        "enable_profiling": "webgpu_profile"
+      }
+    }
+  }
 }
 ```
 
-Supported numeric types are float16/32/64, signed/unsigned 8/16/32/64-bit integers and bool. Inline
-float16 values are raw half-precision bit patterns. Use decimal strings for 64-bit integers outside
-JavaScript's safe integer range; bool values are 0 or 1. Scalar dimensions are `[]`. Strings, sequences
-and non-tensor values are unsupported. Inputs must exactly match the model's required input names.
+Run the application normally, then release the generator/model sessions cleanly so ORT finishes
+writing the profile. Session-level profiling retains the intervals between inference runs and
+produces a file named like `webgpu_profile_<timestamp>.json` per profiled session.
+For a direct ORT C++ application, use the existing `Ort::SessionOptions::EnableProfiling` API before
+session creation and `Ort::Session::EndProfilingAllocated` or session destruction to finish the file.
+
+GenAI versions with the `enable_profiling` runtime option also support enabling profiling for selected
+generation steps. In C++, use the existing generator's `SetRuntimeOption("enable_profiling", "1")`
+to enable it, or supply a custom file prefix instead of `"1"`; use `"0"` to disable it. This requires
+ORT 1.25 or newer and produces a separate profile for each subsequent inference run. See
+[GenAI runtime options](https://github.com/microsoft/onnxruntime-genai/blob/main/docs/RuntimeOptions.md).
+Use session-level profiling when you need to inspect gaps between generation steps.
+
+## Process the saved log with Node.js
+
+The dependency-free reporting script requires Node.js 20 or newer. It needs only the saved JSON
+trace and the checked-in report templates; no model, tokenizer, input manifest, Python, GenAI or
+`onnxruntime-node` installation is needed for post-processing:
 
 ```powershell
-node onnxruntime/test/webgpu/profile_model.mjs model.onnx --inputs inputs.json --output-dir build/profile --warmup 1 --repeat 3
-node onnxruntime/test/webgpu/visualize_profile.mjs <generated-trace.json> --metadata build/profile/capture.json --output build/profile/timeline.html
+node onnxruntime/test/webgpu/visualize_profile.mjs webgpu_profile_<timestamp>.json --output build/profile/timeline.html
 ```
 
-The capture output directory must be new. It contains the original ORT JSON trace and `capture.json`
-with run timings, warmup labels, model/input hashes, selected module/version/backend/session settings,
-and first-measured-run output hashes/shapes/samples. Hashing and output validation happen outside the
-measured interval. `wall_ms` includes Node scheduling, inference and transfer of outputs to CPU;
-initialization, output checks/disposal and input-file loading are excluded. This runner repeats fixed
-inputs, uses CPU input/output tensors and disables CPU fallback. It does not change model graphs,
-provider defaults, batching or graph-capture settings. `--intra-op-threads` defaults to 1; `--backend`
-selects D3D12 (default), Vulkan or Metal. Only Windows D3D12 was executed locally.
+This writes self-contained `timeline.html` and `timeline.summary.json`, preserving the original
+trace. Open the HTML in a current Chromium browser. If local-file viewing is restricted, serve the
+output with a local HTTP server. The webpage makes no network requests.
 
-Generate a separate capture with identical inputs/settings and `--no-profile` for ordinary wall times:
+The default **Whole trace** view aligns all recorded CPU major steps and GPU dispatches on one axis,
+including gaps between inference runs and events outside individual `model_run` intervals. Select a
+run to inspect it, search for an operator/kernel, click events for timings/shapes, drag to zoom,
+Shift-drag to pan, or export the timeline PNG/summary JSON. Whole trace always includes all recorded
+runs; stage/warmup filters affect the run list and comparison.
+
+Both ORT event arrays and objects containing `traceEvents` are accepted. GPU events must contain the
+WebGPU `clock_alignment` field described above. Process each session-level or run-level file separately:
+their profiler time origins can differ, so concatenating files would not preserve alignment.
+
+No additional metadata is required. Optional `--metadata annotations.json` can label runs with
+application-known stages or warmup flags; its `runs` array must match the trace's `model_run` count
+and order. The tool does not guess prefill/decode boundaries or warmup from kernel names. For example:
+
+```json
+{
+  "runs": [
+    { "stage": "prefill", "warmup": false },
+    { "stage": "decode", "warmup": false }
+  ]
+}
+```
+
+An optional `--baseline baseline.json` displays separate unprofiled application measurements. Both
+metadata files must identify the same `model_sha256`, `ort_version`, `backend` and `workload`;
+baseline `trace` must be null and its `runs` supply `stage`, `warmup` and `wall_ms`. Optional input
+hashes/session options are compared when present. Model weights, workload equivalence and machine
+conditions must be verified by the application.
+
+ORT profiling records ORT execution and WebGPU CPU work. GenAI work outside ORT, such as tokenization,
+sampling and application scheduling, has no named CPU span here; it can appear as a gap between runs.
+GPU timestamps cover compute dispatches, not every transfer or other GPU workload. Profiling adds
+query, trace-collection and synchronization overhead, so time outside kernels is not an unprofiled
+GPU-utilization measurement. Measure throughput separately with profiling off.
+
+Run the Node post-processing tests without an ORT build:
 
 ```powershell
-node onnxruntime/test/webgpu/profile_model.mjs model.onnx --inputs inputs.json --output-dir build/baseline --warmup 1 --repeat 3 --no-profile
-node onnxruntime/test/webgpu/visualize_profile.mjs <generated-trace.json> --metadata build/profile/capture.json --baseline build/baseline/capture.json --output build/profile/timeline.html
+node --test onnxruntime/test/webgpu/test_visualize_profile.mjs
 ```
-
-Baseline matching checks the model-file hash, input contents/types/shapes, ORT version/module, backend,
-workload and session options. Warmup is excluded from baseline means. Keep external model weight files
-and machine conditions identical; these are not verified by those hashes. With profiling disabled,
-the runner neither enables nor ends profiling and creates no trace. This tool adds no production
-runtime work.
-
-The self-contained HTML viewer has aligned CPU/GPU lanes, run and warmup filters, search, an event
-inspector, zoom/pan, program summaries and PNG/JSON exports. Filters use the stages present in the
-capture metadata; the generic runner labels runs `inference`. Open it in a current Chromium browser.
-If local-file viewing is restricted, serve the output with a local HTTP server. For other ORT traces,
-omit `--metadata`; GPU events must contain WebGPU `clock_alignment` information. Profiling adds query,
-trace-collection and synchronization overhead, so its timeline gaps are not an unprofiled utilization
-measurement.
-
-Run the Node tests, including the native GPU smoke check, with:
-
-```powershell
-$env:ORT_WEBGPU_NODE_MODULE = (Resolve-Path js/node).Path
-node --test onnxruntime/test/webgpu/test_profile_model.mjs onnxruntime/test/webgpu/test_visualize_profile.mjs
-```
-
-Without that environment variable, the native test is explicitly skipped; the remaining tests require
-no ORT build. The native test checks Abs output with CPU fallback disabled, profiling off/on/off,
-multiple runs and both GPU timestamps and WebGPU CPU spans.
 
 ## Test an external Dawn host
 

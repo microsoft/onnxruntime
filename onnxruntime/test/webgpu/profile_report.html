@@ -738,10 +738,11 @@
               <div class="tools">
                 <button id="zoom-in" class="icon-button" aria-label="Zoom in">+</button>
                 <button id="zoom-out" class="icon-button" aria-label="Zoom out">−</button
-                ><button id="reset">Fit run</button>
+                ><button id="reset">Fit interval</button>
               </div>
             </div>
             <div class="timeline-nav">
+              <button id="whole-trace" aria-pressed="true">Whole trace</button>
               <button id="previous" class="icon-button" aria-label="Previous run">←</button>
               <select id="run-select" aria-label="Select inference run"></select
               ><button id="next" class="icon-button" aria-label="Next run">→</button>
@@ -781,7 +782,7 @@
               <div class="panel-head">
                 <div>
                   <h2>GPU programs</h2>
-                  <p>Selected run · click a program to highlight it</p>
+                  <p>Selected interval · click a program to highlight it</p>
                 </div>
               </div>
               <div id="programs" class="programs"></div>
@@ -790,7 +791,7 @@
               <div class="panel-head">
                 <div>
                   <h2>CPU major steps</h2>
-                  <p>Selected run · elapsed time inside each phase</p>
+                  <p>Selected interval · elapsed time inside each phase</p>
                 </div>
               </div>
               <div id="cpu-steps" class="cpu-steps"></div>
@@ -815,16 +816,17 @@
       <p class="footnote" id="measurement-note">
         Profiling changes timing: timestamp queries, trace collection and readback add overhead. Gaps can include CPU
         preparation, transfers, scheduling and profiling work. Only compute dispatches have GPU timestamps. Use an
-        unprofiled capture for throughput. All lanes use the recorded ORT session origin; the default axis shows time
-        relative to the selected run. Baseline matching checks model hash, ORT version, backend and workload settings;
-        new captures also compare input hashes and session options. Machine conditions are not verified.
+        unprofiled application run for throughput. All lanes use the recorded ORT profiler origin. Whole trace includes
+        gaps between inference runs; run filters affect the run list and comparison. Host application work outside ORT
+        is not instrumented by this trace. Optional baseline matching checks model hash, ORT version, backend and
+        workload settings, plus input hashes and session options when supplied. Machine conditions are not verified.
       </p>
       <details>
-        <summary>Capture details &amp; keyboard shortcuts</summary>
+        <summary>Trace details &amp; keyboard shortcuts</summary>
         <pre id="capture-details"></pre>
         <p class="footnote">
-          ← / → Previous / next run · + / − Zoom · 0 Fit run · / Search · Escape Clear selection/search. All processing
-          stays in this page.
+          ← / → Previous / next run · + / − Zoom · 0 Fit interval · / Search · Escape Clear selection/search. All
+          processing stays in this page.
         </p>
       </details>
     </main>
