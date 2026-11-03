@@ -37,6 +37,7 @@ def convert_model(source: Path, output: Path) -> dict:
 
     output.parent.mkdir(parents=True, exist_ok=True)
     matrices = {}
+    written = set()
     original_bytes = t8_bytes = count = 0
     with data_path.open("xb") as data:
 
@@ -49,6 +50,7 @@ def convert_model(source: Path, output: Path) -> dict:
             tensor.ClearField("raw_data")
             for field in ("float_data", "int32_data", "int64_data", "double_data", "uint64_data"):
                 tensor.ClearField(field)
+            written.add(tensor.name)
 
         for node in model.graph.node:
             if node.domain != "com.microsoft" or node.op_type != "MatMulNBits":
@@ -117,8 +119,10 @@ def convert_model(source: Path, output: Path) -> dict:
         del model.graph.node[:]
         model.graph.node.extend(reversed(kept))
         tensors = [tensor for name, tensor in initializers.items() if name in live]
+        # Copy every retained source tensor into the new data file; a source data file can share its
+        # basename with the output data file, so the location string alone does not identify our writes.
         for tensor in tensors:
-            if not tensor.external_data or external_data_helper.ExternalDataInfo(tensor).location != data_path.name:
+            if tensor.name not in written:
                 store(tensor)
         del model.graph.initializer[:]
         model.graph.initializer.extend(tensors)

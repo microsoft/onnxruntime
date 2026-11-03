@@ -169,6 +169,55 @@ class T8ConversionTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "never overwrites"):
                 convert_model(source, output)
 
+    def test_copies_retained_tensors_when_data_file_names_match(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bias = np.arange(7, dtype=np.float32) - 3
+            tensors = [
+                numpy_helper.from_array(np.full((7, 1, 32), 0x24, dtype=np.uint8), "B"),
+                numpy_helper.from_array(np.arange(1, 8, dtype=np.float32)[:, None] / 16, "S"),
+                numpy_helper.from_array(np.full((7, 1), 0x55, dtype=np.uint8), "Z"),
+                numpy_helper.from_array(bias, "bias"),
+            ]
+            nodes = [
+                helper.make_node(
+                    "MatMulNBits",
+                    ["A", "B", "S", "Z"],
+                    ["Y0"],
+                    domain="com.microsoft",
+                    K=128,
+                    N=7,
+                    bits=2,
+                    block_size=128,
+                ),
+                helper.make_node("Add", ["Y0", "bias"], ["Y"]),
+            ]
+            graph = helper.make_graph(
+                nodes,
+                "test",
+                [helper.make_tensor_value_info("A", onnx.TensorProto.FLOAT, [1, 128])],
+                [helper.make_tensor_value_info("Y", onnx.TensorProto.FLOAT, [1, 7])],
+                tensors,
+            )
+            model = helper.make_model(
+                graph,
+                opset_imports=[helper.make_opsetid("", 21), helper.make_opsetid("com.microsoft", 1)],
+                ir_version=10,
+            )
+            (root / "q2").mkdir()
+            source, output = root / "q2" / "model.onnx", root / "t8" / "model.onnx"
+            onnx.save_model(
+                model,
+                source,
+                save_as_external_data=True,
+                all_tensors_to_one_file=True,
+                location="model.onnx.data",
+                size_threshold=0,
+            )
+            convert_model(source, output)
+            values = {tensor.name: numpy_helper.to_array(tensor) for tensor in onnx.load(output).graph.initializer}
+            np.testing.assert_array_equal(values["bias"], bias)
+
     def test_validates_zero_points_of_cached_matrices(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
