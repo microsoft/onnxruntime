@@ -1478,14 +1478,12 @@ class TestInferenceSession(unittest.TestCase):
         ptr = ortvalue._ortvalue.data_ptr()
 
         dlp = ortvalue._ortvalue.to_dlpack()
-        self.assertFalse(C.is_dlpack_uint8_tensor(dlp))
         ortvalue2 = C.OrtValue.from_dlpack(dlp)
         self.assertEqual(ptr, ortvalue2.data_ptr())
         new_array = ortvalue2.numpy()
         np.testing.assert_equal(numpy_arr_input, new_array)
 
         dlp = ortvalue._ortvalue.__dlpack__()
-        self.assertFalse(C.is_dlpack_uint8_tensor(dlp))
         ortvalue2 = C.OrtValue.from_dlpack(dlp)
         self.assertEqual(ptr, ortvalue2.data_ptr())
         new_array = ortvalue2.numpy()
@@ -1715,7 +1713,6 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(ortvalue_src.data_ptr(), ortvalue_dst.data_ptr())
 
         capsule = ortvalue_src.__dlpack__()
-        self.assertFalse(C.is_dlpack_uint8_tensor(capsule))
         from_capsule = onnxrt.OrtValue.from_dlpack(capsule)
         self.assertEqual(from_capsule.numpy().dtype, np.bool_)
         self.assertEqual(ortvalue_src.data_ptr(), from_capsule.data_ptr())

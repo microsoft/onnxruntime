@@ -53,14 +53,12 @@ class TestOrtValue(unittest.TestCase):
         ptr = ortvalue._ortvalue.data_ptr()
 
         dlp = ortvalue._ortvalue.to_dlpack()
-        self.assertFalse(C.is_dlpack_uint8_tensor(dlp))
         ortvalue2 = C_OrtValue.from_dlpack(dlp)
         self.assertEqual(ptr, ortvalue2.data_ptr())
         new_array = ortvalue2.numpy()
         assert_almost_equal(numpy_arr_input, new_array)
 
         dlp = ortvalue._ortvalue.__dlpack__()
-        self.assertFalse(C.is_dlpack_uint8_tensor(dlp))
         ortvalue2 = C_OrtValue.from_dlpack(dlp)
         self.assertEqual(ptr, ortvalue2.data_ptr())
         new_array = ortvalue2.numpy()
@@ -76,14 +74,12 @@ class TestOrtValue(unittest.TestCase):
         ptr = ortvalue._ortvalue.data_ptr()
 
         dlp = ortvalue._ortvalue.to_dlpack()
-        self.assertFalse(C.is_dlpack_uint8_tensor(dlp))
         ortvalue2 = C_OrtValue.from_dlpack(dlp)
         self.assertEqual(ptr, ortvalue2.data_ptr())
         new_array = ortvalue2.numpy()
         assert_almost_equal(numpy_arr_input, new_array)
 
         dlp = ortvalue._ortvalue.__dlpack__()
-        self.assertFalse(C.is_dlpack_uint8_tensor(dlp))
         ortvalue2 = C_OrtValue.from_dlpack(dlp)
         self.assertEqual(ptr, ortvalue2.data_ptr())
         new_array = ortvalue2.numpy()
@@ -101,7 +97,6 @@ class TestOrtValue(unittest.TestCase):
         for a in narrays:
             ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(a)
             vect.push_back(ortvalue._ortvalue)
-        self.assertEqual(len(vect.bool_tensor_indices()), 0)
         self.assertEqual(len(vect), 2)
         for i, (ov, ar) in enumerate(zip(vect, narrays, strict=False)):
             ovar = ov.numpy()
@@ -117,10 +112,10 @@ class TestOrtValue(unittest.TestCase):
         for a in narrays:
             ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(a)
             vect.push_back(ortvalue._ortvalue)
-        self.assertEqual(vect.bool_tensor_indices(), [0, 1])
         self.assertEqual(len(vect), 2)
         for ov, ar in zip(vect, narrays, strict=False):
             ovar = ov.numpy()
+            self.assertEqual(ovar.dtype, np.bool_)
             assert_almost_equal(ar, ovar)
 
     def OrtValueVectorDlPackOrtValue(self, my_to_tensor, tensor_type, device, dtype=np.float32):

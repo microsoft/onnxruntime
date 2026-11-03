@@ -580,15 +580,6 @@ void addOrtValueMethods(pybind11::module& m) {
       .def("__len__", [](const std::vector<OrtValue>& v) { return v.size(); })
       .def("__iter__", [](const std::vector<OrtValue>& v) { return py::make_iterator(v.cbegin(), v.cend()); }, py::keep_alive<0, 1>())
       .def("__getitem__", [](const std::vector<OrtValue>& v, const size_t idx) { return v.at(idx); }, py::keep_alive<0, 1>())
-      .def("bool_tensor_indices", [](std::vector<OrtValue>* v) -> std::vector<int64_t> {
-            std::vector<int64_t> indices;
-            for (size_t i = 0; i < v->size(); ++i) {
-              if (GetTensorProtoType((*v)[i]) == ONNX_NAMESPACE::TensorProto_DataType_BOOL) {
-                indices.push_back(static_cast<int64_t>(i));
-              }
-            }
-            return indices; },
-           "Returns the indices of every boolean tensor in this vector of OrtValue.")
 #if defined(ENABLE_DLPACK)
       .def("dlpack_at", [](std::vector<OrtValue>* v, const size_t idx) {
         ORT_ENFORCE(!IsWebGpuBuffer(v->at(idx)), "DLPack export is not supported for WebGPU OrtValues.");
@@ -672,14 +663,6 @@ for every transferred tensor.
 #endif
       ;
 
-#if defined(ENABLE_DLPACK)
-  m.def(
-      "is_dlpack_uint8_tensor", [](py::capsule cap) -> bool {
-        DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)cap.get_pointer();
-        return dlmanaged_tensor->dl_tensor.dtype.code == DLDataTypeCode::kDLUInt && dlmanaged_tensor->dl_tensor.dtype.bits == 8;
-      },
-      "Tells if a DLPack structure is a uint8 tensor.");
-#endif
 }
 
 }  // namespace python
