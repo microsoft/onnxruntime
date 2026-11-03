@@ -158,6 +158,8 @@ class FusionAttention(Fusion):
                 and isinstance(head_size, np.ndarray)
                 and head_size.size == 1
             ):
+                if num_heads[0] == -1 and self.num_heads > 0 and self.hidden_size == self.num_heads * head_size[0]:
+                    return self.num_heads, self.hidden_size
                 return num_heads[0], num_heads[0] * head_size[0]
 
         return self.num_heads, self.hidden_size
@@ -1072,6 +1074,8 @@ class FusionAttention(Fusion):
 
         # Note that Cast might be removed by OnnxRuntime so we match two patterns here.
         mask_nodes = None
+        is_transformers_5_mask = False
+        is_transformers_5_no_mask = False
         add_qk_str = ""
         if is_distill:
             _, mask_nodes, _ = self.model.match_parent_paths(
@@ -1100,7 +1104,7 @@ class FusionAttention(Fusion):
         elif is_no_mask_attention:
             pass
         else:
-            _, mask_nodes, _ = self.model.match_parent_paths(
+            mask_path, mask_nodes, _ = self.model.match_parent_paths(
                 add_qk,
                 [
                     (["Mul", "Sub", "Cast", "Unsqueeze", "Unsqueeze"], [None, 0, 1, 0, 0]),
@@ -1108,14 +1112,41 @@ class FusionAttention(Fusion):
                     # The following two patterns are for SDPA.
                     (["Where", "Cast", "Sub", "Expand", "Unsqueeze", "Unsqueeze"], [None, 0, 0, 1, 0, 0]),
                     (["Where", "Cast", "Sub", "Cast", "Expand", "Unsqueeze", "Unsqueeze"], [None, 0, 0, 1, 0, 0, 0]),
+                    # Transformers 5 eager attention mask.
+                    (
+                        ["Where", "Expand", "And", "Reshape", "Reshape", "Gather", "Flatten"],
+                        [None, 0, 0, 1, 0, 0, 0],
+                    ),
+                    # Transformers 5 eager attention without an attention_mask input.
+                    (
+                        [
+                            "Where",
+                            "Expand",
+                            "GreaterOrEqual",
+                            "Unsqueeze",
+                            "Unsqueeze",
+                            "Unsqueeze",
+                            "Range",
+                            "Gather",
+                            "Shape",
+                        ],
+                        [None, 0, 0, 0, 0, 0, 0, 1, 0],
+                    ),
                 ],
                 output_name_to_node,
             )
-        if not is_no_mask_attention and mask_nodes is None:
+            is_transformers_5_mask = mask_path == 4
+            is_transformers_5_no_mask = mask_path == 5
+        if not is_no_mask_attention and not is_transformers_5_no_mask and mask_nodes is None:
             logger.debug("fuse_attention: failed to match mask path")
             return
 
-        if not is_no_mask_attention and len(mask_nodes) > 1:
+        if (
+            not is_no_mask_attention
+            and not is_transformers_5_no_mask
+            and len(mask_nodes) > 1
+            and not is_transformers_5_mask
+        ):
             _, mul_val = self.model.get_constant_input(mask_nodes[0])
             # The mask value shall be a float scalar (usually is the lowest float value).
             if (
@@ -1128,7 +1159,11 @@ class FusionAttention(Fusion):
                 self.mask_filter_value = mul_val.item()
 
         if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_k.input[0] == root_input:
-            mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0]) if not is_no_mask_attention else None
+            mask_index = (
+                self.attention_mask.process_mask(mask_nodes[-1].input[0])
+                if not is_no_mask_attention and not is_transformers_5_no_mask
+                else None
+            )
 
             attention_last_node = reshape_qkv if einsum_node is None else transpose_qkv
 

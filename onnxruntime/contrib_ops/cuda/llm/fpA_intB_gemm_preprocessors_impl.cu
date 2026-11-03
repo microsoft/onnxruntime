@@ -6,6 +6,7 @@
 #include "core/common/common.h"
 #include "core/common/safeint.h"
 #include <cuda_runtime_api.h>
+#include <algorithm>
 
 namespace onnxruntime::llm {
 namespace kernels {
@@ -112,8 +113,9 @@ void permute_B_rows_on_gpu(
   // blockDim.y should be permutation_tile_size.
   // threadIdx.x will cooperatively process vector columns.
 
-  int threads_per_block_y = permutation_tile_size;  // 16 or 32, depending on the quantization type
-  int threads_per_block_x = 32;                     // Tunable: number of vector columns processed by a warp/blockDim.x threads
+  int threads_per_block_y = permutation_tile_size;  // 16, 32 or 64, depending on the quantization type
+  // The 2-bit tile is 64 rows, so cap the x extent to stay within the 1024-thread block limit.
+  int threads_per_block_x = std::min(32, 1024 / threads_per_block_y);
 
   dim3 blockDim(threads_per_block_x, threads_per_block_y, 1);
 
@@ -139,7 +141,7 @@ constexpr int SUBBYTE_TRANSPOSE_BLOCK_ROWS = 8;      // Affects how many rows of
 
 template <int BITS_PER_ELT>
 __global__ void subbyte_transpose_kernel(int8_t* output, const int8_t* input, int num_rows_in, int num_cols_in) {
-  static_assert(BITS_PER_ELT == 8 || BITS_PER_ELT == 4, "BITS_PER_ELT must be 8 or 4");
+  static_assert(BITS_PER_ELT == 8 || BITS_PER_ELT == 4 || BITS_PER_ELT == 2, "BITS_PER_ELT must be 8, 4 or 2");
 
   constexpr int ELTS_PER_BYTE = 8 / BITS_PER_ELT;
 
@@ -215,13 +217,14 @@ __global__ void subbyte_transpose_kernel(int8_t* output, const int8_t* input, in
             // Direct byte write for 8-bit elements.
             // Output has num_cols_in rows. Output byte stride is num_rows_in bytes.
             output[gmem_write_row_elt * num_rows_in + gmem_write_col_elt] = source_byte_from_smem;
-          } else if constexpr (BITS_PER_ELT == 4) {
-            uint8_t nibble = (source_byte_from_smem >> (k * 4)) & 0x0F;
+          } else {
+            // Sub-byte element: read-modify-write the destination byte with an atomicOr on the
+            // enclosing 4-byte word, so the output buffer must be zeroed beforehand.
+            uint8_t field = (source_byte_from_smem >> (k * BITS_PER_ELT)) & ((1u << BITS_PER_ELT) - 1u);
 
-            // Calculate precise byte and nibble index in the output byte
             int output_matrix_num_byte_cols = num_rows_in / ELTS_PER_BYTE;
             int gmem_dest_col_byte = gmem_write_col_elt / ELTS_PER_BYTE;
-            int gmem_dest_col_nibble_idx = gmem_write_col_elt % ELTS_PER_BYTE;
+            int gmem_dest_col_field_idx = gmem_write_col_elt % ELTS_PER_BYTE;
 
             int8_t* p_target_byte = &output[gmem_write_row_elt * output_matrix_num_byte_cols + gmem_dest_col_byte];
 
@@ -230,9 +233,8 @@ __global__ void subbyte_transpose_kernel(int8_t* output, const int8_t* input, in
             uint32_t* p_aligned_word = (uint32_t*)(addr_val & ~3ULL);  // Align address down to nearest 4-byte boundary
             uint32_t byte_offset_in_word = addr_val & 3ULL;            // Find byte's offset within this 4-byte word (0,1,2,3)
 
-            // Calculate the shift for the nibble within the 4-byte aligned word
-            uint32_t shift_in_aligned_word = (byte_offset_in_word * 8) + (gmem_dest_col_nibble_idx * 4);
-            uint32_t value_to_or = ((uint32_t)nibble) << shift_in_aligned_word;
+            uint32_t shift_in_aligned_word = (byte_offset_in_word * 8) + (gmem_dest_col_field_idx * BITS_PER_ELT);
+            uint32_t value_to_or = ((uint32_t)field) << shift_in_aligned_word;
 
             atomicOr(p_aligned_word, value_to_or);
           }
@@ -266,9 +268,9 @@ void subbyte_transpose_cuda(
       // Number of tiles needed for input rows (in elements)
       (num_rows_in + SUBBYTE_TRANSPOSE_TILE_DIM_ELTS - 1) / SUBBYTE_TRANSPOSE_TILE_DIM_ELTS);
 
-  // IMPORTANT: For atomicOr to work correctly by combining nibbles,
+  // IMPORTANT: For atomicOr to work correctly by combining sub-byte fields,
   // the output buffer must be zero-initialized before launching the kernel.
-  if (BITS_PER_ELT == 4) {
+  if (BITS_PER_ELT < 8) {
     size_t output_num_bytes = static_cast<size_t>(num_cols_in) * num_rows_in * BITS_PER_ELT / 8;
     cudaMemsetAsync(transposed_quantized_tensor_out, 0, output_num_bytes, stream);
   }
@@ -278,6 +280,9 @@ void subbyte_transpose_cuda(
         transposed_quantized_tensor_out, quantized_tensor_in, num_rows_in, num_cols_in);
   } else if (BITS_PER_ELT == 8) {
     subbyte_transpose_kernel<8><<<gridDim, blockDim, 0, stream>>>(
+        transposed_quantized_tensor_out, quantized_tensor_in, num_rows_in, num_cols_in);
+  } else if (BITS_PER_ELT == 2) {
+    subbyte_transpose_kernel<2><<<gridDim, blockDim, 0, stream>>>(
         transposed_quantized_tensor_out, quantized_tensor_in, num_rows_in, num_cols_in);
   } else {
     ORT_THROW("Invalid quant_type for CUDA subbyte_transpose.");
@@ -482,6 +487,36 @@ __global__ void add_bias_and_interleave_int4s_inplace_kernel(uint32_t* tensor, s
   }
 }
 
+/**
+ * @brief CUDA kernel to add bias and interleave an INT2 tensor in place.
+ *
+ * The 2-bit analogue of add_bias_and_interleave_int4s_inplace_kernel: each thread handles a
+ * 32-bit word (16 int2 elements), maps signed [-2,1] to unsigned [0,3] and repacks with the
+ * pair-interleave [e0,e2,...,e14,e1,e3,...,e15] that
+ * FastInterleavedAndBiasedNumericArrayConverter<T, uint2b_t, N> inverts.
+ */
+__global__ void add_bias_and_interleave_int2s_inplace_kernel(uint32_t* tensor, size_t num_elts) {
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  size_t register_idx = static_cast<size_t>(idx);
+
+  if (register_idx < num_elts / 16) {
+    uint32_t current_register = tensor[register_idx];
+    uint32_t transformed_register = 0;
+
+    for (int i = 0; i < 16; ++i) {
+      uint8_t raw_code = (current_register >> (i * 2)) & 0x03;
+
+      // Sign-extend the 2-bit code, then re-bias to unsigned: 0..1 stay, 2..3 are -2..-1.
+      int8_t signed_code = static_cast<int8_t>(static_cast<int8_t>(raw_code << 6) >> 6);
+      uint8_t biased_code = static_cast<uint8_t>(signed_code + 2);
+
+      int dest_idx = ((i % 2) == 0) ? (i / 2) : ((i - 1) / 2 + 8);
+      transformed_register |= (static_cast<uint32_t>(biased_code & 0x03) << (dest_idx * 2));
+    }
+    tensor[register_idx] = transformed_register;
+  }
+}
+
 // Interleave-only variant for MXFP4 (e2m1) weights: applies the SAME
 // [e0,e2,e4,e6,e1,e3,e5,e7] nibble pair-interleave as
 // add_bias_and_interleave_int4s_inplace_kernel, but writes the raw 4-bit code unchanged (no
@@ -557,6 +592,14 @@ void add_bias_and_interleave_quantized_tensor_inplace_cuda(
     const int num_blocks = (num_registers + threads_per_block - 1) / threads_per_block;
 
     add_bias_and_interleave_int4s_inplace_kernel<<<num_blocks, threads_per_block, 0, stream>>>(
+        reinterpret_cast<uint32_t*>(tensor),
+        num_elts);
+  } else if (quant_type == QuantType::W2_A16) {
+    // Each thread handles 16 elements (32 bits)
+    const int num_registers = SafeInt<int32_t>(num_elts) / 16;
+    const int num_blocks = (num_registers + threads_per_block - 1) / threads_per_block;
+
+    add_bias_and_interleave_int2s_inplace_kernel<<<num_blocks, threads_per_block, 0, stream>>>(
         reinterpret_cast<uint32_t*>(tensor),
         num_elts);
   } else {

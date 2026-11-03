@@ -63,7 +63,8 @@ struct use_dq_gemm<Mma, void_t<typename Mma::IteratorScale>> : platform::true_ty
 
 template <typename Element>
 CUTLASS_HOST_DEVICE bool tensor_aligned(Element const* ref, int stride, int alignment) {
-  return (reinterpret_cast<uintptr_t>(ref) % alignment == 0) && (stride % alignment == 0);
+  const int alignment_bytes = alignment * cutlass::sizeof_bits<Element>::value / 8;
+  return (reinterpret_cast<uintptr_t>(ref) % alignment_bytes == 0) && (stride % alignment == 0);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -285,9 +286,10 @@ struct MoeFCGemm {
 
   static Status can_implement(Arguments const& args) {
     if constexpr (platform::is_same<uint8_t, ElementB>::value || platform::is_same<uint4b_t, ElementB>::value ||
+                  platform::is_same<uint2b_t, ElementB>::value ||
                   platform::is_same<cutlass::float_e2m1_t, ElementB>::value) {
       if (args.weight_scales == nullptr) {
-        CUTLASS_TRACE_HOST("MoeFCGemm::can_implement() - weight scales are required for uint8_t and uint4b_t");
+        CUTLASS_TRACE_HOST("MoeFCGemm::can_implement() - weight scales are required for uint8_t, uint4b_t, uint2b_t, and cutlass::float_e2m1_t");
         return Status::kInvalid;
       }
       static int const kAlignmentA = (platform::is_same<typename Mma::IteratorA::Layout, layout::ColumnMajorInterleaved<32>>::value) ? 32
@@ -358,7 +360,7 @@ struct MoeFCGemm {
       }
     } else if (args.weight_scales != nullptr) {
       CUTLASS_TRACE_HOST(
-          "MoeFCGemm::can_implement() - weight scales are ignored for all types except uint8_t and uint4b_t");
+          "MoeFCGemm::can_implement() - weight scales are supported only for uint8_t, uint4b_t, uint2b_t, and cutlass::float_e2m1_t");
       return Status::kInvalid;
     } else if (args.group_size != args.gemm_k) {
       CUTLASS_TRACE_HOST("MoeFCGemm::can_implement() - scale shape should be (1, gemm_n)");

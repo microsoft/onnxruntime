@@ -87,6 +87,44 @@ NS_ASSUME_NONNULL_BEGIN
   XCTAssertTrue([stringData isEqualToArray:returnedStringData]);
 }
 
+- (void)testInitBoolTensorOk {
+  const bool value = true;
+  NSMutableData* data = [[NSMutableData alloc] initWithBytes:&value
+                                                      length:sizeof(bool)];
+  NSArray<NSNumber*>* shape = @[ @1 ];
+
+  const ORTTensorElementDataType elementType = ORTTensorElementDataTypeBool;
+
+  NSError* err = nil;
+  ORTValue* ortValue = [[ORTValue alloc] initWithTensorData:data
+                                                elementType:elementType
+                                                      shape:shape
+                                                      error:&err];
+  ORTAssertNullableResultSuccessful(ortValue, err);
+
+  auto checkTensorInfo = [&](ORTTensorTypeAndShapeInfo* tensorInfo) {
+    XCTAssertEqual(tensorInfo.elementType, elementType);
+    XCTAssertEqualObjects(tensorInfo.shape, shape);
+  };
+
+  ORTValueTypeInfo* typeInfo = [ortValue typeInfoWithError:&err];
+  ORTAssertNullableResultSuccessful(typeInfo, err);
+  XCTAssertEqual(typeInfo.type, ORTValueTypeTensor);
+  XCTAssertNotNil(typeInfo.tensorTypeAndShapeInfo);
+  checkTensorInfo(typeInfo.tensorTypeAndShapeInfo);
+
+  ORTTensorTypeAndShapeInfo* tensorInfo = [ortValue tensorTypeAndShapeInfoWithError:&err];
+  ORTAssertNullableResultSuccessful(tensorInfo, err);
+  checkTensorInfo(tensorInfo);
+
+  NSData* actualData = [ortValue tensorDataWithError:&err];
+  ORTAssertNullableResultSuccessful(actualData, err);
+  XCTAssertEqual(actualData.length, sizeof(bool));
+  bool actualValue;
+  memcpy(&actualValue, actualData.bytes, sizeof(bool));
+  XCTAssertEqual(actualValue, value);
+}
+
 @end
 
 NS_ASSUME_NONNULL_END

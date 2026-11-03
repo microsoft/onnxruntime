@@ -198,7 +198,7 @@ static void BM_SVGemmFp16(benchmark::State& state) {
 
 // QKGemm benchmark configurations
 // Args: M, N (total_seqlen), K (head_size), QuantType
-static void QKGemmArgs(benchmark::internal::Benchmark* b) {
+static void QKGemmArgs(benchmark::Benchmark* b) {
   b->ArgNames({"M", "N_seqlen", "K_head", "QuantType"});
   // Decoding (M=1) and prefill (M=128) with typical shapes
   for (int qt : {0, 1, 2, 3}) {    // S8_PerTensor, S8_PerChannel, S4_PerTensor, S4_PerChannel
@@ -213,7 +213,7 @@ static void QKGemmArgs(benchmark::internal::Benchmark* b) {
 
 // SVGemm benchmark configurations
 // Args: M, N (head_size), K (total_seqlen), QuantType
-static void SVGemmArgs(benchmark::internal::Benchmark* b) {
+static void SVGemmArgs(benchmark::Benchmark* b) {
   b->ArgNames({"M", "N_head", "K_seqlen", "QuantType"});
   for (int qt : {0, 1, 2, 3}) {
     for (int N : {64, 128}) {      // head_size
@@ -297,7 +297,7 @@ static void BM_SVGemm_Scalar(benchmark::State& state) {
 }
 
 // Use a subset of shapes for scalar comparison (it's slow)
-static void ScalarArgs(benchmark::internal::Benchmark* b) {
+static void ScalarArgs(benchmark::Benchmark* b) {
   b->ArgNames({"M", "N", "K", "QuantType"});
   for (int qt : {0, 2}) {          // S8_PerTensor and S4_PerTensor as representative
     b->Args({1, 512, 128, qt});    // decoding
@@ -641,7 +641,7 @@ static void BM_GQA_Flash(benchmark::State& state) {
 
 // Flash vs Naive benchmark configurations
 // Args: batch, num_heads, kv_num_heads, seq_len, total_seqlen, head_size, QuantType
-static void FlashGQAArgs(benchmark::internal::Benchmark* b) {
+static void FlashGQAArgs(benchmark::Benchmark* b) {
   b->ArgNames({"B", "N", "N_kv", "S", "T", "H", "QType"});
   // INT8 per-tensor (qt=0), INT8 per-channel (qt=1)
   for (int qt : {0, 1}) {

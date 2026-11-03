@@ -156,6 +156,11 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       m = a_shape.SizeToDimension(a_shape.NumDimensions() - 1);
       k = dim_k.dim_value();
       n = dim_n.dim_value();
+
+      // The inserted Reshape nodes interpret zero as copying an input dimension, not a literal zero extent.
+      if (m == 0 || k == 0 || n == 0) {
+        continue;
+      }
     }
 
     const auto& matmul_output = *matmul_node.OutputDefs()[0];
@@ -252,8 +257,10 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     graph_utils::GraphEdge::RemoveGraphEdges(graph, add_input_edges);
     graph_utils::RemoveNodeOutputEdges(graph, matmul_node);
     graph_utils::ReplaceDownstreamNodeInput(graph, add_node, 0, *output_node, 0);
-    graph.RemoveNode(matmul_node.Index());
-    graph.RemoveNode(add_node.Index());
+    const std::array source_node_indices{matmul_node.Index(), add_node.Index()};
+    graph.RemoveNode(source_node_indices[0]);
+    graph.RemoveNode(source_node_indices[1]);
+    graph.NotifyNodeReplacement(source_node_indices, gemm_node.Index());
 
     modified = true;
   }

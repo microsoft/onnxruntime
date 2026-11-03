@@ -10,6 +10,7 @@
 #include "core/framework/op_node_proto_helper.h"
 #include "core/framework/data_types.h"
 #include "core/framework/tensor.h"
+#include "core/util/math_cpuonly.h"
 
 // Graph-related headers
 #include "core/graph/graph_viewer.h"

@@ -54,6 +54,15 @@ const InlinedVector<const Node*> VitisAIExecutionProvider::GetEpContextNodes() c
   }
   return ep_context_node_ptrs;
 }
+
+// Reports WRITE as required when external EPContext data may be produced as a side effect of GetCapability()'s
+// direct-assignment path, i.e. before Compile() is ever called. This is independent of `graph_viewer`'s content:
+// VitisAI's requirement depends only on its own enabled/embed-mode configuration.
+uint32_t VitisAIExecutionProvider::GetEpContextDataCallbackRequirements(const GraphViewer& /*graph_viewer*/) const {
+  return (ep_ctx_enabled_ && !ep_ctx_embed_mode_) ? OrtEpContextDataCallbackSupportFlags_WRITE
+                                                  : OrtEpContextDataCallbackSupportFlags_NONE;
+}
+
 std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCapability(
     const onnxruntime::GraphViewer& graph_viewer, const IKernelLookup& kernel_lookup, const GraphOptimizerRegistry& /* graph_optimizer_registry */, IResourceAccountant* /* resource_accountant */) const {
   if (graph_viewer.IsSubgraph()) {

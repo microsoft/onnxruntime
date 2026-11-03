@@ -27,6 +27,8 @@ inline auto OvExceptionBoundary(Func&& func, std::format_string<Args...>&& fmt, 
     } else {
       ORT_THROW(log_tag + std::vformat(fmt.get(), std::make_format_args(args...)) + ": " + std::string(e.what()));
     }
+  } catch (const std::exception& e) {
+    ORT_THROW(log_tag + std::vformat(fmt.get(), std::make_format_args(args...)) + ": [std::exception] " + std::string(e.what()));
   } catch (...) {
     ORT_THROW(log_tag + std::vformat(fmt.get(), std::make_format_args(args...)));
   }

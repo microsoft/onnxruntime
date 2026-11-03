@@ -160,6 +160,18 @@ TEST(FastGeluTest, FastGeluWithNullInput) {
 
   RunFastGeluTest(input_data, bias_data, batch_size, sequence_length, hidden_size);
 }
+
+// An empty input (with a correspondingly empty bias) is a legal degenerate case per the ONNX
+// shape model. The CPU/CUDA kernels must treat it as a no-op rather than divide the (zero) input
+// element count by the (zero) bias length.
+TEST(FastGeluTest, ZeroLengthBiasIsNoOp) {
+  OpTester tester("FastGelu", 1, onnxruntime::kMSDomain);
+  tester.AddInput<float>("X", {2, 0}, {});
+  tester.AddInput<float>("bias", {0}, {});
+  tester.AddOutput<float>("Y", {2, 0}, {});
+  tester.Run();
+}
+
 #if defined(USE_DNNL)
 TEST(FastGeluTest, FastGeluWithBias_bfloat16) {
 #ifdef USE_DNNL

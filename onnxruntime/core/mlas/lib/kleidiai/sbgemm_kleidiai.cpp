@@ -4,7 +4,9 @@
 // SPDX-License-Identifier: MIT
 //
 
-#if defined(__aarch64__) && defined(__linux__)
+#include "mlas.h"
+
+#if defined(MLAS_SBGEMM_AVAILABLE)
 
 #include <vector>
 #include <cstring>
@@ -13,8 +15,6 @@
 
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_kxn_bf16p2vlx2b_f32_x32_sme.h"
 #include "kai/ukernels/matmul/pack/kai_lhs_pack_bf16p2vlx2_f32_sme.h"
-
-#include "mlas.h"
 
 #include "mlasi_kleidiai.h"
 #include "kai_ukernel_interface.h"

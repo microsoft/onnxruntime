@@ -32,12 +32,19 @@ Status BiasGelu::ComputeInternal(OpKernelContext* context) const {
 
   const auto& input_shape = X->Shape();
   const auto& bias_shape = B->Shape();
-  ORT_ENFORCE(input_shape.NumDimensions() >= 1 && bias_shape.NumDimensions() == 1 &&
-                  input_shape.GetDims().back() == bias_shape.GetDims().back(),
-              "B must be 1-dimensional and match the last dimension of X.");
+  ORT_RETURN_IF_NOT(input_shape.NumDimensions() >= 1 && bias_shape.NumDimensions() == 1 &&
+                        input_shape.GetDims().back() == bias_shape.GetDims().back(),
+                    "B must be 1-dimensional and match the last dimension of X.");
 
   auto* Y = context->Output(0, input_shape);
   ORT_ENFORCE(Y);
+
+  // An empty input (and, correspondingly, an empty bias) is a legal degenerate case per the
+  // ONNX shape model; treat it as a no-op rather than let the launch grid computation
+  // (which divides input_size by bias_size) divide by zero below.
+  if (input_shape.Size() == 0) {
+    return Status::OK();
+  }
 
   const auto input_size = input_shape.Size();
   const auto bias_size = bias_shape.Size();

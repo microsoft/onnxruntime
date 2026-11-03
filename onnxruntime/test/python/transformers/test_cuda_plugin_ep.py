@@ -30,8 +30,8 @@ TEST_FAIL = "FAIL"
 EP_GRAPH_ASSIGNMENT_CONFIG_KEY = "session.record_ep_graph_assignment_info"
 NO_CUDNN_PLUGIN_TEST = os.getenv("ORT_TEST_CUDA_PLUGIN_NO_CUDNN", "").upper() in {"1", "ON", "TRUE", "YES"}
 requires_cudnn = unittest.skipIf(NO_CUDNN_PLUGIN_TEST, "test requires cuDNN-backed CUDA plugin kernels")
-# Use the latest released ai.onnx opset so the model builders stay current as ONNX releases new opsets.
-DEFAULT_ONNX_OPSET = max(v for (d, v) in helper.OP_SET_ID_VERSION_MAP if d == "ai.onnx")
+# CUDA plugin runtime currently supports released ai.onnx opsets through 27.
+DEFAULT_ONNX_OPSET = 27
 
 
 def _make_released_opset_model(graph, producer_name="onnx-example"):
@@ -1683,10 +1683,12 @@ class TestCudaPluginEP(unittest.TestCase):
         feed = {"data": data, "indices": indices, "scales": scales}
 
         def expected(f):
-            # Gather rows [0, 2], then dequantize: float_val = uint8_val * scale
+            # Gather rows [0, 2], then dequantize. When zero_points is omitted, the default zero point
+            # for uint8 data is 2^(bits - 1), i.e. 128 for bits=8.
+            default_zero_point = np.float32(1 << (8 - 1))
             gathered_data = f["data"][f["indices"]]  # [2, 16]
             gathered_scales = f["scales"][f["indices"]]  # [2, 1]
-            return gathered_data.astype(np.float32) * gathered_scales
+            return (gathered_data.astype(np.float32) - default_zero_point) * gathered_scales
 
         result = _run_model_test(target_device, "GatherBlockQuantized", model, feed, expected, rtol=1e-2, atol=1e-2)
         self.assertEqual(result, TEST_PASS, "GatherBlockQuantized plugin op test failed")

@@ -337,9 +337,10 @@ class ONNXModel:
         return None, None
 
     @staticmethod
-    def __replace_gemm_with_matmul(graph_path):
+    def __replace_gemm_with_matmul(graph_path, tensor_names, transposed_sources):
         new_nodes = []
         graph = graph_path[-1]
+        transposed_weights = {}
         for node in graph.node:
             graph_attrs = [attr for attr in node.attribute if attr.type == 5 or attr.type == 10]
             if graph_attrs:
@@ -347,12 +348,18 @@ class ONNXModel:
                 for attr in node.attribute:
                     if attr.type == 5:
                         graph_path.append(attr.g)
-                        kv = {attr.name: ONNXModel.__replace_gemm_with_matmul(graph_path)}
+                        kv = {
+                            attr.name: ONNXModel.__replace_gemm_with_matmul(
+                                graph_path, tensor_names, transposed_sources
+                            )
+                        }
                     elif attr.type == 10:
                         value = []
                         for subgraph in attr.graphs:
                             graph_path.append(subgraph)
-                            value.extend([ONNXModel.__replace_gemm_with_matmul(graph_path)])
+                            value.extend(
+                                [ONNXModel.__replace_gemm_with_matmul(graph_path, tensor_names, transposed_sources)]
+                            )
                         kv = {attr.name: value}
                     else:
                         kv = attribute_to_kwarg(attr)
@@ -378,18 +385,24 @@ class ONNXModel:
                 if alpha == 1.0 and beta == 1.0 and transA == 0:
                     inputB = node.input[1]  # noqa: N806
                     if transB == 1:
-                        B, Bs_graph = ONNXModel.__get_initializer(node.input[1], graph_path)  # noqa: N806
+                        B, _ = ONNXModel.__get_initializer(node.input[1], graph_path)  # noqa: N806
                         if B:
-                            # assume B is not used by any other node
-                            B_array = onnx_numpy_helper.to_array(B)  # noqa: N806
-                            B_trans = onnx_numpy_helper.from_array(B_array.T)  # noqa: N806
-                            B_trans.name = B.name
-                            Bs_graph.initializer.remove(B)
-                            for input in Bs_graph.input:
-                                if input.name == inputB:
-                                    Bs_graph.input.remove(input)
-                                    break
-                            Bs_graph.initializer.extend([B_trans])
+                            if inputB not in transposed_weights:
+                                transposed_name = inputB + "_Transposed"
+                                initializer_suffixes = ("", "_quantized", "_scale", "_zero_point")
+                                suffix = 0
+                                while any(transposed_name + s in tensor_names for s in initializer_suffixes):
+                                    suffix += 1
+                                    transposed_name = f"{inputB}_Transposed_{suffix}"
+                                # Reserve names that quantization derives from this initializer.
+                                tensor_names.update(transposed_name + s for s in initializer_suffixes)
+                                # Keep the original tensor and its shape metadata valid for other consumers.
+                                graph.initializer.append(
+                                    onnx_numpy_helper.from_array(onnx_numpy_helper.to_array(B).T, transposed_name)
+                                )
+                                transposed_weights[inputB] = transposed_name
+                                transposed_sources[transposed_name] = inputB
+                            inputB = transposed_weights[inputB]  # noqa: N806
                         else:
                             inputB += "_Transposed"  # noqa: N806
                             transpose_node = onnx_helper.make_node(
@@ -431,8 +444,24 @@ class ONNXModel:
         return graph
 
     def replace_gemm_with_matmul(self):
+        tensor_names = set()
+        graphs = [self.graph()]
+        while graphs:
+            graph = graphs.pop()
+            tensor_names.update(tensor.name for tensor in graph.initializer)
+            tensor_names.update(value.name for value in (*graph.input, *graph.output, *graph.value_info))
+            for node in graph.node:
+                tensor_names.update(node.input)
+                tensor_names.update(node.output)
+                for attr in node.attribute:
+                    if attr.type == onnx.AttributeProto.GRAPH:
+                        graphs.append(attr.g)
+                    elif attr.type == onnx.AttributeProto.GRAPHS:
+                        graphs.extend(attr.graphs)
         graph_path = [self.graph()]
-        ONNXModel.__replace_gemm_with_matmul(graph_path)
+        transposed_sources = {}
+        ONNXModel.__replace_gemm_with_matmul(graph_path, tensor_names, transposed_sources)
+        return transposed_sources
 
     def save_model_to_file(self, output_path, use_external_data_format=False):
         """

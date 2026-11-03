@@ -45,6 +45,31 @@ Status LaunchZeroOutputForFullyMaskedBatches(
     cudaStream_t stream,
     int max_threads_per_block);
 
+// Fused "zero fully-masked batches" + "BSNH -> BNSH transpose", for the cuDNN SDPA decode
+// tier's 4D (BNSH) output path only. cuDNN always writes O as BSNH; when the ONNX Attention
+// inputs are 4D the output must be transposed to BNSH, and batches with seqlens_k[b] == 0 must
+// be zeroed (cuDNN's softmax over an all-masked row is undefined, while the spec and all other
+// tiers define output = 0). Both steps touch every output element, so they are fused into a
+// single kernel launch to cut decode-path launch overhead.
+//
+// input:  BSNH [batch_size, sequence_length, num_heads, head_size] (cuDNN output)
+// output: BNSH [batch_size, num_heads, sequence_length, head_size]
+// seqlens_k: per-batch valid key count (device buffer of size batch_size).
+//
+// The standalone LaunchZeroOutputForFullyMaskedBatches above is unchanged and is still used for
+// the 3D path (no transpose) and by the MEA path.
+template <typename T>
+Status LaunchTransposeBSNHtoBNSHWithZeroMask(
+    const T* input,
+    T* output,
+    const int* seqlens_k,
+    int batch_size,
+    int sequence_length,
+    int num_heads,
+    int head_size,
+    cudaStream_t stream,
+    int max_threads_per_block);
+
 // Zero output rows that are fully masked by the intersection of the causal frontier
 // and an explicit attention bias (composed is_causal + attn_mask), per onnx/onnx#8068
 // "fully-masked-row -> 0" (Bug-2). The MEA/CUTLASS path applies a finite mask sentinel

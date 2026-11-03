@@ -2,14 +2,152 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include <cmath>
+#include <type_traits>
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
+
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+#include "core/providers/webgpu/webgpu_context.h"
+#endif
 
 namespace onnxruntime {
 namespace test {
 constexpr float epsilon_ = 1e-12f;
+
+#if defined(USE_CUDA)
+TEST(SkipLayerNormTest, CudaEmptyHiddenDimension) {
+  if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA EP unavailable";
+
+  OpTester tester("SkipLayerNormalization", 1, kMSDomain);
+  tester.AddAttribute("epsilon", 1e-5f);
+  tester.AddInput<float>("input", {1, 2, 0}, {});
+  tester.AddInput<float>("skip", {1, 2, 0}, {});
+  tester.AddInput<float>("gamma", {0}, {});
+  tester.AddInput<float>("beta", {0}, {});
+  tester.AddOutput<float>("output", {1, 2, 0}, {});
+  SessionOptions options;
+  ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+template <typename T>
+static void CheckCudaHighOffsetVariance() {
+  if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA EP unavailable";
+
+  constexpr float epsilon = 1e-5f;
+  const auto native_value = [](float value) {
+    if constexpr (std::is_same_v<T, float>) {
+      return value;
+    } else {
+      return T(value).ToFloat();
+    }
+  };
+  // Cover scalar/vectorized dispatch, partial blocks, and multiple values per thread.
+  for (int hidden_size : {1, 3, 4, 5, 128, 129, 320, 768, 769, 8192, 8193}) {
+    SCOPED_TRACE(hidden_size);
+    for (bool has_bias : {false, true}) {
+      SCOPED_TRACE(has_bias);
+      const std::vector<int64_t> shape{1, 2, hidden_size};
+      const std::vector<int64_t> parameter_shape{hidden_size};
+      std::vector<float> pattern{1000.01f, 1000.02f, 999.99f, 1000.0f};
+      float skip_value = 256.0f;
+      if constexpr (std::is_same_v<T, MLFloat16>) {
+        pattern = {60000.0f, 60032.0f, 59968.0f, 60000.0f};
+        skip_value = -59872.0f;
+      } else if constexpr (std::is_same_v<T, BFloat16>) {
+        pattern = {1024.0f, 1032.0f, 1016.0f, 1024.0f};
+        skip_value = -896.0f;
+      }
+      std::vector<float> input(2 * hidden_size);
+      std::vector<float> skip(2 * hidden_size, has_bias ? skip_value : 0.0f);
+      std::vector<float> bias(hidden_size, 512.0f);
+      std::vector<float> gamma(hidden_size);
+      std::vector<float> beta(hidden_size);
+      std::vector<float> sum(2 * hidden_size);
+      std::vector<float> expected(2 * hidden_size);
+      for (int i = 0; i < hidden_size; ++i) {
+        input[i] = pattern[i % 4];
+        input[hidden_size + i] = std::is_same_v<T, float> ? -1000.0f : pattern[0];
+        // Small biases round before the low-precision residual cancellation.
+        if constexpr (std::is_same_v<T, MLFloat16>) {
+          bias[i] = i % 2 == 0 ? 0.25f : 0.5f;
+        } else if constexpr (std::is_same_v<T, BFloat16>) {
+          bias[i] = i % 2 == 0 ? 0.5f : 1.5f;
+        }
+        gamma[i] = i % 2 == 0 ? 0.5f : -1.25f;
+        beta[i] = i % 2 == 0 ? 0.25f : -0.75f;
+      }
+      for (int row = 0; row < 2; ++row) {
+        double mean = 0.0;
+        for (int i = 0; i < hidden_size; ++i) {
+          const int index = row * hidden_size + i;
+          float value = input[index];
+          if (has_bias) value = native_value(value + bias[i]);
+          value = native_value(value + skip[index]);
+          sum[index] = value;
+          mean += static_cast<double>(value);
+        }
+        mean /= hidden_size;
+        double variance = 0.0;
+        for (int i = 0; i < hidden_size; ++i) {
+          const double delta = static_cast<double>(sum[row * hidden_size + i]) - mean;
+          variance += delta * delta;
+        }
+        variance /= hidden_size;
+        const double inv_std = 1.0 / std::sqrt(variance + static_cast<double>(epsilon));
+        for (int i = 0; i < hidden_size; ++i) {
+          const int index = row * hidden_size + i;
+          expected[index] = static_cast<float>((static_cast<double>(sum[index]) - mean) *
+                                                   inv_std * gamma[i] +
+                                               beta[i]);
+        }
+      }
+
+      OpTester tester("SkipLayerNormalization", 1, kMSDomain);
+      tester.AddAttribute("epsilon", epsilon);
+      tester.AddInput<T>("input", shape, std::vector<T>(input.begin(), input.end()));
+      tester.AddInput<T>("skip", shape, std::vector<T>(skip.begin(), skip.end()));
+      tester.AddInput<T>("gamma", parameter_shape, std::vector<T>(gamma.begin(), gamma.end()));
+      tester.AddInput<T>("beta", parameter_shape, std::vector<T>(beta.begin(), beta.end()));
+      if (has_bias) tester.AddInput<T>("bias", parameter_shape, std::vector<T>(bias.begin(), bias.end()));
+      tester.AddOutput<T>("output", shape, std::vector<T>(expected.begin(), expected.end()));
+      tester.AddOptionalOutputEdge<float>();
+      tester.AddOptionalOutputEdge<float>();
+      tester.AddOutput<T>("sum", shape, std::vector<T>(sum.begin(), sum.end()));
+      if constexpr (std::is_same_v<T, float>) {
+        tester.SetOutputAbsErr("output", 1e-4f);
+        tester.SetOutputRelErr("output", 1e-4f);
+      }
+      tester.SetOutputAbsErr("sum", 0.0f);
+      tester.SetOutputRelErr("sum", 0.0f);
+      SessionOptions options;
+      ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+      std::vector<std::unique_ptr<IExecutionProvider>> providers;
+      providers.push_back(DefaultCudaExecutionProvider());
+      tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+    }
+  }
+}
+
+TEST(SkipLayerNormTest, CudaHighOffsetVariance) {
+  CheckCudaHighOffsetVariance<float>();
+}
+
+TEST(SkipLayerNormTest, CudaFloat16HighOffsetVariance) {
+  CheckCudaHighOffsetVariance<MLFloat16>();
+}
+
+TEST(SkipLayerNormTest, CudaBFloat16HighOffsetVariance) {
+  if (!CudaHasBF16Support()) GTEST_SKIP() << "CUDA BF16 unavailable";
+  CheckCudaHighOffsetVariance<BFloat16>();
+}
+#endif
 
 static void RunOneTest(
     const std::vector<float>& input_data,
@@ -236,6 +374,146 @@ TEST(SkipLayerNormTest, SkipLayerNormPrePack) {
             kNnapiExecutionProvider, kQnnExecutionProvider});
 }
 
+TEST(SkipLayerNormTest, SkipLayerNormPrePackRejectsShortGamma) {
+  auto cpu = DefaultCpuExecutionProvider();
+  ASSERT_NE(cpu, nullptr);
+
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> input_skip_output_dims = {1, 1, 2};
+  test.AddInput<MLFloat16>("input", input_skip_output_dims, ToFloat16({1.f, 2.f}));
+  test.AddInput<MLFloat16>("skip", input_skip_output_dims, ToFloat16({3.f, 4.f}));
+  test.AddInput<MLFloat16>("gamma", std::vector<int64_t>{1}, ToFloat16({1.f}), true);
+  test.AddInput<MLFloat16>("beta", std::vector<int64_t>{2}, ToFloat16({0.f, 0.f}), true);
+  test.AddOutput<MLFloat16>("output", input_skip_output_dims, ToFloat16({0.f, 0.f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cpu));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Last dimension of gamma and input does not match",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(SkipLayerNormTest, SkipLayerNormPrePackRejectsShortSkip) {
+  auto cpu = DefaultCpuExecutionProvider();
+  ASSERT_NE(cpu, nullptr);
+
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> input_skip_output_dims = {1, 1, 2};
+  test.AddInput<MLFloat16>("input", input_skip_output_dims, ToFloat16({1.f, 2.f}));
+  test.AddInput<MLFloat16>("skip", std::vector<int64_t>{1, 1, 1}, ToFloat16({3.f}), true);
+  test.AddInput<MLFloat16>("gamma", std::vector<int64_t>{2}, ToFloat16({1.f, 1.f}), true);
+  test.AddInput<MLFloat16>("beta", std::vector<int64_t>{2}, ToFloat16({0.f, 0.f}), true);
+  test.AddOutput<MLFloat16>("output", input_skip_output_dims, ToFloat16({0.f, 0.f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cpu));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "last two dimensions of skip needs to be same as input",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(SkipLayerNormTest, SkipLayerNormPrePackRejectsShortBeta) {
+  auto cpu = DefaultCpuExecutionProvider();
+  ASSERT_NE(cpu, nullptr);
+
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> input_skip_output_dims = {1, 1, 2};
+  test.AddInput<MLFloat16>("input", input_skip_output_dims, ToFloat16({1.f, 2.f}));
+  test.AddInput<MLFloat16>("skip", input_skip_output_dims, ToFloat16({3.f, 4.f}), true);
+  test.AddInput<MLFloat16>("gamma", std::vector<int64_t>{2}, ToFloat16({1.f, 1.f}), true);
+  test.AddInput<MLFloat16>("beta", std::vector<int64_t>{1}, ToFloat16({0.f}), true);
+  test.AddOutput<MLFloat16>("output", input_skip_output_dims, ToFloat16({0.f, 0.f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cpu));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Last dimension of beta and input does not match",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(SkipLayerNormTest, SkipLayerNormPrePackRejectsShortBias) {
+  auto cpu = DefaultCpuExecutionProvider();
+  ASSERT_NE(cpu, nullptr);
+
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> input_skip_output_dims = {1, 1, 2};
+  test.AddInput<MLFloat16>("input", input_skip_output_dims, ToFloat16({1.f, 2.f}));
+  test.AddInput<MLFloat16>("skip", input_skip_output_dims, ToFloat16({3.f, 4.f}), true);
+  test.AddInput<MLFloat16>("gamma", std::vector<int64_t>{2}, ToFloat16({1.f, 1.f}), true);
+  test.AddInput<MLFloat16>("beta", std::vector<int64_t>{2}, ToFloat16({0.f, 0.f}), true);
+  test.AddInput<MLFloat16>("bias", std::vector<int64_t>{1}, ToFloat16({0.f}), true);
+  test.AddOutput<MLFloat16>("output", input_skip_output_dims, ToFloat16({0.f, 0.f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cpu));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Last dimension of bias and input does not match",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(SkipLayerNormTest, SkipSimplifiedLayerNormPrePackRejectsShortBias) {
+  auto cpu = DefaultCpuExecutionProvider();
+  ASSERT_NE(cpu, nullptr);
+
+  OpTester test("SkipSimplifiedLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> input_skip_output_dims = {1, 1, 2};
+  test.AddInput<MLFloat16>("input", input_skip_output_dims, ToFloat16({1.f, 2.f}));
+  test.AddInput<MLFloat16>("skip", input_skip_output_dims, ToFloat16({3.f, 4.f}), true);
+  test.AddInput<MLFloat16>("gamma", std::vector<int64_t>{2}, ToFloat16({1.f, 1.f}), true);
+  test.AddInput<MLFloat16>("bias", std::vector<int64_t>{1}, ToFloat16({0.f}), true);
+  test.AddOutput<MLFloat16>("output", input_skip_output_dims, ToFloat16({0.f, 0.f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cpu));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Last dimension of bias and input does not match",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(SkipLayerNormTest, SkipLayerNormPrePackRejectsMismatchedSkipShape) {
+  auto cpu = DefaultCpuExecutionProvider();
+  ASSERT_NE(cpu, nullptr);
+
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  const std::vector<int64_t> input_output_dims = {1, 5, 2};
+  test.AddInput<MLFloat16>("input", input_output_dims, ToFloat16(std::vector<float>(10, 1.f)));
+  test.AddInput<MLFloat16>("skip", std::vector<int64_t>{1, 3, 2}, ToFloat16(std::vector<float>(6, 1.f)), true);
+  test.AddInput<MLFloat16>("gamma", std::vector<int64_t>{2}, ToFloat16({1.f, 1.f}), true);
+  test.AddInput<MLFloat16>("beta", std::vector<int64_t>{2}, ToFloat16({0.f, 0.f}), true);
+  test.AddOutput<MLFloat16>("output", input_output_dims, ToFloat16(std::vector<float>(10)));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cpu));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "last two dimensions of skip needs to be same as input",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(SkipLayerNormTest, SkipLayerNormPrePackAllowsEmptySkip) {
+  auto cpu = DefaultCpuExecutionProvider();
+  ASSERT_NE(cpu, nullptr);
+
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  const std::vector<int64_t> empty_dims = {1, 0, 2};
+  test.AddInput<MLFloat16>("input", empty_dims, {});
+  test.AddInput<MLFloat16>("skip", empty_dims, {}, true);
+  test.AddInput<MLFloat16>("gamma", std::vector<int64_t>{2}, ToFloat16({1.f, 1.f}), true);
+  test.AddInput<MLFloat16>("beta", std::vector<int64_t>{2}, ToFloat16({0.f, 0.f}), true);
+  test.AddOutput<MLFloat16>("output", empty_dims, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cpu));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 TEST(SkipLayerNormTest, SkipLayerNormNullInput) {
   int batch_size = 1;
   int sequence_length = 0;
@@ -300,6 +578,41 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch1) {
           batch_size,
           sequence_length,
           hidden_size);
+}
+
+TEST(SkipLayerNormTest, SkipLayerNormStatistics) {
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", epsilon_);
+  const std::vector<int64_t> input_dims{1, 1, 4};
+  const std::vector<int64_t> stat_dims{1, 1, 1};
+  test.AddInput<float>("input", input_dims, {10000.0f, 10001.0f, 9999.0f, 10000.0f});
+  test.AddInput<float>("skip", input_dims, {0.0f, 0.0f, 0.0f, 0.0f});
+  test.AddInput<float>("gamma", {4}, {1.0f, 1.0f, 1.0f, 1.0f});
+  test.AddInput<float>("beta", {4}, {0.0f, 0.0f, 0.0f, 0.0f});
+  test.AddOutput<float>("output", input_dims, {0.0f, 1.4142135f, -1.4142135f, 0.0f});
+  test.AddOutput<float>("mean", stat_dims, {10000.0f});
+  test.AddOutput<float>("inv_std_var", stat_dims, {1.4142135f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(SkipLayerNormTest, SkipSimplifiedLayerNormStatistics) {
+  OpTester test("SkipSimplifiedLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", epsilon_);
+  const std::vector<int64_t> input_dims{1, 1, 4};
+  const std::vector<int64_t> stat_dims{1, 1, 1};
+  test.AddInput<float>("input", input_dims, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddInput<float>("skip", input_dims, {0.0f, 0.0f, 0.0f, 0.0f});
+  test.AddInput<float>("gamma", {4}, {1.0f, 1.0f, 1.0f, 1.0f});
+  test.AddOutput<float>("output", input_dims, {0.3651484f, 0.7302967f, 1.0954452f, 1.4605935f});
+  test.AddOutput<float>("mean", stat_dims, {0.0f});
+  test.AddOutput<float>("inv_std_var", stat_dims, {0.3651484f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(SkipLayerNormTest, SkipLayerNormBatch1_Float16) {
@@ -1017,6 +1330,98 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_Skip_Broadcast_Batch_Size_1) {
           broadcast_skip,
           no_batch_size);
 }
+
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+// With a 16 KiB test-only maxStorageBufferBindingSize, input, skip, output and input_skip_bias_sum (3 x 2560 floats,
+// 30 KiB each) are each bound as 2 segments, and the boundary falls inside row 1. gamma and beta fit in one binding.
+static void RunWebGpuSegmentedStorageTest(bool simplified, bool has_input_skip_bias_sum) {
+  WebGpuExecutionProviderTestOptions options{};
+  options.max_storage_buffer_binding_size = 16 * 1024;
+  auto provider = WebGpuExecutionProviderWithTestOptions(options);
+  if (!provider) {
+    GTEST_SKIP() << "Artificial storage limits require the native test factory.";
+  }
+  if (has_input_skip_bias_sum) {
+    // Every split tensor takes 2 bindings: 10 for SkipLayerNormalization, 9 without beta.
+    const uint32_t required_bindings = simplified ? 9 : 10;
+    const auto& limits = webgpu::WebGpuContextFactory::GetContext(provider->GetDeviceId()).DeviceLimits();
+    if (limits.maxStorageBuffersPerShaderStage < required_bindings) {
+      GTEST_SKIP() << "Needs " << required_bindings << " storage buffers per shader stage, the device has "
+                   << limits.maxStorageBuffersPerShaderStage;
+    }
+  }
+
+  constexpr int64_t rows = 3;
+  constexpr int64_t hidden_size = 2560;
+  constexpr float epsilon = 1e-5f;
+  const size_t size = static_cast<size_t>(rows * hidden_size);
+
+  std::vector<float> input_data(size), skip_data(size), gamma_data(hidden_size), beta_data(hidden_size);
+  for (size_t i = 0; i < size; ++i) {
+    input_data[i] = static_cast<float>(i % 7) * 0.25f - 0.75f;
+    skip_data[i] = static_cast<float>(i % 5) * 0.125f - 0.25f;
+  }
+  for (int64_t j = 0; j < hidden_size; ++j) {
+    gamma_data[j] = 1.0f + 0.01f * static_cast<float>(j % 10);
+    beta_data[j] = 0.05f * static_cast<float>(j % 3);
+  }
+
+  std::vector<float> output_data(size), sum_output_data(size);
+  for (int64_t r = 0; r < rows; ++r) {
+    double mean = 0.0, mean_square = 0.0;
+    for (int64_t j = 0; j < hidden_size; ++j) {
+      const size_t k = static_cast<size_t>(r * hidden_size + j);
+      sum_output_data[k] = input_data[k] + skip_data[k];
+      mean += sum_output_data[k];
+      mean_square += static_cast<double>(sum_output_data[k]) * sum_output_data[k];
+    }
+    mean /= hidden_size;
+    mean_square /= hidden_size;
+    const double inv_std_dev = 1.0 / std::sqrt((simplified ? mean_square : mean_square - mean * mean) + epsilon);
+    for (int64_t j = 0; j < hidden_size; ++j) {
+      const size_t k = static_cast<size_t>(r * hidden_size + j);
+      const double normalized = (sum_output_data[k] - (simplified ? 0.0 : mean)) * inv_std_dev;
+      output_data[k] = static_cast<float>(normalized * gamma_data[j] + (simplified ? 0.0f : beta_data[j]));
+    }
+  }
+
+  OpTester test(simplified ? "SkipSimplifiedLayerNormalization" : "SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddInput<float>("input", {rows, hidden_size}, input_data);
+  test.AddInput<float>("skip", {rows, hidden_size}, skip_data);
+  test.AddInput<float>("gamma", {hidden_size}, gamma_data);
+  if (!simplified) {
+    test.AddInput<float>("beta", {hidden_size}, beta_data);
+  }
+  test.AddAttribute("epsilon", epsilon);
+  test.AddOutput<float>("output", {rows, hidden_size}, output_data);
+  if (has_input_skip_bias_sum) {
+    // The second and third outputs are reserved for something else
+    test.AddOptionalOutputEdge<float>();
+    test.AddOptionalOutputEdge<float>();
+    test.AddOutput<float>("skip_input_bias_add_output", {rows, hidden_size}, sum_output_data);
+  }
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(provider));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(SkipLayerNormTest, SkipLayerNorm_WebGpu_SegmentedStorage) {
+  RunWebGpuSegmentedStorageTest(false, false);
+}
+
+TEST(SkipLayerNormTest, SkipLayerNorm_WebGpu_SegmentedStorage_InputSkipBiasSum) {
+  RunWebGpuSegmentedStorageTest(false, true);
+}
+
+TEST(SkipLayerNormTest, SkipSimplifiedLayerNorm_WebGpu_SegmentedStorage) {
+  RunWebGpuSegmentedStorageTest(true, false);
+}
+
+TEST(SkipLayerNormTest, SkipSimplifiedLayerNorm_WebGpu_SegmentedStorage_InputSkipBiasSum) {
+  RunWebGpuSegmentedStorageTest(true, true);
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

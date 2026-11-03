@@ -7,10 +7,16 @@ using namespace std;
 namespace onnxruntime {
 namespace test {
 template <typename T>
-void TestHelper(const std::vector<T>& classes,
+void TestHelper(std::initializer_list<T> classes_init,
                 const std::string& type,
                 const vector<int64_t>& input_dims,
                 OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess) {
+  // View the class list as a non-owning span rather than copying it into a std::vector. The braced
+  // list at each call site is a std::initializer_list parameter (stack-backed), so there is no
+  // vector temporary in the inlined TEST body for GCC 15 to false-positive on with
+  // -Wfree-nonheap-object. The backing array outlives this call, so the span stays valid through
+  // test.Run() below, which is where the deferred AddAttribute reads it.
+  const gsl::span<const T> classes(classes_init.begin(), classes_init.size());
   OpTester test("ZipMap", 1, onnxruntime::kMLDomain);
 
   std::vector<float> input{1.f, 0.f, 3.f, 44.f, 23.f, 11.3f};

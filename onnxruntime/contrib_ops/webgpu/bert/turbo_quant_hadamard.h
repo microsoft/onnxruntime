@@ -4,6 +4,7 @@
 #pragma once
 
 #include "contrib_ops/webgpu/bert/attention_common.h"
+#include "contrib_ops/webgpu/bert/kv_cache_quantization.h"
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_helper.h"
@@ -17,10 +18,8 @@ using onnxruntime::webgpu::Program;
 using onnxruntime::webgpu::ProgramUniformVariableDataType;
 using onnxruntime::webgpu::ShaderHelper;
 
-// Fused TurboQuant copy-to-KV-cache with Hadamard rotation and 4-bit quantization.
-// Applies the Walsh-Hadamard transform to new K/V tokens, quantizes to 4-bit
-// centroid indices packed into u32 words with fp32 L2 norm, then writes into
-// the present KV cache (stored as u32).
+// Fused Q4 TurboQuant copy-to-KV-cache using Walsh-Hadamard, L2 normalization,
+// and centroid quantization.
 // Each workgroup handles one (batch, head, seq) slice for either K or V.
 class TurboQuantHadamardProgram final : public Program<TurboQuantHadamardProgram> {
  public:
@@ -42,11 +41,13 @@ class TurboQuantHadamardProgram final : public Program<TurboQuantHadamardProgram
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"batch_size", ProgramUniformVariableDataType::Uint32},
                                           {"compressed_head_size_u32", ProgramUniformVariableDataType::Uint32},
+                                          {"copy_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"kv_num_heads", ProgramUniformVariableDataType::Uint32},
                                           {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"num_heads", ProgramUniformVariableDataType::Uint32},
                                           {"num_q_tiles", ProgramUniformVariableDataType::Uint32},
                                           {"num_slices_per_kv", ProgramUniformVariableDataType::Uint32},
+                                          {"past_input_seq_length", ProgramUniformVariableDataType::Uint32},
                                           {"present_seq_length", ProgramUniformVariableDataType::Uint32},
                                           {"tile_size", ProgramUniformVariableDataType::Uint32},
                                           {"total_sequence_length", ProgramUniformVariableDataType::Uint32});
@@ -90,9 +91,10 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
                                         const Tensor* K, const Tensor* past_key, Tensor* present_key,
                                         const Tensor* V, const Tensor* past_value, Tensor* present_value,
                                         uint32_t tile_size, const Tensor* seqlen_k, Tensor* indirect_buffer,
-                                        uint32_t num_q_tiles);
+                                        uint32_t num_q_tiles, const Tensor* total_seqlen);
 
-// Fused TurboQuant: Split packed QKV + Rotary K + Hadamard + Quantize K/V + Rotary Q.
+// Fused Q4 TurboQuant cache: split packed QKV, apply rotary to Q/K, then
+// apply Walsh-Hadamard and centroid quantization to K/V.
 // Single dispatch handles all Q/K/V processing from packed QKV input.
 class TurboQuantFusedRotaryProgram final : public Program<TurboQuantFusedRotaryProgram> {
  public:
@@ -148,7 +150,8 @@ Status TurboQuantApplyRotaryAndCopyToQuantizedKVCache(onnxruntime::webgpu::Compu
                                                       Tensor* present_value,
                                                       Tensor* indirect_buffer,
                                                       uint32_t tile_size,
-                                                      uint32_t num_q_tiles);
+                                                      uint32_t num_q_tiles,
+                                                      const Tensor* total_seqlen);
 
 }  // namespace webgpu
 }  // namespace contrib

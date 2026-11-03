@@ -1,7 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
 #include <random>
+#include <type_traits>
+#include <utility>
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/unittest_util/framework_test_utils.h"
@@ -114,14 +117,20 @@ TEST(SkipGroupNormTest, SkipGroupNorm_with_bias) {
 
   int min_cuda_architecture = 530;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+  bool enable_webgpu = (nullptr != DefaultWebGpuExecutionProvider().get());
 
   std::array<int, 2> channels_last_values = {-1, 1};
 
   for (const int channels_last : channels_last_values) {
-    if (enable_cuda) {
+    if (enable_cuda || enable_webgpu) {
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       if (enable_cuda && channels_last != 0) {
         execution_providers.push_back(DefaultCudaExecutionProvider());
+      }
+
+      // WebGPU only supports the channels_last layout
+      if (enable_webgpu && channels_last != 0) {
+        execution_providers.push_back(DefaultWebGpuExecutionProvider());
       }
 
       // Don't run the test if no providers are supported
@@ -230,6 +239,7 @@ TEST(SkipGroupNormTest, SkipGroupNorm_no_bias_broadcast_skip) {
 
   int min_cuda_architecture = 530;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+  bool enable_webgpu = (nullptr != DefaultWebGpuExecutionProvider().get());
 
   std::array<bool, 2> has_add_out_values = {true, false};
   std::array<int, 2> skip_dims = {2, 4};
@@ -237,10 +247,15 @@ TEST(SkipGroupNormTest, SkipGroupNorm_no_bias_broadcast_skip) {
   constexpr int channels_last = 1;
   for (const int skip_dim : skip_dims) {
     for (const bool has_add_out : has_add_out_values) {
-      if (enable_cuda) {
+      if (enable_cuda || enable_webgpu) {
         std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
         if (enable_cuda && channels_last != 0) {
           execution_providers.push_back(DefaultCudaExecutionProvider());
+        }
+
+        // WebGPU only supports the channels_last layout
+        if (enable_webgpu && channels_last != 0) {
+          execution_providers.push_back(DefaultWebGpuExecutionProvider());
         }
 
         // Don't run the test if no providers are supported
@@ -277,6 +292,163 @@ TEST(SkipGroupNormTest, SkipGroupNorm_no_bias_broadcast_skip) {
         }
 
         test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+      }
+    }
+  }
+}
+
+namespace {
+
+enum class SkipLayout {
+  kFull,  // (N, H, W, C), same shape as X
+  kNC,    // (N, C), broadcast over H and W
+  kN11C,  // (N, 1, 1, C), broadcast over H and W
+};
+
+// Double-precision SkipGroupNorm reference in NHWC layout:
+//   s = x + skip + bias;  y = gamma * (s - mean) / sqrt(var + epsilon) + beta
+// skip is indexed as (n, c) when broadcast, otherwise like x. bias may be null.
+void SkipGroupNormReference(const std::vector<float>& x, const std::vector<float>& skip, bool skip_broadcast,
+                            const std::vector<float>* bias, const std::vector<float>& gamma,
+                            const std::vector<float>& beta, int64_t batch, int64_t hw, int64_t channels,
+                            int64_t groups, float epsilon, std::vector<float>& y, std::vector<float>& s) {
+  const int64_t channels_per_group = channels / groups;
+  std::vector<double> sum_data(x.size());
+  for (int64_t n = 0; n < batch; ++n) {
+    for (int64_t p = 0; p < hw; ++p) {
+      for (int64_t c = 0; c < channels; ++c) {
+        const int64_t idx = (n * hw + p) * channels + c;
+        double v = x[idx] + (skip_broadcast ? skip[n * channels + c] : skip[idx]);
+        if (bias != nullptr) {
+          v += (*bias)[c];
+        }
+        sum_data[idx] = v;
+      }
+    }
+  }
+
+  y.resize(x.size());
+  s.resize(x.size());
+  for (int64_t n = 0; n < batch; ++n) {
+    for (int64_t g = 0; g < groups; ++g) {
+      double sum = 0.0;
+      double squared_sum = 0.0;
+      for (int64_t p = 0; p < hw; ++p) {
+        for (int64_t k = 0; k < channels_per_group; ++k) {
+          const double v = sum_data[(n * hw + p) * channels + g * channels_per_group + k];
+          sum += v;
+          squared_sum += v * v;
+        }
+      }
+      const double count = static_cast<double>(hw * channels_per_group);
+      const double mean = sum / count;
+      const double inv_std = 1.0 / std::sqrt(squared_sum / count - mean * mean + epsilon);
+      for (int64_t p = 0; p < hw; ++p) {
+        for (int64_t k = 0; k < channels_per_group; ++k) {
+          const int64_t c = g * channels_per_group + k;
+          const int64_t idx = (n * hw + p) * channels + c;
+          y[idx] = static_cast<float>((sum_data[idx] - mean) * inv_std * gamma[c] + beta[c]);
+          s[idx] = static_cast<float>(sum_data[idx]);
+        }
+      }
+    }
+  }
+}
+
+// Rounds values through the storage type T so the reference sees exactly what the kernel reads.
+template <typename T>
+std::vector<float> RoundTripThrough(const std::vector<float>& values) {
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    std::vector<float> result;
+    result.reserve(values.size());
+    for (float v : values) {
+      result.push_back(MLFloat16(v).ToFloat());
+    }
+    return result;
+  } else {
+    return values;
+  }
+}
+
+// TX: type of X, skip, bias, Y and S (schema type T). TM: type of gamma and beta (schema type M).
+template <typename TX, typename TM>
+void RunSkipGroupNormWebGpu(int64_t channels, int64_t groups, SkipLayout skip_layout, bool has_bias,
+                            bool has_sum_output) {
+  constexpr int64_t B = 2;
+  constexpr int64_t H = 3;
+  constexpr int64_t W = 2;
+  constexpr float epsilon = 1e-5f;
+  const std::vector<int64_t> dims{B, H, W, channels};
+  const std::vector<int64_t> channel_dims{channels};
+
+  std::vector<int64_t> skip_dims;
+  switch (skip_layout) {
+    case SkipLayout::kFull:
+      skip_dims = dims;
+      break;
+    case SkipLayout::kNC:
+      skip_dims = {B, channels};
+      break;
+    case SkipLayout::kN11C:
+      skip_dims = {B, 1, 1, channels};
+      break;
+  }
+  const bool skip_broadcast = skip_layout != SkipLayout::kFull;
+
+  RandomValueGenerator random{1234};
+  const auto x = RoundTripThrough<TX>(random.Uniform<float>(dims, -1.0f, 1.0f));
+  const auto skip = RoundTripThrough<TX>(random.Uniform<float>(skip_dims, -1.0f, 1.0f));
+  const auto bias = RoundTripThrough<TX>(random.Uniform<float>(channel_dims, -0.5f, 0.5f));
+  const auto gamma = RoundTripThrough<TM>(random.Uniform<float>(channel_dims, 0.5f, 1.5f));
+  const auto beta = RoundTripThrough<TM>(random.Uniform<float>(channel_dims, -0.5f, 0.5f));
+
+  std::vector<float> y;
+  std::vector<float> s;
+  SkipGroupNormReference(x, skip, skip_broadcast, has_bias ? &bias : nullptr, gamma, beta,
+                         B, H * W, channels, groups, epsilon, y, s);
+
+  OpTester test("SkipGroupNorm", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", epsilon);
+  test.AddAttribute<int64_t>("groups", groups);
+  test.AddAttribute<int64_t>("activation", 0);
+  test.AddAttribute<int64_t>("channels_last", 1);
+  test.AddInput<TX>("X", dims, GetTypedArray<TX>(x));
+  test.AddInput<TM>("gamma", channel_dims, GetTypedArray<TM>(gamma));
+  test.AddInput<TM>("beta", channel_dims, GetTypedArray<TM>(beta));
+  test.AddInput<TX>("skip", skip_dims, GetTypedArray<TX>(skip));
+  if (has_bias) {
+    test.AddInput<TX>("bias", channel_dims, GetTypedArray<TX>(bias));
+  }
+
+  constexpr float rel_error = 0.0f;
+  constexpr float abs_error = std::is_same_v<TX, MLFloat16> ? 0.02f : 1e-4f;
+  test.AddOutput<TX>("Y", dims, GetTypedArray<TX>(y), false, rel_error, abs_error);
+  if (has_sum_output) {
+    test.AddOutput<TX>("S", dims, GetTypedArray<TX>(s), false, rel_error, abs_error);
+  }
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+}  // namespace
+
+// Uses H = 3, W = 2 so a kernel that fails to repeat skip values across spatial positions produces wrong
+// results, and also exercises the vec4 and vec2 variants with bias and S.
+TEST(SkipGroupNormTest, SkipGroupNorm_WebGpu_BroadcastSkipSpatial) {
+  if (DefaultWebGpuExecutionProvider().get() == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+
+  const std::vector<std::pair<int64_t, int64_t>> configs = {{8, 2}, {6, 3}};
+  for (const auto& [channels, groups] : configs) {
+    for (const SkipLayout skip_layout : {SkipLayout::kFull, SkipLayout::kNC, SkipLayout::kN11C}) {
+      for (const bool has_bias : {false, true}) {
+        for (const bool has_sum_output : {false, true}) {
+          RunSkipGroupNormWebGpu<MLFloat16, float>(channels, groups, skip_layout, has_bias, has_sum_output);
+          RunSkipGroupNormWebGpu<float, float>(channels, groups, skip_layout, has_bias, has_sum_output);
+        }
       }
     }
   }

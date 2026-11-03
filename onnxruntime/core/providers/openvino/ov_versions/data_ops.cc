@@ -423,6 +423,15 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"ReduceMax", obj});
   }
   {
+    // query_seqlens (input 16, right-padded query chunks) is implemented only by the CPU and CUDA EPs.
+    UnsupportedOpMode obj = {{V_2025_1, V_2025_2, V_2025_3, V_2025_4, V_2026_0, V_2026_1, V_2026_2},
+                             [](const Node* node, const InitializedTensorSet&) {
+                               const auto& input_defs = node->InputDefs();
+                               return input_defs.size() > 16 && input_defs[16]->Exists();
+                             }};
+    op_list_.insert({"GroupQueryAttention", obj});
+  }
+  {
     UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2,
                               V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1,
                               V_2025_2, V_2025_3, V_2025_4, V_2026_0, V_2026_1, V_2026_2},
@@ -727,6 +736,10 @@ bool DataOps::dimension_unsupported(const Node* node) {
 bool DataOps::node_is_supported(const NodeIndex node_idx, bool& has_external_weights_) {
   const auto& node = graph_viewer_.GetNode(node_idx);
   const auto& optype = node->OpType();
+  // These opset-28 semantics require CPU kernels or ONNX function expansion.
+  if ((optype == "Mod" || optype == "BitShift" || optype == "SpaceToDepth") && node->SinceVersion() >= 28) {
+    return false;
+  }
 
 #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
@@ -850,7 +863,8 @@ bool DataOps::node_is_supported(const NodeIndex node_idx, bool& has_external_wei
   }
 
   // Check 3a
-  if (domain == kOnnxDomain && unsupported_op_mode(node, has_external_weights_)) {
+  if ((domain == kOnnxDomain || (domain == kMSDomain && optype == "GroupQueryAttention")) &&
+      unsupported_op_mode(node, has_external_weights_)) {
     if (optype == "GatherElements") {
       return true;
     }

@@ -2,12 +2,19 @@
 // Licensed under the MIT License.
 
 #include "core/platform/windows/telemetry.h"
+#include <winapifamily.h>
+#include <cwchar>
+#include <cstdint>
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+#include <shellapi.h>
+#endif
+#include <winsvc.h>
 #include <mutex>
 #include <string>
 #include <vector>
-#include <cwchar>
-#include <winsvc.h>
 #include "core/common/logging/logging.h"
+#include "core/platform/telemetry_environment.h"
+#include "core/platform/telemetry_redaction.h"
 #include "onnxruntime_config.h"
 
 // ETW includes
@@ -56,7 +63,53 @@ TRACELOGGING_DEFINE_PROVIDER(telemetry_provider_handle, "Microsoft.ML.ONNXRuntim
                              (0x3a26b1ff, 0x7484, 0x7484, 0x74, 0x84, 0x15, 0x26, 0x1f, 0x42, 0x61, 0x4d),
                              TraceLoggingOptionMicrosoftTelemetry());
 
-std::string ConvertWideStringToUtf8(const std::wstring& wide) {
+std::string GetCpuModel() {
+  HKEY key{};
+  if (::RegOpenKeyExA(HKEY_LOCAL_MACHINE,
+                      "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
+                      0,
+                      KEY_READ,
+                      &key) != ERROR_SUCCESS) {
+    return "unknown";
+  }
+
+  char cpu_model[256]{};
+  DWORD value_type = REG_SZ;
+  DWORD size = sizeof(cpu_model);
+  const LSTATUS status = ::RegQueryValueExA(key,
+                                            "ProcessorNameString",
+                                            nullptr,
+                                            &value_type,
+                                            reinterpret_cast<LPBYTE>(cpu_model),
+                                            &size);
+  ::RegCloseKey(key);
+
+  if (status != ERROR_SUCCESS || value_type != REG_SZ || size == 0) {
+    return "unknown";
+  }
+
+  cpu_model[sizeof(cpu_model) - 1] = '\0';
+  return cpu_model[0] != '\0' ? std::string(cpu_model) : std::string("unknown");
+}
+
+uint32_t GetProcessorCount() {
+  SYSTEM_INFO system_info{};
+  ::GetSystemInfo(&system_info);
+  return static_cast<uint32_t>(system_info.dwNumberOfProcessors);
+}
+
+uint64_t GetTotalMemoryMB() {
+  MEMORYSTATUSEX memory_status{};
+  memory_status.dwLength = sizeof(memory_status);
+  if (::GlobalMemoryStatusEx(&memory_status) == 0) {
+    return 0;
+  }
+
+  return memory_status.ullTotalPhys / (1024 * 1024);
+}
+
+std::string ConvertWideStringToUtf8(std::wstring_view wide) {
+  wide = telemetry_detail::TelemetryWideStringView(wide);
   if (wide.empty())
     return {};
 
@@ -75,14 +128,67 @@ std::string ConvertWideStringToUtf8(const std::wstring& wide) {
   return utf8;
 }
 
+// Parse the command line for -s (service name) and -k (service group) arguments.
+// These are svchost.exe conventions, so this only applies when the host process image is
+// svchost.exe; for any other process these flags are unrelated and their values are not collected.
+std::string GetServiceNamesFromCommandLine() {
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+  // The -s/-k service-name convention is specific to svchost.exe. Restrict command-line parsing to
+  // svchost so a same-named flag in an unrelated host process does not leak its argument value.
+  wchar_t module_path[MAX_PATH];
+  DWORD module_path_len = ::GetModuleFileNameW(nullptr, module_path, MAX_PATH);
+  if (module_path_len == 0 || module_path_len >= MAX_PATH)
+    return {};
+  const wchar_t* image_name = ::wcsrchr(module_path, L'\\');
+  image_name = (image_name != nullptr) ? image_name + 1 : module_path;
+  if (_wcsicmp(image_name, L"svchost.exe") != 0)
+    return {};
+
+  LPCWSTR cmd_line = ::GetCommandLineW();
+  if (cmd_line == nullptr)
+    return {};
+
+  int argc = 0;
+  LPWSTR* argv = ::CommandLineToArgvW(cmd_line, &argc);
+  if (argv == nullptr)
+    return {};
+
+  std::string aggregated;
+  bool first = true;
+  size_t count = 0;
+  for (int i = 0; i < argc - 1; ++i) {
+    if ((_wcsicmp(argv[i], L"-s") == 0 || _wcsicmp(argv[i], L"-k") == 0)) {
+      if (count++ == telemetry_detail::kMaxTelemetryCollectionEntries) break;
+      if (!first) {
+        if (!telemetry_detail::AppendTelemetryString(aggregated, ",")) break;
+      }
+      const std::string value = ConvertWideStringToUtf8(telemetry_detail::TelemetryWideStringView(argv[i + 1]));
+      if (!telemetry_detail::AppendTelemetryString(aggregated, value) ||
+          aggregated.size() == kMaxTelemetryStringLength) break;
+      first = false;
+      ++i;  // skip the value we just consumed
+    }
+  }
+
+  ::LocalFree(argv);
+  return aggregated;
+#else
+  // CommandLineToArgvW lives in shell32 and is only available on the desktop partition; the
+  // svchost -s/-k service-name convention does not apply on non-desktop Windows (UWP/GDK).
+  return {};
+#endif
+}
+
 std::string GetServiceNamesForCurrentProcess() {
   static std::once_flag once_flag;
   static std::string service_names;
 
   std::call_once(once_flag, [] {
     SC_HANDLE service_manager = ::OpenSCManagerW(nullptr, nullptr, SC_MANAGER_ENUMERATE_SERVICE);
-    if (service_manager == nullptr)
+    if (service_manager == nullptr) {
+      service_names = GetServiceNamesFromCommandLine();
       return;
+    }
 
     DWORD bytes_needed = 0;
     DWORD services_returned = 0;
@@ -91,11 +197,14 @@ std::string GetServiceNamesForCurrentProcess() {
                                  &services_returned, &resume_handle, nullptr) &&
         ::GetLastError() != ERROR_MORE_DATA) {
       ::CloseServiceHandle(service_manager);
+      service_names = GetServiceNamesFromCommandLine();
       return;
     }
 
-    if (bytes_needed == 0) {
+    // EnumServicesStatusEx supports at most a 256 KiB enumeration buffer.
+    if (bytes_needed == 0 || bytes_needed > 256 * 1024) {
       ::CloseServiceHandle(service_manager);
+      service_names = GetServiceNamesFromCommandLine();
       return;
     }
 
@@ -106,25 +215,34 @@ std::string GetServiceNamesForCurrentProcess() {
     if (!::EnumServicesStatusExW(service_manager, SC_ENUM_PROCESS_INFO, SERVICE_WIN32, SERVICE_ACTIVE, reinterpret_cast<LPBYTE>(services),
                                  bytes_needed, &bytes_needed, &services_returned, &resume_handle, nullptr)) {
       ::CloseServiceHandle(service_manager);
+      service_names = GetServiceNamesFromCommandLine();
       return;
     }
 
     DWORD current_pid = ::GetCurrentProcessId();
-    std::wstring aggregated;
+    std::string aggregated;
     bool first = true;
+    size_t count = 0;
     for (DWORD i = 0; i < services_returned; ++i) {
       if (services[i].ServiceStatusProcess.dwProcessId == current_pid) {
+        if (count++ == telemetry_detail::kMaxTelemetryCollectionEntries) break;
         if (!first) {
-          aggregated.push_back(L',');
+          if (!telemetry_detail::AppendTelemetryString(aggregated, ",")) break;
         }
-        aggregated.append(services[i].lpServiceName);
+        const std::string value =
+            ConvertWideStringToUtf8(telemetry_detail::TelemetryWideStringView(services[i].lpServiceName));
+        if (!telemetry_detail::AppendTelemetryString(aggregated, value) ||
+            aggregated.size() == kMaxTelemetryStringLength) break;
         first = false;
       }
     }
 
     ::CloseServiceHandle(service_manager);
 
-    service_names = ConvertWideStringToUtf8(aggregated);
+    service_names = std::move(aggregated);
+    if (service_names.empty()) {
+      service_names = GetServiceNamesFromCommandLine();
+    }
   });
 
   return service_names;
@@ -151,6 +269,12 @@ std::mutex WindowsTelemetry::callbacks_mutex_;
 
 WindowsTelemetry::WindowsTelemetry() {
   std::lock_guard<std::mutex> lock(mutex_);
+  // ORT_RUNNING_UNIT_TESTS is an internal hard-suppression signal, unlike the user-facing
+  // non-Windows environment opt-out. Do not register the ETW provider in test processes.
+  if (IsRunningUnitTests()) {
+    enabled_ = false;
+    return;
+  }
   if (global_register_count_ == 0) {
     // TraceLoggingRegister is fancy in that you can only register once GLOBALLY for the whole process
     HRESULT hr = TraceLoggingRegisterEx(telemetry_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
@@ -257,6 +381,10 @@ void WindowsTelemetry::LogProcessInfo() const {
   isRedist = false;
 #endif
   const std::string service_names = GetServiceNamesForCurrentProcess();
+  const std::string cpu_model = GetCpuModel();
+  const uint32_t processor_count = GetProcessorCount();
+  const uint64_t total_memory_mb = GetTotalMemoryMB();
+  telemetry_detail::TelemetryStrings strings;
   TraceLoggingWrite(telemetry_provider_handle,
                     "ProcessInfo",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -265,11 +393,14 @@ void WindowsTelemetry::LogProcessInfo() const {
                     TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
-                    TraceLoggingString(ORT_VERSION, "runtimeVersion"),
+                    TraceLoggingString(strings.Utf8(ORT_VERSION), "runtimeVersion"),
+                    TraceLoggingString(strings.Utf8(cpu_model.c_str()), "cpuModel"),
+                    TraceLoggingUInt32(processor_count, "processorCount"),
+                    TraceLoggingUInt64(total_memory_mb, "totalMemoryMB"),
                     TraceLoggingBool(IsDebuggerPresent(), "isDebuggerAttached"),
                     TraceLoggingBool(isRedist, "isRedist"),
-                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"),
-                    TraceLoggingString(service_names.c_str(), "serviceNames"));
+                    TraceLoggingString(strings.Utf8(ORT_CALLER_FRAMEWORK), "frameworkName"),
+                    TraceLoggingString(strings.Utf8(service_names.c_str()), "serviceNames"));
 
   process_info_logged = true;
 }
@@ -278,6 +409,7 @@ void WindowsTelemetry::LogSessionCreationStart(uint32_t session_id) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
+  telemetry_detail::TelemetryStrings strings;
   TraceLoggingWrite(telemetry_provider_handle,
                     "SessionCreationStart",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -285,8 +417,8 @@ void WindowsTelemetry::LogSessionCreationStart(uint32_t session_id) const {
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingLevel(WINEVENT_LEVEL_INFO),
-                    TraceLoggingString(ORT_VERSION, "runtimeVersion"),
-                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+                    TraceLoggingString(strings.Utf8(ORT_VERSION), "runtimeVersion"),
+                    TraceLoggingString(strings.Utf8(ORT_CALLER_FRAMEWORK), "frameworkName"));
 }
 
 void WindowsTelemetry::LogEvaluationStop(uint32_t session_id) const {
@@ -324,48 +456,14 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
-  // build the strings we need
-
-  std::string domain_to_version_string;
-  bool first = true;
-  for (auto& i : domain_to_version_map) {
-    if (first) {
-      first = false;
-    } else {
-      domain_to_version_string += ',';
-    }
-    domain_to_version_string += i.first;
-    domain_to_version_string += '=';
-    domain_to_version_string += std::to_string(i.second);
-  }
-
-  std::string model_metadata_string;
-  first = true;
-  for (auto& i : model_metadata) {
-    if (first) {
-      first = false;
-    } else {
-      model_metadata_string += ',';
-    }
-    model_metadata_string += i.first;
-    model_metadata_string += '=';
-    model_metadata_string += i.second;
-  }
-
-  std::string execution_provider_string;
-  first = true;
-  for (auto& i : execution_provider_ids) {
-    if (first) {
-      first = false;
-    } else {
-      execution_provider_string += ',';
-    }
-    execution_provider_string += i;
-  }
+  const std::string domain_to_version_string = telemetry_detail::FormatTelemetryMap(domain_to_version_map);
+  const std::string model_metadata_string = telemetry_detail::FormatTelemetryMap(model_metadata);
+  const std::string execution_provider_string = telemetry_detail::JoinTelemetryStrings(execution_provider_ids);
 
   const std::string service_names = GetServiceNamesForCurrentProcess();
   // Difference is MeasureEvent & isCaptureState, but keep in sync otherwise
   if (!captureState) {
+    telemetry_detail::TelemetryStrings strings;
     TraceLoggingWrite(telemetry_provider_handle,
                       "SessionCreation",
                       TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -380,25 +478,26 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       TraceLoggingUInt32(session_id, "sessionId"),
                       TraceLoggingInt64(ir_version, "irVersion"),
                       TraceLoggingUInt32(projection_, "OrtProgrammingProjection"),
-                      TraceLoggingString(model_producer_name.c_str(), "modelProducerName"),
-                      TraceLoggingString(model_producer_version.c_str(), "modelProducerVersion"),
-                      TraceLoggingString(model_domain.c_str(), "modelDomain"),
+                      TraceLoggingString(strings.Utf8(model_producer_name.c_str()), "modelProducerName"),
+                      TraceLoggingString(strings.Utf8(model_producer_version.c_str()), "modelProducerVersion"),
+                      TraceLoggingString(strings.Utf8(model_domain.c_str()), "modelDomain"),
                       TraceLoggingBool(use_fp16, "usefp16"),
-                      TraceLoggingString(domain_to_version_string.c_str(), "domainToVersionMap"),
-                      TraceLoggingString(model_file_name.c_str(), "modelFileName"),
-                      TraceLoggingString(model_graph_name.c_str(), "modelGraphName"),
-                      TraceLoggingString(model_weight_type.c_str(), "modelWeightType"),
-                      TraceLoggingString(model_graph_hash.c_str(), "modelGraphHash"),
-                      TraceLoggingString(model_weight_hash.c_str(), "modelWeightHash"),
-                      TraceLoggingString(model_metadata_string.c_str(), "modelMetaData"),
-                      TraceLoggingString(loaded_from.c_str(), "loadedFrom"),
-                      TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"),
-                      TraceLoggingString(hardware_device_types.c_str(), "hardwareDeviceTypes"),
-                      TraceLoggingString(hardware_vendor_ids.c_str(), "hardwareVendorIds"),
-                      TraceLoggingString(ep_versions.c_str(), "executionProviderVersions"),
-                      TraceLoggingString(service_names.c_str(), "serviceNames"),
-                      TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+                      TraceLoggingString(strings.Utf8(domain_to_version_string.c_str()), "domainToVersionMap"),
+                      TraceLoggingString(strings.Utf8(model_file_name.c_str()), "modelFileName"),
+                      TraceLoggingString(strings.Utf8(model_graph_name.c_str()), "modelGraphName"),
+                      TraceLoggingString(strings.Utf8(model_weight_type.c_str()), "modelWeightType"),
+                      TraceLoggingString(strings.Utf8(model_graph_hash.c_str()), "modelGraphHash"),
+                      TraceLoggingString(strings.Utf8(model_weight_hash.c_str()), "modelWeightHash"),
+                      TraceLoggingString(strings.Utf8(model_metadata_string.c_str()), "modelMetaData"),
+                      TraceLoggingString(strings.Utf8(loaded_from.c_str()), "loadedFrom"),
+                      TraceLoggingString(strings.Utf8(execution_provider_string.c_str()), "executionProviderIds"),
+                      TraceLoggingString(strings.Utf8(hardware_device_types.c_str()), "hardwareDeviceTypes"),
+                      TraceLoggingString(strings.Utf8(hardware_vendor_ids.c_str()), "hardwareVendorIds"),
+                      TraceLoggingString(strings.Utf8(ep_versions.c_str()), "executionProviderVersions"),
+                      TraceLoggingString(strings.Utf8(service_names.c_str()), "serviceNames"),
+                      TraceLoggingString(strings.Utf8(ORT_CALLER_FRAMEWORK), "frameworkName"));
   } else {
+    telemetry_detail::TelemetryStrings strings;
     TraceLoggingWrite(telemetry_provider_handle,
                       "SessionCreation_CaptureState",
                       TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -413,24 +512,24 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       TraceLoggingUInt32(session_id, "sessionId"),
                       TraceLoggingInt64(ir_version, "irVersion"),
                       TraceLoggingUInt32(projection_, "OrtProgrammingProjection"),
-                      TraceLoggingString(model_producer_name.c_str(), "modelProducerName"),
-                      TraceLoggingString(model_producer_version.c_str(), "modelProducerVersion"),
-                      TraceLoggingString(model_domain.c_str(), "modelDomain"),
+                      TraceLoggingString(strings.Utf8(model_producer_name.c_str()), "modelProducerName"),
+                      TraceLoggingString(strings.Utf8(model_producer_version.c_str()), "modelProducerVersion"),
+                      TraceLoggingString(strings.Utf8(model_domain.c_str()), "modelDomain"),
                       TraceLoggingBool(use_fp16, "usefp16"),
-                      TraceLoggingString(domain_to_version_string.c_str(), "domainToVersionMap"),
-                      TraceLoggingString(model_file_name.c_str(), "modelFileName"),
-                      TraceLoggingString(model_graph_name.c_str(), "modelGraphName"),
-                      TraceLoggingString(model_weight_type.c_str(), "modelWeightType"),
-                      TraceLoggingString(model_graph_hash.c_str(), "modelGraphHash"),
-                      TraceLoggingString(model_weight_hash.c_str(), "modelWeightHash"),
-                      TraceLoggingString(model_metadata_string.c_str(), "modelMetaData"),
-                      TraceLoggingString(loaded_from.c_str(), "loadedFrom"),
-                      TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"),
-                      TraceLoggingString(hardware_device_types.c_str(), "hardwareDeviceTypes"),
-                      TraceLoggingString(hardware_vendor_ids.c_str(), "hardwareVendorIds"),
-                      TraceLoggingString(ep_versions.c_str(), "executionProviderVersions"),
-                      TraceLoggingString(service_names.c_str(), "serviceNames"),
-                      TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+                      TraceLoggingString(strings.Utf8(domain_to_version_string.c_str()), "domainToVersionMap"),
+                      TraceLoggingString(strings.Utf8(model_file_name.c_str()), "modelFileName"),
+                      TraceLoggingString(strings.Utf8(model_graph_name.c_str()), "modelGraphName"),
+                      TraceLoggingString(strings.Utf8(model_weight_type.c_str()), "modelWeightType"),
+                      TraceLoggingString(strings.Utf8(model_graph_hash.c_str()), "modelGraphHash"),
+                      TraceLoggingString(strings.Utf8(model_weight_hash.c_str()), "modelWeightHash"),
+                      TraceLoggingString(strings.Utf8(model_metadata_string.c_str()), "modelMetaData"),
+                      TraceLoggingString(strings.Utf8(loaded_from.c_str()), "loadedFrom"),
+                      TraceLoggingString(strings.Utf8(execution_provider_string.c_str()), "executionProviderIds"),
+                      TraceLoggingString(strings.Utf8(hardware_device_types.c_str()), "hardwareDeviceTypes"),
+                      TraceLoggingString(strings.Utf8(hardware_vendor_ids.c_str()), "hardwareVendorIds"),
+                      TraceLoggingString(strings.Utf8(ep_versions.c_str()), "executionProviderVersions"),
+                      TraceLoggingString(strings.Utf8(service_names.c_str()), "serviceNames"),
+                      TraceLoggingString(strings.Utf8(ORT_CALLER_FRAMEWORK), "frameworkName"));
   }
 }
 
@@ -445,17 +544,9 @@ void WindowsTelemetry::LogCompileModelStart(uint32_t session_id,
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
-  std::string execution_provider_string;
-  bool first = true;
-  for (const auto& ep_id : execution_provider_ids) {
-    if (first) {
-      first = false;
-    } else {
-      execution_provider_string += ',';
-    }
-    execution_provider_string += ep_id;
-  }
+  const std::string execution_provider_string = telemetry_detail::JoinTelemetryStrings(execution_provider_ids);
 
+  telemetry_detail::TelemetryStrings strings;
   TraceLoggingWrite(telemetry_provider_handle,
                     "CompileModelStart",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -465,15 +556,15 @@ void WindowsTelemetry::LogCompileModelStart(uint32_t session_id,
                     // Telemetry info
                     TraceLoggingUInt8(1, "schemaVersion"),
                     TraceLoggingUInt32(session_id, "sessionId"),
-                    TraceLoggingString(input_source.c_str(), "inputSource"),
-                    TraceLoggingString(output_target.c_str(), "outputTarget"),
+                    TraceLoggingString(strings.Utf8(input_source.c_str()), "inputSource"),
+                    TraceLoggingString(strings.Utf8(output_target.c_str()), "outputTarget"),
                     TraceLoggingUInt32(flags, "flags"),
                     TraceLoggingInt32(graph_optimization_level, "graphOptimizationLevel"),
                     TraceLoggingBool(embed_ep_context, "embedEpContext"),
                     TraceLoggingBool(has_external_initializers_file, "hasExternalInitializersFile"),
-                    TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"),
-                    TraceLoggingString(ORT_VERSION, "runtimeVersion"),
-                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+                    TraceLoggingString(strings.Utf8(execution_provider_string.c_str()), "executionProviderIds"),
+                    TraceLoggingString(strings.Utf8(ORT_VERSION), "runtimeVersion"),
+                    TraceLoggingString(strings.Utf8(ORT_CALLER_FRAMEWORK), "frameworkName"));
 }
 
 void WindowsTelemetry::LogCompileModelComplete(uint32_t session_id,
@@ -484,6 +575,8 @@ void WindowsTelemetry::LogCompileModelComplete(uint32_t session_id,
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
+  const std::string scrubbed_error = ScrubStringForTelemetry(error_message);
+  telemetry_detail::TelemetryStrings strings;
   TraceLoggingWrite(telemetry_provider_handle,
                     "CompileModelComplete",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -496,8 +589,8 @@ void WindowsTelemetry::LogCompileModelComplete(uint32_t session_id,
                     TraceLoggingBool(success, "success"),
                     TraceLoggingUInt32(error_code, "errorCode"),
                     TraceLoggingUInt32(error_category, "errorCategory"),
-                    TraceLoggingString(error_message.c_str(), "errorMessage"),
-                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+                    TraceLoggingString(strings.Utf8(scrubbed_error.c_str()), "errorMessage"),
+                    TraceLoggingString(strings.Utf8(ORT_CALLER_FRAMEWORK), "frameworkName"));
 }
 
 void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,
@@ -505,8 +598,18 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
+  const std::string scrubbed_error = ScrubStringForTelemetry(status.ErrorMessage());
+  std::string_view file_view = telemetry_detail::TelemetryCStringView(file, telemetry_detail::kMaxTelemetryPathBytes);
+  if (file_view.size() > telemetry_detail::kMaxTelemetryPathBytes) {
+    file_view = {};
+  }
+  if (const size_t slash = file_view.find_last_of("/\\"); slash != std::string_view::npos) {
+    file_view.remove_prefix(slash + 1);
+  }
+  const std::string scrubbed_file = ScrubStringForTelemetry(file_view);
 #ifdef _WIN32
   HRESULT hr = common::StatusCodeToHRESULT(static_cast<common::StatusCode>(status.Code()));
+  telemetry_detail::TelemetryStrings strings;
   TraceLoggingWrite(telemetry_provider_handle,
                     "RuntimeError",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -519,13 +622,14 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingUInt32(status.Code(), "errorCode"),
                     TraceLoggingUInt32(status.Category(), "errorCategory"),
-                    TraceLoggingString(status.ErrorMessage().c_str(), "errorMessage"),
-                    TraceLoggingString(file, "file"),
-                    TraceLoggingString(function, "function"),
+                    TraceLoggingString(strings.Utf8(scrubbed_error.c_str()), "errorMessage"),
+                    TraceLoggingString(strings.Utf8(scrubbed_file.c_str()), "file"),
+                    TraceLoggingString(strings.Utf8(function), "function"),
                     TraceLoggingInt32(line, "line"),
-                    TraceLoggingString(ORT_VERSION, "runtimeVersion"),
-                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+                    TraceLoggingString(strings.Utf8(ORT_VERSION), "runtimeVersion"),
+                    TraceLoggingString(strings.Utf8(ORT_CALLER_FRAMEWORK), "frameworkName"));
 #else
+  telemetry_detail::TelemetryStrings strings;
   TraceLoggingWrite(telemetry_provider_handle,
                     "RuntimeError",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -537,12 +641,12 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingUInt32(status.Code(), "errorCode"),
                     TraceLoggingUInt32(status.Category(), "errorCategory"),
-                    TraceLoggingString(status.ErrorMessage().c_str(), "errorMessage"),
-                    TraceLoggingString(file, "file"),
-                    TraceLoggingString(function, "function"),
+                    TraceLoggingString(strings.Utf8(scrubbed_error.c_str()), "errorMessage"),
+                    TraceLoggingString(strings.Utf8(scrubbed_file.c_str()), "file"),
+                    TraceLoggingString(strings.Utf8(function), "function"),
                     TraceLoggingInt32(line, "line"),
-                    TraceLoggingString(ORT_VERSION, "runtimeVersion"),
-                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+                    TraceLoggingString(strings.Utf8(ORT_VERSION), "runtimeVersion"),
+                    TraceLoggingString(strings.Utf8(ORT_CALLER_FRAMEWORK), "frameworkName"));
 #endif
 }
 
@@ -552,6 +656,8 @@ void WindowsTelemetry::LogRuntimeInferenceError(uint32_t session_id, const commo
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
+  const std::string scrubbed_error = ScrubStringForTelemetry(status.ErrorMessage());
+  telemetry_detail::TelemetryStrings strings;
   TraceLoggingWrite(telemetry_provider_handle,
                     "RuntimeInferenceError",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -563,11 +669,11 @@ void WindowsTelemetry::LogRuntimeInferenceError(uint32_t session_id, const commo
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingUInt32(status.Code(), "errorCode"),
                     TraceLoggingUInt32(status.Category(), "errorCategory"),
-                    TraceLoggingString(status.ErrorMessage().c_str(), "errorMessage"),
-                    TraceLoggingString(ep_versions.c_str(), "executionProviderVersions"),
-                    TraceLoggingString(ep_device_types.c_str(), "executionProviderDeviceTypes"),
-                    TraceLoggingString(ORT_VERSION, "runtimeVersion"),
-                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+                    TraceLoggingString(strings.Utf8(scrubbed_error.c_str()), "errorMessage"),
+                    TraceLoggingString(strings.Utf8(ep_versions.c_str()), "executionProviderVersions"),
+                    TraceLoggingString(strings.Utf8(ep_device_types.c_str()), "executionProviderDeviceTypes"),
+                    TraceLoggingString(strings.Utf8(ORT_VERSION), "runtimeVersion"),
+                    TraceLoggingString(strings.Utf8(ORT_CALLER_FRAMEWORK), "frameworkName"));
 }
 
 void WindowsTelemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last,
@@ -575,17 +681,10 @@ void WindowsTelemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_s
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
-  // Convert duration_per_batch_size to a formatted string
-  std::string total_duration_per_batch_size;
-  for (const auto& entry : duration_per_batch_size) {
-    if (!total_duration_per_batch_size.empty()) {
-      total_duration_per_batch_size += ", ";
-    }
-    total_duration_per_batch_size += std::to_string(entry.first);
-    total_duration_per_batch_size += ": ";
-    total_duration_per_batch_size += std::to_string(entry.second);
-  }
+  const std::string total_duration_per_batch_size =
+      telemetry_detail::FormatTelemetryMap(duration_per_batch_size, ", ", ": ");
 
+  telemetry_detail::TelemetryStrings strings;
   TraceLoggingWrite(telemetry_provider_handle,
                     "RuntimePerf",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -596,9 +695,9 @@ void WindowsTelemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_s
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingUInt32(total_runs_since_last, "totalRuns"),
                     TraceLoggingInt64(total_run_duration_since_last, "totalRunDuration"),
-                    TraceLoggingString(total_duration_per_batch_size.c_str(), "totalRunDurationPerBatchSize"),
-                    TraceLoggingString(ORT_VERSION, "runtimeVersion"),
-                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+                    TraceLoggingString(strings.Utf8(total_duration_per_batch_size.c_str()), "totalRunDurationPerBatchSize"),
+                    TraceLoggingString(strings.Utf8(ORT_VERSION), "runtimeVersion"),
+                    TraceLoggingString(strings.Utf8(ORT_CALLER_FRAMEWORK), "frameworkName"));
 }
 
 void WindowsTelemetry::LogEpDeviceUsage(uint32_t session_id,
@@ -615,6 +714,7 @@ void WindowsTelemetry::LogEpDeviceUsage(uint32_t session_id,
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
+  telemetry_detail::TelemetryStrings strings;
   TraceLoggingWrite(telemetry_provider_handle,
                     "EpDeviceUsage",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -626,18 +726,18 @@ void WindowsTelemetry::LogEpDeviceUsage(uint32_t session_id,
                     // schemaVersion 1: added epVersion, runtimeVersion
                     TraceLoggingUInt8(1, "schemaVersion"),
                     TraceLoggingUInt32(session_id, "sessionId"),
-                    TraceLoggingString(ep_type.c_str(), "executionProviderType"),
-                    TraceLoggingString(hardware_device_type.c_str(), "hardwareDeviceType"),
+                    TraceLoggingString(strings.Utf8(ep_type.c_str()), "executionProviderType"),
+                    TraceLoggingString(strings.Utf8(hardware_device_type.c_str()), "hardwareDeviceType"),
                     TraceLoggingUInt32(hardware_vendor_id, "hardwareVendorId"),
                     TraceLoggingUInt32(hardware_device_id, "hardwareDeviceId"),
-                    TraceLoggingString(hardware_vendor.c_str(), "hardwareVendor"),
-                    TraceLoggingString(ep_vendor.c_str(), "epVendor"),
-                    TraceLoggingString(ep_version.c_str(), "epVersion"),
+                    TraceLoggingString(strings.Utf8(hardware_vendor.c_str()), "hardwareVendor"),
+                    TraceLoggingString(strings.Utf8(ep_vendor.c_str()), "epVendor"),
+                    TraceLoggingString(strings.Utf8(ep_version.c_str()), "epVersion"),
                     TraceLoggingInt32(assigned_node_count, "assignedNodeCount"),
                     TraceLoggingUInt32(total_runs_since_last, "totalRunsSinceLast"),
                     TraceLoggingInt64(total_run_duration_since_last, "totalRunDurationSinceLast"),
-                    TraceLoggingString(ORT_VERSION, "runtimeVersion"),
-                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+                    TraceLoggingString(strings.Utf8(ORT_VERSION), "runtimeVersion"),
+                    TraceLoggingString(strings.Utf8(ORT_CALLER_FRAMEWORK), "frameworkName"));
 }
 
 void WindowsTelemetry::LogExecutionProviderEvent(LUID* adapterLuid) const {
@@ -658,6 +758,7 @@ void WindowsTelemetry::LogDriverInfoEvent(const std::string_view device_class, c
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
+  telemetry_detail::TelemetryStrings strings;
   TraceLoggingWrite(telemetry_provider_handle,
                     "DriverInfo",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -666,9 +767,9 @@ void WindowsTelemetry::LogDriverInfoEvent(const std::string_view device_class, c
                     TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
-                    TraceLoggingString(device_class.data(), "deviceClass"),
-                    TraceLoggingWideString(driver_names.data(), "driverNames"),
-                    TraceLoggingWideString(driver_versions.data(), "driverVersions"));
+                    TraceLoggingString(strings.Utf8(device_class), "deviceClass"),
+                    TraceLoggingWideString(strings.Wide(driver_names), "driverNames"),
+                    TraceLoggingWideString(strings.Wide(driver_versions), "driverVersions"));
 }
 
 void WindowsTelemetry::LogAutoEpSelection(uint32_t session_id, const std::string& selection_policy,
@@ -677,30 +778,12 @@ void WindowsTelemetry::LogAutoEpSelection(uint32_t session_id, const std::string
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
-  // Build requested execution provider string
-  std::string requested_execution_provider_string;
-  bool first = true;
-  for (const auto& ep_id : requested_execution_provider_ids) {
-    if (first) {
-      first = false;
-    } else {
-      requested_execution_provider_string += ',';
-    }
-    requested_execution_provider_string += ep_id;
-  }
+  const std::string requested_execution_provider_string =
+      telemetry_detail::JoinTelemetryStrings(requested_execution_provider_ids);
+  const std::string available_execution_provider_string =
+      telemetry_detail::JoinTelemetryStrings(available_execution_provider_ids);
 
-  // Build available execution provider string
-  std::string available_execution_provider_string;
-  first = true;
-  for (const auto& ep_id : available_execution_provider_ids) {
-    if (first) {
-      first = false;
-    } else {
-      available_execution_provider_string += ',';
-    }
-    available_execution_provider_string += ep_id;
-  }
-
+  telemetry_detail::TelemetryStrings strings;
   TraceLoggingWrite(telemetry_provider_handle,
                     "EpAutoSelection",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -711,18 +794,21 @@ void WindowsTelemetry::LogAutoEpSelection(uint32_t session_id, const std::string
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
                     TraceLoggingUInt32(session_id, "sessionId"),
-                    TraceLoggingString(selection_policy.c_str(), "selectionPolicy"),
-                    TraceLoggingString(requested_execution_provider_string.c_str(), "requestedExecutionProviderIds"),
-                    TraceLoggingString(available_execution_provider_string.c_str(), "availableExecutionProviderIds"),
-                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+                    TraceLoggingString(strings.Utf8(selection_policy.c_str()), "selectionPolicy"),
+                    TraceLoggingString(strings.Utf8(requested_execution_provider_string.c_str()), "requestedExecutionProviderIds"),
+                    TraceLoggingString(strings.Utf8(available_execution_provider_string.c_str()), "availableExecutionProviderIds"),
+                    TraceLoggingString(strings.Utf8(ORT_CALLER_FRAMEWORK), "frameworkName"));
 }
 
-void WindowsTelemetry::LogProviderOptions(const std::string& provider_id, const std::string& provider_options_string, bool captureState) const {
+void WindowsTelemetry::LogProviderOptions(const std::string& provider_id,
+                                          const std::string& provider_options_string,
+                                          bool capture_state) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
   // Difference is MeasureEvent & isCaptureState, but keep in sync otherwise
-  if (!captureState) {
+  if (!capture_state) {
+    telemetry_detail::TelemetryStrings strings;
     TraceLoggingWrite(telemetry_provider_handle,
                       "ProviderOptions",
                       TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -732,10 +818,11 @@ void WindowsTelemetry::LogProviderOptions(const std::string& provider_id, const 
                       TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                       // Telemetry info
                       TraceLoggingUInt8(0, "schemaVersion"),
-                      TraceLoggingString(provider_id.c_str(), "providerId"),
-                      TraceLoggingString(provider_options_string.c_str(), "providerOptions"),
-                      TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+                      TraceLoggingString(strings.Utf8(provider_id.c_str()), "providerId"),
+                      TraceLoggingString(strings.Utf8(provider_options_string.c_str()), "providerOptions"),
+                      TraceLoggingString(strings.Utf8(ORT_CALLER_FRAMEWORK), "frameworkName"));
   } else {
+    telemetry_detail::TelemetryStrings strings;
     TraceLoggingWrite(telemetry_provider_handle,
                       "ProviderOptions_CaptureState",
                       TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -745,9 +832,9 @@ void WindowsTelemetry::LogProviderOptions(const std::string& provider_id, const 
                       TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                       // Telemetry info
                       TraceLoggingUInt8(0, "schemaVersion"),
-                      TraceLoggingString(provider_id.c_str(), "providerId"),
-                      TraceLoggingString(provider_options_string.c_str(), "providerOptions"),
-                      TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+                      TraceLoggingString(strings.Utf8(provider_id.c_str()), "providerId"),
+                      TraceLoggingString(strings.Utf8(provider_options_string.c_str()), "providerOptions"),
+                      TraceLoggingString(strings.Utf8(ORT_CALLER_FRAMEWORK), "frameworkName"));
   }
 }
 
@@ -755,6 +842,7 @@ void WindowsTelemetry::LogModelLoadStart(uint32_t session_id) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
+  telemetry_detail::TelemetryStrings strings;
   TraceLoggingWrite(telemetry_provider_handle,
                     "ModelLoadStart",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -764,14 +852,18 @@ void WindowsTelemetry::LogModelLoadStart(uint32_t session_id) const {
                     // Telemetry info
                     TraceLoggingUInt8(1, "schemaVersion"),
                     TraceLoggingUInt32(session_id, "sessionId"),
-                    TraceLoggingString(ORT_VERSION, "runtimeVersion"),
-                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+                    TraceLoggingString(strings.Utf8(ORT_VERSION), "runtimeVersion"),
+                    TraceLoggingString(strings.Utf8(ORT_CALLER_FRAMEWORK), "frameworkName"));
 }
 
-void WindowsTelemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& status) const {
+void WindowsTelemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& status,
+                                       int64_t duration_us) const {
+  ORT_UNUSED_PARAMETER(duration_us);
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
+  const std::string scrubbed_error = status.IsOK() ? std::string() : ScrubStringForTelemetry(status.ErrorMessage());
+  telemetry_detail::TelemetryStrings strings;
   TraceLoggingWrite(telemetry_provider_handle,
                     "ModelLoadEnd",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -784,15 +876,19 @@ void WindowsTelemetry::LogModelLoadEnd(uint32_t session_id, const common::Status
                     TraceLoggingBool(status.IsOK(), "isSuccess"),
                     TraceLoggingUInt32(status.Code(), "errorCode"),
                     TraceLoggingUInt32(status.Category(), "errorCategory"),
-                    TraceLoggingString(status.IsOK() ? "" : status.ErrorMessage().c_str(), "errorMessage"),
-                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+                    TraceLoggingString(strings.Utf8(scrubbed_error.c_str()), "errorMessage"),
+                    TraceLoggingString(strings.Utf8(ORT_CALLER_FRAMEWORK), "frameworkName"));
 }
 
 void WindowsTelemetry::LogSessionCreationEnd(uint32_t session_id,
-                                             const common::Status& status) const {
+                                             const common::Status& status,
+                                             int64_t duration_us) const {
+  ORT_UNUSED_PARAMETER(duration_us);
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
+  const std::string scrubbed_error = status.IsOK() ? std::string() : ScrubStringForTelemetry(status.ErrorMessage());
+  telemetry_detail::TelemetryStrings strings;
   TraceLoggingWrite(telemetry_provider_handle,
                     "SessionCreationEnd",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -805,8 +901,8 @@ void WindowsTelemetry::LogSessionCreationEnd(uint32_t session_id,
                     TraceLoggingBool(status.IsOK(), "isSuccess"),
                     TraceLoggingUInt32(status.Code(), "errorCode"),
                     TraceLoggingUInt32(status.Category(), "errorCategory"),
-                    TraceLoggingString(status.IsOK() ? "" : status.ErrorMessage().c_str(), "errorMessage"),
-                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+                    TraceLoggingString(strings.Utf8(scrubbed_error.c_str()), "errorMessage"),
+                    TraceLoggingString(strings.Utf8(ORT_CALLER_FRAMEWORK), "frameworkName"));
 }
 
 void WindowsTelemetry::LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
@@ -814,6 +910,7 @@ void WindowsTelemetry::LogRegisterEpLibraryWithLibPath(const std::string& regist
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
+  telemetry_detail::TelemetryStrings strings;
   TraceLoggingWrite(telemetry_provider_handle,
                     "RegisterEpLibraryWithLibPath",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -822,15 +919,16 @@ void WindowsTelemetry::LogRegisterEpLibraryWithLibPath(const std::string& regist
                     TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
-                    TraceLoggingString(registration_name.c_str(), "registrationName"),
-                    TraceLoggingString(lib_path.c_str(), "libPath"),
-                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+                    TraceLoggingString(strings.Utf8(registration_name.c_str()), "registrationName"),
+                    TraceLoggingString(strings.Utf8(lib_path.c_str()), "libPath"),
+                    TraceLoggingString(strings.Utf8(ORT_CALLER_FRAMEWORK), "frameworkName"));
 }
 
 void WindowsTelemetry::LogRegisterEpLibraryStart(const std::string& registration_name) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
+  telemetry_detail::TelemetryStrings strings;
   TraceLoggingWrite(telemetry_provider_handle,
                     "RegisterEpLibraryStart",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -839,16 +937,20 @@ void WindowsTelemetry::LogRegisterEpLibraryStart(const std::string& registration
                     TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                     // Telemetry info
                     TraceLoggingUInt8(1, "schemaVersion"),
-                    TraceLoggingString(registration_name.c_str(), "registrationName"),
-                    TraceLoggingString(ORT_VERSION, "runtimeVersion"),
-                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+                    TraceLoggingString(strings.Utf8(registration_name.c_str()), "registrationName"),
+                    TraceLoggingString(strings.Utf8(ORT_VERSION), "runtimeVersion"),
+                    TraceLoggingString(strings.Utf8(ORT_CALLER_FRAMEWORK), "frameworkName"));
 }
 
 void WindowsTelemetry::LogRegisterEpLibraryEnd(const std::string& registration_name,
-                                               const common::Status& status) const {
+                                               const common::Status& status,
+                                               int64_t duration_us) const {
+  ORT_UNUSED_PARAMETER(duration_us);
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
+  const std::string scrubbed_error = status.IsOK() ? std::string() : ScrubStringForTelemetry(status.ErrorMessage());
+  telemetry_detail::TelemetryStrings strings;
   TraceLoggingWrite(telemetry_provider_handle,
                     "RegisterEpLibraryEnd",
                     TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
@@ -857,12 +959,12 @@ void WindowsTelemetry::LogRegisterEpLibraryEnd(const std::string& registration_n
                     TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
-                    TraceLoggingString(registration_name.c_str(), "registrationName"),
+                    TraceLoggingString(strings.Utf8(registration_name.c_str()), "registrationName"),
                     TraceLoggingBool(status.IsOK(), "isSuccess"),
                     TraceLoggingUInt32(status.Code(), "errorCode"),
                     TraceLoggingUInt32(status.Category(), "errorCategory"),
-                    TraceLoggingString(status.IsOK() ? "" : status.ErrorMessage().c_str(), "errorMessage"),
-                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+                    TraceLoggingString(strings.Utf8(scrubbed_error.c_str()), "errorMessage"),
+                    TraceLoggingString(strings.Utf8(ORT_CALLER_FRAMEWORK), "frameworkName"));
 }
 
 }  // namespace onnxruntime

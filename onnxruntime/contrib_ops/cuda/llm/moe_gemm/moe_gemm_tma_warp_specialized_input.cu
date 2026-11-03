@@ -79,30 +79,30 @@ void TmaWarpSpecializedGroupedGemmInput::configureWorkspace(int8_t* start_ptr, i
   stride_c = reinterpret_cast<StrideC*>(pointers[3]);
   default_epilogue.stride_d = reinterpret_cast<DefaultEpilogue::StrideD*>(pointers[4]);
 
-  ptr_a = reinterpret_cast<void const**>(pointers[5]);
-  ptr_b = reinterpret_cast<void const**>(pointers[6]);
-  ptr_c = reinterpret_cast<void const**>(pointers[7]);
+  ptr_a = reinterpret_cast<const void**>(pointers[5]);
+  ptr_b = reinterpret_cast<const void**>(pointers[6]);
+  ptr_c = reinterpret_cast<const void**>(pointers[7]);
   default_epilogue.ptr_d = reinterpret_cast<void**>(pointers[8]);
 
-  alpha_scale_ptr_array = reinterpret_cast<float const**>(pointers[9]);
+  alpha_scale_ptr_array = reinterpret_cast<const float**>(pointers[9]);
 
-  fpX_block_scaling_factors_A = reinterpret_cast<ElementSF const**>(pointers[10]);
-  fpX_block_scaling_factors_B = reinterpret_cast<ElementSF const**>(pointers[11]);
+  fpX_block_scaling_factors_A = reinterpret_cast<const ElementSF**>(pointers[10]);
+  fpX_block_scaling_factors_B = reinterpret_cast<const ElementSF**>(pointers[11]);
 
   fpX_block_scaling_factors_stride_A = pointers[12];
   fpX_block_scaling_factors_stride_B = pointers[13];
 
   int4_groupwise_params.shape.problem_shapes = reinterpret_cast<INT4GroupwiseParams::ProblemShapeInt::UnderlyingProblemShape*>(pointers[14]);
   int4_groupwise_params.shape.host_problem_shapes = nullptr;
-  int4_groupwise_params.ptr_s_a = reinterpret_cast<INT4GroupwiseParams::SFA const**>(pointers[15]);
+  int4_groupwise_params.ptr_s_a = reinterpret_cast<const INT4GroupwiseParams::SFA**>(pointers[15]);
   int4_groupwise_params.stride_s_a = reinterpret_cast<INT4GroupwiseParams::StrideSFA*>(pointers[16]);
 
   this->gemm_workspace = reinterpret_cast<uint8_t*>(gemm_workspace);
   this->gemm_workspace_size = gemm_workspace_size;
 }
 
-void TmaWarpSpecializedGroupedGemmInput::setFinalizeFusionParams(void* final_output, float const* router_scales,
-                                                                 int64_t const* expert_first_token_offset, int const* source_token_index, void const* bias, int hidden_size,
+void TmaWarpSpecializedGroupedGemmInput::setFinalizeFusionParams(void* final_output, const float* router_scales,
+                                                                 const int64_t* expert_first_token_offset, const int* source_token_index, const void* bias, int hidden_size,
                                                                  int num_output_tokens) {
   fused_finalize_epilogue.ptr_final_output = final_output;
   fused_finalize_epilogue.ptr_router_scales = router_scales;
@@ -122,7 +122,7 @@ std::string TmaWarpSpecializedGroupedGemmInput::toString() const {
   std::stringstream ss;
   ss << "Hopper Input Information: " << (isValid() ? "valid" : "null") << "\n";
   if (isValid()) {
-    using PrintType = void const*;
+    using PrintType = const void*;
     ss << "Ptr A: " << (PrintType)ptr_a << " with Stride: " << (PrintType)stride_a << ",\n"
        << "Ptr B: " << (PrintType)ptr_b << " with Stride: " << (PrintType)stride_b << ",\n"
        << "Ptr C: " << (PrintType)ptr_c << " with Stride: " << (PrintType)stride_c << "\n";

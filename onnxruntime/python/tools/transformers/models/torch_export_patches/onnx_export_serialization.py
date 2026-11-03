@@ -1,7 +1,14 @@
 from typing import Any
 
 import torch
-from transformers.cache_utils import DynamicCache, MambaCache
+from transformers.cache_utils import DynamicCache
+
+try:
+    from transformers.cache_utils import MambaCache
+except ImportError:
+    MambaCache = None
+
+from .cache_helper import get_dynamic_cache_key_value, make_dynamic_cache
 
 ############
 # MambaCache
@@ -96,8 +103,8 @@ def flatten_dynamic_cache(
     dynamic_cache: DynamicCache,
 ) -> tuple[list[Any], torch.utils._pytree.Context]:
     """Serializes a :class:`DynamicCache` with python objects."""
-    flat = [(k, getattr(dynamic_cache, k)) for k in ["key_cache", "value_cache"] if hasattr(dynamic_cache, k)]
-    return [f[1] for f in flat], [f[0] for f in flat]
+    key_cache, value_cache = get_dynamic_cache_key_value(dynamic_cache)
+    return [key_cache, value_cache], ["key_cache", "value_cache"]
 
 
 def flatten_with_keys_dynamic_cache(
@@ -117,8 +124,5 @@ def unflatten_dynamic_cache(
     output_type=None,
 ) -> DynamicCache:
     """Restores a :class:`DynamicCache` from python objects."""
-    cache = DynamicCache()
     values = dict(zip(context, values, strict=False))
-    for k, v in values.items():
-        setattr(cache, k, v)
-    return cache
+    return make_dynamic_cache(list(zip(values["key_cache"], values["value_cache"], strict=False)))

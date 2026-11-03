@@ -203,6 +203,78 @@ static void MaxPool_8_WithIndexTest(bool has_index, int64_t storage_order = 0) {
             kOpenVINOExecutionProvider, kWebGpuExecutionProvider, kDmlExecutionProvider});
 }
 
+// Pooling never mixes channels, so an NHWC implementation may carry several channels per thread
+// through the same window arithmetic when the channel count divides evenly. These cover a channel
+// count that is a multiple of four and one that is only a multiple of two, for both pool kinds -
+// AveragePool separately because its divisor has to be applied per channel as well.
+TEST(PoolTest, MaxPool_ChannelCountFourAligned) {
+  OpTester test("MaxPool");
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  test.AddInput<float>("X", {1, 4, 2, 2},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        5.0f, 6.0f, 7.0f, 8.0f,
+                        9.0f, 10.0f, 11.0f, 12.0f,
+                        13.0f, 14.0f, 15.0f, 16.0f});
+  test.AddOutput<float>("Y", {1, 4, 1, 1}, {4.0f, 8.0f, 12.0f, 16.0f});
+  test.Run();
+}
+
+TEST(PoolTest, MaxPool_ChannelCountTwoAligned) {
+  OpTester test("MaxPool");
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  test.AddInput<float>("X", {1, 6, 2, 2},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        5.0f, 6.0f, 7.0f, 8.0f,
+                        9.0f, 10.0f, 11.0f, 12.0f,
+                        13.0f, 14.0f, 15.0f, 16.0f,
+                        17.0f, 18.0f, 19.0f, 20.0f,
+                        21.0f, 22.0f, 23.0f, 24.0f});
+  test.AddOutput<float>("Y", {1, 6, 1, 1}, {4.0f, 8.0f, 12.0f, 16.0f, 20.0f, 24.0f});
+  test.Run();
+}
+
+TEST(PoolTest, AveragePool_ChannelCountFourAligned) {
+  OpTester test("AveragePool");
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  test.AddInput<float>("X", {1, 4, 2, 2},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        5.0f, 6.0f, 7.0f, 8.0f,
+                        9.0f, 10.0f, 11.0f, 12.0f,
+                        13.0f, 14.0f, 15.0f, 16.0f});
+  test.AddOutput<float>("Y", {1, 4, 1, 1}, {2.5f, 6.5f, 10.5f, 14.5f});
+  test.Run();
+}
+
+TEST(PoolTest, AveragePool_ChannelCountTwoAligned) {
+  OpTester test("AveragePool");
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  test.AddInput<float>("X", {1, 6, 2, 2},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        5.0f, 6.0f, 7.0f, 8.0f,
+                        9.0f, 10.0f, 11.0f, 12.0f,
+                        13.0f, 14.0f, 15.0f, 16.0f,
+                        17.0f, 18.0f, 19.0f, 20.0f,
+                        21.0f, 22.0f, 23.0f, 24.0f});
+  test.AddOutput<float>("Y", {1, 6, 1, 1}, {2.5f, 6.5f, 10.5f, 14.5f, 18.5f, 22.5f});
+  test.Run();
+}
+
 TEST(PoolTest, MaxPool_8_With_Index) {
   MaxPool_8_WithIndexTest(false);                      // row major
   MaxPool_8_WithIndexTest(true, 0 /*storage_order*/);  // row major
@@ -2451,6 +2523,38 @@ TEST(PoolTest, MaxPoolDimWithZeroForN) {
 // Graph::Resolve() and reach kernel construction where our ORT_ENFORCE checks fire.
 // Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML) that produce
 // different error messages.
+TEST(PoolTest, MaxPool_NegativePad) {
+  OpTester test("MaxPool");
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, -1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{1, 3});
+
+  test.AddInput<float>("X", {1, 1, 1, 4}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Pad values must be non-negative",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+#ifndef ORT_NO_EXCEPTIONS
+TEST(PoolTest, MlasPool_NegativePad) {
+  const int64_t input_shape[] = {1, 1, 1, 4};
+  const int64_t kernel_shape[] = {1, 3};
+  const int64_t pads[] = {0, 0, 0, -1};
+  const int64_t strides[] = {1, 1};
+  const int64_t output_shape[] = {1, 1, 1, 1};
+  const float input[] = {1.0f, 2.0f, 3.0f, 4.0f};
+  float output[1];
+
+  EXPECT_THROW(MlasPool(MlasMaximumPooling, 2, input_shape, kernel_shape, pads, strides,
+                        output_shape, input, output, nullptr),
+               std::invalid_argument);
+}
+#endif
+
 TEST(PoolTest, MaxPool_ZeroStride) {
   OpTester test("MaxPool");
   test.AddShapeToTensorData(false);

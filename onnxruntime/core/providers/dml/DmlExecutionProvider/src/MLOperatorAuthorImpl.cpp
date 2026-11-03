@@ -1360,7 +1360,10 @@ namespace Windows::AI::MachineLearning::Adapter
         {
             // The return value is only > 0 if ALL characters copied successfully.
             // Write null terminator at the end of copied chars, which may not be at the end of the buffer.
-            outputName[charsCopiedIfSucceeded] = L'\0';
+            // MultiByteToWideChar does not append a null terminator when the source length is given
+            // explicitly, so the converted chars may exactly fill the buffer. Clamp the index to leave
+            // room for the null terminator, truncating the last char in that case.
+            outputName[std::min<uint32_t>(charsCopiedIfSucceeded, bufferSizeInChars - 1)] = L'\0';
             return S_OK;
         }
 
@@ -1573,6 +1576,52 @@ namespace Windows::AI::MachineLearning::Adapter
         ORT_CATCH_RETURN
     }
 
+    // Verifies that the buffer backing a TensorProto is large enough to hold the number of elements
+    // implied by the proto's declared dimensions.
+    //
+    // OnnxTensorWrapper exposes the shape (from TensorProto::dims) and the data pointer independently,
+    // and its consumers size their reads from the shape: OperatorHelper's ReadCpuLocalTensorIntoInt32
+    // iterates [GetData(), GetData() + ComputeElementCountFromDimensions(GetShape())), and
+    // DmlOperatorConstantOfShape copies sizeof(element type) bytes out of GetData(). A TensorProto whose
+    // declared shape is larger than its actual payload therefore causes an out-of-bounds read whose
+    // contents can reach model output.
+    //
+    // The framework validates this invariant for graph initializers
+    // (ValidateEmbeddedTensorProtoDataSizeAndShape), but that check does not cover every proto that
+    // reaches this constructor: Graph::ConvertInitializersIntoOrtValues skips initializers whose declared
+    // size is under utils::kSmallTensorExternalDataThreshold, and attribute tensors (AttributeProto::t,
+    // read via OpNodeInfoWrapper::GetTensorAttribute) are never initializers at all, so no framework guard
+    // applies to them.
+    static void VerifyTensorProtoFitsInBuffer(const onnx::TensorProto& tensorProto, size_t bufferByteSize)
+    {
+        // Strings are not laid out as a flat buffer of fixed-width elements, and the DML EP has no
+        // consumer that reads them through this wrapper.
+        if (tensorProto.data_type() == onnx::TensorProto_DataType_STRING)
+        {
+            return;
+        }
+
+        // A failure here means the declared shape is not representable, the byte count overflows, or the
+        // element type has no fixed width. The only types ToMLTensorDataType accepts that this helper
+        // cannot size are COMPLEX64/COMPLEX128, and no DML operator registers those (they exist in
+        // OperatorRegistration.cpp's SupportedTensorDataTypes only as unused enum values, and DmlCommon
+        // maps both to DML_TENSOR_DATA_TYPE_UNKNOWN). Rejecting the proto is therefore the correct
+        // outcome for every type that can actually reach this point.
+        size_t requiredByteSize = 0;
+        THROW_IF_NOT_OK(onnxruntime::utils::GetSizeInBytesFromTensorProto<0>(tensorProto, &requiredByteSize));
+
+        if (bufferByteSize < requiredByteSize)
+        {
+            ORT_THROW_HR_MSG(
+                E_INVALIDARG,
+                "Tensor '%hs' carries fewer bytes of data than its shape requires. "
+                "Shape requires %llu bytes, but only %llu bytes are present.",
+                tensorProto.name().c_str(),
+                static_cast<uint64_t>(requiredByteSize),
+                static_cast<uint64_t>(bufferByteSize));
+        }
+    }
+
     OnnxTensorWrapper::OnnxTensorWrapper(onnx::TensorProto* impl, const std::filesystem::path& modelPath) : m_impl(impl)
     {
         // The tensor may be stored as raw data or in typed fields.
@@ -1628,6 +1677,14 @@ namespace Windows::AI::MachineLearning::Adapter
             std::tie(m_unpackedTensor, m_tensorByteSize) = UnpackTensor(*impl, modelPath);
             m_dataPtr = m_unpackedTensor.get();
         }
+
+        // The raw-data, typed-field, and file-backed external branches all size m_tensorByteSize from
+        // the payload actually present, while GetShape() reports the declared dims. Reject the mismatch
+        // here so consumers that derive their element count from the shape cannot read past the end of
+        // the buffer. For the in-memory external tags the size is itself derived from the shape by
+        // GetExternalDataInfo, so this comparison only restates that upstream contract - the length
+        // behind a caller-supplied pointer is not independently measurable here.
+        VerifyTensorProtoFitsInBuffer(*impl, m_tensorByteSize);
     }
 
     uint32_t STDMETHODCALLTYPE OnnxTensorWrapper::GetDimensionCount() const noexcept

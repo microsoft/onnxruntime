@@ -42,9 +42,9 @@ class FusedQKRotaryEmbeddingProgram final : public Program<FusedQKRotaryEmbeddin
   // q_* describes query rotation domain (same definition as existing program)
   // k_* describes key rotation domain.
   // When has_qk_norm_ is true, the program also fuses a per-head RMS normalization
-  // (epsilon = qk_norm_epsilon, scale = q_norm_weight / k_norm_weight) over the
-  // head_size channels of Q and K before the rotary rotation. head_size and
-  // qk_norm_epsilon are required uniforms when has_qk_norm_ is true; they are
+  // with separate Q/K epsilons and weights over the head_size channels of Q and K
+  // before the rotary rotation. head_size, q_norm_epsilon and k_norm_epsilon
+  // are required uniforms when has_qk_norm_ is true; they are
   // ignored otherwise but must still be supplied (callers pass placeholder values).
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"scale", ProgramUniformVariableDataType::Float32},
@@ -55,7 +55,8 @@ class FusedQKRotaryEmbeddingProgram final : public Program<FusedQKRotaryEmbeddin
       {"k_input_output_stride", ProgramUniformVariableDataType::Uint32},
       {"q_domain_size", ProgramUniformVariableDataType::Uint32},
       {"head_size", ProgramUniformVariableDataType::Uint32},
-      {"qk_norm_epsilon", ProgramUniformVariableDataType::Float32});
+      {"q_norm_epsilon", ProgramUniformVariableDataType::Float32},
+      {"k_norm_epsilon", ProgramUniformVariableDataType::Float32});
 
  private:
   const bool interleaved_;

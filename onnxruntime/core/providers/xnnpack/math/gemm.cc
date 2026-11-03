@@ -121,12 +121,11 @@ Gemm::Gemm(const OpKernelInfo& info) : GemmBase(info), XnnpackKernel(info, /*ena
 
   C_matrix_exists_ = C_arg && C_arg->Exists();
 
-  // A - MxK
+  // A - MxK. M is not cached here: it can be a dynamic dimension that is only known at
+  // Compute() time, so it is read from the input tensor shape instead.
   if (trans_A_ == CblasNoTrans) {
-    M_ = shapeA->dim(0).dim_value() > 1 ? shapeA->dim(0).dim_value() : 1;
     K_ = shapeA->dim(1).dim_value();
   } else {
-    M_ = shapeA->dim(1).dim_value();
     K_ = shapeA->dim(0).dim_value() > 1 ? shapeA->dim(0).dim_value() : 1;
   }
   // B - KxN
@@ -208,10 +207,11 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
 Status Gemm::Compute(OpKernelContext* context) const {
   pthreadpool_t threadpool = GetThreadPool();
   const auto* A = context->Input<Tensor>(0);
-  auto Y = context->Output(0, {M_, N_});
+  const int64_t M = trans_A_ == CblasNoTrans ? A->Shape()[0] : A->Shape()[1];
+  auto Y = context->Output(0, {M, N_});
 
   // if input is empty tensor, return as nothing need to be calculated and we've set the shape for the output
-  if (M_ == 0 || N_ == 0) {
+  if (M == 0 || N_ == 0) {
     return Status::OK();
   }
 
@@ -221,7 +221,7 @@ Status Gemm::Compute(OpKernelContext* context) const {
   }
   xnn_status status = reshape_func(op0_.get(),
                                    // Number of rows to multiply
-                                   trans_A_ == CblasNoTrans ? M_ : K_,
+                                   trans_A_ == CblasNoTrans ? M : K_,
                                    threadpool);
 
   if (status != xnn_status_success) {

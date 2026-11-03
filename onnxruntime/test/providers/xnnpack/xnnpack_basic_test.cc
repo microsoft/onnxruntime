@@ -1,8 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
+#include <condition_variable>
+#include <cstdlib>
+#include <exception>
+#include <mutex>
 #include <random>
 #include <string>
+#include <thread>
 
 #include "core/common/logging/logging.h"
 #include "core/common/span_utils.h"
@@ -29,6 +35,7 @@
 #endif
 
 #include "gtest/gtest.h"
+#include "xnnpack.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;
@@ -40,6 +47,88 @@ extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace onnxruntime {
 namespace test {
+
+#if GTEST_HAS_DEATH_TEST
+namespace {
+void TestConcurrentAllocatorInitialization() {
+  constexpr size_t num_threads = 32;
+  std::array<std::unique_ptr<IExecutionProvider>, num_threads> providers;
+  std::array<AllocatorPtr, num_threads> allocators;
+  std::array<std::exception_ptr, num_threads> errors;
+  for (auto& provider : providers) {
+    provider = DefaultXnnpackExecutionProvider();
+  }
+
+  std::mutex mutex;
+  std::condition_variable cv;
+  size_t ready = 0;
+  bool start = false;
+  InlinedVector<std::thread> threads;
+  threads.reserve(num_threads);
+  for (size_t i = 0; i < num_threads; ++i) {
+    threads.emplace_back([&, i]() {
+      {
+        std::unique_lock<std::mutex> lock(mutex);
+        ++ready;
+        cv.notify_all();
+        cv.wait(lock, [&]() { return start; });
+      }
+      ORT_TRY {
+        auto preferred_allocators = providers[i]->CreatePreferredAllocators();
+        ORT_ENFORCE(preferred_allocators.size() == 1);
+        allocators[i] = preferred_allocators[0];
+      }
+      ORT_CATCH(...) {
+        errors[i] = std::current_exception();
+      }
+    });
+  }
+  {
+    std::unique_lock<std::mutex> lock(mutex);
+    cv.wait(lock, [&]() { return ready == num_threads; });
+    start = true;
+  }
+  cv.notify_all();
+  for (auto& thread : threads) {
+    thread.join();
+  }
+
+  ASSERT_NE(allocators[0], nullptr);
+  for (size_t i = 0; i < num_threads; ++i) {
+    ASSERT_EQ(errors[i], nullptr);
+    ASSERT_EQ(allocators[i], allocators[0]);
+    providers[i].reset();
+  }
+
+  auto* allocator = allocators[0].get();
+  for (auto& retained_allocator : allocators) {
+    retained_allocator.reset();
+  }
+  // Exercise XNNPACK's retained allocator context after all EP owners are gone.
+  xnn_workspace_t workspace = nullptr;
+  ASSERT_EQ(xnn_create_workspace(&workspace), xnn_status_success);
+  ASSERT_EQ(xnn_release_workspace(workspace), xnn_status_success);
+
+  auto preferred_allocators = DefaultXnnpackExecutionProvider()->CreatePreferredAllocators();
+  ASSERT_EQ(preferred_allocators.size(), 1U);
+  ASSERT_EQ(preferred_allocators[0].get(), allocator);
+  void* buffer = allocator->Alloc(64);
+  ASSERT_NE(buffer, nullptr);
+  allocator->Free(buffer);
+}
+}  // namespace
+
+TEST(XnnpackEPDeathTest, ConcurrentAllocatorInitialization) {
+  // Re-exec so earlier XNNPACK tests cannot hide a race in first-time initialization.
+  GTEST_FLAG_SET(death_test_style, "threadsafe");
+  ASSERT_EXIT(
+      {
+        TestConcurrentAllocatorInitialization();
+        std::_Exit(::testing::Test::HasFailure() ? EXIT_FAILURE : EXIT_SUCCESS);
+      },
+      ::testing::ExitedWithCode(EXIT_SUCCESS), "");
+}
+#endif
 
 // test uses ONNX model so can't be run in a minimal build.
 // TODO: When we need XNNPACK in a minimal build we should add an ORT format version of the model
@@ -686,6 +775,39 @@ TEST(XnnpackEP, TestGemm_EmptyC_NoSegfault) {
     gemm_node.AddAttribute("transB", static_cast<int64_t>(0));
   };
   RunModelTest(modelBuilder, "xnnpack_test_graph_gemm_empty_c",
+               {
+                   ExpectedEPNodeAssignment::All,
+                   1e-4f /* fp32_abs_err */,
+               });
+}
+
+// Regression test for https://github.com/microsoft/onnxruntime/issues/31153.
+// A Gemm whose M dimension is symbolic used to have M cached as 1 by the kernel
+// constructor (dim_value() returns 0 for a symbolic dim), so Compute() produced a
+// [1, N] output and only multiplied the first row. M must come from the input tensor
+// at Compute() time.
+TEST(XnnpackEP, TestGemm_DynamicM) {
+  // a_shape is the runtime shape fed for the symbolic M; it must have M > 1 to catch the bug.
+  const std::vector<int64_t> a_shape = {10, 3};
+  const std::vector<int64_t> b_shape = {3, 4};
+  auto modelBuilder = [&](ModelTestBuilder& builder) {
+    auto* input_a = builder.MakeSymbolicInput<float>({std::string("dynamic_m"), b_shape[0]});
+    auto* input_b = builder.MakeInitializer<float>(b_shape, -1.f, 1.f);
+    auto* input_c = builder.MakeInitializer<float>({b_shape[1]}, -1.f, 1.f);
+    auto* output_arg = builder.MakeOutput();
+    auto& gemm_node = builder.AddNode("Gemm", {input_a, input_b, input_c}, {output_arg});
+    gemm_node.AddAttribute("alpha", 1.0f);
+    gemm_node.AddAttribute("beta", 1.0f);
+    gemm_node.AddAttribute("transA", static_cast<int64_t>(0));
+    gemm_node.AddAttribute("transB", static_cast<int64_t>(0));
+
+    // MakeSymbolicInput doesn't register a feed, so add one ourselves.
+    OrtValue input_value;
+    CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], a_shape,
+                         builder.rand_gen_.Uniform<float>(a_shape, -1.f, 1.f), &input_value);
+    builder.feeds_.insert(std::make_pair(input_a->Name(), input_value));
+  };
+  RunModelTest(modelBuilder, "xnnpack_test_graph_gemm_dynamic_m",
                {
                    ExpectedEPNodeAssignment::All,
                    1e-4f /* fp32_abs_err */,

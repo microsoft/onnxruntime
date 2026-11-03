@@ -723,14 +723,14 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     return std::abs(v0 - v1) <= std::abs(v1 * rtol) + atol;
   }
 
-  template <size_t M, size_t K, size_t N, size_t BlkLen>
-  void MatMul(const float* A, size_t lda, const float* B, const float* bias, float* C, size_t ldc) {
-    for (size_t m = 0; m < M; ++m) {
-      for (size_t n = 0; n < N; ++n) {
+  void MatMul(const float* A, size_t lda, const float* B, const float* bias, float* C, size_t ldc,
+              size_t m_size, size_t k_size, size_t n_size) {
+    for (size_t m = 0; m < m_size; ++m) {
+      for (size_t n = 0; n < n_size; ++n) {
         float accu = bias ? bias[n] : 0.0f;
-        for (size_t k = 0; k < K; ++k) {
+        for (size_t k = 0; k < k_size; ++k) {
           float a = A[m * lda + k];
-          float b = B[n * K + k];
+          float b = B[n * k_size + k];
           accu += a * b;
         }
         C[m * ldc + n] = accu;
@@ -738,57 +738,63 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     }
   }
 
-  template <size_t M, size_t K, size_t N, size_t BlkLen>
-  void Check(const float* target, const float* ref, size_t ldc, float rtol, float atol) {
-    for (size_t m = 0; m < M; ++m) {
-      for (size_t n = 0; n < N; ++n) {
+  void Check(const float* target, const float* ref, size_t ldc, float rtol, float atol,
+             size_t m_size, size_t k_size, size_t n_size, size_t block_len) {
+    for (size_t m = 0; m < m_size; ++m) {
+      for (size_t n = 0; n < n_size; ++n) {
         size_t i = m * ldc + n;
         ASSERT_TRUE(FloatEqual(target[i], ref[i], rtol, atol))
-            << " M " << M << " K " << K << " N " << N << " BlkLen " << BlkLen
+            << " M " << m_size << " K " << k_size << " N " << n_size << " BlkLen " << block_len
             << " v0 " << target[i] << " v1 " << ref[i]
             << " m " << m << " n " << n;
       }
     }
   }
 
-  template <bool HasBias, bool HasZp, size_t M, size_t K, size_t N, size_t BlkLen>
-  void TestSQ8BitGemmKernel() {
-    if (!MlasIsQNBitGemmAvailable(8, BlkLen, SQNBIT_CompInt8)) return;
+  void TestSQ8BitGemmKernel(bool has_bias, bool has_zp, size_t m_size, size_t k_size, size_t n_size,
+                            size_t block_len, bool with_threadpool = false,
+                            float rtol = 0.01f, float atol = 0.02f) {
+    if (!MlasIsQNBitGemmAvailable(8, block_len, SQNBIT_CompInt8)) return;
 
-    constexpr size_t BlkCount = (K + BlkLen - 1) / BlkLen;
-    constexpr size_t ldb = BlkCount * BlkLen;
-    constexpr size_t lda = ldb;
-    constexpr size_t ldc = (N + 15) & (~15);
-    const auto* A = A_.GetFilledBuffer(M * lda, [this](float* p, size_t t) {
+    MLAS_THREADPOOL* threadpool = with_threadpool ? GetMlasThreadPool() : nullptr;
+
+    const size_t BlkCount = (k_size + block_len - 1) / block_len;
+    const size_t ldb = BlkCount * block_len;
+    const size_t lda = ldb;
+    const size_t ldc = (n_size + 15) & (~15);
+    const auto* A = A_.GetFilledBuffer(m_size * lda, [this](float* p, size_t t) {
       for (size_t i = 0; i < t; i++) {
         p[i] = this->distrib_f32_(this->gen_);
       }
     });
 
-    auto* B = B_.GetFilledBuffer(K * N, [this](float* p, size_t t) {
+    auto* B = B_.GetFilledBuffer(k_size * n_size, [this](float* p, size_t t) {
       for (size_t i = 0; i < t; i++) {
         p[i] = this->distrib_f32_(this->gen_);
       }
     });
 
     size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
-    MlasBlockwiseQuantizedBufferSizes<8>((int)(BlkLen), true, (int)K, (int)N,
+    const int block_size = static_cast<int>(block_len);
+    const int rows = static_cast<int>(k_size);
+    const int columns = static_cast<int>(n_size);
+    MlasBlockwiseQuantizedBufferSizes<8>(block_size, true, rows, columns,
                                          q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
 
     auto* inputB = packedB_.GetBuffer(q_data_size_in_bytes, true);
     auto* inputScale = scale_.GetBuffer(q_scale_size, true);
-    auto* inputZp = HasZp ? Zp_.GetBuffer(q_zp_size_in_bytes, true) : nullptr;
+    auto* inputZp = has_zp ? Zp_.GetBuffer(q_zp_size_in_bytes, true) : nullptr;
 
     MlasQuantizeBlockwise<float, 8>(
         inputB,
         inputScale,
         inputZp,
         B,
-        BlkLen,
+        block_size,
         true,
-        K,
-        N,
-        N,
+        rows,
+        columns,
+        columns,
         nullptr);
 
     MlasDequantizeBlockwise<float, 8>(
@@ -796,13 +802,14 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
         inputB,
         inputScale,
         inputZp,
-        BlkLen,
+        block_size,
         true,
-        K,
-        N,
+        rows,
+        columns,
         nullptr);
 
-    size_t bufferSize = MlasQNBitGemmPackQuantBDataSize(N, K, 8, BlkLen, HasZp, SQNBIT_CompInt8, nullptr);
+    size_t bufferSize =
+        MlasQNBitGemmPackQuantBDataSize(n_size, k_size, 8, block_len, has_zp, SQNBIT_CompInt8, nullptr);
     auto* packedBuffer = packedBuffer_.GetBuffer(bufferSize, true);
 
     // Models the packing calls from MatmulNBits operator - we will have 3 separate calls
@@ -813,30 +820,32 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
 
     // The inputScale and zero points will be ignored while prepacking the weights (if they are provided).
     MlasQNBitGemmPackQuantBData(
-        N, K, 8, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, inputB, packedBuffer,
-        inputScale, HasZp, inputZp, nullptr, nullptr);
+        n_size, k_size, 8, block_len, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, inputB, packedBuffer,
+        inputScale, has_zp, inputZp, threadpool, nullptr);
 
     MlasQNBitGemmPackQuantBData(
-        N, K, 8, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
-        inputScale, HasZp, nullptr, nullptr, nullptr);
+        n_size, k_size, 8, block_len, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
+        inputScale, has_zp, nullptr, threadpool, nullptr);
     MlasQNBitGemmPackQuantBData(
-        N, K, 8, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
-        nullptr, HasZp, inputZp, nullptr, nullptr);
+        n_size, k_size, 8, block_len, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
+        nullptr, has_zp, inputZp, threadpool, nullptr);
 
     const bool isQuantAUnsigned = GetMlasPlatform().ArmNeonIsQuantActivationsUnsigned;
-    PackedQuantBDataStruct<float, 8> packedQuantB(packedBuffer, N, BlkCount, BlkLen, isQuantAUnsigned);
+    PackedQuantBDataStruct<float, 8> packedQuantB(
+        packedBuffer, n_size, BlkCount, block_len, isQuantAUnsigned);
 
-    auto* C = C_.GetBuffer(M * ldc, true);
-    auto* ref = ref_.GetBuffer(M * ldc, true);
+    auto* C = C_.GetBuffer(m_size * ldc, true);
+    auto* ref = ref_.GetBuffer(m_size * ldc, true);
 
-    auto* bias = HasBias ? bias_.GetFilledBuffer(N, [](float* p, size_t t) {
+    auto* bias = has_bias ? bias_.GetFilledBuffer(n_size, [](float* p, size_t t) {
       for (size_t i = 0; i < t; i++) {
         p[i] = (float)(5 + i);
       }
     })
-                         : nullptr;
+                          : nullptr;
 
-    const size_t workspace_size = MlasQNBitGemmBatchWorkspaceSize(M, N, K, 1, 8, BlkLen, HasZp, SQNBIT_CompInt8, nullptr);
+    const size_t workspace_size = MlasQNBitGemmBatchWorkspaceSize(
+        m_size, n_size, k_size, 1, 8, block_len, has_zp, SQNBIT_CompInt8, nullptr);
     auto* workspace = workspace_.GetBuffer(workspace_size, true);
 
     MLAS_QNBIT_GEMM_DATA_PARAMS<float> data;
@@ -850,10 +859,11 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     data.C = C;
     data.ldc = ldc;
 
-    MlasQNBitGemmBatch(M, N, K, 1, 8, BlkLen, SQNBIT_CompInt8, &data, workspace, nullptr, nullptr);
+    MlasQNBitGemmBatch(
+        m_size, n_size, k_size, 1, 8, block_len, SQNBIT_CompInt8, &data, workspace, threadpool, nullptr);
 
-    MatMul<M, K, N, BlkLen>(A, lda, B, bias, ref, ldc);
-    Check<M, K, N, BlkLen>(C, ref, ldc, 0.01f, 0.02f);
+    MatMul(A, lda, B, bias, ref, ldc, m_size, k_size, n_size);
+    Check(C, ref, ldc, rtol, atol, m_size, k_size, n_size, block_len);
   }
 
  public:
@@ -867,11 +877,38 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
 
   template <size_t M, size_t K, size_t N, size_t BlkLen>
   void Execute(void) {
-    TestSQ8BitGemmKernel<false, true, M, K, N, BlkLen>();
-    TestSQ8BitGemmKernel<true, true, M, K, N, BlkLen>();
+    TestSQ8BitGemmKernel(false, true, M, K, N, BlkLen);
+    TestSQ8BitGemmKernel(true, true, M, K, N, BlkLen);
 
-    TestSQ8BitGemmKernel<false, false, M, K, N, BlkLen>();
-    TestSQ8BitGemmKernel<true, false, M, K, N, BlkLen>();
+    TestSQ8BitGemmKernel(false, false, M, K, N, BlkLen);
+    TestSQ8BitGemmKernel(true, false, M, K, N, BlkLen);
+  }
+
+  // B-packing chunk-boundary coverage: MLAS_PACK_BLKS_PER_CHUNK is 64, so the
+  // subblock-count-based chunking in Q8PackQuantB (and the matching
+  // Q8ComputePackBlkSum scale reordering) switches from a single chunk to
+  // multiple chunks around 64 subblocks. K is chosen as an exact multiple of
+  // BlkLen so BlockCountK lands exactly on SubBlkCountKTarget, exercising
+  // values just below, at, and just above the boundary (and its second
+  // occurrence), regardless of which SubBlkLen the active ISA path selects.
+  // These K values (up to ~33K) are much larger than the pre-existing cases
+  // in this suite (K <= 3072), so int8 per-block quantization noise on A
+  // accumulates more; use a slightly wider (but still tight) tolerance than
+  // the default so that this expected noise doesn't cause flaky failures.
+  void ExecuteBoundarySetForBlkLen(size_t block_len) {
+    constexpr float rtol = 0.015f;
+    constexpr float atol = 0.03f;
+    for (const size_t subblock_count_k : {63, 64, 65, 127, 128, 129}) {
+      const size_t k_size = subblock_count_k * block_len;
+      for (const bool with_threadpool : {false, true}) {
+        for (const size_t n_size : {1, 3, 4, 5}) {
+          TestSQ8BitGemmKernel(false, true, 1, k_size, n_size, block_len, with_threadpool, rtol, atol);
+          TestSQ8BitGemmKernel(true, true, 1, k_size, n_size, block_len, with_threadpool, rtol, atol);
+          TestSQ8BitGemmKernel(false, false, 1, k_size, n_size, block_len, with_threadpool, rtol, atol);
+          TestSQ8BitGemmKernel(true, false, 1, k_size, n_size, block_len, with_threadpool, rtol, atol);
+        }
+      }
+    }
   }
 
   void ExecuteShort(void) override {
@@ -905,6 +942,12 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     Execute<6, 257, 7, 256>();
     Execute<1, 3072, 128, 256>();
     Execute<2, 3072, 128, 256>();
+
+    ExecuteBoundarySetForBlkLen(16);
+    ExecuteBoundarySetForBlkLen(32);
+    ExecuteBoundarySetForBlkLen(64);
+    ExecuteBoundarySetForBlkLen(128);
+    ExecuteBoundarySetForBlkLen(256);
   }
 };
 

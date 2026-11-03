@@ -37,7 +37,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Google.Protobuf" Version="3.21.12" /> <!-- should match version ORT native build uses -->
+    <PackageReference Include="Google.Protobuf" Version="3.33.6" /> <!-- should match version ORT native build uses -->
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.0" />
     <!-- use Newtonsoft.Json dependency of Microsoft.NET.Test.Sdk at a more recent version -->
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />

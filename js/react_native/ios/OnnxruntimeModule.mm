@@ -9,12 +9,20 @@
 #import <React/RCTUtils.h>
 #import <ReactCommon/RCTTurboModule.h>
 #import <jsi/jsi.h>
+#include <mutex>
+#include <unordered_map>
+
+namespace {
+
+std::mutex envsMutex;
+std::unordered_map<const void*, std::shared_ptr<onnxruntimejsi::Env>>
+    envs;
+
+}  // namespace
 
 @implementation OnnxruntimeModule
 
 @synthesize bridge = _bridge;
-
-static std::shared_ptr<onnxruntimejsi::Env> env;
 
 RCT_EXPORT_MODULE(Onnxruntime)
 
@@ -39,7 +47,17 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install) {
     auto& runtime = *jsiRuntime;
     auto jsiInvoker = _bridge.jsCallInvoker;
 
-    env = onnxruntimejsi::install(runtime, jsiInvoker);
+    auto newEnv = onnxruntimejsi::install(runtime, jsiInvoker);
+    std::shared_ptr<onnxruntimejsi::Env> oldEnv;
+    {
+      std::lock_guard<std::mutex> lock(envsMutex);
+      const auto moduleKey = (__bridge const void*)self;
+      oldEnv = std::move(envs[moduleKey]);
+      envs[moduleKey] = std::move(newEnv);
+    }
+    if (oldEnv) {
+      oldEnv->invalidate();
+    }
 
     return @true;
   } @catch (...) {
@@ -48,7 +66,20 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install) {
 }
 
 - (void)dealloc {
-  env.reset();
+  std::shared_ptr<onnxruntimejsi::Env> moduleEnv;
+  {
+    std::lock_guard<std::mutex> lock(envsMutex);
+    auto entry = envs.find((__bridge const void*)self);
+    if (entry != envs.end()) {
+      moduleEnv = std::move(entry->second);
+      envs.erase(entry);
+    }
+  }
+  // dealloc is not guaranteed to run on the JS thread, so stop dispatching to the runtime and
+  // release any thread blocked on it before dropping the environment.
+  if (moduleEnv) {
+    moduleEnv->invalidate();
+  }
 }
 
 @end

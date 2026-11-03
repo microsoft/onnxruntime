@@ -22,6 +22,8 @@ struct EpContextDataCallbackState {
   std::string write_file_name;
   std::string read_file_name;
   std::vector<char> payload;
+  // Buffer the read callback allocated, recorded so tests can assert the reader adopted it instead of copying it.
+  void* last_read_buffer = nullptr;
 };
 
 inline OrtStatus* ORT_API_CALL StoreEpContextDataCallback(void* state, const char* file_name, const void* buffer,
@@ -48,6 +50,7 @@ inline OrtStatus* ORT_API_CALL LoadEpContextDataCallback(void* state, const char
 
   *buffer = nullptr;
   *data_size = callback_state->payload.size();
+  callback_state->last_read_buffer = nullptr;
   if (callback_state->payload.empty()) {
     return nullptr;
   }
@@ -57,6 +60,7 @@ inline OrtStatus* ORT_API_CALL LoadEpContextDataCallback(void* state, const char
     return status;
   }
 
+  callback_state->last_read_buffer = *buffer;
   std::copy(callback_state->payload.begin(), callback_state->payload.end(), static_cast<char*>(*buffer));
   return nullptr;
 }

@@ -152,7 +152,7 @@ class MlasQNBitGemmFp16QuantATest : public MlasTestBase {
     }
 
     // fp16 output path: the direct fp16 C must equal the fp32 reference converted to fp16.
-    if (MlasQNBitGemmFp16DirectCOutputSupported(BlkBitWidth)) {
+    if (MlasQNBitGemmFp16DirectCOutputSupported(BlkBitWidth, SQNBIT_CompInt8)) {
       MLFloat16* CRefFp16 = BufferCRefFp16.GetBuffer(M * N, true);
       MLFloat16* CTestFp16 = BufferCTestFp16.GetBuffer(M * N, true);
       MlasConvertFloatToHalfBuffer(CRef, CRefFp16, M * N);

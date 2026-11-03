@@ -46,6 +46,12 @@ Status InstanceNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) co
   const TensorShape& x_shape = X->Shape();
   Tensor* Y = p_op_kernel_context->Output(0, x_shape);
 
+  // Empty inputs are valid in ONNX and should produce empty outputs.
+  // Early return avoids stats_count == 0 in the N != 1 path.
+  if (x_shape.Size() == 0) {
+    return Status::OK();
+  }
+
   auto* y_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
   const auto* x_data = reinterpret_cast<const CudaT*>(X->Data<T>());
   const auto* scale_data = reinterpret_cast<const CudaT*>(scale->Data<T>());
@@ -173,6 +179,12 @@ Status InstanceNorm<MLFloat16>::ComputeInternal(OpKernelContext* p_op_kernel_con
 
   const TensorShape& x_shape = X->Shape();
   Tensor* Y = p_op_kernel_context->Output(0, x_shape);
+
+  // Empty inputs are valid in ONNX and should produce empty outputs.
+  // Early return avoids stats_count == 0 in the N != 1 path.
+  if (x_shape.Size() == 0) {
+    return Status::OK();
+  }
 
   auto* y_data = reinterpret_cast<CudaT*>(Y->MutableData<MLFloat16>());
   const auto* x_data = reinterpret_cast<const CudaT*>(X->Data<MLFloat16>());

@@ -94,14 +94,6 @@ std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
   return nullptr;
 }
 
-std::unique_ptr<IExecutionProvider> DefaultNvTensorRTRTXExecutionProvider() {
-#ifdef USE_NV
-  if (auto factory = NvProviderFactoryCreator::Create(0))
-    return factory->CreateProvider();
-#endif
-  return nullptr;
-}
-
 std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const OrtTensorRTProviderOptions* params) {
 #ifdef USE_TENSORRT
   if (auto factory = TensorrtProviderFactoryCreator::Create(params))
@@ -342,6 +334,14 @@ std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc)
   // Disable storage buffer cache
   ORT_THROW_IF_ERROR(config_options.AddConfigEntry(normalize_config_key(webgpu::options::kStorageBufferCacheMode).c_str(),
                                                    webgpu::options::kBufferCacheMode_Disabled));
+  // Enable int64 so the generic (EP-agnostic) int64 operator tests exercise the WebGPU int64
+  // kernels instead of silently falling back to CPU. Kept on by default for the test harness so
+  // operator tests don't have to build a bespoke WebGPU EP just to reach the int64 path.
+  //
+  // NOTE: this enables int64 for ALL WebGPU tests, not just the binary elementwise ops.
+  // TODO: migrate the other int64-gated ops' WebGPU-only int64 tests to EP-agnostic form too.
+  ORT_THROW_IF_ERROR(config_options.AddConfigEntry(normalize_config_key(webgpu::options::kEnableInt64).c_str(),
+                                                   webgpu::options::kEnableInt64_ON));
   if (!is_nhwc) {
     // Enable NCHW support
     ORT_THROW_IF_ERROR(config_options.AddConfigEntry(normalize_config_key(webgpu::options::kPreferredLayout).c_str(),
@@ -388,6 +388,22 @@ std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const Con
 #endif
 #else
   ORT_UNUSED_PARAMETER(config_options);
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithTestOptions(
+    const WebGpuExecutionProviderTestOptions& test_options) {
+  return WebGpuExecutionProviderWithTestOptions(ConfigOptions{}, test_options);
+}
+
+std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithTestOptions(
+    const ConfigOptions& config_options, const WebGpuExecutionProviderTestOptions& test_options) {
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+  return WebGpuProviderFactoryCreator::CreateForTesting(config_options, test_options)->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(config_options);
+  ORT_UNUSED_PARAMETER(test_options);
   return nullptr;
 #endif
 }
