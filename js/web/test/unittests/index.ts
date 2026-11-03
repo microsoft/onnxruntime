@@ -5,6 +5,9 @@
 
 if (typeof window !== 'undefined') {
   require('./backends/webgpu/test-upload');
+  if (!BUILD_DEFS.DISABLE_JSEP) {
+    require('./backends/webgpu/test-group-query-attention');
+  }
   require('./backends/webgpu/test-view-op-registrations');
   require('./backends/webgl/test-glsl-function-inliner');
   require('./backends/webgl/test-conv-new');

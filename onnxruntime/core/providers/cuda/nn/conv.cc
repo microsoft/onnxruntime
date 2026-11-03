@@ -480,7 +480,7 @@ Status Conv<T, Layout>::ComputeInternal(OpKernelContext* context) const {
   if (s_.bias_fused && s_.z_data != nullptr) {
     s_.variant_pack.insert_or_assign(s_.cudnn_fe_Z, const_cast<void*>(s_.z_data));
     if (Layout == LAYOUT_NCHW && s_.z_data == s_.y_data) {
-      // memset Z if it's required for a succesful fusion
+      // memset Z if it's required for a successful fusion
       CUDA_RETURN_IF_ERROR(cudaMemset(s_.y_data, 0, s_.Y->SizeInBytes()));
     }
   }

@@ -452,7 +452,7 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
       // especially for EXHAUSTIVE algo search which may result in a better algo selection.
       // ORTModule uses different algo search options (HEURISTIC, and use max workspace size) compared to
       // inference build (EXHAUSTIVE, 32M workspace size). We observed better perf when we pad input shape
-      // [N,C,D] to [N,C,1,D], expecially on A100, and especially for ConvGrad.
+      // [N,C,D] to [N,C,1,D], especially on A100, and especially for ConvGrad.
       // PyTorch also pads to [N,C,1,D]. For inference build, we still pad it to [N, C, D, 1] as this seems
       // to be the sweet spot for all algo search options: EXHAUSTIVE, HEURISTIC, and DEFAULT.
       // See PR #7348 and #7702 for more context.
@@ -545,7 +545,7 @@ Status ConvTranspose<T, Layout>::DoConvTranspose(OpKernelContext* context, bool 
   if (s_.bias_fused && s_.z_data != nullptr) {
     s_.variant_pack.insert_or_assign(s_.cudnn_fe_Z, const_cast<void*>(s_.z_data));
     if (Layout == LAYOUT_NCHW && s_.z_data == s_.y_data) {
-      // memset Z if it's required for a succesful fusion
+      // memset Z if it's required for a successful fusion
       CUDA_RETURN_IF_ERROR(cudaMemset(s_.y_data, 0, s_.Y->SizeInBytes()));
     }
   }
