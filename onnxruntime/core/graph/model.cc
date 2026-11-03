@@ -52,12 +52,22 @@ namespace onnxruntime {
 #if !defined(ORT_MINIMAL_BUILD)
 
 static Status ValidateFileSourceModel(const ModelProto& model) {
-  InlinedVector<std::pair<const GraphProto*, bool>> graphs{{&model.graph(), false}};
-  InlinedVector<std::pair<const AttributeProto*, bool>> attributes;
-  const auto add_nodes = [&](const auto& nodes, bool in_function) {
+  struct GraphVisit {
+    const GraphProto* graph;
+    bool in_function;
+    bool in_graph_list;
+  };
+  struct AttributeVisit {
+    const AttributeProto* attribute;
+    bool in_function;
+    bool in_graph_list;
+  };
+  InlinedVector<GraphVisit> graphs{{&model.graph(), false, false}};
+  InlinedVector<AttributeVisit> attributes;
+  const auto add_nodes = [&](const auto& nodes, bool in_function, bool in_graph_list) {
     for (const auto& node : nodes) {
       for (const auto& attribute : node.attribute()) {
-        attributes.emplace_back(&attribute, in_function);
+        attributes.push_back(AttributeVisit{&attribute, in_function, in_graph_list});
       }
     }
   };
@@ -65,14 +75,14 @@ static Status ValidateFileSourceModel(const ModelProto& model) {
     return utils::HasExternalData(tensor.values()) || utils::HasExternalData(tensor.indices());
   };
   for (const auto& function : model.functions()) {
-    add_nodes(function.node(), true);
+    add_nodes(function.node(), true, false);
     for (const auto& attribute : function.attribute_proto()) {
-      attributes.emplace_back(&attribute, true);
+      attributes.push_back(AttributeVisit{&attribute, true, false});
     }
   }
   while (!graphs.empty() || !attributes.empty()) {
     if (!graphs.empty()) {
-      const auto [graph, in_function] = graphs.back();
+      const auto [graph, in_function, in_graph_list] = graphs.back();
       graphs.pop_back();
       InlinedHashSet<std::string> initializer_names;
       for (const auto& tensor : graph->initializer()) {
@@ -80,6 +90,8 @@ static Status ValidateFileSourceModel(const ModelProto& model) {
                       "File-source loading does not support duplicate initializer names: ", tensor.name());
         ORT_RETURN_IF(in_function && utils::HasExternalData(tensor),
                       "File-source loading does not support external data in model-local functions.");
+        ORT_RETURN_IF(in_graph_list && utils::HasExternalData(tensor),
+                      "File-source loading does not support external data in graph-list attributes.");
       }
       for (const auto& tensor : graph->sparse_initializer()) {
         ORT_RETURN_IF(!initializer_names.insert(tensor.values().name()).second,
@@ -95,10 +107,10 @@ static Status ValidateFileSourceModel(const ModelProto& model) {
           }
         }
       }
-      add_nodes(graph->node(), in_function);
+      add_nodes(graph->node(), in_function, in_graph_list);
       continue;
     }
-    const auto [attribute, in_function] = attributes.back();
+    const auto [attribute, in_function, in_graph_list] = attributes.back();
     attributes.pop_back();
     ORT_RETURN_IF(attribute->has_t() && utils::HasExternalData(attribute->t()),
                   "File-source loading does not support external tensor attributes.");
@@ -113,10 +125,10 @@ static Status ValidateFileSourceModel(const ModelProto& model) {
                     "File-source loading does not support external sparse tensors.");
     }
     if (attribute->has_g()) {
-      graphs.emplace_back(&attribute->g(), in_function);
+      graphs.push_back(GraphVisit{&attribute->g(), in_function, in_graph_list});
     }
     for (const auto& graph : attribute->graphs()) {
-      graphs.emplace_back(&graph, in_function);
+      graphs.push_back(GraphVisit{&graph, in_function, true});
     }
   }
   return Status::OK();

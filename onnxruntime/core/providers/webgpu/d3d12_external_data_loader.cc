@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "core/common/logging/logging.h"
+#include "core/common/path_string.h"
 #include "core/framework/tensor.h"
 #include "core/platform/windows/d3d12_file_loader/d3d12_file_buffer_loader.h"
 #include "core/providers/webgpu/allocator.h"
@@ -292,7 +293,7 @@ common::Status RegisterLoadCandidateForBatch(
     ORT_RETURN_IF(
         path_error,
         "Failed to canonicalize D3D12 data file \"",
-        data_file_path.string(), "\": ",
+        PathToUTF8String(data_file_path.native()), "\": ",
         path_error.message());
     file_iterator =
         batch.files
@@ -307,7 +308,7 @@ common::Status RegisterLoadCandidateForBatch(
       batch,
       MakeKey(file_iterator->second.canonical_path, tensor_name, offset, length),
       file_iterator->second.length,
-      data_file_path.string());
+      PathToUTF8String(data_file_path.native()));
 }
 
 common::Status RegisterLoadCandidateForBatch(
@@ -341,12 +342,11 @@ common::Status RegisterLoadCandidateForBatch(
                         .first;
   }
 
-  const std::filesystem::path display_path{data_file_name};
   return AppendLoadCandidateToBatch(
       batch,
-      MakeKey(display_path, tensor_name, offset, length, handle),
+      MakeKey(std::filesystem::path{data_file_name}, tensor_name, offset, length, handle),
       file_iterator->second,
-      display_path.string());
+      PathToUTF8String(data_file_name));
 }
 
 struct ImportedAllocation {
@@ -992,7 +992,7 @@ D3D12AcceleratedExternalDataLoader::LoadTensor(
   ORT_RETURN_IF(
       file_iterator == accelerated_load_batch_->files.end(),
       "No prepared D3D12 data file matches \"",
-      data_file_path.string(), "\".");
+      PathToUTF8String(data_file_path.native()), "\".");
   const TensorKey key = MakeKey(
       file_iterator->second.canonical_path,
       tensor_name,
@@ -1021,7 +1021,7 @@ D3D12AcceleratedExternalDataLoader::LoadTensor(
           accelerated_load_batch_->handle_files.find(handle) ==
               accelerated_load_batch_->handle_files.end(),
       "No prepared D3D12 data file handle matches \"",
-      std::filesystem::path{data_file_name}.string(), "\".");
+      PathToUTF8String(data_file_name), "\".");
 
   const size_t length =
       static_cast<size_t>(data_length);

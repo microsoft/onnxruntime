@@ -855,28 +855,23 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     size_t length = 0;
   };
 
-  bool HasExternalInitializerFileSource(const std::string& name) const noexcept {
-#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
-    return external_initializer_file_sources_.contains(name);
-#else
-    ORT_UNUSED_PARAMETER(name);
-    return false;
-#endif
+  bool HasExternalInitializerFileSource(const std::string& name,
+                                        bool check_outer_scope = false) const {
+    ExternalInitializerFileSource source;
+    return GetExternalInitializerFileSource(name, source, check_outer_scope);
   }
 
   bool GetExternalInitializerFileSource(const std::string& name,
-                                        ExternalInitializerFileSource& source) const {
+                                        ExternalInitializerFileSource& source,
+                                        bool check_outer_scope = false) const;
+
+  void SetExternalInitializerFileSource(const std::string& name,
+                                        ExternalInitializerFileSource source) {
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
-    const auto it = external_initializer_file_sources_.find(name);
-    if (it == external_initializer_file_sources_.end()) {
-      return false;
-    }
-    source = it->second;
-    return true;
+    external_initializer_file_sources_.insert_or_assign(name, std::move(source));
 #else
     ORT_UNUSED_PARAMETER(name);
     ORT_UNUSED_PARAMETER(source);
-    return false;
 #endif
   }
 

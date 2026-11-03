@@ -4525,6 +4525,22 @@ Status Graph::InjectExternalInitializersFromFileSources(
     }
     for (const auto& name : names) {
       const auto& proto = *graph.GetAllInitializedTensors().at(name);
+      const auto find_nonempty_embedded_field = [](const TensorProto& tensor) -> const char* {
+        if (!tensor.float_data().empty()) return "float_data";
+        if (!tensor.int32_data().empty()) return "int32_data";
+        if (!tensor.string_data().empty()) return "string_data";
+        if (!tensor.int64_data().empty()) return "int64_data";
+        if (!tensor.raw_data().empty()) return "raw_data";
+        if (!tensor.double_data().empty()) return "double_data";
+        if (!tensor.uint64_data().empty()) return "uint64_data";
+        return nullptr;
+      };
+      if (const char* value_field = find_nonempty_embedded_field(proto)) {
+        return ORT_MAKE_STATUS(
+            ONNXRUNTIME, FAIL,
+            "Data of TensorProto ( tensor name: ", name,
+            ") is stored externally and should not have data field.", value_field);
+      }
       ORT_RETURN_IF(utils::HasString(proto),
                     "External initializer file sources do not support string tensors.");
       std::unique_ptr<ExternalDataInfo> info;
@@ -4791,6 +4807,34 @@ bool Graph::GetExternalInitializerInfo(const std::string& name, std::unique_ptr<
     }
   }
   return false;
+}
+
+bool Graph::GetExternalInitializerFileSource(const std::string& name,
+                                             ExternalInitializerFileSource& source,
+                                             bool check_outer_scope) const {
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+  const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+  if (GetInitializedTensor(name, initializer)) {
+    const auto it = external_initializer_file_sources_.find(name);
+    if (it == external_initializer_file_sources_.end()) {
+      return false;
+    }
+    source = it->second;
+    return true;
+  }
+
+  if (check_outer_scope && IsSubgraph()) {
+    if (IsOuterScopeValue(name)) {
+      return parent_graph_->GetExternalInitializerFileSource(name, source, check_outer_scope);
+    }
+  }
+  return false;
+#else
+  ORT_UNUSED_PARAMETER(name);
+  ORT_UNUSED_PARAMETER(source);
+  ORT_UNUSED_PARAMETER(check_outer_scope);
+  return false;
+#endif
 }
 
 void Graph::CleanAllInitializedTensors() noexcept {
@@ -6574,11 +6618,20 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
     // a findable OrtValue" is never broken.
     OrtValue src_ort_value;
     const bool had_ort_value = graph_to_inline.GetOrtValueInitializer(src_name, src_ort_value);
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+    ExternalInitializerFileSource src_file_source;
+    const bool had_file_source = graph_to_inline.GetExternalInitializerFileSource(src_name, src_file_source);
+#endif
 
     graph_to_inline.name_to_initial_tensor_.erase(src_name);
     if (had_ort_value) {
       graph_to_inline.ortvalue_initializers_.erase(src_name);
     }
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+    if (had_file_source) {
+      graph_to_inline.external_initializer_file_sources_.erase(src_name);
+    }
+#endif
 
     const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
     *tensor = std::move(*initializer);
@@ -6601,6 +6654,11 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
     if (had_ort_value) {
       ortvalue_initializers_.insert_or_assign(tensor->name(), std::move(src_ort_value));
     }
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+    if (had_file_source) {
+      external_initializer_file_sources_.insert_or_assign(tensor->name(), std::move(src_file_source));
+    }
+#endif
 
     auto insert_result = name_to_initial_tensor_.emplace(tensor->name(), tensor);
     ORT_ENFORCE(insert_result.second, "Initializer name: ", tensor->name(), " from graph: ",
@@ -6938,6 +6996,10 @@ Status Graph::InlineFunction(Node& callnode) {
                           "Initializer '", name, "' has external data in memory but no cached OrtValue. ",
                           "This is an invalid state.");
         AddInitializedTensor(tensor_proto_to_add);
+      }
+      ExternalInitializerFileSource file_source;
+      if (subgraph.GetExternalInitializerFileSource(name, file_source)) {
+        SetExternalInitializerFileSource(tensor_proto_to_add.name(), std::move(file_source));
       }
     }
   }
