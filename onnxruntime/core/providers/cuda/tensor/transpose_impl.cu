@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "transpose_impl.h"
 
