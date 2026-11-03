@@ -157,10 +157,6 @@ if (onnxruntime_USE_JSEP)
   include(onnxruntime_providers_js.cmake)
 endif()
 
-if (onnxruntime_USE_QNN)
-  include(onnxruntime_providers_qnn.cmake)
-endif()
-
 if (onnxruntime_USE_RKNPU)
   include(onnxruntime_providers_rknpu.cmake)
 endif()

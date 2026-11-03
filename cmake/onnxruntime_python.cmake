@@ -210,9 +210,6 @@ set(onnxruntime_pybind11_state_static_providers
     ${PROVIDERS_AZURE}
 )
 
-if(onnxruntime_BUILD_QNN_EP_STATIC_LIB)
-  list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_qnn)
-endif()
 if(onnxruntime_WEBGPU_LINKED_INTO_HOST)
   list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_webgpu)
 endif()
@@ -1192,31 +1189,6 @@ if (onnxruntime_USE_COREML)
         $<TARGET_FILE:onnxruntime_providers_coreml>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   )
-endif()
-
-if (onnxruntime_USE_QNN)
-  if(NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB)
-    add_custom_command(
-      TARGET onnxruntime_pybind11_state POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy
-        $<TARGET_FILE:onnxruntime_providers_qnn>
-        $<TARGET_FILE:onnxruntime_providers_shared>
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-    )
-  endif()
-
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${QNN_LIB_FILES}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-  )
-  if (EXISTS "${onnxruntime_QNN_HOME}/LICENSE.pdf")
-    add_custom_command(
-      TARGET onnxruntime_pybind11_state POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy "${onnxruntime_QNN_HOME}/LICENSE.pdf" $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/Qualcomm_LICENSE.pdf
-    )
-  endif()
 endif()
 
 if (onnxruntime_USE_WEBGPU)

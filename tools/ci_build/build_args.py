@@ -27,18 +27,6 @@ def _str_to_bool(s: str) -> bool:
 
 
 # --- Argument Verification Helpers ---
-def _qnn_verify_library_kind(library_kind: str) -> str:
-    """Verifies the library kind for the QNN Execution Provider."""
-    choices = ["shared_lib", "static_lib"]
-    if library_kind not in choices:
-        print("\nYou have specified an invalid library kind for QNN EP.")
-        print(f"The invalid library kind was: {library_kind}")
-        print("Provide a library kind from the following options: ", choices)
-        print(f"Example: --use_qnn {choices[0]}")
-        sys.exit("Incorrect build configuration")
-    return library_kind
-
-
 def _openvino_verify_device_type(device_read: str) -> str:
     """Verifies the device type string for the OpenVINO Execution Provider."""
     choices = ["CPU", "GPU", "NPU"]
@@ -756,17 +744,6 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     # --- CoreML ---
     coreml_group = parser.add_argument_group("CoreML Execution Provider (Apple)")
     coreml_group.add_argument("--use_coreml", action="store_true", help="Enable CoreML EP (Apple platforms).")
-
-    # --- QNN ---
-    qnn_group = parser.add_argument_group("QNN Execution Provider (Qualcomm)")
-    qnn_group.add_argument(
-        "--use_qnn",
-        nargs="?",
-        const="shared_lib",  # Default linkage if only flag is present
-        type=_qnn_verify_library_kind,
-        help="Enable QNN EP. Optionally specify 'shared_lib' (default) or 'static_lib'.",
-    )
-    qnn_group.add_argument("--qnn_home", help="Path to QNN SDK directory.")
 
     # --- SNPE ---
     snpe_group = parser.add_argument_group("SNPE Execution Provider (Qualcomm)")

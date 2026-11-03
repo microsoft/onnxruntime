@@ -16,7 +16,7 @@ BUILD_PY = os.path.join(REPO_DIR, "tools", "ci_build", "build.py")
 JAVA_ROOT = os.path.join(REPO_DIR, "java")
 
 sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
-from util import is_windows, parse_qnn_version_from_sdk_yaml  # noqa: E402
+from util import is_windows  # noqa: E402
 
 # We by default will build all 4 ABIs
 DEFAULT_BUILD_ABIS = ["armeabi-v7a", "arm64-v8a", "x86", "x86_64"]
@@ -75,15 +75,10 @@ def _parse_build_settings(args):
     return build_settings
 
 
-def _is_qnn_android_build(build_settings):
-    return any(build_arg.startswith("--use_qnn") for build_arg in build_settings["build_params"])
-
-
 def _build_aar(args):
     build_settings = _parse_build_settings(args)
     build_dir = os.path.abspath(args.build_dir)
     ops_config_path = os.path.abspath(args.include_ops_by_config) if args.include_ops_by_config else None
-    qnn_android_build = _is_qnn_android_build(build_settings)
 
     # Setup temp environment for building
     temp_env = os.environ.copy()
@@ -104,19 +99,6 @@ def _build_aar(args):
     header_files_path = ""
     telemetry_java_src_dir = ""
     telemetry_resource_dir = ""
-
-    if qnn_android_build:
-        qnn_home = args.qnn_path
-        qnn_sdk_version = parse_qnn_version_from_sdk_yaml(qnn_home)
-
-        # Note: The QNN package version does not follow Semantic Versioning (SemVer) format.
-        # only use major.minor.patch version for qnn sdk version and truncate the build_id info if any
-        # yaml file typically has version like 2.26.0
-        if qnn_sdk_version:
-            qnn_sdk_version = ".".join(qnn_sdk_version.split(".")[:3])
-            base_build_command += ["--qnn_home=" + qnn_home]
-        else:
-            raise ValueError("Error: QNN SDK version not found in sdk.yaml file.")
 
     # Build binary for each ABI, one by one
     for abi in build_settings["build_abis"]:
@@ -189,10 +171,6 @@ def _build_aar(args):
         "-DreleaseVersionSuffix=" + os.getenv("RELEASE_VERSION_SUFFIX", ""),
     ]
 
-    # Add qnn specific parameters
-    if qnn_android_build:
-        gradle_command.append(f"-DqnnVersion={qnn_sdk_version}")
-
     if build_settings["use_telemetry"]:
         gradle_command += [
             "-DtelemetryJavaSrcDir=" + telemetry_java_src_dir,
@@ -222,8 +200,6 @@ def parse_args():
     parser.add_argument(
         "--android_ndk_path", type=str, default=os.environ.get("ANDROID_NDK_HOME", ""), help="Path to the Android NDK"
     )
-
-    parser.add_argument("--qnn_path", type=str, default=os.environ.get("QNN_HOME", ""), help="Path to the QNN SDK")
 
     parser.add_argument(
         "--build_dir",

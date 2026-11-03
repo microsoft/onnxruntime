@@ -23,6 +23,10 @@
 * **Plugin EP repositories**:
   - ONNX Runtime QNN Plugin EP: [onnxruntime/onnxruntime-qnn](https://github.com/onnxruntime/onnxruntime-qnn)
 
+  QNN is built and packaged in the plugin repository, not in this repository.
+  The in-tree `--use_qnn` and `--qnn_home` build options are no longer supported.
+  The generic-interface bridge and QNN model-preprocessing and quantization tools remain available.
+
 ## Releases
 
 The current release and past releases can be found here: https://github.com/microsoft/onnxruntime/releases.

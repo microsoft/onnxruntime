@@ -58,8 +58,6 @@ cuda_version = None
 cuda_major_version = None
 is_migraphx = False
 is_openvino = False
-is_qnn = False
-qnn_version = None
 # The following arguments are mutually exclusive
 if wheel_name_suffix == "gpu":
     cuda_version = parse_arg_remove_string(sys.argv, "--cuda_version=")
@@ -84,10 +82,6 @@ elif parse_arg_remove_boolean(sys.argv, "--use_cann"):
 elif parse_arg_remove_boolean(sys.argv, "--use_azure"):
     # keep the same name since AzureEP will release with CpuEP by default.
     pass
-elif parse_arg_remove_boolean(sys.argv, "--use_qnn"):
-    is_qnn = True
-    package_name = "onnxruntime-qnn"
-    qnn_version = parse_arg_remove_string(sys.argv, "--qnn_version=")
 elif parse_arg_remove_boolean(sys.argv, "--use_webgpu"):
     package_name = "onnxruntime-webgpu"
 
@@ -270,8 +264,6 @@ try:
 
                 cann_dependencies = ["libascendcl.so", "libacl_op_compiler.so", "libfmk_onnx_parser.so"]
 
-                qnn_dependencies = ["libcdsprpc.so"]
-
                 dest = "onnxruntime/capi/libonnxruntime_providers_openvino.so"
                 if path.isfile(dest):
                     subprocess.run(
@@ -293,23 +285,13 @@ try:
                     cudart_libs = [f"libcudart.so.{cuda_major_version}"]
                     self._rewrite_ld_preload_cuda(cudart_libs)
 
-            # qnn links libc++ rather than libstdc++ for its x86_64 dependencies which we currently do not
-            # support for many_linux. This is not the case for other platforms.
-            qnn_run_audit = environ.get("AUDITWHEEL_ARCH", "x86_64") != "x86_64"
-
             _bdist_wheel.run(self)
-            if is_manylinux and not disable_auditwheel_repair and not is_openvino and (not is_qnn or qnn_run_audit):
+            if is_manylinux and not disable_auditwheel_repair and not is_openvino:
                 assert self.dist_dir is not None
                 file = glob(path.join(self.dist_dir, "*linux*.whl"))[0]
                 logger.info("repairing %s for manylinux1", file)
                 auditwheel_cmd = ["auditwheel", "-v", "repair", "-w", self.dist_dir, file]
-                for i in (
-                    cuda_dependencies
-                    + migraphx_dependencies
-                    + tensorrt_dependencies
-                    + cann_dependencies
-                    + qnn_dependencies
-                ):
+                for i in cuda_dependencies + migraphx_dependencies + tensorrt_dependencies + cann_dependencies:
                     auditwheel_cmd += ["--exclude", i]
                 logger.info("Running %s", " ".join([shlex.quote(arg) for arg in auditwheel_cmd]))
                 try:
@@ -335,20 +317,17 @@ providers_cuda = "onnxruntime_providers_cuda"
 providers_tensorrt_or_migraphx = "onnxruntime_providers_" + ("migraphx" if is_migraphx else "tensorrt")
 providers_openvino = "onnxruntime_providers_openvino"
 providers_cann = "onnxruntime_providers_cann"
-providers_qnn = "onnxruntime_providers_qnn"
 
 if platform.system() == "Linux":
     providers_cuda = "lib" + providers_cuda + ".so"
     providers_tensorrt_or_migraphx = "lib" + providers_tensorrt_or_migraphx + ".so"
     providers_openvino = "lib" + providers_openvino + ".so"
     providers_cann = "lib" + providers_cann + ".so"
-    providers_qnn = "lib" + providers_qnn + ".so"
 elif platform.system() == "Windows":
     providers_cuda = providers_cuda + ".dll"
     providers_tensorrt_or_migraphx = providers_tensorrt_or_migraphx + ".dll"
     providers_openvino = providers_openvino + ".dll"
     providers_cann = providers_cann + ".dll"
-    providers_qnn = providers_qnn + ".dll"
 
 # Additional binaries
 dl_libs = []
@@ -369,7 +348,6 @@ if platform.system() == "Linux" or platform.system() == "AIX":
     dl_libs.append(providers_cuda)
     dl_libs.append(providers_tensorrt_or_migraphx)
     dl_libs.append(providers_cann)
-    dl_libs.append(providers_qnn)
     dl_libs.append("libonnxruntime.so*")
     # onnxruntime_cuda_quant_preprocess.so is a standalone CUDA extension module used only as a
     # byte-parity oracle for the PyTorch weight packer. It is built (and thus present here) only
@@ -378,7 +356,7 @@ if platform.system() == "Linux" or platform.system() == "AIX":
     # dl_libs (not just libs) so that manylinux test wheels include it: the manylinux packaging path
     # builds "data" from dl_libs only (see the is_manylinux block below).
     dl_libs.append("onnxruntime_cuda_quant_preprocess.so")
-    # DNNL, TensorRT, OpenVINO, and QNN EPs are built as shared libs
+    # DNNL, TensorRT, and OpenVINO EPs are built as shared libs
     libs.extend(["libonnxruntime_providers_shared.so"])
     libs.extend(["libonnxruntime_providers_dnnl.so"])
     libs.extend(["libonnxruntime_providers_openvino.so"])
@@ -386,22 +364,6 @@ if platform.system() == "Linux" or platform.system() == "AIX":
     libs.append(providers_cuda)
     libs.append(providers_tensorrt_or_migraphx)
     libs.append(providers_cann)
-    libs.append(providers_qnn)
-    # QNN
-    qnn_deps = [
-        "libQnnCpu.so",
-        "libQnnGpu.so",
-        "libQnnHtp.so",
-        "libQnnHtpPrepare.so",
-        "libQnnHtpV68Skel.so",
-        "libQnnHtpV68Stub.so",
-        "libQnnIr.so",
-        "libQnnSaver.so",
-        "libQnnSystem.so",
-        "libHtpPrepare.so",
-    ]
-    dl_libs.extend(qnn_deps)
-    libs.extend(qnn_deps)
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.so"])
 elif platform.system() == "Darwin":
@@ -431,7 +393,7 @@ else:
         providers_cann,
         "onnxruntime.dll",
     ]
-    # DNNL, TensorRT, OpenVINO, and QNN EPs are built as shared libs
+    # DNNL, TensorRT, and OpenVINO EPs are built as shared libs
     libs.extend(["onnxruntime_providers_shared.dll"])
     libs.extend(["onnxruntime_providers_dnnl.dll"])
     libs.extend(["onnxruntime_providers_tensorrt.dll"])
@@ -439,30 +401,10 @@ else:
     libs.extend(["onnxruntime_providers_cuda.dll"])
     libs.extend(["onnxruntime_providers_migraphx.dll"])
     libs.extend(["onnxruntime_providers_vitisai.dll"])
-    libs.extend(["onnxruntime_providers_qnn.dll"])
     # DirectML Libs
     libs.extend(["DirectML.dll"])
     # WebGPU/Dawn Libs
     libs.extend(["dxcompiler.dll", "D3D12/D3D12Core.dll", "D3D12/d3d12SDKLayers.dll"])
-    # QNN V68/V73/V81 dependencies
-    qnn_deps = [
-        "QnnCpu.dll",
-        "QnnGpu.dll",
-        "QnnHtp.dll",
-        "QnnIr.dll",
-        "QnnSaver.dll",
-        "QnnSystem.dll",
-        "QnnHtpPrepare.dll",
-        "QnnHtpV81Stub.dll",
-        "libQnnHtpV81Skel.so",
-        "libqnnhtpv81.cat",
-        "QnnHtpV73Stub.dll",
-        "libQnnHtpV73Skel.so",
-        "libqnnhtpv73.cat",
-        "QnnHtpV68Stub.dll",
-        "libQnnHtpV68Skel.so",
-    ]
-    libs.extend(qnn_deps)
     if nightly_build:
         libs.extend(["onnxruntime_pywrapper.dll"])
     migraphx_deps = [
@@ -526,12 +468,11 @@ else:
 examples_names = ["mul_1.onnx", "logreg_iris.onnx", "sigmoid.onnx"]
 examples = [path.join("datasets", x) for x in examples_names]
 
-# Extra files such as EULA and ThirdPartyNotices (and Qualcomm License, only for QNN release packages)
+# Extra files such as EULA and ThirdPartyNotices
 extra = [
     "LICENSE",
     "ThirdPartyNotices.txt",
     "Privacy.md",
-    "Qualcomm_LICENSE.pdf",
 ]
 
 # Description
@@ -793,7 +734,7 @@ with open(requirements_path) as f:
     install_requires = f.read().splitlines()
 
 
-def save_build_and_package_info(package_name, version_number, cuda_version, qnn_version):
+def save_build_and_package_info(package_name, version_number, cuda_version):
     sys.path.append(path.join(path.dirname(__file__), "onnxruntime", "python"))
     from onnxruntime_collect_build_info import find_cudart_versions  # noqa: PLC0415
 
@@ -820,11 +761,9 @@ def save_build_and_package_info(package_name, version_number, cuda_version, qnn_
                             else "found multiple cudart libraries"
                         ),
                     )
-        elif qnn_version:
-            f.write(f"qnn_version = '{qnn_version}'\n")
 
 
-save_build_and_package_info(package_name, version_number, cuda_version, qnn_version)
+save_build_and_package_info(package_name, version_number, cuda_version)
 
 # sympy is optional - only needed for symbolic shape inference
 # ml_dtypes is optional - needed for quantization utilities

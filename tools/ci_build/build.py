@@ -41,7 +41,6 @@ from util import (  # noqa: E402
     is_linux,
     is_macOS,
     is_windows,
-    parse_qnn_version_from_sdk_yaml,
     run,
 )
 from vcpkg_tool_info import get_vcpkg_release_tag  # noqa: E402
@@ -195,8 +194,6 @@ def use_dev_mode(args):
         return False
     if is_macOS() and (args.ios or args.visionos or args.tvos):
         return False
-    if args.use_qnn:
-        return True
     SYSTEM_COLLECTIONURI = os.getenv("SYSTEM_COLLECTIONURI")  # noqa: N806
     if SYSTEM_COLLECTIONURI:
         return False
@@ -260,8 +257,6 @@ def generate_vcpkg_install_options(build_dir, args):
         vcpkg_install_options.append("--x-feature=nnapi-ep")
     if args.use_openvino:
         vcpkg_install_options.append("--x-feature=openvino-ep")
-    if args.use_qnn:
-        vcpkg_install_options.append("--x-feature=qnn-ep")
     if args.use_rknpu:
         vcpkg_install_options.append("--x-feature=rknpu-ep")
     if args.use_tensorrt:
@@ -465,7 +460,6 @@ def generate_build_tree(
     migraphx_home,
     acl_home,
     acl_libs,
-    qnn_home,
     snpe_root,
     cann_home,
     path_to_protoc_exe,
@@ -908,9 +902,6 @@ def generate_build_tree(
     if nccl_home and os.path.exists(nccl_home):
         cmake_args += ["-Donnxruntime_NCCL_HOME=" + nccl_home]
 
-    if qnn_home and os.path.exists(qnn_home):
-        cmake_args += ["-Donnxruntime_QNN_HOME=" + qnn_home]
-
     if snpe_root and os.path.exists(snpe_root):
         cmake_args += ["-DSNPE_ROOT=" + snpe_root]
 
@@ -974,18 +965,6 @@ def generate_build_tree(
             cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY=" + args.xcode_code_signing_identity]
         if args.xcode_code_signing_team_id:
             cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=" + args.xcode_code_signing_team_id]
-
-    if args.use_qnn:
-        if args.qnn_home is None or os.path.exists(args.qnn_home) is False:
-            raise BuildError("qnn_home=" + qnn_home + " not valid." + " qnn_home paths must be specified and valid.")
-        cmake_args += ["-Donnxruntime_USE_QNN=ON"]
-
-        if args.use_qnn == "static_lib":
-            cmake_args += ["-Donnxruntime_BUILD_QNN_EP_STATIC_LIB=ON"]
-        if args.android and args.use_qnn != "static_lib":
-            raise BuildError("Only support Android + QNN builds with QNN EP built as a static library.")
-        if args.use_qnn == "static_lib" and args.enable_generic_interface:
-            raise BuildError("Generic ORT interface only supported with QNN EP built as a shared library.")
 
     if args.use_coreml:
         cmake_args += ["-Donnxruntime_USE_COREML=ON"]
@@ -2196,8 +2175,6 @@ def build_python_wheel(
     use_webgpu,
     use_cann,
     use_azure,
-    use_qnn,
-    qnn_home,
     wheel_name_suffix,
     enable_training,
     nightly_build=False,
@@ -2247,11 +2224,6 @@ def build_python_wheel(
             args.append("--wheel_name_suffix=webgpu")
         elif use_cann:
             args.append("--use_cann")
-        elif use_qnn:
-            args.append("--use_qnn")
-            qnn_version = parse_qnn_version_from_sdk_yaml(qnn_home)
-            if qnn_version:
-                args.append(f"--qnn_version={qnn_version}")
         elif use_azure:
             args.append("--use_azure")
 
@@ -2268,7 +2240,6 @@ def build_nuget_package(
     use_tensorrt,
     use_dnnl,
     use_winml,
-    use_qnn,
     use_dml,
     use_migraphx,
     enable_training_apis,
@@ -2318,11 +2289,6 @@ def build_nuget_package(
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu"
     elif use_dml:
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML"
-    elif use_qnn:
-        if use_qnn != "shared_lib":
-            raise BuildError("Currently NuGet packages with QNN require QNN EP to be built as a shared library.")
-        execution_provider = "/p:ExecutionProvider=qnn"
-        package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.QNN"
     elif any("OrtPackageId=" in x for x in msbuild_extra_options):
         pass
     else:
@@ -2685,10 +2651,6 @@ def main():
     acl_home = args.acl_home
     acl_libs = args.acl_libs
 
-    qnn_home = ""
-    if args.use_qnn:
-        qnn_home = args.qnn_home
-
     # if using tensorrt, setup tensorrt paths
     tensorrt_home = ""
     if args.use_tensorrt:
@@ -2830,7 +2792,6 @@ def main():
             migraphx_home,
             acl_home,
             acl_libs,
-            qnn_home,
             snpe_root,
             cann_home,
             path_to_protoc_exe,
@@ -2895,8 +2856,6 @@ def main():
                 args.use_webgpu,
                 args.use_cann,
                 args.use_azure,
-                args.use_qnn,
-                args.qnn_home,
                 args.wheel_name_suffix,
                 args.enable_training,
                 nightly_build=nightly_build,
@@ -2916,7 +2875,6 @@ def main():
                 args.use_tensorrt,
                 args.use_dnnl,
                 getattr(args, "use_winml", False),
-                args.use_qnn,
                 getattr(args, "use_dml", False),
                 args.use_migraphx,
                 args.enable_training_apis,

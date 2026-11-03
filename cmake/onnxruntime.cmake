@@ -254,10 +254,6 @@ set(onnxruntime_INTERNAL_PROVIDER_LIBRARIES
   ${PROVIDERS_INTERNAL_TESTING}
 )
 
-if (onnxruntime_BUILD_QNN_EP_STATIC_LIB)
-  list(APPEND onnxruntime_INTERNAL_PROVIDER_LIBRARIES onnxruntime_providers_qnn)
-endif()
-
 if (onnxruntime_WEBGPU_LINKED_INTO_HOST)
   list(APPEND onnxruntime_INTERNAL_PROVIDER_LIBRARIES onnxruntime_providers_webgpu)
 endif()

@@ -19,6 +19,21 @@ _BUILD_SCRIPT = _CI_BUILD_DIR / "github/linux/build_linux_python_package.sh"
 _ABI_TAGS = ("cp311", "cp313t", "cp312")
 
 
+@unittest.skipUnless(shutil.which("bash"), "Requires Bash")
+class TestRetiredQnnPythonPackage(unittest.TestCase):
+    def test_npu_build_is_rejected_before_touching_build_outputs(self):
+        result = subprocess.run(
+            ["bash", str(_BUILD_SCRIPT), "-d", "NPU", "-c", "Release"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("In-tree QNN packaging has been retired", result.stdout + result.stderr)
+        self.assertNotIn("mkdir", result.stderr)
+        self.assertNotIn("ccache", result.stderr)
+
+
 @unittest.skipUnless(sys.platform.startswith("linux") and shutil.which("bash"), "Requires Linux and Bash")
 class TestLinuxPythonPackage(unittest.TestCase):
     def _run_build(self, *, unified: bool):

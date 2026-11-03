@@ -724,7 +724,6 @@ endif()
 
 set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
     # CUDA, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime.
-    # QNN EP can be built as either a dynamic and static libs.
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_VSINPU}
     ${PROVIDERS_JS}
@@ -737,9 +736,6 @@ set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
     ${PROVIDERS_AZURE}
 )
 
-if (onnxruntime_BUILD_QNN_EP_STATIC_LIB)
-  list(APPEND ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS onnxruntime_providers_qnn)
-endif()
 if (onnxruntime_WEBGPU_LINKED_INTO_HOST)
   list(APPEND ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS onnxruntime_providers_webgpu)
 endif()
@@ -801,18 +797,6 @@ if(onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_webgpu_src})
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_webgpu)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_webgpu)
-endif()
-
-# QNN EP tests require CPU EP op implementations for accuracy evaluation, so disable on minimal
-# or reduced op builds.
-if(onnxruntime_USE_QNN AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
-  list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/qnn/*)
-  list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/qnn/qnn_node_group/*)
-  list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/qnn/optimizer/*)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_qnn)
-  if(NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB)
-    list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_shared)
-  endif()
 endif()
 
 if(onnxruntime_USE_SNPE)
@@ -1263,7 +1247,7 @@ endif()
 # Workarounds for onnxruntime test targets.
 function(onnxruntime_apply_test_target_workarounds target)
   if (MSVC)
-    # TODO: The test code for OpenVINO, QNN, and WebGPU is getting flagged with a warning from ABSL for unreachable code.
+    # TODO: The test code for OpenVINO and WebGPU is getting flagged with a warning from ABSL for unreachable code.
     # Need to figure out how those particular targets/build variants are failing, but regular windows is not.
     target_compile_options(${target} PRIVATE "/wd4702")
   endif()
@@ -1816,15 +1800,6 @@ block()
       cudnn_frontend)
   endif()
 
-  # Expose QNN SDK headers to unit tests via an interface target
-  if(onnxruntime_USE_QNN)
-    add_library(qnn_sdk_headers_include INTERFACE)
-    target_include_directories(qnn_sdk_headers_include INTERFACE
-      ${onnxruntime_QNN_HOME}/include
-      ${onnxruntime_QNN_HOME}/include/QNN)
-    target_link_libraries(${onnxruntime_provider_test_target} PRIVATE qnn_sdk_headers_include)
-  endif()
-
   # enable dynamic plugin EP usage
   target_compile_definitions(${onnxruntime_provider_test_target} PRIVATE ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
   onnxruntime_set_webgpu_plugin_ep_test_definitions(${onnxruntime_provider_test_target})
@@ -2029,7 +2004,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   # ONNX PR #7959 deletes the on-disk node-test corpus (onnx/backend/test/data/node) from the ONNX
   # source archive, leaving only the in-memory Python generators. To detach ORT from that on-disk
   # artifact, we regenerate the corpus from ONNX's own generators into the build tree and point the
-  # C++ onnx_test_runner consumers (this ctest + QNN CI) at the materialized copy.
+  # C++ onnx_test_runner consumers at the materialized copy.
   #
   # Gated on onnxruntime_MATERIALIZE_ONNX_NODE_TESTS (opt-in; default OFF -- enabled explicitly on
   # the provisioned CI legs via --cmake_extra_defines). When ON, the gate
@@ -2081,8 +2056,8 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         "  Fix: pip install onnx==${_onnx_pinned_version}")
     endif()
 
-    # numpy version: assert the build's numpy equals the CI-pinned numpy (the SAME pin the QNN
-    # legs install and that the ONNX corpus reproduction is validated under). Kept in sync with
+    # numpy version: assert the build's numpy equals the CI-pinned numpy that the ONNX corpus
+    # reproduction is validated under. Kept in sync with
     # tools/ci_build/github/linux/docker/scripts/requirements.txt (python-conditional):
     #   numpy==2.2.6 ; python_version <  "3.11"
     #   numpy==2.4.2 ; python_version >= "3.11"
@@ -2161,7 +2136,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 
     if (NOT onnxruntime_REDUCED_OPS_BUILD)
       # First-class ctest over the materialized node corpus (the durable replacement for the
-      # on-disk corpus; previously node tests were only run via the Python series + QNN CI).
+      # on-disk corpus).
       # -m enforces the case-count floor at CONSUMPTION (the runner's tally), so a silently
       # empty/partial/truncated materialized tree fails loud instead of exiting green with
       # near-zero coverage (onnx_test_runner skips non-existent dirs). Single-sourced with the
@@ -2285,9 +2260,8 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 
 endif()
 
-  # Build ep_weight_sharing_ctx_gen for all supported EPs (QNN, TensorRT, OpenVINO, VitisAI)
-  if(onnxruntime_USE_QNN OR onnxruntime_USE_TENSORRT OR onnxruntime_USE_OPENVINO OR onnxruntime_USE_VITISAI)
-    #qnn ctx generator
+  # Build ep_weight_sharing_ctx_gen for supported in-tree EPs (TensorRT, OpenVINO, VitisAI)
+  if(onnxruntime_USE_TENSORRT OR onnxruntime_USE_OPENVINO OR onnxruntime_USE_VITISAI)
     set(ep_weight_sharing_ctx_gen_src_dir ${TEST_SRC_DIR}/ep_weight_sharing_ctx_gen)
     set(ep_weight_sharing_ctx_gen_src_patterns
     "${ep_weight_sharing_ctx_gen_src_dir}/*.cc"
@@ -2748,11 +2722,6 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_CUDA_MINIMAL
                 $<TARGET_FILE:custom_op_library>
                 ${JAVA_NATIVE_TEST_DIR}/${CUSTOM_OP_LIBRARY_DST_FILE_NAME})
 
-        # also copy other library dependencies that may be required by tests to native-test
-        if(onnxruntime_USE_QNN)
-          add_custom_command(TARGET onnxruntime_providers_qnn POST_BUILD
-              COMMAND ${CMAKE_COMMAND} -E copy ${QNN_LIB_FILES} ${JAVA_NATIVE_TEST_DIR})
-        endif()
 	if (WIN32)
           set(EXAMPLE_PLUGIN_EP_DST_FILE_NAME $<IF:$<BOOL:${WIN32}>,$<TARGET_FILE_NAME:example_plugin_ep>,$<TARGET_LINKER_FILE_NAME:example_plugin_ep>>)
           add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:example_plugin_ep> ${JAVA_NATIVE_TEST_DIR}/${EXAMPLE_PLUGIN_EP_DST_FILE_NAME})

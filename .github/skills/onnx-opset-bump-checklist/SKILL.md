@@ -46,7 +46,7 @@ B/C/D can be validated). Throughout this section, bold letters in parentheses (e
 | `cmake/patches/onnx/onnx.patch` | rebase to the new source (see §3) |
 | `cmake/vcpkg-ports/onnx/fix-dependency-protobuf.patch`, `fix-cmakelists.patch` | re-`diff` only if they fail to apply |
 | **The 7 `requirements.txt` files** with `onnx==X.Y.Z` | `onnxruntime/test/python/requirements.txt`; `tools/ci_build/github/linux/python/requirements.txt`; `tools/ci_build/github/windows/python/requirements.txt`; `tools/ci_build/github/linux/docker/scripts/{requirements.txt,manylinux/requirements.txt,lort/requirements.txt}`; `tools/ci_build/github/linux/docker/inference/aarch64/python/cpu/scripts/requirements.txt`. Confirm with `git grep -n "onnx==<OLD>"` (e.g. `onnx==1.21`) — grep the **old** pin you are replacing, not bare `onnx==1`. ⚠️ **Do NOT bump all matches.** `git grep -n "onnx==1"` also lists 3 transformers-model files — `onnxruntime/python/tools/transformers/models/{llama,phi2,stable_diffusion}/requirements.txt` — that are **intentionally frozen at `onnx==1.18.0`**. Leave those alone; only the 7 CI files above get the new pin. |
-| **The 4 QNN/android CI yaml + the minimal `requirements-materialize-onnx-node-tests.txt` they now use** (node-test materialization legs — NOT covered by the `requirements.txt` grep above) | `tools/ci_build/github/azure-pipelines/linux-qnn-ci-pipeline.yml`; `tools/ci_build/github/azure-pipelines/win-qnn-arm64-ci-pipeline.yml`; `tools/ci_build/github/azure-pipelines/android-arm64-v8a-QNN-crosscompile-ci-pipeline.yml`; `.github/workflows/windows_qnn_x64.yml`. Each does `pip install -r requirements-materialize-onnx-node-tests.txt` (repo-root file; the linux+android legs keep `--user`, the two Windows legs omit it) feeding the `onnxruntime_MATERIALIZE_ONNX_NODE_TESTS` gate (see gotcha **p**). **Bump the pin IN the requirements file, in lockstep with `cmake/deps.txt` + the numpy MIN pins** — do NOT re-inline. Confirm with `git grep -n "onnx==<OLD>"`. (The pins now live in a **dedicated minimal onnx+numpy `requirements*.txt` at the repo root** — the sole pip directory Dependabot scans — so Dependabot can track these two upgrades while the QNN/Android legs still avoid dragging in the heavy docker `requirements.txt`. This REVERSES the earlier "inline by design" rationale: the pins must now stay pin-locked with the CMake gate, which HARD-FATALs on installed!=pinned.) |
+| **`requirements-materialize-onnx-node-tests.txt`** (minimal dependencies for bare-agent node-test materialization — NOT covered by the `requirements.txt` grep above) | **Bump the pin IN this requirements file, in lockstep with `cmake/deps.txt` + the numpy MIN pins** — do NOT re-inline. Confirm with `git grep -n "onnx==<OLD>"`. The `onnxruntime_MATERIALIZE_ONNX_NODE_TESTS` gate (see gotcha **p**) fails at configure time on installed!=pinned. Bare-agent builds can install this file without pulling the heavy Docker requirements. The former in-tree QNN build pipelines have been retired. |
 
 ### Group B — opset enablement
 | File | Change |
@@ -376,7 +376,7 @@ ORT's **C++** node-test coverage depends on ONNX **shipping pre-generated `.pb` 
 inside the pinned archive**: `onnx_test_runner` reads `model.onnx` + `test_data_set_*/*.pb`
 from `_deps/onnx-src/onnx/backend/test/data/node/<test>/` (the FetchContent archive pinned by
 the **SHA1 on the `onnx;` line of `cmake/deps.txt` ~L40** — *not* the `cmake/external/onnx`
-submodule, which only the QNN CI `.../node` path uses). **ONNX PR [onnx/onnx#7959] "Remove
+submodule). **ONNX PR [onnx/onnx#7959] "Remove
 node test artifacts" deletes that entire on-disk corpus** (~2992+ files) — it targets onnx
 master, so the first affected release is expected to be **onnx 1.23** (one past the current
 1.22 pin), consistent with the JS `NOTE(#7959)` "onnx >= 1.23" caveat — **and removes the
@@ -424,7 +424,7 @@ simply gone.**
   `load_node_model_tests()`, and re-serializes each `_NodeTestCase` back to the on-disk
   `model.onnx` + `test_data_set_*/{input,output}_N.pb` layout the C++ loader expects (exact
   serialization detail below — **not** `from_array`-only). Then repoint the C++ consumers
-  (runner arg + QNN CI `.../node` path). This also collapses the 3-independent-onnx-pins /
+  (runner arguments and materialized-node ctests). This also collapses the 3-independent-onnx-pins /
   dual-skip-list tangle into one materialized copy. **Reference implementation already exists — vendor it, do not
   re-derive.** Vendor the ~85-line node branch of `onnx/backend/test/cmd_tools.py:generate_data`
   (`cmd_tools.py:64-110` — the very disk-writer #7959 removes) into a build-time script:
@@ -534,7 +534,7 @@ onnxruntime/core/providers/{coreml,nnapi,vsinpu,webnn}/.../base_op_builder.h  # 
 onnxruntime/test/optimizer/graph_transform_test.cc                  # fusion test updates
 onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc    # defer-and-filter new ops
 onnxruntime/test/python/requirements.txt + 6 CI requirements.txt    # onnx==1.22.0rc1 (NOT the 3 frozen at 1.18.0)
-requirements-materialize-onnx-node-tests.txt    # root minimal onnx+numpy pins for the QNN/android MATERIALIZE legs; MUST match the cmake gate + numpy MIN pins (gotcha p)
+requirements-materialize-onnx-node-tests.txt    # root minimal onnx+numpy pins for bare-agent MATERIALIZE builds; MUST match the cmake gate + numpy MIN pins (gotcha p)
 ```
 
 ## 8. Hash-recompute one-liners

@@ -48,13 +48,6 @@ parameters:
   type: string
   default: ''
 
-# Do not update this to a version that does not exist for the qnn-runtime Maven package:
-# https://mvnrepository.com/artifact/com.qualcomm.qti/qnn-runtime
-- name: QnnSDKVersion
-  displayName: QNN SDK Version
-  type: string
-  default: '2.42.0.251225'
-
 - name: is1ES
   displayName: Is 1ES pipeline
   type: boolean
@@ -116,14 +109,6 @@ jobs:
         [ -f "${{parameters.includedOpsConfig}}" ] && \
           cp ${{parameters.includedOpsConfig}} $(Build.BinariesDirectory)/.build_settings/include_ops_and_types.config
 
-         # Mount qnn volume if building qnn android package
-        if [[ ${{ parameters.packageName }} == *qnn* ]]; then
-          QNN_VOLUME="--volume $(QnnSDKRootDir):/qnn_home"
-          USE_QNN="1"
-        else
-          QNN_VOLUME=""
-          USE_QNN="0"
-        fi
         docker run -e SYSTEM_COLLECTIONURI --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
@@ -135,7 +120,6 @@ jobs:
           --volume "$HOME/.m2:/home/onnxruntimedev/.m2:ro" \
           --volume "$HOME/.gradle:/home/onnxruntimedev/.gradle" \
           --volume "${HOME}/.gitconfig:/home/onnxruntimedev/.gitconfig:ro" \
-          $QNN_VOLUME \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           -e BUILD_CONFIG=${{parameters.buildConfig}} \
@@ -146,7 +130,7 @@ jobs:
           -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
           -e PIP_INDEX_URL \
           onnxruntimecpubuildcentos8x64_packaging \
-            /bin/bash /onnxruntime_src/tools/ci_build/github/android/build_aar_and_copy_artifacts.sh $USE_QNN
+            /bin/bash /onnxruntime_src/tools/ci_build/github/android/build_aar_and_copy_artifacts.sh
       workingDirectory: $(Build.SourcesDirectory)
   - template: jar-maven-signing-linux.yml
     parameters:

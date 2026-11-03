@@ -3,6 +3,8 @@
 # Licensed under the MIT License.
 
 import importlib
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -135,12 +137,29 @@ class BuildArgsTest(unittest.TestCase):
         with mock.patch("sys.stderr"), self.assertRaises(SystemExit):
             self._parse("--use_cache", "--cache_tool", "unknown", platform_name="linux")
 
+    def test_retired_qnn_build_arguments_are_rejected(self):
+        for arguments in (
+            ("--use_qnn",),
+            ("--use_qnn", "shared_lib"),
+            ("--use_qnn=static_lib",),
+            ("--qnn_home", "sdk"),
+        ):
+            for platform_name in ("linux", "windows", "macos"):
+                with (
+                    self.subTest(arguments=arguments, platform_name=platform_name),
+                    mock.patch("sys.stderr") as stderr,
+                    self.assertRaises(SystemExit) as error,
+                ):
+                    self._parse(*arguments, platform_name=platform_name)
+                self.assertEqual(error.exception.code, 2)
+                self.assertIn("unrecognized arguments", "".join(call.args[0] for call in stderr.write.call_args_list))
+
     def test_compiler_cache_launchers(self):
-        for platform_name, tool, use_cache, use_cuda in (
-            ("linux", "ccache", True, False),
-            ("macos", "sccache", True, False),
-            ("linux", "sccache", True, True),
-            ("linux", "sccache", False, False),
+        for platform_name, tool, use_cache, use_cuda, generic_interface in (
+            ("linux", "ccache", True, False, False),
+            ("macos", "sccache", True, False, False),
+            ("linux", "sccache", True, True, False),
+            ("linux", "sccache", False, False, True),
         ):
             with self.subTest(platform_name=platform_name, tool=tool, use_cache=use_cache, use_cuda=use_cuda):
                 arguments = ["--cache_tool", tool]
@@ -148,6 +167,8 @@ class BuildArgsTest(unittest.TestCase):
                     arguments.append("--use_cache")
                 if use_cuda:
                     arguments.append("--use_cuda")
+                if generic_interface:
+                    arguments.append("--enable_generic_interface")
                 args = self._parse(*arguments, platform_name=platform_name)
                 with (
                     tempfile.TemporaryDirectory() as build_dir,
@@ -167,7 +188,6 @@ class BuildArgsTest(unittest.TestCase):
                         migraphx_home="",
                         acl_home="",
                         acl_libs="",
-                        qnn_home="",
                         snpe_root="",
                         cann_home="",
                         path_to_protoc_exe="",
@@ -188,6 +208,122 @@ class BuildArgsTest(unittest.TestCase):
                     expected.append(f"-DCMAKE_CUDA_COMPILER_LAUNCHER={tool}")
                 self.assertEqual(launchers, expected)
                 self.assertEqual("-Donnxruntime_BUILD_CACHE=ON" in command, use_cache)
+                self.assertIn(
+                    "-Donnxruntime_USE_QNN_INTERFACE=" + ("ON" if generic_interface else "OFF"),
+                    command,
+                )
+                self.assertFalse(any("onnxruntime_USE_QNN=" in arg or "QNN_HOME=" in arg for arg in command))
+
+
+@unittest.skipUnless(shutil.which("cmake"), "Requires CMake")
+class QnnCMakeRetirementTest(unittest.TestCase):
+    def test_retired_qnn_options_fail_before_configuring_toolchains(self):
+        for option in ("onnxruntime_USE_QNN", "onnxruntime_BUILD_QNN_EP_STATIC_LIB"):
+            with self.subTest(option=option), tempfile.TemporaryDirectory() as build_dir:
+                result = subprocess.run(
+                    [
+                        "cmake",
+                        "-S",
+                        str(Path(__file__).resolve().parents[2] / "cmake"),
+                        "-B",
+                        build_dir,
+                        f"-D{option}=ON",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("In-tree QNN builds have been retired", result.stdout + result.stderr)
+
+    def test_generic_interface_retains_qnn_without_sdk(self):
+        source = (Path(__file__).resolve().parents[2] / "cmake" / "CMakeLists.txt").read_text(encoding="utf-8")
+        start = source.index("if (onnxruntime_USE_QNN_INTERFACE)")
+        selector = source[start : source.index("if (onnxruntime_USE_SNPE)", start)]
+        with tempfile.TemporaryDirectory() as temporary:
+            script = Path(temporary) / "qnn_interface.cmake"
+            script.write_text(
+                "set(onnxruntime_USE_QNN_INTERFACE ON)\n"
+                + selector
+                + '\nif(NOT ORT_PROVIDER_FLAGS STREQUAL "-DUSE_QNN_PROVIDER_INTERFACE=1" OR\n'
+                + '   NOT ONNXRUNTIME_PROVIDER_NAMES STREQUAL "qnn")\n'
+                + '  message(FATAL_ERROR "Missing QNN generic interface")\nendif()\n'
+                + "if(DEFINED QNN_ARCH_ABI OR DEFINED QNN_LIB_FILES)\n"
+                + '  message(FATAL_ERROR "Generic interface must not stage a QNN SDK")\nendif()\n',
+                encoding="utf-8",
+            )
+            result = subprocess.run(["cmake", "-P", str(script)], capture_output=True, text=True, check=False)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
+class BuildPackageArgsTest(unittest.TestCase):
+    def test_wheel_provider_selection(self):
+        defaults = dict.fromkeys(
+            (
+                "use_cuda",
+                "use_migraphx",
+                "use_dnnl",
+                "use_tensorrt",
+                "use_openvino",
+                "use_vitisai",
+                "use_acl",
+                "use_dml",
+                "use_webgpu",
+                "use_cann",
+                "use_azure",
+            ),
+            False,
+        )
+        for provider, expected in (
+            (None, []),
+            ("use_cuda", ["--wheel_name_suffix=gpu", "--cuda_version=13.0"]),
+            ("use_dml", ["--wheel_name_suffix=directml"]),
+            ("use_azure", ["--use_azure"]),
+        ):
+            with self.subTest(provider=provider), mock.patch.object(build, "run_subprocess") as run:
+                build.build_python_wheel(
+                    source_dir="source",
+                    build_dir="build",
+                    configs=["Release"],
+                    cuda_home="",
+                    cuda_version="13.0",
+                    wheel_name_suffix="",
+                    enable_training=False,
+                    use_ninja=True,
+                    **{**defaults, **({provider: True} if provider else {})},
+                )
+                run.assert_called_once()
+                self.assertEqual(run.call_args.args[0][3:], expected)
+
+    def test_nuget_provider_selection(self):
+        defaults = dict.fromkeys(
+            ("use_cuda", "use_openvino", "use_tensorrt", "use_dnnl", "use_winml", "use_dml", "use_migraphx"),
+            False,
+        )
+        for provider, package, execution_provider in (
+            (None, "Microsoft.ML.OnnxRuntime", "None"),
+            ("use_cuda", "Microsoft.ML.OnnxRuntime.Gpu", "None"),
+            ("use_dml", "Microsoft.ML.OnnxRuntime.DirectML", "None"),
+            ("use_openvino", "Intel.ML.OnnxRuntime.OpenVino", "openvino"),
+        ):
+            with (
+                self.subTest(provider=provider),
+                mock.patch.object(build, "is_windows", return_value=False),
+                mock.patch.object(build, "is_linux", return_value=True),
+                mock.patch.object(build, "run_subprocess") as run,
+            ):
+                build.build_nuget_package(
+                    cmake_path="cmake",
+                    source_dir="source",
+                    build_dir="build",
+                    configs=["Release"],
+                    enable_training_apis=False,
+                    msbuild_extra_options=[],
+                    **{**defaults, **({provider: True} if provider else {})},
+                )
+                self.assertEqual(run.call_count, 3)
+                self.assertIn(f"/p:OrtPackageId={package}", run.call_args.args[0])
+                self.assertIn(f"/p:ExecutionProvider={execution_provider}", run.call_args.args[0])
 
 
 class StalePythonCacheArgsTest(unittest.TestCase):
