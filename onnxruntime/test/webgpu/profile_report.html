@@ -714,11 +714,7 @@
         <aside class="runs" aria-label="Inference runs">
           <div class="run-head">
             <h2>Inference runs</h2>
-            <div class="tabs" role="group" aria-label="Filter runs">
-              <button data-stage="all" aria-pressed="true">All</button>
-              <button data-stage="prefill" aria-pressed="false">Prefill</button
-              ><button data-stage="decode" aria-pressed="false">Decode</button>
-            </div>
+            <div class="tabs" id="stage-filters" role="group" aria-label="Filter runs"></div>
             <label><input id="warmup" type="checkbox" /> Include warmup</label>
           </div>
           <div id="run-list"></div>
@@ -821,7 +817,7 @@
         preparation, transfers, scheduling and profiling work. Only compute dispatches have GPU timestamps. Use an
         unprofiled capture for throughput. All lanes use the recorded ORT session origin; the default axis shows time
         relative to the selected run. Baseline matching checks model hash, ORT version, backend and workload settings;
-        new captures also compare prompt hashes. Machine conditions are not verified.
+        new captures also compare input hashes and session options. Machine conditions are not verified.
       </p>
       <details>
         <summary>Capture details &amp; keyboard shortcuts</summary>

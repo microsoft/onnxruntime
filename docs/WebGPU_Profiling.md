@@ -1,17 +1,7 @@
 # WebGPU CPU and GPU timelines
 
-Enable ONNX Runtime profiling as usual. For example, with the native Windows WebGPU provider:
-
-```python
-import onnxruntime as ort
-
-options = ort.SessionOptions()
-options.enable_profiling = True
-options.add_session_config_entry("ep.webgpuexecutionprovider.dawnBackendType", "D3D12")
-session = ort.InferenceSession("model.onnx", options, providers=["WebGpuExecutionProvider"])
-session.run(None, inputs)
-profile_path = session.end_profiling()
-```
+Enable ONNX Runtime profiling through the native Node.js capture tool described below,
+or through the usual profiling API in your application.
 
 Open the resulting JSON trace in Perfetto or a Chrome trace viewer. GPU dispatch events use the same
 microsecond time origin as the CPU events. On Windows D3D12 with bundled Dawn and an ORT-created device,
@@ -44,132 +34,78 @@ profiled wall times should not be treated as normal inference throughput.
 CPU timing gates are inline: disabled execution skips clock reads and event-recording calls and
 allocates no event data.
 
-## Capture and visualize a decoder
+## Capture and visualize a model with Node.js
 
-The WebGPU test tooling includes a direct ORT decoder runner and a self-contained HTML trace viewer:
+The generic capture runner and dependency-free report generator require Node.js 20 or newer. Capture requires
+an `onnxruntime-node` package built with native WebGPU and this change; the reporting tool needs no
+ORT package. The default package path is this checkout's `js/node` directory. Use `--ort-module`
+to select another local native Node package. A CPU-only package fails explicitly.
 
-```powershell
-python -m pip install numpy tokenizers
-python onnxruntime/test/webgpu/profile_decoder.py <model-directory> --output-dir build/profile --decode-steps 16
-node onnxruntime/test/webgpu/visualize_profile.mjs <trace-json> --metadata build/profile/capture.json --output build/profile/timeline.html
-```
+For source builds, follow the normal [Node.js binding build instructions](../js/node/README.md).
+The existing ORT build toolchain is unchanged; capture, report generation and viewing require no
+Python installation. An external Dawn API-only package still requires a host that supplies a
+compatible Dawn proc table in the same process. A self-hosted capture needs bundled Dawn.
 
-Use a native WebGPU ORT Python build containing this change. An external Dawn API-only Python build
-requires a host that injects a compatible Dawn proc table in the same process. The decoder directory
-must contain `genai_config.json`, the ONNX model/weights and `tokenizer.json`, with the standard
-input IDs, attention mask and separate past/present key/value names. The runner uses batch 1, greedy
-selection and GPU-resident KV outputs, with CPU logits and graph capture disabled by default. It performs fixed
-decode steps even after EOS; it does not apply chat templates or LoRA adapters, or reproduce a full
-GenAI application's generation loop. Use `--prompt-file`, `--warmup`, `--repeat` and `--decode-steps`
-to specify the workload. `--no-profile` records ordinary wall times without enabling profiling.
-
-Reporting requires Node.js 20+ and no npm packages. Capture continues to use the native Python binding;
-the Node report runs after capture and adds no inference overhead. Open `timeline.html` locally in a
-recent Edge, Chrome or Firefox with gzip `DecompressionStream` support. The report embeds its data,
-styles and scripts and needs no server or network access.
-
-CPU major steps and GPU kernels share one horizontal time axis. Filter prefill/decode and warmup runs,
-click a run or use the arrow keys to navigate, and drag to zoom or Shift-drag to pan. Search operator
-names, shapes and cache keys, then press Enter to inspect matching events. Click a GPU program to
-highlight its dispatches. The event inspector shows session and run-relative times; export the visible
-timeline as PNG or download the summary. Selected event arguments are embedded; the original JSON
-retains all trace fields.
-
-The run overview shows the interval union of GPU compute and time outside those kernels. Gaps can
-include CPU preparation, transfers and scheduling; transfers do not have GPU compute timestamps.
-The report preserves the recorded timestamps and prominently labels approximate alignment.
-It also exports a `.summary.json` with raw run timings and GPU program totals. The visualizer can
-accept traces containing the WebGPU `clock_alignment` events; omit `--metadata` when using another capture tool.
-
-To show an unprofiled baseline, make a second capture with the same workload and `--no-profile`, then
-pass its `capture.json` with `--baseline`. The generator checks matching model hash, ORT version,
-backend, prompt length, decode steps and workload description, and excludes warmup from stage means.
-New captures also check the prompt hash, batching, threads, static KV, graph replay and disabled optimizers.
-Use the same machine conditions; those are not verified by the metadata comparison.
-
-Run the report regression tests with `node --test onnxruntime/test/webgpu/test_visualize_profile.mjs`.
-
-## Iterate on decoder performance
-
-Measure without profiling before accepting an optimization. `--max-pending-dispatches` controls the
-existing WebGPU submission limit for this process; `--intra-op-threads` controls CPU preparation.
-Do not assume a larger batch is always faster: delayed submission can also leave the GPU waiting.
-
-For Aion exports with empty LoRA weights, prepare a separate model copy:
-
-```powershell
-python -m pip install onnx
-python onnxruntime/test/webgpu/optimize_decoder.py <original-directory> --output-dir build/aion-pruned --freeze-initializers
-python onnxruntime/test/webgpu/profile_decoder.py build/aion-pruned --output-dir build/aion-replay --static-kv --graph-capture --disable-optimizer MatMulNBitsMlpFusion --intra-op-threads 1 --max-pending-dispatches 16 --no-profile
-```
-
-The offline tool removes only a matching zero-rank `MatMul -> MatMul -> Add` LoRA branch alongside a
-`MatMulNBits` projection. It retains public outputs and live branches, copies the unchanged weight files,
-and records the transformation and model hashes. It never overwrites the original directory. Removing
-an addition of positive zero can change signed zero, so validate actual outputs. Aion's experimental
-normalization schemas require validation by loading the resulting model with ORT.
-Some Aion exports expose their LoRA initializers as overridable graph inputs. The explicit
-`--freeze-initializers` option converts initializer inputs to constants before pruning; the prepared
-copy can no longer override those weights/adapters. Without that option the tool preserves overridable
-branches. Inspect `optimization.json` to confirm which branches were actually removed.
-
-Removing these branches also makes existing WebGPU QKV/MLP fusions eligible. Additional FP16 fusion can
-change rounding and activation arithmetic. The example disables `MatMulNBitsMlpFusion` to preserve
-the original MLP arithmetic. `--specialize-head` is an explicit preparation opt-in that fixes the
-symbolic KV head width to the configured value and can enable Q/K-normalization fusion. Check logits
-and KV before accepting either additional fusion; matching generated text alone is insufficient.
-
-Static KV preallocates capacity for the entire requested prompt/decode workload and shares past/present
-buffers. Graph replay keeps separate, fixed prefill/decode bindings and GPU input buffers. The runner
-updates buffer contents, including the attention mask, without rebinding a captured graph. Uploads use
-small WebGPU Identity sessions because the native Python allocator factory cannot allocate these buffers
-directly. `wall_ms` includes the decoder run and CPU logits readback; `step_wall_ms` also includes input
-uploads, binding and greedy selection. Initialization and warmup are excluded from comparison results.
-The static path currently expects last-token logits of shape `[1, 1, vocab_size]`.
-
-Use `--validation-output build/reference.npz` to save every step's logits and all final live KV tensors
-from the first measured iteration. Compare corresponding arrays, generated token IDs, finite values and
-the live cache length across configurations. Validation downloads happen outside measured intervals;
-use separate captures without that option for performance. Test multiple prompts and advancing decode,
-including repeated iterations that leave stale cache entries beyond the current sequence length.
-
-```powershell
-python onnxruntime/test/webgpu/compare_decoder.py build/reference.npz build/candidate.npz --require-exact
-```
-
-The dependency-free Node benchmark controller runs variants sequentially in forward/reverse order per
-round and generates `index.html`, `measurements.json`, the exact manifest and per-process logs/captures:
-
-```powershell
-node onnxruntime/test/webgpu/benchmark_decoder.mjs build/benchmark.json build/new-comparison
-```
-
-Example manifest (paths are relative to the current working directory):
+Describe every model input in `inputs.json`, with a tensor type, dimensions and either a flat data
+array or `data_file` containing raw little-endian tensor bytes. File paths in the manifest are relative
+to the manifest's directory. For example, an Abs model with float32 input `x` of shape `[2, 2]` uses:
 
 ```json
 {
-  "title": "Aion WebGPU comparison",
-  "python": ".venv/Scripts/python.exe",
-  "rounds": 3,
-  "args": ["--prompt-file", "build/prompt.txt", "--decode-steps", "16", "--warmup", "2", "--repeat", "6", "--intra-op-threads", "1"],
-  "variants": [
-    {"id": "original", "model": "path/to/original", "args": ["--max-pending-dispatches", "16"]},
-    {"id": "pruned-replay", "model": "build/aion-pruned", "args": ["--max-pending-dispatches", "16", "--static-kv", "--graph-capture", "--disable-optimizer", "MatMulNBitsMlpFusion"]}
-  ]
+  "x": { "type": "float32", "dims": [2, 2], "data": [-1, 2, -3, 4] }
 }
 ```
 
-Set `PYTHONPATH` to this checkout's native Python build before running. All benchmark runs force
-profiling off, show both decoder and complete-step latency, and retain per-round medians. Capture
-profiles separately with identical settings, then use `visualize_profile.mjs` for each aligned timeline.
-Optional manifest `timelines` entries (`label`, relative HTML `href`) link those reports, and `validation`
-and `scope` record the numerical checks and measurement limits. These tools change no ORT core code or
-provider defaults and add no production profiling-disabled runtime work.
+Supported numeric types are float16/32/64, signed/unsigned 8/16/32/64-bit integers and bool. Inline
+float16 values are raw half-precision bit patterns. Use decimal strings for 64-bit integers outside
+JavaScript's safe integer range; bool values are 0 or 1. Scalar dimensions are `[]`. Strings, sequences
+and non-tensor values are unsupported. Inputs must exactly match the model's required input names.
 
-Run the controller tests with `node --test onnxruntime/test/webgpu/test_benchmark_decoder.mjs` and the
-optimizer tests with `python -m unittest discover -s onnxruntime/test/webgpu -p test_optimize_decoder.py`.
-Run Python tests outside the source root with an absolute test directory if the source package shadows
-the built `onnxruntime` module.
+```powershell
+node onnxruntime/test/webgpu/profile_model.mjs model.onnx --inputs inputs.json --output-dir build/profile --warmup 1 --repeat 3
+node onnxruntime/test/webgpu/visualize_profile.mjs <generated-trace.json> --metadata build/profile/capture.json --output build/profile/timeline.html
+```
+
+The capture output directory must be new. It contains the original ORT JSON trace and `capture.json`
+with run timings, warmup labels, model/input hashes, selected module/version/backend/session settings,
+and first-measured-run output hashes/shapes/samples. Hashing and output validation happen outside the
+measured interval. `wall_ms` includes Node scheduling, inference and transfer of outputs to CPU;
+initialization, output checks/disposal and input-file loading are excluded. This runner repeats fixed
+inputs, uses CPU input/output tensors and disables CPU fallback. It does not change model graphs,
+provider defaults, batching or graph-capture settings. `--intra-op-threads` defaults to 1; `--backend`
+selects D3D12 (default), Vulkan or Metal. Only Windows D3D12 was executed locally.
+
+Generate a separate capture with identical inputs/settings and `--no-profile` for ordinary wall times:
+
+```powershell
+node onnxruntime/test/webgpu/profile_model.mjs model.onnx --inputs inputs.json --output-dir build/baseline --warmup 1 --repeat 3 --no-profile
+node onnxruntime/test/webgpu/visualize_profile.mjs <generated-trace.json> --metadata build/profile/capture.json --baseline build/baseline/capture.json --output build/profile/timeline.html
+```
+
+Baseline matching checks the model-file hash, input contents/types/shapes, ORT version/module, backend,
+workload and session options. Warmup is excluded from baseline means. Keep external model weight files
+and machine conditions identical; these are not verified by those hashes. With profiling disabled,
+the runner neither enables nor ends profiling and creates no trace. This tool adds no production
+runtime work.
+
+The self-contained HTML viewer has aligned CPU/GPU lanes, run and warmup filters, search, an event
+inspector, zoom/pan, program summaries and PNG/JSON exports. Filters use the stages present in the
+capture metadata; the generic runner labels runs `inference`. Open it in a current Chromium browser.
+If local-file viewing is restricted, serve the output with a local HTTP server. For other ORT traces,
+omit `--metadata`; GPU events must contain WebGPU `clock_alignment` information. Profiling adds query,
+trace-collection and synchronization overhead, so its timeline gaps are not an unprofiled utilization
+measurement.
+
+Run the Node tests, including the native GPU smoke check, with:
+
+```powershell
+$env:ORT_WEBGPU_NODE_MODULE = (Resolve-Path js/node).Path
+node --test onnxruntime/test/webgpu/test_profile_model.mjs onnxruntime/test/webgpu/test_visualize_profile.mjs
+```
+
+Without that environment variable, the native test is explicitly skipped; the remaining tests require
+no ORT build. The native test checks Abs output with CPU fallback disabled, profiling off/on/off,
+multiple runs and both GPU timestamps and WebGPU CPU spans.
 
 ## Test an external Dawn host
 

@@ -22,10 +22,8 @@ const capture = {
   model_sha256: 'hash',
   ort_version: '1.32',
   backend: 'D3D12',
-  prompt_tokens: 128,
-  decode_steps: 16,
   workload: 'test',
-  runs: [{ stage: 'prefill', duration: -1, start: -1 }],
+  runs: [{ stage: 'inference', duration: -1, start: -1 }],
 };
 
 test('clips GPU intervals to a run and counts overlap only once', () => {
@@ -80,25 +78,26 @@ test('matches unprofiled workload and excludes warmup from baseline means', () =
     ...capture,
     trace: null,
     runs: [
-      { stage: 'prefill', warmup: true, wall_ms: 100 },
-      { stage: 'prefill', wall_ms: 10 },
-      { stage: 'prefill', wall_ms: 20 },
+      { stage: 'inference', warmup: true, wall_ms: 100 },
+      { stage: 'inference', wall_ms: 10 },
+      { stage: 'inference', wall_ms: 20 },
     ],
   };
-  assert.equal(buildReport(trace, capture, baseline).baseline.prefill, 15);
+  assert.equal(buildReport(trace, capture, baseline).baseline.inference, 15);
   assert.throws(() => buildReport(trace, capture, { ...baseline, backend: 'Vulkan' }), /backend/);
   assert.throws(() => buildReport(trace, capture, { ...baseline, trace: 'profile.json' }), /no-profile/);
   assert.throws(() => buildReport(trace, {}, baseline), /model_sha256/);
   for (const [key, value] of Object.entries({
-    prompt_sha256: 'changed',
-    static_kv: true,
-    graph_capture: true,
-    max_pending_dispatches: 64,
-    intra_op_threads: 1,
-    disabled_optimizers: ['MatMulNBitsMlpFusion'],
+    capture_schema: 2,
+    inputs_sha256: 'changed',
+    session_options: { intraOpNumThreads: 1 },
+    ort_module: '/build/node',
   })) {
     assert.throws(() => buildReport(trace, { ...capture, [key]: value }, baseline), new RegExp(key));
-    assert.equal(buildReport(trace, { ...capture, [key]: value }, { ...baseline, [key]: value }).baseline.prefill, 15);
+    assert.equal(
+      buildReport(trace, { ...capture, [key]: value }, { ...baseline, [key]: value }).baseline.inference,
+      15,
+    );
   }
 });
 

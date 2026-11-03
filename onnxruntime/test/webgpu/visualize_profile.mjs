@@ -133,8 +133,6 @@ export function buildReport(trace, metadata = {}, baseline = {}) {
       step: label.step ?? index,
       iteration: label.iteration,
       warmup: Boolean(label.warmup),
-      inputTokens: label.input_tokens,
-      totalTokens: label.total_tokens,
       wallMs: label.wall_ms,
       start,
       duration: run.dur,
@@ -147,19 +145,12 @@ export function buildReport(trace, metadata = {}, baseline = {}) {
   });
   if (Object.keys(baseline).length) {
     if (baseline.trace) throw new Error('Baseline must be captured with --no-profile.');
-    for (const key of ['model_sha256', 'ort_version', 'backend', 'prompt_tokens', 'decode_steps', 'workload']) {
+    for (const key of ['model_sha256', 'ort_version', 'backend', 'workload']) {
       if (metadata[key] === undefined || baseline[key] !== metadata[key]) {
         throw new Error(`Baseline capture is missing or differs in ${key}.`);
       }
     }
-    for (const key of [
-      'prompt_sha256',
-      'static_kv',
-      'graph_capture',
-      'max_pending_dispatches',
-      'intra_op_threads',
-      'disabled_optimizers',
-    ]) {
+    for (const key of ['capture_schema', 'inputs_sha256', 'session_options', 'ort_module']) {
       if (
         (metadata[key] !== undefined || baseline[key] !== undefined) &&
         JSON.stringify(metadata[key]) !== JSON.stringify(baseline[key])
@@ -195,16 +186,12 @@ export function buildReport(trace, metadata = {}, baseline = {}) {
       modelSha256: metadata.model_sha256,
       ortVersion: metadata.ort_version,
       backend: metadata.backend,
-      promptTokens: metadata.prompt_tokens,
       workload: metadata.workload,
       warmup: metadata.warmup,
       repeat: metadata.repeat,
-      decodeSteps: metadata.decode_steps,
-      staticKv: metadata.static_kv,
-      graphCapture: metadata.graph_capture,
-      maxPendingDispatches: metadata.max_pending_dispatches,
-      intraOpThreads: metadata.intra_op_threads,
-      disabledOptimizers: metadata.disabled_optimizers,
+      inputsSha256: metadata.inputs_sha256,
+      sessionOptions: metadata.session_options,
+      ortModule: metadata.ort_module,
     },
   };
 }

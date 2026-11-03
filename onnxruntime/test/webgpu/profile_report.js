@@ -25,7 +25,7 @@
     const { events, strings } = report;
     let active = report.runs.find((run) => !run.warmup) ?? report.runs[0];
     let filtered = [];
-    let stage = 'all';
+    let stage = null;
     let selected = null;
     let query = '';
     let matches = new Set();
@@ -38,8 +38,7 @@
     const top = 43;
     const rowHeight = 34;
     const plotHeight = labels.length * rowHeight;
-    const label = (run) =>
-      `Run ${run.index} · ${run.stage}${run.stage === 'decode' ? ` ${run.step}` : ''}${run.warmup ? ' · warmup' : ''}`;
+    const label = (run) => `Run ${run.index} · ${run.stage}${run.warmup ? ' · warmup' : ''}`;
     const bounds = () =>
       active
         ? [active.start - Math.max(1, active.duration * 0.008), active.start + Math.max(1, active.duration * 1.008)]
@@ -50,7 +49,6 @@
     $('capture-subtitle').textContent = [
       report.capture.backend,
       report.capture.ortVersion ? `ORT ${report.capture.ortVersion}` : '',
-      report.capture.promptTokens ? `${report.capture.promptTokens} prompt tokens` : '',
       `${number(report.gpuEvents)} GPU dispatches · ${report.runs.length} runs`,
     ]
       .filter(Boolean)
@@ -310,7 +308,7 @@
       $('metric-run').textContent = ms(run.duration);
       $('metric-gpu').textContent = ms(run.busy);
       $('metric-gap').textContent = ms(run.gap);
-      $('run-caption').textContent = `${label(run)}${run.inputTokens ? ` · ${run.inputTokens} input tokens` : ''}`;
+      $('run-caption').textContent = label(run);
       $('gpu-caption').textContent = `${percent(run.busy, run.duration)}% of run · compute interval union`;
       const baseline = Object.hasOwn(report.baseline, run.stage) ? report.baseline[run.stage] : undefined;
       $('metric-baseline').textContent = baseline === undefined ? '—' : baseline.toFixed(2);
@@ -332,7 +330,7 @@
 
     function filterRuns() {
       filtered = report.runs.filter(
-        (run) => (stage === 'all' || run.stage === stage) && ($('warmup').checked || !run.warmup),
+        (run) => (stage === null || run.stage === stage) && ($('warmup').checked || !run.warmup),
       );
       for (const id of ['run-select', 'search', 'zoom-in', 'zoom-out', 'reset', 'export-image'])
         $(id).disabled = !filtered.length;
@@ -343,13 +341,7 @@
         button.dataset.run = String(run.index);
         button.setAttribute('aria-label', label(run));
         const line = element('span');
-        line.append(
-          element(
-            'span',
-            `${run.stage === 'prefill' ? 'Prefill' : run.stage === 'decode' ? `Decode ${run.step}` : 'Inference'}`,
-          ),
-          element('span', `${ms(run.duration)} ms`, 'mono'),
-        );
+        line.append(element('span', run.stage), element('span', `${ms(run.duration)} ms`, 'mono'));
         button.append(
           line,
           element('small', `Run ${run.index} · ${run.warmup ? 'warmup' : `iteration ${run.iteration ?? '—'}`}`),
@@ -489,13 +481,17 @@
       fitEvent();
     });
     $('warmup').addEventListener('change', filterRuns);
-    for (const tab of document.querySelectorAll('[data-stage]'))
+    const stages = [null, ...new Set(report.runs.map((run) => run.stage))];
+    for (const value of stages) {
+      const tab = element('button', value ?? 'All');
+      tab.setAttribute('aria-pressed', String(value === null));
+      $('stage-filters').append(tab);
       tab.addEventListener('click', () => {
-        stage = tab.dataset.stage;
-        for (const other of document.querySelectorAll('[data-stage]'))
-          other.setAttribute('aria-pressed', String(other === tab));
+        stage = value;
+        for (const other of $('stage-filters').children) other.setAttribute('aria-pressed', String(other === tab));
         filterRuns();
       });
+    }
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') {
         $('search').value = '';
