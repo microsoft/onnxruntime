@@ -221,9 +221,7 @@ struct ScopedInitializerDirectory {
       : path{std::filesystem::temp_directory_path() /
              ("ort-file-source-" +
               std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()))} {
-    if (!std::filesystem::create_directory(path)) {
-      throw std::runtime_error("Cannot create initializer test directory");
-    }
+    ORT_ENFORCE(std::filesystem::create_directory(path), "Cannot create initializer test directory");
   }
   ~ScopedInitializerDirectory() {
     std::error_code error;
@@ -237,16 +235,23 @@ std::unique_ptr<FILE, decltype(&fclose)> OpenReadOnlyInitializer(const std::file
   FILE* file = nullptr;
 #ifdef _WIN32
   const auto error = _wfopen_s(&file, path.c_str(), L"rb");
-  if (error != 0) {
-    throw std::runtime_error("Cannot open initializer test file");
-  }
+  ORT_ENFORCE(error == 0, "Cannot open initializer test file");
 #else
   file = fopen(path.c_str(), "rb");
 #endif
-  if (file == nullptr) {
-    throw std::runtime_error("Cannot open initializer test file");
-  }
+  ORT_ENFORCE(file != nullptr, "Cannot open initializer test file");
   return {file, fclose};
+}
+
+Ort::Status TryCreateSessionFromArray(const OrtApi* api, const Ort::Env& env,
+                                      const void* model_data, size_t model_data_length,
+                                      const Ort::SessionOptions& options) {
+  OrtSession* raw_session = nullptr;
+  OrtStatus* raw_status = api->CreateSessionFromArray(env, model_data, model_data_length, options, &raw_session);
+  if (raw_session != nullptr) {
+    api->ReleaseSession(raw_session);
+  }
+  return Ort::Status{raw_status};
 }
 
 ONNX_NAMESPACE::ModelProto MakeFileSourceTestModel(int64_t length = 1) {
@@ -387,7 +392,7 @@ int CheckSubgraphLoadingMemory(int depth) {
   const auto path = directory.path / "weights.bin";
   {
     std::ofstream output(path, std::ios::binary);
-    output.exceptions(std::ios::badbit | std::ios::failbit);
+    ORT_ENFORCE(output.good(), "Cannot create initializer test file");
   }
   std::filesystem::resize_file(path, kWeightBytes);
   auto file = OpenReadOnlyInitializer(path);
@@ -405,11 +410,13 @@ int CheckSubgraphLoadingMemory(int depth) {
   file.reset();
   struct rusage before{}, after{};
   if (getrusage(RUSAGE_SELF, &before) != 0) {
-    throw std::runtime_error("Cannot measure peak resident memory before model loading");
+    std::fprintf(stderr, "Cannot measure peak resident memory before model loading\n");
+    return 1;
   }
   Ort::Session session{env, bytes.data(), bytes.size(), options};
   if (getrusage(RUSAGE_SELF, &after) != 0) {
-    throw std::runtime_error("Cannot measure peak resident memory after model loading");
+    std::fprintf(stderr, "Cannot measure peak resident memory after model loading\n");
+    return 1;
   }
   const auto growth = after.ru_maxrss - before.ru_maxrss;
   std::printf("depth=%d, peak growth=%ld KiB, budget=%ld KiB\n",
@@ -577,7 +584,7 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesInferAfterHandleAndOptionsRelea
   const char* name = "Pads.bin";
   const auto descriptor = NativeFileHandle(weights.get());
   Ort::SessionOptions options;
-  EXPECT_NO_THROW(options.SetExternalInitializerFileHandles(&name, &descriptor, 1));
+  options.SetExternalInitializerFileHandles(&name, &descriptor, 1);
   auto clone = options.Clone();
   weights.reset();
   options = Ort::SessionOptions{nullptr};
@@ -617,14 +624,11 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesNeverFallBackToModelPaths) {
   Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "file-sources"};
   Ort::SessionOptions options;
   ASSERT_TRUE(Ort::Status(api_->SessionOptionsSetExternalInitializerFileHandles(options, nullptr, nullptr, 0)).IsOK());
-  try {
-    Ort::Session session{env, graph.data(), graph.size(), options};
-    FAIL() << "Missing registered sources must not fall back to disk";
-  } catch (const Ort::Exception& error) {
-    EXPECT_NE(std::string(error.what()).find("No registered external initializer file source"),
-              std::string::npos);
-    EXPECT_NE(std::string(error.what()).find("Pads.bin"), std::string::npos);
-  }
+  const auto status = TryCreateSessionFromArray(api_, env, graph.data(), graph.size(), options);
+  ASSERT_FALSE(status.IsOK()) << "Missing registered sources must not fall back to disk";
+  EXPECT_NE(status.GetErrorMessage().find("No registered external initializer file source"),
+            std::string::npos);
+  EXPECT_NE(status.GetErrorMessage().find("Pads.bin"), std::string::npos);
 }
 
 TEST_F(FileSourcesSessionOptionsTest, FileSourcesRejectExternalSparseDataBeforeGraphConstruction) {
@@ -656,12 +660,9 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesRejectExternalSparseDataBeforeG
       Ort::SessionOptions options;
       Ort::ThrowOnError(api_->SessionOptionsSetExternalInitializerFileHandles(options, nullptr, nullptr, 0));
       const auto bytes = model.SerializeAsString();
-      try {
-        Ort::Session session{env, bytes.data(), bytes.size(), options};
-        FAIL() << "External sparse data must be rejected before graph construction";
-      } catch (const Ort::Exception& error) {
-        EXPECT_NE(std::string{error.what()}.find("does not support external sparse tensors"), std::string::npos);
-      }
+      const auto status = TryCreateSessionFromArray(api_, env, bytes.data(), bytes.size(), options);
+      ASSERT_FALSE(status.IsOK()) << "External sparse data must be rejected before graph construction";
+      EXPECT_NE(status.GetErrorMessage().find("does not support external sparse tensors"), std::string::npos);
     }
   }
 }
@@ -725,16 +726,13 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesRejectExternalDataInModelLocalF
     Ort::SessionOptions options;
     Ort::ThrowOnError(api_->SessionOptionsSetExternalInitializerFileHandles(options, nullptr, nullptr, 0));
     const auto bytes = model.SerializeAsString();
-    try {
-      Ort::Session session{env, bytes.data(), bytes.size(), options};
-      FAIL() << "External function data must not reach pathname loading";
-    } catch (const Ort::Exception& error) {
-      const std::string message{error.what()};
-      EXPECT_TRUE(message.find("does not support external tensor attributes") != std::string::npos ||
-                  message.find("does not support external data in model-local functions") != std::string::npos ||
-                  message.find("does not support external sparse tensors") != std::string::npos)
-          << message;
-    }
+    const auto status = TryCreateSessionFromArray(api_, env, bytes.data(), bytes.size(), options);
+    ASSERT_FALSE(status.IsOK()) << "External function data must not reach pathname loading";
+    const std::string message = status.GetErrorMessage();
+    EXPECT_TRUE(message.find("does not support external tensor attributes") != std::string::npos ||
+                message.find("does not support external data in model-local functions") != std::string::npos ||
+                message.find("does not support external sparse tensors") != std::string::npos)
+        << message;
   }
 }
 
@@ -743,8 +741,8 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesValidateZeroLengthRanges) {
   const auto path = directory.path / "weights.bin";
   {
     std::ofstream output(path, std::ios::binary);
-    output.exceptions(std::ios::badbit | std::ios::failbit);
     output.put('x');
+    ASSERT_TRUE(output.good());
   }
   auto file = OpenReadOnlyInitializer(path);
   const auto handle = NativeFileHandle(file.get());
@@ -754,14 +752,12 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesValidateZeroLengthRanges) {
   file.reset();
   Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "empty-file-sources"};
   const auto invalid = MakeExternalInitializerModel(0, 2).SerializeAsString();
-  try {
-    Ort::Session session{env, invalid.data(), invalid.size(), options};
-    FAIL() << "An empty initializer cannot begin beyond EOF";
-  } catch (const Ort::Exception& error) {
-    EXPECT_NE(std::string{error.what()}.find("Invalid registered external initializer range"), std::string::npos);
-  }
+  const auto invalid_status = TryCreateSessionFromArray(api_, env, invalid.data(), invalid.size(), options);
+  ASSERT_FALSE(invalid_status.IsOK()) << "An empty initializer cannot begin beyond EOF";
+  EXPECT_NE(invalid_status.GetErrorMessage().find("Invalid registered external initializer range"),
+            std::string::npos);
   const auto valid = MakeExternalInitializerModel(0, 1).SerializeAsString();
-  EXPECT_NO_THROW(Ort::Session(env, valid.data(), valid.size(), options));
+  EXPECT_TRUE(TryCreateSessionFromArray(api_, env, valid.data(), valid.size(), options).IsOK());
 }
 
 TEST_F(FileSourcesSessionOptionsTest, FileSourcesRejectHiddenDuplicateExternalInitializers) {
@@ -782,12 +778,9 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesRejectHiddenDuplicateExternalIn
     Ort::SessionOptions options;
     Ort::ThrowOnError(api_->SessionOptionsSetExternalInitializerFileHandles(options, nullptr, nullptr, 0));
     const auto bytes = model.SerializeAsString();
-    try {
-      Ort::Session session{env, bytes.data(), bytes.size(), options};
-      FAIL() << "Duplicate names must not hide an external initializer from the registry";
-    } catch (const Ort::Exception& error) {
-      EXPECT_NE(std::string{error.what()}.find("duplicate initializer names: X"), std::string::npos);
-    }
+    const auto status = TryCreateSessionFromArray(api_, env, bytes.data(), bytes.size(), options);
+    ASSERT_FALSE(status.IsOK()) << "Duplicate names must not hide an external initializer from the registry";
+    EXPECT_NE(status.GetErrorMessage().find("duplicate initializer names: X"), std::string::npos);
   }
 }
 
@@ -800,10 +793,10 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesRetainLargeAlignedAndUnalignedI
     const auto path = directory.path / "weights.bin";
     {
       std::ofstream output(path, std::ios::binary);
-      output.exceptions(std::ios::badbit | std::ios::failbit);
       if (offset != 0) output.put('x');
       output.write(reinterpret_cast<const char*>(expected.data()),
                    static_cast<std::streamsize>(expected.size() * sizeof(float)));
+      ASSERT_TRUE(output.good());
     }
     auto file = OpenReadOnlyInitializer(path);
     const auto handle = NativeFileHandle(file.get());
@@ -845,10 +838,10 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesNormalizeBoolInitializers) {
     }
     {
       std::ofstream output(path, std::ios::binary);
-      output.exceptions(std::ios::badbit | std::ios::failbit);
       if (!bytes.empty()) {
         output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
       }
+      ASSERT_TRUE(output.good());
     }
     auto file = OpenReadOnlyInitializer(path);
     const auto handle = NativeFileHandle(file.get());
@@ -900,9 +893,9 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesInferSubgraphsWithoutWeightPath
   const std::vector<float> expected(64, 3.25f);
   {
     std::ofstream output(path, std::ios::binary);
-    output.exceptions(std::ios::badbit | std::ios::failbit);
     output.write(reinterpret_cast<const char*>(expected.data()),
                  static_cast<std::streamsize>(expected.size() * sizeof(float)));
+    ASSERT_TRUE(output.good());
   }
   const auto missing_path = directory.path.filename().string() + ".bin";
   ASSERT_FALSE(std::filesystem::exists(missing_path));
@@ -940,9 +933,9 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesCheckLoopAndNestedGraphStructur
   const std::vector<float> weights(64, 3.25f);
   {
     std::ofstream output(path, std::ios::binary);
-    output.exceptions(std::ios::badbit | std::ios::failbit);
     output.write(reinterpret_cast<const char*>(weights.data()),
                  static_cast<std::streamsize>(weights.size() * sizeof(float)));
+    ASSERT_TRUE(output.good());
   }
   const auto location = directory.path.filename().string() + ".bin";
   ASSERT_FALSE(std::filesystem::exists(location));
@@ -971,12 +964,9 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesCheckLoopAndNestedGraphStructur
   auto malformed = MakeNestedFileSourceModel(64, 1, location);
   malformed.mutable_graph()->mutable_node(0)->mutable_attribute(0)->mutable_g()->clear_name();
   const auto invalid = malformed.SerializeAsString();
-  try {
-    Ort::Session invalid_session{env, invalid.data(), invalid.size(), options};
-    FAIL() << "The metadata-only view must still reject malformed graph structure";
-  } catch (const Ort::Exception& error) {
-    EXPECT_NE(std::string{error.what()}.find("Field 'name' of 'graph'"), std::string::npos);
-  }
+  const auto invalid_status = TryCreateSessionFromArray(api_, env, invalid.data(), invalid.size(), options);
+  ASSERT_FALSE(invalid_status.IsOK()) << "The metadata-only view must still reject malformed graph structure";
+  EXPECT_NE(invalid_status.GetErrorMessage().find("Field 'name' of 'graph'"), std::string::npos);
 }
 
 #if defined(__linux__) && GTEST_HAS_DEATH_TEST && !defined(ABSL_HAVE_ADDRESS_SANITIZER) && \
@@ -998,12 +988,7 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesBoundNestedCheckerMemory) {
     SCOPED_TRACE(depth);
     EXPECT_EXIT(
         {
-          int result = 1;
-          try {
-            result = CheckSubgraphLoadingMemory(depth);
-          } catch (const std::exception& error) {
-            std::fprintf(stderr, "%s\n", error.what());
-          }
+          const int result = CheckSubgraphLoadingMemory(depth);
           _exit(result);
         },
         ::testing::ExitedWithCode(0), "");
@@ -1035,12 +1020,9 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesRejectExternalInitializerConsta
   Ort::ThrowOnError(api_->SessionOptionsSetExternalInitializerFileHandles(options, nullptr, nullptr, 0));
   const auto serialized = model.SerializeAsString();
   Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "constant-file-sources"};
-  try {
-    Ort::Session session{env, serialized.data(), serialized.size(), options};
-    FAIL() << "Constant outputs must not hide external initializers from the registry";
-  } catch (const Ort::Exception& error) {
-    EXPECT_NE(std::string{error.what()}.find("duplicate initializer names: X"), std::string::npos);
-  }
+  const auto status = TryCreateSessionFromArray(api_, env, serialized.data(), serialized.size(), options);
+  ASSERT_FALSE(status.IsOK()) << "Constant outputs must not hide external initializers from the registry";
+  EXPECT_NE(status.GetErrorMessage().find("duplicate initializer names: X"), std::string::npos);
 }
 
 TEST_F(FileSourcesSessionOptionsTest, FileSourcesSurviveModelSuppliedSessionOptions) {
@@ -1054,19 +1036,16 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesSurviveModelSuppliedSessionOpti
   const auto missing = model.SerializeAsString();
   Ort::SessionOptions empty;
   Ort::ThrowOnError(api_->SessionOptionsSetExternalInitializerFileHandles(empty, nullptr, nullptr, 0));
-  try {
-    Ort::Session session{env, missing.data(), missing.size(), empty};
-    FAIL() << "Model-supplied options must not discard a strict empty registry";
-  } catch (const Ort::Exception& error) {
-    EXPECT_NE(std::string{error.what()}.find("No registered external initializer file source"), std::string::npos);
-  }
+  const auto missing_status = TryCreateSessionFromArray(api_, env, missing.data(), missing.size(), empty);
+  ASSERT_FALSE(missing_status.IsOK()) << "Model-supplied options must not discard a strict empty registry";
+  EXPECT_NE(missing_status.GetErrorMessage().find("No registered external initializer file source"), std::string::npos);
   ScopedInitializerDirectory directory;
   const auto path = directory.path / "weights.bin";
   const float expected = 7.0f;
   {
     std::ofstream output(path, std::ios::binary);
-    output.exceptions(std::ios::badbit | std::ios::failbit);
     output.write(reinterpret_cast<const char*>(&expected), sizeof(expected));
+    ASSERT_TRUE(output.good());
   }
   auto file = OpenReadOnlyInitializer(path);
   const auto handle = NativeFileHandle(file.get());
@@ -1089,8 +1068,8 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesRollbackFailedBatchAndReplaceNo
   const auto write_weight_file = [&](const char* filename, float value) {
     const auto path = directory.path / filename;
     std::ofstream output(path, std::ios::binary);
-    output.exceptions(std::ios::badbit | std::ios::failbit);
     output.write(reinterpret_cast<const char*>(&value), sizeof(value));
+    ORT_ENFORCE(output.good(), "Cannot write test weight file");
     return path;
   };
   const auto path_a = write_weight_file("weights_a.bin", 10.0f);
@@ -1101,9 +1080,7 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesRollbackFailedBatchAndReplaceNo
   const auto open_unshared_delete_file = [](const std::filesystem::path& path) {
     const HANDLE raw = CreateFileW(
         path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (raw == INVALID_HANDLE_VALUE) {
-      throw std::runtime_error("Cannot open test weight file");
-    }
+    ORT_ENFORCE(raw != INVALID_HANDLE_VALUE, "Cannot open test weight file");
     return std::unique_ptr<void, decltype(&CloseHandle)>(raw, CloseHandle);
   };
   const auto has_open_handles = [](const std::filesystem::path& path) {
@@ -1123,9 +1100,7 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesRollbackFailedBatchAndReplaceNo
   };
   const auto get_identity = [](const std::filesystem::path& path) {
     struct stat st{};
-    if (stat(path.c_str(), &st) != 0) {
-      throw std::runtime_error("Cannot stat test weight file");
-    }
+    ORT_ENFORCE(stat(path.c_str(), &st) == 0, "Cannot stat test weight file");
     return FileIdentity{st.st_dev, st.st_ino};
   };
   const auto id_a = get_identity(path_a);
@@ -1250,8 +1225,8 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesRejectExternalDataInGraphListAt
   const float value = 1.0f;
   {
     std::ofstream output(path, std::ios::binary);
-    output.exceptions(std::ios::badbit | std::ios::failbit);
     output.write(reinterpret_cast<const char*>(&value), sizeof(value));
+    ASSERT_TRUE(output.good());
   }
 
   Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "graph-list-file-sources"};
@@ -1286,15 +1261,13 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesRejectExternalDataInGraphListAt
       }
 
       const auto serialized = model.SerializeAsString();
-      try {
-        Ort::Session session{env, serialized.data(), serialized.size(), options};
-        FAIL() << "External initializers inside GRAPHS attributes must be rejected during prevalidation";
-      } catch (const Ort::Exception& error) {
-        EXPECT_NE(std::string{error.what()}.find(
-                      "File-source loading does not support external data in graph-list attributes."),
-                  std::string::npos)
-            << error.what();
-      }
+      const auto status = TryCreateSessionFromArray(api_, env, serialized.data(), serialized.size(), options);
+      ASSERT_FALSE(status.IsOK())
+          << "External initializers inside GRAPHS attributes must be rejected during prevalidation";
+      EXPECT_NE(status.GetErrorMessage().find(
+                    "File-source loading does not support external data in graph-list attributes."),
+                std::string::npos)
+          << status.GetErrorMessage();
     }
   }
 }
@@ -1305,9 +1278,9 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesRejectExternalSubgraphInitializ
   const std::vector<float> values(64, 2.5f);
   {
     std::ofstream output(path, std::ios::binary);
-    output.exceptions(std::ios::badbit | std::ios::failbit);
     output.write(reinterpret_cast<const char*>(values.data()),
                  static_cast<std::streamsize>(values.size() * sizeof(float)));
+    ASSERT_TRUE(output.good());
   }
 
   Ort::SessionOptions options;
@@ -1336,7 +1309,7 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesRejectExternalSubgraphInitializ
         auto valid_model = make_base_model();
         get_subgraph_initializer(valid_model)->set_raw_data("");
         const auto serialized = valid_model.SerializeAsString();
-        EXPECT_NO_THROW(Ort::Session(env, serialized.data(), serialized.size(), options));
+        EXPECT_TRUE(TryCreateSessionFromArray(api_, env, serialized.data(), serialized.size(), options).IsOK());
       }
 
       // 2. Nonempty raw_data on an EXTERNAL initializer must be rejected before replacement.
@@ -1345,14 +1318,11 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesRejectExternalSubgraphInitializ
         get_subgraph_initializer(raw_conflict_model)
             ->set_raw_data(std::string(static_cast<size_t>(length) * sizeof(float), '\0'));
         const auto serialized = raw_conflict_model.SerializeAsString();
-        try {
-          Ort::Session session{env, serialized.data(), serialized.size(), options};
-          FAIL() << "Conflicting raw_data on EXTERNAL subgraph initializer must be rejected";
-        } catch (const Ort::Exception& error) {
-          EXPECT_NE(std::string{error.what()}.find("is stored externally and should not have data field.raw_data"),
-                    std::string::npos)
-              << error.what();
-        }
+        const auto status = TryCreateSessionFromArray(api_, env, serialized.data(), serialized.size(), options);
+        ASSERT_FALSE(status.IsOK()) << "Conflicting raw_data on EXTERNAL subgraph initializer must be rejected";
+        EXPECT_NE(status.GetErrorMessage().find("is stored externally and should not have data field.raw_data"),
+                  std::string::npos)
+            << status.GetErrorMessage();
       }
 
       // 3. Nonempty typed embedded data fields on an EXTERNAL initializer must be rejected before replacement.
@@ -1375,15 +1345,13 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesRejectExternalSubgraphInitializ
           tensor->add_uint64_data(99);
         }
         const auto serialized = typed_conflict_model.SerializeAsString();
-        try {
-          Ort::Session session{env, serialized.data(), serialized.size(), options};
-          FAIL() << "Conflicting " << field_name << " on EXTERNAL subgraph initializer must be rejected";
-        } catch (const Ort::Exception& error) {
-          EXPECT_NE(std::string{error.what()}.find(
-                        std::string{"is stored externally and should not have data field."} + field_name),
-                    std::string::npos)
-              << error.what();
-        }
+        const auto status = TryCreateSessionFromArray(api_, env, serialized.data(), serialized.size(), options);
+        ASSERT_FALSE(status.IsOK())
+            << "Conflicting " << field_name << " on EXTERNAL subgraph initializer must be rejected";
+        EXPECT_NE(status.GetErrorMessage().find(
+                      std::string{"is stored externally and should not have data field."} + field_name),
+                  std::string::npos)
+            << status.GetErrorMessage();
       }
     }
   }
@@ -1395,9 +1363,9 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesSupportAddExternalInitializersO
   const std::vector<float> file_values(64, 1.0f);
   {
     std::ofstream output(path, std::ios::binary);
-    output.exceptions(std::ios::badbit | std::ios::failbit);
     output.write(reinterpret_cast<const char*>(file_values.data()),
                  static_cast<std::streamsize>(file_values.size() * sizeof(float)));
+    ASSERT_TRUE(output.good());
   }
 
   Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "override-file-sources"};
@@ -1443,14 +1411,12 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesSupportAddExternalInitializersO
       embedded_init->add_float_data(2.0f);
     }
     const auto embedded_serialized = embedded_model.SerializeAsString();
-    try {
-      Ort::Session bad_session{env, embedded_serialized.data(), embedded_serialized.size(), options};
-      FAIL() << "AddExternalInitializers must not replace an embedded non-external initializer";
-    } catch (const Ort::Exception& error) {
-      EXPECT_NE(std::string{error.what()}.find("Trying to replace non-external initializer with external data"),
-                std::string::npos)
-          << error.what();
-    }
+    const auto bad_status =
+        TryCreateSessionFromArray(api_, env, embedded_serialized.data(), embedded_serialized.size(), options);
+    ASSERT_FALSE(bad_status.IsOK()) << "AddExternalInitializers must not replace an embedded non-external initializer";
+    EXPECT_NE(bad_status.GetErrorMessage().find("Trying to replace non-external initializer with external data"),
+              std::string::npos)
+        << bad_status.GetErrorMessage();
   }
 }
 
@@ -1460,8 +1426,8 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesRejectedInModelPackageOptionsAn
   const float weight_value = 3.0f;
   {
     std::ofstream output(weight_path, std::ios::binary);
-    output.exceptions(std::ios::badbit | std::ios::failbit);
     output.write(reinterpret_cast<const char*>(&weight_value), sizeof(weight_value));
+    ASSERT_TRUE(output.good());
   }
 
   const auto package_root = directory.path / "pkg";
@@ -1469,12 +1435,11 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesRejectedInModelPackageOptionsAn
   std::filesystem::create_directories(variant_dir);
   {
     std::ofstream model_out(variant_dir / "model.onnx", std::ios::binary);
-    model_out.exceptions(std::ios::badbit | std::ios::failbit);
     ASSERT_TRUE(MakeFileSourceTestModel().SerializeToOstream(&model_out));
+    ASSERT_TRUE(model_out.good());
   }
   {
     std::ofstream manifest_out(package_root / "manifest.json", std::ios::binary);
-    manifest_out.exceptions(std::ios::badbit | std::ios::failbit);
     manifest_out << R"({
   "schema_version": "1.0",
   "components": {
@@ -1493,6 +1458,7 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesRejectedInModelPackageOptionsAn
     }
   }
 })";
+    ASSERT_TRUE(manifest_out.good());
   }
 
   Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "model-package-file-sources"};

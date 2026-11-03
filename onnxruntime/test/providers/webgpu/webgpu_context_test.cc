@@ -2310,13 +2310,15 @@ TEST(WebGpuContextTest, D3D12AcceleratedRegisteredHandleSupportsNonAsciiLogicalN
       if (const char* current = std::setlocale(LC_ALL, nullptr)) {
         saved_c_locale = current;
       }
-      (void)std::setlocale(LC_ALL, ".1252");
+      if (std::setlocale(LC_ALL, ".1252") != nullptr) {
+#if !defined(ORT_NO_EXCEPTIONS)
+        try {
+          std::locale::global(std::locale(".1252"));
+        } catch (...) {
+        }
+#endif
+      }
       (void)_setmbcp(1252);
-      ORT_TRY {
-        std::locale::global(std::locale(".1252"));
-      }
-      ORT_CATCH(...) {
-      }
     }
     ~ScopedNonUtf8Locale() {
       (void)std::locale::global(saved_cpp_locale);
