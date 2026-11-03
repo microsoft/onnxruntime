@@ -52,6 +52,19 @@ constexpr GQAExecutionPhase ClassifyGQAExecutionPhase(
                     : GQAExecutionPhase::ChunkedPrefill);
 }
 
+// A device-resident total length leaves is_first_prompt false, even on the
+// first token. Admit runtime classifier outcomes, not phases inferred from
+// past-input presence or the CPU-only prompt-validation guard.
+constexpr bool IsGQAPhaseReachableForSequenceBound(
+    GQAExecutionPhase phase,
+    int64_t sequence_length_bound) noexcept {
+  return sequence_length_bound > 0 &&
+         (phase == ClassifyGQAExecutionPhase(true, 1) ||
+          phase == ClassifyGQAExecutionPhase(false, 1) ||
+          (sequence_length_bound > 1 &&
+           phase == ClassifyGQAExecutionPhase(false, 2)));
+}
+
 constexpr GQAReachableBackend operator|(GQAReachableBackend left,
                                         GQAReachableBackend right) noexcept {
   return static_cast<GQAReachableBackend>(
