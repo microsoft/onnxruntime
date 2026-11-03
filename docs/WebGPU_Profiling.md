@@ -139,8 +139,19 @@ queries, writes, resolves and query buffers are absent with profiling off, prese
 across two runs, and inactive again after profiling. Both ORT-created and host-created device paths
 emit `first_submit` GPU events plus CPU spans. The host-created device enables `TimestampQuery`.
 
-The test target is available when CMake has `dawn::dawn_native`. A source-Dawn build can supply the
-host executable and its required Dawn/DXC libraries for an API-only ORT build: stage the executable
+Build the test in external-Dawn mode with Dawn sources available for the native host dependency:
+
+```powershell
+$env:GIT_CEILING_DIRECTORIES = "$PWD/build/external-regression/Release/_deps"
+.\build.bat --config Release --build_dir build/external-regression --use_webgpu --use_external_dawn --build_shared_lib --update --build --parallel 12 --skip_tests --target onnxruntime_webgpu_external_dawn_test --cmake_extra_defines onnxruntime_ENABLE_DAWN_BACKEND_D3D12=ON onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=OFF
+```
+
+Here Dawn's source dependencies supply the native test host; `--use_external_dawn` keeps the native
+Dawn backend out of the ORT DLL. The test executable links native Dawn and supplies its proc table.
+Do not set `onnxruntime_DAWN_PREBUILT_DIR` in this test build: the API-only package does not provide
+`dawn::dawn_native`, which the test requires. Run both commands above from the build output directory.
+
+To test a separate API-only ORT build, stage the host executable and its required Dawn/DXC libraries
 beside that build's `onnxruntime.dll` and verify the loaded DLL. Match the host Dawn API/ABI to the
 external ORT build's Dawn pin. A host built with another Dawn version is not compatible by assumption.
 
