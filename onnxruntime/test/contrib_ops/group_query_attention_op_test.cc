@@ -7414,10 +7414,10 @@ TEST(GroupQueryAttentionTest, WebGPU_FP16_HighMagnitude_FlashPrefill) {
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_FP16_HighMagnitude_FlashPrefillUnrollBoundary) {
-  for (int head_size : {64, 128, 256}) {
+  for (int head_size : {64, 128, 192, 256, 512}) {
     SCOPED_TRACE(head_size);
-    // Cross a query-tile boundary and leave a partial K tile. On NVIDIA, the
-    // first two head sizes use the expanded reductions and 256 retains loops.
+    // Cross a query-tile boundary and leave a partial K tile. On NVIDIA, heads
+    // 64/128 use the expanded reductions and larger heads retain loops.
     // Large Q/K values also catch accidental FP16 score accumulation.
     RunFp16HighMagnitudeAttention(/*sequence_length=*/65, /*bit_width=*/0, head_size);
   }

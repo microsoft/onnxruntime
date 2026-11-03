@@ -418,10 +418,10 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
   shader.AddOutput("output", ShaderUsage::UseUniform);
 
-  // The NVIDIA shared-memory path benefits from constant private-array indices.
-  // Bound source expansion to at most 32 vec4 terms per reduction. Both inputs
-  // to this choice already participate in the dense-prefill program cache hint.
-  const bool unroll_shm_inner = is_nvidia_ && qkv_head_size_ / 4 <= 32;
+  // Constant private-array indices improve NVIDIA's shared-memory path, but
+  // expanding larger heads can regress performance. The selection inputs
+  // already participate in the dense-prefill program cache hint.
+  const bool unroll_shm_inner = is_nvidia_ && use_shm_path_ && qkv_head_size_ / 4 <= 32;
   if (unroll_shm_inner) {
     auto& impl = shader.AdditionalImplementation();
     impl << "fn flash_qk_unrolled(k : u32) -> qk_precision {\n"
