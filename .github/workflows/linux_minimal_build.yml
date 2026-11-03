@@ -75,7 +75,7 @@ jobs:
           disable-terrapin: 'true'
 
       - name: Build Full ORT and Prepare Test Files
-        uses: microsoft/onnxruntime-github-actions/build/build-and-prep-ort-files@8fce017e8082b04d251a5cc022c784549ff59bc7 # inference-only test preparation
+        uses: microsoft/onnxruntime-github-actions/build/build-and-prep-ort-files@765f6bef696044381bcf04aeb36e10d2619a9f43 # inference-only test preparation
 
       - name: Upload Test Data Artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
