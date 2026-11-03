@@ -4415,7 +4415,12 @@ Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initi
 
   // This check ensures that we are replacing the right initializer than the users wants to
   // replace data that is on disk with a reference to data in memory.
-  ORT_RETURN_IF_NOT(!must_replace_external || utils::HasExternalData(old_initializer),
+  const bool was_external = utils::HasExternalData(old_initializer)
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
+                            || external_initializer_file_sources_.contains(initializer_name)
+#endif
+      ;
+  ORT_RETURN_IF_NOT(!must_replace_external || was_external,
                     "Trying to replace non-external initializer with external data");
 
   // New initializers data generally are within OrtValues
@@ -4582,12 +4587,11 @@ Status Graph::InjectExternalInitializersFromFileSources(
       auto replacement = utils::TensorToTensorProto(*tensor, name, true);
       if (!utils::HasExternalDataInMemory(replacement)) {
         ORT_RETURN_IF_ERROR(graph.ReplaceInitializedTensor(replacement, OrtValue{}));
-        if (can_load_from_file_source) {
-          graph.external_initializer_file_sources_.insert_or_assign(
-              name, ExternalInitializerFileSource{
-                        source->first, source->second,
-                        static_cast<int64_t>(info->GetOffset()), bytes});
-        }
+        graph.external_initializer_file_sources_.insert_or_assign(
+            name, ExternalInitializerFileSource{
+                      source->first,
+                      can_load_from_file_source ? source->second : nullptr,
+                      static_cast<int64_t>(info->GetOffset()), bytes});
         continue;
       }
       OrtValue value;
@@ -4600,12 +4604,11 @@ Status Graph::InjectExternalInitializersFromFileSources(
         Tensor::InitOrtValue(std::move(*tensor), value);
       }
       ORT_RETURN_IF_ERROR(graph.ReplaceInitializedTensor(replacement, value));
-      if (can_load_from_file_source) {
-        graph.external_initializer_file_sources_.insert_or_assign(
-            name, ExternalInitializerFileSource{
-                      source->first, source->second,
-                      static_cast<int64_t>(info->GetOffset()), bytes});
-      }
+      graph.external_initializer_file_sources_.insert_or_assign(
+          name, ExternalInitializerFileSource{
+                    source->first,
+                    can_load_from_file_source ? source->second : nullptr,
+                    static_cast<int64_t>(info->GetOffset()), bytes});
     }
     for (auto& node : graph.Nodes()) {
       if (node.ContainsSubgraph()) {
@@ -4816,7 +4819,7 @@ bool Graph::GetExternalInitializerFileSource(const std::string& name,
   const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
   if (GetInitializedTensor(name, initializer)) {
     const auto it = external_initializer_file_sources_.find(name);
-    if (it == external_initializer_file_sources_.end()) {
+    if (it == external_initializer_file_sources_.end() || it->second.file == nullptr) {
       return false;
     }
     source = it->second;
@@ -6620,7 +6623,11 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
     const bool had_ort_value = graph_to_inline.GetOrtValueInitializer(src_name, src_ort_value);
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
     ExternalInitializerFileSource src_file_source;
-    const bool had_file_source = graph_to_inline.GetExternalInitializerFileSource(src_name, src_file_source);
+    const auto src_file_source_it = graph_to_inline.external_initializer_file_sources_.find(src_name);
+    const bool had_file_source = src_file_source_it != graph_to_inline.external_initializer_file_sources_.end();
+    if (had_file_source) {
+      src_file_source = std::move(src_file_source_it->second);
+    }
 #endif
 
     graph_to_inline.name_to_initial_tensor_.erase(src_name);

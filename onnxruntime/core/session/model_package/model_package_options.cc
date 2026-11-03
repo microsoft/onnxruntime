@@ -16,6 +16,8 @@ namespace onnxruntime {
 
 ModelPackageOptions::ModelPackageOptions(const Environment& env,
                                          const OrtSessionOptions& session_options) {
+  ORT_ENFORCE(!session_options.value.external_initializer_file_sources,
+              "External initializer file handles are not supported with model packages.");
   ResolveEpSelection(env, session_options);
 }
 

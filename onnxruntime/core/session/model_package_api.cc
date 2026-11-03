@@ -42,6 +42,11 @@ ORT_API_STATUS_IMPL(CreateModelPackageOptionsFromSessionOptions,
   if (env == nullptr || session_options == nullptr || out == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "env, session_options and out must be non-null");
   }
+  if (session_options->value.external_initializer_file_sources) {
+    return OrtApis::CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        "External initializer file handles are not supported with model packages.");
+  }
 
   auto options = std::make_unique<onnxruntime::ModelPackageOptions>(env->GetEnvironment(), *session_options);
   *out = reinterpret_cast<OrtModelPackageOptions*>(options.release());
@@ -279,6 +284,11 @@ ORT_API_STATUS_IMPL(CreateSession,
   if (env == nullptr || ctx == nullptr || session == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
                                  "env, ctx, and session must be non-null");
+  }
+  if (session_options != nullptr && session_options->value.external_initializer_file_sources) {
+    return OrtApis::CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        "External initializer file handles are not supported with model packages.");
   }
 
   auto& mp_ctx = *reinterpret_cast<onnxruntime::ModelPackageComponentContext*>(ctx);

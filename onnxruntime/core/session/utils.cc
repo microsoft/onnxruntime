@@ -947,6 +947,11 @@ OrtStatus* CreateSessionForModelPackage(_In_ const OrtSessionOptions* options,
     default_options = std::make_unique<OrtSessionOptions>();
     options_to_use = default_options.get();
   }
+  if (options_to_use->value.external_initializer_file_sources) {
+    return OrtApis::CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        "External initializer file handles are not supported with model packages.");
+  }
 
   ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadSingleModelImpl(options_to_use, env,
                                                               selected_model_path.c_str(),
