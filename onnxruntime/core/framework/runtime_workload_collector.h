@@ -21,6 +21,7 @@ namespace onnxruntime {
 
 class Graph;
 class Node;
+class OpKernelContextInternal;
 
 enum class RuntimeWorkloadRunState {
   NotStarted,
@@ -140,10 +141,15 @@ struct RuntimeWorkloadRecorder {
   const Graph* graph;
   const Node* node;
 
+  // Executor-side CUDA capture follows successful Compute(), including launch-error checks.
+  // Reads only host metadata; route and effective compute mode remain unknown.
+  void RecordCudaMatMulNBits(OpKernelContextInternal& context) const;
+
   void RecordMatMulNBits(const TensorShape& input_shape, const TensorShape& output_shape,
                          int64_t m, int64_t n, int64_t k, size_t batch_count, bool bias_present,
                          int32_t input_element_type, uint32_t bits, uint32_t block_size,
-                         MatMulNBitsRuntimeRoute route, MatMulNBitsRuntimeComputeMode mode) const;
+                         std::optional<MatMulNBitsRuntimeRoute> route,
+                         std::optional<MatMulNBitsRuntimeComputeMode> mode) const;
 };
 
 }  // namespace onnxruntime

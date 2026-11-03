@@ -439,9 +439,12 @@ TEST_F(ComputeEstimateReportTest, WriteFailureWarnsAndInferenceSucceeds) {
   AddMatMul();
   ASSERT_STATUS_OK(model_.MainGraph().Resolve());
   auto options = ReportOptions();
+  // Test runners may set the default logger above WARNING.
+  options.session_log_severity_level = static_cast<int>(logging::Severity::kWARNING);
   // A file cannot be the parent directory of a report.
   {
     std::ofstream parent(path_);
+    ASSERT_TRUE(parent.is_open());
   }
   const auto invalid_path = ToUTF8String((path_ / "report").native());
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsComputeEstimateReportPath,
@@ -645,6 +648,24 @@ TEST(RuntimeComputeEstimateReportTest, SubgraphsAndRepeatedInvocationsSumOnlyExe
   EXPECT_EQ(report["component_summaries"][0]["complete_for_captured_component_scope"], true);
 }
 
+TEST(RuntimeComputeEstimateReportTest, CudaAndMixedProviderRecordsUseTheSameLogicalConvention) {
+  auto snapshot = RuntimeSnapshot();
+  auto cuda_record = snapshot.records[0];
+  cuda_record.provider = kCudaExecutionProvider;
+  cuda_record.invocation_id = 1;
+  snapshot.records.push_back(cuda_record);
+  const auto report = RuntimeReport(snapshot);
+  EXPECT_EQ(report["coverage_scope"], "instrumented_cpu_and_cuda_matmul_nbits_invocations_only");
+  EXPECT_EQ(report["invocations"][0]["components"], report["invocations"][1]["components"]);
+  EXPECT_EQ(report["invocations"][0]["execution_basis"], "successful_kernel_execution");
+  EXPECT_EQ(report["invocations"][1]["execution_basis"], "successful_host_submission");
+  EXPECT_EQ(report["component_summaries"][0]["known_operation_count"], "49152");
+  EXPECT_EQ(report["component_summaries"][1]["known_operation_count"], "384");
+  EXPECT_EQ(report["component_summaries"][0]["complete_for_captured_component_scope"], true);
+  EXPECT_FALSE(report["invocations"][1].contains("route"));
+  EXPECT_FALSE(report["invocations"][1].contains("compute_mode"));
+}
+
 TEST(RuntimeComputeEstimateReportTest, UnknownInvalidAndUnsupportedAreNotZero) {
   auto snapshot = RuntimeSnapshot();
   snapshot.records[0].matmul_nbits.input_shape = {-1, 3, 64};
@@ -656,7 +677,7 @@ TEST(RuntimeComputeEstimateReportTest, UnknownInvalidAndUnsupportedAreNotZero) {
   snapshot.records[0].matmul_nbits.input_shape = {2, 3, 63};
   report = RuntimeReport(snapshot);
   EXPECT_EQ(report["invocations"][0]["components"][0]["unavailable_reason"], "invalid_metadata");
-  snapshot.records[0].provider = kCudaExecutionProvider;
+  snapshot.records[0].provider = kQnnExecutionProvider;
   report = RuntimeReport(snapshot);
   EXPECT_EQ(report["invocations"][0]["components"][0]["unavailable_reason"], "unsupported_provider");
 }

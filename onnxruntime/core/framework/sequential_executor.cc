@@ -652,6 +652,14 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
 #endif
 #if !defined(ORT_MINIMAL_BUILD)
       if (status.IsOK()) {
+#ifdef ENABLE_TRAINING
+        if (!reuse_cached_value)
+#endif
+        {
+          if (const auto* recorder = kernel_ctx.GetRuntimeWorkloadRecorder()) {
+            recorder->RecordCudaMatMulNBits(kernel_ctx);
+          }
+        }
         status = kernel_ctx.RecordKernelUsage();
       }
 #endif

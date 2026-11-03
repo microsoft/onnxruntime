@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "core/common/safeint.h"
+#include "core/framework/op_kernel_context_internal.h"
 #include "core/graph/graph.h"
 
 namespace onnxruntime {
@@ -133,11 +134,45 @@ std::string GraphPath(const Graph& graph) {
 }
 }  // namespace
 
+void RuntimeWorkloadRecorder::RecordCudaMatMulNBits(OpKernelContextInternal& context) const {
+  if (node->GetExecutionProviderType() != kCudaExecutionProvider ||
+      node->Domain() != kMSDomain || node->OpType() != "MatMulNBits" || node->SinceVersion() != 1) {
+    return;
+  }
+  ORT_TRY {
+    const auto* input = context.Input<Tensor>(0);
+    const auto* output_value = context.GetOutputMLValue(0);
+    ORT_ENFORCE(input != nullptr && output_value != nullptr && output_value->IsTensor(),
+                "CUDA MatMulNBits workload tensors are unavailable.");
+    const auto& output = output_value->Get<Tensor>();
+    const auto& attributes = node->GetAttributes();
+    const int64_t k = attributes.at("K").i();
+    const int64_t n = attributes.at("N").i();
+    const auto& shape = input->Shape();
+    ORT_ENFORCE(shape.NumDimensions() > 0 && shape.GetDims().back() == k,
+                "CUDA MatMulNBits workload input geometry is invalid.");
+    const int64_t m = shape.SizeToDimension(shape.NumDimensions() - 1);
+    const bool empty = output.Shape().Size() == 0;
+    RecordMatMulNBits(shape, output.Shape(), m, n, k, 1,
+                      context.Input<Tensor>(5) != nullptr, input->GetElementType(),
+                      SafeInt<uint32_t>(attributes.at("bits").i()),
+                      SafeInt<uint32_t>(attributes.at("block_size").i()),
+                      empty ? std::optional{MatMulNBitsRuntimeRoute::EmptyOutput} : std::nullopt,
+                      empty ? std::optional{MatMulNBitsRuntimeComputeMode::NotExecuted} : std::nullopt);
+  }
+  ORT_CATCH(const std::bad_alloc&) {
+    ORT_HANDLE_EXCEPTION([&]() { collector->RecordCollectionFailure(true); });
+  }
+  ORT_CATCH(const std::exception&) {
+    ORT_HANDLE_EXCEPTION([&]() { collector->RecordCollectionFailure(false); });
+  }
+}
+
 void RuntimeWorkloadRecorder::RecordMatMulNBits(
     const TensorShape& input_shape, const TensorShape& output_shape,
     int64_t m, int64_t n, int64_t k, size_t batch_count, bool bias_present,
     int32_t input_element_type, uint32_t bits, uint32_t block_size,
-    MatMulNBitsRuntimeRoute route, MatMulNBitsRuntimeComputeMode mode) const {
+    std::optional<MatMulNBitsRuntimeRoute> route, std::optional<MatMulNBitsRuntimeComputeMode> mode) const {
   ORT_TRY {
     MatMulNBitsRuntimeMetadata metadata;
     metadata.input_shape.assign(input_shape.GetDims().begin(), input_shape.GetDims().end());

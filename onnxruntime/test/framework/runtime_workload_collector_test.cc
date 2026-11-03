@@ -22,9 +22,12 @@
 #include "core/framework/tensor.h"
 #include "core/mlas/inc/mlas_qnbit.h"
 #include "core/mlas/inc/mlas_q4.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/test_environment.h"
+#include "test/util/include/default_providers.h"
 #endif
 
 namespace onnxruntime {
@@ -345,7 +348,9 @@ ModelProto WorkloadModel(bool dynamic_weights = false, bool bias = true, int bit
     b->add_dims(n);
     b->add_dims(k / 32);
     b->add_dims(32 * bits / 8);
-    b->set_raw_data(std::string(static_cast<size_t>(n * k * bits / 8), bits == 2 ? '\xff' : '\x99'));
+    b->set_raw_data(std::string(static_cast<size_t>(n * k * bits / 8),
+                                bits == 2 ? '\xff' : bits == 8 ? '\x81'
+                                                               : '\x99'));
   }
   auto add_float_initializer = [&](const char* name, int64_t size, float value) {
     auto* tensor = graph.add_initializer();
@@ -521,7 +526,9 @@ TEST(RuntimeWorkloadExecutionTest, TransformerEncoderAndDecoderPropagateCollecto
 }
 
 std::unique_ptr<InferenceSession> WorkloadSession(const ModelProto& model, bool force_fp32 = false,
-                                                  bool lut = false, bool parallel = false) {
+                                                  bool lut = false, bool parallel = false,
+                                                  std::unique_ptr<IExecutionProvider> provider = nullptr,
+                                                  bool disable_cpu_fallback = true) {
   SessionOptions options;
   options.graph_optimization_level = TransformerLevel::Default;
   options.intra_op_param.thread_pool_size = 1;
@@ -533,7 +540,13 @@ std::unique_ptr<InferenceSession> WorkloadSession(const ModelProto& model, bool 
   if (lut) {
     ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry(kOrtSessionOptionsMlasLutGemm, "1"));
   }
+  if (provider && provider->Type() == kCudaExecutionProvider && disable_cpu_fallback) {
+    ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  }
   auto session = std::make_unique<InferenceSession>(options, GetEnvironment());
+  if (provider) {
+    ORT_THROW_IF_ERROR(session->RegisterExecutionProvider(std::move(provider)));
+  }
   const auto bytes = model.SerializeAsString();
   ORT_THROW_IF_ERROR(session->Load(bytes.data(), static_cast<int>(bytes.size())));
   ORT_THROW_IF_ERROR(session->Initialize());
@@ -579,6 +592,145 @@ RuntimeWorkloadSnapshot Snapshot(const RuntimeWorkloadCollector& collector) {
   ORT_THROW_IF_ERROR(collector.GetSnapshot(snapshot));
   return snapshot;
 }
+
+class GraphCaptureWorkloadExecutionProvider : public CPUExecutionProvider {
+ public:
+  GraphCaptureWorkloadExecutionProvider() : CPUExecutionProvider(CPUExecutionProviderInfo{}) {}
+  bool IsGraphCaptureEnabled() const override { return true; }
+};
+
+TEST(RuntimeWorkloadExecutionTest, GraphCaptureIsExplicitlyIncompleteWithoutChangingInference) {
+  auto session = WorkloadSession(WorkloadModel(), false, false, false,
+                                 std::make_unique<GraphCaptureWorkloadExecutionProvider>());
+  RuntimeWorkloadCollector collector({10, 8192});
+  RunOptions options;
+  options.runtime_workload_collector = &collector;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "-1"));
+  std::vector<std::string> input_names{"A"}, output_names{"Y"};
+  std::vector<OrtValue> feeds{FilledTensor({2, 3, 64}, 1.f)}, outputs;
+  ASSERT_STATUS_OK(session->Run(options, input_names, feeds, output_names, &outputs));
+  ExpectOutput(outputs, 66.f);
+  const auto snapshot = Snapshot(collector);
+  EXPECT_EQ(snapshot.run_state, RuntimeWorkloadRunState::Succeeded);
+  EXPECT_TRUE(snapshot.records.empty());
+  EXPECT_FALSE(snapshot.stats.collection_complete);
+  EXPECT_EQ(snapshot.stats.metadata_failure_drops, 1u);
+  EXPECT_EQ(Report(snapshot)["component_summaries"][0]["complete_for_captured_component_scope"], false);
+}
+
+#if defined(USE_CUDA)
+TEST(RuntimeWorkloadExecutionTest, CudaMatchesCpuCountsAcrossTypesBiasBitsAndDynamicShapes) {
+  for (bool half : {false, true}) {
+    for (bool bias : {false, true}) {
+      for (int bits : {2, 4, 8}) {
+        SCOPED_TRACE(testing::Message() << "half=" << half << " bias=" << bias << " bits=" << bits);
+        auto provider = DefaultCudaExecutionProvider();
+        if (!provider) {
+          GTEST_SKIP() << "CUDA execution provider is unavailable.";
+        }
+        const auto model = WorkloadModel(false, bias, bits, half);
+        auto cpu_session = WorkloadSession(model);
+        auto cuda_session = WorkloadSession(model, false, false, false, std::move(provider));
+        std::vector<OrtValue> outputs;
+        ASSERT_STATUS_OK(RunWorkload(*cuda_session, nullptr, outputs, {2, 1, 64}, false, half));
+        ExpectOutput(outputs, bias ? 66.f : 64.f, half);
+        for (int64_t rows : {1, 3, 5}) {
+          RuntimeWorkloadCollector cpu_collector({10, 8192}), cuda_collector({10, 8192});
+          outputs.clear();
+          ASSERT_STATUS_OK(RunWorkload(*cpu_session, &cpu_collector, outputs, {2, rows, 64}, false, half));
+          ExpectOutput(outputs, bias ? 66.f : 64.f, half);
+          outputs.clear();
+          ASSERT_STATUS_OK(RunWorkload(*cuda_session, &cuda_collector, outputs, {2, rows, 64}, false, half));
+          ExpectOutput(outputs, bias ? 66.f : 64.f, half);
+          const auto snapshot = Snapshot(cuda_collector);
+          ASSERT_EQ(snapshot.records.size(), 1u);
+          EXPECT_EQ(snapshot.run_state, RuntimeWorkloadRunState::Succeeded);
+          EXPECT_TRUE(snapshot.stats.collection_complete);
+          const auto& record = snapshot.records[0];
+          EXPECT_EQ(record.provider, kCudaExecutionProvider);
+          EXPECT_EQ(record.graph_path, "main");
+          EXPECT_EQ(record.matmul_nbits.input_shape, (TensorShapeVector{2, rows, 64}));
+          EXPECT_EQ(record.matmul_nbits.output_shape, (TensorShapeVector{2, rows, 32}));
+          EXPECT_EQ(record.matmul_nbits.m, 2 * rows);
+          EXPECT_EQ(record.matmul_nbits.n, 32);
+          EXPECT_EQ(record.matmul_nbits.k, 64);
+          EXPECT_EQ(record.matmul_nbits.batch_count, 1u);
+          EXPECT_EQ(record.matmul_nbits.bias_present, bias);
+          EXPECT_EQ(record.matmul_nbits.bits, static_cast<uint32_t>(bits));
+          EXPECT_EQ(record.matmul_nbits.block_size, 32u);
+          EXPECT_EQ(record.matmul_nbits.input_element_type, half ? TensorProto::FLOAT16 : TensorProto::FLOAT);
+          EXPECT_FALSE(record.matmul_nbits.route.has_value());
+          EXPECT_FALSE(record.matmul_nbits.compute_mode.has_value());
+          const auto cuda_report = Report(snapshot), cpu_report = Report(Snapshot(cpu_collector));
+          EXPECT_EQ(cuda_report["component_summaries"], cpu_report["component_summaries"]);
+          EXPECT_EQ(cuda_report["component_summaries"][0]["known_operation_count"],
+                    std::to_string(2 * 2 * rows * 32 * 64));
+          EXPECT_EQ(cuda_report["component_summaries"][1]["known_operation_count"],
+                    std::to_string(bias ? 2 * rows * 32 : 0));
+          EXPECT_FALSE(cuda_report["invocations"][0].contains("route"));
+        }
+      }
+    }
+  }
+}
+
+TEST(RuntimeWorkloadExecutionTest, CudaEmptyOutputFailuresAndCollectionLimitsPreserveInference) {
+  auto provider = DefaultCudaExecutionProvider();
+  if (!provider) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable.";
+  }
+  auto session = WorkloadSession(WorkloadModel(true), false, false, false, std::move(provider));
+  RuntimeWorkloadCollector empty({10, 8192});
+  std::vector<OrtValue> outputs;
+  ASSERT_STATUS_OK(RunWorkload(*session, &empty, outputs, {2, 0, 64}, true));
+  auto snapshot = Snapshot(empty);
+  ASSERT_EQ(snapshot.records.size(), 1u);
+  EXPECT_EQ(snapshot.records[0].provider, kCudaExecutionProvider);
+  EXPECT_EQ(snapshot.records[0].matmul_nbits.route, MatMulNBitsRuntimeRoute::EmptyOutput);
+  EXPECT_EQ(snapshot.records[0].matmul_nbits.compute_mode, MatMulNBitsRuntimeComputeMode::NotExecuted);
+  EXPECT_EQ(Report(snapshot)["component_summaries"][0]["known_operation_count"], "0");
+  for (bool terminate : {false, true}) {
+    RuntimeWorkloadCollector failed({10, 8192});
+    outputs.clear();
+    EXPECT_FALSE(RunWorkload(*session, &failed, outputs, {2, 3, terminate ? 64 : 63},
+                             true, false, terminate)
+                     .IsOK());
+    snapshot = Snapshot(failed);
+    EXPECT_TRUE(snapshot.records.empty());
+    EXPECT_EQ(snapshot.run_state, RuntimeWorkloadRunState::Failed);
+  }
+  RuntimeWorkloadCollector limited({0, 8192});
+  outputs.clear();
+  ASSERT_STATUS_OK(RunWorkload(*session, &limited, outputs, {2, 3, 64}, true));
+  ExpectOutput(outputs, 66.f);
+  snapshot = Snapshot(limited);
+  EXPECT_TRUE(snapshot.records.empty());
+  EXPECT_FALSE(snapshot.stats.collection_complete);
+  EXPECT_EQ(snapshot.stats.record_limit_drops, 1u);
+  EXPECT_EQ(snapshot.run_state, RuntimeWorkloadRunState::Succeeded);
+}
+
+TEST(RuntimeWorkloadExecutionTest, CudaLoopCapturesEachExecutedSubgraphInvocation) {
+  auto provider = DefaultCudaExecutionProvider();
+  if (!provider) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable.";
+  }
+  // The Loop controller is intentionally CPU; verify the actual provider of every MatMulNBits record.
+  auto session = WorkloadSession(LoopWorkloadModel(), false, false, false, std::move(provider), false);
+  RuntimeWorkloadCollector collector({10, 8192});
+  std::vector<OrtValue> outputs;
+  ASSERT_STATUS_OK(RunWorkload(*session, &collector, outputs));
+  ExpectOutput(outputs, 66.f);
+  const auto snapshot = Snapshot(collector);
+  ASSERT_EQ(snapshot.records.size(), 3u);
+  for (size_t i = 0; i < snapshot.records.size(); ++i) {
+    EXPECT_EQ(snapshot.records[i].provider, kCudaExecutionProvider);
+    EXPECT_EQ(snapshot.records[i].graph_path, "main/0/body");
+    EXPECT_EQ(snapshot.records[i].invocation_id, i);
+  }
+  EXPECT_EQ(Report(snapshot)["component_summaries"][0]["known_operation_count"], "73728");
+}
+#endif
 
 TEST(RuntimeWorkloadExecutionTest, DynamicRepeatedRunsAndDisabledCapturePreserveOutputs) {
   auto session = WorkloadSession(WorkloadModel(true));

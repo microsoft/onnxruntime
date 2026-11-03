@@ -3731,6 +3731,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
   }
 
   RuntimeWorkloadCollector* workload_collector = nullptr;
+  bool workload_capture_supported = true;
 #if !defined(ORT_MINIMAL_BUILD)
   std::optional<RuntimeWorkloadCollector> automatic_collector;
   auto* requested_collector = run_options.runtime_workload_collector;
@@ -3759,9 +3760,21 @@ Status InferenceSession::Run(const RunOptions& run_options,
       }
     }
   });
+  if (workload_collector) {
+    for (const auto& provider : execution_providers_) {
+      if (provider->IsGraphCaptureEnabled()) {
+        workload_capture_supported = false;
+        workload_collector->RecordCollectionFailure(false);
+        LOGS(*session_logger_, WARNING)
+            << "Runtime workload capture is unsupported with graph capture/replay enabled by "
+            << provider->Type() << "; collection is incomplete.";
+        break;
+      }
+    }
+  }
 #endif
   auto status = RunImpl(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info,
-                        /*graph_capture_depth=*/0, workload_collector);
+                        /*graph_capture_depth=*/0, workload_capture_supported ? workload_collector : nullptr);
 #if !defined(ORT_MINIMAL_BUILD)
   succeeded = status.IsOK();
 #endif

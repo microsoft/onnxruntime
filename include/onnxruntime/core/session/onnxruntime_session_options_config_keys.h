@@ -581,8 +581,10 @@ static const char* const kOrtSessionOptionsStrictWorkspaceVerification =
 // Empty/unset disables automatic capture/export. After each canonical Run, append a process token, session ID,
 // run ID and ".json". Parent directories are not created. Use a new prefix for independent application launches.
 // Replaces the legacy initialization-time static export; initialization no longer writes workload reports.
-// Reports contain actual shapes, graph/node identities, CPU MatMulNBits core dense-equivalent and logical bias counts,
-// route provenance, run outcome and collection diagnostics. Unsupported operators/providers are not instrumented;
+// Reports contain actual shapes, graph/node identities, CPU/CUDA MatMulNBits core dense-equivalent and logical bias
+// counts, optional route provenance, run outcome and collection diagnostics. CUDA records successful host submissions,
+// not device completion; route/effective compute mode remain unknown. Graph capture/replay skips capture and marks
+// collection incomplete. Unsupported operators/providers are not instrumented;
 // captured totals are not whole-model totals or hardware instruction counts. No additional device synchronization.
 // File failures warn without failing inference. Minimal builds warn that export is unsupported.
 // Internal callers supplying a RunOptions collector use that collector's limits instead of automatic limits.

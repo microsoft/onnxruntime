@@ -1,6 +1,11 @@
 # Contrib Operator FLOP Estimation: Design and Rollout Plan
 
-**Status:** CPU MatMulNBits runtime count/report preview implemented; GQA and later phases remain proposed.
+**Status:** CPU and eager-CUDA MatMulNBits logical runtime count/report preview implemented;
+GQA, route-aware arithmetic, timing and offload-policy experiments remain separate work.
+
+**Initial merge scope:** ship the naive, convention-based MatMulNBits estimator with CPU and CUDA runtime
+collection/reporting, then use it in offload-policy delegation experiments. Neither route-specific executed-work
+estimation nor timing is a prerequisite for this increment.
 
 For the post-Batch-3 execution sequence, validation gates, CUDA expansion and timing work, see the
 [MatMulNBits counter completion plan](matmul_nbits_counter_completion_plan.md).
@@ -131,8 +136,16 @@ workload. Limit rejection, allocation failure, and other metadata-capture except
 they update drop counters/completeness without replacing the inference result. Snapshot failures remain a
 separate diagnostic Status. Allocation-failure recovery requires exception-enabled builds, as in Batch 1.
 With capture disabled, there is no collector allocation, record/shape/string copying, run-ID assignment,
-or collection locking. This is CPU MatMulNBits coverage, not all-provider/all-operator coverage; EP graph
-replay does not synthesize records for kernels it does not invoke.
+or collection locking. Coverage is limited to CPU and eager-CUDA MatMulNBits, not all providers/operators.
+CUDA metadata is captured by the executor after successful `Compute()`, including the CUDA kernel's launch-error
+check. Only host shapes and operator metadata are read: no tensor download, device synchronization or provider-ABI
+extension is needed. Shared-weight batches are flattened into M with batch count one. CUDA route and effective
+compute mode remain absent, except for explicit empty-output nonexecution; counts do not depend on these fields.
+One record represents one logical invocation, including implementations that issue multiple chunked launches.
+Successful submission is not proof of GPU completion: a later synchronization failure makes the run failed, and
+runs that disable provider synchronization do not establish completed GPU work.
+When any EP has graph capture enabled, collection is skipped and explicitly marked incomplete with a warning.
+This avoids double-counting internal capture warmups or reporting an empty replay as a complete workload.
 
 Focused tests cover storage/lifecycle diagnostics, actual packed int8/FP32 and unpacked routes, a
 capability-gated LUT route, activation conversion, dynamic/repeated/concurrent runs, node/session/run
@@ -204,8 +217,10 @@ version-2 `nodes`/`graphs` document. The graph-based version-2 builders remain i
 ### Runtime report contract (schema version 3)
 
 - `report_kind: runtime_workload`, session/run IDs and `run_state` identify the run. No timing/rate is implied.
-- `invocations` contains only retained records from successful instrumented CPU MatMulNBits invocations, including
+- `invocations` contains only retained records from successful CPU executions or CUDA host submissions, including
   repeated executed subgraphs. Unexecuted branches and static nodes do not contribute.
+- Per-invocation `execution_basis` distinguishes `successful_kernel_execution` from
+  `successful_host_submission`; the latter does not certify GPU completion.
 - Each record includes graph/node/invocation/provider identity, actual shapes, backend geometry, bias presence,
   activation type, quantization settings, and optional route/effective-mode provenance. Invocation IDs reflect commit
   order, not execution order. No hardware instruction count or tiling metadata is claimed.
@@ -219,9 +234,9 @@ version-2 `nodes`/`graphs` document. The graph-based version-2 builders remain i
 - `collection` exposes the actual record/payload budgets, accounted retained bytes and
   record/payload/allocation/metadata/reuse diagnostics independently
   of run outcome. Missing records are never assigned zero work.
-- `coverage_scope: instrumented_cpu_matmul_nbits_invocations_only`, `whole_run_work_complete: false` and
+- `coverage_scope: instrumented_cpu_and_cuda_matmul_nbits_invocations_only`, `whole_run_work_complete: false` and
   `whole_operator_work_complete: false` prevent captured subtotals from masquerading as all-model/all-provider counts.
-  An empty report is not evidence that a workload did no work. Unsupported operators, CUDA kernels, fused/opaque EP
+  An empty report is not evidence that a workload did no work. Unsupported operators/providers, fused/opaque EP
   partitions and graph replay are not instrumented, and their skipped invocation counts are not known.
 - `route_adjustment_applied: false`; dequantization, packing, conversions, padding and route-specific extras are
   explicitly excluded. Route names do not change the baseline formulas.
@@ -762,7 +777,7 @@ additional build coverage, and later-phase semantics still require team agreemen
 
 ## 10. Completion criteria
 
-The **CPU MatMulNBits MVP is complete** when a developer can opt into persistent, versioned per-run reports,
+The **CPU and eager-CUDA MatMulNBits MVP is complete** when a developer can opt into persistent, versioned per-run reports,
 see correct core and bias estimates from actual executed shapes, and understand collection limits, failures,
 coverage gaps and exclusions without changes to inference results or dispatch. Batch 3 provides this developer
 preview; production rollout still requires overhead qualification and the declared platform/build matrix.

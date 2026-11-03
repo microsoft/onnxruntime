@@ -10,6 +10,10 @@ This is the execution plan following Batches 1-3 of the
 required operator in the broader rollout, not a prerequisite for validating this counter. Exhaustive
 hardware-instruction accounting must not delay either baseline.
 
+The initial merge gate is the naive logical estimator plus CPU and eager-CUDA runtime collection/reporting.
+Offload-policy delegation experiments follow that merge. Route-specific arithmetic, timing and the broader
+qualification sequence below are follow-up work, not prerequisites for this count-only increment.
+
 The deliverable has three distinct levels:
 
 | Level | Deliverable | Accuracy contract |
@@ -39,6 +43,8 @@ Implemented by Batches 1-3:
 
 - Bounded typed per-run collector, run identity/outcome, diagnostics and subgraph propagation.
 - CPU MatMulNBits runtime shapes, bias presence, quantization metadata and selected route/effective-mode provenance.
+- Eager-CUDA MatMulNBits host-side shape/quantization capture after successful kernel submission, without a
+  provider-ABI extension or added device synchronization. CUDA route/mode remain unknown; empty outputs are explicit.
 - Checked core `2MNK` and bias `MN` formulas, with independent components.
 - Opt-in schema-v3 runtime JSON export after canonical Run, with unique process/session/run filename suffixes.
 - Configurable automatic limits: 10,000 records and 16 MiB accounted payload per run by default.
@@ -46,7 +52,8 @@ Implemented by Batches 1-3:
 
 Not implemented or not qualified:
 
-- CUDA capture, GPU architecture provenance, GPU completion-aware collection and device timing.
+- GPU architecture/route provenance, GPU completion-aware collection and device timing.
+- CUDA graph capture/replay collection: capture is skipped, warned and marked incomplete to avoid false totals.
 - Timing/rate metrics, route-adjusted work, complete model coverage or standard MatMul/Gemm instrumentation.
 - Production overhead qualification, all platform/build combinations, and the user's own model validation.
 
@@ -56,7 +63,7 @@ Existing implementation anchors:
 - [Runtime report builders](../../onnxruntime/core/framework/compute_estimate_report.h).
 - [Pure core/bias formulas](../../onnxruntime/core/framework/matmul_nbits_compute_estimate.cc).
 - [CPU dispatch and recording](../../onnxruntime/contrib_ops/cpu/quantization/matmul_nbits.cc).
-- [CUDA implementation to extend](../../onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.cc).
+- [Executor-side CUDA capture](../../onnxruntime/core/framework/runtime_workload_collector.cc).
 
 Prior CPU Debug results are baseline evidence, not proof for a new build: 88 estimator/report/transformer tests
 passed, with 25 collector/execution passes and one capability-gated LUT skip. Re-run after implementation changes.
@@ -67,7 +74,7 @@ passed, with 25 collector/execution passes and one capability-gated LUT skip. Re
 | --- | --- | --- | --- |
 | 4 | Validate current CPU behavior on synthetic and user models | Existing Batches 1-3 | Reproducible runs, independent counts and coverage reconciliation |
 | 5 | Fix demonstrated gaps and qualify CPU overhead | Batch 4 findings | Focused regressions and before/after measurements |
-| 6 | Provider-neutral provenance and CUDA count capture | Stable logical contract; CPU fixes affecting shared transport | Cross-device count parity and explicit actual CUDA routing |
+| 6 | CUDA count capture (implemented) and follow-up provenance | Stable logical contract; CPU fixes affecting shared transport | Cross-device count parity; optional route metadata remains unknown until instrumented |
 | 7 | CPU and CUDA timing with matched rates | Stable identity; CUDA capture for GPU timing | Correlated timelines, timing accuracy and overhead results |
 | 8 | Optional implementation-work models and hardware qualification | Actual route evidence; timing where needed for profiling | Per-route formulas, held-out validation and supported-range table |
 | 9 | Developer rollout and expansion to further EPs | Count/timing acceptance on each advertised platform | Usage recipe, known limitations and rollback instructions |
@@ -328,7 +335,7 @@ Set an overhead budget with the team before production rollout; no numeric budge
 - Make shared-provider/plugin boundaries explicit: use supported bridge mechanisms or a boundary-safe typed contract,
   not direct in-tree framework dependencies from a provider DLL.
 - Reuse pure arithmetic across providers through an appropriate shared layer; avoid linking CUDA to CPU kernel code.
-- Generalize the report's current CPU-only provider check and coverage label as part of CUDA enablement.
+- The report accepts CPU and CUDA records under the same logical convention and declares their limited coverage.
 - Capture device identity/architecture and backend/build versions once per session/device.
   Correlate records to the actual device in multi-device sessions; GPU name alone is not a dispatch key.
 

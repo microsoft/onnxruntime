@@ -432,7 +432,7 @@ Status BuildComputeEstimateReport(const RuntimeWorkloadSnapshot& snapshot, std::
                {"session_id", snapshot.session_id},
                {"run_id", snapshot.run_id},
                {"run_state", RunStateName(snapshot.run_state)},
-               {"coverage_scope", "instrumented_cpu_matmul_nbits_invocations_only"},
+               {"coverage_scope", "instrumented_cpu_and_cuda_matmul_nbits_invocations_only"},
                {"whole_run_work_complete", false},
                {"whole_operator_work_complete", false},
                {"route_adjustment_applied", false},
@@ -478,13 +478,18 @@ Status BuildComputeEstimateReport(const RuntimeWorkloadSnapshot& snapshot, std::
                  {"bits", metadata.bits},
                  {"block_size", metadata.block_size},
                  {"components", Json::array()}};
+      if (record.provider == kCudaExecutionProvider) {
+        entry["execution_basis"] = "successful_host_submission";
+      } else if (record.provider == kCpuExecutionProvider) {
+        entry["execution_basis"] = "successful_kernel_execution";
+      }
       if (metadata.route) entry["route"] = RouteName(*metadata.route);
       if (metadata.compute_mode) entry["compute_mode"] = ModeName(*metadata.compute_mode);
       size_t available = 0;
       for (size_t i = 0; i < subtotals.size(); ++i) {
         Json component = RuntimeComponent(i == 1);
         std::optional<uint64_t> count;
-        if (record.provider != kCpuExecutionProvider) {
+        if (record.provider != kCpuExecutionProvider && record.provider != kCudaExecutionProvider) {
           component["unavailable_reason"] = "unsupported_provider";
         } else {
 #if !defined(DISABLE_CONTRIB_OPS)
