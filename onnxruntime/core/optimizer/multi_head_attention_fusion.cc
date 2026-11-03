@@ -142,9 +142,10 @@ bool TryFuse(Graph& graph, Node& softmax, const InlinedHashSet<std::string_view>
     return false;
   }
 
-  // The output Reshape is kept and now consumes the [B, S, N*H] MultiHeadAttention output instead of the
-  // [B, S, N, H] tensor. A 0 in its shape copies the input dim at that index, which is only equivalent for the
-  // leading B and S dims.
+  // The output Reshape is kept and now reads the [B, S, N*H] MultiHeadAttention output instead of the
+  // [B, S, N, H] Transpose output. Both tensors hold the same elements in the same order, so explicit dims and -1
+  // keep their meaning, but a 0 copies the input dim at that index, which only matches for the two leading dims.
+  // The shape therefore has to be a constant without zeros past index 1.
   const Node* out_reshape = graph.GetNode(out_transpose->OutputNodesBegin()->Index());
   InlinedVector<int64_t> out_shape;
   if (out_reshape == nullptr || !IsReshapeWithoutAllowZero(*out_reshape) ||
