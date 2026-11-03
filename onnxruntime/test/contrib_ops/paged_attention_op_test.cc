@@ -29,6 +29,7 @@
 #include "default_providers.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/contrib_ops/paged_attention_op_test_helper.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/scoped_env_vars.h"
@@ -48,22 +49,6 @@ int CacheIndex(int block_id, int slot_in_block, int kv_head, int dim,
 }  // namespace
 
 namespace {
-
-struct EndToEndCase {
-  int batch_size = 1;
-  int token_count = 1;
-  int num_heads = 1;
-  int kv_num_heads = 1;
-  int head_size = 8;
-  int block_size = 256;
-  int num_blocks = 2;
-  int max_num_blocks_per_seq = 1;
-  float scale = 0.0f;  // 0 means kernel default = 1/sqrt(head_size)
-  bool is_causal = true;
-  std::vector<int32_t> cumulative_seqlens_q;
-  std::vector<int32_t> past_seqlens;
-  std::vector<int32_t> block_table;
-};
 
 struct IoBindingCase {
   int batch_size = 1;
@@ -106,15 +91,15 @@ struct IoBindingCase {
 
 // Masked positions get zero probability. Uses fp32 throughout to establish a
 // reference the fp16 kernel is compared against with a loose tolerance.
-void MaskedSoftmax(std::vector<float>& scores, int valid_key_end) {
+void MaskedSoftmax(std::vector<float>& scores, int valid_key_end, int valid_key_start) {
   const int len = static_cast<int>(scores.size());
   float max_val = -std::numeric_limits<float>::infinity();
-  for (int i = 0; i < valid_key_end && i < len; ++i) {
+  for (int i = valid_key_start; i < valid_key_end && i < len; ++i) {
     max_val = std::max(max_val, scores[i]);
   }
   float sum = 0.0f;
   for (int i = 0; i < len; ++i) {
-    if (i >= valid_key_end) {
+    if (i < valid_key_start || i >= valid_key_end) {
       scores[i] = 0.0f;
     } else {
       scores[i] = std::exp(scores[i] - max_val);
@@ -127,7 +112,10 @@ void MaskedSoftmax(std::vector<float>& scores, int valid_key_end) {
   }
 }
 
-void RunEndToEndCase(const EndToEndCase& c, std::unique_ptr<IExecutionProvider> execution_provider) {
+}  // namespace
+
+void RunPagedAttentionTest(const PagedAttentionTestCase& c, std::unique_ptr<IExecutionProvider> execution_provider,
+                           float output_abs_error) {
   ASSERT_EQ(c.cumulative_seqlens_q.size(), static_cast<size_t>(c.batch_size + 1));
   ASSERT_EQ(c.past_seqlens.size(), static_cast<size_t>(c.batch_size));
   ASSERT_EQ(c.block_table.size(), static_cast<size_t>(c.batch_size * c.max_num_blocks_per_seq));
@@ -223,6 +211,7 @@ void RunEndToEndCase(const EndToEndCase& c, std::unique_ptr<IExecutionProvider> 
       const int t = cum_lo + local_tok;
       const int q_pos = past + local_tok;  // Absolute position in the KV window.
       const int valid_key_end = c.is_causal ? q_pos + 1 : total_kv_len;
+      const int valid_key_start = c.local_window_size > 0 ? std::max(0, q_pos + 1 - c.local_window_size) : 0;
       for (int n_q = 0; n_q < c.num_heads; ++n_q) {
         const int h_kv = n_q / gqa_factor;
 
@@ -237,7 +226,7 @@ void RunEndToEndCase(const EndToEndCase& c, std::unique_ptr<IExecutionProvider> 
           }
           scores[s] = dot * scale;
         }
-        MaskedSoftmax(scores, valid_key_end);
+        MaskedSoftmax(scores, valid_key_end, valid_key_start);
 
         // out[t, n_q * head_size + d] = sum_s scores[s] * v[s, d]
         for (int d = 0; d < c.head_size; ++d) {
@@ -258,6 +247,9 @@ void RunEndToEndCase(const EndToEndCase& c, std::unique_ptr<IExecutionProvider> 
   test.AddAttribute<float>("scale", c.scale);
   test.AddAttribute<int64_t>("is_causal", c.is_causal ? 1 : 0);
   test.AddAttribute<int64_t>("do_rotary", 0);
+  if (c.local_window_size > 0) {
+    test.AddAttribute<int64_t>("local_window_size", c.local_window_size);
+  }
 
   test.AddInput<MLFloat16>("query", {c.token_count, hidden_size}, FloatsToMLFloat16s(query_f));
   test.AddInput<MLFloat16>("key", {c.token_count, kv_hidden_size}, FloatsToMLFloat16s(key_f));
@@ -285,12 +277,14 @@ void RunEndToEndCase(const EndToEndCase& c, std::unique_ptr<IExecutionProvider> 
   // fp16 softmax + dot-product accumulation over a short KV window.
   // Reference is fp32; kernel is fp16. 2e-2 is a comfortable envelope for
   // these value ranges and short sequences.
-  test.SetOutputAbsErr("output", 2e-2f);
+  test.SetOutputAbsErr("output", output_abs_error);
   test.SetOutputAbsErr("key_cache_out", 1e-3f);
   test.SetOutputAbsErr("value_cache_out", 1e-3f);
 
   test.ConfigEp(std::move(execution_provider)).RunWithConfig();
 }
+
+namespace {
 
 void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
                       const char* provider_type,
@@ -1092,7 +1086,7 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   }
 }
 
-void RunEndToEndCaseOnAvailableProviders(const EndToEndCase& c) {
+void RunEndToEndCaseOnAvailableProviders(const PagedAttentionTestCase& c) {
   bool ran = false;
 
   // CUDA PagedAttention requires key_cache/value_cache outputs to alias the
@@ -1102,7 +1096,7 @@ void RunEndToEndCaseOnAvailableProviders(const EndToEndCase& c) {
   // output buffers are explicitly supported by the kernel fallback path.
 
   if (auto webgpu_ep = DefaultWebGpuExecutionProvider()) {
-    RunEndToEndCase(c, std::move(webgpu_ep));
+    RunPagedAttentionTest(c, std::move(webgpu_ep));
     ran = true;
   }
 
@@ -3021,7 +3015,7 @@ TEST(PagedAttention, WebGpu_RejectsShortRotaryCache) {
 // Decode tier: single batch, single new Q token, non-zero past. The FA
 // tier selector uses `sequence_length_ < 32` → split-reduce path.
 TEST(PagedAttention, EndToEnd_Decode_SingleBatch_WithPast) {
-  EndToEndCase c{};
+  PagedAttentionTestCase c{};
   c.batch_size = 1;
   c.token_count = 1;
   c.cumulative_seqlens_q = {0, 1};
@@ -3033,7 +3027,7 @@ TEST(PagedAttention, EndToEnd_Decode_SingleBatch_WithPast) {
 // Prefill tier: single batch, multiple new Q tokens, zero past. Exercises
 // causal masking across new tokens.
 TEST(PagedAttention, EndToEnd_Prefill_SingleBatch_NoPast) {
-  EndToEndCase c{};
+  PagedAttentionTestCase c{};
   c.batch_size = 1;
   c.token_count = 4;
   c.cumulative_seqlens_q = {0, 4};
@@ -3043,7 +3037,7 @@ TEST(PagedAttention, EndToEnd_Prefill_SingleBatch_NoPast) {
 }
 
 TEST(PagedAttention, EndToEnd_Prefill_PagedFlashAttention) {
-  EndToEndCase c{};
+  PagedAttentionTestCase c{};
   c.batch_size = 1;
   c.token_count = 32;
   c.cumulative_seqlens_q = {0, 32};
@@ -3055,7 +3049,7 @@ TEST(PagedAttention, EndToEnd_Prefill_PagedFlashAttention) {
 // Multi-batch decode with differing past lengths — exercises variable-length
 // packing across batches.
 TEST(PagedAttention, EndToEnd_Decode_MultiBatch_VariablePast) {
-  EndToEndCase c{};
+  PagedAttentionTestCase c{};
   c.batch_size = 2;
   c.token_count = 2;  // one new Q per batch
   c.num_blocks = 3;
@@ -3068,7 +3062,7 @@ TEST(PagedAttention, EndToEnd_Decode_MultiBatch_VariablePast) {
 // GQA (num_heads > kv_num_heads): broadcasts each KV head across gqa_factor
 // query heads. Verifies the head-index mapping matches FA's convention.
 TEST(PagedAttention, EndToEnd_Decode_GQA) {
-  EndToEndCase c{};
+  PagedAttentionTestCase c{};
   c.batch_size = 1;
   c.token_count = 1;
   c.num_heads = 2;
@@ -3082,7 +3076,7 @@ TEST(PagedAttention, EndToEnd_Decode_GQA) {
 // Empty-token fast path: the output is empty and cache outputs must still
 // preserve the input cache contents in OpTester's non-aliased allocation path.
 TEST(PagedAttention, EndToEnd_EmptyTokens_CopyCaches) {
-  EndToEndCase c{};
+  PagedAttentionTestCase c{};
   c.batch_size = 1;
   c.token_count = 0;
   c.cumulative_seqlens_q = {0, 0};
@@ -3094,7 +3088,7 @@ TEST(PagedAttention, EndToEnd_EmptyTokens_CopyCaches) {
 // Mixed variable-length prefill (seq 0: 3 tokens, seq 1: 2 tokens) with
 // non-zero past on both — the most realistic paged-attention scenario.
 TEST(PagedAttention, EndToEnd_MixedPrefillDecode_MultiBatch_VariablePast) {
-  EndToEndCase c{};
+  PagedAttentionTestCase c{};
   c.batch_size = 2;
   c.token_count = 5;
   c.num_heads = 2;
@@ -3111,7 +3105,7 @@ TEST(PagedAttention, EndToEnd_MixedPrefillDecode_MultiBatch_VariablePast) {
 // q_varlen=1 code path (raw-packed Q read via cumulative_seqlens_q). Uses
 // head_size = 128 to match the shared-memory tile the shader is sized for.
 TEST(PagedAttention, EndToEnd_Prefill_MultiBatch_Varlen_Fused) {
-  EndToEndCase c{};
+  PagedAttentionTestCase c{};
   c.batch_size = 2;
   c.token_count = 48;  // seq 0: 32 tokens, seq 1: 16 tokens
   c.num_heads = 2;
@@ -3132,7 +3126,7 @@ TEST(PagedAttention, EndToEnd_Prefill_MultiBatch_Varlen_Fused) {
 // adjacency of consecutive logical pages will fail here (see the alignment
 // invariant note at the top of flash_attention_paged_prefill.wgsl.template).
 TEST(PagedAttention, EndToEnd_Prefill_FusedPrefill_BlockBoundaryCrossing) {
-  EndToEndCase c{};
+  PagedAttentionTestCase c{};
   c.batch_size = 1;
   c.token_count = 64;  // >= 32 for fused prefill; spans 2 blocks of 32
   c.num_heads = 2;
@@ -3153,7 +3147,7 @@ TEST(PagedAttention, EndToEnd_Prefill_FusedPrefill_BlockBoundaryCrossing) {
 // any indexing bug in the per-slot block_table lookup inside
 // flash_attention_paged_decode_qkv.wgsl.template.
 TEST(PagedAttention, EndToEnd_Decode_BlockBoundaryCrossing) {
-  EndToEndCase c{};
+  PagedAttentionTestCase c{};
   c.batch_size = 1;
   c.token_count = 1;  // decode: one new Q token
   c.num_heads = 1;
@@ -3175,7 +3169,7 @@ TEST(PagedAttention, EndToEnd_Decode_BlockBoundaryCrossing) {
 // the fallback path, locking down the reject-boundary so a future refactor
 // of CanApplyFlashAttentionPagedPrefill can't silently change it.
 TEST(PagedAttention, EndToEnd_Prefill_ForcedFallback_BlockSizeBelowMaxKStep) {
-  EndToEndCase c{};
+  PagedAttentionTestCase c{};
   c.batch_size = 1;
   c.token_count = 64;  // prefill (>= 32)
   c.num_heads = 2;
@@ -3198,7 +3192,7 @@ TEST(PagedAttention, EndToEnd_Prefill_ForcedFallback_BlockSizeBelowMaxKStep) {
 // head_idx / uniforms.n_reps mapping and the causal-mask past-offset
 // derivation on the same shape.
 TEST(PagedAttention, EndToEnd_Prefill_FusedPrefill_GQA_WithPast) {
-  EndToEndCase c{};
+  PagedAttentionTestCase c{};
   c.batch_size = 1;
   c.token_count = 32;  // prefill: max_seqlen_q >= 32 fires fused shader
   c.num_heads = 4;
@@ -3214,7 +3208,7 @@ TEST(PagedAttention, EndToEnd_Prefill_FusedPrefill_GQA_WithPast) {
 }
 
 TEST(PagedAttention, WebGpu_NonCausal_DirectPagedDecode) {
-  EndToEndCase c{};
+  PagedAttentionTestCase c{};
   c.token_count = 4;
   c.is_causal = false;
   c.cumulative_seqlens_q = {0, 4};
@@ -3224,7 +3218,7 @@ TEST(PagedAttention, WebGpu_NonCausal_DirectPagedDecode) {
 }
 
 TEST(PagedAttention, WebGpu_NonCausal_FusedPagedPrefill) {
-  EndToEndCase c{};
+  PagedAttentionTestCase c{};
   c.token_count = 32;
   c.num_heads = 2;
   c.kv_num_heads = 2;
@@ -3237,7 +3231,7 @@ TEST(PagedAttention, WebGpu_NonCausal_FusedPagedPrefill) {
 }
 
 TEST(PagedAttention, WebGpu_NonCausal_ForcedFallback) {
-  EndToEndCase c{};
+  PagedAttentionTestCase c{};
   c.token_count = 64;
   c.num_heads = 2;
   c.kv_num_heads = 2;
@@ -3253,7 +3247,7 @@ TEST(PagedAttention, WebGpu_NonCausal_ForcedFallback) {
 }
 
 TEST(PagedAttention, WebGpu_NonCausal_RaggedSequences) {
-  EndToEndCase c{};
+  PagedAttentionTestCase c{};
   c.batch_size = 2;
   c.token_count = 4;
   c.num_heads = 2;

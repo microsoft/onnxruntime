@@ -105,7 +105,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                         bool has_local_window = false,
                         uint32_t kv_cache_quantization_bits = 0,
                         int compressed_head_size_u32 = 0,
-                        bool use_seqlens_q = false);
+                        bool use_seqlens_q = false,
+                        bool has_softcap = false);
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -121,7 +122,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                                           {"attn_bias_dim0", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim3", ProgramUniformVariableDataType::Uint32},
-                                          {"local_window_size", ProgramUniformVariableDataType::Uint32});
+                                          {"local_window_size", ProgramUniformVariableDataType::Uint32},
+                                          {"softcap", ProgramUniformVariableDataType::Float32});
 
  private:
   bool has_attention_bias_;
@@ -143,6 +145,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   // seqlens_q[b] and computes past_sequence_length_b = total_kv_b - q_len_b.
   // When unset (default), callers keep the uniform-q_len clamp path unchanged.
   bool use_seqlens_q_;
+  bool has_softcap_;
 };
 
 // Dedicated single-kernel prefill program for PagedAttention. It mirrors the
