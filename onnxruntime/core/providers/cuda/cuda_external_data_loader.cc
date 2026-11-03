@@ -12,33 +12,12 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_external_data_loader_device_guard.h"
 #include "core/providers/cuda/cuda_external_data_loader_thread_pool.h"
 
 namespace onnxruntime {
 namespace cuda {
 namespace {
-
-class CudaDeviceGuard {
- public:
-  common::Status SetDevice(int device_id) {
-    CUDA_RETURN_IF_ERROR(cudaGetDevice(&previous_device_));
-    if (previous_device_ != device_id) {
-      CUDA_RETURN_IF_ERROR(cudaSetDevice(device_id));
-      restore_device_ = true;
-    }
-    return Status::OK();
-  }
-
-  ~CudaDeviceGuard() {
-    if (restore_device_) {
-      ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaSetDevice(previous_device_)));
-    }
-  }
-
- private:
-  int previous_device_{-1};
-  bool restore_device_{false};
-};
 
 common::Status ReadChunk(const RandomAccessFile& file, FileOffsetType offset, size_t length, void* buffer,
                          size_t configured_reader_count,

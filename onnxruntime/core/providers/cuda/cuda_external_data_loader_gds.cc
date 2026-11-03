@@ -14,6 +14,7 @@
 #include "core/common/common.h"
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_external_data_loader_device_guard.h"
 
 #if defined(ORT_CUDA_GDS_AVAILABLE)
 #include <cufile.h>
@@ -139,12 +140,16 @@ class CuFileDriver {
 class LinuxGdsLoader final : public GdsLoader {
  public:
   ~LinuxGdsLoader() override {
+    if (gds_buffer_ == nullptr) {
+      return;
+    }
+    // Teardown may run on a thread whose current device is not the loader's device.
+    CudaDeviceGuard device_guard;
+    ORT_IGNORE_RETURN_VALUE(device_guard.SetDevice(device_id_));
     if (gds_buffer_registered_) {
       ORT_IGNORE_RETURN_VALUE(driver_->DeregisterBuffer(gds_buffer_));
     }
-    if (gds_buffer_ != nullptr) {
-      ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaFree(gds_buffer_)));
-    }
+    ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaFree(gds_buffer_)));
   }
 
   static common::Status Create(int device_id, std::unique_ptr<GdsLoader>& loader) {
@@ -185,6 +190,9 @@ class LinuxGdsLoader final : public GdsLoader {
                                           "cuFileHandleRegister"));
     auto deregister_file = gsl::finally([&]() { driver_->DeregisterHandle(file_handle); });
 
+    CudaDeviceGuard device_guard;
+    ORT_RETURN_IF_ERROR(device_guard.SetDevice(device_id_));
+
     auto* destination = static_cast<uint8_t*>(tensor.MutableDataRaw());
     for (size_t offset = 0; offset < data_length;) {
       const size_t chunk_size = std::min(kGdsBufferSize, data_length - offset);
@@ -217,7 +225,9 @@ class LinuxGdsLoader final : public GdsLoader {
   common::Status Initialize(int device_id) {
     ORT_RETURN_IF_ERROR(driver_.Acquire());
 
-    CUDA_RETURN_IF_ERROR(cudaSetDevice(device_id));
+    device_id_ = device_id;
+    CudaDeviceGuard device_guard;
+    ORT_RETURN_IF_ERROR(device_guard.SetDevice(device_id_));
     CUDA_RETURN_IF_ERROR(cudaMalloc(&gds_buffer_, kGdsBufferSize));
     ORT_RETURN_IF_ERROR(CheckCuFileStatus(
         driver_->RegisterBuffer(gds_buffer_, kGdsBufferSize), "cuFileBufRegister"));
@@ -228,6 +238,7 @@ class LinuxGdsLoader final : public GdsLoader {
   LinuxGdsLoader() = default;
 
   GdsDriverHandle<CuFileDriver> driver_;
+  int device_id_{0};
   void* gds_buffer_{nullptr};
   bool gds_buffer_registered_{false};
 };

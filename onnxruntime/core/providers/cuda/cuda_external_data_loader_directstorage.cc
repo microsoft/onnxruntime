@@ -16,6 +16,7 @@
 
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_external_data_loader_device_guard.h"
 #endif
 
 namespace onnxruntime {
@@ -47,6 +48,9 @@ class DirectStorageLibrary {
 class WindowsDirectStorageLoader final : public DirectStorageLoader {
  public:
   ~WindowsDirectStorageLoader() override {
+    // Teardown may run on a thread whose current device is not the loader's device.
+    CudaDeviceGuard device_guard;
+    ORT_IGNORE_RETURN_VALUE(device_guard.SetDevice(device_id_));
     if (stream_ != nullptr) {
       ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamSynchronize(stream_)));
     }
@@ -102,6 +106,9 @@ class WindowsDirectStorageLoader final : public DirectStorageLoader {
                       data_length > file_size - static_cast<uint64_t>(data_offset),
                   "DirectStorage external-data range is outside the file.");
 
+    CudaDeviceGuard device_guard;
+    ORT_RETURN_IF_ERROR(device_guard.SetDevice(device_id_));
+
     auto* destination = static_cast<uint8_t*>(tensor.MutableDataRaw());
     for (size_t offset = 0; offset < data_length;) {
       const auto chunk = static_cast<uint32_t>(std::min(kDirectStorageBufferSize, data_length - offset));
@@ -139,7 +146,9 @@ class WindowsDirectStorageLoader final : public DirectStorageLoader {
   WindowsDirectStorageLoader() = default;
 
   common::Status Initialize(int device_id) {
-    CUDA_RETURN_IF_ERROR(cudaSetDevice(device_id));
+    device_id_ = device_id;
+    CudaDeviceGuard device_guard;
+    ORT_RETURN_IF_ERROR(device_guard.SetDevice(device_id_));
     cudaDeviceProp properties{};
     CUDA_RETURN_IF_ERROR(cudaGetDeviceProperties(&properties, device_id));
     const unsigned int node_mask = properties.luidDeviceNodeMask;
@@ -228,6 +237,7 @@ class WindowsDirectStorageLoader final : public DirectStorageLoader {
   ComPtr<ID3D12Fence> fence_;
   ComPtr<IDStorageStatusArray> status_;
   ComPtr<IDStorageQueue> queue_;
+  int device_id_{0};
   cudaExternalMemory_t cuda_memory_{nullptr};
   cudaExternalSemaphore_t cuda_fence_{nullptr};
   cudaStream_t stream_{nullptr};
