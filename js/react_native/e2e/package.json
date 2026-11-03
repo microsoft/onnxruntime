@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "android": "react-native run-android",
+    "detox": "detox",
     "ios": "react-native run-ios",
     "lint": "eslint .",
     "start": "react-native start",

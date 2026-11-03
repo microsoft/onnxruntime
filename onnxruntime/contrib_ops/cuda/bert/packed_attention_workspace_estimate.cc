@@ -513,6 +513,14 @@ void SetPackedAttentionWorkspaceRequirements(
                            /*alignment_bytes=*/kPackedAttentionWorkspaceAlignment});
 }
 
+void SetPackedAttentionLevel1MemoryEstimate(
+    const PackedAttentionWorkspaceAggregate& workspace,
+    Level1MemoryEstimate& estimate) {
+  if (workspace.status.IsOK()) {
+    estimate.runtime_workspace_bytes = workspace.total_workspace_bytes;
+  }
+}
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

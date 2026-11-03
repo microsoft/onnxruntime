@@ -13,19 +13,15 @@ namespace contrib {
 namespace webgpu {
 
 Status SkipLayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  // Access every tensor through GetByOffset/SetByOffset: a tensor larger than maxStorageBufferBindingSize is bound
+  // as several segments, and indexing the storage array directly only reaches the first one.
   const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("skip", ShaderUsage::UseUniform);
-  shader.AddInput("gamma", ShaderUsage::UseUniform);
-  if (hasBeta_) {
-    shader.AddInput("beta", ShaderUsage::UseUniform);
-  }
-  if (hasBias_) {
-    shader.AddInput("bias", ShaderUsage::UseUniform);
-  }
-  shader.AddOutput("output", ShaderUsage::UseUniform);
-  if (has_input_skip_bias_sum_) {
-    shader.AddOutput("input_skip_bias_sum", ShaderUsage::UseUniform);
-  }
+  const auto& skip = shader.AddInput("skip", ShaderUsage::UseUniform);
+  const auto& gamma = shader.AddInput("gamma", ShaderUsage::UseUniform);
+  const auto* beta = hasBeta_ ? &shader.AddInput("beta", ShaderUsage::UseUniform) : nullptr;
+  const auto* bias = hasBias_ ? &shader.AddInput("bias", ShaderUsage::UseUniform) : nullptr;
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
+  const auto* input_skip_bias_sum = has_input_skip_bias_sum_ ? &shader.AddOutput("input_skip_bias_sum", ShaderUsage::UseUniform) : nullptr;
 
   std::string simpl1 = (simplified_) ? "" : "- mean * mean ";
   std::string simpl2 = (simplified_) ? "" : "- x_element_t(mean) ";
@@ -41,10 +37,10 @@ Status SkipLayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
           << "  if (workgroup_idx >= workgroup_half_idx) {\n"
           << "    offset = (workgroup_idx - workgroup_half_idx) * workgroup_size_x + local_idx;\n"
           << "    let skip_offset = offset % (uniforms.skip_size / 4);\n"
-          << "    let skip_value = skip[skip_offset];\n"
-          << "    let input_value = x[offset];\n"
-          << "    let value = input_value + skip_value" << (hasBias_ ? " + bias[offset]" : "") << ";\n"
-          << "    input_skip_bias_sum[offset] = value;\n"
+          << "    let skip_value = " << skip.GetByOffset("skip_offset") << ";\n"
+          << "    let input_value = " << x.GetByOffset("offset") << ";\n"
+          << "    let value = input_value + skip_value" << (hasBias_ ? " + " + bias->GetByOffset("offset") : "") << ";\n"
+          << "    " << input_skip_bias_sum->SetByOffset("offset", "value") << "\n"
           << "    return;\n"
           << "  }\n";
     }
@@ -58,9 +54,9 @@ Status SkipLayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "  for (var i: u32 = 0; i < uniforms.hidden_size / (workgroup_size_x * 4); i++) {\n"
         << "    let input_offset = i * workgroup_size_x + local_idx;\n"
         << "    let skip_input_offset = input_offset % (uniforms.skip_size / 4);\n"
-        << "    let skip_value = skip[skip_input_offset];\n"
-        << "    let input_value = x[input_offset];\n"
-        << "    let value = input_value + skip_value" << (hasBias_ ? " + bias[input_offset]" : "") << ";\n"
+        << "    let skip_value = " << skip.GetByOffset("skip_input_offset") << ";\n"
+        << "    let input_value = " << x.GetByOffset("input_offset") << ";\n"
+        << "    let value = input_value + skip_value" << (hasBias_ ? " + " + bias->GetByOffset("input_offset") : "") << ";\n"
         << "    if (i == workgroup_idx) {\n"
         << "      cur_input_skip_bias_sum = value;\n"
         << "    }\n"
@@ -85,12 +81,14 @@ Status SkipLayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "  let mean = sum_shared[0] / f32(uniforms.hidden_size);\n"
         << "  let inv_std_dev = inverseSqrt(sum_squared_shared[0] / f32(uniforms.hidden_size) " << simpl1 << "+ uniforms.epsilon);\n"
         << "  offset = workgroup_idx * workgroup_size_x + local_idx;\n"
-        << "  output[offset] = ((cur_input_skip_bias_sum " << simpl2 << ") * x_element_t(inv_std_dev) * gamma[offset]" << (hasBeta_ ? " + beta[offset] " : "") << ");\n";
+        << "  let output_value = (cur_input_skip_bias_sum " << simpl2 << ") * x_element_t(inv_std_dev) * " << gamma.GetByOffset("offset")
+        << (hasBeta_ ? " + " + beta->GetByOffset("offset") : "") << ";\n"
+        << "  " << output.SetByOffset("offset", "output_value") << "\n";
   } else {
     int components = x.NumComponents();
-    std::string bias = (hasBias_) ? " + bias[offset1d + i] " : "";
-    std::string beta = (hasBeta_) ? " + beta[offset1d + i] " : "";
-    std::string input_skip_bias_sum = (has_input_skip_bias_sum_) ? "input_skip_bias_sum[offset + i] = value;\n" : "";
+    std::string bias_value = (hasBias_) ? " + " + bias->GetByOffset("offset1d + i") : "";
+    std::string beta_value = (hasBeta_) ? " + " + beta->GetByOffset("offset1d + i") : "";
+    std::string set_input_skip_bias_sum = (has_input_skip_bias_sum_) ? " " + input_skip_bias_sum->SetByOffset("offset + i", "value") + "\n" : "";
 
     shader.AdditionalImplementation()
         << "alias f32_val_t = " << (components == 4 ? "vec4<f32>" : (components == 2 ? "vec2<f32>" : "f32")) << ";\n"
@@ -109,11 +107,11 @@ Status SkipLayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "}\n"
         << "for (var i: u32 = 0; i < stride; i++) {\n"
         << " let skip_offset = (offset + i) % (uniforms.skip_size / uniforms.components);\n"
-        << " let skip_value = skip[skip_offset];\n"
-        << " let input_value = x[offset + i];\n"
-        << " let value = input_value + skip_value" << bias << ";\n"
-        << " output[offset + i] = value;\n"
-        << input_skip_bias_sum
+        << " let skip_value = " << skip.GetByOffset("skip_offset") << ";\n"
+        << " let input_value = " << x.GetByOffset("offset + i") << ";\n"
+        << " let value = input_value + skip_value" << bias_value << ";\n"
+        << " " << output.SetByOffset("offset + i", "value") << "\n"
+        << set_input_skip_bias_sum
         << " let f32_value = f32_val_t(value);\n"
         << " sum_shared[ix] += f32_value;\n"
         << " sum_squared_shared[ix] += f32_value * f32_value;\n"
@@ -133,7 +131,9 @@ Status SkipLayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "let mean = " << SumVector("sum", components) << " / f32(uniforms.hidden_size);\n"
         << "let inv_std_dev = inverseSqrt(" << SumVector("square_sum", components) << " / f32(uniforms.hidden_size) " << simpl1 << "+ uniforms.epsilon);\n"
         << "for (var i: u32 = 0; i < stride; i++) {\n"
-        << " output[offset + i] = (output[offset + i] " << simpl2 << ") * x_element_t(inv_std_dev) * gamma[offset1d + i]" << beta << ";\n"
+        << " let output_value = (" << output.GetByOffset("offset + i") << " " << simpl2 << ") * x_element_t(inv_std_dev) * "
+        << gamma.GetByOffset("offset1d + i") << beta_value << ";\n"
+        << " " << output.SetByOffset("offset + i", "output_value") << "\n"
         << "};\n";
   }
 
