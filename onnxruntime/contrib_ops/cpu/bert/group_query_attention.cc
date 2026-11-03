@@ -253,6 +253,14 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
         "The per-head Q/K RMS normalization prologue is implemented only on the CUDA and WebGPU EPs.");
   }
 
+  // query_seqlens (input 16) describes a right-padded query chunk. Without kernel support the padded
+  // rows would be treated as real tokens, so reject the node instead of silently computing a wrong result.
+  if (context->InputCount() > 16 && context->Input<Tensor>(16) != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "GroupQueryAttention (CPU): query_seqlens input is not supported. "
+                           "Right-padded query chunks are implemented only by the CUDA EP.");
+  }
+
   GroupQueryAttentionParameters parameters = {};
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs(query,
                                                                 key,
