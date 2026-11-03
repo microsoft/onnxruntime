@@ -3,9 +3,11 @@
 **Status:** CPU and eager-CUDA MatMulNBits logical runtime count/report preview implemented;
 GQA, route-aware arithmetic, timing and offload-policy experiments remain separate work.
 
-**Initial merge scope:** ship the naive, convention-based MatMulNBits estimator with CPU and CUDA runtime
-collection/reporting, then use it in offload-policy delegation experiments. Neither route-specific executed-work
-estimation nor timing is a prerequisite for this increment.
+**Initial merge target:** extend the existing CPU/CUDA logical runtime counter to report ballpark expected FLOPs
+for core work, bias additions and dequantization, using coarse actual-route arithmetic categories. Preserve the
+dense-equivalent baseline separately. The arithmetic map in Section 4.5 is the first planning step; expected-FLOP
+formulas and CUDA route capture are not implemented yet. Detailed kernel modelling, packing/preparation accounting,
+timing and offload-policy delegation experiments follow this increment.
 
 For the post-Batch-3 execution sequence, validation gates, CUDA expansion and timing work, see the
 [MatMulNBits counter completion plan](matmul_nbits_counter_completion_plan.md).
@@ -415,6 +417,111 @@ known-component subtotal with explicit gaps, not a complete executed-FLOP total.
 for validated routes; adding ancillary logical estimates alone does not qualify a route as supported. If route
 metadata or an adjustment model is unavailable, retain the logical baseline and mark the adjustment unavailable.
 Fusion alone does not imply fewer FLOPs; it may reduce memory traffic without eliminating arithmetic.
+
+### 4.5 MatMulNBits coarse arithmetic map: expected-FLOP planning
+
+This is a source-backed classification, not a validated executed-instruction model or new runtime behaviour.
+The immediate target is three separate components: expected floating-point core work, logical bias additions,
+and expected dequantization arithmetic. M includes all leading activation dimensions; N and K are logical
+matrix dimensions. Keep `2MNK` dense-equivalent operations available independently of arithmetic category.
+An FMA counts as two arithmetic operations under the ballpark convention.
+
+#### CPU routes and effective modes
+
+| Actual route / effective mode | Core arithmetic category | Dequantization / scaling behaviour | Initial expected-FLOP treatment |
+| --- | --- | --- | --- |
+| `Unpacked` / `Float32Gemm` | Floating-point SGEMM, including the FP16-input fallback's FP32 computation | Explicit temporary FP32 weight reconstruction before GEMM | Core approximately `2MNK`; nominal reconstruction approximately `2NK`, once per reconstruction, not once per logical batch |
+| `PackedQNBit` / `SQNBitFp32` | Floating-point | MLAS can reconstruct inside its single-row kernel or dequantize weight strips before SGEMM | Core approximately `2MNK`; reconstruction needs effective processed geometry and worker/strip frequency, even though B is packed |
+| `PackedQNBit` / `HQNBitFp16` | Floating-point HGEMM | MLAS dequantizes packed weight strips for half-precision matrix arithmetic | Core approximately `2MNK`; nominal reconstruction with strip geometry/frequency, not a claim that packing eliminated reconstruction |
+| `PackedQNBit` / `SQNBitInt8` (also effective mode for `HQNBIT_CompInt8`) | Integer dot products / integer partial sums, followed by floating-point scaling and accumulation | Activation quantization plus block-result scaling, zero-point corrections and reductions; not necessarily a materialized floating-point weight matrix | Integer dot-product core contributes zero FLOPs; model floating-point block scaling/corrections separately under dequantization, not blanket `2NK` |
+| `PackedLut` / `Lut` | Mixed table-based arithmetic, not conventional `MNK` floating-point multiply-adds | Floating-point activation-table construction/scaling, integer table lookup/accumulation, floating-point reconstruction of results | Core and dequantization formulas initially unavailable until a bounded LUT model assigns the floating-point work without overlap; do not report the entire route as zero FLOPs |
+| `EmptyOutput` / `NotExecuted` | No arithmetic executed | No reconstruction | All three per-invocation components zero |
+
+The native CPU MatMulNBits kernels currently register float and MLFloat16, not BFloat16. MLAS declares
+`BHQNBIT_CompBf16` as BF16 input / FP32 accumulation, and the collector enum reserves a corresponding mode,
+but those declarations alone do not establish a reachable CPU MatMulNBits BF16 route. Keep it outside the
+initial native CPU support matrix until registration and dispatch actually support it.
+
+CPU evidence:
+
+- [Compute-type contract](../../onnxruntime/core/mlas/inc/mlas_qnbit.h#L29): floating input/accumulator
+  modes versus int8 input/int32 accumulation modes.
+- [Actual dispatch and recorder](../../onnxruntime/contrib_ops/cpu/quantization/matmul_nbits.cc#L1579):
+  use the selected effective mode, not `accuracy_level` or the activation dtype alone;
+  [native registrations](../../onnxruntime/contrib_ops/cpu/quantization/matmul_nbits.cc#L1640) bound the dtype scope.
+- [Unpacked reconstruction and SGEMM](../../onnxruntime/contrib_ops/cpu/quantization/matmul_nbits.cc#L1190):
+  reconstruct B before configuring the GEMM batch; FP16 unpacked computation is a separate specialization
+  that also falls back to FP32 arithmetic.
+- [Packed FP32 single-row versus strip paths](../../onnxruntime/core/mlas/lib/qnbitgemm.cpp#L609),
+  [packed FP16 path](../../onnxruntime/core/mlas/lib/qnbitgemm.cpp#L741), and
+  [packed 8-bit-weight FP16 path](../../onnxruntime/core/mlas/lib/qnbitgemm.cpp#L816).
+- [Representative int8 block kernel](../../onnxruntime/core/mlas/lib/sqnbitgemm_kernel_avx2_int8_blklen32.h#L19):
+  integer multiply-adds, integer-to-float conversion and floating-point scaled accumulation.
+  This proves the category, not a universal coefficient for every CPU backend.
+- [LUT construction](../../onnxruntime/core/mlas/lib/sqnbitgemm_lut_kernel_avx2.cpp#L252) and
+  [lookup/scaled accumulation](../../onnxruntime/core/mlas/lib/sqnbitgemm_lut_kernel_avx2.cpp#L476):
+  floating and integer stages must not be conflated.
+
+#### CUDA route families
+
+These are modelling labels, not existing CUDA collector enum values. Quantized weight storage does not
+make the matrix-product arithmetic integer. No integer-dot-product core was identified in the MatMulNBits
+CUDA route families below; do not extrapolate this classification to unrelated quantized operators.
+
+| Selected CUDA family | Core arithmetic category | Dequantization / scaling behaviour | Initial expected-FLOP treatment |
+| --- | --- | --- | --- |
+| Separate dequantize + cuBLAS GEMM | Floating-point, using the selected activation/backend precision | Materializes weights; column-wise reconstruction uses block-padded K, while GEMM receives logical K | Core approximately `2MNK`; nominal reconstruction approximately `2N K_processed`; disjoint N chunks partition reconstruction, not repeat the full matrix |
+| Direct fused quantized fast path: single-row/router or batched 2/4/8-bit kernels | Floating-point multiplication/accumulation after decoding weights | Reconstruction/scaling occurs within the kernel; reuse and repetition depend on the selected tile | Core approximately `2MNK`; start with a labelled one-full-reconstruction-equivalent scenario, not a claim about actual tile repetition |
+| `fpA_intB` custom GEMV tactic | Floating-point half/BF16 operations and/or FP32 accumulation | Groupwise weight reconstruction inside GEMV; prepared quantized weights remain quantized storage | Core approximately `2MNK`; same provisional reconstruction scenario until the GEMV's processing frequency is modelled |
+| `fpA_intB` CUTLASS GEMM tactic: interleaved or native SM90 | Floating-point tensor-core matrix arithmetic with FP32 accumulation | Mixed-input mainloop converts/reconstructs integer weights for floating-point MMA; scale-only versus scale-and-zero variants differ | Core approximately `2MNK`; capture tactic family and scale/zero mode before refining reconstruction padding/repetition |
+| Empty output | No arithmetic executed | No reconstruction | All three per-invocation components zero |
+
+CUDA evidence:
+
+- [Mixed-weight selection](../../onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.cc#L1045) and
+  [GEMV versus CUTLASS tactic dispatch](../../onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.cc#L1134).
+- [GEMV reconstruction](../../onnxruntime/contrib_ops/cuda/llm/fpA_intB_gemv/dispatcher.h#L153) and
+  [floating-point dot accumulation](../../onnxruntime/contrib_ops/cuda/llm/fpA_intB_gemv/dispatcher.h#L201).
+- [Interleaved weight conversion operator](../../onnxruntime/contrib_ops/cuda/llm/cutlass_extensions/gemm/kernel/mixed_gemm_B_layout.h#L83)
+  and [FP32 accumulator traits](../../onnxruntime/contrib_ops/cuda/llm/cutlass_extensions/gemm/kernel/default_fpA_intB_traits.h#L82).
+- [SM90 mixed-input mainloop](../../onnxruntime/contrib_ops/cuda/llm/fpA_intB_gemm/launchers/fpA_intB_launcher_sm90.inl#L158)
+  and [same-type floating-point MMA operand selection](../../onnxruntime/contrib_ops/cuda/llm/cutlass_extensions/gemm/collective/builders/sm90_gmma_builder_mixed_input.inl#L136).
+- Direct fast-path examples:
+  [2-bit floating reconstruction/dot products](../../onnxruntime/contrib_ops/cuda/quantization/matmul_2bits_common.cuh#L78),
+  [4-bit half reconstruction/dot products](../../onnxruntime/contrib_ops/cuda/quantization/matmul_4bits_common.cuh#L62),
+  and [8-bit batched floating-point accumulation](../../onnxruntime/contrib_ops/cuda/quantization/matmul_8bits_batched_impl.cuh#L115).
+- [Separate padded reconstruction](../../onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.cc#L1243),
+  [N-chunk processing](../../onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.cc#L1348), and
+  [logical-K GEMM](../../onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.cc#L1379).
+
+#### Component ownership and the next implementation step
+
+Bias retains the logical `MN` addition convention when present, regardless of fused or separate handling.
+For integer and LUT routes, classify floating-point rescaling/corrections as dequantization-related arithmetic
+and keep the integer core separate. Do not add a nominal full-weight reconstruction on top of a block-scaling
+model for the same work. A fused one-reconstruction scenario is model-based, not measured executed FLOPs.
+
+Activation quantization can itself contain floating-point arithmetic. It is not a type conversion and must
+not silently disappear from an advertised whole-op FLOP total: keep it explicitly excluded for the initial
+three-component scope, or add a separately identified subcomponent in a subsequent modelling step.
+Similarly, floating-point conversion tricks, auxiliary reductions and preparation arithmetic remain excluded
+unless explicitly included by the chosen component convention. Packing, conversions and preparation do not
+belong in the recurring dequantization count just because they are needed by the route.
+
+To wire this map into the estimator, the next step needs:
+
+1. A selected arithmetic category and reconstruction strategy, including scale-only versus scale-and-zero.
+   CPU already records coarse mode/route; CUDA currently records host submissions without nonempty route/mode.
+2. Processed reconstruction geometry, whether materialized or fused, and frequency or an explicit scenario.
+   Packed CPU FP32 single-row/strip paths require more detail than the current `PackedQNBit` label.
+3. Independent core/bias/dequantization results with convention, assumptions, phase and availability.
+   Zero integer-core FLOPs must not turn unknown floating-point scaling into an available zero subtotal.
+4. Focused reference tests for floating-point, integer-core, LUT and CUDA families. Missing backend capability
+   is a coverage gap, not validation of a formula. Detailed kernel modelling can refine coefficients later.
+
+This step changes documentation only. Formula implementation, provider-boundary CUDA metadata transport,
+runtime support tests and accuracy qualification remain outstanding; the current report still provides
+logical core and bias counts only.
 
 ## 5. Proposed architecture and report
 
