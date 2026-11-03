@@ -605,15 +605,29 @@ Status LayerNormImpl::Compute(OpKernelContext* p_ctx) const {
 
 Status LayerNormImpl::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                               bool& is_packed, PrePackedWeights* prepacked_weights) {
-  ORT_UNUSED_PARAMETER(prepacked_weights);
-
   is_packed = false;
   if (input_idx == 1) {  // scale
     prepacked_scale_fp32_shape_ = tensor.Shape();
-    ConvertNarrowFloatToFloatIfNeeded(tensor, alloc, prepacked_scale_fp32_data_, is_packed);
+    ConvertNarrowFloatToFloatIfNeeded(tensor, alloc, prepacked_scale_fp32_data_, is_packed, prepacked_weights);
   } else if (input_idx == 2) {  // bias
     prepacked_bias_fp32_shape_ = tensor.Shape();
-    ConvertNarrowFloatToFloatIfNeeded(tensor, alloc, prepacked_bias_fp32_data_, is_packed);
+    ConvertNarrowFloatToFloatIfNeeded(tensor, alloc, prepacked_bias_fp32_data_, is_packed, prepacked_weights);
+  }
+
+  return Status::OK();
+}
+
+Status LayerNormImpl::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                gsl::span<const size_t> /*prepacked_buffer_sizes*/,
+                                                int input_idx,
+                                                /*out*/ bool& used_shared_buffers) {
+  used_shared_buffers = false;
+  if (input_idx == 1) {  // scale
+    used_shared_buffers = true;
+    prepacked_scale_fp32_data_ = std::move(prepacked_buffers[0]);
+  } else if (input_idx == 2) {  // bias
+    used_shared_buffers = true;
+    prepacked_bias_fp32_data_ = std::move(prepacked_buffers[0]);
   }
 
   return Status::OK();
@@ -666,11 +680,11 @@ Status LayerNormImpl::ComputeWithoutContext(
   const float* bif = nullptr;
 
   if constexpr (is_narrow_float_v<T>) {
-    scf = prepacked_scale_fp32_data_ ? prepacked_scale_fp32_data_.get()
+    scf = prepacked_scale_fp32_data_ ? static_cast<const float*>(prepacked_scale_fp32_data_.get())
                                      : scale_fp32.get();
 
     if (has_bias) {
-      bif = prepacked_bias_fp32_data_ ? prepacked_bias_fp32_data_.get()
+      bif = prepacked_bias_fp32_data_ ? static_cast<const float*>(prepacked_bias_fp32_data_.get())
                                       : (bias_fp32 ? bias_fp32.get() : nullptr);
     } else {
       bif = nullptr;
