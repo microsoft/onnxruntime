@@ -117,7 +117,6 @@ class BuildArgsTest(unittest.TestCase):
         args = self._parse("--android", platform_name="linux")
         self.assertTrue(args.use_telemetry)
 
-<<<<<<< HEAD
     def test_removed_acl_arguments_are_rejected(self):
         for arguments in (("--use_acl",), ("--acl_home", "acl"), ("--acl_libs", "acl")):
             with self.subTest(arguments=arguments):
@@ -199,8 +198,6 @@ class BuildArgsTest(unittest.TestCase):
                 self.assertEqual(launchers, expected)
                 self.assertEqual("-Donnxruntime_BUILD_CACHE=ON" in command, use_cache)
 
-=======
->>>>>>> b48f8d253f (Remove unnecessary ACL removal argument tests)
 
 class StalePythonCacheArgsTest(unittest.TestCase):
     def _args_for_cached_python(self, cached_executable: str | None):
