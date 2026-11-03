@@ -3415,52 +3415,52 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>query</tt> : T</dt>
-<dd></dd>
+<dd>Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape(batch_size, sequence_length, d) where d is (num_heads * head_size + 2 * kv_num_heads * head_size).</dd>
 <dt><tt>key</tt> (optional) : T</dt>
-<dd></dd>
+<dd>Key with shape (batch_size, kv_sequence_length, kv_hidden_size) </dd>
 <dt><tt>value</tt> (optional) : T</dt>
-<dd></dd>
+<dd>Value with shape (batch_size, kv_sequence_length, kv_hidden_size)</dd>
 <dt><tt>past_key</tt> (optional) : T_CACHE</dt>
-<dd></dd>
+<dd>past state key with support for format BNSH. When past_key uses same tensor as present_key(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length. When sliding_window_cache is 1 this length is the window cache capacity C, which is chosen by the caller independently of the sequence length and must be at least local_window_size.</dd>
 <dt><tt>past_value</tt> (optional) : T_CACHE</dt>
-<dd></dd>
+<dd>past state value with support for format BNSH. When past_value uses same tensor as present_value(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length. When sliding_window_cache is 1 this length is the window cache capacity C, which is chosen by the caller independently of the sequence length and must be at least local_window_size.</dd>
 <dt><tt>seqlens_k</tt> : M</dt>
-<dd></dd>
+<dd>1D Tensor of shape (batch_size). Equivalent to (total_sequence_lengths - 1).</dd>
 <dt><tt>total_sequence_length</tt> : M</dt>
-<dd></dd>
+<dd>Scalar tensor equivalent to the maximum total sequence length (past + new) of the batch. Used for checking inputs and determining prompt vs token generation case. When query_seqlens is provided this is only an upper bound of seqlens_k + 1 (for example the KV cache capacity): it is not used to determine the prompt case or the past length.</dd>
 <dt><tt>cos_cache</tt> (optional) : T</dt>
-<dd></dd>
+<dd>2D tensor with shape (max_sequence_length, head_size / 2).</dd>
 <dt><tt>sin_cache</tt> (optional) : T</dt>
-<dd></dd>
+<dd>2D tensor with shape (max_sequence_length, head_size / 2).</dd>
 <dt><tt>position_ids</tt> (optional) : tensor(int64)</dt>
-<dd></dd>
+<dd>2D tensor with shape (batch_size, sequence_length). When processing the first prompt the kernel uses only the first element</dd>
 <dt><tt>attention_bias</tt> (optional) : T</dt>
-<dd></dd>
+<dd>additional add to QxK' with shape (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length). The last dimension is indexed by absolute key position and stays total_sequence_length when sliding_window_cache is 1: it is not reduced to the cache capacity or to local_window_size. The operator reads the columns of the positions that are resident in the cache and ignores the rest. CPU supports this windowed absolute-column indexing; CUDA rejects attention_bias when sliding_window_cache is 1.</dd>
 <dt><tt>head_sink</tt> (optional) : T</dt>
-<dd></dd>
+<dd>1D tensor with shape (num_heads). Each head has a smooth factor adding to the denominator of softmax.</dd>
 <dt><tt>k_scale</tt> (optional) : T_KV_SCALE</dt>
-<dd></dd>
+<dd>Scale tensor for past_key.</dd>
 <dt><tt>v_scale</tt> (optional) : T_KV_SCALE</dt>
-<dd></dd>
+<dd>Scale tensor for past_value.</dd>
 <dt><tt>q_norm_weight</tt> (optional) : T</dt>
-<dd></dd>
+<dd>Optional 1D tensor of shape (head_size). When provided together with k_norm_weight, the kernel applies a per-head RMS normalization to Q (and K) before any rotary embedding. Used by Qwen3-style models that wrap their Q/K projections in a Reshape -> SimplifiedLayerNormalization -> Reshape stack; downstream graph fusion folds that pattern into this input. Currently honored by the CUDA and native WebGPU execution providers; JSEP WebGPU/JS and other EPs must reject the node when this input is set.</dd>
 <dt><tt>k_norm_weight</tt> (optional) : T</dt>
-<dd></dd>
+<dd>Optional 1D tensor of shape (head_size). See q_norm_weight. Must be provided together with q_norm_weight.</dd>
 <dt><tt>query_seqlens</tt> (optional) : M</dt>
-<dd></dd>
+<dd>Optional 1D tensor of shape (batch_size) with the number of valid, non-padded tokens in the query/key/value chunk of each batch entry. The chunk is right-padded: rows [0, query_seqlens[b]) are valid and rows [query_seqlens[b], sequence_length) are padding. Unlike seqlens_k this is a count, not a count minus one. After the step the cache holds seqlens_k[b] + 1 tokens, so entry b had seqlens_k[b] + 1 - query_seqlens[b] tokens before it. Requires seqlens_k[b] >= 0 and 0 <= query_seqlens[b] <= min(sequence_length, seqlens_k[b] + 1). Zero marks an idle entry whose cache is unchanged, also when sequence_length is 1. Batched chunks are supported. When omitted, query_seqlens[b] = min(sequence_length, seqlens_k[b] + 1), which is the behavior without this input. See the Right-padded query chunks section of the operator description for the full contract. Currently honored by the CPU and CUDA execution providers; other EPs must reject the node when this input is set.</dd>
 </dl>
 
 #### Outputs (1 - 4)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd></dd>
+<dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
 <dt><tt>present_key</tt> (optional) : T_CACHE</dt>
-<dd></dd>
+<dd>present state key with support for format BNSH. When past_key uses same tensor as present_key(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +kv_sequence_length.</dd>
 <dt><tt>present_value</tt> (optional) : T_CACHE</dt>
-<dd></dd>
+<dd>present state value with support for format BNSH. When past_value uses same tensor as present_value(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +kv_sequence_length.</dd>
 <dt><tt>output_qk</tt> (optional) : T</dt>
-<dd></dd>
+<dd>Values of QK matrix multiplication, either before or after softmax normalization</dd>
 </dl>
 
 #### Type Constraints
