@@ -44,8 +44,13 @@ the temporary `/jsep` export can be withdrawn (§10) — at minimum one release 
 
 **Status last reviewed:** 2026-11-03.
 
-Use **Planned**, **In progress**, **Blocked**, or **Done**. **Done** means the changes are merged and the required
-validation is complete. Keep progress updates in this table; the sections below define requirements and decisions.
+Use **Planned**, **In progress**, **Blocked**, or **Done**. On the default branch, **Done** means the changes are
+merged and the required validation is complete. Once the other changes in an implementing PR are approved and
+validation has passed, update its milestone to **Done** in that same PR, clear the remaining work, and retain the
+PR link. This describes the proposed post-merge state and avoids a separate status-only follow-up. If required
+validation can only happen after merge, keep the milestone **In progress** until that validation is complete.
+Update the review date when updating the table. Keep progress updates here; the sections below define requirements
+and decisions.
 
 | Milestone | Status | Remaining work |
 |---|---|---|
@@ -276,9 +281,20 @@ Per-session typed options cover JSEP's option surface.
    covering the `.jsep.wasm` → `.asyncify.wasm` filename change, `/jsep` pinning, and the int64 `extra` opt-in.
    This is the first user-facing announcement; capture the JSEP usage baseline (§11) before it ships.
 
-**Release gate.** Before switching the default to the native WebGPU EP, resolve the §8 gaps and add blocking CI
-coverage for proxy mode, GPU IO-binding, and WebNN initialization. Passing the existing operator tests alone is
-insufficient.
+**Release gate.** Before switching the default to the native WebGPU EP:
+
+- Resolve the operator/type coverage policy using the build measurements in §7.
+- Establish blocking browser coverage for proxy mode, both GPU IO-binding modes, and WebNN initialization, and
+  validate the zero-copy and dispose/lifetime parity requirements (§8.1–3). Passing operator tests alone is
+  insufficient.
+- Resolve global WebGPU settings compatibility, including a behavior-preserving default for power preference
+  and guidance for unsupported settings (§8.4).
+- Exercise the native JSPI path and meet the suite-selection and bundle-isolation requirements (§8.6).
+- Complete the compatibility export, warnings, build-flag rename, operator-doc retargeting, tracking issue, and
+  migration guidance described above. Capture the JSEP usage baseline before the user-facing announcement ships.
+
+Native profiling, WebNN code relocation, and Windows/ADO replacement WASM builds are removal prerequisites, not
+default-flip gates (§10.1, §8.6). They must be complete before the affected JSEP code or build legs are removed.
 
 ---
 
@@ -350,14 +366,17 @@ the deletion commit.
 | Proxy / IO-binding / WebNN regressions in the native-WebGPU build | Medium | Require blocking browser coverage and targeted parity validation before the flip (§8) |
 | Global `env.webgpu.*` settings dropped on native | Medium | `powerPreference` wired with a behavior-preserving default when unset; `adapter` / `forceFallbackAdapter` documented as no-ops, custom devices directed to the per-session `device` option — release gate (§8.4, §9) |
 | `env.webgpu.profiling.ondata` has no native equivalent | Low | Documented as JSEP-only; native profiling wiring is a Phase 2 prerequisite (§8.5, §10.1) |
-| Windows/ADO produces no WebGPU-EP WASM build | Medium | Add a `BuildWebGPU` leg to `win-wasm-ci.yml` before Phase 2 (§8.6) |
+| Windows/ADO produces no WebGPU-EP WASM build | Medium | Provide native-WebGPU WASM artifacts through `win-wasm-ci.yml` before removing JSEP build legs (§8.6) |
 | `post-webnn.js` linkage changes for WebNN once JSEP is removed | Medium | WebNN smoke test on the Phase 2 build, not just a compile check (§10.3) |
 | WASM filename change breaks `wasmPaths` | Medium | Document `.jsep.wasm` → `.asyncify.wasm` |
 | No telemetry on JSEP adoption | Medium | Per-file CDN statistics for `.jsep.wasm` vs `.asyncify.wasm` / `.jspi.wasm` (baseline captured before the user-facing announcement), plus the warn-once funnel and the escape hatch |
 
 ---
 
-## 12. Migration guide
+## 12. Planned Phase 1 migration guidance
+
+This guidance applies when Phase 1 ships, not to the current default bundle. In particular, the temporary
+`onnxruntime-web/jsep` export is a planned Phase 1 addition and is not yet available.
 
 - **Default import (`onnxruntime-web`) and `onnxruntime-web/all`:** no source change if you use default,
   package-managed asset resolution; the `webgpu` backend keeps working and converges to the native WebGPU EP.
