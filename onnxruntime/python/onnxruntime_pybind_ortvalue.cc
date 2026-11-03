@@ -511,7 +511,7 @@ void addOrtValueMethods(pybind11::module& m) {
            "Returns a DLPack representing the tensor. This method does not copy the pointer shape, "
            "instead, it copies the pointer value. The OrtValue must be persist until the dlpack structure "
            "is consumed.")
-      .def_static("from_dlpack", [](py::object data, bool is_bool_tensor) { return FromDlpack(data.ptr(), is_bool_tensor); }, py::arg("data"), py::arg("is_bool_tensor") = false, "Converts a tensor from a external library into an OrtValue by means of the __dlpack__ protocol.")
+      .def_static("from_dlpack", [](py::object data) { return FromDlpack(data.ptr()); }, py::arg("data"), "Converts a tensor from a external library into an OrtValue by means of the __dlpack__ protocol.")
       .def("__dlpack__", [](OrtValue* ort_value, py::object /* stream */) -> py::object {
         ORT_ENFORCE(!IsWebGpuBuffer(*ort_value), "DLPack export is not supported for WebGPU OrtValues.");
         return py::reinterpret_steal<py::object>(ToDlpack(*ort_value)); }, py::arg("stream") = py::none(),
@@ -543,7 +543,7 @@ void addOrtValueMethods(pybind11::module& m) {
         v->push_back(ortvalue);
       })
 #if defined(ENABLE_DLPACK)
-      .def("push_back", [](std::vector<OrtValue>* v, py::object dlpack_tensor, const bool is_bool_tensor) { v->push_back(FromDlpack(dlpack_tensor.ptr(), is_bool_tensor)); }, "Add a new OrtValue after being ownership was transferred from the DLPack structure.", py::arg("dlpack_tensor"), py::arg("is_bool_tensor") = false)
+      .def("push_back", [](std::vector<OrtValue>* v, py::object dlpack_tensor) { v->push_back(FromDlpack(dlpack_tensor.ptr())); }, "Add a new OrtValue after being ownership was transferred from the DLPack structure.", py::arg("dlpack_tensor"))
       .def("push_back_batch", [](std::vector<OrtValue>* v, std::vector<py::object>& torch_tensors, std::vector<int64_t>& data_ptrs, std::vector<py::object>& element_types, const std::vector<std::vector<int64_t>>& shapes, const std::vector<OrtDevice>& devices) {
             for (size_t i = 0; i < torch_tensors.size(); ++i) {
               py::object& element_type = element_types.at(i);
@@ -588,10 +588,7 @@ void addOrtValueMethods(pybind11::module& m) {
               }
             }
             return indices; },
-           "Returns the indices of every boolean tensor in this vector of OrtValue. "
-           "In case of a boolean tensor, method to_dlpacks returns a uint8 tensor instead of a boolean tensor. "
-           "If torch consumes the dlpack structure, `.to(torch.bool)` must be applied to the torch tensor "
-           "to get a boolean tensor.")
+           "Returns the indices of every boolean tensor in this vector of OrtValue.")
 #if defined(ENABLE_DLPACK)
       .def("dlpack_at", [](std::vector<OrtValue>* v, const size_t idx) {
         ORT_ENFORCE(!IsWebGpuBuffer(v->at(idx)), "DLPack export is not supported for WebGPU OrtValues.");
@@ -678,15 +675,10 @@ for every transferred tensor.
 #if defined(ENABLE_DLPACK)
   m.def(
       "is_dlpack_uint8_tensor", [](py::capsule cap) -> bool {
-        // case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
-        // dtype.code = DLDataTypeCode::kDLUInt;
-        // dtype.bits = sizeof(bool);
         DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)cap.get_pointer();
         return dlmanaged_tensor->dl_tensor.dtype.code == DLDataTypeCode::kDLUInt && dlmanaged_tensor->dl_tensor.dtype.bits == 8;
       },
-      "Tells if a DLPack structure is a uint8 tensor.\n"
-      ".. note::\n"
-      "    Boolean tensors are also uint8 tensor once converted with DLPack protocol.");
+      "Tells if a DLPack structure is a uint8 tensor.");
 #endif
 }
 
