@@ -3113,6 +3113,297 @@ int main() {
             self.assertEqual(int(stream_stats[4]), 0, captured[0])
             self.assertGreater(int(stream_stats[5]), 1, captured[0])
 
+    def test_v4_int4_tensorcore_offload_decode_prefill_and_cuda_graph_parity(self):
+        self._skip_unless_int4_bf16_runner()
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            mock.patch.dict(
+                os.environ,
+                {
+                    "ORT_QMOE_SHARED_RESIDENT_LOG": "1",
+                    "ORT_QMOE_SHARED_CPU_TIMING": "1",
+                    "ORT_QMOE_INT4_PREFILL_GEMM": "0",
+                },
+            ),
+        ):
+            # H=512 satisfies FC1's k % 512 == 0 Tensor-Core gate; I=128 satisfies 2*I % 64 == 0 and FC2's k % 128 == 0.
+            # Per-expert GPU slot bytes: 2*128*256 + 512*64 + 2*128*16*2 + 512*4*2 + 8 = 110,600 B;
+            # FC1 bias slot = 512 B; FC2 bias per layer = 8*512*2 = 8,192 B; fixed = 64 + 2*8192 + 8*512 = 20,544 B.
+            model = self._build_int_qmoe_model(
+                tmpdir,
+                [(4, 32, 1)],
+                num_experts=8,
+                hidden_size=512,
+                inter_size=128,
+                top_k=8,
+                with_bias=True,
+                scale_range=(0.02, 0.06),
+            )
+            ref = self._make_session(
+                model,
+                {
+                    "session.moe.offload.mode": "disabled",
+                    "ep.cuda.disable_moe_gemv_tc": "1",
+                },
+            )
+            offload_cfg = {
+                "session.moe.offload.mode": "required",
+                "session.moe.offload.placement": "static",
+                "session.moe.offload.popularity_file": "expert-profile.bin",
+                "session.moe.offload.cpu_execution": "enabled",
+                "session.moe.offload.device_expert_bytes": str(20544 + 4 * (110600 + 512)),
+                "session.moe.offload.prefill_wave_experts": "2",
+            }
+            rng = np.random.default_rng(33731)
+
+            with self.subTest(case="hybrid_decode_and_sync_prefill"):
+                with _capture_native_stderr() as captured:
+                    sess = self._make_session(model, offload_cfg)
+                    try:
+                        # 6 tokens x top_k=8 = 48 routes (33..256): async hybrid decode with unsorted hit_compact,
+                        # source-row indirection via hit_ids, and 4 resident + 4 cold experts per token.
+                        x_dec = _round_to_act_dtype(rng.standard_normal((6, 512), dtype=np.float32) * 0.5)
+                        r_dec = rng.standard_normal((6, 8), dtype=np.float32)
+                        self._assert_int_offload_parity(
+                            self._run_bf16(ref, x_dec, r_dec),
+                            self._run_bf16(sess, x_dec, r_dec),
+                            "int4_tc_decode(T=6,routes=48)",
+                        )
+                        # 10 tokens x top_k=8 = 80 routes (> async_max_tokens=8): synchronous resident + cold path.
+                        x_sync = _round_to_act_dtype(rng.standard_normal((10, 512), dtype=np.float32) * 0.5)
+                        r_sync = rng.standard_normal((10, 8), dtype=np.float32)
+                        self._assert_int_offload_parity(
+                            self._run_bf16(ref, x_sync, r_sync),
+                            self._run_bf16(sess, x_sync, r_sync),
+                            "int4_tc_sync(T=10,routes=80)",
+                        )
+                    finally:
+                        del sess
+                        gc.collect()
+                self.assertIn("INT4 TC decode layer=0 routes=48", captured[0])
+                self.assertIn("INT4 TC prefill layer=0 source=resident routes=40", captured[0])
+                calls, total_routes, cold_routes = _cpu_path_route_rows(captured[0])[0]
+                self.assertGreater(calls, 0, captured[0])
+                self.assertGreater(cold_routes, 0, captured[0])
+                self.assertEqual(2 * cold_routes, total_routes, captured[0])
+
+            cudart = _load_cudart()
+            if cudart is not None:
+                with self.subTest(case="cuda_graph_replay"):
+                    graph_model = _wrap_qmoe_model_with_cast_io(
+                        model, os.path.join(tmpdir, "graph_int4_tc.onnx"), 512, 8
+                    )
+                    with _capture_native_stderr() as captured:
+                        sess_g = self._make_session(
+                            graph_model,
+                            offload_cfg,
+                            cuda_options={"enable_cuda_graph": "1", "min_num_runs_before_cuda_graph_capture": "2"},
+                        )
+                        device_id = self._device_id(self._selected_plugin_device())
+                        x_ptr = _cuda_malloc(cudart, 6 * 512 * 4, device_id)
+                        r_ptr = _cuda_malloc(cudart, 6 * 8 * 4, device_id)
+                        try:
+                            binding = sess_g.io_binding()
+                            binding.bind_input("X_f32", "cuda", device_id, np.float32, [6, 512], x_ptr.value)
+                            binding.bind_input("R_f32", "cuda", device_id, np.float32, [6, 8], r_ptr.value)
+                            binding.bind_output("Y_f32", "cuda", device_id)
+                            for step in range(6):
+                                x_step = _round_to_act_dtype(rng.standard_normal((6, 512), dtype=np.float32) * 0.5)
+                                r_step = np.roll(
+                                    np.linspace(4.0, -4.0, 8, dtype=np.float32).reshape(1, 8).repeat(6, axis=0),
+                                    step,
+                                    axis=1,
+                                )
+                                _cuda_upload(cudart, x_ptr, x_step)
+                                _cuda_upload(cudart, r_ptr, r_step)
+                                sess_g.run_with_iobinding(binding)
+                                actual_g = binding.copy_outputs_to_cpu()[0]
+                                self._assert_int_offload_parity(
+                                    self._run_bf16(ref, x_step, r_step),
+                                    actual_g,
+                                    f"int4_tc_graph(step={step})",
+                                )
+                            del binding
+                        finally:
+                            cudart.cudaFree(x_ptr)
+                            cudart.cudaFree(r_ptr)
+                            del sess_g
+                            gc.collect()
+                    self.assertIn("INT4 TC decode layer=0 routes=48", captured[0])
+            del ref
+            gc.collect()
+
+    def test_v4_int3_tensorcore_offload_decode_and_grouped_prefill_parity(self):
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            mock.patch.dict(
+                os.environ,
+                {
+                    "ORT_QMOE_SHARED_RESIDENT_LOG": "1",
+                    "ORT_QMOE_SHARED_CPU_TIMING": "1",
+                    "ORT_QMOE_SHARED_PIN_EXPERTS": "0",
+                },
+            ),
+        ):
+            # H=512, I=128, INT3 block_size=64:
+            # GPU slot bytes: 2*128*(512*3//8) + 512*(128*3//8) + 2*128*8*2 + 512*2*2 + 8 = 79,880 B;
+            # FC1 bias slot = 512 B; FC2 bias per layer = 8*512*2 = 8,192 B; fixed = 64 + 2*8192 + 8*512 = 20,544 B.
+            dir_dec = os.path.join(tmpdir, "int3_tc_dec")
+            os.makedirs(dir_dec, exist_ok=True)
+            model_dec = self._build_int_qmoe_model(
+                dir_dec,
+                [(3, 64, 0)],
+                num_experts=8,
+                hidden_size=512,
+                inter_size=128,
+                top_k=8,
+                with_bias=True,
+                scale_range=(0.04, 0.12),
+            )
+            ref_dec = self._make_session(
+                model_dec,
+                {
+                    "session.moe.offload.mode": "disabled",
+                    "ep.cuda.disable_qmoe_int3_tc": "1",
+                    "ep.cuda.qmoe_disable_int3_tensorcore_prefill": "1",
+                },
+            )
+            rng = np.random.default_rng(33732)
+            with self.subTest(case="mixed_resident_cold_decode"):
+                with _capture_native_stderr() as captured:
+                    sess_dec = self._make_session(
+                        model_dec,
+                        {
+                            "session.moe.offload.mode": "required",
+                            "session.moe.offload.placement": "static",
+                            "session.moe.offload.popularity_file": "expert-profile.bin",
+                            "session.moe.offload.cpu_execution": "enabled",
+                            "session.moe.offload.device_expert_bytes": str(20544 + 4 * (79880 + 512)),
+                        },
+                    )
+                    try:
+                        # 6 tokens x top_k=8 = 48 routes (>= 33): async decode with source_route_ids=hit_ids,
+                        # output=nullptr, and 4 resident + 4 cold experts per token.
+                        x_d = _round_to_act_dtype(rng.standard_normal((6, 512), dtype=np.float32) * 0.5)
+                        r_d = rng.standard_normal((6, 8), dtype=np.float32)
+                        self._assert_int_offload_parity(
+                            self._run_bf16(ref_dec, x_d, r_d),
+                            self._run_bf16(sess_dec, x_d, r_d),
+                            "int3_tc_decode(T=6,routes=48)",
+                        )
+                    finally:
+                        del sess_dec
+                        gc.collect()
+                self.assertIn("INT3 decode layer=0 routes=48 tc=1", captured[0])
+                calls, total_routes, cold_routes = _cpu_path_route_rows(captured[0])[0]
+                self.assertGreater(calls, 0, captured[0])
+                self.assertEqual(2 * cold_routes, total_routes, captured[0])
+            del ref_dec
+
+            dir_pre = os.path.join(tmpdir, "int3_tc_pre")
+            os.makedirs(dir_pre, exist_ok=True)
+            model_pre = self._build_int_qmoe_model(
+                dir_pre,
+                [(3, 64, 0)],
+                num_experts=8,
+                hidden_size=512,
+                inter_size=128,
+                top_k=2,
+                with_bias=True,
+                scale_range=(0.04, 0.12),
+            )
+            ref_pre = self._make_session(
+                model_pre,
+                {
+                    "session.moe.offload.mode": "disabled",
+                    "ep.cuda.disable_qmoe_int3_tc": "1",
+                    "ep.cuda.qmoe_disable_int3_tensorcore_prefill": "1",
+                },
+            )
+            with self.subTest(case="ungrouped_gathered_tc"):
+                # 17 rows x top_k=2 = 34 routes (>= 33) with grouped prefill disabled exercises TryLaunchBf16 with
+                # input_is_gathered=true and output=nullptr on both resident and streamed paths.
+                x_u = _round_to_act_dtype(rng.standard_normal((17, 512), dtype=np.float32) * 0.5)
+                r_u = np.full((17, 8), -10.0, dtype=np.float32)
+                r_u[:, [0, 4]] = 10.0  # Expert 0 is resident; expert 4 streams when cpu_execution="disabled".
+                expected_u = self._run_bf16(ref_pre, x_u, r_u)
+                with _capture_native_stderr() as captured:
+                    sess_u = self._make_session(
+                        model_pre,
+                        {
+                            "session.moe.offload.mode": "required",
+                            "session.moe.offload.placement": "static",
+                            "session.moe.offload.popularity_file": "expert-profile.bin",
+                            "session.moe.offload.cpu_execution": "disabled",
+                            "session.moe.offload.device_expert_bytes": str(20544 + 2 * (79880 + 512)),
+                            "session.moe.offload.prefill_wave_experts": "2",
+                            "ep.cuda.qmoe_disable_int3_tensorcore_prefill": "1",
+                            "ep.cuda.qmoe_int3_tc_min_routes": "16",
+                        },
+                    )
+                    try:
+                        actual_u = self._run_bf16(sess_u, x_u, r_u)
+                    finally:
+                        del sess_u
+                        gc.collect()
+                self._assert_int_offload_parity(expected_u, actual_u, "int3_tc_ungrouped_gathered(T=17)")
+                dispatches_u = re.findall(
+                    r"INT3 prefill layer=0 source=(\w+) routes=(\d+) grouped=(\d+) tc=(\d+)", captured[0]
+                )
+                self.assertEqual(
+                    dispatches_u,
+                    [("resident", "17", "0", "1"), ("streamed", "17", "0", "1")],
+                    captured[0],
+                )
+
+            with self.subTest(case="grouped_streaming_prefill_above_255_routes"):
+                # 165 rows x top_k=2 = 330 routes (> 255): 165 routes go to resident experts (0, 3) and 165 routes go
+                # to streamed cold experts (1, 2). Each expert gets 82 or 83 routes (10 full 8-route tiles + a 2- or
+                # 3-route partial tile), and the wave route IDs in sorted_routes span 0..164 (> 128) and when all 330
+                # routes go to streamed cold experts (1, 2), sorted_routes spans 0..329 (> 255).
+                x_g = _round_to_act_dtype(rng.standard_normal((165, 512), dtype=np.float32) * 0.5)
+                for mode_name, target_cols, expected_dispatches in (
+                    (
+                        "mixed_resident_and_streamed",
+                        ([0, 1], [3, 2]),
+                        [("resident", "165", "1", "1"), ("streamed", "165", "1", "1")],
+                    ),
+                    (
+                        "streamed_routes_above_255",
+                        ([1, 2], [4, 5]),
+                        [("streamed", "330", "1", "1")],
+                    ),
+                ):
+                    r_g = np.full((165, 8), -10.0, dtype=np.float32)
+                    r_g[0::2, target_cols[0]] = 10.0
+                    r_g[1::2, target_cols[1]] = 10.0
+                    expected_g = self._run_bf16(ref_pre, x_g, r_g)
+                    with _capture_native_stderr() as captured:
+                        sess_g = self._make_session(
+                            model_pre,
+                            {
+                                "session.moe.offload.mode": "required",
+                                "session.moe.offload.placement": "static",
+                                "session.moe.offload.popularity_file": "expert-profile.bin",
+                                "session.moe.offload.cpu_execution": "disabled",
+                                "session.moe.offload.device_expert_bytes": str(20544 + 2 * (79880 + 512)),
+                                "session.moe.offload.prefill_wave_experts": "4",
+                                "ep.cuda.qmoe_disable_int3_tensorcore_prefill": "0",
+                            },
+                        )
+                        try:
+                            actual_g = self._run_bf16(sess_g, x_g, r_g)
+                        finally:
+                            del sess_g
+                            gc.collect()
+                    self._assert_int_offload_parity(expected_g, actual_g, f"int3_tc_grouped({mode_name})")
+                    dispatches_g = re.findall(
+                        r"INT3 prefill layer=0 source=(\w+) routes=(\d+) grouped=(\d+) tc=(\d+)", captured[0]
+                    )
+                    self.assertEqual(dispatches_g, expected_dispatches, captured[0])
+            del ref_pre
+            gc.collect()
+
     def test_v4_int4_eight_token_hybrid_cuda_graph_replay(self):
         self._skip_unless_int4_bf16_runner()
         cudart = _load_cudart()
