@@ -7,6 +7,7 @@
 #include <memory>
 #include "core/providers/cuda/cuda_kernel.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
+#include "contrib_ops/cuda/bert/group_query_attention_workspace.h"
 #include "contrib_ops/cuda/bert/attention_kernel_options.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 
@@ -33,6 +34,12 @@ class GroupQueryAttention final : public CudaKernel {
   }
   size_t LastComputeDynamicWorkspaceRegions() const {
     return last_compute_dynamic_regions_.load(std::memory_order_relaxed);
+  }
+  GQABackend LastComputeWorkspaceBackend() const {
+    return last_compute_backend_.load(std::memory_order_relaxed);
+  }
+  int LastComputeFlashNumSplits() const {
+    return last_compute_flash_num_splits_.load(std::memory_order_relaxed);
   }
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
@@ -74,6 +81,8 @@ class GroupQueryAttention final : public CudaKernel {
   mutable std::atomic<size_t> declared_workspace_bytes_{0};
   mutable std::atomic<size_t> last_compute_planned_regions_{0};
   mutable std::atomic<size_t> last_compute_dynamic_regions_{0};
+  mutable std::atomic<GQABackend> last_compute_backend_{GQABackend::Unfused};
+  mutable std::atomic<int> last_compute_flash_num_splits_{0};
 
   static constexpr int kZerosCount = 256;  // In prompt case we create a zero buffer of size 256 for seqlen (assume batch_size <= 256)
   IAllocatorUniquePtr<int> zeros_;

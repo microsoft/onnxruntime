@@ -5,6 +5,7 @@
 #include "core/providers/cuda/cuda_external_data_loader.h"
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
 #include "contrib_ops/cuda/bert/group_query_attention.h"
+#include "contrib_ops/cuda/bert/xqa/xqa_loader.h"
 #endif
 #include "test/providers/cuda/test_cases/cuda_test_bridge.h"
 
@@ -14,7 +15,13 @@ namespace onnxruntime::test {
 CudaWorkspaceUsageForTest GetGroupQueryAttentionWorkspaceUsageForTest(const void* kernel) {
   const auto* gqa = static_cast<const contrib::cuda::GroupQueryAttention<MLFloat16, MLFloat16>*>(
       static_cast<const OpKernel*>(kernel));
-  return {gqa->LastComputePlannedWorkspaceRegions(), gqa->LastComputeDynamicWorkspaceRegions()};
+  return {gqa->LastComputePlannedWorkspaceRegions(), gqa->LastComputeDynamicWorkspaceRegions(),
+          gqa->LastComputeWorkspaceBackend(), gqa->LastComputeFlashNumSplits()};
+}
+
+size_t GetXQARequiredSharedMemoryBytesForTest(
+    const cudaDeviceProp& device_prop, int head_size, int num_heads, int kv_num_heads) {
+  return contrib::cuda::GetXQARequiredSharedMemoryBytes(device_prop, head_size, num_heads, kv_num_heads);
 }
 
 std::optional<contrib::cuda::GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimateConfigForTest(

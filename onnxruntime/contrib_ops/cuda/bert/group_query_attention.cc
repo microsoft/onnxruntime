@@ -1049,6 +1049,16 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
   last_compute_planned_regions_.store(planned_regions, std::memory_order_relaxed);
   last_compute_dynamic_regions_.store(dynamic_regions, std::memory_order_relaxed);
+  const auto workspace_backend =
+      data.use_xqa ? GQABackend::Xqa
+                   : (data.use_cudnn_sdpa ? GQABackend::Cudnn
+                                          : (data.use_flash_attention ? GQABackend::Flash
+                                                                      : (data.use_memory_efficient_attention
+                                                                             ? GQABackend::MemoryEfficient
+                                                                             : GQABackend::Unfused)));
+  last_compute_backend_.store(workspace_backend, std::memory_order_relaxed);
+  last_compute_flash_num_splits_.store(data.use_flash_attention ? parameters.num_splits : 0,
+                                       std::memory_order_relaxed);
 
   if (kernel_options_->AllowDebugInfo()) {
     AttentionKernelDebugInfo debug_info;

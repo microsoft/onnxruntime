@@ -3,7 +3,10 @@
 Set `session.enable_static_workspace_preallocation=1` to opt supported in-tree CUDA
 MatMulNBits and GroupQueryAttention kernels into run-scoped memory-pattern reuse.
 Sequential execution is required. Memory-pattern optimization must remain active;
-otherwise kernels retain dynamic scratch.
+otherwise kernels retain dynamic scratch. Initialization logs one warning for each
+graph with a workspace plan whose memory patterns are disabled, including an
+explicit `enable_mem_pattern=0` or automatic disabling for non-tensor graph inputs
+or multiple streams on the same device.
 
 ## Allocation and lifetime
 

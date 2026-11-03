@@ -1,14 +1,22 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <string_view>
+#include <utility>
+
 #include "core/common/safeint.h"
 #include "core/common/span_utils.h"
+#include "core/framework/customregistry.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/int4.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/session_state.h"
+#include "core/framework/tensorseq.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -50,7 +58,10 @@ class ExecutionFrameTest : public ::testing::Test {
 ONNX_OPERATOR_SCHEMA(WorkspacePreallocationTestOp)
     .SetDoc("Test operator for run-scoped workspace preallocation.")
     .Input(0, "requested_bytes", "Workspace request.", "tensor(int64)")
-    .Output(0, "used_preallocated", "Whether planned workspace was used.", "tensor(bool)");
+    .Input(1, "values", "Live activation.", "tensor(float)", OpSchema::Optional)
+    .Input(2, "sequence", "Non-tensor input disables memory patterns.", "seq(tensor(float))", OpSchema::Optional)
+    .Output(0, "used_preallocated", "Whether planned workspace was used.", "tensor(bool)")
+    .Output(1, "copied_values", "Activation copied after writing workspace.", "tensor(float)", OpSchema::Optional);
 
 class WorkspacePreallocationTestKernel final : public OpKernel {
  public:
@@ -79,11 +90,175 @@ class WorkspacePreallocationTestKernel final : public OpKernel {
       scratch = IAllocator::MakeUniquePtr<uint8_t>(allocator, requested_bytes);
       workspace = scratch.get();
     }
+    const Tensor* activation = context->InputCount() > 1 ? context->Input<Tensor>(1) : nullptr;
+    if (activation != nullptr) {
+      const auto workspace_begin = reinterpret_cast<uintptr_t>(workspace);
+      const auto activation_begin = reinterpret_cast<uintptr_t>(activation->DataRaw());
+      ORT_RETURN_IF(workspace_begin < SafeInt<uintptr_t>(activation_begin) + activation->SizeInBytes() &&
+                        activation_begin < SafeInt<uintptr_t>(workspace_begin) + requested_bytes,
+                    "Workspace overlaps a live activation.");
+    }
     std::fill_n(static_cast<uint8_t*>(workspace), requested_bytes, uint8_t{0x5a});
     *context->Output(0, TensorShape{})->MutableData<bool>() = used_preallocated;
+    if (activation != nullptr) {
+      auto* output = context->Output(1, activation->Shape());
+      ORT_ENFORCE(output != nullptr, "The live-activation test requires a copied output.");
+      const auto values = activation->DataAsSpan<float>();
+      std::copy(values.begin(), values.end(), output->MutableData<float>());
+    }
     return Status::OK();
   }
 };
+
+std::shared_ptr<CustomRegistry> CreateWorkspacePreallocationTestRegistry() {
+  auto registry = std::make_shared<CustomRegistry>();
+  KernelDefBuilder definition;
+  definition.SetName("WorkspacePreallocationTestOp").Provider(kCpuExecutionProvider).SinceVersion(1);
+  ORT_THROW_IF_ERROR(registry->RegisterCustomKernel(
+      definition, [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& kernel) {
+        kernel = std::make_unique<WorkspacePreallocationTestKernel>(info);
+        return Status::OK();
+      }));
+  return registry;
+}
+
+std::string BuildWorkspaceLiveActivationModel(bool has_sequence_input = false) {
+  ModelProto model;
+  model.set_ir_version(IR_VERSION);
+  auto* opset = model.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(17);
+  auto* graph = model.mutable_graph();
+  graph->set_name("workspace_live_activation");
+  const auto set_float_type = [](ValueInfoProto& value, const char* name) {
+    value.set_name(name);
+    auto* type = value.mutable_type()->mutable_tensor_type();
+    type->set_elem_type(TensorProto_DataType_FLOAT);
+    type->mutable_shape()->add_dim()->set_dim_value(32);
+  };
+  set_float_type(*graph->add_input(), "X");
+  set_float_type(*graph->add_value_info(), "live_activation");
+  set_float_type(*graph->add_value_info(), "copied_activation");
+  set_float_type(*graph->add_output(), "Y");
+  auto* used = graph->add_output();
+  used->set_name("used_preallocated");
+  used->mutable_type()->mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+  used->mutable_type()->mutable_tensor_type()->mutable_shape();
+  auto* request = graph->add_initializer();
+  request->set_name("requested_bytes");
+  request->set_data_type(TensorProto_DataType_INT64);
+  request->add_int64_data(128);
+  if (has_sequence_input) {
+    auto* sequence = graph->add_input();
+    sequence->set_name("sequence");
+    sequence->mutable_type()->mutable_sequence_type()->mutable_elem_type()->mutable_tensor_type()->set_elem_type(
+        TensorProto_DataType_FLOAT);
+  }
+
+  auto* producer = graph->add_node();
+  producer->set_name("producer");
+  producer->set_op_type("Relu");
+  producer->add_input("X");
+  producer->add_output("live_activation");
+  auto* workspace = graph->add_node();
+  workspace->set_name("workspace");
+  workspace->set_op_type("WorkspacePreallocationTestOp");
+  workspace->add_input("requested_bytes");
+  workspace->add_input("live_activation");
+  if (has_sequence_input) {
+    workspace->add_input("sequence");
+  }
+  workspace->add_output("used_preallocated");
+  workspace->add_output("copied_activation");
+  auto* consumer = graph->add_node();
+  consumer->set_name("consumer");
+  consumer->set_op_type("Identity");
+  consumer->add_input("copied_activation");
+  consumer->add_output("Y");
+  return model.SerializeAsString();
+}
+
+TEST_F(ExecutionFrameTest, PlannedWorkspaceDoesNotOverlapLiveActivation) {
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsEnableStaticWorkspacePreallocation, "1"));
+  InferenceSessionWrapper session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterCustomRegistry(CreateWorkspacePreallocationTestRegistry()));
+  const auto model = BuildWorkspaceLiveActivationModel();
+  ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+  ASSERT_TRUE(session.GetSessionState().GetEnableMemoryPattern());
+  ASSERT_EQ(session.GetGraph().NumberOfNodes(), 3);
+  ASSERT_EQ(session.GetSessionState().GetExecutionPlan()->workspace_allocation_plan.size(), 1u);
+  const std::vector<std::string> output_names{"Y", "used_preallocated"};
+  for (size_t run = 0; run < 3; ++run) {
+    SCOPED_TRACE(run);
+    InlinedVector<float> values(32);
+    for (size_t i = 0; i < values.size(); ++i) {
+      values[i] = static_cast<float>(static_cast<int>(i % 17) - 8 + static_cast<int>(run));
+    }
+    OrtValue input;
+    CreateMLValue<float>(std::array<int64_t, 1>{32}, values.data(), OrtMemoryInfo(), &input);
+    std::vector<OrtValue> outputs;
+    ASSERT_STATUS_OK(session.Run(NameMLValMap{{"X", input}}, output_names, &outputs));
+    ASSERT_EQ(outputs.size(), 2u);
+    EXPECT_EQ(*outputs[1].Get<Tensor>().Data<bool>(), run != 0);
+    const auto output = outputs[0].Get<Tensor>().DataAsSpan<float>();
+    ASSERT_EQ(output.size(), values.size());
+    for (size_t i = 0; i < output.size(); ++i) {
+      EXPECT_FLOAT_EQ(output[i], std::max(values[i], 0.0f));
+    }
+  }
+}
+
+TEST_F(ExecutionFrameTest, DisabledWorkspacePatternsLogOnceAndUseDynamicScratch) {
+  for (const auto& [enable_mem_pattern, has_sequence_input] :
+       {std::pair{true, false}, std::pair{false, false}, std::pair{true, true}}) {
+    SCOPED_TRACE(MakeString("enable_mem_pattern=", enable_mem_pattern, ", has_sequence_input=", has_sequence_input));
+    size_t warnings = 0;
+    SessionOptions options;
+    options.graph_optimization_level = TransformerLevel::Default;
+    options.enable_mem_pattern = enable_mem_pattern;
+    options.session_log_severity_level = ORT_LOGGING_LEVEL_WARNING;
+    options.user_logging_param = &warnings;
+    options.user_logging_function =
+        [](void* param, OrtLoggingLevel severity, const char*, const char*, const char*, const char* message) {
+          if (severity == ORT_LOGGING_LEVEL_WARNING &&
+              std::string_view(message).find(kOrtSessionOptionsEnableStaticWorkspacePreallocation) !=
+                  std::string_view::npos) {
+            ++*static_cast<size_t*>(param);
+          }
+        };
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsEnableStaticWorkspacePreallocation, "1"));
+    InferenceSessionWrapper session(options, GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterCustomRegistry(CreateWorkspacePreallocationTestRegistry()));
+    const auto model = BuildWorkspaceLiveActivationModel(has_sequence_input);
+    ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+    const bool patterns_enabled = enable_mem_pattern && !has_sequence_input;
+    EXPECT_EQ(session.GetSessionState().GetEnableMemoryPattern(), patterns_enabled);
+    ASSERT_EQ(session.GetSessionState().GetExecutionPlan()->workspace_allocation_plan.size(), 1u);
+    EXPECT_EQ(warnings, patterns_enabled ? 0u : 1u);
+    InlinedVector<float> values(32, 1.0f);
+    OrtValue input;
+    CreateMLValue<float>(std::array<int64_t, 1>{32}, values.data(), OrtMemoryInfo(), &input);
+    NameMLValMap feeds{{"X", input}};
+    if (has_sequence_input) {
+      auto sequence = std::make_unique<TensorSeq>(DataTypeImpl::GetType<float>());
+      sequence->SetElements({input});
+      const auto* type = DataTypeImpl::GetType<TensorSeq>();
+      feeds.emplace("sequence", OrtValue(sequence.release(), type, type->GetDeleteFunc()));
+    }
+    const std::vector<std::string> output_names{"Y", "used_preallocated"};
+    for (size_t run = 0; run < 3; ++run) {
+      std::vector<OrtValue> outputs;
+      ASSERT_STATUS_OK(session.Run(feeds, output_names, &outputs));
+      ASSERT_EQ(outputs.size(), 2u);
+      EXPECT_EQ(*outputs[1].Get<Tensor>().Data<bool>(), patterns_enabled && run != 0);
+      EXPECT_EQ(warnings, patterns_enabled ? 0u : 1u);
+    }
+  }
+}
 
 TEST_F(ExecutionFrameTest, WorkspacePatternCachesAndRejectsOversizedRequests) {
   Model model("workspace_preallocation", false, DefaultLoggingManager().DefaultLogger());

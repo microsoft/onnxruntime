@@ -2699,6 +2699,16 @@ std::basic_string<ORTCHAR_T> GenerateProfileFilePath(std::basic_string<ORTCHAR_T
 static void ResolveMemoryPatternFlags(SessionState& session_state) {
   session_state.ResolveMemoryPatternFlag();
 
+#if !defined(ORT_MINIMAL_BUILD)
+  if (!session_state.GetEnableMemoryPattern() &&
+      !session_state.GetExecutionPlan()->workspace_allocation_plan.empty()) {
+    LOGS(session_state.Logger(), WARNING)
+        << kOrtSessionOptionsEnableStaticWorkspacePreallocation
+        << " is inactive because memory-pattern optimization is disabled for this graph. "
+           "Supported kernels will use dynamic scratch.";
+  }
+#endif
+
   for (const auto& entry : session_state.GetSubgraphSessionStateMap()) {
     for (const auto& name_to_subgraph_session_state : entry.second) {
       ResolveMemoryPatternFlags(*name_to_subgraph_session_state.second);

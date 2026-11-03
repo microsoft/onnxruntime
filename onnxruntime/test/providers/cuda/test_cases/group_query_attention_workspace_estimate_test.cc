@@ -24,10 +24,12 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cuda/bert/group_query_attention_workspace_estimate.h"
+#include "test/common/random_generator.h"
 #include "test/providers/cuda/test_cases/cuda_test_bridge.h"
 #include "test/test_environment.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/compare_ortvalue.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/scoped_env_vars.h"
 
@@ -58,6 +60,7 @@ using contrib::cuda::SetGroupQueryAttentionWorkspaceRequirements;
 
 constexpr int kMath = static_cast<int>(AttentionBackend::MATH);
 constexpr int kFlash = static_cast<int>(AttentionBackend::FLASH_ATTENTION);
+constexpr int kEfficient = static_cast<int>(AttentionBackend::EFFICIENT_ATTENTION);
 constexpr int kCudnn = static_cast<int>(AttentionBackend::CUDNN_FLASH_ATTENTION);
 
 WorkspaceInputShape Known(std::initializer_list<int64_t> dims) {
@@ -179,7 +182,10 @@ void SetValueInfo(ONNX_NAMESPACE::ValueInfoProto& value_info,
 
 std::string BuildGroupQueryAttentionKernelModel(bool sliding_window_cache = true,
                                                 bool include_head_sink = true,
-                                                int64_t batch_size = 2) {
+                                                int64_t batch_size = 2,
+                                                int64_t sequence_length = 4,
+                                                int64_t cache_capacity = 256,
+                                                int64_t head_size = 64) {
   ONNX_NAMESPACE::ModelProto model;
   model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
   auto* onnx_opset = model.add_opset_import();
@@ -220,16 +226,16 @@ std::string BuildGroupQueryAttentionKernelModel(bool sliding_window_cache = true
 
   constexpr int32_t kFloat16 = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
   constexpr int32_t kInt32 = ONNX_NAMESPACE::TensorProto_DataType_INT32;
-  SetValueInfo(*graph->add_input(), "query", kFloat16, {batch_size, 4, 512});
-  SetValueInfo(*graph->add_input(), "key", kFloat16, {batch_size, 4, 128});
-  SetValueInfo(*graph->add_input(), "value", kFloat16, {batch_size, 4, 128});
-  SetValueInfo(*graph->add_input(), "past_key", kFloat16, {batch_size, 2, 256, 64});
-  SetValueInfo(*graph->add_input(), "past_value", kFloat16, {batch_size, 2, 256, 64});
+  SetValueInfo(*graph->add_input(), "query", kFloat16, {batch_size, sequence_length, 8 * head_size});
+  SetValueInfo(*graph->add_input(), "key", kFloat16, {batch_size, sequence_length, 2 * head_size});
+  SetValueInfo(*graph->add_input(), "value", kFloat16, {batch_size, sequence_length, 2 * head_size});
+  SetValueInfo(*graph->add_input(), "past_key", kFloat16, {batch_size, 2, cache_capacity, head_size});
+  SetValueInfo(*graph->add_input(), "past_value", kFloat16, {batch_size, 2, cache_capacity, head_size});
   SetValueInfo(*graph->add_input(), "seqlens_k", kInt32, {batch_size});
   SetValueInfo(*graph->add_input(), "total_sequence_length", kInt32, {});
-  SetValueInfo(*graph->add_output(), "output", kFloat16, {batch_size, 4, 512});
-  SetValueInfo(*graph->add_output(), "present_key", kFloat16, {batch_size, 2, 256, 64});
-  SetValueInfo(*graph->add_output(), "present_value", kFloat16, {batch_size, 2, 256, 64});
+  SetValueInfo(*graph->add_output(), "output", kFloat16, {batch_size, sequence_length, 8 * head_size});
+  SetValueInfo(*graph->add_output(), "present_key", kFloat16, {batch_size, 2, cache_capacity, head_size});
+  SetValueInfo(*graph->add_output(), "present_value", kFloat16, {batch_size, 2, cache_capacity, head_size});
 
   if (include_head_sink) {
     auto* head_sink = graph->add_initializer();
@@ -1273,6 +1279,167 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, KernelDeclaresPrepackedHeadSinkRo
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
+void CheckPlannedGroupQueryAttentionDecodeRoute(GQABackend backend) {
+  if (!HasCudaDevice()) {
+    GTEST_SKIP() << "A CUDA device is required to run the CUDA kernel.";
+  }
+  ScopedEnvironmentVariables env_vars(
+      EnvVarMap{{"ORT_ENABLE_XQA", backend == GQABackend::Xqa ? "1" : "0"},
+                {"ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"},
+                {"ORT_DISABLE_FLASH_ATTENTION", "0"},
+                {"ORT_DISABLE_FLASH_DECODE", "0"}});
+  CUDAExecutionProviderInfo provider_info;
+  provider_info.sdpa_kernel =
+      backend == GQABackend::MemoryEfficient ? kEfficient : (backend == GQABackend::Xqa ? kMath : 0);
+  provider_info.do_copy_in_default_stream = true;
+  auto cuda_ep = std::make_shared<CUDAExecutionProvider>(provider_info);
+  const auto& device = cuda_ep->GetDeviceProp();
+  const int64_t head_size = backend == GQABackend::Flash ? 128 : 64;
+  if (backend == GQABackend::Flash &&
+      (!cuda_ep->GetAttentionKernelOptions()->UseFlashAttention() || device.major < 8)) {
+    GTEST_SKIP() << "Flash Attention requires a supported build and SM >= 80.";
+  }
+  if (backend == GQABackend::MemoryEfficient &&
+      (!cuda_ep->GetAttentionKernelOptions()->UseEfficientAttention() || device.major * 10 + device.minor < 53)) {
+    GTEST_SKIP() << "Memory-efficient attention is unavailable in this build or on this device.";
+  }
+  if (backend == GQABackend::Xqa) {
+    if (device.major < 8) {
+      GTEST_SKIP() << "XQA requires SM >= 80.";
+    }
+    const auto required_smem = GetXQARequiredSharedMemoryBytesForTest(device, static_cast<int>(head_size), 8, 2);
+    if (required_smem > device.sharedMemPerBlockOptin) {
+      GTEST_SKIP() << "XQA requires " << required_smem << " shared-memory bytes, but this device supports "
+                   << device.sharedMemPerBlockOptin << ".";
+    }
+  }
+
+  constexpr int64_t kEnvelope = 1024;
+  constexpr int64_t kCapacity = 4096;
+  const auto model = BuildGroupQueryAttentionKernelModel(false, false, 1, 1, kCapacity, head_size);
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength, "1024"));
+  InferenceSessionWrapper reference(options, GetEnvironment());
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsEnableStaticWorkspacePreallocation, "1"));
+  InferenceSessionWrapper session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
+  ASSERT_STATUS_OK(reference.RegisterExecutionProvider(std::make_shared<CUDAExecutionProvider>(provider_info)));
+  for (auto* current : {&reference, &session}) {
+    ASSERT_STATUS_OK(current->Load(model.data(), static_cast<int>(model.size())));
+    ASSERT_STATUS_OK(current->Initialize());
+    const Node* node = FindNodeByOpType(current->GetGraph(), "GroupQueryAttention");
+    ASSERT_NE(node, nullptr);
+    ASSERT_EQ(node->GetExecutionProviderType(), kCudaExecutionProvider);
+  }
+  const auto& state = session.GetSessionState();
+  ASSERT_TRUE(state.GetEnableMemoryPattern());
+  const Node* node = FindNodeByOpType(session.GetGraph(), "GroupQueryAttention");
+  ASSERT_NE(node, nullptr);
+  const auto* kernel = state.GetKernel(node->Index());
+  ASSERT_NE(kernel, nullptr);
+  const Node* reference_node = FindNodeByOpType(reference.GetGraph(), "GroupQueryAttention");
+  ASSERT_NE(reference_node, nullptr);
+  const auto* reference_kernel = reference.GetSessionState().GetKernel(reference_node->Index());
+  ASSERT_NE(reference_kernel, nullptr);
+  const auto& plans = state.GetExecutionPlan()->workspace_allocation_plan.at(node->Index());
+  ASSERT_EQ(plans.size(), 1u);
+  const auto& plan = plans.front();
+  auto gpu_allocator = state.GetAllocator(plan.location);
+  auto reference_gpu_allocator = reference.GetSessionState().GetAllocator(plan.location);
+  ASSERT_NE(gpu_allocator, nullptr);
+  ASSERT_NE(reference_gpu_allocator, nullptr);
+  auto cpu_allocator = std::make_shared<CPUAllocator>();
+  const std::vector<std::string> input_names{
+      "query", "key", "value", "past_key", "past_value", "seqlens_k", "total_sequence_length"};
+  const std::vector<std::string> output_names{"output", "present_key", "present_value"};
+  InlinedVector<OrtValue> feeds(input_names.size());
+  InlinedVector<OrtValue> reference_feeds(input_names.size());
+  RandomValueGenerator random(32071);
+  size_t run = 0;
+  for (int32_t start_length : {1022, 2048, 1022}) {
+    for (size_t i : {size_t{3}, size_t{4}}) {
+      const TensorShape shape{1, 2, kCapacity, head_size};
+      const auto values = random.Uniform<MLFloat16>(shape.GetDims(), -0.25f, 0.25f);
+      OrtValue initial_cache;
+      CreateMLValue<MLFloat16>(cpu_allocator, shape.GetDims(), values, &initial_cache);
+      Tensor::InitOrtValue(DataTypeImpl::GetType<MLFloat16>(), shape, gpu_allocator, feeds[i]);
+      Tensor::InitOrtValue(DataTypeImpl::GetType<MLFloat16>(), shape, reference_gpu_allocator, reference_feeds[i]);
+      ASSERT_STATUS_OK(state.GetDataTransferMgr().CopyTensor(initial_cache.Get<Tensor>(), *feeds[i].GetMutable<Tensor>()));
+      ASSERT_STATUS_OK(reference.GetSessionState().GetDataTransferMgr().CopyTensor(
+          initial_cache.Get<Tensor>(), *reference_feeds[i].GetMutable<Tensor>()));
+    }
+    for (int32_t step = 0; step < 4; ++step, ++run) {
+      const int32_t total_length = start_length + step;
+      SCOPED_TRACE(MakeString("backend=", static_cast<int>(backend), ", run=", run, ", total_length=", total_length));
+      for (size_t i = 0; i < 3; ++i) {
+        const TensorShape shape{1, 1, (i == 0 ? 8 : 2) * head_size};
+        const auto values = random.Uniform<MLFloat16>(shape.GetDims(), -0.25f, 0.25f);
+        CreateMLValue<MLFloat16>(cpu_allocator, shape.GetDims(), values, &feeds[i]);
+        reference_feeds[i] = feeds[i];
+      }
+      CreateMLValue<int32_t>(cpu_allocator, {1}, {total_length - 1}, &feeds[5]);
+      CreateMLValue<int32_t>(cpu_allocator, {}, {total_length}, &feeds[6]);
+      reference_feeds[5] = feeds[5];
+      reference_feeds[6] = feeds[6];
+      // Binding both present outputs to their GPU inputs makes the shared-cache decode route explicit.
+      std::vector<OrtValue> outputs{OrtValue{}, feeds[3], feeds[4]};
+      std::vector<OrtValue> expected{OrtValue{}, reference_feeds[3], reference_feeds[4]};
+      ASSERT_STATUS_OK(reference.Run(RunOptions{}, input_names, reference_feeds, output_names, &expected));
+      ASSERT_STATUS_OK(session.Run(RunOptions{}, input_names, feeds, output_names, &outputs));
+      const auto usage = GetGroupQueryAttentionWorkspaceUsageForTest(kernel);
+      const auto reference_usage = GetGroupQueryAttentionWorkspaceUsageForTest(reference_kernel);
+      ASSERT_EQ(usage.backend, backend);
+      ASSERT_EQ(reference_usage.backend, backend);
+      EXPECT_EQ(reference_usage.planned_regions, 0u);
+      EXPECT_GT(reference_usage.dynamic_regions, 0u);
+      if (run != 0 && total_length <= kEnvelope) {
+        EXPECT_GT(usage.planned_regions, 0u);
+        EXPECT_EQ(usage.dynamic_regions, 0u);
+      } else {
+        EXPECT_EQ(usage.planned_regions, 0u);
+        EXPECT_GT(usage.dynamic_regions, 0u);
+      }
+      if (backend == GQABackend::Flash) {
+        EXPECT_GT(usage.flash_num_splits, 1);
+      }
+      ASSERT_EQ(outputs.size(), output_names.size());
+      ASSERT_EQ(expected.size(), output_names.size());
+      for (size_t i = 0; i < outputs.size(); ++i) {
+        OrtValue actual_cpu;
+        OrtValue expected_cpu;
+        if (i == 0) {
+          actual_cpu = outputs[i];
+          expected_cpu = expected[i];
+        } else {
+          Tensor::InitOrtValue(DataTypeImpl::GetType<MLFloat16>(), outputs[i].Get<Tensor>().Shape(),
+                               cpu_allocator, actual_cpu);
+          Tensor::InitOrtValue(DataTypeImpl::GetType<MLFloat16>(), expected[i].Get<Tensor>().Shape(),
+                               cpu_allocator, expected_cpu);
+          ASSERT_STATUS_OK(state.GetDataTransferMgr().CopyTensor(outputs[i].Get<Tensor>(), *actual_cpu.GetMutable<Tensor>()));
+          ASSERT_STATUS_OK(reference.GetSessionState().GetDataTransferMgr().CopyTensor(
+              expected[i].Get<Tensor>(), *expected_cpu.GetMutable<Tensor>()));
+        }
+        const auto [result, message] = CompareOrtValue(actual_cpu, expected_cpu, 0.001, 0.001, false);
+        EXPECT_EQ(result, COMPARE_RESULT::SUCCESS) << "output=" << output_names[i] << ": " << message;
+      }
+    }
+  }
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, FlashDecodeConsumesPlannedSplitWorkspace) {
+  CheckPlannedGroupQueryAttentionDecodeRoute(GQABackend::Flash);
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, XqaDecodeConsumesPlannedWorkspace) {
+  CheckPlannedGroupQueryAttentionDecodeRoute(GQABackend::Xqa);
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, MemoryEfficientDecodeConsumesPlannedWorkspace) {
+  CheckPlannedGroupQueryAttentionDecodeRoute(GQABackend::MemoryEfficient);
+}
+
 TEST(GroupQueryAttentionWorkspaceEstimateTest, ExplicitZeroEnvelopeInitializesWithAndWithoutPlanning) {
   if (!HasCudaDevice()) {
     GTEST_SKIP() << "A CUDA device is required to construct the CUDA kernel.";

@@ -22,10 +22,15 @@ namespace onnxruntime::test {
 struct CudaWorkspaceUsageForTest {
   size_t planned_regions;
   size_t dynamic_regions;
+  contrib::cuda::GQABackend backend;
+  int flash_num_splits;
 };
 
 // The caller must supply a GroupQueryAttention<MLFloat16, MLFloat16> kernel.
 CudaWorkspaceUsageForTest GetGroupQueryAttentionWorkspaceUsageForTest(const void* kernel);
+
+size_t GetXQARequiredSharedMemoryBytesForTest(
+    const cudaDeviceProp& device_prop, int head_size, int num_heads, int kv_num_heads);
 
 std::optional<contrib::cuda::GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimateConfigForTest(
     const void* node, bool head_sink_is_constant_initializer = false,
