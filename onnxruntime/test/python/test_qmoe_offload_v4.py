@@ -132,7 +132,7 @@ def _cuda_malloc(cudart, nbytes: int, device_id: int = 0) -> ctypes.c_void_p:
 
 
 def _cuda_upload(cudart, device_ptr: ctypes.c_void_p, arr: np.ndarray) -> None:
-    arr = np.ascontiguousarray(arr, dtype=np.float32)
+    arr = np.ascontiguousarray(arr)
     status = cudart.cudaMemcpy(device_ptr, arr.ctypes.data_as(ctypes.c_void_p), arr.nbytes, 1)  # cudaMemcpyHostToDevice
     if status != 0:
         raise RuntimeError(f"cudaMemcpy failed with status {status}")
@@ -3453,20 +3453,29 @@ int main() {
                     self.assertEqual(session.get_providers()[0], "CUDAExecutionProvider")
                     if cuda_graph:
                         self.assertTrue(use_fp16)
-                        x_value = ort.OrtValue.ortvalue_from_numpy(cases[0][0].astype(np.float16), "cuda", 0)
-                        r_value = ort.OrtValue.ortvalue_from_numpy(cases[0][1].astype(np.float16), "cuda", 0)
-                        y_value = ort.OrtValue.ortvalue_from_shape_and_type(cases[0][0].shape, np.float16, "cuda", 0)
-                        binding = session.io_binding()
-                        binding.bind_ortvalue_input("X", x_value)
-                        binding.bind_ortvalue_input("router_probs", r_value)
-                        binding.bind_ortvalue_output("Y", y_value)
-                        outputs = []
-                        for x, router in cases:
-                            x_value.update_inplace(x.astype(np.float16))
-                            r_value.update_inplace(router.astype(np.float16))
-                            session.run_with_iobinding(binding)
-                            outputs.append(y_value.numpy().astype(np.float32))
-                        del binding
+                        cudart = _load_cudart()
+                        if cudart is None:
+                            self.skipTest("CUDA runtime library is required to update captured GPU inputs in place")
+                        device_id = self._device_id(self._selected_plugin_device())
+                        # CUDA OrtValue allocation uses the legacy provider interface, absent in plugin-only builds.
+                        with contextlib.ExitStack() as buffers:
+                            x_ptr = _cuda_malloc(cudart, cases[0][0].size * np.dtype(np.float16).itemsize, device_id)
+                            buffers.callback(cudart.cudaFree, x_ptr)
+                            r_ptr = _cuda_malloc(cudart, cases[0][1].size * np.dtype(np.float16).itemsize, device_id)
+                            buffers.callback(cudart.cudaFree, r_ptr)
+                            binding = session.io_binding()
+                            binding.bind_input("X", "cuda", device_id, np.float16, cases[0][0].shape, x_ptr.value)
+                            binding.bind_input(
+                                "router_probs", "cuda", device_id, np.float16, cases[0][1].shape, r_ptr.value
+                            )
+                            binding.bind_output("Y", "cuda", device_id)
+                            outputs = []
+                            for x, router in cases:
+                                _cuda_upload(cudart, x_ptr, x.astype(np.float16))
+                                _cuda_upload(cudart, r_ptr, router.astype(np.float16))
+                                session.run_with_iobinding(binding)
+                                outputs.append(binding.copy_outputs_to_cpu()[0].astype(np.float32))
+                            del binding
                     else:
                         run = self._run_fp16 if use_fp16 else self._run_bf16
                         outputs = [run(session, x, router) for x, router in cases]
