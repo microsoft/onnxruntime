@@ -169,6 +169,38 @@ class T8ConversionTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "never overwrites"):
                 convert_model(source, output)
 
+    def test_validates_zero_points_of_cached_matrices(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tensors = [
+                numpy_helper.from_array(np.full((7, 1, 32), 0x24, dtype=np.uint8), "B"),
+                numpy_helper.from_array(np.arange(1, 8, dtype=np.float32)[:, None] / 16, "S"),
+                numpy_helper.from_array(np.full((7, 1), 0x55, dtype=np.uint8), "Z1"),
+                numpy_helper.from_array(np.zeros((7, 1), dtype=np.uint8), "Z0"),
+            ]
+            attrs = {"K": 128, "N": 7, "bits": 2, "block_size": 128}
+            nodes = [
+                helper.make_node("MatMulNBits", ["A", "B", "S", "Z1"], ["Y1"], domain="com.microsoft", **attrs),
+                helper.make_node("MatMulNBits", ["A", "B", "S", "Z0"], ["Y2"], domain="com.microsoft", **attrs),
+                helper.make_node("Add", ["Y1", "Y2"], ["Y"]),
+            ]
+            graph = helper.make_graph(
+                nodes,
+                "test",
+                [helper.make_tensor_value_info("A", onnx.TensorProto.FLOAT, [1, 128])],
+                [helper.make_tensor_value_info("Y", onnx.TensorProto.FLOAT, [1, 7])],
+                tensors,
+            )
+            model = helper.make_model(
+                graph,
+                opset_imports=[helper.make_opsetid("", 21), helper.make_opsetid("com.microsoft", 1)],
+                ir_version=10,
+            )
+            source = root / "q2.onnx"
+            onnx.save_model(model, source)
+            with self.assertRaisesRegex(ValueError, "every zero point must equal 1"):
+                convert_model(source, root / "t8.onnx")
+
 
 if __name__ == "__main__":
     unittest.main()

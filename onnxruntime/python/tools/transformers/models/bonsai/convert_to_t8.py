@@ -60,21 +60,25 @@ def convert_model(source: Path, output: Path) -> dict:
                 raise ValueError(f"{node.name}: expected explicit zero point and no g_idx or bias")
             weight, scales, zeros = (resolve(name) for name in node.input[1:4])
             key = (weight.name, scales.name, int(attrs["N"]), int(attrs["K"]))
+            n, k = key[2:]
+            if k <= 0 or k % 128:
+                raise ValueError(f"{node.name}: Q2 shape disagrees with K/N")
+            # Zero points are not part of the matrix cache key, so validate them for every node.
+            zp = array(zeros)
+            if zp.dtype != np.uint8:
+                raise ValueError(f"{node.name}: expected packed uint8 zero points")
+            expected_zp_bytes = (k // 128 + 3) // 4
+            if zp.shape not in ((n, expected_zp_bytes), (n * expected_zp_bytes,)):
+                raise ValueError(f"{node.name}: invalid zero-point shape")
+            zp_codes = ((zp.reshape(n, -1, 1) >> np.array([0, 2, 4, 6], dtype=np.uint8)) & 3).reshape(n, -1)
+            if not np.all(zp_codes[:, : k // 128] == 1):
+                raise ValueError(f"{node.name}: every zero point must equal 1")
             if key not in matrices:
-                packed, s, zp = array(weight), array(scales), array(zeros)
+                packed, s = array(weight), array(scales)
                 if s.dtype != np.float32:
                     raise ValueError(f"{node.name}: MatMulTernary currently supports float32 activations only")
-                n, k = key[2:]
-                if packed.shape != (n, k // 128, 32) or k <= 0 or k % 128:
+                if packed.shape != (n, k // 128, 32):
                     raise ValueError(f"{node.name}: Q2 shape disagrees with K/N")
-                if zp.dtype != np.uint8:
-                    raise ValueError(f"{node.name}: expected packed uint8 zero points")
-                expected_zp_bytes = (k // 128 + 3) // 4
-                if zp.shape not in ((n, expected_zp_bytes), (n * expected_zp_bytes,)):
-                    raise ValueError(f"{node.name}: invalid zero-point shape")
-                zp_codes = ((zp.reshape(n, -1, 1) >> np.array([0, 2, 4, 6], dtype=np.uint8)) & 3).reshape(n, -1)
-                if not np.all(zp_codes[:, : k // 128] == 1):
-                    raise ValueError(f"{node.name}: every zero point must equal 1")
                 planes, t8_scales = encode_q2(packed, s, verify=True)
                 names = (weight.name + ".t8", scales.name + ".t8")
                 if any(name in initializers for name in names):
