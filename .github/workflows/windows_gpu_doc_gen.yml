@@ -97,6 +97,12 @@ jobs:
         with:
           architecture: x64
 
+      - name: Setup VCPKG Cache
+        uses: ./.github/actions/setup-vcpkg-cache
+        with:
+          key: windows-docgen-runtime-x64-relwithdebinfo
+          path: ${{ runner.temp }}/vcpkg-binary-cache
+
       - name: Install python modules
         run: python -m pip install -r .\tools\ci_build\github\windows\python\requirements.txt
         working-directory: ${{ github.workspace }}
@@ -175,6 +181,7 @@ jobs:
             --skip_tests `
             --build_wheel `
             --use_full_protobuf `
+            --use_vcpkg `
             --use_dml `
             --use_cuda `
             --cuda_home="$env:RUNNER_TEMP\v12.8" `
@@ -220,6 +227,12 @@ jobs:
         with:
           architecture: x64
 
+      - name: Setup VCPKG Cache
+        uses: ./.github/actions/setup-vcpkg-cache
+        with:
+          key: windows-docgen-webgpu-x64-relwithdebinfo
+          path: ${{ runner.temp }}/vcpkg-binary-cache
+
       - name: Install python modules
         run: python -m pip install -r .\tools\ci_build\github\windows\python\requirements.txt
         working-directory: ${{ github.workspace }}
@@ -240,6 +253,7 @@ jobs:
             --build `
             --skip_tests `
             --use_full_protobuf `
+            --use_vcpkg `
             --use_webgpu shared_lib `
             --target onnxruntime_providers_webgpu `
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
