@@ -416,6 +416,45 @@ TEST(QDQTransformerTests, DQ_S8_to_U8) {
 }
 #endif  // Only for X64 with contrib ops enabled
 
+TEST(QDQTransformerTests, AveragePoolQuantizationParameterRanks) {
+  for (int opset : {13, 18}) {
+    for (bool vector_input_params : {false, true}) {
+      for (bool vector_output_params : {false, true}) {
+        for (bool omit_zero_points : {false, true}) {
+          SCOPED_TRACE(MakeString(opset, ",", vector_input_params, ",", vector_output_params, ",", omit_zero_points));
+          auto build_test_case = [&](ModelTestBuilder& builder) {
+            auto add_qdq = [&](const std::string& op_type, NodeArg* input, NodeArg* output, bool vector_params) {
+              const std::vector<int64_t> shape = vector_params ? std::vector<int64_t>{1} : std::vector<int64_t>{};
+              auto* scale = builder.MakeInitializer<float>(shape, {1.0f});
+              std::vector<NodeArg*> inputs{input, scale};
+              if (!omit_zero_points) {
+                inputs.push_back(builder.MakeInitializer<uint8_t>(shape, {0}));
+              }
+              builder.AddNode(op_type, inputs, {output}).AddAttribute("axis", int64_t{0});
+            };
+            auto* input = builder.MakeInput<uint8_t>({1, 1, 4}, {2, 4, 6, 8});
+            auto* dq = builder.MakeIntermediate();
+            add_qdq("DequantizeLinear", input, dq, vector_input_params);
+            auto* pool = builder.MakeIntermediate();
+            builder.AddNode("AveragePool", {dq}, {pool}).AddAttribute("kernel_shape", std::vector<int64_t>{2});
+            auto* q = builder.MakeIntermediate();
+            add_qdq("QuantizeLinear", pool, q, vector_output_params);
+            add_qdq("DequantizeLinear", q, builder.MakeOutput(), vector_output_params);
+          };
+          auto check_graph = [&](InferenceSessionWrapper& session) {
+            const bool should_fuse = !vector_input_params && !vector_output_params;
+            auto counts = CountOpsInGraph(session.GetGraph());
+            EXPECT_EQ(counts["com.microsoft.QLinearAveragePool"], should_fuse ? 1 : 0);
+            EXPECT_EQ(counts["AveragePool"], should_fuse ? 0 : 1);
+          };
+          TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2,
+                            opset, 0.0, 0.0, std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+        }
+      }
+    }
+  }
+}
+
 template <typename InputType, typename OutputType>
 void QDQTransformerAveragePoolTests() {
   auto test_case = [&](const std::vector<int64_t>& input_shape, bool use_contrib_qdq = false) {

@@ -412,6 +412,7 @@ class UnarySelector : public BaseSelector {
                          bool allow_4bit = false, bool allow_nonpositive_scale = true)
       : BaseSelector(std::make_unique<UnaryNodeGroupSelector>(allow_16bit, allow_4bit, allow_nonpositive_scale),
                      compatible_providers) {}
+  std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override;
 };
 
 class BinarySelector : public BaseSelector {
