@@ -11,12 +11,13 @@ Related operator and kernel documentation:
 
 ## 1. Overview
 
-Large Mixture-of-Experts models (such as 48-layer $\times$ 512-expert NVFP4 models with
+Large Mixture-of-Experts models (such as 48-layer $\times$ 512-expert NVFP4 or INT4/INT3 models with
 45 GiB–63 GiB of routed expert weights) often exceed the VRAM of 24 GiB–32 GiB consumer and
 workstation GPUs. Rather than exporting a separate hardware-specific operator or baking GPU slot
 counts into the ONNX graph, ONNX Runtime supports **portable runtime CPU/GPU offload** on standard
-row-major NVFP4 `com.microsoft::QMoE` nodes (`quant_type="nvfp4"`, `expert_weight_bits=4`,
-`block_size=16`, `weights_prepacked=1`) controlled entirely by `session.moe.offload.*`
+`com.microsoft::QMoE` nodes (row-major NVFP4 with `weights_prepacked=1`, SM80-prepacked INT4 with
+`weights_prepacked=1` and `block_size=32`, and raw INT3 with `weights_prepacked=0` and
+`block_size` in `{32, 64, 128}`) controlled entirely by `session.moe.offload.*`
 session options.
 
 A **single canonical `com.microsoft::QMoE` model package** runs unchanged across:
@@ -104,7 +105,7 @@ session creation with `ORT_INVALID_ARGUMENT`.
 | `session.moe.offload.reserve_device_bytes` | `"auto"` or integer bytes | `0` | GPU VRAM bytes reserved for post-initialization KV/GDN caches, child sessions (`mtp.onnx`), and CUDA Graph pools when `device_expert_bytes="auto"`. |
 | `session.moe.offload.device_working_bytes` | Positive integer bytes | `268435456` (`256 MiB`) | Upper bound on the aggregate transient GPU working set of one prefill call: runner scratch, expert-compaction maps, compacted biases, multi-pass accumulators, DMA staging, and the dequantized expert weights (counted once, whether they live in the arena or in the DMA workspace). A call whose aggregate does not fit fails with an error naming this option. |
 | `session.moe.offload.host_working_bytes` | Positive integer bytes | `67108864` (`64 MiB`) | Upper bound on transient CPU thread-pool scratch buffers. |
-| `session.moe.offload.pinned_bytes` | `"auto"` or non-negative integer bytes | `67108864` (`64 MiB`) | Upper bound on pinned host DMA staging and promotion bounce buffers. |
+| `session.moe.offload.pinned_bytes` | `"auto"` or non-negative integer bytes | `67108864` (`64 MiB`) | Upper bound on pinned host DMA staging and promotion bounce buffers. Hybrid sessions reserve up to 24 MiB (at most half the limit) for decode; CPU-disabled sessions do not reserve decode headroom. |
 | `session.moe.offload.budget_group` | String identifier | `""` (per-session) | Optional cross-session budget group name shared across target and draft sessions on the same GPU. |
 | `session.moe.offload.gpu_device_mem_limit` | Non-negative integer bytes | `0` (no limit) | Per-session cap on the bytes this session may allocate on the GPU through its CUDA allocators (BFC arena growth and MoE offload buffers). It is read when the CUDA EP is created, so it must be set before the session is created. Honored by both the bundled CUDA EP and the CUDA plugin EP; it is not part of `OrtCUDAProviderOptionsV2`. Not the same as `gpu_mem_limit` (see §5.1). Not supported together with an external CUDA allocator or a CUDA memory pool. |
 | `session.moe.offload.allow_file_backing` | `"0"`, `"1"` | `"1"` | Allows `FileExpertStore` to read uncached cold experts from the backing weight files when `host_expert_bytes` is bounded. |
@@ -219,8 +220,8 @@ is split across five deterministic stages in [session_state.cc](../../onnxruntim
 
 ```
 Stage 1: PlaceMoeOffloadInitializersOnCpu (SessionState::FinalizeSessionState, before SaveInitializedTensors)
-  └─ Overrides exec_plan location of eligible row-major NVFP4 QMoE (slots 2..7, 15, 16) initializers
-     to OrtDevice::CPU and skips memory-pattern tracing for external CPU initializers.
+  └─ Overrides exec_plan location of eligible NVFP4 / prepacked INT4 / raw INT3 QMoE (slots 2..7, 15, 16)
+     initializers to OrtDevice::CPU and skips memory-pattern tracing for external CPU initializers.
      SaveInitializedTensors() maps external files on CPU with 0 B GPU VRAM allocated for experts.
         │
 Stage 2: Kernel Construction & Zero-Copy PrePack Bypass (CreateKernel -> OpKernel::PrePack)

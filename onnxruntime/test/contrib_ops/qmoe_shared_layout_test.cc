@@ -1220,10 +1220,42 @@ TEST(QMoESharedLayoutTest, CanonicalInt4ExpertViewMatchesReferenceAcrossPrepacke
       for (size_t i = 0; i < out_scalar.size(); ++i) {
         EXPECT_NEAR(out_simd[i], out_scalar[i], 1e-5f) << "prepacked=" << prepacked << " bf16=" << is_bf16 << " i=" << i;
         if (!is_bf16) {
-          EXPECT_NEAR(out_scalar[i], ref_blk_out[i], 1e-5f) << "prepacked=" << prepacked << " i=" << i;
+          EXPECT_NEAR(out_scalar[i], ref_blk_out[i], 2e-3f) << "prepacked=" << prepacked << " i=" << i;
         }
       }
     }
+  }
+
+  // Verify FP16 Int4Fc1SwiGluRange does not round intermediate gate/up projections to FP16 before SwiGLU:
+  // gate_bias=65504 + gate_proj=32 = 65536 (would overflow to +inf in FP16) multiplied by up=2^-16 must equal 1.0f.
+  {
+    std::vector<uint8_t> w_one(static_cast<size_t>(n1 * hidden / 2), 0x88);
+    // For raw INT4 (weights_are_prepacked=false), nibble 9 (+1) at column 0 (gate), k=0 gives dot=32 when x[0]=32, scale=1.
+    w_one[0] = 0x89;
+    std::vector<uint16_t> s_one(static_cast<size_t>(n1 * (hidden / 32)), shared::FloatToHalf(1.0f));
+    std::vector<uint16_t> b_one(static_cast<size_t>(n1), shared::FloatToHalf(0.0f));
+    b_one[0] = shared::FloatToHalf(65504.0f);
+    b_one[1] = shared::FloatToHalf(std::ldexp(1.0f, -16));
+    std::vector<float> x_one(static_cast<size_t>(hidden), 0.0f);
+    x_one[0] = 32.0f;
+    std::vector<float> xr_one(static_cast<size_t>(hidden), 0.0f);
+    shared::ReorderRawInt4ActivationRow(x_one.data(), xr_one.data(), hidden);
+    shared::Int4ExpertView v_one{};
+    v_one.fc1_weights = w_one.data();
+    v_one.fc1_scales = s_one.data();
+    v_one.fc1_bias = b_one.data();
+    v_one.weights_are_prepacked = false;
+    v_one.scale_is_bf16 = false;
+    v_one.bias_is_bf16 = false;
+    const shared::SwiGluParams swiglu_no_beta{1.0f, 0.0f, std::numeric_limits<float>::infinity()};
+    std::vector<float> inter_scalar(static_cast<size_t>(inter), 0.0f);
+    std::vector<float> inter_simd(static_cast<size_t>(inter), 0.0f);
+    shared::Int4Fc1SwiGluRange(hidden, inter, v_one, xr_one.data(), 1, swiglu_no_beta, inter_scalar.data(),
+                               0, n1, /*force_scalar=*/true, /*bf16_boundaries=*/false, /*fp16_boundaries=*/true);
+    shared::Int4Fc1SwiGluRange(hidden, inter, v_one, xr_one.data(), 1, swiglu_no_beta, inter_simd.data(),
+                               0, n1, /*force_scalar=*/false, /*bf16_boundaries=*/false, /*fp16_boundaries=*/true);
+    EXPECT_FLOAT_EQ(inter_scalar[0], 1.0f);
+    EXPECT_FLOAT_EQ(inter_simd[0], 1.0f);
   }
 }
 
@@ -1564,6 +1596,7 @@ struct BarrierProbe {
   bool succeed = true;
   int calls = 0;
   bool pin_held_when_called = false;
+  int32_t blocked_expert = 1;
   shared::FileExpertStore* store = nullptr;
 };
 
@@ -1572,8 +1605,8 @@ bool ProbeBarrier(void* context) noexcept {
   ++probe->calls;
   // The slot must still be pinned while queued device reads are being completed.
   shared::ExpertBlockLease other{};
-  probe->pin_held_when_called = !probe->store->AcquireReady(1, &other);
-  if (!probe->pin_held_when_called) probe->store->ReleaseLease(1);
+  probe->pin_held_when_called = !probe->store->AcquireReady(probe->blocked_expert, &other);
+  if (!probe->pin_held_when_called) probe->store->ReleaseLease(probe->blocked_expert);
   return probe->succeed;
 }
 
@@ -1639,6 +1672,30 @@ TEST_F(ScopedExpertLeaseTest, ExplicitCompletionReleasesWithoutRunningBarrier) {
   EXPECT_EQ(probe.calls, 0);
   EXPECT_TRUE(guard.Release());  // idempotent
   EXPECT_TRUE(CanServe(1));
+}
+
+TEST_F(ScopedExpertLeaseTest, GroupPinsRemainQuarantinedUntilDeviceReadsComplete) {
+  store_.Shutdown();
+  ASSERT_TRUE(store_.Initialize(path_.string().c_str(), 0, kNumExperts, kStride, /*cache_slots=*/2));
+  const int32_t expert_ids[] = {0, 1};
+  shared::ExpertBlockLease leases[2]{};
+  ASSERT_TRUE(store_.AcquireGroupReady(expert_ids, 2, leases));
+  const shared::ExpertLeaseGroup groups[] = {{expert_ids, 1}, {expert_ids + 1, 1}};
+  BarrierProbe probe;
+  probe.store = &store_;
+  probe.blocked_expert = 2;
+  probe.succeed = false;
+
+  EXPECT_FALSE(shared::ReleaseExpertLeaseGroupsAfterDeviceReads(store_, groups, 2, &ProbeBarrier, &probe));
+  EXPECT_EQ(probe.calls, 1);
+  EXPECT_TRUE(probe.pin_held_when_called);
+  EXPECT_FALSE(CanServe(2));
+
+  probe.succeed = true;
+  EXPECT_TRUE(shared::ReleaseExpertLeaseGroupsAfterDeviceReads(store_, groups, 2, &ProbeBarrier, &probe));
+  EXPECT_EQ(probe.calls, 2);
+  EXPECT_TRUE(probe.pin_held_when_called);
+  EXPECT_TRUE(CanServe(2));
 }
 
 }  // namespace

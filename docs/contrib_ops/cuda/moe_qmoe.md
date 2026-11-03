@@ -279,6 +279,15 @@ the all-INT4 package and 5% and 2.3% shorter for the two INT3-mixed packages.
 top-4 routing against a host reference that rounds every dequantized weight to
 BF16 and accumulates in FP32.
 
+For BF16 `INT2` (`cutlass::uint2b_t`, `block_size` in `{32, 64, 128}`) when
+`expanded_num_rows >= 33` (configurable via `ep.cuda.moe_gemv_tc_min_rows` or
+`ORT_MOE_GEMV_TC_MIN_ROWS`, disabled via `ep.cuda.disable_moe_gemv_tc=1` or
+`ORT_DISABLE_MOE_GEMV_TC=1`), `launch_moe_gemv_int_symmetric` and
+`launch_moe_gemv_int_symmetric_interleaved_swiglu` dispatch to the SM80+
+Tensor-Core kernel `MoeGemvTcInt2Kernel` (`mma.sync.m16n8k16`, grouping up to
+8 routes sharing an expert per warp tile and extracting three 2-bit fields per
+shift inside BF16's 7-bit mantissa).
+
 ### 4.1 Per-mode dispatch matrix
 
 | Mode | SM75-89 (Ampere/Ada) | SM90 (Hopper) | SM100 (Blackwell) | SM120 (RTX 5090) |
@@ -1799,17 +1808,31 @@ CPU kernels and byte-preserving `FileExpertStore`).
 Exporters emit standard `com.microsoft::QMoE` nodes with **no offload-specific operator attributes,
 inputs, or outputs**.
 
-| Encoding | `quant_type` | `expert_weight_bits` | `block_size` | `weights_prepacked` | `swiglu_fusion` | Required Expert Input Slots |
+| Encoding | `quant_type` | `expert_weight_bits` (`fc1`/`fc2`/`fc3`) | `block_size` | `weights_prepacked` | `swiglu_fusion` | Required & Optional Expert Input Slots |
 | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
-| **NVFP4 (W4A16)** | `"nvfp4"` | `4` | `16` | `1` (offline K-packed row-major) | `0` or `1` (interleaved) | • **Slot 2 (`fc1_experts_weights`)**: `uint8`, physical `[E, 2*I, H/2]` (logical `[E, H, I]`)<br>• **Slot 3 (`fc1_scales`)**: `float8e4m3fn`, `[E, 2*I, H/16]`<br>• **Slot 5 (`fc2_experts_weights`)**: `uint8`, physical `[E, H, I/2]` (logical `[E, I, H/2]`)<br>• **Slot 6 (`fc2_scales`)**: `float8e4m3fn`, `[E, H, I/16]`<br>• **Slot 15 (`fc1_global_scale`)**: `float32`, `[E]`<br>• **Slot 16 (`fc2_global_scale`)**: `float32`, `[E]`<br>• *(Optional)* **Slots 4, 7**: `fc1_experts_bias` `[E, 2*I]`, `fc2_experts_bias` `[E, H]` (`fp16`/`bf16`) |
+| **NVFP4 (W4A16)** | `"nvfp4"` | `4` (`4`/`4`/`4`) | `16` (or omitted/`-1`) | `1` (offline K-packed row-major) | `0` or `1` (interleaved) | • **Slot 2 (`fc1_experts_weights`)**: `uint8`, physical `[E, 2*I, H/2]` or legacy `[E, H, I]`<br>• **Slot 3 (`fc1_scales`)**: `float8e4m3fn`, `[E, 2*I, H/16]`<br>• **Slot 5 (`fc2_experts_weights`)**: `uint8`, physical `[E, H, I/2]` or legacy `[E, I, H/2]`<br>• **Slot 6 (`fc2_scales`)**: `float8e4m3fn`, `[E, H, I/16]`<br>• **Slot 15 (`fc1_global_scale`)**: `float32`, `[E]`<br>• **Slot 16 (`fc2_global_scale`)**: `float32`, `[E]`<br>• *(Optional)* **Slots 4, 7**: `fc1_experts_bias` `[E, 2*I]`, `fc2_experts_bias` `[E, H]` (`fp16`/`bf16`) |
+| **Prepacked INT4 (W4A16)** | `"int"` | `4` (`4`/`4`/`4`) | `32` (explicit) | `1` (explicit SM80 `fpA_intB` layout) | `0` or `1` (interleaved) | • **Slot 2 (`fc1_experts_weights`)**: `uint8`, `[E, H, I]` or `[E, 2*I, H/2]`<br>• **Slot 3 (`fc1_scales`)**: `fp16`/`bf16` (matching activation), `[E, 2*I, H/32]`<br>• **Slot 5 (`fc2_experts_weights`)**: `uint8`, `[E, I, H/2]` or `[E, H, I/2]`<br>• **Slot 6 (`fc2_scales`)**: `fp16`/`bf16` (matching activation), `[E, H, I/32]`<br>• *(Optional)* **Slots 4, 7**: `fc1_experts_bias` `[E, 2*I]`, `fc2_experts_bias` `[E, H]` (`fp16`/`bf16`) |
+| **Raw INT3 (W3A16)** | `"int"` | `3` (`3`/`3`/`3`) | `32`, `64`, or `128` (explicit) | `0` (explicit raw packed 3-bit codes) | `1` (interleaved) | • **Slot 2 (`fc1_experts_weights`)**: `uint8`, `[E, 2*I, (H*3)/8]`<br>• **Slot 3 (`fc1_scales`)**: `fp16`/`bf16` (matching activation), `[E, 2*I, H/block_size]`<br>• **Slot 5 (`fc2_experts_weights`)**: `uint8`, `[E, H, (I*3)/8]`<br>• **Slot 6 (`fc2_scales`)**: `fp16`/`bf16` (matching activation), `[E, H, I/block_size]`<br>• *(Optional)* **Slots 4, 7**: `fc1_experts_bias` `[E, 2*I]`, `fc2_experts_bias` `[E, H]` (`fp16`/`bf16`) |
 
-> **Eligibility note**: Only `com.microsoft::QMoE` nodes with `quant_type="nvfp4"`, `expert_weight_bits=4`,
-> `block_size=16` (or omitted/`-1`), `weights_prepacked=1`, and interleaved SwiGLU (`swiglu_fusion` in `{0, 1}`)
-> are registered for `session.moe.offload.*` admission. When `session.moe.offload.mode="auto"`, any other
-> `MoE`/`QMoE` node (such as `quant_type="int"` INT4/INT3, `quant_type="fp4"` MXFP4, or `quant_type="fp8"`)
-> keeps its initializers on GPU and executes through the standard CUDA `MoE`/`QMoE` path. When
-> `session.moe.offload.mode="required"`, unsupported nodes or shared non-offload initializer consumers fail
-> fast during session initialization with `ORT_INVALID_ARGUMENT`.
+#### Offload Eligibility Matrix vs. Standard CUDA `QMoE`
+
+Ordinary CUDA `QMoE` supports a wider set of attributes and optional inputs than the `session.moe.offload.*` backend:
+
+- **Uniform projection bitwidths**: `fc1_expert_weight_bits`, `fc2_expert_weight_bits`, and `fc3_expert_weight_bits` (when specified) must all equal `expert_weight_bits` (`4` for NVFP4/INT4, `3` for INT3). Mixed-bitwidth projections within a single node stay on the standard CUDA `QMoE` path.
+- **Explicit `weights_prepacked` & `block_size` declaration**:
+  - Prepacked INT4 offload requires explicit `weights_prepacked=1` and `block_size=32` with row-major `[E, 2*I, H/32]` and `[E, H, I/32]` scales (which `CopyOrTransposeScaleBankToHost` transposes into GPU `[E, K/32, N]` slabs upon upload while keeping CPU `FileExpertStore` byte-preserving). Nodes with `weights_prepacked=0` (raw INT4) or omitted/`-1` `weights_prepacked` are not admitted to offload.
+  - Raw INT3 offload requires explicit `weights_prepacked=0`, `swiglu_fusion=1`, and `block_size` in `{32, 64, 128}`.
+- **Device capability & dimension alignment**: Offload admission requires an **SM80+** CUDA device (`E > 0`, `0 < k <= E`). Prepacked INT4 requires `H % 64 == 0` and `I % 64 == 0` (complete 64-element reduction tiles); NVFP4 and INT3 require `H % 32 == 0`, `I % 32 == 0`, `H % block_size == 0`, and `I % block_size == 0`.
+- **Symmetric quantization, optional biases & global scales**: Asymmetric zero-point inputs (`slots 11..13`), separate `fc3` weights/scales/bias (`slots 8..10`), separate `router_weights` (`slot 14`), activation scales (`slots 17..20`), `use_sparse_mixer=1`, and `swiglu_fusion=2` are rejected by offload admission. When optional `fc1_experts_bias` (`slot 4`) or `fc2_experts_bias` (`slot 7`) are present, they must match the activation dtype and have shapes `[E, 2*I]` and `[E, H]`. Unused `fc1_global_scale` / `fc2_global_scale` inputs (`slots 15, 16`) on integer nodes are ignored and replaced by synthesized unit (`1.0f`) scales.
+- **Integer vs. NVFP4 tile & streaming defaults**: For integer (`int4_bank_mode_` / `int3_bank_mode_`) offload nodes, `max_sync_tile_tokens` defaults to `256`, `stream_min_tokens` defaults to `token_tile_size + 1` (`33`, unless explicitly overridden by `stream_min_tokens` or `ORT_QMOE_STREAM_MIN_TOKENS`), and `stream_min_rows` defaults to `8`. CPU grouping defaults to `group_calls=64`, `fc1_cols=128`, `fc2_cols=256` (while NVFP4 retains `group_calls=32`, `fc1_cols=64`, `fc2_cols=128`). `stream_rows` defaults to at most `2048` for INT4 and `8192` for INT3 (when `resident_slots < E`), and `stream_wave` to at most `min(16, prefill_wave_experts)` under `pinned_bytes <= 128 MiB`, clamped to `E`. These defaults are upper bounds: for INT4 at session creation the offload halves them until the streaming scratch, the double-buffered landing slabs, and the pinned staging fit `device_working_bytes` and `pinned_bytes`. It keeps the largest tile (down to `stream_min_tokens`) for which some wave fits, then the largest wave (down to `1`) for that tile. INT3 defers tile and wave budget fitting to execution (`ComputeShared`), where each call halves the wave or tile until its GPU scratch, landing slabs, and pinned staging (including optional pinned weight/scale wave staging when headroom permits) fit the available `device_working_bytes` and `pinned_bytes` budgets. If allocating or growing the shared landing/pinned ring or synchronous pinned buffer hits a budget limit at execution time, `ComputeShared` releases idle promotion bounce buffers and persistent decode pinned buffers before retrying. Planned NVFP4/MXFP4 offload nodes keep the previous fitting behavior: an explicit `stream_rows` shrinks the wave and then the tile until it fits. When it still does not fit, streaming is disabled unless `cpu_execution=disabled`. For INT4 nodes with `cpu_execution=disabled` the tile keeps its configured size at session creation and only the wave shrinks. Explicit INT4 `stream_rows`/`stream_wave` attributes or `ORT_QMOE_SHARED_STREAM_ROWS`/`ORT_QMOE_SHARED_STREAM_WAVE` values are used as written and fail with the shared-scratch limit error when they do not fit. The exception is `cpu_execution=disabled`, which ignores those overrides: the tile is the largest of `token_tile_size`, `max_sync_tile_tokens` (or `ORT_QMOE_MAX_SYNC_TILE_TOKENS`) and the `session.moe.offload.async_max_tokens` policy, and the wave starts from `session.moe.offload.prefill_wave_experts` (capped at `16` for integer nodes under `pinned_bytes <= 128 MiB`) before fitting. With `ORT_QMOE_SHARED_RESIDENT_LOG=1`, a `stream budget` line reports each reduced session-creation default.
+- **SwiGLU layout**: NVFP4/INT4 offload accepts an omitted, `0`, or `1` `swiglu_fusion` and always treats the banks as interleaved (`swiglu_fusion=1`), like the standard CUDA `QMoE` remap in [§8](#8-swiglu-fusion). INT3 offload requires an explicit `swiglu_fusion=1`.
+- **INT4 prefill workspace**: Eligible batches use CUTLASS with at most 4,096 routes per chunk. Workspace is sized for the invocation, which supplies weight scales only and so reserves no activation-smoothing buffer. It is charged against `device_working_bytes`, including the streaming landing buffers. The runner reduces its chunk capacity or falls back to GEMV when its workspace does not fit; batches below 256 routes reserve no runner workspace.
+
+> **Eligibility note**: When `session.moe.offload.mode="auto"`, any `MoE`/`QMoE` node outside the
+> table above (such as `quant_type="fp4"` MXFP4, raw INT4 `weights_prepacked=0`, omitted/`-1` `weights_prepacked` INT4,
+> `quant_type="fp8"`, `swiglu_fusion=2`, or zero-point inputs) keeps its initializers on GPU and executes through
+> the standard CUDA `MoE`/`QMoE` path. When `session.moe.offload.mode="required"`, unsupported nodes or shared
+> non-offload initializer consumers fail fast during session initialization with `ORT_INVALID_ARGUMENT`.
 
 ---
 

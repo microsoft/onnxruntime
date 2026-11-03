@@ -170,6 +170,57 @@ TEST(QMoEOffloadPlanTest, LargestInt32HiddenAndIntermediateSizesStillResolve) {
                    .valid);
 }
 
+TEST(QMoEOffloadPlanTest, RejectsZeroOrNegativeExpertCountsAndSupportsInt4AndInt3Banks) {
+  // E=0 must be rejected before per-expert division for NVFP4, INT4, and INT3.
+  EXPECT_FALSE(qmoe::ResolveNvfp4BankDims(TensorShape({0, 256, 128}), TensorShape({0, 128, 128}),
+                                          /*scale_group=*/32, 0, 0, /*scale_elem_bytes=*/2)
+                   .valid);
+  EXPECT_FALSE(qmoe::ResolveInt3BankDims(TensorShape({0, 256, 96}), TensorShape({0, 256, 48}),
+                                         /*scale_group=*/32, 0, 0)
+                   .valid);
+
+  // Valid prepacked INT4 (block_size=32, 2B FP16/BF16 scales) in both legacy [E,H,I]/[E,I,H/2] and standard layouts.
+  const uint64_t int4_fc1_s = 8ull * 256 * (256 / 32) * 2;
+  const uint64_t int4_fc2_s = 8ull * 256 * (128 / 32) * 2;
+  const auto int4_legacy = qmoe::ResolveNvfp4BankDims(
+      TensorShape({8, 256, 128}), TensorShape({8, 128, 128}), /*scale_group=*/32, int4_fc1_s, int4_fc2_s, 2);
+  ASSERT_TRUE(int4_legacy.valid);
+  EXPECT_EQ(int4_legacy.hidden, 256);
+  EXPECT_EQ(int4_legacy.inter, 128);
+
+  const auto int4_std = qmoe::ResolveNvfp4BankDims(
+      TensorShape({8, 256, 128}), TensorShape({8, 256, 64}), /*scale_group=*/32, int4_fc1_s, int4_fc2_s, 2,
+      /*min_k_tile=*/64);
+  ASSERT_TRUE(int4_std.valid);
+  EXPECT_EQ(int4_std.hidden, 256);
+  EXPECT_EQ(int4_std.inter, 128);
+
+  // Prepacked INT4 requires H and I divisible by 64 (full 64-element reduction tiles).
+  const uint64_t int4_h96_fc1_s = 8ull * 256 * (96 / 32) * 2;
+  const uint64_t int4_h96_fc2_s = 8ull * 96 * (128 / 32) * 2;
+  EXPECT_FALSE(qmoe::ResolveNvfp4BankDims(
+                   TensorShape({8, 96, 128}), TensorShape({8, 128, 48}), /*scale_group=*/32,
+                   int4_h96_fc1_s, int4_h96_fc2_s, /*scale_elem_bytes=*/2, /*min_k_tile=*/64)
+                   .valid);
+  const uint64_t int4_i96_fc1_s = 8ull * 192 * (128 / 32) * 2;
+  const uint64_t int4_i96_fc2_s = 8ull * 128 * (96 / 32) * 2;
+  EXPECT_FALSE(qmoe::ResolveNvfp4BankDims(
+                   TensorShape({8, 128, 96}), TensorShape({8, 96, 64}), /*scale_group=*/32,
+                   int4_i96_fc1_s, int4_i96_fc2_s, /*scale_elem_bytes=*/2, /*min_k_tile=*/64)
+                   .valid);
+
+  // Valid raw INT3 (block_size in {32, 64, 128}): FC1 [E, 2*I, (H*3)/8], FC2 [E, H, (I*3)/8].
+  for (int64_t blk : {32, 64, 128}) {
+    const uint64_t int3_fc1_s = static_cast<uint64_t>(8 * 256 * (256 / blk) * 2);
+    const uint64_t int3_fc2_s = static_cast<uint64_t>(8 * 256 * (128 / blk) * 2);
+    const auto int3_dims = qmoe::ResolveInt3BankDims(
+        TensorShape({8, 256, (256 * 3) / 8}), TensorShape({8, 256, (128 * 3) / 8}), blk, int3_fc1_s, int3_fc2_s);
+    ASSERT_TRUE(int3_dims.valid) << "blk=" << blk;
+    EXPECT_EQ(int3_dims.hidden, 256);
+    EXPECT_EQ(int3_dims.inter, 128);
+  }
+}
+
 namespace {
 
 qmoe::CrossLayerSite Site(const void* session, int64_t layer, bool doorbell_pending = false) {
@@ -181,6 +232,24 @@ qmoe::CrossLayerSite Site(const void* session, int64_t layer, bool doorbell_pend
 }
 
 }  // namespace
+
+TEST(QMoEOffloadPlanTest, CompletedZeroColdRequestsAreRetiredExactlyOnce) {
+  uint64_t last_serviced = 5;
+  std::atomic<size_t> pending{3};
+  EXPECT_EQ(qmoe::RetireCompletedZeroColdRequests(8, 7, last_serviced, pending), 0);
+  EXPECT_EQ(last_serviced, 5);
+  EXPECT_EQ(pending.load(), 3);
+  EXPECT_EQ(qmoe::RetireCompletedZeroColdRequests(8, 8, last_serviced, pending), 3);
+  EXPECT_EQ(last_serviced, 8);
+  EXPECT_EQ(pending.load(), 0);
+  EXPECT_EQ(qmoe::RetireCompletedZeroColdRequests(8, 8, last_serviced, pending), 0);
+  EXPECT_EQ(qmoe::RetireCompletedZeroColdRequests(7, 9, last_serviced, pending), 0);
+  EXPECT_EQ(last_serviced, 8);
+  pending.store(1);
+  EXPECT_EQ(qmoe::RetireCompletedZeroColdRequests(10, 11, last_serviced, pending), 2);
+  EXPECT_EQ(last_serviced, 10);
+  EXPECT_EQ(pending.load(), 0);
+}
 
 // The doorbell registry is shared by every session. With two 2-layer sessions registered A0, A1, B0, B1, servicing
 // A1 must not stage or publish anything for B0/B1: B may already have classified its routes with the old placement.

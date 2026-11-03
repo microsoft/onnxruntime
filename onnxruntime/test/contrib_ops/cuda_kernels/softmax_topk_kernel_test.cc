@@ -621,6 +621,75 @@ TEST(CUDA_EP_Unittest, FusedInt3RouteGroups_DecodeKernelSelection) {
       {"intermediate 192", [](Int3MoeParams& p) { p.intermediate = 192; }, Int3DecodeKernel::kScalar},
       {"block size 12", [](Int3MoeParams& p) { p.block_size = 12; }, Int3DecodeKernel::kScalar},
       {"routes beyond the grid limit", [](Int3MoeParams& p) { p.rows = 40000; }, Int3DecodeKernel::kScalar},
+      {"grouped prefill at 32 routes",
+       [](Int3MoeParams& p) {
+         p.rows = 16;
+         p.num_experts = 16;
+         p.grouped_workspace = reinterpret_cast<int*>(uintptr_t{0xa0000});
+       },
+       Int3DecodeKernel::kGrouped},
+      {"unaligned grouped input falls back within the grid limit",
+       [](Int3MoeParams& p) {
+         p.rows = 16;
+         p.num_experts = 16;
+         p.input = reinterpret_cast<const void*>(uintptr_t{0x10002});
+         p.grouped_workspace = reinterpret_cast<int*>(uintptr_t{0xa0000});
+       },
+       Int3DecodeKernel::kFast},
+      {"unaligned grouped activation falls back within the grid limit",
+       [](Int3MoeParams& p) {
+         p.rows = 16;
+         p.num_experts = 16;
+         p.activation = reinterpret_cast<void*>(uintptr_t{0x30002});
+         p.grouped_workspace = reinterpret_cast<int*>(uintptr_t{0xa0000});
+       },
+       Int3DecodeKernel::kFast},
+      {"grouped routes beyond the grid limit",
+       [](Int3MoeParams& p) {
+         p.rows = 40000;
+         p.num_experts = 16;
+         p.grouped_workspace = reinterpret_cast<int*>(uintptr_t{0xa0000});
+       },
+       Int3DecodeKernel::kGrouped},
+      {"unaligned grouped input beyond the grid limit",
+       [](Int3MoeParams& p) {
+         p.rows = 40000;
+         p.num_experts = 16;
+         p.input = reinterpret_cast<const void*>(uintptr_t{0x10002});
+         p.grouped_workspace = reinterpret_cast<int*>(uintptr_t{0xa0000});
+       },
+       Int3DecodeKernel::kScalar},
+      {"unaligned grouped activation beyond the grid limit",
+       [](Int3MoeParams& p) {
+         p.rows = 40000;
+         p.num_experts = 16;
+         p.activation = reinterpret_cast<void*>(uintptr_t{0x30002});
+         p.grouped_workspace = reinterpret_cast<int*>(uintptr_t{0xa0000});
+       },
+       Int3DecodeKernel::kScalar},
+      {"grouped FC1 static shared memory exceeds the limit",
+       [](Int3MoeParams& p) {
+         p.rows = 40000;
+         p.hidden = 3072;
+         p.num_experts = 16;
+         p.grouped_workspace = reinterpret_cast<int*>(uintptr_t{0xa0000});
+       },
+       Int3DecodeKernel::kScalar},
+      {"grouped FC2 static shared memory exceeds the limit",
+       [](Int3MoeParams& p) {
+         p.rows = 40000;
+         p.intermediate = 1536;
+         p.num_experts = 16;
+         p.grouped_workspace = reinterpret_cast<int*>(uintptr_t{0xa0000});
+       },
+       Int3DecodeKernel::kScalar},
+      {"grouped finalization exceeds the grid limit",
+       [](Int3MoeParams& p) {
+         p.rows = 70000;
+         p.num_experts = 16;
+         p.grouped_workspace = reinterpret_cast<int*>(uintptr_t{0xa0000});
+       },
+       Int3DecodeKernel::kScalar},
       {"hidden above the shared memory limit", [](Int3MoeParams& p) { p.hidden = 12544; },
        Int3DecodeKernel::kScalar},
   };
@@ -642,6 +711,115 @@ TEST(CUDA_EP_Unittest, FusedInt3RouteGroups_DecodeKernelSelection) {
     test_case.mutate(params);
     EXPECT_EQ(static_cast<int>(SelectInt3DecodeKernel(params)), static_cast<int>(test_case.expected))
         << test_case.name;
+  }
+}
+
+TEST(CUDA_EP_Unittest, Int3GroupedPrefill_AlignedAndUnalignedFp16Parity) {
+  using onnxruntime::contrib::cuda::Int3DecodeKernel;
+  using onnxruntime::contrib::cuda::Int3MoeParams;
+  using onnxruntime::contrib::cuda::LaunchInt3Moe;
+  using onnxruntime::contrib::cuda::SelectInt3DecodeKernel;
+
+  constexpr int rows = 33;
+  constexpr int hidden = 256;
+  constexpr int intermediate = 128;
+  constexpr int experts = 2;
+  constexpr int block_size = 32;
+  std::vector<half> input(static_cast<size_t>(rows) * hidden);
+  for (size_t i = 0; i < input.size(); ++i) {
+    input[i] = static_cast<half>(static_cast<float>(static_cast<int>(i % 31) - 15) / 32.0f);
+  }
+  std::vector<int> expert_ids(rows);
+  for (int i = 0; i < rows; ++i) expert_ids[i] = i < 17 ? 0 : 1;
+  std::vector<uint8_t> fc1_weights(static_cast<size_t>(experts) * 2 * intermediate * hidden * 3 / 8);
+  std::vector<uint8_t> fc2_weights(static_cast<size_t>(experts) * hidden * intermediate * 3 / 8);
+  for (size_t i = 0; i < fc1_weights.size(); ++i) fc1_weights[i] = static_cast<uint8_t>(i * 37 + 11);
+  for (size_t i = 0; i < fc2_weights.size(); ++i) fc2_weights[i] = static_cast<uint8_t>(i * 29 + 7);
+  std::vector<half> fc1_scales(static_cast<size_t>(experts) * 2 * intermediate * hidden / block_size,
+                               static_cast<half>(0.04f));
+  std::vector<half> fc2_scales(static_cast<size_t>(experts) * hidden * intermediate / block_size,
+                               static_cast<half>(0.04f));
+
+  CudaBuffer d_input(input.size() * sizeof(half));
+  CudaBuffer d_unaligned_input(input.size() * sizeof(half) + sizeof(half));
+  CudaBuffer d_activation(static_cast<size_t>(rows) * intermediate * sizeof(half));
+  CudaBuffer d_unaligned_activation(static_cast<size_t>(rows) * intermediate * sizeof(half) + sizeof(half));
+  CudaBuffer d_partial(static_cast<size_t>(rows) * hidden * sizeof(half));
+  CudaBuffer d_experts(expert_ids.size() * sizeof(int));
+  CudaBuffer d_fc1_weights(fc1_weights.size());
+  CudaBuffer d_fc2_weights(fc2_weights.size());
+  CudaBuffer d_fc1_scales(fc1_scales.size() * sizeof(half));
+  CudaBuffer d_fc2_scales(fc2_scales.size() * sizeof(half));
+  CudaBuffer d_workspace(static_cast<size_t>(rows * 4 + 16) * sizeof(int));
+  d_input.CopyFromHost(input.data());
+  CUDA_CALL_THROW(cudaMemcpy(d_unaligned_input.As<uint8_t>() + sizeof(half), input.data(), input.size() * sizeof(half),
+                             cudaMemcpyHostToDevice));
+  d_experts.CopyFromHost(expert_ids.data());
+  d_fc1_weights.CopyFromHost(fc1_weights.data());
+  d_fc2_weights.CopyFromHost(fc2_weights.data());
+  d_fc1_scales.CopyFromHost(fc1_scales.data());
+  d_fc2_scales.CopyFromHost(fc2_scales.data());
+
+  Int3MoeParams params{};
+  params.input = d_input.data;
+  params.activation = d_activation.data;
+  params.fc2_partial = d_partial.data;
+  params.experts = d_experts.As<int>();
+  params.num_experts = experts;
+  params.fc1 = {d_fc1_weights.As<uint8_t>(), d_fc1_scales.data, nullptr, nullptr, 3};
+  params.fc2 = {d_fc2_weights.As<uint8_t>(), d_fc2_scales.data, nullptr, nullptr, 3};
+  params.rows = rows;
+  params.hidden = hidden;
+  params.intermediate = intermediate;
+  params.top_k = 1;
+  params.block_size = block_size;
+  params.limit = 10.0f;
+  params.input_is_gathered = true;
+  params.total_routes_override = rows;
+  ASSERT_EQ(SelectInt3DecodeKernel(params), Int3DecodeKernel::kFast);
+  CUDA_CALL_THROW(LaunchInt3Moe(params, nullptr));
+  CUDA_CALL_THROW(cudaStreamSynchronize(nullptr));
+  std::vector<half> expected(static_cast<size_t>(rows) * hidden);
+  d_partial.CopyToHost(expected.data());
+  ASSERT_GT(std::abs(static_cast<float>(*std::max_element(
+                expected.begin(), expected.end(), [](half a, half b) {
+                  return std::abs(static_cast<float>(a)) < std::abs(static_cast<float>(b));
+                }))),
+            0.01f);
+
+  struct Case {
+    const char* name;
+    const void* input;
+    void* activation;
+    bool grouped;
+  };
+  const Case cases[] = {
+      {"aligned", d_input.data, d_activation.data, true},
+      {"unaligned input", d_unaligned_input.As<uint8_t>() + sizeof(half), d_activation.data, false},
+      {"unaligned activation", d_input.data, d_unaligned_activation.As<uint8_t>() + sizeof(half), false},
+      {"both unaligned", d_unaligned_input.As<uint8_t>() + sizeof(half),
+       d_unaligned_activation.As<uint8_t>() + sizeof(half), false},
+  };
+  for (const auto& test_case : cases) {
+    SCOPED_TRACE(test_case.name);
+    params.input = test_case.input;
+    params.activation = test_case.activation;
+    params.grouped_workspace = d_workspace.As<int>();
+    CUDA_CALL_THROW(cudaMemset(d_workspace.data, 0xa5, d_workspace.bytes));
+    ASSERT_EQ(SelectInt3DecodeKernel(params), test_case.grouped ? Int3DecodeKernel::kGrouped : Int3DecodeKernel::kFast);
+    CUDA_CALL_THROW(LaunchInt3Moe(params, nullptr));
+    CUDA_CALL_THROW(cudaStreamSynchronize(nullptr));
+    uint32_t num_tiles = 0;
+    CUDA_CALL_THROW(cudaMemcpy(&num_tiles, d_workspace.As<int>() + rows, sizeof(num_tiles), cudaMemcpyDeviceToHost));
+    EXPECT_EQ(num_tiles, test_case.grouped ? 5u : 0xa5a5a5a5u);
+    std::vector<half> actual(expected.size());
+    d_partial.CopyToHost(actual.data());
+    for (size_t i = 0; i < actual.size(); ++i) {
+      const float ref = static_cast<float>(expected[i]);
+      const float got = static_cast<float>(actual[i]);
+      ASSERT_TRUE(std::isfinite(got)) << "index=" << i;
+      EXPECT_NEAR(got, ref, 0.005f + 0.02f * std::abs(ref)) << "index=" << i;
+    }
   }
 }
 

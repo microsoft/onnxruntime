@@ -38,7 +38,7 @@
 #define QMOE_SHARED_POP_AVX2_CLANG_TARGET 1
 #endif
 
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && !defined(__clang__)
 #define QMOE_AVX2_LAMBDA_INLINE [[msvc::forceinline]]
 #elif defined(__GNUC__) || defined(__clang__)
 #define QMOE_AVX2_LAMBDA_INLINE __attribute__((always_inline))

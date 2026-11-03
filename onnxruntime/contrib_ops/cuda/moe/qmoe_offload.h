@@ -116,7 +116,7 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   Status ComputeShared(OpKernelContext* context) const;
   Status PromoteResident(cudaStream_t stream, const InlinedVector<InlinedVector<int>>& cold_routes,
                          int max_promotions = 0, const int* streamed_experts = nullptr,
-                         int streamed_count = 0) const;
+                         int streamed_count = 0, bool allow_stream_reuse = true) const;
   void RecordResidentRoute(int phase, int expert, bool hit, float weight = 1.0f) const;
   void CommitInvocationObservation(const std::array<int, 5>& phase_rows,
                                    const std::array<std::vector<int>, 5>& phase_expert_rows,
@@ -162,6 +162,22 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
                             int32_t* counts, int tile_rows) const;
   void RunAsyncCpu(AsyncTile& tile) const;
 
+  void CopyOrTransposeScaleBankToHost(size_t bank, const uint8_t* src, uint8_t* dst) const noexcept;
+  uint8_t* AcquireStagedScaleBuffer(size_t bytes) const;
+  void RecordStagedScaleCompletion(cudaStream_t stream) const noexcept;
+  void TrimStagedScaleBuffers(size_t max_retained = 2) const noexcept;
+  struct StagedScaleBuffer {
+    cudaEvent_t done_event = nullptr;
+    bool in_flight = false;
+    bool pending_event = false;
+    uint64_t use_seq = 0;
+    std::vector<uint8_t> data;
+  };
+  mutable std::mutex staged_scales_mutex_;
+  mutable uint64_t staged_scales_seq_ = 0;
+  mutable std::vector<std::unique_ptr<StagedScaleBuffer>> staged_scale_buffers_;
+  mutable uint64_t async_launched_seq_ = 0;
+  mutable uint64_t last_promoted_async_seq_ = 0;
   bool shared_mode_ = false;
   bool v3_compact_shared_ = false;
   bool v4_planned_mode_ = false;
@@ -169,6 +185,9 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   onnxruntime::moe_offload::MoeNodeExecutionPlan v4_plan_{};
   bool nvfp4_mode_ = false;
   bool mxfp4_mode_ = false;
+  bool int4_bank_mode_ = false;
+  bool int3_bank_mode_ = false;
+  int int3_block_size_ = 32;
   int moe_tc_min_rows_ = 33;
   int int3_tc_min_routes_ = 33;
   bool disable_int3_tc_prefill_ = false;
@@ -329,6 +348,7 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   int stream_rows_ = 0;
   int stream_min_rows_ = 16;
   int stream_wave_ = 32;
+  bool shrink_stream_tile_ = false;
   int stream_promotions_ = 16;
   bool stream_promotion_reuse_ = false;
   size_t stream_gpu_limit_ = 0;
@@ -341,8 +361,12 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   mutable uint64_t stream_waves_ = 0;
   mutable uint64_t stream_cpu_routes_ = 0;
   mutable uint64_t stream_reused_promotions_ = 0;
+  // Async service path taken by uncaptured runs: device doorbell versus host callback.
+  mutable uint64_t doorbell_runs_ = 0;
+  mutable uint64_t callback_runs_ = 0;
 
   bool cpu_timing_ = false;
+  bool offload_telemetry_ = false;
   bool cpu_fp16_boundaries_ = false;
   int fc1_cols_ = 64;
   int fc2_cols_ = 128;
