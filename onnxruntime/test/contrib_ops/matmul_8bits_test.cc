@@ -48,6 +48,7 @@ namespace {
 constexpr int QBits = 8;
 
 struct TestOptions8Bits {
+  int64_t batch_count{1};  // A is {M, K} when 1, {batch_count, M, K} otherwise
   int64_t M{1};
   int64_t N{1};
   int64_t K{1};
@@ -69,7 +70,8 @@ struct TestOptions8Bits {
 };
 
 [[maybe_unused]] std::ostream& operator<<(std::ostream& os, const TestOptions8Bits& opts) {
-  return os << "M:" << opts.M << ", N:" << opts.N << ", K:" << opts.K
+  return os << "batch_count:" << opts.batch_count
+            << ", M:" << opts.M << ", N:" << opts.N << ", K:" << opts.K
             << ", block_size:" << opts.block_size
             << ", accuracy_level:" << opts.accuracy_level
             << ", has_zero_point:" << opts.has_zero_point
@@ -89,12 +91,13 @@ void RunTest8Bits(const TestOptions8Bits& opts,
   }
 #endif
 
-  const int64_t M = opts.M,
+  const int64_t batch_count = opts.batch_count,
+                M = opts.M,
                 K = opts.K,
                 N = opts.N;
 
   RandomValueGenerator random{1234};
-  std::vector<float> input0_fp32_vals(random.Gaussian<float>(AsSpan({M, K}), 0.0f, 0.25f));
+  std::vector<float> input0_fp32_vals(random.Gaussian<float>(AsSpan({batch_count * M, K}), 0.0f, 0.25f));
   std::vector<float> input1_fp32_vals(random.Gaussian<float>(AsSpan({K, N}), 0.0f, 0.25f));
 
   int q_rows, q_cols;
@@ -146,8 +149,8 @@ void RunTest8Bits(const TestOptions8Bits& opts,
     return std::nullopt;
   }();
 
-  std::vector<float> expected_vals(M * N);
-  for (int64_t m = 0; m < M; m++) {
+  std::vector<float> expected_vals(batch_count * M * N);
+  for (int64_t m = 0; m < batch_count * M; m++) {
     for (int64_t n = 0; n < N; n++) {
       float sum = 0.0f;
       for (int64_t k = 0; k < K; k++) {
@@ -157,6 +160,11 @@ void RunTest8Bits(const TestOptions8Bits& opts,
     }
   }
 
+  const std::vector<int64_t> a_shape = batch_count == 1 ? std::vector<int64_t>{M, K}
+                                                        : std::vector<int64_t>{batch_count, M, K};
+  const std::vector<int64_t> y_shape = batch_count == 1 ? std::vector<int64_t>{M, N}
+                                                        : std::vector<int64_t>{batch_count, M, N};
+
   OpTester test("MatMulNBits", 1, kMSDomain);
   test.AddAttribute<int64_t>("K", K);
   test.AddAttribute<int64_t>("N", N);
@@ -164,11 +172,11 @@ void RunTest8Bits(const TestOptions8Bits& opts,
   test.AddAttribute<int64_t>("bits", QBits);
   test.AddAttribute<int64_t>("accuracy_level", opts.accuracy_level);
   if constexpr (std::is_same<T1, float>::value) {
-    test.AddInput<T1>("A", {M, K}, input0_fp32_vals, false);
+    test.AddInput<T1>("A", a_shape, input0_fp32_vals, false);
   } else if constexpr (std::is_same<T1, MLFloat16>::value) {
-    test.AddInput<T1>("A", {M, K}, FloatsToMLFloat16s(input0_fp32_vals), false);
+    test.AddInput<T1>("A", a_shape, FloatsToMLFloat16s(input0_fp32_vals), false);
   } else if constexpr (std::is_same<T1, BFloat16>::value) {
-    test.AddInput<T1>("A", {M, K}, FloatsToBFloat16s(input0_fp32_vals), false);
+    test.AddInput<T1>("A", a_shape, FloatsToBFloat16s(input0_fp32_vals), false);
   }
 
   int64_t k_blocks = (K + opts.block_size - 1) / opts.block_size;
@@ -220,11 +228,11 @@ void RunTest8Bits(const TestOptions8Bits& opts,
   }
 
   if constexpr (std::is_same<T1, float>::value) {
-    test.AddOutput<T1>("Y", {M, N}, expected_vals);
+    test.AddOutput<T1>("Y", y_shape, expected_vals);
   } else if constexpr (std::is_same<T1, MLFloat16>::value) {
-    test.AddOutput<T1>("Y", {M, N}, FloatsToMLFloat16s(expected_vals));
+    test.AddOutput<T1>("Y", y_shape, FloatsToMLFloat16s(expected_vals));
   } else if constexpr (std::is_same<T1, BFloat16>::value) {
-    test.AddOutput<T1>("Y", {M, N}, FloatsToBFloat16s(expected_vals));
+    test.AddOutput<T1>("Y", y_shape, FloatsToBFloat16s(expected_vals));
   }
 
   if (opts.output_abs_error.has_value()) {
@@ -449,6 +457,32 @@ TEST(MatMulNBits, Float16_8b_AccuracyLevel4) {
 
   // Test case where K (260) is divisible by 16 but not by the block size (32).
   TestMatMul8BitsTyped<MLFloat16, 32, 64, 260, 32, 4>(abs_error, rel_error);
+}
+
+// The 8-bit DP4A large-tile kernel issues workgroups in groups of 8 M-tiles per N-tile.
+TEST(MatMulNBits, Int8_DP4A_GroupedTileOrder) {
+  TestOptions8Bits opts{};
+  opts.batch_count = 2;
+  opts.N = 144;
+  opts.K = 128;
+  opts.block_size = 32;
+  opts.accuracy_level = 4;
+  opts.disable_cpu_ep_fallback = true;
+  opts.output_abs_error = 0.1f;
+  opts.output_rel_error = 0.02f;
+
+  for (const int64_t m : {577, 520}) {
+    for (const bool has_zero_point : {false, true}) {
+      opts.M = m;
+      opts.has_zero_point = has_zero_point;
+      RunTest8Bits<float>(opts);
+    }
+  }
+
+  opts.M = 577;
+  opts.has_zero_point = false;
+  opts.output_abs_error = 0.055f;
+  RunTest8Bits<MLFloat16>(opts);
 }
 #endif
 

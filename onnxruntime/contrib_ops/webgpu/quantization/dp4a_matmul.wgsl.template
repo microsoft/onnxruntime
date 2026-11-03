@@ -3,6 +3,7 @@
 
 #param acc_f32
 #param block_size
+#param group_m
 #param n_bits
 #param has_bias
 #param has_zero_points
@@ -204,8 +205,22 @@ $MAIN {
     if (batch >= uniforms.batch_count) {
         return;
     }
+#if group_m == 1
     let a_global_base = u32((workgroup_idx / uniforms.num_N_tile) % uniforms.num_M_tile) * tile_m;
     let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_n;
+#else
+    // Grouped tile order: consecutive workgroups walk group_m M-tiles of the same N-tile, so a
+    // B column strip is served from cache group_m times instead of being re-streamed once per
+    // M-tile.
+    let idx_in_batch = workgroup_idx % (uniforms.num_M_tile * uniforms.num_N_tile);
+    let tiles_per_group = group_m * uniforms.num_N_tile;
+    let group_id = idx_in_batch / tiles_per_group;
+    let first_m_tile = group_id * group_m;
+    let group_size_m = min(uniforms.num_M_tile - first_m_tile, group_m);
+    let idx_in_group = idx_in_batch - group_id * tiles_per_group;
+    let a_global_base = (first_m_tile + idx_in_group % group_size_m) * tile_m;
+    let b_global_base = (idx_in_group / group_size_m) * tile_n;
+#endif
     let load_AorB = u32(local_idx/128);
     let load_row = u32((local_idx%128)/2);
     let load_col = u32(local_idx%2);
