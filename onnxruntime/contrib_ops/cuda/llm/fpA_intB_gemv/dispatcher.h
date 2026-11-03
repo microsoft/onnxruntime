@@ -259,6 +259,10 @@ __device__ __forceinline__ void epilogue(void* out, int stride, void* tile_acc, 
     for (int jj = 0; jj < WarpNum; ++jj) {
       val += shmem[jj * CtaM * CtaN * Interleave + ii];
     }
+    if constexpr (Details::TypeDetailsW::kElemBits == 2) {
+      // Match the INT2 grouped-prefill boundary: round the projection to the activation type before adding bias.
+      val = static_cast<float>(static_cast<Type>(val));
+    }
     if constexpr (ApplyAlphaInAdvance) {
       reinterpret_cast<Type*>(out)[m * stride + n] = static_cast<Type>(val + v_bias);
     } else {

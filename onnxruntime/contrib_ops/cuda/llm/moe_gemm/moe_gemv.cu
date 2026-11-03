@@ -284,6 +284,10 @@ __device__ __forceinline__ void fused_finalize_accumulate(float* out_acc, void* 
     for (int jj = 0; jj < WarpNum; ++jj) {
       val += shmem[jj * CtaN * Interleave + ii];
     }
+    if constexpr (Details::TypeDetailsW::kElemBits == 2) {
+      // Match the INT2 grouped-prefill boundary: round the projection to the activation type before adding bias.
+      val = static_cast<float>(static_cast<Type>(val));
+    }
     out_acc[ii] += row_scale * (val + v_bias);
   }
 }
@@ -495,7 +499,10 @@ __device__ __forceinline__ void swiglu_epilogue(void* out, void* tile_acc, void*
     }
     linear += activation_params.beta;
     const float sigmoid = 1.0f / (1.0f + expf(-activation_params.alpha * gate));
-    reinterpret_cast<TypeA*>(out)[pair] = static_cast<TypeA>((activation_params.alpha > 0.0f && gate == -CUDART_INF_F ? 0.0f : gate * sigmoid) * linear);
+    // SiLU's limit is zero where exp(-alpha * gate) overflows.
+    const bool silu_limit_is_zero = (activation_params.alpha > 0.0f && gate == -CUDART_INF_F) ||
+                                    (activation_params.alpha < 0.0f && gate == CUDART_INF_F);
+    reinterpret_cast<TypeA*>(out)[pair] = static_cast<TypeA>((silu_limit_is_zero ? 0.0f : gate * sigmoid) * linear);
   }
 }
 
@@ -704,7 +711,9 @@ __global__ void moe_gemv_splitk_reduce_swiglu_kernel(
   }
   linear += act_beta;
   const float sigmoid = 1.0f / (1.0f + expf(-act_alpha * gate));
-  out[static_cast<int64_t>(row) * inter_size + col] = static_cast<TypeA>((act_alpha > 0.0f && gate == -CUDART_INF_F ? 0.0f : gate * sigmoid) * linear);
+  const bool silu_limit_is_zero = (act_alpha > 0.0f && gate == -CUDART_INF_F) ||
+                                  (act_alpha < 0.0f && gate == CUDART_INF_F);
+  out[static_cast<int64_t>(row) * inter_size + col] = static_cast<TypeA>((silu_limit_is_zero ? 0.0f : gate * sigmoid) * linear);
 #endif
 }
 

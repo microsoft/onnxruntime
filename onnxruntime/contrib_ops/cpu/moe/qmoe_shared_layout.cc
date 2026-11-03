@@ -370,15 +370,20 @@ void ScalarInt2GemmRange(const uint8_t* weights, const uint16_t* scales, const u
   const int64_t raw_w_stride = k / 4;
   const float* scales_f32 = reinterpret_cast<const float*>(scales);
   const float* bias_f32 = reinterpret_cast<const float*>(bias);
-  // Weights are scaled by half the quantization scale and the accumulated sum is doubled at the end. Both steps are
-  // exact, and the extra binade keeps `code * scale` finite for every finite BF16 scale (a BF16 scale near FLT_MAX
-  // times code -2 would otherwise overflow before a tiny activation brings the product back into range).
-  auto read_half_scale = [&](int64_t n, int64_t sb) -> float {
+  // Scales at or above 2^127 are halved (exact) and the block sum is doubled afterwards, so `code * scale` with code -2
+  // stays finite for every finite BF16/FP32 scale. Smaller scales are used as-is, which avoids underflowing subnormal
+  // FP32 scales.
+  struct ScaleTerm {
+    float scale;
+    float rescale;
+  };
+  auto read_scale_term = [&](int64_t n, int64_t sb) -> ScaleTerm {
     const size_t s_idx = static_cast<size_t>(scales_are_block_major ? (sb * n_total + n) : (n * scale_blocks + sb));
     const float scale = scale_is_fp32   ? scales_f32[s_idx]
                         : scale_is_bf16 ? BoundaryBFloat16::FromBits(scales[s_idx])
                                         : HalfToFloat(scales[s_idx]);
-    return 0.5f * scale;
+    constexpr float kHalveThreshold = 0x1p127f;
+    return std::fabs(scale) >= kHalveThreshold ? ScaleTerm{0.5f * scale, 2.0f} : ScaleTerm{scale, 1.0f};
   };
   for (int64_t n = n_begin; n < n_end; ++n) {
     const uint8_t* group = weights_are_prepacked
@@ -399,8 +404,10 @@ void ScalarInt2GemmRange(const uint8_t* weights, const uint16_t* scales, const u
                                    : (raw_w_row + kb64 * 16);
         const float* ar = a_reordered + r * k + kb64 * kTileK;
         if (eff_block == 32) {
-          const float s0 = read_half_scale(n, 2 * kb64);
-          const float s1 = read_half_scale(n, 2 * kb64 + 1);
+          const ScaleTerm t0 = read_scale_term(n, 2 * kb64);
+          const ScaleTerm t1 = read_scale_term(n, 2 * kb64 + 1);
+          const float s0 = t0.scale;
+          const float s1 = t1.scale;
           float sum0 = 0.0f;
           float sum1 = 0.0f;
           for (int s = 0; s < 4; ++s) {
@@ -415,10 +422,11 @@ void ScalarInt2GemmRange(const uint8_t* weights, const uint16_t* scales, const u
               }
             }
           }
-          acc += sum0 + sum1;
+          acc += sum0 * t0.rescale + sum1 * t1.rescale;
         } else {
           const int64_t sb = (eff_block == 64) ? kb64 : (kb64 >> 1);
-          const float s_val = read_half_scale(n, sb);
+          const ScaleTerm term = read_scale_term(n, sb);
+          const float s_val = term.scale;
           float sum = 0.0f;
           for (int s = 0; s < 4; ++s) {
             const float* as = ar + s * 16;
@@ -427,10 +435,10 @@ void ScalarInt2GemmRange(const uint8_t* weights, const uint16_t* scales, const u
               sum += (w * s_val) * as[b];
             }
           }
-          acc += sum;
+          acc += sum * term.rescale;
         }
       }
-      out[r * out_stride + (n - n_begin)] = 2.0f * acc + b_val;
+      out[r * out_stride + (n - n_begin)] = acc + b_val;
     }
   }
 }
@@ -2929,9 +2937,10 @@ bool Int2Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int2ExpertView& vie
           gate = std::min(gate, swiglu.limit);
           value = std::clamp(value, -swiglu.limit, swiglu.limit);
         }
-        const float silu = swiglu.alpha > 0.0f && gate == -std::numeric_limits<float>::infinity()
-                               ? 0.0f
-                               : gate / (1.0f + std::exp(-swiglu.alpha * gate));
+        // SiLU's limit is zero when the gate is infinite on the side where exp(-alpha * gate) overflows.
+        const bool silu_limit_is_zero = (swiglu.alpha > 0.0f && gate == -std::numeric_limits<float>::infinity()) ||
+                                        (swiglu.alpha < 0.0f && gate == std::numeric_limits<float>::infinity());
+        const float silu = silu_limit_is_zero ? 0.0f : gate / (1.0f + std::exp(-swiglu.alpha * gate));
         const float act = silu * (value + swiglu.beta);
 #if QMOE_COMPILER_SUPPORTS_AVX2
         const float rounded_act = bf16_boundaries   ? RoundBf16Fast(act)

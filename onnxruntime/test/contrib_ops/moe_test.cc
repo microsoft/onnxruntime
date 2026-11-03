@@ -6665,8 +6665,10 @@ static std::vector<uint8_t> PackQMoEInt2Sm80(const std::vector<uint8_t>& codes,
 }
 
 template <typename T>
-static void RunQMoECpuPrepackedInt2Test(int64_t block, bool sm80_shape, bool bias1, bool bias2, bool cuda = false, bool extreme = false) {
-  constexpr int64_t rows = 5, experts = 3, hidden = 128, inter = 256;
+static void RunQMoECpuPrepackedInt2Test(int64_t block, bool sm80_shape, bool bias1, bool bias2, bool cuda = false,
+                                        bool extreme = false, bool bias_cancel = false, int64_t hidden = 128,
+                                        int64_t inter = 256) {
+  constexpr int64_t rows = 5, experts = 3;
   std::vector<T> input(static_cast<size_t>(rows * hidden));
   for (size_t i = 0; i < input.size(); ++i) input[i] = T((static_cast<int>(i * 7 % 23) - 11) * 0.03125f);
   const std::vector<T> logits = {T(1.0f), T(4.0f), T(2.0f), T(5.0f), T(3.0f), T(1.0f), T(2.0f), T(1.0f), T(5.0f),
@@ -6693,12 +6695,21 @@ static void RunQMoECpuPrepackedInt2Test(int64_t block, bool sm80_shape, bool bia
     }
     std::fill(codes2.begin(), codes2.end(), uint8_t{3});
   }
+  if (bias_cancel) {
+    // Identical rows make the FC2 projection identical per row, so one bias per expert can cancel it exactly.
+    for (int64_t r = 1; r < rows; ++r) {
+      std::copy_n(input.begin(), hidden, input.begin() + r * hidden);
+    }
+  }
   const auto weights1 = PackQMoEInt2Sm80(codes1, experts, 2 * inter, hidden);
   const auto weights2 = PackQMoEInt2Sm80(codes2, experts, hidden, inter);
   std::vector<T> scales1(static_cast<size_t>(experts * 2 * inter * hidden / block));
   std::vector<T> scales2(static_cast<size_t>(experts * hidden * inter / block));
   for (size_t i = 0; i < scales1.size(); ++i) scales1[i] = T(0.015625f * static_cast<float>(1 + i % 3));
   for (size_t i = 0; i < scales2.size(); ++i) scales2[i] = T(0.015625f * static_cast<float>(1 + i % 5));
+  if (bias_cancel) {
+    std::fill(scales2.begin(), scales2.end(), T(64.0f));
+  }
   if (extreme) {
     std::fill(scales2.begin(), scales2.end(), T(1.0f / 1024.0f));
     for (int64_t n = 0; n < experts * 2 * inter; ++n) {
@@ -6733,13 +6744,24 @@ static void RunQMoECpuPrepackedInt2Test(int64_t block, bool sm80_shape, bool bia
         activated[static_cast<size_t>(j)] = static_cast<float>(T(static_cast<float>(silu * up)));
       }
       for (int64_t n = 0; n < hidden; ++n) {
-        double sum = bias2 ? static_cast<float>(b2[static_cast<size_t>(e * hidden + n)]) : 0.0;
+        double sum = 0.0;
         for (int64_t i = 0; i < inter; ++i) {
           const int code = codes2[static_cast<size_t>((e * hidden + n) * inter + i)];
           const double scale = static_cast<float>(scales2[static_cast<size_t>((e * hidden + n) * (inter / block) + i / block)]);
           sum += activated[static_cast<size_t>(i)] * (code - 2) * scale;
         }
+        // The projection is rounded to the activation type; the FP32 bias is added afterwards, like CUDA.
         expert_outputs[static_cast<size_t>((r * experts + e) * hidden + n)] = static_cast<float>(T(static_cast<float>(sum)));
+      }
+    }
+  }
+  for (int64_t r = 0; r < rows; ++r) {
+    for (int64_t e = 0; e < experts; ++e) {
+      for (int64_t n = 0; n < hidden; ++n) {
+        const size_t bias_index = static_cast<size_t>(e * hidden + n);
+        auto& output = expert_outputs[static_cast<size_t>((r * experts + e) * hidden + n)];
+        if (bias_cancel && r == 0) b2[bias_index] = T(-output);
+        if (bias2) output += static_cast<float>(b2[bias_index]);
       }
     }
   }
@@ -6847,27 +6869,38 @@ TEST(MoETest, QMoETest_CPU_PrepackedInt2_Float32) {
 TEST(MoETest, QMoETest_CPU_PrepackedInt2_Float16) {
   RunQMoECpuPrepackedInt2Test<MLFloat16>(64, false, true, false);
   RunQMoECpuPrepackedInt2Test<MLFloat16>(32, true, false, true);
+  RunQMoECpuPrepackedInt2Test<MLFloat16>(64, true, false, true, /*cuda=*/false, /*extreme=*/false,
+                                         /*bias_cancel=*/true);
 }
 
 TEST(MoETest, QMoETest_CPU_PrepackedInt2_BFloat16) {
   RunQMoECpuPrepackedInt2Test<BFloat16>(128, false, false, true);
   RunQMoECpuPrepackedInt2Test<BFloat16>(64, true, true, false);
+  RunQMoECpuPrepackedInt2Test<BFloat16>(128, false, false, true, /*cuda=*/false, /*extreme=*/false,
+                                        /*bias_cancel=*/true);
 }
 
 #ifdef USE_CUDA
 TEST(MoETest, QMoETest_PrepackedInt2_CpuCudaDecodeAndPrefill) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "SM80 or later is required for packed INT2.";
   // Both providers consume the same independently packed, immutable SM80 banks and natural-order reference.
+  // The decode arm uses hidden=512/inter=1024, which meets the GEMV minimum dimension of 512 for both FC1 and FC2,
+  // and disables packed prefill so a failure to reach GEMV falls back to dense dequant, which the 1-byte scratch cap
+  // rejects. The prefill arm disables GEMV so the grouped-GEMM path runs.
   for (bool prefill : {false, true}) {
     ScopedEnvironmentVariables env{{{"ORT_DISABLE_MOE_GEMV", prefill ? "1" : "0"},
-                                    {"ORT_ENABLE_QMOE_INT2_PREFILL", "1"}}};
+                                    {"ORT_ENABLE_QMOE_INT2_PREFILL", prefill ? "1" : "0"}}};
+    const int64_t hidden = prefill ? 128 : 512;
+    const int64_t inter = prefill ? 256 : 1024;
     for (int64_t block : {32, 64, 128}) {
       for (bool cuda : {false, true}) {
-        RunQMoECpuPrepackedInt2Test<MLFloat16>(block, true, true, true, cuda);
-        RunQMoECpuPrepackedInt2Test<MLFloat16>(block, false, false, false, cuda, true);
+        RunQMoECpuPrepackedInt2Test<MLFloat16>(block, true, true, true, cuda, false, false, hidden, inter);
+        RunQMoECpuPrepackedInt2Test<MLFloat16>(block, false, false, false, cuda, true, false, hidden, inter);
+        RunQMoECpuPrepackedInt2Test<MLFloat16>(block, true, false, true, cuda, false, true, hidden, inter);
 #if defined(ENABLE_BF16)
-        RunQMoECpuPrepackedInt2Test<BFloat16>(block, true, true, true, cuda);
-        RunQMoECpuPrepackedInt2Test<BFloat16>(block, false, false, false, cuda, true);
+        RunQMoECpuPrepackedInt2Test<BFloat16>(block, true, true, true, cuda, false, false, hidden, inter);
+        RunQMoECpuPrepackedInt2Test<BFloat16>(block, false, false, false, cuda, true, false, hidden, inter);
+        RunQMoECpuPrepackedInt2Test<BFloat16>(block, true, false, true, cuda, false, true, hidden, inter);
 #endif
       }
     }
