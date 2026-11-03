@@ -81,6 +81,8 @@ Build both the runtime and WebGPU plugin from the same checkout so the generated
 that checkout's kernel registrations.
 Full Protobuf preserves the schema-documentation configuration normally selected by `--gen_doc` during a build.
 
+Both documentation-generation examples below require a GPU accessible to WebGPU and CUDA.
+
 For local regeneration with the Visual Studio generator, install the runtime wheel from the first build
 into the active Python environment, then stage the plugin and its runtime dependency for documentation:
 
@@ -91,7 +93,6 @@ Copy-Item `
   -LiteralPath "$webgpuBin\onnxruntime_providers_webgpu.dll", "$webgpuBin\dxcompiler.dll" `
   -Destination $runtimeBin `
   -ErrorAction Stop
-$env:ORT_WEBGPU_EP_ALLOW_SOFTWARE_ADAPTER = '1'
 python tools\ci_build\build.py `
   --build_dir build `
   --config RelWithDebInfo `
@@ -101,18 +102,16 @@ python tools\ci_build\build.py `
 
 The final command only generates and validates documentation; it does not reconfigure either build tree.
 Use `--gen_doc` without `validate` to regenerate without rejecting differences from the checked-in files.
-To query the plugin directly, use a GPU machine when the installed runtime includes the CUDA EP:
+Alternatively, run the operator-documentation generator directly:
 
 ```powershell
-$env:ORT_WEBGPU_EP_ALLOW_SOFTWARE_ADAPTER = '1'
 python tools\python\gen_opkernel_doc.py `
   --providers CPU CUDA DML WebGPU `
   --plugin-ep "WebGpuExecutionProvider:C:\build\RelWithDebInfo\RelWithDebInfo\onnxruntime_providers_webgpu.dll" `
   --output_path docs\OperatorKernels.md
 ```
 
-The software-adapter opt-in permits kernel-registry queries; it does not demonstrate hardware acceleration
-or validate every shape, attribute, or optional input. The plugin query uses default session options.
+The plugin query uses default session options.
 Explicitly requested plugin libraries must load successfully and return a nonempty registry.
 
 After successful generation, CI uploads `updated-docs` on both matching and stale-document runs.

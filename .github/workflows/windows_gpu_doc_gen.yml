@@ -337,8 +337,6 @@ jobs:
 
       - name: Generate and validate documentation
         id: generate_docs
-        env:
-          ORT_WEBGPU_EP_ALLOW_SOFTWARE_ADAPTER: '1'
         working-directory: ${{ runner.temp }}\build
         run: |
           python.exe ${{ github.workspace }}\tools\ci_build\build.py `

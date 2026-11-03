@@ -103,6 +103,12 @@ class KernelDocumentationTest(unittest.TestCase):
         self.assertEqual(metadata["providers"]["WebGpuExecutionProvider"], {"operators": 1, "registrations": 1})
         self.assertEqual(metadata["document_sha256"], hashlib.sha256(self.output.read_bytes()).hexdigest())
 
+    def test_metadata_environment_only_records_opset_setting(self):
+        with mock.patch.dict(os.environ, {"ALLOW_RELEASED_ONNX_OPSET_ONLY": "0"}):
+            self.generate([self.plugin])
+        metadata = json.loads(self.metadata.read_text(encoding="utf-8"))
+        self.assertEqual(metadata["environment"], {"ALLOW_RELEASED_ONNX_OPSET_ONLY": "0"})
+
     def test_builtin_only_generation_does_not_query_plugins(self):
         self.generate(providers=("cpu",))
         self.ort.register_execution_provider_library.assert_not_called()
