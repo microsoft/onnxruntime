@@ -386,21 +386,21 @@ jobs:
             exit 1
           fi
 
-          if [[ "$RUN_DOCUMENTATION_BUILD" == "true" && "$RUNTIME_BUILD_RESULT" != "success" ]]; then
-            echo "::error::Runtime build result: $RUNTIME_BUILD_RESULT"
-            exit 1
-          fi
+          if [[ "$RUN_DOCUMENTATION_BUILD" == "true" ]]; then
+            if [[ "$RUNTIME_BUILD_RESULT" != "success" ]]; then
+              echo "::error::Runtime build result: $RUNTIME_BUILD_RESULT"
+              exit 1
+            fi
 
-          if [[ "$RUN_DOCUMENTATION_BUILD" == "true" && "$WEBGPU_BUILD_RESULT" != "success" ]]; then
-            echo "::error::WebGPU build result: $WEBGPU_BUILD_RESULT"
-            exit 1
-          fi
+            if [[ "$WEBGPU_BUILD_RESULT" != "success" ]]; then
+              echo "::error::WebGPU build result: $WEBGPU_BUILD_RESULT"
+              exit 1
+            fi
 
-          if [[ "$RUN_DOCUMENTATION_BUILD" == "true" && "$DOCUMENTATION_GENERATION_RESULT" != "success" ]]; then
-            echo "::error::Documentation generation result: $DOCUMENTATION_GENERATION_RESULT"
-            exit 1
-          fi
-
-          if [[ "$RUN_DOCUMENTATION_BUILD" != "true" ]]; then
+            if [[ "$DOCUMENTATION_GENERATION_RESULT" != "success" ]]; then
+              echo "::error::Documentation generation result: $DOCUMENTATION_GENERATION_RESULT"
+              exit 1
+            fi
+          else
             echo "Documentation build is not required for the changed paths."
           fi
