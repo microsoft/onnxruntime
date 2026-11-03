@@ -4467,12 +4467,12 @@ void DequantizeLinearSubByteMatchesReferenceAllShapes() {
 
   // Large enough for TryParallelFor to split the work across a 4-thread pool, so units run concurrently.
   const std::vector<Case> parallel_cases{
-      {{16, 4096, 7}, 1, 0},   // per-axis, short rows
-      {{4, 3, 40001}, 1, 0},   // per-axis, long rows starting mid-byte
-      {{8, 30001}, 1, 0},      // per-axis on the last axis
-      {{8, 30001}, 1, 32},     // blocked on the last axis
-      {{65536, 7}, 0, 16},     // blocked, short rows
-      {{40, 7001}, 0, 8},      // blocked, long rows starting mid-byte
+      {{16, 4096, 7}, 1, 0},  // per-axis, short rows
+      {{4, 3, 40001}, 1, 0},  // per-axis, long rows starting mid-byte
+      {{8, 30001}, 1, 0},     // per-axis on the last axis
+      {{8, 30001}, 1, 32},    // blocked on the last axis
+      {{65536, 7}, 0, 16},    // blocked, short rows
+      {{40, 7001}, 0, 8},     // blocked, long rows starting mid-byte
   };
   for (const auto& c : parallel_cases) {
     for (bool use_zero_point : {true, false}) {
