@@ -126,7 +126,7 @@ M01-M12 are **complete**; M13 is **in progress**; M14-M24 are **pending**.
 | [x] | M11 | ORT package-to-chain loading / `package-runtime` | M06, M07, M08, M09, M10 |
 | [x] | M12 | DDIM scheduler and denoising state / `ddim-policy` | M03, M06, M08 |
 | [x] | M13 | Python API and package parity / `python-api` | M06, M11, M12 |
-| [ ] | M14 | Local Phi-3 package and text demo / `phi3-demo` | M05, M08, M09, M11, M13 |
+| [x] | M14 | Local Phi-3 package and text demo / `phi3-demo` | M05, M08, M09, M11, M13 |
 | [ ] | M15 | Local Stable Diffusion package and image demo / `sd15-demo` | M11, M12, M13 |
 | [ ] | M16 | C# binding / `csharp-api` | M06, M11, M12 |
 | [ ] | M17 | Java/JNI binding / `java-api` | M06, M11, M12 |
@@ -4281,7 +4281,8 @@ not claimed. Package Python authoring/export remains deferred.
 
 **Status:** [Appendix N](SPEC.md#appendix-n-m14-phi-3-package-and-text-demo-approved)
 and the detailed plan below were separately approved on 2026-11-02.
-Implementation and CPU/CUDA qualification are verified; publication is pending.
+Implementation, CPU/CUDA qualification and publication are complete.
+**PR:** [#28](https://github.com/onnxruntime/ort-state/pull/28), OPEN/ready on M13#27.
 **Planning branch/base:** `state/m14-phi3-demo` on M13
 `42ab052f08c8dc44a76a8012e3e70a053fe64b1a` /
 [#27](https://github.com/onnxruntime/ort-state/pull/27).
@@ -4479,7 +4480,7 @@ remote code execution disabled; chat-template default and explicit raw mode.
   If a separately approved amendment adds native production lines, rebuild and
   measure those lines100% too; a0/0 native delta is not a new native coverage claim.
 
-- [ ] **P8 - Document and publish one stacked M14 PR.**
+- [x] **P8 - Document and publish one stacked M14 PR.**
   **Outcome:** Explain pinned assets/licenses, explicit download/setup, package
   paths, tokenizer/raw mode, example prompts, declared exits/budgets, masks/cache
   layout, reference method/tolerances, token accounting and offline/error behavior.
@@ -4534,7 +4535,7 @@ following the build skill and inherited noncached warning policy.
 - [x] Real CPU INT4 and CUDA FP16 text/reference/checkpoint/boundary/replay runs pass.
 - [x] Actual CUDA cache/greedy/compute, resident-data and focused sanitizer checks pass.
 - [x] New executable production lines reach measured100%; regressions/type/style/offline examples pass.
-- [ ] Exact reproducible documentation/evidence and one correct-base OPEN/ready PR are synchronized.
+- [x] Exact reproducible documentation/evidence and one correct-base OPEN/ready PR are synchronized.
 
 **Implementation authorization (2026-11-02):** The user explicitly approved this
 plan and authorized starting M14. P0 passes: all62 parent source/artifact hashes
@@ -4583,7 +4584,11 @@ are still in progress. Do not treat this checkpoint as complete M14 qualificatio
 
 #### Final M14 qualification (2026-11-03)
 
-All implementation/qualification gates P0-P7 pass; only P8 publication remains.
+All implementation/qualification/publication gates P0-P8 pass. PR
+[#28](https://github.com/onnxruntime/ort-state/pull/28) is OPEN/ready with base
+`state/m13-python-api` (#27). Implementation commit
+`111ae8c28fb0014316206a000631a51fe7e6c372` contains the qualified code; the
+publication bookkeeping commit changes tracking only.
 The [user guide](docs/Stateful_Phi3_Demo.md) documents the actual
 [CLI/helpers](samples/python/phi3_demo.py) and optional demo dependencies.
 No native runtime or CUDA kernel source was changed.

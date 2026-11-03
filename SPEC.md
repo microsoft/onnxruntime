@@ -28,7 +28,8 @@ implementation and qualification are complete, published as ready-for-review
 The user explicitly confirmed no additional requirements and approved Appendix N
 on 2026-11-02 for detailed execution-plan preparation. The detailed plan was
 separately approved on 2026-11-02. Implementation and CPU/CUDA qualification are
-verified; M14 publication is pending.
+verified; M14 is published for review as
+[#28](https://github.com/onnxruntime/ort-state/pull/28), stacked on M13.
 
 ## 1. Purpose
 
@@ -3390,7 +3391,7 @@ reference/checkpoint/replay and typed/package parity pass for budgets0/1/16.
 New executable production Python reaches377/377 with zero exclusions; actual
 CUDA memory/lifetime/race/sync and transfer gates pass. Exact results and known
 parent limitations are recorded in [M14 qualification](TASKS.md#final-m14-qualification-2026-11-03).
-**Stack:** One intended ready-for-review M14 PR on M13
+**Stack:** M14 [#28](https://github.com/onnxruntime/ort-state/pull/28), OPEN/ready on M13
 `42ab052f08c8dc44a76a8012e3e70a053fe64b1a` /
 [#27](https://github.com/onnxruntime/ort-state/pull/27).
 The local planning branch is `state/m14-phi3-demo`.

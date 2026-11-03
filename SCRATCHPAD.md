@@ -7,7 +7,7 @@ Compressed project memory. This is not the execution plan.
 - 2026-11-02 CURRENT: M01-M13 complete; M13PR27 OPEN/ready at42ab052f08 onM12.
   M14interviewdone/noadditionalrequirements; userexplicitlyAPPROVEDAppendixN.
   DetailedTASKSM14P0-P8 separatelyAPPROVED2026-11-02; implementationauthorized.
-  M14P0-P7qualificationverified, P8publicationpending. NewPython377/377,
+  M14P0-P8complete, PR28OPEN/ready onM13#27. NewPython377/377,
   realCPU/CUDAreference+budgets+parity/replay+sanitizer/transfersPASS.
   Planningbranchstate/m14-phi3-demo.
 - 2026-10-15: Requirements interview completed. User explicitly said there was
@@ -1768,3 +1768,11 @@ Compressed project memory. This is not the execution plan.
   Needfinalproofhashmanifest, ONEfeaturecommit/push/readyPRstate/m14-phi3-demo
   baseM13state/m13-python-api (#27verified42ab052f08OPEN/ready), thenONLY
   publicationbookkeepingcommit+synchead/base/cleanverification. NoM15/merge.
+- M14PUBLISHED2026-11-03: PR28 https://github.com/onnxruntime/ort-state/pull/28
+  OPEN/nonDraft, headstate/m14-phi3-demo, basestate/m13-python-api (#27).
+  Featurecommit111ae8c28fb0014316206a000631a51fe7e6c372. Bookkeepingchanges
+  ONLYSPEC/TASKS/SCRATCH. AllP0-P8checked. Parentall62proofidentitiesreverified
+  final+20model/tokenizer/licenseassethashesmatchfinalportablemanifestprovenance.
+  ActualCIunittestentry15testsOK(noassets/no network);optionalflatbuffers
+  INFOispreexisting/unused, noinstallationneeded. Finalproofhashmanifest/
+  remotehead/basecleanverificationfollowspush. NoM15/merge.
