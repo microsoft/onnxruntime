@@ -182,6 +182,9 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
                NextTokenScores<T>& next_token_scores) override {
     const int batch_beam_size = next_token_scores.batch_beam_size;
     const int vocab_size = next_token_scores.vocab_size;
+    ORT_ENFORCE(end_of_text_token_id_ >= 0 && end_of_text_token_id_ < vocab_size,
+                "end_of_text_token_id is out of range, it is ", end_of_text_token_id_,
+                ", vocab_size is ", vocab_size);
     ORT_ENFORCE(beginning_timestamp_token_id_ > 0 && beginning_timestamp_token_id_ < vocab_size,
                 "beginning_timestamp_token_id is out of range, it is ", beginning_timestamp_token_id_,
                 ", vocab_size is ", vocab_size);
@@ -189,6 +192,12 @@ class TimestampLogitsProcessor : public ILogitsProcessor<T> {
       gsl::span<T> beam_token_scores = next_token_scores.GetScores(i);
       gsl::span<const int32_t> sequence = sequences->GetSequence(i);
       const size_t seq_length = sequence.size();
+      for (const int32_t token_id : sequence) {
+        ORT_ENFORCE(token_id < beginning_timestamp_token_id_ ||
+                        token_id < vocab_size,
+                    "timestamp token id is out of range, it is ", token_id,
+                    ", vocab_size is ", vocab_size);
+      }
 
       // Find first timestamp
       size_t sample_begin = 0;

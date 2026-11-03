@@ -412,7 +412,9 @@ class TestQMoEBlockFP8(unittest.TestCase):
 
         for expert in experts.unique().tolist():
             rows, slots = torch.where(experts == expert)
-            projection = (x[rows].float() @ weight("fc1", expert).T).to(x.dtype).float()
+            projection = x[rows].float() @ weight("fc1", expert).T
+            if fusion or "fc3_weights" in tensors:
+                projection = projection.to(x.dtype).float()
             if "fc1_bias" in tensors:
                 projection += tensors["fc1_bias"][expert].float()
             if fusion:
@@ -647,6 +649,44 @@ def test_block_fp8_fused_without_weight_scratch(capfd, monkeypatch, tokens, path
     log = capfd.readouterr().out
     assert path in log
     assert "DequantWeightBytes=0" in log
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not has_fp8_qmoe or torch.cuda.get_device_capability()[0] < 8,
+    reason="SM80+ CUDA FP8 QMoE required",
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("tokens,path", [(1, "fp8_fused_gemv"), (32, "fp8_fused_gemm")])
+def test_block_fp8_fused_silu_accumulator_precision(capfd, monkeypatch, dtype, tokens, path):
+    tensors = TestQMoEBlockFP8._inputs(hidden=16, inter=16, experts=1, tokens=tokens, block=16, dtype=dtype)
+    del tensors["fc3_weights"], tensors["fc3_scales"]
+    tensors["input"].zero_()
+    tensors["fc1_scales"].fill_(1)
+    tensors["fc2_scales"].fill_(1)
+    weights = torch.zeros(1, 16, 16, device=device)
+    tensors["fc1_bias"] = torch.zeros(1, 16, device=device, dtype=dtype)
+    if dtype == torch.float16:
+        tensors["input"][:, 0] = -4096
+        weights[:, :, 0] = 32
+    else:
+        tensors["input"][:, :3] = torch.tensor([128, 127, 0.5], device=device, dtype=dtype)
+        weights[:, :, :3] = 1
+        tensors["fc1_bias"].fill_(-255)
+    tensors["fc1_weights"] = weights.to(torch.float8_e4m3fn).view(torch.uint8)
+    tensors["fc2_weights"] = torch.eye(16, device=device).unsqueeze(0).to(torch.float8_e4m3fn).view(torch.uint8)
+    monkeypatch.setenv("ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO", "1")
+    monkeypatch.setenv("ORT_ENABLE_FP8_FUSED", "0")
+    dense = TestQMoEBlockFP8._execute(tensors, block=16, top_k=1)
+    capfd.readouterr()
+    monkeypatch.setenv("ORT_ENABLE_FP8_FUSED", "1")
+    actual = TestQMoEBlockFP8._execute(tensors, block=16, top_k=1)
+    log = capfd.readouterr().out
+    assert path in log
+    assert "DequantWeightBytes=0" in log
+    expected = TestQMoEBlockFP8._reference(tensors, 16, 0, top_k=1)
+    assert torch.isfinite(actual).all()
+    torch.testing.assert_close(actual, expected, atol=0, rtol=0)
+    torch.testing.assert_close(actual, dense, atol=0, rtol=0)
 
 
 @pytest.mark.skipif(

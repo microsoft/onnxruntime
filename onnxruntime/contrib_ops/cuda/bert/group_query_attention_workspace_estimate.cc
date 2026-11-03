@@ -410,7 +410,8 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
 std::optional<GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimateConfig(
     const Node& node,
     bool head_sink_is_constant_initializer,
-    int64_t max_total_sequence_length) {
+    int64_t max_total_sequence_length,
+    KernelDispatchPolicy dispatch_policy) {
   if (node.OpType() != "GroupQueryAttention") return std::nullopt;
   GQAWorkspaceEstimateConfig config;
   bool found_heads = false;
@@ -481,6 +482,7 @@ std::optional<GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimat
       ParseEnvironmentVariableWithDefault<bool>("ORT_DISABLE_FLASH_DECODE", false);
   config.head_sink_may_be_prepacked = head_sink_is_constant_initializer;
   config.max_total_sequence_length = max_total_sequence_length;
+  config.dispatch_policy = dispatch_policy;
   return config;
 }
 
@@ -503,9 +505,11 @@ std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     const cudaDeviceProp& device_prop,
     const AttentionKernelOptions& kernel_options,
     bool head_sink_is_constant_initializer,
-    int64_t max_total_sequence_length) {
-  const auto config = GetGroupQueryAttentionWorkspaceEstimateConfig(
-      node, head_sink_is_constant_initializer, max_total_sequence_length);
+    int64_t max_total_sequence_length,
+    KernelDispatchPolicy dispatch_policy) {
+  auto config = GetGroupQueryAttentionWorkspaceEstimateConfig(
+      node, head_sink_is_constant_initializer, max_total_sequence_length,
+      dispatch_policy);
   if (!config.has_value()) return std::nullopt;
   return EstimateGroupQueryAttentionWorkspace(
       *config, input_shapes, device_prop, kernel_options);

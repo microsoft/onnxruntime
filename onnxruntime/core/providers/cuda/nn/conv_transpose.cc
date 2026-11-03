@@ -115,6 +115,11 @@ Status ConvTranspose<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::T
   s_.act_fused = fuse_act;
   s_.variant_pack.clear();  // clear variant pack, as stored pointers to tensors change
   s_.cudnn_fe_graph = std::make_unique<cudnn_frontend::graph::Graph>();
+  // Provide the SM version from the cached device properties. Otherwise check_support() queries it with
+  // cudaGetDeviceProperties() (cudnn_frontend 1.24 - 1.31), which costs ~1 ms on some systems and runs on
+  // every plan rebuild, i.e. for each ConvTranspose node whenever its input shape changes.
+  const cudaDeviceProp& device_prop = GetDeviceProp();
+  s_.cudnn_fe_graph->set_sm_version(device_prop.major * 10 + device_prop.minor);
   cudnn_frontend::DataType_t data_type = CudnnFeTensor::GetDataType<CudaT>();
   s_.cudnn_fe_graph->set_io_data_type(data_type).set_intermediate_data_type(data_type);
   if (data_type == cudnn_frontend::DataType_t::HALF) {
@@ -447,7 +452,7 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
       // especially for EXHAUSTIVE algo search which may result in a better algo selection.
       // ORTModule uses different algo search options (HEURISTIC, and use max workspace size) compared to
       // inference build (EXHAUSTIVE, 32M workspace size). We observed better perf when we pad input shape
-      // [N,C,D] to [N,C,1,D], expecially on A100, and especially for ConvGrad.
+      // [N,C,D] to [N,C,1,D], especially on A100, and especially for ConvGrad.
       // PyTorch also pads to [N,C,1,D]. For inference build, we still pad it to [N, C, D, 1] as this seems
       // to be the sweet spot for all algo search options: EXHAUSTIVE, HEURISTIC, and DEFAULT.
       // See PR #7348 and #7702 for more context.
@@ -540,7 +545,7 @@ Status ConvTranspose<T, Layout>::DoConvTranspose(OpKernelContext* context, bool 
   if (s_.bias_fused && s_.z_data != nullptr) {
     s_.variant_pack.insert_or_assign(s_.cudnn_fe_Z, const_cast<void*>(s_.z_data));
     if (Layout == LAYOUT_NCHW && s_.z_data == s_.y_data) {
-      // memset Z if it's required for a succesful fusion
+      // memset Z if it's required for a successful fusion
       CUDA_RETURN_IF_ERROR(cudaMemset(s_.y_data, 0, s_.Y->SizeInBytes()));
     }
   }

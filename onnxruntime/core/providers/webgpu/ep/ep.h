@@ -90,6 +90,8 @@ class Ep : public onnxruntime::ep::adapter::Ep {
   Factory& factory_;
   const OrtLogger& logger_;
   Config config_{};
+  // Copy of the device allocator's OrtMemoryInfo, created by ORT so it is safe to pass to ORT APIs.
+  Ort::MemoryInfo device_memory_info_;
 };
 
 }  // namespace ep
