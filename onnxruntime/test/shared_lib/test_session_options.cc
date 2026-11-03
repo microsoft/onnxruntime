@@ -1388,6 +1388,170 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesRejectExternalSubgraphInitializ
     }
   }
 }
+
+TEST_F(FileSourcesSessionOptionsTest, FileSourcesSupportAddExternalInitializersOverridesForSmallAndLargeWeights) {
+  ScopedInitializerDirectory directory;
+  const auto path = directory.path / "weights.bin";
+  const std::vector<float> file_values(64, 1.0f);
+  {
+    std::ofstream output(path, std::ios::binary);
+    output.exceptions(std::ios::badbit | std::ios::failbit);
+    output.write(reinterpret_cast<const char*>(file_values.data()),
+                 static_cast<std::streamsize>(file_values.size() * sizeof(float)));
+  }
+
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "override-file-sources"};
+  auto memory = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  for (int64_t length : {int64_t{4}, int64_t{64}}) {
+    SCOPED_TRACE(length);
+    Ort::SessionOptions options;
+    {
+      auto file = OpenReadOnlyInitializer(path);
+      const auto handle = NativeFileHandle(file.get());
+      const char* registered_name = "weights.bin";
+      Ort::ThrowOnError(
+          api_->SessionOptionsSetExternalInitializerFileHandles(options, &registered_name, &handle, 1));
+    }
+
+    std::vector<float> override_values(static_cast<size_t>(length), 5.0f);
+    const int64_t shape[]{length};
+    auto override_tensor = Ort::Value::CreateTensor<float>(
+        memory, override_values.data(), override_values.size(), shape, 1);
+    std::vector<std::string> names{"X"};
+    std::vector<Ort::Value> tensors;
+    tensors.push_back(std::move(override_tensor));
+    options.AddExternalInitializers(names, tensors);
+
+    const auto serialized = MakeExternalInitializerModel(length, 0).SerializeAsString();
+    Ort::Session session{env, serialized.data(), serialized.size(), options};
+    const char* outputs[]{"Y"};
+    auto actual = session.Run(Ort::RunOptions{}, nullptr, nullptr, 0, outputs, 1);
+    ASSERT_EQ(actual.size(), 1u);
+    const auto* actual_data = actual[0].GetTensorData<float>();
+    for (int64_t i = 0; i < length; ++i) {
+      EXPECT_FLOAT_EQ(actual_data[i], 5.0f);
+    }
+
+    // Overriding a non-external (embedded) initializer must still be rejected.
+    auto embedded_model = MakeFileSourceTestModel(length);
+    embedded_model.mutable_graph()->clear_input();
+    auto* embedded_init = embedded_model.mutable_graph()->add_initializer();
+    embedded_init->set_name("X");
+    embedded_init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    embedded_init->add_dims(length);
+    for (int64_t i = 0; i < length; ++i) {
+      embedded_init->add_float_data(2.0f);
+    }
+    const auto embedded_serialized = embedded_model.SerializeAsString();
+    try {
+      Ort::Session bad_session{env, embedded_serialized.data(), embedded_serialized.size(), options};
+      FAIL() << "AddExternalInitializers must not replace an embedded non-external initializer";
+    } catch (const Ort::Exception& error) {
+      EXPECT_NE(std::string{error.what()}.find("Trying to replace non-external initializer with external data"),
+                std::string::npos)
+          << error.what();
+    }
+  }
+}
+
+TEST_F(FileSourcesSessionOptionsTest, FileSourcesRejectedInModelPackageOptionsAndSessionCreation) {
+  ScopedInitializerDirectory directory;
+  const auto weight_path = directory.path / "weights.bin";
+  const float weight_value = 3.0f;
+  {
+    std::ofstream output(weight_path, std::ios::binary);
+    output.exceptions(std::ios::badbit | std::ios::failbit);
+    output.write(reinterpret_cast<const char*>(&weight_value), sizeof(weight_value));
+  }
+
+  const auto package_root = directory.path / "pkg";
+  const auto variant_dir = package_root / "main" / "cpu";
+  std::filesystem::create_directories(variant_dir);
+  {
+    std::ofstream model_out(variant_dir / "model.onnx", std::ios::binary);
+    model_out.exceptions(std::ios::badbit | std::ios::failbit);
+    ASSERT_TRUE(MakeFileSourceTestModel().SerializeToOstream(&model_out));
+  }
+  {
+    std::ofstream manifest_out(package_root / "manifest.json", std::ios::binary);
+    manifest_out.exceptions(std::ios::badbit | std::ios::failbit);
+    manifest_out << R"({
+  "schema_version": "1.0",
+  "components": {
+    "main": {
+      "variants": {
+        "cpu": {
+          "variant_directory": "main/cpu",
+          "ep": "CPUExecutionProvider",
+          "executor_info": {
+            "ort": {
+              "model_file": "model.onnx"
+            }
+          }
+        }
+      }
+    }
+  }
+})";
+  }
+
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "model-package-file-sources"};
+  const OrtModelPackageApi* package_api = api_->GetModelPackageApi();
+  ASSERT_NE(package_api, nullptr);
+
+  OrtModelPackageOptions* clean_mp_options = nullptr;
+  Ort::SessionOptions clean_options;
+  Ort::ThrowOnError(package_api->CreateModelPackageOptionsFromSessionOptions(env, clean_options, &clean_mp_options));
+  std::unique_ptr<OrtModelPackageOptions, decltype(package_api->ReleaseModelPackageOptions)> mp_options_owner(
+      clean_mp_options, package_api->ReleaseModelPackageOptions);
+
+  OrtModelPackageContext* pkg_ctx = nullptr;
+  Ort::ThrowOnError(package_api->CreateModelPackageContext(package_root.c_str(), &pkg_ctx));
+  std::unique_ptr<OrtModelPackageContext, decltype(package_api->ReleaseModelPackageContext)> pkg_ctx_owner(
+      pkg_ctx, package_api->ReleaseModelPackageContext);
+
+  OrtModelPackageComponentContext* comp_ctx = nullptr;
+  Ort::ThrowOnError(package_api->SelectComponent(pkg_ctx, "main", clean_mp_options, &comp_ctx));
+  std::unique_ptr<OrtModelPackageComponentContext, decltype(package_api->ReleaseModelPackageComponentContext)>
+      comp_ctx_owner(comp_ctx, package_api->ReleaseModelPackageComponentContext);
+
+  for (bool empty_registry : {true, false}) {
+    SCOPED_TRACE(empty_registry);
+    Ort::SessionOptions file_source_options;
+    if (empty_registry) {
+      Ort::ThrowOnError(
+          api_->SessionOptionsSetExternalInitializerFileHandles(file_source_options, nullptr, nullptr, 0));
+    } else {
+      auto file = OpenReadOnlyInitializer(weight_path);
+      const auto handle = NativeFileHandle(file.get());
+      const char* registered_name = "weights.bin";
+      Ort::ThrowOnError(
+          api_->SessionOptionsSetExternalInitializerFileHandles(file_source_options, &registered_name, &handle, 1));
+    }
+
+    OrtModelPackageOptions* rejected_mp_options = nullptr;
+    Ort::Status options_status{
+        package_api->CreateModelPackageOptionsFromSessionOptions(env, file_source_options, &rejected_mp_options)};
+    EXPECT_FALSE(options_status.IsOK());
+    EXPECT_EQ(options_status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+    EXPECT_NE(std::string{options_status.GetErrorMessage()}.find(
+                  "External initializer file handles are not supported with model packages."),
+              std::string::npos)
+        << options_status.GetErrorMessage();
+    EXPECT_EQ(rejected_mp_options, nullptr);
+
+    OrtSession* rejected_session = nullptr;
+    Ort::Status session_status{
+        package_api->CreateSession(env, comp_ctx, file_source_options, &rejected_session)};
+    EXPECT_FALSE(session_status.IsOK());
+    EXPECT_EQ(session_status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+    EXPECT_NE(std::string{session_status.GetErrorMessage()}.find(
+                  "External initializer file handles are not supported with model packages."),
+              std::string::npos)
+        << session_status.GetErrorMessage();
+    EXPECT_EQ(rejected_session, nullptr);
+  }
+}
 #endif
 
 #if defined(ORT_MINIMAL_BUILD) || (!defined(_WIN32) && !defined(__linux__) && !defined(__ANDROID__) && !defined(__APPLE__)) || defined(DISABLE_EXTERNAL_INITIALIZERS)
