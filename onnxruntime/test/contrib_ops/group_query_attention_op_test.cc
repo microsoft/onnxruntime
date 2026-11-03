@@ -4861,13 +4861,131 @@ TEST(GroupQueryAttentionTest, CudaCudnnSdpaRejectedGraphFallsBack) {
 
   const std::string fallback_log = RunGQACudnnSdpaProbeCase(std::nullopt, /*reject_cudnn_graph=*/true);
   EXPECT_EQ(fallback_log.find("SdpaKernel=CUDNN_FLASH_ATTENTION"), std::string::npos) << fallback_log;
+  // Flash or memory-efficient attention when compiled in, otherwise GQA's unfused kernel (MATH).
   EXPECT_TRUE(fallback_log.find("SdpaKernel=FLASH_ATTENTION") != std::string::npos ||
-              fallback_log.find("SdpaKernel=EFFICIENT_ATTENTION") != std::string::npos)
+              fallback_log.find("SdpaKernel=EFFICIENT_ATTENTION") != std::string::npos ||
+              fallback_log.find("SdpaKernel=MATH") != std::string::npos)
       << fallback_log;
 
   // An explicit opt-in doesn't consult the probe, so it keeps cuDNN.
   const std::string explicit_log = RunGQACudnnSdpaProbeCase(std::string("1"), /*reject_cudnn_graph=*/true);
   EXPECT_NE(explicit_log.find("SdpaKernel=CUDNN_FLASH_ATTENTION"), std::string::npos) << explicit_log;
+}
+
+// Runs a right-padded bidirectional (causal=0) fp16 first prompt with zero Q/K: batch 0 has 32 valid
+// tokens out of 64 and batch 1 has all 64. Each valid output row of batch b is then the mean of V
+// over that batch's valid tokens. A kernel that also attends to batch 0's padding gives 65/128
+// instead of 33/128 there. Padded query rows are not checked: the op doesn't define them. Returns
+// the kernel debug log.
+static std::string RunGQARaggedBidirectionalPromptCase(bool reject_cudnn_graph) {
+  ScopedEnvironmentVariables scoped_env_vars{{
+      {"ORT_ENABLE_XQA", "0"},
+      {"ORT_ENABLE_CUDNN_FLASH_ATTENTION", std::nullopt},
+      {"ORT_TEST_ONLY_GQA_REJECT_CUDNN_SDPA_GRAPH", reject_cudnn_graph ? std::optional<std::string>("1") : std::nullopt},
+      {"ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", "1"},
+  }};
+  constexpr int batch_size = 2;
+  constexpr int sequence_length = 64;
+  constexpr int num_heads = 8;
+  constexpr int kv_num_heads = 2;
+  constexpr int head_size = 128;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  const std::vector<int> valid_lengths = {32, sequence_length};
+
+  // Padding tokens get real V values too, so attending to them changes the result.
+  std::vector<MLFloat16> value(batch_size * sequence_length * kv_hidden_size);
+  for (int b = 0; b < batch_size; ++b) {
+    for (int token = 0; token < sequence_length; ++token) {
+      for (int head = 0; head < kv_num_heads; ++head) {
+        const MLFloat16 v(static_cast<float>(token + 1) / 64.0f + static_cast<float>(head) / 8.0f);
+        std::fill_n(value.begin() + (b * sequence_length + token) * kv_hidden_size + head * head_size, head_size, v);
+      }
+    }
+  }
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  tester.AddAttribute<int64_t>("causal", 0);
+  tester.AddInput<MLFloat16>("query", {batch_size, sequence_length, hidden_size},
+                             std::vector<MLFloat16>(batch_size * sequence_length * hidden_size, MLFloat16(0.0f)));
+  tester.AddInput<MLFloat16>("key", {batch_size, sequence_length, kv_hidden_size},
+                             std::vector<MLFloat16>(batch_size * sequence_length * kv_hidden_size, MLFloat16(0.0f)));
+  tester.AddInput<MLFloat16>("value", {batch_size, sequence_length, kv_hidden_size}, value);
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {valid_lengths[0] - 1, valid_lengths[1] - 1});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {sequence_length}, true);
+  // Placeholders for shape and type; the verifier below checks only the valid output rows.
+  tester.AddOutput<MLFloat16>("output", {batch_size, sequence_length, hidden_size},
+                              std::vector<MLFloat16>(batch_size * sequence_length * hidden_size));
+  tester.AddOutput<MLFloat16>("present_key", {batch_size, kv_num_heads, sequence_length, head_size},
+                              std::vector<MLFloat16>(batch_size * sequence_length * kv_hidden_size));
+  tester.AddOutput<MLFloat16>("present_value", {batch_size, kv_num_heads, sequence_length, head_size},
+                              std::vector<MLFloat16>(batch_size * sequence_length * kv_hidden_size));
+  tester.SetCustomOutputVerifier([&valid_lengths](const std::vector<OrtValue>& fetches,
+                                                  const std::string& /*provider*/) {
+    ASSERT_FALSE(fetches.empty());
+    const MLFloat16* output = fetches[0].Get<Tensor>().Data<MLFloat16>();
+    for (int b = 0; b < batch_size; ++b) {
+      const int valid_length = valid_lengths[b];
+      int mismatches = 0;
+      for (int token = 0; token < valid_length; ++token) {
+        for (int head = 0; head < num_heads; ++head) {
+          const int kv_head = head / (num_heads / kv_num_heads);
+          const float expected = static_cast<float>(valid_length + 1) / 128.0f + static_cast<float>(kv_head) / 8.0f;
+          const MLFloat16* row = output + (b * sequence_length + token) * hidden_size + head * head_size;
+          for (int d = 0; d < head_size; ++d) {
+            const float actual = row[d].ToFloat();
+            if (std::abs(actual - expected) > 0.005f && mismatches++ == 0) {
+              ADD_FAILURE() << "batch " << b << " (valid length " << valid_length << ") token " << token
+                            << " head " << head << " dim " << d << ": got " << actual << ", expected " << expected;
+            }
+          }
+        }
+      }
+      EXPECT_EQ(mismatches, 0) << "mismatched elements in the valid rows of batch " << b;
+    }
+  });
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  SessionOptions options;
+  EXPECT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  testing::internal::CaptureStdout();
+  tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  return testing::internal::GetCapturedStdout();
+}
+
+// cuDNN masks each batch's valid KV length. When the probe rejects cuDNN for a right-padded
+// bidirectional first prompt, the kernel that runs instead must mask the same way. Checked for each
+// fallback: Flash, memory-efficient attention and the unfused kernel.
+TEST(GroupQueryAttentionTest, CudaCudnnSdpaRejectedRaggedBidirectionalPromptMasksPerBatch) {
+  if (!HasCudaEnvironment(900) || DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "cuDNN SDPA is only auto-selected on SM90+.";
+  }
+
+  const std::string cudnn_log = RunGQARaggedBidirectionalPromptCase(/*reject_cudnn_graph=*/false);
+  if (cudnn_log.find("SdpaKernel=CUDNN_FLASH_ATTENTION") == std::string::npos) {
+    GTEST_SKIP() << "cuDNN SDPA is not runnable for this shape in this build/device configuration.\n"
+                 << cudnn_log;
+  }
+
+  struct Fallback {
+    const char* disable_flash;
+    const char* disable_memory_efficient;
+  };
+  for (const Fallback& fallback : {Fallback{"0", "0"}, Fallback{"1", "0"}, Fallback{"1", "1"}}) {
+    SCOPED_TRACE(std::string("ORT_DISABLE_FLASH_ATTENTION=") + fallback.disable_flash +
+                 " ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION=" + fallback.disable_memory_efficient);
+    ScopedEnvironmentVariables fallback_env{{
+        {"ORT_DISABLE_FLASH_ATTENTION", fallback.disable_flash},
+        {"ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", fallback.disable_memory_efficient},
+    }};
+    const std::string fallback_log = RunGQARaggedBidirectionalPromptCase(/*reject_cudnn_graph=*/true);
+    EXPECT_NE(fallback_log.find("SdpaKernel="), std::string::npos) << fallback_log;
+    EXPECT_EQ(fallback_log.find("SdpaKernel=CUDNN_FLASH_ATTENTION"), std::string::npos) << fallback_log;
+  }
 }
 
 static void RunGQACudaCacheAliasingTest(
