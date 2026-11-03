@@ -28,8 +28,10 @@
 //     takes it when one of its heads has a candidate kInt8TcTailDepth nats below its running maximum, about 7 standard
 //     deviations of Gaussian logits over 2048 candidates: a fraction of the CTAs when the standard deviation is about
 //     3 nats, practically none for 1 nat. The documentation lists measurements. A new running maximum that is more
-//     than kInt8TcTailDepth nats above the previous one counts the same way, because the rescale of the accumulator
-//     by ex2.approx.ftz flushes to zero below 2^-126 and would erase the earlier tiles' contribution.
+//     than kInt8TcTailDepth nats above the previous one counts the same way. Only a much larger jump (about 87 nats,
+//     where the rescale factor drops below 2^-126) makes ex2.approx.ftz flush the rescale of the accumulator to zero
+//     and erase the earlier tiles' contribution, but the existing kInt8TcTailDepth threshold is reused as a
+//     conservative trigger for the fp32 fallback, so that the rescale never has to be tracked at finer granularity.
 // The gathered int8 rows stay int8 in shared memory (cp.async, double buffered, one tile ahead). A fragment read with
 // ldmatrix is converted to fp16 exactly in registers (1024 + (byte ^ 0x80) - 1152, "magic number" conversion) and
 // consumed by fp16 MMAs with fp32 accumulation, so the per-tile dequantization pass, its shared memory round trip and
@@ -626,9 +628,11 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
     if (check_tail_depth) {
       const float low0 = fminf(fminf(va0 ? d00 : 0.0f, va1 ? d01 : 0.0f), fminf(vb0 ? d02 : 0.0f, vb1 ? d03 : 0.0f));
       const float low1 = fminf(fminf(va0 ? d10 : 0.0f, va1 ? d11 : 0.0f), fminf(vb0 ? d12 : 0.0f, vb1 ? d13 : 0.0f));
-      // A new maximum also pushes the candidates accumulated so far that many nats down. ex2.approx.ftz flushes alpha
-      // to zero below 2^-126, erasing the accumulator that a large value scale can amplify, so the rescale counts as a
-      // depth as well (an empty accumulator, run_max == -FLT_MAX, has nothing to lose).
+      // A new maximum also pushes the candidates accumulated so far that many nats down. A very large jump (about 87
+      // nats or more) makes ex2.approx.ftz flush alpha to zero (below 2^-126), erasing the accumulator that a large
+      // value scale can amplify. The rescale therefore counts as a depth too, and the shared kInt8TcTailDepth threshold
+      // triggers the fp32 fallback long before the flush can happen (an empty accumulator, run_max == -FLT_MAX, has
+      // nothing to lose).
       const float rescale0 = run_max0 > -FLT_MAX ? run_max0 - new_max0 : 0.0f;
       const float rescale1 = run_max1 > -FLT_MAX ? run_max1 - new_max1 : 0.0f;
       lowest_depth = fminf(lowest_depth, fminf(fminf(low0, low1), fminf(rescale0, rescale1)));
