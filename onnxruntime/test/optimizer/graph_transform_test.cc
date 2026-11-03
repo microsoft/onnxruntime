@@ -9526,41 +9526,76 @@ enum class VitAttentionScaleOp {
 
 struct VitAttentionTestConfig {
   VitAttentionScaleOp scale_op = VitAttentionScaleOp::Div;
+  // Mul only: put the scalar in input 0.
+  bool scale_is_first_input = false;
   // Unset means no Softmax axis attribute.
   std::optional<int64_t> softmax_axis = 3;
   std::vector<int64_t> k_perm = {0, 2, 3, 1};
   int64_t seq_len = 64;
   int64_t head_size = 16;
+  // Fewer K/V heads than the 4 query heads makes MatMul broadcast them, as in multi-query attention.
+  int64_t kv_num_heads = 4;
+  // Projects K/V from a second input with batch 1; a larger query batch then makes MatMul broadcast them.
+  bool separate_kv_input = false;
+  int64_t q_batch = 1;
+  // Leaves the batch and sequence dims of the inputs unknown, as in models exported with dynamic axes.
+  bool dynamic_input_dims = false;
+  // Shape of the Reshape that merges the heads back; empty means {0, 0, hidden_size}.
+  std::vector<int64_t> merge_heads_shape;
+  bool fp16 = false;
 };
 
 // Unmasked ViT/DINOv2 self-attention with separate Q, K and V projections:
 //   x -> MatMul(Wq/Wk/Wv) -> Reshape[0,0,N,H] -> Transpose -> MatMul(Q, K^T) -> Div|Mul -> Softmax
 //     -> MatMul(V) -> Transpose(0,2,1,3) -> Reshape[0,0,N*H]
+// The fp16 variant uses constant data and is only meant for graph checks.
 static void BuildVitAttentionTestCase(ModelTestBuilder& builder, const VitAttentionTestConfig& config = {}) {
   constexpr int64_t num_heads = 4;
   const int64_t head_size = config.head_size;
   const int64_t hidden_size = num_heads * head_size;
 
-  auto* input = builder.MakeInput<float>({1, config.seq_len, hidden_size}, -1.0f, 1.0f);
-  auto* split_heads_shape = builder.Make1DInitializer<int64_t>({0, 0, num_heads, head_size});
-  auto* merge_heads_shape = builder.Make1DInitializer<int64_t>({0, 0, hidden_size});
-  const float sqrt_head_size = std::sqrt(static_cast<float>(head_size));
-  auto* scale = builder.MakeScalarInitializer<float>(
-      config.scale_op == VitAttentionScaleOp::Div ? sqrt_head_size : 1.0f / sqrt_head_size);
+  auto make_input = [&](int64_t batch) -> NodeArg* {
+    if (config.dynamic_input_dims) {
+      return builder.MakeInput<float>(std::optional<std::vector<int64_t>>{{-1, -1, hidden_size}});
+    }
+    const std::vector<int64_t> shape{batch, config.seq_len, hidden_size};
+    if (config.fp16) {
+      return builder.MakeInput<MLFloat16>(std::optional<std::vector<int64_t>>{shape});
+    }
+    return builder.MakeInput<float>(shape, -1.0f, 1.0f);
+  };
+  auto make_weight = [&](int64_t output_size) -> NodeArg* {
+    const std::vector<int64_t> shape{hidden_size, output_size};
+    if (config.fp16) {
+      return builder.MakeInitializer<MLFloat16>(
+          shape, std::vector<MLFloat16>(static_cast<size_t>(hidden_size * output_size), MLFloat16(0.01f)));
+    }
+    return builder.MakeInitializer<float>(shape, -0.2f, 0.2f);
+  };
 
-  auto add_head_split = [&](const std::vector<int64_t>& perm) {
-    auto* weight = builder.MakeInitializer<float>({hidden_size, hidden_size}, -0.2f, 0.2f);
+  NodeArg* q_input = make_input(config.q_batch);
+  NodeArg* kv_input = config.separate_kv_input ? make_input(1) : q_input;
+  const float sqrt_head_size = std::sqrt(static_cast<float>(head_size));
+  const float scale_value = config.scale_op == VitAttentionScaleOp::Div ? sqrt_head_size : 1.0f / sqrt_head_size;
+  NodeArg* scale = config.fp16 ? builder.MakeScalarInitializer<MLFloat16>(MLFloat16(scale_value))
+                               : builder.MakeScalarInitializer<float>(scale_value);
+  NodeArg* merge_heads_shape = builder.Make1DInitializer<int64_t>(
+      config.merge_heads_shape.empty() ? std::vector<int64_t>{0, 0, hidden_size} : config.merge_heads_shape);
+
+  auto add_head_split = [&](NodeArg* x, int64_t heads, const std::vector<int64_t>& perm) {
+    auto* weight = make_weight(heads * head_size);
+    auto* split_heads_shape = builder.Make1DInitializer<int64_t>({0, 0, heads, head_size});
     auto* projected = builder.MakeIntermediate();
     auto* bsnh = builder.MakeIntermediate();
     auto* transposed = builder.MakeIntermediate();
-    builder.AddNode("MatMul", {input, weight}, {projected});
+    builder.AddNode("MatMul", {x, weight}, {projected});
     builder.AddNode("Reshape", {projected, split_heads_shape}, {bsnh});
     builder.AddNode("Transpose", {bsnh}, {transposed}).AddAttribute("perm", perm);
     return transposed;
   };
-  auto* q = add_head_split({0, 2, 1, 3});
-  auto* k = add_head_split(config.k_perm);
-  auto* v = add_head_split({0, 2, 1, 3});
+  auto* q = add_head_split(q_input, num_heads, {0, 2, 1, 3});
+  auto* k = add_head_split(kv_input, config.kv_num_heads, config.k_perm);
+  auto* v = add_head_split(kv_input, config.kv_num_heads, {0, 2, 1, 3});
 
   auto* qk = builder.MakeIntermediate();
   auto* scaled = builder.MakeIntermediate();
@@ -9569,7 +9604,13 @@ static void BuildVitAttentionTestCase(ModelTestBuilder& builder, const VitAttent
   auto* context_bsnh = builder.MakeIntermediate();
   auto* output = builder.MakeOutput();
   builder.AddNode("MatMul", {q, k}, {qk});
-  builder.AddNode(config.scale_op == VitAttentionScaleOp::Div ? "Div" : "Mul", {qk, scale}, {scaled});
+  if (config.scale_op == VitAttentionScaleOp::Div) {
+    builder.AddNode("Div", {qk, scale}, {scaled});
+  } else if (config.scale_is_first_input) {
+    builder.AddNode("Mul", {scale, qk}, {scaled});
+  } else {
+    builder.AddNode("Mul", {qk, scale}, {scaled});
+  }
   auto& softmax = builder.AddNode("Softmax", {scaled}, {probs});
   if (config.softmax_axis.has_value()) {
     softmax.AddAttribute("axis", *config.softmax_axis);
@@ -9612,51 +9653,135 @@ static Status CheckVitAttentionUnfused(Graph& graph) {
   return Status::OK();
 }
 
-static Status TestVitAttentionFusion(const VitAttentionTestConfig& config, int opset, const char* ep,
-                                     const std::function<Status(Graph&)>& check, const logging::Logger& logger) {
+static Status AssignVitAttentionWebGpuEp(Graph& graph) {
+  return AssignVitAttentionEp(graph, kWebGpuExecutionProvider);
+}
+
+static Status TestVitAttentionFusion(const VitAttentionTestConfig& config, int opset,
+                                     const std::function<Status(Graph&)>& check, const logging::Logger& logger,
+                                     const std::function<Status(Graph&)>& assign_ep = AssignVitAttentionWebGpuEp) {
   return TestGraphTransformer(
       [&config](ModelTestBuilder& builder) { BuildVitAttentionTestCase(builder, config); }, opset, logger,
       std::make_unique<MultiHeadAttentionFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
-      TransformerLevel::Level2, 1, [ep](Graph& graph) { return AssignVitAttentionEp(graph, ep); }, check);
+      TransformerLevel::Level2, 1, assign_ep, check);
 }
 
 TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitDivScale) {
   // Opset 11 matches exported ViT/DINOv2 models, where Softmax needs the explicit last-axis attribute.
-  ASSERT_STATUS_OK(TestVitAttentionFusion({}, 11, kWebGpuExecutionProvider, CheckVitAttentionFused, *logger_));
+  ASSERT_STATUS_OK(TestVitAttentionFusion({}, 11, CheckVitAttentionFused, *logger_));
 }
 
 TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitMulScaleDefaultAxis) {
   // From opset 13 Softmax defaults to the last axis.
-  ASSERT_STATUS_OK(TestVitAttentionFusion({VitAttentionScaleOp::Mul, std::nullopt}, 13, kWebGpuExecutionProvider,
-                                          CheckVitAttentionFused, *logger_));
+  VitAttentionTestConfig config;
+  config.scale_op = VitAttentionScaleOp::Mul;
+  config.softmax_axis = std::nullopt;
+  ASSERT_STATUS_OK(TestVitAttentionFusion(config, 13, CheckVitAttentionFused, *logger_));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitMulScaleFirstInput) {
+  VitAttentionTestConfig config;
+  config.scale_op = VitAttentionScaleOp::Mul;
+  config.scale_is_first_input = true;
+  ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionFused, *logger_));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitFloat16) {
+  VitAttentionTestConfig config;
+  config.fp16 = true;
+  ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionFused, *logger_));
 }
 
 TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitOpset11DefaultAxisNotFused) {
   // Before opset 13 the default Softmax axis is 1, which normalizes over heads and keys together.
-  ASSERT_STATUS_OK(TestVitAttentionFusion({VitAttentionScaleOp::Div, std::nullopt}, 11, kWebGpuExecutionProvider,
-                                          CheckVitAttentionUnfused, *logger_));
+  VitAttentionTestConfig config;
+  config.softmax_axis = std::nullopt;
+  ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionUnfused, *logger_));
 }
 
 TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitUntransposedKeyNotFused) {
   // seq_len == head_size keeps Q x K a valid MatMul although it no longer computes Q x K^T.
-  ASSERT_STATUS_OK(TestVitAttentionFusion({VitAttentionScaleOp::Div, 3, {0, 2, 1, 3}, 32, 32}, 11, kWebGpuExecutionProvider,
-                                          CheckVitAttentionUnfused, *logger_));
+  VitAttentionTestConfig config;
+  config.k_perm = {0, 2, 1, 3};
+  config.seq_len = 32;
+  config.head_size = 32;
+  ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionUnfused, *logger_));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitMultiQueryNotFused) {
+  VitAttentionTestConfig config;
+  config.kv_num_heads = 1;
+  ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionUnfused, *logger_));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitBroadcastBatchNotFused) {
+  VitAttentionTestConfig config;
+  config.separate_kv_input = true;
+  config.q_batch = 2;
+  ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionUnfused, *logger_));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitDynamicDimsSelfAttention) {
+  // The inferred batch dims are unknown, but Q, K and V project the same tensor, so they share them.
+  VitAttentionTestConfig config;
+  config.dynamic_input_dims = true;
+  ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionFused, *logger_));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitDynamicDimsCrossAttentionNotFused) {
+  // With unknown dims and a separate K/V input, nothing shows that the batch dims match.
+  VitAttentionTestConfig config;
+  config.dynamic_input_dims = true;
+  config.separate_kv_input = true;
+  ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionUnfused, *logger_));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitZeroInMergedHeadDimNotFused) {
+  // The output Reshape would read the MultiHeadAttention output, whose dim 2 is N*H rather than N.
+  VitAttentionTestConfig config;
+  config.merge_heads_shape = {0, 0, 0, -1};
+  ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionUnfused, *logger_));
 }
 
 TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitShortQueryNotFused) {
   // Queries shorter than 32 would run the split-reduce decode kernel.
-  ASSERT_STATUS_OK(TestVitAttentionFusion({VitAttentionScaleOp::Div, 3, {0, 2, 3, 1}, 31}, 11, kWebGpuExecutionProvider,
-                                          CheckVitAttentionUnfused, *logger_));
+  VitAttentionTestConfig config;
+  config.seq_len = 31;
+  ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionUnfused, *logger_));
 }
 
 TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitHeadSizeNotMultipleOf8NotFused) {
   // Such head sizes can miss the FlashAttention path, whose fallback does not support graph capture.
-  ASSERT_STATUS_OK(TestVitAttentionFusion({VitAttentionScaleOp::Div, 3, {0, 2, 3, 1}, 64, 12}, 11,
-                                          kWebGpuExecutionProvider, CheckVitAttentionUnfused, *logger_));
+  VitAttentionTestConfig config;
+  config.head_size = 12;
+  ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionUnfused, *logger_));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitLargeFloatHeadNotFused) {
+  // fp32 K/V tiles for a head size of 256 exceed the guaranteed 16 KB of workgroup storage.
+  VitAttentionTestConfig config;
+  config.head_size = 256;
+  ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionUnfused, *logger_));
 }
 
 TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitOtherEpNotFused) {
-  ASSERT_STATUS_OK(TestVitAttentionFusion({}, 11, kCpuExecutionProvider, CheckVitAttentionUnfused, *logger_));
+  ASSERT_STATUS_OK(TestVitAttentionFusion({}, 11, CheckVitAttentionUnfused, *logger_, [](Graph& graph) {
+    return AssignVitAttentionEp(graph, kCpuExecutionProvider);
+  }));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitMixedEpNotFused) {
+  // One head-split Transpose left on the CPU EP.
+  ASSERT_STATUS_OK(TestVitAttentionFusion({}, 11, CheckVitAttentionUnfused, *logger_, [](Graph& graph) {
+    ORT_RETURN_IF_ERROR(AssignVitAttentionEp(graph, kWebGpuExecutionProvider));
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "Transpose") {
+        node.SetExecutionProviderType(kCpuExecutionProvider);
+        break;
+      }
+    }
+    return Status::OK();
+  }));
 }
 
 // Runs the graph on WebGPU with and without the fusion through the default session optimizers and compares the
@@ -9671,7 +9796,9 @@ TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitWebGpuNumerics) {
   Model model("VitAttention", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
               domain_to_version, {}, *logger_);
   ModelTestBuilder builder(model.MainGraph());
-  BuildVitAttentionTestCase(builder, {VitAttentionScaleOp::Div, 3, {0, 2, 3, 1}, 97});
+  VitAttentionTestConfig config;
+  config.seq_len = 97;
+  BuildVitAttentionTestCase(builder, config);
   builder.SetGraphOutputs();
   ASSERT_STATUS_OK(model.MainGraph().Resolve());
   std::string model_data;

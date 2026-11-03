@@ -83,6 +83,51 @@ const Node* MatchHeadSplit(const Graph& graph, const Node& consumer, int input_i
   return transpose;
 }
 
+// Walks up from a head-split Reshape to the tensor its projection reads: through an optional bias Add, a MatMul or
+// Gemm with a constant weight, and the flattening Reshape that MatMulAddFusion puts in front of a Gemm.
+const NodeArg* GetProjectionSource(const Graph& graph, const Node& head_split_reshape) {
+  const Node* node = graph_utils::GetInputNode(head_split_reshape, 0);
+  if (node != nullptr && node->OpType() == "Add" && node->InputDefs().size() == 2) {
+    const int data_index = graph_utils::IsConstantInitializer(graph, node->InputDefs()[1]->Name(), true) ? 0 : 1;
+    if (!graph_utils::IsConstantInitializer(graph, node->InputDefs()[1 - data_index]->Name(), true)) {
+      return nullptr;
+    }
+    node = graph_utils::GetInputNode(*node, data_index);
+  }
+  if (node == nullptr || (node->OpType() != "MatMul" && node->OpType() != "Gemm") || node->InputDefs().size() < 2 ||
+      !graph_utils::IsConstantInitializer(graph, node->InputDefs()[1]->Name(), true)) {
+    return nullptr;
+  }
+  const Node* flatten = graph_utils::GetInputNode(*node, 0);
+  if (node->OpType() == "Gemm" && flatten != nullptr && flatten->OpType() == "Reshape") {
+    return flatten->InputDefs()[0];
+  }
+  return node->InputDefs()[0];
+}
+
+// Whether two head-split Reshapes produce the same batch dim. That holds when both project the same tensor and keep
+// the same leading reshape dims, as in self-attention; otherwise it needs statically comparable inferred dims.
+bool HaveSameBatchDim(const Graph& graph, const Node& a, const Node& b) {
+  InlinedVector<int64_t> a_dims, b_dims;
+  const NodeArg* a_source = GetProjectionSource(graph, a);
+  if (a_source != nullptr && a_source == GetProjectionSource(graph, b) && GetConstantShape(graph, a, a_dims) &&
+      GetConstantShape(graph, b, b_dims) && a_dims[0] == b_dims[0] && a_dims[1] == b_dims[1]) {
+    return true;
+  }
+
+  const auto* a_shape = a.OutputDefs()[0]->Shape();
+  const auto* b_shape = b.OutputDefs()[0]->Shape();
+  if (a_shape == nullptr || b_shape == nullptr || a_shape->dim_size() != 4 || b_shape->dim_size() != 4) {
+    return false;
+  }
+  const auto& a_dim = a_shape->dim(0);
+  const auto& b_dim = b_shape->dim(0);
+  if (utils::HasDimValue(a_dim) && utils::HasDimValue(b_dim)) {
+    return a_dim.dim_value() == b_dim.dim_value();
+  }
+  return utils::HasDimParam(a_dim) && utils::HasDimParam(b_dim) && a_dim.dim_param() == b_dim.dim_param();
+}
+
 bool TryFuse(Graph& graph, Node& softmax, const InlinedHashSet<std::string_view>& compatible_eps,
              NodeArg*& bsd_shape_arg, const logging::Logger& logger) {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(softmax, "Softmax", {1, 11, 13}) ||
@@ -167,20 +212,13 @@ bool TryFuse(Graph& graph, Node& softmax, const InlinedHashSet<std::string_view>
   if (q_transpose == nullptr || k_transpose == nullptr || v_transpose == nullptr) {
     return false;
   }
+  // Unequal head counts also cover multi-query attention, where K/V have one head that MatMul broadcasts.
   if (q_heads != k_heads || q_heads != v_heads || q_head_size != k_head_size || q_head_size != v_head_size) {
     LOGS(logger, VERBOSE) << "MultiHeadAttentionFusion[" << softmax.Name() << "]: mismatched Q/K/V head shapes";
     return false;
   }
-  // The WebGPU MultiHeadAttention kernel takes its FlashAttention path for head sizes that are a multiple of 8 on
-  // every adapter. The fallback path is slower than the unfused graph and does not support graph capture.
-  if (q_head_size % 8 != 0) {
-    return false;
-  }
-  // A short query leaves only a small score tensor to avoid, and MultiHeadAttention sends queries shorter than 32 to
-  // the split-reduce decode kernel, which is slower than the unfused graph for long keys.
-  const auto* q_bnsh_shape = q_transpose->OutputDefs()[0]->Shape();
-  if (q_bnsh_shape != nullptr && q_bnsh_shape->dim_size() == 4 && utils::HasDimValue(q_bnsh_shape->dim(2)) &&
-      q_bnsh_shape->dim(2).dim_value() < 32) {
+  // MatMul broadcasts the batch dim, but MultiHeadAttention requires Q, K and V to share it.
+  if (!HaveSameBatchDim(graph, *q_reshape, *k_reshape) || !HaveSameBatchDim(graph, *q_reshape, *v_reshape)) {
     return false;
   }
 
@@ -188,6 +226,26 @@ bool TryFuse(Graph& graph, Node& softmax, const InlinedHashSet<std::string_view>
   if (q_type == nullptr || !q_type->has_tensor_type() ||
       (q_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
        q_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16)) {
+    return false;
+  }
+
+  // The remaining checks keep the fused node on the WebGPU kernel's dense FlashAttention prefill path. Its fallbacks
+  // are slower than the unfused graph, and the non-flash one does not support graph capture.
+  // FlashAttention requires a head size that is a multiple of 8 on every adapter.
+  if (q_head_size % 8 != 0) {
+    return false;
+  }
+  // Dense prefill needs K/V tiles of 16 keys to fit in the 16 KB of workgroup storage every adapter guarantees.
+  const int64_t element_size =
+      q_type->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ? 2 : 4;
+  if (2 * 16 * q_head_size * element_size > 16384) {
+    return false;
+  }
+  // Queries shorter than 32 go to the split-reduce decode kernel, and leave only a small score tensor to avoid.
+  // A symbolic query length cannot be checked here, so it is fused.
+  const auto* q_bnsh_shape = q_transpose->OutputDefs()[0]->Shape();
+  if (q_bnsh_shape != nullptr && q_bnsh_shape->dim_size() == 4 && utils::HasDimValue(q_bnsh_shape->dim(2)) &&
+      q_bnsh_shape->dim(2).dim_value() < 32) {
     return false;
   }
 

@@ -209,6 +209,26 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(
   return rule_transformer;
 }
 
+#if !defined(DISABLE_CONTRIB_OPS)
+// Whether a registered WebGPU EP has a kernel for the com.microsoft opset-1 operator `op_type`. Fusions that emit
+// WebGPU-only contrib ops check this so they never produce a node the EP cannot run.
+static bool WebGpuEpHasContribKernel(const ExecutionProviders* execution_providers, std::string_view op_type,
+                                     const logging::Logger& logger) {
+  if (execution_providers == nullptr) {
+    return false;
+  }
+  const auto* webgpu_ep = execution_providers->Get(onnxruntime::kWebGpuExecutionProvider);
+  if (webgpu_ep == nullptr) {
+    return false;
+  }
+  auto registry = webgpu_ep->GetKernelRegistry();
+  return registry != nullptr &&
+         registry->TryFindKernel(onnxruntime::kWebGpuExecutionProvider, op_type, kMSDomain, 1,
+                                 KernelRegistry::TypeConstraintMap{}, logger, nullptr)
+             .IsOK();
+}
+#endif  // !defined(DISABLE_CONTRIB_OPS)
+
 InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     TransformerLevel level,
     const SessionOptions& session_options,
@@ -416,8 +436,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_acl_cuda_dml_webgpu_eps, level));
       transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(cpu_cuda_eps));
       transformers.emplace_back(std::make_unique<AttentionFusion>(cpu_acl_cuda_dml_eps));
-      transformers.emplace_back(std::make_unique<MultiHeadAttentionFusion>(
-          InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
+      if (WebGpuEpHasContribKernel(execution_providers, "MultiHeadAttention", logger)) {
+        transformers.emplace_back(std::make_unique<MultiHeadAttentionFusion>(
+            InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
+      }
       transformers.emplace_back(std::make_unique<EmbedLayerNormFusion>(cpu_acl_cuda_dml_eps));
       transformers.emplace_back(std::make_unique<GatherSliceToSplitFusion>(cpu_cuda_eps));
       transformers.emplace_back(std::make_unique<GatherToSliceFusion>(cpu_cuda_eps));
@@ -470,28 +492,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<GroupQueryAttentionPreNormFusion>(
           InlinedHashSet<std::string_view>{onnxruntime::kCudaExecutionProvider,
                                            onnxruntime::kWebGpuExecutionProvider}));
-      bool has_matmul_nbits_mlp_kernel = false;
-      bool has_matmul_nbits_qkv_kernel = false;
-      if (execution_providers != nullptr) {
-        const auto* webgpu_ep = execution_providers->Get(onnxruntime::kWebGpuExecutionProvider);
-        if (webgpu_ep != nullptr) {
-          auto registry = webgpu_ep->GetKernelRegistry();
-          if (registry) {
-            auto has_webgpu_kernel = [&](std::string_view op_type) {
-              return registry->TryFindKernel(onnxruntime::kWebGpuExecutionProvider,
-                                             op_type,
-                                             kMSDomain,
-                                             1,
-                                             KernelRegistry::TypeConstraintMap{},
-                                             logger,
-                                             nullptr)
-                  .IsOK();
-            };
-            has_matmul_nbits_mlp_kernel = has_webgpu_kernel("MatMulNBitsMlp");
-            has_matmul_nbits_qkv_kernel = has_webgpu_kernel("MatMulNBitsQkv");
-          }
-        }
-      }
+      const bool has_matmul_nbits_mlp_kernel =
+          WebGpuEpHasContribKernel(execution_providers, "MatMulNBitsMlp", logger);
+      const bool has_matmul_nbits_qkv_kernel =
+          WebGpuEpHasContribKernel(execution_providers, "MatMulNBitsQkv", logger);
       if (has_matmul_nbits_mlp_kernel) {
         transformers.emplace_back(std::make_unique<MatMulNBitsMlpFusion>(
             InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));

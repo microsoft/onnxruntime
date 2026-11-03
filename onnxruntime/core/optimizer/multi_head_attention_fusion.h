@@ -28,6 +28,12 @@ is rewritten to
 The added Reshapes only fold the trailing (N, H) dims back to the BSD layout MultiHeadAttention expects, so they are
 free for EPs whose Reshape aliases its input. This keeps the [B, N, S, S] score tensor out of memory, which dominates
 the attention cost for long vision sequences.
+
+Besides the structural match, the fusion requires Q, K and V to share their batch dim, head count and head size, and
+it only fires when the WebGPU MultiHeadAttention kernel would take its dense FlashAttention prefill path: a head size
+that is a multiple of 8 and fits the guaranteed workgroup storage, and a query length that is not statically known to
+be below 32. These cutoffs are specific to the WebGPU kernel, so the transformer is only meant to be registered for
+the WebGPU EP.
 */
 class MultiHeadAttentionFusion : public GraphTransformer {
  public:
