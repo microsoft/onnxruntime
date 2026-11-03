@@ -180,10 +180,15 @@ DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
       tensor.Shape().NumDimensions() > 0 ? &const_cast<TensorShape&>(tensor.Shape())[0] : nullptr;
   auto& strides = ort_dlmanaged_tensor->strides;
   strides.reserve(tensor.Shape().NumDimensions());
+  // Empty tensors have no addressable elements, so zero strides avoid overflowing dimension products.
+  const auto dims = tensor.Shape().GetDims();
+  const bool is_empty = std::find(dims.begin(), dims.end(), 0) != dims.end();
   SafeInt<int64_t> stride = 1;
   for (size_t i = tensor.Shape().NumDimensions(); i > 0; --i) {
-    strides.push_back(stride);
-    stride *= tensor.Shape()[i - 1];
+    strides.push_back(is_empty ? 0 : static_cast<int64_t>(stride));
+    if (!is_empty) {
+      stride *= tensor.Shape()[i - 1];
+    }
   }
   std::reverse(strides.begin(), strides.end());
   ort_dlmanaged_tensor->tensor.dl_tensor.strides = strides.empty() ? nullptr : strides.data();

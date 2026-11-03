@@ -69,7 +69,7 @@ TEST(DlpackConverterTest, AllDataTypesRoundTrip) {
       EXPECT_EQ(packed->dl_tensor.dtype.lanes, 1);
       if (shape.NumDimensions() != 0) {
         ASSERT_NE(packed->dl_tensor.strides, nullptr);
-        EXPECT_EQ(packed->dl_tensor.strides[shape.NumDimensions() - 1], 1);
+        EXPECT_EQ(packed->dl_tensor.strides[shape.NumDimensions() - 1], shape.Size() == 0 ? 0 : 1);
       }
 
       OrtValue imported = dlpack::DlpackToOrtValue(packed);
@@ -156,6 +156,22 @@ TEST(DlpackConverterTest, ImportWithoutDeleter) {
   }
   EXPECT_TRUE(data[0]);
   EXPECT_FALSE(data[1]);
+}
+
+TEST(DlpackConverterTest, EmptyTensorWithOverflowingDimensionProduct) {
+  const TensorShape shape{0, 4294967296LL, 4294967296LL};
+  OrtValue original;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), shape,
+                       std::make_shared<CPUAllocator>(), original);
+  ASSERT_EQ(original.Get<Tensor>().SizeInBytes(), 0);
+  auto* packed = dlpack::OrtValueToDlpack(original);
+  ASSERT_NE(packed->dl_tensor.strides, nullptr);
+  for (size_t i = 0; i < shape.NumDimensions(); ++i) {
+    EXPECT_EQ(packed->dl_tensor.strides[i], 0);
+  }
+  OrtValue imported = dlpack::DlpackToOrtValue(packed);
+  EXPECT_EQ(imported.Get<Tensor>().Shape(), shape);
+  EXPECT_EQ(imported.Get<Tensor>().SizeInBytes(), 0);
 }
 
 #ifdef ENABLE_STRIDED_TENSORS
