@@ -158,6 +158,19 @@ TEST(DlpackConverterTest, ImportWithoutDeleter) {
   EXPECT_FALSE(data[1]);
 }
 
+#ifdef ENABLE_STRIDED_TENSORS
+TEST(DlpackConverterTest, RejectNonContiguousExport) {
+  OrtValue value;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape{2, 3},
+                       std::make_shared<CPUAllocator>(), value);
+  auto* tensor = value.GetMutable<Tensor>();
+  const int64_t strides[] = {0, 1};
+  tensor->SetShapeAndStrides(TensorShape{2, 3}, strides);
+  ASSERT_FALSE(tensor->IsContiguous());
+  EXPECT_THROW(dlpack::OrtValueToDlpack(value), OnnxRuntimeException);
+}
+#endif
+
 }  // namespace
 }  // namespace onnxruntime::test
 

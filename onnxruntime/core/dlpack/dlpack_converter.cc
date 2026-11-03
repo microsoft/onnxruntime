@@ -166,6 +166,9 @@ DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
   auto ort_dlmanaged_tensor = std::make_unique<OrtDLManagedTensor>();
 
   Tensor& tensor = *ort_value.GetMutable<Tensor>();
+#ifdef ENABLE_STRIDED_TENSORS
+  ORT_ENFORCE(tensor.IsContiguous(), "DLPack export only supports contiguous tensors.");
+#endif
   ort_dlmanaged_tensor->handle = ort_value;
   ort_dlmanaged_tensor->tensor.manager_ctx = ort_dlmanaged_tensor.get();
   ort_dlmanaged_tensor->tensor.deleter = &DlpackDeleter;
