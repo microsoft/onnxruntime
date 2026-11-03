@@ -27,7 +27,9 @@
 //     its heads in fp32 as well. A value scale at or below kInt8TcMaxValueScale never takes this path. Above it, a CTA
 //     takes it when one of its heads has a candidate kInt8TcTailDepth nats below its running maximum, about 7 standard
 //     deviations of Gaussian logits over 2048 candidates: a fraction of the CTAs when the standard deviation is about
-//     3 nats, practically none for 1 nat. The documentation lists measurements.
+//     3 nats, practically none for 1 nat. The documentation lists measurements. A new running maximum that is more
+//     than kInt8TcTailDepth nats above the previous one counts the same way, because the rescale of the accumulator
+//     by ex2.approx.ftz flushes to zero below 2^-126 and would erase the earlier tiles' contribution.
 // The gathered int8 rows stay int8 in shared memory (cp.async, double buffered, one tile ahead). A fragment read with
 // ldmatrix is converted to fp16 exactly in registers (1024 + (byte ^ 0x80) - 1152, "magic number" conversion) and
 // consumed by fp16 MMAs with fp32 accumulation, so the per-tile dequantization pass, its shared memory round trip and
@@ -71,7 +73,7 @@ constexpr int kIdxStages = 3;
 // removes it; the softmax denominator is accumulated in fp32 without it. A probability below 2^-29 is a subnormal
 // fp16 value of the tile (kInt8TcTailDepth nats below the running maximum). When some channel has
 // |value_scale| > kInt8TcMaxValueScale (so that |p * V * value_scale| for p <= 2^-40 can exceed 2^-17) and a valid
-// candidate is that deep, the CTA takes AttendRowFp32 instead.
+// candidate is that deep, or a running maximum rises by that much, the CTA takes AttendRowFp32 instead.
 constexpr float kInt8ProbScale = 32768.0f;  // 2^15
 constexpr float kInt8ProbInverseScale = 1.0f / kInt8ProbScale;
 constexpr float kInt8TcMaxValueScale = 65536.0f;  // 2^16
@@ -621,13 +623,18 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
     const float p13 = vb1 ? FastExp2(d13 * kLog2e) : 0.0f;
     run_sum0 = run_sum0 * alpha0 + ((p00 + p01) + (p02 + p03));
     run_sum1 = run_sum1 * alpha1 + ((p10 + p11) + (p12 + p13));
-    run_max0 = new_max0;
-    run_max1 = new_max1;
     if (check_tail_depth) {
       const float low0 = fminf(fminf(va0 ? d00 : 0.0f, va1 ? d01 : 0.0f), fminf(vb0 ? d02 : 0.0f, vb1 ? d03 : 0.0f));
       const float low1 = fminf(fminf(va0 ? d10 : 0.0f, va1 ? d11 : 0.0f), fminf(vb0 ? d12 : 0.0f, vb1 ? d13 : 0.0f));
-      lowest_depth = fminf(lowest_depth, fminf(low0, low1));
+      // A new maximum also pushes the candidates accumulated so far that many nats down. ex2.approx.ftz flushes alpha
+      // to zero below 2^-126, erasing the accumulator that a large value scale can amplify, so the rescale counts as a
+      // depth as well (an empty accumulator, run_max == -FLT_MAX, has nothing to lose).
+      const float rescale0 = run_max0 > -FLT_MAX ? run_max0 - new_max0 : 0.0f;
+      const float rescale1 = run_max1 > -FLT_MAX ? run_max1 - new_max1 : 0.0f;
+      lowest_depth = fminf(lowest_depth, fminf(fminf(low0, low1), fminf(rescale0, rescale1)));
     }
+    run_max0 = new_max0;
+    run_max1 = new_max1;
     {
       const float x00 = p00 * kInt8ProbScale;
       const float x01 = p01 * kInt8ProbScale;
