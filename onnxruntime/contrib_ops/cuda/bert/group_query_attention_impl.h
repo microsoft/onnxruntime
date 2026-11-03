@@ -46,6 +46,9 @@ Status LaunchUngroup(const GroupQueryAttentionParameters& parameters,
                      cudaStream_t stream,
                      const int max_threads_per_block);
 
+// query_seqlens is an optional device array [batch_size] with the number of valid rows of a right-padded
+// query chunk. When it is set, the past length of each entry is derived from it instead of from
+// is_first_prompt and sequence_length. present_kv_cache_capacity bounds the key length in that case.
 Status LaunchGetSequenceLengths(
     const int* total_seq_lens_minus_one,
     int* past_seq_lens,
@@ -60,6 +63,8 @@ Status LaunchGetSequenceLengths(
     const int max_total_sequence_length,
     const int kv_cache_capacity,
     const int kv_cache_real_capacity,
+    const int present_kv_cache_capacity,
+    const int* query_seqlens,
     cudaStream_t stream,
     const int max_threads_per_block);
 
