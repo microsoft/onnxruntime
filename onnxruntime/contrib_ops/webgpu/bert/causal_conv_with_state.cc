@@ -36,6 +36,21 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedFloatTypes()),
     CausalConvWithState);
 
+ONNX_OPERATOR_KERNEL_EX(
+    GdnProjPrepF16, kMSDomain, 1, kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("Tin0", DataTypeImpl::GetTensorType<MLFloat16>())
+        .TypeConstraint("Tin1", DataTypeImpl::GetTensorType<MLFloat16>())
+        .TypeConstraint("Tin2", DataTypeImpl::GetTensorType<MLFloat16>())
+        .TypeConstraint("Tin3", DataTypeImpl::GetTensorType<MLFloat16>())
+        .TypeConstraint("Tin4", DataTypeImpl::GetTensorType<MLFloat16>())
+        .TypeConstraint("Tout0", DataTypeImpl::GetTensorType<MLFloat16>())
+        .TypeConstraint("Tout1", DataTypeImpl::GetTensorType<MLFloat16>())
+        .TypeConstraint("T2out2", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T2out3", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("Tout4", DataTypeImpl::GetTensorType<MLFloat16>()),
+    GdnProjPrepF16);
+
 CausalConvWithState::CausalConvWithState(const OpKernelInfo& info)
     : WebGpuKernel(info) {
   std::string activation_str = info.GetAttrOrDefault<std::string>("activation", "none");
@@ -246,6 +261,108 @@ Status CausalConvWithState::ComputeInternal(ComputeContext& context) const {
   }
 
   return Status::OK();
+}
+
+Status GdnProjPrepF16Program::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& projection = shader.AddInput("projection");
+  const auto& ab = shader.AddInput("ab");
+  const auto& weight = shader.AddInput("weight");
+  const auto& bias = shader.AddInput("bias");
+  const auto& state = shader.AddInput("state");
+  const auto& conv = shader.AddOutput("conv");
+  const auto& z = shader.AddOutput("z");
+  const auto& a = shader.AddOutput("a");
+  const auto& b = shader.AddOutput("b");
+  const auto& present = shader.AddOutput("present");
+  shader.MainFunctionBody()
+      << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.count")
+      << "  let channel = global_idx % 16384u;\n"
+         "  let row = global_idx / 16384u;\n"
+         "  let batch = row / uniforms.length;\n"
+         "  let pos = row % uniforms.length;\n"
+         "  if (channel < 10240u) {\n"
+         "    let state_base = (batch * 10240u + channel) * 3u;\n"
+         "    var acc: f16 = 0.0;\n"
+         "    for (var j = 0u; j < 4u; j++) {\n"
+         "      let virtual_pos = pos + j;\n"
+         "      var value: f16;\n"
+         "      if (virtual_pos < 3u) {\n"
+      << "        value = " << state.GetByOffset("state_base + virtual_pos") << ";\n"
+         "      } else {\n"
+      << "        value = " << projection.GetByOffset(
+             "(batch * uniforms.length + virtual_pos - 3u) * 16384u + channel") << ";\n"
+         "      }\n"
+      << "      acc = acc + value * " << weight.GetByOffset("channel * 4u + j") << ";\n"
+         "    }\n"
+      << "    acc = acc + " << bias.GetByOffset("channel") << ";\n"
+         "    acc = acc / (1.0 + exp(-acc));\n"
+      << "    " << conv.SetByOffset("row * 10240u + channel", "acc") << "\n"
+         "    if (pos == 0u) {\n"
+         "      for (var s = 0u; s < 3u; s++) {\n"
+         "        let vp = uniforms.length + s;\n"
+         "        var value: f16;\n"
+         "        if (vp < 3u) {\n"
+      << "          value = " << state.GetByOffset("state_base + vp") << ";\n"
+         "        } else {\n"
+      << "          value = " << projection.GetByOffset(
+             "(batch * uniforms.length + vp - 3u) * 16384u + channel") << ";\n"
+         "        }\n"
+      << "        " << present.SetByOffset("state_base + s", "value") << "\n"
+         "      }\n"
+         "    }\n"
+         "  } else {\n"
+      << "    " << z.SetByOffset("row * 6144u + channel - 10240u",
+                                 projection.GetByOffset("global_idx")) << "\n"
+         "  }\n"
+         "  if (channel < 48u) {\n"
+      << "    " << a.SetByOffset("row * 48u + channel",
+                                 "f32(" + ab.GetByOffset("row * 96u + channel") + ")") << "\n"
+      << "    " << b.SetByOffset("row * 48u + channel",
+                                 "f32(" + ab.GetByOffset("row * 96u + 48u + channel") + ")") << "\n"
+         "  }\n";
+  return Status::OK();
+}
+
+Status GdnProjPrepF16::ComputeInternal(ComputeContext& context) const {
+  const auto* projection = context.Input(0);
+  const auto* ab = context.Input(1);
+  const auto* weight = context.Input(2);
+  const auto* bias = context.Input(3);
+  const auto* state = context.Input(4);
+  const auto& shape = projection->Shape();
+  ORT_RETURN_IF_NOT(shape.NumDimensions() == 3 && shape[2] == 16384,
+                    "GdnProjPrepF16 requires projection [batch, length, 16384]");
+  const int64_t batch = shape[0];
+  const int64_t length = shape[1];
+  ORT_RETURN_IF_NOT(ab->Shape() == TensorShape({batch, length, 96}) &&
+                        weight->Shape() == TensorShape({10240, 1, 4}) &&
+                        bias->Shape() == TensorShape({10240}) &&
+                        state->Shape() == TensorShape({batch, 10240, 3}),
+                    "GdnProjPrepF16 requires ab [B,L,96], weights [10240,1,4], bias [10240], state [B,10240,3]");
+  auto* conv = context.Output(0, TensorShape({batch, length, 10240}));
+  auto* z = context.Output(1, TensorShape({batch, length, 6144}));
+  auto* a = context.Output(2, TensorShape({batch, length, 48}));
+  auto* b = context.Output(3, TensorShape({batch, length, 48}));
+  auto* present = context.Output(4, state->Shape());
+  if (shape.Size() == 0) {
+    return context.CopyTensor(*state, *present);
+  }
+  const uint32_t count = onnxruntime::narrow<uint32_t>(shape.Size());
+  GdnProjPrepF16Program program;
+  program.AddInputs({{projection, ProgramTensorMetadataDependency::Type},
+                     {ab, ProgramTensorMetadataDependency::Type},
+                     {weight, ProgramTensorMetadataDependency::Type},
+                     {bias, ProgramTensorMetadataDependency::Type},
+                     {state, ProgramTensorMetadataDependency::Type}})
+      .AddOutputs({{conv, ProgramTensorMetadataDependency::Type},
+                   {z, ProgramTensorMetadataDependency::Type},
+                   {a, ProgramTensorMetadataDependency::Type},
+                   {b, ProgramTensorMetadataDependency::Type},
+                   {present, ProgramTensorMetadataDependency::Type}})
+      .AddUniformVariables({{count}, {onnxruntime::narrow<uint32_t>(length)}})
+      .SetDispatchGroupSize((count + 255) / 256)
+      .SetWorkgroupSize(256);
+  return context.RunProgram(program);
 }
 
 }  // namespace webgpu

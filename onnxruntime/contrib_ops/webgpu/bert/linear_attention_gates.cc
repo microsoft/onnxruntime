@@ -206,6 +206,7 @@ Status GatedRMSNorm::ComputeInternal(ComputeContext& context) const {
                                   : norm_size <= 128 ? 128
                                                      : 256;
 
+  return static_replay_.Run(context, {output}, [&]() -> Status {
   GatedRMSNormProgram program{activation_};
   program.CacheHint(static_cast<int>(activation_));
   program.AddInputs({{input, ProgramTensorMetadataDependency::Type},
@@ -217,6 +218,7 @@ Status GatedRMSNorm::ComputeInternal(ComputeContext& context) const {
       .AddUniformVariables({{onnxruntime::narrow<uint32_t>(norm_size)},
                             {epsilon_}});
   return context.RunProgram(program);
+  });
 }
 
 }  // namespace webgpu

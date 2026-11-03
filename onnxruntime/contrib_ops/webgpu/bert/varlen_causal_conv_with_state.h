@@ -41,7 +41,8 @@ class VarlenCausalConvWithStateProgram final : public Program<VarlenCausalConvWi
       {"state_update_capacity", ProgramUniformVariableDataType::Uint32},
       {"batch_size", ProgramUniformVariableDataType::Uint32},
       {"total_tokens", ProgramUniformVariableDataType::Uint32},
-      {"num_invocations", ProgramUniformVariableDataType::Uint32});
+      {"num_invocations", ProgramUniformVariableDataType::Uint32},
+      {"state_update_active", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_bias_;

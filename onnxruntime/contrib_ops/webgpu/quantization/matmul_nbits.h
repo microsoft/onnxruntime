@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include "static_node_replay.h"
 
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
@@ -88,6 +89,7 @@ class MatMulNBits final : public WebGpuKernel {
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
 
  private:
+  mutable onnxruntime::webgpu::StaticNodeReplay static_replay_{"MatMulNBitsExact", {0, 1, 2}};
   int64_t K_;
   int64_t N_;
   int64_t block_size_;

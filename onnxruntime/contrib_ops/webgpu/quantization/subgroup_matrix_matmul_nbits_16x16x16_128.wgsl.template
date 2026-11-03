@@ -26,12 +26,19 @@
 #param sg_mat_k
 #param sg_mat_m
 #param sg_mat_n
+#param fp32_accumulation
 
 #use .getByOffset .setByOffset
 
 #include "quantization/matmul_nbits_zero_pt.wgsl.template"
 
 const kQuantizationBlockSize: u32 = 32;
+
+#if fp32_accumulation
+alias accum_t = f32;
+#else
+alias accum_t = f16;
+#endif
 
 // Tile parameters matching CM1 (cooperative matrix) layout
 const BM: u32 = 128;                            // Tile size along M
@@ -52,8 +59,7 @@ const SHMEM_STRIDE: u32 = 40;  // BK + 8 padding (matches Vulkan CM1's BK/2+4 in
 var<workgroup> buf_b: array<f16, BN * SHMEM_STRIDE>;  // 128 * 40 = 5120 elements = 10240 bytes
 
 // Small staging buffer for edge-tile output (one 16x16 tile per subgroup)
-var<workgroup> coopmat_stage: array<f16, kSgMatM * kSgMatN * 4>;  // 16*16*4 = 1024 elements = 2048 bytes
-// Total shared memory: 10240 + 2048 = 12288 bytes
+var<workgroup> coopmat_stage: array<accum_t, kSgMatM * kSgMatN * 4>;
 
 #if n_bits == 4
 // Dequantize 4-bit quantized B weights into buf_b with padded stride.
@@ -224,22 +230,22 @@ $MAIN {
     let sg_mat_count_k = uniforms.K / kSgMatK;
 
     // 16 accumulator tiles (4x4 grid of 16x16)
-    var c00: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-    var c01: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-    var c02: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-    var c03: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-    var c10: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-    var c11: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-    var c12: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-    var c13: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-    var c20: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-    var c21: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-    var c22: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-    var c23: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-    var c30: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-    var c31: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-    var c32: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
-    var c33: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
+    var c00: subgroup_matrix_result<accum_t, sg_mat_n, sg_mat_m>;
+    var c01: subgroup_matrix_result<accum_t, sg_mat_n, sg_mat_m>;
+    var c02: subgroup_matrix_result<accum_t, sg_mat_n, sg_mat_m>;
+    var c03: subgroup_matrix_result<accum_t, sg_mat_n, sg_mat_m>;
+    var c10: subgroup_matrix_result<accum_t, sg_mat_n, sg_mat_m>;
+    var c11: subgroup_matrix_result<accum_t, sg_mat_n, sg_mat_m>;
+    var c12: subgroup_matrix_result<accum_t, sg_mat_n, sg_mat_m>;
+    var c13: subgroup_matrix_result<accum_t, sg_mat_n, sg_mat_m>;
+    var c20: subgroup_matrix_result<accum_t, sg_mat_n, sg_mat_m>;
+    var c21: subgroup_matrix_result<accum_t, sg_mat_n, sg_mat_m>;
+    var c22: subgroup_matrix_result<accum_t, sg_mat_n, sg_mat_m>;
+    var c23: subgroup_matrix_result<accum_t, sg_mat_n, sg_mat_m>;
+    var c30: subgroup_matrix_result<accum_t, sg_mat_n, sg_mat_m>;
+    var c31: subgroup_matrix_result<accum_t, sg_mat_n, sg_mat_m>;
+    var c32: subgroup_matrix_result<accum_t, sg_mat_n, sg_mat_m>;
+    var c33: subgroup_matrix_result<accum_t, sg_mat_n, sg_mat_m>;
 
     // Precompute A offsets for the 4 coopmat rows this subgroup handles
     // In prepacked layout, each subgroup matrix tile is kSgMatSizeLeft contiguous elements
@@ -320,7 +326,7 @@ $MAIN {
     // Workgroup-uniform bounds check (based on workgroup_id, not local_idx)
     let tile_m_in = global_base_m + BM <= uniforms.M;
     let tile_n_in = global_base_n + BN <= uniforms.N;
-    let tile_in_bounds = tile_m_in && tile_n_in;
+    let tile_in_bounds = tile_m_in && tile_n_in && uniforms.N % kSgMatN == 0u;
 
 #if has_bias
     // Bias path: store all 16 tiles via coopmat_stage, add bias, write to output
@@ -503,6 +509,9 @@ $MAIN {
     }
 #else
     // Non-bias path
+#if fp32_accumulation
+    {
+#else
     if (tile_in_bounds) {
         // Fast path: entire 128x128 tile is in bounds - direct store to global
         let base = dr * stride + dc;
@@ -526,6 +535,7 @@ $MAIN {
         subgroupMatrixStore<row_major>(&output, base + 48u * stride + 32u, c32, stride);
         subgroupMatrixStore<row_major>(&output, base + 48u * stride + 48u, c33, stride);
     } else {
+#endif
         // Edge tile: store via coopmat_stage with bounds checking
         // No workgroupBarrier needed: subgroupMatrixStore and scalar reads are within the same
         // subgroup (lockstep execution), and each subgroup uses its own non-overlapping stage_base.

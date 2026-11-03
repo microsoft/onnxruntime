@@ -9,11 +9,66 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/scoped_env_vars.h"
 
 #include "core/framework/to_tensor_proto_element_type.h"
 
 namespace onnxruntime {
 namespace test {
+
+TEST(CastOpTest, OddHalfUploads_WebGpu) {
+  for (bool enabled : {false, true}) {
+    ScopedEnvironmentVariables variables(EnvVarMap{
+        {"ORT_WEBGPU_SMALL_UPLOAD_WRITE_BUFFER", enabled ? "1" : "0"}});
+    for (int64_t count : {1, 3, 17}) {
+      auto ep = DefaultWebGpuExecutionProvider();
+      if (!ep) {
+        GTEST_SKIP() << "WebGPU EP is not available in this build.";
+      }
+      std::vector<MLFloat16> input;
+      std::vector<float> expected;
+      for (int64_t i = 0; i < count; ++i) {
+        const float value = static_cast<float>(i) * 0.25f;
+        input.emplace_back(value);
+        expected.push_back(value);
+      }
+      OpTester test("Cast", 13);
+      test.AddAttribute<int64_t>("to", utils::ToTensorProtoElementType<float>());
+      test.AddInput<MLFloat16>("input", {count}, input);
+      test.AddOutput<float>("output", {count}, expected);
+      std::vector<std::unique_ptr<IExecutionProvider>> providers;
+      providers.push_back(std::move(ep));
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+    }
+  }
+}
+
+TEST(CastOpTest, OddHalfReadbacks_WebGpu) {
+  for (bool enabled : {false, true}) {
+    ScopedEnvironmentVariables variables(EnvVarMap{
+        {"ORT_WEBGPU_SMALL_READBACK_CACHE", enabled ? "1" : "0"}});
+    for (int64_t count : {1, 3, 17, 3, 1}) {
+      auto ep = DefaultWebGpuExecutionProvider();
+      if (!ep) {
+        GTEST_SKIP() << "WebGPU EP is not available in this build.";
+      }
+      std::vector<float> input;
+      std::vector<MLFloat16> expected;
+      for (int64_t i = 0; i < count; ++i) {
+        const float value = static_cast<float>(i) * 0.25f;
+        input.push_back(value);
+        expected.emplace_back(value);
+      }
+      OpTester test("Cast", 13);
+      test.AddAttribute<int64_t>("to", utils::ToTensorProtoElementType<MLFloat16>());
+      test.AddInput<float>("input", {count}, input);
+      test.AddOutput<MLFloat16>("output", {count}, expected);
+      std::vector<std::unique_ptr<IExecutionProvider>> providers;
+      providers.push_back(std::move(ep));
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+    }
+  }
+}
 
 // bool -> uint8 Cast, run explicitly on the WebGPU EP (e.g. a terminal bool->uint8 cast at a graph
 // output). WebGPU stores uint8 packed (4 per u32); the Cast writes it via the Uint8x4 SetByOffset

@@ -23,6 +23,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .MayInplace(4, 1)
+        .InputMemoryType(OrtMemTypeCPUInput, 6)
         .TypeConstraint("T", WebGpuSupportedFloatTypes())
         .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()),
     VarlenCausalConvWithState);
@@ -91,11 +92,15 @@ Status VarlenCausalConvWithState::ComputeInternal(ComputeContext& context) const
   const Tensor* bias = context.Input(3);           // optional (channels,)
   const Tensor* initial_state = context.Input(4);  // required (batch_size, channels, (K-1)*dilation)
   const Tensor* capture_count = context.Input(5);  // optional (batch_size) int32
+  const Tensor* state_update_active = context.Input(6);
 
   ORT_RETURN_IF(input == nullptr, "input is required");
   ORT_RETURN_IF(weight == nullptr, "weight is required");
   ORT_RETURN_IF(cu_seqlens == nullptr, "cumulative_sequence_length is required");
   ORT_RETURN_IF(initial_state == nullptr, "initial_state is required");
+  ORT_RETURN_IF(state_update_active != nullptr && state_update_active->Shape() != TensorShape({1}),
+                "state_update_active must have shape (1)");
+  const bool capture_active = state_update_active == nullptr || state_update_active->Data<int32_t>()[0] != 0;
 
   const auto& input_shape = input->Shape();
   const auto& weight_shape = weight->Shape();
@@ -228,7 +233,8 @@ Status VarlenCausalConvWithState::ComputeInternal(ComputeContext& context) const
       .AddUniformVariable({static_cast<uint32_t>(state_update_capacity_)})
       .AddUniformVariable({static_cast<uint32_t>(batch_size)})
       .AddUniformVariable({static_cast<uint32_t>(total_tokens)})
-      .AddUniformVariable({num_invocations});
+      .AddUniformVariable({num_invocations})
+      .AddUniformVariable({static_cast<uint32_t>(capture_active)});
 
   return context.RunProgram(program);
 }

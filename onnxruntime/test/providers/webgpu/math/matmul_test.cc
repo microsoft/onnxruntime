@@ -11,6 +11,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/scoped_env_vars.h"
 #include "test/common/tensor_op_test_utils.h"
 
 namespace onnxruntime {
@@ -29,6 +30,41 @@ const onnxruntime::RunOptions run_options = []() {
 const constexpr auto run_with_tunable_op = &run_options;
 
 }  // namespace
+
+TEST(MathOpTest, MatMulExperimentalN96GemvAndFallbacks) {
+  for (const auto* enabled : {"0", "1"}) {
+    ScopedEnvironmentVariables variables(EnvVarMap{{"ORT_WEBGPU_MATMUL_GEMV_N96", enabled}});
+    for (const int64_t k : {2559, 2560, 2561}) {
+      for (const int64_t n : {64, 96, 100}) {
+        for (const int64_t rows : {1, 2}) {
+          SCOPED_TRACE(enabled);
+          SCOPED_TRACE(k);
+          SCOPED_TRACE(n);
+          SCOPED_TRACE(rows);
+          auto webgpu_ep = DefaultWebGpuExecutionProvider();
+          if (!webgpu_ep) {
+            GTEST_SKIP() << "WebGPU execution provider is not available";
+          }
+          std::vector<MLFloat16> weights(k * n);
+          for (int64_t reduction = 0; reduction < k; ++reduction) {
+            for (int64_t column = 0; column < n; ++column) {
+              const float value = reduction % 2 == 0 ? 0.125f : -0.125f;
+              weights[reduction * n + column] = MLFloat16(value + (reduction == 0 ? 0.0625f : 0.0f));
+            }
+          }
+          const MLFloat16 expected{(k % 2 == 0 ? 0.0f : 0.015625f) + 0.0078125f};
+          SessionOptions session_options;
+          ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+          OpTester test("MatMul", 14);
+          test.AddInput<MLFloat16>("A", {1, rows, k}, std::vector<MLFloat16>(rows * k, MLFloat16(0.125f)));
+          test.AddInput<MLFloat16>("B", {k, n}, weights, true);
+          test.AddOutput<MLFloat16>("Y", {1, rows, n}, std::vector<MLFloat16>(rows * n, expected));
+          test.Config(session_options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+        }
+      }
+    }
+  }
+}
 
 TEST(MathOpTest, MatMulPackedFp16LongReductionUsesFloat32Accumulator) {
   ConfigOptions provider_options;

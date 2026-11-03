@@ -107,14 +107,17 @@ class DynamicSparseAttentionAppendKvProgram final : public Program<DynamicSparse
 class DynamicSparseAttentionProgram final : public Program<DynamicSparseAttentionProgram> {
  public:
   DynamicSparseAttentionProgram(bool has_selection, bool local_plus_selected, bool selected_from_auxiliary,
-                                bool has_auxiliary_value, bool has_head_sink, bool use_smooth_softmax)
+                                bool has_auxiliary_value, bool has_head_sink, bool use_smooth_softmax,
+                                bool use_subgroups, uint32_t partitions)
       : Program{"DynamicSparseAttention"},
         has_selection_{has_selection},
         local_plus_selected_{local_plus_selected},
         selected_from_auxiliary_{selected_from_auxiliary},
         has_auxiliary_value_{has_auxiliary_value},
         has_head_sink_{has_head_sink},
-        use_smooth_softmax_{use_smooth_softmax} {}
+        use_smooth_softmax_{use_smooth_softmax},
+        use_subgroups_{use_subgroups},
+        partitions_{partitions} {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override;
 
@@ -128,6 +131,8 @@ class DynamicSparseAttentionProgram final : public Program<DynamicSparseAttentio
       {"max_selected", ProgramUniformVariableDataType::Uint32},
       {"local_window_size", ProgramUniformVariableDataType::Uint32},
       {"scale", ProgramUniformVariableDataType::Float32},
+      {"partitions", ProgramUniformVariableDataType::Uint32},
+      {"partition_size", ProgramUniformVariableDataType::Uint32},
       {"num_workgroups", ProgramUniformVariableDataType::Uint32});
 
  private:
@@ -135,6 +140,26 @@ class DynamicSparseAttentionProgram final : public Program<DynamicSparseAttentio
   bool local_plus_selected_;
   bool selected_from_auxiliary_;
   bool has_auxiliary_value_;
+  bool has_head_sink_;
+  bool use_smooth_softmax_;
+  bool use_subgroups_;
+  uint32_t partitions_;
+};
+
+class DynamicSparseAttentionMergeProgram final : public Program<DynamicSparseAttentionMergeProgram> {
+ public:
+  DynamicSparseAttentionMergeProgram(bool has_head_sink, bool use_smooth_softmax)
+      : Program{"DynamicSparseAttentionMerge"},
+        has_head_sink_{has_head_sink},
+        use_smooth_softmax_{use_smooth_softmax} {}
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"head_size", ProgramUniformVariableDataType::Uint32},
+      {"num_heads", ProgramUniformVariableDataType::Uint32},
+      {"partitions", ProgramUniformVariableDataType::Uint32},
+      {"num_workgroups", ProgramUniformVariableDataType::Uint32});
+
+ private:
   bool has_head_sink_;
   bool use_smooth_softmax_;
 };

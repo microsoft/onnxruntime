@@ -70,6 +70,9 @@ class Ep : public onnxruntime::ep::adapter::Ep {
                                               _In_ const OrtRunOptions* run_options,
                                               _In_ bool sync_stream) noexcept;
 
+  static OrtStatus* ORT_API_CALL CreateProfilerImpl(
+      _In_ OrtEp* this_ptr, _Outptr_result_maybenull_ OrtEpProfilerImpl** profiler) noexcept;
+
   static OrtStatus* ORT_API_CALL IsConcurrentRunSupportedImpl(_In_ OrtEp* this_ptr,
                                                               _Out_ bool* is_concurrent_run_supported) noexcept;
 

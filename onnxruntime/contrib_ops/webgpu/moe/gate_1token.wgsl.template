@@ -13,6 +13,8 @@
 #param k
 #param has_router_weights
 #param normalize_routing_weights
+#param sort_experts
+#param use_subgroups
 
 #use .getByOffset .setByOffset
 
@@ -54,6 +56,38 @@ $MAIN {
     var candidate_val = max_val;
     var candidate_idx = local_idx;
     for (var i = 0u; i < K; i++) {
+#if use_subgroups
+        // Ordered integer keys reserve zero for removed candidates and retain -infinity.
+        let value = f32(candidate_val);
+        let bits = bitcast<u32>(select(value, 0.0, value == 0.0));
+        let ordered_key = select(bits ^ 0x80000000u, ~bits, (bits & 0x80000000u) != 0u);
+        let subgroup_key = subgroupMax(select(0u, ordered_key, candidate_idx < cols));
+        let subgroup_expert = subgroupMin(select(0xffffffffu, candidate_idx,
+                                                 candidate_idx < cols && ordered_key == subgroup_key));
+        if (sg_id == 0u) {
+            shared_vals[subgroup_index] = -MAX_FLOAT;
+            if (subgroup_expert < cols) {
+                shared_vals[subgroup_index] = router_logits.getByOffset(row * cols + subgroup_expert);
+            }
+            shared_idxs[subgroup_index] = subgroup_expert;
+        }
+        workgroupBarrier();
+        if (local_idx == 0u) {
+            var best_idx = cols;
+            var best_val = -MAX_FLOAT;
+            for (var group = 0u; group < (workgroup_size_x + sg_size - 1u) / sg_size; group++) {
+                let expert = shared_idxs[group];
+                let value = shared_vals[group];
+                if (expert < cols && (best_idx >= cols || value > best_val ||
+                                     (value == best_val && expert < best_idx))) {
+                    best_val = value;
+                    best_idx = expert;
+                }
+            }
+            selected_vals[i] = best_val;
+            selected_idxs[i] = best_idx;
+        }
+#else
         shared_vals[local_idx] = candidate_val;
         shared_idxs[local_idx] = candidate_idx;
         workgroupBarrier();
@@ -75,12 +109,15 @@ $MAIN {
             selected_vals[i] = shared_vals[0];
             selected_idxs[i] = shared_idxs[0];
         }
+#endif
         workgroupBarrier();
         if (local_idx == selected_idxs[i]) {
             candidate_val = -MAX_FLOAT;
             candidate_idx = cols;
         }
+#if !use_subgroups
         workgroupBarrier();
+#endif
     }
     if (local_idx < K) {
         shared_vals[local_idx] = selected_vals[local_idx];
@@ -111,18 +148,17 @@ $MAIN {
 #if normalize_routing_weights
         sum = 0.0;
         for (var i = 0u; i < K; i++) {
-            sum += f32(router_weights.getByOffset(shared_idxs[i]));
+            sum += f32(router_weights.getByOffset(output_base + shared_idxs[i]));
         }
 #endif
         for (var i = 0u; i < K; i++) {
             let expert_idx = shared_idxs[i];
-            let weight = f32(router_weights.getByOffset(expert_idx));
+            let weight = f32(router_weights.getByOffset(output_base + expert_idx));
             var normalized_weight = 0.0;
             if (sum != 0.0) {
                 normalized_weight = weight / sum;
             }
             topk_values.setByOffset(output_base + expert_idx, topk_values_value_t(normalized_weight));
-            indirect_experts.setByOffset(i, expert_idx);
         }
 #else
         // softmax with max-subtraction for numerical stability — without it, large
@@ -142,8 +178,22 @@ $MAIN {
         for (var i = 0u; i < K; i++) {
             let expert_idx = shared_idxs[i];
             topk_values.setByOffset(output_base + expert_idx, topk_values_value_t(exp(f32(shared_vals[i]) - max_val) / sum));
-            indirect_experts.setByOffset(i, expert_idx);
         }
 #endif
+    #if sort_experts
+        // Match the general path's expert-index accumulation order.
+        for (var i = 0u; i < K; i++) {
+            for (var j = 0u; j + i + 1u < K; j++) {
+                if (shared_idxs[j] > shared_idxs[j + 1u]) {
+                    let expert_idx = shared_idxs[j];
+                    shared_idxs[j] = shared_idxs[j + 1u];
+                    shared_idxs[j + 1u] = expert_idx;
+                }
+            }
+        }
+    #endif
+        for (var i = 0u; i < K; i++) {
+            indirect_experts.setByOffset(row * K + i, shared_idxs[i]);
+        }
     }
 } // MAIN

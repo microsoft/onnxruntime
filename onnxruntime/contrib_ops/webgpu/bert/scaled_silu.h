@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include "static_node_replay.h"
 
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
@@ -29,6 +30,29 @@ class ScaledSiLU final : public WebGpuKernel {
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
 
  private:
+  float alpha_;
+};
+
+class SplitScaledSiLUF16Program final : public Program<SplitScaledSiLUF16Program> {
+ public:
+  SplitScaledSiLUF16Program() : Program{"SplitScaledSiLUF16"} {}
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"count", ProgramUniformVariableDataType::Uint32},
+      {"width", ProgramUniformVariableDataType::Uint32},
+      {"prefix", ProgramUniformVariableDataType::Uint32},
+      {"suffix", ProgramUniformVariableDataType::Uint32},
+      {"alpha", ProgramUniformVariableDataType::Float32});
+};
+
+class SplitScaledSiLUF16 final : public WebGpuKernel {
+ public:
+  explicit SplitScaledSiLUF16(const OpKernelInfo& info)
+      : WebGpuKernel(info), alpha_(info.GetAttrOrDefault<float>("alpha", 1.0f)) {}
+  Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
+
+ private:
+  mutable onnxruntime::webgpu::StaticNodeReplay static_replay_{"SplitScaledSiLUF16", {0}};
   float alpha_;
 };
 

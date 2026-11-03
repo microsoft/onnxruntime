@@ -13,7 +13,8 @@ using namespace onnxruntime::webgpu;
 
 class Gate1TokenProgram final : public Program<Gate1TokenProgram> {
  public:
-  Gate1TokenProgram(int k, bool is_fp16, bool has_router_weights, bool normalize_routing_weights);
+  Gate1TokenProgram(int k, bool is_fp16, bool has_router_weights, bool normalize_routing_weights,
+                    bool sort_experts = false, bool use_subgroups = false);
 
   Status GenerateShaderCode(ShaderHelper& shader) const override;
 
@@ -26,6 +27,8 @@ class Gate1TokenProgram final : public Program<Gate1TokenProgram> {
   bool is_fp16_;
   bool has_router_weights_;
   bool normalize_routing_weights_;
+  bool sort_experts_;
+  bool use_subgroups_;
 };
 
 }  // namespace webgpu

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/platform/env_var_utils.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
 
@@ -508,9 +509,25 @@ void BufferManager::Upload(CommandRecordingState& recording, void* src, WGPUBuff
     return;
   }
 
-  // Otherwise, we need to use a staging buffer to upload data.
   auto copy_size = NormalizeCopySize(size);
 
+  if (size > 0 && copy_size <= 1024 * 1024 &&
+      recording.graph_capture_state == GraphCaptureState::Default &&
+      recording.external_captured_commands == nullptr &&
+      ParseEnvironmentVariableWithDefault<int>("ORT_WEBGPU_SMALL_UPLOAD_WRITE_BUFFER", 0) != 0) {
+    // Queue writes must follow previously encoded uses of the destination.
+    ORT_THROW_IF_ERROR(context_.Flush(*this, recording));
+    std::vector<uint8_t> padded;
+    if (copy_size != size) {
+      padded.resize(copy_size);
+      memcpy(padded.data(), src, size);
+      src = padded.data();
+    }
+    context_.Device().GetQueue().WriteBuffer(wgpu::Buffer{dst}, 0, src, copy_size);
+    return;
+  }
+
+  // Otherwise, we need to use a staging buffer to upload data.
   wgpu::BufferDescriptor desc{};
   desc.size = copy_size;
   desc.usage = wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::MapWrite;
@@ -633,11 +650,24 @@ void BufferManager::Download(CommandRecordingState& recording, WGPUBuffer src, v
   EnforceBufferUnmapped(context_, src);
   auto buffer_size = NormalizeBufferSize(size);
 
-  wgpu::BufferDescriptor desc{};
-  desc.size = buffer_size;
-  desc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::MapRead;
+  const bool cache_readback =
+      size > 0 && buffer_size <= 1024 * 1024 &&
+      recording.graph_capture_state == GraphCaptureState::Default &&
+      recording.external_captured_commands == nullptr &&
+      ParseEnvironmentVariableWithDefault<int>("ORT_WEBGPU_SMALL_READBACK_CACHE", 0) != 0;
+  std::unique_lock<std::mutex> readback_lock{readback_cache_mutex_, std::defer_lock};
+  wgpu::Buffer staging_buffer;
+  if (cache_readback) {
+    readback_lock.lock();
+    staging_buffer = std::move(cached_readback_);
+  }
+  if (!staging_buffer || staging_buffer.GetSize() < buffer_size) {
+    wgpu::BufferDescriptor desc{};
+    desc.size = buffer_size;
+    desc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::MapRead;
+    staging_buffer = context_.Device().CreateBuffer(&desc);
+  }
 
-  auto staging_buffer = context_.Device().CreateBuffer(&desc);
   auto& command_encoder = context_.GetCommandEncoder(recording);
   context_.EndComputePass(recording);
   command_encoder.CopyBufferToBuffer(src, 0, staging_buffer, 0, buffer_size);
@@ -668,9 +698,12 @@ void BufferManager::Download(CommandRecordingState& recording, WGPUBuffer src, v
               "Failed to download data from buffer. wgpu::MapAsyncStatus value: ",
               static_cast<int>(map_async_result.status), ", message: ", map_async_result.message);
 
-  auto mapped_data = staging_buffer.GetConstMappedRange();
+  auto mapped_data = staging_buffer.GetConstMappedRange(0, buffer_size);
   memcpy(dst, mapped_data, size);
   staging_buffer.Unmap();
+  if (cache_readback) {
+    cached_readback_ = std::move(staging_buffer);
+  }
 }
 
 void BufferManager::RefreshPendingBuffers(CommandRecordingState& recording, GraphCaptureState graph_capture_state) const {

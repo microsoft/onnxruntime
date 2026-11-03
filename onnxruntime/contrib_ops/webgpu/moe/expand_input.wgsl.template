@@ -1,0 +1,14 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#use .getByOffset .setByOffset
+
+$MAIN {
+    let col = global_id.x;
+    let expert_row = global_id.y;
+    if (col >= uniforms.hidden_size || expert_row >= uniforms.rows) {
+        return;
+    }
+    let token_row = expert_row / uniforms.k;
+    expanded.setByOffset(expert_row * uniforms.hidden_size + col, input.getByOffset(token_row * uniforms.hidden_size + col));
+} // MAIN

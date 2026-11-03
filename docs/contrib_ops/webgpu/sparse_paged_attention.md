@@ -36,7 +36,9 @@ The kernel is a bounded staged pipeline. Every stage is a separate compute pass,
 and no stage truncates its candidate list.
 
 1. **Prologue (reused from the WebGPU `PagedAttention` kernel).** Packed-QKV
-   split, then rotary embedding of the current Q and K.
+   split, optional per-head Q/K RMS normalization, then rotary embedding of
+   the current Q and K. Normalization accumulates in FP32 and materializes
+   FP16 operands before RoPE; existing cached K is not normalized again.
 2. **Main-cache store.** When `slot_mapping` is present, a dedicated shader
    scatters the current K/V through it; otherwise the `PagedAttention`
    `block_table`-derived scatter is reused. A negative `slot_mapping` entry, or
@@ -92,6 +94,7 @@ Configure IO-binding to alias the cache buffers in production.
 | `is_causal`, `local_window_size` | Supported |
 | `softcap` | Supported |
 | RoPE (`do_rotary`, `rotary_interleaved`) | Supported, `rotary_offset` must be 0 |
+| QK-Norm (`q_norm_weight`/`k_norm_weight`) | Supported before RoPE; epsilon must be positive and finite |
 | Attention sink (`head_sink`) | Supported in the joint softmax |
 | Device-resident selection (no readback) | Yes |
 | Joint FP32 softmax across both sources | Yes |
@@ -105,7 +108,6 @@ Each of these is rejected with an explicit error; none silently changes numerics
 | BFloat16 activations or cache | Not registered; fails kernel lookup |
 | INT8 main cache, `k_quant_type`/`v_quant_type` != `NONE`, `k_scale`/`v_scale` | `NOT_IMPLEMENTED` |
 | Session-level KV cache quantization | `NOT_IMPLEMENTED` |
-| QK-Norm (`q_norm_weight`/`k_norm_weight`) | `NOT_IMPLEMENTED` |
 | `rotary_offset != 0` | `NOT_IMPLEMENTED` |
 | `auxiliary_cache_layout` other than `contiguous` | Rejected when the kernel is created |
 | `head_size > 512`, or a head size whose workgroup storage exceeds the device limit | `NOT_IMPLEMENTED` |

@@ -21,6 +21,65 @@ namespace ep {
 
 using onnxruntime::ep::Api;
 
+namespace {
+class PluginProfiler final : public OrtEpProfilerImpl {
+ public:
+  explicit PluginProfiler(profiling::EpProfiler& impl) : OrtEpProfilerImpl{}, impl_{impl} {
+    ort_version_supported = ORT_API_VERSION;
+    Release = ReleaseImpl;
+    StartProfiling = StartProfilingImpl;
+    EndProfiling = EndProfilingImpl;
+  }
+
+ private:
+  static void ORT_API_CALL ReleaseImpl(OrtEpProfilerImpl* profiler) noexcept {
+    delete static_cast<PluginProfiler*>(profiler);
+  }
+
+  static OrtStatus* ORT_API_CALL StartProfilingImpl(OrtEpProfilerImpl* profiler, int64_t offset_ns) noexcept {
+    EXCEPTION_TO_RETURNED_STATUS_BEGIN
+    auto& self = *static_cast<PluginProfiler*>(profiler);
+    self.start_time_ = TimePoint::clock::now() -
+                       std::chrono::duration_cast<TimePoint::duration>(std::chrono::nanoseconds(offset_ns));
+    auto status = self.impl_.StartProfiling(self.start_time_);
+    if (!status.IsOK()) {
+      return Api().ort.CreateStatus(static_cast<OrtErrorCode>(status.Code()), status.ErrorMessage().c_str());
+    }
+    return nullptr;
+    EXCEPTION_TO_RETURNED_STATUS_END
+  }
+
+  static OrtStatus* ORT_API_CALL EndProfilingImpl(
+      OrtEpProfilerImpl* profiler, OrtProfilingEventsContainer* container) noexcept {
+    EXCEPTION_TO_RETURNED_STATUS_BEGIN
+    auto& self = *static_cast<PluginProfiler*>(profiler);
+    profiling::Events records;
+    self.impl_.EndProfiling(self.start_time_, records);
+    std::vector<Ort::ProfilingEvent> events;
+    events.reserve(records.size());
+    for (const auto& record : records) {
+      std::vector<const char*> keys;
+      std::vector<const char*> values;
+      for (const auto& [key, value] : record.args) {
+        keys.push_back(key.c_str());
+        values.push_back(value.c_str());
+      }
+      events.emplace_back(OrtProfilingEventCategory_KERNEL, record.pid, record.tid, record.name.c_str(),
+                          record.ts, record.dur, keys.data(), values.data(), keys.size());
+    }
+    if (!events.empty()) {
+      Ort::UnownedProfilingEventsContainer output{container};
+      return output.AddEvents(events).release();
+    }
+    return nullptr;
+    EXCEPTION_TO_RETURNED_STATUS_END
+  }
+
+  profiling::EpProfiler& impl_;
+  TimePoint start_time_{};
+};
+}  // namespace
+
 // Constructor
 Ep::Ep(std::unique_ptr<IExecutionProvider> impl, Factory& factory, const OrtLogger& logger, const Config& config)
     : onnxruntime::ep::adapter::Ep{std::move(impl), config.cpu_allocator, config.device_allocator},
@@ -48,9 +107,18 @@ Ep::Ep(std::unique_ptr<IExecutionProvider> impl, Factory& factory, const OrtLogg
   ReplayGraph = ReplayGraphImpl;
   ReleaseCapturedGraph = ReleaseCapturedGraphImpl;
   GetGraphCaptureNodeAssignmentPolicy = GetGraphCaptureNodeAssignmentPolicyImpl;
+  CreateProfiler = CreateProfilerImpl;
 }
 
 // OrtEp interface implementations
+OrtStatus* ORT_API_CALL Ep::CreateProfilerImpl(OrtEp* this_ptr, OrtEpProfilerImpl** profiler) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
+  auto* impl = static_cast<Ep*>(this_ptr)->ProfilerImpl();
+  *profiler = impl ? new PluginProfiler{*impl} : nullptr;
+  return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
+}
+
 const char* ORT_API_CALL Ep::GetNameImpl(const OrtEp* this_ptr) noexcept {
   const auto* ep = static_cast<const Ep*>(this_ptr);
   return ep->factory_.GetName(&ep->factory_);

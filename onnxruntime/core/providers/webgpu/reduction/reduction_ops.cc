@@ -3,6 +3,7 @@
 
 #include "core/providers/webgpu/reduction/reduction_ops.h"
 #include <memory>
+#include "core/platform/env_var_utils.h"
 #include <sstream>
 #include "core/framework/data_transfer_manager.h"
 #include "core/providers/webgpu/data_transfer.h"
@@ -279,6 +280,113 @@ Status ReduceNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
+
+class ArgMaxParallelPartialProgram final : public Program<ArgMaxParallelPartialProgram> {
+ public:
+  ArgMaxParallelPartialProgram(bool fp16) : Program{"ArgMaxParallelPartial"}, fp16_{fp16} {}
+ private:
+  const bool fp16_;
+ public:
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"length", ProgramUniformVariableDataType::Uint32},
+                                          {"parts", ProgramUniformVariableDataType::Uint32});
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    const auto& x = shader.AddInput("x", ShaderUsage::UseValueTypeAlias);
+    const auto bits = [this](const std::string& value) {
+      return fp16_ ? "((bitcast<u32>(vec2<f16>(" + value + ", f16(0)))) & 65535u)"
+                   : "bitcast<u32>(" + value + ")";
+    };
+    shader.AdditionalImplementation()
+        << "fn is_nan(bits: u32) -> bool { return (bits & "
+        << (fp16_ ? "32767u" : "2147483647u") << ") > "
+        << (fp16_ ? "31744u" : "2139095040u") << "; }\n"
+        << "fn ordered_key(bits: u32) -> u32 {\n"
+        << "  let sign = " << (fp16_ ? "32768u" : "2147483648u") << ";\n"
+        << "  let normalized = select(bits, 0u, (bits & (sign - 1u)) == 0u);\n"
+        << "  return select(normalized ^ sign, (~normalized) & "
+        << (fp16_ ? "65535u" : "4294967295u") << ", (normalized & sign) != 0u);\n}\n";
+    const auto& v = shader.AddOutput("v", ShaderUsage::UseValueTypeAlias);
+    const auto& ix = shader.AddOutput("ix", ShaderUsage::UseValueTypeAlias);
+    shader.AdditionalImplementation() << "var<workgroup> values: array<u32, 128>;\n"
+                                      << "var<workgroup> indices: array<u32, 128>;\n";
+    auto& code = shader.MainFunctionBody();
+    code << "let row = workgroup_idx / uniforms.parts;\n"
+         << "let part = workgroup_idx % uniforms.parts;\n"
+         << "let offset = row * uniforms.length;\n"
+         << "let seed = " << bits(x.GetByOffset("offset")) << ";\n"
+         << "let first_nan = is_nan(seed);\n"
+         << "var best = ordered_key(seed);\n"
+         << "var index = 0u;\n"
+         << "let stop = min((part + 1u) * 2048u, uniforms.length);\n"
+         << "for (var i = part * 2048u + local_idx; i < stop; i += 128u) {\n"
+         << "  let raw = " << bits(x.GetByOffset("offset + i")) << ";\n"
+         << "  let candidate = ordered_key(raw);\n"
+         << "  if (!first_nan && !is_nan(raw) && candidate > best) { best = candidate; index = i; }\n"
+         << "}\n"
+         << R"(
+values[local_idx] = best;
+indices[local_idx] = index;
+workgroupBarrier();
+for (var stride = 64u; stride > 0u; stride /= 2u) {
+  if (local_idx < stride) {
+    let other = local_idx + stride;
+    if (values[other] > values[local_idx] ||
+        (values[other] == values[local_idx] && indices[other] < indices[local_idx])) {
+      values[local_idx] = values[other];
+      indices[local_idx] = indices[other];
+    }
+  }
+  workgroupBarrier();
+}
+)"
+         << "if (local_idx == 0u) {\n"
+         << v.SetByOffset("workgroup_idx", "values[0]") << "\n"
+         << ix.SetByOffset("workgroup_idx", "i32(indices[0])") << "\n}\n";
+    return Status::OK();
+  }
+};
+
+class ArgMaxParallelFinishProgram final : public Program<ArgMaxParallelFinishProgram> {
+ public:
+  ArgMaxParallelFinishProgram() : Program{"ArgMaxParallelFinish"} {}
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"parts", ProgramUniformVariableDataType::Uint32});
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    const auto& v = shader.AddInput("v", ShaderUsage::UseValueTypeAlias);
+    const auto& ix = shader.AddInput("ix", ShaderUsage::UseValueTypeAlias);
+    const auto& y = shader.AddOutput("y", ShaderUsage::UseValueTypeAlias);
+    shader.AdditionalImplementation() << "var<workgroup> values: array<u32, 128>;\n"
+                                      << "var<workgroup> indices: array<u32, 128>;\n";
+    auto& code = shader.MainFunctionBody();
+    code << "let offset = workgroup_idx * uniforms.parts;\n"
+         << "var best = " << v.GetByOffset("offset") << ";\n"
+         << "var index = u32(" << ix.GetByOffset("offset") << ");\n"
+         << "for (var i = local_idx; i < uniforms.parts; i += 128u) {\n"
+         << "  let candidate = " << v.GetByOffset("offset + i") << ";\n"
+         << "  let candidate_index = u32(" << ix.GetByOffset("offset + i") << ");\n"
+         << "  if (candidate > best || (candidate == best && candidate_index < index)) {\n"
+         << "    best = candidate; index = candidate_index;\n"
+         << "  }\n}\n"
+         << R"(
+values[local_idx] = best;
+indices[local_idx] = index;
+workgroupBarrier();
+for (var stride = 64u; stride > 0u; stride /= 2u) {
+  if (local_idx < stride) {
+    let other = local_idx + stride;
+    if (values[other] > values[local_idx] ||
+        (values[other] == values[local_idx] && indices[other] < indices[local_idx])) {
+      values[local_idx] = values[other];
+      indices[local_idx] = indices[other];
+    }
+  }
+  workgroupBarrier();
+}
+)"
+         << "if (local_idx == 0u) {\n"
+         << y.SetByOffset("workgroup_idx", "y_value_t(indices[0])") << "\n}\n";
+    return Status::OK();
+  }
+};
+
 Status ReduceSharedProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("_A", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -317,6 +425,9 @@ Status ReduceSharedProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
 template <bool allow_multi_axes>
 Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) const {
+  static const int parallel_argmax = ParseEnvironmentVariableWithDefault<int>("ORT_WEBGPU_ARGMAX_PARALLEL_BITWISE", 0);
+  ORT_RETURN_IF_NOT(parallel_argmax == 0 || parallel_argmax == 1, "ORT_WEBGPU_ARGMAX_PARALLEL_BITWISE must be 0 or 1");
+
   const auto* input_tensor = context.Input(0);
   ORT_RETURN_IF_ERROR(CheckInput(input_tensor));
   InlinedVector<uint32_t> input_axes;
@@ -421,6 +532,36 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
                              (!are_axes_innermost && reduce_size <= kReduceNaiveMaxReduceSize &&
                               output_size > kReduceNaiveMinOutputSize) ||
                              is_input_empty || input_tensor->Shape().NumDimensions() == 0;
+
+
+  if (parallel_argmax == 1 && name_ == "ArgMax" && select_last_index_ == 0 &&
+      !is_input_empty && input_axes.size() == 1 && are_axes_innermost &&
+      reduce_size >= 32 && reduce_size <= 1048576 &&
+      (input_tensor->IsDataType<float>() || input_tensor->IsDataType<MLFloat16>()) &&
+      context.AdapterInfo().vendor == std::string_view{"nvidia"} &&
+      context.DeviceLimits().maxComputeWorkgroupSizeX >= 128 &&
+      context.DeviceLimits().maxComputeInvocationsPerWorkgroup >= 128 &&
+      context.DeviceLimits().maxComputeWorkgroupStorageSize >= 1024 &&
+      output_size <= context.DeviceLimits().maxComputeWorkgroupsPerDimension / ((reduce_size + 2047) / 2048)) {
+    const uint32_t parts = static_cast<uint32_t>((reduce_size + 2047) / 2048);
+    const TensorShape partial_shape{static_cast<int64_t>(output_size), static_cast<int64_t>(parts)};
+    auto values = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), partial_shape);
+    auto indices = context.CreateGPUTensor(DataTypeImpl::GetType<int32_t>(), partial_shape);
+    ArgMaxParallelPartialProgram partial(input_tensor->IsDataType<MLFloat16>());
+    partial.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
+        .AddOutput({&values, ProgramTensorMetadataDependency::TypeAndRank})
+        .AddOutput({&indices, ProgramTensorMetadataDependency::TypeAndRank})
+        .SetWorkgroupSize(128).SetDispatchGroupSize(static_cast<uint32_t>(output_size) * parts)
+        .AddUniformVariables({{static_cast<uint32_t>(reduce_size)}, {parts}});
+    ORT_RETURN_IF_ERROR(context.RunProgram(partial));
+    ArgMaxParallelFinishProgram finish;
+    finish.AddInput({&values, ProgramTensorMetadataDependency::TypeAndRank})
+        .AddInput({&indices, ProgramTensorMetadataDependency::TypeAndRank})
+        .AddOutput({context.Output(0, output_shape), ProgramTensorMetadataDependency::TypeAndRank})
+        .SetWorkgroupSize(128).SetDispatchGroupSize(static_cast<uint32_t>(output_size))
+        .AddUniformVariable({parts});
+    return context.RunProgram(finish);
+  }
 
   if (use_naive_reduction) {
     ReduceNaiveProgram program(name_, reduce_op_type, keepdims_, noop_with_empty_axes_, input_axes, is_input_empty);

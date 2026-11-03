@@ -1148,6 +1148,60 @@ TEST(MatMulNBits, Float32_Large) {
   RunTest<float>(4 /*M*/, 8388612 /*N*/, 32 /*K*/, block_size, has_zeropoint, zp_is_4bit, abs_error);
 }
 
+TEST(MatMulNBits, WebGPU_SubgroupMatrixNTail) {
+  for (bool enabled : {false, true}) {
+    ScopedEnvironmentVariables variables(EnvVarMap{
+        {"ORT_WEBGPU_MATMUL_NBITS_SGM_N_TAIL", enabled ? "1" : "0"}});
+    for (int64_t rows : {4, 16, 128, 129}) {
+      for (bool bias : {false, true}) {
+        TestOptions opts{};
+        opts.M = rows;
+        opts.N = 324;
+        opts.K = 256;
+        opts.block_size = 32;
+        opts.has_bias = bias;
+        opts.has_zero_point = bias;
+        opts.disable_cpu_ep_fallback = true;
+        opts.output_abs_error = 0.02f;
+        opts.output_rel_error = 0.005f;
+        auto ep = DefaultWebGpuExecutionProvider();
+        if (!ep) {
+          GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+        }
+        std::vector<std::unique_ptr<IExecutionProvider>> providers;
+        providers.push_back(std::move(ep));
+        RunTest<MLFloat16>(opts, std::move(providers));
+      }
+    }
+  }
+}
+
+TEST(MatMulNBits, WebGPU_SkinnyDecode) {
+  for (bool enabled : {false, true}) {
+    ScopedEnvironmentVariables variables(EnvVarMap{
+        {"ORT_WEBGPU_MATMUL_NBITS_SKINNY", enabled ? "1" : "0"}});
+    for (int64_t rows : {1, 2, 4, 5}) {
+      for (int64_t columns : {323, 324, 640, 1024, 1025}) {
+        TestOptions opts{};
+        opts.M = rows;
+        opts.N = columns;
+        opts.K = 2048;
+        opts.block_size = 32;
+        opts.disable_cpu_ep_fallback = true;
+        opts.output_abs_error = 0.02f;
+        opts.output_rel_error = 0.005f;
+        auto ep = DefaultWebGpuExecutionProvider();
+        if (!ep) {
+          GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+        }
+        std::vector<std::unique_ptr<IExecutionProvider>> providers;
+        providers.push_back(std::move(ep));
+        RunTest<MLFloat16>(opts, std::move(providers));
+      }
+    }
+  }
+}
+
 // Guards the accumulator precision of the MatMulNBits WebGPU kernel along K.
 //
 // Every other MatMulNBits test in this file draws its inputs from Gaussian(0, 0.25), which keeps the

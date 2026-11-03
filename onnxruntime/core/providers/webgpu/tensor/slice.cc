@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/common/inlined_containers.h"
+#include "core/platform/env_var_utils.h"
 #include "core/providers/webgpu/tensor/slice.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/webgpu/shader_helper.h"
@@ -9,6 +10,21 @@
 
 namespace onnxruntime {
 namespace webgpu {
+
+namespace {
+const std::vector<MLDataType>& SliceCopyTypes() {
+  static const std::vector<MLDataType> types = []() {
+    auto result = WebGpuSupportedFloatTypes();
+    const int selected = ParseEnvironmentVariableWithDefault<int>("ORT_WEBGPU_SLICE_UINT32_BITCOPY", 0);
+    ORT_ENFORCE(selected == 0 || selected == 1, "ORT_WEBGPU_SLICE_UINT32_BITCOPY must be 0 or 1");
+    if (selected == 1)
+      result.push_back(DataTypeImpl::GetTensorType<uint32_t>());
+    return result;
+  }();
+  return types;
+}
+}  // namespace
+
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Slice,
@@ -51,7 +67,7 @@ ONNX_OPERATOR_KERNEL_EX(
     13,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", WebGpuSupportedFloatTypes())
+        .TypeConstraint("T", SliceCopyTypes())
         .InputMemoryType(OrtMemTypeCPU, 1)
         .InputMemoryType(OrtMemTypeCPU, 2)
         .InputMemoryType(OrtMemTypeCPU, 3)

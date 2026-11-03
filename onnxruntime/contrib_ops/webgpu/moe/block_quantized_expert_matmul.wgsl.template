@@ -1,0 +1,78 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#use .getByOffset .setByOffset
+
+#param has_bias
+#param has_indirect_experts
+#param broadcast_input
+#param k_packed
+#param nvfp4
+
+#if nvfp4
+const kFp4Values = array<f32, 16>(
+    0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0,
+    -0.0, -0.5, -1.0, -1.5, -2.0, -3.0, -4.0, -6.0);
+#endif
+var<workgroup> partials: array<f32, 64>;
+
+$MAIN {
+#if k_packed
+  const column_lanes = 1u;
+#else
+  const column_lanes = 8u;
+#endif
+  let row = workgroup_id.y;
+  let col = workgroup_id.x * column_lanes + local_idx % column_lanes;
+  let valid_col = col < uniforms.cols;
+  var expert = uniforms.expert_idx;
+#if has_indirect_experts
+  expert = indirect_experts.getByOffset(row);
+#endif
+  var input_row = row;
+#if broadcast_input
+  input_row = row / uniforms.experts_per_token;
+#endif
+  var sum = 0.0;
+  if (valid_col) {
+#if nvfp4
+    let global_scale = global_scales.getByOffset(expert);
+#endif
+    for (var k = local_idx / column_lanes; k < uniforms.inner; k += 64u / column_lanes) {
+#if k_packed
+      let byte_offset = (expert * uniforms.cols + col) * (uniforms.inner / 2u) + k / 2u;
+      let nibble = k & 1u;
+#else
+      let byte_offset = (expert * uniforms.inner + k) * (uniforms.cols / 2u) + col / 2u;
+      let nibble = col & 1u;
+#endif
+      let packed = u32(weights.getByOffset(byte_offset / 4u));
+      let code = (packed >> ((byte_offset % 4u) * 8u + nibble * 4u)) & 15u;
+#if nvfp4
+      let scale_offset = (expert * uniforms.cols + col) * (uniforms.inner / 16u) + k / 16u;
+      let scale_code = (u32(scales.getByOffset(scale_offset / 4u)) >> ((scale_offset % 4u) * 8u)) & 255u;
+      let scale = bitcast<f32>(kFp8DequantLutBits[scale_code]) * global_scale;
+      let weight = kFp4Values[code] * scale;
+#else
+      let scale_offset = (expert * uniforms.cols + col) * (uniforms.inner / 32u) + k / 32u;
+      let weight = f32(i32(code) - 8) * f32(scales.getByOffset(scale_offset));
+#endif
+      sum += f32(input.getByOffset(input_row * uniforms.inner + k)) * weight;
+    }
+  }
+  partials[local_idx] = sum;
+  workgroupBarrier();
+  for (var stride = 32u; stride >= column_lanes; stride >>= 1u) {
+    if (local_idx < stride) {
+      partials[local_idx] += partials[local_idx + stride];
+    }
+    workgroupBarrier();
+  }
+  if (local_idx < column_lanes && valid_col) {
+    var value = partials[local_idx];
+#if has_bias
+    value += f32(bias.getByOffset(expert * uniforms.cols + col));
+#endif
+    output.setByOffset(row * uniforms.cols + col, output_element_t(value));
+  }
+}

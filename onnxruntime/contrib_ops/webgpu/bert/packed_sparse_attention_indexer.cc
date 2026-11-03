@@ -38,6 +38,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedFloatTypes())
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>())
+        .InputMemoryType(OrtMemTypeCPUInput, psai::kIndexShareMode)
         .MayInplace(psai::kPastKeyState, psai::kPresentKeyState)
         .MayInplace(psai::kPastKvBuffer, psai::kPresentKvBuffer)
         .MayInplace(psai::kPastGateBuffer, psai::kPresentGateBuffer)
@@ -69,13 +70,15 @@ Status CheckShape(const Tensor* tensor, const char* name, std::initializer_list<
 
 Status CheckStorageBindingLimit(const onnxruntime::webgpu::ComputeContext& context,
                                 const char* program_name,
-                                std::initializer_list<const Tensor*> tensors) {
+                                std::initializer_list<const Tensor*> tensors,
+                                const Tensor* optional_tensor = nullptr) {
   const auto& limits = context.DeviceLimits();
   uint32_t binding_count = 0;
   for (const Tensor* tensor : tensors) {
     ORT_RETURN_IF(tensor == nullptr, "PackedSparseAttentionIndexer: missing tensor for ", program_name);
     binding_count += StorageBindingSegments(tensor, limits.maxStorageBufferBindingSize);
   }
+  binding_count += StorageBindingSegments(optional_tensor, limits.maxStorageBufferBindingSize);
   if (binding_count > limits.maxStorageBuffersPerShaderStage) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "PackedSparseAttentionIndexer (WebGPU): ", program_name, " requires ", binding_count,
@@ -906,11 +909,49 @@ PackedSparseAttentionIndexer::PackedSparseAttentionIndexer(const OpKernelInfo& i
   }
   epsilon_ = info.GetAttrOrDefault<float>("epsilon", 1.0e-6f);
   ORT_ENFORCE(epsilon_ >= 0.0f, "PackedSparseAttentionIndexer: epsilon must be >= 0");
+  output_capacity_ = info.GetAttrOrDefault<int64_t>("max_output_entries", 0);
+  const std::string state_policy = info.GetAttrOrDefault<std::string>("indexshare_state_policy", "default");
+  ORT_ENFORCE(state_policy == "default" || state_policy == "hold" || state_policy == "advance",
+              "indexshare_state_policy must be default, hold, or advance");
+  ORT_ENFORCE(output_capacity_ == 0 ||
+                  (output_capacity_ >= psai::SelectedCapacity(policy_, token_budget_, index_topk_, compress_ratio_) &&
+                   output_capacity_ <= std::numeric_limits<int>::max()),
+              "max_output_entries must cover the original selection capacity");
+  ORT_ENFORCE(output_capacity_ == 0 || (policy_ == psai::Policy::kQsa && state_policy != "advance"),
+              "WebGPU IndexShare currently supports QSA hold-state reuse only");
 }
 
 Status PackedSparseAttentionIndexer::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
-  ORT_RETURN_IF(context.InputCount() > psai::kIndexShareMode && context.Input(psai::kIndexShareMode),
-                "PackedSparseAttentionIndexer IndexShare requires the CUDA provider");
+  const Tensor* mode = context.InputCount() > psai::kIndexShareMode ? context.Input(psai::kIndexShareMode) : nullptr;
+  if (mode != nullptr) {
+    ORT_RETURN_IF_ERROR(CheckShape(mode, "indexshare_mode", {1}));
+    ORT_RETURN_IF(output_capacity_ == 0, "IndexShare requires max_output_entries");
+    const int32_t value = mode->Data<int32_t>()[0];
+    ORT_RETURN_IF(value != 0 && value != 1, "indexshare_mode must be 0 (refresh) or 1 (reuse)");
+    for (int index : {psai::kMergedIndices, psai::kMergedCounts, psai::kMergedStatus}) {
+      ORT_RETURN_IF(index >= context.InputCount() || context.Input(index) == nullptr,
+                    "All IndexShare merge inputs are required");
+    }
+    const Tensor* indices = context.Input(psai::kMergedIndices);
+    ORT_RETURN_IF(indices->Shape().NumDimensions() != 2 || indices->Shape()[1] != output_capacity_,
+                  "Merged indices must match max_output_entries");
+    const int64_t rows = indices->Shape()[0];
+    ORT_RETURN_IF_ERROR(CheckShape(context.Input(psai::kMergedCounts), "merged_counts", {rows}));
+    ORT_RETURN_IF_ERROR(CheckShape(context.Input(psai::kMergedStatus), "merged_status", {rows}));
+    if (value == 1) return ComputeReuse(context);
+    ORT_RETURN_IF(rows != 0, "Refresh requires zero merge rows");
+    const Tensor* query = context.Input(psai::kQuery);
+    ORT_RETURN_IF(query == nullptr || query->Shape().NumDimensions() != 2, "Refresh requires rank-2 queries");
+    Tensor* status = context.Output(psai::kIndexShareStatus, TensorShape({query->Shape()[0]}));
+    ORT_RETURN_IF(status == nullptr, "IndexShare status output is required");
+    context.FillZero(*status);
+  } else {
+    ORT_RETURN_IF(output_capacity_ != 0, "max_output_entries requires the IndexShare interface");
+    for (int index : {psai::kMergedIndices, psai::kMergedCounts, psai::kMergedStatus}) {
+      ORT_RETURN_IF(index < context.InputCount() && context.Input(index) != nullptr,
+                    "Merge inputs require indexshare_mode");
+    }
+  }
   const bool is_qsa = policy_ == psai::Policy::kQsa;
   constexpr int kCsaOnlyInputs[] = {psai::kGate, psai::kPositionBias, psai::kHeadWeights};
   for (int index : kCsaOnlyInputs) {
@@ -939,6 +980,90 @@ Status PackedSparseAttentionIndexer::ComputeInternal(onnxruntime::webgpu::Comput
                   "PackedSparseAttentionIndexer: state update capture is only valid for policy_mode 'qsa'");
   }
   return is_qsa ? ComputeQsa(context) : ComputeCsa(context);
+}
+
+Status PackedSparseAttentionIndexerReuseValidationProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& lengths = shader.AddInput("lengths", ShaderUsage::UseValueTypeAlias);
+  const auto& indices = shader.AddOutput("indices", ShaderUsage::UseValueTypeAlias);
+  const auto& counts = shader.AddOutput("counts", ShaderUsage::UseValueTypeAlias);
+  const auto& status = shader.AddOutput("status", ShaderUsage::UseValueTypeAlias);
+  shader.MainFunctionBody()
+      << "let row = global_idx;\n"
+      << "if (row >= uniforms.batch_size) { return; }\n"
+      << "if (" << lengths.GetByOffset("row") << " == i32(row) && "
+      << lengths.GetByOffset("row + 1u") << " == i32(row + 1u)) { return; }\n"
+      << "for (var column = 0u; column < uniforms.capacity; column++) {\n"
+      << indices.SetByOffset("row * uniforms.capacity + column", "-1") << "}\n"
+      << counts.SetByOffset("row", "0")
+      << "if (" << status.GetByOffset("row") << " == 0) {\n"
+      << status.SetByOffset("row", "1") << "}\n";
+  return Status::OK();
+}
+
+Status PackedSparseAttentionIndexer::ComputeReuse(onnxruntime::webgpu::ComputeContext& context) const {
+  const Tensor* query = context.Input(psai::kQuery);
+  const Tensor* lengths = context.Input(psai::kPastSequenceLengths);
+  const Tensor* norm = context.Input(psai::kQueryNormWeight);
+  ORT_RETURN_IF(query == nullptr || query->Shape().NumDimensions() != 2 || query->Shape()[0] != 0,
+                "Reuse requires zero projected query rows");
+  ORT_RETURN_IF(lengths == nullptr || lengths->Shape().NumDimensions() != 1, "Reuse requires request lengths");
+  ORT_RETURN_IF(norm == nullptr || norm->Shape().NumDimensions() != 1 || norm->Shape()[0] <= 0,
+                "Reuse requires query norm weights");
+  const int64_t batch = lengths->Shape()[0];
+  const int64_t head_size = norm->Shape()[0];
+  const Tensor* key = context.Input(psai::kKey);
+  const int64_t query_width = query->Shape()[1] - (key == nullptr ? head_size : 0);
+  ORT_RETURN_IF(query_width <= 0 || query_width % head_size != 0, "Reuse query width must contain complete heads");
+  ORT_RETURN_IF_ERROR(CheckShape(context.Input(psai::kKeyNormWeight), "key_norm_weight", {head_size}));
+  ORT_RETURN_IF_ERROR(CheckShape(context.Input(psai::kMergedIndices), "merged_indices", {batch, output_capacity_}));
+  ORT_RETURN_IF_ERROR(CheckShape(context.Input(psai::kMergedCounts), "merged_counts", {batch}));
+  ORT_RETURN_IF_ERROR(CheckShape(context.Input(psai::kMergedStatus), "merged_status", {batch}));
+  ORT_RETURN_IF_ERROR(CheckShape(context.Input(psai::kCumulativeSequenceLengths), "cumulative_sequence_lengths", {batch + 1}));
+  ORT_RETURN_IF_ERROR(CheckShape(context.Input(psai::kPastKeyState), "past_key_state", {batch, state_capacity_, head_size}));
+  ORT_RETURN_IF_ERROR(CheckShape(context.Input(psai::kPastKvBuffer), "past_kv_buffer",
+                                 {batch, psai::GenericBufferCapacity(compress_ratio_), head_size}));
+  ORT_RETURN_IF_ERROR(CheckShape(context.Input(psai::kPastStateLengths), "past_state_lengths", {batch, 2}));
+  if (key != nullptr) ORT_RETURN_IF_ERROR(CheckShape(key, "key", {0, head_size}));
+  for (int index : {psai::kGate, psai::kPositionBias, psai::kHeadWeights, psai::kPastGateBuffer, psai::kPositionIds}) {
+    ORT_RETURN_IF(context.Input(index) != nullptr, "QSA reuse does not accept CSA-only inputs");
+  }
+  if (state_update_capacity_ > 0) {
+    ORT_RETURN_IF_ERROR(CheckShape(context.Input(psai::kStateUpdateCaptureCount), "state_update_capture_count", {batch}));
+  }
+  for (const auto& pair : {std::pair{psai::kMergedIndices, psai::kSelectedIndices},
+                           std::pair{psai::kMergedCounts, psai::kSelectedCounts},
+                           std::pair{psai::kMergedStatus, psai::kIndexShareStatus},
+                           std::pair{psai::kPastKeyState, psai::kPresentKeyState},
+                           std::pair{psai::kPastKvBuffer, psai::kPresentKvBuffer},
+                           std::pair{psai::kPastStateLengths, psai::kPresentStateLengths}}) {
+    const Tensor* input = context.Input(pair.first);
+    Tensor* output = context.Output(pair.second, input->Shape());
+    ORT_RETURN_IF(output == nullptr, "Reuse state and selection outputs are required");
+    const int64_t total = input->Shape().Size();
+    if (total > 0 && output->DataRaw() != input->DataRaw()) {
+      PackedSparseAttentionIndexerCopyProgram copy;
+      copy.SetWorkgroupSize(kWorkgroupSize)
+          .AddInput({input, ProgramTensorMetadataDependency::Type})
+          .AddOutput({output, ProgramTensorMetadataDependency::Type})
+          .SetDispatchGroupSize(ToUint32((total + kWorkgroupSize - 1) / kWorkgroupSize))
+          .AddUniformVariables({{ToUint32(total)}, {0u}});
+      ORT_RETURN_IF_ERROR(context.RunProgram(copy));
+    }
+  }
+  Tensor* snapshot = context.OutputCount() > psai::kStateUpdate
+                         ? context.Output(psai::kStateUpdate, TensorShape({batch, state_update_capacity_, head_size}))
+                         : nullptr;
+  if (snapshot != nullptr) context.FillZero(*snapshot);
+  if (batch == 0) return Status::OK();
+  PackedSparseAttentionIndexerReuseValidationProgram validate;
+  validate.SetWorkgroupSize(1)
+      .SetDispatchGroupSize(ToUint32(batch))
+      .AddInput({context.Input(psai::kCumulativeSequenceLengths), ProgramTensorMetadataDependency::Type})
+      .AddOutputs({{context.Output(psai::kSelectedIndices, TensorShape({batch, output_capacity_})), ProgramTensorMetadataDependency::Type},
+                   {context.Output(psai::kSelectedCounts, TensorShape({batch})), ProgramTensorMetadataDependency::Type},
+                   {context.Output(psai::kIndexShareStatus, TensorShape({batch})), ProgramTensorMetadataDependency::Type}})
+      .AddUniformVariables({{ToUint32(batch)}, {ToUint32(output_capacity_)}});
+  return context.RunProgram(validate);
 }
 
 Status PackedSparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeContext& context) const {
@@ -1026,7 +1151,9 @@ Status PackedSparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeCont
       context.CreateGPUTensor(cos_cache->DataType(), TensorShape({2 * cos_cache->Shape().Size()}));
   ORT_RETURN_IF_ERROR(PackTwoTensors(context, *cos_cache, *sin_cache, rotary_cache));
 
-  const int64_t capacity = psai::SelectedCapacity(psai::Policy::kQsa, token_budget_, index_topk_, compress_ratio_);
+  const int64_t capacity = output_capacity_ != 0
+                               ? output_capacity_
+                               : psai::SelectedCapacity(psai::Policy::kQsa, token_budget_, index_topk_, compress_ratio_);
   Tensor* present_gate_buffer = context.Output(psai::kPresentGateBuffer, TensorShape({0}));
   ORT_RETURN_IF(present_gate_buffer != nullptr,
                 "PackedSparseAttentionIndexer: output ", psai::kPresentGateBuffer,
@@ -1158,9 +1285,10 @@ Status PackedSparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeCont
   ORT_RETURN_IF_ERROR(CheckStorageBindingLimit(
       context, "QSA selection",
       {&query_metadata, present_key_state, &rotary_cache, &sequence_metadata, present_state_lengths, &overflow_flags,
-         selected_indices, selected_counts, position_ids}));
-      PackedSparseAttentionIndexerQsaSelectProgram select{rotary.batched, position_ids != nullptr};
-      select.CacheHint(rotary.batched, position_ids != nullptr)
+       selected_indices, selected_counts},
+      position_ids));
+  PackedSparseAttentionIndexerQsaSelectProgram select{rotary.batched, position_ids != nullptr};
+  select.CacheHint(rotary.batched, position_ids != nullptr)
       .SetWorkgroupSize(kWorkgroupSize)
       .AddInputs({{&query_metadata, ProgramTensorMetadataDependency::Type},
                   {present_key_state, ProgramTensorMetadataDependency::Type},

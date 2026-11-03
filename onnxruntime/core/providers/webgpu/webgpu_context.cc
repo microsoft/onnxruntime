@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <chrono>
+#include <fstream>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -40,6 +41,7 @@
 #include "core/common/common.h"
 #include "core/common/path_string.h"
 #include "core/platform/env.h"
+#include "core/platform/env_var_utils.h"
 
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/webgpu_context.h"
@@ -633,6 +635,94 @@ Status WebGpuContext::EncodeDeferredDispatches(CommandRecordingState& recording)
   return result;
 }
 
+bool WebGpuContext::CanCaptureNodeCommands(const ComputeContextBase& context) const {
+  return !context.IsGraphCaptureEnabled() &&
+         ComputeContextBase::BufferManagerAccessor::GetRecording(context).graph_capture_state ==
+             GraphCaptureState::Default;
+}
+
+void WebGpuContext::BeginNodeCapture(const ComputeContextBase& context,
+                                     std::vector<webgpu::CapturedCommandInfo>& commands) {
+  ORT_ENFORCE(CanCaptureNodeCommands(context), "Cannot nest a WebGPU node capture.");
+  CaptureBegin(&commands, ComputeContextBase::BufferManagerAccessor::Get(context),
+               ComputeContextBase::BufferManagerAccessor::GetRecording(context));
+}
+
+void WebGpuContext::EndNodeCapture(const ComputeContextBase& context) {
+  CaptureEnd(ComputeContextBase::BufferManagerAccessor::GetRecording(context));
+}
+
+Status WebGpuContext::FlushNodeCommands(const ComputeContextBase& context) {
+  return Flush(ComputeContextBase::BufferManagerAccessor::Get(context),
+               ComputeContextBase::BufferManagerAccessor::GetRecording(context));
+}
+
+Status WebGpuContext::AppendNodeCommands(
+    const ComputeContextBase& context,
+    const std::vector<webgpu::CapturedCommandInfo>& commands) {
+  ORT_RETURN_IF_NOT(CanCaptureNodeCommands(context), "Cannot replay a node inside WebGPU graph capture.");
+  auto& recording = ComputeContextBase::BufferManagerAccessor::GetRecording(context);
+  const auto& manager = ComputeContextBase::BufferManagerAccessor::Get(context);
+  for (const auto& command : commands) {
+    ORT_RETURN_IF_NOT(command.compute_pipeline && command.bind_group && !command.pending_build,
+                      "WebGPU node replay command is not ready.");
+    ORT_RETURN_IF_NOT(!is_profiling_ || command.pending_kernel_info.has_value(),
+                      "WebGPU node replay command lacks profiling metadata.");
+    recording.deferred_dispatches.push_back(command);
+    recording.has_unsubmitted_work.store(true, std::memory_order_relaxed);
+    if (static_cast<size_t>(recording.num_pending_dispatches) + recording.deferred_dispatches.size() >=
+        max_num_pending_dispatches_) {
+      ORT_RETURN_IF_ERROR(Flush(manager, recording));
+    }
+  }
+  return Status::OK();
+}
+
+namespace {
+struct ActiveNodeBindingCapture {
+  const ComputeContextBase* context = nullptr;
+  webgpu::NodeBindingSnapshot* snapshot = nullptr;
+};
+thread_local ActiveNodeBindingCapture active_node_binding_capture;
+}  // namespace
+
+void WebGpuContext::BeginNodeBindingCapture(
+    const ComputeContextBase& context, std::vector<webgpu::CapturedCommandInfo>& commands,
+    webgpu::NodeBindingSnapshot& snapshot) {
+  ORT_ENFORCE(active_node_binding_capture.context == nullptr, "Cannot nest node binding captures.");
+  BeginNodeCapture(context, commands);
+  active_node_binding_capture = {&context, &snapshot};
+}
+
+void WebGpuContext::EndNodeBindingCapture(const ComputeContextBase& context) {
+  active_node_binding_capture = {};
+  EndNodeCapture(context);
+}
+
+Status WebGpuContext::PrepareNodeBinding(
+    const webgpu::CapturedCommandInfo& prototype,
+    const webgpu::NodeBindingSnapshot& snapshot, const std::vector<WGPUBuffer>& buffers,
+    webgpu::CapturedCommandInfo& command) {
+  ORT_RETURN_IF_NOT(snapshot.programs == 1 && snapshot.layout &&
+                        snapshot.buffers.size() == buffers.size() &&
+                        snapshot.segments.size() == buffers.size(),
+                    "Invalid node binding prototype.");
+  ORT_RETURN_IF_NOT(prototype.compute_pipeline && !prototype.pending_build &&
+                        (!prototype.dynamic_uniform_offset || *prototype.dynamic_uniform_offset == 0) &&
+                        prototype.indirect_buffer == nullptr,
+                    "Node binding prototype is not a ready direct dispatch.");
+  for (auto buffer : buffers) {
+    ORT_RETURN_IF_NOT(buffer != nullptr, "Node binding replay received a null GPU buffer.");
+  }
+  const int capacity = ParseEnvironmentVariableWithDefault<int>("ORT_WEBGPU_BIND_GROUP_CACHE_ENTRIES", 0);
+  ORT_RETURN_IF_NOT(capacity >= 0 && capacity <= 8192,
+                    "ORT_WEBGPU_BIND_GROUP_CACHE_ENTRIES must be between 0 and 8192.");
+  command = prototype;
+  command.bind_group = CreateBindGroup(buffers, snapshot.segments, snapshot.layout,
+                                       snapshot.program_name, 0, 0, static_cast<size_t>(capacity));
+  return Status::OK();
+}
+
 Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& program) {
   const auto& inputs = program.Inputs();
   const auto& outputs = program.Outputs();
@@ -640,6 +730,16 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   if (outputs.empty()) {
     return Status::OK();
   }
+
+  const int cache_capacity = ParseEnvironmentVariableWithDefault<int>("ORT_WEBGPU_BIND_GROUP_CACHE_ENTRIES", 0);
+  ORT_ENFORCE(cache_capacity >= 0 && cache_capacity <= 8192,
+              "ORT_WEBGPU_BIND_GROUP_CACHE_ENTRIES must be between 0 and 8192.");
+  const int dynamic_uniforms = ParseEnvironmentVariableWithDefault<int>("ORT_WEBGPU_DYNAMIC_UNIFORMS", 0);
+  ORT_ENFORCE(dynamic_uniforms == 0 || dynamic_uniforms == 1,
+              "ORT_WEBGPU_DYNAMIC_UNIFORMS must be 0 or 1.");
+  const bool use_dynamic_uniforms = dynamic_uniforms == 1 &&
+                                    adapter_info_.vendor == std::string_view{"nvidia"} &&
+                                    DeviceLimits().maxDynamicUniformBuffersPerPipelineLayout > 0;
 
   const webgpu::BufferManager& buffer_mgr = ComputeContextBase::BufferManagerAccessor::Get(context);
   CommandRecordingState& recording = ComputeContextBase::BufferManagerAccessor::GetRecording(context);
@@ -742,6 +842,9 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   }
 
   auto key = CalculateProgramCacheKey(program, inputs_segments, outputs_segments);
+  if (use_dynamic_uniforms) {
+    key += ":dynamic_uniforms";
+  }
 
   LOGS(context.Logger(), INFO) << "Starting program \"" << key << "\" (" << x << ", " << y << ", " << z << ")";
   // The program cache prevents duplicate builds across encoded windows.
@@ -751,8 +854,10 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   // For cache misses, reuse a pending build already owned by this bounded dispatch window instead
   // of starting another build for the same key.
   std::optional<PendingPipelineBuild> pending_build;
+  std::optional<wgpu::ComputePipeline> ready_pipeline;
   const std::vector<int>* deferred_ranks = nullptr;
-  const wgpu::BindGroupLayout* bind_group_layout = nullptr;
+  // A capacity flush can finish and discard the in-flight build that supplied this layout.
+  wgpu::BindGroupLayout bind_group_layout;
   if (program_artifact == nullptr) {
     PendingPipelineBuild* in_flight_build = FindPendingPipelineBuild(recording, key);
 
@@ -762,7 +867,7 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
       build.name = program.Name();
       build.callback_context = std::make_shared<PipelineCallbackContext>();
       ORT_RETURN_IF_ERROR(program_mgr_->Build(program, metadata, inputs_segments, outputs_segments,
-                                              key, x, y, z,
+                                              key, x, y, z, use_dynamic_uniforms,
                                               build.bind_group_layout,
                                               build.shape_uniform_ranks,
                                               build.future,
@@ -770,9 +875,10 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
       in_flight_build = &*pending_build;
     }
     deferred_ranks = &in_flight_build->shape_uniform_ranks;
-    bind_group_layout = &in_flight_build->bind_group_layout;
+    bind_group_layout = in_flight_build->bind_group_layout;
   } else {
-    bind_group_layout = &program_artifact->bind_group_layout;
+    bind_group_layout = program_artifact->bind_group_layout;
+    ready_pipeline = program_artifact->compute_pipeline;
   }
 
   // prepare shape uniforms for shader variables (if any) and user defined uniforms
@@ -914,17 +1020,59 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   constexpr size_t max_alignment_of_field = 16;
   const size_t uniform_buffer_total_size = (current_offset + max_alignment_of_field - 1) / max_alignment_of_field * max_alignment_of_field;
 
+  constexpr size_t uniform_arena_capacity = 64 * 1024;
+  const bool use_uniform_arena =
+      uniform_buffer_total_size > 0 && uniform_buffer_total_size <= uniform_arena_capacity &&
+      recording.graph_capture_state == GraphCaptureState::Default &&
+      recording.external_captured_commands == nullptr &&
+      ParseEnvironmentVariableWithDefault<int>("ORT_WEBGPU_UNIFORM_ARENA", 0) != 0;
+  size_t uniform_offset = 0;
   WGPUBuffer uniform_buffer = nullptr;
+  wgpu::Buffer captured_node_uniform;
   if (uniform_buffer_total_size > 0) {
-    std::vector<uint8_t> uniform_data_buffer(uniform_buffer_total_size);
-
-    for (auto const& [uniform, offset] : uniform_and_offsets) {
-      memcpy(uniform_data_buffer.data() + offset, uniform.data.data(), uniform.data.size());
+    if (use_uniform_arena) {
+      const size_t alignment = device_limits_.minUniformBufferOffsetAlignment;
+      uniform_offset = (recording.pending_uniform_data.size() + alignment - 1) / alignment * alignment;
+      if (uniform_offset + uniform_buffer_total_size > uniform_arena_capacity) {
+        ORT_RETURN_IF_ERROR(Flush(buffer_mgr, recording));
+        uniform_offset = 0;
+      }
+      if (!recording.uniform_arena) {
+        wgpu::BufferDescriptor descriptor{};
+        descriptor.size = uniform_arena_capacity;
+        descriptor.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform;
+        recording.uniform_arena = device_.CreateBuffer(&descriptor);
+        ORT_ENFORCE(recording.uniform_arena != nullptr, "Failed to create WebGPU uniform arena.");
+        recording.pending_uniform_data.reserve(uniform_arena_capacity);
+      }
+      recording.pending_uniform_data.resize(uniform_offset + uniform_buffer_total_size);
+      for (auto const& [uniform, offset] : uniform_and_offsets) {
+        memcpy(recording.pending_uniform_data.data() + uniform_offset + offset,
+               uniform.data.data(), uniform.data.size());
+      }
+      uniform_buffer = recording.uniform_arena.Get();
+    } else {
+      std::vector<uint8_t> uniform_data_buffer(uniform_buffer_total_size);
+      for (auto const& [uniform, offset] : uniform_and_offsets) {
+        memcpy(uniform_data_buffer.data() + offset, uniform.data.data(), uniform.data.size());
+      }
+      if (recording.graph_capture_state == GraphCaptureState::Capturing &&
+          !context.IsGraphCaptureEnabled() &&
+          (ParseEnvironmentVariableWithDefault<int>("ORT_WEBGPU_QMOE_COMMAND_REPLAY", 0) == 1 ||
+           ParseEnvironmentVariableWithDefault<int>("ORT_WEBGPU_STATIC_NODE_REPLAY", 0) == 1)) {
+        // Captured uniforms must never return to an allocator that can overwrite them.
+        wgpu::BufferDescriptor descriptor{};
+        descriptor.size = uniform_buffer_total_size;
+        descriptor.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform;
+        captured_node_uniform = device_.CreateBuffer(&descriptor);
+        ORT_ENFORCE(captured_node_uniform, "Cannot allocate captured WebGPU node uniforms.");
+        uniform_buffer = captured_node_uniform.Get();
+      } else {
+        uniform_buffer = buffer_mgr.Create(recording, uniform_buffer_total_size,
+                                          wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
+      }
+      device_queue_.WriteBuffer(uniform_buffer, 0, uniform_data_buffer.data(), uniform_buffer_total_size);
     }
-
-    uniform_buffer = buffer_mgr.Create(recording, uniform_buffer_total_size,
-                                       wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
-    device_queue_.WriteBuffer(uniform_buffer, 0, uniform_data_buffer.data(), uniform_buffer_total_size);
   }
 
   const size_t total_buffer_count =
@@ -959,14 +1107,35 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   // and encode the dispatch commands.
   webgpu::CapturedCommandInfo command;
   command.program_key = key;
-  if (program_artifact != nullptr) {
-    command.compute_pipeline = program_artifact->compute_pipeline;
-  }
+  command.compute_pipeline = std::move(ready_pipeline);
   command.bind_group = CreateBindGroup(bind_buffers, bind_buffers_segments,
-                                       *bind_group_layout, program.Name());
+                                       bind_group_layout, program.Name(),
+                                       use_dynamic_uniforms ? 0 : uniform_offset,
+                                       use_uniform_arena ? uniform_buffer_total_size : 0,
+                                       recording.graph_capture_state == GraphCaptureState::Default
+                                           ? static_cast<size_t>(cache_capacity)
+                                           : 0);
+
+  if (active_node_binding_capture.context == &context) {
+    ORT_ENFORCE(!use_uniform_arena && uniform_offset == 0 &&
+                    (uniform_buffer == nullptr || captured_node_uniform),
+                "Node binding capture requires immutable non-arena uniforms.");
+    auto& snapshot = *active_node_binding_capture.snapshot;
+    ++snapshot.programs;
+    snapshot.buffers = bind_buffers;
+    snapshot.segments = bind_buffers_segments;
+    snapshot.layout = bind_group_layout;
+    snapshot.uniform_buffer = uniform_buffer;
+    snapshot.program_name = program.Name();
+  }
+  if (use_dynamic_uniforms && uniform_buffer) {
+    ORT_ENFORCE(uniform_offset <= std::numeric_limits<uint32_t>::max(),
+                "Dynamic WebGPU uniform offset exceeds uint32.");
+    command.dynamic_uniform_offset = static_cast<uint32_t>(uniform_offset);
+  }
   command.pending_build = std::move(pending_build);
   recording.has_unsubmitted_work.store(true, std::memory_order_relaxed);
-  if (uniform_buffer) {
+  if (uniform_buffer && !use_uniform_arena && !captured_node_uniform) {
     // The bind group owns a reference now, so return the allocator's reference immediately.
     buffer_mgr.Release(uniform_buffer, &recording);
   }
@@ -1401,6 +1570,12 @@ Status WebGpuContext::FlushAndWaitChecked(const webgpu::BufferManager& buffer_mg
 
 Status WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr,
                             CommandRecordingState& recording) {
+  if (!recording.pending_uniform_data.empty()) {
+    // Queue ordering keeps prior submissions ahead of this overwrite and this submission after it.
+    device_queue_.WriteBuffer(recording.uniform_arena, 0, recording.pending_uniform_data.data(),
+                              recording.pending_uniform_data.size());
+    recording.pending_uniform_data.clear();
+  }
   // Graph runs and prepacking can release allocator/uniform buffers into the shared manager.
   // Retire this recording in both managers, keeping graph cache policy local to the active one.
   const auto refresh_pending_buffers = [&]() {
@@ -1482,7 +1657,10 @@ Status WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr,
 wgpu::BindGroup WebGpuContext::CreateBindGroup(const std::vector<WGPUBuffer>& bind_buffers,
                                                const std::vector<uint32_t>& bind_buffers_segments,
                                                const wgpu::BindGroupLayout& bind_group_layout,
-                                               std::string_view label) const {
+                                               std::string_view label,
+                                               uint64_t uniform_offset,
+                                               uint64_t uniform_size,
+                                               size_t cache_capacity) const {
   uint32_t entry_index = 0;
   std::vector<WGPUBindGroupEntry> bind_group_entries;
 
@@ -1494,7 +1672,9 @@ wgpu::BindGroup WebGpuContext::CreateBindGroup(const std::vector<WGPUBuffer>& bi
     // the actual buffer size may be larger than the tensor size, an extreme case is that tensor size = 127MB, buffer size = 256MB,
     // maxStorageBufferBindingSize = 128MB, in this case we only need to bind 1 segment instead of 2 segments because
     // there is no data for the second segment.
-    if (total_segments > 1) {
+    if (uniform_size > 0 && buffer_idx + 1 == bind_buffers.size()) {
+      bind_group_entries.push_back({nullptr, entry_index++, buffer, uniform_offset, uniform_size, nullptr, nullptr});
+    } else if (total_segments > 1) {
       uint64_t offset = 0;
       uint64_t buffer_size = wgpuBufferGetSize(buffer);
       for (uint32_t segment = 0; segment < total_segments; ++segment) {
@@ -1516,6 +1696,10 @@ wgpu::BindGroup WebGpuContext::CreateBindGroup(const std::vector<WGPUBuffer>& bi
   bind_group_desc.entries = bind_group_entries.data();
   bind_group_desc.label = {label.data(), label.length()};
 
+  if (cache_capacity > 0 && adapter_info_.vendor == std::string_view{"nvidia"}) {
+    return WebGpuContextFactory::GetOrCreateBindGroup(*this, bind_group_desc, cache_capacity);
+  }
+
   WGPUBindGroup bind_group = wgpuDeviceCreateBindGroup(Device().Get(), &bind_group_desc);
   ORT_ENFORCE(bind_group != nullptr, "Failed to create bind group for program ", label, ".");
   return wgpu::BindGroup::Acquire(bind_group);
@@ -1528,7 +1712,11 @@ void WebGpuContext::DispatchCommand(const webgpu::CapturedCommandInfo& command,
   const auto& compute_pass_encoder = GetComputePassEncoder(recording);
   WriteTimestamp(recording, recording.num_pending_dispatches * 2);
   compute_pass_encoder.SetPipeline(*command.compute_pipeline);
-  compute_pass_encoder.SetBindGroup(0, command.bind_group);
+  if (command.dynamic_uniform_offset.has_value()) {
+    compute_pass_encoder.SetBindGroup(0, command.bind_group, 1, &*command.dynamic_uniform_offset);
+  } else {
+    compute_pass_encoder.SetBindGroup(0, command.bind_group);
+  }
 
   if (command.indirect_buffer != nullptr) {
     compute_pass_encoder.DispatchWorkgroupsIndirect(command.indirect_buffer, 0);
@@ -1613,6 +1801,127 @@ std::once_flag WebGpuContextFactory::init_default_flag_;
 
 std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo>* WebGpuContextFactory::contexts_ = nullptr;
 WGPUInstance WebGpuContextFactory::default_instance_ = nullptr;
+
+struct WebGpuContextFactory::BindGroupCache {
+  struct Hash {
+    size_t operator()(const std::vector<uint64_t>& key) const noexcept {
+      size_t result = 0;
+      for (uint64_t value : key) {
+        result ^= std::hash<uint64_t>{}(value) + size_t{0x9e3779b9} + (result << 6) + (result >> 2);
+      }
+      return result;
+    }
+  };
+
+  ~BindGroupCache() {
+    LOGS_DEFAULT(INFO) << "WebGPU bind group cache: hits=" << hits << " misses=" << misses
+                       << " clears=" << clears << " peak_entries=" << peak_entries
+                       << " peak_referenced_bytes=" << peak_referenced_bytes
+                       << " peak_unique_buffers=" << peak_unique_buffers;
+    const auto path = Env::Default().GetEnvironmentVar("ORT_WEBGPU_BIND_GROUP_CACHE_STATS_FILE");
+    if (!path.empty()) {
+      std::ofstream output(path, std::ios::app);
+      output << "{\"hits\":" << hits << ",\"misses\":" << misses
+             << ",\"skipped_large\":" << skipped_large << ",\"clears\":" << clears
+             << ",\"peak_entries\":" << peak_entries
+             << ",\"peak_referenced_bytes\":" << peak_referenced_bytes
+             << ",\"peak_unique_buffers\":" << peak_unique_buffers << "}\n";
+      output.flush();
+      if (!output) {
+        LOGS_DEFAULT(ERROR) << "Failed to write WebGPU bind group cache statistics to " << path;
+      }
+    }
+  }
+
+  void Clear() {
+    entries.clear();
+    referenced_buffers.clear();
+    referenced_bytes = 0;
+    ++clears;
+  }
+
+  std::unordered_map<std::vector<uint64_t>, wgpu::BindGroup, Hash> entries;
+  std::unordered_map<WGPUBuffer, uint64_t> referenced_buffers;
+  uint64_t referenced_bytes = 0;
+  uint64_t peak_referenced_bytes = 0;
+  size_t peak_entries = 0;
+  size_t peak_unique_buffers = 0;
+  uint64_t hits = 0;
+  uint64_t misses = 0;
+  uint64_t skipped_large = 0;
+  uint64_t clears = 0;
+};
+
+wgpu::BindGroup WebGpuContextFactory::GetOrCreateBindGroup(
+    const WebGpuContext& context, const WGPUBindGroupDescriptor& descriptor, size_t capacity) {
+  constexpr uint64_t kMaxEntryBytes = 1024 * 1024;
+  constexpr uint64_t kMaxCacheBytes = 256 * 1024 * 1024;
+  std::vector<uint64_t> key;
+  key.reserve(1 + descriptor.entryCount * 4);
+  key.push_back(reinterpret_cast<uintptr_t>(descriptor.layout));
+  for (size_t i = 0; i < descriptor.entryCount; ++i) {
+    const auto& entry = descriptor.entries[i];
+    key.insert(key.end(), {entry.binding, reinterpret_cast<uintptr_t>(entry.buffer), entry.offset, entry.size});
+  }
+
+  std::lock_guard<std::mutex> lock(mutex_);
+  ORT_ENFORCE(contexts_ != nullptr, "WebGPU context cache is not initialized.");
+  auto owner = std::find_if(contexts_->begin(), contexts_->end(),
+                            [&context](const auto& item) { return item.second.context.get() == &context; });
+  ORT_ENFORCE(owner != contexts_->end(), "WebGPU context is not registered.");
+  auto& cache_pointer = owner->second.bind_group_cache;
+  if (!cache_pointer) {
+    cache_pointer = std::make_shared<BindGroupCache>();
+  }
+  auto& cache = *cache_pointer;
+  if (cache.entries.size() > capacity) {
+    cache.Clear();
+  }
+  auto found = cache.entries.find(key);
+  if (found != cache.entries.end()) {
+    ++cache.hits;
+    return found->second;
+  }
+  ++cache.misses;
+  uint64_t bytes = 0;
+  uint64_t additional_bytes = 0;
+  std::vector<std::pair<WGPUBuffer, uint64_t>> buffer_sizes;
+  buffer_sizes.reserve(descriptor.entryCount);
+  for (size_t i = 0; i < descriptor.entryCount; ++i) {
+    const auto buffer = descriptor.entries[i].buffer;
+    const uint64_t size = wgpuBufferGetSize(buffer);
+    if (size > kMaxEntryBytes - bytes) {
+      ++cache.skipped_large;
+      WGPUBindGroup group = wgpuDeviceCreateBindGroup(context.Device().Get(), &descriptor);
+      ORT_ENFORCE(group != nullptr, "Failed to create bind group.");
+      return wgpu::BindGroup::Acquire(group);
+    }
+    bytes += size;
+    if (std::none_of(buffer_sizes.begin(), buffer_sizes.end(),
+                     [buffer](const auto& item) { return item.first == buffer; })) {
+      buffer_sizes.emplace_back(buffer, size);
+      if (!cache.referenced_buffers.contains(buffer)) {
+        additional_bytes += size;
+      }
+    }
+  }
+  WGPUBindGroup group = wgpuDeviceCreateBindGroup(context.Device().Get(), &descriptor);
+  ORT_ENFORCE(group != nullptr, "Failed to create cached bind group.");
+  auto result = wgpu::BindGroup::Acquire(group);
+  if (cache.entries.size() == capacity || additional_bytes > kMaxCacheBytes - cache.referenced_bytes) {
+    cache.Clear();
+  }
+  cache.entries.emplace(std::move(key), result);
+  for (const auto& [buffer, size] : buffer_sizes) {
+    if (cache.referenced_buffers.emplace(buffer, size).second) {
+      cache.referenced_bytes += size;
+    }
+  }
+  cache.peak_entries = std::max(cache.peak_entries, cache.entries.size());
+  cache.peak_unique_buffers = std::max(cache.peak_unique_buffers, cache.referenced_buffers.size());
+  cache.peak_referenced_bytes = std::max(cache.peak_referenced_bytes, cache.referenced_bytes);
+  return result;
+}
 
 WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& config) {
   const int context_id = config.context_id;

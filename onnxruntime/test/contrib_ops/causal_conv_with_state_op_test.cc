@@ -1587,6 +1587,11 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
 #ifdef USE_CUDA
     ep = DefaultCudaExecutionProvider();
 #endif
+#ifdef USE_WEBGPU
+    if (!ep) {
+      ep = DefaultWebGpuExecutionProvider();
+    }
+#endif
   } else {
     ep = c.max_storage_buffer_binding_size == 0
              ? TryGetEpWithVarlenCausalConvWithState()
@@ -1594,7 +1599,7 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
   }
   if (!ep) {
     GTEST_SKIP() << (c.state_update_active.has_value()
-                         ? "CUDA execution provider not available"
+                         ? "CUDA/WebGPU execution provider not available"
                          : "VarlenCausalConvWithState kernel not registered");
     return;
   }

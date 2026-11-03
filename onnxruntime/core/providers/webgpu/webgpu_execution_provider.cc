@@ -920,6 +920,9 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
   // base used to align GPU timestamps is pushed into the context by
   // WebGpuProfiler::StartProfiling, so no timepoint is threaded through here.
   if ((session_profiler_ && session_profiler_->Enabled()) || run_options.enable_profiling) {
+    if (session_profiler_ && session_profiler_->Enabled()) {
+      context_.SetProfilingStartTime(session_profiler_->ProfilingStartTime());
+    }
     context_.StartProfiling();
   }
 

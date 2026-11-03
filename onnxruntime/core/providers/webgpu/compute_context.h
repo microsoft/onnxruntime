@@ -143,6 +143,25 @@ class ComputeContextBase {
     return webgpu_context_.Run(*this, program);
   }
 
+
+  void BeginNodeBindingCapture(std::vector<CapturedCommandInfo>& commands, NodeBindingSnapshot& snapshot) {
+    webgpu_context_.BeginNodeBindingCapture(*this, commands, snapshot);
+  }
+  void EndNodeBindingCapture() { webgpu_context_.EndNodeBindingCapture(*this); }
+  Status PrepareNodeBinding(const CapturedCommandInfo& prototype, const NodeBindingSnapshot& snapshot,
+                             const std::vector<WGPUBuffer>& buffers, CapturedCommandInfo& command) {
+    return webgpu_context_.PrepareNodeBinding(prototype, snapshot, buffers, command);
+  }
+  bool CanCaptureNodeCommands() const { return webgpu_context_.CanCaptureNodeCommands(*this); }
+  bool NodeReplayProfilingEnabled() const { return webgpu_context_.NodeReplayProfilingEnabled(); }
+  void BeginNodeCapture(std::vector<webgpu::CapturedCommandInfo>& commands) {
+    webgpu_context_.BeginNodeCapture(*this, commands);
+  }
+  void EndNodeCapture() { webgpu_context_.EndNodeCapture(*this); }
+  Status FlushNodeCommands() { return webgpu_context_.FlushNodeCommands(*this); }
+  Status AppendNodeCommands(const std::vector<webgpu::CapturedCommandInfo>& commands) {
+    return webgpu_context_.AppendNodeCommands(*this, commands);
+  }
  protected:
   WebGpuContext& webgpu_context_;
   const WebGpuExecutionProvider& ep_;

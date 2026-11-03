@@ -4,8 +4,10 @@
 #include "core/providers/webgpu/math/matmul.h"
 
 #include <limits>
+#include <string_view>
 
 #include "core/common/inlined_containers.h"
+#include "core/platform/env_var_utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -294,7 +296,10 @@ Status ComputeMatMul(ComputeContext* context,
   // A single row has no cross-row weight reuse. Stream B directly and reduce K
   // within each workgroup in f32, retaining the existing paths outside this regime.
   if (batch_size == 1 && dim_a_outer == 1 &&
-      dim_b_outer >= 16 && dim_b_outer <= 64 && dim_b_outer % 4 == 0 &&
+      ((dim_b_outer >= 16 && dim_b_outer <= 64 && dim_b_outer % 4 == 0) ||
+       (dim_b_outer == 96 && dim_inner == 2560 &&
+        context->AdapterInfo().vendor == std::string_view{"nvidia"} &&
+        ParseEnvironmentVariableWithDefault<int>("ORT_WEBGPU_MATMUL_GEMV_N96", 0) != 0)) &&
       dim_inner >= 2048 && dim_inner <= 8192 &&
       !has_bias && activation.activation_kind_ == ActivationKind::None &&
       a->IsDataType<MLFloat16>() && b->IsDataType<MLFloat16>() && output_tensor->IsDataType<MLFloat16>()) {

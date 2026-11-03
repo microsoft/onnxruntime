@@ -17,6 +17,16 @@ provider-neutral schema and generic state ABI described in the
   `past_state_lengths` state, including input/output aliasing;
 - deterministic score-descending, index-ascending top-k ties;
 - `selected_counts`, the exact active-entry count per query.
+- QSA IndexShare refresh (`indexshare_mode=0`) and hold-state reuse
+  (`indexshare_mode=1`) with `max_output_entries`, merged selections and status.
+  Reuse requires zero projected query/key rows, copies the existing state,
+  zeros compact snapshots, and validates one-token-per-request cumulative
+  lengths on the GPU. Invalid cumulative lengths clear that row's selection
+  and set status 1 without overwriting an existing nonzero status.
+
+IndexShare's scalar mode input is CPU-resident. Selection and state remain
+device-resident. CSA IndexShare/state-only advance is not implemented on
+WebGPU and is explicitly rejected.
 
 BF16 is not registered by the WebGPU kernel (CUDA only). Unknown policies and
 policy-incompatible inputs or attributes are rejected.

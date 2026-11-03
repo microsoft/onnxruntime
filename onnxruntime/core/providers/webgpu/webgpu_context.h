@@ -104,11 +104,21 @@ struct PendingPipelineBuild {
 //
 // A command with both fields empty is therefore valid only in state 3 before deferred pipeline
 // resolution. DispatchCommand() requires compute_pipeline to be set.
+struct NodeBindingSnapshot {
+  std::vector<WGPUBuffer> buffers;
+  std::vector<uint32_t> segments;
+  wgpu::BindGroupLayout layout;
+  WGPUBuffer uniform_buffer = nullptr;
+  std::string program_name;
+  size_t programs = 0;
+};
+
 struct CapturedCommandInfo {
   std::string program_key;
   std::optional<PendingPipelineBuild> pending_build;
   std::optional<wgpu::ComputePipeline> compute_pipeline;
   wgpu::BindGroup bind_group;
+  std::optional<uint32_t> dynamic_uniform_offset;
   std::array<uint32_t, 3> dispatch_group{1, 1, 1};
   // WGPUBuffer for indirect dispatch, nullptr if not using indirect dispatch
   WGPUBuffer indirect_buffer = nullptr;
@@ -135,6 +145,8 @@ struct CommandRecordingState {
 #endif
   std::vector<CapturedCommandInfo> deferred_dispatches;
   std::vector<PendingKernelInfo> pending_kernels;
+  wgpu::Buffer uniform_arena;
+  std::vector<uint8_t> pending_uniform_data;
   GraphCaptureState graph_capture_state{GraphCaptureState::Default};
   std::vector<CapturedCommandInfo>* external_captured_commands = nullptr;
 };
@@ -205,10 +217,13 @@ struct WebGpuContextConfig {
 };
 
 class WebGpuContextFactory {
+  struct BindGroupCache;
+
  public:
   struct WebGpuContextInfo {
     std::unique_ptr<WebGpuContext> context;
     int ref_count;
+    std::shared_ptr<BindGroupCache> bind_group_cache{};
   };
 
   /// <summary>
@@ -239,6 +254,11 @@ class WebGpuContextFactory {
   static WebGpuContext& DefaultContext();
 
  private:
+  friend class WebGpuContext;
+  static wgpu::BindGroup GetOrCreateBindGroup(const WebGpuContext& context,
+                                             const WGPUBindGroupDescriptor& descriptor,
+                                             size_t capacity);
+
   WebGpuContextFactory() {}
 
   static std::mutex mutex_;
@@ -320,6 +340,21 @@ class WebGpuContext final {
               CommandRecordingState& recording);
   void ReleaseGraphResources(std::vector<webgpu::CapturedCommandInfo>& captured_commands);
 
+  void BeginNodeBindingCapture(const ComputeContextBase& context,
+                               std::vector<webgpu::CapturedCommandInfo>& commands,
+                               webgpu::NodeBindingSnapshot& snapshot);
+  void EndNodeBindingCapture(const ComputeContextBase& context);
+  Status PrepareNodeBinding(const webgpu::CapturedCommandInfo& prototype,
+                          const webgpu::NodeBindingSnapshot& snapshot,
+                          const std::vector<WGPUBuffer>& buffers,
+                          webgpu::CapturedCommandInfo& command);
+  bool CanCaptureNodeCommands(const ComputeContextBase& context) const;
+  bool NodeReplayProfilingEnabled() const { return is_profiling_; }
+  void BeginNodeCapture(const ComputeContextBase& context, std::vector<webgpu::CapturedCommandInfo>& commands);
+  void EndNodeCapture(const ComputeContextBase& context);
+  Status FlushNodeCommands(const ComputeContextBase& context);
+  Status AppendNodeCommands(const ComputeContextBase& context,
+                            const std::vector<webgpu::CapturedCommandInfo>& commands);
   Status Flush(const webgpu::BufferManager& buffer_mgr, CommandRecordingState& recording);
 
   // Unlike Flush, waits for submitted queue work and checks scoped errors and device loss.
@@ -437,7 +472,10 @@ class WebGpuContext final {
   wgpu::BindGroup CreateBindGroup(const std::vector<WGPUBuffer>& bind_buffers,
                                   const std::vector<uint32_t>& bind_buffers_segments,
                                   const wgpu::BindGroupLayout& bind_group_layout,
-                                  std::string_view label) const;
+                                  std::string_view label,
+                                  uint64_t uniform_offset,
+                                  uint64_t uniform_size,
+                                  size_t cache_capacity) const;
   void DispatchCommand(const webgpu::CapturedCommandInfo& command, CommandRecordingState& recording);
   Status EncodeDeferredDispatches(CommandRecordingState& recording);
 

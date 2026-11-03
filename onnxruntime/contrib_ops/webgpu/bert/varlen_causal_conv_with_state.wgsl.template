@@ -100,7 +100,7 @@ $MAIN {
   let capacity = uniforms.state_update_capacity;
   var captured: u32 = 0u;
   let raw = capture_count.getByOffset(b);
-  if (raw > 0) {
+  if (raw > 0 && uniforms.state_update_active != 0u) {
     captured = u32(raw);
     let limit = min(capacity, local_length);
     if (captured > limit) {

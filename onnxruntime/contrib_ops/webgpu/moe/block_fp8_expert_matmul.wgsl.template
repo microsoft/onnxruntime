@@ -7,12 +7,16 @@
 #param has_indirect_experts
 #param broadcast_input
 #param use_matrix
+#param use_cooperative
 
 #if use_matrix
 var<workgroup> tile_a: array<f16, 1024>;
 var<workgroup> tile_b: array<f16, 256>;
 var<workgroup> tile_y: array<f32, 1024>;
 var<workgroup> tile_partial: array<f32, 1024>;
+#endif
+#if use_cooperative
+var<workgroup> partials: array<f32, 64>;
 #endif
 $MAIN {
 #if use_matrix
@@ -39,7 +43,7 @@ $MAIN {
         tile_a[i] = f16(0);
         if (row < uniforms.rows && inner < uniforms.inner) {
 #if broadcast_input
-          tile_a[i] = f16(input.getByOffset(inner));
+          tile_a[i] = f16(input.getByOffset((row / uniforms.experts_per_token) * uniforms.inner + inner));
 #else
           tile_a[i] = f16(input.getByOffset(row * uniforms.inner + inner));
 #endif
@@ -85,8 +89,13 @@ $MAIN {
     }
   }
 #else
+#if use_cooperative
+  let row = workgroup_id.y;
+  let col = workgroup_id.x;
+#else
   let row = global_id.y;
   let col = global_id.x;
+#endif
   if (row >= uniforms.rows || col >= uniforms.cols) {
     return;
   }
@@ -101,7 +110,7 @@ $MAIN {
   let scale_base = (col / 128u) * uniforms.scale_k_blocks;
 #endif
 #if broadcast_input
-  let input_row = 0u;
+  let input_row = row / uniforms.experts_per_token;
 #else
   let input_row = row;
 #endif
@@ -111,7 +120,11 @@ $MAIN {
     let scale = f32(scales.getByOffset(scale_base + k_block));
     let start = k_block * 128u;
     let end = min(start + 128u, uniforms.inner);
+#if use_cooperative
+    for (var inner = start + local_idx; inner < end; inner += 64u) {
+#else
     for (var inner = start; inner < end; inner++) {
+#endif
       let weight_offset = weight_base + inner;
       let packed_word = u32(weights.getByOffset(weight_offset / 4u));
       let weight_code = unpack4xU8(packed_word)[weight_offset % 4u];
@@ -119,6 +132,20 @@ $MAIN {
       value += f32(input.getByOffset(input_row * uniforms.inner + inner)) * weight * scale;
     }
   }
+#if use_cooperative
+    partials[local_idx] = value;
+    workgroupBarrier();
+    for (var stride = 32u; stride > 0u; stride /= 2u) {
+      if (local_idx < stride) {
+        partials[local_idx] += partials[local_idx + stride];
+      }
+      workgroupBarrier();
+    }
+    if (local_idx != 0u) {
+      return;
+    }
+    value = partials[0];
+#endif
 #if has_bias
 #if has_indirect_experts
   value += f32(bias.getByOffset(expert_idx * uniforms.cols + col));

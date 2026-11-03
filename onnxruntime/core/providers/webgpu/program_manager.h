@@ -74,6 +74,7 @@ class ProgramManager {
                uint32_t normalized_dispatch_x,
                uint32_t normalized_dispatch_y,
                uint32_t normalized_dispatch_z,
+               bool dynamic_uniforms,
                wgpu::BindGroupLayout& bind_group_layout,
                std::vector<int>& shape_uniform_ranks,
                wgpu::Future& future,
@@ -94,6 +95,7 @@ class ProgramManager {
                                             std::span<const uint32_t> inputs_segments,
                                             std::span<const uint32_t> outputs_segments,
                                             std::span<const int> shape_uniform_ranks,
+                                            bool dynamic_uniforms,
                                             wgpu::BindGroupLayout& bind_group_layout) const;
 
   mutable std::mutex programs_mutex_;

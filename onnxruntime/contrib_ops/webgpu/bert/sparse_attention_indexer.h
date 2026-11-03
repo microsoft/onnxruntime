@@ -41,18 +41,30 @@ class SparseAttentionIndexerQsaConcatProgram final
   bool has_current_;
 };
 
+enum class QsaCachePhase { Map,
+                           Score,
+                           Select };
+
 class SparseAttentionIndexerQsaSelectProgram final
     : public Program<SparseAttentionIndexerQsaSelectProgram> {
  public:
-  explicit SparseAttentionIndexerQsaSelectProgram(bool has_mask)
-      : Program{"SparseAttentionIndexerQsaSelect"}, has_mask_{has_mask} {}
+  explicit SparseAttentionIndexerQsaSelectProgram(bool has_mask, bool use_global_cache = false,
+                                                  QsaCachePhase phase = QsaCachePhase::Select,
+                                                  uint32_t sort_capacity = 0, bool dense_map = false)
+      : Program{!use_global_cache || phase == QsaCachePhase::Select ? (sort_capacity > 0 ? "SparseAttentionIndexerQsaSort" : "SparseAttentionIndexerQsaSelect") : phase == QsaCachePhase::Map ? "SparseAttentionIndexerQsaMap"
+                                                                                                                                                                                              : "SparseAttentionIndexerQsaScore"},
+        has_mask_{has_mask},
+        use_global_cache_{use_global_cache},
+        phase_{phase},
+        sort_capacity_{sort_capacity},
+        dense_map_{dense_map} {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"rows", ProgramUniformVariableDataType::Uint32},
       {"sequence_length", ProgramUniformVariableDataType::Uint32},
       {"num_heads", ProgramUniformVariableDataType::Uint32},
       {"head_size", ProgramUniformVariableDataType::Uint32},
-    {"query_row_stride", ProgramUniformVariableDataType::Uint32},
+      {"query_row_stride", ProgramUniformVariableDataType::Uint32},
       {"rotary_width", ProgramUniformVariableDataType::Uint32},
       {"max_rotary_length", ProgramUniformVariableDataType::Uint32},
       {"rotary_cache_batch_stride", ProgramUniformVariableDataType::Uint32},
@@ -66,6 +78,10 @@ class SparseAttentionIndexerQsaSelectProgram final
 
  private:
   bool has_mask_;
+  bool use_global_cache_;
+  QsaCachePhase phase_;
+  uint32_t sort_capacity_;
+  bool dense_map_;
 };
 
 class SparseAttentionIndexerCsaCopyCompressedProgram final

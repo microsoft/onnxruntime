@@ -7,11 +7,13 @@
 #include <cmath>
 #include <limits>
 #include <string>
+#include <string_view>
 
 #include "contrib_ops/cpu/bert/dynamic_sparse_attention_helper.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
+#include "core/platform/env_var_utils.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 
@@ -29,8 +31,8 @@ constexpr uint32_t kMaxCacheLength = 65536;
 constexpr uint32_t kMaxSelected = 4096;
 constexpr uint32_t kMaxLocalWindow = 4096;
 constexpr uint32_t kAttentionWorkgroupSize = 64;
+constexpr uint32_t kSubgroupAttentionWorkgroupSize = 32;
 static_assert(kMaxHeadSize % kAttentionWorkgroupSize == 0);
-constexpr uint32_t kAttentionValuesPerInvocation = kMaxHeadSize / kAttentionWorkgroupSize;
 
 DynamicSparseAttentionMode ParseAttentionMode(const std::string& value) {
   ORT_ENFORCE(value == "selected_only" || value == "local_plus_selected",
@@ -359,7 +361,53 @@ Status DynamicSparseAttentionAppendKvProgram::GenerateShaderCode(ShaderHelper& s
   return Status::OK();
 }
 
-Status DynamicSparseAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
+class DynamicSparseAttentionQueryCacheProgram final : public Program<DynamicSparseAttentionQueryCacheProgram> {
+ public:
+  DynamicSparseAttentionQueryCacheProgram(bool has_selection, bool local_plus_selected, bool selected_from_auxiliary,
+                                bool has_auxiliary_value, bool has_head_sink, bool use_smooth_softmax,
+                                bool use_subgroups, uint32_t partitions)
+      : Program{"DynamicSparseAttentionQueryCache"},
+        has_selection_{has_selection},
+        local_plus_selected_{local_plus_selected},
+        selected_from_auxiliary_{selected_from_auxiliary},
+        has_auxiliary_value_{has_auxiliary_value},
+        has_head_sink_{has_head_sink},
+        use_smooth_softmax_{use_smooth_softmax},
+        use_subgroups_{use_subgroups},
+        partitions_{partitions} {}
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"sequence_length", ProgramUniformVariableDataType::Uint32},
+      {"num_heads", ProgramUniformVariableDataType::Uint32},
+      {"kv_num_heads", ProgramUniformVariableDataType::Uint32},
+      {"head_size", ProgramUniformVariableDataType::Uint32},
+      {"cache_capacity", ProgramUniformVariableDataType::Uint32},
+      {"auxiliary_sequence_length", ProgramUniformVariableDataType::Uint32},
+      {"max_selected", ProgramUniformVariableDataType::Uint32},
+      {"local_window_size", ProgramUniformVariableDataType::Uint32},
+      {"scale", ProgramUniformVariableDataType::Float32},
+      {"partitions", ProgramUniformVariableDataType::Uint32},
+      {"partition_size", ProgramUniformVariableDataType::Uint32},
+      {"num_workgroups", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  bool has_selection_;
+  bool local_plus_selected_;
+  bool selected_from_auxiliary_;
+  bool has_auxiliary_value_;
+  bool has_head_sink_;
+  bool use_smooth_softmax_;
+  bool use_subgroups_;
+  uint32_t partitions_;
+};
+
+
+Status DynamicSparseAttentionQueryCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const uint32_t workgroup_size =
+      use_subgroups_ ? kSubgroupAttentionWorkgroupSize : kAttentionWorkgroupSize;
+  const uint32_t values_per_invocation = kMaxHeadSize / workgroup_size;
   const auto& query = shader.AddInput("query", ShaderUsage::UseUniform);
   const auto& main_key = shader.AddInput("main_key", ShaderUsage::UseUniform);
   const auto& main_value = shader.AddInput("main_value", ShaderUsage::UseUniform);
@@ -384,16 +432,22 @@ Status DynamicSparseAttentionProgram::GenerateShaderCode(ShaderHelper& shader) c
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
-  shader.AdditionalImplementation()
-      << "var<workgroup> dot_partials: array<f32, " << kAttentionWorkgroupSize << ">;\n"
-      << "var<workgroup> total_length_shared: i32;\n";
+  if (!use_subgroups_) {
+    shader.AdditionalImplementation()
+        << "var<workgroup> dot_partials: array<f32, " << kAttentionWorkgroupSize << ">;\n";
+  }
+  shader.AdditionalImplementation() << "var<workgroup> total_length_shared: i32;\n";
   if (has_selection_) {
     shader.AdditionalImplementation() << "var<workgroup> selected_count_shared: u32;\n";
   }
   auto& body = shader.MainFunctionBody();
   body << "  if (workgroup_idx >= uniforms.num_workgroups) { return; }\n"
-       << "  let head = workgroup_idx % uniforms.num_heads;\n"
-       << "  let row = workgroup_idx / uniforms.num_heads;\n"
+       << "  let partition_idx = workgroup_idx % uniforms.partitions;\n"
+       << "  let query_group = workgroup_idx / uniforms.partitions;\n"
+       << "  let partition_begin = partition_idx * uniforms.partition_size;\n"
+       << "  let partition_end = partition_begin + uniforms.partition_size;\n"
+       << "  let head = query_group % uniforms.num_heads;\n"
+       << "  let row = query_group / uniforms.num_heads;\n"
        << "  let s = row % uniforms.sequence_length;\n"
        << "  let b = row / uniforms.sequence_length;\n"
        << "  let kv_head = head / (uniforms.num_heads / uniforms.kv_num_heads);\n"
@@ -405,7 +459,15 @@ Status DynamicSparseAttentionProgram::GenerateShaderCode(ShaderHelper& shader) c
        << "  let query_position = total_length - i32(uniforms.sequence_length) + i32(s);\n"
        << "  var max_logit = -3.402823466e+38;\n"
        << "  var denominator = 0.0;\n"
-       << "  var accumulator: array<f32, " << kAttentionValuesPerInvocation << ">;\n";
+       << "  var accumulator: array<f32, " << values_per_invocation << ">;\n";
+
+  for (uint32_t slot = 0; slot < 8; ++slot) {
+    body << "  let cached_query" << slot << " = f32("
+         << query.GetByOffset("q_base + local_idx + " + std::to_string(slot * 32) + "u") << ");\n";
+  }
+  if (!local_plus_selected_) {
+    body << "  let local_count = 0u;\n";
+  }
 
   auto emit_candidate = [&](const ShaderVariableHelper& candidate_key,
                             const ShaderVariableHelper& candidate_value,
@@ -415,12 +477,16 @@ Status DynamicSparseAttentionProgram::GenerateShaderCode(ShaderHelper& shader) c
          << "        let candidate_valid = " << candidate_valid << ";\n"
          << "        let candidate_base = " << candidate_base << ";\n"
          << "        var dot_product = 0.0;\n"
-         << "        for (var c = local_idx; c < uniforms.head_size; c += "
-         << kAttentionWorkgroupSize << "u) {\n"
-         << "          dot_product += f32(" << query.GetByOffset("q_base + c") << ") * f32("
-         << candidate_key.GetByOffset("candidate_base + c") << ");\n"
-         << "        }\n"
-         << "        dot_partials[local_idx] = dot_product;\n"
+         ;
+    for (uint32_t slot = 0; slot < 8; ++slot) {
+      body << "        dot_product += cached_query" << slot << " * f32("
+           << candidate_key.GetByOffset("candidate_base + local_idx + " +
+                                       std::to_string(slot * 32) + "u") << ");\n";
+    }
+    if (use_subgroups_) {
+      body << "        let logit = subgroupAdd(dot_product) * uniforms.scale;\n";
+    } else {
+      body << "        dot_partials[local_idx] = dot_product;\n"
          << "        workgroupBarrier();\n"
          << "        for (var stride = " << (kAttentionWorkgroupSize / 2)
          << "u; stride > 0u; stride >>= 1u) {\n"
@@ -429,13 +495,14 @@ Status DynamicSparseAttentionProgram::GenerateShaderCode(ShaderHelper& shader) c
          << "          }\n"
          << "          workgroupBarrier();\n"
          << "        }\n"
-         << "        let logit = dot_partials[0] * uniforms.scale;\n"
-         << "        if (candidate_valid) {\n"
+         << "        let logit = dot_partials[0] * uniforms.scale;\n";
+    }
+    body << "        if (candidate_valid) {\n"
          << "          let new_max = max(max_logit, logit);\n"
          << "          let old_scale = select(exp(max_logit - new_max), 0.0, denominator == 0.0);\n"
          << "          let weight = exp(logit - new_max);\n"
-         << "          for (var slot = 0u; slot < " << kAttentionValuesPerInvocation << "u; slot++) {\n"
-         << "            let d = local_idx + slot * " << kAttentionWorkgroupSize << "u;\n"
+         << "          for (var slot = 0u; slot < " << values_per_invocation << "u; slot++) {\n"
+         << "            let d = local_idx + slot * " << workgroup_size << "u;\n"
          << "            if (d < uniforms.head_size) {\n"
          << "              accumulator[slot] = accumulator[slot] * old_scale + weight * f32("
          << candidate_value.GetByOffset("candidate_base + d") << ");\n"
@@ -443,15 +510,19 @@ Status DynamicSparseAttentionProgram::GenerateShaderCode(ShaderHelper& shader) c
          << "          }\n"
          << "          denominator = denominator * old_scale + weight;\n"
          << "          max_logit = new_max;\n"
-         << "        }\n"
-         << "        workgroupBarrier();\n"
-         << "      }\n";
+         << "        }\n";
+    if (!use_subgroups_) {
+      body << "        workgroupBarrier();\n";
+    }
+    body << "      }\n";
   };
 
   if (local_plus_selected_) {
     body << "  let local_start = max(0i, query_position - i32(uniforms.local_window_size) + 1i);\n"
          << "  let local_end = min(query_position, min(total_length - 1i, i32(uniforms.cache_capacity) - 1i));\n"
-         << "  for (var index = local_start; index <= local_end; index++) {\n"
+         << "  let local_count = u32(max(0i, local_end - local_start + 1i));\n"
+         << "  let local_partition_end = min(local_end, local_start + i32(partition_end) - 1i);\n"
+         << "  for (var index = local_start + i32(partition_begin); index <= local_partition_end; index++) {\n"
          << "    let safe_index = u32(index);\n";
     emit_candidate(main_key, main_value,
                    "index >= 0i && index < i32(uniforms.cache_capacity)",
@@ -466,7 +537,9 @@ Status DynamicSparseAttentionProgram::GenerateShaderCode(ShaderHelper& shader) c
          << "    selected_count_shared = u32(clamp(selected_count_i32, 0i, i32(uniforms.max_selected)));\n"
          << "  }\n"
          << "  let selected_count = workgroupUniformLoad(&selected_count_shared);\n"
-         << "  for (var i = 0u; i < selected_count; i++) {\n"
+         << "  let selected_begin = min(selected_count, max(partition_begin, local_count) - local_count);\n"
+         << "  let selected_end = min(selected_count, max(partition_end, local_count) - local_count);\n"
+         << "  for (var i = selected_begin; i < selected_end; i++) {\n"
          << "    let selected_index = "
          << selected_indices->GetByOffset("row * uniforms.max_selected + i") << ";\n";
     if (selected_from_auxiliary_) {
@@ -488,7 +561,7 @@ Status DynamicSparseAttentionProgram::GenerateShaderCode(ShaderHelper& shader) c
     body << "  }\n";
   }
 
-  if (has_head_sink_ || use_smooth_softmax_) {
+  if (partitions_ == 1 && (has_head_sink_ || use_smooth_softmax_)) {
     body << "  {\n";
     if (has_head_sink_) {
       body << "    let sink_logit = f32(" << head_sink->GetByOffset("head") << ");\n";
@@ -498,17 +571,269 @@ Status DynamicSparseAttentionProgram::GenerateShaderCode(ShaderHelper& shader) c
     body << "    let new_max = max(max_logit, sink_logit);\n"
          << "    let old_scale = select(exp(max_logit - new_max), 0.0, denominator == 0.0);\n"
          << "    denominator = denominator * old_scale + exp(sink_logit - new_max);\n"
-         << "    for (var slot = 0u; slot < " << kAttentionValuesPerInvocation << "u; slot++) {\n"
+         << "    for (var slot = 0u; slot < " << values_per_invocation << "u; slot++) {\n"
          << "      accumulator[slot] *= old_scale;\n"
          << "    }\n"
          << "    max_logit = new_max;\n"
          << "  }\n";
   }
-  body << "  for (var slot = 0u; slot < " << kAttentionValuesPerInvocation << "u; slot++) {\n"
-       << "    let d = local_idx + slot * " << kAttentionWorkgroupSize << "u;\n"
+  if (partitions_ > 1) {
+    body << "  let partial_base = workgroup_idx * (uniforms.head_size + 2u);\n"
+         << "  if (local_idx == 0u) {\n"
+         << "    " << output.SetByOffset("partial_base + uniforms.head_size", "max_logit") << "\n"
+         << "    " << output.SetByOffset("partial_base + uniforms.head_size + 1u", "denominator") << "\n"
+         << "  }\n";
+  }
+  body << "  for (var slot = 0u; slot < " << values_per_invocation << "u; slot++) {\n"
+       << "    let d = local_idx + slot * " << workgroup_size << "u;\n"
+       << "    if (d < uniforms.head_size) {\n";
+  if (partitions_ > 1) {
+    body << "      " << output.SetByOffset("partial_base + d", "accumulator[slot]") << "\n";
+  } else {
+    body << "      let result = select(0.0, accumulator[slot] / denominator, denominator > 0.0);\n"
+         << "      " << output.SetByOffset("q_base + d", "output_element_t(result)") << "\n";
+  }
+  body
+       << "    }\n"
+       << "  }\n";
+  return Status::OK();
+}
+
+Status DynamicSparseAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const uint32_t workgroup_size =
+      use_subgroups_ ? kSubgroupAttentionWorkgroupSize : kAttentionWorkgroupSize;
+  const uint32_t values_per_invocation = kMaxHeadSize / workgroup_size;
+  const auto& query = shader.AddInput("query", ShaderUsage::UseUniform);
+  const auto& main_key = shader.AddInput("main_key", ShaderUsage::UseUniform);
+  const auto& main_value = shader.AddInput("main_value", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* auxiliary_key = nullptr;
+  const ShaderVariableHelper* auxiliary_value = nullptr;
+  if (selected_from_auxiliary_ && has_selection_) {
+    auxiliary_key = &shader.AddInput("auxiliary_key", ShaderUsage::UseUniform);
+    if (has_auxiliary_value_) {
+      auxiliary_value = &shader.AddInput("auxiliary_value", ShaderUsage::UseUniform);
+    }
+  }
+  const ShaderVariableHelper* selected_indices = nullptr;
+  const ShaderVariableHelper* selected_counts = nullptr;
+  if (has_selection_) {
+    selected_indices = &shader.AddInput("selected_indices", ShaderUsage::UseUniform);
+    selected_counts = &shader.AddInput("selected_counts", ShaderUsage::UseUniform);
+  }
+  const auto& seqlens_k = shader.AddInput("seqlens_k", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* head_sink = nullptr;
+  if (has_head_sink_) {
+    head_sink = &shader.AddInput("head_sink", ShaderUsage::UseUniform);
+  }
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+
+  if (!use_subgroups_) {
+    shader.AdditionalImplementation()
+        << "var<workgroup> dot_partials: array<f32, " << kAttentionWorkgroupSize << ">;\n";
+  }
+  shader.AdditionalImplementation() << "var<workgroup> total_length_shared: i32;\n";
+  if (has_selection_) {
+    shader.AdditionalImplementation() << "var<workgroup> selected_count_shared: u32;\n";
+  }
+  auto& body = shader.MainFunctionBody();
+  body << "  if (workgroup_idx >= uniforms.num_workgroups) { return; }\n"
+       << "  let partition_idx = workgroup_idx % uniforms.partitions;\n"
+       << "  let query_group = workgroup_idx / uniforms.partitions;\n"
+       << "  let partition_begin = partition_idx * uniforms.partition_size;\n"
+       << "  let partition_end = partition_begin + uniforms.partition_size;\n"
+       << "  let head = query_group % uniforms.num_heads;\n"
+       << "  let row = query_group / uniforms.num_heads;\n"
+       << "  let s = row % uniforms.sequence_length;\n"
+       << "  let b = row / uniforms.sequence_length;\n"
+       << "  let kv_head = head / (uniforms.num_heads / uniforms.kv_num_heads);\n"
+       << "  let q_base = (row * uniforms.num_heads + head) * uniforms.head_size;\n"
+       << "  if (local_idx == 0u) {\n"
+       << "    total_length_shared = " << seqlens_k.GetByOffset("b") << " + 1i;\n"
+       << "  }\n"
+       << "  let total_length = workgroupUniformLoad(&total_length_shared);\n"
+       << "  let query_position = total_length - i32(uniforms.sequence_length) + i32(s);\n"
+       << "  var max_logit = -3.402823466e+38;\n"
+       << "  var denominator = 0.0;\n"
+       << "  var accumulator: array<f32, " << values_per_invocation << ">;\n";
+  if (!local_plus_selected_) {
+    body << "  let local_count = 0u;\n";
+  }
+
+  auto emit_candidate = [&](const ShaderVariableHelper& candidate_key,
+                            const ShaderVariableHelper& candidate_value,
+                            const std::string& candidate_valid,
+                            const std::string& candidate_base) {
+    body << "      {\n"
+         << "        let candidate_valid = " << candidate_valid << ";\n"
+         << "        let candidate_base = " << candidate_base << ";\n"
+         << "        var dot_product = 0.0;\n"
+         << "        for (var c = local_idx; c < uniforms.head_size; c += "
+         << workgroup_size << "u) {\n"
+         << "          dot_product += f32(" << query.GetByOffset("q_base + c") << ") * f32("
+         << candidate_key.GetByOffset("candidate_base + c") << ");\n"
+         << "        }\n";
+    if (use_subgroups_) {
+      body << "        let logit = subgroupAdd(dot_product) * uniforms.scale;\n";
+    } else {
+      body << "        dot_partials[local_idx] = dot_product;\n"
+         << "        workgroupBarrier();\n"
+         << "        for (var stride = " << (kAttentionWorkgroupSize / 2)
+         << "u; stride > 0u; stride >>= 1u) {\n"
+         << "          if (local_idx < stride) {\n"
+         << "            dot_partials[local_idx] += dot_partials[local_idx + stride];\n"
+         << "          }\n"
+         << "          workgroupBarrier();\n"
+         << "        }\n"
+         << "        let logit = dot_partials[0] * uniforms.scale;\n";
+    }
+    body << "        if (candidate_valid) {\n"
+         << "          let new_max = max(max_logit, logit);\n"
+         << "          let old_scale = select(exp(max_logit - new_max), 0.0, denominator == 0.0);\n"
+         << "          let weight = exp(logit - new_max);\n"
+         << "          for (var slot = 0u; slot < " << values_per_invocation << "u; slot++) {\n"
+         << "            let d = local_idx + slot * " << workgroup_size << "u;\n"
+         << "            if (d < uniforms.head_size) {\n"
+         << "              accumulator[slot] = accumulator[slot] * old_scale + weight * f32("
+         << candidate_value.GetByOffset("candidate_base + d") << ");\n"
+         << "            }\n"
+         << "          }\n"
+         << "          denominator = denominator * old_scale + weight;\n"
+         << "          max_logit = new_max;\n"
+         << "        }\n";
+    if (!use_subgroups_) {
+      body << "        workgroupBarrier();\n";
+    }
+    body << "      }\n";
+  };
+
+  if (local_plus_selected_) {
+    body << "  let local_start = max(0i, query_position - i32(uniforms.local_window_size) + 1i);\n"
+         << "  let local_end = min(query_position, min(total_length - 1i, i32(uniforms.cache_capacity) - 1i));\n"
+         << "  let local_count = u32(max(0i, local_end - local_start + 1i));\n"
+         << "  let local_partition_end = min(local_end, local_start + i32(partition_end) - 1i);\n"
+         << "  for (var index = local_start + i32(partition_begin); index <= local_partition_end; index++) {\n"
+         << "    let safe_index = u32(index);\n";
+    emit_candidate(main_key, main_value,
+                   "index >= 0i && index < i32(uniforms.cache_capacity)",
+                   "((b * uniforms.kv_num_heads + kv_head) * uniforms.cache_capacity + safe_index)"
+                   " * uniforms.head_size");
+    body << "  }\n";
+  }
+
+  if (has_selection_) {
+    body << "  if (local_idx == 0u) {\n"
+         << "    let selected_count_i32 = " << selected_counts->GetByOffset("row") << ";\n"
+         << "    selected_count_shared = u32(clamp(selected_count_i32, 0i, i32(uniforms.max_selected)));\n"
+         << "  }\n"
+         << "  let selected_count = workgroupUniformLoad(&selected_count_shared);\n"
+         << "  let selected_begin = min(selected_count, max(partition_begin, local_count) - local_count);\n"
+         << "  let selected_end = min(selected_count, max(partition_end, local_count) - local_count);\n"
+         << "  for (var i = selected_begin; i < selected_end; i++) {\n"
+         << "    let selected_index = "
+         << selected_indices->GetByOffset("row * uniforms.max_selected + i") << ";\n";
+    if (selected_from_auxiliary_) {
+      body << "    let safe_index = u32(clamp(selected_index, 0i,"
+              " i32(uniforms.auxiliary_sequence_length) - 1i));\n";
+      emit_candidate(*auxiliary_key, has_auxiliary_value_ ? *auxiliary_value : *auxiliary_key,
+                     "selected_index >= 0i && selected_index < i32(uniforms.auxiliary_sequence_length)",
+                     "((b * uniforms.kv_num_heads + kv_head) * uniforms.auxiliary_sequence_length"
+                     " + safe_index) * uniforms.head_size");
+    } else {
+      body << "    let safe_index = u32(clamp(selected_index, 0i, i32(uniforms.cache_capacity) - 1i));\n";
+      emit_candidate(main_key, main_value,
+                     "selected_index >= 0i && selected_index < total_length"
+                     " && selected_index <= query_position"
+                     " && selected_index < i32(uniforms.cache_capacity)",
+                     "((b * uniforms.kv_num_heads + kv_head) * uniforms.cache_capacity"
+                     " + safe_index) * uniforms.head_size");
+    }
+    body << "  }\n";
+  }
+
+  if (partitions_ == 1 && (has_head_sink_ || use_smooth_softmax_)) {
+    body << "  {\n";
+    if (has_head_sink_) {
+      body << "    let sink_logit = f32(" << head_sink->GetByOffset("head") << ");\n";
+    } else {
+      body << "    let sink_logit = 0.0;\n";
+    }
+    body << "    let new_max = max(max_logit, sink_logit);\n"
+         << "    let old_scale = select(exp(max_logit - new_max), 0.0, denominator == 0.0);\n"
+         << "    denominator = denominator * old_scale + exp(sink_logit - new_max);\n"
+         << "    for (var slot = 0u; slot < " << values_per_invocation << "u; slot++) {\n"
+         << "      accumulator[slot] *= old_scale;\n"
+         << "    }\n"
+         << "    max_logit = new_max;\n"
+         << "  }\n";
+  }
+  if (partitions_ > 1) {
+    body << "  let partial_base = workgroup_idx * (uniforms.head_size + 2u);\n"
+         << "  if (local_idx == 0u) {\n"
+         << "    " << output.SetByOffset("partial_base + uniforms.head_size", "max_logit") << "\n"
+         << "    " << output.SetByOffset("partial_base + uniforms.head_size + 1u", "denominator") << "\n"
+         << "  }\n";
+  }
+  body << "  for (var slot = 0u; slot < " << values_per_invocation << "u; slot++) {\n"
+       << "    let d = local_idx + slot * " << workgroup_size << "u;\n"
+       << "    if (d < uniforms.head_size) {\n";
+  if (partitions_ > 1) {
+    body << "      " << output.SetByOffset("partial_base + d", "accumulator[slot]") << "\n";
+  } else {
+    body << "      let result = select(0.0, accumulator[slot] / denominator, denominator > 0.0);\n"
+         << "      " << output.SetByOffset("q_base + d", "output_element_t(result)") << "\n";
+  }
+  body
+       << "    }\n"
+       << "  }\n";
+  return Status::OK();
+}
+
+Status DynamicSparseAttentionMergeProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& partials = shader.AddInput("partials", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* head_sink = nullptr;
+  if (has_head_sink_) head_sink = &shader.AddInput("head_sink", ShaderUsage::UseUniform);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  constexpr uint32_t values_per_invocation = kMaxHeadSize / kSubgroupAttentionWorkgroupSize;
+  auto& body = shader.MainFunctionBody();
+  body << "  if (workgroup_idx >= uniforms.num_workgroups) { return; }\n"
+       << "  var max_logit = -3.402823466e+38;\n"
+       << "  var denominator = 0.0;\n"
+       << "  var accumulator: array<f32, " << values_per_invocation << ">;\n"
+       << "  for (var p = 0u; p < uniforms.partitions; p++) {\n"
+       << "    let base = (workgroup_idx * uniforms.partitions + p) * (uniforms.head_size + 2u);\n"
+       << "    let partial_max = " << partials.GetByOffset("base + uniforms.head_size") << ";\n"
+       << "    let partial_denominator = " << partials.GetByOffset("base + uniforms.head_size + 1u") << ";\n"
+       << "    if (partial_denominator != 0.0) {\n"
+       << "      let new_max = max(max_logit, partial_max);\n"
+       << "      let old_scale = select(exp(max_logit - new_max), 0.0, denominator == 0.0);\n"
+       << "      let partial_scale = exp(partial_max - new_max);\n"
+       << "      for (var slot = 0u; slot < " << values_per_invocation << "u; slot++) {\n"
+       << "        let d = local_idx + slot * " << kSubgroupAttentionWorkgroupSize << "u;\n"
+       << "        if (d < uniforms.head_size) {\n"
+       << "          accumulator[slot] = accumulator[slot] * old_scale + partial_scale * "
+       << partials.GetByOffset("base + d") << ";\n"
+       << "        }\n"
+       << "      }\n"
+       << "      denominator = denominator * old_scale + partial_denominator * partial_scale;\n"
+       << "      max_logit = new_max;\n"
+       << "    }\n"
+       << "  }\n";
+  if (has_head_sink_ || use_smooth_softmax_) {
+    body << "  let sink_logit = "
+         << (has_head_sink_ ? "f32(" + head_sink->GetByOffset("workgroup_idx % uniforms.num_heads") + ")" : "0.0")
+         << ";\n"
+         << "  let new_max = max(max_logit, sink_logit);\n"
+         << "  let old_scale = select(exp(max_logit - new_max), 0.0, denominator == 0.0);\n"
+         << "  denominator = denominator * old_scale + exp(sink_logit - new_max);\n"
+         << "  for (var slot = 0u; slot < " << values_per_invocation << "u; slot++) {\n"
+         << "    accumulator[slot] *= old_scale;\n"
+         << "  }\n";
+  }
+  body << "  for (var slot = 0u; slot < " << values_per_invocation << "u; slot++) {\n"
+       << "    let d = local_idx + slot * " << kSubgroupAttentionWorkgroupSize << "u;\n"
        << "    if (d < uniforms.head_size) {\n"
        << "      let result = select(0.0, accumulator[slot] / denominator, denominator > 0.0);\n"
-       << "      " << output.SetByOffset("q_base + d", "output_element_t(result)") << "\n"
+       << "      " << output.SetByOffset("workgroup_idx * uniforms.head_size + d", "output_element_t(result)") << "\n"
        << "    }\n"
        << "  }\n";
   return Status::OK();
@@ -550,6 +875,9 @@ DynamicSparseAttention::DynamicSparseAttention(const OpKernelInfo& info) : WebGp
 }
 
 Status DynamicSparseAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
+  const int query_cache_mode = ParseEnvironmentVariableWithDefault<int>("ORT_WEBGPU_DSA_QUERY_CACHE", 0);
+  ORT_RETURN_IF_NOT(query_cache_mode == 0 || query_cache_mode == 1, "ORT_WEBGPU_DSA_QUERY_CACHE must be 0 or 1");
+
   const Tensor* query = context.Input<Tensor>(0);
   const Tensor* key = context.Input<Tensor>(1);
   const Tensor* value = context.Input<Tensor>(2);
@@ -582,8 +910,24 @@ Status DynamicSparseAttention::ComputeInternal(onnxruntime::webgpu::ComputeConte
   if (parameters.batch_size > static_cast<int>(kMaxBatchSize)) {
     return NotImplementedBound("batch_size", parameters.batch_size, kMaxBatchSize);
   }
-  if (parameters.sequence_length > static_cast<int>(kMaxSequenceLength)) {
-    return NotImplementedBound("sequence_length", parameters.sequence_length, kMaxSequenceLength);
+  const int prefill512 = ParseEnvironmentVariableWithDefault<int>("ORT_WEBGPU_QMOE_PREFILL512", 0);
+  ORT_RETURN_IF_NOT(prefill512 == 0 || prefill512 == 1, "ORT_WEBGPU_QMOE_PREFILL512 must be 0 or 1");
+  const bool extended_sequence =
+      prefill512 == 1 && context.AdapterInfo().vendor == std::string_view{"nvidia"} &&
+      parameters.batch_size == 1 && parameters.sequence_length == 512 &&
+      static_cast<uint64_t>(parameters.sequence_length) * parameters.num_heads <=
+          context.DeviceLimits().maxComputeWorkgroupsPerDimension;
+  const int prefill1024 = ParseEnvironmentVariableWithDefault<int>("ORT_WEBGPU_QMOE_PREFILL1024", 0);
+  ORT_RETURN_IF_NOT(prefill1024 == 0 || prefill1024 == 1, "ORT_WEBGPU_QMOE_PREFILL1024 must be 0 or 1");
+  const bool extended_sequence1024 =
+      prefill1024 == 1 && context.AdapterInfo().vendor == std::string_view{"nvidia"} &&
+      parameters.batch_size == 1 && parameters.sequence_length == 1024 &&
+      static_cast<uint64_t>(parameters.sequence_length) * parameters.num_heads <=
+          context.DeviceLimits().maxComputeWorkgroupsPerDimension;
+  const uint32_t max_sequence_length =
+      extended_sequence1024 ? 1024u : extended_sequence ? 512u : kMaxSequenceLength;
+  if (parameters.sequence_length > static_cast<int>(max_sequence_length)) {
+    return NotImplementedBound("sequence_length", parameters.sequence_length, max_sequence_length);
   }
   if (parameters.num_heads > static_cast<int>(kMaxNumHeads)) {
     return NotImplementedBound("num_heads", parameters.num_heads, kMaxNumHeads);
@@ -809,11 +1153,34 @@ Status DynamicSparseAttention::ComputeInternal(onnxruntime::webgpu::ComputeConte
       .SetWorkgroupSize(kAttentionWorkgroupSize);
   ORT_RETURN_IF_ERROR(context.RunProgram(append_kv_program));
 
-  DynamicSparseAttentionProgram attention_program(
-      has_selection, local_plus_selected, selected_from_auxiliary, has_auxiliary_value,
-      head_sink != nullptr, use_smooth_softmax);
+  const bool subgroup_supported =
+      parameters.sequence_length == 1 &&
+      context.AdapterInfo().vendor == std::string_view{"nvidia"} &&
+      context.HasFeature(wgpu::FeatureName::Subgroups) &&
+      context.AdapterInfo().subgroupMinSize == kSubgroupAttentionWorkgroupSize &&
+      context.AdapterInfo().subgroupMaxSize == kSubgroupAttentionWorkgroupSize;
+  const bool split_kv = subgroup_supported && parameters.batch_size == 1 &&
+                       ParseEnvironmentVariableWithDefault<int>("ORT_WEBGPU_DYNAMIC_SPARSE_ATTENTION_SPLIT_KV", 0) != 0;
+  const bool use_subgroups = subgroup_supported &&
+                            (split_kv || ParseEnvironmentVariableWithDefault<int>(
+                                             "ORT_WEBGPU_DYNAMIC_SPARSE_ATTENTION_SUBGROUP", 0) != 0);
+  const uint32_t candidates_limit = std::max<uint32_t>(
+      1, (has_selection ? narrow<uint32_t>(parameters.max_selected) : 0) +
+             (local_plus_selected ? narrow<uint32_t>(std::max(parameters.local_window_size, 0)) : 0));
+  const bool query_cache = query_cache_mode == 1 && split_kv && parameters.head_size == 256 && query->IsDataType<MLFloat16>();
+  constexpr uint32_t split_partition_size = 64;
+  const uint32_t partitions = split_kv ? (candidates_limit + split_partition_size - 1) / split_partition_size : 1;
+  const uint32_t partition_size = partitions > 1 ? split_partition_size : candidates_limit;
+  Tensor partial_output;
+  Tensor* attention_output = output;
+  if (partitions > 1) {
+    partial_output = context.CreateGPUTensor(
+        DataTypeImpl::GetType<float>(), TensorShape{query_workgroups, partitions, parameters.head_size + 2});
+    attention_output = &partial_output;
+  }
+  auto run_attention = [&]<typename P>(P& attention_program) -> Status {
   attention_program.CacheHint(has_selection, local_plus_selected, selected_from_auxiliary, has_auxiliary_value,
-                              head_sink != nullptr, use_smooth_softmax)
+                              head_sink != nullptr, use_smooth_softmax, use_subgroups, partitions)
       .AddInputs({
           {&prepared_query, ProgramTensorMetadataDependency::TypeAndRank},
           {present_key_output, ProgramTensorMetadataDependency::TypeAndRank},
@@ -836,7 +1203,7 @@ Status DynamicSparseAttention::ComputeInternal(onnxruntime::webgpu::ComputeConte
     attention_program.AddInput({head_sink, ProgramTensorMetadataDependency::TypeAndRank});
   }
   attention_program
-      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank})
+      .AddOutput({attention_output, ProgramTensorMetadataDependency::TypeAndRank})
       .AddUniformVariables({
           {narrow<uint32_t>(parameters.sequence_length)},
           {narrow<uint32_t>(parameters.num_heads)},
@@ -847,11 +1214,40 @@ Status DynamicSparseAttention::ComputeInternal(onnxruntime::webgpu::ComputeConte
           {narrow<uint32_t>(parameters.max_selected)},
           {narrow<uint32_t>(std::max(parameters.local_window_size, 0))},
           {parameters.scale},
-          {query_workgroups},
+          {partitions},
+          {partition_size},
+          {query_workgroups * partitions},
       })
-      .SetDispatchGroupSize(query_workgroups)
-      .SetWorkgroupSize(kAttentionWorkgroupSize);
-  return context.RunProgram(attention_program);
+      .SetDispatchGroupSize(query_workgroups * partitions)
+      .SetWorkgroupSize(use_subgroups ? kSubgroupAttentionWorkgroupSize : kAttentionWorkgroupSize);
+    return context.RunProgram(attention_program);
+  };
+  if (query_cache) {
+  DynamicSparseAttentionQueryCacheProgram attention_program(
+      has_selection, local_plus_selected, selected_from_auxiliary, has_auxiliary_value,
+      head_sink != nullptr, use_smooth_softmax, use_subgroups, partitions);
+    ORT_RETURN_IF_ERROR(run_attention(attention_program));
+  } else {
+  DynamicSparseAttentionProgram attention_program(
+      has_selection, local_plus_selected, selected_from_auxiliary, has_auxiliary_value,
+      head_sink != nullptr, use_smooth_softmax, use_subgroups, partitions);
+    ORT_RETURN_IF_ERROR(run_attention(attention_program));
+  }
+  if (partitions > 1) {
+    DynamicSparseAttentionMergeProgram merge_program(head_sink != nullptr, use_smooth_softmax);
+    merge_program.CacheHint(head_sink != nullptr, use_smooth_softmax)
+        .AddInput({&partial_output, ProgramTensorMetadataDependency::TypeAndRank});
+    if (head_sink != nullptr) merge_program.AddInput({head_sink, ProgramTensorMetadataDependency::TypeAndRank});
+    merge_program.AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank})
+        .AddUniformVariables({{narrow<uint32_t>(parameters.head_size)},
+                              {narrow<uint32_t>(parameters.num_heads)},
+                              {partitions},
+                              {query_workgroups}})
+        .SetDispatchGroupSize(query_workgroups)
+        .SetWorkgroupSize(kSubgroupAttentionWorkgroupSize);
+    ORT_RETURN_IF_ERROR(context.RunProgram(merge_program));
+  }
+  return Status::OK();
 }
 
 }  // namespace webgpu

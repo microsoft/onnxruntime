@@ -3,6 +3,7 @@
 
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
+#include "core/platform/env_var_utils.h"
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
 #include "core/providers/webgpu/vendor/intel/intel_device_info.h"
 #include "core/providers/webgpu/webgpu_utils.h"
@@ -65,6 +66,7 @@ Status GenerateShaderCode16x16x16(ShaderHelper& shader,
                                   uint32_t nbits, const SubgroupMatrixConfig& config, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect) {
   // Use the 128x128 tile shader for the 16x16x16 config.
   return WGSL_TEMPLATE_APPLY(shader, "quantization/subgroup_matrix_matmul_nbits_16x16x16_128.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(fp32_accumulation, config.resultComponentType == wgpu::SubgroupMatrixComponentType::F32),
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect),
@@ -336,23 +338,20 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
     return false;
   }
 
-  // Every fp16 preference below has resultComponentType == F16, and the kernels declare
-  // subgroup_matrix_result<f16, ...> to match, so the accumulation inside
-  // subgroupMatrixMultiplyAccumulate is f16 and there is no variant of this kernel that can
-  // honour an f32 accumulator request. Decline the path instead of ignoring the option: the
-  // caller then falls through to a kernel that does honour it. Only fp16 outputs are affected;
-  // the fp32 config accumulates in f32 already.
-  if (is_fp16 && context.EnableMatmulFp32Accumulation()) {
-    return false;
-  }
-
   // On Apple, this kernel is only validated for accuracy level 4. Higher accuracy requires
   // a slower f32-compute variant.
   if (context.AdapterInfo().vendor == std::string_view{"apple"} && accuracy_level != 4) {
     return false;
   }
 
-  if (block_size != 32 || batch_count != 1 || K % 32 != 0 || N % 64 != 0) {
+  const bool has_n_tail = N % 64 != 0;
+  const bool enable_n_tail = has_n_tail && is_fp16 && N % 4 == 0 &&
+                             ParseEnvironmentVariableWithDefault<int>("ORT_WEBGPU_MATMUL_NBITS_SGM_N_TAIL", 0) != 0;
+  if (block_size != 32 || batch_count != 1 || K % 32 != 0 || (has_n_tail && !enable_n_tail)) {
+    return false;
+  }
+  // Only the experimental N-tail variant implements an f32 result for fp16 inputs.
+  if (is_fp16 && context.EnableMatmulFp32Accumulation() && !enable_n_tail) {
     return false;
   }
 
@@ -360,11 +359,16 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
   constexpr auto kF32 = wgpu::SubgroupMatrixComponentType::F32;
   if (!is_fp16) {
     config = SelectSubgroupMatrixConfig(context, {{kF32, kF32, 8, 8, 8, 32, false}});
+  } else if (enable_n_tail) {
+    config = SelectSubgroupMatrixConfig(context, {{kF16, kF32, 16, 16, 16, 32, true}});
   } else {
     config = SelectSubgroupMatrixConfig(
         context, {{kF16, kF16, 16, 16, 16, 32, true},
                   {kF16, kF16, 8, 16, 16, 32, true},
                   {kF16, kF16, 8, 8, 8, 32, false}});
+  }
+  if (has_n_tail && config.has_value() && !config->Is(16, 16, 16)) {
+    config.reset();
   }
   return config.has_value();
 }

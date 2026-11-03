@@ -37,6 +37,7 @@
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/scoped_env_vars.h"
 #include "test/util/include/temp_dir.h"
 
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
@@ -261,6 +262,145 @@ TEST(WebGpuContextTest, UploadFollowsDeferredDispatch) {
 
 TEST(WebGpuContextTest, MemCpyFollowsDeferredDispatch) {
   TestCopyAfterDeferredDispatch(false);
+}
+
+TEST(WebGpuContextTest, UniformArenaUploadFollowsPriorSubmission) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto& recording = static_cast<WebGpuExecutionProvider*>(ep.get())->Recording();
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  auto& buffer_manager = context.BufferManager();
+  wgpu::Limits limits{};
+  context.Device().GetLimits(&limits);
+  const size_t stride = limits.minUniformBufferOffsetAlignment;
+  wgpu::BufferDescriptor descriptor{};
+  descriptor.size = stride + 16;
+  descriptor.usage = wgpu::BufferUsage::Uniform | wgpu::BufferUsage::CopyDst;
+  recording.uniform_arena = context.Device().CreateBuffer(&descriptor);
+  descriptor.size = 32 * sizeof(uint32_t);
+  descriptor.usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
+  auto output = context.Device().CreateBuffer(&descriptor);
+  auto snapshot = context.Device().CreateBuffer(&descriptor);
+  wgpu::ShaderSourceWGSL source{};
+  source.code = R"(
+    @group(0) @binding(0) var<storage, read_write> output: array<u32>;
+    @group(0) @binding(1) var<uniform> parameters: vec4<u32>;
+    @compute @workgroup_size(16)
+    fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+      output[parameters.x + id.x] = parameters.y;
+    }
+  )";
+  wgpu::ShaderModuleDescriptor shader_descriptor{};
+  shader_descriptor.nextInChain = &source;
+  wgpu::ComputePipelineDescriptor pipeline_descriptor{};
+  pipeline_descriptor.compute.module = context.Device().CreateShaderModule(&shader_descriptor);
+  pipeline_descriptor.compute.entryPoint = "main";
+  auto pipeline = context.Device().CreateComputePipeline(&pipeline_descriptor);
+  const auto submit = [&](uint32_t first, uint32_t second) {
+    recording.pending_uniform_data.resize(stride + 16);
+    for (size_t index = 0; index < 2; ++index) {
+      const std::array<uint32_t, 4> parameters{
+          static_cast<uint32_t>(index * 16), index == 0 ? first : second, 0, 0};
+      memcpy(recording.pending_uniform_data.data() + index * stride, parameters.data(), sizeof(parameters));
+      std::array<wgpu::BindGroupEntry, 2> entries{};
+      entries[0].binding = 0;
+      entries[0].buffer = output;
+      entries[0].size = 32 * sizeof(uint32_t);
+      entries[1].binding = 1;
+      entries[1].buffer = recording.uniform_arena;
+      entries[1].offset = index * stride;
+      entries[1].size = sizeof(parameters);
+      wgpu::BindGroupDescriptor bind_group_descriptor{};
+      bind_group_descriptor.layout = pipeline.GetBindGroupLayout(0);
+      bind_group_descriptor.entryCount = entries.size();
+      bind_group_descriptor.entries = entries.data();
+      webgpu::CapturedCommandInfo dispatch;
+      dispatch.compute_pipeline = pipeline;
+      dispatch.bind_group = context.Device().CreateBindGroup(&bind_group_descriptor);
+      recording.deferred_dispatches.push_back(std::move(dispatch));
+      recording.has_unsubmitted_work.store(true, std::memory_order_relaxed);
+    }
+    ASSERT_STATUS_OK(context.Flush(buffer_manager, recording));
+    EXPECT_TRUE(recording.pending_uniform_data.empty());
+  };
+  ASSERT_NO_FATAL_FAILURE(submit(7, 9));
+  buffer_manager.MemCpy(recording, output.Get(), snapshot.Get(), 32 * sizeof(uint32_t));
+  ASSERT_NO_FATAL_FAILURE(submit(3, 5));
+  std::array<uint32_t, 32> result{};
+  buffer_manager.Download(recording, snapshot.Get(), result.data(), sizeof(result));
+  for (size_t index = 0; index < result.size(); ++index) {
+    EXPECT_EQ(result[index], index < 16 ? 7u : 9u);
+  }
+  buffer_manager.Download(recording, output.Get(), result.data(), sizeof(result));
+  for (size_t index = 0; index < result.size(); ++index) {
+    EXPECT_EQ(result[index], index < 16 ? 3u : 5u);
+  }
+}
+
+TEST(WebGpuContextTest, UniformArenaCapacityFlushRetainsPendingLayout) {
+  RunWithFreshDefaultContext([]() {
+    ScopedEnvironmentVariables variables(EnvVarMap{{"ORT_WEBGPU_UNIFORM_ARENA", "1"}});
+    TemporaryDirectory temporary_directory{ORT_TSTR("webgpu_uniform_arena_capacity")};
+    ONNX_NAMESPACE::ModelProto model;
+    model.set_ir_version(8);
+    model.add_opset_import()->set_version(13);
+    auto* graph = model.mutable_graph();
+    graph->set_name("uniform_arena_capacity");
+    const auto set_type = [](ONNX_NAMESPACE::ValueInfoProto* value, const std::string& name) {
+      value->set_name(name);
+      auto* type = value->mutable_type()->mutable_tensor_type();
+      type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      type->mutable_shape()->add_dim()->set_dim_value(64);
+    };
+    set_type(graph->add_input(), "X");
+    auto* weight = graph->add_initializer();
+    weight->set_name("W");
+    weight->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    weight->add_dims(64);
+    for (size_t index = 0; index < 64; ++index) {
+      weight->add_float_data(1.0f);
+    }
+    std::string previous = "X";
+    for (size_t index = 0; index < 300; ++index) {
+      auto* node = graph->add_node();
+      node->set_op_type("Add");
+      node->add_input(previous);
+      node->add_input("W");
+      previous = "Y" + std::to_string(index);
+      node->add_output(previous);
+    }
+    set_type(graph->add_output(), previous);
+    SessionOptions session_options;
+    session_options.graph_optimization_level = TransformerLevel::Default;
+    session_options.enable_profiling = true;
+    session_options.profile_file_prefix = temporary_directory.Path() + ORT_TSTR("/profile");
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    InferenceSession session{session_options, GetEnvironment()};
+    ConfigOptions provider_options;
+    ASSERT_STATUS_OK(provider_options.AddConfigEntry(kMaxNumPendingDispatches, "1024"));
+    ASSERT_STATUS_OK(provider_options.AddConfigEntry(kValidationMode, kValidationMode_full));
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+        WebGpuProviderFactoryCreator::Create(provider_options)->CreateProvider()));
+    const auto serialized = model.SerializeAsString();
+    ASSERT_STATUS_OK(session.Load(serialized.data(), narrow<int>(serialized.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+    OrtValue input;
+    CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                         {64}, std::vector<float>(64, 1.0f), &input);
+    NameMLValMap feeds{{"X", input}};
+    const std::vector<std::string> output_names{previous};
+    for (size_t run = 0; run < 2; ++run) {
+      std::vector<OrtValue> fetches;
+      ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &fetches));
+      ASSERT_EQ(fetches.size(), 1u);
+      const auto& output = fetches[0].Get<Tensor>();
+      ASSERT_EQ(output.Shape(), TensorShape({64}));
+      for (size_t index = 0; index < 64; ++index) {
+        EXPECT_FLOAT_EQ(output.Data<float>()[index], 301.0f);
+      }
+    }
+  });
 }
 
 void ExpectQueueCompleted(webgpu::WebGpuContext& context) {

@@ -14,6 +14,7 @@
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/common/logging/logging.h"
 #include "core/providers/webgpu/webgpu_utils.h"
+#include "core/providers/webgpu/nn/layer_norm.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -580,10 +581,8 @@ Status SparsePagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "SparsePagedAttention (WebGPU): KV cache quantization is not supported yet.");
   }
-  if (q_norm_weight != nullptr || k_norm_weight != nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "SparsePagedAttention (WebGPU): q_norm_weight/k_norm_weight inputs are not supported yet.");
-  }
+  ORT_RETURN_IF(parameters.use_qk_norm && !std::isfinite(qk_norm_epsilon_),
+                "SparsePagedAttention (WebGPU): qk_norm_epsilon must be positive and finite.");
   if (rotary_offset_ != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "SparsePagedAttention (WebGPU): rotary_offset != 0 is not supported yet.");
@@ -770,6 +769,23 @@ Status SparsePagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext
     query = &packed_q_tensor;
     key = &packed_k_tensor;
     value = &packed_v_tensor;
+  }
+
+  Tensor normalized_query_tensor;
+  Tensor normalized_key_tensor;
+  if (parameters.use_qk_norm) {
+    normalized_query_tensor = context.CreateGPUTensor(query->DataType(), query->Shape());
+    normalized_key_tensor = context.CreateGPUTensor(key->DataType(), key->Shape());
+    ORT_RETURN_IF_ERROR(RunLayerNormProgram(
+        context, query, q_norm_weight, nullptr, qk_norm_epsilon_,
+        onnxruntime::narrow<uint32_t>(query->Shape().Size() / parameters.head_size),
+        parameters.head_size, true, &normalized_query_tensor, nullptr, nullptr, true));
+    ORT_RETURN_IF_ERROR(RunLayerNormProgram(
+        context, key, k_norm_weight, nullptr, qk_norm_epsilon_,
+        onnxruntime::narrow<uint32_t>(key->Shape().Size() / parameters.head_size),
+        parameters.head_size, true, &normalized_key_tensor, nullptr, nullptr, true));
+    query = &normalized_query_tensor;
+    key = &normalized_key_tensor;
   }
 
   const Tensor* query_for_attention = query;

@@ -1,27 +1,22 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// Fused FinalMix for 1-token MoE: processes all k experts in one dispatch.
-// The kernel is dispatched over hidden_size; each thread computes one output
-// element and accumulates the weighted contributions from all k experts.
-// in: fc2_outputs [k, hidden_size] — concatenated fc2 results for all k experts
-// in: router_values [1, num_experts] — softmax weights per expert
-// in: indirect_experts [k] — which expert index each row corresponds to
-// out: output [1, hidden_size] — accumulated weighted output
-// uniform: hidden_size, k
+// Each workgroup row handles one token; routed expert rows are token-major.
 
 #use .getByOffset .setByOffset
 
 $MAIN {
-    let out_idx = workgroup_idx * workgroup_size_x + local_idx;
+    let row = workgroup_id.y;
+    let out_idx = workgroup_id.x * workgroup_size_x + local_idx;
     if (out_idx >= uniforms.hidden_size) {
         return;
     }
     var acc = output_element_t(0);
     for (var i = 0u; i < uniforms.k; i++) {
-        let expert_idx = indirect_experts.getByOffset(i);
-        let router_value = router_values.getByOffset(expert_idx);
-        acc += router_value * fc2_outputs.getByOffset(i * uniforms.hidden_size + out_idx);
+        let routed_row = row * uniforms.k + i;
+        let expert_idx = indirect_experts.getByOffset(routed_row);
+        let router_value = router_values.getByOffset(row * uniforms.num_experts + expert_idx);
+        acc += router_value * fc2_outputs.getByOffset(routed_row * uniforms.hidden_size + out_idx);
     }
-    output.setByOffset(out_idx, acc);
+    output.setByOffset(row * uniforms.hidden_size + out_idx, acc);
 } // MAIN

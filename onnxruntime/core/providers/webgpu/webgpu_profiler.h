@@ -22,6 +22,7 @@ class WebGpuProfiler final : public onnxruntime::profiling::EpProfiler {
   void Stop(uint64_t, const profiling::EventRecord&) override {
   }
   inline bool Enabled() const { return enabled_; }
+  TimePoint ProfilingStartTime() const { return profiling_start_time_; }
   // GPU events collected during session-level profiling.
   profiling::Events& GpuEvents() {
     is_session_level_ = true;
@@ -31,6 +32,7 @@ class WebGpuProfiler final : public onnxruntime::profiling::EpProfiler {
  private:
   WebGpuContext& context_;
   bool enabled_{false};
+  TimePoint profiling_start_time_{};
   bool is_session_level_{false};
   profiling::Events gpu_events_;
 };

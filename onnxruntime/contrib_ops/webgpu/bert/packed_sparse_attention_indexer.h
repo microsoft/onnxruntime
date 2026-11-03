@@ -27,6 +27,16 @@ class PackedSparseAttentionIndexerCopyProgram final
       {"dst_offset", ProgramUniformVariableDataType::Uint32});
 };
 
+class PackedSparseAttentionIndexerReuseValidationProgram final
+    : public Program<PackedSparseAttentionIndexerReuseValidationProgram> {
+ public:
+  PackedSparseAttentionIndexerReuseValidationProgram() : Program{"PackedSparseAttentionIndexerReuseValidation"} {}
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"batch_size", ProgramUniformVariableDataType::Uint32},
+      {"capacity", ProgramUniformVariableDataType::Uint32});
+};
+
 // One invocation per request: forms every newly-closed compress_ratio block (mean-pool ->
 // RMSNorm -> leading RoPE -> append) and publishes the raw trailing buffer.
 class PackedSparseAttentionIndexerQsaUpdateProgram final
@@ -172,6 +182,7 @@ class PackedSparseAttentionIndexer final : public WebGpuKernel {
  private:
   Status ComputeQsa(onnxruntime::webgpu::ComputeContext& context) const;
   Status ComputeCsa(onnxruntime::webgpu::ComputeContext& context) const;
+  Status ComputeReuse(onnxruntime::webgpu::ComputeContext& context) const;
 
   packed_sparse_attention_indexer::Policy policy_;
   int64_t compress_ratio_;
@@ -179,6 +190,7 @@ class PackedSparseAttentionIndexer final : public WebGpuKernel {
   int64_t state_update_capacity_;
   int64_t token_budget_;
   int64_t index_topk_;
+  int64_t output_capacity_;
   float epsilon_;
   float scale_;
   float head_weight_scale_;

@@ -85,6 +85,21 @@ class CausalConvWithState final : public WebGpuKernel {
   bool channels_last_;
 };
 
+class GdnProjPrepF16Program final : public Program<GdnProjPrepF16Program> {
+ public:
+  GdnProjPrepF16Program() : Program{"GdnProjPrepF16"} {}
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"count", ProgramUniformVariableDataType::Uint32},
+      {"length", ProgramUniformVariableDataType::Uint32});
+};
+
+class GdnProjPrepF16 final : public WebGpuKernel {
+ public:
+  explicit GdnProjPrepF16(const OpKernelInfo& info) : WebGpuKernel(info) {}
+  Status ComputeInternal(ComputeContext& context) const override;
+};
+
 }  // namespace webgpu
 }  // namespace contrib
 }  // namespace onnxruntime

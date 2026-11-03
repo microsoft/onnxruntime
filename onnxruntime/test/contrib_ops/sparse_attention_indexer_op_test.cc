@@ -37,6 +37,7 @@
 #include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/scoped_env_vars.h"
 
 namespace onnxruntime {
 namespace test {
@@ -1560,7 +1561,11 @@ TEST(SparseAttentionIndexerWebGpuTest, QsaScoreCacheBoundary) {
   std::fill(problem.mask.begin(), problem.mask.end(), 1);
   ASSERT_GT(problem.TotalSequenceLength() / problem.compress_ratio, 768);
   ASSERT_LE(problem.TotalSequenceLength(), 3072);
-  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::WebGpu);
+  for (bool enabled : {false, true}) {
+    ScopedEnvironmentVariables variables(EnvVarMap{
+        {"ORT_WEBGPU_QSA_GLOBAL_SCORE_CACHE", enabled ? "1" : "0"}});
+    RunQsaTest<float>(1.0e-5f, problem, ProviderKind::WebGpu);
+  }
 }
 
 TEST(SparseAttentionIndexerWebGpuTest, QsaVisibilityCacheBoundaryWithMaskHoles) {
@@ -1579,7 +1584,156 @@ TEST(SparseAttentionIndexerWebGpuTest, QsaVisibilityCacheBoundaryWithMaskHoles) 
   const int visible_count = problem.TotalSequenceLength() - 4;
   ASSERT_GT(visible_count, 3072);
   ASSERT_LE(visible_count / problem.compress_ratio, 768);
-  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::WebGpu);
+  for (bool enabled : {false, true}) {
+    ScopedEnvironmentVariables variables(EnvVarMap{
+        {"ORT_WEBGPU_QSA_GLOBAL_SCORE_CACHE", enabled ? "1" : "0"}});
+    RunQsaTest<float>(1.0e-5f, problem, ProviderKind::WebGpu);
+  }
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, QsaGlobalCacheLongContextTiesAndMaskHoles) {
+  ScopedEnvironmentVariables variables(EnvVarMap{
+      {"ORT_WEBGPU_QSA_GLOBAL_SCORE_CACHE", "1"}});
+  for (int past_length : {8192, 32768}) {
+    QsaProblem problem;
+    problem.past_sequence_length = past_length;
+    problem.compress_ratio = 4;
+    problem.token_budget = 8;
+    problem.scale = 0.0f;
+    problem = MakeQsaProblem(std::move(problem));
+    const int total = problem.TotalSequenceLength();
+    for (int batch = 0; batch < problem.batch_size; ++batch) {
+      for (int token : {8, 53, 2050, 3011, 8190, past_length - 3}) {
+        problem.mask[static_cast<size_t>(batch) * total + token] = 0;
+      }
+    }
+    RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::WebGpu);
+  }
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, QsaSharedHeadsWithinWorkgroupCache) {
+  for (int past_length : {31, 32, 2048}) {
+    QsaProblem problem;
+    problem.batch_size = 1;
+    problem.sequence_length = 1;
+    problem.past_sequence_length = past_length;
+    problem.num_heads = 4;
+    problem.head_size = 128;
+    problem.rotary_width = 32;
+    problem.compress_ratio = 4;
+    problem.token_budget = 2048;
+    problem = MakeQsaProblem(std::move(problem));
+    ASSERT_LE(problem.TotalSequenceLength(), 3072);
+    ASSERT_LE(problem.TotalSequenceLength() / problem.compress_ratio, 768);
+    for (bool enabled : {false, true}) {
+      ScopedEnvironmentVariables variables(EnvVarMap{
+          {"ORT_WEBGPU_QSA_GLOBAL_SCORE_CACHE", enabled ? "1" : "0"}});
+      RunQsaTest<float>(1.0e-5f, problem, ProviderKind::WebGpu, true);
+      RunQsaTest<MLFloat16>(4.0e-3f, problem, ProviderKind::WebGpu, true);
+    }
+  }
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, QsaSharedHeadsSortedTilesWithTies) {
+  ScopedEnvironmentVariables variables(EnvVarMap{
+      {"ORT_WEBGPU_QSA_GLOBAL_SCORE_CACHE", "1"}});
+  for (int budget : {2048, 2052}) {
+    QsaProblem problem;
+    problem.batch_size = 1;
+    problem.sequence_length = 1;
+    problem.past_sequence_length = 8192;
+    problem.num_heads = 4;
+    problem.head_size = 128;
+    problem.rotary_width = 32;
+    problem.compress_ratio = 4;
+    problem.token_budget = budget;
+    problem.scale = 0.0f;
+    problem = MakeQsaProblem(std::move(problem));
+    problem.mask[53] = 0;
+    problem.mask[2040] = 0;
+    RunQsaTest<float>(1.0e-5f, problem, ProviderKind::WebGpu, true);
+    RunQsaTest<MLFloat16>(4.0e-3f, problem, ProviderKind::WebGpu, true);
+  }
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, QsaSharedHeadsMultidimensionalScoreDispatch) {
+  ScopedEnvironmentVariables variables(EnvVarMap{
+      {"ORT_WEBGPU_QSA_GLOBAL_SCORE_CACHE", "1"}});
+  for (int past_length : {16364, 16368, 16372, 32768}) {
+    QsaProblem problem;
+    problem.batch_size = 1;
+    problem.sequence_length = 16;
+    problem.past_sequence_length = past_length;
+    problem.num_heads = 4;
+    problem.head_size = 128;
+    problem.rotary_width = 32;
+    problem.shared_rotary_cache = true;
+    problem.compress_ratio = 4;
+    problem.token_budget = 2048;
+    problem.scale = 0.0f;
+    problem = MakeQsaProblem(std::move(problem));
+    std::fill(problem.mask.begin(), problem.mask.end(), 1);
+    RunQsaTest<float>(1.0e-5f, problem, ProviderKind::WebGpu, true, true);
+    problem.mask[53] = 0;
+    problem.mask[2050] = 0;
+    RunQsaTest<MLFloat16>(4.0e-3f, problem, ProviderKind::WebGpu, true);
+  }
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, QsaParallelRankStableTiesAndDecodeBoundary) {
+  for (const bool parallel : {false, true}) {
+    ScopedEnvironmentVariables variables(EnvVarMap{
+        {"ORT_WEBGPU_QSA_GLOBAL_SCORE_CACHE", "1"},
+        {"ORT_WEBGPU_QSA_PARALLEL_RANK", parallel ? "1" : "0"}});
+    for (const int past_length : {2048, 8192, 33024}) {
+      QsaProblem problem;
+      problem.batch_size = 1;
+      problem.sequence_length = 1;
+      problem.past_sequence_length = past_length;
+      problem.num_heads = 4;
+      problem.head_size = 128;
+      problem.rotary_width = 32;
+      problem.compress_ratio = 4;
+      problem.token_budget = 2052;
+      problem.scale = 0.0f;
+      problem = MakeQsaProblem(std::move(problem));
+      problem.mask[53] = 0;
+      problem.mask[2050] = 0;
+      RunQsaTest<float>(1.0e-5f, problem, ProviderKind::WebGpu, true);
+      RunQsaTest<MLFloat16>(4.0e-3f, problem, ProviderKind::WebGpu, true);
+    }
+  }
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, QsaDenseMapFullEmptyAndHoles) {
+  for (const bool dense : {false, true}) {
+    ScopedEnvironmentVariables variables(EnvVarMap{
+        {"ORT_WEBGPU_QSA_GLOBAL_SCORE_CACHE", "1"},
+        {"ORT_WEBGPU_QSA_DENSE_MAP", dense ? "1" : "0"}});
+    for (const int past_length : {511, 2048, 33024, 65535, 65536}) {
+      for (const int mode : {0, 1, 2}) {
+        QsaProblem problem;
+        problem.batch_size = 1;
+        problem.sequence_length = 1;
+        problem.past_sequence_length = past_length;
+        problem.num_heads = 2;
+        problem.head_size = 4;
+        problem.rotary_width = 4;
+        problem.compress_ratio = 4;
+        problem.token_budget = 12;
+        problem.scale = 0.0f;
+        problem = MakeQsaProblem(std::move(problem));
+        std::fill(problem.mask.begin(), problem.mask.end(), mode == 2 ? 0 : int64_t{1} << 32);
+        if (mode == 1) {
+          problem.mask[0] = 0;
+          problem.mask[53] = 0;
+          problem.mask.back() = 0;
+        }
+        RunQsaTest<float>(1.0e-5f, problem, ProviderKind::WebGpu, true);
+        RunQsaTest<MLFloat16>(4.0e-3f, problem, ProviderKind::WebGpu, true);
+      }
+    }
+  }
 }
 
 TEST(SparseAttentionIndexerWebGpuTest, QsaExplicitZeroScale) {

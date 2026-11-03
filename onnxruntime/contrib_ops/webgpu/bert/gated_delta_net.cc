@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include "core/platform/env_var_utils.h"
 #include <limits>
 
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
@@ -544,10 +545,18 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
                                  direct_binding_count - qkv_binding_count + packed_qkv_binding_count -
                                          dynamic_param_binding_count + packed_params_binding_count <=
                                      max_storage_buffers)));
+  const int decode_view_flag =
+      ParseEnvironmentVariableWithDefault<int>("ORT_WEBGPU_GDN_PACKED_DECODE_VIEW", 0);
+  ORT_RETURN_IF_NOT(decode_view_flag == 0 || decode_view_flag == 1,
+                    "ORT_WEBGPU_GDN_PACKED_DECODE_VIEW must be 0 or 1");
   std::optional<Tensor> packed_qkv;
-  if (use_packed_qkv) {
+  const Tensor* packed_qkv_input = nullptr;
+  if (use_packed_qkv && input_is_packed_qkv && total_tokens == 1 && decode_view_flag == 1) {
+    packed_qkv_input = query;
+  } else if (use_packed_qkv) {
     packed_qkv.emplace(
         context.CreateGPUTensor(query->DataType(), TensorShape{onnxruntime::narrow<int64_t>(qkv_element_count)}));
+    packed_qkv_input = &*packed_qkv;
     if (input_is_packed_qkv) {
       GatedDeltaNetUnpackQkvProgram unpack_program;
       unpack_program
@@ -640,7 +649,7 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
                                      fits_single_binding(normalized_elements * sizeof(float)) &&
                                      fits_single_binding(packed_params_size_in_bytes) &&
                                      binding_count(query) == 1 && binding_count(key) <= 1 && binding_count(value) <= 1 &&
-                                     (!use_packed_qkv || binding_count(&*packed_qkv) == 1) &&
+                                     (!use_packed_qkv || binding_count(packed_qkv_input) == 1) &&
                                      binding_count(initial_state) <= 1 && binding_count(final_state) <= 1 &&
                                      binding_count(output) == 1 && binding_count(cu_seqlens) <= 1;
   if (use_chunkwise_prefill) {
@@ -664,9 +673,9 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
     }
     GatedDeltaNetNormalizeProgram normalize_program;
     if (use_packed_qkv) {
-      normalize_program.AddInputs({ProgramInput::BufferView(&*packed_qkv, ProgramTensorMetadataDependency::Type,
+      normalize_program.AddInputs({ProgramInput::BufferView(packed_qkv_input, ProgramTensorMetadataDependency::Type,
                                                             query_view_shape, 0),
-                                   ProgramInput::BufferView(&*packed_qkv, ProgramTensorMetadataDependency::Type,
+                                   ProgramInput::BufferView(packed_qkv_input, ProgramTensorMetadataDependency::Type,
                                                             key_view_shape,
                                                             onnxruntime::narrow<uint32_t>(query_view_shape.Size()))});
     } else {
@@ -683,7 +692,7 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
     GatedDeltaNetChunkPrepareProgram prepare_program{cu_seqlens != nullptr};
     prepare_program.AddInput({&normalized, ProgramTensorMetadataDependency::None});
     if (use_packed_qkv) {
-      prepare_program.AddInput(ProgramInput::BufferView(&*packed_qkv, ProgramTensorMetadataDependency::Type,
+      prepare_program.AddInput(ProgramInput::BufferView(packed_qkv_input, ProgramTensorMetadataDependency::Type,
                                                         value_view_shape,
                                                         onnxruntime::narrow<uint32_t>(query_view_shape.Size() +
                                                                                       key_view_shape.Size())));
@@ -722,15 +731,15 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
       const uint32_t query_offset = 0;
       const uint32_t key_offset = onnxruntime::narrow<uint32_t>(query_view_shape.Size());
       const uint32_t value_offset = key_offset + onnxruntime::narrow<uint32_t>(key_view_shape.Size());
-      program.AddInputs({ProgramInput::BufferView(&*packed_qkv,
+      program.AddInputs({ProgramInput::BufferView(packed_qkv_input,
                                                   ProgramTensorMetadataDependency::Type,
                                                   query_view_shape,
                                                   query_offset),
-                         ProgramInput::BufferView(&*packed_qkv,
+                         ProgramInput::BufferView(packed_qkv_input,
                                                   ProgramTensorMetadataDependency::Type,
                                                   key_view_shape,
                                                   key_offset),
-                         ProgramInput::BufferView(&*packed_qkv,
+                         ProgramInput::BufferView(packed_qkv_input,
                                                   ProgramTensorMetadataDependency::Type,
                                                   value_view_shape,
                                                   value_offset)});
@@ -745,11 +754,11 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
     if (use_packed_qkv) {
       const uint32_t key_offset = onnxruntime::narrow<uint32_t>(query_view_shape.Size());
       const uint32_t value_offset = key_offset + onnxruntime::narrow<uint32_t>(key_view_shape.Size());
-      program.AddInputs({ProgramInput::BufferView(&*packed_qkv,
+      program.AddInputs({ProgramInput::BufferView(packed_qkv_input,
                                                   ProgramTensorMetadataDependency::Type,
                                                   key_view_shape,
                                                   key_offset),
-                         ProgramInput::BufferView(&*packed_qkv,
+                         ProgramInput::BufferView(packed_qkv_input,
                                                   ProgramTensorMetadataDependency::Type,
                                                   value_view_shape,
                                                   value_offset)});
@@ -780,10 +789,10 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
                                          ? static_cast<uint64_t>(prefill_plan->chunks_per_pass) * state_bytes
                                          : 0;
   const uint64_t qkv_binding_count_for_prefill =
-      use_packed_qkv ? binding_count(&*packed_qkv)
+      use_packed_qkv ? binding_count(packed_qkv_input)
                      : binding_count(query) + binding_count(key) + binding_count(value);
   const uint64_t key_value_binding_count =
-      use_packed_qkv ? binding_count(&*packed_qkv) : binding_count(key) + binding_count(value);
+      use_packed_qkv ? binding_count(packed_qkv_input) : binding_count(key) + binding_count(value);
   const uint64_t chunk_state_binding_count = binding_count_for_bytes(chunk_state_bytes);
   const uint64_t carry_binding_count = binding_count_for_bytes(state_bytes);
   const uint64_t prepare_binding_count = key_value_binding_count + chunk_state_binding_count;

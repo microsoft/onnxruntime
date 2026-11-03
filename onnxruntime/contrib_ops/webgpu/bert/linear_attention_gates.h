@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include "static_node_replay.h"
 
 #include "contrib_ops/cpu/bert/linear_attention_gates_helper.h"
 #include "core/providers/webgpu/program.h"
@@ -52,6 +53,7 @@ class GatedRMSNorm final : public WebGpuKernel {
   Status ComputeInternal(ComputeContext& context) const override;
 
  private:
+  mutable onnxruntime::webgpu::StaticNodeReplay static_replay_{"GatedRMSNorm", {0, 1, 2}};
   GatedRMSNormActivation activation_;
   float epsilon_;
 };

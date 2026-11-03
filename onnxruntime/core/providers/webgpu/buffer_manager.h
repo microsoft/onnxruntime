@@ -116,6 +116,8 @@ class BufferManager {
   WebGpuContext& context_;
   // Protects both the caches and pending_buffers_.
   mutable std::mutex mutex_;
+  mutable std::mutex readback_cache_mutex_;
+  mutable wgpu::Buffer cached_readback_;
   std::unique_ptr<IBufferCacheManager> storage_cache_;
   std::unique_ptr<IBufferCacheManager> uniform_cache_;
   std::unique_ptr<IBufferCacheManager> query_resolve_cache_;

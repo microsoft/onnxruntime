@@ -119,6 +119,7 @@ wgpu::PipelineLayout ProgramManager::CreatePipelineLayout(const ProgramBase& pro
                                                           std::span<const uint32_t> inputs_segments,
                                                           std::span<const uint32_t> outputs_segments,
                                                           std::span<const int> shape_uniform_ranks,
+                                                          bool dynamic_uniforms,
                                                           wgpu::BindGroupLayout& bind_group_layout) const {
   size_t storage_binding_count = 0;
   for (uint32_t segments : inputs_segments) {
@@ -158,6 +159,7 @@ wgpu::PipelineLayout ProgramManager::CreatePipelineLayout(const ProgramBase& pro
     entry.binding = binding++;
     entry.visibility = wgpu::ShaderStage::Compute;
     entry.buffer.type = wgpu::BufferBindingType::Uniform;
+    entry.buffer.hasDynamicOffset = dynamic_uniforms;
     bind_group_layout_entries.push_back(entry);
   }
 
@@ -185,6 +187,7 @@ Status ProgramManager::Build(const ProgramBase& program,
                              uint32_t normalized_dispatch_x,
                              uint32_t normalized_dispatch_y,
                              uint32_t normalized_dispatch_z,
+                             bool dynamic_uniforms,
                              wgpu::BindGroupLayout& bind_group_layout,
                              std::vector<int>& shape_uniform_ranks,
                              wgpu::Future& future,
@@ -215,7 +218,7 @@ Status ProgramManager::Build(const ProgramBase& program,
   std::string code;
   ORT_RETURN_IF_ERROR(shader_helper.GenerateSourceCode(code, shape_uniform_ranks));
   auto pipeline_layout = CreatePipelineLayout(program, inputs_segments, outputs_segments,
-                                              shape_uniform_ranks, bind_group_layout);
+                                              shape_uniform_ranks, dynamic_uniforms, bind_group_layout);
 
   // Dump shader code, if requested. It is dumped to `shader_dump_fn_` if set or VERBOSE logging otherwise.
   {

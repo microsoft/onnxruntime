@@ -1,0 +1,30 @@
+import ast
+from pathlib import Path
+
+from prepare_dense_columns8_word_unroll_proofs import batch_source as parent_source
+
+
+ROOT = Path(__file__).parent
+
+
+def batch_source(actual=False):
+    source = parent_source(actual)
+    for before, after in (
+        ("dense-columns8-word-unroll", "dense-columns16-spatial-double-buffer"),
+        ("ORT_WEBGPU_DENSE_COLUMNS8_WORD_UNROLL", "ORT_WEBGPU_DENSE_COLUMNS16_SPATIAL_DOUBLE_BUFFER"),
+        ("DenseColumns8WordUnroll", "DenseColumns16SpatialDoubleBuffer"),
+        ("dense_columns8_word_unroll", "dense_columns16_spatial_double_buffer"),
+        ("columns8_word_unroll_", "columns16_spatial_double_buffer_"),
+    ):
+        source = source.replace(before, after)
+    ast.parse(source)
+    return source
+
+
+if __name__ == "__main__":
+    for actual in (False, True):
+        name = ("run_dense_columns16_spatial_double_buffer_actual_batch.py" if actual
+                else "run_dense_columns16_spatial_double_buffer_batch.py")
+        with (ROOT / name).open("x") as stream:
+            stream.write(batch_source(actual))
+        print(name)

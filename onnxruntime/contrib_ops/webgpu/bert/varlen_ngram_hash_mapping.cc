@@ -20,9 +20,186 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>())
+        .TypeConstraint("M", {DataTypeImpl::GetTensorType<int32_t>(), DataTypeImpl::GetTensorType<int64_t>()})
         .TypeConstraint("S", DataTypeImpl::GetTensorType<int32_t>()),
     VarlenNGramHashMapping);
+
+namespace {
+
+class VarlenNGramInt64Program final : public Program<VarlenNGramInt64Program> {
+ public:
+  VarlenNGramInt64Program(bool past, bool offsets, bool eos, bool segments, bool past_segments,
+                          bool present, bool present_segments, bool updates, bool reset, bool segment64)
+      : Program{"VarlenNGramInt64"}, past_{past}, offsets_{offsets}, eos_{eos}, segments_{segments}, past_segments_{past_segments}, present_{present}, present_segments_{present_segments}, updates_{updates}, reset_{reset}, segment64_{segment64} {}
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"batch_size", ProgramUniformVariableDataType::Uint32},
+      {"total_tokens", ProgramUniformVariableDataType::Uint32},
+      {"state_length", ProgramUniformVariableDataType::Uint32},
+      {"num_heads", ProgramUniformVariableDataType::Uint32},
+      {"heads_per_ngram", ProgramUniformVariableDataType::Uint32},
+      {"capacity", ProgramUniformVariableDataType::Uint32},
+      {"pad_low", ProgramUniformVariableDataType::Uint32},
+      {"pad_high", ProgramUniformVariableDataType::Uint32});
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    const auto& ids = shader.AddInput("ids", ShaderUsage::UseUniform);
+    const auto& multipliers = shader.AddInput("multipliers", ShaderUsage::UseUniform);
+    const auto& vocab = shader.AddInput("vocab", ShaderUsage::UseUniform);
+    const auto& lengths = shader.AddInput("lengths", ShaderUsage::UseUniform);
+    const auto& valid = shader.AddInput("valid", ShaderUsage::UseUniform);
+    const auto* past = past_ ? &shader.AddInput("past", ShaderUsage::UseUniform) : nullptr;
+    const auto* offsets = offsets_ ? &shader.AddInput("offsets", ShaderUsage::UseUniform) : nullptr;
+    const auto* eos = eos_ ? &shader.AddInput("eos", ShaderUsage::UseUniform) : nullptr;
+    const auto* segments = segments_ ? &shader.AddInput("segments", ShaderUsage::UseUniform) : nullptr;
+    const auto* past_segments = past_segments_ ? &shader.AddInput("past_segments", ShaderUsage::UseUniform) : nullptr;
+    const auto* count = updates_ ? &shader.AddInput("count", ShaderUsage::UseUniform) : nullptr;
+    const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
+    const auto* present = present_ ? &shader.AddOutput("present", ShaderUsage::UseUniform) : nullptr;
+    const auto* present_segments = present_segments_ ? &shader.AddOutput("present_segments", ShaderUsage::UseUniform) : nullptr;
+    const auto* updates = updates_ ? &shader.AddOutput("updates", ShaderUsage::UseUniform) : nullptr;
+
+    shader.AdditionalImplementation() << R"(
+fn add64(a: vec2u, b: vec2u) -> vec2u {
+  let low = a.x + b.x;
+  return vec2u(low, a.y + b.y + select(0u, 1u, low < a.x));
+}
+fn negate64(a: vec2u) -> vec2u { return add64(~a, vec2u(1u, 0u)); }
+fn subtract64(a: vec2u, b: vec2u) -> vec2u { return add64(a, negate64(b)); }
+fn multiply64(a: vec2u, b: vec2u) -> vec2u {
+  let p0 = (a.x & 65535u) * (b.x & 65535u);
+  let p1 = (a.x & 65535u) * (b.x >> 16u);
+  let p2 = (a.x >> 16u) * (b.x & 65535u);
+  let low1 = p0 + (p1 << 16u);
+  let low2 = low1 + (p2 << 16u);
+  let high = (a.x >> 16u) * (b.x >> 16u) + (p1 >> 16u) + (p2 >> 16u) +
+             select(0u, 1u, low1 < p0) + select(0u, 1u, low2 < low1) +
+             a.x * b.y + a.y * b.x;
+  return vec2u(low2, high);
+}
+fn positive_mod64(value: vec2u, modulus: vec2u) -> vec2u {
+  let negative = (value.y & 2147483648u) != 0u;
+  let magnitude = select(value, negate64(value), negative);
+  var remainder = vec2u(0u);
+  for (var bit = 64u; bit > 0u; bit--) {
+    let i = bit - 1u;
+    var digit = 0u;
+    if (i >= 32u) { digit = (magnitude.y >> (i - 32u)) & 1u; }
+    else { digit = (magnitude.x >> i) & 1u; }
+    remainder = vec2u((remainder.x << 1u) | digit, (remainder.y << 1u) | (remainder.x >> 31u));
+    if (remainder.y > modulus.y || (remainder.y == modulus.y && remainder.x >= modulus.x)) {
+      remainder = subtract64(remainder, modulus);
+    }
+  }
+  if (negative && any(remainder != vec2u(0u))) { return subtract64(modulus, remainder); }
+  return remainder;
+}
+fn pad64() -> vec2u { return vec2u(uniforms.pad_low, uniforms.pad_high); }
+)";
+    const std::string missing = eos ? eos->GetByOffset("0u", true) : "pad64()";
+    shader.AdditionalImplementation()
+        << "fn token64(b: u32, start: u32, position: u32) -> vec2u {\n"
+        << "  if (position >= uniforms.state_length) { return "
+        << ids.GetByOffset("start + position - uniforms.state_length", true) << "; }\n"
+        << "  return " << (past ? past->GetByOffset("b * uniforms.state_length + position", true) : missing) << ";\n}\n";
+    const auto segment_value = [this](const ShaderVariableHelper& variable, const char* index) {
+      if (segment64_) {
+        return variable.GetByOffset(index, true);
+      }
+      const std::string value = variable.GetByOffset(index);
+      return "vec2u(bitcast<u32>(" + value + "), select(0u, 4294967295u, " + value + " < 0i))";
+    };
+    if (segments) {
+      shader.AdditionalImplementation()
+          << "fn segment64(b: u32, start: u32, position: u32) -> vec2u {\n"
+          << "  if (position >= uniforms.state_length) { return "
+          << segment_value(*segments, "start + position - uniforms.state_length") << "; }\n"
+          << "  return " << (past_segments ? segment_value(*past_segments, "b * uniforms.state_length + position") : segment_value(*segments, "start")) << ";\n}\n";
+    }
+    auto& body = shader.MainFunctionBody();
+    body << "  let b = workgroup_idx;\n"
+         << "  if (b >= uniforms.batch_size) { return; }\n"
+         << "  let state_length = uniforms.state_length;\n"
+         << "  if (" << valid.GetByOffset("0u") << " == 0u) {\n"
+         << "    for (var i = global_idx; i < uniforms.total_tokens * uniforms.num_heads; i += uniforms.batch_size * workgroup_size_x) {\n"
+         << "      " << output.SetByOffset("i", "vec2u(0u)", true) << "\n    }\n";
+    if (present) {
+      body << "    for (var i = local_idx; i < state_length; i += workgroup_size_x) {\n"
+           << "      " << present->SetByOffset("b * state_length + i", missing, true) << "\n    }\n";
+    }
+    if (present_segments) {
+      body << "    for (var i = local_idx; i < state_length; i += workgroup_size_x) {\n"
+           << "      " << present_segments->SetByOffset("b * state_length + i", segment64_ ? "vec2u(0u)" : "0i", segment64_) << "\n    }\n";
+    }
+    if (updates) {
+      body << "    for (var i = local_idx; i < uniforms.capacity * state_length; i += workgroup_size_x) {\n"
+           << "      " << updates->SetByOffset("(b * uniforms.capacity * state_length) + i", "pad64()", true) << "\n    }\n";
+    }
+    body << "    return;\n  }\n"
+         << "  let start = u32(" << lengths.GetByOffset("b") << ");\n"
+         << "  let length = u32(" << lengths.GetByOffset("b + 1u") << ") - start;\n"
+         << "  for (var item = local_idx; item < length * uniforms.num_heads; item += workgroup_size_x) {\n"
+         << "    let t = item / uniforms.num_heads;\n"
+         << "    let head = item % uniforms.num_heads;\n"
+         << "    let n = head / uniforms.heads_per_ngram + 2u;\n"
+         << "    let position = state_length + t;\n"
+         << "    var mix = vec2u(0u);\n"
+         << "    for (var k = 0u; k < n; k++) {\n"
+         << "      var token = token64(b, start, position - k);\n";
+    if ((reset_ && eos) || segments) {
+      body << "      for (var j = 0u; j < k; j++) {\n"
+           << "        let boundary = position - j;\n"
+           << "        var reset = false;\n";
+      if (reset_ && eos) {
+        body << "        reset = all(token64(b, start, boundary - 1u) == " << missing << ");\n";
+      }
+      if (segments) {
+        body << "        if (boundary > state_length";
+        if (past_segments) body << " || boundary > 0u";
+        body << ") { reset = reset || any(segment64(b, start, boundary) != segment64(b, start, boundary - 1u)); }\n";
+      }
+      body << "        if (reset) { token = " << missing << "; break; }\n      }\n";
+    }
+    body << "      mix = mix ^ multiply64(token, " << multipliers.GetByOffset("k", true) << ");\n"
+         << "    }\n"
+         << "    let modulus = " << vocab.GetByOffset("head", true) << ";\n"
+         << "    var result = vec2u(0u);\n"
+         << "    if (any(modulus != vec2u(0u)) && (modulus.y & 2147483648u) == 0u) {\n"
+         << "      result = positive_mod64(mix, modulus);\n";
+    if (offsets) body << "      result = add64(result, " << offsets->GetByOffset("head", true) << ");\n";
+    body << "    }\n"
+         << "    " << output.SetByOffset("(start + t) * uniforms.num_heads + head", "result", true) << "\n  }\n";
+    if (present || present_segments) {
+      body << "  for (var slot = local_idx; slot < state_length; slot += workgroup_size_x) {\n";
+      if (present) {
+        body << "    " << present->SetByOffset("b * state_length + slot", "token64(b, start, length + slot)", true) << "\n";
+      }
+      if (present_segments) {
+        const std::string value = segment64_
+                                      ? "segment64(b, start, length + slot)"
+                                      : "bitcast<i32>(segment64(b, start, length + slot).x)";
+        body << "    " << present_segments->SetByOffset("b * state_length + slot", value, segment64_) << "\n";
+      }
+      body << "  }\n";
+    }
+    if (updates) {
+      body << "  let requested = " << count->GetByOffset("b") << ";\n"
+           << "  let captured = select(0u, min(u32(requested), min(length, uniforms.capacity)), requested > 0i);\n"
+           << "  for (var item = local_idx; item < uniforms.capacity * state_length; item += workgroup_size_x) {\n"
+           << "    let t = item / state_length;\n"
+           << "    let slot = item % state_length;\n"
+           << "    var token = pad64();\n"
+           << "    if (t < captured) { token = token64(b, start, t + 1u + slot); }\n"
+           << "    " << updates->SetByOffset("b * uniforms.capacity * state_length + item", "token", true) << "\n  }\n";
+    }
+    return Status::OK();
+  }
+
+ private:
+  bool past_, offsets_, eos_, segments_, past_segments_, present_, present_segments_, updates_, reset_, segment64_;
+};
+
+}  // namespace
 
 Status VarlenNGramValidateCuSeqlensProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& cu_seqlens = shader.AddInput("cu_seqlens", ShaderUsage::UseUniform);
@@ -454,8 +631,6 @@ VarlenNGramHashMapping::VarlenNGramHashMapping(const OpKernelInfo& info) : WebGp
   state_update_capacity_ = info.GetAttrOrDefault<int64_t>("state_update_capacity", 0);
   ORT_ENFORCE(state_update_capacity_ >= 0 && state_update_capacity_ <= 8,
               "state_update_capacity must be in [0, 8]");
-  ORT_ENFORCE(pad_id_ >= std::numeric_limits<int32_t>::min() && pad_id_ <= std::numeric_limits<int32_t>::max(),
-              "WebGPU VarlenNGramHashMapping only supports int32 ids");
   reset_on_eos_ = info.GetAttrOrDefault<int64_t>("reset_on_eos", 0) != 0;
 }
 
@@ -470,6 +645,9 @@ Status VarlenNGramHashMapping::ComputeInternal(ComputeContext& context) const {
   const auto* segment_ids = context.Input(7);
   const auto* past_segment_ids = context.Input(8);
   const auto* capture_count = context.Input(9);
+  ORT_RETURN_IF_NOT(input_ids->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64 ||
+                        (pad_id_ >= std::numeric_limits<int32_t>::min() && pad_id_ <= std::numeric_limits<int32_t>::max()),
+                    "WebGPU VarlenNGramHashMapping int32 input requires an int32 pad_id");
 
   ORT_RETURN_IF_NOT((state_update_capacity_ > 0) == (capture_count != nullptr),
                     "capture_count must be present exactly when state_update_capacity is positive");
@@ -593,6 +771,59 @@ Status VarlenNGramHashMapping::ComputeInternal(ComputeContext& context) const {
       .AddUniformVariables({{onnxruntime::narrow<uint32_t>(batch_size)},
                             {onnxruntime::narrow<uint32_t>(total_tokens)}});
   ORT_RETURN_IF_ERROR(context.RunProgram(validate_program));
+
+  if (input_ids->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
+    Tensor vocab_cpu = context.CreateCPUTensor(vocab_sizes->DataType(), vocab_sizes->Shape());
+    ORT_RETURN_IF_ERROR(context.CopyTensor(*vocab_sizes, vocab_cpu));
+    const auto* vocabulary = vocab_cpu.Data<int64_t>();
+    for (int64_t head = 0; head < num_heads; ++head) {
+      ORT_RETURN_IF_NOT(vocabulary[head] > 0, "vocab_sizes must be positive; entry ", head,
+                        " is ", vocabulary[head]);
+    }
+    Tensor lengths_cpu = context.CreateCPUTensor(cu_seqlens->DataType(), cu_seqlens->Shape());
+    ORT_RETURN_IF_ERROR(context.CopyTensor(*cu_seqlens, lengths_cpu));
+    const auto* lengths = lengths_cpu.Data<int32_t>();
+    ORT_RETURN_IF_NOT(lengths[0] == 0 && lengths[batch_size] == total_tokens,
+                      "cumulative_sequence_length must span all packed tokens");
+    for (int64_t row = 0; row < batch_size; ++row) {
+      ORT_RETURN_IF_NOT(lengths[row] >= 0 && lengths[row] < lengths[row + 1] &&
+                            lengths[row + 1] <= total_tokens,
+                        "cumulative_sequence_length must be strictly increasing");
+    }
+    ORT_RETURN_IF_NOT(total_tokens <= std::numeric_limits<uint32_t>::max() - state_length,
+                      "VarlenNGramHashMapping: token and history indices must fit uint32_t");
+    VarlenNGramInt64Program program{
+        has_past_ids, has_head_offsets, has_eos_token_id, has_segment_ids, has_past_segment_ids,
+        has_present_ids, has_present_segment_ids, state_update != nullptr, reset_on_eos_,
+        has_segment_ids && segment_ids->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64};
+    program.CacheHint(has_past_ids, has_head_offsets, has_eos_token_id, has_segment_ids,
+                      has_past_segment_ids, has_present_ids, has_present_segment_ids,
+                      state_update != nullptr, reset_on_eos_)
+        .AddInputs({{input_ids, ProgramTensorMetadataDependency::Type},
+                    {multipliers, ProgramTensorMetadataDependency::Type},
+                    {vocab_sizes, ProgramTensorMetadataDependency::Type},
+                    {cu_seqlens, ProgramTensorMetadataDependency::Type},
+                    {&is_valid, ProgramTensorMetadataDependency::Type}});
+    for (const Tensor* tensor : {past_ids, head_offsets, eos_token_id, segment_ids, past_segment_ids}) {
+      if (tensor) program.AddInput({tensor, ProgramTensorMetadataDependency::Type});
+    }
+    if (state_update) program.AddInput({capture_count, ProgramTensorMetadataDependency::Type});
+    program.AddOutput({output, ProgramTensorMetadataDependency::Type});
+    for (Tensor* tensor : {present_ids, present_segment_ids, state_update}) {
+      if (tensor) program.AddOutput({tensor, ProgramTensorMetadataDependency::Type});
+    }
+    const auto pad = static_cast<uint64_t>(pad_id_);
+    program.SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(batch_size))
+        .AddUniformVariables({{onnxruntime::narrow<uint32_t>(batch_size)},
+                              {onnxruntime::narrow<uint32_t>(total_tokens)},
+                              {onnxruntime::narrow<uint32_t>(state_length)},
+                              {onnxruntime::narrow<uint32_t>(num_heads)},
+                              {onnxruntime::narrow<uint32_t>(n_head_per_ngram_)},
+                              {onnxruntime::narrow<uint32_t>(state_update_capacity_)},
+                              {static_cast<uint32_t>(pad)},
+                              {static_cast<uint32_t>(pad >> 32)}});
+    return context.RunProgram(program);
+  }
 
   if (output_count > 0 || present_count > 0 || state_update_count > 0) {
     const bool fill_uses_eos_token_id = has_present_ids && has_eos_token_id;

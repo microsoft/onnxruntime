@@ -1751,6 +1751,42 @@ TEST(DynamicSparseAttentionTest, RejectsUnknownModeAndSource_CUDA) {
 
 #ifdef USE_WEBGPU
 
+TEST(DynamicSparseAttentionTest, SubgroupSplitKvLongSelectedDecodeBothPrecisions_WebGPU) {
+  ScopedEnvironmentVariables env{EnvVarMap{{"ORT_WEBGPU_DYNAMIC_SPARSE_ATTENTION_SUBGROUP", "0"},
+                                         {"ORT_WEBGPU_DYNAMIC_SPARSE_ATTENTION_SPLIT_KV", "1"}}};
+  for (int64_t head_size : {128, 256}) {
+    auto half_ep = DefaultWebGpuExecutionProvider();
+    auto float_ep = DefaultWebGpuExecutionProvider();
+    if (!half_ep || !float_ep) {
+      GTEST_SKIP() << "WebGPU EP not available.";
+    }
+    DynamicSparseAttentionCase c;
+    c.head_size = head_size;
+    c.num_heads = 4;
+    c.kv_num_heads = 2;
+    c.cache_sequence_length = 257;
+    c.max_selected = 257;
+    c.total_sequence_length = 257;
+    c.query.assign(4 * head_size, 0.0f);
+    c.key.assign(2 * head_size, 0.0f);
+    c.value.assign(2 * head_size, 5.0f);
+    c.past_key.assign(2 * 257 * head_size, 0.0f);
+    c.past_value.assign(2 * 257 * head_size, 1.0f);
+    c.selected_indices.resize(257);
+    std::iota(c.selected_indices.begin(), c.selected_indices.end(), 0);
+    c.selected_counts = {257};
+    c.seqlens_k = {256};
+    c.expected_output.assign(4 * head_size, 261.0f / 257.0f);
+    c.expected_present_key = c.past_key;
+    c.expected_present_value = c.past_value;
+    for (int64_t head = 0; head < 2; ++head) {
+      std::fill_n(c.expected_present_value.begin() + (head * 257 + 256) * head_size, head_size, 5.0f);
+    }
+    RunDynamicSparseAttentionCase(c, std::move(half_ep));
+    RunDynamicSparseAttentionCase<float>(c, std::move(float_ep));
+  }
+}
+
 TEST(DynamicSparseAttentionTest, TokenDecodeWithAliasedCache_WebGPU) {
   auto webgpu_ep = DefaultWebGpuExecutionProvider();
   if (!webgpu_ep) {

@@ -30,6 +30,10 @@ class Ep : public OrtEp {
     ort_version_supported = ORT_API_VERSION;
   }
 
+  profiling::EpProfiler* ProfilerImpl() const noexcept {
+    return profiler_.get();
+  }
+
  public:
   inline IExecutionProvider* EpImpl() const noexcept {
     return impl_.get();

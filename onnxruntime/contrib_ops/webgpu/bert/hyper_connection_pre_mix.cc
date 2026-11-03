@@ -20,6 +20,14 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("M", WebGpuSupportedFloatTypes()),
     HyperConnectionPreMix);
 
+ONNX_OPERATOR_KERNEL_EX(
+    HyperConnectionPreMixSigmoidF16, kMSDomain, 1, kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("Tin0", DataTypeImpl::GetTensorType<MLFloat16>())
+        .TypeConstraint("Tin1", DataTypeImpl::GetTensorType<MLFloat16>())
+        .TypeConstraint("Tout0", DataTypeImpl::GetTensorType<MLFloat16>()),
+    HyperConnectionPreMixSigmoidF16);
+
 namespace {
 
 std::string GateOffset(int layout, std::string_view row,
@@ -47,17 +55,27 @@ Status HyperConnectionPreMixProgram::GenerateShaderCode(ShaderHelper& shader) co
          "  for (var c = 0u; c < uniforms.branches; c++) {\n"
          "    let x_offset = (row * uniforms.branches + c) * uniforms.hidden + h;\n"
       << "    let gate_offset = " << GateOffset(gate_layout_, "row", "c", "h") << ";\n"
-      << "    sum += f32(" << streams.GetByOffset("x_offset") << ") * f32("
-      << pre_mix.GetByOffset("gate_offset") << ");\n"
+      << "    let raw_gate = " << pre_mix.GetByOffset("gate_offset") << ";\n";
+  if (fuse_sigmoid_) {
+    shader.MainFunctionBody() << "    let gate = f16(1.0 / (1.0 + exp(-raw_gate)));\n";
+  } else {
+    shader.MainFunctionBody() << "    let gate = raw_gate;\n";
+  }
+  shader.MainFunctionBody()
+      << "    sum += f32(" << streams.GetByOffset("x_offset") << ") * f32(gate);\n"
                                                "  }\n"
       << "  " << y.SetByOffset("global_idx", "y_element_t(sum * uniforms.reduction_scale)") << "\n";
   return Status::OK();
 }
 
 HyperConnectionPreMix::HyperConnectionPreMix(const OpKernelInfo& info)
+    : HyperConnectionPreMix(info, false) {}
+
+HyperConnectionPreMix::HyperConnectionPreMix(const OpKernelInfo& info, bool fuse_sigmoid)
     : WebGpuKernel(info),
       num_branches_(info.GetAttrOrDefault<int64_t>("num_branches", 0)),
-      reduction_scale_(info.GetAttrOrDefault<float>("reduction_scale", 1.0f)) {}
+      reduction_scale_(info.GetAttrOrDefault<float>("reduction_scale", 1.0f)),
+      fuse_sigmoid_(fuse_sigmoid) {}
 
 Status HyperConnectionPreMix::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const auto* streams = context.Input(0);
@@ -70,8 +88,9 @@ Status HyperConnectionPreMix::ComputeInternal(onnxruntime::webgpu::ComputeContex
   auto* y = context.Output(0, TensorShape(params.reduced_shape));
   const uint32_t count = onnxruntime::narrow<uint32_t>(y->Shape().Size());
   if (count == 0) return Status::OK();
-  HyperConnectionPreMixProgram program{static_cast<int>(layout)};
-  program.CacheHint(static_cast<int>(layout))
+  return static_replay_.Run(context, {y}, [&]() -> Status {
+  HyperConnectionPreMixProgram program{static_cast<int>(layout), fuse_sigmoid_};
+  program.CacheHint(static_cast<int>(layout), fuse_sigmoid_)
       .AddInputs({{streams, ProgramTensorMetadataDependency::Type},
                   {pre_mix, ProgramTensorMetadataDependency::Type}})
       .AddOutput({y, ProgramTensorMetadataDependency::None})
@@ -82,6 +101,7 @@ Status HyperConnectionPreMix::ComputeInternal(onnxruntime::webgpu::ComputeContex
       .SetDispatchGroupSize((count + 255) / 256)
       .SetWorkgroupSize(256);
   return context.RunProgram(program);
+  }, params.branches * params.hidden);
 }
 
 }  // namespace onnxruntime::contrib::webgpu
