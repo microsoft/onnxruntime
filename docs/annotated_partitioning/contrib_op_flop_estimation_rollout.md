@@ -1,12 +1,14 @@
 # Contrib Operator FLOP Estimation: Design and Rollout Plan
 
 **Status:** CPU and eager-CUDA MatMulNBits logical runtime count/report preview implemented;
-GQA, route-aware arithmetic, timing and offload-policy experiments remain separate work.
+CPU route-aware ballpark core/bias/dequantization estimates implemented. CUDA route-aware estimates, LUT,
+GQA, timing and offload-policy experiments remain separate work.
 
 **Initial merge target:** extend the existing CPU/CUDA logical runtime counter to report ballpark expected FLOPs
 for core work, bias additions and dequantization, using coarse actual-route arithmetic categories. Preserve the
-dense-equivalent baseline separately. The arithmetic map in Section 4.5 is the first planning step; expected-FLOP
-formulas and CUDA route capture are not implemented yet. Detailed kernel modelling, packing/preparation accounting,
+dense-equivalent baseline separately. Section 4.5 identifies arithmetic categories; Section 4.6 describes the
+implemented CPU conventions. CUDA expected-FLOP formulas and route capture are not implemented yet.
+Detailed kernel modelling, packing/preparation accounting,
 timing and offload-policy delegation experiments follow this increment.
 
 For the post-Batch-3 execution sequence, validation gates, CUDA expansion and timing work, see the
@@ -241,7 +243,9 @@ version-2 `nodes`/`graphs` document. The graph-based version-2 builders remain i
   An empty report is not evidence that a workload did no work. Unsupported operators/providers, fused/opaque EP
   partitions and graph replay are not instrumented, and their skipped invocation counts are not known.
 - `route_adjustment_applied: false`; dequantization, packing, conversions, padding and route-specific extras are
-  explicitly excluded. Route names do not change the baseline formulas.
+  explicitly excluded from the legacy logical components. Route names do not change the baseline formulas.
+- The additive `expected_flops` section models CPU core/bias/dequantization independently, with its own scope,
+  assumptions, availability and component summaries; see Section 4.6. CUDA expected-FLOP models remain unsupported.
 
 CPU Debug correctness tests cover counts, partial/overflow/drop diagnostics, automatic per-run export, concurrent
 runs, dynamic shapes, UTF-8 paths, file errors, disabled behavior, explicit collector coexistence, and executed
@@ -251,7 +255,7 @@ CUDA/plugin/minimal runtime coverage; those need their own build/runtime validat
 Run the targeted tests after rebuilding:
 
 ```text
-onnxruntime_provider_test --gtest_filter="ComputeEstimateReportTest.*:RuntimeComputeEstimateReportTest.*:MatMulNBitsComputeEstimate*:MatMulNBitsBiasEstimate*"
+onnxruntime_provider_test --gtest_filter="ComputeEstimateReportTest.*:RuntimeComputeEstimateReportTest.*:MatMulNBitsComputeEstimate*:MatMulNBitsBiasEstimate*:MatMulNBitsCpuFlopsEstimateTest.*"
 onnxruntime_test_all --gtest_filter="RuntimeWorkloadCollectorTest.*:RuntimeWorkloadExecutionTest.*"
 ```
 
@@ -519,9 +523,92 @@ To wire this map into the estimator, the next step needs:
 4. Focused reference tests for floating-point, integer-core, LUT and CUDA families. Missing backend capability
    is a coverage gap, not validation of a formula. Detailed kernel modelling can refine coefficients later.
 
-This step changes documentation only. Formula implementation, provider-boundary CUDA metadata transport,
-runtime support tests and accuracy qualification remain outstanding; the current report still provides
-logical core and bias counts only.
+The map establishes arithmetic categories, not instruction counts. Section 4.6 implements a bounded CPU
+scenario using the existing selected route/mode. Provider-boundary CUDA metadata transport, CUDA formulas
+and empirical kernel-model accuracy qualification remain outstanding.
+
+### 4.6 CPU expected-FLOP implementation batches
+
+The CPU preview uses the explicitly declared `cpu_expected_flops_v1` convention. It is a ballpark model,
+not a percentage-accuracy claim or a measured executed-instruction count. It does not change inference dispatch,
+outputs, preparation or collection metadata.
+
+**Batch A: checked per-component formulas.**
+The [CPU estimator](../../onnxruntime/core/framework/matmul_nbits_compute_estimate.h) takes runtime metadata
+and returns independent core, bias and dequantization results plus the selected model. Native float and
+MLFloat16 routes are supported; missing route/mode, inconsistent metadata and unsupported types are explicit.
+Bias remains independently available when its logical geometry is known, even if the route cannot be modelled.
+
+Let `G = ceil(K / block_size)` and `Kp = G * block_size`, computed with checked arithmetic.
+
+| Selected CPU model | Expected core FLOPs | Bias additions | Expected dequantization-related FLOPs |
+| --- | --- | --- | --- |
+| Unpacked floating point | `2MNK` | `MN` if present, otherwise zero | `2NK` |
+| Packed floating point: SQNBit FP32 or HQNBit FP16 | `2MNK` | `MN` if present, otherwise zero | `2NKp` |
+| Packed integer: SQNBit int8, including effective HQNBit int8 | Zero floating-point dot-product FLOPs | `MN` if present, otherwise zero | `5MNG` |
+| Empty output / NotExecuted | Zero | Zero | Zero |
+| LUT or unsupported BF16 mode | Unavailable | Logical bias remains independent | Unavailable |
+
+Floating reconstruction assumes one full weight reconstruction per invocation, not per activation batch or
+per output element. Packed floating reconstruction uses block-padded K as a declared scenario, while core
+arithmetic uses logical K. This does not model extra worker/strip/tile repetition or partial-block predication.
+Known empty outputs perform no reconstruction; zero reduction K leaves nonempty-output bias independent.
+
+The integer model assumes, per logical output/block, one multiplication to combine scales, one scaled
+accumulation (two operations), and one correction multiply-add (two operations): five nominal floating-point
+operations. It is not a literal universal MLAS instruction count. Symmetric/asymmetric zero-point variants,
+vector partial sums and backend-specific reuse can change actual work; the first model deliberately keeps
+one fixed coefficient rather than pretending to measure those differences. Do not add a separate `2NK`
+floating reconstruction to this same integer-route component.
+
+Activation quantization, packing, type conversions, preparation, auxiliary reductions and worker/tile
+repetition remain excluded. Some exclusions themselves contain floating-point work, so the sum of these
+three components is not an advertised whole-operator FLOP count.
+
+**Batch B: additive runtime report integration.**
+Schema-v3 `components`, `component_summaries`, `availability`, and top-level
+`route_adjustment_applied: false` retain their existing logical meanings. An independent `expected_flops`
+section contains the CPU model assumptions, exclusions and three component summaries. Every invocation
+gets an `expected_flops` object with:
+
+- `model` when its route is supported;
+- three `components` using `floating_point_ops`, a convention version and an estimate basis;
+- `availability` for the components, plus independent `total_availability`;
+- `expected_flops` as a decimal string only when all three component counts are available and their sum fits
+  uint64; otherwise an explicit `total_unavailable_reason`;
+- `known_flops_subtotal` when the available-component subtotal fits uint64, without assigning unknown work zero.
+
+Within this new section, `route_adjustment_applied: true` describes use of CPU route-aware models; it does not
+modify the legacy logical totals. Core/dequantization are labelled `model_based`; bias is
+`exact_under_convention`. LUT has unavailable core/dequantization, not zero work. CUDA retains all existing
+logical counts, but its new expected-FLOP components are explicitly `unsupported_provider` until CUDA models
+are added. Mixed CPU/CUDA reports therefore cannot claim complete expected-FLOP coverage.
+
+Component summaries preserve unavailable reasons and independent overflow. Their
+`complete_for_captured_component_scope` flag requires successful Run, complete collection and no missing
+component or subtotal overflow; it describes coverage under the convention, not empirical accuracy.
+An invocation's component counts may individually fit while its three-component total overflows.
+Static graph reports remain logical-only; they cannot establish an actual runtime route.
+
+**Batch C: focused validation.**
+Pure tests cover all supported arithmetic categories, absent bias, rank-one/batched shapes, padding,
+unsupported LUT/BF16, missing or inconsistent mode metadata, unknown/invalid shapes, zero extents/reduction,
+uint64 boundaries and independent component overflow. Report tests check exact numeric conventions, additive
+legacy compatibility, partial coverage, total/subtotal overflow, run/drop completeness and mixed providers.
+Execution tests assert actual unpacked FP32, packed int8 for float/half, force-FP32 and empty-output records,
+then verify expected component values and unchanged outputs. The LUT execution regression remains
+capability-gated and verifies unsupported estimates when the route exists.
+
+This validates the implementation of the declared formulas, not faithfulness to every backend. Follow-up
+kernel modelling should first measure the material impact of packed-floating reconstruction repetition and
+the integer block-scaling coefficient on representative CPU workloads before expanding the convention.
+
+Local Linux CPU RelWithDebInfo validation passed: 81 formula/report/operator tests and 26 collector/execution
+tests, with one capability-gated LUT skip. The focused provider filter also included the existing
+`MatMulNBits.Float32_4b_Accuracy0`, `MatMulNBits.Float32_4b_Accuracy4_Batch` and
+`MatMulNBits.LegacyShape_4b` smoke tests. Both binaries were run with `ORT_UNIT_TEST_MAIN_LOG_LEVEL=3` to
+retain the report-warning regression's elevated-global-severity check. Clang-format and `git diff --check`
+passed. Windows, ARM, minimal/no-exception and CUDA builds were not rerun for this CPU increment.
 
 ## 5. Proposed architecture and report
 

@@ -593,6 +593,21 @@ RuntimeWorkloadSnapshot Snapshot(const RuntimeWorkloadCollector& collector) {
   return snapshot;
 }
 
+void ExpectCpuFlops(const RuntimeWorkloadSnapshot& snapshot, uint64_t core, uint64_t bias, uint64_t dequantization) {
+  const auto report = Report(snapshot);
+  ASSERT_EQ(report["invocations"].size(), 1u);
+  const auto& expected = report["invocations"][0]["expected_flops"];
+  ASSERT_EQ(expected["components"].size(), 3u);
+  EXPECT_EQ(expected["components"][0]["operation_count"], std::to_string(core));
+  EXPECT_EQ(expected["components"][1]["operation_count"], std::to_string(bias));
+  EXPECT_EQ(expected["components"][2]["operation_count"], std::to_string(dequantization));
+  EXPECT_EQ(expected["total_availability"], "available");
+  EXPECT_EQ(expected["expected_flops"], std::to_string(core + bias + dequantization));
+  for (size_t i = 0; i < 3; ++i) {
+    EXPECT_EQ(report["expected_flops"]["component_summaries"][i]["complete_for_captured_component_scope"], true);
+  }
+}
+
 class GraphCaptureWorkloadExecutionProvider : public CPUExecutionProvider {
  public:
   GraphCaptureWorkloadExecutionProvider() : CPUExecutionProvider(CPUExecutionProviderInfo{}) {}
@@ -768,6 +783,8 @@ TEST(RuntimeWorkloadExecutionTest, DynamicRepeatedRunsAndDisabledCapturePreserve
     EXPECT_EQ(metadata.block_size, 32u);
     EXPECT_EQ(metadata.route, MatMulNBitsRuntimeRoute::Unpacked);
     EXPECT_EQ(metadata.compute_mode, MatMulNBitsRuntimeComputeMode::Float32Gemm);
+    ExpectCpuFlops(snapshot, static_cast<uint64_t>(2 * 2 * rows * 32 * 64),
+                   static_cast<uint64_t>(2 * rows * 32), 4096);
   }
 }
 
@@ -788,6 +805,7 @@ TEST(RuntimeWorkloadExecutionTest, PackedBackendModeIsEffectiveAndHalfTypeIsInde
     EXPECT_EQ(metadata.compute_mode, MatMulNBitsRuntimeComputeMode::SQNBitInt8);
     EXPECT_EQ(metadata.input_element_type, half ? TensorProto::FLOAT16 : TensorProto::FLOAT);
     EXPECT_FALSE(metadata.bias_present);
+    ExpectCpuFlops(snapshot, 0, 0, 1920);
   }
 }
 
@@ -805,6 +823,7 @@ TEST(RuntimeWorkloadExecutionTest, ForceFp32RecordsActualPackedMode) {
   ASSERT_EQ(snapshot.records.size(), 1u);
   EXPECT_EQ(snapshot.records[0].matmul_nbits.route, MatMulNBitsRuntimeRoute::PackedQNBit);
   EXPECT_EQ(snapshot.records[0].matmul_nbits.compute_mode, MatMulNBitsRuntimeComputeMode::SQNBitFp32);
+  ExpectCpuFlops(snapshot, 24576, 192, 4096);
 #else
   GTEST_SKIP() << "Force-fp32 session option is x86-only.";
 #endif
@@ -823,6 +842,7 @@ TEST(RuntimeWorkloadExecutionTest, EmptyOutputIsExplicitAndNoBackendIsClaimed) {
   EXPECT_EQ(snapshot.records[0].matmul_nbits.route, MatMulNBitsRuntimeRoute::EmptyOutput);
   EXPECT_EQ(snapshot.records[0].matmul_nbits.compute_mode, MatMulNBitsRuntimeComputeMode::NotExecuted);
   EXPECT_EQ(snapshot.run_state, RuntimeWorkloadRunState::Succeeded);
+  ExpectCpuFlops(snapshot, 0, 0, 0);
 }
 
 TEST(RuntimeWorkloadExecutionTest, LutBackendIsRecordedOnlyWhenItActuallyRuns) {
@@ -838,6 +858,11 @@ TEST(RuntimeWorkloadExecutionTest, LutBackendIsRecordedOnlyWhenItActuallyRuns) {
   ASSERT_EQ(snapshot.records.size(), 1u);
   EXPECT_EQ(snapshot.records[0].matmul_nbits.route, MatMulNBitsRuntimeRoute::PackedLut);
   EXPECT_EQ(snapshot.records[0].matmul_nbits.compute_mode, MatMulNBitsRuntimeComputeMode::Lut);
+  const auto expected = Report(snapshot)["invocations"][0]["expected_flops"];
+  EXPECT_EQ(expected["components"][0]["unavailable_reason"], "unsupported_route");
+  EXPECT_EQ(expected["components"][2]["unavailable_reason"], "unsupported_route");
+  EXPECT_EQ(expected["total_availability"], "unavailable");
+  EXPECT_FALSE(expected.contains("expected_flops"));
 }
 
 TEST(RuntimeWorkloadExecutionTest, TwoBitVectorInvocationKeepsActualGeometry) {

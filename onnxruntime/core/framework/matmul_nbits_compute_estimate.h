@@ -11,6 +11,7 @@
 
 namespace onnxruntime {
 class Node;
+struct MatMulNBitsRuntimeMetadata;
 
 namespace contrib {
 
@@ -21,6 +22,7 @@ enum class ComputeEstimateUnavailableReason {
   InvalidMetadata,
   Overflow,
   MissingSemanticValue,
+  UnsupportedRoute,
 };
 
 struct MatMulNBitsComputeEstimate {
@@ -53,6 +55,26 @@ MatMulNBitsBiasEstimateResult EstimateMatMulNBitsBias(
     gsl::span<const int64_t> input_a_shape, int64_t k, int64_t n, std::optional<bool> bias_present);
 
 #if !defined(ORT_MINIMAL_BUILD)
+enum class MatMulNBitsCpuFlopsModel {
+  UnpackedFloat,
+  PackedFloat,
+  PackedInt8,
+  NotExecuted,
+};
+
+struct MatMulNBitsCpuFlopsEstimate {
+  std::optional<MatMulNBitsCpuFlopsModel> model;
+  MatMulNBitsBiasEstimateResult core;
+  MatMulNBitsBiasEstimateResult bias;
+  MatMulNBitsBiasEstimateResult dequantization;
+};
+
+// Ballpark v1: floating core 2MNK; bias MN; one nominal floating reconstruction,
+// 2NK unpacked or 2N*ceil(K/block_size)*block_size packed. Integer core is zero FLOPs;
+// nominal block scaling/correction is 5MN*ceil(K/block_size). Excludes activation
+// quantization, conversions, preparation, auxiliary reductions and worker/tile repetition.
+MatMulNBitsCpuFlopsEstimate EstimateMatMulNBitsCpuFlops(const MatMulNBitsRuntimeMetadata& metadata);
+
 // Reads canonical metadata from a resolved in-tree graph, never maximum-shape hints.
 // The same core count applies across providers, dtypes, and supported quantization bit widths.
 MatMulNBitsComputeEstimateResult EstimateMatMulNBitsCompute(const Node& node);

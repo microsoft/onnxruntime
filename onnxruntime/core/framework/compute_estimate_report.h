@@ -21,6 +21,7 @@ Status WriteComputeEstimateReport(const Graph& graph, const std::string& utf8_pa
 
 // Counts only retained, successfully submitted invocations. Run outcome and collection/coverage
 // completeness are separate; route metadata does not adjust the logical counting convention.
+// An independent expected_flops section adds model-based CPU core/bias/dequantization estimates.
 Status BuildComputeEstimateReport(const RuntimeWorkloadSnapshot& snapshot, std::string& report);
 Status WriteComputeEstimateReport(const RuntimeWorkloadSnapshot& snapshot, const std::string& utf8_path);
 

@@ -13,6 +13,7 @@
 #include "core/framework/matmul_nbits_compute_estimate.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
+#include "core/framework/runtime_workload_collector.h"
 #include "core/graph/constants.h"
 #include "core/graph/model.h"
 #include "test/test_environment.h"
@@ -176,6 +177,189 @@ TEST(MatMulNBitsComputeEstimateTest, Overflow) {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
+MatMulNBitsRuntimeMetadata CpuFlopsMetadata(MatMulNBitsRuntimeRoute route, MatMulNBitsRuntimeComputeMode mode) {
+  MatMulNBitsRuntimeMetadata metadata;
+  metadata.input_shape = {2, 3, 64};
+  metadata.output_shape = {2, 3, 32};
+  metadata.k = 64;
+  metadata.n = 32;
+  metadata.bits = 4;
+  metadata.block_size = 32;
+  metadata.bias_present = true;
+  metadata.input_element_type = ONNX_NAMESPACE::TensorProto::FLOAT;
+  metadata.route = route;
+  metadata.compute_mode = mode;
+  return metadata;
+}
+
+TEST(MatMulNBitsCpuFlopsEstimateTest, FloatingCoreAndSingleReconstructionIncludeBatchesOnce) {
+  auto metadata = CpuFlopsMetadata(MatMulNBitsRuntimeRoute::Unpacked, MatMulNBitsRuntimeComputeMode::Float32Gemm);
+  for (const auto type : {ONNX_NAMESPACE::TensorProto::FLOAT, ONNX_NAMESPACE::TensorProto::FLOAT16}) {
+    metadata.input_element_type = type;
+    for (int bits : {2, 4, 8}) {
+      metadata.bits = static_cast<uint32_t>(bits);
+      const auto result = contrib::EstimateMatMulNBitsCpuFlops(metadata);
+      EXPECT_EQ(result.model, contrib::MatMulNBitsCpuFlopsModel::UnpackedFloat);
+      ExpectBiasCount(result.core, 24576);
+      ExpectBiasCount(result.bias, 192);
+      ExpectBiasCount(result.dequantization, 4096);
+    }
+  }
+  metadata.input_shape = {64};
+  metadata.m = 999;
+  metadata.batch_count = 999;
+  const auto result = contrib::EstimateMatMulNBitsCpuFlops(metadata);
+  ExpectBiasCount(result.core, 4096);
+  ExpectBiasCount(result.bias, 32);
+  ExpectBiasCount(result.dequantization, 4096);
+}
+
+TEST(MatMulNBitsCpuFlopsEstimateTest, PackedFloatingModelsUsePaddedReconstructionNotPaddedCore) {
+  auto metadata = CpuFlopsMetadata(MatMulNBitsRuntimeRoute::PackedQNBit, MatMulNBitsRuntimeComputeMode::SQNBitFp32);
+  metadata.input_shape = {2, 3, 65};
+  metadata.k = 65;
+  for (const auto mode : {MatMulNBitsRuntimeComputeMode::SQNBitFp32, MatMulNBitsRuntimeComputeMode::HQNBitFp16}) {
+    metadata.compute_mode = mode;
+    metadata.input_element_type = ONNX_NAMESPACE::TensorProto::FLOAT16;
+    const auto result = contrib::EstimateMatMulNBitsCpuFlops(metadata);
+    EXPECT_EQ(result.model, contrib::MatMulNBitsCpuFlopsModel::PackedFloat);
+    ExpectBiasCount(result.core, 24960);
+    ExpectBiasCount(result.bias, 192);
+    ExpectBiasCount(result.dequantization, 6144);
+  }
+}
+
+TEST(MatMulNBitsCpuFlopsEstimateTest, IntegerCoreIsZeroButBlockScalingDependsOnOutputAndBlockCount) {
+  auto metadata = CpuFlopsMetadata(MatMulNBitsRuntimeRoute::PackedQNBit, MatMulNBitsRuntimeComputeMode::SQNBitInt8);
+  for (const auto mode : {MatMulNBitsRuntimeComputeMode::SQNBitInt8, MatMulNBitsRuntimeComputeMode::HQNBitInt8}) {
+    metadata.compute_mode = mode;
+    metadata.input_element_type = ONNX_NAMESPACE::TensorProto::FLOAT16;
+    const auto result = contrib::EstimateMatMulNBitsCpuFlops(metadata);
+    EXPECT_EQ(result.model, contrib::MatMulNBitsCpuFlopsModel::PackedInt8);
+    ExpectBiasCount(result.core, 0);
+    ExpectBiasCount(result.bias, 192);
+    ExpectBiasCount(result.dequantization, 1920);
+  }
+  metadata.input_shape = {2, 3, 65};
+  metadata.k = 65;
+  ExpectBiasCount(contrib::EstimateMatMulNBitsCpuFlops(metadata).dequantization, 2880);
+  metadata.block_size = 64;
+  ExpectBiasCount(contrib::EstimateMatMulNBitsCpuFlops(metadata).dequantization, 1920);
+}
+
+TEST(MatMulNBitsCpuFlopsEstimateTest, MissingRouteAndLutKeepBiasIndependent) {
+  auto metadata = CpuFlopsMetadata(MatMulNBitsRuntimeRoute::PackedLut, MatMulNBitsRuntimeComputeMode::Lut);
+  auto result = contrib::EstimateMatMulNBitsCpuFlops(metadata);
+  EXPECT_FALSE(result.model);
+  ExpectBiasUnavailable(result.core, ComputeEstimateUnavailableReason::UnsupportedRoute);
+  ExpectBiasUnavailable(result.dequantization, ComputeEstimateUnavailableReason::UnsupportedRoute);
+  ExpectBiasCount(result.bias, 192);
+  metadata.route.reset();
+  result = contrib::EstimateMatMulNBitsCpuFlops(metadata);
+  ExpectBiasUnavailable(result.core, ComputeEstimateUnavailableReason::MissingSemanticValue);
+  metadata.route = MatMulNBitsRuntimeRoute::Unpacked;
+  metadata.compute_mode.reset();
+  ExpectBiasUnavailable(contrib::EstimateMatMulNBitsCpuFlops(metadata).dequantization,
+                        ComputeEstimateUnavailableReason::MissingSemanticValue);
+}
+
+TEST(MatMulNBitsCpuFlopsEstimateTest, UnknownAndInvalidGeometryAreNotZero) {
+  auto metadata = CpuFlopsMetadata(MatMulNBitsRuntimeRoute::Unpacked, MatMulNBitsRuntimeComputeMode::Float32Gemm);
+  metadata.input_shape = {0, -1, 64};
+  auto result = contrib::EstimateMatMulNBitsCpuFlops(metadata);
+  ExpectBiasUnavailable(result.core, ComputeEstimateUnavailableReason::UnknownShape);
+  ExpectBiasUnavailable(result.dequantization, ComputeEstimateUnavailableReason::UnknownShape);
+  metadata.input_shape = {2, 3, 63};
+  ExpectBiasUnavailable(contrib::EstimateMatMulNBitsCpuFlops(metadata).core,
+                        ComputeEstimateUnavailableReason::InvalidMetadata);
+  metadata.input_shape.clear();
+  metadata.bias_present = false;
+  result = contrib::EstimateMatMulNBitsCpuFlops(metadata);
+  ExpectBiasCount(result.bias, 0);
+  ExpectBiasUnavailable(result.dequantization, ComputeEstimateUnavailableReason::InvalidMetadata);
+}
+
+TEST(MatMulNBitsCpuFlopsEstimateTest, InvalidQuantizationAndModeCombinationsAreExplicit) {
+  auto metadata = CpuFlopsMetadata(MatMulNBitsRuntimeRoute::PackedQNBit, MatMulNBitsRuntimeComputeMode::HQNBitFp16);
+  ExpectBiasUnavailable(contrib::EstimateMatMulNBitsCpuFlops(metadata).core,
+                        ComputeEstimateUnavailableReason::InvalidMetadata);
+  metadata.compute_mode = MatMulNBitsRuntimeComputeMode::Float32Gemm;
+  ExpectBiasUnavailable(contrib::EstimateMatMulNBitsCpuFlops(metadata).core,
+                        ComputeEstimateUnavailableReason::InvalidMetadata);
+  metadata.compute_mode = MatMulNBitsRuntimeComputeMode::SQNBitFp32;
+  for (uint32_t block_size : {0, 8, 24}) {
+    metadata.block_size = block_size;
+    ExpectBiasUnavailable(contrib::EstimateMatMulNBitsCpuFlops(metadata).dequantization,
+                          ComputeEstimateUnavailableReason::InvalidMetadata);
+  }
+  metadata.block_size = 512;
+  metadata.bits = 2;
+  ExpectBiasUnavailable(contrib::EstimateMatMulNBitsCpuFlops(metadata).core,
+                        ComputeEstimateUnavailableReason::InvalidMetadata);
+  metadata.bits = 3;
+  ExpectBiasUnavailable(contrib::EstimateMatMulNBitsCpuFlops(metadata).core,
+                        ComputeEstimateUnavailableReason::InvalidMetadata);
+}
+
+TEST(MatMulNBitsCpuFlopsEstimateTest, UnsupportedTypeAndBf16ModeAreNotAdvertised) {
+  auto metadata = CpuFlopsMetadata(MatMulNBitsRuntimeRoute::PackedQNBit, MatMulNBitsRuntimeComputeMode::SQNBitFp32);
+  metadata.input_element_type = ONNX_NAMESPACE::TensorProto::BFLOAT16;
+  ExpectBiasUnavailable(contrib::EstimateMatMulNBitsCpuFlops(metadata).core,
+                        ComputeEstimateUnavailableReason::UnsupportedRoute);
+  metadata.input_element_type = 0;
+  ExpectBiasUnavailable(contrib::EstimateMatMulNBitsCpuFlops(metadata).core,
+                        ComputeEstimateUnavailableReason::MissingSemanticValue);
+  metadata.input_element_type = ONNX_NAMESPACE::TensorProto::FLOAT;
+  metadata.compute_mode = MatMulNBitsRuntimeComputeMode::BHQNBitBf16;
+  ExpectBiasUnavailable(contrib::EstimateMatMulNBitsCpuFlops(metadata).core,
+                        ComputeEstimateUnavailableReason::UnsupportedRoute);
+}
+
+TEST(MatMulNBitsCpuFlopsEstimateTest, EmptyOutputRequiresConsistentNonexecutionAndZeroReductionKeepsBias) {
+  auto metadata = CpuFlopsMetadata(MatMulNBitsRuntimeRoute::EmptyOutput, MatMulNBitsRuntimeComputeMode::NotExecuted);
+  ExpectBiasUnavailable(contrib::EstimateMatMulNBitsCpuFlops(metadata).core,
+                        ComputeEstimateUnavailableReason::InvalidMetadata);
+  metadata.input_shape = {2, 0, 64};
+  auto result = contrib::EstimateMatMulNBitsCpuFlops(metadata);
+  EXPECT_EQ(result.model, contrib::MatMulNBitsCpuFlopsModel::NotExecuted);
+  ExpectBiasCount(result.core, 0);
+  ExpectBiasCount(result.bias, 0);
+  ExpectBiasCount(result.dequantization, 0);
+  metadata = CpuFlopsMetadata(MatMulNBitsRuntimeRoute::PackedQNBit, MatMulNBitsRuntimeComputeMode::SQNBitInt8);
+  metadata.input_shape = {2, 3, 0};
+  metadata.k = 0;
+  result = contrib::EstimateMatMulNBitsCpuFlops(metadata);
+  ExpectBiasCount(result.core, 0);
+  ExpectBiasCount(result.bias, 192);
+  ExpectBiasCount(result.dequantization, 0);
+}
+
+TEST(MatMulNBitsCpuFlopsEstimateTest, ComponentOverflowIsIndependentAndCountsUseUint64) {
+  const int64_t max = std::numeric_limits<int64_t>::max();
+  auto metadata = CpuFlopsMetadata(MatMulNBitsRuntimeRoute::Unpacked, MatMulNBitsRuntimeComputeMode::Float32Gemm);
+  metadata.input_shape = {2, 1};
+  metadata.k = 1;
+  metadata.n = max;
+  auto result = contrib::EstimateMatMulNBitsCpuFlops(metadata);
+  ExpectBiasUnavailable(result.core, ComputeEstimateUnavailableReason::Overflow);
+  ExpectBiasCount(result.bias, std::numeric_limits<uint64_t>::max() - 1);
+  ExpectBiasCount(result.dequantization, std::numeric_limits<uint64_t>::max() - 1);
+  metadata.route = MatMulNBitsRuntimeRoute::PackedQNBit;
+  metadata.compute_mode = MatMulNBitsRuntimeComputeMode::SQNBitFp32;
+  ExpectBiasUnavailable(contrib::EstimateMatMulNBitsCpuFlops(metadata).dequantization,
+                        ComputeEstimateUnavailableReason::Overflow);
+  metadata.compute_mode = MatMulNBitsRuntimeComputeMode::SQNBitInt8;
+  result = contrib::EstimateMatMulNBitsCpuFlops(metadata);
+  ExpectBiasCount(result.core, 0);
+  ExpectBiasUnavailable(result.dequantization, ComputeEstimateUnavailableReason::Overflow);
+  metadata.input_shape = {max, max, 0};
+  metadata.k = 0;
+  result = contrib::EstimateMatMulNBitsCpuFlops(metadata);
+  ExpectBiasCount(result.core, 0);
+  ExpectBiasCount(result.dequantization, 0);
+  ExpectBiasUnavailable(result.bias, ComputeEstimateUnavailableReason::Overflow);
+}
+
 class MatMulNBitsComputeEstimateGraphTest : public ::testing::Test {
  protected:
   MatMulNBitsComputeEstimateGraphTest()

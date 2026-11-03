@@ -585,6 +585,8 @@ static const char* const kOrtSessionOptionsStrictWorkspaceVerification =
 // counts, optional route provenance, run outcome and collection diagnostics. CUDA records successful host submissions,
 // not device completion; route/effective compute mode remain unknown. Graph capture/replay skips capture and marks
 // collection incomplete. Unsupported operators/providers are not instrumented;
+// A separate expected_flops section models CPU core, bias and dequantization using coarse selected routes.
+// LUT and CUDA expected-FLOP models are unsupported; existing logical counts remain available independently.
 // captured totals are not whole-model totals or hardware instruction counts. No additional device synchronization.
 // File failures warn without failing inference. Minimal builds warn that export is unsupported.
 // Internal callers supplying a RunOptions collector use that collector's limits instead of automatic limits.

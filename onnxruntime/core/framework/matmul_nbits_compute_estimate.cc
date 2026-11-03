@@ -10,6 +10,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/common/inlined_containers.h"
+#include "core/framework/runtime_workload_collector.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph.h"
 #endif
@@ -89,6 +90,122 @@ MatMulNBitsBiasEstimateResult EstimateMatMulNBitsBias(
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
+MatMulNBitsCpuFlopsEstimate EstimateMatMulNBitsCpuFlops(const MatMulNBitsRuntimeMetadata& metadata) {
+  using Reason = ComputeEstimateUnavailableReason;
+  using Route = MatMulNBitsRuntimeRoute;
+  using Mode = MatMulNBitsRuntimeComputeMode;
+  using Model = MatMulNBitsCpuFlopsModel;
+  MatMulNBitsCpuFlopsEstimate result{
+      std::nullopt, Reason::MissingSemanticValue,
+      EstimateMatMulNBitsBias(metadata.input_shape, metadata.k, metadata.n, metadata.bias_present),
+      Reason::MissingSemanticValue};
+  auto unavailable = [&](Reason reason) {
+    result.model.reset();
+    result.core = reason;
+    result.dequantization = reason;
+    return result;
+  };
+  if (const auto reason = ValidateGeometry(metadata.input_shape, metadata.k, metadata.n)) {
+    return unavailable(*reason);
+  }
+  if (!metadata.route || !metadata.compute_mode) {
+    return unavailable(Reason::MissingSemanticValue);
+  }
+  if (*metadata.route == Route::PackedLut || *metadata.compute_mode == Mode::Lut ||
+      *metadata.compute_mode == Mode::BHQNBitBf16) {
+    return unavailable(Reason::UnsupportedRoute);
+  }
+  if ((metadata.bits != 2 && metadata.bits != 4 && metadata.bits != 8) ||
+      metadata.block_size < 16 || (metadata.block_size & (metadata.block_size - 1)) != 0 ||
+      (metadata.bits == 2 && metadata.block_size > 256)) {
+    return unavailable(Reason::InvalidMetadata);
+  }
+  const bool half = metadata.input_element_type == ONNX_NAMESPACE::TensorProto::FLOAT16;
+  if (!half && metadata.input_element_type != ONNX_NAMESPACE::TensorProto::FLOAT) {
+    return unavailable(metadata.input_element_type == 0 ? Reason::MissingSemanticValue : Reason::UnsupportedRoute);
+  }
+  switch (*metadata.route) {
+    case Route::Unpacked:
+      if (*metadata.compute_mode != Mode::Float32Gemm) {
+        return unavailable(Reason::InvalidMetadata);
+      }
+      result.model = Model::UnpackedFloat;
+      break;
+    case Route::PackedQNBit:
+      if (*metadata.compute_mode == Mode::SQNBitFp32 || (half && *metadata.compute_mode == Mode::HQNBitFp16)) {
+        result.model = Model::PackedFloat;
+      } else if (*metadata.compute_mode == Mode::SQNBitInt8 || (half && *metadata.compute_mode == Mode::HQNBitInt8)) {
+        result.model = Model::PackedInt8;
+      } else {
+        return unavailable(Reason::InvalidMetadata);
+      }
+      break;
+    case Route::EmptyOutput:
+      if (*metadata.compute_mode != Mode::NotExecuted) {
+        return unavailable(Reason::InvalidMetadata);
+      }
+      result.model = Model::NotExecuted;
+      break;
+    case Route::PackedLut:
+      return unavailable(Reason::UnsupportedRoute);
+    default:
+      return unavailable(Reason::UnsupportedRoute);
+  }
+
+  const auto leading = gsl::span<const int64_t>(metadata.input_shape).first(metadata.input_shape.size() - 1);
+  const bool empty = metadata.n == 0 || std::find(leading.begin(), leading.end(), 0) != leading.end();
+  if (*result.model == Model::NotExecuted && !empty) {
+    result.model.reset();
+    return unavailable(Reason::InvalidMetadata);
+  }
+  if (empty) {
+    result.core = MatMulNBitsBiasEstimate{0};
+    result.dequantization = MatMulNBitsBiasEstimate{0};
+    return result;
+  }
+
+  if (*result.model == Model::PackedInt8) {
+    result.core = MatMulNBitsBiasEstimate{0};
+  } else {
+    const auto core = EstimateMatMulNBitsCompute(metadata.input_shape, metadata.k, metadata.n);
+    if (const auto* count = std::get_if<MatMulNBitsComputeEstimate>(&core)) {
+      result.core = MatMulNBitsBiasEstimate{count->dense_equivalent_ops};
+    } else {
+      result.core = std::get<Reason>(core);
+    }
+  }
+  const uint64_t k = static_cast<uint64_t>(metadata.k);
+  if (k == 0) {
+    result.dequantization = MatMulNBitsBiasEstimate{0};
+    return result;
+  }
+  const uint64_t blocks = k / metadata.block_size + (k % metadata.block_size != 0);
+  uint64_t count;
+  if (*result.model == Model::PackedInt8) {
+    const auto output_elements = EstimateMatMulNBitsBias(metadata.input_shape, metadata.k, metadata.n, true);
+    if (const auto* output = std::get_if<MatMulNBitsBiasEstimate>(&output_elements)) {
+      if (SafeMultiply(blocks, uint64_t{5}, count) && SafeMultiply(count, output->floating_point_ops, count)) {
+        result.dequantization = MatMulNBitsBiasEstimate{count};
+      } else {
+        result.dequantization = Reason::Overflow;
+      }
+    } else {
+      result.dequantization = std::get<Reason>(output_elements);
+    }
+  } else {
+    uint64_t processed_k = k;
+    if ((*result.model == Model::UnpackedFloat ||
+         SafeMultiply(blocks, static_cast<uint64_t>(metadata.block_size), processed_k)) &&
+        SafeMultiply(processed_k, static_cast<uint64_t>(metadata.n), count) &&
+        SafeMultiply(count, uint64_t{2}, count)) {
+      result.dequantization = MatMulNBitsBiasEstimate{count};
+    } else {
+      result.dequantization = Reason::Overflow;
+    }
+  }
+  return result;
+}
+
 namespace {
 template <bool Bias>
 auto EstimateFromNode(const Node& node)

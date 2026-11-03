@@ -51,6 +51,8 @@ const char* ReasonName(contrib::ComputeEstimateUnavailableReason reason) {
       return "overflow";
     case contrib::ComputeEstimateUnavailableReason::MissingSemanticValue:
       return "missing_semantic_value";
+    case contrib::ComputeEstimateUnavailableReason::UnsupportedRoute:
+      return "unsupported_route";
   }
   ORT_THROW("Invalid compute estimate reason.");
 }
@@ -415,6 +417,130 @@ Json RuntimeComponent(bool bias) {
           {"execution_phase", "per_invocation"},
           {"availability", "unavailable"}};
 }
+
+struct ComponentSubtotal {
+  uint64_t count = 0;
+  size_t estimated = 0;
+  size_t unavailable = 0;
+  bool overflow = false;
+  Json reasons = Json::object();
+};
+
+bool AccumulateComponent(Json& component, std::optional<uint64_t> count, ComponentSubtotal& subtotal) {
+  if (count) {
+    ++subtotal.estimated;
+    component["availability"] = "available";
+    component["operation_count"] = std::to_string(*count);
+    if (!subtotal.overflow && !SafeAdd(subtotal.count, *count, subtotal.count)) {
+      subtotal.overflow = true;
+    }
+    return true;
+  }
+  ++subtotal.unavailable;
+  const auto reason = component["unavailable_reason"].get<std::string>();
+  subtotal.reasons[reason] = subtotal.reasons.value(reason, size_t{0}) + 1;
+  return false;
+}
+
+Json ComponentSummary(Json component, const ComponentSubtotal& subtotal, const RuntimeWorkloadSnapshot& snapshot) {
+  component.erase("availability");
+  component["estimated_component_count"] = subtotal.estimated;
+  component["unavailable_component_count"] = subtotal.unavailable;
+  component["unavailable_reason_counts"] = subtotal.reasons;
+  component["count_scope"] = "retained_successful_invocations";
+  component["subtotal_availability"] = subtotal.overflow ? "unavailable" : "available";
+  component["complete_for_captured_component_scope"] =
+      snapshot.run_state == RuntimeWorkloadRunState::Succeeded && snapshot.stats.collection_complete &&
+      subtotal.unavailable == 0 && !subtotal.overflow;
+  if (subtotal.overflow) {
+    component["subtotal_unavailable_reason"] = "overflow";
+  } else {
+    component["known_operation_count"] = std::to_string(subtotal.count);
+  }
+  return component;
+}
+
+Json ExpectedFlopsComponent(size_t index) {
+  constexpr std::array<std::string_view, 3> names{"matmul_core", "bias", "dequantization"};
+  return {{"component", names[index]},
+          {"metric", "floating_point_ops"},
+          {"convention_version", "cpu_expected_flops_v1"},
+          {"input_basis", "runtime_metadata"},
+          {"basis", index == 1 ? "logical_semantics" : "route_aware_ballpark"},
+          {"estimate_kind", index == 1 ? "exact_under_convention" : "model_based"},
+          {"execution_phase", "per_invocation"},
+          {"availability", "unavailable"}};
+}
+
+#if !defined(DISABLE_CONTRIB_OPS)
+const char* CpuFlopsModelName(contrib::MatMulNBitsCpuFlopsModel model) {
+  switch (model) {
+    case contrib::MatMulNBitsCpuFlopsModel::UnpackedFloat:
+      return "unpacked_float_single_reconstruction_v1";
+    case contrib::MatMulNBitsCpuFlopsModel::PackedFloat:
+      return "packed_float_single_padded_reconstruction_v1";
+    case contrib::MatMulNBitsCpuFlopsModel::PackedInt8:
+      return "integer_core_nominal_block_scaling_v1";
+    case contrib::MatMulNBitsCpuFlopsModel::NotExecuted:
+      return "empty_output_v1";
+  }
+  ORT_THROW("Invalid CPU FLOP model.");
+}
+#endif
+
+Json CpuExpectedFlops(const RuntimeWorkloadRecord& record, std::array<ComponentSubtotal, 3>& subtotals) {
+  Json value{{"components", Json::array()}};
+#if !defined(DISABLE_CONTRIB_OPS)
+  std::optional<contrib::MatMulNBitsCpuFlopsEstimate> estimate;
+  if (record.provider == kCpuExecutionProvider) {
+    estimate = contrib::EstimateMatMulNBitsCpuFlops(record.matmul_nbits);
+    if (estimate->model) {
+      value["model"] = CpuFlopsModelName(*estimate->model);
+    }
+  }
+#endif
+  size_t available = 0;
+  uint64_t known = 0;
+  bool overflow = false;
+  for (size_t i = 0; i < subtotals.size(); ++i) {
+    auto component = ExpectedFlopsComponent(i);
+    std::optional<uint64_t> count;
+    if (record.provider != kCpuExecutionProvider) {
+      component["unavailable_reason"] = "unsupported_provider";
+    } else {
+#if !defined(DISABLE_CONTRIB_OPS)
+      const std::array<const contrib::MatMulNBitsBiasEstimateResult*, 3> results{
+          &estimate->core, &estimate->bias, &estimate->dequantization};
+      if (const auto* result = std::get_if<contrib::MatMulNBitsBiasEstimate>(results[i])) {
+        count = result->floating_point_ops;
+      } else {
+        component["unavailable_reason"] = ReasonName(std::get<contrib::ComputeEstimateUnavailableReason>(*results[i]));
+      }
+#else
+      component["unavailable_reason"] = "estimators_disabled";
+#endif
+    }
+    if (AccumulateComponent(component, count, subtotals[i])) {
+      ++available;
+      if (!overflow && !SafeAdd(known, *count, known)) {
+        overflow = true;
+      }
+    }
+    value["components"].push_back(std::move(component));
+  }
+  value["availability"] = available == 3 ? "available" : available == 0 ? "unavailable"
+                                                                        : "partial";
+  if (!overflow) {
+    value["known_flops_subtotal"] = std::to_string(known);
+  }
+  value["total_availability"] = available == 3 && !overflow ? "available" : "unavailable";
+  if (available == 3 && !overflow) {
+    value["expected_flops"] = std::to_string(known);
+  } else {
+    value["total_unavailable_reason"] = overflow ? "overflow" : "incomplete_components";
+  }
+  return value;
+}
 }  // namespace
 
 Status WriteComputeEstimateReport(const Graph& graph, const std::string& utf8_path) {
@@ -454,14 +580,17 @@ Status BuildComputeEstimateReport(const RuntimeWorkloadSnapshot& snapshot, std::
 #else
     value["estimator_support"] = "matmul_nbits_core_and_bias";
 #endif
-    struct Subtotal {
-      uint64_t count = 0;
-      size_t estimated = 0;
-      size_t unavailable = 0;
-      bool overflow = false;
-      Json reasons = Json::object();
-    };
-    std::array<Subtotal, 2> subtotals;
+    std::array<ComponentSubtotal, 2> subtotals;
+    std::array<ComponentSubtotal, 3> expected_subtotals;
+    value["expected_flops"] = {
+        {"convention_version", "cpu_expected_flops_v1"},
+        {"coverage_scope", "cpu_matmul_nbits_modeled_components_only"},
+        {"route_adjustment_applied", true},
+        {"whole_operator_work_complete", false},
+        {"assumptions", {{"floating_reconstruction_passes", 1}, {"floating_ops_per_reconstructed_element", 2}, {"integer_scaling_ops_per_output_block", 5}}},
+        {"excluded_components", Json::array({"activation_quantization", "packing", "conversion", "preparation",
+                                             "auxiliary_reductions", "worker_tile_repetition"})},
+        {"component_summaries", Json::array()}};
     for (const auto& record : snapshot.records) {
       const auto& metadata = record.matmul_nbits;
       Json entry{{"invocation_id", record.invocation_id},
@@ -514,46 +643,24 @@ Status BuildComputeEstimateReport(const RuntimeWorkloadSnapshot& snapshot, std::
           component["unavailable_reason"] = "estimators_disabled";
 #endif
         }
-        auto& subtotal = subtotals[i];
-        if (count) {
+        if (AccumulateComponent(component, count, subtotals[i])) {
           ++available;
-          ++subtotal.estimated;
-          component["availability"] = "available";
           component["estimate_kind"] = "exact_under_convention";
-          component["operation_count"] = std::to_string(*count);
-          if (!subtotal.overflow && !SafeAdd(subtotal.count, *count, subtotal.count)) {
-            subtotal.overflow = true;
-          }
-        } else {
-          ++subtotal.unavailable;
-          const auto reason = component["unavailable_reason"].get<std::string>();
-          subtotal.reasons[reason] = subtotal.reasons.value(reason, size_t{0}) + 1;
         }
         entry["components"].push_back(std::move(component));
       }
       entry["availability"] = available == 2 ? "available" : available == 1 ? "partial"
                                                                             : "unavailable";
+      entry["expected_flops"] = CpuExpectedFlops(record, expected_subtotals);
       value["invocations"].push_back(std::move(entry));
     }
     value["component_summaries"] = Json::array();
     for (size_t i = 0; i < subtotals.size(); ++i) {
-      const auto& subtotal = subtotals[i];
-      Json summary = RuntimeComponent(i == 1);
-      summary.erase("availability");
-      summary["estimated_component_count"] = subtotal.estimated;
-      summary["unavailable_component_count"] = subtotal.unavailable;
-      summary["unavailable_reason_counts"] = subtotal.reasons;
-      summary["count_scope"] = "retained_successful_invocations";
-      summary["subtotal_availability"] = subtotal.overflow ? "unavailable" : "available";
-      summary["complete_for_captured_component_scope"] =
-          snapshot.run_state == RuntimeWorkloadRunState::Succeeded && stats.collection_complete &&
-          subtotal.unavailable == 0 && !subtotal.overflow;
-      if (subtotal.overflow) {
-        summary["subtotal_unavailable_reason"] = "overflow";
-      } else {
-        summary["known_operation_count"] = std::to_string(subtotal.count);
-      }
-      value["component_summaries"].push_back(std::move(summary));
+      value["component_summaries"].push_back(ComponentSummary(RuntimeComponent(i == 1), subtotals[i], snapshot));
+    }
+    for (size_t i = 0; i < expected_subtotals.size(); ++i) {
+      value["expected_flops"]["component_summaries"].push_back(
+          ComponentSummary(ExpectedFlopsComponent(i), expected_subtotals[i], snapshot));
     }
     report = value.dump(2) + "\n";
     return Status::OK();

@@ -633,6 +633,151 @@ TEST(RuntimeComputeEstimateReportTest, CountsAndRouteProvenanceAreIndependent) {
   EXPECT_EQ(report["invocations"][0]["availability"], "available");
 }
 
+TEST(RuntimeComputeEstimateReportTest, CpuExpectedFlopsAreIndependentOfDenseEquivalentCounts) {
+  auto snapshot = RuntimeSnapshot();
+  auto& metadata = snapshot.records[0].matmul_nbits;
+  metadata.route = MatMulNBitsRuntimeRoute::Unpacked;
+  metadata.compute_mode = MatMulNBitsRuntimeComputeMode::Float32Gemm;
+  auto report = RuntimeReport(snapshot);
+  const auto floating = report["invocations"][0]["expected_flops"];
+  EXPECT_EQ(report["schema_version"], 3);
+  EXPECT_EQ(report["route_adjustment_applied"], false);
+  EXPECT_EQ(report["expected_flops"]["route_adjustment_applied"], true);
+  EXPECT_EQ(floating["model"], "unpacked_float_single_reconstruction_v1");
+  EXPECT_EQ(floating["components"][0]["operation_count"], "24576");
+  EXPECT_EQ(floating["components"][1]["operation_count"], "192");
+  EXPECT_EQ(floating["components"][2]["operation_count"], "4096");
+  EXPECT_EQ(floating["components"][0]["estimate_kind"], "model_based");
+  EXPECT_EQ(floating["components"][1]["estimate_kind"], "exact_under_convention");
+  EXPECT_EQ(floating["expected_flops"], "28864");
+  EXPECT_EQ(floating["total_availability"], "available");
+
+  metadata.route = MatMulNBitsRuntimeRoute::PackedQNBit;
+  metadata.compute_mode = MatMulNBitsRuntimeComputeMode::SQNBitInt8;
+  report = RuntimeReport(snapshot);
+  const auto integer = report["invocations"][0]["expected_flops"];
+  EXPECT_EQ(integer["components"][0]["operation_count"], "0");
+  EXPECT_EQ(integer["components"][1]["operation_count"], "192");
+  EXPECT_EQ(integer["components"][2]["operation_count"], "1920");
+  EXPECT_EQ(integer["expected_flops"], "2112");
+  EXPECT_EQ(report["component_summaries"][0]["known_operation_count"], "24576");
+  EXPECT_EQ(report["expected_flops"]["component_summaries"][0]["known_operation_count"], "0");
+  EXPECT_EQ(report["expected_flops"]["component_summaries"][2]["known_operation_count"], "1920");
+  EXPECT_EQ(report["expected_flops"]["component_summaries"][2]["complete_for_captured_component_scope"], true);
+}
+
+TEST(RuntimeComputeEstimateReportTest, PackedFloatUsesNominalPaddedReconstructionOnly) {
+  auto snapshot = RuntimeSnapshot();
+  auto& metadata = snapshot.records[0].matmul_nbits;
+  metadata.input_shape = {2, 3, 65};
+  metadata.k = 65;
+  metadata.route = MatMulNBitsRuntimeRoute::PackedQNBit;
+  metadata.compute_mode = MatMulNBitsRuntimeComputeMode::SQNBitFp32;
+  const auto report = RuntimeReport(snapshot);
+  const auto estimate = report["invocations"][0]["expected_flops"];
+  EXPECT_EQ(estimate["model"], "packed_float_single_padded_reconstruction_v1");
+  EXPECT_EQ(estimate["components"][0]["operation_count"], "24960");
+  EXPECT_EQ(estimate["components"][2]["operation_count"], "6144");
+  EXPECT_EQ(estimate["expected_flops"], "31296");
+  EXPECT_EQ(report["expected_flops"]["assumptions"]["floating_reconstruction_passes"], 1);
+  EXPECT_EQ(report["expected_flops"]["assumptions"]["integer_scaling_ops_per_output_block"], 5);
+  EXPECT_EQ(report["expected_flops"]["whole_operator_work_complete"], false);
+}
+
+TEST(RuntimeComputeEstimateReportTest, LutAndMissingModesHavePartialNotInventedTotals) {
+  auto snapshot = RuntimeSnapshot();
+  auto& metadata = snapshot.records[0].matmul_nbits;
+  metadata.route = MatMulNBitsRuntimeRoute::PackedLut;
+  metadata.compute_mode = MatMulNBitsRuntimeComputeMode::Lut;
+  auto report = RuntimeReport(snapshot);
+  auto estimate = report["invocations"][0]["expected_flops"];
+  EXPECT_EQ(estimate["components"][0]["unavailable_reason"], "unsupported_route");
+  EXPECT_EQ(estimate["components"][2]["unavailable_reason"], "unsupported_route");
+  EXPECT_FALSE(estimate["components"][0].contains("operation_count"));
+  EXPECT_EQ(estimate["known_flops_subtotal"], "192");
+  EXPECT_EQ(estimate["availability"], "partial");
+  EXPECT_EQ(estimate["total_unavailable_reason"], "incomplete_components");
+  EXPECT_FALSE(estimate.contains("expected_flops"));
+  EXPECT_EQ(report["component_summaries"][0]["known_operation_count"], "24576");
+  EXPECT_EQ(report["expected_flops"]["component_summaries"][0]["unavailable_reason_counts"]["unsupported_route"], 1);
+  metadata.compute_mode.reset();
+  report = RuntimeReport(snapshot);
+  estimate = report["invocations"][0]["expected_flops"];
+  EXPECT_EQ(estimate["components"][0]["unavailable_reason"], "missing_semantic_value");
+  EXPECT_EQ(estimate["components"][1]["operation_count"], "192");
+  EXPECT_FALSE(estimate.contains("model"));
+}
+
+TEST(RuntimeComputeEstimateReportTest, CpuExpectedFlopsDoNotClaimCudaCoverage) {
+  auto snapshot = RuntimeSnapshot();
+  snapshot.records[0].matmul_nbits.route = MatMulNBitsRuntimeRoute::Unpacked;
+  snapshot.records[0].matmul_nbits.compute_mode = MatMulNBitsRuntimeComputeMode::Float32Gemm;
+  auto cuda_record = snapshot.records[0];
+  cuda_record.provider = kCudaExecutionProvider;
+  cuda_record.invocation_id = 1;
+  snapshot.records.push_back(cuda_record);
+  const auto report = RuntimeReport(snapshot);
+  EXPECT_EQ(report["expected_flops"]["coverage_scope"], "cpu_matmul_nbits_modeled_components_only");
+  const auto cuda = report["invocations"][1]["expected_flops"];
+  EXPECT_EQ(cuda["availability"], "unavailable");
+  EXPECT_FALSE(cuda.contains("expected_flops"));
+  for (size_t i = 0; i < 3; ++i) {
+    EXPECT_EQ(cuda["components"][i]["unavailable_reason"], "unsupported_provider");
+    const auto summary = report["expected_flops"]["component_summaries"][i];
+    EXPECT_EQ(summary["estimated_component_count"], 1);
+    EXPECT_EQ(summary["unavailable_component_count"], 1);
+    EXPECT_EQ(summary["complete_for_captured_component_scope"], false);
+  }
+  EXPECT_EQ(report["component_summaries"][0]["known_operation_count"], "49152");
+}
+
+TEST(RuntimeComputeEstimateReportTest, ExpectedInvocationTotalAndComponentSubtotalOverflowAreSeparate) {
+  auto snapshot = RuntimeSnapshot();
+  auto& metadata = snapshot.records[0].matmul_nbits;
+  metadata.input_shape = {std::numeric_limits<int64_t>::max(), 1};
+  metadata.k = 1;
+  metadata.n = 1;
+  metadata.route = MatMulNBitsRuntimeRoute::Unpacked;
+  metadata.compute_mode = MatMulNBitsRuntimeComputeMode::Float32Gemm;
+  auto report = RuntimeReport(snapshot);
+  const auto estimate = report["invocations"][0]["expected_flops"];
+  EXPECT_EQ(estimate["availability"], "available");
+  EXPECT_EQ(estimate["total_availability"], "unavailable");
+  EXPECT_EQ(estimate["total_unavailable_reason"], "overflow");
+  EXPECT_FALSE(estimate.contains("expected_flops"));
+  EXPECT_FALSE(estimate.contains("known_flops_subtotal"));
+  EXPECT_EQ(estimate["components"][0]["operation_count"], "18446744073709551614");
+  auto record = snapshot.records[0];
+  record.invocation_id = 1;
+  snapshot.records.push_back(record);
+  report = RuntimeReport(snapshot);
+  const auto summary = report["expected_flops"]["component_summaries"][0];
+  EXPECT_EQ(summary["subtotal_unavailable_reason"], "overflow");
+  EXPECT_FALSE(summary.contains("known_operation_count"));
+  EXPECT_EQ(summary["complete_for_captured_component_scope"], false);
+  EXPECT_EQ(report["expected_flops"]["component_summaries"][2]["known_operation_count"], "4");
+}
+
+TEST(RuntimeComputeEstimateReportTest, ExpectedSubtotalsRespectRunAndCollectionCompleteness) {
+  auto snapshot = RuntimeSnapshot();
+  snapshot.records[0].matmul_nbits.route = MatMulNBitsRuntimeRoute::Unpacked;
+  snapshot.records[0].matmul_nbits.compute_mode = MatMulNBitsRuntimeComputeMode::Float32Gemm;
+  auto record = snapshot.records[0];
+  record.invocation_id = 1;
+  snapshot.records.push_back(record);
+  auto report = RuntimeReport(snapshot);
+  EXPECT_EQ(report["expected_flops"]["component_summaries"][2]["known_operation_count"], "8192");
+  for (const auto state : {RuntimeWorkloadRunState::Failed, RuntimeWorkloadRunState::Running,
+                           RuntimeWorkloadRunState::NotStarted, RuntimeWorkloadRunState::Succeeded}) {
+    snapshot.run_state = state;
+    snapshot.stats.collection_complete = state != RuntimeWorkloadRunState::Succeeded;
+    report = RuntimeReport(snapshot);
+    for (size_t i = 0; i < 3; ++i) {
+      EXPECT_EQ(report["expected_flops"]["component_summaries"][i]["complete_for_captured_component_scope"], false);
+    }
+  }
+}
+
 TEST(RuntimeComputeEstimateReportTest, SubgraphsAndRepeatedInvocationsSumOnlyExecutedRecords) {
   auto snapshot = RuntimeSnapshot();
   auto record = snapshot.records[0];
