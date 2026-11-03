@@ -236,8 +236,9 @@ Per-session typed options are already a superset of JSEP's, confirmed by source 
    default. Replace it with a `--jsep` opt-in (`--no-jsep` selecting native). Land the rename while JSEP is still
    the default so it carries no behavior change.
 2. **Escape hatch.** Add the temporary, deprecated `onnxruntime-web/jsep` export (built with JSEP selected).
-3. **Warn once.** The `/jsep` build warns once (respecting `env.logLevel`) via a shared deprecation-warning
-   utility, also used by the WebGL effort; the native default emits nothing.
+3. **Warn once.** The `/jsep` build warns once (respecting `env.logLevel`) via
+   `createDeprecationWarning()` from `js/web/lib/deprecation-warning.ts`, shared with the WebGL effort. Invoke it
+   from the JSEP-only initialization path so the native default emits nothing.
 4. **Retarget the operator-doc generator.** `generate-webgpu-operator-md.ts` parses the JSEP registrations
    (`js_execution_provider.cc`, `js_contrib_kernels.cc`), so post-flip `webgpu-operators.md` describes the wrong
    EP; point it at the native WebGPU EP registrations (those JSEP sources are removed in Phase 2).
