@@ -453,6 +453,10 @@ bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& ker
       } else {
         ORT_IGNORE_RETURN_VALUE(graph_utils::AddInitializer(graph_, new_tensor_proto));
       }
+      Graph::ExternalInitializerFileSource file_source;
+      if (graph_.GetExternalInitializerFileSource(name, file_source, check_outer_scope_true)) {
+        graph_.SetExternalInitializerFileSource(new_tensor_proto.name(), std::move(file_source));
+      }
 
       replacements.insert(std::make_pair(provider_def, &new_def));
     }

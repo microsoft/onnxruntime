@@ -44,6 +44,10 @@
 #include "test/util/include/temp_dir.h"
 
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
+#include <clocale>
+#include <locale>
+#include <mbctype.h>
+
 #include "core/platform/windows/d3d12_file_loader/d3d12_file_buffer_loader.h"
 #include "core/providers/webgpu/d3d12_external_data_loader.h"
 #endif
@@ -2564,6 +2568,201 @@ TEST(WebGpuContextTest, D3D12AcceleratedLoadsExternalInitializerThroughSession) 
       kWeightLoadAcceleration_Required, false, true, 15);
   RunD3D12AcceleratedExternalInitializerSessionTest(
       kWeightLoadAcceleration_Required, false, true, 64);
+}
+
+TEST(WebGpuContextTest, D3D12AcceleratedRegisteredHandleSupportsNonAsciiLogicalNameAndPreferredFallback) {
+  auto probe_provider = WebGpuProviderFactoryCreator::Create(
+                            WeightLoadAccelerationOptions(
+                                kWeightLoadAcceleration_Required))
+                            ->CreateProvider();
+  ASSERT_NE(probe_provider, nullptr);
+  const auto support_status = webgpu::CheckD3D12AcceleratedExternalWeightsSupport(
+      webgpu::WebGpuContextFactory::GetContext(0));
+  if (!support_status.IsOK()) {
+    GTEST_SKIP() << support_status.ErrorMessage();
+  }
+
+  TemporaryDirectory temp_dir{
+      ORT_TSTR("webgpu_d3d12_non_ascii_and_fallback_test")};
+  const auto data_path =
+      std::filesystem::path{temp_dir.Path()} / ORT_TSTR("physical_weights.bin");
+
+  struct ScopedNonUtf8Locale {
+    std::string saved_c_locale;
+    std::locale saved_cpp_locale;
+    int saved_mbcp = _getmbcp();
+    ScopedNonUtf8Locale() : saved_cpp_locale(std::locale()) {
+      if (const char* current = std::setlocale(LC_ALL, nullptr)) {
+        saved_c_locale = current;
+      }
+      (void)std::setlocale(LC_ALL, ".1252");
+      (void)_setmbcp(1252);
+      ORT_TRY {
+        std::locale::global(std::locale(".1252"));
+      }
+      ORT_CATCH(...) {
+      }
+    }
+    ~ScopedNonUtf8Locale() {
+      (void)std::locale::global(saved_cpp_locale);
+      if (!saved_c_locale.empty()) {
+        (void)std::setlocale(LC_ALL, saved_c_locale.c_str());
+      }
+      (void)_setmbcp(saved_mbcp);
+    }
+  } non_utf8_locale_guard;
+
+  // Layout in physical_weights.bin:
+  // - Offset 64: 16 floats (64 bytes <= 127B inline threshold)
+  // - Offset 256: 64 floats (256 bytes > 127B mapped/D3D12 threshold)
+  constexpr size_t kSmallCount = 16;
+  constexpr size_t kLargeCount = 64;
+  constexpr size_t kSmallOffset = 64;
+  constexpr size_t kLargeOffset = 256;
+  std::vector<float> small_weights(kSmallCount);
+  std::vector<float> large_weights(kLargeCount);
+  for (size_t i = 0; i < kSmallCount; ++i) {
+    small_weights[i] = static_cast<float>(i + 1);
+  }
+  for (size_t i = 0; i < kLargeCount; ++i) {
+    large_weights[i] = static_cast<float>((i + 1) * 10);
+  }
+  {
+    std::ofstream stream{data_path, std::ios::binary | std::ios::trunc};
+    ASSERT_TRUE(stream.good());
+    std::vector<char> file_bytes(kLargeOffset + kLargeCount * sizeof(float), 0);
+    std::memcpy(file_bytes.data() + kSmallOffset, small_weights.data(),
+                kSmallCount * sizeof(float));
+    std::memcpy(file_bytes.data() + kLargeOffset, large_weights.data(),
+                kLargeCount * sizeof(float));
+    stream.write(file_bytes.data(), static_cast<std::streamsize>(file_bytes.size()));
+    ASSERT_TRUE(stream.good());
+  }
+
+  // Multi-script UTF-8 logical name that is not representable in any single non-UTF-8 Windows ANSI code page,
+  // paired with an unrelated ASCII physical filename.
+  const std::string logical_utf8_name = "virtual/\xCE\xB1\xCE\xB2_\xE6\x97\xA5\xE6\x9C\xAC\xE8\xAA\x9E_\xF0\x9F\x9A\x80_weights.bin";
+  const PathString logical_path_name = ToPathString(logical_utf8_name);
+
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(8);
+  model.set_producer_name("onnxruntime-test");
+  auto* opset = model.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+  auto* graph = model.mutable_graph();
+  graph->set_name("webgpu_d3d12_non_ascii_and_fallback");
+
+  const auto set_tensor_type = [](ONNX_NAMESPACE::ValueInfoProto* value_info,
+                                  const char* name, size_t count) {
+    value_info->set_name(name);
+    auto* tensor_type = value_info->mutable_type()->mutable_tensor_type();
+    tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    tensor_type->mutable_shape()->add_dim()->set_dim_value(static_cast<int64_t>(count));
+  };
+  set_tensor_type(graph->add_input(), "X_small", kSmallCount);
+  set_tensor_type(graph->add_input(), "X_large", kLargeCount);
+  set_tensor_type(graph->add_output(), "Y_small", kSmallCount);
+  set_tensor_type(graph->add_output(), "Y_large", kLargeCount);
+
+  const auto add_ext_weight = [&](const char* name, size_t count, size_t offset) {
+    auto* init = graph->add_initializer();
+    init->set_name(name);
+    init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    init->add_dims(static_cast<int64_t>(count));
+    init->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+    auto* loc = init->add_external_data();
+    loc->set_key("location");
+    loc->set_value(logical_utf8_name);
+    auto* off = init->add_external_data();
+    off->set_key("offset");
+    off->set_value(std::to_string(offset));
+    auto* len = init->add_external_data();
+    len->set_key("length");
+    len->set_value(std::to_string(count * sizeof(float)));
+  };
+  add_ext_weight("W_small", kSmallCount, kSmallOffset);
+  add_ext_weight("W_large", kLargeCount, kLargeOffset);
+
+  auto* add_small = graph->add_node();
+  add_small->set_op_type("Add");
+  add_small->add_input("X_small");
+  add_small->add_input("W_small");
+  add_small->add_output("Y_small");
+
+  auto* add_large = graph->add_node();
+  add_large->set_op_type("Add");
+  add_large->add_input("X_large");
+  add_large->add_input("W_large");
+  add_large->add_output("Y_large");
+
+  std::string serialized_model;
+  ASSERT_TRUE(model.SerializeToString(&serialized_model));
+
+  const auto run_and_verify = [&](DWORD share_mode, const char* accel_mode, bool expect_init_ok) {
+    wil::unique_hfile handle{CreateFileW(
+        data_path.c_str(), GENERIC_READ, share_mode, nullptr, OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL, nullptr)};
+    ASSERT_TRUE(handle.is_valid());
+    std::shared_ptr<RandomAccessFile> source_file;
+    ASSERT_STATUS_OK(Env::Default().DuplicateReadOnlyFileHandle(handle.get(), source_file));
+    handle.reset();
+
+    SessionOptions session_options;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    auto sources = std::make_shared<
+        std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>>();
+    sources->emplace(logical_path_name, std::move(source_file));
+    session_options.external_initializer_file_sources = std::move(sources);
+
+    InferenceSession session{session_options, GetEnvironment()};
+    auto provider = WebGpuProviderFactoryCreator::Create(
+                        WeightLoadAccelerationOptions(accel_mode))
+                        ->CreateProvider();
+    ASSERT_NE(provider, nullptr);
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
+    ASSERT_STATUS_OK(session.Load(serialized_model.data(),
+                                  static_cast<int>(serialized_model.size())));
+    const auto init_status = session.Initialize();
+    if (!expect_init_ok) {
+      EXPECT_FALSE(init_status.IsOK());
+      return;
+    }
+    ASSERT_STATUS_OK(init_status);
+
+    std::vector<float> input_small(kSmallCount, 2.0f);
+    std::vector<float> input_large(kLargeCount, 3.0f);
+    OrtValue val_small;
+    OrtValue val_large;
+    auto cpu_alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+    CreateMLValue<float>(cpu_alloc, {static_cast<int64_t>(kSmallCount)}, input_small, &val_small);
+    CreateMLValue<float>(cpu_alloc, {static_cast<int64_t>(kLargeCount)}, input_large, &val_large);
+    NameMLValMap feeds{{"X_small", val_small}, {"X_large", val_large}};
+    std::vector<std::string> output_names{"Y_small", "Y_large"};
+    std::vector<OrtValue> fetches;
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &fetches));
+    ASSERT_EQ(fetches.size(), 2u);
+    const auto* out_small = fetches[0].Get<Tensor>().Data<float>();
+    const auto* out_large = fetches[1].Get<Tensor>().Data<float>();
+    for (size_t i = 0; i < kSmallCount; ++i) {
+      EXPECT_FLOAT_EQ(out_small[i], input_small[i] + small_weights[i]);
+    }
+    for (size_t i = 0; i < kLargeCount; ++i) {
+      EXPECT_FLOAT_EQ(out_large[i], input_large[i] + large_weights[i]);
+    }
+  };
+
+  // 1. Shareable handle with non-ASCII UTF-8 logical name succeeds in both Preferred and Required modes.
+  run_and_verify(FILE_SHARE_READ | FILE_SHARE_DELETE, kWeightLoadAcceleration_Preferred, /*expect_init_ok=*/true);
+  run_and_verify(FILE_SHARE_READ | FILE_SHARE_DELETE, kWeightLoadAcceleration_Required, /*expect_init_ok=*/true);
+
+  // 2. Exclusive handle (dwShareMode = 0) fails ReOpenFile at CommitLoadCandidates:
+  //    - Required mode fails cleanly without throwing std::system_error on the non-ASCII logical name.
+  //    - Preferred mode falls back to the mapped file-source OrtValue and produces exact outputs for both
+  //      inline (<= 127B) and mapped (> 127B) weights at nonzero offsets.
+  run_and_verify(/*share_mode=*/0, kWeightLoadAcceleration_Required, /*expect_init_ok=*/false);
+  run_and_verify(/*share_mode=*/0, kWeightLoadAcceleration_Preferred, /*expect_init_ok=*/true);
 }
 
 TEST(WebGpuContextTest, LateRegistrationFailureRollsBackD3D12AcceleratedLoader) {

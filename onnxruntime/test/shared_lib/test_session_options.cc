@@ -30,6 +30,7 @@
 #include <io.h>
 #else
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 #if defined(__linux__)
@@ -1081,6 +1082,311 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesSurviveModelSuppliedSessionOpti
   auto actual = session.Run(Ort::RunOptions{}, nullptr, nullptr, 0, outputs, 1);
   ASSERT_EQ(actual.size(), 1u);
   EXPECT_FLOAT_EQ(actual[0].GetTensorData<float>()[0], expected);
+}
+
+TEST_F(FileSourcesSessionOptionsTest, FileSourcesRollbackFailedBatchAndReplaceNonEmptyRegistryAcrossClones) {
+  ScopedInitializerDirectory directory;
+  const auto write_weight_file = [&](const char* filename, float value) {
+    const auto path = directory.path / filename;
+    std::ofstream output(path, std::ios::binary);
+    output.exceptions(std::ios::badbit | std::ios::failbit);
+    output.write(reinterpret_cast<const char*>(&value), sizeof(value));
+    return path;
+  };
+  const auto path_a = write_weight_file("weights_a.bin", 10.0f);
+  const auto path_provisional = write_weight_file("weights_provisional.bin", 20.0f);
+  const auto path_b = write_weight_file("weights_b.bin", 30.0f);
+
+#ifdef _WIN32
+  const auto open_unshared_delete_file = [](const std::filesystem::path& path) {
+    const HANDLE raw = CreateFileW(
+        path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (raw == INVALID_HANDLE_VALUE) {
+      throw std::runtime_error("Cannot open test weight file");
+    }
+    return std::unique_ptr<void, decltype(&CloseHandle)>(raw, CloseHandle);
+  };
+  const auto has_open_handles = [](const std::filesystem::path& path) {
+    const HANDLE probe = CreateFileW(
+        path.c_str(), DELETE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (probe == INVALID_HANDLE_VALUE) {
+      return GetLastError() == ERROR_SHARING_VIOLATION;
+    }
+    CloseHandle(probe);
+    return false;
+  };
+#else
+  struct FileIdentity {
+    dev_t dev{};
+    ino_t ino{};
+  };
+  const auto get_identity = [](const std::filesystem::path& path) {
+    struct stat st{};
+    if (stat(path.c_str(), &st) != 0) {
+      throw std::runtime_error("Cannot stat test weight file");
+    }
+    return FileIdentity{st.st_dev, st.st_ino};
+  };
+  const auto id_a = get_identity(path_a);
+  const auto id_provisional = get_identity(path_provisional);
+  const auto id_b = get_identity(path_b);
+  const auto count_open_fds = [](const FileIdentity& target) {
+    int count = 0;
+    for (int fd = 0; fd < 1024; ++fd) {
+      struct stat st{};
+      if (fstat(fd, &st) == 0 && st.st_dev == target.dev && st.st_ino == target.ino) {
+        ++count;
+      }
+    }
+    return count;
+  };
+#endif
+
+  const char* weight_name = "weights.bin";
+  Ort::SessionOptions options;
+  {
+#ifdef _WIN32
+    auto file_a = open_unshared_delete_file(path_a);
+    const OrtFileHandle handle_a = file_a.get();
+#else
+    auto file_a = OpenReadOnlyInitializer(path_a);
+    const OrtFileHandle handle_a = NativeFileHandle(file_a.get());
+#endif
+    Ort::ThrowOnError(api_->SessionOptionsSetExternalInitializerFileHandles(options, &weight_name, &handle_a, 1));
+  }
+#ifdef _WIN32
+  EXPECT_TRUE(has_open_handles(path_a));
+#else
+  EXPECT_EQ(count_open_fds(id_a), 1);
+#endif
+
+  auto clone_a = options.Clone();
+#ifdef _WIN32
+  EXPECT_TRUE(has_open_handles(path_a));
+#else
+  EXPECT_EQ(count_open_fds(id_a), 1);
+#endif
+
+  // Attempt a 2-entry registration where entry 0 duplicates a valid handle and entry 1 fails.
+  {
+#ifdef _WIN32
+    auto file_provisional = open_unshared_delete_file(path_provisional);
+    const OrtFileHandle handle_provisional = file_provisional.get();
+#else
+    auto file_provisional = OpenReadOnlyInitializer(path_provisional);
+    const OrtFileHandle handle_provisional = NativeFileHandle(file_provisional.get());
+#endif
+    const char* batch_names[]{weight_name, "second.bin"};
+    const OrtFileHandle batch_handles[]{handle_provisional, kInvalidFileHandle};
+    Ort::Status batch_status{
+        api_->SessionOptionsSetExternalInitializerFileHandles(options, batch_names, batch_handles, 2)};
+    EXPECT_FALSE(batch_status.IsOK());
+  }
+  // Provisional duplicate from entry 0 must be deterministically released upon batch failure.
+#ifdef _WIN32
+  EXPECT_FALSE(has_open_handles(path_provisional));
+  EXPECT_TRUE(has_open_handles(path_a));
+#else
+  EXPECT_EQ(count_open_fds(id_provisional), 0);
+  EXPECT_EQ(count_open_fds(id_a), 1);
+#endif
+
+  const auto serialized = MakeExternalInitializerModel(1, 0).SerializeAsString();
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "rollback-and-replace-file-sources"};
+  const auto run_single_weight = [&](const Ort::SessionOptions& session_options) {
+    Ort::Session session{env, serialized.data(), serialized.size(), session_options};
+    const char* outputs[]{"Y"};
+    auto result = session.Run(Ort::RunOptions{}, nullptr, nullptr, 0, outputs, 1);
+    return result.at(0).GetTensorData<float>()[0];
+  };
+  EXPECT_FLOAT_EQ(run_single_weight(options), 10.0f);
+  EXPECT_FLOAT_EQ(run_single_weight(clone_a), 10.0f);
+
+  // Replace options with distinct nonempty registry B while clone_a still retains registry A.
+  {
+#ifdef _WIN32
+    auto file_b = open_unshared_delete_file(path_b);
+    const OrtFileHandle handle_b = file_b.get();
+#else
+    auto file_b = OpenReadOnlyInitializer(path_b);
+    const OrtFileHandle handle_b = NativeFileHandle(file_b.get());
+#endif
+    Ort::ThrowOnError(api_->SessionOptionsSetExternalInitializerFileHandles(options, &weight_name, &handle_b, 1));
+  }
+#ifdef _WIN32
+  EXPECT_TRUE(has_open_handles(path_a));
+  EXPECT_TRUE(has_open_handles(path_b));
+#else
+  EXPECT_EQ(count_open_fds(id_a), 1);
+  EXPECT_EQ(count_open_fds(id_b), 1);
+#endif
+
+  EXPECT_FLOAT_EQ(run_single_weight(options), 30.0f);
+  EXPECT_FLOAT_EQ(run_single_weight(clone_a), 10.0f);
+
+  // Releasing clone_a must deterministically release registry A's handle while B remains active.
+  clone_a = Ort::SessionOptions{nullptr};
+#ifdef _WIN32
+  EXPECT_FALSE(has_open_handles(path_a));
+  EXPECT_TRUE(has_open_handles(path_b));
+#else
+  EXPECT_EQ(count_open_fds(id_a), 0);
+  EXPECT_EQ(count_open_fds(id_b), 1);
+#endif
+
+  // Releasing options must deterministically release registry B's handle.
+  options = Ort::SessionOptions{nullptr};
+#ifdef _WIN32
+  EXPECT_FALSE(has_open_handles(path_b));
+#else
+  EXPECT_EQ(count_open_fds(id_b), 0);
+#endif
+}
+
+TEST_F(FileSourcesSessionOptionsTest, FileSourcesRejectExternalDataInGraphListAttributes) {
+  ScopedInitializerDirectory directory;
+  const auto path = directory.path / "weights.bin";
+  const float value = 1.0f;
+  {
+    std::ofstream output(path, std::ios::binary);
+    output.exceptions(std::ios::badbit | std::ios::failbit);
+    output.write(reinterpret_cast<const char*>(&value), sizeof(value));
+  }
+
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "graph-list-file-sources"};
+  for (bool use_registered_handle : {false, true}) {
+    for (bool nested_graph_descendant : {false, true}) {
+      SCOPED_TRACE(::testing::Message()
+                   << "registered=" << use_registered_handle
+                   << ", nested=" << nested_graph_descendant);
+      auto model = MakeFileSourceTestModel();
+      auto* attr = model.mutable_graph()->mutable_node(0)->add_attribute();
+      attr->set_name("unexpected_graphs");
+      attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPHS);
+      const std::string ext_location = use_registered_handle ? "registered_only.bin" : "testdata/Pads.bin";
+      if (!nested_graph_descendant) {
+        auto subgraph = MakeExternalInitializerModel(1, 0);
+        subgraph.mutable_graph()->mutable_initializer(0)->mutable_external_data(0)->set_value(ext_location);
+        attr->add_graphs()->CopyFrom(subgraph.graph());
+      } else {
+        auto nested = MakeNestedFileSourceModel(1, 1, ext_location);
+        attr->add_graphs()->CopyFrom(nested.graph());
+      }
+
+      Ort::SessionOptions options;
+      if (use_registered_handle) {
+        auto file = OpenReadOnlyInitializer(path);
+        const auto handle = NativeFileHandle(file.get());
+        const char* registered_name = "registered_only.bin";
+        Ort::ThrowOnError(
+            api_->SessionOptionsSetExternalInitializerFileHandles(options, &registered_name, &handle, 1));
+      } else {
+        Ort::ThrowOnError(api_->SessionOptionsSetExternalInitializerFileHandles(options, nullptr, nullptr, 0));
+      }
+
+      const auto serialized = model.SerializeAsString();
+      try {
+        Ort::Session session{env, serialized.data(), serialized.size(), options};
+        FAIL() << "External initializers inside GRAPHS attributes must be rejected during prevalidation";
+      } catch (const Ort::Exception& error) {
+        EXPECT_NE(std::string{error.what()}.find(
+                      "File-source loading does not support external data in graph-list attributes."),
+                  std::string::npos)
+            << error.what();
+      }
+    }
+  }
+}
+
+TEST_F(FileSourcesSessionOptionsTest, FileSourcesRejectExternalSubgraphInitializersWithEmbeddedData) {
+  ScopedInitializerDirectory directory;
+  const auto path = directory.path / "weights.bin";
+  const std::vector<float> values(64, 2.5f);
+  {
+    std::ofstream output(path, std::ios::binary);
+    output.exceptions(std::ios::badbit | std::ios::failbit);
+    output.write(reinterpret_cast<const char*>(values.data()),
+                 static_cast<std::streamsize>(values.size() * sizeof(float)));
+  }
+
+  Ort::SessionOptions options;
+  {
+    auto file = OpenReadOnlyInitializer(path);
+    const auto handle = NativeFileHandle(file.get());
+    const char* registered_name = "weights.bin";
+    Ort::ThrowOnError(api_->SessionOptionsSetExternalInitializerFileHandles(options, &registered_name, &handle, 1));
+  }
+
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "embedded-conflict-file-sources"};
+  // Test both <= 127 bytes (4 floats = 16 bytes, inline threshold) and > 127 bytes (64 floats = 256 bytes, mapped).
+  for (int64_t length : {int64_t{4}, int64_t{64}}) {
+    for (bool use_loop : {false, true}) {
+      const auto make_base_model = [&]() {
+        return use_loop ? MakeFileSourceLoopModel(length, "weights.bin")
+                        : MakeNestedFileSourceModel(length, 1, "weights.bin");
+      };
+      const auto get_subgraph_initializer = [&](ONNX_NAMESPACE::ModelProto& model) -> ONNX_NAMESPACE::TensorProto* {
+        auto* node = model.mutable_graph()->mutable_node(0);
+        return node->mutable_attribute(0)->mutable_g()->mutable_initializer(0);
+      };
+
+      // 1. Explicitly present but empty raw_data is valid in ONNX and must still succeed.
+      {
+        auto valid_model = make_base_model();
+        get_subgraph_initializer(valid_model)->set_raw_data("");
+        const auto serialized = valid_model.SerializeAsString();
+        EXPECT_NO_THROW(Ort::Session(env, serialized.data(), serialized.size(), options));
+      }
+
+      // 2. Nonempty raw_data on an EXTERNAL initializer must be rejected before replacement.
+      {
+        auto raw_conflict_model = make_base_model();
+        get_subgraph_initializer(raw_conflict_model)
+            ->set_raw_data(std::string(static_cast<size_t>(length) * sizeof(float), '\0'));
+        const auto serialized = raw_conflict_model.SerializeAsString();
+        try {
+          Ort::Session session{env, serialized.data(), serialized.size(), options};
+          FAIL() << "Conflicting raw_data on EXTERNAL subgraph initializer must be rejected";
+        } catch (const Ort::Exception& error) {
+          EXPECT_NE(std::string{error.what()}.find("is stored externally and should not have data field.raw_data"),
+                    std::string::npos)
+              << error.what();
+        }
+      }
+
+      // 3. Nonempty typed embedded data fields on an EXTERNAL initializer must be rejected before replacement.
+      for (const char* field_name :
+           {"float_data", "int32_data", "string_data", "int64_data", "double_data", "uint64_data"}) {
+        SCOPED_TRACE(field_name);
+        auto typed_conflict_model = make_base_model();
+        auto* tensor = get_subgraph_initializer(typed_conflict_model);
+        if (std::string_view{field_name} == "float_data") {
+          tensor->add_float_data(99.0f);
+        } else if (std::string_view{field_name} == "int32_data") {
+          tensor->add_int32_data(99);
+        } else if (std::string_view{field_name} == "string_data") {
+          tensor->add_string_data("conflict");
+        } else if (std::string_view{field_name} == "int64_data") {
+          tensor->add_int64_data(99);
+        } else if (std::string_view{field_name} == "double_data") {
+          tensor->add_double_data(99.0);
+        } else {
+          tensor->add_uint64_data(99);
+        }
+        const auto serialized = typed_conflict_model.SerializeAsString();
+        try {
+          Ort::Session session{env, serialized.data(), serialized.size(), options};
+          FAIL() << "Conflicting " << field_name << " on EXTERNAL subgraph initializer must be rejected";
+        } catch (const Ort::Exception& error) {
+          EXPECT_NE(std::string{error.what()}.find(
+                        std::string{"is stored externally and should not have data field."} + field_name),
+                    std::string::npos)
+              << error.what();
+        }
+      }
+    }
+  }
 }
 #endif
 
