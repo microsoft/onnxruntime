@@ -1716,8 +1716,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "had seqlens_k[b] + 1 - query_seqlens[b] tokens before it. Requires 1 <= query_seqlens[b] <= "
                "min(sequence_length, seqlens_k[b] + 1). When omitted, query_seqlens[b] = min(sequence_length, "
                "seqlens_k[b] + 1), which is the behavior without this input. See the Right-padded query chunks "
-               "section of the operator description for the full contract. Currently honored by the CUDA "
-               "execution provider; other EPs must reject the node when this input is set.",
+               "section of the operator description for the full contract. Currently honored by the CPU and CUDA "
+               "execution providers; other EPs must reject the node when this input is set.",
                "M",
                OpSchema::Optional)
         .Output(0,
