@@ -67,6 +67,39 @@ If you want to do the command lines:
 python tools/python/gen_opkernel_doc.py --output_path docs/OperatorKernels.md
 ```
 
+The canonical Windows GPU Doc Gen CI build includes CPU, CUDA, DirectML, and the native WebGPU plugin.
+It builds the runtime and WebGPU DLL from the same checkout; a released WebGPU package is not a substitute
+for documenting the current source registrations. For local regeneration, build with
+`--use_cuda --use_dml --use_webgpu shared_lib --build_wheel --use_full_protobuf`, then use the matching
+built Python runtime. Full Protobuf preserves the schema-documentation configuration normally selected
+by `--gen_doc` during a build:
+
+```powershell
+python tools\ci_build\build.py --build_dir build --config RelWithDebInfo --gen_doc validate --use_webgpu shared_lib
+```
+
+Use `--gen_doc` without `validate` to regenerate without rejecting differences from the checked-in files.
+To query the plugin directly, including on a Windows VM without a physical GPU:
+
+```powershell
+$env:ORT_WEBGPU_EP_ALLOW_SOFTWARE_ADAPTER = '1'
+python tools\python\gen_opkernel_doc.py `
+  --providers CPU CUDA DML WebGPU `
+  --plugin-ep "WebGpuExecutionProvider:C:\build\RelWithDebInfo\RelWithDebInfo\onnxruntime_providers_webgpu.dll" `
+  --output_path docs\OperatorKernels.md
+```
+
+The software-adapter opt-in permits kernel-registry queries; it does not demonstrate hardware acceleration
+or validate every shape, attribute, or optional input. The plugin query uses default session options.
+Explicitly requested plugin libraries must load successfully and return a nonempty registry.
+
+After successful generation, CI uploads `updated-docs` on both matching and stale-document runs.
+It contains `OperatorKernels.md`, `ContribOperators.md`, and `generation-metadata.json` with the checkout SHA,
+runtime/plugin versions, options, and hashes. Stale documentation still fails validation: download the
+artifact and commit the updated Markdown files. Metadata is an artifact, not a source file to commit.
+Local `build.py --gen_doc` runs save the same artifact under the configuration's binary directory
+in `generated-docs/`.
+
 1. Update [js/web/docs/webgl-operators.md](/js/web/docs/webgl-operators.md) with the script: [generate-webgl-operator-md.ts](/js/web/script/generate-webgl-operator-md.ts)
 
 ```bash

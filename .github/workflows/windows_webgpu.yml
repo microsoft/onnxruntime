@@ -161,7 +161,6 @@ jobs:
         run: python tools\ValidateNativeDelegateAttributes.py
         shell: cmd
         working-directory: ${{ github.workspace }}\csharp
-        continue-on-error: true
 
   webgpu_test_x64_RelWithDebInfo:
     name: webgpu_test_x64_RelWithDebInfo (${{ matrix.vcpkg_option }})

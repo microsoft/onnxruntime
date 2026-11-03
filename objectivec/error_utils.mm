@@ -12,10 +12,14 @@ void ORTSaveCodeAndDescriptionToError(int code, const char* descriptionCstr, NSE
 
   NSString* description = [NSString stringWithCString:descriptionCstr
                                              encoding:NSUTF8StringEncoding];
+  if (description == nil) {
+    NSLog(@"ONNX Runtime warning: error description is not valid UTF-8 and was omitted (error code: %d).", code);
+  }
 
+  NSDictionary* userInfo = description != nil ? @{NSLocalizedDescriptionKey : description} : nil;
   *error = [NSError errorWithDomain:kOrtErrorDomain
                                code:code
-                           userInfo:@{NSLocalizedDescriptionKey : description}];
+                           userInfo:userInfo];
 }
 
 void ORTSaveCodeAndDescriptionToError(int code, NSString* description, NSError** error) {
