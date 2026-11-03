@@ -12,7 +12,10 @@ struct SessionOptions;
 }
 
 // parse a Javascript session options object and fill the native SessionOptions object.
+// 'requiresDeviceSerialization' is set if a requested execution provider has device state shared across sessions,
+// so that all work on the session has to hold the DeviceLock.
 void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessionOptions,
+                         bool& requiresDeviceSerialization,
                          std::vector<std::vector<char>>* externalDataBuffers = nullptr);
 
 // parse a Javascript session options object and prepare the preferred output locations.

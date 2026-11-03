@@ -13,8 +13,7 @@ std::atomic<int> ref_count{0};
 }  // namespace
 
 OrtSingletonData::OrtObjects::OrtObjects(int log_level)
-    : env{OrtLoggingLevel(log_level), "onnxruntime-node"},
-      default_run_options{} {
+    : env{OrtLoggingLevel(log_level), "onnxruntime-node"} {
 }
 
 void OrtSingletonData::InitOrtObjects(napi_env env, int log_level,

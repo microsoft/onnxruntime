@@ -11,9 +11,44 @@
 #include <vector>
 
 #include "ep_context_data_read_helper.h"
+#include "ort_singleton_data.h"
 
 // LoadModelWorker performs the native session construction off the JavaScript thread.
 class LoadModelWorker;
+
+/**
+ * The native session and everything bound to its lifetime.
+ *
+ * It is shared by the wrapper, by every in-flight run and by every gpu-buffer Tensor the session produced, and is
+ * destroyed when the last of them lets go: dispose() only drops the wrapper's reference. Nothing here changes once
+ * the session is published, so runs read it from worker threads without synchronization.
+ */
+struct SessionCore {
+  // Creates an empty core, deleted under the DeviceLock if `requiresDeviceSerialization`.
+  static std::shared_ptr<SessionCore> Create(bool requiresDeviceSerialization,
+                                             std::shared_ptr<EpContextDataReadState> epContextDataReadState);
+
+  // Keeps ORT initialized for as long as the session can be released, which may be after the environment cleanup
+  // hook has run. Declared first so that it is released last.
+  OrtSingletonData::Reference ort;
+  // The session may call back into this state, so it must outlive the session.
+  std::shared_ptr<EpContextDataReadState> epContextDataReadState;
+  bool requiresDeviceSerialization{false};
+
+  Ort::Session session{nullptr};
+  // The session's own CPU allocator, used for input copies. Values allocated from it are released before the core.
+  Ort::Allocator cpuAllocator{nullptr};
+
+  std::vector<std::string> inputNames;
+  std::vector<Ort::TypeInfo> inputTypes;
+  std::vector<std::string> outputNames;
+  std::vector<Ort::TypeInfo> outputTypes;
+  // Empty unless the session binds its outputs through IoBinding.
+  std::vector<int> preferredOutputLocations;
+
+  // Reads names, types and the CPU allocator from `session`.
+  void ReadSessionMetadata();
+};
 
 // class InferenceSessionWrap is a N-API object wrapper for native InferenceSession.
 class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
@@ -57,7 +92,8 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
   Napi::Value LoadModel(const Napi::CallbackInfo& info);
 
   Napi::Value LoadModelSynchronously(const Napi::CallbackInfo& info, bool isModelPath,
-                                     const Napi::Object& options, Ort::SessionOptions&& sessionOptions);
+                                     const Napi::Object& options, Ort::SessionOptions&& sessionOptions,
+                                     bool requiresDeviceSerialization);
 
   // following functions have to be called after model is loaded.
 
@@ -70,16 +106,17 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
   Napi::Value GetMetadata(const Napi::CallbackInfo& info);
 
   /**
-   * [sync] run the model.
+   * [async] run the model.
    * @param arg0 input object: all keys must present, value is object
    * @param arg1 output object: at least one key must present, value can be null.
-   * @returns an object that every output specified will present and value must be object
-   * @throw error if status code != 0
+   * @param arg2 run options object (optional)
+   * @returns a Promise resolving to an object that contains every specified output
+   * @throw error if the session is not usable or an argument is invalid
    */
   Napi::Value Run(const Napi::CallbackInfo& info);
 
   /**
-   * [sync] dispose the session.
+   * [sync] dispose the session. Runs still in flight complete normally; the native session is released after them.
    * @param nothing
    * @returns nothing
    * @throw nothing
@@ -94,11 +131,9 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
    */
   Napi::Value EndProfiling(const Napi::CallbackInfo& info);
 
-  // Take over the objects created by LoadModelWorker. Runs on the JavaScript thread.
+  // Take over a loaded session. Runs on the JavaScript thread.
   // @throw Napi::Error if the preferred output locations are invalid.
-  void AdoptLoadedSession(std::unique_ptr<Ort::Session> session, std::vector<std::string> inputNames,
-                          std::vector<Ort::TypeInfo> inputTypes, std::vector<std::string> outputNames,
-                          std::vector<Ort::TypeInfo> outputTypes, const Napi::Object options);
+  void AdoptLoadedSession(std::shared_ptr<SessionCore> core, const Napi::Object options);
 
   // Reset the session state after a failed load. Runs on the JavaScript thread.
   void ResetAfterFailedLoad() noexcept;
@@ -116,15 +151,5 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
   bool initialized_;
   bool loading_;
   bool disposed_;
-  std::unique_ptr<Ort::Session> session_;
-
-  // input/output metadata
-  std::vector<std::string> inputNames_;
-  std::vector<Ort::TypeInfo> inputTypes_;
-  std::vector<std::string> outputNames_;
-  std::vector<Ort::TypeInfo> outputTypes_;
-
-  // preferred output locations
-  std::vector<int> preferredOutputLocations_;
-  std::unique_ptr<Ort::IoBinding> ioBinding_;
+  std::shared_ptr<SessionCore> core_;
 };
