@@ -40,20 +40,21 @@ The actions do not select a CMake generator or enable compiler launchers themsel
 `--use_cache --cache_tool sccache` in build flags. Windows launcher support in `build.py` currently
 requires Ninja; validate the selected compiler/debug-symbol configuration when adopting it.
 
-## macOS archived-storage budget
+## Shared archived-storage budget
 
-`macos-sccache-maintenance.yml` enforces a **30 GB decimal (30,000,000,000 bytes) aggregate**
-budget for GitHub's archived macOS sccache snapshots, separate from the unchanged per-run `10G`
-local cache. It runs after main's `MacOS CI Pipeline` completes (even if tests fail after cache
-publication), with an hourly scheduled fallback. GitHub may delay scheduled runs.
+`sccache-maintenance.yml` enforces one **30 GB decimal (30,000,000,000 bytes) aggregate**
+budget for GitHub's archived sccache snapshots across all operating systems, architectures,
+and build variants using these shared actions, separate from the unchanged per-run `10G`
+local cache. It runs hourly, independently of any particular build workflow, so new callers
+participate automatically without adding workflow names. GitHub may delay scheduled runs.
 
-The budget includes well-formed `sccache-v1-macOS-{ARM64,X64}-<identity>-<commit>` snapshots
-on `refs/heads/main` and legacy `macos-sccache-v1-`/`macos-sccache-v2-` snapshots on the exact
-pilot ref `refs/heads/eserscor-dev/erscor/2026/10/30-mac-compiler-cachi`. Other refs/namespaces,
-vcpkg, Linux and Windows caches are untouched. New key formats require updating the scope matcher.
+The budget includes well-formed `sccache-v1-<OS>-<arch>-<identity>-<commit>` snapshots on
+`refs/heads/main`. OS and architecture identifiers are not restricted to the current runners.
+Other refs/namespaces, vcpkg, CodeQL, and legacy `macos-sccache-v1-`/`v2-` pilot caches are
+untouched and are not counted in this budget. New key formats require updating the scope matcher.
 
-Cleanup inventories all pages in both namespaces, then removes pilot snapshots first and older
-main generations oldest-first, preferentially retaining the newest snapshot per compatibility
+Cleanup inventories all pages in the shared namespace, then removes older main generations
+oldest-first, preferentially retaining the newest snapshot per compatibility
 prefix. If those baselines alone exceed the budget, it warns and removes the oldest baselines
 too (including a single oversized snapshot), rather than silently exceeding the limit.
 Exact immutable cache IDs are deleted, and API errors fail the maintenance job.
@@ -68,8 +69,8 @@ read-only permissions; cleanup never checks out PR code or consumes triggering-r
 Manual dispatch defaults to dry run. For a read-only local preview with an authenticated `gh`:
 
 ```bash
-GITHUB_REPOSITORY=microsoft/onnxruntime python .github/scripts/prune_macos_sccache.py
-python -m unittest discover -s .github/scripts -p test_prune_macos_sccache.py -v
+GITHUB_REPOSITORY=microsoft/onnxruntime python .github/scripts/prune_sccache.py
+python -m unittest discover -s .github/scripts -p test_prune_sccache.py -v
 ```
 
 Omitting `--apply` never deletes caches. No live cleanup is needed to run the regression tests.

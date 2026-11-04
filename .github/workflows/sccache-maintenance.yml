@@ -1,10 +1,6 @@
-name: macOS sccache storage maintenance
+name: sccache storage maintenance
 
 on:
-  workflow_run:
-    workflows: ["MacOS CI Pipeline"]
-    types: [completed]
-    branches: [main]
   schedule:
     - cron: '37 * * * *'
   workflow_dispatch:
@@ -15,8 +11,8 @@ on:
         default: true
   pull_request:
     paths:
-      - '.github/scripts/*prune_macos_sccache.py'
-      - '.github/workflows/macos-sccache-maintenance.yml'
+      - '.github/scripts/*prune_sccache.py'
+      - '.github/workflows/sccache-maintenance.yml'
 
 permissions:
   contents: read
@@ -29,34 +25,29 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # Never execute the triggering workflow's checkout in a privileged workflow_run.
           ref: ${{ github.event_name == 'pull_request' && github.ref || 'main' }}
-      - run: python -m unittest discover -s .github/scripts -p test_prune_macos_sccache.py -v
+      - run: python -m unittest discover -s .github/scripts -p test_prune_sccache.py -v
 
   cleanup:
     needs: test
     if: >-
       github.repository == 'microsoft/onnxruntime' &&
       github.ref == 'refs/heads/main' &&
-      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
-       (github.event_name == 'workflow_run' &&
-        github.event.workflow_run.event == 'push' &&
-        github.event.workflow_run.head_branch == 'main' &&
-        github.event.workflow_run.head_repository.full_name == github.repository))
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
       actions: write
     concurrency:
-      group: macos-sccache-storage-maintenance
+      group: sccache-storage-maintenance
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           persist-credentials: false
-      - name: Enforce archived macOS compiler-cache budget
+      - name: Enforce shared archived compiler-cache budget
         env:
           GH_TOKEN: ${{ github.token }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
@@ -67,4 +58,4 @@ jobs:
           if [[ "$DRY_RUN" != "true" ]]; then
             args+=(--apply)
           fi
-          python .github/scripts/prune_macos_sccache.py "${args[@]}"
+          python .github/scripts/prune_sccache.py "${args[@]}"

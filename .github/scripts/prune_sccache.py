@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-"""Enforce the archived macOS sccache budget; default to a read-only preview."""
+"""Enforce the shared archived sccache budget; default to a read-only preview."""
 
 import argparse
 import json
@@ -15,9 +15,8 @@ from typing import TypedDict
 
 BUDGET_BYTES = 30_000_000_000
 MAIN_REF = "refs/heads/main"
-PILOT_REF = "refs/heads/eserscor-dev/erscor/2026/10/30-mac-compiler-cachi"
-MAIN_KEY = re.compile(r"(sccache-v1-macOS-(?:ARM64|X64)-[a-f0-9]{64}-)[a-f0-9]{40}")
-PILOT_KEY = re.compile(r"macos-sccache-v[12]-.+-[a-f0-9]{64}-[a-f0-9]{40}")
+KEY_PREFIX = "sccache-v1-"
+MAIN_KEY = re.compile(r"(sccache-v1-[A-Za-z0-9_]+-[A-Za-z0-9_]+-[a-f0-9]{64}-)[a-f0-9]{40}")
 
 
 class Cache(TypedDict):
@@ -45,7 +44,7 @@ def compatibility(cache: Cache) -> str | None:
 
 
 def in_scope(cache: Cache) -> bool:
-    return bool(compatibility(cache) or (cache["ref"] == PILOT_REF and PILOT_KEY.fullmatch(cache["key"])))
+    return compatibility(cache) is not None
 
 
 def creation_time(cache: Cache) -> datetime:
@@ -77,13 +76,8 @@ def select_evictions(inventory: Sequence[Cache], budget: int = BUDGET_BYTES) -> 
             prefixes.add(prefix)
             baselines.add(cache["id"])
 
-    def priority(cache: Cache) -> int:
-        # Retire pilot snapshots first, then old main generations, and only then main baselines.
-        if cache["id"] in baselines:
-            return 2
-        return 1 if compatibility(cache) else 0
-
-    candidates = sorted(caches, key=lambda cache: (priority(cache), creation_time(cache), cache["id"]))
+    # Retire older generations before evicting any compatibility prefix's newest baseline.
+    candidates = sorted(caches, key=lambda cache: (cache["id"] in baselines, creation_time(cache), cache["id"]))
     total_bytes = sum(cache["size_in_bytes"] for cache in caches)
     remaining_bytes = total_bytes
     deletions = []
@@ -103,15 +97,16 @@ def gh_api(args: list[str]) -> str:
 
 def list_caches(repository: str, api: Callable[[list[str]], str]) -> list[Cache]:
     caches = {}
-    for key in ["sccache-v1-macOS-", "macos-sccache-v"]:
-        pages = json.loads(api(["--paginate", "--slurp", f"repos/{repository}/actions/caches?per_page=100&key={key}"]))
-        if not isinstance(pages, list) or not pages:
-            raise ValueError("Invalid cache pagination response")
-        for page in pages:
-            if not isinstance(page, dict) or not isinstance(page.get("actions_caches"), list):
-                raise ValueError("Missing actions_caches in API response")
-            for cache in page["actions_caches"]:
-                caches[cache["id"]] = cache
+    pages = json.loads(
+        api(["--paginate", "--slurp", f"repos/{repository}/actions/caches?per_page=100&key={KEY_PREFIX}"])
+    )
+    if not isinstance(pages, list) or not pages:
+        raise ValueError("Invalid cache pagination response")
+    for page in pages:
+        if not isinstance(page, dict) or not isinstance(page.get("actions_caches"), list):
+            raise ValueError("Missing actions_caches in API response")
+        for cache in page["actions_caches"]:
+            caches[cache["id"]] = cache
     return list(caches.values())
 
 
@@ -146,7 +141,7 @@ def run(
         log(f"Observed storage after cleanup: {observed.total_bytes} bytes")
         if observed.total_bytes > BUDGET_BYTES:
             raise RuntimeError(
-                "macOS sccache remains over budget (possibly concurrent uploads); next maintenance run will retry"
+                "sccache remains over budget (possibly concurrent uploads); next maintenance run will retry"
             )
     return plan
 
