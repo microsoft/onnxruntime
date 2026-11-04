@@ -6,7 +6,10 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <cinttypes>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -45,6 +48,103 @@ namespace onnxruntime::test {
 namespace {
 
 constexpr int64_t kChannels = 10240;
+
+template <typename T>
+constexpr const char* ResourceDiagDtype() {
+  return std::is_same_v<T, float> ? "float32" : std::is_same_v<T, MLFloat16> ? "float16"
+                                                                             : "bfloat16";
+}
+
+// Diagnostic draft only: cudaMemGetInfo may initialize CUDA and perturb timing.
+// Declare each guard immediately before its session, so it outlives that session
+// without changing the overlap or destruction order of source/fused/direct.
+// Shape metadata of -1 denotes a dynamic or unspecified extent.
+class SessionResourceDiag {
+ public:
+  SessionResourceDiag(const char* mode, const char* dtype = "unspecified",
+                      int64_t batch = -1, int64_t length = -1, int64_t channels = -1,
+                      int64_t kernel = -1, int64_t dilation = -1, int64_t rank = -1) noexcept
+      : mode_(mode),
+        dtype_(dtype),
+        batch_(batch),
+        length_(length),
+        channels_(channels),
+        kernel_(kernel),
+        dilation_(dilation),
+        rank_(rank),
+        id_(++sequence_) {
+    Log("before_session_construction");
+  }
+
+  ~SessionResourceDiag() noexcept { Log("after_session_destruction_scope_exit"); }
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionResourceDiag);
+
+  common::Status Initialize(InferenceSession& session) const {
+    Log("before_initialize");
+    auto status = session.Initialize();
+    Log("after_initialize", status.IsOK() ? "success" : "error",
+        static_cast<int>(status.Code()));
+    return status;
+  }
+
+  void Log(const char* phase, const char* initialize_status = "not_returned",
+           int initialize_code = -1) const noexcept {
+    size_t free_bytes = 0, total_bytes = 0;
+    const auto gpu_status = cudaMemGetInfo(&free_bytes, &total_bytes);
+    char gpu_free[32] = "unavailable", gpu_total[32] = "unavailable";
+    if (gpu_status == cudaSuccess) {
+      std::snprintf(gpu_free, sizeof(gpu_free), "%zu", free_bytes);
+      std::snprintf(gpu_total, sizeof(gpu_total), "%zu", total_bytes);
+    }
+
+    char values[4][32] = {"unavailable", "unavailable", "unavailable", "unavailable"};
+    const char* host_status = "unavailable_non_linux";
+#if defined(__linux__)
+    if (FILE* file = std::fopen("/proc/self/status", "r")) {
+      const char* keys[] = {"VmRSS:", "VmSize:", "VmLck:", "Threads:"};
+      char line[256];
+      unsigned found = 0;
+      while (std::fgets(line, sizeof(line), file)) {
+        for (size_t i = 0; i < std::size(keys); ++i) {
+          if (std::strncmp(line, keys[i], std::strlen(keys[i])) != 0) continue;
+          unsigned long long value;
+          if (std::sscanf(line + std::strlen(keys[i]), "%llu", &value) == 1) {
+            std::snprintf(values[i], sizeof(values[i]), "%llu", value);
+            found |= 1u << i;
+          }
+        }
+      }
+      host_status = std::ferror(file) ? "error_read" : found == 15 ? "ok"
+                                                                   : "unavailable_partial";
+      std::fclose(file);
+    } else {
+      host_status = "error_open";
+    }
+#endif
+    const auto* test = ::testing::UnitTest::GetInstance()->current_test_info();
+    std::fprintf(stderr,
+                 "CUDA_RESOURCE_DIAG test=%s.%s mode=%s dtype=%s B=%" PRId64 " S=%" PRId64
+                 " C=%" PRId64 " K=%" PRId64 " D=%" PRId64 " rank=%" PRId64
+                 " session_id=%" PRIu64
+                 " phase=%s initialize_status=%s initialize_code=%d"
+                 " gpu_status=%s gpu_error=%d gpu_free_bytes=%s gpu_total_bytes=%s"
+                 " host_status=%s VmRSS_kB=%s VmSize_kB=%s VmLck_kB=%s Threads=%s\n",
+                 test ? test->test_suite_name() : "unavailable", test ? test->name() : "unavailable",
+                 mode_, dtype_, batch_, length_, channels_, kernel_, dilation_, rank_, id_, phase,
+                 initialize_status, initialize_code, gpu_status == cudaSuccess ? "ok" : "error",
+                 static_cast<int>(gpu_status), gpu_free, gpu_total, host_status,
+                 values[0], values[1], values[2], values[3]);
+    std::fflush(stderr);
+  }
+
+ private:
+  inline static std::atomic<uint64_t> sequence_{0};
+  const char* mode_;
+  const char* dtype_;
+  int64_t batch_, length_, channels_, kernel_, dilation_, rank_;
+  uint64_t id_;
+};
 
 std::unique_ptr<IExecutionProvider> ProductionMathCudaExecutionProvider() {
   OrtCUDAProviderOptionsV2 options{};
@@ -234,8 +334,11 @@ TEST(CudaRuntimeFusionTest, AnonymousSequenceZeroAdmissionGate) {
   ASSERT_EQ(source_model.opset_import_size(), 1);
   SessionOptions options;
   options.graph_optimization_level = TransformerLevel::Default;
+  SessionResourceDiag source_diag("source", "bfloat16", 1, 0, kChannels, 4, 1);
   InferenceSessionWrapper source(options, GetEnvironment());
+  source_diag.Log("before_register_ep");
   ASSERT_STATUS_OK(source.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+  source_diag.Log("after_register_ep");
   const auto source_bytes = source_model.SerializeAsString();
   ASSERT_STATUS_OK(source.Load(source_bytes.data(), static_cast<int>(source_bytes.size())));
   EXPECT_EQ(source.GetGraph().NumberOfNodes(), 11);
@@ -253,7 +356,7 @@ TEST(CudaRuntimeFusionTest, AnonymousSequenceZeroAdmissionGate) {
     }
   }
   ASSERT_TRUE(swish_seen);
-  ASSERT_STATUS_OK(source.Initialize());
+  ASSERT_STATUS_OK(source_diag.Initialize(source));
   bool cuda_conv = false;
   for (const auto& node : source.GetGraph().Nodes()) {
     if (node.OpType() == "Conv") {
@@ -272,11 +375,14 @@ TEST(CudaRuntimeFusionTest, AnonymousSequenceZeroAdmissionGate) {
 
   // Use the identical target recipe with CPU fallback disabled: this failure must be CUDA's.
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+  SessionResourceDiag target_diag("direct", "bfloat16", 1, 0, kChannels, 4, 1);
   InferenceSessionWrapper target(options, GetEnvironment());
+  target_diag.Log("before_register_ep");
   ASSERT_STATUS_OK(target.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+  target_diag.Log("after_register_ep");
   const auto target_bytes = MakeMobiusModel(true).SerializeAsString();
   ASSERT_STATUS_OK(target.Load(target_bytes.data(), static_cast<int>(target_bytes.size())));
-  ASSERT_STATUS_OK(target.Initialize());
+  ASSERT_STATUS_OK(target_diag.Initialize(target));
   ASSERT_EQ(target.GetGraph().NumberOfNodes(), 1);
   EXPECT_EQ(target.GetGraph().Nodes().begin()->GetExecutionProviderType(), kCudaExecutionProvider);
   outputs.clear();
@@ -382,24 +488,31 @@ void RunUnitSwishNumerics(int rank, std::optional<TransformerLevel> level) {
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(cuda_runtime_fusion::kCausalConvConfig, "0"));
   options.enable_profiling = true;
   options.profile_file_prefix = ORT_TSTR("unit_swish_source");
+  SessionResourceDiag source_diag("source", ResourceDiagDtype<T>(), -1, -1, -1, -1, -1, rank);
   InferenceSessionWrapper source(options, GetEnvironment());
   ProfileCleanup source_cleanup{source, {}};
   options.profile_file_prefix = ORT_TSTR("unit_swish_fused");
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(cuda_runtime_fusion::kUnitSwishConfig, "1"));
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(cuda_runtime_fusion::kCausalConvConfig, "0"));
+  SessionResourceDiag fused_diag("fused", ResourceDiagDtype<T>(), -1, -1, -1, -1, -1, rank);
   InferenceSessionWrapper fused(options, GetEnvironment());
   ProfileCleanup fused_cleanup{fused, {}};
   options.enable_profiling = false;
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(cuda_runtime_fusion::kUnitSwishConfig, "0"));
+  SessionResourceDiag direct_diag("direct", ResourceDiagDtype<T>(), -1, -1, -1, -1, -1, rank);
   InferenceSessionWrapper direct(options, GetEnvironment());
   for (auto* session : {&source, &fused, &direct}) {
+    const auto& diag = session == &source ? source_diag : session == &fused ? fused_diag
+                                                                            : direct_diag;
     OrtCUDAProviderOptionsV2 cuda_options{};
     cuda_options.use_tf32 = true;
     cuda_options.gpu_mem_limit = size_t{2} << 30;
+    diag.Log("before_register_ep");
     ASSERT_STATUS_OK(session->RegisterExecutionProvider(CudaExecutionProviderWithOptions(&cuda_options)));
+    diag.Log("after_register_ep");
     const auto model = session == &direct ? MakeUnitSwishModel<T>(rank, true).SerializeAsString() : bytes;
     ASSERT_STATUS_OK(session->Load(model.data(), static_cast<int>(model.size())));
-    ASSERT_STATUS_OK(session->Initialize());
+    ASSERT_STATUS_OK(diag.Initialize(*session));
   }
   for (auto* session : {&fused, &direct}) {
     ASSERT_EQ(session->GetGraph().NumberOfNodes(), 1);
@@ -565,10 +678,13 @@ TEST(CudaRuntimeFusionTest, UnitSwishDisabledAndBasicAndMalformedPolicy) {
       options.graph_optimization_level = level;
       ASSERT_STATUS_OK(options.config_options.AddConfigEntry(cuda_runtime_fusion::kUnitSwishConfig, flag));
       ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+      SessionResourceDiag diag("policy", "float32", -1, -1, -1, -1, -1, 1);
       InferenceSessionWrapper session(options, GetEnvironment());
+      diag.Log("before_register_ep");
       ASSERT_STATUS_OK(session.RegisterExecutionProvider(ProductionMathCudaExecutionProvider()));
+      diag.Log("after_register_ep");
       ASSERT_STATUS_OK(session.Load(bytes.data(), static_cast<int>(bytes.size())));
-      const auto status = session.Initialize();
+      const auto status = diag.Initialize(session);
       if (std::string_view(flag) == "true") {
         EXPECT_FALSE(status.IsOK());
         EXPECT_NE(status.ErrorMessage().find("must be exactly 0 or 1"), std::string::npos);
@@ -587,11 +703,14 @@ TEST(CudaRuntimeFusionTest, UnitSwishLargerCausalOfferReservesUnaryNode) {
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(cuda_runtime_fusion::kCausalConvConfig, "1"));
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(cuda_runtime_fusion::kUnitSwishConfig, "1"));
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+  SessionResourceDiag diag("fused", "float32", 1, 17, 3, 2, 1);
   InferenceSessionWrapper session(options, GetEnvironment());
+  diag.Log("before_register_ep");
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(ProductionMathCudaExecutionProvider()));
+  diag.Log("after_register_ep");
   const auto bytes = MakeMobiusModel<float>(false, 3, 2).SerializeAsString();
   ASSERT_STATUS_OK(session.Load(bytes.data(), static_cast<int>(bytes.size())));
-  ASSERT_STATUS_OK(session.Initialize());
+  ASSERT_STATUS_OK(diag.Initialize(session));
   ASSERT_EQ(session.GetGraph().NumberOfNodes(), 1);
   EXPECT_EQ(session.GetGraph().Nodes().begin()->OpType(), "CausalConvWithState");
   std::vector<OrtValue> outputs;
@@ -606,11 +725,14 @@ TEST(CudaRuntimeFusionTest, UnitSwishBFloat16LargerCausalOfferReservesUnaryNode)
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(cuda_runtime_fusion::kCausalConvConfig, "1"));
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(cuda_runtime_fusion::kUnitSwishConfig, "1"));
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+  SessionResourceDiag diag("fused", "bfloat16", 1, 17, 3, 2, 1);
   InferenceSessionWrapper session(options, GetEnvironment());
+  diag.Log("before_register_ep");
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(ProductionMathCudaExecutionProvider()));
+  diag.Log("after_register_ep");
   const auto bytes = MakeMobiusModel<BFloat16>(false, 3, 2).SerializeAsString();
   ASSERT_STATUS_OK(session.Load(bytes.data(), static_cast<int>(bytes.size())));
-  ASSERT_STATUS_OK(session.Initialize());
+  ASSERT_STATUS_OK(diag.Initialize(session));
   ASSERT_EQ(session.GetGraph().NumberOfNodes(), 1);
   EXPECT_EQ(session.GetGraph().Nodes().begin()->OpType(), "CausalConvWithState");
   EXPECT_EQ(session.GetGraph().Nodes().begin()->GetExecutionProviderType(), kCudaExecutionProvider);
@@ -666,11 +788,14 @@ TEST(CudaRuntimeFusionTest, UnitSwishOrtLoadFileAndAutodetectedBufferCompatibili
     options.optimized_model_filepath = path.native();
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.save_model_format", "ORT"));
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+    SessionResourceDiag saver_diag(target_artifact ? "direct_save" : "source_save", "float32");
     InferenceSessionWrapper saver(options, GetEnvironment());
+    saver_diag.Log("before_register_ep");
     ASSERT_STATUS_OK(saver.RegisterExecutionProvider(ProductionMathCudaExecutionProvider()));
+    saver_diag.Log("after_register_ep");
     const auto bytes = MakeUnitSwishModel(1, target_artifact).SerializeAsString();
     ASSERT_STATUS_OK(saver.Load(bytes.data(), static_cast<int>(bytes.size())));
-    ASSERT_STATUS_OK(saver.Initialize());
+    ASSERT_STATUS_OK(saver_diag.Initialize(saver));
     NameMLValMap feeds;
     auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
     CreateMLValue<float>(allocator, {5}, {-1.0f, -0.0f, 0.0f, 1.0f, 17.0f}, &feeds["x"]);
@@ -685,14 +810,17 @@ TEST(CudaRuntimeFusionTest, UnitSwishOrtLoadFileAndAutodetectedBufferCompatibili
       SessionOptions load_options;
       ASSERT_STATUS_OK(load_options.config_options.AddConfigEntry(cuda_runtime_fusion::kUnitSwishConfig, "1"));
       ASSERT_STATUS_OK(load_options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+      SessionResourceDiag loaded_diag(target_artifact ? "direct_load" : "source_load", "float32");
       InferenceSessionWrapper loaded(load_options, GetEnvironment());
+      loaded_diag.Log("before_register_ep");
       ASSERT_STATUS_OK(loaded.RegisterExecutionProvider(ProductionMathCudaExecutionProvider()));
+      loaded_diag.Log("after_register_ep");
       if (buffer_load) {
         ASSERT_STATUS_OK(loaded.Load(ort_bytes.data(), static_cast<int>(ort_bytes.size())));
       } else {
         ASSERT_STATUS_OK(loaded.Load(path.native()));
       }
-      ASSERT_STATUS_OK(loaded.Initialize());
+      ASSERT_STATUS_OK(loaded_diag.Initialize(loaded));
       bool target = false;
       for (const auto& node : loaded.GetGraph().Nodes()) {
         ASSERT_NE(node.OpType(), "Swish");
@@ -808,14 +936,17 @@ TEST(CudaRuntimeFusionTest, NativeExtendedSharedPrefillCudaGraphReplay) {
   const auto model = MakeMobiusModel<float>(true, channels, kernel).SerializeAsString();
   SessionOptions options;
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+  SessionResourceDiag diag("direct_cuda_graph", "float32", 1, length, channels, kernel, 1);
   InferenceSessionWrapper session(options, GetEnvironment());
   OrtCUDAProviderOptionsV2 cuda_options{};
   cuda_options.enable_cuda_graph = true;
   auto ep = CudaExecutionProviderWithOptions(&cuda_options);
   auto* provider = ep.get();
+  diag.Log("before_register_ep");
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(ep)));
+  diag.Log("after_register_ep");
   ASSERT_STATUS_OK(session.Load(model.data(), static_cast<int>(model.size())));
-  ASSERT_STATUS_OK(session.Initialize());
+  ASSERT_STATUS_OK(diag.Initialize(session));
   const auto allocators = provider->CreatePreferredAllocators();
   const auto gpu = std::find_if(allocators.begin(), allocators.end(), [](const auto& allocator) {
     return allocator->Info().device.Type() == OrtDevice::GPU &&
@@ -984,10 +1115,13 @@ void PositiveNumericsAndCudaDispatch(std::optional<TransformerLevel> level, int6
   const auto bytes = model.SerializeAsString();
   SessionOptions baseline_options;
   if (level) baseline_options.graph_optimization_level = *level;
+  SessionResourceDiag source_diag("source", ResourceDiagDtype<T>(), -1, -1, channels, kernel, dilation);
   InferenceSessionWrapper source(baseline_options, GetEnvironment());
+  source_diag.Log("before_register_ep");
   ASSERT_STATUS_OK(source.RegisterExecutionProvider(ProductionMathCudaExecutionProvider()));
+  source_diag.Log("after_register_ep");
   ASSERT_STATUS_OK(source.Load(bytes.data(), static_cast<int>(bytes.size())));
-  ASSERT_STATUS_OK(source.Initialize());
+  ASSERT_STATUS_OK(source_diag.Initialize(source));
   bool has_conv = false, has_sigmoid = false;
   for (const auto& node : source.GetGraph().Nodes()) {
     EXPECT_NE(node.OpType(), "CausalConvWithState");
@@ -1003,13 +1137,16 @@ void PositiveNumericsAndCudaDispatch(std::optional<TransformerLevel> level, int6
   enabled.enable_profiling = true;
   // A test-owned profile is read and deleted below; no checkpoint/optimized-model files are written.
   enabled.profile_file_prefix = ORT_TSTR("cuda_runtime_fusion_test");
+  SessionResourceDiag fused_diag("fused", ResourceDiagDtype<T>(), -1, -1, channels, kernel, dilation);
   InferenceSessionWrapper fused(enabled, GetEnvironment());
   ProfileCleanup cleanup{fused, {}};
+  fused_diag.Log("before_register_ep");
   ASSERT_STATUS_OK(fused.RegisterExecutionProvider(ProductionMathCudaExecutionProvider()));
+  fused_diag.Log("after_register_ep");
   ASSERT_STATUS_OK(fused.Load(bytes.data(), static_cast<int>(bytes.size())));
   ASSERT_EQ(fused.GetGraph().NumberOfNodes(), 11);
   ASSERT_EQ(fused.GetGraph().GetProducerNode("y")->OpType(), "Swish");
-  ASSERT_STATUS_OK(fused.Initialize());
+  ASSERT_STATUS_OK(fused_diag.Initialize(fused));
   ASSERT_EQ(fused.GetGraph().NumberOfNodes(), 1);
   const auto& target_node = *fused.GetGraph().Nodes().begin();
   ASSERT_EQ(target_node.OpType(), "CausalConvWithState");
@@ -1018,11 +1155,14 @@ void PositiveNumericsAndCudaDispatch(std::optional<TransformerLevel> level, int6
   EXPECT_EQ(target_node.OutputDefs()[1]->Name(), "state");
   SessionOptions target_options = baseline_options;
   ASSERT_STATUS_OK(target_options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+  SessionResourceDiag direct_diag("direct", ResourceDiagDtype<T>(), -1, -1, channels, kernel, dilation);
   InferenceSessionWrapper direct(target_options, GetEnvironment());
+  direct_diag.Log("before_register_ep");
   ASSERT_STATUS_OK(direct.RegisterExecutionProvider(ProductionMathCudaExecutionProvider()));
+  direct_diag.Log("after_register_ep");
   const auto target_bytes = MakeMobiusModel<T>(true, channels, kernel, dilation).SerializeAsString();
   ASSERT_STATUS_OK(direct.Load(target_bytes.data(), static_cast<int>(target_bytes.size())));
-  ASSERT_STATUS_OK(direct.Initialize());
+  ASSERT_STATUS_OK(direct_diag.Initialize(direct));
   const std::vector<std::string> output_names{"y", "state"};
   for (int64_t batch : {1, 2}) {
     OrtValue previous_state;
@@ -1068,11 +1208,14 @@ void OrdinaryBehaviorAtLowOptimizationLevel(TransformerLevel level) {
   SessionOptions options;
   options.graph_optimization_level = level;
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(cuda_runtime_fusion::kCausalConvConfig, "1"));
+  SessionResourceDiag diag("source", "bfloat16", 1, 2, kChannels, 4, 1);
   InferenceSessionWrapper session(options, GetEnvironment());
+  diag.Log("before_register_ep");
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+  diag.Log("after_register_ep");
   const auto bytes = MakeMobiusModel(false).SerializeAsString();
   ASSERT_STATUS_OK(session.Load(bytes.data(), static_cast<int>(bytes.size())));
-  ASSERT_STATUS_OK(session.Initialize());
+  ASSERT_STATUS_OK(diag.Initialize(session));
   bool cuda_conv = false, cuda_sigmoid = false;
   for (const auto& node : session.GetGraph().Nodes()) {
     ASSERT_NE(node.OpType(), "CausalConvWithState");
@@ -1133,11 +1276,14 @@ TEST(CudaRuntimeFusionTest, AllOptimizersNumericsAndCudaDispatch) {
 TEST(CudaRuntimeFusionTest, InvalidConfigurationPropagatesFromCudaCapability) {
   SessionOptions options;
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(cuda_runtime_fusion::kCausalConvConfig, "true"));
+  SessionResourceDiag diag("invalid_policy", "bfloat16", -1, -1, kChannels, 4, 1);
   InferenceSessionWrapper session(options, GetEnvironment());
+  diag.Log("before_register_ep");
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+  diag.Log("after_register_ep");
   const auto bytes = MakeMobiusModel(false).SerializeAsString();
   ASSERT_STATUS_OK(session.Load(bytes.data(), static_cast<int>(bytes.size())));
-  const auto status = session.Initialize();
+  const auto status = diag.Initialize(session);
   EXPECT_FALSE(status.IsOK());
   EXPECT_NE(status.ErrorMessage().find("must be exactly 0 or 1"), std::string::npos) << status.ErrorMessage();
 }
@@ -1154,8 +1300,11 @@ TEST(CudaRuntimeFusionTest, LocalAuthenticExternalFixtureQualification) {
   if (!CudaHasBF16Support()) GTEST_SKIP() << "CUDA BF16 requires SM80 or newer.";
   const std::filesystem::path root(directory);
   SessionOptions baseline_options;  // Normal, untouched optimization policy.
+  SessionResourceDiag source_diag("source", "bfloat16", -1, -1, kChannels, 4, 1);
   InferenceSessionWrapper source(baseline_options, GetEnvironment());
+  source_diag.Log("before_register_ep");
   ASSERT_STATUS_OK(source.RegisterExecutionProvider(ProductionMathCudaExecutionProvider()));
+  source_diag.Log("after_register_ep");
   ASSERT_STATUS_OK(source.Load((root / "mobius-causal-conv-bf16.onnx").native()));
   ASSERT_EQ(source.GetGraph().NumberOfNodes(), 11);
   auto reference = MakeMobiusModel(false);
@@ -1183,12 +1332,15 @@ TEST(CudaRuntimeFusionTest, LocalAuthenticExternalFixtureQualification) {
   ASSERT_STATUS_OK(enabled.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
   enabled.enable_profiling = true;
   enabled.profile_file_prefix = ORT_TSTR("cuda_runtime_fusion_authentic_test");
+  SessionResourceDiag fused_diag("fused", "bfloat16", -1, -1, kChannels, 4, 1);
   InferenceSessionWrapper fused(enabled, GetEnvironment());
   ProfileCleanup cleanup{fused, {}};
+  fused_diag.Log("before_register_ep");
   ASSERT_STATUS_OK(fused.RegisterExecutionProvider(ProductionMathCudaExecutionProvider()));
+  fused_diag.Log("after_register_ep");
   ASSERT_STATUS_OK(fused.Load((root / "mobius-causal-conv-bf16.onnx").native()));
   ASSERT_EQ(fused.GetGraph().NumberOfNodes(), 11);
-  ASSERT_STATUS_OK(fused.Initialize());
+  ASSERT_STATUS_OK(fused_diag.Initialize(fused));
   ASSERT_EQ(fused.GetGraph().NumberOfNodes(), 1);
   const auto& target = *fused.GetGraph().Nodes().begin();
   ASSERT_EQ(target.OpType(), "CausalConvWithState");
@@ -1197,8 +1349,11 @@ TEST(CudaRuntimeFusionTest, LocalAuthenticExternalFixtureQualification) {
 
   SessionOptions direct_options;
   ASSERT_STATUS_OK(direct_options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+  SessionResourceDiag direct_diag("direct", "bfloat16", -1, -1, kChannels, 4, 1);
   InferenceSessionWrapper direct(direct_options, GetEnvironment());
+  direct_diag.Log("before_register_ep");
   ASSERT_STATUS_OK(direct.RegisterExecutionProvider(ProductionMathCudaExecutionProvider()));
+  direct_diag.Log("after_register_ep");
   ASSERT_STATUS_OK(direct.Load((root / "modelbuilder-causal-conv-bf16.onnx").native()));
   ASSERT_EQ(direct.GetGraph().NumberOfNodes(), 1);
   const auto& direct_target = *direct.GetGraph().Nodes().begin();
@@ -1212,9 +1367,9 @@ TEST(CudaRuntimeFusionTest, LocalAuthenticExternalFixtureQualification) {
     ASSERT_EQ(bytes.size(), expected.size());
     ASSERT_EQ(std::memcmp(bytes.data(), expected.data(), bytes.size()), 0);
   }
-  ASSERT_STATUS_OK(direct.Initialize());
+  ASSERT_STATUS_OK(direct_diag.Initialize(direct));
   ASSERT_EQ(direct.GetGraph().Nodes().begin()->GetExecutionProviderType(), kCudaExecutionProvider);
-  ASSERT_STATUS_OK(source.Initialize());
+  ASSERT_STATUS_OK(source_diag.Initialize(source));
   bool source_cuda_conv = false, source_cuda_sigmoid = false;
   for (const auto& node : source.GetGraph().Nodes()) {
     ASSERT_NE(node.OpType(), "CausalConvWithState");
@@ -1269,11 +1424,14 @@ TEST(CudaRuntimeFusionTest, NonUnitAlphaFallsBackThroughFunctionExpansion) {
   alpha->set_f(0.5f);
   SessionOptions options;
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(cuda_runtime_fusion::kCausalConvConfig, "1"));
+  SessionResourceDiag diag("source_non_unit_alpha", "bfloat16", 1, 2, kChannels, 4, 1);
   InferenceSessionWrapper session(options, GetEnvironment());
+  diag.Log("before_register_ep");
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+  diag.Log("after_register_ep");
   const auto bytes = model.SerializeAsString();
   ASSERT_STATUS_OK(session.Load(bytes.data(), static_cast<int>(bytes.size())));
-  ASSERT_STATUS_OK(session.Initialize());
+  ASSERT_STATUS_OK(diag.Initialize(session));
   bool sigmoid = false;
   for (const auto& node : session.GetGraph().Nodes()) {
     EXPECT_NE(node.OpType(), "CausalConvWithState");
@@ -1298,11 +1456,14 @@ TEST(CudaRuntimeFusionTest, OrtFormatOrdinaryFileAndAutodetectedBufferCompatibil
     SessionOptions save_options;
     save_options.optimized_model_filepath = path.native();
     ASSERT_STATUS_OK(save_options.config_options.AddConfigEntry("session.save_model_format", "ORT"));
+    SessionResourceDiag saver_diag(target_artifact ? "direct_save" : "source_save", "bfloat16");
     InferenceSessionWrapper saver(save_options, GetEnvironment());
+    saver_diag.Log("before_register_ep");
     ASSERT_STATUS_OK(saver.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+    saver_diag.Log("after_register_ep");
     const auto bytes = MakeMobiusModel(target_artifact).SerializeAsString();
     ASSERT_STATUS_OK(saver.Load(bytes.data(), static_cast<int>(bytes.size())));
-    ASSERT_STATUS_OK(saver.Initialize());
+    ASSERT_STATUS_OK(saver_diag.Initialize(saver));
     for (const auto& node : saver.GetGraph().Nodes()) {
       // Normal source serialization expands Swish, so these compatibility cases alone
       // do not exercise an eligible match. The host lookup-spy test covers that boundary.
@@ -1324,15 +1485,18 @@ TEST(CudaRuntimeFusionTest, OrtFormatOrdinaryFileAndAutodetectedBufferCompatibil
         if (target_artifact) {
           ASSERT_STATUS_OK(load_options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
         }
+        SessionResourceDiag loaded_diag(target_artifact ? "direct_load" : "source_load", "bfloat16");
         InferenceSessionWrapper loaded(load_options, GetEnvironment());
+        loaded_diag.Log("before_register_ep");
         ASSERT_STATUS_OK(loaded.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+        loaded_diag.Log("after_register_ep");
         // No load-format hint: exercise the actual ORT file and byte autodetection paths.
         if (buffer_load) {
           ASSERT_STATUS_OK(loaded.Load(ort_bytes.data(), static_cast<int>(ort_bytes.size())));
         } else {
           ASSERT_STATUS_OK(loaded.Load(path.native()));
         }
-        ASSERT_STATUS_OK(loaded.Initialize());
+        ASSERT_STATUS_OK(loaded_diag.Initialize(loaded));
         bool cuda_conv = false;
         for (const auto& node : loaded.GetGraph().Nodes()) {
           ASSERT_NE(node.OpType(), "Swish");
@@ -1426,8 +1590,10 @@ void RunShapeProbe(ShapeProbeMode mode, int64_t batch, int64_t length, bool boun
   if (mode != ShapeProbeMode::Source) {
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
   }
+  SessionResourceDiag diag(label, ResourceDiagDtype<BFloat16>(), batch, length, kChannels, 4, 1);
   InferenceSessionWrapper session(options, GetEnvironment());
   ProfileCleanup cleanup{session, {}};
+  diag.Log("before_register_ep");
   if (bounded_memory) {
     OrtCUDAProviderOptionsV2 provider_options{};
     provider_options.use_tf32 = true;
@@ -1439,10 +1605,11 @@ void RunShapeProbe(ShapeProbeMode mode, int64_t batch, int64_t length, bool boun
   } else {
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(ProductionMathCudaExecutionProvider()));
   }
+  diag.Log("after_register_ep");
   const auto model = MakeMobiusModel(mode == ShapeProbeMode::Direct);
   const auto bytes = model.SerializeAsString();
   ASSERT_STATUS_OK(session.Load(bytes.data(), static_cast<int>(bytes.size())));
-  ASSERT_STATUS_OK(session.Initialize());
+  ASSERT_STATUS_OK(diag.Initialize(session));
   bool cuda_conv = false, cuda_sigmoid = false;
   std::string placement;
   for (const auto& node : session.GetGraph().Nodes()) {
