@@ -3,8 +3,6 @@ set -e -x
 
 # This script invokes build.py
 
-mkdir -p /build/dist
-
 EXTRA_ARG=""
 # When true, build the native libraries only once and recompile only the CPython extension module
 # (onnxruntime_pybind11_state) for the remaining Python versions, then merge all the wheels into a
@@ -25,7 +23,7 @@ PYTHON_EXES=(
 while getopts "d:p:x:c:a:m" parameter_Option
 do case "${parameter_Option}"
 in
-#GPU|WEBGPU|CPU|NPU.
+#GPU|WEBGPU|CPU.
 d) BUILD_DEVICE=${OPTARG};;
 p)
   # Check if OPTARG is empty or starts with a hyphen, indicating a missing or invalid argument for -p
@@ -40,10 +38,17 @@ x) EXTRA_ARG=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
 a) CUDA_ARCHS=${OPTARG};;
 m) MULTI_PYTHON_WHEEL="true";;
-*) echo "Usage: $0 -d <GPU|WEBGPU|CPU|NPU> [-p <python_exe_path>] [-x <extra_build_arg>] [-c <build_config>] [-a <cuda_archs>] [-m]"
+*) echo "Usage: $0 -d <GPU|WEBGPU|CPU> [-p <python_exe_path>] [-x <extra_build_arg>] [-c <build_config>] [-a <cuda_archs>] [-m]"
    exit 1;;
 esac
 done
+
+if [ "$BUILD_DEVICE" == "NPU" ]; then
+    echo "Error: In-tree QNN packaging has been retired. Use the QNN plugin EP from https://github.com/onnxruntime/onnxruntime-qnn."
+    exit 1
+fi
+
+mkdir -p /build/dist
 
 BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--skip_submodule_sync" "--use_binskim_compliant_compile_flags" "--use_vcpkg" "--use_vcpkg_ms_internal_asset_cache")
 
@@ -115,11 +120,6 @@ if [ "$BUILD_DEVICE" == "GPU" ]; then
 fi
 if [ "$BUILD_DEVICE" == "WEBGPU" ]; then
     BUILD_ARGS+=("--use_webgpu")
-fi
-
-if [ "$BUILD_DEVICE" == "NPU" ]; then
-    #Enable QNN EP
-    BUILD_ARGS+=("--build_shared_lib" "--use_qnn" "--qnn_home=/qnn_sdk")
 fi
 
 export ONNX_ML=1

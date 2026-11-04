@@ -228,49 +228,6 @@ steps:
             copy "%RAWBUILD%\dxil.dll" "%ARTIFACT%\lib"
           )
 
-          REM Optional- QNN dependencies (staged into build output, not installed by CMake)
-          REM Gate checks raw build output, NOT installed\bin, because the QNN provider DLL
-          REM and its SDK runtime dependencies are not covered by any CMake install() rule.
-          if exist "%RAWBUILD%\onnxruntime_providers_qnn.dll" (
-            echo "QNN provider present - copying QNN SDK runtime DLLs and license"
-            if exist "%RAWBUILD%\libQnnHtp*.so" (
-              copy "%RAWBUILD%\libQnnHtp*.so" "%ARTIFACT%\lib" /Y
-            )
-            if exist "%RAWBUILD%\libqnnhtp*.cat" (
-              copy "%RAWBUILD%\libqnnhtp*.cat" "%ARTIFACT%\lib" /Y
-            )
-            if exist "%RAWBUILD%\QnnCpu.dll" (
-              copy "%RAWBUILD%\QnnCpu.dll" "%ARTIFACT%\lib"
-            )
-            if exist "%RAWBUILD%\QnnGpu.dll" (
-              copy "%RAWBUILD%\QnnGpu.dll" "%ARTIFACT%\lib"
-            )
-            if exist "%RAWBUILD%\QnnHtp.dll" (
-              copy "%RAWBUILD%\QnnHtp.dll" "%ARTIFACT%\lib"
-            )
-            if exist "%RAWBUILD%\QnnHtpPrepare.dll" (
-              copy "%RAWBUILD%\QnnHtpPrepare.dll" "%ARTIFACT%\lib"
-            )
-            if exist "%RAWBUILD%\QnnHtpV68Stub.dll" (
-              copy "%RAWBUILD%\QnnHtpV68Stub.dll" "%ARTIFACT%\lib"
-            )
-            if exist "%RAWBUILD%\QnnHtpV73Stub.dll" (
-              copy "%RAWBUILD%\QnnHtpV73Stub.dll" "%ARTIFACT%\lib"
-            )
-            if exist "%RAWBUILD%\QnnHtpV81Stub.dll" (
-              copy "%RAWBUILD%\QnnHtpV81Stub.dll" "%ARTIFACT%\lib"
-            )
-            if exist "%RAWBUILD%\QnnSaver.dll" (
-              copy "%RAWBUILD%\QnnSaver.dll" "%ARTIFACT%\lib"
-            )
-            if exist "%RAWBUILD%\QnnSystem.dll" (
-              copy "%RAWBUILD%\QnnSystem.dll" "%ARTIFACT%\lib"
-            )
-            if exist "%RAWBUILD%\Qualcomm_LICENSE.pdf" (
-              copy "%RAWBUILD%\Qualcomm_LICENSE.pdf" "%ARTIFACT%"
-            )
-          )
-
           REM Copy PDB files for debugging from raw build output.
           REM NOTE: this must run BEFORE the TRT-disabled cleanup below, otherwise the
           REM wildcard onnxruntime_providers_*.pdb copy will re-introduce the TensorRT

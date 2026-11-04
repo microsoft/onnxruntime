@@ -5395,7 +5395,7 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward_SliceMultipleConsumers) {
   run_test_case(/*slice_has_graph_output*/ true);
 }
 
-#if defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+#if defined(USE_NNAPI) || defined(USE_XNNPACK)
 static void VerifyIODef(const NodeUnitIODef& io_def, const Node& node) {
   const auto& op_type = node.OpType();
   const bool is_dq = op_type == "DequantizeLinear";
@@ -5417,7 +5417,7 @@ static void VerifyIODef(const NodeUnitIODef& io_def, const Node& node) {
     ASSERT_EQ(io_def.quant_param->zero_point, input_defs[2]);
   }
 }
-#endif  // defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+#endif  // defined(USE_NNAPI) || defined(USE_XNNPACK)
 
 TEST(QDQTransformerTests, QDQ_Selector_Test) {
   const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/transform/qdq_conv.onnx");
@@ -5466,8 +5466,8 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
     ASSERT_EQ(std::vector<NodeIndex>({4}), qdq_group.q_nodes);
   }
 
-// The function GetAllNodeUnits is used by NNAPI, XNNPACK and QNN
-#if defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+// The function GetAllNodeUnits is used by NNAPI and XNNPACK
+#if defined(USE_NNAPI) || defined(USE_XNNPACK)
   {
     // Get all the NodeUnits in the graph_viewer
     std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
@@ -5491,7 +5491,7 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
     VerifyIODef(qdq_node_unit.Inputs()[2], *whole_graph_viewer.GetNode(2));   // DQ_bias
     VerifyIODef(qdq_node_unit.Outputs()[0], *whole_graph_viewer.GetNode(4));  // Q_output
   }
-#endif  // defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+#endif  // defined(USE_NNAPI) || defined(USE_XNNPACK)
 
   // Create a graph viewer covers part of the graph
   // Make sure the qdq conv selector will fail for the partial graph
@@ -5744,8 +5744,8 @@ TEST(QDQTransformerTests, QDQ_Selector_Test_Conv_Relu) {
       ASSERT_EQ(std::vector<NodeIndex>({5}), qdq_group.q_nodes);
     }
 
-// The function GetAllNodeUnits is used by NNAPI, XNNPACK and QNN
-#if defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+// The function GetAllNodeUnits is used by NNAPI and XNNPACK
+#if defined(USE_NNAPI) || defined(USE_XNNPACK)
     {
       // Get all the NodeUnits in the graph_viewer
       std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
@@ -5770,7 +5770,7 @@ TEST(QDQTransformerTests, QDQ_Selector_Test_Conv_Relu) {
       VerifyIODef(qdq_node_unit.Inputs()[2], *whole_graph_viewer.GetNode(2));   // DQ_bias
       VerifyIODef(qdq_node_unit.Outputs()[0], *whole_graph_viewer.GetNode(5));  // Q_output
     }
-#endif  // defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+#endif  // defined(USE_NNAPI) || defined(USE_XNNPACK)
   }
 
   // Relu is NOT redundant.
@@ -5841,8 +5841,8 @@ TEST(QDQTransformerTests, QDQ_Selector_Test_Conv_Relu) {
       ASSERT_TRUE(result.empty());
     }
 
-// The function GetAllNodeUnits is used by NNAPI, XNNPACK and QNN
-#if defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+// The function GetAllNodeUnits is used by NNAPI and XNNPACK
+#if defined(USE_NNAPI) || defined(USE_XNNPACK)
     {
       std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
       std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
@@ -5850,7 +5850,7 @@ TEST(QDQTransformerTests, QDQ_Selector_Test_Conv_Relu) {
       ASSERT_EQ(6, node_unit_holder.size());
       ASSERT_EQ(6, node_unit_map.size());
     }
-#endif  // defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+#endif  // defined(USE_NNAPI) || defined(USE_XNNPACK)
   }
 }
 
@@ -5927,8 +5927,8 @@ TEST(QDQTransformerTests, QDQ_Selector_Test_Add_Clip) {
       ASSERT_EQ(std::vector<NodeIndex>({4}), qdq_group.q_nodes);
     }
 
-// The function GetAllNodeUnits is used by NNAPI, XNNPACK and QNN
-#if defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+// The function GetAllNodeUnits is used by NNAPI and XNNPACK
+#if defined(USE_NNAPI) || defined(USE_XNNPACK)
     {
       // Get all the NodeUnits in the graph_viewer
       std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
@@ -5951,7 +5951,7 @@ TEST(QDQTransformerTests, QDQ_Selector_Test_Add_Clip) {
       VerifyIODef(qdq_node_unit.Inputs()[1], *whole_graph_viewer.GetNode(1));   // DQ_input_1
       VerifyIODef(qdq_node_unit.Outputs()[0], *whole_graph_viewer.GetNode(4));  // Q_output
     }
-#endif  // defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+#endif  // defined(USE_NNAPI) || defined(USE_XNNPACK)
   }
 
   // Clip is NOT redundant.
@@ -6012,8 +6012,8 @@ TEST(QDQTransformerTests, QDQ_Selector_Test_Add_Clip) {
       ASSERT_TRUE(result.empty());
     }
 
-// The function GetAllNodeUnits is used by NNAPI, XNNPACK and QNN
-#if defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+// The function GetAllNodeUnits is used by NNAPI and XNNPACK
+#if defined(USE_NNAPI) || defined(USE_XNNPACK)
     {
       // Get all the NodeUnits in the graph_viewer
       std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
@@ -6022,7 +6022,7 @@ TEST(QDQTransformerTests, QDQ_Selector_Test_Add_Clip) {
       ASSERT_EQ(5, node_unit_holder.size());
       ASSERT_EQ(5, node_unit_map.size());
     }
-#endif  // defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+#endif  // defined(USE_NNAPI) || defined(USE_XNNPACK)
   }
 }
 

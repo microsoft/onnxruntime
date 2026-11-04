@@ -5,6 +5,12 @@
 # Minimum CMake required
 cmake_minimum_required(VERSION 3.28)
 
+if(onnxruntime_USE_QNN OR onnxruntime_BUILD_QNN_EP_STATIC_LIB OR onnxruntime_USE_QNN_INTERFACE)
+  message(FATAL_ERROR
+    "In-tree QNN builds have been retired. Use the QNN plugin EP from "
+    "https://github.com/onnxruntime/onnxruntime-qnn instead.")
+endif()
+
 # Don't let cmake set a default value for CMAKE_CUDA_ARCHITECTURES
 cmake_policy(SET CMP0104 OLD)
 # Project
@@ -78,8 +84,6 @@ option(onnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO "When building with CUDA support
 option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
 option(onnxruntime_USE_COREML "Build with CoreML support" OFF)
 option(onnxruntime_USE_NNAPI_BUILTIN "Build with builtin NNAPI lib for Android NNAPI support" OFF)
-option(onnxruntime_USE_QNN "Build with QNN support" OFF)
-option(onnxruntime_BUILD_QNN_EP_STATIC_LIB "Build with QNN EP as a static library" OFF)
 option(onnxruntime_USE_SNPE "Build with SNPE support" OFF)
 option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
@@ -104,8 +108,8 @@ cmake_dependent_option(onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS "Build with CUD
 # archive. This detaches ORT from ONNX PR #7959 (which deletes onnx/backend/test/data/node).
 #
 # Defaults OFF -- it is an explicit opt-in, enabled only on CI legs that (a) install the pinned
-# onnx + numpy pre-build and (b) actually consume the materialized node corpus (the QNN legs and
-# one Linux CPU leg that runs the equivalence + materialized-node ctests), via
+# onnx + numpy pre-build and (b) actually consume the materialized node corpus (including
+# the Linux CPU leg that runs the equivalence + materialized-node ctests), via
 # `--cmake_extra_defines onnxruntime_MATERIALIZE_ONNX_NODE_TESTS=ON`. Legs that leave it OFF keep
 # their pre-existing behavior (node tests are read from the FetchContent'd ONNX source tree, which
 # still ships data/node on the pinned version), so the default is a zero-regression no-op today.
@@ -351,7 +355,6 @@ option(onnxruntime_USE_TENSORRT_INTERFACE "Build ONNXRuntime shared lib which is
 option(onnxruntime_USE_CUDA_INTERFACE "Build ONNXRuntime shared lib which is compatible with Cuda EP interface" OFF)
 option(onnxruntime_USE_OPENVINO_INTERFACE "Build ONNXRuntime shared lib which is compatible with OpenVINO EP interface" OFF)
 option(onnxruntime_USE_VITISAI_INTERFACE "Build ONNXRuntime shared lib which is compatible with Vitis-AI EP interface" OFF)
-option(onnxruntime_USE_QNN_INTERFACE "Build ONNXRuntime shared lib which is compatible with QNN EP interface" OFF)
 
 if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 11.1)
   message(FATAL_ERROR  "GCC version must be greater than or equal to 11.1")
@@ -1008,57 +1011,6 @@ endif()
 if (onnxruntime_USE_JSEP)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_JSEP=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES js)
-endif()
-if (onnxruntime_USE_QNN OR onnxruntime_USE_QNN_INTERFACE)
-
-    if(onnxruntime_USE_QNN)
-        list(APPEND ORT_PROVIDER_FLAGS -DUSE_QNN=1)
-    else()
-        list(APPEND ORT_PROVIDER_FLAGS -DUSE_QNN_PROVIDER_INTERFACE=1)
-    endif()
-
-    list(APPEND ONNXRUNTIME_PROVIDER_NAMES qnn)
-    if (NOT QNN_ARCH_ABI)
-      string(TOLOWER ${onnxruntime_target_platform} GEN_PLATFORM)
-      if(MSVC)
-        message(STATUS "Building MSVC for architecture ${CMAKE_SYSTEM_PROCESSOR} with CMAKE_GENERATOR_PLATFORM as ${GEN_PLATFORM}")
-        if (${GEN_PLATFORM} STREQUAL "arm64")
-          set(QNN_ARCH_ABI aarch64-windows-msvc)
-        elseif (${GEN_PLATFORM} STREQUAL "arm64ec")
-          set(QNN_ARCH_ABI arm64x-windows-msvc)
-        else()
-          set(QNN_ARCH_ABI x86_64-windows-msvc)
-        endif()
-      else()
-        if (${CMAKE_SYSTEM_NAME} STREQUAL "Android")
-          set(QNN_ARCH_ABI aarch64-android-clang6.0)
-        elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
-          if (${GEN_PLATFORM} STREQUAL "x86_64")
-            set(QNN_ARCH_ABI x86_64-linux-clang)
-          else()
-            set(QNN_ARCH_ABI aarch64-android)
-          endif()
-        endif()
-      endif()
-    endif()
-
-    if (onnxruntime_USE_QNN AND (MSVC OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux"))
-      file(GLOB QNN_LIB_FILES LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/libQnn*.so"
-                                             "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/Qnn*.dll"
-                                             "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/libHtpPrepare.so"
-                                             "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/HtpPrepare.dll")
-      if (${QNN_ARCH_ABI} STREQUAL "aarch64-windows-msvc" OR ${QNN_ARCH_ABI} STREQUAL "arm64x-windows-msvc")
-        file(GLOB EXTRA_HTP_LIB LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/lib/hexagon-v68/unsigned/libQnnHtpV68Skel.so"
-                                  "${onnxruntime_QNN_HOME}/lib/hexagon-v73/unsigned/libQnnHtpV73Skel.so"
-                                  "${onnxruntime_QNN_HOME}/lib/hexagon-v73/unsigned/libqnnhtpv73.cat"
-                                  "${onnxruntime_QNN_HOME}/lib/hexagon-v81/unsigned/libQnnHtpV81Skel.so"
-                                  "${onnxruntime_QNN_HOME}/lib/hexagon-v81/unsigned/libqnnhtpv81.cat")
-        list(APPEND QNN_LIB_FILES ${EXTRA_HTP_LIB})
-      elseif(${QNN_ARCH_ABI} STREQUAL "aarch64-ubuntu-gcc9.4")
-        list(APPEND QNN_LIB_FILES "${onnxruntime_QNN_HOME}/lib/hexagon-v68/unsigned/libQnnHtpV68Skel.so")
-      endif()
-      message(STATUS "QNN lib files: " ${QNN_LIB_FILES})
-    endif()
 endif()
 if (onnxruntime_USE_SNPE)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_SNPE=1)
@@ -2082,12 +2034,6 @@ else()
 
   if(DEFINED BUILD_AS_ARM64X)
     set(ARM64X_TARGETS onnxruntime)
-
-    # Add additional ARM64X build targets
-    if (onnxruntime_USE_QNN AND NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB)
-      list(APPEND ARM64X_TARGETS onnxruntime_providers_shared)
-      list(APPEND ARM64X_TARGETS onnxruntime_providers_qnn)
-    endif()
 
     include("${CMAKE_CURRENT_SOURCE_DIR}/arm64x.cmake")
   endif()

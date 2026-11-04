@@ -105,7 +105,6 @@ using EtwRegistrationManager_EtwInternalCallback = EtwRegistrationManager::EtwIn
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
 #include "core/providers/tensorrt/tensorrt_provider_factory_creator.h"
 #include "core/providers/vitisai/vitisai_provider_factory_creator.h"
-#include "core/providers/qnn/qnn_provider_factory_creator.h"
 
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cann/cann_provider_factory.h"
@@ -2126,9 +2125,6 @@ static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX ORT_TSTR("onnxruntime_p
 );
 static ProviderLibrary s_library_migraphx(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_migraphx") LIBRARY_EXTENSION);
 
-// QNN EP can be built either as a static library or a shared library. Can safely define s_library_qnn even if static.
-static ProviderLibrary s_library_qnn(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_qnn") LIBRARY_EXTENSION);
-
 void UnloadSharedProviders() {
   s_library_dnnl.Unload();
   s_library_vitisai.Unload();
@@ -2139,7 +2135,6 @@ void UnloadSharedProviders() {
   s_library_cann.Unload();
   s_library_shared.Unload();
   s_library_migraphx.Unload();
-  s_library_qnn.Unload();
 }
 
 // Used by test code
@@ -2334,23 +2329,6 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
   ov_options_converted_map["enable_causallm"] = "false";
   return ov_options_converted_map;
 }
-
-#if !BUILD_QNN_EP_STATIC_LIB
-std::shared_ptr<IExecutionProviderFactory> QNNProviderFactoryCreator::Create(
-    const ProviderOptions& provider_options_map, const SessionOptions* session_options) {
-  ORT_TRY {
-    const ConfigOptions* config_options = nullptr;
-    if (session_options != nullptr) {
-      config_options = &session_options->config_options;
-    }
-
-    std::array<const void*, 2> configs_array = {&provider_options_map, config_options};
-    const void* arg = reinterpret_cast<const void*>(&configs_array);
-    return s_library_qnn.Get().CreateExecutionProviderFactory(arg);
-  }
-  ORT_CATCH_LOG_RETURN_NULLPTR;
-}
-#endif  // !BUILD_QNN_EP_STATIC_LIB
 
 std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(
     const ProviderOptions* provider_options_map, const SessionOptions* session_options) {

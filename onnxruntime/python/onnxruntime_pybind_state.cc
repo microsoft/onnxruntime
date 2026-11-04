@@ -1442,20 +1442,6 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
 #ifdef USE_AZURE
     return onnxruntime::AzureProviderFactoryCreator::Create({});
 #endif
-  } else if (type == kQnnExecutionProvider) {
-#if defined(USE_QNN) || defined(USE_QNN_PROVIDER_INTERFACE)
-    auto cit = provider_options_map.find(type);
-    auto qnn_factory = onnxruntime::QNNProviderFactoryCreator::Create(
-        cit == provider_options_map.end() ? ProviderOptions{} : cit->second, &session_options);
-    if (qnn_factory) {
-      return qnn_factory;
-    }
-    LOGS_DEFAULT(WARNING) << "Failed to create "
-                          << type
-                          << ". Please reference "
-                          << "https://onnxruntime.ai/docs/execution-providers/QNN-ExecutionProvider.html"
-                          << " to ensure all dependencies are met.";
-#endif
   } else {
 #if !defined(ORT_MINIMAL_BUILD)
     // Try EPs dynamically registered via register_execution_provider_library().

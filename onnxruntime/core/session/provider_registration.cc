@@ -88,7 +88,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   enum class EpID {
     INVALID = 0,
     DML,
-    QNN,
     OpenVINO,
     SNPE,  // TODO(adrianlizarraga): Remove SNPE entirely because it has been replaced by QNN EP.
     XNNPACK,
@@ -108,9 +107,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     const char* canonical_name = nullptr;
   };
 
-  static std::array<EpToAppend, 13> supported_eps = {
+  static std::array<EpToAppend, 12> supported_eps = {
       EpToAppend{EpID::DML, "DML", kDmlExecutionProvider},
-      EpToAppend{EpID::QNN, "QNN", kQnnExecutionProvider},
       EpToAppend{EpID::OpenVINO, "OpenVINO", kOpenVINOExecutionProvider},
       EpToAppend{EpID::SNPE, "SNPE", kSnpeExecutionProvider},
       EpToAppend{EpID::XNNPACK, "XNNPACK", kXnnpackExecutionProvider},
@@ -191,6 +189,15 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
          "GetEpDevices, and append it with SessionOptionsAppendExecutionProvider_V2.")
             .c_str());
   }
+  if (strcmp(provider_name, "QNN") == 0 || strcmp(provider_name, kQnnExecutionProvider) == 0) {
+    return OrtApis::CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        (std::string("The '") + provider_name +
+         "' execution provider is no longer built into ONNX Runtime. Use the QNN plugin EP "
+         "instead: register its library with RegisterExecutionProviderLibrary, select an OrtEpDevice from "
+         "GetEpDevices, and append it with SessionOptionsAppendExecutionProvider_V2.")
+            .c_str());
+  }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   auto ep_to_append_iter = std::find_if(supported_eps.begin(), supported_eps.end(),
@@ -221,18 +228,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #if defined(USE_DML)
       options->provider_factories.push_back(
           DMLProviderFactoryCreator::CreateFromProviderOptions(options->value.config_options, provider_options));
-#else
-      status = create_not_supported_status();
-#endif
-      break;
-    }
-    case EpID::QNN: {
-#if defined(USE_QNN) || defined(USE_QNN_PROVIDER_INTERFACE)
-      if (auto ep_factory = QNNProviderFactoryCreator::Create(provider_options, &(options->value)); ep_factory) {
-        options->provider_factories.push_back(std::move(ep_factory));
-      } else {
-        status = create_failed_to_load_provider_status();
-      }
 #else
       status = create_not_supported_status();
 #endif

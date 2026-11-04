@@ -4274,7 +4274,6 @@ struct OrtApi {
    * \param[in] num_keys - number of keys passed in
    *
    * Currently supported provider names:
-   *   QNNExecutionProvider (or QNN)
    *   OpenVINOExecutionProvider (or OpenVINO)
    *   XnnpackExecutionProvider (or XNNPACK)
    *   WebNNExecutionProvider (or WEBNN)
@@ -4287,100 +4286,9 @@ struct OrtApi {
    * Note: If an execution provider has a dedicated SessionOptionsAppendExecutionProvider_<provider name> function
    *       that should be used to add it.
    *
-   * QNN supported keys:
-   *   "backend_type": Type of QNN backend. Specifies a backend path that is the associated QNN backend library file
-   *      name. E.g., given backend type "htp", on Windows, the backend path would be "QnnHtp.dll", and on other
-   *      platforms, it would be "libQnnHtp.so". Mutually exclusive with "backend_path".
-   *      Available options:
-   *      -# "cpu"
-   *      -# "gpu"
-   *      -# "htp": Default.
-   *      -# "saver"
-   *      -# "ir"
-   *   "backend_path": File path to QNN backend library. Mutually exclusive with "backend_type".
-   *   "profiling_level": QNN profiling level.
-   *      Available options:
-   *      -# "off": Default.
-   *      -# "basic"
-   *      -# "detailed"
-   *   "profiling_file_path": QNN profiling file path if ETW not enabled.
-   *   "rpc_control_latency": QNN RPC control latency.
-   *   "vtcm_mb": QNN VTCM size in MB. default to 0(not set).
-   *   "htp_performance_mode": QNN performance mode.
-   *      Available options:
-   *      -# "burst"
-   *      -# "balanced"
-   *      -# "default": Default.
-   *      -# "high_performance"
-   *      -# "high_power_saver"
-   *      -# "low_balanced"
-   *      -# "extreme_power_saver"
-   *      -# "low_power_saver"
-   *      -# "power_saver"
-   *      -# "sustained_high_performance"
-   *   "dump_qnn_ir_dlc": Use the QnnIr backend library to write .dlc files for each subgraph dispatched to QNN. When
-   *       enabled, inference results will be incorrect. Use only for debugging.
-   *      -# "0": Default: disabled
-   *      -# "1": enabled
-   *   "dump_qnn_ir_dlc_dir": Set the directory into which QnnIr will be configured to write QNN graphs as .dlc files.
-   *      Default is current working directory.
-   *   "qnn_ir_backend_path": File path to the QnnIr backend library. If "dump_qnn_ir_dlc" is enabled, use this path
-   *      instead of looking for the Ir backend in the standard location.
-   *   "qnn_saver_path": File path to the QNN Saver backend library. If specified, QNN Saver will be enabled and will
-   *      dump QNN API calls to disk for replay/debugging. QNN Saver produces incorrect model inference results and
-   *      may alter model/EP partitioning. Use only for debugging.
-   *   "qnn_context_priority": QNN context priority.
-   *      Available options:
-   *      -# "low"
-   *      -# "normal": Default.
-   *      -# "normal_high"
-   *      -# "high"
-   *   "htp_graph_finalization_optimization_mode": Set the optimization mode for graph finalization on the HTP backend.
-   *      Available options:
-   *      -# "0": Default.
-   *      -# "1": Faster preparation time, less optimal graph.
-   *      -# "2": Longer preparation time, more optimal graph.
-   *      -# "3": Longest preparation time, most likely even more optimal graph. See QNN SDK documentation for specific
-   *        details.
-   *   "soc_model": The SoC model number. Refer to the QNN SDK documentation for valid values.
-   *      Defaults to "0" (unknown).
-   *   "htp_arch": The minimum HTP architecture the driver will use to select compatible QNN operators.
-   *      Available options:
-   *      -# "0": Default (none).
-   *      -# "68"
-   *      -# "69"
-   *      -# "73"
-   *      -# "75"
-   *      -# "81"
-   *   "device_id": The ID of the device to use when setting 'htp_arch'. Defaults to "0" (for single device).
-   *   "enable_htp_fp16_precision": Used for float32 model for HTP backend.
-   *      Enable the float32 model to be inferenced with fp16 precision. Otherwise, it will be fp32 precision.
-   *      -# "0": With fp32 precision.
-   *      -# "1": Default. With fp16 precision.
-   *   "offload_graph_io_quantization": Offload graph input quantization and graph output dequantization to another
-   *      execution provider (typically CPU EP).
-   *      -# "0": Disabled. QNN EP will handle quantization and dequantization of graph I/O.
-   *      -# "1": Enabled. This is the default value.
-   *   "enable_htp_spill_fill_buffer": Enable HTP spill fill buffer setting. The flag is used while generating context
-   *      binary.
-   *      -# "0": Default. Disabled.
-   *      -# "1": Enabled.
-   *   "enable_htp_shared_memory_allocator": Enable the QNN HTP shared memory allocator. Requires libcdsprpc.so/dll to
-   *      be available.
-   *      -# "0": Default. Disabled.
-   *      -# "1": Enabled.
-   *   "dump_json_qnn_graph": Set to "1" to dump QNN graphs generated by QNN EP as JSON files. Each graph partition
-   *      assigned to QNN EP is dumped to a separate file.
-   *   "json_qnn_graph_dir": Directory in which to dump QNN JSON graphs. If not specified, QNN graphs are dumped in the
-   *      program's current working directory. Ignored if "dump_json_qnn_graph" is not set.
-   *   "op_packages": QNN UDO op_package for QNN EP, allowed format:
-   *     "<op_type>:<op_package_path>:<interface>[:<target>],<op_type2>:<op_package_path2>:<interface2>[:<target>]",
-   *     where op_type is the name of the operation, op_package_path is the path to the op package shared library,
-   *     interface is the symbol name to register the op life cycle functions, and target is the backend type. For more
-   *     details, refer to: https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/op_packages.html
-   *     [Advanced] "skip_qnn_version_check": Set to "1" to allow a different version of QNN to be used than what was compiled
-   *     into ONNX Runtime. Differences in operator support, accuracy, performance, and QNN's ABI may lead to crashes, inaccurate
-   *     results, and poor performance. Use with caution and test thoroughly.
+   * QNN is available through the plugin EP APIs, not this legacy append function. Register the QNN plugin library
+   * with RegisterExecutionProviderLibrary, select an OrtEpDevice from GetEpDevices, and append it with
+   * SessionOptionsAppendExecutionProvider_V2.
    *
    * XNNPACK supported keys:
    *   "intra_op_num_threads": number of thread-pool size to use for XNNPACK execution provider.

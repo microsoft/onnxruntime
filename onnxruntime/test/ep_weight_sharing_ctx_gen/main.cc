@@ -213,11 +213,7 @@ int real_main(int argc, char* argv[]) {
           return 1;
         }
       } else if (provider_name_ == onnxruntime::kQnnExecutionProvider) {
-#ifdef USE_QNN
-        so.AppendExecutionProvider("QNN", provider_options);
-#else
         ORT_THROW("QNN is not supported in this build\n");
-#endif
       } else if (!provider_name_.empty()) {
         ORT_THROW("This execution provider is not included in this tool.\n");
       }
