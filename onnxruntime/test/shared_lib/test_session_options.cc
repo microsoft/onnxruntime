@@ -545,8 +545,15 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesValidateArgumentsAndAccess) {
 #endif
   const auto invalid = kInvalidFileHandle;
   EXPECT_FALSE(Ort::Status(api_->SessionOptionsSetExternalInitializerFileHandles(options, &name, &invalid, 1)).IsOK());
-  for (const char* bad : {"../weights.data", "/weights.data", ".", "a/b"}) {
-    EXPECT_FALSE(Ort::Status(api_->SessionOptionsSetExternalInitializerFileHandles(options, &bad, &invalid, 1)).IsOK());
+  auto valid_file = OpenReadOnlyInitializer("testdata/Pads.bin");
+  const auto valid_handle = NativeFileHandle(valid_file.get());
+  EXPECT_TRUE(Ort::Status(api_->SessionOptionsSetExternalInitializerFileHandles(options, &name, &valid_handle, 1)).IsOK());
+  const char* null_name = nullptr;
+  EXPECT_FALSE(
+      Ort::Status(api_->SessionOptionsSetExternalInitializerFileHandles(options, &null_name, &valid_handle, 1)).IsOK());
+  for (const char* bad : {"", "../weights.data", "/weights.data", ".", "..", "a/b", R"(a\b)"}) {
+    EXPECT_FALSE(Ort::Status(api_->SessionOptionsSetExternalInitializerFileHandles(options, &bad, &valid_handle, 1)).IsOK())
+        << bad;
   }
 #ifdef O_PATH
   const int path_only = open("testdata/Pads.bin", O_PATH | O_CLOEXEC);
