@@ -53,8 +53,8 @@ signed zero) and matching NaN classifications, not matching NaN payloads.
 They cover scalar, empty, odd, dynamic, and model-shaped inputs. FLOAT cases
 use pinned special values and seeded random raw bits. BF16 coverage includes
 all 65536 bit patterns in one rank-1 case; other shapes use pinned special
-values and seeded random bits. Graph and profile assertions verify CUDA
-placement and the replacement; values alone are insufficient evidence.
+values and seeded random bits. Graph assertions and initialized CUDA kernel
+bindings verify placement and the replacement; values alone are insufficient evidence.
 These tests are not a guarantee for every input, shape, dtype, device, model,
 or performance regime.
 

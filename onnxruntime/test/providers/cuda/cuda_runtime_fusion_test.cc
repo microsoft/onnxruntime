@@ -21,7 +21,7 @@
 
 #include <cuda_runtime_api.h>
 
-#include "nlohmann/json.hpp"
+#include "core/framework/kernel_def_builder.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/resource_accountant.h"
 #include "core/framework/session_state.h"
@@ -307,17 +307,22 @@ struct RoundingBudget {
   double target;
 };
 
-struct ProfileCleanup {
-  InferenceSession& session;
-  std::string path;
-  ~ProfileCleanup() {
-    if (path.empty()) path = session.EndProfiling();
-    if (!path.empty()) {
-      std::error_code error;
-      std::filesystem::remove(path, error);
-    }
+::testing::AssertionResult HasCudaKernel(const InferenceSessionWrapper& session, const Node& node) {
+  const auto* kernel = session.GetSessionState().GetKernel(node.Index());
+  if (!kernel) {
+    return ::testing::AssertionFailure() << "No initialized kernel for " << node.Name();
   }
-};
+  const auto& definition = kernel->KernelDef();
+  if (node.GetExecutionProviderType() != kCudaExecutionProvider ||
+      definition.Provider() != kCudaExecutionProvider ||
+      definition.OpName() != node.OpType() || definition.Domain() != node.Domain()) {
+    return ::testing::AssertionFailure()
+           << "Node " << node.Name() << " (" << node.Domain() << ":" << node.OpType()
+           << ", " << node.GetExecutionProviderType() << ") has kernel "
+           << definition.Domain() << ":" << definition.OpName() << ", " << definition.Provider();
+  }
+  return ::testing::AssertionSuccess();
+}
 
 template <typename T = float>
 ONNX_NAMESPACE::ModelProto MakeUnitSwishModel(int rank, bool target = false) {
@@ -380,16 +385,10 @@ void RunUnitSwishNumerics(int rank, std::optional<TransformerLevel> level) {
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(cuda_runtime_fusion::kUnitSwishConfig, "0"));
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(cuda_runtime_fusion::kCausalConvConfig, "0"));
-  options.enable_profiling = true;
-  options.profile_file_prefix = ORT_TSTR("unit_swish_source");
   InferenceSessionWrapper source(options, GetEnvironment());
-  ProfileCleanup source_cleanup{source, {}};
-  options.profile_file_prefix = ORT_TSTR("unit_swish_fused");
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(cuda_runtime_fusion::kUnitSwishConfig, "1"));
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(cuda_runtime_fusion::kCausalConvConfig, "0"));
   InferenceSessionWrapper fused(options, GetEnvironment());
-  ProfileCleanup fused_cleanup{fused, {}};
-  options.enable_profiling = false;
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(cuda_runtime_fusion::kUnitSwishConfig, "0"));
   InferenceSessionWrapper direct(options, GetEnvironment());
   for (auto* session : {&source, &fused, &direct}) {
@@ -406,16 +405,20 @@ void RunUnitSwishNumerics(int rank, std::optional<TransformerLevel> level) {
     const auto& node = *session->GetGraph().Nodes().begin();
     ASSERT_EQ(node.OpType(), "ScaledSiLU");
     ASSERT_EQ(node.GetExecutionProviderType(), kCudaExecutionProvider);
+    ASSERT_TRUE(HasCudaKernel(*session, node));
     ASSERT_EQ(node.InputDefs().size(), 1u);
     ASSERT_EQ(node.OutputDefs()[0]->Name(), "y");
   }
-  bool sigmoid = false;
+  InlinedHashMap<std::string, size_t> source_nodes;
   for (const auto& node : source.GetGraph().Nodes()) {
     ASSERT_NE(node.OpType(), "ScaledSiLU");
     ASSERT_EQ(node.GetExecutionProviderType(), kCudaExecutionProvider);
-    sigmoid |= node.OpType() == "Sigmoid";
+    ASSERT_TRUE(HasCudaKernel(source, node));
+    ++source_nodes[node.OpType()];
   }
-  ASSERT_TRUE(sigmoid);
+  ASSERT_EQ(source_nodes["Sigmoid"], 1u);
+  ASSERT_EQ(source_nodes["Cast"], 1u);
+  ASSERT_EQ(source_nodes["Mul"], 2u);
   const std::array<uint32_t, 24> pinned{
       0, 0x80000000u, 1, 0x80000001u, 0x007fffffu, 0x807fffffu, 0x00800000u, 0x80800000u,
       0x3f800000u, 0xbf800000u, 0x7f7fffffu, 0xff7fffffu, 0x7f800000u, 0xff800000u,
@@ -488,26 +491,6 @@ void RunUnitSwishNumerics(int rank, std::optional<TransformerLevel> level) {
   }
   ASSERT_GT(elements, 0u);
   ASSERT_GT(nans, 0u);
-  auto events = [](ProfileCleanup& cleanup) {
-    cleanup.path = cleanup.session.EndProfiling();
-    std::ifstream stream(cleanup.path);
-    const auto profile = nlohmann::json::parse(stream);
-    InlinedHashMap<std::string, size_t> counts;
-    for (const auto& event : profile) {
-      if (event.value("cat", "") != "Node" || !event.contains("args")) continue;
-      const auto& args = event["args"];
-      if (args.value("provider", "") == kCudaExecutionProvider) ++counts[args.value("op_name", "")];
-    }
-    return counts;
-  };
-  auto source_events = events(source_cleanup);
-  auto fused_events = events(fused_cleanup);
-  EXPECT_EQ(source_events["Sigmoid"], cases);  // Actual expanded source, not a fused proxy.
-  EXPECT_EQ(source_events["Cast"], cases);
-  EXPECT_EQ(source_events["Mul"], 2 * cases);
-  EXPECT_EQ(source_events["ScaledSiLU"], 0u);
-  EXPECT_EQ(fused_events["ScaledSiLU"], cases);
-  EXPECT_EQ(fused_events["Sigmoid"], 0u);
   ::testing::Test::RecordProperty("unit_swish_cases", static_cast<int>(cases));
   ::testing::Test::RecordProperty(std::is_same_v<T, float> ? "unit_swish_float_elements" : "unit_swish_bf16_elements",
                                   static_cast<int>(elements));
@@ -519,10 +502,10 @@ void RunUnitSwishNumerics(int rank, std::optional<TransformerLevel> level) {
     }
   }
   ::testing::Test::RecordProperty("unit_swish_matching_nan_classifications", static_cast<int>(nans));
-  ::testing::Test::RecordProperty("unit_swish_cuda_target_events", static_cast<int>(cases));
-  ::testing::Test::RecordProperty("unit_swish_cuda_source_cast_events", static_cast<int>(source_events["Cast"]));
-  ::testing::Test::RecordProperty("unit_swish_cuda_source_mul_events", static_cast<int>(source_events["Mul"]));
-  ::testing::Test::RecordProperty("unit_swish_cuda_source_sigmoid_events", static_cast<int>(source_events["Sigmoid"]));
+  ::testing::Test::RecordProperty("unit_swish_cuda_target_kernel_nodes", fused.GetGraph().NumberOfNodes());
+  ::testing::Test::RecordProperty("unit_swish_cuda_source_cast_nodes", static_cast<int>(source_nodes["Cast"]));
+  ::testing::Test::RecordProperty("unit_swish_cuda_source_mul_nodes", static_cast<int>(source_nodes["Mul"]));
+  ::testing::Test::RecordProperty("unit_swish_cuda_source_sigmoid_nodes", static_cast<int>(source_nodes["Sigmoid"]));
 }
 
 TEST(CudaRuntimeFusionTest, UnitSwishScalarFloatBitwise) {
@@ -991,6 +974,9 @@ void PositiveNumericsAndCudaDispatch(std::optional<TransformerLevel> level, int6
   bool has_conv = false, has_sigmoid = false;
   for (const auto& node : source.GetGraph().Nodes()) {
     EXPECT_NE(node.OpType(), "CausalConvWithState");
+    if (node.GetExecutionProviderType() == kCudaExecutionProvider) {
+      ASSERT_TRUE(HasCudaKernel(source, node));
+    }
     has_conv |= node.OpType() == "Conv" && node.GetExecutionProviderType() == kCudaExecutionProvider;
     has_sigmoid |= node.OpType() == "Sigmoid" && node.GetExecutionProviderType() == kCudaExecutionProvider;
   }
@@ -1000,11 +986,7 @@ void PositiveNumericsAndCudaDispatch(std::optional<TransformerLevel> level, int6
   SessionOptions enabled = baseline_options;
   ASSERT_STATUS_OK(enabled.config_options.AddConfigEntry(cuda_runtime_fusion::kCausalConvConfig, "1"));
   ASSERT_STATUS_OK(enabled.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
-  enabled.enable_profiling = true;
-  // A test-owned profile is read and deleted below; no checkpoint/optimized-model files are written.
-  enabled.profile_file_prefix = ORT_TSTR("cuda_runtime_fusion_test");
   InferenceSessionWrapper fused(enabled, GetEnvironment());
-  ProfileCleanup cleanup{fused, {}};
   ASSERT_STATUS_OK(fused.RegisterExecutionProvider(ProductionMathCudaExecutionProvider()));
   ASSERT_STATUS_OK(fused.Load(bytes.data(), static_cast<int>(bytes.size())));
   ASSERT_EQ(fused.GetGraph().NumberOfNodes(), 11);
@@ -1014,6 +996,7 @@ void PositiveNumericsAndCudaDispatch(std::optional<TransformerLevel> level, int6
   const auto& target_node = *fused.GetGraph().Nodes().begin();
   ASSERT_EQ(target_node.OpType(), "CausalConvWithState");
   ASSERT_EQ(target_node.GetExecutionProviderType(), kCudaExecutionProvider);
+  ASSERT_TRUE(HasCudaKernel(fused, target_node));
   EXPECT_EQ(target_node.OutputDefs()[0]->Name(), "y");
   EXPECT_EQ(target_node.OutputDefs()[1]->Name(), "state");
   SessionOptions target_options = baseline_options;
@@ -1023,7 +1006,11 @@ void PositiveNumericsAndCudaDispatch(std::optional<TransformerLevel> level, int6
   const auto target_bytes = MakeMobiusModel<T>(true, channels, kernel, dilation).SerializeAsString();
   ASSERT_STATUS_OK(direct.Load(target_bytes.data(), static_cast<int>(target_bytes.size())));
   ASSERT_STATUS_OK(direct.Initialize());
+  ASSERT_EQ(direct.GetGraph().NumberOfNodes(), 1);
+  ASSERT_EQ(direct.GetGraph().Nodes().begin()->OpType(), "CausalConvWithState");
+  ASSERT_TRUE(HasCudaKernel(direct, *direct.GetGraph().Nodes().begin()));
   const std::vector<std::string> output_names{"y", "state"};
+  int fused_runs = 0;
   for (int64_t batch : {1, 2}) {
     OrtValue previous_state;
     int step = 0;
@@ -1035,30 +1022,20 @@ void PositiveNumericsAndCudaDispatch(std::optional<TransformerLevel> level, int6
       ASSERT_STATUS_OK(source.Run(RunOptions{}, feeds, output_names, &source_outputs));
       ASSERT_STATUS_OK(fused.Run(RunOptions{}, feeds, output_names, &fused_outputs));
       ASSERT_STATUS_OK(direct.Run(RunOptions{}, feeds, output_names, &direct_outputs));
+      ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
       CheckNumerics<T>(model, feeds, source_outputs, fused_outputs, direct_outputs, batch, length, step++);
       ASSERT_FALSE(::testing::Test::HasFatalFailure());
       previous_state = fused_outputs[1];
+      ++fused_runs;
     }
   }
-  const auto profile_path = cleanup.path = fused.EndProfiling();
-  ASSERT_FALSE(profile_path.empty());
-  std::ifstream profile_stream(profile_path);
-  const auto profile = nlohmann::json::parse(profile_stream);
-  profile_stream.close();
-  size_t cuda_target_events = 0;
-  for (const auto& event : profile) {
-    if (event.value("cat", "") != "Node" || !event.contains("args")) continue;
-    const auto& args = event["args"];
-    if (args.value("op_name", "") == "CausalConvWithState" &&
-        args.value("provider", "") == kCudaExecutionProvider) ++cuda_target_events;
-  }
-  EXPECT_EQ(cuda_target_events, 6u);
-  ::testing::Test::RecordProperty("cuda_target_profile_events", static_cast<int>(cuda_target_events));
+  EXPECT_EQ(fused_runs, 6);
+  ::testing::Test::RecordProperty("cuda_target_session_runs", fused_runs);
   ::testing::Test::RecordProperty(
       MakeString("C", channels, "_K", kernel, "_D", dilation, "_",
                  level ? MakeString("level", static_cast<int>(*level)) : "default",
-                 "_cuda_target_profile_events"),
-      static_cast<int>(cuda_target_events));
+                 "_cuda_target_session_runs"),
+      fused_runs);
   ::testing::Test::RecordProperty("production_use_tf32", "true");
   ::testing::Test::RecordProperty("fused_graph_nodes", fused.GetGraph().NumberOfNodes());
 }
@@ -1181,10 +1158,7 @@ TEST(CudaRuntimeFusionTest, LocalAuthenticExternalFixtureQualification) {
   SessionOptions enabled;
   ASSERT_STATUS_OK(enabled.config_options.AddConfigEntry(cuda_runtime_fusion::kCausalConvConfig, "1"));
   ASSERT_STATUS_OK(enabled.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
-  enabled.enable_profiling = true;
-  enabled.profile_file_prefix = ORT_TSTR("cuda_runtime_fusion_authentic_test");
   InferenceSessionWrapper fused(enabled, GetEnvironment());
-  ProfileCleanup cleanup{fused, {}};
   ASSERT_STATUS_OK(fused.RegisterExecutionProvider(ProductionMathCudaExecutionProvider()));
   ASSERT_STATUS_OK(fused.Load((root / "mobius-causal-conv-bf16.onnx").native()));
   ASSERT_EQ(fused.GetGraph().NumberOfNodes(), 11);
@@ -1193,6 +1167,7 @@ TEST(CudaRuntimeFusionTest, LocalAuthenticExternalFixtureQualification) {
   const auto& target = *fused.GetGraph().Nodes().begin();
   ASSERT_EQ(target.OpType(), "CausalConvWithState");
   ASSERT_EQ(target.GetExecutionProviderType(), kCudaExecutionProvider);
+  ASSERT_TRUE(HasCudaKernel(fused, target));
   ASSERT_EQ(target.InputDefs()[2]->Shape()->dim_size(), 1);
 
   SessionOptions direct_options;
@@ -1214,10 +1189,14 @@ TEST(CudaRuntimeFusionTest, LocalAuthenticExternalFixtureQualification) {
   }
   ASSERT_STATUS_OK(direct.Initialize());
   ASSERT_EQ(direct.GetGraph().Nodes().begin()->GetExecutionProviderType(), kCudaExecutionProvider);
+  ASSERT_TRUE(HasCudaKernel(direct, *direct.GetGraph().Nodes().begin()));
   ASSERT_STATUS_OK(source.Initialize());
   bool source_cuda_conv = false, source_cuda_sigmoid = false;
   for (const auto& node : source.GetGraph().Nodes()) {
     ASSERT_NE(node.OpType(), "CausalConvWithState");
+    if (node.GetExecutionProviderType() == kCudaExecutionProvider) {
+      ASSERT_TRUE(HasCudaKernel(source, node));
+    }
     source_cuda_conv |= node.OpType() == "Conv" && node.GetExecutionProviderType() == kCudaExecutionProvider;
     source_cuda_sigmoid |= node.OpType() == "Sigmoid" && node.GetExecutionProviderType() == kCudaExecutionProvider;
   }
@@ -1230,6 +1209,7 @@ TEST(CudaRuntimeFusionTest, LocalAuthenticExternalFixtureQualification) {
     const std::vector<std::string> names{graph.GetOutputs()[0]->Name(), graph.GetOutputs()[1]->Name()};
     return session.Run(RunOptions{}, feeds, names, &outputs);
   };
+  int fused_runs = 0;
   for (int64_t batch : {1, 2}) {
     for (int64_t length : {1, 2, 17}) {
       SCOPED_TRACE(MakeString("authentic B=", batch, ", S=", length));
@@ -1238,23 +1218,14 @@ TEST(CudaRuntimeFusionTest, LocalAuthenticExternalFixtureQualification) {
       ASSERT_STATUS_OK(run(source, feeds, source_outputs));
       ASSERT_STATUS_OK(run(fused, feeds, fused_outputs));
       ASSERT_STATUS_OK(run(direct, feeds, direct_outputs));
+      ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
       CheckNumerics(reference, feeds, source_outputs, fused_outputs, direct_outputs, batch, length);
       ASSERT_FALSE(::testing::Test::HasFatalFailure());
+      ++fused_runs;
     }
   }
-  cleanup.path = fused.EndProfiling();
-  std::ifstream stream(cleanup.path);
-  const auto profile = nlohmann::json::parse(stream);
-  stream.close();
-  int cuda_events = 0;
-  for (const auto& event : profile) {
-    if (event.value("cat", "") != "Node" || !event.contains("args")) continue;
-    const auto& args = event["args"];
-    if (args.value("op_name", "") == "CausalConvWithState" &&
-        args.value("provider", "") == kCudaExecutionProvider) ++cuda_events;
-  }
-  EXPECT_EQ(cuda_events, 6);
-  RecordProperty("authentic_cuda_target_profile_events", cuda_events);
+  EXPECT_EQ(fused_runs, 6);
+  RecordProperty("authentic_cuda_target_session_runs", fused_runs);
   RecordProperty("authentic_fused_graph_nodes", fused.GetGraph().NumberOfNodes());
   RecordProperty("source_and_modelbuilder_learned_bits_equal", "true");
 }
@@ -1418,8 +1389,6 @@ void RunShapeProbe(ShapeProbeMode mode, int64_t batch, int64_t length, bool boun
                                                       : "direct";
   const auto prefix = MakeString(label, "_B", batch, "_S", length);
   SessionOptions options;  // Keep the normal default optimization policy.
-  options.enable_profiling = true;
-  options.profile_file_prefix = ORT_TSTR("cuda_runtime_shape");
   if (mode == ShapeProbeMode::Fused) {
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry(cuda_runtime_fusion::kCausalConvConfig, "1"));
   }
@@ -1427,7 +1396,6 @@ void RunShapeProbe(ShapeProbeMode mode, int64_t batch, int64_t length, bool boun
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
   }
   InferenceSessionWrapper session(options, GetEnvironment());
-  ProfileCleanup cleanup{session, {}};
   if (bounded_memory) {
     OrtCUDAProviderOptionsV2 provider_options{};
     provider_options.use_tf32 = true;
@@ -1444,9 +1412,14 @@ void RunShapeProbe(ShapeProbeMode mode, int64_t batch, int64_t length, bool boun
   ASSERT_STATUS_OK(session.Load(bytes.data(), static_cast<int>(bytes.size())));
   ASSERT_STATUS_OK(session.Initialize());
   bool cuda_conv = false, cuda_sigmoid = false;
+  size_t target_nodes = 0;
   std::string placement;
   for (const auto& node : session.GetGraph().Nodes()) {
     placement += MakeString(node.OpType(), ":", node.GetExecutionProviderType(), ";");
+    if (node.GetExecutionProviderType() == kCudaExecutionProvider) {
+      ASSERT_TRUE(HasCudaKernel(session, node));
+    }
+    if (node.OpType() == "CausalConvWithState") ++target_nodes;
     cuda_conv |= node.OpType() == "Conv" && node.GetExecutionProviderType() == kCudaExecutionProvider;
     cuda_sigmoid |= node.OpType() == "Sigmoid" && node.GetExecutionProviderType() == kCudaExecutionProvider;
     if (mode == ShapeProbeMode::Source) {
@@ -1494,21 +1467,9 @@ void RunShapeProbe(ShapeProbeMode mode, int64_t batch, int64_t length, bool boun
     CheckLongSequenceSamples(mode, model, feeds, outputs, length, prefix);
     ASSERT_FALSE(::testing::Test::HasFatalFailure());
   }
-  cleanup.path = session.EndProfiling();
-  ASSERT_FALSE(cleanup.path.empty());
-  std::ifstream profile_stream(cleanup.path);
-  const auto profile = nlohmann::json::parse(profile_stream);
-  size_t target_events = 0;
-  for (const auto& event : profile) {
-    if (event.value("cat", "") != "Node" || !event.contains("args")) continue;
-    const auto& args = event["args"];
-    if (args.value("op_name", "") == "CausalConvWithState" &&
-        args.value("provider", "") == kCudaExecutionProvider) ++target_events;
-  }
-  EXPECT_EQ(target_events, mode == ShapeProbeMode::Source ? 0u : 1u);
-  ::testing::Test::RecordProperty(prefix + "_cuda_target_node_events", static_cast<int>(target_events));
-  // For B=0 this event proves node placement, NOT a GPU compute launch. The validated host early
-  // return after allocating empty outputs is the no-launch proof; synchronization checks no error.
+  EXPECT_EQ(target_nodes, mode == ShapeProbeMode::Source ? 0u : 1u);
+  ::testing::Test::RecordProperty(prefix + "_cuda_target_kernel_nodes", static_cast<int>(target_nodes));
+  // B=0 validates placement and empty outputs, not a GPU compute launch.
   if (bounded_memory) {
     size_t free_bytes = 0, total_bytes = 0;
     ASSERT_EQ(cudaMemGetInfo(&free_bytes, &total_bytes), cudaSuccess);
