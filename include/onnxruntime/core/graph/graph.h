@@ -762,7 +762,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /** This function takes externally provided data for initializers with external data
    *    and replaces graph initializers with its content.
    */
-  common::Status InjectExternalInitializedTensors(const InlinedHashMap<std::string, OrtValue>& external_initializers);
+  common::Status InjectExternalInitializedTensors(
+      const InlinedHashMap<std::string, OrtValue>& external_initializers,
+      bool use_buffers_directly = false);
 
   /** This function takes externally provided files in memory for initializers with external
    *    data and replaces initializers in this graph with their content. Subgraphs are not processed.
