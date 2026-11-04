@@ -1443,7 +1443,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
     return onnxruntime::AzureProviderFactoryCreator::Create({});
 #endif
   } else if (type == kQnnExecutionProvider) {
-#if defined(USE_QNN) || defined(USE_QNN_PROVIDER_INTERFACE)
+#if defined(USE_QNN_PROVIDER_INTERFACE)
     auto cit = provider_options_map.find(type);
     auto qnn_factory = onnxruntime::QNNProviderFactoryCreator::Create(
         cit == provider_options_map.end() ? ProviderOptions{} : cit->second, &session_options);

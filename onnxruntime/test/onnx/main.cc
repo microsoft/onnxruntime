@@ -59,7 +59,7 @@ void usage() {
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'vsinpu'"
-      "'openvino', 'migraphx', 'acl', 'xnnpack', 'webgpu', 'nnapi', 'qnn', 'snpe' or 'coreml'. "
+      "'openvino', 'migraphx', 'acl', 'xnnpack', 'webgpu', 'nnapi', 'snpe' or 'coreml'. "
       "Default: 'cpu'.\n"
       "\t-p: Pause after launch, can attach debugger and continue\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
@@ -70,33 +70,7 @@ void usage() {
       "\t    Refer to onnxruntime_session_options_config_keys.h for valid keys and values. \n"
       "\t    [Example] -C \"session.disable_cpu_ep_fallback|1 ep.context_enable|1\" \n"
       "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
-      "\t    [QNN only] [backend_type]: QNN backend type. E.g., 'cpu', 'htp'. Mutually exclusive with 'backend_path'.\n"
-      "\t    [QNN only] [backend_path]: QNN backend path. E.g., '/folderpath/libQnnHtp.so', '/winfolderpath/QnnHtp.dll'. Mutually exclusive with 'backend_type'.\n"
-      "\t    [QNN only] [profiling_level]: QNN profiling level, options:  'basic', 'detailed', default 'off'.\n"
-      "\t    [QNN only] [profiling_file_path]: QNN profiling file path if ETW not enabled.\n"
-      "\t    [QNN only] [rpc_control_latency]: QNN rpc control latency. default to 10.\n"
-      "\t    [QNN only] [vtcm_mb]: QNN VTCM size in MB. default to 0(not set).\n"
-      "\t    [QNN only] [htp_performance_mode]: QNN performance mode, options: 'burst', 'balanced', 'default', 'high_performance', \n"
-      "\t    'high_power_saver', 'low_balanced', 'extreme_power_saver', 'low_power_saver', 'power_saver', 'sustained_high_performance'. Default to 'default'. \n"
-      "\t    [QNN only] [op_packages]: QNN UDO package, allowed format: \n"
-      "\t    op_packages|<op_type>:<op_package_path>:<interface_symbol_name>[:<target>],<op_type2>:<op_package_path2>:<interface_symbol_name2>[:<target2>]. \n"
-      "\t    [QNN only] [qnn_context_priority]: QNN context priority, options: 'low', 'normal', 'normal_high', 'high'. Default to 'normal'. \n"
-      "\t    0 means dump the QNN context binary into separate bin file and set the path in the Onnx skeleton model.\n"
-      "\t    [QNN only] [qnn_saver_path]: QNN Saver backend path. e.g '/folderpath/libQnnSaver.so'.\n"
-      "\t    [QNN only] [htp_graph_finalization_optimization_mode]: QNN graph finalization optimization mode, options: \n"
-      "\t    '0', '1', '2', '3', default is '0'.\n"
-      "\t    [QNN only] [soc_model]: The SoC Model number. Refer to QNN SDK documentation for specific values. Defaults to '0' (unknown). \n"
-      "\t    [QNN only] [htp_arch]: The minimum HTP architecture. The driver will use ops compatible with this architecture. \n"
-      "\t    Options are '0', '68', '69', '73', '75', '81'. Defaults to '0' (none). \n"
-      "\t    [QNN only] [device_id]: The ID of the device to use when setting 'htp_arch'. Defaults to '0' (for single device). \n"
-      "\t    [QNN only] [enable_htp_fp16_precision]: Enable the HTP_FP16 precision so that the float32 model will be inferenced with fp16 precision. \n"
-      "\t    Otherwise, it will be fp32 precision. Works for float32 model for HTP backend. Defaults to '1' (with FP16 precision.). \n"
-      "\t    [QNN only] [offload_graph_io_quantization]: Offload graph input quantization and graph output dequantization to another EP (typically CPU EP). \n"
-      "\t    Defaults to '0' (QNN EP handles the graph I/O quantization and dequantization). \n"
-      "\t    [QNN only] [extended_udma]: Enable HTP extended UDMA mode for better performance on supported hardware, options: \n"
-      "\t    '0' (disabled), '1' (enabled). Default: '0'. \n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
-      "\t [Example] [For QNN EP] -e qnn -i \"profiling_level|detailed backend_type|cpu\" \n\n"
       "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"
       "\t    [SNPE only] [priority]: execution priority, options: 'low', 'normal'. \n"
       "\t    [SNPE only] [buffer_type]: options: 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. default: ITENSOR'. \n"
@@ -544,108 +518,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
     }
     if (enable_qnn) {
-#ifdef USE_QNN
-#ifdef _MSC_VER
-      std::string option_string = ToUTF8String(ep_runtime_config_string);
-#else
-      std::string option_string = ep_runtime_config_string;
-#endif
-      std::istringstream ss(option_string);
-      std::string token;
-      std::unordered_map<std::string, std::string> qnn_options;
-
-      while (ss >> token) {
-        if (token == "") {
-          continue;
-        }
-        auto pos = token.find("|");
-        if (pos == std::string::npos || pos == 0 || pos == token.length()) {
-          ORT_THROW("Use a '|' to separate the key and value for the run-time option you are trying to use.");
-        }
-
-        std::string key(token.substr(0, pos));
-        std::string value(token.substr(pos + 1));
-
-        if (key == "backend_path" || key == "profiling_file_path") {
-          if (value.empty()) {
-            ORT_THROW("Please provide the valid file path.");
-          }
-        } else if (key == "qnn_context_embed_mode") {
-          if (value != "0") {
-            ORT_THROW("Set to 0 to disable qnn_context_embed_mode.");
-          }
-        } else if (key == "profiling_level") {
-          std::set<std::string> supported_profiling_level = {"off", "basic", "detailed"};
-          if (supported_profiling_level.find(value) == supported_profiling_level.end()) {
-            ORT_THROW("Supported profiling_level: off, basic, detailed");
-          }
-        } else if (key == "backend_type" || key == "rpc_control_latency" || key == "vtcm_mb" || key == "soc_model" ||
-                   key == "device_id") {
-          // no validation
-        } else if (key == "htp_performance_mode") {
-          std::set<std::string> supported_htp_perf_mode = {"burst", "balanced", "default", "high_performance",
-                                                           "high_power_saver", "low_balanced", "extreme_power_saver", "low_power_saver",
-                                                           "power_saver", "sustained_high_performance"};
-          if (supported_htp_perf_mode.find(value) == supported_htp_perf_mode.end()) {
-            std::ostringstream str_stream;
-            std::copy(supported_htp_perf_mode.begin(), supported_htp_perf_mode.end(),
-                      std::ostream_iterator<std::string>(str_stream, ","));
-            std::string str = str_stream.str();
-            ORT_THROW("Wrong value for htp_performance_mode. select from: " + str);
-          }
-        } else if (key == "op_packages") {
-          if (value.empty()) {
-            ORT_THROW("Please provide the valid op_packages.");
-          }
-        } else if (key == "qnn_context_priority") {
-          std::set<std::string> supported_qnn_context_priority = {"low", "normal", "normal_high", "high"};
-          if (supported_qnn_context_priority.find(value) == supported_qnn_context_priority.end()) {
-            ORT_THROW("Supported qnn_context_priority: low, normal, normal_high, high");
-          }
-        } else if (key == "qnn_saver_path") {
-          // no validation
-        } else if (key == "htp_graph_finalization_optimization_mode") {
-          std::unordered_set<std::string> supported_htp_graph_final_opt_modes = {"0", "1", "2", "3"};
-          if (supported_htp_graph_final_opt_modes.find(value) == supported_htp_graph_final_opt_modes.end()) {
-            std::ostringstream str_stream;
-            std::copy(supported_htp_graph_final_opt_modes.begin(), supported_htp_graph_final_opt_modes.end(),
-                      std::ostream_iterator<std::string>(str_stream, ","));
-            std::string str = str_stream.str();
-            ORT_THROW("Wrong value for htp_graph_finalization_optimization_mode. select from: " + str);
-          }
-        } else if (key == "htp_arch") {
-          std::unordered_set<std::string> supported_htp_archs = {"0", "68", "69", "73", "75", "81"};
-          if (supported_htp_archs.find(value) == supported_htp_archs.end()) {
-            std::ostringstream str_stream;
-            std::copy(supported_htp_archs.begin(), supported_htp_archs.end(),
-                      std::ostream_iterator<std::string>(str_stream, ","));
-            std::string str = str_stream.str();
-            ORT_THROW("Wrong value for htp_arch. select from: " + str);
-          }
-        } else if (key == "enable_htp_fp16_precision" || key == "offload_graph_io_quantization" || key == "extended_udma") {
-          std::unordered_set<std::string> supported_options = {"0", "1"};
-          if (supported_options.find(value) == supported_options.end()) {
-            std::ostringstream str_stream;
-            std::copy(supported_options.begin(), supported_options.end(),
-                      std::ostream_iterator<std::string>(str_stream, ","));
-            std::string str = str_stream.str();
-            ORT_THROW("Wrong value for ", key, ". select from: ", str);
-          }
-        } else {
-          ORT_THROW(
-              "Wrong key type entered. Choose from options: ['backend_type', 'backend_path', "
-              "'profiling_level', 'profiling_file_path', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode', "
-              "'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'op_packages', 'qnn_context_priority', "
-              "'soc_model', 'htp_arch', 'device_id', 'enable_htp_fp16_precision', 'offload_graph_io_quantization', 'extended_udma']");
-        }
-
-        qnn_options[key] = value;
-      }
-      sf.AppendExecutionProvider("QNN", qnn_options);
-#else
       fprintf(stderr, "QNN is not supported in this build");
       return -1;
-#endif
     }
     if (enable_nnapi) {
 #ifdef USE_NNAPI
@@ -878,50 +752,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
                                                      ORT_TSTR("test_resnet101v2"), ORT_TSTR("test_vgg19"), ORT_TSTR("tf_inception_resnet_v2"), ORT_TSTR("tf_inception_v1"), ORT_TSTR("tf_inception_v3"), ORT_TSTR("tf_inception_v4"), ORT_TSTR("tf_mobilenet_v1_1.0_224"),
                                                      ORT_TSTR("tf_mobilenet_v2_1.0_224"), ORT_TSTR("tf_mobilenet_v2_1.4_224"), ORT_TSTR("tf_nasnet_large"), ORT_TSTR("tf_pnasnet_large"), ORT_TSTR("tf_resnet_v1_50"), ORT_TSTR("tf_resnet_v1_101"), ORT_TSTR("tf_resnet_v1_101"),
                                                      ORT_TSTR("tf_resnet_v2_101"), ORT_TSTR("tf_resnet_v2_152"), ORT_TSTR("batchnorm_example_training_mode"), ORT_TSTR("batchnorm_epsilon_training_mode")};
-    static const ORTCHAR_T* qnn_disabled_tests[] = {
-        ORT_TSTR("nllloss_NCd1d2d3_none_no_weight_negative_ii"),
-        ORT_TSTR("nllloss_NCd1d2d3_none_no_weight_negative_ii_expanded"),
-        ORT_TSTR("sce_NCd1d2d3_none_no_weight_negative_ii"),
-        ORT_TSTR("sce_NCd1d2d3_none_no_weight_negative_ii_expanded"),
-        ORT_TSTR("sce_NCd1d2d3_none_no_weight_negative_ii_log_prob"),
-        ORT_TSTR("sce_NCd1d2d3_none_no_weight_negative_ii_log_prob_expanded"),
-        ORT_TSTR("gather_negative_indices"),
-        ORT_TSTR("nllloss_NCd1d2_with_weight_reduction_sum"),
-        ORT_TSTR("nllloss_NCd1d2_with_weight_reduction_sum_ii_expanded"),
-        ORT_TSTR("nllloss_NCd1d2_with_weight"),
-        ORT_TSTR("nllloss_NCd1d2_with_weight_expanded"),
-        ORT_TSTR("nllloss_NCd1d2_with_weight_reduction_sum_expanded"),
-        ORT_TSTR("nllloss_NCd1d2_with_weight_reduction_sum_ii"),
-        ORT_TSTR("nllloss_NCd1_weight_ii_expanded"),
-        ORT_TSTR("nllloss_NCd1_ii_expanded"),
-        ORT_TSTR("nllloss_NCd1d2_no_weight_reduction_mean_ii_expanded"),
-        ORT_TSTR("sce_none_weights"),
-        ORT_TSTR("sce_none_weights_log_prob"),
-        ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii_log_prob"),
-        ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii_log_prob_expanded"),
-        ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii"),
-        ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii_expanded"),
-        ORT_TSTR("sce_none_weights_log_prob_expanded"),
-        ORT_TSTR("sce_none_weights_expanded"),
-        ORT_TSTR("convtranspose_3d"),
-        ORT_TSTR("gather_elements_negative_indices"),
-        ORT_TSTR("rotary_embedding_3d_input_expanded"),
-        ORT_TSTR("rotary_embedding_expanded"),
-        ORT_TSTR("rotary_embedding_interleaved_expanded"),
-        // QNN CPU returns uniform Softmax probabilities for the expanded function's all-negative-infinity rows,
-        // so its zero-row guard is not preserved. Keep the native Attention case enabled.
-        ORT_TSTR("attention_4d_causal_nonpad_negative_offset_structural_empty_expanded"),
-        // QNN don't support fmod = 1
-        ORT_TSTR("mod_mixed_sign_float64"),
-        ORT_TSTR("mod_mixed_sign_float32"),
-        ORT_TSTR("mod_mixed_sign_float16"),
-        ORT_TSTR("mod_int64_fmod"),
-        // QNN lowers mod to cast -> a - b * floor(a/b) -> cast. Cast doesnt support these types
-        ORT_TSTR("mod_mixed_sign_int16"),
-        ORT_TSTR("mod_mixed_sign_int8"),
-        ORT_TSTR("mod_uint16"),
-        ORT_TSTR("mod_uint64")};
-
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
 
     if (enable_cuda) {
@@ -934,10 +764,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       // these models run but disabled tests to keep memory utilization low
       // This will be removed after LRU implementation
       all_disabled_tests.insert(std::begin(dnnl_disabled_tests), std::end(dnnl_disabled_tests));
-      all_disabled_tests.insert(std::begin(float8_tests), std::end(float8_tests));
-    }
-    if (enable_qnn) {
-      all_disabled_tests.insert(std::begin(qnn_disabled_tests), std::end(qnn_disabled_tests));
       all_disabled_tests.insert(std::begin(float8_tests), std::end(float8_tests));
     }
 #if !defined(__amd64__) && !defined(_M_AMD64)

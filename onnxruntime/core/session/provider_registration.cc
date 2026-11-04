@@ -227,7 +227,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
       break;
     }
     case EpID::QNN: {
-#if defined(USE_QNN) || defined(USE_QNN_PROVIDER_INTERFACE)
+#if defined(USE_QNN_PROVIDER_INTERFACE)
       if (auto ep_factory = QNNProviderFactoryCreator::Create(provider_options, &(options->value)); ep_factory) {
         options->provider_factories.push_back(std::move(ep_factory));
       } else {

@@ -2126,7 +2126,6 @@ static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX ORT_TSTR("onnxruntime_p
 );
 static ProviderLibrary s_library_migraphx(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_migraphx") LIBRARY_EXTENSION);
 
-// QNN EP can be built either as a static library or a shared library. Can safely define s_library_qnn even if static.
 static ProviderLibrary s_library_qnn(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_qnn") LIBRARY_EXTENSION);
 
 void UnloadSharedProviders() {
@@ -2335,7 +2334,6 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
   return ov_options_converted_map;
 }
 
-#if !BUILD_QNN_EP_STATIC_LIB
 std::shared_ptr<IExecutionProviderFactory> QNNProviderFactoryCreator::Create(
     const ProviderOptions& provider_options_map, const SessionOptions* session_options) {
   ORT_TRY {
@@ -2350,7 +2348,6 @@ std::shared_ptr<IExecutionProviderFactory> QNNProviderFactoryCreator::Create(
   }
   ORT_CATCH_LOG_RETURN_NULLPTR;
 }
-#endif  // !BUILD_QNN_EP_STATIC_LIB
 
 std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(
     const ProviderOptions* provider_options_map, const SessionOptions* session_options) {

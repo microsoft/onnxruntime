@@ -12,7 +12,8 @@
 // 1st-party headers/libs.
 #include "core/common/exceptions.h"
 #include "core/platform/env_var_utils.h"
-#include "core/providers/qnn/ort_api.h"
+#define ORT_API_MANUAL_INIT
+#include "core/session/onnxruntime_cxx_api.h"
 
 #include "vaip/capability.h"
 #include "vaip/global_api.h"

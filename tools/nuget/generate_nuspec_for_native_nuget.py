@@ -149,7 +149,7 @@ def parse_arguments():
         required=False,
         default="None",
         type=str,
-        choices=["cuda", "dnnl", "openvino", "migraphx", "tensorrt", "snpe", "qnn", "None"],
+        choices=["cuda", "dnnl", "openvino", "migraphx", "tensorrt", "snpe", "None"],
         help="The selected execution provider for this build.",
     )
     parser.add_argument("--sdk_info", required=False, default="", type=str, help="dependency SDK information.")
@@ -377,7 +377,6 @@ def generate_files(line_list, args):
     is_dml_package = args.package_name == "Microsoft.ML.OnnxRuntime.DirectML"
     is_windowsai_package = args.package_name == "Microsoft.AI.MachineLearning"
     is_snpe_package = args.package_name == "Microsoft.ML.OnnxRuntime.Snpe"
-    is_qnn_package = args.package_name == "Microsoft.ML.OnnxRuntime.QNN"
     is_migraphx_package = args.package_name == "Microsoft.ML.OnnxRuntime.MIGraphX"
     is_training_package = args.package_name in [
         "Microsoft.ML.OnnxRuntime.Training",
@@ -403,7 +402,6 @@ def generate_files(line_list, args):
             "tensorrt_ep_shared_lib": "onnxruntime_providers_tensorrt.dll",
             "openvino_ep_shared_lib": "onnxruntime_providers_openvino.dll",
             "cuda_ep_shared_lib": "onnxruntime_providers_cuda.dll",
-            "qnn_ep_shared_lib": "onnxruntime_providers_qnn.dll",
             "migraphx_ep_shared_lib": "onnxruntime_providers_migraphx.dll",
             "amd_comgr0602": "amd_comgr0602.dll",
             "amd_comgr0604": "amd_comgr0604.dll",
@@ -586,42 +584,6 @@ def generate_files(line_list, args):
                 + os.path.join(args.native_build_path, interop_pdb)
                 + '" target="lib\\net5.0\\Microsoft.AI.MachineLearning.Interop.pdb" />'
             )
-
-    if is_qnn_package:
-        files_list.append("<file src=" + '"' + os.path.join(args.native_build_path, "QnnCpu.dll") + runtimes + " />")
-        files_list.append("<file src=" + '"' + os.path.join(args.native_build_path, "QnnHtp.dll") + runtimes + " />")
-        if args.target_architecture != "x64":
-            files_list.append(
-                "<file src=" + '"' + os.path.join(args.native_build_path, "QnnGpu.dll") + runtimes + " />"
-            )
-            files_list.append(
-                "<file src=" + '"' + os.path.join(args.native_build_path, "QnnSystem.dll") + runtimes + " />"
-            )
-            files_list.append(
-                "<file src=" + '"' + os.path.join(args.native_build_path, "QnnHtpPrepare.dll") + runtimes + " />"
-            )
-            for htp_arch in [73, 81]:
-                files_list.append(
-                    "<file src="
-                    + '"'
-                    + os.path.join(args.native_build_path, f"QnnHtpV{htp_arch}Stub.dll")
-                    + runtimes
-                    + " />"
-                )
-                files_list.append(
-                    "<file src="
-                    + '"'
-                    + os.path.join(args.native_build_path, f"libQnnHtpV{htp_arch}Skel.so")
-                    + runtimes
-                    + " />"
-                )
-                files_list.append(
-                    "<file src="
-                    + '"'
-                    + os.path.join(args.native_build_path, f"libqnnhtpv{htp_arch}.cat")
-                    + runtimes
-                    + " />"
-                )
 
     is_ado_packaging_build = False
     # Process runtimes
@@ -806,24 +768,6 @@ def generate_files(line_list, args):
             + '\\native" />'
         )
 
-    if args.execution_provider == "qnn" or (is_qnn_package and not is_ado_packaging_build):
-        files_list.append(
-            "<file src="
-            + '"'
-            + os.path.join(args.native_build_path, nuget_dependencies["providers_shared_lib"])
-            + runtimes_target
-            + args.target_architecture
-            + '\\native" />'
-        )
-        files_list.append(
-            "<file src="
-            + '"'
-            + os.path.join(args.native_build_path, nuget_dependencies["qnn_ep_shared_lib"])
-            + runtimes_target
-            + args.target_architecture
-            + '\\native" />'
-        )
-
     if args.execution_provider == "migraphx":
         files_list.append(
             "<file src="
@@ -987,23 +931,11 @@ def generate_files(line_list, args):
         or is_dml_package
         or is_mklml_package
         or is_snpe_package
-        or is_qnn_package
     ):
         # Process props file
-        if is_qnn_package:
-            source_props = os.path.join(
-                args.sources_path,
-                "csharp",
-                "src",
-                "Microsoft.ML.OnnxRuntime",
-                "targets",
-                "netstandard",
-                "props_qnn.xml",
-            )
-        else:
-            source_props = os.path.join(
-                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "netstandard", "props.xml"
-            )
+        source_props = os.path.join(
+            args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "netstandard", "props.xml"
+        )
         target_props = os.path.join(
             args.sources_path,
             "csharp",
@@ -1015,7 +947,7 @@ def generate_files(line_list, args):
         )
         copy_file(source_props, target_props)
         files_list.append("<file src=" + '"' + target_props + '" target="' + build_dir + '\\native" />')
-        if not is_snpe_package and not is_qnn_package:
+        if not is_snpe_package:
             files_list.append("<file src=" + '"' + target_props + '" target="' + build_dir + '\\netstandard2.0"  />')
             files_list.append("<file src=" + '"' + target_props + '" target="' + build_dir + '\\netstandard2.1"  />')
 
@@ -1034,7 +966,7 @@ def generate_files(line_list, args):
         )
         copy_file(source_targets, target_targets)
         files_list.append("<file src=" + '"' + target_targets + '" target="' + build_dir + '\\native"  />')
-        if not is_snpe_package and not is_qnn_package:
+        if not is_snpe_package:
             files_list.append("<file src=" + '"' + target_targets + '" target="' + build_dir + '\\netstandard2.0" />')
             files_list.append("<file src=" + '"' + target_targets + '" target="' + build_dir + '\\netstandard2.1"  />')
 
@@ -1178,19 +1110,16 @@ def generate_files(line_list, args):
         + os.path.join(args.sources_path, "ORT_icon_for_light_bg.png")
         + '" target="ORT_icon_for_light_bg.png" />'
     )
-    if is_qnn_package:
-        files_list.append(
-            "<file src="
-            + '"'
-            + os.path.join(args.native_build_path, "Qualcomm_LICENSE.pdf")
-            + '" target="Qualcomm_LICENSE.pdf" />'
-        )
     files_list.append("</files>")
 
     line_list += files_list
 
 
 def generate_nuspec(args):
+    if args.package_name == "Microsoft.ML.OnnxRuntime.QNN" or args.execution_provider == "qnn":
+        raise ValueError(
+            "In-tree QNN packaging has been retired. Use https://github.com/onnxruntime/onnxruntime-qnn instead."
+        )
     lines = ['<?xml version="1.0"?>']
     lines.append("<package>")
     generate_metadata(lines, args)

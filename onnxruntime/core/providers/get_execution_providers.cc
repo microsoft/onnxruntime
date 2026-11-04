@@ -70,11 +70,7 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
         },
         {
             kQnnExecutionProvider,
-#ifdef USE_QNN
-            true,
-#else
             false,
-#endif
         },
         {
             kNnapiExecutionProvider,
