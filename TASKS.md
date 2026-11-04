@@ -6530,7 +6530,7 @@ or authorization to implement deferred bindings.
   reproducible Phi-3/SD examples and contributor impact.
 - [x] Link the overview from the existing Python guide.
 - [x] Validate relative links,20PR references, example CLI shapes and documentation whitespace.
-- [ ] Publish the21st documentation-only PR on M24/#30 and verify remote head/base/clean tree.
+- [x] Publish the21st documentation-only PR on M24/#30 and verify remote head/base/clean tree.
 
 **Validation:** Documentation-only: no new production lines or runtime behavior,
 so no CPU/CUDA rebuild, model run or unit-coverage claim is required. Existing
@@ -6541,3 +6541,12 @@ contains exactly20unique PRs(#11-#30); all3Bash examples pass `bash -n`;
 documented CLI commands/options match the existing argparse definitions;
 the public source-build link resolves; `git diff --check` passes.
 No runtime tests, downloads, model runs or dependency installation were performed.
+
+**Published:** [#31](https://github.com/onnxruntime/ort-state/pull/31), OPEN/ready,
+head `state/contributor-overview`, exact base `state/m24-qualification` at
+`84237bbf6b9d059e4f96904b9c181402d6e11da6`. Overview commit:
+`8965109858c9087d428e86919ec3716c91413b43`.
+This tracking-only follow-up records completed publication. Final synchronized
+head/base, preserved PR template/body and clean-worktree verification are retained
+in session `contributor-overview-final-pr.json`. No PR was merged and no deferred
+binding milestone was changed.
