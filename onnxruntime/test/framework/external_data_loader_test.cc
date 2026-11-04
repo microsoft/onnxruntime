@@ -29,6 +29,7 @@
 #include <string>
 
 #include "core/common/inlined_containers.h"
+#include "core/common/path_string.h"
 #include "core/framework/external_data_loader.h"
 #include "core/framework/session_state.h"
 #include "core/graph/onnx_protobuf.h"
@@ -397,7 +398,7 @@ TEST_F(ExternalDataLoaderLifetimeTest, FlushesDeferredLoadsBeforeClearingExterna
 
   std::string current_input = "input";
   for (size_t i = 0; i < kExternalFileCount; ++i) {
-    data_paths[i] = ORT_TSTR("external_loader_many_weights_XXXXXX");
+    data_paths[i] = ORT_TSTR("external_loader_many_weights_") + ToPathString(std::to_string(i)) + ORT_TSTR("_XXXXXX");
     std::string file_bytes(i + 1, '\0');
     file_bytes[i] = '\1';
     ASSERT_NO_FATAL_FAILURE(WriteTestFile(file_bytes, data_paths[i], data_deleters[i]));
@@ -441,6 +442,8 @@ TEST_F(ExternalDataLoaderLifetimeTest, FlushesDeferredLoadsBeforeClearingExterna
 }
 #endif
 
+// The default CPU fallback path reads external data through Module.MountedFiles, which is unavailable in WASM tests.
+#if !defined(__wasm__)
 TEST_F(ExternalDataLoaderLifetimeTest, DisablesLoaderWhenSessionOptionsThreadsIsZero) {
   ASSERT_NO_FATAL_FAILURE(CreateSession());
   ASSERT_STATUS_OK(session_->GetMutableSessionOptions().config_options.AddConfigEntry(
@@ -451,6 +454,7 @@ TEST_F(ExternalDataLoaderLifetimeTest, DisablesLoaderWhenSessionOptionsThreadsIs
   EXPECT_TRUE(state_->offsets.empty());
   ASSERT_NO_FATAL_FAILURE(Run(true, true));
 }
+#endif
 
 TEST_F(ExternalDataLoaderLifetimeTest, RejectsInvalidSessionOptionValues) {
   struct InvalidCase {
