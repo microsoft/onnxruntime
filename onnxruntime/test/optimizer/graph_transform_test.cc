@@ -9740,6 +9740,10 @@ struct VitAttentionTestConfig {
   int64_t q_batch = 1;
   // Leaves the batch and sequence dims of the inputs unknown, as in models exported with dynamic axes.
   bool dynamic_input_dims = false;
+  // A non-zero value gives the Q weight this leading batch dim, which MatMul broadcasts into the Q batch.
+  int64_t q_weight_batch = 0;
+  // Adds bias Adds after the projections: Q uses this shape, K/V use their 1D hidden size.
+  std::vector<int64_t> q_bias_shape;
   // Shape of the Reshape that merges the heads back; empty means {0, 0, hidden_size}.
   std::vector<int64_t> merge_heads_shape;
   bool fp16 = false;
@@ -9764,11 +9768,14 @@ static void BuildVitAttentionTestCase(ModelTestBuilder& builder, const VitAttent
     }
     return builder.MakeInput<float>(shape, -1.0f, 1.0f);
   };
-  auto make_weight = [&](int64_t output_size) -> NodeArg* {
-    const std::vector<int64_t> shape{hidden_size, output_size};
+  auto make_weight = [&](int64_t output_size, int64_t batch = 0) -> NodeArg* {
+    std::vector<int64_t> shape{hidden_size, output_size};
+    if (batch > 0) {
+      shape.insert(shape.begin(), batch);
+    }
     if (config.fp16) {
       return builder.MakeInitializer<MLFloat16>(
-          shape, std::vector<MLFloat16>(static_cast<size_t>(hidden_size * output_size), MLFloat16(0.01f)));
+          shape, std::vector<MLFloat16>(static_cast<size_t>(TensorShape(shape).Size()), MLFloat16(0.01f)));
     }
     return builder.MakeInitializer<float>(shape, -0.2f, 0.2f);
   };
@@ -9782,20 +9789,28 @@ static void BuildVitAttentionTestCase(ModelTestBuilder& builder, const VitAttent
   NodeArg* merge_heads_shape = builder.Make1DInitializer<int64_t>(
       config.merge_heads_shape.empty() ? std::vector<int64_t>{0, 0, hidden_size} : config.merge_heads_shape);
 
-  auto add_head_split = [&](NodeArg* x, int64_t heads, const std::vector<int64_t>& perm) {
-    auto* weight = make_weight(heads * head_size);
+  auto add_head_split = [&](NodeArg* x, int64_t heads, const std::vector<int64_t>& perm, int64_t weight_batch,
+                            const std::vector<int64_t>& bias_shape) {
+    auto* weight = make_weight(heads * head_size, weight_batch);
     auto* split_heads_shape = builder.Make1DInitializer<int64_t>({0, 0, heads, head_size});
     auto* projected = builder.MakeIntermediate();
     auto* bsnh = builder.MakeIntermediate();
     auto* transposed = builder.MakeIntermediate();
     builder.AddNode("MatMul", {x, weight}, {projected});
+    if (!config.q_bias_shape.empty()) {
+      auto* bias = builder.MakeInitializer<float>(bias_shape, -0.1f, 0.1f);
+      auto* biased = builder.MakeIntermediate();
+      builder.AddNode("Add", {bias, projected}, {biased});
+      projected = biased;
+    }
     builder.AddNode("Reshape", {projected, split_heads_shape}, {bsnh});
     builder.AddNode("Transpose", {bsnh}, {transposed}).AddAttribute("perm", perm);
     return transposed;
   };
-  auto* q = add_head_split(q_input, num_heads, {0, 2, 1, 3});
-  auto* k = add_head_split(kv_input, config.kv_num_heads, config.k_perm);
-  auto* v = add_head_split(kv_input, config.kv_num_heads, {0, 2, 1, 3});
+  const std::vector<int64_t> kv_bias_shape{config.kv_num_heads * head_size};
+  auto* q = add_head_split(q_input, num_heads, {0, 2, 1, 3}, config.q_weight_batch, config.q_bias_shape);
+  auto* k = add_head_split(kv_input, config.kv_num_heads, config.k_perm, 0, kv_bias_shape);
+  auto* v = add_head_split(kv_input, config.kv_num_heads, {0, 2, 1, 3}, 0, kv_bias_shape);
 
   auto* qk = builder.MakeIntermediate();
   auto* scaled = builder.MakeIntermediate();
@@ -9933,6 +9948,37 @@ TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitDynamicDimsCrossAtte
   VitAttentionTestConfig config;
   config.dynamic_input_dims = true;
   config.separate_kv_input = true;
+  ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionUnfused, *logger_));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitDynamicDimsWithBiasFused) {
+  // 1D biases keep the leading dims, so the shared projection source still proves matching batches.
+  VitAttentionTestConfig config;
+  config.dynamic_input_dims = true;
+  config.q_bias_shape = {64};
+  ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionFused, *logger_));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitSharedSourceBatchedWeightNotFused) {
+  // Q, K and V project the same [1, S, D] input, but the [2, D, D] Q weight broadcasts Q to batch 2.
+  VitAttentionTestConfig config;
+  config.q_weight_batch = 2;
+  ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionUnfused, *logger_));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitSharedSourceBatchedWeightDynamicDimsNotFused) {
+  // As above with unknown inferred batch dims, so only the projection-source check can reject it.
+  VitAttentionTestConfig config;
+  config.dynamic_input_dims = true;
+  config.q_weight_batch = 2;
+  ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionUnfused, *logger_));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitSharedSourceBatchedBiasDynamicDimsNotFused) {
+  // A [2, 1, D] Q bias broadcasts Q to batch 2 even though all three project the same input.
+  VitAttentionTestConfig config;
+  config.dynamic_input_dims = true;
+  config.q_bias_shape = {2, 1, 64};
   ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionUnfused, *logger_));
 }
 

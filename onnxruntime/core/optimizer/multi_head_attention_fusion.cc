@@ -83,19 +83,31 @@ const Node* MatchHeadSplit(const Graph& graph, const Node& consumer, int input_i
   return transpose;
 }
 
+bool HasRankAtMost(const NodeArg& arg, int rank) {
+  const auto* shape = arg.Shape();
+  return shape != nullptr && shape->dim_size() <= rank;
+}
+
 // Walks up from a head-split Reshape to the tensor its projection reads: through an optional bias Add, a MatMul or
-// Gemm with a constant weight, and the flattening Reshape that MatMulAddFusion puts in front of a Gemm.
+// Gemm, and the flattening Reshape that MatMulAddFusion puts in front of a Gemm. Only projections that keep the
+// leading dims of that tensor are followed: a 2D constant weight and a bias of rank 1 or less, since higher-rank
+// constants could broadcast new leading dims.
 const NodeArg* GetProjectionSource(const Graph& graph, const Node& head_split_reshape) {
   const Node* node = graph_utils::GetInputNode(head_split_reshape, 0);
   if (node != nullptr && node->OpType() == "Add" && node->InputDefs().size() == 2) {
     const int data_index = graph_utils::IsConstantInitializer(graph, node->InputDefs()[1]->Name(), true) ? 0 : 1;
-    if (!graph_utils::IsConstantInitializer(graph, node->InputDefs()[1 - data_index]->Name(), true)) {
+    const NodeArg& bias = *node->InputDefs()[1 - data_index];
+    if (!graph_utils::IsConstantInitializer(graph, bias.Name(), true) || !HasRankAtMost(bias, 1)) {
       return nullptr;
     }
     node = graph_utils::GetInputNode(*node, data_index);
   }
-  if (node == nullptr || (node->OpType() != "MatMul" && node->OpType() != "Gemm") || node->InputDefs().size() < 2 ||
-      !graph_utils::IsConstantInitializer(graph, node->InputDefs()[1]->Name(), true)) {
+  if (node == nullptr || (node->OpType() != "MatMul" && node->OpType() != "Gemm") || node->InputDefs().size() < 2) {
+    return nullptr;
+  }
+  const NodeArg& weight = *node->InputDefs()[1];
+  if (!graph_utils::IsConstantInitializer(graph, weight.Name(), true) || !weight.Shape() ||
+      weight.Shape()->dim_size() != 2) {
     return nullptr;
   }
   const Node* flatten = graph_utils::GetInputNode(*node, 0);
@@ -105,27 +117,27 @@ const NodeArg* GetProjectionSource(const Graph& graph, const Node& head_split_re
   return node->InputDefs()[0];
 }
 
-// Whether two head-split Reshapes produce the same batch dim. That holds when both project the same tensor and keep
-// the same leading reshape dims, as in self-attention; otherwise it needs statically comparable inferred dims.
+// Whether two head-split Reshapes produce the same batch dim. Statically comparable inferred dims decide it. When
+// they are unknown (dynamic axes), it still holds if both project the same tensor through leading-dim-preserving
+// projections and keep the same leading reshape dims, as in self-attention.
 bool HaveSameBatchDim(const Graph& graph, const Node& a, const Node& b) {
-  InlinedVector<int64_t> a_dims, b_dims;
-  const NodeArg* a_source = GetProjectionSource(graph, a);
-  if (a_source != nullptr && a_source == GetProjectionSource(graph, b) && GetConstantShape(graph, a, a_dims) &&
-      GetConstantShape(graph, b, b_dims) && a_dims[0] == b_dims[0] && a_dims[1] == b_dims[1]) {
-    return true;
-  }
-
   const auto* a_shape = a.OutputDefs()[0]->Shape();
   const auto* b_shape = b.OutputDefs()[0]->Shape();
-  if (a_shape == nullptr || b_shape == nullptr || a_shape->dim_size() != 4 || b_shape->dim_size() != 4) {
-    return false;
+  if (a_shape != nullptr && b_shape != nullptr && a_shape->dim_size() == 4 && b_shape->dim_size() == 4) {
+    const auto& a_dim = a_shape->dim(0);
+    const auto& b_dim = b_shape->dim(0);
+    if (utils::HasDimValue(a_dim) && utils::HasDimValue(b_dim)) {
+      return a_dim.dim_value() == b_dim.dim_value();
+    }
+    if (utils::HasDimParam(a_dim) && utils::HasDimParam(b_dim) && a_dim.dim_param() == b_dim.dim_param()) {
+      return true;
+    }
   }
-  const auto& a_dim = a_shape->dim(0);
-  const auto& b_dim = b_shape->dim(0);
-  if (utils::HasDimValue(a_dim) && utils::HasDimValue(b_dim)) {
-    return a_dim.dim_value() == b_dim.dim_value();
-  }
-  return utils::HasDimParam(a_dim) && utils::HasDimParam(b_dim) && a_dim.dim_param() == b_dim.dim_param();
+
+  InlinedVector<int64_t> a_dims, b_dims;
+  const NodeArg* a_source = GetProjectionSource(graph, a);
+  return a_source != nullptr && a_source == GetProjectionSource(graph, b) && GetConstantShape(graph, a, a_dims) &&
+         GetConstantShape(graph, b, b_dims) && a_dims[0] == b_dims[0] && a_dims[1] == b_dims[1];
 }
 
 bool TryFuse(Graph& graph, Node& softmax, const InlinedHashSet<std::string_view>& compatible_eps,
