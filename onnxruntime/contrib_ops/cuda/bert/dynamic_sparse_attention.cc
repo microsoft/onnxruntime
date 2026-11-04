@@ -106,11 +106,11 @@ DynamicSparseAttention<T>::DynamicSparseAttention(const OpKernelInfo& info)
   use_smooth_softmax_ = ParseBoolAttribute(info, "smooth_softmax", 0);
   auxiliary_kv_shared_ = ParseBoolAttribute(info, "auxiliary_kv_shared", 0);
   prefill_kernel_ = ReadCudaSessionSwitch(info, kOrtSessionOptionsCudaDsaPrefillKernel, "ORT_DSA_PREFILL_KERNEL", true);
-  // The tensor-core INT8-cache kernels are opt-in: their numerics differ from the kernels they replace, so the default
-  // dispatch stays on the BF16-dequantizing prefill and the CUDA-core grouped decode kernels.
+  // Enable the tensor-core INT8-cache prefill and decode kernels by default on supported architectures (can still be
+  // overridden via session options or ORT_DSA_PREFILL_INT8_TC / ORT_DSA_DECODE_INT8_TC).
   prefill_int8_tc_ =
-      ReadCudaSessionSwitch(info, kOrtSessionOptionsCudaDsaPrefillInt8Tc, "ORT_DSA_PREFILL_INT8_TC", false);
-  decode_int8_tc_ = ReadCudaSessionSwitch(info, kOrtSessionOptionsCudaDsaDecodeInt8Tc, "ORT_DSA_DECODE_INT8_TC", false);
+      ReadCudaSessionSwitch(info, kOrtSessionOptionsCudaDsaPrefillInt8Tc, "ORT_DSA_PREFILL_INT8_TC", true);
+  decode_int8_tc_ = ReadCudaSessionSwitch(info, kOrtSessionOptionsCudaDsaDecodeInt8Tc, "ORT_DSA_DECODE_INT8_TC", true);
   decode_int8_tc_tiles_per_split_ =
       ReadCudaSessionOption(info, kOrtSessionOptionsCudaDsaDecodeInt8TcTilesPerSplit,
                             "ORT_DSA_DECODE_INT8_TC_TILES_PER_SPLIT", 0, 0, std::numeric_limits<int>::max());

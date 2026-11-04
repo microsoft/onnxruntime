@@ -107,7 +107,7 @@ steps:
           )
 
           if not exist "$(Build.BinariesDirectory)\installed\lib\cmake\onnxruntime\onnxruntimeTargets.cmake" (
-            echo ERROR: onnxruntimeTargets.cmake not found in installed tree. install(EXPORT) may not have run.
+            echo ERROR: onnxruntimeTargets.cmake not found in installed tree. install^(EXPORT^) may not have run.
             exit /b 1
           )
 

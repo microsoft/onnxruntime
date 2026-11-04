@@ -70,6 +70,8 @@ stages:
           DockerBuildArgs: "--build-arg BASEIMAGE=$(DockerBaseImage) --build-arg BUILD_UID=$( id -u )"
           Repository: $(DockerRepository)
 
+      - template: ../templates/setup-vcpkg-cache.yml
+
       - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_webgpu_plugin_package.sh -i $(DockerRepository) -c ${{ parameters.cmake_build_type }}
         workingDirectory: $(Build.SourcesDirectory)
         displayName: 'Build WebGPU Plugin'

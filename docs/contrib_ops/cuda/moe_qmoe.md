@@ -288,6 +288,18 @@ Tensor-Core kernel `MoeGemvTcInt2Kernel` (`mma.sync.m16n8k16`, grouping up to
 8 routes sharing an expert per warp tile and extracting three 2-bit fields per
 shift inside BF16's 7-bit mantissa).
 
+The INT2 Tensor-Core decoder halves the centered codes before BF16 scale
+multiplication and doubles the accumulated result in FP32. This avoids overflow
+for code `-2` with scale `2^127`, but does **not** provide full-range BF16
+support: code `+1` with the smallest positive BF16 scale, `2^-133`, rounds
+to zero when halved. For example, 64 such weights with activations `2^126`
+have a mathematical dot product of `0.5`, but this kernel returns zero.
+Other very small weights can also lose precision during BF16 rounding.
+Models using this extreme lower range must not assume Tensor-Core/SIMT parity;
+disable the Tensor-Core GEMV when its weight underflow is unacceptable.
+`ORT_QMOE_SHARED_RESIDENT_LOG=1` (set before the first launch) also reports successful INT2 Tensor-Core
+launches with their projection (`swiglu`), route count, and row threshold.
+
 ### 4.1 Per-mode dispatch matrix
 
 | Mode | SM75-89 (Ampere/Ada) | SM90 (Hopper) | SM100 (Blackwell) | SM120 (RTX 5090) |

@@ -675,6 +675,12 @@ struct Int3Projection {
   int bits = 0;
 };
 
+struct Int3ExpertTileDesc {
+  int expert;
+  int start_idx;
+  int count;
+};
+
 struct Int3MoeParams {
   int tensor_core_min_routes = 33;  // 0 disables the tensor-core decode path.
   const void* input = nullptr;
@@ -726,7 +732,8 @@ void LaunchPrePackInt3Weights(const uint8_t* raw_weights, uint8_t* packed_weight
 void LaunchPrePackInt3Scales(const __nv_bfloat16* raw_scales, __nv_bfloat16* packed_scales,
                              int num_experts, int n, int k, cudaStream_t stream);
 
-cudaError_t LaunchInt3Moe(const Int3MoeParams& params, cudaStream_t stream);
+cudaError_t LaunchInt3Moe(const Int3MoeParams& params, cudaStream_t stream,
+                          bool* used_grouped = nullptr, bool* used_tensor_core = nullptr);
 cudaError_t ValidateInt3MoeContent(const Int3Projection& projection, size_t rows,
                                    int logical_k, int block_size, bool is_bfloat16,
                                    int* invalid, cudaStream_t stream);
