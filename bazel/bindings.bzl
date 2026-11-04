@@ -12,6 +12,7 @@ load("@rules_dotnet//dotnet:defs.bzl", "csharp_library", "csharp_test")
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 load("@rules_java//java:defs.bzl", "java_binary", "java_import", "java_library", "java_test")
 load("@rules_python//python:defs.bzl", "py_test")
+load("//bazel:python_tests.bzl", "python_runtime_tests")
 load(":go_desktop.bzl", "desktop_go_library", "desktop_go_test")
 load(":jni_headers.bzl", "jni_headers")
 load(":platforms.bzl", "ORIGIN_RPATH", "desktop_shared_library")
@@ -255,6 +256,7 @@ def language_bindings():
         }),
         deps = ["@ort_pip//numpy"],
     )
+    python_runtime_tests()
     desktop_shared_library(
         name = "node_native_library",
         linux = "libonnxruntime_binding.so",

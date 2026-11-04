@@ -66,7 +66,7 @@ bazel test -c opt \
 | Surface | Native Bazel targets | Current scope |
 | --- | --- | --- |
 | C/C++ | `//:runtime`, `//:runtime_library`, `//:runtime_smoke_test` | Standard ONNX CPU operators; inference through the public C++ API. |
-| Python | `//:python_native_library`, `//:python_smoke_test` | CPython 3.12 extension and NumPy inference. Not a wheel or the high-level Python package layout. |
+| Python | `//:python_native_library`, `//:python_runtime_package`, `//:python_tests` | CPython 3.12 extension, source-assembled high-level CPU inference package, and selected existing unittest cases. Not a wheel or complete Python suite migration. |
 | Java/JNI | `//:java_binding`, `//:java_native_library`, `//:java_smoke_test` | Java sources and JNI sources; JNI headers come from Bazel's Java compiler. No Gradle invocation. Not an AAR or Maven publication. |
 | Go | `//:go_binding`, `//:go_test` | First-party cgo binding and existing fixture-based unit tests. Tests explicitly load the Bazel-built shared library; they do not take the binding's missing-library skip path. External Qwen model tests are excluded. |
 | Node.js | `//:onnxruntime_binding.node`, `//:node_smoke_test` | Native Node-API extension and inference through its binding interface. The smoke test supplies the binding's Tensor constructor contract; TypeScript/npm packaging is not included. |
@@ -189,7 +189,7 @@ excluded because the foundation does not compile that transformer.
 runner needs externally downloaded models and separate runner/protobuf targets.
 The optimizer's `runtime_optimization/` subdirectory, platform tests, remaining
 common/logging tests, root-level provider infrastructure tests, GPU tests,
-dynamic EP libraries, training, and separate C API shared-library test
+dynamic EP libraries and separate C API shared-library test
 executables remain outside this layer.
 
 Starlark files use LF even on Windows: frozen module-extension digests depend on
@@ -272,12 +272,80 @@ Remove-Item Env:\TESTBRIDGE_TEST_ONLY
 ```
 
 This layer deliberately does not claim complete Java migration. Inference,
-environment/thread-pool, EP, plugin, compile API, and training suites remain
-unwired. `SparseTensorTest.testCOO` was tried against the foundation and failed
-because its model requires the excluded contrib `SparseToDenseMatMul` operator;
+environment/thread-pool, EP, plugin, and compile API suites remain
+unwired. Training is intentionally excluded. `SparseTensorTest.testCOO` was
+tried against the foundation and failed because its model requires the excluded
+contrib `SparseToDenseMatMul` operator;
 that class is not registered as a passing native target. Full-class execution
-and Linux/macOS validation remain pending. Python, Node, and C# still use their
+and Linux/macOS validation remain pending. Node and C# still use their
 foundation smoke targets, and Go retains its existing self-contained tests.
+
+### Selectable existing Python inference tests
+
+`//:python_inference_test` registers 21 existing `TestInferenceSession` methods:
+model loading from paths/bytes, MatMul and noncontiguous arrays, symbolic shapes,
+boolean/string inputs, session options, provider arguments, OrtValue, devices,
+and memory info. `//:python_global_threadpool_test` registers both existing
+`TestGlobalThreadPool` methods in a separate process because global thread-pool
+initialization cannot be mixed with ordinary session initialization.
+`//:python_tests` groups those two targets; it is not the complete Python suite.
+The exact method inventory is in `bazel/python_tests.bzl`.
+
+```sh
+# One existing method:
+bazel test -c opt //:python_inference_test --test_filter=onnxruntime_test_python.TestInferenceSession.test_run_model
+# One registered class (two thread-pool cases):
+bazel test -c opt //:python_global_threadpool_test --test_filter=onnxruntime_test_python_global_threadpool.TestGlobalThreadPool
+# All registered methods from one module:
+bazel test -c opt //:python_inference_test --test_filter=onnxruntime_test_python
+# Runner selection regressions, without compiling ORT:
+bazel test -c opt //:python_test_runner_test
+```
+
+Filters are exact dotted module/class/method names, not wildcard expressions.
+A class or module filter selects **only the registered methods**, not every
+method in the upstream class. Unknown, unsupported, or empty selections fail;
+load/import failures also fail. Omitting the filter runs all methods registered
+for that target. Selection reduces execution, not native extension compilation.
+
+Bazel assembles the existing package initializer, inference collection, and
+configured binding loader alongside the source-built extension. Only the six
+required checked-in model fixtures are runfiles, preserving the existing
+`helper.get_name` relative layout. Tests run in `TEST_TMPDIR`, not the source
+tree or read-only runfiles. These high-level targets are currently CPU-only
+and incompatible with `--//bazel:cuda=true`; the low-level Python smoke target
+retains its existing CUDA behavior.
+
+Windows x86-64 targeted validation used Bazel 8.4.2 and managed CPython 3.12:
+`bazel build -c opt //:python_tests --nobuild` passed native graph analysis.
+`bazel test -c opt //:python_test_runner_test --test_output=all
+--nocache_test_results` passed **six selection regression cases**.
+With a temporary local validation-only substitution of the foundation's
+previously verified native `.pyd` for `:python_windows_extension`, the following
+each passed **one existing case**:
+
+```sh
+bazel test -c opt //:python_inference_test --test_filter=onnxruntime_test_python.TestInferenceSession.test_run_model --test_output=all --nocache_test_results
+bazel test -c opt //:python_inference_test --test_filter=onnxruntime_test_python.TestInferenceSession.test_run_model_from_bytes --test_output=all --nocache_test_results
+bazel test -c opt //:python_inference_test --test_filter=onnxruntime_test_python.TestInferenceSession.test_run_model2_contiguous --test_output=all --nocache_test_results
+bazel test -c opt //:python_inference_test --test_filter=onnxruntime_test_python.TestInferenceSession.test_string_input2 --test_output=all --nocache_test_results
+bazel test -c opt //:python_inference_test --test_filter=onnxruntime_test_python.TestInferenceSession.test_ort_value --test_output=all --nocache_test_results
+```
+
+The class-filter command above passed **two existing thread-pool cases**.
+Selecting `onnxruntime_test_python.TestInferenceSession.missing_method` failed
+with Bazel exit 3, rather than producing a zero-test success. This is **seven
+prebuilt-backed existing cases**, not a fresh end-to-end native extension build
+in this worktree. The substitution and binary were removed; committed targets
+always build the actual extension from source. No full Python suite was run.
+
+Contrib/custom-op models, external model downloads, GPU/provider-specific tests,
+ONNX backend/model-generation dependencies, compile API, I/O binding, symbolic
+shape inference, and the remaining unregistered inference methods are not yet
+migrated. In particular, `test_model_meta` silently returns without its external
+SqueezeNet model, so it is not registered as coverage. Linux/macOS execution of
+these high-level Python targets remains unverified. Training is intentionally
+out of scope, not planned migration work.
 
 ### Foundation validation (before the C++ and Java test layers)
 
