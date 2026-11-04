@@ -244,6 +244,9 @@ class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, MLFloat16_float_float, SimplifiedLayerNor
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, BFloat16_float_BFloat16, SimplifiedLayerNormalization);
 class CUDA_MS_OP_CLASS_NAME(1, Inverse);
 class CUDA_MS_OP_CLASS_NAME(1, MatMulBlockQuantizedFp4Weight);
+class CUDA_MS_OP_CLASS_NAME(1, MatMulPackedNVFP4);
+class CUDA_MS_OP_CLASS_NAME(1, MatMulPackedQ8);
+class CUDA_MS_OP_CLASS_NAME(1, MatMulPackedIQ2XXS);
 #if !defined(DISABLE_FLOAT8_TYPES)
 class CUDA_MS_OP_CLASS_NAME(1, MatMulBlockQuantizedFp8Weight);
 #endif
@@ -619,6 +622,9 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, BFloat16_float_BFloat16, SimplifiedLayerNormalization)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, Inverse)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, MatMulBlockQuantizedFp4Weight)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, MatMulPackedNVFP4)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, MatMulPackedQ8)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, MatMulPackedIQ2XXS)>,
 #if !defined(DISABLE_FLOAT8_TYPES)
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, MatMulBlockQuantizedFp8Weight)>,
 #endif
