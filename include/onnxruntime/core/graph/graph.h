@@ -2014,7 +2014,8 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /// with OrtValue from the customer, in which case we enforce that the original initializer must have external data</param>
   /// <returns></returns>
   Status ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initializer,
-                                      OrtValue ort_value, bool must_replace_external);
+                                      OrtValue ort_value, bool must_replace_external,
+                                      ONNX_NAMESPACE::TensorProto* existing_initializer = nullptr);
 
   template <typename StringRange>  // range-initializer returning std::string
   std::vector<NodeArg*> CreateNodeArgs(const StringRange& names,
