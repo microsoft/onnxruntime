@@ -3,6 +3,7 @@
 
 #include "core/optimizer/group_query_attention_pre_norm_fusion.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <string>
@@ -303,11 +304,13 @@ Status GroupQueryAttentionPreNormFusion::ApplyImpl(Graph& graph,
                           << " q_epsilon=" << q_epsilon << " k_epsilon=" << k_epsilon;
 
     // Build new GQA inputs: copy existing inputs, replace 0/1 with projection outputs,
-    // pad up to slot 13 with empty NodeArgs, then add q/k norm weights at 14/15.
+    // pad up to slot 13 with empty NodeArgs, then add q/k norm weights at 14/15. Inputs past 15
+    // (for example query_seqlens at 16) are carried over unchanged.
     NodeArg& empty_arg = graph.GetOrCreateNodeArg("", nullptr);
     InlinedVector<NodeArg*> new_inputs;
-    new_inputs.reserve(16);
-    for (size_t i = 0; i < 16; ++i) {
+    const size_t new_input_count = std::max<size_t>(16, node.InputDefs().size());
+    new_inputs.reserve(new_input_count);
+    for (size_t i = 0; i < new_input_count; ++i) {
       if (i == 0) {
         new_inputs.push_back(q_projection_arg);
       } else if (i == 1) {
