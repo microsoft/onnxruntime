@@ -744,6 +744,8 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
   int bias_expert = expert;
   if constexpr (!kSwiglu) {
     if (p.bias != nullptr && p.bias_expert_indices != nullptr && count > 0) {
+      // All routes sharing this physical expert slot (`expert`) within a launch belong to the same original expert,
+      // so taking the bias owner from the first route (`route0`) is safe for the entire tile.
       const int route0 = (p.tile_descs != nullptr)
                              ? grouped_routes[0]
                              : static_cast<int>(members & 0xffu);
@@ -947,6 +949,7 @@ inline bool DeviceSupportsBf16Mma() {
   int major = 0;
   if (cudaGetDevice(&device) != cudaSuccess ||
       cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device) != cudaSuccess) {
+    (void)cudaGetLastError();
     return false;
   }
   return major >= 8;
@@ -1094,6 +1097,7 @@ inline bool CanLaunchBf16(const Int3MoeParams& params) {
   if (cudaFuncGetAttributes(&fc1_attributes, Int3TcKernel<true, kFc1Warps, kFc1M, kFc1MinCtas>) != cudaSuccess ||
       cudaFuncGetAttributes(&fc2_attributes, Int3TcKernel<false, kFc2Warps, kFc2M, kFc2MinCtas>) != cudaSuccess ||
       fc1_attributes.ptxVersion < 80 || fc2_attributes.ptxVersion < 80) {
+    (void)cudaGetLastError();
     return false;
   }
   return true;
@@ -1173,6 +1177,7 @@ inline bool TryLaunchBf16Grouped(const Int3MoeParams& params, const int* sorted_
   if (cudaFuncGetAttributes(&fc1_attributes, Int3TcKernel<true, kFc1Warps, kFc1M, kFc1MinCtas>) != cudaSuccess ||
       cudaFuncGetAttributes(&fc2_attributes, Int3TcKernel<false, kFc2Warps, kFc2M, kFc2MinCtas>) != cudaSuccess ||
       fc1_attributes.ptxVersion < 80 || fc2_attributes.ptxVersion < 80) {
+    (void)cudaGetLastError();
     return false;
   }
 

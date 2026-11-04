@@ -4373,7 +4373,10 @@ __global__ void __launch_bounds__(256, 3) Fc2GroupedFastKernel(
 }
 
 template <typename T>
-cudaError_t LaunchInt3Typed(const Int3MoeParams& params, cudaStream_t stream) {
+cudaError_t LaunchInt3Typed(const Int3MoeParams& params, cudaStream_t stream,
+                            bool* used_grouped = nullptr, bool* used_tensor_core = nullptr) {
+  if (used_grouped != nullptr) *used_grouped = false;
+  if (used_tensor_core != nullptr) *used_tensor_core = false;
   const size_t total_routes = (params.total_routes_override > 0)
                                   ? static_cast<size_t>(params.total_routes_override)
                                   : (static_cast<size_t>(params.rows) * params.top_k);
@@ -4384,6 +4387,7 @@ cudaError_t LaunchInt3Typed(const Int3MoeParams& params, cudaStream_t stream) {
   if (kernel != Int3DecodeKernel::kScalar) {
     constexpr int kGroupRows = 8;
     if (kernel == Int3DecodeKernel::kGrouped) {
+      if (used_grouped != nullptr) *used_grouped = true;
       const size_t grouped_fc1_smem = static_cast<size_t>(kGroupRows) * params.hidden * sizeof(T);
       const size_t grouped_fc2_smem = static_cast<size_t>(kGroupRows) * params.intermediate * sizeof(float);
       static const bool grouped_carveout_set = []() {
@@ -4425,6 +4429,7 @@ cudaError_t LaunchInt3Typed(const Int3MoeParams& params, cudaStream_t stream) {
         if (int3_tc::TryLaunchBf16Grouped(params, sorted_routes, tile_descs, num_tiles_dev, max_tiles, stream,
                                           tc_status)) {
           if (tc_status != cudaSuccess) return tc_status;
+          if (used_tensor_core != nullptr) *used_tensor_core = true;
           if (params.output != nullptr) {
             const dim3 fin_grid(static_cast<unsigned>((params.hidden + 255) / 256), static_cast<unsigned>(params.rows));
             FinalizeRoutesFastKernel<T><<<fin_grid, 256, 0, stream>>>(params);
@@ -4475,6 +4480,7 @@ cudaError_t LaunchInt3Typed(const Int3MoeParams& params, cudaStream_t stream) {
         cudaError_t tc_status = cudaSuccess;
         if (int3_tc::TryLaunchBf16(params, stream, tc_status)) {
           if (tc_status != cudaSuccess) return tc_status;
+          if (used_tensor_core != nullptr) *used_tensor_core = true;
           if (params.output != nullptr) {
             const dim3 tc_fin_grid(static_cast<unsigned>((params.hidden / 8 + 127) / 128),
                                    static_cast<unsigned>(params.rows));
@@ -4689,14 +4695,18 @@ void LaunchPrePackInt3Scales(const __nv_bfloat16* raw_scales, __nv_bfloat16* pac
   CUDA_CALL_THROW(cudaGetLastError());
 }
 
-cudaError_t LaunchInt3Moe(const Int3MoeParams& params, cudaStream_t stream) {
+cudaError_t LaunchInt3Moe(const Int3MoeParams& params, cudaStream_t stream,
+                          bool* used_grouped, bool* used_tensor_core) {
+  if (used_grouped != nullptr) *used_grouped = false;
+  if (used_tensor_core != nullptr) *used_tensor_core = false;
   if (params.rows == 0) return cudaSuccess;
   if ((params.fc1.bits < 2 || params.fc1.bits > 4) ||
       (params.fc2.bits < 2 || params.fc2.bits > 4) || params.hidden <= 0 ||
       params.intermediate <= 0 || params.top_k <= 0 || params.block_size <= 0) {
     return cudaErrorInvalidValue;
   }
-  return params.is_bfloat16 ? LaunchInt3Typed<__nv_bfloat16>(params, stream) : LaunchInt3Typed<half>(params, stream);
+  return params.is_bfloat16 ? LaunchInt3Typed<__nv_bfloat16>(params, stream, used_grouped, used_tensor_core)
+                            : LaunchInt3Typed<half>(params, stream, used_grouped, used_tensor_core);
 }
 
 cudaError_t ValidateInt3MoeContent(const Int3Projection& projection, size_t rows,

@@ -3156,40 +3156,42 @@ int main() {
             }
             rng = np.random.default_rng(33731)
 
-            with self.subTest(case="hybrid_decode_and_sync_prefill"):
-                with _capture_native_stderr() as captured:
-                    sess = self._make_session(model, offload_cfg)
-                    try:
-                        # 6 tokens x top_k=8 = 48 routes (33..256): async hybrid decode with unsorted hit_compact,
-                        # source-row indirection via hit_ids, and 4 resident + 4 cold experts per token.
-                        x_dec = _round_to_act_dtype(rng.standard_normal((6, 512), dtype=np.float32) * 0.5)
-                        r_dec = rng.standard_normal((6, 8), dtype=np.float32)
-                        self._assert_int_offload_parity(
-                            self._run_bf16(ref, x_dec, r_dec),
-                            self._run_bf16(sess, x_dec, r_dec),
-                            "int4_tc_decode(T=6,routes=48)",
-                        )
-                        # 10 tokens x top_k=8 = 80 routes (> async_max_tokens=8): synchronous resident + cold path.
-                        x_sync = _round_to_act_dtype(rng.standard_normal((10, 512), dtype=np.float32) * 0.5)
-                        r_sync = rng.standard_normal((10, 8), dtype=np.float32)
-                        self._assert_int_offload_parity(
-                            self._run_bf16(ref, x_sync, r_sync),
-                            self._run_bf16(sess, x_sync, r_sync),
-                            "int4_tc_sync(T=10,routes=80)",
-                        )
-                    finally:
-                        del sess
-                        gc.collect()
-                self.assertIn("INT4 TC decode layer=0 routes=48", captured[0])
-                self.assertIn("INT4 TC prefill layer=0 source=resident routes=40", captured[0])
-                calls, total_routes, cold_routes = _cpu_path_route_rows(captured[0])[0]
-                self.assertGreater(calls, 0, captured[0])
-                self.assertGreater(cold_routes, 0, captured[0])
-                self.assertEqual(2 * cold_routes, total_routes, captured[0])
+            try:
+                with self.subTest(case="hybrid_decode_and_sync_prefill"):
+                    with _capture_native_stderr() as captured:
+                        sess = self._make_session(model, offload_cfg)
+                        try:
+                            # 6 tokens x top_k=8 = 48 routes (33..256): async hybrid decode with unsorted hit_compact,
+                            # source-row indirection via hit_ids, and 4 resident + 4 cold experts per token.
+                            x_dec = _round_to_act_dtype(rng.standard_normal((6, 512), dtype=np.float32) * 0.5)
+                            r_dec = rng.standard_normal((6, 8), dtype=np.float32)
+                            self._assert_int_offload_parity(
+                                self._run_bf16(ref, x_dec, r_dec),
+                                self._run_bf16(sess, x_dec, r_dec),
+                                "int4_tc_decode(T=6,routes=48)",
+                            )
+                            # 10 tokens x top_k=8 = 80 routes (> async_max_tokens=8): synchronous resident + cold path.
+                            x_sync = _round_to_act_dtype(rng.standard_normal((10, 512), dtype=np.float32) * 0.5)
+                            r_sync = rng.standard_normal((10, 8), dtype=np.float32)
+                            self._assert_int_offload_parity(
+                                self._run_bf16(ref, x_sync, r_sync),
+                                self._run_bf16(sess, x_sync, r_sync),
+                                "int4_tc_sync(T=10,routes=80)",
+                            )
+                        finally:
+                            del sess
+                            gc.collect()
+                    self.assertIn("INT4 TC decode layer=0 routes=48", captured[0])
+                    self.assertIn("INT4 TC prefill layer=0 source=resident routes=40", captured[0])
+                    calls, total_routes, cold_routes = _cpu_path_route_rows(captured[0])[0]
+                    self.assertGreater(calls, 0, captured[0])
+                    self.assertGreater(cold_routes, 0, captured[0])
+                    self.assertEqual(2 * cold_routes, total_routes, captured[0])
 
-            cudart = _load_cudart()
-            if cudart is not None:
                 with self.subTest(case="cuda_graph_replay"):
+                    cudart = _load_cudart()
+                    if cudart is None:
+                        self.skipTest("CUDA runtime library is required to update captured GPU inputs in place")
                     graph_model = _wrap_qmoe_model_with_cast_io(
                         model, os.path.join(tmpdir, "graph_int4_tc.onnx"), 512, 8
                     )
@@ -3230,8 +3232,9 @@ int main() {
                             del sess_g
                             gc.collect()
                     self.assertIn("INT4 TC decode layer=0 routes=48", captured[0])
-            del ref
-            gc.collect()
+            finally:
+                del ref
+                gc.collect()
 
     def test_v4_int3_tensorcore_offload_decode_and_grouped_prefill_parity(self):
         with (
