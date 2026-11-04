@@ -59,6 +59,42 @@ namespace test {
 
 #if !defined(DISABLE_CONTRIB_OPS)
 
+template <typename WeightType>
+static void TestConvQuantizedWeightType(bool should_fuse) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<uint8_t>({1, 1, 2, 2}, {1, 2, 3, 4});
+    auto* weights = builder.MakeInput<WeightType>({1, 1, 1, 1}, {1});
+    auto* scale = builder.MakeInitializer<float>({}, {1.0f});
+    auto* zero_point = builder.MakeInitializer<uint8_t>({}, {0});
+    auto* weight_zero_point = builder.MakeInitializer<WeightType>({}, {0});
+    auto* dq_input = builder.MakeIntermediate();
+    auto* dq_weight = builder.MakeIntermediate();
+    builder.AddNode("DequantizeLinear", {input, scale, zero_point}, {dq_input});
+    builder.AddNode("DequantizeLinear", {weights, scale, weight_zero_point}, {dq_weight});
+    auto* conv = builder.MakeIntermediate();
+    builder.AddNode("Conv", {dq_input, dq_weight}, {conv}).AddAttribute("kernel_shape", std::vector<int64_t>{1, 1});
+    auto* q = builder.MakeIntermediate();
+    builder.AddNode("QuantizeLinear", {conv, scale, zero_point}, {q});
+    builder.AddNode("DequantizeLinear", {q, scale, zero_point}, {builder.MakeOutput()});
+  };
+  auto check_graph = [&](InferenceSessionWrapper& session) {
+    auto counts = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(counts["QLinearConv"], should_fuse ? 1 : 0);
+    EXPECT_EQ(counts["Conv"], should_fuse ? 0 : 1);
+  };
+  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2,
+                    13, 0.0, 0.0, std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+}
+
+TEST(QDQTransformerTests, ConvInt32WeightsAreNotFused) {
+  TestConvQuantizedWeightType<int32_t>(false);
+}
+
+TEST(QDQTransformerTests, ConvEightBitWeightsStillFuse) {
+  TestConvQuantizedWeightType<int8_t>(true);
+  TestConvQuantizedWeightType<uint8_t>(true);
+}
+
 template <typename InputType, typename WeightType, typename BiasType, typename OutputType>
 void QDQTransformerConvTests() {
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape,
