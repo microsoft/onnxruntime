@@ -9,8 +9,9 @@ their location under `cmake/` does not make them build-system dependencies.
 The native graph targets Linux x86-64, Windows x86-64, and macOS on Intel and
 Apple Silicon. Linux and native Windows execution have been validated; macOS
 validation is still pending. This is not yet a replacement for the
-release build: contrib operators, training, additional execution providers,
+release build: contrib operators, additional execution providers,
 mobile/web cross-compilation, and release packaging are not included.
+`orttraining` build and test migration is intentionally out of scope.
 
 ## Getting started
 
@@ -307,7 +308,7 @@ The `Native Bazel desktop` workflow runs the default graph on `ubuntu-24.04`,
 bindings. Passing Linux tests alone is not evidence that the other hosts work.
 
 Remaining work includes the full provider/operator suites, contrib operators,
-training, additional EPs, additional architecture variants, release packaging,
+additional EPs, additional architecture variants, release packaging,
 cross-compilation, sanitizers, and the CUDA/toolchain matrix. Those are separate
 native targets/toolchains to add, not reasons to delegate back to the old build
 system.
