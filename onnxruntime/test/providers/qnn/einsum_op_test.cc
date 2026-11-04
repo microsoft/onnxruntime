@@ -351,9 +351,13 @@ TEST_F(QnnHTPBackendTests, EinsumRank3MatMulTransposeY_QK) {
       /*tolerance=*/1e-2f);
 }
 
-// The value pair (65.1049271, 65.0625076) at index #51 don't match, which is -0.0424194 from 65.1049
-// Disable this Rank3 test on HTP since it has accuracy issue.
-TEST_F(QnnHTPBackendTests, DISABLED_EinsumRank3MatMul_QK) {
+// Since QAIRT 2.35, the default floating‑point precision on QNN HTP is FP16.
+// The FP32 → FP16 → FP32 conversion can introduce accuracy loss, especially when the input tensors
+// are large because more elements participate in the matrix multiplication.
+// For example, a value such as 168.665131 may become 168.750015 after
+// conversion in a MatMul operation. The expected difference is ~0.0848846,
+// so the tolerance is adjusted to 9e-2f.
+TEST_F(QnnHTPBackendTests, EinsumRank3MatMul_QK) {
   const std::vector<int64_t> shape0{4, 5, 6};
   const std::vector<int64_t> shape1{4, 6, 5};
   const std::vector<float> data0 = GetSequentialFloatData(shape0, /*start=*/-0.1f, /*step=*/0.05f);
@@ -363,7 +367,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_EinsumRank3MatMul_QK) {
       /*in0=*/TestInputDef<float>(shape0, /*is_initializer=*/false, std::move(data0)),
       /*in1=*/TestInputDef<float>(shape1, /*is_initializer=*/false, std::move(data1)),
       /*equation=*/"hQK,hKd->hQd",
-      /*tolerance=*/1e-2f);
+      /*tolerance=*/9e-2f);
 }
 
 TEST_F(QnnHTPBackendTests, EinsumF16Rank4MatMulTransposeAll1) {
