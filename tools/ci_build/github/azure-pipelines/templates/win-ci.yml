@@ -196,6 +196,8 @@ stages:
       # 5. Set version variables (e.g., OnnxRuntimeVersion, commit hash)
       - template: set-version-number-variables-step.yml
 
+      - template: setup-vcpkg-cache.yml
+
       # 6. Install Python dependencies for build scripts
       - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
 

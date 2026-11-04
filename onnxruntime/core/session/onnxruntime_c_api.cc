@@ -10,6 +10,7 @@
 #include <sstream>
 #include <vector>
 
+#include "onnxruntime_build_info.h"
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/narrow.h"

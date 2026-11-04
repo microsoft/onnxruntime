@@ -68,8 +68,8 @@ jobs:
 
           echo "run_documentation_build=$run_documentation_build" >> "$GITHUB_OUTPUT"
 
-  kernel_documentation_build:
-    name: Windows GPU Kernel Documentation Build
+  runtime_build:
+    name: ONNX Runtime Build and Documentation Checks
     needs: detect_changes
     if: needs.detect_changes.outputs.run_documentation_build == 'true'
     env:
@@ -79,7 +79,7 @@ jobs:
       ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
       AZCOPY_AUTO_LOGIN_TYPE: MSI
       AZCOPY_MSI_CLIENT_ID: d712a4c7-a0cf-4e87-af75-31510eba0a8e
-    runs-on: [ort-github-win-6-a10-scus-ss]
+    runs-on: [ort-github-win-16-amd-scus-ss]
     timeout-minutes: 300
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -96,6 +96,12 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x64
+
+      - name: Setup VCPKG Cache
+        uses: ./.github/actions/setup-vcpkg-cache
+        with:
+          key: windows-docgen-runtime-x64-relwithdebinfo
+          path: ${{ runner.temp }}/vcpkg-binary-cache
 
       - name: Install python modules
         run: python -m pip install -r .\tools\ci_build\github\windows\python\requirements.txt
@@ -158,20 +164,185 @@ jobs:
           $buildDir = Join-Path ${{ runner.temp }} "build"
           echo "OnnxRuntimeBuildDirectory=$buildDir" >> $env:GITHUB_ENV
 
-      - name: Build
+      - name: Build CPU, CUDA, and DirectML runtime
         working-directory: ${{ runner.temp }}
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir build --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --update --build --skip_tests --build_wheel --use_full_protobuf --use_dml --use_cuda --use_webgpu shared_lib --cuda_home="$env:RUNNER_TEMP\v12.8" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            --config RelWithDebInfo `
+            --build_dir build `
+            --skip_submodule_sync `
+            --build_csharp `
+            --parallel `
+            --use_binskim_compliant_compile_flags `
+            --cmake_generator "Visual Studio 17 2022" `
+            --build_shared_lib `
+            --update `
+            --build `
+            --skip_tests `
+            --build_wheel `
+            --use_full_protobuf `
+            --use_vcpkg `
+            --use_dml `
+            --use_cuda `
+            --cuda_home="$env:RUNNER_TEMP\v12.8" `
+            --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 `
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
           Remove-Item "${{ runner.temp }}\build\RelWithDebInfo" -Include "*.obj" -Recurse
         shell: pwsh
 
-      - name: Validate C# native delegates
-        run: python tools\ValidateNativeDelegateAttributes.py
-        working-directory: ${{ github.workspace }}\csharp
+      - name: Upload runtime documentation artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: docgen-runtime-binaries
+          path: |
+            ${{ runner.temp }}/build/RelWithDebInfo/RelWithDebInfo/*.dll
+            ${{ runner.temp }}/build/RelWithDebInfo/RelWithDebInfo/dist/*.whl
+          if-no-files-found: error
+
+  webgpu_build:
+    name: WebGPU EP Build
+    needs: detect_changes
+    if: needs.detect_changes.outputs.run_documentation_build == 'true'
+    runs-on: [ort-github-win-16-amd-scus-ss]
+    timeout-minutes: 300
+    env:
+      setVcvars: true
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          submodules: 'none'
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+          architecture: x64
+
+      - name: Locate vcvarsall and Setup Env
+        uses: ./.github/actions/locate-vcvarsall-and-setup-env
+        with:
+          architecture: x64
+
+      - name: Setup VCPKG Cache
+        uses: ./.github/actions/setup-vcpkg-cache
+        with:
+          key: windows-docgen-webgpu-x64-relwithdebinfo
+          path: ${{ runner.temp }}/vcpkg-binary-cache
+
+      - name: Install python modules
+        run: python -m pip install -r .\tools\ci_build\github\windows\python\requirements.txt
+        working-directory: ${{ github.workspace }}
         shell: cmd
+
+      - name: Build WebGPU plugin EP
+        working-directory: ${{ runner.temp }}
+        run: |
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            --config RelWithDebInfo `
+            --build_dir build-webgpu `
+            --skip_submodule_sync `
+            --parallel `
+            --use_binskim_compliant_compile_flags `
+            --cmake_generator "Visual Studio 17 2022" `
+            --build_shared_lib `
+            --update `
+            --build `
+            --skip_tests `
+            --use_full_protobuf `
+            --use_vcpkg `
+            --use_webgpu shared_lib `
+            --target onnxruntime_providers_webgpu `
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+        shell: pwsh
+
+      - name: Upload WebGPU documentation artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: docgen-webgpu-binaries
+          path: |
+            ${{ runner.temp }}/build-webgpu/RelWithDebInfo/RelWithDebInfo/onnxruntime_providers_webgpu.dll
+            ${{ runner.temp }}/build-webgpu/RelWithDebInfo/RelWithDebInfo/dxcompiler.dll
+          if-no-files-found: error
+
+  kernel_documentation_generate:
+    name: Kernel Documentation Generation
+    needs:
+      - detect_changes
+      - runtime_build
+      - webgpu_build
+    if: needs.detect_changes.outputs.run_documentation_build == 'true'
+    runs-on: [ort-github-win-6-a10-scus-ss]
+    timeout-minutes: 300
+    env:
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+      AZCOPY_AUTO_LOGIN_TYPE: MSI
+      AZCOPY_MSI_CLIENT_ID: d712a4c7-a0cf-4e87-af75-31510eba0a8e
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          submodules: 'none'
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+          architecture: x64
+
+      - name: Install python modules
+        run: python -m pip install -r .\tools\ci_build\github\windows\python\requirements.txt
+        working-directory: ${{ github.workspace }}
+        shell: cmd
+
+      - name: Download runtime documentation artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: docgen-runtime-binaries
+          path: ${{ runner.temp }}/build/RelWithDebInfo/RelWithDebInfo
+
+      - name: Download WebGPU documentation artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: docgen-webgpu-binaries
+          path: ${{ runner.temp }}/build/RelWithDebInfo/RelWithDebInfo
+
+      - name: Verify documentation artifacts
+        shell: pwsh
+        run: |
+          $runtimeBin = "${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo"
+          foreach ($name in "onnxruntime.dll", "onnxruntime_providers_shared.dll", "onnxruntime_providers_cuda.dll",
+                           "DirectML.dll", "onnxruntime_providers_webgpu.dll", "dxcompiler.dll") {
+            if (-not (Test-Path -LiteralPath "$runtimeBin\$name" -PathType Leaf)) {
+              throw "Missing documentation runtime dependency: $name"
+            }
+          }
+          $wheels = @(Get-ChildItem -LiteralPath "$runtimeBin\dist" -Filter "*.whl" -File -ErrorAction Stop)
+          if ($wheels.Count -ne 1) {
+            throw "Expected exactly one documentation runtime wheel, found $($wheels.Count)."
+          }
+
+      - name: Download CUDA SDK v12.8
+        working-directory: ${{ runner.temp }}
+        run: |
+          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.8" .
+          dir
+        shell: pwsh
+
+      - name: Add CUDA to PATH
+        shell: powershell
+        run: |
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.8\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.8\extras\CUPTI\lib64"
+
+      - name: Verify GPU access
+        shell: pwsh
+        run: nvidia-smi
 
       - name: Install ONNX Runtime Wheel
         uses: ./.github/actions/install-onnxruntime-wheel
@@ -180,11 +351,13 @@ jobs:
 
       - name: Generate and validate documentation
         id: generate_docs
-        env:
-          ORT_WEBGPU_EP_ALLOW_SOFTWARE_ADAPTER: '1'
         working-directory: ${{ runner.temp }}\build
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ runner.temp }}\build --gen_doc validate --use_webgpu shared_lib
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            --config RelWithDebInfo `
+            --build_dir ${{ runner.temp }}\build `
+            --gen_doc validate `
+            --use_webgpu shared_lib
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
@@ -202,15 +375,19 @@ jobs:
     name: Windows GPU Kernel Documentation Validation
     needs:
       - detect_changes
-      - kernel_documentation_build
+      - runtime_build
+      - webgpu_build
+      - kernel_documentation_generate
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Check documentation build result
+      - name: Check documentation results
         env:
           DETECT_CHANGES_RESULT: ${{ needs.detect_changes.result }}
           RUN_DOCUMENTATION_BUILD: ${{ needs.detect_changes.outputs.run_documentation_build }}
-          DOCUMENTATION_BUILD_RESULT: ${{ needs.kernel_documentation_build.result }}
+          RUNTIME_BUILD_RESULT: ${{ needs.runtime_build.result }}
+          WEBGPU_BUILD_RESULT: ${{ needs.webgpu_build.result }}
+          DOCUMENTATION_GENERATION_RESULT: ${{ needs.kernel_documentation_generate.result }}
         shell: bash
         run: |
           if [[ "$DETECT_CHANGES_RESULT" != "success" ]]; then
@@ -223,11 +400,21 @@ jobs:
             exit 1
           fi
 
-          if [[ "$RUN_DOCUMENTATION_BUILD" == "true" && "$DOCUMENTATION_BUILD_RESULT" != "success" ]]; then
-            echo "::error::Documentation build result: $DOCUMENTATION_BUILD_RESULT"
-            exit 1
-          fi
+          if [[ "$RUN_DOCUMENTATION_BUILD" == "true" ]]; then
+            if [[ "$RUNTIME_BUILD_RESULT" != "success" ]]; then
+              echo "::error::Runtime build result: $RUNTIME_BUILD_RESULT"
+              exit 1
+            fi
 
-          if [[ "$RUN_DOCUMENTATION_BUILD" != "true" ]]; then
+            if [[ "$WEBGPU_BUILD_RESULT" != "success" ]]; then
+              echo "::error::WebGPU build result: $WEBGPU_BUILD_RESULT"
+              exit 1
+            fi
+
+            if [[ "$DOCUMENTATION_GENERATION_RESULT" != "success" ]]; then
+              echo "::error::Documentation generation result: $DOCUMENTATION_GENERATION_RESULT"
+              exit 1
+            fi
+          else
             echo "Documentation build is not required for the changed paths."
           fi

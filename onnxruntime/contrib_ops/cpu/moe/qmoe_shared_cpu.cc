@@ -92,12 +92,17 @@ Status ValidateWeightShape(const Tensor& tensor, int64_t experts, int64_t n, int
   const auto& shape = tensor.Shape();
   const int64_t row_bytes = narrow<int64_t>((SafeInt<size_t>(k) * bits + 7) / 8);
   const bool canonical = shape[0] == experts && shape[1] == n && shape[2] == row_bytes;
-  const bool sm80_or_fp4_alias = bits == 4 && shape[0] == experts && shape[1] == k && shape[2] == n / 2;
+  const bool sm80_or_fp4_alias =
+      ((bits == 4 && shape[2] == n / 2) || (bits == 2 && shape[2] == n / 4)) &&
+      shape[0] == experts && shape[1] == k;
   ORT_RETURN_IF_NOT(canonical || sm80_or_fp4_alias,
                     "Shared QMoE weight shape does not match its logical projection dimensions.");
   if (quant_type == "int" && bits == 4) {
     ORT_RETURN_IF_NOT(n % qmoe_shared::kColumnsInterleaved == 0 && k % qmoe_shared::kRowsPerTile == 0,
                       "Shared SM80 INT4 QMoE requires N divisible by 4 and K divisible by 64.");
+  } else if (quant_type == "int" && bits == 2) {
+    ORT_RETURN_IF_NOT(n % 8 == 0 && k % qmoe_shared::kRowsPerTile == 0,
+                      "Shared SM80 INT2 QMoE requires N divisible by 8 and K divisible by 64.");
   }
   const size_t expected_bytes = SafeInt<size_t>(experts) * n * row_bytes;
   ORT_RETURN_IF_NOT(tensor.SizeInBytes() == expected_bytes, "Shared QMoE weight byte extent mismatch.");
@@ -123,9 +128,10 @@ Status ComputeSharedQMoE(OpKernelContext* context, const SharedQMoEAttributes& a
   const bool is_nvfp4 = (attributes.quant_type == "nvfp4");
   const bool is_mxfp4 = (attributes.quant_type == "fp4");
   const bool is_fp4 = is_nvfp4 || is_mxfp4;
-  ORT_RETURN_IF_NOT((attributes.quant_type == "int" && (attributes.weight_bits == 4 || attributes.weight_bits == 3)) ||
+  ORT_RETURN_IF_NOT((attributes.quant_type == "int" &&
+                     (attributes.weight_bits == 4 || attributes.weight_bits == 3 || attributes.weight_bits == 2)) ||
                         (is_fp4 && attributes.weight_bits == 4),
-                    "Shared QMoE requires prepacked INT4, raw INT3, or row-major NVFP4/MXFP4 configuration.");
+                    "Shared QMoE requires prepacked INT4/INT2, raw INT3, or row-major NVFP4/MXFP4 configuration.");
   if (!is_fp4) {
     ORT_RETURN_IF_NOT(global_scale1 == nullptr && global_scale2 == nullptr,
                       "Shared integer QMoE does not accept global scales.");
@@ -366,6 +372,43 @@ Status ComputeSharedQMoE(OpKernelContext* context, const SharedQMoEAttributes& a
                                           activated, 0, fc1_n, /*force_scalar=*/false,
                                           bf16_boundaries, fp16_boundaries);
           qmoe_shared::Int3Fc2Range(hidden, intermediate, view, activated, count, fc2,
+                                    0, hidden, /*force_scalar=*/false, /*apply_bias=*/true);
+          for (int64_t r = 0; r < count; ++r) {
+            float* destination = route_outputs.get() + routes[start + narrow<size_t>(r)] * narrow<size_t>(hidden);
+            for (int64_t n = 0; n < hidden; ++n) destination[n] = RoundElement(fc2[r * hidden + n], boundary_type);
+          }
+        }
+        continue;
+      }
+      if (attributes.weight_bits == 2) {
+        qmoe_shared::Int2ExpertView view{};
+        view.fc1_weights = w1_base + static_cast<size_t>(expert) * w1_stride;
+        view.fc1_scales = reinterpret_cast<const uint16_t*>(s1_base + static_cast<size_t>(expert) * s1_stride);
+        view.fc1_bias = b1_base ? reinterpret_cast<const uint16_t*>(b1_base + static_cast<size_t>(expert) * b1_stride)
+                                : nullptr;
+        view.fc2_weights = w2_base + static_cast<size_t>(expert) * w2_stride;
+        view.fc2_scales = reinterpret_cast<const uint16_t*>(s2_base + static_cast<size_t>(expert) * s2_stride);
+        view.fc2_bias = b2_base ? reinterpret_cast<const uint16_t*>(b2_base + static_cast<size_t>(expert) * b2_stride)
+                                : nullptr;
+        view.block_size = block;
+        view.scales_are_block_major = false;
+        view.weights_are_prepacked = true;
+        view.scale_is_bf16 = (scale_type == ElementType::kBFloat16);
+        view.bias_is_bf16 = (bias1_type == ElementType::kBFloat16);
+        view.scale_is_fp32 = (scale_type == ElementType::kFloat32);
+        view.bias_is_fp32 = (bias1_type == ElementType::kFloat32);
+        for (size_t start = 0; start < routes.size(); start += kRowsPerTile) {
+          const int64_t count = narrow<int64_t>(std::min(routes.size() - start, narrow<size_t>(kRowsPerTile)));
+          for (int64_t r = 0; r < count; ++r) {
+            const size_t token = routes[start + narrow<size_t>(r)] / narrow<size_t>(attributes.top_k);
+            ReadActivationRowToFloat(input->DataRaw(), boundary_type, token * narrow<size_t>(hidden), hidden,
+                                     gathered + r * hidden);
+            qmoe_shared::ReorderInt2ActivationRow(gathered + r * hidden, reordered + r * hidden, hidden);
+          }
+          qmoe_shared::Int2Fc1SwiGluRange(hidden, intermediate, view, reordered, count, swiglu,
+                                          activated, 0, fc1_n, /*force_scalar=*/false,
+                                          bf16_boundaries, fp16_boundaries);
+          qmoe_shared::Int2Fc2Range(hidden, intermediate, view, activated, count, fc2,
                                     0, hidden, /*force_scalar=*/false, /*apply_bias=*/true);
           for (int64_t r = 0; r < count; ++r) {
             float* destination = route_outputs.get() + routes[start + narrow<size_t>(r)] * narrow<size_t>(hidden);
