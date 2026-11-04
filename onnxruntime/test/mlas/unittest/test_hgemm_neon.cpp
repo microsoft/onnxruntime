@@ -232,6 +232,11 @@ class MlasNeonHGemmPackBTest : public MlasTestBase {
     TestPackB_B<65, 67>();
     TestPackB_B<65, 96>();
     TestPackB_B<271, 263>();
+    // A four-column tail (N % 8 == 4) used to be packed as zeros.
+    TestPackB_B<4, 1>();
+    TestPackB_B<4, 3>();
+    TestPackB_B<12, 3>();
+    TestPackB_B<20, 5>();
   }
 };
 
@@ -460,6 +465,30 @@ class MlasNeonHGemmBTest : public MlasTestBase {
     Check<M, N>(C, ref, ldc);
   }
 
+  // With beta == 0, C may hold garbage such as NaN and must not leak into the result.
+  template <size_t M, size_t K, size_t N>
+  void TestHGemmNaNC(MLAS_FP16 alpha) {
+    auto InitializeBuffer = [this](MLAS_FP16* buffer, size_t count) {
+      for (size_t i = 0; i < count; i++) {
+        buffer[i] = MLAS_FP16(distrib_(gen_));
+      }
+    };
+    auto FillNaN = [](MLAS_FP16* buffer, size_t count) {
+      std::fill_n(buffer, count, MLAS_FP16(kFp16QuietNaN));
+    };
+
+    const size_t lda = ((K + 7) & ~7);
+    const size_t ldb = ((N + 7) & ~7) + 8;
+    const size_t ldc = ((N + 7) & ~7);
+    const auto* A = A_.GetFilledBuffer(M * lda, InitializeBuffer);
+    const auto* B = B_.GetFilledBuffer(K * ldb, InitializeBuffer);
+    auto* C = C_.GetFilledBuffer(M * ldc, FillNaN);
+    auto* ref = ref_.GetBuffer(M * ldc, true);
+    hgemm_neon::HGemm_B_Kernel(A, B, C, M, N, K, lda, ldb, ldc, alpha.val, MLAS_FP16(0.0f).val);
+    HGemm<M, K, N>(A, B, ref, alpha, MLAS_FP16(0.0f), lda, ldb, ldc);
+    Check<M, N>(C, ref, ldc);
+  }
+
  public:
   MlasNeonHGemmBTest()
       : seed_(172387), gen_(seed_), distrib_(-1.f, 1.f) {
@@ -509,6 +538,16 @@ class MlasNeonHGemmBTest : public MlasTestBase {
     TestHGemmFixed<2, 1, 1>(240.0f, 240.0f, 60000.0f, MLAS_FP16(1.0f), MLAS_FP16(1.0f));
     TestHGemmFixed<2, 1, 1>(100.0f, 50.0f, 60000.0f, MLAS_FP16(1.0f), MLAS_FP16(1.0f));
     TestHGemmFixed<2, 1, 1>(kFp16QuietNaN, 1.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+
+    // beta == 0 with NaN in C, for both row counts and column tails.
+    TestHGemmNaNC<1, 1, 1>(MLAS_FP16(0.5f));
+    TestHGemmNaNC<2, 1, 1>(MLAS_FP16(1.5f));
+    TestHGemmNaNC<1, 17, 15>(MLAS_FP16(0.5f));
+    TestHGemmNaNC<2, 15, 17>(MLAS_FP16(1.5f));
+    TestHGemmNaNC<1, 33, 31>(MLAS_FP16(2.0f));
+    TestHGemmNaNC<2, 32, 33>(MLAS_FP16(0.5f));
+    TestHGemmNaNC<2, 78, 263>(MLAS_FP16(1.5f));
+    TestHGemmNaNC<2, 17, 15>(MLAS_FP16(1.0f));
   }
 };
 
@@ -782,6 +821,7 @@ class MlasNeonHGemmTest : public MlasTestBase {
 
   // TODO(fajin): test beta
   void ExecuteShort(void) override {
+    // TransA=NoTrans, TransB=Trans
     TestHGemm<2, 1, 1, false, true>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
     TestHGemm<1, 128, 512, false, true>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
     TestHGemm<2, 128, 513, false, true>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
@@ -792,6 +832,7 @@ class MlasNeonHGemmTest : public MlasTestBase {
     TestHGemm<2, 511, 1025, false, true>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
     TestHGemm<127, 513, 1023, false, true>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
     TestHGemm<129, 511, 1025, false, true>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
+    // TransA=NoTrans, TransB=NoTrans
     TestHGemm<2, 1, 1, false, false>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
     TestHGemm<1, 128, 512, false, false>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
     TestHGemm<2, 128, 513, false, false>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
@@ -803,6 +844,11 @@ class MlasNeonHGemmTest : public MlasTestBase {
     TestHGemm<127, 513, 1023, false, false>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
     TestHGemm<129, 511, 1025, false, false>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
     TestHGemm<129, 513, 1025, false, false>(MLAS_FP16(0.5f), MLAS_FP16(0.5f));
+    // K == 1 with M > 2 packs B, including four-column tails (N % 8 == 4).
+    TestHGemm<3, 1, 4, false, false>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<5, 1, 12, false, false>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
+    TestHGemm<3, 1, 12, false, true>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<9, 1, 1023, false, false>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
 
     // extreme value coverage
     TestHGemmFixed<2, 1, 1, false, true>(kFp16Max, 1.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
@@ -816,6 +862,29 @@ class MlasNeonHGemmTest : public MlasTestBase {
     TestHGemmFixed<1, 127, 512, false, false>(1e-4f, 1e-4f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
     TestHGemmFixed<127, 513, 1023, false, false>(1.0f, 1.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
     TestHGemmFixed<2, 1, 1, false, true>(kFp16QuietNaN, 1.0f, 0.0f, MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+
+    // Transposed A is only supported by the SVE driver.
+    if (!MlasHGemmSupported(CblasTrans, CblasNoTrans) || !MlasHGemmSupported(CblasTrans, CblasTrans)) {
+      return;
+    }
+    // TransA=Trans, TransB=Trans
+    TestHGemm<2, 1, 1, true, true>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<1, 128, 512, true, true>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
+    TestHGemm<2, 128, 513, true, true>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
+    TestHGemm<1, 128, 511, true, true>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<2, 129, 512, true, true>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
+    TestHGemm<1, 127, 512, true, true>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
+    TestHGemm<127, 513, 1023, true, true>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<129, 511, 1025, true, true>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
+    // TransA=Trans, TransB=NoTrans
+    TestHGemm<2, 1, 1, true, false>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<1, 128, 512, true, false>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
+    TestHGemm<2, 128, 513, true, false>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
+    TestHGemm<1, 128, 511, true, false>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<2, 129, 512, true, false>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
+    TestHGemm<1, 127, 512, true, false>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
+    TestHGemm<127, 513, 1023, true, false>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<129, 511, 1025, true, false>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
   }
 };
 
