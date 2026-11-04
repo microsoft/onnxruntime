@@ -13,6 +13,9 @@ concurrency:
 
 permissions:
   contents: read
+  packages: write
+  attestations: write
+  id-token: write
 
 jobs:
   build-linux-cuda-x64-release:
