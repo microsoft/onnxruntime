@@ -1323,6 +1323,54 @@ and leaves source nodes and the region unchanged. Replacement errors use the
 same staging/rollback path as `Run`, not a whole-graph transaction. This API does
 not discover regions, select providers, verify target kernels, or resolve the graph.
 
+### Choosing `Run` or `RunOnce`
+
+Choose by the **rewrite contract**, not by whether the EP uses registered kernels
+or compiles a subgraph. Both entry points use the same matcher and require a
+complete pattern match; they differ in the permitted anchors, region coverage,
+and number of rewrites.
+
+| Intent | Entry point | Contract |
+|---|---|---|
+| Optimize a graph or region with an ordered set of rules | `Run(graph, statistics)` or `Run(graph, statistics, region)` | Visit eligible roots and allow iterative rewriting up to the configured limit. Scoped matches may consume only a subset of the region. |
+| Apply one previously discovered, validated, and accepted exact candidate | `RunOnce(graph, statistics, region, anchor)` | Search only the specified anchor, require the match to cover the entire original region, and perform exactly one successful replacement. |
+
+An anchor is the actual graph node mapped to the pattern's last expanded
+operator, independently of return order. For `Conv -> Swish`, it is the `Swish`
+node. Specifying an anchor fixes the matching start, not a different search
+algorithm. For a single-node Swish pattern, the Swish node is both the anchor
+and the sole region member, so `RunOnce` is also appropriate.
+
+For example, with a `Conv -> Swish` pattern and a region containing
+`Conv -> Swish -> Identity`, scoped `Run` may replace the first two nodes and
+leave `Identity` in the updated region. `RunOnce` rejects that match because it
+does not cover the entire region. With only the `Conv` and `Swish` nodes in the
+region and the `Swish` as anchor, the match satisfies `RunOnce`'s coverage
+requirement, subject to the remaining eligibility and semantic checks.
+
+Prefer `RunOnce` in a capability callback that promises one exact fusion
+candidate. Discovery has checked a specific source region and target
+implementation; acceptance should fulfill that proposal rather than initiate
+a new region-wide optimization search. The callback must still revalidate
+case-specific source assumptions and verify the replacement result. Exact
+membership and one replacement do not prove semantic equivalence or kernel
+support, nor do they select a unique rule if several rules match that region.
+
+Use scoped `Run` when the intended operation is a region optimization pass,
+such as repeatedly composing adjacent Transposes. New nodes can participate
+in later iterations, provided each match satisfies the rule and boundary
+checks. The caller must account for the final region, including unmatched and
+newly emitted nodes, and ensure it remains executable by the EP. This is not
+automatic rediscovery of EP capabilities or optimization across assigned
+partition boundaries.
+
+Neither API determines whether the result runs through registered EP kernels
+or EP compilation. That execution contract is separate and must be established
+by the integration. In either mode, update the owning capability's node list
+after mutation, preserve its external interface and reconcile affected
+metadata, and resolve the graph before subsequent use. Neither mode provides
+a whole-callback transaction.
+
 ### Function expansion and capability application
 
 The rewriter does not decide when ORT expands functions or assigns nodes to an

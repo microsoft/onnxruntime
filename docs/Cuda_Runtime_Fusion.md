@@ -1,12 +1,15 @@
 # CUDA runtime fusion
 
+These EP-owned optimizations use ORT's existing capability optimization callbacks
+and the generic `Pattern` / `PatternRewriter` APIs for matching and graph rewriting.
+
 ## Unit-Swish
 
 The internal session entry `ep.cuda.runtime_fusion.unit_swish` enables the
-`unit_swish_scaled_silu_v1` Rama rule. It is off by default and accepts only
-the exact strings `"0"` and `"1"`.
+Swish kernel replacement (internal identifier `unit_swish_scaled_silu_v1`).
+It is off by default and accepts only the exact strings `"0"` and `"1"`.
 
-The rule replaces standard ONNX Swish-24 with absent or FLOAT alpha=1 by the
+This optimization replaces standard ONNX Swish-24 with absent or FLOAT alpha=1 by the
 existing `com.microsoft.ScaledSiLU-1`, with alpha=1 and no scale input.
 Input and output must be dense, matching FLOAT or BF16 tensors with compatible
 shape and initializer metadata. FLOAT16, DOUBLE, mixed types, non-unit alpha,
@@ -29,8 +32,11 @@ must fit the target's 256-thread grid with a signed-int block count; unknown
 extents remain subject to runtime kernel validation.
 
 Acceptance revalidates the live source, assignment, attributes, NodeArg
-identities, and owned type/shape snapshot. A region-restricted Rama `Run` over
-the original single node must perform exactly one rewrite to one target.
+identities, and owned type/shape snapshot. A precheck preserves the existing
+stale-offer diagnostic instead of `RunOnce`'s generic no-match error.
+An anchored, exact-region
+`PatternRewriter::RunOnce` over the original single node must perform exactly
+one rewrite to one target.
 The original input and output NodeArgs, external fanout, and graph outputs
 are preserved. Stale offers fail rather than silently selecting another source.
 Changing an input's producer alone does not invalidate its NodeArg snapshot.
@@ -67,15 +73,16 @@ validation artifacts rather than this contract.
 ## Stateful causal convolution
 
 The internal session entry `ep.cuda.runtime_fusion.causal_conv_with_state`
-enables the `causal_conv_with_state_mobius_bf16_v1` Rama rule. Despite its
-historical identifier, the rule supports matching FLOAT, FLOAT16, or BF16
+enables stateful CausalConv fusion (internal identifier
+`causal_conv_with_state_mobius_bf16_v1`). Despite its historical identifier,
+the fusion supports matching FLOAT, FLOAT16, or BF16
 regions. It is off by default and accepts only the exact strings `"0"` and
 `"1"`. The discovery-consumer, optimization-level, import, layout, and build
 restrictions described above also apply.
 
 ### Mathematical contract
 
-The rule replaces a channels-first causal depthwise convolution region:
+The fusion replaces a channels-first causal depthwise convolution region:
 
 - Concatenate history `[B,C,(K-1)*D]` with input `[B,C,S]` along axis 2.
 - Apply an unpadded, stride-1 Conv with constant weight `[C,1,K]`,
@@ -100,7 +107,7 @@ contract, not changes to tensor layout, bias, axes, or state updates.
 
 ### Discovery and acceptance
 
-Discovery checks eligible, unassigned Swish roots before invoking Rama.
+Discovery checks eligible, unassigned Swish roots before invoking `Pattern::VisitMatches`.
 Channels, kernel size, dilation, shapes, control constants, initializer
 storage, and native index/byte bounds are checked from the matched region.
 Small control constants must be embedded. Learned weight and bias payloads
@@ -113,11 +120,11 @@ mutate the source graph. Acceptance revalidates the exact offered region and
 contract, rewrites it once, preserves both original output NodeArgs, and
 resolves the graph. A folded rank-3 bias receives an owned, flattened bitwise
 copy without reshaping shared source storage. Stale acceptance or target
-construction errors fail initialization rather than silently changing rules.
+construction errors fail initialization rather than silently selecting another candidate.
 
-The causal rule is offered before unit-Swish when both flags are enabled.
+Stateful CausalConv fusion is offered before the Swish kernel replacement when both flags are enabled.
 Accepted causal regions own their contained Swish; other eligible Swish
-nodes remain available to the independent unary rule.
+nodes remain available to the independent Swish kernel replacement.
 
 ### Native resource behavior and validation
 
