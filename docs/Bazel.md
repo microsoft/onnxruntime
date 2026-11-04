@@ -91,19 +91,24 @@ cl /nologo /EHsc /std:c++17 /Iinclude examples\sdk_inference_example.cc lib\onnx
 bin\sdk_inference_example.exe examples\add_f32.onnx
 ```
 
-Windows package-only validation built the ZIP with a temporary local
-substitution of the previously source-built and validated native DLL/import
-library. The extracted archive passed its layout/version/load check, and the
-documented `cl` command compiled the bundled example using only extracted
-headers and the extracted import library; the executable passed Add inference
-using the extracted DLL. This does not constitute a fresh native runtime
-rebuild. `bazel test -c opt //:runtime_sdk_archive_test
---build_python_zip=false --test_output=all --nocache_test_results` passed one
-test with that substitution; the Windows-only launcher flag avoids building
-an unnecessary Python ZIP. The substitution is not part of the committed graph:
-`bazel build -c opt //:runtime_sdk_archive_test --nobuild` validates the
-source-runtime dependency. Linux, macOS, and CUDA archive execution have not
-been validated by this packaging slice.
+The committed graph passed **one Windows archive test** without substitutions:
+
+```sh
+bazel test -c opt //:runtime_sdk_archive_test --build_python_zip=false --test_output=all --nocache_test_results --jobs=8
+```
+
+The ZIP was newly assembled from this worktree's cached source-built runtime
+and import library; the test extracted it and passed layout/version/runtime-load
+checks. Bazel reused 1,764 unchanged source-build actions, rather than rebuilding
+the runtime. The Windows-only launcher flag avoids an unnecessary Python ZIP.
+
+Earlier package-only validation temporarily reused a separately verified
+source-built native DLL/import library. For that archive, the documented `cl`
+command compiled the bundled example using only extracted headers/import library
+and passed Add inference using the extracted DLL. That standalone example check
+is separate from the source-native archive test above; all temporary graph
+substitutions were removed. Linux, macOS, and CUDA archive execution remain
+unvalidated.
 
 ### Desktop portability checks
 
