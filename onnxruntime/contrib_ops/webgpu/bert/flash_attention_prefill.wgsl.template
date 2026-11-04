@@ -201,7 +201,8 @@ $MAIN {
 
     var qk : array<vec4<qk_precision>, num_qk_vec>;
 
-    // 1. QK^T. Native-precision dots are widened before score accumulation.
+    // 1. QK^T. Each 4-element dot runs in the native element type (f16 for fp16) and is widened to f32 only
+    //    when accumulated into the score.
     for (var i = 0u; i < head_size_vec; i++) {
       let q_own = q_tile[i];
 #if shuffle_chunk_param >= 8
