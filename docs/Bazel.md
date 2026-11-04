@@ -292,9 +292,9 @@ Linux PCI/DRM/NPU discovery and POSIX/Windows telemetry-specific subdirectories
 are not wired: the foundation still uses default device discovery and disables
 optional telemetry transports. Android tests and DirectML provider tests need
 their own platform configurations. GPU tests, dynamic EP libraries, external
-model-corpus runners, separate C API shared-library executables, global-threadpool
-executables with their distinct environment setup, custom-op/plugin library
-fixtures, and benchmarks/fuzzers remain outside this C++ slice.
+model-corpus runners, provider-bridge/dlopen probes requiring internal runtime
+symbols, and benchmarks/fuzzers remain outside this C++ slice. The shared public
+API, global-threadpool, and CPU custom-op/plugin additions are described below.
 
 Starlark files use LF even on Windows: frozen module-extension digests depend on
 their exact bytes. A CRLF checkout otherwise fails `--lockfile_mode=error` before
@@ -362,6 +362,62 @@ EP graph access, and save/reload of an ORT model partitioned with the CPU-backed
 test double. Full suites and Linux/macOS execution of these six targets remain
 unvalidated. Together with the previous selections, **33 distinct existing C++
 cases** have executed on Windows; that is not full-suite coverage.
+
+### Shared C/C++ API and CPU plugin tests
+
+`//:shared_api_tests` groups four additional existing-source executables:
+`//:shared_api_test`, `//:global_threadpool_test`,
+`//:custom_op_registration_test`, and `//:plugin_api_test`. These link through
+`//:runtime_shared`, not the static runtime used by `//:core_tests`. The shared
+test support compiles only common error/stacktrace and test helpers separately;
+it does not link the inference runtime statically. Windows link parameter files
+were checked: all four executables consume `onnxruntime.dll.if.lib`, without a
+static runtime library. No additional runtime exports were needed for this slice.
+
+The shared API target compiles the existing allocator, environment creation,
+EP-context data, data-copy, experimental API, inference, model editor/loading,
+non-tensor types, ORT-format model, run/session options, and version sources.
+The global-threadpool target retains its existing dedicated main and its global
+thread configuration/hooks. Select CPU parameter `/0`; optional-provider `/1`
+and `/2` variants return without inference when their provider is disabled.
+
+Native shared libraries are built from the existing custom-op library and all
+three example plugin EP implementations (compiling, kernel-registry, and virtual
+GPU test double). These are test fixtures, not additional production EP builds.
+The custom-op registration executable imports the actual custom-op library.
+The plugin executable compiles the existing `autoep/test_execution.cc` suite and
+its public API helpers. The fixture wrapper copies dynamic fixtures into the
+isolated writable test directory, and POSIX loader search paths include that
+directory. It also rejects zero-match/all-skipped execution with nonzero status;
+`--gtest_list_tests` remains available.
+
+This exact selected command passed **seven existing cases** on Windows: shared
+API 4, dedicated global-threadpool CPU inference 1, imported custom-op function
+registration 1, and dynamically loaded plugin EP Mul inference 1.
+
+```sh
+bazel test -c opt //:shared_api_test //:global_threadpool_test //:custom_op_registration_test //:plugin_api_test --test_filter="CApiTest.run_options:CApiTest.allocation_info:ModelEditorAPITest.Basic_CxxApi:CApiTest.test_custom_op_library:CustomOpRegistration.TestUsingFuncNameCApi:OrtEpLibrary.PluginEp_AppendV2_MulInference:*.simple/0" --lockfile_mode=error --jobs=8 --test_output=all --nocache_test_results
+```
+
+The test sources and custom-op/plugin DLLs were freshly compiled/linked; the
+native runtime was reused from this task's source-build cache, with no supplied
+binary substitutions. An additional existing shutdown death test passed:
+
+```sh
+bazel test -c opt //:shared_api_test --test_filter=EnvCreation.ReleaseEnvFromEarlierRegisteredCleanupAtShutdown --jobs=8 --test_output=all --nocache_test_results
+```
+
+Re-executed death-test children reuse the parent's prepared fixtures instead of
+attempting to copy over them. The updated wrapper also passed the existing
+`DenormalTest.DenormalAsZeroTest` through the statically linked
+`//:common_runtime_test`. This brings selected Windows C++ coverage to **41
+distinct existing cases across 20 executables**, not full-suite coverage. A preliminary
+global-threadpool filter using `/simple/0` instead of `.simple/0` selected zero
+cases and correctly failed; the corrected command above passed all four targets.
+The external ONNX corpus (`test_io_types.cc`), runtime-path helper library,
+internal provider-bridge probes, wider auto-EP registration/selection suites,
+config-dependent optional providers, and full test suites remain unvalidated or
+unwired. No Linux/macOS execution of these four targets has been performed.
 
 ### Existing Java/JNI tests
 

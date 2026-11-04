@@ -5,8 +5,10 @@
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("//bazel:shared_tests.bzl", "shared_api_tests")
 
 def core_tests():
+    shared_api_tests()
     test_copts = select({
         "//bazel:windows": ["/utf-8"],
         "//conditions:default": [],
