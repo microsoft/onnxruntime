@@ -315,7 +315,11 @@ Status MatMulIntegerToFloatFusion::ApplyImpl(Graph& graph, bool& modified, int g
     // Find bias node
     Node* p_add_node = nullptr;
     int idx = 0;
-    if (CanFuseBias(mul_node_right, matmulinteger_node) &&
+    // DirectML passes bias directly to its MatMulIntegerToFloat operator without deferred post-GEMM
+    // scaling, so bias fusion is supported for DirectML regardless of MLAS scale constraints.
+    // For other providers (e.g. CPU), MLAS requires direct GEMM scale shapes to prevent post-GEMM
+    // ScaleOutput from scaling the absorbed bias (issue #33331).
+    if ((is_dml_ep || CanFuseBias(mul_node_right, matmulinteger_node)) &&
         optimizer_utils::CheckOutputEdges(graph, mul_node, 1)) {
       const Node* tmp_add_node = graph_utils::FirstChildByType(mul_node, "Add");
       if (nullptr != tmp_add_node) {

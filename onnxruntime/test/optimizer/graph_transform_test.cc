@@ -12169,6 +12169,139 @@ TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_PartiallySymbolic_Ma
                     std::make_unique<MatMulIntegerToFloatFusion>());
 }
 
+TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_DmlPerRowScale_WithBias_FusesAdd) {
+  // DirectML supports per-row A scales natively in DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT and adds
+  // the bias after scaling, without deferred post-GEMM scaling. Thus, bias fusion should succeed
+  // when nodes are assigned to DirectML EP even though MLAS requires scalar/1-element A scale.
+  NodeArg* bias_arg = nullptr;
+  auto build_test_case = [&bias_arg](ModelTestBuilder& builder) {
+    std::vector<uint8_t> a_data = {
+        1, 2,
+        3, 4,
+        5, 6};
+    auto* input_a = builder.MakeInput<uint8_t>({3, 2}, a_data);
+    auto* a_zp = builder.MakeScalarInitializer<uint8_t>(0);
+
+    std::vector<uint8_t> b_data = {
+        1, 2, 3,
+        4, 5, 6};
+    auto* b_quant = builder.MakeInitializer<uint8_t>({2, 3}, b_data);
+    auto* b_zp = builder.MakeScalarInitializer<uint8_t>(0);
+
+    auto* matmul_out = builder.MakeIntermediate();
+    builder.AddNode("MatMulInteger", {input_a, b_quant, a_zp, b_zp}, {matmul_out});
+
+    auto* cast_out = builder.MakeIntermediate();
+    builder.AddNode("Cast", {matmul_out}, {cast_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+
+    std::vector<float> a_scale_data = {0.1f, 0.2f, 0.3f};
+    auto* a_scale = builder.MakeInitializer<float>({3, 1}, a_scale_data);
+    auto* b_scale = builder.MakeScalarInitializer<float>(0.05f);
+
+    auto* scale_product = builder.MakeIntermediate();
+    builder.AddNode("Mul", {a_scale, b_scale}, {scale_product});
+
+    auto* mul_out = builder.MakeIntermediate();
+    builder.AddNode("Mul", {cast_out, scale_product}, {mul_out});
+
+    std::vector<float> bias_data = {-1.0f, 0.0f, 1.0f};
+    auto* bias = builder.Make1DInitializer<float>(bias_data);
+    bias_arg = bias;
+
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Add", {mul_out, bias}, {output});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    for (auto& node : graph.Nodes()) {
+      node.SetExecutionProviderType(kDmlExecutionProvider);
+    }
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [&bias_arg](Graph& graph) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["com.microsoft.MatMulIntegerToFloat"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["MatMulInteger"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Cast"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Mul"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Add"] == 0);
+
+    const Node* fused_node = nullptr;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "MatMulIntegerToFloat") {
+        fused_node = &node;
+        break;
+      }
+    }
+    TEST_RETURN_IF_NOT(fused_node != nullptr);
+    TEST_RETURN_IF_NOT(fused_node->GetExecutionProviderType() == kDmlExecutionProvider);
+    TEST_RETURN_IF_NOT(fused_node->InputDefs().size() == 7u);
+    TEST_RETURN_IF_NOT(fused_node->InputDefs()[6] == bias_arg);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<MatMulIntegerToFloatFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer),
+                                        TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_CpuPerRowScale_WithBias_PreservesAdd_NumericalEquivalence) {
+  // For the exact same per-row A scale configuration on CPU, MLAS cannot apply per-row scale
+  // directly during GEMM and must defer it via post-GEMM ScaleOutput. Absorbing bias into GEMM
+  // would multiply the bias by the row scales, altering graph semantics. Add must remain outside.
+  // Numerical equivalence verifies that the optimized graph (MatMulIntegerToFloat + Add) matches
+  // the unoptimized reference calculation.
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    std::vector<uint8_t> a_data = {
+        1, 2,
+        3, 4,
+        5, 6};
+    auto* input_a = builder.MakeInput<uint8_t>({3, 2}, a_data);
+    auto* a_zp = builder.MakeScalarInitializer<uint8_t>(0);
+
+    std::vector<uint8_t> b_data = {
+        1, 2, 3,
+        4, 5, 6};
+    auto* b_quant = builder.MakeInitializer<uint8_t>({2, 3}, b_data);
+    auto* b_zp = builder.MakeScalarInitializer<uint8_t>(0);
+
+    auto* matmul_out = builder.MakeIntermediate();
+    builder.AddNode("MatMulInteger", {input_a, b_quant, a_zp, b_zp}, {matmul_out});
+
+    auto* cast_out = builder.MakeIntermediate();
+    builder.AddNode("Cast", {matmul_out}, {cast_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+
+    std::vector<float> a_scale_data = {0.1f, 0.2f, 0.3f};
+    auto* a_scale = builder.MakeInitializer<float>({3, 1}, a_scale_data);
+    auto* b_scale = builder.MakeScalarInitializer<float>(0.05f);
+
+    auto* scale_product = builder.MakeIntermediate();
+    builder.AddNode("Mul", {a_scale, b_scale}, {scale_product});
+
+    auto* mul_out = builder.MakeIntermediate();
+    builder.AddNode("Mul", {cast_out, scale_product}, {mul_out});
+
+    std::vector<float> bias_data = {-1.0f, 0.0f, 1.0f};
+    auto* bias = builder.Make1DInitializer<float>(bias_data);
+
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Add", {mul_out, bias}, {output});
+  };
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 1);
+    EXPECT_EQ(op_to_count["Add"], 1);
+  };
+
+  TransformerTester(build_test_case, check_transformed_graph, TransformerLevel::Default,
+                    TransformerLevel::Level2, 18, 1e-4, 1e-4,
+                    std::make_unique<MatMulIntegerToFloatFusion>());
+}
+
 TEST_F(GraphTransformationTests, MatMulIntegerToFloatFusion_Int8Bias_Input0) {
   constexpr const ORTCHAR_T* model_uri = ORT_TSTR("testdata/matmul_integer_to_float_int8_bias_initializer_index1.onnx");
   std::shared_ptr<Model> p_model;
