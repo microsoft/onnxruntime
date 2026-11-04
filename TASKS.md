@@ -1,7 +1,8 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M12 complete and published for review; M13 in progress;
-M14-M24 pending.
+**Status:** Approved; M01-M14 complete and published for review. M15
+implementation/qualification is complete; stacked publication is in progress.
+M16-M24 are pending.
 M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
@@ -15,8 +16,13 @@ resumed on 2026-10-21 after a compatible toolchain was supplied.
 The detailed M12 execution plan was separately approved on 2026-10-30;
 CPU/CUDA qualification and publication completed on 2026-10-31.
 **M13 refinement:** SPEC Appendix M was separately approved on 2026-11-02.
-The detailed M13 plan was separately approved on 2026-11-02; implementation is
-authorized and starting.
+The detailed M13 plan was separately approved on 2026-11-02; implementation,
+qualification and publication are complete in [#27](https://github.com/onnxruntime/ort-state/pull/27).
+**M14 refinement:** Separately approved and completed in
+[#28](https://github.com/onnxruntime/ort-state/pull/28).
+**M15 refinement:** Appendix O and separate P/R/Q/N plans are approved and
+implemented. CPU/CUDA qualification, exact new-line coverage and the approved
+O.10 bounded-race refinement pass; ready stacked publication is the final gate.
 
 ## 1. Approval and tracking
 
@@ -29,7 +35,7 @@ authorized and starting.
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M12 are complete, M13 is in progress and M14-M24 are pending. Check tasks when their
+M01-M14 are complete, M15 publication is in progress and M16-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -4698,21 +4704,954 @@ code enter the PR, and no milestone is automatically merged.
 
 ### M15 - Stable Diffusion local package and image demo
 
-**Outcome:** Text-to-image generation via the new chain and denoising loop.
+**Status:** [Appendix O](SPEC.md#appendix-o-m15-cuda-sd15-package-and-image-demo-approved)
+and the detailed plan below were separately approved on 2026-11-03.
+The [O.7 repair](SPEC.md#o7-cuda-plugin-compatibility-repair-specification-approved)
+and R0-R4 gates pass using a fresh byte-verified local wheel. O.8/O.9 and their
+separate Q/N execution plans are approved and implemented. Both real guidance
+modes pass repeatedly; CPU/plugin/legacy regressions and 504/504 new production
+lines pass with zero exclusions. Final qualification scope and publication
+are recorded below. The user approved O.10's bounded real GroupNorm racecheck
+after an unfiltered two-update attempt timed out; no full-model race pass is
+claimed.
+**Planning branch/base:** `state/m15-sd15-demo` on M14
+`44e512c7719c1e7ebc2e231c47281535c2c52a90` /
+[#28](https://github.com/onnxruntime/ort-state/pull/28).
+**Approved interview refinement:** The selected `tlwu` exports are CUDA-only.
+Retain CPU EP fixture/unit coverage; do not require or claim real CPU inference.
+Use existing native DDIM instead of upstream PNDM, retain the required safety
+checker, and permit explicit cast/scaling boundary wrappers without changing
+original weights. Defaults:512x512 PNG, seed42,20steps, guidance7.5,
+empty negative prompt and batched guidance.
 
-- [ ] Build a package from local SD 1.5-compatible encoder/denoiser/VAE files.
-- [ ] Add tested text/tokenizer integration, guidance inputs, seeded noise,
-  DDIM configuration, VAE output conversion, and explicit image saving.
-- [ ] Document exact export/model assumptions, reference/tolerances, seed,
-  dimensions, step count, guidance, preprocessing, and output handling.
+**Outcome:** A revision-pinned CUDA-only SD1.5 package produces a safety-checked
+512x512 PNG through one native chain, including text encoding, deterministic
+CPU-FP32 DDIM/guidance, CUDA denoising, VAE decoding and declared preprocessing/
+safety stages. Python supplies the application boundary and output writer,
+not the denoising scheduler. CPU EP fixtures remain mandatory.
 
-**CPU test plan:** Unit-test all new builder/demo/postprocessing lines, including
-file/adapter errors. Real local text-to-image run; verify expected image shape/
-encoding, scheduler trajectory, reference checkpoints, and same-config replay.
-**CUDA test plan:** Real local CUDA run; verify actual denoiser execution, state/
-transfer behavior, documented checkpoint tolerances, seeded replay, and output.
-**Completion gate:** CPU/CUDA image artifacts and reference evidence exist;
-100% new production-line coverage and shared rules pass.
+#### Approval and confirmed inputs
+
+- [x] Interview and explicitly confirm no additional requirements.
+- [x] Review and approve Appendix O before detailed planning.
+- [x] Prepare the outcomes, actual prerequisites and test gates below.
+- [x] Review/approve this plan before model acquisition, dependencies or implementation.
+
+Asset root: `/home/devpatel/onnxruntime-stateful/sd15`.
+HF repository: `tlwu/stable-diffusion-v1-5-onnxruntime`, revision
+`f22c0e90205a7a2c08bf3e8927b39dc84e4064c2`.
+Download only text encoder, UNet, VAE decoder, required safety checker, associated
+tokenizer/configuration and authoritative CreativeML OpenRAIL-M license/
+attribution. Approximately2.7GB original assets; derived wrappers need explicitly
+checked working space. Exclude the VAE encoder and remote Python source.
+
+Default: batch1,512x512 RGB PNG, seed42,20 DDIM updates, guidance7.5, empty
+negative prompt and batched guidance. The source PNDM scheduler is provenance
+only; the selected native policy remains `sd15_ddim_v1`. Model interfaces/dtypes
+are not known until approved download/inspection.
+
+#### Scope and implementation surfaces
+
+- Prefer focused `samples/python/sd15_demo.py` application helpers/CLI, a small
+  adapter/model-builder module only if complexity requires it, targeted offline
+  and explicit-asset tests, optional demo requirements and
+  `docs/Stateful_SD15_Demo.md`. Do not add core tokenizer/image/Diffusers
+  dependencies, public package authoring bindings or a second execution engine.
+- Reuse M14's verified asset/atomic-publication patterns and M12/M13's existing
+  DDIM/package interfaces. Extract only genuinely reusable small helpers if that
+  avoids duplication; preserve both consumers' behavior/coverage. Do not make
+  the diffusion runtime depend on Phi-3-specific module policy.
+- Preserve downloaded originals and weight values. Derived wrappers may add only
+  the approved cast/scaling/layout/preprocessing boundaries. Native factories
+  remain the package/schema authority.
+- A standalone native DDIM execution already exposes initial latents through
+  `get_state()` before its first Step. Use that existing initialization path
+  when sharing native-seeded initial latents with the independent scheduler
+  reference; do not assume Torch RNG matches M12 or add an unnecessary RNG API.
+- Exact stage topology follows actual signatures: two text-encoder calls or one
+  batched call plus explicit split, native DDIM loop, VAE boundary/decoder,
+  safety preprocessing and checker. CPU preprocessing adapters are permitted;
+  supplied pretrained-model inference remains CUDA-only.
+- If an interface/preprocessing mismatch cannot be satisfied with approved
+  adapters and existing native APIs, stop with concrete evidence and request a
+  specification/plan amendment. Do not bypass safety, silently choose another
+  model or introduce a native feature under this plan.
+
+#### Tasks, dependencies, intended outcomes and tests
+
+| Task | Actual prerequisites | Intended outcome |
+|---|---|---|
+| P0 | Plan approval | Verified M14 base/proof/environment, storage/GPU preflight and focused baselines. |
+| P1 | P0 | Explicit verified local assets/license and actual CUDA interface/compatibility report. |
+| P2 | P1 | Approved boundary wrappers, unchanged original weights and original/wrapper equivalence. |
+| P3 | P1 | Local CLIP tokenization, image/safety preprocessing and checked PNG-output contracts. |
+| P4 | P2, P3 | Native-validated end-to-end package, typed construction and Python CLI/helpers. |
+| P5 | P4 | Complete deterministic CPU EP fixture, seed/state/reference and error/lifecycle evidence. |
+| P6 | P5 | Real default CUDA image, independent DDIM trajectory/checkpoints, safety and replay/parity proof. |
+| P7 | P6 | Actual CUDA placement/transfers and focused real memory/lifetime/race/sync qualification. |
+| P8 | P5, P7 | 100% new executable production lines and current regression/type/style/offline evidence. |
+| P9 | P8 | Reproducible user guide/image/provenance and one ready stacked PR on M14. |
+
+- [x] **P0 - Preserve the parent and establish bounded baselines.**
+  **Outcome:** Reverify local/remote M14 head/base, planning-only modifications,
+  installed CPU/plugin/legacy extension identities and all11source/53artifact
+  M14 proof entries. Compare intentionally edited planning documents against the
+  parent commit. Preserve matching parent proof before any rebuild; do not
+  alter old profiles, weights or global GPU settings.
+  Recheck space under the approved asset root for originals plus derived graphs/
+  metadata and GPU memory for temporary original/wrapper/reference Sessions.
+  **Tests:** Focused parent CPU42/147 and plugin44/147 combined Python suites,
+  module paths and actual device enumeration. Record actual counts/results.
+  Existing native/public85/153 CPU,157/216 plugin and145/76 selected legacy are
+  expected baselines, not fresh M15 results until executed. Retain the known
+  stateless plugin negative-device and legacy metadata limitations explicitly.
+
+- [x] **P1 - Acquire, verify and inspect the actual CUDA assets.**
+  **Outcome:** Implement/test explicit allowlisted revision-pinned setup with
+  size/LFS SHA-256 checks, supporting-file provenance, bounded streaming,
+  atomic publication and no invalid-cache overwrite. Pin/retain the model card's
+  authoritative CreativeML license/attribution. Keep normal commands offline.
+  Inspect all model ports, dtypes, dimensions, dynamic/static batch assumptions,
+  opsets/custom operators and external/embedded initializer layout.
+  **CPU tests:** Tiny/fake assets cover verified reuse, HTTP/network/partial/
+  oversized/checksum/write errors, malformed metadata, forbidden files and
+  cleanup. Test validators with synthetic graphs, not real CUDA-only models.
+  **Real CUDA gate:** Load supplied components only on the requested CUDA device;
+  identify text-encoder/UNet/VAE/checker and feature-input contracts. Confirm
+  batch2 batched guidance and whether batch1 sequential guidance is supported.
+  Record actual VAE scale/layout, safety interfaces, model memory and operator
+  placement constraints. Stop for unsupported interfaces rather than substituting.
+
+- [x] **P2 - Build approved cast/scaling/layout boundary wrappers.**
+  **Outcome:** Generate derived models only where inspection requires them:
+  FP32 DDIM input/output boundaries around optimized denoising, appropriate
+  conditioning casts/splits and exactly-once VAE scaling/layout handling.
+  Keep original models immutable and preserve every original initializer's
+  name/type/shape/value bytes. Record wrapper/model/transform hashes.
+  **CPU tests:** Small fixtures verify port renaming, dtype/shape preservation,
+  explicit casts, no cast of token IDs to the wrong integer type, one scale
+  application, no duplicated/suppressed outputs, original-weight identity and
+  safe temporary/atomic publication. Native-load the generated fixture models.
+  **CUDA tests:** Compare each real wrapper to its original component with
+  independently prepared equivalent feeds; distinguish expected FP16 boundary
+  rounding from semantic changes. Validate all required outputs before accepting
+  the wrapper into the pipeline. No scheduler-precision change or re-export.
+
+- [x] **P3 - Implement local CLIP, safety/image transforms and PNG handling.**
+  **Outcome:** Add caller tokenizer support and a demo-only local HF CLIP adapter,
+  with remote Python/network loading disabled. Respect77-token special/padding
+  rules, valid empty negative prompt and explicit overlength/empty-positive errors.
+  Define VAE-image range/layout conversion and pinned safety preprocessing.
+  **CPU tests:** Fake adapters and known images cover token shapes/dtypes,
+  padding/bounds, caller exceptions, RGB/channel/range conversion, clipping/
+  rounding, invalid/nonfinite tensors, output permissions/encoding/overwrite,
+  temporary cleanup and blocked-checker suppression.
+  Validate resize/crop/RGB/rescale/normalization against the pinned feature
+  configuration:224crop/shortest-edge resize, resample3,1/255 rescale and declared
+  CLIP means/stds. Account for any uint8 round-trip used by the source reference.
+  **CUDA tests:** Express needed safety preprocessing as declared model adapters
+  within the native chain and compare feature tensors/verdicts against the
+  independent local image-processor reference on synthetic and real decoded images.
+  If adapters cannot satisfy that contract, request an amendment; do not skip
+  the checker or insert an undeclared Python callback.
+
+- [x] **P4 - Construct the native package, CLI and reusable helpers.**
+  **Outcome:** Build a declarative package with explicit model/adapter variants,
+  logical inputs/bindings, native DDIM configuration and matching MaxIterations.
+  Use the existing native parser/factories and per-step complete SessionOptions
+  replacements for intentional CPU adapters versus CUDA model stages.
+  Provide explicit setup/build, offline Run and validation commands. Shape/
+  guidance/steps belong to constructed policy; prompt/negative/uint64seed or
+  valid supplied latents are execution data.
+  **CPU tests:** Tiny end-to-end chains match typed programmatic construction,
+  feed conditioning correctly, use latents/state rather than KV cache, maintain
+  stage order/counters, suppress downstream work/image output after errors and
+  preserve old valid packages on construction failure.
+  **CUDA tests:** Initialize the real package through native owned Sessions,
+  validate explicit ordinal selection and no pretrained-model CPU substitution.
+  Check safety outputs are selected and application output cannot bypass them.
+  Do not claim a complete image merely because package initialization passed.
+
+- [x] **P5 - Qualify CPU fixture behavior, native state and reference semantics.**
+  **Outcome:** Complete offline unittest fixtures for the entire application/
+  builder/adapter/reference/image/error surface. Register them in the existing
+  full Python test runner without downloads, keeping reduced/minimal guards.
+  **Tests:** Both guidance modes, supported timestep formats, steps1/2/20,
+  rejected zero/out-of-profile settings, configured shape/context bounds, seed
+  uint64 range/type, supplied-initial latents, state snapshots, retained outputs,
+  cancellation at complete-update boundaries, failed execution requiring Reset,
+  reset/replay, isolation and explicit close/GC/input ownership.
+  Use existing pre-Step latent-state inspection to feed identical initialized
+  noise to the independent reference. Seeded/supplied runs must agree.
+  Validate exact safety-block/no-save behavior with deterministic fixtures.
+  **Scope:** These are CPU EP fixture tests, not real CPU inference claims for
+  the CUDA-only pretrained graphs.
+
+- [x] **P6 - Run the real CUDA image and independent differential reference.**
+  **Outcome:** Execute default512x512/seed42/20steps/guidance7.5/empty-negative
+  native package to a safety-approved RGB PNG. Retain effective policy/model
+  hashes, safety verdict, image identity and decoded dimensions/encoding.
+  **Tests:** Ordinary CUDA Sessions execute the same original/validated wrapper
+  components; Diffusers0.35.1 DDIMScheduler supplies independent CPU scheduler
+  arithmetic using the fixed M12 profile and exactly matched initial latents.
+  Compare conditioning, each relevant prediction/update, VAE output, safety
+  preprocessing/verdict and final conversion with documented precision-aware
+  tolerances fixed before final acceptance. Do not compare to upstream PNDM
+  or equate Torch random seeds with native initialization.
+  Verify20 complete DDIM updates, per-loop invocation counts20batched or40
+  sequential when supported, plus separately counted ordinary chain stages.
+  Check typed/package parity, seed/supplied-init parity, same-config replay and
+  unchanged retained snapshots. Validate sequential real guidance only when
+  actual signatures support it; otherwise document the constraint and retain
+  CPU sequential fixtures without claiming a real run.
+
+- [x] **P7 - Prove CUDA placement, transfers and real lifecycle safety.**
+  **Outcome:** Verify CUDA denoiser/large-compute placement separately from values
+  and account for intentional CPU scheduler/control/preprocessing work.
+  Dedicated actual-worker traces separate setup/warmup, native denoising, explicit
+  reference/checkpoint copies and final image/safety handling.
+  **Tests:** For S20/N1/C4/H64/W64 FP32 boundary predictions, expected DDIM DtoH
+  is20x131,072B batched or40x65,536B sequential =2,621,440B, subject to confirmed
+  interfaces. Establish actual counts from fixture geometry and assert CUPTI
+  records; classify conditioning, timestep, VAE/safety and final-image transfers
+  separately. Do not claim GPU-resident or zero-copy scheduling.
+  Focused real memcheck/full-leak, racecheck and synccheck use direct workers
+  that execute at least two complete DDIM updates and required downstream safety/
+  image handling, not an uninstrumented child. Use the inherited
+  `--show-backtrace no` diagnostic workaround with checks still enabled.
+  Check post-parent-close value lifetime and fail explicitly on any new hazard.
+  **Approved O.10 refinement:** Full20 memcheck and all-kernel two-update
+  synccheck remain mandatory. Real racecheck uses bounded sampling of the
+  actual GroupNorm scale/sum160/sum256 variants, with launch-name corroboration
+  and explicit limits; no unfiltered/full-model race claim.
+
+- [x] **P8 - Close coverage, regressions, local-wheel/offline and style gates.**
+  **Outcome:** Reach measured100% of all new/extracted/modified executable
+  production lines, including any shared asset helper and existing-runner call.
+  Measure CPU fixtures plus explicit applicable GPU cases with exact current
+  source identities, no new/default exclusions hiding declarations or errors.
+  **Tests:** Fresh coverage/changed-line reports, scoped pyright/lintrunner/
+  whitespace, native/public CPU/plugin and relevant package regressions.
+  Re-run M14 offline/parent suites if shared tooling changes; preserve proven
+  source/object/profile maps where runtime source is unchanged. No new native
+  or device delta is planned; any approved amendment adding code needs fresh
+  build/instrumentation and full new-line evidence.
+  Execute documented offline commands with the installed local CUDA-plugin
+  wheel; CPU installed-wheel tests use fixtures only. Validate unsupported EP/
+  device errors and inherited legacy capability boundaries explicitly, without
+  claiming real CPU/legacy-native-feature support that was not exercised.
+
+- [ ] **P9 - Document, preserve evidence and publish one stacked M15 PR.**
+  **Outcome:** Document original/derived-model assumptions and hashes, CreativeML
+  license/attribution, CUDA-only scope, explicit setup, local tokenizer, DDIM
+  substitution, actual shape/guidance constraints, VAE scale, safety preprocessing/
+  blocking, image saving, timing/tolerances and all test/coverage/transfer results.
+  **Tests:** Execute the exact documented commands, verify a real non-blocked
+  512x512 RGB PNG and its safety/provenance report, preserve parent proofs and
+  final source/object/profile/model/image identities, and exclude all downloaded
+  weights/code/credentials from Git.
+  Inspect/preserve the PR template; publish one OPEN/ready PR with base
+  `state/m14-phi3-demo`, synchronize head/base, complete checklists and leave the
+  worktree clean. No automatic merge or M16.
+
+#### Command and evidence conventions
+
+The following are planned validation shapes, not results or final CLI syntax.
+Resolve actual filenames/selectors after approval and record exact nonzero
+counts, skips, image path and every command/result.
+
+```bash
+source .venv/bin/activate
+ROOT="$(git rev-parse --show-toplevel)"
+PYTHON="$ROOT/.venv/bin/python"
+ASSETS="/home/devpatel/onnxruntime-stateful/sd15"
+# Use a matching installed local wheel outside repository-root shadowing.
+"$PYTHON" -m coverage run \
+  --include="$ROOT/samples/python/sd15_demo.py,<actual-shared-adapter/helper-files>" \
+  -m pytest -q "$ROOT/onnxruntime/test/python/onnxruntime_test_python_sd15_demo.py"
+# Execute actual CUDA workers directly, not just a pytest parent process:
+compute-sanitizer --tool memcheck --leak-check full --show-backtrace no \
+  --error-exitcode 99 "$PYTHON" <actual-direct-SD-worker> <approved-local-package>
+compute-sanitizer --tool racecheck --show-backtrace no --error-exitcode 99 \
+  "$PYTHON" <actual-direct-SD-worker> <approved-local-package>
+compute-sanitizer --tool synccheck --show-backtrace no --error-exitcode 99 \
+  "$PYTHON" <actual-direct-SD-worker> <approved-local-package>
+pyright samples/python/sd15_demo.py
+git diff --check
+```
+
+Keep all models/derived wrappers/PNG artifacts under the approved external asset/
+output directories and logs/profiles under session evidence; root space remains
+constrained. Use existing CUDA13.0/cuDNN loader paths and actual
+`libonnxruntime_providers_cuda.so`. Install only declared/missing demo dependencies
+in the existing isolated environment, never a published ORT wheel as evidence.
+Rebuild native code only if necessary after an explicitly approved amendment;
+follow inherited build/test/lint skills and warning policy.
+
+#### Completion gates
+
+- [x] Interview and separate Appendix O specification approval.
+- [x] Separate execution-plan approval.
+- [x] Pinned assets/license/actual CUDA signatures verified; original weights unchanged.
+- [x] Approved wrappers and safety preprocessing independently match their references.
+- [x] One native package/typed chain covers text encoding, DDIM, VAE and mandatory safety.
+- [x] CPU EP fixtures and all error/lifecycle/no-save contracts pass.
+- [x] Real CUDA default image, matching DDIM checkpoints, seeded replay/parity and safety pass.
+- [x] Actual CUDA placement, measured intentional transfers and focused sanitizers pass.
+- [x] New executable production lines reach100%; regressions/type/style/offline commands pass.
+- [ ] Exact user documentation/image/provenance and one synchronized OPEN/ready PR exist.
+
+**Implementation authorization (2026-11-03):** The user explicitly approved this
+plan and authorized starting M15. P0 passes: all64 parent source/artifact/asset
+identities verify, CPU42/147 and plugin44/147 baselines pass, and the actual
+eight A10080GB devices have sufficient memory.
+
+All four original models and nine supporting/tokenizer/config/license files
+were acquired outside Git and verified against their pinned LFS/Git identities.
+Authoritative CreativeML license provenance is pinned to
+`CompVis/stable-diffusion-license` revision
+`14d42d09bffd871b1666a084fc954a50cff72ac0`.
+
+Actual CUDA load succeeds for all originals. Text-encoder IDs are INT32; floating
+model interfaces are FP16. FP32 boundary wrappers preserve all original
+initializer fingerprints:148 text encoder,672 UNet,136 VAE and400 checker.
+The original VAE input feeds a transpose/decoder without latent scaling; the
+derived boundary applies the declared scale once.
+
+A model-only CPU safety preprocessor reproduces Pillow's pinned two-pass
+fixed-point bicubic convention and local CLIP image processing exactly on tested
+random/gradient/checker images; actual ONNX output images and every feature value
+match the independent reference with zero error for two512x512 random cases.
+Extracted shared asset primitives retain M14's15tests/63subtests passing.
+The real package initializes all native stages successfully.
+
+**Initial compatibility blocker (resolved by R0-R4):** Both the first complete pipeline and the independent
+original/wrapper comparison segfault. The text encoder compares exactly; the
+unmodified original UNet alone reproduces the failure outside stateful code.
+GDB shows CUDA `Shape::ComputeInternal` dereferencing `input == nullptr`.
+Disabling memory patterns still segfaults. Disabling graph optimizations instead
+fails at CUDA Transpose with `input count mismatch`, so neither is a working
+configuration. Full image generation and UNet/VAE/checker equivalence are
+unverified; no image or success is claimed.
+
+The separately approved O.7 repair traced the missing Shape input to a missing
+upstream SkipGroupNorm residual. Adapter `KernelDef::OpName()` returns the node
+display name instead of its operator type; normally named `SkipGroupNorm_1`
+therefore disables the kernel's skip behavior. Identical ordinary CUDA graphs
+pass with node name `SkipGroupNorm` and fail with an arbitrary node name.
+Standalone CUDA Shape/Transpose probes pass. The sole native edit corrects that
+existing accessor to `GetOperatorType()`, with no Shape guard, input-count
+workaround, scheduler change, model substitution or safety omission.
+
+Evidence is retained in `m15-original-unet-gdb*.log`,
+`m15-original-unet-no-*.log`, `m15-first-real-image.log`,
+`m15-real-wrapper-equivalence.log`, model/weight-preservation inspection reports
+and safety-preprocessing reference reports. Subsequent diagnostics disable
+new process core dumps; the first task-owned systemd core is identified in
+metadata and has not been deleted or altered. Root space is constrained;
+an approved rebuild must preserve parent proof and plan storage carefully.
+
+#### Targeted O.7 repair execution-plan amendment (approved)
+
+**Specification and targeted plan amendments:** Separately approved2026-11-03.
+The focused repair/rebuild is authorized. The approved model, FP32 scheduler,
+safety policy and final M15 completion gates remain unchanged.
+
+- [x] Review/approve O.7's focused existing-runtime repair scope.
+- [x] Separately review/approve this R0-R4 repair plan.
+
+| Repair task | Actual prerequisites | Intended outcome |
+|---|---|---|
+| R0 | Repair-plan approval, completed P0 and captured failure | Minimal reproduced defect, exact input/constant/metadata diagnosis and safe build storage/proof. |
+| R1 | R0 | Small root-cause adapter/Shape repair with preserved existing contracts. |
+| R2 | R1 | Focused CPU/CUDA constant/runtime/empty/Shape/Transpose regressions and explicit placement checks. |
+| R3 | R2 | Correctly rebuilt/staged local artifacts,100% new native/glue lines and parent regressions. |
+| R4 | R3 | Original UNet and wrapper equivalence pass; release P1 compatibility gate and resume P2-P9. |
+
+- [x] **R0 - Reproduce and locate the input-handling defect before editing.**
+  **Outcome:** Reduce the original UNet failure to small graphs and inspect the
+  actual failing node, logical/runtime input counts, constant-input snapshots,
+  optional/missing inputs and tensor/shape validity. GDB currently proves only
+  a null Shape input; constant/runtime adapter handling is a hypothesis until
+  confirmed. Keep the unmodified model as the integration reproducer.
+  **Tests:** Record failing plugin cases independently of stateful execution
+  and wrappers, with graph optimization enabled/disabled as useful. Compare
+  CPU and applicable legacy CUDA behavior without claiming unsupported CPU
+  execution of the real model. Verify the reproducer executes the intended
+  CUDA-plugin Shape/Transpose path, not a numerically correct CPU fallback.
+  **Storage/proof:** Preserve exact current provider/runtime/test objects and
+  profiles before any rebuild. Measured trees are22GB plugin,23GB CPU and12GB
+  legacy; root has about1-2GB free and home40GB. If required, relocate only the
+  explicitly identified task-owned
+  `build/state-cuda-plugin-m11-13.0/RelWithDebInfo` tree into named session storage
+  and preserve its original logical path with a symlink after size/hash checks.
+  Recheck remaining space before committing to the move; do not recursively
+  clean shared/root directories, touch old13.1 trees or modify/delete root-owned
+  systemd core files. Stop if storage cannot safely preserve parent proof.
+
+- [x] **R1 - Repair the actual constant/runtime/tensor-metadata contract.**
+  **Outcome:** Use existing adapter/C API mechanisms to supply the correct
+  logical inputs and tensor shape information. Preserve optional absent-input,
+  zero-element tensor, scalar and initializer semantics; do not use DataRaw
+  pointer presence as validity unless that is proven to be the correct contract.
+  Keep the fix narrow, type-safe and consistent across affected adapters.
+  **Tests:** The new minimal reproducer must fail before and pass after the
+  change. A required missing input must fail explicitly through standard status
+  handling, not dereference null. A null guard that merely changes the real
+  UNet crash to an unusable-model error is not completion.
+  No new public API, model rewrite/substitution, scheduler type/precision change,
+  CPU-model fallback or safety omission.
+
+- [x] **R2 - Add meaningful CPU/CUDA and unaffected-path regressions.**
+  **Outcome:** Cover the precise failure plus relevant constant-only,
+  constant+runtime, optional-absent, empty-data and normal tensor paths.
+  Exercise Shape vanilla/sliced semantics and relevant Transpose input counts
+  where implicated, reusing existing EP/provider test infrastructure.
+  **Tests:** CPU expected results and actual CUDA-plugin placement/results
+  must agree for valid cases. Test error conditions with checked statuses.
+  Keep legacy and other existing adapters' semantics unchanged. Confirm nonzero
+  selectors and actual plugin library identities; do not broaden unrelated
+  operator/kernel behavior to accommodate the reproducer.
+
+- [x] **R3 - Rebuild accurately and close native coverage/regressions.**
+  **Outcome:** Reuse the valid RelWithDebInfo CPU/plugin configurations, matching
+  CUDA13.0/cuDNN, architectures, warning and coverage flags. Build only required
+  runtime/provider/test/pybind targets; regenerate CMake only for source-list/
+  configuration changes, preserving noncached `--compile-no-warning-as-error`.
+  Do not enable QUICK_BUILD or change kernel routing to make the crash disappear.
+  **Tests:** Verify actual changed provider/extension mtimes/hashes, stage the
+  rebuilt library and create/install a new isolated local wheel as needed.
+  Never test the old M13 installed wheel while claiming the repaired provider.
+  Run focused regressions then applicable parent CPU85/153,plugin157/216 and
+  selected legacy145/76 expectations, recording actual new counts.
+  Measure100% of all new/modified executable native/adapter/glue lines using
+  fresh matching objects/profiles; retain untouched parent archives separately
+  and audit nonzero profile mismatches. Re-run affected Python suites and
+  focused memory/leak/race/sync checks against the actual repaired artifacts.
+  Any additional implicated runtime code outside this focused repair needs
+  explicit evidence and scope review, not speculative changes.
+
+- [x] **R4 - Prove real compatibility and resume the original M15 plan.**
+  **Outcome:** The unchanged original UNet runs successfully on repaired plugin
+  CUDA, then all original/wrapper comparisons pass with unchanged weights and
+  original SHA. Confirm normal configuration and document any intentional,
+  supported settings rather than hiding a workaround.
+  **Tests:** Repeat real UNet/VAE/checker equivalence, the full safety-checked
+  native pipeline and all original P5-P9 fixture/reference/image/transfer/
+  sanitizer/coverage gates. Preserve the failed diagnostics and repair evidence
+  in the milestone documentation. Do not mark the image milestone complete
+  merely because the null dereference is removed.
+
+**Completed repair diagnosis:** The user approved this plan and authorized continuing
+M15. R0 identified the root defect: adapter `KernelDef::OpName()` returns the
+node's name rather than its operator type. `GroupNorm` consequently does not
+recognize a normally named `SkipGroupNorm_1` node as SkipGroupNorm, omits its
+residual output, and a downstream Shape dereferences the unallocated value.
+Tiny ordinary-Session tests prove identical SkipGroupNorm graphs pass when the
+node name is exactly `SkipGroupNorm` and fail when named `SkipGroupNorm_1`.
+Tiny standalone CUDA Shape/Transpose cases pass, disproving the earlier generic
+input-count hypothesis.
+
+The narrow repair changes that existing accessor to `GetOperatorType()`.
+No Shape null guard, GroupNorm arithmetic, new API or scheduler/model/safety
+change was added. Named-node/residual/downstream Shape/Transpose regressions
+were added. Parent plugin ELFs are separately preserved with hashes; the exact
+22GB task-owned build tree was relocated under session storage with its original
+logical path preserved by symlink, freeing root space without touching system
+core files. Configuration succeeds at the preserved path.
+
+The first build invocation used the wrong CMake target name and failed before
+compilation. The actual target is `onnxruntime_providers_cuda_plugin`; the corrected
+incremental native build subsequently completed, as recorded below. The old
+M13 installed wheel remains intentionally unchanged.
+
+**Independent M15 CPU/legacy progress while R3 builds:**
+
+- Complete offline application, wrapper, asset, CLI, tokenizer, reference,
+  safety/output and typed/package fixtures pass: **29 tests/98 subtests**,
+  including the existing M14 fixtures. The direct full-runner SD command also
+  passes **14 tests**.
+- Combined current CPU Python suites pass **56 tests/182 subtests**. An initial
+  invocation omitted the thread-test barrier path and failed those three tests;
+  the corrected explicit `ORT_STATEFUL_TEST_BARRIER` invocation passes all tests.
+- Current CPU native/public binaries pass **85/153**, and unchanged legacy CUDA
+  native/selected-public binaries pass **145/76**. Legacy Python passes
+  **56/182**, retaining its existing package-name/version metadata warning.
+- Python production coverage is exactly **463/463 new executable lines**, with
+  **zero exclusions**: SD helpers315, boundary/preprocessing100, shared assets41,
+  modified Phi-3 imports6, new full-runner statement1. Native coverage is still
+  pending; this is not a complete M15 coverage claim.
+- CPU fixtures verify both guidance modes, steps1/2/20, independent scheduler
+  and exact CLIP preprocessing, supplied-latent/typed/package equality, input
+  isolation, complete-update cancellation/required Reset, retained snapshots,
+  rollback/temporary cleanup, blocked/no-save and exclusive PNG publication.
+- All current implementation/regression files pass lintrunner; production
+  Python type checks report0errors/0warnings. Supporting metadata publication
+  is allowlisted/verified, including upstream model card/config/license; derived
+  model and preprocessing hashes are recorded in the manifest.
+- The new user guide and optional dependency file are written. Real original/
+  wrapper, reference/image, CUDA placement and direct sanitizer/trace workers
+  are authored, but have not yet passed against the repaired provider.
+
+**Subsequent fresh-build and image results (2026-11-03):**
+
+- The corrected native plugin/pybind/native/public build completes. A fresh
+  local GPU wheel is built and installed in `m15-installed-gpu`; installed
+  provider and extension compare byte-for-byte with the rebuilt ELFs. The
+  provider SHA-256 is
+  `78167b02af406e61aeb2745080fec1f85abf453e30ce236bed5692d6026b727b`.
+  An initial extension check guessed a CPython-suffixed name; the actual wheel
+  correctly contains `onnxruntime_pybind11_state.so`, and its comparison passes.
+- The new operator-identity regression passes **2tests/18subtests** with actual
+  CUDA placement in an isolated repaired-provider probe. All names, both dtypes,
+  activations, residual values and downstream Shape/Transpose cases pass.
+- Original/wrapper CUDA checks now pass for all four components, including
+  UNet batch1 and2 and actual large-op placement. Observed maximum errors:
+  text0, UNet0.001954/0.003907, VAE0.003907, checker0. The unmodified original
+  VAE itself repeats with0.005433 maximum variation; the wrapper's input cast
+  matches the independent scaled FP16 feed exactly. Deterministic-compute
+  diagnostics do not remove that variation.
+- The first complete repaired run reached safety but failed on the source
+  checker's incorrectly shared224px/512px symbolic height/width constraints.
+  A model-only boundary metadata repair distinguishes the image axes. A tiny
+  CPU regression and an actual CUDA checker probe verify it; no computation,
+  original weight or additional native runtime code changes.
+- The fresh-wheel default pipeline then saves an actual **512x512 RGB PNG**,
+  with **25invocations, seed42, unsafe=false**. Image SHA-256:
+  `d5e768e59a54e38838eb265ff266c5ae873ae1d5a2f403a014d0fccc866dfa9a`.
+  This is a working-image result, not a completed M15 qualification claim.
+- Current complete CPU Python suites pass **58tests/182subtests**. New Python
+  production coverage is **473/473 with zero exclusions** after the axis fix.
+  The changed native getter executes180times and maps to its fresh matching
+  function/profile; six unrelated mapping warnings still need an explicit audit.
+- Both real guidance-mode qualification tests fail the unchanged closed-loop
+  pointwise latent gate. Independent ordinary/ordinary baselines exhibit larger
+  discrepancies than native/reference, while same-input local-update errors
+  remain below0.0086. The evidence and proposed non-adaptive RMSE/max policy are
+  in SPEC O.8. **O.8 is not approved; no gate is waived or silently relaxed.**
+  Obtain specification approval and a separately reviewed implementation/test
+  plan before changing that validation policy or publishing M15.
+
+**Completed focused repair qualification:**
+
+- Fresh isolated-wheel combined Python tests pass **62tests/200subtests**,
+  including the required actual-plugin adapter cases and CUDA stateful tests.
+  Fresh native/public executables pass **157/216**, both unfiltered.
+- Direct repaired-adapter memcheck passes with **zero errors and zero leaked
+  bytes/allocations**; racecheck reports **zero errors/warnings/hazards** and
+  synccheck reports **zero errors**. Each actual direct worker executes2tests;
+  the established host-backtrace workaround is retained without disabling
+  memory, leak or API checks.
+- Native coverage audit selects the provider-only raw profile, identifies the
+  unique changed adapter getter, and verifies its hash/counter mapping and
+  source region23..25 with count180. Changed line24 is covered: **1/1**.
+  The six unrelated mapping diagnostics remain visible in retained logs; none
+  is the changed function, and no new line is excluded. Current changed
+  production coverage is therefore **473Python +1native =474/474**.
+- R0-R4 are complete. Remaining P3/P6-P9 gates, including the precision-policy
+  decision, real lifecycle/transfer qualification and publication, are not
+  waived by this focused repair result.
+
+#### O.8 precision-verification execution plan (approved)
+
+**Specification:** O.8 was explicitly approved2026-11-03. The user supplied no
+additional requirements and requested this plan for separate review.
+**Implementation authorization:** Explicitly approved2026-11-03. Q1 is in
+progress; no additional requirements or plan changes were requested.
+
+**Intended milestone outcome:** Complete M15 with the existing native/runtime/
+model scope, a fully independent closed-loop reference plus strict same-input
+local-update checks, transparent FP16 uncertainty metrics, complete CPU/CUDA
+qualification and one ready PR stacked on M14. No deterministic-kernel project,
+automatic tolerance calibration or precision/safety/coverage waiver.
+
+| Task | Actual prerequisites | Intended outcome |
+|---|---|---|
+| Q0 | Approved O.8, completed R0-R4 | Preserve verified current wheel/image/components and failed/passing numerical baselines. |
+| Q1 | Q0, plan approval | Implement the exact approved fixed metrics and local/closed-loop verifier separation. |
+| Q2 | Q1 | CPU fixtures verify every new line, exact results and precise metric boundaries/errors. |
+| Q3 | Q2 | Both real CUDA guidance modes pass independent differential, safety, replay and construction checks. |
+| Q4 | Q3 | Full real CUDA lifecycle/sanitizer and dedicated actual-transfer qualification pass. |
+| Q5 | Q2, Q3, Q4 | Current regression/type/style/coverage/documentation evidence and one independently reviewable M15 PR. |
+
+- [x] **Q0 - Preserve the current qualification baseline.**
+  **Outcome:** Retain the original-model/initializer identities, fresh provider/
+  extension/wheel identities, safety-approved default PNG, exact CPU results,
+  current failed closed-loop checks and both ordinary/ordinary uncertainty
+  baselines. Preserve M14 artifacts and the completed R0-R4 repair proof.
+  **Tests/evidence:** Already recorded CPU58/182, plugin62/200, native/public
+  CPU85/153 and plugin157/216, legacy145/76, focused adapter sanitizers,
+ 473Python/1native covered lines, component/placement reports and numerical JSON.
+  These are current baselines, not permission to skip final reruns after Q1.
+
+- [x] **Q1 - Implement the approved verifier without changing generation.**
+  **Outcome:** Keep `generate`, native DDIM state, models and CUDA scheduling
+  unchanged. Add a small shared validation metric helper using finite,
+  shape-compatible arrays and FP64 error accumulation. Fix latent RMSE<=0.01/
+  max<=0.2 and normalized-image RMSE<=0.005/max<=0.2 in code; do not expose
+  loosening flags or auto-calibrate from a run.
+  For each native update, evaluate the ordinary model and independent Diffusers
+  step from the preceding native latent tensor, preserving local
+  `rtol=0.002, atol=0.02`. Separately advance the fully independent closed-loop
+  reference from identical initial noise and check both approved global bounds
+  at every update. Compare VAE execution on matching native latents separately
+  from closed-reference image drift; keep the documented FP16 component bound.
+  Preserve exact same-decoded-image CLIP preprocessing and safety verdict checks.
+  Apply the fixed global bounds to real typed/package, seed/supplied and replay
+  comparisons, retaining exact immutable-snapshot checks and CPU expected values.
+  Report per-update/local/full errors, maxima/RMSE and individual image hashes.
+  **CPU tests:** Existing exact fixtures plus metric/error/shape/nonfinite paths.
+  **CUDA tests:** Reserved for Q3; a failed check remains explicit and fails
+  rather than widening or suppressing a threshold.
+
+- [x] **Q2 - Close CPU tests and exact new-line coverage.**
+  **Outcome:** Add focused unittest cases for all Q1 logic, error messages and
+  report fields. Keep the deterministic tiny-model results exact and preserve
+  existing CLI/build/asset/output safety/cancellation/reset tests.
+  **Tests:** Both guidance modes, successful boundary values equal to each
+  approved limit, values just over either limit, differently shaped arrays,
+  nonfinite data, local-check violations and report/accounting failures.
+  Exercise complete native-owned CPU chains, not only mocked success paths.
+  Run the existing combined CPU suite and exact direct build-runner command.
+  Measure100% of every new/modified executable production line with zero
+  exclusions, including shared validation/runner glue. Recheck pyright/lint.
+  **CUDA scope:** CPU fixtures do not imply CPU support for the actual models.
+
+- [x] **Q3 - Requalify real CUDA differential behavior.**
+  **Outcome:** Both20-step batched and sequential native chains pass the fixed
+  approved criteria using the verified installed wheel and original models.
+  **Tests:** Repeat both guidance modes with identical initial noise; preserve
+  original/wrapper weight/feed equivalence and actual large-op CUDA placement.
+  Check conditioning, every same-input local DDIM update, the entire independent
+  latent trajectory, matching-latent VAE output, exact real decoded-image CLIP
+  features, exact safety verdicts and normalized final-image metrics.
+  Verify20 complete updates,25/45 total invocations, typed/package parity,
+  supplied-initialization parity, same-config reset/replay, input isolation and
+  unchanged retained snapshots. Retain actual RGB PNG metadata/hash/policy and
+  observed metric reports from nonzero selectors with no skips.
+  **Failure rule:** If a fixed bound fails, investigate and report it; do not
+  silently relax the approved policy or replace a model/provider/checker.
+
+- [x] **Q4 - Complete full real lifecycle and transfer proofs.**
+  **Outcome:** Real native execution, not just the tiny repair regression,
+  passes memory/leak/race/synchronization and actual transfer accounting.
+  **Tests:** Update only test workers to use the approved real image/replay
+  checks, then run direct Compute Sanitizer memcheck with full leak/API checks,
+  racecheck and synccheck. Retain the established `--show-backtrace no`
+  host-backtrace workaround; no other checks/suppressions are removed.
+  Verify cancellation/required Reset, explicit close/GC and retained values on
+  actual models. Capture dedicated native-only denoising after setup/warmup/
+  text encoding, separately from explicit reference and final-image reads.
+  Assert actual CUPTI prediction records:20x131,072B batched or40x65,536B
+  sequential =2,621,440B. Account separately for conditioning/control and other
+  stages; do not claim a GPU-resident FP32 scheduler or unexplained zero-copy.
+  Reuse the existing profiler/toolchain without global driver/permission edits.
+  **Qualification scope:** Apply the separately approved O.10 bounded-race
+  refinement; retain full20 memcheck and all-kernel two-update synccheck.
+
+- [ ] **Q5 - Finalize and publish only after all gates pass.**
+  **Outcome:** Current tested source/artifact/model/image identities, complete
+  guide and task/scratchpad records, and one ready PR stacked on M14/#28.
+  **Tests:** Rerun related CPU/plugin/legacy Python and native/public suites,
+  installed-wheel offline CLI, current metric/helper100% coverage, pyright,
+  repository lint/whitespace and relevant package regressions. Preserve known
+  parent limitations and every failed diagnostic honestly.
+  Refresh docs with exact commands/results, approved tolerances and observed
+  values. Inspect/preserve the repository PR template, commit with the required
+  coauthor trailer, push the M15 branch, verify remote head/base and clean
+  worktree. Do not merge or begin M16. Clean only named task-owned temporary
+  intermediates after final proof is retained; keep user assets/parent archives.
+
+**Historical Q1-Q4 results before O.9 approval (not final qualification):**
+
+- O.8/Q0-Q5 were separately approved. Q1's verifier is implemented exactly:
+  strict same-input local updates, independent closed-loop RMSE/max checks,
+  matching-latent VAE comparison and transparent replay/supplied/image metrics.
+  Q2 passes **60CPUtests/193subtests** and **501/501 new Python production
+  lines**, zero exclusions; native coverage remains1/1. Types/style are clean.
+- Under the unchanged approved bounds, real sequential qualification passes.
+  The batched test reaches the typed/package check but fails maximum0.202148
+  despite image RMSE0.001992. No threshold was increased or failure relabeled.
+- Existing CUDA GroupNorm source confirms nondeterministic inclusive scans and
+  atomics; its deterministic-compute option explicitly warns that no
+  deterministic CUDA kernel exists. This explains why that prior diagnostic
+  did not remove the observed variation.
+- Real memcheck fails20,744B/3allocations. An ordinary original-VAE Session
+  reproduces it, outside stateful execution and all wrappers. Native allocation
+  traces identify cuDNN library frames; DEFAULT/HEURISTIC search diagnostics
+  each pass zero-leak memcheck. DEFAULT logs slow GPU convolution fallback,
+  so the proposed application option is HEURISTIC, not a silent CPU fallback.
+- An exploratory HEURISTIC-only test still fails the accumulated max gate.
+  An explicitly labeled HEURISTIC + RMSE-only diagnostic then passes2real
+  tests and full real memcheck with zero errors/leaks. These are diagnostic
+  evidence, **not approved production qualification**.
+- SPEC O.9 proposes explicit demo HEURISTIC configuration and keeping the
+  approved hard RMSE/local/exact checks while reporting accumulated maxima.
+  Production defaults/max-gate remain unchanged pending specification and
+  separate plan approval. Q3/Q4/publication remain blocked; no M15 PR exists.
+
+#### O.9 final configuration/requalification plan (approved)
+
+**Specification:** O.9 explicitly approved2026-11-03; no additional requirements.
+**Implementation authorization:** Explicitly approved2026-11-03; no plan changes
+or additional requirements. N1/N2 pass; N3/N4 final evidence/publication follows.
+
+**Intended outcome:** Finish the original M15 milestone using existing
+HEURISTIC cuDNN selection and the approved fixed RMSE/local/exact criteria,
+with all actual CPU/CUDA/coverage/lifecycle/transfer evidence and one ready PR
+on M14. Do not add deterministic kernels, suppress leaks or retry-until-green.
+
+| Task | Actual prerequisites | Intended outcome |
+|---|---|---|
+| N0 | O.9 approval; preserved Q1/Q2/diagnostics | Freeze current wheel/model/source/failed baseline identities. |
+| N1 | N0, plan approval | Apply only the approved demo option/provenance and maximum-reporting changes. |
+| N2 | N1 | Exact CPU/error/boundary tests and100% new-line coverage pass. |
+| N3 | N2 | Both real CUDA modes and complete lifecycle/actual-transfer proofs pass. |
+| N4 | N2, N3 | Current regression/docs/artifact evidence and one independently reviewable M15 PR. |
+
+- [x] **N0 - Preserve the current evidence and decision boundary.**
+  **Outcome:** Retain current failed O.8 max comparisons and real/ordinary-VAE
+  leak evidence, HEURISTIC exploratory results, source/kernel nondeterminism
+  evidence, original-model identities, fresh-wheel identity and working PNG.
+  **Tests/evidence:** CPU60/193,501Python/1native covered lines, existing
+  CPU/plugin/legacy native/public results and the strict/local baseline remain
+  available. Exploratory RMSE-only/HEURISTIC results are not final acceptance.
+
+- [x] **N1 - Apply the approved application-level configuration.**
+  **Outcome:** Set `cudnn_conv_algo_search=HEURISTIC` in the demo's actual
+  CUDA SessionOptions. Record/check this qualified option in package metadata;
+  require explicit package rebuild rather than silently claim an old package
+  has the new provenance. CPU options, native API/dispatch build flags,
+  original weights, boundary models, DDIM math and safety remain unchanged.
+  Keep hard RMSE limits0.01latents/0.005images. Continue reporting absolute
+  maxima, but remove only their accumulated trajectory/parity/replay hard gate.
+  Strict local-update pointwise, matching-input component and exact CPU/
+  preprocessing/safety/ownership/accounting checks are unchanged.
+  **CPU tests:** Verify provider option shape/value, old/mismatched metadata
+  errors, exact RMSE boundary/just-over failures and reported large maxima
+  when RMSE is within budget. Never return success on nonfinite/invalid shapes.
+  **CUDA tests:** N3; no global environment/driver or vendor-library edits.
+
+- [x] **N2 - Close focused CPU validation and exact coverage.**
+  **Outcome:** Update only directly related tests and guide/provenance text.
+  Keep deterministic fixture expectations exact and retain all failure/cleanup,
+  cancellation/reset, caller-input, immutable-value and safety/no-save cases.
+  **Tests:** Current combined CPU suites and direct full-runner command;
+  measure100% of every new/modified production line with zero exclusions,
+  including option/metadata/reporting glue. Pyright/lint/whitespace pass.
+  Reuse the unchanged fresh native provider's matched changed-line proof.
+
+- [x] **N3 - Complete real CUDA and lifetime/transfer qualification.**
+  **Outcome:** Rebuild default and sequential packages with explicit qualified
+  HEURISTIC provenance, then pass the approved criteria on both actual modes.
+  **Tests:** Original/wrapper/weight equivalence, actual CUDA large-op placement,
+  both20-step local/independent trajectories, real decoded-image CLIP features,
+  exact safety verdicts, RGB PNG metadata/hashes,25/45invocations,
+  typed/package, seed/supplied, reset/replay and unchanged retained snapshots.
+  Repeat both modes; retain each result, not only the best trial.
+  Run direct real memcheck/full leak/API, racecheck and synccheck workers.
+  Keep the established host-backtrace workaround only; zero errors/leaks/
+  hazards are mandatory, with no device-reset cleanup masking.
+  Capture native-only denoising in both modes and assert actual CUPTI prediction
+  copies total2,621,440B, with conditioning/control/stage/explicit reads
+  independently accounted. Stop/report any failed fixed criterion; do not
+  relax RMSE/local checks, change models/providers or bypass the checker.
+  **Approved O.10 refinement:** Racecheck is bounded sampling of each actual
+  GroupNorm variant, not unfiltered/full-model race freedom. All-kernel
+  two-update synccheck and full20 memcheck remain unchanged.
+
+- [ ] **N4 - Final regressions, documentation and publication.**
+  **Outcome:** Complete original P3/P6-P9 and Q3-Q5 gates, current exact
+  source/artifact/model/image/metric identities, synchronized task/scratchpad/
+  guide records and one ready M15 PR stacked on M14/#28.
+  **Tests:** Rerun directly related CPU/plugin/legacy Python and native/public
+  regressions, installed-wheel offline commands and existing package tests;
+  preserve known parent limitations honestly. Final100% new-line counts,
+  type/style/whitespace, sanitizer/transfer and numerical results are recorded
+  with exact commands. Preserve the repository PR template, include the
+  coauthor trailer, verify pushed head/base and clean worktree.
+  No automatic merge or M16. Clean only named task-owned intermediates after
+  retaining final evidence; preserve user assets, original models, parent
+  archives and the task-owned rebuild tree.
+
+#### Finalization evidence and approved bounded qualification
+
+The user authorized finishing M15 and offered `/datadisks/disk7/dtmp` storage.
+Fresh final logs/profiles are retained under
+`/datadisks/disk7/dtmp/ort-state-m15-819a29ec-final`; older evidence remains in
+the session `files` directory. This path currently shares the root filesystem,
+so available space was checked rather than assuming a separate mounted disk.
+The prior plugin regression passed but profile writes failed with ENOSPC.
+Those truncated profiles are not used. A fresh rerun passes64/213, all new
+profiles write successfully, and LLVM reports a unique matching getter with
+count18 and **no mapping diagnostics**.
+
+| Surface | Executed result |
+|---|---|
+| Current combined CPU Python | 60tests/195subtests, no skips |
+| Current installed plugin Python | 64tests/213subtests, no skips |
+| Current legacy Python | 60tests/195subtests; inherited package-metadata warning |
+| Direct offline SD unittest entry | 18tests OK |
+| CPU native/public | 85/153 pass |
+| Repaired plugin native/unfiltered public | 157/216 pass |
+| Legacy native/selected public | 145/76 pass |
+| Standalone shared/static package | 5/5 each pass |
+| Python new production lines | 503/503, no exclusions |
+| Native changed getter line | 1/1, matched fresh provider/profile |
+| Scoped types/lint/whitespace | 0errors/0warnings; repository lint passes |
+| Both real20-step guidance modes | 2tests pass in each of three recorded runs |
+| Full20 real memcheck/full leak/API | 0errors; 0bytes/0allocations leaked |
+| Full-size two-update all-kernel synccheck | 0errors; 7invocations; replay/cancel/reset/retention pass |
+
+Final installed-wheel CLI generation is offline, unsafe=false,512x512RGB,
+seed42/20updates/25invocations. Its PNG is
+`/home/devpatel/onnxruntime-stateful/sd15/qualification/sd15-m15-final-cli.png`,
+SHA-256 `600eee83de0b9f00ea595c3d93e0376a0c5f753d098731d4982b89a5165312d7`.
+Observed one-run setup/execution/output times are12.383/2.491/0.164seconds,
+not benchmark/speedup claims.
+
+Final independent CUDA reports:
+
+| Mode | Maximum closed-loop latent RMSE | Image RMSE | Invocations |
+|---|---:|---:|---:|
+| Batched | 0.005744151 | 0.002029416 | 25 |
+| Sequential | 0.007715663 | 0.002610830 | 45 |
+
+Both meet fixed0.01latent/0.005image budgets, strict local-update/component
+checks and exact safety/preprocessing/ownership/accounting checks. Final
+batched typed/package RMSE is0.006237432latents/0.001958254image. Retain all
+three successful runs, earlier failures and exploratory reports, not only
+the most favorable numbers.
+
+Actual20-update denoising CUPTI copies are asserted, not estimated:
+
+| Mode | HtoD records (bytes x count) | Prediction DtoH |
+|---|---|---|
+| Batched | 4x20,131072x20,473088x20 | 131072x20=2621440B |
+| Sequential | 4x40,65536x40,236544x40 | 65536x40=2621440B |
+
+Sequential additionally records internal DtoD2Bx40,640Bx200,1280Bx200,
+2560Bx560. Setup/warmup/text encoding/reference reads/VAE/safety/final-image
+work are outside this native-denoising capture. No GPU-resident scheduler or
+zero-copy claim. Independent two-update launch records confirm actual FP16
+GroupNorm scale122, sum160114 and sum2568 launches.
+
+**O.10 qualification approval and execution plan:** After the unfiltered
+two-update race worker timed out at600seconds, the user explicitly selected
+"Approve bounded GroupNorm-variant sampling". Preserve the timed-out/
+interrupted attempts as incomplete. Withdraw the old lowercase-only
+`groupNorm` filter result: actual symbols contain `GroupNorm`.
+Run a complete full-size two-update lifecycle for each bounded, case-correct
+variant selection; correlate mangled names with actual CUPTI records, retain
+the explicit launch bound and verify zero hazards/errors/warnings. Keep
+full20 memcheck and all-kernel two-update synccheck. This does not certify
+unfiltered/full-model race freedom. One-update diagnostic workers never
+saved images, including the unsafe=true one-update result.
+
+Reproducible command definitions (run in the existing virtualenv, outside
+source-package shadowing):
+
+```bash
+ROOT=/datadisks/disk9/devpatel/ngenai/onnxruntime
+E=/home/devpatel/.copilot/session-state/819a29ec-8ea8-4b2f-9938-e40236ffd239/files
+F=/datadisks/disk7/dtmp/ort-state-m15-819a29ec-final
+ASSETS=/home/devpatel/onnxruntime-stateful/sd15
+source "$ROOT/.venv/bin/activate"
+cd "$E"
+export LD_LIBRARY_PATH=/home/tianlei/cudnn_9.23_cuda13/lib:/home/tianlei/cuda13.0/lib64
+export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
+export ORT_STATEFUL_TEST_BARRIER="$ROOT/build/state-cpu/RelWithDebInfo/libstateful_test_barrier.so"
+CPU_SUITES=(
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_stateful.py"
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_stateful_package.py"
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_stateful_threads.py"
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_phi3_demo.py"
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_sd15_demo.py"
+)
+PYTHONPATH="$E/m13-installed-cpu:$ROOT/onnxruntime/test/python" \
+  LLVM_PROFILE_FILE="$F/cpu-%m-%p.profraw" \
+  python -m coverage run --rcfile=/dev/null --data-file="$E/m15-offline.coverage" \
+  --include="$ROOT/samples/python/sd15_demo.py,$ROOT/samples/python/sd15_models.py,$ROOT/samples/python/stateful_demo_assets.py,$ROOT/samples/python/phi3_demo.py,$ROOT/tools/ci_build/build.py" \
+  -m pytest -q "${CPU_SUITES[@]}"
+# PASS60/195; measure_m15_coverage.py:503/503, exclusions empty.
+PYTHONPATH="$E/m15-installed-gpu:$ROOT/onnxruntime/test/python" \
+  ORT_STATEFUL_REQUIRE_CUDA_PLUGIN=1 LLVM_PROFILE_FILE="$F/plugin-%m-%p.profraw" \
+  python -m pytest -q "${CPU_SUITES[@]}" \
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_stateful_cuda.py" \
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_cuda_adapter.py"
+# PASS64/213; fresh profiles complete.
+PYTHONPATH="$E/m15-installed-gpu:$ROOT/onnxruntime/test/python" \
+  ORT_STATEFUL_SD15_ASSETS="$ASSETS" LLVM_PROFILE_FILE="$F/real-%m-%p.profraw" \
+  python -m pytest -q "$ROOT/onnxruntime/test/python/onnxruntime_test_python_sd15_demo_assets.py"
+# PASS2; both actual guidance modes, no skips.
+```
+
+In each actual CPU/plugin/legacy build-output directory,
+`./onnxruntime_session_loop_test` passes85/157/145 respectively. Unfiltered
+`./onnxruntime_autoep_test` passes153CPU/216plugin; legacy
+`./onnxruntime_autoep_test --gtest_filter='AutoEpSelection.CudaEP:*Stateful*:*Ddim*:ModelPackageApiTest.*:*ModelPackageChain*'`
+passes76. Existing shared/static package `ctest --output-on-failure` passes5/5.
+The inherited stateless plugin negative-device RuntimeError mismatch remains
+outside the stateful suites, and is not fixed or hidden by this milestone.
+
+Native coverage merges only valid fresh provider-signature profiles with
+`llvm-profdata merge -sparse`; `llvm-cov export` against the byte-matching
+installed provider and getter-name filter confirms line24, count18. The
+Python coverage script uses the fixed M14 base even after staging/committing.
+Final source/object/profile/model/image/report identities and parent proof
+verification are retained externally; no weights, local installs or profiles
+are committed.
+
+**Completed O.10 race proof (2026-11-04 UTC):** All three complete full-size
+two-update/replay/cancel/reset/retention/safety workers pass zero hazards,
+errors and warnings. Actual full-worker CUPTI records (including VAE/replay)
+show302 scale,228 sum160 and50 sum256 launches. Scale has zero static/dynamic
+shared memory; global accesses remain covered by full memcheck. Exact-mangled
+sum256 selection checks all50 occurrences. Sum160 uses a measured full-worker
+launch window ending at360, selecting actual launches337/359. Nonzero
+instrumentation is independently checked: exactly10,240 explicit barrier warp
+events for those two sum160 launches and466,944 for all50 sum256 launches,
+matching actual grid/block geometry and the barrier at
+`group_norm_impl_kernel.cuh:278`. No sampler/threshold/production change.
+
+Low `--launch-count 2` probes reached no selected kernels and are explicitly
+discarded, despite their zero-hazard summaries. Do not copy that cap or claim
+those probes as qualification. The measured360 window and exact event counts
+belong to this toolchain/package; regenerate launch geometry and verify events
+when changing the configuration or artifacts.
+
+Exact accepted race commands, using the environment above and
+`ORT_STATEFUL_SD15_PACKAGE="$(cat "$F/two-update-package.txt")"`:
+
+```bash
+WORKER="$ROOT/onnxruntime/test/python/onnxruntime_test_python_sd15_demo_assets.py"
+CS=/usr/local/cuda/bin/compute-sanitizer
+SUM160=_ZN11onnxruntime7contrib4cuda22GroupNormNHWCSumKernelI6__halfLi160ELi2EEEvPT_PfPKS4_S8_S8_iiiiiiiib
+SUM256=_ZN11onnxruntime7contrib4cuda22GroupNormNHWCSumKernelI6__halfLi256ELi2EEEvPT_PfPKS4_S8_S8_iiiiiiiib
+SCALE=_ZN11onnxruntime7contrib4cuda24GroupNormNHWCScaleKernelI6__halfLi2EEEvPT_PKS4_S7_PKfS9_S7_S9_fiiiiifiib
+"$CS" --tool racecheck --racecheck-num-workers 8 --racecheck-trace-sync yes \
+  --launch-count 360 --kernel-name "kne=$SUM160" --show-backtrace no \
+  --error-exitcode 99 python "$WORKER" --cuda-sanitizer-worker
+# PASS0hazards/errors/warnings;10240measured explicit-barrier events.
+"$CS" --tool racecheck --racecheck-num-workers 8 --racecheck-trace-sync yes \
+  --kernel-name "kne=$SUM256" --show-backtrace no --error-exitcode 99 \
+  python "$WORKER" --cuda-sanitizer-worker
+# PASS0hazards/errors/warnings;466944measured explicit-barrier events.
+"$CS" --tool racecheck --racecheck-num-workers 8 --kernel-name "kne=$SCALE" \
+  --show-backtrace no --error-exitcode 99 python "$WORKER" --cuda-sanitizer-worker
+# PASS0hazards/errors/warnings;302actual launches, no shared memory.
+"$CS" --tool synccheck --show-backtrace no --error-exitcode 99 \
+  python "$WORKER" --cuda-sanitizer-worker
+# PASSall-kernelS2,0errors.
+```
+
+Full20 memcheck uses the default20-update package, not the two-update override:
+`compute-sanitizer --tool memcheck --leak-check full --show-backtrace no --error-exitcode 99 python "$WORKER" --cuda-sanitizer-worker`
+passes0errors/0leaks with `ORT_STATEFUL_SD15_PACKAGE` unset.
+The final proof manifest verifies18 current source files, exact new-line
+coverage, successful logs/profiles, models/images/metrics/traces, all11source/
+53artifact M14 entries and five separately preserved parent native artifacts.
+Publication P9/Q5/N4 remains the final unchecked gate until the ready PR exists.
 
 ### M16 - C# binding
 
@@ -5007,7 +5946,7 @@ negative/error tests. Supporting milestones do not replace final qualification.
 | Concrete API/schema contracts | Semantic requirements approved; exact contracts not yet implemented | M01 documents within approved scope; material choices return to user. |
 | CPU/compiler/language coverage readiness | Not probed by running builds/tools during planning | Establish in M01; verify 100% per affected PR. |
 | CUDA device-line coverage | M08 copy-primitive approach approved; M09 still requires device instrumentation | Actual GPU dispatch remains mandatory. M08 may report zero/N/A only with no new device functions; any device code added in M08/M09 needs measured 100% coverage. |
-| Local Phi-3/SD files and adapters | M14 Phi-3 revision/variants/tokenizer source and local directory confirmed; acquisition awaits approvals. SD assets not supplied. | Inspect actual Phi-3 graphs after approved acquisition; request SD assets before M15. Synthetic fixtures do not replace real demos. |
+| Local Phi-3/SD files and adapters | M14 assets qualified. M15 CUDA-only `tlwu` source/revision, tokenizer and asset directory confirmed; downloads await approvals. | Inspect actual SD interfaces after approved acquisition. CPU fixtures do not substitute for the real CUDA image demo, and CUDA-only exports must not be claimed as real CPU models. |
 | CPU/CUDA model variants | Actual signatures/precision not inspected | Verify compatible local variants; no silent model substitution/download. |
 | Objective-C/iOS validation | Linux is the initial platform; Apple access not provided | M22/M23 need supplemental runner/coverage or remain blocked; no implicit scope reduction. |
 | Browser/mobile package resources | Runtime file APIs differ from native filesystem APIs | M01/M19/M23 define adapters preserving package confinement and execution parity. |

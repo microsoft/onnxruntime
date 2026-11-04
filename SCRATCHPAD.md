@@ -4,6 +4,18 @@ Compressed project memory. This is not the execution plan.
 
 ## Workflow checkpoint
 
+- 2026-11-03 CURRENT: M01-M14complete; M14PR28 OPEN/ready at44e512c771 onM13.
+  M15O/O7/O8/O9 specifications+separateP/R/Q/Nplans APPROVED/implemented.
+  RootfixGetOperatorType notGetNodeName; freshinstalledGPUbyteverified.
+  CPU60/195 plugin64/213 legacy60/195; native/publicCPU85/153,
+  plugin157/216 legacy145/76; package5/5shared+static; directSD18OK.
+  Exact503Python+1native newproductionlinescovered/noexclusions; freshgetter
+  count18/noLLVMdiagnostics. BothrealS20modesPASSthreepairedruns.
+  MemcheckS20zeroerrors/leaks; synccheckallkernelS2fullsizezeroerrors.
+  O10boundedactualGroupNormvariant-racesamplingUSERAPPROVED afterS2allkernel
+  timeout600s; earlierlowercasefilterINVALID/withdrawn, notqualification.
+  Finalproof/docs/PRpending; noM15commit/push/PRyet.
+  Branchstate/m15-sd15-demo based44e512c7719c1e7ebc2e231c47281535c2c52a90.
 - 2026-11-02 CURRENT: M01-M13 complete; M13PR27 OPEN/ready at42ab052f08 onM12.
   M14interviewdone/noadditionalrequirements; userexplicitlyAPPROVEDAppendixN.
   DetailedTASKSM14P0-P8 separatelyAPPROVED2026-11-02; implementationauthorized.
@@ -1776,3 +1788,394 @@ Compressed project memory. This is not the execution plan.
   ActualCIunittestentry15testsOK(noassets/no network);optionalflatbuffers
   INFOispreexisting/unused, noinstallationneeded. Finalproofhashmanifest/
   remotehead/basecleanverificationfollowspush. NoM15/merge.
+- M14FINALverificationPASSED: PR28head44e512c7719c1e7ebc2e231c47281535c2c52a90,
+  baseM13,OPEN/nonDraft, cleanworktree. m14-final-proof-sha256.txt preserves
+  11source+53artifact/assetidentities; allM14todosDONE, no activejobs.
+- M15INTERVIEW2026-11-03CONFIRMED: userHFsource
+  https://huggingface.co/tlwu/stable-diffusion-v1-5-onnxruntime;
+  assetroot/home/devpatel/onnxruntime-stateful/sd15;
+  CUDAONLYREALmodeldemo +CPU EPfixtures/100%newlines (explicitamendment).
+  512x512PNG,seed42,20DDIMsteps,guidance7.5,emptynegative,batcheddefault;
+  PythonCLI/helpers+localHFtokenizer/imagewriter outsidecoredeps.
+  Explicitadapterstages+derivedboundarycast/scalewrappersallowed, keeporiginal
+  modelsimmutable/weightvaluesunchanged. ExistingnativeFP32CPU DDIM unchanged.
+  UserexplicitlyconfirmedNOadditionalrequirements aftercompatclarifications.
+- M15METADATAONLYinspected: pinnedrevisionf22c0e90205a7a2c08bf3e8927b39dc84e4064c2,
+  CUDA-onlymodelcard; CreativeML OpenRAIL-M license (notMIT).
+  model_index requires_safety_checkerTRUE andsourcePNDMscheduler.
+  UserexplicitlyAPPROVESretainchecker/preprocessing +useexistingDDIMinstead
+  (doNOTclaimPNDMparity); omitvae_encoder/image2image.
+  Assets: text_encoder/model.onnx246178495B,unet/model.onnx1719631467B,
+  vae_decoder/model.onnx99072656B,safety_checker/model.onnx608658360B;
+  tokenizerCLIPvocab/merges +metadata,feature_extractor/preprocessor_config,
+  model_index,schedulerconfig,licenseprovenance ~2.7GB.
+  ONNXpayloads/dtypes/actualshapesNOTdownloaded/inspected.
+- PinnedsourceSchedulerJSON: betas.00085/.012scaled_linear,1000train,
+  epsilon,clipfalse,set_alpha_to_onefalse,steps_offset1,leadingspacing;
+  PNDMskip_prk_stepsTRUE isNOTnativeDDIMpolicy. CLIPmax_length77.
+  Safety preprocessing/interface andVAEscale needactualinspection +reference;
+  doNOTdoubleapplyVAEscale orsilentlydropchecker. Flaggedoutputproposedblocked
+  with explicitstatus/no unfilteredimagewrite (SPECdraftawaitsapproval).
+- M15AppendixO DRAFTwritten +TASKSstatus/CPU-scopeonlyupdated; detailedplan
+  NOTprepared. MustSPEC review/approvalthenTASKS detailedplan+separateapproval
+  beforedownloads/implementation. BothCPUfixtureandCUDArealgatesneeded.
+  Metadata/licensereferencepossiblemissingtopLicensefile inuserrepo: retain
+  authoritativeCreativeMLlicenseprovenance referencedmodelcard, noMITsubstitute.
+  ExistingM12RNGnotTorch.randn seed; referencemustsharesameinitiallatents.
+  No newcore/nativefeaturewithoutconcretemismatch+explicitamendment.
+- M15SPECAPPROVED2026-11-03 viaexplicitreview "Approve specification; prepare
+  the execution plan". DetailedTASKSM15P0-P9 nowprepared; awaitingSEPARATE
+  planapproval. P0parentproof/baseline,P1assets+license+actualCUDAinterfaces,
+  P2unchangedweightboundarywrappers,P3CLIP/safety/PNGtransforms,P4nativechain
+  packageCLI,P5CPUfixture+seed/reference/lifecycle,P6realdefaultCUDAimage/
+  DDIMreference/replay/parity,P7CUPTI/sanitizers,P8coverage/regressions,P9onePR.
+- Planningpriorartreadonlyconfirmed: standaloneDDIMexecution.InitializeDdim
+  createsddim_initial_/ddim_latents_ atcreation; GetState alwaysincludeslogical
+  latentoutputBEFOREStep. Reuseforidenticalreferenceinitialnoise; no newRNGAPI.
+  ExistingM13packagehelperbindsinit/positive/negativeexternalinputs andexplicit
+  matchingMaxIterations. NativeDDIMloopsforbidgeneration/KV/feedbackfiniteinput
+  policies; keepscheduler/guidanceFP32CPU, realmodelinteriorCUDAonly.
+- PinnedpreprocessJSONread:224shortest-edge/crop224x224,centerCrop/RGB/
+  normalize/rescale/resizeTRUE, resample3,1/255, means[.48145466,.4578275,
+  .40821073],std[.26862954,.26130258,.27577711]. Needindependentreference
+  validationincluint8roundtrip BEFOREfullpipeline; noSafetyCheckerbypass.
+  S20/N1/C4/H64/W64FP32expectedpredictionDtoH=20x131072Bbatched or40x65536B
+  sequential=2621440B afteractualinterfaceverification, plusseparatelyclassified
+  textconditioning/timestep/VAE/safety/finalimageDMA. NotGPUresidentDDIM.
+  Noacquisition/deps/sourceimpl/build/tests/images yet; planreviewonly.
+- M15PLANAPPROVED2026-11-03: explicit "Approve plan and begin M15".
+  Bothapprovalgatessatisfied. StartP0parentproof/focusedbaselines, thenP1
+  approvedassets+license+actualCUDAinterfaces; donotbuildwrappersbeforeinspection.
+- M15P0DONE: all64M14source/artifact/assetproofentriesverify atparent44e512c771.
+  CPU42/147 andGPU44/147baselinePASS;8A10080GBfree. No parentrebuild.
+- M15P1DOWNLOADED/VERIFIEDunder/home/devpatel/onnxruntime-stateful/sd15/originals:
+  fourapprovedoriginalmodels+9metadata/tokenizer/license files,allLFS/Gitsha/size
+  correct. License CompVis/stable-diffusion-license14d42d09bffd871b1666a084fc954a50cff72ac0,
+  license.txt14385B blob0e609df0d8cd3b5d11a1ea962a56b604b70846a5.
+  NoVAEencoder/remotecode. ONNXdtypeactual:encoderINT32ids/F16outputs;
+  UNetF16sample/timevector/conditioning+F16out;VAEF16in/out;checkerF16
+  clip_input+images/F16out_images/BOOLhas_nsfw_concepts. Dynamicbatch.
+- Addedsamples/python/sd15_models.py boundarywrapper+model-onlyCPUpreprocess.
+  Alloriginalinitializerspreservedfingerprints(148/672/136/400) inderived
+  FP32I/O wrappers. VAEinputdirectTranspose->decoder,NOscalealready; wrapper
+  latent_sampleF32Mul1/.18215 thenF16Cast. EncoderIDsremainINT32;checkerBool
+  unchanged. OriginalmodelsloadsuccessfullyCUDAplugin beforeRun.
+- SafetyPPexactmathprototype andactualONNX CPUmodel PASS againstPillow/
+  TransformersCLIP: fixedpoint22bit2passbicubicF64MatMulwithperpassbyteclipping/
+  rounding; random/gradient/checker0byteerror. Actual512randomseeds0/42 images
+  +CLIPfeatures EXACT0error vsindependentCLIPImageProcessor. Derivedadapter
+  CPUallowed; mainmodelsCUDAonly. NoPythonscheduler/noSafetybypass.
+- Extractedsamples/python/stateful_demo_assets.py Asset/digest/verify/acquire_file;
+  Phi3consumerusesneutralhelper +testURLmocktargetupdated; M14offline15/63PASS.
+  Addedsd15_demo.py CLIacquire/build/run nativechainpositive/negativeencoders,
+  DDIMloop,scaledVAE,CPUpreprocess,requiredchecker,checkedPNG.
+  Actualsetupcacheverifies13files;fullnativechainINITIALIZESsuccessfully.
+  pyrightallnewmodules0/0,formatterpassed. No newdependenciesinstalled.
+- M15BLOCKER: fullfirstimage andoriginal/wrapperoracle BOTH nativeSIGSEGV139.
+  Textencoderoriginal/wrapper EXACT0errors thenoriginalUNetRuncrashes.
+  IsolatedunmodifiedoriginalUNet withordinarySession+correctF16feeds also
+  crashes; GDB shape_op.cc50 cuda::Shape::ComputeInternal input==NULL,
+  input_shape invalidaddr0x18. Notnewwrapper/DDIMissue. MemPatternOFFstill139;
+  GraphOptDISABLEDinsteadFAIL Transpose_47 "input count mismatch".
+  Needrootconstant/runtimeinputadapterinvestigation; doNOTjustnullguarderror.
+- Evidence sessionfiles/m15-original-unet-gdb{,-input}.log,
+  m15-original-unet-no-optimizations.log,m15-original-unet-no-memory-pattern.log,
+  m15-first-real-image.log,m15-real-wrapper-equivalence.log.
+  NativecodeUNMODIFIED. SPEC O.7DRAFTproposesfocusedexistingCUDAplugin
+  Shape/tensor-inputadapterrepair, freshCPU/CUDAregressions+100%newnativeglue,
+  preserveallparentproofthenrepeatoriginal/wrapper/fullimagegates.
+  MustgetEXPLICITscopeapproval thenwrite/reviewtargetedplan BEFOREnativeedits.
+  No completeM15image/coverage/compatibilityclaim, noM15PR/M16/merge.
+- Firstcore isROOT-owned systemd-managed:
+  /var/lib/systemd/coredump/core.python.681431.de5c314c806a40908e1afadcd7ede127.2192928.1793666850000000.zst
+  ~1.9GB, inspectedmetadataonly, NOTdeleted/altered. Newdiagnosticsulimit-c0.
+  Root~1.1GBfree/home40GB afteroriginal+derivedmodels; approvedrebuildneeds
+  carefulstorage/preservedbinary strategy, no broadcleanup/globalchanges.
+  AllM15code/docsUNCOMMITTEDonstate/m15-sd15-demo HEAD44e512c771.
+- M15O7SPECAMENDMENTAPPROVED2026-11-03 viaexplicitreview "Approve O.7;
+  prepare the targeted repair plan". R0-R4plan addedTASKS forSEPARATEreview:
+  R0minimalrepro/exactconstant-vs-runtimeinputdiagnosis/proof+storage;
+  R1narrowrootcontractfixNOTjustnullguard;R2CPU/CUDAplacementregressions;
+  R3correctincrementalrebuild/staging/newwheel/newnative100%+parentchecks;
+  R4unmodifiedoriginalUNet+allwrapperoracle thenresumeoriginalM15gates.
+  Actualroot causebeyondNULLShapeinputNOTyetconfirmed; avoidspeculativefix.
+  No nativeedits/rebuild authorizedbeforeplanapproval.
+- Currenttask-ownedtreesmeasured: pluginRelWithDebInfo22GB,CPU23GB,legacy12GB;
+  root~1.7GB/home40GBfree. ApprovedrepairplanproposesifneededmovingONLYnamed
+  taskpluginbuildtree tosessionstorage+symlinkpreserveoriginallogicalpath after
+  proof/hashes/spacechecks, no sharedbroadcleanup/systemdcoretouch/old13.1tree.
+  PreserveparentELFs/profiles BEFOREincrementalrebuild; retestrepairedprovider
+  inNEWisolatedlocalwheel, NOTm13-installed-gpu staleprovider. SameCUDAarch/
+  flags(noQUICK_BUILD). CUDAShapeInputCount/constanttablecurrentadapter:
+  ctorinput_tensors_.resize(context_.GetInputCount()), Inputearlyindexguard,
+  constantinputtablecheckedafterthat; InputCount returnsvector.size. Relevant
+  hypothesisbutneedsactualGDBnode/countdata/minirepro.
+- M15R0ROOTCAUSECONFIRMED (inputcount/constant hypothesis DISPROVED):
+  standaloneCUDA Shape+Transpose tinygraphsPASS assignedCUDA.
+  FailingShape /down_blocks.0/attentions.0/Shape_2 consumes residualvalue
+  /down_blocks.0/resnets.0/Add_1_output_0, originallyTranspose47 of
+  SkipGroupNorm_1_add_out. Optimizerremovestranspose, exposesSkipGroupNorm
+  output1directly; hostOrtValue inputNONNULLbutUNALLOCATED(type0,data0).
+  Adapterinputvectorssize1correct, constantsdefault: rootisupstreammissingoutput.
+- Existingadapter include/onnxruntime/ep/adapter/kernel_def.h OpName() returns
+  GetNodeName(!), shouldGetOperatorType. GroupNormconstructor comparesOpName
+  to"SkipGroupNorm", so has_skip_false fornode"SkipGroupNorm_1", omitsadd_out.
+  Minimal2KBgraph identicalexceptnamePROVES: node"SkipGroupNorm"PASS,
+  "SkipGroupNorm_1"FAIL UnsupportedOrtValueType; GPUplacementasserted.
+  Logsm15-name-*-before.log. FixEXACTONE existingnativeaccessor line now
+  GetOperatorType; NO Shape guard/noGroupNormarithmetic/newAPI/newCUDAkernel.
+  Newtest/python/onnxruntime_test_python_cuda_adapter.py coversnames exact/
+  arbitrary/empty,F32/F16,activation0/1,residual +downstreamTranspose/Shape.
+- ParentnativeELFs5copied+cmp/hashverified in sessionfiles/
+  m15-parent-native-artifacts (~4GB). Specific22GBpluginbuildRelWithDebInfo
+  MOVED tosessionfiles/m15-plugin-build-relocated, originallogicalpathsymlink
+  preserved; allELFcmp +hashPASS; CMakeconfigureatlogicalpathPASS.
+  Rootfree23GB/home14GB aftermove (recheckbeforewheels). No systemdcoretouch.
+  Firstbuildwrongtarget"onnxruntime_providers_cuda"FAILED2 no compile;
+  actualCMake targetonnxruntime_providers_cuda_plugin. ACTIVEcorrectbuild
+  shellId m15-repaired-plugin-correct-target-build targetplugin+pybind+
+  session_loop_test+autoep_test --parallel8, inheritingflags/profile/arch;
+  configure--compile-no-warning-as-error preserved. MUSTreadcompletion,
+  testNEWbuiltprovider/newwheelNOToldm13-installed-gpu. No repairedPASSclaim.
+- Independentwork: sd15_demo.py validate_generation addedordinaryCUDA Session
+  components+Diffusers0.35.1DDIM CPUreference, sharednativeRNGinitiallatents via
+  standaloneLoop.get_state(STATE_VALUES)beforeStep, trajectory/conditioning/
+  VAE/CLIP/verdict/image comparison, resetreplay. Notyetqualifiedreal/coverage.
+  CPUfixturetest SD5+M14asset15 =>20tests/85subtestsPASS beforelatestreference
+  additions. Fixtureoriginals useF16Cast/F32math/Cast plusCPUremappedmanifest;
+  NOTclaimrealCPUmodel. SharedassetsbehaviorM14verifiedunchanged15/63.
+- M15independentCPU/legacyprogress: fullCPU57/182 EXPECTEDafteradded1model
+  nonfinite-predictiontest; LASTFULLactual56/182PASS beforethatnewtargetedtest,
+  targeted1/1PASS. OfflineM15+M14last29/98PASS (now30expected). DirectSD14PASS
+  before1newtest(now15expected). DoNOTroundactualcountsforwardwithoutre-run.
+- Actualnative/publicCPU85/153PASS; legacy145/76selectedPASS. LegacyPython
+  56/182PASS withknownpackagename/versionwarning. InitialCPUcombinedforgot
+  ORT_STATEFUL_TEST_BARRIER:3threadtestsFAILenv; correctedexplicitpathPASS.
+  Barrier build/state-cpu/RelWithDebInfo/libstateful_test_barrier.so.
+- ExactM15PythonNEWproduction463/463 ZEROexclusions verifiedscript
+  sessionfiles/measure_m15_coverage.py +m15-production-python-coverage.json:
+  sd15_demo315,sd15_models100,sharedassets41,modifiedphi3imports6,
+  tools/ci_build/build.py1newexecutablestatement. Fullphi3source342allcovered.
+  Native1lineSTILLpendingfreshplugin, nofullcoverageclaim.
+- AddedCPUtyped/programmaticentire6stagechainhelper(in*_sd15_demo_assets.py,
+  explicitlytest-only), comparisonseed/suppliedlatentsinputisolation,steps20,
+  cancellationaftercompleteupdate,requiresReset,immutableoutsafterclose.
+  NativeRunnonfiniteFP16predictiontestFAILexplicitlybeforedecode+Resetworks.
+  Independentreferencechecksallconditioning,updates,decodedimage,exactnative
+  preprocessingagainstlocalCLIP,checkerimage/verdict,resetreplay,suppliedinit.
+- WrapperssafeTemporaryDirectory+atomicreplacecleanup,allgraphdeclreserved
+  prefixeschecked,derivedgraphSHArecorded. Builderallowlists+verifiesALLsupport
+  metadata(modelcard/schedulerconfig/LICENSEincluded),preprocessorhash/profile.
+  OptionalPillowloadedlazilyinproduction. Offlinefixturesexplicitlyskipwhen
+  Pillowmissing;3referencefixturesexplicitlyskipwithoutDiffusers/Torch/TF.
+  Actualqualificationenvhasall, noactualskips. CurrentPillow13.0.0pinned.
+  requirements-sd15-demo.txt added;CPUtorchinstalldocumentedavoidCUDAshadow.
+- Existingfullbuildrunner nowexecutesofflineSDsuiteafterPhi3,neverassetworker.
+  M14runnerunittest extendedtoassertbothpaths/stopafterSD,covernewstatement.
+  DirectunittestCPUcommandPASS. Workerimportsunitdemo canonically;typedhelper
+  optionaldemo_module explicitlypassedbyCPUfixturestoavoid__main__doubleload
+  losingtoyCPUremapping. Assetsworkerrequiresexplicitlocalenv.
+- Newdocs/Stateful_SD15_Demo.md (statusINPROGRESS),model_package/README.md+
+  samples/readme.mdlinked. AllcurrentstylePASS,productionpyright0/0.
+  Realassetworker authoredcomponentsorig/wrapper(batch1/2),actualCUDAheavyop
+  placement,default20stepimage+typedparity,mem/race/syncdirectworker,DDIM-only
+  CUPTIcaptureafterwarmup/textencoding. NOTYETEXECUTEDnewprovider.
+- Actualcompileractive~19minintobuild;90%lastobservedquantizationtemplates.
+  Providerrootandonnxruntime/capi copiescurrentlybothOLD981081992B butdifferent
+  mtimes: afterlinkMUSTexplicitlyverify/refreshcapi providerbeforewheelpackaging,
+  pybindtargetmaynotrelinksoPOSTBUILDcopycanstaystale. DoNOTtestoldm13wheel.
+  Wheelcommandperbuild.py: cdlogicalRelWithDebInfo; pythonROOT/setup.py
+  bdist_wheel --wheel_name_suffix=gpu --cuda_version=13.0;createfreshisolated
+  m15-installed-gpu withpip--no-deps. Sourcewheelsetup.pyatROOTnotbuilddir.
+  /usr/local/cuda/bin/{nsys,compute-sanitizer} actualwrappersavailable;
+  /home/tianlei/cuda13.0/bin/compute-sanitizer same. Require--show-backtrace no
+  fullmemory/leak/APIchecksperM13knownhostbacktraceartifact,notasuppression.
+- M15LATEST: existingbuild m15-repaired-plugin-correct-target-build COMPLETED
+  PASS all4targets. ProviderSHA78167b02af406e61aeb2745080fec1f85abf453e30ce236bed5692d6026b727b.
+  Native981098392B,pybind770570736B. POSTBUILDdidrefreshcapi provider;cmpPASS.
+  WheelbuildPASS dist/onnxruntime_gpu-1.32.0-cp312-cp312-linux_x86_64.whl
+  792460744B; pip--no-deps freshsessionfiles/m15-installed-gpu installedPASS.
+  InitialcmpguessedCPythonsuffixFAILED2; actualwheelpybindis
+  onnxruntime_pybind11_state.so; exactcmpbothprovider+pybindPASSnow.
+- Initialfastprobehardlinkedparentm13-installed-gpu into m15-provider-probe-root,
+  replacedONLYnewrootproviderviaatomicNEWfile+mv(notwriteoldhardlink!).
+  ParentproviderSHA4314d9ebfa6f1e756a408ad331e9a0efe65c5c2373620ab7ee513df2532183f0
+  unchanged. Probe2tests/18subtestsPASS names/dtypes/act/resid/transposeShape.
+  Allsubsequentqualification usesFRESHwheelm15-installed-gpu nothybrid.
+- FreshGPUfullPython62/200PASS (58CPUbase+2statefulCUDA+2adapter/18subcases);
+  freshnative/public157/216UNFILTEREDPASS. Directadaptercompute-sanitizer
+  memcheck0errors/0leaks,racecheck0hazards/0errors/warnings,synccheck0errors;
+  eachdirectactualPythonunittestworker2testsPASS --show-backtrace no ONLY.
+- Realoriginal/wrapperoracleinitialVAEstrict2e-3FAIL; diagnosisPROVEDwrapper
+  inputscaledFP16castEXACT(originalcastmismatches0). OriginalunmodifiedVAE
+  repeatssameSessionvarymax.00537 /separateSession.00488; wrapper.00415.
+  use_deterministic_compute=True DOESNOTremovevariance(.0039/.00439).
+  VAEimagecomparisonsuseexistingdeclared.02precision, notexact/noCPUrelaxation.
+- Firstdefaultnative20steppipeline reachedsafetythenFAILED Cast bufferreuse
+  224vs512. Originalcheckeronly2sharedsymbolports: clip_input[B,C,height,width]
+  andimages[B,height,width,C], sameheight,width falselyequates224and512.
+  NOinternalvalueinfousesheight/width. Derivedboundary nowexplicitflag
+  independent_image_axes forcheckerONLY renamesdynamicimagesH/Wto
+  __sd15_image_height/width; fixedaxesuntouched;badporterrorguard.UnitCPU
+  dynamics14vs32reproPASS andactualCUDAchecker512vs224probePASS. NoCXXchange.
+- FIRSTREALDEFAULTIMAGEPASS freshwheel,aftermetadataaxisfix:
+  /home/devpatel/onnxruntime-stateful/sd15/qualification/sd15-fresh-wheel-smoke.png
+  PNG RGB512x512 392232B, seed42,S20,CFG7.5,emptynegative,25invocations,unsafefalse.
+  SHA d5e768e59a54e38838eb265ff266c5ae873ae1d5a2f403a014d0fccc866dfa9a.
+  setup6.116s/native1.8073s(output.152s); NOTbenchmarkclaim. Viewedactuallake/
+  mountainimage. Registeredartifactf7b4af77-4a3e-4e9a-bdfe-8c4c651622d0.
+- Freshcomponentsfinalproof m15-fresh-components.json: text0,UNetbatch1
+  .001953125/batch2.00390625(maxallclose2e-3+relativePASS), VAE.00390625
+  (originalrepeat.005432129),checker0. Allweightsoriginalunchanged; CUDAheavy
+  nodescheckedNhwcConv/GN/SkipGN/MHA. Sigbatch1AND2supported,seqrequired.
+- CurrentCPU58tests/182subtestsPASS. ExactPythonNEW473/473ZEROexclusions
+  (afterstrictDDIMconfig+axesmetadata), measuredmeasure_m15_coverage.py.
+  NativecovmergeALLDSOs=415mismatches; provider-onlyrawsignature
+  15284870061821198059_0 still6OTHERmappingwarnings. Explicituniquegetter
+  exportm15-getter-function-export.json: _ZNK11onnxruntime2ep7adapter9KernelDef6OpNameB5cxx11Ev
+  count180,region[23,36,25,4,180,0,0,0], includeschangedline24. Hash0x18 matches.
+  Native1/1targetcoveredNOexcludednewline;6warningsretainednothidden.
+  CurrentALLNEW474/474 (473Python+1native), nofull-old-codecoverageclaim.
+- BLOCKERNOWNUMERICALPOLICY, NOTnativecompatibility:
+  BothfreshrealassetqualifiersFAIL unchangedclosed-looplatentallclose
+  rtol.002atol.02 at1/16384outlier(.0215batched,.0237seq). No fullqualpass.
+  Diagnosticm15_trajectory_baseline.py runsnative+2ordinaryCUDA/DDIM closed
+  loopsstartingEXACTsamelatents,pluslocalDDIMrefstartingpreviousNATIVEstate.
+  Batchedmaxnative/refLatent .084934 RMSE.005061; ordinary/ordinary .133366
+  RMSE.006517; LOCALupdate max.007172/RMSE.001035. Finalimages(native/ref)
+  max.064453/RMSE.001607; ordinary/ordinary max.120361/RMSE.002211.
+  Sequentialnative/refLatent .027580/RMSE.002716; ordinary/ordinary .097084/
+  .003537; LOCALupdate max.008535/.001020. Imagesnative/ref max.026428/
+  .000887;ordinary/ordinary max.134766/.001374. BOTHsafetyfalse.
+  IndividualordinaryCUDAvariationlargerthannative/ref; notseedbyteexactness.
+- SPEC O.8 PROPOSEDNOTAPPROVED: keepCPUfixtures/weights/placement/counts/
+  safety/PPsameinput/immutablesnapshotsEXACT; keepLOCALsame-inputDDIMallclose
+  .002+.02; alsoindependentCLOSEDtrajectorylatentsRMSE<=.01+max<=.2,
+  normalizedimagesRMSE<=.005+max<=.2; samefixedboundsrealtyped/supplied/replay,
+  reportallmetrics+individualSHA(noPNGbyteequality). Noautocalibrate/bump.
+  Default20qualificationbothmodesrepeat; no nativekernel/modelcomputechange.
+  AlternativebitwiseCUDA determinismwouldneedseparatenewapprovedscope/plan.
+  O8notimplemented,currentstrictrefstillFAIL. NeedUSERspecapprovalthen
+  separateTASKSprecisionexecution-planapprovalBEFOREchangingverifiergates.
+  SQLm15-precision-specinprogress,m15-precision-planpendingdepends spec;
+  m15-imageBLOCKEDpolicy. m15-repair-fixdone;R0-R4checklistcomplete;
+  P1/P2/P4/P5done;P3/P6-P9remainnotwaived.
+- Documentationupdatedactualimage+blocker. Currentpyright0/0,stylespassed,
+  whitespacePASS. Twocompletedtemporarydiagnosticmodelcopies99MB+609MB
+  deletedbyEXACTnamedpaths; logs/JSONretained. Models/originals/parentbinaries/
+  systemdcoreuntouched. Nativebuildsymlinkrelocationpersists;7.7GBhomebefore
+  diagnosticcleanup(about8.4now),root23GB. Hybridprobestage~1GBstillretained,
+  cancleanatENDafterpreservedidentitycheck; doNOTdeletem13parentorbuild.
+- RealassetworkerswrittenNOTyetqualifiedmem/race/sync/CUPTI onfullpipeline.
+  Realassetseachrununiquequalification/cuda-TIME dir,outputs+policy+typedSHA
+  (typedPNGnowFP16tolerance,notbyteequality). sequential_package helperhardlinks
+  immutablecomponentfiles+separatemanifest, setsmodeinBOTHmetadata+loop.
+  WorkerCLI --cuda-trace-worker capturesONLYdenoiseafterwarmup/textencoding;
+  expectedpredictionDtoH2621440B+separatelyaccountconditioning,etc.
+  NO M15COMMIT/PUSH/PR. Branchstillstate/m15-sd15-demo fromM14#28head44e512c.
+- USERAPPROVEDSPEC O.8 viaask_user decisionapprove-o8, noadditionalrequirements.
+  SPECheadingnowapproved; NOTimplementationapproval. TASKSnewQ0-Q5 detailed
+  precisionexecutionplanWRITTENneedsSEPARATEUSERREVIEWbeforeQ1codechanges.
+  Q0baselinealreadydone; Q1strictsame-inputlocalDDIM+independentclosedRMSE/
+  max verifier, Q2CPUexactboundary/error100%newlines, Q3realbothmodes,
+  Q4realworkers/CUPTI, Q5finalregressiondocsonePRM14. NoO8codeimplementedyet.
+- USERSEPARATELYAPPROVEDQ0-Q5 approve-plan/nochanges. O8Q1IMPLEMENTEDin
+  sd15_demo.py _error_metrics/_check_precision +localvsclosedDDIM,matched
+  native-latentVAE,globalimage/replay/suppliedmetrics andSHA. CPUexactfixtures
+  retained. NewTestSD15Precision testsatlimits/justaboveeach+invaliddtype/
+  shape/NaN/Inf. AllCPU60/193PASS;demo+Phi3unit33/109PASS;501/501newPYTHON
+  linesZEROexclusions(502inclnative1). Pyright0/0,lintPASS. Currentrealworker
+  usesapprovedchecks;supportsORT_STATEFUL_SD15_PACKAGE forseqtracevariant.
+- ActualO8Q3bothmodes: sequentialPASS;batchedvalidatorPASSthroughimage/replay/
+  supplied,thenextraTYPEDpairimageFAILmax.2021484375 despiteRMSE.001991921
+  <.005. Labelcurrentlimitsmax.2,rmse.005 unchanged. NO capincrease applied.
+  StrongrootcauseCONFIRMEDsourcegroup_norm_impl_kernel.cuh267 nondeterministic
+  InclusiveScan +atomicAdd292/293;group_norm.cc217 explicitwarning no
+  deterministicCUDAkernel. DoNOTpretend use_deterministic_compute fixesit.
+- FullrealM15memcheckFAILED99 20744B/3alloc (4+20736+4) withshowbacktraceNO.
+  OrdinaryUNMODIFIEDORIGINALVAEstandaloneSessionreproducesEXACT3leaks:
+  m15-stateless-vae-memcheck.log. Notstateful/wrappernewcode. Allocbacktraces
+  hostdiagnosticonly (retainsframessoNOTvalidleakqualification) identify
+  libcudnn_graph.so.9,cudnnCreate +EngineHeuristics/cudaConv.cc etc. Original
+  VAEDEFAULTconvsearchmemcheckPASS0leaks butslowGPUFallbackwarnings;
+  HEURISTICmemcheckPASS0leaks clean. No deviceReset/suppressionused.
+- m15_heuristic_diagnostic.py sessionfilesONLYmonkeypatchesCudaSessionOptions
+  HEURISTIC. Heuristic-onlyO8qualificationstill1FAIL/1PASS atclosedupdate18
+  latentmax.222359/RMSE.008329(<.01). ThisisfailedO8evidence.
+  EXPLORATORY --rmse-only monkeypatchesONLYdiagnosticprocess globalmaxgateoff,
+  retains.01latent/.005imageRMSE,strictlocalchecks/allassertions,HEURISTIC.
+  Result2realtestsPASS,fullrealmemcheckPASS0leaks/errors --sanitizer.
+  Filesm15-rmse-only-exploratory.log +m15-heuristic-pipeline-exploratory-memcheck.log.
+  NOTproductionqualification/no defaultoptionschanged/noapprovedgatewaived.
+- SPEC O9PROPOSEDNOTAPPROVED: explicitly HEURISTIC cuda convsearch forDEMO
+  only,recordpolicy/metadata,rebuildpackages; keephardRMSE.01/.005+strictlocal
+  atol.02/rtol.002,localcomponents/CPU/weights/PP/safety/snapshot/countsEXACT;
+  reportglobalaccumulatedmax NOTgate. Noautocalibrate/retryuntilegreen/no new
+  kernel/publicAPI/safetychanges/DeviceResetmask. UsermustAPPROVESPEC then
+  SEPARATEshortplanreviewbeforeprodchanges. Currentprodoptionsstill{},
+  _check_precisionstillmax.2 ANDRMSE. Q3/Q4blocked,newuserdecisionneeded.
+  NoM15commit/push/PR; savedworkingimageartifactstillvalidsafe(notfullgateclaim).
+- USERAPPROVED O9specapprove-o9/noadditionalrequirements. SPECheadingapproved.
+  TASKSN0-N4shortconfiguration/requalificationplanWRITTEN, reviewREQUIRED:
+  N1explicitHEURISTICCUDAoptions+qualifiedmanifest/rebuildguard, globalmax
+  reportonlywhile.01/.005RMSEhard+strictlocal/exactchecksretained;N2CPUexact
+  errors/provideroption/100%coverage;N3bothrealmodes+fullactualsanitizers/CUPTI;
+  N4finalregressionsdocsonePR. NOproductionO9codechangeduntilPLANapproval.
+- M15REPAIRPLANAPPROVED2026-11-03: explicit"Approve repair plan and continue
+  M15". Nativefocusedrootfix +taskownedbuildrelocation/proof+freshwheel/tests
+  authorized. StartR0root input/count data/minirepro; doNOTblindnullguard.
+
+## M15 final qualification checkpoint
+
+- O9Nplan explicitlyAPPROVED thenimplemented: HEURISTICinactualCUDAoptions/
+  metadata,rejectoldpackages/rebuild; maximaREPORTONLY; .01latent/.005image
+  RMSEhard,local.002/.02/component/exactCPU/PP/safety/retention unchanged.
+  No newkernel, weights, schedulerprecision, safetybypass or DeviceReset.
+- Freshfinal plugin64/213passedbutprofileENOSPC. Useroffered disk7/dtmp;
+  actualpathsharesrootmount(22GBfreepreflight), notnewdedicatedvolume.
+  Freshprofiles/logs /datadisks/disk7/dtmp/ort-state-m15-819a29ec-final.
+  Regeneratedplugin64/213validprofiles; CPUcoverage60/195503/503zeroexclusions.
+  FreshnativeproviderprofilegetterUNIQUEcount18 changedline24covered1/1;
+  llvm-covexportZEROdiagnosticwarnings. ProviderSHA78167b02af406e61aeb2745080fec1f85abf453e30ce236bed5692d6026b727b.
+  measure_m15_coverage.py FIXEDM14base worksafterstage/commit.
+- Finalscopedtypesproduction+tests0/0; explicitPILguards+directFailimport
+  aretest-onlytypefixes; workerformatbylintrunner. Finalfullplugin64/213,
+  bothrealtests2PASS114.49s; earlierpairedruns2PASS54.94s/54.23sretained.
+  DirectofflineSDunittest18OK; currentCPU85/153plugin157/216againPASS.
+- CLIoffline qualification/sd15-m15-final-cli.png SAFE512x512RGBseed42S20/
+  calls25; SHA600eee83de0b9f00ea595c3d93e0376a0c5f753d098731d4982b89a5165312d7.
+  Observedsetup12.383execution2.491output.164seconds NOTbenchmark.
+- Finalreports cuda-1793749176940290704/qualification.json + sequential-
+  1793749233344647344/qualification.json underassetsqualification.
+  BatchedmaxlatentRMSE.005744151/image.002029416,typed.006237432/.001958254.
+  SequentialmaxlatentRMSE.007715663/image.002610830; allsafetyfalse,
+  calls25/45 andretention/reset/supplied/localchecksPASS.
+- FullS20realmemcheck0errors0B0allocleak. AllkernelS2fullsizeworker7calls,
+  replay/cancel/Reset/retainedvalue, synccheck0errors. EarlierS1unsafe=true
+  diagnosticNEVERsavedimage; S2workerunsafe=false.
+- Actual20stepNsight/CUPTIbatched20x131072B/sequential40x65536B prediction
+  DtoHeach2621440B. HtoD4B/control +boundarylatents +conditioning exact.
+  SequentialinternalDtoD2x40,640x200,1280x200,2560x560 separatelyrecorded.
+  AdditionalS2native-onlytraceprovesFP16GroupNormscale122,sum160114,sum2568.
+- CRITICALfalsegreenwithdrawal: earlierfilterregex.*groupNorm.*lowercase
+  DOESNOTmatchactualcapitalGroupNorm. NOTvalidraceevidence. UnfilteredS20/
+  S1attemptsstopped; freshS2unfilteredtimeout600s=INCOMPLETE, notpass.
+  UserexplicitlyAPPROVEDO10boundedGroupNormvariantsampling whilekeeping
+  fullS20mem/allkernelS2sync. Boundlaunchselection+actualmangledsymbols
+  mustbeverified; no fullmodel-racefreedomclaim. Diagnostictrace-sync
+  attemptswithoutreportedbarriereventsnotaloneproofnonzeroinstrumentation.
+- Noagentsused/noM16/nomerge. Parentarchives/originalmodelsunchanged.
+- O10ACTUALNONZEROPROOF COMPLETE2026-11-04UTC: lowlaunchcap2 probes ALSO
+  zeroinstrumentation despitecorrectcase; DISCARDED. FullworkerNsightactual
+  firstSum160globalordinal337/359,Scale338/360; Sum256first821/871.
+  CorrectkneEXACTmangled Sum160withmeasuredglobalcap360 PASS0hazards and
+  trace-syncexplicitbarrier278count10240 EXACTmatches2grids*5warps*1024blocks.
+  CorrectkneSum256NOcapfullworker50launches PASS0hazards +466944barrier278
+  events EXACTmatchesallactualgrid/blockgeometry. ScaleNOcap302launches
+  PASS0hazards;static/dynamicSMEM0so shared-racechecknotglobalaccessproof
+  (fullmemcheckcoversthose). WorkerS2fullsize7calls+replay/cancel/reset/safety/
+  postclosevaluesPASS. No claimfullmodel/unfilteredracefreedom.
+  Validlogs F/race-verified-sum160.log, race-exact-sum256-instrumentation.log,
+  race-verified-scale.log; full-worker-kernels.sqlite/.nsys-rep; native-only
+  two-update-kernels.sqlite separately122/114/8counts. Source/toolchainchange
+  requiresregeneratedordinals+eventcounts; doNOTblindcopycap360.

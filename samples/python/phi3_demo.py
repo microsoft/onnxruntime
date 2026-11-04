@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import importlib
 import json
 import tempfile
@@ -13,10 +12,12 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
-from urllib.request import urlopen
 
 import numpy as np
 import onnx
+import stateful_demo_assets as asset_io
+from stateful_demo_assets import Asset, verify_asset
+from stateful_demo_assets import digest as _digest
 
 import onnxruntime as ort
 from onnxruntime import stateful as sf
@@ -24,15 +25,6 @@ from onnxruntime import stateful as sf
 REVISION = "5f5f794c1c23c9d5ee142af85df02a6cc52d6945"
 REPOSITORY = "microsoft/Phi-3-mini-4k-instruct-onnx"
 DEFAULT_ASSETS = Path.home() / "onnxruntime-stateful/phi3-mini-4k-instruct"
-
-
-@dataclass(frozen=True)
-class Asset:
-    name: str
-    size: int
-    digest: str
-    git_blob: bool = False
-    repository_root: bool = False
 
 
 @dataclass(frozen=True)
@@ -95,23 +87,6 @@ def variant_directory(assets: str | Path, target: str) -> Path:
     return Path(assets) / target / "decoder" / target
 
 
-def _digest(path: Path, *, git_blob: bool = False) -> str:
-    digest = hashlib.sha1(usedforsecurity=False) if git_blob else hashlib.sha256()
-    if git_blob:
-        digest.update(f"blob {path.stat().st_size}\0".encode("ascii"))
-    with path.open("rb") as stream:
-        while chunk := stream.read(1024 * 1024):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def verify_asset(path: Path, asset: Asset) -> None:
-    if path.stat().st_size != asset.size:
-        raise ValueError(f"Incorrect size for {path}; expected {asset.size} bytes")
-    if _digest(path, git_blob=asset.git_blob) != asset.digest:
-        raise ValueError(f"Checksum mismatch: {path}")
-
-
 def acquire_assets(assets: str | Path, target: str) -> dict[str, str]:
     """Explicitly acquire only pinned allowlisted assets; never overwrite invalid files."""
     profile = _profile(target)
@@ -120,23 +95,9 @@ def acquire_assets(assets: str | Path, target: str) -> dict[str, str]:
     hashes = {}
     for asset in profile.assets:
         destination = directory / asset.name
-        if destination.exists():
-            verify_asset(destination, asset)
-        else:
-            relative = asset.name if asset.repository_root else f"{profile.repository_directory}/{asset.name}"
-            url = f"https://huggingface.co/{REPOSITORY}/resolve/{REVISION}/{relative}?download=true"
-            with tempfile.TemporaryDirectory(prefix=".download-", dir=directory) as temporary:
-                pending = Path(temporary) / asset.name
-                with urlopen(url, timeout=60) as response, pending.open("wb") as output:
-                    received = 0
-                    while chunk := response.read(1024 * 1024):
-                        received += len(chunk)
-                        if received > asset.size:
-                            raise ValueError(f"Download exceeds expected size: {asset.name}")
-                        output.write(chunk)
-                verify_asset(pending, asset)
-                pending.replace(destination)
-        hashes[asset.name] = _digest(destination)
+        relative = asset.name if asset.repository_root else f"{profile.repository_directory}/{asset.name}"
+        url = f"https://huggingface.co/{REPOSITORY}/resolve/{REVISION}/{relative}?download=true"
+        hashes[asset.name] = asset_io.acquire_file(destination, asset, url)
     return hashes
 
 

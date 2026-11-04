@@ -1965,6 +1965,15 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 python_path=python_path,
             )
             run_subprocess(
+                [
+                    sys.executable,
+                    os.path.join(source_dir, "onnxruntime", "test", "python", "onnxruntime_test_python_sd15_demo.py"),
+                ],
+                cwd=cwd,
+                dll_path=dll_path,
+                python_path=python_path,
+            )
+            run_subprocess(
                 [sys.executable, "onnxruntime_test_python_fpa_intb_tune.py"],
                 cwd=cwd,
                 dll_path=dll_path,
