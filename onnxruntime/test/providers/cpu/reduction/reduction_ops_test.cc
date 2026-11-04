@@ -11,6 +11,7 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/cpu/reduction/reduction_test_cases.h"
 #include "core/providers/cpu/reduction/reduction_ops.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/util/include/default_providers.h"
 
 #if defined(USE_DML)
