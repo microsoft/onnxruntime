@@ -32,6 +32,7 @@
       for (const id of submission.dispatches) submissionByEvent.set(id, submission);
     }
     let active = report.wholeTrace;
+    let activeSubmissions = [];
     let filtered = [];
     let stage = null;
     let selected = null;
@@ -71,9 +72,8 @@
       $('measurement-note').prepend('Approximate alignment cannot measure initial GPU queueing delay. ');
     }
     $('capture-details').textContent = JSON.stringify({ ...report.capture, alignment: report.alignment }, null, 2);
-    $('dependency-note').textContent = report.submissionCount
-      ? 'Select a submit or GPU dispatch to see its dependency arrows.'
-      : 'Submission links were not recorded in this trace.';
+    $('show-dependencies').disabled = !report.submissionCount;
+    $('show-dependencies').checked = Boolean(report.submissionCount);
     if (report.syntheticRun)
       $('measurement-note').prepend(
         'No CPU model_run event was recorded; inference run boundaries cannot be determined. ',
@@ -137,6 +137,7 @@
         ctx.fillText('No runs match this filter.', 24, 50);
         $('view-label').textContent = '';
         $('resolution-note').textContent = '';
+        $('dependency-note').textContent = '';
         return;
       }
       const rawStep = (view[1] - view[0]) / Math.max(2, dimensions.plotWidth / 90);
@@ -200,17 +201,20 @@
         boxes.push({ id, x: begin, end: begin + Math.max(3, barWidth), y, bottom: y + 18 });
       }
       ctx.globalAlpha = 1;
-      if (selectedSubmission) {
-        const submit = events[selectedSubmission.submit];
+      const crossesView = (submit, dispatch) =>
+        Math.max(submit[0], dispatch[0]) >= view[0] && Math.min(submit[0], dispatch[0]) <= view[1];
+      const drawDependency = (submission, dispatches, emphasized) => {
+        const submit = events[submission.submit];
         // GPU execution may overlap the CPU call; submission entry is the causal source.
         const fromX = x(submit[0]);
         const fromY = top + submit[2] * rowHeight + 27;
         ctx.strokeStyle = '#2563eb';
         ctx.fillStyle = '#2563eb';
-        ctx.lineWidth = 1.3;
-        for (const id of selectedSubmission.dispatches) {
+        ctx.globalAlpha = emphasized ? 1 : 0.65;
+        ctx.lineWidth = emphasized ? 1.6 : 1.2;
+        for (const id of dispatches) {
           const dispatch = events[id];
-          if (Math.max(submit[0], dispatch[0]) < view[0] || Math.min(submit[0], dispatch[0]) > view[1]) continue;
+          if (!crossesView(submit, dispatch)) continue;
           const toX = x(dispatch[0]);
           const toY = top + dispatch[2] * rowHeight + 7;
           ctx.beginPath();
@@ -224,7 +228,32 @@
           ctx.closePath();
           ctx.fill();
         }
+      };
+      if (!report.submissionCount) {
+        $('dependency-note').textContent = 'Submission links were not recorded in this trace.';
+      } else if (!$('show-dependencies').checked) {
+        $('dependency-note').textContent = 'Dependency arrows hidden · enable CPU → GPU links to show them.';
+      } else {
+        const visible = activeSubmissions.filter((submission) =>
+          crossesView(events[submission.submit], events[submission.dispatches[0]]),
+        );
+        // Bound overview density; selection always expands the exact recorded batch.
+        const count = Math.min(80, visible.length);
+        for (let index = 0; index < count; index++) {
+          const submission = visible[Math.floor((index * visible.length) / count)];
+          if (submission !== selectedSubmission) drawDependency(submission, [submission.dispatches[0]], false);
+        }
+        if (selectedSubmission) {
+          drawDependency(selectedSubmission, selectedSubmission.dispatches, true);
+          $('dependency-note').textContent =
+            `Submission ${selectedSubmission.id}: CPU queue.submit → ${number(selectedSubmission.dispatches.length)} GPU dispatch${selectedSubmission.dispatches.length === 1 ? '' : 'es'}.`;
+        } else {
+          $('dependency-note').textContent = visible.length
+            ? `${count < visible.length ? `${count} of ${number(visible.length)}` : number(count)} submit → first GPU arrows · click a submit or GPU bar to expand its batch.`
+            : 'No submit → first GPU arrows cross this view · select a GPU bar to inspect its batch.';
+        }
       }
+      ctx.globalAlpha = 1;
       if (gesture && !gesture.pan) {
         ctx.fillStyle = '#0a9c7920';
         ctx.fillRect(
@@ -417,6 +446,7 @@
 
     function selectRun(run) {
       active = run;
+      activeSubmissions = [...new Set(run.indices.map((id) => submissionByEvent.get(id)).filter(Boolean))];
       tooltip.style.display = 'none';
       $('metric-run').textContent = ms(run.duration);
       $('metric-gpu').textContent = ms(run.busy);
@@ -573,6 +603,7 @@
     $('zoom-in').addEventListener('click', () => zoom(0.5));
     $('zoom-out').addEventListener('click', () => zoom(2));
     $('reset').addEventListener('click', fitRun);
+    $('show-dependencies').addEventListener('change', draw);
     $('fit-gpu').addEventListener('click', () => {
       const ids = active?.indices.filter((id) => events[id][2] === 10) ?? [];
       if (!ids.length) return;

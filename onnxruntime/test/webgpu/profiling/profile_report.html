@@ -391,6 +391,12 @@
         border-bottom: 1px solid var(--line);
         font-size: 11px;
       }
+      .timeline-nav label {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        color: #2563eb;
+      }
       .timeline-nav select {
         max-width: 200px;
         border: 0;
@@ -758,6 +764,7 @@
               <button id="previous" class="icon-button" aria-label="Previous run">←</button>
               <select id="run-select" aria-label="Select inference run"></select
               ><button id="next" class="icon-button" aria-label="Next run">→</button>
+              <label><input id="show-dependencies" type="checkbox" checked /> CPU → GPU links</label>
               <span id="search-count" role="status"></span><span id="view-label"></span>
             </div>
             <div class="timeline-layout">
@@ -772,6 +779,7 @@
                   <span class="legend"><i class="dot" style="background: #d94695"></i>Submit</span>
                   <span class="legend"><i class="dot" style="background: #e5a331"></i>Wait</span>
                   <span class="legend"><i class="dot" style="background: #10b981"></i>GPU compute</span>
+                  <span class="legend" style="color: #2563eb">↘ CPU → GPU dependency</span>
                   <span id="dependency-note"></span>
                   <span id="resolution-note"></span>
                   <span>Drag to zoom · Shift-drag to pan · Double-click to fit</span>

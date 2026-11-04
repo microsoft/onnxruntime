@@ -30,8 +30,10 @@ profiler. They identify command preparation, submission, waits and profiling ove
 overlap: for example, a pipeline wait can be inside command encoding. Do not sum them as independent work.
 
 Each profiled `WebGPU::Submit` and its GPU dispatches carry the same `submission_id` in their event
-arguments. IDs distinguish submissions across runs and recreated contexts in a process. Select a CPU
-submission or GPU dispatch in the webpage to highlight the batch and draw arrows to its GPU dispatches.
+arguments. IDs distinguish submissions across runs and recreated contexts in a process. **CPU → GPU links**
+is enabled by default: blue arrows connect submit entry to the first GPU dispatch in each batch.
+Dense views show at most 80 overview arrows and state the displayed count; zoom in to see more.
+Select a CPU submission or GPU dispatch to highlight the batch and draw arrows to all its GPU dispatches.
 The event inspector lists related events; **Zoom to submission** shows the CPU call and its GPU work,
 including links outside the selected inference interval. Older logs remain readable without links.
 
