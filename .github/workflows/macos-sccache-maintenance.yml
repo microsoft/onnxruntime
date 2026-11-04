@@ -1,0 +1,70 @@
+name: macOS sccache storage maintenance
+
+on:
+  workflow_run:
+    workflows: ["MacOS CI Pipeline"]
+    types: [completed]
+    branches: [main]
+  schedule:
+    - cron: '37 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Report planned evictions without deleting caches
+        type: boolean
+        default: true
+  pull_request:
+    paths:
+      - '.github/scripts/prune-macos-sccache*'
+      - '.github/workflows/macos-sccache-maintenance.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Never execute the triggering workflow's checkout in a privileged workflow_run.
+          ref: ${{ github.event_name == 'pull_request' && github.ref || 'main' }}
+      - run: node --test .github/scripts/prune-macos-sccache.test.cjs
+
+  cleanup:
+    needs: test
+    if: >-
+      github.repository == 'microsoft/onnxruntime' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.head_repository.full_name == github.repository))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
+    concurrency:
+      group: macos-sccache-storage-maintenance
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Enforce archived macOS compiler-cache budget
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ "$DRY_RUN" != "true" ]]; then
+            args+=(--apply)
+          fi
+          node .github/scripts/prune-macos-sccache.cjs "${args[@]}"
