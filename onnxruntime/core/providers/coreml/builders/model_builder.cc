@@ -491,6 +491,15 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logge
       coreml_model_(std::make_unique<CoreML::Specification::Model>()) {
   // GetTemporaryFilePath() always produce a unique path for the model and this is not existed
   // Mlprogram will create a folder while NN create a file
+  if (create_ml_program_ && Env::Default().FolderExists(ToPathString(model_output_path_)) &&
+      !Env::Default().FolderExists(ToPathString(model_output_path_ + "/compiled_model.mlmodelc")) &&
+      !Env::Default().FileExists(ToPathString(model_output_path_ + "/Manifest.json"))) {
+    // The ML Package is removed once the compiled model is cached, so without the compiled model there is
+    // nothing to load from and the model has to be rebuilt.
+    LOGS(logger, INFO) << "Cached model in " << model_output_path_ << " is incomplete and will be rebuilt.";
+    ORT_THROW_IF_ERROR(Env::Default().DeleteFolder(ToPathString(model_output_path_)));
+  }
+
   if (Env::Default().FolderExists(ToPathString(model_output_path_)) ||
       Env::Default().FileExists(ToPathString(model_output_path_))) {
     is_model_cached_ = true;

@@ -427,7 +427,7 @@ void ConfigureOptimizationHints(MLModelConfiguration* config, const CoreMLOption
 }
 
 Status CompileOrReadCachedModel(NSURL* modelUrl, const CoreMLOptions& coreml_options,
-                                NSMutableString* compiled_model_path) {
+                                NSMutableString* compiled_model_path, const logging::Logger& logger) {
   NSURL* cached_model_base_url = modelUrl;
   if (!coreml_options.CreateMLProgram()) {
     cached_model_base_url = [cached_model_base_url URLByDeletingLastPathComponent];
@@ -471,6 +471,25 @@ Status CompileOrReadCachedModel(NSURL* modelUrl, const CoreMLOptions& coreml_opt
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error copying compiled model to cache path: ",
                            [[cached_model_url path] UTF8String], ", reason: ", [[error localizedDescription] UTF8String]);
   }
+  // The ML Package is not needed once its compiled model is cached and holds a second copy of the weights.
+  // Keep the package directory itself as ModelBuilder uses its existence to detect a cached model.
+  if (coreml_options.CreateMLProgram()) {
+    NSFileManager* file_manager = [NSFileManager defaultManager];
+    NSArray<NSURL*>* package_items = [file_manager contentsOfDirectoryAtURL:modelUrl
+                                                 includingPropertiesForKeys:nil
+                                                                    options:0
+                                                                      error:&error];
+    for (NSURL* item in package_items) {
+      if ([[item lastPathComponent] isEqualToString:[cached_model_url lastPathComponent]]) {
+        continue;
+      }
+      if (![file_manager removeItemAtURL:item error:&error]) {
+        LOGS(logger, WARNING) << "Failed to remove " << [[item path] UTF8String]
+                              << " from the model cache: " << [[error localizedDescription] UTF8String];
+      }
+    }
+  }
+
   // clang-tidy
   NSString* cached_model_path_from_url = [cached_model_url path];
   if (cached_model_path_from_url == nil) {
@@ -568,7 +587,7 @@ Status Execution::LoadModel() {
 
       NSMutableString* compiled_model_path = [[NSMutableString alloc] init];
       ORT_RETURN_IF_ERROR(CompileOrReadCachedModel(
-          [NSURL fileURLWithPath:coreml_model_path_], coreml_options_, compiled_model_path));
+          [NSURL fileURLWithPath:coreml_model_path_], coreml_options_, compiled_model_path, logger_));
       compiled_model_url_ = [NSURL fileURLWithPath:compiled_model_path];
 
       MLModelConfiguration* config = [[MLModelConfiguration alloc] init];
