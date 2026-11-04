@@ -2926,15 +2926,16 @@ common::Status InferenceSession::Initialize() {
 #endif
 
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS) && !defined(ORT_MINIMAL_BUILD)
+    const bool use_buffers_directly = session_options_.config_options.GetConfigOrDefault(
+                                          kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, "0") ==
+                                      "1";
     if (!session_options_.external_initializers.empty()) {
-      ORT_RETURN_IF_ERROR_SESSIONID_(graph.InjectExternalInitializedTensors(session_options_.external_initializers));
+      ORT_RETURN_IF_ERROR_SESSIONID_(
+          graph.InjectExternalInitializedTensors(session_options_.external_initializers, use_buffers_directly));
       InlinedHashMap<std::string, OrtValue>{}.swap(session_options_.external_initializers);
     }
 
     if (!session_options_.external_initializer_files_mmap.empty()) {
-      const bool use_buffers_directly = session_options_.config_options.GetConfigOrDefault(
-                                            kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, "0") ==
-                                        "1";
       ORT_RETURN_IF_ERROR_SESSIONID_(
           graph.InjectExternalInitializersFromFilesInMemory(session_options_.external_initializer_files_mmap,
                                                             use_buffers_directly));

@@ -5286,6 +5286,64 @@ TEST(InferenceSessionTests, CompileApiWritesAndReloadsExternalInitializersBuffer
     }
     run_and_verify(session);
   }
+
+  {
+    // Verify AddExternalInitializers (external_initializers map) honors
+    // kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly for non-owning OrtValues.
+    const OrtMemoryInfo cpu_mem_info(CPU, OrtAllocatorType::OrtDeviceAllocator);
+    InlinedHashMap<std::string, OrtValue> ext_inits;
+    std::array<const void*, 2> expected_ptrs{};
+    for (int i = 0; i < 2; ++i) {
+      const auto& init_proto = model_proto.graph().initializer(i);
+      void* slice_ptr = static_cast<char*>(external_buffer) + external_infos[i]->GetOffset();
+      expected_ptrs[i] = slice_ptr;
+      OrtValue ov;
+      Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape{64}, slice_ptr, cpu_mem_info, ov);
+      ext_inits.emplace(init_proto.name(), std::move(ov));
+    }
+
+    // Without direct-buffer config, non-owning external_initializers are copied.
+    {
+      SessionOptions copy_ext_options;
+      copy_ext_options.graph_optimization_level = TransformerLevel::Default;
+      copy_ext_options.external_initializers = ext_inits;
+      InferenceSessionWrapper session{copy_ext_options, GetEnvironment()};
+      ASSERT_STATUS_OK(session.Load(model_buffer, static_cast<int>(model_size)));
+      ASSERT_STATUS_OK(session.Initialize());
+      for (int i = 0; i < 2; ++i) {
+        int index;
+        ASSERT_STATUS_OK(session.GetSessionState().GetOrtValueNameIdxMap().GetIdx(
+            model_proto.graph().initializer(i).name(), index));
+        const auto* actual = session.GetSessionState().GetInitializedTensors().at(index).Get<Tensor>().DataRaw();
+        EXPECT_NE(actual, expected_ptrs[i]);
+      }
+      run_and_verify(session);
+    }
+
+    // With direct-buffer config enabled, naturally-aligned non-owning external_initializers are borrowed in place.
+    {
+      SessionOptions direct_ext_options;
+      direct_ext_options.graph_optimization_level = TransformerLevel::Default;
+      direct_ext_options.external_initializers = ext_inits;
+      ASSERT_STATUS_OK(direct_ext_options.config_options.AddConfigEntry(
+          kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, "1"));
+      InferenceSessionWrapper session{direct_ext_options, GetEnvironment()};
+      ASSERT_STATUS_OK(session.Load(model_buffer, static_cast<int>(model_size)));
+      ASSERT_STATUS_OK(session.Initialize());
+      for (int i = 0; i < 2; ++i) {
+        int index;
+        ASSERT_STATUS_OK(session.GetSessionState().GetOrtValueNameIdxMap().GetIdx(
+            model_proto.graph().initializer(i).name(), index));
+        const auto* actual = session.GetSessionState().GetInitializedTensors().at(index).Get<Tensor>().DataRaw();
+        if constexpr (endian::native == endian::little) {
+          EXPECT_EQ(actual, expected_ptrs[i]);
+        } else {
+          EXPECT_NE(actual, expected_ptrs[i]);
+        }
+      }
+      run_and_verify(session);
+    }
+  }
 #endif
 
   allocator.Free(external_buffer);

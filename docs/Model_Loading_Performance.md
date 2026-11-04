@@ -148,3 +148,24 @@ Ort::Session session(env, ORT_TSTR("model.onnx"), session_options);
 The CPU prepacking option only parallelizes CPU EP kernels. The CUDA provider option only changes how external
 initializers assigned to CUDA memory are staged and copied; CPU and other execution providers retain their existing
 loading paths. They can be enabled together for models partitioned between CPU and CUDA.
+
+## Zero-copy external initializer buffers (`session.use_external_initializer_file_buffers_directly`)
+
+When an application supplies external initializer weights from memory-mapped files (for example `.onnx.data` or `.gguf`
+weight files mapped via `mmap`) using `AddExternalInitializers` or `AddExternalInitializersFromFilesInMemory`,
+ONNX Runtime by default copies non-owning CPU tensor buffers into a newly allocated internal CPU buffer during
+`InferenceSession::Initialize()`.
+
+Setting `session.use_external_initializer_file_buffers_directly` to `"1"` instructs ONNX Runtime to borrow naturally
+aligned, little-endian caller buffers directly instead of allocating and copying a duplicate CPU buffer:
+
+```cpp
+Ort::SessionOptions session_options;
+session_options.AddConfigEntry("session.use_external_initializer_file_buffers_directly", "1");
+session_options.AddExternalInitializers(initializer_names, initializer_values);
+```
+
+Additionally, if an `OrtValue` passed to `AddExternalInitializers` already resides on the target execution provider's
+device (for example a pre-allocated GPU tensor shared across multiple sessions), ONNX Runtime uses the device tensor in
+place during session initialization without tracing, allocating, or copying a second device buffer.
+
