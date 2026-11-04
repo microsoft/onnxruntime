@@ -7,9 +7,15 @@
 
 // T8 v1: uint32 planes [ceil(N/5), 8, K/32], fp16 scales [ceil(N/5), K/128, 5].
 // K is positive and divisible by 128. A and C are contiguous fp32 matrices.
-// Workspace contains M*K floats; no expanded weight matrix is allocated.
+// Workspace contains MlasT8GemmWorkspaceSize(M, K) floats and may be null when that size is zero.
+// No expanded weight matrix is allocated.
 void MLASCALL
 MlasT8Gemm(size_t M, size_t N, size_t K, const float* A, const uint32_t* Planes, const MLAS_FP16* Scales, float* C, float* Workspace, MLAS_THREADPOOL* ThreadPool);
+
+// Number of floats MlasT8Gemm and MlasT8GemmPacked need in Workspace: M*K on ARM64, where A is
+// interleaved before the kernel runs, and zero on platforms whose kernels read A directly.
+size_t MLASCALL
+MlasT8GemmWorkspaceSize(size_t M, size_t K);
 
 bool MLASCALL
 MlasT8Validate(size_t N, size_t K, const uint32_t* Planes);

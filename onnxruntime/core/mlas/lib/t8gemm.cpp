@@ -336,6 +336,18 @@ T8GemmWithKernel(size_t M, size_t N, size_t K, const float* A, const uint32_t* B
 
 }  // namespace
 
+size_t MLASCALL
+MlasT8GemmWorkspaceSize(size_t M, size_t K)
+{
+#if defined(MLAS_TARGET_ARM64)
+    return M * K;
+#else
+    MLAS_UNREFERENCED_PARAMETER(M);
+    MLAS_UNREFERENCED_PARAMETER(K);
+    return 0;
+#endif
+}
+
 bool MLASCALL
 MlasT8Validate(size_t N, size_t K, const uint32_t* Planes)
 {

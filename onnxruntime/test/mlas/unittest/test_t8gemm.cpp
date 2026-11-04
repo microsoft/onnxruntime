@@ -98,10 +98,12 @@ class MlasT8GemmTest : public MlasTestBase {
   void TestDispatched(const Problem& p) {
     const size_t M = p.M, N = p.N, K = p.K;
     const size_t units = (N + 4) / 5, groups = K / 128;
-    std::vector<float> workspace(M * K);
+    // Honor the advertised size: x86 kernels must accept a null workspace.
+    std::vector<float> workspace_storage(MlasT8GemmWorkspaceSize(M, K));
+    float* workspace = workspace_storage.empty() ? nullptr : workspace_storage.data();
     std::vector<float> c(M * N);
 
-    MlasT8Gemm(M, N, K, p.A.data(), p.Planes.data(), p.Scales.data(), c.data(), workspace.data(), nullptr);
+    MlasT8Gemm(M, N, K, p.A.data(), p.Planes.data(), p.Scales.data(), c.data(), workspace, nullptr);
     Check(p, c, "MlasT8Gemm");
 
     std::vector<uint32_t> tiled(units * groups * 32), masks(units * groups * 40);
@@ -109,11 +111,11 @@ class MlasT8GemmTest : public MlasTestBase {
     MlasT8Pack(N, K, p.Planes.data(), masks.data(), MLAS_T8_PACKED_LAYOUT::Masks);
     for (size_t row_tile : {size_t{1}, size_t{2}}) {
       std::fill(c.begin(), c.end(), 0.0f);
-      MlasT8GemmPacked(M, N, K, p.A.data(), tiled.data(), p.Scales.data(), c.data(), workspace.data(), nullptr,
+      MlasT8GemmPacked(M, N, K, p.A.data(), tiled.data(), p.Scales.data(), c.data(), workspace, nullptr,
                        MLAS_T8_PACKED_LAYOUT::Tiled, row_tile);
       Check(p, c, row_tile == 1 ? "Tiled/1" : "Tiled/2");
       std::fill(c.begin(), c.end(), 0.0f);
-      MlasT8GemmPacked(M, N, K, p.A.data(), masks.data(), p.Scales.data(), c.data(), workspace.data(), nullptr,
+      MlasT8GemmPacked(M, N, K, p.A.data(), masks.data(), p.Scales.data(), c.data(), workspace, nullptr,
                        MLAS_T8_PACKED_LAYOUT::Masks, row_tile);
       Check(p, c, row_tile == 1 ? "Masks/1" : "Masks/2");
     }

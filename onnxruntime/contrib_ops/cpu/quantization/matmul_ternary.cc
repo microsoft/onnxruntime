@@ -69,7 +69,10 @@ class MatMulTernary final : public OpKernel {
     if (m == 0) return Status::OK();
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
-    auto workspace = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(m) * k_, true);
+    // Only platforms that rearrange A before the kernel need a workspace (ARM64: M*K floats).
+    const size_t workspace_size = MlasT8GemmWorkspaceSize(m, k_);
+    IAllocatorUniquePtr<float> workspace;
+    if (workspace_size != 0) workspace = IAllocator::MakeUniquePtr<float>(allocator, workspace_size, true);
     if (use_packed_) {
       IAllocatorUniquePtr<uint32_t> dynamic_packed;
       const uint32_t* packed = packed_.get();
