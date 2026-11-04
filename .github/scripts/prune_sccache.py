@@ -72,6 +72,8 @@ def select_evictions(inventory: Sequence[Cache], budget: int = BUDGET_BYTES) -> 
     caches.sort(key=lambda cache: (creation_time(cache), cache["id"]), reverse=True)
     baselines = set()
     prefixes = set()
+    # Newest-first ordering makes the first snapshot per OS/arch/build prefix its preferred baseline.
+    # Baselines are evicted only if older generations cannot free enough space within that OS's budget.
     for cache in caches:
         prefix = compatibility(cache)
         if prefix and prefix not in prefixes:
