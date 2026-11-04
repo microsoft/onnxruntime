@@ -64,6 +64,8 @@ cc_library(
             "NOMINMAX",
             "NOGDI",
             "_USE_MATH_DEFINES",
+            "_WIN32_WINNT=0x0A00",
+            "WINVER=0x0A00",
         ],
         "//conditions:default": [],
     }) + select({
@@ -176,6 +178,7 @@ cc_library(
             "onnxruntime/core/platform/windows/hardware_core_enumerator.cc",
             "onnxruntime/core/platform/windows/logging/etw_sink.cc",
             "onnxruntime/core/platform/windows/stacktrace.cc",
+            "onnxruntime/core/platform/windows/telemetry.cc",
         ],
         "//conditions:default": [
             "onnxruntime/core/platform/posix/env.cc",

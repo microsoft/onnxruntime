@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-"""Native x86-64 MLAS targets, with ISA flags confined to dispatched kernels."""
+"""Native desktop MLAS targets, with ISA flags confined to dispatched kernels."""
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 

@@ -23,6 +23,13 @@ cc_library(
     )
 
 def _dependencies_impl(_ctx):
+    http_archive(
+        name = "ort_mingw",
+        urls = ["https://github.com/mstorsjo/llvm-mingw/releases/download/20261104/llvm-mingw-20261104-ucrt-x86_64.zip"],
+        sha256 = "552191b5754c49a5a20723276a6fc56541ea1922c4c50b7b669022333fc1b40f",
+        strip_prefix = "llvm-mingw-20261104-ucrt-x86_64",
+        build_file = "//bazel:mingw.BUILD.bazel",
+    )
     http_file(
         name = "ort_node_import_library",
         urls = ["https://nodejs.org/dist/v20.19.0/win-x64/node.lib"],

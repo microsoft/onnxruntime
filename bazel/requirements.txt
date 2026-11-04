@@ -1,0 +1,2 @@
+--only-binary=:all:
+numpy==2.4.0

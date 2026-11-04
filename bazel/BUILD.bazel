@@ -5,6 +5,37 @@ load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 
 package(default_visibility = ["//visibility:public"])
 
+constraint_setting(name = "cgo_compiler")
+
+constraint_value(
+    name = "gnu_cgo",
+    constraint_setting = ":cgo_compiler",
+)
+
+platform(
+    name = "windows_cgo",
+    constraint_values = [
+        "@platforms//os:windows",
+        "@platforms//cpu:x86_64",
+        ":gnu_cgo",
+    ],
+)
+
+toolchain(
+    name = "windows_cgo_toolchain",
+    exec_compatible_with = [
+        "@platforms//os:windows",
+        "@platforms//cpu:x86_64",
+    ],
+    target_compatible_with = [
+        "@platforms//os:windows",
+        "@platforms//cpu:x86_64",
+        ":gnu_cgo",
+    ],
+    toolchain = "@ort_mingw//:cc_toolchain",
+    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+)
+
 [
     config_setting(
         name = os,
@@ -49,8 +80,9 @@ exports_files([
     "abseil-includes.patch",
     "onnxruntime.lds",
     "python.lds",
-    "requirements_lock.txt",
+    "requirements.txt",
     "cuda_provider.lds",
+    "mingw.BUILD.bazel",
 ])
 
 bool_flag(

@@ -238,12 +238,44 @@
   "moduleExtensions": {
     "//bazel:dependencies.bzl%ort_dependencies": {
       "general": {
-        "bzlTransitiveDigest": "r8AHJ5Kc9O0pqdt7qx6OIDd8r5p6lqjs6Zb0eipTjrs=",
+        "bzlTransitiveDigest": "W0+h0CArOZ9TTMx/yyLYtaC9rq16qcAQu2aSXd7b1vY=",
         "usagesDigest": "dGdfspd/cjgRt/eeKwCBk5WnMR971p1ufikWyILxhwc=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
         "envVariables": {},
         "generatedRepoSpecs": {
+          "ort_mingw": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "urls": [
+                "https://github.com/mstorsjo/llvm-mingw/releases/download/20261104/llvm-mingw-20261104-ucrt-x86_64.zip"
+              ],
+              "sha256": "552191b5754c49a5a20723276a6fc56541ea1922c4c50b7b669022333fc1b40f",
+              "strip_prefix": "llvm-mingw-20261104-ucrt-x86_64",
+              "build_file": "@@//bazel:mingw.BUILD.bazel"
+            }
+          },
+          "ort_node_import_library": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
+            "attributes": {
+              "urls": [
+                "https://nodejs.org/dist/v20.19.0/win-x64/node.lib"
+              ],
+              "sha256": "72f7ca3b33f0991e93e25521f7e78c8adf187df7d5223bf0efcb5e005420f327",
+              "downloaded_file_path": "node.lib"
+            }
+          },
+          "ort_wil": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "urls": [
+                "https://github.com/microsoft/wil/archive/refs/tags/v1.0.250325.1.zip"
+              ],
+              "sha256": "48f7fdc3c7d0b284efae783c1266836b61b63fd0c94749098a60dc8ec78b0725",
+              "strip_prefix": "wil-1.0.250325.1",
+              "build_file_content": "\nload(\"@rules_cc//cc:cc_library.bzl\", \"cc_library\")\ncc_library(\n    name = \"headers\",\n    hdrs = glob([\"**/*.h\", \"**/*.hpp\", \"include/gsl/*\", \"Eigen/**\", \"unsupported/Eigen/**\"], allow_empty = True),\n    includes = [\"include\"],\n    visibility = [\"//visibility:public\"],\n)\n"
+            }
+          },
           "ort_dotnet_tensors": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {

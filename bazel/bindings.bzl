@@ -12,6 +12,7 @@ load("@rules_dotnet//dotnet:defs.bzl", "csharp_library", "csharp_test")
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 load("@rules_java//java:defs.bzl", "java_library", "java_test")
 load("@rules_python//python:defs.bzl", "py_test")
+load(":go_desktop.bzl", "desktop_go_library", "desktop_go_test")
 load(":jni_headers.bzl", "jni_headers")
 load(":platforms.bzl", "ORIGIN_RPATH", "desktop_shared_library")
 
@@ -32,12 +33,23 @@ def language_bindings():
         hdrs = native.glob(["include/onnxruntime/**/*.h"]),
         includes = ["include", "include/onnxruntime", "include/onnxruntime/core/session"],
     )
+    native.filegroup(
+        name = "runtime_interface_library",
+        srcs = [":runtime_library"],
+        output_group = "interface_library",
+    )
     cc_import(
         name = "runtime_shared",
         shared_library = ":runtime_library",
+        interface_library = select({
+            "//bazel:windows": ":runtime_interface_library",
+            "//conditions:default": None,
+        }),
     )
+    windows = select({"//bazel:windows": True, "//conditions:default": False})
+    cgo_compatible = select({"//bazel:windows": ["//bazel:gnu_cgo"], "//conditions:default": []})
     go_library(
-        name = "go_binding",
+        name = "_go_binding",
         srcs = native.glob(
             ["go/onnxruntime/*.go", "go/onnxruntime/*.c", "go/onnxruntime/*.h"],
             exclude = ["go/onnxruntime/*_test.go"],
@@ -48,17 +60,30 @@ def language_bindings():
             "//conditions:default": [],
         }),
         importpath = "github.com/microsoft/onnxruntime/go/onnxruntime",
+        target_compatible_with = cgo_compatible,
+    )
+    desktop_go_library(
+        name = "go_binding",
+        library = ":_go_binding",
+        windows = windows,
     )
     go_test(
-        name = "go_test",
+        name = "_go_test",
         srcs = native.glob(
             ["go/onnxruntime/*_test.go"],
             exclude = ["go/onnxruntime/qwen3_test.go"],
         ),
-        data = [":runtime_library", "go/onnxruntime/ort.go"] + native.glob(["go/testdata/**"]),
-        embed = [":go_binding"],
-        env = {"ORT_LIB_PATH": "../../$(rootpath :runtime_library)"},
+        data = ["go/onnxruntime/ort.go"] + native.glob(["go/testdata/**"]),
+        embed = [":_go_binding"],
         rundir = "go/onnxruntime",
+        tags = ["manual"],
+        target_compatible_with = cgo_compatible,
+    )
+    desktop_go_test(
+        name = "go_test",
+        test = ":_go_test",
+        runtime = ":runtime_library",
+        windows = windows,
     )
     java_library(
         name = "java_binding",

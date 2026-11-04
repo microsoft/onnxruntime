@@ -46,6 +46,9 @@ use_repo(ort_deps, "ort_node_addon_api", "ort_node_headers")
 use_repo(ort_deps, "ort_node_import_library")
 use_repo(ort_deps, "ort_dotnet_tensors")
 use_repo(ort_deps, "ort_wil")
+use_repo(ort_deps, "ort_mingw")
+
+register_toolchains("//bazel:windows_cgo_toolchain")
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 python.toolchain(python_version = "3.12")
@@ -70,7 +73,7 @@ pip.parse(
     extra_hub_aliases = {"numpy": ["numpy_headers"]},
     hub_name = "ort_pip",
     python_version = "3.12",
-    requirements_lock = "//bazel:requirements_lock.txt",
+    requirements_lock = "//bazel:requirements.txt",
     whl_modifications = {"@ort_numpy_mods//:numpy.json": "numpy"},
 )
 use_repo(pip, "ort_pip")

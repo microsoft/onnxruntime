@@ -40,7 +40,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          bazelisk test //... -c opt --jobs=3 --keep_going --test_output=errors 2>&1 | tee bazel-desktop.log
+          bazelisk test //... -c opt --lockfile_mode=error --jobs=3 --keep_going --test_output=errors 2>&1 | tee bazel-desktop.log
       - name: Preserve build and test diagnostics
         if: always()
         uses: actions/upload-artifact@v4
