@@ -5,6 +5,7 @@
 
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
+#include <cstdio>
 #include <type_traits>
 
 #include "core/providers/cuda/cu_inc/common.cuh"
@@ -133,6 +134,16 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat4Bi
   }
 }
 
+// Opt-in receipts let operator tests verify launches across the provider boundary.
+inline void LogMatMul4BitsM1Dispatch(int n, int k, int block_size, bool has_zero_point, int unroll) {
+  static const bool enabled =
+      ParseEnvironmentVariableWithDefault<bool>("ORT_MATMUL4BITS_M1_LOG_DISPATCH", false);
+  if (enabled && cudaPeekAtLastError() == cudaSuccess) {
+    std::fprintf(stderr, "[MatMul4BitsM1] K=%d N=%d block_size=%d has_zp=%d unroll=%d\n",
+                 k, n, block_size, has_zero_point ? 1 : 0, unroll);
+  }
+}
+
 template <class T>
 bool TryMatMul4BitsM1(
     T* output,
@@ -166,11 +177,13 @@ bool TryMatMul4BitsM1(
     if (direct_unroll == 4) {
       MatMulFloat4BitsKernelM1<T, 32, false, false, true, 4><<<blocks, threads, 0, stream>>>(
           output, a_data, b_data_quant, scales_data, nullptr, 1, n, k, blocks_per_K);
+      LogMatMul4BitsM1Dispatch(n, k, block_size, zero_points != nullptr, 4);
       return true;
     }
     if (direct_unroll == 16) {
       MatMulFloat4BitsKernelM1<T, 32, false, false, true, 16><<<blocks, threads, 0, stream>>>(
           output, a_data, b_data_quant, scales_data, nullptr, 1, n, k, blocks_per_K);
+      LogMatMul4BitsM1Dispatch(n, k, block_size, zero_points != nullptr, 16);
       return true;
     }
   }
@@ -196,6 +209,7 @@ bool TryMatMul4BitsM1(
     ORT_THROW("block size ", block_size, " is not supported");
   }
 #undef MATMUL_FLOAT4B_M1_DISPATCH
+  LogMatMul4BitsM1Dispatch(n, k, block_size, zero_points != nullptr, 0);
   return true;
 }
 

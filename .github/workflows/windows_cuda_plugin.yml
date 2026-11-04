@@ -209,7 +209,8 @@ jobs:
             exit $lastExitCode
           }
 
-          foreach ($mode in 1, 2) {
+          $env:ORT_MATMUL4BITS_M1_LOG_DISPATCH = "1"
+          foreach ($mode in 0, 1, 2) {
             $env:ORT_MATMUL4BITS_M1_EXPERIMENT = $mode
             .\onnxruntime_provider_test.exe --gtest_filter=MatMulNBits.Fp16_Int4_DirectScaleExperiment:MatMulNBits.Cuda_DirectScaleExperimentFallbacks
             if ($lastExitCode -ne 0) {

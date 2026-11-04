@@ -1030,7 +1030,9 @@ set(all_tests
 set(onnxruntime_test_providers_runtime_dependencies)
 if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
   if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
-    set(onnxruntime_test_cuda_kernels_src_patterns "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/*.cc")
+    set(onnxruntime_test_cuda_kernels_src_patterns
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/*.cc"
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/*.cu")
   endif()
 
   file(GLOB onnxruntime_test_providers_cuda_ut_src CONFIGURE_DEPENDS
@@ -1040,7 +1042,9 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_
 
   if (onnxruntime_DISABLE_CONTRIB_OPS OR onnxruntime_CUDA_MINIMAL)
     list(REMOVE_ITEM onnxruntime_test_providers_cuda_ut_src
-      "${TEST_SRC_DIR}/providers/cuda/test_cases/generation_cuda_impl_test.cc")
+      "${TEST_SRC_DIR}/providers/cuda/test_cases/generation_cuda_impl_test.cc"
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/matmul_4bits_m1_test.cc"
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/matmul_4bits_m1_test.cu")
   endif()
 
   # cuda_plugin_test_shims.cc provides onnxruntime::GetEnvironmentVar for the
@@ -1633,8 +1637,9 @@ endif()
 # These also have some support for dynamically specified plugin EPs.
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
 set(onnxruntime_provider_test_target onnxruntime_provider_test)
-if(onnxruntime_USE_CUDA AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
+if(onnxruntime_USE_CUDA AND NOT onnxruntime_DISABLE_CONTRIB_OPS AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
   list(APPEND onnxruntime_provider_test_srcs
+    "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/matmul_4bits_m1_test.cc"
     "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/matmul_4bits_m1_test.cu")
 endif()
 if (WIN32 AND TARGET onnxruntime_providers_cuda_ut)
@@ -1681,7 +1686,7 @@ block()
     DEPENDS ${onnxruntime_provider_test_deps}
   )
 
-  if (onnxruntime_USE_CUDA AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
+  if (onnxruntime_USE_CUDA AND NOT onnxruntime_DISABLE_CONTRIB_OPS AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
     ort_configure_cuda_cccl(${onnxruntime_provider_test_target})
     if (MSVC)
       # Abseil headers need the same nvcc host-compiler settings as the provider.
@@ -1695,16 +1700,18 @@ block()
       target_compile_options(${onnxruntime_provider_test_target} PRIVATE
         "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=221>")
     endif()
+  endif()
 
+  if (onnxruntime_USE_CUDA AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
     set(matmul4bits_m1_filter
       "MatMulNBits.Fp16_Int4_DirectScaleExperiment:MatMulNBits.Cuda_DirectScaleExperimentFallbacks")
-    foreach(mode 1 2)
+    foreach(mode 0 1 2)
       add_test(NAME onnxruntime_matmul4bits_m1_experiment_${mode}
         COMMAND $<TARGET_FILE:${onnxruntime_provider_test_target}>
           "--gtest_filter=${matmul4bits_m1_filter}"
         WORKING_DIRECTORY $<TARGET_FILE_DIR:${onnxruntime_provider_test_target}>)
       set_tests_properties(onnxruntime_matmul4bits_m1_experiment_${mode} PROPERTIES
-        ENVIRONMENT "ORT_MATMUL4BITS_M1_EXPERIMENT=${mode}"
+        ENVIRONMENT "ORT_MATMUL4BITS_M1_EXPERIMENT=${mode};ORT_MATMUL4BITS_M1_LOG_DISPATCH=1"
         FAIL_REGULAR_EXPRESSION "0 tests from 0 test suites"
         RUN_SERIAL TRUE)
     endforeach()

@@ -34,13 +34,10 @@
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/framework/prepacked_weights_container.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/platform/env_var_utils.h"
 #include "test/util/include/test/test_environment.h"
 #ifdef USE_CUDA
 #include "contrib_ops/cuda/quantization/matmul_4bits_m1.cuh"
-
-namespace onnxruntime::cuda::test {
-std::string CompareMatMul4BitsM1DirectScales(int max_unroll, int k, int n, int pattern);
-}
 #endif
 
 extern std::unique_ptr<Ort::Env> ort_env;
@@ -1687,30 +1684,6 @@ TEST(MatMulNBits, Fp16_Int4_PrepackedSm90BlockSize32Rejected) {
 // (see the comment there for why that coverage lives in a separate translation unit).
 
 #ifdef USE_CUDA
-template <int MaxUnroll>
-void TestMatMul4BitsM1DirectScales() {
-  if (!DefaultCudaExecutionProvider()) {
-    GTEST_SKIP() << "CUDA execution provider unavailable";
-  }
-  const auto compare = [](int k, int n, int pattern) {
-    SCOPED_TRACE(::testing::Message() << "K=" << k << ", N=" << n << ", pattern=" << pattern);
-    EXPECT_EQ("", onnxruntime::cuda::test::CompareMatMul4BitsM1DirectScales(MaxUnroll, k, n, pattern));
-  };
-  for (int k : {8, 264, 1032, 3072, 4088, 4096, 4104, 8192}) {
-    compare(k, 24, 0);
-  }
-  compare(3072, 1024, 0);
-  compare(3072, 24, 1);
-}
-
-TEST(MatMulNBits, DirectScalesUnroll4) {
-  TestMatMul4BitsM1DirectScales<4>();
-}
-
-TEST(MatMulNBits, DirectScalesUnroll16) {
-  TestMatMul4BitsM1DirectScales<16>();
-}
-
 TEST(MatMulNBits, DirectScaleExperimentSelection) {
   using contrib::cuda::SelectMatMul4BitsM1DirectUnroll;
   EXPECT_EQ(SelectMatMul4BitsM1DirectUnroll(0, 1024, 3072, 32, false), 0);
@@ -1738,6 +1711,9 @@ TEST(MatMulNBits, Fp16_Int4_DirectScaleExperiment) {
     GTEST_SKIP() << "CUDA execution provider unavailable";
   }
   ScopedEnvironmentVariables env{EnvVarMap{{"ORT_FPA_INTB_GEMM", "0"}}};
+  const bool verify_dispatch =
+      ParseEnvironmentVariableWithDefault<bool>("ORT_MATMUL4BITS_M1_LOG_DISPATCH", false);
+  const int mode = ParseEnvironmentVariableWithDefault<int>("ORT_MATMUL4BITS_M1_EXPERIMENT", 0);
   for (auto k : {8, 24, 264, 1032, 3072, 4088, 4096, 8192}) {
     for (auto n : {8, 24, 256, 1024}) {
       TestOptions opts{};
@@ -1748,7 +1724,16 @@ TEST(MatMulNBits, Fp16_Int4_DirectScaleExperiment) {
       opts.output_rel_error = 0.02f;
       std::vector<std::unique_ptr<IExecutionProvider>> eps;
       eps.push_back(DefaultCudaExecutionProvider());
+      if (verify_dispatch) {
+        testing::internal::CaptureStderr();
+      }
       RunTest<MLFloat16>(opts, std::move(eps));
+      if (verify_dispatch) {
+        const int unroll = contrib::cuda::SelectMatMul4BitsM1DirectUnroll(mode, n, k, 32, false);
+        EXPECT_THAT(testing::internal::GetCapturedStderr(),
+                    testing::HasSubstr(MakeString("[MatMul4BitsM1] K=", k, " N=", n,
+                                                  " block_size=32 has_zp=0 unroll=", unroll, "\n")));
+      }
     }
   }
 }
