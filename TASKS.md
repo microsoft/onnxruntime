@@ -4,9 +4,9 @@
 [#29](https://github.com/onnxruntime/ort-state/pull/29), stacked on M14/#28.
 M16-M23 are deferred at the user's direction. M24's requirements interview is
 complete; [Appendix P](SPEC.md#appendix-p-m24-delivered-foundation-qualification-approved)
-and the detailed M24 F0-F8 execution plan were separately approved. F0 readiness
-passes; F1-F7 validation/measurements/coverage/report gates pass. Ready stacked
-publication F8 is in progress.
+and the detailed M24 F0-F8 execution plan were separately approved. M24 is
+complete and published OPEN/ready in
+[#30](https://github.com/onnxruntime/ort-state/pull/30) on M15/#29.
 M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
@@ -39,7 +39,7 @@ O.10 bounded-race refinement pass; ready stacked publication is complete in #29.
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M15 are complete, M16-M23 are deferred, and M24 qualification is in progress.
+M01-M15 and scoped M24 are complete; M16-M23 remain deferred.
 Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
@@ -121,8 +121,8 @@ their functional milestone still requires the CPU/CUDA evidence below.
 Active stack order follows the completed milestones. Deferred rows are not
 mechanical Git bases: M24 stacks directly on M15. The dependency column records
 actual semantic prerequisites.
-M01-M15 are **complete**. M16-M23 are **deferred, not completed**. M24's
-specification and detailed execution plan are separately approved.
+M01-M15 and scoped M24 are **complete**. M16-M23 are **deferred, not completed**.
+M24's specification and detailed execution plan were separately approved.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -149,7 +149,7 @@ specification and detailed execution plan are separately approved.
 | [ ] | M21 | **Deferred:** Rust bindings / `rust-api` | M06, M11, M12 |
 | [ ] | M22 | **Deferred:** Objective-C binding / `objc-api` | M06, M11, M12 |
 | [ ] | M23 | **Deferred:** React Native binding / `react-native-api` | M18, M22 |
-| [ ] | M24 | Integrated qualification and measurements / `qualification` | M01 through M15; approved plan |
+| [x] | M24 | Integrated qualification and measurements / `qualification` | M01 through M15; approved plan |
 
 Do not mark the whole feature complete after the CPU foundation or either demo;
 all binding, provider, coverage, and qualification gates remain part of delivery.
@@ -5828,7 +5828,7 @@ coverage. Missing iOS access blocks full completion; Android success is partial.
 **Specification:** [Appendix P](SPEC.md#appendix-p-m24-delivered-foundation-qualification-approved),
 approved2026-11-04 without changes after explicit confirmation of no additional
 requirements. **Execution plan separately approved2026-11-04 without changes.**
-F0-F7 pass. Ready stacked publication F8 is in progress.
+F0-F8 pass; published OPEN/ready in [#30](https://github.com/onnxruntime/ort-state/pull/30).
 
 **Outcome:** Qualify the delivered M01-M15 C/C++/Python foundation, establish
 reproducible native-only performance/resource baselines, and publish one honest
@@ -5849,7 +5849,7 @@ results.
 - [x] Review and approve Appendix P before preparing this detailed plan.
 - [x] Prepare task outcomes, actual prerequisites, workloads and CPU/CUDA tests.
 - [x] Review/approve this execution plan before implementation or measurement.
-- [ ] Complete F0-F8 and verify a synchronized OPEN/ready PR on M15/#29.
+- [x] Complete F0-F8 and verify a synchronized OPEN/ready PR on M15/#29.
 
 **Implementation boundaries:** Reuse existing native APIs, demos, fixtures,
 verified local assets and installed local wheels. Qualification/report tooling,
@@ -6041,7 +6041,7 @@ coverage, device proofs and measurements before completion.
   and credentials out of commits. Missing hardware/platform/counters must
   remain explicit; required in-scope gaps block completion.
 
-- [ ] **F8 - Publish one independently reviewable M24 PR.**
+- [x] **F8 - Publish one independently reviewable M24 PR.**
   **Outcome:** Commit only the approved incremental scope with the required
   coauthor trailer; inspect/preserve the repository PR template; include exact
   validation results, native-only baseline interpretation and deferred scopes.
@@ -6136,7 +6136,7 @@ Record actual final counts, added tests, skips and all diagnostics.
 - [x] F5 all eight native-only baseline rows and required resource metrics persist.
 - [x] F6 exact deduplicated cumulative production-line coverage is100%; final regressions/type/style pass.
 - [x] F7 complete report, migration/capability guidance and final immutable proof exist.
-- [ ] F8 one synchronized OPEN/ready M24 PR exists on M15/#29; worktree is clean.
+- [x] F8 one synchronized OPEN/ready M24 PR exists on M15/#29; worktree is clean.
 
 **Completion interpretation:** Qualify the delivered M01-M15 foundation under
 Appendix P. M16-M23 remain deferred and their binding-parity requirements remain
@@ -6359,6 +6359,17 @@ wrapped with `nsys profile --trace=cuda --cuda-memory-usage=true --sample=none
 `nsys export --type sqlite --output "$Q/f5/$ID/resources-trace.sqlite"
 "$Q/f5/$ID/resources-trace.nsys-rep"`. Exact dynamic allocation/free enums and
 per-address lifetimes, rather than total event bytes, determine the peaks.
+
+**F8 publication completed:** [#30](https://github.com/onnxruntime/ort-state/pull/30)
+is OPEN/non-draft, head `state/m24-qualification`, exact base
+`state/m15-sd15-demo` at `4fcf16f7d25d6ce8c693839fdf5686c7d3c4c1d8`.
+Feature commit: `3bcf4d69190fbe347cde1ea9e42d85c8c5642a0d`.
+This subsequent documentation-only commit records completed publication.
+Final synchronized head/base, preserved template/body, source/artifact proof
+and clean-tree verification are retained in `m24-final-published-pr.json` and
+the refreshed `f7-source-artifact-proof.json`. No PR was merged.
+M16-M23 remain explicitly deferred/unchecked; the overall all-language feature
+completion checkbox remains open.
 
 ## 5. Planned validation recipes
 

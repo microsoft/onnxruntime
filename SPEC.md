@@ -7,7 +7,9 @@ Later milestones require their own
 approved refinements.
 M16-M23 are deferred at the user's direction. M24's delivered-foundation scope
 is approved in Appendix P. Its detailed execution plan was separately approved
-on2026-11-04; qualification is authorized.
+on2026-11-04; qualification and publication are complete in
+[#30](https://github.com/onnxruntime/ort-state/pull/30), stacked on M15/#29.
+This does not complete the deferred all-language binding goal.
 **Requirements captured:** 2026-10-15.
 
 **M10 refinement:** Appendix J was approved by the user on 2026-10-19.
@@ -3955,9 +3957,10 @@ numerical, model, scheduler or safety-policy change.
 explicitly approved Appendix P without changes, then separately approved
 `TASKS.md` F0-F8 without changes and authorized starting M24.
 
-**Proposed stack:** One independently reviewable M24 PR on M15/#29,
+**Published stack:** OPEN/ready
+[#30](https://github.com/onnxruntime/ort-state/pull/30) on M15/#29,
 `state/m15-sd15-demo` at `4fcf16f7d25d6ce8c693839fdf5686c7d3c4c1d8`.
-Planning branch: `state/m24-qualification`. No merge or deferred-binding work.
+Published branch: `state/m24-qualification`. No merge or deferred-binding work.
 
 ### P.1 Acceptance scope and explicit deferrals
 
@@ -4112,3 +4115,7 @@ blocked statuses persist; and its synchronized ready PR exists.
 
 M16-M23 deferral is not a failure of this explicitly scoped qualification and
 is not evidence that the full original binding goal has been completed.
+
+**Completed:** 2026-11-04. M24/#30 records exact cumulative7369/7369production
+locations,257/257M24delta, all eight native-only baseline rows and the approved
+CPU/CUDA/device/resource scope. Deferred binding requirements remain outstanding.

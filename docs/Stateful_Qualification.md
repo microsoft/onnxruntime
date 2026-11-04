@@ -1,8 +1,9 @@
 # Delivered stateful foundation qualification
 
-**Status: qualification gates passed; stacked publication pending.** The
-specification and F0-F8 execution plan were separately approved. The completed
-results below qualify only the explicitly scoped delivered foundation.
+**Status: completed and published for review in
+[#30](https://github.com/onnxruntime/ort-state/pull/30), stacked on M15/#29.**
+The specification and F0-F8 execution plan were separately approved. The results
+below qualify only the explicitly scoped delivered foundation.
 
 M24 qualifies the delivered M01-M15 C/C++/Python foundation. M16-M23 stateful
 bindings are deferred, not implemented or passed. Existing stateless Session
@@ -255,7 +256,7 @@ Appendix P's delivered scope, not an all-language completion claim.
 
 | Requirement IDs | Status and acceptance evidence |
 |---|---|
-| SCOPE-1,SCOPE-3..6 | Verified foundation/demos/approved stacked workflow; publication tracked below |
+| SCOPE-1,SCOPE-3..6 | Verified foundation/demos/approved stacked workflow; published M24/#30 |
 | SCOPE-2 | C/C++/Python verified; remaining stateful bindings deferred M16-M23 |
 | STATE-1..6 | Native/Python context isolation, retained snapshots, reset/reuse, ownership, cancellation/failure tests; resource tools |
 | LOOP-1..5 | Native loop/chain and public/Python step/run/termination/accounting suites |
@@ -273,7 +274,7 @@ Appendix P's delivered scope, not an all-language completion claim.
 | TEST-1..4 | Linux CPU/A100 CUDA execution; explicit unsupported/deferred hardware/platforms and known failures |
 | COVER-1..4 | Exact7369/7369current-source ledger,257/257delta, matched host/device evidence, zero exclusions |
 | METRIC-1..4 | Exact fixtures, fixed real-model tolerances/references/replay and eight reproducible native-only baseline rows |
-| DELIVERY-1..7 | Separate interview/spec/plan approvals, current task/scratchpad/evidence and independently reviewable stack; M24 publication pending |
+| DELIVERY-1..7 | Separate interview/spec/plan approvals, current task/scratchpad/evidence and independently reviewable stack; M24/#30 OPEN/ready |
 
 ### Executed commands and proof locations
 
@@ -370,5 +371,8 @@ parallelism command completed without removing checks or narrowing scope.
 
 Large raw logs, profiles, model/image artifacts and identity manifests are kept
 outside Git in named qualification storage. The final per-file ledger is
-committed; synchronized M24 PR/head/base and final immutable artifact manifest
-will be recorded at publication. No PR is automatically merged.
+committed; synchronized M24/#30 head/base and final immutable artifact manifest
+are recorded in `m24-final-published-pr.json` and
+`f7-source-artifact-proof.json` under that evidence root. Feature commit:
+`3bcf4d69190fbe347cde1ea9e42d85c8c5642a0d`; its follow-up tracking-only commit
+records publication. No PR was merged.

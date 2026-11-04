@@ -15,8 +15,8 @@ Compressed project memory. This is not the execution plan.
   4fcf16f7d25d6ce8c693839fdf5686c7d3c4c1d8; parentproofunchanged.
   TASKSretainsuncheckedM16-M23, M24prereqsM01-M15. Fulloriginalall-language
   parityNOTcomplete/notclaimed.
-  F0-F7PASS; F8ready-stackedpublicationINPROGRESS.
-  NoM24runtime/build/dependency/measurement/commit/PRworkyet.
+  F0-F8DONE; PR30OPEN/ready onM15PR29. All8measurements/7369cum/257deltaPASS.
+  NoM24native/API/kernelchanges; featurecommit3bcf4d69190fbe347cde1ea9e42d85c8c5642a0d.
   PreM01baseline1988019b6e23ac4def4628cddd603c1bfb504fe8(parent64aa026b94).
   Proposedplan8rowsPhi3CPU/CUDAbudgets0/1/16 +SDbatched/sequential;
   perrow1cold+2warmup+5measuredcompletednativeRun, no perfthreshold/comparison.
@@ -117,6 +117,12 @@ Compressed project memory. This is not the execution plan.
   sourcehashesMUSTremainunchangedfromfixed-workloads+F6ledger.
   PRnotyetcreated; inspecttemplate, commitcoauthor, baseM15#29,
   feature+publicationtrackingcommits thenfinalhead/base/cleanproofrefresh.
+  M24PUBLISHED https://github.com/onnxruntime/ort-state/pull/30 OPEN/non-draft,
+  headstate/m24-qualification, exactbaseM15#29 at4fcf16f7d2. Feature3bcf4d6919.
+  Finaltracking-onlycommitrecordscompletion; refreshQ/f7-source-artifact-proof.json
+  docsources/head/publication +f7-requirement-closure.jsonpublication4IDs.
+  Verifyremotehead/base/templatebody/cleantree. NoM16-M23work/noPRmerged.
+  Fulloriginalall-languagegoalSTILLdeferred; don'tmarkglobalstackcomplete.
 - 2026-11-04 M15 publication checkpoint: M01-M15complete; M15PR29 OPEN/ready onM14PR28
   (parent44e512c771 onM13). Featurecommit6f0a3e09f84621381d5c9174e663e4ba090a58c9.
   M15O/O7/O8/O9 specifications+separateP/R/Q/Nplans APPROVED/implemented.
