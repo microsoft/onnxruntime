@@ -3,7 +3,7 @@ parameters:
   type: string
 
 - name: machine_pool
-  type: string
+  type: object
 
 - name: extra_job_id
   type: string
