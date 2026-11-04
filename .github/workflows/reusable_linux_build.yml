@@ -74,6 +74,7 @@ on:
 
 jobs:
   build_test_pipeline:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ["${{ inputs.pool_name }}"]
     timeout-minutes: 120
     permissions:

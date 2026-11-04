@@ -13,13 +13,16 @@ concurrency:
 
 permissions:
   contents: read
-  packages: write
-  attestations: write
-  id-token: write
 
 jobs:
   build-linux-cuda-x64-release:
     name: Build Linux CUDA x64 Release
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
     # This job runs on a CPU node using the reusable build workflow
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
@@ -54,6 +57,7 @@ jobs:
 
   test-linux-cuda-x64-release:
     name: Test Linux CUDA x64 Release
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     needs: build-linux-cuda-x64-release
     runs-on: [ort-github-linux-6-a10-scus-ss]
     timeout-minutes: 210
