@@ -1122,7 +1122,7 @@ def parse_arguments() -> argparse.Namespace:
                     "--use_clang_cl requires the Visual Studio CMake generator "
                     "(it selects the 'ClangCL' platform toolset)."
                 )
-            if getattr(args, "arm", False) or getattr(args, "arm64", False) or getattr(args, "arm64ec", False):
+            if any(getattr(args, target, False) for target in ("x86", "arm", "arm64", "arm64ec", "buildasx")):
                 parser.error("--use_clang_cl currently supports the x64 host/target only.")
         if hasattr(args, "msvc_toolset") and args.msvc_toolset:
             try:
