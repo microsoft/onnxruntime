@@ -19,6 +19,9 @@ var<workgroup> split_values: array<q_value_t, key_tile * 32>;
 $MAIN {
   let batch_head = workgroup_idx / uniforms.num_seq_tile;
   let batch = batch_head / num_heads;
+  if (batch >= uniforms.batch_size) {
+    return;
+  }
   let head = batch_head % num_heads;
   let lane = sg_id & (query_lanes - 1u);
   let query_tile = (workgroup_idx % uniforms.num_seq_tile) * (256u / query_lanes);
