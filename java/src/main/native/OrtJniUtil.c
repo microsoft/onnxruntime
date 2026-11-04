@@ -1117,6 +1117,22 @@ string_tensor_cleanup:
   return code;
 }
 
+static OrtErrorCode getTensorArrayLength(JNIEnv *jniEnv, const OrtApi *api,
+                                        const OrtTensorTypeAndShapeInfo *tensorInfo, jsize *lengthJava) {
+  size_t length = 0;
+  OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorShapeElementCount(tensorInfo, &length));
+  if (code != ORT_OK) {
+    return code;
+  }
+  if (length > INT32_MAX) {
+    throwOrtException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT),
+                      "Tensor element count exceeds the Java array limit of 2147483647");
+    return ORT_INVALID_ARGUMENT;
+  }
+  *lengthJava = (jsize)length;
+  return ORT_OK;
+}
+
 jobjectArray createStringArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor) {
     // Extract tensor info
     OrtTensorTypeAndShapeInfo* tensorInfo = NULL;
@@ -1126,8 +1142,8 @@ jobjectArray createStringArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, Ort
     }
 
     // Get the element count of this tensor
-    size_t length = 0;
-    code = checkOrtStatus(jniEnv, api, api->GetTensorShapeElementCount(tensorInfo, &length));
+    jsize length = 0;
+    code = getTensorArrayLength(jniEnv, api, tensorInfo, &length);
     api->ReleaseTensorTypeAndShapeInfo(tensorInfo);
     if (code != ORT_OK) {
         return NULL;
@@ -1135,7 +1151,10 @@ jobjectArray createStringArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, Ort
 
     // Create the java array
     jclass stringClazz = (*jniEnv)->FindClass(jniEnv, "java/lang/String");
-    jobjectArray outputArray = (*jniEnv)->NewObjectArray(jniEnv, safecast_size_t_to_jsize(length), stringClazz, NULL);
+    jobjectArray outputArray = (*jniEnv)->NewObjectArray(jniEnv, length, stringClazz, NULL);
+    if (outputArray == NULL) {
+        return NULL;
+    }
 
     code = copyStringTensorToArray(jniEnv, api, tensor, length, outputArray);
     if (code != ORT_OK) {
@@ -1155,18 +1174,20 @@ jlongArray createLongArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValu
     code = checkOrtStatus(jniEnv,api,api->GetTensorElementType(tensorInfo, &value));
     if ((code == ORT_OK) && ((value == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) || (value == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64))) {
       // Get the element count of this tensor
-      size_t length = 0;
-      code = checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(tensorInfo, &length));
+      jsize length = 0;
+      code = getTensorArrayLength(jniEnv, api, tensorInfo, &length);
       if (code == ORT_OK) {
         // Extract the values
         uint8_t* arr = NULL;
         code = checkOrtStatus(jniEnv,api,api->GetTensorMutableData(tensor, (void**)&arr));
         if (code == ORT_OK) {
           // Create the java array and copy to it.
-          outputArray = (*jniEnv)->NewLongArray(jniEnv, safecast_size_t_to_jsize(length));
-          int64_t consumed = copyPrimitiveArrayToJava(jniEnv, value, arr, outputArray);
-          if (consumed == -1) {
-            outputArray = NULL;
+          outputArray = (*jniEnv)->NewLongArray(jniEnv, length);
+          if (outputArray != NULL) {
+            int64_t consumed = copyPrimitiveArrayToJava(jniEnv, value, arr, outputArray);
+            if (consumed == -1) {
+              outputArray = NULL;
+            }
           }
         }
       }
@@ -1186,18 +1207,20 @@ jfloatArray createFloatArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtVa
     code = checkOrtStatus(jniEnv,api,api->GetTensorElementType(tensorInfo, &value));
     if ((code == ORT_OK) && (value == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT)) {
         // Get the element count of this tensor
-        size_t length = 0;
-        code = checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(tensorInfo, &length));
+        jsize length = 0;
+        code = getTensorArrayLength(jniEnv, api, tensorInfo, &length);
         if (code == ORT_OK) {
             // Extract the values
             uint8_t* arr = NULL;
             code = checkOrtStatus(jniEnv,api,api->GetTensorMutableData(tensor, (void**)&arr));
             if (code == ORT_OK) {
                 // Create the java array and copy to it.
-                outputArray = (*jniEnv)->NewFloatArray(jniEnv, safecast_size_t_to_jsize(length));
-                int64_t consumed = copyPrimitiveArrayToJava(jniEnv, value, arr, outputArray);
-                if (consumed == -1) {
-                    outputArray = NULL;
+                outputArray = (*jniEnv)->NewFloatArray(jniEnv, length);
+                if (outputArray != NULL) {
+                    int64_t consumed = copyPrimitiveArrayToJava(jniEnv, value, arr, outputArray);
+                    if (consumed == -1) {
+                        outputArray = NULL;
+                    }
                 }
             }
         }
@@ -1217,18 +1240,20 @@ jdoubleArray createDoubleArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, Ort
     code = checkOrtStatus(jniEnv,api,api->GetTensorElementType(tensorInfo, &value));
     if ((code == ORT_OK) && (value == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE)) {
         // Get the element count of this tensor
-        size_t length = 0;
-        code = checkOrtStatus(jniEnv,api,api->GetTensorShapeElementCount(tensorInfo, &length));
+        jsize length = 0;
+        code = getTensorArrayLength(jniEnv, api, tensorInfo, &length);
         if (code == ORT_OK) {
             // Extract the values
             uint8_t* arr = NULL;
             code = checkOrtStatus(jniEnv,api,api->GetTensorMutableData(tensor, (void**)&arr));
             if (code == ORT_OK) {
                 // Create the java array and copy to it.
-                outputArray = (*jniEnv)->NewDoubleArray(jniEnv, safecast_size_t_to_jsize(length));
-                int64_t consumed = copyPrimitiveArrayToJava(jniEnv, value, arr, outputArray);
-                if (consumed == -1) {
-                    outputArray = NULL;
+                outputArray = (*jniEnv)->NewDoubleArray(jniEnv, length);
+                if (outputArray != NULL) {
+                    int64_t consumed = copyPrimitiveArrayToJava(jniEnv, value, arr, outputArray);
+                    if (consumed == -1) {
+                        outputArray = NULL;
+                    }
                 }
             }
         }
