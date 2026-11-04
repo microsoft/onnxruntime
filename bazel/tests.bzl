@@ -86,6 +86,15 @@ def core_tests():
             "onnxruntime/test/providers/partitioning_utils_test.cc",
         ],
         "runtime_optimizer_test": native.glob(["onnxruntime/test/optimizer/runtime_optimization/*.cc"]),
+        "flatbuffers_test": native.glob(["onnxruntime/test/flatbuffers/*.cc"]),
+        "quantization_test": native.glob(["onnxruntime/test/quantization/*.cc"]),
+        "lora_test": native.glob(["onnxruntime/test/lora/*.cc"]),
+        "opaque_api_test": native.glob(["onnxruntime/test/opaque_api/*.cc"]),
+        "ep_graph_test": native.glob(["onnxruntime/test/ep_graph/*.cc"]),
+        "internal_testing_ep_test": [
+            "onnxruntime/test/internal_testing_ep/internal_testing_tests.cc",
+            "onnxruntime/test/internal_testing_ep/internal_testing_partitioning_tests.cc",
+        ],
         "optimizer_test": native.glob(
             ["onnxruntime/test/optimizer/*.cc"],
             # The CPU-only runtime omits this contrib-GQA transformer.

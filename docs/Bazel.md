@@ -256,14 +256,16 @@ bazel test -c opt //:session_test --test_arg=--gtest_list_tests --test_output=al
 `//:core_tests` groups `//:framework_test`, `//:session_test`, `//:graph_test`,
 `//:optimizer_test`, `//:cpu_provider_test`, `//:runtime_optimizer_test`,
 `//:platform_test`, `//:common_runtime_test`, `//:logging_test`, and
-`//:provider_infrastructure_test`. Session tests are sourced from
+`//:provider_infrastructure_test`, `//:flatbuffers_test`, `//:quantization_test`,
+`//:lora_test`, `//:opaque_api_test`, `//:ep_graph_test`, and
+`//:internal_testing_ep_test`. Session tests are sourced from
 `test/framework/`; graph/IR tests are sourced from `test/ir/`. The provider
 target uses the existing `test/providers/cpu/` operator tests, not contrib or
 other EP suites. These targets statically link the native CPU runtime.
 Selecting a target avoids building other test binaries. `--test_filter` selects
 GoogleTest suites/cases at runtime; it does not reduce compilation within the
 selected binary. `--test_arg=--gtest_filter=Suite.Case` is also supported.
-Request `//:core_tests` only when intentionally running all ten binaries;
+Request `//:core_tests` only when intentionally running all sixteen binaries;
 `//...` includes these suites as well as the desktop binding tests.
 
 Checked-in `onnxruntime/test/testdata/` files are declared as Bazel runfiles.
@@ -290,9 +292,9 @@ Linux PCI/DRM/NPU discovery and POSIX/Windows telemetry-specific subdirectories
 are not wired: the foundation still uses default device discovery and disables
 optional telemetry transports. Android tests and DirectML provider tests need
 their own platform configurations. GPU tests, dynamic EP libraries, external
-model-corpus runners, separate C API shared-library executables, and other
-top-level suites such as flatbuffers, quantization, and LoRA remain outside
-this C++ slice.
+model-corpus runners, separate C API shared-library executables, global-threadpool
+executables with their distinct environment setup, custom-op/plugin library
+fixtures, and benchmarks/fuzzers remain outside this C++ slice.
 
 Starlark files use LF even on Windows: frozen module-extension digests depend on
 their exact bytes. A CRLF checkout otherwise fails `--lockfile_mode=error` before
@@ -337,6 +339,29 @@ rebuild the entire runtime. Full-suite and non-Windows execution of these new
 groups has not been performed. The runtime optimizer case saves and reloads an
 ORT-format model; the platform case creates/deletes directories in the isolated
 test workspace, and I/O binding executes an existing CPU model fixture.
+
+Six further native targets reuse all existing top-level flatbuffers,
+quantization, LoRA, opaque API, and EP graph sources plus the two internal
+testing-EP test sources. The internal testing EP is the repository's existing
+CPU-backed test double, not a new hardware execution provider. Training-specific
+FlatBuffer cases and CUDA-specific LoRA cases remain disabled by their existing
+feature guards.
+
+This command passed **six existing cases**, one per target, on Windows with the
+same frozen-lock native build. The new test sources compiled and linked against
+the cached source-built runtime; no prebuilt test binaries were substituted.
+Nonzero GoogleTest counts were verified in all six logs.
+
+```sh
+bazel test //:flatbuffers_test //:quantization_test //:lora_test //:opaque_api_test //:ep_graph_test //:internal_testing_ep_test -c opt --jobs=12 --test_filter="FlatbufferUtilsTest.ExternalWriteReadWithLoadInitializers:Quantization.QuantizeLinear_Int8:LoraAdapterTest.Load:OpaqueApiTest.RunModelWithOpaqueInputOutput:EpGraphTest.BasicCApiUse:InternalTestingEP.TestSaveAndLoadOrtModel" --test_output=all --nocache_test_results --keep_going
+```
+
+The selected cases include external-data FlatBuffer writes/reads, INT8
+quantization, adapter serialization, opaque input/output model execution, public
+EP graph access, and save/reload of an ORT model partitioned with the CPU-backed
+test double. Full suites and Linux/macOS execution of these six targets remain
+unvalidated. Together with the previous selections, **33 distinct existing C++
+cases** have executed on Windows; that is not full-suite coverage.
 
 ### Existing Java/JNI tests
 
