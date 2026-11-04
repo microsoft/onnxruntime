@@ -5,7 +5,7 @@ on:
     branches:
       - main
       - rel-*
-  pull_request:
+  pull_request_target:
   workflow_dispatch:
   schedule:
     - cron: '23 6 * * *'
@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   lint-action-pins:
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     name: GitHub Actions pinning
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -24,6 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.ref }}
           persist-credentials: false
       - name: Check action SHA pins
         uses: suzuki-shunsuke/pinact-action@896d595f299e71d65b9d28349d6956abe144390a # v3.0.0
@@ -36,12 +38,16 @@ jobs:
     name: Optional Lint
     # Outside a PR there is no diff to filter, so reviewdog reports every pre-existing finding in the repo,
     # exceeds GitHub's annotation limit, and fails the job.
-    if: github.event_name == 'pull_request'
+    if: >-
+      (github.event_name == 'pull_request') &&
+      (github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.ref }}
       - name: misspell # Check spellings as well
         uses: reviewdog/action-misspell@ba7ac4030fa6812f8c8b2d4e516af8bc99553c32 # v1.28.0
         with:
@@ -68,7 +74,7 @@ jobs:
           filter_mode: file
 
   lint-python-format:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     # Required workflow
     name: Python format
     runs-on: [ort-github-linux-16-amd-wcus-ss]
@@ -78,6 +84,8 @@ jobs:
       security-events: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.ref }}
       - name: Setup Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
@@ -117,11 +125,14 @@ jobs:
           checkout_path: ${{ github.workspace }}
 
   lint-cpp:
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     name: Optional Lint C++
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.ref }}
       - name: Update PATH
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"

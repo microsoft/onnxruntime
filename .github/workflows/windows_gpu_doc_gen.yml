@@ -15,7 +15,7 @@ on:
       - '!BUILD.md'
       - '!js/web/**'
       - '!onnxruntime/core/providers/js/**'
-  pull_request:
+  pull_request_target:
     branches:
       - main
       - rel-*
@@ -27,6 +27,7 @@ concurrency:
 
 jobs:
   detect_changes:
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     name: Detect relevant changes
     runs-on: ubuntu-latest
     outputs:
@@ -34,6 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.ref }}
           fetch-depth: 0
           submodules: 'none'
 
@@ -73,7 +75,7 @@ jobs:
     needs: detect_changes
     if: >-
       (needs.detect_changes.outputs.run_documentation_build == 'true') &&
-      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+      (github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository)
     env:
       OrtPackageId: Microsoft.ML.OnnxRuntime
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
@@ -86,6 +88,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.ref }}
           fetch-depth: 0
           submodules: 'none'
 
@@ -209,7 +212,7 @@ jobs:
     needs: detect_changes
     if: >-
       (needs.detect_changes.outputs.run_documentation_build == 'true') &&
-      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+      (github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [ort-github-win-16-amd-scus-ss]
     timeout-minutes: 300
     env:
@@ -218,6 +221,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.ref }}
           fetch-depth: 0
           submodules: 'none'
 
@@ -283,7 +287,7 @@ jobs:
       - webgpu_build
     if: >-
       (needs.detect_changes.outputs.run_documentation_build == 'true') &&
-      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+      (github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [ort-github-win-6-a10-scus-ss]
     timeout-minutes: 300
     env:
@@ -293,6 +297,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.ref }}
           fetch-depth: 0
           submodules: 'none'
 
@@ -384,7 +389,9 @@ jobs:
       - runtime_build
       - webgpu_build
       - kernel_documentation_generate
-    if: always()
+    if: >-
+      (always()) &&
+      (github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     steps:
       - name: Check documentation results

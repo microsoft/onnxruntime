@@ -3,7 +3,7 @@ name: Linux CUDA CI
 on:
   push:
     branches: [main, 'rel-*']
-  pull_request:
+  pull_request_target:
     branches: [main, 'rel-*']
   workflow_dispatch:
 
@@ -17,7 +17,7 @@ permissions:
 jobs:
   build-linux-cuda-x64-release:
     name: Build Linux CUDA x64 Release
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
       packages: write
@@ -57,7 +57,7 @@ jobs:
 
   test-linux-cuda-x64-release:
     name: Test Linux CUDA x64 Release
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     needs: build-linux-cuda-x64-release
     runs-on: [ort-github-linux-6-a10-scus-ss]
     timeout-minutes: 210
@@ -67,6 +67,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.ref }}
 
       - uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         id: build_docker_image_step

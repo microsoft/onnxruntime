@@ -3,7 +3,7 @@ name: Linux OpenVINO CI
 on:
   push:
     branches: [main, 'rel-*']
-  pull_request:
+  pull_request_target:
     branches: [main, 'rel-*']
   workflow_dispatch:
 
@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   build_test_openvino:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     name: Build and Test OpenVINO EP (AlamLinux8, Py3.12)
     # Use the reusable workflow as the other Linux CI pipelines
     uses: ./.github/workflows/reusable_linux_build.yml

@@ -5,7 +5,7 @@ on:
     branches:
       - main
       - rel-*
-  pull_request:
+  pull_request_target:
     branches:
       - main
       - rel-*
@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   build_test_qnn_ep:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     name: Windows x64 QNN CI Pipeline (${{ matrix.QnnLibKind }})
     runs-on: [ort-github-win-16-amd-scus-ss]
     timeout-minutes: 120
@@ -33,6 +33,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.ref }}
 
       - name: Setup Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
