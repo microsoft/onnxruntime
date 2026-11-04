@@ -135,6 +135,25 @@ TEST(CApiTest, TestExternalInitializersInjection) {
   EXPECT_NO_THROW(Ort::Session(*ort_env, model_path, so));
 }
 
+TEST(CApiTest, TestExternalInitializersInjectionDirectBuffer) {
+  constexpr auto model_path = ORT_TSTR("testdata/model_with_external_initializer_come_from_user.onnx");
+  std::array<int64_t, 4> Pads_not_on_disk{0, 0, 1, 1};
+  constexpr std::array<int64_t, 1> init_shape{4};
+
+  const std::vector<std::string> init_names{"Pads_not_on_disk"};
+  std::vector<Ort::Value> initializer_data;
+
+  auto cpu_mem_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  auto init_tensor = Ort::Value::CreateTensor(cpu_mem_info, Pads_not_on_disk.data(), Pads_not_on_disk.size(),
+                                              init_shape.data(), init_shape.size());
+  initializer_data.push_back(std::move(init_tensor));
+
+  Ort::SessionOptions so;
+  so.AddConfigEntry(kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, "1");
+  so.AddExternalInitializers(init_names, initializer_data);
+  EXPECT_NO_THROW(Ort::Session(*ort_env, model_path, so));
+}
+
 static void ReadFileToBuffer(const char* file_path, std::vector<char>& buffer) {
   std::ifstream file(file_path, std::ios::binary | std::ios::ate);
   if (!file)
