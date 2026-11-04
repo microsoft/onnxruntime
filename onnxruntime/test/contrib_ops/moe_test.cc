@@ -1022,6 +1022,98 @@ TEST(MoETest, MoETest_Relu) {
              output, num_rows, num_experts, hidden_size, inter_size, "relu", 0);
 }
 
+template <typename ElementType>
+static void RunCudaSiluGatedMoETest(bool fc1_initializer, bool fc3_initializer,
+                                    bool disable_prepacking = false, int num_rows = 8) {
+  if (!HasCudaEnvironment(std::is_same_v<ElementType, BFloat16> ? 800 : 700)) {
+    GTEST_SKIP() << "CUDA architecture does not support the test element type";
+  }
+  SCOPED_TRACE(::testing::Message() << "fc1_initializer=" << fc1_initializer
+                                    << ", fc3_initializer=" << fc3_initializer
+                                    << ", disable_prepacking=" << disable_prepacking << ", rows=" << num_rows);
+  constexpr int num_experts = 4;
+  constexpr int hidden_size = 128;
+  constexpr int inter_size = 256;
+  std::vector<ElementType> input(num_rows * hidden_size);
+  std::vector<ElementType> router_probs(num_rows * num_experts, ElementType(-4.0f));
+  std::vector<ElementType> fc1(num_experts * inter_size * hidden_size, ElementType(0.0f));
+  std::vector<ElementType> fc2(num_experts * hidden_size * inter_size, ElementType(0.0f));
+  std::vector<ElementType> fc3(fc1.size(), ElementType(0.0f));
+  std::vector<ElementType> expected(input.size());
+  for (int expert = 0; expert < num_experts; ++expert) {
+    for (int channel = 0; channel < hidden_size; ++channel) {
+      const int diagonal = expert * inter_size * hidden_size + channel * hidden_size + channel;
+      fc1[diagonal] = ElementType(0.25f * (expert + 1));
+      fc3[diagonal] = ElementType(0.5f * (expert + 1));
+      fc2[expert * hidden_size * inter_size + channel * inter_size + channel] = ElementType(1.0f);
+    }
+  }
+  const float first_scale = 1.0f / (1.0f + std::exp(1.0f));
+  for (int row = 0; row < num_rows; ++row) {
+    const int first = row % num_experts;
+    const int second = (row + 1) % num_experts;
+    router_probs[row * num_experts + first] = ElementType(0.0f);
+    router_probs[row * num_experts + second] = ElementType(1.0f);
+    for (int channel = 0; channel < hidden_size; ++channel) {
+      const float value = static_cast<float>((row + channel) % 9 - 4) * 0.25f;
+      input[row * hidden_size + channel] = ElementType(value);
+      auto expert_output = [&](int expert) {
+        const float gate = value * 0.25f * (expert + 1);
+        const float linear = value * 0.5f * (expert + 1);
+        return gate / (1.0f + std::exp(-gate)) * linear;
+      };
+      expected[row * hidden_size + channel] =
+          ElementType(first_scale * expert_output(first) + (1.0f - first_scale) * expert_output(second));
+    }
+  }
+
+  OpTester tester("MoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", 2);
+  tester.AddAttribute<std::string>("activation_type", "silu");
+  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  tester.AddInput<ElementType>("input", {num_rows, hidden_size}, input);
+  tester.AddInput<ElementType>("router_probs", {num_rows, num_experts}, router_probs);
+  tester.AddInput<ElementType>("fc1_experts_weights", {num_experts, inter_size, hidden_size}, fc1, fc1_initializer);
+  tester.AddOptionalInputEdge<ElementType>();
+  tester.AddInput<ElementType>("fc2_experts_weights", {num_experts, hidden_size, inter_size}, fc2, true);
+  tester.AddOptionalInputEdge<ElementType>();
+  tester.AddInput<ElementType>("fc3_experts_weights", {num_experts, inter_size, hidden_size}, fc3, fc3_initializer);
+  tester.AddOutput<ElementType>("output", {num_rows, hidden_size}, expected);
+  tester.SetOutputTolerance(std::is_same_v<ElementType, BFloat16> ? 0.02f : 0.002f);
+  tester.SetNumRunCalls(2);
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  if (disable_prepacking) {
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigDisablePrepacking, "1"));
+  }
+  size_t prepacked_count = 0;
+  tester.Config(options).ConfigEp(DefaultCudaExecutionProvider()).RunWithConfig(&prepacked_count);
+  EXPECT_EQ(prepacked_count, fc1_initializer && fc3_initializer && !disable_prepacking ? 2u : 0u);
+}
+
+TEST(MoETest, CudaSiluGatedPrepackFloat32) {
+  RunCudaSiluGatedMoETest<float>(true, true);
+}
+
+TEST(MoETest, CudaSiluGatedPrepackFloat16) {
+  RunCudaSiluGatedMoETest<MLFloat16>(true, true);
+  RunCudaSiluGatedMoETest<MLFloat16>(true, true, false, 1024);
+}
+
+TEST(MoETest, CudaSiluGatedPrepackBFloat16) {
+  RunCudaSiluGatedMoETest<BFloat16>(true, true);
+}
+
+TEST(MoETest, CudaSiluGatedDynamicWeights) {
+  RunCudaSiluGatedMoETest<MLFloat16>(false, false);
+  RunCudaSiluGatedMoETest<MLFloat16>(true, false);
+  RunCudaSiluGatedMoETest<MLFloat16>(false, true);
+}
+
+TEST(MoETest, CudaSiluGatedDisablePrepacking) {
+  RunCudaSiluGatedMoETest<MLFloat16>(true, true, true);
+}
+
 TEST(MoETest, MoETest_Mixtral) {
   // This test uses FC3 (gated SiLU / Mixtral pattern) with dimensions too small for the
   // CUTLASS SIMT kernel (needs hidden_size >= 128, inter_size >= 128). CPU MoE does not
