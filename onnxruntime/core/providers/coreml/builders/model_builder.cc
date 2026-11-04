@@ -492,10 +492,10 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logge
   // GetTemporaryFilePath() always produce a unique path for the model and this is not existed
   // Mlprogram will create a folder while NN create a file
   if (create_ml_program_ && Env::Default().FolderExists(ToPathString(model_output_path_)) &&
-      !Env::Default().FolderExists(ToPathString(model_output_path_ + "/compiled_model.mlmodelc")) &&
-      !Env::Default().FileExists(ToPathString(model_output_path_ + "/Manifest.json"))) {
-    // The ML Package is removed once the compiled model is cached, so without the compiled model there is
-    // nothing to load from and the model has to be rebuilt.
+      !Env::Default().FolderExists(ToPathString(model_output_path_ + "/compiled_model.mlmodelc"))) {
+    // An ML Program cache is only usable through its compiled model. Without it, rebuild the model rather than
+    // compile whatever is left of the ML Package, which is removed once the compiled model is cached and may be
+    // incomplete.
     LOGS(logger, INFO) << "Cached model in " << model_output_path_ << " is incomplete and will be rebuilt.";
     ORT_THROW_IF_ERROR(Env::Default().DeleteFolder(ToPathString(model_output_path_)));
   }

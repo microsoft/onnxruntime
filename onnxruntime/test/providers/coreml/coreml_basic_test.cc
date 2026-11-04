@@ -570,6 +570,13 @@ TEST(CoreMLExecutionProviderTest, TestMLProgramModelCacheKeepsOnlyCompiledModel)
   std::filesystem::remove_all(model_dir / "compiled_model.mlmodelc");
   run_session();
   expect_only_compiled_model(model_dir);
+
+  // A cache with package files but no compiled model (e.g. a compile that failed) is also rebuilt.
+  std::filesystem::remove_all(model_dir / "compiled_model.mlmodelc");
+  ASSERT_TRUE(std::filesystem::create_directories(model_dir / "Data" / "com.microsoft.OnnxRuntime" / "weights"));
+  std::ofstream(model_dir / "Manifest.json") << "{}";
+  run_session();
+  expect_only_compiled_model(model_dir);
 }
 #endif  // defined(__APPLE__)
 
