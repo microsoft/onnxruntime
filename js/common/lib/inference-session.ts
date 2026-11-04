@@ -337,18 +337,6 @@ export declare namespace InferenceSession {
     storageBufferCacheMode?: 'disabled' | 'lazyRelease' | 'simple' | 'bucket';
 
     /**
-     * Replace the native WebGPU storage buffer bucket table. Keys are bucket sizes in bytes (positive multiples of
-     * 16); values are maximum numbers of free buffers to retain (non-negative integers). For example,
-     * `{4194304: 24, 5242880: 24, 6291456: 24, 8388608: 24}` provides finer steps and more spares for a growing KV cache.
-     * Requests larger than the largest bucket are aligned to 16 bytes and are not cached. A zero limit keeps the
-     * bucket's allocation size but retains no free buffers. Omitted buckets are not inherited from the default table.
-     * Include smaller buckets needed by intermediate tensors to avoid rounding those allocations to a large KV bucket.
-     * Requires 'bucket' storage cache mode. Set this before the first session using the device; the buffer cache is
-     * shared by sessions on that device. Does not apply to graph capture or JSEP.
-     */
-    storageBufferBucketLimits?: Readonly<Record<number, number>>;
-
-    /**
      * Specify the cache mode for uniform buffers.
      *
      * See {@link storageBufferCacheMode} for a description of the available modes.

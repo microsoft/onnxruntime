@@ -1,10 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <charconv>
-
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
+#include "core/common/safeint.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -27,35 +26,6 @@ void EnforceBufferUnmapped(WebGpuContext& context, WGPUBuffer buffer) {
 }
 
 }  // namespace
-
-BufferBucketLimits ParseBufferBucketLimits(std::string_view value) {
-  BufferBucketLimits limits;
-  const auto parse_number = [](std::string_view text) {
-    size_t number = 0;
-    const auto result = std::from_chars(text.data(), text.data() + text.size(), number);
-    ORT_ENFORCE(!text.empty() && result.ec == std::errc{} && result.ptr == text.data() + text.size(),
-                "Invalid storageBufferBucketLimits: expected unsigned decimal size:limit pairs.");
-    return number;
-  };
-
-  ORT_ENFORCE(!value.empty(), "storageBufferBucketLimits must not be empty.");
-  while (true) {
-    const auto comma = value.find(',');
-    const auto entry = value.substr(0, comma);
-    const auto colon = entry.find(':');
-    ORT_ENFORCE(colon != std::string_view::npos, "Invalid storageBufferBucketLimits: expected size:limit.");
-    const auto size = parse_number(entry.substr(0, colon));
-    const auto limit = parse_number(entry.substr(colon + 1));
-    ORT_ENFORCE(size > 0 && size % 16 == 0,
-                "storageBufferBucketLimits sizes must be positive multiples of 16.");
-    ORT_ENFORCE(limits.emplace(size, limit).second, "Duplicate storageBufferBucketLimits size: ", size);
-    if (comma == std::string_view::npos) {
-      break;
-    }
-    value.remove_prefix(comma + 1);
-  }
-  return limits;
-}
 
 class DisabledCacheManager : public IBufferCacheManager {
   bool SupportsBufferReuse() const override { return false; }
@@ -167,7 +137,7 @@ class SimpleCacheManager : public IBufferCacheManager {
   std::vector<WGPUBuffer> pending_buffers_;
 };
 
-// TODO: maybe use different bucket size for storage and uniform buffers?
+// Graph capture preserves its existing size classes and retains buffers separately.
 constexpr std::initializer_list<std::pair<const size_t, size_t>> BUCKET_DEFAULT_LIMIT_TABLE = {
     {64, 250},
     {128, 200},
@@ -201,30 +171,35 @@ constexpr std::initializer_list<std::pair<const size_t, size_t>> BUCKET_DEFAULT_
 
 class BucketCacheManager : public IBufferCacheManager {
  public:
-  BucketCacheManager() : buckets_limit_{BUCKET_DEFAULT_LIMIT_TABLE} {
-    Initialize();
-  }
-  explicit BucketCacheManager(const BufferBucketLimits& buckets_limit) : buckets_limit_{buckets_limit} {
-    Initialize();
-  }
-
   size_t CalculateBufferSize(size_t request_size) override {
-    // binary serch size
-    auto it = std::lower_bound(buckets_keys_.begin(), buckets_keys_.end(), request_size);
-    if (it == buckets_keys_.end()) {
-      return NormalizeBufferSize(request_size);
-    } else {
-      return *it;
+    if (request_size > kMaxCachedBytes) {
+      return (SafeInt<size_t>(request_size) + 15) / 16 * 16;
     }
+
+    // Eight intervals per doubling bound rounding overhead to 12.5% for sizes >= 128.
+    request_size = std::max(size_t{64}, request_size);
+    size_t alignment = 16;
+    while ((request_size - 1) / 16 >= alignment) {
+      alignment *= 2;
+    }
+    return (SafeInt<size_t>(request_size) + alignment - 1) / alignment * alignment;
   }
 
   WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size) override {
-    auto it = buckets_.find(buffer_size);
-    if (it != buckets_.end() && !it->second.empty()) {
-      auto buffer = it->second.back();
-      it->second.pop_back();
-      return buffer;
+    if (buffer_size <= kMaxCachedBytes) {
+      auto& bucket = buckets_[buffer_size];
+      bucket.last_used = ++use_sequence_;
+      bucket.last_decay = refresh_count_;
+      if (!bucket.buffers.empty()) {
+        auto buffer = bucket.buffers.back().MoveToCHandle();
+        bucket.buffers.pop_back();
+        cached_bytes_ -= buffer_size;
+        return buffer;
+      }
     }
+
+    // Reclaim cold spares before allocating a replacement, rather than only on release.
+    TrimToBudget(kMaxCachedBytes - std::min(buffer_size, kMaxCachedBytes));
     return nullptr;
   }
 
@@ -233,62 +208,79 @@ class BucketCacheManager : public IBufferCacheManager {
   }
 
   void ReleaseBuffer(WGPUBuffer buffer) override {
-    auto buffer_size = static_cast<size_t>(wgpuBufferGetSize(buffer));
-
-    auto it = buckets_.find(buffer_size);
-    if (it != buckets_.end() && it->second.size() < buckets_limit_[buffer_size]) {
-      it->second.emplace_back(buffer);
-    } else {
-      pending_buffers_.emplace_back(buffer, buffer_size);
+    auto owned_buffer = wgpu::Buffer::Acquire(buffer);
+    const auto buffer_size = static_cast<size_t>(owned_buffer.GetSize());
+    if (buffer_size > kMaxCachedBytes || buffer_size == 0) {
+      return;
     }
+
+    // The returned working set determines spare counts; there is no per-size cap.
+    auto [it, inserted] = buckets_.try_emplace(buffer_size);
+    auto& bucket = it->second;
+    if (inserted) {
+      bucket.last_used = ++use_sequence_;
+      bucket.last_decay = refresh_count_;
+    }
+    bucket.buffers.emplace_back(std::move(owned_buffer));
+    cached_bytes_ += buffer_size;
+    TrimToBudget(kMaxCachedBytes);
   }
 
   void OnRefresh(GraphCaptureState /*graph_capture_state*/) override {
-    for (auto& [buffer, buffer_size] : pending_buffers_) {
-      auto it = buckets_.find(buffer_size);
-      if (it != buckets_.end() && it->second.size() < buckets_limit_[buffer_size]) {
-        it->second.emplace_back(buffer);
+    ++refresh_count_;
+    for (auto it = buckets_.begin(); it != buckets_.end();) {
+      auto& [buffer_size, bucket] = *it;
+      // Refreshes are submission boundaries, not necessarily complete inference runs.
+      // Give infrequently used sizes a grace period, then halve their idle spares.
+      if (refresh_count_ - bucket.last_decay >= kColdRefreshes) {
+        const auto count = (bucket.buffers.size() + 1) / 2;
+        for (size_t i = 0; i < count; ++i) {
+          bucket.buffers.pop_back();
+          cached_bytes_ -= buffer_size;
+        }
+        bucket.last_decay = refresh_count_;
+      }
+      if (bucket.buffers.empty()) {
+        buckets_.erase(it++);
       } else {
-        wgpuBufferRelease(buffer);
+        ++it;
       }
     }
-    pending_buffers_.clear();
   }
 
-  ~BucketCacheManager() {
-    for (auto& pair : buckets_) {
-      for (auto& buffer : pair.second) {
-        wgpuBufferRelease(buffer);
+ private:
+  void TrimToBudget(size_t budget) {
+    while (cached_bytes_ > budget) {
+      auto oldest = buckets_.end();
+      for (auto it = buckets_.begin(); it != buckets_.end(); ++it) {
+        if (!it->second.buffers.empty() &&
+            (oldest == buckets_.end() || it->second.last_used < oldest->second.last_used)) {
+          oldest = it;
+        }
+      }
+      auto& [buffer_size, bucket] = *oldest;
+      do {
+        bucket.buffers.pop_back();
+        cached_bytes_ -= buffer_size;
+      } while (cached_bytes_ > budget && !bucket.buffers.empty());
+      if (bucket.buffers.empty()) {
+        buckets_.erase(oldest);
       }
     }
-    for (auto& buffer_info : pending_buffers_) {
-      wgpuBufferRelease(buffer_info.first);
-    }
   }
 
- protected:
-  void Initialize() {
-    buckets_keys_.reserve(buckets_limit_.size());
-    buckets_.reserve(buckets_limit_.size());
-    for (const auto& pair : buckets_limit_) {
-      buckets_keys_.push_back(pair.first);
-      buckets_.emplace(pair.first, std::vector<WGPUBuffer>());
-    }
-    std::sort(buckets_keys_.begin(), buckets_keys_.end());
-
-#ifndef NDEBUG  // if debug build
-    ORT_ENFORCE(std::all_of(buckets_keys_.begin(), buckets_keys_.end(), [](size_t size) { return size % 16 == 0; }),
-                "Bucket sizes must be multiples of 16.");
-
-    for (size_t i = 1; i < buckets_keys_.size(); ++i) {
-      ORT_ENFORCE(buckets_keys_[i] > buckets_keys_[i - 1], "Bucket sizes must be in increasing order.");
-    }
-#endif
-  }
-  BufferBucketLimits buckets_limit_;
-  std::unordered_map<size_t, std::vector<WGPUBuffer>> buckets_;
-  std::vector<std::pair<WGPUBuffer, size_t>> pending_buffers_;
-  std::vector<size_t> buckets_keys_;
+  // Bound idle storage independently of live model tensors and pending recordings.
+  static constexpr size_t kMaxCachedBytes = 256 * 1024 * 1024;
+  static constexpr uint64_t kColdRefreshes = 64;
+  struct Bucket {
+    InlinedVector<wgpu::Buffer> buffers;
+    uint64_t last_used = 0;
+    uint64_t last_decay = 0;
+  };
+  InlinedHashMap<size_t, Bucket> buckets_;
+  size_t cached_bytes_ = 0;
+  uint64_t use_sequence_ = 0;
+  uint64_t refresh_count_ = 0;
 };
 
 class GraphCacheManager : public IBufferCacheManager {
@@ -477,8 +469,7 @@ class GraphSimpleCacheManager : public IBufferCacheManager {
   std::vector<WGPUBuffer> captured_buffers_;
 };
 
-std::unique_ptr<IBufferCacheManager> CreateBufferCacheManager(BufferCacheMode cache_mode,
-                                                              const BufferBucketLimits& bucket_limits = {}) {
+std::unique_ptr<IBufferCacheManager> CreateBufferCacheManager(BufferCacheMode cache_mode) {
   switch (cache_mode) {
     case BufferCacheMode::Disabled:
       return std::make_unique<DisabledCacheManager>();
@@ -487,9 +478,6 @@ std::unique_ptr<IBufferCacheManager> CreateBufferCacheManager(BufferCacheMode ca
     case BufferCacheMode::Simple:
       return std::make_unique<SimpleCacheManager>();
     case BufferCacheMode::Bucket:
-      if (!bucket_limits.empty()) {
-        return std::make_unique<BucketCacheManager>(bucket_limits);
-      }
       return std::make_unique<BucketCacheManager>();
     case BufferCacheMode::Graph:
       return std::make_unique<GraphCacheManager>();
@@ -526,12 +514,9 @@ std::ostream& operator<<(std::ostream& os, BufferCacheMode mode) {
   return os;
 }
 
-BufferManager::BufferManager(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode,
-                             BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode,
-                             BufferCacheMode default_buffer_cache_mode,
-                             const BufferBucketLimits& storage_buffer_bucket_limits)
+BufferManager::BufferManager(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode, BufferCacheMode default_buffer_cache_mode)
     : context_{context},
-      storage_cache_{CreateBufferCacheManager(storage_buffer_cache_mode, storage_buffer_bucket_limits)},
+      storage_cache_{CreateBufferCacheManager(storage_buffer_cache_mode)},
       uniform_cache_{CreateBufferCacheManager(uniform_buffer_cache_mode)},
       query_resolve_cache_{CreateBufferCacheManager(query_resolve_buffer_cache_mode)},
       default_cache_{CreateBufferCacheManager(default_buffer_cache_mode)} {
@@ -837,13 +822,8 @@ IBufferCacheManager& BufferManager::GetCacheManager(WGPUBuffer buffer) const {
   return GetCacheManager(usage);
 }
 
-std::unique_ptr<BufferManager> BufferManagerFactory::Create(
-    WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode,
-    BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode,
-    BufferCacheMode default_buffer_cache_mode, const BufferBucketLimits& storage_buffer_bucket_limits) {
-  return std::make_unique<BufferManager>(context, storage_buffer_cache_mode, uniform_buffer_cache_mode,
-                                         query_resolve_buffer_cache_mode, default_buffer_cache_mode,
-                                         storage_buffer_bucket_limits);
+std::unique_ptr<BufferManager> BufferManagerFactory::Create(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode, BufferCacheMode default_buffer_cache_mode) {
+  return std::make_unique<BufferManager>(context, storage_buffer_cache_mode, uniform_buffer_cache_mode, query_resolve_buffer_cache_mode, default_buffer_cache_mode);
 }
 
 }  // namespace webgpu

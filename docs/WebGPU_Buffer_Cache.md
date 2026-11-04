@@ -1,53 +1,24 @@
-# WebGPU storage buffer bucket configuration
+# WebGPU buffer caching
 
-The native WebGPU EP uses a bucket cache for storage buffers by default. Each
-allocation is rounded up to a bucket size, and each bucket retains a limited
-number of free buffers. A growing dynamic KV cache can cross a large size step
-or need more same-sized buffers than the default table retains.
+The native WebGPU provider's default storage cache mode, `bucket`, manages spare
+buffers automatically. No bucket table configuration is required.
 
-Use `storageBufferBucketLimits` to replace the storage bucket table with sizes
-and limits appropriate for the model. This minimal ONNX Runtime Web example
-illustrates KV-sized buckets; a complete model table should also include smaller
-sizes needed by intermediate tensors, so those allocations do not round up to
-4 MiB:
+- Sizes use eight intervals per doubling, with a minimum allocation of 64 bytes
+  and 16-byte alignment. Above 128 bytes, rounding adds at most 12.5%. For example,
+  a 4,195,328-byte KV tensor uses a 4.5 MiB buffer rather than an 8 MiB buffer.
+- Spare counts follow the buffers returned by the workload, without fixed
+  per-size count limits. Each bucket-mode cache retains at most 256 MiB in total.
+  A working set larger than this budget can still require repeated allocations.
+- When space is needed, buffers from the least recently requested size are
+  released first. Cache misses reclaim spare space before creating a new buffer.
+- A size not requested for 64 cache refreshes loses half its spares, rounded up.
+  This repeats until the bucket is empty. Refreshes occur at submission boundaries,
+  including empty flushes; they do not correspond one-to-one with inference runs.
+  There is no background timer while the context is idle.
 
-```typescript
-const session = await ort.InferenceSession.create(model, {
-  executionProviders: [
-    {
-      name: "webgpu",
-      storageBufferCacheMode: "bucket",
-      storageBufferBucketLimits: {
-        4194304: 24,
-        5242880: 24,
-        6291456: 24,
-        8388608: 24,
-      },
-    },
-  ],
-});
-```
-
-Native callers pass the EP option `storageBufferBucketLimits` as a
-comma-separated string of decimal `size:limit` pairs, such as
-`4194304:24,5242880:24,6291456:24,8388608:24`. The equivalent session
-configuration entry is
-`ep.webgpuexecutionprovider.storageBufferBucketLimits`.
-
-- Sizes are positive multiples of 16 bytes. Limits are non-negative integers.
-  A zero limit preserves the allocation size but retains no free buffers.
-- The non-empty table replaces the entire default storage table; omitted sizes
-  are not inherited. Pair order does not matter; duplicate sizes are rejected.
-- Requests larger than the largest bucket are aligned to 16 bytes and are not
-  cached. Other requests use the smallest bucket that fits.
-- Requires `storageBufferCacheMode: 'bucket'` (the default). Uniform, query and
-  other buffer caches keep their existing settings.
-- Set the option when creating the first session on a device. Sessions sharing
-  that device share the cache. It does not configure graph capture or JSEP.
-
-Choose limits from the workload's peak demand and available memory. More spares
-reduce repeated allocation but retain more memory: the table above can retain
-up to 552 MiB of free storage buffers in addition to active allocations. Finer
-sizes reduce rounding overhead, but free buffers in earlier buckets remain
-cached until the context is released. This option does not add automatic
-eviction or change the default table.
+The budget covers spare buffers only. Live tensors, buffers awaiting their
+recording's submission, other cache modes, and driver allocations are additional
+memory. Releasing a cache reference does not force the GPU driver to reclaim
+memory immediately. Buffers awaiting submission retain their existing lifetime
+protection. Graph capture uses its separate retention policy. The deprecated JSEP
+backend is also separate.

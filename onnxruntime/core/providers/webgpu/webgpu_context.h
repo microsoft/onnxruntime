@@ -160,7 +160,7 @@ struct CommandRecordingState {
 struct WebGpuBufferCacheConfig {
   struct ConfigEntry {
     BufferCacheMode mode;
-    BufferBucketLimits bucket_limits;
+    std::string config_string;  // preserved for customized configuration, eg. bucket sizes
   };
   ConfigEntry storage{BufferCacheMode::Bucket, {}};
   ConfigEntry uniform{BufferCacheMode::Simple, {}};

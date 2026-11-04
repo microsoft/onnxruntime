@@ -5,7 +5,6 @@
 
 #include <iosfwd>
 #include <mutex>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -37,10 +36,6 @@ enum class BufferCacheMode {
 };
 std::ostream& operator<<(std::ostream& os, BufferCacheMode mode);
 
-using BufferBucketLimits = InlinedHashMap<size_t, size_t>;
-// Parse a replacement bucket table encoded as comma-separated size:limit pairs.
-BufferBucketLimits ParseBufferBucketLimits(std::string_view value);
-
 //
 // IBufferCacheManager is an interface for buffer cache management.
 //
@@ -49,7 +44,7 @@ BufferBucketLimits ParseBufferBucketLimits(std::string_view value);
 // - Disabled: no cache. always allocate a new buffer and release it immediately after use.
 // - LazyRelease: no cache. the difference from Disabled is that it delays the release of buffers until the next refresh.
 // - Simple: a simple cache that always keeps buffers. when a buffer is requested, it tries to find a buffer in the cache.
-// - Bucket: a cache that keeps buffers in different buckets based on the buffer size, with a maximum number of buffers in each bucket.
+// - Bucket: size-class reuse with a shared spare-byte budget and eviction of cold buffers.
 // - Graph: used for graph capturing storage buffer cache mode. All buffers will be cached. Buffers can be reused across runs and in one run.
 // - GraphSimple: used for graph capturing uniform buffer cache mode. All buffers will be cached. Buffers can be reused across runs but can't be reused in one run.
 class IBufferCacheManager {
@@ -97,10 +92,7 @@ class IBufferCacheManager {
 //
 class BufferManager {
  public:
-  BufferManager(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode,
-                BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode,
-                BufferCacheMode default_buffer_cache_mode,
-                const BufferBucketLimits& storage_buffer_bucket_limits = {});
+  BufferManager(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode, BufferCacheMode default_buffer_cache_mode);
   void Upload(CommandRecordingState& recording, void* src, WGPUBuffer dst, size_t size) const;
   struct UploadInfo {
     const void* source;
@@ -140,11 +132,7 @@ class BufferManager {
 
 class BufferManagerFactory {
  public:
-  static std::unique_ptr<BufferManager> Create(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode,
-                                               BufferCacheMode uniform_buffer_cache_mode,
-                                               BufferCacheMode query_resolve_buffer_cache_mode,
-                                               BufferCacheMode default_buffer_cache_mode,
-                                               const BufferBucketLimits& storage_buffer_bucket_limits = {});
+  static std::unique_ptr<BufferManager> Create(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode, BufferCacheMode default_buffer_cache_mode);
 
  private:
   BufferManagerFactory() {}

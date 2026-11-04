@@ -468,8 +468,7 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
                                                config.buffer_cache_config.storage.mode,
                                                config.buffer_cache_config.uniform.mode,
                                                config.buffer_cache_config.query_resolve.mode,
-                                               config.buffer_cache_config.default_entry.mode,
-                                               config.buffer_cache_config.storage.bucket_limits);
+                                               config.buffer_cache_config.default_entry.mode);
 
     // create initializer buffer manager.
     initializer_buffer_mgr_ = BufferManagerFactory::Create(*this,
