@@ -5,7 +5,10 @@
 (async () => {
   'use strict';
   const $ = (id) => document.getElementById(id);
-  const ms = (us) => (us / 1000).toFixed(2);
+  const ms = (us) => {
+    const value = us / 1000;
+    return value !== 0 && Math.abs(value) < 0.01 ? Number(value.toPrecision(2)).toString() : value.toFixed(2);
+  };
   const percent = (part, total) => (total ? ((100 * part) / total).toFixed(1) : '0.0');
   const number = (value) => value.toLocaleString('en-US');
   const element = (tag, text, className) => {
@@ -94,7 +97,11 @@
           return (strings[event[3]] + ' ' + strings[event[4]]).toLowerCase().includes(query);
         }),
       );
-      $('search-count').textContent = query ? `${number(matches.size)} matches · Enter to inspect` : '';
+      $('search-count').textContent = query
+        ? matches.size
+          ? `${number(matches.size)} matches · Enter to inspect`
+          : '0 matches · Esc to clear; all events remain visible'
+        : '';
     }
 
     function setView(start, stop) {
@@ -124,10 +131,12 @@
       ctx.font = '10px "Segoe UI", sans-serif';
       ctx.textBaseline = 'middle';
       boxes = [];
+      let markers = 0;
       if (!active) {
         ctx.fillStyle = '#7a8c9a';
         ctx.fillText('No runs match this filter.', 24, 50);
         $('view-label').textContent = '';
+        $('resolution-note').textContent = '';
         return;
       }
       const rawStep = (view[1] - view[0]) / Math.max(2, dimensions.plotWidth / 90);
@@ -167,9 +176,10 @@
         const lane = event[2];
         const begin = Math.max(left, x(event[0]));
         const end = Math.min(width - 18, x(event[0] + event[1]));
-        const barWidth = Math.max(0.8, end - begin);
+        if (end - begin < 3) markers++;
+        const barWidth = Math.max(3, end - begin);
         const y = top + lane * rowHeight + 9;
-        ctx.globalAlpha = !query || matches.has(id) ? 1 : 0.12;
+        ctx.globalAlpha = !query || !matches.size || matches.has(id) || related.has(id) ? 1 : 0.12;
         ctx.fillStyle = labels[lane][2];
         ctx.fillRect(begin, y, barWidth, 18);
         if (selected === id || related.has(id)) {
@@ -233,6 +243,9 @@
         height - 19,
       );
       $('view-label').textContent = `${ms(view[1] - view[0])} ms visible`;
+      $('resolution-note').textContent = markers
+        ? `${number(markers)} events shown as 3 px markers; zoom in to see their measured durations.`
+        : '';
     }
 
     function inspect(id) {
@@ -423,6 +436,7 @@
         item.setAttribute('aria-current', item.dataset.run === String(run.index));
       $('previous').disabled = filtered.indexOf(run) <= 0;
       $('next').disabled = filtered.indexOf(run) >= filtered.length - 1;
+      $('fit-gpu').disabled = !run.indices.some((id) => events[id][2] === 10);
       updateMatches();
       showPhases();
       view = bounds();
@@ -559,6 +573,15 @@
     $('zoom-in').addEventListener('click', () => zoom(0.5));
     $('zoom-out').addEventListener('click', () => zoom(2));
     $('reset').addEventListener('click', fitRun);
+    $('fit-gpu').addEventListener('click', () => {
+      const ids = active?.indices.filter((id) => events[id][2] === 10) ?? [];
+      if (!ids.length) return;
+      $('search').value = '';
+      query = '';
+      updateMatches();
+      focusEvents(ids);
+      inspect(null);
+    });
     const fitEvent = () => {
       if (selected === null) return;
       const event = events[selected];

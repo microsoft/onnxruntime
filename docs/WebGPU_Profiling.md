@@ -35,6 +35,10 @@ submission or GPU dispatch in the webpage to highlight the batch and draw arrows
 The event inspector lists related events; **Zoom to submission** shows the CPU call and its GPU work,
 including links outside the selected inference interval. Older logs remain readable without links.
 
+Use **Fit GPU work** to zoom to the GPU dispatches in the selected interval. At wider scales,
+events narrower than three pixels appear as markers; the report identifies this minimum width,
+and the inspector retains the measured duration. Small nonzero times are not rounded to zero.
+
 `WebGPU::Submit` measures the `queue.submit` call; command-buffer finishing is recorded separately as
 `WebGPU::Finish` on the encoding lane. Arrows start at submit entry because GPU execution can begin
 before the CPU call returns. With calibrated clocks, the report shows submit-entry-to-first-GPU-start
