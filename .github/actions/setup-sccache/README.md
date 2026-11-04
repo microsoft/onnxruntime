@@ -68,8 +68,9 @@ read-only permissions; cleanup never checks out PR code or consumes triggering-r
 Manual dispatch defaults to dry run. For a read-only local preview with an authenticated `gh`:
 
 ```bash
-GITHUB_REPOSITORY=microsoft/onnxruntime node .github/scripts/prune-macos-sccache.cjs
-node --test .github/scripts/prune-macos-sccache.test.cjs
+GITHUB_REPOSITORY=microsoft/onnxruntime python .github/scripts/prune_macos_sccache.py
+python -m unittest discover -s .github/scripts -p test_prune_macos_sccache.py -v
 ```
 
 Omitting `--apply` never deletes caches. No live cleanup is needed to run the regression tests.
+The cleanup script and tests use only Python's standard library and the preinstalled `gh` CLI.
