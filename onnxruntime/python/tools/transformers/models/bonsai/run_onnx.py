@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import time
 from pathlib import Path
@@ -26,6 +27,28 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--prompt", required=True, help="User prompt.")
     parser.add_argument("--max-new-tokens", type=int, default=1, help="Maximum number of tokens to generate.")
     return parser.parse_args()
+
+
+def stop_token_ids(model_dir: Path, tokenizer) -> set[int]:
+    """Return the checkpoint's end-of-sequence ids; chat delimiters and tool markers are not terminal."""
+
+    def as_ids(value) -> set[int]:
+        if value is None:
+            return set()
+        return {int(value)} if isinstance(value, int) else {int(item) for item in value}
+
+    for name in ("generation_config.json", "config.json"):
+        path = model_dir / name
+        if not path.is_file():
+            continue
+        config = json.loads(path.read_text(encoding="utf-8"))
+        ids = as_ids(config.get("eos_token_id")) or as_ids(config.get("text_config", {}).get("eos_token_id"))
+        if ids:
+            return ids
+    ids = as_ids(tokenizer.eos_token_id)
+    if not ids:
+        raise ValueError(f"No eos_token_id in {model_dir} or its tokenizer")
+    return ids
 
 
 def main() -> None:
@@ -68,7 +91,7 @@ def main() -> None:
             f"{sequence_length - len(token_ids)} generated tokens"
         )
 
-    eos_token_ids = set(tokenizer.all_special_ids)
+    eos_token_ids = stop_token_ids(args.model_dir, tokenizer)
     generated: list[int] = []
     run_seconds = 0.0
     for _ in range(args.max_new_tokens):

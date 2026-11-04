@@ -1,14 +1,17 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import onnx
 import torch
 from convert_to_onnx import BonsaiSwishAttention, T8Linear, _finalize_t8_weights, _fwht, _gated_delta_rule
+from run_onnx import stop_token_ids
 from t8_codec import decode_q2
 from torch import nn
 from transformers.models.qwen3_5.configuration_qwen3_5 import Qwen3_5TextConfig
@@ -149,6 +152,20 @@ class BonsaiExportTest(unittest.TestCase):
         gate = sigmoid.q_proj(hidden).view(1, 3, 2, 8).chunk(2, dim=-1)[1].reshape(1, 3, 8)
         torch.testing.assert_close(actual, base * gate, rtol=1e-5, atol=1e-6)
         torch.testing.assert_close(actual_weights, base_weights, rtol=0, atol=0)
+
+
+class RunOnnxTest(unittest.TestCase):
+    def test_stop_token_ids_use_configured_eos_only(self):
+        tokenizer = SimpleNamespace(eos_token_id=7, all_special_ids=[1, 2, 3, 7])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.assertEqual(stop_token_ids(root, tokenizer), {7})
+            (root / "config.json").write_text(json.dumps({"text_config": {"eos_token_id": 5}}), encoding="utf-8")
+            self.assertEqual(stop_token_ids(root, tokenizer), {5})
+            (root / "generation_config.json").write_text(json.dumps({"eos_token_id": [4, 6]}), encoding="utf-8")
+            self.assertEqual(stop_token_ids(root, tokenizer), {4, 6})
+            with self.assertRaisesRegex(ValueError, "No eos_token_id"):
+                stop_token_ids(root / "missing", SimpleNamespace(eos_token_id=None))
 
 
 if __name__ == "__main__":
