@@ -9732,9 +9732,11 @@ struct VitAttentionTestConfig {
   std::optional<int64_t> softmax_axis = 3;
   std::vector<int64_t> k_perm = {0, 2, 3, 1};
   int64_t seq_len = 64;
+  int64_t num_heads = 4;
   int64_t head_size = 16;
-  // Fewer K/V heads than the 4 query heads makes MatMul broadcast them, as in multi-query attention.
-  int64_t kv_num_heads = 4;
+  // Fewer K/V heads than the query heads makes MatMul broadcast them, as in multi-query attention.
+  // 0 means the same as num_heads.
+  int64_t kv_num_heads = 0;
   // Projects K/V from a second input with batch 1; a larger query batch then makes MatMul broadcast them.
   bool separate_kv_input = false;
   int64_t q_batch = 1;
@@ -9754,7 +9756,8 @@ struct VitAttentionTestConfig {
 //     -> MatMul(V) -> Transpose(0,2,1,3) -> Reshape[0,0,N*H]
 // The fp16 variant uses constant data and is only meant for graph checks.
 static void BuildVitAttentionTestCase(ModelTestBuilder& builder, const VitAttentionTestConfig& config = {}) {
-  constexpr int64_t num_heads = 4;
+  const int64_t num_heads = config.num_heads;
+  const int64_t kv_num_heads = config.kv_num_heads == 0 ? num_heads : config.kv_num_heads;
   const int64_t head_size = config.head_size;
   const int64_t hidden_size = num_heads * head_size;
 
@@ -9807,10 +9810,10 @@ static void BuildVitAttentionTestCase(ModelTestBuilder& builder, const VitAttent
     builder.AddNode("Transpose", {bsnh}, {transposed}).AddAttribute("perm", perm);
     return transposed;
   };
-  const std::vector<int64_t> kv_bias_shape{config.kv_num_heads * head_size};
+  const std::vector<int64_t> kv_bias_shape{kv_num_heads * head_size};
   auto* q = add_head_split(q_input, num_heads, {0, 2, 1, 3}, config.q_weight_batch, config.q_bias_shape);
-  auto* k = add_head_split(kv_input, config.kv_num_heads, config.k_perm, 0, kv_bias_shape);
-  auto* v = add_head_split(kv_input, config.kv_num_heads, {0, 2, 1, 3}, 0, kv_bias_shape);
+  auto* k = add_head_split(kv_input, kv_num_heads, config.k_perm, 0, kv_bias_shape);
+  auto* v = add_head_split(kv_input, kv_num_heads, {0, 2, 1, 3}, 0, kv_bias_shape);
 
   auto* qk = builder.MakeIntermediate();
   auto* scaled = builder.MakeIntermediate();
@@ -9986,6 +9989,17 @@ TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitZeroInMergedHeadDimN
   // The output Reshape would read the MultiHeadAttention output, whose dim 2 is N*H rather than N.
   VitAttentionTestConfig config;
   config.merge_heads_shape = {0, 0, 0, -1};
+  ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionUnfused, *logger_));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitTooManyHeadsNotFused) {
+  // The WebGPU kernel rejects more heads than maxComputeInvocationsPerWorkgroup, which is only guaranteed to be 256.
+  // The other guards pass: the head size is a multiple of 8 and the query is not short.
+  VitAttentionTestConfig config;
+  config.num_heads = 257;
+  config.head_size = 8;
+  config.seq_len = 32;
+  config.fp16 = true;
   ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionUnfused, *logger_));
 }
 

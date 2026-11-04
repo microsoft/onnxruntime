@@ -243,6 +243,10 @@ bool TryFuse(Graph& graph, Node& softmax, const InlinedHashSet<std::string_view>
 
   // The remaining checks keep the fused node on the WebGPU kernel's dense FlashAttention prefill path. Its fallbacks
   // are slower than the unfused graph, and the non-flash one does not support graph capture.
+  // The kernel rejects more heads than maxComputeInvocationsPerWorkgroup, whose guaranteed minimum is 256.
+  if (q_heads > 256) {
+    return false;
+  }
   // FlashAttention requires a head size that is a multiple of 8 on every adapter.
   if (q_head_size % 8 != 0) {
     return false;
