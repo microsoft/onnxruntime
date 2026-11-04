@@ -58,12 +58,17 @@ def main():
             raise AssertionError(f"SDK archive is missing required files: {sorted(missing)}.")
         if sys.platform == "win32":
             library = "bin/onnxruntime.dll"
+            bridge = "bin/onnxruntime_providers_shared.dll"
             if "onnxruntime/lib/onnxruntime.lib" not in names:
                 raise AssertionError("Windows SDK must include lib/onnxruntime.lib for native consumers.")
         elif sys.platform == "darwin":
             library = "lib/libonnxruntime.dylib"
+            bridge = "lib/libonnxruntime_providers_shared.dylib"
         else:
             library = "lib/libonnxruntime.so"
+            bridge = "lib/libonnxruntime_providers_shared.so"
+        if "onnxruntime/" + bridge not in names:
+            raise AssertionError(f"SDK archive must include its shared-provider bridge: {bridge}.")
         with tempfile.TemporaryDirectory(prefix="ort-bazel-sdk-") as directory:
             archive.extractall(directory)
             root = Path(directory) / "onnxruntime"

@@ -10,6 +10,7 @@ load("//bazel:cuda.bzl", "cuda_libraries")
 load("//bazel:mlas.bzl", "mlas_libraries")
 load("//bazel:packaging.bzl", "runtime_sdk_package")
 load("//bazel:platforms.bzl", "desktop_shared_library")
+load("//bazel:python_wheel.bzl", "python_wheel_package")
 load("//bazel:tests.bzl", "core_tests")
 
 package(default_visibility = ["//visibility:public"])
@@ -288,11 +289,32 @@ cc_test(
     ],
 )
 
+desktop_shared_library(
+    name = "providers_shared_library",
+    srcs = [
+        "onnxruntime/core/providers/shared/common.cc",
+        "onnxruntime/core/providers/shared/common.h",
+    ],
+    linkopts = select({
+        "//bazel:windows": [
+            "/EXPORT:Provider_GetHost",
+            "/EXPORT:Provider_SetHost",
+        ],
+        "//conditions:default": [],
+    }),
+    linux = "libonnxruntime_providers_shared.so",
+    macos = "libonnxruntime_providers_shared.dylib",
+    tags = ["manual"],
+    windows = "onnxruntime_providers_shared.dll",
+)
+
 cuda_libraries()
 
 language_bindings()
 
 runtime_sdk_package()
+
+python_wheel_package()
 
 core_tests()
 

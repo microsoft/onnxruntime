@@ -10,7 +10,7 @@ The native graph targets Linux x86-64, Windows x86-64, and macOS on Intel and
 Apple Silicon. Linux and native Windows execution have been validated; macOS
 validation is still pending. This is not yet a replacement for the
 release build: contrib operators, additional execution providers,
-mobile/web cross-compilation, and language-specific release packaging are not included.
+mobile/web cross-compilation, and complete release packaging are not included.
 `orttraining` build and test migration is intentionally out of scope.
 
 ## Getting started
@@ -61,7 +61,7 @@ bazel test -c opt //:runtime_sdk_archive_test --test_output=errors
 
 `bazel-bin/onnxruntime-sdk.zip` contains a single `onnxruntime/` directory:
 standalone public C/C++ session headers in `include/`, the source-built shared
-runtime in `lib/` (`bin/` on Windows), the Windows import library
+runtime and shared-provider bridge in `lib/` (`bin/` on Windows), the Windows import library
 `lib/onnxruntime.lib`, version and license notices, and a small Add inference
 example with its model. CUDA-enabled Linux archives also include the
 source-built CUDA and shared-provider libraries; CUDA/cuDNN SDK libraries are
@@ -69,7 +69,8 @@ not redistributed. Consumers must supply the matching system runtime
 dependencies, including the Visual C++ runtime on Windows or CUDA/cuDNN for
 GPU execution. The archive is specific to the selected target platform and
 build flags, not a universal or officially signed release package. It does
-not yet produce Python wheels, Maven/AAR, npm, NuGet, or Apple frameworks.
+not produce Maven/AAR, npm, NuGet, or Apple frameworks. The separate CPU
+Python wheel target is described below.
 
 The archive test checks its layout, extracts it to a temporary directory, and
 loads that extracted runtime to verify the version through `OrtGetApiBase`.
@@ -109,6 +110,64 @@ and passed Add inference using the extracted DLL. That standalone example check
 is separate from the source-native archive test above; all temporary graph
 substitutions were removed. Linux, macOS, and CUDA archive execution remain
 unvalidated.
+
+### Native Python wheel
+
+```sh
+bazel build -c opt //:python_wheel
+bazel test -c opt //:python_wheel_test --build_python_zip=false --test_output=all
+```
+
+`//:python_wheel` packages the same source-assembled CPU inference API and
+source-built extension used by `//:python_runtime_package`. It uses
+`rules_python`'s wheel rule directly, not `setup.py`, `build.py`, or an
+external wheel download. NumPy remains a declared dependency rather than
+being bundled. The wheel contains versioned metadata, native CPython 3.12
+ABI/platform tags, license notices, and a hashed `RECORD`. Its explicit
+version in `bazel/python_wheel.bzl` must match `VERSION_NUMBER`; the package
+test rejects a mismatch.
+
+The initial wheel targets are Windows x86-64 (`win_amd64`) and Linux x86-64
+(`linux_x86_64`). Linux is deliberately **not** tagged `manylinux`: that would
+require an appropriate build environment and dependency audit/repair.
+macOS deployment-target tagging and CUDA provider packaging are not enabled
+for this wheel. This is the CPU inference package, not the complete optional
+Python tooling/transformers distribution. Training is intentionally excluded.
+
+For example, from a dedicated CPython 3.12 virtual environment on Windows:
+
+```powershell
+python -m pip install .\bazel-bin\onnxruntime-1.32.0-cp312-cp312-win_amd64.whl
+```
+
+Use the corresponding `linux_x86_64` filename on Linux. Installation needs
+the normal platform runtime dependencies, including the Visual C++ runtime
+on Windows. `//:python_wheel_test` verifies metadata, every `RECORD` hash and
+size, absence of bundled dependencies/test sources, and high-level
+`InferenceSession` Add inference from the wheel extracted into a temporary
+directory. A fresh subprocess verifies it imported that extracted package,
+not the source/runfiles package.
+
+Non-minimal Python initializes the shared-provider bridge even in a CPU-only
+build. The native graph therefore builds that small library on desktop
+platforms without enabling CUDA, exports `Provider_GetHost` and
+`Provider_SetHost` on Windows, and installs it beside the Python extension.
+The SDK archive also includes it. The wheel test rejects the previously
+observed `Init provider bridge failed` import warning instead of suppressing
+it. CUDA's existing shared-provider target uses the same library.
+
+Windows validation: `bazel test -c opt //:python_wheel_test
+--build_python_zip=false --test_output=all --nocache_test_results` passed one
+test. The wheel used a temporary local substitution of the previously
+source-built native extension, while its shared-provider bridge was freshly
+compiled from source. An offline `pip install --no-deps --target ...` of that
+wheel also passed high-level Add inference under the managed CPython 3.12
+interpreter with the declared NumPy dependency; the bridge initialization
+warning was absent. The native extension substitution was then removed.
+`bazel build -c opt //:python_wheel_test //:runtime_sdk_archive_test --nobuild
+--jobs=2 --loading_phase_threads=2` passed analysis of the final source-extension
+and SDK graphs with zero build actions. This slice did not rebuild the full native extension
+or execute the Linux wheel, and does not claim complete Python suite coverage.
 
 ### Desktop portability checks
 
@@ -154,7 +213,7 @@ bazel test -c opt \
 | Surface | Native Bazel targets | Current scope |
 | --- | --- | --- |
 | C/C++ | `//:runtime`, `//:runtime_library`, `//:runtime_smoke_test` | Standard ONNX CPU operators; inference through the public C++ API. |
-| Python | `//:python_native_library`, `//:python_runtime_package`, `//:python_tests` | CPython 3.12 extension, source-assembled high-level CPU inference package, and selected existing unittest cases. Not a wheel or complete Python suite migration. |
+| Python | `//:python_native_library`, `//:python_runtime_package`, `//:python_tests`, `//:python_wheel` | CPython 3.12 extension, source-assembled high-level CPU inference package, selected existing unittest cases, and CPU Windows/Linux x86-64 wheels. Not a complete Python suite/tooling migration. |
 | Java/JNI | `//:java_binding`, `//:java_native_library`, `//:java_smoke_test` | Java sources and JNI sources; JNI headers come from Bazel's Java compiler. No Gradle invocation. Not an AAR or Maven publication. |
 | Go | `//:go_binding`, `//:go_test` | First-party cgo binding and existing fixture-based unit tests. Tests explicitly load the Bazel-built shared library; they do not take the binding's missing-library skip path. External Qwen model tests are excluded. |
 | Node.js | `//:onnxruntime_binding.node`, `//:node_js_package`, `//:node_test` | Native Node-API extension, source-assembled common/Node JavaScript packages, and four existing test files with file/case selection. Not release npm packaging or the complete Node suite. |

@@ -63,6 +63,22 @@ def python_runtime_tests():
                 "//conditions:default": [],
             }),
         )
+    for platform, filename in [
+        ("windows", "onnxruntime_providers_shared.dll"),
+        ("linux", "libonnxruntime_providers_shared.so"),
+        ("macos", "libonnxruntime_providers_shared.dylib"),
+    ]:
+        copy_file(
+            name = "python_package_provider_bridge_" + platform,
+            src = ":providers_shared_library",
+            out = "python_runtime/onnxruntime/capi/" + filename,
+            target_compatible_with = ["@platforms//os:" + platform],
+        )
+    provider_bridge = select({
+        "//bazel:windows": [":python_package_provider_bridge_windows"],
+        "//bazel:macos": [":python_package_provider_bridge_macos"],
+        "//conditions:default": [":python_package_provider_bridge_linux"],
+    })
     py_library(
         name = "python_runtime_package",
         srcs = ["python_runtime/" + dest for dest in sources] + [
@@ -70,7 +86,7 @@ def python_runtime_tests():
             ":python_package_version",
             ":python_package_info",
         ],
-        data = select({
+        data = provider_bridge + select({
             "//bazel:windows": [":python_package_extension_windows"],
             "//conditions:default": [":python_package_extension_unix"],
         }),
@@ -80,6 +96,21 @@ def python_runtime_tests():
             "//conditions:default": [],
         }),
         deps = ["@ort_pip//numpy"],
+    )
+    native.filegroup(
+        name = "python_runtime_files",
+        srcs = provider_bridge + ["python_runtime/" + dest for dest in sources] + [
+            ":python_package_loader",
+            ":python_package_version",
+            ":python_package_info",
+        ] + select({
+            "//bazel:windows": [":python_package_extension_windows"],
+            "//conditions:default": [":python_package_extension_unix"],
+        }),
+        target_compatible_with = select({
+            "//bazel:cuda_enabled": ["@platforms//:incompatible"],
+            "//conditions:default": [],
+        }),
     )
     suites = {
         "python_inference_test": ("onnxruntime_test_python.TestInferenceSession", [

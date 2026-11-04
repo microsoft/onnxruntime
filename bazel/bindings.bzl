@@ -203,10 +203,9 @@ def language_bindings():
             "//bazel:windows": [],
             "//conditions:default": ["-fvisibility=hidden"],
         }),
-        data = select({
+        data = [":providers_shared_library"] + select({
             "//bazel:cuda_enabled": [
                 ":libonnxruntime_providers_cuda.so",
-                ":libonnxruntime_providers_shared.so",
             ],
             "//conditions:default": [],
         }),
@@ -247,7 +246,10 @@ def language_bindings():
         srcs = ["tools/bazel/python_smoke_test.py"],
         main = "tools/bazel/python_smoke_test.py",
         args = ["$(rootpath go/testdata/add_f32.onnx)"],
-        data = ["go/testdata/add_f32.onnx"] + select({
+        data = [
+            "go/testdata/add_f32.onnx",
+            ":providers_shared_library",
+        ] + select({
             "//bazel:windows": [":python_windows_extension"],
             "//bazel:macos": [":python_macos_extension"],
             "//conditions:default": [":onnxruntime_pybind11_state.so"],
