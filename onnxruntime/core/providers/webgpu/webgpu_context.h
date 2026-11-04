@@ -431,12 +431,12 @@ class WebGpuContext final {
   std::optional<TimePoint> StartCpuProfileEvent() const {
     return is_profiling_ ? std::make_optional(std::chrono::high_resolution_clock::now()) : std::nullopt;
   }
-  void RecordCpuProfileEvent(const char* name, const std::optional<TimePoint>& start) {
+  void RecordCpuProfileEvent(const char* name, const std::optional<TimePoint>& start, uint64_t submission_id = 0) {
     if (start) {
-      RecordCpuProfileEventImpl(name, *start);
+      RecordCpuProfileEventImpl(name, *start, submission_id);
     }
   }
-  void RecordCpuProfileEventImpl(const char* name, TimePoint start);
+  void RecordCpuProfileEventImpl(const char* name, TimePoint start, uint64_t submission_id);
 
   static uint64_t ResolveMaxStorageBufferBindingSize(
       uint64_t max_storage_buffer_binding_size,
@@ -488,8 +488,8 @@ class WebGpuContext final {
   void WriteTimestamp(CommandRecordingState& recording, uint32_t query_index);
 
   struct PendingQueryInfo {
-    PendingQueryInfo(std::vector<PendingKernelInfo>&& kernels, wgpu::Buffer query_buffer)
-        : kernels{std::move(kernels)}, query_buffer{query_buffer} {}
+    PendingQueryInfo(std::vector<PendingKernelInfo>&& kernels, wgpu::Buffer query_buffer, uint64_t submission_id)
+        : kernels{std::move(kernels)}, query_buffer{query_buffer}, submission_id{submission_id} {}
 
     PendingQueryInfo(PendingQueryInfo&&) = default;
     PendingQueryInfo& operator=(PendingQueryInfo&&) = default;
@@ -497,6 +497,7 @@ class WebGpuContext final {
 
     std::vector<PendingKernelInfo> kernels;
     wgpu::Buffer query_buffer;
+    uint64_t submission_id;
   };
 
   // Find the build owner for a cache key in the current deferred window.

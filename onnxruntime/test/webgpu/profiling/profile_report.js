@@ -23,10 +23,17 @@
     const tooltip = $('tooltip');
     const labels = report.lanes;
     const { events, strings } = report;
+    const submissionByEvent = new Map();
+    for (const submission of report.submissions) {
+      submissionByEvent.set(submission.submit, submission);
+      for (const id of submission.dispatches) submissionByEvent.set(id, submission);
+    }
     let active = report.wholeTrace;
     let filtered = [];
     let stage = null;
     let selected = null;
+    let selectedSubmission = null;
+    let related = new Set();
     let query = '';
     let matches = new Set();
     let view = [0, 1];
@@ -61,6 +68,9 @@
       $('measurement-note').prepend('Approximate alignment cannot measure initial GPU queueing delay. ');
     }
     $('capture-details').textContent = JSON.stringify({ ...report.capture, alignment: report.alignment }, null, 2);
+    $('dependency-note').textContent = report.submissionCount
+      ? 'Select a submit or GPU dispatch to see its dependency arrows.'
+      : 'Submission links were not recorded in this trace.';
     if (report.syntheticRun)
       $('measurement-note').prepend(
         'No CPU model_run event was recorded; inference run boundaries cannot be determined. ',
@@ -162,9 +172,9 @@
         ctx.globalAlpha = !query || matches.has(id) ? 1 : 0.12;
         ctx.fillStyle = labels[lane][2];
         ctx.fillRect(begin, y, barWidth, 18);
-        if (selected === id) {
-          ctx.lineWidth = 2;
-          ctx.strokeStyle = '#142e3d';
+        if (selected === id || related.has(id)) {
+          ctx.lineWidth = selected === id ? 2 : 1;
+          ctx.strokeStyle = selected === id ? '#142e3d' : '#2563eb';
           ctx.strokeRect(begin - 1, y - 2, barWidth + 2, 22);
         }
         if (barWidth > 65) {
@@ -180,6 +190,31 @@
         boxes.push({ id, x: begin, end: begin + Math.max(3, barWidth), y, bottom: y + 18 });
       }
       ctx.globalAlpha = 1;
+      if (selectedSubmission) {
+        const submit = events[selectedSubmission.submit];
+        // GPU execution may overlap the CPU call; submission entry is the causal source.
+        const fromX = x(submit[0]);
+        const fromY = top + submit[2] * rowHeight + 27;
+        ctx.strokeStyle = '#2563eb';
+        ctx.fillStyle = '#2563eb';
+        ctx.lineWidth = 1.3;
+        for (const id of selectedSubmission.dispatches) {
+          const dispatch = events[id];
+          if (Math.max(submit[0], dispatch[0]) < view[0] || Math.min(submit[0], dispatch[0]) > view[1]) continue;
+          const toX = x(dispatch[0]);
+          const toY = top + dispatch[2] * rowHeight + 7;
+          ctx.beginPath();
+          ctx.moveTo(fromX, fromY);
+          ctx.bezierCurveTo(fromX, fromY + 36, toX, toY - 36, toX, toY);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(toX, toY);
+          ctx.lineTo(toX - 3, toY - 6);
+          ctx.lineTo(toX + 3, toY - 6);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
       if (gesture && !gesture.pan) {
         ctx.fillStyle = '#0a9c7920';
         ctx.fillRect(
@@ -202,9 +237,13 @@
 
     function inspect(id) {
       selected = id;
+      selectedSubmission = submissionByEvent.get(id) ?? null;
+      related = new Set(selectedSubmission ? [selectedSubmission.submit, ...selectedSubmission.dispatches] : []);
       $('event-times').replaceChildren();
       $('event-args').textContent = '';
+      $('event-links').replaceChildren();
       $('fit-event').disabled = id === null;
+      $('fit-submission').disabled = !selectedSubmission;
       if (id === null) {
         $('event-name').textContent = 'Inspect a moment';
         $('event-hint').textContent = 'Click any CPU span or GPU dispatch. Search also matches shapes and cache keys.';
@@ -221,8 +260,61 @@
           $('event-times').append(element('dt', key), element('dd', value));
         }
         $('event-args').textContent = JSON.stringify(JSON.parse(strings[event[4]]), null, 2);
+        if (selectedSubmission) {
+          const submission = selectedSubmission;
+          const submit = events[submission.submit];
+          $('event-links').append(element('strong', `Submission ${submission.id}`));
+          const first = events[submission.dispatches[0]];
+          const accurate = JSON.parse(strings[first[4]]).clock_alignment === 'd3d12_clock_calibration';
+          $('event-links').append(
+            element(
+              'p',
+              accurate
+                ? `Submit entry → first GPU start: ${ms(first[0] - submit[0])} ms. Includes CPU submission processing and queueing.`
+                : 'Recorded dependency; timing is approximate and cannot measure queueing delay.',
+            ),
+          );
+          const chooser = element('select');
+          chooser.setAttribute('aria-label', 'Related submission events');
+          const members = [submission.submit, ...submission.dispatches];
+          for (const member of members) {
+            const option = element(
+              'option',
+              member === submission.submit ? 'CPU · queue.submit' : `GPU · ${strings[events[member][3]]}`,
+            );
+            option.value = String(member);
+            chooser.append(option);
+          }
+          chooser.value = String(id);
+          chooser.addEventListener('change', () => {
+            const target = Number(chooser.value);
+            focusEvents([target]);
+            inspect(target);
+          });
+          $('event-links').append(
+            element(
+              'p',
+              `${number(submission.dispatches.length)} GPU dispatch${submission.dispatches.length === 1 ? '' : 'es'} in this submission`,
+            ),
+            chooser,
+          );
+        } else if (event[2] === 6 || event[2] === 10) {
+          $('event-links').append(element('p', 'No matching submission link is present in this trace.'));
+        }
       }
       draw();
+    }
+
+    function focusEvents(ids) {
+      if (
+        ids.some((id) => events[id][0] < active.start || events[id][0] + events[id][1] > active.start + active.duration)
+      ) {
+        selectRun(report.wholeTrace);
+      }
+      const start = ids.reduce((min, id) => Math.min(min, events[id][0]), Infinity);
+      const stop = ids.reduce((max, id) => Math.max(max, events[id][0] + events[id][1]), -Infinity);
+      const padding = Math.max(5, (stop - start) * 0.1);
+      setView(start - padding, stop + padding);
     }
 
     function showPhases() {
@@ -474,6 +566,12 @@
       setView(event[0] - padding, event[0] + event[1] + padding);
     };
     $('fit-event').addEventListener('click', fitEvent);
+    $('fit-submission').addEventListener('click', () => {
+      if (!selectedSubmission) return;
+      const id = selected;
+      focusEvents([selectedSubmission.submit, ...selectedSubmission.dispatches]);
+      inspect(id);
+    });
     $('search').addEventListener('input', () => {
       query = $('search').value.trim().toLowerCase();
       updateMatches();

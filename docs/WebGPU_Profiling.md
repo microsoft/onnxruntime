@@ -23,11 +23,24 @@ callback, on other backends/platforms, or when calibration fails or uses incompa
 GPU events require a device with timestamp-query support. Concurrent profiling of sessions sharing
 a WebGPU context is unsupported.
 
-WebGPU also records CPU-side `WebGPU::Encode`, `WebGPU::Submit`, `WebGPU::Wait`,
+WebGPU also records CPU-side `WebGPU::Encode`, `WebGPU::Finish`, `WebGPU::Submit`, `WebGPU::Wait`,
 `WebGPU::StartProfiling` and `WebGPU::ProfileReadback` spans on the same CPU time origin.
 These supplement the existing ORT model-run, executor and operator events without changing the core
 profiler. They identify command preparation, submission, waits and profiling overhead. Nested spans
 overlap: for example, a pipeline wait can be inside command encoding. Do not sum them as independent work.
+
+Each profiled `WebGPU::Submit` and its GPU dispatches carry the same `submission_id` in their event
+arguments. IDs distinguish submissions across runs and recreated contexts in a process. Select a CPU
+submission or GPU dispatch in the webpage to highlight the batch and draw arrows to its GPU dispatches.
+The event inspector lists related events; **Zoom to submission** shows the CPU call and its GPU work,
+including links outside the selected inference interval. Older logs remain readable without links.
+
+`WebGPU::Submit` measures the `queue.submit` call; command-buffer finishing is recorded separately as
+`WebGPU::Finish` on the encoding lane. Arrows start at submit entry because GPU execution can begin
+before the CPU call returns. With calibrated clocks, the report shows submit-entry-to-first-GPU-start
+latency, including CPU submission processing and queueing. Approximate `first_submit` timestamps
+retain the recorded dependency but cannot measure that latency. IDs and links add no GPU operations
+or synchronization, and their runtime bookkeeping is active only during profiling.
 
 Clock calibration, CPU event clocks/storage, timestamp writes and query resolve/readback run only
 while profiling is active. Timestamp feature negotiation at device creation remains unchanged, so a
@@ -190,7 +203,7 @@ node onnxruntime/test/webgpu/profiling/test_external_dawn_profile.mjs build/exte
 ```
 
 The script checks both device paths with absent, successful, failed and invalid calibration, plus
-missing-proc rejection. It saves logs and traces, verifies all five CPU span kinds, and checks that
+missing-proc rejection. It saves logs and traces, verifies all six CPU span kinds and submission links, and checks that
 the calibrated GPU events preserve an intentionally delayed queue. The delay is test-only; production
 calibration adds no queue wait. Generate a webpage from any saved `.trace.json` with `visualize_profile.mjs`.
 

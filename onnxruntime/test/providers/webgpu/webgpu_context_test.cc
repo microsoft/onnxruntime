@@ -9,6 +9,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <limits>
 #include <memory>
 #include <string>
@@ -268,6 +269,41 @@ TEST(WebGpuContextTest, UploadFollowsDeferredDispatch) {
   TestCopyAfterDeferredDispatch(true);
 }
 
+void ExpectSubmissionLinks(const profiling::Events& events, std::initializer_list<size_t> dispatch_counts,
+                           InlinedHashSet<std::string>* previous_ids = nullptr) {
+  InlinedHashMap<std::string, const profiling::EventRecord*> submissions;
+  auto expected = dispatch_counts.begin();
+  size_t dispatch_count = 0;
+  for (const auto& event : events) {
+    if (event.name != "WebGPU::Submit") continue;
+    ASSERT_TRUE(event.args.contains("submission_id"));
+    const auto& id = event.args.at("submission_id");
+    EXPECT_FALSE(id.empty());
+    EXPECT_TRUE(submissions.emplace(id, &event).second);
+    if (previous_ids) EXPECT_TRUE(previous_ids->insert(id).second);
+    ASSERT_NE(expected, dispatch_counts.end());
+    EXPECT_EQ(std::count_if(events.begin(), events.end(), [&](const auto& dispatch) {
+                return dispatch.args.contains("clock_alignment") && dispatch.args.contains("submission_id") &&
+                       dispatch.args.at("submission_id") == id;
+              }),
+              *expected);
+    dispatch_count += *expected++;
+  }
+  EXPECT_EQ(submissions.size(), dispatch_counts.size());
+  size_t dispatches = 0;
+  for (const auto& event : events) {
+    if (!event.args.contains("clock_alignment")) continue;
+    ++dispatches;
+    ASSERT_TRUE(event.args.contains("submission_id"));
+    const auto submit = submissions.find(event.args.at("submission_id"));
+    ASSERT_NE(submit, submissions.end());
+    if (event.args.at("clock_alignment") == "d3d12_clock_calibration") {
+      EXPECT_GE(event.ts, submit->second->ts - 1000);
+    }
+  }
+  EXPECT_EQ(dispatches, dispatch_count);
+}
+
 webgpu::DispatchCommandInfo MakeProfilingDispatch(webgpu::WebGpuContext& context) {
   wgpu::ShaderSourceWGSL source{};
   source.code = R"(
@@ -335,6 +371,7 @@ TEST(WebGpuContextTest, ReplayProfilesEncodingSeparatelyFromSubmission) {
         EXPECT_TRUE(events.empty());
         continue;
       }
+      ExpectSubmissionLinks(events, {config.max_num_pending_dispatches, 1});
       EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const auto& event) {
                   return event.args.contains("clock_alignment");
                 }),
@@ -392,6 +429,7 @@ TEST(WebGpuContextTest, HostProcsFirstPreventBundledCalibrationInLaterDefaultCon
     ASSERT_STATUS_OK(context.FlushAndWaitChecked(context.BufferManager(), recording));
     profiling::Events events;
     context.CollectProfilingData(events);
+    ExpectSubmissionLinks(events, {1});
     size_t dispatches = 0;
     for (const auto& event : events) {
       if (event.args.contains("clock_alignment")) {
@@ -452,6 +490,7 @@ TEST(WebGpuContextTest, NativeProfilingUsesCpuOriginAcrossRunsAndSubmissions) {
   const auto origin = std::chrono::high_resolution_clock::now() - std::chrono::seconds(1);
   context.SetProfilingStartTime(origin);
   int64_t previous_timestamp = 0;
+  InlinedHashSet<std::string> previous_submission_ids;
   for (int run = 0; run < 2; ++run) {
     const auto earliest = TimeDiffMicroSeconds(origin);
     context.StartProfiling();
@@ -484,6 +523,7 @@ TEST(WebGpuContextTest, NativeProfilingUsesCpuOriginAcrossRunsAndSubmissions) {
     }
     profiling::Events events;
     context.CollectProfilingData(events);
+    ExpectSubmissionLinks(events, {1, 1}, &previous_submission_ids);
     const auto latest = TimeDiffMicroSeconds(origin);
     profiling::Events gpu_events;
     size_t cpu_events = 0;

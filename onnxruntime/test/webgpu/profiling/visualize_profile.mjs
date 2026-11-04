@@ -28,6 +28,7 @@ export function laneOf(event) {
     model_run: 0,
     'SequentialExecutor::Execute': 1,
     'WebGPU::Encode': 5,
+    'WebGPU::Finish': 5,
     'WebGPU::Submit': 6,
     'WebGPU::Wait': 7,
     'WebGPU::StartProfiling': 8,
@@ -75,6 +76,22 @@ export function createEventIndex(events) {
   };
 }
 
+function submissionLinks(events, strings) {
+  const groups = new Map();
+  for (let id = 0; id < events.length; id++) {
+    const event = events[id];
+    if (event[2] !== 6 && event[2] !== 10) continue;
+    const key = JSON.parse(strings[event[4]]).submission_id;
+    if (typeof key !== 'string' || !key) continue;
+    const group = groups.get(key) ?? { id: key, submit: undefined, dispatches: [] };
+    if (event[2] === 6) group.submit = group.submit === undefined ? id : null;
+    else group.dispatches.push(id);
+    groups.set(key, group);
+  }
+  // Missing or duplicate CPU submissions cannot establish an exact dependency.
+  return [...groups.values()].filter((group) => Number.isInteger(group.submit) && group.dispatches.length);
+}
+
 // Keep measured timings authoritative: metadata annotates runs but cannot replace trace timestamps.
 export function buildReport(trace, metadata = {}, baseline = {}) {
   const source = Array.isArray(trace) ? trace : trace?.traceEvents;
@@ -104,6 +121,7 @@ export function buildReport(trace, metadata = {}, baseline = {}) {
     'output_type_shape',
     'clock_alignment',
     'execution_side',
+    'submission_id',
   ];
   const strings = [];
   const interned = new Map();
@@ -198,12 +216,15 @@ export function buildReport(trace, metadata = {}, baseline = {}) {
   }
   const modelPath = String(metadata.model ?? 'WebGPU capture').replaceAll('\\', '/');
   const parent = modelPath.split('/').slice(-3, -1).join(' / ');
+  const submissions = submissionLinks(compact, strings);
   return {
     version: 1,
     title: parent || basename(modelPath),
     lanes,
     strings,
     events: compact,
+    submissions,
+    submissionCount: submissions.length,
     runs: summaries,
     wholeTrace,
     syntheticRun,
@@ -249,6 +270,7 @@ export async function renderReport(tracePath, output, { metadata, baseline } = {
     ...report,
     strings: undefined,
     events: undefined,
+    submissions: undefined,
     runs: report.runs.map(({ indices, ...run }) => run),
     wholeTrace: { ...report.wholeTrace, indices: undefined },
   };

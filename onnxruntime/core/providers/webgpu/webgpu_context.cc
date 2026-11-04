@@ -1208,13 +1208,25 @@ void WebGpuContext::WriteTimestamp(CommandRecordingState& recording, uint32_t qu
   compute_pass_encoder.WriteTimestamp(query_set_, query_index);
 }
 
-void WebGpuContext::RecordCpuProfileEventImpl(const char* name, TimePoint start) {
+namespace {
+
+std::string ProfileSubmissionId(uint64_t submission_id) {
+  return std::to_string(::onnxruntime::logging::GetProcessId()) + ":" + std::to_string(submission_id);
+}
+
+}  // namespace
+
+void WebGpuContext::RecordCpuProfileEventImpl(const char* name, TimePoint start, uint64_t submission_id) {
   const auto end = std::chrono::high_resolution_clock::now();
+  InlinedHashMap<std::string, std::string> args{{"execution_side", "cpu"}};
+  if (submission_id != 0) {
+    args.emplace("submission_id", ProfileSubmissionId(submission_id));
+  }
   cpu_events_.emplace_back(profiling::API_EVENT, ::onnxruntime::logging::GetProcessId(),
                            ::onnxruntime::logging::GetThreadId(), name,
                            TimeDiffMicroSeconds(profiling_start_time_, start),
                            TimeDiffMicroSeconds(start, end),
-                           InlinedHashMap<std::string, std::string>{{"execution_side", "cpu"}});
+                           std::move(args));
 }
 
 void WebGpuContext::StartProfiling() {
@@ -1325,6 +1337,7 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
             {"shapes", SS_GET(shapes)},
             {"cache_key", pending_kernel_info.cache_key},
             {"clock_alignment", timestamp_calibration_ ? "d3d12_clock_calibration" : "first_submit"},
+            {"submission_id", ProfileSubmissionId(pending_query.submission_id)},
         };
 
         profiling::EventRecord event(profiling::API_EVENT,
@@ -1512,17 +1525,17 @@ Status WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr,
 
   EndComputePass(recording);
 
+  uint64_t submission_id = 0;
+  if (is_profiling_) {
+    // Process-wide IDs also distinguish recreated contexts and successive profiling runs.
+    static std::atomic<uint64_t> next_submission_id{1};
+    submission_id = next_submission_id.fetch_add(1, std::memory_order_relaxed);
+  }
   if (is_profiling_ && recording.num_pending_dispatches > 0 &&
       recording.graph_capture_state != GraphCaptureState::Capturing) {
     ORT_ENFORCE(recording.num_pending_dispatches == recording.pending_kernels.size(),
                 "Number of pending dispatches (", recording.num_pending_dispatches,
                 ") does not match pending kernels size (", recording.pending_kernels.size(), ")");
-
-    // Capture the CPU elapsed time from the ORT profiler's start to this first submit.
-    // Used in CollectProfilingData to offset GPU timestamps onto the ORT CPU timeline.
-    if (profiling_first_submit_cpu_offset_us_ < 0) {
-      profiling_first_submit_cpu_offset_us_ = TimeDiffMicroSeconds(profiling_start_time_);
-    }
 
     uint32_t query_count = recording.num_pending_dispatches * 2;
     recording.command_encoder.ResolveQuerySet(
@@ -1544,13 +1557,19 @@ Status WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr,
         0,
         query_count * sizeof(uint64_t));
 
-    pending_queries_.emplace_back(std::move(recording.pending_kernels), query_read_buffer);
+    pending_queries_.emplace_back(std::move(recording.pending_kernels), query_read_buffer, submission_id);
     recording.pending_kernels.clear();
   }
-  const auto profile_start = StartCpuProfileEvent();
+  const auto finish_start = StartCpuProfileEvent();
   auto command_buffer = recording.command_encoder.Finish();
+  RecordCpuProfileEvent("WebGPU::Finish", finish_start);
+  const auto profile_start = StartCpuProfileEvent();
+  if (profile_start && profiling_first_submit_cpu_offset_us_ < 0 && recording.num_pending_dispatches > 0 &&
+      recording.graph_capture_state != GraphCaptureState::Capturing) {
+    profiling_first_submit_cpu_offset_us_ = TimeDiffMicroSeconds(profiling_start_time_, *profile_start);
+  }
   device_queue_.Submit(1, &command_buffer);
-  RecordCpuProfileEvent("WebGPU::Submit", profile_start);
+  RecordCpuProfileEvent("WebGPU::Submit", profile_start, submission_id);
   refresh_pending_buffers();
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
   std::vector<std::function<void()>> pending_release_callbacks;

@@ -48,8 +48,20 @@ for (const [mode, flags, calibrated, callbackCalls] of modes) {
     assert.equal(runs.length, 2, name);
     assert.equal(gpu.length, 2, name);
     const alignment = calibrated ? 'd3d12_clock_calibration' : 'first_submit';
-    for (const event of gpu) assert.equal(event.args.clock_alignment, alignment, name);
-    for (const span of ['StartProfiling', 'Encode', 'Submit', 'Wait', 'ProfileReadback']) {
+    const submits = trace.filter((event) => event.name === 'WebGPU::Submit');
+    const submissions = new Map();
+    for (const span of submits) {
+      assert.equal(typeof span.args.submission_id, 'string', name);
+      assert.ok(span.args.submission_id.length > 0, name);
+      assert.ok(!submissions.has(span.args.submission_id), `${name}: duplicate submission ID`);
+      submissions.set(span.args.submission_id, span);
+    }
+    for (const event of gpu) {
+      assert.equal(event.args.clock_alignment, alignment, name);
+      assert.ok(submissions.has(event.args.submission_id), `${name}: GPU dispatch missing its CPU submit`);
+    }
+    assert.equal(new Set(gpu.map((event) => event.args.submission_id)).size, 2, name);
+    for (const span of ['StartProfiling', 'Encode', 'Finish', 'Submit', 'Wait', 'ProfileReadback']) {
       assert.ok(
         trace.some((event) => event.name === `WebGPU::${span}`),
         `${name}: missing ${span}`,
@@ -61,11 +73,9 @@ for (const [mode, flags, calibrated, callbackCalls] of modes) {
         const run = runs[i];
         const event = gpu[i];
         assert.ok(event.ts >= run.ts - 1000 && event.ts + event.dur <= run.ts + run.dur + 1000, name);
-        const submits = trace.filter(
-          (span) => span.name === 'WebGPU::Submit' && span.ts >= run.ts && span.ts <= run.ts + run.dur,
-        );
-        assert.ok(submits.length > 0, name);
-        const delay = event.ts - Math.min(...submits.map((span) => span.ts));
+        const submit = submissions.get(event.args.submission_id);
+        assert.ok(submit.ts >= run.ts && submit.ts <= run.ts + run.dur, name);
+        const delay = event.ts - submit.ts;
         assert.ok(delay >= 15000, `${name}: calibration hid the delayed queue (${delay} us)`);
         queueDelayMs.push(delay / 1000);
       }

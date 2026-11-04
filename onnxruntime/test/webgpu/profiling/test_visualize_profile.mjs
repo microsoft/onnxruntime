@@ -54,6 +54,56 @@ test('distinguishes CPU preparations, fallbacks and copies', () => {
   assert.equal(laneOf(node('Abs', 'WebGpuExecutionProvider')), 2);
   assert.equal(laneOf(node('Abs', 'CPUExecutionProvider')), 3);
   assert.equal(laneOf(node('MemcpyFromHost', 'WebGpuExecutionProvider')), 4);
+  assert.equal(laneOf(event('WebGPU::Finish', 0, 1)), 5);
+});
+
+test('links exact submissions to all their GPU dispatches across run boundaries', () => {
+  const dispatch = (ts, id) => ({
+    ...gpu(ts, 2, 'same&kernel'),
+    args: { clock_alignment: 'd3d12_clock_calibration', submission_id: id },
+  });
+  const report = buildReport([
+    event('model_run', 100, 50),
+    event('model_run', 200, 50),
+    event('WebGPU::Submit', 90, 5, { submission_id: '7:1' }),
+    event('WebGPU::Submit', 105, 20, { submission_id: '7:2' }),
+    dispatch(110, '7:2'),
+    dispatch(110, '7:1'),
+    dispatch(210, '7:1'),
+  ]);
+  assert.equal(report.submissionCount, 2);
+  const groups = new Map(report.submissions.map((group) => [group.id, group]));
+  for (const [id, count] of [
+    ['7:1', 2],
+    ['7:2', 1],
+  ]) {
+    const group = groups.get(id);
+    assert.equal(report.events[group.submit][2], 6);
+    assert.equal(group.dispatches.length, count);
+    for (const index of [group.submit, ...group.dispatches]) {
+      assert.equal(JSON.parse(report.strings[report.events[index][4]]).submission_id, id);
+    }
+  }
+  assert.ok(!report.runs[0].indices.includes(groups.get('7:1').submit));
+  const group = groups.get('7:2');
+  assert.ok(report.events[group.dispatches[0]][0] < report.events[group.submit][0] + report.events[group.submit][1]);
+});
+
+test('legacy, missing and ambiguous submission metadata never produce guessed links', () => {
+  assert.deepEqual(buildReport(trace).submissions, []);
+  const report = buildReport([
+    gpu(50, 1),
+    event('WebGPU::Submit', 10, 1, { submission_id: 'duplicate' }),
+    event('WebGPU::Submit', 20, 1, { submission_id: 'duplicate' }),
+    event('WebGPU::Submit', 30, 1, { submission_id: 'copy-only' }),
+    event('WebGPU::Submit', 40, 1, { submission_id: 42 }),
+    ...['duplicate', 'missing', 42].map((id) => ({
+      ...gpu(60, 1),
+      args: { clock_alignment: 'first_submit', submission_id: id },
+    })),
+  ]);
+  assert.equal(report.submissionCount, 0);
+  assert.deepEqual(report.submissions, []);
 });
 
 test('accepts traceEvents objects and rejects invalid traces or metadata counts', () => {
@@ -184,7 +234,14 @@ test('standalone payload round trips safely and summary omits bulky event data',
   try {
     const source = join(root, 'trace.summary.json');
     const hostile = '</script><img src=x onerror=alert(1)>';
-    await writeFile(source, JSON.stringify([event('model_run', 100, 100), gpu(120, 10, hostile)]));
+    await writeFile(
+      source,
+      JSON.stringify([
+        event('model_run', 100, 100),
+        event('WebGPU::Submit', 110, 1, { submission_id: hostile }),
+        { ...gpu(120, 10, hostile), args: { clock_alignment: 'first_submit', submission_id: hostile } },
+      ]),
+    );
     const result = await renderReport(source, join(root, 'report.html'));
     const page = await readFile(result.output, 'utf8');
     assert.ok(!page.includes(hostile));
@@ -193,17 +250,21 @@ test('standalone payload round trips safely and summary omits bulky event data',
     const payload = page.match(/type="application\/octet-stream">\s*([A-Za-z0-9+/=\s]+)<\/script>/)[1];
     const report = JSON.parse(gunzipSync(Buffer.from(payload, 'base64')));
     assert.ok(report.strings.includes(hostile));
-    assert.equal(report.events.length, 2);
+    assert.equal(report.events.length, 3);
+    assert.equal(report.submissions[0].id, hostile);
+    assert.equal(report.submissions[0].dispatches.length, 1);
     const summary = JSON.parse(await readFile(result.summary, 'utf8'));
     assert.equal(summary.events, undefined);
     assert.equal(summary.strings, undefined);
     assert.equal(summary.runs[0].indices, undefined);
     assert.equal(summary.wholeTrace.indices, undefined);
+    assert.equal(summary.submissions, undefined);
+    assert.equal(summary.submissionCount, 1);
     assert.equal(report.title, 'trace.summary.json');
     await assert.rejects(renderReport(source, source), /overwrite/);
     if (process.platform === 'win32') await assert.rejects(renderReport(source, source.toUpperCase()), /overwrite/);
     await assert.rejects(renderReport(source, join(root, 'trace.html')), /overwrite/);
-    assert.equal(JSON.parse(await readFile(source, 'utf8')).length, 2);
+    assert.equal(JSON.parse(await readFile(source, 'utf8')).length, 3);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

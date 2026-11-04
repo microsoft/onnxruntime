@@ -481,6 +481,18 @@
         font-size: 11px;
         margin-top: 13px;
       }
+      #event-links {
+        margin-top: 16px;
+        color: #345063;
+        line-height: 1.6;
+      }
+      #event-links select {
+        width: 100%;
+        font-size: 11px;
+      }
+      #event-links strong {
+        overflow-wrap: anywhere;
+      }
       .below {
         display: grid;
         grid-template-columns: 1.2fr 1fr;
@@ -760,6 +772,7 @@
                   <span class="legend"><i class="dot" style="background: #d94695"></i>Submit</span>
                   <span class="legend"><i class="dot" style="background: #e5a331"></i>Wait</span>
                   <span class="legend"><i class="dot" style="background: #10b981"></i>GPU compute</span>
+                  <span id="dependency-note"></span>
                   <span>Drag to zoom · Shift-drag to pan · Double-click to fit</span>
                 </div>
               </div>
@@ -774,6 +787,8 @@
                 <dl id="event-times"></dl>
                 <pre id="event-args"></pre>
                 <div><button id="fit-event" disabled>Zoom to event</button></div>
+                <div id="event-links"></div>
+                <div><button id="fit-submission" disabled>Zoom to submission</button></div>
               </aside>
             </div>
           </section>
