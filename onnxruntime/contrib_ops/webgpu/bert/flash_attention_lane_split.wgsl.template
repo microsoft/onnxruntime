@@ -1,0 +1,125 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param has_local_window
+#param is_unidirectional
+#param q_BNSH
+#param qkv_num_heads
+#param use_seqlen_k
+
+#use .getByOffset .setByOffset
+
+// Each 256-thread workgroup processes 32 queries with a 16-key tile.
+const query_lanes: u32 = 8u;
+const key_tile: u32 = 16u;
+const num_heads: u32 = qkv_num_heads;
+var<workgroup> split_keys: array<q_value_t, key_tile * 32>;
+var<workgroup> split_values: array<q_value_t, key_tile * 32>;
+
+$MAIN {
+  let batch_head = workgroup_idx / uniforms.num_seq_tile;
+  let batch = batch_head / num_heads;
+  let head = batch_head % num_heads;
+  let lane = sg_id & (query_lanes - 1u);
+  let query_tile = (workgroup_idx % uniforms.num_seq_tile) * (256u / query_lanes);
+  let query = query_tile + local_idx / query_lanes;
+  let valid = query < uniforms.new_sequence_length;
+#if use_seqlen_k
+  let total = min(u32(max(seqlens_k[batch], 0)) + 1u, uniforms.present_sequence_length);
+#else
+  let total = uniforms.total_sequence_length;
+#endif
+  let past = total - min(total, uniforms.new_sequence_length);
+#if has_local_window
+  let first_end = past + query_tile + 1u;
+  let query_end = past + query + 1u;
+  let left = query_end - min(query_end, uniforms.local_window_size);
+  let first_key = (first_end - min(first_end, uniforms.local_window_size)) / key_tile * key_tile;
+#else
+  let left = 0u;
+  let first_key = 0u;
+#endif
+#if is_unidirectional
+  let bound = min(total, past + query_tile + 256u / query_lanes);
+  let causal = min(total, past + query + 1u);
+#else
+  let bound = total;
+  let causal = total;
+#endif
+#if q_BNSH
+  let qbase = ((batch * num_heads + head) * uniforms.new_sequence_length + query) * 32u + lane;
+#else
+  let qbase = ((batch * uniforms.new_sequence_length + query) * num_heads + head) * 32u + lane;
+#endif
+  var q0 = q_value_t(0);
+  var q1 = q_value_t(0);
+  var q2 = q_value_t(0);
+  var q3 = q_value_t(0);
+  if (valid) {
+    let alpha = q_element_t(uniforms.alpha);
+    q0 = q.getByOffset(qbase) * alpha;
+    q1 = q.getByOffset(qbase + 1u * query_lanes) * alpha;
+    q2 = q.getByOffset(qbase + 2u * query_lanes) * alpha;
+    q3 = q.getByOffset(qbase + 3u * query_lanes) * alpha;
+  }
+  var o0 = vec4<f32>(0);
+  var o1 = vec4<f32>(0);
+  var o2 = vec4<f32>(0);
+  var o3 = vec4<f32>(0);
+  var previous_max = -3.4028234663852886e+38f;
+  var denom = 0.0f;
+  var scores: array<f32, key_tile>;
+  let kvbase = (batch_head / uniforms.n_reps) * uniforms.present_sequence_length * 32u;
+  for (var start = first_key; start < bound; start += key_tile) {
+    workgroupBarrier();
+    for (var idx = local_idx; idx < key_tile * 32u; idx += 256u) {
+      let offset = kvbase + start * 32u + idx;
+      if (start + idx / 32u < total) {
+        split_keys[idx] = present_key.getByOffset(offset);
+        split_values[idx] = present_value.getByOffset(offset);
+      } else {
+        split_keys[idx] = q_value_t(0);
+        split_values[idx] = q_value_t(0);
+      }
+    }
+    workgroupBarrier();
+    var maximum = previous_max;
+    for (var k = 0u; k < key_tile; k++) {
+      let offset = k * 32u + lane;
+      var score = dot(vec4<f32>(q0), vec4<f32>(split_keys[offset]));
+      score += dot(vec4<f32>(q1), vec4<f32>(split_keys[offset + 1u * query_lanes]));
+      score += dot(vec4<f32>(q2), vec4<f32>(split_keys[offset + 2u * query_lanes]));
+      score += dot(vec4<f32>(q3), vec4<f32>(split_keys[offset + 3u * query_lanes]));
+      score += subgroupShuffle(score, sg_id ^ 1u);
+      score += subgroupShuffle(score, sg_id ^ 2u);
+      score += subgroupShuffle(score, sg_id ^ 4u);
+      score = select(-3.4028234663852886e+38f, score, start + k >= left && start + k < causal);
+      scores[k] = score;
+      maximum = max(maximum, score);
+    }
+    let rescale = exp(previous_max - maximum);
+    o0 *= rescale;
+    o1 *= rescale;
+    o2 *= rescale;
+    o3 *= rescale;
+    denom *= rescale;
+    for (var k = 0u; k < key_tile; k++) {
+      let probability = select(0.0f, exp(scores[k] - maximum), start + k >= left && start + k < causal);
+      denom += probability;
+      let offset = k * 32u + lane;
+      o0 += vec4<f32>(split_values[offset]) * probability;
+      o1 += vec4<f32>(split_values[offset + 1u * query_lanes]) * probability;
+      o2 += vec4<f32>(split_values[offset + 2u * query_lanes]) * probability;
+      o3 += vec4<f32>(split_values[offset + 3u * query_lanes]) * probability;
+    }
+    previous_max = maximum;
+  }
+  if (valid) {
+    let offset = ((batch * uniforms.new_sequence_length + query) * num_heads + head) * 32u + lane;
+    let divisor = select(1.0f, denom, denom > 0.0f);
+    output.setByOffset(offset, q_value_t(o0 / divisor));
+    output.setByOffset(offset + 1u * query_lanes, q_value_t(o1 / divisor));
+    output.setByOffset(offset + 2u * query_lanes, q_value_t(o2 / divisor));
+    output.setByOffset(offset + 3u * query_lanes, q_value_t(o3 / divisor));
+  }
+}

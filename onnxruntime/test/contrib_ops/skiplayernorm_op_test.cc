@@ -1423,5 +1423,55 @@ TEST(SkipLayerNormTest, SkipSimplifiedLayerNorm_WebGpu_SegmentedStorage_InputSki
 }
 #endif
 
+TEST(SkipLayerNormTest, Float16LargeRowsWithBroadcastSkipAndVectorTails) {
+  constexpr int batch_size = 2;
+  constexpr int sequence_length = 17;
+  constexpr float epsilon = 1e-5f;
+  for (int hidden_size : {1025, 1026, 1028}) {
+    SCOPED_TRACE(hidden_size);
+    for (bool simplified : {false, true}) {
+      SCOPED_TRACE(simplified);
+      std::vector<float> input(batch_size * sequence_length * hidden_size);
+      std::vector<float> skip(sequence_length * hidden_size);
+      std::vector<float> gamma(hidden_size, 1.5f);
+      std::vector<float> beta(hidden_size, 0.125f);
+      std::vector<float> bias(hidden_size);
+      std::vector<float> sums(input.size());
+      std::vector<float> expected(input.size());
+      for (int col = 0; col < hidden_size; ++col) {
+        bias[col] = col % 2 ? 0.25f : -0.125f;
+      }
+      for (int row = 0; row < sequence_length; ++row) {
+        for (int col = 0; col < hidden_size; ++col) {
+          skip[row * hidden_size + col] = 0.125f * (1 + row % 3);
+        }
+      }
+      for (int row = 0; row < batch_size * sequence_length; ++row) {
+        double sum = 0.0;
+        double sum_square = 0.0;
+        for (int col = 0; col < hidden_size; ++col) {
+          const int i = row * hidden_size + col;
+          input[i] = (row + col) % 2 ? -1.0f : 1.0f;
+          sums[i] = input[i] + skip[(row % sequence_length) * hidden_size + col] + bias[col];
+          sum += sums[i];
+          sum_square += static_cast<double>(sums[i]) * sums[i];
+        }
+        const double mean = sum / hidden_size;
+        const double variance = sum_square / hidden_size - (simplified ? 0.0 : mean * mean);
+        const double inv_std = 1.0 / std::sqrt(variance + epsilon);
+        for (int col = 0; col < hidden_size; ++col) {
+          const int i = row * hidden_size + col;
+          expected[i] = static_cast<float>((sums[i] - (simplified ? 0.0 : mean)) * inv_std * gamma[col] +
+                                           (simplified ? 0.0f : beta[col]));
+        }
+      }
+      RunOneTest(input, skip, gamma, beta, bias, expected, sums, epsilon,
+                 batch_size, sequence_length, hidden_size,
+                 /*use_float16=*/true, /*use_bfloat16=*/false, /*no_beta=*/false,
+                 simplified, /*use_token_count=*/false, /*broadcast_skip=*/true);
+    }
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime

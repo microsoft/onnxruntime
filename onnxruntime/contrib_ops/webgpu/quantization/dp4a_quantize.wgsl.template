@@ -32,7 +32,7 @@ $MAIN {
     if (local_idx % 32 == 0)
     {
       // 127 is the max value of signed int8 [-127,127] used by pack4x8snorm for 1.0f.
-      scales.setByOffset(workgroup_idx * 2 + local_idx / 32, scale/127);
+      scales.setByOffset(workgroup_idx * 2 + local_idx / 32, f32(scale)/127.0f);
     }
   } else if (sg_size > 32) {
     let local_a = readInput(global_idx);
@@ -51,7 +51,7 @@ $MAIN {
     let norm_a = local_a / scale;
     output.setByOffset(global_idx, pack4x8snorm(vec4<f32>(norm_a)));
     if (local_idx % 32 == 0) {
-      scales.setByOffset(workgroup_idx * 2 + local_idx / 32, scale / 127);
+      scales.setByOffset(workgroup_idx * 2 + local_idx / 32, f32(scale) / 127.0f);
     }
   } else if (sg_size == 16) {
     let local_a = readInput(global_idx);
@@ -78,7 +78,7 @@ $MAIN {
     if (local_idx % 32 == 0)
     {
       // 127 is the max value of signed int8 [-127,127] used by pack4x8snorm for 1.0f.
-      scales.setByOffset(workgroup_idx * 2 + local_idx / 32, scale/127);
+      scales.setByOffset(workgroup_idx * 2 + local_idx / 32, f32(scale)/127.0f);
     }
   } else {
     let local_row = local_idx / 32u;
@@ -103,7 +103,7 @@ $MAIN {
     if (local_col == 0u)
     {
       // 127 is the max value of signed int8 [-127,127] used by pack4x8snorm for 1.0f.
-      scales.setByOffset(workgroup_idx * 2 + local_row, scale/127);
+      scales.setByOffset(workgroup_idx * 2 + local_row, f32(scale)/127.0f);
     }
   }
 }

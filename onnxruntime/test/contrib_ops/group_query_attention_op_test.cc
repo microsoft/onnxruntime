@@ -8003,6 +8003,117 @@ TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_CrossValidate_FlashPrefill) 
                             /*max_absolute_error=*/0.03f);
 }
 
+TEST(GroupQueryAttentionTest, WebGPU_FP16_SmallWeightedValues_FlashPrefill) {
+  if (!DefaultWebGpuExecutionProvider()) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+  constexpr int64_t num_heads = 4;
+  constexpr int64_t kv_num_heads = 2;
+  constexpr int64_t head_size = 128;
+  for (int64_t length : {int64_t{64}, int64_t{512}}) {
+    SCOPED_TRACE("sequence length:" + std::to_string(length));
+    OpTester test("GroupQueryAttention", 1, kMSDomain);
+    test.AddAttribute<int64_t>("num_heads", num_heads);
+    test.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+    test.AddInput<MLFloat16>("query", {1, length, num_heads * head_size},
+                             std::vector<MLFloat16>(length * num_heads * head_size, MLFloat16(0.0f)));
+    test.AddInput<MLFloat16>("key", {1, length, kv_num_heads * head_size},
+                             std::vector<MLFloat16>(length * kv_num_heads * head_size, MLFloat16(0.0f)));
+    test.AddInput<MLFloat16>("value", {1, length, kv_num_heads * head_size},
+                             std::vector<MLFloat16>(length * kv_num_heads * head_size, MLFloat16(1.0f / 1024.0f)));
+    test.AddOptionalInputEdge<MLFloat16>();
+    test.AddOptionalInputEdge<MLFloat16>();
+    test.AddInput<int32_t>("seqlens_k", {1}, {static_cast<int32_t>(length - 1)});
+    test.AddInput<int32_t>("total_sequence_length", {1}, {static_cast<int32_t>(length)});
+    // Uniform attention over constant V must preserve V, including when individual
+    // weighted contributions fall below the smallest normal f16 value.
+    test.AddOutput<MLFloat16>("output", {1, length, num_heads * head_size},
+                              std::vector<MLFloat16>(length * num_heads * head_size, MLFloat16(1.0f / 1024.0f)));
+    // Allow a few f16 rounding ulps in the other vendor kernels.
+    test.SetOutputAbsErr("output", 0.000004f);
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultWebGpuExecutionProvider());
+    test.ConfigEps(std::move(execution_providers));
+    test.RunWithConfig();
+  }
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_FP16_WindowedPrefillPastAndTileBoundaries) {
+  auto ep = DefaultWebGpuExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+  constexpr int batch = 1;
+  constexpr int length = 513;
+  constexpr int past = 17;
+  constexpr int total = past + length;
+  constexpr int heads = 4;
+  constexpr int kv_heads = 2;
+  constexpr int dim = 128;
+  constexpr int window = 33;
+  auto value_at = [](int b, int h, int s, int d) {
+    return static_cast<float>((s % 17) - 8) / 64.0f +
+           static_cast<float>(b + h) / 16.0f + static_cast<float>(d % 7) / 128.0f;
+  };
+  std::vector<MLFloat16> values(batch * length * kv_heads * dim);
+  std::vector<MLFloat16> past_values(batch * kv_heads * past * dim);
+  std::vector<MLFloat16> present_values(batch * kv_heads * total * dim);
+  std::vector<MLFloat16> expected(batch * length * heads * dim);
+  for (int b = 0; b < batch; ++b) {
+    for (int h = 0; h < kv_heads; ++h) {
+      for (int s = 0; s < total; ++s) {
+        for (int d = 0; d < dim; ++d) {
+          const MLFloat16 value(value_at(b, h, s, d));
+          present_values[((b * kv_heads + h) * total + s) * dim + d] = value;
+          if (s < past) {
+            past_values[((b * kv_heads + h) * past + s) * dim + d] = value;
+          } else {
+            values[((b * length + s - past) * kv_heads + h) * dim + d] = value;
+          }
+        }
+      }
+    }
+    for (int s = 0; s < length; ++s) {
+      const int end = past + s + 1;
+      const int begin = std::max(0, end - window);
+      for (int h = 0; h < heads; ++h) {
+        for (int d = 0; d < dim; ++d) {
+          float sum = 0.0f;
+          for (int k = begin; k < end; ++k) {
+            sum += value_at(b, h / (heads / kv_heads), k, d);
+          }
+          expected[((b * length + s) * heads + h) * dim + d] = MLFloat16(sum / (end - begin));
+        }
+      }
+    }
+  }
+  // Zero Q/K makes the reference an exact sliding-window mean of V. A partial
+  // query tile and unaligned past/window boundaries exercise masking and KV layout.
+  OpTester test("GroupQueryAttention", 1, kMSDomain);
+  test.AddAttribute<int64_t>("num_heads", heads);
+  test.AddAttribute<int64_t>("kv_num_heads", kv_heads);
+  test.AddAttribute<int64_t>("local_window_size", window);
+  test.AddInput<MLFloat16>("query", {batch, length, heads * dim},
+                           std::vector<MLFloat16>(batch * length * heads * dim, MLFloat16(0.0f)));
+  test.AddInput<MLFloat16>("key", {batch, length, kv_heads * dim},
+                           std::vector<MLFloat16>(batch * length * kv_heads * dim, MLFloat16(0.0f)));
+  test.AddInput<MLFloat16>("value", {batch, length, kv_heads * dim}, values);
+  test.AddInput<MLFloat16>("past_key", {batch, kv_heads, past, dim},
+                           std::vector<MLFloat16>(batch * kv_heads * past * dim, MLFloat16(0.0f)));
+  test.AddInput<MLFloat16>("past_value", {batch, kv_heads, past, dim}, past_values);
+  test.AddInput<int32_t>("seqlens_k", {batch}, std::vector<int32_t>(batch, total - 1));
+  test.AddInput<int32_t>("total_sequence_length", {1}, {total});
+  test.AddOutput<MLFloat16>("output", {batch, length, heads * dim}, expected);
+  test.SetOutputAbsErr("output", 0.0005f);
+  test.AddOutput<MLFloat16>("present_key", {batch, kv_heads, total, dim},
+                            std::vector<MLFloat16>(batch * kv_heads * total * dim, MLFloat16(0.0f)));
+  test.AddOutput<MLFloat16>("present_value", {batch, kv_heads, total, dim}, present_values);
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(std::move(ep));
+  test.ConfigEps(std::move(eps));
+  test.RunWithConfig();
+}
+
 static void RunFp16HighMagnitudeAttention(int sequence_length, uint32_t bit_width, int head_size = 128) {
   auto ep = bit_width == 0 ? DefaultWebGpuExecutionProvider() : WebGpuEPWithKVCacheQuantization(bit_width);
   if (!ep) {
@@ -8066,6 +8177,13 @@ TEST(GroupQueryAttentionTest, WebGPU_FP16_HighMagnitude_FlashPrefillUnrollBounda
     // 64/128 use the expanded reductions and larger heads retain loops.
     // Large Q/K values also catch accidental FP16 score accumulation.
     RunFp16HighMagnitudeAttention(/*sequence_length=*/65, /*bit_width=*/0, head_size);
+  }
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_FP16_HighMagnitude_LongPrefillTileBoundary) {
+  for (int sequence_length : {2047, 2049}) {
+    SCOPED_TRACE(sequence_length);
+    RunFp16HighMagnitudeAttention(sequence_length, /*bit_width=*/0);
   }
 }
 

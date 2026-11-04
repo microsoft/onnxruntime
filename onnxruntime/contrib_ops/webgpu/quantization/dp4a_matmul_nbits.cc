@@ -49,6 +49,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
       WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points_), WGSL_TEMPLATE_PARAMETER(is_qualcomm, is_qualcomm_),
       WGSL_TEMPLATE_PARAMETER(n_bits, nbits_), WGSL_TEMPLATE_PARAMETER(output_type_i32, true),
       WGSL_TEMPLATE_PARAMETER(qc_wave128, SubgroupSize() == 128),
+      WGSL_TEMPLATE_PARAMETER(use_amd_tile, use_amd_tile_),
       WGSL_TEMPLATE_VARIABLE(a, a), WGSL_TEMPLATE_VARIABLE(b, b), WGSL_TEMPLATE_VARIABLE(output, output),
       WGSL_TEMPLATE_VARIABLE(scales_a, scales_a), WGSL_TEMPLATE_VARIABLE(scales_b, scales_b));
 }
@@ -138,7 +139,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
     TensorShape a_quant_shape{batch_count, M, K / kU32Components};
     Tensor a_quant = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), a_quant_shape);
     TensorShapeVector a_scales_dims({batch_count, 1, M, K / kBlockSizeA});
-    Tensor a_scale = context.CreateGPUTensor(a->DataType(), a_scales_dims);
+    Tensor a_scale = context.CreateGPUTensor(DataTypeImpl::GetType<float>(), a_scales_dims);
     quantize_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)}})
         .AddOutputs({{&a_quant, ProgramTensorMetadataDependency::Rank, a_quant.Shape(), 1},
                      {&a_scale, ProgramTensorMetadataDependency::Rank, 1}})
@@ -217,6 +218,11 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                           context.AdapterInfo().subgroupMinSize <= 128 &&
                           context.AdapterInfo().subgroupMaxSize >= 128 &&
                           nbits == 4 && block_size == 32 && M >= 128;
+  const bool use_amd_tile =
+      context.AdapterInfo().vendor == std::string_view{"amd"} &&
+      context.AdapterInfo().backendType == wgpu::BackendType::D3D12 &&
+      y->IsDataType<MLFloat16>() && M >= 64 && nbits == 4 &&
+      !has_bias && !has_weight_idx && !has_qlora_up;
   const uint32_t tile_m = qc_wave128 ? 128 : 64;
   const uint32_t tile_n = qc_wave128 ? 32 : 64;
   TensorShape reshaped_y_shape{batch_count, M, N / kVec4Components};
@@ -226,7 +232,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   const bool acc_f32 = context.EnableMatmulFp32Accumulation();
   DP4AMatMulNBitsProgram mul_program{
       block_size, nbits, has_zero_points,
-      has_bias, has_weight_idx, has_weight_idx_indirect, is_qualcomm, acc_f32, has_qlora_up};
+      has_bias, has_weight_idx, has_weight_idx_indirect, is_qualcomm, acc_f32, has_qlora_up, use_amd_tile};
   mul_program.SetWorkgroupSize(256);
   if (qc_wave128) {
     mul_program.SetSubgroupSize(128);
@@ -247,10 +253,11 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                             {num_N_tile},
                             {zero_blocks_per_col},
                             {weight_index}})
-      .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, static_cast<int>(kVec4Components)})
+      .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank,
+                  use_amd_tile ? y->Shape() : reshaped_y_shape, use_amd_tile ? 1 : static_cast<int>(kVec4Components)})
       .CacheHint("Block" + std::to_string(block_size), nbits, has_zero_points, is_qualcomm,
                  has_bias, has_weight_idx, has_weight_idx_indirect, acc_f32,
-                 has_qlora_up);
+                 has_qlora_up, use_amd_tile);
   if (has_zero_points) {
     mul_program.AddInput(
         {zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});

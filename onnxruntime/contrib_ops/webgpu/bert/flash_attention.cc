@@ -171,7 +171,8 @@ FlashAttentionProgram::FlashAttentionProgram(const std::string& kernel_name,
                                              bool has_local_window,
                                              uint32_t kv_cache_quantization_bits,
                                              int compressed_head_size_u32,
-                                             bool use_seqlens_q)
+                                             bool use_seqlens_q,
+                                             bool use_subgroup_prefill)
     : Program{kernel_name},
       has_attention_bias_(has_attention_bias),
       is_qualcomm_(is_qualcomm),
@@ -188,7 +189,8 @@ FlashAttentionProgram::FlashAttentionProgram(const std::string& kernel_name,
       kv_cache_quantization_(kv_cache_quantization_bits != 0),
       kv_cache_quantization_bits_(kv_cache_quantization_bits),
       compressed_head_size_u32_(compressed_head_size_u32),
-      use_seqlens_q_(use_seqlens_q) {
+      use_seqlens_q_(use_seqlens_q),
+      use_subgroup_prefill_(use_subgroup_prefill) {
 }
 
 Status SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
@@ -401,9 +403,9 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   //  Expectation is that present_key, and present_value contain past key and values since
   //  we are out of storage buffers a shader can have and both past/present cant be passed.
   // The hidden size of each q head should be a multiple of 4 because shader uses vectorized loads.
-  shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("present_key", ShaderUsage::UseUniform);
-  shader.AddInput("present_value", ShaderUsage::UseUniform);
+  const auto& q = shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  const auto& present_key = shader.AddInput("present_key", ShaderUsage::UseUniform);
+  const auto& present_value = shader.AddInput("present_value", ShaderUsage::UseUniform);
   if (has_attention_bias_) {
     shader.AddInput("attention_bias", ShaderUsage::UseUniform);
   }
@@ -416,7 +418,20 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (has_head_sink_) {
     shader.AddInput("head_sink", ShaderUsage::UseUniform);
   }
-  shader.AddOutput("output", ShaderUsage::UseUniform);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
+
+  if (use_subgroup_prefill_) {
+    return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention_lane_split.wgsl.template",
+                               WGSL_TEMPLATE_PARAMETER(has_local_window, has_local_window_),
+                               WGSL_TEMPLATE_PARAMETER(is_unidirectional, is_unidirectional_),
+                               WGSL_TEMPLATE_PARAMETER(q_BNSH, q_BNSH_),
+                               WGSL_TEMPLATE_PARAMETER(qkv_num_heads, qkv_num_heads_),
+                               WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
+                               WGSL_TEMPLATE_VARIABLE(output, output),
+                               WGSL_TEMPLATE_VARIABLE(present_key, present_key),
+                               WGSL_TEMPLATE_VARIABLE(present_value, present_value),
+                               WGSL_TEMPLATE_VARIABLE(q, q));
+  }
 
   // Constant private-array indices improve NVIDIA's shared-memory path, but
   // expanding larger heads can regress performance. The selection inputs
@@ -1017,7 +1032,15 @@ Status ApplyDensePrefill(const Tensor* Q, Tensor* present_key, Tensor* present_v
   bool is_fp16 = Q->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
   bool q_BNSH = parameters.qkv_format_ == Q_K_V_BNSH;
   bool has_head_sink = head_sink != nullptr;
-  FlashAttentionProgram program{"FlashAttention",
+  const bool use_subgroup_prefill =
+      context.AdapterInfo().vendor == std::string_view{"amd"} &&
+      context.AdapterInfo().backendType == wgpu::BackendType::D3D12 &&
+      has_subgroups && context.HasFeature(wgpu::FeatureName::SubgroupSizeControl) &&
+      context.AdapterInfo().subgroupMinSize <= 32 && context.AdapterInfo().subgroupMaxSize >= 32 &&
+      is_fp16 && parameters.head_size_ == 128 && parameters.sequence_length_ >= 512 &&
+      parameters.is_unidirectional_ && !has_attention_bias && !has_head_sink &&
+      !kv_cache_quantization_enabled && !use_seqlens_q;
+  FlashAttentionProgram program{use_subgroup_prefill ? "FlashAttentionSubgroupPrefill" : "FlashAttention",
                                 has_attention_bias,
                                 is_qualcomm,
                                 is_fp16,
@@ -1033,7 +1056,7 @@ Status ApplyDensePrefill(const Tensor* Q, Tensor* present_key, Tensor* present_v
                                 has_local_window,
                                 kv_cache_quantization_bits,
                                 compressed_head_size_u32,
-                                use_seqlens_q};
+                                use_seqlens_q, use_subgroup_prefill};
   program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, 4},
                      {present_key, ProgramTensorMetadataDependency::TypeAndRank,
                       kv_cache_quantization_enabled ? 1 : 4},
@@ -1056,7 +1079,11 @@ Status ApplyDensePrefill(const Tensor* Q, Tensor* present_key, Tensor* present_v
                                                 : parameters.scale_;
 
   // On Apple GPUs, use a larger workgroup size to reduce barrier overhead.
-  const uint32_t prefill_tile_size = is_apple ? 128 : tile_size;
+  const uint32_t prefill_tile_size = use_subgroup_prefill ? 32 : is_apple ? 128
+                                                                          : tile_size;
+  if (use_subgroup_prefill) {
+    program.SetSubgroupSize(32);
+  }
   const uint32_t num_seq_tile = (parameters.sequence_length_ + prefill_tile_size - 1) / prefill_tile_size;
 
   uint32_t attn_bias_dim0 = 1;
@@ -1070,8 +1097,8 @@ Status ApplyDensePrefill(const Tensor* Q, Tensor* present_key, Tensor* present_v
   }
 
   program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_seq_tile)
-      .SetWorkgroupSize(prefill_tile_size)
-      .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_,
+      .SetWorkgroupSize(use_subgroup_prefill ? 256 : prefill_tile_size)
+      .CacheHint(use_subgroup_prefill, has_attention_bias, parameters.head_size_, parameters.num_heads_,
                  parameters.is_unidirectional_, is_qualcomm, is_nvidia, is_apple,
                  has_subgroups, q_BNSH, use_seqlen_k, has_head_sink, has_local_window,
                  kv_cache_quantization_bits,

@@ -56,7 +56,7 @@ var<workgroup> inter_results: array<array<acc_element_t, tile_size_k_vec>, tile_
 var<workgroup> tile_A : array<vec4<u32>, double_tile_size_k_vec>;
 // double_tile_size_k_vec * 16 / 128
 const scale_a_size_in_tile_a = double_tile_size_k_vec / 8;
-var<workgroup> scale_A : array<output_element_t, scale_a_size_in_tile_a>;
+var<workgroup> scale_A : array<f32, scale_a_size_in_tile_a>;
 
 fn loadSHMA(batch: u32, a_global: u32, kidx_v: u32, col: u32)
 {
@@ -69,7 +69,7 @@ fn loadSHMA(batch: u32, a_global: u32, kidx_v: u32, col: u32)
     if (col < scale_a_size_in_tile_a && kidx_v/8 + col < uniforms.K16/8)
     {
     // kidx_v - covers 16 values of k in input_a
-    scale_A[col] = scales_a.getByOffset(batch*uniforms.M*(uniforms.K/128) + a_global*(uniforms.K/128) + kidx_v/8 + col);
+    scale_A[col] = f32(scales_a.getByOffset(batch*uniforms.M*(uniforms.K/128) + a_global*(uniforms.K/128) + kidx_v/8 + col));
     }
 }
 
@@ -179,12 +179,12 @@ $MAIN {
     let zero = mm_read_zero(actual_weight_idx, 0, 0, uniforms.N, uniforms.zero_blocks_per_col);
 #if has_weight_idx
 #if has_weight_idx_indirect
-    let own_scale_b = scales_b.getByOffset(weight_index_indirect[a_global]);
+    let own_scale_b = f32(scales_b.getByOffset(weight_index_indirect[a_global]));
 #else
-    let own_scale_b = scales_b.getByOffset(uniforms.weight_idx);
+    let own_scale_b = f32(scales_b.getByOffset(uniforms.weight_idx));
 #endif
 #else
-    let own_scale_b = scales_b.getByOffset(0);
+    let own_scale_b = f32(scales_b.getByOffset(0));
 #endif
 #endif
 
@@ -216,10 +216,10 @@ $MAIN {
                 let b_weight_offset = actual_weight_idx * uniforms.N * uniforms.K32;
                 let b_offset = b_weight_offset + b_global * uniforms.K32 + k_offset;
                 let b_scale_offset = actual_weight_idx * uniforms.N * (uniforms.K / uniforms.block_size);
-                let own_scale_b = scales_b.getByOffset(b_scale_offset + b_global * uniforms.K / uniforms.block_size + block_idx);
+                let own_scale_b = f32(scales_b.getByOffset(b_scale_offset + b_global * uniforms.K / uniforms.block_size + block_idx));
 #else
                 let b_offset = b_global * uniforms.K32 + k_offset;
-                let own_scale_b = scales_b.getByOffset(b_global * uniforms.K / uniforms.block_size + block_idx);
+                let own_scale_b = f32(scales_b.getByOffset(b_global * uniforms.K / uniforms.block_size + block_idx));
 #endif
 #if !single_scale_weights
                 let zero = mm_read_zero(actual_weight_idx, b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
