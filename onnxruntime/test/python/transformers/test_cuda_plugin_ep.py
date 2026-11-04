@@ -257,7 +257,7 @@ def create_gemm_model(model_path, alpha=1.0, beta=1.0, transA=0, transB=0):
     save(model_def, model_path)
 
 
-def create_matmul_nbits_model(model_path, k=64, n=64, bits=4, block_size=32):
+def create_matmul_nbits_model(model_path, k=64, n=64, bits=4, block_size=32, dynamic_m=False):
     # Create a MatMulNBits (com.microsoft) model with a runtime-prepacked (weight_prepacked=0)
     # fp16 quantized weight. During session initialization the CUDA kernel pre-packs the constant
     # weight via MatMulNBits::PrePack_B, which allocates scratch through the EP-provided allocator
@@ -286,8 +286,8 @@ def create_matmul_nbits_model(model_path, k=64, n=64, bits=4, block_size=32):
     graph_def = helper.make_graph(
         [node_def],
         "test-model-matmulnbits",
-        [helper.make_tensor_value_info("A", TensorProto.FLOAT16, [2, k])],
-        [helper.make_tensor_value_info("Y", TensorProto.FLOAT16, [2, n])],
+        [helper.make_tensor_value_info("A", TensorProto.FLOAT16, ["M" if dynamic_m else 2, k])],
+        [helper.make_tensor_value_info("Y", TensorProto.FLOAT16, ["M" if dynamic_m else 2, n])],
         initializer=[
             helper.make_tensor("B", TensorProto.UINT8, b.shape, b.tobytes(), raw=True),
             helper.make_tensor("scales", TensorProto.FLOAT16, scales.shape, scales.tobytes(), raw=True),
@@ -857,6 +857,46 @@ class TestCudaPluginEP(unittest.TestCase):
         finally:
             if os.path.exists(model_path):
                 os.remove(model_path)
+
+    def test_matmul_nbits_profiling_with_noncurrent_plugin_device(self):
+        require_cuda_plugin_ep()
+        if torch.cuda.device_count() < 2:
+            self.skipTest("Two CUDA devices required for allocator/ambient-device mismatch")
+        target_device = get_cuda_plugin_device_by_id(1)
+        capability = get_cuda_compute_capability(target_device)
+        if capability is None or capability < FPA_INTB_MIN_COMPUTE_CAPABILITY:
+            self.skipTest("Plugin device 1 requires SM75+ for fpA/intB profiling")
+        original_device = torch.cuda.current_device()
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                model_path = os.path.join(tmp, "matmul_nbits_multi_gpu.onnx")
+                create_matmul_nbits_model(model_path, dynamic_m=True)
+                options = _create_session_options(
+                    {
+                        "ep.cuda.fpa_intb_gemm": "1",
+                        "ep.cuda.fpa_intb_profile_m": "1",
+                        "ep.cuda.gemm_tactic_cache_dir": tmp,
+                        "ep.cuda.gemm_tactic_cache_prefix": "noncurrent-device",
+                        "ep.cuda.gemm_tactic_cache_mode": "save",
+                    }
+                )
+                options.add_provider_for_devices([target_device], _plugin_provider_options())
+                torch.cuda.set_device(0)
+                session = onnxrt.InferenceSession(model_path, sess_options=options)
+                assigned, info = _get_assigned_nodes(session, CUDA_PLUGIN_EP_NAME)
+                self.assertTrue(
+                    any(node.op_type == "MatMulNBits" for node in assigned),
+                    f"MatMulNBits did not run on the CUDA plugin: {_format_assignment_summary(info)}",
+                )
+                # M=1 is eager; M=3 rounds to the initially unprofiled M=4 bucket.
+                for m in (1, 3, 3):
+                    torch.cuda.set_device(0)
+                    result = session.run(None, {"A": np.ones((m, 64), dtype=np.float16)})[0]
+                    self.assertEqual(result.shape, (m, 64))
+                    np.testing.assert_array_equal(result, np.zeros((m, 64), dtype=np.float16))
+                del session
+        finally:
+            torch.cuda.set_device(original_device)
 
     # ---- Provider options tests ----
 
