@@ -137,11 +137,12 @@ struct GroupQueryAttentionData {
 
   // Past sequence length for each batch (i.e., the offset to append new tokens). Shape [batch_size].
   // For first prompt: past_seq_lens[b] = 0
-  // For token generation or subsequent prompt: past_seq_lens[b] = total_seq_lens[b] - sequence_length
+  // Otherwise: total_seq_lens[b] minus the valid query length (query_seqlens[b], when provided).
   int* past_seq_lens = nullptr;
 
   // Padded sequence length for each batch. Shape [batch_size].
-  // Only used for first prompt: padded_seq_lens[b] = sequence_length
+  // Causal key length: P + S for first prompts and right-padded chunks, T for unpadded continuations.
+  // Windowed calls use the bounded cache-relative append offset plus S instead of absolute P.
   int* padded_seq_lens = nullptr;
 
   // Cache-relative sequence lengths, used when parameters.is_windowed_kv_cache is set. Shape [batch_size].
@@ -178,6 +179,11 @@ struct GroupQueryAttentionData {
   T* output = nullptr;
   U* present_key = nullptr;
   U* present_value = nullptr;
+
+  // The query_seqlens input was given for a multi-token call (it is ignored for a single query token).
+  // Only then is whether a chunk is the first one known on the device alone, see
+  // DequantizeFlashAttentionFallback.
+  bool has_query_seqlens = false;
 
   // Kernel Flags
   bool use_flash_attention = false;

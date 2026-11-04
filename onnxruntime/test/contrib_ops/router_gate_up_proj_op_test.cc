@@ -261,6 +261,9 @@ TEST(RouterGateUpProjTest, FusedDynamicWeight) {
 }
 TEST(RouterGateUpProjTest, FusedExplicitActivation) { RunRouterGateUpProjTest<BFloat16>({2, 512, 128, 64}, "swiglu"); }
 TEST(RouterGateUpProjTest, GenericManyRows) { RunRouterGateUpProjTest<BFloat16>({40, 2560, 512, 640}); }
+TEST(RouterGateUpProjTest, GenericVectorizedManyRows) {
+  RunRouterGateUpProjTest<BFloat16>({256, 64, 512, 640, 0.5f, 1.702f, 1.0f});
+}
 TEST(RouterGateUpProjTest, GenericUnalignedK) { RunRouterGateUpProjTest<BFloat16>({4, 200, 48, 24}); }
 
 TEST(RouterGateUpProjTest, Float16FusedSingleRow) { RunRouterGateUpProjTest<MLFloat16>({1, 512, 128, 64}); }
@@ -269,6 +272,9 @@ TEST(RouterGateUpProjTest, Float16FusedClampAndBeta) {
   RunRouterGateUpProjTest<MLFloat16>({5, 1024, 128, 64, 0.5f, 1.702f, 1.0f});
 }
 TEST(RouterGateUpProjTest, Float16GenericManyRows) { RunRouterGateUpProjTest<MLFloat16>({40, 1024, 128, 64}); }
+TEST(RouterGateUpProjTest, Float16GenericVectorizedManyRows) {
+  RunRouterGateUpProjTest<MLFloat16>({256, 64, 512, 640, 0.5f, 1.702f, 1.0f});
+}
 
 // An empty reduction projects to zeros, as MatMul does; the schema accepts K = 0.
 TEST(RouterGateUpProjTest, ZeroReduction) { RunRouterGateUpProjTest<BFloat16>({1, 0, 128, 64}); }

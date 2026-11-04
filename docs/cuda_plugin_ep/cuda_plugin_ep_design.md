@@ -136,7 +136,7 @@ Because the plugin binary may load into an older runtime, every `OrtApi`/`OrtEpA
 | `IsGraphCaptureEnabled`, `IsGraphCaptured`, `ReplayGraph`, `GetGraphCaptureNodeAssignmentPolicy` | 1.26 | `ort_version >= 26` |
 | `GetAvailableResource` | 1.26 | `ort_version >= 26` |
 
-All other `OrtEp` and `OrtEpFactory` callbacks are `\since 1.24` or older and are installed unconditionally. Gating `CreateProfiler` is what makes the three `\since 1.25` profiler functions unreachable on an older runtime: when the profiler is never created, ORT never drives the `OrtEpProfilerImpl` callbacks that call them.
+All other `OrtEp` and `OrtEpFactory` callbacks are `\since 1.24` or older and are installed unconditionally, except `OrtEpFactory::GetDeviceMemoryCapacity` (`\since 1.32`). That callback is also installed unconditionally because older runtimes never read the field and its implementation only calls older runtime APIs (`EpDevice_MemoryInfo`, `\since 1.23`, and `MemoryInfoGetId`). It does not raise the `1.24.4` compatibility floor. Gating `CreateProfiler` is what makes the three `\since 1.25` profiler functions unreachable on an older runtime: when the profiler is never created, ORT never drives the `OrtEpProfilerImpl` callbacks that call them.
 
 `KernelContext_GetSyncStream` is guarded at the adapter call site rather than through an `OrtEp` callback field: `OpKernelContext::GetSyncStream()` returns null when `CurrentOrtApiVersion() < 28`, and `CudaEp::IsConcurrentRunSupportedImpl()` only advertises concurrent runs when that API is available. Older runtimes therefore keep the previous serialized-run behavior while still using the same plugin binary.
 

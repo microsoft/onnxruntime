@@ -1237,7 +1237,7 @@ struct DetailsForTAndWeight<__nv_bfloat16, uint8_t> {
 #endif
 
 template <typename T, typename WeightType>
-void launch_moe_gemv_int_symmetric(const T* act, const WeightType* weight, const T* scales, const T* bias, T* out,
+bool launch_moe_gemv_int_symmetric(const T* act, const WeightType* weight, const T* scales, const T* bias, T* out,
                                    const int64_t* expert_first_token_offset, const int* permuted_row_to_expert,
                                    int num_experts,
                                    int64_t expanded_num_rows, int64_t n, int64_t k, int group_size, int sm,
@@ -1249,7 +1249,15 @@ void launch_moe_gemv_int_symmetric(const T* act, const WeightType* weight, const
             /*swiglu=*/false, act, reinterpret_cast<const uint8_t*>(weight), scales, bias, out,
             expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, n, k, group_size,
             nullptr, nullptr, nullptr, 1.f, 0.f, 0.f, nullptr, 0, stream, tensor_core_min_rows)) {
-      return;
+      return true;
+    }
+  }
+  if constexpr (std::is_same_v<T, __nv_bfloat16> && std::is_same_v<WeightType, cutlass::uint2b_t>) {
+    if (fiv::moe_tc::TryLaunchInt2Bf16(
+            /*swiglu=*/false, act, reinterpret_cast<const uint8_t*>(weight), scales, bias, out,
+            expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, n, k, group_size,
+            nullptr, nullptr, nullptr, 1.f, 0.f, 0.f, nullptr, 0, stream, tensor_core_min_rows)) {
+      return true;
     }
   }
 #endif
@@ -1274,6 +1282,7 @@ void launch_moe_gemv_int_symmetric(const T* act, const WeightType* weight, const
   } else {
     launch(TypeTag<TypeA>{});
   }
+  return false;
 }
 
 template <typename T, typename WeightType>
@@ -1307,7 +1316,7 @@ void launch_moe_gemv_int_symmetric_fused_finalize(
 }
 
 template <typename T, typename WeightType>
-void launch_moe_gemv_int_symmetric_interleaved_swiglu(
+bool launch_moe_gemv_int_symmetric_interleaved_swiglu(
     const T* act, const WeightType* weight, const T* scales, const T* bias, T* out,
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts,
     int64_t expanded_num_rows, int64_t inter_size, int64_t k, int group_size, int sm,
@@ -1322,7 +1331,17 @@ void launch_moe_gemv_int_symmetric_interleaved_swiglu(
             group_size, activation_params.swiglu_alpha, activation_params.swiglu_beta,
             activation_params.swiglu_limit, activation_params.alpha, activation_params.beta,
             activation_params.limit, permuted_row_to_source_row, num_rows, stream, tensor_core_min_rows)) {
-      return;
+      return true;
+    }
+  }
+  if constexpr (std::is_same_v<T, __nv_bfloat16> && std::is_same_v<WeightType, cutlass::uint2b_t>) {
+    if (fiv::moe_tc::TryLaunchInt2Bf16(
+            /*swiglu=*/true, act, reinterpret_cast<const uint8_t*>(weight), scales, bias, out,
+            expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, inter_size * 2, k,
+            group_size, activation_params.swiglu_alpha, activation_params.swiglu_beta,
+            activation_params.swiglu_limit, activation_params.alpha, activation_params.beta,
+            activation_params.limit, permuted_row_to_source_row, num_rows, stream, tensor_core_min_rows)) {
+      return true;
     }
   }
 #endif
@@ -1344,7 +1363,7 @@ void launch_moe_gemv_int_symmetric_interleaved_swiglu(
           reinterpret_cast<TypeA*>(out),
           expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, inter_size, k, group_size,
           activation_params, permuted_row_to_source_row, num_rows, splitk_partials, stream);
-      return;
+      return false;
     }
   }
 
@@ -1364,6 +1383,7 @@ void launch_moe_gemv_int_symmetric_interleaved_swiglu(
   } else {
     launch(TypeTag<TypeA>{});
   }
+  return false;
 }
 
 template <typename T>
@@ -1388,13 +1408,13 @@ void launch_moe_gemv_int4_per_channel_interleaved_swiglu(
       /*permuted_row_to_source_row=*/nullptr, /*num_rows=*/expanded_num_rows, nullptr, stream);
 }
 
-template void launch_moe_gemv_int_symmetric<half, cutlass::uint4b_t>(
+template bool launch_moe_gemv_int_symmetric<half, cutlass::uint4b_t>(
     const half*, const cutlass::uint4b_t*, const half*, const half*, half*, const int64_t*, const int*, int,
     int64_t, int64_t, int64_t, int, int, cudaStream_t, int);
-template void launch_moe_gemv_int_symmetric<half, cutlass::uint2b_t>(
+template bool launch_moe_gemv_int_symmetric<half, cutlass::uint2b_t>(
     const half*, const cutlass::uint2b_t*, const half*, const half*, half*, const int64_t*, const int*, int,
     int64_t, int64_t, int64_t, int, int, cudaStream_t, int);
-template void launch_moe_gemv_int_symmetric<half, uint8_t>(
+template bool launch_moe_gemv_int_symmetric<half, uint8_t>(
     const half*, const uint8_t*, const half*, const half*, half*, const int64_t*, const int*, int,
     int64_t, int64_t, int64_t, int, int, cudaStream_t, int);
 template void launch_moe_gemv_int_symmetric_fused_finalize<half, cutlass::uint4b_t>(
@@ -1403,15 +1423,15 @@ template void launch_moe_gemv_int_symmetric_fused_finalize<half, cutlass::uint4b
 template void launch_moe_gemv_int_symmetric_fused_finalize<half, uint8_t>(
     const half*, const uint8_t*, const half*, const half*, half*, const int*, const int*, const float*,
     int, int64_t, int64_t, int64_t, int64_t, int, int, cudaStream_t);
-template void launch_moe_gemv_int_symmetric_interleaved_swiglu<half, cutlass::uint4b_t>(
+template bool launch_moe_gemv_int_symmetric_interleaved_swiglu<half, cutlass::uint4b_t>(
     const half*, const cutlass::uint4b_t*, const half*, const half*, half*, const int64_t*, const int*, int,
     int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams, const int*, int64_t, float*, cudaStream_t,
     int);
-template void launch_moe_gemv_int_symmetric_interleaved_swiglu<half, cutlass::uint2b_t>(
+template bool launch_moe_gemv_int_symmetric_interleaved_swiglu<half, cutlass::uint2b_t>(
     const half*, const cutlass::uint2b_t*, const half*, const half*, half*, const int64_t*, const int*, int,
     int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams, const int*, int64_t, float*, cudaStream_t,
     int);
-template void launch_moe_gemv_int_symmetric_interleaved_swiglu<half, uint8_t>(
+template bool launch_moe_gemv_int_symmetric_interleaved_swiglu<half, uint8_t>(
     const half*, const uint8_t*, const half*, const half*, half*, const int64_t*, const int*, int,
     int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams, const int*, int64_t, float*, cudaStream_t,
     int);
@@ -1424,13 +1444,13 @@ template void launch_moe_gemv_int4_per_channel_interleaved_swiglu<half>(
     int64_t, int64_t, int, cutlass_kernels::ActivationParams, cudaStream_t);
 
 #ifdef ENABLE_BF16
-template void launch_moe_gemv_int_symmetric<__nv_bfloat16, cutlass::uint2b_t>(
+template bool launch_moe_gemv_int_symmetric<__nv_bfloat16, cutlass::uint2b_t>(
     const __nv_bfloat16*, const cutlass::uint2b_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
     const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cudaStream_t, int);
-template void launch_moe_gemv_int_symmetric<__nv_bfloat16, cutlass::uint4b_t>(
+template bool launch_moe_gemv_int_symmetric<__nv_bfloat16, cutlass::uint4b_t>(
     const __nv_bfloat16*, const cutlass::uint4b_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
     const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cudaStream_t, int);
-template void launch_moe_gemv_int_symmetric<__nv_bfloat16, uint8_t>(
+template bool launch_moe_gemv_int_symmetric<__nv_bfloat16, uint8_t>(
     const __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
     const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cudaStream_t, int);
 template void launch_moe_gemv_int_symmetric_fused_finalize<__nv_bfloat16, cutlass::uint4b_t>(
@@ -1439,15 +1459,15 @@ template void launch_moe_gemv_int_symmetric_fused_finalize<__nv_bfloat16, cutlas
 template void launch_moe_gemv_int_symmetric_fused_finalize<__nv_bfloat16, uint8_t>(
     const __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
     const int*, const int*, const float*, int, int64_t, int64_t, int64_t, int64_t, int, int, cudaStream_t);
-template void launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, cutlass::uint4b_t>(
+template bool launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, cutlass::uint4b_t>(
     const __nv_bfloat16*, const cutlass::uint4b_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
     const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams,
     const int*, int64_t, float*, cudaStream_t, int);
-template void launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, cutlass::uint2b_t>(
+template bool launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, cutlass::uint2b_t>(
     const __nv_bfloat16*, const cutlass::uint2b_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
     const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams,
     const int*, int64_t, float*, cudaStream_t, int);
-template void launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, uint8_t>(
+template bool launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, uint8_t>(
     const __nv_bfloat16*, const uint8_t*, const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*,
     const int64_t*, const int*, int, int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams,
     const int*, int64_t, float*, cudaStream_t, int);

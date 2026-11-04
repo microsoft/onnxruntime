@@ -61,6 +61,7 @@
 #include "core/optimizer/group_query_attention_pre_norm_fusion.h"
 #include "core/optimizer/matmul_nbits_qkv_fusion.h"
 #include "core/optimizer/matmul_nbits_mlp_fusion.h"
+#include "core/optimizer/matmul_nbits_qlora_fusion.h"
 #include "core/optimizer/matmul_bn_fusion.h"
 #include "core/optimizer/matmul_integer_to_float.h"
 #include "core/optimizer/matmul_scale_fusion.h"
@@ -492,10 +493,15 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<GroupQueryAttentionPreNormFusion>(
           InlinedHashSet<std::string_view>{onnxruntime::kCudaExecutionProvider,
                                            onnxruntime::kWebGpuExecutionProvider}));
+      const bool has_matmul_nbits_qlora_kernel =
+          WebGpuEpHasContribKernel(execution_providers, "MatMulNBitsQLoRA", logger);
       const bool has_matmul_nbits_mlp_kernel =
           WebGpuEpHasContribKernel(execution_providers, "MatMulNBitsMlp", logger);
       const bool has_matmul_nbits_qkv_kernel =
           WebGpuEpHasContribKernel(execution_providers, "MatMulNBitsQkv", logger);
+      if (has_matmul_nbits_qlora_kernel) {
+        transformers.emplace_back(std::make_unique<MatMulNBitsQLoRAFusion>());
+      }
       if (has_matmul_nbits_mlp_kernel) {
         transformers.emplace_back(std::make_unique<MatMulNBitsMlpFusion>(
             InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));

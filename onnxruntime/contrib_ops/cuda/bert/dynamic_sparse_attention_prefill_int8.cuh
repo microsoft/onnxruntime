@@ -27,7 +27,11 @@
 //     its heads in fp32 as well. A value scale at or below kInt8TcMaxValueScale never takes this path. Above it, a CTA
 //     takes it when one of its heads has a candidate kInt8TcTailDepth nats below its running maximum, about 7 standard
 //     deviations of Gaussian logits over 2048 candidates: a fraction of the CTAs when the standard deviation is about
-//     3 nats, practically none for 1 nat. The documentation lists measurements.
+//     3 nats, practically none for 1 nat. The documentation lists measurements. A new running maximum that is more
+//     than kInt8TcTailDepth nats above the previous one counts the same way. Only a much larger jump (about 87 nats,
+//     where the rescale factor drops below 2^-126) makes ex2.approx.ftz flush the rescale of the accumulator to zero
+//     and erase the earlier tiles' contribution, but the existing kInt8TcTailDepth threshold is reused as a
+//     conservative trigger for the fp32 fallback, so that the rescale never has to be tracked at finer granularity.
 // The gathered int8 rows stay int8 in shared memory (cp.async, double buffered, one tile ahead). A fragment read with
 // ldmatrix is converted to fp16 exactly in registers (1024 + (byte ^ 0x80) - 1152, "magic number" conversion) and
 // consumed by fp16 MMAs with fp32 accumulation, so the per-tile dequantization pass, its shared memory round trip and
@@ -71,7 +75,7 @@ constexpr int kIdxStages = 3;
 // removes it; the softmax denominator is accumulated in fp32 without it. A probability below 2^-29 is a subnormal
 // fp16 value of the tile (kInt8TcTailDepth nats below the running maximum). When some channel has
 // |value_scale| > kInt8TcMaxValueScale (so that |p * V * value_scale| for p <= 2^-40 can exceed 2^-17) and a valid
-// candidate is that deep, the CTA takes AttendRowFp32 instead.
+// candidate is that deep, or a running maximum rises by that much, the CTA takes AttendRowFp32 instead.
 constexpr float kInt8ProbScale = 32768.0f;  // 2^15
 constexpr float kInt8ProbInverseScale = 1.0f / kInt8ProbScale;
 constexpr float kInt8TcMaxValueScale = 65536.0f;  // 2^16
@@ -97,6 +101,12 @@ constexpr size_t kInt8SharedBytes = 4 * static_cast<size_t>(kInt8TileBytes) + kI
                                     kMaxGroup * 4 * sizeof(float) + kInt8PBytes;
 // The split-K (decode) variant adds the tile of fp16 probability residuals.
 constexpr size_t kInt8SplitKSharedBytes = kInt8SharedBytes + kInt8PBytes;
+// Two-buffer variant (sK8[1] + sV8[1]) for GPUs with 100 KB shared memory per SM (SM 8.6 / 8.9 / 12.0 / 12.1) so two
+// CTAs can reside per SM concurrently while overlapping V[tile] copy with Q*K^T and K[tile+1] copy with P*V.
+constexpr size_t kInt8TwoBufferSharedBytes = 2 * static_cast<size_t>(kInt8TileBytes) +
+                                             kIdxStages * kTile * sizeof(int32_t) + kMaxGroup * 4 * sizeof(float) +
+                                             kInt8PBytes;
+constexpr size_t kInt8SplitKTwoBufferSharedBytes = kInt8TwoBufferSharedBytes + kInt8PBytes;
 
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
 __device__ __forceinline__ void CpAsync16Zfill(uint32_t smem_dst, const void* gmem_src, bool valid) {
@@ -255,7 +265,7 @@ __device__ __noinline__ void AttendRowFp32(const __nv_bfloat16* __restrict__ que
 // key_scale, value_scale: float [kv_heads, 256]. The normalized result goes to output; with kSplitK the partials
 // go to partial_max / partial_sum [rows * num_heads * split_count] and partial_output [.., 256] instead, indexed
 // (row * num_heads + head) * split_count + split (output is unused; partial_output must be 16-byte aligned).
-template <bool kSplitK>
+template <bool kSplitK, bool kTwoBufferSmem = false>
 __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKernel(
     const __nv_bfloat16* __restrict__ query,
     const int8_t* __restrict__ key,
@@ -278,9 +288,10 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
     const float* __restrict__ value_scale) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
   extern __shared__ __align__(16) unsigned char smem_raw[];
+  constexpr int kKVStages = kTwoBufferSmem ? 1 : 2;
   unsigned char* sK8 = smem_raw;
-  unsigned char* sV8 = smem_raw + 2 * kInt8TileBytes;
-  int32_t* sIdx = reinterpret_cast<int32_t*>(smem_raw + 4 * kInt8TileBytes);
+  unsigned char* sV8 = smem_raw + kKVStages * kInt8TileBytes;
+  int32_t* sIdx = reinterpret_cast<int32_t*>(smem_raw + 2 * kKVStages * kInt8TileBytes);
   float* sM = reinterpret_cast<float*>(sIdx + kIdxStages * kTile);
   __half* sP = reinterpret_cast<__half*>(sM + kMaxGroup * 4);
   __half* sQ = reinterpret_cast<__half*>(smem_raw);
@@ -443,7 +454,29 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
   const int load_chunk = tid & 15;
 
   // 16 B per lane: 16 lanes per candidate row, 8 rows per pass, 8 passes per tile (K and V).
-  auto issue_tile = [&](int tile, int stage, int idx_buf) {
+  auto issue_k_tile = [&](int stage, int idx_buf) {
+#pragma unroll
+    for (int i = 0; i < kTile / 8; ++i) {
+      const int cand = i * 8 + (tid >> 4);
+      const int index = sIdx[idx_buf * kTile + cand];
+      const bool valid = index >= 0;
+      const int64_t source = static_cast<int64_t>(valid ? index : 0) * kHeadDim + load_chunk * 16;
+      const uint32_t offset = static_cast<uint32_t>(stage * kInt8TileBytes + cand * kInt8RowStride + load_chunk * 16);
+      CpAsync16Zfill(k_smem_base + offset, key_base + source, valid);
+    }
+  };
+  auto issue_v_tile = [&](int stage, int idx_buf) {
+#pragma unroll
+    for (int i = 0; i < kTile / 8; ++i) {
+      const int cand = i * 8 + (tid >> 4);
+      const int index = sIdx[idx_buf * kTile + cand];
+      const bool valid = index >= 0;
+      const int64_t source = static_cast<int64_t>(valid ? index : 0) * kHeadDim + load_chunk * 16;
+      const uint32_t offset = static_cast<uint32_t>(stage * kInt8TileBytes + cand * kInt8RowStride + load_chunk * 16);
+      CpAsync16Zfill(v_smem_base + offset, value_base + source, valid);
+    }
+  };
+  auto issue_tile = [&](int stage, int idx_buf) {
 #pragma unroll
     for (int i = 0; i < kTile / 8; ++i) {
       const int cand = i * 8 + (tid >> 4);
@@ -457,7 +490,11 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
   };
 
   if (tiles > 0) {
-    issue_tile(0, 0, 0);
+    if constexpr (kTwoBufferSmem) {
+      issue_k_tile(0, 0);
+    } else {
+      issue_tile(0, 0);
+    }
   }
   CpAsyncCommit();
 
@@ -488,14 +525,19 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
   int idx_next = 1 % kIdxStages;   // (tile + 1) % 3
   int idx_next2 = 2 % kIdxStages;  // (tile + 2) % 3
   for (int tile = 0; tile < tiles; ++tile) {
-    CpAsyncWait<0>();  // K / V of this tile have landed (this thread's copies)
+    CpAsyncWait<0>();  // K (and V in 4-buffer mode) of this tile have landed
     __syncthreads();   // (1) everyone's copies are visible; the previous tile's smem consumers are done
 
-    const int stage = tile & 1;
-    if (tile + 1 < tiles) {
-      issue_tile(tile + 1, stage ^ 1, idx_next);
+    const int stage = kTwoBufferSmem ? 0 : (tile & 1);
+    if constexpr (kTwoBufferSmem) {
+      issue_v_tile(0, idx_cur);
+      CpAsyncCommit();
+    } else {
+      if (tile + 1 < tiles) {
+        issue_tile(stage ^ 1, idx_next);
+      }
+      CpAsyncCommit();
     }
-    CpAsyncCommit();
     // Raw indices of tile + 2: loaded now, resolved and stored at the end of the iteration (hides the load latency).
     int raw_next2 = -1;
     const bool stage_next2 = (tile + 2 < tiles) && tid < kTile;
@@ -583,13 +625,20 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
     const float p13 = vb1 ? FastExp2(d13 * kLog2e) : 0.0f;
     run_sum0 = run_sum0 * alpha0 + ((p00 + p01) + (p02 + p03));
     run_sum1 = run_sum1 * alpha1 + ((p10 + p11) + (p12 + p13));
-    run_max0 = new_max0;
-    run_max1 = new_max1;
     if (check_tail_depth) {
       const float low0 = fminf(fminf(va0 ? d00 : 0.0f, va1 ? d01 : 0.0f), fminf(vb0 ? d02 : 0.0f, vb1 ? d03 : 0.0f));
       const float low1 = fminf(fminf(va0 ? d10 : 0.0f, va1 ? d11 : 0.0f), fminf(vb0 ? d12 : 0.0f, vb1 ? d13 : 0.0f));
-      lowest_depth = fminf(lowest_depth, fminf(low0, low1));
+      // A new maximum also pushes the candidates accumulated so far that many nats down. A very large jump (about 87
+      // nats or more) makes ex2.approx.ftz flush alpha to zero (below 2^-126), erasing the accumulator that a large
+      // value scale can amplify. The rescale therefore counts as a depth too, and the shared kInt8TcTailDepth threshold
+      // triggers the fp32 fallback long before the flush can happen (an empty accumulator, run_max == -FLT_MAX, has
+      // nothing to lose).
+      const float rescale0 = run_max0 > -FLT_MAX ? run_max0 - new_max0 : 0.0f;
+      const float rescale1 = run_max1 > -FLT_MAX ? run_max1 - new_max1 : 0.0f;
+      lowest_depth = fminf(lowest_depth, fminf(fminf(low0, low1), fminf(rescale0, rescale1)));
     }
+    run_max0 = new_max0;
+    run_max1 = new_max1;
     {
       const float x00 = p00 * kInt8ProbScale;
       const float x01 = p01 * kInt8ProbScale;
@@ -623,7 +672,16 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
             __floats2half2_rn(x12 - f11.x, x13 - f11.y);
       }
     }
-    __syncthreads();  // (3) the probability tile (and its residual) is visible
+    if constexpr (kTwoBufferSmem) {
+      CpAsyncWait<0>();  // V of this tile has landed in sV8[0]
+    }
+    __syncthreads();  // (3) the probability tile (and its residual, plus V in 2-buffer mode) is visible
+    if constexpr (kTwoBufferSmem) {
+      if (tile + 1 < tiles) {
+        issue_k_tile(0, idx_next);
+      }
+      CpAsyncCommit();
+    }
 
     // The maximum rarely changes after the first tiles: skip the accumulator rescale when the whole warp is unchanged.
     if (__any_sync(0xffffffffu, alpha0 != 1.0f || alpha1 != 1.0f)) {

@@ -10,6 +10,7 @@
 #include "contrib_ops/cuda/moe/qmoe_background_services.h"
 #include "core/common/string_utils.h"
 #include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/shared_inc/cuda_memory_capacity.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include <algorithm>
@@ -59,6 +60,7 @@ CudaEpFactory::CudaEpFactory(const OrtApi& ort_api, const OrtEpApi& ep_api,
   CreateDataTransfer = CreateDataTransferImpl;
   IsStreamAware = IsStreamAwareImpl;
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
+  GetDeviceMemoryCapacity = GetDeviceMemoryCapacityImpl;
 }
 
 CudaEpFactory::~CudaEpFactory() {
@@ -129,6 +131,39 @@ uint32_t ORT_API_CALL CudaEpFactory::GetVendorIdImpl(const OrtEpFactory* this_pt
 /*static*/
 const char* ORT_API_CALL CudaEpFactory::GetVersionImpl(const OrtEpFactory* this_ptr) noexcept {
   return static_cast<const CudaEpFactory*>(this_ptr)->ep_version_.c_str();
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL CudaEpFactory::GetDeviceMemoryCapacityImpl(
+    OrtEpFactory* this_ptr, const OrtEpDevice* ep_device,
+    OrtDeviceMemoryType memory_type,
+    uint64_t* total_memory_bytes, uint64_t* available_memory_bytes) noexcept {
+  auto* factory = static_cast<CudaEpFactory*>(this_ptr);
+  if (memory_type != OrtDeviceMemoryType_DEFAULT) {
+    return factory->ort_api_.CreateStatus(ORT_NOT_IMPLEMENTED,
+                                          "CUDA memory capacity queries support only device memory (DEFAULT)");
+  }
+  const OrtMemoryInfo* memory_info = factory->ort_api_.EpDevice_MemoryInfo(
+      ep_device, memory_type);
+  if (memory_info == nullptr) {
+    return factory->ort_api_.CreateStatus(ORT_FAIL, "CUDA device memory info is unavailable");
+  }
+
+  int device_id = 0;
+  OrtStatus* status = factory->ort_api_.MemoryInfoGetId(memory_info, &device_id);
+  if (status != nullptr) {
+    return status;
+  }
+
+  cuda::MemoryCapacityDriverApi driver;
+  if (const auto error = cuda::QueryDeviceMemoryCapacity(
+          driver, device_id, total_memory_bytes, available_memory_bytes)) {
+    char message[512];
+    return factory->ort_api_.CreateStatus(ORT_RUNTIME_EXCEPTION,
+                                          cuda::FormatMemoryCapacityError(driver, error, message));
+  }
+
+  return nullptr;
 }
 
 namespace {
