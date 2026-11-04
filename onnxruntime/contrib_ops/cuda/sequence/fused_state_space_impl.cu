@@ -284,7 +284,7 @@ cudaError_t LaunchBiasCorrectedMoERoute(cudaStream_t stream, int rows, int width
 
 cudaError_t LaunchReluSquared(cudaStream_t stream, const void* input, void* output, int64_t count) {
   if (count > 0) {
-    ReluSquaredKernel<<<(count + 255) / 256, 256, 0, stream>>>(
+    ReluSquaredKernel<<<static_cast<unsigned int>((count + 255) / 256), 256, 0, stream>>>(
         static_cast<const bf16*>(input), static_cast<bf16*>(output), count);
   }
   return cudaGetLastError();
