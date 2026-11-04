@@ -31,7 +31,10 @@ def assets_root():
 
 def qualification_package(assets, target, budget):
     source = assets / target
-    root = assets / "qualification" / f"{target}-{budget}"
+    output = os.environ.get("ORT_STATEFUL_QUALIFICATION_OUTPUT")
+    if output is not None and not output.strip():
+        raise ValueError("ORT_STATEFUL_QUALIFICATION_OUTPUT must not be empty")
+    root = (Path(output) if output is not None else assets / "qualification") / f"{target}-{budget}"
     directory = root / "decoder" / target
     directory.mkdir(parents=True, exist_ok=True)
     for asset in demo.PROFILES[target].assets:
@@ -210,6 +213,7 @@ def cuda_worker(mode):
             assert metadata.shape[2] == prompt_length + 2
         retained = state["key_0"]
         if mode == "--cuda-copy-worker":
+            assert runtime is not None
             assert runtime.cudaProfilerStart() == 0
             cloned = retained.to_ortvalue()
             assert cloned.device_name().lower() == "cuda"

@@ -30,9 +30,16 @@ def assets_root():
     return Path(value)
 
 
+def qualification_root(root):
+    output = os.environ.get("ORT_STATEFUL_QUALIFICATION_OUTPUT")
+    if output is not None and not output.strip():
+        raise ValueError("ORT_STATEFUL_QUALIFICATION_OUTPUT must not be empty")
+    return Path(output) if output is not None else root / "qualification"
+
+
 def sequential_package(root):
     source = root / "package"
-    destination = root / "qualification" / f"sequential-{time.time_ns()}"
+    destination = qualification_root(root) / f"sequential-{time.time_ns()}"
     destination.mkdir(parents=True)
     for path in source.rglob("*"):
         target = destination / path.relative_to(source)
@@ -199,7 +206,7 @@ class TestSD15RealAssets(unittest.TestCase):
     def test_originals_wrappers_real_image_reference_and_typed_parity(self):
         demo.verify_assets(self.root)
         components = qualify_components(self.root)
-        output = self.root / "qualification" / f"cuda-{time.time_ns()}"
+        output = qualification_root(self.root) / f"cuda-{time.time_ns()}"
         output.mkdir(parents=True)
         report = demo.validate_generation(self.root / "package", PROMPT, output / "sd15-seed42.png")
         with Image.open(report["output"]) as image:

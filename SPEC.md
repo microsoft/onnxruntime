@@ -5,6 +5,9 @@ M01-M15 are published for review; M15 is
 [#29](https://github.com/onnxruntime/ort-state/pull/29), stacked on M14/#28.
 Later milestones require their own
 approved refinements.
+M16-M23 are deferred at the user's direction. M24's delivered-foundation scope
+is approved in Appendix P. Its detailed execution plan was separately approved
+on2026-11-04; qualification is authorized.
 **Requirements captured:** 2026-10-15.
 
 **M10 refinement:** Appendix J was approved by the user on 2026-10-19.
@@ -21,7 +24,8 @@ Appendix L was approved by the user for detailed plan preparation.
 The detailed M12 plan was separately approved on 2026-10-30 and implementation
 and CPU/CUDA qualification are verified on 2026-10-31. M12 is published for review
 in [#26](https://github.com/onnxruntime/ort-state/pull/26), stacked on M11.
-M16 and later implementation milestones are not started.
+M16-M23 are deferred, not completed. M24's requirements interview is complete;
+its specification and detailed execution plan were separately approved.
 **M13 refinement:** The requirements interview completed on 2026-11-02.
 Appendix M was approved for detailed plan preparation. The requested stack
 parent is verified M12. The detailed plan was separately approved on 2026-11-02;
@@ -3935,3 +3939,176 @@ numerical, model, scheduler or safety-policy change.
   Correctly targeted but interrupted/unbounded attempts likewise are not passes.
 - Preserve the fixed RMSE/local/exact tests, original weights, mandatory safety,
   scoped 100% new-line coverage and stacked-publication gates.
+
+## Appendix P. M24 delivered-foundation qualification (approved)
+
+**Interview completed:** 2026-11-04. The user explicitly confirmed:
+
+- Qualify the delivered M01-M15 foundation and defer M16-M23.
+- Record native execution performance baselines only; do not benchmark against
+  ordinary stateless Session reference loops.
+- Use the existing Linux CPU/CUDA builds and available A100 hardware, retaining
+  the approved real-model numerical and sanitizer policies.
+- No additional requirements.
+
+**Specification and separate execution plan approved:** 2026-11-04. The user
+explicitly approved Appendix P without changes, then separately approved
+`TASKS.md` F0-F8 without changes and authorized starting M24.
+
+**Proposed stack:** One independently reviewable M24 PR on M15/#29,
+`state/m15-sd15-demo` at `4fcf16f7d25d6ce8c693839fdf5686c7d3c4c1d8`.
+Planning branch: `state/m24-qualification`. No merge or deferred-binding work.
+
+### P.1 Acceptance scope and explicit deferrals
+
+M24 qualifies the delivered native C/C++ and Python stateful foundation:
+SessionLoop, SessionChain, execution/state/exit contracts, CPU/CUDA KV cache and
+greedy sampling, EP extension hooks, package loading/authoring, native DDIM,
+and the real Phi-3 and SD1.5 demonstrations.
+
+M16-M23 remain deferred: C#, Java/JNI, common JavaScript/Node, browser/WASM, Go,
+Rust, Objective-C and React Native stateful bindings. Keep their checklists
+unchecked and their requirements visibly deferred. This does not remove or
+change existing stateless Session language bindings.
+
+For M24, the semantic prerequisites are the completed M01-M15, not the deferred
+bindings. Its completion means **the delivered foundation is qualified**, not
+that the original all-language feature-parity goal is fully implemented.
+API-1/API-2 binding requirements remain outstanding for the deferred languages,
+and API-6's prohibition on claiming incomplete parity remains in force.
+
+Every specification requirement receives a traceable status: verified within
+scope, explicitly deferred, or blocked/not run with a reason. No unimplemented
+binding or untested platform may be silently classified as passed.
+
+### P.2 Integrated correctness and compatibility
+
+- Exercise the supported C/C++/Python programmatic and package paths, including
+  loop/chain composition, all supported exit families and combinations, step/run
+  equivalence, state feedback, greedy sampling, cache handoff, DDIM policy,
+  configuration validation and capability/error reporting.
+- Validate ownership, retained outputs/snapshots, repeated completion/reset/
+  reuse, context isolation, cancellation, failure requiring Reset, release order,
+  allocator/provider lifetime and downstream suppression after errors.
+- Prove actual CUDA cache/sampler/provider dispatch and resource behavior.
+  Correct values through CPU fallback or registration alone are not proof.
+- Preserve existing stateless Session and package behavior. Test the supported
+  legacy CUDA compatibility subset without claiming unsupported new features.
+  Report known pre-existing failures/warnings separately; they are neither new
+  successes nor a blanket allowance for new regressions.
+- Retain exact deterministic CPU fixtures. Run real Phi-3 on CPU and CUDA using
+  the approved variants, policies and references, including existing zero/one/
+  multi-token and package/programmatic/state-lifetime checks.
+- Run SD1.5 deterministic CPU fixtures and actual CUDA batched/sequential
+  generation. Preserve native FP32 DDIM, FP16 model boundaries, unchanged
+  original weights, required safety preprocessing/checker and no-save behavior.
+  These optimized exports still do not support a real CPU inference claim.
+- Existing ordinary-Session/Diffusers references remain required for
+  **correctness**. Native-only performance baselines do not remove independent
+  numerical validation.
+
+Use the approved M14/M15 tolerances, fixed seeds/configurations and safety
+contracts. In particular, retain M15's strict local/component checks, hard
+latent/image RMSE limits and reported accumulated maxima. Do not silently
+relax thresholds, retry until a favorable result, substitute a model/provider,
+or bypass safety to finish qualification.
+
+### P.3 Native execution measurements
+
+Record reproducible native baselines, with **no numerical performance gate and
+no ordinary-Session performance comparison or speedup claim**.
+
+The real-model measurement matrix is Phi-3 CPU/CUDA and SD1.5 CUDA. SD1.5 CPU
+fixtures establish correctness, not a pretrained CPU image-generation baseline.
+Separate model/package/Session construction, cold first execution, steady-state
+native execution/reset/reuse, and application tokenization/output handling.
+Independent correctness/reference work must not contaminate timing windows.
+
+Report, where applicable:
+
+- Fixed workload, warmup/repetition policy and all measured sample counts,
+  with latency summaries that do not select only the best run.
+- LLM prefill/time-to-first-token, decode/token and complete native chain
+  latency, actual generated-token counts and tokens/second.
+- Diffusion native denoising and complete chain latency, actual update/model
+  invocation counts, and images/second, distinguishing VAE/safety/output costs.
+- CPU process memory baseline/peak/retained observations and GPU process/
+  allocator peak/retained observations, clearly distinguishing live resources,
+  allocator reservation, driver/context retention and measurement limitations.
+- Relevant allocations and actual transfer counts/bytes, classifying native
+  execution separately from setup, references and explicit output readback.
+  Retain intentional CPU scheduling and existing transfer contracts; no
+  unexplained zero-copy or GPU-resident-scheduler claim.
+
+Keep instrumented copy/memory/sanitizer runs separate from ordinary latency
+measurements, and disclose measurement overhead or unavailable counters.
+An inapplicable metric, such as decode throughput for a zero-token workload,
+needs an explicit reason rather than a fabricated number.
+
+Pin source/build/provider/wheel/model/manifest identities, model precision,
+provider options, device/driver/CUDA/cuDNN, threading, prompts/input geometry,
+seeds, warmup and repetitions in the report. The execution plan fixes concrete
+workloads and collection rules before measurement.
+
+### P.4 Cumulative coverage and device/lifetime evidence
+
+Measured coverage must be **100% of the current executable production lines
+introduced by M01-M15 plus any M24 production delta**, relative to a pinned
+pre-M01 baseline. This is not whole-repository or branch coverage.
+
+Report an exact, deduplicated current-source denominator and per-file covered/
+total counts across runtime, public API/wrappers, Python/native glue,
+package/demo/tooling and applicable CUDA host/device code. New reusable
+measurement/qualification tooling is included; do not relabel production
+tooling as tests to evade its coverage requirement.
+
+Valid archived unit-test proof may be reused only for demonstrably unchanged
+code with verified source/object/profile mappings. Regenerate evidence when
+that mapping no longer holds. Adding historical milestone totals/percentages
+is not a cumulative coverage measurement. Do not count invalid/truncated
+profiles, mismatches, rounded percentages, zero-test selectors or reachable
+production lines hidden by exclusions. Host coverage, dispatch traces and
+sanitizer success do not substitute for device-line coverage.
+
+Retain the existing approved sanitizer scopes: full real SD1.5 memory/full-leak/
+API checking and all-kernel full-size two-update synchronization checking;
+explicitly bounded actual GroupNorm race sampling rather than full-model race
+freedom. Preserve established applicable cache/sampler/chain and CPU resource/
+lifetime checks. Use no leak suppression, DeviceReset masking or global
+driver/library modification.
+
+Require nonzero actual dispatch/instrumentation evidence. Preserve M15's
+withdrawal of case-mismatched/zero-instrumentation probes and incomplete
+unfiltered attempts. If artifacts, worker or configuration change, rederive
+and verify launch selections/event counts rather than blindly copying the
+previous environment-specific launch window.
+
+### P.5 Deliverables and change boundaries
+
+- A consolidated committed qualification report covering requirement
+  traceability, exact executed commands/results, cumulative coverage, native
+  measurements, environment/artifact identities and known limitations.
+- Updated examples, API/package migration and ownership guidance, and explicit
+  provider/platform/language capability matrices. Deferred stateful bindings
+  remain visible and distinct from unsupported platform combinations.
+- Updated `TASKS.md` checklists and `SCRATCHPAD.md` decisions/evidence pointers,
+  with compact reports in Git and large profiles/traces/models/images outside
+  Git in named, checked storage. Preserve parent proof and original assets.
+- One tested ready-for-review M24 PR stacked on M15/#29. No automatic merge and
+  no implementation or completion claim for M16-M23.
+
+Qualification tooling, missing tests and tightly coupled defects within existing
+approved contracts may be addressed in M24, with directly related documentation
+and measured 100% new production-line coverage. New public features, APIs,
+kernels, model policies, numerical relaxations or behavior/ownership changes
+require an explicit specification/plan amendment before implementation.
+
+### P.6 Completion gate
+
+Complete M24 only when the delivered M01-M15 foundation passes its integrated
+CPU/applicable CUDA validation, exact cumulative coverage and reproducible native
+measurement/reporting gates; source/artifact identities and honest deferred/
+blocked statuses persist; and its synchronized ready PR exists.
+
+M16-M23 deferral is not a failure of this explicitly scoped qualification and
+is not evidence that the full original binding goal has been completed.

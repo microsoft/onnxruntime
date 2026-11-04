@@ -2,7 +2,11 @@
 
 **Status:** Approved; M01-M15 complete and published for review. M15 is
 [#29](https://github.com/onnxruntime/ort-state/pull/29), stacked on M14/#28.
-M16-M24 are pending.
+M16-M23 are deferred at the user's direction. M24's requirements interview is
+complete; [Appendix P](SPEC.md#appendix-p-m24-delivered-foundation-qualification-approved)
+and the detailed M24 F0-F8 execution plan were separately approved. F0 readiness
+passes; F1-F7 validation/measurements/coverage/report gates pass. Ready stacked
+publication F8 is in progress.
 M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
@@ -35,7 +39,8 @@ O.10 bounded-race refinement pass; ready stacked publication is complete in #29.
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M15 are complete and M16-M24 are pending. Check tasks when their
+M01-M15 are complete, M16-M23 are deferred, and M24 qualification is in progress.
+Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -113,9 +118,11 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 ## 3. Milestone stack and dependencies
 
-Stack order is the row order. The dependency column records actual semantic
-prerequisites; the previous branch is also the mechanical Git base.
-M01-M12 are **complete**; M13 is **in progress**; M14-M24 are **pending**.
+Active stack order follows the completed milestones. Deferred rows are not
+mechanical Git bases: M24 stacks directly on M15. The dependency column records
+actual semantic prerequisites.
+M01-M15 are **complete**. M16-M23 are **deferred, not completed**. M24's
+specification and detailed execution plan are separately approved.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -134,18 +141,21 @@ M01-M12 are **complete**; M13 is **in progress**; M14-M24 are **pending**.
 | [x] | M13 | Python API and package parity / `python-api` | M06, M11, M12 |
 | [x] | M14 | Local Phi-3 package and text demo / `phi3-demo` | M05, M08, M09, M11, M13 |
 | [x] | M15 | Local Stable Diffusion package and image demo / `sd15-demo` | M11, M12, M13 |
-| [ ] | M16 | C# binding / `csharp-api` | M06, M11, M12 |
-| [ ] | M17 | Java/JNI binding / `java-api` | M06, M11, M12 |
-| [ ] | M18 | Common JavaScript API and Node binding / `js-node-api` | M06, M11, M12 |
-| [ ] | M19 | Browser/WASM binding / `js-web-api` | M18 |
-| [ ] | M20 | Go binding / `go-api` | M06, M11, M12 |
-| [ ] | M21 | Rust bindings / `rust-api` | M06, M11, M12 |
-| [ ] | M22 | Objective-C binding / `objc-api` | M06, M11, M12 |
-| [ ] | M23 | React Native binding / `react-native-api` | M18, M22 |
-| [ ] | M24 | Integrated qualification and measurements / `qualification` | M01 through M23 |
+| [ ] | M16 | **Deferred:** C# binding / `csharp-api` | M06, M11, M12 |
+| [ ] | M17 | **Deferred:** Java/JNI binding / `java-api` | M06, M11, M12 |
+| [ ] | M18 | **Deferred:** Common JavaScript API and Node binding / `js-node-api` | M06, M11, M12 |
+| [ ] | M19 | **Deferred:** Browser/WASM binding / `js-web-api` | M18 |
+| [ ] | M20 | **Deferred:** Go binding / `go-api` | M06, M11, M12 |
+| [ ] | M21 | **Deferred:** Rust bindings / `rust-api` | M06, M11, M12 |
+| [ ] | M22 | **Deferred:** Objective-C binding / `objc-api` | M06, M11, M12 |
+| [ ] | M23 | **Deferred:** React Native binding / `react-native-api` | M18, M22 |
+| [ ] | M24 | Integrated qualification and measurements / `qualification` | M01 through M15; approved plan |
 
 Do not mark the whole feature complete after the CPU foundation or either demo;
 all binding, provider, coverage, and qualification gates remain part of delivery.
+The user's2026-11-04 approved refinement defers M16-M23 and scopes M24 qualification to
+the delivered C/C++/Python foundation only. It does not close the deferred
+all-language requirements or authorize a claim of complete binding parity.
 
 ## 4. Milestone details
 
@@ -5663,6 +5673,8 @@ Final synchronized head/base and clean-worktree verification are retained in
 
 ### M16 - C# binding
 
+**Status:** Deferred by the user on2026-11-04; not completed.
+
 **Outcome:** Managed programmatic/package parity with safe native ownership.
 
 - [ ] Implement native interop, typed configuration/results, disposal semantics,
@@ -5680,6 +5692,8 @@ Do not rely on `build.py` C# test success: its current runner skips non-Windows.
 
 ### M17 - Java/JNI binding
 
+**Status:** Deferred by the user on2026-11-04; not completed.
+
 **Outcome:** Java Session users can use the complete new execution contract.
 
 - [ ] Implement Java/JNI resources, configuration/results, policy access, error
@@ -5694,6 +5708,8 @@ exceptions, stepping/reset, cancellation, and tiny pipelines.
 Java/JNI-line coverage, formatting, and shared rules pass.
 
 ### M18 - Common JavaScript API and Node binding
+
+**Status:** Deferred by the user on2026-11-04; not completed.
 
 **Outcome:** Shared typed interfaces plus a working native Node implementation.
 
@@ -5714,6 +5730,8 @@ execute the addon, rather than only mocked TypeScript interfaces.
 
 ### M19 - Browser/WASM binding
 
+**Status:** Deferred by the user on2026-11-04; not completed.
+
 **Outcome:** Stateful execution through the supported Web/WASM Session path.
 
 - [ ] Expose the common API through WASM/native exports and worker/proxy paths.
@@ -5733,6 +5751,8 @@ no new JSEP/WebGL feature work or false CPU substitute for native WebGPU.
 
 ### M20 - Go binding
 
+**Status:** Deferred by the user on2026-11-04; not completed.
+
 **Outcome:** Idiomatic Go access through the existing dynamically loaded C API.
 
 - [ ] Extend shims and wrappers, configuration/results, policies, handles, errors,
@@ -5750,6 +5770,8 @@ not acceptable evidence.
 
 ### M21 - Rust bindings
 
+**Status:** Deferred by the user on2026-11-04; not completed.
+
 **Outcome:** Low-level and safe Rust wrappers with the same execution semantics.
 
 - [ ] Extend low-level C API access and safe owned/borrowed resources without
@@ -5765,6 +5787,8 @@ and device-resource assertions.
 coverage is 100%; binding limitations are explicit, not silent parity omissions.
 
 ### M22 - Objective-C binding
+
+**Status:** Deferred by the user on2026-11-04; not completed.
 
 **Outcome:** Objective-C Session users receive programmatic/package parity.
 
@@ -5783,6 +5807,8 @@ required. If that access is unavailable, leave this milestone blocked.
 
 ### M23 - React Native binding
 
+**Status:** Deferred by the user on2026-11-04; not completed.
+
 **Outcome:** Shared JavaScript semantics work through Android and iOS bridges.
 
 - [ ] Extend common/native/mobile bridges and package-resource loading.
@@ -5799,24 +5825,540 @@ coverage. Missing iOS access blocks full completion; Android success is partial.
 
 ### M24 - Integrated qualification, measurements, and final documentation
 
-**Outcome:** A verified, documented foundation with honest end-to-end evidence.
+**Specification:** [Appendix P](SPEC.md#appendix-p-m24-delivered-foundation-qualification-approved),
+approved2026-11-04 without changes after explicit confirmation of no additional
+requirements. **Execution plan separately approved2026-11-04 without changes.**
+F0-F7 pass. Ready stacked publication F8 is in progress.
 
-- [ ] Close every specification requirement against tests, coverage and PR links.
-  No binding, native provider, or real-model run remains implicitly unchecked.
-- [ ] Run coupled regressions across the stack, resource-lifetime/failure tests,
-  applicable sanitizers, and repeated reset/reuse scenarios.
-- [ ] Record reproducible CPU/CUDA latency, throughput, peak/retained memory,
-  relevant allocations/copies, warmup, model precision, and environment.
-- [ ] Finalize examples, API/package migration guidance, capability/platform
-  matrices, cumulative coverage reports, and milestone-stack documentation.
+**Outcome:** Qualify the delivered M01-M15 C/C++/Python foundation, establish
+reproducible native-only performance/resource baselines, and publish one honest
+integrated report and ready stacked PR. M16-M23 remain deferred/unchecked;
+this is not completion of the original all-language binding-parity goal.
 
-**CPU test plan:** Integrated small-fixture matrix plus both real local demos;
-ordinary Session/package regressions; all applicable language-binding suites.
-**CUDA test plan:** Both demos and native cache/sampler/chain tests with proved
-dispatch; exact deterministic results and justified real-model tolerances.
-**Completion gate:** All milestones complete, cumulative new-line unit coverage
-is 100%, required tests are executed, and no blocker is represented as passed.
-Performance numbers establish a baseline, not a numerical pass/fail threshold.
+**Branch/base:** `state/m24-qualification` on M15/#29,
+`4fcf16f7d25d6ce8c693839fdf5686c7d3c4c1d8`.
+**Cumulative source baseline:** pre-M01 commit
+`1988019b6e23ac4def4628cddd603c1bfb504fe8`, parent of the first M01 commit
+`64aa026b94bc41476763e23b013a1905296d59cc`.
+These commit/build-path lookups are planning inspections, not qualification
+results.
+
+#### Approval and scope gates
+
+- [x] Interview M24 requirements and explicitly confirm no additional requirements.
+- [x] Review and approve Appendix P before preparing this detailed plan.
+- [x] Prepare task outcomes, actual prerequisites, workloads and CPU/CUDA tests.
+- [x] Review/approve this execution plan before implementation or measurement.
+- [ ] Complete F0-F8 and verify a synchronized OPEN/ready PR on M15/#29.
+
+**Implementation boundaries:** Reuse existing native APIs, demos, fixtures,
+verified local assets and installed local wheels. Qualification/report tooling,
+missing tests and tightly coupled defects within existing approved contracts
+are in scope. New public APIs/features/kernels, behavior/ownership changes,
+numerical relaxation or model substitution require a separate amendment.
+Do not implement deferred bindings, add a Python generation/scheduling engine,
+change global GPU settings, discard slow samples, suppress leaks or use
+DeviceReset. Reference implementations remain correctness oracles, not
+performance comparison targets.
+
+#### Tasks and actual dependencies
+
+| Task | Actual prerequisites | Intended outcome |
+|---|---|---|
+| F0 | Plan approval, completed M01-M15 | Frozen parent/environment/storage proof and complete requirement/source/evidence inventory. |
+| F1 | F0 | Supported native/Python behavior, compatibility and missing regression cases are qualified. |
+| F2 | F0 | Minimal reusable native-measurement/report tooling with complete CPU unit/error coverage. |
+| F3 | F1 | Fresh CPU/CUDA real-model correctness, package/typed parity and safety pass. |
+| F4 | F2, F3 | Applicable lifecycle/device checks and actual transfer/allocation evidence match final artifacts. |
+| F5 | F2, F3, F4 | Fixed native-only latency/throughput and separate memory/resource baselines are collected. |
+| F6 | F1, F2, F3, F4, F5 | Exact deduplicated cumulative/current-delta coverage and final coupled regressions pass. |
+| F7 | F4, F5, F6 | Consolidated report, capability/migration guidance and immutable final proof are complete. |
+| F8 | F7 | One independently reviewable ready PR is published on M15 with synchronized tracking. |
+
+F1/F2 may proceed independently after F0. Run latency workloads serially,
+without concurrent agent-owned tests/profilers/benchmarks. Any repair after
+evidence collection invalidates affected results: rerun the dependent tests,
+coverage, device proofs and measurements before completion.
+
+- [x] **F0 - Freeze the delivered baseline and audit evidence readiness.**
+  **Outcome:** Verify local/remote M15 base, clean intended scope, existing
+  CPU/plugin/legacy builds, installed-extension/provider identities, actual A100
+  dispatch, tool versions, optional dependencies and available storage.
+  Preserve M15's18source/112artifact manifest, M14's11source/53artifact proof
+  and separately preserved parent native artifacts without overwriting them.
+  For intentionally edited planning files, verify parent contents with
+  `git show` at the pinned parent; do not regenerate an old milestone proof
+  against M24's working tree or relabel historical results as fresh.
+  Inventory every specification requirement as verified/deferred/blocked,
+  every current production delta since the pre-M01 baseline, renames/extractions,
+  applicable host/device coverage and matching archive/object/profile paths.
+  **CPU tests:** Confirm nonempty test discovery and actual installed module
+  paths; identify focused stateless/package compatibility selectors and known
+  baseline failures. Audit executable-line classification and archived source
+  identity without silently excluding wrappers, errors or tool entry points.
+  **CUDA tests:** Enumerate the requested actual plugin device and verify
+  loader/provider/build identities, not merely provider registration.
+  **Storage:** Use a named M24 evidence directory under the user-offered
+  `/datadisks/disk7/dtmp`, checking its actual mount/free space. Keep large
+  originals and existing proof/build trees untouched. Recheck capacity before
+  rebuilds/traces; never delete shared/root trees, old toolchains or system cores.
+
+- [x] **F1 - Close integrated native/Python behavior and compatibility gaps.**
+  **Outcome:** Execute the supported C/C++ and Python programmatic/package
+  matrix and add only missing focused regression cases. Cover supported loop
+  exits/combinations, step/run and chain/state handoff, cache growth/sharing,
+  greedy sampling, DDIM/configuration, capability/subset/provider failures,
+  retained snapshots, reset/reuse/isolation, cancellation/required Reset,
+  release ordering and downstream suppression after errors.
+  **CPU tests:** Existing native/public, standalone shared/static package and
+  combined Python suites, plus focused ordinary-Session compatibility cases.
+  Preserve established exact deterministic fixtures and public ABI/ownership.
+  **CUDA tests:** Actual plugin cache/sampler/chain/DDIM paths with dispatch/
+  resource assertions; supported legacy compatibility subset and explicit
+  unsupported behavior. A CPU fallback is not a GPU pass.
+  **Failure policy:** Reproduce and classify failures before editing. Keep
+  the inherited stateless plugin negative-device RuntimeError mismatch and
+  legacy metadata warning explicit; do not count them as passed or use them
+  to excuse a new regression. Fix only tightly coupled defects; contract changes
+  require review. Rebuild only affected targets and preserve old proof first.
+
+- [x] **F2 - Implement the smallest checked measurement/report boundary.**
+  **Outcome:** Prefer one focused sample/tool such as
+  `samples/python/stateful_qualification.py` and its offline unittest.
+  Reuse existing Phi-3/SD helpers and native execution; do not add a generic
+  benchmark framework, new core instrumentation API or Python scheduler.
+  Use explicit verified local packages, no downloads/remote code/fallback.
+  Build isolated M24 budget/guidance package variants using validated existing
+  native factories. Where needed, hardlink immutable assets only on the same
+  filesystem and keep each manifest separate; never modify linked files in
+  place or overwrite M14/M15 manifests/reports.
+  Report raw samples, fixed statistics/counts, actual dispatch, phase/timing
+  definitions, resource observations/limitations and artifact identities.
+  Guard CUDA completion at timing boundaries with existing checked mechanisms;
+  never report enqueue-only time as completed GPU execution.
+  **CPU tests:** Real tiny native chains plus unit tests for statistics/nearest-
+  rank p95, empty/invalid/nonfinite samples, zero-token applicability, counter/
+  shape mismatches, tokenizer/input isolation, output/permission/overwrite/
+  cleanup errors, failed execution, Reset/reuse and retained values.
+  Test CUDA/error plumbing with controlled mocks, not success-shaped defaults.
+  New reusable tooling and full-runner glue must have100% new executable-line
+  unit coverage, no exclusions. Wire offline tests into the existing full
+  Python runner with its reduced/minimal guards and execute that actual entry.
+  **CUDA tests:** F3/F4/F5 validate the real completed-work and resource paths;
+  mocked CUDA unit paths alone are not integration evidence.
+
+- [x] **F3 - Requalify the actual local demonstrations.**
+  **Outcome:** Fresh nonzero CPU/CUDA real-asset checks pass against the frozen
+  current artifacts and original-model identities, with isolated M24 outputs.
+  **CPU tests:** Real Phi-3 INT4 at budgets0/1/16 using the established prompt,
+  ordinary-Session correctness references, cache/state checkpoints, seed/input
+  ownership and package/typed parity. SD1.5 uses deterministic CPU fixtures
+  only, covering both guidance modes and mandatory blocked/no-save behavior.
+  **CUDA tests:** Real Phi-3 FP16 budgets0/1/16 with native KV/greedy dispatch,
+  state/retention/reset and reference checks. Real SD1.5 default512x512,
+  seed42/20updates/guidance7.5/empty negative, both batched and sequential,
+  independent DDIM/local/component checks, exact preprocessing/safety,
+  typed/package and seeded/supplied/reset parity,25/45invocations and safe PNGs.
+  Preserve HEURISTIC provenance and all approved M14/M15 numerical criteria.
+  Retain every outcome; no retry-until-green, threshold changes or unsafe save.
+
+- [x] **F4 - Close applicable device/lifetime and actual resource proofs.**
+  **Outcome:** Current source/object/worker mappings prove applicable CPU/
+  CUDA ownership, allocator/provider lifetime and actual device work.
+  **CPU tests:** Resource/failure/reset/release-order/retained-value tests and
+  existing applicable host diagnostics. Distinguish intentional allocator/
+  context retention from a leak; do not infer leak freedom from RSS alone.
+  **CUDA tests:** Established cache/sampler/chain lifetime workers and actual
+  dispatch/copy accounting. Retain SD1.5 full20 memcheck/full-leak/API scope,
+  all-kernel full-size two-update synccheck and approved bounded GroupNorm race
+  scope. Prove nonzero instrumentation; rederive launch windows/event counts
+  if source/artifacts/worker/configuration change. No unfiltered full-model
+  race-freedom claim or acceptance of zero-match/zero-instrumentation probes.
+  Assert native-denoising prediction DtoH exactly2621440B in each20-update
+  SD guidance mode, and classify conditioning/control/internal copies and
+  explicit reference/output reads separately. Derive Phi-3 expected counts
+  from the actual configured workload, not an unrelated historical trace.
+  Keep sanitizer/profiler observations separate from latency samples and
+  preserve stopped/failed attempts honestly.
+
+- [x] **F5 - Collect fixed native-only performance/resource baselines.**
+  **Outcome:** Execute the eight workload rows below with no ordinary-Session
+  performance baseline, cross-precision speedup claim or performance gate.
+  Use the existing package-backed native execution through the demo's Python
+  boundary. C/C++ and typed construction remain correctness-qualified paths,
+  not additional performance-comparison targets.
+  For each row, use a fresh worker for setup/first completed native execution,
+  then the same execution with explicit Reset for2warmups and5measured
+  completed runs. Record the cold result separately, all5raw steady samples,
+  median, nearest-rank p95(maximum for5samples), actual generated/output counts
+  and throughput. Do not divide by configured token budgets when actual counts
+  differ, or fabricate throughput for a zero-token run.
+  Report tokenization/rendering/PNG publication outside native timing. Any
+  dedicated step-observed phase pass is separately labeled; its synchronization/
+  boundary overhead must not be presented as a decomposition of a different
+  Run-path measurement.
+  Collect memory/allocation/copy observations separately using the same fixed
+  configuration, explicit baseline/peak/post-reset/post-close boundaries,
+  existing telemetry/profiling and at least two observed reuse cycles after
+  warmup. Disclose sampling intervals, process versus allocator/driver scope,
+  instrumentation overhead and unavailable/inapplicable counters. Required
+  measurement gaps remain open, not fabricated zeros.
+  **CPU tests:** Phi-3 CPU rows and measurement/report invariants; no pretrained
+  SD CPU baseline. **CUDA tests:** Phi-3/SD rows on actual A100 ordinal0 with
+  checked completion and safety. Preserve existing explicit thread/provider
+  options, log observed contention, and do not alter global clocks/affinity,
+  flush shared OS caches or interfere with other users' processes.
+
+- [x] **F6 - Close exact cumulative coverage and final regressions.**
+  **Outcome:** A deduplicated current-source manifest since the pinned pre-M01
+  baseline shows100% covered/new executable production lines across delivered
+  runtime/APIs/Python/glue/package/demo/tooling and applicable CUDA device code,
+  including all M24 deltas. Separate exact host/device/per-file counts.
+  Verify archived proof only for unchanged code with valid source/object/
+  profile mappings; regenerate missing/invalid evidence. Do not sum historical
+  milestone totals, infer device lines from host traces, accept truncated/
+  mismatched profiles, round percentages or exclude reachable error/entry paths.
+  **CPU tests:** Current unit/coverage suites including the new tooling,
+  native/public and shared/static package regressions, direct offline runner,
+  scoped types/repository lint/whitespace and documented local-wheel commands.
+  **CUDA tests:** Current plugin native/public/Python and relevant legacy
+  regressions; matched host/device collection and affected F3/F4 rechecks.
+  Verify nonzero selectors, actual artifacts and unsupported cases explicitly.
+  Any unresolved executable production line or required validation blocks F7/F8.
+
+- [x] **F7 - Publish the qualification report and finalize user guidance.**
+  **Outcome:** A compact committed `docs/Stateful_Qualification.md` (or an
+  existing directly related report if it fits better) provides the requirement/
+  PR/test traceability, exact executed commands/results, cumulative coverage,
+  eight native baseline rows, environment/model/source/ELF identities, resource/
+  transfer data and all limitations. Update existing examples, ownership and
+  API/package migration guidance and capability/provider/platform/language
+  matrices. Deferred bindings remain deferred, not passed.
+  **CPU/CUDA validation:** Check report values against raw structured results,
+  counts/units/shapes, actual safety-approved outputs, profiler records and
+  source/object/profile hashes. Preserve parent proof and immutable final
+  manifests outside Git. Keep weights, large traces/profiles, local installs
+  and credentials out of commits. Missing hardware/platform/counters must
+  remain explicit; required in-scope gaps block completion.
+
+- [ ] **F8 - Publish one independently reviewable M24 PR.**
+  **Outcome:** Commit only the approved incremental scope with the required
+  coauthor trailer; inspect/preserve the repository PR template; include exact
+  validation results, native-only baseline interpretation and deferred scopes.
+  Push `state/m24-qualification`, open ready-for-review on
+  `state/m15-sd15-demo`/#29, and verify remote head/base, OPEN/non-draft state,
+  updated task/scratchpad records and clean worktree.
+  **CPU/CUDA tests:** F1-F6 must have passed against final relevant source/
+  artifacts. Documentation-only publication tracking needs no artificial EP
+  rerun; refresh proof identities after final commits.
+  No automatic merge, binding implementation or completion claim for M16-M23.
+
+#### Fixed workload and measurement policy
+
+| ID | Actual model/provider | Configuration |
+|---|---|---|
+| L-CPU-0/1/16 | Approved Phi-3 CPU INT4 / CPU EP | Prompt `Answer briefly: what is 2 + 2?`; respective generation budgets0/1/16 |
+| L-CUDA-0/1/16 | Approved Phi-3 FP16 / CUDA plugin | Same prompt and budgets, device ordinal0 |
+| D-CUDA-B | Approved SD1.5 / CUDA plugin plus declared CPU preprocessing/DDIM | 512x512,seed42,20updates,guidance7.5,empty negative,batched |
+| D-CUDA-S | Same SD1.5 configuration | Sequential guidance; no other policy change |
+
+SD prompt: `A peaceful mountain lake at sunrise, soft golden light, landscape painting`.
+Each of these eight rows has1cold completed run,2warmups and5measured completed
+steady runs. All measured outcomes are recorded, not only the best; shorter
+valid LLM output uses its actual token count. The cold label means fresh native
+process/execution state, not forced eviction of shared filesystem caches.
+Preserve the current demo thread settings and exact variant/provider options.
+No new model acquisition, benchmark against stateless reference loops, numerical
+performance threshold or architecture-wide performance claim.
+
+#### Validation entry points and inherited reference counts
+
+These are **planned M24 commands, not executed M24 results**. Run in the existing
+virtualenv and a dedicated directory outside source-package import shadowing.
+Resolve new tooling/fixture selectors against their implemented entry points
+and record exact actual results. Do not install dependencies speculatively.
+
+```bash
+ROOT=/datadisks/disk9/devpatel/ngenai/onnxruntime
+E=/home/devpatel/.copilot/session-state/819a29ec-8ea8-4b2f-9938-e40236ffd239/files
+Q=/datadisks/disk7/dtmp/ort-state-m24-819a29ec
+source "$ROOT/.venv/bin/activate"
+# Create/check the dedicated Q directory only after plan approval.
+cd "$Q"
+export LD_LIBRARY_PATH=/home/tianlei/cudnn_9.23_cuda13/lib:/home/tianlei/cuda13.0/lib64
+export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
+export ORT_STATEFUL_TEST_BARRIER="$ROOT/build/state-cpu/RelWithDebInfo/libstateful_test_barrier.so"
+export LLVM_PROFILE_FILE="$Q/cpu-%m-%p.profraw"
+CPU_SUITES=(
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_stateful.py"
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_stateful_package.py"
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_stateful_threads.py"
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_phi3_demo.py"
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_sd15_demo.py"
+)
+PYTHONPATH="$E/m13-installed-cpu:$ROOT/onnxruntime/test/python" \
+  python -m pytest -q "${CPU_SUITES[@]}"
+# Add the new offline qualification unittest in F2/F6.
+PYTHONPATH="$E/m15-installed-gpu:$ROOT/onnxruntime/test/python" \
+  ORT_STATEFUL_REQUIRE_CUDA_PLUGIN=1 LLVM_PROFILE_FILE="$Q/plugin-%m-%p.profraw" \
+  python -m pytest -q "${CPU_SUITES[@]}" \
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_stateful_cuda.py" \
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_cuda_adapter.py"
+# Real suites run in isolated M24 output/package locations, never overwriting
+# old qualification reports; retain their ordinary-Session correctness checks.
+# Explicit local assets:
+# ORT_STATEFUL_PHI3_ASSETS=/home/devpatel/onnxruntime-stateful/phi3-mini-4k-instruct
+# ORT_STATEFUL_SD15_ASSETS=/home/devpatel/onnxruntime-stateful/sd15
+```
+
+In the corresponding existing CPU/plugin/legacy build-output directory, use
+`./onnxruntime_session_loop_test` and the applicable
+`./onnxruntime_autoep_test` selectors. Legacy's supported public selector is
+`--gtest_filter='AutoEpSelection.CudaEP:*Stateful*:*Ddim*:ModelPackageApiTest.*:*ModelPackageChain*'`.
+Run shared/static standalone package tests with
+`ctest --test-dir "$ROOT/build/state-package-m10" --output-on-failure` and
+`ctest --test-dir "$ROOT/build/state-package-m10-static" --output-on-failure`.
+Use per-build fresh `%m-%p` profile paths; do not overwrite default/parent
+profiles or merge module signatures without verified mappings.
+
+The M15 reference counts are CPU Python60/195, plugin64/213, legacy60/195;
+CPU native/public85/153, plugin157/216, legacy145/76; package5/5each and direct
+SD unittest18. They are **inherited expectations, not new M24 passes**.
+Record actual final counts, added tests, skips and all diagnostics.
+
+#### M24 completion checklist
+
+- [x] F0 parent/environment/source/requirement/proof inventory passes.
+- [x] F1 supported integrated behavior/compatibility and error/lifetime matrix passes.
+- [x] F2 new reusable measurement/tool/runner code has100% unit coverage.
+- [x] F3 real Phi-3 CPU/CUDA and SD1.5 CUDA/CPU-fixture correctness passes.
+- [x] F4 applicable lifetime/sanitizer/actual dispatch/transfer evidence passes.
+- [x] F5 all eight native-only baseline rows and required resource metrics persist.
+- [x] F6 exact deduplicated cumulative production-line coverage is100%; final regressions/type/style pass.
+- [x] F7 complete report, migration/capability guidance and final immutable proof exist.
+- [ ] F8 one synchronized OPEN/ready M24 PR exists on M15/#29; worktree is clean.
+
+**Completion interpretation:** Qualify the delivered M01-M15 foundation under
+Appendix P. M16-M23 remain deferred and their binding-parity requirements remain
+outstanding. Do not mark the entire original all-language feature complete.
+
+**F0 executed readiness (2026-11-04):** M15's18pinned source blobs and112
+artifacts/assets verify without changing the old proof. M14's11source/53artifact
+entries and five separately preserved parent native files also verify. Current
+CPU/plugin imports resolve to the intended isolated local installations; the
+plugin enumerates all eight actual A10080GB devices including ordinal0.
+Storage preflight records19GB root/51GB home free; offered disk7/dtmp shares
+the root mount, not a separate volume. New evidence is isolated under
+`/datadisks/disk7/dtmp/ort-state-m24-819a29ec`.
+
+The pre-M01 delta has126paths:60native production files,1CUDA device source,
+8Python production files,41test/test-library fixtures and16documentation/
+build/dependency metadata files. All93original requirement IDs are inventoried
+as pending actual M24 qualification, with the language portions of SCOPE-2/
+API-1/API-2 explicitly deferred. The old native cumulative5412/5412 report,
+M15getter1/1 and25/25 actually emitted CUDA source locations are inherited
+evidence candidates, not a new final cumulative denominator. Current code/
+object/profile mapping and Python/sample/tool coverage still require F1/F6.
+
+Actual environment: Python3.12.16, NumPy2.5.4, ONNX1.23.2, pytest9.2.0,
+coverage7.17.0, Transformers4.57.6, Pillow13.0.0, Diffusers0.35.1,
+Torch2.8.0+cpu, LLVM18.1.8, Compute Sanitizer/Nsight Compute2025.3 and
+Nsight Systems2025.3.2. An initial metadata check incorrectly requested the
+separate pytest-subtests distribution; pytest9.2 supplies built-in subtests.
+The corrected check confirms that implementation; no dependency was installed
+or restored. No new runtime or real-model qualification pass is implied by F0.
+
+**F1/F2 executed results:** Fresh CPU Python60/195, native/public85/153;
+plugin Python64/213, native/public157/216; legacy Python60/195(warning retained),
+native/public145/76; shared/static package5/5each all pass. Eight focused
+ordinary-Session provider/ownership/inference tests pass on each CPU/plugin
+runtime. Tiny native feedback/bootstrap/both-DDIM examples execute correctly on
+CPU and legacy CUDA. The separate inherited
+`TestInferenceSession.test_set_providers_with_options` still fails with
+`RuntimeError not raised` for the plugin negative-device case, matching the
+preserved baseline: explicitly **one known failure, not a passed test**.
+
+New measurement tooling uses checked completed-work synchronization,
+1cold/2warmup/5steady samples, separate step/resource passes, process RSS/glibc
+allocation observations and explicit NVML visibility/scope. It publishes only
+safe images and exclusively linked JSON, rolling back partial new links.
+Unit tests caught an in-place rewrite of a previously linked staging report;
+unique temporary report files fix that root cause and preserve existing output.
+GPU visibility is checked after completed warmup, not presumed during lazy
+Session construction. No native runtime/API/kernel code changed.
+
+Current offline tooling/Phi-3 tests pass28tests/85subtests; direct full-runner
+qualification entry passes13tests. New production helper255/255 and new
+runner2/2 executable lines are covered, zero exclusions; the older tiny sample
+is now unit-covered63/63. Scoped types report0errors/0warnings and repository
+lint passes. These are unit/delta counts, not the final cumulative F6 result.
+Test-only `ORT_STATEFUL_QUALIFICATION_OUTPUT` isolates linked variant packages/
+real images from earlier milestones; empty values fail explicitly and unit tests
+prove original manifests are unchanged. Real numerical/lifecycle/performance
+gates remain pending F3-F6.
+
+**F3 executed real-model correctness:** CPU Phi-3 passes1test/3budget subtests
+in278.61seconds; CUDA Phi-3 passes1/3 in89.87seconds. Both retain64cache
+checkpoints, independent references, replay and typed/package parity. Budgets
+0/1/16 produce1/1/16actual model invocations; zero generation still includes
+the separately configured prefill, not a fabricated zero-work chain.
+Both CUDA SD1.5 tests pass in57.42seconds, with unsafe=false and25/45invocations.
+Batched maximum latent RMSE0.003967436/image RMSE0.001455491; sequential
+0.004360999/0.001573004. Local/component/exact preprocessing/safety and
+seed/supplied/replay/retained-value criteria remain unchanged and pass.
+Reports/images/variant links are isolated under
+`/home/devpatel/onnxruntime-stateful/m24-qualification-819a29ec/f3`.
+These test durations are qualification elapsed times, not F5 native baselines.
+All61native/device source files match M13 byte-for-byte except the already
+qualified M15 operator-name accessor; final mapped/cumulative proof is still F6.
+
+**F4 executed device/resource proof:** Seven selected actual CUDA cache/sampler/
+chain lifetime tests pass each memcheck/full leaks, racecheck and synccheck,
+all zero errors/leaks/hazards. Full real Phi-3 memcheck/full leaks passes0/0;
+its original automatic-parallelism full-worker racecheck and synccheck also
+pass0errors/hazards. An earlier eight-worker race attempt hit its600second
+budget and remains **incomplete**, not passed; the completed original-command
+run changes analysis parallelism only, not scope, checks or numerical criteria.
+Full20 real SD1.5 memcheck/full leaks passes0/0; full-size two-update all-kernel
+synccheck passes0errors. Current bounded GroupNorm racecheck passes all three
+variants with actual geometry independently rederived:2sum160 launches/
+10240explicit barrier events,50sum256/466944events,302scale launches with
+zero shared memory. The environment-specific360window was verified anew,
+not blindly copied.
+
+Fresh actual Nsight Compute source counters cover25/25emitted CUDA greedy
+source locations across all three kernels using the previously authorized
+profiler-only `sudo -n -- ncu` procedure; no global setting was changed.
+Actual CUPTI asserts normal Phi-3 DtoH48B(three16Brecords), separate explicit
+98304Bclone/readback, and SD prediction DtoH2621440B per guidance mode.
+All HtoD/internal DtoD records also match. Explicit-copy capture has no compute
+kernel table by design; it is validated as a copy-only window, not a missing
+dispatch silently ignored. Full-worker allocation telemetry distinguishes
+pinned-host, dynamic-device and static-device storage via exported enums.
+
+Read-only current-source coverage candidates deduplicate5413host native,
+1931Python and25device locations=7369/7369, with original M13 object/profile
+cohort verified(22source/40artifact entries; five preserved original GPU ELFs).
+Real CUDA subprocess coverage supplies the device-value NumPy rejection path;
+parent-only Python coverage is not treated as sufficient. Final F6 collection/
+identity checks and F5 measurements remain pending.
+
+**F5 executed fixed native-only measurements:** All eight rows complete
+serially, each1cold/2warmup/5steady native runs plus separate resource and Step
+workers. Source and manifest identities remain frozen. No ordinary-Session
+performance comparison, concurrent owned profiler/test, global tuning or best-
+sample filtering was used. Existing RelWithDebInfo coverage-instrumented builds
+were measured; profile-file output was disabled for timing, not instrumentation
+or unit coverage.
+
+| Workload | Steady median(s) | p95(s),5samples | Actual throughput |
+|---|---:|---:|---:|
+| Phi-3 CPU INT4,budget0 | 4.015727 | 4.155346 | Not applicable:no generated tokens |
+| Phi-3 CPU INT4,budget1 | 4.047851 | 4.182928 | 0.248120tokens/s |
+| Phi-3 CPU INT4,budget16 | 10.677958 | 10.847453 | 1.497301tokens/s |
+| Phi-3 CUDA FP16,budget0 | 0.008754 | 0.008786 | Not applicable:no generated tokens |
+| Phi-3 CUDA FP16,budget1 | 0.008794 | 0.008806 | 113.792169tokens/s |
+| Phi-3 CUDA FP16,budget16 | 0.132899 | 0.133245 | 120.330205tokens/s |
+| SD1.5 CUDA,batched | 0.685177 | 0.689988 | 1.456087images/s |
+| SD1.5 CUDA,sequential | 0.803387 | 0.809567 | 1.248061images/s |
+
+Five-sample nearest-rank p95 is the maximum sample, not a statistically strong
+tail estimate. Different quantization/provider rows are independent baselines,
+not speedup comparisons. Raw cold/setup/tokenization/output/reset observations,
+all samples, step-observed first-token/phase times, RSS/glibc and NVML snapshots
+are retained in `f5-collected-results.json` and per-worker JSON/logs.
+
+Whole resource-worker GPU traces independently derive dynamic allocation peaks
+from exported allocation/free enums and address lifetimes: Phi-3 CUDA0/1
+17189459204B(30alloc/free each), CUDA16 17230506504B(36each); SD batched
+7579871508B(63each), sequential6502983956B(72each). All dynamic allocations
+have matching frees and zero traced dynamic bytes remain at process end.
+Static device module storage is reported separately, not misclassified as a
+leak. Pinned-host events are not counted as device allocations. CPU process RSS
+peaks are6633.81/6634.18/6675.25MiB for the three CPU rows; these include
+application/setup state, not just live runtime cache. Exact byte/count/scope
+data is in `f5-baseline-summary.json`; sanitizer evidence remains independent.
+
+**F6 final executed closure:** CPU73tests/217subtests, plugin77/235,
+legacy73/217(with inherited metadata warning) pass; native/public CPU85/153,
+plugin157/216, legacy145/76 pass; standalone shared/static5/5each and direct
+offline qualification13tests pass. Scoped types0errors/0warnings, repository
+lint and whitespace pass. Final fresh Python coverage includes main processes
+and both real CUDA unit subprocesses.
+
+Exact deduplicated cumulative production coverage is **7369/7369**, no
+exclusions: native host5413/5413, Python1931/1931, actual fresh CUDA source
+counters25/25. The M24delta is257/257(helper255 plus full-runner2). Native
+coverage uses verified unchanged source/object/profile cohorts plus the fresh
+current accessor export; it is not a sum of milestone claims. All60native host
+files and all9current production Python files are enumerated, including
+declaration-only files with no executable delta and the older tiny sample.
+Final proof is `f6-cumulative-coverage.json`; no required line remains uncovered.
+
+**F7 report/proof completed:** `docs/Stateful_Qualification.md` records all eight
+raw/summary native baseline rows, separate Step/resource observations, exact
+validation results, all93original requirement IDs, capability/migration/ownership
+guidance and explicit deferred/known-failure scopes.
+`docs/Stateful_Qualification_Coverage.json` commits the70file exact per-file
+SHA/count ledger. Structured raw results, maps, profiles and model/image
+identities remain outside Git. `f7-source-artifact-proof.json` validates81source
+identities and598artifact/asset entries, with no changed source/package identity
+during measurements. Linux RSS/current high-water observations and static/
+dynamic/pinned GPU memory are not conflated with leak detection. Publication
+F8 remains pending; no milestone/binding or PR merge beyond scope is implied.
+
+**Exact F4 resource selector and collection forms (executed, passed):**
+
+```bash
+# In the CUDA-plugin native build directory, matching CUDA/cuDNN loader set:
+FILTER='CudaStatefulTest.NondefaultStreamCompletionBeforeReadback:CudaStatefulTest.CConsumerAndRetainedValuesAfterSessionRelease:CudaStatefulTest.CallerAllocatorAndManagerOutliveBackendSession:CudaStatefulTest.GreedyMatchesCpuAcrossShapesDtypesAndReductionBoundaries:CudaSamplingApiIntegrationTest.C11GpuSamplingResultsSurviveSessionAndLibraryRelease:CudaBootstrapPackageTest.C11AndGpuValuesSurviveOwnedSessionsAndLibraryUnregistration:CudaDdimPackageTest.CpuLatentsSurviveOwnedSessionsAndLibraryUnregistration'
+CS=/usr/local/cuda/bin/compute-sanitizer
+"$CS" --tool memcheck --leak-check full --show-backtrace no --error-exitcode 99 \
+  ./onnxruntime_autoep_test --gtest_filter="$FILTER"  # PASS7,0errors/0leaks
+"$CS" --tool racecheck --show-backtrace no --error-exitcode 99 \
+  ./onnxruntime_autoep_test --gtest_filter="$FILTER"  # PASS7,0hazards
+"$CS" --tool synccheck --show-backtrace no --error-exitcode 99 \
+  ./onnxruntime_autoep_test --gtest_filter="$FILTER"  # PASS7,0errors
+# Actual direct model workers, not subprocess-owning pytest wrappers:
+PHI_WORKER="$ROOT/onnxruntime/test/python/onnxruntime_test_python_phi3_demo_assets.py"
+SD_WORKER="$ROOT/onnxruntime/test/python/onnxruntime_test_python_sd15_demo_assets.py"
+"$CS" --tool memcheck --leak-check full --show-backtrace no --error-exitcode 99 \
+  "$ROOT/.venv/bin/python" "$PHI_WORKER" --cuda-sanitizer-worker  # PASS0/0
+"$CS" --tool racecheck --show-backtrace no --error-exitcode 99 \
+  "$ROOT/.venv/bin/python" "$PHI_WORKER" --cuda-sanitizer-worker  # PASS0hazards
+"$CS" --tool synccheck --show-backtrace no --error-exitcode 99 \
+  "$ROOT/.venv/bin/python" "$PHI_WORKER" --cuda-sanitizer-worker  # PASS0errors
+# SD full20: ORT_STATEFUL_SD15_PACKAGE unset; full-size S2 sync/race:
+# ORT_STATEFUL_SD15_PACKAGE="$(cat "$Q/f4-two-update-package.txt")".
+"$CS" --tool memcheck --leak-check full --show-backtrace no --error-exitcode 99 \
+  "$ROOT/.venv/bin/python" "$SD_WORKER" --cuda-sanitizer-worker  # PASSfull20,0/0
+"$CS" --tool synccheck --show-backtrace no --error-exitcode 99 \
+  "$ROOT/.venv/bin/python" "$SD_WORKER" --cuda-sanitizer-worker  # PASSS2,0errors
+```
+
+The bounded real SD race commands use the exact symbols recorded in
+`f4-groupnorm-selection.json`: `--tool racecheck --racecheck-num-workers 8
+--show-backtrace no --error-exitcode 99 --kernel-name "kne=$SYMBOL"`.
+Sum160 additionally uses measured `--launch-count 360 --racecheck-trace-sync yes`;
+sum256 uses `--racecheck-trace-sync yes` without a cap; scale has no cap.
+All pass and `f4-groupnorm-proof.json` independently checks the10240/466944
+explicit-event counts against current geometry.
+
+Actual device counters use the prior authorized profiler-only form:
+`sudo -n -- env CUDA_VISIBLE_DEVICES=0 LLVM_PROFILE_FILE=/dev/null LD_LIBRARY_PATH="$BUILD:/home/tianlei/cudnn_9.23_cuda13/lib:/home/tianlei/cuda13.0/lib64" /usr/local/cuda/bin/ncu --devices 0 --section SourceCounters --import-source yes --kernel-name-base function --kernel-name 'regex:.*Greedy.*' --export "$Q/f4-greedy-device" ./onnxruntime_autoep_test --gtest_filter='CudaStatefulTest.GreedyDeviceCoverage'`
+passes1test; `ncu --import "$Q/f4-greedy-device.ncu-rep" --page source
+--print-source cuda,sass --csv` exports the actual25/25source evidence.
+
+Each timing/resource/Step row executes
+`"$ROOT/.venv/bin/python" "$ROOT/samples/python/stateful_qualification.py"
+--model "$MODEL" --package "$PACKAGE" --phase "$PHASE"
+--output "$Q/f5/$ID/$PHASE.json"` with the concrete eight rows/source/manifest
+hashes in `fixed-workloads.json`; all24workers pass. CUDA resource workers are
+wrapped with `nsys profile --trace=cuda --cuda-memory-usage=true --sample=none
+--cpuctxsw=none --output "$Q/f5/$ID/resources-trace"`, followed by
+`nsys export --type sqlite --output "$Q/f5/$ID/resources-trace.sqlite"
+"$Q/f5/$ID/resources-trace.nsys-rep"`. Exact dynamic allocation/free enums and
+per-address lifetimes, rather than total event bytes, determine the peaks.
 
 ## 5. Planned validation recipes
 

@@ -15,3 +15,9 @@ For real local CPU INT4/CUDA FP16 text generation, see the
 For CUDA-only local SD1.5 text-to-image with native DDIM and mandatory safety
 checking, see the [SD1.5 stateful demo](../docs/Stateful_SD15_Demo.md) and its
 [CLI/helpers](python/sd15_demo.py). CPU EP fixtures remain available offline.
+
+The [native qualification helper](python/stateful_qualification.py) records
+completed-work latency, separate step/resource observations and checked report
+artifacts from explicit local packages. See the
+[delivered-foundation qualification report](../docs/Stateful_Qualification.md)
+for the fixed Linux CPU/CUDA workloads and current qualification status.
