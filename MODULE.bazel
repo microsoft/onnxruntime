@@ -47,6 +47,7 @@ use_repo(ort_deps, "ort_node_import_library")
 use_repo(ort_deps, "ort_dotnet_tensors")
 use_repo(ort_deps, "ort_wil")
 use_repo(ort_deps, "ort_mingw")
+use_repo(ort_deps, "ort_junit", "ort_test_protobuf_java")
 
 register_toolchains("//bazel:windows_cgo_toolchain")
 
