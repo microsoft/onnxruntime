@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-"""Build an inference wheel and prepare data for the Linux minimal-build E2E jobs.
+"""Prepare data for the Linux minimal-build E2E jobs using an installed inference wheel.
 
+Build and install the Debug wheel and Python requirements before running this script.
 The required-operator configs are written beneath <build-dir>/minimal_build_test_data.
 Model conversions use a neutral working directory to import the installed wheel.
 A missing custom-op library is reported as a warning; conversion failures are fatal.
@@ -29,62 +30,6 @@ def prepare_test_data(build_dir: Path) -> None:
     test_data_dir = build_dir / "minimal_build_test_data"
     test_data_dir.mkdir(parents=True, exist_ok=True)
     debug_dir = build_dir / "Debug"
-    pip_user_args = [] if sys.prefix != sys.base_prefix else ["--user"]
-
-    run(
-        sys.executable,
-        "-m",
-        "pip",
-        "install",
-        *pip_user_args,
-        "-r",
-        str(REPO_DIR / "tools" / "ci_build" / "github" / "linux" / "python" / "requirements.txt"),
-        cwd=REPO_DIR,
-    )
-    run(sys.executable, str(REPO_DIR / "tools" / "ci_build" / "op_registration_validator.py"), cwd=REPO_DIR)
-
-    run("ccache", "--version", cwd=REPO_DIR)
-    run("ccache", "--zero-stats", cwd=REPO_DIR)
-    run(
-        sys.executable,
-        str(REPO_DIR / "tools" / "ci_build" / "build.py"),
-        "--build_dir",
-        str(build_dir),
-        "--cmake_generator",
-        "Ninja",
-        "--config",
-        "Debug",
-        "--skip_submodule_sync",
-        "--parallel",
-        "--use_cache",
-        "--use_vcpkg",
-        "--use_vcpkg_ms_internal_asset_cache",
-        "--use_binskim_compliant_compile_flags",
-        "--build_wheel",
-        "--skip_tests",
-        "--use_nnapi",
-        "--use_coreml",
-        cwd=REPO_DIR,
-    )
-    run("ccache", "--show-stats", "-vv", cwd=REPO_DIR)
-
-    wheels = sorted((debug_dir / "dist").glob("onnxruntime-*.whl"))
-    if len(wheels) != 1:
-        raise RuntimeError(f"Expected exactly one onnxruntime wheel in {debug_dir / 'dist'}, found {len(wheels)}")
-
-    # Replace even a same-version installation without upgrading the pinned dependencies.
-    run(
-        sys.executable,
-        "-m",
-        "pip",
-        "install",
-        *pip_user_args,
-        "--force-reinstall",
-        "--no-deps",
-        str(wheels[0]),
-        cwd=build_dir,
-    )
-
     test_data_root = REPO_DIR / "onnxruntime" / "test" / "testdata"
     e2e_models = test_data_root / "ort_minimal_e2e_test_data"
     convert_script = REPO_DIR / "tools" / "python" / "convert_onnx_models_to_ort.py"
