@@ -31,6 +31,7 @@ Status SkipLayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                                                                    : "f32";
     shader.MainFunctionBody()
         << "let row = workgroup_idx;\n"
+        << "if (row >= uniforms.norm_count) { return; }\n"
         << "let width = uniforms.hidden_size / uniforms.components;\n"
         << "let base = row * width;\n"
         << "var sum_vec = " << accumulator_type << "(0);\n"
@@ -211,7 +212,7 @@ Status RunSkipLayerNormProgram(ComputeContext& context,
 
   const uint32_t skip_size = onnxruntime::narrow<uint32_t>(skip->Shape().Size());
   const bool subgroup_coalesced =
-      !split_hidden_dim && norm_count >= 32 && hidden_size >= 1024 &&
+      !split_hidden_dim &&
       x->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
       context.AdapterInfo().vendor == std::string_view{"amd"} &&
       context.AdapterInfo().backendType == wgpu::BackendType::D3D12 &&
@@ -237,6 +238,7 @@ Status RunSkipLayerNormProgram(ComputeContext& context,
       })
       .AddUniformVariables({
           {static_cast<uint32_t>(skip_size)},
+          {norm_count},
       });
 
   if (subgroup_coalesced) {

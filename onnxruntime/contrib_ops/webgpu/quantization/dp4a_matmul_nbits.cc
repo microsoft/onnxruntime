@@ -221,7 +221,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   const bool use_amd_tile =
       context.AdapterInfo().vendor == std::string_view{"amd"} &&
       context.AdapterInfo().backendType == wgpu::BackendType::D3D12 &&
-      y->IsDataType<MLFloat16>() && M >= 64 && nbits == 4 &&
+      y->IsDataType<MLFloat16>() && nbits == 4 &&
       !has_bias && !has_weight_idx && !has_qlora_up;
   const uint32_t tile_m = qc_wave128 ? 128 : 64;
   const uint32_t tile_n = qc_wave128 ? 32 : 64;

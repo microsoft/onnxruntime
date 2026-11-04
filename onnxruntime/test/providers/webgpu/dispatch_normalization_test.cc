@@ -28,6 +28,7 @@
 
 #if !defined(DISABLE_CONTRIB_OPS)
 #include "contrib_ops/webgpu/bert/flash_attention.h"
+#include "contrib_ops/webgpu/bert/skip_layer_norm.h"
 #include "contrib_ops/webgpu/quantization/dp4a_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
 #endif
@@ -294,9 +295,62 @@ TEST_F(WebGpuDispatchExecutionTest, FlashAttentionLaneSplitPreservesPaddingAfter
       for (uint32_t b = 0; b < padded_batches; ++b) {
         const float expected = b < batches ? 0.125f * static_cast<float>(b + 1) : canary.ToFloat();
         for (size_t i = b * length * heads * head_size; i < (b + 1) * length * heads * head_size; ++i) {
-          ASSERT_EQ(output_data[i].ToFloat(), expected) << "at output index " << i;
+          if (b < batches) {
+            // FP32 division can differ across backends before the final FP16 store.
+            ASSERT_NEAR(output_data[i].ToFloat(), expected, expected / 1024.0f) << "at output index " << i;
+          } else {
+            ASSERT_EQ(output_data[i].ToFloat(), expected) << "at padding index " << i;
+          }
         }
       }
+    }
+  }
+}
+
+TEST_F(WebGpuDispatchExecutionTest, SkipLayerNormSubgroupPreservesPaddingAfterNormalization) {
+  auto& context = WebGpuContextFactory::GetContext(Ep().GetDeviceId());
+  if (!context.DeviceHasFeature(wgpu::FeatureName::ShaderF16) ||
+      !context.DeviceHasFeature(wgpu::FeatureName::Subgroups) || context.AdapterInfo().subgroupMinSize < 32) {
+    GTEST_SKIP() << "Requires FP16 and subgroups with at least 32 lanes.";
+  }
+  constexpr uint32_t rows = 7, hidden_size = 128;
+  std::array<uint32_t, 3> physical{rows, 1, 1};
+  ASSERT_STATUS_OK(webgpu::detail::NormalizeDispatchGroupSize(physical[0], physical[1], physical[2], 5));
+  const uint32_t padded_rows = physical[0] * physical[1] * physical[2];
+  ASSERT_GT(padded_rows, rows);
+  const MLFloat16 canary{-42.0f};
+  std::vector<MLFloat16> x_data(padded_rows * hidden_size);
+  for (size_t i = 0; i < x_data.size(); ++i) {
+    x_data[i] = MLFloat16{i % 2 == 0 ? -1.0f : 1.0f};
+  }
+  std::vector<MLFloat16> skip_data(hidden_size, MLFloat16{0.0f});
+  std::vector<MLFloat16> gamma_data(hidden_size, MLFloat16{1.0f});
+  auto x_buffer = CreateStorageBuffer(Ep(), x_data);
+  auto skip_buffer = CreateStorageBuffer(Ep(), skip_data);
+  auto gamma_buffer = CreateStorageBuffer(Ep(), gamma_data);
+  const OrtMemoryInfo memory_info(WEBGPU_BUFFER, OrtDeviceAllocator, webgpu::WebGpuDevice(0), OrtMemTypeDefault);
+  Tensor x(DataTypeImpl::GetType<MLFloat16>(), {rows, hidden_size}, x_buffer.Get(), memory_info);
+  Tensor skip(DataTypeImpl::GetType<MLFloat16>(), {hidden_size}, skip_buffer.Get(), memory_info);
+  Tensor gamma(DataTypeImpl::GetType<MLFloat16>(), {hidden_size}, gamma_buffer.Get(), memory_info);
+  for (bool simplified : {false, true}) {
+    SCOPED_TRACE(simplified);
+    std::vector<MLFloat16> output_data(x_data.size(), canary);
+    auto output_buffer = CreateStorageBuffer(Ep(), output_data);
+    Tensor output(DataTypeImpl::GetType<MLFloat16>(), {rows, hidden_size}, output_buffer.Get(), memory_info);
+    contrib::webgpu::SkipLayerNormProgram program{
+        false, false, 0.0f, hidden_size, false, simplified, false, /*subgroup_coalesced=*/true};
+    program.AddInputs({{&x, ProgramTensorMetadataDependency::Type, 4},
+                       {&skip, ProgramTensorMetadataDependency::Type, 4},
+                       {&gamma, ProgramTensorMetadataDependency::Type, 4}})
+        .AddOutput({&output, ProgramTensorMetadataDependency::None, 4})
+        .AddUniformVariables({{4u}, {hidden_size}, {0.0f}, {hidden_size}, {rows}})
+        .CacheHint(simplified)
+        .SetWorkgroupSize(32)
+        .SetDispatchGroupSize(physical[0], physical[1], physical[2]);
+    ASSERT_NO_FATAL_FAILURE(RunAndReadProgram(Ep(), program, output_buffer.Get(), output_data));
+    for (size_t i = 0; i < output_data.size(); ++i) {
+      const float expected = i < rows * hidden_size ? x_data[i].ToFloat() : canary.ToFloat();
+      ASSERT_EQ(output_data[i].ToFloat(), expected) << "at output index " << i;
     }
   }
 }

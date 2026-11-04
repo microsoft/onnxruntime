@@ -8187,6 +8187,16 @@ TEST(GroupQueryAttentionTest, WebGPU_FP16_HighMagnitude_LongPrefillTileBoundary)
   }
 }
 
+TEST(GroupQueryAttentionTest, WebGPU_FP16_DensePrefillShapes) {
+  for (int head_size : {32, 64, 96, 128, 160, 192, 224, 256}) {
+    SCOPED_TRACE(head_size);
+    for (int sequence_length : {32, 65, 257}) {
+      SCOPED_TRACE(sequence_length);
+      RunFp16HighMagnitudeAttention(sequence_length, /*bit_width=*/0, head_size);
+    }
+  }
+}
+
 TEST(GroupQueryAttentionTest, WebGPU_FP16_HighMagnitude_SplitReduce) {
   RunFp16HighMagnitudeAttention(/*sequence_length=*/4, /*bit_width=*/0);
 }

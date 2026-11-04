@@ -425,6 +425,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                WGSL_TEMPLATE_PARAMETER(has_local_window, has_local_window_),
                                WGSL_TEMPLATE_PARAMETER(is_unidirectional, is_unidirectional_),
                                WGSL_TEMPLATE_PARAMETER(q_BNSH, q_BNSH_),
+                               WGSL_TEMPLATE_PARAMETER(qkv_head_size, qkv_head_size_),
                                WGSL_TEMPLATE_PARAMETER(qkv_num_heads, qkv_num_heads_),
                                WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
                                WGSL_TEMPLATE_VARIABLE(output, output),
@@ -1037,7 +1038,7 @@ Status ApplyDensePrefill(const Tensor* Q, Tensor* present_key, Tensor* present_v
       context.AdapterInfo().backendType == wgpu::BackendType::D3D12 &&
       has_subgroups && context.HasFeature(wgpu::FeatureName::SubgroupSizeControl) &&
       context.AdapterInfo().subgroupMinSize <= 32 && context.AdapterInfo().subgroupMaxSize >= 32 &&
-      is_fp16 && parameters.head_size_ == 128 && parameters.sequence_length_ >= 512 &&
+      is_fp16 && parameters.head_size_ >= 32 && parameters.head_size_ <= 256 && parameters.head_size_ % 32 == 0 &&
       parameters.is_unidirectional_ && !has_attention_bias && !has_head_sink &&
       !kv_cache_quantization_enabled && !use_seqlens_q;
   FlashAttentionProgram program{use_subgroup_prefill ? "FlashAttentionSubgroupPrefill" : "FlashAttention",

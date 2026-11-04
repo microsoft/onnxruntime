@@ -1311,9 +1311,8 @@ TEST(MatMulNBits, Float16_DP4A_SubnormalScaleProduct) {
   }
 }
 
-TEST(MatMulNBits, Float16_DP4A_BatchedPartialTiles) {
+static void RunFloat16DP4ABatchedPartialTiles(int64_t M) {
   constexpr int64_t batch = 2;
-  constexpr int64_t M = 65;
   constexpr int64_t N = 80;
   constexpr int64_t K = 384;
   ConfigOptions config_options{};
@@ -1374,6 +1373,13 @@ TEST(MatMulNBits, Float16_DP4A_BatchedPartialTiles) {
       test.ConfigEps(std::move(execution_providers));
       test.RunWithConfig();
     }
+  }
+}
+
+TEST(MatMulNBits, Float16_DP4A_BatchedPartialTiles) {
+  for (int64_t M : {int64_t{4}, int64_t{8}, int64_t{16}, int64_t{32}, int64_t{65}}) {
+    SCOPED_TRACE(M);
+    RunFloat16DP4ABatchedPartialTiles(M);
   }
 }
 
