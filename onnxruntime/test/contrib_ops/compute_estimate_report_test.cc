@@ -467,6 +467,9 @@ TEST_F(ComputeEstimateReportTest, WriteFailureWarnsAndInferenceSucceeds) {
 }
 
 TEST_F(ComputeEstimateReportTest, DynamicAndConcurrentRunsWriteDistinctReports) {
+#if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
+  GTEST_SKIP() << "Requires WebAssembly thread support.";
+#endif
   AddMatMul(std::vector<int64_t>{-1, 3, 64}, false, true);
   ASSERT_STATUS_OK(model_.MainGraph().Resolve());
   InferenceSession session(ReportOptions(), GetEnvironment());

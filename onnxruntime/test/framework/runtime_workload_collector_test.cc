@@ -259,6 +259,9 @@ TEST(RuntimeWorkloadCollectorTest, SeparateRunsDoNotShareRecordsOrIds) {
 }
 
 TEST(RuntimeWorkloadCollectorTest, ConcurrentSubmissionsAndSnapshotsRespectLimits) {
+#if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
+  GTEST_SKIP() << "Requires WebAssembly thread support.";
+#endif
   constexpr size_t limit = 100;
   constexpr size_t submissions_per_thread = 50;
   RuntimeWorkloadCollector collector(1, 2, {limit, std::numeric_limits<size_t>::max()});
@@ -1228,6 +1231,9 @@ TEST(RuntimeWorkloadExecutionTest, ScanInvocationsShareIdentityButNotInvocationI
 }
 
 TEST(RuntimeWorkloadExecutionTest, ConcurrentRunsAndSessionsAreIsolated) {
+#if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
+  GTEST_SKIP() << "Requires WebAssembly thread support.";
+#endif
   auto first = WorkloadSession(WorkloadModel(true), false, false, true);
   auto second = WorkloadSession(WorkloadModel(true));
   std::array<RuntimeWorkloadSnapshot, 8> snapshots;
