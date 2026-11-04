@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-"""Enforce the shared archived sccache budget; default to a read-only preview."""
+"""Enforce per-OS archived sccache budgets; default to a read-only preview."""
 
 import argparse
 import json
@@ -33,6 +33,8 @@ class EvictionPlan:
     remaining_bytes: int
     deletions: list[Cache]
     evicted_baselines: list[Cache]
+    total_bytes_by_os: dict[str, int]
+    remaining_bytes_by_os: dict[str, int]
 
 
 def compatibility(cache: Cache) -> str | None:
@@ -78,16 +80,25 @@ def select_evictions(inventory: Sequence[Cache], budget: int = BUDGET_BYTES) -> 
 
     # Retire older generations before evicting any compatibility prefix's newest baseline.
     candidates = sorted(caches, key=lambda cache: (cache["id"] in baselines, creation_time(cache), cache["id"]))
-    total_bytes = sum(cache["size_in_bytes"] for cache in caches)
-    remaining_bytes = total_bytes
+    total_bytes_by_os: dict[str, int] = {}
+    for cache in caches:
+        os_name = cache["key"].split("-")[2]
+        total_bytes_by_os[os_name] = total_bytes_by_os.get(os_name, 0) + cache["size_in_bytes"]
+    remaining_bytes_by_os = total_bytes_by_os.copy()
     deletions = []
     for cache in candidates:
-        if remaining_bytes <= budget:
-            break
+        os_name = cache["key"].split("-")[2]
+        if remaining_bytes_by_os[os_name] <= budget:
+            continue
         deletions.append(cache)
-        remaining_bytes -= cache["size_in_bytes"]
+        remaining_bytes_by_os[os_name] -= cache["size_in_bytes"]
     return EvictionPlan(
-        total_bytes, remaining_bytes, deletions, [cache for cache in deletions if cache["id"] in baselines]
+        sum(total_bytes_by_os.values()),
+        sum(remaining_bytes_by_os.values()),
+        deletions,
+        [cache for cache in deletions if cache["id"] in baselines],
+        total_bytes_by_os,
+        remaining_bytes_by_os,
     )
 
 
@@ -121,9 +132,14 @@ def run(
         raise ValueError("Expected repository in owner/name format")
     plan = select_evictions(list_caches(repository, api))
     log(
-        f"{'Apply' if apply else 'Dry run'}: {plan.total_bytes} bytes; budget {BUDGET_BYTES}; "
+        f"{'Apply' if apply else 'Dry run'}: {plan.total_bytes} bytes; budget {BUDGET_BYTES} per OS; "
         f"{len(plan.deletions)} evictions; planned remainder {plan.remaining_bytes} bytes"
     )
+    for os_name in sorted(plan.total_bytes_by_os):
+        log(
+            f"{os_name}: {plan.total_bytes_by_os[os_name]} bytes; "
+            f"planned remainder {plan.remaining_bytes_by_os[os_name]} bytes"
+        )
     if plan.evicted_baselines:
         log(f"::warning::Budget requires evicting {len(plan.evicted_baselines)} newest compatibility baselines")
     for cache in plan.deletions:
@@ -139,9 +155,11 @@ def run(
     if apply:
         observed = select_evictions(list_caches(repository, api))
         log(f"Observed storage after cleanup: {observed.total_bytes} bytes")
-        if observed.total_bytes > BUDGET_BYTES:
+        over_budget = [os_name for os_name, size in observed.total_bytes_by_os.items() if size > BUDGET_BYTES]
+        if over_budget:
             raise RuntimeError(
-                "sccache remains over budget (possibly concurrent uploads); next maintenance run will retry"
+                f"sccache remains over budget for {', '.join(sorted(over_budget))} "
+                "(possibly concurrent uploads); next maintenance run will retry"
             )
     return plan
 

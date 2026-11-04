@@ -47,7 +47,7 @@ jobs:
         with:
           ref: main
           persist-credentials: false
-      - name: Enforce shared archived compiler-cache budget
+      - name: Enforce per-OS archived compiler-cache budgets
         env:
           GH_TOKEN: ${{ github.token }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}

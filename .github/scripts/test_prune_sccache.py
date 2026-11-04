@@ -50,7 +50,7 @@ class PruneSccacheTest(unittest.TestCase):
         self.assertEqual(ids(select_evictions([cache(1, BUDGET_BYTES)])), [])
         self.assertEqual(ids(select_evictions([cache(1, 1)])), [])
 
-    def test_all_os_arch_and_build_variants_share_one_budget(self):
+    def test_each_os_has_an_independent_budget(self):
         entries = [
             cache(1, 10, os_name="macOS", arch="X64"),
             cache(2, 10, os_name="Linux", arch="ARM64"),
@@ -60,13 +60,38 @@ class PruneSccacheTest(unittest.TestCase):
         ]
         plan = select_evictions(entries, 30)
         self.assertEqual(plan.total_bytes, 50)
-        self.assertEqual(plan.remaining_bytes, 30)
+        self.assertEqual(plan.remaining_bytes, 50)
+        self.assertEqual(ids(plan), [])
+        self.assertEqual(plan.total_bytes_by_os, {"macOS": 10, "Linux": 20, "Windows": 10, "FutureOS": 10})
+
+    def test_os_budget_combines_architectures_and_build_variants(self):
+        entries = [
+            cache(1, 20, os_name="Linux", arch="X64"),
+            cache(2, 20, variant="b", os_name="Linux", arch="ARM64"),
+            cache(3, 10, os_name="Windows"),
+            cache(4, 10, os_name="macOS"),
+        ]
+        plan = select_evictions(entries, 30)
+        self.assertEqual(ids(plan), [1])
+        self.assertEqual(plan.remaining_bytes_by_os, {"Linux": 20, "Windows": 10, "macOS": 10})
+        self.assertEqual([entry["id"] for entry in plan.evicted_baselines], [1])
+
+    def test_each_over_budget_os_is_evicted_independently(self):
+        entries = [
+            cache(1, 20, os_name="Linux"),
+            cache(2, 20, os_name="Windows"),
+            cache(3, 20, os_name="Linux"),
+            cache(4, 20, os_name="Windows"),
+            cache(5, 1, os_name="macOS"),
+        ]
+        plan = select_evictions(entries, 30)
         self.assertEqual(ids(plan), [1, 2])
-        self.assertEqual([entry["id"] for entry in plan.evicted_baselines], [1, 2])
+        self.assertEqual(plan.remaining_bytes_by_os, {"Linux": 20, "Windows": 20, "macOS": 1})
+        self.assertEqual(plan.evicted_baselines, [])
 
     def test_aggregate_budget_preserves_newest_per_prefix(self):
         entries = [cache(1, 8), cache(2, 8, os_name="Linux"), cache(3, 8), cache(4, 8, os_name="Linux")]
-        plan = select_evictions(entries[::-1], 16)
+        plan = select_evictions(entries[::-1], 8)
         self.assertEqual(ids(plan), [1, 2])
         self.assertEqual(plan.total_bytes, 32)
         self.assertEqual(plan.remaining_bytes, 16)
@@ -159,6 +184,15 @@ class PruneSccacheTest(unittest.TestCase):
         before = pages([cache(1, BUDGET_BYTES + 1)])
         with self.assertRaisesRegex(RuntimeError, "remains over budget"):
             run("owner/repo", apply=True, api=Mock(side_effect=[before, "", before]), log=Mock())
+
+    def test_post_cleanup_allows_combined_storage_above_one_os_budget(self):
+        inventory = pages([cache(1, BUDGET_BYTES), cache(2, BUDGET_BYTES, os_name="Linux")])
+        api = Mock(return_value=inventory)
+        plan = run("owner/repo", apply=True, api=api, log=Mock())
+        self.assertEqual(plan.total_bytes, 2 * BUDGET_BYTES)
+        self.assertEqual(ids(plan), [])
+        self.assertEqual(api.call_count, 2)
+        self.assertTrue(all("DELETE" not in call.args[0] for call in api.call_args_list))
 
     def test_gh_api_invocation_and_process_errors(self):
         with patch("prune_sccache.subprocess.check_output", return_value="[]") as check_output:

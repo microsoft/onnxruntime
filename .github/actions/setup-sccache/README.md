@@ -40,13 +40,15 @@ The actions do not select a CMake generator or enable compiler launchers themsel
 `--use_cache --cache_tool sccache` in build flags. Windows launcher support in `build.py` currently
 requires Ninja; validate the selected compiler/debug-symbol configuration when adopting it.
 
-## Shared archived-storage budget
+## Per-OS archived-storage budgets
 
-`sccache-maintenance.yml` enforces one **30 GB decimal (30,000,000,000 bytes) aggregate**
-budget for GitHub's archived sccache snapshots across all operating systems, architectures,
-and build variants using these shared actions, separate from the unchanged per-run `10G`
+`sccache-maintenance.yml` currently enforces a separate **30 GB decimal (30,000,000,000 bytes)**
+budget per OS for GitHub's archived sccache snapshots. Each OS's architectures and build variants
+using these shared actions share that OS's budget, separate from the unchanged per-run `10G`
 local cache. It runs hourly, independently of any particular build workflow, so new callers
 participate automatically without adding workflow names. GitHub may delay scheduled runs.
+Unused space in one OS's budget does not increase another's; total managed storage can exceed
+30 GB when multiple OSes participate. Logs report each OS's current and planned storage.
 
 The budget includes well-formed `sccache-v1-<OS>-<arch>-<identity>-<commit>` snapshots on
 `refs/heads/main`. OS and architecture identifiers are not restricted to the current runners.
@@ -55,13 +57,13 @@ untouched and are not counted in this budget. New key formats require updating t
 
 Cleanup inventories all pages in the shared namespace, then removes older main generations
 oldest-first, preferentially retaining the newest snapshot per compatibility
-prefix. If those baselines alone exceed the budget, it warns and removes the oldest baselines
+prefix. If an OS's baselines alone exceed its budget, it warns and removes its oldest baselines
 too (including a single oversized snapshot), rather than silently exceeding the limit.
 Exact immutable cache IDs are deleted, and API errors fail the maintenance job.
 
 This is a **soft cap**, not an atomic GitHub storage quota: cleanup jobs serialize with each other,
-not with cache uploads. Storage can exceed 30 GB between maintenance runs or during concurrent
-publication. Cleanup rechecks storage afterward and fails visibly if still over budget; the next
+not with cache uploads. Each OS's storage can exceed 30 GB between maintenance runs or during concurrent
+publication. Cleanup rechecks every OS afterward and fails visibly if any is still over budget; the next
 run retries. Cache eviction may cause a cold build but does not change build/test coverage.
 
 Only the separate trusted-main cleanup job has `actions: write`. PRs run regression tests with
