@@ -283,7 +283,8 @@ TEST_F(WebGpuDispatchExecutionTest, FlashAttentionLaneSplitPreservesPaddingAfter
                          {&k, ProgramTensorMetadataDependency::TypeAndRank, 4},
                          {&v, ProgramTensorMetadataDependency::TypeAndRank, 4}})
           .AddOutput({&output, ProgramTensorMetadataDependency::TypeAndRank, 4})
-          .AddUniformVariables({{length}, {length}, {length}, {batches}, {heads}, {1.0f}, {query_tiles}, {0u}, {0u}, {0u}, {0u}})
+          .AddUniformVariables({{length}, {length}, {length}, {batches}, {heads}, {1.0f}})
+          .AddUniformVariables({{query_tiles}, {0u}, {0u}, {0u}, {0u}})
           .CacheHint(use_seqlen_k)
           .SetWorkgroupSize(256)
           .SetSubgroupSize(32)
