@@ -1176,6 +1176,30 @@ Status ApplyDensePrefill(const Tensor* Q, Tensor* present_key, Tensor* present_v
   bool is_fp16 = Q->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
   bool q_BNSH = parameters.qkv_format_ == Q_K_V_BNSH;
   bool has_head_sink = head_sink != nullptr;
+  const float alpha = parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_))
+                                                : parameters.scale_;
+
+  uint32_t attn_bias_dim0 = 1;
+  uint32_t attn_bias_dim1 = 1;
+  uint32_t attn_bias_dim3 = 0;
+  if (has_attention_bias) {
+    const auto& bias_shape = attention_bias->Shape();
+    attn_bias_dim0 = static_cast<uint32_t>(bias_shape[0]);
+    attn_bias_dim1 = static_cast<uint32_t>(bias_shape[1]);
+    attn_bias_dim3 = static_cast<uint32_t>(bias_shape[3]);
+  }
+
+  const bool is_intel = context.AdapterInfo().vendor == std::string_view{"intel"};
+  const uint32_t subgroup_min_size = has_subgroups ? context.AdapterInfo().subgroupMinSize : 0u;
+  // TODO(daijh): Merge back into `FlashAttentionProgram`.
+  if (CanApplyFlashAttentionPrefill(is_intel, kv_cache_quantization_enabled)) {
+    return ApplyFlashAttentionPrefill(
+        context, Q, present_key, present_value, attention_bias, seqlen_k, attn_output,
+        parameters, has_attention_bias, use_seqlen_k, has_local_window, local_window_size,
+        present_sequence_length, subgroup_min_size, alpha, attn_bias_dim0, attn_bias_dim1, attn_bias_dim3,
+        use_seqlens_q, seqlens_q, q_BNSH, has_head_sink, head_sink);
+  }
+
   FlashAttentionProgram program{"FlashAttention",
                                 has_attention_bias,
                                 is_qualcomm,
@@ -1211,33 +1235,10 @@ Status ApplyDensePrefill(const Tensor* Q, Tensor* present_key, Tensor* present_v
     program.AddInputs({{head_sink, ProgramTensorMetadataDependency::Type}});
   }
   program.AddOutputs({{attn_output, ProgramTensorMetadataDependency::TypeAndRank, 4}});
-  const float alpha = parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_))
-                                                : parameters.scale_;
 
   // On Apple GPUs, use a larger workgroup size to reduce barrier overhead.
   const uint32_t prefill_tile_size = is_apple ? 128 : tile_size;
   const uint32_t num_seq_tile = (parameters.sequence_length_ + prefill_tile_size - 1) / prefill_tile_size;
-
-  uint32_t attn_bias_dim0 = 1;
-  uint32_t attn_bias_dim1 = 1;
-  uint32_t attn_bias_dim3 = 0;
-  if (has_attention_bias) {
-    const auto& bias_shape = attention_bias->Shape();
-    attn_bias_dim0 = static_cast<uint32_t>(bias_shape[0]);
-    attn_bias_dim1 = static_cast<uint32_t>(bias_shape[1]);
-    attn_bias_dim3 = static_cast<uint32_t>(bias_shape[3]);
-  }
-
-  const bool is_intel = context.AdapterInfo().vendor == std::string_view{"intel"};
-  const uint32_t subgroup_min_size = has_subgroups ? context.AdapterInfo().subgroupMinSize : 0u;
-  // TODO(daijh): Merge back into `FlashAttentionProgram`.
-  if (CanApplyFlashAttentionPrefill(is_intel, kv_cache_quantization_enabled)) {
-    return ApplyFlashAttentionPrefill(
-        context, Q, present_key, present_value, attention_bias, seqlen_k, attn_output,
-        parameters, has_attention_bias, use_seqlen_k, has_local_window, local_window_size,
-        present_sequence_length, subgroup_min_size, alpha, attn_bias_dim0, attn_bias_dim1, attn_bias_dim3,
-        use_seqlens_q, seqlens_q, q_BNSH, has_head_sink, head_sink);
-  }
 
   program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_seq_tile)
       .SetWorkgroupSize(prefill_tile_size)
