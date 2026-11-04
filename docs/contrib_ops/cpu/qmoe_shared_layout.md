@@ -93,6 +93,18 @@ rounding, and SwiGLU projection boundaries are independent of this option.
 Low-level CPU offload callers select the same policy through
 `Int3ExpertView::deferred_scale` or `Int4ExpertView::deferred_scale`.
 
+INT2 shared-layout kernels always accumulate integer codes times activations
+in FP32 before applying each block scale, independently of
+`ep.cpu.qmoe_deferred_scale`. This has an extreme-value limit: an unscaled
+product or partial sum can overflow even when the scaled result would be
+finite. For example, in a `K=64` tile, one activation `2^127`, centered code
+`-2`, scale `2^-125`, and otherwise zero contributions produce negative
+infinity in the scalar and AVX2 kernels rather than the mathematical result
+`-8`. A subsequent SwiGLU can turn that infinity into NaN. Normal quantized
+model ranges are not expected to approach this limit; full-range BF16/FP32
+arithmetic is not guaranteed. The optional INT3/INT4 deferred-scale policy
+has the same class of risk, unlike default INT4's scale-before-multiply policy.
+
 ## Validation
 
 - `qmoe_shared_layout_test.cc` checks independent layout fixtures, scalar, AVX2,
