@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "gmock/gmock.h"
 #include "test/providers/provider_test_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/platform/path_lib.h"
@@ -1155,8 +1156,13 @@ TEST(MLOpTest, TreeEnsembleRegressorRejectsInMemoryExternalDataInTensorAttribute
   test.AddOutput<float>("Y", {1, 1}, {0.f});
 
   // Error originates from the ONNX checker (checker::check_node) during Graph::Resolve().
-  // There is no way to disable this check.
-  test.Run(OpTester::ExpectResult::kExpectFailure, "is not regular file");
+  // ONNX versions may reject the path before checking whether it is a regular file.
+  test.Run(OpTester::ExpectResult::kExpectFailure);
+  const auto status = test.BuildModel().MainGraph().Resolve();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(),
+              testing::AnyOf(testing::HasSubstr("is not regular file"),
+                             testing::HasSubstr("external data resolves outside model directory")));
 }
 
 #endif  // !defined(ORT_NO_EXCEPTIONS)
