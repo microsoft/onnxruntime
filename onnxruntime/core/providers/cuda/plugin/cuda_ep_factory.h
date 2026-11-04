@@ -55,8 +55,11 @@ class CudaEpFactory : public OrtEpFactory {
 
   /// Shrink the device arena(s) owned by `owner` on the specified device that have had Shrink() enabled via
   /// RunOptions. Arenas of other sessions, and arenas of sessions that have started a CUDA graph capture (whose
-  /// graphs reference arena addresses), are never shrunk.
-  void ShrinkEligibleDeviceArenas(int device_id, const SessionBudgetAccount* owner) noexcept;
+  /// graphs reference arena addresses), are never shrunk. `qmoe_session_scope` is the address of the owner's
+  /// QMoESessionController (null when it has no offload nodes); it is handed to the QMoE arena-shrunk hook so that
+  /// only the owning session's prefill hand-off is acted on.
+  void ShrinkEligibleDeviceArenas(int device_id, const SessionBudgetAccount* owner,
+                                  const void* qmoe_session_scope) noexcept;
 
   /// Records that the session owning `owner` is capturing a CUDA graph, which pins its arena regions.
   void MarkSessionGraphCapture(int device_id, const SessionBudgetAccount* owner) noexcept;
@@ -114,6 +117,13 @@ class CudaEpFactory : public OrtEpFactory {
       const OrtMemoryDevice* memory_device,
       const OrtKeyValuePairs* stream_options,
       OrtSyncStreamImpl** stream) noexcept;
+
+  static OrtStatus* ORT_API_CALL GetDeviceMemoryCapacityImpl(
+      OrtEpFactory* this_ptr,
+      const OrtEpDevice* ep_device,
+      OrtDeviceMemoryType memory_type,
+      uint64_t* total_memory_bytes,
+      uint64_t* available_memory_bytes) noexcept;
 
   const OrtApi& ort_api_;
   const OrtEpApi& ep_api_;

@@ -40,6 +40,7 @@ class CudaSyncStream : public OrtSyncStreamImpl {
 
   void EnqueueDeferredCPUBuffer(void* cpu_buffer);
   OrtStatus* InitHandles();
+  OrtStatus* InitCopyStreamOnly();
 
   /// Initialize with an external (non-owned) CUDA stream. The wrapper is
   /// registered for stream-aware lookup/cleanup, but CUDA library handles are

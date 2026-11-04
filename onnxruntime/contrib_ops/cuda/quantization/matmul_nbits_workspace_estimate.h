@@ -48,6 +48,8 @@ struct MatMulNBitsMemoryEstimateOptions {
   // Applies only to the explicit-shape overload and only when the node's canonical input shape is dynamic.
   bool input_shape_is_upper_bound = false;
   std::optional<std::string_view> m_chunk_size = std::nullopt;
+  // ep.cuda.fpa_intb_dequant_gemm_min_m; unset falls back to ORT_FPA_INTB_DEQUANT_GEMM_MIN_M, then the default.
+  std::optional<std::string_view> dequant_gemm_min_m = std::nullopt;
 };
 
 // Product of all input-A dimensions except the final K dimension. A known zero takes precedence

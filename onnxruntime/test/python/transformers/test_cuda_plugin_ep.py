@@ -3099,6 +3099,154 @@ class TestCudaPluginEP(unittest.TestCase):
         """Verify session-level profiling produces valid output with the CUDA Plugin EP."""
         self._run_profiling_test()
 
+    def test_external_data_loader_modes_and_validation(self):
+        """Verify CUDA Plugin EP external data loader across reading_threads modes and option validation."""
+        target_device = get_cuda_plugin_device()
+        rng = np.random.default_rng(42)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            w1 = rng.standard_normal((2048, 2048), dtype=np.float32)  # 16 MiB
+            w2 = rng.standard_normal((2048, 64), dtype=np.float32)  # 512 KiB
+            bool_raw = np.array([0, 1, 2, 255], dtype=np.uint8)
+            bool_expected = np.array([False, True, True, True], dtype=np.bool_)
+
+            data_a_path = os.path.join(tmp_dir, "weights_a.bin")
+            data_b_path = os.path.join(tmp_dir, "weights_b.bin")
+            prefix_pad = b"prefix_13byte"
+            with open(data_a_path, "wb") as f:
+                f.write(prefix_pad)
+                w2_offset = f.tell()
+                f.write(w2.tobytes())
+                w1_offset = f.tell()
+                f.write(w1.tobytes())
+            with open(data_b_path, "wb") as f:
+                f.write(prefix_pad)
+                bool_offset = f.tell()
+                f.write(bool_raw.tobytes())
+
+            def make_ext_tensor(name, data_type, dims, location, offset, length):
+                t = TensorProto(name=name, data_type=data_type, dims=dims)
+                t.data_location = TensorProto.EXTERNAL
+                for k, v in (("location", location), ("offset", str(offset)), ("length", str(length))):
+                    entry = t.external_data.add()
+                    entry.key = k
+                    entry.value = v
+                return t
+
+            # Register initializers in reverse offset order to exercise offset sorting as well.
+            initializers = [
+                make_ext_tensor("W1", TensorProto.FLOAT, list(w1.shape), "weights_a.bin", w1_offset, w1.nbytes),
+                make_ext_tensor("B_mask", TensorProto.BOOL, [4], "weights_b.bin", bool_offset, bool_raw.nbytes),
+                make_ext_tensor("W2", TensorProto.FLOAT, list(w2.shape), "weights_a.bin", w2_offset, w2.nbytes),
+            ]
+            nodes = [
+                helper.make_node("MatMul", ["X", "W1"], ["H"]),
+                helper.make_node("MatMul", ["H", "W2"], ["Y"]),
+                helper.make_node("And", ["M", "B_mask"], ["M_out"]),
+            ]
+            graph = helper.make_graph(
+                nodes,
+                "plugin_external_data_loader_test",
+                [
+                    helper.make_tensor_value_info("X", TensorProto.FLOAT, [4, 2048]),
+                    helper.make_tensor_value_info("M", TensorProto.BOOL, [4]),
+                ],
+                [
+                    helper.make_tensor_value_info("Y", TensorProto.FLOAT, [4, 64]),
+                    helper.make_tensor_value_info("M_out", TensorProto.BOOL, [4]),
+                ],
+                initializers,
+            )
+            model = _make_released_opset_model(graph)
+            model_path = os.path.join(tmp_dir, "model.onnx")
+            save(model, model_path)
+
+            x = rng.standard_normal((4, 2048), dtype=np.float32)
+            m_in = np.array([True, True, False, True], dtype=np.bool_)
+            expected_y = (x @ w1) @ w2
+            expected_m = np.logical_and(m_in, bool_expected)
+
+            def assert_matmuls_on_plugin(sess):
+                assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
+                matmul_count = sum(1 for node in assigned_nodes if node.op_type == "MatMul")
+                self.assertEqual(
+                    matmul_count,
+                    2,
+                    f"Expected both MatMul nodes on {CUDA_PLUGIN_EP_NAME}: {_format_assignment_summary(assignment_info)}",
+                )
+
+            baseline_y = None
+            for threads in ("0", "1", "4", "16"):
+                sess_options = _create_session_options()
+                sess_options.add_provider_for_devices(
+                    [target_device],
+                    _plugin_provider_options({"external_data_loader_reading_threads": threads, "use_tf32": "0"}),
+                )
+                sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
+                assert_matmuls_on_plugin(sess)
+                y_out, m_out = sess.run(["Y", "M_out"], {"X": x, "M": m_in})
+                np.testing.assert_allclose(y_out, expected_y, rtol=1e-3, atol=1e-2)
+                np.testing.assert_array_equal(m_out, expected_m)
+                if baseline_y is None:
+                    baseline_y = y_out
+                else:
+                    np.testing.assert_array_equal(y_out, baseline_y)
+
+            # Verify session.external_data_loader.* session config entries and provider options
+            for session_cfg, ep_cfg in (
+                (
+                    {
+                        "session.external_data_loader.threads": "4",
+                        "session.external_data_loader.pinned_memory_bytes": str(16 * 1024 * 1024),
+                        "session.external_data_loader.chunk_bytes": str(512 * 1024),
+                        "session.external_data_loader.min_size_bytes": str(8 * 1024 * 1024),
+                    },
+                    {"use_tf32": "0"},
+                ),
+                (
+                    {
+                        # Below min_size_bytes threshold -> skips pinned buffer/stream allocation and uses pageable path
+                        "session.external_data_loader.min_size_bytes": str(64 * 1024 * 1024),
+                    },
+                    {"use_tf32": "0"},
+                ),
+                (
+                    {},
+                    {
+                        "external_data_loader_reading_threads": "8",
+                        "external_data_loader_pinned_memory_bytes": str(32 * 1024 * 1024),
+                        "external_data_loader_chunk_bytes": str(1024 * 1024),
+                        "use_tf32": "0",
+                    },
+                ),
+            ):
+                sess_options = _create_session_options()
+                for k, v in session_cfg.items():
+                    sess_options.add_session_config_entry(k, v)
+                sess_options.add_provider_for_devices([target_device], _plugin_provider_options(ep_cfg))
+                sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
+                assert_matmuls_on_plugin(sess)
+                y_out, m_out = sess.run(["Y", "M_out"], {"X": x, "M": m_in})
+                np.testing.assert_array_equal(y_out, baseline_y)
+                np.testing.assert_array_equal(m_out, expected_m)
+
+            for invalid_opts in (
+                {"external_data_loader_reading_threads": "65"},
+                {"external_data_loader_reading_threads": "-1"},
+                {"external_data_loader_reading_threads": "invalid"},
+                {"external_data_loader_pinned_memory_bytes": "4096"},
+                {"external_data_loader_pinned_memory_bytes": "1048577"},
+                {"external_data_loader_pinned_memory_bytes": str(2 * 1024 * 1024 * 1024)},
+                {"external_data_loader_chunk_bytes": "2048"},
+                {"external_data_loader_chunk_bytes": str(128 * 1024 * 1024)},
+            ):
+                self.assertTrue(
+                    run_provider_options_test(
+                        invalid_opts,
+                        expect_plugin_provider=False,
+                    )
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

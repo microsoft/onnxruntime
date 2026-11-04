@@ -4,7 +4,11 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
+#include <cstring>
+#include <exception>
+#include <string>
 #include <type_traits>
 #include <vector>
 
@@ -93,6 +97,314 @@ TEST(CUDA_EP_Unittest, QMoEFp8CompactExpertsPreservesRoutesAndClearsUnusedSlots)
       EXPECT_EQ(slots[compact[route]], routes[route]);
     }
   }
+}
+
+template <typename Call>
+void ExpectThrowsContaining(Call&& call, const char* fragment) {
+  try {
+    call();
+    ADD_FAILURE() << "Expected an exception containing \"" << fragment << "\".";
+  } catch (const std::exception& e) {
+    EXPECT_NE(std::string(e.what()).find(fragment), std::string::npos) << e.what();
+  }
+}
+
+// Eight experts and six routes that use four distinct experts {1, 3, 5, 6}.
+struct CompactExpertsCase {
+  static constexpr int kExperts = 8;
+  static constexpr int kRoutes = 6;
+  static constexpr std::array<int, kRoutes> kRouteExperts{5, 1, 5, 6, 1, 3};
+
+  CompactExpertsCase()
+      : indices(kRoutes * sizeof(int)),
+        compact_indices(kRoutes * sizeof(int)),
+        expert_map(kExperts * sizeof(int)),
+        slot_map(kExperts * sizeof(int)) {
+    indices.Upload(kRouteExperts.data());
+  }
+
+  void Launch(int capacity, int pass_offset, bool partial_pass) {
+    qmoe::LaunchQMoECompactExperts(indices.As<int>(), compact_indices.As<int>(), expert_map.As<int>(),
+                                   slot_map.As<int>(), kExperts, capacity, kRoutes, nullptr, pass_offset,
+                                   partial_pass);
+  }
+
+  std::array<int, kRoutes> Compact() {
+    std::array<int, kRoutes> values{};
+    compact_indices.Download(values.data());
+    return values;
+  }
+
+  std::vector<int> Slots(int capacity) {
+    std::array<int, kExperts> values{};
+    slot_map.Download(values.data());
+    return std::vector<int>(values.begin(), values.begin() + capacity);
+  }
+
+  CudaBuffer indices;
+  CudaBuffer compact_indices;
+  CudaBuffer expert_map;
+  CudaBuffer slot_map;
+};
+
+TEST(CUDA_EP_Unittest, QMoECompactExpertsSinglePassRequiresCapacityForEveryRoutedExpert) {
+  CompactExpertsCase run;
+  // A single pass cannot drop routes, so it needs min(num_experts, num_routes) = 6 slots even though the routes use
+  // only four distinct experts.
+  for (int capacity : {1, 3, 5}) {
+    SCOPED_TRACE(capacity);
+    ExpectThrowsContaining([&] { run.Launch(capacity, 0, false); }, "cannot hold every routed expert");
+  }
+  ExpectThrowsContaining([&] { run.Launch(6, 2, false); }, "requires a partial pass");
+  ExpectThrowsContaining([&] { run.Launch(0, 0, false); }, "Invalid QMoE compact expert capacity");
+  ExpectThrowsContaining([&] { run.Launch(CompactExpertsCase::kExperts + 1, 0, false); },
+                         "Invalid QMoE compact expert capacity");
+
+  run.Launch(6, 0, false);
+  EXPECT_EQ(run.Compact(), (std::array<int, 6>{2, 0, 2, 3, 0, 1}));
+  EXPECT_EQ(run.Slots(6), (std::vector<int>{1, 3, 5, 6, -1, -1}));
+}
+
+TEST(CUDA_EP_Unittest, QMoECompactExpertsPartialPassesMapOnlyTheirRankRange) {
+  CompactExpertsCase run;
+  // Two slots per pass over the four routed experts {1, 3, 5, 6}, ranked in ascending expert order.
+  run.Launch(2, 0, true);
+  EXPECT_EQ(run.Compact(), (std::array<int, 6>{-1, 0, -1, -1, 0, 1}));
+  EXPECT_EQ(run.Slots(2), (std::vector<int>{1, 3}));
+
+  run.Launch(2, 2, true);
+  EXPECT_EQ(run.Compact(), (std::array<int, 6>{0, -1, 0, 1, -1, -1}));
+  EXPECT_EQ(run.Slots(2), (std::vector<int>{5, 6}));
+
+  // A pass that starts beyond the last routed expert is valid and maps nothing.
+  run.Launch(2, CompactExpertsCase::kExperts - 1, true);
+  EXPECT_EQ(run.Compact(), (std::array<int, 6>{-1, -1, -1, -1, -1, -1}));
+  EXPECT_EQ(run.Slots(2), (std::vector<int>{-1, -1}));
+}
+
+TEST(CUDA_EP_Unittest, QMoECompactExpertsPartialPassRejectsInvalidOffsetOrCapacity) {
+  CompactExpertsCase run;
+  ExpectThrowsContaining([&] { run.Launch(2, -1, true); }, "Invalid QMoE compact expert pass offset");
+  ExpectThrowsContaining([&] { run.Launch(2, CompactExpertsCase::kExperts, true); },
+                         "Invalid QMoE compact expert pass offset");
+  ExpectThrowsContaining([&] { run.Launch(0, 0, true); }, "Invalid QMoE compact expert capacity");
+  ExpectThrowsContaining([&] { run.Launch(CompactExpertsCase::kExperts + 1, 0, true); },
+                         "Invalid QMoE compact expert capacity");
+}
+
+TEST(CUDA_EP_Unittest, QMoEAccumulateExpertHistogramCountsExpertsBeyondTheSharedHistogram) {
+  // The block-local histogram covers the first 1024 experts, so larger expert banks must count the rest directly.
+  constexpr int num_experts = 2048;
+  constexpr int shared_experts = 1024;
+  constexpr int num_routes = 3000;
+  constexpr int baseline = 5;
+  std::vector<int> routes(num_routes);
+  for (int route = 0; route < num_routes; ++route) {
+    // Covers every expert and also produces -1 and num_experts, which no histogram bin may count.
+    routes[route] = (route * 37) % (num_experts + 2) - 1;
+  }
+  routes[10] = routes[11] = 1500;
+  routes[12] = num_experts - 1;
+
+  std::vector<int> expected(num_experts, baseline);
+  int tail_routes = 0;
+  for (int expert : routes) {
+    if (expert >= 0 && expert < num_experts) {
+      ++expected[expert];
+      tail_routes += expert >= shared_experts;
+    }
+  }
+  ASSERT_GT(tail_routes, 0);
+
+  CudaBuffer device_routes(routes.size() * sizeof(int));
+  CudaBuffer device_hist(expected.size() * sizeof(int));
+  device_routes.Upload(routes.data());
+  std::vector<int> initial(num_experts, baseline);
+  device_hist.Upload(initial.data());
+
+  qmoe::LaunchQMoEAccumulateExpertHistogram(device_routes.As<int>(), num_routes, num_experts,
+                                            device_hist.As<int>(), nullptr);
+  std::vector<int> actual(num_experts);
+  device_hist.Download(actual.data());
+  int mismatches = 0;
+  for (int expert = 0; expert < num_experts; ++expert) {
+    if (actual[expert] != expected[expert] && ++mismatches <= 8) {
+      ADD_FAILURE() << "expert " << expert << ": counted " << actual[expert] << ", expected " << expected[expert];
+    }
+  }
+  EXPECT_EQ(mismatches, 0);
+}
+
+// A slot table placed between guard words that look like a resident slot, so a read just outside the table is
+// classified as a hit instead of an incidental zero.
+struct GuardedSlotTable {
+  static constexpr int kGuardWords = 2;
+  static constexpr int kGuardSlot = 7;
+
+  explicit GuardedSlotTable(const std::vector<int>& slots)
+      : buffer((slots.size() + 2 * kGuardWords) * sizeof(int)) {
+    std::vector<int> host(slots.size() + 2 * kGuardWords, kGuardSlot);
+    std::copy(slots.begin(), slots.end(), host.begin() + kGuardWords);
+    buffer.Upload(host.data());
+  }
+
+  const int* Slots() { return buffer.As<int>() + kGuardWords; }
+
+  CudaBuffer buffer;
+};
+
+// Expert 2 is resident in slot 1 and expert 5 in slot 0. The routes also hold what the router leaves for a row without
+// a finite probability (-1) and indices beyond the expert bank.
+constexpr int kClassifyExperts = 8;
+constexpr int kClassifyRoutes = 6;
+const std::array<int, kClassifyRoutes> kClassifyRouteExperts{2, -1, 5, kClassifyExperts, kClassifyExperts + 1, 3};
+const std::vector<int> kClassifyExpertSlots{-1, -1, 1, -1, -1, 0, -1, -1};
+
+TEST(CUDA_EP_Unittest, QMoEOffloadClassifyTreatsOutOfRangeExpertsAsMissesAndForwardsThem) {
+  constexpr int k = 2;
+  constexpr int dummy_slot = 4;
+  GuardedSlotTable table(kClassifyExpertSlots);
+  CudaBuffer topk(sizeof(kClassifyRouteExperts));
+  CudaBuffer hit_ids(sizeof(kClassifyRouteExperts));
+  CudaBuffer hit_compact(sizeof(kClassifyRouteExperts));
+  CudaBuffer hit_flag(sizeof(kClassifyRouteExperts));
+  CudaBuffer host_indices(sizeof(kClassifyRouteExperts));
+  topk.Upload(kClassifyRouteExperts.data());
+
+  CUDA_CALL_THROW(qmoe::LaunchQMoEOffloadClassify(
+      topk.As<int>(), table.Slots(), kClassifyExperts, kClassifyRoutes, kClassifyRoutes, hit_ids.As<int>(),
+      hit_compact.As<int>(), hit_flag.As<int>(), nullptr, dummy_slot, nullptr, nullptr, k, host_indices.As<int>()));
+
+  std::array<int, kClassifyRoutes> ids{};
+  std::array<int, kClassifyRoutes> compact{};
+  std::array<int, kClassifyRoutes> flags{};
+  std::array<int, kClassifyRoutes> forwarded{};
+  hit_ids.Download(ids.data());
+  hit_compact.Download(compact.data());
+  hit_flag.Download(flags.data());
+  host_indices.Download(forwarded.data());
+  EXPECT_EQ(flags, (std::array<int, 6>{1, 0, 1, 0, 0, 0}));
+  EXPECT_EQ(compact, (std::array<int, 6>{1, dummy_slot, 0, dummy_slot, dummy_slot, dummy_slot}));
+  EXPECT_EQ(ids, (std::array<int, 6>{0, 0, 1, 1, 2, 2}));
+  EXPECT_EQ(forwarded, kClassifyRouteExperts);
+}
+
+// Host memory that kernels write and the CPU polls, like the offload doorbell.
+struct MappedHostBuffer {
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MappedHostBuffer);
+
+  explicit MappedHostBuffer(size_t size) {
+    CUDA_CALL_THROW(cudaHostAlloc(&host, size, cudaHostAllocMapped));
+    std::memset(host, 0, size);
+    CUDA_CALL_THROW(cudaHostGetDevicePointer(&device, host, 0));
+  }
+
+  ~MappedHostBuffer() noexcept {
+    const cudaError_t status = cudaFreeHost(host);
+    if (status != cudaSuccess) {
+      std::fprintf(stderr, "cudaFreeHost failed during QMoE test cleanup: %s\n", cudaGetErrorString(status));
+    }
+  }
+
+  template <typename T>
+  T* Host() { return static_cast<T*>(host); }
+
+  template <typename T>
+  T* Device() { return static_cast<T*>(device); }
+
+  void* host = nullptr;
+  void* device = nullptr;
+};
+
+TEST(CUDA_EP_Unittest, QMoEOffloadClassifyDoorbellForwardsRoutesAndRingsOncePerLaunch) {
+  constexpr int tile_rows = 3;
+  GuardedSlotTable table(kClassifyExpertSlots);
+  CudaBuffer topk(sizeof(kClassifyRouteExperts));
+  CudaBuffer hit_ids(sizeof(kClassifyRouteExperts));
+  CudaBuffer hit_compact(sizeof(kClassifyRouteExperts));
+  CudaBuffer hit_flag(sizeof(kClassifyRouteExperts));
+  CudaBuffer doorbell_seq(sizeof(uint64_t));
+  MappedHostBuffer host_indices(sizeof(kClassifyRouteExperts));
+  MappedHostBuffer doorbell_request(sizeof(uint64_t));
+  MappedHostBuffer doorbell_tile_rows(sizeof(int32_t));
+  topk.Upload(kClassifyRouteExperts.data());
+  const uint64_t initial_seq = 0;
+  doorbell_seq.Upload(&initial_seq);
+
+  // The doorbell path runs one block of 256 threads, almost all of them idle for six routes; every thread must still
+  // reach the fence and barrier that precede the doorbell.
+  for (uint64_t launch = 1; launch <= 2; ++launch) {
+    SCOPED_TRACE(launch);
+    CUDA_CALL_THROW(qmoe::LaunchQMoEOffloadClassify(
+        topk.As<int>(), table.Slots(), kClassifyExperts, kClassifyRoutes, kClassifyRoutes, hit_ids.As<int>(),
+        hit_compact.As<int>(), hit_flag.As<int>(), nullptr, 0, nullptr, nullptr, 0, host_indices.Device<int>(),
+        nullptr, nullptr, 0, doorbell_seq.As<uint64_t>(), doorbell_request.Device<uint64_t>(),
+        doorbell_tile_rows.Device<int32_t>(), tile_rows));
+    CUDA_CALL_THROW(cudaDeviceSynchronize());
+
+    uint64_t seq = 0;
+    doorbell_seq.Download(&seq);
+    const uint64_t request = *doorbell_request.Host<volatile uint64_t>();
+    const int32_t published_tile_rows = *doorbell_tile_rows.Host<volatile int32_t>();
+    EXPECT_EQ(seq, launch);
+    EXPECT_EQ(request, launch);
+    EXPECT_EQ(published_tile_rows, tile_rows);
+    for (int route = 0; route < kClassifyRoutes; ++route) {
+      EXPECT_EQ(host_indices.Host<int>()[route], kClassifyRouteExperts[route]) << "route " << route;
+    }
+  }
+
+  std::array<int, kClassifyRoutes> flags{};
+  hit_flag.Download(flags.data());
+  EXPECT_EQ(flags, (std::array<int, 6>{1, 0, 1, 0, 0, 0}));
+}
+
+template <typename T>
+void TestScatterBiasOfOutOfRangeExperts() {
+  constexpr int source_rows = 3;
+  constexpr int route_count = 4;
+  constexpr int hidden_size = 5;
+  // The bias table sits between rows of a nonzero sentinel, so an unchecked read below or above it would copy the
+  // sentinel instead of the zero row.
+  std::vector<T> bias((source_rows + 2) * hidden_size, T(77.0f));
+  for (int row = 0; row < source_rows; ++row) {
+    for (int col = 0; col < hidden_size; ++col) {
+      bias[(row + 1) * hidden_size + col] = T(static_cast<float>(1 + row * 10 + col));
+    }
+  }
+  const std::array<int, route_count> experts{2, -1, 0, source_rows};
+  const std::array<int, route_count> route_ids{3, 2, 1, 0};
+  const std::vector<T> route_bias_init(route_count * hidden_size, T(-5.0f));
+
+  CudaBuffer device_bias(bias.size() * sizeof(T));
+  CudaBuffer device_experts(sizeof(experts));
+  CudaBuffer device_route_ids(sizeof(route_ids));
+  CudaBuffer device_route_bias(route_bias_init.size() * sizeof(T));
+  device_bias.Upload(bias.data());
+  device_experts.Upload(experts.data());
+  device_route_ids.Upload(route_ids.data());
+  device_route_bias.Upload(route_bias_init.data());
+
+  CUDA_CALL_THROW(qmoe::LaunchQMoEOffloadScatterBias(
+      device_bias.As<T>() + hidden_size, device_experts.As<int>(), device_route_ids.As<int>(),
+      device_route_bias.As<T>(), route_count, hidden_size, source_rows, nullptr));
+
+  std::vector<T> route_bias(route_bias_init.size());
+  device_route_bias.Download(route_bias.data());
+  for (int route = 0; route < route_count; ++route) {
+    const int expert = experts[route];
+    const bool in_range = expert >= 0 && expert < source_rows;
+    for (int col = 0; col < hidden_size; ++col) {
+      const float expected = in_range ? static_cast<float>(1 + expert * 10 + col) : 0.0f;
+      EXPECT_EQ(static_cast<float>(route_bias[route_ids[route] * hidden_size + col]), expected)
+          << "route " << route << " expert " << expert << " column " << col;
+    }
+  }
+}
+
+TEST(CUDA_EP_Unittest, QMoEOffloadScatterBiasZeroesRowsOfOutOfRangeExperts) {
+  TestScatterBiasOfOutOfRangeExperts<half>();
+  TestScatterBiasOfOutOfRangeExperts<__nv_bfloat16>();
 }
 
 template <typename T>
