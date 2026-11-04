@@ -21,6 +21,7 @@ env:
 jobs:
   # Job 1: Build full onnxruntime and generate ORT format test files
   build_full_ort:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: 1. Build Full ORT and Generate ORT Files
     runs-on: [ort-github-linux-16-amd-wcus-ss]
     timeout-minutes: 120
@@ -86,6 +87,7 @@ jobs:
 
   # Job 2: Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED, training ops ENABLED]
   build_minimal_exceptions_disabled:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: 2. Build Minimal (Exceptions Disabled)
     runs-on: [ort-github-linux-16-amd-wcus-ss]
     timeout-minutes: 120
@@ -158,6 +160,7 @@ jobs:
 
   # Job 3a: Build minimal onnxruntime [exceptions ENABLED, type reduction DISABLED, custom ops ENABLED] and run tests
   build_minimal_custom_ops:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: 3a. Build Minimal (Custom Ops)
     needs: build_full_ort # Depends on Job 1 for test data
     runs-on: [ort-github-linux-16-amd-wcus-ss]
@@ -215,6 +218,7 @@ jobs:
 
   # Job 3b: Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED] and run tests
   build_minimal_type_reduction:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: 3b. Build Minimal (Type Reduction)
     needs: build_full_ort # Depends on Job 1 for test data
     runs-on: [ort-github-linux-16-amd-wcus-ss]
@@ -272,6 +276,7 @@ jobs:
 
   # Job 4: Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED (globally allowed types)] and run tests
   build_minimal_globally_allowed_types:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: 4. Build Minimal (Globally Allowed Types)
     runs-on: [ort-github-linux-16-amd-wcus-ss]
     timeout-minutes: 120
@@ -329,6 +334,7 @@ jobs:
 
   # Job 5: Build extended minimal onnxruntime and run tests
   build_extended_minimal:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: 5. Build Extended Minimal
     runs-on: [ort-github-linux-16-amd-wcus-ss]
     timeout-minutes: 120
@@ -412,6 +418,7 @@ jobs:
 
   # Job 6a: Regular build with python and all optional features disabled.
   build_regular_no_optional:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: 6a. Build Regular (No Optional Features)
     runs-on: [ort-github-linux-16-amd-wcus-ss]
     timeout-minutes: 120
@@ -506,6 +513,7 @@ jobs:
 
   # Job 6b: Minimal build with all optional features disabled.
   build_minimal_no_optional:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: 6b. Build Minimal (No Optional Features)
     runs-on: [ort-github-linux-16-amd-wcus-ss]
     timeout-minutes: 120
@@ -589,6 +597,7 @@ jobs:
 
   # Job 6c: Extended minimal build with all optional features disabled.
   build_extended_minimal_no_optional:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: 6c. Build Extended Minimal (No Optional Features)
     runs-on: [ort-github-linux-16-amd-wcus-ss]
     timeout-minutes: 120
@@ -679,6 +688,7 @@ jobs:
   # Job 7: Extended minimal build with NNAPI EP for Android(arm64-v8a) and skip tests.
   # NOTE: Keeping this as direct docker run due to custom volume mounts needed for Android SDK/NDK
   build_extended_minimal_android:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: 7. Build Extended Minimal (Android NNAPI)
     needs: build_full_ort # Depends on Job 1 for test data
     runs-on: [ort-github-linux-16-amd-wcus-ss]

@@ -13,6 +13,7 @@ concurrency:
 
 jobs:
   build_x64_release:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [ort-github-win-16-amd-scus-ss]
     timeout-minutes: 300
 

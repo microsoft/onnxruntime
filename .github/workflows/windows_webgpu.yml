@@ -24,6 +24,7 @@ env:
 
 jobs:
   webgpu_compile_x64_RelWithDebInfo:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: webgpu_compile_x64_RelWithDebInfo (${{ matrix.vcpkg_option }})
     runs-on: [ort-github-win-16-amd-scus-ss]
     timeout-minutes: 300
@@ -163,6 +164,7 @@ jobs:
         working-directory: ${{ github.workspace }}\csharp
 
   webgpu_test_x64_RelWithDebInfo:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: webgpu_test_x64_RelWithDebInfo (${{ matrix.vcpkg_option }})
     needs: webgpu_compile_x64_RelWithDebInfo
     runs-on: [ort-github-win-6-a10-scus-ss]
@@ -282,6 +284,7 @@ jobs:
           fi
 
   webgpu_plugin_compile_x64_RelWithDebInfo:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: webgpu_plugin_compile_x64_RelWithDebInfo
     runs-on: [ort-github-win-16-amd-scus-ss]
     timeout-minutes: 300
@@ -368,6 +371,7 @@ jobs:
             ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo/dxcompiler.dll
 
   webgpu_plugin_test_x64_RelWithDebInfo:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     # Preserve the legacy required-check name so branch protection waits for GPU tests.
     name: webgpu_plugin_build_x64_RelWithDebInfo
     needs: webgpu_plugin_compile_x64_RelWithDebInfo
@@ -432,6 +436,7 @@ jobs:
   # Same plugin EP sources as webgpu_plugin_build_x64_RelWithDebInfo, but linked into the ORT binary
   # instead of built as a separate shared library.
   webgpu_static_plugin_build_x64_RelWithDebInfo:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [ort-github-win-6-a10-scus-ss]
     timeout-minutes: 300
     env:
@@ -497,6 +502,7 @@ jobs:
           }
 
   webgpu_external_dawn_build_x64_RelWithDebInfo:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [ort-github-win-6-a10-scus-ss]
     timeout-minutes: 300
     steps:
@@ -577,6 +583,7 @@ jobs:
           retention-days: 1
 
   webgpu_dawn_package_build_x64_RelWithDebInfo:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     needs: webgpu_external_dawn_build_x64_RelWithDebInfo
     runs-on: [ort-github-win-6-a10-scus-ss]
     timeout-minutes: 300
@@ -694,6 +701,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Plugin-backed cache exception containment failed" }
 
   webgpu_minimal_build_edge_build_x64_RelWithDebInfo:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [ort-github-win-16-amd-scus-ss]
     timeout-minutes: 300
     env:

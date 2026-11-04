@@ -19,6 +19,7 @@ permissions:
 
 jobs:
   build-linux-webgpu-x64-release:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Build Linux WebGPU x64 Release
     # This job runs on a CPU node using the reusable build workflow
     uses: ./.github/workflows/reusable_linux_build.yml
@@ -42,6 +43,7 @@ jobs:
   # configuration with GCC as well as MSVC. See docs/design/webgpu_ep_extraction/
   # plugin_boundary_and_web_integration/static_plugin_ep_registration_design.md
   build-linux-webgpu-static-plugin-x64-release:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Build Linux WebGPU Static Plugin x64 Release
     uses: ./.github/workflows/reusable_linux_build.yml
     with:

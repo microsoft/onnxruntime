@@ -13,6 +13,7 @@ concurrency:
 
 jobs:
   build_android_packages:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Build Android AAR Packages
     runs-on: [ort-github-linux-16-amd-wcus-ss]
     timeout-minutes: 120
@@ -75,6 +76,7 @@ jobs:
           path: ${{ runner.temp }}/artifacts
 
   react_native_ci_android:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: React Native CI Android
     needs: build_android_packages
     runs-on: [ort-github-linux-16-amd-wcus-ss]

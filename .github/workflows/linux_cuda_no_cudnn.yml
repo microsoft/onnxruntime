@@ -28,6 +28,7 @@ permissions:
 
 jobs:
   build-linux-cuda-no-cudnn-x64-release:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Build Linux CUDA x64 Release without cuDNN link
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
@@ -60,6 +61,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   smoke-linux-cuda-no-cudnn-x64-release:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Smoke Linux CUDA x64 Release without cuDNN runtime use
     needs: build-linux-cuda-no-cudnn-x64-release
     runs-on: [ort-github-linux-6-a10-scus-ss]

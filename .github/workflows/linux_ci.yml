@@ -40,6 +40,7 @@ permissions:
 jobs:
   # --- x64 Builds ---
   build-linux-x64-debug:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Build Linux x64 Debug (ASan)
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
@@ -55,6 +56,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-linux-x64-release:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Build Linux x64 Release
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
@@ -71,6 +73,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-linux-x64-release-py314:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Build Linux x64 Release (Python 3.14)
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
@@ -90,6 +93,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   orttraining-linux-ci-pipeline:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Build Linux x64 Release with training
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
@@ -105,6 +109,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-linux-x64-no-exceptions:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Build Linux x64 MinSizeRel (Exceptions Disabled)
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
@@ -122,6 +127,7 @@ jobs:
 
   # --- arm64 Builds ---
   build-linux-arm64-debug:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Build Linux arm64 Debug
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
@@ -137,6 +143,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-linux-arm64-release:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Build Linux arm64 Release
     uses: ./.github/workflows/reusable_linux_build.yml
     with:

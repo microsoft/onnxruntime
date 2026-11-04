@@ -18,6 +18,7 @@ concurrency:
 
 jobs:
   auto-apply-fixes:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Suggest fixes
     runs-on: [ort-github-linux-16-amd-wcus-ss]
     timeout-minutes: 120

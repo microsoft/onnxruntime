@@ -1,0 +1,25 @@
+name: Trusted PR source
+
+on:
+  pull_request_target:
+    branches: [main, 'rel-*']
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+
+permissions:
+  contents: read
+
+jobs:
+  trusted-pr-source:
+    name: Trusted PR source
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require an internal source repository
+        env:
+          BASE_REPOSITORY: ${{ github.repository }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          if [[ "$HEAD_REPOSITORY" != "$BASE_REPOSITORY" ]]; then
+            echo "::error::Fork pull requests require promotion to a trusted internal branch before full validation and merge."
+            exit 1
+          fi

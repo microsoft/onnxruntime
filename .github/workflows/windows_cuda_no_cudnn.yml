@@ -22,6 +22,7 @@ concurrency:
 
 jobs:
   build:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Windows CUDA Plugin EP Build without cuDNN
     runs-on: [ort-github-win-16-amd-scus-ss]
     timeout-minutes: 210
@@ -161,6 +162,7 @@ jobs:
       CUDNN_FOLDER: 9.14.0.64_cuda13
 
   test:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Windows CUDA Plugin EP Test without cuDNN
     needs: build
     timeout-minutes: 120

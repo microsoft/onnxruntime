@@ -24,6 +24,7 @@ permissions:
 
 jobs:
   AndroidBinarySizeCheckJob_MinimalBaseline:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [ort-github-linux-16-amd-wcus-ss]
     timeout-minutes: 120
     env:
@@ -120,6 +121,7 @@ jobs:
       shell: bash
 
   android_nnapi_ep:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [ort-github-linux-16-amd-wcus-ss]
     timeout-minutes: 120
     env:
@@ -235,6 +237,7 @@ jobs:
         shell: bash
 
   android_cpu_ep:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Android CI Pipeline
     runs-on: [ort-github-linux-16-amd-wcus-ss]
     timeout-minutes: 120

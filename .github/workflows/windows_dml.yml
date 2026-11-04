@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   build_x64_RelWithDebInfo:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Windows GPU DML CI Pipeline
     env:
       OrtPackageId: Microsoft.ML.OnnxRuntime.DirectML

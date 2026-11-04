@@ -20,6 +20,7 @@ concurrency:
 
 jobs:
   build_windows_arm64_python_wheel:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     name: Build Windows ARM64 Python 3.12 wheel
     runs-on: [ort-github-win-16-arm64-scus-ss]
     timeout-minutes: 180

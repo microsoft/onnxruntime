@@ -71,7 +71,9 @@ jobs:
   runtime_build:
     name: ONNX Runtime Build and Documentation Checks
     needs: detect_changes
-    if: needs.detect_changes.outputs.run_documentation_build == 'true'
+    if: >-
+      (needs.detect_changes.outputs.run_documentation_build == 'true') &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     env:
       OrtPackageId: Microsoft.ML.OnnxRuntime
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
@@ -205,7 +207,9 @@ jobs:
   webgpu_build:
     name: WebGPU EP Build
     needs: detect_changes
-    if: needs.detect_changes.outputs.run_documentation_build == 'true'
+    if: >-
+      (needs.detect_changes.outputs.run_documentation_build == 'true') &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [ort-github-win-16-amd-scus-ss]
     timeout-minutes: 300
     env:
@@ -277,7 +281,9 @@ jobs:
       - detect_changes
       - runtime_build
       - webgpu_build
-    if: needs.detect_changes.outputs.run_documentation_build == 'true'
+    if: >-
+      (needs.detect_changes.outputs.run_documentation_build == 'true') &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [ort-github-win-6-a10-scus-ss]
     timeout-minutes: 300
     env:

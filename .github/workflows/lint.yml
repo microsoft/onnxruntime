@@ -68,6 +68,7 @@ jobs:
           filter_mode: file
 
   lint-python-format:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     # Required workflow
     name: Python format
     runs-on: [ort-github-linux-16-amd-wcus-ss]
