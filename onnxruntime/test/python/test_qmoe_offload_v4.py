@@ -732,9 +732,13 @@ class TestQMoEOffloadV4(unittest.TestCase):
         config_entries: dict,
         cuda_options: dict | None = None,
         prefer_plugin: bool = False,
+        profile_file_prefix: str | None = None,
     ):
         so = ort.SessionOptions()
         so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+        if profile_file_prefix is not None:
+            so.enable_profiling = True
+            so.profile_file_prefix = profile_file_prefix
         for k, v in config_entries.items():
             so.add_session_config_entry(k, str(v))
         plugin_dev = cls._selected_plugin_device(prefer_plugin)
@@ -3481,7 +3485,8 @@ int main() {
             fc1_weights[:, 0] = 0xA9
             fc1_weights[:, 16] = 0xAB
             fc1_scales = np.ones((8, 256, 2), dtype=np.float16)
-            fc1_scales[:, 1, :] = 8192
+            # Overflow the negative gate projection, not the positive up projection.
+            fc1_scales[:, 0, :] = 8192
             fc2_weights = np.full((8, 128 * 128 // 4), 0xAA, dtype=np.uint8)
             for n in range(128):
                 fc2_weights[:, (n // 8) * 256 + (n % 8) * 16] = 0xAB
@@ -3518,9 +3523,109 @@ int main() {
             )
             self.assertTrue(np.all(np.isfinite(expected)))
             self.assertTrue(np.all(np.isfinite(outputs[0])))
+            np.testing.assert_array_equal(expected, np.zeros_like(expected))
             np.testing.assert_allclose(outputs[0], expected, rtol=0, atol=1e-3)
             self.assertEqual(telemetry[0]["cold_routes"], 1)
             self.assertEqual(telemetry[0]["cpu_doorbell_wakeups"], 1)
+
+    def test_v4_int2_bf16_projection_rounding_before_bias(self):
+        self._check_v4_int2_bf16_projection_rounding_before_bias()
+
+    def test_v4_int2_bf16_projection_rounding_before_bias_tensorcore_dispatch(self):
+        capability = _cuda_device_compute_capability()
+        if capability is None or capability < (8, 0):
+            self.skipTest("INT2 BF16 Tensor Core dispatch requires SM80+")
+        self._check_v4_int2_bf16_projection_rounding_before_bias(verify_tensorcore=True)
+
+    def _check_v4_int2_bf16_projection_rounding_before_bias(self, verify_tensorcore: bool = False):
+        with tempfile.TemporaryDirectory() as directory:
+            model_path = self._build_int_qmoe_model(
+                directory, [(2, 64, 1)], hidden_size=128, inter_size=128, top_k=8, with_bias=True, swiglu_limit=1.0
+            )
+            model = onnx.load(model_path, load_external_data=False)
+            banks = {value.name: value for value in model.graph.initializer}
+            fc1_weights = np.full((8, 128 * 128 // 2), 0xAA, dtype=np.uint8)
+            fc1_weights[:, 0] = 0xAB
+            fc1_weights[:, 128] = 0xAB
+            fc1_weights[:, 16] = 0xAB
+            fc2_weights = np.full((8, 128 * 128 // 4), 0xAA, dtype=np.uint8)
+            for n in range(128):
+                fc2_weights[:, (n // 8) * 256 + (n % 8) * 16] = 0xAB
+            fc1_bias = np.zeros((8, 256), dtype=np.float32)
+            fc1_bias[:, 0] = -1
+            values_by_slot = {
+                2: fc1_weights,
+                3: _float32_to_bfloat16_u16(np.ones((8, 256, 2), dtype=np.float32)),
+                4: _float32_to_bfloat16_u16(fc1_bias),
+                5: fc2_weights,
+                6: _float32_to_bfloat16_u16(np.ones((8, 128, 2), dtype=np.float32)),
+                7: _float32_to_bfloat16_u16(np.full((8, 128), 0.125, dtype=np.float32)),
+            }
+            for slot, values in values_by_slot.items():
+                external = {entry.key: entry.value for entry in banks[model.graph.node[0].input[slot]].external_data}
+                self.assertEqual(values.nbytes, int(external["length"]))
+                with (Path(directory) / external["location"]).open("r+b") as stream:
+                    stream.seek(int(external["offset"]))
+                    stream.write(values.tobytes())
+
+            # Five decode tokens produce forty routes, above the default Tensor Core threshold of 33.
+            x = np.zeros((5, 128), dtype=np.float32)
+            x[:, 0] = 1
+            router = np.zeros((5, 8), dtype=np.float32)
+            cases = []
+            expectations = []
+            # The midpoint rounds to 1 before bias cancellation; the second case retains a nonzero signal.
+            for delta in (2**-8, 2**-6):
+                x[:, 64] = delta
+                gate = _round_to_act_dtype(np.array([1 + delta], dtype=np.float32)) - 1
+                activated = _round_to_act_dtype(gate / (1 + np.exp(-gate)))
+                cases.append((x.copy(), router))
+                expectations.append(_round_to_act_dtype(activated + 0.125).item())
+            # Finite BF16 inputs overflow only the gate sum; the up projection is clamped to -1.
+            x[:, (0, 64)] = -(2.0**127)
+            cases.append((x, router))
+            expectations.append(0.125)
+            slot_bytes = 13832 + (256 + 128) * 2
+            for disable_tc, cpu_offload in ((1, False), (0, False), (0, True)):
+                if verify_tensorcore and (disable_tc or cpu_offload):
+                    continue
+                with self.subTest(disable_tc=disable_tc, cpu_offload=cpu_offload):
+                    config = {
+                        "session.moe.offload.mode": "required",
+                        "session.moe.offload.placement": "static",
+                        "ep.cuda.disable_moe_gemv_tc": str(disable_tc),
+                    }
+                    if cpu_offload:
+                        config["session.moe.offload.device_expert_bytes"] = str(64 + 2 * slot_bytes)
+                        outputs, telemetry = self._run_decode_with_telemetry(model_path, config, cases, use_fp16=False)
+                        self.assertGreater(sum(step["cold_routes"] for step in telemetry), 0)
+                        self.assertGreater(sum(step["cpu_doorbell_wakeups"] for step in telemetry), 0)
+                    else:
+                        session = self._make_session(
+                            model_path,
+                            config,
+                            profile_file_prefix=str(Path(directory) / "int2_tc") if verify_tensorcore else None,
+                        )
+                        try:
+                            outputs = [self._run_bf16(session, inputs, routing) for inputs, routing in cases]
+                        finally:
+                            if verify_tensorcore:
+                                profile_path = session.end_profiling()
+                        del session
+                    for actual, expected in zip(outputs, expectations, strict=True):
+                        np.testing.assert_array_equal(actual, np.full_like(actual, expected))
+                    if verify_tensorcore:
+                        events = json.loads(Path(profile_path).read_text())
+                        names = [event["name"] for event in events if event.get("cat") == "Kernel"]
+                        if not names:
+                            self.skipTest("CUDA kernel profiling unavailable; requires a CUPTI-enabled build")
+                        for swiglu, encoded in (("true", 1), ("false", 0)):
+                            launches = [
+                                name
+                                for name in names
+                                if re.search(rf"MoeGemvTcInt2Kernel<\s*(?:{swiglu}|\(bool\)\s*{encoded}),", name)
+                            ]
+                            self.assertEqual(len(launches), len(cases), names)
 
     def test_v4_int2_bf16_tensorcore_scale_limits_and_dispatch(self):
         # The dispatch logging flag is cached on first use; isolate it from other tests.
