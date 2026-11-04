@@ -12,6 +12,7 @@ load("@rules_dotnet//dotnet:defs.bzl", "csharp_library", "csharp_test")
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 load("@rules_java//java:defs.bzl", "java_binary", "java_import", "java_library", "java_test")
 load("@rules_python//python:defs.bzl", "py_test")
+load("//bazel:csharp_tests.bzl", "csharp_runtime_tests")
 load("//bazel:node_tests.bzl", "node_runtime_tests")
 load("//bazel:python_tests.bzl", "python_runtime_tests")
 load(":go_desktop.bzl", "desktop_go_library", "desktop_go_test")
@@ -318,3 +319,4 @@ def language_bindings():
         target_frameworks = ["net10.0"],
         deps = [":csharp_binding"],
     )
+    csharp_runtime_tests()

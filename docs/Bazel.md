@@ -70,7 +70,7 @@ bazel test -c opt \
 | Java/JNI | `//:java_binding`, `//:java_native_library`, `//:java_smoke_test` | Java sources and JNI sources; JNI headers come from Bazel's Java compiler. No Gradle invocation. Not an AAR or Maven publication. |
 | Go | `//:go_binding`, `//:go_test` | First-party cgo binding and existing fixture-based unit tests. Tests explicitly load the Bazel-built shared library; they do not take the binding's missing-library skip path. External Qwen model tests are excluded. |
 | Node.js | `//:onnxruntime_binding.node`, `//:node_js_package`, `//:node_test` | Native Node-API extension, source-assembled common/Node JavaScript packages, and four existing test files with file/case selection. Not release npm packaging or the complete Node suite. |
-| C# | `//:csharp_binding`, `//:csharp_smoke_test` | .NET 8 managed sources compiled directly with `rules_dotnet`, including the pinned `System.Numerics.Tensors` dependency, and exercised on .NET 10. Training APIs are not enabled. Not a NuGet package. |
+| C# | `//:csharp_binding`, `//:csharp_smoke_test`, `//:csharp_tests` | .NET 8 binding and existing desktop test sources compiled directly with `rules_dotnet`, exercised on .NET 10. Native xUnit discovery/execution supports exact class/method selection, theories and fixtures. Training APIs are not enabled. Not a NuGet package. |
 | Objective-C / Swift | Not implemented | Requires Apple SDK/toolchain rules, Objective-C wrapper targets, framework/module-map packaging, and Apple-host validation. |
 | JavaScript Web / WebAssembly | Not implemented | Requires an Emscripten toolchain, WASM-specific runtime configuration, exported C functions, worker/assets packaging, and browser tests. Native Linux compilation does not validate this surface. |
 | React Native | Not implemented | Requires the Android/iOS cross-compilation and packaging graphs plus the React Native bridge. A working Node addon is not evidence of mobile support. |
@@ -90,6 +90,64 @@ The smoke tests use the checked-in `go/testdata/add_f32.onnx` model and verify
 its `[2, 3]` output and every expected value, not just library loading. The
 C++ test additionally creates MatMul and Conv models in memory, exercising
 MLAS on CPU and cuBLAS/cuDNN on CUDA.
+
+### Existing desktop C# tests
+
+`//:csharp_tests` compiles the existing common test sources (excluding training)
+and the desktop `InferenceTest.netcore.cs` partial class, without reading or
+executing project files. SHA-256-pinned public NuGet archives in
+`bazel/csharp_dependencies.bzl` supply the existing xUnit 2.9 assertions and
+discovery/execution engine, SkippableFact, protobuf and JSON dependencies.
+The runner delegates test execution to xUnit, including constructors,
+`ITestOutputHelper`, collection fixtures, async tests and theory data; it does
+not replace assertions or invoke test methods via a custom reflection loop.
+Checked-in models and tensor data are embedded under the original logical
+resource names and staged into Bazel's isolated writable test directory for
+tests that open files by name.
+
+Select the Bazel target, then an exact fully qualified class or class.method:
+
+```sh
+bazel test -c opt //:csharp_tests \
+  --test_filter=Microsoft.ML.OnnxRuntime.Tests.OrtFloat16Tests
+bazel test -c opt //:csharp_tests \
+  --test_filter=Microsoft.ML.OnnxRuntime.Tensors.Tests.TensorTests.ConstructTensorFromArrayRank1
+bazel test -c opt //:csharp_tests \
+  --test_filter=Microsoft.ML.OnnxRuntime.Tests.InferenceTest.RunInferenceUsingPreAllocatedOutputsAndDictionary
+bazel test -c opt //:csharp_tests \
+  --test_filter=Microsoft.ML.OnnxRuntime.Tests.InferenceTest.CanCreateAndDisposeSessionWithModelPath
+bazel test -c opt //:csharp_tests \
+  --test_filter=Microsoft.ML.OnnxRuntime.Tests.OrtValueTests.PopulateAndReadStringTensor
+```
+
+Filters use source method names, not `Fact.DisplayName`; wildcards and VSTest
+filter expressions are not supported. An unknown class/method, malformed
+selection, discovery/execution error, failed assertion, or all-skipped/zero-run
+selection fails. With no filter, xUnit selects all discovered tests. The target
+is tagged `manual` so `//...` does not accidentally run the entire desktop suite.
+
+Windows validation freshly compiled the binding, runner and existing tests
+through Bazel 8.4.2 with `--lockfile_mode=error`. The five commands above passed
+9, 2 (both MemberData rows), 1, 1 and 1 existing tests respectively: **14 total**.
+Discovery reported 228 cases before deferred theory expansion. Unknown-class
+and unknown-method selections both failed (Bazel exit 3). Selecting
+`InferenceTest.TestModelSequenceOfMapIntFloat` with
+`--test_env=DisableMlOps=ON` also failed with one skipped test and zero executed
+non-skipped tests, as required. No full C# suite was
+run. To avoid rebuilding unchanged native code, these local runs temporarily
+substituted the previously Bazel-built and verified Windows native DLL; that
+substitution and binary are not committed. The committed test dependency is
+the source-built `//:runtime_library`, not an installed/prebuilt runtime.
+This validates fresh managed compilation and native integration, not a fresh
+native runtime rebuild or Linux/macOS execution of this target.
+
+Unported desktop prerequisites remain explicit: downloaded pretrained-model
+corpora and their legacy `Properties.txt` locator, custom-op and plugin-EP
+shared libraries, provider-specific GPU/DirectML configuration, and release
+NuGet/package end-to-end testing. Their source tests remain compiled/discoverable
+but selecting one does not manufacture missing fixtures or silently pass.
+WinML/UWP, device/mobile/MAUI and BrowserStack projects need separate platform
+graphs. Training build/test migration is intentionally out of scope.
 
 ## CUDA
 
