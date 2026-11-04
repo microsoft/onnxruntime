@@ -9,7 +9,7 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
-import { buildReport, laneOf, mergedDuration, renderReport } from './visualize_profile.mjs';
+import { buildReport, createEventIndex, laneOf, mergedDuration, renderReport } from './visualize_profile.mjs';
 
 const event = (name, ts, dur, args = {}) => ({ name, ts, dur, args, ph: 'X', pid: 7, tid: 8 });
 const gpu = (ts, dur, name = 'node&MatMul') => event(name, ts, dur, { clock_alignment: 'first_submit' });
@@ -100,6 +100,83 @@ test('matches unprofiled workload and excludes warmup from baseline means', () =
       15,
     );
   }
+});
+
+test('baseline options compare nested values independently of object key order', () => {
+  const options = { executionMode: 'parallel', threads: { intra: 4, inter: 2 }, providers: ['webgpu', 'cpu'] };
+  const reordered = { providers: ['webgpu', 'cpu'], threads: { inter: 2, intra: 4 }, executionMode: 'parallel' };
+  const metadata = { ...capture, session_options: options };
+  assert.doesNotThrow(() => buildReport(trace, metadata, { ...metadata, session_options: reordered }));
+  for (const changed of [
+    { ...reordered, threads: { inter: 2, intra: 1 } },
+    { ...reordered, providers: ['cpu', 'webgpu'] },
+    { ...reordered, extra: true },
+  ]) {
+    assert.throws(() => buildReport(trace, metadata, { ...metadata, session_options: changed }), /session_options/);
+  }
+});
+
+test('indexed summaries preserve crossing spans, nested runs and boundary points', () => {
+  const source = [
+    event('model_run', 10, 100),
+    event('model_run', 20, 10),
+    event('model_run', 25, 40),
+    event('model_run', 30, 0),
+    event('model_run', 110, 10),
+    gpu(0, 40),
+    gpu(10, 0),
+    gpu(25, 60),
+    gpu(30, 0),
+    gpu(110, 0),
+    gpu(120, 0),
+    event('WebGPU::Encode', 5, 120),
+  ];
+  const report = buildReport(source);
+  for (const run of [...report.runs, report.wholeTrace]) {
+    const stop = run.start + run.duration;
+    const excludeEnd = run.index !== -1 && run.duration > 0;
+    const expected = report.events.flatMap(([ts, dur], id) => {
+      const overlap = Math.min(stop, ts + dur) - Math.max(run.start, ts);
+      return overlap < 0 || (overlap === 0 && (ts < run.start || (ts >= stop && excludeEnd))) ? [] : [id];
+    });
+    assert.deepEqual(run.indices, expected);
+    assert.equal(
+      run.busy,
+      mergedDuration(
+        expected
+          .filter((id) => report.events[id][2] === 10)
+          .map((id) => [
+            Math.max(run.start, report.events[id][0]),
+            Math.min(stop, report.events[id][0] + report.events[id][1]),
+          ]),
+      ),
+    );
+    assert.equal(run.cpu[5], Math.min(stop, 125) - Math.max(run.start, 5));
+  }
+});
+
+test('index visits local events without rescanning preceding runs', () => {
+  const count = 20000;
+  let reads = 0;
+  const events = new Proxy(
+    Array.from({ length: count }, (_, id) => [id, 0.5]),
+    {
+      get(target, key) {
+        if (/^\d+$/.test(String(key))) reads++;
+        return Reflect.get(target, key);
+      },
+    },
+  );
+  const query = createEventIndex(events);
+  reads = 0;
+  for (let run = 0; run < 1000; run++) {
+    assert.deepEqual(
+      [...query(run * 20, run * 20 + 20, true)],
+      Array.from({ length: 20 }, (_, id) => run * 20 + id),
+    );
+  }
+  // Count accesses rather than wall time so slow CI hosts do not make this regression flaky.
+  assert.ok(reads < count * 5, `Index read ${reads} events for ${count} matches.`);
 });
 
 test('standalone payload round trips safely and summary omits bulky event data', async () => {

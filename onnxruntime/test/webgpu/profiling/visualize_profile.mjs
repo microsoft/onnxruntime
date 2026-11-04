@@ -4,6 +4,7 @@
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 import { gzipSync } from 'node:zlib';
 
 export const lanes = [
@@ -48,6 +49,30 @@ export function mergedDuration(intervals) {
     end = Math.max(end, stop);
   }
   return total;
+}
+
+// Sorted leaves retain report IDs. Subtree end times also find spans that start before a run.
+export function createEventIndex(events) {
+  const size = 2 ** Math.ceil(Math.log2(Math.max(1, events.length)));
+  const ends = new Float64Array(size * 2).fill(-Infinity);
+  for (let id = 0; id < events.length; id++) ends[size + id] = events[id][0] + events[id][1];
+  for (let node = size - 1; node > 0; node--) ends[node] = Math.max(ends[node * 2], ends[node * 2 + 1]);
+  return function* overlaps(start, stop, excludeEnd) {
+    function* visit(node, first, last) {
+      if (first >= events.length || ends[node] < start) return;
+      const ts = events[first][0];
+      if (ts > stop || (ts === stop && excludeEnd)) return;
+      if (last - first === 1) {
+        const overlap = Math.min(stop, ends[node]) - Math.max(start, ts);
+        if (overlap > 0 || (overlap === 0 && ts >= start && (!excludeEnd || ts < stop))) yield first;
+        return;
+      }
+      const mid = (first + last) / 2;
+      yield* visit(node * 2, first, mid);
+      yield* visit(node * 2 + 1, mid, last);
+    }
+    yield* visit(1, 0, size);
+  };
 }
 
 // Keep measured timings authoritative: metadata annotates runs but cannot replace trace timestamps.
@@ -101,6 +126,7 @@ export function buildReport(trace, metadata = {}, baseline = {}) {
       ];
     })
     .sort((a, b) => a[0] - b[0]);
+  const overlaps = createEventIndex(compact);
   const summarize = (run, index, label = {}) => {
     const start = run.ts;
     const stop = start + run.dur;
@@ -109,11 +135,9 @@ export function buildReport(trace, metadata = {}, baseline = {}) {
     const busy = [];
     const programs = new Map();
     const cpu = Array(lanes.length).fill(0);
-    for (let id = 0; id < compact.length; id++) {
+    for (const id of overlaps(start, stop, excludeEnd)) {
       const event = compact[id];
-      if (event[0] > stop || (event[0] === stop && excludeEnd)) break;
       const overlap = Math.min(stop, event[0] + event[1]) - Math.max(start, event[0]);
-      if (overlap < 0 || (overlap === 0 && (event[0] < start || (event[0] >= stop && excludeEnd)))) continue;
       indices.push(id);
       if (event[2] === 10) {
         busy.push([Math.max(start, event[0]), Math.min(stop, event[0] + event[1])]);
@@ -157,7 +181,7 @@ export function buildReport(trace, metadata = {}, baseline = {}) {
     for (const key of ['capture_schema', 'inputs_sha256', 'session_options']) {
       if (
         (metadata[key] !== undefined || baseline[key] !== undefined) &&
-        JSON.stringify(metadata[key]) !== JSON.stringify(baseline[key])
+        !isDeepStrictEqual(metadata[key], baseline[key])
       ) {
         throw new Error(`Baseline capture differs in ${key}.`);
       }

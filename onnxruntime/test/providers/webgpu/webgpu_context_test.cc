@@ -268,6 +268,144 @@ TEST(WebGpuContextTest, UploadFollowsDeferredDispatch) {
   TestCopyAfterDeferredDispatch(true);
 }
 
+webgpu::DispatchCommandInfo MakeProfilingDispatch(webgpu::WebGpuContext& context) {
+  wgpu::ShaderSourceWGSL source{};
+  source.code = R"(
+    @group(0) @binding(0) var<storage, read_write> output: array<u32>;
+    @compute @workgroup_size(1)
+    fn main() { output[0] = 42u; }
+  )";
+  wgpu::ShaderModuleDescriptor shader_desc{};
+  shader_desc.nextInChain = &source;
+  wgpu::ComputePipelineDescriptor pipeline_desc{};
+  pipeline_desc.compute.module = context.Device().CreateShaderModule(&shader_desc);
+  pipeline_desc.compute.entryPoint = "main";
+  webgpu::DispatchCommandInfo dispatch;
+  dispatch.compute_pipeline = context.Device().CreateComputePipeline(&pipeline_desc);
+  wgpu::BufferDescriptor buffer_desc{};
+  buffer_desc.size = sizeof(uint32_t);
+  buffer_desc.usage = wgpu::BufferUsage::Storage;
+  wgpu::BindGroupEntry entry{};
+  entry.buffer = context.Device().CreateBuffer(&buffer_desc);
+  entry.size = sizeof(uint32_t);
+  wgpu::BindGroupDescriptor bind_group_desc{};
+  bind_group_desc.layout = dispatch.compute_pipeline->GetBindGroupLayout(0);
+  bind_group_desc.entryCount = 1;
+  bind_group_desc.entries = &entry;
+  dispatch.bind_group = context.Device().CreateBindGroup(&bind_group_desc);
+  dispatch.pending_kernel_info.emplace("profile", "test", "dispatch", "key",
+                                       std::vector<webgpu::ProgramInput>{}, std::vector<webgpu::ProgramOutput>{});
+  return dispatch;
+}
+
+TEST(WebGpuContextTest, ReplayProfilesEncodingSeparatelyFromSubmission) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  if (!webgpu::WebGpuContextFactory::GetContext(0).DeviceHasFeature(wgpu::FeatureName::TimestampQuery)) {
+    GTEST_SKIP() << "Timestamp queries are unavailable.";
+  }
+  RunWithFreshDefaultContext([]() {
+    webgpu::WebGpuContextConfig config;
+    const auto command_count = config.max_num_pending_dispatches + 1;
+    auto& context = webgpu::WebGpuContextFactory::CreateContext(config);
+    auto release = gsl::finally([]() { webgpu::WebGpuContextFactory::ReleaseContext(0); });
+    ASSERT_TRUE(context.DeviceHasFeature(wgpu::FeatureName::TimestampQuery));
+    webgpu::CommandRecordingState recording;
+    auto& manager = context.BufferManager();
+    std::vector<webgpu::CapturedCommand> commands;
+    context.SetProfilingStartTime(std::chrono::high_resolution_clock::now());
+    context.StartProfiling();
+    context.CaptureBegin(&commands, manager, recording);
+    for (uint32_t i = 0; i < command_count; ++i) {
+      recording.deferred_dispatches.push_back(MakeProfilingDispatch(context));
+      ASSERT_STATUS_OK(context.Flush(manager, recording));
+    }
+    context.CaptureEnd(recording);
+    profiling::Events captured;
+    context.CollectProfilingData(captured);
+    ASSERT_EQ(commands.size(), command_count);
+    for (bool profile : {true, false}) {
+      if (profile) context.StartProfiling();
+      context.Replay(commands, manager, recording);
+      ASSERT_STATUS_OK(context.FlushAndWaitChecked(manager, recording));
+      profiling::Events events;
+      context.CollectProfilingData(events);
+      if (!profile) {
+        EXPECT_TRUE(events.empty());
+        continue;
+      }
+      EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const auto& event) {
+                  return event.args.contains("clock_alignment");
+                }),
+                command_count);
+      EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const auto& event) {
+                  return event.name == "WebGPU::Encode";
+                }),
+                2);
+      for (const auto& encode : events) {
+        if (encode.name != "WebGPU::Encode") continue;
+        for (const auto& other : events) {
+          if (other.name == "WebGPU::Submit" || other.name == "WebGPU::Wait") {
+            EXPECT_TRUE(encode.ts + encode.dur <= other.ts || other.ts + other.dur <= encode.ts);
+          }
+        }
+      }
+    }
+  });
+}
+
+TEST(WebGpuContextTest, HostProcsFirstPreventBundledCalibrationInLaterDefaultContext) {
+#if defined(_WIN32) && defined(DAWN_ENABLE_D3D12) && !defined(USE_EXTERNAL_DAWN) && !defined(BUILD_DAWN_SHARED_LIBRARY)
+  RunWithFreshDefaultContext([]() {
+    const auto feature = wgpu::InstanceFeatureName::TimedWaitAny;
+    wgpu::InstanceDescriptor instance_desc{};
+    instance_desc.requiredFeatureCount = 1;
+    instance_desc.requiredFeatures = &feature;
+    dawn::native::Instance instance{&instance_desc};
+    wgpu::RequestAdapterOptions adapter_options{};
+    adapter_options.backendType = wgpu::BackendType::D3D12;
+    auto adapters = instance.EnumerateAdapters(&adapter_options);
+    ASSERT_FALSE(adapters.empty());
+    const auto device_feature = wgpu::FeatureName::ImplicitDeviceSynchronization;
+    wgpu::DeviceDescriptor device_desc{};
+    device_desc.requiredFeatureCount = 1;
+    device_desc.requiredFeatures = &device_feature;
+    // Use a copied host table to exercise ownership without ever passing foreign objects to native helpers.
+    const auto procs = dawn::native::GetProcs();
+    webgpu::WebGpuContextConfig host_config;
+    host_config.context_id = 1;
+    host_config.instance = instance.Get();
+    host_config.device = adapters.front().CreateDevice(&device_desc);
+    ASSERT_NE(host_config.device, nullptr);
+    host_config.dawn_proc_table = &procs;
+    webgpu::WebGpuContextFactory::CreateContext(host_config);
+    wgpu::Device host_device = wgpu::Device::Acquire(host_config.device);
+    auto release_host = gsl::finally([]() { webgpu::WebGpuContextFactory::ReleaseContext(1); });
+    auto& context = webgpu::WebGpuContextFactory::CreateContext({});
+    auto release_default = gsl::finally([]() { webgpu::WebGpuContextFactory::ReleaseContext(0); });
+    ASSERT_TRUE(context.DeviceHasFeature(wgpu::FeatureName::TimestampQuery));
+    context.SetProfilingStartTime(std::chrono::high_resolution_clock::now());
+    context.StartProfiling();
+    webgpu::CommandRecordingState recording;
+    recording.deferred_dispatches.push_back(MakeProfilingDispatch(context));
+    ASSERT_STATUS_OK(context.FlushAndWaitChecked(context.BufferManager(), recording));
+    profiling::Events events;
+    context.CollectProfilingData(events);
+    size_t dispatches = 0;
+    for (const auto& event : events) {
+      if (event.args.contains("clock_alignment")) {
+        ++dispatches;
+        EXPECT_EQ(event.args.at("clock_alignment"), "first_submit");
+      }
+    }
+    EXPECT_EQ(dispatches, 1u);
+  });
+#else
+  GTEST_SKIP() << "Proc ownership regression requires bundled D3D12 Dawn on Windows.";
+#endif
+}
+
 TEST(WebGpuContextTest, NativeProfilingUsesCpuOriginAcrossRunsAndSubmissions) {
 #if defined(_WIN32) && defined(DAWN_ENABLE_D3D12) && !defined(USE_EXTERNAL_DAWN)
   ConfigOptions options;

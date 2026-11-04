@@ -263,6 +263,7 @@ class WebGpuContextFactory {
 
   static std::mutex mutex_;
   static std::once_flag init_default_flag_;
+  static bool uses_bundled_dawn_procs_;
 
   // Use pointers to heap-allocated objects so that their destructors do NOT run
   // during static destruction at process exit. This avoids crashes when dependent
@@ -470,7 +471,7 @@ class WebGpuContext final {
         max_storage_buffers_per_shader_stage_{max_storage_buffers_per_shader_stage} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
-  void Initialize(const WebGpuContextConfig& config);
+  void Initialize(const WebGpuContextConfig& config, bool uses_bundled_dawn_procs);
 
   wgpu::BindGroup CreateBindGroup(const std::vector<WGPUBuffer>& bind_buffers,
                                   const std::vector<uint32_t>& bind_buffers_segments,

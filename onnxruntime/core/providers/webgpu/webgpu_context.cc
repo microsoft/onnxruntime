@@ -180,15 +180,15 @@ void ConfigureWeightLoadingAdapterOptions(
 
 WebGpuContext::~WebGpuContext() = default;
 
-void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
-  std::call_once(init_flag_, [this, config]() {
+void WebGpuContext::Initialize(const WebGpuContextConfig& config, bool uses_bundled_dawn_procs) {
+  std::call_once(init_flag_, [this, config, uses_bundled_dawn_procs]() {
     max_num_pending_dispatches_ = config.max_num_pending_dispatches;
     enable_robustness_ = config.enable_robustness;
     adapter_index_ = config.adapter_index;
     adapter_power_preference_ = config.power_preference;
     adapter_backend_type_ = config.backend_type;
-    // Custom devices/proc tables may belong to a different Dawn implementation.
-    can_calibrate_timestamps_ = config.device == nullptr && config.dawn_proc_table == nullptr;
+    // Procs are installed once per process; later options do not establish device ownership.
+    can_calibrate_timestamps_ = config.device == nullptr && uses_bundled_dawn_procs;
     clock_calibration_callback_ = config.clock_calibration;
 
     ORT_ENFORCE(!config.adapter_index || config.device == nullptr,
@@ -1210,7 +1210,8 @@ void WebGpuContext::WriteTimestamp(CommandRecordingState& recording, uint32_t qu
 
 void WebGpuContext::RecordCpuProfileEventImpl(const char* name, TimePoint start) {
   const auto end = std::chrono::high_resolution_clock::now();
-  cpu_events_.emplace_back(profiling::API_EVENT, logging::GetProcessId(), logging::GetThreadId(), name,
+  cpu_events_.emplace_back(profiling::API_EVENT, ::onnxruntime::logging::GetProcessId(),
+                           ::onnxruntime::logging::GetThreadId(), name,
                            TimeDiffMicroSeconds(profiling_start_time_, start),
                            TimeDiffMicroSeconds(start, end),
                            InlinedHashMap<std::string, std::string>{{"execution_side", "cpu"}});
@@ -1678,6 +1679,7 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommand>& captured_
                            CommandRecordingState& recording) {
   LOGS_DEFAULT(VERBOSE) << "Replay with external storage";
   recording.graph_capture_state = GraphCaptureState::Replaying;
+  auto profile_start = StartCpuProfileEvent();
   // Replay all captured commands from the provided vector
   const size_t command_count = captured_commands.size();
   for (size_t i = 0; i < command_count; ++i) {
@@ -1704,11 +1706,16 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommand>& captured_
 
     DispatchCommand(command, recording);
     if (recording.num_pending_dispatches >= max_num_pending_dispatches_) {
+      RecordCpuProfileEvent("WebGPU::Encode", profile_start);
       ORT_THROW_IF_ERROR(Flush(buffer_manager, recording));
+      profile_start = StartCpuProfileEvent();
     }
   }
 
   // Flush any remaining commands
+  if (recording.command_encoder != nullptr) {
+    RecordCpuProfileEvent("WebGPU::Encode", profile_start);
+  }
   ORT_THROW_IF_ERROR(Flush(buffer_manager, recording));
 
   recording.graph_capture_state = GraphCaptureState::Default;
@@ -1729,6 +1736,7 @@ void WebGpuContext::ReleaseGraphResources(std::vector<webgpu::CapturedCommand>& 
 
 std::mutex WebGpuContextFactory::mutex_;
 std::once_flag WebGpuContextFactory::init_default_flag_;
+bool WebGpuContextFactory::uses_bundled_dawn_procs_ = false;
 
 std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo>* WebGpuContextFactory::contexts_ = nullptr;
 WebGpuInstanceWrapper* WebGpuContextFactory::default_instance_ = nullptr;
@@ -1749,10 +1757,12 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
     const DawnProcTable* dawn_procs = reinterpret_cast<const DawnProcTable*>(dawn_proc_table);
 #if defined(BUILD_DAWN_SHARED_LIBRARY)
     ORT_ENFORCE(dawn_procs == nullptr, "setting DawnProcTable is not allowed when dynamically linked to webgpu_dawn.");
+    uses_bundled_dawn_procs_ = true;
 #else
 #if !defined(USE_EXTERNAL_DAWN)
     if (dawn_procs == nullptr) {
       dawn_procs = &GetBundledDawnProcs();
+      uses_bundled_dawn_procs_ = true;
     }
 #else
     ORT_ENFORCE(dawn_procs != nullptr, "DawnProcTable must be provided.");
@@ -1812,7 +1822,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
   // if this was the first (and only) reference, so we don't leave a zombie context in the map
   // that would later deadlock during Cleanup().
   ORT_TRY {
-    it->second.context->Initialize(config);
+    it->second.context->Initialize(config, uses_bundled_dawn_procs_);
   }
   ORT_CATCH(...) {
     if (--it->second.ref_count == 0) {
