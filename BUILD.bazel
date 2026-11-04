@@ -8,6 +8,7 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//bazel:bindings.bzl", "language_bindings")
 load("//bazel:cuda.bzl", "cuda_libraries")
 load("//bazel:mlas.bzl", "mlas_libraries")
+load("//bazel:platforms.bzl", "desktop_shared_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -22,6 +23,7 @@ genrule(
     srcs = ["VERSION_NUMBER"],
     outs = ["bazel_generated/onnxruntime_config.h"],
     cmd = "printf '#pragma once\\n#define ORT_VERSION \"%s\"\\n' \"$$(tr -d '\\r\\n' < $(location VERSION_NUMBER))\" > $@",
+    cmd_bat = "(echo #pragma once)>$@ & for /f %v in ($(location VERSION_NUMBER)) do @echo #define ORT_VERSION \"%v\">>$@",
 )
 
 write_file(
@@ -57,6 +59,14 @@ cc_library(
         "ONNX_ML=1",
         "ONNX_NAMESPACE=onnx",
     ] + select({
+        "//bazel:windows": [
+            "PLATFORM_WINDOWS",
+            "NOMINMAX",
+            "NOGDI",
+            "_USE_MATH_DEFINES",
+        ],
+        "//conditions:default": [],
+    }) + select({
         "//bazel:cuda_enabled": ["ORT_ENABLE_STREAM"],
         "//conditions:default": [],
     }),
@@ -89,7 +99,10 @@ cc_library(
         "@ort_safeint//:headers",
         "@protobuf",
         "@re2",
-    ],
+    ] + select({
+        "//bazel:windows": ["@ort_wil//:headers"],
+        "//conditions:default": [],
+    }),
 )
 
 mlas_libraries()
@@ -101,7 +114,10 @@ cc_library(
         "model_package/include/*.h",
         "model_package/src/*.h",
     ]),
-    copts = ["-std=c++17"],
+    copts = select({
+        "//bazel:windows": ["/std:c++17"],
+        "//conditions:default": ["-std=c++17"],
+    }),
     includes = ["model_package/include"],
     linkstatic = True,
     deps = ["@nlohmann_json//:json"],
@@ -109,9 +125,15 @@ cc_library(
 
 cc_library(
     name = "posix_clock",
-    srcs = ["onnxruntime/core/platform/posix/env_time.cc"],
+    srcs = select({
+        "//bazel:windows": ["onnxruntime/core/platform/windows/env_time.cc"],
+        "//conditions:default": ["onnxruntime/core/platform/posix/env_time.cc"],
+    }),
     linkstatic = True,
-    local_defines = ["PLATFORM_POSIX"],
+    local_defines = select({
+        "//bazel:windows": [],
+        "//conditions:default": ["PLATFORM_POSIX"],
+    }),
     deps = [":headers"],
 )
 
@@ -144,25 +166,51 @@ cc_library(
         "onnxruntime/core/platform/env_time.cc",
         "onnxruntime/core/platform/logging/make_platform_default_log_sink.cc",
         "onnxruntime/core/platform/path_lib.cc",
-        "onnxruntime/core/platform/posix/env.cc",
-        "onnxruntime/core/platform/posix/stacktrace.cc",
         "onnxruntime/core/platform/telemetry.cc",
         "onnxruntime/core/platform/telemetry_sha256.cc",
-    ],
-    copts = ["-mwaitpkg"],
-    linkopts = [
-        "-ldl",
-        "-pthread",
-    ],
+    ] + select({
+        "//bazel:windows": [
+            "onnxruntime/core/platform/windows/debug_alloc.cc",
+            "onnxruntime/core/platform/windows/dll_load_error.cc",
+            "onnxruntime/core/platform/windows/env.cc",
+            "onnxruntime/core/platform/windows/hardware_core_enumerator.cc",
+            "onnxruntime/core/platform/windows/logging/etw_sink.cc",
+            "onnxruntime/core/platform/windows/stacktrace.cc",
+        ],
+        "//conditions:default": [
+            "onnxruntime/core/platform/posix/env.cc",
+            "onnxruntime/core/platform/posix/stacktrace.cc",
+        ],
+    }) + select({
+        "//bazel:macos": ["onnxruntime/core/platform/apple/logging/apple_log_sink.mm"],
+        "//conditions:default": [],
+    }),
+    copts = select({
+        "//bazel:linux_x86_64": ["-mwaitpkg"],
+        "//conditions:default": [],
+    }),
+    linkopts = select({
+        "//bazel:windows": [
+            "advapi32.lib",
+            "dbghelp.lib",
+            "ole32.lib",
+            "shell32.lib",
+        ],
+        "//bazel:macos": [
+            "-pthread",
+            "-framework",
+            "Foundation",
+        ],
+        "//conditions:default": [
+            "-ldl",
+            "-pthread",
+        ],
+    }),
     linkstatic = True,
     local_defines = select({
         "//bazel:cuda_enabled": ["USE_CUDA"],
         "//conditions:default": [],
     }),
-    target_compatible_with = [
-        "@platforms//cpu:x86_64",
-        "@platforms//os:linux",
-    ],
     deps = [
         ":headers",
         ":mlas",
@@ -172,8 +220,8 @@ cc_library(
     alwayslink = True,
 )
 
-cc_binary(
-    name = "libonnxruntime.so",
+desktop_shared_library(
+    name = "runtime_library",
     additional_linker_inputs = ["//bazel:onnxruntime.lds"],
     data = select({
         "//bazel:cuda_enabled": [
@@ -182,8 +230,20 @@ cc_binary(
         ],
         "//conditions:default": [],
     }),
-    linkopts = ["-Wl,--version-script=$(location //bazel:onnxruntime.lds)"],
-    linkshared = True,
+    linkopts = select({
+        "//bazel:windows": [
+            "/EXPORT:OrtGetApiBase",
+            "/EXPORT:OrtSessionOptionsAppendExecutionProvider_CPU",
+        ],
+        "//bazel:macos": [
+            "-Wl,-exported_symbol,_OrtGetApiBase",
+            "-Wl,-exported_symbol,_OrtSessionOptionsAppendExecutionProvider_CPU",
+        ],
+        "//conditions:default": ["-Wl,--version-script=$(location //bazel:onnxruntime.lds)"],
+    }),
+    linux = "libonnxruntime.so",
+    macos = "libonnxruntime.dylib",
+    windows = "onnxruntime.dll",
     deps = [":runtime"],
 )
 

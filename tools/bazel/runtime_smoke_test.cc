@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <filesystem>
 #include <iostream>
 #include <initializer_list>
 #include <stdexcept>
@@ -114,7 +115,7 @@ int main(int argc, char** argv) {
       options.AddConfigEntry("session.disable_cpu_ep_fallback", "1");
     }
 
-    Ort::Session session(env, argv[1], options);
+    Ort::Session session(env, std::filesystem::path(argv[1]).c_str(), options);
     Ort::AllocatorWithDefaultOptions allocator;
     const auto input_name_a = session.GetInputNameAllocated(0, allocator);
     const auto input_name_b = session.GetInputNameAllocated(1, allocator);

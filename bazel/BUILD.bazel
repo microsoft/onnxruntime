@@ -3,6 +3,47 @@
 
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 
+package(default_visibility = ["//visibility:public"])
+
+[
+    config_setting(
+        name = os,
+        constraint_values = ["@platforms//os:" + os],
+    )
+    for os in [
+        "linux",
+        "windows",
+        "macos",
+    ]
+]
+
+[
+    config_setting(
+        name = cpu,
+        constraint_values = ["@platforms//cpu:" + cpu],
+    )
+    for cpu in [
+        "x86_64",
+        "aarch64",
+    ]
+]
+
+config_setting(
+    name = "windows_x86_64",
+    constraint_values = [
+        "@platforms//os:windows",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+config_setting(
+    name = "linux_x86_64",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
 exports_files([
     "onnx.BUILD.bazel",
     "abseil-includes.patch",

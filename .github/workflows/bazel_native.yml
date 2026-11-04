@@ -1,0 +1,51 @@
+name: Native Bazel desktop
+
+on:
+  pull_request:
+    paths:
+      - ".bazel*"
+      - "BUILD.bazel"
+      - "MODULE.bazel*"
+      - "bazel/**"
+      - "tools/bazel/**"
+      - ".github/workflows/bazel_native.yml"
+  push:
+    branches: [bazel-native-build]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bazel-native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022, macos-15, macos-15-intel]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Locate Windows Bash
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          "BAZEL_SH=C:\Program Files\Git\bin\bash.exe" >> $env:GITHUB_ENV
+      - name: Build and test runtime and desktop bindings
+        shell: bash
+        run: |
+          set -o pipefail
+          bazelisk test //... -c opt --jobs=3 --keep_going --test_output=errors 2>&1 | tee bazel-desktop.log
+      - name: Preserve build and test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bazel-${{ matrix.os }}
+          path: |
+            bazel-desktop.log
+            bazel-testlogs/**/test.log

@@ -43,7 +43,9 @@ use_repo(ort_deps, "ort_date", "ort_eigen", "ort_flatbuffers", "ort_fp16", "ort_
 use_repo(ort_deps, "ort_cudnn_frontend", "ort_cutlass")
 use_repo(ort_deps, "ort_pybind11")
 use_repo(ort_deps, "ort_node_addon_api", "ort_node_headers")
+use_repo(ort_deps, "ort_node_import_library")
 use_repo(ort_deps, "ort_dotnet_tensors")
+use_repo(ort_deps, "ort_wil")
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 python.toolchain(python_version = "3.12")

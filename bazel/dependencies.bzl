@@ -3,7 +3,7 @@
 
 """Pinned source repositories for the native Bazel build."""
 
-load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_file")
 
 def _headers(name, url, sha256, strip_prefix, include_dir):
     http_archive(
@@ -23,6 +23,19 @@ cc_library(
     )
 
 def _dependencies_impl(_ctx):
+    http_file(
+        name = "ort_node_import_library",
+        urls = ["https://nodejs.org/dist/v20.19.0/win-x64/node.lib"],
+        sha256 = "72f7ca3b33f0991e93e25521f7e78c8adf187df7d5223bf0efcb5e005420f327",
+        downloaded_file_path = "node.lib",
+    )
+    _headers(
+        "ort_wil",
+        "https://github.com/microsoft/wil/archive/refs/tags/v1.0.250325.1.zip",
+        "48f7fdc3c7d0b284efae783c1266836b61b63fd0c94749098a60dc8ec78b0725",
+        "wil-1.0.250325.1",
+        "include",
+    )
     http_archive(
         name = "ort_dotnet_tensors",
         urls = [
