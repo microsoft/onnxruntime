@@ -22,6 +22,7 @@ import typing
 import unittest
 from copy import deepcopy
 from dataclasses import dataclass
+from unittest import mock
 
 import numpy
 import torch
@@ -629,14 +630,32 @@ def has_sdpa_kernel(kernel):
     and a build without one falls back to the next kernel. Tests that assert an exact dispatch therefore have to
     check the build, which is done by forcing the kernel once on a small supported call.
     """
-    if "CUDAExecutionProvider" not in get_available_providers():
+    if "CUDAExecutionProvider" not in get_available_providers() or not torch.cuda.is_available():
         return False
     if kernel == "MATH":
         return True
-    if not torch.cuda.is_available() or torch.cuda.get_device_capability()[0] < 8:
+    if torch.cuda.get_device_capability()[0] < 8:
         return False
     kernels, _ = run_query_longer_than_borrowed_kv(kernel, 8, 8, 9, -1)
     return set(kernels) == {kernel}
+
+
+class TestSDPAKernelAvailability(unittest.TestCase):
+    @parameterized.expand(["FLASH_ATTENTION", "EFFICIENT_ATTENTION", "MATH"])
+    def test_unavailable_without_torch_cuda(self, kernel):
+        with (
+            mock.patch(f"{__name__}.get_available_providers", return_value=["CUDAExecutionProvider"]),
+            mock.patch.object(torch.cuda, "is_available", return_value=False),
+        ):
+            self.assertFalse(has_sdpa_kernel.__wrapped__(kernel))
+
+    def test_math_available_before_sm80(self):
+        with (
+            mock.patch(f"{__name__}.get_available_providers", return_value=["CUDAExecutionProvider"]),
+            mock.patch.object(torch.cuda, "is_available", return_value=True),
+            mock.patch.object(torch.cuda, "get_device_capability", return_value=(7, 5)),
+        ):
+            self.assertTrue(has_sdpa_kernel.__wrapped__("MATH"))
 
 
 @dataclass
