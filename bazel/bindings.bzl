@@ -104,6 +104,13 @@ def language_bindings():
         ),
         additional_linker_inputs = ["//bazel:python.lds"],
         copts = ["-fvisibility=hidden"],
+        data = select({
+            "//bazel:cuda_enabled": [
+                ":libonnxruntime_providers_cuda.so",
+                ":libonnxruntime_providers_shared.so",
+            ],
+            "//conditions:default": [],
+        }),
         local_defines = cuda_defines,
         linkopts = ["-Wl,--version-script=$(location //bazel:python.lds)", "-Wl,-Bsymbolic"],
         linkshared = True,
