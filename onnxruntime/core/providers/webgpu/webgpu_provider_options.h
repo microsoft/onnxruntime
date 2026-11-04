@@ -60,6 +60,8 @@ constexpr const char* kWebGpuInstance = "ep.webgpuexecutionprovider.webgpuInstan
 constexpr const char* kWebGpuDevice = "ep.webgpuexecutionprovider.webgpuDevice";
 
 constexpr const char* kStorageBufferCacheMode = "ep.webgpuexecutionprovider.storageBufferCacheMode";
+// Replacement bucket table: comma-separated byte-size:maximum-free-buffer-count pairs.
+constexpr const char* kStorageBufferBucketLimits = "ep.webgpuexecutionprovider.storageBufferBucketLimits";
 constexpr const char* kUniformBufferCacheMode = "ep.webgpuexecutionprovider.uniformBufferCacheMode";
 constexpr const char* kQueryResolveBufferCacheMode = "ep.webgpuexecutionprovider.queryResolveBufferCacheMode";
 constexpr const char* kDefaultBufferCacheMode = "ep.webgpuexecutionprovider.defaultBufferCacheMode";

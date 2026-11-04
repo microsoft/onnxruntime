@@ -921,6 +921,147 @@ TEST(WebGpuContextTest, BufferReuseFollowsCachePolicyAndRecordingSubmission) {
   }
 }
 
+TEST(WebGpuContextTest, StorageBufferBucketLimitsRejectInvalidOptions) {
+  const auto expect_invalid_options = [](const ConfigOptions& options) {
+    try {
+      WebGpuProviderFactoryCreator::Create(options);
+      FAIL() << "Invalid bucket configuration was accepted";
+    } catch (const OnnxRuntimeException& ex) {
+      EXPECT_THAT(ex.what(), testing::HasSubstr("storageBufferBucketLimits"));
+    }
+  };
+  for (const char* value : {"", "64", "0:1", "17:1", "-16:1", "16:-1", "16:1,", ",16:1", "16:1:2",
+                            "16:1,16:2", "16:1,016:2", "16:1x", " 16:1", "16: 1",
+                            "18446744073709551616:1", "16:18446744073709551616"}) {
+    SCOPED_TRACE(value);
+    ConfigOptions options;
+    ASSERT_STATUS_OK(options.AddConfigEntry(kStorageBufferBucketLimits, value));
+    expect_invalid_options(options);
+  }
+  for (const char* mode : {"simple", "disabled", "lazyRelease"}) {
+    ConfigOptions options;
+    ASSERT_STATUS_OK(options.AddConfigEntry(kStorageBufferCacheMode, mode));
+    ASSERT_STATUS_OK(options.AddConfigEntry(kStorageBufferBucketLimits, "64:1"));
+    expect_invalid_options(options);
+  }
+}
+
+TEST(WebGpuContextTest, StorageBufferBucketLimitsParseUnorderedTableAndZeroLimit) {
+  const auto limits = webgpu::ParseBufferBucketLimits("8388608:24,64:0,5242880:24");
+  ASSERT_EQ(limits.size(), 3u);
+  EXPECT_EQ(limits.at(64), 0u);
+  EXPECT_EQ(limits.at(5242880), 24u);
+  EXPECT_EQ(limits.at(8388608), 24u);
+}
+
+TEST(WebGpuContextTest, StorageBufferBucketLimitsControlAllocationAndReuse) {
+  RunWithFreshDefaultContext([]() {
+    ConfigOptions options;
+    ASSERT_STATUS_OK(options.AddConfigEntry(kStorageBufferBucketLimits, "64:0,4194304:24,5242880:24"));
+    auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+    auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+    auto& manager = context.BufferManager();
+    webgpu::CommandRecordingState recording;
+    constexpr auto usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
+
+    // At 4097 fp16 KV tokens, use 5 MiB rather than the default 8 MiB.
+    constexpr size_t request_size = 4097 * 1024;
+    InlinedVector<WGPUBuffer> buffers;
+    InlinedVector<wgpu::Buffer> retained_buffers;
+    for (size_t i = 0; i < 24; ++i) {
+      auto buffer = manager.Create(recording, request_size, usage);
+      ASSERT_EQ(wgpuBufferGetSize(buffer), 5242880u);
+      buffers.push_back(buffer);
+      retained_buffers.emplace_back(buffer);
+    }
+    const auto original_buffers = buffers;
+    auto overflow = manager.Create(recording, request_size, usage);
+    wgpu::Buffer retained_overflow{overflow};
+    for (auto buffer : buffers) {
+      manager.Release(buffer);
+    }
+    manager.Release(overflow);
+    manager.RefreshPendingBuffers(recording, webgpu::GraphCaptureState::Default);
+    buffers.clear();
+    for (size_t i = 0; i < 24; ++i) {
+      auto buffer = manager.Create(recording, request_size, usage);
+      EXPECT_EQ(buffer, original_buffers[23 - i]);
+      buffers.push_back(buffer);
+    }
+    auto next_overflow = manager.Create(recording, request_size, usage);
+    EXPECT_NE(next_overflow, overflow);
+    buffers.push_back(next_overflow);
+    for (auto buffer : buffers) {
+      manager.Release(buffer);
+    }
+
+    // Above the custom table, normalize without retaining the buffer.
+    auto uncached = manager.Create(recording, 5242881, usage);
+    EXPECT_EQ(wgpuBufferGetSize(uncached), 5242896u);
+    wgpu::Buffer retained_uncached{uncached};
+    manager.Release(uncached);
+    manager.RefreshPendingBuffers(recording, webgpu::GraphCaptureState::Default);
+    auto next_uncached = manager.Create(recording, 5242881, usage);
+    EXPECT_NE(next_uncached, uncached);
+    manager.Release(next_uncached);
+
+    // A zero limit retains no spares, and the custom table replaces default sizes.
+    auto zero_limit = manager.Create(recording, 64, usage);
+    wgpu::Buffer retained_zero_limit{zero_limit};
+    manager.Release(zero_limit);
+    manager.RefreshPendingBuffers(recording, webgpu::GraphCaptureState::Default);
+    auto next_zero_limit = manager.Create(recording, 64, usage);
+    EXPECT_NE(next_zero_limit, zero_limit);
+    manager.Release(next_zero_limit);
+    auto replaced = manager.Create(recording, 65, usage);
+    EXPECT_EQ(wgpuBufferGetSize(replaced), 4194304u);
+    manager.Release(replaced);
+
+    auto uniform = manager.Create(recording, 65, wgpu::BufferUsage::Uniform | wgpu::BufferUsage::CopyDst);
+    EXPECT_EQ(wgpuBufferGetSize(uniform), 80u);
+    manager.Release(uniform);
+  });
+}
+
+TEST(WebGpuContextTest, DefaultStorageBufferBucketsKeepExistingSizesAndLimits) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  webgpu::BufferManager manager(context, webgpu::BufferCacheMode::Bucket,
+                                webgpu::BufferCacheMode::Disabled, webgpu::BufferCacheMode::Disabled,
+                                webgpu::BufferCacheMode::Disabled);
+  webgpu::CommandRecordingState recording;
+  constexpr auto usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
+  InlinedVector<WGPUBuffer> buffers;
+  InlinedVector<wgpu::Buffer> retained_buffers;
+  for (size_t i = 0; i < 10; ++i) {
+    auto buffer = manager.Create(recording, 4097 * 1024, usage);
+    EXPECT_EQ(wgpuBufferGetSize(buffer), 8388608u);
+    buffers.push_back(buffer);
+    retained_buffers.emplace_back(buffer);
+  }
+  auto overflow = manager.Create(recording, 4097 * 1024, usage);
+  wgpu::Buffer retained_overflow{overflow};
+  const auto original_buffers = buffers;
+  for (auto buffer : buffers) {
+    manager.Release(buffer);
+  }
+  manager.Release(overflow);
+  manager.RefreshPendingBuffers(recording, webgpu::GraphCaptureState::Default);
+  buffers.clear();
+  for (size_t i = 0; i < 10; ++i) {
+    auto buffer = manager.Create(recording, 4097 * 1024, usage);
+    EXPECT_EQ(buffer, original_buffers[9 - i]);
+    buffers.push_back(buffer);
+  }
+  auto next_overflow = manager.Create(recording, 4097 * 1024, usage);
+  EXPECT_NE(next_overflow, overflow);
+  buffers.push_back(next_overflow);
+  for (auto buffer : buffers) {
+    manager.Release(buffer);
+  }
+}
+
 TEST(WebGpuContextTest, BufferReleasedAfterSubmissionIsReusableWithoutAnotherFlush) {
   ConfigOptions options;
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();

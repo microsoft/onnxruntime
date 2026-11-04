@@ -430,6 +430,12 @@ WebGpuContextConfig ParseWebGpuContextConfig(
   parse_buffer_cache_mode(kQueryResolveBufferCacheMode, buffer_cache_config.query_resolve.mode);
   parse_buffer_cache_mode(kDefaultBufferCacheMode, buffer_cache_config.default_entry.mode);
 
+  if (std::string bucket_limits; config_options.TryGetConfigEntry(kStorageBufferBucketLimits, bucket_limits)) {
+    ORT_ENFORCE(buffer_cache_config.storage.mode == BufferCacheMode::Bucket,
+                "storageBufferBucketLimits requires storageBufferCacheMode 'bucket'.");
+    buffer_cache_config.storage.bucket_limits = ParseBufferBucketLimits(bucket_limits);
+  }
+
   // power preference
   if (std::string power_preference_str;
       config_options.TryGetConfigEntry(kPowerPreference, power_preference_str)) {

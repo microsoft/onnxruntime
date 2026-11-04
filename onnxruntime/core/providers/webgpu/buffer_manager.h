@@ -5,6 +5,7 @@
 
 #include <iosfwd>
 #include <mutex>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -35,6 +36,10 @@ enum class BufferCacheMode {
   GraphSimple,
 };
 std::ostream& operator<<(std::ostream& os, BufferCacheMode mode);
+
+using BufferBucketLimits = InlinedHashMap<size_t, size_t>;
+// Parse a replacement bucket table encoded as comma-separated size:limit pairs.
+BufferBucketLimits ParseBufferBucketLimits(std::string_view value);
 
 //
 // IBufferCacheManager is an interface for buffer cache management.
@@ -92,7 +97,10 @@ class IBufferCacheManager {
 //
 class BufferManager {
  public:
-  BufferManager(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode, BufferCacheMode default_buffer_cache_mode);
+  BufferManager(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode,
+                BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode,
+                BufferCacheMode default_buffer_cache_mode,
+                const BufferBucketLimits& storage_buffer_bucket_limits = {});
   void Upload(CommandRecordingState& recording, void* src, WGPUBuffer dst, size_t size) const;
   struct UploadInfo {
     const void* source;
@@ -132,7 +140,11 @@ class BufferManager {
 
 class BufferManagerFactory {
  public:
-  static std::unique_ptr<BufferManager> Create(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode, BufferCacheMode default_buffer_cache_mode);
+  static std::unique_ptr<BufferManager> Create(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode,
+                                               BufferCacheMode uniform_buffer_cache_mode,
+                                               BufferCacheMode query_resolve_buffer_cache_mode,
+                                               BufferCacheMode default_buffer_cache_mode,
+                                               const BufferBucketLimits& storage_buffer_bucket_limits = {});
 
  private:
   BufferManagerFactory() {}

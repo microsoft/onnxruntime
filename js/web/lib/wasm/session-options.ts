@@ -5,6 +5,7 @@ import type { InferenceSession } from 'onnxruntime-common';
 
 import { getInstance } from './wasm-factory';
 import { allocWasmString, checkLastError, iterateExtraOptions } from './wasm-utils';
+import { serializeStorageBufferBucketLimits } from './webgpu-buffer-cache';
 
 const getGraphOptimzationLevel = (graphOptimizationLevel: string | unknown): number => {
   switch (graphOptimizationLevel) {
@@ -221,6 +222,15 @@ const setExecutionProviders = async (
                 }
                 appendEpOption(epOptions, key, mode, allocs);
               }
+            }
+
+            if (webgpuOptions.storageBufferBucketLimits !== undefined) {
+              appendEpOption(
+                epOptions,
+                'storageBufferBucketLimits',
+                serializeStorageBufferBucketLimits(webgpuOptions),
+                allocs,
+              );
             }
           }
 

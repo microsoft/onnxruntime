@@ -20,6 +20,7 @@ require('./backends/wasm/test-model-metadata');
 require('./backends/wasm/test-lora-adapter');
 
 require('./ep-context-data-read');
+require('./webgpu-buffer-cache');
 
 require('./pool-output-shape');
 
