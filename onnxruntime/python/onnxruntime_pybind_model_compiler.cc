@@ -10,6 +10,7 @@
 #include <iterator>
 #include <limits>
 #include "core/common/common.h"
+#include "core/common/path_string.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/ortmemoryinfo.h"
 #include "core/graph/abi_graph_types.h"
@@ -397,7 +398,8 @@ onnxruntime::Status PyModelCompiler::SetEpContextBinaryInformation(const std::st
   std::lock_guard<std::mutex> lock{compilation_mutex_};
   ORT_RETURN_IF(compilation_in_progress_,
                 "Cannot change the EPContext binary information while compilation is in progress.");
-  return model_compile_options_.SetEpContextBinaryInformation(output_directory, model_name);
+  // The Python strings are UTF-8; build native paths with the platform encoding.
+  return model_compile_options_.SetEpContextBinaryInformation(ToPathString(output_directory), ToPathString(model_name));
 }
 
 PyModelCompiler::PyModelCompiler(onnxruntime::Environment& env, const OrtSessionOptions& sess_options,

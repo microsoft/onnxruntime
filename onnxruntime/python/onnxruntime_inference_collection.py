@@ -784,6 +784,12 @@ class InferenceSession(Session):
         obj = cls.__new__(cls)
         Session.__init__(obj, enable_fallback=False)
         obj._from_model_package = True
+        # The session cannot be re-created, so there is no model path/bytes or initial options to keep.
+        obj._model_path = None
+        obj._model_bytes = None
+        obj._sess_options_initial = None
+        obj._read_config_from_model = False
+        obj._fallback_providers = []
         obj._bind_session(sess)
         return obj
 

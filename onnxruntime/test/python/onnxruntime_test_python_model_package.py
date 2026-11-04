@@ -4,6 +4,7 @@
 import json
 import shutil
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -96,6 +97,34 @@ class TestModelPackageAuthoring(unittest.TestCase):
             with self.assertRaises(OSError):
                 ort.ModelPackage.open("missing-model-package-directory")
 
+    def test_close_during_commit_is_serialized(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "package"
+            root.mkdir()
+            (root / "manifest.json").write_text(
+                json.dumps({"schema_version": "1.0", "components": {}}), encoding="utf-8"
+            )
+            package = ort.ModelPackage.open(str(root))
+            errors = []
+
+            def commit():
+                try:
+                    package.commit()
+                except ValueError:
+                    pass  # close() won the race.
+                except Exception as e:
+                    errors.append(e)
+
+            threads = [threading.Thread(target=commit) for _ in range(4)]
+            for t in threads:
+                t.start()
+            package.close()
+            for t in threads:
+                t.join()
+            self.assertEqual(errors, [])
+            with self.assertRaises(ValueError):
+                package.get_info()
+
 
 @unittest.skipUnless(hasattr(C, "ModelPackageContext"), "Model package API requires a non-minimal build")
 class TestStableModelPackageApi(unittest.TestCase):
@@ -145,6 +174,48 @@ class TestStableModelPackageApi(unittest.TestCase):
                 self.assertIsInstance(session, ort.InferenceSession)
                 (output,) = session.run(None, {"X": x})
                 np.testing.assert_array_equal(output, x * MUL_1_WEIGHTS)
+
+            # Concurrent first calls on one component must be serialized.
+            component = ort.ModelPackageContext(str(root)).select_component(
+                "model", ort.ModelPackageOptions(ort.SessionOptions())
+            )
+            concurrent_sessions = []
+            errors = []
+
+            def create():
+                try:
+                    concurrent_sessions.append(component.create_session())
+                except Exception as e:
+                    errors.append(e)
+
+            threads = [threading.Thread(target=create) for _ in range(8)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+            self.assertEqual(errors, [])
+            self.assertEqual(len(concurrent_sessions), 8)
+
+            # Concurrent calls on one context must be serialized.
+            shared_context = ort.ModelPackageContext(str(root))
+            shared_options = ort.ModelPackageOptions(ort.SessionOptions())
+            context_errors = []
+
+            def use_context():
+                try:
+                    for _ in range(20):
+                        shared_context.resolve_string_ref("model/cpu/model.onnx", must_exist=True)
+                        selected = shared_context.select_component("model", shared_options)
+                        self.assertEqual(selected.get_selected_variant_name(), "cpu")
+                except Exception as e:
+                    context_errors.append(e)
+
+            threads = [threading.Thread(target=use_context) for _ in range(8)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+            self.assertEqual(context_errors, [])
 
             # Package sessions cannot be re-created from a model path, so these must fail cleanly.
             session = sessions[0]
