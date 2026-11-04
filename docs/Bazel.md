@@ -335,8 +335,8 @@ unwired. Training is intentionally excluded. `SparseTensorTest.testCOO` was
 tried against the foundation and failed because its model requires the excluded
 contrib `SparseToDenseMatMul` operator;
 that class is not registered as a passing native target. Full-class execution
-and Linux/macOS validation remain pending. C# still uses its foundation smoke
-target, and Go retains its existing self-contained tests.
+and Linux/macOS validation remain pending. C# additionally has the selectable
+desktop tests documented above; Go retains its existing self-contained tests.
 
 ### Selectable existing Python inference tests
 
