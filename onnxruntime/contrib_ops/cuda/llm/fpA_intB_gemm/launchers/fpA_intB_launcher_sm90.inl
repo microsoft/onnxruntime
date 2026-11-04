@@ -280,7 +280,17 @@ void sm90_generic_mixed_gemm_kernelLauncher(ActivationType const*, WeightType co
                                             float const, OutputType*, int, int, int, int const, tkc::CutlassGemmConfig,
                                             char*, size_t, cudaStream_t, int*) {
   ORT_LLM_LOG_ENTRY();
+#if defined(_MSC_VER)
+  // On Windows/MSVC the native SM90 (Hopper) TMA/WGMMA fpA_intB kernels are intentionally not
+  // compiled: CUDA 13 NVCC host stubs hit MSVC C2719 with over-aligned (128-byte) by-value TMA
+  // parameters, so COMPILE_HOPPER_TMA_GEMMS is left undefined on MSVC (see
+  // docs/contrib_ops/cuda/moe_qmoe.md section 14.1). Recompiling with 90a-real does not help here.
+  ORT_THROW(
+      "[fpA_intB_gemm] The native SM90 (Hopper) fpA_intB kernel is not available on Windows/MSVC "
+      "builds. Use the SM80-compatible weight layout (weight_prepacked=0 or 1) instead.");
+#else
   ORT_THROW("[fpA_intB_gemm] Please recompile with support for hopper by passing 90a-real as an arch.");
+#endif
 }
 #endif  // COMPILE_HOPPER_TMA_GEMMS
 

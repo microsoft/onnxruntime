@@ -39,6 +39,8 @@
 namespace onnxruntime {
 namespace flash {
 
+constexpr size_t kFlashAttentionMaxHeadSize = 256;
+
 Status mha_fwd(const cudaDeviceProp& dprops,
                cudaStream_t stream,
                void* q,            // batch_size x seqlen_q x num_heads x head_size
@@ -63,7 +65,8 @@ Status mha_fwd(const cudaDeviceProp& dprops,
                bool kv_bsnh = true,
                int local_window_size = -1,
                void* cache_batch_idx = nullptr,
-               void* leftpad_k = nullptr);
+               void* leftpad_k = nullptr,
+               void* head_sink = nullptr);  // num_heads
 
 Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                       cudaStream_t stream,
@@ -89,7 +92,10 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                       bool is_bf16,
                       int local_window_size = -1,
                       int max_num_blocks_per_seq = 0,
-                      int page_block_size = 1);
+                      int page_block_size = 1,
+                      int num_splits = 0,
+                      void* softmax_lse_accum = nullptr,
+                      void* out_accum = nullptr);
 
 Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        cudaStream_t stream,
@@ -150,6 +156,22 @@ bool is_supported(const cudaDeviceProp& dprops, size_t head_size, size_t num_hea
   }
 #endif
   return is_supported(dprops, head_size, num_heads, num_heads_k);
+}
+
+template <typename T>
+bool is_any_supported_head_size(const cudaDeviceProp& dprops,
+                                size_t max_head_size,
+                                size_t num_heads,
+                                size_t num_heads_k) {
+  const size_t search_limit =
+      max_head_size < kFlashAttentionMaxHeadSize ? max_head_size : kFlashAttentionMaxHeadSize;
+  for (size_t head_size = 1; head_size <= search_limit; ++head_size) {
+    if (is_supported<T>(dprops, head_size, num_heads, num_heads_k)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 }  // namespace flash

@@ -100,10 +100,20 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
           .TypeConstraint("T2", CastOpTypeConstraints()),         \
       Cast<T>);                                                   \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      Cast,                                                       \
+      kOnnxDomain,                                                \
+      25, 27,                                                     \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
+          .TypeConstraint("T2", CastOpTypeConstraints()),         \
+      Cast<T>);                                                   \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       Cast,                                                       \
       kOnnxDomain,                                                \
-      25,                                                         \
+      28,                                                         \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
@@ -411,11 +421,21 @@ SPECIALIZE_IMPL(BFloat16)
           .TypeConstraint("T2", OutputTypeConstraints),           \
       Cast<T>);
 
-#define REGISTER_KERNEL_TYPED_25(T, OutputTypeConstraints)        \
+#define REGISTER_KERNEL_TYPED_25_TO_28(T, OutputTypeConstraints)  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      Cast,                                                       \
+      kOnnxDomain,                                                \
+      25, 27,                                                     \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
+          .TypeConstraint("T2", OutputTypeConstraints),           \
+      Cast<T>);                                                   \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       Cast,                                                       \
       kOnnxDomain,                                                \
-      25,                                                         \
+      28,                                                         \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
@@ -425,20 +445,20 @@ SPECIALIZE_IMPL(BFloat16)
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
-#define SPECIALIZE_IMPL_19_TO_25(T)                          \
+#define SPECIALIZE_IMPL_19_TO_28(T)                          \
   REGISTER_KERNEL_TYPED_19_TO_22(T)                          \
   REGISTER_KERNEL_TYPED_23_TO_24(T, CastOpTypeConstraints()) \
-  REGISTER_KERNEL_TYPED_25(T, CastOpTypeConstraints())       \
+  REGISTER_KERNEL_TYPED_25_TO_28(T, CastOpTypeConstraints()) \
   template Status Cast<T>::ComputeInternal(OpKernelContext* context) const;
 
-SPECIALIZE_IMPL_19_TO_25(Float8E4M3FN)
-SPECIALIZE_IMPL_19_TO_25(Float8E5M2)
+SPECIALIZE_IMPL_19_TO_28(Float8E4M3FN)
+SPECIALIZE_IMPL_19_TO_28(Float8E5M2)
 
 #endif
 
 #if !defined(DISABLE_FLOAT4_TYPES)
 REGISTER_KERNEL_TYPED_23_TO_24(Float4E2M1x2, {DataTypeImpl::GetTensorType<float>()})
-REGISTER_KERNEL_TYPED_25(Float4E2M1x2, {DataTypeImpl::GetTensorType<float>()})
+REGISTER_KERNEL_TYPED_25_TO_28(Float4E2M1x2, {DataTypeImpl::GetTensorType<float>()})
 template Status Cast<Float4E2M1x2>::ComputeInternal(OpKernelContext* context) const;
 #endif
 

@@ -339,5 +339,95 @@ TEST(BifurcationDetectorTest, PredTokensLengthMismatch) {
              {}, nullptr, &execution_providers);
 }
 
+// A 0-element prev_suffix_match_idx must be rejected: the kernel unconditionally reads and writes
+// element [0] of, respectively, this input and the output tensor that mirrors its shape, so a 0-element
+// shape would otherwise back those accesses with a null/empty buffer.
+TEST(BifurcationDetectorTest, ZeroElementPrevSuffixMatchIdx) {
+  OpTester tester("BifurcationDetector", 1, onnxruntime::kMSDomain);
+
+  tester.AddInput<int64_t>("src_tokens", {4}, {1, 5, 3, 4});
+  tester.AddInput<int64_t>("cur_tokens", {1}, {2});
+  tester.AddInput<int64_t>("prev_suffix_match_idx", {0}, {});
+  tester.AddInput<int64_t>("pred_tokens", {5}, {1, 5, 3, 4, 2});
+  tester.AddOutput<int64_t>("tokens", {1}, {0});
+  tester.AddOutput<int64_t>("suffix_match_idx", {0}, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "prev_suffix_match_idx must contain exactly one element",
+             {}, nullptr, &execution_providers);
+}
+
+// Same as above, but with no pred_tokens input: the unconditional output write is still reached.
+TEST(BifurcationDetectorTest, ZeroElementPrevSuffixMatchIdxNoPredTokens) {
+  OpTester tester("BifurcationDetector", 1, onnxruntime::kMSDomain);
+
+  tester.AddInput<int64_t>("src_tokens", {4}, {1, 5, 3, 4});
+  tester.AddInput<int64_t>("cur_tokens", {1}, {2});
+  tester.AddInput<int64_t>("prev_suffix_match_idx", {0}, {});
+  tester.AddOutput<int64_t>("tokens", {1}, {0});
+  tester.AddOutput<int64_t>("suffix_match_idx", {0}, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "prev_suffix_match_idx must contain exactly one element",
+             {}, nullptr, &execution_providers);
+}
+
+// A rank-0 (scalar) src_tokens has no dimensions, so Shape().GetDims()[0] would be an out-of-bounds
+// access; a 0-D input must be rejected instead of being read as if it had a length.
+TEST(BifurcationDetectorTest, ScalarSrcTokensRejected) {
+  OpTester tester("BifurcationDetector", 1, onnxruntime::kMSDomain);
+
+  tester.AddInput<int64_t>("src_tokens", {}, {1});
+  tester.AddInput<int64_t>("cur_tokens", {1}, {2});
+  tester.AddInput<int64_t>("prev_suffix_match_idx", {}, {0});
+  tester.AddOutput<int64_t>("tokens", {1}, {0});
+  tester.AddOutput<int64_t>("suffix_match_idx", {}, {0});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "src_tokens must be a 1-D tensor",
+             {}, nullptr, &execution_providers);
+}
+
+// Same rank check for cur_tokens.
+TEST(BifurcationDetectorTest, ScalarCurTokensRejected) {
+  OpTester tester("BifurcationDetector", 1, onnxruntime::kMSDomain);
+
+  tester.AddInput<int64_t>("src_tokens", {4}, {1, 5, 3, 4});
+  tester.AddInput<int64_t>("cur_tokens", {}, {2});
+  tester.AddInput<int64_t>("prev_suffix_match_idx", {}, {0});
+  tester.AddOutput<int64_t>("tokens", {1}, {0});
+  tester.AddOutput<int64_t>("suffix_match_idx", {}, {0});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "cur_tokens must be a 1-D tensor",
+             {}, nullptr, &execution_providers);
+}
+
+// Same rank check for pred_tokens, when present.
+TEST(BifurcationDetectorTest, ScalarPredTokensRejected) {
+  OpTester tester("BifurcationDetector", 1, onnxruntime::kMSDomain);
+
+  tester.AddInput<int64_t>("src_tokens", {4}, {1, 5, 3, 4});
+  tester.AddInput<int64_t>("cur_tokens", {1}, {2});
+  tester.AddInput<int64_t>("prev_suffix_match_idx", {}, {0});
+  tester.AddInput<int64_t>("pred_tokens", {}, {1});
+  tester.AddOutput<int64_t>("tokens", {1}, {0});
+  tester.AddOutput<int64_t>("suffix_match_idx", {}, {0});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "pred_tokens must be a 1-D tensor",
+             {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -27,20 +27,148 @@ static TensorShape GetOverrideShape(const TensorShape& shape, int components) {
 
 Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("scale", ShaderUsage::UseUniform);
-  if (has_bias_) {
-    shader.AddInput("bias", ShaderUsage::UseUniform);
-  }
-  shader.AddOutput("y", ShaderUsage::UseUniform);
-  if (has_mean_output_) {
-    shader.AddOutput("mean_output", ShaderUsage::None);
-  }
-  if (has_inv_std_dev_output_) {
-    shader.AddOutput("inv_std_dev_output", ShaderUsage::None);
-  }
+  const auto& scale = shader.AddInput("scale", ShaderUsage::UseUniform);
+  const auto* bias = has_bias_ ? &shader.AddInput("bias", ShaderUsage::UseUniform) : nullptr;
+  const auto& y = shader.AddOutput("y", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const auto* mean_output = has_mean_output_ ? &shader.AddOutput("mean_output", ShaderUsage::None) : nullptr;
+  const auto* inv_std_dev_output = has_inv_std_dev_output_ ? &shader.AddOutput("inv_std_dev_output", ShaderUsage::None) : nullptr;
 
-  std::string simpl1 = (simplified_) ? "" : "- mean * mean ";
-  std::string simpl2 = (simplified_) ? "" : "- x_element_t(mean) ";
+  // Keep LayerNormalization's mean in f32: narrowing before subtraction amplifies rounding error.
+  // Preserve same-type SimplifiedLayerNormalization rounding to match fused RMSNorm kernels.
+  const bool normalize_in_f32 = !simplified_ || Inputs()[0].var_type != Outputs()[0].var_type;
+  const int components = x.NumComponents();
+  shader.AdditionalImplementation()
+      << "alias norm_element_t = " << (normalize_in_f32 || fp32_normalization_ ? "f32" : "x_element_t") << ";\n"
+      << "alias norm_value_t = "
+      << (components == 4 ? "vec4<norm_element_t>" : (components == 2 ? "vec2<norm_element_t>" : "norm_element_t"))
+      << ";\n";
+
+  const std::string simpl2 = simplified_ ? "" : "- norm_element_t(shift) - norm_element_t(mean) ";
+
+  const auto output_expression = [&](const std::string& input, const std::string& scale_offset) {
+    const std::string normalized =
+        "(norm_value_t(" + input + ") " + simpl2 + ") * norm_element_t(inv_std_dev)";
+    if (fp32_normalization_) {
+      return "y_value_t(" + normalized + " * norm_value_t(" + scale.GetByOffset(scale_offset) + ")" +
+             (has_bias_ ? " + norm_value_t(" + bias->GetByOffset(scale_offset) + ")" : "") + ")";
+    }
+    return "y_value_t(" + normalized + ") * " + scale.GetByOffset(scale_offset) +
+           (has_bias_ ? " + " + bias->GetByOffset(scale_offset) : "");
+  };
+
+  if (!simplified_) {
+    // Use shifted sums only when every subtraction is exact; otherwise retain an unshifted compensated mean.
+    // Integer mantissa subtraction keeps shader fast-math from reassociating away the rounding correction.
+    shader.AdditionalImplementation()
+        << "alias f32_val_t = " << (components == 4 ? "vec4<f32>" : (components == 2 ? "vec2<f32>" : "f32")) << ";\n"
+        << "fn compensated_add(acc: vec2<f32>, value: f32) -> vec2<f32> {\n"
+        << "  let sum = acc.x + value;\n"
+        << "  let larger = select(value, acc.x, abs(acc.x) >= abs(value));\n"
+        << "  let smaller = select(acc.x, value, abs(acc.x) >= abs(value));\n"
+        << "  if (sum == larger) { return vec2<f32>(sum, acc.y + smaller); }\n"
+        << "  var error = 0.0;\n"
+        // Opposite-sign operands within a factor of two subtract exactly (Sterbenz's lemma).
+        // Otherwise larger and sum differ by at most one exponent bit; 25 mantissa magnitude bits fit in i32.
+        << "  if ((larger < 0.0) == (smaller < 0.0) || abs(smaller) < 0.5 * abs(larger)) {\n"
+        << "    let a = frexp(larger);\n"
+        << "    let b = frexp(sum);\n"
+        << "    let exponent = min(a.exp, b.exp);\n"
+        << "    let a_mantissa = i32(ldexp(a.fract, a.exp - exponent + 24));\n"
+        << "    let b_mantissa = i32(ldexp(b.fract, b.exp - exponent + 24));\n"
+        << "    error = ldexp(f32(a_mantissa - b_mantissa) * 0x1p-24, exponent) + smaller;\n"
+        << "  }\n"
+        << "  return vec2<f32>(sum, acc.y + error);\n"
+        << "}\n"
+        << "var<workgroup> sum_shared: array<vec2<f32>, workgroup_size_x>;\n"
+        << "var<workgroup> shifted_sum_shared: array<vec2<f32>, workgroup_size_x>;\n"
+        << "var<workgroup> shiftable_shared: array<u32, workgroup_size_x>;\n"
+        << "var<workgroup> variance_shared: array<f32, workgroup_size_x>;\n";
+    shader.MainFunctionBody()
+        << "let row = " << (split_norm_dim_ ? "0u" : "workgroup_idx") << ";\n"
+        << (fp32_normalization_ ? "if (row >= uniforms.norm_count) { return; }\n" : "")
+        << "let row_offset = row * uniforms.norm_size_vectorized;\n"
+        << "let first = f32(" << x.GetByOffset("row_offset") << (components == 1 ? "" : ".x") << ");\n"
+        << "var acc = vec2<f32>(0);\n"
+        << "var shifted_acc = vec2<f32>(0);\n"
+        << "var can_shift = true;\n"
+        << "for (var i = local_idx; i < uniforms.norm_size_vectorized; i += workgroup_size_x) {\n"
+        << "  let value = f32_val_t(" << x.GetByOffset("row_offset + i") << ");\n";
+    for (int c = 0; c < components; ++c) {
+      const std::string value = components == 1 ? "value" : "value[" + std::to_string(c) + "]";
+      shader.MainFunctionBody()
+          << "  acc = compensated_add(acc, " << value << ");\n"
+          // Sterbenz's lemma: same-sign values within a factor of two subtract exactly.
+          // Compare halves rather than doubling to avoid overflowing large finite inputs.
+          << "  can_shift = can_shift && ((" << value << " < 0.0) == (first < 0.0)) &&\n"
+          << "              abs(" << value << ") >= 0.5 * abs(first) && 0.5 * abs(" << value << ") <= abs(first);\n"
+          << "  if (can_shift) { shifted_acc = compensated_add(shifted_acc, " << value << " - first); }\n";
+    }
+    shader.MainFunctionBody()
+        << "}\n"
+        << "sum_shared[local_idx] = acc;\n"
+        << "shifted_sum_shared[local_idx] = shifted_acc;\n"
+        << "shiftable_shared[local_idx] = u32(can_shift);\n"
+        << "workgroupBarrier();\n"
+        << "var reduce_size = workgroup_size_x;\n"
+        << "for (var curr_size = reduce_size >> 1; curr_size > 0; curr_size = reduce_size >> 1) {\n"
+        << "  reduce_size = curr_size + (reduce_size & 1);\n"
+        << "  if (local_idx < curr_size) {\n"
+        << "    let other = sum_shared[local_idx + reduce_size];\n"
+        << "    sum_shared[local_idx] = compensated_add(compensated_add(sum_shared[local_idx], other.x), other.y);\n"
+        << "    let shifted_other = shifted_sum_shared[local_idx + reduce_size];\n"
+        << "    shifted_sum_shared[local_idx] = compensated_add(compensated_add(shifted_sum_shared[local_idx],\n"
+        << "                                                               shifted_other.x), shifted_other.y);\n"
+        << "    shiftable_shared[local_idx] &= shiftable_shared[local_idx + reduce_size];\n"
+        << "  }\n"
+        << "  workgroupBarrier();\n"
+        << "}\n"
+        << "let use_shift = shiftable_shared[0] != 0;\n"
+        << "let shift = select(0.0, first, use_shift);\n"
+        << "let total = select(sum_shared[0], shifted_sum_shared[0], use_shift);\n"
+        // Keep the correction through division instead of rounding the sum back to one float first.
+        << "let mean_parts = compensated_add(vec2<f32>(total.x / f32(uniforms.norm_size), 0),\n"
+        << "                                 total.y / f32(uniforms.norm_size));\n"
+        << "let mean = mean_parts.x + mean_parts.y;\n"
+        << "var squares = f32_val_t(0);\n"
+        << "for (var i = local_idx; i < uniforms.norm_size_vectorized; i += workgroup_size_x) {\n"
+        << "  let deviation = f32_val_t(" << x.GetByOffset("row_offset + i") << ") - shift - mean;\n"
+        << "  squares += deviation * deviation;\n"
+        << "}\n"
+        << "variance_shared[local_idx] = " << SumVector("squares", components) << ";\n"
+        << "workgroupBarrier();\n"
+        << "reduce_size = workgroup_size_x;\n"
+        << "for (var curr_size = reduce_size >> 1; curr_size > 0; curr_size = reduce_size >> 1) {\n"
+        << "  reduce_size = curr_size + (reduce_size & 1);\n"
+        << "  if (local_idx < curr_size) {\n"
+        << "    variance_shared[local_idx] += variance_shared[local_idx + reduce_size];\n"
+        << "  }\n"
+        << "  workgroupBarrier();\n"
+        << "}\n"
+        << "let inv_std_dev = inverseSqrt(variance_shared[0] / f32(uniforms.norm_size) + uniforms.epsilon);\n";
+    if (split_norm_dim_) {
+      shader.MainFunctionBody()
+          << "let i = global_idx;\n"
+          << "let output_value = " << output_expression(x.GetByOffset("i"), "i") << ";\n"
+          << y.SetByOffset("i", "output_value") << "\n";
+    } else {
+      shader.MainFunctionBody()
+          << "for (var i = local_idx; i < uniforms.norm_size_vectorized; i += workgroup_size_x) {\n"
+          << "  let output_value = " << output_expression(x.GetByOffset("row_offset + i"), "i") << ";\n"
+          << "  " << y.SetByOffset("row_offset + i", "output_value") << "\n"
+          << "}\n";
+    }
+    if (has_mean_output_ || has_inv_std_dev_output_) {
+      shader.MainFunctionBody() << "if (local_idx == 0" << (split_norm_dim_ ? " && workgroup_idx == 0" : "") << ") {\n";
+      if (has_mean_output_) {
+        shader.MainFunctionBody() << "  " << mean_output->SetByOffset("row", "mean + shift") << "\n";
+      }
+      if (has_inv_std_dev_output_) {
+        shader.MainFunctionBody() << "  " << inv_std_dev_output->SetByOffset("row", "inv_std_dev") << "\n";
+      }
+      shader.MainFunctionBody() << "}\n";
+    }
+    return Status::OK();
+  }
 
   if (split_norm_dim_) {
     shader.AdditionalImplementation()
@@ -53,7 +181,7 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "  var cur_input = x_value_t(0);\n"
         << "  for (var i: u32 = 0; i < uniforms.norm_size / (workgroup_size_x * 4); i++) {\n"
         << "    let input_offset = i * workgroup_size_x + local_idx;\n"
-        << "    let input_value = x[input_offset];\n"
+        << "    let input_value = " << x.GetByOffset("input_offset") << ";\n"
         << "    if (i == workgroup_idx) {\n"
         << "      cur_input = input_value;\n"
         << "    }\n"
@@ -76,24 +204,22 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "    workgroupBarrier();\n"
         << "  }\n"
         << "  let mean = sum_shared[0] / f32(uniforms.norm_size);\n"
-        << "  let inv_std_dev = inverseSqrt(sum_squared_shared[0] / f32(uniforms.norm_size) " << simpl1 << "+ uniforms.epsilon);\n"
+        << "  let inv_std_dev = inverseSqrt(sum_squared_shared[0] / f32(uniforms.norm_size) + uniforms.epsilon);\n"
         << "  let offset = workgroup_idx * workgroup_size_x + local_idx;\n"
-        << "  y[offset] = ((cur_input " << simpl2 << ") * x_element_t(inv_std_dev) * scale[offset]" << (has_bias_ ? " + bias[offset] " : "") << ");\n";
+        << "  let output_value = " << output_expression("cur_input", "offset") << ";\n"
+        << "  " << y.SetByOffset("offset", "output_value") << "\n";
 
     if (has_mean_output_) {
       shader.MainFunctionBody() << "  if (local_idx == 0 && workgroup_idx == 0) {\n"
-                                << "    mean_output[global_idx / uniforms.norm_size] = mean;\n"
+                                << "    " << mean_output->SetByOffset("global_idx / uniforms.norm_size", "mean") << "\n"
                                 << "  }\n";
     }
     if (has_inv_std_dev_output_) {
       shader.MainFunctionBody() << "  if (local_idx == 0 && workgroup_idx == 0) {\n"
-                                << "    inv_std_dev_output[global_idx / uniforms.norm_size] = inv_std_dev;\n"
+                                << "    " << inv_std_dev_output->SetByOffset("global_idx / uniforms.norm_size", "inv_std_dev") << "\n"
                                 << "  }\n";
     }
   } else {
-    int components = x.NumComponents();
-    std::string bias = (has_bias_) ? " + bias[offset1d + i] " : "";
-
     shader.AdditionalImplementation()
         << "alias f32_val_t = " << (components == 4 ? "vec4<f32>" : (components == 2 ? "vec2<f32>" : "f32")) << ";\n"
         << "var<workgroup> sum_shared : array<f32_val_t, workgroup_size_x>;\n"
@@ -101,7 +227,8 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
     shader.MainFunctionBody()
         << "let ix = local_idx;\n"
-        << "let iy = global_idx / workgroup_size_x;\n"
+        << "let iy = workgroup_idx;\n"
+        << (fp32_normalization_ ? "if (iy >= uniforms.norm_count) { return; }\n" : "")
         << "let norm_size_vectorized: u32 = uniforms.norm_size / uniforms.components;\n"
         << "var stride = norm_size_vectorized / workgroup_size_x;\n"
         << "let offset = ix * stride + iy * norm_size_vectorized;\n"
@@ -112,8 +239,7 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << " stride = norm_size_vectorized - stride * ix;\n"
         << "}\n"
         << "for (var i: u32 = 0; i < stride; i++) {\n"
-        << " let input_value = x[offset + i];\n"
-        << " y[offset + i] = input_value;\n"
+        << " let input_value = " << x.GetByOffset("offset + i") << ";\n"
         << " let f32_value = f32_val_t(input_value);\n"
         << " sum_shared[ix] += f32_value;\n"
         << " sum_squared_shared[ix] += f32_value * f32_value;\n"
@@ -131,19 +257,20 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "let sum = sum_shared[0];\n"
         << "let square_sum = sum_squared_shared[0];\n"
         << "let mean = " << SumVector("sum", components) << " / f32(uniforms.norm_size);\n"
-        << "let inv_std_dev = inverseSqrt(" << SumVector("square_sum", components) << " / f32(uniforms.norm_size) " << simpl1 << "+ uniforms.epsilon);\n"
+        << "let inv_std_dev = inverseSqrt(" << SumVector("square_sum", components) << " / f32(uniforms.norm_size) + uniforms.epsilon);\n"
         << "for (var i: u32 = 0; i < stride; i++) {\n"
-        << " y[offset + i] = (y[offset + i] " << simpl2 << ") * x_element_t(inv_std_dev) * scale[offset1d + i]" << bias << ";\n"
+        << " let output_value = " << output_expression(x.GetByOffset("offset + i"), "offset1d + i") << ";\n"
+        << " " << y.SetByOffset("offset + i", "output_value") << "\n"
         << "};\n";
 
     if (has_mean_output_) {
       shader.MainFunctionBody() << "if (ix == 0) {\n"
-                                << "  mean_output[iy] = mean;\n"
+                                << "  " << mean_output->SetByOffset("iy", "mean") << "\n"
                                 << "}\n";
     }
     if (has_inv_std_dev_output_) {
       shader.MainFunctionBody() << "if (ix == 0) {\n"
-                                << "  inv_std_dev_output[iy] = inv_std_dev;\n"
+                                << "  " << inv_std_dev_output->SetByOffset("iy", "inv_std_dev") << "\n"
                                 << "}\n";
     }
   }
@@ -200,7 +327,8 @@ Status RunLayerNormProgram(ComputeContext& context,
                            bool simplified,
                            Tensor* y,
                            Tensor* mean,
-                           Tensor* inv_std_dev) {
+                           Tensor* inv_std_dev,
+                           bool fp32_normalization) {
   if (x->Shape().Size() == 0) {
     return Status::OK();
   }
@@ -210,13 +338,15 @@ Status RunLayerNormProgram(ComputeContext& context,
   // Check if we should use split norm dimension optimization
   const bool split_norm_dim = norm_size % 512 == 0 && norm_count == 1;
 
-  LayerNormProgram program{bias != nullptr, simplified, mean != nullptr, inv_std_dev != nullptr, split_norm_dim};
+  LayerNormProgram program{bias != nullptr, simplified, mean != nullptr, inv_std_dev != nullptr,
+                           split_norm_dim, fp32_normalization};
 
-  program.CacheHint(components, simplified, split_norm_dim)
+  // Output count alone cannot distinguish mean-only from inverse-standard-deviation-only.
+  program.CacheHint(components, simplified, split_norm_dim, fp32_normalization, mean != nullptr)
       .AddInputs({{x, ProgramTensorMetadataDependency::Type, GetOverrideShape(x->Shape(), components), components}})
       .AddInputs(
           {{scale, ProgramTensorMetadataDependency::Type, GetOverrideShape(scale->Shape(), components), components}})
-      .AddOutputs({{y, ProgramTensorMetadataDependency::None, GetOverrideShape(y->Shape(), components), components}})
+      .AddOutputs({{y, ProgramTensorMetadataDependency::Type, GetOverrideShape(y->Shape(), components), components}})
       .AddUniformVariables({
           {static_cast<uint32_t>(components)},
       })

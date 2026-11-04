@@ -110,9 +110,9 @@ struct ArenaConfig {
 
     if (value = api.GetKeyValue(&kvps, ConfigKeyNames::ArenaExtendStrategy); value) {
       const std::string sval(value);
-      if (sval == "0") {
+      if (sval == "0" || sval == "kNextPowerOfTwo") {
         config.arena_extend_strategy = kNextPowerOfTwo;
-      } else if (sval == "1") {
+      } else if (sval == "1" || sval == "kSameAsRequested") {
         config.arena_extend_strategy = kSameAsRequested;
       } else {
         config.arena_extend_strategy = static_cast<ArenaExtendStrategy>(-2);  // invalid — will fail IsValid()
@@ -261,6 +261,15 @@ class ArenaImpl {
   // Called from OrtSyncStreamImpl::OnSessionRunEnd.
   OrtStatus* ResetChunksUsingStream(const OrtSyncStreamImpl* stream_impl);
 
+  // Permanently exclude chunks associated with a stream whose completion is unknown.
+  OrtStatus* QuarantineChunksUsingStream(const OrtSyncStreamImpl* stream_impl, bool& quarantined);
+
+  void Abandon();
+
+  bool IsShrinkEnabled() const noexcept {
+    return shrink_enabled_.load(std::memory_order_acquire);
+  }
+
  private:
   void* AllocateRawInternal(size_t num_bytes, OrtSyncStream* stream, bool dump_log_on_failure);
   void DeallocateRawInternal(void* ptr);
@@ -282,6 +291,7 @@ class ArenaImpl {
     BinNum bin_num = kInvalidBinNum;
     OrtSyncStream* stream = nullptr;
     uint64_t stream_sync_id = 0;
+    bool quarantined = false;
 
     bool in_use() const { return allocation_id != -1; }
 
@@ -459,8 +469,6 @@ class ArenaImpl {
   void FreeAndMaybeCoalesce(ChunkHandle h);
   ChunkHandle Coalesce(ChunkHandle h);
   void InsertFreeChunkIntoBin(ChunkHandle h);
-  void RemoveFreeChunkIterFromBin(Bin::FreeChunkSet* free_chunks,
-                                  const Bin::FreeChunkSet::iterator& c);
   void RemoveFreeChunkFromBin(ChunkHandle h);
   Chunk* SplitFreeChunkFromBin(Bin::FreeChunkSet* free_chunks,
                                const Bin::FreeChunkSet::iterator& citer,
@@ -534,6 +542,7 @@ class ArenaImpl {
   alignas(Bin) char bins_space_[sizeof(Bin) * kNumBins];
 
   mutable std::mutex lock_;
+  bool abandoned_ = false;
 
   AllocatorUniquePtr device_allocator_;
   const std::string allocator_name_;
@@ -552,6 +561,7 @@ class ArenaImpl {
   std::unordered_map<const OrtSyncStreamImpl*, const OrtSyncStream*> impl_to_stream_;
 
   AllocatorStats stats_{};
+  std::atomic<bool> shrink_enabled_{false};
 
   const OrtApi& api_;
   const OrtEpApi& ep_api_;
@@ -604,6 +614,35 @@ class CudaArenaAllocator final : public CudaAllocatorBase {
                                        "CudaArenaAllocator::ResetChunksUsingStream failed with an unknown exception.");
     }
     return err;  // required for ORT_NO_EXCEPTIONS
+  }
+
+  OrtStatus* QuarantineChunksUsingStream(const OrtSyncStreamImpl* stream_impl, bool& quarantined) {
+    OrtStatus* err = nullptr;
+    ORT_TRY {
+      err = impl_->QuarantineChunksUsingStream(stream_impl, quarantined);
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        err = Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+      });
+    }
+    ORT_CATCH(...) {
+      err = Ort::GetApi().CreateStatus(ORT_RUNTIME_EXCEPTION,
+                                       "CudaArenaAllocator::QuarantineChunksUsingStream failed with an unknown exception.");
+    }
+    return err;
+  }
+
+  void Abandon() noexcept {
+    ORT_TRY {
+      impl_->Abandon();
+    }
+    ORT_CATCH(...) {
+    }
+  }
+
+  bool IsShrinkEnabled() const noexcept {
+    return impl_->IsShrinkEnabled();
   }
 
  private:

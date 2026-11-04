@@ -90,11 +90,11 @@ std::vector<char*> CStringsFromStrings(std::vector<std::string>& utf8_args) {
   return utf8_argv;
 }
 
-void AppendPluginExecutionProviders(Ort::Env& env,
-                                    Ort::SessionOptions& session_options,
-                                    const PerformanceTestConfig& test_config) {
+std::vector<Ort::ConstEpDevice> AppendPluginExecutionProviders(Ort::Env& env,
+                                                               Ort::SessionOptions& session_options,
+                                                               const PerformanceTestConfig& test_config) {
   if (test_config.registered_plugin_eps.empty()) {
-    return;
+    return {};
   }
 
   std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
@@ -193,30 +193,47 @@ void AppendPluginExecutionProviders(Ort::Env& env,
     ep_options_map.emplace(ep_list[i], ep_options_list[i]);
   }
 
+  std::vector<Ort::ConstEpDevice> selected_ep_devices;
   for (auto& ep_and_devices : added_ep_devices) {
     auto& ep = ep_and_devices.first;
     auto& devices = ep_and_devices.second;
     session_options.AppendExecutionProvider_V2(env, devices, ep_options_map[ep]);
+    selected_ep_devices.insert(selected_ep_devices.end(), devices.begin(), devices.end());
   }
+
+  return selected_ep_devices;
 }
 
-bool UsesNvidiaDevice(Ort::Env& env, const PerformanceTestConfig& test_config) {
-  const auto ep_devices = env.GetEpDevices();
-  const auto& plugin_eps = test_config.machine_config.plugin_provider_type_list;
+std::optional<PluginEpAllocatorSelection> GetPluginEpAllocator(Ort::Env& env,
+                                                               const std::vector<Ort::ConstEpDevice>& ep_devices) {
+  // More than one device appended means no single unambiguous allocator to pick.
+  if (ep_devices.size() != 1) {
+    fprintf(stdout, "[Plugin EP] %d EP devices appended. Using the CPU allocator.\n",
+            static_cast<int>(ep_devices.size()));
+    return std::nullopt;
+  }
 
-  const bool uses_nvidia_device = std::any_of(ep_devices.begin(), ep_devices.end(),
-                                              [&plugin_eps](const Ort::ConstEpDevice& ep_device) {
-                                                const std::string ep_name(ep_device.EpName());
-                                                if (std::find(plugin_eps.begin(), plugin_eps.end(), ep_name) == plugin_eps.end()) {
-                                                  return false;
-                                                }
+  const Ort::ConstEpDevice& ep_device = ep_devices[0];
 
-                                                const auto hardware_device = ep_device.Device();
-                                                return hardware_device.Type() == OrtDevice::GPU &&
-                                                       hardware_device.VendorId() == OrtDevice::VendorIds::NVIDIA;
-                                              });
+  Ort::ConstMemoryInfo default_mem_info = ep_device.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+  if (default_mem_info) {
+    Ort::UnownedAllocator allocator = env.GetSharedAllocator(default_mem_info);
+    if (allocator) {
+      fprintf(stdout, "[Plugin EP] Using the default allocator.\n");
+      return PluginEpAllocatorSelection{allocator, /*is_host_accessible*/ false};
+    }
+  }
 
-  return uses_nvidia_device;
+  Ort::ConstMemoryInfo host_accessible_mem_info = ep_device.GetMemoryInfo(OrtDeviceMemoryType_HOST_ACCESSIBLE);
+  if (host_accessible_mem_info) {
+    Ort::UnownedAllocator allocator = env.GetSharedAllocator(host_accessible_mem_info);
+    if (allocator) {
+      fprintf(stdout, "[Plugin EP] Using the host accessible allocator.\n");
+      return PluginEpAllocatorSelection{allocator, /*is_host_accessible*/ true};
+    }
+  }
+
+  return std::nullopt;
 }
 
 }  // namespace utils

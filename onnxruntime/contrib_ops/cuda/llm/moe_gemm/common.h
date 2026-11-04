@@ -41,9 +41,9 @@ struct ActivationParams {
   ActivationType activation_type = ActivationType::Identity;
 
   // Per-expert arrays (TRT-LLM style) - nullptr means use scalar defaults
-  float const* swiglu_alpha = nullptr;  // Per-expert scaling for gate
-  float const* swiglu_beta = nullptr;   // Per-expert bias for linear
-  float const* swiglu_limit = nullptr;  // Per-expert activation clamping
+  const float* swiglu_alpha = nullptr;  // Per-expert scaling for gate
+  const float* swiglu_beta = nullptr;   // Per-expert bias for linear
+  const float* swiglu_limit = nullptr;  // Per-expert activation clamping
 
   // Scalar defaults for backward compatibility with existing kernels
   float alpha = 1.0f;
@@ -58,7 +58,7 @@ struct ActivationParams {
   }
 
   // Constructor for per-expert arrays (TRT-LLM style)
-  ActivationParams(ActivationType type, float const* per_expert_alpha, float const* per_expert_beta, float const* per_expert_limit)
+  ActivationParams(ActivationType type, const float* per_expert_alpha, const float* per_expert_beta, const float* per_expert_limit)
       : activation_type(type), swiglu_alpha(per_expert_alpha), swiglu_beta(per_expert_beta), swiglu_limit(per_expert_limit) {
   }
 

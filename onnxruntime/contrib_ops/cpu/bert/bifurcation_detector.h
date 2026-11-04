@@ -24,6 +24,23 @@ class BifurcationDetector : public OpKernel {
     const Tensor* cur_tokens = context->Input<Tensor>(1);
     const Tensor* prev_suffix_match_idx = context->Input<Tensor>(2);
     const Tensor* pred_tokens = context->Input<Tensor>(3);
+
+    // src_tokens/cur_tokens/pred_tokens are treated as flat 1-D token sequences below (both their
+    // length, via Shape().GetDims()[0], and their backing buffer, via linear DataRaw() indexing).
+    // Requiring rank == 1 guards GetDims()[0] against a 0-D (scalar) shape, whose dims are empty, and
+    // also ensures the reported length always equals the tensor's total element count (a higher-rank
+    // shape could otherwise have a non-empty leading dimension while some other dimension is 0, making
+    // the tensor's data buffer empty even though GetDims()[0] is non-zero).
+    ORT_RETURN_IF_NOT(src_tokens->Shape().NumDimensions() == 1, "src_tokens must be a 1-D tensor");
+    ORT_RETURN_IF_NOT(cur_tokens->Shape().NumDimensions() == 1, "cur_tokens must be a 1-D tensor");
+    // prev_suffix_match_idx (and, by construction below, the suffix_match_idx output that mirrors its
+    // shape) holds a single index value; element [0] is read and/or written unconditionally.
+    ORT_RETURN_IF_NOT(prev_suffix_match_idx->Shape().Size() == 1,
+                      "prev_suffix_match_idx must contain exactly one element");
+    if (pred_tokens != nullptr) {
+      ORT_RETURN_IF_NOT(pred_tokens->Shape().NumDimensions() == 1, "pred_tokens must be a 1-D tensor");
+    }
+
     const auto* src_tokens_data = static_cast<const int64_t*>(src_tokens->DataRaw());
     const auto* cur_tokens_data = static_cast<const int64_t*>(cur_tokens->DataRaw());
     int64_t src_tokens_len = src_tokens->Shape().GetDims()[0];

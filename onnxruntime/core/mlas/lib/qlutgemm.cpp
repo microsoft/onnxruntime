@@ -454,7 +454,7 @@ MlasLutGemm(
      *
      * Currently, we only support FP32, add FP16 support later which requires conversion buffer
      *
-     * LUT Buffer for FP32 : K * M * 4 * sizeof(uint8_t) bytes + lut_scale_size * m * 2 * sizeof(float) bytes  + allignment
+     * LUT Buffer for FP32 : K * M * 4 * sizeof(uint8_t) bytes + lut_scale_size * m * 2 * sizeof(float) bytes  + alignment
      *
      */
 
@@ -472,7 +472,7 @@ MlasLutGemm(
 
     // make buffer of lut_buffer_size bytes
     // TODO(vraspar): other way to do it
-    auto lut_buffer = std::make_unique<int8_t[]>(lut_buffer_size);
+    auto lut_buffer = std::make_unique_for_overwrite<int8_t[]>(lut_buffer_size);
     memset(lut_buffer.get(), 0, lut_buffer_size);
 
     int8_t* qlut = reinterpret_cast<int8_t*>(lut_buffer.get());

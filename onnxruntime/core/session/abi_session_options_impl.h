@@ -25,6 +25,9 @@ struct OrtSessionOptions {
 
   const onnxruntime::ConfigOptions& GetConfigOptions() const noexcept;
 
+  void GetEpContextDataCallbacks(_Out_ OrtReadNamedBufferFunc* read_func, _Out_ void** read_state,
+                                 _Out_ OrtWriteNamedBufferFunc* write_func, _Out_ void** write_state) const noexcept;
+
   // Adds the given provider options to the session config options using an EP-specific key prefix.
   // Most EPs use "ep.<lowercase_provider_name>.<PROVIDER_OPTION_KEY>".
   onnxruntime::Status AddProviderOptionsToConfigOptions(
@@ -39,4 +42,9 @@ struct OrtSessionOptions {
   //      with GetProviderOptionPrefix returning 'ep.myep.'
   // CUDAExecutionProvider uses the stable short prefix 'ep.cuda.'.
   static std::string GetProviderOptionPrefix(const char* provider_name);
+
+  // Weightless source model buffer for EPContext sessions.
+  // Set via SessionOptionsSetWeightlessSourceModelBuffer.
+  const void* weightless_source_model_data = nullptr;
+  size_t weightless_source_model_data_size = 0;
 };

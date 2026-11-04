@@ -39,6 +39,11 @@ stages:
         DockerBuildArgs: " --build-arg BUILD_UID=$( id -u )"
         Repository: onnxruntimecuda${{ variables.CUDA_VERSION_MAJOR }}build
 
+    - template: ../templates/setup-vcpkg-cache.yml
+      parameters:
+        # 1ES sets System.JobName to __default for both jobs in this stage.
+        key: '$(System.StageName)-Linux_C_API_Packaging_CUDA'
+
     - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_c_api_package.sh
       workingDirectory: $(Build.SourcesDirectory)
       displayName: 'Build CUDA C API Package'
@@ -84,9 +89,7 @@ stages:
       ${{ if eq(parameters.CudaVersion, '12.8') }}:
         value: ${{ variables.linux_trt_version_cuda12 }}
     steps:
-    - checkout: self
-      clean: true
-      submodules: recursive
+    - template: ../templates/jobs/checkout-and-git-redirect.yml
     - template: ../templates/setup-feeds-and-python-steps.yml
     - template: ../templates/get-docker-image-steps.yml
       parameters:
@@ -95,9 +98,14 @@ stages:
         DockerBuildArgs: "
           --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
           --build-arg BUILD_UID=$( id -u )
+          --secret id=PIP_INDEX_URL
           "
         Repository: onnxruntimecuda${{ variables.CUDA_VERSION_MAJOR }}xtrt86build
     - template: ../templates/set-version-number-variables-step.yml
+
+    - template: ../templates/setup-vcpkg-cache.yml
+      parameters:
+        key: '$(System.StageName)-Linux_C_API_Packaging_TensorRT'
 
     - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_tensorrt_c_api_package.sh
       workingDirectory: $(Build.SourcesDirectory)
@@ -145,9 +153,8 @@ stages:
       ${{ if eq(parameters.CudaVersion, '12.8') }}:
         value: ${{ variables.linux_trt_version_cuda12 }}
     steps:
-    - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
-      submodules: false
-    - checkout: onnxruntime-inference-examples # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
+    - template: ../templates/jobs/checkout-and-git-redirect.yml # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
+    - checkout: onnxruntime-inference-examples                  # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
       submodules: false
 
     - script: |

@@ -3,9 +3,10 @@
 
 #pragma once
 
+#include <cstdint>
 #include <functional>
-#include <string>
 #include <filesystem>
+#include <string>
 
 namespace ONNX_NAMESPACE {
 class TensorProto;
@@ -21,6 +22,23 @@ namespace QDQ {
 
 constexpr const char* QOpName = "QuantizeLinear";
 constexpr const char* DQOpName = "DequantizeLinear";
+
+constexpr int64_t kMatMulNBitsMinBlockSize = 16;
+constexpr int64_t kMatMulNBitsMaxBlockSize = 256;
+
+constexpr bool IsValidMatMulNBitsBlockSize(int64_t block_size) {
+  return block_size >= kMatMulNBitsMinBlockSize &&
+         block_size <= kMatMulNBitsMaxBlockSize &&
+         (block_size & (block_size - 1)) == 0;
+}
+
+// Authored blockwise DQ block sizes above kMatMulNBitsMaxBlockSize are only fused for the CPU EP, whose
+// MatMulNBits kernel executes them as kMatMulNBitsMaxBlockSize sub-blocks. 2-bit weights are excluded.
+constexpr bool IsValidCpuLargeMatMulNBitsBlockSize(int64_t block_size, int64_t bits) {
+  return block_size > kMatMulNBitsMaxBlockSize &&
+         (block_size & (block_size - 1)) == 0 &&
+         (bits == 4 || bits == 8);
+}
 
 enum InputIndex : int {
   INPUT_ID = 0,

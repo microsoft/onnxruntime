@@ -1,1 +1,4 @@
 *.patch text eol=lf
+
+# cpuinfo contains both LF and CRLF source files, so this patch must preserve both.
+cpuinfo/enable_deinit_refcounting.patch -text

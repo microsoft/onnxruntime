@@ -82,7 +82,7 @@
   <ItemGroup>
     <ProjectReference Include="$(OnnxRuntimeCSharpRoot)\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj" />
     <PackageReference Include="CommandLineParser" Version="2.9.1" />
-    <PackageReference Include="Google.Protobuf" Version="3.21.12" /> <!-- match version ORT native build uses -->
+    <PackageReference Include="Google.Protobuf" Version="3.33.6" /> <!-- match version ORT native build uses -->
   </ItemGroup>
 
   <!-- create OnnxMl.cs and add to project -->

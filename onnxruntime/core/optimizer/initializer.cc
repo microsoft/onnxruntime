@@ -72,10 +72,6 @@ Initializer::Initializer(const Graph& graph, const ONNX_NAMESPACE::TensorProto& 
       data_ = GetTensor(ort_value_);
       return;
     }
-#if !defined(__wasm__)
-    ORT_ENFORCE(!model_path.empty(),
-                "model_path must not be empty. Ensure that a path is provided when the model is created or loaded.");
-#endif
   }
 
   Tensor tensor;
@@ -498,8 +494,9 @@ struct ScaleByAxis {
 
 void Initializer::scale_by_axis(const Initializer& scalers, int axis, bool column_major) {
   ORT_ENFORCE(axis >= 0, "Axis must be non-negative");
-  const size_t block_size = narrow<size_t>(data_->Shape().SizeFromDimension(gsl::narrow_cast<size_t>(axis)));
-  const size_t num_blocks = size() / block_size;
+  const auto axis_value = gsl::narrow_cast<size_t>(axis);
+  const size_t block_size = narrow<size_t>(data_->Shape().SizeFromDimension(axis_value));
+  const size_t num_blocks = narrow<size_t>(data_->Shape().SizeToDimension(axis_value));
   ORT_ENFORCE(scalers.size() == 1 ||
                   (column_major ? scalers.size() == block_size : scalers.size() == num_blocks),
               "Invalid other(scalers) size");

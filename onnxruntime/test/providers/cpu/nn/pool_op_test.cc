@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "core/providers/cpu/nn/pool.h"
 #include "default_providers.h"
 #include "gtest/gtest.h"
@@ -201,6 +203,78 @@ static void MaxPool_8_WithIndexTest(bool has_index, int64_t storage_order = 0) {
             kOpenVINOExecutionProvider, kWebGpuExecutionProvider, kDmlExecutionProvider});
 }
 
+// Pooling never mixes channels, so an NHWC implementation may carry several channels per thread
+// through the same window arithmetic when the channel count divides evenly. These cover a channel
+// count that is a multiple of four and one that is only a multiple of two, for both pool kinds -
+// AveragePool separately because its divisor has to be applied per channel as well.
+TEST(PoolTest, MaxPool_ChannelCountFourAligned) {
+  OpTester test("MaxPool");
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  test.AddInput<float>("X", {1, 4, 2, 2},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        5.0f, 6.0f, 7.0f, 8.0f,
+                        9.0f, 10.0f, 11.0f, 12.0f,
+                        13.0f, 14.0f, 15.0f, 16.0f});
+  test.AddOutput<float>("Y", {1, 4, 1, 1}, {4.0f, 8.0f, 12.0f, 16.0f});
+  test.Run();
+}
+
+TEST(PoolTest, MaxPool_ChannelCountTwoAligned) {
+  OpTester test("MaxPool");
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  test.AddInput<float>("X", {1, 6, 2, 2},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        5.0f, 6.0f, 7.0f, 8.0f,
+                        9.0f, 10.0f, 11.0f, 12.0f,
+                        13.0f, 14.0f, 15.0f, 16.0f,
+                        17.0f, 18.0f, 19.0f, 20.0f,
+                        21.0f, 22.0f, 23.0f, 24.0f});
+  test.AddOutput<float>("Y", {1, 6, 1, 1}, {4.0f, 8.0f, 12.0f, 16.0f, 20.0f, 24.0f});
+  test.Run();
+}
+
+TEST(PoolTest, AveragePool_ChannelCountFourAligned) {
+  OpTester test("AveragePool");
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  test.AddInput<float>("X", {1, 4, 2, 2},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        5.0f, 6.0f, 7.0f, 8.0f,
+                        9.0f, 10.0f, 11.0f, 12.0f,
+                        13.0f, 14.0f, 15.0f, 16.0f});
+  test.AddOutput<float>("Y", {1, 4, 1, 1}, {2.5f, 6.5f, 10.5f, 14.5f});
+  test.Run();
+}
+
+TEST(PoolTest, AveragePool_ChannelCountTwoAligned) {
+  OpTester test("AveragePool");
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  test.AddInput<float>("X", {1, 6, 2, 2},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        5.0f, 6.0f, 7.0f, 8.0f,
+                        9.0f, 10.0f, 11.0f, 12.0f,
+                        13.0f, 14.0f, 15.0f, 16.0f,
+                        17.0f, 18.0f, 19.0f, 20.0f,
+                        21.0f, 22.0f, 23.0f, 24.0f});
+  test.AddOutput<float>("Y", {1, 6, 1, 1}, {2.5f, 6.5f, 10.5f, 14.5f, 18.5f, 22.5f});
+  test.Run();
+}
+
 TEST(PoolTest, MaxPool_8_With_Index) {
   MaxPool_8_WithIndexTest(false);                      // row major
   MaxPool_8_WithIndexTest(true, 0 /*storage_order*/);  // row major
@@ -344,6 +418,62 @@ TEST(PoolTest, MaxPool1D_12_With_Index_8bits) {
   MaxPool1D_12_WithIndexTest_uint8(1 /*storage_order*/);
 }
 
+// Regression test: every VALID window equals the type's lowest value (uint8_t all-zero,
+// int8_t all -128). The CUDA kernel seeds maxval with NumericLimits<T>::Lowest() and used a
+// strict '>' comparison, so it never recorded a max-index for such windows and incorrectly
+// emitted Indices = -1 even though the window is not empty. CPU is used here as the oracle
+// (expected_indices = {0, 2}); the buggy CUDA kernel would produce {-1, -1} instead.
+static void MaxPool1D_12_WithIndexTest_int8_LowestValue(int64_t storage_order) {
+  OpTester test("MaxPool", 12);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+  test.AddAttribute("storage_order", storage_order);
+
+  std::vector<int8_t> x_vals = {-128, -128, -128, -128};
+  std::vector<int64_t> x_dims = {1, 1, 4};
+  std::vector<int64_t> expected_dims = {1, 1, 2};
+  std::vector<int8_t> expected_vals = {-128, -128};
+  std::vector<int64_t> expected_indices = {0, 2};
+
+  test.AddInput<int8_t>("X", x_dims, x_vals);
+  test.AddOutput<int8_t>("Y", expected_dims, expected_vals);
+  test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+static void MaxPool1D_12_WithIndexTest_uint8_LowestValue(int64_t storage_order) {
+  OpTester test("MaxPool", 12);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+  test.AddAttribute("storage_order", storage_order);
+
+  std::vector<uint8_t> x_vals = {0, 0, 0, 0};
+  std::vector<int64_t> x_dims = {1, 1, 4};
+  std::vector<int64_t> expected_dims = {1, 1, 2};
+  std::vector<uint8_t> expected_vals = {0, 0};
+  std::vector<int64_t> expected_indices = {0, 2};
+
+  test.AddInput<uint8_t>("X", x_dims, x_vals);
+  test.AddOutput<uint8_t>("Y", expected_dims, expected_vals);
+  test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(PoolTest, MaxPool1D_12_With_Index_8bits_LowestValue) {
+  MaxPool1D_12_WithIndexTest_int8_LowestValue(0 /*storage_order*/);
+  MaxPool1D_12_WithIndexTest_int8_LowestValue(1 /*storage_order*/);
+  MaxPool1D_12_WithIndexTest_uint8_LowestValue(0 /*storage_order*/);
+  MaxPool1D_12_WithIndexTest_uint8_LowestValue(1 /*storage_order*/);
+}
+
 // Used by MaxPool2D_uint8
 template <typename InputIter>
 void print_vector(std::ostream& os, const std::string& txt, InputIter begin, InputIter end) {
@@ -478,8 +608,7 @@ TEST(PoolTest, MaxPool_10_DilationPadding_1d) {
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   // TODO: Re-enable DML when fixed #41968513
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider,
-            kDmlExecutionProvider});
+           {kTensorrtExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_10_Dilation_2d) {
@@ -555,7 +684,93 @@ TEST(PoolTest, MaxPool_10_DilationPadding_2d) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
+           {kTensorrtExecutionProvider});
+}
+
+// Regression test for a CUDA MaxPool bug where dilation > 1 combined with a non-zero begin
+// (head) pad produced wrong values and indices because the negative window start was clamped
+// to 0 without preserving the dilation phase. CPU is the oracle and the CUDA leg now runs too
+// (it is intentionally not excluded below).
+TEST(PoolTest, MaxPool_DilationPadding_1d_Indices) {
+  OpTester test("MaxPool", 12);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1});
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+  test.AddAttribute("dilations", std::vector<int64_t>{2});
+
+  std::vector<float> x_vals = {1, 9, 2, 8, 3, 7, 4, 6, 5};
+  std::vector<int64_t> x_dims = {1, 1, 9};
+  std::vector<int64_t> expected_dims = {1, 1, 9};
+  std::vector<float> expected_vals = {9, 2, 9, 3, 8, 4, 7, 5, 6};
+  std::vector<int64_t> expected_indices = {1, 2, 1, 4, 3, 6, 5, 8, 7};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kDmlExecutionProvider, kOpenVINOExecutionProvider,
+            kAclExecutionProvider, kWebGpuExecutionProvider});
+}
+
+TEST(PoolTest, MaxPool_DilationPadding_2d_Indices) {
+  OpTester test("MaxPool", 12);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", std::vector<int64_t>{2, 2});
+
+  std::vector<float> x_vals = {
+      1, 9, 2, 8, 3,
+      7, 4, 6, 5, 10,
+      15, 11, 14, 12, 13,
+      20, 16, 19, 17, 18};
+  std::vector<int64_t> x_dims = {1, 1, 4, 5};
+  std::vector<int64_t> expected_dims = {1, 1, 4, 5};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims,
+                        {4, 7, 5, 10, 5,
+                         11, 15, 12, 14, 12,
+                         16, 20, 17, 19, 17,
+                         11, 15, 12, 14, 12});
+  test.AddOutput<int64_t>("Indices", expected_dims,
+                          {6, 5, 8, 9, 8,
+                           11, 10, 13, 12, 13,
+                           16, 15, 18, 17, 18,
+                           11, 10, 13, 12, 13});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kDmlExecutionProvider, kOpenVINOExecutionProvider,
+            kAclExecutionProvider, kWebGpuExecutionProvider});
+}
+
+// Empty-window regression test: with dilation > 1 and begin padding, a window can have no valid
+// tap (all dilated taps land in the padding). The CUDA kernel must not read out of bounds and must
+// emit the type's lowest value and a -1 index, matching the CPU/ONNX reference.
+TEST(PoolTest, MaxPool_DilationPadding_1d_EmptyWindow) {
+  OpTester test("MaxPool", 12);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1});
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+  test.AddAttribute("dilations", std::vector<int64_t>{2});
+
+  std::vector<float> x_vals = {42};
+  std::vector<int64_t> x_dims = {1, 1, 1};
+  std::vector<int64_t> expected_dims = {1, 1, 1};
+  std::vector<float> expected_vals = {std::numeric_limits<float>::lowest()};
+  std::vector<int64_t> expected_indices = {-1};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kDmlExecutionProvider, kOpenVINOExecutionProvider,
+            kAclExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_10_Dilation_Ceil0_2d) {
@@ -668,7 +883,7 @@ TEST(PoolTest, MaxPool_10_DilationPadding_3d) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
+           {kTensorrtExecutionProvider});
 }
 
 TYPED_TEST(PoolTest, GlobalMaxPool) {
@@ -2308,6 +2523,38 @@ TEST(PoolTest, MaxPoolDimWithZeroForN) {
 // Graph::Resolve() and reach kernel construction where our ORT_ENFORCE checks fire.
 // Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML) that produce
 // different error messages.
+TEST(PoolTest, MaxPool_NegativePad) {
+  OpTester test("MaxPool");
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, -1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{1, 3});
+
+  test.AddInput<float>("X", {1, 1, 1, 4}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Pad values must be non-negative",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+#ifndef ORT_NO_EXCEPTIONS
+TEST(PoolTest, MlasPool_NegativePad) {
+  const int64_t input_shape[] = {1, 1, 1, 4};
+  const int64_t kernel_shape[] = {1, 3};
+  const int64_t pads[] = {0, 0, 0, -1};
+  const int64_t strides[] = {1, 1};
+  const int64_t output_shape[] = {1, 1, 1, 1};
+  const float input[] = {1.0f, 2.0f, 3.0f, 4.0f};
+  float output[1];
+
+  EXPECT_THROW(MlasPool(MlasMaximumPooling, 2, input_shape, kernel_shape, pads, strides,
+                        output_shape, input, output, nullptr),
+               std::invalid_argument);
+}
+#endif
+
 TEST(PoolTest, MaxPool_ZeroStride) {
   OpTester test("MaxPool");
   test.AddShapeToTensorData(false);

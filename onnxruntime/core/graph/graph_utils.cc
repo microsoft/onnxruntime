@@ -8,6 +8,7 @@
 #include "core/common/logging/logging.h"
 
 #include <algorithm>
+#include <array>
 #include <limits>
 #include <queue>
 #include <string>
@@ -302,6 +303,7 @@ static bool CanUpdateImplicitInputNameInSubgraphs(const Graph& graph,
 
 /** Removes a node with a single incoming node and connects the incoming node with the output node/s.*/
 static bool RemoveNodeWithSingleNodeInSingleUsedOutput(Graph& graph, Node& node) {
+  const NodeIndex node_index = node.Index();
   // Store info for input and output edges.
   std::vector<GraphEdge> output_edges = GraphEdge::GetNodeOutputEdges(node);
 
@@ -321,7 +323,8 @@ static bool RemoveNodeWithSingleNodeInSingleUsedOutput(Graph& graph, Node& node)
     ReplaceDownstreamNodeInput(graph, node, src_idx, incoming_node, input_edge.GetSrcArgIndex());
   }
 
-  graph.RemoveNode(node.Index());
+  graph.RemoveNode(node_index);
+  graph.NotifyNodesRemoved(gsl::span<const NodeIndex>{&node_index, 1});
 
   return true;
 }
@@ -433,6 +436,18 @@ static NodeArg& GetOrCreateNodeArg(Graph& graph, const ONNX_NAMESPACE::TensorPro
   return graph.GetOrCreateNodeArg(new_initializer.name(), &new_type);
 }
 
+static OrtValue GetValidatedInMemoryInitializer(const Graph& graph,
+                                                const ONNX_NAMESPACE::TensorProto& initializer) {
+  OrtValue ort_value;
+  ORT_ENFORCE(graph.GetOrtValueInitializer(initializer.name(), ort_value),
+              "Initializer '", initializer.name(),
+              "' has external data in memory but no cached OrtValue. This is an invalid state.");
+  ORT_ENFORCE(CheckInMemoryDataMatch(initializer, ort_value.Get<Tensor>()),
+              "In-memory data pointer mismatch for initializer: ", initializer.name(),
+              ". This is an invalid state.");
+  return ort_value;
+}
+
 NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
   // sanity check as AddInitializedTensor silently ignores attempts to add a duplicate initializer
   const ONNX_NAMESPACE::TensorProto* existing = nullptr;
@@ -480,20 +495,15 @@ void MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph, con
     if (!dst_graph.GetInitializedTensor(name, existing)) {
       const bool data_in_memory = utils::HasExternalDataInMemory(*initializer);
       if (data_in_memory) {
+        OrtValue ort_value = GetValidatedInMemoryInitializer(src_graph, *initializer);
         if (copy_in_memory_data) {
           ONNX_NAMESPACE::TensorProto tensor_proto;
           ORT_THROW_IF_ERROR(utils::TensorProtoWithExternalDataToTensorProto(*initializer, {}, tensor_proto));
           dst_graph.AddInitializedTensor(tensor_proto);
           GetOrCreateNodeArg(dst_graph, tensor_proto);
         } else {
-          OrtValue ort_value;
-          if (src_graph.GetOrtValueInitializer(name, ort_value)) {
-            // add the initializer to the destination graph
-            ORT_THROW_IF_ERROR(dst_graph.AddInitializedOrtValue(*initializer, ort_value));
-          } else {
-            ORT_THROW("Initializer '", name, "' has external data in memory but no cached OrtValue. ",
-                      "This is an invalid state.");
-          }
+          // add the initializer to the destination graph
+          ORT_THROW_IF_ERROR(dst_graph.AddInitializedOrtValue(*initializer, ort_value));
           GetOrCreateNodeArg(dst_graph, *initializer);
         }
       } else {
@@ -520,6 +530,7 @@ void MakeConstantInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_gr
 Status ConvertInMemoryDataToInline(Graph& graph, const std::string& name) {
   const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
   if (graph.GetInitializedTensor(name, initializer) && utils::HasExternalDataInMemory(*initializer)) {
+    ORT_IGNORE_RETURN_VALUE(GetValidatedInMemoryInitializer(graph, *initializer));
     ONNX_NAMESPACE::TensorProto tensor_proto;
     ORT_THROW_IF_ERROR(utils::TensorProtoWithExternalDataToTensorProto(*initializer, {}, tensor_proto));
     graph.RemoveInitializedTensor(name);
@@ -840,12 +851,14 @@ bool CanReplaceNodeWithInitializer(const Graph& graph, const Node& node, const s
 }
 
 bool ReplaceNodeWithInitializer(Graph& graph, Node& node, NodeArg& replacement) {
+  const NodeIndex node_index = node.Index();
   // We have to remove the output edges before we create replacement ones, so save the current output edge information
   std::vector<GraphEdge> output_edges = GraphEdge::GetNodeOutputEdges(node);
 
   // Remove the output edges of the node and then the node (this will remove any input edges).
   RemoveNodeOutputEdges(graph, node);
-  graph.RemoveNode(node.Index());
+  graph.RemoveNode(node_index);
+  graph.NotifyNodesRemoved(gsl::span<const NodeIndex>{&node_index, 1});
 
   // Re-create the output edges using 'replacement' as the source NodeArg (input) to the destination node/s
   for (auto& output_edge : output_edges) {
@@ -1000,17 +1013,60 @@ void AddNodeInput(Node& target, int target_input_idx, NodeArg& new_input) {
   target.MutableInputArgsCount()[target_input_idx] = 1;
 }
 
+void SetOptionalNodeInput(Graph& graph, Node& target, size_t target_input_idx, NodeArg& new_input) {
+  auto& input_defs = target.MutableInputDefs();
+  auto& input_arg_counts = target.MutableInputArgsCount();
+  ORT_ENFORCE(input_arg_counts.size() > target_input_idx,
+              "Missing input metadata for optional input ", target_input_idx,
+              " of node ", target.Name(), " (", target.OpType(), ").");
+
+  const size_t original_size = input_defs.size();
+  if (original_size <= target_input_idx) {
+    for (size_t index = original_size; index <= target_input_idx; ++index) {
+      ORT_ENFORCE(input_arg_counts[index] == 0,
+                  "Expected omitted optional input ", index,
+                  " of node ", target.Name(), " (", target.OpType(), ").");
+    }
+  } else if (input_defs[target_input_idx] == nullptr || !input_defs[target_input_idx]->Exists()) {
+    ORT_ENFORCE(input_arg_counts[target_input_idx] == 0 || input_arg_counts[target_input_idx] == 1,
+                "Expected omitted optional input ", target_input_idx,
+                " of node ", target.Name(), " (", target.OpType(), ").");
+  }
+
+  graph.SetGraphResolveNeeded().SetGraphProtoSyncNeeded();
+  if (original_size <= target_input_idx) {
+    NodeArg& empty_input = graph.GetOrCreateNodeArg("", nullptr);
+    input_defs.resize(target_input_idx + 1, &empty_input);
+    for (size_t index = original_size; index <= target_input_idx; ++index) {
+      input_arg_counts[index] = 1;
+    }
+  } else if (input_defs[target_input_idx] == nullptr || !input_defs[target_input_idx]->Exists()) {
+    input_arg_counts[target_input_idx] = 1;
+  }
+
+  input_defs[target_input_idx] = &new_input;
+}
+
 void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node) {
+  const std::array<NodeIndex, 2> source_node_indices{first_node.Index(), second_node.Index()};
+
   // move the outputs from second_node to first_node
   RemoveNodeOutputEdges(graph, first_node);
   MoveAllNodeOutputs(graph, second_node, first_node);
 
   // second node now has no output edges and can be removed
   graph.RemoveNode(second_node.Index());
+  graph.NotifyNodeReplacement(source_node_indices, first_node.Index());
 }
 
 void FinalizeNodeFusion(Graph& graph, gsl::span<const std::reference_wrapper<Node>> nodes, Node& replacement_node_start,
                         Node& replacement_node_end) {
+  std::vector<NodeIndex> source_node_indices;
+  source_node_indices.reserve(nodes.size());
+  for (const Node& node : nodes) {
+    source_node_indices.push_back(node.Index());
+  }
+
   MoveAllNodeInputEdges(graph, *nodes.begin(), replacement_node_start);
   MoveAllNodeOutputs(graph, nodes.back(), replacement_node_end);
 
@@ -1018,6 +1074,8 @@ void FinalizeNodeFusion(Graph& graph, gsl::span<const std::reference_wrapper<Nod
     RemoveNodeOutputEdges(graph, node);
     graph.RemoveNode(node.Index());
   }
+
+  graph.NotifyNodeReplacement(source_node_indices, replacement_node_start.Index());
 }
 
 const Node* GetInputNode(const Node& node, int arg_index) {
@@ -1110,9 +1168,11 @@ bool FindPath(Graph& graph, const Node& node, bool is_input_edge, gsl::span<cons
   return true;
 }
 
-bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
+bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node,
+                                      std::vector<NodeIndex>* removed_node_indices) {
   std::queue<NodeIndex> q;
   InlinedHashSet<NodeIndex> removed_nodes;
+  std::vector<NodeIndex> removed_node_indices_local;
 
   NodeIndex start_node_index = start_node.Index();
   q.push(start_node_index);
@@ -1152,12 +1212,20 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
       graph.RemoveNode(cur_node_index);
 
       removed_nodes.insert(cur_node_index);
+      removed_node_indices_local.push_back(cur_node_index);
     }
   }
 
-  if (removed_nodes.size() == 0) {
+  if (removed_node_indices_local.empty()) {
     // Nothing to remove
     return false;
+  }
+
+  if (removed_node_indices != nullptr) {
+    removed_node_indices->insert(removed_node_indices->end(),
+                                 removed_node_indices_local.cbegin(), removed_node_indices_local.cend());
+  } else {
+    graph.NotifyNodesRemoved(removed_node_indices_local);
   }
 
   return true;

@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include "gtest/gtest.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "default_providers.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -73,6 +74,27 @@ void L2Normalization() {
 TEST(LpNormalizationTest, L2Normalization) {
   L2Normalization<float>();
   L2Normalization<double>();
+}
+
+template <typename T>
+void LpNormalizationZeroExtentAxis(int64_t p) {
+  OpTester test("LpNormalization");
+  test.AddAttribute("axis", static_cast<int64_t>(1));
+  test.AddAttribute("p", p);
+  const vector<int64_t> dims = {2, 0, 3};
+  test.AddInput<T>("input", dims, {});
+  test.AddOutput<T>("Y", dims, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(LpNormalizationTest, ZeroExtentAxis) {
+  LpNormalizationZeroExtentAxis<float>(1);
+  LpNormalizationZeroExtentAxis<float>(2);
+  LpNormalizationZeroExtentAxis<double>(1);
+  LpNormalizationZeroExtentAxis<double>(2);
 }
 
 template <typename T>
@@ -278,6 +300,49 @@ TEST(LpNormalizationTest, L1Normalization_FP16) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(cuda_ep));
   test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(LpNormalizationTest, L2Normalization_BFloat16_Opset22) {
+#ifndef USE_CUDA
+  GTEST_SKIP() << "BFloat16 tests are only enabled on CUDA builds";
+#else
+  if (!CudaHasBF16Support()) {
+    GTEST_SKIP() << "CUDA device does not support BFloat16.";
+  }
+
+  OpTester test("LpNormalization", 22);
+  test.AddAttribute("axis", static_cast<int64_t>(-1));
+  test.AddAttribute("p", static_cast<int64_t>(2));
+
+  constexpr int64_t kRows = 2;
+  constexpr int64_t kCols = 8;
+  std::vector<float> input_f = {
+      1.0f, 2.0f, 3.0f, 4.0f, 2.0f, 1.0f, 0.5f, 0.25f,
+      4.0f, 3.0f, 2.0f, 1.0f, 1.0f, 2.0f, 4.0f, 8.0f};
+
+  std::vector<float> expected_f(kRows * kCols);
+  for (int64_t r = 0; r < kRows; ++r) {
+    float sum_sq = 0.0f;
+    for (int64_t c = 0; c < kCols; ++c) {
+      const float v = input_f[r * kCols + c];
+      sum_sq += v * v;
+    }
+    const float norm = std::sqrt(sum_sq);
+    for (int64_t c = 0; c < kCols; ++c) {
+      expected_f[r * kCols + c] = input_f[r * kCols + c] / norm;
+    }
+  }
+
+  const std::vector<int64_t> dims = {kRows, kCols};
+  test.AddInput<BFloat16>("input", dims, FloatsToBFloat16s(input_f));
+  test.AddOutput<BFloat16>("Y", dims, FloatsToBFloat16s(expected_f), false, 0.01f, 0.0f);
+
+  SessionOptions so;
+  ASSERT_TRUE(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1").IsOK());
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+#endif
 }
 
 TEST(LpNormalizationTest, L2Normalization_LastAxis) {

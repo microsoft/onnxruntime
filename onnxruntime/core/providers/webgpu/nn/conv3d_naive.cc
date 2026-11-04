@@ -28,6 +28,7 @@ Status Conv3DNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   // Helper functions to access x and w by 5D indices
   shader.AdditionalImplementation()
+      << GetActivationDeclaration(activation_, "x_value_t", "x_element_t")
       << "fn getX(d0 : u32, d1 : u32, d2 : u32, d3 : u32, d4 : u32) -> x_value_t {\n"
       << "  let aIndices = x_indices_t(d0, d1, d2, d3, d4);\n"
       << "  return " << x.GetByIndices("aIndices") << ";\n"

@@ -98,6 +98,15 @@ endif()
 
 file(GLOB onnxruntime_optimizer_srcs CONFIGURE_DEPENDS ${onnxruntime_optimizer_src_patterns})
 
+if (NOT onnxruntime_ENABLE_GQA_VALUE_LAYOUT)
+  list(REMOVE_ITEM onnxruntime_optimizer_srcs
+    "${ONNXRUNTIME_ROOT}/core/optimizer/gqa_value_layout_boundaries.h"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/gqa_value_layout_boundaries.cc"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/gqa_value_layout_transformer.h"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/gqa_value_layout_transformer.cc"
+  )
+endif()
+
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_optimizer_srcs})
 
 if (onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH)

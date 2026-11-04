@@ -243,6 +243,38 @@ QKGemm_Neon(
     }
 }
 
+void
+QKGemmFp16_Neon(
+    size_t M,
+    size_t N,
+    size_t K,
+    float Alpha,
+    const MLAS_FP16* A,
+    size_t lda,
+    const void* B,
+    MLAS_KV_QUANT_TYPE QuantType,
+    const float* Scales,
+    float* C,
+    size_t ldc)
+{
+    // NEON converts the FP16 query tile to FP32 once and reuses the FP32 kernel.
+    // Decode (M == 1) fits the stack scratch; only wider multi-row prefill tiles
+    // whose M * K exceeds it spill to the heap.
+    const size_t a_count = M * K;
+    float a_stack[256];
+    float* a_buf = a_stack;
+    std::unique_ptr<float[]> heap_buf;
+    if (a_count > 256) {
+        heap_buf = std::make_unique<float[]>(a_count);
+        a_buf = heap_buf.get();
+    }
+
+    for (size_t m = 0; m < M; ++m) {
+        MlasConvertHalfToFloatBuffer(A + m * lda, a_buf + m * K, K);
+    }
+    QKGemm_Neon(M, N, K, Alpha, a_buf, K, B, QuantType, Scales, C, ldc);
+}
+
 //
 // SVGemm:  C[M,N] = Beta * C[M,N] + A[M,K] * B[K,N]
 //
@@ -338,11 +370,47 @@ SVGemm_Neon(
     }
 }
 
+void
+SVGemmFp16_Neon(
+    size_t M,
+    size_t N,
+    size_t K,
+    const float* A,
+    size_t lda,
+    const void* B,
+    MLAS_KV_QUANT_TYPE QuantType,
+    const float* Scales,
+    MLAS_FP16* C,
+    size_t ldc,
+    float Beta)
+{
+    // FP32 accumulation scratch for one output row (N == head_size). Stays on the
+    // stack for typical head sizes and only spills to the heap when N > 256.
+    float c_stack[256];
+    float* c_buf = c_stack;
+    std::unique_ptr<float[]> heap_buf;
+    if (N > 256) {
+        heap_buf = std::make_unique<float[]>(N);
+        c_buf = heap_buf.get();
+    }
+
+    for (size_t m = 0; m < M; ++m) {
+        MLAS_FP16* c_row = C + m * ldc;
+        if (Beta != 0.0f) {
+            MlasConvertHalfToFloatBuffer(c_row, c_buf, N);
+        }
+        SVGemm_Neon(1, N, K, A + m * lda, lda, B, QuantType, Scales, c_buf, N, Beta);
+        MlasConvertFloatToHalfBuffer(c_buf, c_row, N);
+    }
+}
+
 }  // namespace
 
 const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchNeon = []() {
     MLAS_KV_QUANT_GEMM_DISPATCH d;
     d.QKGemm = QKGemm_Neon;
+    d.QKGemmFp16 = QKGemmFp16_Neon;
     d.SVGemm = SVGemm_Neon;
+    d.SVGemmFp16 = SVGemmFp16_Neon;
     return d;
 }();

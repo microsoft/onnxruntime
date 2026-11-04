@@ -2,6 +2,7 @@
 #include "gtest/gtest.h"
 
 #include <algorithm>
+#include <limits>
 #include <vector>
 
 #include "core/providers/cpu/rnn/deep_cpu_lstm.h"
@@ -12,6 +13,41 @@
 
 namespace onnxruntime {
 namespace test {
+
+TEST(DynamicQuantLSTMTest, RejectsUnrepresentableOutputStrideBeforeAllocation) {
+  for (const std::string direction : {"forward", "reverse", "bidirectional"}) {
+    SCOPED_TRACE(direction);
+    const int num_directions = direction == "bidirectional" ? 2 : 1;
+    const int64_t batch_size = static_cast<int64_t>(std::numeric_limits<int>::max()) / 2 + 1;
+    constexpr int64_t hidden_size = 2;
+
+    OpTester test("DynamicQuantizeLSTM", 1, kMSDomain);
+    test.AddAttribute("direction", direction);
+    test.AddAttribute("hidden_size", hidden_size);
+    test.AddInput<float>("X", {0, batch_size, 1}, {});
+    test.AddInput<uint8_t>("W", {num_directions, 1, 4 * hidden_size},
+                           std::vector<uint8_t>(num_directions * 4 * hidden_size, 0));
+    test.AddInput<uint8_t>("R", {num_directions, hidden_size, 4 * hidden_size},
+                           std::vector<uint8_t>(num_directions * 4 * hidden_size * hidden_size, 0));
+    test.AddOptionalInputEdge<float>();
+    test.AddOptionalInputEdge<int>();
+    test.AddOptionalInputEdge<float>();
+    test.AddOptionalInputEdge<float>();
+    test.AddOptionalInputEdge<float>();
+    test.AddInput<float>("W_scale", {num_directions}, std::vector<float>(num_directions, 1.0f));
+    test.AddInput<uint8_t>("W_zero_point", {num_directions}, std::vector<uint8_t>(num_directions, 0));
+    test.AddInput<float>("R_scale", {num_directions}, std::vector<float>(num_directions, 1.0f));
+    test.AddInput<uint8_t>("R_zero_point", {num_directions}, std::vector<uint8_t>(num_directions, 0));
+    test.AddOutput<float>("Y", {0, num_directions, batch_size, hidden_size}, {});
+    test.AddOptionalOutputEdge<float>();
+    test.AddOptionalOutputEdge<float>();
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectFailure, "LSTM output stride exceeds the maximum supported int value",
+             {}, nullptr, &execution_providers);
+  }
+}
 
 template <typename QType,
           typename std::enable_if<is_quant_type<QType>::value, int>::type = 0>

@@ -93,6 +93,7 @@ __global__ void UnfusedSoftmaxKernel(
     const bool has_bias,
     const bool bcast_bias_dim_0,
     const bool bcast_bias_dim_1,
+    const int* __restrict__ past_seq_lens,
     const int* __restrict__ seqlens_k,
     const bool is_causal,
     const int local_window_size,
@@ -116,9 +117,11 @@ __global__ void UnfusedSoftmaxKernel(
   // tokens. For upper-left causal alignment (ONNX Attention with no past),
   // this is 0. For lower-right alignment (decode with past), this is
   // total_kv_length - q_sequence_length.
-  // When seqlens_k varies per batch (GQA sliding window), derive per-batch
-  // so the window cutoff stays within the valid range for shorter batches.
-  const int past = (seqlens_k != nullptr) ? (kv_end - q_sequence_length) : past_kv_length;
+  // When past_seq_lens is provided (GQA), use the explicit per-batch past offset so
+  // right-padded query chunks stay aligned at past_seq_lens[batch] + q_in_head.
+  const int past = (past_seq_lens != nullptr)
+                       ? past_seq_lens[batch]
+                       : ((seqlens_k != nullptr) ? (kv_end - q_sequence_length) : past_kv_length);
   const int q_pos = past + q_in_head;
 
   int end = kv_end;
@@ -267,6 +270,7 @@ void LaunchUnfusedSoftmax(
       has_bias,
       params.broadcast_attn_bias_dim_0,
       params.broadcast_attn_bias_dim_1,
+      params.past_seq_lens,
       params.seqlens_k,
       params.is_causal,
       params.local_window_size,

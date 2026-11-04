@@ -68,7 +68,7 @@ void SYMMQGEMM(benchmark::State& state, bool a_signed) {
 }
 
 #if defined(MLAS_TARGET_ARM64)
-static void SymmQGemmSize(benchmark::internal::Benchmark* b) {
+static void SymmQGemmSize(benchmark::Benchmark* b) {
   b->ArgNames(qgemm_arg_names);
   // Args for  "M", "N", "K", "Batch",
 

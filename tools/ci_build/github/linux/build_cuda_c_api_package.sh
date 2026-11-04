@@ -1,16 +1,26 @@
 #!/bin/bash
 set -e -x
 
+# Keep in sync with plugin-cuda-pipeline.yml (cmake_linux_x64_cuda_archs).
 if [ "$CUDA_VERSION" == "12.8" ]; then
-    CUDA_ARCHS="60-real;70-real;75-real;80-real;86-real;90-real;120-real;120-virtual"
+    CUDA_ARCHS="60-real;70-real;75-real;80-real;86-real;89-real;90-real;120-real"
 elif [ "$CUDA_VERSION" == "13.0" ]; then
-    CUDA_ARCHS="75-real;80-real;86-real;89-real;90-real;100-real;120-real;120-virtual"
+    CUDA_ARCHS="75-real;80-real;86-real;89-real;90-real;120-real"
 else
     echo "Error: Unrecognized CUDA_VERSION: $CUDA_VERSION"
     exit 1
 fi
 
+VCPKG_CACHE_ARGS=()
+if [ -n "${VCPKG_DEFAULT_BINARY_CACHE:-}" ]; then
+    VCPKG_CACHE_ARGS=(
+        --volume "${VCPKG_DEFAULT_BINARY_CACHE}:/vcpkg-binary-cache"
+        -e VCPKG_DEFAULT_BINARY_CACHE=/vcpkg-binary-cache
+    )
+fi
+
 docker run -e SYSTEM_COLLECTIONURI --rm \
+"${VCPKG_CACHE_ARGS[@]}" \
 --volume "$BUILD_SOURCESDIRECTORY:/onnxruntime_src" --volume "$BUILD_BINARIESDIRECTORY:/build" \
 -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
 -e PIP_INDEX_URL \

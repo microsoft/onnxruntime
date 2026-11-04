@@ -5,10 +5,12 @@
   "private": true,
   "scripts": {
     "android": "react-native run-android",
+    "detox": "detox",
     "ios": "react-native run-ios",
     "lint": "eslint .",
     "start": "react-native start",
-    "test": "jest"
+    "test": "jest",
+    "test:unit": "jest --config unit-test/jest.config.js --runInBand"
   },
   "dependencies": {
     "react": "^18.2.0",

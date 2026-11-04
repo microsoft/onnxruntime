@@ -396,7 +396,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
             source_template = state.repo.templates[source_path]
             assert isinstance(source_template, TemplatePass1)
             source_line = source_template.raw[pass1[i].code_reference.line_number - 1]
-            output("raw", f"// {padded_line_number} | {source_line}\n")
+            output("raw", f"// {padded_line_number} | {source_line}".rstrip() + "\n")
 
         if line == "":
             if i == len(pass1) - 1:

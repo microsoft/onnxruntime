@@ -8,6 +8,7 @@
 #include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/matmul_nbits_sharing_identity.h"
+#include "core/graph/constants.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/graph/graph_utils.h"
 #include "core/framework/tensorprotoutils.h"
@@ -46,29 +47,25 @@ bool IsDQWeightSigned(int32_t dt_weight) {
 // Compute the effective block_size for per-tensor/per-channel DQ nodes that lack a block_size attribute.
 // session_block_size: 0 = default (32), positive = explicit, -1 = min-padding heuristic.
 int64_t ComputeEffectiveBlockSize(int64_t session_block_size, int64_t K) {
-  // MatMulNBits CPU kernel currently only supports block_size in [16, 256] correctly.
-  constexpr int64_t kMinBlockSize = 16;
-  constexpr int64_t kMaxBlockSize = 256;
-
   if (session_block_size > 0) {
-    // Explicit block_size — must be power-of-2 and within [kMinBlockSize, kMaxBlockSize].
-    ORT_ENFORCE(session_block_size >= kMinBlockSize &&
-                    ((session_block_size & (session_block_size - 1)) == 0),
-                "Explicit qdq_matmulnbits_block_size must be a power-of-2 and >= ",
-                kMinBlockSize, ", got: ", session_block_size);
-    ORT_ENFORCE(session_block_size <= kMaxBlockSize,
-                "Explicit qdq_matmulnbits_block_size must be <= ",
-                kMaxBlockSize, ", got: ", session_block_size);
+    ORT_ENFORCE(IsValidMatMulNBitsBlockSize(session_block_size),
+                "Explicit qdq_matmulnbits_block_size must be a power-of-two in [",
+                kMatMulNBitsMinBlockSize, ", ", kMatMulNBitsMaxBlockSize,
+                "], got: ", session_block_size);
     return session_block_size;
   }
 
   if (session_block_size == -1) {
-    // Heuristic: largest power-of-2 <= min(K, kMaxBlockSize) that minimizes padding.
-    // Capped at kMaxBlockSize because CPU EP only supports block_size up to kMaxBlockSize correctly.
+    // Heuristic: largest supported power-of-two that minimizes padding.
     // We want ceil(K / B) * B - K to be minimized (least wasted padding).
-    int64_t best_bs = kMinBlockSize;
-    int64_t best_padding = (((K + (kMinBlockSize - 1)) / kMinBlockSize) * kMinBlockSize) - K;
-    for (int64_t bs = kMinBlockSize * 2; bs <= std::min(K, kMaxBlockSize); bs *= 2) {
+    int64_t best_bs = kMatMulNBitsMinBlockSize;
+    int64_t best_padding = (((K + (kMatMulNBitsMinBlockSize - 1)) /
+                             kMatMulNBitsMinBlockSize) *
+                            kMatMulNBitsMinBlockSize) -
+                           K;
+    for (int64_t bs = kMatMulNBitsMinBlockSize * 2;
+         bs <= std::min(K, kMatMulNBitsMaxBlockSize);
+         bs *= 2) {
       int64_t padding = (((K + bs - 1) / bs) * bs) - K;
       if (padding <= best_padding) {
         best_padding = padding;
@@ -87,6 +84,7 @@ int64_t GetEffectiveBlockSize(const Node& dq_node, int64_t block_size_for_non_bl
   const auto& dq_attrs = dq_node.GetAttributes();
   const auto bs_iter = dq_attrs.find("block_size");
   if (bs_iter != dq_attrs.end() && bs_iter->second.i() > 0) {
+    // ProcessNewNode validates model-provided values before using them.
     return bs_iter->second.i();
   }
 
@@ -148,6 +146,8 @@ Status TransposeDQWeightsForMatMulNBits(
   auto block_size = effective_block_size;
   int32_t dt_weight = weight_arg->TypeAsProto()->tensor_type().elem_type();
   auto bits = DQWeightBits(dt_weight);
+  ORT_RETURN_IF_NOT(MlasQDQBlockwiseShapeIsValid(K, N, block_size, bits, true, true),
+                    "QDQ blockwise quantization shape exceeds the MLAS int32 index range.");
   auto quant_num = (K + block_size - 1) / block_size;
   auto blob_bytes = (block_size * bits + 7) / 8;
 
@@ -640,8 +640,33 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
                                                    const NodesToOptimize& selected_nodes,
                                                    Node& replacement_node) const {
   const auto* dq_node = selected_nodes.Input(0);
+  const int64_t bits = DQWeightBits(dq_node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type());
+  // Only the CPU MatMulNBits kernel executes authored blocks larger than kMatMulNBitsMaxBlockSize.
+  const bool allow_cpu_large_block = selected_nodes.Target().GetExecutionProviderType() == kCpuExecutionProvider;
+  auto is_supported_block_size = [&](int64_t block_size) {
+    return IsValidMatMulNBitsBlockSize(block_size) ||
+           (allow_cpu_large_block && IsValidCpuLargeMatMulNBitsBlockSize(block_size, bits));
+  };
 
-  int64_t effective_bs = GetEffectiveBlockSize(*dq_node, block_size_for_non_blockwise_);
+  // Graph::Resolve fills in the schema default (block_size = 0) for DQ nodes that do not declare
+  // one, so presence of the attribute alone does not mean the DQ is blockwise. Only a positive
+  // value is model-provided; zero means per-tensor/per-channel and the block size is derived below.
+  const auto& dq_attributes = dq_node->GetAttributes();
+  const auto block_size_iter = dq_attributes.find("block_size");
+  if (block_size_iter != dq_attributes.end() && block_size_iter->second.i() > 0) {
+    const int64_t block_size = block_size_iter->second.i();
+    ORT_RETURN_IF_NOT(is_supported_block_size(block_size),
+                      "DQ block_size must be a power-of-two in [",
+                      kMatMulNBitsMinBlockSize, ", ", kMatMulNBitsMaxBlockSize,
+                      "] for MatMulNBits fusion (or a larger power of two for 4/8-bit weights on CPU). Got: ",
+                      block_size);
+  }
+
+  const int64_t effective_bs = GetEffectiveBlockSize(*dq_node, block_size_for_non_blockwise_);
+  ORT_RETURN_IF_NOT(is_supported_block_size(effective_bs),
+                    "Effective block_size must be a power-of-two in [",
+                    kMatMulNBitsMinBlockSize, ", ", kMatMulNBitsMaxBlockSize,
+                    "] for MatMulNBits fusion. Got: ", effective_bs);
 
   TransposedQuantizedTensors transposed;
   ORT_RETURN_IF_ERROR(TransposeDQWeightsForMatMulNBits(
@@ -652,7 +677,6 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
   const auto* weight_shape = weight_arg->Shape();
   ORT_RETURN_IF_NOT(weight_shape != nullptr && weight_shape->dim_size() >= 2,
                     "Weight shape unavailable for DQ node ", dq_node->Name());
-  const int64_t bits = DQWeightBits(weight_arg->TypeAsProto()->tensor_type().elem_type());
   const std::string share_id = ComputeMatMulNBitsSharingId(
       transposed.weight, transposed.scale, transposed.zero_point,
       weight_shape->dim(1).dim_value(), weight_shape->dim(0).dim_value(),

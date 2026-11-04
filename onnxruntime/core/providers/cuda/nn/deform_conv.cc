@@ -164,9 +164,7 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
   const int64_t col_stride = static_cast<int64_t>(n_parallel_imgs) * output_image_size;
   const int64_t col_buffer_size = (C * kernel_size) * col_stride;
 
-  AllocatorPtr alloc;
-  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
-  auto col_buffer = IAllocator::MakeUniquePtr<T>(alloc, SafeInt<size_t>(col_buffer_size));
+  auto col_buffer = GetScratchBuffer<T>(SafeInt<size_t>(col_buffer_size), GetComputeStream(context));
 
   const T* Xdata = X->Data<T>();
   const T* Wdata = W->Data<T>();

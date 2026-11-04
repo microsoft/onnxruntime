@@ -7,6 +7,23 @@
 
 namespace onnxruntime {
 
+bool inference_session_utils::AreAnyNodesAssignedToCpuEp(const Graph& graph) {
+  for (const auto& node : graph.Nodes()) {
+    const auto& node_provider = node.GetExecutionProviderType();
+    if (node_provider.empty() || node_provider == kCpuExecutionProvider) {
+      return true;
+    }
+
+    for (const gsl::not_null<const Graph*>& subgraph : node.GetSubgraphs()) {
+      if (AreAnyNodesAssignedToCpuEp(*subgraph)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 //---------------------
 //--- local helpers ---
 //---------------------

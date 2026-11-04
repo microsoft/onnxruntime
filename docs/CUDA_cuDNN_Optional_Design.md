@@ -3,10 +3,10 @@
 Status: Draft / Proposal
 Owner: (CUDA EP)
 Scope: `onnxruntime/core/providers/cuda` (main static CUDA EP), CUDA Plugin EP
-(`BUILD_CUDA_EP_AS_PLUGIN`), and the CUDA unit tests. **Out of scope:** TensorRT EP and
-NV‑TensorRT‑RTX EP (they create and own their own cuDNN handles and inherently depend on
-cuDNN/TensorRT). The existing build-time `USE_CUDA_MINIMAL` path is also out of scope; it is
-used by TensorRT / NV‑TensorRT‑RTX integration and should remain available.
+(`BUILD_CUDA_EP_AS_PLUGIN`), and the CUDA unit tests. **Out of scope:** TensorRT EP (it creates
+and owns its own cuDNN handles and inherently depends on cuDNN/TensorRT). The existing
+build-time `USE_CUDA_MINIMAL` path is also out of scope; it is used by TensorRT integration
+and should remain available.
 
 ---
 
@@ -82,7 +82,7 @@ This is delivered in **three phases**:
 - `CUDNN_FE_CALL` / `CUDNN_FE_RETURN_IF_ERROR` for the frontend (`cudnn_fe_call.*`).
 - `CudaErrString<cudnnStatus_t>` calls `cudnnGetErrorString` (`cuda_call.cc`).
 - All of the above are already gated by `#ifndef USE_CUDA_MINIMAL` in shared CUDA code. That
-  build‑time path is used by TensorRT / NV‑TensorRT‑RTX related builds and is a useful
+  build‑time path is used by TensorRT-related builds and is a useful
   inventory of cuDNN‑touching code, but it is *not* the CUDA EP runtime behavior we want.
 
 ### 2.4 Operators / components that depend on cuDNN
@@ -354,9 +354,42 @@ Python wheel packaging is unchanged by this design: cuDNN DLLs are not packed in
 today, so Phase 1 is not introducing a new "CUDA-minimal" wheel flavor. The runtime loader
 simply makes the existing package tolerant of environments where cuDNN is absent.
 
-TensorRT / NV‑RTX EPs are untouched and continue to link cuDNN as before. (If both a TRT EP
-and the shimmed CUDA EP are in the same process, symbol collision must be avoided — see
-§8 Risks.)
+The TensorRT EP is untouched and continues to link cuDNN as before. (If both a TRT EP and the
+shimmed CUDA EP are in the same process, symbol collision must be avoided — see §8 Risks.)
+
+### 3.6 Applying the same pattern to cuFFT
+
+The identical shim + lazy‑loader technique is used to drop the hard dependency on **cuFFT**
+(`libcufft.so.*` / `cufft64_*.dll`). cuFFT is only needed by the FFT contrib operators
+(`Rfft` / `Irfft` in `contrib_ops/cuda/math`), which use a small, enumerable set of entry
+points: `cufftCreate`, `cufftDestroy`, `cufftSetStream`, `cufftXtMakePlanMany`, and
+`cufftXtExec`.
+
+Implementation:
+
+- **Loader** — `onnxruntime/core/providers/cuda/cufft_loader.{h,cc}` defines a
+  `CufftLibrary` singleton that mirrors `CudnnLibrary`: it lazily `dlopen`/`LoadLibrary`s the
+  cuFFT runtime, resolves symbols on demand, caches them, and exposes `Available()` / `Error()`.
+  It uses the same security‑conscious search behavior as the cuDNN loader (Windows
+  `LOAD_LIBRARY_SEARCH_DEFAULT_DIRS` plus a PATH fallback that never loads from the current
+  working directory). The candidate library name is selected at **compile time** from the
+  `CUDA_VERSION` macro (cuFFT 12 for CUDA 13.x, cuFFT 11 for CUDA 12.x), because cuFFT's
+  SONAME/DLL version tracks the CUDA major version. Unsupported CUDA major versions fail at
+  compile time until their cuFFT library mapping is added explicitly.
+- **Shim** — `onnxruntime/core/providers/cuda/cufft_stub.cc` defines the five entry points
+  above as trampolines that forward to the resolved symbol (returning `CUFFT_INTERNAL_ERROR`
+  when the library is unavailable), so ORT's direct calls link against *our* definitions and
+  the final binary has **no import entry for libcufft**.
+- **Availability guard** — `CudaCall<cufftResult>` (in `cuda_call.cc`) and the plugin's
+  `CUFFT_RETURN_IF_ERROR` macro check `CufftLibrary::Available()` and return a clear
+  `NOT_IMPLEMENTED` status ("cuFFT is unavailable …") when cuFFT is missing, exactly like the
+  cuDNN path.
+
+Unlike cuDNN, cuFFT needs **no provider option** (there is no `enable_cufft`): it is always
+loaded lazily on first FFT‑op use, and there is no `cufft_frontend` equivalent to configure.
+cuFFT headers (part of the CUDA toolkit) are still required at build time, but `CUDA::cufft`
+is no longer linked in `onnxruntime_providers_cuda.cmake`,
+`onnxruntime_providers_cuda_plugin.cmake`, or the CUDA unit‑test target.
 
 ---
 
@@ -418,8 +451,8 @@ present, behavior is byte‑for‑byte identical to today.
      `NV_CUDNN_FRONTEND_USE_DYNAMIC_LOADING`. This is required so frontend graph code uses
      `dlsym` / `GetProcAddress` on `cudnn_frontend::cudnn_dlhandle` instead of creating
      link-time imports for `cudnnBackend*` symbols.
-   - Keep `USE_CUDA_MINIMAL` working. It is used by TensorRT / NV‑TensorRT‑RTX related
-     builds and is not replaced by the optional-cuDNN runtime shim.
+   - Keep `USE_CUDA_MINIMAL` working. It is used by TensorRT-related builds and is not
+     replaced by the optional-cuDNN runtime shim.
 
    Current CMake anchor points:
 
@@ -707,5 +740,5 @@ kernels; CUTLASS (already vendored) for conv/GEMM‑shaped work.
   from application code before creating the session.
 - No new "CUDA-minimal" wheel is required for Phase 1. cuDNN DLLs are not packed in the wheel
   today.
-- Keep the existing `USE_CUDA_MINIMAL` build-time path. It is used by RTX/TensorRT-related EP
+- Keep the existing `USE_CUDA_MINIMAL` build-time path. It is used by TensorRT-related EP
   builds and is not replaced by the CUDA EP runtime shim.

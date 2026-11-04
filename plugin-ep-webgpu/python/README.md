@@ -1,4 +1,4 @@
-# WebGPU Plugin EP Python Package
+# WebGPU Plugin EP — Python Packaging
 
 This directory contains the packaging source for the `onnxruntime-ep-webgpu` Python package.
 
@@ -18,6 +18,10 @@ pip install -r requirements-build-wheel.txt
 Wheels are built via `build_wheel.py`. Running `pip install` or `pip wheel` directly against this directory is not
 supported — the source tree contains `pyproject.toml.in` (a template), not a real `pyproject.toml`.
 
+The wheel is platform-specific. Each platform's wheel is built from binaries produced on that platform —
+`build_wheel.py` does not cross-build. See the
+[bundled wheel readme](onnxruntime_ep_webgpu/README.md#supported-platforms) for the list of supported platforms.
+
 ```bash
 python build_wheel.py --binary_dir <path-to-built-binaries> --version <PEP-440-version> --output_dir <output-directory>
 ```
@@ -29,6 +33,29 @@ python build_wheel.py --binary_dir ./build/Release --version 0.1.0.devYYYYMMDD -
 ```
 
 The script combines the pre-built plugin EP binaries with the package source to produce a platform-specific wheel.
+
+The following files are required under `--binary_dir` for each platform:
+
+| Platform | Required files |
+|---|---|
+| Windows | `onnxruntime_providers_webgpu.dll`, `dxcompiler.dll` |
+| Linux | `libonnxruntime_providers_webgpu.so` |
+| macOS | `libonnxruntime_providers_webgpu.dylib` |
+
+### Windows Agility SDK inputs
+
+Local non-Agility builds may omit the SDK DLLs. For Agility-enabled builds, place both files under `--binary_dir`:
+
+- `D3D12/D3D12Core.dll`
+- `D3D12/d3d12SDKLayers.dll`
+
+Use `--use-dawn-agility-sdk` to include and require both files:
+
+```bash
+python build_wheel.py --binary_dir ./build/Release --version 0.1.0.devYYYYMMDD --output_dir ./dist --use-dawn-agility-sdk
+```
+
+The flag is supported only for Windows wheels; it does not enable Agility in the plugin.
 
 ## Testing
 
@@ -42,11 +69,28 @@ pip install dist/onnxruntime_ep_webgpu-*.whl
 python test/test_webgpu_plugin_ep.py
 ```
 
+`onnx` and `numpy` are required only by the smoke test, not by the `onnxruntime-ep-webgpu` wheel itself. The wheel's
+only runtime dependency is a compatible `onnxruntime` (see
+[`../MIN_ONNXRUNTIME_VERSION`](../MIN_ONNXRUNTIME_VERSION)).
+
 The test validates import, EP registration, device discovery, and inference (requires WebGPU-capable hardware for the
 inference portion). Set the environment variable `ORT_TEST_VERBOSE=1` to print additional diagnostic information
 (environment, available providers, discovered devices, etc.).
 
+By default, inference uses `SessionOptions.add_provider_for_devices`, which is supported by the minimum core runtime.
+To also test plugin selection through `InferenceSession(..., providers=[("WebGpuExecutionProvider", options)])`, install
+a host wheel built from this checkout with `--use_webgpu shared_lib --build_wheel` and set
+`ORT_WEBGPU_TEST_PROVIDER_NAME=1`. The Windows WebGPU plugin PR job runs this check in its existing `Run tests` step,
+using the locally built host and plugin wheels and reusing the dependencies installed for the job.
+The minimum-runtime package tests leave it disabled.
+Set `ORT_WEBGPU_TEST_REQUIRE_EP_DEVICE=1` to fail instead of skipping inference when no WebGPU device is available.
+
+Set `ORT_WEBGPU_TEST_REQUIRE_AGILITY_SDK=1` to require the SDK DLLs in an installed Windows wheel, as the Windows
+release tests do. Otherwise, the smoke test allows local non-Agility wheels without a `D3D12` directory, but still
+checks both DLLs when that directory exists.
+
 ## Versioning
 
-The package version is derived from `plugin-ep-webgpu/VERSION_NUMBER` by the packaging pipeline, which produces a
-PEP 440 version string.
+The package version is derived from [`../VERSION_NUMBER`](../VERSION_NUMBER) by the packaging pipeline (see
+[`set-plugin-ep-build-variables-step.yml`](../../tools/ci_build/github/azure-pipelines/templates/set-plugin-ep-build-variables-step.yml)),
+which produces a PEP 440 version string.

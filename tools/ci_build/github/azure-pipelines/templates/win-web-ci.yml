@@ -13,7 +13,7 @@ parameters:
 
 - name: PoolName
   type: string
-  default: 'onnxruntime-Win-CPU-VS2022-Latest'
+  default: 'onnxruntime-Win-CPU-2022'
 
 - name: PackageName
   displayName: 'Package name'
@@ -43,8 +43,8 @@ jobs:
   workspace:
     clean: all
   steps:
-  - checkout: self
-    submodules: false
+  - template: jobs/checkout-and-git-redirect.yml
+
   - task: DownloadPipelineArtifact@2
     inputs:
       artifact: '__commit'
@@ -238,7 +238,6 @@ jobs:
         npm test --webgpu-ep -- -b=webgpu -e=chrome $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\07 --chromium-flags=--enable-logging --chromium-flags=--v=1
       workingDirectory: '$(Build.SourcesDirectory)\js\web'
       displayName: 'Run ort-web tests - WebGPU EP'
-      continueOnError: true # we allow WebGPU EP tests to fail for now
 
   # === End of experimental WebGPU EP tests ===
 

@@ -15,6 +15,18 @@ class GroupQueryAttention : public JsKernel, GQAAttentionBase {
  public:
   explicit GroupQueryAttention(const OpKernelInfo& info)
       : JsKernel(info), GQAAttentionBase(info, false) {
+    if (!is_unidirectional_) {
+      ORT_NOT_IMPLEMENTED("GroupQueryAttention (JS): causal=0 is not implemented.");
+    }
+
+    // The windowed KV cache (cache-relative indexing + shift compaction) is implemented only by the
+    // CUDA kernel. Fail loudly rather than treating the window-sized buffer as a full-length cache.
+    ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("sliding_window_cache", 0) == 0,
+                "GroupQueryAttention (JS): sliding_window_cache=1 is not implemented.");
+
+    // query_seqlens (input 16, right-padded query chunks) is implemented only by the CPU and CUDA kernels.
+    ORT_ENFORCE(!(info.GetInputCount() > 16 && info.node().InputDefs()[16]->Exists()),
+                "GroupQueryAttention (JS): query_seqlens (input 16) is not implemented.");
     JSEP_INIT_KERNEL_ATTRIBUTE(GroupQueryAttention, ({
                                  "numHeads" : $1,
                                  "kvNumHeads" : $2,

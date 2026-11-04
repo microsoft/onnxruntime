@@ -15,6 +15,8 @@
  */
 #pragma once
 
+#include <math_constants.h>
+
 #include "core/common/common.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_kernels.h"
 #include "contrib_ops/cuda/llm/moe_gemm/common.h"
@@ -33,13 +35,21 @@ constexpr static int ACTIVATION_THREADS_PER_BLOCK = 256;
 
 struct QuantParams;
 
+template <class T>
+struct ReluSquared {
+  CUTLASS_HOST_DEVICE T operator()(const T& value) const {
+    const T positive = cutlass::epilogue::thread::ReLu<T>{}(value);
+    return positive * positive;
+  }
+};
+
 template <class ActivationOutputType, class GemmOutputType, template <class> class ActFn>
-__global__ void doGatedActivationKernel(ActivationOutputType* output, GemmOutputType const* gemm_result,
-                                        int64_t const* num_valid_tokens_ptr, int64_t inter_size,
+__global__ void doGatedActivationKernel(ActivationOutputType* output, const GemmOutputType* gemm_result,
+                                        const int64_t* num_valid_tokens_ptr, int64_t inter_size,
                                         ActivationType activation_type,
                                         ActivationParams activation_params = {}) {
-  int64_t const tid = threadIdx.x;
-  int64_t const token = blockIdx.x;
+  const int64_t tid = threadIdx.x;
+  const int64_t token = blockIdx.x;
   if (num_valid_tokens_ptr && token >= *num_valid_tokens_ptr) {
     return;
   }
@@ -52,25 +62,25 @@ __global__ void doGatedActivationKernel(ActivationOutputType* output, GemmOutput
   using OutputElem = cutlass::Array<ActivationOutputType, ACTIVATION_ELEM_PER_THREAD>;
   using GemmResultElem = cutlass::Array<GemmOutputType, ACTIVATION_ELEM_PER_THREAD>;
   using ComputeElem = cutlass::Array<float, ACTIVATION_ELEM_PER_THREAD>;
-  auto gemm_result_vec = reinterpret_cast<GemmResultElem const*>(gemm_result);
+  auto gemm_result_vec = reinterpret_cast<const GemmResultElem*>(gemm_result);
   auto output_vec = reinterpret_cast<OutputElem*>(output);
-  int64_t const start_offset = tid;
-  int64_t const stride = ACTIVATION_THREADS_PER_BLOCK;
+  const int64_t start_offset = tid;
+  const int64_t stride = ACTIVATION_THREADS_PER_BLOCK;
   assert(inter_size % ACTIVATION_ELEM_PER_THREAD == 0);
-  int64_t const num_elems_in_col = inter_size / ACTIVATION_ELEM_PER_THREAD;
-  int64_t const inter_size_vec = inter_size / ACTIVATION_ELEM_PER_THREAD;
+  const int64_t num_elems_in_col = inter_size / ACTIVATION_ELEM_PER_THREAD;
+  const int64_t inter_size_vec = inter_size / ACTIVATION_ELEM_PER_THREAD;
 
   ActFn<ComputeElem> fn{};
-  bool const use_custom_swiglu = std::is_same_v<ActFn<float>, cutlass::epilogue::thread::SiLu<float>> &&
+  const bool use_custom_swiglu = std::is_same_v<ActFn<float>, cutlass::epilogue::thread::SiLu<float>> &&
                                  (activation_params.alpha != 1.0f || activation_params.beta != 0.0f || isfinite(activation_params.limit));
-  bool const is_swiglu_interleaved = activation_params.swiglu_fusion == 1;
+  const bool is_swiglu_interleaved = activation_params.swiglu_fusion == 1;
 
   for (int64_t elem_index = start_offset; elem_index < num_elems_in_col; elem_index += stride) {
     ComputeElem gate_part;
     ComputeElem linear_part;
 
     if (is_swiglu_interleaved) {
-      auto* scalar_gemm = reinterpret_cast<GemmOutputType const*>(gemm_result);
+      auto* scalar_gemm = reinterpret_cast<const GemmOutputType*>(gemm_result);
       for (int i = 0; i < ACTIVATION_ELEM_PER_THREAD; ++i) {
         int64_t global_elem = elem_index * ACTIVATION_ELEM_PER_THREAD + i;
         if (global_elem >= inter_size) continue;
@@ -97,10 +107,19 @@ __global__ void doGatedActivationKernel(ActivationOutputType* output, GemmOutput
           l = fminf(fmaxf(l, -activation_params.limit), activation_params.limit);
         }
         l += activation_params.beta;
-        gate_act[i] = g * sigmoid * l;
+        // SiLU's limit is zero where exp(-alpha * g) overflows.
+        const bool silu_limit_is_zero = (activation_params.alpha > 0.0f && g == -CUDART_INF_F) ||
+                                        (activation_params.alpha < 0.0f && g == CUDART_INF_F);
+        gate_act[i] = (silu_limit_is_zero ? 0.0f : g * sigmoid) * l;
       }
     } else {
-      gate_act = fn(gate_part) * linear_part;
+      gate_act = fn(gate_part);
+      if constexpr (std::is_same_v<ActFn<float>, cutlass::epilogue::thread::SiLu<float>>) {
+        for (int i = 0; i < ACTIVATION_ELEM_PER_THREAD; ++i) {
+          if (gate_part[i] == -CUDART_INF_F) gate_act[i] = 0.0f;
+        }
+      }
+      gate_act = gate_act * linear_part;
     }
 
     output_vec[elem_index] = arrayConvert<ComputeElem, OutputElem>(gate_act);
@@ -108,29 +127,30 @@ __global__ void doGatedActivationKernel(ActivationOutputType* output, GemmOutput
 }
 
 template <typename ActivationOutputType, typename GemmOutputType>
-void doGatedActivation(ActivationOutputType* output, GemmOutputType const* gemm_result,
-                       int64_t const* num_valid_tokens_ptr, int64_t inter_size, int64_t num_tokens, ActivationType activation_type,
+void doGatedActivation(ActivationOutputType* output, const GemmOutputType* gemm_result,
+                       const int64_t* num_valid_tokens_ptr, int64_t inter_size, int64_t num_tokens, ActivationType activation_type,
                        cudaStream_t stream, ActivationParams activation_params) {
-  int64_t const blocks = num_tokens;
-  int64_t const threads = ACTIVATION_THREADS_PER_BLOCK;
+  const int64_t blocks = num_tokens;
+  const int64_t threads = ACTIVATION_THREADS_PER_BLOCK;
 
   using namespace cutlass::epilogue::thread;
   // Select kernel based on activation type (matches TRT-LLM pattern)
-  auto* fn = [&]() -> void (*)(ActivationOutputType*, GemmOutputType const*, int64_t const*,
+  auto* fn = [&]() -> void (*)(ActivationOutputType*, const GemmOutputType*, const int64_t*,
                                int64_t, ActivationType, ActivationParams) {
     switch (activation_type) {
       case ActivationType::Swiglu:
       case ActivationType::SwigluBias:
         return &doGatedActivationKernel<ActivationOutputType, GemmOutputType, SiLu>;
       case ActivationType::Geglu:
-        return &doGatedActivationKernel<ActivationOutputType, GemmOutputType, GELU>;
+        return &doGatedActivationKernel<ActivationOutputType, GemmOutputType, GELU_taylor>;
       case ActivationType::Silu:
         return &doGatedActivationKernel<ActivationOutputType, GemmOutputType, SiLu>;
       case ActivationType::Gelu:
         return &doGatedActivationKernel<ActivationOutputType, GemmOutputType, GELU>;
       case ActivationType::Relu:
-      case ActivationType::Relu2:
         return &doGatedActivationKernel<ActivationOutputType, GemmOutputType, ReLu>;
+      case ActivationType::Relu2:
+        return &doGatedActivationKernel<ActivationOutputType, GemmOutputType, ReluSquared>;
       case ActivationType::Identity:
       default:
         return &doGatedActivationKernel<ActivationOutputType, GemmOutputType, Identity>;
@@ -143,9 +163,9 @@ void doGatedActivation(ActivationOutputType* output, GemmOutputType const* gemm_
 
 template <class T, class GemmOutputType, class ScaleBiasType, template <class> class ActFn,
           TmaWarpSpecializedGroupedGemmInput::FpXBlockScalingType BlockScalingType>
-__global__ void doActivationKernel(T* output, GemmOutputType const* gemm_result, float const* fp8_quant,
-                                   ScaleBiasType const* bias_ptr, bool bias_is_broadcast, int64_t const* expert_first_token_offset,
-                                   int num_experts_per_node, int64_t inter_size, bool gated, float const* fc2_act_global_scale,
+__global__ void doActivationKernel(T* output, const GemmOutputType* gemm_result, const float* fp8_quant,
+                                   const ScaleBiasType* bias_ptr, bool bias_is_broadcast, const int64_t* expert_first_token_offset,
+                                   int num_experts_per_node, int64_t inter_size, bool gated, const float* fc2_act_global_scale,
                                    bool use_per_expert_act_scale, TmaWarpSpecializedGroupedGemmInput::ElementSF* fc2_act_sf_flat,
 
                                    ActivationParams activation_params = {}) {
@@ -157,9 +177,9 @@ __global__ void doActivationKernel(T* output, GemmOutputType const* gemm_result,
   constexpr bool IsMXFP8 = cute::dependent_false<T>;
 #endif
 
-  int64_t const tid = threadIdx.x;
-  size_t const gated_size_mul = gated ? 2 : 1;
-  size_t const gated_off = gated ? inter_size : 0;
+  const int64_t tid = threadIdx.x;
+  const size_t gated_size_mul = gated ? 2 : 1;
+  const size_t gated_off = gated ? inter_size : 0;
 
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900))
   asm volatile("griddepcontrol.wait;");
@@ -174,11 +194,11 @@ __global__ void doActivationKernel(T* output, GemmOutputType const* gemm_result,
 
   // This should be VecSize * 4 elements
   // We assume at least VecSize alignment or the quantization will fail
-  int64_t const min_k_dim_alignment = IsNVFP4 ? TmaWarpSpecializedGroupedGemmInput::MinKDimAlignmentNVFP4
+  const int64_t min_k_dim_alignment = IsNVFP4 ? TmaWarpSpecializedGroupedGemmInput::MinKDimAlignmentNVFP4
                                               : TmaWarpSpecializedGroupedGemmInput::MinKDimAlignmentMXFPX;
-  int64_t const padded_inter_size = onnxruntime::llm::common::ceilDiv(inter_size, min_k_dim_alignment) * min_k_dim_alignment;
+  const int64_t padded_inter_size = onnxruntime::llm::common::ceilDiv(inter_size, min_k_dim_alignment) * min_k_dim_alignment;
 
-  int64_t const num_valid_tokens = expert_first_token_offset[num_experts_per_node];
+  const int64_t num_valid_tokens = expert_first_token_offset[num_experts_per_node];
 
   for (int64_t token = blockIdx.x; token < num_valid_tokens; token += gridDim.x) {
     size_t gemm_result_offset = token * inter_size * gated_size_mul;
@@ -191,7 +211,7 @@ __global__ void doActivationKernel(T* output, GemmOutputType const* gemm_result,
     }
 
     size_t act_scale_idx = use_per_expert_act_scale ? expert : 0;
-    float const quant_scale = fp8_quant ? fp8_quant[act_scale_idx] : 1.f;
+    const float quant_scale = fp8_quant ? fp8_quant[act_scale_idx] : 1.f;
 
     // Some globals for FP4
     float global_scale_val = fc2_act_global_scale ? fc2_act_global_scale[act_scale_idx] : 1.0f;
@@ -208,53 +228,55 @@ __global__ void doActivationKernel(T* output, GemmOutputType const* gemm_result,
                                           std::conditional_t<IsMXFP8, uint64_t, cutlass::Array<T, ACTIVATION_ELEM_PER_THREAD>>>;
     using ComputeElem = cutlass::Array<float, ACTIVATION_ELEM_PER_THREAD>;
     // Aliases gemm_result for non-gated, non-fp8 cases
-    auto gemm_result_vec = reinterpret_cast<GemmResultElem const*>(gemm_result + gemm_result_offset);
+    auto gemm_result_vec = reinterpret_cast<const GemmResultElem*>(gemm_result + gemm_result_offset);
     auto output_vec = reinterpret_cast<OutputElem*>(safe_inc_ptr(output, output_offset));
-    auto bias_ptr_vec = reinterpret_cast<BiasElem const*>(bias_ptr + bias_offset);
-    int64_t const start_offset = tid;
-    int64_t const stride = ACTIVATION_THREADS_PER_BLOCK;
+    auto bias_ptr_vec = reinterpret_cast<const BiasElem*>(bias_ptr + bias_offset);
+    const int64_t start_offset = tid;
+    const int64_t stride = ACTIVATION_THREADS_PER_BLOCK;
     assert(inter_size % ACTIVATION_ELEM_PER_THREAD == 0);
-    int64_t const num_elems_in_col = inter_size / ACTIVATION_ELEM_PER_THREAD;
+    const int64_t num_elems_in_col = inter_size / ACTIVATION_ELEM_PER_THREAD;
     assert(gated_off % ACTIVATION_ELEM_PER_THREAD == 0);
-    int64_t const gated_off_vec = gated_off / ACTIVATION_ELEM_PER_THREAD;
+    const int64_t gated_off_vec = gated_off / ACTIVATION_ELEM_PER_THREAD;
+    // Chunked GEGLU is [gate | up]; preserve the legacy SwiGLU chunk order.
+    const int64_t gate_offset =
+        gated && activation_params.activation_type == ActivationType::Geglu ? 0 : gated_off_vec;
+    const int64_t linear_offset = gated_off_vec - gate_offset;
 
     ActFn<ComputeElem> fn{};
     constexpr bool IsSiLu = std::is_same_v<ActFn<float>, cutlass::epilogue::thread::SiLu<float>>;
-    bool const use_custom_swiglu = gated && IsSiLu && (activation_params.alpha != 1.0f || activation_params.beta != 0.0f || isfinite(activation_params.limit));
-    bool const is_interleaved = gated && activation_params.swiglu_fusion == 1;
+    const bool use_custom_swiglu = gated && IsSiLu && (activation_params.alpha != 1.0f || activation_params.beta != 0.0f || isfinite(activation_params.limit));
+    const bool is_interleaved = gated && activation_params.swiglu_fusion == 1;
 
     for (int64_t elem_index = start_offset; elem_index < num_elems_in_col; elem_index += stride) {
       ComputeElem gate_part;
       ComputeElem linear_part;
 
       if (is_interleaved) {
-        auto* scalar_gemm = reinterpret_cast<GemmOutputType const*>(gemm_result + gemm_result_offset);
+        auto* scalar_gemm = reinterpret_cast<const GemmOutputType*>(gemm_result + gemm_result_offset);
         for (int i = 0; i < ACTIVATION_ELEM_PER_THREAD; ++i) {
           int64_t global_elem = elem_index * ACTIVATION_ELEM_PER_THREAD + i;
           gate_part[i] = static_cast<float>(scalar_gemm[2 * global_elem]);
           linear_part[i] = static_cast<float>(scalar_gemm[2 * global_elem + 1]);
         }
       } else {
-        // If not gated, gate_part reads from elem_index (gated_off_vec is 0).
-        // If gated, gate_part reads from elem_index + inter_size_vec (chunk 1).
-        gate_part = arrayConvert<GemmResultElem, ComputeElem>(gemm_result_vec[elem_index + gated_off_vec]);
+        gate_part = arrayConvert<GemmResultElem, ComputeElem>(gemm_result_vec[elem_index + gate_offset]);
         if (gated) {
-          linear_part = arrayConvert<GemmResultElem, ComputeElem>(gemm_result_vec[elem_index]);
+          linear_part = arrayConvert<GemmResultElem, ComputeElem>(gemm_result_vec[elem_index + linear_offset]);
         }
       }
 
       if (bias_ptr) {
         if (is_interleaved) {
-          auto* scalar_bias = reinterpret_cast<ScaleBiasType const*>(bias_ptr + bias_offset);
+          auto* scalar_bias = reinterpret_cast<const ScaleBiasType*>(bias_ptr + bias_offset);
           for (int i = 0; i < ACTIVATION_ELEM_PER_THREAD; ++i) {
             int64_t global_elem = elem_index * ACTIVATION_ELEM_PER_THREAD + i;
             gate_part[i] += static_cast<float>(scalar_bias[2 * global_elem]);
             linear_part[i] += static_cast<float>(scalar_bias[2 * global_elem + 1]);
           }
         } else {
-          gate_part = gate_part + arrayConvert<BiasElem, ComputeElem>(bias_ptr_vec[elem_index + gated_off_vec]);
+          gate_part = gate_part + arrayConvert<BiasElem, ComputeElem>(bias_ptr_vec[elem_index + gate_offset]);
           if (gated) {
-            linear_part = linear_part + arrayConvert<BiasElem, ComputeElem>(bias_ptr_vec[elem_index]);
+            linear_part = linear_part + arrayConvert<BiasElem, ComputeElem>(bias_ptr_vec[elem_index + linear_offset]);
           }
         }
       }
@@ -272,10 +294,18 @@ __global__ void doActivationKernel(T* output, GemmOutputType const* gemm_result,
             l = fminf(fmaxf(l, -activation_params.limit), activation_params.limit);
           }
           l += activation_params.beta;
-          gate_act[i] = g * sigmoid * l;
+          // SiLU's limit is zero where exp(-alpha * g) overflows.
+          const bool silu_limit_is_zero = (activation_params.alpha > 0.0f && g == -CUDART_INF_F) ||
+                                          (activation_params.alpha < 0.0f && g == CUDART_INF_F);
+          gate_act[i] = (silu_limit_is_zero ? 0.0f : g * sigmoid) * l;
         }
       } else {
         gate_act = fn(gate_part);
+        if constexpr (IsSiLu) {
+          for (int i = 0; i < ACTIVATION_ELEM_PER_THREAD; ++i) {
+            if (gate_part[i] == -CUDART_INF_F) gate_act[i] = 0.0f;
+          }
+        }
         if (gated) {
           gate_act = gate_act * linear_part;
         }
@@ -317,10 +347,10 @@ __global__ void doActivationKernel(T* output, GemmOutputType const* gemm_result,
   // Pad zeros in the extra SFs along the N dimension, we do this to ensure there are no nan values in the padded SF
   // atom
   if constexpr (IsNVFP4 || IsMXFP8) {
-    int64_t const start_offset = threadIdx.x;
-    int64_t const stride = ACTIVATION_THREADS_PER_BLOCK;
+    const int64_t start_offset = threadIdx.x;
+    const int64_t stride = ACTIVATION_THREADS_PER_BLOCK;
     // Use VecSize per thread since we are just writing out zeros so every thread can process a whole vector
-    int64_t const padded_num_elems_in_col = padded_inter_size / VecSize;
+    const int64_t padded_num_elems_in_col = padded_inter_size / VecSize;
     assert(padded_inter_size % VecSize == 0);
 
     constexpr int64_t min_num_tokens_alignment = IsNVFP4
@@ -354,9 +384,9 @@ __global__ void doActivationKernel(T* output, GemmOutputType const* gemm_result,
 }
 
 template <class T, class GemmOutputType, class ScaleBiasType>
-void doActivation(T* output, GemmOutputType const* gemm_result, float const* fp8_quant, ScaleBiasType const* bias,
-                  bool bias_is_broadcast, int64_t const* expert_first_token_offset, int num_experts_per_node, int64_t inter_size,
-                  int64_t expanded_num_tokens, ActivationType activation_type, QuantParams const& quant_params,
+void doActivation(T* output, const GemmOutputType* gemm_result, const float* fp8_quant, const ScaleBiasType* bias,
+                  bool bias_is_broadcast, const int64_t* expert_first_token_offset, int num_experts_per_node, int64_t inter_size,
+                  int64_t expanded_num_tokens, ActivationType activation_type, const QuantParams& quant_params,
                   bool use_per_expert_act_scale, TmaWarpSpecializedGroupedGemmInput::ElementSF* fc2_act_sf_flat, cudaStream_t stream,
                   ActivationParams activation_params) {
 #ifdef ENABLE_FP4
@@ -368,10 +398,10 @@ void doActivation(T* output, GemmOutputType const* gemm_result, float const* fp8
   int64_t num_padding_tokens = 0;
 #endif
 
-  static int64_t const smCount = onnxruntime::llm::common::getMultiProcessorCount();
+  static const int64_t smCount = onnxruntime::llm::common::getMultiProcessorCount();
   // Note: Launching 8 blocks per SM can fully leverage the memory bandwidth (tested on B200).
-  int64_t const blocks = std::min(smCount * 8, std::max(expanded_num_tokens, num_padding_tokens));
-  int64_t const threads = ACTIVATION_THREADS_PER_BLOCK;
+  const int64_t blocks = std::min(smCount * 8, std::max(expanded_num_tokens, num_padding_tokens));
+  const int64_t threads = ACTIVATION_THREADS_PER_BLOCK;
 
   auto fn = [&]() {
     auto fn = [&](auto block_scaling_type) {
@@ -381,11 +411,13 @@ void doActivation(T* output, GemmOutputType const* gemm_result, float const* fp8
         case ActivationType::Identity:
           return &doActivationKernel<T, GemmOutputType, ScaleBiasType, Identity, decltype(block_scaling_type)::value>;
         case ActivationType::Gelu:
-        case ActivationType::Geglu:
           return &doActivationKernel<T, GemmOutputType, ScaleBiasType, GELU, decltype(block_scaling_type)::value>;
+        case ActivationType::Geglu:
+          return &doActivationKernel<T, GemmOutputType, ScaleBiasType, GELU_taylor, decltype(block_scaling_type)::value>;
         case ActivationType::Relu:
-        case ActivationType::Relu2:
           return &doActivationKernel<T, GemmOutputType, ScaleBiasType, ReLu, decltype(block_scaling_type)::value>;
+        case ActivationType::Relu2:
+          return &doActivationKernel<T, GemmOutputType, ScaleBiasType, ReluSquared, decltype(block_scaling_type)::value>;
         case ActivationType::Silu:
         case ActivationType::Swiglu:
         case ActivationType::SwigluBias:
@@ -423,7 +455,7 @@ void doActivation(T* output, GemmOutputType const* gemm_result, float const* fp8
   attrs[0].val.programmaticStreamSerializationAllowed = onnxruntime::llm::common::getEnvEnablePDL();
   config.numAttrs = 1;
   config.attrs = attrs;
-  auto const* fc2_act_global_scale = quant_params.fp4.fc2.act_global_scale
+  const auto* fc2_act_global_scale = quant_params.fp4.fc2.act_global_scale
                                          ? quant_params.fp4.fc2.act_global_scale
                                      : quant_params.mxfp8_mxfp4.fc2.global_scale
                                          ? quant_params.mxfp8_mxfp4.fc2.global_scale

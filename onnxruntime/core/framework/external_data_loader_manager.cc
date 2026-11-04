@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/framework/external_data_loader_manager.h"
-#include "core/framework/tensor.h"
 
 namespace onnxruntime {
 using namespace common;
@@ -25,5 +24,74 @@ const IExternalDataLoader* ExternalDataLoaderManager::GetExternalDataLoader(cons
   }
   return nullptr;
 }
+
+const IExternalDataLoader* ExternalDataLoaderManager::GetExternalDataLoader(
+    const OrtMemoryInfo& target_memory_info, int32_t tensor_data_type) const {
+  for (auto& external_data_loader : external_data_loaders_) {
+    if (external_data_loader->CanLoad(target_memory_info) &&
+        external_data_loader->SupportsDataType(tensor_data_type)) {
+      return external_data_loader.get();
+    }
+  }
+  return nullptr;
+}
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ENABLE_D3D12_FILE_LOADING)
+Status ExternalDataLoaderManager::BeginLoad() const {
+  for (const auto& external_data_loader : external_data_loaders_) {
+    auto status = external_data_loader->BeginLoad();
+    if (!status.IsOK()) {
+      EndLoad();
+      return status;
+    }
+  }
+
+  return Status::OK();
+}
+
+Status ExternalDataLoaderManager::FinalizeLoad(const std::function<bool()>& is_canceled) const {
+  for (const auto& external_data_loader : external_data_loaders_) {
+    auto status = external_data_loader->FinalizeLoad(is_canceled);
+    if (!status.IsOK()) {
+      EndLoad();
+      return status;
+    }
+  }
+
+  return Status::OK();
+}
+
+void ExternalDataLoaderManager::EndLoad() const noexcept {
+  for (const auto& external_data_loader : external_data_loaders_) {
+    external_data_loader->EndLoad();
+  }
+}
+#endif
+
+#if defined(ENABLE_D3D12_FILE_LOADING)
+const IExternalDataLoader* ExternalDataLoaderManager::GetTensorCreator(
+    const OrtDevice& target_device, int32_t tensor_data_type) const {
+  for (const auto& external_data_loader : external_data_loaders_) {
+    if (external_data_loader->SupportsDataType(tensor_data_type) &&
+        external_data_loader->CreatesTensorForDevice(target_device)) {
+      return external_data_loader.get();
+    }
+  }
+
+  return nullptr;
+}
+
+Status ExternalDataLoaderManager::CommitLoadCandidates(const std::function<bool()>& is_canceled) const {
+  for (const auto& external_data_loader : external_data_loaders_) {
+    auto status = external_data_loader->CommitLoadCandidates(is_canceled);
+    if (!status.IsOK()) {
+      EndLoad();
+      return status;
+    }
+  }
+
+  return Status::OK();
+}
+#endif
 
 }  // namespace onnxruntime

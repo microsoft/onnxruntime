@@ -33,6 +33,7 @@
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/framework/session_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "test/util/include/telemetry_test_environment.h"
 #include "nlohmann/json.hpp"
 
 #ifdef USE_CUDA
@@ -907,6 +908,9 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         ORT_TSTR("rotary_embedding_3d_input_expanded"),
         ORT_TSTR("rotary_embedding_expanded"),
         ORT_TSTR("rotary_embedding_interleaved_expanded"),
+        // QNN CPU returns uniform Softmax probabilities for the expanded function's all-negative-infinity rows,
+        // so its zero-row guard is not preserved. Keep the native Attention case enabled.
+        ORT_TSTR("attention_4d_causal_nonpad_negative_offset_structural_empty_expanded"),
         // QNN don't support fmod = 1
         ORT_TSTR("mod_mixed_sign_float64"),
         ORT_TSTR("mod_mixed_sign_float32"),
@@ -994,6 +998,7 @@ int wmain(int argc, wchar_t* argv[]) {
 #else
 int main(int argc, char* argv[]) {
 #endif
+  onnxruntime::test::SuppressTelemetryForTests();
 #ifdef _WIN32
 #if defined(_DEBUG) && !defined(ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
   int tmpFlag = _CrtSetDbgFlag(_CRTDBG_REPORT_FLAG);

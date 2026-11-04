@@ -21,7 +21,7 @@ Abstract:
         .text
 
 //
-// Stack frame layout for the sbgemm kernel. d8-d15, x19-x30 need save
+// Stack frame layout for the sbgemm kernel. d8-d15, x19-x30 need save. x18 may be reserved by the platform ABI.
 //
         .equ  .LMlasSbgemmKernel_backup_x19_x20,    0
         .equ  .LMlasSbgemmKernel_backup_x21_x22,    16
@@ -688,7 +688,7 @@ Abstract:
 .endif
 
 .if \Rows\() > 6
-        OutputRow\Columns\()Element \Mode\(),x18,x19,28,29,30,31,(\Rows\() == 7)
+        OutputRow\Columns\()Element \Mode\(),x24,x19,28,29,30,31,(\Rows\() == 7)
 .endif
 
         .endm
@@ -840,8 +840,8 @@ Return Value:
         add     x15,x14,x7,lsl #2           // compute matrix C plus 3 rows
         add     x16,x15,x7,lsl #2           // compute matrix C plus 4 rows
         add     x17,x16,x7,lsl #2           // compute matrix C plus 5 rows
-        add     x18,x17,x7,lsl #2           // compute matrix C plus 6 rows
-        add     x19,x18,x7,lsl #2           // compute matrix C plus 7 rows
+        add     x24,x17,x7,lsl #2           // compute matrix C plus 6 rows
+        add     x19,x24,x7,lsl #2           // compute matrix C plus 7 rows
 
         mov     x26,x0                       // save matrix A
 //

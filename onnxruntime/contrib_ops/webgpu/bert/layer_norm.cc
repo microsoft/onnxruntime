@@ -20,7 +20,10 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     1,
     16,
     kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()),
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", WebGpuSupportedFloatTypes())
+        .TypeConstraint("U", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("V", WebGpuSupportedFloatTypes()),
     onnxruntime::webgpu::LayerNorm<false>);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -28,7 +31,10 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     1,
     kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()),
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", WebGpuSupportedFloatTypes())
+        .TypeConstraint("U", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("V", WebGpuSupportedFloatTypes()),
     onnxruntime::webgpu::LayerNorm<true>);
 
 }  // namespace webgpu

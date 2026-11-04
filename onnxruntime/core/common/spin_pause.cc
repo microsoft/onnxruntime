@@ -33,14 +33,13 @@ namespace concurrency {
 #if defined(_WIN32) || defined(__WAITPKG__)
 // clang (including clang-cl) gates the _tpause intrinsic behind the 'waitpkg'
 // target feature and refuses to emit it from a function that was not compiled
-// with that feature. Isolate the intrinsic in a helper carrying the target
-// attribute so it is never inlined into SpinPause(); the call remains
-// runtime-guarded by CPUIDInfo::HasTPAUSE(). MSVC does not feature-gate
-// intrinsics and ignores the (clang-only) attribute.
+// with that feature. Isolate the intrinsic in a non-inlined helper carrying the
+// target attribute; the call remains runtime-guarded by
+// CPUIDInfo::HasTPAUSE(). MSVC does not feature-gate intrinsics.
 #if defined(__clang__)
-__attribute__((target("waitpkg")))
+__attribute__((target("waitpkg"), noinline))
 #endif
-inline void
+static void
 OrtTPause(uint64_t deadline) {
   _tpause(0x0, deadline);
 }
@@ -55,9 +54,9 @@ void SpinPause() {
     !defined(__APPLE__)
 
   static const bool has_tpause = CPUIDInfo::GetCPUIDInfo().HasTPAUSE();
-  static constexpr uint64_t tpause_spin_delay_cycles = 1000;
   if (has_tpause) {
 #if defined(_WIN32) || defined(__WAITPKG__)
+    static constexpr uint64_t tpause_spin_delay_cycles = 1000;
     OrtTPause(__rdtsc() + tpause_spin_delay_cycles);
 #else
     _mm_pause();

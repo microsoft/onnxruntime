@@ -106,6 +106,27 @@ void ModelCompilationOptions::SetOutputModelExternalInitializersFile(
   };
 }
 
+void ModelCompilationOptions::SetOutputModelExternalInitializersBuffer(
+    const std::filesystem::path& logical_file_name,
+    size_t external_initializer_size_threshold,
+    onnxruntime::AllocatorPtr allocator,
+    void** output_buffer_ptr,
+    size_t* output_buffer_size_ptr) {
+  session_options_.value.ep_context_gen_options.initializers_location = epctx::ExternalInitializerBufferInfo{
+      logical_file_name,
+      external_initializer_size_threshold,
+      std::move(allocator),
+      output_buffer_ptr,
+      output_buffer_size_ptr,
+  };
+}
+
+void ModelCompilationOptions::SetOutputModelExternalInitializersAlignment(size_t alignment, size_t minimum_size) {
+  auto& options = session_options_.value.ep_context_gen_options;
+  options.external_initializers_alignment = alignment;
+  options.external_initializers_alignment_threshold = minimum_size;
+}
+
 Status ModelCompilationOptions::SetOutputModelBuffer(onnxruntime::AllocatorPtr allocator,
                                                      void** output_model_buffer_ptr,
                                                      size_t* output_model_buffer_size_ptr) {
@@ -251,6 +272,13 @@ Status ModelCompilationOptions::SetGraphOptimizationLevel(GraphOptimizationLevel
   return Status::OK();
 }
 
+Status ModelCompilationOptions::SetWeightlessEnabled(bool use_weightless) {
+  ORT_RETURN_IF_ERROR(
+      session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless,
+                                                           use_weightless ? "1" : "0"));
+  return Status::OK();
+}
+
 Status ModelCompilationOptions::Check() const {
   const ConfigOptions& config_options = session_options_.value.config_options;
 
@@ -326,6 +354,22 @@ Status ModelCompilationOptions::Check() const {
     }
   }
 
+  const epctx::ExternalInitializerBufferInfo* external_buffer_info =
+      ep_context_gen_options.TryGetExternalInitializerBufferInfo();
+  if (external_buffer_info != nullptr &&
+      (external_buffer_info->logical_file_name.empty() || external_buffer_info->logical_file_name.is_absolute())) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "External initializer logical file name must be a non-empty relative path");
+  }
+
+  if (external_buffer_info != nullptr &&
+      (external_buffer_info->buffer_allocator == nullptr || external_buffer_info->buffer_ptr == nullptr ||
+       external_buffer_info->buffer_size_ptr == nullptr)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "External initializer buffer requires a non-null allocator, output buffer pointer, and "
+                           "output buffer size pointer");
+  }
+
   if (has_no_output_model_location && can_derive_output_path) {
     // User did not specify an output file, an output buffer, or an output write function. We default to generating an
     // output file with a name based on the input file name, so do not return an error.
@@ -353,6 +397,13 @@ Status ModelCompilationOptions::Check() const {
   if (output_buffer_ptr != nullptr && output_buffer_ptr->buffer_allocator == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Invalid buffer configuration for output model: allocator is null");
+  }
+
+  if (external_buffer_info != nullptr && output_buffer_ptr != nullptr &&
+      (external_buffer_info->buffer_ptr == output_buffer_ptr->buffer_ptr ||
+       external_buffer_info->buffer_size_ptr == output_buffer_ptr->buffer_size_ptr)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Model and external initializer buffers require distinct output pointer locations");
   }
 
   const epctx::BufferWriteFuncHolder* output_write_func_holder = ep_context_gen_options.TryGetOutputModelWriteFunc();
@@ -415,8 +466,10 @@ bool ModelCompilationOptions::GetEmbedEpContextForTelemetry() const {
 }
 
 bool ModelCompilationOptions::HasExternalInitializersFileForTelemetry() const {
-  return session_options_.value.ep_context_gen_options.TryGetExternalInitializerFileInfo() != nullptr ||
-         session_options_.value.ep_context_gen_options.TryGetInitializerHandler() != nullptr;
+  const auto& gen_options = session_options_.value.ep_context_gen_options;
+  return gen_options.TryGetExternalInitializerFileInfo() != nullptr ||
+         gen_options.TryGetExternalInitializerBufferInfo() != nullptr ||
+         gen_options.TryGetInitializerHandler() != nullptr;
 }
 
 }  // namespace onnxruntime

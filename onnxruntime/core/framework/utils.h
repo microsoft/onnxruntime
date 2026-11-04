@@ -21,6 +21,8 @@ class KernelDef;
 class KernelRegistryManager;
 class IExecutionProvider;
 class Node;
+#if !defined(ORT_MINIMAL_BUILD)
+#endif
 class Tensor;
 struct KernelCreateInfo;
 #ifdef ENABLE_TRAINING
@@ -61,6 +63,8 @@ bool IsMemcpyNode(const Node& node);
 // HOST_ACCESSIBLE -> DEFAULT is valid (device can access HOST_ACCESSIBLE memory directly).
 // DEFAULT -> HOST_ACCESSIBLE is NOT valid (CPU cannot read device-only memory).
 bool CanSourceSatisfyTarget(const OrtDevice& src, const OrtDevice& tgt);
+
+common::Status NormalizePreallocatedOutputShape(const TensorShape& source_shape, Tensor& destination);
 
 common::Status CopyOneInputAcrossDevices(const SessionState& session_state, const std::string& input_name,
                                          const OrtValue& orig_mlvalue, OrtValue& new_mlvalue);

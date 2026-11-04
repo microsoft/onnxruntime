@@ -15,6 +15,11 @@ class GroupQueryAttention final : public OpKernel, public GQAAttentionBase {
  public:
   GroupQueryAttention(const OpKernelInfo& info);
   Status Compute(OpKernelContext* context) const override;
+
+ private:
+  // sliding_window_cache attribute: the past/present KV buffers are window-sized and the kernel
+  // works in cache-relative coordinates, evicting from the front. Requires local_window_size_ > 0.
+  bool sliding_window_cache_;
 };
 
 }  // namespace contrib
