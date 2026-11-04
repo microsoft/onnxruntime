@@ -416,9 +416,9 @@ being duplicated in `//:common_runtime_test`.
 Linux PCI/DRM/NPU discovery and POSIX/Windows telemetry-specific subdirectories
 are not wired: the foundation still uses default device discovery and disables
 optional telemetry transports. Android tests and DirectML provider tests need
-their own platform configurations. GPU tests, dynamic EP libraries, external
-model-corpus runners, provider-bridge/dlopen probes requiring internal runtime
-symbols, and benchmarks/fuzzers remain outside this C++ slice. The shared public
+their own platform configurations. GPU tests, production dynamic EP libraries,
+external model-corpus runners, and benchmarks/fuzzers remain outside this C++
+slice. The shared public
 API, global-threadpool, and CPU custom-op/plugin additions are described below.
 
 Starlark files use LF even on Windows: frozen module-extension digests depend on
@@ -539,10 +539,71 @@ attempting to copy over them. The updated wrapper also passed the existing
 distinct existing cases across 20 executables**, not full-suite coverage. A preliminary
 global-threadpool filter using `/simple/0` instead of `.simple/0` selected zero
 cases and correctly failed; the corrected command above passed all four targets.
-The external ONNX corpus (`test_io_types.cc`), runtime-path helper library,
-internal provider-bridge probes, wider auto-EP registration/selection suites,
-config-dependent optional providers, and full test suites remain unvalidated or
-unwired. No Linux/macOS execution of these four targets has been performed.
+The external ONNX corpus (`test_io_types.cc`), config-dependent optional
+providers, and full test suites remain unvalidated or unwired. No Linux/macOS
+execution of these four targets has been performed.
+
+### Internal loader and broader auto-EP suites
+
+`//:runtime_path_test` builds the existing runtime-path helper as a native
+shared library and imports its public test function. The internal `Env`
+implementation must execute inside that helper module, so this fixture embeds
+the current monolithic native runtime archive with restricted symbol exports.
+The executable still consumes the actual runtime DLL for its public API
+environment; this does not change the DLL-only linkage of the shared API tests.
+
+`//:provider_bridge_test` and `//:optional_provider_probe_test` use the existing
+normal-exception internal tests and source-built missing-export/valid/shared
+fixture libraries. They deliberately test internal static runtime symbols, not
+exported C API replacements. A small Python launcher copies each executable and
+its dynamic fixtures into a private `TEST_TMPDIR/runtime/` directory, then
+propagates its exit status. Consequently the tests can install/remove libraries
+beside their executable without modifying Bazel outputs or other tests. The
+optional-provider fixtures are fake loader interfaces, not an OpenVINO build.
+
+`//:runtime_dlopen_test` runs the existing Windows standalone
+`LoadLibrary`/`GetProcAddress`/inference/`FreeLibrary` probe against a copied
+source-built runtime DLL. The probe has no runtime import-library dependency.
+Its attempted CUDA registration fails as expected in the CPU configuration,
+then it executes the CPU model and verifies that the DLL unloads. This is one
+standalone probe, not a GoogleTest case or CUDA validation.
+
+`//:autoep_tests` compiles the existing top-level `test/autoep/*.cc` sources,
+with their existing feature guards, and uses the same isolated launcher plus
+the three native example plugin libraries. It links the static internal test
+runtime because registration/selection sources access internal types and
+`OrtSessionOptions::GetProviderOptionPrefix`; those are not public DLL exports.
+This target is tagged `manual`: the full provider-dependent suite is not ready
+for wildcard execution.
+
+On Windows, this exact command passed **six existing GoogleTests plus the
+standalone DLL probe**, with nonzero counts in every GoogleTest executable:
+
+```sh
+bazel test -c opt //:runtime_path_test //:provider_bridge_test //:optional_provider_probe_test //:runtime_dlopen_test //:autoep_tests --test_filter="GetRuntimePathFromSharedLibraryTest.Basic:ProviderBridgeTest.MissingExportUnloadsLibraryAndAllowsRetry:OptionalProviderProbeTest.MissingExportUnloadsAndAllowsReplacement:OrtEpLibrary.LoadUnloadPluginLibrary:AutoEpSelection.CpuEP:AutoEpSelection.PreferCpu" --build_python_zip=false --jobs=2 --local_test_jobs=1 --test_output=all --nocache_test_results
+```
+
+New test/helper/fixture sources compiled natively using the cached source-built
+runtime; no binary substitutions were used. The final selected run required
+only cached native actions. This brings selected Windows coverage to **47
+distinct existing GoogleTests across 24 GoogleTest executables**, plus the
+standalone DLL probe. Full-suite and non-Windows execution remain unvalidated.
+`bazel test -c opt //:provider_bridge_test --test_filter=BazelMissingCase
+--build_python_zip=false --jobs=2 --local_test_jobs=1 --test_output=all
+--nocache_test_results` failed with expected Bazel exit 3, confirming that the
+isolated launcher preserves the GoogleTest wrapper's zero-match rejection.
+
+Two additional attempted existing auto-EP cases still fail in this configuration:
+`OrtEpLibrary.LoadUnloadPluginLibraryCxxApi` expects nonempty hardware metadata
+but default device discovery supplies none, and
+`AutoEpSelection.DuplicateEpCustomOpDomainsAreDeduplicatedForSessionCreation`
+cannot find the `test.Custom_Mul` kernel. Neither is counted as passing, and
+the latter remains an unresolved configuration/runtime limitation. A prior
+registration-library path mismatch was corrected by executing from the isolated
+directory, not by weakening the assertion. No-exception loader variants and
+cpuinfo allocation/refcount probes are not wired; the default runtime does not
+enable `CPUINFO_SUPPORTED`. Hardware-discovery configurations remain outside
+this slice.
 
 ### Existing Java/JNI tests
 
@@ -791,8 +852,10 @@ language smoke tests are integration tests, not replacements for each binding's
 complete test suite.
 
 The `Native Bazel desktop` workflow runs the default graph on `ubuntu-24.04`,
-`windows-2022`, `macos-15`, and `macos-15-intel`, including all five desktop
-bindings. Passing Linux tests alone is not evidence that the other hosts work.
+`windows-2022`, and Apple Silicon `macos-15`, including all five desktop
+bindings. Intel macOS source support remains, but there is no Intel macOS CI
+leg; native macOS verification prioritizes Apple Silicon. Passing Linux tests
+alone is not evidence that the other hosts work.
 
 Remaining work includes the full provider/operator suites, contrib operators,
 additional EPs, additional architecture variants, release packaging,

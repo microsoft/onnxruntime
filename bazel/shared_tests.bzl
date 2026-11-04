@@ -6,6 +6,7 @@
 load("@rules_cc//cc:cc_import.bzl", "cc_import")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("//bazel:loader_tests.bzl", "loader_tests")
 load("//bazel:platforms.bzl", "desktop_shared_library")
 
 def shared_api_tests():
@@ -158,3 +159,4 @@ def shared_api_tests():
             ":shared_api_test",
         ],
     )
+    loader_tests(plugin_libraries)
