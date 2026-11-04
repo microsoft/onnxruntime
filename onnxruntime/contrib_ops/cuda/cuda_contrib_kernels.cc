@@ -28,6 +28,9 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+class CUDA_MS_OP_CLASS_NAME(1, Mamba2Verify);
+class CUDA_MS_OP_CLASS_NAME(1, BiasCorrectedMoERoute);
+class CUDA_MS_OP_CLASS_NAME(1, ReluSquared);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GridSample);
 
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, FastGelu);
@@ -411,6 +414,9 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
 Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list become empty after ops-reducing
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, Mamba2Verify)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, BiasCorrectedMoERoute)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, ReluSquared)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GridSample)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, FastGelu)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, double, FastGelu)>,
