@@ -389,11 +389,16 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
     const auto* total_sequence_length_data =
         total_sequence_length_index >= 0 ? ctx.getInputData(total_sequence_length_index) : nullptr;
     if (total_sequence_length_data != nullptr) {
-      const auto& data = ParseData<int32_t>(total_sequence_length_data);
-      if (data.size() != 1) {
-        fail_shape_inference("total_sequence_length input must contain a single element");
-      }
-      total_sequence_length_value = static_cast<int64_t>(data[0]);
+      const auto read_single_value = [](const auto& data) -> int64_t {
+        if (data.size() != 1) {
+          fail_shape_inference("total_sequence_length input must contain a single element");
+        }
+        return static_cast<int64_t>(data[0]);
+      };
+      // Propagated shape values use int64 even when the input type is int32.
+      total_sequence_length_value = total_sequence_length_data->data_type() == TensorProto_DataType_INT64
+                                        ? read_single_value(ParseData<int64_t>(total_sequence_length_data))
+                                        : read_single_value(ParseData<int32_t>(total_sequence_length_data));
     }
 
     if (past_key_index >= 0 && hasInputShape(ctx, past_key_index)) {
