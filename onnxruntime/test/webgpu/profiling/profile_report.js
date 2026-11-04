@@ -202,11 +202,12 @@
       }
       ctx.globalAlpha = 1;
       const crossesView = (submit, dispatch) =>
-        Math.max(submit[0], dispatch[0]) >= view[0] && Math.min(submit[0], dispatch[0]) <= view[1];
+        Math.max(submit[0] + submit[1], dispatch[0]) >= view[0] &&
+        Math.min(submit[0] + submit[1], dispatch[0]) <= view[1];
       const drawDependency = (submission, dispatches, emphasized) => {
         const submit = events[submission.submit];
-        // GPU execution may overlap the CPU call; submission entry is the causal source.
-        const fromX = x(submit[0]);
+        // Preserve backwards links when GPU execution starts before the CPU call returns.
+        const fromX = x(submit[0] + submit[1]);
         const fromY = top + submit[2] * rowHeight + 27;
         ctx.strokeStyle = '#2563eb';
         ctx.fillStyle = '#2563eb';
@@ -246,11 +247,11 @@
         if (selectedSubmission) {
           drawDependency(selectedSubmission, selectedSubmission.dispatches, true);
           $('dependency-note').textContent =
-            `Submission ${selectedSubmission.id}: CPU queue.submit → ${number(selectedSubmission.dispatches.length)} GPU dispatch${selectedSubmission.dispatches.length === 1 ? '' : 'es'}.`;
+            `Submission ${selectedSubmission.id}: CPU queue.submit end → ${number(selectedSubmission.dispatches.length)} GPU dispatch${selectedSubmission.dispatches.length === 1 ? '' : 'es'}.`;
         } else {
           $('dependency-note').textContent = visible.length
-            ? `${count < visible.length ? `${count} of ${number(visible.length)}` : number(count)} submit → first GPU arrows · click a submit or GPU bar to expand its batch.`
-            : 'No submit → first GPU arrows cross this view · select a GPU bar to inspect its batch.';
+            ? `${count < visible.length ? `${count} of ${number(visible.length)}` : number(count)} submit end → first GPU arrows · click a submit or GPU bar to expand its batch.`
+            : 'No submit end → first GPU arrows cross this view · select a GPU bar to inspect its batch.';
         }
       }
       ctx.globalAlpha = 1;
@@ -308,11 +309,16 @@
           $('event-links').append(element('strong', `Submission ${submission.id}`));
           const first = events[submission.dispatches[0]];
           const accurate = JSON.parse(strings[first[4]]).clock_alignment === 'd3d12_clock_calibration';
+          const gap = first[0] - (submit[0] + submit[1]);
           $('event-links').append(
             element(
               'p',
               accurate
-                ? `Submit entry → first GPU start: ${ms(first[0] - submit[0])} ms. Includes CPU submission processing and queueing.`
+                ? `Submit end → first GPU start: ${ms(gap)} ms (${gap} µs). ${
+                    gap < 0
+                      ? 'GPU execution begins before queue.submit returns; the negative value indicates CPU/GPU overlap.'
+                      : 'Gap after queue.submit returns; may include GPU queueing and scheduling.'
+                  }`
                 : 'Recorded dependency; timing is approximate and cannot measure queueing delay.',
             ),
           );

@@ -31,7 +31,7 @@ overlap: for example, a pipeline wait can be inside command encoding. Do not sum
 
 Each profiled `WebGPU::Submit` and its GPU dispatches carry the same `submission_id` in their event
 arguments. IDs distinguish submissions across runs and recreated contexts in a process. **CPU → GPU links**
-is enabled by default: blue arrows connect submit entry to the first GPU dispatch in each batch.
+is enabled by default: blue arrows connect the end of `queue.submit` to the first GPU dispatch in each batch.
 Dense views show at most 80 overview arrows and state the displayed count; zoom in to see more.
 Select a CPU submission or GPU dispatch to highlight the batch and draw arrows to all its GPU dispatches.
 The event inspector lists related events; **Zoom to submission** shows the CPU call and its GPU work,
@@ -42,10 +42,13 @@ events narrower than three pixels appear as markers; the report identifies this 
 and the inspector retains the measured duration. Small nonzero times are not rounded to zero.
 
 `WebGPU::Submit` measures the `queue.submit` call; command-buffer finishing is recorded separately as
-`WebGPU::Finish` on the encoding lane. Arrows start at submit entry because GPU execution can begin
-before the CPU call returns. With calibrated clocks, the report shows submit-entry-to-first-GPU-start
-latency, including CPU submission processing and queueing. Approximate `first_submit` timestamps
-retain the recorded dependency but cannot measure that latency. IDs and links add no GPU operations
+`WebGPU::Finish` on the encoding lane. Arrows start at the recorded end of the CPU submit call and
+end at the GPU dispatch's recorded start. GPU execution can begin before the CPU call returns:
+these links point backwards in time. With calibrated clocks, the inspector shows the signed
+submit-end-to-first-GPU-start interval. Negative values indicate CPU/GPU overlap; positive values
+are the gap after the submit call returns and can include queueing and scheduling. This interval
+does not measure total GPU queueing time. Approximate `first_submit` timestamps retain the recorded
+dependency but cannot measure that interval. IDs and links add no GPU operations
 or synchronization, and their runtime bookkeeping is active only during profiling.
 
 Clock calibration, CPU event clocks/storage, timestamp writes and query resolve/readback run only
