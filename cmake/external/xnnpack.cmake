@@ -1,3 +1,14 @@
+if(onnxruntime_USE_SYSTEM_XNNPACK)
+  include("${CMAKE_CURRENT_LIST_DIR}/onnxruntime_system_xnnpack.cmake")
+  add_library(XNNPACK ALIAS onnxruntime::system_xnnpack)
+  add_library(pthreadpool ALIAS onnxruntime::system_pthreadpool)
+
+  # System packages must provide the bundled API and the cpuinfo lifecycle changes in
+  # release_cpuinfo_after_hardware_config.patch.
+  set(onnxruntime_EXTERNAL_LIBRARIES_XNNPACK onnxruntime::system_xnnpack onnxruntime::system_pthreadpool)
+  return()
+endif()
+
 set(XNNPACK_USE_SYSTEM_LIBS ON CACHE INTERNAL "")
 set(XNNPACK_BUILD_TESTS OFF CACHE INTERNAL "")
 set(XNNPACK_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
