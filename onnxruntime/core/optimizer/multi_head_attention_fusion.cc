@@ -251,7 +251,9 @@ bool TryFuse(Graph& graph, Node& softmax, const InlinedHashSet<std::string_view>
   if (q_head_size % 8 != 0) {
     return false;
   }
-  // Dense prefill needs K/V tiles of 16 keys to fit in the 16 KB of workgroup storage every adapter guarantees.
+  // Dense prefill needs K/V tiles of 16 keys to fit in the 16 KB of workgroup storage every adapter guarantees. That
+  // matches the kernel except on Qualcomm, whose extra output tile can exceed 16 KB on 16 KB adapters; the adapter is
+  // unknown here, and missing dense prefill only costs speed, so the bound is not tightened for that case.
   const int64_t element_size =
       q_type->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ? 2 : 4;
   if (2 * 16 * q_head_size * element_size > 16384) {
