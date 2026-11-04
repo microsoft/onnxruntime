@@ -8,6 +8,7 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//bazel:bindings.bzl", "language_bindings")
 load("//bazel:cuda.bzl", "cuda_libraries")
 load("//bazel:mlas.bzl", "mlas_libraries")
+load("//bazel:packaging.bzl", "runtime_sdk_package")
 load("//bazel:platforms.bzl", "desktop_shared_library")
 load("//bazel:tests.bzl", "core_tests")
 
@@ -287,6 +288,8 @@ cc_test(
 cuda_libraries()
 
 language_bindings()
+
+runtime_sdk_package()
 
 core_tests()
 

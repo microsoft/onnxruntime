@@ -10,7 +10,7 @@ The native graph targets Linux x86-64, Windows x86-64, and macOS on Intel and
 Apple Silicon. Linux and native Windows execution have been validated; macOS
 validation is still pending. This is not yet a replacement for the
 release build: contrib operators, additional execution providers,
-mobile/web cross-compilation, and release packaging are not included.
+mobile/web cross-compilation, and language-specific release packaging are not included.
 `orttraining` build and test migration is intentionally out of scope.
 
 ## Getting started
@@ -51,6 +51,59 @@ module lock state fails instead of being updated implicitly. After an intentiona
 dependency change, run `bazel mod deps --lockfile_mode=update`, then review and
 commit the resulting `MODULE.bazel.lock` changes. Normal builds and tests must
 not override the frozen-lock setting.
+
+### Standalone native SDK archive
+
+```sh
+bazel build -c opt //:runtime_sdk_archive
+bazel test -c opt //:runtime_sdk_archive_test --test_output=errors
+```
+
+`bazel-bin/onnxruntime-sdk.zip` contains a single `onnxruntime/` directory:
+standalone public C/C++ session headers in `include/`, the source-built shared
+runtime in `lib/` (`bin/` on Windows), the Windows import library
+`lib/onnxruntime.lib`, version and license notices, and a small Add inference
+example with its model. CUDA-enabled Linux archives also include the
+source-built CUDA and shared-provider libraries; CUDA/cuDNN SDK libraries are
+not redistributed. Consumers must supply the matching system runtime
+dependencies, including the Visual C++ runtime on Windows or CUDA/cuDNN for
+GPU execution. The archive is specific to the selected target platform and
+build flags, not a universal or officially signed release package. It does
+not yet produce Python wheels, Maven/AAR, npm, NuGet, or Apple frameworks.
+
+The archive test checks its layout, extracts it to a temporary directory, and
+loads that extracted runtime to verify the version through `OrtGetApiBase`.
+It does not load a runtime from the Bazel output directory. To compile and run
+the packaged example outside Bazel, extract the archive and run from its
+`onnxruntime/` directory:
+
+```sh
+# Linux:
+c++ -std=c++17 -Iinclude examples/sdk_inference_example.cc -Llib -lonnxruntime -Wl,-rpath,'$ORIGIN/lib' -o sdk_inference_example
+./sdk_inference_example examples/add_f32.onnx
+# macOS: use -Wl,-rpath,@loader_path/lib instead of the Linux rpath.
+```
+
+From a Visual Studio x64 developer prompt:
+
+```bat
+cl /nologo /EHsc /std:c++17 /Iinclude examples\sdk_inference_example.cc lib\onnxruntime.lib /Fe:bin\sdk_inference_example.exe
+bin\sdk_inference_example.exe examples\add_f32.onnx
+```
+
+Windows package-only validation built the ZIP with a temporary local
+substitution of the previously source-built and validated native DLL/import
+library. The extracted archive passed its layout/version/load check, and the
+documented `cl` command compiled the bundled example using only extracted
+headers and the extracted import library; the executable passed Add inference
+using the extracted DLL. This does not constitute a fresh native runtime
+rebuild. `bazel test -c opt //:runtime_sdk_archive_test
+--build_python_zip=false --test_output=all --nocache_test_results` passed one
+test with that substitution; the Windows-only launcher flag avoids building
+an unnecessary Python ZIP. The substitution is not part of the committed graph:
+`bazel build -c opt //:runtime_sdk_archive_test --nobuild` validates the
+source-runtime dependency. Linux, macOS, and CUDA archive execution have not
+been validated by this packaging slice.
 
 ### Desktop portability checks
 
