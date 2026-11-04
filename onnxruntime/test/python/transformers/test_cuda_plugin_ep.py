@@ -3236,6 +3236,7 @@ class TestCudaPluginEP(unittest.TestCase):
                 {"external_data_loader_reading_threads": "invalid"},
                 {"external_data_loader_pinned_memory_bytes": "4096"},
                 {"external_data_loader_pinned_memory_bytes": "1048577"},
+                {"external_data_loader_pinned_memory_bytes": str(2 * 1024 * 1024 * 1024)},
                 {"external_data_loader_chunk_bytes": "2048"},
                 {"external_data_loader_chunk_bytes": str(128 * 1024 * 1024)},
             ):

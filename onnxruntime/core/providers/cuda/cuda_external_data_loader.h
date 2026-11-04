@@ -62,6 +62,8 @@ class ExternalDataLoader final : public IExternalDataLoader {
 
   common::Status BeginLoad() const override;
 
+  void SetExpectedLoadBytes(size_t total_bytes) const override;
+
   common::Status FinalizeLoad(const std::function<bool()>& is_canceled = {}) const override;
 
   void EndLoad() const noexcept override;
@@ -97,6 +99,9 @@ class ExternalDataLoader final : public IExternalDataLoader {
   mutable bool in_batch_load_{false};
   mutable std::vector<ExternalDataLoadTask> pending_tasks_;
   mutable size_t pending_bytes_{0};
+  // Bytes already flushed by earlier FinalizeLoad() calls and the total reported by the framework.
+  mutable size_t flushed_bytes_{0};
+  mutable size_t expected_total_bytes_{0};
 };
 
 }  // namespace cuda

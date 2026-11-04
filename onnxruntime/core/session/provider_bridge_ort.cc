@@ -2935,14 +2935,14 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2, _In_
   }
   if (cuda_options->external_data_loader_pinned_memory_bytes <
           OrtCUDAProviderOptionsV2::kMinExternalDataLoaderPinnedMemoryBytes ||
-      static_cast<uint64_t>(cuda_options->external_data_loader_pinned_memory_bytes) >
-          OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderPinnedMemoryBytesU64 ||
+      cuda_options->external_data_loader_pinned_memory_bytes >
+          OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderPinnedMemoryBytes ||
       (cuda_options->external_data_loader_pinned_memory_bytes %
        OrtCUDAProviderOptionsV2::kExternalDataLoaderPinnedMemoryAlignment) != 0) {
     const auto message = onnxruntime::MakeString(
         "external_data_loader_pinned_memory_bytes must be between ",
         OrtCUDAProviderOptionsV2::kMinExternalDataLoaderPinnedMemoryBytes, " and ",
-        OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderPinnedMemoryBytesU64,
+        OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderPinnedMemoryBytes,
         " bytes and a multiple of ",
         OrtCUDAProviderOptionsV2::kExternalDataLoaderPinnedMemoryAlignment, ".");
     return OrtApis::CreateStatus(

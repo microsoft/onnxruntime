@@ -44,10 +44,10 @@ struct ExternalDataLoaderOptions {
   static constexpr size_t kDefaultMinAutoThreads = 2;
   static constexpr size_t kDefaultMaxAutoThreads = 8;
 
-  static constexpr size_t kMinPinnedMemoryBytes = 1024 * 1024;                            // 1 MiB (512 KiB per buffer)
-  static constexpr uint64_t kMaxPinnedMemoryBytesU64 = uint64_t{4} * 1024 * 1024 * 1024;  // 4 GiB
-  static constexpr size_t kPinnedMemoryAlignment = 8192;                                  // 8 KiB total (4 KiB per buffer)
-  static constexpr size_t kDefaultPinnedMemoryBytes = 32 * 1024 * 1024;                   // 32 MiB total (two 16 MiB buffers)
+  static constexpr size_t kMinPinnedMemoryBytes = 1024 * 1024;           // 1 MiB (512 KiB per buffer)
+  static constexpr size_t kMaxPinnedMemoryBytes = 1024 * 1024 * 1024;    // 1 GiB
+  static constexpr size_t kPinnedMemoryAlignment = 8192;                 // 8 KiB total (4 KiB per buffer)
+  static constexpr size_t kDefaultPinnedMemoryBytes = 32 * 1024 * 1024;  // 32 MiB total (two 16 MiB buffers)
 
   static constexpr size_t kMinChunkBytes = 4096;                 // 4 KiB
   static constexpr size_t kMaxChunkBytes = 64 * 1024 * 1024;     // 64 MiB
@@ -86,7 +86,7 @@ struct ExternalDataLoaderOptions {
 
   static constexpr bool IsValidPinnedMemoryBytes(size_t value) noexcept {
     return value >= kMinPinnedMemoryBytes &&
-           static_cast<uint64_t>(value) <= kMaxPinnedMemoryBytesU64 &&
+           value <= kMaxPinnedMemoryBytes &&
            (value % kPinnedMemoryAlignment) == 0;
   }
 
@@ -128,7 +128,7 @@ struct ExternalDataLoaderOptions {
     if (!IsValidPinnedMemoryBytes(value)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              key_name, " must be between ", kMinPinnedMemoryBytes, " and ",
-                             kMaxPinnedMemoryBytesU64, " bytes and a multiple of ",
+                             kMaxPinnedMemoryBytes, " bytes and a multiple of ",
                              kPinnedMemoryAlignment, ".");
     }
     return common::Status::OK();
@@ -172,7 +172,7 @@ struct ExternalDataLoaderOptions {
     if (!TryParseSizeT(value_str, parsed)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              key_name, " must be between ", kMinPinnedMemoryBytes, " and ",
-                             kMaxPinnedMemoryBytesU64, " bytes and a multiple of ",
+                             kMaxPinnedMemoryBytes, " bytes and a multiple of ",
                              kPinnedMemoryAlignment, ".");
     }
     ORT_RETURN_IF_ERROR(ValidatePinnedMemoryBytes(parsed, key_name));
@@ -234,6 +234,11 @@ class IExternalDataLoader {
   // transaction-wide resources. Returning an error prevents the transaction from
   // continuing and causes EndLoad() to be called.
   virtual common::Status BeginLoad() const { return common::Status::OK(); }
+
+  // Optionally reports the total external-weight bytes this loader is expected to receive in the active
+  // transaction. FinalizeLoad() may be called more than once per transaction, so loaders can use this to make
+  // size-based decisions from the full total instead of each partial batch.
+  virtual void SetExpectedLoadBytes([[maybe_unused]] size_t total_bytes) const {}
 
   // Flushes and synchronizes any queued or in-flight external-weight loads before
   // SessionState initialization proceeds to kernel creation and prepacking.

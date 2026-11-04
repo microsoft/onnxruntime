@@ -86,7 +86,7 @@ granularity, and the minimum model-size threshold:
 | Session Config Key | CUDA Provider Option | Valid Range | Default |
 |---|---|---|---|
 | `session.external_data_loader.threads` | `external_data_loader_reading_threads` | `0` to `64` | Auto from CPU cores (`2`..`8`) |
-| `session.external_data_loader.pinned_memory_bytes` | `external_data_loader_pinned_memory_bytes` | `1048576` (1 MiB) to `4294967296` (4 GiB), multiple of `8192` | `33554432` (32 MiB total, two 16 MiB buffers) |
+| `session.external_data_loader.pinned_memory_bytes` | `external_data_loader_pinned_memory_bytes` | `1048576` (1 MiB) to `1073741824` (1 GiB), multiple of `8192` | `33554432` (32 MiB total, two 16 MiB buffers) |
 | `session.external_data_loader.chunk_bytes` | `external_data_loader_chunk_bytes` | `4096` (4 KiB) to `67108864` (64 MiB), multiple of `4096` | `2097152` (2 MiB) |
 | `session.external_data_loader.min_size_bytes` | N/A | `0` to `4294967296` (4 GiB) | `16777216` (16 MiB) |
 

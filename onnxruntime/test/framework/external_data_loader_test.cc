@@ -14,6 +14,7 @@
 #if !defined(ORT_MINIMAL_BUILD) && !defined(__wasm__) && !defined(ORT_NO_EXCEPTIONS)
 #include <array>
 #include <atomic>
+#include <cstring>
 #include <functional>
 #include <limits>
 #include <stdexcept>
@@ -346,11 +347,12 @@ TEST_F(ExternalDataLoaderLifetimeTest, RejectsInvalidSessionOptionValues) {
     const char* key;
     const char* value;
   };
-  const std::array<InvalidCase, 6> invalid_cases{{
+  const std::array<InvalidCase, 7> invalid_cases{{
       {kOrtSessionOptionsExternalDataLoaderThreads, "65"},
       {kOrtSessionOptionsExternalDataLoaderThreads, "-1"},
       {kOrtSessionOptionsExternalDataLoaderPinnedMemoryBytes, "4096"},
       {kOrtSessionOptionsExternalDataLoaderPinnedMemoryBytes, "1048577"},
+      {kOrtSessionOptionsExternalDataLoaderPinnedMemoryBytes, "2147483648"},
       {kOrtSessionOptionsExternalDataLoaderChunkBytes, "2048"},
       {kOrtSessionOptionsExternalDataLoaderChunkBytes, "134217728"},
   }};
@@ -593,6 +595,70 @@ void VerifyStreamsDrainedAfterThrowingRead(size_t reading_threads, size_t total_
   EXPECT_GT(copies_submitted.load(), 0U);
   for (size_t i = 0; i < kMaxStreams; ++i) {
     EXPECT_FALSE(in_flight[i].load()) << "stream " << i << " was not drained after the read exception";
+  }
+}
+
+class PatternFile final : public RandomAccessFile {
+ public:
+  common::Status GetLength(uint64_t& length) const override {
+    length = std::numeric_limits<uint64_t>::max();
+    return common::Status::OK();
+  }
+
+  common::Status GetCanonicalPath(PathString&) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "not supported");
+  }
+
+  common::Status Map(FileOffsetType, size_t, MappedMemoryPtr&) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "not supported");
+  }
+
+  common::Status Read(FileOffsetType offset, gsl::span<char> buffer) const override {
+    for (size_t i = 0; i < buffer.size(); ++i) {
+      buffer[i] = static_cast<char>((static_cast<size_t>(offset) + i) * 31 + 7);
+    }
+    return common::Status::OK();
+  }
+};
+
+TEST(ExternalDataLoadTasksTest, ParallelPathCoversEveryByteOfManyUnevenTasks) {
+  constexpr size_t kSingleBufferSize = 64 * 1024;
+  constexpr size_t kThreads = 3;
+  const std::vector<size_t> lengths{5000, 0, 3 * 4096 + 17, 1, 1024 * 1024 + 1, 16384, 40000};
+
+  PatternFile file;
+  std::vector<std::vector<uint8_t>> destinations;
+  std::vector<ExternalDataLoadTask> tasks;
+  destinations.reserve(lengths.size());
+  FileOffsetType file_offset = 13;
+  for (const size_t length : lengths) {
+    destinations.emplace_back(length, uint8_t{0});
+    tasks.push_back(ExternalDataLoadTask{&file, file_offset, destinations.back().data(), length, 1, false});
+    file_offset += static_cast<FileOffsetType>(length) + 5;
+  }
+
+  std::vector<uint8_t> staging0(kSingleBufferSize);
+  std::vector<uint8_t> staging1(kSingleBufferSize);
+  const std::array<void*, 2> buffers{staging0.data(), staging1.data()};
+  std::unique_ptr<ExternalDataLoaderThreadPool> reader_pool;
+
+  ASSERT_STATUS_OK(ExecuteExternalDataLoadTasks(
+      gsl::span<const ExternalDataLoadTask>(tasks),
+      /*allow_small_parallel=*/true, kThreads, kThreads, kSingleBufferSize,
+      /*max_chunk_bytes=*/16384, buffers, reader_pool, std::function<bool()>{},
+      [](size_t) { return common::Status::OK(); },
+      [](size_t) { return common::Status::OK(); },
+      [](void* dst, void* src, size_t bytes, size_t) {
+        std::memcpy(dst, src, bytes);
+        return common::Status::OK();
+      }));
+
+  ASSERT_NE(reader_pool, nullptr);
+  for (size_t t = 0; t < tasks.size(); ++t) {
+    for (size_t i = 0; i < lengths[t]; ++i) {
+      const auto expected = static_cast<uint8_t>((static_cast<size_t>(tasks[t].file_offset) + i) * 31 + 7);
+      ASSERT_EQ(destinations[t][i], expected) << "task " << t << " byte " << i;
+    }
   }
 }
 

@@ -1000,6 +1000,7 @@ class PluginExternalDataLoader final : public IExternalDataLoader {
                            OrtEpFactory& ep_factory,
                            const OrtMemoryInfo& target_device_memory_info,
                            const OrtMemoryInfo& host_accessible_memory_info,
+                           std::unique_ptr<plugin_ep::DataTransfer> data_transfer,
                            size_t reading_thread_count,
                            size_t pinned_memory_bytes,
                            size_t chunk_bytes,
@@ -1011,6 +1012,7 @@ class PluginExternalDataLoader final : public IExternalDataLoader {
         ep_factory_(ep_factory),
         target_device_memory_info_(target_device_memory_info),
         host_accessible_memory_info_(host_accessible_memory_info),
+        data_transfer_(std::move(data_transfer)),
         reading_thread_count_(reading_thread_count),
         batch_reading_thread_count_(ResolveExternalDataBatchThreadCount(reading_thread_count, reading_threads_explicit)),
         pinned_memory_bytes_(pinned_memory_bytes),
@@ -1082,6 +1084,8 @@ class PluginExternalDataLoader final : public IExternalDataLoader {
     in_batch_load_ = true;
     pending_tasks_.clear();
     pending_bytes_ = 0;
+    flushed_bytes_ = 0;
+    expected_total_bytes_ = 0;
     return Status::OK();
   }
 
@@ -1090,6 +1094,13 @@ class PluginExternalDataLoader final : public IExternalDataLoader {
     in_batch_load_ = false;
     pending_tasks_.clear();
     pending_bytes_ = 0;
+    flushed_bytes_ = 0;
+    expected_total_bytes_ = 0;
+  }
+
+  void SetExpectedLoadBytes(size_t total_bytes) const override {
+    std::lock_guard<std::mutex> lock(mutex_);
+    expected_total_bytes_ = total_bytes;
   }
 
   common::Status FinalizeLoad(const std::function<bool()>& is_canceled) const override {
@@ -1100,6 +1111,9 @@ class PluginExternalDataLoader final : public IExternalDataLoader {
 
     auto tasks = std::move(pending_tasks_);
     const size_t total_pending_bytes = pending_bytes_;
+    // Gate on the whole transaction so early flushes (e.g. to bound open files) don't force the pageable path.
+    flushed_bytes_ += total_pending_bytes;
+    const size_t gate_bytes = std::max(flushed_bytes_, expected_total_bytes_);
     pending_tasks_.clear();
     pending_bytes_ = 0;
 
@@ -1114,7 +1128,7 @@ class PluginExternalDataLoader final : public IExternalDataLoader {
       return Status::OK();
     };
 
-    if (reading_thread_count_ == 0 || total_pending_bytes < min_size_bytes_) {
+    if (reading_thread_count_ == 0 || gate_bytes < min_size_bytes_) {
       return load_all_pageable();
     }
 
@@ -1175,15 +1189,7 @@ class PluginExternalDataLoader final : public IExternalDataLoader {
 
  private:
   common::Status EnsureDataTransfer() const {
-    if (data_transfer_) {
-      return Status::OK();
-    }
-    ORT_RETURN_IF(ep_factory_.CreateDataTransfer == nullptr,
-                  "Plugin EP factory does not provide CreateDataTransfer.");
-    OrtDataTransferImpl* dt_impl = nullptr;
-    ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_factory_.CreateDataTransfer(&ep_factory_, &dt_impl)));
-    ORT_RETURN_IF(dt_impl == nullptr, "Plugin EP CreateDataTransfer returned nullptr.");
-    data_transfer_ = std::make_unique<plugin_ep::DataTransfer>(plugin_ep::OrtDataTransferImplUniquePtr{dt_impl});
+    ORT_RETURN_IF(!data_transfer_, "Plugin external data loader has no data transfer.");
     return Status::OK();
   }
 
@@ -1324,6 +1330,7 @@ class PluginExternalDataLoader final : public IExternalDataLoader {
   OrtEpFactory& ep_factory_;
   const OrtMemoryInfo target_device_memory_info_;
   const OrtMemoryInfo host_accessible_memory_info_;
+  mutable std::unique_ptr<plugin_ep::DataTransfer> data_transfer_;
   mutable size_t reading_thread_count_;
   mutable size_t batch_reading_thread_count_;
   mutable size_t pinned_memory_bytes_;
@@ -1335,13 +1342,14 @@ class PluginExternalDataLoader final : public IExternalDataLoader {
   const logging::Logger& logger_;
   mutable std::mutex mutex_;
   mutable AllocatorPtr pinned_allocator_;
-  mutable std::unique_ptr<plugin_ep::DataTransfer> data_transfer_;
   mutable std::array<void*, 2> buffers_{};
   mutable std::vector<std::unique_ptr<plugin_ep::Stream>> streams_;
   mutable std::unique_ptr<ExternalDataLoaderThreadPool> reader_pool_;
   mutable bool in_batch_load_{false};
   mutable std::vector<ExternalDataLoadTask> pending_tasks_;
   mutable size_t pending_bytes_{0};
+  mutable size_t flushed_bytes_{0};
+  mutable size_t expected_total_bytes_{0};
 };
 #endif  // !defined(ORT_MINIMAL_BUILD) && !defined(__wasm__)
 
@@ -1370,6 +1378,26 @@ std::unique_ptr<onnxruntime::IExternalDataLoader> PluginExecutionProvider::GetEx
     }
   }
   if (target_ep_device == nullptr) {
+    return nullptr;
+  }
+
+  // The loader claims initializers, so only enable it when the plugin can actually perform the transfers it needs:
+  // pinned host to device for the pipelined path and pageable CPU to device for the fallback path.
+  OrtDataTransferImpl* data_transfer_impl = nullptr;
+  if (OrtStatus* status = ep_factory_.CreateDataTransfer(&ep_factory_, &data_transfer_impl); status != nullptr) {
+    LOGS(GetEpLoggerOrDefault(), WARNING) << "Plugin EP external data loader disabled: CreateDataTransfer failed: "
+                                          << ToStatusAndRelease(status).ErrorMessage();
+    return nullptr;
+  }
+  plugin_ep::OrtDataTransferImplUniquePtr owned_data_transfer_impl{data_transfer_impl};
+  if (owned_data_transfer_impl == nullptr || owned_data_transfer_impl->Release == nullptr ||
+      owned_data_transfer_impl->CanCopy == nullptr || owned_data_transfer_impl->CopyTensors == nullptr) {
+    return nullptr;
+  }
+  auto data_transfer = std::make_unique<plugin_ep::DataTransfer>(std::move(owned_data_transfer_impl));
+  const OrtDevice& target_device = target_ep_device->device_memory_info->device;
+  if (!data_transfer->CanCopy(target_ep_device->host_accessible_memory_info->device, target_device) ||
+      !data_transfer->CanCopy(OrtDevice(), target_device)) {
     return nullptr;
   }
 
@@ -1420,6 +1448,7 @@ std::unique_ptr<onnxruntime::IExternalDataLoader> PluginExecutionProvider::GetEx
       ort_ep_.get(), ep_factory_,
       *target_ep_device->device_memory_info,
       *target_ep_device->host_accessible_memory_info,
+      std::move(data_transfer),
       reading_threads,
       pinned_memory_bytes,
       chunk_bytes,

@@ -280,13 +280,13 @@ struct CUDA_Provider : Provider {
     ORT_ENFORCE(
         params->external_data_loader_pinned_memory_bytes >=
                 OrtCUDAProviderOptionsV2::kMinExternalDataLoaderPinnedMemoryBytes &&
-            static_cast<uint64_t>(params->external_data_loader_pinned_memory_bytes) <=
-                OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderPinnedMemoryBytesU64 &&
+            params->external_data_loader_pinned_memory_bytes <=
+                OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderPinnedMemoryBytes &&
             (params->external_data_loader_pinned_memory_bytes %
              OrtCUDAProviderOptionsV2::kExternalDataLoaderPinnedMemoryAlignment) == 0,
         "external_data_loader_pinned_memory_bytes must be between ",
         OrtCUDAProviderOptionsV2::kMinExternalDataLoaderPinnedMemoryBytes, " and ",
-        OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderPinnedMemoryBytesU64,
+        OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderPinnedMemoryBytes,
         " bytes and a multiple of ",
         OrtCUDAProviderOptionsV2::kExternalDataLoaderPinnedMemoryAlignment, ".");
     ORT_ENFORCE(

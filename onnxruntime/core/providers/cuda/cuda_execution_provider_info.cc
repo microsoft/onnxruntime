@@ -168,15 +168,15 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
                 ORT_RETURN_IF_NOT(
                     info.external_data_loader_pinned_memory_bytes >=
                             OrtCUDAProviderOptionsV2::kMinExternalDataLoaderPinnedMemoryBytes &&
-                        static_cast<uint64_t>(info.external_data_loader_pinned_memory_bytes) <=
-                            OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderPinnedMemoryBytesU64 &&
+                        info.external_data_loader_pinned_memory_bytes <=
+                            OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderPinnedMemoryBytes &&
                         (info.external_data_loader_pinned_memory_bytes %
                          OrtCUDAProviderOptionsV2::kExternalDataLoaderPinnedMemoryAlignment) == 0,
                     cuda::provider_option_names::kExternalDataLoaderPinnedMemoryBytes,
                     " must be between ",
                     OrtCUDAProviderOptionsV2::kMinExternalDataLoaderPinnedMemoryBytes,
                     " and ",
-                    OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderPinnedMemoryBytesU64,
+                    OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderPinnedMemoryBytes,
                     " bytes and a multiple of ",
                     OrtCUDAProviderOptionsV2::kExternalDataLoaderPinnedMemoryAlignment, ".");
                 info.external_data_loader_pinned_memory_bytes_explicit = true;

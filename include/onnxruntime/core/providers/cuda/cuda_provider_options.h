@@ -21,7 +21,7 @@ struct OrtCUDAProviderOptionsV2 {
   static constexpr size_t kMaxExternalDataLoaderReadingThreadCount = 64;
   static constexpr size_t kDefaultExternalDataLoaderReadingThreadCount = 4;
   static constexpr size_t kMinExternalDataLoaderPinnedMemoryBytes = 1024 * 1024;
-  static constexpr uint64_t kMaxExternalDataLoaderPinnedMemoryBytesU64 = uint64_t{4} * 1024 * 1024 * 1024;
+  static constexpr size_t kMaxExternalDataLoaderPinnedMemoryBytes = 1024 * 1024 * 1024;
   static constexpr size_t kExternalDataLoaderPinnedMemoryAlignment = 8192;
   static constexpr size_t kDefaultExternalDataLoaderPinnedMemoryBytes = 32 * 1024 * 1024;
   static constexpr size_t kMinExternalDataLoaderChunkBytes = 4096;

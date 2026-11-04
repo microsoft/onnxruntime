@@ -202,6 +202,8 @@ common::Status ExternalDataLoader::BeginLoad() const {
   in_batch_load_ = true;
   pending_tasks_.clear();
   pending_bytes_ = 0;
+  flushed_bytes_ = 0;
+  expected_total_bytes_ = 0;
   return Status::OK();
 }
 
@@ -210,6 +212,13 @@ void ExternalDataLoader::EndLoad() const noexcept {
   in_batch_load_ = false;
   pending_tasks_.clear();
   pending_bytes_ = 0;
+  flushed_bytes_ = 0;
+  expected_total_bytes_ = 0;
+}
+
+void ExternalDataLoader::SetExpectedLoadBytes(size_t total_bytes) const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  expected_total_bytes_ = total_bytes;
 }
 
 common::Status ExternalDataLoader::FinalizeLoad(const std::function<bool()>& is_canceled) const {
@@ -220,6 +229,9 @@ common::Status ExternalDataLoader::FinalizeLoad(const std::function<bool()>& is_
 
   auto tasks = std::move(pending_tasks_);
   const size_t total_pending_bytes = pending_bytes_;
+  // Gate on the whole transaction so early flushes (e.g. to bound open files) don't force the pageable path.
+  flushed_bytes_ += total_pending_bytes;
+  const size_t gate_bytes = std::max(flushed_bytes_, expected_total_bytes_);
   pending_tasks_.clear();
   pending_bytes_ = 0;
 
@@ -238,7 +250,7 @@ common::Status ExternalDataLoader::FinalizeLoad(const std::function<bool()>& is_
     return Status::OK();
   };
 
-  if (reading_thread_count_ == 0 || total_pending_bytes < min_size_bytes_) {
+  if (reading_thread_count_ == 0 || gate_bytes < min_size_bytes_) {
     return load_all_pageable(1);
   }
 

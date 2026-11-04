@@ -515,6 +515,31 @@ common::Status SaveInitializedTensors(
             });
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD)
+  // Tell each loader the total external bytes it will receive so size-based decisions don't depend on how the
+  // load is split into batches.
+  {
+    InlinedHashMap<const IExternalDataLoader*, size_t> expected_bytes;
+    for (const auto& item : ordered_initializers) {
+      if (!item.has_file_external_data || item.tensor_proto->name().empty() ||
+          user_supplied_initializer_ids.contains(item.ort_value_index)) {
+        continue;
+      }
+      const OrtMemoryInfo location_info("", OrtAllocatorType::OrtDeviceAllocator,
+                                        exec_plan.GetLocation(item.ort_value_index));
+      const auto* loader = external_data_loader_mgr.GetExternalDataLoader(location_info,
+                                                                          item.tensor_proto->data_type());
+      size_t bytes = 0;
+      if (loader != nullptr && utils::GetSizeInBytesFromTensorProto<0>(*item.tensor_proto, &bytes).IsOK()) {
+        expected_bytes[loader] += bytes;
+      }
+    }
+    for (const auto& [loader, bytes] : expected_bytes) {
+      loader->SetExpectedLoadBytes(bytes);
+    }
+  }
+#endif
+
   // 3. create weight tensors based on weights buffer
   for (const auto& ordered_entry : ordered_initializers) {
     const std::pair<int, const ONNX_NAMESPACE::TensorProto*> entry{

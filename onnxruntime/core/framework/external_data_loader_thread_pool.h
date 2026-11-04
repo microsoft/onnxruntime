@@ -233,23 +233,29 @@ common::Status ExecuteExternalDataLoadTasks(
             target_chunk_size);
       }
 
-      std::vector<ExternalDataLoadTask> chunks;
-      chunks.reserve(total_bytes / target_chunk_size + tasks.size());
+      // Chunks are generated lazily from their index so descriptor memory is O(tasks), not O(total bytes / chunk).
+      std::vector<size_t> first_chunk_of_task;
+      first_chunk_of_task.reserve(tasks.size() + 1);
+      first_chunk_of_task.push_back(0);
       for (const auto& task : tasks) {
-        for (size_t offset = 0; offset < task.length;) {
-          const size_t chunk_len = std::min(target_chunk_size, task.length - offset);
-          chunks.push_back(ExternalDataLoadTask{
-              task.file,
-              task.file_offset + static_cast<FileOffsetType>(offset),
-              task.destination + offset,
-              chunk_len,
-              task.element_size,
-              task.is_bool});
-          offset += chunk_len;
-        }
+        first_chunk_of_task.push_back(first_chunk_of_task.back() +
+                                      (task.length + target_chunk_size - 1) / target_chunk_size);
       }
+      const size_t chunk_count = first_chunk_of_task.back();
+      const auto get_chunk = [&](size_t chunk_idx) {
+        const auto it = std::upper_bound(first_chunk_of_task.begin(), first_chunk_of_task.end(), chunk_idx);
+        const auto& task = tasks[static_cast<size_t>(it - first_chunk_of_task.begin()) - 1];
+        const size_t offset = (chunk_idx - *(it - 1)) * target_chunk_size;
+        return ExternalDataLoadTask{
+            task.file,
+            task.file_offset + static_cast<FileOffsetType>(offset),
+            task.destination + offset,
+            std::min(target_chunk_size, task.length - offset),
+            task.element_size,
+            task.is_bool};
+      };
 
-      if (chunks.size() > 1) {
+      if (chunk_count > 1) {
         ORT_TRY {
           if (!reader_pool || reader_pool->Size() != worker_count) {
             reader_pool.reset();
@@ -270,7 +276,7 @@ common::Status ExecuteExternalDataLoadTasks(
         std::atomic<size_t> next_chunk_idx{0};
         std::atomic<bool> stop_on_error{false};
         return reader_pool->Run([&](size_t worker_id) -> common::Status {
-          if (worker_id >= chunks.size()) {
+          if (worker_id >= chunk_count) {
             return common::Status::OK();
           }
 
@@ -307,11 +313,11 @@ common::Status ExecuteExternalDataLoadTasks(
               }
 
               const size_t chunk_idx = next_chunk_idx.fetch_add(1, std::memory_order_relaxed);
-              if (chunk_idx >= chunks.size()) {
+              if (chunk_idx >= chunk_count) {
                 break;
               }
 
-              const ExternalDataLoadTask& chunk = chunks[chunk_idx];
+              const ExternalDataLoadTask chunk = get_chunk(chunk_idx);
               auto* staging = static_cast<uint8_t*>(buffers[slot]) + worker_id * slice_size;
               const size_t stream_idx = worker_id * 2 + slot;
 
