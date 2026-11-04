@@ -426,6 +426,27 @@ void ConfigureOptimizationHints(MLModelConfiguration* config, const CoreMLOption
 #endif
 }
 
+// The ML Package is not needed once its compiled model is cached and holds a second copy of the weights.
+// Keep the package directory itself as ModelBuilder uses its existence to detect a cached model.
+// This is best effort: a failure is logged and does not affect loading the compiled model.
+void RemoveCachedMLPackage(NSURL* package_url, NSURL* cached_model_url, const logging::Logger& logger) {
+  NSFileManager* file_manager = [NSFileManager defaultManager];
+  NSError* error = nil;
+  NSArray<NSURL*>* package_items = [file_manager contentsOfDirectoryAtURL:package_url
+                                               includingPropertiesForKeys:nil
+                                                                  options:0
+                                                                    error:&error];
+  for (NSURL* item in package_items) {
+    if ([[item lastPathComponent] isEqualToString:[cached_model_url lastPathComponent]]) {
+      continue;
+    }
+    if (![file_manager removeItemAtURL:item error:&error]) {
+      LOGS(logger, WARNING) << "Failed to remove " << [[item path] UTF8String]
+                            << " from the model cache: " << [[error localizedDescription] UTF8String];
+    }
+  }
+}
+
 Status CompileOrReadCachedModel(NSURL* modelUrl, const CoreMLOptions& coreml_options,
                                 NSMutableString* compiled_model_path, const logging::Logger& logger) {
   NSURL* cached_model_base_url = modelUrl;
@@ -442,6 +463,10 @@ Status CompileOrReadCachedModel(NSURL* modelUrl, const CoreMLOptions& coreml_opt
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error creating cached model URL");
   }
   if ([[NSFileManager defaultManager] fileExistsAtPath:cached_model_path]) {
+    // Caches created by older versions still contain the ML Package.
+    if (coreml_options.CreateMLProgram() && !coreml_options.ModelCacheDirectory().empty()) {
+      RemoveCachedMLPackage(modelUrl, cached_model_url, logger);
+    }
     [compiled_model_path appendString:cached_model_path];
     return Status::OK();
   }
@@ -471,23 +496,8 @@ Status CompileOrReadCachedModel(NSURL* modelUrl, const CoreMLOptions& coreml_opt
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error copying compiled model to cache path: ",
                            [[cached_model_url path] UTF8String], ", reason: ", [[error localizedDescription] UTF8String]);
   }
-  // The ML Package is not needed once its compiled model is cached and holds a second copy of the weights.
-  // Keep the package directory itself as ModelBuilder uses its existence to detect a cached model.
   if (coreml_options.CreateMLProgram()) {
-    NSFileManager* file_manager = [NSFileManager defaultManager];
-    NSArray<NSURL*>* package_items = [file_manager contentsOfDirectoryAtURL:modelUrl
-                                                 includingPropertiesForKeys:nil
-                                                                    options:0
-                                                                      error:&error];
-    for (NSURL* item in package_items) {
-      if ([[item lastPathComponent] isEqualToString:[cached_model_url lastPathComponent]]) {
-        continue;
-      }
-      if (![file_manager removeItemAtURL:item error:&error]) {
-        LOGS(logger, WARNING) << "Failed to remove " << [[item path] UTF8String]
-                              << " from the model cache: " << [[error localizedDescription] UTF8String];
-      }
-    }
+    RemoveCachedMLPackage(modelUrl, cached_model_url, logger);
   }
 
   // clang-tidy

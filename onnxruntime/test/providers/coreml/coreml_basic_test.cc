@@ -553,6 +553,19 @@ TEST(CoreMLExecutionProviderTest, TestMLProgramModelCacheKeepsOnlyCompiledModel)
   expect_only_compiled_model(model_dir);
   EXPECT_EQ(std::filesystem::last_write_time(model_dir / "compiled_model.mlmodelc"), compiled_model_time);
 
+  // Caches created by older versions also contain the ML Package. It is removed when the cache is loaded.
+  {
+    const auto weights_dir = model_dir / "Data" / "com.microsoft.OnnxRuntime" / "weights";
+    ASSERT_TRUE(std::filesystem::create_directories(weights_dir));
+    ASSERT_TRUE(std::filesystem::create_directory(model_dir / "tmp"));
+    std::ofstream(weights_dir / "weight.bin") << "weights";
+    std::ofstream(model_dir / "Manifest.json") << "{}";
+    std::ofstream(model_dir / "tmp" / "weight.bin");
+  }
+  run_session();
+  expect_only_compiled_model(model_dir);
+  EXPECT_EQ(std::filesystem::last_write_time(model_dir / "compiled_model.mlmodelc"), compiled_model_time);
+
   // If the compiled model is removed from the cache, the model is rebuilt.
   std::filesystem::remove_all(model_dir / "compiled_model.mlmodelc");
   run_session();
