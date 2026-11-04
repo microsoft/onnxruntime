@@ -6515,3 +6515,29 @@ negative/error tests. Supporting milestones do not replace final qualification.
 Approval record: on 2026-10-15, the user approved this plan without changes and
 explicitly authorized beginning M01. Changes to scope or mandatory gates still
 require user review.
+
+## 9. Contributor-facing overview (documentation-only)
+
+**Requested:** 2026-11-04, following the20published implementation/qualification
+PRs(#11-#30). This is documentation of delivered work, not a new runtime milestone
+or authorization to implement deferred bindings.
+**Branch/base:** `state/contributor-overview` on M24/#30 at
+`84237bbf6b9d059e4f96904b9c181402d6e11da6`.
+
+- [x] Verify all20PR titles/statuses/stack bases and the delivered source contracts.
+- [x] Write `docs/Stateful_Execution_Overview.md` covering constructs/idioms,
+  built-in/plugin EP hooks, Model Package changes, capabilities/limits,
+  reproducible Phi-3/SD examples and contributor impact.
+- [x] Link the overview from the existing Python guide.
+- [x] Validate relative links,20PR references, example CLI shapes and documentation whitespace.
+- [ ] Publish the21st documentation-only PR on M24/#30 and verify remote head/base/clean tree.
+
+**Validation:** Documentation-only: no new production lines or runtime behavior,
+so no CPU/CUDA rebuild, model run or unit-coverage claim is required. Existing
+M24 measurements/coverage are explicitly attributed to that qualified baseline,
+not recollected or relabeled as new evidence.
+Executed documentation checks pass:25relative targets exist; the roadmap
+contains exactly20unique PRs(#11-#30); all3Bash examples pass `bash -n`;
+documented CLI commands/options match the existing argparse definitions;
+the public source-build link resolves; `git diff --check` passes.
+No runtime tests, downloads, model runs or dependency installation were performed.

@@ -4,6 +4,18 @@ Compressed project memory. This is not the execution plan.
 
 ## Workflow checkpoint
 
+- 2026-11-04 CURRENT: Userrequestscontributor-facingoverviewofall20PRs(#11-#30)
+  as21stPR. Doc-onlybranchstate/contributor-overview fromM24#30 at
+  84237bbf6b9d059e4f96904b9c181402d6e11da6. All20actualPRsOPEN/non-draft,
+  titles/basechainverified. Draftdocs/Stateful_Execution_Overview.md covers
+  constructs/idioms,EPcallbacks/capabilities/selection/lifetimes,
+  schema1.1namedchains/ownedloader/save-as, reproduciblePhi/SD,
+  qualificationboundaries/deferrals and20rowPRroadmap/contributorimpact.
+  LinkedStateful_Python; TASKSsection9tracksdocgates. No native/Python/code/
+  dependencies/models/profileschanged; no runtime validationrequired.
+  ValidationPASS25relativelinks,exact20PRroadmap,3bashblocksparse,existing
+  argparsecommands/flags,source-buildURLfetch,gitdiffcheck; docs-only4files.
+  Nextcommit/push/21stPRon#30; no runtime tests/downloads/dependencyinstalls.
 - 2026-11-04 CURRENT: UserDEFERSM16-M23(otherlanguagebindings), jumptoM24.
   InterviewCONFIRMEDM01-M15deliveredC/C++/Pythonfoundationqualification,
   NATIVEperformanceBASELINESONLY(noordinarySessionperformancecomparison),

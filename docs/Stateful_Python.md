@@ -5,6 +5,10 @@ SessionChain, KVCacheManager, Sampler and Model Package APIs. Ordinary
 `onnxruntime.InferenceSession` remains stateless. There is no Python scheduler,
 custom predicate, implicit iterator, async API or tokenizer dependency.
 
+For the architectural overview, EP/package changes, reproducible real-model
+examples and the 20-PR roadmap, start with the
+[stateful execution contributor overview](Stateful_Execution_Overview.md).
+
 Use a locally built wheel with Python enabled. Minimal builds keep configuration
 types importable but report an explicit unavailable-feature error when execution
 is requested.
