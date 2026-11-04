@@ -7,11 +7,10 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import numpy as np
-import onnx
 from benchmark_t8 import compare
 from benchmark_t8_layouts import compare_variants
 from convert_to_t8 import convert_model
-from onnx import helper, numpy_helper
+from onnx import TensorProto, checker, helper, load_model, numpy_helper, save_model
 from t8_codec import decode_q2, encode_q2
 
 import onnxruntime as ort
@@ -141,8 +140,8 @@ class T8ConversionTest(unittest.TestCase):
             graph = helper.make_graph(
                 nodes,
                 "test",
-                [helper.make_tensor_value_info("A", onnx.TensorProto.FLOAT, [1, 128])],
-                [helper.make_tensor_value_info("Y", onnx.TensorProto.FLOAT, [1, 7])],
+                [helper.make_tensor_value_info("A", TensorProto.FLOAT, [1, 128])],
+                [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 7])],
                 tensors,
             )
             model = helper.make_model(
@@ -151,7 +150,7 @@ class T8ConversionTest(unittest.TestCase):
                 ir_version=10,
             )
             source, output = root / "q2.onnx", root / "t8.onnx"
-            onnx.save_model(
+            save_model(
                 model,
                 source,
                 save_as_external_data=True,
@@ -162,12 +161,12 @@ class T8ConversionTest(unittest.TestCase):
             summary = convert_model(source, output)
             self.assertEqual(summary["unique_matrices"], 1)
             self.assertEqual(summary["nodes_converted"], 2)
-            converted = onnx.load(output)
+            converted = load_model(output)
             self.assertEqual([node.op_type for node in converted.graph.node], ["MatMulTernary", "MatMulTernary", "Add"])
             self.assertEqual(len(converted.graph.initializer), 2)
             values = {tensor.name: numpy_helper.to_array(tensor) for tensor in converted.graph.initializer}
             np.testing.assert_array_equal(decode_q2(values["B.t8"], 7), packed)
-            onnx.checker.check_model(str(output))
+            checker.check_model(str(output))
             with self.assertRaisesRegex(ValueError, "never overwrites"):
                 convert_model(source, output)
 
@@ -197,8 +196,8 @@ class T8ConversionTest(unittest.TestCase):
             graph = helper.make_graph(
                 nodes,
                 "test",
-                [helper.make_tensor_value_info("A", onnx.TensorProto.FLOAT, [1, 128])],
-                [helper.make_tensor_value_info("Y", onnx.TensorProto.FLOAT, [1, 7])],
+                [helper.make_tensor_value_info("A", TensorProto.FLOAT, [1, 128])],
+                [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 7])],
                 tensors,
             )
             model = helper.make_model(
@@ -208,7 +207,7 @@ class T8ConversionTest(unittest.TestCase):
             )
             (root / "q2").mkdir()
             source, output = root / "q2" / "model.onnx", root / "t8" / "model.onnx"
-            onnx.save_model(
+            save_model(
                 model,
                 source,
                 save_as_external_data=True,
@@ -217,7 +216,7 @@ class T8ConversionTest(unittest.TestCase):
                 size_threshold=0,
             )
             convert_model(source, output)
-            values = {tensor.name: numpy_helper.to_array(tensor) for tensor in onnx.load(output).graph.initializer}
+            values = {tensor.name: numpy_helper.to_array(tensor) for tensor in load_model(output).graph.initializer}
             np.testing.assert_array_equal(values["bias"], bias)
 
     def test_matrices_sharing_one_component_get_unique_names(self):
@@ -241,8 +240,8 @@ class T8ConversionTest(unittest.TestCase):
                 graph = helper.make_graph(
                     nodes,
                     "test",
-                    [helper.make_tensor_value_info("A", onnx.TensorProto.FLOAT, [1, 128])],
-                    [helper.make_tensor_value_info(f"Y{i}", onnx.TensorProto.FLOAT, [1, 7]) for i in range(2)],
+                    [helper.make_tensor_value_info("A", TensorProto.FLOAT, [1, 128])],
+                    [helper.make_tensor_value_info(f"Y{i}", TensorProto.FLOAT, [1, 7]) for i in range(2)],
                     tensors,
                 )
                 model = helper.make_model(
@@ -251,10 +250,10 @@ class T8ConversionTest(unittest.TestCase):
                     ir_version=10,
                 )
                 source, output = root / "q2.onnx", root / "t8.onnx"
-                onnx.save_model(model, source)
+                save_model(model, source)
                 summary = convert_model(source, output)
                 self.assertEqual(summary["unique_matrices"], 2)
-                converted = onnx.load(output)
+                converted = load_model(output)
                 self.assertEqual(len(converted.graph.initializer), 4)
                 self.assertEqual(len({name for node in converted.graph.node for name in node.input[1:]}), 4)
                 a = {"A": rng.standard_normal((1, 128)).astype(np.float32)}
@@ -281,8 +280,8 @@ class T8ConversionTest(unittest.TestCase):
             graph = helper.make_graph(
                 nodes,
                 "test",
-                [helper.make_tensor_value_info("A", onnx.TensorProto.FLOAT, [1, 128])],
-                [helper.make_tensor_value_info("Y", onnx.TensorProto.FLOAT, [1, 7])],
+                [helper.make_tensor_value_info("A", TensorProto.FLOAT, [1, 128])],
+                [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 7])],
                 tensors,
             )
             model = helper.make_model(
@@ -291,7 +290,7 @@ class T8ConversionTest(unittest.TestCase):
                 ir_version=10,
             )
             source = root / "q2.onnx"
-            onnx.save_model(model, source)
+            save_model(model, source)
             with self.assertRaisesRegex(ValueError, "every zero point must equal 1"):
                 convert_model(source, root / "t8.onnx")
 

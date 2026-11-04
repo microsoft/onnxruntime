@@ -10,8 +10,7 @@ import time
 from pathlib import Path
 
 import numpy as np
-import onnx
-from onnx import helper, numpy_helper
+from onnx import TensorProto, helper, numpy_helper
 from safetensors import safe_open
 from t8_codec import encode_q2
 from transformers import AutoTokenizer
@@ -168,8 +167,8 @@ def matmul_benchmark(args) -> list[dict]:
             )
             t8_node = helper.make_node("MatMulTernary", ["A", "B", "S"], ["Y"], domain="com.microsoft", K=k, N=n)
             for m in args.rows:
-                input_info = helper.make_tensor_value_info("A", onnx.TensorProto.FLOAT, [m, k])
-                output_info = helper.make_tensor_value_info("Y", onnx.TensorProto.FLOAT, [m, n])
+                input_info = helper.make_tensor_value_info("A", TensorProto.FLOAT, [m, k])
+                output_info = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [m, n])
                 models = []
                 for node, tensors in (
                     (q2_node, ((packed, "B"), (scales, "S"), (zeros, "Z"))),

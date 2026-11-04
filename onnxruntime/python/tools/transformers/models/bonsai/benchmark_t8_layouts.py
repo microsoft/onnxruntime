@@ -10,9 +10,8 @@ import time
 from pathlib import Path
 
 import numpy as np
-import onnx
 from benchmark_t8 import checkpoint_paths, load_checkpoint_matrix, options
-from onnx import helper, numpy_helper
+from onnx import TensorProto, helper, numpy_helper
 from safetensors import safe_open
 from t8_codec import encode_q2
 from transformers import AutoTokenizer
@@ -90,8 +89,8 @@ def matmul_benchmark(args):
                 graph = helper.make_graph(
                     [helper.make_node("MatMulTernary", ["A", "B", "S"], ["Y"], domain="com.microsoft", K=k, N=n)],
                     "layout_benchmark",
-                    [helper.make_tensor_value_info("A", onnx.TensorProto.FLOAT, [m, k])],
-                    [helper.make_tensor_value_info("Y", onnx.TensorProto.FLOAT, [m, n])],
+                    [helper.make_tensor_value_info("A", TensorProto.FLOAT, [m, k])],
+                    [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [m, n])],
                     [numpy_helper.from_array(planes, "B"), numpy_helper.from_array(t8_scales, "S")],
                 )
                 model = helper.make_model(

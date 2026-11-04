@@ -7,8 +7,7 @@ import json
 from pathlib import Path
 
 import numpy as np
-import onnx
-from onnx import external_data_helper, helper, numpy_helper
+from onnx import TensorProto, checker, external_data_helper, helper, load_model, numpy_helper, save_model
 from t8_codec import LAYOUT, encode_q2
 
 
@@ -17,11 +16,11 @@ def convert_model(source: Path, output: Path) -> dict:
     data_path = output.with_name(output.name + ".data")
     if source == output or output.exists() or data_path.exists():
         raise ValueError("Choose a new output path; conversion never overwrites an existing model or data file")
-    model = onnx.load(source, load_external_data=False)
+    model = load_model(source, load_external_data=False)
     initializers = {tensor.name: tensor for tensor in model.graph.initializer}
     identities = {node.output[0]: node.input[0] for node in model.graph.node if node.op_type == "Identity"}
 
-    def resolve(name: str) -> onnx.TensorProto:
+    def resolve(name: str) -> TensorProto:
         seen = set()
         while name in identities:
             if name in seen:
@@ -45,7 +44,7 @@ def convert_model(source: Path, output: Path) -> dict:
         taken.add(name)
         return name
 
-    def array(tensor: onnx.TensorProto) -> np.ndarray:
+    def array(tensor: TensorProto) -> np.ndarray:
         return numpy_helper.to_array(tensor, base_dir=str(source.parent))
 
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -54,7 +53,7 @@ def convert_model(source: Path, output: Path) -> dict:
     original_bytes = t8_bytes = count = 0
     with data_path.open("xb") as data:
 
-        def store(tensor: onnx.TensorProto) -> None:
+        def store(tensor: TensorProto) -> None:
             raw = tensor.raw_data if tensor.HasField("raw_data") else array(tensor).tobytes()
             offset = data.tell()
             data.write(raw)
@@ -140,8 +139,8 @@ def convert_model(source: Path, output: Path) -> dict:
     metadata = {item.key: item.value for item in model.metadata_props}
     metadata.update({"t8.format_version": "1", "t8.layout": LAYOUT, "t8.source": str(source)})
     helper.set_model_props(model, metadata)
-    onnx.save_model(model, output)
-    onnx.checker.check_model(str(output))
+    save_model(model, output)
+    checker.check_model(str(output))
     summary = {
         "source": str(source),
         "output": str(output),
