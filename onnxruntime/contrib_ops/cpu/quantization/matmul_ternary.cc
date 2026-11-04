@@ -4,6 +4,7 @@
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/prepacked_weights.h"
 #include "core/mlas/inc/mlas_t8.h"
 #include "core/providers/common.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -37,7 +38,7 @@ class MatMulTernary final : public OpKernel {
   }
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr allocator,
-                 bool& is_packed, PrePackedWeights*) override {
+                 bool& is_packed, PrePackedWeights* prepacked_weights) override {
     is_packed = false;
     if (input_idx != 1 || !use_packed_) return Status::OK();
     ORT_RETURN_IF_ERROR(ValidatePlanes(tensor));
@@ -45,6 +46,9 @@ class MatMulTernary final : public OpKernel {
     MlasT8Pack(n_, k_, tensor.Data<uint32_t>(), packed_.get(), layout_);
     constant_planes_ = true;
     is_packed = true;
+    // The packed layout depends on session.ternary.prepack, which the shared container cannot key on
+    // yet, so keep the buffer owned by this kernel instead of publishing it for cross-session sharing.
+    if (prepacked_weights != nullptr) prepacked_weights->has_kernel_owned_packed_weights_ = true;
     return Status::OK();
   }
 

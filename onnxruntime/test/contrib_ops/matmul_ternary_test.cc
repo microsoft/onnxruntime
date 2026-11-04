@@ -1,7 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <string>
+
 #include "gtest/gtest.h"
+#include "core/framework/tensor.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -10,7 +13,8 @@ namespace onnxruntime::test {
 namespace {
 
 void RunT8(int64_t m, int64_t n, int64_t k, bool initializer, bool identity = false, bool batched = false,
-           const char* packing = "current", const char* row_tile = "1", bool disable_prepacking = false) {
+           const char* packing = "current", const char* row_tile = "1", bool disable_prepacking = false,
+           bool share_prepacked = false) {
   const int64_t units = (n + 4) / 5, sets = k / 32, groups = k / 128;
   std::vector<uint32_t> planes(static_cast<size_t>(units * 8 * sets), 0);
   std::vector<MLFloat16> scales(static_cast<size_t>(units * groups * 5), MLFloat16(0.0f));
@@ -67,9 +71,31 @@ void RunT8(int64_t m, int64_t n, int64_t k, bool initializer, bool identity = fa
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigTernaryPrepack, packing));
   ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigTernaryRowTile, row_tile));
   if (disable_prepacking) ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigDisablePrepacking, "1"));
+  const size_t expected_prepacked = initializer && std::string(packing) != "current" && !disable_prepacking ? 1u : 0u;
+  if (share_prepacked) {
+    // Register B as a shared initializer and give both sessions one prepacked-weights container.
+    OrtValue b_value;
+    Tensor::InitOrtValue(DataTypeImpl::GetType<uint32_t>(), TensorShape({units, 8, sets}), planes.data(),
+                         OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), b_value);
+    ASSERT_STATUS_OK(options.AddInitializer("B", &b_value));
+    test.EnableSharingOfPrePackedWeightsAcrossSessions();
+    for (int session = 0; session < 2; ++session) {
+      SCOPED_TRACE("session " + std::to_string(session));
+      std::vector<std::unique_ptr<IExecutionProvider>> session_eps;
+      session_eps.push_back(DefaultCpuExecutionProvider());
+      size_t prepacked_count = 0, shared_count = 0;
+      test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &session_eps, {},
+               &prepacked_count, &shared_count);
+      EXPECT_EQ(prepacked_count, expected_prepacked);
+      // The packed B is kernel-owned, so nothing is published to or served from the container.
+      EXPECT_EQ(shared_count, 0u);
+    }
+    EXPECT_EQ(test.GetNumPrePackedWeightsShared(), 0u);
+    return;
+  }
   size_t prepacked_count = 0;
   test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps, {}, &prepacked_count);
-  EXPECT_EQ(prepacked_count, initializer && std::string(packing) != "current" && !disable_prepacking ? 1u : 0u);
+  EXPECT_EQ(prepacked_count, expected_prepacked);
 }
 
 TEST(MatMulTernaryTest, EveryByteAndLaneExactly) { RunT8(256, 5, 256, true, true); }
@@ -88,6 +114,13 @@ TEST(MatMulTernaryTest, PackedLayoutsAndMaskReuse) {
       RunT8(3, 7, 128, true, false, false, packing, rows, true);
       RunT8(0, 7, 128, true, false, false, packing, rows);
     }
+  }
+}
+
+TEST(MatMulTernaryTest, SharedPrepackedWeightsAddInitializer) {
+  for (const char* packing : {"current", "tiled", "masks"}) {
+    SCOPED_TRACE(packing);
+    RunT8(3, 7, 256, true, false, false, packing, "1", false, true);
   }
 }
 
