@@ -1657,6 +1657,13 @@ struct ProviderHostImpl : ProviderHost {
   KernelPilot* OpKernelContext__GetKernelPilot(const OpKernelContext* p) override {
     return p->GetKernelPilot();
   }
+  bool OpKernelContext__IsRuntimeWorkloadCaptureEnabled(const OpKernelContext* p) override {
+    return p->GetRuntimeWorkloadRecorder() != nullptr;
+  }
+  void OpKernelContext__SetMatMulNBitsCudaRoute(
+      OpKernelContext* p, const MatMulNBitsCudaRouteMetadata& metadata) override {
+    p->SetMatMulNBitsCudaRoute(metadata);
+  }
   // OpKernelInfo (wrapped)
   std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) override { return onnxruntime::CopyOpKernelInfo(info); }
   void OpKernelInfo__operator_delete(OpKernelInfo* p) override { delete p; }

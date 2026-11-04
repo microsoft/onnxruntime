@@ -1285,6 +1285,12 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, transa, transb));
 
   Tensor* Y = ctx->Output(0, helper.OutputShape());
+  const bool capture_workload = ctx->IsRuntimeWorkloadCaptureEnabled();
+  auto record_route = [&](MatMulNBitsRuntimeRoute route, int64_t reconstruction_k) {
+    if (capture_workload) {
+      ctx->SetMatMulNBitsCudaRoute({route, reconstruction_k});
+    }
+  };
 
   // Empty input (M == 0) produces an empty output; nothing reads the weights or g_idx.
   if (Y->Shape().Size() == 0) {
@@ -1395,6 +1401,8 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
       IAllocatorUniquePtr<void> workspace_buffer;
       size_t workspace_size = 0;
       bool workspace_allocated = false;
+      bool used_gemv = false;
+      bool used_gemm = false;
 
       for (int row_start = 0; row_start < m; row_start += chunk_m) {
         const int rows = std::min(chunk_m, m - row_start);
@@ -1441,6 +1449,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         CudaT* chunk_out_data = out_data + static_cast<size_t>(row_start) * static_cast<size_t>(n);
 
         if (bestTactic->enableCudaKernel) {
+          used_gemv = true;
           void const* pre_quant_scale_ptr = nullptr;
           bool apply_alpha_in_advance = false;
           float alpha = 1.0f;
@@ -1466,6 +1475,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
           // Hopper interleave and produce wrong results.
           onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(FpAIntBPackingSmForKernel(), params, stream);
         } else {
+          used_gemm = true;
           if (!workspace_allocated) {
             // Sized for a full chunk; the workspace size is non-decreasing in M, so it also covers
             // a smaller trailing chunk.
@@ -1495,6 +1505,10 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         }
       }
 
+      record_route(used_gemv && used_gemm ? MatMulNBitsRuntimeRoute::CudaMixedFpAIntB
+                   : used_gemv            ? MatMulNBitsRuntimeRoute::CudaFpAIntBGemv
+                                          : MatMulNBitsRuntimeRoute::CudaFpAIntBGemm,
+                   K_);
       return Status::OK();
     }
   }
@@ -1540,6 +1554,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             GetDeviceProp().sharedMemPerBlock,
             stream,
             sm_)) {
+      record_route(MatMulNBitsRuntimeRoute::CudaFused, K_);
       return Status::OK();
     }
 
@@ -1568,6 +1583,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
           m,
           n,
           stream);
+      record_route(MatMulNBitsRuntimeRoute::CudaFused, K_);
       return Status::OK();
     }
   }
@@ -1750,6 +1766,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
           n,
           stream);
     }
+    record_route(MatMulNBitsRuntimeRoute::CudaDequantizeGemm, column_wise_quant_blk_ ? K_padded : K_);
   }
 
   return Status::OK();

@@ -11,6 +11,7 @@
 #include "core/framework/config_options.h"
 
 namespace onnxruntime {
+class RuntimeWorkloadCollector;
 namespace lora {
 class LoraAdapter;
 }
@@ -37,6 +38,12 @@ struct OrtRunOptions {
 
   // Set to 'true' to enable profiling for this run.
   bool enable_profiling = false;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // Internal diagnostic hook. Caller owns a fresh collector through completion of this Run.
+  // No C API setter or report/export lifecycle is exposed.
+  onnxruntime::RuntimeWorkloadCollector* runtime_workload_collector = nullptr;
+#endif
 
   // File prefix for profiling result for this run.
   // The actual filename will be: <profile_file_prefix>_<timestamp>.json

@@ -678,7 +678,8 @@ ExecuteGraphImpl(const SessionState& session_state,
 #endif
                  const bool only_execute_path_to_fetches = false,
                  Stream* parent_stream = nullptr,
-                 profiling::Profiler* run_profiler = nullptr) {
+                 profiling::Profiler* run_profiler = nullptr,
+                 RuntimeWorkloadCollector* workload_collector = nullptr) {
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
   const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
 #ifdef ORT_ENABLE_STREAM
@@ -711,7 +712,7 @@ ExecuteGraphImpl(const SessionState& session_state,
                                   only_execute_path_to_fetches,
                                   // single thread mode
                                   single_thread_mode,
-                                  run_profiler));
+                                  run_profiler, workload_collector));
     ORT_RETURN_IF_ERROR(status);
   } else {
     auto feeds_to_use = feeds;
@@ -747,7 +748,7 @@ ExecuteGraphImpl(const SessionState& session_state,
                                   terminate_flag,
                                   only_execute_path_to_fetches,
                                   single_thread_mode,
-                                  run_profiler));
+                                  run_profiler, workload_collector));
     ORT_RETURN_IF_ERROR(status);
     InlinedVector<Stream*> fetches_streams;
     fetches_streams.reserve(feeds_fetches_info.fetches_mlvalue_idxs.size());
@@ -786,7 +787,8 @@ common::Status ExecuteGraph(const SessionState& session_state,
 #endif
                             bool only_execute_path_to_fetches,
                             Stream* parent_stream,
-                            profiling::Profiler* run_profiler) {
+                            profiling::Profiler* run_profiler,
+                            RuntimeWorkloadCollector* workload_collector) {
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(session_state, feeds_fetches_manager));
 
   // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
@@ -798,14 +800,14 @@ common::Status ExecuteGraph(const SessionState& session_state,
                                  device_stream_collection,
                                  only_execute_path_to_fetches,
                                  parent_stream,
-                                 run_profiler);
+                                 run_profiler, workload_collector);
   return retval;
 #else
   return ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
                           execution_mode, terminate_flag, logger,
                           only_execute_path_to_fetches,
                           parent_stream,
-                          run_profiler);
+                          run_profiler, workload_collector);
 #endif
 }
 
@@ -817,7 +819,8 @@ common::Status ExecuteGraph(const SessionState& session_state,
                             DeviceStreamCollectionHolder& device_stream_collection_holder,
 #endif
                             const logging::Logger& logger,
-                            profiling::Profiler* run_profiler) {
+                            profiling::Profiler* run_profiler,
+                            RuntimeWorkloadCollector* workload_collector) {
   return ExecuteGraph(session_state, feeds_fetches_manager, feeds, fetches,
                       execution_mode, run_options.terminate, logger,
 #ifdef ORT_ENABLE_STREAM
@@ -825,7 +828,7 @@ common::Status ExecuteGraph(const SessionState& session_state,
 #endif
                       run_options.only_execute_path_to_fetches,
                       nullptr /* parent_stream */,
-                      run_profiler);
+                      run_profiler, workload_collector);
 }
 
 #ifdef ENABLE_TRAINING
@@ -937,20 +940,21 @@ common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFet
                                ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
                                Stream* parent_stream,
                                bool sync_subgraph_fetches,
-                               profiling::Profiler* run_profiler) {
+                               profiling::Profiler* run_profiler,
+                               RuntimeWorkloadCollector* workload_collector) {
 #ifdef ORT_ENABLE_STREAM
   DeviceStreamCollectionHolder device_stream_collection_holder(&session_state);
   DeviceStreamCollection* device_stream_collection = device_stream_collection_holder.p_.get();
 
   auto retval = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
                                  execution_mode, terminate_flag, logger, device_stream_collection, false, parent_stream,
-                                 run_profiler);
+                                 run_profiler, workload_collector);
   if (device_stream_collection)
     ORT_CHECK_AND_SET_RETVAL(device_stream_collection->CleanUp(false));
 #else
   auto retval = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
                                  execution_mode, terminate_flag, logger, false, parent_stream,
-                                 run_profiler);
+                                 run_profiler, workload_collector);
 #endif
   if (retval.IsOK() && sync_subgraph_fetches && parent_stream) {
     parent_stream->Flush();

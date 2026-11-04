@@ -659,6 +659,27 @@ static const char* const kOrtSessionOptionsMaxShapeOverride = "session.max_shape
 static const char* const kOrtSessionOptionsStrictWorkspaceVerification =
     "session.strict_workspace_verification";
 
+// Opt-in runtime compute-estimation JSON reports. Value is a UTF-8 output prefix, not a literal filename.
+// Empty/unset disables automatic capture/export. After each canonical Run, append a process token, session ID,
+// run ID and ".json". Parent directories are not created. Use a new prefix for independent application launches.
+// Replaces the legacy initialization-time static export; initialization no longer writes workload reports.
+// Reports contain actual shapes, graph/node identities, CPU/CUDA MatMulNBits core dense-equivalent and logical bias
+// counts, optional route provenance, run outcome and collection diagnostics. CUDA records successful host submissions,
+// not device completion; coarse route/arithmetic and reconstruction geometry are recorded. Graph capture/replay
+// skips capture and marks collection incomplete. Unsupported operators/providers are not instrumented;
+// A separate expected_flops section models CPU/CUDA core, bias and dequantization using coarse selected routes.
+// LUT remains unsupported; existing logical counts remain available independently.
+// captured totals are not whole-model totals or hardware instruction counts. No additional device synchronization.
+// File failures warn without failing inference. Minimal builds warn that export is unsupported.
+// Internal callers supplying a RunOptions collector use that collector's limits instead of automatic limits.
+static const char* const kOrtSessionOptionsComputeEstimateReportPath = "session.compute_estimate_report_path";
+
+// Nonnegative decimal per-run automatic capture budgets; defaults: 10000 records and 16777216 bytes.
+// Zero retains no records. Bytes are accounted payload, not a hard allocator/peak-memory cap.
+// Invalid values fail initialization. Limits do not bound total report files/disk usage across runs.
+static const char* const kOrtSessionOptionsComputeEstimateMaxRecords = "session.compute_estimate_max_records";
+static const char* const kOrtSessionOptionsComputeEstimateMaxPayloadBytes = "session.compute_estimate_max_payload_bytes";
+
 // Enable EP context feature to dump the partitioned graph which includes the EP context into Onnx file.
 // The dumped Onnx model with EP context can be used for future inference to avoid the EP graph partitioning/compile overhead.
 // "0": disable. (default)

@@ -1365,6 +1365,12 @@ struct OpKernelContext final {
   KernelPilot* GetKernelPilot() const {
     return g_host->OpKernelContext__GetKernelPilot(this);
   }
+  bool IsRuntimeWorkloadCaptureEnabled() const {
+    return g_host->OpKernelContext__IsRuntimeWorkloadCaptureEnabled(this);
+  }
+  void SetMatMulNBitsCudaRoute(const MatMulNBitsCudaRouteMetadata& metadata) {
+    g_host->OpKernelContext__SetMatMulNBitsCudaRoute(this, metadata);
+  }
 
   PROVIDER_DISALLOW_ALL(OpKernelContext)
 };
