@@ -1516,7 +1516,9 @@ public class OrtSession implements AutoCloseable {
     @Deprecated
     public void addACL(boolean enableFastMath) throws OrtException {
       checkClosed();
-      addACL(OnnxRuntime.ortApiHandle, nativeHandle, enableFastMath);
+      throw new OrtException(
+          OrtException.OrtErrorCode.ORT_INVALID_ARGUMENT,
+          "The ACL execution provider has been removed.");
     }
 
     /**
@@ -1772,9 +1774,6 @@ public class OrtSession implements AutoCloseable {
         throws OrtException;
 
     private native void addDirectML(long apiHandle, long nativeHandle, int deviceId)
-        throws OrtException;
-
-    private native void addACL(long apiHandle, long nativeHandle, boolean enableFastMath)
         throws OrtException;
 
     private native void addCoreML(long apiHandle, long nativeHandle, int coreMLFlags)

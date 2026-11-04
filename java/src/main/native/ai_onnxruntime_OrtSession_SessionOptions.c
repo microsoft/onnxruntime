@@ -767,20 +767,6 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addDir
 
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
- * Method:    addACL
- * Signature: (JJZ)V
- */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addACL
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jboolean enableFastMath) {
-  (void)jobj;
-  (void)apiHandle;
-  (void)handle;
-  (void)enableFastMath;
-  throwOrtException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT), "The ACL execution provider has been removed.");
-}
-
-/*
- * Class:     ai_onnxruntime_OrtSession_SessionOptions
  * Method:    addCoreML
  * Signature: (JJI)V
  */
