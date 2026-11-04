@@ -3909,6 +3909,7 @@ TEST(MoETest, QMoETest_Int3AndMixedWidthCudaPrefillParity) {
 //     and 20 tokens x top-4 = 80 routes for prefill (or 80-route kCompact80 in INT4).
 // The kernel choice is not observable through the op, so each case is compared with a host reference that rounds
 // every dequantized weight to BF16 and accumulates in FP32, which the kernels match up to the summation order.
+// INT2 also rounds FC1 projections to BF16 before activation.
 // fc1_scale_exp and fc2_scale_exp multiply the FC1 and FC2 scales by 2^exp (power-of-two scaling is exact in BF16),
 // the input is divided by 2^fc1_scale_exp so the FC1 results are unchanged, and the output is 2^fc2_scale_exp times the
 // unscaled one, which the tolerance follows. int3_tc_min_routes, when set, is ep.cuda.qmoe_int3_tc_min_routes.
@@ -4006,7 +4007,7 @@ static void RunQMoEBf16TensorCoreGemvParityCase(int64_t bits, int64_t block_size
           gate += x[c] * gate_w[c];
           up += x[c] * up_w[c];
         }
-        if (bits == 3 && num_rows >= 16) {
+        if (bits == 2 || (bits == 3 && num_rows >= 16)) {
           gate = round_bf16(gate);
           up = round_bf16(up);
         }

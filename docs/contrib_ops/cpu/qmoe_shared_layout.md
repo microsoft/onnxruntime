@@ -72,7 +72,7 @@ halves only scales of that magnitude and doubles the block sum exactly (smaller
 scales, including FP32 subnormals, are used unchanged). INT2 rounds FC1
 projections to the boundary dtype before adding bias and evaluating SwiGLU in
 FP32, and rounds FC2 projections to the boundary dtype before adding the FP32
-bias, matching CUDA decode and packed prefill. SiLU evaluates to its zero limit
+bias, matching CUDA SIMT decode, BF16 Tensor Core decode, and packed prefill. SiLU evaluates to its zero limit
 for an infinite gate on the side where `exp(-alpha * gate)` overflows. FC1 ranges must contain complete gate/up pairs (even
 bounds); invalid ranges return false without writing output.
 
@@ -116,6 +116,9 @@ Low-level CPU offload callers select the same policy through
 - `test_qmoe_shared_direct.py` checks CPU/CUDA operator execution, dynamic banks,
   prepacking on/off, non-square aliases, mixed INT4/INT3 graphs, and 512-expert
   top-10 routing.
+- `test_qmoe_offload_v4.py` checks INT2 projection rounding before bias against
+  independent BF16 expectations for SIMT, Tensor Core, and cold CPU experts, and
+  the zero SiLU limit after a negative FP16 gate projection overflows.
 - Set `ORT_QMOE_CANDIDATE_MODEL` to the candidate's `model.onnx` to test exact
   expert slices without loading the entire external-data package.
 - With a CUPTI-enabled build, set `ORT_QMOE_REQUIRE_CUDA_PROFILE=1` and
