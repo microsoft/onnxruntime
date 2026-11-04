@@ -45,6 +45,11 @@ public:
         ML_CHECK_VALID_ARGUMENT(!hasQNormWeight && !hasKNormWeight,
             "GroupQueryAttention (DML): q_norm_weight / k_norm_weight inputs are not supported.");
 
+        constexpr uint32_t querySeqlensIndex = 16;
+        ML_CHECK_VALID_ARGUMENT(
+            !(kernelCreationContext.GetInputCount() > querySeqlensIndex && kernelCreationContext.IsInputValid(querySeqlensIndex)),
+            "GroupQueryAttention (DML): query_seqlens input is not supported.");
+
         std::vector<std::optional<uint32_t>> inputIndices(inputCount);
         inputIndices[queryIndex] = queryIndex;
         inputIndices[keyIndex] = keyIndex;

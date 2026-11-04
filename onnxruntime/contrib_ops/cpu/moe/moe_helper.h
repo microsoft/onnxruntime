@@ -221,6 +221,7 @@ Status CheckInputs(MoEParameters& parameters,
   int64_t num_rows = input_dims.size() == 2 ? input_dims[0] : input_dims[0] * input_dims[1];
   int64_t hidden_size = input_dims[input_dims.size() - 1];
   int64_t num_experts = router_probs_dims[1];
+  ORT_RETURN_IF(hidden_size <= 0, "hidden_size must be positive, got ", hidden_size, ".");
 
   const bool has_uniform_weight_bits = weight_bits.fc1 == weight_bits.fc2 && weight_bits.fc2 == weight_bits.fc3;
   const bool has_legacy_pack_size = has_uniform_weight_bits && 8 % weight_bits.fc1 == 0;
@@ -237,6 +238,7 @@ Status CheckInputs(MoEParameters& parameters,
                 "Unable to infer inter_size from fc2_experts_weights shape ",
                 *fc2_experts_weights_shape, " and hidden_size ", hidden_size, ".");
   int64_t inter_size = inter_size_numerator / inter_size_denominator;
+  ORT_RETURN_IF(inter_size <= 0, "inter_size must be positive, got ", inter_size, ".");
   ORT_RETURN_IF(has_legacy_pack_size && inter_size % legacy_pack_size != 0,
                 "inter_size (", inter_size, ") must be divisible by pack_size (", legacy_pack_size, ").");
   bool legacy_shape = false;

@@ -24,6 +24,11 @@ jobs:
         with:
           submodules: false
 
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
       - name: Set version number variables
         id: set_versions
         run: |
@@ -116,7 +121,6 @@ jobs:
 
       - name: Install dependencies and bootstrap
         run: |
-          npm install -g detox-cli
           npm ci
         working-directory: ${{ github.workspace }}/js
       - run: npm ci
@@ -133,7 +137,7 @@ jobs:
         working-directory: ${{ github.workspace }}/js/react_native/e2e/android
 
       - name: Build React Native Detox Android e2e Tests
-        run: detox build --configuration android.emu.release
+        run: npm run detox -- build --configuration android.emu.release
         working-directory: ${{ github.workspace }}/js/react_native/e2e
 
       - name: Setup Android Emulator
@@ -144,7 +148,7 @@ jobs:
       - name: Run React Native Detox Android e2e Tests
         run: |
           JEST_JUNIT_OUTPUT_FILE=${{ github.workspace }}/js/react_native/e2e/android-test-results.xml \
-            detox test --record-logs all \
+            npm run detox -- test --record-logs all \
                          --configuration android.emu.release \
                          --loglevel trace \
                          --take-screenshots failing
@@ -260,7 +264,6 @@ jobs:
       - name: Install dependencies and bootstrap
         run: |
           set -e -x
-          npm install -g detox-cli
           brew tap wix/brew
           brew trust wix/brew
           brew install applesimutils
@@ -282,7 +285,7 @@ jobs:
         working-directory: ${{ github.workspace }}/js/react_native/e2e/ios
 
       - name: Build Detox iOS e2e Tests
-        run: detox build --configuration ios.sim_18_6.release
+        run: npm run detox -- build --configuration ios.sim_18_6.release
         working-directory: ${{ github.workspace }}/js/react_native/e2e
 
       - name: Reset iOS Simulators before Detox
@@ -296,7 +299,7 @@ jobs:
       - name: Run Detox iOS e2e Tests
         run: |
           JEST_JUNIT_OUTPUT_FILE=${{ github.workspace }}/js/react_native/e2e/ios-test-results.xml \
-            detox test --record-logs all \
+            npm run detox -- test --record-logs all \
                          --configuration ios.sim_18_6.release \
                          --loglevel verbose \
                          --take-screenshots failing \
