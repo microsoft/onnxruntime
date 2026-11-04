@@ -57,6 +57,35 @@ def core_tests():
         ),
         "session_test": session_srcs,
         "graph_test": native.glob(["onnxruntime/test/ir/*.cc"]),
+        "common_runtime_test": native.glob(
+            ["onnxruntime/test/common/*.cc"],
+            exclude = [
+                "onnxruntime/test/common/cuda_op_test_utils.cc",
+                "onnxruntime/test/common/dnnl_op_test_utils.cc",
+                "onnxruntime/test/common/narrow_test.cc",
+                "onnxruntime/test/common/safeint_test.cc",
+                "onnxruntime/test/common/semver_test.cc",
+                "onnxruntime/test/common/span_utils_test.cc",
+                "onnxruntime/test/common/string_utils_test.cc",
+                "onnxruntime/test/common/tensor_op_test_utils.cc",
+            ],
+        ),
+        "logging_test": native.glob(["onnxruntime/test/common/logging/*.cc"]),
+        "platform_test": native.glob(["onnxruntime/test/platform/*.cc"]) + select({
+            "//bazel:windows": native.glob([
+                "onnxruntime/test/platform/windows/*.cc",
+                "onnxruntime/test/platform/windows/logging/*.cc",
+            ]),
+            "//conditions:default": [],
+        }),
+        "provider_infrastructure_test": [
+            "onnxruntime/test/providers/get_execution_providers_test.cc",
+            "onnxruntime/test/providers/io_binding_test.cc",
+            "onnxruntime/test/providers/memcpy_test.cc",
+            "onnxruntime/test/providers/op_kernel_type_control_test.cc",
+            "onnxruntime/test/providers/partitioning_utils_test.cc",
+        ],
+        "runtime_optimizer_test": native.glob(["onnxruntime/test/optimizer/runtime_optimization/*.cc"]),
         "optimizer_test": native.glob(
             ["onnxruntime/test/optimizer/*.cc"],
             # The CPU-only runtime omits this contrib-GQA transformer.
@@ -74,6 +103,8 @@ def core_tests():
             srcs = srcs + ["tools/bazel/test_main.cc"],
             data = native.glob(["onnxruntime/test/testdata/**"]),
             copts = test_copts,
+            # ORT's test environment already owns the process default logger.
+            local_defines = ["SKIP_DEFAULT_LOGGER_TESTS"] if name == "logging_test" else [],
             deps = [":ort_test_main"],
             linkstatic = True,
             size = "large",

@@ -254,14 +254,16 @@ bazel test -c opt //:session_test --test_arg=--gtest_list_tests --test_output=al
 ```
 
 `//:core_tests` groups `//:framework_test`, `//:session_test`, `//:graph_test`,
-`//:optimizer_test`, and `//:cpu_provider_test`. Session tests are sourced from
+`//:optimizer_test`, `//:cpu_provider_test`, `//:runtime_optimizer_test`,
+`//:platform_test`, `//:common_runtime_test`, `//:logging_test`, and
+`//:provider_infrastructure_test`. Session tests are sourced from
 `test/framework/`; graph/IR tests are sourced from `test/ir/`. The provider
 target uses the existing `test/providers/cpu/` operator tests, not contrib or
 other EP suites. These targets statically link the native CPU runtime.
 Selecting a target avoids building other test binaries. `--test_filter` selects
 GoogleTest suites/cases at runtime; it does not reduce compilation within the
 selected binary. `--test_arg=--gtest_filter=Suite.Case` is also supported.
-Request `//:core_tests` only when intentionally running all five binaries;
+Request `//:core_tests` only when intentionally running all ten binaries;
 `//...` includes these suites as well as the desktop binding tests.
 
 Checked-in `onnxruntime/test/testdata/` files are declared as Bazel runfiles.
@@ -275,10 +277,22 @@ feature guards remain in effect. The contrib GQA layout transformer test is
 excluded because the foundation does not compile that transformer.
 `test/providers/cpu/model_tests.cc` is excluded because its ONNX model-corpus
 runner needs externally downloaded models and separate runner/protobuf targets.
-The optimizer's `runtime_optimization/` subdirectory, platform tests, remaining
-common/logging tests, root-level provider infrastructure tests, GPU tests,
-dynamic EP libraries and separate C API shared-library test
-executables remain outside this layer.
+The additional targets include the optimizer's `runtime_optimization/` source,
+remaining top-level common tests, logging tests, top-level platform tests plus
+Windows platform/logging sources on Windows, and root-level CPU provider
+enumeration, I/O binding, memory-copy, type-control, and partitioning tests.
+The logging target uses the existing `SKIP_DEFAULT_LOGGER_TESTS` configuration
+because ORT's test environment already owns the process default logger.
+The original five narrow utility sources stay in `//:common_test`, without
+being duplicated in `//:common_runtime_test`.
+
+Linux PCI/DRM/NPU discovery and POSIX/Windows telemetry-specific subdirectories
+are not wired: the foundation still uses default device discovery and disables
+optional telemetry transports. Android tests and DirectML provider tests need
+their own platform configurations. GPU tests, dynamic EP libraries, external
+model-corpus runners, separate C API shared-library executables, and other
+top-level suites such as flatbuffers, quantization, and LoRA remain outside
+this C++ slice.
 
 Starlark files use LF even on Windows: frozen module-extension digests depend on
 their exact bytes. A CRLF checkout otherwise fails `--lockfile_mode=error` before
@@ -290,7 +304,7 @@ binaries with the frozen lock unchanged. The following targeted command passed
 operator cases), with a nonzero GoogleTest count verified for every binary:
 
 ```sh
-bazel test //:core_tests -c opt --jobs=12 --test_filter="AllocatorTest.*:GraphViewer.FilteredGraph:FreeDimensionOverrideDenotationTransformerTest.Test:InferenceSessionTests.DisableCPUArena:MathOpTest.MatMulFloatType:ConvTest.Conv2D_1" --test_output=all --nocache_test_results --keep_going
+bazel test //:framework_test //:session_test //:graph_test //:optimizer_test //:cpu_provider_test -c opt --jobs=12 --test_filter="AllocatorTest.*:GraphViewer.FilteredGraph:FreeDimensionOverrideDenotationTransformerTest.Test:InferenceSessionTests.DisableCPUArena:MathOpTest.MatMulFloatType:ConvTest.Conv2D_1" --test_output=all --nocache_test_results --keep_going
 ```
 
 These additional selection checks also passed:
@@ -306,6 +320,23 @@ That is **18 executed cases**, not a claim that the full suites pass. Full-suite
 execution was deliberately not performed; Linux and macOS validation of the new
 C++ test layer remains pending. Case filters do not enable excluded runtime
 features or supply external model corpora.
+
+The five additional CPU targets compiled and linked from the existing sources
+on the same Windows toolchain. This targeted command passed **nine existing
+cases** with nonzero counts in every binary: common 1, logging 2, platform 1,
+provider infrastructure 4, and runtime optimizer 1.
+
+```sh
+bazel test //:common_runtime_test //:logging_test //:platform_test //:provider_infrastructure_test //:runtime_optimizer_test -c opt --jobs=12 --test_filter="DenormalTest.DenormalAsZeroTest:LoggingTests.TestCLogSink:LoggingTestsFixture.TestDefaultFiltering:PlatformEnvTest.DirectoryCreationAndDeletion:GetExecutionProvidersTest.*:InferenceSessionTests.TestBindCpu:GraphRuntimeOptimizationTest.SaveRuntimeOptimizationToOrtFormat" --test_output=all --nocache_test_results --keep_going
+```
+
+These are source-native Windows binaries, not substitutions with prebuilt test
+executables. Bazel reused 1,811 unchanged dependency/runtime compile actions and
+performed 45 local actions to compile/link/run the new sources; it did not
+rebuild the entire runtime. Full-suite and non-Windows execution of these new
+groups has not been performed. The runtime optimizer case saves and reloads an
+ORT-format model; the platform case creates/deletes directories in the isolated
+test workspace, and I/O binding executes an existing CPU model fixture.
 
 ### Existing Java/JNI tests
 
