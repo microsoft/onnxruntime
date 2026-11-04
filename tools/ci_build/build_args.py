@@ -160,7 +160,13 @@ def add_core_build_args(parser: argparse.ArgumentParser) -> None:
         "--build_apple_framework", action="store_true", help="Build a macOS/iOS framework for ONNXRuntime."
     )
     parser.add_argument("--enable_lto", action="store_true", help="Enable Link Time Optimization (LTO).")
-    parser.add_argument("--use_cache", action="store_true", help="Use ccache in CI")
+    parser.add_argument("--use_cache", action="store_true", help="Enable compiler caching in CI")
+    parser.add_argument(
+        "--cache_tool",
+        choices=("ccache", "sccache"),
+        default="ccache",
+        help="Compiler cache to use with --use_cache (default: ccache).",
+    )
     parser.add_argument(
         "--use_binskim_compliant_compile_flags",
         action="store_true",
@@ -569,7 +575,7 @@ def add_size_reduction_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--disable_exceptions",
         action="store_true",
-        help="Disable exceptions (requires --minimal_build).",
+        help="Disable exceptions.",
     )
 
 
@@ -736,12 +742,6 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     )
     trt_group.add_argument("--use_tensorrt_oss_parser", action="store_true", help="Use TensorRT OSS ONNX parser.")
     trt_group.add_argument("--tensorrt_home", help="Path to TensorRT installation directory.")
-    trt_group.add_argument("--tensorrt_rtx_home", help="Path to TensorRT RTX installation directory.")
-
-    # --- Nv ---
-    nv_group = parser.add_argument_group("Nv Execution Provider")
-    nv_group.add_argument("--use_nv_tensorrt_rtx", action="store_true", help="Enable Nv EP.")
-
     # --- DirectML ---
     dml_group = parser.add_argument_group("DirectML Execution Provider (Windows)")
     dml_group.add_argument("--use_dml", action="store_true", help="Enable DirectML EP (Windows).")
@@ -840,9 +840,10 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
         "--use_dawn_agility_sdk",
         action="store_true",
         help=(
-            "Build Dawn's D3D12 backend with the Agility SDK for local development "
-            "(Windows desktop x86, x64, or ARM64 only; static library build only; "
-            "packaging and plugin EP builds unsupported)."
+            "Build Dawn's D3D12 backend with the Agility SDK "
+            "(Windows desktop x86, x64, or ARM64 only; Python wheels are supported; "
+            "C#, NuGet, Java, and Node.js packaging through build.py is unsupported. "
+            "Package the WebGPU plugin separately for Python or NuGet)."
         ),
     )
     webgpu_group.add_argument(
@@ -887,11 +888,23 @@ def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
         help="Build ORT shared lib with compatible bridge for primary EPs (TRT, OV, QNN, VitisAI), excludes tests.",
     )
     # Telemetry arguments (cross-platform)
-    parser.add_argument(
+    telemetry_group = parser.add_mutually_exclusive_group()
+    telemetry_group.add_argument(
         "--no_telemetry",
         dest="use_telemetry",
         action="store_false",
         help="Disable telemetry. Telemetry is enabled by default for supported native builds.",
+    )
+    telemetry_group.add_argument(
+        "--use_telemetry",
+        dest="use_telemetry_legacy",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    telemetry_group.add_argument(
+        "--use_windows_telemetry",
+        action="store_true",
+        help="Use the legacy Windows TraceLogging telemetry backend instead of 1DS.",
     )
 
 
@@ -1033,8 +1046,24 @@ def parse_arguments() -> argparse.Namespace:
     if args.build_wasm_static_lib:
         args.build_wasm = True
 
+    if args.use_telemetry_legacy:
+        warnings.warn(
+            "--use_telemetry is deprecated because telemetry is enabled by default. "
+            "For native Windows targets it retains its historical TraceLogging behavior; use "
+            "--use_windows_telemetry to request that backend explicitly.",
+            FutureWarning,
+            stacklevel=2,
+        )
+        if not target_supports_telemetry(args):
+            parser.error("--use_telemetry requires a telemetry-capable target")
+        args.use_telemetry = True
+        if is_windows() and not args.android:
+            args.use_windows_telemetry = True
+
     if not target_supports_telemetry(args):
         args.use_telemetry = False
+    if args.use_windows_telemetry and (not is_windows() or args.android or not target_supports_telemetry(args)):
+        parser.error("--use_windows_telemetry requires a telemetry-capable native Windows target")
 
     # Handle WASM exception logic
     if args.enable_wasm_api_exception_catching:
@@ -1072,9 +1101,10 @@ def parse_arguments() -> argparse.Namespace:
                 "Cross-compiling build detected: Defaulting to --update --build. Specify --test explicitly to run tests."
             )
 
-    # Validation: Minimal build requires disabling exceptions
-    if args.disable_exceptions and args.minimal_build is None:
-        parser.error("--disable_exceptions requires --minimal_build to be specified.")
+    # The Emscripten vcpkg triplets disable the dependencies' exceptions only for minimal builds, so a
+    # non-minimal wasm build with --disable_exceptions would mix exception settings.
+    if args.build_wasm and args.disable_exceptions and args.minimal_build is None:
+        parser.error("--build_wasm --disable_exceptions requires --minimal_build to be specified.")
     if is_windows():
         if getattr(args, "use_winml", False) and not getattr(args, "enable_wcos", False):
             parser.error("--use_winml requires --enable_wcos to be specified.")

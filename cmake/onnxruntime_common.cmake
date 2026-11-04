@@ -23,9 +23,10 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/platform/path_lib.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/scoped_resource.h"
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry.h"
+    "${ONNXRUNTIME_ROOT}/core/platform/telemetry_strings.h"
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry.cc"
-    "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_sha256.h"
-    "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_sha256.cc"
+    "${ONNXRUNTIME_ROOT}/core/platform/telemetry_sha256.h"
+    "${ONNXRUNTIME_ROOT}/core/platform/telemetry_sha256.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/logging/make_platform_default_log_sink.h"
     "${ONNXRUNTIME_ROOT}/core/platform/logging/make_platform_default_log_sink.cc"
     "${ONNXRUNTIME_ROOT}/core/quantization/*.h"
@@ -49,6 +50,12 @@ if(WIN32)
          "${ONNXRUNTIME_ROOT}/core/platform/windows/logging/*.h"
          "${ONNXRUNTIME_ROOT}/core/platform/windows/logging/*.cc"
     )
+    if(onnxruntime_USE_1DS_TELEMETRY)
+        list(APPEND onnxruntime_common_src_patterns
+             "${ONNXRUNTIME_ROOT}/core/platform/windows/device_id.cc"
+             "${ONNXRUNTIME_ROOT}/core/platform/windows/telemetry_1ds.cc"
+        )
+    endif()
 
 else()
     list(APPEND onnxruntime_common_src_patterns
@@ -57,16 +64,11 @@ else()
          "${ONNXRUNTIME_ROOT}/core/platform/posix/stacktrace.cc"
     )
 
-    # Telemetry for non-Windows platforms (enabled by USE_TELEMETRY)
-    if (onnxruntime_USE_TELEMETRY)
+    # 1DS telemetry sources for non-Windows platforms.
+    if(onnxruntime_USE_1DS_TELEMETRY)
         list(APPEND onnxruntime_common_src_patterns
-             "${ONNXRUNTIME_ROOT}/core/platform/posix/device_id.h"
              "${ONNXRUNTIME_ROOT}/core/platform/posix/device_id.cc"
-             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry.h"
-             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry.cc"
-             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_context.h"
-             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_no_throw.h"
-             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_sampling.h"
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_1ds.cc"
         )
     endif()
 
@@ -93,6 +95,17 @@ else()
     endif()
 endif()
 
+if(onnxruntime_USE_1DS_TELEMETRY)
+    list(APPEND onnxruntime_common_src_patterns
+         "${ONNXRUNTIME_ROOT}/core/platform/device_id.h"
+         "${ONNXRUNTIME_ROOT}/core/platform/telemetry_1ds.h"
+         "${ONNXRUNTIME_ROOT}/core/platform/telemetry_1ds.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/telemetry_1ds_platform.h"
+         "${ONNXRUNTIME_ROOT}/core/platform/telemetry_context.h"
+         "${ONNXRUNTIME_ROOT}/core/platform/telemetry_no_throw.h"
+         "${ONNXRUNTIME_ROOT}/core/platform/telemetry_sampling.h")
+endif()
+
 # platform-specific device discovery files
 if (onnxruntime_DISABLE_DEVICE_DISCOVERY)
     list(APPEND onnxruntime_common_src_patterns
@@ -103,6 +116,7 @@ elseif (WIN32)
 elseif (LINUX)
     list(APPEND onnxruntime_common_src_patterns
          "${ONNXRUNTIME_ROOT}/core/platform/linux/device_discovery.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/linux/drm_device_discovery.h"
          "${ONNXRUNTIME_ROOT}/core/platform/linux/pci_device_discovery.h")
 elseif (APPLE)
     list(APPEND onnxruntime_common_src_patterns
@@ -168,6 +182,9 @@ if(WIN32)
       list(APPEND onnxruntime_DELAYLOAD_FLAGS "/DELAYLOAD:shell32.dll")
     endif()
   endif()
+  if(onnxruntime_USE_1DS_TELEMETRY)
+    target_link_libraries(onnxruntime_common PRIVATE iphlpapi)
+  endif()
 endif()
 
 if(NOT WIN32 AND NOT APPLE AND NOT ANDROID AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
@@ -178,7 +195,8 @@ if(NOT WIN32 AND NOT APPLE AND NOT ANDROID AND CMAKE_SYSTEM_PROCESSOR MATCHES "x
 endif()
 
 if (onnxruntime_USE_TELEMETRY)
-  if(WIN32)
+  if(WIN32 AND NOT onnxruntime_USE_1DS_TELEMETRY)
+    target_compile_definitions(onnxruntime_common PUBLIC USE_WINDOWS_TELEMETRY)
     set(ONNXRUNTIME_TELEMETRY_CONFIG_HEADER
         "${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
     if(EXISTS "${ONNXRUNTIME_TELEMETRY_CONFIG_HEADER}")
@@ -187,7 +205,7 @@ if (onnxruntime_USE_TELEMETRY)
         PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_TELEMETRY_CONFIG_HEADER}")
     endif()
   else()
-    target_compile_definitions(onnxruntime_common PRIVATE USE_POSIX_TELEMETRY)
+    target_compile_definitions(onnxruntime_common PUBLIC USE_1DS_TELEMETRY)
     # Optional tenant-token override written into a generated header in the build tree (kept off the
     # compiler command line, so the token never appears in compile_commands.json or build logs). It may be
     # supplied either as -DONNXRUNTIME_TELEMETRY_TENANT_TOKEN=... or via an
@@ -274,42 +292,42 @@ if(CPUINFO_SUPPORTED)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo::cpuinfo)
 endif()
 
-# Link telemetry library (1DS SDK) for non-Windows platforms
-if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
-  if(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE AND TARGET MSTelemetry::mat)
-    # The vcpkg package target propagates its include
-    # directories and transitive dependencies (curl/sqlite3/zlib/nlohmann-json), so no
-    # manual include paths or system libraries are required here.
-    target_link_libraries(onnxruntime_common PRIVATE MSTelemetry::mat)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES MSTelemetry::mat)
-  elseif(TARGET mat)
+# Link the default 1DS telemetry backend.
+if(onnxruntime_USE_1DS_TELEMETRY)
+  if(TARGET mat)
     # Link mat directly. In a shared build its resolved dependency set is absorbed into
     # libonnxruntime; in a static build mat -- and the bundled static archives it links -- are shipped
     # and exported below so a downstream find_package(onnxruntime) resolves them.
     target_link_libraries(onnxruntime_common PRIVATE mat)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES mat)
-    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET libcurl_static)
-      # Prevent shared-library consumers from re-exporting the embedded transport symbols. This does
-      # not namespace static symbols; static ORT consumers must not co-link another curl/mbedTLS copy.
-      string(CONCAT _onnxruntime_telemetry_build_exclude_libs
-        "LINKER:--exclude-libs="
-        "$<TARGET_FILE_NAME:libcurl_static>:"
-        "$<TARGET_FILE_NAME:mbedtls>:"
-        "$<TARGET_FILE_NAME:mbedx509>:"
-        "$<TARGET_FILE_NAME:mbedcrypto>:"
-        "$<TARGET_FILE_NAME:everest>:"
-        "$<TARGET_FILE_NAME:p256m>")
-      string(CONCAT _onnxruntime_telemetry_install_exclude_libs
-        "LINKER:--exclude-libs="
-        "$<TARGET_FILE_NAME:onnxruntime::libcurl_static>:"
-        "$<TARGET_FILE_NAME:onnxruntime::mbedtls>:"
-        "$<TARGET_FILE_NAME:onnxruntime::mbedx509>:"
-        "$<TARGET_FILE_NAME:onnxruntime::mbedcrypto>:"
-        "$<TARGET_FILE_NAME:onnxruntime::everest>:"
-        "$<TARGET_FILE_NAME:onnxruntime::p256m>")
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR ANDROID)
+      # Hide SDK/dependency archives without hiding ORT's archive-backed public API.
+      # This does not namespace static symbols or make duplicate static dependencies safe to co-link.
+      # Some GNU toolchains implicitly link versioned compatibility symbols from this archive.
+      set(_onnxruntime_telemetry_build_exclude_libs "libstdc++_nonshared.a")
+      set(_onnxruntime_telemetry_install_exclude_libs "libstdc++_nonshared.a")
+      foreach(_ort_telemetry_archive
+          mat
+          sqlite3_bundled
+          zlib_bundled
+          libcurl_static
+          mbedtls
+          mbedx509
+          mbedcrypto
+          everest
+          p256m)
+        if(TARGET ${_ort_telemetry_archive})
+          list(APPEND _onnxruntime_telemetry_build_exclude_libs
+            "$<TARGET_FILE_NAME:${_ort_telemetry_archive}>")
+          list(APPEND _onnxruntime_telemetry_install_exclude_libs
+            "$<TARGET_FILE_NAME:onnxruntime::${_ort_telemetry_archive}>")
+        endif()
+      endforeach()
+      list(JOIN _onnxruntime_telemetry_build_exclude_libs ":" _onnxruntime_telemetry_build_exclude_libs)
+      list(JOIN _onnxruntime_telemetry_install_exclude_libs ":" _onnxruntime_telemetry_install_exclude_libs)
       target_link_options(onnxruntime_common INTERFACE
-        "$<BUILD_INTERFACE:${_onnxruntime_telemetry_build_exclude_libs}>"
-        "$<INSTALL_INTERFACE:${_onnxruntime_telemetry_install_exclude_libs}>")
+        "$<BUILD_INTERFACE:LINKER:--exclude-libs=${_onnxruntime_telemetry_build_exclude_libs}>"
+        "$<INSTALL_INTERFACE:LINKER:--exclude-libs=${_onnxruntime_telemetry_install_exclude_libs}>")
     endif()
     # mat propagates its public include dir as a normal (non-SYSTEM) include, so onnxruntime_common's
     # -Wall -Wextra -Werror would apply to the SDK's headers (they trip -Werror=unused-parameter in
@@ -355,7 +373,7 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
       endforeach()
     endif()
   else()
-    message(FATAL_ERROR "Telemetry enabled but no 1DS SDK target ('MSTelemetry::mat' or 'mat') was found")
+    message(FATAL_ERROR "Telemetry enabled but the pinned 1DS SDK target ('mat') was not found")
   endif()
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # Every supported Linux telemetry path uses static curl/mbedTLS. Select a readable CA bundle

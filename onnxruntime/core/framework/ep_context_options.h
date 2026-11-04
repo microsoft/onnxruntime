@@ -55,6 +55,17 @@ struct ExternalInitializerFileInfo {
 };
 
 /// <summary>
+/// Holds the logical file name and caller-owned output parameters for external initializers saved to a buffer.
+/// </summary>
+struct ExternalInitializerBufferInfo {
+  std::filesystem::path logical_file_name;
+  size_t size_threshold = 0;
+  AllocatorPtr buffer_allocator = nullptr;
+  void** buffer_ptr = nullptr;
+  size_t* buffer_size_ptr = nullptr;
+};
+
+/// <summary>
 /// Holds function and state provided by user to handle initializer data (i.e., write to stream or embed in model).
 /// </summary>
 struct InitializerHandler {
@@ -98,10 +109,14 @@ struct ModelGenOptions {
                BufferWriteFuncHolder>  // Function to write the output model to a user's stream.
       output_model_location = std::monostate{};
 
-  std::variant<std::monostate,               // Initial state (initializers embedded in ONNX model).
-               ExternalInitializerFileInfo,  // Initializers saved to a single external file depending on size.
-               InitializerHandler>           // Custom function called for every initializer to determine location.
+  std::variant<std::monostate,                 // Initial state (initializers embedded in ONNX model).
+               ExternalInitializerFileInfo,    // Initializers saved to a single external file depending on size.
+               ExternalInitializerBufferInfo,  // Initializers saved to a caller-owned buffer.
+               InitializerHandler>             // Custom function called for every initializer to determine location.
       initializers_location = std::monostate{};
+
+  size_t external_initializers_alignment = 4096;
+  size_t external_initializers_alignment_threshold = 1048576;
 
   EpContextDataWriteFuncHolder ep_context_data_write_func = {};
 
@@ -113,6 +128,7 @@ struct ModelGenOptions {
 
   bool AreInitializersEmbeddedInOutputModel() const;
   const ExternalInitializerFileInfo* TryGetExternalInitializerFileInfo() const;
+  const ExternalInitializerBufferInfo* TryGetExternalInitializerBufferInfo() const;
   const InitializerHandler* TryGetInitializerHandler() const;
 };
 

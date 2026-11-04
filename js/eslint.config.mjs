@@ -278,6 +278,7 @@ export default [
             '_OrtBindOutput',
             '_OrtClearBoundOutputs',
             '_OrtCreateBinding',
+            '_OrtCreateLoraAdapter',
             '_OrtCreateRunOptions',
             '_OrtCreateSession',
             '_OrtCreateSessionOptions',
@@ -294,11 +295,13 @@ export default [
             '_OrtGetTensorData',
             '_OrtInit',
             '_OrtReleaseBinding',
+            '_OrtReleaseLoraAdapter',
             '_OrtReleaseRunOptions',
             '_OrtReleaseSession',
             '_OrtReleaseSessionOptions',
             '_OrtReleaseTensor',
             '_OrtRun',
+            '_OrtRunOptionsAddActiveLoraAdapter',
             '_OrtRunWithBinding',
           ],
         },
@@ -330,6 +333,22 @@ export default [
       'unicorn/filename-case': 'off',
       'no-invalid-this': 'off',
       'no-console': 'off',
+    },
+  },
+  {
+    files: [
+      'node/lib/binding.ts',
+      'node/test/unittests/lib/ep-context-data-read.ts',
+      'react_native/e2e/src/EPContextDataReadTest.tsx',
+    ],
+
+    rules: {
+      'no-underscore-dangle': [
+        'error',
+        {
+          allow: ['__testEpContextDataReadCallback', '__testWorker'],
+        },
+      ],
     },
   },
   {

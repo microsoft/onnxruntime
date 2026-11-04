@@ -60,7 +60,14 @@ if(USE_QNN)
 endif()
 
 # source files
-file(GLOB ORT_NODEJS_BINDING_SOURCE_FILES ${CMAKE_SOURCE_DIR}/src/*.cc)
+#
+# CONFIGURE_DEPENDS makes CMake re-run the glob when a source file is added or removed, so that new
+# files (e.g. src/ep_context_data_read_helper.cc) are picked up by incremental builds as well.
+if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.12)
+  file(GLOB ORT_NODEJS_BINDING_SOURCE_FILES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/*.cc)
+else()
+  file(GLOB ORT_NODEJS_BINDING_SOURCE_FILES ${CMAKE_SOURCE_DIR}/src/*.cc)
+endif()
 
 add_library(onnxruntime_binding SHARED ${ORT_NODEJS_BINDING_SOURCE_FILES} ${CMAKE_JS_SRC})
 file(MAKE_DIRECTORY ${dist_folder})

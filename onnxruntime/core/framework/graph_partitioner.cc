@@ -204,6 +204,7 @@ struct GetCapabilityForEPParams {
   std::reference_wrapper<const CheckLoadCancellationFn> check_load_cancellation_fn;
   LayeringIndex* layering_index;  // Added member
   uint32_t registered_ep_context_data_callbacks;
+  InlinedHashSet<NodeIndex>* layout_assigned_nodes = nullptr;
 };
 
 auto get_capabilities = [](const IExecutionProvider& ep,
@@ -383,6 +384,10 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     InlinedVector<NodeIndex> nodes_temporarily_assigned_to_ep;
     for (auto& capability : capabilities) {
       TryAssignNodes(graph, *capability->sub_graph, ep_type, &nodes_temporarily_assigned_to_ep);
+    }
+    if (params.layout_assigned_nodes != nullptr) {
+      params.layout_assigned_nodes->insert(nodes_temporarily_assigned_to_ep.begin(),
+                                           nodes_temporarily_assigned_to_ep.end());
     }
 
     const NodeIndex first_new_node = graph.MaxNodeIndex();
@@ -846,6 +851,10 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
 
     for (NodeIndex idx = first_new_node; idx < end_node; ++idx) {
       const Node* node = graph.GetNode(idx);
+      if (params.layout_assigned_nodes != nullptr && node != nullptr &&
+          node->GetExecutionProviderType() == ep_type) {
+        params.layout_assigned_nodes->insert(idx);
+      }
       if (node != nullptr && node->Domain() == kMSInternalNHWCDomain) {
         if (new_nodes_in_capabilities.count(node->Index()) == 0) {
           return ORT_MAKE_STATUS(
@@ -898,12 +907,16 @@ static Status GetCapabilityForEPForAotInlining(const GraphViewer& graph_viewer,
 static bool IsIndexedSubGraphAvailableForAssignment(Graph& graph,
                                                     const IndexedSubGraph& capability,
                                                     GraphPartitioner::Mode mode,
-                                                    const std::string& provider_type) {
+                                                    const std::string& provider_type,
+                                                    const InlinedHashSet<NodeIndex>* layout_assigned_nodes = nullptr) {
   // The provider can run a single node in the <graph> if not using meta-defs.
   if (capability.GetMetaDef() == nullptr && capability.nodes.size() == 1) {
     auto* node = graph.GetNode(capability.nodes[0]);
-    if (nullptr != node && node->GetExecutionProviderType().empty()) {
-      // The node was not fused or assigned.
+    if (nullptr != node &&
+        (node->GetExecutionProviderType().empty() ||
+         (node->GetExecutionProviderType() == provider_type && layout_assigned_nodes != nullptr &&
+          layout_assigned_nodes->contains(node->Index())))) {
+      // Accept provisional NHWC tags, but do not reprocess assignments from an earlier partitioning round.
       return true;
     }
     return false;
@@ -1091,6 +1104,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
   // run the function by SessionOption, we should create a function kernel for it and
   // delegate the compute to the functions inside the dlls.
   std::vector<std::unique_ptr<ComputeCapability>> capabilities;
+  InlinedHashSet<NodeIndex> layout_assigned_nodes;
   const auto get_capability_params = GetCapabilityForEPParams{
       std::ref(graph),
       std::cref(kernel_registry_mgr),
@@ -1103,7 +1117,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       std::ref(graph_optimizer_registry),
       std::cref(check_load_cancellation_fn),
       layering_index,
-      registered_ep_context_data_callbacks};
+      registered_ep_context_data_callbacks,
+      &layout_assigned_nodes};
 
   ORT_RETURN_IF_ERROR(GetCapabilityForEP(get_capability_params, logger));
 
@@ -1131,7 +1146,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     // The <provider> can run a fused <sub_graph> in the <graph>.
     // Check whether any node in the <sub_graph> was already assigned. If so it cannot be stolen as assignment is done
     // in order of EP priority
-    bool sub_graph_available_for_assignment = IsIndexedSubGraphAvailableForAssignment(graph, *capability->sub_graph, mode, type);
+    bool sub_graph_available_for_assignment =
+        IsIndexedSubGraphAvailableForAssignment(graph, *capability->sub_graph, mode, type, &layout_assigned_nodes);
 
     // If the <sub_graph> is available to be assigned to the EP and the ComputeCapability has nodes_to_optimize,
     // run EP related optimizations and update ComputeCapability.

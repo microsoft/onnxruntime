@@ -1,0 +1,69 @@
+name: Setup sccache
+description: Install sccache, restore compiler outputs, and enable writes only on main.
+
+inputs:
+  key:
+    description: Workflow/build variant and selected compiler/SDK identity. Configure the toolchain before calling.
+    required: true
+  cache-size:
+    description: Maximum local compiler-cache size.
+    default: 10G
+
+outputs:
+  cache-primary-key:
+    description: Snapshot key to pass to finish-sccache.
+    value: ${{ steps.restore.outputs.cache-primary-key }}
+  cache-hit:
+    description: Whether an exact snapshot was restored.
+    value: ${{ steps.restore.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install sccache
+      uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+      with:
+        version: v0.19.0
+        # finish-sccache reports statistics before stopping the server.
+        disable_annotations: 'true'
+
+    - name: Configure compiler cache
+      id: configure
+      shell: python
+      env:
+        CACHE_VARIANT: ${{ inputs.key }}
+        CACHE_SIZE: ${{ inputs.cache-size }}
+        CACHE_WRITE_MODE: ${{ github.ref == 'refs/heads/main' && 'READ_WRITE' || 'READ_ONLY' }}
+      run: |
+        import hashlib
+        import os
+        import subprocess
+        from pathlib import Path
+
+        version = subprocess.check_output(["sccache", "--version"], text=True).strip()
+        identity = hashlib.sha256(f"{os.environ['CACHE_VARIANT']}\n{version}".encode()).hexdigest()
+        prefix = f"sccache-v1-{os.environ['RUNNER_OS']}-{os.environ['RUNNER_ARCH']}-{identity}-"
+        with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+            env.write(f"SCCACHE_DIR={Path(os.environ['GITHUB_WORKSPACE']) / '.sccache'}\n")
+            env.write(f"SCCACHE_BASEDIRS={os.environ['GITHUB_WORKSPACE']}\n")
+            env.write(f"SCCACHE_CACHE_SIZE={os.environ['CACHE_SIZE']}\n")
+            env.write(f"SCCACHE_LOCAL_RW_MODE={os.environ['CACHE_WRITE_MODE']}\n")
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+            output.write(f"prefix={prefix}\n")
+
+    - name: Restore compiler cache
+      id: restore
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ env.SCCACHE_DIR }}
+        key: ${{ steps.configure.outputs.prefix }}${{ github.sha }}
+        restore-keys: |
+          ${{ steps.configure.outputs.prefix }}
+
+    - name: Start compiler cache
+      shell: python
+      run: |
+        import subprocess
+
+        subprocess.run(["sccache", "--start-server"], check=True)
+        subprocess.run(["sccache", "--zero-stats"], check=True)

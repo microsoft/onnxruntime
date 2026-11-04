@@ -6,9 +6,24 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include "core/framework/data_types.h"
+#include "core/providers/cuda/shared_inc/device_memory_capacity.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_env_config_keys.h"
+
+// Exercise the header-only adapters without changing the host test's EP build mode.
+#pragma push_macro("EP_ENFORCE")
+#undef EP_ENFORCE
+#define EP_ENFORCE ORT_ENFORCE
+#pragma push_macro("ORT_EP_API_ADAPTER_HEADER_INCLUDED")
+#undef ORT_EP_API_ADAPTER_HEADER_INCLUDED
+#define ORT_EP_API_ADAPTER_HEADER_INCLUDED
+#include "ep/adapter/allocator.h"
+#include "ep/adapter/kernel_def_builder.h"
+#include "ep/adapter/tensor_helper.h"
+#pragma pop_macro("ORT_EP_API_ADAPTER_HEADER_INCLUDED")
+#pragma pop_macro("EP_ENFORCE")
 
 #include "test/autoep/test_autoep_utils.h"
 #include "test/util/include/api_asserts.h"
@@ -20,6 +35,355 @@ extern "C" void ortenv_teardown();
 
 namespace onnxruntime {
 namespace test {
+
+namespace {
+struct MemoryCapacityTestDriver {
+  using Device = int;
+  using Context = int;
+
+  int Step() noexcept { return ++step == failure_step ? failure_code : 0; }
+  int Init() noexcept { return Step(); }
+  int DeviceGet(Device* device, int ordinal) noexcept {
+    queried_ordinal = ordinal;
+    *device = ordinal;
+    return Step();
+  }
+  int DeviceTotalMem(size_t* total, Device) noexcept {
+    *total = 16ULL * 1024 * 1024;
+    return Step();
+  }
+  int CtxGetCurrent(Context* context) noexcept {
+    *context = current_context;
+    return Step();
+  }
+  int CtxSetCurrent(Context context) noexcept {
+    if (fail_context_set) {
+      return failure_code;
+    }
+    current_context = context;
+    return 0;
+  }
+  int PrimaryCtxRetain(Context* context, Device) noexcept {
+    *context = 42;
+    const int result = Step();
+    retained = result == 0;
+    return result;
+  }
+  int CtxPushCurrent(Context context) noexcept {
+    if (const int result = Step(); result != 0) {
+      return result;
+    }
+    saved_context = current_context;
+    current_context = context;
+    return 0;
+  }
+  int MemGetInfo(size_t* available, size_t* total) noexcept {
+    queried_context = current_context;
+    *available = available_bytes;
+    *total = 14ULL * 1024 * 1024;
+    return Step();
+  }
+  int CtxPopCurrent(Context* context) noexcept {
+    if (const int result = Step(); result != 0) {
+      return result;
+    }
+    if (fail_context_restore) {
+      return failure_code;
+    }
+    *context = current_context;
+    current_context = saved_context;
+    return 0;
+  }
+  int PrimaryCtxRelease(Device) noexcept {
+    release_called = true;
+    context_at_release = current_context;
+    if (const int result = Step(); result != 0) {
+      return result;
+    }
+    retained = false;
+    return 0;
+  }
+  const char* GetErrorName(int) noexcept { return error_name; }
+  const char* GetErrorString(int) noexcept { return error_description; }
+
+  int step = 0;
+  int failure_step = 0;
+  int failure_code = 2;
+  const char* error_name = "CUDA_ERROR_OUT_OF_MEMORY";
+  const char* error_description = "out of memory";
+  int current_context = 0;
+  int saved_context = 0;
+  int context_at_release = -1;
+  int queried_context = 0;
+  int queried_ordinal = -1;
+  size_t available_bytes = 12ULL * 1024 * 1024;
+  bool retained = false;
+  bool release_called = false;
+  bool fail_context_restore = false;
+  bool fail_context_set = false;
+};
+}  // namespace
+
+TEST(OrtEpLibrary, MemoryCapacityPreservesCudaContextAndQueriesDeviceTotal) {
+  for (int original_context : {0, 73}) {
+    MemoryCapacityTestDriver driver;
+    driver.current_context = original_context;
+    uint64_t total = 0;
+    uint64_t available = 0;
+    ASSERT_FALSE(cuda::QueryDeviceMemoryCapacity(driver, 3, &total, &available));
+    EXPECT_EQ(driver.queried_ordinal, 3);
+    EXPECT_EQ(driver.queried_context, 42);
+    EXPECT_EQ(driver.current_context, original_context);
+    EXPECT_FALSE(driver.retained);
+    EXPECT_TRUE(driver.release_called);
+    EXPECT_EQ(driver.context_at_release, original_context);
+    EXPECT_EQ(total, 16ULL * 1024 * 1024);
+    EXPECT_EQ(available, driver.available_bytes);
+
+    driver.available_bytes /= 2;
+    ASSERT_FALSE(cuda::QueryDeviceMemoryCapacity(driver, 3, &total, &available));
+    EXPECT_EQ(available, driver.available_bytes);
+    EXPECT_EQ(driver.current_context, original_context);
+  }
+}
+
+TEST(OrtEpLibrary, MemoryCapacityDriverFailuresPreserveOutputsAndCleanUp) {
+  const char* expected_operations[] = {
+      "cuInit failed",
+      "cuDeviceGet failed",
+      "cuDeviceTotalMem failed",
+      "cuCtxGetCurrent failed",
+      "cuDevicePrimaryCtxRetain failed",
+      "cuCtxPushCurrent failed",
+      "cuMemGetInfo failed",
+      "cuCtxPopCurrent failed to restore the calling thread's CUDA context",
+      "cuDevicePrimaryCtxRelease failed",
+  };
+  for (int failure_step = 1; failure_step <= 9; ++failure_step) {
+    SCOPED_TRACE(failure_step);
+    MemoryCapacityTestDriver driver;
+    driver.failure_step = failure_step;
+    driver.failure_code = 100 + failure_step;
+    driver.current_context = 73;
+    uint64_t total = 7;
+    uint64_t available = 11;
+    const auto error = cuda::QueryDeviceMemoryCapacity(driver, 3, &total, &available);
+    ASSERT_TRUE(error);
+    EXPECT_EQ(error.code, driver.failure_code);
+    EXPECT_STREQ(error.operation, expected_operations[failure_step - 1]);
+    EXPECT_EQ(total, 7u);
+    EXPECT_EQ(available, 11u);
+    EXPECT_EQ(driver.current_context, 73);
+    if (failure_step != 9) {
+      EXPECT_FALSE(driver.retained);
+    }
+    EXPECT_EQ(driver.release_called, failure_step >= 6);
+    if (driver.release_called) {
+      EXPECT_EQ(driver.context_at_release, 73);
+    }
+  }
+}
+
+TEST(OrtEpLibrary, MemoryCapacityRepeatedPopFailureRestoresCallerBeforeRelease) {
+  for (int original_context : {0, 73}) {
+    for (bool fail_context_set : {false, true}) {
+      MemoryCapacityTestDriver driver;
+      driver.current_context = original_context;
+      driver.fail_context_restore = true;
+      driver.fail_context_set = fail_context_set;
+      uint64_t total = 7;
+      uint64_t available = 11;
+      const auto error = cuda::QueryDeviceMemoryCapacity(driver, 3, &total, &available);
+      ASSERT_TRUE(error);
+      EXPECT_STREQ(error.operation, "cuCtxPopCurrent failed to restore the calling thread's CUDA context");
+      EXPECT_EQ(driver.current_context, fail_context_set ? 42 : original_context);
+      EXPECT_EQ(driver.retained, fail_context_set);
+      EXPECT_EQ(driver.release_called, !fail_context_set);
+      if (driver.release_called) {
+        EXPECT_EQ(driver.context_at_release, original_context);
+      }
+      EXPECT_EQ(total, 7u);
+      EXPECT_EQ(available, 11u);
+    }
+  }
+}
+
+TEST(OrtEpLibrary, MemoryCapacityDriverErrorIncludesCudaCause) {
+  MemoryCapacityTestDriver driver;
+  driver.failure_step = 5;
+  uint64_t total = 7;
+  uint64_t available = 11;
+  const auto error = cuda::QueryDeviceMemoryCapacity(driver, 3, &total, &available);
+  ASSERT_TRUE(error);
+  char message[512];
+  EXPECT_STREQ(cuda::FormatMemoryCapacityError(driver, error, message),
+               "cuDevicePrimaryCtxRetain failed: CUDA error 2 (CUDA_ERROR_OUT_OF_MEMORY): out of memory");
+  EXPECT_EQ(total, 7u);
+  EXPECT_EQ(available, 11u);
+
+  driver.error_name = nullptr;
+  driver.error_description = nullptr;
+  EXPECT_STREQ(cuda::FormatMemoryCapacityError(driver, error, message),
+               "cuDevicePrimaryCtxRetain failed: CUDA error 2 (unknown): no description available");
+
+  char short_message[64];
+  EXPECT_EQ(cuda::FormatMemoryCapacityError(driver, error, short_message), short_message);
+  EXPECT_EQ(short_message[sizeof(short_message) - 1], '\0');
+  EXPECT_EQ(std::string(short_message).size(), sizeof(short_message) - 1);
+}
+
+TEST(OrtEpLibrary, MemoryCapacityTotalOnlyDoesNotInitializeContext) {
+  for (int original_context : {0, 73}) {
+    MemoryCapacityTestDriver driver;
+    driver.current_context = original_context;
+    driver.failure_step = 4;
+    uint64_t total = 7;
+    ASSERT_FALSE(cuda::QueryDeviceMemoryCapacity(driver, 3, &total, nullptr));
+    EXPECT_EQ(total, 16ULL * 1024 * 1024);
+    EXPECT_EQ(driver.step, 3);
+    EXPECT_EQ(driver.current_context, original_context);
+    EXPECT_FALSE(driver.retained);
+    EXPECT_FALSE(driver.release_called);
+  }
+  for (int failure_step = 1; failure_step <= 3; ++failure_step) {
+    MemoryCapacityTestDriver driver;
+    driver.failure_step = failure_step;
+    uint64_t total = 7;
+    ASSERT_TRUE(cuda::QueryDeviceMemoryCapacity(driver, 3, &total, nullptr));
+    EXPECT_EQ(total, 7u);
+    EXPECT_FALSE(driver.retained);
+  }
+}
+
+TEST(OrtEpLibrary, MemoryCapacityAvailableOnlyPreservesContext) {
+  MemoryCapacityTestDriver driver;
+  driver.current_context = 73;
+  uint64_t available = 11;
+  ASSERT_FALSE(cuda::QueryDeviceMemoryCapacity(driver, 3, nullptr, &available));
+  EXPECT_EQ(available, driver.available_bytes);
+  EXPECT_EQ(driver.step, 8);
+  EXPECT_EQ(driver.current_context, 73);
+  EXPECT_FALSE(driver.retained);
+}
+
+TEST(OrtEpLibrary, GetTensorDataTypeUsesOrtElementTypes) {
+  const auto& ep_api = Ort::GetEpApi();
+  const struct {
+    ONNXTensorElementDataType ort_type;
+    int proto_type;
+    size_t storage_bytes;
+  } types[] = {
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_NAMESPACE::TensorProto_DataType_FLOAT, 20},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2, ONNX_NAMESPACE::TensorProto_DataType_UINT2, 2},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2, ONNX_NAMESPACE::TensorProto_DataType_INT2, 2},
+#if !defined(DISABLE_FLOAT4_TYPES)
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1, ONNX_NAMESPACE::TensorProto_DataType_FLOAT4E2M1, 3},
+#endif
+#if !defined(DISABLE_FLOAT8_TYPES)
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0, ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E8M0, 5},
+#endif
+  };
+  Ort::AllocatorWithDefaultOptions allocator;
+  const int64_t shape[] = {5};
+  for (const auto& [ort_type, proto_type, storage_bytes] : types) {
+    SCOPED_TRACE(ort_type);
+    const OrtDataType* data_type = nullptr;
+    ASSERT_ORTSTATUS_OK(ep_api.GetTensorDataType(ort_type, &data_type));
+    ASSERT_NE(data_type, nullptr);
+    const auto* ml_type = reinterpret_cast<const DataTypeImpl*>(data_type);
+    const auto* type_proto = ml_type->GetTypeProto();
+    ASSERT_NE(type_proto, nullptr);
+    EXPECT_EQ(type_proto->tensor_type().elem_type(), proto_type);
+    const auto* tensor_type = ml_type->AsTensorType();
+    ASSERT_NE(tensor_type, nullptr);
+    const auto* primitive_type = tensor_type->GetElementType()->AsPrimitiveDataType();
+    ASSERT_NE(primitive_type, nullptr);
+    EXPECT_EQ(primitive_type->GetDataType(), proto_type);
+    EXPECT_EQ(ep::adapter::MLDataTypeToOrtDataType(ml_type), data_type);
+    EXPECT_EQ(ep::adapter::TryMLDataTypeToOrtDataType(ml_type), data_type);
+
+    auto value = Ort::Value::CreateTensor(allocator, shape, 1, ort_type);
+    auto tensor = ep::adapter::CreateTensorFromApiValue(value);
+    EXPECT_EQ(tensor.DataType()->AsPrimitiveDataType()->GetDataType(), proto_type);
+    EXPECT_EQ(tensor.SizeInBytes(), storage_bytes);
+    EXPECT_EQ(tensor.DataRaw(), value.GetTensorRawData());
+  }
+#if defined(DISABLE_FLOAT8_TYPES)
+  const OrtDataType* data_type = nullptr;
+  Ort::Status status(ep_api.GetTensorDataType(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0, &data_type));
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_EQ(status.GetErrorCode(), ORT_NOT_IMPLEMENTED);
+  EXPECT_EQ(data_type, nullptr);
+#endif
+}
+
+namespace {
+struct MemoryInfoOnlyOrtAllocator : OrtAllocator {
+  explicit MemoryInfoOnlyOrtAllocator(const OrtMemoryInfo* memory_info) : OrtAllocator{}, memory_info_{memory_info} {
+    version = ORT_API_VERSION;
+    Alloc = AllocImpl;
+    Free = FreeImpl;
+    Info = InfoImpl;
+  }
+
+  static void* ORT_API_CALL AllocImpl(OrtAllocator* /*this_ptr*/, size_t /*size*/) noexcept { return nullptr; }
+  static void ORT_API_CALL FreeImpl(OrtAllocator* /*this_ptr*/, void* /*p*/) noexcept {}
+  static const OrtMemoryInfo* ORT_API_CALL InfoImpl(const OrtAllocator* this_ptr) noexcept {
+    return static_cast<const MemoryInfoOnlyOrtAllocator*>(this_ptr)->memory_info_;
+  }
+
+  const OrtMemoryInfo* memory_info_;
+};
+}  // namespace
+
+// The allocator adapter must rebuild OrtMemoryInfo through the C API instead of copying the opaque struct, whose
+// layout can differ between ORT and a plugin EP built with different STL settings.
+TEST(OrtEpLibrary, AllocatorAdapterRebuildsMemoryInfoFromApi) {
+  // The C API does not expose alignment, so a non-zero alignment distinguishes a rebuild from a struct copy.
+  const Ort::MemoryInfo api_memory_info{"AdapterTestAllocator", OrtMemoryInfoDeviceType_GPU, 0x1234, 3,
+                                        OrtDeviceMemoryType_HOST_ACCESSIBLE, 64, OrtReadOnlyAllocator};
+  MemoryInfoOnlyOrtAllocator ort_allocator{api_memory_info};
+
+  ep::adapter::IAllocatorWrappingOrtAllocator allocator{&ort_allocator};
+  const OrtMemoryInfo& info = allocator.Info();
+  EXPECT_EQ(info.name, "AdapterTestAllocator");
+  EXPECT_EQ(info.alloc_type, OrtReadOnlyAllocator);
+  EXPECT_EQ(info.mem_type, OrtMemTypeCPU);
+  EXPECT_EQ(info.device.Type(), OrtDevice::GPU);
+  EXPECT_EQ(info.device.MemType(), OrtDevice::MemType::HOST_ACCESSIBLE);
+  EXPECT_EQ(info.device.Vendor(), 0x1234u);
+  EXPECT_EQ(info.device.Id(), 3);
+  EXPECT_EQ(info.device.GetAlignment(), 0u);
+  const auto& source_info = *static_cast<const OrtMemoryInfo*>(api_memory_info);
+  EXPECT_TRUE(info.device.EqualIgnoringAlignment(source_info.device));
+  EXPECT_EQ(info.name, source_info.name);
+  EXPECT_EQ(info.mem_type, source_info.mem_type);
+  EXPECT_EQ(info.alloc_type, source_info.alloc_type);
+}
+
+// An EP-local OrtMemoryInfo returned to ORT (e.g. from OrtAllocator::Info) must be recreated through the C API.
+TEST(OrtEpLibrary, AdapterCreatesApiMemoryInfoFromEpLocalInfo) {
+  const OrtMemoryInfo ep_infos[] = {
+      {"AdapterDeviceAllocator", OrtDeviceAllocator,
+       OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0x10DE, 2, 256}, OrtMemTypeDefault},
+      {"AdapterHostAllocator", OrtReadOnlyAllocator,
+       OrtDevice{OrtDevice::NPU, OrtDevice::MemType::HOST_ACCESSIBLE, 0x1234, 1, 64}, OrtMemTypeCPU},
+  };
+  for (const auto& ep_info : ep_infos) {
+    SCOPED_TRACE(ep_info.ToString());
+    Ort::MemoryInfo api_info = ep::adapter::CreateApiMemoryInfo(ep_info);
+    ASSERT_NE(static_cast<const OrtMemoryInfo*>(api_info), nullptr);
+    EXPECT_NE(static_cast<const OrtMemoryInfo*>(api_info), &ep_info);
+    EXPECT_EQ(api_info.GetAllocatorName(), ep_info.name);
+    EXPECT_EQ(api_info.GetAllocatorType(), ep_info.alloc_type);
+    EXPECT_EQ(api_info.GetMemoryType(), ep_info.mem_type);
+    EXPECT_EQ(api_info.GetDeviceType(), static_cast<OrtMemoryInfoDeviceType>(ep_info.device.Type()));
+    EXPECT_EQ(api_info.GetDeviceMemoryType(), static_cast<OrtDeviceMemoryType>(ep_info.device.MemType()));
+    EXPECT_EQ(api_info.GetVendorId(), ep_info.device.Vendor());
+    EXPECT_EQ(api_info.GetDeviceId(), ep_info.device.Id());
+    EXPECT_TRUE(*static_cast<const OrtMemoryInfo*>(api_info) == ep_info);
+  }
+}
 
 TEST(OrtEpLibrary, RegisterMissingPluginLibrary) {
   const auto missing_path = Utils::example_ep_info.library_path.parent_path() / "missing_ep_library";
@@ -49,6 +413,38 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibrary) {
                                            });
   ASSERT_EQ(num_test_ep_devices, 1) << "Expected an OrtEpDevice to have been created by the test library.";
 
+  const OrtEpDevice* test_ep_device = *std::find_if(
+      ep_devices, ep_devices + num_devices,
+      [&](const OrtEpDevice* device) { return c_api->EpDevice_EpName(device) == ep_name; });
+  uint64_t total_memory_bytes = 0;
+  uint64_t available_memory_bytes = 0;
+  ASSERT_ORTSTATUS_OK(c_api->EpDevice_GetMemoryCapacity(
+      test_ep_device, OrtDeviceMemoryType_DEFAULT, &total_memory_bytes, &available_memory_bytes));
+  EXPECT_EQ(total_memory_bytes, 16ULL * 1024 * 1024 * 1024);
+  EXPECT_EQ(available_memory_bytes, 12ULL * 1024 * 1024 * 1024);
+
+  total_memory_bytes = 7;
+  ASSERT_ORTSTATUS_OK(c_api->EpDevice_GetMemoryCapacity(
+      test_ep_device, OrtDeviceMemoryType_DEFAULT, &total_memory_bytes, nullptr));
+  EXPECT_EQ(total_memory_bytes, 16ULL * 1024 * 1024 * 1024);
+  available_memory_bytes = 11;
+  ASSERT_ORTSTATUS_OK(c_api->EpDevice_GetMemoryCapacity(
+      test_ep_device, OrtDeviceMemoryType_DEFAULT, nullptr, &available_memory_bytes));
+  EXPECT_EQ(available_memory_bytes, 12ULL * 1024 * 1024 * 1024);
+  Ort::Status invalid_outputs{c_api->EpDevice_GetMemoryCapacity(
+      test_ep_device, OrtDeviceMemoryType_DEFAULT, nullptr, nullptr)};
+  EXPECT_EQ(invalid_outputs.GetErrorCode(), ORT_INVALID_ARGUMENT);
+  Ort::Status invalid_device{c_api->EpDevice_GetMemoryCapacity(
+      nullptr, OrtDeviceMemoryType_DEFAULT, &total_memory_bytes, nullptr)};
+  EXPECT_EQ(invalid_device.GetErrorCode(), ORT_INVALID_ARGUMENT);
+  EXPECT_EQ(total_memory_bytes, 16ULL * 1024 * 1024 * 1024);
+
+  Ort::Status unsupported_status{c_api->EpDevice_GetMemoryCapacity(
+      test_ep_device, OrtDeviceMemoryType_HOST_ACCESSIBLE, &total_memory_bytes, &available_memory_bytes)};
+  EXPECT_EQ(unsupported_status.GetErrorCode(), ORT_NOT_IMPLEMENTED);
+  EXPECT_EQ(total_memory_bytes, 16ULL * 1024 * 1024 * 1024);
+  EXPECT_EQ(available_memory_bytes, 12ULL * 1024 * 1024 * 1024);
+
   // and this should unload it
   ASSERT_ORTSTATUS_OK(Ort::GetApi().UnregisterExecutionProviderLibrary(*ort_env,
                                                                        registration_name.c_str()));
@@ -70,6 +466,22 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
                                        return device.EpName() == ep_name;
                                      });
   ASSERT_NE(test_ep_device, ep_devices.end()) << "Expected an OrtEpDevice to have been created by the test library.";
+
+  const auto [total_memory_bytes, available_memory_bytes] = test_ep_device->GetMemoryCapacity();
+  EXPECT_EQ(total_memory_bytes, 16ULL * 1024 * 1024 * 1024);
+  EXPECT_EQ(available_memory_bytes, 12ULL * 1024 * 1024 * 1024);
+
+  const auto explicit_capacity = test_ep_device->GetMemoryCapacity(OrtDeviceMemoryType_DEFAULT);
+  EXPECT_EQ(explicit_capacity.first, total_memory_bytes);
+  EXPECT_EQ(explicit_capacity.second, available_memory_bytes);
+  EXPECT_EQ(test_ep_device->GetTotalMemoryCapacity(), total_memory_bytes);
+  EXPECT_EQ(test_ep_device->GetTotalMemoryCapacity(OrtDeviceMemoryType_DEFAULT), total_memory_bytes);
+  try {
+    test_ep_device->GetMemoryCapacity(OrtDeviceMemoryType_HOST_ACCESSIBLE);
+    ADD_FAILURE() << "Expected an unsupported memory type to throw";
+  } catch (const Ort::Exception& exception) {
+    EXPECT_EQ(exception.GetOrtErrorCode(), ORT_NOT_IMPLEMENTED);
+  }
 
   // test all the C++ getters.
   // expected values are from \onnxruntime\test\autoep\library\example_plugin_ep\*.cc
@@ -112,6 +524,40 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
 #endif
 
   // and this should unload it without throwing
+  ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
+}
+
+TEST(OrtEpLibrary, UnsupportedMemoryCapacityQueryPreservesOutputs) {
+  const std::filesystem::path& library_path = Utils::example_ep_virt_gpu_info.library_path;
+  const std::string& registration_name = Utils::example_ep_virt_gpu_info.registration_name;
+  const std::string& ep_name = Utils::example_ep_virt_gpu_info.ep_name;
+
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().RegisterExecutionProviderLibrary(
+      *ort_env, registration_name.c_str(), library_path.c_str()));
+
+  const auto ep_devices = ort_env->GetEpDevices();
+  const auto test_ep_device = std::find_if(
+      ep_devices.begin(), ep_devices.end(),
+      [&](const Ort::ConstEpDevice& device) { return device.EpName() == ep_name; });
+  ASSERT_NE(test_ep_device, ep_devices.end());
+
+  uint64_t total_memory_bytes = 7;
+  uint64_t available_memory_bytes = 11;
+  Ort::Status status{Ort::GetApi().EpDevice_GetMemoryCapacity(
+      *test_ep_device, OrtDeviceMemoryType_DEFAULT, &total_memory_bytes, &available_memory_bytes)};
+  EXPECT_EQ(status.GetErrorCode(), ORT_NOT_IMPLEMENTED);
+  EXPECT_EQ(total_memory_bytes, 7u);
+  EXPECT_EQ(available_memory_bytes, 11u);
+
+  Ort::Status total_only_status{Ort::GetApi().EpDevice_GetMemoryCapacity(
+      *test_ep_device, OrtDeviceMemoryType_DEFAULT, &total_memory_bytes, nullptr)};
+  EXPECT_EQ(total_only_status.GetErrorCode(), ORT_NOT_IMPLEMENTED);
+  EXPECT_EQ(total_memory_bytes, 7u);
+  Ort::Status available_only_status{Ort::GetApi().EpDevice_GetMemoryCapacity(
+      *test_ep_device, OrtDeviceMemoryType_DEFAULT, nullptr, &available_memory_bytes)};
+  EXPECT_EQ(available_only_status.GetErrorCode(), ORT_NOT_IMPLEMENTED);
+  EXPECT_EQ(available_memory_bytes, 11u);
+
   ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
 }
 

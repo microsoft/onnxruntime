@@ -322,6 +322,9 @@ void TestCounting(bool quantized, bool cuda, bool tiled = false, int64_t rows = 
     if (!provider) {
       GTEST_SKIP() << "CUDA execution provider is unavailable.";
     }
+    if (GetCudaArchitecture() < 800) {
+      GTEST_SKIP() << "CUDA MoE grouped GEMM requires compute capability 8.0 or newer.";
+    }
     if (provider->GetOrtEp() != nullptr) {
       GTEST_SKIP() << "MoE expert counting is not supported by the CUDA plugin execution provider.";
     }

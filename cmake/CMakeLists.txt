@@ -154,7 +154,6 @@ option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable 
 option(onnxruntime_USE_VITISAI "Build with Vitis-AI" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
 option(onnxruntime_USE_TENSORRT_BUILTIN_PARSER "Use TensorRT builtin parser" OFF)
-option(onnxruntime_USE_NV "Build with TensorRT support" OFF)
 option(onnxruntime_ENABLE_LTO "Enable link time optimization" OFF)
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
 option(onnxruntime_GCOV_COVERAGE "Compile with options necessary to run code coverage" OFF)
@@ -173,9 +172,44 @@ option(onnxruntime_USE_WINML "Build with WinML support" OFF)
 option(onnxruntime_USE_ACL "Build with ACL support" OFF)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
-# Optional 1DS ingestion token for non-Windows telemetry. Leave empty to compile in the encoded
-# in-repo default from core/platform/posix/telemetry.cc; callers can override it at configure time.
-set(ONNXRUNTIME_TELEMETRY_TENANT_TOKEN "" CACHE STRING "Override the compiled-in telemetry ingestion token (non-Windows)")
+# AUTO selects 1DS on supported native platforms; TraceLogging requires an explicit Windows opt-in.
+set(onnxruntime_TELEMETRY_BACKEND "AUTO" CACHE STRING "Telemetry backend: AUTO, 1DS, or WINDOWS")
+set_property(CACHE onnxruntime_TELEMETRY_BACKEND PROPERTY STRINGS AUTO 1DS WINDOWS)
+string(TOUPPER "${onnxruntime_TELEMETRY_BACKEND}" onnxruntime_TELEMETRY_BACKEND)
+if(NOT onnxruntime_TELEMETRY_BACKEND MATCHES "^(AUTO|1DS|WINDOWS)$")
+  message(FATAL_ERROR
+    "Invalid onnxruntime_TELEMETRY_BACKEND='${onnxruntime_TELEMETRY_BACKEND}'. "
+    "Expected AUTO, 1DS, or WINDOWS.")
+endif()
+
+# Deprecated compatibility alias for callers that adopted this option before the backend selector.
+option(onnxruntime_USE_WINDOWS_TELEMETRY "Use Windows TraceLogging instead of 1DS telemetry" OFF)
+if(onnxruntime_USE_WINDOWS_TELEMETRY)
+  set(onnxruntime_TELEMETRY_BACKEND "WINDOWS")
+endif()
+
+if(onnxruntime_TELEMETRY_BACKEND STREQUAL "WINDOWS")
+  if(NOT WIN32)
+    message(FATAL_ERROR "The WINDOWS telemetry backend is only supported on Windows")
+  endif()
+  set(onnxruntime_USE_TELEMETRY ON CACHE BOOL "Build with Telemetry" FORCE)
+endif()
+
+set(onnxruntime_USE_1DS_TELEMETRY OFF)
+if(onnxruntime_USE_TELEMETRY)
+  if(onnxruntime_TELEMETRY_BACKEND STREQUAL "1DS" OR
+     onnxruntime_TELEMETRY_BACKEND STREQUAL "AUTO")
+    set(onnxruntime_USE_1DS_TELEMETRY ON)
+  endif()
+endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "WindowsStore" AND onnxruntime_USE_1DS_TELEMETRY)
+  message(WARNING "1DS telemetry is not supported for UWP builds. Telemetry will be disabled.")
+  set(onnxruntime_USE_TELEMETRY OFF CACHE BOOL "Build with Telemetry" FORCE)
+  set(onnxruntime_USE_1DS_TELEMETRY OFF)
+endif()
+# Optional 1DS ingestion token. Leave empty to compile in the encoded
+# in-repo platform default; callers can override it at configure time.
+set(ONNXRUNTIME_TELEMETRY_TENANT_TOKEN "" CACHE STRING "Override the compiled-in 1DS telemetry ingestion token")
 cmake_dependent_option(onnxruntime_USE_MIMALLOC "Override new/delete and arena allocator with mimalloc" OFF "WIN32;NOT onnxruntime_USE_CUDA;NOT onnxruntime_USE_OPENVINO" OFF)
 option(onnxruntime_USE_CANN "Build with CANN support" OFF)
 option(onnxruntime_USE_XNNPACK "Build with XNNPACK support. Provides an alternative math library on ARM, WebAssembly and x86." OFF)
@@ -196,6 +230,11 @@ if(onnxruntime_DAWN_PREBUILT_DIR)
 endif()
 option(onnxruntime_BUILD_DAWN_SHARED_LIBRARY "Build Dawn as a shared library" OFF)
 option(onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP "Adding frame present for PIX to capture a frame" OFF)
+option(onnxruntime_ENABLE_D3D12_FILE_LOADING
+       "Enable accelerated file-to-D3D12-buffer loading on Windows" OFF)
+if(onnxruntime_ENABLE_D3D12_FILE_LOADING)
+  add_compile_definitions(ENABLE_D3D12_FILE_LOADING=1)
+endif()
 # The following 2 options are only for Windows
 option(onnxruntime_ENABLE_DAWN_BACKEND_VULKAN "Enable Vulkan backend for Dawn (on Windows)" OFF)
 option(onnxruntime_ENABLE_DAWN_BACKEND_D3D12 "Enable D3D12 backend for Dawn (on Windows)" ON)
@@ -211,12 +250,12 @@ option(onnxruntime_DISABLE_FLOAT8_TYPES "Disable float 8 types" OFF)
 option(onnxruntime_DISABLE_FLOAT4_TYPES "Disable float 4 types" OFF)
 option(onnxruntime_DISABLE_STRING_TYPE "Disable string type" OFF)
 option(onnxruntime_DISABLE_DEVICE_DISCOVERY "Do not probe the platform for hardware devices; only the CPU device is reported." OFF)
+option(onnxruntime_DISABLE_STREAM "Disable multi-stream execution support. Execution providers that use device streams (e.g. CUDA, TensorRT) need it." OFF)
 option(onnxruntime_MINIMAL_BUILD "Exclude as much as possible from the build. Support ORT format models. No support for ONNX format models." OFF)
 option(onnxruntime_CLIENT_PACKAGE_BUILD "Enables default settings that are more appropriate for client/on-device workloads." OFF)
 option(onnxruntime_ENABLE_SESSION_THREADPOOL_CALLBACKS "Enable per-session thread pool work callbacks." OFF)
 cmake_dependent_option(onnxruntime_DISABLE_RTTI "Disable RTTI" ON "NOT onnxruntime_ENABLE_PYTHON;NOT onnxruntime_USE_CUDA" OFF)
-# For now onnxruntime_DISABLE_EXCEPTIONS will only work with onnxruntime_MINIMAL_BUILD, more changes (ONNX, non-CPU EP, ...) are required to run this standalone
-cmake_dependent_option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handling. Requires onnxruntime_MINIMAL_BUILD currently." ON "onnxruntime_MINIMAL_BUILD;NOT onnxruntime_ENABLE_PYTHON" OFF)
+cmake_dependent_option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handling." ${onnxruntime_MINIMAL_BUILD} "NOT onnxruntime_ENABLE_PYTHON" OFF)
 # Even when onnxruntime_DISABLE_ABSEIL is ON, ONNX Runtime still needs to link to abseil.
 option(onnxruntime_DISABLE_ABSEIL "Do not use Abseil data structures in ONNX Runtime source code. Redefine Inlined containers to STD containers." OFF)
 
@@ -310,7 +349,6 @@ else()
 endif()
 
 option(onnxruntime_USE_TENSORRT_INTERFACE "Build ONNXRuntime shared lib which is compatible with TensorRT EP interface" OFF)
-option(onnxruntime_USE_NV_INTERFACE "Build ONNXRuntime shared lib which is compatible with NV EP interface" OFF)
 option(onnxruntime_USE_CUDA_INTERFACE "Build ONNXRuntime shared lib which is compatible with Cuda EP interface" OFF)
 option(onnxruntime_USE_OPENVINO_INTERFACE "Build ONNXRuntime shared lib which is compatible with OpenVINO EP interface" OFF)
 option(onnxruntime_USE_VITISAI_INTERFACE "Build ONNXRuntime shared lib which is compatible with Vitis-AI EP interface" OFF)
@@ -350,6 +388,10 @@ if (onnxruntime_ENABLE_TRAINING_APIS)
     message(FATAL_ERROR "Standalone On-Device Training build is not supported with Python bindings! "
     "Please use the --enable_training flag instead of the --enable_training_apis flag.")
   endif()
+endif()
+
+if (onnxruntime_DISABLE_STREAM AND onnxruntime_ENABLE_TRAINING)
+  message(FATAL_ERROR "onnxruntime_DISABLE_STREAM=ON is not supported with onnxruntime_ENABLE_TRAINING=ON.")
 endif()
 
 
@@ -958,15 +1000,6 @@ if (onnxruntime_USE_TENSORRT_INTERFACE AND (NOT onnxruntime_USE_TENSORRT))
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_TENSORRT_PROVIDER_INTERFACE=1)
 endif()
 
-if (onnxruntime_USE_NV)
-    list(APPEND ORT_PROVIDER_FLAGS -DUSE_NV=1)
-    list(APPEND ONNXRUNTIME_PROVIDER_NAMES nv_tensorrt_rtx)
-endif()
-
-if (onnxruntime_USE_NV_INTERFACE AND (NOT onnxruntime_USE_NV))
-    list(APPEND ORT_PROVIDER_FLAGS -DUSE_NV_PROVIDER_INTERFACE=1)
-endif()
-
 if (onnxruntime_USE_RKNPU)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_RKNPU=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES rknpu)
@@ -1167,8 +1200,8 @@ function(onnxruntime_set_compile_flags target_name)
     if(onnxruntime_ENABLE_LAZY_TENSOR)
       target_compile_definitions(${target_name} PRIVATE ENABLE_LAZY_TENSOR)
     endif()
-	# Enable stream for all the non-minimal build
-    if (NOT onnxruntime_MINIMAL_BUILD)
+	# Enable stream for all the non-minimal build unless disabled
+    if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_DISABLE_STREAM)
       target_compile_definitions(${target_name} PRIVATE ORT_ENABLE_STREAM)
     endif()
 	if (onnxruntime_REDUCED_OPS_BUILD)
@@ -2043,41 +2076,7 @@ else()
         add_library(safeint_interface IMPORTED INTERFACE)\n\
         target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})\n\
         ")
-    if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE)
-      string(APPEND PROJECT_CONFIG_CONTENT
-        "find_dependency(MSTelemetry CONFIG)\n\
-        ")
-    endif()
-    if(onnxruntime_USE_TELEMETRY AND APPLE
-       AND NOT onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE)
-      string(APPEND PROJECT_CONFIG_CONTENT
-        "if(NOT TARGET MSTelemetry::sqlite_dependency)\n\
-        add_library(MSTelemetry::sqlite_dependency INTERFACE IMPORTED)\n\
-        set_property(TARGET MSTelemetry::sqlite_dependency PROPERTY INTERFACE_LINK_LIBRARIES sqlite3)\n\
-        endif()\n\
-        if(NOT TARGET MSTelemetry::zlib_dependency)\n\
-        add_library(MSTelemetry::zlib_dependency INTERFACE IMPORTED)\n\
-        set_property(TARGET MSTelemetry::zlib_dependency PROPERTY INTERFACE_LINK_LIBRARIES z)\n\
-        endif()\n\
-        ")
-    endif()
-    if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND NOT APPLE
-       AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android"
-       AND NOT onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE
-       AND NOT onnxruntime_BUILD_SHARED_LIB)
-      if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        # The embedded curl archive uses the platform Threads target for its resolver.
-        string(APPEND PROJECT_CONFIG_CONTENT
-          "find_dependency(Threads)\n\
-          ")
-      else()
-        # Preserve the legacy dependency graph for any explicitly enabled non-Linux Unix target.
-        string(APPEND PROJECT_CONFIG_CONTENT
-          "find_dependency(CURL)\n\
-          find_dependency(Threads)\n\
-          ")
-      endif()
-    endif()
+    include("${CMAKE_CURRENT_LIST_DIR}/onnxruntime_telemetry_config.cmake")
   endif()
 
   string(APPEND PROJECT_CONFIG_CONTENT

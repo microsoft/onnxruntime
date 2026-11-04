@@ -189,6 +189,14 @@ GQAWorkspaceStatus XqaBackendEnvelope(const GQAWorkspaceProblem& problem,
   status = Add(bytes, output, bytes);
   if (!status.IsOK()) return status;
 
+  if (problem.head_size == 512) {
+    // Each batch/head/partition stores 512 FP32 weighted-value accumulators plus
+    // the softmax maximum and exponential sum used to merge partitions.
+    status = Mul4(static_cast<size_t>(problem.batch_size), static_cast<size_t>(problem.num_heads),
+                  kGQAXqaH512Partitions, (512 + 2) * sizeof(float), bytes);
+    if (!status.IsOK()) return status;
+  }
+
   if (problem.do_rotary) {
     size_t q = 0;
     status = Mul4(static_cast<size_t>(problem.batch_size),
@@ -358,8 +366,10 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
 
   if (HasGQAReachableBackend(bounds.reachable_backends, GQAReachableBackend::Xqa)) {
     bool found_head = false;
-    for (int64_t head : {int64_t{64}, int64_t{128}, int64_t{256}}) {
+    for (int64_t head : {int64_t{64}, int64_t{128}, int64_t{256}, int64_t{512}}) {
       if (head > bounds.head_size_bound) continue;
+      if (!IsSupportedGQAXqaGeometry(head, bounds.num_heads / bounds.kv_num_heads,
+                                     bounds.xqa_kv_type != GQAXqaKvType::None)) continue;
       found_head = true;
       const auto problem = MakeProblem(bounds, 1, head, false);
       GQAPreparationRoute route;
@@ -380,6 +390,27 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
   if (aggregate.status.IsOK() &&
       aggregate.sized_backends == GQAReachableBackend::None) {
     aggregate.status = Unavailable("No GQA backend route can be sized.");
+  }
+
+  // A non-windowed step that finds exactly one past/present K/V pair aliasing
+  // copies the full past cache into preservation scratch before the backend
+  // runs (group_query_attention.cc separate_past_buffer). That copy coexists
+  // with the selected route's workspace, so charge its worst case on top of the
+  // per-route maximum. present_kv_cache_capacity_bound covers the full allocated
+  // past capacity, which can exceed the active total KV length for a static cache.
+  // The stored per-head extent (halved for 4-bit) never exceeds head_size_bound.
+  if (aggregate.status.IsOK() && bounds.account_partial_alias_preservation) {
+    size_t preservation = 0;
+    auto status = Mul4(static_cast<size_t>(bounds.batch_size_bound),
+                       static_cast<size_t>(bounds.kv_num_heads),
+                       static_cast<size_t>(bounds.present_kv_cache_capacity_bound),
+                       static_cast<size_t>(bounds.head_size_bound), preservation);
+    if (status.IsOK()) status = Mul(preservation, bounds.cache_element_size, preservation);
+    if (status.IsOK()) {
+      status = Add(aggregate.total_workspace_bytes, preservation,
+                   aggregate.total_workspace_bytes);
+    }
+    if (!status.IsOK()) aggregate.status = status;
   }
   return aggregate;
 }
