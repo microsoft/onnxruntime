@@ -2,6 +2,22 @@
 
 See [Android build instructions](https://www.onnxruntime.ai/docs/how-to/build.html#android) and information on the locations of the various files referred to here.
 
+## CI NDK selection
+
+The shared GitHub Actions and Azure Pipelines NDK setup defaults to the newest stable
+NDK 28 revision installed under the configured SDK's `ndk` directory. Selection is numeric,
+excludes preview revisions and other majors, and does not invoke `sdkmanager` or query
+the network. The selected revision is logged and exported through `ANDROID_NDK_HOME`
+and `ANDROID_NDK_ROOT`.
+
+Runner images must contain a complete NDK 28 installation. Setup checks the selected
+revision's `source.properties`, CMake toolchain, and host compiler. Missing or incomplete
+installations fail rather than downloading a toolchain or silently selecting an older one.
+Image refreshes can update the selected compiler and should be qualified with Android CI.
+An explicit full revision remains supported and is installed with `sdkmanager` only if absent.
+The standalone Android custom-build Dockerfile keeps its separate exact revision pin.
+This NDK selection does not change emulator, system-image, or APT provisioning.
+
 ## Install the emulator
 
 If using Android Studio this is included in the base install.

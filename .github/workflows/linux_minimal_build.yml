@@ -695,7 +695,7 @@ jobs:
       - name: Setup Android NDK
         uses: ./.github/actions/setup-android-ndk
         with:
-          ndk-version: 28.0.13004108
+          ndk-version: '28'
           # Use default android-sdk-root if not specified
 
       - name: Setup CCache
