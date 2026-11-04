@@ -1,7 +1,7 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M14 complete and published for review. M15
-implementation/qualification is complete; stacked publication is in progress.
+**Status:** Approved; M01-M15 complete and published for review. M15 is
+[#29](https://github.com/onnxruntime/ort-state/pull/29), stacked on M14/#28.
 M16-M24 are pending.
 M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
 M05's requested generation-folder layout follow-up is complete in the same PR.
@@ -22,7 +22,7 @@ qualification and publication are complete in [#27](https://github.com/onnxrunti
 [#28](https://github.com/onnxruntime/ort-state/pull/28).
 **M15 refinement:** Appendix O and separate P/R/Q/N plans are approved and
 implemented. CPU/CUDA qualification, exact new-line coverage and the approved
-O.10 bounded-race refinement pass; ready stacked publication is the final gate.
+O.10 bounded-race refinement pass; ready stacked publication is complete in #29.
 
 ## 1. Approval and tracking
 
@@ -35,7 +35,7 @@ O.10 bounded-race refinement pass; ready stacked publication is the final gate.
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M14 are complete, M15 publication is in progress and M16-M24 are pending. Check tasks when their
+M01-M15 are complete and M16-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -133,7 +133,7 @@ M01-M12 are **complete**; M13 is **in progress**; M14-M24 are **pending**.
 | [x] | M12 | DDIM scheduler and denoising state / `ddim-policy` | M03, M06, M08 |
 | [x] | M13 | Python API and package parity / `python-api` | M06, M11, M12 |
 | [x] | M14 | Local Phi-3 package and text demo / `phi3-demo` | M05, M08, M09, M11, M13 |
-| [ ] | M15 | Local Stable Diffusion package and image demo / `sd15-demo` | M11, M12, M13 |
+| [x] | M15 | Local Stable Diffusion package and image demo / `sd15-demo` | M11, M12, M13 |
 | [ ] | M16 | C# binding / `csharp-api` | M06, M11, M12 |
 | [ ] | M17 | Java/JNI binding / `java-api` | M06, M11, M12 |
 | [ ] | M18 | Common JavaScript API and Node binding / `js-node-api` | M06, M11, M12 |
@@ -4706,6 +4706,8 @@ code enter the PR, and no milestone is automatically merged.
 
 **Status:** [Appendix O](SPEC.md#appendix-o-m15-cuda-sd15-package-and-image-demo-approved)
 and the detailed plan below were separately approved on 2026-11-03.
+Completed and published OPEN/ready in
+[#29](https://github.com/onnxruntime/ort-state/pull/29) on M14/#28.
 The [O.7 repair](SPEC.md#o7-cuda-plugin-compatibility-repair-specification-approved)
 and R0-R4 gates pass using a fresh byte-verified local wheel. O.8/O.9 and their
 separate Q/N execution plans are approved and implemented. Both real guidance
@@ -4941,7 +4943,7 @@ are not known until approved download/inspection.
   device errors and inherited legacy capability boundaries explicitly, without
   claiming real CPU/legacy-native-feature support that was not exercised.
 
-- [ ] **P9 - Document, preserve evidence and publish one stacked M15 PR.**
+- [x] **P9 - Document, preserve evidence and publish one stacked M15 PR.**
   **Outcome:** Document original/derived-model assumptions and hashes, CreativeML
   license/attribution, CUDA-only scope, explicit setup, local tokenizer, DDIM
   substitution, actual shape/guidance constraints, VAE scale, safety preprocessing/
@@ -4999,7 +5001,7 @@ follow inherited build/test/lint skills and warning policy.
 - [x] Real CUDA default image, matching DDIM checkpoints, seeded replay/parity and safety pass.
 - [x] Actual CUDA placement, measured intentional transfers and focused sanitizers pass.
 - [x] New executable production lines reach100%; regressions/type/style/offline commands pass.
-- [ ] Exact user documentation/image/provenance and one synchronized OPEN/ready PR exist.
+- [x] Exact user documentation/image/provenance and one synchronized OPEN/ready PR exist.
 
 **Implementation authorization (2026-11-03):** The user explicitly approved this
 plan and authorized starting M15. P0 passes: all64 parent source/artifact/asset
@@ -5349,7 +5351,7 @@ automatic tolerance calibration or precision/safety/coverage waiver.
   **Qualification scope:** Apply the separately approved O.10 bounded-race
   refinement; retain full20 memcheck and all-kernel two-update synccheck.
 
-- [ ] **Q5 - Finalize and publish only after all gates pass.**
+- [x] **Q5 - Finalize and publish only after all gates pass.**
   **Outcome:** Current tested source/artifact/model/image identities, complete
   guide and task/scratchpad records, and one ready PR stacked on M14/#28.
   **Tests:** Rerun related CPU/plugin/legacy Python and native/public suites,
@@ -5394,7 +5396,7 @@ automatic tolerance calibration or precision/safety/coverage waiver.
 
 **Specification:** O.9 explicitly approved2026-11-03; no additional requirements.
 **Implementation authorization:** Explicitly approved2026-11-03; no plan changes
-or additional requirements. N1/N2 pass; N3/N4 final evidence/publication follows.
+or additional requirements. N0-N4 pass; final evidence/publication is complete.
 
 **Intended outcome:** Finish the original M15 milestone using existing
 HEURISTIC cuDNN selection and the approved fixed RMSE/local/exact criteria,
@@ -5460,7 +5462,7 @@ on M14. Do not add deterministic kernels, suppress leaks or retry-until-green.
   GroupNorm variant, not unfiltered/full-model race freedom. All-kernel
   two-update synccheck and full20 memcheck remain unchanged.
 
-- [ ] **N4 - Final regressions, documentation and publication.**
+- [x] **N4 - Final regressions, documentation and publication.**
   **Outcome:** Complete original P3/P6-P9 and Q3-Q5 gates, current exact
   source/artifact/model/image/metric identities, synchronized task/scratchpad/
   guide records and one ready M15 PR stacked on M14/#28.
@@ -5651,7 +5653,13 @@ passes0errors/0leaks with `ORT_STATEFUL_SD15_PACKAGE` unset.
 The final proof manifest verifies18 current source files, exact new-line
 coverage, successful logs/profiles, models/images/metrics/traces, all11source/
 53artifact M14 entries and five separately preserved parent native artifacts.
-Publication P9/Q5/N4 remains the final unchecked gate until the ready PR exists.
+Publication P9/Q5/N4 passes: **[#29](https://github.com/onnxruntime/ort-state/pull/29)
+is OPEN/ready**, head `state/m15-sd15-demo`, base `state/m14-phi3-demo`.
+Feature commit: `6f0a3e09f84621381d5c9174e663e4ba090a58c9`.
+This subsequent documentation-only commit records completed publication.
+Final synchronized head/base and clean-worktree verification are retained in
+`m15-final-published-pr.json` and the refreshed external
+`m15-final-proof.json`. No PR was merged and M16 is not started.
 
 ### M16 - C# binding
 

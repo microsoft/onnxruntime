@@ -4,7 +4,8 @@ Compressed project memory. This is not the execution plan.
 
 ## Workflow checkpoint
 
-- 2026-11-03 CURRENT: M01-M14complete; M14PR28 OPEN/ready at44e512c771 onM13.
+- 2026-11-04 CURRENT: M01-M15complete; M15PR29 OPEN/ready onM14PR28
+  (parent44e512c771 onM13). Featurecommit6f0a3e09f84621381d5c9174e663e4ba090a58c9.
   M15O/O7/O8/O9 specifications+separateP/R/Q/Nplans APPROVED/implemented.
   RootfixGetOperatorType notGetNodeName; freshinstalledGPUbyteverified.
   CPU60/195 plugin64/213 legacy60/195; native/publicCPU85/153,
@@ -14,7 +15,7 @@ Compressed project memory. This is not the execution plan.
   MemcheckS20zeroerrors/leaks; synccheckallkernelS2fullsizezeroerrors.
   O10boundedactualGroupNormvariant-racesamplingUSERAPPROVED afterS2allkernel
   timeout600s; earlierlowercasefilterINVALID/withdrawn, notqualification.
-  Finalproof/docs/PRpending; noM15commit/push/PRyet.
+  Finalproof/docs/publicationCOMPLETE; finaltrackingcommitrecordsPR29.
   Branchstate/m15-sd15-demo based44e512c7719c1e7ebc2e231c47281535c2c52a90.
 - 2026-11-02 CURRENT: M01-M13 complete; M13PR27 OPEN/ready at42ab052f08 onM12.
   M14interviewdone/noadditionalrequirements; userexplicitlyAPPROVEDAppendixN.
@@ -2179,3 +2180,10 @@ Compressed project memory. This is not the execution plan.
   race-verified-scale.log; full-worker-kernels.sqlite/.nsys-rep; native-only
   two-update-kernels.sqlite separately122/114/8counts. Source/toolchainchange
   requiresregeneratedordinals+eventcounts; doNOTblindcopycap360.
+- M15PUBLISHED https://github.com/onnxruntime/ort-state/pull/29 OPEN/ready,
+  base state/m14-phi3-demo (#28), head state/m15-sd15-demo. AllP0-P9/R0-R4/
+  Q0-Q5/N0-N4completeunderapprovedO10scope. Currentproof18source/
+  112artifacts-assets +preservedM14(11source/53artifact/5native) verifies.
+  Publicationtracking-onlycommitfollowsfeature6f0a3e09f8; finalhead/base/
+  cleanstatusinm15-final-published-pr.json +F/m15-final-proof.json.
+  NoM16/noPRmerges/noagents; useroriginalmodels/parentarchivesunchanged.

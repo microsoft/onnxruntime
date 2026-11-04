@@ -1,8 +1,9 @@
 # Stateful Session Execution for ONNX Runtime
 
 **Status:** Specification and separate execution plan approved by the user.
-M01-M14 are published for review; M15 implementation/qualification is complete
-and stacked publication is in progress. Later milestones require their own
+M01-M15 are published for review; M15 is
+[#29](https://github.com/onnxruntime/ort-state/pull/29), stacked on M14/#28.
+Later milestones require their own
 approved refinements.
 **Requirements captured:** 2026-10-15.
 
@@ -3580,10 +3581,12 @@ boundary wrappers and the required safety checker.
 **Specification approved:** 2026-11-03. The user authorized detailed M15 plan
 preparation, then separately approved the detailed execution plan on 2026-11-03.
 Implementation and the explicitly scoped local asset acquisition are authorized.
-**Stack:** One intended ready-for-review M15 PR on M14
+**Stack:** Published OPEN/ready as
+[#29](https://github.com/onnxruntime/ort-state/pull/29), on M14
 `44e512c7719c1e7ebc2e231c47281535c2c52a90` /
 [#28](https://github.com/onnxruntime/ort-state/pull/28).
-The local planning branch is `state/m15-sd15-demo`.
+The published head branch is `state/m15-sd15-demo`. Implementation, measured
+CPU/CUDA qualification, approved bounded race scope and publication are complete.
 
 ### O.1 Confirmed model source and acquisition
 
