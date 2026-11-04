@@ -2878,6 +2878,7 @@ common::Status InferenceSession::Initialize() {
     auto clear_external_data_loaders = gsl::finally([this] { external_data_loader_mgr_.Clear(); });
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
     ExternalDataLoaderOptions session_loader_options;
+    session_loader_options.auto_reading_threads = ExternalDataLoaderOptions::GetDefaultReadingThreads();
     if (const auto threads_opt = session_options_.config_options.GetConfigEntry(
             kOrtSessionOptionsExternalDataLoaderThreads)) {
       size_t parsed_threads = 0;

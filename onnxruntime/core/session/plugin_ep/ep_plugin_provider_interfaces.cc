@@ -271,6 +271,30 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
       }
     }
 #endif
+
+#if !defined(ORT_MINIMAL_BUILD)
+    // Preserve the CUDA plugin EP's "ep.cudaexecutionprovider.*" and flat session-config aliases for external data
+    // loader options when the canonical "ep.cuda.*" key is not present.
+    if (ep_name == kCudaExecutionProvider) {
+      constexpr std::array<std::string_view, 3> kCudaExternalDataLoaderOptionKeys{
+          "external_data_loader_reading_threads",
+          "external_data_loader_pinned_memory_bytes",
+          "external_data_loader_chunk_bytes",
+      };
+      for (const std::string_view bare_key : kCudaExternalDataLoaderOptionKeys) {
+        const std::string key_str{bare_key};
+        if (provider_options_.find(key_str) != provider_options_.end()) {
+          continue;
+        }
+        if (const auto scoped_alias =
+                session_options.value.config_options.GetConfigEntry("ep.cudaexecutionprovider." + key_str)) {
+          provider_options_[key_str] = *scoped_alias;
+        } else if (const auto flat_alias = session_options.value.config_options.GetConfigEntry(key_str)) {
+          provider_options_[key_str] = *flat_alias;
+        }
+      }
+    }
+#endif
   }
 
   for (const auto* ep_device : ep_devices_) {
@@ -1054,6 +1078,15 @@ class PluginExternalDataLoader final : public IExternalDataLoader {
       batch_reading_thread_count_ = *options.reading_threads;
       reading_threads_explicit_ = true;
       changed = true;
+    } else if (options.auto_reading_threads.has_value() && !reading_threads_explicit_) {
+      ORT_RETURN_IF_ERROR(ExternalDataLoaderOptions::ValidateReadingThreads(
+          *options.auto_reading_threads, kOrtSessionOptionsExternalDataLoaderThreads));
+      if (reading_thread_count_ != *options.auto_reading_threads ||
+          batch_reading_thread_count_ != *options.auto_reading_threads) {
+        reading_thread_count_ = *options.auto_reading_threads;
+        batch_reading_thread_count_ = *options.auto_reading_threads;
+        changed = true;
+      }
     }
     if (options.pinned_memory_bytes.has_value() && !pinned_memory_bytes_explicit_) {
       ORT_RETURN_IF_ERROR(ExternalDataLoaderOptions::ValidatePinnedMemoryBytes(
@@ -1359,6 +1392,13 @@ std::unique_ptr<onnxruntime::IExternalDataLoader> PluginExecutionProvider::GetEx
 #if defined(ORT_MINIMAL_BUILD) || defined(__wasm__)
   return nullptr;
 #else
+  // PluginExternalDataLoader slices destination tensors via raw byte-pointer arithmetic and uses CUDA-specific
+  // copy_only stream options, so restrict automatic registration to the CUDA plugin EP until those capabilities
+  // are explicitly negotiated through the plugin EP API.
+  if (Type() != kCudaExecutionProvider) {
+    return nullptr;
+  }
+
   if (ep_factory_.CreateDataTransfer == nullptr ||
       ep_factory_.IsStreamAware == nullptr || !ep_factory_.IsStreamAware(&ep_factory_) ||
       (ep_factory_.CreateSyncStreamForDevice == nullptr && ort_ep_->CreateSyncStreamForDevice == nullptr) ||
@@ -1372,6 +1412,7 @@ std::unique_ptr<onnxruntime::IExternalDataLoader> PluginExecutionProvider::GetEx
         ep_device->device_memory_info != nullptr &&
         ep_device->host_accessible_memory_info != nullptr &&
         ep_device->device_memory_info->device.Type() == OrtDevice::GPU &&
+        ep_device->device_memory_info->device.Vendor() == OrtDevice::VendorIds::NVIDIA &&
         !ep_device->device_memory_info->device.UsesCpuMemory()) {
       target_ep_device = ep_device;
       break;

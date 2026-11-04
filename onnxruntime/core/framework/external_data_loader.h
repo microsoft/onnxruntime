@@ -58,6 +58,7 @@ struct ExternalDataLoaderOptions {
   static constexpr size_t kDefaultMinSizeBytes = 16 * 1024 * 1024;                   // 16 MiB
 
   std::optional<size_t> reading_threads;
+  std::optional<size_t> auto_reading_threads;
   std::optional<size_t> pinned_memory_bytes;
   std::optional<size_t> chunk_bytes;
   std::optional<size_t> min_size_bytes;

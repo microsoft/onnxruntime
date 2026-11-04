@@ -53,17 +53,17 @@ def main():
     parser.add_argument(
         "--reading-threads",
         type=reading_thread_count,
-        help="Override parallel reads per CUDA pinned staging buffer; 0 disables the loader (runtime default: 4)",
+        help="Override parallel reads per CUDA pinned staging buffer; 0 disables the loader (runtime default: auto)",
     )
     parser.add_argument(
         "--pinned-memory-bytes",
         type=int,
-        help="Total pinned host staging memory in bytes across the two reusable buffers (default: 134217728)",
+        help="Total pinned host staging memory in bytes across the two reusable buffers (default: 33554432)",
     )
     parser.add_argument(
         "--chunk-bytes",
         type=int,
-        help="Maximum per-transfer chunk size in bytes for parallel external-data reads (default: 4194304)",
+        help="Maximum per-transfer chunk size in bytes for parallel external-data reads (default: 2097152)",
     )
     parser.add_argument(
         "--evict-file-cache",
@@ -120,7 +120,7 @@ def main():
                 "device_id": args.device_id,
                 "evict_file_cache": args.evict_file_cache,
                 "model": os.path.abspath(args.model),
-                "reading_threads": args.reading_threads if args.reading_threads is not None else 4,
+                "reading_threads": args.reading_threads if args.reading_threads is not None else "auto",
                 "seconds": elapsed,
                 "threads": args.threads,
             },

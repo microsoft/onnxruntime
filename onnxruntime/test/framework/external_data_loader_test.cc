@@ -57,6 +57,19 @@ struct LoaderState {
   InlinedVector<FileOffsetType> offsets;
   ExternalDataLoaderOptions configured_options{};
   bool is_enabled{true};
+  bool defer_reads{false};
+  size_t begin_count{0};
+  size_t finalize_count{0};
+  size_t end_count{0};
+  size_t expected_load_bytes{0};
+  struct DeferredRead {
+    const RandomAccessFile* file{nullptr};
+    FileOffsetType offset{0};
+    size_t length{0};
+    char* destination{nullptr};
+  };
+  std::vector<DeferredRead> pending_reads;
+  std::vector<size_t> batch_sizes;
 };
 
 class TrackingExternalDataLoader final : public IExternalDataLoader {
@@ -82,6 +95,36 @@ class TrackingExternalDataLoader final : public IExternalDataLoader {
     return common::Status::OK();
   }
 
+  common::Status BeginLoad() const override {
+    ++state_->begin_count;
+    state_->pending_reads.clear();
+    return common::Status::OK();
+  }
+
+  void SetExpectedLoadBytes(size_t total_bytes) const override {
+    state_->expected_load_bytes = total_bytes;
+  }
+
+  common::Status FinalizeLoad(const std::function<bool()>&) const override {
+    ++state_->finalize_count;
+#if !defined(__wasm__)
+    if (!state_->pending_reads.empty()) {
+      state_->batch_sizes.push_back(state_->pending_reads.size());
+      for (const auto& pending : state_->pending_reads) {
+        ORT_RETURN_IF_ERROR(
+            pending.file->Read(pending.offset, gsl::span<char>(pending.destination, pending.length)));
+      }
+      state_->pending_reads.clear();
+    }
+#endif
+    return common::Status::OK();
+  }
+
+  void EndLoad() const noexcept override {
+    ++state_->end_count;
+    state_->pending_reads.clear();
+  }
+
 #if defined(__wasm__)
   Status LoadTensor(const Env& env, const std::filesystem::path& path, FileOffsetType offset,
                     SafeInt<size_t> length, Tensor& tensor) const override {
@@ -100,6 +143,11 @@ class TrackingExternalDataLoader final : public IExternalDataLoader {
         path.c_str(), offset, length,
         gsl::span<char>(static_cast<char*>(tensor.MutableDataRaw()), tensor.SizeInBytes()));
 #else
+    if (state_->defer_reads) {
+      state_->pending_reads.push_back(LoaderState::DeferredRead{
+          &file, offset, tensor.SizeInBytes(), static_cast<char*>(tensor.MutableDataRaw())});
+      return common::Status::OK();
+    }
     return file.Read(offset,
                      gsl::span<char>(static_cast<char*>(tensor.MutableDataRaw()), tensor.SizeInBytes()));
 #endif
@@ -325,11 +373,73 @@ TEST_F(ExternalDataLoaderLifetimeTest, ConfiguresLoaderFromSessionOptions) {
   ExpectReleased(1);
   EXPECT_EQ(state_->offsets.size(), 1U);
   EXPECT_EQ(state_->configured_options.reading_threads, std::optional<size_t>{8});
+  EXPECT_EQ(state_->configured_options.auto_reading_threads,
+            std::optional<size_t>{ExternalDataLoaderOptions::GetDefaultReadingThreads()});
   EXPECT_EQ(state_->configured_options.pinned_memory_bytes, std::optional<size_t>{33554432});
   EXPECT_EQ(state_->configured_options.chunk_bytes, std::optional<size_t>{1048576});
   EXPECT_EQ(state_->configured_options.min_size_bytes, std::optional<size_t>{8388608});
   ASSERT_NO_FATAL_FAILURE(Run(true, true));
 }
+
+#if !defined(__wasm__)
+TEST_F(ExternalDataLoaderLifetimeTest, FlushesDeferredLoadsBeforeClearingExternalFileCache) {
+  constexpr size_t kExternalFileCount = 66;  // Exceeds the 64-file cache threshold in session_state_utils.cc.
+  std::vector<PathString> data_paths(kExternalFileCount);
+  std::vector<ScopedFileDeleter> data_deleters(kExternalFileCount);
+
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  model.add_opset_import()->set_version(13);
+  auto& graph = *model.mutable_graph();
+  graph.set_name("external_loader_many_files");
+  SetBoolType(*graph.add_input(), "input");
+  SetBoolType(*graph.add_output(), "output");
+
+  std::string current_input = "input";
+  for (size_t i = 0; i < kExternalFileCount; ++i) {
+    data_paths[i] = ORT_TSTR("external_loader_many_weights_XXXXXX");
+    std::string file_bytes(i + 1, '\0');
+    file_bytes[i] = '\1';
+    ASSERT_NO_FATAL_FAILURE(WriteTestFile(file_bytes, data_paths[i], data_deleters[i]));
+    const std::string weight_name = "weight_" + std::to_string(i);
+    AddExternalWeight(graph, weight_name.c_str(), data_paths[i], i);
+
+    auto* node = graph.add_node();
+    node->set_op_type("And");
+    node->add_input(current_input);
+    node->add_input(weight_name);
+    const std::string next_output = (i + 1 == kExternalFileCount) ? "output" : ("inter_" + std::to_string(i));
+    node->add_output(next_output);
+    current_input = next_output;
+  }
+
+  PathString model_path = ORT_TSTR("external_loader_many_model_XXXXXX");
+  ASSERT_NO_FATAL_FAILURE(WriteTestFile(model.SerializeAsString(), model_path, model_deleter_));
+
+  state_->defer_reads = true;
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Default;
+  options.intra_op_param.thread_pool_size = 1;
+  session_ = std::make_unique<InferenceSession>(options, GetEnvironment());
+  ASSERT_STATUS_OK(session_->RegisterExecutionProvider(std::make_unique<CPUExecutionProviderWithLoader>(state_)));
+  ASSERT_STATUS_OK(session_->Load(model_path));
+  ASSERT_STATUS_OK(session_->Initialize());
+
+  ExpectReleased(1);
+  EXPECT_EQ(state_->begin_count, 1U);
+  EXPECT_EQ(state_->finalize_count, 2U);
+  EXPECT_EQ(state_->end_count, 1U);
+  EXPECT_EQ(state_->expected_load_bytes, kExternalFileCount);
+  EXPECT_EQ(state_->batch_sizes, (std::vector<size_t>{64, 2}));
+  ASSERT_EQ(state_->offsets.size(), kExternalFileCount);
+  std::sort(state_->offsets.begin(), state_->offsets.end());
+  for (size_t i = 0; i < kExternalFileCount; ++i) {
+    EXPECT_EQ(state_->offsets[i], static_cast<FileOffsetType>(i));
+  }
+  ASSERT_NO_FATAL_FAILURE(Run(true, true));
+  ASSERT_NO_FATAL_FAILURE(Run(false, false));
+}
+#endif
 
 TEST_F(ExternalDataLoaderLifetimeTest, DisablesLoaderWhenSessionOptionsThreadsIsZero) {
   ASSERT_NO_FATAL_FAILURE(CreateSession());

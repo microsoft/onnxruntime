@@ -345,7 +345,8 @@ void VerifyManyFlushedTensors(bool report_expected_total) {
   for (size_t i = 0; i < kTensorCount; ++i) {
     tensors.emplace_back(DataTypeImpl::GetType<uint8_t>(), TensorShape({static_cast<int64_t>(kTensorBytes)}),
                          *allocator);
-    ASSERT_STATUS_OK(loader.LoadTensor(*file, kFilePrefixSize + i * kTensorBytes, kTensorBytes, tensors.back()));
+    ASSERT_STATUS_OK(LoadCudaExternalDataForTest(
+        &loader, *file, kFilePrefixSize + i * kTensorBytes, kTensorBytes, &tensors.back()));
     if ((i + 1) % kFlushEvery == 0) {
       ASSERT_STATUS_OK(loader.FinalizeLoad());
       if (i + 1 == kFlushEvery) {

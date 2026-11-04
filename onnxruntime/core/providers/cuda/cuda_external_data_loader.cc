@@ -171,6 +171,16 @@ common::Status ExternalDataLoader::Configure(const ExternalDataLoaderOptions& op
     batch_reading_thread_count_ = *options.reading_threads;
     reading_threads_explicit_ = true;
     changed = true;
+  } else if (options.auto_reading_threads.has_value() && !reading_threads_explicit_ &&
+             reading_thread_count_ == ExternalDataLoaderOptions::kDefaultReadingThreads) {
+    ORT_RETURN_IF_ERROR(ExternalDataLoaderOptions::ValidateReadingThreads(
+        *options.auto_reading_threads, "session.external_data_loader.threads"));
+    if (reading_thread_count_ != *options.auto_reading_threads ||
+        batch_reading_thread_count_ != *options.auto_reading_threads) {
+      reading_thread_count_ = *options.auto_reading_threads;
+      batch_reading_thread_count_ = *options.auto_reading_threads;
+      changed = true;
+    }
   }
   if (options.pinned_memory_bytes.has_value() && !pinned_memory_bytes_explicit_) {
     ORT_RETURN_IF_ERROR(ExternalDataLoaderOptions::ValidatePinnedMemoryBytes(
