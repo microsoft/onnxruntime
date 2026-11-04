@@ -3627,10 +3627,29 @@ int main() {
                             ]
                             self.assertEqual(len(launches), len(cases), names)
 
-    def test_v4_int2_bf16_tensorcore_scale_overflow_bounce_alignment_and_fc3_bits(self):
+    def test_v4_int2_bf16_tensorcore_scale_limits_and_dispatch(self):
+        # The dispatch logging flag is cached on first use; isolate it from other tests.
+        script = """
+import sys
+sys.path.insert(0, sys.argv[1])
+from test_qmoe_offload_v4 import TestQMoEOffloadV4
+TestQMoEOffloadV4.setUpClass()
+TestQMoEOffloadV4()._check_int2_bf16_tensorcore_scale_limits_and_dispatch()
+"""
+        environment = dict(os.environ, ORT_QMOE_SHARED_RESIDENT_LOG="1")
+        environment.pop("ORT_MOE_GEMV_TC_MIN_ROWS", None)
+        result = subprocess.run(
+            [sys.executable, "-c", script, str(Path(__file__).resolve().parent)],
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=180,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def _check_int2_bf16_tensorcore_scale_limits_and_dispatch(self):
         with tempfile.TemporaryDirectory() as directory:
-            # 1. BF16 INT2 Tensor-Core scale=2^127, activation=2^-126, gate=-2 (code 0), up=+1 (code 3) parity across
-            # standard QMoE (TC enabled vs disabled) and offload decode (40 routes in [33, 256] with null expert offsets).
             tc_dir = os.path.join(directory, "int2_bf16_tc_scale_ovf")
             os.makedirs(tc_dir)
             model_path = self._build_int_qmoe_model(
@@ -3644,14 +3663,11 @@ int main() {
             fc1_weights[:, 0] = 0xA8
             fc1_weights[:, 16] = 0xAB
             fc1_scales_f32 = np.ones((8, 1024, 8), dtype=np.float32)
-            fc1_scales_f32[:, 0, 0] = np.ldexp(1.0, 127)
-            fc1_scales_f32[:, 1, 0] = np.ldexp(1.0, 127)
-            fc1_scales = _float32_to_bfloat16_u16(fc1_scales_f32)
             fc2_weights = np.full((8, 512 * 512 // 4), 0xAA, dtype=np.uint8)
             for n in range(512):
                 fc2_weights[:, (n // 8) * 1024 + (n % 8) * 16] = 0xAB
             fc2_scales = _float32_to_bfloat16_u16(np.ones((8, 512, 8), dtype=np.float32))
-            for slot, values in ((2, fc1_weights), (3, fc1_scales), (5, fc2_weights), (6, fc2_scales)):
+            for slot, values in ((2, fc1_weights), (5, fc2_weights), (6, fc2_scales)):
                 bank = banks[model.graph.node[0].input[slot]]
                 external = {entry.key: entry.value for entry in bank.external_data}
                 self.assertEqual(values.nbytes, int(external["length"]))
@@ -3659,46 +3675,81 @@ int main() {
                     stream.seek(int(external["offset"]))
                     stream.write(values.tobytes())
 
-            # 5 tokens x top_k=8 = 40 routes (>= 33 default TC threshold, <= 256 unsorted offload route limit).
-            x = np.zeros((5, 512), dtype=np.float32)
-            x[:, 0] = np.ldexp(1.0, -126)
-            router = np.tile(np.linspace(4.0, -4.0, 8, dtype=np.float32), (5, 1))
             slot_h512_i512 = 2 * 512 * 128 + 512 * 128 + 2 * 512 * 8 * 2 + 512 * 8 * 2 + 8
-            ref_simt = self._make_session(
-                model_path, {"session.moe.offload.mode": "disabled", "ep.cuda.disable_moe_gemv_tc": "1"}
+            standard = {"session.moe.offload.mode": "disabled", "ep.cuda.disable_moe_gemv_tc": "0"}
+            resident = {
+                "session.moe.offload.mode": "required",
+                "session.moe.offload.placement": "static",
+                "session.moe.offload.device_expert_bytes": str(64 + 8 * slot_h512_i512),
+                "ep.cuda.disable_moe_gemv_tc": "0",
+            }
+            hybrid = {
+                **resident,
+                "session.moe.offload.popularity_file": "expert-profile.bin",
+                "session.moe.offload.device_expert_bytes": str(64 + 4 * slot_h512_i512),
+            }
+            cases = (
+                ("simt", {**standard, "ep.cuda.disable_moe_gemv_tc": "1"}, 5, None, 33),
+                ("tc_default", standard, 5, 40, 33),
+                ("resident_default", resident, 5, 40, 33),
+                ("hybrid_default", hybrid, 5, 40, 33),
+                ("tc_override", {**standard, "ep.cuda.moe_gemv_tc_min_rows": "24"}, 3, 24, 24),
+                ("resident_override", {**resident, "ep.cuda.moe_gemv_tc_min_rows": "24"}, 3, 24, 24),
+                ("hybrid_override", {**hybrid, "ep.cuda.moe_gemv_tc_min_rows": "24"}, 3, 24, 24),
+                ("tc_below_threshold", {**standard, "ep.cuda.moe_gemv_tc_min_rows": "41"}, 5, None, 41),
+                ("resident_below_threshold", {**resident, "ep.cuda.moe_gemv_tc_min_rows": "41"}, 5, None, 41),
             )
-            sess_tc = self._make_session(
-                model_path, {"session.moe.offload.mode": "disabled", "ep.cuda.disable_moe_gemv_tc": "0"}
-            )
-            sess_off_all_res = self._make_session(
-                model_path,
-                {
-                    "session.moe.offload.mode": "required",
-                    "session.moe.offload.placement": "static",
-                    "session.moe.offload.device_expert_bytes": str(64 + 8 * slot_h512_i512),
-                    "ep.cuda.disable_moe_gemv_tc": "0",
-                },
-            )
-            sess_off_hybrid = self._make_session(
-                model_path,
-                {
-                    "session.moe.offload.mode": "required",
-                    "session.moe.offload.placement": "static",
-                    "session.moe.offload.popularity_file": "expert-profile.bin",
-                    "session.moe.offload.device_expert_bytes": str(64 + 4 * slot_h512_i512),
-                    "ep.cuda.disable_moe_gemv_tc": "0",
-                },
-            )
-            y_simt = self._run_bf16(ref_simt, x, router)
-            y_tc = self._run_bf16(sess_tc, x, router)
-            y_off_res = self._run_bf16(sess_off_all_res, x, router)
-            y_off_hyb = self._run_bf16(sess_off_hybrid, x, router)
-            self.assertTrue(np.all(np.isfinite(y_simt)))
-            np.testing.assert_allclose(y_tc, y_simt, rtol=0, atol=0)
-            np.testing.assert_allclose(y_off_res, y_simt, rtol=0, atol=0)
-            np.testing.assert_allclose(y_off_hyb, y_simt, rtol=0, atol=0)
-            del sess_off_hybrid, sess_off_all_res, sess_tc, ref_simt
+            for scale_exp, act_exp in ((127, -126), (-133, 126)):
+                fc1_scales_f32[:, :2, 0] = np.ldexp(1.0, scale_exp)
+                fc1_scales = _float32_to_bfloat16_u16(fc1_scales_f32)
+                external = {entry.key: entry.value for entry in banks[model.graph.node[0].input[3]].external_data}
+                with (Path(tc_dir) / external["location"]).open("r+b") as stream:
+                    stream.seek(int(external["offset"]))
+                    stream.write(fc1_scales.tobytes())
 
+                # All experts are identical, so normalized routing preserves this independently calculated value.
+                gate = -2.0 * np.ldexp(1.0, scale_exp + act_exp)
+                up = np.ldexp(1.0, scale_exp + act_exp)
+                expected = float(_round_to_act_dtype(np.array([gate / (1.0 + np.exp(-gate)) * up]))[0])
+                self.assertNotEqual(expected, 0.0)
+                for name, config, rows, tc_routes, min_rows in cases:
+                    # Hybrid tiny-scale output mixes CPU and TC results; test the lower-range limit on GPU only.
+                    if scale_exp == -133 and name.startswith("hybrid"):
+                        continue
+                    with self.subTest(scale_exp=scale_exp, case=name):
+                        x = np.zeros((rows, 512), dtype=np.float32)
+                        x[:, 0] = np.ldexp(1.0, act_exp)
+                        router = np.tile(np.linspace(4.0, -4.0, 8, dtype=np.float32), (rows, 1))
+                        with _capture_native_stderr() as captured:
+                            session = self._make_session(model_path, config)
+                            try:
+                                actual = self._run_bf16(session, x, router)
+                            finally:
+                                del session
+                                gc.collect()
+                        dispatches = re.findall(
+                            r"QMoE INT2 TensorCore swiglu=(\d+) routes=(\d+) min_rows=(\d+)", captured[0]
+                        )
+                        if tc_routes is None:
+                            self.assertEqual(dispatches, [], f"{scale_exp=} {name=}\n{captured[0]}")
+                        else:
+                            self.assertEqual(
+                                dispatches,
+                                [("1", str(tc_routes), str(min_rows)), ("0", str(tc_routes), str(min_rows))],
+                                f"{scale_exp=} {name=}\n{captured[0]}",
+                            )
+                        # The half-scaled +1 weight at scale 2^-133 is lost before MMA, unlike SIMT.
+                        expected_value = 0.0 if scale_exp == -133 and tc_routes is not None else expected
+                        np.testing.assert_allclose(
+                            actual,
+                            np.full((rows, 512), expected_value, dtype=np.float32),
+                            rtol=0,
+                            atol=0,
+                            err_msg=f"{scale_exp=} {name=}",
+                        )
+
+    def test_v4_int2_bounce_alignment_and_fc3_bits(self):
+        with tempfile.TemporaryDirectory() as directory:
             # 2. INT2 H=64, I=448, block_size=64 background promotion bounce buffer alignment with unregistered banks,
             # explicit pinned_bytes, and ORT_QMOE_STEP_PROMOTION_BUDGET=1.
             promo_dir = os.path.join(directory, "int2_h64_i448_promo")

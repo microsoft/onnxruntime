@@ -106,6 +106,17 @@ rounding, and SwiGLU projection boundaries are independent of this option.
 Low-level CPU offload callers select the same policy through
 `Int3ExpertView::deferred_scale` or `Int4ExpertView::deferred_scale`.
 
+INT2 shared-layout CPU kernels apply block scales to weights before multiplying
+by activations, independently of `ep.cpu.qmoe_deferred_scale`. This avoids
+overflow in an unscaled code-times-activation product or partial sum when the
+scaled result is finite. For example, centered code `-2`, scale `2^-125`, and
+activation `2^127` produce `-8` in both scalar and SIMD paths. Extreme BF16
+scales use a scalar kernel that halves the scale before dequantization and
+restores the factor in FP32, avoiding overflow for code `-2` and scale `2^127`
+with small activations. These safeguards do not guarantee full-range BF16/FP32
+arithmetic. By contrast, the optional INT3/INT4 deferred-scale policy can
+overflow an unscaled product or partial sum even when the scaled result is finite.
+
 ## Validation
 
 - `qmoe_shared_layout_test.cc` checks independent layout fixtures, scalar, AVX2,

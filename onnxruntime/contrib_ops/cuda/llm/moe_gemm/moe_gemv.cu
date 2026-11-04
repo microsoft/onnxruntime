@@ -3,6 +3,7 @@
 
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv.h"
 
+#include <cstdio>
 #include <cuda_fp16.h>
 #include <math_constants.h>
 #include <type_traits>
@@ -1113,6 +1114,17 @@ inline bool MoeGemvUseFp32Accum() {
 }
 
 namespace {
+#ifdef ENABLE_BF16
+void LogInt2TensorCoreLaunch(bool swiglu, int64_t rows, int min_rows) {
+  static const bool enabled =
+      ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_RESIDENT_LOG", 0) == 1;
+  if (enabled) {
+    std::fprintf(stderr, "QMoE INT2 TensorCore swiglu=%d routes=%lld min_rows=%d\n",
+                 static_cast<int>(swiglu), static_cast<long long>(rows), min_rows);
+  }
+}
+#endif
+
 // Shared shape checks for every MoE GEMV variant. cta_n is the launching variant's CtaN, which sets
 // the n-tiling requirement: the plain GEMVs use kCtaN, the fused-finalize kernel uses the smaller
 // kFusedFinalizeCtaN and therefore accepts n values the plain kernels reject.
@@ -1276,6 +1288,7 @@ bool launch_moe_gemv_int_symmetric(const T* act, const WeightType* weight, const
             /*swiglu=*/false, act, reinterpret_cast<const uint8_t*>(weight), scales, bias, out,
             expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, n, k, group_size,
             nullptr, nullptr, nullptr, 1.f, 0.f, 0.f, nullptr, 0, stream, tensor_core_min_rows)) {
+      LogInt2TensorCoreLaunch(false, expanded_num_rows, tensor_core_min_rows);
       return true;
     }
   }
@@ -1360,6 +1373,7 @@ bool launch_moe_gemv_int_symmetric_interleaved_swiglu(
             group_size, activation_params.swiglu_alpha, activation_params.swiglu_beta,
             activation_params.swiglu_limit, activation_params.alpha, activation_params.beta,
             activation_params.limit, permuted_row_to_source_row, num_rows, stream, tensor_core_min_rows)) {
+      LogInt2TensorCoreLaunch(true, expanded_num_rows, tensor_core_min_rows);
       return true;
     }
   }
