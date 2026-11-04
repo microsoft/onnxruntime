@@ -5,7 +5,7 @@
 # Minimum CMake required
 cmake_minimum_required(VERSION 3.28)
 
-if(onnxruntime_USE_QNN OR onnxruntime_BUILD_QNN_EP_STATIC_LIB)
+if(onnxruntime_USE_QNN OR onnxruntime_BUILD_QNN_EP_STATIC_LIB OR onnxruntime_USE_QNN_INTERFACE)
   message(FATAL_ERROR
     "In-tree QNN builds have been retired. Use the QNN plugin EP from "
     "https://github.com/onnxruntime/onnxruntime-qnn instead.")
@@ -355,7 +355,6 @@ option(onnxruntime_USE_TENSORRT_INTERFACE "Build ONNXRuntime shared lib which is
 option(onnxruntime_USE_CUDA_INTERFACE "Build ONNXRuntime shared lib which is compatible with Cuda EP interface" OFF)
 option(onnxruntime_USE_OPENVINO_INTERFACE "Build ONNXRuntime shared lib which is compatible with OpenVINO EP interface" OFF)
 option(onnxruntime_USE_VITISAI_INTERFACE "Build ONNXRuntime shared lib which is compatible with Vitis-AI EP interface" OFF)
-option(onnxruntime_USE_QNN_INTERFACE "Build ONNXRuntime shared lib which is compatible with QNN EP interface" OFF)
 
 if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 11.1)
   message(FATAL_ERROR  "GCC version must be greater than or equal to 11.1")
@@ -1012,10 +1011,6 @@ endif()
 if (onnxruntime_USE_JSEP)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_JSEP=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES js)
-endif()
-if (onnxruntime_USE_QNN_INTERFACE)
-    list(APPEND ORT_PROVIDER_FLAGS -DUSE_QNN_PROVIDER_INTERFACE=1)
-    list(APPEND ONNXRUNTIME_PROVIDER_NAMES qnn)
 endif()
 if (onnxruntime_USE_SNPE)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_SNPE=1)

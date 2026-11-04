@@ -208,17 +208,18 @@ class BuildArgsTest(unittest.TestCase):
                     expected.append(f"-DCMAKE_CUDA_COMPILER_LAUNCHER={tool}")
                 self.assertEqual(launchers, expected)
                 self.assertEqual("-Donnxruntime_BUILD_CACHE=ON" in command, use_cache)
-                self.assertIn(
-                    "-Donnxruntime_USE_QNN_INTERFACE=" + ("ON" if generic_interface else "OFF"),
-                    command,
-                )
-                self.assertFalse(any("onnxruntime_USE_QNN=" in arg or "QNN_HOME=" in arg for arg in command))
+                for provider in ("TENSORRT", "CUDA", "OPENVINO", "VITISAI", "MIGRAPHX"):
+                    self.assertIn(
+                        f"-Donnxruntime_USE_{provider}_INTERFACE=" + ("ON" if generic_interface else "OFF"),
+                        command,
+                    )
+                self.assertFalse(any("QNN" in arg for arg in command))
 
 
 @unittest.skipUnless(shutil.which("cmake"), "Requires CMake")
 class QnnCMakeRetirementTest(unittest.TestCase):
     def test_retired_qnn_options_fail_before_configuring_toolchains(self):
-        for option in ("onnxruntime_USE_QNN", "onnxruntime_BUILD_QNN_EP_STATIC_LIB"):
+        for option in ("onnxruntime_USE_QNN", "onnxruntime_BUILD_QNN_EP_STATIC_LIB", "onnxruntime_USE_QNN_INTERFACE"):
             with self.subTest(option=option), tempfile.TemporaryDirectory() as build_dir:
                 result = subprocess.run(
                     [
@@ -235,25 +236,6 @@ class QnnCMakeRetirementTest(unittest.TestCase):
                 )
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("In-tree QNN builds have been retired", result.stdout + result.stderr)
-
-    def test_generic_interface_retains_qnn_without_sdk(self):
-        source = (Path(__file__).resolve().parents[2] / "cmake" / "CMakeLists.txt").read_text(encoding="utf-8")
-        start = source.index("if (onnxruntime_USE_QNN_INTERFACE)")
-        selector = source[start : source.index("if (onnxruntime_USE_SNPE)", start)]
-        with tempfile.TemporaryDirectory() as temporary:
-            script = Path(temporary) / "qnn_interface.cmake"
-            script.write_text(
-                "set(onnxruntime_USE_QNN_INTERFACE ON)\n"
-                + selector
-                + '\nif(NOT ORT_PROVIDER_FLAGS STREQUAL "-DUSE_QNN_PROVIDER_INTERFACE=1" OR\n'
-                + '   NOT ONNXRUNTIME_PROVIDER_NAMES STREQUAL "qnn")\n'
-                + '  message(FATAL_ERROR "Missing QNN generic interface")\nendif()\n'
-                + "if(DEFINED QNN_ARCH_ABI OR DEFINED QNN_LIB_FILES)\n"
-                + '  message(FATAL_ERROR "Generic interface must not stage a QNN SDK")\nendif()\n',
-                encoding="utf-8",
-            )
-            result = subprocess.run(["cmake", "-P", str(script)], capture_output=True, text=True, check=False)
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 class BuildPackageArgsTest(unittest.TestCase):

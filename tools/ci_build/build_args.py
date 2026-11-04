@@ -862,7 +862,7 @@ def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--enable_generic_interface",
         action="store_true",
-        help="Build ORT shared lib with compatible bridge for primary EPs (TRT, OV, QNN, VitisAI), excludes tests.",
+        help="Build ORT shared lib with compatible bridge for primary EPs (TRT, OV, VitisAI), excludes tests.",
     )
     # Telemetry arguments (cross-platform)
     telemetry_group = parser.add_mutually_exclusive_group()

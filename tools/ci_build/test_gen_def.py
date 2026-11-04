@@ -194,40 +194,5 @@ class TestPublicExports(unittest.TestCase):
                             self.assertNotIn(symbol, source.read_text(encoding="utf-8"))
 
 
-class TestQnnInterfaceExports(unittest.TestCase):
-    def test_interface_exports_do_not_require_native_qnn_sources(self):
-        repo_root = Path(__file__).resolve().parents[2]
-        with tempfile.TemporaryDirectory() as tmpdir:
-            for style in ("vc", "gcc", "xcode", "aix"):
-                with self.subTest(style=style):
-                    output = Path(tmpdir) / f"exports-{style}"
-                    source = Path(tmpdir) / f"symbols-{style}.cc"
-                    subprocess.run(
-                        [
-                            sys.executable,
-                            str(repo_root / "tools" / "ci_build" / "gen_def.py"),
-                            "--src_root",
-                            str(repo_root / "onnxruntime"),
-                            "--output",
-                            str(output),
-                            "--output_source",
-                            str(source),
-                            "--version_file",
-                            str(repo_root / "VERSION_NUMBER"),
-                            "--style",
-                            style,
-                            "--config",
-                            "cpu",
-                            "qnn",
-                        ],
-                        check=True,
-                        capture_output=True,
-                        text=True,
-                        timeout=30,
-                    )
-                    self.assertIn("OrtGetApiBase", output.read_text(encoding="utf-8"))
-                    self.assertNotIn("qnn_provider_factory.h", source.read_text(encoding="utf-8"))
-
-
 if __name__ == "__main__":
     unittest.main()

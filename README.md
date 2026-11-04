@@ -25,8 +25,9 @@
 
   QNN is built and packaged in the plugin repository, not in this repository.
   The native QNN provider implementation, its tests, and QNN-specific NuGet and AAR packaging have been removed.
-  The in-tree `--use_qnn` and `--qnn_home` build options are no longer supported.
-  The generic-interface bridge and QNN model-preprocessing and quantization tools remain available.
+  The in-tree `--use_qnn` and `--qnn_home` build options and the legacy QNN provider-interface bridge are no longer supported.
+  Register the external QNN plugin through the plugin EP APIs instead.
+  QNN model-preprocessing and quantization tools remain available.
 
 ## Releases
 
