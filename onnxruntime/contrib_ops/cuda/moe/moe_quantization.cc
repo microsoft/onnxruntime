@@ -1033,7 +1033,7 @@ bool QMoE::BuildOffloadDescriptors(const OpKernelInfo& op_kernel_info,
     if (input_slot_exists(16)) static_cast<void>(op_kernel_info.TryGetConstantInput(16, &fc2_g));
   }
 
-  // The offload backend reads the raw K-packed row-major NVFP4 bytes, SM80-prepacked INT4 bytes, or raw INT3 bytes.
+  // Offload reads row-major NVFP4 bytes, SM80-prepacked INT4/INT2 bytes, or raw INT3 bytes.
   // MXFP4 and other weights_prepacked modes are N-packed in the standard path, so admitting them would
   // change how the same initializer bytes are interpreted.
   const bool int4_sm80_prepacked =
@@ -1044,8 +1044,12 @@ bool QMoE::BuildOffloadDescriptors(const OpKernelInfo& op_kernel_info,
       (quant_type_ == "int" && expert_weight_bits_ == 3 &&
        fc1_expert_weight_bits_ == 3 && fc2_expert_weight_bits_ == 3 && fc3_expert_weight_bits_ == 3 &&
        weights_prepacked_mode_ == 0 && (block_size_ == 32 || block_size_ == 64 || block_size_ == 128));
-  const int64_t scale_group = int3_raw ? block_size_ : ((quant_type_ == "nvfp4") ? 16 : 32);
-  const int64_t min_k_tile = int4_sm80_prepacked ? 64 : 32;
+  const bool int2_sm80_prepacked =
+      (quant_type_ == "int" && expert_weight_bits_ == 2 &&
+       fc1_expert_weight_bits_ == 2 && fc2_expert_weight_bits_ == 2 && fc3_expert_weight_bits_ == 2 &&
+       weights_prepacked_mode_ == 1 && (block_size_ == 32 || block_size_ == 64 || block_size_ == 128));
+  const int64_t scale_group = (int3_raw || int2_sm80_prepacked) ? block_size_ : ((quant_type_ == "nvfp4") ? 16 : 32);
+  const int64_t min_k_tile = (int4_sm80_prepacked || int2_sm80_prepacked) ? 64 : 32;
   const uint64_t scale_elem_bytes = (quant_type_ == "nvfp4") ? sizeof(uint8_t) : sizeof(uint16_t);
   const bool weight_and_scale_dtypes_ok =
       has_const_weights && fc1_w->IsDataType<uint8_t>() && fc2_w->IsDataType<uint8_t>() &&
@@ -1064,7 +1068,8 @@ bool QMoE::BuildOffloadDescriptors(const OpKernelInfo& op_kernel_info,
                             fc1_s->SizeInBytes(), fc2_s->SizeInBytes(), scale_elem_bytes)
                       : onnxruntime::contrib::cuda::qmoe::ResolveNvfp4BankDims(
                             fc1_w->Shape(), fc2_w->Shape(), scale_group,
-                            fc1_s->SizeInBytes(), fc2_s->SizeInBytes(), scale_elem_bytes, min_k_tile))
+                            fc1_s->SizeInBytes(), fc2_s->SizeInBytes(), scale_elem_bytes,
+                            int2_sm80_prepacked ? 4 : 2, min_k_tile))
           : onnxruntime::contrib::cuda::qmoe::Nvfp4BankDims{};
   const bool scale_shapes_ok =
       bank_dims.valid &&
@@ -1078,6 +1083,9 @@ bool QMoE::BuildOffloadDescriptors(const OpKernelInfo& op_kernel_info,
       (!int4_sm80_prepacked || (bank_dims.hidden % 64 == 0 && bank_dims.inter % 64 == 0)) &&
       (int3_raw
            ? onnxruntime::contrib::qmoe_shared::MakeInt3ExpertBlockLayout(
+                 bank_dims.hidden, bank_dims.inter, scale_group, &host_layout)
+       : int2_sm80_prepacked
+           ? onnxruntime::contrib::qmoe_shared::MakeInt2ExpertBlockLayout(
                  bank_dims.hidden, bank_dims.inter, scale_group, &host_layout)
            : ((quant_type_ == "nvfp4" || int4_sm80_prepacked)
                   ? onnxruntime::contrib::qmoe_shared::MakeNvfp4ExpertBlockLayout(
@@ -1117,8 +1125,8 @@ bool QMoE::BuildOffloadDescriptors(const OpKernelInfo& op_kernel_info,
   const bool node_eligible =
       sm_ok &&
       topk_ok &&
-      (nvfp4_weights_row_major_ || int4_sm80_prepacked || int3_raw) &&
-      (expert_weight_bits_ == 4 || int3_raw) &&
+      (nvfp4_weights_row_major_ || int4_sm80_prepacked || int3_raw || int2_sm80_prepacked) &&
+      (expert_weight_bits_ == 4 || int3_raw || int2_sm80_prepacked) &&
       is_interleaved_swiglu &&
       !use_sparse_mixer_ &&
       !has_unsupported_slot &&
@@ -1133,8 +1141,10 @@ bool QMoE::BuildOffloadDescriptors(const OpKernelInfo& op_kernel_info,
                 "': sm=", effective_offload_sm, " (requires >= 80), quant_type='", quant_type_,
                 "', nvfp4_row_major_weights=", nvfp4_weights_row_major_,
                 " (expected 'nvfp4' with weights_prepacked=1, prepacked 'int' INT4 with weights_prepacked=1 and block_size=32, "
+                "prepacked 'int' INT2 with weights_prepacked=1 and block_size in {32,64,128}, "
                 "or raw 'int' INT3 with weights_prepacked=0 and block_size in {32,64,128})",
                 ", int4_sm80_prepacked=", int4_sm80_prepacked, ", int3_raw=", int3_raw,
+                ", int2_sm80_prepacked=", int2_sm80_prepacked,
                 ", swiglu_fusion=", swiglu_fusion_, ", use_sparse_mixer=", use_sparse_mixer_,
                 ", unsupported_slot=", bad_slot_idx, ", has_const_cpu_weights=", has_const_weights,
                 ", valid_bank_shapes=", layout_ok, ", valid_biases=", biases_ok,

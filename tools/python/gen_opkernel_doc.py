@@ -231,8 +231,7 @@ def main(output_path: pathlib.Path, provider_filter: [str], plugin_eps=None, met
             "onnxruntime_version": ort.__version__,
             "session_options": "default",
             "environment": {
-                name: os.environ.get(name)
-                for name in ("ORT_WEBGPU_EP_ALLOW_SOFTWARE_ADAPTER", "ALLOW_RELEASED_ONNX_OPSET_ONLY")
+                "ALLOW_RELEASED_ONNX_OPSET_ONLY": os.environ.get("ALLOW_RELEASED_ONNX_OPSET_ONLY"),
             },
             "plugins": plugins,
             "providers": {

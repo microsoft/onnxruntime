@@ -67,7 +67,12 @@ bool MatchKernelDefTypes(const Node& node,
   //   check arg type against type constraint enabled types
   for (const auto& [kernel_type_str, enabled_types] : kernel_type_constraints) {
     gsl::span<const ArgTypeAndIndex> constraint_args{};
-    ORT_THROW_IF_ERROR(kernel_type_str_resolver.ResolveKernelTypeStr(node, kernel_type_str, constraint_args));
+    const Status resolve_status =
+        kernel_type_str_resolver.ResolveKernelTypeStr(node, kernel_type_str, constraint_args);
+    if (!resolve_status.IsOK()) {
+      mismatch_reason = resolve_status.ErrorMessage();
+      return false;
+    }
 
     for (const auto& [arg_type, formal_arg_idx] : constraint_args) {
       const NodeArg* arg;
@@ -77,7 +82,10 @@ bool MatchKernelDefTypes(const Node& node,
           arg = nullptr;
         } else {
           const auto first_arg_idx = actual_input_arg_offsets[formal_arg_idx];
-          ORT_ENFORCE(static_cast<size_t>(first_arg_idx) < actual_inputs.size());
+          if (first_arg_idx < 0 || static_cast<size_t>(first_arg_idx) >= actual_inputs.size()) {
+            mismatch_reason = "Invalid input argument index resolved from kernel type string.";
+            return false;
+          }
           arg = actual_inputs[first_arg_idx];
         }
       } else {
@@ -86,7 +94,10 @@ bool MatchKernelDefTypes(const Node& node,
 
       if (arg && arg->Exists()) {
         const ONNX_NAMESPACE::TypeProto* type_proto = arg->TypeAsProto();
-        ORT_ENFORCE(type_proto != nullptr);
+        if (type_proto == nullptr) {
+          mismatch_reason = "Node argument is missing type information.";
+          return false;
+        }
 
         if (!IsTypeProtoCompatible(enabled_types, *type_proto, mismatch_reason)) {
           return false;
