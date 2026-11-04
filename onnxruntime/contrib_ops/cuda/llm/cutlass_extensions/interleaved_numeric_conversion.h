@@ -252,8 +252,11 @@ struct Int2NumericArrayConverter<half_t, N> {
   result_type operator()(source_type const& source) { return convert(source); }
 };
 
-// bf16 only has 7 mantissa bits, so a 2-bit field can only be parked at the bottom; like the
-// uint4b_t bf16 converter this shifts once per output instead of reusing wider masks.
+// bf16 has 7 mantissa bits (0x007F007F), so three 2-bit masks fit without overlapping the exponent:
+//   MASK_0 = 0x00030003 (bits 0..1): mul = 1.0  (0x3F803F80), sub = -130.0 (0xC302C302)
+//   MASK_1 = 0x000C000C (bits 2..3): mul = 0.25 (0x3E803E80), sub = -32.0 - 2.0 = -34.0 (0xC208C208)
+//   MASK_2 = 0x00300030 (bits 4..5): mul = 1/16 (0x3D803D80), sub = -8.0  - 2.0 = -10.0 (0xC120C120)
+// Only two right-shifts (>> 6 and >> 12) are needed per 32-bit packed word instead of 8 shifts.
 template <int N>
 struct Int2NumericArrayConverter<bfloat16_t, N> {
   static_assert(N % 16 == 0, "INT2 conversion requires complete 16-element packed words");
@@ -268,23 +271,37 @@ struct Int2NumericArrayConverter<bfloat16_t, N> {
     auto* h = reinterpret_cast<uint32_t*>(&result);
 
     static constexpr uint32_t immLut = (0xf0 & 0xcc) | 0xaa;
-    static constexpr uint32_t MASK = 0x00030003;
-    static constexpr uint32_t MAGIC = 0x43004300;      // bf16x2{128, 128}
-    static constexpr uint32_t BF16_ONE = 0x3F803F80;   // 1.0
-    static constexpr uint32_t BF16_BIAS = 0xC302C302;  // -(128 + 2)
+    static constexpr uint32_t MAGIC = 0x43004300;
+    static constexpr uint32_t MASK_0 = 0x00030003;
+    static constexpr uint32_t MASK_1 = 0x000C000C;
+    static constexpr uint32_t MASK_2 = 0x00300030;
+    static constexpr uint32_t MUL_0 = 0x3F803F80;
+    static constexpr uint32_t MUL_1 = 0x3E803E80;
+    static constexpr uint32_t MUL_2 = 0x3D803D80;
+    static constexpr uint32_t ADD_0 = 0xC302C302;
+    static constexpr uint32_t ADD_1 = 0xC208C208;
+    static constexpr uint32_t ADD_2 = 0xC120C120;
+
+    auto dequant = [](uint32_t& dst, uint32_t src, uint32_t mask, uint32_t mul, uint32_t add) {
+      asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
+                   : "=r"(dst)
+                   : "r"(src), "r"(mask), "n"(MAGIC), "n"(immLut));
+      asm("fma.rn.bf16x2 %0, %1, %2, %3;\n" : "=r"(dst) : "r"(dst), "r"(mul), "r"(add));
+    };
 
     CUTLASS_PRAGMA_UNROLL
     for (int i = 0; i < N / 16; ++i) {
-      uint32_t i2s = input[i];
-      CUTLASS_PRAGMA_UNROLL
-      for (int j = 0; j < 8; ++j) {
-        uint32_t& v = h[i * 8 + j];
-        asm volatile("lop3.b32 %0, %1, %2, %3, %4;\n"
-                     : "=r"(v)
-                     : "r"(i2s), "n"(MASK), "n"(MAGIC), "n"(immLut));
-        asm("fma.rn.bf16x2 %0, %1, %2, %3;\n" : "=r"(v) : "r"(v), "r"(BF16_ONE), "r"(BF16_BIAS));
-        i2s >>= 2;
-      }
+      const uint32_t w0 = input[i];
+      const uint32_t w6 = w0 >> 6;
+      const uint32_t w12 = w0 >> 12;
+      dequant(h[i * 8 + 0], w0, MASK_0, MUL_0, ADD_0);
+      dequant(h[i * 8 + 1], w0, MASK_1, MUL_1, ADD_1);
+      dequant(h[i * 8 + 2], w0, MASK_2, MUL_2, ADD_2);
+      dequant(h[i * 8 + 3], w6, MASK_0, MUL_0, ADD_0);
+      dequant(h[i * 8 + 4], w6, MASK_1, MUL_1, ADD_1);
+      dequant(h[i * 8 + 5], w6, MASK_2, MUL_2, ADD_2);
+      dequant(h[i * 8 + 6], w12, MASK_0, MUL_0, ADD_0);
+      dequant(h[i * 8 + 7], w12, MASK_1, MUL_1, ADD_1);
     }
 #else
     arch::device_breakpoint();

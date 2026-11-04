@@ -26,5 +26,4 @@
 #cmakedefine HAS_UNUSED_BUT_SET_VARIABLE
 #cmakedefine HAS_UNUSED_VARIABLE
 #cmakedefine HAS_USELESS_CAST
-#cmakedefine ORT_BUILD_INFO "@ORT_BUILD_INFO@"
 #cmakedefine ORT_VERSION "@ORT_VERSION@"

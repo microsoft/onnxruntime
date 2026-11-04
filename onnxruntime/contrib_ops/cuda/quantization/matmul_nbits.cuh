@@ -8,6 +8,14 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+constexpr bool IsSupportedSingleRowGemvShape(bool has_zero_points, int m, int n, int k, int block_size) {
+  if (has_zero_points || m != 1 || (block_size != 32 && block_size != 64)) {
+    return false;
+  }
+  return (n == 32 && k == 2880) ||
+         (n == 248320 && k == 2560 && block_size == 32);
+}
+
 inline constexpr int kMatMul8BitsDefaultMaxRows = 5;
 inline constexpr int kMatMul8BitsSm121Fp16MaxRows = 8;
 

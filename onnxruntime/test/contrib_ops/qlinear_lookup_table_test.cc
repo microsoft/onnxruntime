@@ -493,5 +493,34 @@ TEST(QLinearLookupTableBasedOperatorTests, QLinearSoftmax_Int8_Rounding) {
   TestQLinearSoftmaxRounding<int8_t>();
 }
 
+template <typename T>
+void TestQLinearSoftmaxNegativeInputScale() {
+  for (int64_t opset : {12, 13}) {
+    for (bool fixed_scales : {false, true}) {
+      SCOPED_TRACE(testing::Message() << "opset=" << opset << " fixed_scales=" << fixed_scales);
+      OpTester test("QLinearSoftmax", 1, onnxruntime::kMSDomain);
+      test.ConfigEp(DefaultCpuExecutionProvider());
+      test.AddAttribute<int64_t>("axis", -1);
+      test.AddAttribute<int64_t>("opset", opset);
+      test.AddInput<T>("X", {1, 2}, {std::numeric_limits<T>::lowest(), std::numeric_limits<T>::max()});
+      test.AddInput<float>("X_scale", {}, {-1.0f}, fixed_scales);
+      test.AddInput<T>("X_zero_point", {}, {0}, fixed_scales);
+      test.AddInput<float>("Y_scale", {}, {1.0f / 256.0f}, fixed_scales);
+      test.AddInput<T>("Y_zero_point", {}, {0}, fixed_scales);
+      test.AddOutput<T>("Y", {1, 2}, {0, 0});
+      test.Config(OpTester::ExpectResult::kExpectFailure, "x_scale must be positive");
+      test.RunWithConfig();
+    }
+  }
+}
+
+TEST(QLinearLookupTableBasedOperatorTests, QLinearSoftmax_UInt8_NegativeInputScale) {
+  TestQLinearSoftmaxNegativeInputScale<uint8_t>();
+}
+
+TEST(QLinearLookupTableBasedOperatorTests, QLinearSoftmax_Int8_NegativeInputScale) {
+  TestQLinearSoftmaxNegativeInputScale<int8_t>();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -16,6 +16,21 @@ namespace onnxruntime {
 namespace contrib {
 namespace causal_conv_with_state_helper {
 
+// Returns true if output `output_index` is present and not an omitted optional output.
+//
+// The in-tree onnxruntime::Node exposes NodeArgs through OutputDefs(), while the plugin EP adapter
+// node (ep::adapter::Node) only exposes OutputCount() and OutputExists().
+template <typename TKernelInfo>
+bool HasOutput(const TKernelInfo& info, size_t output_index) {
+  const auto& node = info.node();
+  if constexpr (requires { node.OutputCount(); node.OutputExists(output_index); }) {
+    return node.OutputCount() > output_index && node.OutputExists(output_index);
+  } else {
+    const auto& output_defs = node.OutputDefs();
+    return output_defs.size() > output_index && output_defs[output_index]->Exists();
+  }
+}
+
 // Reads and validates the optional `state_window` attribute.
 //
 // 0 (the default, i.e. attribute absent) selects the legacy unwindowed state layout. Every model
