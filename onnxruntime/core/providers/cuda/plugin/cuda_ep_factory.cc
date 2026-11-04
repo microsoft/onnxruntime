@@ -9,6 +9,7 @@
 #include "contrib_ops/cuda/quantization/matmul_nbits_tactic_cache.h"
 #include "contrib_ops/cuda/moe/qmoe_background_services.h"
 #include "core/common/string_utils.h"
+#include "core/framework/external_data_loader.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/shared_inc/cuda_memory_capacity.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -777,6 +778,64 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
       {min_runs_key, "ep.cuda.min_num_runs_before_cuda_graph_capture"},
       config.min_num_runs_before_cuda_graph_capture);
 
+#if !defined(ORT_MINIMAL_BUILD)
+  const std::string ext_loader_threads_key = ep_options_prefix + "external_data_loader_reading_threads";
+  for (std::string_view key : {std::string_view{ext_loader_threads_key},
+                               std::string_view{"ep.cuda.external_data_loader_reading_threads"},
+                               std::string_view{"external_data_loader_reading_threads"},
+                               std::string_view{kOrtSessionOptionsExternalDataLoaderThreads}}) {
+    if (auto raw_value = try_get_session_config(key); raw_value.has_value()) {
+      size_t parsed_threads = 0;
+      auto st = ExternalDataLoaderOptions::ParseReadingThreads(*raw_value, key, parsed_threads);
+      if (!st.IsOK()) {
+        return factory->ort_api_.CreateStatus(ORT_INVALID_ARGUMENT, st.ErrorMessage().c_str());
+      }
+      break;
+    }
+  }
+
+  const std::string ext_loader_pinned_key = ep_options_prefix + "external_data_loader_pinned_memory_bytes";
+  for (std::string_view key : {std::string_view{ext_loader_pinned_key},
+                               std::string_view{"ep.cuda.external_data_loader_pinned_memory_bytes"},
+                               std::string_view{"external_data_loader_pinned_memory_bytes"},
+                               std::string_view{kOrtSessionOptionsExternalDataLoaderPinnedMemoryBytes}}) {
+    if (auto raw_value = try_get_session_config(key); raw_value.has_value()) {
+      size_t parsed_pinned = 0;
+      auto st = ExternalDataLoaderOptions::ParsePinnedMemoryBytes(*raw_value, key, parsed_pinned);
+      if (!st.IsOK()) {
+        return factory->ort_api_.CreateStatus(ORT_INVALID_ARGUMENT, st.ErrorMessage().c_str());
+      }
+      break;
+    }
+  }
+
+  const std::string ext_loader_chunk_key = ep_options_prefix + "external_data_loader_chunk_bytes";
+  for (std::string_view key : {std::string_view{ext_loader_chunk_key},
+                               std::string_view{"ep.cuda.external_data_loader_chunk_bytes"},
+                               std::string_view{"external_data_loader_chunk_bytes"},
+                               std::string_view{kOrtSessionOptionsExternalDataLoaderChunkBytes}}) {
+    if (auto raw_value = try_get_session_config(key); raw_value.has_value()) {
+      size_t parsed_chunk = 0;
+      auto st = ExternalDataLoaderOptions::ParseChunkBytes(*raw_value, key, parsed_chunk);
+      if (!st.IsOK()) {
+        return factory->ort_api_.CreateStatus(ORT_INVALID_ARGUMENT, st.ErrorMessage().c_str());
+      }
+      break;
+    }
+  }
+
+  if (auto raw_value = try_get_session_config(kOrtSessionOptionsExternalDataLoaderMinSizeBytes);
+      raw_value.has_value()) {
+    size_t parsed_min_size = 0;
+    auto st = ExternalDataLoaderOptions::ParseMinSizeBytes(
+        *raw_value, kOrtSessionOptionsExternalDataLoaderMinSizeBytes, parsed_min_size);
+    if (!st.IsOK()) {
+      return factory->ort_api_.CreateStatus(ORT_INVALID_ARGUMENT, st.ErrorMessage().c_str());
+    }
+  }
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
   const bool use_env_allocators =
       try_get_session_config("session.use_env_allocators").value_or("0") == "1";
   if (config.enable_cuda_graph && use_env_allocators) {
@@ -1200,7 +1259,7 @@ bool ORT_API_CALL CudaEpFactory::IsStreamAwareImpl(const OrtEpFactory* /*this_pt
 OrtStatus* ORT_API_CALL CudaEpFactory::CreateSyncStreamForDeviceImpl(
     OrtEpFactory* this_ptr,
     const OrtMemoryDevice* memory_device,
-    const OrtKeyValuePairs* /*stream_options*/,
+    const OrtKeyValuePairs* stream_options,
     OrtSyncStreamImpl** stream) noexcept {
   EXCEPTION_TO_STATUS_BEGIN
 
@@ -1212,8 +1271,15 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateSyncStreamForDeviceImpl(
   // the per-thread default cuDNN handle.
   auto cuda_stream = std::make_unique<CudaSyncStream>(*factory, req_device_id, false, nullptr);
 
-  // Initialize CUDA handles (stream, cuBLAS, cuDNN)
-  RETURN_IF_ERROR(cuda_stream->InitHandles());
+  const char* copy_only = stream_options != nullptr
+                              ? factory->ort_api_.GetKeyValue(stream_options, "copy_only")
+                              : nullptr;
+  if (copy_only != nullptr && std::strcmp(copy_only, "1") == 0) {
+    RETURN_IF_ERROR(cuda_stream->InitCopyStreamOnly());
+  } else {
+    // Initialize CUDA handles (stream, cuBLAS, cuDNN)
+    RETURN_IF_ERROR(cuda_stream->InitHandles());
+  }
 
   *stream = cuda_stream.release();
   return nullptr;
