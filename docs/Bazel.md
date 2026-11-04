@@ -159,7 +159,7 @@ bazel test -c opt \
 | Go | `//:go_binding`, `//:go_test` | First-party cgo binding and existing fixture-based unit tests. Tests explicitly load the Bazel-built shared library; they do not take the binding's missing-library skip path. External Qwen model tests are excluded. |
 | Node.js | `//:onnxruntime_binding.node`, `//:node_js_package`, `//:node_test` | Native Node-API extension, source-assembled common/Node JavaScript packages, and four existing test files with file/case selection. Not release npm packaging or the complete Node suite. |
 | C# | `//:csharp_binding`, `//:csharp_smoke_test`, `//:csharp_tests` | .NET 8 binding and existing desktop test sources compiled directly with `rules_dotnet`, exercised on .NET 10. Native xUnit discovery/execution supports exact class/method selection, theories and fixtures. Training APIs are not enabled. Not a NuGet package. |
-| Objective-C / Swift | Not implemented | Requires Apple SDK/toolchain rules, Objective-C wrapper targets, framework/module-map packaging, and Apple-host validation. |
+| Objective-C / Swift import surface | `//objectivec:onnxruntime_objc`, `//objectivec:inference_tests` | Native ARC Objective-C++ inference wrappers, an explicit `onnxruntime_objc` Clang module, and existing hostless XCTest cases/fixtures. macOS only; Apple compilation/execution and Swift import are not yet validated. Not an iOS framework, XCFramework, or Swift package. |
 | JavaScript Web / WebAssembly | Not implemented | Requires an Emscripten toolchain, WASM-specific runtime configuration, exported C functions, worker/assets packaging, and browser tests. Native Linux compilation does not validate this surface. |
 | React Native | Not implemented | Requires the Android/iOS cross-compilation and packaging graphs plus the React Native bridge. A working Node addon is not evidence of mobile support. |
 | Rust | No first-party target | Third-party Rust bindings can consume the C ABI, but are not part of this source-build migration. |
@@ -178,6 +178,73 @@ The smoke tests use the checked-in `go/testdata/add_f32.onnx` model and verify
 its `[2, 3]` output and every expected value, not just library loading. The
 C++ test additionally creates MatMul and Conv models in memory, exercising
 MLAS on CPU and cuBLAS/cuDNN on CUDA.
+
+### Apple Objective-C inference bindings
+
+On a macOS host with full Xcode selected (including the macOS SDK and XCTest):
+
+```sh
+bazel build -c opt //objectivec:onnxruntime_objc
+bazel test -c opt //objectivec:inference_tests --test_filter=ORTSessionTest/testInitAndRunOk
+bazel test -c opt //objectivec:inference_tests --test_filter=ORTValueTest
+bazel test -c opt //objectivec:inference_tests --test_filter=ORTModuleImportTest/testInferenceModuleImport
+```
+
+These are **commands awaiting Apple-host validation**, not passing results.
+`objc_library` compiles the existing ARC `.mm` sources and links the source-built
+`//:runtime`; `rules_apple` builds the XCTest bundle. A hostless runner invokes
+`xcrun xctest` directly, without generating an Xcode project or invoking
+CMake, CocoaPods, `build.py`, or `xcodebuild`. Filters accept an exact XCTest
+class or `Class/testMethod`; invalid filters and zero executed tests fail.
+The bundle includes the existing `single_add.basic.ort` and
+`identity_string.ort` fixtures at its resource root for `NSBundle` lookup.
+Tests cover the existing environment, value, session, and error utilities.
+The module-import test additionally compiles the public inference umbrella.
+
+The explicit module map exports only the inference umbrella and its headers.
+It is a Clang module import surface intended for Swift consumers, not a
+first-party Swift implementation or evidence of Swift compatibility. This
+repository has no standalone Swift inference wrapper to compile in this slice.
+Checkpoint/training headers, implementations, tests, and fixtures are excluded.
+CoreML's provider-factory include directory is deliberately not exposed:
+its wrapper takes the existing unavailable-provider error path. XNNPACK uses
+the generic provider-registration C API, which reports its absence at runtime.
+Neither optional provider is enabled by these targets.
+
+Apple libraries and XCTest bundles are incompatible on non-macOS platforms,
+so wildcard builds do not require an Apple SDK on Windows/Linux. The portable
+runner contract tests use a fake `xcrun`; they do not compile or execute Apple
+code:
+
+```sh
+bazel test //objectivec:test_runner_test
+```
+
+`rules_apple` is pinned to the already resolved 3.16.0 release to preserve the
+existing non-Apple toolchain graph. Upgrading to 4.2.0 was rejected because its
+transitive Swift 2.4 toolchain required `swiftc.exe` even for unrelated Windows
+tests. A one-line source patch forwards test platform compatibility to that
+release's generated internal bundle target too, preventing wildcard builds
+from resolving Apple toolchains on non-Apple hosts. The normal frozen-lock
+policy is unchanged.
+
+Validation for this slice used Windows and task-isolated Bazel output roots.
+The unzipped Python launcher requires a short output root on Windows: a deeply
+nested session path hit `WinError 206` before executing the tests.
+
+| Command | Result |
+| --- | --- |
+| `bazel mod deps --lockfile_mode=update` | Completed; the direct pin reuses the already resolved dependency, with no semantic lockfile change. |
+| `bazel build //... --nobuild` | Passed analysis of all 101 targets; no native compilation or full test suite was run. |
+| `bazel build //objectivec/... //:runtime_smoke_test --nobuild --skip_incompatible_explicit_targets` | Passed. Configured-query inspection also confirmed the Objective-C library, test sources, XCTest target, and generated internal bundle are incompatible on Windows. |
+| `bazel test //objectivec:test_runner_test --build_python_zip=no --test_output=all` | Passed all seven mocked-runner regressions with a short isolated output root and the frozen module lock. |
+| `python objectivec\test\apple_test_runner_test.py -v` | Passed all seven mocked-runner regressions: class/case filters, archive extraction, test environment, failure status, invalid filters, and zero matches. |
+
+No authenticated macOS execution environment was available. Compilation and
+linking against the Apple SDK, actual XCTest execution, and Swift import
+remain unverified on both Intel and Apple Silicon. Windows graph analysis
+and mocked-runner results are not substitutes for those checks. No machine
+was provisioned or CI dispatched for this slice.
 
 ### Existing desktop C# tests
 

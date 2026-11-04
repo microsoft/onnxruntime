@@ -76,6 +76,7 @@ config_setting(
 )
 
 exports_files([
+    "rules-apple-platform-compatibility.patch",
     "onnx.BUILD.bazel",
     "abseil-includes.patch",
     "onnxruntime.lds",

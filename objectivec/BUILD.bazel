@@ -1,0 +1,122 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+load("@rules_apple//apple:macos.bzl", "macos_unit_test")
+load("@rules_python//python:defs.bzl", "py_test")
+load("//bazel:apple_test_runner.bzl", "ort_macos_test_runner")
+
+package(default_visibility = ["//visibility:public"])
+
+[
+    config_setting(
+        name = "host_" + cpu,
+        values = {"host_cpu": cpu},
+    )
+    for cpu in [
+        "darwin",
+        "darwin_x86_64",
+        "darwin_arm64",
+    ]
+]
+
+# Apple bundle transitions change the target OS even on non-Apple SDK hosts.
+MACOS_ONLY = select({
+    ":host_darwin": ["@platforms//os:macos"],
+    ":host_darwin_x86_64": ["@platforms//os:macos"],
+    ":host_darwin_arm64": ["@platforms//os:macos"],
+    "//conditions:default": ["@platforms//:incompatible"],
+})
+
+objc_library(
+    name = "onnxruntime_objc",
+    srcs = [
+        "assert_arc_enabled.mm",
+        "cxx_api.h",
+        "cxx_utils.h",
+        "cxx_utils.mm",
+        "error_utils.h",
+        "error_utils.mm",
+        "ort_coreml_execution_provider.mm",
+        "ort_enums.mm",
+        "ort_enums_internal.h",
+        "ort_env.mm",
+        "ort_env_internal.h",
+        "ort_session.mm",
+        "ort_session_internal.h",
+        "ort_value.mm",
+        "ort_value_internal.h",
+        "ort_xnnpack_execution_provider.mm",
+    ],
+    hdrs = [
+        "include/onnxruntime.h",
+        "include/ort_coreml_execution_provider.h",
+        "include/ort_custom_op_registration.h",
+        "include/ort_enums.h",
+        "include/ort_env.h",
+        "include/ort_session.h",
+        "include/ort_value.h",
+        "include/ort_xnnpack_execution_provider.h",
+    ],
+    copts = ["-std=c++20"],
+    enable_modules = True,
+    includes = ["include"],
+    module_map = "module.modulemap",
+    module_name = "onnxruntime_objc",
+    sdk_frameworks = ["Foundation"],
+    target_compatible_with = MACOS_ONLY,
+    deps = ["//:runtime"],
+    alwayslink = True,
+)
+
+ort_macos_test_runner(
+    name = "test_runner",
+    template = "test/apple_test_runner.template.sh",
+)
+
+py_test(
+    name = "test_runner_test",
+    srcs = ["test/apple_test_runner_test.py"],
+    data = ["test/apple_test_runner.template.sh"],
+    main = "test/apple_test_runner_test.py",
+)
+
+objc_library(
+    name = "test_sources",
+    testonly = True,
+    srcs = [
+        "test/assert_arc_enabled.mm",
+        "test/error_utils_test.mm",
+        "test/module_import_test.mm",
+        "test/ort_env_test.mm",
+        "test/ort_session_test.mm",
+        "test/ort_value_test.mm",
+    ],
+    hdrs = [
+        "cxx_api.h",
+        "error_utils.h",
+        "ort_session_internal.h",
+        "test/assertion_utils.h",
+    ],
+    copts = ["-std=c++20"],
+    enable_modules = True,
+    includes = ["."],
+    sdk_frameworks = [
+        "Foundation",
+        "XCTest",
+    ],
+    target_compatible_with = MACOS_ONLY,
+    deps = [":onnxruntime_objc"],
+    alwayslink = True,
+)
+
+macos_unit_test(
+    name = "inference_tests",
+    minimum_os_version = "12.0",
+    resources = [
+        "test/testdata/identity_string.ort",
+        "test/testdata/single_add.basic.ort",
+    ],
+    runner = ":test_runner",
+    target_compatible_with = MACOS_ONLY,
+    deps = [":test_sources"],
+)
