@@ -337,6 +337,1626 @@
       "createdDate": "2026-09-11 10:54:27Z",
       "expirationDate": "2027-02-28 11:54:53Z",
       "justification": "This error is baselined with an expiration date of 180 days from 2026-09-11 11:54:53Z"
+    },
+    "11ad8d8949df3986c56e819f91fdfd0b56d7ad103b59bb5d8eac40fe18739689": {
+      "signature": "11ad8d8949df3986c56e819f91fdfd0b56d7ad103b59bb5d8eac40fe18739689",
+      "alternativeSignatures": [
+        "c6d2f955841471ad328b30d8cf74b5c1056a95f164d99dffe36ae99f48c0589d",
+        "63f82651087d04cf823f244d772ba3e13e0b107992cc5461fe84ec8b26f5529d",
+        "387df7fc267f2346fb92d4a728c8d6f6a47b7bfd9292d3932c614fb999447726"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/dxc.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "fa4b9758c2d9be053d88cb68f682592c8cc6d712a54c0fa1b2e374898005db49": {
+      "signature": "fa4b9758c2d9be053d88cb68f682592c8cc6d712a54c0fa1b2e374898005db49",
+      "alternativeSignatures": [
+        "8d5ae985e437c27e351390ad02219936dd39cacc6f6c2d448c2ee4d1a67743a3",
+        "9019afd678cb6d91340aaf5a6f963642d2fc00db82b1eb3b6a21b0ef471983d5",
+        "96fcde0b4b7d3464e816850900066927180725a044d6175fed28df14eefaa4e9"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/dxcompiler.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "869c8a2c7fa04b472a4d200051b6c64b7226a02d7b91126589581350adf37f0e": {
+      "signature": "869c8a2c7fa04b472a4d200051b6c64b7226a02d7b91126589581350adf37f0e",
+      "alternativeSignatures": [
+        "55ed0625c084d0a51922e5610112fd845365ff3c0c31d4df665f84171af5b111",
+        "bf1551bc674f429290fa0a84e27318013d718b8c40a88a9f442189fd39ca0adc",
+        "99da9c68cdaca641c6a3b93e1e94b058f7f205af1c0797f46a6634eccfeec4b5"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnxruntime.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "81f0952d9579963b32b8efb5bafb157214e6b55b9981613c52f927350293d8e1": {
+      "signature": "81f0952d9579963b32b8efb5bafb157214e6b55b9981613c52f927350293d8e1",
+      "alternativeSignatures": [
+        "b45546a9b69edbcdaafcf750785d1ea76233c1235570875debf85142f1a918fb",
+        "5d3272537d034be0902bdf5d77f3b4855cf9e39506b77452626913ce9e0a8e2f",
+        "982d598ccdf842f59ccd0360eed4ddb7377eb415a92146a6c31bfc4cb8bb6d62"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnxruntime_autoep_test.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "9ff6b939a518b1b67e59a61d3bb7e75c1bfadfb385db1ab12618708057e75b47": {
+      "signature": "9ff6b939a518b1b67e59a61d3bb7e75c1bfadfb385db1ab12618708057e75b47",
+      "alternativeSignatures": [
+        "e3237f2e37831734a31b728d2cd80fd738645dced7219af76bd9ff68d00fb479",
+        "64bc717a4cc971083c998c4d2b0d3a872a126c969801df68795c4158073d78f4",
+        "9586ccefd62e307508598b85080131273f79a61ad8643623ea36377d07130bff"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnxruntime_customopregistration_test.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "179a0de9470feffa2c9b682c6737be0cb590e8601739f7fd5e8a0fb82b7d62d0": {
+      "signature": "179a0de9470feffa2c9b682c6737be0cb590e8601739f7fd5e8a0fb82b7d62d0",
+      "alternativeSignatures": [
+        "f8b50258922bd682f9ca281a6edf1badfeac472cf7341a2877b4b587b8827594",
+        "6c0419d79b3650aa76990fa592a31975cd457d2f8080b6b629bb5e69ffa8d91a",
+        "59a36cbfcf79117a7871066891c113f6223930ba7c75ef517f7cebacb8f8de14"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnxruntime_ep_graph_test.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "483b06d4f60d40e7e974557c7e7cf6f1a74b7109bd62b7972ffb9906746bca55": {
+      "signature": "483b06d4f60d40e7e974557c7e7cf6f1a74b7109bd62b7972ffb9906746bca55",
+      "alternativeSignatures": [
+        "d2d5b6c7b559fc46c0b230283845c5a273b4a68ef5c1d71e34bbf006286e19b7",
+        "70e0bcc6af89ba67fe11d9d9491f16bf42c1378a01db62b593e112aeca33ea55",
+        "79643f14de2c057cb98ab8a69edb5eeba28225beae0c368b3da41b151fdf8d04"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnxruntime_mlas_test.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "2f83f1add83d2864f8e9d5cdc8a437851536c8cfa783161437a5fcf54651a374": {
+      "signature": "2f83f1add83d2864f8e9d5cdc8a437851536c8cfa783161437a5fcf54651a374",
+      "alternativeSignatures": [
+        "164f3bdd4b2da9471c9b78101c35a5e3e8bc621e275bf3690eeadb42fc1b535a",
+        "c5ed80d217944fb67eba31f5be01d6edee00fe86fadfea85d1abafbe07b4fa29",
+        "32e67ad74b9cbbf1fe6de6f2a5ccdfbb8a711d020f5e3c9748452e06dc18beb2"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnxruntime_perf_test.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "d9afc0acb22b9043860ab0621b0d761e87ac1f3795e3e1f2cc408c032fba72a7": {
+      "signature": "d9afc0acb22b9043860ab0621b0d761e87ac1f3795e3e1f2cc408c032fba72a7",
+      "alternativeSignatures": [
+        "ad283b4aa100116b6acb9e7d68fe2312fc9cba44fc3199397acc1f3cc1b45b83",
+        "b97b94f7d871235fd720a76581258b3efa402d9fde18ebc3fbcc9f9948eae0c3",
+        "94247573fb2506784880440016204eebdeee4710bd61fb1e50396aa97b205ec1"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnxruntime_provider_test.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "5d24e9c1e9d6dd2391f780360a148642b07dd58e5ba2090103fb838dc9722dce": {
+      "signature": "5d24e9c1e9d6dd2391f780360a148642b07dd58e5ba2090103fb838dc9722dce",
+      "alternativeSignatures": [
+        "4d836223d18ed23da5030dcf6077e5e26ff7501a5d5ae78345854033ea40620c",
+        "b19d0aef632b3e4ecc41bb21e6043a39a1315c723688c0a3d5a056f3d60762f1",
+        "582cde58b1c695f6a6b896f09bfc97a1dd8094075a186461648e7622c1f18116"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnxruntime_runtime_path_test_shared_library.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "952a842c0f3dd59f3fcaa5ae90e3071b653a0fe1d187d732ce63c769b4959dd3": {
+      "signature": "952a842c0f3dd59f3fcaa5ae90e3071b653a0fe1d187d732ce63c769b4959dd3",
+      "alternativeSignatures": [
+        "ac2608175b899cdc7d2101283de88a3224c11229a80acf2075a5e715822c85b9",
+        "70ec17e35ca8cdc1c19bab5b102b1dd2a04227fb0d482dc019bf0166e2daee77",
+        "d341434a5242a6b50056978d2675776499e9888a4b5d83356a7e87e4ef29e144"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnxruntime_shared_lib_test.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "e593d9fb620a1544e85cc1fcb2e5f69bde8e2f7537ca675df1e296f8b4730d5b": {
+      "signature": "e593d9fb620a1544e85cc1fcb2e5f69bde8e2f7537ca675df1e296f8b4730d5b",
+      "alternativeSignatures": [
+        "962c1b9212a70340d82b8858ded5c8d3525ee01f9e338a68622ba5bb8d690027",
+        "1f5cb902da9dcf147c8d41bfe12883c1db585b6c10b8b2ff8cef48824cd54728",
+        "5072edf4864fba506b4a643e86b962592b1d34c3a43051e9ed8a8ac4af8397d8"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnxruntime_test_all.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "b0ec37fe47df798947d298e2eeeaa89cfd44134577b9ed3c5c0cb0c241e47d6a": {
+      "signature": "b0ec37fe47df798947d298e2eeeaa89cfd44134577b9ed3c5c0cb0c241e47d6a",
+      "alternativeSignatures": [
+        "8e8f911a8c50fbdc57d145593b10738f8532c3dac60b62715c5df33914bafec9",
+        "7b84e48ac8e2066bd3f82773ad138a3d00500e87d0bac8d275ca5da1d946fd93",
+        "2ea742fbcbe0a802e9c5a0a7540d5d0abc0a9d57555c56ece8be2179c764c8cf"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnx_test_runner.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "23e1ea473991dcf9e57ee3e9760f97fc8cc776fce9fa3328f953acc71d7af879": {
+      "signature": "23e1ea473991dcf9e57ee3e9760f97fc8cc776fce9fa3328f953acc71d7af879",
+      "alternativeSignatures": [
+        "c2f8f3d0f330a27be9c77481be53e36b541d206324acce22dd68a79e87d2267e",
+        "9113d3eb0a3cd3b2f1c8e56abe0360ed6c211e1fe1a0f7a24553438f29152f85",
+        "6262af0aadeb3879baa0487c44fb650aa23309ffb04b8946b5276f671bca3155"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/webgpu_dawn.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "a9846acea34bdab6c702ba1aa14e82e8254eb099d82af4f089c646768e8a56c7": {
+      "signature": "a9846acea34bdab6c702ba1aa14e82e8254eb099d82af4f089c646768e8a56c7",
+      "alternativeSignatures": [
+        "b05bbf8bbb927ccff505c87f4eff00871824df631caefbbcc9c4abc3980b96c7",
+        "9212a734d7e033925c849c773a9e1e11f22ab3a235987d5c17ef13692e9a02ac",
+        "fe76f6f42db238a1f4a1d2c6ac7cc663986f9a5cd5337559a74c3800070977f7"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/webgpu_dawn.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "77f68bc1260e5d12df4dd19e34c4881347db66d217d3e34173ae1ff4c013ec1f": {
+      "signature": "77f68bc1260e5d12df4dd19e34c4881347db66d217d3e34173ae1ff4c013ec1f",
+      "alternativeSignatures": [
+        "56794f946845f85c2cef216b0fec2737ead7f9d973a807f49d1a5d0633dfd144",
+        "784d1d4b584cb006dc2c8e1dfa884bf47724d9cb92d1779b7ff512456a6b83fb",
+        "534af17ccf08a7159183cabae0a982ddb1a136d83285564ab13283ac0e28fb33"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnxruntime_optional_provider_probe_normal_test/dxcompiler.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "aad255ef6cfb0b3c1a9e2c8f82e2fb866d64eea33a538a925dc053541ad73acd": {
+      "signature": "aad255ef6cfb0b3c1a9e2c8f82e2fb866d64eea33a538a925dc053541ad73acd",
+      "alternativeSignatures": [
+        "939922495af6481a255c3a9ef092cf799d568ea909839cfb4313ffbf09d4f191",
+        "d45dfee19b292efd84772efa182a7ae1220928f27c037c5a6d4f57c4190d30b3",
+        "98a7fe42c70ac64a7d153ad37d4b00a0ec22e9aea9cd5350ac222c2367cba397"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnxruntime_optional_provider_probe_normal_test/onnxruntime_optional_provider_probe_normal_test.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "e38d811da9147eac8b7cb16e68f2c2eca22a879d84a349cad34cb2910b3d8e53": {
+      "signature": "e38d811da9147eac8b7cb16e68f2c2eca22a879d84a349cad34cb2910b3d8e53",
+      "alternativeSignatures": [
+        "edae7ddbdbb1b93583f779ffc07a7aabf42a037bf53f8ba5306e1d2a0059d98b",
+        "d8d0d676a17c4390531203bb722ad5e2f414d80507cdb9a7b84f4ec5bb3f6431",
+        "8c7b8c9e125d9df763e494e9c5d2a414dbbcd2048b3fcaff845dc841b7a01b7a"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnxruntime_optional_provider_probe_normal_test/webgpu_dawn.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "c088a98bdcb4772fb2a42d70a87cb8fbe9fa2a54eab2a71ca7dba942b745a9e7": {
+      "signature": "c088a98bdcb4772fb2a42d70a87cb8fbe9fa2a54eab2a71ca7dba942b745a9e7",
+      "alternativeSignatures": [
+        "b182be47800e12426111cca8f28f63c1d855920bdcf7372d2c6b34fed757618b",
+        "59d01855dcba2a7ce24968d35fd9a5d623d131d03e80f94a01a204be5982fa96",
+        "9c52e020f4c39047f3f81ad17a1f414f76823c91046904f2d7c1346c37f425f7"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnxruntime_optional_provider_probe_normal_test/webgpu_dawn.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "3b632941afd2381a2e76a413c786bc6b41add47405515e2f3d19a5a9bb88afe2": {
+      "signature": "3b632941afd2381a2e76a413c786bc6b41add47405515e2f3d19a5a9bb88afe2",
+      "alternativeSignatures": [
+        "8a1194c2f791a794add264d2260bc1d56b1db4f38a20e53b36dbfadcfdd22f29",
+        "dc663eb5924f5103386acb719ffa42d58096242ed27e0f8d112c205733c1d1f3",
+        "2a3a6e0b13c299a41abf15876339835120a3e8c3f1db769168ea982ec8aa57b1"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnxruntime_optional_provider_probe_no_exceptions_test/dxcompiler.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "f46734a13be4e5804dc72c341e8c6b3d98257cc767add1718651bf013d9014e0": {
+      "signature": "f46734a13be4e5804dc72c341e8c6b3d98257cc767add1718651bf013d9014e0",
+      "alternativeSignatures": [
+        "a2aa328447f42057a7377335e79756c381f11bc15cfcb64865d725fef71bccc1",
+        "9f2ae2f1849ba7203455f167090509d204cd747b4fc70b9505a507bd611f0132",
+        "3e42890dbd8b594ef5304a0f9b3cdf851440341fcbc76e82cdb470fd3e6943bc"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnxruntime_optional_provider_probe_no_exceptions_test/onnxruntime_optional_provider_probe_no_exceptions_test.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "1dc4a3068730b2d1aa4379a1c0fbccc859014df4f54a772e014bc53fa6c9a6d7": {
+      "signature": "1dc4a3068730b2d1aa4379a1c0fbccc859014df4f54a772e014bc53fa6c9a6d7",
+      "alternativeSignatures": [
+        "d039edf5966e715f42216de6ad7041914c2c74a1593ffd8d2fd5020e5e489de1",
+        "aa818027b50c865ba87879b266a65fd273ed5277aa54d8994df809adbed3357b",
+        "a995a9d77d3116591aec815b5837ace92455d0c40db4d1c8d7bf2a5468d0313f"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnxruntime_optional_provider_probe_no_exceptions_test/webgpu_dawn.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "4198ef2f64b1492ecea987239a8ab1af7a8f24afbe4d6be8c5dcd64b4b58b770": {
+      "signature": "4198ef2f64b1492ecea987239a8ab1af7a8f24afbe4d6be8c5dcd64b4b58b770",
+      "alternativeSignatures": [
+        "c460769701c504e120c711ecbacb3e05726f68fa2b007659d50a7e6d3fb7d7c0",
+        "48cccd56b82584e262bffd6dab12e50e083ae2cf8537879be10c3b7c16707166",
+        "f0371b51a95583dbf24f20eb2b85fe469470f4f16a16b04e0255489893d1cf05"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnxruntime_optional_provider_probe_no_exceptions_test/webgpu_dawn.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "235d893a8b7e43f4c0b33f055c6a33bdb78f8249392407fc7ab7da0f5b9b817c": {
+      "signature": "235d893a8b7e43f4c0b33f055c6a33bdb78f8249392407fc7ab7da0f5b9b817c",
+      "alternativeSignatures": [
+        "63bd400ead35d8cc7b8c6bb6118b8af9e83f8740cb27c1117ed6c64e94e65b04",
+        "14771102eed7579b54dfcc78d64ea0b649fa81a74bc7910c1740eda2c2d57940",
+        "5cc9c6bbe9aef70d5d7cc4487fc6ea7aceaca9d2da973dadc85bbfcd5c8de493"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnxruntime_provider_bridge_normal_test/dxcompiler.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "c7c438b5a3c65fd4bd783a283a9d4067771e59a794a0d9af49d8d816553ad94f": {
+      "signature": "c7c438b5a3c65fd4bd783a283a9d4067771e59a794a0d9af49d8d816553ad94f",
+      "alternativeSignatures": [
+        "c6f8dde3252a489066262da9849fb7dde216e66d8b0a6e0700ab029dd0855b19",
+        "d891d8d1fd0a84d238a330941aeaa0482f896cc810f9c737e832f5bde6aa0253",
+        "6b3898e7b9243825ffe5ecb2eda8fb672e9946d1ef2368bbb68897db40b7ec64"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnxruntime_provider_bridge_normal_test/onnxruntime_provider_bridge_normal_test.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "a79161c407d00a83b2cc86539519aed69efef9a115d0ba37c43a3f72c63d716b": {
+      "signature": "a79161c407d00a83b2cc86539519aed69efef9a115d0ba37c43a3f72c63d716b",
+      "alternativeSignatures": [
+        "51b67d51e9d344af2ced24787225c2acbec075faca3aa299ee4d81743bb8e70b",
+        "fbd365092f5f82b56f322a2863a76a681eae7281559f6a4c2e1550c6853a4ca4",
+        "84569e961dfbc9ddb433000c4e4bae639450e43b4b80e0429d0f1358a515b757"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnxruntime_provider_bridge_normal_test/webgpu_dawn.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "89b201afe382bb38aef08dba993a7a3417a4cd11a293767cc2613c039d042a0c": {
+      "signature": "89b201afe382bb38aef08dba993a7a3417a4cd11a293767cc2613c039d042a0c",
+      "alternativeSignatures": [
+        "65674fd4629daa95b934ddb7a0d86ae823ddda756104f9db3fc1681ace1be709",
+        "50cb749cf54de6edbb65db6bed0db58433bfec569058090ac5922d7bf95fba6a",
+        "a13410a8cb60cc1039c55101f758c0e38c6e1014daa3d7a9fd319c03f5df7fc4"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnxruntime_provider_bridge_normal_test/webgpu_dawn.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "b8e89f05507d1c0f8068ede9d60e932fb5f9430984fb75003aad1774cbf67478": {
+      "signature": "b8e89f05507d1c0f8068ede9d60e932fb5f9430984fb75003aad1774cbf67478",
+      "alternativeSignatures": [
+        "0db168ccefb6c249b77bcf1a5254782c69e02b8004d5e238e130b8ea6148e321",
+        "093b74ad0655af67bbec4df3403dbcd0042ee655f2d88d642e926262c9c0c9da",
+        "5edf6281490ad7a2f3e82484c54ad6ac7e590136c6e08a8f966726271e6a158b"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnxruntime_provider_bridge_no_exceptions_test/dxcompiler.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "0f684d39e2f5acc049ab3be4098adb47a8518de9f50828a3a3bca9f4f6d46360": {
+      "signature": "0f684d39e2f5acc049ab3be4098adb47a8518de9f50828a3a3bca9f4f6d46360",
+      "alternativeSignatures": [
+        "548e885a0e35e244240a74cec5a9ea7849e9d8dab2b5be3a95e23a8d6ff9b6a4",
+        "120848b5d6e50826f0d4c520f3d9916dd7fa0409bc49d66c729f6ae4afd0f396",
+        "c2f0b23c7c65fd279220a9177214aa4e38ddc481de004fa882834aeed5ecc6c5"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnxruntime_provider_bridge_no_exceptions_test/onnxruntime_provider_bridge_no_exceptions_test.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "499c0884fe57ebe2b5c6173e8d153bc73680bee57e48218454d9c8a9f40fe78f": {
+      "signature": "499c0884fe57ebe2b5c6173e8d153bc73680bee57e48218454d9c8a9f40fe78f",
+      "alternativeSignatures": [
+        "f4b6b6d894a83fb7565994d74ca12aa08a60c592919c63ecc74905b24c35ba14",
+        "94b60ff1b0b1f24ab21330d3b60f917bf92c67f87d61f3c5aab5ccaefdd07d3c",
+        "875ff04def8db8213f1efbb6ed86c4835841cffbd315d4728de1e7254820ec5b"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnxruntime_provider_bridge_no_exceptions_test/webgpu_dawn.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "5faf5c4b95ae096b5aff3e3a8a7bdaeef4227085fd46aa69dfb9f1121569c956": {
+      "signature": "5faf5c4b95ae096b5aff3e3a8a7bdaeef4227085fd46aa69dfb9f1121569c956",
+      "alternativeSignatures": [
+        "f11609174ba70a9b7e0afbb77892ae2172fb4f4ff2ac4891b27419981942b721",
+        "ad520e2b5821a4555d6801706c886a8c668ed1c1a4ba2e34077090bbc621bbc6",
+        "3343f93912f9c7cdd1d60d29c2a03ed71c83cf4ba393de1ac35cc67671cc348c"
+      ],
+      "target": "webgpu-build/RelWithDebInfo/onnxruntime_provider_bridge_no_exceptions_test/webgpu_dawn.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "a7d6c217a7bdced78f16abb6b30568f7becd203726f02b90fc8e31faa43a986e": {
+      "signature": "a7d6c217a7bdced78f16abb6b30568f7becd203726f02b90fc8e31faa43a986e",
+      "alternativeSignatures": [
+        "085e32cdd01603d5e153049d00231466aa2f7cfbd4bf7c4b2f13f6c7c76df89a",
+        "f09bbb6956d368ad0518fb29e03ec49a21c5249573d83d9751ea712fc94ee187",
+        "79397c6c8e0948f5bed67258ce8eb121cd0db66cbc9815c415fc6ade5d44b381"
+      ],
+      "target": "webgpu-build/CMakeFiles/3.31.8/CompilerIdC/CompilerIdC.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "235ff573bb4403f42599ce0d78d9741faf6772939e039b871370ab8ac315659c": {
+      "signature": "235ff573bb4403f42599ce0d78d9741faf6772939e039b871370ab8ac315659c",
+      "alternativeSignatures": [
+        "ed3be551d9d0e1228cb24b3062d6d57645615374e2ca58ae7e3198b871a90de6",
+        "f09fb63aaa2932bbcbf08874d167e0551c306e848c30b53285803f6af3675e72",
+        "f9c3fad975061eec6d79fc5c6047728534fafad6715c126da9524b698e77c61c"
+      ],
+      "target": "webgpu-build/CMakeFiles/3.31.8/CompilerIdCXX/CompilerIdCXX.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "007a70e48d341691687c942ebbb6d7c4606b5283f5044e8fc39259ca83811121": {
+      "signature": "007a70e48d341691687c942ebbb6d7c4606b5283f5044e8fc39259ca83811121",
+      "alternativeSignatures": [
+        "54c2e3cc118b1dc50ba2e136ed14e0195f60062c100687bfac83f9a9dd36175e",
+        "4b37988381aaa8e9ef87a2257d9cee20a7a7333cba857961495b7d0e41234ff7",
+        "35385c6e25642e99f85f9df66339bfdc66efe07c50fe00c626f470166ad09d8c"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/bin/abseil_dll.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "ec53d1fd7c90210603aadbe4b5898faf1449cbd049e9dbdd98ea40c02ad20881": {
+      "signature": "ec53d1fd7c90210603aadbe4b5898faf1449cbd049e9dbdd98ea40c02ad20881",
+      "alternativeSignatures": [
+        "debe043321ca6cef9984ed0576a37e147cb6f2cc70d6ad9e997ba0846d24b4dc",
+        "33f57a8b90c2a436ecaa2323ef875b8a278d43833ddca90a2e46fe40a1285ebe",
+        "e0318949935281ec96142b1c4bec1f3ec9fc30e384ec2264a711fdebf7870a5d"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/bin/libprotobuf-lite.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "9498e6fda9b269b13b13385639ff4240f96e064d279d6055efb73581e3011b70": {
+      "signature": "9498e6fda9b269b13b13385639ff4240f96e064d279d6055efb73581e3011b70",
+      "alternativeSignatures": [
+        "32b8fed9903102f374ccdd214ae138246f7dcb0223c491cecb893343dfb6d1f2",
+        "30801a33e963b60d4036b27a7fe32ccea982a198d7adfdd6531d94d419dc6d6d",
+        "418c3a3c3a5658dd793c0c12ed7cbc851e31d610b939d22dd43e3257b2071564"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/bin/libprotobuf-lite.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "f6d34fe309eecdcc03862620f8d902bfd664ab6d4c90e83ffb501c2c3701b34b": {
+      "signature": "f6d34fe309eecdcc03862620f8d902bfd664ab6d4c90e83ffb501c2c3701b34b",
+      "alternativeSignatures": [
+        "0178be8589229ca325eec2507c30166c0766d47d0ceed9ba81f49a5f11745a23",
+        "a65401fe1fc4d1c71b5ed6db77a662cccde97275132c6bbe06fc62f5c3e8088f",
+        "e63a7ccebfefe89c18d72d2ce4f5487a8bd1d434c9cc53e762c3ca12cf869b66"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/bin/libprotobuf.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "9c173ac849d5af9a168968196958a4bf6860e026d0855d209d841fc1500446c9": {
+      "signature": "9c173ac849d5af9a168968196958a4bf6860e026d0855d209d841fc1500446c9",
+      "alternativeSignatures": [
+        "3a340b31b01e8336aab2ba88be7b667215b4c29aacda7d3eb46f55625996bd35",
+        "40f1e95377553983c9c4182a7cffb39223df6f727df7212b9d6d81c6cd98b13d",
+        "1720dc11f8f66269754429060b24ebe85147bad643de2cc5105c10cc13b9db31"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/bin/libprotobuf.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "cf743c6ca6eb367db7f601f665263d35bb98413d5e94a15ec05192aeead0a6e1": {
+      "signature": "cf743c6ca6eb367db7f601f665263d35bb98413d5e94a15ec05192aeead0a6e1",
+      "alternativeSignatures": [
+        "3016a4e9cfdfcd54a8e63ddb466c5e15db43731195be963da3b57c6bec2bbb46",
+        "6b56591c9aa6d192471a8f2b22b992120eba4ee8697e595e8aac91b1cdb35332",
+        "16d5921153b150bd0ad35ff888b432d8419c42b22b3fa7c6f1db87fa7495824e"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/bin/libprotoc.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "cae0a4dc3a7b0841f772a17f62f6390450b746f3a7740e01753aa71c849f91ca": {
+      "signature": "cae0a4dc3a7b0841f772a17f62f6390450b746f3a7740e01753aa71c849f91ca",
+      "alternativeSignatures": [
+        "2183ab7a4e0da6691a5e89328a2fb12606df3f89c7a747a1cf9f4e05180567c3",
+        "0f60e6f5749461bc9f3896dc38bebfec1d48dc4a36c09bb53fc00182a868b0e7",
+        "7c0a51235d602a5ce5f4aa9a1615f27844266323906795d33c8b8a27f3128e67"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/bin/libprotoc.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "3c73588875364a408f0bf94895b362392153c853766eefcf94b09febf8d2e66c": {
+      "signature": "3c73588875364a408f0bf94895b362392153c853766eefcf94b09febf8d2e66c",
+      "alternativeSignatures": [
+        "dffbf3df1cb987407b893ba49c807448fc3a55d8f26b5df78df4b941aea09650",
+        "279266a7ee873650710168bfe00fa1203d2e2f13718c4a86487bacf56f063d6f",
+        "f1685d4a2d32576581b372a69304e9bf1bf7711af2628f10b623e7d319a95e2a"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/bin/libutf8_range.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "d735823a518251e095a419173220b54798d5adbb3041fa167fc1123d5046cf2f": {
+      "signature": "d735823a518251e095a419173220b54798d5adbb3041fa167fc1123d5046cf2f",
+      "alternativeSignatures": [
+        "9d8b2c911ffa08eae1ec31ecf657a946a28001bc8dd0e4b394a103e138e369d9",
+        "53bdbd659e2c0415794a9b0fc3043d3ea92d5013a0ef95c69dc7dc56a9d85846",
+        "a5798876f75c885e4b16100a3bca30a0307637ef8b9b6d12170362038cdcbe12"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/bin/libutf8_range.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "505dd6d1e4ca40a2d5932164ff62f85795de0080952bda101b34fd7db895489e": {
+      "signature": "505dd6d1e4ca40a2d5932164ff62f85795de0080952bda101b34fd7db895489e",
+      "alternativeSignatures": [
+        "e0f60ec5a9785e46202a26a567cf53bf3721b6283344478ef421a3377f4b3012",
+        "909b19b5749036aaedb5e067b2ce964199431c2245a74230838c5334982d59ed",
+        "e818748789946c52341840010c057ecef69e28c886dab095617dce078d84f447"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/bin/libutf8_validity.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "03eded6bd5af38c02f43d6d67761557c18f691ee656bf08dbf937ec7084d66fe": {
+      "signature": "03eded6bd5af38c02f43d6d67761557c18f691ee656bf08dbf937ec7084d66fe",
+      "alternativeSignatures": [
+        "46d0b58a87e0b83788e015b8c493ee45ac365934cc0b7c84d28af582c15ea410",
+        "b00cc55063f2221e442e3a939728a02c629f3ab7c7f7136cfa1a9277e17e189c",
+        "976effc2fc12858395da61c9d695b72c3b5eb0faac2bb5508f13a7914dd4a63a"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/bin/libutf8_validity.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "4b615a095eac751dc3093ac50c0defc22cd0e4734a56e61c4d8cdbcc303a61d0": {
+      "signature": "4b615a095eac751dc3093ac50c0defc22cd0e4734a56e61c4d8cdbcc303a61d0",
+      "alternativeSignatures": [
+        "7c2d8f5677a8fc82feda93ad3055a0e5607a010368cbe604b2f90b9d39213c1b",
+        "7edc7de2b9d16d8757af06a88d91dfb8a9cc7d57234624d0e6afe1ffd19af946",
+        "3b3d07bbf560d26eafa447d162695ccc007a0e23897552bdda8cab4d8fa7d58d"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/debug/bin/abseil_dll.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "92485b2bb4013391e3fe00513a0142c0e162536d5eaa45a5666fb95d28b6872f": {
+      "signature": "92485b2bb4013391e3fe00513a0142c0e162536d5eaa45a5666fb95d28b6872f",
+      "alternativeSignatures": [
+        "d6555dc4317709234725f75e447be6d6700a215c4f2b00ca41f812fbefa8fba6",
+        "9a4555027d8b94901771d023441c72c72b80e196d7849825a51ce4bdc0c12936",
+        "2f1f90396154053a6c0e3bf136ce45048387496173cae4565e95acf714177b7f"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/debug/bin/libprotobuf-lited.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "ef8999ff91ff701b16edfb21daed1298e258e46219fa19c2b314eb03d0e50a3d": {
+      "signature": "ef8999ff91ff701b16edfb21daed1298e258e46219fa19c2b314eb03d0e50a3d",
+      "alternativeSignatures": [
+        "ae30ab59bf68f9f571f1fc661b59c7952cc2d6c9dca00245dbd295f3076ec91a",
+        "7c33fc817f545715902d0710399a62ca683dd35f1daa4daf24b75d196ff2686b",
+        "58e32a31abd5d724a3ab28687d2c5e3a9132a55e37b3c62034b48d260857329d"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/debug/bin/libprotobuf-lited.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "44deced7ccdf28f87ca8e62c18bb0660293ca6834c0347a607f5865615a269d6": {
+      "signature": "44deced7ccdf28f87ca8e62c18bb0660293ca6834c0347a607f5865615a269d6",
+      "alternativeSignatures": [
+        "5d51330d2a48556011cbd1ef1ff013c82a20bed0b5c9a0dda9936952730af884",
+        "02419496b746181053a0fb2cb363d0ebfd34b1246712f11544a286dec798e936",
+        "199b26d2989a310e011050f1c06d391665b20539922ff4fec309e2caf5a56ffa"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/debug/bin/libprotobufd.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "0266256bc638b7e3a6a4111fb0b8ffb7967e995c8aa412cadbcc908e7783e514": {
+      "signature": "0266256bc638b7e3a6a4111fb0b8ffb7967e995c8aa412cadbcc908e7783e514",
+      "alternativeSignatures": [
+        "584d029f42c3baed4ae57b5536e7aca4152d9ffbc8c4248eadb6935f8b006236",
+        "1af501d0551453ce86b007dff3f733df8d5155dd4ebaa10334bb0e5c7b70d8e7",
+        "dea65cf03ee1bd495eb71840b637647a74eb1e61976ac740d568cfc4fac1165a"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/debug/bin/libprotobufd.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "10a43e632ffeda13d23753bc73f4999be995e625cfe1827408e74e58a6909cb3": {
+      "signature": "10a43e632ffeda13d23753bc73f4999be995e625cfe1827408e74e58a6909cb3",
+      "alternativeSignatures": [
+        "a8ab800090d51516b4c867a8f04cfec9e1a3a8c0aff5a1dcca39d1ab69ffe5af",
+        "8be5c842a8e7d9752b27349cc5e80b960f06a99ee1974a566dc98fefed714ae4",
+        "277ee6e2287744dadcef1a40560627a72625d6cc817f0c2bd86c7c02975a900f"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/debug/bin/libprotocd.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "f713a2768b1d7ff56ddd517191ba0159da07c01274cd87e01d0106509a7f63e9": {
+      "signature": "f713a2768b1d7ff56ddd517191ba0159da07c01274cd87e01d0106509a7f63e9",
+      "alternativeSignatures": [
+        "5f27e735aeef55b09cd562d8dd513d9db437ae7a6b495f0aba2a9e163825b4d4",
+        "61738f21b048b5ea190df12a4a9e1db524780f6f833bc63a2dbe3d5102cb76f2",
+        "7e4055ba15573faef6a1de5f36344dd8097131640f3ae9ba05882ec5ea7e19d9"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/debug/bin/libprotocd.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "cbe516e6b4539827067cf900b1db8862957d157367965b66925ab65ec6599bb5": {
+      "signature": "cbe516e6b4539827067cf900b1db8862957d157367965b66925ab65ec6599bb5",
+      "alternativeSignatures": [
+        "ad5d0b548dcbc7b608551817d6763a8afbe2c94e30eb06b5fb8b4faaceec513d",
+        "4b5a6afdb49cdf732535647019548b32f728d56825cbb0775c82c263a363d929",
+        "ea8922b27af2aab776b4a3feca473e92aeb8492ed72080dd4a5c08fdfa27ab2f"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/debug/bin/libutf8_range.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "cabea77d8954d95d0b64c3678a42e562cd155c833bfece1aa817f690ec32d0ea": {
+      "signature": "cabea77d8954d95d0b64c3678a42e562cd155c833bfece1aa817f690ec32d0ea",
+      "alternativeSignatures": [
+        "a3e4fb2eb377339af2e03ed6c7ec14113b336fd7035a126c1037cd811195f330",
+        "9670d86ff4e69ce57042a326ea4a5a6ab1acaa399681f3e704690936151e0f4e",
+        "b3ac008b3dd8f01201aabdc90ec1fbcad86d971fcccdcb9bb7b9ed5a9856617d"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/debug/bin/libutf8_range.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "103995c2c0e555038d8c92aaec223a2ee69ba4e5c724efe79493ece9c6271202": {
+      "signature": "103995c2c0e555038d8c92aaec223a2ee69ba4e5c724efe79493ece9c6271202",
+      "alternativeSignatures": [
+        "8f0ad55aabd3c95ab8b75c0c03f509a9e0ea4f9b67ea9eee7691339b2fd40161",
+        "b96e06be7d8679a748fd10353a115447e297fb244c665d64a2b7a57dbc469d7d",
+        "e136720499c62300e63b356292b663e8a8e82971f3cdaf578df0966ec42e4ff4"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/debug/bin/libutf8_validity.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "01ad31d001da9713871cde14ac3604aab1d22ef9e6470b12bbcc89d88d5e0975": {
+      "signature": "01ad31d001da9713871cde14ac3604aab1d22ef9e6470b12bbcc89d88d5e0975",
+      "alternativeSignatures": [
+        "df8d65a9e668aacfe19472bdc37d8614cf87c011bc83b53b270d194393215f07",
+        "6de4c73eb8f58ced1f4c091798a859c40b64a6c4de8abceddc6e66c140a20437",
+        "b97f2671a30e327586d19455a76e6f6ad8e0108995bb32030b8d541d81b954e2"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/debug/bin/libutf8_validity.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "4ac11d56457cce70f2cd1e59b070432319dec94bd2740196073116585307ca67": {
+      "signature": "4ac11d56457cce70f2cd1e59b070432319dec94bd2740196073116585307ca67",
+      "alternativeSignatures": [
+        "b3199b8ca3ad114710c9baf4f2481a8edaf712e810e0426c0acdc0ff65ed2f7c",
+        "2b4a17fbcfd25f85af382bb337aeb27f86fd353f511f056deced1d6ef74a1f67",
+        "bbc79aefea6df067de92f00b2fc4bfff95ddfe6facf31b1b90118cd3054eed23"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/tools/flatbuffers/flatc.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "be53db328a563c8dc8818397c548bc05490795c5f37745e673216431df85a08f": {
+      "signature": "be53db328a563c8dc8818397c548bc05490795c5f37745e673216431df85a08f",
+      "alternativeSignatures": [
+        "28b92bee266804b999adc03bdb89b70e226a5fda52bf78ed001b809ebba98b88",
+        "b09ebd4e8897a70c8af1b2e4df72762bbdfcf23ca8c2c9384ecfc2dbce0ed815",
+        "11a9dd5ee5707e5fab02ed92e8339c87e249fd9d612322949e9ec7e258fc5ef6"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/tools/protobuf/abseil_dll.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "67ba162f8b88a56affd0c646ca8b8b6811e5c332a32ce95b97a17672b4f58b40": {
+      "signature": "67ba162f8b88a56affd0c646ca8b8b6811e5c332a32ce95b97a17672b4f58b40",
+      "alternativeSignatures": [
+        "abcf0a26d211b8348cd1d5cfecdfdc71a1c63802ea75177b57a58fc3062051b6",
+        "0d8d2bb5c5d09493083a6e1965c40a45dd4567750dd51ee614b26b258dffa23e",
+        "bf59716b98dbfdd37d844d551eefcdc97558d2c4e1ce29801c8314d1b6f13ee6"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/tools/protobuf/libprotobuf.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "929c63c22bab15d5357b9939ceecbbfe922225650dc5a943d4f438691175611e": {
+      "signature": "929c63c22bab15d5357b9939ceecbbfe922225650dc5a943d4f438691175611e",
+      "alternativeSignatures": [
+        "904ee3f9c5aa27dfe0606732c52d35946802ca711f9e35c3fc79eb057238b4c2",
+        "c9b9d5e80b1969e4094819b1ed6539cc2d856e617b2e45f70b9708f0580bed6e",
+        "5f781be5d5df39583b6bdf20838d0df6de5a9b115ac9f4ee3dbbc2b156a4ba8b"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/tools/protobuf/libprotobuf.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "8509422094fc626bd29b5441d986718c5ea2d26df8732de1fcea204fa0a68186": {
+      "signature": "8509422094fc626bd29b5441d986718c5ea2d26df8732de1fcea204fa0a68186",
+      "alternativeSignatures": [
+        "994085461ffb69692f6d9411e87a1000c2c52bc1803eab06c924c726fd462640",
+        "14d607e213ad94037067474f114c131029caaace3c363e1ea7f8954dbf661256",
+        "8ff0481e25c86601f8517954a5a121f9c89d460717a84899b028c1f0d3e1ce3a"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/tools/protobuf/libprotoc.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "82871a3b16bc954ecb6c9b21a8fcca1ad1def3905aa44360e56d7a526161bba0": {
+      "signature": "82871a3b16bc954ecb6c9b21a8fcca1ad1def3905aa44360e56d7a526161bba0",
+      "alternativeSignatures": [
+        "65b8445d41eaea49026e9dea9a741cf504502f26163cc28bb664488ac748d5af",
+        "6c76204bf2614a4cead391e064075e0b565ea7a6aa43302577875dd4010e58fa",
+        "a27a97f40d2ca571131c7e53d9e7f1a3d8835c24026e1b5714cfdb0244426ed1"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/tools/protobuf/libprotoc.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "574b37e9cff937eb6f9da69276045884ac4b28bf2aded2700dce078e67ffa590": {
+      "signature": "574b37e9cff937eb6f9da69276045884ac4b28bf2aded2700dce078e67ffa590",
+      "alternativeSignatures": [
+        "1db97fd777bf159b45e5e86b863a06765654a873a3c7a06a99dfae45681cad6c",
+        "0bf2df3e768478cd086133e506db60635413603e1a528bdc60dd5fa30ee9a103",
+        "fba0634238470aca2c5d38de9f995b66d5af8fd117035afe28ba67da9cc4e745"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/tools/protobuf/libutf8_range.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "2a869b8679248d6085f8a8206381da6e93ef98bdce590502699d7b00b28be169": {
+      "signature": "2a869b8679248d6085f8a8206381da6e93ef98bdce590502699d7b00b28be169",
+      "alternativeSignatures": [
+        "c907e6ef8601f86aa97b157e5e8c03fe5babd1688fa6c6e105c73574a97603af",
+        "0a1f5f7dc9340b8446ea5473e7fb70f5de8ab0e482714ab69337fe45af701cdc",
+        "6aeda13575f61d273c81d5dc813e6b9de707644cf6baaa5880c62808d69ed102"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/tools/protobuf/libutf8_range.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "b7f2909c02ba25b3b5b8223f87ce86792af3efa3f70157c854988e974be8b0fa": {
+      "signature": "b7f2909c02ba25b3b5b8223f87ce86792af3efa3f70157c854988e974be8b0fa",
+      "alternativeSignatures": [
+        "a422fcccc34649b814aeb6f1f228926a2983d077d22873390d564590b2c17509",
+        "f58e0b924087e875ff665d6c0b067284ae7ad0d7266284745b1528479b4f517c",
+        "cf529a912ce33623b87f84c5110ae7a2ef1bc5c28c91390a36d3e5bc261fd497"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/tools/protobuf/libutf8_validity.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "3d41b3ea91af0b2e918f451f741f525eadab5a46fc6f5df1344fdadb4c6721bb": {
+      "signature": "3d41b3ea91af0b2e918f451f741f525eadab5a46fc6f5df1344fdadb4c6721bb",
+      "alternativeSignatures": [
+        "1c24aa89e80d0fa07e16a4df31038b4216a90dc81777dd1b16e519f63f27867c",
+        "ee7619bcd5d6a2a68fa92bf9812662e25109cc0a40d93a9933698be271f33db3",
+        "a3e59d61fc09abbb34b74252b00e4caae3aa27f4fa05f26d780057418a7b2434"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/tools/protobuf/libutf8_validity.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "cf368a3358f80374359dc4f6409f433f9e8a2d5f8f96ab5eaee2d2a8730f58c0": {
+      "signature": "cf368a3358f80374359dc4f6409f433f9e8a2d5f8f96ab5eaee2d2a8730f58c0",
+      "alternativeSignatures": [
+        "80eabf35df75ecd3dcb880d905f790f0b83d8de3d038eb0dc1348ec72a32e033",
+        "b22003e5176dbbccee98ea7a1292db02f3e769585339775b56a979db2357d560",
+        "cb6be5cdd093fd445b6024de6836e6f9d795ca9468068b8c517bdc03f59cc7d8"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/tools/protobuf/protoc-gen-upb.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "99083eeabe88dd94b974a06e47d001378048a39cab66f9e4eb43711768c23d6c": {
+      "signature": "99083eeabe88dd94b974a06e47d001378048a39cab66f9e4eb43711768c23d6c",
+      "alternativeSignatures": [
+        "8f64aac5872a2dc663b9a1dbde146ea8bfbac0fdd0d02d2ffa591f3914cc8678",
+        "e2ff62a64bdd80f80eb6c60bebcfe45801a4fe76754694b954dc0785c80358a4",
+        "a964931aff059ac6e8cf7dae72b4dfca3c2d9a586fa6a0cf4ded5c51aacb6c88"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/tools/protobuf/protoc-gen-upb.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "7dc8abed969e9ca10cfa09d8dd878dfefffeed1ff1726ddc48f4c17b1363f87f": {
+      "signature": "7dc8abed969e9ca10cfa09d8dd878dfefffeed1ff1726ddc48f4c17b1363f87f",
+      "alternativeSignatures": [
+        "60f3d391ffe1954a56789acd00bfaea8e272576e0b8775819aaef1032abb6445",
+        "349c2566008f4ac1d7b5f67042db170f8ad5de2a9f6da3bc1faa81c53ed0da36",
+        "5837d5539163429bfa1cbd9935cd6785741e310b574c12684fe4b2526fa9e629"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/tools/protobuf/protoc-gen-upbdefs.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "65af18a5211b62a3dc058d2be8f36424832bd420ae6af7105b40e07f66885af0": {
+      "signature": "65af18a5211b62a3dc058d2be8f36424832bd420ae6af7105b40e07f66885af0",
+      "alternativeSignatures": [
+        "159d581afca915310570b5ad1cadef843ada786fd52c55d2c0e4cb479bcac04f",
+        "90d1540c960e1a4b0636b3fea45f4b21b69ee923e8bcb5f42e69936f72eb5fcc",
+        "f80befece6db9d142c903b961bc566a172e8e372dc5312f4d919cc4e23591b90"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/tools/protobuf/protoc-gen-upbdefs.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "7cd6646d54b10df1b6029bab0b791ddd523d2d814ca736caf86a47254efa74fa": {
+      "signature": "7cd6646d54b10df1b6029bab0b791ddd523d2d814ca736caf86a47254efa74fa",
+      "alternativeSignatures": [
+        "5095ab92c0bee8ec44478b0c18c244a32ef85efb7d3fc473b79c6b2cf3cee155",
+        "e2dcdf19d8c735ae57a1844e6b3f07eb4e245d5876327583e0d1ef33583973ef",
+        "3eb9cc72a2b2080087d8aad19f7f091a217ce2143bd7bab4eda1f4c429ae9e36"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/tools/protobuf/protoc-gen-upb_minitable.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "6e5f517219621a69cf6bad193e0db212f0518a2257608fc25da2c5bb3240c3aa": {
+      "signature": "6e5f517219621a69cf6bad193e0db212f0518a2257608fc25da2c5bb3240c3aa",
+      "alternativeSignatures": [
+        "fe7f0e232b9975b6e9b0c4799c4f736a22634f3ec93238e13f43716c53ee3a41",
+        "9d851fce0a0fec88a0e3e9a11f37743b511f7613bdc74d49443155deb7c07e64",
+        "e33728b05d35a96b3db2296527bfb34461df5459f121bfcf51b9f777e189ed5c"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/tools/protobuf/protoc-gen-upb_minitable.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "046f198614556f403800ea9df14245bd6be835c830f777b83b66ccd7f83d4af8": {
+      "signature": "046f198614556f403800ea9df14245bd6be835c830f777b83b66ccd7f83d4af8",
+      "alternativeSignatures": [
+        "c4bbbc1d702d5cd8653f65c91a9a851c6e4abf3d9c16acf098cc6461c347cde5",
+        "f8b527e94b1c3468ef84058c12e36ee7767356b72b06beb6ca667ada6ec706cf",
+        "12c2cd6b79e31b485f58930fb90ad8fe7d64bc686901ec221ac6a454eaaa024d"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/tools/protobuf/protoc.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "08b33f3e31a9e8820155cfad66c7d6d2aaf446508b4d5c05c6da0fec6725829f": {
+      "signature": "08b33f3e31a9e8820155cfad66c7d6d2aaf446508b4d5c05c6da0fec6725829f",
+      "alternativeSignatures": [
+        "2f8b55385b71c6b88b7a545a85fa8c247f946a435be2eac7fe94338978da5ddb",
+        "423c71f3146a8453ed04ffb30bb42cd38fe1e685245617ea65e24d6b8365e4f1",
+        "37b8666c817f229a26cb6f4639465face010219f64bbbd79e6751945698d5d00"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows/tools/protobuf/protoc.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "ebd5f295045c3925d81e5deb98504ba5d9454077b895b3ffbaa04104c7cae2c4": {
+      "signature": "ebd5f295045c3925d81e5deb98504ba5d9454077b895b3ffbaa04104c7cae2c4",
+      "alternativeSignatures": [
+        "c07e962ff743d79ac021a1554887a51bf4af72ac4cbad5de08c353af0642a12f",
+        "9207e736fe87e6fdf4cf2271a27d87e13695e52be73ea868e28c8e3fdd8c18e2",
+        "f6d643b66534189fdb0755b044f000216552d3ae9c997412a63e2f02f09601cc"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows-static-md/tools/protobuf/abseil_dll.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "523069f1ecad5477ebbdc70d61faabbc7a123e82bb288e5d8aa4bd7898449c82": {
+      "signature": "523069f1ecad5477ebbdc70d61faabbc7a123e82bb288e5d8aa4bd7898449c82",
+      "alternativeSignatures": [
+        "c8074097644121b34aa7dbc9993d3d802f19d93bdb28dd815b77477f06bb5560",
+        "d0e4f95e83c494cd246d1d45b65d8ee240adf89023fc7a776d9e19a0d83374e3",
+        "64efa2bee7a75e2091434c43ce0ad2f6ef0ab5b51ea0ca9ba862f8a9f2076ff1"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows-static-md/tools/protobuf/libprotobuf.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "a9feedad18e4a00b3ad09b3c23d812bbc1c7d4a454b179b836fb06f44ace81cd": {
+      "signature": "a9feedad18e4a00b3ad09b3c23d812bbc1c7d4a454b179b836fb06f44ace81cd",
+      "alternativeSignatures": [
+        "b9438e36a8aedb66282d80a65b7524467891c57f3b6eeb5158075e3682e17188",
+        "68cff66a5456f6217f1dbc68041524825e20742bb23e942897d3b55f34bc4aef",
+        "aa89393462fd2a0d28fa89e9125c51b3d7b3ecdffa188f5f9b3203f575bc7ab4"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows-static-md/tools/protobuf/libprotobuf.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "9d94c8d6dbeedc8bd6fd59538614173d8e4ac426f02d91f26c904ed6f00cb662": {
+      "signature": "9d94c8d6dbeedc8bd6fd59538614173d8e4ac426f02d91f26c904ed6f00cb662",
+      "alternativeSignatures": [
+        "d28185bf4aa9eecd11e4627b9abbadc9b21cff37499a633e45f13fdc2b3adacf",
+        "db47ad49d5d0e5f6c8130491bfc132fea7c3432b0d665c17cb6b63b0b9ebdf02",
+        "5465694379078d8d0673f16e782291eaaffc8f1af865d2732c746573a735b306"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows-static-md/tools/protobuf/libprotoc.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "b372f0de49ca87783d8e7aeaf16727b7a0416a83311e15a1520a3baa078fb7bd": {
+      "signature": "b372f0de49ca87783d8e7aeaf16727b7a0416a83311e15a1520a3baa078fb7bd",
+      "alternativeSignatures": [
+        "221973a466d3bb05522ea65ea1740cf5cf9c961dfb6c4096d01b3da585700120",
+        "e5940cb6def5501c99790c67529d2aad3d8b1a2b5d951895e0303da41cbfb468",
+        "47c93b105beba0ff96b5e3964d0adf8d124d55542cd4eb396ae281e3d3949e51"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows-static-md/tools/protobuf/libprotoc.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "163f54d7ad11907217d23d576161e0603c3a5ef4b82e3b41635ef0ebcb1114e7": {
+      "signature": "163f54d7ad11907217d23d576161e0603c3a5ef4b82e3b41635ef0ebcb1114e7",
+      "alternativeSignatures": [
+        "1e5cc2bbe230a5571ec9182b86ec87b37a60bfc2fc0957f3a76d06ae50f80f6e",
+        "ce1ddb4e9c122c7237140be7523ece097fcdee8949d8ecd103039236c599bf77",
+        "91801338edefa62c4e140ee5ee2ef25f668cb17f8aad1f5b003f3d35490ea972"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows-static-md/tools/protobuf/libutf8_range.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "d00494ba1b335af16ed561ca1468db13a8e8a92f316f0be9eb140334c787b537": {
+      "signature": "d00494ba1b335af16ed561ca1468db13a8e8a92f316f0be9eb140334c787b537",
+      "alternativeSignatures": [
+        "9591e04c4b55314984bc55182fb939e222dd2f5894827a825839401ff268eb76",
+        "d0b65596f5089e71ac4f067de719efee95b807de6d99f9255ee6725946a90768",
+        "4557b73f68953cebb2759d7bb50a577fb786f33340f7cd99611d26acfff2b4c2"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows-static-md/tools/protobuf/libutf8_range.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "8517e7187904113e055b4974d4b0fd3402aa681a258ff5484e1e45af0a707cd2": {
+      "signature": "8517e7187904113e055b4974d4b0fd3402aa681a258ff5484e1e45af0a707cd2",
+      "alternativeSignatures": [
+        "c95a2ea781932a287a4648e06416b11c16e69631006f7c6bd08a56f2f65179e8",
+        "3ec4bbd24ad31deb196e0e38c987221d44a085ccd6e2a0912d20316fded10693",
+        "0f8cccdb97125aa356fcba60e08aaac14abb104272dbd4c67f5dd123fda72c93"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows-static-md/tools/protobuf/libutf8_validity.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "edf20c54a2b1ac73c6ca63b7d2611346c647611667a6738dbf487881dd6c7747": {
+      "signature": "edf20c54a2b1ac73c6ca63b7d2611346c647611667a6738dbf487881dd6c7747",
+      "alternativeSignatures": [
+        "7d82369610044520d1be4b215dd94364902df6db0f07b0cb68df31be37bce495",
+        "3a85de031092b26b08036f6c785a6f83d474f465085afa3b03c15ac498f745e5",
+        "18685d16e41751ed050827187966465b1b2e6e776c891cc08ab3a5af9bb746da"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows-static-md/tools/protobuf/libutf8_validity.dll",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "7e56cc8c08396557d389926b6174eb8950ff3a3103210e747c61d0e2773db454": {
+      "signature": "7e56cc8c08396557d389926b6174eb8950ff3a3103210e747c61d0e2773db454",
+      "alternativeSignatures": [
+        "cf5e82d84a613ab25103f2f007dd2f120e0e6254418d0308384a2ad4503e7da4",
+        "b8ecf5bda667f37992c73032e1e4b538753b9e83c14409712802291b9ff82900",
+        "c2d9f3b311839bcf174b4ca3caa0fb2bc5afdb4ed5fd3fb5329565860e933e33"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows-static-md/tools/protobuf/protoc-gen-upb.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "029f9b6fe7d6bc899f3f7159e813a2d6f0b6147023b8ec40b603135fb47125c3": {
+      "signature": "029f9b6fe7d6bc899f3f7159e813a2d6f0b6147023b8ec40b603135fb47125c3",
+      "alternativeSignatures": [
+        "2fbbb701cb8ba71e5ce7731cfeb42c436fe9f6cc54dec5d33b77f4d71d248e1d",
+        "c21d1b79f37f0ac475c959c44d59b9ef6e92b4bfdb02fbb9f2aed04f6d28e2b0",
+        "f3aaf29705434be7b598f3dba2d1e48e2b6f9c84947f232ec8980d40f252dc2d"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows-static-md/tools/protobuf/protoc-gen-upb.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "456d2234a3e8298236cb63b41b09646b3f11039aa46a69872f291959b946346f": {
+      "signature": "456d2234a3e8298236cb63b41b09646b3f11039aa46a69872f291959b946346f",
+      "alternativeSignatures": [
+        "f09f55736ac7cdaffc1bf5514f92c1abc1df3bc8d4243daf674509a40675488a",
+        "f998a4a02f46eaa533d9ecf3864b6beceedd186cdb83704215a2d9966ce1ca0c",
+        "d06aaff747c575e4b165cba74d6303c187e831cd4a9d2df6157a375e8b60f987"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows-static-md/tools/protobuf/protoc-gen-upbdefs.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "13e57a1051907744cd0bbcb94720fa1aad60243acbf2bd4217581790fcd36f62": {
+      "signature": "13e57a1051907744cd0bbcb94720fa1aad60243acbf2bd4217581790fcd36f62",
+      "alternativeSignatures": [
+        "6fe7e4c3b14f796cd0679fe608eb594b5f43b6b680c1a55d272688d95c2e6cf6",
+        "fe0eb535d78bca8d57fe2715a63f2e0ab6036fd64c197680c035eae48f7bb8da",
+        "bcc1825f703ec56f320664e955c062cc34f62fb2bbaaa29b4db04d0456951514"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows-static-md/tools/protobuf/protoc-gen-upbdefs.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "fa0673c1e3da7b0a8037e4182b75a87496b0d86b204e343b43cebed0c4f81758": {
+      "signature": "fa0673c1e3da7b0a8037e4182b75a87496b0d86b204e343b43cebed0c4f81758",
+      "alternativeSignatures": [
+        "d7287e32dd9389560b301a6150db6ec6eab6bf89771690273878b89447d8f610",
+        "c13f1853ae17030b974ba4d6c0b939c473c55ead10cba7f255de772be2ba6891",
+        "41e86471056ff72f09f1ea75a6e0bf432ee522cc322e67a2bfbac70609c40baa"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows-static-md/tools/protobuf/protoc-gen-upb_minitable.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "3dbcc09d37efeeb5b4d248b92626add1c589592d144d8907636b0f5d0b3b088c": {
+      "signature": "3dbcc09d37efeeb5b4d248b92626add1c589592d144d8907636b0f5d0b3b088c",
+      "alternativeSignatures": [
+        "77465f58ab3122433614f44e4a30902da668d76ee8edcc0a745e07e013ae79d0",
+        "b9d50aae3a68d983223f5f6287c62af9fd642a5f93effbb9fc4ebd29fcb3fbc9",
+        "a2673fe936c886ca59e591aba52934f575d7fa05e490030b4eceb140d09adcc0"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows-static-md/tools/protobuf/protoc-gen-upb_minitable.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "2819ca321c30cb52b48f90b9c9360f5fbc0cf2fbf1fe9eda83e35cdfb9c45ccd": {
+      "signature": "2819ca321c30cb52b48f90b9c9360f5fbc0cf2fbf1fe9eda83e35cdfb9c45ccd",
+      "alternativeSignatures": [
+        "4fd79089353ba31c47c984c742947d67c3157a8cf01e08b27b5021a890cb2b99",
+        "e4ebfe8637f7834d82b35586276fa18aba2c2ea6dfd05932213ae4e7e68daeef",
+        "bcf4079f2e92cf7b587da2f034acdd261ca29cd5c6e7c5fdf88a060f8b09d859"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows-static-md/tools/protobuf/protoc.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2007",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
+    },
+    "b257621afe86cddc8fe03abe7f0023d75639bbc329bf4db1272f2b92edbf4dbc": {
+      "signature": "b257621afe86cddc8fe03abe7f0023d75639bbc329bf4db1272f2b92edbf4dbc",
+      "alternativeSignatures": [
+        "765d2e863154dbf1de1bf0d04b7f10bbced0362d53ebad0d5f9110b441294408",
+        "eaaaa0b7af97b0a68450c8b5866b3d1674c91726eca871be667b96040c9a8977",
+        "e506ee0827dd0b2263b81b14983217ea9b1d3d60b7d01c45599670cf9b60bf7d"
+      ],
+      "target": "webgpu-build/vcpkg_installed/x64-windows-static-md/tools/protobuf/protoc.exe",
+      "uriBaseId": "file:///N:/_work/1/a/",
+      "memberOf": [
+        "default"
+      ],
+      "tool": "binskim",
+      "ruleId": "BA2008",
+      "createdDate": "2026-10-14 09:28:39Z",
+      "expirationDate": "2027-04-02 10:26:50Z",
+      "justification": "This error is baselined with an expiration date of 180 days from 2026-10-14 10:26:50Z"
     }
   },
   "properties": {
