@@ -71,6 +71,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.MatMulNBits">com.microsoft.MatMulNBits</a>
   * <a href="#com.microsoft.MatMulNBitsMlp">com.microsoft.MatMulNBitsMlp</a>
   * <a href="#com.microsoft.MatMulNBitsQkv">com.microsoft.MatMulNBitsQkv</a>
+  * <a href="#com.microsoft.MatMulTernary">com.microsoft.MatMulTernary</a>
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
   * <a href="#com.microsoft.MoE">com.microsoft.MoE</a>
   * <a href="#com.microsoft.MulInteger">com.microsoft.MulInteger</a>
@@ -4291,6 +4292,57 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>T2</tt> : tensor(uint8)</dt>
 <dd>Constrain quantized weight types to uint8.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MatMulTernary"></a><a name="com.microsoft.matmulternary">**com.microsoft.MatMulTernary**</a>
+
+  Matmul with T8 v1 ternary weights: five trits per byte, stored as uint32 bitplanes. Trit 0 is zero, 1 is +scale, 2 is -scale. Rows are padded to a multiple of five. No bias or zero point is stored. Activations and output are float32; scales are float16.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>K</tt> : int (required)</dt>
+<dd>Positive input width, divisible by 128.</dd>
+<dt><tt>N</tt> : int (required)</dt>
+<dd>Positive output width, excluding padded rows.</dd>
+<dt><tt>format_version</tt> : int</dt>
+<dd>T8 format version; only 1 is supported.</dd>
+<dt><tt>layout</tt> : string</dt>
+<dd>T8 tensor layout.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>Activations of shape [..., K], rank at least one.</dd>
+<dt><tt>B</tt> : TPlanes</dt>
+<dd>Bitplanes [ceil(N/5), 8, K/32]; bit l holds lane l of a plane-set.</dd>
+<dt><tt>scales</tt> : TScale</dt>
+<dd>Per-group scales [ceil(N/5), K/128, 5], padded rows have scale zero.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Output of shape [..., N].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float)</dt>
+<dd>Float32 activations and output.</dd>
+<dt><tt>TPlanes</tt> : tensor(uint32)</dt>
+<dd>Little-endian uint32 bitplanes.</dd>
+<dt><tt>TScale</tt> : tensor(float16)</dt>
+<dd>Float16 scales.</dd>
 </dl>
 
 
