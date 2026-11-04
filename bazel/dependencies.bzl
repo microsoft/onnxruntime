@@ -23,6 +23,17 @@ cc_library(
     )
 
 def _dependencies_impl(_ctx):
+    for name, artifact, version, sha256 in [
+        ("ort_junit", "org/junit/platform/junit-platform-console-standalone", "1.11.4", "b016ef6b1c3454d6d7c2c88ce081dabf289699686af6622d6e4e2e1b54b4a2fc"),
+        ("ort_test_protobuf_java", "com/google/protobuf/protobuf-java", "3.25.5", "8540247fad9e06baefa8fb45eb313802d019f485f14300e0f9d6b556ed88e753"),
+    ]:
+        jar = artifact.split("/")[-1] + "-" + version + ".jar"
+        http_file(
+            name = name,
+            urls = ["https://repo.maven.apache.org/maven2/" + artifact + "/" + version + "/" + jar],
+            sha256 = sha256,
+            downloaded_file_path = jar,
+        )
     http_archive(
         name = "ort_mingw",
         urls = ["https://github.com/mstorsjo/llvm-mingw/releases/download/20261104/llvm-mingw-20261104-ucrt-x86_64.zip"],

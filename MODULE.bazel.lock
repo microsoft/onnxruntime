@@ -238,12 +238,32 @@
   "moduleExtensions": {
     "//bazel:dependencies.bzl%ort_dependencies": {
       "general": {
-        "bzlTransitiveDigest": "W0+h0CArOZ9TTMx/yyLYtaC9rq16qcAQu2aSXd7b1vY=",
+        "bzlTransitiveDigest": "GGZIy+kVqhZ8Dt0+dNsvSZVR+VTEhmmMZxfcWqcVOAg=",
         "usagesDigest": "dGdfspd/cjgRt/eeKwCBk5WnMR971p1ufikWyILxhwc=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
         "envVariables": {},
         "generatedRepoSpecs": {
+          "ort_junit": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
+            "attributes": {
+              "urls": [
+                "https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console-standalone/1.11.4/junit-platform-console-standalone-1.11.4.jar"
+              ],
+              "sha256": "b016ef6b1c3454d6d7c2c88ce081dabf289699686af6622d6e4e2e1b54b4a2fc",
+              "downloaded_file_path": "junit-platform-console-standalone-1.11.4.jar"
+            }
+          },
+          "ort_test_protobuf_java": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
+            "attributes": {
+              "urls": [
+                "https://repo.maven.apache.org/maven2/com/google/protobuf/protobuf-java/3.25.5/protobuf-java-3.25.5.jar"
+              ],
+              "sha256": "8540247fad9e06baefa8fb45eb313802d019f485f14300e0f9d6b556ed88e753",
+              "downloaded_file_path": "protobuf-java-3.25.5.jar"
+            }
+          },
           "ort_mingw": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {

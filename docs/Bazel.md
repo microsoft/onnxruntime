@@ -218,7 +218,67 @@ execution was deliberately not performed; Linux and macOS validation of the new
 C++ test layer remains pending. Case filters do not enable excluded runtime
 features or supply external model corpora.
 
-### Foundation validation (before the C++ test layer)
+### Existing Java/JNI tests
+
+`//:java_util_test` and `//:java_tensor_test` compile and execute the existing
+`UtilTest` and `OnnxTensorTest` JUnit classes. `//:java_tests` groups these two
+targets. The tensor target depends on the native Bazel runtime and JNI library;
+the utility target needs no native libraries. No Gradle invocation or installed
+ORT Java package is involved. JUnit Platform 1.11.4 (including Jupiter) and the
+Java test helpers' protobuf 3.25.5 dependency are checksum-pinned downloads.
+
+```sh
+# One target and one existing method, not the complete Java suite:
+bazel test -c opt //:java_util_test --test_filter='ai.onnxruntime.UtilTest#capacityFromSize'
+bazel test -c opt //:java_tensor_test --test_filter='ai.onnxruntime.OnnxTensorTest#testArrayCreation'
+# Exercise a model through JNI, rather than only tensor creation:
+bazel test -c opt //:java_tensor_test --test_filter='ai.onnxruntime.OnnxTensorTest#testFp32ToFp16'
+# Select an entire existing class explicitly:
+bazel test -c opt //:java_util_test --test_filter=ai.onnxruntime.UtilTest
+```
+
+Filters use JUnit's exact `fully.qualified.Class#method` syntax, not GoogleTest
+wildcards. The selected class must match the target. An unknown class/method or
+zero-test discovery fails instead of passing silently. Omit the filter to run
+the target's complete class; request `//:java_tests` only to run both classes.
+Target selection avoids building the other test executable; method selection
+does not prune Java compilation or native runtime compilation.
+The existing Java test fixtures are loose Bazel runfiles, preserving adjacency
+for models with external tensor data. The opt-in `onnxruntime.test.resources`
+property lets the existing test helper resolve these files; Gradle/classpath
+resource lookup is unchanged when the property is absent.
+
+Windows x86-64 validation used Bazel 8.4.2, managed JDK 25, and the frozen module
+lock. `bazel test -c opt //:java_util_test
+--test_filter=ai.onnxruntime.UtilTest#capacityFromSize --test_output=all
+--nocache_test_results` passed **one existing case**. Substituting
+`#missingMethod` failed (Bazel exit 3), confirming invalid selections are not
+false greens. `bazel build -c opt //:java_tests --nobuild` successfully analyzed
+both native targets; this is analysis, not a native build or test pass.
+
+To avoid another native runtime rebuild during this layer's development,
+`testArrayCreation` and `testFp32ToFp16` each passed as **one selected case** using
+the Bazel-built `//:java_test_runner` with the foundation's previously built
+Windows runtime/JNI DLLs. These are prebuilt-backed checks, **not end-to-end
+validation of `//:java_tensor_test` in this worktree**. The runner compiles the
+current binding and existing test sources. The reproduction command is:
+
+```powershell
+# NativeBin must identify a previously verified native Bazel foundation build.
+$env:TESTBRIDGE_TEST_ONLY = 'ai.onnxruntime.OnnxTensorTest#testFp32ToFp16'
+bazel run -c opt //:java_test_runner -- "$NativeBin\onnxruntime.dll" "$NativeBin\onnxruntime4j_jni.dll" "$PWD\java\src\test\resources" ai.onnxruntime.OnnxTensorTest
+Remove-Item Env:\TESTBRIDGE_TEST_ONLY
+```
+
+This layer deliberately does not claim complete Java migration. Inference,
+environment/thread-pool, EP, plugin, compile API, and training suites remain
+unwired. `SparseTensorTest.testCOO` was tried against the foundation and failed
+because its model requires the excluded contrib `SparseToDenseMatMul` operator;
+that class is not registered as a passing native target. Full-class execution
+and Linux/macOS validation remain pending. Python, Node, and C# still use their
+foundation smoke targets, and Go retains its existing self-contained tests.
+
+### Foundation validation (before the C++ and Java test layers)
 
 `bazel test //... -c opt --jobs=16 --keep_going --nocache_test_results` passed
 all seven default test targets on Azure Linux 3 with GCC 13.2, with
