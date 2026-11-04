@@ -4297,6 +4297,8 @@ with tempfile.TemporaryDirectory() as directory:
 
     def test_v4_tail_substitution_oracle_unique_routes_and_normalized_weights(self):
         for use_fp16 in (True, False):
+            if not use_fp16 and not self._int4_bf16_runner_supported:
+                continue
             with self.subTest(use_fp16=use_fp16), tempfile.TemporaryDirectory() as model_dir:
                 model_path, config = self._build_decode_optimization_model(model_dir, use_fp16=use_fp16)
                 rng = np.random.default_rng(33576)
@@ -4340,7 +4342,8 @@ with tempfile.TemporaryDirectory() as directory:
                 oracle_router[:, 6:8] = repl_logits + np.log(orig_tail_sum / repl_tail_sum)
                 oracle_router[:, 10:12] = -20.0
                 oracle, _ = self._run_decode_with_telemetry(model_path, config, [(x, oracle_router)], use_fp16)
-                np.testing.assert_allclose(substituted[0], oracle[0], rtol=2e-3, atol=2e-3)
+                self._assert_int_offload_parity(oracle[0], substituted[0], f"tail_substitution_oracle_fp16_{use_fp16}")
+                self.assertGreater(float(np.max(np.abs(substituted[0] - disabled[0]))), 5.0)
                 for disabled_item, item in zip(disabled_stats, stats, strict=True):
                     disabled_weights = np.asarray(disabled_item["last_weights"], dtype=np.float32).reshape(4, 8)
                     indices = np.asarray(item["last_indices"]).reshape(4, 8)
@@ -4363,6 +4366,8 @@ with tempfile.TemporaryDirectory() as directory:
 
     def test_v4_tail_substitution_stable_normalization_after_replacing_every_route(self):
         for use_fp16 in (True, False):
+            if not use_fp16 and not self._int4_bf16_runner_supported:
+                continue
             with self.subTest(use_fp16=use_fp16), tempfile.TemporaryDirectory() as model_dir:
                 model_path, config = self._build_decode_optimization_model(
                     model_dir, num_layers=1, use_fp16=use_fp16, num_experts=128, resident_slots=32
