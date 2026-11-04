@@ -1,0 +1,85 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+"""Native targets for the existing C++ CPU test infrastructure."""
+
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
+def core_tests():
+    test_copts = select({
+        "//bazel:windows": ["/utf-8"],
+        "//conditions:default": [],
+    })
+    cc_library(
+        name = "test_support",
+        testonly = True,
+        srcs = native.glob([
+            "onnxruntime/test/util/*.cc",
+            "onnxruntime/test/unittest_util/*.cc",
+        ]) + [
+            "onnxruntime/test/common/cuda_op_test_utils.cc",
+            "onnxruntime/test/common/tensor_op_test_utils.cc",
+            "onnxruntime/test/framework/dummy_provider.cc",
+            "onnxruntime/test/internal_testing_ep/internal_testing_ep_static_kernels.cc",
+            "onnxruntime/test/internal_testing_ep/internal_testing_execution_provider.cc",
+            "onnxruntime/test/onnx/callback.cc",
+            "onnxruntime/test/onnx/heap_buffer.cc",
+            "onnxruntime/test/onnx/tensorprotoutils.cc",
+            "onnxruntime/test/providers/compare_provider_test_utils.cc",
+            "onnxruntime/test/providers/kernel_compute_test_utils.cc",
+        ],
+        includes = ["onnxruntime/test/util/include"],
+        copts = test_copts,
+        deps = [
+            ":runtime",
+            "@googletest//:gtest",
+        ],
+    )
+    cc_library(
+        name = "ort_test_main",
+        testonly = True,
+        srcs = ["onnxruntime/test/unittest_main/test_main.cc"],
+        local_defines = ["main=OrtTestMain"],
+        copts = test_copts,
+        deps = [":test_support"],
+    )
+    session_srcs = [
+        "onnxruntime/test/framework/inference_session_test.cc",
+        "onnxruntime/test/framework/moe_offload_session_policy_test.cc",
+        "onnxruntime/test/framework/more_session_option_test.cc",
+        "onnxruntime/test/framework/session_state_test.cc",
+    ]
+    suites = {
+        "framework_test": native.glob(
+            ["onnxruntime/test/framework/*.cc"],
+            exclude = session_srcs + ["onnxruntime/test/framework/dummy_provider.cc"],
+        ),
+        "session_test": session_srcs,
+        "graph_test": native.glob(["onnxruntime/test/ir/*.cc"]),
+        "optimizer_test": native.glob(
+            ["onnxruntime/test/optimizer/*.cc"],
+            # The CPU-only runtime omits this contrib-GQA transformer.
+            exclude = ["onnxruntime/test/optimizer/gqa_value_layout_transformer_test.cc"],
+        ),
+        "cpu_provider_test": native.glob(
+            ["onnxruntime/test/providers/cpu/**/*.cc"],
+            # This runner needs the separately downloaded ONNX model corpus.
+            exclude = ["onnxruntime/test/providers/cpu/model_tests.cc"],
+        ),
+    }
+    for name, srcs in suites.items():
+        cc_test(
+            name = name,
+            srcs = srcs + ["tools/bazel/test_main.cc"],
+            data = native.glob(["onnxruntime/test/testdata/**"]),
+            copts = test_copts,
+            deps = [":ort_test_main"],
+            linkstatic = True,
+            size = "large",
+            timeout = "long",
+        )
+    native.test_suite(
+        name = "core_tests",
+        tests = [":" + name for name in suites],
+    )

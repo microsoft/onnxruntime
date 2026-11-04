@@ -149,6 +149,77 @@ because standard ONNX operators use it; this does not register contrib ops.
 
 ## Tests and remaining migration
 
+### Existing C++ suites
+
+The native C++ test layer reuses existing GoogleTest sources and ORT's existing
+test environment, OpTester, graph builders, allocators, and comparison helpers.
+It does not replace these suites with smoke tests:
+
+```sh
+# Build and run only one binary and one existing test case:
+bazel test -c opt //:graph_test --test_filter=GraphViewer.FilteredGraph
+# Select multiple cases from one binary (quote patterns containing wildcards):
+bazel test -c opt //:cpu_provider_test --test_filter="MathOpTest.MatMulFloatType:ConvTest.Conv2D_1"
+# List cases without executing them:
+bazel test -c opt //:session_test --test_arg=--gtest_list_tests --test_output=all
+```
+
+`//:core_tests` groups `//:framework_test`, `//:session_test`, `//:graph_test`,
+`//:optimizer_test`, and `//:cpu_provider_test`. Session tests are sourced from
+`test/framework/`; graph/IR tests are sourced from `test/ir/`. The provider
+target uses the existing `test/providers/cpu/` operator tests, not contrib or
+other EP suites. These targets statically link the native CPU runtime.
+Selecting a target avoids building other test binaries. `--test_filter` selects
+GoogleTest suites/cases at runtime; it does not reduce compilation within the
+selected binary. `--test_arg=--gtest_filter=Suite.Case` is also supported.
+Request `//:core_tests` only when intentionally running all five binaries;
+`//...` includes these suites as well as the desktop binding tests.
+
+Checked-in `onnxruntime/test/testdata/` files are declared as Bazel runfiles.
+The test entry point copies them into each test's writable `TEST_TMPDIR` before
+calling the existing ORT test main. Relative fixture paths are preserved, and
+tests that save or modify models cannot write into the checkout or another
+test's fixtures.
+
+The runtime's existing `DISABLE_CONTRIB_OPS` configuration and test-source
+feature guards remain in effect. The contrib GQA layout transformer test is
+excluded because the foundation does not compile that transformer.
+`test/providers/cpu/model_tests.cc` is excluded because its ONNX model-corpus
+runner needs externally downloaded models and separate runner/protobuf targets.
+The optimizer's `runtime_optimization/` subdirectory, platform tests, remaining
+common/logging tests, root-level provider infrastructure tests, GPU tests,
+dynamic EP libraries, training, and separate C API shared-library test
+executables remain outside this layer.
+
+Starlark files use LF even on Windows: frozen module-extension digests depend on
+their exact bytes. A CRLF checkout otherwise fails `--lockfile_mode=error` before
+compilation; changing the module lock separately per host is not the solution.
+
+On Windows x86-64, Bazel 8.4.2 and Visual Studio 2022/MSVC 14.44 built all five
+binaries with the frozen lock unchanged. The following targeted command passed
+**17 existing cases** (12 framework, 1 session, 1 graph, 1 optimizer, 2 CPU
+operator cases), with a nonzero GoogleTest count verified for every binary:
+
+```sh
+bazel test //:core_tests -c opt --jobs=12 --test_filter="AllocatorTest.*:GraphViewer.FilteredGraph:FreeDimensionOverrideDenotationTransformerTest.Test:InferenceSessionTests.DisableCPUArena:MathOpTest.MatMulFloatType:ConvTest.Conv2D_1" --test_output=all --nocache_test_results --keep_going
+```
+
+These additional selection checks also passed:
+
+```sh
+# One existing serialization case passed, including writing its model in TEST_TMPDIR.
+bazel test //:graph_test -c opt --test_filter=GraphTest.UnusedValueInfoSerializes --nocache_test_results --test_output=all
+# Successfully listed the selected session cases; listing does not execute them.
+bazel test //:session_test -c opt --test_arg=--gtest_list_tests --test_filter="InferenceSessionTests.*" --test_output=all
+```
+
+That is **18 executed cases**, not a claim that the full suites pass. Full-suite
+execution was deliberately not performed; Linux and macOS validation of the new
+C++ test layer remains pending. Case filters do not enable excluded runtime
+features or supply external model corpora.
+
+### Foundation validation (before the C++ test layer)
+
 `bazel test //... -c opt --jobs=16 --keep_going --nocache_test_results` passed
 all seven default test targets on Azure Linux 3 with GCC 13.2, with
 `CUDA_PATH`, `CUDNN_PATH`, and `LD_LIBRARY_PATH` unset. This includes all five

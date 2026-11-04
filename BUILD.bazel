@@ -9,6 +9,7 @@ load("//bazel:bindings.bzl", "language_bindings")
 load("//bazel:cuda.bzl", "cuda_libraries")
 load("//bazel:mlas.bzl", "mlas_libraries")
 load("//bazel:platforms.bzl", "desktop_shared_library")
+load("//bazel:tests.bzl", "core_tests")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -278,6 +279,8 @@ cc_test(
 cuda_libraries()
 
 language_bindings()
+
+core_tests()
 
 cc_test(
     name = "runtime_cuda_smoke_test",
