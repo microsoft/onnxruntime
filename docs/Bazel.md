@@ -52,6 +52,36 @@ dependency change, run `bazel mod deps --lockfile_mode=update`, then review and
 commit the resulting `MODULE.bazel.lock` changes. Normal builds and tests must
 not override the frozen-lock setting.
 
+### Desktop portability checks
+
+Linux x86-64 portability validation used Bazel 8.4.2 with the frozen module
+lock and freshly source-built native artifacts. This focused command passed
+all five smoke targets:
+
+```sh
+bazel test -c opt //:runtime_smoke_test //:java_smoke_test //:python_smoke_test //:node_smoke_test //:csharp_smoke_test
+```
+
+The following commands each passed **one existing selected case** against
+those source-built Linux artifacts; no full suite was run:
+
+```sh
+bazel test -c opt //:python_inference_test --test_filter=onnxruntime_test_python.TestInferenceSession.test_run_model
+bazel test -c opt //:java_tensor_test --test_filter=ai.onnxruntime.OnnxTensorTest#testArrayCreation
+bazel test -c opt //:csharp_tests --test_filter=Microsoft.ML.OnnxRuntime.Tests.InferenceTest.CanCreateAndDisposeSessionWithModelPath
+bazel test -c opt //:node_model_metadata_test --test_filter='symbol.shape$'
+```
+
+The MLAS baseline archive is retained when linking because dispatched ISA
+archives call back into baseline packing and quantization helpers. macOS
+logging uses an Objective-C++ library, and Intel assembly selects Mach-O
+constant sections on Apple targets. Clang 18 on Linux successfully
+cross-assembled all 40 selected Intel MLAS assembly files as Mach-O objects;
+this is not native macOS build or execution validation. No macOS host was
+available, so Intel and Apple Silicon native validation remain pending.
+Windows smoke-target analysis (`bazel build -c opt //:runtime_smoke_test
+--nobuild`) passed; this portability slice did not rebuild the Windows runtime.
+
 ## Language extensions
 
 ```sh

@@ -176,6 +176,8 @@ def mlas_libraries():
     )
     cc_library(
         name = "mlas",
+        # ISA archives call baseline helpers after this archive has been scanned on ELF linkers.
+        alwayslink = True,
         linkstatic = True,
         includes = [_LIB[:-1], "onnxruntime/core/mlas/inc"],
         srcs = [

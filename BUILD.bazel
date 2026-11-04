@@ -140,6 +140,14 @@ cc_library(
     deps = [":headers"],
 )
 
+objc_library(
+    name = "apple_log_sink",
+    srcs = ["onnxruntime/core/platform/apple/logging/apple_log_sink.mm"],
+    sdk_frameworks = ["Foundation"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [":headers"],
+)
+
 cc_library(
     name = "runtime",
     srcs = glob(
@@ -185,9 +193,6 @@ cc_library(
             "onnxruntime/core/platform/posix/env.cc",
             "onnxruntime/core/platform/posix/stacktrace.cc",
         ],
-    }) + select({
-        "//bazel:macos": ["onnxruntime/core/platform/apple/logging/apple_log_sink.mm"],
-        "//conditions:default": [],
     }),
     copts = select({
         "//bazel:linux_x86_64": ["-mwaitpkg"],
@@ -220,7 +225,10 @@ cc_library(
         ":mlas",
         ":model_package",
         ":posix_clock",
-    ],
+    ] + select({
+        "//bazel:macos": [":apple_log_sink"],
+        "//conditions:default": [],
+    }),
     alwayslink = True,
 )
 
