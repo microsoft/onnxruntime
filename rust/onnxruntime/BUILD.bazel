@@ -1,0 +1,68 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+load("@ort_rust_crates//:defs.bzl", "all_crate_deps")
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+load("//bazel/rust:tests.bzl", "rust_selected_test")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["Cargo.toml"])
+
+rust_library(
+    name = "onnxruntime",
+    srcs = glob(["src/**/*.rs"]),
+    crate_features = ["model-fetching"],
+    crate_name = "onnxruntime",
+    crate_root = "src/lib.rs",
+    edition = "2018",
+    proc_macro_deps = all_crate_deps(proc_macro = True),
+    deps = all_crate_deps(normal = True) + [
+        "//rust/onnxruntime-sys:onnxruntime_sys",
+        "@ort_rust_crates//:ureq",
+    ],
+)
+
+rust_test(
+    name = "unit_tests",
+    crate = ":onnxruntime",
+    proc_macro_deps = all_crate_deps(proc_macro_dev = True),
+    tags = ["manual"],
+    deps = all_crate_deps(normal_dev = True),
+)
+
+rust_test(
+    name = "integration_tests",
+    srcs = ["tests/integration_tests.rs"],
+    crate_root = "tests/integration_tests.rs",
+    edition = "2018",
+    proc_macro_deps = all_crate_deps(
+        proc_macro = True,
+        proc_macro_dev = True,
+    ),
+    rustc_env = {"CARGO_MANIFEST_DIR": "rust/onnxruntime"},
+    tags = ["manual"],
+    deps = all_crate_deps(
+        normal = True,
+        normal_dev = True,
+    ) + [":onnxruntime"],
+)
+
+rust_selected_test(
+    name = "selected_unit_tests",
+    binary = ":unit_tests",
+    cases = [
+        "environment::tests::sequential_environment_creation",
+        "tensor::ndarray_tensor::tests::softmax_1d",
+        "tensor::ort_input_tensor::tests::orttensor_from_array_2d_i32",
+    ],
+    manifest = ":Cargo.toml",
+)
+
+rust_selected_test(
+    name = "selected_integration_tests",
+    binary = ":integration_tests",
+    cases = ["download::upsample"],
+    data = glob(["tests/data/*"]),
+    manifest = ":Cargo.toml",
+)

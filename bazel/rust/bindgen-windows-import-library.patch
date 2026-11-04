@@ -1,0 +1,23 @@
+diff --git a/3rdparty/crates/BUILD.windows_x86_64_msvc-0.52.6.bazel b/3rdparty/crates/BUILD.windows_x86_64_msvc-0.52.6.bazel
+--- a/3rdparty/crates/BUILD.windows_x86_64_msvc-0.52.6.bazel
++++ b/3rdparty/crates/BUILD.windows_x86_64_msvc-0.52.6.bazel
+@@ -9,2 +9,3 @@
++load("@rules_cc//cc:cc_import.bzl", "cc_import")
+ load("@rules_rust//cargo:defs.bzl", "cargo_toml_env_vars")
+ load("@rules_rust//rust:defs.bzl", "rust_library")
+@@ -14,1 +15,6 @@
++cc_import(
++    name = "windows_import_library",
++    static_library = "lib/windows.0.52.0.lib",
++)
++
+ cargo_toml_env_vars(
+@@ -45,7 +51,8 @@ rust_library(
+         "manual",
+         "noclippy",
+         "norustfmt",
+     ],
++    deps = [":windows_import_library"],
+     target_compatible_with = select({
+         "@rules_rust//rust/platform:aarch64-apple-darwin": [],
+         "@rules_rust//rust/platform:aarch64-apple-ios": [],

@@ -1,0 +1,18 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+load("@rules_rust_bindgen//:defs.bzl", "rust_bindgen_toolchain")
+
+exports_files(["bindgen-windows-import-library.patch"])
+
+rust_bindgen_toolchain(
+    name = "bindgen_toolchain_impl",
+    bindgen = "@rules_rust_bindgen//3rdparty:bindgen",
+    libclang = "@ort_rust_libclang//:libclang",
+)
+
+toolchain(
+    name = "bindgen_toolchain",
+    toolchain = ":bindgen_toolchain_impl",
+    toolchain_type = "@rules_rust_bindgen//:toolchain_type",
+)

@@ -18,6 +18,9 @@ exports_files([
     "cmake/patches/onnx/onnx.patch",
     "cmake/vcpkg-ports/abseil/absl_cuda_warnings.patch",
     "cmake/vcpkg-ports/abseil/absl_cuda13_member_template.patch",
+    "tools/bazel/rust_smoke.rs",
+    "tools/bazel/rust_test_runner.py",
+    "tools/bazel/rust_test_runner_test.py",
 ])
 
 genrule(

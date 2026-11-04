@@ -25,6 +25,42 @@ single_version_override(
     patch_strip = 1,
     patches = ["//bazel:rules-apple-platform-compatibility.patch"],
 )
+bazel_dep(name = "rules_rust", version = "0.65.0")
+bazel_dep(name = "rules_rust_bindgen", version = "0.65.0")
+single_version_override(
+    module_name = "rules_rust_bindgen",
+    patch_strip = 1,
+    patches = ["//bazel/rust:bindgen-windows-import-library.patch"],
+)
+
+rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
+rust.toolchain(
+    edition = "2018",
+    versions = ["1.90.0"],
+)
+use_repo(rust, "rust_toolchains")
+
+register_toolchains("@rust_toolchains//:all")
+
+register_toolchains("//bazel/rust:bindgen_toolchain")
+
+rust_crates = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
+rust_crates.from_cargo(
+    name = "ort_rust_crates",
+    cargo_lockfile = "//rust:Cargo.lock",
+    lockfile = "//rust:Cargo.Bazel.lock",
+    manifests = ["//rust:Cargo.toml"],
+    supported_platform_triples = [
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+        "x86_64-pc-windows-msvc",
+        "x86_64-unknown-linux-gnu",
+    ],
+)
+use_repo(rust_crates, "ort_rust_crates")
+
+rust_clang = use_extension("//bazel/rust:dependencies.bzl", "rust_clang_dependencies")
+use_repo(rust_clang, "ort_rust_libclang")
 
 csharp_test_deps = use_extension("//bazel:csharp_dependencies.bzl", "csharp_test_dependencies")
 use_repo(

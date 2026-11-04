@@ -162,7 +162,7 @@ bazel test -c opt \
 | Objective-C / Swift import surface | `//objectivec:onnxruntime_objc`, `//objectivec:inference_tests` | Native ARC Objective-C++ inference wrappers, an explicit `onnxruntime_objc` Clang module, and existing hostless XCTest cases/fixtures. macOS only; Apple compilation/execution and Swift import are not yet validated. Not an iOS framework, XCFramework, or Swift package. |
 | JavaScript Web / WebAssembly | Not implemented | Requires an Emscripten toolchain, WASM-specific runtime configuration, exported C functions, worker/assets packaging, and browser tests. Native Linux compilation does not validate this surface. |
 | React Native | Not implemented | Requires the Android/iOS cross-compilation and packaging graphs plus the React Native bridge. A working Node addon is not evidence of mobile support. |
-| Rust | No first-party target | Third-party Rust bindings can consume the C ABI, but are not part of this source-build migration. |
+| Rust | `//rust/onnxruntime-sys:onnxruntime_sys`, `//rust/onnxruntime:onnxruntime`, `//rust:smoke_test` | Both existing first-party crates, current-header bindgen generation, and selected existing unit/integration tests. Native `rules_rust` compilation and explicit loading of the source-built runtime; no Cargo build or legacy native acquisition. Not crates.io packaging. |
 
 The language toolchains are managed by their Bazel rules, including a pinned
 Node.js 24 LTS runtime. Windows cgo uses a pinned LLVM-MinGW compiler in a
@@ -303,6 +303,80 @@ NuGet/package end-to-end testing. Their source tests remain compiled/discoverabl
 but selecting one does not manufacture missing fixtures or silently pass.
 WinML/UWP, device/mobile/MAUI and BrowserStack projects need separate platform
 graphs. Training build/test migration is intentionally out of scope.
+
+### Existing Rust crates and tests
+
+`rules_rust` compiles the existing `rust/onnxruntime-sys` and
+`rust/onnxruntime` sources directly. `rust_bindgen` generates FFI from the
+checked-in C API headers using a checksum-pinned public libclang archive.
+An explicit patch to `rules_rust_bindgen` connects its vendored Windows import
+library to the bindgen CLI's native link dependencies. Generated bindings
+include compile-time layout assertions, rather than separate libtest cases.
+The existing Cargo `build.rs` (download/system/CMake native acquisition) is
+not executed. The high-level target enables its existing `model-fetching`
+feature so the existing integration test source compiles, but the default
+selection uses only checked-in fixtures and does not download models.
+Cargo manifests remain the dependency source of truth; crate_universe uses
+Cargo for dependency metadata/resolution, not for building either crate.
+`rust/Cargo.lock` and `rust/Cargo.Bazel.lock` pin resolved crates, checksums,
+and Bazel renderings. Intentional Rust dependency changes require
+`CARGO_BAZEL_REPIN=true bazel mod deps --lockfile_mode=update` before reviewing
+and committing both Rust locks and `MODULE.bazel.lock`.
+
+Windows needs a short output base for Cargo dependency build-script working
+directories; Windows `CreateProcess` rejects overlong working-directory paths
+even when Rust can read individual long paths. For example, prepend
+`--output_base=C:\b\ort-rust` immediately after `bazel`. Use a separate output
+base for each checkout.
+
+```sh
+bazel test -c opt //rust:smoke_test
+bazel test -c opt //rust/onnxruntime:selected_unit_tests
+bazel test -c opt //rust/onnxruntime:selected_integration_tests --test_filter=download::upsample
+bazel test -c opt //rust/onnxruntime:selected_unit_tests --test_filter=environment::tests::sequential_environment_creation
+bazel test -c opt //rust:test_runner_test
+```
+
+The smoke target exercises the generated current C API and high-level Add
+inference, checking output shape `[2, 3]` and all six values. The unit target
+defaults to three existing cases (environment lifecycle, softmax, and native
+integer tensor construction). The integration target defaults to the existing
+`download::upsample` case, which uses the checked-in model and image despite
+its module name. `--test_filter` accepts an exact libtest name, not a Cargo
+command or wildcard. Unknown selections, zero executed tests, ignored-only
+selections, discovery errors and assertion failures fail. Internal raw libtest
+targets are tagged `manual`; use the selection targets for these guarantees.
+Downloaded model-zoo integration cases, GPU behavior, release packaging and
+training remain outside this bounded validation.
+
+Windows x86-64 validation passed the following bounded command with the frozen
+module lock: two smoke cases, three existing unit cases, one existing integration
+case, and eight selection-runner regression cases:
+
+```powershell
+bazel --output_base=C:\b\orr-f12c test -c opt //rust:smoke_test //rust:test_runner_test //rust/onnxruntime:selected_unit_tests //rust/onnxruntime:selected_integration_tests --build_python_zip=false
+```
+
+Both crates and their FFI were compiled from source against the current headers.
+To avoid repeating the unchanged native runtime compilation, this execution used
+a temporary, uncommitted substitution of the previously verified native
+Bazel-source-built `onnxruntime.dll`. That substitution was removed afterward;
+the committed graph depends on `//:runtime_library`, not an installed or
+checked-in binary. A subsequent `build --nobuild` checked the restored
+source-runtime graph. Thus this is executed Rust inference/test evidence, not a
+fresh end-to-end native-runtime rebuild in the Rust checkout.
+
+The same bounded unit target with `--test_filter=not_a_test` failed as expected
+(Bazel exit 3), listing available exact names. Runner regressions also verified
+empty discovery, zero execution, ignored-only execution and failed processes.
+Rust execution on Linux/macOS, the full existing Rust suites and remote Rust
+compilation have not been validated.
+
+Restored source-graph validation (passed without compiling native code):
+
+```powershell
+bazel --output_base=C:\b\orr-f12c build -c opt //rust:smoke_test //rust/onnxruntime:selected_unit_tests //rust/onnxruntime:selected_integration_tests --nobuild --build_python_zip=false --jobs=1
+```
 
 ## CUDA
 
