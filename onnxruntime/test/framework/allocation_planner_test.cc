@@ -556,6 +556,79 @@ TEST_F(PlannerTest, InPlaceTest) {
   CheckFreed(2, {X2});
 }
 
+#ifdef ORT_ENABLE_STREAM
+TEST_F(PlannerTest, AliasedCpuBufferAcrossStreams) {
+  class HostOutputExecutionProvider : public IExecutionProvider {
+   public:
+    HostOutputExecutionProvider()
+        : IExecutionProvider("HostOutputExecutionProvider",
+                             OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0, 0)) {}
+  };
+  ASSERT_STATUS_OK(GetExecutionProviders().Add("HostOutputExecutionProvider",
+                                               std::make_unique<HostOutputExecutionProvider>()));
+
+  auto make_host_kernel = [](const char* op) {
+    return KernelDefBuilder()
+        .SetName(op)
+        .Provider("HostOutputExecutionProvider")
+        .SinceVersion(1, 10)
+        .InputMemoryType(OrtMemTypeCPUInput, 0)
+        .OutputMemoryType(OrtMemTypeCPUOutput, 0)
+        .Build();
+  };
+  auto first_kernel = make_host_kernel("Identity");
+  auto second_kernel = make_host_kernel("Abs");
+  auto third_kernel = make_host_kernel("Neg");
+  auto alias_kernel = KernelDefBuilder()
+                          .SetName("Identity")
+                          .Provider(kCpuExecutionProvider)
+                          .SinceVersion(1, 10)
+                          .Alias(0, 0)
+                          .Build();
+
+  std::string input = "input", a = "a", intermediate = "intermediate", b = "b";
+  std::string alias1 = "alias1", alias2 = "alias2", output = "output";
+  for (const auto& name : {input, a, intermediate, b, alias1, alias2, output}) {
+    SetTensorType<int64_t>(name);
+  }
+  AddNode(*first_kernel, input, a);
+  auto* first_consumer = AddNode(*second_kernel, a, intermediate);
+  AddNode(*third_kernel, intermediate, b);
+  auto* alias_node1 = AddNode(*alias_kernel, b, alias1);
+  auto* alias_node2 = AddNode(*alias_kernel, alias1, alias2);
+  auto* last_consumer = AddNormalNode(alias2, output);
+  Shape shape{1};
+  SetShape({{a, &shape.value}, {intermediate, &shape.value}, {b, &shape.value}, {alias1, &shape.value}, {alias2, &shape.value}});
+
+  CreatePlan();
+
+  const auto& plan = GetPlan();
+  ASSERT_EQ(plan.execution_plan.size(), 2u);
+  CheckAllocKind(b, AllocKind::kReuse);
+  CheckReusedBuffer(b, a);
+  CheckAllocKind(alias1, AllocKind::kReuse);
+  CheckAllocKind(alias2, AllocKind::kReuse);
+
+  // The host buffer is reused on the device stream, then aliased on the CPU stream.
+  OrtValueIndex root;
+  ASSERT_STATUS_OK(GetState().GetOrtValueNameIdxMap().GetIdx(a, root));
+  size_t release_count = 0;
+  for (const auto* consumer : {first_consumer, alias_node1, alias_node2, last_consumer}) {
+    bool releases_root = false;
+    for (auto action_idx : plan.node_release_list[consumer->Index()]) {
+      const auto& action = plan.release_actions[action_idx];
+      if (action.value_index == static_cast<size_t>(root)) {
+        releases_root = true;
+        EXPECT_EQ(action.ref_count, 4);
+        ++release_count;
+      }
+    }
+    EXPECT_TRUE(releases_root) << consumer->Name();
+  }
+  EXPECT_EQ(release_count, 4u);
+}
+#endif
+
 TEST_F(PlannerTest, ExternalOutputsTest) {
   // tensor variables:
   std::string X1("X1"), X2("X2"), X3("X3"), X4("X4");
