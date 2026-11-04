@@ -1360,6 +1360,11 @@ MlasSgemmSmallKKernel_sve(
     const size_t vl = svcntw();
     const size_t nblock = MLAS_SGEMM_SVE_SMALLK_B_BYTES / (CountK * sizeof(float));
 
+    // alpha is applied to the finished sums, not folded into A: scaling A
+    // first can overflow for a finite result (A = 2^100, alpha = 2^100,
+    // B = 2^-100). When C is accumulated, the scale fuses into the add.
+    const bool ScaleByAlpha = (alpha != 1.0f);
+
     for (size_t n0 = 0; n0 < CountN; n0 += nblock) {
 
         const size_t nend = (n0 + nblock < CountN) ? n0 + nblock : CountN;
@@ -1379,23 +1384,10 @@ MlasSgemmSmallKKernel_sve(
             float* c2 = C + (m + 2) * ldc;
             float* c3 = C + (m + 3) * ldc;
 
-            // Scale A by alpha once per row block: inside the N loop each
-            // term costs a load/fmul/dup instead of a single ld1rw. k == 0
-            // stays in registers, since round-tripping it through av[] and
-            // reading it straight back stalls on store-to-load forwarding.
-            const svfloat32_t k0v0 = svdup_n_f32(a0[0] * alpha);
-            const svfloat32_t k0v1 = svdup_n_f32(a1[0] * alpha);
-            const svfloat32_t k0v2 = svdup_n_f32(a2[0] * alpha);
-            const svfloat32_t k0v3 = svdup_n_f32(a3[0] * alpha);
-
-            float av[4 * MLAS_SGEMM_SVE_SMALLK_MAX];
-
-            for (size_t k = 1; k < CountK; k++) {
-                av[0 * MLAS_SGEMM_SVE_SMALLK_MAX + k] = a0[k] * alpha;
-                av[1 * MLAS_SGEMM_SVE_SMALLK_MAX + k] = a1[k] * alpha;
-                av[2 * MLAS_SGEMM_SVE_SMALLK_MAX + k] = a2[k] * alpha;
-                av[3 * MLAS_SGEMM_SVE_SMALLK_MAX + k] = a3[k] * alpha;
-            }
+            const svfloat32_t k0v0 = svdup_n_f32(a0[0]);
+            const svfloat32_t k0v1 = svdup_n_f32(a1[0]);
+            const svfloat32_t k0v2 = svdup_n_f32(a2[0]);
+            const svfloat32_t k0v3 = svdup_n_f32(a3[0]);
 
             for (size_t n = n0; n < nend; n += 2 * vl) {
 
@@ -1421,10 +1413,10 @@ MlasSgemmSmallKKernel_sve(
                     b0 = svld1_f32(pg0, bk + n);
                     b1 = svld1_f32(pg1, bk + n + vl);
 
-                    const svfloat32_t v0 = svdup_n_f32(av[0 * MLAS_SGEMM_SVE_SMALLK_MAX + k]);
-                    const svfloat32_t v1 = svdup_n_f32(av[1 * MLAS_SGEMM_SVE_SMALLK_MAX + k]);
-                    const svfloat32_t v2 = svdup_n_f32(av[2 * MLAS_SGEMM_SVE_SMALLK_MAX + k]);
-                    const svfloat32_t v3 = svdup_n_f32(av[3 * MLAS_SGEMM_SVE_SMALLK_MAX + k]);
+                    const svfloat32_t v0 = svdup_n_f32(a0[k]);
+                    const svfloat32_t v1 = svdup_n_f32(a1[k]);
+                    const svfloat32_t v2 = svdup_n_f32(a2[k]);
+                    const svfloat32_t v3 = svdup_n_f32(a3[k]);
 
                     acc00 = svmla_f32_x(pg0, acc00, b0, v0);
                     acc01 = svmla_f32_x(pg1, acc01, b1, v0);
@@ -1436,7 +1428,16 @@ MlasSgemmSmallKKernel_sve(
                     acc31 = svmla_f32_x(pg1, acc31, b1, v3);
                 }
 
-                if (!ZeroMode) {
+                if (!ZeroMode && ScaleByAlpha) {
+                    acc00 = svmla_n_f32_x(pg0, svld1_f32(pg0, c0 + n), acc00, alpha);
+                    acc01 = svmla_n_f32_x(pg1, svld1_f32(pg1, c0 + n + vl), acc01, alpha);
+                    acc10 = svmla_n_f32_x(pg0, svld1_f32(pg0, c1 + n), acc10, alpha);
+                    acc11 = svmla_n_f32_x(pg1, svld1_f32(pg1, c1 + n + vl), acc11, alpha);
+                    acc20 = svmla_n_f32_x(pg0, svld1_f32(pg0, c2 + n), acc20, alpha);
+                    acc21 = svmla_n_f32_x(pg1, svld1_f32(pg1, c2 + n + vl), acc21, alpha);
+                    acc30 = svmla_n_f32_x(pg0, svld1_f32(pg0, c3 + n), acc30, alpha);
+                    acc31 = svmla_n_f32_x(pg1, svld1_f32(pg1, c3 + n + vl), acc31, alpha);
+                } else if (!ZeroMode) {
                     acc00 = svadd_f32_x(pg0, acc00, svld1_f32(pg0, c0 + n));
                     acc01 = svadd_f32_x(pg1, acc01, svld1_f32(pg1, c0 + n + vl));
                     acc10 = svadd_f32_x(pg0, acc10, svld1_f32(pg0, c1 + n));
@@ -1445,6 +1446,15 @@ MlasSgemmSmallKKernel_sve(
                     acc21 = svadd_f32_x(pg1, acc21, svld1_f32(pg1, c2 + n + vl));
                     acc30 = svadd_f32_x(pg0, acc30, svld1_f32(pg0, c3 + n));
                     acc31 = svadd_f32_x(pg1, acc31, svld1_f32(pg1, c3 + n + vl));
+                } else if (ScaleByAlpha) {
+                    acc00 = svmul_n_f32_x(pg0, acc00, alpha);
+                    acc01 = svmul_n_f32_x(pg1, acc01, alpha);
+                    acc10 = svmul_n_f32_x(pg0, acc10, alpha);
+                    acc11 = svmul_n_f32_x(pg1, acc11, alpha);
+                    acc20 = svmul_n_f32_x(pg0, acc20, alpha);
+                    acc21 = svmul_n_f32_x(pg1, acc21, alpha);
+                    acc30 = svmul_n_f32_x(pg0, acc30, alpha);
+                    acc31 = svmul_n_f32_x(pg1, acc31, alpha);
                 }
 
                 svst1_f32(pg0, c0 + n, acc00);
@@ -1464,13 +1474,7 @@ MlasSgemmSmallKKernel_sve(
             const float* a0 = A + m * lda;
             float* c0 = C + m * ldc;
 
-            const svfloat32_t k0v0 = svdup_n_f32(a0[0] * alpha);
-
-            float av[MLAS_SGEMM_SVE_SMALLK_MAX];
-
-            for (size_t k = 1; k < CountK; k++) {
-                av[k] = a0[k] * alpha;
-            }
+            const svfloat32_t k0v0 = svdup_n_f32(a0[0]);
 
             for (size_t n = n0; n < nend; n += 2 * vl) {
 
@@ -1488,15 +1492,21 @@ MlasSgemmSmallKKernel_sve(
 
                     b0 = svld1_f32(pg0, bk + n);
                     b1 = svld1_f32(pg1, bk + n + vl);
-                    const svfloat32_t v0 = svdup_n_f32(av[k]);
+                    const svfloat32_t v0 = svdup_n_f32(a0[k]);
 
                     acc00 = svmla_f32_x(pg0, acc00, b0, v0);
                     acc01 = svmla_f32_x(pg1, acc01, b1, v0);
                 }
 
-                if (!ZeroMode) {
+                if (!ZeroMode && ScaleByAlpha) {
+                    acc00 = svmla_n_f32_x(pg0, svld1_f32(pg0, c0 + n), acc00, alpha);
+                    acc01 = svmla_n_f32_x(pg1, svld1_f32(pg1, c0 + n + vl), acc01, alpha);
+                } else if (!ZeroMode) {
                     acc00 = svadd_f32_x(pg0, acc00, svld1_f32(pg0, c0 + n));
                     acc01 = svadd_f32_x(pg1, acc01, svld1_f32(pg1, c0 + n + vl));
+                } else if (ScaleByAlpha) {
+                    acc00 = svmul_n_f32_x(pg0, acc00, alpha);
+                    acc01 = svmul_n_f32_x(pg1, acc01, alpha);
                 }
 
                 svst1_f32(pg0, c0 + n, acc00);

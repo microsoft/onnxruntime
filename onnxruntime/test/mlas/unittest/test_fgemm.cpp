@@ -4,8 +4,10 @@
 #include "test_fgemm.h"
 #include "test_fgemm_fixture.h"
 
+#include <cmath>
 #include <memory>
 #include <sstream>
+#include <vector>
 
 static size_t FGemmRegistLongExecute() {
   size_t count = 0;
@@ -70,3 +72,48 @@ static size_t FGemmRegistShortExecute() {
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   return is_short_execute ? FGemmRegistShortExecute() : FGemmRegistLongExecute();
 });
+
+#if defined(MLAS_USE_SVE)
+
+//
+// The SVE small-K kernel must apply alpha to the finished sums: folding it
+// into A first overflows here although every result is finite. M == 5 runs
+// both the four-row block and the remaining-row loop, and N == 128 is at
+// least two vectors at every SVE vector length.
+//
+TEST(FgemmSve, SmallKAlphaDoesNotOverflow) {
+  constexpr size_t M = 5;
+  constexpr size_t N = 128;
+  const float big = std::ldexp(1.0f, 100);
+  const float small = std::ldexp(1.0f, -100);
+
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG config;
+  config.enable_sve_sgemm = true;
+  config.use_kleidiai = false;
+
+  for (size_t K : {1u, 3u, 8u}) {
+    for (float beta : {0.0f, 1.0f}) {
+      std::vector<float> A(M * K, big);
+      std::vector<float> B(K * N, small);
+      std::vector<float> C(M * N, 0.0f);
+
+      MLAS_SGEMM_DATA_PARAMS data;
+      data.A = A.data();
+      data.lda = K;
+      data.B = B.data();
+      data.ldb = N;
+      data.C = C.data();
+      data.ldc = N;
+      data.alpha = big;
+      data.beta = beta;
+      MlasGemmBatch(CblasNoTrans, CblasNoTrans, M, N, K, &data, 1, nullptr, &config);
+
+      const float expected = static_cast<float>(K) * big;
+      for (size_t i = 0; i < M * N; i++) {
+        ASSERT_EQ(C[i], expected) << "K=" << K << " beta=" << beta << " m=" << i / N << " n=" << i % N;
+      }
+    }
+  }
+}
+
+#endif
