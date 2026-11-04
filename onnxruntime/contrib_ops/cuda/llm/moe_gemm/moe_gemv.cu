@@ -234,7 +234,7 @@ __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, Type
       }
     }
   }
-  epilogue<Details, CtaM, CtaN, Threads, EnableBias, false, AccT>(out, n, tile_acc, bias, 1.0f);
+  epilogue<Details, CtaM, CtaN, Threads, EnableBias, false, AccT, true>(out, n, tile_acc, bias, 1.0f);
 #endif
 }
 

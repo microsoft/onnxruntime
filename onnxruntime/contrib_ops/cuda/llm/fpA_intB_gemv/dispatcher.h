@@ -225,7 +225,8 @@ __device__ __forceinline__ T warp_reduce_sum(T& val) {
 }
 
 template <typename Details, int CtaM, int CtaN, int Threads, bool EnableBias, bool ApplyAlphaInAdvance,
-          typename AccT = typename MathWrapper<typename Details::TypeDetailsA>::Type>
+          typename AccT = typename MathWrapper<typename Details::TypeDetailsA>::Type,
+          bool RoundInt2ProjectionBeforeBias = false>
 __device__ __forceinline__ void epilogue(void* out, int stride, void* tile_acc, void* bias, float alpha) {
   using Type = typename MathWrapper<typename Details::TypeDetailsA>::Type;
   static constexpr int Interleave = Details::kInterleave;
@@ -259,7 +260,7 @@ __device__ __forceinline__ void epilogue(void* out, int stride, void* tile_acc, 
     for (int jj = 0; jj < WarpNum; ++jj) {
       val += shmem[jj * CtaM * CtaN * Interleave + ii];
     }
-    if constexpr (Details::TypeDetailsW::kElemBits == 2) {
+    if constexpr (RoundInt2ProjectionBeforeBias && Details::TypeDetailsW::kElemBits == 2) {
       // Match the INT2 grouped-prefill boundary: round the projection to the activation type before adding bias.
       val = static_cast<float>(static_cast<Type>(val));
     }

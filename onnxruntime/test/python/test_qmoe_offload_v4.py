@@ -732,9 +732,13 @@ class TestQMoEOffloadV4(unittest.TestCase):
         config_entries: dict,
         cuda_options: dict | None = None,
         prefer_plugin: bool = False,
+        profile_file_prefix: str | None = None,
     ):
         so = ort.SessionOptions()
         so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+        if profile_file_prefix is not None:
+            so.enable_profiling = True
+            so.profile_file_prefix = profile_file_prefix
         for k, v in config_entries.items():
             so.add_session_config_entry(k, str(v))
         plugin_dev = cls._selected_plugin_device(prefer_plugin)
@@ -3525,6 +3529,15 @@ int main() {
             self.assertEqual(telemetry[0]["cpu_doorbell_wakeups"], 1)
 
     def test_v4_int2_bf16_projection_rounding_before_bias(self):
+        self._check_v4_int2_bf16_projection_rounding_before_bias()
+
+    def test_v4_int2_bf16_projection_rounding_before_bias_tensorcore_dispatch(self):
+        capability = _cuda_device_compute_capability()
+        if capability is None or capability < (8, 0):
+            self.skipTest("INT2 BF16 Tensor Core dispatch requires SM80+")
+        self._check_v4_int2_bf16_projection_rounding_before_bias(verify_tensorcore=True)
+
+    def _check_v4_int2_bf16_projection_rounding_before_bias(self, verify_tensorcore: bool = False):
         with tempfile.TemporaryDirectory() as directory:
             model_path = self._build_int_qmoe_model(
                 directory, [(2, 64, 1)], hidden_size=128, inter_size=128, top_k=8, with_bias=True, swiglu_limit=1.0
@@ -3574,6 +3587,8 @@ int main() {
             expectations.append(0.125)
             slot_bytes = 13832 + (256 + 128) * 2
             for disable_tc, cpu_offload in ((1, False), (0, False), (0, True)):
+                if verify_tensorcore and (disable_tc or cpu_offload):
+                    continue
                 with self.subTest(disable_tc=disable_tc, cpu_offload=cpu_offload):
                     config = {
                         "session.moe.offload.mode": "required",
@@ -3586,11 +3601,31 @@ int main() {
                         self.assertGreater(sum(step["cold_routes"] for step in telemetry), 0)
                         self.assertGreater(sum(step["cpu_doorbell_wakeups"] for step in telemetry), 0)
                     else:
-                        session = self._make_session(model_path, config)
-                        outputs = [self._run_bf16(session, inputs, routing) for inputs, routing in cases]
+                        session = self._make_session(
+                            model_path,
+                            config,
+                            profile_file_prefix=str(Path(directory) / "int2_tc") if verify_tensorcore else None,
+                        )
+                        try:
+                            outputs = [self._run_bf16(session, inputs, routing) for inputs, routing in cases]
+                        finally:
+                            if verify_tensorcore:
+                                profile_path = session.end_profiling()
                         del session
                     for actual, expected in zip(outputs, expectations, strict=True):
                         np.testing.assert_array_equal(actual, np.full_like(actual, expected))
+                    if verify_tensorcore:
+                        events = json.loads(Path(profile_path).read_text())
+                        names = [event["name"] for event in events if event.get("cat") == "Kernel"]
+                        if not names:
+                            self.skipTest("CUDA kernel profiling unavailable; requires a CUPTI-enabled build")
+                        for swiglu, encoded in (("true", 1), ("false", 0)):
+                            launches = [
+                                name
+                                for name in names
+                                if re.search(rf"MoeGemvTcInt2Kernel<\s*(?:{swiglu}|\(bool\)\s*{encoded}),", name)
+                            ]
+                            self.assertEqual(len(launches), len(cases), names)
 
     def test_v4_int2_bf16_tensorcore_scale_overflow_bounce_alignment_and_fc3_bits(self):
         with tempfile.TemporaryDirectory() as directory:

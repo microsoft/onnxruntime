@@ -6668,7 +6668,7 @@ static std::vector<uint8_t> PackQMoEInt2Sm80(const std::vector<uint8_t>& codes,
 template <typename T>
 static void RunQMoECpuPrepackedInt2Test(int64_t block, bool sm80_shape, bool bias1, bool bias2, bool cuda = false,
                                         bool extreme = false, bool bias_cancel = false, int64_t hidden = 128,
-                                        int64_t inter = 256) {
+                                        int64_t inter = 256, bool default_activation_overflow = false) {
   constexpr int64_t rows = 5, experts = 3;
   std::vector<T> input(static_cast<size_t>(rows * hidden));
   for (size_t i = 0; i < input.size(); ++i) input[i] = T((static_cast<int>(i * 7 % 23) - 11) * 0.03125f);
@@ -6690,7 +6690,9 @@ static void RunQMoECpuPrepackedInt2Test(int64_t block, bool sm80_shape, bool bia
   make_codes(codes2, hidden, inter);
   if (extreme) {
     std::fill(input.begin(), input.end(), T(0.0f));
-    for (int64_t r = 0; r < rows; ++r) input[static_cast<size_t>(r * hidden)] = T(r % 2 ? -40000.0f : 40000.0f);
+    for (int64_t r = 0; r < rows; ++r) {
+      input[static_cast<size_t>(r * hidden)] = T(!default_activation_overflow && r % 2 ? -40000.0f : 40000.0f);
+    }
     for (int64_t n = 0; n < experts * 2 * inter; ++n) {
       std::fill_n(codes1.data() + n * hidden, hidden, n % 2 == 0 ? uint8_t{0} : uint8_t{3});
     }
@@ -6739,8 +6741,12 @@ static void RunQMoECpuPrepackedInt2Test(int64_t block, bool sm80_shape, bool bia
           projections[p] = static_cast<float>(T(static_cast<float>(sum))) +
                            (bias1 ? static_cast<float>(b1[static_cast<size_t>(e * 2 * inter + n)]) : 0.0f);
         }
-        const double gate = extreme ? std::min(projections[0], 100000.0) : projections[0];
+        const double gate = extreme && !default_activation_overflow ? std::min(projections[0], 100000.0) : projections[0];
         const double up = projections[1];
+        if (default_activation_overflow) {
+          ASSERT_EQ(gate, -std::numeric_limits<double>::infinity());
+          ASSERT_TRUE(std::isfinite(up));
+        }
         const double silu = gate == -std::numeric_limits<double>::infinity() ? 0.0 : gate / (1.0 + std::exp(-gate));
         activated[static_cast<size_t>(j)] = static_cast<float>(T(static_cast<float>(silu * up)));
       }
@@ -6824,7 +6830,7 @@ static void RunQMoECpuPrepackedInt2Test(int64_t block, bool sm80_shape, bool bia
     tester.AddAttribute<int64_t>("normalize_routing_weights", route.normalize);
     tester.AddAttribute<std::string>("activation_type", "swiglu");
     tester.AddAttribute<int64_t>("swiglu_fusion", 1);
-    if (extreme) tester.AddAttribute<float>("swiglu_limit", 100000.0f);
+    if (extreme && !default_activation_overflow) tester.AddAttribute<float>("swiglu_limit", 100000.0f);
     tester.AddInput<T>("input", {rows, hidden}, input);
     tester.AddInput<T>("router_probs", {rows, experts}, logits);
     tester.AddInput<uint8_t>("fc1_experts_weights", sm80_shape ? std::vector<int64_t>{experts, hidden, inter / 2} : std::vector<int64_t>{experts, 2 * inter, hidden / 4}, weights1, true);
@@ -6882,6 +6888,18 @@ TEST(MoETest, QMoETest_CPU_PrepackedInt2_BFloat16) {
 }
 
 #ifdef USE_CUDA
+TEST(MoETest, QMoETest_PrepackedInt2_DefaultSwiGluNegativeInfinity) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "SM80 or later is required for packed INT2.";
+  for (bool prefill : {false, true}) {
+    SCOPED_TRACE(prefill ? "grouped prefill gated activation" : "decode fused SwiGLU");
+    ScopedEnvironmentVariables env{{{"ORT_DISABLE_MOE_GEMV", prefill ? "1" : "0"},
+                                    {"ORT_ENABLE_QMOE_INT2_PREFILL", prefill ? "1" : "0"}}};
+    RunQMoECpuPrepackedInt2Test<MLFloat16>(64, true, false, false, /*cuda=*/true,
+                                           /*extreme=*/true, /*bias_cancel=*/false,
+                                           /*hidden=*/512, /*inter=*/1024, /*default_activation_overflow=*/true);
+  }
+}
+
 TEST(MoETest, QMoETest_PrepackedInt2_CpuCudaDecodeAndPrefill) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "SM80 or later is required for packed INT2.";
   // Both providers consume the same independently packed, immutable SM80 banks and natural-order reference.
