@@ -32,6 +32,19 @@ def convert_model(source: Path, output: Path) -> dict:
             raise ValueError(f"Expected constant initializer for {name}")
         return initializers[name]
 
+    taken = set(initializers)
+    taken.update(name for node in model.graph.node for name in (*node.input, *node.output))
+    taken.update(value.name for value in model.graph.input)
+
+    def unique_name(base: str) -> str:
+        # Matrices that share only B or only scales must still get distinct T8 initializers.
+        name, suffix = base, 0
+        while name in taken:
+            suffix += 1
+            name = f"{base}_{suffix}"
+        taken.add(name)
+        return name
+
     def array(tensor: onnx.TensorProto) -> np.ndarray:
         return numpy_helper.to_array(tensor, base_dir=str(source.parent))
 
@@ -82,9 +95,7 @@ def convert_model(source: Path, output: Path) -> dict:
                 if packed.shape != (n, k // 128, 32):
                     raise ValueError(f"{node.name}: Q2 shape disagrees with K/N")
                 planes, t8_scales = encode_q2(packed, s, verify=True)
-                names = (weight.name + ".t8", scales.name + ".t8")
-                if any(name in initializers for name in names):
-                    raise ValueError(f"{node.name}: T8 initializer name collision")
+                names = (unique_name(weight.name + ".t8"), unique_name(scales.name + ".t8"))
                 for name, value in zip(names, (planes, t8_scales), strict=True):
                     tensor = numpy_helper.from_array(value, name)
                     store(tensor)

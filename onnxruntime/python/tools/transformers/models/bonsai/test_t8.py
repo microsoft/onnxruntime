@@ -14,6 +14,8 @@ from convert_to_t8 import convert_model
 from onnx import helper, numpy_helper
 from t8_codec import decode_q2, encode_q2
 
+import onnxruntime as ort
+
 
 def pack_codes(codes):
     rows, width = codes.shape
@@ -217,6 +219,49 @@ class T8ConversionTest(unittest.TestCase):
             convert_model(source, output)
             values = {tensor.name: numpy_helper.to_array(tensor) for tensor in onnx.load(output).graph.initializer}
             np.testing.assert_array_equal(values["bias"], bias)
+
+    def test_matrices_sharing_one_component_get_unique_names(self):
+        rng = np.random.default_rng(0)
+        tensors = [
+            numpy_helper.from_array(pack_codes(rng.integers(0, 3, (7, 128), dtype=np.uint8)), "B1"),
+            numpy_helper.from_array(pack_codes(rng.integers(0, 3, (7, 128), dtype=np.uint8)), "B2"),
+            numpy_helper.from_array(np.arange(1, 8, dtype=np.float32)[:, None] / 16, "S1"),
+            numpy_helper.from_array(np.arange(8, 15, dtype=np.float32)[:, None] / 16, "S2"),
+            numpy_helper.from_array(np.full((7, 1), 0x55, dtype=np.uint8), "Z"),
+        ]
+        attrs = {"K": 128, "N": 7, "bits": 2, "block_size": 128}
+        cases = {"shared scales": [("B1", "S1"), ("B2", "S1")], "shared B": [("B1", "S1"), ("B1", "S2")]}
+        for case, pairs in cases.items():
+            with self.subTest(case), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                nodes = [
+                    helper.make_node("MatMulNBits", ["A", b, s, "Z"], [f"Y{i}"], domain="com.microsoft", **attrs)
+                    for i, (b, s) in enumerate(pairs)
+                ]
+                graph = helper.make_graph(
+                    nodes,
+                    "test",
+                    [helper.make_tensor_value_info("A", onnx.TensorProto.FLOAT, [1, 128])],
+                    [helper.make_tensor_value_info(f"Y{i}", onnx.TensorProto.FLOAT, [1, 7]) for i in range(2)],
+                    tensors,
+                )
+                model = helper.make_model(
+                    graph,
+                    opset_imports=[helper.make_opsetid("", 21), helper.make_opsetid("com.microsoft", 1)],
+                    ir_version=10,
+                )
+                source, output = root / "q2.onnx", root / "t8.onnx"
+                onnx.save_model(model, source)
+                summary = convert_model(source, output)
+                self.assertEqual(summary["unique_matrices"], 2)
+                converted = onnx.load(output)
+                self.assertEqual(len(converted.graph.initializer), 4)
+                self.assertEqual(len({name for node in converted.graph.node for name in node.input[1:]}), 4)
+                a = {"A": rng.standard_normal((1, 128)).astype(np.float32)}
+                expected = ort.InferenceSession(str(source), providers=["CPUExecutionProvider"]).run(None, a)
+                actual = ort.InferenceSession(str(output), providers=["CPUExecutionProvider"]).run(None, a)
+                for want, got in zip(expected, actual, strict=True):
+                    np.testing.assert_allclose(got, want, rtol=1e-5, atol=1e-5)
 
     def test_validates_zero_points_of_cached_matrices(self):
         with tempfile.TemporaryDirectory() as directory:
