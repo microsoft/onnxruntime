@@ -8003,7 +8003,7 @@ TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_CrossValidate_FlashPrefill) 
                             /*max_absolute_error=*/0.03f);
 }
 
-static void RunFp16HighMagnitudeAttention(int sequence_length, uint32_t bit_width) {
+static void RunFp16HighMagnitudeAttention(int sequence_length, uint32_t bit_width, int head_size = 128) {
   auto ep = bit_width == 0 ? DefaultWebGpuExecutionProvider() : WebGpuEPWithKVCacheQuantization(bit_width);
   if (!ep) {
     GTEST_SKIP() << "WebGPU EP not available";
@@ -8012,9 +8012,8 @@ static void RunFp16HighMagnitudeAttention(int sequence_length, uint32_t bit_widt
   constexpr int batch_size = 1;
   constexpr int num_heads = 2;
   constexpr int kv_num_heads = 1;
-  constexpr int head_size = 128;
-  constexpr int hidden_size = num_heads * head_size;
-  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  const int hidden_size = num_heads * head_size;
+  const int kv_hidden_size = kv_num_heads * head_size;
 
   std::mt19937 rng(1234);
   std::bernoulli_distribution sign_dist(0.5);
@@ -8058,6 +8057,16 @@ static void RunFp16HighMagnitudeAttention(int sequence_length, uint32_t bit_widt
 
 TEST(GroupQueryAttentionTest, WebGPU_FP16_HighMagnitude_FlashPrefill) {
   RunFp16HighMagnitudeAttention(/*sequence_length=*/40, /*bit_width=*/0);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_FP16_HighMagnitude_FlashPrefillUnrollBoundary) {
+  for (int head_size : {64, 128, 192, 256, 512}) {
+    SCOPED_TRACE(head_size);
+    // Cross a query-tile boundary and leave a partial K tile. On NVIDIA, heads
+    // 64/128 use the expanded reductions and larger heads retain loops.
+    // Large Q/K values also catch accidental FP16 score accumulation.
+    RunFp16HighMagnitudeAttention(/*sequence_length=*/65, /*bit_width=*/0, head_size);
+  }
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_FP16_HighMagnitude_SplitReduce) {

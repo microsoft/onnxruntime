@@ -29,6 +29,7 @@
 #include <utility>
 #include <vector>
 
+#include "onnxruntime_build_info.h"
 #include "onnxruntime_config.h"
 
 #if defined(_WIN32)

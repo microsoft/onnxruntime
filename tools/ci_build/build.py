@@ -1991,6 +1991,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             log.info("Testing AutoEP feature")
             run_subprocess([sys.executable, "onnxruntime_test_python_autoep.py"], cwd=cwd, dll_path=dll_path)
 
+            log.info("Testing Python Model Package API")
+            run_subprocess([sys.executable, "onnxruntime_test_python_model_package.py"], cwd=cwd, dll_path=dll_path)
+
             if not args.disable_contrib_ops:
                 run_subprocess([sys.executable, "onnxruntime_test_python_sparse_matmul.py"], cwd=cwd, dll_path=dll_path)
 

@@ -4,6 +4,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 
+#include <algorithm>
 #include <charconv>
 #include <memory>
 #include <sstream>
@@ -3478,8 +3479,14 @@ common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::stri
       // check for shape
       const auto& opt_shape = iter->second.tensor_shape;
       if (opt_shape.has_value() && !opt_shape->GetDims().empty()) {
-        ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(name, input_output_tensor.Shape(),
-                                                   *opt_shape, input_output_moniker));
+        const auto& actual_shape = input_output_tensor.Shape();
+        const bool scalar_single_element_output_compatibility =
+            !is_inputs && actual_shape.NumDimensions() == 0 &&
+            std::all_of(opt_shape->GetDims().begin(), opt_shape->GetDims().end(),
+                        [](int64_t dimension) { return dimension < 0 || dimension == 1; });
+        if (!scalar_single_element_output_compatibility) {
+          ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(name, actual_shape, *opt_shape, input_output_moniker));
+        }
       }
     } else if (input_output_ml_value.IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
