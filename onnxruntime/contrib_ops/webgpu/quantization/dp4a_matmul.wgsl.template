@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#param use_amd_tile
 #param acc_f32
 #param block_size
 #param n_bits
@@ -14,6 +15,7 @@
 
 #use .getByOffset .setByOffset
 
+#if !use_amd_tile
 fn write_qlora_output(offset: u32, value: vec4<output_element_t>) {
 #if has_qlora_up
   let row = (offset * 4u) / uniforms.N;
@@ -24,6 +26,8 @@ fn write_qlora_output(offset: u32, value: vec4<output_element_t>) {
   output.setByOffset(offset, value);
 #endif
 }
+
+#endif
 
 #include "quantization/dp4a_matmul_common.wgsl.template"
 
@@ -67,9 +71,9 @@ const tile_size_k_vec = 2;
 
 // Shared memory
 var<workgroup> tile_A : array<array<vec4<u32>, tile_m>, tile_size_k_vec>;                     // tile_m x 32
-var<workgroup> scale_A : array<output_element_t, tile_m>;                                     // tile_m x 1
+var<workgroup> scale_A : array<f32, tile_m>;                                     // tile_m x 1
 var<workgroup> tile_B : array<array<vec4<u32>, tile_n>, tile_size_k_vec>;                     // tile_n x 32
-var<workgroup> scale_B : array<output_element_t, tile_n>;                                     // tile_n x 1
+var<workgroup> scale_B : array<f32, tile_n>;                                     // tile_n x 1
 
 #if has_zero_points
     var<workgroup> zeroes : array<i32, tile_n>;
@@ -117,7 +121,7 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
         {
             // kidx_v - each kidx_v covers 16 values of k
             let b_scale_offset = actual_weight_idx * uniforms.N * (uniforms.K/block_size);
-            scale_B[row] = scales_b.getByOffset(b_scale_offset + b_global*(uniforms.K/block_size) + block_idx);
+            scale_B[row] = f32(scales_b.getByOffset(b_scale_offset + b_global*(uniforms.K/block_size) + block_idx));
         }
     }
 #endif
@@ -150,7 +154,7 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
             // kidx_v - each kidx_v covers 16 values of k
             let block_idx = kidx_v/(block_size/16);
             let b_scale_offset = actual_weight_idx * uniforms.N * (uniforms.K/block_size);
-            scale_B[row] = scales_b.getByOffset(b_scale_offset + b_global*(uniforms.K/block_size) + block_idx);
+            scale_B[row] = f32(scales_b.getByOffset(b_scale_offset + b_global*(uniforms.K/block_size) + block_idx));
 #if has_zero_points
             zeroes[row] = mm_read_zero(actual_weight_idx, b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
 #endif
@@ -187,7 +191,7 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
         tile_B[col][row] = DequantizedFrom2BitsTo8Bits(b_value);
 #endif
         let b_scale_offset = actual_weight_idx * uniforms.N * (uniforms.K/block_size);
-        scale_B[row] = scales_b.getByOffset(b_scale_offset + b_global*(uniforms.K/block_size) + block_idx);
+        scale_B[row] = f32(scales_b.getByOffset(b_scale_offset + b_global*(uniforms.K/block_size) + block_idx));
     }
 #endif
 
@@ -201,6 +205,158 @@ alias acc_element_t = output_element_t;
 #endif
 
 $MAIN {
+#if use_amd_tile
+  // Each lane accumulates two rows and eight columns. Neighboring lanes
+  // access consecutive columns in shared memory. The K32 reduction order
+  // and FP32 quantization-scale products match the original path.
+  let batch = workgroup_idx / (uniforms.num_M_tile * uniforms.num_N_tile);
+  if (batch >= uniforms.batch_count) { return; }
+  let a_global_base = ((workgroup_idx / uniforms.num_N_tile) % uniforms.num_M_tile) * 64u;
+  let b_global_base = (workgroup_idx % uniforms.num_N_tile) * 64u;
+  let row_base = (local_idx / 8u) * 2u;
+  let col_base = local_idx % 8u;
+  var sum_0_0: acc_element_t = acc_element_t(0);
+  var sum_0_1: acc_element_t = acc_element_t(0);
+  var sum_0_2: acc_element_t = acc_element_t(0);
+  var sum_0_3: acc_element_t = acc_element_t(0);
+  var sum_0_4: acc_element_t = acc_element_t(0);
+  var sum_0_5: acc_element_t = acc_element_t(0);
+  var sum_0_6: acc_element_t = acc_element_t(0);
+  var sum_0_7: acc_element_t = acc_element_t(0);
+  var sum_1_0: acc_element_t = acc_element_t(0);
+  var sum_1_1: acc_element_t = acc_element_t(0);
+  var sum_1_2: acc_element_t = acc_element_t(0);
+  var sum_1_3: acc_element_t = acc_element_t(0);
+  var sum_1_4: acc_element_t = acc_element_t(0);
+  var sum_1_5: acc_element_t = acc_element_t(0);
+  var sum_1_6: acc_element_t = acc_element_t(0);
+  var sum_1_7: acc_element_t = acc_element_t(0);
+  for (var kidx_v = 0u; kidx_v < uniforms.K16; kidx_v += tile_size_k_vec) {
+    if (local_idx < 128u) {
+      loadSHMA(batch, a_global_base, kidx_v, local_idx / 2u, local_idx % 2u + 0u);
+    } else {
+      loadSHMB(b_global_base, kidx_v, (local_idx - 128u) / 2u, local_idx % 2u + 0u);
+    }
+    workgroupBarrier();
+    {
+      let a00 = tile_A[0][row_base + 0u];
+      let a01 = tile_A[1][row_base + 0u];
+      let sa0 = scale_A[row_base + 0u];
+      let a10 = tile_A[0][row_base + 1u];
+      let a11 = tile_A[1][row_base + 1u];
+      let sa1 = scale_A[row_base + 1u];
+      {
+        let b0 = tile_B[0][col_base + 0u];
+        let b1 = tile_B[1][col_base + 0u];
+        let sb = scale_B[0u + col_base + 0u];
+        sum_0_0 += SDP8AI(a00, b0, a01, b1, sa0 * sb);
+        sum_1_0 += SDP8AI(a10, b0, a11, b1, sa1 * sb);
+      }
+      {
+        let b0 = tile_B[0][col_base + 8u];
+        let b1 = tile_B[1][col_base + 8u];
+        let sb = scale_B[0u + col_base + 8u];
+        sum_0_1 += SDP8AI(a00, b0, a01, b1, sa0 * sb);
+        sum_1_1 += SDP8AI(a10, b0, a11, b1, sa1 * sb);
+      }
+      {
+        let b0 = tile_B[0][col_base + 16u];
+        let b1 = tile_B[1][col_base + 16u];
+        let sb = scale_B[0u + col_base + 16u];
+        sum_0_2 += SDP8AI(a00, b0, a01, b1, sa0 * sb);
+        sum_1_2 += SDP8AI(a10, b0, a11, b1, sa1 * sb);
+      }
+      {
+        let b0 = tile_B[0][col_base + 24u];
+        let b1 = tile_B[1][col_base + 24u];
+        let sb = scale_B[0u + col_base + 24u];
+        sum_0_3 += SDP8AI(a00, b0, a01, b1, sa0 * sb);
+        sum_1_3 += SDP8AI(a10, b0, a11, b1, sa1 * sb);
+      }
+      {
+        let b0 = tile_B[0][col_base + 32u];
+        let b1 = tile_B[1][col_base + 32u];
+        let sb = scale_B[0u + col_base + 32u];
+        sum_0_4 += SDP8AI(a00, b0, a01, b1, sa0 * sb);
+        sum_1_4 += SDP8AI(a10, b0, a11, b1, sa1 * sb);
+      }
+      {
+        let b0 = tile_B[0][col_base + 40u];
+        let b1 = tile_B[1][col_base + 40u];
+        let sb = scale_B[0u + col_base + 40u];
+        sum_0_5 += SDP8AI(a00, b0, a01, b1, sa0 * sb);
+        sum_1_5 += SDP8AI(a10, b0, a11, b1, sa1 * sb);
+      }
+      {
+        let b0 = tile_B[0][col_base + 48u];
+        let b1 = tile_B[1][col_base + 48u];
+        let sb = scale_B[0u + col_base + 48u];
+        sum_0_6 += SDP8AI(a00, b0, a01, b1, sa0 * sb);
+        sum_1_6 += SDP8AI(a10, b0, a11, b1, sa1 * sb);
+      }
+      {
+        let b0 = tile_B[0][col_base + 56u];
+        let b1 = tile_B[1][col_base + 56u];
+        let sb = scale_B[0u + col_base + 56u];
+        sum_0_7 += SDP8AI(a00, b0, a01, b1, sa0 * sb);
+        sum_1_7 += SDP8AI(a10, b0, a11, b1, sa1 * sb);
+      }
+    }
+    workgroupBarrier();
+  }
+  if (a_global_base + row_base + 0u < uniforms.M) {
+    if (b_global_base + col_base + 0u < uniforms.N) {
+      output.setByOffset((batch * uniforms.M + a_global_base + row_base + 0u) * uniforms.N + b_global_base + col_base + 0u, output_element_t(sum_0_0));
+    }
+    if (b_global_base + col_base + 8u < uniforms.N) {
+      output.setByOffset((batch * uniforms.M + a_global_base + row_base + 0u) * uniforms.N + b_global_base + col_base + 8u, output_element_t(sum_0_1));
+    }
+    if (b_global_base + col_base + 16u < uniforms.N) {
+      output.setByOffset((batch * uniforms.M + a_global_base + row_base + 0u) * uniforms.N + b_global_base + col_base + 16u, output_element_t(sum_0_2));
+    }
+    if (b_global_base + col_base + 24u < uniforms.N) {
+      output.setByOffset((batch * uniforms.M + a_global_base + row_base + 0u) * uniforms.N + b_global_base + col_base + 24u, output_element_t(sum_0_3));
+    }
+    if (b_global_base + col_base + 32u < uniforms.N) {
+      output.setByOffset((batch * uniforms.M + a_global_base + row_base + 0u) * uniforms.N + b_global_base + col_base + 32u, output_element_t(sum_0_4));
+    }
+    if (b_global_base + col_base + 40u < uniforms.N) {
+      output.setByOffset((batch * uniforms.M + a_global_base + row_base + 0u) * uniforms.N + b_global_base + col_base + 40u, output_element_t(sum_0_5));
+    }
+    if (b_global_base + col_base + 48u < uniforms.N) {
+      output.setByOffset((batch * uniforms.M + a_global_base + row_base + 0u) * uniforms.N + b_global_base + col_base + 48u, output_element_t(sum_0_6));
+    }
+    if (b_global_base + col_base + 56u < uniforms.N) {
+      output.setByOffset((batch * uniforms.M + a_global_base + row_base + 0u) * uniforms.N + b_global_base + col_base + 56u, output_element_t(sum_0_7));
+    }
+  }
+  if (a_global_base + row_base + 1u < uniforms.M) {
+    if (b_global_base + col_base + 0u < uniforms.N) {
+      output.setByOffset((batch * uniforms.M + a_global_base + row_base + 1u) * uniforms.N + b_global_base + col_base + 0u, output_element_t(sum_1_0));
+    }
+    if (b_global_base + col_base + 8u < uniforms.N) {
+      output.setByOffset((batch * uniforms.M + a_global_base + row_base + 1u) * uniforms.N + b_global_base + col_base + 8u, output_element_t(sum_1_1));
+    }
+    if (b_global_base + col_base + 16u < uniforms.N) {
+      output.setByOffset((batch * uniforms.M + a_global_base + row_base + 1u) * uniforms.N + b_global_base + col_base + 16u, output_element_t(sum_1_2));
+    }
+    if (b_global_base + col_base + 24u < uniforms.N) {
+      output.setByOffset((batch * uniforms.M + a_global_base + row_base + 1u) * uniforms.N + b_global_base + col_base + 24u, output_element_t(sum_1_3));
+    }
+    if (b_global_base + col_base + 32u < uniforms.N) {
+      output.setByOffset((batch * uniforms.M + a_global_base + row_base + 1u) * uniforms.N + b_global_base + col_base + 32u, output_element_t(sum_1_4));
+    }
+    if (b_global_base + col_base + 40u < uniforms.N) {
+      output.setByOffset((batch * uniforms.M + a_global_base + row_base + 1u) * uniforms.N + b_global_base + col_base + 40u, output_element_t(sum_1_5));
+    }
+    if (b_global_base + col_base + 48u < uniforms.N) {
+      output.setByOffset((batch * uniforms.M + a_global_base + row_base + 1u) * uniforms.N + b_global_base + col_base + 48u, output_element_t(sum_1_6));
+    }
+    if (b_global_base + col_base + 56u < uniforms.N) {
+      output.setByOffset((batch * uniforms.M + a_global_base + row_base + 1u) * uniforms.N + b_global_base + col_base + 56u, output_element_t(sum_1_7));
+    }
+  }
+#else
 #if n_bits == 2
     LoadDequantizationTable(local_idx);
 #if has_zero_points
@@ -277,7 +433,7 @@ $MAIN {
         // Step 1: Load from shared memory into registers across entire subgroup.
         var own_a0: vec4<u32> = tile_A[0][base_A + a_idx];
         var own_a1: vec4<u32> = tile_A[1][base_A + a_idx];
-        var own_scale_a: output_element_t = scale_A[base_A + a_idx];
+        let own_scale_a = scale_A[base_A + a_idx];
 
 #if has_zero_points && n_bits == 8
  #if is_qualcomm
@@ -285,7 +441,7 @@ $MAIN {
         {
             var own_b0: vec4<u32>;
             var own_b1: vec4<u32>;
-            var own_scale_b: output_element_t;
+            var own_scale_b: f32;
             var zero: i32;
             if (sg_id < 16)
             {
@@ -312,7 +468,7 @@ $MAIN {
         {
             var own_b0: vec4<u32> = tile_B[0][base_B + sg_id];
             var own_b1: vec4<u32> = tile_B[1][base_B + sg_id];
-            var own_scale_b: output_element_t  = scale_B[base_B + sg_id];
+            var own_scale_b: f32  = scale_B[base_B + sg_id];
             var zero = zeroes[base_B + sg_id];
             // Step 2: Access registers across the subgroup using subgroupShuffle and perform the matmul.
             lane_output1[0] += SDP8AI(own_a0, subgroupShuffle(own_b0, 0), own_a1, subgroupShuffle(own_b1, 0), subgroupShuffle(own_scale_b, 0) * own_scale_a, subgroupShuffle(zero, 0));
@@ -367,7 +523,7 @@ $MAIN {
         {
             var own_b0: vec4<u32>;
             var own_b1: vec4<u32>;
-            var own_scale_b: output_element_t;
+            var own_scale_b: f32;
             if (sg_id < 16)
             {
                 own_b0 = tile_B[0][base_B + sg_id];
@@ -392,7 +548,7 @@ $MAIN {
         {
             var own_b0: vec4<u32> = tile_B[0][base_B + sg_id];
             var own_b1: vec4<u32> = tile_B[1][base_B + sg_id];
-            var own_scale_b: output_element_t  = scale_B[base_B + sg_id];
+            var own_scale_b: f32  = scale_B[base_B + sg_id];
             // Step 2: Access registers across the subgroup using subgroupShuffle and perform the matmul.
             lane_output1[0] += SDP8AI(own_a0, subgroupShuffle(own_b0, 0), own_a1, subgroupShuffle(own_b1, 0), subgroupShuffle(own_scale_b, 0) * own_scale_a);
             lane_output1[1] += SDP8AI(own_a0, subgroupShuffle(own_b0, 1), own_a1, subgroupShuffle(own_b1, 1), subgroupShuffle(own_scale_b, 1) * own_scale_a);
@@ -541,4 +697,5 @@ $MAIN {
  #endif
 #endif
     }
+#endif
 }  // MAIN

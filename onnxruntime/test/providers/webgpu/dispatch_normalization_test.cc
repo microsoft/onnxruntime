@@ -27,6 +27,8 @@
 #include "test/util/include/asserts.h"
 
 #if !defined(DISABLE_CONTRIB_OPS)
+#include "contrib_ops/webgpu/bert/flash_attention.h"
+#include "contrib_ops/webgpu/bert/skip_layer_norm.h"
 #include "contrib_ops/webgpu/quantization/dp4a_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
 #endif
@@ -224,6 +226,136 @@ void CheckResultsAndPadding(gsl::span<const float> output_data, size_t output_si
 }
 
 #if !defined(DISABLE_CONTRIB_OPS)
+TEST_F(WebGpuDispatchExecutionTest, FlashAttentionLaneSplitPreservesPaddingAfterNormalization) {
+  auto& context = WebGpuContextFactory::GetContext(Ep().GetDeviceId());
+  const auto& adapter = context.AdapterInfo();
+  if (adapter.backendType != wgpu::BackendType::D3D12 ||
+      !context.DeviceHasFeature(wgpu::FeatureName::ShaderF16) ||
+      !context.DeviceHasFeature(wgpu::FeatureName::Subgroups) ||
+      !context.DeviceHasFeature(wgpu::FeatureName::SubgroupSizeControl) ||
+      adapter.subgroupMinSize > 32 || adapter.subgroupMaxSize < 32) {
+    GTEST_SKIP() << "Requires D3D12, FP16, and explicit 32-lane subgroups.";
+  }
+
+  constexpr uint32_t batches = 2, heads = 2, length = 513, head_size = 128;
+  const uint32_t query_tiles = CeilDiv(length, 32u);
+  const MLFloat16 canary{-42.0f};
+  const OrtMemoryInfo memory_info(WEBGPU_BUFFER, OrtDeviceAllocator, webgpu::WebGpuDevice(0), OrtMemTypeDefault);
+  for (uint32_t limit : {5u, 9u}) {
+    SCOPED_TRACE(limit);
+    std::array<uint32_t, 3> physical{batches * heads * query_tiles, 1, 1};
+    ASSERT_STATUS_OK(webgpu::detail::NormalizeDispatchGroupSize(physical[0], physical[1], physical[2], limit));
+    const uint32_t physical_count = physical[0] * physical[1] * physical[2];
+    ASSERT_GT(physical_count, batches * heads * query_tiles);
+    const uint32_t padded_batches = CeilDiv(physical_count, heads * query_tiles);
+    // Keep padded batches in each backing buffer so a missing guard visibly
+    // overwrites output canaries instead of relying on robust out-of-bounds access.
+    std::vector<MLFloat16> q_data(padded_batches * length * heads * head_size, MLFloat16{0.0f});
+    std::vector<MLFloat16> k_data(padded_batches * length * head_size, MLFloat16{0.0f});
+    std::vector<MLFloat16> v_data(padded_batches * length * head_size);
+    for (uint32_t b = 0; b < padded_batches; ++b) {
+      std::fill_n(v_data.begin() + b * length * head_size, length * head_size,
+                  MLFloat16{0.125f * static_cast<float>(b + 1)});
+    }
+    std::vector<int32_t> seqlens_data(padded_batches, static_cast<int32_t>(length - 1));
+    auto q_buffer = CreateStorageBuffer(Ep(), q_data);
+    auto k_buffer = CreateStorageBuffer(Ep(), k_data);
+    auto v_buffer = CreateStorageBuffer(Ep(), v_data);
+    auto seqlens_buffer = CreateStorageBuffer(Ep(), seqlens_data);
+    Tensor q(DataTypeImpl::GetType<MLFloat16>(), {batches, length, heads, head_size}, q_buffer.Get(), memory_info);
+    Tensor k(DataTypeImpl::GetType<MLFloat16>(), {batches, 1, length, head_size}, k_buffer.Get(), memory_info);
+    Tensor v(DataTypeImpl::GetType<MLFloat16>(), {batches, 1, length, head_size}, v_buffer.Get(), memory_info);
+    Tensor seqlens(DataTypeImpl::GetType<int32_t>(), {batches}, seqlens_buffer.Get(), memory_info);
+    for (bool use_seqlen_k : {false, true}) {
+      SCOPED_TRACE(use_seqlen_k);
+      std::vector<MLFloat16> output_data(q_data.size(), canary);
+      auto output_buffer = CreateStorageBuffer(Ep(), output_data);
+      Tensor output(DataTypeImpl::GetType<MLFloat16>(), {batches, length, heads, head_size},
+                    output_buffer.Get(), memory_info);
+      contrib::webgpu::FlashAttentionProgram program{
+          "FlashAttentionLaneSplitPadding", /*has_attention_bias=*/false, /*is_qualcomm=*/false,
+          /*is_fp16=*/true, head_size, heads, /*is_unidirectional=*/true,
+          /*is_nvidia=*/false, /*is_apple=*/false, /*has_subgroups=*/true, /*q_BNSH=*/false,
+          use_seqlen_k, /*has_head_sink=*/false, /*has_local_window=*/false,
+          /*kv_cache_quantization_bits=*/0, /*compressed_head_size_u32=*/0,
+          /*use_seqlens_q=*/false, /*use_subgroup_prefill=*/true};
+      program.AddInputs({{&q, ProgramTensorMetadataDependency::TypeAndRank, 4},
+                         {&k, ProgramTensorMetadataDependency::TypeAndRank, 4},
+                         {&v, ProgramTensorMetadataDependency::TypeAndRank, 4}})
+          .AddOutput({&output, ProgramTensorMetadataDependency::TypeAndRank, 4})
+          .AddUniformVariables({{length}, {length}, {length}, {batches}, {heads}, {1.0f}})
+          .AddUniformVariables({{query_tiles}, {0u}, {0u}, {0u}, {0u}})
+          .CacheHint(use_seqlen_k)
+          .SetWorkgroupSize(256)
+          .SetSubgroupSize(32)
+          .SetDispatchGroupSize(physical[0], physical[1], physical[2]);
+      if (use_seqlen_k) {
+        program.AddInput({&seqlens, ProgramTensorMetadataDependency::None});
+      }
+      ASSERT_NO_FATAL_FAILURE(RunAndReadProgram(Ep(), program, output_buffer.Get(), output_data));
+      for (uint32_t b = 0; b < padded_batches; ++b) {
+        const float expected = b < batches ? 0.125f * static_cast<float>(b + 1) : canary.ToFloat();
+        for (size_t i = b * length * heads * head_size; i < (b + 1) * length * heads * head_size; ++i) {
+          if (b < batches) {
+            // FP32 division can differ across backends before the final FP16 store.
+            ASSERT_NEAR(output_data[i].ToFloat(), expected, expected / 1024.0f) << "at output index " << i;
+          } else {
+            ASSERT_EQ(output_data[i].ToFloat(), expected) << "at padding index " << i;
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST_F(WebGpuDispatchExecutionTest, SkipLayerNormSubgroupPreservesPaddingAfterNormalization) {
+  auto& context = WebGpuContextFactory::GetContext(Ep().GetDeviceId());
+  if (!context.DeviceHasFeature(wgpu::FeatureName::ShaderF16) ||
+      !context.DeviceHasFeature(wgpu::FeatureName::Subgroups) || context.AdapterInfo().subgroupMinSize < 32) {
+    GTEST_SKIP() << "Requires FP16 and subgroups with at least 32 lanes.";
+  }
+  constexpr uint32_t rows = 7, hidden_size = 128;
+  std::array<uint32_t, 3> physical{rows, 1, 1};
+  ASSERT_STATUS_OK(webgpu::detail::NormalizeDispatchGroupSize(physical[0], physical[1], physical[2], 5));
+  const uint32_t padded_rows = physical[0] * physical[1] * physical[2];
+  ASSERT_GT(padded_rows, rows);
+  const MLFloat16 canary{-42.0f};
+  std::vector<MLFloat16> x_data(padded_rows * hidden_size);
+  for (size_t i = 0; i < x_data.size(); ++i) {
+    x_data[i] = MLFloat16{i % 2 == 0 ? -1.0f : 1.0f};
+  }
+  std::vector<MLFloat16> skip_data(hidden_size, MLFloat16{0.0f});
+  std::vector<MLFloat16> gamma_data(hidden_size, MLFloat16{1.0f});
+  auto x_buffer = CreateStorageBuffer(Ep(), x_data);
+  auto skip_buffer = CreateStorageBuffer(Ep(), skip_data);
+  auto gamma_buffer = CreateStorageBuffer(Ep(), gamma_data);
+  const OrtMemoryInfo memory_info(WEBGPU_BUFFER, OrtDeviceAllocator, webgpu::WebGpuDevice(0), OrtMemTypeDefault);
+  Tensor x(DataTypeImpl::GetType<MLFloat16>(), {rows, hidden_size}, x_buffer.Get(), memory_info);
+  Tensor skip(DataTypeImpl::GetType<MLFloat16>(), {hidden_size}, skip_buffer.Get(), memory_info);
+  Tensor gamma(DataTypeImpl::GetType<MLFloat16>(), {hidden_size}, gamma_buffer.Get(), memory_info);
+  for (bool simplified : {false, true}) {
+    SCOPED_TRACE(simplified);
+    std::vector<MLFloat16> output_data(x_data.size(), canary);
+    auto output_buffer = CreateStorageBuffer(Ep(), output_data);
+    Tensor output(DataTypeImpl::GetType<MLFloat16>(), {rows, hidden_size}, output_buffer.Get(), memory_info);
+    contrib::webgpu::SkipLayerNormProgram program{
+        false, false, 0.0f, hidden_size, false, simplified, false, /*subgroup_coalesced=*/true};
+    program.AddInputs({{&x, ProgramTensorMetadataDependency::Type, 4},
+                       {&skip, ProgramTensorMetadataDependency::Type, 4},
+                       {&gamma, ProgramTensorMetadataDependency::Type, 4}})
+        .AddOutput({&output, ProgramTensorMetadataDependency::None, 4})
+        .AddUniformVariables({{4u}, {hidden_size}, {0.0f}, {hidden_size}, {rows}})
+        .CacheHint(simplified)
+        .SetWorkgroupSize(32)
+        .SetDispatchGroupSize(physical[0], physical[1], physical[2]);
+    ASSERT_NO_FATAL_FAILURE(RunAndReadProgram(Ep(), program, output_buffer.Get(), output_data));
+    for (size_t i = 0; i < output_data.size(); ++i) {
+      const float expected = i < rows * hidden_size ? x_data[i].ToFloat() : canary.ToFloat();
+      ASSERT_EQ(output_data[i].ToFloat(), expected) << "at output index " << i;
+    }
+  }
+}
+
 void CheckQLoRADownPadding(WebGpuExecutionProvider& ep, bool dp4a, bool subgroups) {
   auto& context = WebGpuContextFactory::GetContext(0);
   const auto& adapter = context.AdapterInfo();

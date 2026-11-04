@@ -7,19 +7,8 @@
 
 #include "quantization/matmul_nbits_zero_pt.wgsl.template"
 
-// Precision in which the integer dot product is scaled, before the result reaches the
-// cross-K accumulator. For 8 bits this is f32 unconditionally: dot4I8Packed can return an
-// int32 that f16 cannot represent, whatever the accumulator is. For 4 and 2 bits it has to
-// follow acc_element_t, or the scaled tile result rounds (and can saturate) in f16 on its
-// way into an f32 accumulator, which would leave the main DP4A path ignoring the option.
-#if n_bits == 8
-    alias mul_precision = f32;
-#elif acc_f32
-    alias mul_precision = f32;
-#else
-    alias mul_precision = output_element_t;
-#endif
-
+// Keep quantization scale products in f32: two normal f16 scales can have a
+// subnormal product that Vulkan implementations are allowed to flush to zero.
 #if n_bits == 4
     fn DequantizedFrom4BitsTo8Bits(in: vec2<u32>, zero: i32) -> vec4<u32>
     {
@@ -610,7 +599,7 @@
     // To avoid the data overflow when use pack4xI8, we still use |pack4xI8(vec4<i32>(unpack4xU8(xxx)) - vec4<i32>(128))| to process the b data. In SDP8AI, we use the
     // dp4a's result of a and b to subtract dot(vec4<i32>(unpack4xI8(a)), vec4<i32>(zero - 128)) to get the correct result.
     // Scaled dot product of 8 packed unsigned integers.
-    fn SDP8AI(a1:vec4<u32>, b1:vec4<u32>, a2:vec4<u32>, b2:vec4<u32>, scale:output_element_t, zero: i32) -> acc_element_t
+    fn SDP8AI(a1:vec4<u32>, b1:vec4<u32>, a2:vec4<u32>, b2:vec4<u32>, scale:f32, zero: i32) -> acc_element_t
     {
         let bias_zero = zero - 128;
         var local_sum = dot4I8Packed(a1[0], b1[0]);
@@ -630,11 +619,11 @@
         local_sum += dot4I8Packed(a2[3], b2[3]);
         dequantized_a_sum += vec4<i32>(unpack4xI8(a2[3]));
         local_sum -= dot(dequantized_a_sum, vec4<i32>(bias_zero));
-        return acc_element_t(mul_precision(local_sum) * mul_precision(scale));
+        return acc_element_t(f32(local_sum) * scale);
     }
 #else
     // Scaled dot product of 8 packed unsigned integers.
-    fn SDP8AI(a1:vec4<u32>, b1:vec4<u32>, a2:vec4<u32>, b2:vec4<u32>, scale:output_element_t) -> acc_element_t
+    fn SDP8AI(a1:vec4<u32>, b1:vec4<u32>, a2:vec4<u32>, b2:vec4<u32>, scale:f32) -> acc_element_t
     {
         var local_sum = dot4I8Packed(a1[0], b1[0]);
         local_sum += dot4I8Packed(a1[1], b1[1]);
@@ -644,6 +633,6 @@
         local_sum += dot4I8Packed(a2[1], b2[1]);
         local_sum += dot4I8Packed(a2[2], b2[2]);
         local_sum += dot4I8Packed(a2[3], b2[3]);
-        return acc_element_t(mul_precision(local_sum) * mul_precision(scale));
+        return acc_element_t(f32(local_sum) * scale);
     }
 #endif

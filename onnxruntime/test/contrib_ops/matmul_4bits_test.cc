@@ -1272,6 +1272,185 @@ TEST(MatMulNBits, Float16_LargeK_AccumulatorOverflow) {
   }
 }
 
+TEST(MatMulNBits, Float16_DP4A_SubnormalScaleProduct) {
+  constexpr int64_t N = 64;
+  constexpr int64_t K = 128;
+  constexpr int64_t block_size = 32;
+  ConfigOptions config_options{};
+  // This also selects DP4A instead of the f16 subgroup-matrix path where supported.
+  ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation, "1").IsOK());
+  if (!WebGpuExecutionProviderWithOptions(config_options)) {
+    GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+  }
+
+  // Both scales are normal f16 values, but (1/127) * (1/1024) is subnormal.
+  // Rounding that intermediate to f16 lets a flush-to-zero backend erase the dot product.
+  for (float a_value : {1.0f, 1.0f / 1024.0f}) {
+    const float weight_scale = 1.0f / (1024.0f * a_value);
+    SCOPED_TRACE("A:" + std::to_string(a_value));
+    for (int64_t M : {int64_t{1}, int64_t{8}, int64_t{64}}) {
+      SCOPED_TRACE("M:" + std::to_string(M));
+      OpTester test("MatMulNBits", 1, kMSDomain);
+      test.AddAttribute<int64_t>("K", K);
+      test.AddAttribute<int64_t>("N", N);
+      test.AddAttribute<int64_t>("block_size", block_size);
+      test.AddAttribute<int64_t>("bits", QBits);
+      test.AddAttribute<int64_t>("accuracy_level", 4);
+      test.AddInput<MLFloat16>("A", {M, K}, std::vector<MLFloat16>(M * K, MLFloat16(a_value)));
+      test.AddInput<uint8_t>("B", {N, K / block_size, block_size / 2},
+                             std::vector<uint8_t>(N * K / 2, 0x99), true);
+      test.AddInput<MLFloat16>("scales", {N, K / block_size},
+                               std::vector<MLFloat16>(N * K / block_size, MLFloat16(weight_scale)), true);
+      test.AddOutput<MLFloat16>("Y", {M, N}, std::vector<MLFloat16>(M * N, MLFloat16(0.125f)));
+      test.SetOutputAbsErr("Y", 0.0002f);
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(WebGpuExecutionProviderWithOptions(config_options));
+      test.ConfigEps(std::move(execution_providers));
+      test.RunWithConfig();
+    }
+  }
+}
+
+static void RunFloat16DP4ABatchedPartialTiles(int64_t M) {
+  constexpr int64_t batch = 2;
+  constexpr int64_t N = 80;
+  constexpr int64_t K = 384;
+  ConfigOptions config_options{};
+  ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation, "1").IsOK());
+  if (!WebGpuExecutionProviderWithOptions(config_options)) {
+    GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+  }
+
+  // Every activation block has max(abs(A)) = 127, so its int8 quantization is
+  // exact. Distinct rows/columns and two batches expose tile-addressing errors.
+  std::vector<float> a_values(batch * M * K);
+  for (int64_t m = 0; m < batch * M; ++m) {
+    for (int64_t k = 0; k < K; ++k) {
+      a_values[m * K + k] = k % 128 == 0 ? 127.f : static_cast<float>((m * 11 + k * 7) % 127 - 63);
+    }
+  }
+  for (int64_t block_size : {int64_t{32}, int64_t{64}, int64_t{128}}) {
+    for (bool custom_zero : {false, true}) {
+      SCOPED_TRACE("block_size:" + std::to_string(block_size) + " custom_zero:" + std::to_string(custom_zero));
+      const int64_t blocks = K / block_size;
+      const int64_t zp_bytes = (blocks + 1) / 2;
+      std::vector<uint8_t> weights(N * K / 2, 0);
+      std::vector<uint8_t> zeros(N * zp_bytes, 0);
+      std::vector<float> scales(N * blocks);
+      std::vector<float> expected(batch * M * N, 0.f);
+      for (int64_t n = 0; n < N; ++n) {
+        for (int64_t kb = 0; kb < blocks; ++kb) {
+          const int zero = custom_zero ? static_cast<int>((n + kb * 3) % 12 + 2) : 8;
+          zeros[n * zp_bytes + kb / 2] |= static_cast<uint8_t>(zero << ((kb % 2) * 4));
+          const float scale = static_cast<float>((n + kb) % 3 + 1) / 1024.f;
+          scales[n * blocks + kb] = scale;
+          for (int64_t j = 0; j < block_size; ++j) {
+            const int64_t k = kb * block_size + j;
+            const int value = static_cast<int>((n * 3 + k * 5) % 16);
+            weights[n * K / 2 + k / 2] |= static_cast<uint8_t>(value << ((k % 2) * 4));
+            for (int64_t m = 0; m < batch * M; ++m) {
+              expected[m * N + n] += a_values[m * K + k] * static_cast<float>(value - zero) * scale;
+            }
+          }
+        }
+      }
+      OpTester test("MatMulNBits", 1, kMSDomain);
+      test.AddAttribute<int64_t>("K", K);
+      test.AddAttribute<int64_t>("N", N);
+      test.AddAttribute<int64_t>("block_size", block_size);
+      test.AddAttribute<int64_t>("bits", QBits);
+      test.AddAttribute<int64_t>("accuracy_level", 4);
+      test.AddInput<MLFloat16>("A", {batch, M, K}, FloatsToMLFloat16s(a_values));
+      test.AddInput<uint8_t>("B", {N, blocks, block_size / 2}, weights, true);
+      test.AddInput<MLFloat16>("scales", {N, blocks}, FloatsToMLFloat16s(scales), true);
+      if (custom_zero) {
+        test.AddInput<uint8_t>("zero_points", {N, zp_bytes}, zeros, true);
+      }
+      test.AddOutput<MLFloat16>("Y", {batch, M, N}, FloatsToMLFloat16s(expected));
+      test.SetOutputAbsErr("Y", 0.001f);
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(WebGpuExecutionProviderWithOptions(config_options));
+      test.ConfigEps(std::move(execution_providers));
+      test.RunWithConfig();
+    }
+  }
+}
+
+TEST(MatMulNBits, Float16_DP4A_BatchedPartialTiles) {
+  for (int64_t M : {int64_t{4}, int64_t{8}, int64_t{16}, int64_t{32}, int64_t{65}}) {
+    SCOPED_TRACE(M);
+    RunFloat16DP4ABatchedPartialTiles(M);
+  }
+}
+
+TEST(MatMulNBits, Float16_BatchedPartialTiles_BothAccumulators) {
+  constexpr int64_t batch = 2;
+  constexpr int64_t M = 65;
+  constexpr int64_t N = 80;
+  constexpr int64_t K = 384;
+  if (!WebGpuExecutionProviderWithOptions(ConfigOptions{})) {
+    GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+  }
+  // Row-constant activations make the activation scales exactly 1 or 2.
+  // Power-of-two weight scales keep partial sums exact in either accumulator.
+  std::vector<float> a_values(batch * M * K);
+  for (int64_t row = 0; row < batch * M; ++row) {
+    const float value = static_cast<float>(127 * (row % 2 == 0 ? 1 : -1) * (row % 3 == 0 ? 2 : 1));
+    std::fill_n(a_values.begin() + row * K, K, value);
+  }
+  for (bool acc_f32 : {false, true}) {
+    ConfigOptions options{};
+    ORT_ENFORCE(options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation, acc_f32 ? "1" : "0").IsOK());
+    for (int64_t block_size : {int64_t{32}, int64_t{64}, int64_t{128}}) {
+      for (bool custom_zero : {false, true}) {
+        SCOPED_TRACE("acc_f32:" + std::to_string(acc_f32) + " block_size:" + std::to_string(block_size) +
+                     " custom_zero:" + std::to_string(custom_zero));
+        const int64_t blocks = K / block_size;
+        const int64_t zp_bytes = (blocks + 1) / 2;
+        std::vector<uint8_t> weights(N * K / 2, 0);
+        std::vector<uint8_t> zeros(N * zp_bytes, 0);
+        std::vector<float> scales(N * blocks);
+        std::vector<float> expected(batch * M * N, 0.f);
+        for (int64_t n = 0; n < N; ++n) {
+          for (int64_t kb = 0; kb < blocks; ++kb) {
+            const int zero = custom_zero ? static_cast<int>((n + kb * 3) % 10 + 3) : 8;
+            zeros[n * zp_bytes + kb / 2] |= static_cast<uint8_t>(zero << ((kb % 2) * 4));
+            const float scale = (n + kb) % 2 == 0 ? 1.f / 32.f : 1.f / 16.f;
+            scales[n * blocks + kb] = scale;
+            for (int64_t j = 0; j < block_size; ++j) {
+              const int64_t k = kb * block_size + j;
+              const int value = static_cast<int>((n * 3 + k * 7) % 5) - 2;
+              weights[n * K / 2 + k / 2] |= static_cast<uint8_t>((value + zero) << ((k % 2) * 4));
+              for (int64_t row = 0; row < batch * M; ++row) {
+                expected[row * N + n] += a_values[row * K + k] * static_cast<float>(value) * scale;
+              }
+            }
+          }
+        }
+        OpTester test("MatMulNBits", 1, kMSDomain);
+        test.AddAttribute<int64_t>("K", K);
+        test.AddAttribute<int64_t>("N", N);
+        test.AddAttribute<int64_t>("block_size", block_size);
+        test.AddAttribute<int64_t>("bits", QBits);
+        test.AddAttribute<int64_t>("accuracy_level", 4);
+        test.AddInput<MLFloat16>("A", {batch, M, K}, FloatsToMLFloat16s(a_values));
+        test.AddInput<uint8_t>("B", {N, blocks, block_size / 2}, weights, true);
+        test.AddInput<MLFloat16>("scales", {N, blocks}, FloatsToMLFloat16s(scales), true);
+        if (custom_zero) {
+          test.AddInput<uint8_t>("zero_points", {N, zp_bytes}, zeros, true);
+        }
+        test.AddOutput<MLFloat16>("Y", {batch, M, N}, FloatsToMLFloat16s(expected));
+        test.SetOutputAbsErr("Y", 0.0001f);
+        test.SetOutputRelErr("Y", 0.f);
+        std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+        execution_providers.push_back(WebGpuExecutionProviderWithOptions(options));
+        test.ConfigEps(std::move(execution_providers));
+        test.RunWithConfig();
+      }
+    }
+  }
+}
+
 // Float16_LargeK_AccumulatorOverflow above is the numerical case, and it covers the generic and
 // wide-tile kernels with the option on. This one is the opposite: ordinary Gaussian inputs, but every
 // dispatch that reads the option, in both of its states. It is there so that a shader variant that

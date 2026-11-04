@@ -105,7 +105,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                         bool has_local_window = false,
                         uint32_t kv_cache_quantization_bits = 0,
                         int compressed_head_size_u32 = 0,
-                        bool use_seqlens_q = false);
+                        bool use_seqlens_q = false,
+                        bool use_subgroup_prefill = false);
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -143,6 +144,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   // seqlens_q[b] and computes past_sequence_length_b = total_kv_b - q_len_b.
   // When unset (default), callers keep the uniform-q_len clamp path unchanged.
   bool use_seqlens_q_;
+  bool use_subgroup_prefill_;
 };
 
 // Dedicated single-kernel prefill program for PagedAttention. It mirrors the

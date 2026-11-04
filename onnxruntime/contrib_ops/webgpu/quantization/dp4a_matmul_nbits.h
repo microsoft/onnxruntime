@@ -31,7 +31,8 @@ class DP4AMatMulQuantizeProgram final : public Program<DP4AMatMulQuantizeProgram
 class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
  public:
   DP4AMatMulNBitsProgram(uint32_t block_size, uint32_t nbits, bool has_zero_points, bool has_bias, bool has_weight_idx,
-                         bool has_weight_idx_indirect, bool is_qualcomm, bool acc_f32, bool has_qlora_up = false)
+                         bool has_weight_idx_indirect, bool is_qualcomm, bool acc_f32, bool has_qlora_up = false,
+                         bool use_amd_tile = false)
       : Program{has_qlora_up ? "DP4AMatMulNBitsQLoRAUp" : "DP4AMatMulNBits"},
         block_size_(block_size),
         nbits_(nbits),
@@ -41,7 +42,8 @@ class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
         has_weight_idx_indirect_(has_weight_idx_indirect),
         is_qualcomm_(is_qualcomm),
         acc_f32_(acc_f32),
-        has_qlora_up_(has_qlora_up) {}
+        has_qlora_up_(has_qlora_up),
+        use_amd_tile_(use_amd_tile) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch_count", ProgramUniformVariableDataType::Uint32}, {"M", ProgramUniformVariableDataType::Uint32},
@@ -61,6 +63,7 @@ class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
   bool is_qualcomm_;
   bool acc_f32_;
   bool has_qlora_up_;
+  bool use_amd_tile_;
 };
 
 class DP4AMatMulNBitsKParallelProgram final : public Program<DP4AMatMulNBitsKParallelProgram> {

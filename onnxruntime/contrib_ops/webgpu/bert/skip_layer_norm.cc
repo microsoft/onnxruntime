@@ -25,7 +25,38 @@ Status SkipLayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   std::string simpl1 = (simplified_) ? "" : "- mean * mean ";
   std::string simpl2 = (simplified_) ? "" : "- x_element_t(mean) ";
-  if (split_hidden_dim_) {
+  if (subgroup_coalesced_) {
+    const int components = x.NumComponents();
+    const char* accumulator_type = components == 4 ? "vec4<f32>" : components == 2 ? "vec2<f32>"
+                                                                                   : "f32";
+    shader.MainFunctionBody()
+        << "let row = workgroup_idx;\n"
+        << "if (row >= uniforms.norm_count) { return; }\n"
+        << "let width = uniforms.hidden_size / uniforms.components;\n"
+        << "let base = row * width;\n"
+        << "var sum_vec = " << accumulator_type << "(0);\n"
+        << "var square_vec = " << accumulator_type << "(0);\n"
+        << "for (var col = local_idx; col < width; col += workgroup_size_x) {\n"
+        << "  let offset = base + col;\n"
+        << "  let value = " << x.GetByOffset("offset") << " + "
+        << skip.GetByOffset("offset % (uniforms.skip_size / uniforms.components)")
+        << (hasBias_ ? " + " + bias->GetByOffset("col") : "") << ";\n"
+        << "  let v = " << accumulator_type << "(value);\n"
+        << "  sum_vec += v; square_vec += v * v;\n"
+        << (has_input_skip_bias_sum_ ? input_skip_bias_sum->SetByOffset("offset", "value") : "")
+        << "}\n"
+        << "let mean = subgroupAdd(" << SumVector("sum_vec", components) << ") / f32(uniforms.hidden_size);\n"
+        << "let mean_square = subgroupAdd(" << SumVector("square_vec", components) << ") / f32(uniforms.hidden_size);\n"
+        << "let inv_std_dev = inverseSqrt(mean_square " << simpl1 << "+ uniforms.epsilon);\n"
+        << "for (var col = local_idx; col < width; col += workgroup_size_x) {\n"
+        << "  let offset = base + col;\n"
+        << "  let value = " << x.GetByOffset("offset") << " + "
+        << skip.GetByOffset("offset % (uniforms.skip_size / uniforms.components)")
+        << (hasBias_ ? " + " + bias->GetByOffset("col") : "") << ";\n"
+        << output.SetByOffset("offset", "(value " + simpl2 + ") * x_element_t(inv_std_dev) * " +
+                                            gamma.GetByOffset("col") + (hasBeta_ ? " + " + beta->GetByOffset("col") : ""))
+        << "}\n";
+  } else if (split_hidden_dim_) {
     shader.AdditionalImplementation()
         << "var<workgroup> sum_shared : array<f32, workgroup_size_x>;\n"
         << "var<workgroup> sum_squared_shared : array<f32, workgroup_size_x>;\n";
@@ -180,11 +211,17 @@ Status RunSkipLayerNormProgram(ComputeContext& context,
   const bool split_hidden_dim = hidden_size % 512 == 0 && norm_count == 1;
 
   const uint32_t skip_size = onnxruntime::narrow<uint32_t>(skip->Shape().Size());
+  const bool subgroup_coalesced =
+      !split_hidden_dim &&
+      x->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
+      context.AdapterInfo().vendor == std::string_view{"amd"} &&
+      context.AdapterInfo().backendType == wgpu::BackendType::D3D12 &&
+      context.HasFeature(wgpu::FeatureName::Subgroups) && context.AdapterInfo().subgroupMinSize >= 32;
 
   SkipLayerNormProgram program{
-      beta != nullptr, bias != nullptr, epsilon, hidden_size, has_input_skip_bias_sum, simplified, split_hidden_dim};
+      beta != nullptr, bias != nullptr, epsilon, hidden_size, has_input_skip_bias_sum, simplified, split_hidden_dim, subgroup_coalesced};
   program
-      .CacheHint(simplified, beta != nullptr, bias != nullptr, has_input_skip_bias_sum, split_hidden_dim)
+      .CacheHint(simplified, beta != nullptr, bias != nullptr, has_input_skip_bias_sum, split_hidden_dim, subgroup_coalesced)
       .AddInputs({{x, ProgramTensorMetadataDependency::Type, components}})
       .AddInputs({{skip, ProgramTensorMetadataDependency::Type, components}})
       .AddInputs({{gamma, ProgramTensorMetadataDependency::Type, components}})
@@ -201,9 +238,12 @@ Status RunSkipLayerNormProgram(ComputeContext& context,
       })
       .AddUniformVariables({
           {static_cast<uint32_t>(skip_size)},
+          {norm_count},
       });
 
-  if (split_hidden_dim) {
+  if (subgroup_coalesced) {
+    program.SetWorkgroupSize(32);
+  } else if (split_hidden_dim) {
     const uint32_t workgroup_size_x = 128;
     const uint32_t dispatch_size_x = (has_input_skip_bias_sum ? 2 : 1) * hidden_size / (workgroup_size_x * components);
     program.SetDispatchGroupSize(dispatch_size_x, 1, 1)
