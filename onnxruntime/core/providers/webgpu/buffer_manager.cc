@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <deque>
+#include <limits>
+
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/common/safeint.h"
@@ -170,6 +173,22 @@ constexpr std::initializer_list<std::pair<const size_t, size_t>> BUCKET_DEFAULT_
 };
 
 class BucketCacheManager : public IBufferCacheManager {
+  struct CachedBuffer {
+    wgpu::Buffer buffer;
+    uint64_t sequence;
+    uint64_t returned_at;
+  };
+  using BufferQueue = std::deque<CachedBuffer>;
+  struct Bucket {
+    BufferQueue probation;
+    BufferQueue protected_buffers;
+    uint64_t last_request = 0;
+    uint64_t last_recurrence = 0;
+    bool has_request = false;
+    bool recurrent = false;
+  };
+  using BucketMap = InlinedHashMap<size_t, Bucket>;
+
  public:
   size_t CalculateBufferSize(size_t request_size) override {
     if (request_size > kMaxCachedBytes) {
@@ -188,18 +207,31 @@ class BucketCacheManager : public IBufferCacheManager {
   WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size) override {
     if (buffer_size <= kMaxCachedBytes) {
       auto& bucket = buckets_[buffer_size];
-      bucket.last_used = ++use_sequence_;
-      bucket.last_decay = refresh_count_;
-      if (!bucket.buffers.empty()) {
-        auto buffer = bucket.buffers.back().MoveToCHandle();
-        bucket.buffers.pop_back();
+      // Repeated demand across submissions can earn admission even when earlier spares were evicted.
+      if (bucket.has_request && refresh_count_ > bucket.last_request &&
+          refresh_count_ - bucket.last_request < kColdRefreshes) {
+        bucket.recurrent = true;
+        bucket.last_recurrence = refresh_count_;
+      }
+      bucket.has_request = true;
+      bucket.last_request = refresh_count_;
+      const bool is_protected = !bucket.protected_buffers.empty();
+      auto& buffers = is_protected ? bucket.protected_buffers : bucket.probation;
+      if (!buffers.empty()) {
+        auto buffer = buffers.back().buffer.MoveToCHandle();
+        buffers.pop_back();
         cached_bytes_ -= buffer_size;
+        if (is_protected) {
+          protected_bytes_ -= buffer_size;
+        }
+        bucket.recurrent = true;
+        bucket.last_recurrence = refresh_count_;
         return buffer;
       }
     }
 
-    // Reclaim cold spares before allocating a replacement, rather than only on release.
-    TrimToBudget(kMaxCachedBytes - std::min(buffer_size, kMaxCachedBytes));
+    // Make headroom from unproven spares, without letting one-off allocations flush hot buffers.
+    TrimToBudget(kMaxCachedBytes - std::min(buffer_size, kMaxCachedBytes), false);
     return nullptr;
   }
 
@@ -214,33 +246,37 @@ class BucketCacheManager : public IBufferCacheManager {
       return;
     }
 
-    // The returned working set determines spare counts; there is no per-size cap.
+    // One-off bursts enter probation; hits or recurring demand earn protection for this size.
     auto [it, inserted] = buckets_.try_emplace(buffer_size);
     auto& bucket = it->second;
     if (inserted) {
-      bucket.last_used = ++use_sequence_;
-      bucket.last_decay = refresh_count_;
+      bucket.last_request = refresh_count_;
     }
-    bucket.buffers.emplace_back(std::move(owned_buffer));
+    if (bucket.recurrent) {
+      bucket.protected_buffers.push_back({std::move(owned_buffer), ++sequence_, refresh_count_});
+      protected_bytes_ += buffer_size;
+    } else {
+      bucket.probation.push_back({std::move(owned_buffer), ++sequence_, refresh_count_});
+    }
     cached_bytes_ += buffer_size;
-    TrimToBudget(kMaxCachedBytes);
+    DemoteProtectedBuffers();
+    TrimToBudget(kMaxCachedBytes, true);
   }
 
   void OnRefresh(GraphCaptureState /*graph_capture_state*/) override {
-    ++refresh_count_;
+    // Amortize per-buffer aging; a refresh is a submission boundary, not a whole Run.
+    if (++refresh_count_ % kColdRefreshes != 0) {
+      return;
+    }
     for (auto it = buckets_.begin(); it != buckets_.end();) {
       auto& [buffer_size, bucket] = *it;
-      // Refreshes are submission boundaries, not necessarily complete inference runs.
-      // Give infrequently used sizes a grace period, then halve their idle spares.
-      if (refresh_count_ - bucket.last_decay >= kColdRefreshes) {
-        const auto count = (bucket.buffers.size() + 1) / 2;
-        for (size_t i = 0; i < count; ++i) {
-          bucket.buffers.pop_back();
-          cached_bytes_ -= buffer_size;
-        }
-        bucket.last_decay = refresh_count_;
+      if (refresh_count_ - bucket.last_recurrence >= kColdRefreshes) {
+        bucket.recurrent = false;
       }
-      if (bucket.buffers.empty()) {
+      RemoveIdleBuffers(bucket.probation, buffer_size, false);
+      RemoveIdleBuffers(bucket.protected_buffers, buffer_size, true);
+      if (bucket.probation.empty() && bucket.protected_buffers.empty() &&
+          refresh_count_ - bucket.last_request >= kColdRefreshes) {
         buckets_.erase(it++);
       } else {
         ++it;
@@ -249,37 +285,79 @@ class BucketCacheManager : public IBufferCacheManager {
   }
 
  private:
-  void TrimToBudget(size_t budget) {
-    while (cached_bytes_ > budget) {
-      auto oldest = buckets_.end();
-      for (auto it = buckets_.begin(); it != buckets_.end(); ++it) {
-        if (!it->second.buffers.empty() &&
-            (oldest == buckets_.end() || it->second.last_used < oldest->second.last_used)) {
-          oldest = it;
-        }
+  BucketMap::iterator FindOldest(bool is_protected) {
+    auto oldest = buckets_.end();
+    uint64_t oldest_sequence = std::numeric_limits<uint64_t>::max();
+    for (auto it = buckets_.begin(); it != buckets_.end(); ++it) {
+      const auto& buffers = is_protected ? it->second.protected_buffers : it->second.probation;
+      if (!buffers.empty() && buffers.front().sequence < oldest_sequence) {
+        oldest = it;
+        oldest_sequence = buffers.front().sequence;
       }
-      auto& [buffer_size, bucket] = *oldest;
-      do {
-        bucket.buffers.pop_back();
-        cached_bytes_ -= buffer_size;
-      } while (cached_bytes_ > budget && !bucket.buffers.empty());
-      if (bucket.buffers.empty()) {
-        buckets_.erase(oldest);
+    }
+    return oldest;
+  }
+
+  bool EvictOldest(bool is_protected) {
+    auto oldest = FindOldest(is_protected);
+    if (oldest == buckets_.end()) {
+      return false;
+    }
+    auto& [buffer_size, bucket] = *oldest;
+    auto& buffers = is_protected ? bucket.protected_buffers : bucket.probation;
+    buffers.pop_front();
+    cached_bytes_ -= buffer_size;
+    if (is_protected) {
+      protected_bytes_ -= buffer_size;
+    }
+    return true;
+  }
+
+  void TrimToBudget(size_t budget, bool evict_protected) {
+    while (cached_bytes_ > budget) {
+      if (!EvictOldest(false) && (!evict_protected || !EvictOldest(true))) {
+        break;
       }
     }
   }
 
-  // Bound idle storage independently of live model tensors and pending recordings.
+  void DemoteProtectedBuffers() {
+    // Reserve admission space so a new working set can displace an old hot set.
+    while (protected_bytes_ > kProtectedBytes) {
+      auto oldest = FindOldest(true);
+      auto& [buffer_size, bucket] = *oldest;
+      if (protected_bytes_ == buffer_size) {
+        break;  // A single large reused buffer can exceed the protected target.
+      }
+      bucket.probation.push_back(std::move(bucket.protected_buffers.front()));
+      bucket.probation.back().sequence = ++sequence_;
+      bucket.protected_buffers.pop_front();
+      protected_bytes_ -= buffer_size;
+    }
+  }
+
+  void RemoveIdleBuffers(BufferQueue& buffers, size_t buffer_size, bool is_protected) {
+    const auto expired = [this, buffer_size, is_protected](const CachedBuffer& entry) {
+      if (refresh_count_ - entry.returned_at < kColdRefreshes) {
+        return false;
+      }
+      cached_bytes_ -= buffer_size;
+      if (is_protected) {
+        protected_bytes_ -= buffer_size;
+      }
+      return true;
+    };
+    buffers.erase(std::remove_if(buffers.begin(), buffers.end(), expired), buffers.end());
+  }
+
+  // These are cache limits, not measurements of available GPU memory.
   static constexpr size_t kMaxCachedBytes = 256 * 1024 * 1024;
+  static constexpr size_t kProtectedBytes = kMaxCachedBytes * 3 / 4;
   static constexpr uint64_t kColdRefreshes = 64;
-  struct Bucket {
-    InlinedVector<wgpu::Buffer> buffers;
-    uint64_t last_used = 0;
-    uint64_t last_decay = 0;
-  };
-  InlinedHashMap<size_t, Bucket> buckets_;
+  BucketMap buckets_;
   size_t cached_bytes_ = 0;
-  uint64_t use_sequence_ = 0;
+  size_t protected_bytes_ = 0;
+  uint64_t sequence_ = 0;
   uint64_t refresh_count_ = 0;
 };
 
