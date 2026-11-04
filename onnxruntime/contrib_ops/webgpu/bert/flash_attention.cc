@@ -564,11 +564,14 @@ Status ApplyFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& cont
 }
 
 Status FlashAttentionPrefillProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("present_key", ShaderUsage::UseUniform);
-  shader.AddInput("present_value", ShaderUsage::UseUniform);
+  // Tensors are accessed via getByOffset / setByOffset so inputs larger than maxStorageBufferBindingSize
+  // work when the framework splits them across bindings.
+  const auto& q = shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  const auto& present_key = shader.AddInput("present_key", ShaderUsage::UseUniform);
+  const auto& present_value = shader.AddInput("present_value", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* attention_bias = nullptr;
   if (has_attention_bias_) {
-    shader.AddInput("attention_bias", ShaderUsage::UseUniform);
+    attention_bias = &shader.AddInput("attention_bias", ShaderUsage::UseUniform);
   }
   if (use_seqlen_k_) {
     shader.AddInput("seqlens_k", ShaderUsage::None);
@@ -579,7 +582,7 @@ Status FlashAttentionPrefillProgram::GenerateShaderCode(ShaderHelper& shader) co
   if (has_head_sink_) {
     shader.AddInput("head_sink", ShaderUsage::UseUniform);
   }
-  shader.AddOutput("output", ShaderUsage::UseUniform);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
 
   return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention_prefill.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_attention_bias, has_attention_bias_),
@@ -593,7 +596,12 @@ Status FlashAttentionPrefillProgram::GenerateShaderCode(ShaderHelper& shader) co
                              WGSL_TEMPLATE_PARAMETER(qkv_num_heads, qkv_num_heads_),
                              WGSL_TEMPLATE_PARAMETER(shuffle_chunk_param, shuffle_chunk_),
                              WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
-                             WGSL_TEMPLATE_PARAMETER(use_seqlens_q, use_seqlens_q_));
+                             WGSL_TEMPLATE_PARAMETER(use_seqlens_q, use_seqlens_q_),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(attention_bias, attention_bias),
+                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_VARIABLE(present_key, present_key),
+                             WGSL_TEMPLATE_VARIABLE(present_value, present_value),
+                             WGSL_TEMPLATE_VARIABLE(q, q));
 }
 
 bool CanApplyFlashAttentionPrefill(bool is_intel,

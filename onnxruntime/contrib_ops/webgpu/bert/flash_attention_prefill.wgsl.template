@@ -12,6 +12,8 @@
 #param use_seqlen_k
 #param use_seqlens_q
 
+#use .getByOffset .setByOffset
+
 // One query row per thread, with full-head K staging and late V staging in
 // slices of up to 16 vec4 values. Shuffle bands fit the adapter's guaranteed
 // minimum subgroup size; below 8, use direct shared-memory reads.
@@ -67,7 +69,7 @@ fn loadk(k_start : u32, batch_head_idx : u32, local_idx : u32, k_step : u32, tot
                k_start * head_size_vec;
   for (var idx : u32 = local_idx; idx < head_size_vec * k_step; idx += workgroup_size_x) {
     let slot = u32(idx / head_size_vec);
-    let val = select(q_value_t(0), present_key[offset + idx], k_start + slot < total_seq);
+    let val = select(q_value_t(0), present_key.getByOffset(offset + idx), k_start + slot < total_seq);
     k_tile[idx % head_size_vec][slot] = val;
   }
 }
@@ -79,7 +81,7 @@ fn loadv_head(k_start: u32, head_start: u32, batch_head_idx: u32,
     let slot = idx / v_head_vec_step;
     let h = idx % v_head_vec_step;
     let val = select(q_value_t(0),
-                     present_value[base + (k_start + slot) * head_size_vec + head_start + h],
+                     present_value.getByOffset(base + (k_start + slot) * head_size_vec + head_start + h),
                      k_start + slot < total_seq && head_start + h < head_size_vec);
     v_tile[h][slot] = val;
   }
@@ -101,7 +103,7 @@ fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, he
   let stride_total_seq = uniforms.attn_bias_dim3;
   let offset_base = bias_batch_idx * uniforms.attn_bias_dim1 * uniforms.new_sequence_length * stride_total_seq +
                     bias_head_idx * uniforms.new_sequence_length * stride_total_seq + q_idx_global * stride_total_seq;
-  return qk_precision(attention_bias[min(offset_base + k_idx_global, offset_base + stride_total_seq - 1u)]);
+  return qk_precision(attention_bias.getByOffset(min(offset_base + k_idx_global, offset_base + stride_total_seq - 1u)));
 }
 #else
 fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, head_idx : u32, total_seq : u32) -> qk_precision {
@@ -139,7 +141,7 @@ $MAIN {
                    head_idx * head_size_vec;
 #endif
     for (var idx = 0u; idx < head_size_vec; idx++) {
-      q_tile[idx] = q[idx + q_offset] * alpha;
+      q_tile[idx] = q.getByOffset(idx + q_offset) * alpha;
     }
   }
 
@@ -302,7 +304,7 @@ $MAIN {
     let o_offset = batch_idx * uniforms.new_sequence_length * num_heads * head_size_vec +
                    q_idx_global * num_heads * head_size_vec + head_idx * head_size_vec;
     for (var idx = 0u; idx < head_size_vec; idx++) {
-      output[o_offset + idx] = o_tile[idx];
+      output.setByOffset(o_offset + idx, o_tile[idx]);
     }
   }
 }  // MAIN
