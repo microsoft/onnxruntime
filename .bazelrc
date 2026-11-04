@@ -1,0 +1,8 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+build --cxxopt=-std=c++20
+build --host_cxxopt=-std=c++20
+build --incompatible_strict_action_env
+common --repo_env=ASPECT_TOOLS_TELEMETRY_OPTOUT=1
+test --test_output=errors

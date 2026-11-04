@@ -1,0 +1,6 @@
+{
+  global:
+    GetProvider;
+  local:
+    *;
+};

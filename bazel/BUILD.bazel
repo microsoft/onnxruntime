@@ -1,0 +1,25 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+
+exports_files([
+    "onnx.BUILD.bazel",
+    "abseil-includes.patch",
+    "onnxruntime.lds",
+    "python.lds",
+    "requirements_lock.txt",
+    "cuda_provider.lds",
+])
+
+bool_flag(
+    name = "cuda",
+    build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "cuda_enabled",
+    flag_values = {":cuda": "True"},
+    visibility = ["//visibility:public"],
+)

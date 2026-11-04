@@ -198,3 +198,6 @@ Package.resolved
 .build/
 .swiftpm/
 repros/
+
+# Bazel workspace convenience symlinks/junctions.
+/bazel-*

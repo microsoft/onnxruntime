@@ -1,0 +1,238 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("//bazel:bindings.bzl", "language_bindings")
+load("//bazel:cuda.bzl", "cuda_libraries")
+load("//bazel:mlas.bzl", "mlas_libraries")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "cmake/patches/onnx/onnx.patch",
+    "cmake/vcpkg-ports/abseil/absl_cuda_warnings.patch",
+    "cmake/vcpkg-ports/abseil/absl_cuda13_member_template.patch",
+])
+
+genrule(
+    name = "version_header",
+    srcs = ["VERSION_NUMBER"],
+    outs = ["bazel_generated/onnxruntime_config.h"],
+    cmd = "printf '#pragma once\\n#define ORT_VERSION \"%s\"\\n' \"$$(tr -d '\\r\\n' < $(location VERSION_NUMBER))\" > $@",
+)
+
+write_file(
+    name = "build_info_header",
+    out = "bazel_generated/onnxruntime_build_info.h",
+    content = [
+        "#pragma once",
+        "#define ORT_BUILD_INFO \"Native Bazel build\"",
+    ],
+)
+
+cc_library(
+    name = "generated_headers",
+    hdrs = [
+        ":build_info_header",
+        ":version_header",
+    ],
+    strip_include_prefix = "bazel_generated",
+)
+
+cc_library(
+    name = "headers",
+    hdrs = glob([
+        "include/onnxruntime/**/*.h",
+        "include/onnxruntime/**/*.inc",
+        "onnxruntime/**/*.h",
+        "onnxruntime/**/*.inc",
+        "model_package/include/*.h",
+        "model_package/src/*.h",
+    ]),
+    defines = [
+        "DISABLE_CONTRIB_OPS",
+        "ONNX_ML=1",
+        "ONNX_NAMESPACE=onnx",
+    ] + select({
+        "//bazel:cuda_enabled": ["ORT_ENABLE_STREAM"],
+        "//conditions:default": [],
+    }),
+    includes = [
+        "include/onnxruntime",
+        "include/onnxruntime/core/session",
+        "model_package/include",
+        "onnxruntime",
+    ],
+    textual_hdrs = ["onnxruntime/core/framework/ort_value_tensor_slicer.cc"],
+    deps = [
+        ":generated_headers",
+        "@abseil-cpp//:ort_include_path",
+        "@abseil-cpp//absl/base",
+        "@abseil-cpp//absl/container:flat_hash_map",
+        "@abseil-cpp//absl/container:flat_hash_set",
+        "@abseil-cpp//absl/container:inlined_vector",
+        "@abseil-cpp//absl/container:node_hash_map",
+        "@abseil-cpp//absl/container:node_hash_set",
+        "@abseil-cpp//absl/strings",
+        "@abseil-cpp//absl/synchronization",
+        "@nlohmann_json//:json",
+        "@ort_date//:headers",
+        "@ort_eigen//:headers",
+        "@ort_flatbuffers//:headers",
+        "@ort_fp16//:headers",
+        "@ort_gsl//:headers",
+        "@ort_mp11//:headers",
+        "@ort_onnx//:onnx",
+        "@ort_safeint//:headers",
+        "@protobuf",
+        "@re2",
+    ],
+)
+
+mlas_libraries()
+
+cc_library(
+    name = "model_package",
+    srcs = glob(["model_package/src/*.cc"]),
+    hdrs = glob([
+        "model_package/include/*.h",
+        "model_package/src/*.h",
+    ]),
+    copts = ["-std=c++17"],
+    includes = ["model_package/include"],
+    linkstatic = True,
+    deps = ["@nlohmann_json//:json"],
+)
+
+cc_library(
+    name = "posix_clock",
+    srcs = ["onnxruntime/core/platform/posix/env_time.cc"],
+    linkstatic = True,
+    local_defines = ["PLATFORM_POSIX"],
+    deps = [":headers"],
+)
+
+cc_library(
+    name = "runtime",
+    srcs = glob(
+        [
+            "onnxruntime/core/common/**/*.cc",
+            "onnxruntime/core/flatbuffers/*.cc",
+            "onnxruntime/core/framework/**/*.cc",
+            "onnxruntime/core/graph/**/*.cc",
+            "onnxruntime/core/optimizer/**/*.cc",
+            "onnxruntime/core/providers/*.cc",
+            "onnxruntime/core/providers/cpu/**/*.cc",
+            "onnxruntime/core/session/**/*.cc",
+            "onnxruntime/core/util/**/*.cc",
+            "onnxruntime/lora/*.cc",
+        ],
+        exclude = [
+            "onnxruntime/core/graph/contrib_ops/**",
+            "onnxruntime/core/graph/dml_ops/**",
+            "onnxruntime/core/optimizer/gqa_value_layout_boundaries.cc",
+            "onnxruntime/core/optimizer/gqa_value_layout_transformer.cc",
+        ],
+    ) + [
+        "onnxruntime/core/platform/check_intel.cc",
+        "onnxruntime/core/platform/device_discovery_common.cc",
+        "onnxruntime/core/platform/device_discovery_default.cc",
+        "onnxruntime/core/platform/env.cc",
+        "onnxruntime/core/platform/env_time.cc",
+        "onnxruntime/core/platform/logging/make_platform_default_log_sink.cc",
+        "onnxruntime/core/platform/path_lib.cc",
+        "onnxruntime/core/platform/posix/env.cc",
+        "onnxruntime/core/platform/posix/stacktrace.cc",
+        "onnxruntime/core/platform/telemetry.cc",
+        "onnxruntime/core/platform/telemetry_sha256.cc",
+    ],
+    copts = ["-mwaitpkg"],
+    linkopts = [
+        "-ldl",
+        "-pthread",
+    ],
+    linkstatic = True,
+    local_defines = select({
+        "//bazel:cuda_enabled": ["USE_CUDA"],
+        "//conditions:default": [],
+    }),
+    target_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+    deps = [
+        ":headers",
+        ":mlas",
+        ":model_package",
+        ":posix_clock",
+    ],
+    alwayslink = True,
+)
+
+cc_binary(
+    name = "libonnxruntime.so",
+    additional_linker_inputs = ["//bazel:onnxruntime.lds"],
+    data = select({
+        "//bazel:cuda_enabled": [
+            ":libonnxruntime_providers_cuda.so",
+            ":libonnxruntime_providers_shared.so",
+        ],
+        "//conditions:default": [],
+    }),
+    linkopts = ["-Wl,--version-script=$(location //bazel:onnxruntime.lds)"],
+    linkshared = True,
+    deps = [":runtime"],
+)
+
+cc_test(
+    name = "runtime_smoke_test",
+    srcs = ["tools/bazel/runtime_smoke_test.cc"],
+    args = ["$(location go/testdata/add_f32.onnx)"],
+    data = ["go/testdata/add_f32.onnx"],
+    linkstatic = True,
+    deps = [":runtime"],
+)
+
+cc_test(
+    name = "common_test",
+    srcs = [
+        "onnxruntime/test/common/narrow_test.cc",
+        "onnxruntime/test/common/safeint_test.cc",
+        "onnxruntime/test/common/semver_test.cc",
+        "onnxruntime/test/common/span_utils_test.cc",
+        "onnxruntime/test/common/string_utils_test.cc",
+    ],
+    linkstatic = True,
+    deps = [
+        ":runtime",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cuda_libraries()
+
+language_bindings()
+
+cc_test(
+    name = "runtime_cuda_smoke_test",
+    srcs = ["tools/bazel/runtime_smoke_test.cc"],
+    args = [
+        "$(location go/testdata/add_f32.onnx)",
+        "cuda",
+    ],
+    data = [
+        "go/testdata/add_f32.onnx",
+        ":libonnxruntime_providers_cuda.so",
+        ":libonnxruntime_providers_shared.so",
+    ],
+    linkstatic = True,
+    tags = [
+        "external",
+        "manual",
+        "requires-gpu",
+    ],
+    deps = [":runtime"],
+)

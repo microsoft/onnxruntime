@@ -1,0 +1,82 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+module(name = "onnxruntime")
+
+bazel_dep(name = "rules_cc", version = "0.2.16")
+bazel_dep(name = "bazel_skylib", version = "1.8.2")
+bazel_dep(name = "platforms", version = "1.1.0")
+bazel_dep(name = "protobuf", version = "33.6")
+bazel_dep(name = "abseil-cpp", version = "20250814.0")
+bazel_dep(name = "re2", version = "2024-07-02.bcr.1")
+bazel_dep(name = "nlohmann_json", version = "3.11.3")
+bazel_dep(name = "googletest", version = "1.17.0")
+bazel_dep(name = "rules_cuda", version = "0.3.0")
+bazel_dep(name = "rules_go", version = "0.65.0")
+bazel_dep(name = "rules_java", version = "8.16.1")
+bazel_dep(name = "rules_python", version = "1.6.0")
+bazel_dep(name = "aspect_rules_js", version = "2.7.0")
+bazel_dep(name = "rules_nodejs", version = "6.7.7")
+bazel_dep(name = "rules_dotnet", version = "0.22.2")
+
+node = use_extension("@rules_nodejs//nodejs:extensions.bzl", "node")
+node.toolchain(node_version = "24.22.1")
+use_repo(node, "nodejs_toolchains")
+
+register_toolchains("@nodejs_toolchains//:all")
+
+go_sdk = use_extension("@rules_go//go:extensions.bzl", "go_sdk")
+go_sdk.download(version = "1.26.0")
+
+single_version_override(
+    module_name = "abseil-cpp",
+    patch_strip = 1,
+    patches = [
+        "//bazel:abseil-includes.patch",
+        "//:cmake/vcpkg-ports/abseil/absl_cuda_warnings.patch",
+        "//:cmake/vcpkg-ports/abseil/absl_cuda13_member_template.patch",
+    ],
+)
+
+ort_deps = use_extension("//bazel:dependencies.bzl", "ort_dependencies")
+use_repo(ort_deps, "ort_date", "ort_eigen", "ort_flatbuffers", "ort_fp16", "ort_gsl", "ort_mp11", "ort_onnx", "ort_safeint")
+use_repo(ort_deps, "ort_cudnn_frontend", "ort_cutlass")
+use_repo(ort_deps, "ort_pybind11")
+use_repo(ort_deps, "ort_node_addon_api", "ort_node_headers")
+use_repo(ort_deps, "ort_dotnet_tensors")
+
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(python_version = "3.12")
+
+pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+pip.whl_mods(
+    additive_build_content = """
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+cc_library(
+    name = "numpy_headers",
+    hdrs = glob(["site-packages/numpy/_core/include/**/*.h"]),
+    includes = ["site-packages/numpy/_core/include"],
+    visibility = ["//visibility:public"],
+)
+""",
+    hub_name = "ort_numpy_mods",
+    whl_name = "numpy",
+)
+use_repo(pip, "ort_numpy_mods")
+
+pip.parse(
+    extra_hub_aliases = {"numpy": ["numpy_headers"]},
+    hub_name = "ort_pip",
+    python_version = "3.12",
+    requirements_lock = "//bazel:requirements_lock.txt",
+    whl_modifications = {"@ort_numpy_mods//:numpy.json": "numpy"},
+)
+use_repo(pip, "ort_pip")
+
+cuda = use_extension("@rules_cuda//cuda:extensions.bzl", "toolchain")
+cuda.toolkit(name = "cuda")
+use_repo(cuda, "cuda")
+
+cudnn = use_repo_rule("//bazel:local_sdk.bzl", "cudnn_repository")
+
+cudnn(name = "ort_cudnn")
