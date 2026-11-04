@@ -12,6 +12,7 @@ load("@rules_dotnet//dotnet:defs.bzl", "csharp_library", "csharp_test")
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 load("@rules_java//java:defs.bzl", "java_binary", "java_import", "java_library", "java_test")
 load("@rules_python//python:defs.bzl", "py_test")
+load("//bazel:node_tests.bzl", "node_runtime_tests")
 load("//bazel:python_tests.bzl", "python_runtime_tests")
 load(":go_desktop.bzl", "desktop_go_library", "desktop_go_test")
 load(":jni_headers.bzl", "jni_headers")
@@ -296,6 +297,7 @@ def language_bindings():
             "go/testdata/add_f32.onnx",
         ],
     )
+    node_runtime_tests()
     csharp_library(
         name = "csharp_binding",
         srcs = native.glob(["csharp/src/Microsoft.ML.OnnxRuntime/**/*.shared.cs"]),

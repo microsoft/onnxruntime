@@ -1,0 +1,14 @@
+{
+  "name": "ort-bazel-node-tests",
+  "private": true,
+  "pnpm": {
+    "onlyBuiltDependencies": []
+  },
+  "dependencies": {
+    "fs-extra": "11.3.2",
+    "jsonc": "2.0.0",
+    "mocha": "11.7.5",
+    "protobufjs": "7.5.4",
+    "typescript": "5.9.3"
+  }
+}

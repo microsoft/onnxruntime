@@ -69,7 +69,7 @@ bazel test -c opt \
 | Python | `//:python_native_library`, `//:python_runtime_package`, `//:python_tests` | CPython 3.12 extension, source-assembled high-level CPU inference package, and selected existing unittest cases. Not a wheel or complete Python suite migration. |
 | Java/JNI | `//:java_binding`, `//:java_native_library`, `//:java_smoke_test` | Java sources and JNI sources; JNI headers come from Bazel's Java compiler. No Gradle invocation. Not an AAR or Maven publication. |
 | Go | `//:go_binding`, `//:go_test` | First-party cgo binding and existing fixture-based unit tests. Tests explicitly load the Bazel-built shared library; they do not take the binding's missing-library skip path. External Qwen model tests are excluded. |
-| Node.js | `//:onnxruntime_binding.node`, `//:node_smoke_test` | Native Node-API extension and inference through its binding interface. The smoke test supplies the binding's Tensor constructor contract; TypeScript/npm packaging is not included. |
+| Node.js | `//:onnxruntime_binding.node`, `//:node_js_package`, `//:node_test` | Native Node-API extension, source-assembled common/Node JavaScript packages, and four existing test files with file/case selection. Not release npm packaging or the complete Node suite. |
 | C# | `//:csharp_binding`, `//:csharp_smoke_test` | .NET 8 managed sources compiled directly with `rules_dotnet`, including the pinned `System.Numerics.Tensors` dependency, and exercised on .NET 10. Training APIs are not enabled. Not a NuGet package. |
 | Objective-C / Swift | Not implemented | Requires Apple SDK/toolchain rules, Objective-C wrapper targets, framework/module-map packaging, and Apple-host validation. |
 | JavaScript Web / WebAssembly | Not implemented | Requires an Emscripten toolchain, WASM-specific runtime configuration, exported C functions, worker/assets packaging, and browser tests. Native Linux compilation does not validate this surface. |
@@ -277,8 +277,8 @@ unwired. Training is intentionally excluded. `SparseTensorTest.testCOO` was
 tried against the foundation and failed because its model requires the excluded
 contrib `SparseToDenseMatMul` operator;
 that class is not registered as a passing native target. Full-class execution
-and Linux/macOS validation remain pending. Node and C# still use their
-foundation smoke targets, and Go retains its existing self-contained tests.
+and Linux/macOS validation remain pending. C# still uses its foundation smoke
+target, and Go retains its existing self-contained tests.
 
 ### Selectable existing Python inference tests
 
@@ -347,7 +347,101 @@ SqueezeNet model, so it is not registered as coverage. Linux/macOS execution of
 these high-level Python targets remains unverified. Training is intentionally
 out of scope, not planned migration work.
 
-### Foundation validation (before the C++ and Java test layers)
+### Selectable existing Node binding tests
+
+The following targets run existing Mocha test files against the common and Node
+JavaScript APIs, not a replacement Tensor class or a published ORT npm binary:
+
+| Target | Existing file under `js/node/test/` |
+| --- | --- |
+| `//:node_model_metadata_test` | `unittests/lib/model-metadata.ts` |
+| `//:node_inference_session_test` | `unittests/lib/inference-session.ts` |
+| `//:node_tensor_test` | `unittests/lib/tensor.ts` |
+| `//:node_simple_api_test` | `api/simple-api-tests.ts` |
+
+`//:node_test` is an explicit aggregate runner for these four files. It is tagged
+`manual` so `//...` executes the per-file targets without running them twice.
+The existing low-level `//:node_smoke_test` remains available.
+
+```sh
+# One file and one existing case:
+bazel test -c opt //:node_model_metadata_test --test_filter='symbol shape$'
+# Pick a file explicitly and list its full case titles without executing them:
+bazel test -c opt //:node_test --test_arg=--file=unittests/lib/model-metadata --test_arg=--list --test_output=all
+# Only the existing scalar-type inference checks in the simple API file:
+bazel test -c opt //:node_simple_api_test --test_filter='test_types_.*[.]onnx$'
+# Selection regressions, without compiling the native runtime:
+bazel test -c opt //:node_test_runner_test
+```
+
+`--test_filter` is a JavaScript regular expression over Mocha's full case title,
+not GoogleTest syntax. Quote expressions containing spaces or shell characters.
+`--file` accepts the exact extensionless paths in the table and can be repeated;
+explicit files replace the target's default selection. Unknown files/arguments,
+malformed expressions, zero matching cases, and selections with no passing cases
+(including all-skipped selections) fail. Mixed passing/pending results retain
+Mocha's existing skips and report their counts. `--list` is explicitly a discovery
+operation, not an execution pass. File/case selection reduces test execution,
+not addon or shared runtime compilation.
+
+`//:node_js_package` uses pinned TypeScript to transpile the existing
+`js/common/lib/`, `js/node/lib/`, selected tests, and their existing test helper.
+The checked-in ONNX protobuf JavaScript, JSON configuration, SqueezeNet model and
+reference data, and scalar-type models are declared inputs. This assembly is
+transpilation, not a full semantic TypeScript type check or release packaging.
+Mocha, TypeScript, and helper dependencies are pinned in
+`bazel/node/package.json` and the integrity-checked `pnpm-lock.yaml`; npm lifecycle
+hooks are disabled. The addon and runtime remain native Bazel compilation
+dependencies. No `npm run build`, install/postinstall script, `cmake-js`, or
+downloaded ORT binary participates in the committed graph.
+
+The runner copies package/fixtures into its writable `TEST_TMPDIR`, stages the
+Bazel-built addon and shared runtime in the binding's platform/architecture
+directory, links Bazel-managed helper dependencies, and registers the actual
+Node backend. It does not use the upstream warmup's ignored-error path. On
+Windows, explicitly set `BAZEL_SH` to Git for Windows Bash as shown above; WSL's
+Bash is not the native Node launcher shell.
+
+Windows x86-64 validation used Bazel 8.4.2, managed Node 24.22.1, and
+`--lockfile_mode=error`. These commands passed:
+
+```sh
+# JS compilation/assembly and three selector regression cases; no ORT rebuild:
+bazel test -c opt //:node_js_package //:node_test_runner_test --test_output=all --nocache_test_results
+# Analysis only of the real native dependency graph, not native execution:
+bazel build -c opt //:node_test //:node_inference_session_test //:node_model_metadata_test //:node_tensor_test //:node_simple_api_test --nobuild
+```
+
+With an explicit temporary local-only substitution of the foundation's previously
+verified Windows `onnxruntime_binding.node` and `onnxruntime.dll`, the actual
+Bazel launcher also executed:
+
+```sh
+bazel test -c opt //:node_test --test_filter='model input/output with|test_types_.*[.]onnx$|run\(\) -|check data and type' --test_output=all --nocache_test_results
+bazel test -c opt //:node_model_metadata_test --test_filter='symbol shape$' --test_output=all --nocache_test_results
+bazel test -c opt //:node_test --test_arg=--file=unittests/lib/model-metadata --test_arg=--list --test_output=all --nocache_test_results
+```
+
+The aggregate passed **41 cases**: three metadata, three SqueezeNet inference
+fetch variants, 23 tensor construction/type cases, and 12 scalar-type inference
+cases. One preallocated-fetch case was already pending upstream. The individual
+metadata filter passed **one case**; listing reported **three cases without
+execution**. Unknown `--file=missing`, `--test_filter=no-such-case`, and malformed
+`--test_filter=[` each failed with Bazel exit 3. These are prebuilt-backed
+checks, **not a fresh end-to-end native addon/runtime rebuild in this worktree**.
+The substitutions and temporary binaries were removed; committed targets always
+compile the actual native source dependencies. Local registry rewrites used to
+access the pinned npm archives are not repository configuration.
+
+The full Node suite was not run. Worker/standalone tests, EPContext callback
+tests, the separate repeated-run/WebGPU API file, installer tests, downloaded
+ONNX backend corpora, optional providers, and release npm artifacts remain
+outside this slice. The WebGPU-option recognition case in `simple-api-tests.ts`
+is not evidence of WebGPU execution. Linux/macOS execution of this new layer
+remains unverified. Browser/WASM and React Native are separate, still-unimplemented
+surfaces; native Node coverage does not migrate them.
+
+### Foundation validation (before the language test layers)
 
 `bazel test //... -c opt --jobs=16 --keep_going --nocache_test_results` passed
 all seven default test targets on Azure Linux 3 with GCC 13.2, with

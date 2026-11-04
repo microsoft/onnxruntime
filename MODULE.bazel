@@ -25,6 +25,14 @@ use_repo(node, "nodejs_toolchains")
 
 register_toolchains("@nodejs_toolchains//:all")
 
+npm = use_extension("@aspect_rules_js//npm:extensions.bzl", "npm")
+npm.npm_translate_lock(
+    name = "ort_node_npm",
+    pnpm_lock = "//bazel/node:pnpm-lock.yaml",
+    run_lifecycle_hooks = False,
+)
+use_repo(npm, "ort_node_npm")
+
 go_sdk = use_extension("@rules_go//go:extensions.bzl", "go_sdk")
 go_sdk.download(version = "1.26.0")
 
