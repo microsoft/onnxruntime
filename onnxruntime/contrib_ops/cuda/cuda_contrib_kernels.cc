@@ -31,6 +31,7 @@ namespace cuda {
 class CUDA_MS_OP_CLASS_NAME(1, Mamba2Verify);
 class CUDA_MS_OP_CLASS_NAME(1, BiasCorrectedMoERoute);
 class CUDA_MS_OP_CLASS_NAME(1, ReluSquared);
+class CUDA_MS_OP_CLASS_NAME(1, MoEPackedIQ2XXS);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GridSample);
 
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, FastGelu);
@@ -417,6 +418,7 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, Mamba2Verify)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, BiasCorrectedMoERoute)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, ReluSquared)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, MoEPackedIQ2XXS)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GridSample)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, FastGelu)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, double, FastGelu)>,
