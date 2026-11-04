@@ -504,18 +504,10 @@ void MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph, con
         } else {
           // add the initializer to the destination graph
           ORT_THROW_IF_ERROR(dst_graph.AddInitializedOrtValue(*initializer, ort_value));
-          Graph::ExternalInitializerFileSource file_source;
-          if (src_graph.GetExternalInitializerFileSource(name, file_source)) {
-            dst_graph.SetExternalInitializerFileSource(name, std::move(file_source));
-          }
           GetOrCreateNodeArg(dst_graph, *initializer);
         }
       } else {
         dst_graph.AddInitializedTensor(*initializer);
-        Graph::ExternalInitializerFileSource file_source;
-        if (src_graph.GetExternalInitializerFileSource(name, file_source)) {
-          dst_graph.SetExternalInitializerFileSource(name, std::move(file_source));
-        }
         GetOrCreateNodeArg(dst_graph, *initializer);
       }
     }
@@ -531,10 +523,6 @@ void MakeConstantInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_gr
       OrtValue ort_value;
       ORT_IGNORE_RETURN_VALUE(src_graph.GetOrtValueInitializer(name, ort_value, check_outer_scope));
       ORT_THROW_IF_ERROR(dst_graph.AddInitializedOrtValue(*initializer, ort_value));
-      Graph::ExternalInitializerFileSource file_source;
-      if (src_graph.GetExternalInitializerFileSource(name, file_source, check_outer_scope)) {
-        dst_graph.SetExternalInitializerFileSource(name, std::move(file_source));
-      }
     }
   }
 }

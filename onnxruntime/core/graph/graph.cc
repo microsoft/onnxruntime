@@ -7003,10 +7003,6 @@ Status Graph::InlineFunction(Node& callnode) {
                           "This is an invalid state.");
         AddInitializedTensor(tensor_proto_to_add);
       }
-      ExternalInitializerFileSource file_source;
-      if (subgraph.GetExternalInitializerFileSource(name, file_source)) {
-        SetExternalInitializerFileSource(tensor_proto_to_add.name(), std::move(file_source));
-      }
     }
   }
 
