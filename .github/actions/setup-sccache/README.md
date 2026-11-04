@@ -42,13 +42,13 @@ requires Ninja; validate the selected compiler/debug-symbol configuration when a
 
 ## Per-OS archived-storage budgets
 
-`sccache-maintenance.yml` currently enforces a separate **30 GB decimal (30,000,000,000 bytes)**
+`sccache-maintenance.yml` currently enforces a separate **150 GB decimal (150,000,000,000 bytes)**
 budget per OS for GitHub's archived sccache snapshots. Each OS's architectures and build variants
 using these shared actions share that OS's budget, separate from the unchanged per-run `10G`
 local cache. It runs hourly, independently of any particular build workflow, so new callers
 participate automatically without adding workflow names. GitHub may delay scheduled runs.
 Unused space in one OS's budget does not increase another's; total managed storage can exceed
-30 GB when multiple OSes participate. Logs report each OS's current and planned storage.
+150 GB when multiple OSes participate. Logs report each OS's current and planned storage.
 
 The budget includes well-formed `sccache-v1-<OS>-<arch>-<identity>-<commit>` snapshots on
 `refs/heads/main`. OS and architecture identifiers are not restricted to the current runners.
@@ -62,7 +62,7 @@ too (including a single oversized snapshot), rather than silently exceeding the 
 Exact immutable cache IDs are deleted, and API errors fail the maintenance job.
 
 This is a **soft cap**, not an atomic GitHub storage quota: cleanup jobs serialize with each other,
-not with cache uploads. Each OS's storage can exceed 30 GB between maintenance runs or during concurrent
+not with cache uploads. Each OS's storage can exceed 150 GB between maintenance runs or during concurrent
 publication. Cleanup rechecks every OS afterward and fails visibly if any is still over budget; the next
 run retries. Cache eviction may cause a cold build but does not change build/test coverage.
 

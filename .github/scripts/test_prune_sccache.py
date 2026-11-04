@@ -46,6 +46,7 @@ class PruneSccacheTest(unittest.TestCase):
         self.assertEqual(ids(select_evictions(entries, 0)), [9])
 
     def test_empty_exact_and_under_budget_need_no_eviction(self):
+        self.assertEqual(BUDGET_BYTES, 150_000_000_000)
         self.assertEqual(ids(select_evictions([], 0)), [])
         self.assertEqual(ids(select_evictions([cache(1, BUDGET_BYTES)])), [])
         self.assertEqual(ids(select_evictions([cache(1, 1)])), [])
@@ -98,7 +99,7 @@ class PruneSccacheTest(unittest.TestCase):
         self.assertEqual(plan.evicted_baselines, [])
 
     def test_multiple_generations_and_prefixes_are_independent(self):
-        entries = [cache(i + 1, 1_000_000_000, f"{i % 10:x}") for i in range(170)]
+        entries = [cache(i + 1, BUDGET_BYTES // 30, f"{i % 10:x}") for i in range(170)]
         plan = select_evictions(entries)
         self.assertEqual(len(plan.deletions), 140)
         self.assertEqual(plan.remaining_bytes, BUDGET_BYTES)

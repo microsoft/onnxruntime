@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TypedDict
 
-BUDGET_BYTES = 30_000_000_000
+BUDGET_BYTES = 150_000_000_000
 MAIN_REF = "refs/heads/main"
 KEY_PREFIX = "sccache-v1-"
 MAIN_KEY = re.compile(r"(sccache-v1-[A-Za-z0-9_]+-[A-Za-z0-9_]+-[a-f0-9]{64}-)[a-f0-9]{40}")
