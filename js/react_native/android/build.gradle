@@ -244,7 +244,7 @@ dependencies {
   implementation "com.facebook.react:react-android:"+ REACT_NATIVE_VERSION
   api "org.mockito:mockito-core:2.28.2"
 
-  implementation "junit:junit:4.12"
+  implementation "junit:junit:4.13.2"
 
   if (useQnn) {
     extractLibs "com.microsoft.onnxruntime:onnxruntime-android-qnn:latest.integration@aar"

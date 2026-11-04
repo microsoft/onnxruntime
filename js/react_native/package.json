@@ -29,7 +29,7 @@
     "react-native-builder-bob": "^0.37.0"
   },
   "overrides": {
-    "fast-xml-parser": "^5.7.0"
+    "fast-xml-parser": "^5.12.0"
   },
   "peerDependencies": {
     "react": "*",
