@@ -15,6 +15,7 @@
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/status.h"
+#include "core/framework/matmul_nbits_runtime_route.h"
 #include "core/framework/tensor_shape.h"
 
 namespace onnxruntime {
@@ -30,13 +31,6 @@ enum class RuntimeWorkloadRunState {
   Failed,
 };
 
-enum class MatMulNBitsRuntimeRoute {
-  EmptyOutput,
-  PackedLut,
-  PackedQNBit,
-  Unpacked,
-};
-
 // These describe the effective backend interface, not the activation tensor's dtype
 // or a claim that all arithmetic in that route uses this type.
 enum class MatMulNBitsRuntimeComputeMode {
@@ -48,6 +42,7 @@ enum class MatMulNBitsRuntimeComputeMode {
   BHQNBitBf16,
   SQNBitInt8,
   HQNBitInt8,
+  CudaFloatingPoint,
 };
 
 struct MatMulNBitsRuntimeMetadata {
@@ -63,6 +58,7 @@ struct MatMulNBitsRuntimeMetadata {
   uint32_t block_size = 0;
   std::optional<MatMulNBitsRuntimeRoute> route;
   std::optional<MatMulNBitsRuntimeComputeMode> compute_mode;
+  std::optional<int64_t> reconstruction_k;
 };
 
 struct RuntimeWorkloadLimits {
@@ -142,14 +138,15 @@ struct RuntimeWorkloadRecorder {
   const Node* node;
 
   // Executor-side CUDA capture follows successful Compute(), including launch-error checks.
-  // Reads only host metadata; route and effective compute mode remain unknown.
+  // Reads host metadata and the route staged by the provider, never device tensors.
   void RecordCudaMatMulNBits(OpKernelContextInternal& context) const;
 
   void RecordMatMulNBits(const TensorShape& input_shape, const TensorShape& output_shape,
                          int64_t m, int64_t n, int64_t k, size_t batch_count, bool bias_present,
                          int32_t input_element_type, uint32_t bits, uint32_t block_size,
                          std::optional<MatMulNBitsRuntimeRoute> route,
-                         std::optional<MatMulNBitsRuntimeComputeMode> mode) const;
+                         std::optional<MatMulNBitsRuntimeComputeMode> mode,
+                         std::optional<int64_t> reconstruction_k = std::nullopt) const;
 };
 
 }  // namespace onnxruntime

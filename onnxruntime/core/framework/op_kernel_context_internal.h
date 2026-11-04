@@ -73,6 +73,14 @@ class OpKernelContextInternal : public OpKernelContext {
   RuntimeWorkloadCollector* GetRuntimeWorkloadCollector() const {
     return workload_recorder_.collector;
   }
+  void SetMatMulNBitsCudaRoute(const MatMulNBitsCudaRouteMetadata& metadata) override {
+    if (workload_recorder_.collector) {
+      cuda_route_metadata_ = metadata;
+    }
+  }
+  const std::optional<MatMulNBitsCudaRouteMetadata>& GetMatMulNBitsCudaRoute() const {
+    return cuda_route_metadata_;
+  }
 #else
   RuntimeWorkloadCollector* GetRuntimeWorkloadCollector() const { return nullptr; }
 #endif
@@ -152,6 +160,7 @@ class OpKernelContextInternal : public OpKernelContext {
 #if !defined(ORT_MINIMAL_BUILD)
   mutable KernelPilot* kernel_pilot_{nullptr};
   RuntimeWorkloadRecorder workload_recorder_{};
+  std::optional<MatMulNBitsCudaRouteMetadata> cuda_route_metadata_;
 
   class AccountingAllocator : public IAllocator {
    public:

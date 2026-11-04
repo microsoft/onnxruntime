@@ -708,27 +708,89 @@ TEST(RuntimeComputeEstimateReportTest, LutAndMissingModesHavePartialNotInventedT
   EXPECT_FALSE(estimate.contains("model"));
 }
 
-TEST(RuntimeComputeEstimateReportTest, CpuExpectedFlopsDoNotClaimCudaCoverage) {
+TEST(RuntimeComputeEstimateReportTest, MissingCudaRouteDoesNotClaimExpectedFlopCoverage) {
   auto snapshot = RuntimeSnapshot();
   snapshot.records[0].matmul_nbits.route = MatMulNBitsRuntimeRoute::Unpacked;
   snapshot.records[0].matmul_nbits.compute_mode = MatMulNBitsRuntimeComputeMode::Float32Gemm;
   auto cuda_record = snapshot.records[0];
   cuda_record.provider = kCudaExecutionProvider;
   cuda_record.invocation_id = 1;
+  cuda_record.matmul_nbits.route.reset();
+  cuda_record.matmul_nbits.compute_mode.reset();
   snapshot.records.push_back(cuda_record);
   const auto report = RuntimeReport(snapshot);
-  EXPECT_EQ(report["expected_flops"]["coverage_scope"], "cpu_matmul_nbits_modeled_components_only");
+  EXPECT_EQ(report["expected_flops"]["coverage_scope"], "cpu_and_cuda_matmul_nbits_modeled_components_only");
   const auto cuda = report["invocations"][1]["expected_flops"];
-  EXPECT_EQ(cuda["availability"], "unavailable");
+  EXPECT_EQ(cuda["availability"], "partial");
   EXPECT_FALSE(cuda.contains("expected_flops"));
   for (size_t i = 0; i < 3; ++i) {
-    EXPECT_EQ(cuda["components"][i]["unavailable_reason"], "unsupported_provider");
+    if (i != 1) {
+      EXPECT_EQ(cuda["components"][i]["unavailable_reason"], "missing_semantic_value");
+    }
     const auto summary = report["expected_flops"]["component_summaries"][i];
-    EXPECT_EQ(summary["estimated_component_count"], 1);
-    EXPECT_EQ(summary["unavailable_component_count"], 1);
-    EXPECT_EQ(summary["complete_for_captured_component_scope"], false);
+    EXPECT_EQ(summary["estimated_component_count"], i == 1 ? 2 : 1);
+    EXPECT_EQ(summary["unavailable_component_count"], i == 1 ? 0 : 1);
+    EXPECT_EQ(summary["complete_for_captured_component_scope"], i == 1);
   }
   EXPECT_EQ(report["component_summaries"][0]["known_operation_count"], "49152");
+}
+
+TEST(RuntimeComputeEstimateReportTest, CpuCudaModelsAggregateWithoutChangingTheirConventions) {
+  auto snapshot = RuntimeSnapshot();
+  auto& cpu = snapshot.records[0].matmul_nbits;
+  cpu.route = MatMulNBitsRuntimeRoute::PackedQNBit;
+  cpu.compute_mode = MatMulNBitsRuntimeComputeMode::SQNBitInt8;
+  auto cuda = snapshot.records[0];
+  cuda.provider = kCudaExecutionProvider;
+  cuda.invocation_id = 1;
+  cuda.matmul_nbits.route = MatMulNBitsRuntimeRoute::CudaFused;
+  cuda.matmul_nbits.compute_mode = MatMulNBitsRuntimeComputeMode::CudaFloatingPoint;
+  cuda.matmul_nbits.reconstruction_k = 64;
+  snapshot.records.push_back(cuda);
+  const auto report = RuntimeReport(snapshot);
+  EXPECT_EQ(report["invocations"][0]["expected_flops"]["expected_flops"], "2112");
+  EXPECT_EQ(report["invocations"][1]["expected_flops"]["expected_flops"], "28864");
+  EXPECT_EQ(report["invocations"][0]["expected_flops"]["components"][0]["convention_version"], "cpu_expected_flops_v1");
+  EXPECT_EQ(report["invocations"][1]["expected_flops"]["components"][0]["convention_version"], "cuda_expected_flops_v1");
+  EXPECT_EQ(report["invocations"][1]["route"], "cuda_fused");
+  EXPECT_EQ(report["invocations"][1]["compute_mode"], "cuda_floating_point");
+  EXPECT_EQ(report["invocations"][1]["reconstruction_k"], 64);
+  EXPECT_EQ(report["invocations"][1]["expected_flops"]["model"], "cuda_fused_nominal_reconstruction_v1");
+  EXPECT_EQ(report["expected_flops"]["component_summaries"][0]["known_operation_count"], "24576");
+  EXPECT_EQ(report["expected_flops"]["component_summaries"][1]["known_operation_count"], "384");
+  EXPECT_EQ(report["expected_flops"]["component_summaries"][2]["known_operation_count"], "6016");
+  for (size_t i = 0; i < 3; ++i) {
+    EXPECT_EQ(report["expected_flops"]["component_summaries"][i]["complete_for_captured_component_scope"], true);
+  }
+  EXPECT_EQ(report["component_summaries"][0]["known_operation_count"], "49152");
+}
+
+TEST(RuntimeComputeEstimateReportTest, CudaMaterializedPaddingAndMixedTacticsHaveExplicitModels) {
+  auto snapshot = RuntimeSnapshot();
+  snapshot.records[0].provider = kCudaExecutionProvider;
+  auto& metadata = snapshot.records[0].matmul_nbits;
+  metadata.input_shape = {2, 3, 65};
+  metadata.k = 65;
+  metadata.route = MatMulNBitsRuntimeRoute::CudaDequantizeGemm;
+  metadata.compute_mode = MatMulNBitsRuntimeComputeMode::CudaFloatingPoint;
+  metadata.reconstruction_k = 96;
+  auto report = RuntimeReport(snapshot);
+  auto expected = report["invocations"][0]["expected_flops"];
+  EXPECT_EQ(expected["model"], "cuda_materialized_single_reconstruction_v1");
+  EXPECT_EQ(expected["expected_flops"], "31296");
+  metadata.route = MatMulNBitsRuntimeRoute::CudaMixedFpAIntB;
+  metadata.input_element_type = ONNX_NAMESPACE::TensorProto::FLOAT16;
+  metadata.reconstruction_k = 65;
+  report = RuntimeReport(snapshot);
+  expected = report["invocations"][0]["expected_flops"];
+  EXPECT_EQ(expected["model"], "cuda_mixed_fpa_intb_nominal_reconstruction_v1");
+  EXPECT_EQ(expected["components"][2]["operation_count"], "4160");
+  metadata.reconstruction_k.reset();
+  report = RuntimeReport(snapshot);
+  expected = report["invocations"][0]["expected_flops"];
+  EXPECT_EQ(expected["components"][2]["unavailable_reason"], "missing_semantic_value");
+  EXPECT_EQ(expected["availability"], "partial");
+  EXPECT_FALSE(expected.contains("expected_flops"));
 }
 
 TEST(RuntimeComputeEstimateReportTest, ExpectedInvocationTotalAndComponentSubtotalOverflowAreSeparate) {

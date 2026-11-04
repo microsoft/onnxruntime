@@ -12,6 +12,7 @@
 #include "core/common/inlined_containers_fwd.h"
 #include "core/framework/run_instrumentation.h"
 #include "core/framework/resource_accountant.h"
+#include "core/framework/matmul_nbits_runtime_route.h"
 #include "core/providers/shared/common.h"
 
 #define PROVIDER_DISALLOW_ALL(TypeName)     \
@@ -1456,6 +1457,9 @@ struct ProviderHost {
 
   // Kernel pilot support — appended at end to preserve vtable ABI compatibility.
   virtual KernelPilot* OpKernelContext__GetKernelPilot(const OpKernelContext* p) = 0;
+  virtual bool OpKernelContext__IsRuntimeWorkloadCaptureEnabled(const OpKernelContext* p) = 0;
+  virtual void OpKernelContext__SetMatMulNBitsCudaRoute(
+      OpKernelContext* p, const MatMulNBitsCudaRouteMetadata& metadata) = 0;
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)

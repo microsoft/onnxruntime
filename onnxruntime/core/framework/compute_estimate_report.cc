@@ -368,6 +368,16 @@ const char* RouteName(MatMulNBitsRuntimeRoute route) {
       return "packed_qnbit";
     case MatMulNBitsRuntimeRoute::Unpacked:
       return "unpacked";
+    case MatMulNBitsRuntimeRoute::CudaFused:
+      return "cuda_fused";
+    case MatMulNBitsRuntimeRoute::CudaFpAIntBGemv:
+      return "cuda_fpa_intb_gemv";
+    case MatMulNBitsRuntimeRoute::CudaFpAIntBGemm:
+      return "cuda_fpa_intb_gemm";
+    case MatMulNBitsRuntimeRoute::CudaMixedFpAIntB:
+      return "cuda_mixed_fpa_intb";
+    case MatMulNBitsRuntimeRoute::CudaDequantizeGemm:
+      return "cuda_dequantize_gemm";
   }
   ORT_THROW("Invalid MatMulNBits runtime route.");
 }
@@ -390,6 +400,8 @@ const char* ModeName(MatMulNBitsRuntimeComputeMode mode) {
       return "sqnbit_int8";
     case MatMulNBitsRuntimeComputeMode::HQNBitInt8:
       return "hqnbit_int8";
+    case MatMulNBitsRuntimeComputeMode::CudaFloatingPoint:
+      return "cuda_floating_point";
   }
   ORT_THROW("Invalid MatMulNBits runtime compute mode.");
 }
@@ -460,11 +472,11 @@ Json ComponentSummary(Json component, const ComponentSubtotal& subtotal, const R
   return component;
 }
 
-Json ExpectedFlopsComponent(size_t index) {
+Json ExpectedFlopsComponent(size_t index, std::string_view convention = "matmul_nbits_expected_flops_v1") {
   constexpr std::array<std::string_view, 3> names{"matmul_core", "bias", "dequantization"};
   return {{"component", names[index]},
           {"metric", "floating_point_ops"},
-          {"convention_version", "cpu_expected_flops_v1"},
+          {"convention_version", convention},
           {"input_basis", "runtime_metadata"},
           {"basis", index == 1 ? "logical_semantics" : "route_aware_ballpark"},
           {"estimate_kind", index == 1 ? "exact_under_convention" : "model_based"},
@@ -486,16 +498,47 @@ const char* CpuFlopsModelName(contrib::MatMulNBitsCpuFlopsModel model) {
   }
   ORT_THROW("Invalid CPU FLOP model.");
 }
+
+const char* CudaFlopsModelName(contrib::MatMulNBitsCudaFlopsModel model) {
+  switch (model) {
+    case contrib::MatMulNBitsCudaFlopsModel::Materialized:
+      return "cuda_materialized_single_reconstruction_v1";
+    case contrib::MatMulNBitsCudaFlopsModel::Fused:
+      return "cuda_fused_nominal_reconstruction_v1";
+    case contrib::MatMulNBitsCudaFlopsModel::FpAIntBGemv:
+      return "cuda_fpa_intb_gemv_nominal_reconstruction_v1";
+    case contrib::MatMulNBitsCudaFlopsModel::FpAIntBGemm:
+      return "cuda_fpa_intb_gemm_nominal_reconstruction_v1";
+    case contrib::MatMulNBitsCudaFlopsModel::MixedFpAIntB:
+      return "cuda_mixed_fpa_intb_nominal_reconstruction_v1";
+    case contrib::MatMulNBitsCudaFlopsModel::NotExecuted:
+      return "empty_output_v1";
+  }
+  ORT_THROW("Invalid CUDA FLOP model.");
+}
 #endif
 
-Json CpuExpectedFlops(const RuntimeWorkloadRecord& record, std::array<ComponentSubtotal, 3>& subtotals) {
+Json ExpectedFlops(const RuntimeWorkloadRecord& record, std::array<ComponentSubtotal, 3>& subtotals) {
   Json value{{"components", Json::array()}};
+  const bool cpu = record.provider == kCpuExecutionProvider;
+  const bool cuda = record.provider == kCudaExecutionProvider;
+  const std::string_view convention = cpu ? "cpu_expected_flops_v1" : cuda ? "cuda_expected_flops_v1"
+                                                                           : "matmul_nbits_expected_flops_v1";
 #if !defined(DISABLE_CONTRIB_OPS)
-  std::optional<contrib::MatMulNBitsCpuFlopsEstimate> estimate;
-  if (record.provider == kCpuExecutionProvider) {
-    estimate = contrib::EstimateMatMulNBitsCpuFlops(record.matmul_nbits);
-    if (estimate->model) {
-      value["model"] = CpuFlopsModelName(*estimate->model);
+  using Reason = contrib::ComputeEstimateUnavailableReason;
+  std::array<contrib::MatMulNBitsBiasEstimateResult, 3> results{
+      Reason::MissingSemanticValue, Reason::MissingSemanticValue, Reason::MissingSemanticValue};
+  if (cpu) {
+    const auto estimate = contrib::EstimateMatMulNBitsCpuFlops(record.matmul_nbits);
+    results = {estimate.core, estimate.bias, estimate.dequantization};
+    if (estimate.model) {
+      value["model"] = CpuFlopsModelName(*estimate.model);
+    }
+  } else if (cuda) {
+    const auto estimate = contrib::EstimateMatMulNBitsCudaFlops(record.matmul_nbits);
+    results = {estimate.core, estimate.bias, estimate.dequantization};
+    if (estimate.model) {
+      value["model"] = CudaFlopsModelName(*estimate.model);
     }
   }
 #endif
@@ -503,18 +546,16 @@ Json CpuExpectedFlops(const RuntimeWorkloadRecord& record, std::array<ComponentS
   uint64_t known = 0;
   bool overflow = false;
   for (size_t i = 0; i < subtotals.size(); ++i) {
-    auto component = ExpectedFlopsComponent(i);
+    auto component = ExpectedFlopsComponent(i, convention);
     std::optional<uint64_t> count;
-    if (record.provider != kCpuExecutionProvider) {
+    if (!cpu && !cuda) {
       component["unavailable_reason"] = "unsupported_provider";
     } else {
 #if !defined(DISABLE_CONTRIB_OPS)
-      const std::array<const contrib::MatMulNBitsBiasEstimateResult*, 3> results{
-          &estimate->core, &estimate->bias, &estimate->dequantization};
-      if (const auto* result = std::get_if<contrib::MatMulNBitsBiasEstimate>(results[i])) {
+      if (const auto* result = std::get_if<contrib::MatMulNBitsBiasEstimate>(&results[i])) {
         count = result->floating_point_ops;
       } else {
-        component["unavailable_reason"] = ReasonName(std::get<contrib::ComputeEstimateUnavailableReason>(*results[i]));
+        component["unavailable_reason"] = ReasonName(std::get<Reason>(results[i]));
       }
 #else
       component["unavailable_reason"] = "estimators_disabled";
@@ -583,13 +624,14 @@ Status BuildComputeEstimateReport(const RuntimeWorkloadSnapshot& snapshot, std::
     std::array<ComponentSubtotal, 2> subtotals;
     std::array<ComponentSubtotal, 3> expected_subtotals;
     value["expected_flops"] = {
-        {"convention_version", "cpu_expected_flops_v1"},
-        {"coverage_scope", "cpu_matmul_nbits_modeled_components_only"},
+        {"convention_version", "matmul_nbits_expected_flops_v1"},
+        {"provider_conventions", {{kCpuExecutionProvider, "cpu_expected_flops_v1"}, {kCudaExecutionProvider, "cuda_expected_flops_v1"}}},
+        {"coverage_scope", "cpu_and_cuda_matmul_nbits_modeled_components_only"},
         {"route_adjustment_applied", true},
         {"whole_operator_work_complete", false},
         {"assumptions", {{"floating_reconstruction_passes", 1}, {"floating_ops_per_reconstructed_element", 2}, {"integer_scaling_ops_per_output_block", 5}}},
         {"excluded_components", Json::array({"activation_quantization", "packing", "conversion", "preparation",
-                                             "auxiliary_reductions", "worker_tile_repetition"})},
+                                             "auxiliary_reductions", "worker_tile_repetition", "chunk_repetition"})},
         {"component_summaries", Json::array()}};
     for (const auto& record : snapshot.records) {
       const auto& metadata = record.matmul_nbits;
@@ -614,6 +656,7 @@ Status BuildComputeEstimateReport(const RuntimeWorkloadSnapshot& snapshot, std::
       }
       if (metadata.route) entry["route"] = RouteName(*metadata.route);
       if (metadata.compute_mode) entry["compute_mode"] = ModeName(*metadata.compute_mode);
+      if (metadata.reconstruction_k) entry["reconstruction_k"] = *metadata.reconstruction_k;
       size_t available = 0;
       for (size_t i = 0; i < subtotals.size(); ++i) {
         Json component = RuntimeComponent(i == 1);
@@ -651,7 +694,7 @@ Status BuildComputeEstimateReport(const RuntimeWorkloadSnapshot& snapshot, std::
       }
       entry["availability"] = available == 2 ? "available" : available == 1 ? "partial"
                                                                             : "unavailable";
-      entry["expected_flops"] = CpuExpectedFlops(record, expected_subtotals);
+      entry["expected_flops"] = ExpectedFlops(record, expected_subtotals);
       value["invocations"].push_back(std::move(entry));
     }
     value["component_summaries"] = Json::array();

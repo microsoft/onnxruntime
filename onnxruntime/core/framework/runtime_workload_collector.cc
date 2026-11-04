@@ -153,12 +153,18 @@ void RuntimeWorkloadRecorder::RecordCudaMatMulNBits(OpKernelContextInternal& con
                 "CUDA MatMulNBits workload input geometry is invalid.");
     const int64_t m = shape.SizeToDimension(shape.NumDimensions() - 1);
     const bool empty = output.Shape().Size() == 0;
+    const auto& cuda_route = context.GetMatMulNBitsCudaRoute();
     RecordMatMulNBits(shape, output.Shape(), m, n, k, 1,
                       context.Input<Tensor>(5) != nullptr, input->GetElementType(),
                       SafeInt<uint32_t>(attributes.at("bits").i()),
                       SafeInt<uint32_t>(attributes.at("block_size").i()),
-                      empty ? std::optional{MatMulNBitsRuntimeRoute::EmptyOutput} : std::nullopt,
-                      empty ? std::optional{MatMulNBitsRuntimeComputeMode::NotExecuted} : std::nullopt);
+                      empty        ? std::optional{MatMulNBitsRuntimeRoute::EmptyOutput}
+                      : cuda_route ? std::optional{cuda_route->route}
+                                   : std::nullopt,
+                      empty        ? std::optional{MatMulNBitsRuntimeComputeMode::NotExecuted}
+                      : cuda_route ? std::optional{MatMulNBitsRuntimeComputeMode::CudaFloatingPoint}
+                                   : std::nullopt,
+                      cuda_route ? std::optional{cuda_route->reconstruction_k} : std::nullopt);
   }
   ORT_CATCH(const std::bad_alloc&) {
     ORT_HANDLE_EXCEPTION([&]() { collector->RecordCollectionFailure(true); });
@@ -172,7 +178,8 @@ void RuntimeWorkloadRecorder::RecordMatMulNBits(
     const TensorShape& input_shape, const TensorShape& output_shape,
     int64_t m, int64_t n, int64_t k, size_t batch_count, bool bias_present,
     int32_t input_element_type, uint32_t bits, uint32_t block_size,
-    std::optional<MatMulNBitsRuntimeRoute> route, std::optional<MatMulNBitsRuntimeComputeMode> mode) const {
+    std::optional<MatMulNBitsRuntimeRoute> route, std::optional<MatMulNBitsRuntimeComputeMode> mode,
+    std::optional<int64_t> reconstruction_k) const {
   ORT_TRY {
     MatMulNBitsRuntimeMetadata metadata;
     metadata.input_shape.assign(input_shape.GetDims().begin(), input_shape.GetDims().end());
@@ -187,6 +194,7 @@ void RuntimeWorkloadRecorder::RecordMatMulNBits(
     metadata.block_size = block_size;
     metadata.route = route;
     metadata.compute_mode = mode;
+    metadata.reconstruction_k = reconstruction_k;
     ORT_IGNORE_RETURN_VALUE(collector->RecordMatMulNBits(
         GraphPath(*graph), node->Index(), node->GetExecutionProviderType(), metadata));
   }

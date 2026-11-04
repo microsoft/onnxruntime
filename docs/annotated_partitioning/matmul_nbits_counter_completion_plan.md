@@ -44,21 +44,24 @@ Implemented by Batches 1-3:
 - Bounded typed per-run collector, run identity/outcome, diagnostics and subgraph propagation.
 - CPU MatMulNBits runtime shapes, bias presence, quantization metadata and selected route/effective-mode provenance.
 - Eager-CUDA MatMulNBits host-side shape/quantization capture after successful kernel submission, without a
-  provider-ABI extension or added device synchronization. CUDA route/mode remain unknown; empty outputs are explicit.
+  added device synchronization. Coarse selected CUDA route/arithmetic and reconstruction geometry cross
+  an append-only internal provider bridge; empty outputs are explicit.
 - Checked core `2MNK` and bias `MN` formulas, with independent components.
 - Additive CPU route-aware expected-FLOP core/bias/dequantization reporting under declared ballpark models;
   see [CPU implementation batches](contrib_op_flop_estimation_rollout.md#46-cpu-expected-flop-implementation-batches).
   LUT remains unsupported; existing CPU/CUDA logical counts are unchanged.
+- CUDA expected-FLOP models and actual selected-route transport;
+  see [CUDA implementation batches](contrib_op_flop_estimation_rollout.md#47-cuda-expected-flop-implementation-batches).
 - Opt-in schema-v3 runtime JSON export after canonical Run, with unique process/session/run filename suffixes.
 - Configurable automatic limits: 10,000 records and 16 MiB accounted payload per run by default.
 - Explicit overflow, unavailable estimates, drops and captured-scope completeness.
 
 Not implemented or not qualified:
 
-- GPU architecture/route provenance, GPU completion-aware collection and device timing.
+- Detailed GPU architecture/tactic provenance, GPU completion-aware collection and device timing.
 - CUDA graph capture/replay collection: capture is skipped, warned and marked incomplete to avoid false totals.
-- Timing/rate metrics, CUDA route-adjusted work, complete model coverage or standard MatMul/Gemm instrumentation.
-- Empirical accuracy qualification of the CPU ballpark reconstruction/block-scaling assumptions.
+- Timing/rate metrics, complete model coverage or standard MatMul/Gemm instrumentation.
+- Empirical accuracy qualification of the CPU/CUDA ballpark reconstruction/block-scaling assumptions.
 - Production overhead qualification, all platform/build combinations, and the user's own model validation.
 
 Existing implementation anchors:

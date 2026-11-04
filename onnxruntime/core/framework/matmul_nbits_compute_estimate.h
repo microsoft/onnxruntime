@@ -75,6 +75,27 @@ struct MatMulNBitsCpuFlopsEstimate {
 // quantization, conversions, preparation, auxiliary reductions and worker/tile repetition.
 MatMulNBitsCpuFlopsEstimate EstimateMatMulNBitsCpuFlops(const MatMulNBitsRuntimeMetadata& metadata);
 
+enum class MatMulNBitsCudaFlopsModel {
+  Materialized,
+  Fused,
+  FpAIntBGemv,
+  FpAIntBGemm,
+  MixedFpAIntB,
+  NotExecuted,
+};
+
+struct MatMulNBitsCudaFlopsEstimate {
+  std::optional<MatMulNBitsCudaFlopsModel> model;
+  MatMulNBitsBiasEstimateResult core;
+  MatMulNBitsBiasEstimateResult bias;
+  MatMulNBitsBiasEstimateResult dequantization;
+};
+
+// Ballpark v1: floating core 2MNK, bias MN, and one nominal reconstruction.
+// Materialized reconstruction uses recorded K; fused routes use logical K.
+// Excludes preparation, conversions, auxiliary reductions and tile/chunk repetition.
+MatMulNBitsCudaFlopsEstimate EstimateMatMulNBitsCudaFlops(const MatMulNBitsRuntimeMetadata& metadata);
+
 // Reads canonical metadata from a resolved in-tree graph, never maximum-shape hints.
 // The same core count applies across providers, dtypes, and supported quantization bit widths.
 MatMulNBitsComputeEstimateResult EstimateMatMulNBitsCompute(const Node& node);

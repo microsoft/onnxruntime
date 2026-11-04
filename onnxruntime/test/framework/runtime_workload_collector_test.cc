@@ -10,6 +10,7 @@
 #include <limits>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -27,7 +28,9 @@
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/test_environment.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/scoped_env_vars.h"
 #endif
 
 namespace onnxruntime {
@@ -337,6 +340,7 @@ ModelProto WorkloadModel(bool dynamic_weights = false, bool bias = true, int bit
   auto& graph = *model.mutable_graph();
   graph.set_name("runtime_workload");
   const int type = half ? TensorProto::FLOAT16 : TensorProto::FLOAT;
+  const int64_t blocks = (k + 31) / 32;
   SetValueType(*graph.add_input(), "A", type, rank);
   SetValueType(*graph.add_output(), "Y", type, rank);
   if (dynamic_weights) {
@@ -346,9 +350,9 @@ ModelProto WorkloadModel(bool dynamic_weights = false, bool bias = true, int bit
     b->set_name("B");
     b->set_data_type(TensorProto::UINT8);
     b->add_dims(n);
-    b->add_dims(k / 32);
+    b->add_dims(blocks);
     b->add_dims(32 * bits / 8);
-    b->set_raw_data(std::string(static_cast<size_t>(n * k * bits / 8),
+    b->set_raw_data(std::string(static_cast<size_t>(n * blocks * 32 * bits / 8),
                                 bits == 2 ? '\xff' : bits == 8 ? '\x81'
                                                                : '\x99'));
   }
@@ -365,7 +369,7 @@ ModelProto WorkloadModel(bool dynamic_weights = false, bool bias = true, int bit
       }
     }
   };
-  add_float_initializer("scales", n * k / 32, 1.f);
+  add_float_initializer("scales", n * blocks, 1.f);
   if (bias) {
     add_float_initializer("bias", n, 2.f);
   }
@@ -528,7 +532,8 @@ TEST(RuntimeWorkloadExecutionTest, TransformerEncoderAndDecoderPropagateCollecto
 std::unique_ptr<InferenceSession> WorkloadSession(const ModelProto& model, bool force_fp32 = false,
                                                   bool lut = false, bool parallel = false,
                                                   std::unique_ptr<IExecutionProvider> provider = nullptr,
-                                                  bool disable_cpu_fallback = true) {
+                                                  bool disable_cpu_fallback = true,
+                                                  gsl::span<const std::pair<const char*, const char*>> config_entries = {}) {
   SessionOptions options;
   options.graph_optimization_level = TransformerLevel::Default;
   options.intra_op_param.thread_pool_size = 1;
@@ -542,6 +547,9 @@ std::unique_ptr<InferenceSession> WorkloadSession(const ModelProto& model, bool 
   }
   if (provider && provider->Type() == kCudaExecutionProvider && disable_cpu_fallback) {
     ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  }
+  for (const auto& [key, value] : config_entries) {
+    ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry(key, value));
   }
   auto session = std::make_unique<InferenceSession>(options, GetEnvironment());
   if (provider) {
@@ -634,6 +642,69 @@ TEST(RuntimeWorkloadExecutionTest, GraphCaptureIsExplicitlyIncompleteWithoutChan
 }
 
 #if defined(USE_CUDA)
+TEST(RuntimeWorkloadExecutionTest, CudaFusedRankOneRoutesUseFloatingCoreForQuantizedWeights) {
+  for (int bits : {2, 4, 8}) {
+    auto provider = DefaultCudaExecutionProvider();
+    if (!provider) {
+      GTEST_SKIP() << "CUDA execution provider is unavailable.";
+    }
+    auto session = WorkloadSession(WorkloadModel(false, false, bits, false, 1),
+                                   false, false, false, std::move(provider));
+    RuntimeWorkloadCollector collector({10, 8192});
+    std::vector<OrtValue> outputs;
+    ASSERT_STATUS_OK(RunWorkload(*session, &collector, outputs, {64}));
+    ExpectOutput(outputs, 64.f);
+    const auto snapshot = Snapshot(collector);
+    ASSERT_EQ(snapshot.records.size(), 1u);
+    EXPECT_EQ(snapshot.records[0].provider, kCudaExecutionProvider);
+    EXPECT_EQ(snapshot.records[0].matmul_nbits.route, MatMulNBitsRuntimeRoute::CudaFused);
+    const auto expected = Report(snapshot)["invocations"][0]["expected_flops"];
+    EXPECT_EQ(expected["model"], "cuda_fused_nominal_reconstruction_v1");
+    EXPECT_EQ(expected["components"][0]["operation_count"], "4096");
+    EXPECT_EQ(expected["components"][1]["operation_count"], "0");
+    EXPECT_EQ(expected["components"][2]["operation_count"], "4096");
+    EXPECT_EQ(expected["expected_flops"], "8192");
+  }
+}
+
+TEST(RuntimeWorkloadExecutionTest, CudaBFloat16CaptureKeepsFloatingArithmeticAndActualInputType) {
+  auto provider = DefaultCudaExecutionProvider();
+  if (!provider || GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "CUDA BFloat16 requires compute capability 8.0 or newer.";
+  }
+  auto model = WorkloadModel(false, true, 4, true);
+  model.mutable_graph()->mutable_input(0)->mutable_type()->mutable_tensor_type()->set_elem_type(TensorProto::BFLOAT16);
+  model.mutable_graph()->mutable_output(0)->mutable_type()->mutable_tensor_type()->set_elem_type(TensorProto::BFLOAT16);
+  for (auto& initializer : *model.mutable_graph()->mutable_initializer()) {
+    if (initializer.name() == "scales" || initializer.name() == "bias") {
+      const int count = initializer.int32_data_size();
+      initializer.set_data_type(TensorProto::BFLOAT16);
+      initializer.clear_int32_data();
+      const BFloat16 value(initializer.name() == "scales" ? 1.f : 2.f);
+      for (int i = 0; i < count; ++i) {
+        initializer.add_int32_data(value.val);
+      }
+    }
+  }
+  auto session = WorkloadSession(model, false, false, false, std::move(provider));
+  RuntimeWorkloadCollector collector({10, 8192});
+  RunOptions options;
+  options.runtime_workload_collector = &collector;
+  std::vector<std::string> input_names{"A"}, output_names{"Y"};
+  std::vector<OrtValue> feeds{FilledTensor({2, 3, 64}, BFloat16(1.f))}, outputs;
+  ASSERT_STATUS_OK(session->Run(options, input_names, feeds, output_names, &outputs));
+  ASSERT_EQ(outputs.size(), 1u);
+  for (const auto value : outputs[0].Get<Tensor>().DataAsSpan<BFloat16>()) {
+    EXPECT_EQ(value.ToFloat(), 66.f);
+  }
+  const auto snapshot = Snapshot(collector);
+  ASSERT_EQ(snapshot.records.size(), 1u);
+  EXPECT_EQ(snapshot.records[0].provider, kCudaExecutionProvider);
+  EXPECT_EQ(snapshot.records[0].matmul_nbits.input_element_type, TensorProto::BFLOAT16);
+  EXPECT_EQ(snapshot.records[0].matmul_nbits.compute_mode, MatMulNBitsRuntimeComputeMode::CudaFloatingPoint);
+  EXPECT_EQ(Report(snapshot)["invocations"][0]["expected_flops"]["expected_flops"], "28864");
+}
+
 TEST(RuntimeWorkloadExecutionTest, CudaMatchesCpuCountsAcrossTypesBiasBitsAndDynamicShapes) {
   for (bool half : {false, true}) {
     for (bool bias : {false, true}) {
@@ -674,15 +745,20 @@ TEST(RuntimeWorkloadExecutionTest, CudaMatchesCpuCountsAcrossTypesBiasBitsAndDyn
           EXPECT_EQ(record.matmul_nbits.bits, static_cast<uint32_t>(bits));
           EXPECT_EQ(record.matmul_nbits.block_size, 32u);
           EXPECT_EQ(record.matmul_nbits.input_element_type, half ? TensorProto::FLOAT16 : TensorProto::FLOAT);
-          EXPECT_FALSE(record.matmul_nbits.route.has_value());
-          EXPECT_FALSE(record.matmul_nbits.compute_mode.has_value());
+          ASSERT_TRUE(record.matmul_nbits.route.has_value());
+          EXPECT_EQ(record.matmul_nbits.compute_mode, MatMulNBitsRuntimeComputeMode::CudaFloatingPoint);
+          EXPECT_EQ(record.matmul_nbits.reconstruction_k, 64);
           const auto cuda_report = Report(snapshot), cpu_report = Report(Snapshot(cpu_collector));
           EXPECT_EQ(cuda_report["component_summaries"], cpu_report["component_summaries"]);
           EXPECT_EQ(cuda_report["component_summaries"][0]["known_operation_count"],
                     std::to_string(2 * 2 * rows * 32 * 64));
           EXPECT_EQ(cuda_report["component_summaries"][1]["known_operation_count"],
                     std::to_string(bias ? 2 * rows * 32 : 0));
-          EXPECT_FALSE(cuda_report["invocations"][0].contains("route"));
+          const auto expected = cuda_report["invocations"][0]["expected_flops"];
+          EXPECT_EQ(expected["components"][0]["operation_count"], std::to_string(2 * 2 * rows * 32 * 64));
+          EXPECT_EQ(expected["components"][1]["operation_count"], std::to_string(bias ? 2 * rows * 32 : 0));
+          EXPECT_EQ(expected["components"][2]["operation_count"], "4096");
+          EXPECT_EQ(expected["total_availability"], "available");
         }
       }
     }
@@ -704,6 +780,7 @@ TEST(RuntimeWorkloadExecutionTest, CudaEmptyOutputFailuresAndCollectionLimitsPre
   EXPECT_EQ(snapshot.records[0].matmul_nbits.route, MatMulNBitsRuntimeRoute::EmptyOutput);
   EXPECT_EQ(snapshot.records[0].matmul_nbits.compute_mode, MatMulNBitsRuntimeComputeMode::NotExecuted);
   EXPECT_EQ(Report(snapshot)["component_summaries"][0]["known_operation_count"], "0");
+  EXPECT_EQ(Report(snapshot)["invocations"][0]["expected_flops"]["expected_flops"], "0");
   for (bool terminate : {false, true}) {
     RuntimeWorkloadCollector failed({10, 8192});
     outputs.clear();
@@ -744,6 +821,84 @@ TEST(RuntimeWorkloadExecutionTest, CudaLoopCapturesEachExecutedSubgraphInvocatio
     EXPECT_EQ(snapshot.records[i].invocation_id, i);
   }
   EXPECT_EQ(Report(snapshot)["component_summaries"][0]["known_operation_count"], "73728");
+  EXPECT_EQ(Report(snapshot)["expected_flops"]["component_summaries"][2]["known_operation_count"], "12288");
+}
+
+TEST(RuntimeWorkloadExecutionTest, CudaMaterializedPaddingAndNChunksDoNotRepeatTheFullReconstruction) {
+  for (bool chunked : {false, true}) {
+    auto provider = DefaultCudaExecutionProvider();
+    if (!provider) {
+      GTEST_SKIP() << "CUDA execution provider is unavailable.";
+    }
+    ScopedEnvironmentVariables env{{{"ORT_MATMULNBITS_FORCE_CHUNKED", chunked ? "1" : "0"},
+                                    {"ORT_MATMULNBITS_CHUNK_SIZE", "16"}}};
+    auto model = WorkloadModel(false, true, 4, false, 3, 32, 65);
+    auto* zero_points = model.mutable_graph()->add_initializer();
+    zero_points->set_name("zero_points");
+    zero_points->set_data_type(TensorProto::FLOAT);
+    zero_points->add_dims(32 * 3);
+    for (int i = 0; i < 32 * 3; ++i) {
+      zero_points->add_float_data(8.f);
+    }
+    model.mutable_graph()->mutable_node(0)->set_input(3, "zero_points");
+    // Floating-point zero points make the direct fused path ineligible.
+    auto session = WorkloadSession(model, false, false, false, std::move(provider));
+    RuntimeWorkloadCollector collector({10, 8192});
+    std::vector<OrtValue> outputs;
+    ASSERT_STATUS_OK(RunWorkload(*session, &collector, outputs, {2, 3, 65}));
+    ExpectOutput(outputs, 67.f);
+    const auto snapshot = Snapshot(collector);
+    ASSERT_EQ(snapshot.records.size(), 1u);
+    EXPECT_EQ(snapshot.records[0].provider, kCudaExecutionProvider);
+    EXPECT_EQ(snapshot.records[0].matmul_nbits.route, MatMulNBitsRuntimeRoute::CudaDequantizeGemm);
+    EXPECT_EQ(snapshot.records[0].matmul_nbits.reconstruction_k, 96);
+    const auto expected = Report(snapshot)["invocations"][0]["expected_flops"];
+    EXPECT_EQ(expected["model"], "cuda_materialized_single_reconstruction_v1");
+    EXPECT_EQ(expected["components"][0]["operation_count"], "24960");
+    EXPECT_EQ(expected["components"][1]["operation_count"], "192");
+    EXPECT_EQ(expected["components"][2]["operation_count"], "6144");
+    EXPECT_EQ(expected["expected_flops"], "31296");
+  }
+}
+
+TEST(RuntimeWorkloadExecutionTest, CudaFpAIntBTacticsRecordGemvAndGemmWithoutProfilingInvocations) {
+  auto provider = DefaultCudaExecutionProvider();
+  if (!provider || GetCudaArchitecture() < 750) {
+    GTEST_SKIP() << "fpA_intB requires a CUDA device with compute capability 7.5 or newer.";
+  }
+  ScopedEnvironmentVariables env{{{"ORT_MATMULNBITS_FORCE_CHUNKED", "1"}}};
+  const std::array<std::pair<const char*, const char*>, 4> settings{{
+      {kOrtSessionOptionsCudaFpAIntBGemm, "1"},
+      {kOrtSessionOptionsCudaFpAIntBProfileM, "8,32"},
+      {kOrtSessionOptionsCudaFpAIntBGemvPairedK, "force"},
+      {kOrtSessionOptionsCudaMatMulNBitsMChunkSize, "32"},
+  }};
+  auto session = WorkloadSession(WorkloadModel(false, false, 4, true, 3, 128, 64),
+                                 false, false, false, std::move(provider), true, settings);
+  for (int64_t rows : {8, 32, 40}) {
+    RuntimeWorkloadCollector collector({10, 8192});
+    std::vector<OrtValue> outputs;
+    ASSERT_STATUS_OK(RunWorkload(*session, &collector, outputs, {1, rows, 64}, false, true));
+    ExpectOutput(outputs, 64.f, true);
+    const auto snapshot = Snapshot(collector);
+    ASSERT_EQ(snapshot.records.size(), 1u);
+    const auto& metadata = snapshot.records[0].matmul_nbits;
+    ASSERT_TRUE(metadata.route);
+    if (rows == 8 && *metadata.route != MatMulNBitsRuntimeRoute::CudaFpAIntBGemv &&
+        *metadata.route != MatMulNBitsRuntimeRoute::CudaFpAIntBGemm) {
+      GTEST_SKIP() << "The fpA_intB route is not available in this build/device configuration.";
+    }
+    EXPECT_EQ(metadata.route, rows == 8    ? MatMulNBitsRuntimeRoute::CudaFpAIntBGemv
+                              : rows == 32 ? MatMulNBitsRuntimeRoute::CudaFpAIntBGemm
+                                           : MatMulNBitsRuntimeRoute::CudaMixedFpAIntB);
+    EXPECT_EQ(snapshot.records[0].provider, kCudaExecutionProvider);
+    EXPECT_EQ(metadata.reconstruction_k, 64);
+    const auto expected = Report(snapshot)["invocations"][0]["expected_flops"];
+    EXPECT_EQ(expected["components"][0]["operation_count"], std::to_string(2 * rows * 128 * 64));
+    EXPECT_EQ(expected["components"][1]["operation_count"], "0");
+    EXPECT_EQ(expected["components"][2]["operation_count"], "16384");
+    EXPECT_EQ(expected["total_availability"], "available");
+  }
 }
 #endif
 

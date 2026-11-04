@@ -1,13 +1,13 @@
 # Contrib Operator FLOP Estimation: Design and Rollout Plan
 
 **Status:** CPU and eager-CUDA MatMulNBits logical runtime count/report preview implemented;
-CPU route-aware ballpark core/bias/dequantization estimates implemented. CUDA route-aware estimates, LUT,
-GQA, timing and offload-policy experiments remain separate work.
+CPU and eager-CUDA route-aware ballpark core/bias/dequantization estimates implemented.
+LUT, GQA, timing and offload-policy experiments remain separate work.
 
 **Initial merge target:** extend the existing CPU/CUDA logical runtime counter to report ballpark expected FLOPs
 for core work, bias additions and dequantization, using coarse actual-route arithmetic categories. Preserve the
 dense-equivalent baseline separately. Section 4.5 identifies arithmetic categories; Section 4.6 describes the
-implemented CPU conventions. CUDA expected-FLOP formulas and route capture are not implemented yet.
+implemented CPU conventions; Section 4.7 adds CUDA route capture and expected-FLOP models.
 Detailed kernel modelling, packing/preparation accounting,
 timing and offload-policy delegation experiments follow this increment.
 
@@ -142,9 +142,11 @@ separate diagnostic Status. Allocation-failure recovery requires exception-enabl
 With capture disabled, there is no collector allocation, record/shape/string copying, run-ID assignment,
 or collection locking. Coverage is limited to CPU and eager-CUDA MatMulNBits, not all providers/operators.
 CUDA metadata is captured by the executor after successful `Compute()`, including the CUDA kernel's launch-error
-check. Only host shapes and operator metadata are read: no tensor download, device synchronization or provider-ABI
-extension is needed. Shared-weight batches are flattened into M with batch count one. CUDA route and effective
-compute mode remain absent, except for explicit empty-output nonexecution; counts do not depend on these fields.
+check. Only host shapes and operator metadata are read: no tensor download or additional device synchronization
+is needed. Coarse CUDA route/reconstruction metadata crosses an append-only internal ProviderHost extension,
+using a boundary-safe header without native graph or collector types; public C API tables are unchanged.
+Shared-weight batches are flattened into M with batch count one. CUDA records its selected route, a coarse
+`cuda_floating_point` arithmetic category and reconstruction K; this does not claim exact instruction precision.
 One record represents one logical invocation, including implementations that issue multiple chunked launches.
 Successful submission is not proof of GPU completion: a later synchronization failure makes the run failed, and
 runs that disable provider synchronization do not establish completed GPU work.
@@ -244,8 +246,8 @@ version-2 `nodes`/`graphs` document. The graph-based version-2 builders remain i
   partitions and graph replay are not instrumented, and their skipped invocation counts are not known.
 - `route_adjustment_applied: false`; dequantization, packing, conversions, padding and route-specific extras are
   explicitly excluded from the legacy logical components. Route names do not change the baseline formulas.
-- The additive `expected_flops` section models CPU core/bias/dequantization independently, with its own scope,
-  assumptions, availability and component summaries; see Section 4.6. CUDA expected-FLOP models remain unsupported.
+- The additive `expected_flops` section models CPU/CUDA core/bias/dequantization independently, with its own scope,
+  assumptions, availability and component summaries; see Sections 4.6 and 4.7.
 
 CPU Debug correctness tests cover counts, partial/overflow/drop diagnostics, automatic per-run export, concurrent
 runs, dynamic shapes, UTF-8 paths, file errors, disabled behavior, explicit collector coexistence, and executed
@@ -468,7 +470,7 @@ CPU evidence:
 
 #### CUDA route families
 
-These are modelling labels, not existing CUDA collector enum values. Quantized weight storage does not
+These families now have corresponding CUDA collector route values (Section 4.7). Quantized weight storage does not
 make the matrix-product arithmetic integer. No integer-dot-product core was identified in the MatMulNBits
 CUDA route families below; do not extrapolate this classification to unrelated quantized operators.
 
@@ -523,9 +525,9 @@ To wire this map into the estimator, the next step needs:
 4. Focused reference tests for floating-point, integer-core, LUT and CUDA families. Missing backend capability
    is a coverage gap, not validation of a formula. Detailed kernel modelling can refine coefficients later.
 
-The map establishes arithmetic categories, not instruction counts. Section 4.6 implements a bounded CPU
-scenario using the existing selected route/mode. Provider-boundary CUDA metadata transport, CUDA formulas
-and empirical kernel-model accuracy qualification remain outstanding.
+The map establishes arithmetic categories, not instruction counts. Sections 4.6 and 4.7 implement bounded
+CPU/CUDA scenarios using actual selected route metadata. Empirical kernel-model accuracy qualification remains
+outstanding.
 
 ### 4.6 CPU expected-FLOP implementation batches
 
@@ -580,9 +582,9 @@ gets an `expected_flops` object with:
 
 Within this new section, `route_adjustment_applied: true` describes use of CPU route-aware models; it does not
 modify the legacy logical totals. Core/dequantization are labelled `model_based`; bias is
-`exact_under_convention`. LUT has unavailable core/dequantization, not zero work. CUDA retains all existing
-logical counts, but its new expected-FLOP components are explicitly `unsupported_provider` until CUDA models
-are added. Mixed CPU/CUDA reports therefore cannot claim complete expected-FLOP coverage.
+`exact_under_convention`. LUT has unavailable core/dequantization, not zero work. Section 4.7 adds CUDA
+support and broadens the aggregate expected-FLOP scope without changing CPU per-invocation conventions or counts.
+Missing CUDA route metadata still makes core/dequantization unavailable; independently known bias is retained.
 
 Component summaries preserve unavailable reasons and independent overflow. Their
 `complete_for_captured_component_scope` flag requires successful Run, complete collection and no missing
@@ -609,6 +611,96 @@ tests, with one capability-gated LUT skip. The focused provider filter also incl
 `MatMulNBits.LegacyShape_4b` smoke tests. Both binaries were run with `ORT_UNIT_TEST_MAIN_LOG_LEVEL=3` to
 retain the report-warning regression's elevated-global-severity check. Clang-format and `git diff --check`
 passed. Windows, ARM, minimal/no-exception and CUDA builds were not rerun for this CPU increment.
+
+### 4.7 CUDA expected-FLOP implementation batches
+
+The eager-CUDA preview adds `cuda_expected_flops_v1` alongside the CPU convention. All supported CUDA
+MatMulNBits core families below perform floating-point matrix arithmetic after decoding quantized weights;
+integer weight storage must not be mistaken for an integer dot-product core.
+
+**Batch A: selected-route transport.**
+The [shared route header](../../include/onnxruntime/core/framework/matmul_nbits_runtime_route.h) contains only
+fixed-width route/geometry metadata, with no graph types, logging, allocation or collector dependencies.
+The CUDA kernel stages the actual selected family and reconstruction K on its execution context via two
+appended ProviderHost methods: capture-enabled lookup and route submission. Existing provider vtable slots
+are not reordered, and public C API function tables are unchanged.
+
+The executor records shapes, identity and staged metadata only after the full CUDA `Compute()` returns OK,
+including the existing launch-error check. No GPU download, added synchronization or per-run mutable kernel
+state is introduced. Capture-disabled calls do not allocate route metadata or record payloads. Missing route
+metadata retains logical counts and independently known bias, but does not fabricate an expected core or
+dequantization count. Successful host submission is still not an independent certification of device completion.
+Graph capture/replay remains explicitly unsupported and collection-incomplete.
+
+| Actual CUDA route | Expected core FLOPs | Bias additions | Expected dequantization FLOPs |
+| --- | --- | --- | --- |
+| `cuda_fused`: direct single-row/router/batched fast paths | `2MNK` | `MN` when present | `2NK`, one nominal logical-weight reconstruction |
+| `cuda_fpa_intb_gemv`: custom mixed-weight GEMV tactic | `2MNK` | `MN` when present | `2NK`, same nominal reconstruction |
+| `cuda_fpa_intb_gemm`: CUTLASS mixed-weight GEMM tactic | `2MNK` | `MN` when present | `2NK`, same nominal reconstruction |
+| `cuda_mixed_fpa_intb`: one invocation uses both GEMV and GEMM row chunks | `2MNK` | `MN` when present | `2NK`, same declared one-reconstruction scenario, not a measured per-chunk count |
+| `cuda_dequantize_gemm`: separate reconstruction and cuBLAS | `2MNK` | `MN` when present | `2N * reconstruction_K`, using recorded processed geometry |
+| `empty_output` / `not_executed` | Zero | Zero | Zero |
+
+**Batch B: checked formulas and reporting.**
+Materialized reconstruction uses block-padded K for the column-wise fallback and logical K for the row-wise
+fallback. GEMM core work remains based on logical K even when the weight-buffer stride is padded.
+N-chunking reconstructs disjoint weight slices, so chunk count must not multiply the full reconstruction.
+Fused and mixed-weight models use logical K and intentionally do not estimate tile/worker/row-chunk repetition.
+Scale-only and scale-plus-zero variants retain the same two-operations-per-element nominal coefficient;
+shared/eliminated corrections and floating-point conversion tricks are not instruction-modelled.
+Packing, preparation, conversions, auxiliary reductions and repeated fused reconstruction remain excluded.
+
+For A=[2,3,65], N=32, block_size=32 with bias, the materialized column-wise scenario reports core=24960,
+bias=192 and dequantization=6144 (processed K=96), total=31296. A fused nominal scenario for the same logical
+geometry would report dequantization=4160; this difference describes the conventions, not a performance claim
+or proof that a particular fused implementation accepts that shape.
+
+The existing schema-v3 logical fields are unchanged. The aggregate `expected_flops` section now has
+`convention_version: matmul_nbits_expected_flops_v1`,
+`coverage_scope: cpu_and_cuda_matmul_nbits_modeled_components_only`, and `provider_conventions`
+mapping CPU/CUDA to their respective convention versions. Each invocation retains its provider-specific
+component convention and model name. `reconstruction_k` records the CUDA processing/scenario geometry.
+CPU counts and per-invocation conventions remain unchanged. Unsupported providers and missing/inconsistent
+metadata have explicit unavailable reasons. Totals require all three components and checked uint64 addition;
+run outcome, capture completeness and model-based accuracy remain distinct.
+
+**Batch C: focused validation.**
+Formula tests cover direct fused, mixed-weight GEMV/GEMM and mixed-chunk families, materialized padding,
+float/half/BF16 categories, rank-one/batched geometry, empty outputs, zero reduction, missing/invalid processing
+metadata and independent overflow. Report tests cover provider-specific conventions, combined CPU/CUDA
+subtotals, preserved logical counts and partial availability when route or reconstruction metadata is missing.
+
+GPU execution tests assert actual CUDA assignment with CPU fallback disabled, actual direct fused 2/4/8-bit
+rank-one routes, BF16 metadata, materialized K padding with and without forced N-chunking, and changing
+FP32/FP16 runtime shapes. A capability-gated fpA_intB test forces paired GEMV at M=8, checks CUTLASS GEMM
+at M=32, and forces row chunks at M=40 to check mixed GEMM/GEMV attribution with one logical invocation.
+Internal tactic profiling is not counted as inference invocations. Existing failure/termination, collection-limit,
+control-flow and CPU regressions remain part of the focused suite.
+
+The shared header must compile in both native and provider DLL translation units. These tests qualify the
+declared arithmetic conventions and route transport, not measured FLOP accuracy on every GPU architecture.
+Native SM90 layout, other device/build combinations, preparation cost, graph replay and production overhead
+require their own qualification.
+
+Local verification passed on Linux with CPU RelWithDebInfo and CUDA Release (A100, SM80, CUDA 13.0):
+
+| Build | Formula/report/operator tests | Collector/execution tests |
+| --- | --- | --- |
+| CPU | 90 passed | 26 passed, one LUT capability skip |
+| CUDA | 90 passed | 33 passed, one LUT capability skip |
+
+Both builds used the existing `onnxruntime_test_all` and `onnxruntime_provider_test` targets. From each output
+directory, the focused commands were:
+
+```bash
+ORT_UNIT_TEST_MAIN_LOG_LEVEL=3 ./onnxruntime_test_all --gtest_filter='RuntimeWorkloadCollectorTest.*:RuntimeWorkloadExecutionTest.*'
+ORT_UNIT_TEST_MAIN_LOG_LEVEL=3 ./onnxruntime_provider_test --gtest_filter='MatMulNBitsCudaFlopsEstimateTest.*:MatMulNBitsCpuFlopsEstimateTest.*:MatMulNBitsComputeEstimate*:MatMulNBitsBiasEstimate*:ComputeEstimateReportTest.*:RuntimeComputeEstimateReportTest.*:MatMulNBits.Float32_4b_Accuracy0:MatMulNBits.Float32_4b_Accuracy4_Batch:MatMulNBits.LegacyShape_4b'
+```
+
+The new CUDA fused, BF16, materialized/chunked and fpA_intB GEMV/GEMM/mixed-tactic tests all executed and
+passed; none were skipped on this device. Native and shared-provider compilation verified the boundary-safe
+header and append-only transport. Changed-line clang-format and `git diff --check` passed. Windows, ARM,
+minimal/no-exception builds and native SM90/Blackwell hardware were not qualified locally.
 
 ## 5. Proposed architecture and report
 
