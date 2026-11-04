@@ -1926,6 +1926,34 @@ TEST(QMoESharedLayoutTest, Int2GuardPageAndReadOnlyBanks) {
 #endif
 }
 
+TEST(QMoESharedLayoutTest, Int2DocumentsUnscaledProductOverflow) {
+  constexpr int64_t columns = 8, k = 64;
+  std::array<uint8_t, columns * k / 4> weights;
+  weights.fill(0xaa);
+  weights[0] = 0xa8;  // Column 0, K=0: centered code -2.
+  std::array<uint16_t, columns> scales;
+  scales.fill(shared::FloatToBFloat16(std::ldexp(1.0f, -125)));
+  std::array<float, k> input{};
+  for (bool scalar : {true, false}) {
+    // At 2^126 the unscaled product is finite; at 2^127 it overflows before scaling.
+    for (int exponent : {126, 127}) {
+      SCOPED_TRACE(::testing::Message() << "scalar=" << scalar << " exponent=" << exponent);
+      input[0] = std::ldexp(1.0f, exponent);
+      const double reference = -2.0 * static_cast<double>(input[0]) * std::ldexp(1.0, -125);
+      std::array<float, columns> output{};
+      shared::Int2GemmRange(weights.data(), scales.data(), nullptr, 64,
+                            /*scales_are_block_major=*/false, /*weights_are_prepacked=*/true,
+                            /*scale_is_bf16=*/true, /*bias_is_bf16=*/true,
+                            columns, k, input.data(), 1, output.data(), columns, 0, columns, scalar);
+      EXPECT_EQ(reference, exponent == 126 ? -4.0 : -8.0);
+      EXPECT_EQ(output[0], exponent == 126 ? -4.0f : -std::numeric_limits<float>::infinity());
+      for (int64_t column = 1; column < columns; ++column) {
+        EXPECT_EQ(output[column], 0.0f);
+      }
+    }
+  }
+}
+
 TEST(QMoESharedLayoutTest, Int2Fp16SwiGluKeepsProjectionsInFloat32) {
   constexpr int64_t hidden = 128, inter = 128;
   std::vector<uint8_t> weights(static_cast<size_t>(2 * inter * hidden / 4), 0xaa);

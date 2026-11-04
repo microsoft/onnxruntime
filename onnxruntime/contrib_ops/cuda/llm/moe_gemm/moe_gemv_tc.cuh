@@ -601,6 +601,7 @@ inline bool TryLaunchInt4Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
 // all of which fit inside BF16's 7-bit mantissa (0x007F007F). Each centered code in {-2, -1, 0, +1} is scaled by
 // 0.5 into {-1.0, -0.5, 0.0, +0.5} before multiplying by `scale2` so that even `scale = 2^127` with code -2 stays
 // finite in BF16; `finalize` restores the factor of 2 in FP32.
+// This is not full-range BF16 support: code +1 at scale 2^-133 rounds to zero before MMA, losing its contribution.
 template <int MaskIdx>
 __device__ __forceinline__ uint32_t DequantPairInt2Masked(uint32_t x, uint32_t scale2) {
   static_assert(MaskIdx >= 0 && MaskIdx < 3);
