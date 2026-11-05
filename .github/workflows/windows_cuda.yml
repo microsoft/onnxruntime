@@ -5,7 +5,7 @@ on:
     branches:
       - main
       - rel-*
-  pull_request:
+  pull_request_target:
     branches:
       - main
       - rel-*
@@ -18,12 +18,14 @@ concurrency:
 #TODO: enable  --build_nodejs
 jobs:
   build:
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     name: Windows GPU CUDA CI Pipeline
     runs-on: [ort-github-win-16-amd-scus-ss]
     timeout-minutes: 210
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.ref }}
           fetch-depth: 0
           submodules: 'none'
 
@@ -188,6 +190,7 @@ jobs:
       AZCOPY_MSI_CLIENT_ID: d712a4c7-a0cf-4e87-af75-31510eba0a8e
 
   test:
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     name: Windows GPU CUDA CI Pipeline Test Job
     needs: build
     timeout-minutes: 300
@@ -195,6 +198,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.ref }}
           fetch-depth: 0
           submodules: 'none'
 

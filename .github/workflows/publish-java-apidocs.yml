@@ -9,7 +9,7 @@ on:
       - main
     paths:
       - java/**
-  pull_request:
+  pull_request_target:
     paths:
       - java/**
   schedule:
@@ -25,11 +25,14 @@ permissions:
 
 jobs:
   build:
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     name: Generate Java docs
     runs-on: [ort-github-linux-16-amd-wcus-ss]
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.ref }}
       - name: Set up JDK 17
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:

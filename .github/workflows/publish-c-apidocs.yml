@@ -11,7 +11,7 @@ on:
       - include/onnxruntime/core/session/**
       - orttraining/orttraining/training_api/include/**
       - docs/c_cxx/**
-  pull_request:
+  pull_request_target:
     paths:
       - include/onnxruntime/core/session/**
       - orttraining/orttraining/training_api/include/**
@@ -29,11 +29,14 @@ permissions:
 
 jobs:
   build:
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     name: Generate C/C++ API docs
     runs-on: [ort-github-linux-16-amd-wcus-ss]
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.ref }}
       - name: Install doxygen and dependencies
         run: |
           sudo apt update

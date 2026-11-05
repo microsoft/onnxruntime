@@ -4,7 +4,7 @@ name: windows_x64_asan
 on:
   push:
     branches: [main, 'rel-*']
-  pull_request:
+  pull_request_target:
     branches: [main]
   workflow_dispatch:
 
@@ -14,6 +14,7 @@ concurrency:
 
 jobs:
   build_x64:
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [ort-github-win-32-amd-eus2-ss]
     timeout-minutes: 300
 
@@ -26,6 +27,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.ref }}
           submodules: false
 
       - name: Setup Python

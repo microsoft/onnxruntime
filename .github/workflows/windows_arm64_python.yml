@@ -5,7 +5,7 @@ on:
     branches:
       - main
       - rel-*
-  pull_request:
+  pull_request_target:
     branches:
       - main
       - rel-*
@@ -20,6 +20,7 @@ concurrency:
 
 jobs:
   build_windows_arm64_python_wheel:
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     name: Build Windows ARM64 Python 3.12 wheel
     runs-on: [ort-github-win-16-arm64-scus-ss]
     timeout-minutes: 180
@@ -33,6 +34,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.ref }}
           submodules: recursive
 
       - name: Setup Python 3.12

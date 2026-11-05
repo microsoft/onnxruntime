@@ -3,7 +3,7 @@ name: React Native CI Pipeline
 on:
   push:
     branches: [main, 'rel-*']
-  pull_request:
+  pull_request_target:
     branches: [main, 'rel-*']
   workflow_dispatch:
 
@@ -13,6 +13,7 @@ concurrency:
 
 jobs:
   build_android_packages:
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     name: Build Android AAR Packages
     runs-on: [ort-github-linux-16-amd-wcus-ss]
     timeout-minutes: 120
@@ -22,6 +23,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.ref }}
           submodules: false
 
       - name: Set up Python
@@ -75,6 +77,7 @@ jobs:
           path: ${{ runner.temp }}/artifacts
 
   react_native_ci_android:
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     name: React Native CI Android
     needs: build_android_packages
     runs-on: [ort-github-linux-16-amd-wcus-ss]
@@ -85,6 +88,8 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.ref }}
 
       - name: Use Python 3.12
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -179,12 +184,15 @@ jobs:
             ${{ github.workspace }}/js/react_native/e2e/artifacts
 
   react_native_ci_ios_build:
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     name: React Native CI iOS Build
     runs-on: macos-15
     timeout-minutes: 120
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.ref }}
 
       - name: Use Xcode 16.4
         run: sudo xcode-select --switch /Applications/Xcode_16.4.app/Contents/Developer
@@ -225,6 +233,7 @@ jobs:
           path: ${{ runner.temp }}/ios_pod
 
   react_native_ci_ios_e2e_tests:
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository
     name: React Native CI iOS E2E Tests
     needs: react_native_ci_ios_build
     runs-on: macos-15
@@ -232,6 +241,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.ref }}
 
       - name: Download iOS pod artifact
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
