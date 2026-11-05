@@ -2930,6 +2930,17 @@ common::Status InferenceSession::Initialize() {
                                           kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, "0") ==
                                       "1";
     if (!session_options_.external_initializers.empty()) {
+      for (auto& [name, value] : session_options_.external_initializers) {
+        const auto& tensor = value.Get<Tensor>();
+        if (tensor.Location().device.Type() != OrtDevice::CPU) {
+          ORT_RETURN_IF_NOT(!tensor.IsDataTypeString(),
+                            "External initializer ", name, " cannot be a device string tensor.");
+          // Graph optimizers and shape inference require host-readable initializer data.
+          Tensor cpu_tensor(tensor.DataType(), tensor.Shape(), CPUAllocator::DefaultInstance());
+          ORT_RETURN_IF_ERROR_SESSIONID_(data_transfer_mgr_.CopyTensor(tensor, cpu_tensor));
+          Tensor::InitOrtValue(std::move(cpu_tensor), value);
+        }
+      }
       ORT_RETURN_IF_ERROR_SESSIONID_(
           graph.InjectExternalInitializedTensors(session_options_.external_initializers, use_buffers_directly));
       InlinedHashMap<std::string, OrtValue>{}.swap(session_options_.external_initializers);

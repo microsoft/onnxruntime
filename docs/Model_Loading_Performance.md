@@ -157,7 +157,9 @@ ONNX Runtime by default copies non-owning CPU tensor buffers into a newly alloca
 `InferenceSession::Initialize()`.
 
 Setting `session.use_external_initializer_file_buffers_directly` to `"1"` instructs ONNX Runtime to borrow naturally
-aligned, little-endian caller buffers directly instead of allocating and copying a duplicate CPU buffer:
+aligned CPU buffers larger than 127 bytes on little-endian hosts instead of allocating and copying a duplicate CPU
+buffer. Other buffers are copied. Tensors passed to `AddExternalInitializers` must contain native-endian values;
+files passed to `AddExternalInitializersFromFilesInMemory` contain serialized little-endian values.
 
 ```cpp
 Ort::SessionOptions session_options;
@@ -165,7 +167,13 @@ session_options.AddConfigEntry("session.use_external_initializer_file_buffers_di
 session_options.AddExternalInitializers(initializer_names, initializer_values);
 ```
 
-Additionally, if an `OrtValue` passed to `AddExternalInitializers` already resides on the target execution provider's
-device (for example a pre-allocated GPU tensor shared across multiple sessions), ONNX Runtime uses the device tensor in
-place during session initialization without tracing, allocating, or copying a second device buffer.
+Borrowing is opt-in because it changes the lifetime contract: the application must keep each borrowed CPU buffer
+unchanged and alive until all sessions using it have been released. With the default setting, non-owning buffers can
+be released after session creation. CPU buffers owned by their `OrtValue` may already be shared without enabling this
+option; ONNX Runtime retains their ownership.
 
+Device tensors passed to `AddExternalInitializers` are always copied to owned CPU staging memory using the registered
+execution provider's data-transfer implementation before graph optimization or shape inference. They are subsequently
+copied to the device selected by the execution plan. This option does not enable borrowing device buffers, so caller
+device buffers can be released after session creation regardless of the setting. Session creation fails if no suitable
+data-transfer implementation is registered.

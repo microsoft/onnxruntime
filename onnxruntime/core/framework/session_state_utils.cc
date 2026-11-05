@@ -340,14 +340,6 @@ common::Status SaveInitializedTensors(
 
   static const auto default_cpu_device = OrtDevice();
 
-  auto is_graph_value_on_planned_device = [&graph, &exec_plan](int ort_value_index, const std::string& name) {
-    OrtValue ort_value_from_graph;
-    if (!graph.GetOrtValueInitializer(name, ort_value_from_graph)) {
-      return false;
-    }
-    return ort_value_from_graph.Get<Tensor>().Location().device == exec_plan.GetLocation(ort_value_index);
-  };
-
   // tensors requiring a specific allocation order are traced first, to ensure they are allocated in order
   // NB1: vector with init allocation order may contain a subset of all tensors (or none at all)
   // NB2: only skip tracing and planning memory when data is external (i.e mmap) and on CPU.
@@ -358,12 +350,6 @@ common::Status SaveInitializedTensors(
     ORT_ENFORCE(entry != initialized_tensors_to_allocate.end(),
                 "OrtValue index: ", ort_value_index, " from initializer_allocation_order not found among initialized tensors");
     const auto* tensor_proto = entry->second;
-
-    if (user_supplied_initializer_ids.find(ort_value_index) != user_supplied_initializer_ids.end() ||
-        is_graph_value_on_planned_device(ort_value_index, tensor_proto->name())) {
-      initialized_tensors_to_allocate.erase(entry);
-      continue;
-    }
 
     // We trace to allocate a single buffer using the planner. This reduces fragmentation.
     // We do not trace the following values because it would add to the memory consumption.
@@ -394,8 +380,7 @@ common::Status SaveInitializedTensors(
 
   for (const auto& entry : initialized_tensors_to_allocate) {
     // We don't want to trace shared initializers since their memory is provided by the user
-    if (user_supplied_initializer_ids.find(entry.first) != user_supplied_initializer_ids.end() ||
-        is_graph_value_on_planned_device(entry.first, entry.second->name())) {
+    if (user_supplied_initializer_ids.find(entry.first) != user_supplied_initializer_ids.end()) {
       continue;
     }
     if (utils::HasString(*entry.second)) {
@@ -580,21 +565,24 @@ common::Status SaveInitializedTensors(
       LOGS(logger, INFO) << "Using user supplied initializer with name (" << name << ").";
     } else {
       const ONNX_NAMESPACE::TensorProto& tensor_proto = *(entry.second);
-      const auto& planned_device = exec_plan.GetLocation(ort_value_index);
 
-      // Check if we already have an OrtValue for this initializer
+      std::optional<MemBuffer> memory_buffer;
+      AllocatorPtr alloc;
+      // TODO: if the tensor need be copied, does it have enough room?
+      ORT_RETURN_IF_ERROR(planner.GetPreallocatedBuffer(ort_value_index, name, memory_buffer, alloc));
+
+      // Check if we already have an OrtValue for this initializer on CPU
       if (OrtValue ort_value_from_graph;
           graph.GetOrtValueInitializer(name, ort_value_from_graph)) {
+        const auto& memory_info = (alloc != nullptr) ? alloc->Info() : memory_buffer->GetAllocInfo();
         const auto& graph_value_device = ort_value_from_graph.Get<Tensor>().Location().device;
-        if (graph_value_device == planned_device) {
-          // The initializer in the graph (either on CPU when planned on CPU, or a device tensor
-          // supplied via AddExternalInitializers that already lives on the planned device) can be
-          // used in place without per-session allocation or copy.
+        if (memory_info.device == default_cpu_device || graph_value_device == memory_info.device) {
+          // Either the initializer is planned on CPU, or the user-supplied initializer (e.g. from
+          // AddExternalInitializers) already lives on the planned device. In both cases use it in
+          // place: no per-session device allocation or copy, and the underlying buffer can be
+          // shared across sessions that supply the same OrtValue (matching the AddInitializer path).
           ort_value = std::move(ort_value_from_graph);
         } else {
-          std::optional<MemBuffer> memory_buffer;
-          AllocatorPtr alloc;
-          ORT_RETURN_IF_ERROR(planner.GetPreallocatedBuffer(ort_value_index, name, memory_buffer, alloc));
           TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
           const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(
                                                tensor_proto.data_type())
@@ -620,10 +608,6 @@ common::Status SaveInitializedTensors(
           external_file_cache.files.clear();
         }
 #endif
-
-        std::optional<MemBuffer> memory_buffer;
-        AllocatorPtr alloc;
-        ORT_RETURN_IF_ERROR(planner.GetPreallocatedBuffer(ort_value_index, name, memory_buffer, alloc));
 
         // We need to deserialize the tensor proto into an OrtValue
         // using the preallocated buffer or allocator.
