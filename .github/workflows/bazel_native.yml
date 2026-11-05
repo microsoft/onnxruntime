@@ -118,7 +118,7 @@ jobs:
             --lockfile_mode=error --jobs=3 --local_test_jobs=1 \
             --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-desktop.log
       - name: Build native iOS framework and existing test bundle
-        if: runner.os == 'macOS'
+        if: ${{ !cancelled() && runner.os == 'macOS' }}
         shell: bash
         run: |
           set -o pipefail

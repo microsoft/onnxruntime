@@ -8,20 +8,22 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 def _xcode_clang_impl(ctx):
     clang = ctx.execute(["/usr/bin/xcrun", "--find", "clang"])
     resource = ctx.execute(["/usr/bin/xcrun", "clang", "-print-resource-dir"])
-    if clang.return_code or resource.return_code:
+    sdk = ctx.execute(["/usr/bin/xcrun", "--sdk", "macosx", "--show-sdk-path"])
+    if clang.return_code or resource.return_code or sdk.return_code:
         fail("Rust bindgen requires Xcode clang and builtin headers; select a complete Xcode installation with xcode-select. %s %s" % (clang.stderr, resource.stderr))
     library = ctx.path(clang.stdout.strip()).dirname.dirname.get_child("lib", "libclang.dylib")
     headers = ctx.path(resource.stdout.strip()).get_child("include")
     if not library.exists or not headers.exists:
         fail("Selected Xcode is missing libclang or builtin headers (%s, %s); install the complete Xcode toolchain." % (library, headers))
-    ctx.symlink(library, "libclang.dylib")
+    ctx.symlink(library.dirname, "xcode_lib")
     ctx.symlink(headers, "builtin")
+    ctx.symlink(ctx.path(sdk.stdout.strip()).get_child("usr", "include"), "sdk")
     ctx.file("BUILD.bazel", """
 load("@rules_cc//cc:cc_import.bzl", "cc_import")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 package(default_visibility = ["//visibility:public"])
-cc_import(name = "libclang", shared_library = "libclang.dylib")
-cc_library(name = "headers", hdrs = glob(["builtin/**"]), includes = ["builtin"])
+cc_import(name = "libclang", shared_library = "xcode_lib/libclang.dylib")
+cc_library(name = "headers", hdrs = glob(["builtin/**", "sdk/**"]), includes = ["builtin", "sdk"])
 """)
 
 _xcode_clang = repository_rule(
