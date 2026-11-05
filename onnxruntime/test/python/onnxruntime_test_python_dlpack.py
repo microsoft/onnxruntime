@@ -16,6 +16,7 @@ import torch
 from onnx import TensorProto
 
 import onnxruntime as ort
+from onnxruntime.capi import _pybind_state as C
 
 FLOAT8_DTYPES = (
     (torch.float8_e4m3fn, TensorProto.FLOAT8E4M3FN),
@@ -86,7 +87,7 @@ class TestDlpackPyTorch(unittest.TestCase):
                     with self.subTest(dtype=dtype, shape=shape, capsule=capsule):
                         source = make_tensor(dtype, shape)
                         expected = source.clone()
-                        imported = ort.OrtValue.from_dlpack(torch.utils.dlpack.to_dlpack(source) if capsule else source)
+                        imported = ort.OrtValue.from_dlpack(source.__dlpack__() if capsule else source)
                         self.assertEqual(imported.element_type(), onnx_type)
                         self.assertEqual(imported.shape(), list(shape))
                         self.assertEqual(imported.__dlpack_device__(), (1, 0))
@@ -115,7 +116,7 @@ class TestDlpackPyTorch(unittest.TestCase):
                             ctypes.memmove(
                                 source.data_ptr(), expected.data_ptr(), expected.numel() * expected.element_size()
                             )
-                        result = torch.from_dlpack(source._ortvalue.to_dlpack() if capsule else source)
+                        result = torch.from_dlpack(source.__dlpack__() if capsule else source)
                         self.assert_tensor(result, expected)
                         if expected.numel():
                             self.assertEqual(result.data_ptr(), source.data_ptr())
@@ -148,7 +149,7 @@ class TestDlpackPyTorch(unittest.TestCase):
                 source = ort.OrtValue.ortvalue_from_shape_and_type([2, 3], onnx_type)
                 pointer = source.data_ptr()
                 ctypes.memmove(pointer, expected.data_ptr(), expected.numel() * expected.element_size())
-                capsule = source._ortvalue.to_dlpack()
+                capsule = source.__dlpack__()
                 source_ref = weakref.ref(source)
                 del source
                 gc.collect()
@@ -156,6 +157,55 @@ class TestDlpackPyTorch(unittest.TestCase):
                 result = torch.from_dlpack(capsule)
                 self.assertEqual(result.data_ptr(), pointer)
                 self.assert_tensor(result, expected)
+
+    def test_ortvalue_dlpack_surface(self):
+        for value_type in (ort.OrtValue, C.OrtValue):
+            with self.subTest(value_type=value_type):
+                self.assertFalse(hasattr(value_type, "to_dlpack"))
+                for method in ("from_dlpack", "__dlpack__", "__dlpack_device__"):
+                    self.assertTrue(callable(getattr(value_type, method)))
+
+    def test_native_ortvalue_protocol(self):
+        for dtype, onnx_type in INTERCHANGE_DTYPES:
+            with self.subTest(dtype=dtype):
+                source = make_tensor(dtype, (2, 3))
+                native = C.OrtValue.from_dlpack(source)
+                self.assertEqual(native.element_type(), onnx_type)
+                self.assertEqual(native.data_ptr(), source.data_ptr())
+                self.assertEqual(native.__dlpack_device__(), (1, 0))
+                self.assert_tensor(torch.from_dlpack(native), source)
+                public = ort.OrtValue.from_dlpack(native)
+                self.assertEqual(public.data_ptr(), source.data_ptr())
+                imported = C.OrtValue.from_dlpack(public)
+                self.assertEqual(imported.data_ptr(), source.data_ptr())
+                self.assert_tensor(torch.from_dlpack(imported), source)
+                values = C.OrtValueVector()
+                values.push_back(source)
+                self.assertEqual(values[0].data_ptr(), source.data_ptr())
+                self.assert_tensor(torch.from_dlpack(values[0]), source)
+                values.push_back(public)
+                for consumer in (torch.from_dlpack, C.OrtValue.from_dlpack):
+                    for result in values.to_dlpacks(consumer):
+                        self.assertEqual(result.data_ptr(), source.data_ptr())
+                        self.assert_tensor(torch.from_dlpack(result), source)
+
+    def test_from_dlpack_propagates_producer_errors(self):
+        class InvalidProducer:
+            def __dlpack__(self):
+                raise ValueError("DLPack producer failed")
+
+        class InvalidProtocolAttribute:
+            @property
+            def __dlpack__(self):
+                raise ValueError("DLPack lookup failed")
+
+        for value_type in (ort.OrtValue, C.OrtValue):
+            for producer, error in (
+                (InvalidProducer(), "DLPack producer failed"),
+                (InvalidProtocolAttribute(), "DLPack lookup failed"),
+            ):
+                with self.subTest(value_type=value_type, producer=producer), self.assertRaisesRegex(ValueError, error):
+                    value_type.from_dlpack(producer)
 
     def test_packed_dtype_boundaries(self):
         for dtype, onnx_type, storage_type, bits, error in PACKED_DTYPES:

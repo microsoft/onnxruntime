@@ -1585,13 +1585,7 @@ class OrtValue:
         :return: An OrtValue wrapping the tensor data.
         :raises TypeError: If the object does not provide a valid DLPack capsule.
         """
-        # If the input supports the __dlpack__ protocol, call it to get the capsule.
-        if hasattr(data, "__dlpack__"):
-            capsule = data.__dlpack__()
-        else:
-            capsule = data
-
-        return cls(C.OrtValue.from_dlpack(capsule))
+        return cls(C.OrtValue.from_dlpack(data))
 
     def update_inplace(self, data) -> None:
         """

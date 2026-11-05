@@ -545,9 +545,8 @@ bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
 // Caller is responsible for releasing the capsule.
 PyObject* ToDlpack(OrtValue& ort_value);
 
-// Consume a Capsule object and claims the ownership of its underlying tensor to
-// create a OrtValue. This function calls DlpackToOrtValue(...) to do the conversion.
-OrtValue FromDlpack(PyObject* dlpack_tensor);
+// Import a DLPack protocol object or legacy capsule, transferring tensor ownership.
+OrtValue FromDlpack(pybind11::object data);
 
 // Destructor for Capsule object holding a DLPack structure.
 void DlpackCapsuleDestructor(PyObject* data);
