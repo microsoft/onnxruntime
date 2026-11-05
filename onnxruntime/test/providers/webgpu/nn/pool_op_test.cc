@@ -2,15 +2,19 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/unittest_util/conversion.h"
 #include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
@@ -191,6 +195,210 @@ TEST(PoolTest, AveragePool_LargeKernelMultiElementOutput_WebGpu) {
 
 TEST(PoolTest, MaxPool_LargeKernelMultiElementOutput_WebGpu) {
   RunWebGpuLargeKernelPoolTest("MaxPool", 12, /*is_max_pool=*/true);
+}
+
+namespace {
+
+struct LpPool2dTestCase {
+  const char* op_type = "LpPool";
+  int opset = 18;
+  int64_t p = 2;
+  std::vector<int64_t> x_dims;  // NCHW
+  std::vector<int64_t> kernel_shape;
+  std::vector<int64_t> strides{1, 1};
+  std::vector<int64_t> pads{0, 0, 0, 0};
+  std::vector<int64_t> dilations{1, 1};
+  float value_scale = 0.25f;
+};
+
+// y = (sum |x|^p)^(1/p) over each window, with padding contributing 0.
+std::vector<float> ReferenceLpPool2d(const LpPool2dTestCase& tc, const std::vector<float>& x,
+                                     const std::vector<int64_t>& kernel_shape, std::vector<int64_t>& y_dims) {
+  const int64_t n = tc.x_dims[0], c = tc.x_dims[1], h = tc.x_dims[2], w = tc.x_dims[3];
+  const int64_t out_h =
+      (h + tc.pads[0] + tc.pads[2] - ((kernel_shape[0] - 1) * tc.dilations[0] + 1)) / tc.strides[0] + 1;
+  const int64_t out_w =
+      (w + tc.pads[1] + tc.pads[3] - ((kernel_shape[1] - 1) * tc.dilations[1] + 1)) / tc.strides[1] + 1;
+  y_dims = {n, c, out_h, out_w};
+
+  std::vector<float> y;
+  y.reserve(static_cast<size_t>(n * c * out_h * out_w));
+  for (int64_t nc = 0; nc < n * c; ++nc) {
+    for (int64_t oh = 0; oh < out_h; ++oh) {
+      for (int64_t ow = 0; ow < out_w; ++ow) {
+        double acc = 0.0;
+        for (int64_t kh = 0; kh < kernel_shape[0]; ++kh) {
+          for (int64_t kw = 0; kw < kernel_shape[1]; ++kw) {
+            const int64_t ih = oh * tc.strides[0] + kh * tc.dilations[0] - tc.pads[0];
+            const int64_t iw = ow * tc.strides[1] + kw * tc.dilations[1] - tc.pads[1];
+            if (ih < 0 || ih >= h || iw < 0 || iw >= w) {
+              continue;
+            }
+            acc += std::pow(std::abs(static_cast<double>(x[static_cast<size_t>((nc * h + ih) * w + iw)])),
+                            static_cast<double>(tc.p));
+          }
+        }
+        y.push_back(static_cast<float>(std::pow(acc, 1.0 / static_cast<double>(tc.p))));
+      }
+    }
+  }
+  return y;
+}
+
+// The model is NCHW; with is_nhwc the layout transformer moves LpPool into the internal NHWC domain.
+template <typename T>
+void RunWebGpuLpPool2dTest(const LpPool2dTestCase& tc, bool is_nhwc) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider(is_nhwc);
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available in this build.";
+  }
+
+  constexpr bool is_fp16 = std::is_same_v<T, MLFloat16>;
+  const bool is_global = std::string_view(tc.op_type) == "GlobalLpPool";
+  const std::vector<int64_t> kernel_shape = is_global ? std::vector<int64_t>{tc.x_dims[2], tc.x_dims[3]}
+                                                      : tc.kernel_shape;
+
+  std::vector<float> x(static_cast<size_t>(tc.x_dims[0] * tc.x_dims[1] * tc.x_dims[2] * tc.x_dims[3]));
+  for (size_t i = 0; i < x.size(); ++i) {
+    // Mixed signs and some zeros so |x| matters and an all-zero window is possible with padding.
+    x[i] = static_cast<float>(static_cast<int64_t>((i * 7) % 23) - 11) * tc.value_scale;
+    if constexpr (is_fp16) {
+      x[i] = MLFloat16(x[i]).ToFloat();
+    }
+  }
+  std::vector<int64_t> y_dims;
+  const std::vector<float> y = ReferenceLpPool2d(tc, x, kernel_shape, y_dims);
+
+  OpTester test(tc.op_type, tc.opset);
+  test.AddAttribute("p", tc.p);
+  if (!is_global) {
+    test.AddAttribute("kernel_shape", tc.kernel_shape);
+    test.AddAttribute("strides", tc.strides);
+    test.AddAttribute("pads", tc.pads);
+    if (tc.opset >= 18) {
+      test.AddAttribute("dilations", tc.dilations);
+    }
+  }
+  if constexpr (is_fp16) {
+    test.AddInput<MLFloat16>("X", tc.x_dims, FloatsToMLFloat16s(x));
+    test.AddOutput<MLFloat16>("Y", y_dims, FloatsToMLFloat16s(y), /*sort_output=*/false,
+                              /*rel_error=*/4e-3f, /*abs_error=*/1e-2f);
+  } else {
+    test.AddInput<float>("X", tc.x_dims, x);
+    test.AddOutput<float>("Y", y_dims, y, /*sort_output=*/false, /*rel_error=*/1e-4f, /*abs_error=*/1e-4f);
+  }
+
+  // Disable CPU fallback so a missing WebGPU kernel fails instead of silently running on CPU.
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(options).ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+}
+
+// Runs a case on both layouts and both float types. Four channels lets the NHWC path vectorize.
+void RunWebGpuLpPool2dAllVariants(const LpPool2dTestCase& tc) {
+  for (bool is_nhwc : {false, true}) {
+    SCOPED_TRACE(is_nhwc ? "NHWC" : "NCHW");
+    RunWebGpuLpPool2dTest<float>(tc, is_nhwc);
+    RunWebGpuLpPool2dTest<MLFloat16>(tc, is_nhwc);
+  }
+}
+
+}  // namespace
+
+TEST(PoolTest, LpPool_P2_WebGpu) {
+  LpPool2dTestCase tc;
+  tc.x_dims = {1, 4, 5, 6};
+  tc.kernel_shape = {3, 3};
+  RunWebGpuLpPool2dAllVariants(tc);
+}
+
+TEST(PoolTest, LpPool_P1_StridesPads_WebGpu) {
+  LpPool2dTestCase tc;
+  tc.p = 1;
+  tc.x_dims = {2, 4, 5, 5};
+  tc.kernel_shape = {2, 3};
+  tc.strides = {2, 1};
+  tc.pads = {1, 0, 1, 2};
+  RunWebGpuLpPool2dAllVariants(tc);
+}
+
+TEST(PoolTest, LpPool_P3_Dilations_WebGpu) {
+  LpPool2dTestCase tc;
+  tc.p = 3;
+  tc.x_dims = {1, 4, 7, 7};
+  tc.kernel_shape = {2, 2};
+  tc.strides = {2, 2};
+  tc.dilations = {2, 2};
+  RunWebGpuLpPool2dAllVariants(tc);
+}
+
+TEST(PoolTest, LpPool_Opset11_WebGpu) {
+  LpPool2dTestCase tc;
+  tc.opset = 11;  // exercises the 11-17 registrations
+  tc.x_dims = {1, 4, 4, 4};
+  tc.kernel_shape = {2, 2};
+  tc.pads = {1, 1, 1, 1};
+  RunWebGpuLpPool2dAllVariants(tc);
+}
+
+TEST(PoolTest, LpPool_Opset22_WebGpu) {
+  LpPool2dTestCase tc;
+  tc.opset = 22;
+  tc.x_dims = {1, 4, 4, 4};
+  tc.kernel_shape = {2, 2};
+  RunWebGpuLpPool2dAllVariants(tc);
+}
+
+TEST(PoolTest, GlobalLpPool_WebGpu) {
+  LpPool2dTestCase tc;
+  tc.op_type = "GlobalLpPool";
+  tc.p = 3;
+  tc.x_dims = {1, 4, 3, 5};
+  // Opset 7 resolves to GlobalLpPool-2 (the WebGPU EP needs a model opset of at least 7); 22 to GlobalLpPool-22.
+  for (int opset : {7, 22}) {
+    SCOPED_TRACE(opset);
+    tc.opset = opset;
+    RunWebGpuLpPool2dAllVariants(tc);
+  }
+}
+
+// A 12x12 window takes the workgroup-cooperative reduction path.
+TEST(PoolTest, LpPool_LargeKernel_WebGpu) {
+  LpPool2dTestCase tc;
+  tc.x_dims = {1, 2, 24, 24};
+  tc.kernel_shape = {12, 12};
+  tc.pads = {2, 2, 2, 2};
+  RunWebGpuLpPool2dAllVariants(tc);
+}
+
+// sum(x^2) over the window exceeds the float16 range although the result does not, so the
+// accumulation must not happen in float16.
+TEST(PoolTest, LpPool_Float16NoOverflow_WebGpu) {
+  LpPool2dTestCase tc;
+  tc.x_dims = {1, 4, 4, 4};
+  tc.kernel_shape = {3, 3};
+  tc.value_scale = 16.0f;  // |x| up to 176, so a window's sum of squares reaches ~1e5.
+  for (bool is_nhwc : {false, true}) {
+    SCOPED_TRACE(is_nhwc ? "NHWC" : "NCHW");
+    RunWebGpuLpPool2dTest<MLFloat16>(tc, is_nhwc);
+  }
+}
+
+// A zero batch gives an empty output, which the kernel must not dispatch: a zero-size dispatch is invalid.
+TEST(PoolTest, LpPool_ZeroBatch_WebGpu) {
+  LpPool2dTestCase tc;
+  tc.x_dims = {0, 4, 5, 6};
+  tc.kernel_shape = {3, 3};
+  RunWebGpuLpPool2dTest<float>(tc, /*is_nhwc=*/false);
+  RunWebGpuLpPool2dTest<MLFloat16>(tc, /*is_nhwc=*/false);
+}
+
+TEST(PoolTest, GlobalLpPool_ZeroBatch_WebGpu) {
+  LpPool2dTestCase tc;
+  tc.op_type = "GlobalLpPool";
+  tc.x_dims = {0, 4, 5, 6};
+  RunWebGpuLpPool2dTest<float>(tc, /*is_nhwc=*/false);
+  RunWebGpuLpPool2dTest<MLFloat16>(tc, /*is_nhwc=*/false);
 }
 
 }  // namespace test

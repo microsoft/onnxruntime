@@ -71,7 +71,9 @@ Status ComputeChannelScaleAndShift(ComputeContext& context, const Tensor* input,
   TensorShape reduced_input_shape(reduce_input_shape_vector);
   TensorShape output_shape(output_shape_vector);
   TensorShape reduced_output_shape(reduced_output_shape_vector);
-  *output = context.CreateGPUTensor(input->DataType(), output_shape);
+  // The per-channel scale and shift are kept in f32: with small variance (e.g. float16 subnormal
+  // inputs and epsilon = 0) the scale can exceed the float16 range.
+  *output = context.CreateGPUTensor(DataTypeImpl::GetType<float>(), output_shape);
   ComputeChannelScaleShiftProgram program = ComputeChannelScaleShiftProgram(components, epsilon, workgroup_size);
   // Match the epsilon literal embedded in GenerateShaderCode.
   program.CacheHint(components, units_of_work, std::to_string(epsilon))
@@ -88,14 +90,15 @@ Status InstanceNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& channel_scale_shift = shader.AddInput("channel_scale_shift", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+  const std::string f32_value_type = MakeScalarOrVectorType(input.NumComponents(), "f32");
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "let outputIndices = " << output.OffsetToIndices("global_idx") << ";\n"
                             << "let batch = outputIndices[0];\n"
                             << "let channel = outputIndices[1];\n"
                             << "let channel_scale_shift_indices = channel_scale_shift_indices_t(batch, channel, 0);\n"
                             << "let channel_scale_shift = " << channel_scale_shift.GetByIndices("channel_scale_shift_indices") << ";\n"
-                            << "let input_value = " << input.GetByOffset("global_idx") << ";\n"
-                            << "let output_value = input_value * output_value_t(channel_scale_shift.x) + output_value_t(channel_scale_shift.y);\n"
+                            << "let input_value = " << f32_value_type << "(" << input.GetByOffset("global_idx") << ");\n"
+                            << "let output_value = output_value_t(input_value * channel_scale_shift.x + channel_scale_shift.y);\n"
                             << output.SetByOffset("global_idx", "output_value") << ";\n";
   return Status::OK();
 }
@@ -104,25 +107,26 @@ Status InstanceNormProgramNHWC::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& channel_scale_shift = shader.AddInput("channel_scale_shift", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+  const std::string f32_value_type = MakeScalarOrVectorType(components_, "f32");
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "let current_image_number = global_idx / (uniforms.C * uniforms.H);\n"
                             << "let current_channel_number = global_idx % uniforms.C;\n"
                             << "let scale_offset = (current_image_number * uniforms.C + current_channel_number);\n"
-                            << "var scale : input_value_t;\n"
-                            << "var shift : input_value_t;\n"
-                            << "let input_value = " << input.GetByOffset("global_idx") << ";\n";
+                            << "var scale : " << f32_value_type << ";\n"
+                            << "var shift : " << f32_value_type << ";\n"
+                            << "let input_value = " << f32_value_type << "(" << input.GetByOffset("global_idx") << ");\n";
   if (components_ > 1) {
     shader.MainFunctionBody() << "for (var i : u32 = 0; i < uniforms.components; i = i + 1) {\n"
                               << "  let scale_sift = " << channel_scale_shift.GetByOffset("uniforms.components * scale_offset + i") << ";\n"
-                              << "  scale[i] = input_element_t(scale_sift.x);\n"
-                              << "  shift[i] = input_element_t(scale_sift.y);\n"
+                              << "  scale[i] = scale_sift.x;\n"
+                              << "  shift[i] = scale_sift.y;\n"
                               << "}\n";
   } else {
     shader.MainFunctionBody() << "let scale_shift = " << channel_scale_shift.GetByOffset("scale_offset") << ";\n"
                               << "scale = scale_shift.x;\n"
                               << "shift = scale_shift.y;\n";
   }
-  shader.MainFunctionBody() << "let output_value = fma(input_value, scale, shift);\n";
+  shader.MainFunctionBody() << "let output_value = output_value_t(fma(input_value, scale, shift));\n";
   shader.MainFunctionBody() << output.SetByOffset("global_idx", "output_value") << ";\n";
 
   return Status::OK();

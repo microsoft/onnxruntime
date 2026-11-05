@@ -335,7 +335,7 @@ enum class FailureStage { Opset,
                           TypeShape,
                           Constant,
                           Attribute,
-                          Boundary,
+                          Boundary,  // Unsafe deletion or a match containing nodes outside the region.
                           ExecutionProvider,
                           CheckAndBind,
                           Replacement };
@@ -365,12 +365,19 @@ class PatternRewriter final : public GraphTransformer {
   // Requires an already resolved graph. Resolve again after mutation before general graph use.
   // A later failure does not roll back earlier rewrites; inspect the returned status before Resolve/use.
   Status Run(Graph& graph, Statistics& statistics) const;
+  // Only matches wholly inside region are eligible. Successful rewrites replace
+  // their source IDs with the new IDs in region, including across iterations.
+  // Boundary values are preserved; their edges to outside nodes may be rewired.
+  // IDs must initially be live in graph. Empty regions do no work. As with Run,
+  // failures do not roll back earlier rewrites; region tracks completed rewrites.
+  Status Run(Graph& graph, Statistics& statistics, InlinedHashSet<NodeIndex>& region) const;
 
  private:
   struct Group {
     Pattern pattern;
     InlinedVector<size_t> rules;
   };
+  Status RunImpl(Graph& graph, Statistics& statistics, InlinedHashSet<NodeIndex>* region) const;
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
   Rules rules_;
   InlinedVector<Group, 1> groups_;

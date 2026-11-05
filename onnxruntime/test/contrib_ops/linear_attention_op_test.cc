@@ -488,8 +488,8 @@ void RunLinearAttentionGQATest(
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-#ifdef USE_CUDA
-void RunCudaLinearAttentionShapeFailure(
+void RunLinearAttentionShapeFailure(
+    std::unique_ptr<IExecutionProvider> ep,
     const std::vector<int64_t>& query_dims,
     const std::vector<int64_t>& key_dims,
     const std::vector<int64_t>& value_dims,
@@ -497,9 +497,8 @@ void RunCudaLinearAttentionShapeFailure(
     const std::vector<int64_t>& state_dims,
     const std::string& expected_error,
     const std::vector<int64_t>& decay_dims = {}) {
-  auto ep = DefaultCudaExecutionProvider();
   if (!ep) {
-    GTEST_SKIP() << "CUDA execution provider not available";
+    GTEST_SKIP() << "Requested execution provider is not available";
     return;
   }
 
@@ -532,10 +531,76 @@ void RunCudaLinearAttentionShapeFailure(
   execution_providers.push_back(std::move(ep));
   tester.Run(OpTester::ExpectResult::kExpectFailure, expected_error, {}, nullptr, &execution_providers);
 }
+
+#ifdef USE_CUDA
+void RunCudaLinearAttentionShapeFailure(
+    const std::vector<int64_t>& query_dims,
+    const std::vector<int64_t>& key_dims,
+    const std::vector<int64_t>& value_dims,
+    const std::vector<int64_t>& output_dims,
+    const std::vector<int64_t>& state_dims,
+    const std::string& expected_error,
+    const std::vector<int64_t>& decay_dims = {}) {
+  RunLinearAttentionShapeFailure(
+      DefaultCudaExecutionProvider(), query_dims, key_dims, value_dims,
+      output_dims, state_dims, expected_error, decay_dims);
+}
 #endif
 
 }  // namespace
 // ===========================================================================
+TEST(ContribOpLinearAttentionTest, CPURejectsZeroHeadDimensions) {
+  RunLinearAttentionShapeFailure(
+      DefaultCpuExecutionProvider(), {1, 2, 0}, {1, 2, 4}, {1, 2, 4},
+      {1, 2, 4}, {1, 2, 0, 2}, "query hidden size must be positive");
+  RunLinearAttentionShapeFailure(
+      DefaultCpuExecutionProvider(), {1, 2, 4}, {1, 2, 0}, {1, 2, 4},
+      {1, 2, 4}, {1, 2, 2, 2}, "key hidden size must be positive");
+  RunLinearAttentionShapeFailure(
+      DefaultCpuExecutionProvider(), {1, 2, 4}, {1, 2, 4}, {1, 2, 0},
+      {1, 2, 0}, {1, 2, 2, 0}, "value hidden size must be positive");
+}
+
+TEST(ContribOpLinearAttentionTest, CPUAllowsZeroBatchWithPositiveHeadDimensions) {
+  OpTester tester("LinearAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<std::string>("update_rule", "linear");
+  tester.AddAttribute<int64_t>("q_num_heads", 2);
+  tester.AddAttribute<int64_t>("kv_num_heads", 2);
+  tester.AddInput<float>("query", {0, 2, 4}, {});
+  tester.AddInput<float>("key", {0, 2, 4}, {});
+  tester.AddInput<float>("value", {0, 2, 4}, {});
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOutput<float>("output", {0, 2, 4}, {});
+  tester.AddOutput<float>("present_state", {0, 2, 2, 2}, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ContribOpLinearAttentionTest, WebGpuRejectsZeroHeadDimensions) {
+  auto ep = DefaultWebGpuExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "WebGPU execution provider not available";
+  }
+
+  RunLinearAttentionShapeFailure(
+      std::move(ep), {1, 2, 0}, {1, 2, 4}, {1, 2, 4},
+      {1, 2, 4}, {1, 2, 0, 2}, "query packed dim must be positive");
+
+  ep = DefaultWebGpuExecutionProvider();
+  RunLinearAttentionShapeFailure(
+      std::move(ep), {1, 2, 4}, {1, 2, 0}, {1, 2, 4},
+      {1, 2, 4}, {1, 2, 2, 2}, "key packed dim must be positive");
+
+  ep = DefaultWebGpuExecutionProvider();
+  RunLinearAttentionShapeFailure(
+      std::move(ep), {1, 2, 4}, {1, 2, 4}, {1, 2, 0},
+      {1, 2, 0}, {1, 2, 2, 0}, "value packed dim must be positive");
+}
+
 #ifdef USE_CUDA
 TEST(ContribOpLinearAttentionTest, CudaRejectsNonDivisibleQueryHidden) {
   RunCudaLinearAttentionShapeFailure({1, 1, 3}, {1, 1, 4}, {1, 1, 4},
