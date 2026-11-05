@@ -50,7 +50,10 @@ pkg_files(
     prefix = "jni/arm64-v8a",
     strip_prefix = strip_prefix.files_only(),
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:android", "@platforms//cpu:aarch64"],
+    target_compatible_with = [
+        "@platforms//os:android",
+        "@platforms//cpu:aarch64",
+    ],
 )
 
 pkg_zip(
