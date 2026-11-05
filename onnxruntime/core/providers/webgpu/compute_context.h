@@ -76,7 +76,7 @@ class ComputeContextBase {
     return webgpu_context_.DeviceLimits();
   }
   inline bool HasFeature(wgpu::FeatureName feature) const {
-    return webgpu_context_.DeviceHasFeature(feature);
+    return ep_.DeviceHasFeature(feature);
   }
   inline bool HasWGSLLanguageFeature(wgpu::WGSLLanguageFeatureName feature) const {
     return webgpu_context_.Instance().HasWGSLLanguageFeature(feature);
@@ -249,12 +249,8 @@ class ComputeContext final : public ComputeContextBase {
   // Fill a GPU tensor with zeros.
   //
   inline void FillZero(Tensor& dst) {
-    auto& recording = ep_.Recording();
-    ORT_THROW_IF_ERROR(webgpu_context_.EncodeDeferredDispatches(recording));
-    webgpu_context_.EndComputePass(recording);
-    auto& command_encoder = webgpu_context_.GetCommandEncoder(recording);
     WGPUBuffer buffer = reinterpret_cast<WGPUBuffer>(dst.MutableDataRaw());
-    command_encoder.ClearBuffer(buffer, 0, dst.SizeInBytes());
+    webgpu_context_.ClearBuffer(buffer, dst.SizeInBytes(), ep_.Recording());
   }
 
  private:

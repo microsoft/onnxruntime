@@ -12,6 +12,7 @@
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/session/plugin_ep/ep_kernel_registration.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
+#include "core/providers/webgpu/quantization/quantize_linear.h"
 
 #include "ep/get_capability_utils.h"
 
@@ -26,7 +27,8 @@ Ep::Ep(std::unique_ptr<IExecutionProvider> impl, Factory& factory, const OrtLogg
     : onnxruntime::ep::adapter::Ep{std::move(impl), config.cpu_allocator, config.device_allocator},
       factory_{factory},
       logger_{logger},
-      config_{config} {
+      config_{config},
+      device_memory_info_{onnxruntime::ep::adapter::CreateApiMemoryInfo(config_.device_allocator->Info())} {
   // Initialize the execution provider's function table
   GetName = GetNameImpl;
   GetCapability = GetCapabilityImpl;
@@ -144,6 +146,21 @@ OrtStatus* ORT_API_CALL Ep::GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* g
         }
       }
       if (has_past_present_share_buffer) {
+        continue;
+      }
+    }
+
+    if (node.GetOperatorType() == "QuantizeLinear" && node.GetDomain() == kOnnxDomain) {
+      bool precision_supported = true;
+      for (const auto& attr : node.GetAttributes()) {
+        if (attr.GetName() == "precision") {
+          int64_t precision = 0;
+          RETURN_IF_ERROR(attr.GetValue(precision));
+          precision_supported = IsQuantizeLinearPrecisionSupported(precision);
+          break;
+        }
+      }
+      if (!precision_supported) {
         continue;
       }
     }
@@ -317,7 +334,7 @@ OrtStatus* ORT_API_CALL Ep::CreateSyncStreamForDeviceImpl(
 OrtStatus* ORT_API_CALL Ep::GetDefaultMemoryDeviceImpl(
     const OrtEp* this_ptr, const OrtMemoryDevice** memory_device) noexcept {
   const auto* ep = static_cast<const Ep*>(this_ptr);
-  *memory_device = Api().ep.MemoryInfo_GetMemoryDevice(&ep->config_.device_allocator->Info());
+  *memory_device = Api().ep.MemoryInfo_GetMemoryDevice(ep->device_memory_info_);
   return nullptr;
 }
 
