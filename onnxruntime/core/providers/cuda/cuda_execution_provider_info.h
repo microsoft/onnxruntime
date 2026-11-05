@@ -94,8 +94,15 @@ struct CUDAExecutionProviderInfo {
   int sdpa_kernel{0};
 
   // 0 disables the custom external-data loader and retains the framework's existing path.
-  // 1 uses the pinned-buffer loader with synchronous reads. 2..64 use that many parallel read tasks per block.
+  // 1 uses the pinned-buffer loader with synchronous reads. 2..64 use that many parallel read tasks.
   size_t external_data_loader_reading_threads{4};
+  size_t external_data_loader_pinned_memory_bytes{32 * 1024 * 1024};
+  size_t external_data_loader_chunk_bytes{2 * 1024 * 1024};
+  size_t external_data_loader_min_size_bytes{16 * 1024 * 1024};
+  bool external_data_loader_reading_threads_explicit{false};
+  bool external_data_loader_pinned_memory_bytes_explicit{false};
+  bool external_data_loader_chunk_bytes_explicit{false};
+  bool external_data_loader_min_size_bytes_explicit{false};
 
   static CUDAExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const CUDAExecutionProviderInfo& info);
@@ -133,6 +140,8 @@ struct std::hash<::onnxruntime::CUDAExecutionProviderInfo> {
     onnxruntime::HashCombine(info.sdpa_kernel, value);
     onnxruntime::HashCombine(info.enable_cudnn, value);
     onnxruntime::HashCombine(info.external_data_loader_reading_threads, value);
+    onnxruntime::HashCombine(info.external_data_loader_pinned_memory_bytes, value);
+    onnxruntime::HashCombine(info.external_data_loader_chunk_bytes, value);
 
     // Memory pointers
     onnxruntime::HashCombine(reinterpret_cast<size_t>(info.user_compute_stream), value);

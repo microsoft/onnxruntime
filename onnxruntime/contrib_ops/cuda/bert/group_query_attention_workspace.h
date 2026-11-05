@@ -111,6 +111,7 @@ struct GQAWorkspaceProblem {
   bool do_rotary = false;
   bool is_packed_qkv = false;
   bool use_qk_norm = false;
+  bool has_query_seqlens = false;
   bool requires_separate_past_buffer = false;
 };
 
@@ -317,7 +318,7 @@ struct GQAMemoryEfficientWorkspaceResult {
 };
 
 // The unfused backend owns one combined runtime allocation. Q, Y, FP32 QK, and
-// the upper-bound softmax view are all represented explicitly.
+// the upper-bound softmax view, and optional masked V scratch are represented explicitly.
 struct GQAUnfusedWorkspaceRecipe {
   size_t q_bnsh_offset_bytes = 0;
   size_t q_bnsh_bytes = 0;
@@ -327,6 +328,8 @@ struct GQAUnfusedWorkspaceRecipe {
   size_t qk_bytes = 0;
   size_t softmax_offset_bytes = 0;
   size_t softmax_bytes = 0;
+  size_t v_scratch_offset_bytes = 0;
+  size_t v_scratch_bytes = 0;
   size_t total_backend_bytes = 0;
 };
 
