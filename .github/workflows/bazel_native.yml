@@ -41,7 +41,10 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          bazelisk ${BAZEL_STARTUP_OPTIONS:-} build //... -c opt --nobuild \
+          bazelisk ${BAZEL_STARTUP_OPTIONS:-} build //... \
+            //:wasm_scalar_test //:wasm_simd_test \
+            //:web_scalar_smoke_test //:web_simd_smoke_test \
+            //:web_scalar_browser_test //:web_simd_browser_test -c opt --nobuild \
             --lockfile_mode=error --jobs=3 --build_python_zip=false 2>&1 | tee bazel-desktop.log
       - name: Test native bindings and package consumers
         shell: bash

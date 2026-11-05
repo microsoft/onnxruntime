@@ -194,6 +194,15 @@ substitutions were removed. Subsequent source-native Linux archive validation
 is recorded with the wheel results below; macOS and CUDA archive execution
 remain unvalidated.
 
+The extracted Linux SDK also passed standalone compilation and Add inference,
+using only its headers, library, source, and model. From its `examples/`
+directory:
+
+```sh
+g++ -std=c++20 -I../include sdk_inference_example.cc -L../lib -lonnxruntime '-Wl,-rpath,$ORIGIN/../lib' -o sdk_inference_example
+./sdk_inference_example add_f32.onnx
+```
+
 After integrating the desktop shared-provider bridge, the following source-native
 Windows command also passed: one SDK archive test and eight Rust selector-runner
 regressions. Only the small shared-provider bridge was freshly compiled; the
@@ -520,6 +529,15 @@ globally; `LD_LIBRARY_PATH` exposed those libraries to the browser. The
 runtime as a regression check. Selecting `DefinitelyNoSuchCase` or `-*` on
 `//:wasm_scalar_test` failed with Bazel exit 3, as intended. No CMake, `build.py`,
 prebuilt ORT runtime, or release npm ORT package was used.
+
+After merging Android, CPU contrib, Rust, Apple, and packaging layers, the
+following frozen Windows analysis also passed: 226 targets, 74,380 configured
+targets, zero build actions. It checks the explicit manual WASM targets as well
+as the desktop wildcard, without claiming Windows WASM execution:
+
+```sh
+bazel build //... //:wasm_scalar_test //:wasm_simd_test //:web_scalar_smoke_test //:web_simd_smoke_test //:web_scalar_browser_test //:web_simd_browser_test -c opt --nobuild --lockfile_mode=error --build_python_zip=false --jobs=2
+```
 
 Windows compilation reached native Emscripten source compilation but was
 stopped for shared-host resource scheduling; it is not an end-to-end Windows
@@ -1300,8 +1318,9 @@ tests, the separate repeated-run/WebGPU API file, installer tests, downloaded
 ONNX backend corpora, optional providers, and release npm artifacts remain
 outside this slice. The WebGPU-option recognition case in `simple-api-tests.ts`
 is not evidence of WebGPU execution. Linux/macOS execution of this new layer
-remains unverified. Browser/WASM and React Native are separate, still-unimplemented
-surfaces; native Node coverage does not migrate them.
+remains unverified. Browser/WASM has the separate scalar/SIMD CPU path described
+above; React Native remains unimplemented. Native Node coverage alone does not
+migrate either surface.
 
 ### Foundation validation (before the language test layers)
 
@@ -1329,7 +1348,7 @@ complete test suite.
 
 The historical wildcard commands above applied to the seven-target foundation,
 not the expanded test graph. The `Native Bazel desktop` workflow now performs
-frozen wildcard **analysis only**, then executes explicit binding/package
+frozen wildcard and explicit manual WASM **analysis only**, then executes binding/package
 checks and selected existing C++ and managed-language cases. It never uses
 `bazel test //...` to run the migrated full suites. Apple native inference is
 selected only on macOS, the CPU Python wheel on Windows/Linux, and standalone
