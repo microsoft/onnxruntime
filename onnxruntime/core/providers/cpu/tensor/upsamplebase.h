@@ -411,7 +411,8 @@ class UpsampleBase {
     ORT_THROW("coordinate_transform_mode:[" + coordinate_transform_mode_name + "] is not supported!");
   }
 
-  GetOriginalCoordinateFunc GetOriginalCoordinateFromResizedCoordinate(
+ public:
+  static GetOriginalCoordinateFunc GetOriginalCoordinateFromResizedCoordinate(
       ResizeCoordinateTransformationMode coordinate_transform_mode) {
     switch (coordinate_transform_mode) {
       case ASYMMETRIC:
@@ -454,6 +455,7 @@ class UpsampleBase {
     }
   }
 
+ protected:
   ResizeNearestMode StringToNearestMode(const std::string& nearest_mode_name) {
     if (nearest_mode_name == "round_prefer_floor") {
       return ROUND_PREFER_FLOOR;
