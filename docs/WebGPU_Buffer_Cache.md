@@ -45,3 +45,39 @@ are introduced.
 Buffers awaiting submission retain their existing lifetime protection. Graph
 capture keeps its separate retention policy. The deprecated JSEP backend is also
 separate.
+
+## Native evaluation
+
+The following measurements compare the upstream cache at `527971bcec` with this
+policy on Windows/D3D12, an RTX 5080 (driver 616.64), and the same executable,
+kernels and default Basic validation. The issue workload uses
+[LFM3-1.7B-Web q4f16](https://huggingface.co/daveycodez/LFM3-1.7B-Web).
+Phi uses the Phi-4-mini-instruct WebGPU export from
+[webai-community/ai-models](https://huggingface.co/webai-community/ai-models),
+with 4-bit weights, block size 32 and `multiRotaryCacheConcatOffset=4096`.
+Past outputs are fed into the next input; graph capture is disabled in this
+cache comparison.
+
+| Workload (prompt + decode tokens) | Peak capacity, MB (old → new) | Decode-end capacity, MB | Large decode creations | Median decode, ms | Mean decode, ms |
+| --------------------------------- | ----------------------------- | ----------------------- | ---------------------- | ----------------- | --------------- |
+| LFM3, 3731 + 450                  | 1978.2 → 1800.3               | 1978.1 → 1363.0         | 1781 → 62              | 10.538 → 9.558    | 11.941 → 9.529  |
+| Phi-4-mini, 128 + 192             | 3720.5 → 3720.5               | 3288.0 → 3274.4         | 989 → 0                | 18.041 → 17.937   | 17.625 → 17.911 |
+| Phi-4-mini, 3731 + 450            | 5239.5 → 5792.7               | 5239.1 → 4717.7         | 24324 → 190            | 50.084 → 17.175   | 52.454 → 17.316 |
+
+Capacity counts buffer bytes with outstanding API references, including weights,
+pending work and cached spares; it is not driver residency or browser page memory.
+MB is decimal. One tracked process per policy records full peaks and decode-end
+capacity. Large creations count storage buffers of at least 1 MiB during decode, excluding
+prefill. Timing uses separate untracked processes in three old/new/new/old rounds,
+with prefill and the first 32 decode steps excluded. Reported latencies are the
+medians of six process medians and six process means per policy: 2508 warm samples
+for each long workload and 960 for the short workload. All compared output logit
+hashes and token IDs match across the 42 processes.
+
+The issue workload reduces peak capacity by 9.0% and decode-end capacity by 31.1%.
+Long-context Phi trades a 10.6% higher transient peak for fewer creations, lower
+decode-end capacity and faster decoding. Short-context Phi's mean latency rises
+1.6% while its median is nearly unchanged. Retaining a useful working set can
+increase peaks, and timings vary across runs; these results do not establish
+universal memory or speed improvements. Browser/Safari page limits and other
+GPUs have not been measured.
