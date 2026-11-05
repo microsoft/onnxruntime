@@ -3,11 +3,15 @@
 The WebGPU provider's default storage cache mode, `bucket`, manages spare buffers
 automatically. No bucket table configuration is required.
 
-- Sizes use eight intervals per doubling, with a minimum allocation of 64 bytes
-  and 16-byte alignment. For requests of at least 128 bytes, rounding adds at most
-  12.5%. The rule is the same across sizes and models; 4 MiB has no special
-  treatment. Requests of 3,000 bytes, 70 KiB and 33 MiB use 3,072 bytes, 72 KiB and
-  36 MiB. The reported 4,195,328-byte KV request uses 4.5 MiB rather than 8 MiB.
+- Sizes use two intervals per doubling, with a minimum allocation of 64 bytes
+  and 16-byte alignment. For requests of at least 64 bytes, rounding adds at most
+  50%. The rule is the same across sizes and models; 4 MiB has no special
+  treatment. For request `n >= 64`, let `p` be the largest power of two no larger
+  than `n`, and round up to a multiple of `max(16, p / 2)`. Requests of 3,000 bytes,
+  70 KiB and 33 MiB use 3,072 bytes, 96 KiB and 48 MiB. The reported
+  4,195,328-byte KV request uses 6 MiB rather than 8 MiB. Coarser classes retain
+  reuse over a wider range of growing requests; finer classes can retain more
+  abandoned capacities and increase physical allocations.
 - Spare counts follow actual demand. There is no fixed per-size count limit or
   total spare-byte cap that would force an otherwise reusable working set to be
   recreated. Different sessions can reuse compatible spares from the shared

@@ -182,10 +182,10 @@ class BucketCacheManager : public IBufferCacheManager {
 
  public:
   size_t CalculateBufferSize(size_t request_size) override {
-    // Eight intervals per doubling bound rounding overhead to 12.5% for sizes >= 128.
+    // Two intervals per doubling balance padding against reuse as tensor sizes grow.
     request_size = std::max(size_t{64}, request_size);
     size_t alignment = 16;
-    while ((request_size - 1) / 16 >= alignment) {
+    while ((request_size - 1) / 4 >= alignment) {
       alignment *= 2;
     }
     return (SafeInt<size_t>(request_size) + alignment - 1) / alignment * alignment;
@@ -619,9 +619,8 @@ WGPUBuffer BufferManager::Create(CommandRecordingState& recording, size_t size, 
   }
   if (buffer) {
     if (initialize_to_zero) {
-      // Modern plugin plain allocations pass call-local recording and submit only their own clear.
-      // AllocOnStream defers the clear on the Session timeline. Built-in allocations use the
-      // Session recording and retain their caller-supplied submission policy.
+      // Streamless allocations outside Run submit their own call-local clear. AllocOnStream
+      // and built-in allocations during Run defer the clear on the Session timeline.
       auto buffer_guard = wgpu::Buffer::Acquire(buffer);
       ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches(recording));
       context_.EndComputePass(recording);

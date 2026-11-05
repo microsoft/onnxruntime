@@ -952,20 +952,65 @@ class WebGpuBucketCacheTest : public testing::Test {
   webgpu::CommandRecordingState recording_;
 };
 
-TEST_F(WebGpuBucketCacheTest, FineSizeClassesAvoidKvBoundaryJump) {
+#if !defined(ORT_USE_EP_API_ADAPTERS)
+TEST_F(WebGpuBucketCacheTest, SharedAllocatorClearsCachedBuffersAcrossThreads) {
+  webgpu::GpuBufferAllocator allocator{
+      0, [this]() -> const webgpu::BufferManager& { return *manager_; },
+      [this]() -> webgpu::CommandRecordingState& { return recording_; }, false, [] { return true; }};
+  constexpr size_t kCount = 256;
+  std::atomic<size_t> ready{0};
+  std::mutex failures_mutex;
+  InlinedVector<std::string> failures;
+  InlinedVector<std::thread> workers;
+  for (size_t worker = 0; worker < 4; ++worker) {
+    workers.emplace_back([&, worker] {
+      ++ready;
+      while (ready.load() != 4) {
+        std::this_thread::yield();
+      }
+      try {
+        webgpu::CommandRecordingState transfer;
+        for (size_t iteration = 0; iteration < 32; ++iteration) {
+          auto* buffer = static_cast<WGPUBuffer>(allocator.Alloc(kCount * sizeof(uint32_t)));
+          std::array<uint32_t, kCount> values{};
+          manager_->Download(transfer, buffer, values.data(), sizeof(values));
+          for (auto value : values) {
+            EXPECT_EQ(value, 0u);
+          }
+          values.fill(static_cast<uint32_t>(worker + 1));
+          manager_->Upload(transfer, values.data(), buffer, sizeof(values));
+          allocator.Free(buffer);
+        }
+      } catch (const std::exception& error) {
+        std::lock_guard<std::mutex> lock{failures_mutex};
+        failures.emplace_back(error.what());
+      }
+    });
+  }
+  for (auto& worker : workers) {
+    worker.join();
+  }
+  EXPECT_TRUE(failures.empty()) << (failures.empty() ? "" : failures.front());
+  AllocatorStats stats;
+  allocator.GetStats(&stats);
+  EXPECT_EQ(stats.num_allocs, 0);
+}
+#endif
+
+TEST_F(WebGpuBucketCacheTest, RelativeSizeClassesAvoidKvBoundaryJump) {
   constexpr size_t kMiB = 1024 * 1024;
   const std::pair<size_t, size_t> cases[] = {
       {0, 64},
-      {65, 80},
+      {65, 96},
       {127, 128},
-      {129, 144},
+      {129, 192},
       {3000, 3072},
-      {70 * 1024, 72 * 1024},
+      {70 * 1024, 96 * 1024},
       {4 * kMiB, 4 * kMiB},
-      {4 * kMiB + 1024, 4 * kMiB + kMiB / 2},
-      {8 * kMiB + 1024, 9 * kMiB},
-      {12 * kMiB + 1024, 13 * kMiB},
-      {33 * kMiB, 36 * kMiB},
+      {4 * kMiB + 1024, 6 * kMiB},
+      {8 * kMiB + 1024, 12 * kMiB},
+      {12 * kMiB + 1024, 16 * kMiB},
+      {33 * kMiB, 48 * kMiB},
   };
   for (const auto& [request, expected] : cases) {
     SCOPED_TRACE(request);
@@ -1143,7 +1188,7 @@ TEST_F(WebGpuBucketCacheTest, ExpiresIdleSurplusButPreservesReusedLateAndPending
 TEST_F(WebGpuBucketCacheTest, LargeBuffersUseRelativeClassesAndAreRetained) {
   constexpr size_t kMiB = 1024 * 1024;
   constexpr size_t kRequest = 256 * kMiB + 1;
-  constexpr size_t kCapacity = 288 * kMiB;
+  constexpr size_t kCapacity = 384 * kMiB;
   if (context_->DeviceLimits().maxBufferSize < kCapacity) {
     GTEST_SKIP() << "Device cannot allocate the selected large size class.";
   }
