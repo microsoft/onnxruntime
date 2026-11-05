@@ -82,6 +82,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.MatMulPackedQ8">com.microsoft.MatMulPackedQ8</a>
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
   * <a href="#com.microsoft.MoE">com.microsoft.MoE</a>
+  * <a href="#com.microsoft.MoEPackedIQ2XXS">com.microsoft.MoEPackedIQ2XXS</a>
   * <a href="#com.microsoft.MulInteger">com.microsoft.MulInteger</a>
   * <a href="#com.microsoft.MultiHeadAttention">com.microsoft.MultiHeadAttention</a>
   * <a href="#com.microsoft.MurmurHash3">com.microsoft.MurmurHash3</a>
@@ -5086,6 +5087,80 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MoEPackedIQ2XXS"></a><a name="com.microsoft.moepackediq2xxs">**com.microsoft.MoEPackedIQ2XXS**</a>
+
+  Fused routed two-layer IQ2_XXS expert MLP, with expert sharing across up to eight rows.
+  X[R,1024]; P=R*topk<=128. Expert indices must be in [0,E) and distinct within each token row.
+  FC1 packed bytes [E,I,32,8], FC2 [E,1024,I/32,8], I positive and divisible by 256.
+  Each eight-byte record contains four grid indices, four parity-extended seven-bit signs and a four-bit scale.
+  Scales [E,I,4] and [E,1024,I/256] contain raw IEEE FP16 bits, including when tensor storage is typed BF16.
+  Each complete signed grid * FP16-super-scale * (0.5+record-scale)/4 operand is rounded to BF16, not the scale alone.
+  BF16 MMA with FP32 accumulation uses fixed two-tile, four/eight-warp FC1/FC2 reductions.
+  H=BF16(relu(BF16(X*W1^T))^2); expert_output=float(BF16(H*W2^T)).
+  Y=BF16(sum_k(weights_k*expert_output_k)), accumulated in routing order.
+  metadata[0]=unique expert count U, metadata[1..U]=first-occurrence expert IDs.
+  metadata[1+P+u*8+r] is routed pair index or -1. Unused unique-ID slots are -1.
+  No native-GGUF activation quantization, host routing, environment tuning or hidden mutable state is used.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>topk</tt> : int (required)</dt>
+<dd>Number of experts selected per row.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>BF16 activations [R,1024].</dd>
+<dt><tt>indices</tt> : I</dt>
+<dd>Unique-per-row expert indices [R,topk].</dd>
+<dt><tt>weights</tt> : F</dt>
+<dd>FP32 routing weights [R,topk], need not sum to one.</dd>
+<dt><tt>fc1</tt> : Q</dt>
+<dd>Packed FC1 records [E,I,32,8].</dd>
+<dt><tt>scale1</tt> : S</dt>
+<dd>FP16 scale bits [E,I,4].</dd>
+<dt><tt>fc2</tt> : Q</dt>
+<dd>Packed FC2 records [E,1024,I/32,8].</dd>
+<dt><tt>scale2</tt> : S</dt>
+<dd>FP16 scale bits [E,1024,I/256].</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Weighted BF16 expert sum [R,1024].</dd>
+<dt><tt>hidden</tt> : T</dt>
+<dd>BF16 squared-ReLU intermediate [P,I].</dd>
+<dt><tt>expert_output</tt> : F</dt>
+<dd>BF16-rounded expert projections held in FP32 [P,1024].</dd>
+<dt><tt>metadata</tt> : I</dt>
+<dd>Device expert grouping buffer [1+9*P].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16)</dt>
+<dd>BF16 activations.</dd>
+<dt><tt>S</tt> : tensor(float16), tensor(bfloat16)</dt>
+<dd>Raw FP16 bits; BF16 storage is compatibility-only.</dd>
+<dt><tt>F</tt> : tensor(float)</dt>
+<dd>FP32 routing and partial results.</dd>
+<dt><tt>I</tt> : tensor(int32)</dt>
+<dd>Device routing metadata.</dd>
+<dt><tt>Q</tt> : tensor(uint8)</dt>
+<dd>Packed IQ2 records.</dd>
 </dl>
 
 

@@ -388,7 +388,18 @@ __device__ __forceinline__ void LoadWeightRow(const uint8_t* w, const void* sc, 
                                               uint4& raw, float* scale) {
   if constexpr (FMT == kFmtIq2N) {
     // chunk c = 64 k = two 32-k groups of 8-byte records; thread t owns half (t & 1) of group 2c + (t >> 1)
-    const uint2 rec = __ldg(reinterpret_cast<const uint2*>(w + (row * (K / 32) + 2 * c + (t >> 1)) * 8));
+    const uint8_t* record = w + (row * (K / 32) + 2 * c + (t >> 1)) * 8;
+    uint2 rec;
+    if ((reinterpret_cast<uintptr_t>(record) & 7) == 0) {
+      rec = __ldg(reinterpret_cast<const uint2*>(record));
+    } else {
+      rec = make_uint2(0, 0);
+#pragma unroll
+      for (int b = 0; b < 4; ++b) {
+        rec.x |= static_cast<uint32_t>(__ldg(record + b)) << (8 * b);
+        rec.y |= static_cast<uint32_t>(__ldg(record + 4 + b)) << (8 * b);
+      }
+    }
     const int h = t & 1;
     const float d =
         __half2float(__ushort_as_half(__ldg(reinterpret_cast<const uint16_t*>(sc) + row * (K / 256) + (c >> 2))));
@@ -509,9 +520,22 @@ __device__ __forceinline__ void DequantRow(const uint4& raw, float scale, uint32
 // Loads the x fragments of one chunk: 16 (or 32) contiguous k of activation row g for this thread.
 template <int NH>
 __device__ __forceinline__ void LoadX(const bf16* xr, bool valid, int c, int t, uint4* xo) {
-  const uint4* xp = reinterpret_cast<const uint4*>(xr + 64 * NH * c + 16 * NH * t);
+  const uint16_t* xp = reinterpret_cast<const uint16_t*>(xr + 64 * NH * c + 16 * NH * t);
 #pragma unroll
-  for (int i = 0; i < 2 * NH; ++i) xo[i] = valid ? __ldg(xp + i) : make_uint4(0, 0, 0, 0);
+  for (int i = 0; i < 2 * NH; ++i) {
+    if (!valid) {
+      xo[i] = make_uint4(0, 0, 0, 0);
+    } else if ((reinterpret_cast<uintptr_t>(xp) & 15) == 0) {
+      xo[i] = __ldg(reinterpret_cast<const uint4*>(xp) + i);
+    } else {
+      uint32_t words[4];
+#pragma unroll
+      for (int j = 0; j < 4; ++j)
+        words[j] = static_cast<uint32_t>(__ldg(xp + 8 * i + 2 * j)) |
+                   (static_cast<uint32_t>(__ldg(xp + 8 * i + 2 * j + 1)) << 16);
+      xo[i] = make_uint4(words[0], words[1], words[2], words[3]);
+    }
+  }
 }
 
 template <int FMT, bool WIDE, int MT>
