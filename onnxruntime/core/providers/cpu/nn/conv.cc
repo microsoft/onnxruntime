@@ -404,30 +404,30 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   const bool dense_nhwc_fastpath =
       wants_channels_last && kernel_rank == 2 && !sum_present &&
       MlasConvSupportsDenseChannelsLast2DFloatKernel(
-           kernel_rank,
-           narrow<size_t>(N),
-           group_count,
-           input_shape_size_t.data(),
-           kernel_shape_size_t.data(),
-           dilations_size_t.data(),
-           pads_size_t.data(),
-           strides_size_t.data(),
-           filter_count_per_group,
-           /*Beta*/ 0.0f);
+          kernel_rank,
+          narrow<size_t>(N),
+          group_count,
+          input_shape_size_t.data(),
+          kernel_shape_size_t.data(),
+          dilations_size_t.data(),
+          pads_size_t.data(),
+          strides_size_t.data(),
+          filter_count_per_group,
+          /*Beta*/ 0.0f);
   const bool depthwise_nhwc_fastpath =
       wants_channels_last && kernel_rank == 2 && !sum_present &&
       MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
-           kernel_rank,
-           narrow<size_t>(N),
-           group_count,
-           input_channels_per_group,
-           input_shape_size_t.data(),
-           kernel_shape_size_t.data(),
-           dilations_size_t.data(),
-           pads_size_t.data(),
-           strides_size_t.data(),
-           filter_count_per_group,
-           /*Beta*/ 0.0f);
+          kernel_rank,
+          narrow<size_t>(N),
+          group_count,
+          input_channels_per_group,
+          input_shape_size_t.data(),
+          kernel_shape_size_t.data(),
+          dilations_size_t.data(),
+          pads_size_t.data(),
+          strides_size_t.data(),
+          filter_count_per_group,
+          /*Beta*/ 0.0f);
   const bool nhwc_fastpath = mlas_backend_kernel_selector_config_.use_kleidiai &&
                              (dense_nhwc_fastpath || depthwise_nhwc_fastpath);
 
