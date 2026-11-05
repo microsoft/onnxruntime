@@ -401,22 +401,6 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   const size_t group_count = narrow<size_t>(conv_attrs_.group);
   const size_t input_channels_per_group = narrow<size_t>(C / conv_attrs_.group);
   const size_t filter_count_per_group = narrow<size_t>(M / conv_attrs_.group);
-  auto backend_kernel_selector_config = mlas_backend_kernel_selector_config_;
-#if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
-  const bool is_depthwise_multiplier_one = input_channels_per_group == 1 && filter_count_per_group == 1;
-  if (backend_kernel_selector_config.use_kleidiai && is_depthwise_multiplier_one && B != nullptr) {
-    bool bias_has_nan = constant_bias_has_nan_;
-    if (constant_bias_tensor_ == nullptr) {
-      const auto bias_values = B->DataAsSpan<float>();
-      bias_has_nan = std::any_of(bias_values.begin(), bias_values.end(),
-                                 [](float value) { return std::isnan(value); });
-    }
-    if (bias_has_nan) {
-      // The SME2 clamp kernel does not preserve NaNs, so select generic MLAS before choosing the input layout.
-      backend_kernel_selector_config.use_kleidiai = false;
-    }
-  }
-#endif
   const bool dense_nhwc_fastpath =
       wants_channels_last && kernel_rank == 2 && !sum_present &&
       MlasConvSupportsDenseChannelsLast2DFloatKernel(
@@ -444,7 +428,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
            strides_size_t.data(),
            filter_count_per_group,
            /*Beta*/ 0.0f);
-  const bool nhwc_fastpath = backend_kernel_selector_config.use_kleidiai &&
+  const bool nhwc_fastpath = mlas_backend_kernel_selector_config_.use_kleidiai &&
                              (dense_nhwc_fastpath || depthwise_nhwc_fastpath);
 
 #if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
@@ -483,7 +467,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
 
   if (kernel_rank >= 1 && kernel_rank <= 3) {
     MLAS_CONV_PARAMETERS Parameters{};
-    Parameters.BackendKernelSelectorConfig = &backend_kernel_selector_config;
+    Parameters.BackendKernelSelectorConfig = &mlas_backend_kernel_selector_config_;
 
     size_t WorkingBufferSize;
     MlasConvPrepare(&Parameters,

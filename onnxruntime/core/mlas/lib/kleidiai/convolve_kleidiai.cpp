@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstring>
 #include <functional>
+#include <limits>
 #include <array>
 #include <vector>
 
@@ -799,6 +800,8 @@ ArmKleidiAI::MlasConv(
     const auto route_selection = ArmKleidiAI::SelectConvRoute(Parameters);
 
     if (route_selection.route == ArmKleidiAI::ConvRoute::Depthwise) {
+        // FCLAMP with two NaN bounds is an identity operation that also preserves NaN results.
+        const float no_clamp = std::numeric_limits<float>::quiet_NaN();
         if (DepthwiseConvKleidiAI(Parameters->BatchCount,
                                   Parameters->InputShape[0],
                                   Parameters->InputShape[1],
@@ -815,8 +818,8 @@ ArmKleidiAI::MlasConv(
                                   Bias,
                                   Parameters->FilterIsPacked ? Parameters->PackedFilter : nullptr,
                                   Output,
-                                  -std::numeric_limits<float>::infinity(),
-                                  std::numeric_limits<float>::infinity(),
+                                  no_clamp,
+                                  no_clamp,
                                   ThreadPool)) {
             const size_t activation_rows = Parameters->ChannelsLast
                                                ? Parameters->OutputSize

@@ -305,8 +305,11 @@ void RunMlasConvChannelsLastCase(size_t channels,
 }
 
 enum class NonFiniteSource {
-  Bias,
-  Accumulation,
+  InfiniteBias,
+  Overflow,
+  InputNaN,
+  WeightNaN,
+  InvalidArithmetic,
 };
 
 void RunMlasConvNonFiniteCase(NonFiniteSource source) {
@@ -330,20 +333,32 @@ void RunMlasConvNonFiniteCase(NonFiniteSource source) {
   std::vector<float> bias(channels, 0.0f);
   std::vector<float> output(batches * out_height * out_width * channels, 0.0f);
 
-  if (source == NonFiniteSource::Accumulation) {
+  const float quiet_nan = std::numeric_limits<float>::quiet_NaN();
+  if (source == NonFiniteSource::InputNaN) {
+    std::fill(input.begin(), input.end(), quiet_nan);
+  } else if (source == NonFiniteSource::WeightNaN) {
+    std::fill(input.begin(), input.end(), 1.0f);
+  } else if (source == NonFiniteSource::Overflow) {
     std::fill(input.begin(), input.end(), std::numeric_limits<float>::max());
   }
 
   for (size_t channel = 0; channel < channels; ++channel) {
+    const size_t weights_offset = channel * filter_height * filter_width;
     const bool negative = channel % 2 != 0;
-    if (source == NonFiniteSource::Bias) {
+    if (source == NonFiniteSource::InfiniteBias) {
       bias[channel] = negative ? -std::numeric_limits<float>::infinity()
                                : std::numeric_limits<float>::infinity();
-    } else {
+    } else if (source == NonFiniteSource::Overflow) {
       const float weight = negative ? -2.0f : 2.0f;
-      std::fill_n(weights.data() + channel * filter_height * filter_width,
+      std::fill_n(weights.data() + weights_offset,
                   filter_height * filter_width,
                   weight);
+    } else if (source == NonFiniteSource::InputNaN) {
+      weights[weights_offset + 4] = 1.0f;
+    } else if (source == NonFiniteSource::WeightNaN) {
+      weights[weights_offset + 4] = quiet_nan;
+    } else if (source == NonFiniteSource::InvalidArithmetic) {
+      weights[weights_offset + 4] = std::numeric_limits<float>::infinity();
     }
   }
 
@@ -378,15 +393,24 @@ void RunMlasConvNonFiniteCase(NonFiniteSource source) {
   ASSERT_TRUE(ArmKleidiAI::DepthwiseConvKleidiAISupported(&parameters));
 
   std::vector<float> working_buffer(working_buffer_size);
+  const float* bias_data = source == NonFiniteSource::InfiniteBias ? bias.data() : nullptr;
   ASSERT_TRUE(ArmKleidiAI::MlasConv(&parameters,
                                     input.data(),
                                     weights.data(),
-                                    bias.data(),
+                                    bias_data,
                                     working_buffer.data(),
                                     output.data(),
                                     nullptr));
 
+  const bool expect_nan = source == NonFiniteSource::InputNaN ||
+                          source == NonFiniteSource::WeightNaN ||
+                          source == NonFiniteSource::InvalidArithmetic;
   for (size_t index = 0; index < output.size(); ++index) {
+    if (expect_nan) {
+      EXPECT_TRUE(std::isnan(output[index])) << "Expected NaN at element " << index;
+      continue;
+    }
+
     const size_t channel = index % channels;
     const bool expect_negative = channel % 2 != 0;
     EXPECT_TRUE(std::isinf(output[index])) << "Expected infinity at element " << index;
@@ -421,7 +445,9 @@ TEST(MlasKleidiDepthwiseTest, ChannelTailNhwc) {
 }
 
 TEST(MlasKleidiDepthwiseTest, ThreadedRowTilesWithTailNhwc) {
-  ASSERT_NE(GetMlasThreadPool(), nullptr);
+  if (GetMlasThreadPool() == nullptr) {
+    GTEST_SKIP() << "MLAS thread pool unavailable.";
+  }
   RunMlasConvChannelsLastCase(/*channels=*/129, /*in_height=*/17, /*in_width=*/17, /*padding=*/1,
                               /*use_prepacked_weights=*/true, GetMlasThreadPool());
 }
@@ -436,11 +462,23 @@ TEST(MlasKleidiDepthwiseTest, MlasConvChannelsLastPrepackedWeights) {
 }
 
 TEST(MlasKleidiDepthwiseTest, MlasConvPreservesInfiniteBias) {
-  RunMlasConvNonFiniteCase(NonFiniteSource::Bias);
+  RunMlasConvNonFiniteCase(NonFiniteSource::InfiniteBias);
 }
 
 TEST(MlasKleidiDepthwiseTest, MlasConvPreservesOverflowInfinity) {
-  RunMlasConvNonFiniteCase(NonFiniteSource::Accumulation);
+  RunMlasConvNonFiniteCase(NonFiniteSource::Overflow);
+}
+
+TEST(MlasKleidiDepthwiseTest, MlasConvPreservesBiaslessQuietNaNInput) {
+  RunMlasConvNonFiniteCase(NonFiniteSource::InputNaN);
+}
+
+TEST(MlasKleidiDepthwiseTest, MlasConvPreservesBiaslessQuietNaNWeight) {
+  RunMlasConvNonFiniteCase(NonFiniteSource::WeightNaN);
+}
+
+TEST(MlasKleidiDepthwiseTest, MlasConvPreservesBiaslessInvalidArithmeticNaN) {
+  RunMlasConvNonFiniteCase(NonFiniteSource::InvalidArithmetic);
 }
 
 TEST(MlasKleidiDepthwiseTest, RejectsOutputSmallerThanKernelTile) {
