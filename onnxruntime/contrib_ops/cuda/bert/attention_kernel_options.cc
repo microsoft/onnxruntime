@@ -177,6 +177,9 @@ void AttentionKernelDebugInfo::Print(const char* operator_name,
     sstream << "MATH";
   }
 
+  if (use_split_decode.has_value() && use_split_decode.value()) {
+    sstream << " SplitDecode=1";
+  }
   if (num_splits.has_value()) {
     sstream << " NumSplits=" << num_splits.value();
   }
