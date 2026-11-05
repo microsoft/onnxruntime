@@ -77,6 +77,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.MatMulNBitsQkv">com.microsoft.MatMulNBitsQkv</a>
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
   * <a href="#com.microsoft.MoE">com.microsoft.MoE</a>
+  * <a href="#com.microsoft.MoEGroupRouter">com.microsoft.MoEGroupRouter</a>
   * <a href="#com.microsoft.MulInteger">com.microsoft.MulInteger</a>
   * <a href="#com.microsoft.MultiHeadAttention">com.microsoft.MultiHeadAttention</a>
   * <a href="#com.microsoft.MurmurHash3">com.microsoft.MurmurHash3</a>
@@ -4813,6 +4814,59 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MoEGroupRouter"></a><a name="com.microsoft.moegrouprouter">**com.microsoft.MoEGroupRouter**</a>
+
+  Fused group-limited sigmoid MoE router (noaux_tc) as used by BailingMoeV3 / DeepSeek-V3.
+  Computes s = sigmoid(logits), selects topk_group groups by the sum of top group_topk values of
+  (s + expert_bias) per group, selects top_k experts from those groups by (s + expert_bias), and
+  writes log(max(s, 1e-20)) at the selected experts and router_sentinel elsewhere into a 2D
+  (total_tokens, num_experts) output tensor ready for MoE / QMoE.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>group_topk</tt> : int</dt>
+<dd>Number of top experts summed within each group for group scoring.</dd>
+<dt><tt>n_group</tt> : int</dt>
+<dd>Number of expert groups.</dd>
+<dt><tt>router_sentinel</tt> : float</dt>
+<dd>Value written to non-selected expert positions.</dd>
+<dt><tt>top_k</tt> : int (required)</dt>
+<dd>Number of experts selected per token.</dd>
+<dt><tt>topk_group</tt> : int</dt>
+<dd>Number of active expert groups selected per token.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>logits</tt> : T</dt>
+<dd>Router logits tensor of shape (..., num_experts).</dd>
+<dt><tt>expert_bias</tt> : TF</dt>
+<dd>1D float32 expert bias tensor of shape (num_experts).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>router_probs</tt> : T</dt>
+<dd>2D routed log-scores tensor of shape (total_tokens, num_experts).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>TF</tt> : tensor(float)</dt>
+<dd>Constrain expert_bias to float32.</dd>
 </dl>
 
 
