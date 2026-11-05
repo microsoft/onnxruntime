@@ -161,6 +161,43 @@ inline bool reduce_isnan<int64_t>(int64_t) { return false; }
 template <typename T>
 inline constexpr bool kReduceUseKahan = std::is_same_v<T, int64_t> || std::is_same_v<T, uint64_t>;
 
+// Exact 128-bit integer accumulator (two's complement hi:lo) used by ReduceSum for integral types.
+// Unlike double it keeps every bit of int64/uint64 inputs, and intermediate partial sums outside
+// the range of T cannot corrupt the result. Only the final value is saturated to T.
+template <typename T>
+struct ExactIntSum {
+  static_assert(std::is_integral_v<T> && sizeof(T) <= sizeof(uint64_t));
+  uint64_t lo = 0;
+  uint64_t hi = 0;  // unsigned so that wrap-around is well defined
+
+  inline void add(T v) {
+    const uint64_t u = static_cast<uint64_t>(v);
+    lo += u;
+    hi += (lo < u ? 1 : 0);
+    if constexpr (std::is_signed_v<T>) {
+      if (v < 0) hi -= 1;
+    }
+  }
+
+  inline T get() const {
+    constexpr T t_max = std::numeric_limits<T>::max();
+    constexpr T t_min = std::numeric_limits<T>::min();
+    if (static_cast<int64_t>(hi) < 0) {
+      if constexpr (std::is_signed_v<T>) {
+        const int64_t low = static_cast<int64_t>(lo);
+        if (hi == ~uint64_t{0} && low < 0 && low >= static_cast<int64_t>(t_min)) {
+          return static_cast<T>(low);
+        }
+      }
+      return t_min;
+    }
+    if (hi == 0 && lo <= static_cast<uint64_t>(t_max)) {
+      return static_cast<T>(lo);
+    }
+    return t_max;
+  }
+};
+
 class ReduceAggregatorBase {
  public:
   // Fast reduction: see OptimizeShapeForFastReduce's comment.
@@ -221,54 +258,30 @@ class ReduceAggregator : public ReduceAggregatorBase {
 template <typename T>
 class ReduceAggregatorSum : public ReduceAggregator<T, T> {
  protected:
-  // For integer types, accumulate in double to avoid signed overflow UB.
-  // When overflow occurs, results saturate to T::max()/T::lowest() rather than wrapping.
+  // Integer sums are accumulated exactly (see ExactIntSum) to avoid signed overflow UB and the
+  // precision loss of double for int64 values > 2^53. When the final result is outside the range of T
+  // it saturates to T::max()/T::lowest() rather than wrapping.
   // Note: NumPy/PyTorch use modular (wrapping) arithmetic for integers, but wrapping
   // is non-deterministic in ORT due to parallelized reduction order. Saturation provides
   // well-defined behavior. Other EPs (CUDA/DML) may still wrap.
-  // Double has range ~1.8e308, sufficient for any practical sum of int32/int64 values.
-  // For int64 values > 2^53, double cannot represent every integer exactly;
-  // Kahan summation minimizes but does not eliminate rounding in that regime.
-  double double_accumulator_ = 0.0;
-  double kahan_compensation_ = 0.0;
+  ExactIntSum<std::conditional_t<std::is_integral_v<T>, T, int32_t>> int_accumulator_;
 
  public:
   inline ReduceAggregatorSum(int64_t N, const T&) : ReduceAggregator<T, T>(N, 0) {}
   inline void update(const T& v) {
     if constexpr (std::is_integral_v<T>) {
-      if constexpr (kReduceUseKahan<T>) {
-        double y = static_cast<double>(v) - kahan_compensation_;
-        double t = double_accumulator_ + y;
-        kahan_compensation_ = (t - double_accumulator_) - y;
-        double_accumulator_ = t;
-      } else {
-        double_accumulator_ += static_cast<double>(v);
-      }
+      int_accumulator_.add(v);
     } else {
       this->accumulator_ += v;
     }
   }
   static T aggall(const T* from_data, int64_t size) {
     if constexpr (std::is_integral_v<T>) {
-      double sum = 0.0;
-      if constexpr (kReduceUseKahan<T>) {
-        double comp = 0.0;
-        for (size_t i = 0, n = onnxruntime::narrow<size_t>(size); i < n; ++i) {
-          double y = static_cast<double>(from_data[i]) - comp;
-          double t = sum + y;
-          comp = (t - sum) - y;
-          sum = t;
-        }
-      } else {
-        for (size_t i = 0, n = onnxruntime::narrow<size_t>(size); i < n; ++i) {
-          sum += static_cast<double>(from_data[i]);
-        }
+      ExactIntSum<T> sum;
+      for (size_t i = 0, n = onnxruntime::narrow<size_t>(size); i < n; ++i) {
+        sum.add(from_data[i]);
       }
-      constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
-      constexpr double t_min = static_cast<double>(std::numeric_limits<T>::min());
-      if (sum >= t_max) return std::numeric_limits<T>::max();
-      if (sum <= t_min) return std::numeric_limits<T>::min();
-      return static_cast<T>(sum);
+      return sum.get();
     } else {
       return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(
                  from_data, onnxruntime::narrow<size_t>(size))
@@ -280,11 +293,7 @@ class ReduceAggregatorSum : public ReduceAggregator<T, T> {
   }
   inline T get_value() {
     if constexpr (std::is_integral_v<T>) {
-      constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
-      constexpr double t_min = static_cast<double>(std::numeric_limits<T>::min());
-      if (double_accumulator_ >= t_max) return std::numeric_limits<T>::max();
-      if (double_accumulator_ <= t_min) return std::numeric_limits<T>::min();
-      return static_cast<T>(double_accumulator_);
+      return int_accumulator_.get();
     } else {
       return this->accumulator_;
     }
@@ -328,19 +337,11 @@ class ReduceAggregatorSum : public ReduceAggregator<T, T> {
           tp, onnxruntime::narrow<std::ptrdiff_t>(N), ParallelReduceFastCost(1, n_rows, sizeof(T), 6),
           [data, out, N, n_rows](ptrdiff_t begin, ptrdiff_t end) {
             for (ptrdiff_t col = begin; col < end; ++col) {
-              double sum = 0.0;
+              ExactIntSum<T> sum;
               for (int64_t row = 0; row < n_rows; ++row) {
-                sum += static_cast<double>(data[row * N + col]);
+                sum.add(data[row * N + col]);
               }
-              constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
-              constexpr double t_min = static_cast<double>(std::numeric_limits<T>::lowest());
-              if (sum >= t_max) {
-                out[col] = std::numeric_limits<T>::max();
-              } else if (sum <= t_min) {
-                out[col] = std::numeric_limits<T>::lowest();
-              } else {
-                out[col] = static_cast<T>(sum);
-              }
+              out[col] = sum.get();
             }
           });
     } else {
@@ -372,19 +373,11 @@ class ReduceAggregatorSum : public ReduceAggregator<T, T> {
           [data, fast_shape, stridei, strideo, out, N](ptrdiff_t begin, ptrdiff_t last) {
             for (ptrdiff_t d = begin; d < last; ++d) {
               for (int64_t col = 0; col < N; ++col) {
-                double sum = 0.0;
+                ExactIntSum<T> sum;
                 for (int64_t row = 0; row < fast_shape[1]; ++row) {
-                  sum += static_cast<double>(data[stridei * d + row * N + col]);
+                  sum.add(data[stridei * d + row * N + col]);
                 }
-                constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
-                constexpr double t_min = static_cast<double>(std::numeric_limits<T>::lowest());
-                if (sum >= t_max) {
-                  out[strideo * d + col] = std::numeric_limits<T>::max();
-                } else if (sum <= t_min) {
-                  out[strideo * d + col] = std::numeric_limits<T>::lowest();
-                } else {
-                  out[strideo * d + col] = static_cast<T>(sum);
-                }
+                out[strideo * d + col] = sum.get();
               }
             }
           });
@@ -420,21 +413,13 @@ class ReduceAggregatorSum : public ReduceAggregator<T, T> {
           [data, out, d0, d2, inc](ptrdiff_t begin, ptrdiff_t last) {
             for (ptrdiff_t d = begin; d < last; ++d) {
               const T* p = data + d * d2;
-              double sum = 0.0;
+              ExactIntSum<T> sum;
               for (int64_t i = 0; i < d0; ++i, p += inc) {
                 for (int64_t j = 0; j < d2; ++j) {
-                  sum += static_cast<double>(p[j]);
+                  sum.add(p[j]);
                 }
               }
-              constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
-              constexpr double t_min = static_cast<double>(std::numeric_limits<T>::lowest());
-              if (sum >= t_max) {
-                out[d] = std::numeric_limits<T>::max();
-              } else if (sum <= t_min) {
-                out[d] = std::numeric_limits<T>::lowest();
-              } else {
-                out[d] = static_cast<T>(sum);
-              }
+              out[d] = sum.get();
             }
           });
     } else {
@@ -516,8 +501,27 @@ class ReduceAggregatorSumSquare : public ReduceAggregator<T, TVAL> {
 
 template <typename T>
 class ReduceAggregatorMean : public ReduceAggregatorSum<T> {
+ protected:
+  // Mean keeps accumulating integers in double (with Kahan compensation for 64-bit types).
+  double double_accumulator_ = 0.0;
+  double kahan_compensation_ = 0.0;
+
  public:
   inline ReduceAggregatorMean(int64_t N, const T&) : ReduceAggregatorSum<T>(N, 0) {}
+  inline void update(const T& v) {
+    if constexpr (std::is_integral_v<T>) {
+      if constexpr (kReduceUseKahan<T>) {
+        double y = static_cast<double>(v) - kahan_compensation_;
+        double t = double_accumulator_ + y;
+        kahan_compensation_ = (t - double_accumulator_) - y;
+        double_accumulator_ = t;
+      } else {
+        double_accumulator_ += static_cast<double>(v);
+      }
+    } else {
+      this->accumulator_ += v;
+    }
+  }
   static T aggall(const T* from_data, int64_t size) {
     if constexpr (std::is_integral_v<T>) {
       // Accumulate in double, divide, then saturate back to T.
