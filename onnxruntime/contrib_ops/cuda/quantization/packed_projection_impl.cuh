@@ -15,7 +15,31 @@ using bf16 = __nv_bfloat16;
 __device__ __forceinline__ float B2F(bf16 v) { return __bfloat162float(v); }
 
 // Source-exact packed BF16 MMA helpers shared by dense and routed projections.
-// IQ2_XXS codebook: ggml/llama.cpp, MIT License, Copyright (c) 2023-2026 The ggml authors.
+// IQ2_XXS codebook: iq2xxs_grid in ggml/src/ggml-common.h from
+// https://github.com/ggml-org/llama.cpp/tree/3de52ac38818978d6da8f386eda43a856e53714a
+// (byte magnitudes re-encoded as BF16 pairs).
+//
+// MIT License
+//
+// Copyright (c) 2023-2026 The ggml authors
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
 static __device__ const uint32_t kIq2xxsGridBf16[256][4] = {
     {0x41004100u, 0x41004100u, 0x41004100u, 0x41004100u},
     {0x4100422cu, 0x41004100u, 0x41004100u, 0x41004100u},

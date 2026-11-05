@@ -73,6 +73,14 @@ Trailing slots are therefore preserved rather than left unspecified as in uninit
 plugin outputs. MoE similarly initializes unused unique-expert metadata slots to -1.
 These changes define previously unwritten output storage without changing any computed row.
 Selectors must be in range; routed expert indices must be in range and distinct within a row.
+Device-side guards define bounded invalid-input behavior without copying selectors to the host:
+an out-of-range Mamba selector writes NaNs to Y, xbc, readout and the first R snapshot
+slots, preserving trailing slots. Neither recurrence kernel reads the selected input state.
+For MoE, an out-of-range or duplicate expert ID invalidates the entire token row:
+all its hidden, expert_output and Y values become NaN, and its pairs are excluded from
+metadata before any expert weight access. Valid rows still execute normally. Invalid
+rows are not clamped, skipped as if valid, or reported through a device assertion.
+These are deterministic non-finite output policies, not synchronous ORT Status errors.
 
 Kernels use the supplied ORT CUDA stream. There are no device-to-host copies,
 host-side routing, per-call CUDA allocation, synchronization, or host inspection of selectors.
@@ -96,3 +104,47 @@ They cover post-token recurrence/readout, nonzero accepted snapshot selection, t
 state slots, 1/3/8/16-row Mamba paths, 1024-wide gated normalization, corrected routing
 versus unbiased weights, ties, nonunit scale, squared ReLU, empty tensors, reused experts,
 and raw FP16 super-scales carried in BF16 or FP16 storage.
+Additional review regressions cover eligible negative-infinity router scores, both invalid
+selector bounds, multi-group nonuniform states and rank-2 convolution weights, explicit
+IOBinding device aliasing of each/both state buffers at R=8 with selector=3, sparse
+row-distinct expert routes, multiple FC2 superblocks, topk=9 and cancellation-sensitive
+ordered FP32 sums. Source-exact MoE checks set both tolerances to zero after adding outputs.
+These review regressions have not yet been compiled or run on a GPU.
+
+### Standalone kernel validation
+
+The full Mamba operator still requires `head_dim=64, d_state=128`. The shared
+`LaunchMamba2VerifyNormalization` entry point isolates the production normalization
+launch so grid limits can be tested without allocating full recurrent states.
+Compile `fused_state_space_op_test.cc` with `ORT_FUSED_STATE_SPACE_NORM_TEST` and
+link `fused_state_space_impl.cu`, CUDA runtime and `gtest_main` to run
+`FusedStateSpaceKernelTest.MambaNorm65536Groups` without ORT libraries.
+This alternate test mode does not compile the provider tests in that source file.
+It uses `heads=n_groups=65536`, synthetic head/state dimensions of 1, R=slots=1,
+width=65536 and projection stride=327680. No convolution or SSM kernel runs in this
+normalization-only fixture. The test invokes the same launch used by the full operator;
+restoring `dim3(rows, groups)` fails CUDA's grid-y limit before output comparison.
+
+For a standalone harness calling the other launchers directly:
+
+- Require SM80+, BF16 operands and device-resident selectors/indices. Full Mamba
+  uses head/state dimensions 64/128, 1..16 rows and slots >= rows; MoE uses
+  X width 1024, 1..8 rows, at most 128 pairs, E >= topk and I divisible by 256.
+- Before a nonaliased Mamba call, copy the entire input state buffers to the
+  snapshot outputs. This preservation copy belongs to `ComputeInternal`, not
+  `LaunchMamba2Verify`. Restore both inputs before each alias/nonalias comparison.
+  The alias fixture uses R=8, slots=10, selector=3, heads=4 and groups=2.
+- The nonuniform Mamba oracle rounds convolution activation to BF16, retains FP32
+  recurrent states and uses two ordered readout partitions for R=1, four otherwise.
+  Check all five outputs and preserve slots R..slots-1, including invalid selectors.
+- IQ2 super-scales are raw FP16 bits even when stored in BF16-typed buffers.
+  Decode and round each complete grid-times-scale operand to BF16. Round FC1 to
+  BF16 before squared ReLU, round hidden to BF16, and round FC2 to BF16 before
+  storing its FP32-valued expert output. Do not reassociate the ordered FP32
+  weighted sum or round its running accumulator to BF16.
+- Sparse MoE fixtures use three distinct activation rows, E=topk+3, I=512 and
+  topk=2/9. Cancellation fixtures use I=256, topk=3/9, X=1/1024, grid zero and
+  super-scales=1/16: hidden=1/256 and every expert output=1/16. The first three
+  weights are [2^28,48,-2^28], with remaining weights zero. Their weighted terms
+  [2^24,3,-2^24] produce ordered FP32 Y=4, reversed Y=3 and BF16 running-sum Y=0.
+  Compare the final BF16 values exactly; check actual BF16 NaNs explicitly.

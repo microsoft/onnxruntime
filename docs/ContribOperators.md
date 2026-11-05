@@ -7,6 +7,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.AttnLSTM">com.microsoft.AttnLSTM</a>
   * <a href="#com.microsoft.BeamSearch">com.microsoft.BeamSearch</a>
   * <a href="#com.microsoft.BiasAdd">com.microsoft.BiasAdd</a>
+  * <a href="#com.microsoft.BiasCorrectedMoERoute">com.microsoft.BiasCorrectedMoERoute</a>
   * <a href="#com.microsoft.BiasDropout">com.microsoft.BiasDropout</a>
   * <a href="#com.microsoft.BiasGelu">com.microsoft.BiasGelu</a>
   * <a href="#com.microsoft.BiasSoftmax">com.microsoft.BiasSoftmax</a>
@@ -65,6 +66,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.LinearAttentionGate">com.microsoft.LinearAttentionGate</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
   * <a href="#com.microsoft.MRotaryEmbedding">com.microsoft.MRotaryEmbedding</a>
+  * <a href="#com.microsoft.Mamba2Verify">com.microsoft.Mamba2Verify</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp4Weight">com.microsoft.MatMulBlockQuantizedFp4Weight</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp8Weight">com.microsoft.MatMulBlockQuantizedFp8Weight</a>
   * <a href="#com.microsoft.MatMulBnb4">com.microsoft.MatMulBnb4</a>
@@ -75,6 +77,9 @@ Do not modify directly.*
   * <a href="#com.microsoft.MatMulNBitsMlp">com.microsoft.MatMulNBitsMlp</a>
   * <a href="#com.microsoft.MatMulNBitsQLoRA">com.microsoft.MatMulNBitsQLoRA</a>
   * <a href="#com.microsoft.MatMulNBitsQkv">com.microsoft.MatMulNBitsQkv</a>
+  * <a href="#com.microsoft.MatMulPackedIQ2XXS">com.microsoft.MatMulPackedIQ2XXS</a>
+  * <a href="#com.microsoft.MatMulPackedNVFP4">com.microsoft.MatMulPackedNVFP4</a>
+  * <a href="#com.microsoft.MatMulPackedQ8">com.microsoft.MatMulPackedQ8</a>
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
   * <a href="#com.microsoft.MoE">com.microsoft.MoE</a>
   * <a href="#com.microsoft.MulInteger">com.microsoft.MulInteger</a>
@@ -118,6 +123,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.Range">com.microsoft.Range</a>
   * <a href="#com.microsoft.ReduceSumInteger">com.microsoft.ReduceSumInteger</a>
   * <a href="#com.microsoft.RelativePositionBias">com.microsoft.RelativePositionBias</a>
+  * <a href="#com.microsoft.ReluSquared">com.microsoft.ReluSquared</a>
   * <a href="#com.microsoft.RemovePadding">com.microsoft.RemovePadding</a>
   * <a href="#com.microsoft.RestorePadding">com.microsoft.RestorePadding</a>
   * <a href="#com.microsoft.Rfft">com.microsoft.Rfft</a>
@@ -567,6 +573,57 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float16), tensor(float)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.BiasCorrectedMoERoute"></a><a name="com.microsoft.biascorrectedmoeroute">**com.microsoft.BiasCorrectedMoERoute**</a>
+
+  FP32 sigmoid(X*W^T); top-k by score+bias (ties prefer lower index). Weights use unbiased scores normalized by sum+1e-20 and multiplied by scale. BF16 X[R,K], W[E,K]; K positive and divisible by 256, topk<=min(E,32), E<=512.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>scale</tt> : float</dt>
+<dd>Multiplier after normalization.</dd>
+<dt><tt>topk</tt> : int (required)</dt>
+<dd>Number of selected experts.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>BF16 input [R,K].</dd>
+<dt><tt>W</tt> : T</dt>
+<dd>BF16 router weight [E,K].</dd>
+<dt><tt>bias</tt> : F</dt>
+<dd>FP32 correction [E], used only for selection.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>indices</tt> : I</dt>
+<dd>Ordered selected experts [R,topk].</dd>
+<dt><tt>weights</tt> : F</dt>
+<dd>Normalized unbiased scores [R,topk].</dd>
+<dt><tt>scores</tt> : F</dt>
+<dd>Unbiased sigmoid scores [R,E].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16)</dt>
+<dd>BF16 input.</dd>
+<dt><tt>F</tt> : tensor(float)</dt>
+<dd>FP32 scores.</dd>
+<dt><tt>I</tt> : tensor(int32)</dt>
+<dd>Expert indices.</dd>
 </dl>
 
 
@@ -3997,6 +4054,94 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.Mamba2Verify"></a><a name="com.microsoft.mamba2verify">**com.microsoft.Mamba2Verify**</a>
+
+  Fused causal convolution, selective state-space recurrence and gated grouped RMS normalization.
+  Local provisional contract: head_dim=64, d_state=128, 1<=R<=16.
+  projection[R, 2*di+2*n_groups*d_state+heads] packs [gate, xBC, dt], di=heads*head_dim.
+  state_row is a device int32[1] selecting the starting snapshot (0<=state_row<slots).
+  Convolution has four taps, with BF16 SiLU output. The FP32 recurrence is
+  dt=max(softplus(projection_dt+dt_bias),time_step_min),
+  S=exp(A_negative*dt)*S+(dt*x)*B, readout=D*x+sum(C*S).
+  Readout is gated by FP32 SiLU(gate), normalized per group, scaled by norm_weight and rounded to BF16.
+  Every processed token writes its post-token convolution and SSM snapshot to the corresponding output row.
+  The final/accepted state is chosen by the caller through state_row on the next invocation.
+  Input states may alias their corresponding outputs. Slots R..slots-1 are preserved.
+  No accepted-length truncation, hidden mutable state, host reads or synchronization is performed.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>d_state</tt> : int</dt>
+<dd>Currently 128.</dd>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Grouped RMS epsilon.</dd>
+<dt><tt>head_dim</tt> : int</dt>
+<dd>Currently 64.</dd>
+<dt><tt>heads</tt> : int (required)</dt>
+<dd>Number of heads.</dd>
+<dt><tt>n_groups</tt> : int (required)</dt>
+<dd>Number of B/C and normalization groups, dividing heads.</dd>
+<dt><tt>time_step_min</tt> : float</dt>
+<dd>Lower bound for softplus time step.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>projection</tt> : T</dt>
+<dd>Packed projection [R, width].</dd>
+<dt><tt>conv_state</tt> : T</dt>
+<dd>Snapshots [slots, di+2*n_groups*d_state, 3].</dd>
+<dt><tt>ssm_state</tt> : F</dt>
+<dd>Snapshots [slots, heads, d_state, head_dim].</dd>
+<dt><tt>conv_weight</tt> : T</dt>
+<dd>Depthwise weights [channels,4] or [channels,1,4].</dd>
+<dt><tt>conv_bias</tt> : T</dt>
+<dd>Depthwise convolution bias [channels].</dd>
+<dt><tt>dt_bias</tt> : F</dt>
+<dd>Time-step bias [heads].</dd>
+<dt><tt>A_negative</tt> : F</dt>
+<dd>Negative decay coefficient [heads], not A_log.</dd>
+<dt><tt>D</tt> : F</dt>
+<dd>Skip coefficient [heads].</dd>
+<dt><tt>norm_weight</tt> : F</dt>
+<dd>Normalization weight [di].</dd>
+<dt><tt>state_row</tt> : I</dt>
+<dd>Starting snapshot index int32[1], on device.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Normalized mixer result [R, di].</dd>
+<dt><tt>conv_snapshots</tt> : T</dt>
+<dd>Post-token convolution snapshots, same shape as conv_state.</dd>
+<dt><tt>ssm_snapshots</tt> : F</dt>
+<dd>Post-token recurrence snapshots, same shape as ssm_state.</dd>
+<dt><tt>xbc</tt> : T</dt>
+<dd>BF16 convolution SiLU result [R, channels].</dd>
+<dt><tt>readout</tt> : F</dt>
+<dd>FP32 recurrence readout before gating [R, di].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16)</dt>
+<dd>BF16 activation and convolution parameters.</dd>
+<dt><tt>F</tt> : tensor(float)</dt>
+<dd>FP32 recurrence and normalization.</dd>
+<dt><tt>I</tt> : tensor(int32)</dt>
+<dd>Device snapshot selector.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.MatMulBlockQuantizedFp4Weight"></a><a name="com.microsoft.matmulblockquantizedfp4weight">**com.microsoft.MatMulBlockQuantizedFp4Weight**</a>
 
   Weight-only NVFP4 (E2M1) matrix multiplication.
@@ -4668,6 +4813,143 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>T2</tt> : tensor(uint8)</dt>
 <dd>Constrain quantized weight types to uint8.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MatMulPackedIQ2XXS"></a><a name="com.microsoft.matmulpackediq2xxs">**com.microsoft.MatMulPackedIQ2XXS**</a>
+
+  Aligned IQ2_XXS projection with BF16 activations/output, not GGML's interleaved 66-byte records.
+  B is UINT8 [N,K/32,8]. Each 8-byte record contains four grid indices followed by a little-endian
+  32-bit word containing four 7-bit sign indices and a 4-bit local scale. S [N,K/256] holds raw FP16
+  superblock scales. BF16-typed S is accepted ONLY as a bit-preserving carrier of those FP16 bits.
+  The BF16 operand is round_BF16(signed_grid * (float(FP16(S)) * (0.5 + local_scale) * 0.25)),
+  without separately rounding the intermediate scale. BF16 MMA, FP32 accumulation and source block reduction
+  precede BF16 output rounding. A is [...,K], K divisible by 256, with 1..8 flattened rows.
+  No bias, empty dimensions, or general (>8 row) prefill.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>BF16 activation [...,K].</dd>
+<dt><tt>B</tt> : T1</dt>
+<dd>Aligned IQ2_XXS records [N,K/32,8].</dd>
+<dt><tt>scales</tt> : S</dt>
+<dd>Raw FP16 superblock scales [N,K/256]; BF16 is a raw-bit carrier.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>BF16 projection [...,N].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16)</dt>
+<dd>Activation/output type.</dd>
+<dt><tt>T1</tt> : tensor(uint8)</dt>
+<dd>Packed records.</dd>
+<dt><tt>S</tt> : tensor(float16), tensor(bfloat16)</dt>
+<dd>FP16 scales or bit-preserving BF16 carrier.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MatMulPackedNVFP4"></a><a name="com.microsoft.matmulpackednvfp4">**com.microsoft.MatMulPackedNVFP4**</a>
+
+  Packed NVFP4 projection with BF16 activation/output and source-exact small-row arithmetic.
+  A is [...,K], with 1..8 flattened rows; B is UINT8 [N,K/2], low-nibble-first E2M1.
+  Scales are raw E4M3 bytes [N,K/16]; global_scale is one FP32 multiplier.
+  K is divisible by 1024. Row one additionally requires K=4096 or 8192 and uses FP16-pair FMA
+  partial sums with activation scaling by 1/64. Rows 2..8 use BF16 tensor-core operands,
+  FP32 accumulation and the source block reduction topology. Global scaling precedes BF16 output rounding.
+  These paths are intentionally NOT interchangeable with MatMulNVFP4A16's general accumulation contract.
+  No fused bias, activation quantization, general (>8 row) prefill, or empty dimensions.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>BF16 activation [...,K].</dd>
+<dt><tt>B</tt> : T1</dt>
+<dd>Packed E2M1 bytes [N,K/2].</dd>
+<dt><tt>scales</tt> : T1</dt>
+<dd>E4M3 bytes [N,K/16].</dd>
+<dt><tt>global_scale</tt> : T2</dt>
+<dd>One-element FP32 multiplier.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>BF16 projection [...,N].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16)</dt>
+<dd>Activation/output type.</dd>
+<dt><tt>T1</tt> : tensor(uint8)</dt>
+<dd>Packed weight/scale bytes.</dd>
+<dt><tt>T2</tt> : tensor(float)</dt>
+<dd>Global multiplier.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MatMulPackedQ8"></a><a name="com.microsoft.matmulpackedq8">**com.microsoft.MatMulPackedQ8**</a>
+
+  Packed offset-binary Q8 projection with BF16 activations/output and separate block scales.
+  B is UINT8 [N,K/32,32]: q = byte - 128, NOT signed GGML Q8_0 records.
+  S is [N,K/32] with FP16 or BF16 scales; A is [...,K] with 1..8 flattened rows, K divisible by 64.
+  FP16 scales are retained through FP32 reconstruction, then each full q*S operand is rounded to BF16.
+  Rows 2..8 with BF16 scales use the same reconstruction and BF16 tensor-core multiplication.
+  Row one with BF16 scales instead accumulates FP32 dot products against unscaled integer weights per block, multiplies
+  by the block scale in FP32, and uses the source warp-XOR reduction; K must be <=6144.
+  All MMA paths use the source block reduction topology. No fused bias, empty dimensions, or >8-row prefill.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>BF16 activation [...,K].</dd>
+<dt><tt>B</tt> : T1</dt>
+<dd>Offset-binary Q8 bytes [N,K/32,32].</dd>
+<dt><tt>scales</tt> : S</dt>
+<dd>Source scales [N,K/32], not prematurely rounded.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>BF16 projection [...,N].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16)</dt>
+<dd>Activation/output type.</dd>
+<dt><tt>T1</tt> : tensor(uint8)</dt>
+<dd>Packed weights.</dd>
+<dt><tt>S</tt> : tensor(float16), tensor(bfloat16)</dt>
+<dd>Source block scale type.</dd>
 </dl>
 
 
@@ -7438,6 +7720,36 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float or half tensors.</dd>
 <dt><tt>U</tt> : tensor(int64)</dt>
 <dd>Constrain sequence_length to int tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.ReluSquared"></a><a name="com.microsoft.relusquared">**com.microsoft.ReluSquared**</a>
+
+  Y=BF16(fmax(float(X),0)^2), with one final BF16 rounding. fmax maps NaN to zero.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>BF16 tensor.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Same shape as X.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16)</dt>
+<dd>BF16 input and output.</dd>
 </dl>
 
 
