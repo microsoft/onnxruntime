@@ -257,13 +257,14 @@ class TestDlpackPyTorch(unittest.TestCase):
         self.assertIsNone(owner_ref())
         torch.testing.assert_close(result, torch.arange(6, dtype=torch.float32).flip(0))
 
-    def test_numpy_owner_release_without_gil(self):
+    def test_numpy_owner_release_without_gil_while_main_thread_is_blocked(self):
         for contiguous in (False, True):
             with self.subTest(contiguous=contiguous):
                 array = np.arange(6, dtype=np.float32)
                 if not contiguous:
                     array = array[::-1]
-                owner_ref = weakref.ref(array)
+                released = threading.Event()
+                owner_ref = weakref.ref(array, lambda _, released=released: released.set())
                 value = ort.OrtValue.ortvalue_from_numpy(array)
                 capsule = value.__dlpack__()
                 managed = managed_tensor_from_capsule(capsule)
@@ -275,10 +276,20 @@ class TestDlpackPyTorch(unittest.TestCase):
                 del value, array
                 gc.collect()
                 self.assertEqual(owner_ref() is not None, contiguous)
-                # CFUNCTYPE releases the GIL while calling the actual C++ deleter.
-                deleter(managed)
-                self.assertEqual(ctypes.pythonapi.Py_MakePendingCalls(), 0)
-                gc.collect()
+                observed = []
+
+                def release(deleter=deleter, managed=managed, observed=observed, released=released):
+                    # Let the main thread block in join before releasing native storage.
+                    time.sleep(0.05)
+                    # CFUNCTYPE releases the GIL while calling the actual C++ deleter.
+                    deleter(managed)
+                    observed.append(released.wait(timeout=5))
+
+                worker = threading.Thread(target=release)
+                worker.start()
+                worker.join(timeout=10)
+                self.assertFalse(worker.is_alive(), "Native destruction must not wait for the main thread.")
+                self.assertEqual(observed, [True], "NumPy storage must be released while the main thread is blocked.")
                 self.assertIsNone(owner_ref())
 
     def test_gpu_vendor_metadata_without_gpu_allocation(self):
@@ -642,20 +653,23 @@ class TestDlpackPyTorch(unittest.TestCase):
 
 
 @unittest.skipUnless(
-    torch.cuda.is_available() and "CUDAExecutionProvider" in ort.get_available_providers(),
-    "requires PyTorch CUDA and the ORT CUDA execution provider",
+    torch.cuda.is_available()
+    and ("MIGraphXExecutionProvider" if torch.version.hip else "CUDAExecutionProvider")
+    in ort.get_available_providers(),
+    "requires PyTorch CUDA/ROCm and the corresponding ORT CUDA/MIGraphX execution provider",
 )
-class TestDlpackCUDA(unittest.TestCase):
-    @unittest.skipUnless(torch.cuda.device_count() >= 2, "requires two CUDA devices")
+class TestDlpackGPU(unittest.TestCase):
+    @unittest.skipUnless(torch.cuda.device_count() >= 2, "requires two GPU devices")
     def test_protocol_import_restores_current_device(self):
         tensor_device = torch.cuda.device_count() - 1
+        device_type = 10 if torch.version.hip else 2
         with torch.cuda.device(tensor_device):
             source = torch.arange(6, dtype=torch.float32, device=f"cuda:{tensor_device}")
             torch.cuda.current_stream().synchronize()
 
         class InvalidProducer:
             def __dlpack_device__(self):
-                return (2, tensor_device)
+                return (device_type, tensor_device)
 
             def __dlpack__(self, *, stream=None):
                 if torch.cuda.current_device() != tensor_device:
@@ -667,6 +681,7 @@ class TestDlpackCUDA(unittest.TestCase):
                 with self.subTest(value_type=value_type, synchronize=synchronize), torch.cuda.device(0):
                     imported = value_type.from_dlpack(source, synchronize=synchronize)
                     self.assertEqual(torch.cuda.current_device(), 0)
+                    self.assertEqual(imported.__dlpack_device__(), (device_type, tensor_device))
                     torch.testing.assert_close(torch.from_dlpack(imported), source)
                     with self.assertRaisesRegex(ValueError, "Producer export failed"):
                         value_type.from_dlpack(InvalidProducer(), synchronize=synchronize)
@@ -708,7 +723,7 @@ class TestDlpackCUDA(unittest.TestCase):
                 finally:
                     stop.set()
                     thread.join()
-                self.assertEqual(observed, [True], "Another Python thread must run while the import waits for CUDA.")
+                self.assertEqual(observed, [True], "Another Python thread must run while the import waits for the GPU.")
                 torch.testing.assert_close(torch.from_dlpack(imported), source)
 
     def test_export_releases_gil_during_device_wait(self):
@@ -732,7 +747,7 @@ class TestDlpackCUDA(unittest.TestCase):
             capsule = value.__dlpack__()
         finally:
             thread.join()
-        self.assertEqual(observed, [True], "Another Python thread must run while the export waits for CUDA.")
+        self.assertEqual(observed, [True], "Another Python thread must run while the export waits for the GPU.")
         torch.testing.assert_close(torch.from_dlpack(capsule), source)
 
     def test_import_waits_for_producer_stream(self):
@@ -765,8 +780,8 @@ class TestDlpackCUDA(unittest.TestCase):
         producer = torch.cuda.Stream(device=tensor_device)
         consumer = torch.cuda.Stream(device=tensor_device)
         for export in (
-            lambda: public.__dlpack__(stream=1),
-            lambda: public._get_c_value().__dlpack__(stream=2),
+            lambda: public.__dlpack__(stream=0 if torch.version.hip else 1),
+            lambda: public._get_c_value().__dlpack__(stream=1 if torch.version.hip else 2),
             lambda: public.__dlpack__(stream=consumer.cuda_stream),
             lambda: public.__dlpack__(),
             lambda: values.to_dlpacks(None)[0],
@@ -844,9 +859,9 @@ class TestDlpackCUDA(unittest.TestCase):
         for result in results:
             torch.testing.assert_close(result, source)
 
-    def test_invalid_cuda_stream(self):
+    def test_invalid_gpu_stream(self):
         value = ort.OrtValue.from_dlpack(torch.ones(1, device="cuda"))
-        for stream in (0, -2):
+        for stream in (-2,) if torch.version.hip else (0, -2):
             with self.subTest(stream=stream), self.assertRaisesRegex(ValueError, "Invalid GPU DLPack stream"):
                 value.__dlpack__(stream=stream)
         for stream in (False, 1.5, "invalid"):

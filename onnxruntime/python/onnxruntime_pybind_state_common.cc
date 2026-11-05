@@ -19,7 +19,7 @@ void ReleasePythonObject(PyObject* object) noexcept {
   if (PyGILState_Check()) {
     Py_DECREF(object);
   } else {
-    DeferPythonRelease(object);
+    ReleasePythonObjectOnCleanupThread(object);
   }
 }
 

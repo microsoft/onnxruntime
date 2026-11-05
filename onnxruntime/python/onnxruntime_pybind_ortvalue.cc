@@ -608,7 +608,7 @@ void addOrtValueMethods(pybind11::module& m) {
             }
             // Callbacks can mutate the original vector, including reallocating its storage.
             auto values = v;
-            InlinedHashSet<std::pair<int, int>> synchronized_devices;
+            InlinedHashMap<int, InlinedHashSet<int>> synchronized_devices;
             py::list capsules;
             for (auto& value : values) {
               ORT_ENFORCE(value.IsTensor(), "DLPack export requires a dense tensor OrtValue; initialize the value before exporting.");
@@ -616,7 +616,7 @@ void addOrtValueMethods(pybind11::module& m) {
               const auto device = dlpack::GetDlpackDevice(value, value.Get<Tensor>().Location().device.Id());
               py::object stream = py::none();
               if (device.device_type == kDLCUDA || device.device_type == kDLROCM) {
-                if (!synchronize || !synchronized_devices.emplace(device.device_type, device.device_id).second) {
+                if (!synchronize || !synchronized_devices[device.device_type].insert(device.device_id).second) {
                   stream = py::int_(-1);
                 }
               }

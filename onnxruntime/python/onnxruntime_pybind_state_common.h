@@ -532,8 +532,8 @@ bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
                    const std::string& name,
                    /*out*/ ONNX_NAMESPACE::TypeProto& type_proto);
 
-// Transfer an owned reference to the existing deferred cleanup queue.
-void DeferPythonRelease(PyObject* object) noexcept;
+// Transfer an owned reference without waiting for the GIL or the main Python thread.
+void ReleasePythonObjectOnCleanupThread(PyObject* object) noexcept;
 void ReleasePythonObject(PyObject* object) noexcept;
 
 #if defined(ENABLE_DLPACK)
