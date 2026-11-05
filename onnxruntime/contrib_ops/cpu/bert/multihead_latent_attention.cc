@@ -92,7 +92,30 @@ WorkPlan MakeWorkPlan(int batch_size, int sequence_length, int num_heads, int ma
   WorkPlan plan{};
   plan.rows_per_batch = static_cast<std::ptrdiff_t>(sequence_length) * num_heads;
   // Whole tokens per block when they fit, so a block's causal limits span as few tiles as possible.
-  const std::ptrdiff_t block = num_heads <= kMaxRowBlock ? (kMaxRowBlock / num_heads) * num_heads : kMaxRowBlock;
+  std::ptrdiff_t block = kMaxRowBlock;
+  if (num_heads <= kMaxRowBlock) {
+    const std::ptrdiff_t max_tokens = kMaxRowBlock / num_heads;
+    block = max_tokens * num_heads;
+    // When the row tasks alone keep the threads busy (or the cache is too short to split below), take the largest
+    // block, down to half of it, whose tasks best fill the threads' last round: 24 heads over 128 tokens give 26
+    // tasks of 5 tokens, which leave 8 threads 19% idle, or 32 tasks of 4 tokens. Otherwise the cache is split and
+    // a smaller block would only read it again.
+    const std::ptrdiff_t tasks_at_max = batch_size * CeilDiv(plan.rows_per_batch, block);
+    if (thread_count > 1 && (tasks_at_max >= 2 * static_cast<std::ptrdiff_t>(thread_count) ||
+                             max_total_rows <= kMinKvChunk)) {
+      int64_t best_tasks = 0;
+      int64_t best_slots = 1;
+      for (std::ptrdiff_t tokens = max_tokens; tokens >= std::max<std::ptrdiff_t>(1, max_tokens / 2); --tokens) {
+        const int64_t tasks = batch_size * CeilDiv(plan.rows_per_batch, tokens * num_heads);
+        const int64_t slots = (tasks + thread_count - 1) / thread_count * thread_count;
+        if (tasks * best_slots > best_tasks * slots) {
+          best_tasks = tasks;
+          best_slots = slots;
+          block = tokens * num_heads;
+        }
+      }
+    }
+  }
   plan.row_block = std::min(plan.rows_per_batch, block);
   plan.row_blocks = CeilDiv(plan.rows_per_batch, plan.row_block);
 
@@ -172,15 +195,8 @@ void AttendRowBlock(const LatentAttentionArgs<T>& args, const WorkPlan& plan, in
         std::fill_n(s, n, 0.0f);
         continue;
       }
-      const float m_new = std::max(m[i], *std::max_element(s, s + valid));
-      for (int j = 0; j < valid; ++j) {
-        s[j] -= m_new;
-      }
-      MlasComputeExp(s, s, static_cast<size_t>(valid));
-      float sum = 0.0f;
-      for (int j = 0; j < valid; ++j) {
-        sum += s[j];
-      }
+      const float m_new = std::max(m[i], MlasReduceMaximum(s, static_cast<size_t>(valid)));
+      const float sum = MlasComputeSumExp(s, s, static_cast<size_t>(valid), -m_new);
       std::fill(s + valid, s + n, 0.0f);
       if (m_new > m[i]) {
         if (l[i] > 0.0f) {
