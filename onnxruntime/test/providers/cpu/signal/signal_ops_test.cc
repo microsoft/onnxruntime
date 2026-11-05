@@ -1,7 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
 #include <functional>
+#include <numbers>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -291,6 +293,106 @@ TEST(SignalOpsTest, STFTFloat) {
       0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f};
   test.AddOutput<float>("output", output_shape, expected_output);
   test.Run();
+}
+
+// Reference DFT of each length-`frame_length` frame of a real signal, computed in double.
+static vector<double> ReferenceRealDFT(const vector<float>& signal, const vector<float>& window, size_t frame_length,
+                                       size_t frame_step, size_t num_bins) {
+  const size_t num_frames = (signal.size() - frame_length) / frame_step + 1;
+  vector<double> result;
+  result.reserve(num_frames * num_bins * 2);
+  for (size_t f = 0; f < num_frames; f++) {
+    for (size_t k = 0; k < num_bins; k++) {
+      double re = 0, im = 0;
+      for (size_t n = 0; n < frame_length; n++) {
+        const double x = static_cast<double>(signal[f * frame_step + n]) * (window.empty() ? 1.0 : window[n]);
+        const double angle = -2.0 * std::numbers::pi * static_cast<double>(k * n) / static_cast<double>(frame_length);
+        re += x * std::cos(angle);
+        im += x * std::sin(angle);
+      }
+      result.push_back(re);
+      result.push_back(im);
+    }
+  }
+  return result;
+}
+
+// For a real input the DC bin and, for an even length, the Nyquist bin are exactly real, so their imaginary parts must
+// be exactly 0 rather than rounding noise whose sign varies (https://github.com/microsoft/onnxruntime/issues/33314).
+static void VerifyRealInputSpectrum(const vector<OrtValue>& fetches, const vector<double>& expected, size_t num_bins,
+                                    size_t dft_length) {
+  ASSERT_EQ(fetches.size(), 1u);
+  auto output = fetches[0].Get<Tensor>().DataAsSpan<float>();
+  ASSERT_EQ(output.size(), expected.size());
+  for (size_t i = 0; i < output.size(); i++) {
+    EXPECT_NEAR(output[i], expected[i], 1e-4) << "index " << i;
+  }
+  for (size_t frame = 0; frame < output.size() / (num_bins * 2); frame++) {
+    const float* bins = output.data() + frame * num_bins * 2;
+    EXPECT_EQ(bins[1], 0.0f) << "DC bin of frame " << frame;
+    if (dft_length % 2 == 0) {
+      EXPECT_EQ(bins[(dft_length / 2) * 2 + 1], 0.0f) << "Nyquist bin of frame " << frame;
+    }
+  }
+}
+
+static vector<float> RealTestSignal(size_t size) {
+  vector<float> signal(size);
+  for (size_t n = 0; n < size; n++) {
+    const double t = static_cast<double>(n);
+    signal[n] = static_cast<float>(0.7 * std::sin(0.37 * t) + 0.25 * std::cos(1.91 * t + 0.4) + 0.05 * std::sin(2.9 * t));
+  }
+  return signal;
+}
+
+static void TestDFTRealInputDCAndNyquistBinsAreReal(int64_t dft_length, bool onesided) {
+  const size_t length = static_cast<size_t>(dft_length);
+  const size_t num_bins = onesided ? length / 2 + 1 : length;
+  const vector<float> signal = RealTestSignal(length);
+  const vector<double> expected = ReferenceRealDFT(signal, {}, length, length, num_bins);
+
+  OpTester test("DFT", kOpsetVersion20);
+  test.AddInput<float>("input", {1, dft_length, 1}, signal);
+  test.AddInput<int64_t>("dft_length", {}, {dft_length});
+  test.AddInput<int64_t>("axis", {}, {1});
+  test.AddAttribute<int64_t>("onesided", static_cast<int64_t>(onesided));
+  test.AddOutput<float>("output", {1, static_cast<int64_t>(num_bins), 2}, vector<float>(num_bins * 2));
+  test.SetCustomOutputVerifier([&](const vector<OrtValue>& fetches, const std::string&) {
+    VerifyRealInputSpectrum(fetches, expected, num_bins, length);
+  });
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+}
+
+TEST(SignalOpsTest, DFT20_RealInput_DCAndNyquistBinsAreReal) {
+  for (bool onesided : {false, true}) {
+    TestDFTRealInputDCAndNyquistBinsAreReal(8, onesided);   // radix-2
+    TestDFTRealInputDCAndNyquistBinsAreReal(12, onesided);  // Bluestein, even length
+    TestDFTRealInputDCAndNyquistBinsAreReal(7, onesided);   // Bluestein, odd length (no Nyquist bin)
+  }
+}
+
+TEST(SignalOpsTest, STFTFloat_RealInput_DCAndNyquistBinsAreReal) {
+  constexpr size_t kFrameLength = 20, kFrameStep = 5, kSignalLength = 400;
+  constexpr size_t kNumBins = kFrameLength / 2 + 1;
+  constexpr size_t kNumFrames = (kSignalLength - kFrameLength) / kFrameStep + 1;
+  vector<float> window(kFrameLength);
+  for (size_t n = 0; n < kFrameLength; n++) {
+    window[n] = static_cast<float>(0.5 - 0.5 * std::cos(2.0 * std::numbers::pi * static_cast<double>(n) / kFrameLength));
+  }
+  const vector<float> signal = RealTestSignal(kSignalLength);
+  const vector<double> expected = ReferenceRealDFT(signal, window, kFrameLength, kFrameStep, kNumBins);
+
+  OpTester test("STFT", kMinOpsetVersion);
+  test.AddInput<float>("signal", {1, static_cast<int64_t>(kSignalLength), 1}, signal);
+  test.AddInput<int64_t>("frame_step", {}, {static_cast<int64_t>(kFrameStep)});
+  test.AddInput<float>("window", {static_cast<int64_t>(kFrameLength)}, window);
+  test.AddInput<int64_t>("frame_length", {}, {static_cast<int64_t>(kFrameLength)});
+  test.AddOutput<float>("output", {1, static_cast<int64_t>(kNumFrames), static_cast<int64_t>(kNumBins), 2},
+                        vector<float>(kNumFrames * kNumBins * 2));
+  test.SetCustomOutputVerifier([&](const vector<OrtValue>& fetches, const std::string&) {
+    VerifyRealInputSpectrum(fetches, expected, kNumBins, kFrameLength);
+  });
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
 
 static void TestSTFTInvalidFrameStep(int64_t frame_step) {
