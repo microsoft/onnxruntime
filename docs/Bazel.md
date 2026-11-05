@@ -15,6 +15,29 @@ are not included. Experimental Android ARM64 runtime/JNI/AAR and single-threaded
 CPU WebAssembly paths are described below.
 `orttraining` build and test migration is intentionally out of scope.
 
+## Final integrated validation
+
+The combined source snapshot `1b05810e36a22445164c9eab29707ee784fd4167`
+includes the C++ tests, language bindings, Android, WebAssembly, CPU contrib,
+and package targets. On Linux, frozen wildcard analysis
+(`bazel build //... --nobuild`) passed with 220 targets, 52,800 configured
+targets, and zero build actions. The following final source-native command
+then passed **all five targets**:
+
+```sh
+bazel test -c opt //:python_wheel_test //:python_smoke_test //:runtime_sdk_archive_test //:java_native_jar_test //:java_smoke_test --jobs=16 --loading_phase_threads=4 --build_python_zip=false --lockfile_mode=error --test_output=all --nocache_test_results
+```
+
+The run took 177.945 seconds and executed 577 actions (571 Linux sandbox,
+two Java worker, four internal), reusing 930 unchanged actions. Core runtime
+and pybind sources recompiled, and runtime/JNI libraries relinked as needed;
+no native binary substitutions were used. This confirms the final integration,
+not only the individual package-slice snapshots described below.
+Final Windows frozen analysis additionally included all six explicit manual
+WASM test targets: 226 targets, 74,380 configured targets, zero build actions.
+Platform execution coverage and remaining gaps are detailed below; this does
+not claim full-suite, native Apple, or Android device validation.
+
 ## CPU contrib operators
 
 CPU contrib operators are opt-in; the established default still defines
