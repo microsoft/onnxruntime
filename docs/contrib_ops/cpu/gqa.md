@@ -482,7 +482,7 @@ The non-quantized path (`ApplyAttentionGrouped` in `gqa_attention_base.h`, kerne
 New K/V rows are first appended to the present cache (parallel over batch × kv_heads). Then, per task:
 
 1. A task owns one (batch, KV head) pair, a block of query tokens and a chunk of the cache. Its rows are the (token, head) pairs of all `num_heads / kv_num_heads` query heads that read this KV head, so the group's heads form the GEMM M dimension.
-2. The cache is walked in tiles of 128 rows. Each tile is copied (FP32) or converted (FP16) once into an FP32 scratch tile and packed once as the GEMM B operand, then used by every GEMM row block (up to 8 blocks of 128 rows) of the task. A KV head is therefore read once per task, not once per query head.
+2. The cache is walked in tiles of 128 rows. Each tile is copied (FP32) or converted (FP16) once into an FP32 scratch tile and, when a GEMM row block has more than one query row, packed once as the GEMM B operand, then used by every GEMM row block (up to 8 blocks of 128 rows) of the task. One-row blocks (decode with `num_heads == kv_num_heads`) skip the packing and fold the scale into the query, so MLAS uses its single-row kernels. A KV head is therefore read once per task, not once per query head.
 3. **QK GEMM** with the scale as alpha, then per row: softcap, attention bias (with the windowed-cache offsets), and the causal / local-window bounds of that row's token. Tiles outside a block's bounds are skipped.
 4. **Online softmax** in FP32 (running max `m`, sum `l`, rescale of the accumulator when the max grows).
 5. **SV GEMM** accumulates `P × V_tile` into the row accumulators.
@@ -490,17 +490,18 @@ New K/V rows are first appended to the present cache (parallel over batch × kv_
 
 ### Work split and split-KV decode
 
-Tasks take as many GEMM row blocks as possible while there are still at least as many tasks as threads, so prefill loads each tile once for many query rows. When there are fewer tasks than about 4 per thread (2 for prefill-sized tasks), typically in decode or with few KV heads, the cache is split into chunks of at least 512 rows. Each chunk keeps its own `(m, l, acc)` state and a second parallel pass merges the chunks with a log-sum-exp reduction. Planning arithmetic is 64-bit.
+Tasks take as many GEMM row blocks as possible while there are still at least as many tasks as threads, so prefill loads each tile once for many query rows. When there are fewer tasks than about 4 per thread (2 for prefill-sized tasks), typically in decode or with few KV heads, caches longer than 512 rows are split into at most `ceil(T / 512)` chunks, each a multiple of 128 rows except the last. Each chunk keeps its own `(m, l, acc)` state and a second parallel pass merges the chunks with a log-sum-exp reduction; a chunk whose softmax sum is NaN still takes part, so NaN scores propagate as they do without a split. Planning arithmetic uses `std::ptrdiff_t` over the int32 lengths.
 
 ### Activation Conditions
 
-The grouped path is used when ALL of the following hold, otherwise the naive path runs:
+The grouped path is used when ALL of the following hold. Otherwise FP32 steps that are causal, with `total_sequence_length > 1` and no softcap, smooth softmax or head sink, run the MLAS FP32 flash path (`MlasFlashAttentionGQA` in `flashattn_gqa.cpp`: a tiled kernel for prefill and a GEMV kernel for single-token decode), and everything else runs the naive path:
 
 - No quantized KV cache (`k_quant_type == NONE`)
 - `ORT_GQA_DISABLE_FLASH_ATTENTION` is not set (or set to `0`)
 - No output QK capture
 - `local_window_size != 0`
 - `present_key` and `present_value` are provided, or the cache is read only (`kv_sequence_length == 0` with both present outputs omitted)
+- Not FP32 single-token decode with `num_heads == kv_num_heads` on a non-x64 CPU. MLAS has no single-row kernel for the grouped kernel's `Q*K'` product there, and its GEMV decode kernel is faster for that step.
 - For FP16 caches: MLAS has no FP16 GEMM on this platform. Where it has (ARM64 with FP16 arithmetic), the naive path computes FP16 caches in FP16, which is faster there but less accurate.
 
 Causal and bidirectional attention, local windows, softcap, attention bias, smooth softmax, head sink, rotary embeddings, packed QKV, ragged and right-padded batches, shared and separate past/present buffers, and the sliding-window cache are all supported.

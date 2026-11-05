@@ -146,8 +146,8 @@ struct WorkerBuffers {
 template <typename T>
 class GroupedAttention {
  public:
-  GroupedAttention(const GroupedFlashAttentionArgs<T>& args, const WorkPlan& plan, bool pack)
-      : args_(args), plan_(plan), pack_(pack) {}
+  GroupedAttention(const GroupedFlashAttentionArgs<T>& args, const WorkPlan& plan, bool pack_k, bool pack_v)
+      : args_(args), plan_(plan), pack_k_(pack_k), pack_v_(pack_v) {}
 
   // Cached rows [Low(High(b, s)), High(b, s)) are visible to query token s of batch entry b. Both bounds are
   // non-decreasing in s.
@@ -197,6 +197,11 @@ class GroupedAttention {
       LoadRows(q, args_.q_head_stride, group, head_size,
                w.q + static_cast<size_t>((s - s_begin) * group) * head_size);
     }
+    if (!pack_k_) {
+      // The unpacked Q*K' GEMM takes alpha = 1, so a one-row block reaches MLAS's single-row kernel.
+      const size_t q_count = static_cast<size_t>(rows) * head_size;
+      for (size_t i = 0; i < q_count; ++i) w.q[i] *= args_.scale;
+    }
 
     const T* key = args_.key + static_cast<size_t>(b) * args_.k_batch_stride +
                    static_cast<size_t>(kv) * args_.k_head_stride;
@@ -225,9 +230,11 @@ class GroupedAttention {
       // in strided column panels, which is several times slower on some ARM64 cores.
       LoadRows(key + static_cast<size_t>(tile_begin) * args_.k_row_stride, args_.k_row_stride, n, head_size, w.k);
       LoadRows(value + static_cast<size_t>(tile_begin) * args_.v_row_stride, args_.v_row_stride, n, v_head_size, w.v);
-      if (pack_) {
+      if (pack_k_) {
         MlasGemmPackB(CblasNoTrans, CblasTrans, static_cast<size_t>(n), head_size, w.k, head_size, w.packed_k,
                       args_.mlas_config);
+      }
+      if (pack_v_) {
         MlasGemmPackB(CblasNoTrans, CblasNoTrans, v_head_size, static_cast<size_t>(n), w.v, v_head_size, w.packed_v,
                       args_.mlas_config);
       }
@@ -238,12 +245,12 @@ class GroupedAttention {
         const std::ptrdiff_t r0 = (t0 - s_begin) * group;
         const std::ptrdiff_t sub_rows = (t1 - t0) * group;
         const float* q = w.q + static_cast<size_t>(r0) * head_size;
-        if (pack_) {
+        if (pack_k_) {
           MlasGemm(CblasNoTrans, static_cast<size_t>(sub_rows), static_cast<size_t>(n), head_size, args_.scale, q,
                    head_size, w.packed_k, 0.0f, w.scores, static_cast<size_t>(n), nullptr, args_.mlas_config);
         } else {
           MlasGemm(CblasNoTrans, CblasTrans, static_cast<size_t>(sub_rows), static_cast<size_t>(n), head_size,
-                   args_.scale, q, head_size, w.k, head_size, 0.0f, w.scores, static_cast<size_t>(n), nullptr,
+                   1.0f, q, head_size, w.k, head_size, 0.0f, w.scores, static_cast<size_t>(n), nullptr,
                    args_.mlas_config);
         }
 
@@ -290,7 +297,7 @@ class GroupedAttention {
         }
 
         float* out = acc + static_cast<size_t>(r0) * v_head_size;
-        if (pack_) {
+        if (pack_v_) {
           MlasGemm(CblasNoTrans, static_cast<size_t>(sub_rows), v_head_size, static_cast<size_t>(n), 1.0f, w.scores,
                    static_cast<size_t>(n), w.packed_v, 1.0f, out, v_head_size, nullptr, args_.mlas_config);
         } else {
@@ -355,7 +362,8 @@ class GroupedAttention {
 
   const GroupedFlashAttentionArgs<T>& args_;
   const WorkPlan& plan_;
-  const bool pack_;
+  const bool pack_k_;
+  const bool pack_v_;
 };
 
 // Scratch sizes are rounded up to whole cache lines so every buffer keeps the allocator's alignment, which the packed
@@ -394,14 +402,23 @@ Status RunGroupedFlashAttention(const GroupedFlashAttentionArgs<T>& args, Alloca
   // then packs per call) if the backend reports no packed size.
   const size_t packed_k_bytes = MlasGemmPackBSize(CblasNoTrans, CblasTrans, tile, head_size, args.mlas_config);
   const size_t packed_v_bytes = MlasGemmPackBSize(CblasNoTrans, CblasNoTrans, v_head_size, tile, args.mlas_config);
-  const bool pack = packed_k_bytes > 0 && packed_v_bytes > 0;
+  // Packing pays off when several query rows share a tile. One-row blocks (decode without grouping) use MLAS's
+  // single-row kernels on the unpacked tile instead: P*V's on every platform, Q*K''s (transposed B) only on x64.
+#if defined(_M_AMD64) || defined(__x86_64__)
+  constexpr bool kSingleRowTransposedKernel = true;
+#else
+  constexpr bool kSingleRowTransposedKernel = false;
+#endif
+  const bool can_pack = packed_k_bytes > 0 && packed_v_bytes > 0;
+  const bool pack_k = can_pack && (sub_rows > 1 || !kSingleRowTransposedKernel);
+  const bool pack_v = can_pack && sub_rows > 1;
 
   constexpr bool kConvert = !std::is_same_v<T, float>;
   const size_t q_size = AlignFloats(SafeInt<size_t>(row_block) * head_size);
   const size_t k_size = AlignFloats(SafeInt<size_t>(tile) * head_size);
   const size_t v_size = AlignFloats(SafeInt<size_t>(tile) * v_head_size);
-  const size_t packed_k_size = pack ? AlignFloats(packed_k_bytes / sizeof(float) + 1) : 0;
-  const size_t packed_v_size = pack ? AlignFloats(packed_v_bytes / sizeof(float) + 1) : 0;
+  const size_t packed_k_size = pack_k ? AlignFloats(packed_k_bytes / sizeof(float) + 1) : 0;
+  const size_t packed_v_size = pack_v ? AlignFloats(packed_v_bytes / sizeof(float) + 1) : 0;
   const size_t score_size = AlignFloats(SafeInt<size_t>(sub_rows) * tile);
   const size_t bias_size = kConvert && args.attention_bias != nullptr ? AlignFloats(tile) : 0;
   // Softmax state of one task: m[row_block], l[row_block], acc[row_block][v_head_size].
@@ -416,7 +433,7 @@ Status RunGroupedFlashAttention(const GroupedFlashAttentionArgs<T>& args, Alloca
     partial = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(state_size) * plan.task_count);
   }
 
-  const GroupedAttention<T> attention(args, plan, pack);
+  const GroupedAttention<T> attention(args, plan, pack_k, pack_v);
   auto decode_row_task = [&](std::ptrdiff_t row_task, int& b, int& kv, std::ptrdiff_t& block) {
     // Later token blocks attend to more cached rows, so they come first.
     block = plan.token_blocks - 1 - row_task % plan.token_blocks;
@@ -433,8 +450,8 @@ Status RunGroupedFlashAttention(const GroupedFlashAttentionArgs<T>& args, Alloca
     w.v = w.k + k_size;
     float* packed_k = w.v + v_size;
     float* packed_v = packed_k + packed_k_size;
-    w.packed_k = pack ? packed_k : nullptr;
-    w.packed_v = pack ? packed_v : nullptr;
+    w.packed_k = pack_k ? packed_k : nullptr;
+    w.packed_v = pack_v ? packed_v : nullptr;
     w.scores = packed_v + packed_v_size;
     w.bias = w.scores + score_size;
     w.state = w.bias + bias_size;
@@ -492,7 +509,7 @@ Status RunGroupedFlashAttention(const GroupedFlashAttentionArgs<T>& args, Alloca
         float row_max = kLowest;
         for (std::ptrdiff_t c = 0; c < plan.kv_splits; ++c) {
           const float* state = states + static_cast<size_t>(c) * state_size;
-          if (state[row_block + r] > 0.0f) {
+          if (state[row_block + r] != 0.0f) {  // NaN states count, so a NaN propagates as in an unsplit row
             row_max = std::max(row_max, state[r]);
           }
         }
@@ -502,7 +519,7 @@ Status RunGroupedFlashAttention(const GroupedFlashAttentionArgs<T>& args, Alloca
         for (std::ptrdiff_t c = 0; c < plan.kv_splits; ++c) {
           const float* state = states + static_cast<size_t>(c) * state_size;
           const float split_sum = state[row_block + r];
-          if (!(split_sum > 0.0f)) {
+          if (split_sum == 0.0f) {
             continue;  // this split saw no cached row of this query row
           }
           const float weight = std::exp(state[r] - row_max);
