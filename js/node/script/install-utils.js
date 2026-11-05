@@ -245,7 +245,7 @@ async function resolvePackage(type, index, packageName, version, integrity) {
 }
 
 function tryGetCudaVersion() {
-  // Should only return 11 or 12.
+  // Should only return 12 or 13.
 
   // try to get the CUDA version from the system ( `nvcc --version` )
   let ver = 12;
@@ -254,7 +254,7 @@ function tryGetCudaVersion() {
     const match = nvccVersion.match(/release (\d+)/);
     if (match) {
       ver = parseInt(match[1]);
-      if (ver !== 11 && ver !== 12) {
+      if (ver !== 11 && ver !== 12 && ver !== 13) {
         throw new Error(`Unsupported CUDA version: ${ver}`);
       }
     }
@@ -300,6 +300,10 @@ function parseInstallFlag() {
       if (flag === 12) {
         return 'cuda12';
       }
+      if (flag === 13) {
+        console.warn('Pre-built binaries for CUDA 13 are not yet available. Skipping CUDA EP installation.');
+        return undefined;
+      }
       return undefined;
     }
     default:
@@ -330,6 +334,8 @@ function parseInstallCudaFlag() {
       return 11;
     case 'v12':
       return 12;
+    case 'v13':
+      return 13;
     case 'skip':
     case undefined:
       return flag;
