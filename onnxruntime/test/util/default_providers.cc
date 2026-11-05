@@ -240,15 +240,6 @@ std::unique_ptr<IExecutionProvider> DefaultRknpuExecutionProvider() {
 #endif
 }
 
-std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_fast_math) {
-#ifdef USE_ACL
-  return ACLProviderFactoryCreator::Create(enable_fast_math)->CreateProvider();
-#else
-  ORT_UNUSED_PARAMETER(enable_fast_math);
-  return nullptr;
-#endif
-}
-
 std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider(bool use_mlprogram) {
   // To manually test CoreML model generation on a non-macOS platform, comment out the `&& defined(__APPLE__)` below.
   // The test will create a model but execution of it will obviously fail.
