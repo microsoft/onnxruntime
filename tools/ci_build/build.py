@@ -837,10 +837,10 @@ def generate_build_tree(
     if args.use_cache:
         cmake_args.append("-Donnxruntime_BUILD_CACHE=ON")
         if not (is_windows() and args.cmake_generator != "Ninja"):
-            cmake_args.append("-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
-            cmake_args.append("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
+            cmake_args.append(f"-DCMAKE_CXX_COMPILER_LAUNCHER={args.cache_tool}")
+            cmake_args.append(f"-DCMAKE_C_COMPILER_LAUNCHER={args.cache_tool}")
             if args.use_cuda:
-                cmake_args.append("-DCMAKE_CUDA_COMPILER_LAUNCHER=ccache")
+                cmake_args.append(f"-DCMAKE_CUDA_COMPILER_LAUNCHER={args.cache_tool}")
     if args.external_graph_transformer_path:
         cmake_args.append("-Donnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH=" + args.external_graph_transformer_path)
 
@@ -1990,6 +1990,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             log.info("Testing AutoEP feature")
             run_subprocess([sys.executable, "onnxruntime_test_python_autoep.py"], cwd=cwd, dll_path=dll_path)
+
+            log.info("Testing Python Model Package API")
+            run_subprocess([sys.executable, "onnxruntime_test_python_model_package.py"], cwd=cwd, dll_path=dll_path)
 
             if not args.disable_contrib_ops:
                 run_subprocess([sys.executable, "onnxruntime_test_python_sparse_matmul.py"], cwd=cwd, dll_path=dll_path)
