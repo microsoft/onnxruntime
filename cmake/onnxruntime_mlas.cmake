@@ -479,8 +479,16 @@ function(setup_mlas_source_for_windows)
       # so enabling AVX-512 here would let clang auto-vectorize them into
       # instructions AVX2-only CPUs lack (see the matching non-MSVC note).
 
+      # sqnbitgemm_kernel_avx512.cpp backs MlasSQNBitGemmDispatchAvx512, which
+      # is selected on AVX-512 CPUs without VNNI, so it must not enable VNNI.
       set_source_files_properties(
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512.cpp
+        PROPERTIES COMPILE_FLAGS "${mlas_clang_cl_avx512_flags}")
+
+      # q4gemm_avx512.cpp mixes the non-VNNI MlasFpQ4GemmDispatchAvx512 with
+      # the VNNI-only MlasQ8Q4GemmDispatchAvx512vnni, whose kernels call VNNI
+      # intrinsics, so it needs -mavx512vnni (as on the non-MSVC branch).
+      set_source_files_properties(
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni_2bit.cpp
         ${MLAS_SRC_DIR}/qkv_quant_kernel_avx512vnni.cpp
