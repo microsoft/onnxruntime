@@ -11,10 +11,16 @@ import java.util.Map;
 
 public final class RuntimeSmokeTest {
   public static void main(String[] args) throws Exception {
-    System.setProperty(
-        "onnxruntime.native.onnxruntime.path", Paths.get(args[1]).toAbsolutePath().toString());
-    System.setProperty(
-        "onnxruntime.native.onnxruntime4j_jni.path", Paths.get(args[2]).toAbsolutePath().toString());
+    if (args.length != 1 && args.length != 3) {
+      throw new IllegalArgumentException(
+          "Pass a model path, optionally followed by the runtime and JNI library paths.");
+    }
+    if (args.length == 3) {
+      System.setProperty(
+          "onnxruntime.native.onnxruntime.path", Paths.get(args[1]).toAbsolutePath().toString());
+      System.setProperty(
+          "onnxruntime.native.onnxruntime4j_jni.path", Paths.get(args[2]).toAbsolutePath().toString());
+    }
     try (OrtEnvironment env = OrtEnvironment.getEnvironment();
         OrtSession.SessionOptions options = new OrtSession.SessionOptions();
         OrtSession session = env.createSession(args[0], options);

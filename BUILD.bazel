@@ -9,6 +9,7 @@ load("//bazel:android.bzl", "android_bindings")
 load("//bazel:bindings.bzl", "language_bindings")
 load("//bazel:contrib.bzl", "cpu_contrib_sources")
 load("//bazel:cuda.bzl", "cuda_libraries")
+load("//bazel:java_package.bzl", "java_native_package")
 load("//bazel:mlas.bzl", "mlas_libraries")
 load("//bazel:packaging.bzl", "runtime_sdk_package")
 load("//bazel:platforms.bzl", "desktop_shared_library")
@@ -341,6 +342,8 @@ android_bindings()
 runtime_sdk_package()
 
 python_wheel_package()
+
+java_native_package()
 
 core_tests()
 

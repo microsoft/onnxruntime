@@ -275,6 +275,10 @@ inference, low-level NumPy Add inference, and extracted SDK runtime loading
 all passed; no bridge initialization warning occurred. This is not complete
 Python suite or manylinux publication validation.
 
+An offline `pip install --no-index --no-deps` of the generated Linux wheel
+into an isolated managed CPython 3.12 virtual environment also passed
+high-level Add inference, using NumPy from the pinned Bazel dependency.
+
 The consolidated source graph, including Apple, Rust, wheel, SDK, and C++ test
 targets, passed frozen-lock Windows analysis without executing build actions:
 
@@ -363,6 +367,46 @@ listed in `js/react_native/android/CMakeLists.txt`. Those dependencies do not
 have a source-native Bazel graph here. The Java/JNI AAR neither builds
 `libonnxruntimejsi.so` nor contains `OnnxruntimeModule`/`OnnxruntimePackage`;
 it must not be advertised as the React Native package.
+### Standalone Java/JNI JAR
+
+```sh
+bazel build -c opt //:java_native_jar
+bazel test -c opt //:java_native_jar_test --test_output=all
+```
+
+`bazel-bin/onnxruntime-native.jar` includes the existing inference Java classes,
+the native runtime, JNI library, shared-provider bridge, version and license
+notices. It uses Bazel's single-JAR assembler, not Gradle or a downloaded ORT
+JAR. This is a single-platform CPU distribution, not a universal or CUDA
+package. Its native resources use the existing
+`ai/onnxruntime/native/<os>-<architecture>/` layout, so the existing Java loader
+extracts and loads the packaged libraries without explicit native paths.
+
+The package test compiles the inference smoke consumer against only the
+assembled JAR, clears `java.library.path`, and supplies only a model path.
+Unlike the existing three-argument JNI smoke test, it sets no native-library
+overrides. Windows, Linux and macOS resource names are defined; native
+execution evidence is recorded separately rather than inferred from analysis.
+
+On the Linux x86-64 VM, the following frozen-lock command passed both tests
+in 13.505 seconds, with 42 actions. The JNI library and 37 existing Java sources
+were compiled from source; the unchanged native runtime reused the source
+build from the preceding Python wheel/SDK check:
+
+```sh
+bazel test -c opt //:java_native_jar_test //:java_smoke_test --jobs=16 --loading_phase_threads=4 --build_python_zip=false --lockfile_mode=error --test_output=all --nocache_test_results
+```
+
+An out-of-Bazel check also passed from a directory containing only the JAR,
+`RuntimeSmokeTest.java`, and `add_f32.onnx`, using the managed JDK 11:
+
+```sh
+java -Djava.library.path= --class-path onnxruntime-native.jar RuntimeSmokeTest.java add_f32.onnx
+```
+
+The Java test exercises the resource-loading path; the existing three-argument
+smoke test additionally confirms that explicit native paths still work.
+Windows and macOS package execution and Maven publication remain unverified.
 
 ### Desktop portability checks
 
@@ -409,7 +453,7 @@ bazel test -c opt \
 | --- | --- | --- |
 | C/C++ | `//:runtime`, `//:runtime_library`, `//:runtime_smoke_test` | Standard ONNX CPU operators and optional `--//bazel:contrib` CPU inference kernels; inference through the public C++ API. |
 | Python | `//:python_native_library`, `//:python_runtime_package`, `//:python_tests`, `//:python_wheel` | CPython 3.12 extension, source-assembled high-level CPU inference package, selected existing unittest cases, and CPU Windows/Linux x86-64 wheels. Not a complete Python suite/tooling migration. |
-| Java/JNI | `//:java_binding`, `//:java_native_library`, `//:java_smoke_test` | Java sources and JNI sources; JNI headers come from Bazel's Java compiler. No Gradle invocation. Not an AAR or Maven publication. |
+| Java/JNI | `//:java_binding`, `//:java_native_library`, `//:java_smoke_test`, `//:java_native_jar` | Java and JNI sources; JNI headers come from Bazel's Java compiler. Standalone single-platform CPU JAR includes native libraries and uses the existing resource loader. No Gradle invocation; not Maven publication. |
 | Android Java/JNI | `//:android_java`, `//:android_aar` | Android Java sources, source-built ARM64 runtime/JNI, and single-ABI AAR; Linux-host cross-build validated. Not React Native or device execution. |
 | Go | `//:go_binding`, `//:go_test` | First-party cgo binding and existing fixture-based unit tests. Tests explicitly load the Bazel-built shared library; they do not take the binding's missing-library skip path. External Qwen model tests are excluded. |
 | Node.js | `//:onnxruntime_binding.node`, `//:node_js_package`, `//:node_test` | Native Node-API extension, source-assembled common/Node JavaScript packages, and four existing test files with file/case selection. Not release npm packaging or the complete Node suite. |
