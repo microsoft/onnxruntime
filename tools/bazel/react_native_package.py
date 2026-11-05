@@ -23,6 +23,14 @@ def write_zip(path, entries):
 
 def package(args):
     version = Path(args.version).read_text(encoding="utf-8").strip()
+    with zipfile.ZipFile(args.classes) as classes:
+        expected_classes = {
+            "ai/onnxruntime/reactnative/" + name + ".class"
+            for name in ("OnnxruntimeModule", "OnnxruntimePackage", "OnnxruntimeExtensions")
+        }
+        missing = expected_classes.difference(classes.namelist())
+        if missing:
+            raise ValueError(f"React Native Java compilation is incomplete ({sorted(missing)}); build android_java.")
     entries = {
         "AndroidManifest.xml": (
             b'<manifest xmlns:android="http://schemas.android.com/apk/res/android" '
@@ -38,7 +46,10 @@ def package(args):
         raise ValueError(f"React Native AAR requires exactly {sorted(expected)}; check its native target inputs.")
     entries.update({f"jni/arm64-v8a/{name}": data for name, data in libraries.items()})
     for path in args.notice:
-        entries["META-INF/" + Path(path).name] = Path(path).read_bytes()
+        name = "META-INF/" + Path(path).name
+        if name in entries:
+            raise ValueError(f"Duplicate package notice {name}; give each SDK notice a distinct filename.")
+        entries[name] = Path(path).read_bytes()
     write_zip(args.aar, entries)
     files = {"android/onnxruntime-react-native.aar": Path(args.aar).read_bytes()}
     files["android/build.gradle"] = (

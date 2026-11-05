@@ -952,12 +952,26 @@ an NVIDIA H200 (`sm_90`), driver 580.159.04, with GCC 13.2 on Azure Linux 3:
 | Toolkit | cuDNN | Result |
 | --- | --- | --- |
 | CUDA 12.8, NVCC 12.8.93 | 9.14.0.64 | Add, MatMul, and Conv passed on GPU. |
+| CUDA 13.0.2 | 9.14 | Add, MatMul, and Conv passed on GPU; selected existing operator cases also passed. |
 | CUDA 13.3, NVCC 13.3.73 | 9.27.0.42 | Add, MatMul, and Conv passed on GPU. |
 
 These are tested combinations, not a claim that every CUDA 12/13 minor release,
-GPU architecture, or driver/cuDNN combination has passed. In particular,
-CUDA 13.0 has not been validated with this graph. The existing Abseil NVCC 13.3
-source workaround is included.
+GPU architecture, or driver/cuDNN combination has passed. The existing Abseil
+NVCC 13.3 source workaround is included.
+
+Existing C++ `test_support` conditionally receives CUDA SDK definitions and
+provider runfiles, so CUDA-enabled existing tests no longer silently compile
+as CPU-only. `//:cuda_operator_test` is a manual Linux x86-64 CUDA target:
+
+```sh
+bazel test //:cuda_operator_test -c opt --jobs=24 --loading_phase_threads=4 --lockfile_mode=error --build_python_zip=false --//bazel:cuda --@rules_cuda//cuda:archs=sm_90 --test_env=LD_LIBRARY_PATH --test_env=CUDA_VISIBLE_DEVICES=0 --test_arg=--gtest_filter=MathOpTest.Abs_Cuda_CanonicalizesSignedZero:MathOpTest.MatMulFloat16:ConvTest.MissingBiasCUDA --test_output=all --nocache_test_results
+```
+
+The handed-off CUDA 13.0.2/cuDNN 9.14/H200 validation passed all three actual
+GoogleTests, zero skipped; `MissingBiasCUDA` explicitly disables CPU fallback.
+The source build executed 781 actions with 992 cached actions in 258.690 seconds;
+the test command took 27.763 seconds wall. This validates the static-runtime
+operator test, not CUDA provider loading through every shared language binding.
 
 The provider links with `--no-undefined` and exports only its `GetProvider`
 entry point, so missing implementation dependencies fail the build rather

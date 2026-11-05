@@ -3,9 +3,14 @@
 
 """Official React Native prefab SDKs for the source-built Android JSI bridge."""
 
-load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_jar")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_file", "http_jar")
 
 def _sdk_impl(module_ctx):
+    for name, url, sha, filename in [
+        ("ort_react_license", "https://raw.githubusercontent.com/facebook/react-native/v0.73.11/LICENSE", "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93", "ReactNative-LICENSE"),
+        ("ort_fbjni_license", "https://raw.githubusercontent.com/facebookincubator/fbjni/v0.5.1/LICENSE", "f62d190c08e2b300b45780f0b3cabcacc78d0e373f7a0de79d31f82b084d35ea", "fbjni-LICENSE"),
+    ]:
+        http_file(name = name, urls = [url], sha256 = sha, downloaded_file_path = filename)
     http_archive(
         name = "ort_react_android",
         urls = ["https://repo.maven.apache.org/maven2/com/facebook/react/react-android/0.73.11/react-android-0.73.11-release.aar"],
@@ -38,6 +43,7 @@ java_import(name = "java", jars = ["classes.jar"])
         build_file_content = """
 load("@rules_cc//cc:cc_import.bzl", "cc_import")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_java//java:defs.bzl", "java_import")
 package(default_visibility = ["//visibility:public"])
 cc_import(name = "binary", shared_library = "jni/arm64-v8a/libfbjni.so")
 cc_library(
@@ -48,7 +54,6 @@ cc_library(
     target_compatible_with = ["@platforms//os:android", "@platforms//cpu:aarch64"],
 )
 exports_files(["classes.jar", "jni/arm64-v8a/libfbjni.so"])
-load("@rules_java//java:defs.bzl", "java_import")
 java_import(name = "java", jars = ["classes.jar"])
 """,
     )
@@ -117,10 +122,11 @@ def _ndk_shared_impl(ctx):
     if not library.exists:
         fail("NDK r27d ARM64 shared C++ runtime is missing at %s; reinstall the complete SDK." % library)
     ctx.symlink(library, "libc++_shared.so")
+    ctx.symlink(ctx.path(root + "/NOTICE.toolchain"), "NDK-NOTICE")
     ctx.file("BUILD.bazel", """
 load("@rules_cc//cc:cc_import.bzl", "cc_import")
 cc_import(name = "runtime", shared_library = "libc++_shared.so", visibility = ["//visibility:public"])
-exports_files(["libc++_shared.so"])
+exports_files(["libc++_shared.so", "NDK-NOTICE"])
 """)
 
 ndk_shared_runtime = repository_rule(

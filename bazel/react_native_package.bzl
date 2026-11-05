@@ -8,6 +8,12 @@ load("@rules_java//java/common:java_info.bzl", "JavaInfo")
 
 def react_native_javascript():
     js_binary(
+        name = "react_native_package_consumer",
+        entry_point = "tools/bazel/react_native_package_consumer.cjs",
+        data = ["//bazel/node:compiler", "VERSION_NUMBER"],
+        include_npm = True,
+    )
+    js_binary(
         name = "react_native_common_compiler",
         entry_point = "tools/bazel/react_native_common.cjs",
         data = ["//bazel/node:compiler"],

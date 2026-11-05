@@ -72,6 +72,7 @@ react_native = use_extension("//bazel:react_native.bzl", "react_native_sdk")
 use_repo(react_native, "ort_fbjni", "ort_react_android")
 use_repo(react_native, "ort_android_platform", "ort_androidx_annotation", "ort_react_kotlin")
 use_repo(react_native, "ort_react_headers")
+use_repo(react_native, "ort_fbjni_license", "ort_react_license")
 
 ndk_shared_runtime = use_repo_rule("//bazel:react_native.bzl", "ndk_shared_runtime")
 

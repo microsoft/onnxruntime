@@ -21,7 +21,6 @@ class PackageTest(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         for name, data in {
-            "classes.jar": b"compiled-java-payload",
             "libonnxruntime.so": b"ort-payload",
             "libonnxruntimejsi.so": b"adapter-payload",
             "libc++_shared.so": b"ndk-payload",
@@ -31,6 +30,9 @@ class PackageTest(unittest.TestCase):
             "LICENSE": b"license-payload",
         }.items():
             (self.root / name).write_bytes(data)
+        with zipfile.ZipFile(self.root / "classes.jar", "w") as classes:
+            for name in ("OnnxruntimeModule", "OnnxruntimePackage", "OnnxruntimeExtensions"):
+                classes.writestr("ai/onnxruntime/reactnative/" + name + ".class", b"unit-test-class-payload")
         self.args = argparse.Namespace(
             aar=str(self.root / "output.aar"),
             npm=str(self.root / "output.tgz"),
@@ -47,7 +49,7 @@ class PackageTest(unittest.TestCase):
     def test_exact_java_and_native_payloads(self):
         package(self.args)
         with zipfile.ZipFile(self.args.aar) as archive:
-            self.assertEqual(archive.read("classes.jar"), b"compiled-java-payload")
+            self.assertEqual(archive.read("classes.jar"), (self.root / "classes.jar").read_bytes())
             for path in self.args.native:
                 self.assertEqual(archive.read("jni/arm64-v8a/" + Path(path).name), Path(path).read_bytes())
             self.assertIn(b"ai.onnxruntime.reactnative", archive.read("proguard.txt"))
@@ -72,6 +74,17 @@ class PackageTest(unittest.TestCase):
     def test_missing_native_library_is_an_error(self):
         self.args.native.pop()
         with self.assertRaisesRegex(ValueError, "requires exactly"):
+            package(self.args)
+
+    def test_missing_java_class_is_an_error(self):
+        with zipfile.ZipFile(self.args.classes, "w"):
+            pass
+        with self.assertRaisesRegex(ValueError, "Java compilation is incomplete"):
+            package(self.args)
+
+    def test_duplicate_notice_is_an_error(self):
+        self.args.notice.append(self.args.notice[0])
+        with self.assertRaisesRegex(ValueError, "Duplicate package notice"):
             package(self.args)
 
 
