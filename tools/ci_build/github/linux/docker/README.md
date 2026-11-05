@@ -32,18 +32,19 @@ The run completed successfully, and its promotion step verified all 12 families
 under the cache tag `20261104.1`, replacing the earlier PR-test image pins.
 Consumers pin the following immutable digests in
 `onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/<family>@<digest>`,
-rather than relying on a mutable tag:
+rather than relying on a mutable tag. The corresponding promotion tags are
+included for traceability:
 
-| Family | Digest |
-| --- | --- |
-| `cpu_x64_almalinux8_gcc14` | `sha256:f227af058cce5f442b342c3826bf6ff525452349978d66055729ab140d13fc34` |
-| `cpu_aarch64_almalinux8_gcc14` | `sha256:d88e018c996e9eb2df0070a6968c0ebcc03f85d817a7982af85299e2723e6808` |
-| `cuda12_x64_almalinux8_gcc14` | `sha256:25bd9e1f17d68a747d593d6e32a8e9e76b3fe49ccafea0d7eb966d5b4cdc7983` |
-| `cuda13_x64_almalinux8_gcc14` | `sha256:f64c252762d76a4e65ae0c5f9103031167ba05895f27cc9196dcde2bde808a9d` |
-| `cpu_x64_almalinux8_gcc14_dotnet` | `sha256:316d6bb2eb3be18e816ea8a7adb1b9f931b9b36eafb8750549a825cb99e0bff8` |
-| `cpu_aarch64_almalinux8_gcc14_dotnet` | `sha256:2d698f8a4154a3e0a0ec79252141d37d62ec2dd18676df01bb5d03eddf9a052b` |
-| `cuda12_x64_almalinux8_gcc14_dotnet` | `sha256:515f1ca7dfbeae6e91f794c0a8b9163d2aa606143d8b6f62b5d4d00fd0c59eb9` |
-| `cuda13_x64_almalinux8_gcc14_dotnet` | `sha256:2d1d88d6610917cc7dc394c7bfac4e6c9f86ce58e33d8775b5de5395c5f6606a` |
+| Family | Tag | Digest |
+| --- | --- | --- |
+| `cpu_x64_almalinux8_gcc14` | `20261104.1` | `sha256:f227af058cce5f442b342c3826bf6ff525452349978d66055729ab140d13fc34` |
+| `cpu_aarch64_almalinux8_gcc14` | `20261104.1` | `sha256:d88e018c996e9eb2df0070a6968c0ebcc03f85d817a7982af85299e2723e6808` |
+| `cuda12_x64_almalinux8_gcc14` | `20261104.1` | `sha256:25bd9e1f17d68a747d593d6e32a8e9e76b3fe49ccafea0d7eb966d5b4cdc7983` |
+| `cuda13_x64_almalinux8_gcc14` | `20261104.1` | `sha256:f64c252762d76a4e65ae0c5f9103031167ba05895f27cc9196dcde2bde808a9d` |
+| `cpu_x64_almalinux8_gcc14_dotnet` | `20261104.1` | `sha256:316d6bb2eb3be18e816ea8a7adb1b9f931b9b36eafb8750549a825cb99e0bff8` |
+| `cpu_aarch64_almalinux8_gcc14_dotnet` | `20261104.1` | `sha256:2d698f8a4154a3e0a0ec79252141d37d62ec2dd18676df01bb5d03eddf9a052b` |
+| `cuda12_x64_almalinux8_gcc14_dotnet` | `20261104.1` | `sha256:515f1ca7dfbeae6e91f794c0a8b9163d2aa606143d8b6f62b5d4d00fd0c59eb9` |
+| `cuda13_x64_almalinux8_gcc14_dotnet` | `20261104.1` | `sha256:2d1d88d6610917cc7dc394c7bfac4e6c9f86ce58e33d8775b5de5395c5f6606a` |
 
 CUDA13 ARM64 overrides retain their existing AlmaLinux9 `20260323.1` base;
 the new AlmaLinux8 ARM64 CUDA family is not an ABI-compatible replacement.
