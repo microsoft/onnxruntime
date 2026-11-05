@@ -30,16 +30,30 @@ __global__ void MoeInvalidRowsKernel(const int32_t* idx, int topk, int experts, 
 
 // Group in first-occurrence order; one expert tile serves up to eight token rows.
 __global__ void MoeGroupKernel(const int32_t* idx, int P, int topk, int experts, int32_t* meta) {
-  __shared__ int sidx[128], srank[128], warp_tot[4];
+  __shared__ int sidx[128], srank[128], warp_tot[4], invalid_rows[8];
   const int p = threadIdx.x, lane = p & 31, warp = p >> 5;
 #pragma unroll 5
   for (int i = p; i < P * 8; i += blockDim.x) meta[1 + P + i] = -1;
+  if (p < P / topk) invalid_rows[p] = 0;
   if (p < P) {
-    // Exclude the whole invalid row before grouping, avoiding duplicate metadata writers.
-    sidx[p] = ValidRouteRow(idx + (p / topk) * topk, topk, experts) ? idx[p] : -1;
+    sidx[p] = idx[p];
     meta[1 + p] = -1;
   }
   __syncthreads();
+  // Validate routes in parallel using the staged indices, then exclude whole invalid rows.
+  bool invalid = false;
+  if (p < P) {
+    const int row = p / topk, my = sidx[p];
+    invalid = my < 0 || my >= experts;
+    for (int j = row * topk; j < p; ++j)
+      invalid = invalid || sidx[j] == my;
+    if (invalid) atomicOr(invalid_rows + row, 1);
+  }
+  // The block-wide vote makes this conditional barrier uniform.
+  if (__syncthreads_or(invalid)) {
+    if (p < P && invalid_rows[p / topk]) sidx[p] = -1;
+    __syncthreads();
+  }
   int q = -1;
   if (p < P && sidx[p] >= 0) {
     const int my = sidx[p];

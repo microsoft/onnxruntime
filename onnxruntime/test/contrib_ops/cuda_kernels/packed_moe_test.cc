@@ -129,6 +129,115 @@ TEST(PackedMoEKernelTest, MultiWarpGroupingAndOffsetBindings) {
     EXPECT_EQ(actual_y, expected_y);
   }
 }
+
+TEST(PackedMoEKernelTest, CooperativeGroupingExcludesInvalidRows) {
+  int count = 0;
+  ASSERT_EQ(cudaGetDeviceCount(&count), cudaSuccess);
+  if (count == 0) GTEST_SKIP() << "Requires CUDA";
+  cudaDeviceProp prop{};
+  ASSERT_EQ(cudaGetDeviceProperties(&prop, 0), cudaSuccess);
+  if (prop.major < 8) GTEST_SKIP() << "Requires CUDA SM80+";
+  constexpr int rows = 8, topk = 9, pairs = rows * topk, experts = 16, intermediate = 256;
+  InlinedVector<uint16_t> x(rows * 1024, 0), scale1(experts * intermediate * 4, 0), scale2(experts * 1024, 0);
+  InlinedVector<uint8_t> fc1(experts * intermediate * 256, 0), fc2(experts * 1024 * 64, 0);
+  InlinedVector<float> weights(pairs, 1.f);
+  auto dx = Allocate(x.size() * sizeof(uint16_t));
+  auto d1 = Allocate(fc1.size()), d2 = Allocate(fc2.size());
+  auto ds1 = Allocate(scale1.size() * sizeof(uint16_t)), ds2 = Allocate(scale2.size() * sizeof(uint16_t));
+  auto dw = Allocate(weights.size() * sizeof(float));
+  auto di = Allocate((pairs + 1) * sizeof(int32_t));
+  auto dm = Allocate((1 + 9 * pairs + 2) * sizeof(int32_t));
+  auto dh = Allocate(pairs * intermediate * sizeof(uint16_t)), dp = Allocate(pairs * 1024 * sizeof(float));
+  auto dy = Allocate(rows * 1024 * sizeof(uint16_t));
+  for (const auto* ptr : {dx.get(), d1.get(), d2.get(), ds1.get(), ds2.get(), dw.get(),
+                          di.get(), dm.get(), dh.get(), dp.get(), dy.get()})
+    ASSERT_NE(ptr, nullptr);
+  ASSERT_EQ(cudaMemcpy(dx.get(), x.data(), x.size() * sizeof(uint16_t), cudaMemcpyHostToDevice), cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(d1.get(), fc1.data(), fc1.size(), cudaMemcpyHostToDevice), cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(d2.get(), fc2.data(), fc2.size(), cudaMemcpyHostToDevice), cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(ds1.get(), scale1.data(), scale1.size() * sizeof(uint16_t), cudaMemcpyHostToDevice), cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(ds2.get(), scale2.data(), scale2.size() * sizeof(uint16_t), cudaMemcpyHostToDevice), cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(dw.get(), weights.data(), weights.size() * sizeof(float), cudaMemcpyHostToDevice), cudaSuccess);
+  for (int kind = 0; kind < 6; ++kind) {
+    SCOPED_TRACE(testing::Message() << "kind=" << kind);
+    InlinedVector<int32_t> indices(pairs), metadata(1 + 9 * pairs, -1), unique;
+    bool invalid[rows]{};
+    for (int r = 0; r < rows; ++r)
+      for (int k = 0; k < topk; ++k) indices[r * topk + k] = (r * 3 + k) % experts;
+    if (kind == 1) {
+      indices[1] = indices[0];
+      invalid[0] = true;
+    } else if (kind == 2) {
+      // Row three spans a warp boundary; both sides of the duplicate must invalidate it.
+      indices[32] = indices[31];
+      invalid[3] = true;
+    } else if (kind == 3 || kind == 4) {
+      indices[4 * topk] = kind == 3 ? -1 : experts;
+      invalid[4] = true;
+    } else if (kind == 5) {
+      for (int r = 0; r < rows; ++r) {
+        indices[r * topk] = -1;
+        invalid[r] = true;
+      }
+    }
+    for (int r = 0; r < rows; ++r) {
+      if (invalid[r]) continue;
+      for (int k = 0; k < topk; ++k) {
+        const int p = r * topk + k, e = indices[p];
+        auto it = std::find(unique.begin(), unique.end(), e);
+        if (it == unique.end()) {
+          unique.push_back(e);
+          it = unique.end() - 1;
+        }
+        metadata[1 + pairs + static_cast<int>(it - unique.begin()) * 8 + r] = p;
+      }
+    }
+    metadata[0] = static_cast<int32_t>(unique.size());
+    std::copy(unique.begin(), unique.end(), metadata.begin() + 1);
+    for (int offset : {0, 1}) {
+      SCOPED_TRACE(testing::Message() << "offset=" << offset);
+      auto* pi = static_cast<int32_t*>(di.get()) + offset;
+      auto* pm = static_cast<int32_t*>(dm.get()) + 1;
+      ASSERT_EQ(cudaMemcpy(pi, indices.data(), pairs * sizeof(int32_t), cudaMemcpyHostToDevice), cudaSuccess);
+      ASSERT_EQ(cudaMemset(dm.get(), 0x55, (metadata.size() + 2) * sizeof(int32_t)), cudaSuccess);
+      ASSERT_EQ(contrib::cuda::LaunchMoEPackedIQ2XXS(
+                    nullptr, rows, topk, experts, intermediate, dx.get(), pi, static_cast<const float*>(dw.get()),
+                    static_cast<const uint8_t*>(d1.get()), ds1.get(), static_cast<const uint8_t*>(d2.get()),
+                    ds2.get(), dy.get(), dh.get(), static_cast<float*>(dp.get()), pm),
+                cudaSuccess);
+      InlinedVector<int32_t> actual_metadata(metadata.size() + 2);
+      InlinedVector<uint16_t> hidden(pairs * intermediate), y(rows * 1024);
+      InlinedVector<float> part(pairs * 1024);
+      ASSERT_EQ(cudaMemcpy(actual_metadata.data(), dm.get(), actual_metadata.size() * sizeof(int32_t),
+                           cudaMemcpyDeviceToHost),
+                cudaSuccess);
+      ASSERT_EQ(cudaMemcpy(hidden.data(), dh.get(), hidden.size() * sizeof(uint16_t), cudaMemcpyDeviceToHost), cudaSuccess);
+      ASSERT_EQ(cudaMemcpy(part.data(), dp.get(), part.size() * sizeof(float), cudaMemcpyDeviceToHost), cudaSuccess);
+      ASSERT_EQ(cudaMemcpy(y.data(), dy.get(), y.size() * sizeof(uint16_t), cudaMemcpyDeviceToHost), cudaSuccess);
+      EXPECT_EQ(actual_metadata.front(), 0x55555555);
+      EXPECT_EQ(actual_metadata.back(), 0x55555555);
+      EXPECT_TRUE(std::equal(metadata.begin(), metadata.end(), actual_metadata.begin() + 1));
+      for (int r = 0; r < rows; ++r) {
+        SCOPED_TRACE(testing::Message() << "row=" << r);
+        for (int k = 0; k < topk; ++k) {
+          const int p = r * topk + k;
+          for (int j = 0; j < intermediate; ++j) {
+            const float value = BFloat16::FromBits(hidden[p * intermediate + j]).ToFloat();
+            ASSERT_TRUE(invalid[r] ? std::isnan(value) : value == 0.f);
+          }
+          for (int j = 0; j < 1024; ++j) {
+            const float value = part[p * 1024 + j];
+            ASSERT_TRUE(invalid[r] ? std::isnan(value) : value == 0.f);
+          }
+        }
+        for (int j = 0; j < 1024; ++j) {
+          const float value = BFloat16::FromBits(y[r * 1024 + j]).ToFloat();
+          ASSERT_TRUE(invalid[r] ? std::isnan(value) : value == 0.f);
+        }
+      }
+    }
+  }
+}
 }  // namespace
 }  // namespace onnxruntime::test
 #endif
