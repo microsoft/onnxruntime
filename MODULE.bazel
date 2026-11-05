@@ -23,6 +23,7 @@ bazel_dep(name = "aspect_rules_js", version = "2.7.0")
 bazel_dep(name = "rules_nodejs", version = "6.7.7")
 bazel_dep(name = "rules_dotnet", version = "0.22.2")
 bazel_dep(name = "rules_apple", version = "3.16.0")
+bazel_dep(name = "rules_swift", version = "2.1.1")
 single_version_override(
     module_name = "rules_apple",
     patch_strip = 1,

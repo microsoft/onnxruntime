@@ -725,7 +725,7 @@ bazel test -c opt \
 | Go | `//:go_binding`, `//:go_test` | First-party cgo binding and existing fixture-based unit tests. Tests explicitly load the Bazel-built shared library; they do not take the binding's missing-library skip path. External Qwen model tests are excluded. |
 | Node.js | `//:onnxruntime_binding.node`, `//:node_js_package`, `//:node_test`, `//:node_npm` | Native Node-API extension, source-assembled common/Node JavaScript packages, four selectable existing test files, and production-only CPU npm tarball with declarations and offline install/inference validation. Not registry publication or the complete Node suite. |
 | C# | `//:csharp_binding`, `//:csharp_smoke_test`, `//:csharp_tests`, `//:csharp_nuget` | .NET 8 binding and existing desktop test sources compiled directly with `rules_dotnet`, exercised on .NET 10. Native xUnit discovery/execution supports exact class/method selection, theories and fixtures. Single-RID CPU NuGet package; training APIs are not enabled. |
-| Objective-C / Swift import surface | `//objectivec:onnxruntime_objc`, `//objectivec:inference_tests`, `//objectivec:ios_framework`, `//objectivec:ios_inference_tests` | Native ARC inference wrappers, explicit module, macOS XCTest and iOS static framework/test-bundle graphs. Native Apple compilation/execution and Swift import remain unverified. Not an XCFramework or Swift package. |
+| Objective-C / Swift import surface | `//objectivec:onnxruntime_objc`, `//objectivec:inference_tests`, `//objectivec:swift_inference_tests`, `//objectivec:ios_framework`, `//objectivec:ios_inference_tests` | Native ARC inference wrappers, explicit module, real Swift Add-inference XCTest, macOS XCTest and iOS static framework/test-bundle graphs. Native Apple compilation/execution and Swift import remain unverified. Not an XCFramework or Swift package. |
 | JavaScript Web / WebAssembly | `//:wasm_scalar`, `//:wasm_simd`, `//:web_scalar_package`, `//:web_simd_package` | Source-native Emscripten CPU runtime and source-assembled frontend; selectable existing WASM inference test and Node/browser smoke targets. Single-threaded scalar/fixed SIMD only, not the complete release or Web test suite. |
 | React Native | `//js/react_native:android_package`, `//js/react_native:android_jsi_native_archive`, `//js/react_native:ios_adapter_framework` | Genuine Android ARM64 Java/JNI/JSI AAR and offline-installable npm package with source-native ORT, compiled against matching pinned SDKs. iOS adapter framework graph uses actual React headers; Apple compilation and application/device inference remain unverified. |
 | Rust | `//rust/onnxruntime-sys:onnxruntime_sys`, `//rust/onnxruntime:onnxruntime`, `//rust:smoke_test` | Both existing first-party crates, current-header bindgen generation, and selected existing unit/integration tests. Native `rules_rust` compilation and explicit loading of the source-built runtime; no Cargo build or legacy native acquisition. Not crates.io packaging. |
@@ -848,6 +848,26 @@ bazel test -c opt //objectivec:inference_tests --test_filter=ORTSessionTest/test
 bazel test -c opt //objectivec:inference_tests --test_filter=ORTValueTest
 bazel test -c opt //objectivec:inference_tests --test_filter=ORTModuleImportTest/testInferenceModuleImport
 ```
+
+`//objectivec:swift_inference_tests` compiles actual Swift source importing
+`onnxruntime_objc` and checks scalar Add inference through its Objective-C API.
+It uses the same source-built runtime and model resource, not a prebuilt Swift
+package. The explicit `ORTSwiftInferenceTest` Objective-C runtime name keeps the
+XCTest selector stable. Native execution is separately required; an Objective-C
+module-import or runner-only test is not Swift compiler/inference evidence:
+
+```sh
+bazel test -c opt //objectivec:swift_inference_tests --test_filter=ORTSwiftInferenceTest/testAddInference
+```
+
+The Swift rule uses the already-resolved `rules_swift` 2.1.1 dependency directly,
+without changing its version or the frozen module lock. Windows full wildcard
+plus six manual WASM targets passed analysis after this addition: 258 targets,
+53.414 seconds, zero actions, two jobs. This deliberately does not claim
+compilation of Apple-incompatible Swift targets on Windows.
+All eight portable XCTest runner-contract cases also passed, including exact
+forwarding of the Swift selector. Those mock-runner checks are not native Swift
+compiler or inference evidence.
 
 These are **commands awaiting Apple-host validation**, not passing results.
 `objc_library` compiles the existing ARC `.mm` sources and links the source-built

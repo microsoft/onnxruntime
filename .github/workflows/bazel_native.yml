@@ -110,6 +110,10 @@ jobs:
             --test_filter=ORTSessionTest/testInitAndRunOk \
             --lockfile_mode=error --jobs=3 --local_test_jobs=1 \
             --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-desktop.log
+          bazelisk ${BAZEL_STARTUP_OPTIONS:-} test -c opt //objectivec:swift_inference_tests \
+            --test_filter=ORTSwiftInferenceTest/testAddInference \
+            --lockfile_mode=error --jobs=3 --local_test_jobs=1 \
+            --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-desktop.log
       - name: Test standalone Windows runtime loading
         if: runner.os == 'Windows'
         shell: bash

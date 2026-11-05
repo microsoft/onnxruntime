@@ -4,6 +4,7 @@
 load("@rules_apple//apple:ios.bzl", "ios_static_framework", "ios_unit_test")
 load("@rules_apple//apple:macos.bzl", "macos_unit_test")
 load("@rules_python//python:defs.bzl", "py_test")
+load("@rules_swift//swift:swift_library.bzl", "swift_library")
 load("//bazel:apple_test_runner.bzl", "ort_macos_test_runner")
 
 package(default_visibility = ["//visibility:public"])
@@ -137,6 +138,25 @@ macos_unit_test(
     runner = ":test_runner",
     target_compatible_with = MACOS_ONLY,
     deps = [":test_sources"],
+)
+
+swift_library(
+    name = "swift_test_sources",
+    testonly = True,
+    srcs = ["test/ort_swift_test.swift"],
+    module_name = "ORTSwiftTests",
+    target_compatible_with = MACOS_ONLY,
+    deps = [":onnxruntime_objc"],
+    alwayslink = True,
+)
+
+macos_unit_test(
+    name = "swift_inference_tests",
+    minimum_os_version = "12.0",
+    resources = ["test/testdata/single_add.basic.ort"],
+    runner = ":test_runner",
+    target_compatible_with = MACOS_ONLY,
+    deps = [":swift_test_sources"],
 )
 
 ios_static_framework(

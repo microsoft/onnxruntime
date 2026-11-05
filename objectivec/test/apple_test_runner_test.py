@@ -59,6 +59,12 @@ class AppleTestRunnerTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(args[:3], ["xctest", "-XCTest", "ORTEnvTest"])
 
+    def test_swift_case_is_forwarded(self):
+        test_filter = "ORTSwiftInferenceTest/testAddInference"
+        result, args = self.run_runner(test_filter=test_filter)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(args[:3], ["xctest", "-XCTest", test_filter])
+
     def test_unfiltered_archive(self):
         result, args = self.run_runner(archived=True)
         self.assertEqual(result.returncode, 0, result.stderr)
