@@ -764,6 +764,35 @@ invalidated the runtime cache; that build was stopped to respect the local
 resource limit. The fixture correction therefore remains unverified on
 macOS, rather than a claimed passing Apple regression.
 
+CPU-only Linux execution subsequently passed all four optional-provider
+cases but exposed a bridge-fixture issue even in valid-only initialization.
+The header-free bridge fixtures had unnecessarily linked
+`shared_api_test_common`, bringing exported ONNX/protobuf/Abseil objects and
+GNU-unique definitions into an image loaded with `RTLD_GLOBAL`. Those
+dependencies are removed from bridge fixtures only; probe fixtures retain
+their required header/runtime support. All unload/retry assertions remain.
+
+The corrected graph passed all three `ProviderBridgeTest` and all four
+`OptionalProviderProbeTest` cases, no skips, on the authorized CPU-only Linux
+host with GCC 13.2. The uncached warm rerun took 2.099472 seconds wall
+(8 actions, 6 sandbox actions, 608 cache hits); corrected bridge fixtures
+contained zero GNU-unique definitions and only intended fixture exports
+plus standard runtime/weak symbols. Missing `Provider_SetHost` remained
+absent in the negative fixture and resolved in the valid one. No GPU was
+built or executed. The initial native build took 210.601 seconds/1,818
+actions, followed by an invocation-only selector error and then the genuine
+bad-dependency failures; these are staged validation timings, not a cold
+successful benchmark. The reproducible suite selector is:
+
+```sh
+bazel test //:provider_bridge_test //:optional_provider_probe_test -c opt --lockfile_mode=error --build_python_zip=false --test_filter='ProviderBridgeTest.*:OptionalProviderProbeTest.*' --test_output=all --nocache_test_results
+```
+
+After the dependency correction, frozen Windows analysis passed 254 targets
+in 24.424 seconds with zero actions. The retained native evidence archive SHA-256
+is `76c910733e423f09eb51cde65be373d995bd76fdce775fa066bef07f308a199b`.
+macOS execution of the corrected fixtures remains unverified.
+
 On a macOS host with full Xcode selected (including the macOS SDK and XCTest):
 
 ```sh
