@@ -9,7 +9,8 @@ torchvision==0.25.0
 pillow>=13.0.0
 transformers==5.10.1
 parameterized>=0.8.1
-sentencepiece
+# 0.2.3's generated schema requires protobuf 7, incompatible with the pinned runtime.
+sentencepiece<0.2.3
 psutil
 einops
 onnxscript==0.6.2

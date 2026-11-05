@@ -75,6 +75,9 @@ Do not modify directly.*
   * <a href="#com.microsoft.MatMulNBitsMlp">com.microsoft.MatMulNBitsMlp</a>
   * <a href="#com.microsoft.MatMulNBitsQLoRA">com.microsoft.MatMulNBitsQLoRA</a>
   * <a href="#com.microsoft.MatMulNBitsQkv">com.microsoft.MatMulNBitsQkv</a>
+  * <a href="#com.microsoft.MatMulPackedIQ2XXS">com.microsoft.MatMulPackedIQ2XXS</a>
+  * <a href="#com.microsoft.MatMulPackedNVFP4">com.microsoft.MatMulPackedNVFP4</a>
+  * <a href="#com.microsoft.MatMulPackedQ8">com.microsoft.MatMulPackedQ8</a>
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
   * <a href="#com.microsoft.MoE">com.microsoft.MoE</a>
   * <a href="#com.microsoft.MulInteger">com.microsoft.MulInteger</a>
@@ -4668,6 +4671,143 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>T2</tt> : tensor(uint8)</dt>
 <dd>Constrain quantized weight types to uint8.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MatMulPackedIQ2XXS"></a><a name="com.microsoft.matmulpackediq2xxs">**com.microsoft.MatMulPackedIQ2XXS**</a>
+
+  Aligned IQ2_XXS projection with BF16 activations/output, not GGML's interleaved 66-byte records.
+  B is UINT8 [N,K/32,8]. Each 8-byte record contains four grid indices followed by a little-endian
+  32-bit word containing four 7-bit sign indices and a 4-bit local scale. S [N,K/256] holds raw FP16
+  superblock scales. BF16-typed S is accepted ONLY as a bit-preserving carrier of those FP16 bits.
+  The BF16 operand is round_BF16(signed_grid * (float(FP16(S)) * (0.5 + local_scale) * 0.25)),
+  without separately rounding the intermediate scale. BF16 MMA, FP32 accumulation and source block reduction
+  precede BF16 output rounding. A is [...,K], K divisible by 256, with 1..8 flattened rows.
+  No bias, empty dimensions, or general (>8 row) prefill.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>BF16 activation [...,K].</dd>
+<dt><tt>B</tt> : T1</dt>
+<dd>Aligned IQ2_XXS records [N,K/32,8].</dd>
+<dt><tt>scales</tt> : S</dt>
+<dd>Raw FP16 superblock scales [N,K/256]; BF16 is a raw-bit carrier.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>BF16 projection [...,N].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16)</dt>
+<dd>Activation/output type.</dd>
+<dt><tt>T1</tt> : tensor(uint8)</dt>
+<dd>Packed records.</dd>
+<dt><tt>S</tt> : tensor(float16), tensor(bfloat16)</dt>
+<dd>FP16 scales or bit-preserving BF16 carrier.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MatMulPackedNVFP4"></a><a name="com.microsoft.matmulpackednvfp4">**com.microsoft.MatMulPackedNVFP4**</a>
+
+  Packed NVFP4 projection with BF16 activation/output and source-exact small-row arithmetic.
+  A is [...,K], with 1..8 flattened rows; B is UINT8 [N,K/2], low-nibble-first E2M1.
+  Scales are raw E4M3 bytes [N,K/16]; global_scale is one FP32 multiplier.
+  K is divisible by 1024. Row one additionally requires K=4096 or 8192 and uses FP16-pair FMA
+  partial sums with activation scaling by 1/64. Rows 2..8 use BF16 tensor-core operands,
+  FP32 accumulation and the source block reduction topology. Global scaling precedes BF16 output rounding.
+  These paths are intentionally NOT interchangeable with MatMulNVFP4A16's general accumulation contract.
+  No fused bias, activation quantization, general (>8 row) prefill, or empty dimensions.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>BF16 activation [...,K].</dd>
+<dt><tt>B</tt> : T1</dt>
+<dd>Packed E2M1 bytes [N,K/2].</dd>
+<dt><tt>scales</tt> : T1</dt>
+<dd>E4M3 bytes [N,K/16].</dd>
+<dt><tt>global_scale</tt> : T2</dt>
+<dd>One-element FP32 multiplier.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>BF16 projection [...,N].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16)</dt>
+<dd>Activation/output type.</dd>
+<dt><tt>T1</tt> : tensor(uint8)</dt>
+<dd>Packed weight/scale bytes.</dd>
+<dt><tt>T2</tt> : tensor(float)</dt>
+<dd>Global multiplier.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MatMulPackedQ8"></a><a name="com.microsoft.matmulpackedq8">**com.microsoft.MatMulPackedQ8**</a>
+
+  Packed offset-binary Q8 projection with BF16 activations/output and separate block scales.
+  B is UINT8 [N,K/32,32]: q = byte - 128, NOT signed GGML Q8_0 records.
+  S is [N,K/32] with FP16 or BF16 scales; A is [...,K] with 1..8 flattened rows, K divisible by 64.
+  FP16 scales are retained through FP32 reconstruction, then each full q*S operand is rounded to BF16.
+  Rows 2..8 with BF16 scales use the same reconstruction and BF16 tensor-core multiplication.
+  Row one with BF16 scales instead accumulates FP32 dot products against unscaled integer weights per block, multiplies
+  by the block scale in FP32, and uses the source warp-XOR reduction; K must be <=6144.
+  All MMA paths use the source block reduction topology. No fused bias, empty dimensions, or >8-row prefill.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>BF16 activation [...,K].</dd>
+<dt><tt>B</tt> : T1</dt>
+<dd>Offset-binary Q8 bytes [N,K/32,32].</dd>
+<dt><tt>scales</tt> : S</dt>
+<dd>Source scales [N,K/32], not prematurely rounded.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>BF16 projection [...,N].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16)</dt>
+<dd>Activation/output type.</dd>
+<dt><tt>T1</tt> : tensor(uint8)</dt>
+<dd>Packed weights.</dd>
+<dt><tt>S</tt> : tensor(float16), tensor(bfloat16)</dt>
+<dd>Source block scale type.</dd>
 </dl>
 
 
