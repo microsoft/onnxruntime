@@ -98,7 +98,7 @@ namespace onnxruntime::test {
 #if defined(USE_CUDA)
 namespace {
 void RunCuda(OpTester& tester) {
-  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  std::vector<std::unique_ptr<IExecutionProvider> > providers;
   providers.push_back(DefaultCudaExecutionProvider());
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
