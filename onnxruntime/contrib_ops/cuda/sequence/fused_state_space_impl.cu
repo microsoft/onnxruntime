@@ -14,11 +14,19 @@ __device__ __forceinline__ float Silu(float v) { return v / (1.0f + expf(-v)); }
 // Preserve the frozen fused path's FP32 ordering and BF16 convolution boundary.
 template <int R_FIXED = 0>
 __global__ void MambaConvKernel(const bf16* proj, int R_rt, int proj_stride, int di, int conv_dim,
-                                const bf16* conv_state_in, const bf16* conv_w, const bf16* conv_b,
-                                bf16* conv_state_out, bf16* xbc_act, const int32_t* sel) {
+                                const bf16* conv_state_in, const bf16* conv_w, const bf16* conv_b, bf16* conv_state_out,
+                                bf16* xbc_act, const int32_t* sel, int64_t slots) {
   const int c = blockIdx.x * blockDim.x + threadIdx.x;
   if (c >= conv_dim) return;
   const int R = R_FIXED > 0 ? R_FIXED : R_rt;
+  if (*sel < 0 || static_cast<int64_t>(*sel) >= slots) {
+    for (int r = 0; r < R; ++r) {
+      xbc_act[static_cast<int64_t>(r) * conv_dim + c] = __float2bfloat16(NAN);
+      for (int k = 0; k < 3; ++k)
+        conv_state_out[(static_cast<int64_t>(r) * conv_dim + c) * 3 + k] = __float2bfloat16(NAN);
+    }
+    return;
+  }
   conv_state_in += static_cast<int64_t>(*sel) * conv_dim * 3;
   float inp[3 + (R_FIXED > 0 ? R_FIXED : kMaxRows)];
   inp[0] = B2F(conv_state_in[c * 3]);
@@ -43,14 +51,23 @@ __global__ void MambaConvKernel(const bf16* proj, int R_rt, int proj_stride, int
 
 template <int QP, int R_FIXED = 0>
 __global__ void MambaSsmKernel(const bf16* proj, int R_rt, int proj_stride, int di, int conv_dim, int heads,
-                               int heads_per_group, const bf16* xbc_act, const float* ssm_in,
-                               const float* dt_bias, const float* a_neg, const float* d_skip, float tmin,
-                               float* ssm_out, float* ypre, const int32_t* sel) {
+                               int heads_per_group, const bf16* xbc_act, const float* ssm_in, const float* dt_bias,
+                               const float* a_neg, const float* d_skip, float tmin, float* ssm_out, float* ypre,
+                               const int32_t* sel, int64_t slots) {
   constexpr int DS = 128, HD = 64, NH = DS / QP;
   constexpr int MAX_R = R_FIXED > 0 ? R_FIXED : kMaxRows;
   const int h = blockIdx.x, g = h / heads_per_group;
   const int tid = threadIdx.x, p = tid % HD, half = tid / HD;
   const int R = R_FIXED > 0 ? R_FIXED : R_rt;
+  // Uniform across the block and before either state read; safe during CUDA capture.
+  if (*sel < 0 || static_cast<int64_t>(*sel) >= slots) {
+    for (int r = 0; r < R; ++r) {
+      for (int i = tid; i < DS * HD; i += blockDim.x)
+        ssm_out[(static_cast<int64_t>(r) * heads + h) * DS * HD + i] = NAN;
+      for (int i = tid; i < HD; i += blockDim.x) ypre[static_cast<int64_t>(r) * di + h * HD + i] = NAN;
+    }
+    return;
+  }
   __shared__ float sB[MAX_R][DS], sC[MAX_R][DS], sPart[MAX_R][QP][HD], sDt[MAX_R];
   const int b_off = di + g * DS;
   const int c_off = di + (heads / heads_per_group) * DS + g * DS;
@@ -102,7 +119,7 @@ __global__ void MambaSsmKernel(const bf16* proj, int R_rt, int proj_stride, int 
 
 __global__ void MambaNormKernel(const bf16* proj, int proj_stride, int di, int group_size, float eps,
                                 const float* ypre, const float* norm_w, bf16* y) {
-  const int r = blockIdx.x, g = blockIdx.y;
+  const int r = blockIdx.y, g = blockIdx.x;
   const int64_t base = static_cast<int64_t>(r) * di + static_cast<int64_t>(g) * group_size;
   const bf16* gate = proj + static_cast<int64_t>(r) * proj_stride + static_cast<int64_t>(g) * group_size;
   __shared__ float red[32];
@@ -178,11 +195,13 @@ __global__ void RouterTopkKernel(const float* scores, const float* bias, int E, 
                                  int32_t* idx_out, float* w_out) {
   const int r = blockIdx.x, lane = threadIdx.x;
   float val[16], sc[16];
+  bool eligible[16];
 #pragma unroll
   for (int i = 0; i < 16; ++i) {
     const int e = lane + 32 * i;
     sc[i] = e < E ? scores[static_cast<int64_t>(r) * E + e] : 0.f;
     val[i] = e < E ? sc[i] + bias[e] : -INFINITY;
+    eligible[i] = e < E;
   }
   int my_idx = -1;
   float my_sc = 0.f, sum = 0.f;
@@ -191,7 +210,7 @@ __global__ void RouterTopkKernel(const float* scores, const float* bias, int E, 
     int bi = -1;
 #pragma unroll
     for (int i = 0; i < 16; ++i) {
-      if (val[i] > bv) {
+      if (eligible[i] && (bi < 0 || val[i] > bv)) {
         bv = val[i];
         bsc = sc[i];
         bi = lane + 32 * i;
@@ -202,7 +221,7 @@ __global__ void RouterTopkKernel(const float* scores, const float* bias, int E, 
     for (int o = 16; o > 0; o >>= 1) {
       const float ov = __shfl_xor_sync(0xffffffff, wv, o);
       const int oi = __shfl_xor_sync(0xffffffff, wi, o);
-      if (ov > wv || (ov == wv && oi >= 0 && (wi < 0 || oi < wi))) {
+      if (oi >= 0 && (wi < 0 || ov > wv || (ov == wv && oi < wi))) {
         wv = ov;
         wi = oi;
       }
@@ -211,7 +230,7 @@ __global__ void RouterTopkKernel(const float* scores, const float* bias, int E, 
     if (wi >= 0 && win_lane == lane) {
 #pragma unroll
       for (int i = 0; i < 16; ++i) {
-        if (i == win_slot) val[i] = -INFINITY;
+        if (i == win_slot) eligible[i] = false;
       }
     }
     const float s = wi >= 0 ? __shfl_sync(0xffffffff, bsc, win_lane) : 0.f;
@@ -222,8 +241,8 @@ __global__ void RouterTopkKernel(const float* scores, const float* bias, int E, 
     sum += s;
   }
   if (lane < topk) {
-    idx_out[r * topk + lane] = my_idx;
-    w_out[r * topk + lane] = my_sc / (sum + 1e-20f) * scale;
+    idx_out[static_cast<int64_t>(r) * topk + lane] = my_idx;
+    w_out[static_cast<int64_t>(r) * topk + lane] = my_sc / (sum + 1e-20f) * scale;
   }
 }
 
@@ -236,12 +255,21 @@ __global__ void ReluSquaredKernel(const bf16* x, bf16* y, int64_t n) {
 }
 }  // namespace
 
-cudaError_t LaunchMamba2Verify(cudaStream_t stream, int rows, int heads, int groups, float epsilon, float time_step_min,
-                               const void* projection, const void* conv_state, const float* ssm_state,
-                               const void* conv_weight, const void* conv_bias, const float* dt_bias,
-                               const float* a_negative, const float* d_skip, const float* norm_weight,
-                               const int32_t* state_row, void* output, void* conv_snapshots, float* ssm_snapshots,
-                               void* xbc, float* readout) {
+cudaError_t LaunchMamba2VerifyNormalization(cudaStream_t stream, int rows, int width, int groups, int projection_stride,
+                                            float epsilon, const void* projection, const float* readout,
+                                            const float* norm_weight, void* output) {
+  MambaNormKernel<<<dim3(groups, rows), 256, 0, stream>>>(static_cast<const bf16*>(projection), projection_stride,
+                                                          width, width / groups, epsilon, readout, norm_weight,
+                                                          static_cast<bf16*>(output));
+  return cudaGetLastError();
+}
+
+cudaError_t LaunchMamba2Verify(cudaStream_t stream, int rows, int64_t slots, int heads, int groups, float epsilon,
+                               float time_step_min, const void* projection, const void* conv_state,
+                               const float* ssm_state, const void* conv_weight, const void* conv_bias,
+                               const float* dt_bias, const float* a_negative, const float* d_skip,
+                               const float* norm_weight, const int32_t* state_row, void* output, void* conv_snapshots,
+                               float* ssm_snapshots, void* xbc, float* readout) {
   const int di = heads * 64, channels = di + 2 * groups * 128, stride = di + channels + heads;
   const auto* proj = static_cast<const bf16*>(projection);
   const auto* conv_in = static_cast<const bf16*>(conv_state);
@@ -250,27 +278,25 @@ cudaError_t LaunchMamba2Verify(cudaStream_t stream, int rows, int heads, int gro
   auto* conv_out = static_cast<bf16*>(conv_snapshots);
   auto* act = static_cast<bf16*>(xbc);
   if (rows == 8) {
-    MambaConvKernel<8><<<(channels + 63) / 64, 64, 0, stream>>>(
-        proj, rows, stride, di, channels, conv_in, cw, cb, conv_out, act, state_row);
-    MambaSsmKernel<4, 8><<<heads, 256, 0, stream>>>(
-        proj, rows, stride, di, channels, heads, heads / groups, act, ssm_state, dt_bias,
-        a_negative, d_skip, time_step_min, ssm_snapshots, readout, state_row);
+    MambaConvKernel<8><<<(channels + 63) / 64, 64, 0, stream>>>(proj, rows, stride, di, channels, conv_in, cw, cb,
+                                                                conv_out, act, state_row, slots);
+    MambaSsmKernel<4, 8><<<heads, 256, 0, stream>>>(proj, rows, stride, di, channels, heads, heads / groups, act,
+                                                    ssm_state, dt_bias, a_negative, d_skip, time_step_min,
+                                                    ssm_snapshots, readout, state_row, slots);
   } else {
-    MambaConvKernel<<<(channels + 127) / 128, 128, 0, stream>>>(
-        proj, rows, stride, di, channels, conv_in, cw, cb, conv_out, act, state_row);
+    MambaConvKernel<<<(channels + 127) / 128, 128, 0, stream>>>(proj, rows, stride, di, channels, conv_in, cw, cb,
+                                                                conv_out, act, state_row, slots);
     if (rows > 1) {
-      MambaSsmKernel<4><<<heads, 256, 0, stream>>>(
-          proj, rows, stride, di, channels, heads, heads / groups, act, ssm_state, dt_bias,
-          a_negative, d_skip, time_step_min, ssm_snapshots, readout, state_row);
+      MambaSsmKernel<4><<<heads, 256, 0, stream>>>(proj, rows, stride, di, channels, heads, heads / groups, act,
+                                                   ssm_state, dt_bias, a_negative, d_skip, time_step_min, ssm_snapshots,
+                                                   readout, state_row, slots);
     } else {
-      MambaSsmKernel<2><<<heads, 128, 0, stream>>>(
-          proj, rows, stride, di, channels, heads, heads / groups, act, ssm_state, dt_bias,
-          a_negative, d_skip, time_step_min, ssm_snapshots, readout, state_row);
+      MambaSsmKernel<2><<<heads, 128, 0, stream>>>(proj, rows, stride, di, channels, heads, heads / groups, act,
+                                                   ssm_state, dt_bias, a_negative, d_skip, time_step_min, ssm_snapshots,
+                                                   readout, state_row, slots);
     }
   }
-  MambaNormKernel<<<dim3(rows, groups), 256, 0, stream>>>(
-      proj, stride, di, di / groups, epsilon, readout, norm_weight, static_cast<bf16*>(output));
-  return cudaGetLastError();
+  return LaunchMamba2VerifyNormalization(stream, rows, di, groups, stride, epsilon, proj, readout, norm_weight, output);
 }
 
 cudaError_t LaunchBiasCorrectedMoERoute(cudaStream_t stream, int rows, int width, int experts, int topk, float scale,

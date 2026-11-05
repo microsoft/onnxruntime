@@ -72,7 +72,7 @@ class Mamba2Verify final : public CudaKernel {
                                            cudaMemcpyDeviceToDevice, Stream(context)));
     }
     CUDA_RETURN_IF_ERROR(LaunchMamba2Verify(
-        Stream(context), rows, heads_, groups_, epsilon_, time_step_min_, projection->DataRaw(), conv->DataRaw(),
+        Stream(context), rows, slots, heads_, groups_, epsilon_, time_step_min_, projection->DataRaw(), conv->DataRaw(),
         ssm->Data<float>(), context->Input<Tensor>(3)->DataRaw(), context->Input<Tensor>(4)->DataRaw(),
         context->Input<Tensor>(5)->Data<float>(), context->Input<Tensor>(6)->Data<float>(),
         context->Input<Tensor>(7)->Data<float>(), context->Input<Tensor>(8)->Data<float>(),

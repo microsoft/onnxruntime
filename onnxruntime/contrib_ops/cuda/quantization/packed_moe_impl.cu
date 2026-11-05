@@ -7,19 +7,41 @@ namespace onnxruntime::contrib::cuda {
 namespace {
 using namespace packed_projection;
 
+__device__ bool ValidRouteRow(const int32_t* idx, int topk, int experts) {
+  for (int k = 0; k < topk; ++k) {
+    if (idx[k] < 0 || idx[k] >= experts) return false;
+    for (int j = 0; j < k; ++j)
+      if (idx[j] == idx[k]) return false;
+  }
+  return true;
+}
+
+__global__ void MoeInvalidRowsKernel(const int32_t* idx, int topk, int experts, int intermediate, bf16* hidden,
+                                     float* part) {
+  const int row = blockIdx.x;
+  if (ValidRouteRow(idx + row * topk, topk, experts)) return;
+  for (int k = 0; k < topk; ++k) {
+    const int pair = row * topk + k;
+    for (int i = threadIdx.x; i < intermediate; i += blockDim.x)
+      hidden[static_cast<int64_t>(pair) * intermediate + i] = __float2bfloat16(NAN);
+    for (int i = threadIdx.x; i < 1024; i += blockDim.x) part[static_cast<int64_t>(pair) * 1024 + i] = NAN;
+  }
+}
+
 // Group in first-occurrence order; one expert tile serves up to eight token rows.
-__global__ void MoeGroupKernel(const int32_t* idx, int P, int topk, int32_t* meta) {
+__global__ void MoeGroupKernel(const int32_t* idx, int P, int topk, int experts, int32_t* meta) {
   __shared__ int sidx[128], srank[128], warp_tot[4];
   const int p = threadIdx.x, lane = p & 31, warp = p >> 5;
 #pragma unroll 5
   for (int i = p; i < P * 8; i += blockDim.x) meta[1 + P + i] = -1;
   if (p < P) {
-    sidx[p] = idx[p];
+    // Exclude the whole invalid row before grouping, avoiding duplicate metadata writers.
+    sidx[p] = ValidRouteRow(idx + (p / topk) * topk, topk, experts) ? idx[p] : -1;
     meta[1 + p] = -1;
   }
   __syncthreads();
   int q = -1;
-  if (p < P) {
+  if (p < P && sidx[p] >= 0) {
     const int my = sidx[p];
     for (int j = 0; j <= p; ++j) {
       if (sidx[j] == my) {
@@ -28,7 +50,7 @@ __global__ void MoeGroupKernel(const int32_t* idx, int P, int topk, int32_t* met
       }
     }
   }
-  const bool first = p < P && q == p;
+  const bool first = q >= 0 && q == p;
   const unsigned b = __ballot_sync(0xffffffffu, first);
   if (lane == 0) warp_tot[warp] = __popc(b);
   __syncthreads();
@@ -43,7 +65,7 @@ __global__ void MoeGroupKernel(const int32_t* idx, int P, int topk, int32_t* met
   }
   if (p == 0) meta[0] = warp_tot[0] + warp_tot[1] + warp_tot[2] + warp_tot[3];
   __syncthreads();
-  if (p < P) meta[1 + P + srank[q] * 8 + p / topk] = p;
+  if (q >= 0) meta[1 + P + srank[q] * 8 + p / topk] = p;
 }
 
 template <int PH, int KW>
@@ -135,12 +157,14 @@ __global__ void MoeFinalizeKernel(const float* part, const float* w, int topk, b
 }
 }  // namespace
 
-cudaError_t LaunchMoEPackedIQ2XXS(cudaStream_t stream, int rows, int topk, int intermediate_size,
-                                  const void* input, const int32_t* indices, const float* weights,
-                                  const uint8_t* fc1, const void* scale1, const uint8_t* fc2, const void* scale2,
-                                  void* output, void* hidden, float* expert_output, int32_t* metadata) {
+cudaError_t LaunchMoEPackedIQ2XXS(cudaStream_t stream, int rows, int topk, int experts, int intermediate_size,
+                                  const void* input, const int32_t* indices, const float* weights, const uint8_t* fc1,
+                                  const void* scale1, const uint8_t* fc2, const void* scale2, void* output,
+                                  void* hidden, float* expert_output, int32_t* metadata) {
   const int pairs = rows * topk;
-  MoeGroupKernel<<<1, 128, 0, stream>>>(indices, pairs, topk, metadata);
+  MoeInvalidRowsKernel<<<rows, 128, 0, stream>>>(indices, topk, experts, intermediate_size, static_cast<bf16*>(hidden),
+                                                 expert_output);
+  MoeGroupKernel<<<1, 128, 0, stream>>>(indices, pairs, topk, experts, metadata);
   // Frozen default: FC1 uses 2 MMA tiles/4 warps, FC2 uses 2 tiles/8 warps, narrow native IQ2 chunks.
   MoeMmaKernel<1, 4><<<dim3(intermediate_size / 32, pairs), 128, 4 * 2 * 16 * 8 * sizeof(float), stream>>>(
       static_cast<const bf16*>(input), metadata, pairs, rows, intermediate_size, 1024,

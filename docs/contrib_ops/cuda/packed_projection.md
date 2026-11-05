@@ -47,16 +47,26 @@ not imported:
   (native IQ2 with complete-operand rounding). The unmodified upstream
   snapshot has different IQ2 rounding and must not substitute for this file.
 
-The IQ2 codebook originates in ggml/llama.cpp under the MIT license.
+The IQ2 codebook matches `iq2xxs_grid` in `ggml/src/ggml-common.h` at
+ggml/llama.cpp commit `3de52ac38818978d6da8f386eda43a856e53714a`, with byte
+magnitudes re-encoded as BF16 pairs. Its complete upstream MIT notice is retained
+beside the table and in `ThirdPartyNotices.txt`.
 `packed_projection_impl.cuh` exposes the packed load/dequantization/MMA/reduction
 helpers for routed kernels without duplicating their arithmetic.
 
 ## Validation scope
 
-Focused C++ operator tests cover nonunit scales, row counts 1/3/8, column tails,
-raw FP16 scale transport, the Q8 row-one cancellation contract, and rejection
-of unsupported >8-row prefill. They are collected by the existing contrib test
-glob. CUDA sources are collected by the existing recursive provider glob.
+Focused C++ operator fixtures cover nonunit scales, row counts 1/3/8, N=8192/8193
+dispatch boundaries and column tails, multiple contributing K chunks, NVFP4
+K=4096/8192, Q8 BF16 row-one IT=2/4/6 through K=6144, and both IQ2 FP16 and
+raw-FP16-bits-in-BF16 scale inputs. The NVFP4 row-one cancellation case places
+`[16384, 1, -16384]` in the same low FP16 accumulator (paired with activation
+indices 4/5/6); its required output is 0, not the FP32 sum 1. Q8 has a separate
+row-one integer-dot cancellation case. Unsupported >8-row prefill is checked
+with static graph shapes (schema rejection) and omitted shapes (runtime guard).
+These fixtures are collected by the existing contrib test glob; execution
+requires CUDA SM80 or later. CUDA sources are collected by the existing recursive
+provider glob.
 
 Lower-level component validation is not a full ORT/GenAI integration or
 full-model memory/performance qualification. In particular, supporting the

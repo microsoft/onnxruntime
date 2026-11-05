@@ -41,10 +41,11 @@ class MoEPackedIQ2XXS final : public onnxruntime::cuda::CudaKernel {
     auto* hidden = context->Output(1, {pairs, intermediate});
     auto* expert_output = context->Output(2, {pairs, 1024});
     auto* metadata = context->Output(3, {1 + pairs * 9});
-    CUDA_RETURN_IF_ERROR(LaunchMoEPackedIQ2XXS(
-        Stream(context), rows, topk_, intermediate, x->DataRaw(), indices->Data<int32_t>(), weights->Data<float>(),
-        fc1->Data<uint8_t>(), scale1->DataRaw(), fc2->Data<uint8_t>(), scale2->DataRaw(), y->MutableDataRaw(),
-        hidden->MutableDataRaw(), expert_output->MutableData<float>(), metadata->MutableData<int32_t>()));
+    CUDA_RETURN_IF_ERROR(LaunchMoEPackedIQ2XXS(Stream(context), rows, topk_, experts, intermediate, x->DataRaw(),
+                                               indices->Data<int32_t>(), weights->Data<float>(), fc1->Data<uint8_t>(),
+                                               scale1->DataRaw(), fc2->Data<uint8_t>(), scale2->DataRaw(),
+                                               y->MutableDataRaw(), hidden->MutableDataRaw(),
+                                               expert_output->MutableData<float>(), metadata->MutableData<int32_t>()));
     return Status::OK();
   }
 

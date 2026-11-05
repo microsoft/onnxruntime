@@ -5,6 +5,8 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include <algorithm>
+#include <cmath>
+#include <limits>
 
 namespace onnxruntime::test {
 #if defined(USE_CUDA)
@@ -72,9 +74,198 @@ void TestReusedExperts(int rows) {
   tester.AddOutput<BFloat16>("hidden", {pairs, intermediate}, hidden);
   tester.AddOutput<float>("expert_output", {pairs, 1024}, partial);
   tester.AddOutput<int32_t>("metadata", {1 + 9 * pairs}, metadata);
+  tester.SetOutputTolerance(0.f, 0.f);
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(DefaultCudaExecutionProvider());
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+void RunCuda(OpTester& tester) {
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+class MoETester : public OpTester {
+ public:
+  MoETester() : OpTester("MoEPackedIQ2XXS", 1, kMSDomain) {
+    SetCustomOutputVerifier([this](const std::vector<OrtValue>& actual, const std::string& provider) {
+      auto& expected = GetOutputData();
+      ASSERT_EQ(actual.size(), expected.size());
+      for (size_t i = 0; i < actual.size(); ++i) {
+        CheckOrtValuesAreEqual(expected[i].def.Name(), expected[i].data, actual[i], expected[i].validation_params,
+                               provider);
+        const auto& want = expected[i].data.Get<Tensor>();
+        if (!want.IsDataType<BFloat16>()) continue;
+        const auto& got = actual[i].Get<Tensor>();
+        ASSERT_EQ(want.Shape(), got.Shape());
+        ASSERT_TRUE(got.IsDataType<BFloat16>());
+        // The base BF16 checker checks the expected, not actual, NaN.
+        for (int64_t j = 0; j < want.Shape().Size(); ++j) {
+          if (std::isnan(want.Data<BFloat16>()[j].ToFloat())) {
+            EXPECT_TRUE(std::isnan(got.Data<BFloat16>()[j].ToFloat())) << expected[i].def.Name() << ", " << j;
+          }
+        }
+      }
+    });
+  }
+};
+
+// Independently decode grid one, including sign parity and the raw FP16 super-scale.
+float DecodeFixture(const std::vector<uint8_t>& packed, const std::vector<MLFloat16>& scales, int row, int width,
+                    int k) {
+  const int record = (row * (width / 32) + k / 32) * 8;
+  const int group = (k % 32) / 8, lane = k % 8;
+  uint32_t bits = 0;
+  for (int b = 0; b < 4; ++b) bits |= static_cast<uint32_t>(packed[record + 4 + b]) << (8 * b);
+  const int signs = (bits >> (group * 7)) & 127;
+  int parity = 0;
+  for (int b = 0; b < 7; ++b) parity ^= (signs >> b) & 1;
+  const bool negative = lane == 7 ? parity != 0 : ((signs >> lane) & 1) != 0;
+  const float magnitude = packed[record + group] == 1 && lane == 0 ? 43.f : 8.f;
+  const float scale = scales[row * (width / 256) + k / 256].ToFloat() * (0.5f + static_cast<float>(bits >> 28)) * 0.25f;
+  return BFloat16((negative ? -magnitude : magnitude) * scale).ToFloat();
+}
+
+void TestSparseRoutes(int topk, int invalid_id = -2, bool duplicate = false) {
+  constexpr int rows = 3, intermediate = 512;
+  const int experts = topk + 3, pairs = rows * topk;
+  std::vector<BFloat16> x(rows * 1024);
+  for (int r = 0; r < rows; ++r)
+    for (int k = 0; k < 1024; ++k) x[r * 1024 + k] = BFloat16(k % 8 == 0 ? (r + 1) * (1 + k / 256) / 1024.f : 0.f);
+  std::vector<int32_t> indices(pairs);
+  std::vector<float> weights(pairs);
+  for (int r = 0; r < rows; ++r)
+    for (int k = 0; k < topk; ++k) {
+      indices[r * topk + k] = (r * 2 + k) % experts;
+      weights[r * topk + k] = (k + 1) * 0.125f;
+    }
+  if (invalid_id != -2) indices[topk] = invalid_id;
+  if (duplicate) indices[topk + 1] = indices[topk];
+  auto make_packed = [](int count, int width, bool signed_weights) {
+    std::vector<uint8_t> data(static_cast<size_t>(count) * (width / 32) * 8);
+    for (int n = 0; n < count; ++n)
+      for (int b = 0; b < width / 32; ++b) {
+        const int offset = (n * (width / 32) + b) * 8;
+        std::fill_n(data.begin() + offset, 4, uint8_t{1});
+        // All eight signs are negative (seven bits plus odd parity).
+        if (signed_weights && (n + b / 8) % 3 == 0) {
+          data[offset + 4] = data[offset + 5] = data[offset + 6] = 255;
+          data[offset + 7] = 15;
+        }
+      }
+    return data;
+  };
+  auto make_scales = [experts](int height, int blocks) {
+    std::vector<MLFloat16> scales(experts * height * blocks);
+    for (int e = 0; e < experts; ++e)
+      for (int n = 0; n < height; ++n)
+        for (int b = 0; b < blocks; ++b)
+          scales[(e * height + n) * blocks + b] = MLFloat16((1 + e % 3 + n % 2 + b) / 64.f);
+    return scales;
+  };
+  const auto fc1 = make_packed(experts * intermediate, 1024, false);
+  const auto fc2 = make_packed(experts * 1024, intermediate, true);
+  const auto sc1 = make_scales(intermediate, 4), sc2 = make_scales(1024, intermediate / 256);
+  std::vector<BFloat16> hidden(pairs * intermediate), y(rows * 1024);
+  std::vector<float> part(pairs * 1024);
+  std::vector<int32_t> unique, metadata(1 + 9 * pairs, -1);
+  for (int r = 0; r < rows; ++r) {
+    const bool valid = !(r == 1 && (invalid_id != -2 || duplicate));
+    for (int k = 0; k < topk; ++k) {
+      const int p = r * topk + k, e = indices[p];
+      if (!valid) {
+        std::fill_n(hidden.begin() + p * intermediate, intermediate, BFloat16(std::numeric_limits<float>::quiet_NaN()));
+        std::fill_n(part.begin() + p * 1024, 1024, std::numeric_limits<float>::quiet_NaN());
+        continue;
+      }
+      auto it = std::find(unique.begin(), unique.end(), e);
+      if (it == unique.end()) {
+        unique.push_back(e);
+        it = unique.end() - 1;
+      }
+      const int rank = static_cast<int>(it - unique.begin());
+      metadata[1 + pairs + rank * 8 + r] = p;
+      for (int n = 0; n < intermediate; ++n) {
+        float dot = 0.f;
+        for (int i = 0; i < 1024; ++i)
+          dot = std::fma(x[r * 1024 + i].ToFloat(), DecodeFixture(fc1, sc1, e * intermediate + n, 1024, i), dot);
+        const float relu = std::max(BFloat16(dot).ToFloat(), 0.f);
+        hidden[p * intermediate + n] = BFloat16(relu * relu);
+      }
+      for (int n = 0; n < 1024; ++n) {
+        float dot = 0.f;
+        for (int i = 0; i < intermediate; ++i)
+          dot = std::fma(hidden[p * intermediate + i].ToFloat(), DecodeFixture(fc2, sc2, e * 1024 + n, intermediate, i),
+                         dot);
+        part[p * 1024 + n] = BFloat16(dot).ToFloat();
+      }
+    }
+    for (int n = 0; n < 1024; ++n) {
+      float sum = 0.f;
+      for (int k = 0; k < topk; ++k) sum = std::fma(weights[r * topk + k], part[(r * topk + k) * 1024 + n], sum);
+      y[r * 1024 + n] = BFloat16(sum);
+    }
+  }
+  metadata[0] = static_cast<int32_t>(unique.size());
+  std::copy(unique.begin(), unique.end(), metadata.begin() + 1);
+  MoETester tester;
+  tester.AddAttribute("topk", static_cast<int64_t>(topk));
+  tester.AddInput<BFloat16>("X", {rows, 1024}, x);
+  tester.AddInput<int32_t>("indices", {rows, topk}, indices);
+  tester.AddInput<float>("weights", {rows, topk}, weights);
+  tester.AddInput<uint8_t>("fc1", {experts, intermediate, 32, 8}, fc1);
+  tester.AddInput<MLFloat16>("scale1", {experts, intermediate, 4}, sc1);
+  tester.AddInput<uint8_t>("fc2", {experts, 1024, intermediate / 32, 8}, fc2);
+  tester.AddInput<MLFloat16>("scale2", {experts, 1024, intermediate / 256}, sc2);
+  tester.AddOutput<BFloat16>("Y", {rows, 1024}, y);
+  tester.AddOutput<BFloat16>("hidden", {pairs, intermediate}, hidden);
+  tester.AddOutput<float>("expert_output", {pairs, 1024}, part);
+  tester.AddOutput<int32_t>("metadata", {1 + pairs * 9}, metadata);
+  tester.SetOutputTolerance(0.f, 0.f);
+  RunCuda(tester);
+}
+
+void TestOrderedCancellation(int topk) {
+  const int experts = topk + 1;
+  OpTester tester("MoEPackedIQ2XXS", 1, kMSDomain);
+  tester.AddAttribute("topk", static_cast<int64_t>(topk));
+  tester.AddInput<BFloat16>("X", {1, 1024}, std::vector<BFloat16>(1024, BFloat16(1.f / 1024)));
+  std::vector<int32_t> indices(topk);
+  for (int k = 0; k < topk; ++k) indices[k] = experts - 1 - k;
+  std::vector<float> weights(topk, 0.f);
+  weights[0] = 0x1p28f;
+  weights[1] = 48.f;
+  weights[2] = -0x1p28f;
+  tester.AddInput<int32_t>("indices", {1, topk}, indices);
+  tester.AddInput<float>("weights", {1, topk}, weights);
+  // Grid zero has eight 8s: decoded operands are exactly 1/16.
+  tester.AddInput<uint8_t>("fc1", {experts, 256, 32, 8}, std::vector<uint8_t>(experts * 256 * 256, 0));
+  tester.AddInput<MLFloat16>("scale1", {experts, 256, 4},
+                             std::vector<MLFloat16>(experts * 256 * 4, MLFloat16(0.0625f)));
+  tester.AddInput<uint8_t>("fc2", {experts, 1024, 8, 8}, std::vector<uint8_t>(experts * 1024 * 64, 0));
+  tester.AddInput<MLFloat16>("scale2", {experts, 1024, 1}, std::vector<MLFloat16>(experts * 1024, MLFloat16(0.0625f)));
+  float ordered = 0.f, reversed = 0.f, bf16_sum = 0.f;
+  for (int k = 0; k < topk; ++k) {
+    ordered = std::fma(weights[k], 0.0625f, ordered);
+    reversed = std::fma(weights[topk - 1 - k], 0.0625f, reversed);
+    bf16_sum = BFloat16(std::fma(weights[k], 0.0625f, bf16_sum)).ToFloat();
+  }
+  ASSERT_EQ(ordered, 4.f);
+  ASSERT_NE(BFloat16(ordered).val, BFloat16(reversed).val);
+  ASSERT_NE(BFloat16(ordered).val, BFloat16(bf16_sum).val);
+  std::vector<int32_t> metadata(1 + 9 * topk, -1);
+  metadata[0] = topk;
+  for (int k = 0; k < topk; ++k) {
+    metadata[1 + k] = indices[k];
+    metadata[1 + topk + k * 8] = k;
+  }
+  tester.AddOutput<BFloat16>("Y", {1, 1024}, std::vector<BFloat16>(1024, BFloat16(ordered)));
+  tester.AddOutput<BFloat16>("hidden", {topk, 256}, std::vector<BFloat16>(topk * 256, BFloat16(1.f / 256)));
+  tester.AddOutput<float>("expert_output", {topk, 1024}, std::vector<float>(topk * 1024, 0.0625f));
+  tester.AddOutput<int32_t>("metadata", {1 + 9 * topk}, metadata);
+  tester.SetOutputTolerance(0.f, 0.f);
+  RunCuda(tester);
 }
 }  // namespace
 
@@ -83,6 +274,25 @@ TEST(PackedMoETest, ReusedExpertsWeightedSumAndFP16ScaleBits) {
   TestReusedExperts<BFloat16>(1);
   TestReusedExperts<BFloat16>(8);
   TestReusedExperts<MLFloat16>(3);
+}
+
+TEST(PackedMoETest, SparseRowDistinctRoutesAndMultipleFC2Superblocks) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  TestSparseRoutes(2);
+  TestSparseRoutes(9);
+}
+
+TEST(PackedMoETest, InvalidAndDuplicateRoutesProduceNaNRows) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  TestSparseRoutes(2, -1);
+  TestSparseRoutes(2, 5);
+  TestSparseRoutes(2, -2, true);
+}
+
+TEST(PackedMoETest, OrderedFP32CancellationAndFinalBF16Rounding) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  TestOrderedCancellation(3);
+  TestOrderedCancellation(9);
 }
 #endif
 }  // namespace onnxruntime::test
