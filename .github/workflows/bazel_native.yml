@@ -60,6 +60,7 @@ jobs:
             //rust:test_runner_test //objectivec:test_runner_test \
             //:android_aar_packager_test \
             //js/react_native:data_policy_test \
+            //js/react_native:package_test \
             --lockfile_mode=error --jobs=3 --local_test_jobs=1 \
             --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-desktop.log
       - name: Test selected existing C++ cases
@@ -123,6 +124,7 @@ jobs:
           set -o pipefail
           bazelisk ${BAZEL_STARTUP_OPTIONS:-} build -c opt \
             //objectivec:ios_framework //objectivec:ios_inference_tests \
+            //js/react_native:ios_adapter_framework \
             --ios_multi_cpus=sim_arm64 \
             --lockfile_mode=error --jobs=3 --build_python_zip=false \
             2>&1 | tee -a bazel-desktop.log

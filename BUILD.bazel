@@ -16,12 +16,17 @@ load("//bazel:nuget_package.bzl", "csharp_nuget_package")
 load("//bazel:packaging.bzl", "runtime_sdk_package")
 load("//bazel:platforms.bzl", "desktop_shared_library")
 load("//bazel:python_wheel.bzl", "python_wheel_package")
+load("//bazel:react_native_package.bzl", "react_native_javascript")
 load("//bazel:tests.bzl", "core_tests")
 load("//bazel:wasm.bzl", "wasm_targets")
 
 package(default_visibility = ["//visibility:public"])
 
+react_native_javascript()
+
 exports_files([
+    "tools/bazel/react_native_package.py",
+    "tools/bazel/react_native_package_test.py",
     "cmake/patches/cpuinfo/fix_missing_sysfs_fallback.patch",
     "cmake/patches/cpuinfo/enable_deinit_refcounting.patch",
     "cmake/patches/onnx/onnx.patch",

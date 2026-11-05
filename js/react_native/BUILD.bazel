@@ -1,12 +1,117 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+load("@rules_apple//apple:ios.bzl", "ios_static_framework")
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@rules_java//java:defs.bzl", "java_library")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_files", "strip_prefix")
 load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
+load("@rules_python//python:defs.bzl", "py_binary", "py_test")
+load("//bazel:react_native_package.bzl", "react_native_package")
 
 package(default_visibility = ["//visibility:public"])
+
+py_binary(
+    name = "packager",
+    srcs = ["//:tools/bazel/react_native_package.py"],
+    main = "//:tools/bazel/react_native_package.py",
+)
+
+py_test(
+    name = "package_test",
+    srcs = [
+        "//:tools/bazel/react_native_package.py",
+        "//:tools/bazel/react_native_package_test.py",
+    ],
+    imports = ["../../tools/bazel"],
+    main = "//:tools/bazel/react_native_package_test.py",
+)
+
+react_native_package(
+    name = "android_package",
+    common = ["//:react_native_common"],
+    frontend = glob(["lib/*.ts"]),
+    java = ":android_java",
+    native = [
+        ":libonnxruntimejsi.so",
+        "//:android/libonnxruntime.so",
+        "@ort_ndk_shared_runtime//:libc++_shared.so",
+    ],
+    notices = [
+        "//:LICENSE",
+        "//:ThirdPartyNotices.txt",
+    ],
+    packager = ":packager",
+    tags = ["manual"],
+    target_compatible_with = [
+        "@platforms//os:android",
+        "@platforms//cpu:aarch64",
+    ],
+    version = "//:VERSION_NUMBER",
+)
+
+objc_library(
+    name = "ios_adapter",
+    srcs = glob([
+        "cpp/*.cpp",
+        "cpp/*.h",
+        "ios/*.mm",
+    ]),
+    hdrs = ["ios/OnnxruntimeModule.h"],
+    copts = ["-std=c++20"],
+    includes = [
+        "cpp",
+        "ios",
+    ],
+    sdk_frameworks = [
+        "Foundation",
+        "UIKit",
+    ],
+    target_compatible_with = ["@platforms//os:ios"],
+    deps = [
+        "//:api_headers",
+        "//:runtime",
+        "@ort_react_headers//:sdk",
+    ],
+    alwayslink = True,
+)
+
+ios_static_framework(
+    name = "ios_adapter_framework",
+    hdrs = ["ios/OnnxruntimeModule.h"],
+    bundle_name = "onnxruntime_react_native",
+    families = [
+        "iphone",
+        "ipad",
+    ],
+    minimum_os_version = "15.1",
+    tags = ["manual"],
+    target_compatible_with = select({
+        "//objectivec:host_darwin": [],
+        "//objectivec:host_darwin_x86_64": [],
+        "//objectivec:host_darwin_arm64": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [":ios_adapter"],
+)
+
+java_library(
+    name = "android_java",
+    srcs = [
+        "android/src/main/java/ai/onnxruntime/reactnative/OnnxruntimeExtensionsDisabled.java",
+        "android/src/main/java/ai/onnxruntime/reactnative/OnnxruntimeModule.java",
+        "android/src/main/java/ai/onnxruntime/reactnative/OnnxruntimePackage.java",
+    ],
+    javacopts = ["-Xlint:-classfile"],
+    deps = [
+        "@ort_android_platform//:java",
+        "@ort_androidx_annotation//jar",
+        "@ort_fbjni//:java",
+        "@ort_react_android//:java",
+        "@ort_react_kotlin//jar",
+    ],
+)
 
 cc_binary(
     name = "libonnxruntimejsi.so",

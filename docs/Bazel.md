@@ -407,8 +407,7 @@ disabled by default.
 **React Native Android is not implemented by this AAR.** Its actual bridge
 needs source-built ReactAndroid/JSI, CallInvoker and fbjni, Java React bridge
 and AndroidX APIs, plus `cpp-adapter.cpp` and the shared JSI C++ sources
-listed in `js/react_native/android/CMakeLists.txt`. Those dependencies do not
-have a source-native Bazel graph here. The Java/JNI AAR neither builds
+listed in `js/react_native/android/CMakeLists.txt`. The separate React Native graph is described below. The Java/JNI AAR neither builds
 `libonnxruntimejsi.so` nor contains `OnnxruntimeModule`/`OnnxruntimePackage`;
 it must not be advertised as the React Native package.
 ### Standalone Java/JNI JAR
@@ -840,7 +839,8 @@ graphs. Training build/test migration is intentionally out of scope.
 
 `rules_rust` compiles the existing `rust/onnxruntime-sys` and
 `rust/onnxruntime` sources directly. `rust_bindgen` generates FFI from the
-checked-in C API headers using a checksum-pinned public libclang archive.
+checked-in C API headers using a checksum-pinned public libclang archive on
+Windows/Linux and the selected Xcode libclang and builtin headers on macOS.
 An explicit patch to `rules_rust_bindgen` connects its vendored Windows import
 library to the bindgen CLI's native link dependencies. Generated bindings
 include compile-time layout assertions, rather than separate libtest cases.
@@ -970,6 +970,25 @@ because standard ONNX operators use it; this does not register contrib ops.
 ## Tests and remaining migration
 
 ### iOS and React Native follow-up
+
+The Android React Native follow-up adds `//js/react_native:android_java` and
+`//js/react_native:android_package`. The former compiles the three existing
+bridge classes against pinned ReactAndroid 0.73.11, fbjni 0.5.1, Android API 35,
+AndroidX annotation 1.7.1, and Kotlin 1.8.0 SDKs. Windows compilation passed.
+The latter assembles those classes with the source-native ORT/JSI libraries
+and NDK shared C++ runtime as an ARM64 AAR and npm tarball. Its npm frontend
+uses the existing Metro TypeScript sources and compiler-emitted common
+JavaScript/declarations; the included Gradle metadata only exposes the finished
+AAR, never invokes a legacy ORT build. React Native autolinking declares the
+actual Java package. Matching React 18.2/React Native 0.73.11 is supplied by
+the host application. Combined native package validation is pending below.
+
+`//js/react_native:ios_adapter_framework` adds the existing Objective-C++ JSI
+adapter and shared C++ implementation to a native static framework against
+the matching official React Native source headers. Its final application
+link requires the host's React runtime. The explicit macOS CI step builds
+this target for simulator ARM64; no successful Apple compilation or device
+execution is claimed until observed.
 
 `//objectivec:ios_framework` uses native `rules_apple` static framework
 assembly with the existing Objective-C inference wrappers, public headers,

@@ -3,7 +3,7 @@
 
 """Official React Native prefab SDKs for the source-built Android JSI bridge."""
 
-load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_jar")
 
 def _sdk_impl(module_ctx):
     http_archive(
@@ -14,6 +14,7 @@ def _sdk_impl(module_ctx):
         build_file_content = """
 load("@rules_cc//cc:cc_import.bzl", "cc_import")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_java//java:defs.bzl", "java_import")
 package(default_visibility = ["//visibility:public"])
 cc_import(name = "jsi_binary", shared_library = "jni/arm64-v8a/libjsi.so")
 cc_import(name = "react_binary", shared_library = "jni/arm64-v8a/libreact_nativemodule_core.so")
@@ -26,6 +27,7 @@ cc_library(
     target_compatible_with = ["@platforms//os:android", "@platforms//cpu:aarch64"],
 )
 exports_files(["classes.jar", "jni/arm64-v8a/libc++_shared.so", "jni/arm64-v8a/libjsi.so"])
+java_import(name = "java", jars = ["classes.jar"])
 """,
     )
     http_archive(
@@ -46,6 +48,57 @@ cc_library(
     target_compatible_with = ["@platforms//os:android", "@platforms//cpu:aarch64"],
 )
 exports_files(["classes.jar", "jni/arm64-v8a/libfbjni.so"])
+load("@rules_java//java:defs.bzl", "java_import")
+java_import(name = "java", jars = ["classes.jar"])
+""",
+    )
+    http_archive(
+        name = "ort_android_platform",
+        urls = ["https://dl.google.com/android/repository/platform-35_r02.zip"],
+        sha256 = "0988cacad01b38a18a47bac14a0695f246bc76c1b06c0eeb8eb0dc825ab0c8e0",
+        strip_prefix = "android-35",
+        build_file_content = """
+load("@rules_java//java:defs.bzl", "java_import")
+java_import(name = "java", jars = ["android.jar"], visibility = ["//visibility:public"])
+""",
+    )
+    for name, url, sha in [
+        ("ort_androidx_annotation", "https://dl.google.com/dl/android/maven2/androidx/annotation/annotation-jvm/1.7.1/annotation-jvm-1.7.1.jar", "e36b8e4b8393a4adc74e3d4ab22ad5a36396f0cea2e40b5734eae14937dfd224"),
+        ("ort_react_kotlin", "https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/1.8.0/kotlin-stdlib-1.8.0.jar", "c77bef8774640b9fb9d6e217459ff220dae59878beb7d2e4b430506feffc654e"),
+    ]:
+        http_jar(
+            name = name,
+            urls = [url],
+            sha256 = sha,
+        )
+    http_archive(
+        name = "ort_react_headers",
+        urls = ["https://github.com/facebook/react-native/archive/refs/tags/v0.73.11.tar.gz"],
+        sha256 = "fd3271ff56d13469bfcb8d84429728e2eaa5f48c138188dc30b1c1ead790428e",
+        strip_prefix = "react-native-0.73.11/packages/react-native",
+        build_file_content = """
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+package(default_visibility = ["//visibility:public"])
+cc_library(
+    name = "base",
+    hdrs = glob(["React/Base/*.h"]),
+    strip_include_prefix = "React/Base",
+    include_prefix = "React",
+    target_compatible_with = ["@platforms//os:ios"],
+)
+cc_library(
+    name = "sdk",
+    hdrs = glob(["ReactCommon/**/*.h"]),
+    includes = [
+        "ReactCommon",
+        "ReactCommon/jsi",
+        "ReactCommon/callinvoker",
+        "ReactCommon/react/nativemodule/core",
+        "ReactCommon/react/nativemodule/core/platform/ios",
+    ],
+    deps = [":base"],
+    target_compatible_with = ["@platforms//os:ios"],
+)
 """,
     )
     return module_ctx.extension_metadata(reproducible = True)
