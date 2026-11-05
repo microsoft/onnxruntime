@@ -44,6 +44,13 @@ try {
   const config = installed('./react-native.config.js');
   assert.equal(config.dependency.platforms.ios, null);
   assert.equal(config.dependency.platforms.android.packageInstance, 'new OnnxruntimePackage()');
+  const gradle = fs.readFileSync(path.join(root, 'android/build.gradle'), 'utf8');
+  for (const [dependency, sdkVersion] of [
+    ['com.facebook.react:react-android', '0.73.11'],
+    ['com.facebook.fbjni:fbjni', '0.5.1'],
+  ]) {
+    assert.ok(gradle.includes(`add("default", "${dependency}") {\n        version { strictly("${sdkVersion}") }\n    }`));
+  }
   const common = installed('onnxruntime-common');
   const tensor = new common.Tensor('float32', Float32Array.from([1, 2]), [2]);
   assert.deepEqual(Array.from(tensor.data), [1, 2]);

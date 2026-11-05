@@ -71,6 +71,21 @@ class PackageTest(unittest.TestCase):
         with tarfile.open(fileobj=io.BytesIO(first)) as archive:
             self.assertTrue(all(member.mtime == 0 for member in archive))
 
+    def test_binary_sdk_versions_are_exact_in_npm_and_android_metadata(self):
+        package(self.args)
+        with tarfile.open(self.args.npm) as archive:
+            metadata = json.load(archive.extractfile("package/package.json"))
+            self.assertEqual(metadata["peerDependencies"]["react-native"], "0.73.11")
+            gradle = archive.extractfile("package/android/build.gradle").read().decode()
+            for dependency, version in (
+                ("com.facebook.react:react-android", "0.73.11"),
+                ("com.facebook.fbjni:fbjni", "0.5.1"),
+            ):
+                self.assertIn(
+                    f'add("default", "{dependency}") {{\n        version {{ strictly("{version}") }}\n    }}',
+                    gradle,
+                )
+
     def test_missing_native_library_is_an_error(self):
         self.args.native.pop()
         with self.assertRaisesRegex(ValueError, "requires exactly"):

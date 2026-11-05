@@ -53,7 +53,16 @@ def package(args):
     write_zip(args.aar, entries)
     files = {"android/onnxruntime-react-native.aar": Path(args.aar).read_bytes()}
     files["android/build.gradle"] = (
-        b'configurations.maybeCreate("default")\nartifacts.add("default", file("onnxruntime-react-native.aar"))\n'
+        b'configurations.maybeCreate("default")\n'
+        b"dependencies {\n"
+        b'    add("default", "com.facebook.react:react-android") {\n'
+        b'        version { strictly("0.73.11") }\n'
+        b"    }\n"
+        b'    add("default", "com.facebook.fbjni:fbjni") {\n'
+        b'        version { strictly("0.5.1") }\n'
+        b"    }\n"
+        b"}\n"
+        b'artifacts.add("default", file("onnxruntime-react-native.aar"))\n'
     )
     files["react-native.config.js"] = (
         b"const path = require('path');\nmodule.exports = {dependency: {platforms: {ios: null, android: {\n"

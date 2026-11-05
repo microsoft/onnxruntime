@@ -1042,6 +1042,18 @@ AAR, never invokes a legacy ORT build. React Native autolinking declares the
 actual Java package. Matching React 18.2/React Native 0.73.11 is supplied by
 the host application.
 
+The generated npm peer range is exactly `"react-native": "0.73.11"`, not
+a caret or wildcard range. The autolinked Android artifact configuration also
+declares strict `com.facebook.react:react-android:0.73.11` and
+`com.facebook.fbjni:fbjni:0.5.1` dependencies. Gradle must resolve those exact
+SDK versions instead of silently upgrading the precompiled bridge's ABI.
+A focused packaging regression checks both emitted boundaries. This does not
+claim compatibility with other React Native/fbjni versions.
+All six packaging regressions passed on Windows. The metadata-only npm update
+also passed the actual pinned-npm offline consumer, including the installed
+strict declarations. This check does not run Android Gradle resolution or
+execute a React application.
+
 The combined Linux-host Android build passed from an empty native output,
 using Bazel 8.4.2, NDK r27d, eight jobs/two loading threads, frozen lock, and
 the same Xeon Platinum 8480C/96-logical-CPU VM described below. SDK setup took
@@ -1078,11 +1090,15 @@ emulator/device installation and inference remain unverified.
 | Artifact | Bytes | SHA256 |
 | --- | ---: | --- |
 | `onnxruntime-react-native-android-arm64.aar` | 8,028,972 | `472570bb924887ba563a31577085b006dc8e9906a876937daea0b5d469f637a5` |
-| `onnxruntime-react-native-android-arm64.tgz` | 8,047,387 | `81769bf8f303656bfbd2aa58217ff2866bdf87739c92cc967c74d673e0245ec2` |
+| `onnxruntime-react-native-android-arm64-source-c941.tgz` | 8,047,387 | `81769bf8f303656bfbd2aa58217ff2866bdf87739c92cc967c74d673e0245ec2` |
+| `onnxruntime-react-native-android-arm64.tgz` (strict SDK metadata) | 8,047,438 | `f7f7ed48d84cfd9164183ffb5047a85a768cb00255dbd32c1400c3835d05f2ee` |
 | `onnxruntime-react-native-android-arm64.zip` | 8,025,508 | `3e91a795e0ecf475a6fe8cde2d5fee418a127fe1d12ea21ffe28283ab84fb2f9` |
 
-These are final artifacts from source `c941097eb7`, not the earlier native ZIP
-below. Final Windows frozen wildcard/manual-WASM analysis passed 252 targets,
+The native payloads were built from source `c941097eb7`, not the earlier
+native ZIP below. The later strict-SDK npm update changes only
+`android/build.gradle`; the AAR, native/Java, Metro and common API bytes are
+preserved exactly, without claiming a fresh native build. Final Windows
+frozen wildcard/manual-WASM analysis passed 252 targets,
 74,497 configured targets and zero build actions at jobs=2. This analysis
 also includes the integrated handed-off CUDA test graph, but does not execute
 GPU or Apple-incompatible targets. Artifacts and logs were preserved before
