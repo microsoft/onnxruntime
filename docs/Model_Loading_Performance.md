@@ -140,8 +140,9 @@ ONNX Runtime by default copies non-owning CPU tensor buffers into a newly alloca
 
 Setting `session.use_external_initializer_file_buffers_directly` to `"1"` instructs ONNX Runtime to borrow naturally
 aligned CPU buffers larger than 127 bytes on little-endian hosts instead of allocating and copying a duplicate CPU
-buffer. Other buffers are copied. Tensors passed to `AddExternalInitializers` must contain native-endian values;
-files passed to `AddExternalInitializersFromFilesInMemory` contain serialized little-endian values.
+buffer. Other buffers are copied. Tensors passed to `AddExternalInitializers` must be contiguous, non-owning views of
+user-owned buffers and contain native-endian values; allocator-owned tensors are rejected.
+Files passed to `AddExternalInitializersFromFilesInMemory` contain serialized little-endian values.
 
 ```cpp
 Ort::SessionOptions session_options;
@@ -151,8 +152,7 @@ session_options.AddExternalInitializers(initializer_names, initializer_values);
 
 Borrowing is opt-in because it changes the lifetime contract: the application must keep each borrowed CPU buffer
 unchanged and alive until all sessions using it have been released. With the default setting, non-owning buffers can
-be released after session creation. CPU buffers owned by their `OrtValue` may already be shared without enabling this
-option; ONNX Runtime retains their ownership.
+be released after session creation.
 
 Device tensors passed to `AddExternalInitializers` are always copied to owned CPU staging memory using the registered
 execution provider's data-transfer implementation before graph optimization or shape inference. They are subsequently

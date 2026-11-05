@@ -2890,6 +2890,9 @@ common::Status InferenceSession::Initialize() {
       for (auto& [name, value] : session_options_.external_initializers) {
         const auto& tensor = value.Get<Tensor>();
         if (tensor.Location().device.Type() != OrtDevice::CPU) {
+#ifdef ENABLE_STRIDED_TENSORS
+          ORT_RETURN_IF_NOT(tensor.IsContiguous(), "External initializer ", name, " must be contiguous.");
+#endif
           ORT_RETURN_IF_NOT(!tensor.IsDataTypeString(),
                             "External initializer ", name, " cannot be a device string tensor.");
           // Graph optimizers and shape inference require host-readable initializer data.

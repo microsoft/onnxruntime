@@ -425,10 +425,11 @@ static const char* const kOrtSessionOptionsModelExternalInitializersFileFolderPa
 
 // Use CPU buffers supplied through AddExternalInitializers or AddExternalInitializersFromFilesInMemory directly for
 // eligible main-graph initializers.
-// "0": Copy non-owning CPU buffers during session creation. CPU buffers owned by the OrtValue may be shared. [DEFAULT]
+// "0": Copy caller-owned CPU buffers during session creation. [DEFAULT]
 // "1": Borrow naturally aligned CPU buffers larger than 127 bytes on little-endian hosts and copy other buffers.
 // The application must keep borrowed buffers unchanged and alive until all sessions using them are released.
-// AddExternalInitializers tensors contain native-endian values; files contain serialized little-endian values.
+// AddExternalInitializers accepts only non-owning, contiguous tensors containing native-endian values;
+// files contain serialized little-endian values.
 // Device tensors are always copied to owned CPU staging memory before optimization and shape inference.
 static const char* const kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly =
     "session.use_external_initializer_file_buffers_directly";
