@@ -248,13 +248,13 @@ Status MoEGroupRouter<T>::Compute(OpKernelContext* context) const {
           for (int64_t i = 0; i < experts_per_group; ++i) {
             grp_buf[static_cast<size_t>(i)] = biased[static_cast<size_t>(g * experts_per_group + i)];
           }
-          std::partial_sort(grp_buf.begin(), grp_buf.begin() + group_k, grp_buf.end(),
+          std::partial_sort(grp_buf.begin(), grp_buf.begin() + onnxruntime::narrow<ptrdiff_t>(group_k), grp_buf.end(),
                             std::greater<float>());
           float sum = 0.0f;
           for (int64_t i = 0; i < group_k; ++i) sum += grp_buf[static_cast<size_t>(i)];
           grp_scores[static_cast<size_t>(g)] = {sum, g};
         }
-        std::partial_sort(grp_scores.begin(), grp_scores.begin() + topk_group_, grp_scores.end(),
+        std::partial_sort(grp_scores.begin(), grp_scores.begin() + onnxruntime::narrow<ptrdiff_t>(topk_group_), grp_scores.end(),
                           [](const auto& a, const auto& b) {
                             return a.first != b.first ? a.first > b.first : a.second < b.second;
                           });
@@ -268,7 +268,7 @@ Status MoEGroupRouter<T>::Compute(OpKernelContext* context) const {
           }
         }
         const int64_t eff_k = std::min<int64_t>(top_k_, static_cast<int64_t>(candidates.size()));
-        std::partial_sort(candidates.begin(), candidates.begin() + eff_k, candidates.end(),
+        std::partial_sort(candidates.begin(), candidates.begin() + onnxruntime::narrow<ptrdiff_t>(eff_k), candidates.end(),
                           [](const auto& a, const auto& b) {
                             return a.first != b.first ? a.first > b.first : a.second < b.second;
                           });
