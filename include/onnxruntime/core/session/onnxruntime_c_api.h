@@ -4161,15 +4161,15 @@ struct OrtApi {
    * replace them with the provided tensors. The API verifies that the TensorProto being replaced
    * has an external data reference and has the same name, dimensions and data type as its replacement. The replacement
    * does not apply to initializers in subgraphs and will occur before any of the optimizations take place.
-   * By default, non-owning CPU tensor buffers are copied during session creation. CPU buffers owned by an OrtValue
-   * may be shared instead; ONNX Runtime retains their ownership. Device tensors are copied to owned CPU staging memory
+   * Only non-owning tensors backed by user-owned buffers are accepted; allocator-owned tensors are rejected.
+   * By default, CPU tensor buffers are copied during session creation. Device tensors are copied to owned CPU staging memory
    * before graph optimization and shape inference, using a registered execution provider's data-transfer implementation.
    * Session creation fails if no suitable data-transfer implementation is registered.
    *
    * Setting "session.use_external_initializer_file_buffers_directly" to "1" enables borrowing naturally aligned CPU
    * buffers larger than 127 bytes on little-endian hosts. Borrowed buffers must remain unchanged and alive until all
    * sessions using them are released. Other buffers are copied. This option does not enable borrowing device buffers.
-   * Tensors supplied by this API must contain native-endian values.
+   * Tensors supplied by this API must be contiguous and contain native-endian values.
    *
    * After session creation completes, non-owning buffers that were copied can be deallocated. The supplied OrtValue(s)
    * and SessionOptions instance can be destroyed even when buffers are borrowed; the underlying borrowed buffers must
