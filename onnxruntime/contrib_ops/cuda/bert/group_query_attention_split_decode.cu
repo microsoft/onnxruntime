@@ -33,8 +33,7 @@ __global__ void __launch_bounds__(32) GqaSplitDecodePrepKernel(
     const int* __restrict__ past_seq_lens, const int64_t* __restrict__ position_ids,
     const half* __restrict__ cos_cache, const half* __restrict__ sin_cache, int rope_max_pos, int do_rotary,
     const half* __restrict__ q_norm, const half* __restrict__ k_norm, float q_eps, float k_eps,
-    int num_heads, int kv_num_heads,
-    int capacity) {
+    unsigned int* __restrict__ counters, int num_heads, int kv_num_heads, int capacity) {
   static_assert(kHead == 128, "lane l owns channels 4l..4l+3");
   const int head = blockIdx.x, b = blockIdx.y, lane = threadIdx.x;
   const int packed_width = (num_heads + 2 * kv_num_heads) * kHead;
@@ -103,6 +102,8 @@ __global__ void __launch_bounds__(32) GqaSplitDecodePrepKernel(
     const int64_t row = (static_cast<int64_t>(b) * kv_num_heads + n) * capacity + past;
     reinterpret_cast<uint2*>(cache + row * kHead)[lane] = out;
   }
+  // The attention kernel that follows on the same stream counts finished splits per (batch, kv head).
+  if (type == 1 && lane == 0) counters[b * kv_num_heads + n] = 0;
 }
 
 // Number of splits used for a context of `total` keys; never more than the launched max_splits.
@@ -426,7 +427,6 @@ __global__ void __launch_bounds__(kThreads, 1) GqaSplitDecodeKernel(const half* 
     dst[0] = __floats2half2_rn(acc.x, acc.y);
     dst[1] = __floats2half2_rn(acc.z, acc.w);
   }
-  if (tid == 0) counters[bh] = 0;  // ready for the next launch / graph replay
 #endif
 }
 
@@ -486,11 +486,11 @@ Status LaunchGqaSplitDecodePrep(cudaStream_t stream, const half* packed_qkv, con
                                 const half* v, half* q_out, half* k_cache, half* v_cache, const int* past_seq_lens,
                                 const int64_t* position_ids, const half* cos_cache, const half* sin_cache,
                                 int rope_max_pos, bool do_rotary, const half* q_norm, const half* k_norm, float q_eps,
-                                float k_eps,
-                                int batch_size, int num_heads, int kv_num_heads, int capacity) {
+                                float k_eps, unsigned int* counters, int batch_size, int num_heads, int kv_num_heads,
+                                int capacity) {
   GqaSplitDecodePrepKernel<<<dim3(num_heads + 2 * kv_num_heads, batch_size), 32, 0, stream>>>(
       packed_qkv, q, k, v, q_out, k_cache, v_cache, past_seq_lens, position_ids, cos_cache, sin_cache, rope_max_pos,
-      do_rotary ? 1 : 0, q_norm, k_norm, q_eps, k_eps, num_heads, kv_num_heads, capacity);
+      do_rotary ? 1 : 0, q_norm, k_norm, q_eps, k_eps, counters, num_heads, kv_num_heads, capacity);
   return CUDA_CALL(cudaGetLastError());
 }
 

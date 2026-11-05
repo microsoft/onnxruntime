@@ -501,6 +501,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   IAllocatorUniquePtr<void> softmax_lse_buffer;
   IAllocatorUniquePtr<void> softmax_lse_accum_buffer;
   IAllocatorUniquePtr<void> out_accum_buffer;
+  IAllocatorUniquePtr<void> split_decode_partials_buffer;
+  IAllocatorUniquePtr<void> split_decode_counters_buffer;
 
   data.position_ids = (position_ids != nullptr) ? position_ids->Data<int64_t>() : nullptr;
 
@@ -892,18 +894,12 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     const size_t partials_bytes =
         GqaSplitDecodePartialsBytes(parameters.batch_size, parameters.kv_num_heads, data.split_decode_max_splits);
     const size_t counters_bytes = GqaSplitDecodeCountersBytes(parameters.batch_size, parameters.kv_num_heads);
-    std::lock_guard<std::mutex> lock(split_decode_mutex_);
-    if (split_decode_partials_bytes_ < partials_bytes) {
-      split_decode_partials_ = GetScratchBuffer<void>(partials_bytes, nullptr);
-      split_decode_partials_bytes_ = partials_bytes;
-    }
-    if (split_decode_counters_bytes_ < counters_bytes) {
-      split_decode_counters_ = GetScratchBuffer<void>(counters_bytes, nullptr);
-      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(split_decode_counters_.get(), 0, counters_bytes, Stream(context)));
-      split_decode_counters_bytes_ = counters_bytes;
-    }
-    data.split_decode_partials = reinterpret_cast<float*>(split_decode_partials_.get());
-    data.split_decode_counters = reinterpret_cast<unsigned int*>(split_decode_counters_.get());
+    // Per run, on this run's stream (concurrent runs of the session share this kernel object); the prep
+    // kernel zeroes the counters.
+    split_decode_partials_buffer = GetScratchBuffer<void>(partials_bytes, GetComputeStream(context));
+    split_decode_counters_buffer = GetScratchBuffer<void>(counters_bytes, GetComputeStream(context));
+    data.split_decode_partials = reinterpret_cast<float*>(split_decode_partials_buffer.get());
+    data.split_decode_counters = reinterpret_cast<unsigned int*>(split_decode_counters_buffer.get());
   }
 
   if (use_flash_attention) {
@@ -1098,7 +1094,10 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     debug_info.use_flash_attention = data.use_flash_attention;
     debug_info.use_efficient_attention = data.use_memory_efficient_attention;
     debug_info.use_cudnn_flash_attention = data.use_cudnn_sdpa;
-    if (data.use_flash_attention) {
+    if (data.use_split_decode) {
+      debug_info.use_split_decode = true;
+      debug_info.num_splits = data.split_decode_max_splits;
+    } else if (data.use_flash_attention) {
       debug_info.num_splits = parameters.num_splits;
     }
     debug_info.effective_kv_length_bound = effective_workspace_kv_length;

@@ -35,9 +35,9 @@ constexpr int kGqaSplitDecodeMaxSplits = 64;
 constexpr int kGqaSplitDecodeGroup = 8;
 constexpr int kGqaSplitDecodeHeadSize = 128;
 
-// Persistent buffers, sized for `batch_size` x `kv_num_heads` (x `max_splits` for the partials):
+// Scratch for one run, sized for `batch_size` x `kv_num_heads` (x `max_splits` for the partials):
 //   partials: per-split softmax partials (contents need no initialization)
-//   counters: one per (batch, kv head); must be zero before the first launch, the kernel leaves them zero.
+//   counters: one per (batch, kv head); LaunchGqaSplitDecodePrep zeroes them for the attention kernel.
 int GqaSplitDecodeMaxSplits(int batch_size, int kv_num_heads, int capacity, int num_sms);
 size_t GqaSplitDecodePartialsBytes(int batch_size, int kv_num_heads, int max_splits);
 size_t GqaSplitDecodeCountersBytes(int batch_size, int kv_num_heads);
@@ -48,13 +48,14 @@ size_t GqaSplitDecodeCountersBytes(int batch_size, int kv_num_heads);
 // K/V into the BNSH cache at past_seq_lens[b]. Inputs are either packed_qkv
 // [batch, 1, (num_heads + 2 * kv_num_heads) * head_size] or separate q/k/v (packed_qkv == nullptr).
 // position_ids [batch] (nullable: past_seq_lens[b] is the position); cos/sin [rope_max_pos, head_size / 2]
-// (nullable when do_rotary is false); q_norm/k_norm [head_size] (nullable).
+// (nullable when do_rotary is false); q_norm/k_norm [head_size] (nullable). It also zeroes `counters`
+// [batch, kv_num_heads] for the LaunchGqaSplitDecode call that follows on the same stream.
 Status LaunchGqaSplitDecodePrep(cudaStream_t stream, const half* packed_qkv, const half* q, const half* k,
                                 const half* v, half* q_out, half* k_cache, half* v_cache, const int* past_seq_lens,
                                 const int64_t* position_ids, const half* cos_cache, const half* sin_cache,
                                 int rope_max_pos, bool do_rotary, const half* q_norm, const half* k_norm, float q_eps,
-                                float k_eps,
-                                int batch_size, int num_heads, int kv_num_heads, int capacity);
+                                float k_eps, unsigned int* counters, int batch_size, int num_heads, int kv_num_heads,
+                                int capacity);
 
 // q:       [batch, 1, num_heads, head_size] (BSNH, rotated/normalized)
 // k_cache: [batch, kv_num_heads, capacity, head_size] (BNSH), v_cache likewise

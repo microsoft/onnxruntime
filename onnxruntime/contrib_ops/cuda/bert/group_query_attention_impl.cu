@@ -1247,9 +1247,8 @@ Status FlashAttention(
           packed ? nullptr : data.value, q_out, data.present_key, data.present_value, data.past_seq_lens,
           data.position_ids, data.cos_cache, data.sin_cache, RopeMaxPosition(parameters),
           parameters.do_rotary && data.cos_cache != nullptr && data.sin_cache != nullptr, data.q_norm_weight,
-          data.k_norm_weight, parameters.q_norm_epsilon, parameters.k_norm_epsilon, batch_size, num_heads,
-          kv_num_heads,
-          parameters.seqlen_present_kv_cache));
+          data.k_norm_weight, parameters.q_norm_epsilon, parameters.k_norm_epsilon, data.split_decode_counters,
+          batch_size, num_heads, kv_num_heads, parameters.seqlen_present_kv_cache));
       return LaunchGqaSplitDecode(stream, q_out, data.present_key, data.present_value, data.output,
                                   data.total_seq_lens, scale, batch_size, kv_num_heads,
                                   parameters.seqlen_present_kv_cache, data.split_decode_max_splits,
