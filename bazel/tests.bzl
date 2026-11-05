@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-"""Native targets for the existing C++ CPU test infrastructure."""
+"""Native targets for existing C++ tests, with optional CUDA provider support."""
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
@@ -33,10 +33,20 @@ def core_tests():
         ],
         includes = ["onnxruntime/test/util/include"],
         copts = test_copts,
+        data = select({
+            "//bazel:cuda_enabled": [
+                ":libonnxruntime_providers_cuda.so",
+                ":libonnxruntime_providers_shared.so",
+            ],
+            "//conditions:default": [],
+        }),
         deps = [
             ":runtime",
             "@googletest//:gtest",
-        ],
+        ] + select({
+            "//bazel:cuda_enabled": [":cuda_headers"],
+            "//conditions:default": [],
+        }),
     )
     cc_library(
         name = "ort_test_main",
@@ -148,4 +158,27 @@ def core_tests():
     native.test_suite(
         name = "core_tests",
         tests = [":" + name for name in suites],
+    )
+    cc_test(
+        name = "cuda_operator_test",
+        srcs = [
+            "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+            "onnxruntime/test/providers/cpu/math/matmul_test.cc",
+            "onnxruntime/test/providers/cpu/nn/conv_op_test.cc",
+            "tools/bazel/test_main.cc",
+        ],
+        data = native.glob(["onnxruntime/test/testdata/**"]),
+        copts = test_copts,
+        deps = [":ort_test_main"],
+        tags = ["manual", "requires-gpu"],
+        target_compatible_with = select({
+            "//bazel:cuda_enabled": [
+                "@platforms//os:linux",
+                "@platforms//cpu:x86_64",
+            ],
+            "//conditions:default": ["@platforms//:incompatible"],
+        }),
+        linkstatic = True,
+        size = "large",
+        timeout = "long",
     )
