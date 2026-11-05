@@ -32,7 +32,15 @@ __global__ void MambaConvKernel(const bf16* proj, int R_rt, int proj_stride, int
   inp[0] = B2F(conv_state_in[c * 3]);
   inp[1] = B2F(conv_state_in[c * 3 + 1]);
   inp[2] = B2F(conv_state_in[c * 3 + 2]);
-  const uint2 wv = __ldg(reinterpret_cast<const uint2*>(conv_w + c * 4));
+  const bf16* weight = conv_w + static_cast<int64_t>(c) * 4;
+  uint2 wv;
+  if ((reinterpret_cast<uintptr_t>(weight) & (alignof(uint2) - 1)) == 0) {
+    wv = __ldg(reinterpret_cast<const uint2*>(weight));
+  } else {
+    bf16* values = reinterpret_cast<bf16*>(&wv);
+#pragma unroll
+    for (int i = 0; i < 4; ++i) values[i] = weight[i];
+  }
   const bf16* wp = reinterpret_cast<const bf16*>(&wv);
   const float w0 = B2F(wp[0]), w1 = B2F(wp[1]), w2 = B2F(wp[2]), w3 = B2F(wp[3]);
   const float bias = B2F(conv_b[c]);
@@ -173,6 +181,16 @@ __global__ void MambaNormKernel(const bf16* proj, int proj_stride, int di, int g
   }
 }
 
+__device__ __forceinline__ uint4 LoadRouterVector(const bf16* source) {
+  if ((reinterpret_cast<uintptr_t>(source) & (alignof(uint4) - 1)) == 0)
+    return *reinterpret_cast<const uint4*>(source);
+  uint4 result;
+  bf16* values = reinterpret_cast<bf16*>(&result);
+#pragma unroll
+  for (int i = 0; i < 8; ++i) values[i] = source[i];
+  return result;
+}
+
 __global__ void RouterLogitsKernel(const bf16* x, const bf16* w, int K, int E, float* scores) {
   const int r = blockIdx.x, warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
   const int e = blockIdx.y * 8 + warp;
@@ -181,7 +199,7 @@ __global__ void RouterLogitsKernel(const bf16* x, const bf16* w, int K, int E, f
   const bf16* wr = w + static_cast<int64_t>(e) * K;
   float acc = 0.f;
   for (int k = lane * 8; k < K; k += 256) {
-    const uint4 xv = *reinterpret_cast<const uint4*>(xr + k), wv = *reinterpret_cast<const uint4*>(wr + k);
+    const uint4 xv = LoadRouterVector(xr + k), wv = LoadRouterVector(wr + k);
     const bf16* xp = reinterpret_cast<const bf16*>(&xv);
     const bf16* wp = reinterpret_cast<const bf16*>(&wv);
 #pragma unroll
@@ -189,6 +207,14 @@ __global__ void RouterLogitsKernel(const bf16* x, const bf16* w, int K, int E, f
   }
   for (int o = 16; o > 0; o >>= 1) acc += __shfl_down_sync(0xffffffff, acc, o);
   if (lane == 0) scores[static_cast<int64_t>(r) * E + e] = 1.0f / (1.0f + expf(-acc));
+}
+
+__device__ __forceinline__ bool RouterCandidatePrecedes(float value, int index, float best, int best_index) {
+  if (index < 0) return false;
+  if (best_index < 0) return true;
+  // NaNs follow all numeric scores, including -infinity; equal scores use the lower expert id.
+  if (isnan(value)) return isnan(best) && index < best_index;
+  return isnan(best) || value > best || (value == best && index < best_index);
 }
 
 __global__ void RouterTopkKernel(const float* scores, const float* bias, int E, int topk, float scale,
@@ -210,7 +236,7 @@ __global__ void RouterTopkKernel(const float* scores, const float* bias, int E, 
     int bi = -1;
 #pragma unroll
     for (int i = 0; i < 16; ++i) {
-      if (eligible[i] && (bi < 0 || val[i] > bv)) {
+      if (eligible[i] && RouterCandidatePrecedes(val[i], lane + 32 * i, bv, bi)) {
         bv = val[i];
         bsc = sc[i];
         bi = lane + 32 * i;
@@ -221,7 +247,7 @@ __global__ void RouterTopkKernel(const float* scores, const float* bias, int E, 
     for (int o = 16; o > 0; o >>= 1) {
       const float ov = __shfl_xor_sync(0xffffffff, wv, o);
       const int oi = __shfl_xor_sync(0xffffffff, wi, o);
-      if (oi >= 0 && (wi < 0 || ov > wv || (ov == wv && oi < wi))) {
+      if (RouterCandidatePrecedes(ov, oi, wv, wi)) {
         wv = ov;
         wi = oi;
       }
