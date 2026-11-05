@@ -12,7 +12,16 @@ else
 fi
 
 mkdir -p "$HOME/.onnx"
+VCPKG_CACHE_ARGS=()
+if [ -n "${VCPKG_DEFAULT_BINARY_CACHE:-}" ]; then
+    VCPKG_CACHE_ARGS=(
+        --volume "${VCPKG_DEFAULT_BINARY_CACHE}:/vcpkg-binary-cache"
+        -e VCPKG_DEFAULT_BINARY_CACHE=/vcpkg-binary-cache
+    )
+fi
+
 docker run -e SYSTEM_COLLECTIONURI --rm --volume /data/onnx:/data/onnx:ro --volume "$BUILD_SOURCESDIRECTORY:/onnxruntime_src" \
+  "${VCPKG_CACHE_ARGS[@]}" \
   --volume "$BUILD_BINARIESDIRECTORY:/build" --volume /data/models:/build/models:ro \
   -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
   -e PIP_INDEX_URL \

@@ -1323,7 +1323,7 @@ std::vector<nvinfer1::PreviewFeature> ParseTrtPreviewFeatures(const std::string&
     if (featureName == "ALIASED_PLUGIN_IO_10_03") {
       previewFeatures.push_back(nvinfer1::PreviewFeature::kALIASED_PLUGIN_IO_10_03);
     } else {
-      throw std::invalid_argument(std::string("Unkown or unsupported preview feature: ") + featureName);
+      throw std::invalid_argument(std::string("Unknown or unsupported preview feature: ") + featureName);
     }
   }
 

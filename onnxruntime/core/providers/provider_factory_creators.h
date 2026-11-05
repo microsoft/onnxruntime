@@ -14,10 +14,6 @@
 
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
 
-#if defined(USE_ACL)
-#include "core/providers/acl/acl_provider_factory_creator.h"
-#endif
-
 #if defined(USE_COREML)
 #include "core/providers/coreml/coreml_provider_factory_creator.h"
 #endif
