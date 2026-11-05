@@ -918,9 +918,19 @@ Status LaunchAddBiasNvFp4(void* y,
 #endif
 }
 
+bool CanUseMatMulBlockQuantizedFp4WeightMma(int k, const cudaDeviceProp& device_prop) {
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 12080
+  return device_prop.major >= 8 && k % 128 == 0 && Fp4GemvMmaEnabled();
+#else
+  ORT_UNUSED_PARAMETER(k);
+  ORT_UNUSED_PARAMETER(device_prop);
+  return false;
+#endif
+}
+
 int MatMulBlockQuantizedFp4WeightGemvMaxM(int k, const cudaDeviceProp& device_prop) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 12080
-  if (device_prop.major >= 8 && k % 128 == 0 && Fp4GemvMmaEnabled()) {
+  if (CanUseMatMulBlockQuantizedFp4WeightMma(k, device_prop)) {
     return Fp4MmaGemvDispatchMaxM();
   }
 #else
