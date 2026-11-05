@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/graph/node_attr_utils.h"
+#include "core/graph/model.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/matmul_nbits_qkv_fusion.h"
 #include "core/optimizer/utils.h"
@@ -9,6 +10,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "test/util/include/asserts.h"
+#include "test/test_environment.h"
 #include "test/util/include/default_providers.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/unittest_util/graph_transform_test_builder.h"
@@ -321,6 +323,51 @@ void BuildMatMulNBitsQkvWebGpuPatternWithVBias(ModelTestBuilder& builder) {
 }
 
 }  // namespace
+
+TEST(MatMulNBitsQkvSchemaTest, EmptyResidualOutputWithoutSkip) {
+  for (const bool qlora : {false, true}) {
+    SCOPED_TRACE(qlora ? "QLoRA QKV" : "base QKV");
+    std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 21}, {kMSDomain, 1}};
+    Model model("matmul_nbits_qkv_optional_output", false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                DefaultLoggingManager().DefaultLogger());
+    ModelTestBuilder builder(model.MainGraph());
+    NodeArg* empty = builder.MakeOptionalTensor();
+    NodeArg* a = builder.MakeInput<MLFloat16>({1, 32}, MLFloat16(1.0f), MLFloat16(1.0f));
+    NodeArg* norm_scale = builder.MakeInitializer<MLFloat16>({32}, MLFloat16(1.0f), MLFloat16(1.0f));
+    std::vector<NodeArg*> inputs{a, empty, norm_scale};
+    for (int64_t n : {8, 4, 4}) {
+      inputs.push_back(builder.MakeInitializer<uint8_t>({n, 1, 16}, uint8_t{0}, uint8_t{15}));
+      inputs.push_back(builder.MakeInitializer<MLFloat16>({n, 1}, MLFloat16(1.0f), MLFloat16(1.0f)));
+      inputs.push_back(empty);
+    }
+    if (qlora) {
+      for (int64_t n : {8, 4, 4}) {
+        inputs.push_back(builder.MakeInitializer<uint8_t>({32, 1, 32}, uint8_t{0}, uint8_t{255}));
+        inputs.push_back(builder.MakeInitializer<MLFloat16>({32, 1}, MLFloat16(1.0f), MLFloat16(1.0f)));
+        inputs.push_back(builder.MakeInitializer<uint8_t>({n, 1, 32}, uint8_t{0}, uint8_t{255}));
+        inputs.push_back(builder.MakeInitializer<MLFloat16>({n, 1}, MLFloat16(1.0f), MLFloat16(1.0f)));
+      }
+    }
+
+    NodeArg* q = builder.MakeOutput<MLFloat16>(std::nullopt);
+    NodeArg* k = builder.MakeOutput<MLFloat16>(std::nullopt);
+    NodeArg* v = builder.MakeOutput<MLFloat16>(std::nullopt);
+    Node& node = builder.AddNode(qlora ? "MatMulNBitsQLoRAQkv" : "MatMulNBitsQkv",
+                                 inputs, {q, k, v, empty}, kMSDomain);
+    node.AddAttribute("K", int64_t{32});
+    node.AddAttribute("Nq", int64_t{8});
+    node.AddAttribute("Nkv", int64_t{4});
+    node.AddAttribute("bits", int64_t{4});
+    node.AddAttribute("block_size", int64_t{32});
+    if (qlora) {
+      node.AddAttribute("lora_bits", int64_t{8});
+      node.AddAttribute("lora_block_size", int64_t{32});
+    }
+    builder.SetGraphOutputs();
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+  }
+}
 
 TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionFusesQLoRA) {
   ASSERT_STATUS_OK(TestGraphTransformer(

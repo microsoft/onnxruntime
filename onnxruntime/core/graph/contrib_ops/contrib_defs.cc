@@ -4634,7 +4634,7 @@ This operator is intended as a decode-oriented QKV fusion primitive.
         set_output_shape(0, q_out_features);
         set_output_shape(1, kv_out_features);
         set_output_shape(2, kv_out_features);
-        if (ctx.getNumOutputs() > 3) {
+        if (ctx.hasOutput(3)) {
           auto* output_shape = getOutputShape(ctx, 3);
           *output_shape = input_shape;
         }
@@ -4725,7 +4725,7 @@ This operator is intended as a decode-oriented QKV fusion primitive.
           *output = input;
           output->mutable_dim(output->dim_size() - 1)->set_dim_value(getAttribute(ctx, i == 0 ? "Nq" : "Nkv", -1));
         }
-        if (ctx.getNumOutputs() > 3) {
+        if (ctx.hasOutput(3)) {
           if (!ctx.hasInput(1)) fail_shape_inference("skip input is required for residual sum output");
           *getOutputShape(ctx, 3) = input;
         }

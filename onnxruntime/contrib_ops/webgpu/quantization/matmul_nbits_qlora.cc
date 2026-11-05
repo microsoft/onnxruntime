@@ -116,14 +116,14 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
     MatMulComputeHelper helper;
     ORT_RETURN_IF_ERROR(helper.Compute(x->Shape(), TensorShape({n_, k_}), false, true));
     auto* y = context.Output(0, helper.OutputShape());
-    return Compute(x, w, s, aq, as, bq, bs, k_, n_, accuracy_level_, helper, context, y);
+    return ComputeProjection(x, w, s, aq, as, bq, bs, k_, n_, accuracy_level_, helper, context, y);
   }
 
-  static Status Compute(const Tensor* x, const Tensor* w, const Tensor* s,
-                        const Tensor* aq, const Tensor* as, const Tensor* bq, const Tensor* bs,
-                        int64_t k, int64_t n, int64_t accuracy_level,
-                        const MatMulComputeHelper& helper,
-                        onnxruntime::webgpu::ComputeContext& context, Tensor* y) {
+  static Status ComputeProjection(const Tensor* x, const Tensor* w, const Tensor* s,
+                                  const Tensor* aq, const Tensor* as, const Tensor* bq, const Tensor* bs,
+                                  int64_t k, int64_t n, int64_t accuracy_level,
+                                  const MatMulComputeHelper& helper,
+                                  onnxruntime::webgpu::ComputeContext& context, Tensor* y) {
     ORT_RETURN_IF_NOT(x->Shape().NumDimensions() >= 2, "WebGPU MatMulNBitsQLoRA requires X rank at least two.");
     ORT_RETURN_IF_NOT(aq->Shape().NumDimensions() == 3 && bq->Shape().NumDimensions() == 3,
                       "Invalid quantized LoRA input ranks.");
@@ -227,7 +227,7 @@ Status ApplyMatMulNBitsQLoRA(const Tensor* x, const Tensor* w, const Tensor* s,
                              onnxruntime::webgpu::ComputeContext& context, Tensor* y) {
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(x->Shape(), TensorShape({n, k}), false, true));
-  return MatMulNBitsQLoRA::Compute(x, w, s, aq, as, bq, bs, k, n, accuracy_level, helper, context, y);
+  return MatMulNBitsQLoRA::ComputeProjection(x, w, s, aq, as, bq, bs, k, n, accuracy_level, helper, context, y);
 }
 
 ONNX_OPERATOR_KERNEL_EX(MatMulNBitsQLoRA, kMSDomain, 1, kWebGpuExecutionProvider,
