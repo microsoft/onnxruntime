@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-#if defined(USE_CUDA) && !defined(USE_CUDA_MINIMAL)
+#if defined(USE_CUDA) && !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS)
 namespace onnxruntime::test {
 namespace {
 using DeviceBuffer = std::unique_ptr<void, decltype(&cudaFree)>;

@@ -11,7 +11,7 @@
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 
-#if defined(USE_CUDA)
+#if defined(USE_CUDA) && !defined(USE_CUDA_MINIMAL)
 namespace onnxruntime::test {
 namespace {
 
@@ -279,6 +279,36 @@ TEST(MatMulPackedProjection, Q8LargeNMmaAndColumnTails) {
   for (int n : {19, 8192, 8193}) {
     CheckQ8Chunks<MLFloat16>(3, n, 1088);
     CheckQ8Chunks<BFloat16>(8, n, 1088);
+  }
+}
+
+TEST(MatMulPackedProjection, Q8MmaReductionOrderCancellation) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "CUDA SM80 is required.";
+  constexpr int rows = 3, k = 1088;
+  std::vector<BFloat16> a(rows * k, BFloat16(0.f));
+  a[0] = BFloat16(0x1p24f);
+  a[64] = BFloat16(1.f);
+  a[256] = BFloat16(-0x1p24f);
+  a[k + 64] = BFloat16(2.f);
+  a[2 * k + 256] = BFloat16(-2.f);
+  for (int n : {19, 8192}) {
+    for (bool fp16_scale : {false, true}) {
+      SCOPED_TRACE(testing::Message() << "N=" << n << " fp16_scale=" << fp16_scale);
+      std::vector<BFloat16> expected(rows * n);
+      // KW=16 loses the unit before cancellation; KW=4 cancels the large terms first.
+      std::fill_n(expected.begin(), n, BFloat16(n == 19 ? 0.f : 1.f));
+      std::fill_n(expected.begin() + n, n, BFloat16(2.f));
+      std::fill_n(expected.begin() + 2 * n, n, BFloat16(-2.f));
+      OpTester test("MatMulPackedQ8", 1, kMSDomain);
+      test.AddInput<BFloat16>("A", {rows, k}, a);
+      test.AddInput<uint8_t>("B", {n, k / 32, 32}, std::vector<uint8_t>(n * k, 129));
+      if (fp16_scale)
+        test.AddInput<MLFloat16>("scales", {n, k / 32}, std::vector<MLFloat16>(n * k / 32, MLFloat16(1.f)));
+      else
+        test.AddInput<BFloat16>("scales", {n, k / 32}, std::vector<BFloat16>(n * k / 32, BFloat16(1.f)));
+      test.AddOutput<BFloat16>("Y", {rows, n}, expected);
+      RunPacked(test);
+    }
   }
 }
 

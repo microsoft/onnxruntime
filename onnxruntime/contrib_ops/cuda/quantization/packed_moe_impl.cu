@@ -121,17 +121,23 @@ __global__ void __launch_bounds__(KW * 32)
   });
 }
 
+__device__ __forceinline__ float4 LoadExpertOutput(const float* ptr) {
+  if ((reinterpret_cast<uintptr_t>(ptr) & 15) == 0)
+    return __ldg(reinterpret_cast<const float4*>(ptr));
+  return make_float4(__ldg(ptr), __ldg(ptr + 1), __ldg(ptr + 2), __ldg(ptr + 3));
+}
+
 __global__ void MoeFinalizeKernel(const float* part, const float* w, int topk, bf16* out) {
   const int row = blockIdx.x, vec_idx = blockIdx.y * blockDim.x + threadIdx.x;
   if (vec_idx >= 256) return;
   const float* wt = w + row * topk;
-  const float4* pt = reinterpret_cast<const float4*>(part + static_cast<int64_t>(row) * topk * 1024) + vec_idx;
+  const float* pt = part + static_cast<int64_t>(row) * topk * 1024 + vec_idx * 4;
   float a0 = 0.f, a1 = 0.f, a2 = 0.f, a3 = 0.f;
   if (topk == 9) {
 #pragma unroll
     for (int k = 0; k < 9; ++k) {
       const float wk = wt[k];
-      const float4 pv = __ldg(pt + k * 256);
+      const float4 pv = LoadExpertOutput(pt + k * 1024);
       a0 += wk * pv.x;
       a1 += wk * pv.y;
       a2 += wk * pv.z;
@@ -140,7 +146,7 @@ __global__ void MoeFinalizeKernel(const float* part, const float* w, int topk, b
   } else {
     for (int k = 0; k < topk; ++k) {
       const float wk = wt[k];
-      const float4 pv = __ldg(pt + k * 256);
+      const float4 pv = LoadExpertOutput(pt + k * 1024);
       a0 += wk * pv.x;
       a1 += wk * pv.y;
       a2 += wk * pv.z;
@@ -153,7 +159,13 @@ __global__ void MoeFinalizeKernel(const float* part, const float* w, int topk, b
   packed[1] = __float2bfloat16(a1);
   packed[2] = __float2bfloat16(a2);
   packed[3] = __float2bfloat16(a3);
-  reinterpret_cast<uint2*>(out + static_cast<int64_t>(row) * 1024)[vec_idx] = out2;
+  bf16* dst = out + static_cast<int64_t>(row) * 1024 + vec_idx * 4;
+  if ((reinterpret_cast<uintptr_t>(dst) & 7) == 0) {
+    *reinterpret_cast<uint2*>(dst) = out2;
+  } else {
+#pragma unroll
+    for (int i = 0; i < 4; ++i) dst[i] = packed[i];
+  }
 }
 }  // namespace
 

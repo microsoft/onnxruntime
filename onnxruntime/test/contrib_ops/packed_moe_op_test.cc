@@ -9,7 +9,7 @@
 #include <limits>
 
 namespace onnxruntime::test {
-#if defined(USE_CUDA)
+#if defined(USE_CUDA) && !defined(USE_CUDA_MINIMAL)
 namespace {
 template <typename Scale>
 void TestReusedExperts(int rows) {
