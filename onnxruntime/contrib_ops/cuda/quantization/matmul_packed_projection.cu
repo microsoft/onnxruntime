@@ -25,6 +25,7 @@ template <int R, int ROWS, int IT>
 __global__ void Nvfp4GemvKernel(const bf16* __restrict__ x, const uint8_t* __restrict__ w,
                                 const uint8_t* __restrict__ ws, const float* __restrict__ gscale, int N, int K,
                                 bf16* __restrict__ y) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
   const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
   const int n0 = (blockIdx.x * (blockDim.x >> 5) + warp) * ROWS;
   if (n0 >= N) return;
@@ -94,6 +95,10 @@ __global__ void Nvfp4GemvKernel(const bf16* __restrict__ x, const uint8_t* __res
       const float v = WarpSum(acc[i][r]);
       if (lane == 0 && n0 + i < N) y[static_cast<int64_t>(r) * N + n0 + i] = __float2bfloat16(v * g);
     }
+#else
+  // ComputeInternal rejects these devices; default CUDA builds still compile their targets.
+  asm volatile("trap;");
+#endif
 }
 
 template <int R, int IT>
