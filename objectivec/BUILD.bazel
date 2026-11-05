@@ -61,7 +61,6 @@ objc_library(
     enable_modules = True,
     includes = ["include"],
     module_map = "module.modulemap",
-    module_name = "onnxruntime_objc",
     sdk_frameworks = ["Foundation"],
     target_compatible_with = MACOS_ONLY,
     deps = ["//:runtime"],
