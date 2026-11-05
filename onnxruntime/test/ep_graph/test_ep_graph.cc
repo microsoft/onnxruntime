@@ -626,6 +626,89 @@ TEST(EpGraphTest, SerializeToProto_ConstantOfShape) {
   EXPECT_EQ(output_serialized, output_original);
 }
 
+TEST(EpGraphTest, SerializeToProto_ConstantOfShapeFloat16) {
+  const Ort::Float16_t value{-1.5f};
+  const std::string raw_value("\x00\xbe", 2);  // -1.5 in little-endian FLOAT16 format.
+
+  for (bool use_raw_data : {false, true}) {
+    SCOPED_TRACE(use_raw_data);
+    ONNX_NAMESPACE::ModelProto source_proto;
+    source_proto.set_ir_version(9);
+    auto* opset = source_proto.add_opset_import();
+    opset->set_domain("");
+    opset->set_version(17);
+    auto* graph = source_proto.mutable_graph();
+    graph->set_name("constant_of_shape_float16");
+
+    auto* shape = graph->add_initializer();
+    shape->set_name("shape");
+    shape->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    shape->add_dims(2);
+    shape->add_int64_data(2);
+    shape->add_int64_data(4);
+
+    auto* output = graph->add_output();
+    output->set_name("output");
+    auto* output_type = output->mutable_type()->mutable_tensor_type();
+    output_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    output_type->mutable_shape()->add_dim()->set_dim_value(2);
+    output_type->mutable_shape()->add_dim()->set_dim_value(4);
+
+    auto* node = graph->add_node();
+    node->set_op_type("ConstantOfShape");
+    node->add_input("shape");
+    node->add_output("output");
+    auto* attr = node->add_attribute();
+    attr->set_name("value");
+    attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+    auto* tensor = attr->mutable_t();
+    tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    tensor->add_dims(1);
+    if (use_raw_data) {
+      tensor->set_raw_data(raw_value);
+    } else {
+      tensor->add_int32_data(value.val);
+    }
+
+    // Resolve without optimizing so ConstantOfShape remains a node with a tensor attribute.
+    auto model = std::make_shared<Model>(source_proto, nullptr, DefaultLoggingManager().DefaultLogger());
+    ASSERT_STATUS_OK(model->MainGraph().Resolve());
+    TestGraph test_graph(model);
+    ONNX_NAMESPACE::ModelProto serialized_proto;
+    ASSERT_CXX_ORTSTATUS_OK(OrtEpUtils::OrtGraphToProto(test_graph.GetOrtGraph(), serialized_proto));
+
+    ASSERT_EQ(serialized_proto.graph().node_size(), 1);
+    const auto& serialized_node = serialized_proto.graph().node(0);
+    ASSERT_EQ(serialized_node.op_type(), "ConstantOfShape");
+    ASSERT_EQ(serialized_node.attribute_size(), 1);
+    const auto& serialized_attr = serialized_node.attribute(0);
+    EXPECT_EQ(serialized_attr.name(), "value");
+    ASSERT_EQ(serialized_attr.type(), ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+    ASSERT_TRUE(serialized_attr.has_t());
+    const auto& serialized_tensor = serialized_attr.t();
+    EXPECT_EQ(serialized_tensor.data_type(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    ASSERT_EQ(serialized_tensor.dims_size(), 1);
+    EXPECT_EQ(serialized_tensor.dims(0), 1);
+    EXPECT_EQ(serialized_tensor.raw_data(), raw_value);
+
+    const auto bytes = serialized_proto.SerializeAsString();
+    Ort::SessionOptions options;
+    options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+    Ort::Session session(*ort_env, bytes.data(), bytes.size(), options);
+    const char* output_names[] = {"output"};
+    auto outputs = session.Run(Ort::RunOptions{nullptr}, nullptr, nullptr, 0, output_names, 1);
+    ASSERT_EQ(outputs.size(), 1u);
+    const auto type_shape = outputs[0].GetTensorTypeAndShapeInfo();
+    EXPECT_EQ(type_shape.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16);
+    EXPECT_EQ(type_shape.GetShape(), (std::vector<int64_t>{2, 4}));
+    ASSERT_EQ(type_shape.GetElementCount(), 8u);
+    const auto* output_data = outputs[0].GetTensorData<Ort::Float16_t>();
+    for (size_t i = 0; i < type_shape.GetElementCount(); ++i) {
+      EXPECT_EQ(output_data[i].val, value.val);
+    }
+  }
+}
+
 static void Run3LayerModel(const ORTCHAR_T* model_path, bool input_cond, std::vector<float>& output_data) {
   auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
   Ort::SessionOptions sess_options;
