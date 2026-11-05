@@ -51,7 +51,7 @@ react_native_package = rule(
         "java": attr.label(providers = [JavaInfo], mandatory = True),
         "native": attr.label_list(allow_files = True),
         "frontend": attr.label_list(allow_files = True),
-        "common": attr.label_list(allow_files = True),
+        "common": attr.label_list(allow_files = True, cfg = "exec"),
         "notices": attr.label_list(allow_files = True),
         "version": attr.label(allow_single_file = True),
         "packager": attr.label(executable = True, cfg = "exec", mandatory = True),
