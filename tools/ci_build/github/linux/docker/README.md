@@ -11,11 +11,13 @@ continue to reuse cached layers. For an authorized security refresh, include
 base digest has not changed. The `DockerBuildArgs` pipeline-template parameter
 forwards this option to the helper.
 
-Keep producer and consumer Node/npm versions aligned when rolling out new bases:
-`install_os_deps.sh` and `manylinux/install_shared_deps.sh` install Node 24.22.2
-and npm 11.21.1 themselves, matching the producer. Node archives are
-verified before extraction. npm is updated as a complete distribution, not by
-replacing individual nested packages.
+The manylinux CPU, CUDA and WebGPU images inherit Node/npm from their producer
+bases instead of reinstalling them. Custom `BASEIMAGE` overrides must also provide
+Node/npm; the retained AlmaLinux9 ARM64 bases keep their existing versions.
+`install_os_deps.sh` separately installs Node 24.22.2 and npm 11.21.1 for its
+consumers, matching the refreshed producer. Node archives are verified before
+extraction. npm is updated as a complete distribution, not by replacing individual
+nested packages.
 
 Build and promote upstream test images before changing `BASEIMAGE` defaults or
 pipeline/workflow overrides for validation. Use verified immutable digests, preserve the

@@ -1,8 +1,8 @@
-# The default ARGs are for cuda 13.0 with cudnn8, TensorRT is optional
+# The default base is the ORT CUDA 12 build image; TensorRT is optional.
 # Please overwrite BASEIMAGE, TRT_VERSION and other arguments with
 # --docker-build-args ' --build-arg BASEIMAGE=other_base_image --build-arg TRT_VERSION=other_trt_version etc...'
 # for other cuda version and TRT version
-ARG BASEIMAGE=nvidia/cuda:12.8.1-cudnn-devel-ubi8
+ARG BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14@sha256:25bd9e1f17d68a747d593d6e32a8e9e76b3fe49ccafea0d7eb966d5b4cdc7983
 
 FROM $BASEIMAGE
 ARG TRT_VERSION=10.14.1.48-1.cuda12.9
