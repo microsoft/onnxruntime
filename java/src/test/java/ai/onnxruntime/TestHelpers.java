@@ -274,10 +274,13 @@ public class TestHelpers {
     // Native Bazel tests use loose runfiles so external tensor data stays beside its model.
     String root = System.getProperty("onnxruntime.test.resources");
     if (root != null) {
-      Path resource = new File(root).toPath().resolve(path.startsWith("/") ? path.substring(1) : path);
+      Path resource =
+          new File(root).toPath().resolve(path.startsWith("/") ? path.substring(1) : path);
       if (!Files.isRegularFile(resource)) {
         throw new IllegalArgumentException(
-            "Missing Java test fixture " + resource + ". Declare the fixture in the Bazel test's data.");
+            "Missing Java test fixture "
+                + resource
+                + ". Declare the fixture in the Bazel test's data.");
       }
       return resource;
     }

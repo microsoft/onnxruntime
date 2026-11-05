@@ -27,6 +27,12 @@ rust_bindgen(
         ".*",
     ],
     cc_lib = "//:api_headers",
+    # The standalone macOS libclang wheel has no usable default target triple.
+    clang_flags = select({
+        "@rules_rust//rust/platform:aarch64-apple-darwin": ["--target=arm64-apple-darwin"],
+        "@rules_rust//rust/platform:x86_64-apple-darwin": ["--target=x86_64-apple-darwin"],
+        "//conditions:default": [],
+    }),
     header = "//:include/onnxruntime/core/session/onnxruntime_c_api.h",
     merge_cc_lib_objects_into_rlib = False,
 )
