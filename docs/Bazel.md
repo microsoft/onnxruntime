@@ -10,7 +10,8 @@ The native graph targets Linux x86-64, Windows x86-64, and macOS on Intel and
 Apple Silicon. Linux and native Windows execution have been validated; macOS
 validation is still pending. This is not yet a replacement for the
 release build: contrib operators, additional execution providers,
-mobile/web cross-compilation, and complete release packaging are not included.
+most mobile/web cross-compilation, and language-specific release packaging are not included.
+An experimental Android ARM64 runtime/JNI/AAR path is available below.
 `orttraining` build and test migration is intentionally out of scope.
 
 ## Getting started
@@ -69,8 +70,8 @@ not redistributed. Consumers must supply the matching system runtime
 dependencies, including the Visual C++ runtime on Windows or CUDA/cuDNN for
 GPU execution. The archive is specific to the selected target platform and
 build flags, not a universal or officially signed release package. It does
-not produce Maven/AAR, npm, NuGet, or Apple frameworks. The separate CPU
-Python wheel target is described below.
+not produce Maven publications, npm, NuGet, or Apple frameworks. The separate CPU
+Python wheel and Android AAR targets are described below.
 
 The archive test checks its layout, extracts it to a temporary directory, and
 loads that extracted runtime to verify the version through `OrtGetApiBase`.
@@ -191,6 +192,74 @@ bazel build //... -c opt --nobuild --lockfile_mode=error --jobs=2
 This analyzed 196 targets (60,443 configured targets), with zero build actions.
 It does not establish native Apple, Rust, or wheel execution.
 
+### Android ARM64 runtime, JNI, and AAR
+
+On a **Linux x86-64 host**, install Android NDK **r27d (27.3.13750724)** and
+set `ANDROID_NDK_HOME` to its root. The official Linux archive is
+`https://dl.google.com/android/repository/android-ndk-r27d-linux.zip`
+(SHA-256 `601246087a682d1944e1e16dd85bc6e49560fe8b6d61255be2829178c8ed15d9`).
+The pinned `rules_android_ndk` 0.1.5 toolchain uses Android API **27** and
+the NDK's static libc++ runtime. A Java or Android SDK/Gradle installation is
+not required: Bazel obtains the host JDK and compiles the Java sources.
+
+```sh
+export ANDROID_NDK_HOME=/path/to/android-ndk-r27d
+bazel build --config=android_arm64 -c opt //:android_aar --jobs=16
+# Check real cross-compiled artifact structure on the host (not device execution):
+python3 tools/bazel/android_aar_verify.py bazel-bin/onnxruntime-android-arm64.aar
+# Portable Java and packaging regressions use the HOST platform, not the Android config:
+bazel test //:android_java_util_test //:android_aar_packager_test --jobs=16
+```
+
+`bazel-bin/onnxruntime-android-arm64.aar` is a single-ABI Android library,
+with `classes.jar`, a manifest declaring `minSdkVersion=27`, consumer R8/ProGuard
+keep rules, `jni/arm64-v8a/libonnxruntime.so`,
+`jni/arm64-v8a/libonnxruntime4j_jni.so`, standalone C/C++ API headers in
+`headers/`, and license/third-party/version assets in `META-INF/`.
+Java compilation uses `java/src/main/java` and `java/src/main/android`,
+**not** the desktop JVM FP16 implementation. JNI C sources are compiled
+against the NDK's `jni.h`, using headers generated from those Java classes.
+Both native shared objects have 16 KB ELF load-segment alignment; the final
+APK's ZIP alignment and Java desugaring remain the consuming Android
+application build's responsibility.
+
+The individual cross-build targets are `//:android/libonnxruntime.so` and
+`//:android/libonnxruntime4j_jni.so`; `//:android_runtime_shared` exposes the
+native library to Bazel C/C++ consumers. `//:android_java` can also be compiled
+on the host. Android toolchain selection is **opt-in**: no Android defines,
+NDK registration, or ARM ISA flags are applied to desktop targets. ARM64
+MLAS uses baseline NEON with separately compiled FP16, dot-product, i8mm,
+and bfloat16 kernels rather than host x86 code. Standard FP16 Conv also links
+the shared activation attribute parser; this does not enable contrib ops.
+
+Validation on Linux x86-64 with Bazel 8.4.2 and NDK r27d:
+the exact build command above **passed with actual C/C++/assembly/JNI/Java
+compilation and linking** under the frozen module lock. The verifier command
+**passed**, checking ARM64 ELF headers, 16 KB load segments, archive assets,
+and Android Java classes. NDK `llvm-nm -D --defined-only` confirmed
+`OrtGetApiBase` in the runtime and
+`Java_ai_onnxruntime_OnnxRuntime_initialiseAPIBase` in JNI.
+`llvm-readelf -d` confirmed that JNI depends on `libonnxruntime.so`, and
+both libraries require only Android system libraries otherwise (no
+`libc++_shared.so` to bundle). The host test command **passed** (three JUnit
+utility tests and three packaging regressions). With `ANDROID_NDK_HOME`
+unset, `bazel build //... --nobuild --jobs=16` **passed desktop analysis**;
+that check is not a desktop compilation or test run.
+
+No emulator/device execution was performed; neither tool was available on the
+validation host. This slice does not include NNAPI/QNN, CUDA, training,
+telemetry, additional ABIs, Maven publication, Android instrumentation tests,
+or Windows/macOS-hosted Android cross-build validation. Contrib ops remain
+disabled by default.
+
+**React Native Android is not implemented by this AAR.** Its actual bridge
+needs source-built ReactAndroid/JSI, CallInvoker and fbjni, Java React bridge
+and AndroidX APIs, plus `cpp-adapter.cpp` and the shared JSI C++ sources
+listed in `js/react_native/android/CMakeLists.txt`. Those dependencies do not
+have a source-native Bazel graph here. The Java/JNI AAR neither builds
+`libonnxruntimejsi.so` nor contains `OnnxruntimeModule`/`OnnxruntimePackage`;
+it must not be advertised as the React Native package.
+
 ### Desktop portability checks
 
 Linux x86-64 portability validation used Bazel 8.4.2 with the frozen module
@@ -237,6 +306,7 @@ bazel test -c opt \
 | C/C++ | `//:runtime`, `//:runtime_library`, `//:runtime_smoke_test` | Standard ONNX CPU operators; inference through the public C++ API. |
 | Python | `//:python_native_library`, `//:python_runtime_package`, `//:python_tests`, `//:python_wheel` | CPython 3.12 extension, source-assembled high-level CPU inference package, selected existing unittest cases, and CPU Windows/Linux x86-64 wheels. Not a complete Python suite/tooling migration. |
 | Java/JNI | `//:java_binding`, `//:java_native_library`, `//:java_smoke_test` | Java sources and JNI sources; JNI headers come from Bazel's Java compiler. No Gradle invocation. Not an AAR or Maven publication. |
+| Android Java/JNI | `//:android_java`, `//:android_aar` | Android Java sources, source-built ARM64 runtime/JNI, and single-ABI AAR; Linux-host cross-build validated. Not React Native or device execution. |
 | Go | `//:go_binding`, `//:go_test` | First-party cgo binding and existing fixture-based unit tests. Tests explicitly load the Bazel-built shared library; they do not take the binding's missing-library skip path. External Qwen model tests are excluded. |
 | Node.js | `//:onnxruntime_binding.node`, `//:node_js_package`, `//:node_test` | Native Node-API extension, source-assembled common/Node JavaScript packages, and four existing test files with file/case selection. Not release npm packaging or the complete Node suite. |
 | C# | `//:csharp_binding`, `//:csharp_smoke_test`, `//:csharp_tests` | .NET 8 binding and existing desktop test sources compiled directly with `rules_dotnet`, exercised on .NET 10. Native xUnit discovery/execution supports exact class/method selection, theories and fixtures. Training APIs are not enabled. Not a NuGet package. |

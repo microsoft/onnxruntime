@@ -62,6 +62,16 @@ use_repo(rust_crates, "ort_rust_crates")
 rust_clang = use_extension("//bazel/rust:dependencies.bzl", "rust_clang_dependencies")
 use_repo(rust_clang, "ort_rust_libclang")
 
+bazel_dep(name = "rules_android_ndk", version = "0.1.5")
+
+# Explicitly selected by --config=android_arm64; desktop builds need no NDK.
+android_ndk_repository = use_repo_rule("@rules_android_ndk//:rules.bzl", "android_ndk_repository")
+
+android_ndk_repository(
+    name = "ort_android_ndk",
+    api_level = 27,
+)
+
 csharp_test_deps = use_extension("//bazel:csharp_dependencies.bzl", "csharp_test_dependencies")
 use_repo(
     csharp_test_deps,

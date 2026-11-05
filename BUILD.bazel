@@ -5,6 +5,7 @@ load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("//bazel:android.bzl", "android_bindings")
 load("//bazel:bindings.bzl", "language_bindings")
 load("//bazel:cuda.bzl", "cuda_libraries")
 load("//bazel:mlas.bzl", "mlas_libraries")
@@ -185,6 +186,13 @@ cc_library(
         "onnxruntime/core/platform/telemetry.cc",
         "onnxruntime/core/platform/telemetry_sha256.cc",
     ] + select({
+        "//bazel:android": [
+            "onnxruntime/core/platform/android/logging/android_log_sink.cc",
+            # Standard FP16 Conv also uses this activation attribute parser.
+            "onnxruntime/contrib_ops/cpu/fused_activation.cc",
+            "onnxruntime/core/platform/posix/env.cc",
+            "onnxruntime/core/platform/posix/stacktrace.cc",
+        ],
         "//bazel:windows": [
             "onnxruntime/core/platform/windows/debug_alloc.cc",
             "onnxruntime/core/platform/windows/dll_load_error.cc",
@@ -204,6 +212,10 @@ cc_library(
         "//conditions:default": [],
     }),
     linkopts = select({
+        "//bazel:android": [
+            "-ldl",
+            "-llog",
+        ],
         "//bazel:windows": [
             "advapi32.lib",
             "dbghelp.lib",
@@ -311,6 +323,8 @@ desktop_shared_library(
 cuda_libraries()
 
 language_bindings()
+
+android_bindings()
 
 runtime_sdk_package()
 

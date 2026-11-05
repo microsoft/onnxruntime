@@ -45,8 +45,17 @@ toolchain(
         "linux",
         "windows",
         "macos",
+        "android",
     ]
 ]
+
+platform(
+    name = "android_arm64",
+    constraint_values = [
+        "@platforms//os:android",
+        "@platforms//cpu:aarch64",
+    ],
+)
 
 [
     config_setting(

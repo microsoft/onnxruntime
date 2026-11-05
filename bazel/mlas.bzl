@@ -23,6 +23,40 @@ def _library(name, srcs, copts = [], windows_copts = []):
 
 def mlas_libraries():
     """Declare native desktop MLAS kernels with per-ISA compiler options."""
+    for suffix, features, sources in [
+        ("fp16", "fp16", [
+            "aarch64/HalfGemmKernelNeon.S",
+            "activate_fp16.cpp",
+            "dwconv.cpp",
+            "pooling_fp16.cpp",
+            "cast_kernel_neon.cpp",
+            "hqnbitgemm_kernel_neon_fp16.cpp",
+            "hqnbitgemm_kernel_neon_fp16_8bit.cpp",
+            "rotary_embedding_kernel_neon_fp16.cpp",
+            "halfgemm_kernel_neon_fp16.cpp",
+            "softmax_kernel_neon_fp16.cpp",
+            "eltwise_kernel_neon_fp16.cpp",
+            "erf_neon_fp16.cpp",
+            "gelu_neon_fp16.cpp",
+        ]),
+        ("i8mm", "i8mm", [
+            "aarch64/QgemmS8S8KernelSmmla.S",
+            "aarch64/QgemmU8X8KernelUmmla.S",
+            "qgemm_kernel_smmla.cpp",
+            "qgemm_kernel_ummla.cpp",
+        ]),
+        ("bf16", "bf16", ["sbconv_kernel_neon.cpp"]),
+        ("baseline", "simd", ["halfgemm_kernel_neon.cpp"]),
+    ]:
+        cc_library(
+            name = "mlas_android_" + suffix,
+            srcs = [_LIB + source for source in sources],
+            copts = ["-march=armv8.2-a+" + features] if suffix != "baseline" else [],
+            includes = [_LIB[:-1], "onnxruntime/core/mlas/inc"],
+            linkstatic = True,
+            target_compatible_with = ["@platforms//os:android", "@platforms//cpu:aarch64"],
+            deps = [":headers"],
+        )
     cc_library(
         name = "mlas_neon",
         srcs = [
@@ -226,18 +260,26 @@ def mlas_libraries():
                 "saturation_check",
                 "q4_dq",
                 "q4gemm",
-                "activate_fp16",
-                "dwconv",
                 "dgemm",
-                "pooling_fp16",
                 # This pack helper is used before ISA dispatch, including on AVX2-only hosts.
                 "sqnbitgemm_kernel_avx512_2bit",
             ]
         ] + select({
+            "//bazel:android": [],
+            "//conditions:default": [_LIB + source + ".cpp" for source in ["activate_fp16", "dwconv", "pooling_fp16"]],
+        }) + select({
             "//bazel:x86_64": [_LIB + "qgemm_kernel_avx2.cpp"],
             "//conditions:default": [],
         }),
         deps = [":headers"] + select({
+            "//bazel:android": [
+                ":mlas_android_fp16",
+                ":mlas_android_i8mm",
+                ":mlas_android_bf16",
+                ":mlas_android_baseline",
+            ],
+            "//conditions:default": [],
+        }) + select({
             "//bazel:aarch64": [":mlas_neon"],
             "//conditions:default": [
                 ":mlas_sse2",
