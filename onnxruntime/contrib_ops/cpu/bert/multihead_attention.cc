@@ -268,6 +268,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     args.key = K.Get<Tensor>().Data<float>();
     args.value = V.Get<Tensor>().Data<float>();
     args.output = output->MutableData<float>();
+    args.BackendKernelSelectorConfig = &mlas_backend_kernel_selector_config_;
 
     MlasFlashAttention(&args, tp);
     return Status::OK();
