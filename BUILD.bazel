@@ -5,10 +5,12 @@ load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@rules_python//python:defs.bzl", "py_test")
 load("//bazel:bindings.bzl", "language_bindings")
 load("//bazel:cuda.bzl", "cuda_libraries")
 load("//bazel:mlas.bzl", "mlas_libraries")
 load("//bazel:platforms.bzl", "ORIGIN_RPATH", "desktop_shared_library")
+load("//bazel:release_native_binary.bzl", "release_native_binary")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -258,12 +260,34 @@ desktop_shared_library(
             "-Wl,-exported_symbol,_OrtGetApiBase",
             "-Wl,-exported_symbol,_OrtSessionOptionsAppendExecutionProvider_CPU",
         ],
-        "//conditions:default": ["-Wl,--version-script=$(location //bazel:onnxruntime.lds)"],
+        "//conditions:default": [
+            "-Wl,--no-undefined",
+            "-Wl,--version-script=$(location //bazel:onnxruntime.lds)",
+            "-Wl,-z,noexecstack",
+        ],
+    }) + select({
+        "//bazel:windows_opt": [
+            "/INCREMENTAL:NO",
+            "/OPT:ICF",
+            "/OPT:REF",
+        ],
+        "//bazel:macos_opt": ["-Wl,-dead_strip"],
+        "//bazel:linux_opt": [
+            "-Wl,--gc-sections",
+            "-Wl,-z,now",
+            "-Wl,-z,relro",
+        ],
+        "//conditions:default": [],
     }),
     linux = "libonnxruntime.so",
     macos = "libonnxruntime.dylib",
     windows = "onnxruntime.dll",
     deps = [":runtime"],
+)
+
+release_native_binary(
+    name = "runtime_release_library",
+    src = ":runtime_library",
 )
 
 cc_test(
@@ -278,6 +302,15 @@ cc_test(
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     deps = ["@ort_cpuinfo//:cpuinfo"],
+)
+
+py_test(
+    name = "release_parity_test",
+    srcs = [
+        "tools/bazel/release_parity.py",
+        "tools/bazel/release_parity_test.py",
+    ],
+    main = "tools/bazel/release_parity_test.py",
 )
 
 cc_test(
