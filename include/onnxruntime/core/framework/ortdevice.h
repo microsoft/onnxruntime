@@ -41,7 +41,6 @@ struct OrtDevice {
       CUDA_PINNED = 1,
       HIP_PINNED = 2,
       CANN_PINNED = 3,
-      QNN_HTP_SHARED = 4,
     };
 
     // HOST_ACCESSIBLE memory is treated as CPU memory.

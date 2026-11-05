@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/common/pci_vendor_ids.h"
 #include "core/providers/cpu/cpu_provider_factory.h"
 #include "test/shared_lib/test_fixture.h"
 #include "test/util/include/test_allocator.h"
@@ -41,6 +42,30 @@ TEST(CApiTest, LegacyWebGpuWebNNMemoryInfoNames) {
   // Memory infos created with legacy and current names should be equal
   ASSERT_EQ(legacy_webgpu, current_webgpu);
   ASSERT_EQ(legacy_webnn, current_webnn);
+}
+
+TEST(CApiTest, LegacyQnnMemoryInfoNameIsUnsupported) {
+  auto original_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+  OrtMemoryInfo* info = original_info;
+  Ort::Status status(Ort::GetApi().CreateMemoryInfo("QnnHtpShared", OrtDeviceAllocator, 0, OrtMemTypeCPU, &info));
+
+  EXPECT_EQ(status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+  EXPECT_EQ(status.GetErrorMessage(), "Specified device is not supported. Try CreateMemoryInfo_V2.");
+  EXPECT_EQ(info, static_cast<OrtMemoryInfo*>(original_info));
+}
+
+TEST(CApiTest, PluginSharedMemoryInfoV2) {
+  constexpr auto vendor_id = onnxruntime::pci_vendor_ids::kQualcommInc;
+  Ort::MemoryInfo info("QnnHtpShared", OrtMemoryInfoDeviceType_CPU, vendor_id, 0,
+                       OrtDeviceMemoryType_HOST_ACCESSIBLE, 0, OrtDeviceAllocator);
+
+  EXPECT_EQ(info.GetAllocatorName(), "QnnHtpShared");
+  EXPECT_EQ(info.GetDeviceType(), OrtMemoryInfoDeviceType_CPU);
+  EXPECT_EQ(info.GetVendorId(), vendor_id);
+  EXPECT_EQ(info.GetDeviceMemoryType(), OrtDeviceMemoryType_HOST_ACCESSIBLE);
+  EXPECT_EQ(info.GetAllocatorType(), OrtDeviceAllocator);
+  EXPECT_EQ(info.GetMemoryType(), OrtMemTypeCPU);
+  EXPECT_EQ(info.GetDeviceId(), 0);
 }
 
 TEST(CApiTest, DefaultAllocator) {

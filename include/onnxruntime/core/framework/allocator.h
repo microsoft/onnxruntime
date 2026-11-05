@@ -84,7 +84,6 @@ constexpr const char* OpenVINO_CPU = "OpenVINO_CPU";
 constexpr const char* OpenVINO_GPU = "OpenVINO_GPU";
 constexpr const char* OpenVINO_RT = "OpenVINO_RT";
 constexpr const char* OpenVINO_RT_NPU = "OpenVINO_RT_NPU";
-constexpr const char* QNN_HTP_SHARED = "QnnHtpShared";
 constexpr const char* WEBGPU_BUFFER = "WebGPU_Buf";  // limited to 10 chars to ensure std::string SSO for web
 constexpr const char* WEBNN_TENSOR = "WebNN_Ten";    // limited to 10 chars to ensure std::string SSO for web
 

@@ -271,11 +271,6 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo, _In_ const char* name1, enum OrtA
         onnxruntime::HIP_PINNED, type,
         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::AMD, device_id),
         mem_type1);
-  } else if (strcmp(name1, onnxruntime::QNN_HTP_SHARED) == 0) {
-    *out = new OrtMemoryInfo(
-        onnxruntime::QNN_HTP_SHARED, type,
-        OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::QUALCOMM, device_id),
-        mem_type1);
   } else if (strcmp(name1, onnxruntime::CPU_ALIGNED_4K) == 0) {
     *out = new OrtMemoryInfo(
         onnxruntime::CPU_ALIGNED_4K, type,
