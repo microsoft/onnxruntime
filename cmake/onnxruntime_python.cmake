@@ -209,7 +209,6 @@ set(onnxruntime_pybind11_state_static_providers
     ${PROVIDERS_COREML}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
-    ${PROVIDERS_ACL}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_AZURE}
 )
