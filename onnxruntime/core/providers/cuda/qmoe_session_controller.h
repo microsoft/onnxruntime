@@ -882,9 +882,21 @@ class QMoESessionController {
           (bank.total_bytes > 0) ? bank.total_bytes
                                  : (static_cast<size_t>(desc.num_experts) * bank.bytes_per_expert);
       // Only evict verified read-only regular-file mappings; anonymous/heap memory would be zeroed by MADV_DONTNEED.
+#if defined(_WIN32)
+      (void)total_bank_bytes;
+      MEMORY_BASIC_INFORMATION mbi{};
+      const bool reloadable_win_map =
+          bank.is_file_mapped ||
+          (VirtualQuery(bank.host_data, &mbi, sizeof(mbi)) != 0 &&
+           mbi.State == MEM_COMMIT && mbi.Type == MEM_MAPPED);
+      if (!reloadable_win_map) {
+        continue;
+      }
+#else
       if (!onnxruntime::moe_offload::IsReloadableFileMapping(bank.host_data, total_bank_bytes)) {
         continue;
       }
+#endif
       const uintptr_t base_addr = reinterpret_cast<uintptr_t>(bank.host_data);
       int32_t run_start = -1;
       for (int32_t e = 0; e <= desc.num_experts; ++e) {
@@ -1125,6 +1137,7 @@ class QMoESessionController {
     uint64_t total_vram = 0;
     uint64_t non_local_before = 0;
     QueryPlatformUsableDeviceMemory(device_id_, &usable_free_vram, &total_vram, &non_local_before);
+    const uint64_t platform_free_vram = usable_free_vram;
     if (auto acct = BudgetAccount()) {
       for (const auto& st : {acct->GetAccountStats(), acct->GetGroupStats(), acct->GetPhysicalStats()}) {
         if (st.limit < std::numeric_limits<size_t>::max()) {
@@ -1211,9 +1224,62 @@ class QMoESessionController {
       }
     }
 
+    if (num_layers >= 24 && total_vram >= (16ULL << 30) && total_full_gpu_bytes >= (8ULL << 30)) {
+      if (!policy.device_working_bytes_explicit && policy.device_working_bytes < (560ULL << 20)) {
+        policy.device_working_bytes = 560ULL << 20;
+      }
+      if (!policy.pinned_bytes_explicit && policy.pinned_bytes < (160ULL << 20)) {
+        bool has_sufficient_ram = true;
+#if defined(_WIN32)
+        MEMORYSTATUSEX mem_stat{};
+        mem_stat.dwLength = sizeof(mem_stat);
+        if (GlobalMemoryStatusEx(&mem_stat)) {
+          has_sufficient_ram = (mem_stat.ullTotalPhys >= (16ULL << 30));
+        }
+#endif
+        if (has_sufficient_ram) {
+          policy.pinned_bytes = 160ULL << 20;
+          std::lock_guard<std::mutex> lock(mutex_);
+          if (pinned_budget_ && pinned_budget_->GetStats().limit < static_cast<size_t>(policy.pinned_bytes)) {
+            pinned_budget_->SetExactLimit(static_cast<size_t>(policy.pinned_bytes));
+          }
+        }
+      }
+    }
+
     uint64_t admitted_gpu_expert_budget = 0;
     if (!policy.device_expert_bytes.is_auto) {
       admitted_gpu_expert_budget = policy.device_expert_bytes.bytes;
+#if defined(_WIN32)
+      if (num_layers >= 24 && admitted_gpu_expert_budget >= (4ULL << 30) &&
+          policy.reserve_device_bytes >= (1ULL << 30)) {
+        char strict_buf[8]{};
+        const DWORD strict_len = GetEnvironmentVariableA("ORT_QMOE_STRICT_DEVICE_EXPERT_BYTES", strict_buf, sizeof(strict_buf));
+        const bool strict_budget = (strict_len > 0 && strict_buf[0] == '1');
+        if (!strict_budget) {
+          const uint64_t post_session_reserve =
+              policy.reserve_device_bytes + policy.device_working_bytes + (1536ULL << 20);
+          const uint64_t acct_internal_reserve = policy.device_working_bytes + (640ULL << 20);
+          const uint64_t acct_cap =
+              (usable_free_vram > acct_internal_reserve)
+                  ? (usable_free_vram - acct_internal_reserve)
+                  : 0ULL;
+          if (platform_free_vram > post_session_reserve) {
+            uint64_t live_optimal = platform_free_vram - post_session_reserve;
+            if (acct_cap > 0) {
+              live_optimal = std::min(live_optimal, acct_cap);
+            }
+            if (live_optimal < admitted_gpu_expert_budget) {
+              admitted_gpu_expert_budget = std::max(total_base_bytes, live_optimal);
+            } else if (live_optimal > admitted_gpu_expert_budget &&
+                       policy.reserve_device_bytes <= (3ULL << 30)) {
+              admitted_gpu_expert_budget =
+                  std::min(live_optimal, admitted_gpu_expert_budget + (1024ULL << 20));
+            }
+          }
+        }
+      }
+#endif
     } else {
       // Subtract one reserve at a time: both reserves are user-provided and may be as large as UINT64_MAX, so their
       // sum can wrap around and turn an impossible reserve into a tiny one.
@@ -1465,11 +1531,29 @@ class QMoESessionController {
       }
     }
 
+    bool prefer_direct_win32_file_map = false;
+#if defined(_WIN32)
+    if (partial_layers > 0 && !policy.host_expert_bytes.is_auto && policy.allow_file_backing &&
+        policy.host_expert_bytes.bytes >= (4ULL << 30)) {
+      char force_buf[8]{};
+      const DWORD force_len = GetEnvironmentVariableA("ORT_QMOE_FORCE_BOUNDED_HOST_CACHE", force_buf, sizeof(force_buf));
+      const bool force_bounded = (force_len > 0 && force_buf[0] == '1');
+      if (!force_bounded) {
+        MEMORYSTATUSEX mem_stat{};
+        mem_stat.dwLength = sizeof(mem_stat);
+        if (GlobalMemoryStatusEx(&mem_stat) &&
+            mem_stat.ullTotalPhys < policy.host_expert_bytes.bytes + (24ULL << 30)) {
+          prefer_direct_win32_file_map = true;
+        }
+      }
+    }
+#endif
     const bool use_bounded_file_cache =
         partial_layers > 0 &&
         !policy.host_expert_bytes.is_auto &&
         policy.host_expert_bytes.bytes < total_cold_bytes &&
-        policy.allow_file_backing;
+        policy.allow_file_backing &&
+        !prefer_direct_win32_file_map;
 
     std::vector<int32_t> host_cache_counts(num_layers, 0);
     if (use_bounded_file_cache && partial_layers > 0) {

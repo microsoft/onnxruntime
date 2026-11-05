@@ -183,6 +183,8 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   bool v4_planned_mode_ = false;
   onnxruntime::moe_offload::MoeOffloadSessionPolicy v4_policy_{};
   onnxruntime::moe_offload::MoeNodeExecutionPlan v4_plan_{};
+  std::array<std::string, 6> v4_bank_paths_{};
+  std::array<uint64_t, 6> v4_bank_offsets_{};
   bool nvfp4_mode_ = false;
   bool mxfp4_mode_ = false;
   bool int4_bank_mode_ = false;

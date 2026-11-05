@@ -280,7 +280,8 @@ onnxruntime::cuda::QMoERunControls* RunControlsOf(const void* session_scope) noe
 
 inline bool IsInQMoEWarmup(const void* session_scope) noexcept {
   const auto* controls = RunControlsOf(session_scope);
-  return controls != nullptr && controls->InWarmup();
+  if (controls != nullptr && controls->InWarmup()) return true;
+  return ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_IN_WARMUP", 0) == 1;
 }
 
 inline bool ConsumeQMoEPrefillNewTurn(const void* session_scope) noexcept {
@@ -471,6 +472,13 @@ class SessionPromotionBudget {
     auto it = sessions_.find(session_key);
     if (it == sessions_.end()) return;
     it->second.FreeBounce();
+  }
+
+  size_t HeldBytes(const void* session_key) noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = sessions_.find(session_key);
+    if (it == sessions_.end()) return 0;
+    return it->second.pinned_accounted[0] + it->second.pinned_accounted[1];
   }
 
   void RecordBounceCopy(const void* session_key, cudaStream_t stream) noexcept {
@@ -2651,6 +2659,12 @@ QMoEOffload::QMoEOffload(const OpKernelInfo& info,
       v4_planned_mode_(true),
       v4_policy_(policy),
       v4_plan_(plan) {
+  for (size_t b = 0; b < 6; ++b) {
+    if (desc.banks[b].has_value() && !desc.banks[b]->external_file_path.empty()) {
+      v4_bank_paths_[b] = desc.banks[b]->external_file_path.string();
+      v4_bank_offsets_[b] = desc.banks[b]->external_file_offset;
+    }
+  }
   offload_telemetry_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_OFFLOAD_TELEMETRY", 0) == 1;
   allow_cuda_graph_ = true;
   host_complement_mode_ = false;
@@ -3771,9 +3785,11 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
   // Planned non-integer banks (NVFP4/MXFP4) always shrink, as before, and disable streaming if nothing fits.
   shrink_stream_tile_ = false;
   bool shrink_stream_wave = false;
+  const int default_int_stream_rows =
+      (int3_bank_mode_ || int2_bank_mode_ || shared_gpu_limit_ >= (size_t{256} << 20)) ? 8192 : 2048;
   const int default_stream_rows =
       ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_STREAM_ROWS",
-                                               int3_bank_mode_ ? 8192 : (is_int_bank ? 2048 : 0));
+                                               is_int_bank ? default_int_stream_rows : 0);
   const bool cpu_disabled_streaming =
       (v4_planned_mode_ &&
        v4_policy_.cpu_execution == onnxruntime::moe_offload::CpuExecutionMode::kDisabled &&
@@ -4869,13 +4885,16 @@ void QMoEOffload::InitializeBoundedHostCache() {
   ORT_ENFORCE(slots >= 1, "Host cache budget is too small for one expert per layer (", nvfp4_layout_.stride, " bytes).");
   const void* fc1_g_ptr = nvfp4_fc1_g_ ? nvfp4_fc1_g_->DataRaw() : default_global_scales_.data();
   const void* fc2_g_ptr = nvfp4_fc2_g_ ? nvfp4_fc2_g_->DataRaw() : default_global_scales_.data();
+  auto bank_path = [this](size_t b) -> const char* {
+    return v4_bank_paths_[b].empty() ? nullptr : v4_bank_paths_[b].c_str();
+  };
   const qmoe_shared::FileExpertStore::MappedBank banks[]{
-      {nvfp4_fc1_w_->DataRaw(), resident_bank_bytes_[0], nvfp4_layout_.fc1_weights},
-      {nvfp4_fc2_w_->DataRaw(), resident_bank_bytes_[1], nvfp4_layout_.fc2_weights},
-      {nvfp4_fc1_s_->DataRaw(), resident_bank_bytes_[2], nvfp4_layout_.fc1_scales},
-      {nvfp4_fc2_s_->DataRaw(), resident_bank_bytes_[3], nvfp4_layout_.fc2_scales},
-      {fc1_g_ptr, sizeof(float), nvfp4_layout_.fc1_global_scale},
-      {fc2_g_ptr, sizeof(float), nvfp4_layout_.fc2_global_scale}};
+      {nvfp4_fc1_w_->DataRaw(), resident_bank_bytes_[0], nvfp4_layout_.fc1_weights, bank_path(0), v4_bank_offsets_[0]},
+      {nvfp4_fc2_w_->DataRaw(), resident_bank_bytes_[1], nvfp4_layout_.fc2_weights, bank_path(1), v4_bank_offsets_[1]},
+      {nvfp4_fc1_s_->DataRaw(), resident_bank_bytes_[2], nvfp4_layout_.fc1_scales, bank_path(2), v4_bank_offsets_[2]},
+      {nvfp4_fc2_s_->DataRaw(), resident_bank_bytes_[3], nvfp4_layout_.fc2_scales, bank_path(3), v4_bank_offsets_[3]},
+      {fc1_g_ptr, sizeof(float), nvfp4_layout_.fc1_global_scale, bank_path(4), v4_bank_offsets_[4]},
+      {fc2_g_ptr, sizeof(float), nvfp4_layout_.fc2_global_scale, bank_path(5), v4_bank_offsets_[5]}};
   ORT_ENFORCE(file_expert_store_.InitializeMapped(banks, std::size(banks), num_experts_, nvfp4_layout_.stride, slots),
               "Bounded host cache requires immutable regular-file-backed initializers; cannot resolve source banks.");
   if (uint8_t* cache_base = file_expert_store_.CacheBase()) {
@@ -5068,6 +5087,26 @@ Status QMoEOffload::EnsurePersistentDecodeState(OpKernelContext* context, size_t
           }
           dma_state.FreeHostStagingLocked();
           dma_state.FreeHostActiveMaskLocked();
+        }
+      }
+      if (session_controller_) {
+        SessionPromotionBudget::Instance().ReleaseIdleBounce(session_controller_.get());
+      }
+      if (!try_reserve_decode_pinned() && stream_shared_ && stream_shared_->pinned) {
+        std::lock_guard<std::mutex> ring_lock(stream_shared_->mutex);
+        if (stream_shared_->pinned && stream_shared_->pinned_bytes > 0) {
+          if (stream_shared_->copy_stream) {
+            static_cast<void>(cudaStreamSynchronize(stream_shared_->copy_stream));
+          }
+          auto host_ledger_free = GetCudaHostPinnedMemoryBudget();
+          const size_t free_bytes = stream_shared_->pinned_bytes;
+          if (sess_pinned) sess_pinned->BeginFree(free_bytes);
+          if (host_ledger_free) host_ledger_free->BeginFreeAllocated(free_bytes);
+          const bool ok = (cudaFreeHost(stream_shared_->pinned) == cudaSuccess);
+          stream_shared_->pinned = nullptr;
+          stream_shared_->pinned_bytes = 0;
+          if (sess_pinned) sess_pinned->FinishFree(free_bytes, ok);
+          if (host_ledger_free) host_ledger_free->FinishFreeAllocated(free_bytes, ok);
         }
       }
       if (!try_reserve_decode_pinned()) {
@@ -7844,11 +7883,14 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
     const size_t ring_held = stream_shared_ ? stream_shared_->pinned_bytes : 0;
     const size_t used_total = SafeInt<size_t>(stats.committed) + stats.pending;
     const size_t other_used = used_total > ring_held ? used_total - ring_held : 0;
+    const size_t bounce_held =
+        session_controller_ ? SessionPromotionBudget::Instance().HeldBytes(session_controller_.get()) : 0;
+    const size_t decode_held = other_used > bounce_held ? other_used - bounce_held : 0;
     // Keep decode headroom without consuming all of an explicitly small pinned budget.
     const bool reserve_decode = v4_planned_mode_ &&
                                 v4_policy_.cpu_execution != onnxruntime::moe_offload::CpuExecutionMode::kDisabled;
     const size_t reserve_target = reserve_decode ? std::min(size_t{24} << 20, stats.limit / 2) : 0;
-    const size_t reserved = std::max(other_used, reserve_target);
+    const size_t reserved = bounce_held + std::max(decode_held, reserve_target);
     pinned_avail = std::min(pinned_avail, stats.limit > reserved ? stats.limit - reserved : 0);
   }
 
@@ -8010,6 +8052,10 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
           !int_bank_uses_cache && !all_expert_banks_registered_) {
         if (base_host_aligned + 2 * (one_wave_w_bytes + one_wave_s_bytes) <= pinned_avail) {
           stage_weight_banks = 2;
+        } else if (wave_experts > 16 &&
+                   base_host_aligned + 2 * ((one_wave_w_bytes + 1) / 2 + (one_wave_s_bytes + 1) / 2) <= pinned_avail) {
+          wave_experts = std::max(1, wave_experts / 2);
+          continue;
         } else if (base_host_aligned + one_wave_w_bytes + 2 * one_wave_s_bytes <= pinned_avail) {
           stage_weight_banks = 1;
         }
@@ -8526,10 +8572,11 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
       const size_t stream_count = stream_list.size();
       const int waves = static_cast<int>((stream_count + wave_experts - 1) / wave_experts);
 #if defined(_WIN32)
-      if (start == 0 && int4_bank_mode_ && !(host_cache_bytes_ > 0 && file_expert_store_.IsInitialized()) &&
+      if (start == 0 && (int4_bank_mode_ || int2_bank_mode_ || (int3_bank_mode_ && !expert_blocks_)) &&
+          !(host_cache_bytes_ > 0 && file_expert_store_.IsInitialized()) &&
           nvfp4_fc1_w_ && nvfp4_fc2_w_ && nvfp4_fc1_s_ && nvfp4_fc2_s_) {
         static const bool enable_win_prefetch =
-            ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_WIN_PREFETCH_MMAP", 0) == 1;
+            ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_WIN_PREFETCH_MMAP", 1) == 1;
         if (enable_win_prefetch) {
           const uint8_t* w1_b = static_cast<const uint8_t*>(nvfp4_fc1_w_->DataRaw());
           const uint8_t* w2_b = static_cast<const uint8_t*>(nvfp4_fc2_w_->DataRaw());
