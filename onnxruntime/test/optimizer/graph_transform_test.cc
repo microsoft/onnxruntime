@@ -9722,12 +9722,16 @@ TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionRewriteFa
 enum class VitAttentionScaleOp {
   Div,
   Mul,
+  // MatMul feeds Softmax directly.
+  None,
 };
 
 struct VitAttentionTestConfig {
   VitAttentionScaleOp scale_op = VitAttentionScaleOp::Div;
   // Mul only: put the scalar in input 0.
   bool scale_is_first_input = false;
+  // Overrides the Div/Mul scalar, which defaults to the usual sqrt(head_size) divisor or its reciprocal.
+  std::optional<float> scale_value;
   // Unset means no Softmax axis attribute.
   std::optional<int64_t> softmax_axis = 3;
   std::vector<int64_t> k_perm = {0, 2, 3, 1};
@@ -9786,7 +9790,8 @@ static void BuildVitAttentionTestCase(ModelTestBuilder& builder, const VitAttent
   NodeArg* q_input = make_input(config.q_batch);
   NodeArg* kv_input = config.separate_kv_input ? make_input(1) : q_input;
   const float sqrt_head_size = std::sqrt(static_cast<float>(head_size));
-  const float scale_value = config.scale_op == VitAttentionScaleOp::Div ? sqrt_head_size : 1.0f / sqrt_head_size;
+  const float scale_value = config.scale_value.value_or(
+      config.scale_op == VitAttentionScaleOp::Div ? sqrt_head_size : 1.0f / sqrt_head_size);
   NodeArg* scale = config.fp16 ? builder.MakeScalarInitializer<MLFloat16>(MLFloat16(scale_value))
                                : builder.MakeScalarInitializer<float>(scale_value);
   NodeArg* merge_heads_shape = builder.Make1DInitializer<int64_t>(
@@ -9824,6 +9829,8 @@ static void BuildVitAttentionTestCase(ModelTestBuilder& builder, const VitAttent
   builder.AddNode("MatMul", {q, k}, {qk});
   if (config.scale_op == VitAttentionScaleOp::Div) {
     builder.AddNode("Div", {qk, scale}, {scaled});
+  } else if (config.scale_op == VitAttentionScaleOp::None) {
+    scaled = qk;
   } else if (config.scale_is_first_input) {
     builder.AddNode("Mul", {scale, qk}, {scaled});
   } else {
@@ -9845,23 +9852,48 @@ static Status AssignVitAttentionEp(Graph& graph, const char* ep) {
   return Status::OK();
 }
 
-static Status CheckVitAttentionFused(Graph& graph) {
+static Status CheckVitAttentionFusedWithScale(Graph& graph, float expected_scale) {
   auto op_to_count = CountOpsInGraph(graph);
   ORT_RETURN_IF_NOT(op_to_count["com.microsoft.MultiHeadAttention"] == 1, "expected one MultiHeadAttention");
   ORT_RETURN_IF_NOT(op_to_count["Softmax"] == 0, "Softmax was not fused");
   ORT_RETURN_IF_NOT(op_to_count["Transpose"] == 0, "head Transposes were not removed");
   ORT_RETURN_IF_NOT(op_to_count["MatMul"] == 3, "only the Q/K/V projections should remain");
   ORT_RETURN_IF_NOT(op_to_count["Div"] == 0 && op_to_count["Mul"] == 0, "the scale was not folded");
+  // Three head-split Reshapes, the three added BSD Reshapes and the output Reshape.
+  ORT_RETURN_IF_NOT(op_to_count["Reshape"] == 7, "unexpected Reshape count");
 
   for (const auto& node : graph.Nodes()) {
     if (node.OpType() == "MultiHeadAttention") {
       const auto& attrs = node.GetAttributes();
       ORT_RETURN_IF_NOT(attrs.at("num_heads").i() == 4, "unexpected num_heads");
-      ORT_RETURN_IF_NOT(std::abs(attrs.at("scale").f() - 0.25f) < 1e-6f, "unexpected scale");
+      ORT_RETURN_IF_NOT(std::abs(attrs.at("scale").f() - expected_scale) < 1e-6f, "unexpected scale");
       ORT_RETURN_IF_NOT(node.GetExecutionProviderType() == kWebGpuExecutionProvider, "unexpected EP");
+      // Q, K and V must be the [0, 0, -1] Reshapes of the head-split [B, S, N, H] tensors, not those tensors.
+      for (int i = 0; i < 3; ++i) {
+        const Node* bsd = graph_utils::GetInputNode(node, i);
+        ORT_RETURN_IF_NOT(bsd != nullptr && bsd->OpType() == "Reshape", "MultiHeadAttention input ", i,
+                          " is not a BSD Reshape");
+        InlinedVector<int64_t> bsd_shape;
+        const InlinedVector<int64_t> expected_bsd_shape{0, 0, -1};
+        const bool is_bsd_shape =
+            optimizer_utils::AppendTensorFromInitializer(graph, *bsd->InputDefs()[1], bsd_shape, true) &&
+            bsd_shape == expected_bsd_shape;
+        ORT_RETURN_IF_NOT(is_bsd_shape, "MultiHeadAttention input ", i, " is not reshaped to [0, 0, -1]");
+        const Node* head_split = graph_utils::GetInputNode(*bsd, 0);
+        ORT_RETURN_IF_NOT(head_split != nullptr && head_split->OpType() == "Reshape", "MultiHeadAttention input ", i,
+                          " does not come from a head-split Reshape");
+      }
     }
   }
   return Status::OK();
+}
+
+static Status CheckVitAttentionFused(Graph& graph) {
+  return CheckVitAttentionFusedWithScale(graph, 0.25f);
+}
+
+static Status CheckVitAttentionFusedUnscaled(Graph& graph) {
+  return CheckVitAttentionFusedWithScale(graph, 1.0f);
 }
 
 static Status CheckVitAttentionUnfused(Graph& graph) {
@@ -9902,6 +9934,40 @@ TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitMulScaleFirstInput) 
   config.scale_op = VitAttentionScaleOp::Mul;
   config.scale_is_first_input = true;
   ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionFused, *logger_));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitNoScale) {
+  VitAttentionTestConfig config;
+  config.scale_op = VitAttentionScaleOp::None;
+  ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionFusedUnscaled, *logger_));
+}
+
+// Fails when ONNX bumps the since_version of an op in the pattern beyond the version lists in
+// onnxruntime/core/optimizer/multi_head_attention_fusion.cc.
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionCurrentOpsetTest) {
+  const int current_opset = GetCurrentOnnxOpset();
+  auto check = [current_opset](Graph& graph) -> Status {
+    Status status = CheckVitAttentionFused(graph);
+    if (!status.IsOK()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MultiHeadAttentionFusion failed at opset ", current_opset, ": ",
+                             status.ErrorMessage(), ". Update the version lists in ",
+                             "onnxruntime/core/optimizer/multi_head_attention_fusion.cc.");
+    }
+    return Status::OK();
+  };
+  // As in GeluFusionCurrentOpsetTest, allow the current opset even while it is still under development in ONNX.
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      [](ModelTestBuilder& builder) { BuildVitAttentionTestCase(builder); }, current_opset, *logger_,
+      std::make_unique<MultiHeadAttentionFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      TransformerLevel::Level2, 1, AssignVitAttentionWebGpuEp, check,
+      ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitOverflowingScaleNotFused) {
+  // The reciprocal of a denormal divisor overflows to inf, so there is no finite scale attribute to emit.
+  VitAttentionTestConfig config;
+  config.scale_value = 1e-40f;
+  ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionUnfused, *logger_));
 }
 
 TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitFloat16) {
@@ -9963,7 +10029,8 @@ TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitDynamicDimsWithBiasF
 }
 
 TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitSharedSourceBatchedWeightNotFused) {
-  // Q, K and V project the same [1, S, D] input, but the [2, D, D] Q weight broadcasts Q to batch 2.
+  // Q, K and V project the same [1, S, D] input, but the [2, D, D] Q weight broadcasts Q to batch 2. The static
+  // inferred batch dims (2 vs. 1) reject it before the projection-source check is consulted.
   VitAttentionTestConfig config;
   config.q_weight_batch = 2;
   ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionUnfused, *logger_));

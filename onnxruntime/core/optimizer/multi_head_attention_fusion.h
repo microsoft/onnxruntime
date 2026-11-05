@@ -37,8 +37,7 @@ the WebGPU EP.
 */
 class MultiHeadAttentionFusion : public GraphTransformer {
  public:
-  explicit MultiHeadAttentionFusion(
-      const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
+  explicit MultiHeadAttentionFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers) noexcept
       : GraphTransformer("MultiHeadAttentionFusion", compatible_execution_providers) {
   }
 
