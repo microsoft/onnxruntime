@@ -507,6 +507,14 @@ CPU, single-platform experimental artifacts, not universal packages or release
 registry publication. CUDA, mobile, and additional runtime variants are not
 implicitly included.
 
+After integration, Windows frozen analysis of `//...` plus the six explicit
+manual WASM test targets passed at `--jobs=2`: 239 targets, 74,424 configured
+targets, and zero actions. No local native compilation was performed for this
+package integration. The three-host selected-only CI package-consumer step
+now includes `//:node_npm_test` and `//:csharp_nuget_test`; YAML and all seven
+Bash blocks passed syntax checks. Windows/macOS package consumption is not
+claimed from graph analysis or CI configuration.
+
 ### Desktop portability checks
 
 Linux x86-64 portability validation used Bazel 8.4.2 with the frozen module

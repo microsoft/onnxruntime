@@ -54,6 +54,7 @@ jobs:
             //:runtime_smoke_test //:go_test //:java_smoke_test \
             //:python_smoke_test //:node_smoke_test //:csharp_smoke_test \
             //rust:smoke_test //:runtime_sdk_archive_test //:java_native_jar_test \
+            //:node_npm_test //:csharp_nuget_test \
             //:python_test_runner_test //:node_test_runner_test \
             //rust:test_runner_test //objectivec:test_runner_test \
             //:android_aar_packager_test \
