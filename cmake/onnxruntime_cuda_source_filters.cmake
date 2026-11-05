@@ -247,7 +247,11 @@ endfunction()
 #   onnxruntime_filter_cuda_archs(<output_var>
 #       MIN_SM <number>
 #       [EXCLUDE_SM120_REAL]
+#       [REPLACE_SM120_REAL_WITH_VIRTUAL [REPLACED_SM120_CCS <ccs_var>]]
 #       [REUSE_SM80_SASS])
+#
+# REPLACED_SM120_CCS receives the compute capabilities (e.g. "120;121") of the SM120+ entries that
+# REPLACE_SM120_REAL_WITH_VIRTUAL turned into PTX, so callers can add non-"a" native SASS for them.
 #
 # REUSE_SM80_SASS drops the SM86 and SM89 SASS entries when SM80 SASS is also requested and kept (MIN_SM
 # is at most 80): a cubin for compute capability 8.0 runs on 8.6 and 8.9 GPUs. Only use it for sources that
@@ -256,7 +260,7 @@ endfunction()
 # never dropped.
 function(onnxruntime_filter_cuda_archs OUTPUT_VAR)
   cmake_parse_arguments(PARSE_ARGV 1 _FCA "EXCLUDE_SM120_REAL;REPLACE_SM120_REAL_WITH_VIRTUAL;REUSE_SM80_SASS"
-                        "MIN_SM" "")
+                        "MIN_SM;REPLACED_SM120_CCS" "")
 
   set(_reuse_sm80 OFF)
   if(_FCA_REUSE_SM80_SASS AND _FCA_MIN_SM LESS_EQUAL 80)
@@ -264,6 +268,7 @@ function(onnxruntime_filter_cuda_archs OUTPUT_VAR)
   endif()
 
   set(_filtered)
+  set(_replaced_ccs)
   foreach(_arch IN LISTS CMAKE_CUDA_ARCHITECTURES)
     onnxruntime_parse_cuda_arch("${_arch}" _fca_arch)
     if(_reuse_sm80 AND NOT _fca_arch_VIRTUAL AND (_fca_arch_CC EQUAL 86 OR _fca_arch_CC EQUAL 89))
@@ -274,6 +279,7 @@ function(onnxruntime_filter_cuda_archs OUTPUT_VAR)
       # which is kept without the -real suffix (it generates both SASS and PTX).
       if(_FCA_REPLACE_SM120_REAL_WITH_VIRTUAL AND _fca_arch_CC GREATER_EQUAL 120 AND NOT _fca_arch_VIRTUAL)
         list(APPEND _filtered "${_fca_arch_CC}-virtual")
+        list(APPEND _replaced_ccs "${_fca_arch_CC}")
         continue()
       elseif(_FCA_EXCLUDE_SM120_REAL AND _fca_arch_CC GREATER_EQUAL 120 AND NOT _fca_arch_VIRTUAL)
         continue()
@@ -283,6 +289,10 @@ function(onnxruntime_filter_cuda_archs OUTPUT_VAR)
   endforeach()
   list(REMOVE_DUPLICATES _filtered)
   set("${OUTPUT_VAR}" "${_filtered}" PARENT_SCOPE)
+  if(_FCA_REPLACED_SM120_CCS)
+    list(REMOVE_DUPLICATES _replaced_ccs)
+    set("${_FCA_REPLACED_SM120_CCS}" "${_replaced_ccs}" PARENT_SCOPE)
+  endif()
 endfunction()
 
 # Create a CUDA OBJECT library for the in-tree CUDA EP and link it to the parent target.
