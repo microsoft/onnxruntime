@@ -791,6 +791,9 @@ bazel test //:provider_bridge_test //:optional_provider_probe_test -c opt --lock
 After the dependency correction, frozen Windows analysis passed 254 targets
 in 24.424 seconds with zero actions. The retained native evidence archive SHA-256
 is `76c910733e423f09eb51cde65be373d995bd76fdce775fa066bef07f308a199b`.
+The coordinator verified cleanup of the task-private CPU VM root and Bazel
+server (2.6 GiB), credentials/configuration and source transfer; retained
+evidence remains hash-verified, and shared/global resources were untouched.
 macOS execution of the corrected fixtures remains unverified.
 
 On a macOS host with full Xcode selected (including the macOS SDK and XCTest):
