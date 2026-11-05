@@ -14,10 +14,6 @@ forwards this option to the helper.
 The manylinux CPU, CUDA and WebGPU images inherit Node/npm from their producer
 bases instead of reinstalling them. Custom `BASEIMAGE` overrides must also provide
 Node/npm; the retained AlmaLinux9 ARM64 bases keep their existing versions.
-`install_os_deps.sh` separately installs Node 24.22.2 and npm 11.21.1 for its
-consumers, matching the refreshed producer. Node archives are verified before
-extraction. npm is updated as a complete distribution, not by replacing individual
-nested packages.
 
 Build and promote upstream test images before changing `BASEIMAGE` defaults or
 pipeline/workflow overrides for validation. Use verified immutable digests, preserve the
