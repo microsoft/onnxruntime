@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// Generic math tests are included in both in-tree and plugin CUDA EP builds.
+#ifdef USE_CUDA
+
 #include <cstdint>
 #include <initializer_list>
 #include <limits>
@@ -134,3 +137,5 @@ TEST(CudaBitwiseLogicalTest, BooleanOpsUnchanged) {
 }  // namespace
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif  // USE_CUDA
