@@ -12,6 +12,14 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+struct QMoEOffloadTelemetry {
+  uint64_t layer_calls;
+  uint64_t zero_cold_short_circuits;
+  uint64_t cold_routes;
+  int last_route_count;
+  int last_cold_count;
+};
+
 void LaunchSoftmaxTopK(
     const float* logits,
     float* topk_scales,
@@ -100,7 +108,9 @@ cudaError_t LaunchQMoEOffloadClassify(
     int k_for_source_rows = 0, int* host_indices_out = nullptr,
     const void* input_dev = nullptr, void* host_input_out = nullptr, int input_vec4_count = 0,
     uint64_t* doorbell_seq_dev = nullptr, volatile uint64_t* doorbell_req_host = nullptr,
-    volatile int32_t* doorbell_tile_rows_host = nullptr, int tile_rows = 0);
+    volatile int32_t* doorbell_tile_rows_host = nullptr, int tile_rows = 0,
+    bool skip_zero_cold = false, volatile uint64_t* doorbell_done_host = nullptr,
+    volatile int32_t* cold_count_host = nullptr, QMoEOffloadTelemetry* telemetry = nullptr);
 
 cudaError_t LaunchQMoEOffloadMerge(
     const half* wave_output, const half* cpu_rows, const int* hit_flag, half* contributions,
@@ -665,6 +675,12 @@ struct Int3Projection {
   int bits = 0;
 };
 
+struct Int3ExpertTileDesc {
+  int expert;
+  int start_idx;
+  int count;
+};
+
 struct Int3MoeParams {
   int tensor_core_min_routes = 33;  // 0 disables the tensor-core decode path.
   const void* input = nullptr;
@@ -695,6 +711,7 @@ struct Int3MoeParams {
   const int* fc2_bias_expert_indices = nullptr;
   bool input_is_gathered = false;
   int total_routes_override = 0;
+  int* grouped_workspace = nullptr;
 };
 
 // Kernel family LaunchInt3Moe dispatches for `params`. Only the vectorized GEMV kernels read
@@ -702,6 +719,7 @@ struct Int3MoeParams {
 enum class Int3DecodeKernel {
   kScalar,
   kFast,
+  kGrouped,
   kFastVectorized,
   kTensorCore,
 };
@@ -714,7 +732,8 @@ void LaunchPrePackInt3Weights(const uint8_t* raw_weights, uint8_t* packed_weight
 void LaunchPrePackInt3Scales(const __nv_bfloat16* raw_scales, __nv_bfloat16* packed_scales,
                              int num_experts, int n, int k, cudaStream_t stream);
 
-cudaError_t LaunchInt3Moe(const Int3MoeParams& params, cudaStream_t stream);
+cudaError_t LaunchInt3Moe(const Int3MoeParams& params, cudaStream_t stream,
+                          bool* used_grouped = nullptr, bool* used_tensor_core = nullptr);
 cudaError_t ValidateInt3MoeContent(const Int3Projection& projection, size_t rows,
                                    int logical_k, int block_size, bool is_bfloat16,
                                    int* invalid, cudaStream_t stream);

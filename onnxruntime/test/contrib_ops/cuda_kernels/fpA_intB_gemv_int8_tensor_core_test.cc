@@ -234,7 +234,7 @@ class Int8TensorCoreGemvTest : public ::testing::Test {
   }
 
   // One-hot activation rows at every K position (8 per launch): the tensor-core output has to equal the scalar
-  // kernel's under each of the four launch configurations that the reported SM counts select for N = 480 (30 blocks).
+  // kernel's under each of the launch configurations that the reported SM counts select for N = 480 (30 blocks).
   void ExpectOneHotMatchesScalarKernel(Problem& p) {
     ASSERT_EQ(p.n, 480);
     struct Expected {
@@ -243,8 +243,9 @@ class Int8TensorCoreGemvTest : public ::testing::Test {
     };
     const Expected expected[] = {{16, "KWarps=8 Depth=4 BlocksPerSm=2"},
                                  {11, "KWarps=8 Depth=2 BlocksPerSm=3"},
-                                 {5, "KWarps=4 Depth=2 BlocksPerSm=7"},
-                                 {4, "KWarps=4 Depth=2 BlocksPerSm=8"}};
+                                 {8, "KWarps=8 Depth=2 BlocksPerSm=4"},
+                                 {5, "KWarps=4 Depth=2 BlocksPerSm=5"},
+                                 {2, "KWarps=4 Depth=2 BlocksPerSm=8"}};
     for (int first = 0; first < p.k; first += 8) {
       p.SetOneHotActivations(first);
       const std::vector<bf16> scalar = Run(p, 8, 0, false, prop_.multiProcessorCount);
@@ -278,7 +279,7 @@ class Int8TensorCoreGemvTest : public ::testing::Test {
 // tensor-core kernel round (q - 128) * scale to bf16 once, so their outputs have to be equal as values (a zero result
 // may have either sign); probing every K position checks the weight layout (the K order inside a 64-wide tile, the
 // column pairs and the scale rows) of every launch configuration. N = 480 is 30 blocks, which the reported SM counts
-// 16 / 11 / 5 / 4 spread over the four configurations.
+// 16 / 11 / 8 / 5 / 2 spread over five configurations.
 TEST_F(Int8TensorCoreGemvTest, OneHotActivationsMatchScalarKernel) {
   for (int group_size : GroupSizes()) {
     std::vector<int> ks = {128, 384, 640};
@@ -413,15 +414,19 @@ TEST_F(Int8TensorCoreGemvTest, LaunchConfigurationFollowsGridSize) {
   constexpr int kSms = 132;
   constexpr const char* kD = "KWarps=8 Depth=4 BlocksPerSm=2";
   constexpr const char* kC = "KWarps=8 Depth=2 BlocksPerSm=3";
+  constexpr const char* kC4 = "KWarps=8 Depth=2 BlocksPerSm=4";
+  constexpr const char* kE = "KWarps=4 Depth=2 BlocksPerSm=5";
   constexpr const char* kB = "KWarps=4 Depth=2 BlocksPerSm=7";
   constexpr const char* kA = "KWarps=4 Depth=2 BlocksPerSm=8";
   struct Case {
     int n;
     const char* config;
   };
-  // 2 * 132 = 264, 3 * 132 = 396, 7 * 132 = 924 and 8 * 132 = 1056 blocks; beyond 7 * 132 the configuration with fewer
-  // waves wins and the 7-block one takes ties.
-  const Case cases[] = {{2560, kD}, {4224, kD}, {4240, kC}, {6336, kC}, {6352, kB}, {13952, kB}, {14784, kB}, {14800, kA}, {16480, kA}, {16896, kA}, {16912, kB}, {20480, kB}, {25344, kB}, {33792, kA}};
+  // 2 * 132 = 264, 3 * 132 = 396, 4 * 132 = 528, 7 * 132 = 924 and 8 * 132 = 1056 blocks. Past 4 * 132 blocks, an N that
+  // is a multiple of 32 takes the two-column-tile kernel while half the grid fits in one wave of 5 blocks per SM (up to
+  // 1320 blocks) or the grid has at least 32 * 132 = 4224 blocks. Other grids take the 7-block kernel up to 924 blocks
+  // and the 8-block kernel beyond.
+  const Case cases[] = {{2560, kD}, {4224, kD}, {4240, kC}, {6336, kC}, {6352, kC4}, {8448, kC4}, {8464, kB}, {8480, kE}, {13952, kE}, {14768, kB}, {14784, kE}, {14800, kA}, {16480, kE}, {16896, kE}, {16912, kA}, {20480, kE}, {21120, kE}, {21136, kA}, {25344, kA}, {33792, kA}, {67584, kE}};
   for (const Case& c : cases) {
     Problem p(8, c.n, 64, 32, 4);
     std::string log;
