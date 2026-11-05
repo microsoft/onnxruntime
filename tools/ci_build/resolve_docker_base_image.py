@@ -86,11 +86,11 @@ def main():
         elif args.family:
             result = resolve_family(args.family)
         else:
-            parser.error("Specify --dockerfile or --family")
+            return parser.error("Specify --dockerfile or --family")
         if "\n" in result or "\r" in result:
             raise ValueError("Resolved Docker arguments must be a single line")
     except (KeyError, ValueError, OSError) as error:
-        parser.error(str(error))
+        return parser.error(str(error))
     if args.github_output:
         with args.github_output.open("a", encoding="utf-8") as stream:
             stream.write(f"build-args={result}\n")
