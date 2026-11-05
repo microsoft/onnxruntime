@@ -256,7 +256,7 @@
   "moduleExtensions": {
     "//bazel:dependencies.bzl%ort_dependencies": {
       "general": {
-        "bzlTransitiveDigest": "GGZIy+kVqhZ8Dt0+dNsvSZVR+VTEhmmMZxfcWqcVOAg=",
+        "bzlTransitiveDigest": "fdJsrZXCsOjGar1ZY+MWZenZLG1NFgrEyPh00b4cVa8=",
         "usagesDigest": "dGdfspd/cjgRt/eeKwCBk5WnMR971p1ufikWyILxhwc=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
@@ -280,6 +280,23 @@
               ],
               "sha256": "8540247fad9e06baefa8fb45eb313802d019f485f14300e0f9d6b556ed88e753",
               "downloaded_file_path": "protobuf-java-3.25.5.jar"
+            }
+          },
+          "ort_cpuinfo": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "urls": [
+                "https://github.com/pytorch/cpuinfo/archive/66ee79c038d70dad9f08705b2c9b3e58f6d8f512.zip"
+              ],
+              "sha256": "b93044263ee072e9be3577bda52f48d5a4dd9fcb80091529471c8d2bfe59219d",
+              "strip_prefix": "cpuinfo-66ee79c038d70dad9f08705b2c9b3e58f6d8f512",
+              "patches": [
+                "@@//:cmake/patches/cpuinfo/fix_missing_sysfs_fallback.patch",
+                "@@//:cmake/patches/cpuinfo/enable_deinit_refcounting.patch"
+              ],
+              "patch_args": [
+                "-p1"
+              ]
             }
           },
           "ort_mingw": {

@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 
 package(default_visibility = ["//visibility:public"])
@@ -83,6 +84,15 @@ platform(
         "aarch64",
     ]
 ]
+
+selects.config_setting_group(
+    name = "cpuinfo_supported",
+    match_any = [
+        ":linux",
+        ":windows",
+        ":macos",
+    ],
+)
 
 config_setting(
     name = "windows_x86_64",
