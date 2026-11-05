@@ -209,45 +209,41 @@ __global__ void RouterLogitsKernel(const bf16* x, const bf16* w, int K, int E, f
   if (lane == 0) scores[static_cast<int64_t>(r) * E + e] = 1.0f / (1.0f + expf(-acc));
 }
 
-__device__ __forceinline__ bool RouterCandidatePrecedes(float value, int index, float best, int best_index) {
-  if (index < 0) return false;
-  if (best_index < 0) return true;
-  // NaNs follow all numeric scores, including -infinity; equal scores use the lower expert id.
-  if (isnan(value)) return isnan(best) && index < best_index;
-  return isnan(best) || value > best || (value == best && index < best_index);
+__device__ __forceinline__ uint32_t RouterScoreRank(float value) {
+  const uint32_t bits = __float_as_uint(value);
+  const uint32_t magnitude = bits & 0x7fffffffu;
+  // Zero is reserved for ineligible slots; NaNs follow every numeric score.
+  if (magnitude > 0x7f800000u) return 1u;
+  // Floating-point equality treats both signed zeros as the same score.
+  if (magnitude == 0) return 0x80000000u;
+  return (bits & 0x80000000u) ? ~bits : (bits ^ 0x80000000u);
 }
 
-__global__ void RouterTopkKernel(const float* scores, const float* bias, int E, int topk, float scale,
-                                 int32_t* idx_out, float* w_out) {
-  const int r = blockIdx.x, lane = threadIdx.x;
-  float val[16], sc[16];
-  bool eligible[16];
-#pragma unroll
-  for (int i = 0; i < 16; ++i) {
-    const int e = lane + 32 * i;
-    sc[i] = e < E ? scores[static_cast<int64_t>(r) * E + e] : 0.f;
-    val[i] = e < E ? sc[i] + bias[e] : -INFINITY;
-    eligible[i] = e < E;
-  }
+template <typename T>
+__device__ __forceinline__ void RouterSelectTopk(T (&values)[16], const float (&scores)[16],
+                                                 int topk, float scale, T empty,
+                                                 int32_t* indices, float* weights) {
+  const int lane = threadIdx.x;
   int my_idx = -1;
   float my_sc = 0.f, sum = 0.f;
   for (int j = 0; j < topk; ++j) {
-    float bv = -INFINITY, bsc = 0.f;
+    T bv = empty;
+    float bsc = 0.f;
     int bi = -1;
 #pragma unroll
     for (int i = 0; i < 16; ++i) {
-      if (eligible[i] && RouterCandidatePrecedes(val[i], lane + 32 * i, bv, bi)) {
-        bv = val[i];
-        bsc = sc[i];
+      if (values[i] > bv) {
+        bv = values[i];
+        bsc = scores[i];
         bi = lane + 32 * i;
       }
     }
-    float wv = bv;
+    T wv = bv;
     int wi = bi;
     for (int o = 16; o > 0; o >>= 1) {
-      const float ov = __shfl_xor_sync(0xffffffff, wv, o);
+      const T ov = __shfl_xor_sync(0xffffffff, wv, o);
       const int oi = __shfl_xor_sync(0xffffffff, wi, o);
-      if (RouterCandidatePrecedes(ov, oi, wv, wi)) {
+      if (ov > wv || (ov == wv && oi >= 0 && (wi < 0 || oi < wi))) {
         wv = ov;
         wi = oi;
       }
@@ -256,7 +252,7 @@ __global__ void RouterTopkKernel(const float* scores, const float* bias, int E, 
     if (wi >= 0 && win_lane == lane) {
 #pragma unroll
       for (int i = 0; i < 16; ++i) {
-        if (i == win_slot) eligible[i] = false;
+        if (i == win_slot) values[i] = empty;
       }
     }
     const float s = wi >= 0 ? __shfl_sync(0xffffffff, bsc, win_lane) : 0.f;
@@ -267,9 +263,36 @@ __global__ void RouterTopkKernel(const float* scores, const float* bias, int E, 
     sum += s;
   }
   if (lane < topk) {
-    idx_out[static_cast<int64_t>(r) * topk + lane] = my_idx;
-    w_out[static_cast<int64_t>(r) * topk + lane] = my_sc / (sum + 1e-20f) * scale;
+    indices[lane] = my_idx;
+    weights[lane] = my_sc / (sum + 1e-20f) * scale;
   }
+}
+
+__global__ void RouterTopkKernel(const float* scores, const float* bias, int E, int topk, float scale,
+                                 int32_t* idx_out, float* w_out) {
+  const int r = blockIdx.x, lane = threadIdx.x;
+  float values[16], sc[16];
+  bool finite = true;
+#pragma unroll
+  for (int i = 0; i < 16; ++i) {
+    const int e = lane + 32 * i;
+    sc[i] = e < E ? scores[static_cast<int64_t>(r) * E + e] : 0.f;
+    values[i] = e < E ? sc[i] + bias[e] : -INFINITY;
+    finite = finite && (e >= E || isfinite(values[i]));
+  }
+  int32_t* indices = idx_out + static_cast<int64_t>(r) * topk;
+  float* weights = w_out + static_cast<int64_t>(r) * topk;
+  // The decision is warp-uniform before either path's full-warp shuffles.
+  if (__all_sync(0xffffffff, finite)) {
+    RouterSelectTopk(values, sc, topk, scale, -INFINITY, indices, weights);
+    return;
+  }
+  // Exceptional scores need distinct ranks for NaNs, -infinity and removed slots.
+  uint32_t ranks[16];
+#pragma unroll
+  for (int i = 0; i < 16; ++i)
+    ranks[i] = lane + 32 * i < E ? RouterScoreRank(values[i]) : 0u;
+  RouterSelectTopk(ranks, sc, topk, scale, 0u, indices, weights);
 }
 
 __global__ void ReluSquaredKernel(const bf16* x, bf16* y, int64_t n) {
