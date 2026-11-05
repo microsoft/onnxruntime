@@ -106,6 +106,7 @@ struct MoeOffloadSessionPolicy {
   int32_t prefill_wave_experts{32};  // Max active cold experts per DMA wave
   bool skip_zero_cold_doorbell{false};
   float min_expert_weight{0.0f};     // Minimum routing probability for rank >= 1 experts (0 = keep all top-k)
+  bool skip_tail_cold_only{true};    // Default true: during decode, keep GPU-resident tail experts and skip only cold misses
 
   std::filesystem::path source_root;
   std::filesystem::path derived_cache_dir;
@@ -407,7 +408,8 @@ struct MoeOffloadSessionPolicy {
               "'; expected semicolon-separated 'node_name:max_resident_slots=<N>,device_expert_bytes=<B>'.");
         }
       } else if (key != kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell &&
-                 key != kOrtSessionOptionsMoeOffloadMinExpertWeight) {
+                 key != kOrtSessionOptionsMoeOffloadMinExpertWeight &&
+                 key != kOrtSessionOptionsMoeOffloadSkipTailColdOnly) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Unknown session.moe.offload.* configuration key: ", key);
       }
@@ -435,6 +437,18 @@ struct MoeOffloadSessionPolicy {
                              "Invalid ", kOrtSessionOptionsMoeOffloadMinExpertWeight,
                              " value '", min_w_raw, "'; expected a float in [0, 1].");
     }
+
+    const auto cold_only_it = kv_map.find(kOrtSessionOptionsMoeOffloadSkipTailColdOnly);
+    const char* env_cold_only = std::getenv("ORT_QMOE_SKIP_TAIL_COLD_ONLY");
+    const std::string_view cold_only = (cold_only_it != kv_map.end())
+                                           ? std::string_view(cold_only_it->second)
+                                           : (env_cold_only != nullptr ? std::string_view(env_cold_only) : std::string_view("1"));
+    if (cold_only != "0" && cold_only != "1") {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Invalid ", kOrtSessionOptionsMoeOffloadSkipTailColdOnly,
+                             " value '", cold_only, "'; expected '0' or '1'.");
+    }
+    out.skip_tail_cold_only = (cold_only == "1");
 
     if (out.source_root.empty() && !base_dir.empty()) {
       out.source_root = base_dir;

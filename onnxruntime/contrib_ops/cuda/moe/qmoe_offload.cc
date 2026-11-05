@@ -3673,7 +3673,9 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
       onnxruntime::moe_offload::MoeOffloadSessionPolicy::TryParseFloat01(env_min_w, min_expert_weight_);
     }
   }
-  skip_tail_cold_only_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SKIP_TAIL_COLD_ONLY", 0) == 1;
+  skip_tail_cold_only_ =
+      v4_planned_mode_ ? v4_policy_.skip_tail_cold_only
+                       : (ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SKIP_TAIL_COLD_ONLY", 1) == 1);
   renorm_after_prune_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_RENORM_AFTER_PRUNE", 0) == 1;
 
   if (v4_planned_mode_) {

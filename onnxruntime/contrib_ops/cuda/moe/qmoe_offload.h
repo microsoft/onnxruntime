@@ -253,7 +253,7 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   int stream_min_tokens_ = 33;
   int prefill_chunk_tokens_ = 0;
   float min_expert_weight_ = 0.0f;
-  bool skip_tail_cold_only_ = false;
+  bool skip_tail_cold_only_ = true;
   bool renorm_after_prune_ = false;
 
   bool async_ = false;

@@ -1044,6 +1044,13 @@ static const char* const kOrtSessionOptionsMoeOffloadAsyncMaxTokens = "session.m
 static const char* const kOrtSessionOptionsMoeOffloadPrefillWaveExperts = "session.moe.offload.prefill_wave_experts";
 static const char* const kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell = "session.moe.offload.skip_zero_cold_doorbell";
 static const char* const kOrtSessionOptionsMoeOffloadMinExpertWeight = "session.moe.offload.min_expert_weight";
+// Controls whether tail-expert pruning (`session.moe.offload.min_expert_weight > 0`) during decode skips only CPU-cold
+// experts or all routed tail experts:
+// - "1" (default): retain GPU-resident (`slot >= 0`) tail experts during decode at zero wall-time cost and prune only
+//   CPU-cold (`slot < 0`) tail experts whose routing probability is below `min_expert_weight`.
+// - "0": prune both GPU-resident and CPU-cold tail experts whose routing probability is below `min_expert_weight`.
+// Overrides ORT_QMOE_SKIP_TAIL_COLD_ONLY.
+static const char* const kOrtSessionOptionsMoeOffloadSkipTailColdOnly = "session.moe.offload.skip_tail_cold_only";
 static const char* const kOrtSessionOptionsMoeOffloadPopularityFile = "session.moe.offload.popularity_file";
 static const char* const kOrtSessionOptionsMoeOffloadNodeOverrides = "session.moe.offload.node_overrides";
 static const char* const kOrtSessionOptionsMoeOffloadSourceRoot = "session.moe.offload.source_root";
