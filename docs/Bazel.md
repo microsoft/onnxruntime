@@ -246,6 +246,17 @@ utility tests and three packaging regressions). With `ANDROID_NDK_HOME`
 unset, `bazel build //... --nobuild --jobs=16` **passed desktop analysis**;
 that check is not a desktop compilation or test run.
 
+After integration with the Apple/Rust/wheel targets, Windows desktop analysis
+also passed with no NDK configured: `bazel build //... -c opt --nobuild
+--lockfile_mode=error --build_python_zip=false --jobs=2` analyzed 210 targets
+(60,516 configured targets), with zero build actions. This host-only command
+then compiled the 37 Android Java sources and passed one selected existing
+JUnit case plus three AAR packager regressions, without native compilation:
+
+```sh
+bazel test -c opt //:android_java_util_test //:android_aar_packager_test --test_filter="ai.onnxruntime.UtilTest#reshapeTest" --build_python_zip=false --jobs=2 --local_test_jobs=1 --test_output=all --nocache_test_results
+```
+
 No emulator/device execution was performed; neither tool was available on the
 validation host. This slice does not include NNAPI/QNN, CUDA, training,
 telemetry, additional ABIs, Maven publication, Android instrumentation tests,

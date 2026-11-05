@@ -25,6 +25,7 @@ single_version_override(
     patch_strip = 1,
     patches = ["//bazel:rules-apple-platform-compatibility.patch"],
 )
+
 bazel_dep(name = "rules_rust", version = "0.65.0")
 bazel_dep(name = "rules_rust_bindgen", version = "0.65.0")
 single_version_override(
