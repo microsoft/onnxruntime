@@ -697,6 +697,18 @@ __global__ void fusedRoutingBuildExpertMapsSingleTokenKernel(
   }
 }
 
+// WarpSoftmaxTopN is called out of line here on purpose: inlining its kItemsPerLane == 8
+// instantiation into fusedRoutingBuildExpertMapsSingleTokenWarpTopKKernel crashes cicc
+// (CUDA 12.8 with MSVC 14.44, sm_86) in the device optimizer. The kernel runs one warp per
+// token, so the extra call is negligible.
+template <typename T, int kItemsPerLane>
+__device__ __noinline__ void warpSoftmaxTopNNoInline(const T* row_logits, int num_experts, int k,
+                                                     bool normalize_scales, uint64_t (&keys)[kItemsPerLane],
+                                                     float (&probs)[kItemsPerLane], float& denom) {
+  onnxruntime::cuda::topk::WarpSoftmaxTopN<T, kItemsPerLane>(row_logits, num_experts, k, normalize_scales, keys,
+                                                             probs, denom);
+}
+
 // The same fusion for 64 < num_experts <= 256 and experts_per_token <= 8, i.e. exactly the shapes
 // for which the standalone path (DispatchSoftmaxTopK in contrib_ops/cuda/moe/qmoe_kernels.cu)
 // launches SoftmaxTopKWarpTopKKernel. Softmax and top-k come from the same WarpSoftmaxTopN helper
@@ -722,8 +734,8 @@ __global__ void fusedRoutingBuildExpertMapsSingleTokenWarpTopKKernel(
   uint64_t keys[kItemsPerLane];
   float probs[kItemsPerLane];
   float denom;
-  topk::WarpSoftmaxTopN<T, kItemsPerLane>(router_logits, num_experts, k, normalize_routing_weights, keys, probs,
-                                          denom);
+  warpSoftmaxTopNNoInline<T, kItemsPerLane>(router_logits, num_experts, k, normalize_routing_weights, keys, probs,
+                                            denom);
 
   int selected[kItemsPerLane];
 #pragma unroll
