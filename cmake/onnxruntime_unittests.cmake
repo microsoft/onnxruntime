@@ -961,14 +961,6 @@ if(NOT IOS)
 
     list(REMOVE_ITEM onnx_test_runner_common_srcs ${onnx_test_runner_src_dir}/main.cc)
 
-    # if training is disabled, endian_utils are still used in tests
-    if (NOT onnxruntime_ENABLE_TRAINING)
-      list(APPEND onnx_test_runner_common_srcs
-          ${ONNXRUNTIME_ROOT}/core/framework/endian_utils.cc
-          ${ONNXRUNTIME_ROOT}/core/framework/endian_utils.h
-          )
-    endif ()
-
     onnxruntime_add_static_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
     if(MSVC)
       target_compile_options(onnx_test_runner_common PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
@@ -988,6 +980,9 @@ if(NOT IOS)
 
     set_target_properties(onnx_test_runner_common PROPERTIES FOLDER "ONNXRuntimeTest")
     set(onnx_test_runner_common_lib onnx_test_runner_common)
+
+    # if training is disabled, endian_utils are still used in tests
+    target_link_libraries(onnx_test_runner_common onnxruntime_framework)
 endif()
 
 set(all_tests
