@@ -2212,5 +2212,226 @@ TEST(TensorProtoDataSizeShapeValidationTest, UnpackInitializerDataRejectsInlineR
 }
 #endif  // !defined(__wasm__)
 
+#if !defined(ORT_MINIMAL_BUILD) && !defined(__wasm__)
+// Positive control: valid matching external tensor copy succeeds.
+TEST(TensorProtoUtilsTest, ExternalTensorCopyPreservesMatchingDestination) {
+  std::basic_string<ORTCHAR_T> filename(ORT_TSTR("matching_tensor_XXXXXX"));
+  const std::vector<float> expected{1.0f, 0.0f, -2.0f, 3.0f};
+  TensorProto proto;
+  CreateTensorWithExternalData<float>(TensorProto_DataType_FLOAT, expected, filename, proto);
+  std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(
+      const_cast<ORTCHAR_T*>(filename.c_str()), DeleteFileFromDisk);
+  Tensor destination(DataTypeImpl::GetType<float>(), TensorShape({4}), CPUAllocator::DefaultInstance());
+  ASSERT_STATUS_OK(utils::TensorProtoToTensor(Env::Default(), {}, proto, destination));
+  EXPECT_THAT(gsl::make_span(destination.Data<float>(), expected.size()),
+              ::testing::ElementsAreArray(expected));
+}
+
+// UINT8 and UINT4 both report an element size of 1 and the shapes match, so only the byte-capacity check
+// separates them: four UINT8 elements need four bytes, while four packed UINT4 elements occupy two.
+TEST(TensorProtoUtilsTest, ExternalTensorCopyRejectsInsufficientDestinationCapacity) {
+  std::basic_string<ORTCHAR_T> filename(ORT_TSTR("capacity_tensor_XXXXXX"));
+  const std::vector<uint8_t> external_values{1, 2, 3, 4};
+  TensorProto proto;
+  CreateTensorWithExternalData<uint8_t>(TensorProto_DataType_UINT8, external_values, filename, proto);
+  std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(
+      const_cast<ORTCHAR_T*>(filename.c_str()), DeleteFileFromDisk);
+
+  Tensor destination(DataTypeImpl::GetType<UInt4x2>(), TensorShape({4}), CPUAllocator::DefaultInstance());
+  ASSERT_EQ(DataTypeImpl::GetType<uint8_t>()->Size(), destination.DataType()->Size());
+  ASSERT_EQ(destination.SizeInBytes(), size_t{2});
+  auto* destination_bytes = static_cast<uint8_t*>(destination.MutableDataRaw());
+  destination_bytes[0] = 0xA5;
+  destination_bytes[1] = 0x5A;
+
+  Status status = utils::TensorProtoToTensor(Env::Default(), {}, proto, destination);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("exceeds destination tensor capacity"));
+  EXPECT_EQ(destination_bytes[0], 0xA5);
+  EXPECT_EQ(destination_bytes[1], 0x5A);
+}
+
+// The element-size compatibility check must also run for external data: FLOAT (4 bytes per element) cannot be
+// written into a UINT8 destination of the same shape.
+TEST(TensorProtoUtilsTest, ExternalTensorCopyRejectsWiderSourceElementType) {
+  std::basic_string<ORTCHAR_T> filename(ORT_TSTR("wider_tensor_XXXXXX"));
+  const std::vector<float> external_values{1.0f, 0.0f, -2.0f, 3.0f};
+  TensorProto proto;
+  CreateTensorWithExternalData<float>(TensorProto_DataType_FLOAT, external_values, filename, proto);
+  std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(
+      const_cast<ORTCHAR_T*>(filename.c_str()), DeleteFileFromDisk);
+
+  Tensor destination(DataTypeImpl::GetType<uint8_t>(), TensorShape({4}), CPUAllocator::DefaultInstance());
+  ASSERT_EQ(destination.SizeInBytes(), size_t{4});
+  auto destination_bytes = gsl::make_span(static_cast<uint8_t*>(destination.MutableDataRaw()), size_t{4});
+  std::fill(destination_bytes.begin(), destination_bytes.end(), uint8_t{0xA5});
+
+  Status status = utils::TensorProtoToTensor(Env::Default(), {}, proto, destination);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("can not be written into Tensor type"));
+  EXPECT_THAT(destination_bytes, ::testing::Each(uint8_t{0xA5}));
+}
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+TEST(TensorProtoUtilsTest, DenseSparseConversionPreservesTypedFloatValues) {
+  TensorProto proto;
+  proto.set_name("weights");
+  proto.set_data_type(TensorProto_DataType_FLOAT);
+  proto.add_dims(2);
+  proto.add_dims(2);
+  for (float value : {0.0f, 1.0f, -2.0f, 0.0f}) {
+    proto.add_float_data(value);
+  }
+  SparseTensorProto sparse;
+  ASSERT_STATUS_OK(utils::DenseTensorToSparseTensorProto(proto, {}, sparse));
+  EXPECT_EQ(sparse.values().name(), "weights");
+  ASSERT_EQ(sparse.values().dims_size(), 1);
+  EXPECT_EQ(sparse.values().dims(0), 2);
+  TensorProto restored;
+  ASSERT_STATUS_OK(utils::SparseTensorProtoToDenseTensorProto(sparse, {}, restored));
+  std::vector<float> actual(4);
+  ASSERT_STATUS_OK(utils::UnpackTensor(restored, restored.raw_data().data(), restored.raw_data().size(),
+                                       actual.data(), actual.size()));
+  EXPECT_THAT(actual, ::testing::ElementsAre(0.0f, 1.0f, -2.0f, 0.0f));
+}
+
+TEST(TensorProtoUtilsTest, RejectsMismatchedExternalTensorShapeAndOversizedDenseToSparseInput) {
+  std::basic_string<ORTCHAR_T> filename(ORT_TSTR("mismatched_tensor_XXXXXX"));
+  const std::vector<float> external_values{1.0f, 0.0f, -2.0f, 3.0f};
+  TensorProto external_proto;
+  CreateTensorWithExternalData<float>(TensorProto_DataType_FLOAT, external_values, filename, external_proto);
+  std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(
+      const_cast<ORTCHAR_T*>(filename.c_str()), DeleteFileFromDisk);
+  Tensor mismatched_destination(DataTypeImpl::GetType<float>(), TensorShape({2, 2}), CPUAllocator::DefaultInstance());
+  Status external_status = utils::TensorProtoToTensor(Env::Default(), {}, external_proto, mismatched_destination);
+  EXPECT_FALSE(external_status.IsOK());
+  EXPECT_THAT(external_status.ErrorMessage(),
+              ::testing::HasSubstr("tensor shape mismatch"));
+
+  TensorProto oversized_dense_proto;
+  oversized_dense_proto.set_name("oversized_weights");
+  oversized_dense_proto.set_data_type(TensorProto_DataType_FLOAT);
+  oversized_dense_proto.add_dims(2);
+  for (float value : {0.0f, 1.0f, -2.0f, 0.0f}) {
+    oversized_dense_proto.add_float_data(value);
+  }
+  SparseTensorProto sparse;
+  Status sparse_status = utils::DenseTensorToSparseTensorProto(oversized_dense_proto, {}, sparse);
+  EXPECT_FALSE(sparse_status.IsOK());
+  EXPECT_THAT(sparse_status.ErrorMessage(),
+              ::testing::HasSubstr("data field count"));
+}
+
+TEST(TensorProtoUtilsTest, DenseToSparsePreservesExternalFloatValues) {
+  std::basic_string<ORTCHAR_T> filename(ORT_TSTR("sparse_float_XXXXXX"));
+  const std::vector<float> expected{0.0f, 1.0f, -2.0f, 0.0f};
+  TensorProto proto;
+  CreateTensorWithExternalData<float>(TensorProto_DataType_FLOAT, expected,
+                                      filename, proto);
+  std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(
+      const_cast<ORTCHAR_T*>(filename.c_str()), DeleteFileFromDisk);
+  proto.set_name("external_weights");
+  ASSERT_TRUE(utils::HasExternalData(proto));
+
+  SparseTensorProto sparse;
+  ASSERT_STATUS_OK(utils::DenseTensorToSparseTensorProto(proto, {}, sparse));
+  EXPECT_EQ(sparse.values().name(), proto.name());
+  ASSERT_EQ(sparse.values().dims_size(), 1);
+  EXPECT_EQ(sparse.values().dims(0), 2);
+  TensorProto restored;
+  ASSERT_STATUS_OK(
+      utils::SparseTensorProtoToDenseTensorProto(sparse, {}, restored));
+  std::vector<float> actual(expected.size());
+  ASSERT_STATUS_OK(utils::UnpackTensor(restored, restored.raw_data().data(),
+                                       restored.raw_data().size(),
+                                       actual.data(), actual.size()));
+  EXPECT_THAT(actual, ::testing::ElementsAreArray(expected));
+}
+
+TEST(TensorProtoUtilsTest, DenseToSparseRejectsExternalPackedSubByteTypes) {
+  struct PackedCase {
+    TensorProto_DataType data_type;
+    int64_t num_elements;
+    std::vector<uint8_t> packed;
+  };
+  const std::vector<PackedCase> cases{
+      {TensorProto_DataType_INT4, 1, {0x07}},
+      {TensorProto_DataType_INT4, 4, {0x21, 0x43}},
+      {TensorProto_DataType_UINT4, 1, {0x0F}},
+      {TensorProto_DataType_UINT4, 4, {0x21, 0x43}},
+      {TensorProto_DataType_INT2, 1, {0x01}},
+      {TensorProto_DataType_INT2, 8, {0x1B, 0xE4}},
+      {TensorProto_DataType_UINT2, 1, {0x03}},
+      {TensorProto_DataType_UINT2, 8, {0x1B, 0xE4}},
+  };
+  for (const auto& test_case : cases) {
+    SCOPED_TRACE(::testing::Message()
+                 << "data_type=" << test_case.data_type
+                 << " num_elements=" << test_case.num_elements);
+    std::basic_string<ORTCHAR_T> filename(ORT_TSTR("sparse_packed_XXXXXX"));
+    TensorProto proto;
+    CreateTensorWithExternalData<uint8_t>(test_case.data_type, test_case.packed,
+                                          filename, proto);
+    std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(
+        const_cast<ORTCHAR_T*>(filename.c_str()), DeleteFileFromDisk);
+    // The file contains packed bytes; the shape counts logical elements.
+    proto.set_dims(0, test_case.num_elements);
+    ASSERT_TRUE(utils::HasExternalData(proto));
+    ASSERT_FALSE(utils::HasRawData(proto));
+    std::vector<uint8_t> unpacked;
+    ASSERT_STATUS_OK(utils::UnpackInitializerData(proto, {}, unpacked));
+    EXPECT_THAT(unpacked, ::testing::ElementsAreArray(test_case.packed));
+
+    SparseTensorProto sparse;
+    sparse.mutable_values()->set_name("unchanged");
+    const auto before = sparse.SerializeAsString();
+    const auto status =
+        utils::DenseTensorToSparseTensorProto(proto, {}, sparse);
+    EXPECT_FALSE(status.IsOK());
+    EXPECT_THAT(
+        status.ErrorMessage(),
+        ::testing::HasSubstr("does not support sub-byte tensor data types"));
+    EXPECT_EQ(sparse.SerializeAsString(), before);
+  }
+}
+
+// Well-formed packed sub-byte tensors are rejected as unsupported. The one-element cases have a one-byte buffer
+// that also satisfies the later data-size check, so they depend on the explicit sub-byte rejection alone.
+TEST(TensorProtoUtilsTest, DenseToSparseRejectsPackedSubByteTypes) {
+  struct PackedCase {
+    TensorProto_DataType data_type;
+    int64_t num_elements;
+    std::vector<uint8_t> packed;
+  };
+  const std::vector<PackedCase> cases{
+      {TensorProto_DataType_INT4, 1, {0x07}},
+      {TensorProto_DataType_INT4, 4, {0x21, 0x43}},
+      {TensorProto_DataType_UINT4, 1, {0x0F}},
+      {TensorProto_DataType_UINT4, 4, {0x21, 0x43}},
+      {TensorProto_DataType_INT2, 1, {0x01}},
+      {TensorProto_DataType_INT2, 8, {0x1B, 0xE4}},
+      {TensorProto_DataType_UINT2, 1, {0x03}},
+      {TensorProto_DataType_UINT2, 8, {0x1B, 0xE4}},
+  };
+  for (const auto& test_case : cases) {
+    SCOPED_TRACE(::testing::Message() << "data_type=" << test_case.data_type
+                                      << " num_elements=" << test_case.num_elements);
+    TensorProto proto;
+    proto.set_name("packed_weights");
+    proto.set_data_type(test_case.data_type);
+    proto.add_dims(test_case.num_elements);
+    proto.set_raw_data(test_case.packed.data(), test_case.packed.size());
+    ASSERT_STATUS_OK(utils::ValidateEmbeddedTensorProtoDataSizeAndShape(proto));
+
+    SparseTensorProto sparse;
+    Status status = utils::DenseTensorToSparseTensorProto(proto, {}, sparse);
+    EXPECT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(),
+                ::testing::HasSubstr("does not support sub-byte tensor data types"));
+  }
+}
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
+#endif  // !defined(ORT_MINIMAL_BUILD) && !defined(__wasm__)
+
 }  // namespace test
 }  // namespace onnxruntime
