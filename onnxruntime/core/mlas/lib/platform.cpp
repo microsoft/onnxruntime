@@ -582,9 +582,10 @@ Return Value:
                 // TODO(vraspar): check if this really goes here or if there are other platform reqs that we need to fulfill
                 this->LutGenKernel = &MlasLutGenKernelAvx2;
                 this->LayerNormF32Kernel = &MlasLayerNormKernelAvx2;
-                this->T8GemmKernel = MlasT8GemmKernelAvx2;
-                if ((Cpuid1[2] & (1u << 29)) != 0) {
+                if ((Cpuid1[2] & (1u << 29)) != 0) {  // F16C
                     this->LayerNormF16Kernel = &MlasLayerNormKernelF16Avx2;
+                    // The AVX2 T8 kernel widens fp16 scales with vcvtph2ps; without F16C the scalar path is used.
+                    this->T8GemmKernel = MlasT8GemmKernelAvx2;
                 }
 
                 //
