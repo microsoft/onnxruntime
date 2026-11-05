@@ -1,12 +1,21 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_rust//rust:defs.bzl", "rust_library")
 load("@rules_rust_bindgen//:defs.bzl", "rust_bindgen")
 
 package(default_visibility = ["//visibility:public"])
 
 exports_files(["Cargo.toml"])
+
+cc_library(
+    name = "binding_headers",
+    deps = [
+        "//:api_headers",
+        "@ort_rust_libclang//:headers",
+    ],
+)
 
 rust_bindgen(
     name = "bindings",
@@ -26,8 +35,7 @@ rust_bindgen(
         "--rustified-enum",
         ".*",
     ],
-    cc_lib = "//:api_headers",
-    # The standalone macOS libclang wheel has no usable default target triple.
+    cc_lib = ":binding_headers",
     clang_flags = select({
         "@rules_rust//rust/platform:aarch64-apple-darwin": ["--target=arm64-apple-darwin"],
         "@rules_rust//rust/platform:x86_64-apple-darwin": ["--target=x86_64-apple-darwin"],
