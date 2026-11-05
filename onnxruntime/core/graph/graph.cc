@@ -4421,6 +4421,9 @@ Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string,
     const auto& user_tensor = value.Get<Tensor>();
     ORT_RETURN_IF_NOT(user_tensor.Location().device.Type() == OrtDevice::CPU,
                       "External initializer ", name, " must be copied to CPU before graph injection.");
+#ifdef ENABLE_STRIDED_TENSORS
+    ORT_RETURN_IF_NOT(user_tensor.IsContiguous(), "External initializer ", name, " must be contiguous.");
+#endif
 
     OrtValue ort_value;
     TensorProto tensor_proto;

@@ -9,6 +9,7 @@
 #include <atomic>
 #include <cfloat>
 #include <chrono>
+#include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <functional>
@@ -19,6 +20,7 @@
 #include <set>
 #include <thread>
 #include <tuple>
+#include <utility>
 
 #include "nlohmann/json.hpp"
 #include "onnxruntime_cxx_api.h"
@@ -5587,6 +5589,165 @@ TEST(InferenceSessionTests, ExternalDeviceInitializersCopyBeforeShapeInference) 
 #endif
 
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS)
+#ifdef ENABLE_STRIDED_TENSORS
+TEST(InferenceSessionTests, ExternalNonContiguousInitializersAreRejected) {
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  model_proto.add_opset_import()->set_version(13);
+  auto& graph = *model_proto.mutable_graph();
+  graph.set_name("external_strided_initializer");
+  auto& weights = *graph.add_initializer();
+  weights.set_name("weights");
+  weights.set_data_type(TensorProto_DataType_FLOAT);
+  weights.add_dims(64);
+  ExternalDataInfo::SetExternalLocationToProto(ORT_TSTR("unused.bin"), 0, 64 * sizeof(float), weights);
+  auto& output_info = *graph.add_output();
+  output_info.set_name("Y");
+  auto& output_type = *output_info.mutable_type()->mutable_tensor_type();
+  output_type.set_elem_type(TensorProto_DataType_FLOAT);
+  output_type.mutable_shape()->add_dim()->set_dim_value(64);
+  auto& identity = *graph.add_node();
+  identity.set_op_type("Identity");
+  identity.add_input("weights");
+  identity.add_output("Y");
+  const std::string model_data = model_proto.SerializeAsString();
+
+  std::array<float, 127> storage{};
+  const std::array<int64_t, 1> strides{2};
+  const OrtMemoryInfo cpu_memory_info(CPU, OrtDeviceAllocator);
+  const OrtMemoryInfo device_memory_info(
+      "Cuda", OrtDeviceAllocator,
+      OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0));
+  for (const auto& memory_info : {cpu_memory_info, device_memory_info}) {
+    for (const char* direct : {"0", "1"}) {
+      SCOPED_TRACE(memory_info.name);
+      SCOPED_TRACE(direct);
+      OrtValue strided_view;
+      Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape{64},
+                           storage.data(), memory_info, strided_view, 0, strides);
+      ASSERT_FALSE(strided_view.Get<Tensor>().IsContiguous());
+      ASSERT_EQ(strided_view.Get<Tensor>().SizeInBytes(), sizeof(storage));
+      SessionOptions options;
+      const std::array<std::string, 1> names{"weights"};
+      const std::array<OrtValue, 1> values{strided_view};
+      ASSERT_STATUS_OK(options.AddExternalInitializers(names, values));
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+          kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, direct));
+      InferenceSession session{options, GetEnvironment()};
+      ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+      const auto status = session.Initialize();
+      ASSERT_FALSE(status.IsOK());
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("External initializer weights must be contiguous"));
+    }
+  }
+}
+#endif
+
+#if !defined(DISABLE_CONTRIB_OPS)
+TEST(InferenceSessionTests, ExternalUnalignedQuantizedInitializersWithGroupIndex) {
+  constexpr int64_t k = 64;
+  constexpr int64_t n = 8;
+  constexpr int64_t block_size = 16;
+  constexpr size_t weight_bytes = n * k / 2;
+  alignas(uint32_t) std::array<uint8_t, weight_bytes + 1> storage{};
+  storage.fill(0x99);
+  uint8_t* weight_data = storage.data() + 1;
+  ASSERT_NE(reinterpret_cast<uintptr_t>(weight_data) % alignof(uint32_t), 0u);
+  ASSERT_GT(weight_bytes, utils::kSmallTensorExternalDataThreshold);
+
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  model_proto.add_opset_import()->set_version(13);
+  auto& contrib_opset = *model_proto.add_opset_import();
+  contrib_opset.set_domain(kMSDomain);
+  contrib_opset.set_version(1);
+  auto& graph = *model_proto.mutable_graph();
+  graph.set_name("external_unaligned_quantized_initializer");
+  auto set_value_info = [](ValueInfoProto& value_info, const char* name, int64_t columns) {
+    value_info.set_name(name);
+    auto& type = *value_info.mutable_type()->mutable_tensor_type();
+    type.set_elem_type(TensorProto_DataType_FLOAT);
+    type.mutable_shape()->add_dim()->set_dim_value(1);
+    type.mutable_shape()->add_dim()->set_dim_value(columns);
+  };
+  set_value_info(*graph.add_input(), "A", k);
+  set_value_info(*graph.add_output(), "Y", n);
+  auto& weights = *graph.add_initializer();
+  weights.set_name("B");
+  weights.set_data_type(TensorProto_DataType_UINT8);
+  for (int64_t dim : {n, k / block_size, block_size / 2}) weights.add_dims(dim);
+  ExternalDataInfo::SetExternalLocationToProto(ORT_TSTR("weights.bin"), 0, weight_bytes, weights);
+  auto& scales = *graph.add_initializer();
+  scales.set_name("scales");
+  scales.set_data_type(TensorProto_DataType_FLOAT);
+  scales.add_dims(n);
+  scales.add_dims(k / block_size);
+  for (int64_t i = 0; i < n * k / block_size; ++i) scales.add_float_data(1.0f);
+  auto& group_index = *graph.add_initializer();
+  group_index.set_name("g_idx");
+  group_index.set_data_type(TensorProto_DataType_INT32);
+  group_index.add_dims(k);
+  for (int64_t i = 0; i < k; ++i) group_index.add_int32_data(static_cast<int32_t>(i / block_size));
+  auto& matmul = *graph.add_node();
+  matmul.set_op_type("MatMulNBits");
+  matmul.set_domain(kMSDomain);
+  for (const char* input : {"A", "B", "scales", "", "g_idx"}) matmul.add_input(input);
+  matmul.add_output("Y");
+  for (const auto& [name, value] : {std::pair{"K", k}, {"N", n}, {"bits", int64_t{4}}, {"block_size", block_size}}) {
+    auto& attribute = *matmul.add_attribute();
+    attribute.set_name(name);
+    attribute.set_type(AttributeProto_AttributeType_INT);
+    attribute.set_i(value);
+  }
+  const std::string model_data = model_proto.SerializeAsString();
+  const OrtMemoryInfo memory_info(CPU, OrtDeviceAllocator);
+  OrtValue weight_view;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<uint8_t>(), TensorShape{n, k / block_size, block_size / 2},
+                       weight_data, memory_info, weight_view);
+  std::array<float, k> input_data{};
+  input_data.fill(1.0f);
+  OrtValue input;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape{1, k}, input_data.data(), memory_info, input);
+
+  for (bool use_file_buffer : {false, true}) {
+    for (const char* direct : {"0", "1"}) {
+      SCOPED_TRACE(use_file_buffer);
+      SCOPED_TRACE(direct);
+      SessionOptions options;
+      options.graph_optimization_level = TransformerLevel::Default;
+      if (use_file_buffer) {
+        options.external_initializer_files_mmap.emplace(
+            ORT_TSTR("weights.bin"), std::make_pair(reinterpret_cast<char*>(weight_data), weight_bytes));
+      } else {
+        const std::array<std::string, 1> names{"B"};
+        const std::array<OrtValue, 1> values{weight_view};
+        ASSERT_STATUS_OK(options.AddExternalInitializers(names, values));
+      }
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+          kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, direct));
+      InferenceSessionWrapper session{options, GetEnvironment()};
+      ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+      ASSERT_STATUS_OK(session.Initialize());
+      int weight_index;
+      ASSERT_STATUS_OK(session.GetSessionState().GetOrtValueNameIdxMap().GetIdx("B", weight_index));
+      const auto& initialized_weight = session.GetSessionState().GetInitializedTensors().at(weight_index).Get<Tensor>();
+      if (*direct == '1' && endian::native == endian::little) {
+        EXPECT_EQ(initialized_weight.DataRaw(), weight_data);
+      } else {
+        EXPECT_NE(initialized_weight.DataRaw(), weight_data);
+      }
+      const std::array<std::string, 1> output_names{"Y"};
+      std::vector<OrtValue> outputs;
+      ASSERT_STATUS_OK(session.Run(RunOptions{}, NameMLValMap{{"A", input}}, output_names, &outputs));
+      ASSERT_EQ(outputs.size(), 1u);
+      const auto& output = outputs[0].Get<Tensor>();
+      ASSERT_EQ(output.Shape(), (TensorShape{1, n}));
+      for (int64_t i = 0; i < n; ++i) EXPECT_EQ(output.Data<float>()[i], static_cast<float>(k));
+    }
+  }
+}
+#endif
+
 TEST(InferenceSessionTests, ExternalDeviceInitializersRequireDataTransfer) {
   std::array<int64_t, 4> pads{0, 0, 1, 1};
   const OrtMemoryInfo device_memory_info(
