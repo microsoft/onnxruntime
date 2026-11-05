@@ -691,9 +691,9 @@ bazel test -c opt \
 | Go | `//:go_binding`, `//:go_test` | First-party cgo binding and existing fixture-based unit tests. Tests explicitly load the Bazel-built shared library; they do not take the binding's missing-library skip path. External Qwen model tests are excluded. |
 | Node.js | `//:onnxruntime_binding.node`, `//:node_js_package`, `//:node_test`, `//:node_npm` | Native Node-API extension, source-assembled common/Node JavaScript packages, four selectable existing test files, and production-only CPU npm tarball with declarations and offline install/inference validation. Not registry publication or the complete Node suite. |
 | C# | `//:csharp_binding`, `//:csharp_smoke_test`, `//:csharp_tests`, `//:csharp_nuget` | .NET 8 binding and existing desktop test sources compiled directly with `rules_dotnet`, exercised on .NET 10. Native xUnit discovery/execution supports exact class/method selection, theories and fixtures. Single-RID CPU NuGet package; training APIs are not enabled. |
-| Objective-C / Swift import surface | `//objectivec:onnxruntime_objc`, `//objectivec:inference_tests` | Native ARC Objective-C++ inference wrappers, an explicit `onnxruntime_objc` Clang module, and existing hostless XCTest cases/fixtures. macOS only; Apple compilation/execution and Swift import are not yet validated. Not an iOS framework, XCFramework, or Swift package. |
+| Objective-C / Swift import surface | `//objectivec:onnxruntime_objc`, `//objectivec:inference_tests`, `//objectivec:ios_framework`, `//objectivec:ios_inference_tests` | Native ARC inference wrappers, explicit module, macOS XCTest and iOS static framework/test-bundle graphs. Native Apple compilation/execution and Swift import remain unverified. Not an XCFramework or Swift package. |
 | JavaScript Web / WebAssembly | `//:wasm_scalar`, `//:wasm_simd`, `//:web_scalar_package`, `//:web_simd_package` | Source-native Emscripten CPU runtime and source-assembled frontend; selectable existing WASM inference test and Node/browser smoke targets. Single-threaded scalar/fixed SIMD only, not the complete release or Web test suite. |
-| React Native | Not implemented | Requires the Android/iOS cross-compilation and packaging graphs plus the React Native bridge. A working Node addon is not evidence of mobile support. |
+| React Native | `//js/react_native:android_jsi_native_archive`, `//js/react_native:data_policy_test` | Genuine Android ARM64 JNI/JSI adapter plus source-native ORT runtime, compiled against pinned official ReactAndroid/fbjni SDKs. Native ZIP and existing policy tests verified; not a full Java/AAR/npm/mobile application or iOS React Native migration. |
 | Rust | `//rust/onnxruntime-sys:onnxruntime_sys`, `//rust/onnxruntime:onnxruntime`, `//rust:smoke_test` | Both existing first-party crates, current-header bindgen generation, and selected existing unit/integration tests. Native `rules_rust` compilation and explicit loading of the source-built runtime; no Cargo build or legacy native acquisition. Not crates.io packaging. |
 
 The language toolchains are managed by their Bazel rules, including a pinned
@@ -1035,6 +1035,17 @@ symbol checks or linking a second static C++ runtime into the adapter.
 The successful source build after these corrections took 267.068 seconds
 wall and executed 854 actions, reusing 554 unchanged actions from the failed
 attempts. This is not a clean-output build timing or device inference result.
+The final archive rebuild took 0.691 seconds and its unchanged repeat took
+0.294 seconds (one internal action, no native compilation). All three payloads
+were verified as AArch64 ELF; the adapter exports `JNI_OnLoad`, uses 16 KB
+load-segment alignment, and has the expected ORT/React/fbjni/shared-C++
+dependencies. ZIP membership and notices/version were checked.
+Artifact SHA256:
+`7ddc14837ba31a35f8f603de70738e5add15a7a248e628d218149bcc238192d4`.
+The VM was an Intel Xeon Platinum 8480C Linux host with 96 logical CPUs;
+this build used eight jobs, not all available CPUs. Artifacts and logs were
+preserved before stopping the task's Bazel server and removing only its
+private 5.3 GiB VM root and SSH credentials.
 
 ### Existing C++ suites
 
@@ -1505,8 +1516,9 @@ ONNX backend corpora, optional providers, and release npm artifacts remain
 outside this slice. The WebGPU-option recognition case in `simple-api-tests.ts`
 is not evidence of WebGPU execution. Linux/macOS execution of this new layer
 remains unverified. Browser/WASM has the separate scalar/SIMD CPU path described
-above; React Native remains unimplemented. Native Node coverage alone does not
-migrate either surface.
+above; React Native has the bounded Android native bridge described in the
+mobile follow-up, not complete application integration. Native Node coverage
+alone does not migrate either surface.
 
 ### Foundation validation (before the language test layers)
 
@@ -1552,7 +1564,7 @@ The workflow retains `ubuntu-24.04`, `windows-2022`, and Apple Silicon
 leg; native macOS verification prioritizes Apple Silicon. This defines CI
 coverage, not a claim that the updated workflow or native Mac tests have passed.
 Passing Linux tests alone is not evidence that the other hosts work.
-The updated workflow YAML parsed successfully and all seven Bash steps passed
+The updated workflow YAML parsed successfully and all Bash steps passed
 `bash -n`; the matrix and absence of wildcard test execution were also checked.
 
 Remaining work includes remaining provider/operator/contrib test coverage,
