@@ -50,18 +50,18 @@ target_compile_definitions(onnxruntime_telemetry_sdk_test PRIVATE $<TARGET_PROPE
 target_compile_options(onnxruntime_telemetry_sdk_test PRIVATE $<TARGET_PROPERTY:mat,COMPILE_OPTIONS>)
 target_link_libraries(onnxruntime_telemetry_sdk_test PRIVATE mat)
 
+# Overriding objects must precede the objects that reference them: lld-link resolves inputs in
+# command-line order and the Visual Studio generator lists libraries before objects, so a
+# reference seen first would load the library's original definition and collide with the
+# override. The test's own sources are added after the SDK objects below.
 onnxruntime_add_executable(onnxruntime_telemetry_mutex_lifetime_test
-  "${telemetry_test_dir}/telemetry_shutdown_test.cc"
   $<TARGET_OBJECTS:onnxruntime_telemetry_sdk_test>)
-target_include_directories(onnxruntime_telemetry_mutex_lifetime_test PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}
-  $<TARGET_PROPERTY:onnxruntime_common,INCLUDE_DIRECTORIES>
-  "${cpp_client_telemetry_SOURCE_DIR}/lib" "${cpp_client_telemetry_SOURCE_DIR}/lib/include"
-  "${cpp_client_telemetry_SOURCE_DIR}/lib/include/mat")
-target_compile_definitions(onnxruntime_telemetry_mutex_lifetime_test PRIVATE $<TARGET_PROPERTY:mat,COMPILE_DEFINITIONS>)
-target_link_libraries(onnxruntime_telemetry_mutex_lifetime_test PRIVATE onnxruntime_common mat ${CMAKE_DL_LIBS} Threads::Threads)
+set(telemetry_mutex_lifetime_link_libs onnxruntime_common mat ${CMAKE_DL_LIBS} Threads::Threads)
 if(CPUINFO_SUPPORTED)
-  target_link_libraries(onnxruntime_telemetry_mutex_lifetime_test PRIVATE cpuinfo)
+  list(APPEND telemetry_mutex_lifetime_link_libs cpuinfo)
 endif()
+target_link_libraries(onnxruntime_telemetry_mutex_lifetime_test PRIVATE ${telemetry_mutex_lifetime_link_libs})
+set_target_properties(onnxruntime_telemetry_mutex_lifetime_test PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(onnxruntime_telemetry_sdk_test onnxruntime_telemetry_mutex_lifetime_test
   PROPERTIES FOLDER "ONNXRuntimeTest")
 
@@ -108,12 +108,23 @@ string(REPLACE "  pending_log_manager.Commit(config_, log_manager_);"
 string(PREPEND transport_provider
   "#include <ILogConfiguration.hpp>\n#include <ILogManager.hpp>\nnamespace onnxruntime {\nvoid OrtTelemetryTestConfigure(Microsoft::Applications::Events::ILogConfiguration&);\nvoid OrtTelemetryTestReady(Microsoft::Applications::Events::ILogManager&);\n}\n")
 file(WRITE "${telemetry_sdk_test_dir}/telemetry_transport_provider.cc" "${transport_provider}")
+onnxruntime_add_object_library(onnxruntime_telemetry_mutex_lifetime_test_objs
+  "${telemetry_sdk_test_dir}/telemetry_transport_provider.cc"
+  "${telemetry_test_dir}/telemetry_shutdown_test.cc")
+target_include_directories(onnxruntime_telemetry_mutex_lifetime_test_objs PRIVATE
+  ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}
+  $<TARGET_PROPERTY:onnxruntime_common,INCLUDE_DIRECTORIES>
+  "${cpp_client_telemetry_SOURCE_DIR}/lib" "${cpp_client_telemetry_SOURCE_DIR}/lib/include"
+  "${cpp_client_telemetry_SOURCE_DIR}/lib/include/mat")
+target_compile_definitions(onnxruntime_telemetry_mutex_lifetime_test_objs PRIVATE
+  $<TARGET_PROPERTY:mat,COMPILE_DEFINITIONS>)
+target_link_libraries(onnxruntime_telemetry_mutex_lifetime_test_objs PRIVATE ${telemetry_mutex_lifetime_link_libs})
+set_target_properties(onnxruntime_telemetry_mutex_lifetime_test_objs PROPERTIES FOLDER "ONNXRuntimeTest")
 target_sources(onnxruntime_telemetry_mutex_lifetime_test PRIVATE
-  "${telemetry_sdk_test_dir}/telemetry_transport_provider.cc")
+  $<TARGET_OBJECTS:onnxruntime_telemetry_mutex_lifetime_test_objs>)
 
-set(transport_sources
-  "${telemetry_test_dir}/telemetry_transport_test.cc"
-  "${telemetry_sdk_test_dir}/telemetry_transport_provider.cc")
+# Keep the overriding provider (and WinHTTP client below) ahead of the test source; see above.
+set(transport_sources "${telemetry_sdk_test_dir}/telemetry_transport_provider.cc")
 if(WIN32)
   # Automatic proxy discovery could send even a loopback test outside the machine.
   # Keep the real WinHTTP implementation, changing only its fixture proxy policy.
@@ -128,8 +139,9 @@ if(WIN32)
   string(REPLACE "WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY" "WINHTTP_ACCESS_TYPE_NO_PROXY"
     winhttp_test_source "${winhttp_test_source}")
   file(WRITE "${telemetry_sdk_test_dir}/HttpClient_WinHttp.cpp" "${winhttp_test_source}")
-  list(APPEND transport_sources "${telemetry_sdk_test_dir}/HttpClient_WinHttp.cpp")
+  list(PREPEND transport_sources "${telemetry_sdk_test_dir}/HttpClient_WinHttp.cpp")
 endif()
+list(APPEND transport_sources "${telemetry_test_dir}/telemetry_transport_test.cc")
 
 onnxruntime_add_executable(onnxruntime_telemetry_transport_test ${transport_sources})
 onnxruntime_add_shared_library(onnxruntime_telemetry_transport_fixture ${transport_sources})
