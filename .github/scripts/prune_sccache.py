@@ -111,7 +111,13 @@ def gh_api(args: list[str]) -> str:
 def list_caches(repository: str, api: Callable[[list[str]], str]) -> list[Cache]:
     caches = {}
     pages = json.loads(
-        api(["--paginate", "--slurp", f"repos/{repository}/actions/caches?per_page=100&key={KEY_PREFIX}"])
+        api(
+            [
+                "--paginate",
+                "--slurp",
+                f"repos/{repository}/actions/caches?per_page=100&key={KEY_PREFIX}&sort=created_at&direction=asc",
+            ]
+        )
     )
     if not isinstance(pages, list) or not pages:
         raise ValueError("Invalid cache pagination response")
