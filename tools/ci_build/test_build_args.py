@@ -117,6 +117,41 @@ class BuildArgsTest(unittest.TestCase):
         args = self._parse("--android", platform_name="linux")
         self.assertTrue(args.use_telemetry)
 
+    def _parse_clang_cl(self, *arguments: str, machine: str = "AMD64", bits: str = "64bit"):
+        with mock.patch.object(build_args.platform, "architecture", return_value=(bits, "WindowsPE")):
+            return self._parse(
+                "--use_clang_cl",
+                "--cmake_generator",
+                "Visual Studio 17 2022",
+                *arguments,
+                platform_name="windows",
+                machine=machine,
+            )
+
+    def test_use_clang_cl_accepts_x64_host(self):
+        self.assertTrue(self._parse_clang_cl().use_clang_cl)
+
+    def test_use_clang_cl_rejects_non_x64_targets(self):
+        cases = (
+            (("--x86",), "AMD64", "64bit"),
+            (("--arm64",), "AMD64", "64bit"),
+            (("--arm64ec",), "AMD64", "64bit"),
+            (("--arm64", "--buildasx"), "AMD64", "64bit"),
+            ((), "AMD64", "32bit"),
+            ((), "ARM64", "64bit"),
+        )
+        for arguments, machine, bits in cases:
+            with (
+                self.subTest(arguments=arguments, machine=machine, bits=bits),
+                mock.patch("sys.stderr"),
+                self.assertRaises(SystemExit),
+            ):
+                self._parse_clang_cl(*arguments, machine=machine, bits=bits)
+
+    def test_use_clang_cl_requires_visual_studio_generator(self):
+        with mock.patch("sys.stderr"), self.assertRaises(SystemExit):
+            self._parse("--use_clang_cl", "--cmake_generator", "Ninja", platform_name="windows", machine="AMD64")
+
     def test_use_acl_emits_deprecation_warning(self):
         with self.assertWarnsRegex(FutureWarning, "The ACL EP is deprecated"):
             self._parse("--use_acl", platform_name="linux")

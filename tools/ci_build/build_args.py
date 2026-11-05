@@ -1124,6 +1124,13 @@ def parse_arguments() -> argparse.Namespace:
                 )
             if any(getattr(args, target, False) for target in ("x86", "arm", "arm64", "arm64ec", "buildasx")):
                 parser.error("--use_clang_cl currently supports the x64 host/target only.")
+            # Without a target switch, build.py derives the target from the host: Win32 under
+            # 32-bit Python, ARM64 on native ARM64 Windows.
+            if platform.machine().upper() != "AMD64" or platform.architecture()[0] != "64bit":
+                parser.error(
+                    "--use_clang_cl currently supports the x64 host/target only; run build.py with "
+                    "64-bit Python on an x64 host."
+                )
         if hasattr(args, "msvc_toolset") and args.msvc_toolset:
             try:
                 # Extract major.minor version parts (e.g., "14.36")
