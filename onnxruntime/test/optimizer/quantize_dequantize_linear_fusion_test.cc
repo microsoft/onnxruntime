@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -68,8 +69,8 @@ void ExpectFused(const Graph& graph, int expected_fused) {
 // Level2 keeps the Q/DQ nodes; Level3 adds the fusion. Outputs must be bitwise equal.
 void RunPipeline(const std::function<void(ModelTestBuilder&)>& build,
                  const std::function<void(InferenceSessionWrapper&)>& check,
-                 const std::function<void(SessionOptions&)>& add_session_options = {}) {
-  TransformerTester(build, check, TransformerLevel::Level2, TransformerLevel::Level3, 21, 0.0, 0.0, nullptr,
+                 const std::function<void(SessionOptions&)>& add_session_options = {}, int opset = 21) {
+  TransformerTester(build, check, TransformerLevel::Level2, TransformerLevel::Level3, opset, 0.0, 0.0, nullptr,
                     add_session_options);
 }
 
@@ -82,7 +83,7 @@ Status AssignAllNodesToCpu(Graph& graph) {
 
 // Applies only the fusion and checks that the graph is unchanged.
 void ExpectNotFused(const std::function<void(ModelTestBuilder&)>& build,
-                    const std::function<Status(Graph&)>& pre = AssignAllNodesToCpu) {
+                    const std::function<Status(Graph&)>& pre = AssignAllNodesToCpu, int opset = 21) {
   OpCountMap before;
   auto pre_checker = [&](Graph& graph) {
     ORT_RETURN_IF_ERROR(pre(graph));
@@ -96,9 +97,28 @@ void ExpectNotFused(const std::function<void(ModelTestBuilder&)>& build,
     return Status::OK();
   };
   ASSERT_STATUS_OK(TestGraphTransformer(
-      build, 21, DefaultLoggingManager().DefaultLogger(),
+      build, opset, DefaultLoggingManager().DefaultLogger(),
       std::make_unique<QuantizeDequantizeLinearFusion>(InlinedHashSet<std::string_view>{kCpuExecutionProvider}),
       TransformerLevel::Level3, 1, pre_checker, post_checker));
+}
+
+// X -> Q (with the given precision attribute, if any) -> DQ -> Relu -> Y, for opset 23+ models.
+template <typename T>
+std::function<void(ModelTestBuilder&)> BuildPairWithPrecision(std::optional<int64_t> precision) {
+  return [precision](ModelTestBuilder& builder) {
+    NodeArg* x = builder.MakeInput<float>({2, 8}, -30.0f, 30.0f);
+    NodeArg* q = builder.MakeIntermediate();
+    NodeAttributes attrs;
+    if (precision.has_value()) {
+      utils::SetNodeAttribute(utils::MakeAttribute("precision", *precision), attrs);
+    }
+    NodeArg* scale = builder.MakeScalarInitializer<float>(0.01f);
+    NodeArg* zero_point = builder.MakeScalarInitializer<T>(TestZeroPoint<T>());
+    builder.AddNode("QuantizeLinear", {x, scale, zero_point}, {q}, "", &attrs);
+    NodeArg* dq = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<T>(q, 0.01f, TestZeroPoint<T>(), dq);
+    builder.AddNode("Relu", {dq}, {builder.MakeOutput()});
+  };
 }
 
 // X -> Mul -> Q16 -> {DQ, Transpose -> DQ, Slice -> Unsqueeze -> DQ, Split -> (DQ, DQ), Gather -> DQ,
@@ -371,6 +391,23 @@ TEST(QuantizeDequantizeLinearFusionTests, NotFused_NonConstantOrPerAxisParameter
     builder.AddDequantizeLinearNode<uint16_t>(q, scales, zps, dq, &attrs);
     builder.AddNode("Relu", {dq}, {builder.MakeOutput()});
   });
+}
+
+TEST(QuantizeDequantizeLinearFusionTests, Opset23FloatPrecisionIsFused) {
+  auto check = [](InferenceSessionWrapper& session) { ExpectFused(session.GetGraph(), 1); };
+  for (std::optional<int64_t> precision : {std::optional<int64_t>{}, std::optional<int64_t>{0},
+                                           std::optional<int64_t>{ONNX_NAMESPACE::TensorProto_DataType_FLOAT}}) {
+    SCOPED_TRACE(::testing::Message() << "precision=" << precision.value_or(-1));
+    RunPipeline(BuildPairWithPrecision<uint16_t>(precision), check, {}, 23);
+    RunPipeline(BuildPairWithPrecision<int16_t>(precision), check, {}, 23);
+  }
+}
+
+TEST(QuantizeDequantizeLinearFusionTests, NotFused_Float16Precision) {
+  // The fused kernel computes in float and would not match a float16-precision QuantizeLinear.
+  constexpr int64_t kFloat16 = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+  ExpectNotFused(BuildPairWithPrecision<uint16_t>(kFloat16), AssignAllNodesToCpu, 23);
+  ExpectNotFused(BuildPairWithPrecision<int16_t>(kFloat16), AssignAllNodesToCpu, 23);
 }
 
 TEST(QuantizeDequantizeLinearFusionTests, NotFused_NonCpuEp) {

@@ -31,6 +31,17 @@ bool HasNoBlockSize(const Node& node) {
   return block_size == nullptr || block_size->i() == 0;
 }
 
+// From opset 23 QuantizeLinear can quantize in another precision, but the fused kernel always computes in float.
+// Precision 0 means the scale type, which IsFusableQ requires to be float.
+bool HasFloatPrecision(const Node& node) {
+  if (node.SinceVersion() < 23) {
+    return true;
+  }
+  const auto* precision = graph_utils::GetNodeAttribute(node, "precision");
+  return precision == nullptr || precision->i() == 0 ||
+         precision->i() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+}
+
 bool IsDataMovementOp(const Node& node) {
   return node.Domain() == kOnnxDomain &&
          std::find(kDataMovementOps.begin(), kDataMovementOps.end(), node.OpType()) != kDataMovementOps.end();
@@ -39,7 +50,8 @@ bool IsDataMovementOp(const Node& node) {
 bool IsFusableQ(const Graph& graph, const Node& q_node, const QDQ::GetConstantInitializerFn& get_constant_initializer,
                 const InlinedHashSet<std::string_view>& compatible_eps) {
   if (!QDQ::MatchQNode(q_node) || !graph_utils::IsSupportedProvider(q_node, compatible_eps) ||
-      !HasNoBlockSize(q_node) || q_node.GetOutputEdgesCount() == 0 || graph.NodeProducesGraphOutput(q_node)) {
+      !HasNoBlockSize(q_node) || !HasFloatPrecision(q_node) || q_node.GetOutputEdgesCount() == 0 ||
+      graph.NodeProducesGraphOutput(q_node)) {
     return false;
   }
 
