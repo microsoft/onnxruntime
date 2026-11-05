@@ -797,20 +797,12 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     const T* k_data = packed_qkv ? nullptr : k_rotary;
     const T* v_data = packed_qkv ? nullptr : V.Get<Tensor>().Data<T>();
 
-    // Non-quantized flash attention path (float only). Uses the tiled online-softmax
-    // kernel to avoid materializing the full attention score matrix. Falls back to the
-    // naive path when an unsupported feature is requested (softcap, smooth softmax,
-    // head sink, or QK output).
-    //
-    // Prefill (sequence_length > 1) uses the tiled kernel; single-token decode
-    // (sequence_length == 1 with total_sequence_length > 1) uses the dedicated GEMV
-    // decode kernel. Both are reached when total_sequence_length > 1.
+    // fp32 and fp16 caches: all query heads of a KV head share each cache tile, the softmax stays in fp32, and decode
+    // splits the cache across threads when there are fewer (batch, KV head) pairs than threads. Steps it doesn't
+    // cover, and ORT_GQA_DISABLE_FLASH_ATTENTION=1, take the per-head path below.
     const bool read_only_cache = kv_sequence_length == 0 && attention_past_key != nullptr &&
                                  attention_past_value != nullptr && attention_present_key == nullptr &&
                                  attention_present_value == nullptr;
-
-    // fp32 and fp16 caches: all query heads of a KV head share each cache tile, the softmax stays in fp32, and decode
-    // splits the cache across threads when there are fewer (batch, KV head) pairs than threads.
     if (CanApplyAttentionGrouped<T>(output_qk != nullptr,
                                     attention_present_key != nullptr && attention_present_value != nullptr,
                                     read_only_cache)) {
@@ -818,23 +810,6 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                                    attention_bias, attention_bias_offsets, attention_past_key, attention_past_value,
                                    output, attention_present_key, attention_present_value, attention_seqlens_k,
                                    parameters, allocator, context, attention_past_seqlens, query_seqlens_data);
-    }
-
-    if constexpr (std::is_same_v<T, float>) {
-      const bool use_flash = !disable_gqa_flash_ &&
-                             is_unidirectional_ &&
-                             parameters.total_sequence_length > 1 &&
-                             softcap_ == 0.0f &&
-                             !use_smooth_softmax_ &&
-                             head_sink_data == nullptr &&
-                             output_qk == nullptr &&
-                             ((attention_present_key != nullptr && attention_present_value != nullptr) || read_only_cache);
-      if (use_flash) {
-        return ApplyAttentionFlash(q_rotary, k_data, v_data,
-                                   attention_bias, attention_bias_offsets, attention_past_key, attention_past_value,
-                                   output, attention_present_key, attention_present_value, attention_seqlens_k,
-                                   parameters, allocator, context, attention_past_seqlens, query_seqlens_data);
-      }
     }
 
     return ApplyAttention(q_rotary, k_data, v_data,
