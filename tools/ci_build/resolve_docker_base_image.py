@@ -85,18 +85,19 @@ def main():
     parser.add_argument("--dockerfile", help="Dockerfile whose default family should be used.")
     parser.add_argument("--build-args", default="", help="Additional Docker build arguments.")
     args = parser.parse_args()
+    if not args.dockerfile and not args.family:
+        parser.error("Specify --dockerfile or --family")
     try:
         if args.dockerfile:
             result = shlex.join(resolve_build_args(args.dockerfile, args.build_args, args.family))
-        elif args.family:
-            result = resolve_family(args.family)
         else:
-            return parser.error("Specify --dockerfile or --family")
+            result = resolve_family(args.family)
         if "\n" in result or "\r" in result:
             raise ValueError("Resolved Docker arguments must be a single line")
     except (KeyError, ValueError, OSError) as error:
-        return parser.error(str(error))
-    print(result)
+        parser.error(str(error))
+    else:
+        print(result)
 
 
 if __name__ == "__main__":
