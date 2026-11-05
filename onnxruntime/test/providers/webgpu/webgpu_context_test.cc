@@ -934,9 +934,9 @@ class WebGpuBucketCacheTest : public testing::Test {
     ResetCache();
   }
 
-  void ResetCache() {
+  void ResetCache(webgpu::BufferCacheMode mode = webgpu::BufferCacheMode::Bucket) {
     manager_ = std::make_unique<webgpu::BufferManager>(
-        *context_, webgpu::BufferCacheMode::Bucket, webgpu::BufferCacheMode::Disabled,
+        *context_, mode, webgpu::BufferCacheMode::Disabled,
         webgpu::BufferCacheMode::Disabled, webgpu::BufferCacheMode::Disabled);
   }
 
@@ -1012,14 +1012,44 @@ TEST_F(WebGpuBucketCacheTest, RelativeSizeClassesAvoidKvBoundaryJump) {
       {12 * kMiB + 1024, 16 * kMiB},
       {33 * kMiB, 48 * kMiB},
   };
-  for (const auto& [request, expected] : cases) {
-    SCOPED_TRACE(request);
-    auto buffer = Create(request);
-    EXPECT_EQ(buffer.GetSize(), expected);
-    EXPECT_EQ(buffer.GetSize() % 16, 0u);
-    manager_->Release(buffer.MoveToCHandle());
+  for (auto mode : {webgpu::BufferCacheMode::Bucket, webgpu::BufferCacheMode::Graph}) {
+    SCOPED_TRACE(static_cast<int>(mode));
+    ResetCache(mode);
+    for (const auto& [request, expected] : cases) {
+      SCOPED_TRACE(request);
+      auto buffer = Create(request);
+      EXPECT_EQ(buffer.GetSize(), expected);
+      EXPECT_EQ(buffer.GetSize() % 16, 0u);
+      manager_->Release(buffer.MoveToCHandle());
+    }
+    EXPECT_ANY_THROW(Create(std::numeric_limits<size_t>::max()));
   }
-  EXPECT_ANY_THROW(Create(std::numeric_limits<size_t>::max()));
+}
+
+TEST_F(WebGpuBucketCacheTest, GraphRetainsRelativeSizeClassesAcrossIdleRefreshAndDonation) {
+  ResetCache(webgpu::BufferCacheMode::Graph);
+  auto buffer = Create(3000);
+  ASSERT_EQ(buffer.GetSize(), 3072u);
+  manager_->Release(wgpu::Buffer{buffer}.MoveToCHandle());
+  std::this_thread::sleep_for(std::chrono::milliseconds{1100});
+  ASSERT_STATUS_OK(context_->Flush(*manager_, recording_));
+  auto reused = Create(3000);
+  EXPECT_EQ(reused.Get(), buffer.Get());
+  manager_->Release(reused.MoveToCHandle());
+
+  auto donated = manager_->ExtractCachedBuffers(kUsage);
+  ASSERT_EQ(donated.size(), 1u);
+  EXPECT_EQ(donated.front().first, 3072u);
+  auto replacement = Create(3000);
+  EXPECT_NE(replacement.Get(), buffer.Get());
+
+  webgpu::BufferManager recipient(*context_, webgpu::BufferCacheMode::Graph,
+                                  webgpu::BufferCacheMode::Disabled, webgpu::BufferCacheMode::Disabled,
+                                  webgpu::BufferCacheMode::Disabled);
+  recipient.AbsorbCachedBuffers(kUsage, std::move(donated));
+  auto seeded = wgpu::Buffer::Acquire(recipient.Create(recording_, 3000, kUsage));
+  EXPECT_EQ(seeded.Get(), buffer.Get());
+  recipient.Release(seeded.MoveToCHandle());
 }
 
 TEST_F(WebGpuBucketCacheTest, ReusesWorkingSetsAcrossSizesAndDemandLevels) {
@@ -1214,16 +1244,20 @@ TEST(WebGpuContextTest, BucketRoundingFitsDeviceBufferLimit) {
         [](webgpu::WebGpuContext& context, auto& ep, const auto&, auto&) {
           constexpr size_t kSize = 273 * 1024 * 1024;
           ASSERT_EQ(context.DeviceLimits().maxBufferSize, kSize);
-          auto& manager = context.BufferManager();
           constexpr auto usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc |
                                  wgpu::BufferUsage::CopyDst;
-          context.PushErrorScope();
-          auto buffer = wgpu::Buffer::Acquire(manager.Create(ep.Recording(), kSize, usage));
-          EXPECT_EQ(buffer.GetSize(), kSize);
-          manager.Release(wgpu::Buffer{buffer}.MoveToCHandle());
-          auto reused = wgpu::Buffer::Acquire(manager.Create(ep.Recording(), kSize, usage));
-          EXPECT_EQ(reused.Get(), buffer.Get());
-          ASSERT_STATUS_OK(context.PopErrorScope());
+          for (auto mode : {webgpu::BufferCacheMode::Bucket, webgpu::BufferCacheMode::Graph}) {
+            SCOPED_TRACE(static_cast<int>(mode));
+            webgpu::BufferManager manager(context, mode, webgpu::BufferCacheMode::Disabled,
+                                          webgpu::BufferCacheMode::Disabled, webgpu::BufferCacheMode::Disabled);
+            context.PushErrorScope();
+            auto buffer = wgpu::Buffer::Acquire(manager.Create(ep.Recording(), kSize, usage));
+            EXPECT_EQ(buffer.GetSize(), kSize);
+            manager.Release(wgpu::Buffer{buffer}.MoveToCHandle());
+            auto reused = wgpu::Buffer::Acquire(manager.Create(ep.Recording(), kSize, usage));
+            EXPECT_EQ(reused.Get(), buffer.Get());
+            ASSERT_STATUS_OK(context.PopErrorScope());
+          }
         },
         true, kLimit);
   });

@@ -17,6 +17,16 @@ constexpr size_t NormalizeBufferSize(size_t size) {
   return (size + 15) / 16 * 16;
 }
 
+size_t CalculateBucketBufferSize(size_t request_size) {
+  // Two intervals per doubling balance padding against reuse as tensor sizes grow.
+  request_size = std::max(size_t{64}, request_size);
+  size_t alignment = 16;
+  while ((request_size - 1) / 4 >= alignment) {
+    alignment *= 2;
+  }
+  return (SafeInt<size_t>(request_size) + alignment - 1) / alignment * alignment;
+}
+
 // WebGPU requires that the copy size in CopyBufferToBuffer must be a multiple of 4 bytes.
 constexpr size_t NormalizeCopySize(size_t size) {
   return (size + 3) / 4 * 4;
@@ -140,38 +150,6 @@ class SimpleCacheManager : public IBufferCacheManager {
   std::vector<WGPUBuffer> pending_buffers_;
 };
 
-// Graph capture preserves its existing size classes and retains buffers separately.
-constexpr std::initializer_list<std::pair<const size_t, size_t>> BUCKET_DEFAULT_LIMIT_TABLE = {
-    {64, 250},
-    {128, 200},
-    {256, 200},
-    {512, 200},
-    {2048, 230},
-    {4096, 200},
-    {8192, 50},
-    {16384, 50},
-    {32768, 50},
-    {65536, 50},
-    {131072, 50},
-    {262144, 50},
-    {524288, 50},
-    {1048576, 50},
-    {2097152, 30},
-    {4194304, 20},
-    {8388608, 10},
-    {12582912, 10},
-    {16777216, 10},
-    {26214400, 15},
-    {33554432, 22},
-    {44236800, 2},
-    {58982400, 6},
-    // we don't want to cache the bucket sizes below but not caching them
-    // results in some major performance hits for models like sd-turbo.
-    {67108864, 6},
-    {134217728, 6},
-    {167772160, 6},
-};
-
 class BucketCacheManager : public IBufferCacheManager {
   using Clock = std::chrono::steady_clock;
   struct CachedBuffer {
@@ -182,13 +160,7 @@ class BucketCacheManager : public IBufferCacheManager {
 
  public:
   size_t CalculateBufferSize(size_t request_size) override {
-    // Two intervals per doubling balance padding against reuse as tensor sizes grow.
-    request_size = std::max(size_t{64}, request_size);
-    size_t alignment = 16;
-    while ((request_size - 1) / 4 >= alignment) {
-      alignment *= 2;
-    }
-    return (SafeInt<size_t>(request_size) + alignment - 1) / alignment * alignment;
+    return CalculateBucketBufferSize(request_size);
   }
 
   WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size) override {
@@ -243,21 +215,8 @@ class BucketCacheManager : public IBufferCacheManager {
 
 class GraphCacheManager : public IBufferCacheManager {
  public:
-  GraphCacheManager() : buckets_limit_{BUCKET_DEFAULT_LIMIT_TABLE} {
-    Initialize();
-  }
-  GraphCacheManager(std::unordered_map<size_t, size_t>&& buckets_limit) : buckets_limit_{buckets_limit} {
-    Initialize();
-  }
-
   size_t CalculateBufferSize(size_t request_size) override {
-    // binary serch size
-    auto it = std::lower_bound(buckets_keys_.begin(), buckets_keys_.end(), request_size);
-    if (it == buckets_keys_.end()) {
-      return NormalizeBufferSize(request_size);
-    } else {
-      return *it;
-    }
+    return CalculateBucketBufferSize(request_size);
   }
 
   WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size) override {
@@ -276,17 +235,11 @@ class GraphCacheManager : public IBufferCacheManager {
 
   void ReleaseBuffer(WGPUBuffer buffer) override {
     auto buffer_size = static_cast<size_t>(wgpuBufferGetSize(buffer));
-    auto it = buckets_.find(buffer_size);
-    if (it != buckets_.end()) {
-      it->second.emplace_back(buffer);
-    } else {
-      // Insert a new bucket for non-standard buffer sizes
-      buckets_[buffer_size] = std::vector<WGPUBuffer>{buffer};
-    }
+    buckets_[buffer_size].emplace_back(buffer);
   }
 
   void OnRefresh(GraphCaptureState /*graph_capture_state*/) override {
-    // no-op - buffers are already in buckets_
+    // Captured addresses must remain valid until the graph is released.
   }
 
   std::vector<std::pair<size_t, WGPUBuffer>> ExtractCachedBuffers() override {
@@ -295,8 +248,8 @@ class GraphCacheManager : public IBufferCacheManager {
       for (auto& buffer : pair.second) {
         result.emplace_back(pair.first, buffer);
       }
-      pair.second.clear();
     }
+    buckets_.clear();
     return result;
   }
 
@@ -316,28 +269,8 @@ class GraphCacheManager : public IBufferCacheManager {
     }
   }
 
- protected:
-  void Initialize() {
-    buckets_keys_.reserve(buckets_limit_.size());
-    buckets_.reserve(buckets_limit_.size());
-    for (const auto& pair : buckets_limit_) {
-      buckets_keys_.push_back(pair.first);
-      buckets_.emplace(pair.first, std::vector<WGPUBuffer>());
-    }
-    std::sort(buckets_keys_.begin(), buckets_keys_.end());
-
-#ifndef NDEBUG  // if debug build
-    ORT_ENFORCE(std::all_of(buckets_keys_.begin(), buckets_keys_.end(), [](size_t size) { return size % 16 == 0; }),
-                "Bucket sizes must be multiples of 16.");
-
-    for (size_t i = 1; i < buckets_keys_.size(); ++i) {
-      ORT_ENFORCE(buckets_keys_[i] > buckets_keys_[i - 1], "Bucket sizes must be in increasing order.");
-    }
-#endif
-  }
-  std::unordered_map<size_t, size_t> buckets_limit_;
-  std::unordered_map<size_t, std::vector<WGPUBuffer>> buckets_;
-  std::vector<size_t> buckets_keys_;
+ private:
+  InlinedHashMap<size_t, std::vector<WGPUBuffer>> buckets_;
 };
 
 class GraphSimpleCacheManager : public IBufferCacheManager {

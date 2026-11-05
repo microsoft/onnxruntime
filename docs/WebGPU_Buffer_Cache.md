@@ -5,8 +5,7 @@ automatically. No bucket table configuration is required.
 
 - Sizes use two intervals per doubling, with a minimum allocation of 64 bytes
   and 16-byte alignment. For requests of at least 64 bytes, rounding adds at most
-  50%. The rule is the same across sizes and models; 4 MiB has no special
-  treatment. For request `n >= 64`, let `p` be the largest power of two no larger
+  50%. For request `n >= 64`, let `p` be the largest power of two no larger
   than `n`, and round up to a multiple of `max(16, p / 2)`. Requests of 3,000 bytes,
   70 KiB and 33 MiB use 3,072 bytes, 96 KiB and 48 MiB. The reported
   4,195,328-byte KV request uses 6 MiB rather than 8 MiB. Coarser classes retain
@@ -43,5 +42,6 @@ reclaim memory immediately. No memory-budget option or allocation-source hints
 are introduced.
 
 Buffers awaiting submission retain their existing lifetime protection. Graph
-capture keeps its separate retention policy. The deprecated JSEP backend is also
-separate.
+capture uses the same storage size classes, while retaining buffers under its
+separate lifetime policy without idle eviction. No predefined size table is used.
+The deprecated JSEP backend is separate.
