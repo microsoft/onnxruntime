@@ -3,6 +3,7 @@
 
 #pragma once
 #include <atomic>
+#include <functional>
 #include <string>
 #include <mutex>
 #include "core/common/status.h"
@@ -32,6 +33,7 @@ struct OrtEnv {
     void* logger_param{};
     OrtLoggingLevel default_warning_level;
     const char* logid{};
+    std::function<std::unique_ptr<onnxruntime::logging::ISink>()> sink_factory;
   };
 
   /// <summary>
