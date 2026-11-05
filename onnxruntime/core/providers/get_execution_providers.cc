@@ -109,14 +109,6 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #endif
         },
         {
-            kAclExecutionProvider,
-#ifdef USE_ACL
-            true,
-#else
-            false,
-#endif
-        },
-        {
             kDmlExecutionProvider,
 #ifdef USE_DML
             true,
