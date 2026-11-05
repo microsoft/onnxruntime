@@ -8,8 +8,10 @@ their location under `cmake/` does not make them build-system dependencies.
 
 The native graph targets Linux x86-64, Windows x86-64, and macOS on Intel and
 Apple Silicon. Foundation runtime and five desktop bindings passed native
-Linux, Windows, and Apple Silicon macOS CI at `d473c4e677`; later changes have
-separate validation evidence below. Intel macOS execution is not claimed.
+Linux, Windows, and Apple Silicon macOS CI at `a6de7b83a5`
+([completed run](https://github.com/microsoft/onnxruntime/actions/runs/41977549518)):
+all nine selected targets passed on each OS. Dependent migration results are
+qualified separately below. Intel macOS execution is not claimed.
 This is not yet a replacement for the
 release build: additional execution providers,
 browser GPU execution providers, and complete language-specific release packaging
@@ -761,16 +763,17 @@ tests using their Bazel compiler response files, and Windows frozen analysis
 passed 254 targets in 28.610 seconds with zero actions. Executing the two
 native suites would require 1,866 actions after the integrated Abseil patch
 invalidated the runtime cache; that build was stopped to respect the local
-resource limit. The fixture correction therefore remains unverified on
-macOS, rather than a claimed passing Apple regression.
+resource limit. Those source/analysis checks did not establish a passing
+macOS regression.
 
 CPU-only Linux execution subsequently passed all four optional-provider
 cases but exposed a bridge-fixture issue even in valid-only initialization.
 The header-free bridge fixtures had unnecessarily linked
 `shared_api_test_common`, bringing exported ONNX/protobuf/Abseil objects and
-GNU-unique definitions into an image loaded with `RTLD_GLOBAL`. Those
-dependencies are removed from bridge fixtures only; probe fixtures retain
-their required header/runtime support. All unload/retry assertions remain.
+GNU-unique definitions into an image loaded with `RTLD_GLOBAL`.
+That revision removed these dependencies from bridge fixtures only. The valid
+probe still requires the real provider headers/runtime support. All unload/retry
+assertions remain.
 
 The corrected graph passed all three `ProviderBridgeTest` and all four
 `OptionalProviderProbeTest` cases, no skips, on the authorized CPU-only Linux
@@ -794,7 +797,48 @@ is `76c910733e423f09eb51cde65be373d995bd76fdce775fa066bef07f308a199b`.
 The coordinator verified cleanup of the task-private CPU VM root and Bazel
 server (2.6 GiB), credentials/configuration and source transfer; retained
 evidence remains hash-verified, and shared/global resources were untouched.
-macOS execution of the corrected fixtures remains unverified.
+That Linux run did not establish macOS fixture execution.
+
+Completed migration run
+[`41980869983`](https://github.com/microsoft/onnxruntime/actions/runs/41980869983)
+at `e083a400e3` passed the macOS bridge replacement test, but the optional-provider
+replacement still failed. Its shared/missing-export variants now omit unused
+ORT headers and runtime dependencies; only the valid provider uses the real
+provider interface. The completed Linux plugin inference failure was a missing
+example library beside the runtime's `_solib` path. Shared API tests now reuse
+the lazy shared-library bundle to co-locate example plugins on Linux without
+linking them eagerly; CUDA configurations retain the lazy CUDA provider files.
+
+That completed run also exposed actual Apple compilation failures, not just
+missing execution evidence: floating-point `std::to_chars` was unavailable at
+the macOS 12 deployment target, and Objective-C++ `@import` failed with C++
+modules disabled. The existing ONNX iOS fallback now also covers macOS before
+13.3, and both Objective-C++ libraries explicitly enable C++ modules. Deployment
+minimums remain macOS 12 and iOS 15.1. These corrections are not a claim of
+successful macOS fixture execution, Objective-C inference, Swift import, or iOS
+framework/XCTest compilation. The Windows job was cancelled during selected
+C++ compilation, not a passing native selected-suite result.
+
+The revised graph passed all three bridge cases, all four optional-provider
+cases, and actual example-plugin Mul inference on CPU Linux/GCC 13.2: eight
+tests, zero skips. The uncached build-and-test invocation took 596.765 seconds
+including 2,413 actions in a new task-private build directory; this is not pure
+test execution time. Both header-free probe images exported only their intended
+fixture symbol and had zero GNU-unique definitions. `readelf` confirmed the
+test executable links the runtime but not the example plugins, and all three
+example libraries were present beside that runtime in its `_solib` runfiles.
+No GPU was built or executed.
+
+```sh
+bazel test //:provider_bridge_test //:optional_provider_probe_test //:plugin_api_test -c opt --jobs=12 --lockfile_mode=error --build_python_zip=false --local_test_jobs=1 --test_output=all --nocache_test_results --test_filter='ProviderBridgeTest.*:OptionalProviderProbeTest.*:OrtEpLibrary.PluginEp_AppendV2_MulInference'
+```
+
+Full frozen Windows wildcard plus six manual WASM targets passed analysis:
+255 targets, 62.471 seconds, zero actions, two jobs, unchanged module lock.
+The retained native test/symbol/runfiles evidence archive SHA-256 is
+`c8eb4df701f02eee911eae9d398d188aa4f627dd5b699c01423648a4e38071ac`.
+The 2.6 GiB CPU-only task directory, Bazel server, transfer archive and
+task-private SSH credentials were removed after evidence retrieval.
 
 On a macOS host with full Xcode selected (including the macOS SDK and XCTest):
 

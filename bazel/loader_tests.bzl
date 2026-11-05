@@ -80,8 +80,8 @@ def loader_tests(plugin_libraries):
                 local_defines = (
                     ["ORT_TEST_PROVIDER_SET_HOST"] if variant == "valid" else []
                 ) if kind == "bridge" else ["ORT_TEST_OPTIONAL_PROVIDER_" + variant],
-                # The bridge fixture is header-free; runtime dependencies can pin/interpose its image.
-                deps = [] if kind == "bridge" else [":shared_api_test_common"],
+                # Header-free fixtures must not inherit runtime globals that can pin their images.
+                deps = [":shared_api_test_common"] if kind == "probe" and variant == "valid" else [],
             )
             fixtures.append(":" + name)
             define = (

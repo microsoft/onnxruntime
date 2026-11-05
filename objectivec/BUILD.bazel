@@ -70,7 +70,10 @@ objc_library(
         "include/ort_value.h",
         "include/ort_xnnpack_execution_provider.h",
     ],
-    copts = ["-std=c++20"],
+    copts = [
+        "-std=c++20",
+        "-fcxx-modules",
+    ],
     enable_modules = True,
     includes = ["include"],
     module_map = "module.modulemap",
@@ -109,7 +112,10 @@ objc_library(
         "ort_session_internal.h",
         "test/assertion_utils.h",
     ],
-    copts = ["-std=c++20"],
+    copts = [
+        "-std=c++20",
+        "-fcxx-modules",
+    ],
     enable_modules = True,
     includes = ["."],
     sdk_frameworks = [

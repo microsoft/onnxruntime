@@ -8,6 +8,7 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//bazel:loader_tests.bzl", "loader_tests")
 load("//bazel:platforms.bzl", "desktop_shared_library")
+load("//bazel:shared_library_bundle.bzl", "shared_library_bundle")
 
 def shared_api_tests():
     cc_library(
@@ -37,10 +38,12 @@ def shared_api_tests():
         ],
         includes = ["onnxruntime/test/util/include"],
         deps = [
-            ":runtime_shared",
             ":shared_api_test_common",
             "@googletest//:gtest",
-        ],
+        ] + select({
+            "//bazel:linux": [":shared_api_test_runtime"],
+            "//conditions:default": [":runtime_shared"],
+        }),
     )
     desktop_shared_library(
         name = "custom_op_test_library",
@@ -94,6 +97,19 @@ def shared_api_tests():
             deps = [":shared_api_test_common"],
         )
         plugin_libraries.append(":" + plugin)
+    shared_library_bundle(
+        name = "shared_api_test_runtime",
+        testonly = True,
+        runtime = ":runtime_library",
+        plugins = plugin_libraries + select({
+            "//bazel:linux_x86_64_cuda": [
+                ":libonnxruntime_providers_shared.so",
+                ":libonnxruntime_providers_cuda.so",
+            ],
+            "//conditions:default": [],
+        }),
+        target_compatible_with = ["@platforms//os:linux"],
+    )
     cc_library(
         name = "global_threadpool_test_main",
         testonly = True,
