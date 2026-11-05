@@ -95,6 +95,7 @@ __global__ void UnfusedSoftmaxKernel(
     const bool bcast_bias_dim_1,
     const int* __restrict__ past_seq_lens,
     const int* __restrict__ seqlens_k,
+    const int* __restrict__ query_seqlens,
     const bool is_causal,
     const int local_window_size,
     const int past_kv_length,
@@ -106,6 +107,15 @@ __global__ void UnfusedSoftmaxKernel(
   const int q_in_head = blockIdx.x % q_sequence_length;
   const int head = blockIdx.x / q_sequence_length;  // 0..N_q-1
   const int batch = blockIdx.y;
+  if (query_seqlens != nullptr && q_in_head >= query_seqlens[batch]) {
+    // Dense SV still consumes these scratch rows. No QK/bias reads, masking, reductions or exp.
+    const int64_t row_offset =
+        (static_cast<int64_t>(batch) * gridDim.x + blockIdx.x) * total_kv_length;
+    for (int i = threadIdx.x; i < total_kv_length; i += TPB) {
+      softmax_out[row_offset + i] = T(0.f);
+    }
+    return;
+  }
 
   int kv_end = total_kv_length;
   if (seqlens_k != nullptr) {
@@ -272,6 +282,7 @@ void LaunchUnfusedSoftmax(
       params.broadcast_attn_bias_dim_1,
       params.past_seq_lens,
       params.seqlens_k,
+      params.query_seqlens,
       params.is_causal,
       params.local_window_size,
       params.past_kv_length,
@@ -390,7 +401,8 @@ common::Status LaunchAttnVGemm(
   const float alpha = 1.0f;
   const float beta = 0.0f;
 
-  const int64_t stride_v = static_cast<int64_t>(params.max_kv_length) * H_v;
+  const int64_t stride_v =
+      static_cast<int64_t>(params.v_buffer_length > 0 ? params.v_buffer_length : params.max_kv_length) * H_v;
   const int64_t stride_p = static_cast<int64_t>(group) * S_q * S_kv;
   const int64_t stride_y = static_cast<int64_t>(group) * S_q * H_v;
 

@@ -1351,6 +1351,9 @@ AddTest(
   TEST_ARGS ${test_all_args}
 )
 target_include_directories(onnxruntime_test_all PRIVATE ${ONNXRUNTIME_ROOT}/core/flatbuffers/schema) # ort.fbs.h
+if(onnxruntime_ENABLE_DLPACK)
+  target_link_libraries(onnxruntime_test_all PRIVATE dlpack::dlpack)
+endif()
 
 if(onnxruntime_USE_CUDA AND NOT onnxruntime_MINIMAL_BUILD)
   target_link_libraries(onnxruntime_test_all PRIVATE CUDA::cuda_driver)

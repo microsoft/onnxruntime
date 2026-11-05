@@ -32,6 +32,7 @@
 
 #include <cuda_bf16.h>
 #include <cuda_runtime.h>
+#include <math_constants.h>
 
 #include <cstdint>
 #include <type_traits>
@@ -601,6 +602,7 @@ inline bool TryLaunchInt4Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
 // all of which fit inside BF16's 7-bit mantissa (0x007F007F). Each centered code in {-2, -1, 0, +1} is scaled by
 // 0.5 into {-1.0, -0.5, 0.0, +0.5} before multiplying by `scale2` so that even `scale = 2^127` with code -2 stays
 // finite in BF16; `finalize` restores the factor of 2 in FP32.
+// This is not full-range BF16 support: code +1 at scale 2^-133 rounds to zero before MMA, losing its contribution.
 template <int MaskIdx>
 __device__ __forceinline__ uint32_t DequantPairInt2Masked(uint32_t x, uint32_t scale2) {
   static_assert(MaskIdx >= 0 && MaskIdx < 3);
@@ -898,8 +900,9 @@ __global__ void __launch_bounds__(kThreads, Int2MinCtasPerSm(kM)) MoeGemvTcInt2K
       const int out_row = contiguous_routes
                               ? (row0 + route)
                               : static_cast<int>((members >> (8 * route)) & 0xffu);
-      float even = (h == 0 ? d.x : d.y) * 2.0f;
-      float odd = (h == 0 ? d.z : d.w) * 2.0f;
+      // Match the INT2 SIMT and CPU projection boundary before adding bias in FP32.
+      float even = __bfloat162float(__float2bfloat16_rn((h == 0 ? d.x : d.y) * 2.0f));
+      float odd = __bfloat162float(__float2bfloat16_rn((h == 0 ? d.z : d.w) * 2.0f));
       if (bias != nullptr) {
         even += __bfloat162float(bias[col]);
         odd += __bfloat162float(bias[col + 1]);
@@ -913,8 +916,10 @@ __global__ void __launch_bounds__(kThreads, Int2MinCtasPerSm(kM)) MoeGemvTcInt2K
         }
         linear += beta;
         const float sigmoid = 1.0f / (1.0f + expf(-alpha * gate));
+        const bool silu_limit_is_zero = (alpha > 0.0f && gate == -CUDART_INF_F) ||
+                                        (alpha < 0.0f && gate == CUDART_INF_F);
         p.out[static_cast<int64_t>(out_row) * (n / 2) + col / 2] =
-            __float2bfloat16_rn(gate * sigmoid * linear);
+            __float2bfloat16_rn((silu_limit_is_zero ? 0.0f : gate * sigmoid) * linear);
       } else {
         *reinterpret_cast<__nv_bfloat162*>(p.out + static_cast<int64_t>(out_row) * n + col) =
             __floats2bfloat162_rn(even, odd);
