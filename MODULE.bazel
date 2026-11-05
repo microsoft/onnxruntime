@@ -71,6 +71,10 @@ bazel_dep(name = "rules_android_ndk", version = "0.1.5")
 react_native = use_extension("//bazel:react_native.bzl", "react_native_sdk")
 use_repo(react_native, "ort_fbjni", "ort_react_android")
 
+ndk_shared_runtime = use_repo_rule("//bazel:react_native.bzl", "ndk_shared_runtime")
+
+ndk_shared_runtime(name = "ort_ndk_shared_runtime")
+
 # Explicitly selected by --config=android_arm64; desktop builds need no NDK.
 android_ndk_repository = use_repo_rule("@rules_android_ndk//:rules.bzl", "android_ndk_repository")
 

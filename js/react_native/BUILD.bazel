@@ -35,6 +35,7 @@ cc_binary(
         "//:android_runtime_shared",
         "//:api_headers",
         "@ort_fbjni//:sdk",
+        "@ort_ndk_shared_runtime//:runtime",
         "@ort_react_android//:sdk",
     ],
 )
@@ -44,14 +45,22 @@ pkg_files(
     srcs = [
         ":libonnxruntimejsi.so",
         "//:android/libonnxruntime.so",
+        "@ort_ndk_shared_runtime//:libc++_shared.so",
     ],
     prefix = "jni/arm64-v8a",
     strip_prefix = strip_prefix.files_only(),
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:android", "@platforms//cpu:aarch64"],
 )
 
 pkg_zip(
     name = "android_jsi_native_archive",
-    srcs = [":android_jsi_native_files"],
+    srcs = [
+        ":android_jsi_native_files",
+        "//:LICENSE",
+        "//:ThirdPartyNotices.txt",
+        "//:VERSION_NUMBER",
+    ],
     out = "onnxruntime-react-native-android-arm64.zip",
     tags = ["manual"],
     target_compatible_with = [

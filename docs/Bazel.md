@@ -981,27 +981,60 @@ The deployment minimum is iOS 15.1. For example, on an Apple Silicon Mac:
 
 ```sh
 bazel build -c opt //objectivec:ios_framework --ios_multi_cpus=arm64
-bazel build -c opt //objectivec:ios_framework //objectivec:ios_inference_tests --ios_multi_cpus=sim_arm64 --nobuild --lockfile_mode=error
+bazel build -c opt //objectivec:ios_framework //objectivec:ios_inference_tests --ios_multi_cpus=sim_arm64 --lockfile_mode=error
 ```
 
-The second command is included in macOS CI as analysis only. Neither native
+The second command is included in macOS CI as an explicit native framework
+and test-bundle build, not simulator execution. Neither native
 iOS compilation, framework import, simulator execution, nor device execution
 has been verified locally. Windows explicitly rejects these targets as
 incompatible rather than substituting a desktop SDK.
 
 The existing React Native data-loading policy tests now run directly as
 `//js/react_native:data_policy_test`. Windows source-native execution passed
-all checks (nine build/test actions); this does **not** compile or validate
-the JSI adapter. Full React Native adapter compilation remains blocked on a
-native dependency graph for React-Core/ReactCommon (JSI, CallInvoker and
-TurboModule), plus ReactAndroid/fbjni and AndroidX for Android. The existing
-Podspec and Android build describe those dependencies, but no such Bazel
-targets are available in this repository. A header-only substitute would
-not validate runtime ABI or linking and is not supplied. No React Native
-package, mobile application integration, CoreML/NNAPI provider, or device
-inference is claimed by this follow-up. Integrated Windows frozen wildcard
+all checks (nine build/test actions); this policy test alone does **not**
+validate the JSI adapter. The genuine Android bridge build is described
+below. Full Java/iOS React Native application integration is not supplied
+by the policy target. No header-only React substitute is used.
+No mobile application integration, CoreML/NNAPI provider, or device
+inference is claimed by this policy-test follow-up. Integrated Windows frozen wildcard
 plus manual WASM analysis passed 244 targets with zero actions; this skips
 Apple-incompatible targets and is not iOS compilation evidence.
+
+The Android bridge graph additionally provides
+`//js/react_native:libonnxruntimejsi.so` and
+`//js/react_native:android_jsi_native_archive`. These compile the actual
+`cpp-adapter.cpp` and shared JSI implementation against checksum-pinned
+official ReactAndroid 0.73.11 and fbjni 0.5.1 prefab SDKs. Those versions match
+the repository's React Native development dependency and its published Maven
+dependency; newer CallInvoker interfaces are not ABI-compatible. ORT itself
+still builds from source. The SDK imports supply no prebuilt ORT runtime.
+
+```sh
+bazel build --config=android_arm64 -c opt //js/react_native:android_jsi_native_archive --jobs=8 --loading_phase_threads=2 --lockfile_mode=error --build_python_zip=false
+```
+
+The native ZIP contains ARM64 ORT and JSI adapter libraries plus the actual
+NDK r27d shared C++ runtime, not a complete
+React Native AAR or npm package. An application must supply the matching
+React Native/fbjni SDK. The bridge deliberately does
+not enable NNAPI, CoreML, QNN, or extensions. Java adapter classes, Android
+application installation, iOS React Native linkage, and device inference
+remain separate from native library compilation.
+
+The actual Linux-host cross-build passed with NDK r27d and Bazel 8.4.2,
+`--jobs=8 --loading_phase_threads=2`, strict frozen lock and a task-private
+output/cache root. It compiled the real JNI/JSI adapter and source-native
+ORT runtime and linked both with `--no-undefined`. Initial SDK setup took
+21 seconds. The first attempt exposed an incompatible newer CallInvoker
+interface; using the repository-matching SDK fixed compilation without
+changing adapter implementation. A subsequent link failure exposed the NDK
+rules' empty dynamic C++ runtime filegroup; the graph now explicitly imports
+and packages the actual r27d shared runtime instead of disabling undefined
+symbol checks or linking a second static C++ runtime into the adapter.
+The successful source build after these corrections took 267.068 seconds
+wall and executed 854 actions, reusing 554 unchanged actions from the failed
+attempts. This is not a clean-output build timing or device inference result.
 
 ### Existing C++ suites
 
