@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <string>
+
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
 #include "contrib_ops/webgpu/bert/kv_cache_block_quant_int8.h"
 #include "contrib_ops/webgpu/bert/flash_attention.h"
@@ -10,6 +12,7 @@
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 
 #include "core/providers/webgpu/webgpu_supported_types.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 using namespace onnxruntime::webgpu;
 using namespace ::onnxruntime::common;
@@ -560,6 +563,162 @@ Status ApplyFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& cont
   return context.RunProgram(program);
 }
 
+Status FlashAttentionPrefillProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  // Tensors are accessed via getByOffset / setByOffset so inputs larger than maxStorageBufferBindingSize
+  // work when the framework splits them across bindings.
+  const auto& q = shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  const auto& present_key = shader.AddInput("present_key", ShaderUsage::UseUniform);
+  const auto& present_value = shader.AddInput("present_value", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* attention_bias = nullptr;
+  if (has_attention_bias_) {
+    attention_bias = &shader.AddInput("attention_bias", ShaderUsage::UseUniform);
+  }
+  if (use_seqlen_k_) {
+    shader.AddInput("seqlens_k", ShaderUsage::None);
+  }
+  if (use_seqlens_q_) {
+    shader.AddInput("seqlens_q", ShaderUsage::None);
+  }
+  if (has_head_sink_) {
+    shader.AddInput("head_sink", ShaderUsage::UseUniform);
+  }
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
+
+  return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention_prefill.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(has_attention_bias, has_attention_bias_),
+                             WGSL_TEMPLATE_PARAMETER(has_head_sink, has_head_sink_),
+                             WGSL_TEMPLATE_PARAMETER(has_local_window, has_local_window_),
+                             WGSL_TEMPLATE_PARAMETER(is_unidirectional, is_unidirectional_),
+                             WGSL_TEMPLATE_PARAMETER(kv_step_param, kv_step_),
+                             WGSL_TEMPLATE_PARAMETER(q_BNSH, q_BNSH_),
+                             WGSL_TEMPLATE_PARAMETER(qk_f32, true),
+                             WGSL_TEMPLATE_PARAMETER(qkv_head_size, qkv_head_size_),
+                             WGSL_TEMPLATE_PARAMETER(qkv_num_heads, qkv_num_heads_),
+                             WGSL_TEMPLATE_PARAMETER(shuffle_chunk_param, shuffle_chunk_),
+                             WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
+                             WGSL_TEMPLATE_PARAMETER(use_seqlens_q, use_seqlens_q_),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(attention_bias, attention_bias),
+                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_VARIABLE(present_key, present_key),
+                             WGSL_TEMPLATE_VARIABLE(present_value, present_value),
+                             WGSL_TEMPLATE_VARIABLE(q, q));
+}
+
+bool CanApplyFlashAttentionPrefill(bool is_intel,
+                                   bool kv_cache_quantization_enabled) {
+  return is_intel && !kv_cache_quantization_enabled;
+}
+
+Status ApplyFlashAttentionPrefill(onnxruntime::webgpu::ComputeContext& context,
+                                  const Tensor* Q,
+                                  const Tensor* present_key,
+                                  const Tensor* present_value,
+                                  const Tensor* attention_bias,
+                                  const Tensor* seqlen_k,
+                                  Tensor* attn_output,
+                                  const WebgpuAttentionParameters& parameters,
+                                  bool has_attention_bias,
+                                  bool use_seqlen_k,
+                                  bool has_local_window,
+                                  int local_window_size,
+                                  uint32_t present_sequence_length,
+                                  uint32_t subgroup_min_size,
+                                  float alpha,
+                                  uint32_t attn_bias_dim0,
+                                  uint32_t attn_bias_dim1,
+                                  uint32_t attn_bias_dim3,
+                                  bool use_seqlens_q,
+                                  const Tensor* seqlens_q,
+                                  bool q_BNSH,
+                                  bool has_head_sink,
+                                  const Tensor* head_sink) {
+  const auto& adapter_info = context.AdapterInfo();
+  const bool is_intel_xe2 = adapter_info.vendor == std::string_view{"intel"} &&
+                            (adapter_info.architecture == std::string_view{"xe-2lpg"} ||
+                             adapter_info.architecture == std::string_view{"xe-2hpg"});
+  const bool is_intel_xe3 = adapter_info.vendor == std::string_view{"intel"} &&
+                            (adapter_info.architecture == std::string_view{"xe-3lpg"} ||
+                             adapter_info.architecture == std::string_view{"xe-3lpg-xs"});
+  // Default: 64 threads, 16 KV rows per step.
+  uint32_t workgroup_size = 64u;
+  uint32_t kv_step = 16u;
+  // Xe2: query length <= 128 uses 128 threads and 64 KV rows per step;
+  //      longer queries use 256 threads and 32 KV rows per step.
+  // Xe3: 128 threads, 64 KV rows per step for all query lengths.
+  if (is_intel_xe3 || (is_intel_xe2 && parameters.sequence_length_ <= 128)) {
+    workgroup_size = 128u;
+    kv_step = 64u;
+  } else if (is_intel_xe2) {
+    workgroup_size = 256u;
+    kv_step = 32u;
+  }
+  // The K tile (full head) and V slice (up to 16 vec4) are staged in workgroup memory for kv_step rows.
+  // If that exceeds the device limit, fall back to the default config (64 threads, 16 KV rows per step).
+  // CanApplyDensePrefill checks storage for full K/V tiles with at least 16 rows,
+  // so the default configuration with sliced V staging is guaranteed to fit.
+  const uint64_t head_size_vec = static_cast<uint64_t>(parameters.head_size_) / 4;
+  const uint64_t vec4_bytes = (Q->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ? 2u : 4u) * 4u;
+  if ((head_size_vec + std::min<uint64_t>(head_size_vec, 16)) * kv_step * vec4_bytes >
+      context.DeviceLimits().maxComputeWorkgroupStorageSize) {
+    workgroup_size = 64u;
+    kv_step = 16u;
+  }
+  ORT_ENFORCE((head_size_vec + std::min<uint64_t>(head_size_vec, 16)) * kv_step * vec4_bytes <=
+                  context.DeviceLimits().maxComputeWorkgroupStorageSize,
+              "FlashAttentionPrefill requires more workgroup storage than the device supports.");
+  // Values below 8 select direct shared-memory reads, including without subgroups.
+  const uint32_t shuffle_chunk = std::min(kv_step, subgroup_min_size);
+  const uint32_t num_seq_tile = CeilDiv(static_cast<uint32_t>(parameters.sequence_length_), workgroup_size);
+  const uint32_t dispatch_size =
+      parameters.batch_size_ * parameters.num_heads_ * num_seq_tile;
+
+  FlashAttentionPrefillProgram program{"FlashAttentionPrefill",
+                                       has_attention_bias,
+                                       parameters.is_unidirectional_,
+                                       parameters.head_size_,
+                                       parameters.num_heads_,
+                                       use_seqlen_k,
+                                       kv_step,
+                                       shuffle_chunk,
+                                       has_local_window,
+                                       use_seqlens_q,
+                                       q_BNSH,
+                                       has_head_sink};
+  program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, 4},
+                     {present_key, ProgramTensorMetadataDependency::TypeAndRank, 4},
+                     {present_value, ProgramTensorMetadataDependency::TypeAndRank, 4}});
+  if (has_attention_bias) {
+    program.AddInputs({{attention_bias, ProgramTensorMetadataDependency::TypeAndRank}});
+  }
+  if (use_seqlen_k) {
+    program.AddInputs({{seqlen_k, ProgramTensorMetadataDependency::None}});
+  }
+  if (use_seqlens_q) {
+    program.AddInputs({{seqlens_q, ProgramTensorMetadataDependency::None}});
+  }
+  if (has_head_sink) {
+    program.AddInputs({{head_sink, ProgramTensorMetadataDependency::Type}});
+  }
+  program.AddOutputs({{attn_output, ProgramTensorMetadataDependency::TypeAndRank, 4}});
+  program.SetDispatchGroupSize(dispatch_size)
+      .SetWorkgroupSize(workgroup_size)
+      .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_,
+                 use_seqlen_k, workgroup_size, kv_step, shuffle_chunk,
+                 has_local_window, use_seqlens_q, q_BNSH, has_head_sink)
+      .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
+                            {static_cast<uint32_t>(parameters.total_sequence_length_)},
+                            {static_cast<uint32_t>(present_sequence_length)},
+                            {static_cast<uint32_t>(parameters.batch_size_)},
+                            {static_cast<uint32_t>(parameters.n_reps)},
+                            {alpha},
+                            {num_seq_tile},
+                            {attn_bias_dim0},
+                            {attn_bias_dim1},
+                            {attn_bias_dim3},
+                            {static_cast<uint32_t>(has_local_window ? local_window_size : 0)}});
+  return context.RunProgram(program);
+}
+
 Status FlashAttentionDecodeQKVProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& q = shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& present_key = shader.AddInput("present_key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -1017,6 +1176,30 @@ Status ApplyDensePrefill(const Tensor* Q, Tensor* present_key, Tensor* present_v
   bool is_fp16 = Q->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
   bool q_BNSH = parameters.qkv_format_ == Q_K_V_BNSH;
   bool has_head_sink = head_sink != nullptr;
+  const float alpha = parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_))
+                                                : parameters.scale_;
+
+  uint32_t attn_bias_dim0 = 1;
+  uint32_t attn_bias_dim1 = 1;
+  uint32_t attn_bias_dim3 = 0;
+  if (has_attention_bias) {
+    const auto& bias_shape = attention_bias->Shape();
+    attn_bias_dim0 = static_cast<uint32_t>(bias_shape[0]);
+    attn_bias_dim1 = static_cast<uint32_t>(bias_shape[1]);
+    attn_bias_dim3 = static_cast<uint32_t>(bias_shape[3]);
+  }
+
+  const bool is_intel = context.AdapterInfo().vendor == std::string_view{"intel"};
+  const uint32_t subgroup_min_size = has_subgroups ? context.AdapterInfo().subgroupMinSize : 0u;
+  // TODO(daijh): Merge back into `FlashAttentionProgram`.
+  if (CanApplyFlashAttentionPrefill(is_intel, kv_cache_quantization_enabled)) {
+    return ApplyFlashAttentionPrefill(
+        context, Q, present_key, present_value, attention_bias, seqlen_k, attn_output,
+        parameters, has_attention_bias, use_seqlen_k, has_local_window, local_window_size,
+        present_sequence_length, subgroup_min_size, alpha, attn_bias_dim0, attn_bias_dim1, attn_bias_dim3,
+        use_seqlens_q, seqlens_q, q_BNSH, has_head_sink, head_sink);
+  }
+
   FlashAttentionProgram program{"FlashAttention",
                                 has_attention_bias,
                                 is_qualcomm,
@@ -1052,22 +1235,10 @@ Status ApplyDensePrefill(const Tensor* Q, Tensor* present_key, Tensor* present_v
     program.AddInputs({{head_sink, ProgramTensorMetadataDependency::Type}});
   }
   program.AddOutputs({{attn_output, ProgramTensorMetadataDependency::TypeAndRank, 4}});
-  const float alpha = parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_))
-                                                : parameters.scale_;
 
   // On Apple GPUs, use a larger workgroup size to reduce barrier overhead.
   const uint32_t prefill_tile_size = is_apple ? 128 : tile_size;
   const uint32_t num_seq_tile = (parameters.sequence_length_ + prefill_tile_size - 1) / prefill_tile_size;
-
-  uint32_t attn_bias_dim0 = 1;
-  uint32_t attn_bias_dim1 = 1;
-  uint32_t attn_bias_dim3 = 0;
-  if (has_attention_bias) {
-    const auto& bias_shape = attention_bias->Shape();
-    attn_bias_dim0 = static_cast<uint32_t>(bias_shape[0]);
-    attn_bias_dim1 = static_cast<uint32_t>(bias_shape[1]);
-    attn_bias_dim3 = static_cast<uint32_t>(bias_shape[3]);
-  }
 
   program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_seq_tile)
       .SetWorkgroupSize(prefill_tile_size)
