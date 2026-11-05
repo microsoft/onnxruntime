@@ -133,7 +133,7 @@ jobs:
           key: linux-minimal-exceptions-disabled
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -376,7 +376,7 @@ jobs:
           key: linux-extended-minimal
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -445,7 +445,7 @@ jobs:
           submodules: false
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -545,7 +545,7 @@ jobs:
           touch ${{ runner.temp }}/.test_data/include_no_operators.config
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -628,7 +628,7 @@ jobs:
           touch ${{ runner.temp }}/.test_data/include_no_operators.config
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -721,7 +721,7 @@ jobs:
           path: ${{ runner.temp }}/.test_data/
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
