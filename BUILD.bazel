@@ -8,7 +8,7 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//bazel:bindings.bzl", "language_bindings")
 load("//bazel:cuda.bzl", "cuda_libraries")
 load("//bazel:mlas.bzl", "mlas_libraries")
-load("//bazel:platforms.bzl", "desktop_shared_library")
+load("//bazel:platforms.bzl", "ORIGIN_RPATH", "desktop_shared_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -310,6 +310,20 @@ cuda_libraries()
 language_bindings()
 
 cc_test(
+    name = "runtime_shared_smoke_test",
+    srcs = ["tools/bazel/runtime_smoke_test.cc"],
+    args = ["$(location go/testdata/add_f32.onnx)"],
+    data = ["go/testdata/add_f32.onnx"],
+    linkopts = ORIGIN_RPATH,
+    linkstatic = True,
+    deps = [
+        ":api_headers",
+        ":runtime_shared",
+        "@ort_onnx//:onnx",
+    ],
+)
+
+cc_test(
     name = "runtime_cuda_smoke_test",
     srcs = ["tools/bazel/runtime_smoke_test.cc"],
     args = [
@@ -328,4 +342,37 @@ cc_test(
         "requires-gpu",
     ],
     deps = [":runtime"],
+)
+
+cc_test(
+    name = "runtime_cuda_shared_smoke_test",
+    srcs = ["tools/bazel/runtime_smoke_test.cc"],
+    args = [
+        "$(location go/testdata/add_f32.onnx)",
+        "cuda",
+    ],
+    data = [
+        "go/testdata/add_f32.onnx",
+        ":libonnxruntime_providers_cuda.so",
+        ":libonnxruntime_providers_shared.so",
+    ],
+    linkopts = ORIGIN_RPATH,
+    linkstatic = True,
+    tags = [
+        "external",
+        "manual",
+        "requires-gpu",
+    ],
+    target_compatible_with = select({
+        "//bazel:cuda_enabled": [
+            "@platforms//os:linux",
+            "@platforms//cpu:x86_64",
+        ],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        ":api_headers",
+        ":runtime_shared",
+        "@ort_onnx//:onnx",
+    ],
 )

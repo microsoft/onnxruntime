@@ -7,9 +7,10 @@ It does **not** invoke CMake, `build.py`, Gradle, MSBuild, `cmake-js`, or
 their location under `cmake/` does not make them build-system dependencies.
 
 The native graph targets Linux x86-64, Windows x86-64, and macOS on Intel and
-Apple Silicon. Linux and native Windows execution have been validated; macOS
-validation is still pending. This is not yet a replacement for the
-release build: contrib operators, training, additional execution providers,
+Apple Silicon. The runtime and five desktop bindings passed native Linux,
+Windows, and Apple Silicon macOS CI at `d473c4e677`; later changes have separate
+validation evidence below. Intel macOS execution is not claimed. This is not
+yet a replacement for the release build: contrib operators, training, additional execution providers,
 mobile/web cross-compilation, and release packaging are not included.
 
 ## Getting started
@@ -116,7 +117,8 @@ bazel test -c opt \
   --//bazel:cuda \
   --@rules_cuda//cuda:archs=sm_90 \
   --test_env=LD_LIBRARY_PATH \
-  //:runtime_cuda_smoke_test
+  //:runtime_cuda_smoke_test \
+  //:runtime_cuda_shared_smoke_test
 
 bazel build -c opt \
   --//bazel:cuda \
@@ -132,10 +134,17 @@ translation units directly. cuDNN and cuFFT are dynamically loaded using ORT's
 existing loaders. Preserve all three ORT shared libraries together, and make
 the CUDA/cuDNN runtime libraries discoverable.
 
-The CUDA smoke test disables CPU execution-provider fallback. Passing it
+The CUDA smoke tests disable CPU execution-provider fallback. Passing them
 therefore requires GPU execution of Add, MatMul, and Conv, not merely detection of an
 installed GPU. GPU tests are tagged `manual`/`requires-gpu` and must be requested
-explicitly.
+explicitly. The shared variant links only the public runtime API. Its CUDA
+import co-locates runtime and provider runfiles using native C++ linking
+metadata, so ORT's sibling-library loader works inside Bazel's `_solib`
+directory. Providers are not linked eagerly: their initialization requires
+the host interface installed by the runtime.
+
+`//:runtime_shared_smoke_test` also exercises the public shared-runtime import
+in the default CPU configuration, without requiring CUDA SDKs.
 
 The following combinations have executed the fallback-disabled CUDA test on
 an NVIDIA H200 (`sm_90`), driver 580.159.04, with GCC 13.2 on Azure Linux 3:
@@ -143,12 +152,32 @@ an NVIDIA H200 (`sm_90`), driver 580.159.04, with GCC 13.2 on Azure Linux 3:
 | Toolkit | cuDNN | Result |
 | --- | --- | --- |
 | CUDA 12.8, NVCC 12.8.93 | 9.14.0.64 | Add, MatMul, and Conv passed on GPU. |
+| CUDA 13.0.2, NVCC 13.0.88 | 9.14.0.64 | Add, MatMul, and Conv passed on GPU at `35992fc6ad`. |
 | CUDA 13.3, NVCC 13.3.73 | 9.27.0.42 | Add, MatMul, and Conv passed on GPU. |
 
 These are tested combinations, not a claim that every CUDA 12/13 minor release,
-GPU architecture, or driver/cuDNN combination has passed. In particular,
-CUDA 13.0 has not been validated with this graph. The existing Abseil NVCC 13.3
-source workaround is included.
+GPU architecture, or driver/cuDNN combination has passed. The existing
+Abseil NVCC 13.3 source workaround is included.
+
+The CUDA 13.0.2 run used a task-private SDK assembled from official,
+SHA-256-verified NVIDIA redistributions, GCC 13.2, 24 jobs, and the same H200
+host. An initial native compilation took 316.52 s but stopped before linking
+because the manually assembled SDK lacked the separate `cuda_culibos` package.
+After completing the SDK, the successful incremental compilation/link took
+175.19 s, the no-change build took 0.422 s, and the uncached fallback-disabled
+GPU test took 23.76 s. Dependency downloads were warm and partial object
+outputs were reused; these are staged validation timings, not an uninterrupted
+cold-build benchmark. Standard complete toolkit installations do not require
+this manual redistribution assembly.
+
+The shared-runtime regression subsequently passed the same three
+fallback-disabled CUDA operations on that SDK/H200 configuration in 23.05 s
+wall time, using already compiled runtime/provider objects. ELF inspection
+confirmed that the executable depends on `libonnxruntime.so`, not eagerly
+loaded provider libraries. The default CPU shared-runtime test passed with
+`CUDA_PATH`, `CUDNN_PATH`, and `LD_LIBRARY_PATH` unset in 113.45 s including
+550 actions (1,127 cache hits), using 24 jobs. These are incremental
+regression timings, not cold-build comparisons.
 
 The provider links with `--no-undefined` and exports only its `GetProvider`
 entry point, so missing implementation dependencies fail the build rather
