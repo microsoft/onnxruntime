@@ -56,7 +56,7 @@ jobs:
             //:go_test //:java_smoke_test \
             //:python_smoke_test //:node_smoke_test //:csharp_smoke_test \
             //rust:smoke_test //:runtime_sdk_archive_test //:java_native_jar_test \
-            //:java_maven_test //:java_release_tool_test //:release_inventory_test \
+            //:java_maven_test //:java_release_tool_test //:release_inventory_test //:release_parity_test \
             //:python_wheel_packager_test //:python_wheel_subprocess_test //:common_npm_test \
             //rust:crates_io_artifacts_test //:go_module_proxy_artifacts_test \
             //objectivec:apple_package_test \

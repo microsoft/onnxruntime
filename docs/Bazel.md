@@ -87,9 +87,10 @@ correcting the packaged public-header mapping and using the public output-tensor
 `view()` API (source bundle: 69.6s; extracted `.crate` files: 68.9s).
 `//:native_release_payload_test` compares actual SDK/Maven/npm/wheel/NuGet
 native member hashes with their declared release action outputs, not manually
-stripped proxies. Windows frozen wildcard release analysis passed for 329
-targets and 71,274 configured targets with zero actions after the Catalyst
-toolchain override, followed by a strict frozen repeat. The four portable
+stripped proxies. Final merged Windows frozen release analysis (`//...` plus
+the six explicit WASM/browser targets) passed for 337 targets and 74,870
+configured targets in 64.391s with zero actions. All 11 inherited strict parity
+gate cases passed on Windows. The four portable
 inventory/Catalyst/wheel-packager/subprocess targets also passed on Windows;
 neither result is Windows native package execution.
 
@@ -298,6 +299,45 @@ on macOS. The public headers remain
 under `include/onnxruntime/`; the `//:api_headers` target exports their include
 paths. `//:runtime_shared` exposes the shared library to other Bazel C/C++
 targets. `//:runtime` is the static runtime library.
+
+For a package-ready native payload, build:
+
+```sh
+bazel build --config=release //:runtime_release_library
+```
+
+The output is under `bazel-bin/runtime_release_library/`, with the same
+platform-specific filename as the raw library. The release profile selects
+optimized compilation without LTO. Its additional linker optimizations apply
+only in opt builds. `--strip=always` alone does not remove all unnecessary ELF
+symbols, so the release target invokes the selected C++ toolchain's strip action:
+`--strip-unneeded` on Linux, or `-S -x` on macOS. Windows forwards the DLL without
+stripping it. `//:runtime_library` remains available for linking and debugging.
+
+The strip action declares the toolchain's files and uses its action environment.
+An auto-configured Linux C++ toolchain can still select system executables;
+source dependency checksums do not make those host tools hermetic.
+
+`//:release_parity_test` covers the release comparison helper. To compare
+extracted Linux payload directories and paired latency samples, run:
+
+```sh
+python tools/bazel/release_parity.py \
+  --baseline-payload /path/to/baseline --candidate-payload /path/to/candidate \
+  --strip-tool /usr/bin/strip --size-tool /usr/bin/size \
+  --baseline-benchmarks baseline.json --candidate-benchmarks candidate.json \
+  --max-performance-regression-percent 0 --output comparison.json
+```
+
+Each benchmark JSON contains a `workloads` object mapping identical workload
+names to at least five positive, finite latency samples. Baseline and candidate
+samples must be paired in the same trial order. The gate compares the median
+of paired candidate/baseline ratios and its paired-bootstrap 95% confidence
+interval. Both regressions and inconclusive intervals fail the gate; a zero
+threshold requires the interval's upper bound to be no greater than one.
+Payload file sets must match, and raw, stripped, ELF-section, and compressed
+sizes must not grow. Run comparable feature configurations and record source,
+toolchain, and payload hashes; the helper cannot establish feature equivalence.
 
 When invoking Bazel from Git Bash on Windows, set
 `export MSYS2_ARG_CONV_EXCL='*'` so labels and test filters are not rewritten

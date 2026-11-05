@@ -592,6 +592,15 @@ cc_test(
     deps = ["@ort_cpuinfo//:cpuinfo"],
 )
 
+py_test(
+    name = "release_parity_test",
+    srcs = [
+        "tools/bazel/release_parity.py",
+        "tools/bazel/release_parity_test.py",
+    ],
+    main = "tools/bazel/release_parity_test.py",
+)
+
 cc_test(
     name = "runtime_smoke_test",
     srcs = ["tools/bazel/runtime_smoke_test.cc"],
