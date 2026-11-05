@@ -4,6 +4,7 @@
 #pragma once
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -17,7 +18,7 @@
 namespace onnxruntime::test {
 
 template <typename TestBody>
-void RunWithExternalCompletionContext(TestBody test_body, bool timed_wait = true) {
+void RunWithExternalCompletionContext(TestBody test_body, bool timed_wait = true, uint64_t max_buffer_size = 0) {
   ConfigOptions options;
   auto owned_ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
   ASSERT_NE(owned_ep, nullptr);
@@ -36,6 +37,11 @@ void RunWithExternalCompletionContext(TestBody test_body, bool timed_wait = true
   const auto device_feature = wgpu::FeatureName::ImplicitDeviceSynchronization;
   auto lost = std::make_shared<bool>(false);
   wgpu::DeviceDescriptor device_desc{};
+  wgpu::Limits limits{};
+  if (max_buffer_size != 0) {
+    limits.maxBufferSize = max_buffer_size;
+    device_desc.requiredLimits = &limits;
+  }
   device_desc.requiredFeatureCount = 1;
   device_desc.requiredFeatures = &device_feature;
   device_desc.SetDeviceLostCallback(

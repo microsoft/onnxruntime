@@ -3,6 +3,8 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -10,8 +12,10 @@
 #include <fstream>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -1014,11 +1018,11 @@ TEST_F(WebGpuBucketCacheTest, ReusesWorkingSetsAcrossSizesAndDemandLevels) {
   }
 }
 
-TEST_F(WebGpuBucketCacheTest, BoundsTotalSpareBytesOnRelease) {
+TEST_F(WebGpuBucketCacheTest, KeepsWorkingSetsLargerThanFormerSpareCap) {
   constexpr size_t kSize = 32 * 1024 * 1024;
   InlinedVector<wgpu::Buffer> originals;
   InlinedHashSet<WGPUBuffer> identities;
-  for (size_t i = 0; i < 9; ++i) {
+  for (size_t i = 0; i < 12; ++i) {
     originals.emplace_back(Create(kSize));
     identities.insert(originals.back().Get());
   }
@@ -1026,96 +1030,16 @@ TEST_F(WebGpuBucketCacheTest, BoundsTotalSpareBytesOnRelease) {
     manager_->Release(wgpu::Buffer{buffer}.MoveToCHandle());
   }
   InlinedVector<wgpu::Buffer> acquired;
-  size_t reused = 0;
-  for (size_t i = 0; i < 9; ++i) {
+  for (size_t i = 0; i < originals.size(); ++i) {
     acquired.emplace_back(Create(kSize));
-    reused += identities.count(acquired.back().Get());
+    EXPECT_EQ(identities.count(acquired.back().Get()), 1u);
   }
-  EXPECT_EQ(reused, 8u);  // At most 256 MiB of idle buffers, independent of demand.
 }
 
-TEST_F(WebGpuBucketCacheTest, ReclaimsColdestSizeBeforeCacheMissAllocation) {
+TEST_F(WebGpuBucketCacheTest, ANewSizeDoesNotDiscardAnotherWorkingSet) {
   constexpr size_t kMiB = 1024 * 1024;
-  auto cold = Create(64 * kMiB);
-  manager_->Release(wgpu::Buffer{cold}.MoveToCHandle());
-  InlinedVector<wgpu::Buffer> hot;
-  InlinedHashSet<WGPUBuffer> hot_ids;
-  for (size_t i = 0; i < 6; ++i) {
-    hot.emplace_back(Create(32 * kMiB));
-    hot_ids.insert(hot.back().Get());
-  }
-  for (const auto& buffer : hot) {
-    manager_->Release(wgpu::Buffer{buffer}.MoveToCHandle());
-  }
-  // The spare pool is full. This miss must reclaim the older 64 MiB bucket now.
-  auto new_size = Create(48 * kMiB);
-  InlinedVector<wgpu::Buffer> acquired;
-  for (size_t i = 0; i < hot.size(); ++i) {
-    acquired.emplace_back(Create(32 * kMiB));
-    EXPECT_EQ(hot_ids.count(acquired.back().Get()), 1u);
-  }
-  auto old_size = Create(64 * kMiB);
-  EXPECT_NE(old_size.Get(), cold.Get());
-}
-
-TEST_F(WebGpuBucketCacheTest, ExpiresVacatedSizesWhileKeepingReusedBuffers) {
-  InlinedVector<wgpu::Buffer> cold;
-  InlinedHashSet<WGPUBuffer> cold_ids;
-  for (size_t i = 0; i < 4; ++i) {
-    cold.emplace_back(Create(1537));
-    cold_ids.insert(cold.back().Get());
-  }
-  for (const auto& buffer : cold) {
-    manager_->Release(wgpu::Buffer{buffer}.MoveToCHandle());
-  }
-  constexpr size_t kHotRequest = 70 * 1024;
-  auto hot = Create(kHotRequest);
-  manager_->Release(wgpu::Buffer{hot}.MoveToCHandle());
-  for (size_t step = 0; step < 64; ++step) {
-    auto buffer = Create(kHotRequest);
-    EXPECT_EQ(buffer.Get(), hot.Get());
-    manager_->Release(buffer.MoveToCHandle());
-    ASSERT_STATUS_OK(context_->Flush(*manager_, recording_));
-  }
-  InlinedVector<wgpu::Buffer> acquired;
-  size_t reused = 0;
-  for (size_t i = 0; i < cold.size(); ++i) {
-    acquired.emplace_back(Create(1537));
-    reused += cold_ids.count(acquired.back().Get());
-  }
-  EXPECT_EQ(reused, 0u);
-  for (auto& buffer : acquired) {
-    manager_->Release(buffer.MoveToCHandle());
-  }
-  for (size_t step = 0; step < 3 * 64; ++step) {
-    auto buffer = Create(kHotRequest);
-    EXPECT_EQ(buffer.Get(), hot.Get());
-    manager_->Release(buffer.MoveToCHandle());
-    ASSERT_STATUS_OK(context_->Flush(*manager_, recording_));
-  }
-  auto vacated = Create(1537);
-  EXPECT_EQ(cold_ids.count(vacated.Get()), 0u);
-}
-
-TEST_F(WebGpuBucketCacheTest, OneOffBurstsDoNotEvictAReusedWorkingSet) {
-  constexpr size_t kMiB = 1024 * 1024;
-  InlinedVector<wgpu::Buffer> hot;
-  InlinedHashSet<WGPUBuffer> hot_ids;
-  for (size_t i = 0; i < 6; ++i) {
-    hot.emplace_back(Create(16 * kMiB));
-    hot_ids.insert(hot.back().Get());
-  }
-  for (const auto& buffer : hot) {
-    manager_->Release(wgpu::Buffer{buffer}.MoveToCHandle());
-  }
-  // Acquire together to demonstrate reuse of the whole hot working set.
-  InlinedVector<wgpu::Buffer> reused;
-  for (size_t i = 0; i < hot.size(); ++i) {
-    reused.emplace_back(Create(16 * kMiB));
-  }
-  for (auto& buffer : reused) {
-    manager_->Release(buffer.MoveToCHandle());
-  }
+  auto first = Create(224 * kMiB);
+  manager_->Release(wgpu::Buffer{first}.MoveToCHandle());
   InlinedVector<wgpu::Buffer> burst;
   for (size_t i = 0; i < 8; ++i) {
     burst.emplace_back(Create(48 * kMiB));
@@ -1123,114 +1047,142 @@ TEST_F(WebGpuBucketCacheTest, OneOffBurstsDoNotEvictAReusedWorkingSet) {
   for (auto& buffer : burst) {
     manager_->Release(buffer.MoveToCHandle());
   }
-  reused.clear();
-  for (size_t i = 0; i < hot.size(); ++i) {
-    reused.emplace_back(Create(16 * kMiB));
-    EXPECT_EQ(hot_ids.count(reused.back().Get()), 1u);
+  auto reused = Create(224 * kMiB);
+  EXPECT_EQ(reused.Get(), first.Get());
+}
+
+TEST_F(WebGpuBucketCacheTest, OtherRecordingsDoNotAdvanceIdleAgeBySubmissionCount) {
+  auto original = Create(1537);
+  manager_->Release(wgpu::Buffer{original}.MoveToCHandle());
+  webgpu::CommandRecordingState other;
+  for (size_t step = 0; step < 256; ++step) {
+    auto active = manager_->Create(other, 70 * 1024, kUsage);
+    manager_->Release(active, &other);
+    ASSERT_STATUS_OK(context_->Flush(*manager_, other));
   }
+  auto reused = Create(1537);
+  EXPECT_EQ(reused.Get(), original.Get());
 }
 
-TEST_F(WebGpuBucketCacheTest, RecurringDemandCanReplaceALargeProtectedBuffer) {
-  constexpr size_t kMiB = 1024 * 1024;
-  auto old = Create(224 * kMiB);
-  manager_->Release(wgpu::Buffer{old}.MoveToCHandle());
-  auto reused_old = Create(224 * kMiB);
-  EXPECT_EQ(reused_old.Get(), old.Get());
-  manager_->Release(reused_old.MoveToCHandle());
-
-  auto first = Create(64 * kMiB);
-  manager_->Release(wgpu::Buffer{first}.MoveToCHandle());
-  ASSERT_STATUS_OK(context_->Flush(*manager_, recording_));
-  auto next = Create(64 * kMiB);
-  // The first probationary buffer could not fit alongside the old protected buffer.
-  EXPECT_NE(next.Get(), first.Get());
-  manager_->Release(wgpu::Buffer{next}.MoveToCHandle());
-  auto reused_new = Create(64 * kMiB);
-  EXPECT_EQ(reused_new.Get(), next.Get());
+TEST_F(WebGpuBucketCacheTest, ConcurrentRecordingsNeverAcquireTheSameLiveBuffer) {
+  std::mutex active_mutex;
+  InlinedHashSet<WGPUBuffer> active;
+  std::atomic<size_t> duplicate_acquisitions{0};
+  const auto allocate = [&]() {
+    webgpu::CommandRecordingState recording;
+    for (size_t step = 0; step < 256; ++step) {
+      auto buffer = manager_->Create(recording, 70 * 1024, kUsage);
+      {
+        std::lock_guard<std::mutex> lock{active_mutex};
+        if (!active.insert(buffer).second) {
+          ++duplicate_acquisitions;
+        }
+      }
+      std::this_thread::yield();
+      {
+        std::lock_guard<std::mutex> lock{active_mutex};
+        active.erase(buffer);
+      }
+      manager_->Release(buffer, &recording);
+    }
+  };
+  std::thread first{allocate};
+  std::thread second{allocate};
+  first.join();
+  second.join();
+  EXPECT_EQ(duplicate_acquisitions.load(), 0u);
+  EXPECT_TRUE(active.empty());
 }
 
-TEST_F(WebGpuBucketCacheTest, ExpiresIdleTailWithinAnActiveSizeClass) {
-  constexpr size_t kRequest = 70 * 1024;
+TEST_F(WebGpuBucketCacheTest, ExpiresIdleSurplusButPreservesReusedLateAndPendingBuffers) {
   InlinedVector<wgpu::Buffer> originals;
   InlinedHashSet<WGPUBuffer> identities;
   for (size_t i = 0; i < 4; ++i) {
-    originals.emplace_back(Create(kRequest));
+    originals.emplace_back(Create(1537));
     identities.insert(originals.back().Get());
   }
   for (const auto& buffer : originals) {
     manager_->Release(wgpu::Buffer{buffer}.MoveToCHandle());
   }
-  InlinedVector<wgpu::Buffer> warmed;
-  for (size_t i = 0; i < originals.size(); ++i) {
-    warmed.emplace_back(Create(kRequest));
-  }
-  const auto hot_buffer = warmed.back().Get();
-  for (auto& buffer : warmed) {
-    manager_->Release(buffer.MoveToCHandle());
-  }
-  for (size_t step = 0; step < 64; ++step) {
-    auto buffer = Create(kRequest);
-    EXPECT_EQ(buffer.Get(), hot_buffer);
-    manager_->Release(buffer.MoveToCHandle());
+  auto vacated = Create(70 * 1024);
+  manager_->Release(wgpu::Buffer{vacated}.MoveToCHandle());
+  auto late = Create(64);
+  webgpu::CommandRecordingState active;
+  auto pending = wgpu::Buffer::Acquire(manager_->Create(active, 128, kUsage));
+  context_->GetCommandEncoder(active).ClearBuffer(pending, 0, 128);
+  manager_->Release(wgpu::Buffer{pending}.MoveToCHandle(), &active);
+
+  // Use real idle time while continuing to reuse one entry from the original peak.
+  for (size_t second = 0; second < 3; ++second) {
+    std::this_thread::sleep_for(std::chrono::seconds{1});
+    auto hot = Create(1537);
+    EXPECT_EQ(hot.Get(), originals.back().Get());
+    manager_->Release(hot.MoveToCHandle());
     ASSERT_STATUS_OK(context_->Flush(*manager_, recording_));
   }
   InlinedVector<wgpu::Buffer> acquired;
   size_t reused = 0;
   for (size_t i = 0; i < originals.size(); ++i) {
-    acquired.emplace_back(Create(kRequest));
+    acquired.emplace_back(Create(1537));
     reused += identities.count(acquired.back().Get());
   }
-  EXPECT_EQ(reused, 1u);  // Reusing one buffer must not pin the entire previous peak.
+  EXPECT_EQ(reused, 1u);
+  auto new_size = Create(70 * 1024);
+  EXPECT_NE(new_size.Get(), vacated.Get());
+
+  manager_->Release(wgpu::Buffer{late}.MoveToCHandle());
+  auto returned = Create(64);
+  EXPECT_EQ(returned.Get(), late.Get());
+  auto before_submission = Create(128);
+  EXPECT_NE(before_submission.Get(), pending.Get());
+  ASSERT_STATUS_OK(context_->Flush(*manager_, active));
+  auto after_submission = Create(128);
+  EXPECT_EQ(after_submission.Get(), pending.Get());
 }
 
-TEST_F(WebGpuBucketCacheTest, EvictsAcrossSizesWhenReturnedBuffersExceedBudget) {
+TEST_F(WebGpuBucketCacheTest, LargeBuffersUseRelativeClassesAndAreRetained) {
   constexpr size_t kMiB = 1024 * 1024;
-  auto cold = Create(64 * kMiB);
-  InlinedVector<wgpu::Buffer> hot;
-  InlinedHashSet<WGPUBuffer> hot_ids;
-  for (size_t i = 0; i < 6; ++i) {
-    hot.emplace_back(Create(32 * kMiB));
-    hot_ids.insert(hot.back().Get());
+  constexpr size_t kRequest = 256 * kMiB + 1;
+  constexpr size_t kCapacity = 288 * kMiB;
+  if (context_->DeviceLimits().maxBufferSize < kCapacity) {
+    GTEST_SKIP() << "Device cannot allocate the selected large size class.";
   }
-  auto newest = Create(48 * kMiB);
-  manager_->Release(wgpu::Buffer{cold}.MoveToCHandle());
-  for (const auto& buffer : hot) {
-    manager_->Release(wgpu::Buffer{buffer}.MoveToCHandle());
-  }
-  manager_->Release(wgpu::Buffer{newest}.MoveToCHandle());
-  auto reused_newest = Create(48 * kMiB);
-  EXPECT_EQ(reused_newest.Get(), newest.Get());
-  InlinedVector<wgpu::Buffer> acquired;
-  for (size_t i = 0; i < hot.size(); ++i) {
-    acquired.emplace_back(Create(32 * kMiB));
-    EXPECT_EQ(hot_ids.count(acquired.back().Get()), 1u);
-  }
-  auto old_size = Create(64 * kMiB);
-  EXPECT_NE(old_size.Get(), cold.Get());
-}
-
-TEST_F(WebGpuBucketCacheTest, LateReturnStartsANewColdGracePeriod) {
-  auto buffer = Create(64);
-  for (size_t step = 0; step < 64; ++step) {
-    ASSERT_STATUS_OK(context_->Flush(*manager_, recording_));
-  }
+  auto buffer = Create(kRequest);
+  EXPECT_EQ(buffer.GetSize(), kCapacity);
   manager_->Release(wgpu::Buffer{buffer}.MoveToCHandle());
-  ASSERT_STATUS_OK(context_->Flush(*manager_, recording_));
-  auto reused = Create(64);
+  auto reused = Create(kRequest);
   EXPECT_EQ(reused.Get(), buffer.Get());
 }
 
-TEST_F(WebGpuBucketCacheTest, OversizedBuffersAreAlignedButNotRetained) {
-  constexpr size_t kRequest = 256 * 1024 * 1024 + 1;
-  if (context_->DeviceLimits().maxBufferSize < kRequest + 15) {
-    GTEST_SKIP() << "Device cannot allocate a buffer larger than the spare budget.";
+TEST(WebGpuContextTest, BucketRoundingFitsDeviceBufferLimit) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "Dawn native device creation is unavailable.";
+#else
+  ConfigOptions options;
+  auto owned_ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  if (webgpu::WebGpuContextFactory::GetContext(0).DeviceLimits().maxBufferSize < 273 * 1024 * 1024) {
+    GTEST_SKIP() << "Device cannot allocate the selected custom size limit.";
   }
-  auto buffer = Create(kRequest);
-  EXPECT_EQ(buffer.GetSize(), kRequest + 15);
-  manager_->Release(wgpu::Buffer{buffer}.MoveToCHandle());
-  ASSERT_STATUS_OK(context_->Flush(*manager_, recording_));
-  auto next = Create(kRequest);
-  EXPECT_NE(next.Get(), buffer.Get());
+  RunWithFreshDefaultContext([]() {
+    constexpr size_t kLimit = 273 * 1024 * 1024;
+    RunWithExternalCompletionContext(
+        [](webgpu::WebGpuContext& context, auto& ep, const auto&, auto&) {
+          constexpr size_t kSize = 273 * 1024 * 1024;
+          ASSERT_EQ(context.DeviceLimits().maxBufferSize, kSize);
+          auto& manager = context.BufferManager();
+          constexpr auto usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc |
+                                 wgpu::BufferUsage::CopyDst;
+          context.PushErrorScope();
+          auto buffer = wgpu::Buffer::Acquire(manager.Create(ep.Recording(), kSize, usage));
+          EXPECT_EQ(buffer.GetSize(), kSize);
+          manager.Release(wgpu::Buffer{buffer}.MoveToCHandle());
+          auto reused = wgpu::Buffer::Acquire(manager.Create(ep.Recording(), kSize, usage));
+          EXPECT_EQ(reused.Get(), buffer.Get());
+          ASSERT_STATUS_OK(context.PopErrorScope());
+        },
+        true, kLimit);
+  });
+#endif
 }
 
 TEST(WebGpuContextTest, BufferReleasedAfterSubmissionIsReusableWithoutAnotherFlush) {
