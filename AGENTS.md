@@ -36,7 +36,7 @@ ONNX Runtime is a cross-platform inference and training engine for ONNX models. 
 - **`optimizer/`** — Graph transformations (fusion, elimination, constant folding, layout transforms). Organized by optimization level (Level1–Level4).
 - **`framework/`** — Execution machinery: `OpKernel`, `Tensor`, `KernelRegistry`, allocators, executors.
 - **`session/`** — `InferenceSession`: `Load()` → `Initialize()` (optimize + assign kernels) → `Run()`.
-- **`providers/`** — Execution Provider (EP) implementations. Each EP implements `IExecutionProvider`. CPU EP is the default fallback. 20+ EPs exist (CUDA, TensorRT, DirectML, CoreML, OpenVINO, WebGPU, QNN, etc.).
+- **`providers/`** — Execution Provider (EP) implementations. Each EP implements `IExecutionProvider`. CPU EP is the default fallback. 20+ EPs exist (CUDA, TensorRT, DirectML, CoreML, OpenVINO, WebGPU, etc.).
 - **`common/`** — Utilities, status/error types, logging, threading.
 - **`platform/`** — OS abstraction (file I/O, threading).
 

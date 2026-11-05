@@ -20,15 +20,6 @@
   - ONNX Runtime Inferencing: [microsoft/onnxruntime-inference-examples](https://github.com/microsoft/onnxruntime-inference-examples)
   - ONNX Runtime Training: [microsoft/onnxruntime-training-examples](https://github.com/microsoft/onnxruntime-training-examples)
 
-* **Plugin EP repositories**:
-  - ONNX Runtime QNN Plugin EP: [onnxruntime/onnxruntime-qnn](https://github.com/onnxruntime/onnxruntime-qnn)
-
-  QNN is built and packaged in the plugin repository, not in this repository.
-  The native QNN provider implementation, its tests, and QNN-specific NuGet and AAR packaging have been removed.
-  The in-tree `--use_qnn` and `--qnn_home` build options and the legacy QNN provider-interface bridge are no longer supported.
-  Register the external QNN plugin through the plugin EP APIs instead.
-  QNN model-preprocessing and quantization tools remain available.
-
 ## Releases
 
 The current release and past releases can be found here: https://github.com/microsoft/onnxruntime/releases.

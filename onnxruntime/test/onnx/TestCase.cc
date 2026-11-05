@@ -961,7 +961,7 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       {"reduce_max_empty_set_bool",
        "ReduceMax does not support bool; mirrors onnx_backend_test_series_filters.jsonc global exclusion"},
       // onnx#7959: the materialized node corpus now runs on the CPU EP via the
-      // onnx_test_node_materialized ctest (previously the C++ node runner was QNN-only). ORT has
+      // onnx_test_node_materialized ctest. ORT has
       // no per-channel-quantization ConvInteger support on any EP -- the CPU kernel throws and
       // CUDA has no ConvInteger kernel at all -- so skip it globally here, mirroring the
       // provider-agnostic exclusion in onnx_backend_test_series_filters.jsonc.
@@ -1522,72 +1522,6 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
                           "DML does not support 5D+ tensors"});
     broken_tests->insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob_expanded",
                           "DML does not support 5D+ tensors"});
-  }
-
-  if (provider_name == "qnn") {
-    broken_tests->insert({"resize_downsample_scales_linear", "result differs"});
-    broken_tests->insert({"gridsample_volumetric_nearest_align_corners_0", "unknown version"});
-    broken_tests->insert({"gridsample_volumetric_nearest_align_corners_1", "unknown version"});
-    broken_tests->insert({"rotary_embedding_no_position_ids_expanded", "unknown version"});
-    broken_tests->insert({"rotary_embedding_no_position_ids_interleaved_expanded", "unknown version"});
-    broken_tests->insert({"rotary_embedding_no_position_ids_rotary_dim", "unknown version"});
-    broken_tests->insert({"rotary_embedding_with_interleaved_rotary_dim", "unknown version"});
-    broken_tests->insert({"rotary_embedding_with_rotary_dim", "unknown version"});
-    // Fails since QNN SDK 2.17.0:
-    // expected 7.70947 (40f6b3f3), got 7.84096 (40fae920), diff: 0.131491, tol=0.00870947 idx=419. 100 of 1715 differ
-    broken_tests->insert({"facedetection_op8_qdq", "result differs"});
-    // Fails with QNN SDK 2.34.0:
-    // expected 2.18661 (400bf164), got 1.48898 (3fbe96ce), diff: 0.697631, tol=0.00318661 idx=0. 8 of 8 differ
-    broken_tests->insert({"gemm_default_vector_bias", "result differs with 2.34"});
-    // expected 0.0505495 (3d4f0d00), got 0.0506369 (3d4f68ae), diff: 8.74326e-05, tol=6.05495e-05 idx=448
-    broken_tests->insert({"mobilenetv2-1.0", "result differs with 2.34"});
-
-    // These next 3 Resize tests fail on CPU backend with QNN SDK 2.22.0 due to inaccuracy.
-    // output=Y:expected 1 (3f800000), got 3 (40400000), diff: 2, tol=0.002 idx=24. 8 of 56 differ
-    broken_tests->insert({"resize_upsample_sizes_nearest", "result differs"});
-    broken_tests->insert({"resize_upsample_sizes_nearest_axes_2_3", "result differs"});
-    broken_tests->insert({"resize_upsample_sizes_nearest_axes_3_2", "result differs"});
-    broken_tests->insert({"resize_upsample_sizes_nearest_not_larger",
-                          "output=Y:expected 1 (3f800000), got 4 (40800000), diff: 3, tol=0.002 idx=24. 13 of 49 differ. CPU test passed."});
-    broken_tests->insert({"convtranspose_group_2", "Segmentation fault (core dumped). CPU test passed."});
-    broken_tests->insert({"convtranspose_group_2_image_3", "Segmentation fault (core dumped). CPU test passed."});
-    // Fails with QNN 2.31 on Windows x64 for CPU
-    broken_tests->insert({"gelu_tanh_2", "y:expected -0.0131778 (bc57e7d5), got -0.0136333 (bc5f5e38), diff: 0.000455472, tol=2.31778e-05."});
-    broken_tests->insert({"averagepool_2d_ceil", "result differs. expected 13.5 (41580000), got 0 (0)"});
-    broken_tests->insert({"scatter_elements_with_negative_indices", "unknown version"});
-    // Fails since ONNX==1.19.0
-    broken_tests->insert({"l2normalization_axis_0", "unknown version"});
-    broken_tests->insert({"attention_3d_gqa", "unknown version"});
-    broken_tests->insert({"attention_3d_gqa_attn_mask", "unknown version"});
-    broken_tests->insert({"attention_3d_gqa_causal", "unknown version"});
-    broken_tests->insert({"attention_3d_gqa_scaled", "unknown version"});
-    broken_tests->insert({"attention_3d_gqa_softcap", "unknown version"});
-    broken_tests->insert({"attention_3d_gqa_with_past_and_present", "unknown version"});
-    broken_tests->insert({"attention_4d_gqa", "unknown version"});
-    broken_tests->insert({"attention_4d_gqa_attn_mask", "unknown version"});
-    broken_tests->insert({"attention_4d_gqa_causal", "unknown version"});
-    broken_tests->insert({"attention_4d_gqa_scaled", "unknown version"});
-    broken_tests->insert({"attention_4d_gqa_softcap", "unknown version"});
-    broken_tests->insert({"attention_4d_gqa_with_past_and_present", "unknown version"});
-    broken_tests->insert({"attention_4d_gqa_with_past_and_present_fp16", "unknown version"});
-    broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal", "unknown version"});
-    broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal", "unknown version"});
-    broken_tests->insert({"attention_4d_diff_heads_mask4d_padded_kv", "need nonpad_kv_seqlen "});
-    broken_tests->insert({"rms_normalization_2d_axis1", "unknown version"});
-    broken_tests->insert({"rms_normalization_2d_axis_negative_1", "unknown version"});
-    broken_tests->insert({"rms_normalization_3d_axis2_epsilon", "unknown version"});
-    broken_tests->insert({"rms_normalization_3d_axis_negative_1_epsilon", "unknown version"});
-    broken_tests->insert({"rms_normalization_4d_axis3", "unknown version"});
-    broken_tests->insert({"rms_normalization_4d_axis_negative_1", "unknown version"});
-    broken_tests->insert({"rms_normalization_default_axis", "unknown version"});
-    // Fails since ONNX==1.20.0
-    broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal_expanded", "unknown version"});
-    broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal_expanded", "unknown version"});
-    // Note: dft_irfft/dft_irfft_opset19/dft_rfft/dft_rfft_opset19 (previously listed here as
-    // "Fails since ONNX==1.21.0") are now in the common GetBrokenTests initializer above, since
-    // the CPU-materialized node runner (onnx#7959) exposes the same marginal FFT precision failure
-    // that onnx_backend_test_series_filters.jsonc already excludes globally.
-    broken_tests->insert({"bitcast_bool_to_uint8", "ORT BitCast kernel does not register bool type"});
   }
 
 #ifdef DISABLE_CONTRIB_OPS

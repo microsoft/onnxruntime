@@ -155,7 +155,7 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
   // However, the internal NHWC domain is necessary to allow EPs to detect and reject Resize ops with unsupported
   // shapes after layout transformation.
   //
-  // NHWC Resize is currently used by the QNN EP.
+  // Register Resize for providers using NHWC layout.
   REGISTER_NCHW_SCHEMA_WITH_NHWC_DOMAIN(fn, Resize, 11);
   REGISTER_NCHW_SCHEMA_WITH_NHWC_DOMAIN(fn, Resize, 13);
   REGISTER_NCHW_SCHEMA_WITH_NHWC_DOMAIN(fn, Resize, 18);

@@ -4707,7 +4707,7 @@ void InferenceSession::PopulateEpDeviceInfo(const onnxruntime::Graph& graph) {
 
   // First, count nodes assigned to each EP type after graph partitioning.
   // The graph node only carries the EP type string, so when a single EP targets
-  // multiple devices (e.g. QNN targeting both NPU and GPU on the same SoC) we
+  // multiple devices (e.g. both NPU and GPU on the same SoC) we
   // cannot disambiguate node-to-device assignment here — every device row for the
   // same EP type will carry the same total count. Downstream aggregation should
   // use MAX (not SUM) across device rows to avoid double counting.

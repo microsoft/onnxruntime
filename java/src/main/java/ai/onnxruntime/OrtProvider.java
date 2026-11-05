@@ -39,7 +39,7 @@ public enum OrtProvider {
   XNNPACK("XnnpackExecutionProvider"),
   /** The Azure remote endpoint execution provider. */
   AZURE("AzureExecutionProvider"),
-  /** The QNN execution provider. */
+  /** Reserved provider identity for external plugin compatibility; not an in-tree backend. */
   QNN("QNNExecutionProvider"),
   /** The WebGPU execution provider */
   WEBGPU("WebGpuExecutionProvider");

@@ -1,8 +1,7 @@
 import numpy as np
 import onnx
 
-from onnxruntime.quantization import CalibrationDataReader, QuantType, quantize
-from onnxruntime.quantization.execution_providers.qnn import get_qnn_qdq_config
+from onnxruntime.quantization import CalibrationDataReader, QuantFormat, QuantType, StaticQuantConfig, quantize
 
 INPUT0_SHAPE = (1, 3, 8, 8)
 INPUT0_NAME = "input_0"
@@ -82,15 +81,24 @@ class DataReader(CalibrationDataReader):
 def create_qdq_model(model_f32):
     # Use tensor quantization overrides to quantize Conv's weight input to 4 bits on axis 0.
     init_overrides = {"weight": [{"quant_type": QuantType.QInt4, "axis": 0, "symmetric": True}]}
-    qnn_config = get_qnn_qdq_config(
-        model_f32,
+    config = StaticQuantConfig(
         DataReader(),
-        init_overrides=init_overrides,
+        quant_format=QuantFormat.QDQ,
         activation_type=QuantType.QUInt16,
         weight_type=QuantType.QUInt8,
+        op_types_to_quantize=["Conv"],
+        extra_options={
+            "MinimumRealRange": 0.0001,
+            "DedicatedQDQPair": False,
+            "QDQKeepRemovableActivations": False,
+            "TensorQuantOverrides": init_overrides,
+            "ActivationSymmetric": False,
+            "WeightSymmetric": False,
+            "CalibStridedMinMax": None,
+        },
     )
 
-    quantize(model_f32, "conv.int4_weights.qdq.onnx", qnn_config)
+    quantize(model_f32, "conv.int4_weights.qdq.onnx", config)
 
 
 if __name__ == "__main__":

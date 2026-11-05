@@ -8,12 +8,12 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
-#include "core/graph/constants.h"
-#include "core/framework/session_options.h"
+#include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
-namespace qnnctxgen {
+namespace epctxgen {
 
 // Configuration for initializing the dynamic plugin EP infrastructure.
 struct PluginEpConfig {
@@ -32,7 +32,7 @@ struct PluginEpConfig {
 };
 
 struct MachineConfig {
-  std::string provider_type_name{onnxruntime::kQnnExecutionProvider};
+  std::string provider_type_name{};
   std::optional<PluginEpConfig> plugin_ep_config = std::nullopt;
 };
 
@@ -48,5 +48,5 @@ struct TestConfig {
   MachineConfig machine_config;
 };
 
-}  // namespace qnnctxgen
+}  // namespace epctxgen
 }  // namespace onnxruntime

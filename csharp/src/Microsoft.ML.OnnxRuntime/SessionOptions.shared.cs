@@ -409,9 +409,14 @@ namespace Microsoft.ML.OnnxRuntime
 
 
         /// <summary>
-        /// Append QNN, SNPE or XNNPACK execution provider
+        /// Append an execution provider using its name and provider options.
         /// </summary>
-        /// <param name="providerName">Execution provider to add. 'QNN', 'SNPE' 'XNNPACK', 'CoreML and 'AZURE are currently supported.</param>
+        /// <param name="providerName">Execution provider to add, such as 'XNNPACK', 'CoreML' or 'AZURE'.</param>
+        /// <remarks>
+        /// The legacy QNN entry point is no longer supported. Register the external plugin library,
+        /// select its execution provider device, and use the AppendExecutionProvider overload that
+        /// accepts OrtEnv, IReadOnlyList&lt;OrtEpDevice&gt; and IReadOnlyDictionary&lt;string, string&gt; instead.
+        /// </remarks>
         /// <param name="providerOptions">Optional key/value pairs to specify execution provider options.</param>
         public void AppendExecutionProvider(string providerName, Dictionary<string, string> providerOptions = null)
         {

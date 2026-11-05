@@ -20,23 +20,22 @@
 
 #include <core/graph/constants.h>
 #include <core/platform/path_lib.h>
-#include <core/optimizer/graph_transformer_level.h>
 
 #include "nlohmann/json.hpp"
 #include "test_configuration.h"
 
 namespace onnxruntime {
-namespace qnnctxgen {
+namespace epctxgen {
 
 /*static*/ void CommandLineParser::ShowUsage() {
   printf(
       "%s",
       "ep_weight_sharing_ctx_gen [options...] model1_path,model2_path\n"
       "\n"
-      "Example: ./ep_weight_sharing_ctx_gen -e qnn -i \"soc_model|60 htp_graph_finalization_optimization_mode|3\" -C \"ep.context_node_name_prefix|_part1\" ./model1.onnx,./model2.onnx\n"
+      "Example: ./ep_weight_sharing_ctx_gen -p plugin_ep.json -C \"ep.context_node_name_prefix|_part1\" ./model1.onnx,./model2.onnx\n"
       "\n"
       "Options:\n"
-      "\t-e [qnn|tensorrt|openvino|vitisai]: Specifies the compile based provider 'qnn', 'tensorrt', 'openvino', 'vitisai'. Default: 'qnn'.\n"
+      "\t-e [tensorrt|openvino|vitisai]: Specifies the compiling provider. Either '-e' or '-p' is required.\n"
       "\t-p [plugin_ep_config_json_file]: Specify JSON configuration file for a plugin EP. Takes precedence over the '-e' and '-i' options.\n"
       "\n"
       "\t                                 Example JSON configuration that selects plugin EP devices via EP name:\n"
@@ -62,20 +61,7 @@ namespace qnnctxgen {
       "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
       "\t    [Usage]: -i '<key1>|<value1> <key2>|<value2>'\n"
       "\n"
-      "\t    [QNN only] [backend_type]: QNN backend type. E.g., 'cpu', 'htp'. Mutually exclusive with 'backend_path'.\n"
-      "\t    [QNN only] [backend_path]: QNN backend path. E.g., '/folderpath/libQnnHtp.so', '/winfolderpath/QnnHtp.dll'. Mutually exclusive with 'backend_type'.\n"
-      "\t    [QNN only] [vtcm_mb]: QNN VTCM size in MB. default to 0(not set).\n"
-      "\t    [QNN only] [htp_graph_finalization_optimization_mode]: QNN graph finalization optimization mode, options: '0', '1', '2', '3', default is '0'.\n"
-      "\t    [QNN only] [soc_model]: The SoC Model number. Refer to QNN SDK documentation for specific values. Defaults to '0' (unknown). \n"
-      "\t    [QNN only] [htp_arch]: The minimum HTP architecture. The driver will use ops compatible with this architecture. eg: '0', '68', '69', '73', '75'. Defaults to '0' (none). \n"
-      "\t    [QNN only] [enable_htp_fp16_precision]: Enable the HTP_FP16 precision so that the float32 model will be inferenced with fp16 precision. \n"
-      "\t    Otherwise, it will be fp32 precision. Works for float32 model for HTP backend. Defaults to '1' (with FP16 precision.). \n"
-      "\t    [QNN only] [offload_graph_io_quantization]: Offload graph input quantization and graph output dequantization to another EP (typically CPU EP). \n"
-      "\t    Defaults to '1' (another EP (typically CPU EP) handles the graph I/O quantization and dequantization). \n"
-      "\t    [QNN only] [enable_htp_spill_fill_buffer]: Enable HTP spill file buffer, used while generating QNN context binary.\n"
-      "\t    [QNN only] [extended_udma]: Enable HTP extended UDMA mode for better performance on supported hardware, options: \n"
-      "\t    '0' (disabled), '1' (enabled). Default: '0'. \n"
-      "\t    [Example] -i \"vtcm_mb|8 htp_arch|73\" \n"
+      "\t    Refer to the selected provider's documentation for supported options.\n"
       "\n"
       "\t-h: help\n");
 }
@@ -192,7 +178,8 @@ static bool ParsePluginEpConfig(const std::string& json_file_path, PluginEpConfi
     switch (ch) {
       case 'e':
         if (!CompareCString(optarg, ORT_TSTR("qnn"))) {
-          test_config.machine_config.provider_type_name = onnxruntime::kQnnExecutionProvider;
+          fprintf(stderr, "QNN is no longer supported by '-e'. Register an external plugin with '-p' instead.\n");
+          return false;
         } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kOpenVINOExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
@@ -242,35 +229,6 @@ static bool ParsePluginEpConfig(const std::string& json_file_path, PluginEpConfi
           std::string key(token.substr(0, pos));
           std::string value(token.substr(pos + 1));
 
-          if (key == "backend_type" || key == "backend_path" || key == "vtcm_mb" || key == "soc_model" ||
-              key == "htp_arch") {
-            // no validation
-          } else if (key == "htp_graph_finalization_optimization_mode") {
-            std::unordered_set<std::string> supported_htp_graph_final_opt_modes = {"0", "1", "2", "3"};
-            if (supported_htp_graph_final_opt_modes.find(value) == supported_htp_graph_final_opt_modes.end()) {
-              std::ostringstream str_stream;
-              std::copy(supported_htp_graph_final_opt_modes.begin(), supported_htp_graph_final_opt_modes.end(),
-                        std::ostream_iterator<std::string>(str_stream, ","));
-              std::string str = str_stream.str();
-              ORT_THROW("Wrong value for htp_graph_finalization_optimization_mode. select from: " + str);
-            }
-          } else if (key == "enable_htp_fp16_precision" || key == "offload_graph_io_quantization" ||
-                     key == "enable_htp_spill_fill_buffer" || key == "extended_udma") {
-            std::unordered_set<std::string> supported_options = {"0", "1"};
-            if (supported_options.find(value) == supported_options.end()) {
-              std::ostringstream str_stream;
-              std::copy(supported_options.begin(), supported_options.end(),
-                        std::ostream_iterator<std::string>(str_stream, ","));
-              std::string str = str_stream.str();
-              ORT_THROW("Wrong value for " + key + ". select from: " + str);
-            }
-          } else {
-            ORT_THROW(
-                "Wrong key type entered. Choose from options: ['backend_type', 'backend_path', 'vtcm_mb', "
-                "'htp_performance_mode', 'htp_graph_finalization_optimization_mode', 'soc_model', 'htp_arch', "
-                "'enable_htp_fp16_precision', 'offload_graph_io_quantization', 'enable_htp_spill_fill_buffer', 'extended_udma']");
-          }
-
           test_config.run_config.provider_options[key] = value;
         }
         break;
@@ -288,6 +246,12 @@ static bool ParsePluginEpConfig(const std::string& json_file_path, PluginEpConfi
     }
   }
 
+  if (test_config.machine_config.provider_type_name.empty() &&
+      !test_config.machine_config.plugin_ep_config.has_value()) {
+    std::cerr << "ERROR: Specify an execution provider with '-e' or a plugin configuration with '-p'." << std::endl;
+    return false;
+  }
+
   // parse model_path
   argc -= optind;
   argv += optind;
@@ -302,5 +266,5 @@ static bool ParsePluginEpConfig(const std::string& json_file_path, PluginEpConfi
   return true;
 }
 
-}  // namespace qnnctxgen
+}  // namespace epctxgen
 }  // namespace onnxruntime

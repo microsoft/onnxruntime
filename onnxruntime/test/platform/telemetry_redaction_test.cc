@@ -104,20 +104,20 @@ TEST(TelemetryRedactionTest, PreservesPathEvidenceAcrossIntakeLimits) {
 }
 
 TEST(TelemetryRedactionTest, ScrubsBeforePointerStorageAndLocationTruncation) {
-  const std::string message = "Using backend path: C:\\Users\\First Last\\QnnHtp.dll";
+  const std::string message = "Using backend path: C:\\Users\\First Last\\Backend.dll";
   telemetry_detail::TelemetryStrings strings;
   const char* stored_message = strings.Utf8(ScrubStringForTelemetry(message));
   const char* stored_identifier = strings.Utf8(ScrubStringForTelemetry("\\\\server\\share\\model.bin"));
-  const char* stored_category = strings.Utf8(ScrubStringForTelemetry("backend /home/alice/qnn"));
+  const char* stored_category = strings.Utf8(ScrubStringForTelemetry("backend /home/alice/plugin"));
   EXPECT_STREQ(stored_message, "Using backend path: [path]");
   EXPECT_STREQ(stored_identifier, "[path]");
   EXPECT_STREQ(stored_category, "backend [path]");
-  EXPECT_EQ(message, "Using backend path: C:\\Users\\First Last\\QnnHtp.dll");
+  EXPECT_EQ(message, "Using backend path: C:\\Users\\First Last\\Backend.dll");
 
   const std::string function = "function alice/" + std::string(kMaxTelemetryStringLength, 'x') + "/model";
-  std::string location = "qnn_execution_provider.cc:377 ";
+  std::string location = "plugin_execution_provider.cc:377 ";
   telemetry_detail::AppendTelemetryString(location, ScrubStringForTelemetry(function));
-  EXPECT_EQ(location, "qnn_execution_provider.cc:377 function [path]");
+  EXPECT_EQ(location, "plugin_execution_provider.cc:377 function [path]");
 }
 
 }  // namespace onnxruntime::test

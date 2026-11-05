@@ -586,9 +586,6 @@ endif()
 file(GLOB onnxruntime_python_tools_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/*.py"
 )
-file(GLOB onnxruntime_python_tools_qnn_src CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/python/tools/qnn/*.py"
-)
 file(GLOB onnxruntime_python_quantization_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/quantization/*.py"
 )
@@ -601,8 +598,8 @@ file(GLOB onnxruntime_python_quantization_cal_table_flatbuffers_src CONFIGURE_DE
 file(GLOB onnxruntime_python_quantization_fusions_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/quantization/fusions/*.py"
 )
-file(GLOB onnxruntime_python_quantization_ep_qnn_src CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/python/tools/quantization/execution_providers/qnn/*.py"
+file(GLOB onnxruntime_python_quantization_ep_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/quantization/execution_providers/*.py"
 )
 file(GLOB onnxruntime_python_quantization_neural_compressor_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/quantization/neural_compressor/*.py"
@@ -701,7 +698,6 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/qdq_helpers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model/ort_flatbuffers_py
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/qnn
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/bart
@@ -721,7 +717,6 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/CalTableFlatBuffers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/fusions
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/execution_providers
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/execution_providers/qnn
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/neural_compressor
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/quantization
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers
@@ -789,9 +784,6 @@ add_custom_command(
       ${ONNXRUNTIME_ROOT}/core/flatbuffers/ort_flatbuffers_py
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model/ort_flatbuffers_py
   COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_tools_qnn_src}
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/qnn/
-  COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_quantization_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/
   COMMAND ${CMAKE_COMMAND} -E copy
@@ -804,8 +796,8 @@ add_custom_command(
       ${onnxruntime_python_quantization_fusions_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/fusions/
   COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_quantization_ep_qnn_src}
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/execution_providers/qnn/
+      ${onnxruntime_python_quantization_ep_src}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/execution_providers/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_quantization_neural_compressor_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/neural_compressor/

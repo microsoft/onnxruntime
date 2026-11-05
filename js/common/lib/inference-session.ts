@@ -457,25 +457,14 @@ export declare namespace InferenceSession {
 
   // #endregion
 
+  /**
+   * @deprecated QNN is no longer supported by the built-in bindings.
+   * Retained only for source compatibility with existing callers.
+   */
   export interface QnnExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'qnn';
-    /**
-     * Specify the QNN backend type. E.g., 'cpu' or 'htp'.
-     * Mutually exclusive with `backendPath`.
-     *
-     * @default 'htp'
-     */
     backendType?: string;
-    /**
-     * Specify a path to the QNN backend library.
-     * Mutually exclusive with `backendType`.
-     */
     backendPath?: string;
-    /**
-     * Specify whether to enable HTP FP16 precision.
-     *
-     * @default true
-     */
     enableFp16Precision?: boolean;
   }
   export interface CoreMLExecutionProviderOption extends ExecutionProviderOption {

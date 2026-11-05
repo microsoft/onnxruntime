@@ -197,7 +197,7 @@ constexpr std::array kCpuVendorInfos{
     CpuVendorInfo{cpuinfo_vendor_amd, "AMD", pci_vendor_ids::kAmd},  // AMD CPU/NPU ID. GPUs use kAmdAti.
     CpuVendorInfo{cpuinfo_vendor_intel, "Intel", pci_vendor_ids::kIntel},
     // Use the ACPI vendor identifier 'QCOM' (0x4D4F4351), not a Qualcomm PCI ID.
-    // Windows device discovery encodes VEN_QCOM the same way, and the QNN EP matches this value.
+    // Windows device discovery encodes VEN_QCOM the same way.
     CpuVendorInfo{cpuinfo_vendor_qualcomm, "Qualcomm", uint32_t{'Q' | ('C' << 8) | ('O' << 16) | ('M' << 24)}},
     CpuVendorInfo{cpuinfo_vendor_nvidia, "Nvidia", pci_vendor_ids::kNvidia},
     CpuVendorInfo{cpuinfo_vendor_apple, "Apple", pci_vendor_ids::kApple},

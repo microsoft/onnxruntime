@@ -750,9 +750,13 @@ public class InferenceTest {
   }
 
   @Test
-  @EnabledIfSystemProperty(named = "USE_QNN", matches = "1")
-  public void testQNN() throws OrtException {
-    runProvider(OrtProvider.QNN);
+  public void testQnnUnsupported() throws OrtException {
+    try (SessionOptions options = new SessionOptions()) {
+      OrtException exception =
+          Assertions.assertThrows(OrtException.class, () -> options.addQnn(Collections.emptyMap()));
+      assertEquals(OrtErrorCode.ORT_INVALID_ARGUMENT, exception.getCode());
+      assertTrue(exception.getMessage().contains("QNN is no longer supported by addQnn"));
+    }
   }
 
   @Test
@@ -2129,9 +2133,6 @@ public class InferenceTest {
           break;
         case XNNPACK:
           options.addXnnpack(Collections.emptyMap());
-          break;
-        case QNN:
-          options.addQnn(Collections.singletonMap("backend_type", "cpu"));
           break;
         case WEBGPU:
           options.addWebGPU(Collections.emptyMap());

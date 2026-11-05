@@ -1603,19 +1603,15 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
-     * Adds QNN as an execution backend.
+     * Legacy QNN entry point. QNN is no longer supported by this method.
      *
-     * @param providerOptions Configuration options for the QNN backend. Refer to the QNN execution
-     *     provider's documentation.
-     * @throws OrtException If there was an error in native code.
+     * @param providerOptions Unused legacy provider options.
+     * @throws OrtException Always, because the in-tree execution provider has been removed.
      */
     public void addQnn(Map<String, String> providerOptions) throws OrtException {
-      String qnnProviderName = "QNN";
-
-      // QNN can either be built as a shared or static library. extractQNN() will extract the
-      // (lib)onnxruntime_providers_qnn(.so/.dll) from classpath resources if present.
-      OnnxRuntime.extractQNN();
-      addExecutionProvider(qnnProviderName, providerOptions);
+      throw new OrtException(
+          OrtException.OrtErrorCode.ORT_INVALID_ARGUMENT,
+          "QNN is no longer supported by addQnn. Use the external plugin execution provider instead.");
     }
 
     /**

@@ -182,10 +182,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     "Appending SNPE EP should have succeeded or thrown an OnnRuntimeException with the expected message. ",
                     "SNPE execution provider is not supported in this build");
 
-                AssertUtils.IfThrowsCheckException<OnnxRuntimeException>(
-                    () => { opt.AppendExecutionProvider("QNN"); },
-                    "Appending QNN EP should have succeeded or thrown an OnnRuntimeException with the expected message. ",
-                    "QNN execution provider is not supported in this build");
+                var qnnException = Assert.Throws<OnnxRuntimeException>(
+                    () => opt.AppendExecutionProvider("QNN"));
+                Assert.Contains(
+                    "The 'QNN' execution provider is no longer built into ONNX Runtime. Use the QNN plugin EP",
+                    qnnException.Message);
 
                 opt.AppendExecutionProvider_CPU(1);
             }

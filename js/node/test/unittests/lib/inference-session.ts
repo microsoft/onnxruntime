@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import { InferenceSession, Tensor, TypedTensor } from 'onnxruntime-common';
 import * as path from 'path';
 
+import { binding, initOrt } from '../../../lib/binding';
 import { assertTensorEqual } from '../../test-utils';
 
 const SQUEEZENET_INPUT0_DATA = require(path.join(__dirname, '../../testdata/squeezenet.input0.json'));
@@ -17,6 +18,21 @@ describe('UnitTests - InferenceSession.create()', () => {
   const createAny: any = InferenceSession.create;
 
   // #region test bad arguments
+  it('EXPECTED FAILURE - legacy QNN requests are unsupported', async () => {
+    initOrt();
+    assert.ok(binding.listSupportedBackends().every((backend) => backend.name !== 'qnn'));
+    const providers: NonNullable<InferenceSession.SessionOptions['executionProviders']> = [
+      'qnn',
+      { name: 'qnn', backendType: 'htp', backendPath: 'unused', enableFp16Precision: true },
+    ];
+    for (const provider of providers) {
+      const session = new binding.InferenceSession();
+      await assert.rejects(async () => session.loadModel(modelPath, { executionProviders: [provider] }), {
+        message: /QNN is no longer supported/,
+      });
+    }
+  });
+
   it('BAD CALL - no argument', async () => {
     await assert.rejects(
       async () => {

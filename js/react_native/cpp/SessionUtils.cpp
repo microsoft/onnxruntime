@@ -34,9 +34,6 @@ const std::vector<const char*> supportedBackends = {
 #ifdef USE_NNAPI
     "nnapi",
 #endif
-#ifdef USE_QNN
-    "qnn",
-#endif
 };
 
 class ExtendedSessionOptions : public Ort::SessionOptions {
@@ -355,37 +352,9 @@ void parseSessionOptions(Runtime& runtime, const Value& optionsValue,
                 .AppendExecutionProvider_Nnapi(nnapi_flags);
           }
 #endif
-#ifdef USE_QNN
           else if (epName == "qnn") {
-            std::unordered_map<std::string, std::string> options;
-            if (providerObj &&
-                providerObj->hasProperty(runtime, "backendType")) {
-              options["backendType"] =
-                  providerObj->getProperty(runtime, "backendType")
-                      .asString(runtime)
-                      .utf8(runtime);
-            }
-            if (providerObj &&
-                providerObj->hasProperty(runtime, "backendPath")) {
-              options["backendPath"] =
-                  providerObj->getProperty(runtime, "backendPath")
-                      .asString(runtime)
-                      .utf8(runtime);
-            }
-            if (providerObj &&
-                providerObj->hasProperty(runtime, "enableFp16Precision")) {
-              auto enableFp16Precision =
-                  providerObj->getProperty(runtime, "enableFp16Precision");
-              if (enableFp16Precision.isBool() &&
-                  enableFp16Precision.asBool()) {
-                options["enableFp16Precision"] = "1";
-              } else {
-                options["enableFp16Precision"] = "0";
-              }
-            }
-            sessionOptions.AppendExecutionProvider("QNN", options);
+            throw JSError(runtime, "QNN is no longer supported by the built-in React Native binding.");
           }
-#endif
           else {
             throw JSError(runtime, "Unsupported execution provider: " + epName);
           }

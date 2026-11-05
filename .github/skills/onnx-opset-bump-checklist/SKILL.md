@@ -46,7 +46,7 @@ B/C/D can be validated). Throughout this section, bold letters in parentheses (e
 | `cmake/patches/onnx/onnx.patch` | rebase to the new source (see §3) |
 | `cmake/vcpkg-ports/onnx/fix-dependency-protobuf.patch`, `fix-cmakelists.patch` | re-`diff` only if they fail to apply |
 | **The 7 `requirements.txt` files** with `onnx==X.Y.Z` | `onnxruntime/test/python/requirements.txt`; `tools/ci_build/github/linux/python/requirements.txt`; `tools/ci_build/github/windows/python/requirements.txt`; `tools/ci_build/github/linux/docker/scripts/{requirements.txt,manylinux/requirements.txt,lort/requirements.txt}`; `tools/ci_build/github/linux/docker/inference/aarch64/python/cpu/scripts/requirements.txt`. Confirm with `git grep -n "onnx==<OLD>"` (e.g. `onnx==1.21`) — grep the **old** pin you are replacing, not bare `onnx==1`. ⚠️ **Do NOT bump all matches.** `git grep -n "onnx==1"` also lists 3 transformers-model files — `onnxruntime/python/tools/transformers/models/{llama,phi2,stable_diffusion}/requirements.txt` — that are **intentionally frozen at `onnx==1.18.0`**. Leave those alone; only the 7 CI files above get the new pin. |
-| **`requirements-materialize-onnx-node-tests.txt`** (minimal dependencies for bare-agent node-test materialization — NOT covered by the `requirements.txt` grep above) | **Bump the pin IN this requirements file, in lockstep with `cmake/deps.txt` + the numpy MIN pins** — do NOT re-inline. Confirm with `git grep -n "onnx==<OLD>"`. The `onnxruntime_MATERIALIZE_ONNX_NODE_TESTS` gate (see gotcha **p**) fails at configure time on installed!=pinned. Bare-agent builds can install this file without pulling the heavy Docker requirements. The former in-tree QNN build pipelines have been retired. |
+| **`requirements-materialize-onnx-node-tests.txt`** (minimal dependencies for bare-agent node-test materialization — NOT covered by the `requirements.txt` grep above) | **Bump the pin IN this requirements file, in lockstep with `cmake/deps.txt` + the numpy MIN pins** — do NOT re-inline. Confirm with `git grep -n "onnx==<OLD>"`. The `onnxruntime_MATERIALIZE_ONNX_NODE_TESTS` gate (see gotcha **p**) fails at configure time on installed!=pinned. Bare-agent builds can install this file without pulling the heavy Docker requirements. |
 
 ### Group B — opset enablement
 | File | Change |
@@ -68,7 +68,7 @@ B/C/D can be validated). Throughout this section, bold letters in parentheses (e
 **EP checklist when an op's kernel set changes for the new opset:**
 - [ ] For **each** EP, `grep -rn "<Op>)" onnxruntime/core/providers/<ep>/` (and its `*_execution_provider.cc`) to find every registration of the changed op.
 - [ ] EPs that register ONNX kernels via the `ONNX_OPERATOR_[VERSIONED_]KERNEL[_CLASS_NAME]` macros — **cpu**, **cuda**, **js**, and **rocm** if it registers the op (rocm is often hipified from cuda): version-split each into `[prev_start, N-1]` + a new `N` registration (class forward-declare **and** `BuildKernelCreateInfo` entry).
-- [ ] EPs with their **own** registration systems assess per their conventions, not the macro split — **dml** (`REG_INFO(ver, Op, …)` in `OperatorRegistration.cpp`), **webgpu**, **coreml/nnapi/qnn/openvino/migraphx**. A partition/capability check (e.g. MIGraphX's `optype == "Range"`) is **not** a kernel registration and needs no split.
+- [ ] EPs with their **own** registration systems assess per their conventions, not the macro split — **dml** (`REG_INFO(ver, Op, …)` in `OperatorRegistration.cpp`), **webgpu**, **coreml/nnapi/openvino/migraphx**. A partition/capability check (e.g. MIGraphX's `optype == "Range"`) is **not** a kernel registration and needs no split.
 - [ ] Bump the EP `GetMaxSupportedOpSet` ceilings (**coreml/nnapi/vsinpu/webnn**) in lockstep — see §4 gotcha **b**.
 
 > **IR version is NOT bumped manually.** ORT reads `ONNX_NAMESPACE::Version::IR_VERSION` from
@@ -465,7 +465,7 @@ simply gone.**
   filter) from an invisible pass into a **loud red** — the single highest-leverage, lowest-cost
   change here.
 - **Other on-disk node-test consumers to repoint when #7959 lands (track, don't lose).** Beyond the
-  C++ `onnx_test_runner` + QNN `.../node` path, three more consumers read the ONNX on-disk
+  C++ `onnx_test_runner` node-test path, three more consumers read the ONNX on-disk
   node-test data and will break/skip silently once #7959 deletes it — repoint/update each in the
   same bump: **`csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh`** (C# backend test
   runner pointed at the node dir), **`js/scripts/prepare-onnx-node-tests.ts`** (the JS/web test

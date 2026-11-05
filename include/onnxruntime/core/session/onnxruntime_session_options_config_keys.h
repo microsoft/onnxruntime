@@ -378,7 +378,7 @@ static const char* const kOrtSessionOptionsConfigIntraOpThreadAffinities = "sess
 
 // This option will dump out the model to assist debugging any issues with layout transformation,
 // and is primarily intended for developer usage. It is only relevant if an execution provider that requests
-// NHWC layout is enabled such as NNAPI, XNNPACK or QNN.
+// NHWC layout is enabled such as NNAPI or XNNPACK.
 //
 // Default is off. Set to "1" to enable.
 //

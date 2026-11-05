@@ -48,11 +48,6 @@ class SimpleTest {
     }
 
     @Test
-    fun runSigmoidModelTestQNN() {
-        runSigmoidModelTestImpl(1, OrtProvider.QNN)
-    }
-
-    @Test
     fun runSigmoidModelTestWEBGPU() {
         runSigmoidModelTestImpl(1, OrtProvider.WEBGPU)
     }
@@ -81,16 +76,6 @@ class SimpleTest {
                         opts.addNnapi()
                     } else {
                         Log.println(Log.INFO, TAG, "NO NNAPI EP available, skip the test")
-                        return
-                    }
-                }
-
-                OrtProvider.QNN -> {
-                    if (OrtEnvironment.getAvailableProviders().contains(OrtProvider.QNN)) {
-                        val providerOptions = Collections.singletonMap("backend_type", "htp")
-                        opts.addQnn(providerOptions)
-                    } else {
-                        Log.println(Log.INFO, TAG, "NO QNN EP available, skip the test")
                         return
                     }
                 }
@@ -137,8 +122,7 @@ class SimpleTest {
                         output.use {
                             @Suppress("UNCHECKED_CAST")
                             val rawOutput = output[0].value as Array<Array<FloatArray>>
-                            // QNN EP will run the Sigmoid float32 op with fp16 precision
-                            val precision = if (executionProvider == OrtProvider.QNN) 1e-3 else 1e-6
+                            val precision = 1e-6
                             for (i in 0..2) {
                                 for (j in 0..3) {
                                     for (k in 0..4) {

@@ -196,7 +196,6 @@ test {
 		'USE_MIGRAPHX',
 		'USE_NNAPI',
 		'USE_OPENVINO',
-		'USE_QNN',
 		'USE_RKNPU',
 		'USE_SNPE',
 		'USE_TENSORRT',

@@ -89,7 +89,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     INVALID = 0,
     DML,
     OpenVINO,
-    SNPE,  // TODO(adrianlizarraga): Remove SNPE entirely because it has been replaced by QNN EP.
+    SNPE,
     XNNPACK,
     WEBNN,
     WebGPU,

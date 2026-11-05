@@ -132,7 +132,7 @@ device1(annotation1, annotation2, ...); device2(=annotation3, annotation4, ...)
 | `gpu` | Anything discovered and designated as `OrtHardwareDeviceType_GPU` | CUDA EP, ROCm EP, DirectML EP running on discrete or integrated GPUs |
 | `cuda` | NVIDIA CUDA GPU. A device that is `OrtHardwareDeviceType_GPU` and NVIDIA is a vendor. Same as `gpu:nvidia`. | CUDAExecutionProvider |
 | `dml` | DirectX-compatible GPU | DMLExecutionProvider |
-| `npu` | Neural processing unit | Qualcomm QNN EP, Intel NPU EP |
+| `npu` | Neural processing unit | Intel NPU EP, external NPU plugins |
 | `fpga` | FPGA-backed accelerators | Custom plugin EPs |
 | `accelerator` | Catch-all for any non-CPU device | Any vendor EP |
 | `gpu:<vendor>` | Vendor specialization | `gpu:nvidia`, `gpu:amd`, `gpu:intel` |

@@ -48,5 +48,11 @@ TEST(GetExecutionProvidersTest, NoDuplicates) {
   check(GetAvailableExecutionProviderNames());
 }
 
+TEST(GetExecutionProvidersTest, RetiredQnnNotAdvertisedAsBuiltIn) {
+  for (const auto* providers : {&GetAllExecutionProviderNames(), &GetAvailableExecutionProviderNames()}) {
+    EXPECT_EQ(std::find(providers->begin(), providers->end(), kQnnExecutionProvider), providers->end());
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime

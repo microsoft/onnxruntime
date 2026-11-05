@@ -702,9 +702,6 @@ Napi::Value InferenceSessionWrap::ListSupportedBackends(const Napi::CallbackInfo
 #ifdef USE_COREML
   result.Set(result.Length(), createObject("coreml", true));
 #endif
-#ifdef USE_QNN
-  result.Set(result.Length(), createObject("qnn", true));
-#endif
 
   return scope.Escape(result);
 }

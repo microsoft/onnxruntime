@@ -916,8 +916,7 @@ class QDQQuantizer(BaseQuantizer):
         # --> DQ1' --> Q2 --> DQ2 --> <Consumers of converted type>
         #
         # This DQ clone would only have one consumer Q node (Q2) and could be potentially fused with
-        # it by some EPs (e.g., QNN) without breaking other "node units".
-        # Ex QNN fusion:
+        # it by an EP without breaking other "node units". For example:
         # --> Convert (fused) --> DQ2 --> <Consumers of converted type>
         second_q_input = first_dq_output
         if not all_use_converted:

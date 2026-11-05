@@ -135,8 +135,7 @@ def parse_arguments():
         help="If set to a floating-point value, the calculation of the quantization parameters"
         " (i.e., scale and zero point) will enforce a minimum range between rmin and rmax. If (rmax-rmin)"
         " is less than the specified minimum range, rmax will be set to rmin + MinimumRealRange. This is"
-        " necessary for EPs like QNN that require a minimum floating-point range when determining "
-        " quantization parameters.",
+        " useful when a minimum floating-point range is required for quantization parameters.",
     )
     parser.add_argument(
         "--qdq_keep_removable_activations",

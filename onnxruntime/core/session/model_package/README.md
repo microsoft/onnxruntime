@@ -141,7 +141,7 @@ EP was selected. Two paths:
   from the variant for keys the caller did not set, so a model that needs its
   external-initializers folder still loads. Use this path when you need custom
   EP setup that does not round-trip through string options (shared CUDA
-  streams, shared QNN EP contexts, custom allocators, ...). The
+  streams, shared EP contexts, custom allocators, ...). The
   `OrtSessionOptions` passed earlier to
   `CreateModelPackageOptionsFromSessionOptions` only drives variant
   selection / EP discovery; its non-EP session configuration is not

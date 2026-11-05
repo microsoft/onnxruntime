@@ -29,7 +29,7 @@ class ReshapeFusion : public GraphTransformer {
                                              int index, gsl::span<const int64_t> shape_value, const logging::Logger& logger);
 
   // Remove contiguous Reshape/Squeeze/Unsqueeze if the shape info is concrete.
-  // For some EP, such reshape Ops are not no-op, such as QNN EP, memory is allocated for each output,
+  // For some EPs, reshape ops allocate memory for each output rather than acting as no-ops,
   // so this fusion can help to reduce memory usage on such devices.
   static bool FuseContiguousReshapes(Node& reshape, Graph& graph);
 };

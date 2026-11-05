@@ -1,21 +1,21 @@
 ---
 name: ort-ci
 description: |
-  Trigger, re-run, and unblock ONNX Runtime CI checks on a GitHub pull request. Use this skill when a required check is stuck, missing, failed, or needs re-running. Nearly all ORT CI runs as GitHub Actions workflows; only the "Linux Android Emulator QNN CI Pipeline" remains on Azure Pipelines, plus the bot-driven "license/cla" and "Python format" lint checks. Triggers on: rerun CI, retrigger checks, stuck check, missing pipeline, failed CI, license/cla, Python format failure, Doc Gen CI failure, operator docs out of date, /azp run.
+  Trigger, re-run, and unblock ONNX Runtime CI checks on a GitHub pull request. Use this skill when a required check is stuck, missing, failed, or needs re-running. Inspect live checks to identify GitHub Actions, Azure Pipelines, and bot-driven checks. Triggers on: rerun CI, retrigger checks, stuck check, missing pipeline, failed CI, license/cla, Python format failure, Doc Gen CI failure, operator docs out of date, /azp run.
 ---
 
 # ONNX Runtime CI Management
 
 Workflows for triggering, re-running, and unblocking CI checks on an ONNX Runtime PR.
 The repository is `microsoft/onnxruntime`. As of 2026-07, nearly all CI runs as **GitHub
-Actions** workflows (~80+ checks per PR). Only **one** required check still runs on **Azure
-Pipelines** — `Linux Android Emulator QNN CI Pipeline` (host `aiinfra.visualstudio.com`).
+Actions** workflows (~80+ checks per PR). Identify any **Azure Pipelines** checks from their
+live check URLs instead of relying on a historical pipeline list.
 There is also the bot-driven `license/cla` status check.
 
 **Failures are not all the same.** Before touching anything, diagnose each failure (see
 [Triage: Diagnose Before Re-running](#triage-diagnose-before-re-running)): most failures need a
 **code change** and re-running them just fails again; only genuinely transient (network/disk)
-failures should be re-run via §1. §4 (Azure Pipelines) applies only to the single QNN pipeline.
+failures should be re-run via §1. §4 applies to Azure Pipelines checks observed on the PR.
 
 Before doing anything, inspect current state so you do not queue duplicate runs.
 
@@ -83,7 +83,7 @@ grep -nE "error:|FAILED|warning:|Traceback|fatal error|No space left|Could not r
   /tmp/ci_<run_id>.log | head -50
 ```
 
-For the **Azure Pipelines** QNN check, open its `detailsUrl` (a `dev.azure.com` /
+For an **Azure Pipelines** check, open its `detailsUrl` (a `dev.azure.com` /
 `aiinfra.visualstudio.com` build page) and download the job log, or use the Azure DevOps
 `.../builds/<buildId>/timeline` + log APIs (see the `ci-failure-retrieval` skill for the exact
 requests).
@@ -196,15 +196,14 @@ Notes:
 - The same job also covers C++ clang-format and other adapters; the fix is the same
   (`lintrunner -a`).
 
-## 4. Trigger the Azure Pipelines check (QNN Android Emulator only)
+## 4. Trigger an Azure Pipelines check
 
-As of 2026-07, the **only** ORT check still on Azure Pipelines is
-`Linux Android Emulator QNN CI Pipeline`. Everything else is GitHub Actions (use §1). Trigger
-it through the PR comment integration:
+Use the exact pipeline name from the PR's live Azure Pipelines check. Trigger only that
+pipeline through the PR comment integration:
 
 ```bash
 gh pr comment <number> --repo microsoft/onnxruntime \
-  --body "/azp run Linux Android Emulator QNN CI Pipeline"
+  --body "/azp run <exact pipeline name>"
 ```
 
 Then wait briefly and check for a reply from `azure-pipelines[bot]`:
@@ -284,7 +283,7 @@ Notes:
 | `ONNX Runtime Windows GPU Doc Gen CI` | GitHub Actions | Copy the Markdown files from `updated-docs` into `docs/`, commit, push (§5) — rerun alone won't fix |
 | `Optional Lint`, `Optional Lint C++` | GitHub Actions | Non-required reviewdog checks; fix warnings or ignore |
 | Most CI (Linux/Windows/Mac/CUDA/TensorRT/WebGPU/Web/Android/iOS, `windows_x64_*`, Builds, PR Checks) | GitHub Actions | `rerun_failed_ci.sh <number>` (§1) |
-| `Linux Android Emulator QNN CI Pipeline` | Azure DevOps | `/azp run Linux Android Emulator QNN CI Pipeline` (§4), then API fallback |
+| Azure Pipelines checks observed on the PR | Azure DevOps | `/azp run <exact pipeline name>` (§4), then API fallback |
 
 ## Safety Rules
 

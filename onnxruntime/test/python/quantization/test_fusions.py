@@ -12,7 +12,6 @@ import numpy as np
 import onnx
 
 import onnxruntime
-from onnxruntime.quantization.execution_providers.qnn.fusion_lpnorm import FusionLpNormalization
 from onnxruntime.quantization.fusions import FusionGelu, FusionLayerNormalization
 from onnxruntime.quantization.onnx_model import ONNXModel
 
@@ -245,38 +244,6 @@ class TestFusions(unittest.TestCase):
         model = onnx.helper.make_model(graph, opset_imports=opset_imports)
         return ONNXModel(model)
 
-    def build_reduce_l2_sequence_model(self, shape, epsilon_val, axis=-1):
-        """
-        [root] --> ReduceL2 -----> Clip  --> Expand ----> Div -->
-           |      (axis=-1)    (min=epsilon) (shape=root)  ^
-           |   (keepdims=True)                             |
-           |                                               |
-           +-----------------------------------------------+
-        """
-        root_inp = onnx.helper.make_tensor_value_info("root", onnx.TensorProto.FLOAT, shape)
-        output = onnx.helper.make_tensor_value_info("output", onnx.TensorProto.FLOAT, shape)
-        axes_const = onnx.numpy_helper.from_array(np.array([axis], dtype=np.int64), "axes_const")
-        eps_const = onnx.numpy_helper.from_array(np.array(epsilon_val, dtype=np.float32), "eps_const")
-        shape_const = onnx.numpy_helper.from_array(np.array(list(shape), dtype=np.int64), "shape_const")
-
-        rl2_node = onnx.helper.make_node("ReduceL2", ["root", "axes_const"], ["rl2_out"], keepdims=1)
-        clip_node = onnx.helper.make_node("Clip", ["rl2_out", "eps_const"], ["clip_out"])
-        expand_node = onnx.helper.make_node("Expand", ["clip_out", "shape_const"], ["expand_out"])
-        div_node = onnx.helper.make_node("Div", ["root", "expand_out"], ["output"])
-
-        graph = onnx.helper.make_graph(
-            [rl2_node, clip_node, expand_node, div_node],
-            "reducel2_sequence",
-            [root_inp],
-            [output],
-            initializer=[axes_const, eps_const, shape_const],
-        )
-        opset_imports = [
-            onnx.helper.make_opsetid("", 18),
-        ]
-        model = onnx.helper.make_model(graph, opset_imports=opset_imports)
-        return ONNXModel(model)
-
     def test_fuse_erf_to_gelu_1(self):
         shape = (1, 2, 3)
         model = self.build_erf_sequence_1_model(shape)
@@ -357,25 +324,6 @@ class TestFusions(unittest.TestCase):
         # Check that fusion is equivalent to original Erf model.
         inputs = {"root": np.ones(shape, dtype=np.float32)}
         self.check_fused_model_correctness(orig_model, model.model, inputs)
-
-    def test_fuse_reduce_l2_to_lpnorm(self):
-        shape = (1, 2, 3)
-        model = self.build_reduce_l2_sequence_model(shape, 1e-12, axis=-1)
-        orig_model = onnx.ModelProto()
-        orig_model.CopyFrom(model.model)
-
-        # Check that fusion simplified model to 1 LpNormalization node.
-        modified = FusionLpNormalization(model).apply()
-        self.assertTrue(modified)
-        self.assertEqual(len(model.model.graph.node), 1)
-
-        lpnorm_node = model.model.graph.node[0]
-        self.assertEqual(lpnorm_node.op_type, "LpNormalization")
-        self.assertTrue(lpnorm_node.name)
-
-        # LpNorm's p attribute should be set to 2
-        p_attr = next(attr for attr in lpnorm_node.attribute if attr.name == "p")
-        self.assertEqual(p_attr.i, 2)
 
     def test_fuse_reduce_mean_to_layer_norm(self):
         shape = (1, 2, 3)

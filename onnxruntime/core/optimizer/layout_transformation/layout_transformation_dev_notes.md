@@ -3,7 +3,7 @@
 ## Overview
 ONNX standard assumes NCHW format for tensor layout. However, NCHW is not the best (perf efficient) format for all hardware types. Depending on the underlying hardware, to get the best perf we need to convert the model or in some cases part of the model from NCHW -> NHWC. Layout Transformer enables just this. It works with ONNX and ORT format models.
 
-*Note: Currently Layout Transformer works only for compiling EPs like NNAPI, QNN EP etc... More work is needed for it to be compatible with EPs like CPU and CUDA which use static kernel registration.*
+*Note: Currently Layout Transformer works only for compiling EPs like NNAPI. More work is needed for it to be compatible with EPs like CPU and CUDA which use static kernel registration.*
 
 ## How it works
 Layout transformer is [invoked during graph partitioning](https://github.com/microsoft/onnxruntime/blob/1a4868e5c4c4a270ad91036e36f2a03410c4c278/onnxruntime/core/framework/graph_partitioner.cc#L111) phase. After getting capabilities from the registered EP, layout transformer converts the part of the graph which is claimed by the EP to NHWC IF this is the desired format for the given EP.

@@ -20,8 +20,7 @@ namespace coreml {
 // ORT_ENABLE_EXTENDED and above. The schema in contrib_defs.cc defines it as
 //     Y = X * Sigmoid(alpha * X)    default alpha = 1.702
 // CoreML has no native equivalent, so we decompose to three MIL ops — all
-// primitives are already CoreML-supported. Same approach the QNN EP uses
-// in qnn/builder/opbuilder/quick_gelu_op_builder.cc.
+// primitives are already CoreML-supported.
 class QuickGeluOpBuilder : public BaseOpBuilder {
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override;
@@ -55,8 +54,7 @@ Status QuickGeluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
     // When alpha ≈ 1.0 (e.g. CLIP's approximate GELU, `x * sigmoid(x)`), skip
     // the leading mul and feed x straight into sigmoid. Saves one op and
-    // avoids the rounding it would introduce. Mirrors QNN's builder at
-    // qnn/builder/opbuilder/quick_gelu_op_builder.cc:42-49.
+    // avoids the rounding it would introduce.
     constexpr float kAlphaEpsilon = 1e-6f;
     const bool skip_alpha_mul = std::abs(alpha - 1.0f) < kAlphaEpsilon;
 

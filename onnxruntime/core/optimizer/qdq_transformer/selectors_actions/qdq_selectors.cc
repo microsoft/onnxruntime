@@ -1345,7 +1345,7 @@ bool PadNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& no
                                  const std::vector<const Node*>& dq_nodes,
                                  const std::vector<const Node*>& q_nodes) const {
   // Pad can have 1 or 2 dq input, the optional input constant_value can be quantized or non-quantized.
-  // QNN supports data input quantized with constant_value input non-quantized.
+  // A provider may support quantized data input with a non-quantized constant_value input.
   int num_dq_inputs = static_cast<int>(dq_nodes.size());
   if (num_dq_inputs < 1 || num_dq_inputs > 2) {
     return false;

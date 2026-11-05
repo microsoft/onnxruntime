@@ -1937,7 +1937,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
 
   // Utility function to detect a fused node with an unsupported domain.
   // Ex: when compiling an already compiled model, an EPContext node in the input model would be wrapped
-  // into a fused node with a domain like "QNN". Such fused nodes do not pass ONNX correctness checks, so
+  // into a fused node with a provider-specific domain. Such fused nodes do not pass ONNX correctness checks, so
   // we should detect them here and return a better error message. Otherwise, an ORT_INVALID_GRAPH error is raised
   // with a confusing error message *after* the invalid model has been saved/generated.
   // Note: This only applies to the explicit compile API. The original compilation approach (via session options),

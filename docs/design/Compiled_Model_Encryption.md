@@ -11,7 +11,7 @@ bindings with path-only APIs, such as Java compilation and Objective-C loading, 
 temporary plaintext model files and do not provide no-plaintext-at-any-time coverage.
 
 The piece that makes this possible for **EPContext binary data** — the compiled kernels/engines an EP
-emits when embed mode is disabled (e.g. a serialized TensorRT engine or a QNN context binary) — is a
+emits when embed mode is disabled (e.g. a serialized TensorRT engine or an accelerator context binary) — is a
 pair of application-supplied **named-buffer I/O callbacks** plus a small EP-facing configuration
 handle. That mechanism, together with a reference helper for EP authors, was added in
 [microsoft/onnxruntime#28624](https://github.com/microsoft/onnxruntime/pull/28624) and refined in
@@ -183,7 +183,7 @@ and hand the bytes to the session.
     was no API to hand that buffer to the EP. The EP would allocate its own buffer and read the bytes
     in, so the decrypted payload existed twice at once — once in the application's buffer and once in
     the EP's copy. For EPContext binaries that can be hundreds of MB to several GB (TensorRT engines,
-    QNN / Ryzen AI context binaries), that doubled peak is significant.
+    accelerator context binaries), that doubled peak is significant.
 
   The load-side read callback closes both gaps: the application allocates the final buffer once via the
   ORT-provided allocator and returns the decrypted bytes directly to the EP — no temporary plaintext
@@ -667,7 +667,7 @@ The helper distinguishes trust based on the `OrtGraph*`:
 - External initializers still use the existing `AddExternalInitializersFromFilesInMemory` API, which
   copies buffers (2× peak). A future optimization could add a read-callback variant for initializers,
   matching the EPContext pattern.
-- EPContext binary data can be large (hundreds of MB to GBs for TensorRT engines, QNN context
+- EPContext binary data can be large (hundreds of MB to GBs for TensorRT engines, accelerator context
   binaries). The read-callback + `EpContextData` approach is specifically designed to avoid
   double-buffering here.
 - Embed mode (`embed = true`) is the simplest path: all binary data flows through the existing model
@@ -759,8 +759,8 @@ same check covers EPs, such as VitisAI, that can produce external EPContext data
 `GetEpContextDataCallbackRequirements()` whenever its effective configuration would produce external context data.
 Merely moving context-node creation into its `Compile()` would skip direct-assignment-only sessions; changing that
 lifecycle requires coordinated VAIP changes. TensorRT reports WRITE when its effective provider options select
-external context output, even if ORT's compilation options request embedded output. QNN reports READ before
-capability-time loading of external contexts for VTCM backup buffer sharing or file-mapped weights. Embedded data
+external context output, even if ORT's compilation options request embedded output. Providers must report READ before
+capability-time loading of external contexts for shared backup buffers or file-mapped weights. Embedded data
 and sessions without the corresponding callback do not require that callback's support.
 
 ## API Summary

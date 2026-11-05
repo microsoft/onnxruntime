@@ -63,7 +63,10 @@ def readPackageJsonField(field) {
 }
 
 boolean ortExtensionsEnabled = readPackageJsonField('onnxruntimeExtensionsEnabled') == "true"
-boolean useQnn = readPackageJsonField('onnxruntimeUseQnn') == "true"
+def retiredQnnOption = readPackageJsonField('onnxruntimeUseQnn')
+if (retiredQnnOption == "true" || retiredQnnOption == true) {
+  throw new GradleException('onnxruntimeUseQnn is no longer supported. The in-tree QNN execution provider has been removed.')
+}
 
 def REACT_NATIVE_VERSION = ['node', '--print', "JSON.parse(require('fs').readFileSync(require.resolve('react-native/package.json'), 'utf-8')).version"].execute(null, rootDir).text.trim()
 def versionParts = REACT_NATIVE_VERSION.split("\\.")
@@ -93,14 +96,12 @@ android {
             "-DNODE_MODULES_DIR=${nodeModules}",
             "-DORT_EXTENSIONS_ENABLED=${ortExtensionsEnabled}",
             "-DREACT_NATIVE_VERSION=${REACT_NATIVE_VERSION}",
-            "-DUSE_QNN=${useQnn}",
-            "-DUSE_NNAPI=${!useQnn}"
+            "-DUSE_NNAPI=ON"
         } else {
           arguments "-DNODE_MODULES_DIR=${nodeModules}",
             "-DORT_EXTENSIONS_ENABLED=${ortExtensionsEnabled}",
             "-DREACT_NATIVE_VERSION=${REACT_NATIVE_VERSION}",
-            "-DUSE_QNN=${useQnn}",
-            "-DUSE_NNAPI=${!useQnn}"
+            "-DUSE_NNAPI=ON"
         }
         abiFilters (*reactNativeArchitectures())
       }
@@ -246,11 +247,7 @@ dependencies {
 
   implementation "junit:junit:4.12"
 
-  if (useQnn) {
-    extractLibs "com.microsoft.onnxruntime:onnxruntime-android-qnn:latest.integration@aar"
-  } else {
-    extractLibs "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
-  }
+  extractLibs "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
 
   if (REACT_NATIVE_MAJOR_VERSION == 0 && REACT_NATIVE_MINOR_VERSION < 71) {
     extractLibs "com.facebook.fbjni:fbjni:+:headers"

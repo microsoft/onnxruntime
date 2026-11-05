@@ -8,7 +8,6 @@ set(CMAKE_CXX_STANDARD 20)
 
 option(ORT_EXTENSIONS_ENABLED "Enable Ort Extensions" NO)
 option(USE_NNAPI "Use NNAPI" YES)
-option(USE_QNN "Use QNN" NO)
 
 file(GLOB libfbjni_link_DIRS "${BUILD_DIR}/fbjni-*.aar/jni/${ANDROID_ABI}")
 file(GLOB libfbjni_include_DIRS "${BUILD_DIR}/fbjni-*-headers.jar/")
@@ -20,10 +19,6 @@ file(GLOB onnxruntime_link_DIRS
 
 if(ORT_EXTENSIONS_ENABLED)
   add_definitions(-DORT_ENABLE_EXTENSIONS)
-endif()
-
-if(USE_QNN)
-  add_definitions(-DUSE_QNN)
 endif()
 
 if(USE_NNAPI)

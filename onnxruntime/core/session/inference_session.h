@@ -1030,7 +1030,7 @@ class InferenceSession {
     // cadence as RuntimePerf so downstream consumers can attribute inference usage
     // to specific EP + device combinations without joining back to SessionCreation.
     struct EpDeviceInfo {
-      std::string ep_type;               // e.g. "QNNExecutionProvider"
+      std::string ep_type;               // e.g. "CPUExecutionProvider"
       std::string hardware_device_type;  // "CPU", "GPU", "NPU", "FPGA", or "UNKNOWN"
       uint32_t vendor_id = 0;            // PCI vendor ID (e.g. 0x5143 for Qualcomm)
       uint32_t device_id = 0;            // PCI device ID (0 when unavailable)
@@ -1043,7 +1043,7 @@ class InferenceSession {
     // Pre-formatted comma-separated summaries used to enrich SessionCreation.
     std::string ep_device_types_summary_;       // "NPU,CPU"
     std::string ep_device_vendor_ids_summary_;  // "0x5143,0x0000"
-    std::string ep_versions_summary_;           // "QNNExecutionProvider:1.2.3,CPUExecutionProvider:"
+    std::string ep_versions_summary_;           // e.g. "CPUExecutionProvider:1.2.3"
   } telemetry_;
 
   mutable std::mutex telemetry_mutex_;  // to ensure thread-safe access to telemetry data

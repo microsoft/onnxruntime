@@ -9,6 +9,9 @@ import * as path from 'path';
 
 // command line flags
 const buildArgs = minimist(process.argv.slice(2));
+if (Object.prototype.hasOwnProperty.call(buildArgs, 'use_qnn')) {
+  throw new Error('--use_qnn is no longer supported. The in-tree QNN execution provider has been removed.');
+}
 
 // --config=Debug|Release|RelWithDebInfo
 const CONFIG: 'Debug' | 'Release' | 'RelWithDebInfo' =
@@ -37,8 +40,6 @@ const USE_CUDA = !!buildArgs.use_cuda;
 const USE_TENSORRT = !!buildArgs.use_tensorrt;
 // --use_coreml
 const USE_COREML = !!buildArgs.use_coreml;
-// --use_qnn
-const USE_QNN = !!buildArgs.use_qnn;
 // --dll_deps=
 const DLL_DEPS = buildArgs.dll_deps;
 
@@ -80,9 +81,6 @@ if (USE_TENSORRT) {
 }
 if (USE_COREML) {
   args.push('--CDUSE_COREML=ON');
-}
-if (USE_QNN) {
-  args.push('--CDUSE_QNN=ON');
 }
 if (DLL_DEPS) {
   args.push(`--CDORT_NODEJS_DLL_DEPS=${DLL_DEPS}`);

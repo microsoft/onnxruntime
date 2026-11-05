@@ -5,7 +5,7 @@
 #include <core/session/onnxruntime_c_api.h>
 
 namespace onnxruntime {
-namespace qnnctxgen {
+namespace epctxgen {
 
 struct TestConfig;
 
@@ -15,5 +15,5 @@ class CommandLineParser {
   static bool ParseArguments(TestConfig& test_config, int argc, ORTCHAR_T* argv[]);
 };
 
-}  // namespace qnnctxgen
+}  // namespace epctxgen
 }  // namespace onnxruntime

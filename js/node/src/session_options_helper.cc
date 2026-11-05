@@ -48,9 +48,6 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
 #ifdef USE_WEBGPU
     std::unordered_map<std::string, std::string> webgpu_options;
 #endif
-#ifdef USE_QNN
-    std::unordered_map<std::string, std::string> qnn_options;
-#endif
     if (epValue.IsString()) {
       name = epValue.As<Napi::String>().Utf8Value();
     } else if (!epValue.IsObject() || epValue.IsNull() || !epValue.As<Napi::Object>().Has("name") ||
@@ -116,34 +113,6 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
         }
       }
 #endif
-#ifdef USE_QNN
-      if (name == "qnn") {
-        Napi::Value backend_type = obj.Get("backendType");
-        if (!backend_type.IsUndefined()) {
-          if (backend_type.IsString()) {
-            qnn_options["backend_type"] = backend_type.As<Napi::String>().Utf8Value();
-          } else {
-            ORT_NAPI_THROW_TYPEERROR(epList.Env(), "Invalid argument: backendType must be a string.");
-          }
-        }
-        Napi::Value backend_path = obj.Get("backendPath");
-        if (!backend_path.IsUndefined()) {
-          if (backend_path.IsString()) {
-            qnn_options["backend_path"] = backend_path.As<Napi::String>().Utf8Value();
-          } else {
-            ORT_NAPI_THROW_TYPEERROR(epList.Env(), "Invalid argument: backendPath must be a string.");
-          }
-        }
-        Napi::Value enable_htp_fp16_precision = obj.Get("enableFp16Precision");
-        if (!enable_htp_fp16_precision.IsUndefined()) {
-          if (enable_htp_fp16_precision.IsBoolean()) {
-            qnn_options["enable_htp_fp16_precision"] = enable_htp_fp16_precision.As<Napi::Boolean>().Value() ? "1" : "0";
-          } else {
-            ORT_NAPI_THROW_TYPEERROR(epList.Env(), "Invalid argument: enableFp16Precision must be a boolean.");
-          }
-        }
-      }
-#endif
     }
 
     // CPU execution provider
@@ -177,10 +146,8 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
     } else if (name == "coreml") {
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(sessionOptions, coreMlFlags));
 #endif
-#ifdef USE_QNN
     } else if (name == "qnn") {
-      sessionOptions.AppendExecutionProvider("QNN", qnn_options);
-#endif
+      ORT_NAPI_THROW_ERROR(epList.Env(), "QNN is no longer supported by the built-in Node.js binding.");
     } else {
       ORT_NAPI_THROW_ERROR(epList.Env(), "Invalid argument: sessionOptions.executionProviders[", i,
                            "] is unsupported: '", name, "'.");

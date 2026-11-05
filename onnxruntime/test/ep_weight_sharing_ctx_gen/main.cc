@@ -5,6 +5,8 @@
 #include "command_args_parser.h"
 
 // onnxruntime dependencies
+#include "core/common/common.h"
+#include "core/common/path_string.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/util/include/telemetry_test_environment.h"
@@ -113,7 +115,7 @@ static PluginEpLibraryRegistrationHandle RegisterPluginEpLibrary(Ort::Env& env,
 }
 
 static bool SetPluginEpSessionOptions(Ort::Env& env, Ort::SessionOptions& session_options,
-                                      const qnnctxgen::PluginEpConfig& config,
+                                      const epctxgen::PluginEpConfig& config,
                                       PluginEpLibraryRegistrationHandle& plugin_ep_library_registration_handle) {
   auto lib_registration_handle = RegisterPluginEpLibrary(env, config.ep_library_registration_name,
                                                          ToPathString(config.ep_library_path));
@@ -154,9 +156,9 @@ int real_main(int argc, wchar_t* argv[]) {
 #else
 int real_main(int argc, char* argv[]) {
 #endif
-  qnnctxgen::TestConfig test_config;
-  if (!qnnctxgen::CommandLineParser::ParseArguments(test_config, argc, argv)) {
-    qnnctxgen::CommandLineParser::ShowUsage();
+  epctxgen::TestConfig test_config;
+  if (!epctxgen::CommandLineParser::ParseArguments(test_config, argc, argv)) {
+    epctxgen::CommandLineParser::ShowUsage();
     return -1;
   }
 
@@ -201,7 +203,7 @@ int real_main(int argc, char* argv[]) {
       std::cout << "Model file path: " << ToUTF8String(model_path) << std::endl;
     }
 
-    // Generate context cache model files with QNN context binary files
+    // Generate context cache models.
     // The context binary file generated later includes all graphs from previous models
     {
       std::string provider_name_ = test_config.machine_config.provider_type_name;
@@ -212,8 +214,6 @@ int real_main(int argc, char* argv[]) {
                     << test_config.machine_config.plugin_ep_config->ep_library_path << std::endl;
           return 1;
         }
-      } else if (provider_name_ == onnxruntime::kQnnExecutionProvider) {
-        ORT_THROW("QNN is not supported in this build\n");
       } else if (!provider_name_.empty()) {
         ORT_THROW("This execution provider is not included in this tool.\n");
       }
