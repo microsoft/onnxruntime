@@ -808,6 +808,18 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     const bool read_only_cache = kv_sequence_length == 0 && attention_past_key != nullptr &&
                                  attention_past_value != nullptr && attention_present_key == nullptr &&
                                  attention_present_value == nullptr;
+
+    // fp32 and fp16 caches: all query heads of a KV head share each cache tile, the softmax stays in fp32, and decode
+    // splits the cache across threads when there are fewer (batch, KV head) pairs than threads.
+    if (CanApplyAttentionGrouped<T>(output_qk != nullptr,
+                                    attention_present_key != nullptr && attention_present_value != nullptr,
+                                    read_only_cache)) {
+      return ApplyAttentionGrouped(q_rotary, k_data, v_data, head_sink_data,
+                                   attention_bias, attention_bias_offsets, attention_past_key, attention_past_value,
+                                   output, attention_present_key, attention_present_value, attention_seqlens_k,
+                                   parameters, allocator, context, attention_past_seqlens, query_seqlens_data);
+    }
+
     if constexpr (std::is_same_v<T, float>) {
       const bool use_flash = !disable_gqa_flash_ &&
                              is_unidirectional_ &&
