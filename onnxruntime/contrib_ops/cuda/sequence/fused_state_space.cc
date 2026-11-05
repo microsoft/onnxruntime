@@ -63,13 +63,17 @@ class Mamba2Verify final : public CudaKernel {
     auto* xbc = context->Output(3, {rows, channels});
     auto* readout = context->Output(4, {rows, di});
     // Unwritten snapshot slots retain their input values, including when ORT does not alias buffers.
-    if (conv_out->MutableDataRaw() != conv->DataRaw()) {
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(conv_out->MutableDataRaw(), conv->DataRaw(), conv->SizeInBytes(),
-                                           cudaMemcpyDeviceToDevice, Stream(context)));
+    if (slots > rows && conv_out->MutableDataRaw() != conv->DataRaw()) {
+      const size_t offset = conv->SizeInBytes() / static_cast<size_t>(slots) * rows;
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(static_cast<uint8_t*>(conv_out->MutableDataRaw()) + offset,
+                                           static_cast<const uint8_t*>(conv->DataRaw()) + offset,
+                                           conv->SizeInBytes() - offset, cudaMemcpyDeviceToDevice, Stream(context)));
     }
-    if (ssm_out->MutableDataRaw() != ssm->DataRaw()) {
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(ssm_out->MutableDataRaw(), ssm->DataRaw(), ssm->SizeInBytes(),
-                                           cudaMemcpyDeviceToDevice, Stream(context)));
+    if (slots > rows && ssm_out->MutableDataRaw() != ssm->DataRaw()) {
+      const size_t offset = ssm->SizeInBytes() / static_cast<size_t>(slots) * rows;
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(static_cast<uint8_t*>(ssm_out->MutableDataRaw()) + offset,
+                                           static_cast<const uint8_t*>(ssm->DataRaw()) + offset,
+                                           ssm->SizeInBytes() - offset, cudaMemcpyDeviceToDevice, Stream(context)));
     }
     CUDA_RETURN_IF_ERROR(LaunchMamba2Verify(
         Stream(context), rows, slots, heads_, groups_, epsilon_, time_step_min_, projection->DataRaw(), conv->DataRaw(),

@@ -68,7 +68,8 @@ is the caller's responsibility on the next invocation. State layout is
 `[slots,channels,3]`. Initializing an unselected snapshot must not affect computation.
 
 Corresponding state inputs/outputs may alias (`MayInplace(1,1)` and `(2,2)`).
-Nonaliased outputs copy the original device buffers before updating the first R slots.
+Nonaliased outputs copy only trailing slots `[R, slots)`; the kernels fully overwrite
+the first R slots. No preservation copy is needed when R equals slots.
 Trailing slots are therefore preserved rather than left unspecified as in uninitialized
 plugin outputs. MoE similarly initializes unused unique-expert metadata slots to -1.
 These changes define previously unwritten output storage without changing any computed row.
@@ -81,6 +82,13 @@ all its hidden, expert_output and Y values become NaN, and its pairs are exclude
 metadata before any expert weight access. Valid rows still execute normally. Invalid
 rows are not clamped, skipped as if valid, or reported through a device assertion.
 These are deterministic non-finite output policies, not synchronous ORT Status errors.
+
+Router selection orders NaN corrected scores after all numeric scores, including
+negative infinity. Equal scores, including pairs of NaNs, prefer the lower expert ID.
+The same comparator is used within each lane and across the warp. Unbiased sigmoid
+scores still determine output weights, so NaN logits propagate to those weights.
+BF16 convolution weights and router X/W bindings need only element alignment;
+unaligned vector addresses use scalar loads without changing accumulation order.
 
 Kernels use the supplied ORT CUDA stream. There are no device-to-host copies,
 host-side routing, per-call CUDA allocation, synchronization, or host inspection of selectors.
@@ -111,15 +119,18 @@ row-distinct expert routes, multiple FC2 superblocks, topk=9 and cancellation-se
 ordered FP32 sums. Source-exact MoE checks set both tolerances to zero after adding outputs.
 These review regressions have not yet been compiled or run on a GPU.
 
-### Standalone kernel validation
+### CUDA internal kernel validation
 
 The full Mamba operator still requires `head_dim=64, d_state=128`. The shared
 `LaunchMamba2VerifyNormalization` entry point isolates the production normalization
 launch so grid limits can be tested without allocating full recurrent states.
-Compile `fused_state_space_op_test.cc` with `ORT_FUSED_STATE_SPACE_NORM_TEST` and
-link `fused_state_space_impl.cu`, CUDA runtime and `gtest_main` to run
-`FusedStateSpaceKernelTest.MambaNorm65536Groups` without ORT libraries.
-This alternate test mode does not compile the provider tests in that source file.
+`test/contrib_ops/cuda_kernels/fused_state_space_test.cc` is collected by the existing
+CUDA internal-test target (`onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS`) and linked
+with the implementation objects. It contains
+`FusedStateSpaceKernelTest.MambaNorm65536Groups`, offset convolution-weight and
+router-X/W bindings, row-distinct K=768/E=511/512/topk=32 routing against an
+independent FP32 reference, and deterministic NaN selection regressions.
+Both internal and provider suites exclude CUDA-minimal builds.
 It uses `heads=n_groups=65536`, synthetic head/state dimensions of 1, R=slots=1,
 width=65536 and projection stride=327680. No convolution or SSM kernel runs in this
 normalization-only fixture. The test invokes the same launch used by the full operator;
@@ -130,7 +141,7 @@ For a standalone harness calling the other launchers directly:
 - Require SM80+, BF16 operands and device-resident selectors/indices. Full Mamba
   uses head/state dimensions 64/128, 1..16 rows and slots >= rows; MoE uses
   X width 1024, 1..8 rows, at most 128 pairs, E >= topk and I divisible by 256.
-- Before a nonaliased Mamba call, copy the entire input state buffers to the
+- Before a nonaliased Mamba call, copy input slots R..slots-1 to the corresponding
   snapshot outputs. This preservation copy belongs to `ComputeInternal`, not
   `LaunchMamba2Verify`. Restore both inputs before each alias/nonalias comparison.
   The alias fixture uses R=8, slots=10, selector=3, heads=4 and groups=2.

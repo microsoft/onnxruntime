@@ -1,82 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#if defined(ORT_FUSED_STATE_SPACE_NORM_TEST)
-// Standalone kernel-test mode: link fused_state_space_impl.cu, cudart and gtest_main, not ORT.
-#include "contrib_ops/cuda/sequence/fused_state_space_impl.h"
-#include "gtest/gtest.h"
-#include <cmath>
-#include <cstdint>
-#include <cstring>
-#include <memory>
-#include <vector>
-
-namespace onnxruntime::test {
-TEST(FusedStateSpaceKernelTest, MambaNorm65536Groups) {
-  int count = 0;
-  ASSERT_EQ(cudaGetDeviceCount(&count), cudaSuccess);
-  if (count == 0) GTEST_SKIP() << "Requires CUDA";
-  cudaDeviceProp prop{};
-  ASSERT_EQ(cudaGetDeviceProperties(&prop, 0), cudaSuccess);
-  if (prop.major < 8) GTEST_SKIP() << "Requires CUDA SM80+";
-  ASSERT_EQ(cudaSetDevice(0), cudaSuccess);
-  // Only normalization runs: the full operator retains its fixed 64/128 head/state dimensions.
-  constexpr int rows = 1, slots = 1, heads = 65536, groups = heads, head_dim = 1, state_dim = 1;
-  constexpr int width = heads * head_dim, channels = width + 2 * groups * state_dim;
-  constexpr int stride = width + channels + heads;
-  static_assert(rows == slots);
-  constexpr float epsilon = 1e-5f;
-  // BF16 values below are dyadic and exactly representable; no ORT type or allocator is needed.
-  std::vector<uint16_t> projection(stride), output(width);
-  std::vector<float> readout(width), gamma(width), expected(width);
-  for (int j = 0; j < width; ++j) {
-    const int gate_steps = j % 4 + 1;
-    constexpr uint16_t gate_bits[] = {0x3e80, 0x3f00, 0x3f40, 0x3f80};  // 0.25, 0.5, 0.75, 1
-    projection[j] = gate_bits[gate_steps - 1];
-    const float gate = gate_steps * 0.25f;
-    readout[j] = (j % 11 - 5) * 0.125f;
-    gamma[j] = (j % 9 + 1) * 0.125f;
-    const float v = readout[j] * (gate / (1.f + std::exp(-gate)));
-    expected[j] = v / std::sqrt(v * v + epsilon) * gamma[j];
-  }
-  auto allocate = [](size_t bytes) {
-    void* ptr = nullptr;
-    EXPECT_EQ(cudaMalloc(&ptr, bytes), cudaSuccess);
-    return std::unique_ptr<void, decltype(&cudaFree)>(ptr, cudaFree);
-  };
-  auto device_proj = allocate(projection.size() * sizeof(uint16_t));
-  auto device_readout = allocate(readout.size() * sizeof(float));
-  auto device_gamma = allocate(gamma.size() * sizeof(float));
-  auto device_output = allocate(output.size() * sizeof(uint16_t));
-  ASSERT_NE(device_proj, nullptr);
-  ASSERT_NE(device_readout, nullptr);
-  ASSERT_NE(device_gamma, nullptr);
-  ASSERT_NE(device_output, nullptr);
-  ASSERT_EQ(
-      cudaMemcpy(device_proj.get(), projection.data(), projection.size() * sizeof(uint16_t), cudaMemcpyHostToDevice),
-      cudaSuccess);
-  ASSERT_EQ(cudaMemcpy(device_readout.get(), readout.data(), readout.size() * sizeof(float), cudaMemcpyHostToDevice),
-            cudaSuccess);
-  ASSERT_EQ(cudaMemcpy(device_gamma.get(), gamma.data(), gamma.size() * sizeof(float), cudaMemcpyHostToDevice),
-            cudaSuccess);
-  ASSERT_EQ(cudaMemset(device_output.get(), 0xff, output.size() * sizeof(uint16_t)), cudaSuccess);
-  // Reverting this production launch to dim3(rows, groups) exceeds CUDA's grid-y limit.
-  ASSERT_EQ(contrib::cuda::LaunchMamba2VerifyNormalization(
-                nullptr, rows, width, groups, stride, epsilon, device_proj.get(),
-                static_cast<const float*>(device_readout.get()), static_cast<const float*>(device_gamma.get()),
-                device_output.get()),
-            cudaSuccess);
-  ASSERT_EQ(cudaMemcpy(output.data(), device_output.get(), output.size() * sizeof(uint16_t), cudaMemcpyDeviceToHost),
-            cudaSuccess);
-  for (int j = 0; j < width; ++j) {
-    const uint32_t bits = static_cast<uint32_t>(output[j]) << 16;
-    float actual;
-    std::memcpy(&actual, &bits, sizeof(actual));
-    ASSERT_TRUE(std::isfinite(actual)) << j;
-    EXPECT_NEAR(actual, expected[j], 0.004f * std::abs(expected[j]) + 1e-6f) << j;
-  }
-}
-}  // namespace onnxruntime::test
-#else
 #include "gtest/gtest.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -86,7 +9,7 @@ TEST(FusedStateSpaceKernelTest, MambaNorm65536Groups) {
 #include <cstring>
 #include <limits>
 
-#if defined(USE_CUDA)
+#if defined(USE_CUDA) && !defined(USE_CUDA_MINIMAL)
 #include "core/framework/data_transfer.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session.h"
@@ -95,7 +18,7 @@ TEST(FusedStateSpaceKernelTest, MambaNorm65536Groups) {
 #endif
 
 namespace onnxruntime::test {
-#if defined(USE_CUDA)
+#if defined(USE_CUDA) && !defined(USE_CUDA_MINIMAL)
 namespace {
 void RunCuda(OpTester& tester) {
   std::vector<std::unique_ptr<IExecutionProvider> > providers;
@@ -228,10 +151,10 @@ class MambaTester : public OpTester {
   }
 };
 
-void TestMambaNonuniform(int rows, int selected, bool alias = false) {
+void TestMambaNonuniform(int rows, int selected, bool alias = false, bool trailing_slots = true) {
   constexpr int heads = 4, groups = 2, di = heads * 64, channels = di + groups * 256;
   constexpr int stride = di + channels + heads, state_stride = heads * 128 * 64;
-  const int slots = std::max(rows + 2, 4);
+  const int slots = trailing_slots ? std::max(rows + 2, 4) : rows;
   const bool valid = selected >= 0 && selected < slots;
   std::vector<BFloat16> proj(rows * stride), conv(slots * channels * 3), cw(channels * 4), cb(channels);
   std::vector<float> state(slots * state_stride), decay(heads), skip(heads), dt_bias(heads), gamma(di);
@@ -338,6 +261,8 @@ void TestMambaNonuniform(int rows, int selected, bool alias = false) {
   tester.AddOutput<float>("ssm_snapshots", {slots, heads, 128, 64}, state_expected);
   tester.AddOutput<BFloat16>("xbc", {rows, channels}, xbc);
   tester.AddOutput<float>("readout", {rows, di}, readout);
+  tester.SetOutputAbsErr("conv_snapshots", 0.f);
+  tester.SetOutputRelErr("conv_snapshots", 0.f);
   tester.SetOutputAbsErr("ssm_snapshots", 2e-5f);
   tester.SetOutputAbsErr("readout", 2e-4f);
   RunCuda(tester);
@@ -422,6 +347,8 @@ void TestMambaSnapshots(int rows, int selected, int heads = 2) {
   tester.AddOutput<float>("ssm_snapshots", {slots, heads, 128, 64}, state_expected);
   tester.AddOutput<BFloat16>("xbc", {rows, channels}, xbc);
   tester.AddOutput<float>("readout", {rows, di}, readout);
+  tester.SetOutputAbsErr("conv_snapshots", 0.f);
+  tester.SetOutputRelErr("conv_snapshots", 0.f);
   tester.SetOutputAbsErr("ssm_snapshots", 2e-5f);
   tester.SetOutputAbsErr("readout", 2e-4f);
   RunCuda(tester);
@@ -451,6 +378,13 @@ TEST(FusedStateSpaceTest, MambaMultigroupNonuniformStateAndRankTwoWeights) {
 TEST(FusedStateSpaceTest, MambaEightRowsDeviceStateAliasing) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   TestMambaNonuniform(8, 3, true);
+}
+
+TEST(FusedStateSpaceTest, MambaFullyOverwritesSnapshotsWithoutTrailingSlots) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  TestMambaNonuniform(1, 0, false, false);
+  TestMambaNonuniform(8, 3, false, false);
+  TestMambaNonuniform(8, -1, false, false);
 }
 
 TEST(FusedStateSpaceTest, MambaInvalidSelectorsProduceNaNWithoutStateReads) {
@@ -519,4 +453,3 @@ TEST(FusedStateSpaceTest, ReluSquaredSingleRoundingAndEmpty) {
 }
 #endif
 }  // namespace onnxruntime::test
-#endif  // ORT_FUSED_STATE_SPACE_NORM_TEST
