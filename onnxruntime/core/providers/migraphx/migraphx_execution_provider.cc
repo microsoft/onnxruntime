@@ -1221,7 +1221,7 @@ void calibrate_and_quantize(migraphx::program& prog,
                             bool fp8_enable,
                             bool int8_calibration_cache_available,
                             std::unordered_map<std::string, float>& dynamic_range_map) {
-  // Read in the calibration data and map it to an migraphx paramater map for the calibration ops
+  // Read in the calibration data and map it to an migraphx parameter map for the calibration ops
   if ((int8_enable ^ fp8_enable) && int8_calibration_cache_available) {
     LOGS_DEFAULT(WARNING) << "Quantizing input program";
 
