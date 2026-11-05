@@ -1565,12 +1565,11 @@ class OrtValue:
           (e.g. a PyTorch tensor, JAX array, or numpy array).
         * A raw DLPack PyCapsule (legacy path).
 
-        Boolean tensors are automatically detected when the source object
-        exposes a ``dtype`` attribute (numpy, PyTorch, etc.) or is an
-        ``OrtValue``. For raw DLPack capsules where the original dtype cannot
-        be inspected, bool tensors encoded as uint8 by older DLPack versions
-        are not distinguishable from true uint8 tensors and will be imported
-        as uint8.
+        Dtypes are determined solely by the DLPack metadata. Boolean tensors
+        must use ``kDLBool``; legacy bool-as-uint8 tensors are imported as uint8.
+        All implemented ORT numeric and boolean tensor types are supported,
+        including float8, packed float4, int4/uint4, and int2/uint2. String,
+        complex, and float6 tensors are not supported.
 
         No data is copied; the new OrtValue shares memory with the source.
 
@@ -1579,26 +1578,13 @@ class OrtValue:
         :return: An OrtValue wrapping the tensor data.
         :raises TypeError: If the object does not provide a valid DLPack capsule.
         """
-        # Detect boolean dtype from the source object before consuming it,
-        # because DLPack encodes bool as uint8 and the capsule alone cannot
-        # distinguish between the two.
-        is_bool = False
-        if isinstance(data, OrtValue):
-            is_bool = data.data_type() == "tensor(bool)"
-        elif hasattr(data, "dtype"):
-            dtype_obj = data.dtype
-            # Use .name when available (numpy, cupy, tensorflow all expose it).
-            # Fall back to str() for frameworks that don't (e.g. PyTorch).
-            dtype_name = getattr(dtype_obj, "name", str(dtype_obj))
-            is_bool = dtype_name in ("bool", "bool_", "torch.bool")
-
         # If the input supports the __dlpack__ protocol, call it to get the capsule.
         if hasattr(data, "__dlpack__"):
             capsule = data.__dlpack__()
         else:
             capsule = data
 
-        return cls(C.OrtValue.from_dlpack(capsule, is_bool))
+        return cls(C.OrtValue.from_dlpack(capsule))
 
     def update_inplace(self, data) -> None:
         """
