@@ -59,13 +59,14 @@ class DequantizeLinear final : public WebGpuKernel {
   int64_t output_dtype_;
 };
 
-// Quantizes f32/f16 input to packed int8/uint8 output. Each invocation produces one u32 word
-// (4 output elements), so packed output bytes are never shared between invocations.
+// Quantizes f32/f16 input to packed int8/uint8 or int4/uint4 output. Each invocation produces one u32
+// word (4 8-bit or 8 4-bit output elements), so packed output bytes are never shared between invocations.
 class QuantizeLinearProgram final : public Program<QuantizeLinearProgram> {
  public:
-  QuantizeLinearProgram(bool is_signed, bool per_layer, bool per_axis, bool has_zeropoint, int rank)
+  QuantizeLinearProgram(bool is_signed, bool is_4bit, bool per_layer, bool per_axis, bool has_zeropoint, int rank)
       : Program<QuantizeLinearProgram>{"QuantizeLinear"},
         is_signed_{is_signed},
+        is_4bit_{is_4bit},
         per_layer_{per_layer},
         per_axis_{per_axis},
         has_zeropoint_{has_zeropoint},
@@ -80,6 +81,7 @@ class QuantizeLinearProgram final : public Program<QuantizeLinearProgram> {
 
  private:
   bool is_signed_;
+  bool is_4bit_;
   bool per_layer_;
   bool per_axis_;
   bool has_zeropoint_;
