@@ -231,7 +231,7 @@ struct ScopedInitializerDirectory {
   const std::filesystem::path path;
 };
 
-std::unique_ptr<FILE, decltype(&fclose)> OpenReadOnlyInitializer(const std::filesystem::path& path) {
+std::unique_ptr<FILE, int (*)(FILE*)> OpenReadOnlyInitializer(const std::filesystem::path& path) {
   FILE* file = nullptr;
 #ifdef _WIN32
   const auto error = _wfopen_s(&file, path.c_str(), L"rb");
@@ -532,7 +532,7 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesValidateArgumentsAndAccess) {
   std::unique_ptr<void, decltype(&CloseHandle)> file(handle, CloseHandle);
   const OrtFileHandle descriptor = file.get();
 #else
-  std::unique_ptr<FILE, decltype(&fclose)> file(tmpfile(), fclose);
+  std::unique_ptr<FILE, int (*)(FILE*)> file(tmpfile(), fclose);
   ASSERT_NE(file, nullptr);
   const auto descriptor = NativeFileHandle(file.get());
 #endif
@@ -586,7 +586,7 @@ TEST_F(FileSourcesSessionOptionsTest, FileSourcesInferAfterHandleAndOptionsRelea
 #else
   raw_weights = fopen("testdata/Pads.bin", "rb");
 #endif
-  std::unique_ptr<FILE, decltype(&fclose)> weights(raw_weights, fclose);
+  std::unique_ptr<FILE, int (*)(FILE*)> weights(raw_weights, fclose);
   ASSERT_NE(weights, nullptr);
   const char* name = "Pads.bin";
   const auto descriptor = NativeFileHandle(weights.get());
