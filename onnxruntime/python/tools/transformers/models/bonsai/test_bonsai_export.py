@@ -6,14 +6,23 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 import numpy as np
 import onnx
 import torch
-from convert_to_onnx import BonsaiSwishAttention, T8Linear, _finalize_t8_weights, _fwht, _gated_delta_rule
+from convert_to_onnx import (
+    BonsaiSwishAttention,
+    T8Linear,
+    _finalize_t8_weights,
+    _fwht,
+    _gated_delta_rule,
+    export_model,
+)
 from run_onnx import stop_token_ids
 from t8_codec import decode_q2
 from torch import nn
+from transformers.models.qwen3_5 import modeling_qwen3_5
 from transformers.models.qwen3_5.configuration_qwen3_5 import Qwen3_5TextConfig
 from transformers.models.qwen3_5.modeling_qwen3_5 import Qwen3_5Attention, torch_chunk_gated_delta_rule
 
@@ -152,6 +161,17 @@ class BonsaiExportTest(unittest.TestCase):
         gate = sigmoid.q_proj(hidden).view(1, 3, 2, 8).chunk(2, dim=-1)[1].reshape(1, 3, 8)
         torch.testing.assert_close(actual, base * gate, rtol=1e-5, atol=1e-6)
         torch.testing.assert_close(actual_weights, base_weights, rtol=0, atol=0)
+
+    def test_export_restores_transformers_recurrence(self):
+        def failing_load(*args):
+            # The export-only recurrence is installed while the model is built and traced.
+            self.assertIs(modeling_qwen3_5.torch_chunk_gated_delta_rule, _gated_delta_rule)
+            raise ValueError("checkpoint failed to load")
+
+        with tempfile.TemporaryDirectory() as directory, mock.patch("convert_to_onnx.load_bonsai_model", failing_load):
+            with self.assertRaisesRegex(ValueError, "checkpoint failed to load"):
+                export_model(Path(directory), Path(directory) / "model.onnx", 8)
+        self.assertIs(modeling_qwen3_5.torch_chunk_gated_delta_rule, torch_chunk_gated_delta_rule)
 
 
 class RunOnnxTest(unittest.TestCase):

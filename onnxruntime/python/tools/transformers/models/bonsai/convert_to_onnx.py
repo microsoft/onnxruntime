@@ -439,26 +439,31 @@ def _finalize_t8_weights(model: onnx.ModelProto) -> None:
 
 
 def export_model(model_dir: Path, output_path: Path, sequence_length: int, weight_format: str = "q2") -> None:
+    # The export-only recurrence must not leak into later eager Qwen3.5 runs in this process.
+    original_gated_delta_rule = modeling_qwen3_5.torch_chunk_gated_delta_rule
     modeling_qwen3_5.torch_chunk_gated_delta_rule = _gated_delta_rule
-    model = BonsaiForNextToken(load_bonsai_model(model_dir, weight_format))
-    input_ids = torch.zeros((1, sequence_length), dtype=torch.int64)
-    attention_mask = torch.ones((1, sequence_length), dtype=torch.int64)
-    position_ids = torch.arange(sequence_length, dtype=torch.int64).unsqueeze(0)
-    logits_index = torch.tensor([sequence_length - 1], dtype=torch.int64)
+    try:
+        model = BonsaiForNextToken(load_bonsai_model(model_dir, weight_format))
+        input_ids = torch.zeros((1, sequence_length), dtype=torch.int64)
+        attention_mask = torch.ones((1, sequence_length), dtype=torch.int64)
+        position_ids = torch.arange(sequence_length, dtype=torch.int64).unsqueeze(0)
+        logits_index = torch.tensor([sequence_length - 1], dtype=torch.int64)
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    torch.onnx.export(
-        model,
-        (input_ids, attention_mask, position_ids, logits_index),
-        str(output_path),
-        input_names=["input_ids", "attention_mask", "position_ids", "logits_index"],
-        output_names=["logits"],
-        opset_version=21,
-        custom_opsets={"com.microsoft": 1},
-        dynamo=False,
-        external_data=True,
-        do_constant_folding=False,
-    )
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.onnx.export(
+            model,
+            (input_ids, attention_mask, position_ids, logits_index),
+            str(output_path),
+            input_names=["input_ids", "attention_mask", "position_ids", "logits_index"],
+            output_names=["logits"],
+            opset_version=21,
+            custom_opsets={"com.microsoft": 1},
+            dynamo=False,
+            external_data=True,
+            do_constant_folding=False,
+        )
+    finally:
+        modeling_qwen3_5.torch_chunk_gated_delta_rule = original_gated_delta_rule
 
     exported = onnx.load(output_path, load_external_data=False)
     for node in exported.graph.node:
