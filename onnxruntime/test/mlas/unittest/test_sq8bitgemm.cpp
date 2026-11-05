@@ -23,6 +23,34 @@ Abstract:
 #include "core/mlas/lib/qnbitgemm.h"
 #include "mlas_qnbit.h"
 
+#if defined(MLAS_TARGET_RISCV64)
+// Layout helpers mirroring CompInt8Geometry in qnbitgemm_kernel_rvv.cpp (see
+// the RISCV64 branch of MlasSQ8BitPrepackTest for the description).
+static size_t RvvChunkElems() {
+  static const size_t chunk = [] {
+    size_t vlenb;
+    asm volatile("csrr %0, 0xC22" : "=r"(vlenb));  // vlenb
+    return std::min<size_t>(vlenb, 128);
+  }();
+  return chunk;
+}
+
+// Offset of (block, element) within a column's chunk-ordered int8 data.
+static size_t RvvElementOffset(size_t BlkLen, size_t BlkCount, size_t block, size_t element) {
+  const size_t ChunkElems = RvvChunkElems();
+  const size_t SegLen = std::min(BlkLen, ChunkElems);
+  const size_t SegHalf = SegLen / 2;
+  const size_t SegsPerChunk = ChunkElems / SegLen;
+  const size_t SegCount = BlkCount * (BlkLen / SegLen);
+  const size_t seg = block * (BlkLen / SegLen) + element / SegLen;
+  const size_t e = element % SegLen;
+  const size_t chunk = seg / SegsPerChunk;
+  const size_t t = seg % SegsPerChunk;
+  const size_t segs = std::min(SegsPerChunk, SegCount - chunk * SegsPerChunk);
+  return chunk * ChunkElems + (e / SegHalf) * (segs * SegHalf) + t * SegHalf + (e % SegHalf);
+}
+#endif
+
 class MlasSQ8BitPrepackTest : public MlasTestBase {
  private:
   unsigned int seed_;
@@ -177,17 +205,40 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
     }
   }
 #elif defined(MLAS_TARGET_RISCV64)
-  // The RVV dispatch uses a plain layout private to itself: weights [N][ldb],
-  // scales [N][BlockCountK], block-sums [N][BlockCountK] with block-sum =
-  // scale * zeroPoint (zeroPoint defaults to 128). These references mirror that
-  // layout so the prepack self-consistency check matches what the RVV kernels
-  // consume. End-to-end correctness is covered separately by SQ8BitGemmKernel.
+  // The RVV dispatch uses a layout private to itself, shaped by the vector
+  // length of the core (see CompInt8Geometry in qnbitgemm_kernel_rvv.cpp):
+  // weights are centered to int8 (raw ^ 0x80); each column's K dimension is
+  // cut into chunks of ChunkElems = min(VLENB, 128) elements holding whole
+  // blocks (BlkLen <= ChunkElems) or a slice of one block; within a chunk the
+  // segments' first halves are stored, then their second halves; columns are
+  // grouped in tiles of 8 with the chunks outermost and the tile's columns
+  // interleaved per chunk (the last tile narrower when N % 8 != 0). Scales are
+  // [N][BlockCountK]; block-sums [N][BlockCountK] with
+  // block-sum = scale * (zeroPoint - 128) (zeroPoint defaults to 128). These
+  // references mirror that layout so the prepack self-consistency check
+  // matches what the RVV kernels consume. End-to-end correctness is covered
+  // separately by SQ8BitGemmKernel.
+  static constexpr size_t kRvvColTile = 8;
+
+  template <size_t K, size_t N, size_t BlkLen>
+  static size_t RvvPackedIndex(size_t n, size_t k) {
+    constexpr size_t BlkCount = (K + BlkLen - 1) / BlkLen;
+    const size_t tile = n / kRvvColTile, col = n % kRvvColTile;
+    const size_t width = std::min(kRvvColTile, N - tile * kRvvColTile);
+    const size_t ChunkElems = RvvChunkElems();
+    const size_t off = RvvElementOffset(BlkLen, BlkCount, k / BlkLen, k % BlkLen);
+    const size_t chunk = off / ChunkElems, within = off % ChunkElems;
+    const size_t SegLen = std::min(BlkLen, ChunkElems);
+    const size_t segs = std::min(ChunkElems / SegLen, BlkCount * (BlkLen / SegLen) - chunk * (ChunkElems / SegLen));
+    return tile * kRvvColTile * BlkCount * BlkLen + chunk * ChunkElems * width + col * (segs * SegLen) + within;
+  }
+
   template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
   void PrepackB(const uint8_t* src, uint8_t* dst, float* /*blkUnsignedQuantAZeroPointCorrection*/) {
     constexpr size_t ldb = (K + BlkLen - 1) & (~(BlkLen - 1));
     for (size_t n = 0; n < N; ++n) {
       for (size_t k = 0; k < K; ++k) {
-        dst[n * ldb + k] = src[n * ldb + k];
+        dst[RvvPackedIndex<K, N, BlkLen>(n, k)] = src[n * ldb + k] ^ 0x80;
       }
     }
   }
@@ -200,17 +251,17 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
         const size_t idx = n * BlkCount + k;
         const float zpv = zp ? static_cast<float>(zp[idx]) : 128.f;
         packedScale[idx] = scale[idx];
-        blkSum[idx] = scale[idx] * zpv;
+        blkSum[idx] = scale[idx] * (zpv - 128.f);
       }
     }
   }
 
   template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
   void CheckB(const uint8_t* packedB, const uint8_t* refB) {
-    constexpr size_t ldb = (K + BlkLen - 1) & (~(BlkLen - 1));
     for (size_t n = 0; n < N; ++n) {
       for (size_t k = 0; k < K; ++k) {
-        ASSERT_EQ(packedB[n * ldb + k], refB[n * ldb + k]) << " at n=" << n << " k=" << k;
+        const size_t idx = RvvPackedIndex<K, N, BlkLen>(n, k);
+        ASSERT_EQ(packedB[idx], refB[idx]) << " at n=" << n << " k=" << k;
       }
     }
   }
@@ -576,7 +627,11 @@ class MlasSQ8BitQuantAKernelTest : public MlasTestBase {
         float vSum = 0.f;
         for (size_t k = 0; k < BlkLen; ++k) {
           size_t input_idx = i * input_lda + j * BlkLen + k;
+#if defined(MLAS_TARGET_RISCV64)
+          size_t output_idx = i * output_lda + RvvElementOffset(BlkLen, BlkCount, j, k);
+#else
           size_t output_idx = i * output_lda + j * BlkLen + k;
+#endif
           if (k < std::min(BlkLen, K - j * BlkLen)) {
             const auto input_val = inputA[input_idx];
             // Round to nearest, ties away from zero
