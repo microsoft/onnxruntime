@@ -7,11 +7,16 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 _LIB = "onnxruntime/core/mlas/lib/"
 
+_LINUX_X86_OPT_COPTS = select({
+    "//bazel:linux_x86_64_opt": ["-fomit-frame-pointer"],
+    "//conditions:default": [],
+})
+
 def _library(name, srcs, copts = [], windows_copts = []):
     cc_library(
         name = name,
         srcs = srcs,
-        copts = select({
+        copts = _LINUX_X86_OPT_COPTS + select({
             "//bazel:windows": windows_copts,
             "//conditions:default": copts,
         }),
@@ -212,6 +217,7 @@ def mlas_libraries():
         name = "mlas",
         # ISA archives call baseline helpers after this archive has been scanned on ELF linkers.
         alwayslink = True,
+        copts = _LINUX_X86_OPT_COPTS,
         linkstatic = True,
         includes = [_LIB[:-1], "onnxruntime/core/mlas/inc"],
         srcs = [
