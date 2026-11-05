@@ -256,7 +256,9 @@ an installed layout, dedup-ing storage and downloads.
 
 1. Walk `source_dir` recursively, collecting regular files. Empty
    subdirectories are ignored.
-2. Reject symlinks (portability hazard).
+2. Reject symlinks and junctions encountered below `source_dir`
+   (portability hazard). `source_dir` itself may be a link when only computing
+   a hash; copy-in operations reject linked source roots.
 3. For each file, compute `sha256(file_bytes)` → per-file hex digest.
 4. Build a manifest text of lines `<sha256_hex>  <relative_posix_path>\n`
    sorted lexicographically by path. Paths use forward slashes, no leading
