@@ -969,6 +969,40 @@ because standard ONNX operators use it; this does not register contrib ops.
 
 ## Tests and remaining migration
 
+### iOS and React Native follow-up
+
+`//objectivec:ios_framework` uses native `rules_apple` static framework
+assembly with the existing Objective-C inference wrappers, public headers,
+and source-built CPU runtime. `//objectivec:ios_inference_tests` reuses the
+existing XCTest sources and ORT model resources in an iOS test bundle.
+Both require a macOS host with full Xcode and are manual, separate from the
+desktop wildcard; they do not invoke CocoaPods or a legacy runtime build.
+The deployment minimum is iOS 15.1. For example, on an Apple Silicon Mac:
+
+```sh
+bazel build -c opt //objectivec:ios_framework --ios_multi_cpus=arm64
+bazel build -c opt //objectivec:ios_framework //objectivec:ios_inference_tests --ios_multi_cpus=sim_arm64 --nobuild --lockfile_mode=error
+```
+
+The second command is included in macOS CI as analysis only. Neither native
+iOS compilation, framework import, simulator execution, nor device execution
+has been verified locally. Windows explicitly rejects these targets as
+incompatible rather than substituting a desktop SDK.
+
+The existing React Native data-loading policy tests now run directly as
+`//js/react_native:data_policy_test`. Windows source-native execution passed
+all checks (nine build/test actions); this does **not** compile or validate
+the JSI adapter. Full React Native adapter compilation remains blocked on a
+native dependency graph for React-Core/ReactCommon (JSI, CallInvoker and
+TurboModule), plus ReactAndroid/fbjni and AndroidX for Android. The existing
+Podspec and Android build describe those dependencies, but no such Bazel
+targets are available in this repository. A header-only substitute would
+not validate runtime ABI or linking and is not supplied. No React Native
+package, mobile application integration, CoreML/NNAPI provider, or device
+inference is claimed by this follow-up. Integrated Windows frozen wildcard
+plus manual WASM analysis passed 244 targets with zero actions; this skips
+Apple-incompatible targets and is not iOS compilation evidence.
+
 ### Existing C++ suites
 
 The native C++ test layer reuses existing GoogleTest sources and ORT's existing

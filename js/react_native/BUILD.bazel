@@ -1,0 +1,16 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
+cc_test(
+    name = "data_policy_test",
+    srcs = [
+        "cpp/EpContextDataReadPolicy.cpp",
+        "cpp/EpContextDataReadPolicy.h",
+        "cpp/LoadModelArgumentPolicy.cpp",
+        "cpp/LoadModelArgumentPolicy.h",
+        "cpp/test/EpContextDataReadPolicyTest.cpp",
+    ],
+    includes = ["cpp"],
+)

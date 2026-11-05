@@ -62,6 +62,7 @@ toolchain(
         "linux",
         "windows",
         "macos",
+        "ios",
         "android",
     ]
 ]
@@ -84,6 +85,14 @@ platform(
         "aarch64",
     ]
 ]
+
+selects.config_setting_group(
+    name = "apple",
+    match_any = [
+        ":macos",
+        ":ios",
+    ],
+)
 
 selects.config_setting_group(
     name = "cpuinfo_supported",

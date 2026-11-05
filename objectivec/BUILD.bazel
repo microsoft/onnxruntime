@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+load("@rules_apple//apple:ios.bzl", "ios_static_framework", "ios_unit_test")
 load("@rules_apple//apple:macos.bzl", "macos_unit_test")
 load("@rules_python//python:defs.bzl", "py_test")
 load("//bazel:apple_test_runner.bzl", "ort_macos_test_runner")
@@ -24,6 +25,18 @@ MACOS_ONLY = select({
     ":host_darwin": ["@platforms//os:macos"],
     ":host_darwin_x86_64": ["@platforms//os:macos"],
     ":host_darwin_arm64": ["@platforms//os:macos"],
+    "//conditions:default": ["@platforms//:incompatible"],
+})
+
+APPLE_ONLY = select({
+    "//bazel:apple": [],
+    "//conditions:default": ["@platforms//:incompatible"],
+})
+
+APPLE_HOST = select({
+    ":host_darwin": [],
+    ":host_darwin_x86_64": [],
+    ":host_darwin_arm64": [],
     "//conditions:default": ["@platforms//:incompatible"],
 })
 
@@ -62,7 +75,7 @@ objc_library(
     includes = ["include"],
     module_map = "module.modulemap",
     sdk_frameworks = ["Foundation"],
-    target_compatible_with = MACOS_ONLY,
+    target_compatible_with = APPLE_ONLY,
     deps = ["//:runtime"],
     alwayslink = True,
 )
@@ -103,7 +116,7 @@ objc_library(
         "Foundation",
         "XCTest",
     ],
-    target_compatible_with = MACOS_ONLY,
+    target_compatible_with = APPLE_ONLY,
     deps = [":onnxruntime_objc"],
     alwayslink = True,
 )
@@ -117,5 +130,45 @@ macos_unit_test(
     ],
     runner = ":test_runner",
     target_compatible_with = MACOS_ONLY,
+    deps = [":test_sources"],
+)
+
+ios_static_framework(
+    name = "ios_framework",
+    hdrs = [
+        "include/onnxruntime.h",
+        "include/ort_coreml_execution_provider.h",
+        "include/ort_custom_op_registration.h",
+        "include/ort_enums.h",
+        "include/ort_env.h",
+        "include/ort_session.h",
+        "include/ort_value.h",
+        "include/ort_xnnpack_execution_provider.h",
+    ],
+    bundle_name = "onnxruntime_objc",
+    families = [
+        "iphone",
+        "ipad",
+    ],
+    minimum_os_version = "15.1",
+    tags = ["manual"],
+    target_compatible_with = APPLE_HOST,
+    umbrella_header = "include/onnxruntime.h",
+    deps = [":onnxruntime_objc"],
+)
+
+ios_unit_test(
+    name = "ios_inference_tests",
+    families = [
+        "iphone",
+        "ipad",
+    ],
+    minimum_os_version = "15.1",
+    resources = [
+        "test/testdata/identity_string.ort",
+        "test/testdata/single_add.basic.ort",
+    ],
+    tags = ["manual"],
+    target_compatible_with = APPLE_HOST,
     deps = [":test_sources"],
 )

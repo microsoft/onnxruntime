@@ -176,7 +176,10 @@ objc_library(
     name = "apple_log_sink",
     srcs = ["onnxruntime/core/platform/apple/logging/apple_log_sink.mm"],
     sdk_frameworks = ["Foundation"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = select({
+        "//bazel:apple": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     deps = [":headers"],
 )
 
@@ -252,7 +255,7 @@ cc_library(
             "ole32.lib",
             "shell32.lib",
         ],
-        "//bazel:macos": [
+        "//bazel:apple": [
             "-pthread",
             "-framework",
             "Foundation",
@@ -273,7 +276,7 @@ cc_library(
         ":model_package",
         ":posix_clock",
     ] + select({
-        "//bazel:macos": [":apple_log_sink"],
+        "//bazel:apple": [":apple_log_sink"],
         "//conditions:default": [],
     }),
     alwayslink = True,

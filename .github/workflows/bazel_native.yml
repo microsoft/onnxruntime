@@ -59,6 +59,7 @@ jobs:
             //:python_test_runner_test //:node_test_runner_test \
             //rust:test_runner_test //objectivec:test_runner_test \
             //:android_aar_packager_test \
+            //js/react_native:data_policy_test \
             --lockfile_mode=error --jobs=3 --local_test_jobs=1 \
             --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-desktop.log
       - name: Test selected existing C++ cases
@@ -115,6 +116,16 @@ jobs:
           bazelisk ${BAZEL_STARTUP_OPTIONS:-} test -c opt //:runtime_dlopen_test \
             --lockfile_mode=error --jobs=3 --local_test_jobs=1 \
             --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-desktop.log
+      - name: Analyze native iOS framework and existing tests
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -o pipefail
+          bazelisk ${BAZEL_STARTUP_OPTIONS:-} build -c opt \
+            //objectivec:ios_framework //objectivec:ios_inference_tests \
+            --ios_multi_cpus=sim_arm64 --nobuild \
+            --lockfile_mode=error --jobs=3 --build_python_zip=false \
+            2>&1 | tee -a bazel-desktop.log
       - name: Preserve build and test diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
