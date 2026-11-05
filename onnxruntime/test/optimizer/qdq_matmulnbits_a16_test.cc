@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 // DQ(weight) -> MatMul/Gemm -> MatMulNBits fusion inside INT16/UINT16 activation QDQ boundaries (CPU EP).
-// Only the constant weight DQ is fused. Activation DQ / output Q nodes must stay connected to the same values,
-// and INT8/UINT8 activation boundaries must keep going through the existing QDQ rules.
+// Only the constant weight DQ is fused. Activation DQ / output Q nodes must stay connected to the same values.
+// CPU INT4 also preserves INT8/UINT8 boundaries; 8-bit weights keep going through the existing A8 QDQ rules.
 
 #include <functional>
 #include <limits>
@@ -64,7 +64,7 @@ struct A16Case {
   BiasKind bias{BiasKind::kNone};
   // The activation DQ output also feeds an Identity that produces a graph output.
   bool share_activation_dq{false};
-  // Gemm attributes that make the node incompatible with MatMulNBits.
+  // Gemm attribute variations.
   bool gemm_trans_b{false};
   std::optional<float> gemm_alpha;
   std::optional<float> gemm_beta;
@@ -365,7 +365,8 @@ void ExpectFusedInPlace(const Graph& graph, const A16Case& c) {
     const Node* producer = graph.GetProducerNode(a->Name());
     ASSERT_NE(producer, nullptr);
     EXPECT_EQ(producer->OpType(), "DequantizeLinear");
-    EXPECT_TRUE(IsActivation16Bit(QuantizedElemType(*producer)));
+    EXPECT_TRUE(c.activation == ActivationType::kUInt8 ? IsActivation8Bit(QuantizedElemType(*producer))
+                                                       : IsActivation16Bit(QuantizedElemType(*producer)));
     bool has_edge_from_producer = false;
     for (auto it = nbits->InputEdgesBegin(); it != nbits->InputEdgesEnd(); ++it) {
       has_edge_from_producer |= it->GetNode().Index() == producer->Index() && it->GetDstArgIndex() == 0;
@@ -379,7 +380,8 @@ void ExpectFusedInPlace(const Graph& graph, const A16Case& c) {
   if (c.output_boundary) {
     ASSERT_EQ(consumers.size(), 1u);
     EXPECT_EQ(consumers[0]->OpType(), "QuantizeLinear");
-    EXPECT_TRUE(IsActivation16Bit(QuantizedElemType(*consumers[0])));
+    EXPECT_TRUE(c.activation == ActivationType::kUInt8 ? IsActivation8Bit(QuantizedElemType(*consumers[0]))
+                                                       : IsActivation16Bit(QuantizedElemType(*consumers[0])));
     EXPECT_EQ(nbits->GetOutputEdgesCount(), 1u);
   } else {
     EXPECT_TRUE(consumers.empty());
@@ -476,11 +478,10 @@ TEST(QDQMatMulNBitsA16Tests, Transformer_SharedActivationDQIsRetained) {
   });
 }
 
-TEST(QDQMatMulNBitsA16Tests, Transformer_NotFused_8BitActivation) {
-  // UINT8 activations with INT4 weights: no existing rule fuses this; the A16 rule must not either.
+TEST(QDQMatMulNBitsA16Tests, Transformer_Int4Preserves8BitActivationBoundaries) {
   A16Case c;
   c.activation = ActivationType::kUInt8;
-  RunTransformerOnly(c, kCpuExecutionProvider, [&](Graph& graph) { ExpectNotFused(graph, c); });
+  RunTransformerOnly(c, kCpuExecutionProvider, [&](Graph& graph) { ExpectFusedInPlace(graph, c); });
 }
 
 TEST(QDQMatMulNBitsA16Tests, Transformer_NotFused_NonCpuEp) {
@@ -491,7 +492,7 @@ TEST(QDQMatMulNBitsA16Tests, Transformer_NotFused_NonCpuEp) {
   }
 }
 
-TEST(QDQMatMulNBitsA16Tests, Transformer_NotFused_UnsupportedGemm) {
+TEST(QDQMatMulNBitsA16Tests, Transformer_NotFused_TransposedGemmWithReductionAxisScales) {
   A16Case c;
   c.gemm = true;
   c.gemm_trans_b = true;
@@ -523,12 +524,12 @@ TEST(QDQMatMulNBitsA16Tests, Transformer_NotFused_GemmBetaNotExactlyOne) {
   }
 }
 
-TEST(QDQMatMulNBitsA16Tests, Transformer_NotFused_UnsupportedOutputConsumers) {
-  auto build_case = [](const std::string& variant) {
-    return [variant](ModelTestBuilder& builder) {
+TEST(QDQMatMulNBitsA16Tests, Transformer_OutputConsumersRespectWeightType) {
+  auto build_case = [](const std::string& variant, WeightQuant weight) {
+    return [variant, weight](ModelTestBuilder& builder) {
       NodeArg* x = builder.MakeInput<float>({7, 64}, -1.0f, 1.0f);
       NodeArg* a = AddActivationQDQ(builder, x, ActivationType::kUInt16, kActScale);
-      NodeArg* w = AddWeightDQ(builder, WeightQuant::kInt4PerChannel, 64, 16);
+      NodeArg* w = AddWeightDQ(builder, weight, 64, 16);
       NodeArg* mm_out = builder.MakeIntermediate();
       builder.AddNode("MatMul", {a, w}, {mm_out});
       NodeArg* q_in = mm_out;
@@ -550,21 +551,33 @@ TEST(QDQMatMulNBitsA16Tests, Transformer_NotFused_UnsupportedOutputConsumers) {
     };
   };
 
-  for (const char* variant : {"relu", "fanout", "q8"}) {
-    SCOPED_TRACE(variant);
-    auto post = [&](Graph& graph) {
-      const auto op_count = CountOpsInGraph(graph);
-      EXPECT_EQ(OpCount(op_count, "com.microsoft.MatMulNBits"), 0);
-      EXPECT_EQ(OpCount(op_count, "MatMul"), 1);
-      if (std::string(variant) == "relu") {
-        EXPECT_EQ(OpCount(op_count, "Relu"), 1);
-      }
-      return Status::OK();
-    };
-    ASSERT_STATUS_OK(TestGraphTransformer(build_case(variant), 21, DefaultLoggingManager().DefaultLogger(),
-                                          std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()),
-                                          TransformerLevel::Level2, 1, AssignAllNodesTo(kCpuExecutionProvider),
-                                          post));
+  for (WeightQuant weight : {WeightQuant::kInt4PerChannel, WeightQuant::kInt8PerChannel}) {
+    for (const char* variant : {"relu", "fanout", "q8"}) {
+      SCOPED_TRACE(::testing::Message() << "variant=" << variant << " weight=" << static_cast<int>(weight));
+      const bool expect_fused = weight == WeightQuant::kInt4PerChannel && std::string(variant) != "relu";
+      auto post = [&](Graph& graph) {
+        const auto op_count = CountOpsInGraph(graph);
+        EXPECT_EQ(OpCount(op_count, "com.microsoft.MatMulNBits"), expect_fused ? 1 : 0);
+        EXPECT_EQ(OpCount(op_count, "MatMul"), expect_fused ? 0 : 1);
+        const auto qdq_counts = CountQDQ(graph);
+        const bool output_is_8bit = std::string(variant) == "q8";
+        EXPECT_EQ(qdq_counts.q16, output_is_8bit ? 1 : 2);
+        EXPECT_EQ(qdq_counts.dq16, output_is_8bit ? 1 : 2);
+        EXPECT_EQ(qdq_counts.q8, output_is_8bit ? 1 : 0);
+        EXPECT_EQ(qdq_counts.dq8, output_is_8bit ? 1 : 0);
+        EXPECT_EQ(qdq_counts.dq_other, expect_fused ? 0 : 1);
+        if (std::string(variant) == "relu") {
+          EXPECT_EQ(OpCount(op_count, "Relu"), 1);
+        } else if (std::string(variant) == "fanout") {
+          EXPECT_EQ(OpCount(op_count, "Identity"), 1);
+        }
+        return Status::OK();
+      };
+      ASSERT_STATUS_OK(TestGraphTransformer(build_case(variant, weight), 21, DefaultLoggingManager().DefaultLogger(),
+                                            std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()),
+                                            TransformerLevel::Level2, 1, AssignAllNodesTo(kCpuExecutionProvider),
+                                            post));
+    }
   }
 }
 

@@ -260,9 +260,8 @@ class MatMulNodeGroupSelector : public NodeGroupSelector {
   bool check_qlinear_matmul_params_;
 };
 
-// Convert "1 DQ node for input B -> MatMul" to "MatMulNBits"
-// When allow_16bit_activation_boundaries is true, an INT16/UINT16 activation DQ on input 0 and/or INT16/UINT16
-// Q consumers of the output are also accepted. They stay in the graph; only the weight DQ is fused.
+// Fuse the constant weight DQ into MatMul/Gemm, preserving surrounding integer QDQ for CPU INT4 weights.
+// allow_16bit_activation_boundaries also permits INT16/UINT16 activation boundaries for other weight types.
 class DQMatMulNodeGroupSelector : public NodeGroupSelector {
  public:
   explicit DQMatMulNodeGroupSelector(bool allow_16bit_activation_boundaries = false)
@@ -473,7 +472,7 @@ class MatMulSelector : public BaseSelector {
                      compatible_providers) {}
 };
 
-// Convert "1 DQ node for input B -> MatMul/Gemm" to "MatMulNBits"
+// Replace the constant weight DQ and MatMul/Gemm while preserving activation/output QDQ.
 class DQMatMulToMatMulNBitsSelector : public BaseSelector {
  public:
   explicit DQMatMulToMatMulNBitsSelector(gsl::span<const char*> compatible_providers = {},
