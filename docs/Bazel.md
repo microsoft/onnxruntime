@@ -130,6 +130,28 @@ two cached regression results). Final frozen release analysis, including all six
 explicit WASM/browser targets, passed 339 targets/84,105 configured targets in
 77.730s with zero actions.
 
+The subsequent `fa886020c4` native CI run passed every Linux phase, including
+36 binding/package tests, selected C++, managed tests and installed CPU wheel.
+macOS Objective-C/Swift inference and the iOS build passed again, but analysis
+and Catalyst packaging exposed a shared AppleLipo intermediate output collision.
+The rules_apple patch now names static XCFramework intermediates by target label,
+not the shared public `bundle_name`; framework/module names and actual Catalyst
+compilation remain unchanged. Two macOS analysis tests inspect real AppleLipo
+actions for target-specific output names. Windows passed 35/36 package tests;
+Maven's wildcard classpath must be assembled as a string, because `Path.resolve("*")`
+is invalid on Windows. The copy regression also launches Java with a real probe
+JAR through that wildcard classpath. Native confirmation of these follow-up
+repairs remains pending; no test coverage was removed.
+The wildcard-launch/readonly-copy target passed on Windows in 37.847s (four
+actions), and the portable Catalyst proof passed in the three-target batch
+(29.914s). Frozen release analysis with the six explicit WASM/browser targets
+passed 341 targets/84,130 configured targets in 50.131s with zero actions.
+The Mac-only intermediate-action tests have not run locally. A first portable
+Catalyst invocation with `--build_python_zip=false` hit Windows error 206 in
+the long private output base; the default zip launcher passed without source
+changes. These results do not claim installed Maven/JNI or native Catalyst
+completion.
+
 **Strict original-main size/performance parity fails.** The exact shipped SDK
 ELF SHA256 `6f3b9425ce667ea6ba282b9d2d991b948105f59a3f7fff872585d2708d9170ea`
 was measured against pinned main `98cf896` shipping O3+LTO+BinSkim in 80 paired

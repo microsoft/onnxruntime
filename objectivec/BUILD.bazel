@@ -8,6 +8,7 @@ load("@rules_python//python:defs.bzl", "py_binary", "py_test")
 load("@rules_swift//swift:swift_library.bzl", "swift_library")
 load("//bazel:apple_test_runner.bzl", "ort_macos_test_runner")
 load("//bazel:maccatalyst.bzl", "catalyst_library", "catalyst_xcframework")
+load("//bazel:xcframework_analysis_test.bzl", "xcframework_intermediates_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -249,6 +250,18 @@ catalyst_library(
     name = "onnxruntime_objc_catalyst",
     library = ":onnxruntime_objc",
     target_compatible_with = APPLE_HOST,
+)
+
+xcframework_intermediates_test(
+    name = "base_xcframework_intermediates_test",
+    target_compatible_with = APPLE_HOST,
+    target_under_test = ":onnxruntime_objc_base_xcframework",
+)
+
+xcframework_intermediates_test(
+    name = "catalyst_xcframework_intermediates_test",
+    target_compatible_with = APPLE_HOST,
+    target_under_test = ":onnxruntime_objc_catalyst_xcframework",
 )
 
 apple_static_xcframework(

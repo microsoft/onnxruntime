@@ -94,10 +94,7 @@ public final class MavenPackageSmokeTest {
               System.getProperty("java.home"),
               "bin",
               System.getProperty("os.name").startsWith("Windows") ? "java.exe" : "java");
-      String classpath =
-          mavenHome.resolve("lib").resolve("*")
-              + File.pathSeparator
-              + mavenHome.resolve("boot").resolve("*");
+      String classpath = mavenClasspath(mavenHome);
       List<String> command = new ArrayList<>();
       command.add(java.toString());
       command.add("-Dmaven.home=" + mavenHome);
@@ -143,6 +140,11 @@ public final class MavenPackageSmokeTest {
         Files.delete(path);
       }
     }
+  }
+
+  static String mavenClasspath(Path mavenHome) {
+    return mavenHome.resolve("lib") + File.separator + "*"
+        + File.pathSeparator + mavenHome.resolve("boot") + File.separator + "*";
   }
 
   static void copyFile(Path source, Path destination) throws Exception {

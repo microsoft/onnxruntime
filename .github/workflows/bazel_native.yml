@@ -150,6 +150,8 @@ jobs:
           set -o pipefail
           bazelisk ${BAZEL_STARTUP_OPTIONS:-} test --config=release \
             //objectivec:swift_package_consumer_test //:csharp_nuget_apple_test \
+            //objectivec:base_xcframework_intermediates_test \
+            //objectivec:catalyst_xcframework_intermediates_test \
             --lockfile_mode=error --jobs=3 --local_test_jobs=1 \
             --build_python_zip=false --test_output=errors \
             2>&1 | tee -a bazel-desktop.log

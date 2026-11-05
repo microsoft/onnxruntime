@@ -9,3 +9,15 @@ diff --git a/apple/internal/testing/apple_test_assembler.bzl b/apple/internal/te
          "test_host",
          "test_host_is_bundle_loader",
          "visibility",
+diff --git a/apple/internal/xcframework_rules.bzl b/apple/internal/xcframework_rules.bzl
+--- a/apple/internal/xcframework_rules.bzl
++++ b/apple/internal/xcframework_rules.bzl
+@@ -944,7 +944,7 @@
+         actions = actions,
+         apple_fragment = apple_fragment,
+         deps = deps,
+-        label_name = bundle_name,
++        label_name = ctx.label.name,
+         link_result = link_result,
+         xcode_config = xcode_config,
+     )
