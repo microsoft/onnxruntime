@@ -70,38 +70,42 @@ struct LatentAttentionArgs {
   const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_config;
 };
 
+// Row counts and positions are int32 at the op's interface, but the work plan rounds them up and adds them, which can
+// pass INT32_MAX. All of that arithmetic is done in std::ptrdiff_t.
 struct WorkPlan {
-  int rows_per_batch;  // sequence_length * num_heads
-  int row_block;       // query rows per task
-  int row_blocks;      // row blocks per batch entry
-  int kv_chunk;        // cached rows per split, a multiple of kKvTile
-  int kv_splits;       // splits of the cache per row block
+  std::ptrdiff_t rows_per_batch;  // sequence_length * num_heads
+  std::ptrdiff_t row_block;       // query rows per task
+  std::ptrdiff_t row_blocks;      // row blocks per batch entry
+  std::ptrdiff_t kv_chunk;        // cached rows per split, a multiple of kKvTile
+  std::ptrdiff_t kv_splits;       // splits of the cache per row block
   std::ptrdiff_t task_count;
 };
 
+inline std::ptrdiff_t CeilDiv(std::ptrdiff_t a, std::ptrdiff_t b) { return (a + b - 1) / b; }
+
 // Number of cached rows that query row `row` (token row / num_heads) of a batch entry attends to.
-inline int CausalLimit(int row, int num_heads, int past_rows, int total_rows) {
-  return std::min(past_rows + row / num_heads + 1, total_rows);
+inline std::ptrdiff_t CausalLimit(std::ptrdiff_t row, int num_heads, int past_rows, int total_rows) {
+  return std::min<std::ptrdiff_t>(past_rows + row / num_heads + 1, total_rows);
 }
 
 WorkPlan MakeWorkPlan(int batch_size, int sequence_length, int num_heads, int max_total_rows, int thread_count) {
   WorkPlan plan{};
-  plan.rows_per_batch = sequence_length * num_heads;
+  plan.rows_per_batch = static_cast<std::ptrdiff_t>(sequence_length) * num_heads;
   // Whole tokens per block when they fit, so a block's causal limits span as few tiles as possible.
-  const int block = num_heads <= kMaxRowBlock ? (kMaxRowBlock / num_heads) * num_heads : kMaxRowBlock;
+  const std::ptrdiff_t block = num_heads <= kMaxRowBlock ? (kMaxRowBlock / num_heads) * num_heads : kMaxRowBlock;
   plan.row_block = std::min(plan.rows_per_batch, block);
-  plan.row_blocks = (plan.rows_per_batch + plan.row_block - 1) / plan.row_block;
+  plan.row_blocks = CeilDiv(plan.rows_per_batch, plan.row_block);
 
   // Split the cache when there are fewer than two row tasks per thread, aiming at about four tasks per thread.
+  const std::ptrdiff_t total = max_total_rows;
   const std::ptrdiff_t row_tasks = static_cast<std::ptrdiff_t>(batch_size) * plan.row_blocks;
-  int kv_splits = 1;
-  if (thread_count > 1 && row_tasks < 2 * static_cast<std::ptrdiff_t>(thread_count) && max_total_rows > kMinKvChunk) {
-    const std::ptrdiff_t wanted = (4 * static_cast<std::ptrdiff_t>(thread_count) + row_tasks - 1) / row_tasks;
-    kv_splits = static_cast<int>(std::min<std::ptrdiff_t>(wanted, (max_total_rows + kMinKvChunk - 1) / kMinKvChunk));
+  std::ptrdiff_t kv_splits = 1;
+  if (thread_count > 1 && row_tasks < 2 * static_cast<std::ptrdiff_t>(thread_count) && total > kMinKvChunk) {
+    const std::ptrdiff_t wanted = CeilDiv(4 * static_cast<std::ptrdiff_t>(thread_count), row_tasks);
+    kv_splits = std::min(wanted, CeilDiv(total, kMinKvChunk));
   }
-  const int chunk = (max_total_rows + kv_splits - 1) / kv_splits;
-  plan.kv_chunk = std::max(kKvTile, (chunk + kKvTile - 1) / kKvTile * kKvTile);
-  plan.kv_splits = std::max(1, (max_total_rows + plan.kv_chunk - 1) / plan.kv_chunk);
+  plan.kv_chunk = std::max<std::ptrdiff_t>(kKvTile, CeilDiv(CeilDiv(total, kv_splits), kKvTile) * kKvTile);
+  plan.kv_splits = std::max<std::ptrdiff_t>(1, CeilDiv(total, plan.kv_chunk));
   plan.task_count = row_tasks * plan.kv_splits;
   return plan;
 }
@@ -110,8 +114,8 @@ WorkPlan MakeWorkPlan(int batch_size, int sequence_length, int num_heads, int ma
 // [kv_begin, kv_end). On return m, l and acc hold each row's running max, running sum and sum of
 // exp(score - max) * V, not yet normalized; l is 0 for a row that saw no cached row.
 template <typename T>
-void AttendRowBlock(const LatentAttentionArgs<T>& args, const WorkPlan& plan, int b, int row_begin, int row_count,
-                    int kv_begin, int kv_end, [[maybe_unused]] float* q_buffer, [[maybe_unused]] float* k_buffer,
+void AttendRowBlock(const LatentAttentionArgs<T>& args, const WorkPlan& plan, int b, std::ptrdiff_t row_begin,
+                    int row_count, std::ptrdiff_t kv_begin, std::ptrdiff_t kv_end, [[maybe_unused]] float* q_buffer, [[maybe_unused]] float* k_buffer,
                     float* scores, float* m, float* l, float* acc) {
   const size_t head_size = static_cast<size_t>(args.head_size);
   const size_t v_head_size = static_cast<size_t>(args.v_head_size);
@@ -123,7 +127,7 @@ void AttendRowBlock(const LatentAttentionArgs<T>& args, const WorkPlan& plan, in
   std::fill_n(acc, static_cast<size_t>(row_count) * v_head_size, 0.0f);
 
   // The first row of the block sees the fewest cached rows and the last row the most.
-  const int first_limit = CausalLimit(row_begin, args.num_heads, past_rows, total_rows);
+  const std::ptrdiff_t first_limit = CausalLimit(row_begin, args.num_heads, past_rows, total_rows);
   kv_end = std::min(kv_end, CausalLimit(row_begin + row_count - 1, args.num_heads, past_rows, total_rows));
   if (kv_begin >= kv_end) {
     return;
@@ -140,8 +144,8 @@ void AttendRowBlock(const LatentAttentionArgs<T>& args, const WorkPlan& plan, in
   }
   const T* cache = args.cache + static_cast<size_t>(b) * args.cache_batch_stride;
 
-  for (int tile_begin = kv_begin; tile_begin < kv_end; tile_begin += kKvTile) {
-    const int n = std::min(kKvTile, kv_end - tile_begin);
+  for (std::ptrdiff_t tile_begin = kv_begin; tile_begin < kv_end; tile_begin += kKvTile) {
+    const int n = static_cast<int>(std::min<std::ptrdiff_t>(kKvTile, kv_end - tile_begin));
     const float* k = nullptr;
     if constexpr (std::is_same_v<T, float>) {
       k = cache + static_cast<size_t>(tile_begin) * head_size;
@@ -161,8 +165,8 @@ void AttendRowBlock(const LatentAttentionArgs<T>& args, const WorkPlan& plan, in
       float* s = scores + static_cast<size_t>(i) * n;
       int valid = n;
       if (masked) {
-        const int limit = CausalLimit(row_begin + i, args.num_heads, past_rows, total_rows);
-        valid = std::clamp(limit - tile_begin, 0, n);
+        const std::ptrdiff_t limit = CausalLimit(row_begin + i, args.num_heads, past_rows, total_rows);
+        valid = static_cast<int>(std::clamp<std::ptrdiff_t>(limit - tile_begin, 0, n));
       }
       if (valid == 0) {
         std::fill_n(s, n, 0.0f);
@@ -247,7 +251,7 @@ Status RunLatentAttention(const LatentAttentionArgs<T>& args, AllocatorPtr alloc
     partial = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(state_size) * plan.task_count);
   }
   // Softmax state of a row block over one split of the cache: m[row_block], l[row_block], acc[row_block][Dv].
-  auto split_state = [&](int b, int block, int split_index) {
+  auto split_state = [&](int b, std::ptrdiff_t block, std::ptrdiff_t split_index) {
     const size_t index = (static_cast<size_t>(b) * plan.row_blocks + block) * plan.kv_splits + split_index;
     return partial.get() + index * state_size;
   };
@@ -259,14 +263,14 @@ Status RunLatentAttention(const LatentAttentionArgs<T>& args, AllocatorPtr alloc
     float* k_buffer = q_buffer + q_size;
     float* scores = k_buffer + k_size;
     for (std::ptrdiff_t task = next_task++; task < plan.task_count; task = next_task++) {
-      const int split_index = static_cast<int>(task % plan.kv_splits);
+      const std::ptrdiff_t split_index = task % plan.kv_splits;
       const std::ptrdiff_t row_task = task / plan.kv_splits;
-      const int block = plan.row_blocks - 1 - static_cast<int>(row_task % plan.row_blocks);
+      const std::ptrdiff_t block = plan.row_blocks - 1 - row_task % plan.row_blocks;
       const int b = static_cast<int>(row_task / plan.row_blocks);
-      const int row_begin = block * plan.row_block;
-      const int row_count = std::min(plan.row_block, plan.rows_per_batch - row_begin);
-      const int kv_begin = split_index * plan.kv_chunk;
-      const int kv_end = kv_begin + plan.kv_chunk;
+      const std::ptrdiff_t row_begin = block * plan.row_block;
+      const int row_count = static_cast<int>(std::min(plan.row_block, plan.rows_per_batch - row_begin));
+      const std::ptrdiff_t kv_begin = split_index * plan.kv_chunk;
+      const std::ptrdiff_t kv_end = kv_begin + plan.kv_chunk;
 
       float* m = split ? split_state(b, block, split_index) : scores + score_size;
       float* l = m + row_block;
@@ -284,21 +288,21 @@ Status RunLatentAttention(const LatentAttentionArgs<T>& args, AllocatorPtr alloc
   }
 
   // Merges the split states of each query row: out = sum_c exp(m_c - M) acc_c / sum_c exp(m_c - M) l_c.
-  const std::ptrdiff_t merge_groups = (plan.rows_per_batch + kMergeRows - 1) / kMergeRows;
+  const std::ptrdiff_t merge_groups = CeilDiv(plan.rows_per_batch, kMergeRows);
   const std::ptrdiff_t merge_tasks = static_cast<std::ptrdiff_t>(args.batch_size) * merge_groups;
   auto merged = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(merge_tasks) * kMergeRows * v_head_size);
   ThreadPool::TrySimpleParallelFor(tp, merge_tasks, [&](std::ptrdiff_t task) {
     const int b = static_cast<int>(task / merge_groups);
-    const int row_begin = static_cast<int>(task % merge_groups) * kMergeRows;
-    const int row_count = std::min(kMergeRows, plan.rows_per_batch - row_begin);
+    const std::ptrdiff_t row_begin = task % merge_groups * kMergeRows;
+    const int row_count = static_cast<int>(std::min<std::ptrdiff_t>(kMergeRows, plan.rows_per_batch - row_begin));
     float* out = merged.get() + static_cast<size_t>(task) * kMergeRows * v_head_size;
     float sums[kMergeRows];
     for (int i = 0; i < row_count; ++i) {
-      const int row = row_begin + i;
-      const int block = row / plan.row_block;
+      const std::ptrdiff_t row = row_begin + i;
+      const std::ptrdiff_t block = row / plan.row_block;
       const size_t r = static_cast<size_t>(row % plan.row_block);
       float max_m = kLowest;
-      for (int c = 0; c < plan.kv_splits; ++c) {
+      for (std::ptrdiff_t c = 0; c < plan.kv_splits; ++c) {
         const float* state = split_state(b, block, c);
         if (state[row_block + r] > 0.0f) {
           max_m = std::max(max_m, state[r]);
@@ -307,7 +311,7 @@ Status RunLatentAttention(const LatentAttentionArgs<T>& args, AllocatorPtr alloc
       float* o = out + static_cast<size_t>(i) * v_head_size;
       std::fill_n(o, v_head_size, 0.0f);
       float sum = 0.0f;
-      for (int c = 0; c < plan.kv_splits; ++c) {
+      for (std::ptrdiff_t c = 0; c < plan.kv_splits; ++c) {
         const float* state = split_state(b, block, c);
         const float l = state[row_block + r];
         if (!(l > 0.0f)) {
@@ -340,7 +344,7 @@ void UpdateCache(const T* past, size_t past_batch_stride, const T* key, T* cache
       max_past_rows = std::max(max_past_rows, rows);
     }
   }
-  const std::ptrdiff_t chunks = 1 + (max_past_rows + kCopyRows - 1) / kCopyRows;
+  const std::ptrdiff_t chunks = 1 + CeilDiv(max_past_rows, kCopyRows);
   const std::ptrdiff_t batch_size = static_cast<std::ptrdiff_t>(past_rows.size());
   const size_t new_rows_size = static_cast<size_t>(sequence_length) * head_size;
   ThreadPool::TrySimpleParallelFor(tp, batch_size * chunks, [&](std::ptrdiff_t unit) {
@@ -352,8 +356,8 @@ void UpdateCache(const T* past, size_t past_batch_stride, const T* key, T* cache
                   new_rows_size * sizeof(T));
       return;
     }
-    const int row_begin = static_cast<int>(chunk - 1) * kCopyRows;
-    const int row_end = std::min(row_begin + kCopyRows, past_rows[b]);
+    const std::ptrdiff_t row_begin = (chunk - 1) * kCopyRows;
+    const std::ptrdiff_t row_end = std::min<std::ptrdiff_t>(row_begin + kCopyRows, past_rows[b]);
     if (row_begin < row_end) {
       const size_t offset = static_cast<size_t>(row_begin) * head_size;
       std::memcpy(dst + offset, past + b * past_batch_stride + offset,
