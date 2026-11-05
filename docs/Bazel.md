@@ -745,6 +745,25 @@ MLAS on CPU and cuBLAS/cuDNN on CUDA.
 
 ### Apple Objective-C inference bindings
 
+Completed macOS-15 job `127059252426` at `7806e8c4fd` passed the 20-target
+bindings/package step, including the source Rust smoke (`current_c_api` and
+`add_inference`). `objectivec:test_runner_test` validates only the runner,
+not Objective-C compilation. The two loader-replacement tests failed after
+removing a missing-export library and copying a valid fixture to the same
+path; fixture replacement now allocates the new file before removing the old
+one, preventing inode identity reuse while preserving unload/remove/retry
+assertions. Native Apple inference now runs independently of earlier C++ test
+failures when the job is not cancelled. The iOS build in that completed job
+was cancelled; Objective-C/Swift/iOS verification is still not claimed.
+
+The replacement change passed source-only MSVC `/Zs` checks for both modified
+tests using their Bazel compiler response files, and Windows frozen analysis
+passed 254 targets in 28.610 seconds with zero actions. Executing the two
+native suites would require 1,866 actions after the integrated Abseil patch
+invalidated the runtime cache; that build was stopped to respect the local
+resource limit. The fixture correction therefore remains unverified on
+macOS, rather than a claimed passing Apple regression.
+
 On a macOS host with full Xcode selected (including the macOS SDK and XCTest):
 
 ```sh

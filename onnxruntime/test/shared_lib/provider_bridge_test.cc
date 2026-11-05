@@ -14,8 +14,10 @@ class ProviderBridgeTest : public ::testing::Test {
   void SetUp() override {
     runtime_directory_ = Env::Default().GetRuntimePath();
     shared_library_path_ = runtime_directory_ / GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_shared"));
+    replacement_library_path_ = shared_library_path_.native() + ORT_TSTR(".replacement");
     UnloadSharedProviders();
     ASSERT_FALSE(std::filesystem::exists(shared_library_path_));
+    ASSERT_FALSE(std::filesystem::exists(replacement_library_path_));
   }
 
   void TearDown() override {
@@ -23,16 +25,23 @@ class ProviderBridgeTest : public ::testing::Test {
     std::error_code error;
     std::filesystem::remove(shared_library_path_, error);
     EXPECT_FALSE(error) << error.message();
+    std::filesystem::remove(replacement_library_path_, error);
+    EXPECT_FALSE(error) << error.message();
+  }
+
+  void InstallLibrary(const char* file_name, const std::filesystem::path& destination) {
+    std::error_code error;
+    std::filesystem::copy_file(runtime_directory_ / file_name, destination, error);
+    ASSERT_FALSE(error) << error.message();
   }
 
   void InstallLibrary(const char* file_name) {
-    std::error_code error;
-    std::filesystem::copy_file(runtime_directory_ / file_name, shared_library_path_, error);
-    ASSERT_FALSE(error) << error.message();
+    InstallLibrary(file_name, shared_library_path_);
   }
 
   std::filesystem::path runtime_directory_;
   std::filesystem::path shared_library_path_;
+  std::filesystem::path replacement_library_path_;
 };
 
 TEST_F(ProviderBridgeTest, MissingLibraryReturnsFalseOnRetry) {
@@ -45,11 +54,14 @@ TEST_F(ProviderBridgeTest, MissingExportUnloadsLibraryAndAllowsRetry) {
   EXPECT_FALSE(InitProvidersSharedLibrary());
   EXPECT_FALSE(InitProvidersSharedLibrary());
 
+  // Allocate the replacement while the old inode exists, avoiding dyld identity reuse.
+  ASSERT_NO_FATAL_FAILURE(InstallLibrary(ORT_PROVIDER_BRIDGE_VALID_TEST_LIBRARY, replacement_library_path_));
   std::error_code error;
   ASSERT_TRUE(std::filesystem::remove(shared_library_path_, error)) << error.message();
   EXPECT_FALSE(InitProvidersSharedLibrary());
 
-  ASSERT_NO_FATAL_FAILURE(InstallLibrary(ORT_PROVIDER_BRIDGE_VALID_TEST_LIBRARY));
+  std::filesystem::rename(replacement_library_path_, shared_library_path_, error);
+  ASSERT_FALSE(error) << error.message();
   EXPECT_TRUE(InitProvidersSharedLibrary());
 }
 
