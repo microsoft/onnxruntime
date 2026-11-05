@@ -238,12 +238,29 @@
   "moduleExtensions": {
     "//bazel:dependencies.bzl%ort_dependencies": {
       "general": {
-        "bzlTransitiveDigest": "W0+h0CArOZ9TTMx/yyLYtaC9rq16qcAQu2aSXd7b1vY=",
+        "bzlTransitiveDigest": "D6m83L+CR7KIlXGe1BHAPAEDhWHckDu2h4TNAp45c4s=",
         "usagesDigest": "dGdfspd/cjgRt/eeKwCBk5WnMR971p1ufikWyILxhwc=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
         "envVariables": {},
         "generatedRepoSpecs": {
+          "ort_cpuinfo": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "urls": [
+                "https://github.com/pytorch/cpuinfo/archive/66ee79c038d70dad9f08705b2c9b3e58f6d8f512.zip"
+              ],
+              "sha256": "b93044263ee072e9be3577bda52f48d5a4dd9fcb80091529471c8d2bfe59219d",
+              "strip_prefix": "cpuinfo-66ee79c038d70dad9f08705b2c9b3e58f6d8f512",
+              "patches": [
+                "@@//:cmake/patches/cpuinfo/fix_missing_sysfs_fallback.patch",
+                "@@//:cmake/patches/cpuinfo/enable_deinit_refcounting.patch"
+              ],
+              "patch_args": [
+                "-p1"
+              ]
+            }
+          },
           "ort_mingw": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
             "attributes": {

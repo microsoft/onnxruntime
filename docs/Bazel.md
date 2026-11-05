@@ -160,6 +160,7 @@ because standard ONNX operators use it; this does not register contrib ops.
 
 ## Tests and remaining migration
 
+Before cpuinfo integration,
 `bazel test //... -c opt --jobs=16 --keep_going --nocache_test_results` passed
 all seven default test targets on Azure Linux 3 with GCC 13.2, with
 `CUDA_PATH`, `CUDNN_PATH`, and `LD_LIBRARY_PATH` unset. This includes all five
@@ -199,3 +200,46 @@ additional EPs, additional architecture variants, release packaging,
 cross-compilation, sanitizers, and the CUDA/toolchain matrix. Those are separate
 native targets/toolchains to add, not reasons to delegate back to the old build
 system.
+
+## Optimization and size parity
+
+Correctness results above are not inference-performance or binary-size
+comparisons against the release build. The current source-level audit found:
+
+- The pinned rules_cc native Linux toolchain uses `-O2`, `-DNDEBUG`,
+  function/data sections, and linker garbage collection in `-c opt` mode.
+  Its MSVC toolchain uses `/O2`, `/DNDEBUG`, and
+  `/OPT:ICF`/`/OPT:REF`. These are toolchain defaults, not evidence that every
+  effective compile/link action matches a particular release configuration.
+- MLAS ISA-specific sources retain their separate architecture flags and
+  runtime dispatch. The runtime and baseline MLAS archives use `alwayslink`
+  for registration and link-order correctness; this is not a minimal build.
+- This graph does not enable LTO explicitly. The CMake option
+  `onnxruntime_ENABLE_LTO` also defaults to off, but a release pipeline can
+  enable it. Comparing against such a build requires matching that setting.
+- The audit found missing PyTorch cpuinfo integration. Native Linux, Windows,
+  and macOS now compile its existing pinned source with upstream Bazel rules
+  and ORT's existing lifecycle/sysfs patches. `CPUINFO_SUPPORTED` and the
+  dependency are propagated together. Other target operating systems retain
+  their prior fallback detection; this does not enable cpuinfo for WASM or
+  Android. The standalone `//:cpuinfo_test` checks vendor/topology detection,
+  reference counting, and reinitialization; the runtime smoke test checks ORT's
+  detected vendor as well. This closes a source-graph gap, not proof of
+  equivalent kernel dispatch or inference performance.
+- Contrib operators are disabled in this foundation. Binary sizes must be
+  compared with matching operator/provider coverage, architecture, debug
+  information, and stripping settings.
+
+No matched inference benchmark or binary-size comparison has been completed.
+Such a comparison must use the same source revision, compiler, hardware,
+features, model inputs, thread settings, and warm-up policy. Report fresh and
+incremental build wall times separately from session initialization and warmed
+inference latency/throughput; record VM specifications and job counts with
+build timings.
+
+The new standalone cpuinfo test passed a fresh Windows MSVC build with two
+jobs: 25 actions, 51.35 seconds wall time including startup/dependency analysis,
+and 0.2 seconds test execution. No ORT runtime was rebuilt for this isolated
+check. The preceding foundation revision `d473c4e677` passed all seven native
+runtime/binding targets in Linux, Windows, and macOS CI; those results do not
+validate the subsequent cpuinfo integration, which needs its own native CI.

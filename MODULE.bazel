@@ -5,6 +5,7 @@ module(name = "onnxruntime")
 
 bazel_dep(name = "apple_support", version = "1.23.1")
 bazel_dep(name = "rules_cc", version = "0.2.16")
+bazel_dep(name = "rules_license", version = "1.0.0")
 bazel_dep(name = "bazel_skylib", version = "1.8.2")
 bazel_dep(name = "platforms", version = "1.1.0")
 bazel_dep(name = "protobuf", version = "33.6")
@@ -48,6 +49,7 @@ use_repo(ort_deps, "ort_node_import_library")
 use_repo(ort_deps, "ort_dotnet_tensors")
 use_repo(ort_deps, "ort_wil")
 use_repo(ort_deps, "ort_mingw")
+use_repo(ort_deps, "ort_cpuinfo")
 
 register_toolchains("//bazel:windows_cgo_toolchain")
 

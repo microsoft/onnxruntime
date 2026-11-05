@@ -24,6 +24,17 @@ cc_library(
 
 def _dependencies_impl(_ctx):
     http_archive(
+        name = "ort_cpuinfo",
+        urls = ["https://github.com/pytorch/cpuinfo/archive/66ee79c038d70dad9f08705b2c9b3e58f6d8f512.zip"],
+        sha256 = "b93044263ee072e9be3577bda52f48d5a4dd9fcb80091529471c8d2bfe59219d",
+        strip_prefix = "cpuinfo-66ee79c038d70dad9f08705b2c9b3e58f6d8f512",
+        patches = [
+            "//:cmake/patches/cpuinfo/fix_missing_sysfs_fallback.patch",
+            "//:cmake/patches/cpuinfo/enable_deinit_refcounting.patch",
+        ],
+        patch_args = ["-p1"],
+    )
+    http_archive(
         name = "ort_mingw",
         urls = ["https://github.com/mstorsjo/llvm-mingw/releases/download/20261104/llvm-mingw-20261104-ucrt-x86_64.zip"],
         sha256 = "552191b5754c49a5a20723276a6fc56541ea1922c4c50b7b669022333fc1b40f",

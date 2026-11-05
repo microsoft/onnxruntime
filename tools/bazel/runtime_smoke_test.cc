@@ -12,6 +12,9 @@
 
 #include "onnxruntime_cxx_api.h"
 #include "onnx/onnx_pb.h"
+#if defined(CPUINFO_SUPPORTED)
+#include "core/common/cpuid_info.h"
+#endif
 
 namespace {
 
@@ -104,6 +107,14 @@ int main(int argc, char** argv) {
     }
 
     Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "bazel_smoke");
+#if defined(CPUINFO_SUPPORTED)
+    const auto& cpu = onnxruntime::CPUIDInfo::GetCPUIDInfo();
+    if (cpu.GetCPUVendor() == "unknown" || cpu.GetCPUVendorId() == 0) {
+      throw std::runtime_error(
+          "CPU vendor detection failed; inspect cpuinfo initialization diagnostics and host CPU metadata access.");
+    }
+    std::cout << "CPU vendor: " << cpu.GetCPUVendor() << ", vendor ID: " << cpu.GetCPUVendorId() << '\n';
+#endif
     Ort::SessionOptions options;
     options.SetIntraOpNumThreads(1);
     if (argc == 3) {

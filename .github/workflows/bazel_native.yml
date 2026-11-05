@@ -45,7 +45,7 @@ jobs:
           bazelisk ${BAZEL_STARTUP_OPTIONS:-} build //... -c opt --nobuild \
             --lockfile_mode=error --jobs=3 --build_python_zip=false 2>&1 | tee bazel-desktop.log
           bazelisk ${BAZEL_STARTUP_OPTIONS:-} test -c opt \
-            //:runtime_smoke_test //:common_test //:go_test //:java_smoke_test \
+            //:runtime_smoke_test //:common_test //:cpuinfo_test //:go_test //:java_smoke_test \
             //:python_smoke_test //:node_smoke_test //:csharp_smoke_test \
             --lockfile_mode=error --jobs=3 --local_test_jobs=1 \
             --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-desktop.log
