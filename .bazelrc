@@ -21,6 +21,12 @@ build --incompatible_strict_action_env
 common --repo_env=ASPECT_TOOLS_TELEMETRY_OPTOUT=1
 test --test_output=errors
 
+# Release compilation is optimized and debug information is stripped. Packaging
+# still applies its platform-native symbol stripping to final payloads.
+# LTO remains an explicit platform/toolchain choice until each toolchain is validated.
+build:release --compilation_mode=opt
+build:release --strip=always
+
 # NDK resolution is opt-in so desktop builds do not require a mobile SDK.
 build:android_arm64 --platforms=//bazel:android_arm64
 build:android_arm64 --extra_toolchains=@ort_android_ndk//:all

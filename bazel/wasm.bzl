@@ -5,6 +5,7 @@
 
 load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_run_binary", "js_test")
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load(":js_env.bzl", "WINDOWS_JS_ENV")
 
 def _transition_impl(settings, attr):
@@ -109,7 +110,20 @@ def wasm_targets():
         name = "wasm_package_assembler",
         env = WINDOWS_JS_ENV,
         entry_point = "tools/bazel/wasm_package.cjs",
-        data = ["//bazel/node:compiler"],
+        data = native.glob([
+            "js/common/lib/*.ts",
+            "js/web/lib/wasm/*.ts",
+        ]) + [
+            "//bazel/node:compiler",
+            "js/web/lib/backend-wasm.ts",
+            "js/web/lib/validate-session-options.ts",
+            "js/web/lib/version.ts",
+            "js/web/package.json",
+            "js/tsconfig.json",
+            "VERSION_NUMBER",
+            "LICENSE",
+            "ThirdPartyNotices.txt",
+        ],
         tags = ["manual"],
     )
     cc_binary(
@@ -155,6 +169,11 @@ def wasm_targets():
                 "js/web/lib/backend-wasm.ts",
                 "js/web/lib/validate-session-options.ts",
                 "js/web/lib/version.ts",
+                "js/web/package.json",
+                "js/tsconfig.json",
+                "VERSION_NUMBER",
+                "LICENSE",
+                "ThirdPartyNotices.txt",
                 ":wasm_" + suffix + "/ort_wasm.js",
                 ":wasm_" + suffix + "/ort_wasm.wasm",
             ],
@@ -164,6 +183,33 @@ def wasm_targets():
                 "$(rootpath :wasm_" + suffix + "/ort_wasm.js)",
                 "$(rootpath :wasm_" + suffix + "/ort_wasm.wasm)",
                 suffix,
+            ],
+            tags = ["manual"],
+        )
+        pkg_tar(
+            name = "web_" + suffix + "_npm",
+            srcs = [":web_" + suffix + "_package"],
+            out = "onnxruntime-web-bazel-" + suffix + ".tgz",
+            extension = "tar.gz",
+            strip_prefix = "web_" + suffix + "_package",
+            tags = ["manual"],
+        )
+        js_test(
+            name = "web_" + suffix + "_npm_test",
+            env = WINDOWS_JS_ENV,
+            entry_point = "tools/bazel/wasm_npm_test.cjs",
+            include_npm = True,
+            args = [
+                "$(rootpath :web_" + suffix + "_npm)",
+                "$(rootpath onnxruntime/test/testdata/mul_1.onnx)",
+                "$(rootpath VERSION_NUMBER)",
+                suffix,
+            ],
+            data = [
+                ":web_" + suffix + "_npm",
+                "//bazel/node:compiler",
+                "onnxruntime/test/testdata/mul_1.onnx",
+                "VERSION_NUMBER",
             ],
             tags = ["manual"],
         )

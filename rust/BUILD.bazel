@@ -3,6 +3,7 @@
 
 load("@rules_python//python:defs.bzl", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_test")
+load("//bazel:rust_package.bzl", "rust_release_package")
 load("//bazel/rust:tests.bzl", "rust_selected_test")
 
 exports_files([
@@ -43,3 +44,5 @@ py_test(
     main = "//:tools/bazel/rust_test_runner_test.py",
     deps = ["@rules_python//python/runfiles"],
 )
+
+rust_release_package(cargo_tool = "//:release_cargo")

@@ -7,9 +7,9 @@ const path = require('node:path');
 const {pathToFileURL} = require('node:url');
 
 async function main() {
-  const output = path.resolve(process.argv[2]);
-  const ort = require(path.join(output, 'ort-web.js'));
-  ort.env.wasm.wasmBinary = fs.readFileSync(path.join(output, 'ort_wasm.wasm'));
+  const output = path.resolve(process.argv[2], 'package', 'dist');
+  const ort = require(path.join(output, 'ort.js'));
+  ort.env.wasm.wasmBinary = fs.readFileSync(path.join(output, 'ort-wasm.wasm'));
   for (const [name, shape, values] of [
     ['mul_1', [3, 2], [1, 4, 9, 16, 25, 36]],
     ['matmul_1', [3, 1], [5, 11, 17]],
@@ -29,8 +29,8 @@ async function main() {
       ort.InferenceSession.create(Uint8Array.from([0]), {executionProviders: ['wasm']}),
       /session|model|protobuf/i);
   // Every declared inference WASM API must remain exported, not just the smoke path.
-  const {default: factory} = await import(pathToFileURL(path.join(output, 'ort_wasm.mjs')).href);
-  const wasm = await factory({wasmBinary: fs.readFileSync(path.join(output, 'ort_wasm.wasm'))});
+  const {default: factory} = await import(pathToFileURL(path.join(output, 'ort-wasm.mjs')).href);
+  const wasm = await factory({wasmBinary: fs.readFileSync(path.join(output, 'ort-wasm.wasm'))});
   const fullHeader = fs.readFileSync('onnxruntime/wasm/api.h', 'utf8');
   const names = [...fullHeader.matchAll(/EMSCRIPTEN_KEEPALIVE\s+(Ort\w+)\s*\(/g)]
       .map((match) => match[1]).filter((name) => !name.startsWith('OrtTraining'));

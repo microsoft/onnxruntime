@@ -14,16 +14,16 @@ async function main() {
             'Microsoft/Edge/Application/msedge.exe') : undefined);
   assert(browser && fs.existsSync(browser),
       'Chromium/Edge is required; set --test_env=ORT_BAZEL_BROWSER=/absolute/path/to/chromium.');
-  const directory = path.resolve(process.argv[2]);
+  const directory = path.resolve(process.argv[2], 'package', 'dist');
   let reportResult;
   const result = new Promise((resolve) => { reportResult = resolve; });
   const files = {
     '/': ['tools/bazel/wasm_browser_test.html', 'text/html'],
     '/mul_1.onnx': ['onnxruntime/test/testdata/mul_1.onnx', 'application/octet-stream'],
     '/matmul_1.onnx': ['onnxruntime/test/testdata/matmul_1.onnx', 'application/octet-stream'],
-    '/ort-web.js': [path.join(directory, 'ort-web.js'), 'text/javascript'],
-    '/ort_wasm.mjs': [path.join(directory, 'ort_wasm.mjs'), 'text/javascript'],
-    '/ort_wasm.wasm': [path.join(directory, 'ort_wasm.wasm'), 'application/wasm'],
+    '/ort-web.js': [path.join(directory, 'ort.js'), 'text/javascript'],
+    '/ort_wasm.mjs': [path.join(directory, 'ort-wasm.mjs'), 'text/javascript'],
+    '/ort_wasm.wasm': [path.join(directory, 'ort-wasm.wasm'), 'application/wasm'],
   };
   const server = http.createServer((request, response) => {
     if (request.url === '/result' && request.method === 'POST') {

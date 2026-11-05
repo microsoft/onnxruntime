@@ -9,6 +9,7 @@ load("@rules_pkg//pkg:mappings.bzl", "pkg_files", "strip_prefix")
 load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
 load("@rules_python//python:defs.bzl", "py_binary", "py_test")
 load("//bazel:react_native_package.bzl", "react_native_package")
+load("//bazel:release_native_binary.bzl", "release_native_binary")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -34,9 +35,9 @@ react_native_package(
     frontend = glob(["lib/*.ts"]),
     java = ":android_java",
     native = [
-        ":libonnxruntimejsi.so",
-        "//:android/libonnxruntime.so",
-        "@ort_ndk_shared_runtime//:libc++_shared.so",
+        ":android_jsi_release_library",
+        "//:android_runtime_release_library",
+        ":android_cpp_release_library",
     ],
     notices = [
         "//:LICENSE",
@@ -52,6 +53,18 @@ react_native_package(
         "@platforms//cpu:aarch64",
     ],
     version = "//:VERSION_NUMBER",
+)
+
+filegroup(
+    name = "android_aar",
+    srcs = [":android_package"],
+    output_group = "aar",
+)
+
+filegroup(
+    name = "android_npm",
+    srcs = [":android_package"],
+    output_group = "npm",
 )
 
 objc_library(
@@ -148,12 +161,30 @@ cc_binary(
     ],
 )
 
+release_native_binary(
+    name = "android_jsi_release_library",
+    src = ":libonnxruntimejsi.so",
+    target_compatible_with = [
+        "@platforms//os:android",
+        "@platforms//cpu:aarch64",
+    ],
+)
+
+release_native_binary(
+    name = "android_cpp_release_library",
+    src = "@ort_ndk_shared_runtime//:libc++_shared.so",
+    target_compatible_with = [
+        "@platforms//os:android",
+        "@platforms//cpu:aarch64",
+    ],
+)
+
 pkg_files(
     name = "android_jsi_native_files",
     srcs = [
-        ":libonnxruntimejsi.so",
-        "//:android/libonnxruntime.so",
-        "@ort_ndk_shared_runtime//:libc++_shared.so",
+        ":android_cpp_release_library",
+        ":android_jsi_release_library",
+        "//:android_runtime_release_library",
     ],
     prefix = "jni/arm64-v8a",
     strip_prefix = strip_prefix.files_only(),

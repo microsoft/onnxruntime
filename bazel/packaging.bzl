@@ -21,8 +21,8 @@ def runtime_sdk_package():
     pkg_files(
         name = "runtime_sdk_library",
         srcs = [
-            ":runtime_library",
-            ":providers_shared_library",
+            ":runtime_release_library",
+            ":providers_shared_release_library",
         ],
         attributes = pkg_attributes(mode = "0755"),
         prefix = select({
@@ -41,7 +41,7 @@ def runtime_sdk_package():
     pkg_files(
         name = "runtime_sdk_cuda_libraries",
         srcs = [
-            ":libonnxruntime_providers_cuda.so",
+            ":cuda_provider_release_library",
         ],
         attributes = pkg_attributes(mode = "0755"),
         prefix = "lib",

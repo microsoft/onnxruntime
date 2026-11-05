@@ -2,6 +2,6 @@
 // Licensed under the MIT License.
 
 module onnxruntime_objc {
-  umbrella header "include/onnxruntime.h"
+  umbrella header "onnxruntime.h"
   export *
 }

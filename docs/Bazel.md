@@ -6,6 +6,123 @@ It does **not** invoke CMake, `build.py`, Gradle, MSBuild, `cmake-js`, or
 `rules_foreign_cc`. Existing ONNX and Abseil **source patches** are reused;
 their location under `cmake/` does not make them build-system dependencies.
 
+## Language release artifacts
+
+Release packaging constructs unsigned, locally consumable artifacts from the
+selected source-built runtime. It does not publish to registries, sign Apple
+archives, or imply that another platform/ABI was built. Build with `--config=release` and
+`--lockfile_mode=error`; retain consumer results separately from archive hashes.
+
+The release profile uses the platform's optimized compilation mode without LTO.
+`--strip=always` removes debug information; it does not by itself remove all
+shipping symbols. Package targets therefore consume `release_native_binary`
+outputs: the selected target C++ toolchain performs `--strip-unneeded` on
+Linux/Android or `-S -x` on Darwin. Windows forwards the original DLL/addon and
+keeps portable PDBs in the separate symbols package. Link-time libraries and
+imports remain unchanged. An auto-configured system toolchain can name an
+absolute system strip executable; this is a system-toolchain boundary, not a
+claim that the executable was downloaded or independently pinned by Bazel.
+
+| Surface | Target | Output and boundary |
+| --- | --- | --- |
+| Python | `//:python_wheel` | Complete source-built wheel for selected CPython 3.11–3.14 and host ABI; default 3.12. CPU desktop or selected Linux x64 CUDA profile, whose CUDA/cuDNN extras derive from the selected toolkit. No untested manylinux compatibility claim. |
+| npm/common and Node | `//:common_npm`, `//:node_npm` | Offline-installable CJS/ESM/declaration packages and selected desktop native adapter/runtime. CUDA payload is explicit and Linux x64 only; common package has no native inference claim. |
+| npm/Web | `//:web_scalar_npm`, `//:web_simd_npm` | Separately selected source-built single-threaded CPU WASM packages, with declarations and exports. No WebGPU, WebNN, JSEP, or threads claim. |
+| NuGet | `//:csharp_nuget_managed`, `//:csharp_nuget`, `//:csharp_nuget_symbols` | Distinct netstandard2.0, net8.0, net9.0-android35.0, net9.0-ios18.0, and net9.0-maccatalyst18.0 assemblies/XML docs compiled against their actual reference packs, exact per-TFM dependencies, selected CPU/CUDA RID native SDK package, and separate genuine portable-PDB `.snupkg`. Native mobile packages are separate; managed compilation is not mobile device execution. One RID is not a universal release; normal `.nupkg` files stay PDB-free. |
+| Native mobile NuGet | `//:csharp_nuget_android`, `//:csharp_nuget_apple` | Android packages the exact ARM64/API-27+ source-built AAR with `AndroidLibrary Bind=false`. Apple packages the static XCFramework ZIP with build/buildTransitive NativeReference integration. Required slices, actual minimum-OS metadata and defined C API symbols are checked; an incomplete Apple framework is rejected. Native mobile consumption remains separately qualified. |
+| Java/Maven | `//:java_maven` | Version-derived local Maven repository ZIP: self-contained API/native primary JAR, source JAR, actual hermetic-Javadoc JAR, POM, notices, SHA-1/SHA-256/SHA-512 sidecars and release manifest. Platform-qualified CPU or selected Linux x64 CUDA coordinates; not a merged multi-platform release or an API-only primary JAR requiring an undiscoverable classifier. |
+| Android/Maven | `//:android_maven` | ARM64 AAR plus Maven POM/source/Javadoc/checksum companions; build with the existing Android cross-profile. Not a device test or a universal ABI AAR. |
+| Apple | `//objectivec:onnxruntime_objc_xcframework`, `//objectivec:apple_release_packages` | Source-native static XCFramework graph for iOS device/simulator, macOS, and distinct arm64/x86_64 Catalyst compilation, plus local SwiftPM and CocoaPods ZIPs. Catalyst merging rejects objects without genuine platform-6/15.1 Mach-O proof; it never relabels macOS binaries. Actual Xcode-host compilation of this graph remains unverified; portable fixtures are not native validation. |
+| Go | `//:go_release_archive`, `//:go_module_proxy_artifacts` | First-party source/native SDK bundle and Go module-proxy artifacts; external installed consumers are separate from archive format checks. |
+| Rust | `//rust:release_archive`, `//rust:crates_io_artifacts` | First-party crate sources/native SDK and Cargo `.crate` archives; not a claim of registry publication or every Rust platform. |
+| Artifact inventory | `//:desktop_release_inventory`, `//:java_release_inventory` | Version/platform/variant, actual file sizes and SHA-256 values of built outputs, including tree artifacts. Desktop CUDA inventory excludes CPU-only Rust/Go SDK packages. Explicitly records artifact construction only, not inferred inference success. |
+
+`//:java_maven_test` extracts the repository and uses the pinned Maven CLI to
+resolve ordinary primary coordinates offline before Java/JNI Add inference.
+CPU coordinates are `com.microsoft.onnxruntime:onnxruntime-bazel-<platform>:<version>`;
+the explicit GPU variant uses `onnxruntime-bazel-gpu-<platform>`. The primary JAR
+contains both API classes and its selected native payload. Java API and Android
+classes compile with `--release 8`; packaging rejects class majors above 52
+instead of advertising Java 8 based only on POM metadata. The previous default
+Bazel API artifact had class major 55, which is not Java-8 compatible.
+`//:java_release_tool_test`, `//objectivec:apple_package_test`, and
+`//:release_inventory_test` check artifact contracts using fixtures, not native
+runtime performance or unbuilt platform binaries.
+
+`//objectivec:swift_package_consumer_test` is an explicit Apple-host test: it
+extracts the actual SwiftPM ZIP outside the source tree and runs the existing
+Swift Add XCTest against that local binary package, in release mode. It fails
+on zero-match test discovery rather than treating an empty run as inference
+proof. `//objectivec:apple_package_consumer_contract_test` only checks staging
+and path safety portably; it is not native Apple execution evidence.
+
+Rust `.crate` archives do not embed host-generated `bindings.rs`: the system-SDK
+build strategy generates bindings for the consumer's target. Rust/Go SDK
+bundles and their installed consumers are CPU-only, rather than silently
+omitting CUDA provider payloads. Installed ecosystem consumers require
+explicit executable paths and fail instead of skipping missing tools:
+
+```sh
+export ORT_RELEASE_CARGO_HOME=/absolute/path/to/owned/cargo-cache
+CARGO_HOME="$ORT_RELEASE_CARGO_HOME" /absolute/path/to/cargo fetch \
+  --locked --manifest-path rust/Cargo.toml
+bazel test --config=release //rust:release_consumer_test //rust:crates_io_consumer_test \
+  //:go_release_consumer_test //:go_module_proxy_consumer_test \
+  --test_env=ORT_RELEASE_CARGO=/absolute/path/to/cargo \
+  --test_env=ORT_RELEASE_CARGO_HOME="$ORT_RELEASE_CARGO_HOME" \
+  --test_env=RUSTC=/absolute/path/to/rustc \
+  --test_env=ORT_RELEASE_GO=/absolute/path/to/go \
+  --lockfile_mode=error --build_python_zip=false
+```
+
+Cargo consumers remain offline after the explicit locked prefetch, with
+test-owned build directories. Go consumers use isolated caches and resolve the
+generated module through a local file proxy before native inference.
+
+The final integrated Linux CPU release-profile batch passed all 17 test targets
+in 156.990s, including real wheel/Node/NuGet/Maven/Go installed Add inference,
+five-TFM metadata/symbols, archive byte provenance, SDK/inventory, and portable
+Catalyst proof fixtures. Both real offline Cargo consumers passed Add after
+correcting the packaged public-header mapping and using the public output-tensor
+`view()` API (source bundle: 69.6s; extracted `.crate` files: 68.9s).
+`//:native_release_payload_test` compares actual SDK/Maven/npm/wheel/NuGet
+native member hashes with their declared release action outputs, not manually
+stripped proxies. Windows frozen wildcard release analysis passed for 329
+targets and 71,274 configured targets with zero actions after the Catalyst
+toolchain override, followed by a strict frozen repeat. The four portable
+inventory/Catalyst/wheel-packager/subprocess targets also passed on Windows;
+neither result is Windows native package execution.
+
+**Strict original-main size/performance parity is not established.** The
+latest confirmed-quiet non-LTO O2 comparison against shipping-matched CMake
+passed Add (ratio 0.93555, paired 95% CI [0.92875, 0.94074]), while Conv
+(1.00353, [0.99353, 1.01056]) and MatMul (1.00117, [0.99714, 1.00463]) remained
+inconclusive. Against default CMake Release, Conv remained a measured regression
+(1.01387, [1.00312, 1.01882]). O3, LTO, and the diagnostic Bsymbolic candidate
+were rejected; none is enabled in production. A runtime-local frame-pointer
+candidate was also rejected: stripped output grew 80,128 bytes and Conv regressed
+7.71% versus production O2 (CI [1.03171, 1.10654]). Packaging correctness and
+smaller stripped binaries do not override the user's same-or-better criterion.
+Actual Apple/Catalyst, Android native package consumption, selected CUDA wheel
+import/GPU inference, and the remaining cross-platform release matrix are not
+covered by these Linux CPU results.
+
+For a selected CUDA wheel, `//:python_wheel_release_payload_test` checks its
+extension/shared-provider/CUDA-provider bytes without building other language
+packages. `//:python_wheel_test` explicitly requests CUDA and disables CPU and
+Python provider fallback for the GPU distribution; the CPU distribution keeps
+its CPU-only inference path. Portable CUDA-12/13 metadata and mock-provider
+tests are not native GPU execution evidence.
+
+The selected Linux CUDA 13.3/sm90 release wheel built from source in 444.591s
+(207 actions); its three native members matched the declared release outputs.
+The installed wheel imported and its CUDA provider loaded with `RTLD_NOW` and
+`CUDA_VISIBLE_DEVICES=""`, without creating an inference session. This used
+NVCC 13.3.73, libcudart 13.3.29, and the cuDNN 9.14.0.64 header SDK.
+Fallback-disabled CUDA Add remains unproven: all authorized GPUs 5–7 were
+allocated at the fresh availability check. Loader success and provider
+advertisement do not establish CUDA or cuDNN kernel dispatch.
+
 The native graph targets Linux x86-64, Windows x86-64, and macOS on Intel and
 Apple Silicon. Foundation runtime and five desktop bindings passed native
 Linux, Windows, and Apple Silicon macOS CI at `a6de7b83a5`
@@ -14,8 +131,9 @@ all nine selected targets passed on each OS. Dependent migration results are
 qualified separately below. Intel macOS execution is not claimed.
 This is not yet a replacement for the
 release build: additional execution providers,
-browser GPU execution providers, and complete language-specific release packaging
-are not included. Experimental Android ARM64 runtime/JNI/AAR and single-threaded
+browser GPU execution providers, and complete cross-platform release validation
+are not included. Release targets above do not establish original-main size or
+optimization parity by their existence. Experimental Android ARM64 runtime/JNI/AAR and single-threaded
 CPU WebAssembly paths are described below.
 `orttraining` build and test migration is intentionally out of scope.
 

@@ -117,6 +117,7 @@ def language_bindings():
     )
     java_library(
         name = "java_binding",
+        javacopts = ["--release", "8"],
         srcs = native.glob([
             "java/src/main/java/**/*.java",
             "java/src/main/jvm/**/*.java",

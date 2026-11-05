@@ -9,6 +9,15 @@ package(default_visibility = ["//visibility:public"])
 
 exports_files(["Cargo.toml"])
 
+filegroup(
+    name = "crate_package_files",
+    srcs = glob([
+        "examples/**/*.rs",
+        "src/**/*.rs",
+        "tests/**/*.rs",
+    ]),
+)
+
 rust_library(
     name = "onnxruntime",
     srcs = glob(["src/**/*.rs"]),

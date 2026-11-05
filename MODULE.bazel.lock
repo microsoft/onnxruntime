@@ -256,12 +256,23 @@
   "moduleExtensions": {
     "//bazel:dependencies.bzl%ort_dependencies": {
       "general": {
-        "bzlTransitiveDigest": "fdJsrZXCsOjGar1ZY+MWZenZLG1NFgrEyPh00b4cVa8=",
+        "bzlTransitiveDigest": "WnaNflsTlsg22EfZ5x64yKVckDPJHIixkHC5goA5Gks=",
         "usagesDigest": "dGdfspd/cjgRt/eeKwCBk5WnMR971p1ufikWyILxhwc=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
         "envVariables": {},
         "generatedRepoSpecs": {
+          "ort_maven": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "urls": [
+                "https://archive.apache.org/dist/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.zip"
+              ],
+              "sha256": "4ec3f26fb1a692473aea0235c300bd20f0f9fe741947c82c1234cefd76ac3a3c",
+              "strip_prefix": "apache-maven-3.9.9",
+              "build_file_content": "\nload(\"@rules_java//java:defs.bzl\", \"java_import\")\npackage(default_visibility = [\"//visibility:public\"])\njava_import(name = \"maven_libraries\", jars = glob([\"lib/*.jar\", \"boot/*.jar\"]))\nfilegroup(name = \"home_marker\", srcs = [\"bin/mvn\"])\nfilegroup(name = \"distribution\", srcs = glob([\"**\"]))\n"
+            }
+          },
           "ort_junit": {
             "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
             "attributes": {
@@ -341,6 +352,54 @@
               "sha256": "b750243c36002a62b28b1ac5d3fbc284ad340ba1494cc36aca110611a0b1f959",
               "type": "zip",
               "build_file_content": "\nload(\"@rules_dotnet//dotnet:defs.bzl\", \"import_dll\")\nimport_dll(\n    name = \"tensors\",\n    dll = \"lib/net8.0/System.Numerics.Tensors.dll\",\n    version = \"9.0.0\",\n    visibility = [\"//visibility:public\"],\n)\n"
+            }
+          },
+          "ort_dotnet_memory": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "urls": [
+                "https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-public/nuget/v3/flat2/system.memory/4.5.5/system.memory.4.5.5.nupkg",
+                "https://api.nuget.org/v3-flatcontainer/system.memory/4.5.5/system.memory.4.5.5.nupkg"
+              ],
+              "sha256": "10f43da352a29fb2b3188e4edd4dcf5100194c8b526e4f61fe2e2b5623775a22",
+              "type": "zip",
+              "build_file_content": "\nload(\"@rules_dotnet//dotnet:defs.bzl\", \"import_dll\")\nimport_dll(\n    name = \"memory\",\n    dll = \"lib/netstandard2.0/System.Memory.dll\",\n    version = \"4.5.5\",\n    visibility = [\"//visibility:public\"],\n)\n"
+            }
+          },
+          "ort_dotnet_android_ref": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "urls": [
+                "https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-public/nuget/v3/flat2/microsoft.android.ref.35/35.0.105/microsoft.android.ref.35.35.0.105.nupkg",
+                "https://api.nuget.org/v3-flatcontainer/microsoft.android.ref.35/35.0.105/microsoft.android.ref.35.35.0.105.nupkg"
+              ],
+              "sha256": "e5a1152e1cba434a793b6dc3f60254645006a5c95eecf928e39de96ecf594ecd",
+              "type": "zip",
+              "build_file_content": "load(\"@rules_dotnet//dotnet:defs.bzl\", \"import_dll\")\n\nimport_dll(\n    name = \"java_interop\",\n    dll = \"ref/net9.0/Java.Interop.dll\",\n    version = \"35.0.105\",\n    visibility = [\"//visibility:public\"],\n)\n\nimport_dll(\n    name = \"mono_android_export\",\n    dll = \"ref/net9.0/Mono.Android.Export.dll\",\n    version = \"35.0.105\",\n    visibility = [\"//visibility:public\"],\n)\n\nimport_dll(\n    name = \"mono_android_runtime\",\n    dll = \"ref/net9.0/Mono.Android.Runtime.dll\",\n    version = \"35.0.105\",\n    visibility = [\"//visibility:public\"],\n)\n\nimport_dll(\n    name = \"mono_android\",\n    dll = \"ref/net9.0/Mono.Android.dll\",\n    version = \"35.0.105\",\n    visibility = [\"//visibility:public\"],\n)\n"
+            }
+          },
+          "ort_dotnet_ios_ref": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "urls": [
+                "https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-public/nuget/v3/flat2/microsoft.ios.ref.net9.0_18.0/18.0.9617/microsoft.ios.ref.net9.0_18.0.18.0.9617.nupkg",
+                "https://api.nuget.org/v3-flatcontainer/microsoft.ios.ref.net9.0_18.0/18.0.9617/microsoft.ios.ref.net9.0_18.0.18.0.9617.nupkg"
+              ],
+              "sha256": "21d2ac22f3e7287221e8875a2f4dae333d5e1d286bcc2f068f191d1e7d2699ea",
+              "type": "zip",
+              "build_file_content": "load(\"@rules_dotnet//dotnet:defs.bzl\", \"import_dll\")\n\nimport_dll(\n    name = \"ios\",\n    dll = \"ref/net9.0/Microsoft.iOS.dll\",\n    version = \"18.0.9617\",\n    visibility = [\"//visibility:public\"],\n)\n"
+            }
+          },
+          "ort_dotnet_maccatalyst_ref": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_archive",
+            "attributes": {
+              "urls": [
+                "https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-public/nuget/v3/flat2/microsoft.maccatalyst.ref.net9.0_18.0/18.0.9617/microsoft.maccatalyst.ref.net9.0_18.0.18.0.9617.nupkg",
+                "https://api.nuget.org/v3-flatcontainer/microsoft.maccatalyst.ref.net9.0_18.0/18.0.9617/microsoft.maccatalyst.ref.net9.0_18.0.18.0.9617.nupkg"
+              ],
+              "sha256": "2e7734f85e8381e03fa3b8f4d322cb4bbfa5a660b535010ab28ce3281b688377",
+              "type": "zip",
+              "build_file_content": "load(\"@rules_dotnet//dotnet:defs.bzl\", \"import_dll\")\n\nimport_dll(\n    name = \"maccatalyst\",\n    dll = \"ref/net9.0/Microsoft.MacCatalyst.dll\",\n    version = \"18.0.9617\",\n    visibility = [\"//visibility:public\"],\n)\n"
             }
           },
           "ort_node_headers": {

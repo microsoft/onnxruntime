@@ -128,6 +128,24 @@ config_setting(
     values = {"compilation_mode": "opt"},
 )
 
+config_setting(
+    name = "linux_opt",
+    constraint_values = ["@platforms//os:linux"],
+    values = {"compilation_mode": "opt"},
+)
+
+config_setting(
+    name = "macos_opt",
+    constraint_values = ["@platforms//os:macos"],
+    values = {"compilation_mode": "opt"},
+)
+
+config_setting(
+    name = "windows_opt",
+    constraint_values = ["@platforms//os:windows"],
+    values = {"compilation_mode": "opt"},
+)
+
 exports_files([
     "rules-apple-platform-compatibility.patch",
     "googletest-wasm.patch",

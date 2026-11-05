@@ -61,7 +61,14 @@ class PackageTest(unittest.TestCase):
             metadata = json.load(archive.extractfile("package/package.json"))
             self.assertNotIn("scripts", metadata)
             self.assertEqual(metadata["peerDependencies"]["react-native"], "0.73.11")
+            self.assertEqual(metadata["onnxruntimeBazelPlatforms"], ["android-arm64"])
+            self.assertEqual(metadata["engines"], {"node": ">=18"})
             self.assertIsNotNone(archive.extractfile("package/node_modules/onnxruntime-common/lib/index.js"))
+            self.assertIsNotNone(archive.extractfile("package/README.md"))
+            names = archive.getnames()
+            self.assertFalse(any("/ios/" in name or name.endswith(".podspec") for name in names))
+            self.assertNotIn("package/app.plugin.js", names)
+            self.assertNotIn("package/unimodule.json", names)
 
     def test_reproducible_archives(self):
         package(self.args)

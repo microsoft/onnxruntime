@@ -14,8 +14,13 @@ final class ORTSwiftInferenceTest: XCTestCase {
   }
 
   private func assertAddInference() throws {
+    #if SWIFT_PACKAGE
+    let resourceBundle = Bundle.module
+    #else
+    let resourceBundle = Bundle(for: ORTSwiftInferenceTest.self)
+    #endif
     let modelPath = try XCTUnwrap(
-      Bundle(for: ORTSwiftInferenceTest.self).path(
+      resourceBundle.path(
         forResource: "single_add.basic", ofType: "ort"),
       "Missing single_add.basic.ort; check the Bazel XCTest target's resources.")
     let environment = try ORTEnv(loggingLevel: .warning)

@@ -9,6 +9,14 @@ package(default_visibility = ["//visibility:public"])
 
 exports_files(["Cargo.toml"])
 
+filegroup(
+    name = "crate_package_files",
+    srcs = glob([
+        "examples/**/*.rs",
+        "src/**/*.rs",
+    ]) + ["build.rs"],
+)
+
 cc_library(
     name = "binding_headers",
     deps = [

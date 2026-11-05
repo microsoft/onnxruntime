@@ -8,7 +8,9 @@ load("@rules_cc//cc:cc_import.bzl", "cc_import")
 load("@rules_java//java:defs.bzl", "java_library", "java_test")
 load("@rules_java//java/common:java_info.bzl", "JavaInfo")
 load("@rules_python//python:defs.bzl", "py_binary", "py_test")
+load("//bazel:java_release.bzl", "java_documentation", "java_maven_repository")
 load("//bazel:jni_headers.bzl", "jni_headers")
+load("//bazel:release_native_binary.bzl", "release_native_binary")
 
 _ANDROID = ["@platforms//os:android", "@platforms//cpu:aarch64"]
 
@@ -49,6 +51,7 @@ def android_bindings():
     """Declare Android targets; cross-compile with --config=android_arm64."""
     java_library(
         name = "android_java",
+        javacopts = ["--release", "8"],
         srcs = native.glob([
             "java/src/main/java/**/*.java",
             "java/src/main/android/**/*.java",
@@ -110,6 +113,16 @@ def android_bindings():
         # jni.h comes from the NDK sysroot, not a host JDK's jni_md.h.
         deps = [":api_headers", ":generated_headers", ":android_jni_headers", ":android_runtime_shared"],
     )
+    release_native_binary(
+        name = "android_runtime_release_library",
+        src = ":android/libonnxruntime.so",
+        target_compatible_with = _ANDROID,
+    )
+    release_native_binary(
+        name = "android_jni_release_library",
+        src = ":android/libonnxruntime4j_jni.so",
+        target_compatible_with = _ANDROID,
+    )
     py_binary(
         name = "android_aar_packager",
         srcs = ["tools/bazel/android_aar.py"],
@@ -125,8 +138,8 @@ def android_bindings():
     _aar(
         name = "android_aar",
         java = ":android_java",
-        runtime = ":android/libonnxruntime.so",
-        jni = ":android/libonnxruntime4j_jni.so",
+        runtime = ":android_runtime_release_library",
+        jni = ":android_jni_release_library",
         assets = [
             "LICENSE",
             "ThirdPartyNotices.txt",
@@ -134,5 +147,24 @@ def android_bindings():
         ] + native.glob([
             "include/onnxruntime/core/session/*.h",
         ], exclude = ["include/onnxruntime/core/session/environment.h"]),
+        target_compatible_with = _ANDROID,
+    )
+    java_documentation(
+        name = "android_javadoc_jar",
+        library = ":android_java",
+        tool = ":java_release_tool",
+        tags = ["manual"],
+    )
+    java_maven_repository(
+        name = "android_maven",
+        library = ":android_java",
+        aar = ":android_aar",
+        javadoc = ":android_javadoc_jar",
+        version = "VERSION_NUMBER",
+        license = "LICENSE",
+        notices = "ThirdPartyNotices.txt",
+        classifier = "android-arm64",
+        tool = ":java_release_tool",
+        tags = ["manual"],
         target_compatible_with = _ANDROID,
     )

@@ -10,10 +10,16 @@ const [destination, loader, binary, variant] = process.argv.slice(2);
 if (!['scalar', 'simd'].includes(variant)) {
   throw new Error(`Unknown WASM variant ${variant}; select scalar or simd.`);
 }
-const output = path.resolve(destination);
-fs.mkdirSync(output, {recursive: true});
-fs.copyFileSync(loader, path.join(output, 'ort_wasm.mjs'));
-fs.copyFileSync(binary, path.join(output, 'ort_wasm.wasm'));
+const version = fs.readFileSync('VERSION_NUMBER', 'utf8').trim();
+const upstream = JSON.parse(fs.readFileSync('js/web/package.json', 'utf8'));
+if (upstream.version !== version) {
+  throw new Error(`onnxruntime-web version ${upstream.version} must match VERSION_NUMBER (${version}).`);
+}
+const output = path.resolve(destination, 'package');
+const dist = path.join(output, 'dist');
+fs.mkdirSync(dist, {recursive: true});
+fs.copyFileSync(loader, path.join(dist, 'ort-wasm.mjs'));
+fs.copyFileSync(binary, path.join(dist, 'ort-wasm.wasm'));
 
 const defines = {
   DISABLE_WEBGL: true,
@@ -26,7 +32,7 @@ const defines = {
   ENABLE_BUNDLE_WASM_JS: false,
   IS_ESM: false,
   ESM_IMPORT_META_URL: undefined,
-  BUNDLE_FILENAME: 'ort-web.js',
+  BUNDLE_FILENAME: 'ort.js',
 };
 const modules = [];
 for (const directory of ['js/common/lib', 'js/web/lib/wasm', 'js/web/lib']) {
@@ -42,7 +48,6 @@ for (const directory of ['js/common/lib', 'js/web/lib/wasm', 'js/web/lib']) {
       return JSON.stringify(defines[key]) ?? 'undefined';
     });
     const result = ts.transpileModule(content, {
-      // Node16 preserves native dynamic import() while emitting CommonJS module bodies.
       fileName: source.replace(/\.ts$/, '.cts'),
       reportDiagnostics: true,
       compilerOptions: {module: ts.ModuleKind.Node16, target: ts.ScriptTarget.ES2020, esModuleInterop: true},
@@ -72,8 +77,8 @@ backend.init = async function(name) {
 common.env.wasm.numThreads = 1;
 common.env.wasm.simd = ${variant === 'simd' ? "'fixed'" : 'false'};
 common.env.wasm.proxy = false;
-common.env.wasm.wasmPaths = {mjs: new URL('ort_wasm.mjs', baseUrl).href,
-                            wasm: new URL('ort_wasm.wasm', baseUrl).href};
+common.env.wasm.wasmPaths = {mjs: new URL('ort-wasm.mjs', baseUrl).href,
+                            wasm: new URL('ort-wasm.wasm', baseUrl).href};
 common.registerBackend('cpu', backend, 10);
 common.registerBackend('wasm', backend, 10);
 Object.defineProperty(common.env.versions, 'web', {
@@ -81,7 +86,7 @@ Object.defineProperty(common.env.versions, 'web', {
 });
 return common;
 `;
-fs.writeFileSync(path.join(output, 'ort-web.js'), `// Source-assembled by native Bazel; no prebuilt runtime.
+fs.writeFileSync(path.join(dist, 'ort.js'), `// Source-assembled by native Bazel; no prebuilt runtime.
 (function(factory) {
   if (typeof module === 'object' && module.exports) {
     module.exports = factory(require, require('node:url').pathToFileURL(__filename).href);
@@ -116,3 +121,61 @@ fs.writeFileSync(path.join(output, 'ort-web.js'), `// Source-assembled by native
   ${entry}
 });
 `);
+
+const converted = ts.convertCompilerOptionsFromJson(
+    JSON.parse(fs.readFileSync('js/tsconfig.json', 'utf8')).compilerOptions, process.cwd());
+const typeRoot = path.join(output, 'types');
+const typeSources = fs.readdirSync('js/common/lib').filter((name) => name.endsWith('.ts'))
+    .map((name) => path.resolve('js/common/lib', name));
+const typeProgram = ts.createProgram(typeSources, {
+  ...converted.options,
+  incremental: false,
+  declaration: true,
+  emitDeclarationOnly: true,
+  declarationMap: false,
+  noEmitOnError: true,
+  rootDir: path.resolve('js/common/lib'),
+  outDir: typeRoot,
+  types: ['node'],
+  typeRoots: [path.resolve('bazel/node/node_modules/@types')],
+});
+const typeResult = typeProgram.emit();
+const typeErrors = [...converted.errors, ...ts.getPreEmitDiagnostics(typeProgram), ...typeResult.diagnostics]
+    .filter((item) => item.category === ts.DiagnosticCategory.Error);
+if (typeErrors.length || typeResult.emitSkipped) {
+  throw new Error(ts.formatDiagnosticsWithColorAndContext(typeErrors, {
+    getCurrentDirectory: () => process.cwd(),
+    getCanonicalFileName: (name) => name,
+    getNewLine: () => '\n',
+  }) || 'Web API declaration emission was skipped; inspect the TypeScript compiler configuration.');
+}
+fs.writeFileSync(path.join(output, 'package.json'), JSON.stringify({
+  name: upstream.name,
+  version,
+  description: `Source-built single-threaded CPU ONNX Runtime Web package (${variant}).`,
+  license: upstream.license,
+  author: upstream.author,
+  repository: upstream.repository,
+  keywords: upstream.keywords,
+  main: './dist/ort.js',
+  browser: './dist/ort.js',
+  types: './types/index.d.ts',
+  exports: {
+    '.': {types: './types/index.d.ts', require: './dist/ort.js', default: './dist/ort.js'},
+    './ort-wasm.mjs': './dist/ort-wasm.mjs',
+    './ort-wasm.wasm': './dist/ort-wasm.wasm',
+  },
+  engines: {node: '>=18'},
+  onnxruntimeBazelVariant: variant,
+  onnxruntimeBazelFeatures: {threads: false, proxy: false, webgpu: false, webnn: false, jsep: false},
+}, null, 2) + '\n');
+fs.writeFileSync(path.join(output, 'README.md'), [
+  '# onnxruntime-web native Bazel package',
+  '',
+  `This archive contains the source-built single-threaded CPU ${variant} WASM runtime.`,
+  'It does not include threaded, proxy, WebGPU, WebNN, JSEP, or WebGL implementations.',
+  '',
+].join('\n'));
+for (const name of ['LICENSE', 'ThirdPartyNotices.txt']) {
+  fs.copyFileSync(name, path.join(output, name));
+}

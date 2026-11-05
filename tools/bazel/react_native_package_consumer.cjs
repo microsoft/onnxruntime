@@ -43,8 +43,12 @@ try {
   assert.equal(metadata.version, version);
   assert.equal(metadata.scripts, undefined);
   assert.equal(metadata.peerDependencies['react-native'], '0.73.11');
+  assert.deepEqual(metadata.onnxruntimeBazelPlatforms, ['android-arm64']);
   assert.deepEqual(fs.readFileSync(path.join(root, metadata.onnxruntimeBazelAar)), fs.readFileSync(aar));
   assert.ok(fs.existsSync(path.join(root, metadata['react-native'])));
+  for (const name of ['api.ts', 'backend.ts', 'binding.ts', 'index.ts', 'version.ts']) {
+    assert.ok(fs.existsSync(path.join(root, 'lib', name)), `Installed React Native package is missing lib/${name}.`);
+  }
   const installed = createRequire(path.join(root, 'consumer.cjs'));
   const config = installed('./react-native.config.js');
   assert.equal(config.dependency.platforms.ios, null);
@@ -62,15 +66,28 @@ try {
   assert.equal(common.env.versions.common, version);
   const ts = createRequire(path.resolve('bazel/node/package.json'))('typescript');
   const source = path.join(directory, 'consumer.ts');
-  fs.writeFileSync(source, 'import {Tensor} from "onnxruntime-common"; const x: Tensor = new Tensor("float32", new Float32Array(2), [2]); void x;');
-  const program = ts.createProgram([source], {
+  const reactNativeStub = path.join(directory, 'react-native.d.ts');
+  fs.writeFileSync(source, [
+    'import {InferenceSession, Tensor} from "onnxruntime-react-native";',
+    'const x: Tensor = new Tensor("float32", new Float32Array(2), [2]);',
+    'async function run(): Promise<void> {',
+    '  const session: InferenceSession = await InferenceSession.create("model.onnx");',
+    '  await session.run({X: x});',
+    '}',
+    'void run;',
+  ].join('\n'));
+  fs.writeFileSync(reactNativeStub, 'declare module "react-native" { export const NativeModules: any; }\n');
+  const program = ts.createProgram([source, reactNativeStub], {
     target: ts.ScriptTarget.ES2020,
     module: ts.ModuleKind.CommonJS,
     moduleResolution: ts.ModuleResolutionKind.Node10,
     strict: true,
     noEmit: true,
     baseUrl: directory,
-    paths: {'onnxruntime-common': [path.join(root, 'node_modules/onnxruntime-common/lib/index.d.ts')]},
+    paths: {
+      'onnxruntime-common': [path.join(root, 'node_modules/onnxruntime-common/lib/index.d.ts')],
+      'onnxruntime-react-native': [path.join(root, 'lib/index.ts')],
+    },
     lib: ['lib.es2020.d.ts', 'lib.esnext.float16.d.ts', 'lib.dom.d.ts'],
     types: ['node'],
     typeRoots: [path.resolve('bazel/node/node_modules/@types')],

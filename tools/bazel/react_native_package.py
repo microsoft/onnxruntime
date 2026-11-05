@@ -84,6 +84,13 @@ def package(args):
     metadata = {
         "name": "onnxruntime-react-native",
         "version": version,
+        "description": "Source-built Android ARM64 ONNX Runtime bridge for React Native.",
+        "author": "ONNX Runtime",
+        "repository": "https://github.com/Microsoft/onnxruntime.git",
+        "homepage": "https://github.com/microsoft/onnxruntime/tree/main/js/react_native",
+        "bugs": {"url": "https://github.com/Microsoft/onnxruntime/issues"},
+        "keywords": ["react-native", "android", "arm64", "ONNX", "ONNXRuntime", "ONNX Runtime"],
+        "engines": {"node": ">=18"},
         "main": "lib/index.ts",
         "react-native": "lib/index.ts",
         "types": "lib/index.ts",
@@ -92,8 +99,14 @@ def package(args):
         "bundledDependencies": ["onnxruntime-common"],
         "peerDependencies": {"react": "^18.2.0", "react-native": "0.73.11"},
         "onnxruntimeBazelAar": "android/onnxruntime-react-native.aar",
+        "onnxruntimeBazelPlatforms": ["android-arm64"],
     }
     files["package.json"] = json.dumps(metadata, indent=2).encode()
+    files["README.md"] = (
+        b"# onnxruntime-react-native native Bazel package\n\n"
+        b"This archive contains a source-built Android ARM64 JSI AAR for React Native 0.73.11 and fbjni 0.5.1.\n"
+        b"It intentionally disables iOS autolinking; the separate RN iOS adapter framework is not bundled here.\n"
+    )
     for path in args.notice:
         files[Path(path).name] = Path(path).read_bytes()
     with (

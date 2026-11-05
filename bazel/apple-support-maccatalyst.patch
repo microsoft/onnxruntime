@@ -1,0 +1,104 @@
+diff --git a/configs/platforms.bzl b/configs/platforms.bzl
+index 72b4d53..f45c5d2 100644
+--- a/configs/platforms.bzl
++++ b/configs/platforms.bzl
+@@ -1,6 +1,18 @@
+ """Defines all the Apple CPUs and their constraints"""
+ 
+ APPLE_PLATFORMS_CONSTRAINTS = {
++    "catalyst_arm64": [
++        "@platforms//os:ios",
++        "@platforms//cpu:arm64",
++        "@build_bazel_apple_support//constraints:apple",
++        "@build_bazel_apple_support//constraints:catalyst",
++    ],
++    "catalyst_x86_64": [
++        "@platforms//os:ios",
++        "@platforms//cpu:x86_64",
++        "@build_bazel_apple_support//constraints:apple",
++        "@build_bazel_apple_support//constraints:catalyst",
++    ],
+     "darwin_arm64": [
+         "@platforms//os:macos",
+         "@platforms//cpu:arm64",
+@@ -112,6 +124,8 @@ APPLE_PLATFORMS_CONSTRAINTS = {
+ }
+ 
+ CPU_TO_DEFAULT_PLATFORM_NAME = {
++    "catalyst_arm64": "catalyst_arm64",
++    "catalyst_x86_64": "catalyst_x86_64",
+     "darwin_arm64": "macos_arm64",
+     "darwin_arm64e": "macos_arm64e",
+     "darwin_x86_64": "macos_x86_64",
+diff --git a/crosstool/cc_toolchain_config.bzl b/crosstool/cc_toolchain_config.bzl
+index ef21444..0f4cffe 100644
+--- a/crosstool/cc_toolchain_config.bzl
++++ b/crosstool/cc_toolchain_config.bzl
+@@ -42,7 +42,9 @@ _DYNAMIC_LINK_ACTIONS = [
+ ]
+ 
+ def _sdk_version_for_platform(xcode_config, platform_type):
+-    if platform_type == apple_common.platform_type.ios:
++    if platform_type == apple_common.platform_type.catalyst:
++        return xcode_config.sdk_version_for_platform(apple_common.platform.catalyst)
++    elif platform_type == apple_common.platform_type.ios:
+         return xcode_config.sdk_version_for_platform(apple_common.platform.ios_device)
+     elif platform_type == apple_common.platform_type.tvos:
+         return xcode_config.sdk_version_for_platform(apple_common.platform.tvos_device)
+@@ -56,7 +58,9 @@ def _sdk_version_for_platform(xcode_config, platform_type):
+         fail("Unhandled platform type: {}".format(platform_type))
+ 
+ def _sdk_name(platform_type, is_simulator):
+-    if platform_type == apple_common.platform_type.ios and is_simulator:
++    if platform_type == apple_common.platform_type.catalyst:
++        return "MacOSX"
++    elif platform_type == apple_common.platform_type.ios and is_simulator:
+         return "iPhoneSimulator"
+     elif platform_type == apple_common.platform_type.ios:
+         return "iPhoneOS"
+@@ -78,7 +82,9 @@ def _sdk_name(platform_type, is_simulator):
+         fail("Unhandled platform type: {}".format(platform_type))
+ 
+ def _impl(ctx):
+-    if ctx.attr.cpu.startswith("darwin"):
++    if ctx.attr.cpu.startswith("catalyst"):
++        platform_type = apple_common.platform_type.catalyst
++    elif ctx.attr.cpu.startswith("darwin"):
+         platform_type = apple_common.platform_type.macos
+     elif ctx.attr.cpu.startswith("ios"):
+         platform_type = apple_common.platform_type.ios
+@@ -102,7 +108,11 @@ please file an issue at https://github.com/bazelbuild/apple_support/issues/new
+     sdk_version = _sdk_version_for_platform(xcode_config, platform_type)
+ 
+     is_simulator = False
+-    if (ctx.attr.cpu == "ios_arm64"):
++    if (ctx.attr.cpu == "catalyst_arm64"):
++        target_system_name = "arm64-apple-ios{}-macabi".format(target_os_version)
++    elif (ctx.attr.cpu == "catalyst_x86_64"):
++        target_system_name = "x86_64-apple-ios{}-macabi".format(target_os_version)
++    elif (ctx.attr.cpu == "ios_arm64"):
+         target_system_name = "arm64-apple-ios{}".format(target_os_version)
+     elif (ctx.attr.cpu == "tvos_arm64"):
+         target_system_name = "arm64-apple-tvos{}".format(target_os_version)
+@@ -680,7 +690,9 @@ please file an issue at https://github.com/bazelbuild/apple_support/issues/new
+         objcopy_embed_data_action,
+     ]
+ 
+-    if (ctx.attr.cpu == "ios_arm64" or
++    if (ctx.attr.cpu == "catalyst_arm64" or
++        ctx.attr.cpu == "catalyst_x86_64" or
++        ctx.attr.cpu == "ios_arm64" or
+         ctx.attr.cpu == "ios_arm64e" or
+         ctx.attr.cpu == "ios_sim_arm64" or
+         ctx.attr.cpu == "ios_x86_64" or
+@@ -1434,7 +1446,9 @@ please file an issue at https://github.com/bazelbuild/apple_support/issues/new
+         ],
+     )
+ 
+-    if (ctx.attr.cpu == "ios_arm64" or
++    if (ctx.attr.cpu == "catalyst_arm64" or
++        ctx.attr.cpu == "catalyst_x86_64" or
++        ctx.attr.cpu == "ios_arm64" or
+         ctx.attr.cpu == "ios_arm64e" or
+         ctx.attr.cpu == "ios_x86_64" or
+         ctx.attr.cpu == "ios_sim_arm64" or

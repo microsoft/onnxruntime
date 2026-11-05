@@ -1,11 +1,13 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+load("@rules_apple//apple:apple.bzl", "apple_static_xcframework")
 load("@rules_apple//apple:ios.bzl", "ios_static_framework", "ios_unit_test")
-load("@rules_apple//apple:macos.bzl", "macos_unit_test")
-load("@rules_python//python:defs.bzl", "py_test")
+load("@rules_apple//apple:macos.bzl", "macos_static_framework", "macos_unit_test")
+load("@rules_python//python:defs.bzl", "py_binary", "py_test")
 load("@rules_swift//swift:swift_library.bzl", "swift_library")
 load("//bazel:apple_test_runner.bzl", "ort_macos_test_runner")
+load("//bazel:maccatalyst.bzl", "catalyst_library", "catalyst_xcframework")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -77,9 +79,11 @@ objc_library(
     ],
     enable_modules = True,
     includes = ["include"],
-    module_map = "module.modulemap",
+    module_map = "include/module.modulemap",
     sdk_frameworks = ["Foundation"],
     target_compatible_with = APPLE_ONLY,
+    # Clang dependents need the map in both the exported include directory and sandbox inputs.
+    textual_hdrs = ["include/module.modulemap"],
     deps = ["//:runtime"],
     alwayslink = True,
 )
@@ -181,6 +185,185 @@ ios_static_framework(
     target_compatible_with = APPLE_HOST,
     umbrella_header = "include/onnxruntime.h",
     deps = [":onnxruntime_objc"],
+)
+
+macos_static_framework(
+    name = "macos_framework",
+    hdrs = [
+        "include/onnxruntime.h",
+        "include/ort_coreml_execution_provider.h",
+        "include/ort_custom_op_registration.h",
+        "include/ort_enums.h",
+        "include/ort_env.h",
+        "include/ort_session.h",
+        "include/ort_value.h",
+        "include/ort_xnnpack_execution_provider.h",
+    ],
+    bundle_name = "onnxruntime_objc",
+    minimum_os_version = "12.0",
+    tags = ["manual"],
+    target_compatible_with = APPLE_HOST,
+    umbrella_header = "include/onnxruntime.h",
+    deps = [":onnxruntime_objc"],
+)
+
+apple_static_xcframework(
+    name = "onnxruntime_objc_base_xcframework",
+    bundle_name = "onnxruntime_objc",
+    families_required = {"ios": [
+        "iphone",
+        "ipad",
+    ]},
+    ios = {
+        "device": ["arm64"],
+        "simulator": [
+            "arm64",
+            "x86_64",
+        ],
+    },
+    macos = [
+        "arm64",
+        "x86_64",
+    ],
+    minimum_os_versions = {
+        "ios": "15.1",
+        "macos": "12.0",
+    },
+    public_hdrs = [
+        "include/onnxruntime.h",
+        "include/ort_coreml_execution_provider.h",
+        "include/ort_custom_op_registration.h",
+        "include/ort_enums.h",
+        "include/ort_env.h",
+        "include/ort_session.h",
+        "include/ort_value.h",
+        "include/ort_xnnpack_execution_provider.h",
+    ],
+    tags = ["manual"],
+    target_compatible_with = APPLE_HOST,
+    umbrella_header = "include/onnxruntime.h",
+    deps = [":onnxruntime_objc"],
+)
+
+catalyst_library(
+    name = "onnxruntime_objc_catalyst",
+    library = ":onnxruntime_objc",
+    target_compatible_with = APPLE_HOST,
+)
+
+apple_static_xcframework(
+    name = "onnxruntime_objc_catalyst_xcframework",
+    bundle_name = "onnxruntime_objc",
+    macos = [
+        "arm64",
+        "x86_64",
+    ],
+    minimum_os_versions = {"macos": "12.0"},
+    public_hdrs = [
+        "include/onnxruntime.h",
+        "include/ort_coreml_execution_provider.h",
+        "include/ort_custom_op_registration.h",
+        "include/ort_enums.h",
+        "include/ort_env.h",
+        "include/ort_session.h",
+        "include/ort_value.h",
+        "include/ort_xnnpack_execution_provider.h",
+    ],
+    tags = ["manual"],
+    target_compatible_with = APPLE_HOST,
+    umbrella_header = "include/onnxruntime.h",
+    deps = [":onnxruntime_objc_catalyst"],
+)
+
+py_binary(
+    name = "catalyst_xcframework_merger",
+    srcs = ["//:tools/bazel/catalyst_xcframework.py"],
+    main = "//:tools/bazel/catalyst_xcframework.py",
+)
+
+catalyst_xcframework(
+    name = "onnxruntime_objc_xcframework",
+    base = ":onnxruntime_objc_base_xcframework.xcframework.zip",
+    catalyst = ":onnxruntime_objc_catalyst_xcframework.xcframework.zip",
+    tags = ["manual"],
+    target_compatible_with = APPLE_HOST,
+)
+
+py_test(
+    name = "catalyst_xcframework_test",
+    srcs = [
+        "test/catalyst_xcframework_test.py",
+        "//:tools/bazel/catalyst_xcframework.py",
+    ],
+    main = "test/catalyst_xcframework_test.py",
+)
+
+py_binary(
+    name = "apple_release_packager",
+    srcs = ["//:tools/bazel/apple_package.py"],
+    main = "//:tools/bazel/apple_package.py",
+)
+
+genrule(
+    name = "apple_release_packages",
+    srcs = [
+        ":onnxruntime_objc_xcframework.xcframework.zip",
+        "//:LICENSE",
+        "//:ThirdPartyNotices.txt",
+        "//:VERSION_NUMBER",
+    ],
+    outs = [
+        "onnxruntime-objc-cocoapods.zip",
+        "onnxruntime-objc-swift-package.zip",
+    ],
+    cmd = """
+$(execpath :apple_release_packager) \
+  --xcframework $(execpath :onnxruntime_objc_xcframework.xcframework.zip) \
+  --version-file $(execpath //:VERSION_NUMBER) \
+  --license $(execpath //:LICENSE) \
+  --notice $(execpath //:ThirdPartyNotices.txt) \
+  --swift-output $(@D)/onnxruntime-objc-swift-package.zip \
+  --cocoapods-output $(@D)/onnxruntime-objc-cocoapods.zip
+""",
+    tags = ["manual"],
+    target_compatible_with = APPLE_HOST,
+    tools = [":apple_release_packager"],
+)
+
+py_test(
+    name = "apple_package_test",
+    srcs = [
+        "test/apple_package_test.py",
+        "//:tools/bazel/apple_package.py",
+    ],
+    main = "test/apple_package_test.py",
+)
+
+py_test(
+    name = "apple_package_consumer_contract_test",
+    srcs = [
+        "test/apple_package_consumer_test.py",
+        "//:tools/bazel/apple_package_consumer.py",
+    ],
+    main = "test/apple_package_consumer_test.py",
+)
+
+py_test(
+    name = "swift_package_consumer_test",
+    srcs = ["//:tools/bazel/apple_package_consumer.py"],
+    args = [
+        "$(rootpath :onnxruntime-objc-swift-package.zip)",
+        "$(rootpath test/ort_swift_test.swift)",
+        "$(rootpath test/testdata/single_add.basic.ort)",
+    ],
+    data = [
+        "test/ort_swift_test.swift",
+        "test/testdata/single_add.basic.ort",
+        ":onnxruntime-objc-swift-package.zip",
+    ],
+    main = "//:tools/bazel/apple_package_consumer.py",
+    tags = ["manual"],
+    target_compatible_with = APPLE_HOST,
 )
 
 ios_unit_test(

@@ -24,6 +24,13 @@ bazel_dep(name = "rules_nodejs", version = "6.7.7")
 bazel_dep(name = "rules_dotnet", version = "0.22.2")
 bazel_dep(name = "rules_apple", version = "3.16.0")
 bazel_dep(name = "rules_swift", version = "2.1.1")
+
+single_version_override(
+    module_name = "apple_support",
+    patch_strip = 1,
+    patches = ["//bazel:apple-support-maccatalyst.patch"],
+)
+
 single_version_override(
     module_name = "rules_apple",
     patch_strip = 1,
@@ -150,16 +157,28 @@ use_repo(ort_deps, "ort_cudnn_frontend", "ort_cutlass")
 use_repo(ort_deps, "ort_pybind11")
 use_repo(ort_deps, "ort_node_addon_api", "ort_node_headers")
 use_repo(ort_deps, "ort_node_import_library")
-use_repo(ort_deps, "ort_dotnet_tensors")
+use_repo(ort_deps, "ort_dotnet_memory", "ort_dotnet_tensors")
+use_repo(ort_deps, "ort_dotnet_android_ref", "ort_dotnet_ios_ref", "ort_dotnet_maccatalyst_ref")
 use_repo(ort_deps, "ort_wil")
 use_repo(ort_deps, "ort_mingw")
 use_repo(ort_deps, "ort_junit", "ort_test_protobuf_java")
+use_repo(ort_deps, "ort_maven")
 use_repo(ort_deps, "ort_cpuinfo")
 
 register_toolchains("//bazel:windows_cgo_toolchain")
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
-python.toolchain(python_version = "3.12")
+python.defaults(python_version = "3.12")
+
+[
+    python.toolchain(python_version = version)
+    for version in [
+        "3.11",
+        "3.12",
+        "3.13",
+        "3.14",
+    ]
+]
 
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 pip.whl_mods(
@@ -177,13 +196,22 @@ cc_library(
 )
 use_repo(pip, "ort_numpy_mods")
 
-pip.parse(
-    extra_hub_aliases = {"numpy": ["numpy_headers"]},
-    hub_name = "ort_pip",
-    python_version = "3.12",
-    requirements_lock = "//bazel:requirements.txt",
-    whl_modifications = {"@ort_numpy_mods//:numpy.json": "numpy"},
-)
+[
+    pip.parse(
+        extra_hub_aliases = {"numpy": ["numpy_headers"]},
+        hub_name = "ort_pip",
+        python_version = version,
+        requirements_lock = "//bazel:requirements.txt",
+        whl_modifications = {"@ort_numpy_mods//:numpy.json": "numpy"},
+    )
+    for version in [
+        "3.11",
+        "3.12",
+        "3.13",
+        "3.14",
+    ]
+]
+
 use_repo(pip, "ort_pip")
 
 cuda = use_extension("@rules_cuda//cuda:extensions.bzl", "toolchain")
