@@ -111,6 +111,15 @@ is separate from the source-native archive test above; all temporary graph
 substitutions were removed. Linux, macOS, and CUDA archive execution remain
 unvalidated.
 
+After integrating the desktop shared-provider bridge, the following source-native
+Windows command also passed: one SDK archive test and eight Rust selector-runner
+regressions. Only the small shared-provider bridge was freshly compiled; the
+runtime reused verified source-build actions, with no binary substitutions:
+
+```sh
+bazel test -c opt //:runtime_sdk_archive_test //rust:test_runner_test --build_python_zip=false --jobs=2 --local_test_jobs=1 --test_output=all --nocache_test_results
+```
+
 ### Native Python wheel
 
 ```sh
@@ -168,6 +177,19 @@ warning was absent. The native extension substitution was then removed.
 --jobs=2 --loading_phase_threads=2` passed analysis of the final source-extension
 and SDK graphs with zero build actions. This slice did not rebuild the full native extension
 or execute the Linux wheel, and does not claim complete Python suite coverage.
+The integrated Windows worktree has no warm native Python-extension objects;
+fresh extension compilation is deferred to separate Linux validation rather
+than starting another heavy local build.
+
+The consolidated source graph, including Apple, Rust, wheel, SDK, and C++ test
+targets, passed frozen-lock Windows analysis without executing build actions:
+
+```sh
+bazel build //... -c opt --nobuild --lockfile_mode=error --jobs=2
+```
+
+This analyzed 196 targets (60,443 configured targets), with zero build actions.
+It does not establish native Apple, Rust, or wheel execution.
 
 ### Desktop portability checks
 
@@ -709,16 +731,16 @@ runtime because registration/selection sources access internal types and
 This target is tagged `manual`: the full provider-dependent suite is not ready
 for wildcard execution.
 
-On Windows, this exact command passed **six existing GoogleTests plus the
+On Windows, this exact command passed **seven existing GoogleTests plus the
 standalone DLL probe**, with nonzero counts in every GoogleTest executable:
 
 ```sh
-bazel test -c opt //:runtime_path_test //:provider_bridge_test //:optional_provider_probe_test //:runtime_dlopen_test //:autoep_tests --test_filter="GetRuntimePathFromSharedLibraryTest.Basic:ProviderBridgeTest.MissingExportUnloadsLibraryAndAllowsRetry:OptionalProviderProbeTest.MissingExportUnloadsAndAllowsReplacement:OrtEpLibrary.LoadUnloadPluginLibrary:AutoEpSelection.CpuEP:AutoEpSelection.PreferCpu" --build_python_zip=false --jobs=2 --local_test_jobs=1 --test_output=all --nocache_test_results
+bazel test -c opt //:runtime_path_test //:provider_bridge_test //:optional_provider_probe_test //:runtime_dlopen_test //:autoep_tests --test_filter="GetRuntimePathFromSharedLibraryTest.Basic:ProviderBridgeTest.MissingExportUnloadsLibraryAndAllowsRetry:OptionalProviderProbeTest.MissingExportUnloadsAndAllowsReplacement:OrtEpLibrary.LoadUnloadPluginLibrary:AutoEpSelection.CpuEP:AutoEpSelection.PreferCpu:AutoEpSelection.DuplicateEpCustomOpDomainsAreDeduplicatedForSessionCreation" --build_python_zip=false --jobs=2 --local_test_jobs=1 --test_output=all --nocache_test_results
 ```
 
 New test/helper/fixture sources compiled natively using the cached source-built
 runtime; no binary substitutions were used. The final selected run required
-only cached native actions. This brings selected Windows coverage to **47
+only cached native actions. This brings selected Windows coverage to **48
 distinct existing GoogleTests across 24 GoogleTest executables**, plus the
 standalone DLL probe. Full-suite and non-Windows execution remain unvalidated.
 `bazel test -c opt //:provider_bridge_test --test_filter=BazelMissingCase
@@ -726,12 +748,19 @@ standalone DLL probe. Full-suite and non-Windows execution remain unvalidated.
 --nocache_test_results` failed with expected Bazel exit 3, confirming that the
 isolated launcher preserves the GoogleTest wrapper's zero-match rejection.
 
-Two additional attempted existing auto-EP cases still fail in this configuration:
+One additional attempted existing auto-EP case still fails in this configuration:
 `OrtEpLibrary.LoadUnloadPluginLibraryCxxApi` expects nonempty hardware metadata
-but default device discovery supplies none, and
+but default device discovery supplies none. Its fatal assertion precedes the
+test's explicit unregister call, leaving the example EP registered. In an
+earlier combined invocation, the subsequent
 `AutoEpSelection.DuplicateEpCustomOpDomainsAreDeduplicatedForSessionCreation`
-cannot find the `test.Custom_Mul` kernel. Neither is counted as passing, and
-the latter remains an unresolved configuration/runtime limitation. A prior
+then failed to find the `test.Custom_Mul` kernel. The duplicate-device case
+passes both alone and in the supported combined command above without the
+failing metadata test; it is now counted as passing. Inspection against the
+upstream fixture build confirmed the example EP sources, exports, and custom-op
+registration callbacks are present; no missing Bazel fixture dependency or
+compile define was identified. The metadata case remains unvalidated, not
+classified as a preexisting failure. A prior
 registration-library path mismatch was corrected by executing from the isolated
 directory, not by weakening the assertion. No-exception loader variants and
 cpuinfo allocation/refcount probes are not wired; the default runtime does not
