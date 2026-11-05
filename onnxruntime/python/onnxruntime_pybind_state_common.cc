@@ -45,6 +45,8 @@ void* empty_cache_fn{nullptr};
 #if defined(ENABLE_DLPACK)
 
 void DlpackCapsuleDestructor(PyObject* data) {
+  // Cleanup may run while a consumer exception is already pending.
+  py::error_scope error_scope;
   DLManagedTensor* dlmanaged_tensor = reinterpret_cast<DLManagedTensor*>(PyCapsule_GetPointer(data, "dltensor"));
   if (dlmanaged_tensor) {
     // The dlmanaged_tensor has not been consumed, call deleter ourselves.
