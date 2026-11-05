@@ -1,8 +1,7 @@
 {
   "producer_builds": {
     "1525578": {
-      "source_commit": "59b1944ad05ee396e2dc20acf8b22e40f3d85ebb",
-      "url": "https://dev.azure.com/aiinfra/ONNX%20Runtime/_build/results?buildId=1525578"
+      "source_commit": "59b1944ad05ee396e2dc20acf8b22e40f3d85ebb"
     }
   },
   "images": {

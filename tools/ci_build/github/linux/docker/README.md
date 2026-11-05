@@ -1,8 +1,7 @@
 # Refreshing ORT build images
 
-The manylinux CPU and CUDA images extend base images produced by the
-`onnxruntime_build_scripts` repository in the aiinfra Azure DevOps organization.
-Changing this directory does not rebuild or publish those upstream bases.
+The manylinux CPU and CUDA images extend separately maintained upstream base
+images. Changing this directory does not rebuild or publish those upstream bases.
 
 `tools/ci_build/get_docker_image.py` always requests a fresh base-image resolution,
 including when it uses a registry-backed buildx layer cache. Ordinary builds
@@ -66,8 +65,8 @@ supported for custom images and historical packaging metadata.
 ## Current official base images
 
 The manifest records the eight consumed official AlmaLinux8 families alongside
-their tags, digests and producer build IDs. Its `producer_builds` entries link
-to the source commits and successful promotion runs. ADO and GitHub consumers
+their tags, digests and producer build IDs. Its `producer_builds` entries record
+the source commits for those builds. ADO and GitHub consumers
 select these families rather than duplicating their pins or current release
 provenance in this document or CI files.
 
