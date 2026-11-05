@@ -385,12 +385,15 @@ TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionLeavesQLoRAWithoutKernel) {
 
 TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionQLoRANumerics) {
   if (!DefaultWebGpuExecutionProvider()) GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+  int case_index = 0;
   for (auto build : {BuildQLoRAQkvActive, BuildQLoRAQkvEmpty,
                      BuildQLoRAQkvSkipActive, BuildQLoRAQkvSkipEmpty}) {
+    SCOPED_TRACE(case_index++);
     RunWebGpuFusionTransformerTest(
         build,
         [](InferenceSessionWrapper& session) { ASSERT_STATUS_OK(CheckQLoRAQkvFusedGraph(session.GetGraph())); },
-        TransformerLevel::Level1, TransformerLevel::Level2, 21, 2e-3, 5e-3,
+        // The extra FP16 adapter projection can double the base QKV reduction-order difference on Metal.
+        TransformerLevel::Level1, TransformerLevel::Level2, 21, 2e-3, 1e-2,
         std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}, true),
         [] { return DefaultWebGpuExecutionProvider(); });
   }
