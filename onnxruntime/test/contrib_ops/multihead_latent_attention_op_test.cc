@@ -194,7 +194,9 @@ void RunMlaTest(const MlaTestCase& c) {
     const T* out = output.Data<T>();
     for (size_t i = 0; i < d.output.size(); ++i) {
       if (!std::isnan(d.output[i])) {
-        max_err = std::max(max_err, std::abs(static_cast<double>(ToFloat(out[i])) - d.output[i]));
+        const double actual = ToFloat(out[i]);
+        ASSERT_TRUE(std::isfinite(actual)) << "output[" << i << "] = " << actual;
+        max_err = std::max(max_err, std::abs(actual - d.output[i]));
       }
     }
     EXPECT_LE(max_err, tolerance * std::max(ref_max, 1e-3)) << "max abs error " << max_err << ", max |ref| " << ref_max;
@@ -233,6 +235,42 @@ void RunMlaFailureTest(const MlaTestCase& c, const std::string& expected_message
   if (c.has_present) {
     tester.AddOutput<float>("present_kv", {B, 1, d.present_length, D}, std::vector<float>(B * d.present_length * D));
   }
+  tester.Config(OpTester::ExpectResult::kExpectFailure, expected_message)
+      .ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
+}
+
+// An OpTester that leaves input shapes out of the model, as in an export with symbolic shapes.
+class ShapelessOpTester : public OpTester {
+ public:
+  using BaseTester::SetAddShapeToTensorData;
+  using OpTester::OpTester;
+};
+
+// Runs one decode step with inputs of the given shapes but no shapes in the model, so the kernel's own input checks
+// run rather than shape inference.
+void RunMlaKernelCheckFailure(int64_t v_offset, const std::vector<int64_t>& query_dims,
+                              const std::vector<int64_t>& key_dims, const std::vector<int64_t>& past_dims,
+                              const std::string& expected_message) {
+  constexpr int64_t kNumHeads = 4, kValueSize = 24;
+  auto zeros = [](const std::vector<int64_t>& dims) {
+    return std::vector<float>(static_cast<size_t>(TensorShape(dims).Size()), 0.0f);
+  };
+  const int64_t B = query_dims[0], S = query_dims[1];
+  ShapelessOpTester tester("MultiHeadLatentAttention", 1, kMSDomain);
+  tester.SetAddShapeToTensorData(false);
+  tester.AddAttribute<int64_t>("num_heads", kNumHeads);
+  tester.AddAttribute<int64_t>("v_head_size", kValueSize);
+  tester.AddAttribute<int64_t>("v_offset", v_offset);
+  tester.AddAttribute<float>("scale", 0.125f);
+  tester.AddInput<float>("query", query_dims, zeros(query_dims));
+  tester.AddInput<float>("key", key_dims, zeros(key_dims));
+  tester.AddInput<float>("past_kv", past_dims, zeros(past_dims));
+  tester.AddInput<int32_t>("seqlens_k", {B}, std::vector<int32_t>(static_cast<size_t>(B), 3));
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {8});
+  const std::vector<int64_t> output_dims{B, S, kNumHeads * kValueSize};
+  tester.AddOutput<float>("output", output_dims, zeros(output_dims));
+  tester.AddOutput<float>("present_kv", past_dims, zeros(past_dims));
   tester.Config(OpTester::ExpectResult::kExpectFailure, expected_message)
       .ConfigEp(DefaultCpuExecutionProvider())
       .RunWithConfig();
@@ -354,10 +392,30 @@ TEST(MultiHeadLatentAttentionTest, RejectsBatchedChunk) {
   RunMlaFailureTest(Case(2, 4, true, 16, {9, 9}, 16), "batch_size must be 1 when sequence_length > 1");
 }
 
+// These tests exercise shape inference, which uses fail_shape_inference: in no-exception builds that calls abort().
+#ifndef ORT_NO_EXCEPTIONS
 TEST(MultiHeadLatentAttentionTest, RejectsValueOutsideRow) {
   MlaTestCase c = Case(1, 1, true, 8, {4}, 8);
   c.v_offset = 20;
   RunMlaFailureTest(c, "v_offset + v_head_size must not exceed head_size");
+}
+#endif  // ORT_NO_EXCEPTIONS
+
+// The same checks in the kernel, for models whose shapes are only known at run time. head_size = 160 / 4 = 40.
+TEST(MultiHeadLatentAttentionTest, KernelRejectsValueOutsideRow) {
+  RunMlaKernelCheckFailure(20, {1, 1, 160}, {1, 1, 40}, {1, 1, 8, 40}, "must not exceed head_size (40)");
+}
+
+TEST(MultiHeadLatentAttentionTest, KernelRejectsIndivisibleQuery) {
+  RunMlaKernelCheckFailure(0, {1, 1, 162}, {1, 1, 40}, {1, 1, 8, 40}, "must be divisible by num_heads");
+}
+
+TEST(MultiHeadLatentAttentionTest, KernelRejectsKeyShape) {
+  RunMlaKernelCheckFailure(0, {1, 1, 160}, {1, 1, 39}, {1, 1, 8, 40}, "Input 'key' is expected to have shape");
+}
+
+TEST(MultiHeadLatentAttentionTest, KernelRejectsPastShape) {
+  RunMlaKernelCheckFailure(0, {1, 1, 160}, {1, 1, 40}, {1, 2, 8, 40}, "Input 'past_kv' is expected to have shape");
 }
 
 namespace {
@@ -442,6 +500,7 @@ TEST(MultiHeadLatentAttentionShapeInferenceTest, PresentLength) {
   ExpectPresentShape(present, {2, 1, 8, D});
 }
 
+#ifndef ORT_NO_EXCEPTIONS
 TEST(MultiHeadLatentAttentionShapeInferenceTest, RejectsInvalidLengths) {
   constexpr int64_t D = 576;
   std::optional<ONNX_NAMESPACE::TensorShapeProto> present;
@@ -459,6 +518,7 @@ TEST(MultiHeadLatentAttentionShapeInferenceTest, RejectsInvalidLengths) {
   ASSERT_FALSE(status.IsOK());
   EXPECT_NE(status.ErrorMessage().find("past_kv dimension 1 must be 1"), std::string::npos) << status.ErrorMessage();
 }
+#endif  // ORT_NO_EXCEPTIONS
 
 }  // namespace test
 }  // namespace onnxruntime
