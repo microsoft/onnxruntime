@@ -40,9 +40,9 @@ variables:
   - template: templates/common-variables.yml
   - name: docker_base_image
     ${{ if eq(parameters.CudaVersion, '13.0') }}:
-      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14@sha256:601d4e1c7de614e3b65d9fcaee33efb090f4da17c7be42bf19613b983f9573d3
+      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14@sha256:f64c252762d76a4e65ae0c5f9103031167ba05895f27cc9196dcde2bde808a9d
     ${{ if eq(parameters.CudaVersion, '12.8') }}:
-      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14@sha256:6adedc35de9bdc383f02949bf167902abcf6447887644ea786cf37a7ff6f2e4a
+      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14@sha256:25bd9e1f17d68a747d593d6e32a8e9e76b3fe49ccafea0d7eb966d5b4cdc7983
   - name: linux_trt_version
     ${{ if eq(parameters.CudaVersion, '13.0') }}:
       value: ${{ variables.linux_trt_version_cuda13 }}

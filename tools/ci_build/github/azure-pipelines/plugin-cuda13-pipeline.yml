@@ -131,7 +131,7 @@ extends:
           cmake_build_type: ${{ parameters.cmake_build_type }}
           enable_cuda_fatbin_size_compression: ${{ parameters.enable_cuda_fatbin_size_compression }}
           enable_fpa_intb_gemm: ${{ parameters.enable_fpa_intb_gemm }}
-          docker_base_image: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14@sha256:601d4e1c7de614e3b65d9fcaee33efb090f4da17c7be42bf19613b983f9573d3'
+          docker_base_image: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14@sha256:f64c252762d76a4e65ae0c5f9103031167ba05895f27cc9196dcde2bde808a9d'
           docker_base_image_aarch64: 'onnxruntimebuildcache.azurecr.io/public/azureml/onnxruntime_build_cuda13_aarch64_almalinux9_gcc14:20260323.1'
           cmake_windows_x64_cuda_archs: '75-real;80-real;86-real;89-real;120-real'
           cmake_windows_arm64_cuda_archs: '120-real;121-real'

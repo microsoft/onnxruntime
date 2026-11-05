@@ -79,7 +79,7 @@ extends:
           test_machine_pool: 'Onnxruntime-Linux-GPU-A10'
           cmake_build_type: ${{ parameters.cmake_build_type }}
           cuda_version: '13.0'
-          docker_base_image: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14@sha256:601d4e1c7de614e3b65d9fcaee33efb090f4da17c7be42bf19613b983f9573d3'
+          docker_base_image: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14@sha256:f64c252762d76a4e65ae0c5f9103031167ba05895f27cc9196dcde2bde808a9d'
           wheel_artifact_name: onnxruntime_gpu_unified_x86_64
           build_intermediates_artifact_name: linux_gpu_unified_wheel_x86_64
 

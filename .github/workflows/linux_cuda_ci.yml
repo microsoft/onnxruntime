@@ -27,7 +27,7 @@ jobs:
       build_config: Release
       architecture: x64
       dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
-      docker_build_args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14@sha256:601d4e1c7de614e3b65d9fcaee33efb090f4da17c7be42bf19613b983f9573d3'
+      docker_build_args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14@sha256:f64c252762d76a4e65ae0c5f9103031167ba05895f27cc9196dcde2bde808a9d'
       docker_image_repo: onnxruntimecuda13manylinuxbuild
       extra_build_flags: >-
         --use_binskim_compliant_compile_flags
@@ -69,7 +69,7 @@ jobs:
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
           image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecuda13manylinuxbuild
-          build-args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14@sha256:601d4e1c7de614e3b65d9fcaee33efb090f4da17c7be42bf19613b983f9573d3'
+          build-args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14@sha256:f64c252762d76a4e65ae0c5f9103031167ba05895f27cc9196dcde2bde808a9d'
           push: true
           azure-container-registry-name: onnxruntimebuildcache
         env:

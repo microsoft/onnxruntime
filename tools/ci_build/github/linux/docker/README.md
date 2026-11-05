@@ -13,7 +13,7 @@ forwards this option to the helper.
 
 Keep producer and consumer Node/npm versions aligned when rolling out new bases:
 `install_os_deps.sh` and `manylinux/install_shared_deps.sh` install Node 24.22.2
-and npm 11.21.1 themselves, matching the producer draft. Node archives are
+and npm 11.21.1 themselves, matching the producer. Node archives are
 verified before extraction. npm is updated as a complete distribution, not by
 replacing individual nested packages.
 
@@ -21,31 +21,31 @@ Build and promote upstream test images before changing `BASEIMAGE` defaults or
 pipeline/workflow overrides for validation. Use verified immutable digests, preserve the
 consuming image's OS/manylinux ABI and CUDA compatibility, and keep exported
 CUDA-plugin metadata consistent. Rebuild and scan the derived image too; moving
-a registry tag does not replace a running container. Test-image pins are not
-release approval: complete the validation and scan gates before merging this
-draft or publishing a new official producer version.
+a registry tag does not replace a running container. Promotion is not release
+approval: complete the validation and scan gates before merging consumer changes.
 
-## Current validation images
+## Current official base images
 
 The Azure Pipelines, GitHub Actions overrides and Dockerfile defaults use the
 compatible images promoted by producer
-[run 1522159 (20261103.2)](https://dev.azure.com/aiinfra/ONNX%20Runtime/_build/results?buildId=1522159),
-source commit `4f265c4693972b5d971840b2bd732454fd3a2fd8`.
-The promotion step verified all 12 families under the cache tag `pr-1522159`.
+[official run 1525578 (20261104.1)](https://dev.azure.com/aiinfra/ONNX%20Runtime/_build/results?buildId=1525578),
+source commit `59b1944ad05ee396e2dc20acf8b22e40f3d85ebb`.
+The run completed successfully, and its promotion step verified all 12 families
+under the cache tag `20261104.1`, replacing the earlier PR-test image pins.
 Consumers pin the following immutable digests in
 `onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/<family>@<digest>`,
 rather than relying on a mutable tag:
 
 | Family | Digest |
 | --- | --- |
-| `cpu_x64_almalinux8_gcc14` | `sha256:2de06c32024c7783233c251e53c8e1247606184d2969f1a5e9b275e1002c6565` |
-| `cpu_aarch64_almalinux8_gcc14` | `sha256:520921c97d37ae97e5663b36130b91a79dd2d7d570087386ef4ce12004568281` |
-| `cuda12_x64_almalinux8_gcc14` | `sha256:6adedc35de9bdc383f02949bf167902abcf6447887644ea786cf37a7ff6f2e4a` |
-| `cuda13_x64_almalinux8_gcc14` | `sha256:601d4e1c7de614e3b65d9fcaee33efb090f4da17c7be42bf19613b983f9573d3` |
-| `cpu_x64_almalinux8_gcc14_dotnet` | `sha256:0f8e29b82f43e7092ef4ff70c5ea70fb7c3ebb376816640fe2c177b966323982` |
-| `cpu_aarch64_almalinux8_gcc14_dotnet` | `sha256:5c24c8da952587b1429fc9e8f43fa365fc5f8c8090efeca444b25ae6347fa159` |
-| `cuda12_x64_almalinux8_gcc14_dotnet` | `sha256:d7b6f542b0469a04661f3e28dbcb4597eb63cc2d16af1450025760afcadfda86` |
-| `cuda13_x64_almalinux8_gcc14_dotnet` | `sha256:30bd89829b6906501bed65e33919f9bd7be7dbb71ef554cd12768d772a8227d3` |
+| `cpu_x64_almalinux8_gcc14` | `sha256:f227af058cce5f442b342c3826bf6ff525452349978d66055729ab140d13fc34` |
+| `cpu_aarch64_almalinux8_gcc14` | `sha256:d88e018c996e9eb2df0070a6968c0ebcc03f85d817a7982af85299e2723e6808` |
+| `cuda12_x64_almalinux8_gcc14` | `sha256:25bd9e1f17d68a747d593d6e32a8e9e76b3fe49ccafea0d7eb966d5b4cdc7983` |
+| `cuda13_x64_almalinux8_gcc14` | `sha256:f64c252762d76a4e65ae0c5f9103031167ba05895f27cc9196dcde2bde808a9d` |
+| `cpu_x64_almalinux8_gcc14_dotnet` | `sha256:316d6bb2eb3be18e816ea8a7adb1b9f931b9b36eafb8750549a825cb99e0bff8` |
+| `cpu_aarch64_almalinux8_gcc14_dotnet` | `sha256:2d698f8a4154a3e0a0ec79252141d37d62ec2dd18676df01bb5d03eddf9a052b` |
+| `cuda12_x64_almalinux8_gcc14_dotnet` | `sha256:515f1ca7dfbeae6e91f794c0a8b9163d2aa606143d8b6f62b5d4d00fd0c59eb9` |
+| `cuda13_x64_almalinux8_gcc14_dotnet` | `sha256:2d1d88d6610917cc7dc394c7bfac4e6c9f86ce58e33d8775b5de5395c5f6606a` |
 
 CUDA13 ARM64 overrides retain their existing AlmaLinux9 `20260323.1` base;
 the new AlmaLinux8 ARM64 CUDA family is not an ABI-compatible replacement.
@@ -56,7 +56,7 @@ CI jobs that previously selected `/opt/python/cp310-cp310` now select
 The dependency refresh alone is not a clean-scan claim. npm 11.21.1 still bundles
 `ip-address` 10.7.2, below the report's 10.7.4 target. CUDA's Nsight `nic_sampler`
 also needs a patched NVIDIA payload, not a newer host Go compiler. Keep profiling
-enabled and gate official CUDA release on that vendor fix. The historical AlmaLinux9
+enabled and retain that vendor fix as an outstanding remediation gate. The historical AlmaLinux9
 ARM64 family must not be replaced by an AlmaLinux8 image from current producer
 main.
 

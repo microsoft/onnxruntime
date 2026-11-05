@@ -32,7 +32,7 @@ parameters:
 
 - name: docker_base_image
   type: string
-  default: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14@sha256:6adedc35de9bdc383f02949bf167902abcf6447887644ea786cf37a7ff6f2e4a'
+  default: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14@sha256:25bd9e1f17d68a747d593d6e32a8e9e76b3fe49ccafea0d7eb966d5b4cdc7983'
 
 - name: cuda_version
   type: string
