@@ -5,6 +5,7 @@
 
 load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_run_binary", "js_test")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
+load(":js_env.bzl", "WINDOWS_JS_ENV")
 
 def node_npm_package():
     """Assemble native JS, compiler-produced declarations, and bundled common API."""
@@ -23,6 +24,7 @@ def node_npm_package():
     })
     js_binary(
         name = "node_npm_assembler",
+        env = WINDOWS_JS_ENV,
         entry_point = "tools/bazel/node_npm_package.cjs",
         data = ["//bazel/node:compiler"],
     )
@@ -65,6 +67,7 @@ def node_npm_package():
     )
     js_test(
         name = "node_npm_test",
+        env = WINDOWS_JS_ENV,
         entry_point = "tools/bazel/node_npm_test.cjs",
         include_npm = True,
         args = [

@@ -8,6 +8,11 @@ const path = require('node:path');
 const {createRequire} = require('node:module');
 const {execFileSync} = require('node:child_process');
 
+if (process.platform === 'win32') {
+  assert.equal(process.env.MSYS2_ARG_CONV_EXCL, '',
+      'Windows JS launcher must restore path conversion without changing the top-level Bazel environment.');
+}
+
 const [archive, aar] = process.argv.slice(2).map((value) => path.resolve(value));
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ort-rn-consumer-'));
 try {

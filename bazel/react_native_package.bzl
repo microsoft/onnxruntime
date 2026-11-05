@@ -5,17 +5,20 @@
 
 load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_run_binary")
 load("@rules_java//java/common:java_info.bzl", "JavaInfo")
+load(":js_env.bzl", "WINDOWS_JS_ENV")
 
 def react_native_javascript():
     js_binary(
         name = "react_native_package_consumer",
         entry_point = "tools/bazel/react_native_package_consumer.cjs",
+        env = WINDOWS_JS_ENV,
         data = ["//bazel/node:compiler", "VERSION_NUMBER"],
         include_npm = True,
     )
     js_binary(
         name = "react_native_common_compiler",
         entry_point = "tools/bazel/react_native_common.cjs",
+        env = WINDOWS_JS_ENV,
         data = ["//bazel/node:compiler"],
     )
     js_run_binary(

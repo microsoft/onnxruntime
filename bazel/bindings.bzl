@@ -17,6 +17,7 @@ load("//bazel:node_tests.bzl", "node_runtime_tests")
 load("//bazel:python_tests.bzl", "python_runtime_tests")
 load(":go_desktop.bzl", "desktop_go_library", "desktop_go_test")
 load(":jni_headers.bzl", "jni_headers")
+load(":js_env.bzl", "WINDOWS_JS_ENV")
 load(":platforms.bzl", "ORIGIN_RPATH", "desktop_shared_library")
 load(":shared_library_bundle.bzl", "shared_library_bundle")
 
@@ -315,6 +316,7 @@ def language_bindings():
     )
     js_test(
         name = "node_smoke_test",
+        env = WINDOWS_JS_ENV,
         entry_point = "tools/bazel/node_smoke_test.cjs",
         args = [
             "$(rootpath :onnxruntime_binding.node)",

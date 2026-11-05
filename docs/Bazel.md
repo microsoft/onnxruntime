@@ -140,9 +140,32 @@ and a Bash location visible to Bazel:
 $env:BAZEL_SH = 'C:\Program Files\Git\bin\bash.exe'
 ```
 
+When invoking Bazel from Git Bash, keep any `MSYS2_ARG_CONV_EXCL=*` label
+protection on that invocation. Windows JavaScript targets clear the override
+only inside their launchers so native Node can resolve `/c/...` entrypoint paths.
+
+The override is shared by all native Aspect `js_binary`/`js_test` declarations:
+Node smoke/existing cases, npm tools/consumers, React Native tools/consumer,
+and WASM/browser tools/tests. A Windows Git Bash regression retained the
+inherited `*` while executing the real common-JavaScript compiler, four
+Node test-runner checks (including the native Node environment assertion),
+and the offline React Native npm consumer. All passed, and the parent shell
+still held `*` afterward. Only JS/tool/test actions ran; no native runtime
+rebuild was performed. For example:
+
+```sh
+MSYS2_ARG_CONV_EXCL='*' bazel build //:react_native_common --lockfile_mode=error --jobs=2 --build_python_zip=false
+MSYS2_ARG_CONV_EXCL='*' bazel test //:node_test_runner_test --lockfile_mode=error --jobs=2 --build_python_zip=false '--test_env=MSYS2_ARG_CONV_EXCL=*' --nocache_test_results --test_output=all
+```
+
+After integrating foundation `1550734d3d`, frozen Windows whole-graph analysis
+including the six manual WASM labels passed: 254 targets, 74,475 configured
+targets, 20.579 seconds, and zero actions (`-c opt --nobuild`,
+`--lockfile_mode=error --jobs=2 --build_python_zip=false`).
+
 ```sh
 bazel build -c opt //:runtime_library
-bazel test -c opt //:runtime_smoke_test
+bazel test -c opt //:runtime_smoke_test //:runtime_shared_smoke_test
 bazel test -c opt //:common_test --test_filter=NarrowTest.Basic
 # Analyze every target without compiling or executing full suites:
 bazel build -c opt //... --nobuild

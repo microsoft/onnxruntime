@@ -5,6 +5,7 @@
 
 load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_run_binary", "js_test")
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load(":js_env.bzl", "WINDOWS_JS_ENV")
 
 def _transition_impl(settings, attr):
     return {
@@ -106,6 +107,7 @@ def wasm_targets():
     )
     js_binary(
         name = "wasm_package_assembler",
+        env = WINDOWS_JS_ENV,
         entry_point = "tools/bazel/wasm_package.cjs",
         data = ["//bazel/node:compiler"],
         tags = ["manual"],
@@ -167,6 +169,7 @@ def wasm_targets():
         )
         js_test(
             name = "web_" + suffix + "_smoke_test",
+            env = WINDOWS_JS_ENV,
             entry_point = "tools/bazel/wasm_web_smoke_test.cjs",
             args = ["$(rootpath :web_" + suffix + "_package)"],
             data = [
@@ -179,6 +182,7 @@ def wasm_targets():
         )
         js_test(
             name = "web_" + suffix + "_browser_test",
+            env = WINDOWS_JS_ENV,
             entry_point = "tools/bazel/wasm_browser_test.cjs",
             args = ["$(rootpath :web_" + suffix + "_package)"],
             data = [
@@ -203,6 +207,7 @@ def wasm_targets():
         )
         js_test(
             name = "wasm_" + suffix + "_test",
+            env = WINDOWS_JS_ENV,
             entry_point = "tools/bazel/wasm_test_runner.cjs",
             args = ["$(rootpath :wasm_" + suffix + "_test/ort_wasm_test.js)"],
             data = [

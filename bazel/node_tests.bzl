@@ -4,16 +4,19 @@
 """Existing Node binding tests with source-assembled JS and native Bazel libraries."""
 
 load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_run_binary", "js_test")
+load(":js_env.bzl", "WINDOWS_JS_ENV")
 
 def node_runtime_tests():
     """Declare source assembly and independently selectable existing test files."""
     js_binary(
         name = "node_package_assembler",
+        env = WINDOWS_JS_ENV,
         entry_point = "tools/bazel/node_package.cjs",
         data = ["//bazel/node:compiler"],
     )
     js_test(
         name = "node_test_runner_test",
+        env = WINDOWS_JS_ENV,
         entry_point = "tools/bazel/node_test_runner_test.cjs",
         data = [
             "tools/bazel/node_test_runner.cjs",
@@ -50,6 +53,7 @@ def node_runtime_tests():
     for name, file in targets.items():
         js_test(
             name = name,
+            env = WINDOWS_JS_ENV,
             entry_point = "tools/bazel/node_test_runner.cjs",
             args = [
                 "$(rootpath :node_js_package)",

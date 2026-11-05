@@ -9,6 +9,12 @@ const {test} = require('node:test');
 const {select, execute} = require('./node_test_runner.cjs');
 const Mocha = createRequire(path.resolve('bazel/node/package.json'))('mocha');
 
+test('Windows launcher restores native Node entrypoint path conversion', {
+  skip: process.platform !== 'win32',
+}, () => {
+  assert.equal(process.env.MSYS2_ARG_CONV_EXCL, '');
+});
+
 const available = ['api/simple-api-tests', 'unittests/lib/model-metadata'];
 test('default file, explicit files, deduplication, and regex selection', () => {
   assert.deepEqual(select(available, available[0], []).files, [available[0]]);
