@@ -82,6 +82,16 @@ struct ProviderInfo_MIGraphX_Impl final : ProviderInfo_MIGraphX {
     return Status::OK();
   }
 
+  int GetCurrentGpuDeviceId() override {
+    int device_id;
+    HIP_CALL_THROW(hipGetDevice(&device_id));
+    return device_id;
+  }
+
+  void SetCurrentGpuDeviceId(int device_id) override {
+    HIP_CALL_THROW(hipSetDevice(device_id));
+  }
+
   std::shared_ptr<IAllocator> CreateMIGraphXAllocator(OrtDevice::DeviceId device_id, size_t mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy,
                                                       void* alloc_fn, void* free_fn, void* empty_cache_fn, const OrtArenaCfg* default_memory_arena_cfg) override {
     if (alloc_fn != nullptr && free_fn != nullptr) {

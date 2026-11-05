@@ -1,3 +1,5 @@
+#include <exception>
+
 #include "onnxruntime_pybind_exceptions.h"
 #include "onnxruntime_pybind_state_common.h"
 
@@ -65,6 +67,50 @@ void DlpackCapsuleDestructor(PyObject* data) {
 }
 
 namespace {
+template <typename SetDevice>
+py::object ExportDlpackOnDevice(const py::object& method, bool no_sync, int device_id,
+                                int original_device, SetDevice set_device) {
+  if (original_device == device_id) {
+    return no_sync ? method(py::arg("stream") = -1) : method();
+  }
+  set_device(device_id);
+  py::object capsule;
+  std::exception_ptr error;
+  ORT_TRY {
+    capsule = no_sync ? method(py::arg("stream") = -1) : method();
+  }
+  ORT_CATCH(...) {
+    error = std::current_exception();
+  }
+  // Restore on both success and producer failure, and surface restoration errors.
+  set_device(original_device);
+  if (error) {
+    std::rethrow_exception(error);
+  }
+  return capsule;
+}
+
+py::object ExportDlpack(const py::object& method, bool no_sync, const std::pair<int, int>& device) {
+  if (device.first == kDLCUDA) {
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
+    if (auto* provider = TryGetProviderInfo_CUDA()) {
+      int original_device;
+      Ort::ThrowOnError(provider->GetCurrentGpuDeviceId(&original_device));
+      return ExportDlpackOnDevice(method, no_sync, device.second, original_device,
+                                  [provider](int id) { Ort::ThrowOnError(provider->SetCurrentGpuDeviceId(id)); });
+    }
+#endif
+  } else if (device.first == kDLROCM) {
+#if defined(USE_MIGRAPHX) || defined(USE_MIGRAPHX_PROVIDER_INTERFACE)
+    if (auto* provider = TryGetProviderInfo_MIGraphX()) {
+      return ExportDlpackOnDevice(method, no_sync, device.second, provider->GetCurrentGpuDeviceId(),
+                                  [provider](int id) { provider->SetCurrentGpuDeviceId(id); });
+    }
+#endif
+  }
+  return no_sync ? method(py::arg("stream") = -1) : method();
+}
+
 py::object GetOptionalDlpackAttribute(const py::object& data, const char* name) {
   auto attribute = py::reinterpret_steal<py::object>(PyObject_GetAttrString(data.ptr(), name));
   if (attribute) {
@@ -152,15 +198,14 @@ OrtValue FromDlpack(py::object data, bool synchronize) {
   if (!PyCapsule_CheckExact(data.ptr())) {
     auto method = GetOptionalDlpackAttribute(data, "__dlpack__");
     if (!method.is_none()) {
-      bool request_no_sync = false;
-      if (!synchronize) {
-        auto device_method = GetOptionalDlpackAttribute(data, "__dlpack_device__");
-        if (!device_method.is_none()) {
-          const auto device = device_method().cast<std::pair<int, int>>();
-          request_no_sync = device.first == kDLCUDA || device.first == kDLROCM;
-        }
+      auto device_method = GetOptionalDlpackAttribute(data, "__dlpack_device__");
+      if (!device_method.is_none()) {
+        const auto device = device_method().cast<std::pair<int, int>>();
+        const bool no_sync = !synchronize && (device.first == kDLCUDA || device.first == kDLROCM);
+        data = ExportDlpack(method, no_sync, device);
+      } else {
+        data = method();
       }
-      data = request_no_sync ? method(py::arg("stream") = -1) : method();
     }
   }
   PyObject* dlpack_tensor = data.ptr();

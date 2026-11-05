@@ -289,8 +289,12 @@ class TestDlpackPyTorch(unittest.TestCase):
         shape = (ctypes.c_int64 * 1)(0)
         for device_type in (2, 10):  # kDLCUDA, kDLROCM
             with self.subTest(device_type=device_type):
+                provider = "CUDAExecutionProvider" if device_type == 2 else "MIGraphXExecutionProvider"
+                device_id = 0 if provider in ort.get_available_providers() else 3
                 managed = DLManagedTensor(
-                    DLTensor(None, DLDevice(device_type, 3), 1, DLDataType(2, 32, 1), shape, None, 0), None, None
+                    DLTensor(None, DLDevice(device_type, device_id), 1, DLDataType(2, 32, 1), shape, None, 0),
+                    None,
+                    None,
                 )
                 capsule = new_capsule(ctypes.addressof(managed), b"dltensor", None)
                 imported = ort.OrtValue.from_dlpack(capsule, synchronize=False)
@@ -298,18 +302,18 @@ class TestDlpackPyTorch(unittest.TestCase):
                 result = None
                 values = C.OrtValueVector()
                 try:
-                    self.assertEqual(imported.__dlpack_device__(), (device_type, 3))
+                    self.assertEqual(imported.__dlpack_device__(), (device_type, device_id))
                     for value_type in (ort.OrtValue, C.OrtValue):
                         for producer in (imported, imported._get_c_value()):
                             copied = value_type.from_dlpack(producer, synchronize=False)
-                            self.assertEqual(copied.__dlpack_device__(), (device_type, 3))
+                            self.assertEqual(copied.__dlpack_device__(), (device_type, device_id))
                             del copied
                     del producer
                     values.push_back(imported._get_c_value())
                     exported = values.to_dlpacks(None, synchronize=False)
                     for result in (imported.__dlpack__(stream=-1), *exported):
                         device = managed_tensor_from_capsule(result).contents.dl_tensor.device
-                        self.assertEqual((device.device_type, device.device_id), (device_type, 3))
+                        self.assertEqual((device.device_type, device.device_id), (device_type, device_id))
                 finally:
                     # The synthetic producer's descriptor must outlive every native owner.
                     del result, imported, exported, values
@@ -642,6 +646,32 @@ class TestDlpackPyTorch(unittest.TestCase):
     "requires PyTorch CUDA and the ORT CUDA execution provider",
 )
 class TestDlpackCUDA(unittest.TestCase):
+    @unittest.skipUnless(torch.cuda.device_count() >= 2, "requires two CUDA devices")
+    def test_protocol_import_restores_current_device(self):
+        tensor_device = torch.cuda.device_count() - 1
+        with torch.cuda.device(tensor_device):
+            source = torch.arange(6, dtype=torch.float32, device=f"cuda:{tensor_device}")
+            torch.cuda.current_stream().synchronize()
+
+        class InvalidProducer:
+            def __dlpack_device__(self):
+                return (2, tensor_device)
+
+            def __dlpack__(self, *, stream=None):
+                if torch.cuda.current_device() != tensor_device:
+                    raise AssertionError("Producer's device must be current")
+                raise ValueError("Producer export failed")
+
+        for value_type in (ort.OrtValue, C.OrtValue):
+            for synchronize in (False, True):
+                with self.subTest(value_type=value_type, synchronize=synchronize), torch.cuda.device(0):
+                    imported = value_type.from_dlpack(source, synchronize=synchronize)
+                    self.assertEqual(torch.cuda.current_device(), 0)
+                    torch.testing.assert_close(torch.from_dlpack(imported), source)
+                    with self.assertRaisesRegex(ValueError, "Producer export failed"):
+                        value_type.from_dlpack(InvalidProducer(), synchronize=synchronize)
+                    self.assertEqual(torch.cuda.current_device(), 0)
+
     def test_import_claims_capsule_before_releasing_gil(self):
         source = torch.zeros(6, device="cuda")
         torch.cuda.synchronize()

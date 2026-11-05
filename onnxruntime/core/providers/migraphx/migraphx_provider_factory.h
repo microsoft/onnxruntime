@@ -20,6 +20,8 @@ struct ProviderInfo_MIGraphX {
   virtual std::shared_ptr<IAllocator> CreateMIGraphXAllocator(OrtDevice::DeviceId device_id, size_t mem_limit,
                                                               ArenaExtendStrategy arena_extend_strategy, void* alloc_fn, void* free_fn, void* empty_cache_fn, const OrtArenaCfg* default_memory_arena_cfg) = 0;
   virtual Status SynchronizeDevice(int device_id) = 0;
+  virtual int GetCurrentGpuDeviceId() = 0;
+  virtual void SetCurrentGpuDeviceId(int device_id) = 0;
 
  protected:
   ~ProviderInfo_MIGraphX() = default;  // Can only be destroyed through a subclass instance
