@@ -40,6 +40,7 @@
 #include <algorithm>
 #include <optional>
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <functional>
 #include <iostream>
@@ -445,6 +446,16 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   ORT_ENFORCE(quant_type_ == "int" || quant_type_ == "fp4" || quant_type_ == "nvfp4" ||
                   quant_type_ == "fp8" || quant_type_ == "wfp4afp8",
               "quant_type must be 'int', 'fp4', 'nvfp4', 'fp8', or 'wfp4afp8', but got '", quant_type_, "'");
+  // Validated before the INT3 early return below, which would otherwise skip this check.
+  float zero_point_offset = 0.0f;
+  if (op_kernel_info.GetAttr<float>("zero_point_offset", &zero_point_offset).IsOK()) {
+    ORT_ENFORCE(std::isfinite(zero_point_offset), "zero_point_offset must be finite, got ", zero_point_offset, ".");
+    ORT_ENFORCE(quant_type_ == "int" && block_size_ > 0 && fc1_expert_weight_bits_ == 2 &&
+                    fc2_expert_weight_bits_ == 2 && fc3_expert_weight_bits_ == 2,
+                "zero_point_offset requires uniform 2-bit integer block-wise quantization (quant_type='int', "
+                "all expert weight bits 2, block_size > 0). INT3 and mixed widths are not supported.");
+    zero_point_offset_ = zero_point_offset;
+  }
   const bool use_int_dequant_fallback =
       quant_type_ == "int" && !has_int3_ && (is_mixed_width || expert_weight_bits_ == 2);
   enable_int2_gemv_ = quant_type_ == "int" &&
@@ -594,16 +605,6 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
                          (fc2_expert_weight_bits_ == 2 || fc2_expert_weight_bits_ == 4) &&
                          (fc1_expert_weight_bits_ == 2 || fc2_expert_weight_bits_ == 2) &&
                          onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_QMOE_INT2_PREFILL", 1) != 0;
-
-  zero_point_offset_ = op_kernel_info.GetAttrOrDefault<float>(
-      "zero_point_offset", std::numeric_limits<float>::quiet_NaN());
-  if (!std::isnan(zero_point_offset_)) {
-    ORT_ENFORCE(!std::isinf(zero_point_offset_),
-                "zero_point_offset must be a finite value, got ", zero_point_offset_, ".");
-    ORT_ENFORCE(quant_type_ == "int" && block_size_ > 0 && expert_weight_bits_ == 2,
-                "zero_point_offset is only supported for 2-bit integer block-wise quantization "
-                "(quant_type='int', expert_weight_bits=2, block_size > 0).");
-  }
 
   fp4_deep_gemm_num_experts_ = StaticFp4DeepGemmNumExperts(op_kernel_info);
   enable_fp4_deep_gemm_ =
@@ -1530,14 +1531,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // falls back to the default of 0 ("not fused"). QMoE never has a separate FC3 (enforced above), so a
   // SwiGLU activation with swiglu_fusion == 0 means the gate and value projections are actually pre-fused
   // into FC1 (interleaved layout). Treat this as swiglu_fusion == 1 so those legacy models keep working.
-  // GeGLU is a gated activation with the same interleaved fc1 layout as SwiGLU (fc1 emits
-  // 2*inter_size: gate|up). All shape/layout and prefill logic treats it identically; only the
-  // gate nonlinearity differs, which is resolved inside the activation epilogue by activation_type_.
-  const bool is_gated_activation =
-      activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu ||
-      activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Geglu;
   int swiglu_fusion = swiglu_fusion_;
-  if (is_gated_activation && swiglu_fusion == 0 && !split_fp8_fc1) {
+  if (activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu &&
+      swiglu_fusion == 0 && !split_fp8_fc1) {
     swiglu_fusion = 1;
     LogQMoESwigluFusionRemapOnce();
   }
@@ -1985,15 +1981,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const bool packed_int_routing_supported =
       moe_params.num_rows <= 256 && moe_params.num_experts <= 512 &&
       (k_ == 1 || k_ == 2 || k_ == 4 || k_ == 6 || k_ == 8 || k_ == 10);
-  // The symmetric int decode GEMV kernel hardcodes the SiLU/sigmoid gate, so it is SwiGLU-only;
-  // GeGLU (same interleaved layout) must fall through to the prefill grouped GEMM instead.
-  const bool is_swiglu_only =
-      activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu;
-  // A finite zero_point_offset makes int2 asymmetric (fractional center). The packed GEMV and prefill
-  // grouped GEMM are symmetric-only (no zero/bias term), so fractional-zp int2 must use the dense
-  // dequant path, which applies the offset as a per-block float zero-point. Treat it like a zero-point.
+  // The packed GEMV and prefill are symmetric-only, so a fractional zero point must use the dense path.
   const bool has_fractional_zp = !std::isnan(zero_point_offset_);
-  if (enable_int2_gemv_ && !has_any_zero_point && !has_fractional_zp && is_swiglu_only && swiglu_fusion == 1 &&
+  // The decode GEMV hardcodes the SiLU gate and stays SwiGLU-only; prefill takes any interleaved gated activation.
+  if (enable_int2_gemv_ && !has_any_zero_point && !has_fractional_zp && is_fused_swiglu && swiglu_fusion == 1 &&
       (block_size_ == 32 || block_size_ == 64 || block_size_ == 128) &&
       packed_int_fc1 != nullptr && packed_int_fc2 != nullptr) {
     use_packed_int_gemv = packed_int_fc1_shape_supported && packed_int_fc2_shape_supported &&
@@ -2015,7 +2006,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   }
   const bool use_packed_int_prefill =
       enable_int2_prefill_ && !use_packed_int_gemv && !has_any_zero_point && !has_fractional_zp &&
-      is_fused_swiglu && swiglu_fusion == 1 && packed_int_fc1 != nullptr && packed_int_fc2 != nullptr &&
+      is_fused_gated && swiglu_fusion == 1 && packed_int_fc1 != nullptr && packed_int_fc2 != nullptr &&
       moe_params.num_rows > 0 && packed_int_expanded <= std::numeric_limits<int>::max() &&
       moe_params.hidden_size > 0 && moe_params.hidden_size <= std::numeric_limits<int>::max() &&
       moe_params.hidden_size % 64 == 0 && moe_params.inter_size > 0 &&
@@ -2068,8 +2059,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // Offline-packed SM80 bytes cannot be consumed by the dense dequantization fallback.
   ORT_RETURN_IF(preloaded_int2_or_mixed && !use_packed_int,
                 "INT2 or mixed-width CUDA QMoE with weights_prepacked=1 requires a packed execution path "
-                "(INT2 GEMV/prefill enabled, SwiGLU fusion 1, block_size 32/64/128, no zero points, supported "
-                "shapes and routing), but none is available for this invocation. Use weights_prepacked=0 "
+                "(INT2 GEMV/prefill enabled, SwiGLU or GeGLU with swiglu_fusion 1, block_size 32/64/128, "
+                "no zero points, supported shapes and routing), but none is available for this invocation. "
+                "Use weights_prepacked=0 "
                 "with raw weights for the dense fallback.");
   if (use_int_dequant_fallback && !use_packed_int) {
     const size_t total_dequant_bytes = SafeInt<size_t>(int_dequant_fc1_bytes) + int_dequant_fc2_bytes;

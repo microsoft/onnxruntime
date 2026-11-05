@@ -1935,8 +1935,9 @@ static OpSchema QMoESchema() {
                           "Fractional zero-point center for 2-bit integer block-wise quantization (CUDA only). "
                           "When set, dequantization uses (code - zero_point_offset) * scale instead of the default "
                           "symmetric center 2^(bits-1). Typical value 1.5 for balanced 2-bit quantization. "
-                          "Must be finite; only valid when quant_type='int', expert_weight_bits=2, and block_size > 0. "
-                          "Cannot be combined with fc*_zero_points tensor inputs.",
+                          "Must be finite; only valid when quant_type='int', block_size > 0, and every expert weight "
+                          "width is 2 bits (INT3 and mixed widths are rejected). Cannot be combined with "
+                          "fc*_zero_points tensor inputs. Other execution providers reject this attribute.",
                           AttributeProto::FLOAT,
                           OPTIONAL_VALUE)
                     .Input(0,

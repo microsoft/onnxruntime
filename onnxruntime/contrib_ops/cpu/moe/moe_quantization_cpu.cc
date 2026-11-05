@@ -27,7 +27,6 @@
 #include <vector>
 #include <algorithm>
 #include <cmath>
-#include <limits>
 
 namespace {
 inline uint8_t GetPackedZeroPointValue(int64_t num_bits, uint8_t zero_point) {
@@ -956,12 +955,9 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
     ORT_ENFORCE((block_size_ & (block_size_ - 1)) == 0, "block_size must be a power of 2.");
   }
 
-  // ``zero_point_offset`` (fractional zero-point center) is a CUDA-only feature. Reject it here so a
-  // model authored for CUDA is not silently evaluated with the default integer center on CPU, which
-  // would violate the documented dequant formula (code - zero_point_offset) * scale.
-  const float zero_point_offset =
-      op_kernel_info.GetAttrOrDefault<float>("zero_point_offset", std::numeric_limits<float>::quiet_NaN());
-  ORT_ENFORCE(std::isnan(zero_point_offset),
+  // Reject rather than silently dequantize with the default integer center.
+  float zero_point_offset = 0.0f;
+  ORT_ENFORCE(!op_kernel_info.GetAttr<float>("zero_point_offset", &zero_point_offset).IsOK(),
               "CPU QMoE does not support the 'zero_point_offset' attribute; it is only implemented "
               "by the CUDA execution provider.");
 
