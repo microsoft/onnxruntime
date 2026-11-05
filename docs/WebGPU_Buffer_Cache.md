@@ -19,18 +19,21 @@ automatically. No bucket table configuration is required.
 - Reuse takes the most recently returned buffer of the matching capacity. Every
   spare records its own return time, so reusing one buffer does not keep an
   entire size class's historical peak alive.
-- At submission boundaries, including empty flushes, and before cache-miss
-  allocations, the cache checks for idle spares at most once per second and
-  releases entries unused for one second.
+- Reclamation runs synchronously when a submission boundary (including an empty
+  flush) or a cache miss triggers a maintenance check. A check skips scanning if
+  the previous scan was less than one second ago; otherwise it releases spares
+  unused for at least one second. These time thresholds only control eligibility
+  and throttle event-triggered work. They never schedule a scan. Returning a
+  buffer records its return time without triggering a scan.
   Elapsed time, rather than a submission count, prevents a busy session from
-  advancing other sessions' aging clocks. These intervals favor reuse while
-  eventually retiring abandoned capacities and surplus buffers. They are policy
-  heuristics, not measurements of available GPU memory.
+  advancing other sessions' aging clocks. The thresholds are policy heuristics,
+  not measurements of available GPU memory.
 
-There is no background timer while the context is idle. Maintenance resumes on
-the next flush, and context destruction releases its cache. A compatible spare
-can still be reused before the next maintenance pass even after its idle period.
-Workloads whose reuse intervals exceed the idle period may recreate buffers.
+There is no background thread or timer for cache maintenance. With no submission
+or cache-miss event, no scan occurs, regardless of how much time passes. Context
+destruction releases its cache. A compatible spare can still be reused before the
+next maintenance pass even after its idle period. Workloads whose reuse intervals
+exceed the idle period may recreate buffers.
 
 Portable WebGPU APIs do not expose remaining GPU memory. This policy does not
 bound total device memory or guarantee allocation success. Live tensors,
