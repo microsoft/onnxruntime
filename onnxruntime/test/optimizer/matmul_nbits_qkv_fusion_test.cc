@@ -125,8 +125,9 @@ Status CheckMatMulNBitsQkvPatternNotFusedGraph(Graph& graph) {
 
 void BuildMatMulNBitsQkvWebGpuPatternImpl(ModelTestBuilder& builder, bool with_skip_input, bool with_skip_output,
                                           SkipNormVariant skip_norm_variant = SkipNormVariant::kDefault,
-                                          MatMulBiasVariant matmul_bias_variant = MatMulBiasVariant::kNone) {
-  constexpr int64_t k = 16;
+                                          MatMulBiasVariant matmul_bias_variant = MatMulBiasVariant::kNone,
+                                          bool qlora = false, bool empty_adapter = false) {
+  const int64_t k = qlora ? 32 : 16;
   constexpr int64_t q_n = 8;
   constexpr int64_t kv_n = 4;
   constexpr int64_t block_size = 32;
@@ -134,13 +135,14 @@ void BuildMatMulNBitsQkvWebGpuPatternImpl(ModelTestBuilder& builder, bool with_s
   constexpr int64_t accuracy_level = 4;
   constexpr int64_t blob_size = block_size * bits / 8;
 
-  NodeArg* input = builder.MakeInput<MLFloat16>(
-      std::vector<int64_t>{1, k},
-      std::vector<MLFloat16>{
-          MLFloat16(-1.0f), MLFloat16(-0.875f), MLFloat16(-0.75f), MLFloat16(-0.625f),
-          MLFloat16(-0.5f), MLFloat16(-0.375f), MLFloat16(-0.25f), MLFloat16(-0.125f),
-          MLFloat16(0.125f), MLFloat16(0.25f), MLFloat16(0.375f), MLFloat16(0.5f),
-          MLFloat16(0.625f), MLFloat16(0.75f), MLFloat16(0.875f), MLFloat16(1.0f)});
+  NodeArg* input = qlora ? builder.MakeInput<MLFloat16>({1, k}, MLFloat16(-1.0f), MLFloat16(1.0f))
+                         : builder.MakeInput<MLFloat16>(
+                               std::vector<int64_t>{1, k},
+                               std::vector<MLFloat16>{
+                                   MLFloat16(-1.0f), MLFloat16(-0.875f), MLFloat16(-0.75f), MLFloat16(-0.625f),
+                                   MLFloat16(-0.5f), MLFloat16(-0.375f), MLFloat16(-0.25f), MLFloat16(-0.125f),
+                                   MLFloat16(0.125f), MLFloat16(0.25f), MLFloat16(0.375f), MLFloat16(0.5f),
+                                   MLFloat16(0.625f), MLFloat16(0.75f), MLFloat16(0.875f), MLFloat16(1.0f)});
   NodeArg* skip_input = with_skip_input
                             ? builder.MakeInput<MLFloat16>(
                                   std::vector<int64_t>{1, k},
@@ -180,6 +182,12 @@ void BuildMatMulNBitsQkvWebGpuPatternImpl(ModelTestBuilder& builder, bool with_s
 
   NodeAttributes q_attrs = MakeMatMulNBitsAttrs(k, q_n, block_size, bits, accuracy_level);
   NodeAttributes kv_attrs = MakeMatMulNBitsAttrs(k, kv_n, block_size, bits, accuracy_level);
+  if (qlora) {
+    for (auto* attrs : {&q_attrs, &kv_attrs}) {
+      utils::SetNodeAttribute(utils::MakeAttribute("lora_bits", int64_t{8}), *attrs);
+      utils::SetNodeAttribute(utils::MakeAttribute("lora_block_size", int64_t{32}), *attrs);
+    }
+  }
 
   NodeArg* norm_bias = (with_skip_input && skip_norm_variant == SkipNormVariant::kWithBiasInput)
                            ? builder.MakeInitializer<MLFloat16>({k}, MLFloat16(0.0f), MLFloat16(0.0f))
@@ -201,9 +209,25 @@ void BuildMatMulNBitsQkvWebGpuPatternImpl(ModelTestBuilder& builder, bool with_s
     norm.AddAttribute("axis", static_cast<int64_t>(0));
   }
 
-  Node& q_matmul = builder.AddNode("MatMulNBits", {norm_out, q_weight, q_scale, optional_tensor, optional_tensor, q_bias}, {q_output}, kMSDomain, &q_attrs);
-  Node& k_matmul = builder.AddNode("MatMulNBits", {norm_out, k_weight, k_scale, optional_tensor, optional_tensor, k_bias}, {k_output}, kMSDomain, &kv_attrs);
-  Node& v_matmul = builder.AddNode("MatMulNBits", {norm_out, v_weight, v_scale, optional_tensor, optional_tensor, v_bias}, {v_output}, kMSDomain, &kv_attrs);
+  auto projection_inputs = [&](NodeArg* weight, NodeArg* scale, NodeArg* bias, int64_t n) {
+    std::vector<NodeArg*> inputs{norm_out, weight, scale};
+    if (qlora) {
+      inputs.push_back(builder.MakeInitializer<uint8_t>({32, 1, 32}, uint8_t{130}, uint8_t{131}));
+      inputs.push_back(builder.MakeInitializer<MLFloat16>({32, 1}, MLFloat16(0.01f), MLFloat16(0.01f)));
+      inputs.push_back(builder.MakeInitializer<uint8_t>({n, empty_adapter ? 0 : 1, 32}, uint8_t{130}, uint8_t{131}));
+      inputs.push_back(builder.MakeInitializer<MLFloat16>({n, 1}, MLFloat16(0.01f), MLFloat16(0.01f)));
+    } else {
+      inputs.insert(inputs.end(), {optional_tensor, optional_tensor, bias});
+    }
+    return inputs;
+  };
+  const char* projection_op = qlora ? "MatMulNBitsQLoRA" : "MatMulNBits";
+  Node& q_matmul = builder.AddNode(projection_op, projection_inputs(q_weight, q_scale, q_bias, q_n),
+                                   {q_output}, kMSDomain, &q_attrs);
+  Node& k_matmul = builder.AddNode(projection_op, projection_inputs(k_weight, k_scale, k_bias, kv_n),
+                                   {k_output}, kMSDomain, &kv_attrs);
+  Node& v_matmul = builder.AddNode(projection_op, projection_inputs(v_weight, v_scale, v_bias, kv_n),
+                                   {v_output}, kMSDomain, &kv_attrs);
 
   SetWebGpuProvider(norm);
   SetWebGpuProvider(q_matmul);
@@ -218,6 +242,40 @@ void BuildMatMulNBitsQkvWebGpuPatternImpl(ModelTestBuilder& builder, bool with_s
 
 void BuildMatMulNBitsQkvWebGpuPattern(ModelTestBuilder& builder) {
   BuildMatMulNBitsQkvWebGpuPatternImpl(builder, false, false);
+}
+
+void BuildQLoRAQkvActive(ModelTestBuilder& builder) {
+  BuildMatMulNBitsQkvWebGpuPatternImpl(builder, false, false, SkipNormVariant::kDefault,
+                                       MatMulBiasVariant::kNone, true, false);
+}
+
+void BuildQLoRAQkvEmpty(ModelTestBuilder& builder) {
+  BuildMatMulNBitsQkvWebGpuPatternImpl(builder, false, false, SkipNormVariant::kDefault,
+                                       MatMulBiasVariant::kNone, true, true);
+}
+
+void BuildQLoRAQkvSkipActive(ModelTestBuilder& builder) {
+  BuildMatMulNBitsQkvWebGpuPatternImpl(builder, true, true, SkipNormVariant::kDefault,
+                                       MatMulBiasVariant::kNone, true, false);
+}
+
+void BuildQLoRAQkvSkipEmpty(ModelTestBuilder& builder) {
+  BuildMatMulNBitsQkvWebGpuPatternImpl(builder, true, true, SkipNormVariant::kDefault,
+                                       MatMulBiasVariant::kNone, true, true);
+}
+
+Status CheckQLoRAQkvFusedGraph(const Graph& graph) {
+  const auto counts = CountOpsInGraph(graph);
+  ORT_RETURN_IF_NOT(OpCount(counts, "com.microsoft.MatMulNBitsQLoRAQkv") == 1 &&
+                        OpCount(counts, "com.microsoft.MatMulNBitsQLoRA") == 0 &&
+                        OpCount(counts, "SimplifiedLayerNormalization") == 0,
+                    "Expected one fused QLoRA QKV node.");
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "MatMulNBitsQLoRAQkv") {
+      ORT_RETURN_IF_NOT(node.InputDefs().size() == 24, "Fused QLoRA QKV input count differs.");
+    }
+  }
+  return Status::OK();
 }
 
 void BuildMatMulNBitsQkvSkipWebGpuPattern(ModelTestBuilder& builder) {
@@ -255,6 +313,26 @@ void BuildMatMulNBitsQkvWebGpuPatternWithVBias(ModelTestBuilder& builder) {
 }
 
 }  // namespace
+
+TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionFusesQLoRA) {
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      BuildQLoRAQkvActive, 21, *logger_,
+      std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      TransformerLevel::Level2, 1, nullptr, CheckQLoRAQkvFusedGraph));
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionQLoRANumerics) {
+  if (!DefaultWebGpuExecutionProvider()) GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+  for (auto build : {BuildQLoRAQkvActive, BuildQLoRAQkvEmpty,
+                     BuildQLoRAQkvSkipActive, BuildQLoRAQkvSkipEmpty}) {
+    RunWebGpuFusionTransformerTest(
+        build,
+        [](InferenceSessionWrapper& session) { ASSERT_STATUS_OK(CheckQLoRAQkvFusedGraph(session.GetGraph())); },
+        TransformerLevel::Level1, TransformerLevel::Level2, 21, 2e-3, 5e-3,
+        std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+        [] { return DefaultWebGpuExecutionProvider(); });
+  }
+}
 
 TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionFusesWebGpuPattern) {
   ASSERT_STATUS_OK(TestGraphTransformer(

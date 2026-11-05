@@ -187,7 +187,8 @@ void BuildMatMulNBitsMlpWebGpuPatternImpl(ModelTestBuilder& builder,
                                           SkipOutputKind skip_output_kind = SkipOutputKind::kNone,
                                           BiasKind bias_kind = BiasKind::kWithBias,
                                           ActivationShape activation_shape = ActivationShape::kSilu,
-                                          SkipNormVariant skip_norm_variant = SkipNormVariant::kDefault) {
+                                          SkipNormVariant skip_norm_variant = SkipNormVariant::kDefault,
+                                          bool qlora = false, bool empty_adapter = false) {
   constexpr int64_t k = 32;
   constexpr int64_t n = 8;
   constexpr int64_t block_size = 32;
@@ -226,6 +227,10 @@ void BuildMatMulNBitsMlpWebGpuPatternImpl(ModelTestBuilder& builder,
   NodeArg* output = builder.MakeOutput<MLFloat16>(std::vector<int64_t>{1, n});
 
   NodeAttributes matmul_attrs = MakeMatMulNBitsAttrs(k, n, block_size, bits, accuracy_level);
+  if (qlora) {
+    utils::SetNodeAttribute(utils::MakeAttribute("lora_bits", int64_t{8}), matmul_attrs);
+    utils::SetNodeAttribute(utils::MakeAttribute("lora_block_size", int64_t{32}), matmul_attrs);
+  }
   Node* norm = nullptr;
   if (norm_anchor_kind == NormAnchorKind::kSkipSimplified) {
     NodeArg* skip_input = builder.MakeInput<MLFloat16>(
@@ -260,14 +265,25 @@ void BuildMatMulNBitsMlpWebGpuPatternImpl(ModelTestBuilder& builder,
     }
   }
 
-  Node& gate_matmul = builder.AddNode("MatMulNBits",
-                                      {normalized_input, gate_weight, gate_scale, optional_tensor, optional_tensor,
-                                       gate_bias},
-                                      {gate_out}, kMSDomain, &matmul_attrs);
-  Node& up_matmul = builder.AddNode("MatMulNBits",
-                                    {normalized_input, up_weight, up_scale, optional_tensor, optional_tensor,
-                                     up_bias},
-                                    {up_out}, kMSDomain, &matmul_attrs);
+  std::vector<NodeArg*> gate_inputs{normalized_input, gate_weight, gate_scale};
+  std::vector<NodeArg*> up_inputs{normalized_input, up_weight, up_scale};
+  if (qlora) {
+    const std::vector<int64_t> down_shape{32, 1, 32};
+    const std::vector<int64_t> up_shape{n, empty_adapter ? 0 : 1, 32};
+    for (auto* inputs : {&gate_inputs, &up_inputs}) {
+      inputs->push_back(builder.MakeInitializer<uint8_t>(down_shape, uint8_t{130}, uint8_t{131}));
+      inputs->push_back(builder.MakeInitializer<MLFloat16>({32, 1}, MLFloat16(0.01f), MLFloat16(0.01f)));
+      inputs->push_back(builder.MakeInitializer<uint8_t>(up_shape, uint8_t{130}, uint8_t{131}));
+      inputs->push_back(builder.MakeInitializer<MLFloat16>({n, 1}, MLFloat16(0.01f), MLFloat16(0.01f)));
+    }
+  } else {
+    gate_inputs.insert(gate_inputs.end(), {optional_tensor, optional_tensor, gate_bias});
+    up_inputs.insert(up_inputs.end(), {optional_tensor, optional_tensor, up_bias});
+  }
+  Node& gate_matmul = builder.AddNode(qlora ? "MatMulNBitsQLoRA" : "MatMulNBits",
+                                      gate_inputs, {gate_out}, kMSDomain, &matmul_attrs);
+  Node& up_matmul = builder.AddNode(qlora ? "MatMulNBitsQLoRA" : "MatMulNBits",
+                                    up_inputs, {up_out}, kMSDomain, &matmul_attrs);
 
   Node* sigmoid = nullptr;
   Node* silu_mul = nullptr;
@@ -337,6 +353,57 @@ void BuildMatMulNBitsMlpSkipQuickGeluWebGpuPattern(ModelTestBuilder& builder) {
                                        BiasKind::kWithBias, ActivationShape::kQuickGelu);
 }
 
+void BuildQLoRAMlpActive(ModelTestBuilder& builder) {
+  BuildMatMulNBitsMlpWebGpuPatternImpl(builder, NormAnchorKind::kSimplified, SkipOutputKind::kNone,
+                                       BiasKind::kNoBias, ActivationShape::kSilu, SkipNormVariant::kDefault,
+                                       true, false);
+}
+
+void BuildQLoRAMlpEmpty(ModelTestBuilder& builder) {
+  BuildMatMulNBitsMlpWebGpuPatternImpl(builder, NormAnchorKind::kSimplified, SkipOutputKind::kNone,
+                                       BiasKind::kNoBias, ActivationShape::kSilu, SkipNormVariant::kDefault,
+                                       true, true);
+}
+
+void BuildQLoRAMlpSkipActive(ModelTestBuilder& builder) {
+  BuildMatMulNBitsMlpWebGpuPatternImpl(builder, NormAnchorKind::kSkipSimplified, SkipOutputKind::kGraphOutput,
+                                       BiasKind::kNoBias, ActivationShape::kSilu, SkipNormVariant::kDefault,
+                                       true, false);
+}
+
+void BuildQLoRAMlpSkipEmpty(ModelTestBuilder& builder) {
+  BuildMatMulNBitsMlpWebGpuPatternImpl(builder, NormAnchorKind::kSkipSimplified, SkipOutputKind::kGraphOutput,
+                                       BiasKind::kNoBias, ActivationShape::kSilu, SkipNormVariant::kDefault,
+                                       true, true);
+}
+
+void BuildQLoRAMlpQuickGeluActive(ModelTestBuilder& builder) {
+  BuildMatMulNBitsMlpWebGpuPatternImpl(builder, NormAnchorKind::kSkipSimplified, SkipOutputKind::kGraphOutput,
+                                       BiasKind::kNoBias, ActivationShape::kQuickGelu, SkipNormVariant::kDefault,
+                                       true, false);
+}
+
+void BuildQLoRAMlpQuickGeluEmpty(ModelTestBuilder& builder) {
+  BuildMatMulNBitsMlpWebGpuPatternImpl(builder, NormAnchorKind::kSkipSimplified, SkipOutputKind::kGraphOutput,
+                                       BiasKind::kNoBias, ActivationShape::kQuickGelu, SkipNormVariant::kDefault,
+                                       true, true);
+}
+
+Status CheckQLoRAMlpFusedGraph(const Graph& graph) {
+  const auto counts = CountOpsInGraph(graph);
+  ORT_RETURN_IF_NOT(OpCount(counts, "com.microsoft.MatMulNBitsQLoRAMlp") == 1 &&
+                        OpCount(counts, "com.microsoft.MatMulNBitsQLoRA") == 0 &&
+                        OpCount(counts, "SimplifiedLayerNormalization") == 0 &&
+                        OpCount(counts, "Mul") == 0,
+                    "Expected one fused QLoRA MLP.");
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "MatMulNBitsQLoRAMlp") {
+      ORT_RETURN_IF_NOT(node.InputDefs().size() == 17, "Fused QLoRA MLP input count differs.");
+    }
+  }
+  return Status::OK();
+}
+
 void BuildMatMulNBitsMlpSkipWebGpuPatternWithSkipNormBias(ModelTestBuilder& builder) {
   BuildMatMulNBitsMlpWebGpuPatternImpl(builder, NormAnchorKind::kSkipSimplified, SkipOutputKind::kNone,
                                        BiasKind::kWithBias, ActivationShape::kSilu,
@@ -350,6 +417,27 @@ void BuildMatMulNBitsMlpSimplifiedWebGpuPatternWithNormAxisZero(ModelTestBuilder
 }
 
 }  // namespace
+
+TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionFusesQLoRA) {
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      BuildQLoRAMlpActive, 21, *logger_,
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      TransformerLevel::Level2, 1, nullptr, CheckQLoRAMlpFusedGraph));
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionQLoRANumerics) {
+  if (!DefaultWebGpuExecutionProvider()) GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+  for (auto build : {BuildQLoRAMlpActive, BuildQLoRAMlpEmpty,
+                     BuildQLoRAMlpSkipActive, BuildQLoRAMlpSkipEmpty,
+                     BuildQLoRAMlpQuickGeluActive, BuildQLoRAMlpQuickGeluEmpty}) {
+    RunWebGpuFusionTransformerTest(
+        build,
+        [](InferenceSessionWrapper& session) { ASSERT_STATUS_OK(CheckQLoRAMlpFusedGraph(session.GetGraph())); },
+        TransformerLevel::Level1, TransformerLevel::Level2, 21, 1e-3, 1e-3,
+        std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+        [] { return DefaultWebGpuExecutionProvider(); });
+  }
+}
 
 TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionFusesSimplifiedWebGpuPattern) {
   ASSERT_STATUS_OK(TestGraphTransformer(

@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "core/providers/webgpu/program.h"
 
 namespace onnxruntime::webgpu {
@@ -37,5 +39,10 @@ Status GenerateQLoRAUp(onnxruntime::webgpu::ShaderHelper& shader,
 // Dispatch the decode output shader to compute Y = base + T * B_up.
 Status ApplyQLoRAOutput(onnxruntime::webgpu::ComputeContext& context, const Tensor* base, const Tensor* t,
                         const Tensor* b, const Tensor* scales, Tensor* y);
+
+Status ApplyMatMulNBitsQLoRA(const Tensor* x, const Tensor* w, const Tensor* s,
+                             const Tensor* aq, const Tensor* as, const Tensor* bq, const Tensor* bs,
+                             int64_t k, int64_t n, int64_t accuracy_level,
+                             onnxruntime::webgpu::ComputeContext& context, Tensor* y);
 
 }  // namespace onnxruntime::contrib::webgpu
