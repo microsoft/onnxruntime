@@ -81,7 +81,7 @@ OrtNode* CreateNode(const OrtModelEditorApi& api,
   return node;
 }
 
-// convenience func to convert initalizer lists to gsl::span
+// convenience func to convert initializer lists to gsl::span
 OrtNode* CreateNode(const OrtModelEditorApi& api,
                     const char* operator_name, const char* node_name,
                     const std::initializer_list<const char*> input_names,

@@ -254,7 +254,7 @@ TEST(PoolFp16Test, MaxPool_Dilation_Ceil0_2d) {
 
   test.AddInput<MLFloat16>("X", x_dims, x_vals);
   test.AddOutput<MLFloat16>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kAclExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(PoolFp16Test, MaxPool_Dilation_Ceil1_2d) {
@@ -286,7 +286,7 @@ TEST(PoolFp16Test, MaxPool_Dilation_Ceil1_2d) {
 
   // TODO: Enable the case for WebGPU once ceil is supported.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kWebGpuExecutionProvider});
+           {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_DilationPadding_3d) {
@@ -583,7 +583,7 @@ TEST(PoolFp16Test, AveragePool_10_ceil1_2d) {
 
   // TODO: Enable the case for WebGPU once ceil is supported.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kWebGpuExecutionProvider});
+           {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
 }
 
 // fp16 analog of the float AveragePool_18_ceil_count_include_pad_1d bug (PyTorch #183528).
@@ -612,7 +612,7 @@ TEST(PoolFp16Test, AveragePool_Ceil_CountIncludePad_1d) {
   test.AddInput<MLFloat16>("X", x_dims, x_vals);
   test.AddOutput<MLFloat16>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kWebGpuExecutionProvider});
+           {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
 }
 
 // fp16 2D analog: PyTorch #183528 repro, x = arange(1,17).reshape(1,1,4,4), k=3 s=2 pad=1,
@@ -645,7 +645,7 @@ TEST(PoolFp16Test, AveragePool_Ceil_CountIncludePad_2d) {
   test.AddInput<MLFloat16>("X", x_dims, x_vals);
   test.AddOutput<MLFloat16>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kWebGpuExecutionProvider});
+           {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
 }
 
 // No-regression control: ceil_mode=1 but count_include_pad=0 keeps the standard MLAS path
@@ -677,7 +677,7 @@ TEST(PoolFp16Test, AveragePool_Ceil_CountExcludePad_2d) {
   test.AddInput<MLFloat16>("X", x_dims, x_vals);
   test.AddOutput<MLFloat16>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kWebGpuExecutionProvider});
+           {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
 }
 
 // No-regression control: count_include_pad=1 but ceil_mode=0 keeps the standard MLAS path
@@ -708,7 +708,7 @@ TEST(PoolFp16Test, AveragePool_Floor_CountIncludePad_2d) {
   test.AddInput<MLFloat16>("X", x_dims, x_vals);
   test.AddOutput<MLFloat16>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kWebGpuExecutionProvider});
+           {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(PoolFp16Test, GlobalAveragePool) {

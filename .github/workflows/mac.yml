@@ -103,7 +103,6 @@ jobs:
           platform_machine: "arm64"
           python_version: ${{ env.python_version }}
           xcode_version: ${{ env.xcode_version }}
-          use_cache: false
 
       - name: Build for iphonesimulator ${{ matrix.target_arch }}
         shell: bash
@@ -154,7 +153,6 @@ jobs:
           platform_machine: "arm64"
           python_version: ${{ env.python_version }}
           xcode_version: ${{ env.xcode_version }}
-          use_cache: false
 
       - name: Generate compile_commands.json and ONNX protobuf files
         shell: bash
