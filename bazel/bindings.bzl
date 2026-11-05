@@ -34,7 +34,12 @@ def language_bindings():
     cc_library(
         name = "api_headers",
         hdrs = native.glob(["include/onnxruntime/**/*.h"]),
-        includes = ["include", "include/onnxruntime", "include/onnxruntime/core/session"],
+        includes = [
+            "include",
+            "include/onnxruntime",
+            "include/onnxruntime/core/session",
+            "include/onnxruntime/core/providers/cpu",
+        ],
     )
     native.filegroup(
         name = "runtime_interface_library",

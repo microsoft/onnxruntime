@@ -68,6 +68,9 @@ use_repo(rust_clang, "ort_rust_libclang")
 
 bazel_dep(name = "rules_android_ndk", version = "0.1.5")
 
+react_native = use_extension("//bazel:react_native.bzl", "react_native_sdk")
+use_repo(react_native, "ort_fbjni", "ort_react_android")
+
 # Explicitly selected by --config=android_arm64; desktop builds need no NDK.
 android_ndk_repository = use_repo_rule("@rules_android_ndk//:rules.bzl", "android_ndk_repository")
 

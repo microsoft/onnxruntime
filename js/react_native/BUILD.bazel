@@ -1,7 +1,64 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_files", "strip_prefix")
+load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_binary(
+    name = "libonnxruntimejsi.so",
+    srcs = glob([
+        "cpp/*.cpp",
+        "cpp/*.h",
+    ]) + ["android/src/main/cpp/cpp-adapter.cpp"],
+    copts = ["-std=c++20"],
+    features = ["-static_link_cpp_runtimes"],
+    includes = ["cpp"],
+    linkopts = [
+        "-llog",
+        "-landroid",
+        "-Wl,--no-undefined",
+        "-Wl,-soname,libonnxruntimejsi.so",
+        "-Wl,-z,max-page-size=16384",
+    ],
+    linkshared = True,
+    linkstatic = False,
+    tags = ["manual"],
+    target_compatible_with = [
+        "@platforms//os:android",
+        "@platforms//cpu:aarch64",
+    ],
+    deps = [
+        "//:android_runtime_shared",
+        "//:api_headers",
+        "@ort_fbjni//:sdk",
+        "@ort_react_android//:sdk",
+    ],
+)
+
+pkg_files(
+    name = "android_jsi_native_files",
+    srcs = [
+        ":libonnxruntimejsi.so",
+        "//:android/libonnxruntime.so",
+    ],
+    prefix = "jni/arm64-v8a",
+    strip_prefix = strip_prefix.files_only(),
+)
+
+pkg_zip(
+    name = "android_jsi_native_archive",
+    srcs = [":android_jsi_native_files"],
+    out = "onnxruntime-react-native-android-arm64.zip",
+    tags = ["manual"],
+    target_compatible_with = [
+        "@platforms//os:android",
+        "@platforms//cpu:aarch64",
+    ],
+)
 
 cc_test(
     name = "data_policy_test",
