@@ -4584,6 +4584,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.MatMulNBitsQLoRAMlp"></a><a name="com.microsoft.matmulnbitsqloramlp">**com.microsoft.MatMulNBitsQLoRAMlp**</a>
 
+  Fuses two MatMulNBitsQLoRA projections, their shared optional normalization, and a SiLU-gated MLP. Empty adapter B tensors use the base-only MLP path. Adapter weights are runtime inputs and may change between calls.
+
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
@@ -4615,48 +4617,48 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>A</tt> : T1</dt>
-<dd></dd>
+<dd>Shared MLP input.</dd>
 <dt><tt>skip</tt> (optional) : T1</dt>
-<dd></dd>
+<dd>Optional residual for SkipSimplifiedLayerNormalization.</dd>
 <dt><tt>norm_scale</tt> (optional) : T1</dt>
-<dd></dd>
+<dd>Optional normalization scale.</dd>
 <dt><tt>gate_W</tt> : T2</dt>
-<dd></dd>
+<dd>Packed gate base weights.</dd>
 <dt><tt>gate_scales</tt> : T1</dt>
-<dd></dd>
+<dd>Gate base scales.</dd>
 <dt><tt>gate_bias</tt> (optional) : T1</dt>
-<dd></dd>
+<dd>Optional gate bias; omitted by automatic QLoRA fusion.</dd>
 <dt><tt>up_W</tt> : T2</dt>
-<dd></dd>
+<dd>Packed up base weights.</dd>
 <dt><tt>up_scales</tt> : T1</dt>
-<dd></dd>
+<dd>Up base scales.</dd>
 <dt><tt>up_bias</tt> (optional) : T1</dt>
-<dd></dd>
+<dd>Optional up bias; omitted by automatic QLoRA fusion.</dd>
 <dt><tt>gate_lora_A</tt> : T2</dt>
-<dd></dd>
+<dd>Packed gate down weights.</dd>
 <dt><tt>gate_lora_A_scales</tt> : T1</dt>
-<dd></dd>
+<dd>Gate down scales.</dd>
 <dt><tt>gate_lora_B</tt> : T2</dt>
-<dd></dd>
+<dd>Packed gate up weights or empty adapter.</dd>
 <dt><tt>gate_lora_B_scales</tt> : T1</dt>
-<dd></dd>
+<dd>Gate up scales.</dd>
 <dt><tt>up_lora_A</tt> : T2</dt>
-<dd></dd>
+<dd>Packed up down weights.</dd>
 <dt><tt>up_lora_A_scales</tt> : T1</dt>
-<dd></dd>
+<dd>Up down scales.</dd>
 <dt><tt>up_lora_B</tt> : T2</dt>
-<dd></dd>
+<dd>Packed up up weights or empty adapter.</dd>
 <dt><tt>up_lora_B_scales</tt> : T1</dt>
-<dd></dd>
+<dd>Up up scales.</dd>
 </dl>
 
 #### Outputs (1 - 2)
 
 <dl>
 <dt><tt>Y</tt> : T1</dt>
-<dd></dd>
+<dd>SiLU(gate) multiplied by up.</dd>
 <dt><tt>input_skip_bias_sum</tt> (optional) : T1</dt>
-<dd></dd>
+<dd>Optional residual sum.</dd>
 </dl>
 
 #### Type Constraints
@@ -4670,6 +4672,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 
 ### <a name="com.microsoft.MatMulNBitsQLoRAQkv"></a><a name="com.microsoft.matmulnbitsqloraqkv">**com.microsoft.MatMulNBitsQLoRAQkv**</a>
+
+  Fuses three MatMulNBitsQLoRA projections with shared optional normalization. Empty adapter B tensors use the base QKV path; adapters remain runtime inputs.
 
 #### Version
 
@@ -4702,66 +4706,66 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>A</tt> : T1</dt>
-<dd></dd>
+<dd>Shared QKV input.</dd>
 <dt><tt>skip</tt> (optional) : T1</dt>
-<dd></dd>
+<dd>Optional residual for SkipSimplifiedLayerNormalization.</dd>
 <dt><tt>norm_scale</tt> : T1</dt>
-<dd></dd>
+<dd>Normalization scale.</dd>
 <dt><tt>q_W</tt> : T2</dt>
-<dd></dd>
+<dd>Packed Q base weights.</dd>
 <dt><tt>q_scales</tt> : T1</dt>
-<dd></dd>
+<dd>Q base scales.</dd>
 <dt><tt>q_bias</tt> (optional) : T1</dt>
-<dd></dd>
+<dd>Reserved optional Q bias.</dd>
 <dt><tt>k_W</tt> : T2</dt>
-<dd></dd>
+<dd>Packed K base weights.</dd>
 <dt><tt>k_scales</tt> : T1</dt>
-<dd></dd>
+<dd>K base scales.</dd>
 <dt><tt>k_bias</tt> (optional) : T1</dt>
-<dd></dd>
+<dd>Reserved optional K bias.</dd>
 <dt><tt>v_W</tt> : T2</dt>
-<dd></dd>
+<dd>Packed V base weights.</dd>
 <dt><tt>v_scales</tt> : T1</dt>
-<dd></dd>
+<dd>V base scales.</dd>
 <dt><tt>v_bias</tt> (optional) : T1</dt>
-<dd></dd>
+<dd>Reserved optional V bias.</dd>
 <dt><tt>q_lora_A</tt> : T2</dt>
-<dd></dd>
+<dd>Packed Q down weights.</dd>
 <dt><tt>q_lora_A_scales</tt> : T1</dt>
-<dd></dd>
+<dd>Q down scales.</dd>
 <dt><tt>q_lora_B</tt> : T2</dt>
-<dd></dd>
+<dd>Packed Q up weights or empty adapter.</dd>
 <dt><tt>q_lora_B_scales</tt> : T1</dt>
-<dd></dd>
+<dd>Q up scales.</dd>
 <dt><tt>k_lora_A</tt> : T2</dt>
-<dd></dd>
+<dd>Packed K down weights.</dd>
 <dt><tt>k_lora_A_scales</tt> : T1</dt>
-<dd></dd>
+<dd>K down scales.</dd>
 <dt><tt>k_lora_B</tt> : T2</dt>
-<dd></dd>
+<dd>Packed K up weights or empty adapter.</dd>
 <dt><tt>k_lora_B_scales</tt> : T1</dt>
-<dd></dd>
+<dd>K up scales.</dd>
 <dt><tt>v_lora_A</tt> : T2</dt>
-<dd></dd>
+<dd>Packed V down weights.</dd>
 <dt><tt>v_lora_A_scales</tt> : T1</dt>
-<dd></dd>
+<dd>V down scales.</dd>
 <dt><tt>v_lora_B</tt> : T2</dt>
-<dd></dd>
+<dd>Packed V up weights or empty adapter.</dd>
 <dt><tt>v_lora_B_scales</tt> : T1</dt>
-<dd></dd>
+<dd>V up scales.</dd>
 </dl>
 
 #### Outputs (3 - 4)
 
 <dl>
 <dt><tt>Q</tt> : T1</dt>
-<dd></dd>
+<dd>Q projection.</dd>
 <dt><tt>K_output</tt> : T1</dt>
-<dd></dd>
+<dd>K projection.</dd>
 <dt><tt>V</tt> : T1</dt>
-<dd></dd>
+<dd>V projection.</dd>
 <dt><tt>input_skip_bias_sum</tt> (optional) : T1</dt>
-<dd></dd>
+<dd>Optional residual sum.</dd>
 </dl>
 
 #### Type Constraints

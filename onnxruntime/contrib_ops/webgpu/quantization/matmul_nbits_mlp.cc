@@ -568,6 +568,8 @@ class MatMulNBitsQLoRAMlp final : public MatMulNBitsMlp {
     const Tensor* norm_scale = context.Input<Tensor>(2);
     ORT_RETURN_IF(skip != nullptr && norm_scale == nullptr,
                   "MatMulNBitsQLoRAMlp requires norm_scale when skip is present.");
+    ORT_RETURN_IF(norm_scale != nullptr && norm_scale->Shape().Size() != K_,
+                  "MatMulNBitsQLoRAMlp requires norm_scale to contain K elements.");
 
     MatMulComputeHelper helper;
     ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), TensorShape({N_, K_}), false, true));

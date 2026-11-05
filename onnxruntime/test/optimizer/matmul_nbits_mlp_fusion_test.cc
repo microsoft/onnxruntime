@@ -404,6 +404,14 @@ Status CheckQLoRAMlpFusedGraph(const Graph& graph) {
   return Status::OK();
 }
 
+Status CheckQLoRAMlpUnfusedGraph(const Graph& graph) {
+  const auto counts = CountOpsInGraph(graph);
+  ORT_RETURN_IF_NOT(OpCount(counts, "com.microsoft.MatMulNBitsQLoRAMlp") == 0 &&
+                        OpCount(counts, "com.microsoft.MatMulNBitsQLoRA") == 2,
+                    "QLoRA MLP must remain unfused without its WebGPU kernel.");
+  return Status::OK();
+}
+
 void BuildMatMulNBitsMlpSkipWebGpuPatternWithSkipNormBias(ModelTestBuilder& builder) {
   BuildMatMulNBitsMlpWebGpuPatternImpl(builder, NormAnchorKind::kSkipSimplified, SkipOutputKind::kNone,
                                        BiasKind::kWithBias, ActivationShape::kSilu,
@@ -421,8 +429,15 @@ void BuildMatMulNBitsMlpSimplifiedWebGpuPatternWithNormAxisZero(ModelTestBuilder
 TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionFusesQLoRA) {
   ASSERT_STATUS_OK(TestGraphTransformer(
       BuildQLoRAMlpActive, 21, *logger_,
-      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}, true),
       TransformerLevel::Level2, 1, nullptr, CheckQLoRAMlpFusedGraph));
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionLeavesQLoRAWithoutKernel) {
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      BuildQLoRAMlpActive, 21, *logger_,
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      TransformerLevel::Level2, 0, nullptr, CheckQLoRAMlpUnfusedGraph));
 }
 
 TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionQLoRANumerics) {
@@ -434,7 +449,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionQLoRANumerics) {
         build,
         [](InferenceSessionWrapper& session) { ASSERT_STATUS_OK(CheckQLoRAMlpFusedGraph(session.GetGraph())); },
         TransformerLevel::Level1, TransformerLevel::Level2, 21, 1e-3, 1e-3,
-        std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+        std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}, true),
         [] { return DefaultWebGpuExecutionProvider(); });
   }
 }

@@ -223,6 +223,9 @@ Status MatMulNBitsQkvFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     if (!qkv_nodes || !IsFuseCandidate(node, *qkv_nodes)) {
       continue;
     }
+    if (qkv_nodes->q->OpType() == "MatMulNBitsQLoRA" && !enable_qlora_fusion_) {
+      continue;
+    }
 
     const int64_t K = GetIntAttr(*qkv_nodes->q, "K", -1, true);
     const int64_t Nq = GetIntAttr(*qkv_nodes->q, "N", -1, true);

@@ -143,14 +143,14 @@ void BuildMatMulNBitsQkvWebGpuPatternImpl(ModelTestBuilder& builder, bool with_s
                                    MLFloat16(-0.5f), MLFloat16(-0.375f), MLFloat16(-0.25f), MLFloat16(-0.125f),
                                    MLFloat16(0.125f), MLFloat16(0.25f), MLFloat16(0.375f), MLFloat16(0.5f),
                                    MLFloat16(0.625f), MLFloat16(0.75f), MLFloat16(0.875f), MLFloat16(1.0f)});
+  std::vector<MLFloat16> skip_values{
+      MLFloat16(1.0f), MLFloat16(0.875f), MLFloat16(0.75f), MLFloat16(0.625f),
+      MLFloat16(0.5f), MLFloat16(0.375f), MLFloat16(0.25f), MLFloat16(0.125f),
+      MLFloat16(-0.125f), MLFloat16(-0.25f), MLFloat16(-0.375f), MLFloat16(-0.5f),
+      MLFloat16(-0.625f), MLFloat16(-0.75f), MLFloat16(-0.875f), MLFloat16(-1.0f)};
+  skip_values.resize(static_cast<size_t>(k), MLFloat16(0.125f));
   NodeArg* skip_input = with_skip_input
-                            ? builder.MakeInput<MLFloat16>(
-                                  std::vector<int64_t>{1, k},
-                                  std::vector<MLFloat16>{
-                                      MLFloat16(1.0f), MLFloat16(0.875f), MLFloat16(0.75f), MLFloat16(0.625f),
-                                      MLFloat16(0.5f), MLFloat16(0.375f), MLFloat16(0.25f), MLFloat16(0.125f),
-                                      MLFloat16(-0.125f), MLFloat16(-0.25f), MLFloat16(-0.375f), MLFloat16(-0.5f),
-                                      MLFloat16(-0.625f), MLFloat16(-0.75f), MLFloat16(-0.875f), MLFloat16(-1.0f)})
+                            ? builder.MakeInput<MLFloat16>(std::vector<int64_t>{1, k}, skip_values)
                             : nullptr;
 
   NodeArg* norm_scale = builder.MakeInitializer<MLFloat16>({k}, MLFloat16(1.0f), MLFloat16(1.0f));
@@ -278,6 +278,14 @@ Status CheckQLoRAQkvFusedGraph(const Graph& graph) {
   return Status::OK();
 }
 
+Status CheckQLoRAQkvUnfusedGraph(const Graph& graph) {
+  const auto counts = CountOpsInGraph(graph);
+  ORT_RETURN_IF_NOT(OpCount(counts, "com.microsoft.MatMulNBitsQLoRAQkv") == 0 &&
+                        OpCount(counts, "com.microsoft.MatMulNBitsQLoRA") == 3,
+                    "QLoRA QKV must remain unfused without its WebGPU kernel.");
+  return Status::OK();
+}
+
 void BuildMatMulNBitsQkvSkipWebGpuPattern(ModelTestBuilder& builder) {
   BuildMatMulNBitsQkvWebGpuPatternImpl(builder, true, false);
 }
@@ -317,8 +325,15 @@ void BuildMatMulNBitsQkvWebGpuPatternWithVBias(ModelTestBuilder& builder) {
 TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionFusesQLoRA) {
   ASSERT_STATUS_OK(TestGraphTransformer(
       BuildQLoRAQkvActive, 21, *logger_,
-      std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}, true),
       TransformerLevel::Level2, 1, nullptr, CheckQLoRAQkvFusedGraph));
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionLeavesQLoRAWithoutKernel) {
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      BuildQLoRAQkvActive, 21, *logger_,
+      std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      TransformerLevel::Level2, 0, nullptr, CheckQLoRAQkvUnfusedGraph));
 }
 
 TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionQLoRANumerics) {
@@ -329,7 +344,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionQLoRANumerics) {
         build,
         [](InferenceSessionWrapper& session) { ASSERT_STATUS_OK(CheckQLoRAQkvFusedGraph(session.GetGraph())); },
         TransformerLevel::Level1, TransformerLevel::Level2, 21, 2e-3, 5e-3,
-        std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+        std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}, true),
         [] { return DefaultWebGpuExecutionProvider(); });
   }
 }

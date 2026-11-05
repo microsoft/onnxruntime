@@ -414,6 +414,8 @@ class MatMulNBitsQLoRAQkv final : public MatMulNBitsQkv {
     const Tensor* skip = context.Input<Tensor>(1);
     const Tensor* norm_scale = context.Input<Tensor>(2);
     ORT_RETURN_IF_NOT(norm_scale != nullptr, "MatMulNBitsQLoRAQkv requires norm_scale.");
+    ORT_RETURN_IF_NOT(norm_scale->Shape().Size() == K_,
+                      "MatMulNBitsQLoRAQkv requires norm_scale to contain K elements.");
     MatMulComputeHelper helper;
     ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), TensorShape({Nq_, K_}), false, true));
     auto q_shape = helper.OutputShape();

@@ -346,6 +346,10 @@ Status MatMulNBitsMlpFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       matched_shape = "silu";
     }
 
+    if (gate_matmul->OpType() == "MatMulNBitsQLoRA" && !enable_qlora_fusion_) {
+      continue;
+    }
+
     LOGS(logger, VERBOSE) << "MatMulNBitsMlpFusion: matched candidate shape='" << matched_shape
                           << "' output_mul='" << node.Name()
                           << "' gate='" << gate_matmul->Name() << "' up='" << up_matmul->Name()
