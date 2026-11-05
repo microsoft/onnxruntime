@@ -43,7 +43,10 @@ def _python_release_wheel_impl(ctx):
     python_tag = "cp{}{}".format(version_info.major, version_info.minor)
     cuda_version = ""
     if ctx.attr._cuda_enabled[BuildSettingInfo].value:
-        cuda_toolkit = ctx.toolchains["@rules_cuda//cuda:toolchain_type"].cuda_toolkit[CudaToolkitInfo]
+        cuda_toolchain = ctx.toolchains["@rules_cuda//cuda:toolchain_type"]
+        if cuda_toolchain == None:
+            fail("CUDA Python packaging requires a registered CUDA toolchain; configure the CUDA toolkit before enabling //bazel:cuda.")
+        cuda_toolkit = cuda_toolchain.cuda_toolkit[CudaToolkitInfo]
         if cuda_toolkit.version_major < 0 or cuda_toolkit.version_minor < 0:
             fail("CUDA Python packaging requires a detected CUDA toolkit version.")
         cuda_version = "{}.{}".format(cuda_toolkit.version_major, cuda_toolkit.version_minor)
@@ -105,7 +108,7 @@ _python_release_wheel = rule(
         "_x86_64": attr.label(default = "@platforms//cpu:x86_64"),
     },
     toolchains = [
-        "@rules_cuda//cuda:toolchain_type",
+        config_common.toolchain_type("@rules_cuda//cuda:toolchain_type", mandatory = False),
         "@rules_python//python:toolchain_type",
     ],
 )

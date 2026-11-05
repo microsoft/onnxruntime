@@ -102,3 +102,38 @@ index ef21444..0f4cffe 100644
          ctx.attr.cpu == "ios_arm64e" or
          ctx.attr.cpu == "ios_x86_64" or
          ctx.attr.cpu == "ios_sim_arm64" or
+diff --git a/lib/apple_support.bzl b/lib/apple_support.bzl
+--- a/lib/apple_support.bzl
++++ b/lib/apple_support.bzl
+@@ -115,6 +115,13 @@
+ "$TOOLNAME" "${ARGS[@]}"
+ """
+ 
++def _single_arch_platform(apple_fragment):
++    # Bazel 8's native CPU lookup omits catalyst_arm64, but its platform enum
++    # correctly describes Catalyst's MacOSX SDK for either architecture.
++    if apple_fragment.apple_platform_type == "catalyst":
++        return apple_common.platform.catalyst
++    return apple_fragment.single_arch_platform
++
+ def _platform_frameworks_path_placeholder(*, apple_fragment):
+     """Returns the platform's frameworks directory, anchored to the Xcode path placeholder.
+ 
+@@ -125,7 +132,7 @@
+         placeholder.
+     """
+     return "{xcode_path}/Platforms/{platform_name}.platform/Developer/Library/Frameworks".format(
+-        platform_name = apple_fragment.single_arch_platform.name_in_plist,
++        platform_name = _single_arch_platform(apple_fragment).name_in_plist,
+         xcode_path = _xcode_path_placeholder(),
+     )
+ 
+@@ -186,7 +193,7 @@
+     # overriding these values.
+     merged_env.update(apple_common.apple_host_system_env(xcode_config))
+     merged_env.update(
+-        apple_common.target_apple_env(xcode_config, apple_fragment.single_arch_platform),
++        apple_common.target_apple_env(xcode_config, _single_arch_platform(apple_fragment)),
+     )
+ 
+     merged_execution_requirements = {}

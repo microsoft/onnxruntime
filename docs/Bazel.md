@@ -94,19 +94,57 @@ gate cases passed on Windows. The four portable
 inventory/Catalyst/wheel-packager/subprocess targets also passed on Windows;
 neither result is Windows native package execution.
 
-**Strict original-main size/performance parity is not established.** The
-latest confirmed-quiet non-LTO O2 comparison against shipping-matched CMake
-passed Add (ratio 0.93555, paired 95% CI [0.92875, 0.94074]), while Conv
-(1.00353, [0.99353, 1.01056]) and MatMul (1.00117, [0.99714, 1.00463]) remained
-inconclusive. Against default CMake Release, Conv remained a measured regression
-(1.01387, [1.00312, 1.01882]). O3, LTO, and the diagnostic Bsymbolic candidate
+Native CI at `b5cb5a5462` passed macOS Objective-C inference (1.2s), Swift
+inference (0.6s), and the iOS framework/test-bundle build. Complete macOS
+analysis failed because CPU Python packaging required an unavailable CUDA
+toolchain; the package-tree and wheel rules now make that toolchain optional
+while still requiring a detected toolkit/version when CUDA is enabled. Catalyst
+packaging exposed Bazel 8's missing native `catalyst_arm64` platform lookup;
+the apple_support patch now uses the Catalyst platform enum for both framework
+paths and action environments, preserving genuine `-macabi` compilation.
+Windows CI passed 33/34 binding/package tests; Maven cleanup failed because
+`Files.copy(Path, Path)` preserves readonly Bazel artifacts' DOS attribute.
+Stream-copying the fixture files preserves their bytes without that attribute.
+These repairs still require native CI confirmation on the affected platforms.
+The same Linux CI run passed all 34 binding/package tests, then exhausted the
+90-minute job budget while compiling the selected C++ tests; no compiler failure
+was reported. The job budget is now 120 minutes, with three jobs and all test
+selectors unchanged.
+
+The targeted Windows regressions and frozen analysis passed:
+
+```shell
+bazel test //bazel:apple_platform_test //:java_maven_copy_test \
+  --lockfile_mode=error --symlink_prefix=- --jobs=2 --test_output=errors
+bazel build //... --nobuild --lockfile_mode=error --symlink_prefix=- --jobs=2
+```
+
+The two regression targets passed in 62.299s (15 actions); the initial invocation
+used `--lockfile_mode=update` to resolve the changed dependency patch. Frozen
+whole-graph analysis then passed for 333 targets/65,076 configured targets in
+297.555s with zero actions. These checks do not substitute for native Catalyst
+execution or a complete Windows Maven/JNI consumer rerun.
+The subsequent frozen five-target batch also passed the existing wheel-packager,
+wheel-subprocess and Catalyst Mach-O proof tests in 100.588s (25 actions,
+two cached regression results). Final frozen release analysis, including all six
+explicit WASM/browser targets, passed 339 targets/84,105 configured targets in
+77.730s with zero actions.
+
+**Strict original-main size/performance parity fails.** The exact shipped SDK
+ELF SHA256 `6f3b9425ce667ea6ba282b9d2d991b948105f59a3f7fff872585d2708d9170ea`
+was measured against pinned main `98cf896` shipping O3+LTO+BinSkim in 80 paired
+samples. Add passed (ratio 0.92556, 95% CI [0.91727, 0.93357]); Conv regressed
+(1.01142, [1.00622, 1.01690]); MatMul was inconclusive
+(1.00082, [0.99608, 1.00528]). Raw/stripped size passed: 19,471,680 versus
+23,950,912 bytes; deterministic compressed payload was 7,186,446 versus
+9,176,748 bytes. O3, LTO, and the diagnostic Bsymbolic candidate
 were rejected; none is enabled in production. A runtime-local frame-pointer
 candidate was also rejected: stripped output grew 80,128 bytes and Conv regressed
 7.71% versus production O2 (CI [1.03171, 1.10654]). Packaging correctness and
 smaller stripped binaries do not override the user's same-or-better criterion.
-Actual Apple/Catalyst, Android native package consumption, selected CUDA wheel
-import/GPU inference, and the remaining cross-platform release matrix are not
-covered by these Linux CPU results.
+Actual Catalyst execution, installed mobile inference, selected CUDA GPU
+inference, and the remaining cross-platform release matrix are not covered by
+these Linux CPU results.
 
 For a selected CUDA wheel, `//:python_wheel_release_payload_test` checks its
 extension/shared-provider/CUDA-provider bytes without building other language
@@ -341,8 +379,14 @@ toolchain, and payload hashes; the helper cannot establish feature equivalence.
 
 When invoking Bazel from Git Bash on Windows, set
 `export MSYS2_ARG_CONV_EXCL='*'` so labels and test filters are not rewritten
-as filesystem paths. CI also uses a short Windows output base to avoid path
-length limits.
+as filesystem paths. Windows builds that include Rust/bindgen require a genuinely
+short output base, such as `bazel --output_base=C:/b/ort build ...`; this is not
+just a performance recommendation. Cargo build-script working directories append
+long canonical repository paths: `%USERPROFILE%/.cache/bfull` produced an existing
+259-character directory that failed process creation with Windows error 267
+(`NotADirectory`), even with a `\\?\` prefix. A short working directory launched
+the same executable successfully. Keep the output base short rather than treating
+this as a Rust compiler failure; CI uses `C:/b/ort`.
 
 The MLAS baseline archive is retained because ISA archives call back into
 its helpers on ELF linkers. macOS logging is compiled as Objective-C++ rather

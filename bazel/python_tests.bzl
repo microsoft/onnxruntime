@@ -63,7 +63,10 @@ def _python_package_tree_impl(ctx):
     cuda_enabled = ctx.attr._cuda_enabled[BuildSettingInfo].value
     cuda_version = ""
     if cuda_enabled:
-        cuda_toolkit = ctx.toolchains["@rules_cuda//cuda:toolchain_type"].cuda_toolkit[CudaToolkitInfo]
+        cuda_toolchain = ctx.toolchains["@rules_cuda//cuda:toolchain_type"]
+        if cuda_toolchain == None:
+            fail("CUDA Python packaging requires a registered CUDA toolchain; configure the CUDA toolkit before enabling //bazel:cuda.")
+        cuda_toolkit = cuda_toolchain.cuda_toolkit[CudaToolkitInfo]
         if cuda_toolkit.version_major < 0 or cuda_toolkit.version_minor < 0:
             fail("CUDA Python packaging requires a detected CUDA toolkit version.")
         cuda_version = "{}.{}".format(cuda_toolkit.version_major, cuda_toolkit.version_minor)
@@ -124,7 +127,7 @@ _python_package_tree = rule(
         "_windows": attr.label(default = "@platforms//os:windows"),
     },
     toolchains = [
-        "@rules_cuda//cuda:toolchain_type",
+        config_common.toolchain_type("@rules_cuda//cuda:toolchain_type", mandatory = False),
         "@rules_python//python:toolchain_type",
     ],
 )

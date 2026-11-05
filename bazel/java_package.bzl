@@ -150,6 +150,15 @@ def java_native_package():
         tools = ["@bazel_tools//tools/jdk:singlejar"],
     )
     java_test(
+        name = "java_maven_copy_test",
+        srcs = [
+            "tools/bazel/MavenFileCopyTest.java",
+            "tools/bazel/MavenPackageSmokeTest.java",
+        ],
+        main_class = "MavenFileCopyTest",
+        use_testrunner = False,
+    )
+    java_test(
         name = "java_maven_test",
         srcs = [
             "tools/bazel/MavenPackageSmokeTest.java",

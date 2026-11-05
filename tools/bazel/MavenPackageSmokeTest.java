@@ -67,14 +67,12 @@ public final class MavenPackageSmokeTest {
           localRepository.resolve(
               "com/microsoft/onnxruntime/fixture/maven-resolution-probe/1.0.0");
       Files.createDirectories(pluginDirectory);
-      Files.copy(
+      copyFile(
           pluginJar,
-          pluginDirectory.resolve("maven-resolution-probe-1.0.0.jar"),
-          StandardCopyOption.REPLACE_EXISTING);
-      Files.copy(
+          pluginDirectory.resolve("maven-resolution-probe-1.0.0.jar"));
+      copyFile(
           pluginPom,
-          pluginDirectory.resolve("maven-resolution-probe-1.0.0.pom"),
-          StandardCopyOption.REPLACE_EXISTING);
+          pluginDirectory.resolve("maven-resolution-probe-1.0.0.pom"));
       Path consumerPom = directory.resolve("consumer-pom.xml");
       Files.write(
           consumerPom,
@@ -147,7 +145,14 @@ public final class MavenPackageSmokeTest {
     }
   }
 
-  private static void copyTree(Path source, Path destination) throws Exception {
+  static void copyFile(Path source, Path destination) throws Exception {
+    // Files.copy(Path, Path) preserves Bazel's DOS readonly bit on Windows.
+    try (InputStream input = Files.newInputStream(source)) {
+      Files.copy(input, destination, StandardCopyOption.REPLACE_EXISTING);
+    }
+  }
+
+  static void copyTree(Path source, Path destination) throws Exception {
     try (Stream<Path> files = Files.walk(source)) {
       for (Path path : files.collect(Collectors.toList())) {
         Path target = destination.resolve(source.relativize(path));
@@ -155,7 +160,7 @@ public final class MavenPackageSmokeTest {
           Files.createDirectories(target);
         } else {
           Files.createDirectories(target.getParent());
-          Files.copy(path, target, StandardCopyOption.REPLACE_EXISTING);
+          copyFile(path, target);
         }
       }
     }
