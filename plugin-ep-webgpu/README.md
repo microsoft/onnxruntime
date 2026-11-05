@@ -32,7 +32,10 @@ build (`--use_webgpu shared_lib`). The resulting binaries are then packaged into
 - Per-platform zip packages for Foundry Local consumption.
 
 On Windows, the packages also bundle the DirectX Shader Compiler runtime (`dxcompiler.dll`) from the
-[DXC GitHub releases](https://github.com/microsoft/DirectXShaderCompiler/releases); CI fetches these automatically.
+[DXC GitHub releases](https://github.com/microsoft/DirectXShaderCompiler/releases); CI fetches it automatically.
+The Windows Python wheels, NuGet package, and Foundry Local zip packages produced by CI also bundle the pinned preview
+D3D12 Agility SDK runtime. See the [Agility SDK guidance](../docs/BuildWithDawnAgilitySDK.md) for Windows, driver, and
+Developer Mode prerequisites.
 
 Packaging is driven by the *WebGPU Plugin EP Packaging Pipeline*
 ([`plugin-webgpu-pipeline.yml`](../tools/ci_build/github/azure-pipelines/plugin-webgpu-pipeline.yml)),

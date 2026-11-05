@@ -181,6 +181,10 @@ class IAllocator {
   virtual class IArena* AsArena() { return nullptr; }
   virtual const class IArena* AsArena() const { return nullptr; }
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  virtual const OrtAllocator* GetWrappedOrtAllocator() const { return nullptr; }
+#endif
+
   static bool CalcMemSizeForArray(size_t nmemb, size_t size, size_t* out) noexcept {
     return CalcMemSizeForArrayWithAlignment(nmemb, size, 0, out);
   }

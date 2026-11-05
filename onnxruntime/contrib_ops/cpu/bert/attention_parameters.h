@@ -93,8 +93,9 @@ struct GroupQueryAttentionParameters : AttentionParameters {
   bool is_first_prompt;         // indicates whether this is first decoding step
   bool rotary_interleaved;
   bool use_smooth_softmax;
-  bool use_qk_norm = false;       // per-head Q/K RMSNorm (QK-Norm) prologue before RoPE (inputs 14/15)
-  float qk_norm_epsilon = 1e-6f;  // epsilon for the QK-Norm RMSNorm
+  bool use_qk_norm = false;  // per-head Q/K RMSNorm (QK-Norm) prologue before RoPE (inputs 14/15)
+  float q_norm_epsilon = 1e-6f;
+  float k_norm_epsilon = 1e-6f;
   float softcap;
   AttentionQkvFormat past_kv_format;
   int zeros_count;

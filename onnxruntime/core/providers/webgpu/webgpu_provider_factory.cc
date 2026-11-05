@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <charconv>
 #include <limits>
 
@@ -103,6 +104,32 @@ WebGpuExecutionProviderConfig ParseEpConfig(
     const ConfigOptions& config_options,
     WeightLoadAccelerationMode weight_load_acceleration_mode) {
   WebGpuExecutionProviderConfig webgpu_ep_config{};
+
+  for (const auto& [key, enabled] : {std::pair{kEnableFeatures, true}, std::pair{kDisableFeatures, false}}) {
+    std::string value;
+    if (!config_options.TryGetConfigEntry(key, value) || value.empty()) {
+      continue;
+    }
+    std::string_view remaining{value};
+    while (true) {
+      const auto separator = remaining.find(',');
+      auto name = remaining.substr(0, separator);
+      constexpr std::string_view kWhitespace = " \t\r\n";
+      name.remove_prefix(std::min(name.find_first_not_of(kWhitespace), name.size()));
+      name.remove_suffix(name.size() - (name.find_last_not_of(kWhitespace) + 1));
+      const auto feature = std::find_if(kWebGpuFeatures.begin(), kWebGpuFeatures.end(),
+                                        [name](const auto& entry) { return entry.name == name; });
+      ORT_ENFORCE(feature != kWebGpuFeatures.end(), "Unknown WebGPU feature: ", name);
+      const auto index = static_cast<size_t>(feature - kWebGpuFeatures.begin());
+      ORT_ENFORCE(!webgpu_ep_config.feature_requests[index].has_value(),
+                  "Duplicate or conflicting WebGPU feature: ", name);
+      webgpu_ep_config.feature_requests[index] = enabled;
+      if (separator == std::string_view::npos) {
+        break;
+      }
+      remaining.remove_prefix(separator + 1);
+    }
+  }
 
   if (std::string preferred_layout_str;
       config_options.TryGetConfigEntry(kPreferredLayout, preferred_layout_str)) {
@@ -337,7 +364,7 @@ WebGpuContextConfig ParseWebGpuContextConfig(
 
   // Compile-only mode (skip Dawn adapter/device creation so graph transformation can run device-free)
   // is derived from the session config kOrtSessionOptionCompileOnly, which the Compile API sets
-  // automatically -- same signal other EPs use (e.g. NV TensorRT RTX). Not a WebGPU-specific option.
+  // automatically. This is not a WebGPU-specific option.
   config.compile_only = config_options.GetConfigOrDefault(kOrtSessionOptionCompileOnly, "0") == "1";
 
   std::string max_storage_buffer_binding_size_str;
@@ -577,6 +604,89 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
     auto& impl = *static_cast<WebGpuDataTransferImpl*>(this_ptr);
 
     if (num_tensors == 0) {
+      return nullptr;
+    }
+
+#if defined(ORT_USE_EP_API_ADAPTERS)
+    // Batch unmapped inputs on the owning Session timeline, including on UMA devices.
+    // Check the entire list before copying so mixed transfers retain their original ordering.
+    if (num_tensors > 1 && streams != nullptr && streams[0] != nullptr) {
+      InlinedVector<BufferManager::UploadInfo> uploads;
+      uploads.reserve(num_tensors);
+      int device_id = -1;
+      for (size_t idx = 0; idx < num_tensors; ++idx) {
+        if (streams[idx] != streams[0]) break;
+        Ort::ConstValue src_value{src_tensors[idx]};
+        Ort::UnownedValue dst_value{dst_tensors[idx]};
+        auto src_info = src_value.GetTensorMemoryInfo();
+        auto dst_info = dst_value.GetTensorMemoryInfo();
+        if (src_info.GetDeviceType() != OrtMemoryInfoDeviceType_CPU ||
+            dst_info.GetDeviceType() != OrtMemoryInfoDeviceType_GPU) break;
+        const auto* src_device = impl.ep_api.MemoryInfo_GetMemoryDevice(src_info);
+        const auto* dst_device = impl.ep_api.MemoryInfo_GetMemoryDevice(dst_info);
+        if (!CanCopyImpl(this_ptr, src_device, dst_device)) break;
+        const int dst_device_id = impl.ep_api.MemoryDevice_GetDeviceId(dst_device);
+        if (idx == 0) device_id = dst_device_id;
+        if (dst_device_id != device_id) break;
+        const size_t size = src_value.GetTensorSizeInBytes();
+        auto target = static_cast<WGPUBuffer>(dst_value.GetTensorMutableRawData());
+        if (size != 0 && wgpuBufferGetMapState(target) != WGPUBufferMapState_Unmapped) break;
+        uploads.push_back({src_value.GetTensorRawData(), target, size});
+      }
+      if (uploads.size() == num_tensors) {
+        webgpu::ep::UploadTensorsOnWebGpuStream(streams[0], device_id, uploads);
+        return nullptr;
+      }
+    }
+#endif
+
+    // A streamless vector owns one recording, submitted before any later Session can consume it.
+    // Preflight the whole vector so streams, CPU transfers and mixed contexts keep their old path.
+    bool batch_device_copies = num_tensors > 1;
+    int batch_context_id = -1;
+    for (size_t idx = 0; batch_device_copies && idx < num_tensors; ++idx) {
+      const OrtMemoryInfo* src_info = nullptr;
+      const OrtMemoryInfo* dst_info = nullptr;
+      ORT_THROW_IF_ERROR(ToStatusAndRelease(impl.ort_api.GetTensorMemoryInfo(src_tensors[idx], &src_info)));
+      ORT_THROW_IF_ERROR(ToStatusAndRelease(impl.ort_api.GetTensorMemoryInfo(dst_tensors[idx], &dst_info)));
+      const auto* src_device = impl.ep_api.MemoryInfo_GetMemoryDevice(src_info);
+      const auto* dst_device = impl.ep_api.MemoryInfo_GetMemoryDevice(dst_info);
+      const int context_id = impl.ep_api.MemoryDevice_GetDeviceId(src_device);
+      batch_device_copies = (streams == nullptr || streams[idx] == nullptr) &&
+                            impl.ep_api.MemoryDevice_GetDeviceType(src_device) == OrtMemoryInfoDeviceType_GPU &&
+                            impl.ep_api.MemoryDevice_GetDeviceType(dst_device) == OrtMemoryInfoDeviceType_GPU &&
+                            CanCopyImpl(this_ptr, src_device, dst_device) &&
+                            (idx == 0 || batch_context_id == context_id);
+      batch_context_id = context_id;
+    }
+    if (batch_device_copies) {
+      WebGpuContextFactory::RetainContext(batch_context_id);
+      auto release_context = gsl::finally([batch_context_id]() {
+        WebGpuContextFactory::ReleaseContext(batch_context_id);
+      });
+      auto& context = WebGpuContextFactory::GetContext(batch_context_id);
+#if defined(ORT_USE_EP_API_ADAPTERS)
+      if (webgpu::ep::UseSerializedExecutionMode()) {
+        if (auto* active_recording = context.ActiveSerializedRecording()) {
+          ORT_THROW_IF_ERROR(context.Flush(context.BufferManager(), *active_recording));
+        }
+      }
+#endif
+      CommandRecordingState recording;
+      DataTransferImpl data_transfer{context.BufferManager(), recording};
+      for (size_t idx = 0; idx < num_tensors; ++idx) {
+#if defined(ORT_USE_EP_API_ADAPTERS)
+        Ort::ConstValue src{src_tensors[idx]};
+        Ort::UnownedValue dst{dst_tensors[idx]};
+        ORT_THROW_IF_ERROR(data_transfer.CopyTensor(src.GetTensorRawData(), true, dst.GetTensorMutableRawData(), true,
+                                                    src.GetTensorSizeInBytes()));
+#else
+        const auto& src = src_tensors[idx]->Get<Tensor>();
+        auto& dst = *dst_tensors[idx]->GetMutable<Tensor>();
+        ORT_THROW_IF_ERROR(data_transfer.CopyTensor(src.DataRaw(), true, dst.MutableDataRaw(), true, src.SizeInBytes()));
+#endif
+      }
+      ORT_THROW_IF_ERROR(context.Flush(context.BufferManager(), recording));
       return nullptr;
     }
 

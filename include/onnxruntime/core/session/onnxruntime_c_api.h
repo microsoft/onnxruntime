@@ -313,6 +313,9 @@ ORT_RUNTIME_CLASS(ThreadingOptions);
 ORT_RUNTIME_CLASS(ArenaCfg);
 ORT_RUNTIME_CLASS(PrepackedWeightsContainer);
 ORT_RUNTIME_CLASS(TensorRTProviderOptionsV2);
+/** \deprecated The provider-bridge NvTensorRTRTXExecutionProvider has been removed. Retained for source
+ * compatibility only. Use the NVIDIA TensorRT RTX plugin EP via OrtApi::RegisterExecutionProviderLibrary instead.
+ */
 ORT_RUNTIME_CLASS(NvTensorRtRtxProviderOptions);
 ORT_RUNTIME_CLASS(CUDAProviderOptionsV2);
 ORT_RUNTIME_CLASS(CANNProviderOptions);
@@ -1244,7 +1247,7 @@ typedef struct OrtGraphicsInteropConfig {
    *
    * Can be used for future extensibility without changing the struct layout.
    * For example, D3D12 fence sharing flags or provider-specific options like
-   * onnxruntime::nv::provider_option_names::kExternalComputeQueueDataParamNV_data
+   * onnxruntime::tensorrt_rtx::provider_option_names::kExternalComputeQueueDataParamNV_data
    * for Vulkan interop for the NvTensorRTRTX provider.
    */
   const OrtKeyValuePairs* additional_options;
@@ -6007,6 +6010,13 @@ struct OrtApi {
    * the initializer data on the first call to this function. If caller needs custom memory mapping,
    * use ValueInfo_GetExternalInitializerInfo to get the location of the initializer data.
    *
+   * The initializer data is read-only. Callers, including execution providers, must not modify it.
+   * The data may be memory that the application supplied through OrtModelEditorApi::AddInitializerToGraph with
+   * `data_is_external` set to true, or a read-only memory mapping.
+   * This also applies when an execution provider passes the data to an underlying runtime or library without
+   * copying it. If the data needs to be transformed (e.g., re-layout, quantization, or byte swapping),
+   * write the result to separate memory owned by the execution provider.
+   *
    * \param[in] value_info The OrtValueInfo instance.
    * \param[out] initializer_value Output parameter set to the initializer value or NULL. Do not cache the OrtValue
    *                               as it is released when the owning OrtGraph is released.
@@ -7585,14 +7595,16 @@ struct OrtApi {
   /** \brief Retrieve an experimental function pointer by name.
    *
    * Experimental functions are not part of the stable ABI and may be added or removed between releases without notice.
-   * Use the companion header onnxruntime_experimental_c_api.h for typedefs, name constants, and (for C++) typed
-   * accessors.
+   *
+   * Use the companion headers:
+   * - onnxruntime_experimental_c_api.h for function pointer typedefs and name constants.
+   * - onnxruntime_experimental_cxx_api.h for C++ typed accessors and wrapper types.
    *
    * \param[in] name The null-terminated name of the experimental function to look up.
    *                 Names follow the pattern "<target struct>_<function name>_SinceV<ORT API version added>".
    *                 Name constants are defined in onnxruntime_experimental_c_api.h.
-   * \return The function pointer cast to ::OrtExperimentalFnPtr, or nullptr if the function is not available in this
-   *         build. The caller must cast the returned pointer to the correct function pointer type before calling.
+   * \return The function pointer cast to ::OrtExperimentalFnPtr, or NULL if the function is not available.
+   *         The caller must cast the returned pointer to the correct function pointer type before calling.
    *         Function pointer typedefs are defined in onnxruntime_experimental_c_api.h.
    *
    * \since Version 1.28.
@@ -7706,6 +7718,49 @@ struct OrtApi {
    * \since Version 1.31.
    */
   const OrtModelPackageApi*(ORT_API_CALL* GetModelPackageApi)(void);
+
+  /** \brief Get the current device memory capacity for an execution provider device.
+   *
+   * The execution provider queries the device when this function is called. `total_memory_bytes`
+   * reports device-global memory capacity exposed by the provider for this device, not a per-process
+   * or per-context allocation budget. For partitioned or virtual devices, this is the capacity of
+   * the exposed device, not necessarily the entire physical board.
+   * `available_memory_bytes` is a current free-memory estimate, not a reservation or a guarantee that
+   * an allocation of that size will succeed. It may change immediately after this call, and allocator
+   * caches or process limits may further constrain allocations.
+   * Either output may be null, but at least one must be non-null. A null output is not queried.
+   * For CUDA, a total-only query stops after querying device capacity, without initializing a context
+   * or querying free memory.
+   *
+   * The query may initialize provider resources. For example, CUDA may initialize the device's primary
+   * context to query free memory, while preserving the calling thread's previous current CUDA context.
+   * If no other component retains that primary context (for example, a live CUDA EP session), each
+   * query may create and destroy it, incurring substantial initialization latency and transient device
+   * memory allocations on every call. Frequent polling in this state can be expensive. Under severe
+   * device memory pressure, context initialization may fail with an out-of-memory error instead of
+   * returning a near-zero available-memory estimate. If the driver fails during context restoration,
+   * recovery is best-effort: the caller's context stack may not be fully restored. If restoring even
+   * the current context fails, CUDA leaves the primary context retained to avoid resetting a context
+   * that may still be current. The query returns an error in these cases.
+   *
+   * Capacity is reported only for the selected memory type, not aggregated across memory types.
+   * If the execution provider does not support this query for the selected memory type,
+   * ORT_NOT_IMPLEMENTED is returned.
+   * On failure, the output values are not modified.
+   *
+   * \param[in] ep_device The OrtEpDevice instance to query.
+   * \param[in] memory_type The memory type to query: device memory (DEFAULT) or shared/pinned
+   *                        host-accessible memory (HOST_ACCESSIBLE). Support is provider-dependent.
+   * \param[out] total_memory_bytes The device-global memory capacity in bytes, or null to omit.
+   * \param[out] available_memory_bytes The current free device memory estimate in bytes, or null to omit.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(EpDevice_GetMemoryCapacity, _In_ const OrtEpDevice* ep_device,
+                  _In_ OrtDeviceMemoryType memory_type,
+                  _Out_opt_ uint64_t* total_memory_bytes, _Out_opt_ uint64_t* available_memory_bytes);
 };
 
 /*
@@ -8034,6 +8089,19 @@ struct OrtModelEditorApi {
    *    is released.
    *    If using OrtApi::CreateTensorWithDataAndDeleterAsOrtValue, ORT will free the memory using the provided deleter as
    *    soon as the OrtValue is no longer in use.
+   *
+   *    The pre-existing memory is treated as read-only. Neither ONNX Runtime nor execution providers write to it
+   *    during model loading, graph optimization, compilation (including OrtCompileApi::CompileModel), or inference.
+   *    This applies even though OrtApi::CreateTensorWithDataAsOrtValue takes a non-const pointer.
+   *    Optimizations that modify initializer values, such as constant folding, layout transformation, and weight
+   *    pre-packing, write the results to separately allocated memory.
+   *    Read-only treatment does not change the ownership or lifetime rules above.
+   *    If the caller still owns the memory, the data remains unchanged when a session or compilation that used it
+   *    is released or fails. This applies to memory supplied through OrtApi::CreateTensorWithDataAsOrtValue.
+   *    The caller can then reuse the same buffer for another session or compilation without copying or validating it.
+   *    Do not reuse memory supplied through OrtApi::CreateTensorWithDataAndDeleterAsOrtValue after ORT calls
+   *    the deleter.
+   *    The caller must not modify the data while ONNX Runtime is using it.
    *
    *    NOTE: A tensor containing pre-existing memory MUST have 128 bytes of data or more.
    *          For smaller tensors use OrtApi::CreateTensorAsOrtValue.

@@ -33,7 +33,6 @@ struct OrtStatus {
 #include "core/providers/providers.h"
 #include "core/providers/provider_factory_creators.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
-#include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
 
 #if defined(USE_CUDA)
 #define BACKEND_PROC "GPU"
@@ -120,9 +119,6 @@ struct OrtStatus {
 #if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #endif
-#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
-#include "core/providers/nv_tensorrt_rtx/nv_provider_factory.h"
-#endif
 #if defined(USE_MIGRAPHX) || defined(USE_MIGRAPHX_PROVIDER_INTERFACE)
 #include "core/providers/migraphx/migraphx_provider_factory.h"
 #include "core/providers/migraphx/migraphx_execution_provider_info.h"
@@ -168,13 +164,6 @@ extern onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocato
 namespace onnxruntime {
 ProviderInfo_TensorRT* TryGetProviderInfo_TensorRT();
 ProviderInfo_TensorRT& GetProviderInfo_TensorRT();
-}  // namespace onnxruntime
-#endif
-
-#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
-namespace onnxruntime {
-ProviderInfo_Nv* TryGetProviderInfo_Nv();
-ProviderInfo_Nv& GetProviderInfo_Nv();
 }  // namespace onnxruntime
 #endif
 
@@ -315,6 +304,14 @@ struct PyInferenceSession {
     }
   }
 #endif
+
+  // Adopts an already initialized session returned by a stable C API.
+  PyInferenceSession(std::unique_ptr<InferenceSession> sess, const PySessionOptionsSnapshot& snapshot)
+      : py_ep_selection_registration_(snapshot.py_ep_selection_registration),
+        py_ep_context_data_read_registration_(snapshot.py_ep_context_data_read_registration),
+        session_options_(snapshot.options),
+        sess_(std::move(sess)) {
+  }
 
   // Returns true if the session options have provider information from either
   // setting explicit providers, setting a provider that supports a OrtEpDevice(s), or
@@ -517,6 +514,10 @@ void addIoBindingMethods(pybind11::module& m);
 void addSparseTensorMethods(pybind11::module& m);
 
 void addAdapterFormatMethods(pybind11::module& m);
+
+#if !defined(ORT_MINIMAL_BUILD)
+void addModelPackageMethods(pybind11::module& m);
+#endif
 
 void addGlobalSchemaFunctions(pybind11::module& m);
 
