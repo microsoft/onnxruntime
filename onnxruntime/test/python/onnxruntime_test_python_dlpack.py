@@ -12,6 +12,7 @@ import math
 import unittest
 import weakref
 
+import numpy as np
 import torch
 from onnx import TensorProto
 
@@ -164,6 +165,196 @@ class TestDlpackPyTorch(unittest.TestCase):
                 self.assertFalse(hasattr(value_type, "to_dlpack"))
                 for method in ("from_dlpack", "__dlpack__", "__dlpack_device__"):
                     self.assertTrue(callable(getattr(value_type, method)))
+        self.assertFalse(hasattr(C.OrtValueVector, "dlpack_at"))
+
+    def test_numpy_owner_survives_dlpack_export(self):
+        for native in (False, True):
+            for reinterpret in (False, True):
+                for capsule in (False, True):
+                    with self.subTest(native=native, reinterpret=reinterpret, capsule=capsule):
+                        array = np.arange(6, dtype=np.float32)
+                        owner_ref = weakref.ref(array)
+                        pointer = array.ctypes.data
+                        if reinterpret:
+                            value_type = C.OrtValue if native else ort.OrtValue
+                            value = value_type.ortvalue_from_numpy_with_onnx_type(array, TensorProto.FLOAT)
+                        elif native:
+                            value = C.OrtValue.ortvalue_from_numpy(array, C.OrtDevice(C.OrtDevice.cpu(), 0, 0))
+                        else:
+                            value = ort.OrtValue.ortvalue_from_numpy(array)
+                        exported = value.__dlpack__() if capsule else torch.from_dlpack(value)
+                        del array, value
+                        gc.collect()
+                        self.assertIsNotNone(owner_ref())
+                        result = torch.from_dlpack(exported) if capsule else exported
+                        self.assertEqual(result.data_ptr(), pointer)
+                        torch.testing.assert_close(result, torch.arange(6, dtype=torch.float32))
+                        result[0] = 7
+                        self.assertEqual(owner_ref()[0], 7)
+                        del exported, result
+                        gc.collect()
+                        self.assertIsNone(owner_ref())
+
+    def test_numpy_owner_survives_native_copy_and_vector_export(self):
+        array = np.arange(6, dtype=np.float32)
+        owner_ref = weakref.ref(array)
+        value = ort.OrtValue.ortvalue_from_numpy(array)
+        imported = C.OrtValue.from_dlpack(value)
+        values = C.OrtValueVector()
+        values.push_back(imported)
+        del array, value, imported
+        gc.collect()
+        self.assertIsNotNone(owner_ref())
+        result = values.to_dlpacks(torch.from_dlpack)[0]
+        del values
+        gc.collect()
+        torch.testing.assert_close(result, torch.arange(6, dtype=torch.float32))
+        del result
+        gc.collect()
+        self.assertIsNone(owner_ref())
+
+    def test_numpy_noncontiguous_copy_survives_export(self):
+        array = np.arange(6, dtype=np.float32)[::-1]
+        owner_ref = weakref.ref(array)
+        value = ort.OrtValue.ortvalue_from_numpy(array)
+        result = torch.from_dlpack(value)
+        self.assertNotEqual(result.data_ptr(), array.ctypes.data)
+        del array, value
+        gc.collect()
+        self.assertIsNone(owner_ref())
+        torch.testing.assert_close(result, torch.arange(6, dtype=torch.float32).flip(0))
+
+    def test_numpy_reinterpret_rejects_noncontiguous_storage(self):
+        for value_type in (ort.OrtValue, C.OrtValue):
+            for array in (np.arange(6, dtype=np.float32)[::-1], np.zeros((2, 3), dtype=np.float32).T):
+                with (
+                    self.subTest(value_type=value_type, strides=array.strides),
+                    self.assertRaisesRegex(ValueError, "C-contiguous NumPy array.*ascontiguousarray"),
+                ):
+                    value_type.ortvalue_from_numpy_with_onnx_type(array, TensorProto.FLOAT)
+
+    def test_cpu_stream_argument(self):
+        for value in (
+            ort.OrtValue.ortvalue_from_shape_and_type([1], TensorProto.FLOAT),
+            C.OrtValue.from_dlpack(torch.ones(1)),
+        ):
+            with self.subTest(value_type=type(value)):
+                torch.from_dlpack(value.__dlpack__(stream=None))
+                for stream in (-1, 0, 1, 2, False, "invalid"):
+                    with self.subTest(stream=stream), self.assertRaisesRegex(BufferError, "require stream=None"):
+                        value.__dlpack__(stream=stream)
+
+    def test_vector_capsules_are_independent(self):
+        values = C.OrtValueVector()
+        for offset in (0, 10):
+            values.push_back(torch.arange(6, dtype=torch.float32) + offset)
+        for consumer in (None, lambda capsule: capsule):
+            with self.subTest(consumer=consumer):
+                capsules = values.to_dlpacks(consumer)
+                self.assertIsNot(capsules[0], capsules[1])
+                results = [torch.from_dlpack(capsule) for capsule in capsules]
+                for offset, result in zip((0, 10), results, strict=True):
+                    torch.testing.assert_close(result, torch.arange(6, dtype=torch.float32) + offset)
+                for capsule in capsules:
+                    with self.assertRaisesRegex(TypeError, "valid DLPack capsule"):
+                        C.OrtValue.from_dlpack(capsule)
+
+    def test_vector_unconsumed_capsules_release_owners(self):
+        for consumer in (None, lambda capsule: None):
+            with self.subTest(consumer=consumer):
+                array = np.arange(6, dtype=np.float32)
+                owner_ref = weakref.ref(array)
+                values = C.OrtValueVector()
+                values.push_back(ort.OrtValue.ortvalue_from_numpy(array)._get_c_value())
+                del array
+                results = values.to_dlpacks(consumer)
+                del values
+                gc.collect()
+                if consumer is None:
+                    self.assertIsNotNone(owner_ref())
+                del results
+                gc.collect()
+                self.assertIsNone(owner_ref())
+
+    def test_vector_consumer_errors_preserve_exception_and_release_owners(self):
+        for fail_at in (0, 1):
+            for consume_before_error in (False, True):
+                with self.subTest(fail_at=fail_at, consume_before_error=consume_before_error):
+                    arrays = [np.arange(6, dtype=np.float32) + offset for offset in (0, 10)]
+                    owner_refs = [weakref.ref(array) for array in arrays]
+                    values = C.OrtValueVector()
+                    for array in arrays:
+                        values.push_back(ort.OrtValue.ortvalue_from_numpy(array)._get_c_value())
+                    del array, arrays
+                    error = ValueError("consumer failed")
+                    calls = 0
+
+                    def consumer(capsule, fail_at=fail_at, consume_before_error=consume_before_error, error=error):
+                        nonlocal calls
+                        index = calls
+                        calls += 1
+                        if index == fail_at:
+                            if consume_before_error:
+                                tensor = torch.from_dlpack(capsule)
+                                self.assertEqual(tensor.numel(), 6)
+                            raise error
+                        return torch.from_dlpack(capsule)
+
+                    with self.assertRaises(ValueError) as caught:
+                        values.to_dlpacks(consumer)
+                    self.assertIs(caught.exception, error)
+                    self.assertEqual(calls, fail_at + 1)
+                    # A traceback may legitimately retain the callback's capsule or tensor.
+                    error.__traceback__ = None
+                    del values
+                    gc.collect()
+                    self.assertTrue(all(owner_ref() is None for owner_ref in owner_refs))
+
+    def test_vector_consumer_can_retain_capsule_after_error(self):
+        array = np.arange(6, dtype=np.float32)
+        owner_ref = weakref.ref(array)
+        values = C.OrtValueVector()
+        values.push_back(ort.OrtValue.ortvalue_from_numpy(array)._get_c_value())
+        retained = []
+
+        def consumer(capsule):
+            retained.append(capsule)
+            raise ValueError("deferred consumption")
+
+        with self.assertRaisesRegex(ValueError, "deferred consumption"):
+            values.to_dlpacks(consumer)
+        del array, values
+        gc.collect()
+        self.assertIsNotNone(owner_ref())
+        result = torch.from_dlpack(retained.pop())
+        torch.testing.assert_close(result, torch.arange(6, dtype=torch.float32))
+        del result
+        gc.collect()
+        self.assertIsNone(owner_ref())
+
+    def test_vector_consumer_can_mutate_original_vector(self):
+        values = C.OrtValueVector()
+        values.push_back(torch.ones(1))
+        values.push_back(torch.full((1,), 2.0))
+
+        def consumer(capsule):
+            for _ in range(20):
+                values.push_back(torch.zeros(1))
+            return torch.from_dlpack(capsule)
+
+        results = values.to_dlpacks(consumer)
+        self.assertEqual(len(results), 2)
+        self.assertEqual(len(values), 42)
+        self.assertEqual([result.item() for result in results], [1, 2])
+
+    def test_vector_invalid_consumer(self):
+        for size in (0, 1):
+            values = C.OrtValueVector()
+            if size:
+                values.push_back(torch.ones(1))
+            with self.subTest(size=size), self.assertRaisesRegex(TypeError, "callable consumer or None"):
+                values.to_dlpacks(42)
+        self.assertEqual(C.OrtValueVector().to_dlpacks(None), [])
 
     def test_native_ortvalue_protocol(self):
         for dtype, onnx_type in INTERCHANGE_DTYPES:
@@ -253,6 +444,82 @@ class TestDlpackPyTorch(unittest.TestCase):
         source = torch.arange(6, dtype=torch.float32).reshape(2, 3).t()
         with self.assertRaisesRegex(RuntimeError, "ORT only supports contiguous tensor"):
             ort.OrtValue.from_dlpack(source)
+
+
+@unittest.skipUnless(
+    torch.cuda.is_available() and "CUDAExecutionProvider" in ort.get_available_providers(),
+    "requires PyTorch CUDA and the ORT CUDA execution provider",
+)
+class TestDlpackCUDA(unittest.TestCase):
+    def test_import_waits_for_producer_stream(self):
+        tensor_device = torch.cuda.device_count() - 1
+        producer = torch.cuda.Stream(device=tensor_device)
+        for value_type in (ort.OrtValue, C.OrtValue):
+            for capsule in (False, True):
+                with self.subTest(value_type=value_type, capsule=capsule):
+                    with torch.cuda.stream(producer):
+                        source = torch.zeros(6, device=f"cuda:{tensor_device}")
+                        torch.cuda._sleep(50_000_000)
+                        source.fill_(7)
+                        ready = torch.cuda.Event()
+                        ready.record()
+                        exported = source.__dlpack__() if capsule else source
+                    with torch.cuda.device(0):
+                        imported = value_type.from_dlpack(exported)
+                        self.assertEqual(torch.cuda.current_device(), 0)
+                    self.assertTrue(ready.query())
+                    torch.testing.assert_close(
+                        torch.from_dlpack(imported), torch.full((6,), 7.0, device=f"cuda:{tensor_device}")
+                    )
+
+    def test_export_waits_for_producer_and_restores_current_device(self):
+        tensor_device = torch.cuda.device_count() - 1
+        source = torch.zeros(6, device=f"cuda:{tensor_device}")
+        public = ort.OrtValue.from_dlpack(source)
+        values = C.OrtValueVector()
+        values.push_back(public._get_c_value())
+        producer = torch.cuda.Stream(device=tensor_device)
+        consumer = torch.cuda.Stream(device=tensor_device)
+        for export in (
+            lambda: public.__dlpack__(stream=1),
+            lambda: public._get_c_value().__dlpack__(stream=2),
+            lambda: public.__dlpack__(stream=consumer.cuda_stream),
+            lambda: public.__dlpack__(),
+            lambda: values.to_dlpacks(None)[0],
+        ):
+            with torch.cuda.stream(producer):
+                torch.cuda._sleep(50_000_000)
+                source.add_(1)
+                ready = torch.cuda.Event()
+                ready.record()
+            with torch.cuda.device(0):
+                capsule = export()
+                self.assertEqual(torch.cuda.current_device(), 0)
+            self.assertTrue(ready.query())
+            with torch.cuda.stream(consumer):
+                result = torch.from_dlpack(capsule).clone()
+            consumer.synchronize()
+            torch.testing.assert_close(result, source)
+
+    def test_no_sync_export_is_capture_safe(self):
+        source = torch.ones(6, device="cuda")
+        value = ort.OrtValue.from_dlpack(source)
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph):
+            source.add_(1)
+            capsule = value.__dlpack__(stream=-1)
+        graph.replay()
+        torch.cuda.synchronize()
+        torch.testing.assert_close(torch.from_dlpack(capsule), source)
+
+    def test_invalid_cuda_stream(self):
+        value = ort.OrtValue.from_dlpack(torch.ones(1, device="cuda"))
+        for stream in (0, -2):
+            with self.subTest(stream=stream), self.assertRaisesRegex(ValueError, "Invalid CUDA DLPack stream"):
+                value.__dlpack__(stream=stream)
+        for stream in (False, 1.5, "invalid"):
+            with self.subTest(stream=stream), self.assertRaisesRegex(TypeError, "must be an integer"):
+                value.__dlpack__(stream=stream)
 
 
 if __name__ == "__main__":

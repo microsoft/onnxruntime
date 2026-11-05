@@ -61,6 +61,8 @@ struct ProviderInfo_CUDA {
     ORT_NOT_IMPLEMENTED(__FUNCTION__, " is only implements in test code path.");
   }
 
+  virtual Status SynchronizeDevice(int device_id) = 0;
+
  protected:
   ~ProviderInfo_CUDA() = default;  // Can only be destroyed through a subclass instance
 };

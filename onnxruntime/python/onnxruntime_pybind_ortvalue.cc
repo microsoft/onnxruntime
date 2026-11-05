@@ -24,6 +24,21 @@ bool IsWebGpuBuffer(const OrtValue& ort_value) {
          ort_value.Get<Tensor>().Location().name == WEBGPU_BUFFER;
 }
 
+void RetainNumpyOwner(OrtValue& ort_value, const py::object& array) {
+  OrtValue tensor_owner = ort_value;
+  auto* tensor = tensor_owner.GetMutable<Tensor>();
+  auto type = tensor_owner.Type();
+  auto array_owner = tensor->OwnsBuffer() ? py::object{} : array;
+  // Retain the owner in the native value so copies, vectors and DLPack consumers
+  // remain safe independently of the Python wrapper, including destruction without the GIL.
+  ort_value.Init(tensor, type,
+                 [tensor_owner = std::move(tensor_owner), array_owner = std::move(array_owner)](void*) mutable {
+                   py::gil_scoped_acquire acquire;
+                   tensor_owner = OrtValue{};
+                   array_owner = py::object{};
+                 });
+}
+
 std::unique_ptr<OrtValue> OrtValueFromShapeAndType(const std::vector<int64_t>& shape,
                                                    MLDataType element_type,
                                                    const OrtDevice& device) {
@@ -107,8 +122,7 @@ std::unique_ptr<OrtValue> OrtValueFromShapeAndTypeWithMemoryInfo(const std::vect
 void addOrtValueMethods(pybind11::module& m) {
   py::class_<OrtValue> ortvalue_binding(m, "OrtValue");
   ortvalue_binding
-      // Factory method to create an OrtValue (Tensor) from the given Numpy object
-      // The Tensor allocates and manages its own memory (on the specified device) and copies data from the Numpy data buffer
+      // Share contiguous CPU NumPy storage; copy other inputs to the requested device.
       .def_static("ortvalue_from_numpy", [](const py::object& array_on_cpu, const OrtDevice& device) {
         if (!IsNumericNumpyArray(array_on_cpu)) {
           throw std::runtime_error("Creation of OrtValues is currently only supported from non-string numpy arrays");
@@ -122,6 +136,7 @@ void addOrtValueMethods(pybind11::module& m) {
           // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
 
           CreateGenericMLValue(nullptr, GetAllocator(), "", array_on_cpu, ml_value.get(), true);
+          RetainNumpyOwner(*ml_value, array_on_cpu);
         } else if (device.Type() == OrtDevice::GPU) {
 #if USE_DML
           if (device.Vendor() == OrtDevice::VendorIds::MICROSOFT) {
@@ -280,6 +295,11 @@ void addOrtValueMethods(pybind11::module& m) {
       // Create an ortvalue value on top of the numpy array, but interpret the data
       // as a different type with the same element size.
       .def_static("ortvalue_from_numpy_with_onnx_type", [](py::array& data, int32_t onnx_element_type) -> std::unique_ptr<OrtValue> {
+        if (!(data.flags() & py::array::c_style)) {
+          throw py::value_error(
+              "ortvalue_from_numpy_with_onnx_type requires a C-contiguous NumPy array. "
+              "Use numpy.ascontiguousarray(data) before importing.");
+        }
         if (!ONNX_NAMESPACE::TensorProto_DataType_IsValid(onnx_element_type)) {
           ORT_THROW("Not a valid ONNX Tensor data type: ", onnx_element_type);
         }
@@ -296,6 +316,7 @@ void addOrtValueMethods(pybind11::module& m) {
         auto ort_value = std::make_unique<OrtValue>();
         Tensor::InitOrtValue(element_type, GetShape(data),
                              const_cast<void*>(data.data()), cpu_allocator->Info(), *ort_value);
+        RetainNumpyOwner(*ort_value, data);
         return ort_value;
       })
       // Factory method to create an OrtValue from the given shape and numpy element type on the specified device.
@@ -506,12 +527,12 @@ void addOrtValueMethods(pybind11::module& m) {
       })
 #if defined(ENABLE_DLPACK)
       .def_static("from_dlpack", &FromDlpack, py::arg("data"), "Imports a tensor from a DLPack protocol object or legacy capsule without copying.")
-      .def("__dlpack__", [](OrtValue* ort_value, py::object /* stream */) -> py::object {
+      .def("__dlpack__", [](OrtValue* ort_value, py::object stream) -> py::object {
         ORT_ENFORCE(!IsWebGpuBuffer(*ort_value), "DLPack export is not supported for WebGPU OrtValues.");
-        return py::reinterpret_steal<py::object>(ToDlpack(*ort_value)); }, py::arg("stream") = py::none(),
+        return py::reinterpret_steal<py::object>(ToDlpack(*ort_value, std::move(stream))); }, py::arg("stream") = py::none(),
            "Returns a DLPack representing the tensor (part of __dlpack__ protocol). "
-           "The capsule retains the OrtValue and shares its buffer without copying; "
-           "externally owned buffers must remain alive.")
+           "The capsule retains the tensor and its NumPy owner without copying. "
+           "CUDA exports synchronize the tensor's device unless stream=-1 requests no synchronization.")
       .def("__dlpack_device__", [](const OrtValue* ort_value) -> py::tuple {
             ORT_ENFORCE(ort_value->IsTensor(), "Only tensor type OrtValues are supported");
             ORT_ENFORCE(!IsWebGpuBuffer(*ort_value), "DLPack export is not supported for WebGPU OrtValues.");
@@ -574,11 +595,6 @@ void addOrtValueMethods(pybind11::module& m) {
       .def("__len__", [](const std::vector<OrtValue>& v) { return v.size(); })
       .def("__iter__", [](const std::vector<OrtValue>& v) { return py::make_iterator(v.cbegin(), v.cend()); }, py::keep_alive<0, 1>())
       .def("__getitem__", [](const std::vector<OrtValue>& v, const size_t idx) { return v.at(idx); }, py::keep_alive<0, 1>())
-#if defined(ENABLE_DLPACK)
-      .def("dlpack_at", [](std::vector<OrtValue>* v, const size_t idx) {
-        ORT_ENFORCE(!IsWebGpuBuffer(v->at(idx)), "DLPack export is not supported for WebGPU OrtValues.");
-        return py::reinterpret_steal<py::object>(ToDlpack(v->at(idx))); })
-#endif
       .def("element_type_at", [](std::vector<OrtValue>* v, const size_t idx) -> int32_t { return GetTensorProtoType(v->at(idx)); },
            "Returns an integer equal to the ONNX proto type of the tensor at position i. "
            "This integer is one type defined by ONNX TensorProto_DataType "
@@ -587,71 +603,32 @@ void addOrtValueMethods(pybind11::module& m) {
            py::arg("idx"))
 #if defined(ENABLE_DLPACK)
       .def("to_dlpacks", [](const std::vector<OrtValue>& v, py::object to_tensor) -> py::list {
-            if (v.size() == 0)
-              return py::list();
-
-            py::list list_dlpacks;
-            PyObject* obj;
-
-            py::gil_scoped_acquire acquire;
-
-            if (to_tensor.is_none()) {
-              DLManagedTensor* dlmanaged_tensor;
-
-              for (auto it : v) {
-                ORT_ENFORCE(!IsWebGpuBuffer(it), "DLPack export is not supported for WebGPU OrtValues.");
-                dlmanaged_tensor = dlpack::OrtValueToDlpack(it);
-                py::capsule capsule(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
-                list_dlpacks.append(capsule);
-              }
-            } else {
-              DLManagedTensor* dlmanaged_tensor;
-              PyObject* capsule = NULL;
-              PyObject* handle = to_tensor.ptr();
-
-              for (auto it : v) {
-                // A new instance of dlpack needs to be created. The object which consumes it
-                // is responsible for its deletion.
-                ORT_ENFORCE(!IsWebGpuBuffer(it), "DLPack export is not supported for WebGPU OrtValues.");
-                dlmanaged_tensor = dlpack::OrtValueToDlpack(it);
-                if (capsule == NULL) {
-                  capsule = PyCapsule_New(dlmanaged_tensor, "dltensor", NULL);
-                  if (capsule == NULL)
-                    throw std::runtime_error("Unexpected error: empty capsule returned.");
-                } else {
-                  // The same capsule is reused but FromDLPack rename the capsule into used_dltensor.
-                  PyCapsule_SetName(capsule, "dltensor");
-                  PyCapsule_SetPointer(capsule, dlmanaged_tensor);
-                }
-                obj = PyObject_CallFunctionObjArgs(handle, capsule, NULL);
-                if (obj == NULL)
-                  throw std::runtime_error("to_tensor returned a null pointer. This may be caused by the data conversion.");
-                list_dlpacks.append(obj);
-                Py_DECREF(obj);
-              }
-              if (capsule != NULL) {
-                // This test is never wrong because v is not empty if the execution goes through that path.
-                // If not present, Guardian detects a potential failure.
-                Py_DECREF(capsule);
-              }
+            if (!to_tensor.is_none() && !PyCallable_Check(to_tensor.ptr())) {
+              throw py::type_error("OrtValueVector.to_dlpacks expects a callable consumer or None.");
             }
-            return list_dlpacks; },
-           R"pbdoc(Converts all OrtValue into tensors through DLPack protocol, the method creates
-a DLPack structure for every tensors, then calls python function `to_tensor` to a new object
-consuming the DLPack structure or return a list of capsule if this function is None.
+            // Callbacks can mutate the original vector, including reallocating its storage.
+            auto values = v;
+            py::list results;
+            for (auto& value : values) {
+              ORT_ENFORCE(!IsWebGpuBuffer(value), "DLPack export is not supported for WebGPU OrtValues.");
+              auto capsule = py::reinterpret_steal<py::object>(ToDlpack(value));
+              results.append(to_tensor.is_none() ? capsule : to_tensor(capsule));
+            }
+            return results; },
+           R"pbdoc(Exports a snapshot of the vector as independently owned DLPack capsules.
+If `to_tensor` is callable, returns the result of calling it with each capsule.
+Consumer exceptions propagate unchanged. Unconsumed capsules release their tensor
+references when destroyed, including when conversion fails.
 
 :param to_tensor: this function takes a capsule holding a pointer onto a DLPack structure and returns
     a new tensor which becomes the new owner of the data. This function takes one python object and
     returns a new python object. It fits the same signature as `torch.from_dlpack`,
     if None, the method returns a capsule for every new DLPack structure.
-:return: a list containing the new tensors or a the new capsules if *to_tensor* is None
+:return: a list containing the new tensors or the new capsules if *to_tensor* is None
 
-This method is used to replace `tuple(torch.from_dlpack(ov) for ov in ort_values)`
-by a faster instruction `tuple(ort_values.to_dlpacks(torch.from_dlpack))`. This loop
-is difficult to parallelize as it goes through the GIL many times.
-It creates many tensors acquiring ownership of existing OrtValue.
-This method saves one object creation and an C++ allocation
-for every transferred tensor.
+Use `ort_values.to_dlpacks(torch.from_dlpack)` to avoid creating a Python OrtValue
+wrapper for every tensor. Each capsule may be consumed only once. CUDA exports
+synchronize the tensor's device before invoking the consumer.
 )pbdoc",
            py::arg("to_tensor"))
 #endif

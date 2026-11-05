@@ -543,7 +543,7 @@ bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
 
 // Allocate a capsule retaining an OrtValue reference via OrtValueToDlpack.
 // Caller is responsible for releasing the capsule.
-PyObject* ToDlpack(OrtValue& ort_value);
+PyObject* ToDlpack(OrtValue& ort_value, pybind11::object stream = pybind11::none());
 
 // Import a DLPack protocol object or legacy capsule, transferring tensor ownership.
 OrtValue FromDlpack(pybind11::object data);

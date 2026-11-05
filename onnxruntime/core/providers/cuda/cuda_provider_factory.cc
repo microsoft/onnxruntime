@@ -228,6 +228,20 @@ struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
     return num_devices;
   }
 
+  Status SynchronizeDevice(int device_id) override {
+    int original_device;
+    CUDA_RETURN_IF_ERROR(cudaGetDevice(&original_device));
+    if (original_device != device_id) {
+      CUDA_RETURN_IF_ERROR(cudaSetDevice(device_id));
+    }
+    const auto sync_error = cudaDeviceSynchronize();
+    // Restore the caller's device even when synchronization reports an error.
+    const auto restore_error = original_device != device_id ? cudaSetDevice(original_device) : cudaSuccess;
+    CUDA_RETURN_IF_ERROR(sync_error);
+    CUDA_RETURN_IF_ERROR(restore_error);
+    return Status::OK();
+  }
+
   void CUDAExecutionProviderInfo__FromProviderOptions(const ProviderOptions& options, CUDAExecutionProviderInfo& info) override {
     info = CUDAExecutionProviderInfo::FromProviderOptions(options);
   }

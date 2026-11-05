@@ -45,20 +45,64 @@ void* empty_cache_fn{nullptr};
 #if defined(ENABLE_DLPACK)
 
 void DlpackCapsuleDestructor(PyObject* data) {
-  DLManagedTensor* dlmanaged_tensor = reinterpret_cast<DLManagedTensor*>(PyCapsule_GetPointer(data, "dltensor"));
-  if (dlmanaged_tensor) {
-    // The dlmanaged_tensor has not been consumed, call deleter ourselves.
-    dlmanaged_tensor->deleter(const_cast<DLManagedTensor*>(dlmanaged_tensor));
-  } else {
-    // The dlmanaged_tensor has been consumed,
-    // PyCapsule_GetPointer has set an error indicator.
-    PyErr_Clear();
+  // Do not disturb a pending exception while releasing an unconsumed capsule.
+  if (PyCapsule_IsValid(data, "dltensor")) {
+    auto* tensor = static_cast<DLManagedTensor*>(PyCapsule_GetPointer(data, "dltensor"));
+    tensor->deleter(tensor);
   }
 }
 
-PyObject* ToDlpack(OrtValue& ort_value) {
+namespace {
+void SynchronizeDlpackDevice(const DLDevice& device) {
+  if (device.device_type != kDLCUDA) {
+    return;
+  }
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
+  if (auto* provider = TryGetProviderInfo_CUDA()) {
+    ORT_THROW_IF_ERROR(provider->SynchronizeDevice(device.device_id));
+    return;
+  }
+#endif
+  throw py::buffer_error(
+      "CUDA DLPack interchange requires an available CUDA provider to synchronize the tensor's device. "
+      "Install a CUDA-enabled ONNX Runtime package and load its CUDA provider. For an already synchronized "
+      "export, call __dlpack__(stream=-1) explicitly.");
+}
+}  // namespace
+
+PyObject* ToDlpack(OrtValue& ort_value, py::object stream) {
+  const auto device = dlpack::GetDlpackDevice(ort_value, ort_value.Get<Tensor>().Location().device.Id());
+  bool synchronize = true;
+  if (!stream.is_none()) {
+    if (device.device_type != kDLCUDA) {
+      throw py::buffer_error("CPU DLPack exports require stream=None; omit the stream argument.");
+    }
+    if (!PyLong_Check(stream.ptr()) || PyBool_Check(stream.ptr())) {
+      throw py::type_error("A CUDA DLPack stream must be an integer: -1, 1, 2, or a positive stream handle.");
+    }
+    const auto stream_id = PyLong_AsLongLong(stream.ptr());
+    if (PyErr_Occurred()) {
+      throw py::error_already_set();
+    }
+    if (stream_id == 0 || stream_id < -1) {
+      throw py::value_error(
+          "Invalid CUDA DLPack stream: use 1 for the legacy default, 2 for the per-thread default, "
+          "a positive stream handle, or -1 to opt out of synchronization.");
+    }
+    synchronize = stream_id != -1;
+  }
+  // OrtValue does not record its producer stream, so a device-wide fence is
+  // necessary before handing its storage to any consumer stream.
+  if (synchronize) {
+    SynchronizeDlpackDevice(device);
+  }
   DLManagedTensor* dlmanaged_tensor = dlpack::OrtValueToDlpack(ort_value);
-  return PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
+  PyObject* capsule = PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
+  if (!capsule) {
+    dlmanaged_tensor->deleter(dlmanaged_tensor);
+    throw py::error_already_set();
+  }
+  return capsule;
 }
 
 OrtValue FromDlpack(py::object data) {
@@ -79,6 +123,9 @@ OrtValue FromDlpack(py::object data) {
 
   // Extract DLPack tensor pointer from the capsule carrier.
   DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(dlpack_tensor, "dltensor");
+  // The producer's default-stream handoff alone is insufficient for ORT's
+  // session-specific streams. Fence before importing both objects and raw capsules.
+  SynchronizeDlpackDevice(dlmanaged_tensor->dl_tensor.device);
   OrtValue ort_value = dlpack::DlpackToOrtValue(dlmanaged_tensor);
   // Make sure this capsule will never be used again.
   PyCapsule_SetName(dlpack_tensor, "used_dltensor");

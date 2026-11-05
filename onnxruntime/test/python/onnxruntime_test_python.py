@@ -2442,7 +2442,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(run_and_copy_output(session, io_binding), expected)
         raw_outputs = io_binding._iobinding.get_outputs()
         with self.assertRaisesRegex(RuntimeError, "DLPack export"):
-            raw_outputs.dlpack_at(0)
+            raw_outputs[0].__dlpack__()
         with self.assertRaisesRegex(RuntimeError, "DLPack export"):
             raw_outputs.to_dlpacks(None)
         indexed_raw_output = raw_outputs[0]

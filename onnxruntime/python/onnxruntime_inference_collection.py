@@ -1308,8 +1308,10 @@ class OrtValue:
         cls, numpy_obj: np.ndarray, /, device_type="cpu", device_id=0, vendor_id: int | OrtDeviceVendorId = -1
     ) -> OrtValue:
         """
-        Factory method to construct an OrtValue (which holds a Tensor) from a given Numpy object
-        A copy of the data in the Numpy object is held by the OrtValue only if the device is NOT cpu
+        Construct an OrtValue (which holds a Tensor) from a NumPy array.
+        Contiguous CPU arrays are shared without copying; noncontiguous arrays
+        are copied to contiguous storage. Other devices copy the data to the
+        target device. The native OrtValue retains any NumPy storage it uses.
 
         :param numpy_obj: The Numpy object to construct the OrtValue from
         :param device_type: e.g. cpu, cuda, cann, cpu by default
@@ -1331,10 +1333,10 @@ class OrtValue:
     def ortvalue_from_numpy_with_onnx_type(cls, data: np.ndarray, /, onnx_element_type: int) -> OrtValue:
         """
         This method creates an instance of OrtValue on top of the numpy array.
-        No data copy is made and the lifespan of the resulting OrtValue should never
-        exceed the lifespan of bytes object. The API attempts to reinterpret
-        the data type which is expected to be the same size. This is useful
+        No data copy is made; the native OrtValue retains the NumPy array.
+        The API reinterprets the data type, which must have the same element size. This is useful
         when we want to use an ONNX data type that is not supported by numpy.
+        The array must be C-contiguous; use ``numpy.ascontiguousarray`` otherwise.
 
         :param data: numpy.ndarray.
         :param onnx_element_type: a valid onnx TensorProto::DataType enum value
@@ -1531,13 +1533,17 @@ class OrtValue:
 
         The OrtValue must hold a contiguous tensor. No data is copied.
         The capsule and its consumer retain the tensor allocation, so this
-        OrtValue can be released. For externally owned buffers (for example,
-        a NumPy-backed CPU OrtValue), the external owner must remain alive.
+        OrtValue can be released. NumPy-backed OrtValues also retain the NumPy
+        allocation through the consumer's lifetime.
         WebGPU OrtValues cannot be exported through DLPack because their data
         is stored in opaque WebGPU buffers rather than CUDA-addressable memory.
 
-        :param stream: Optional stream on which the tensor data is accessible.
-            Currently unused; included for protocol compliance.
+        :param stream: CUDA consumer stream: ``None`` or ``1`` for the legacy
+            default, ``2`` for the per-thread default, or a positive stream handle.
+            Since OrtValues do not track their producer stream, CUDA exports
+            synchronize the entire tensor device before returning. ``-1`` skips
+            synchronization; the caller must ensure the data is ready. CPU exports
+            require ``None``.
         :return: A PyCapsule holding a DLManagedTensor.
         """
         return self._ortvalue.__dlpack__(stream=stream)
@@ -1579,6 +1585,8 @@ class OrtValue:
         PyTorch cannot consume ORT's packed float4, int4/uint4, or int2/uint2.
 
         No data is copied; the new OrtValue shares memory with the source.
+        CUDA imports synchronize the tensor's device before returning, so ORT
+        can safely use the storage on its own streams.
 
         :param data: A tensor object supporting the DLPack protocol, or a raw
             DLPack PyCapsule.
