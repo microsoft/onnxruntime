@@ -120,6 +120,7 @@ __global__ void DequantizeKernel(T* dequantized_data,
                                  const T_QUANT* quantized_data,
                                  const T_SCALE* scale, const int* past_seq_lens,
                                  const int* valid_seq_lens,
+                                 const int* query_seqlens,
                                  int batch_size, int num_heads,
                                  int cache_sequence_length,
                                  int head_size, int bit_width,
@@ -135,9 +136,14 @@ __global__ void DequantizeKernel(T* dequantized_data,
     int s = static_cast<int>((i / head_size) % cache_sequence_length);
     int n = static_cast<int>((i / (head_size * cache_sequence_length)) % num_heads);
     int b = static_cast<int>((i / (num_heads * head_size * cache_sequence_length)));
+    if (query_seqlens != nullptr && query_seqlens[b] <= 0) {
+      continue;
+    }
 
     // Skip the padding tail of the cache: it is not part of the attended window.
-    if (valid_seq_lens != nullptr && s >= ValidRowLimit(valid_seq_lens[b], cache_sequence_length)) {
+    if (valid_seq_lens != nullptr &&
+        s >= (query_seqlens != nullptr ? min(valid_seq_lens[b], cache_sequence_length)
+                                       : ValidRowLimit(valid_seq_lens[b], cache_sequence_length))) {
       continue;
     }
 
@@ -242,6 +248,7 @@ __global__ void DequantizeKVVectorizedKernel(T* __restrict__ dequantized_data,
                                              const T_QUANT* __restrict__ quantized_data,
                                              const T_SCALE* __restrict__ scale,
                                              const int* __restrict__ valid_seq_lens,
+                                             const int* __restrict__ query_seqlens,
                                              int num_heads,
                                              int cache_sequence_length,
                                              int head_size,
@@ -267,10 +274,14 @@ __global__ void DequantizeKVVectorizedKernel(T* __restrict__ dequantized_data,
   const int bn = blockIdx.y;  // b * num_heads + n
   const int n = bn % num_heads;
   const int b = bn / num_heads;
+  if (query_seqlens != nullptr && query_seqlens[b] <= 0) {
+    return;
+  }
 
   const int limit = (valid_seq_lens == nullptr)
                         ? cache_sequence_length
-                        : ValidRowLimit(valid_seq_lens[b], cache_sequence_length);
+                        : (query_seqlens != nullptr ? min(valid_seq_lens[b], cache_sequence_length)
+                                                    : ValidRowLimit(valid_seq_lens[b], cache_sequence_length));
 
   const int h0 = vec_in_row * kVecSize;
 
@@ -332,7 +343,8 @@ Status LaunchDequantizeKVVectorized(cudaStream_t stream, T* dequantized_data,
                                     const T_QUANT* quantized_data, const T_SCALE* scale,
                                     const int* valid_seq_lens, int batch_size, int num_heads,
                                     int cache_sequence_length, int head_size,
-                                    KVQuantizationType quant_type, bool is_input_bsnh) {
+                                    KVQuantizationType quant_type, bool is_input_bsnh,
+                                    const int* query_seqlens) {
   const int vecs_per_row = head_size / kVecSize;
   const int rows_per_block = kThreadsPerBlock / vecs_per_row;
   const int row_chunks = (cache_sequence_length + rows_per_block - 1) / rows_per_block;
@@ -346,7 +358,7 @@ Status LaunchDequantizeKVVectorized(cudaStream_t stream, T* dequantized_data,
                   static_cast<unsigned>(grid_y));
 
   DequantizeKVVectorizedKernel<T, T_QUANT, T_SCALE, kVecSize><<<grid, kThreadsPerBlock, 0, stream>>>(
-      dequantized_data, quantized_data, scale, valid_seq_lens,
+      dequantized_data, quantized_data, scale, valid_seq_lens, query_seqlens,
       num_heads, cache_sequence_length, head_size, quant_type, is_input_bsnh);
 
   return CUDA_CALL(cudaGetLastError());
@@ -360,7 +372,8 @@ Status LaunchDequantizeKV(cudaStream_t stream, T* dequantized_data,
                           int head_size, int bit_width,
                           KVQuantizationType quant_type,
                           bool is_input_bsnh,
-                          const int* valid_seq_lens = nullptr) {
+                          const int* valid_seq_lens = nullptr,
+                          const int* query_seqlens = nullptr) {
   if (cache_sequence_length == 0) return Status::OK();
 
   // Fast path: 8-bit caches (INT8 / FP8) whose head size can be split into aligned vectors.
@@ -370,18 +383,18 @@ Status LaunchDequantizeKV(cudaStream_t stream, T* dequantized_data,
       if (head_size % 32 == 0) {
         return LaunchDequantizeKVVectorized<T, T_QUANT, T_SCALE, 32>(
             stream, dequantized_data, quantized_data, scale, valid_seq_lens,
-            batch_size, num_heads, cache_sequence_length, head_size, quant_type, is_input_bsnh);
+            batch_size, num_heads, cache_sequence_length, head_size, quant_type, is_input_bsnh, query_seqlens);
       }
       if (head_size % 16 == 0) {
         return LaunchDequantizeKVVectorized<T, T_QUANT, T_SCALE, 16>(
             stream, dequantized_data, quantized_data, scale, valid_seq_lens,
-            batch_size, num_heads, cache_sequence_length, head_size, quant_type, is_input_bsnh);
+            batch_size, num_heads, cache_sequence_length, head_size, quant_type, is_input_bsnh, query_seqlens);
       }
 
       assert(head_size % 8 == 0);  // GQA has validated head_size that is a multiple of 8 in CheckInputs.
       return LaunchDequantizeKVVectorized<T, T_QUANT, T_SCALE, 8>(
           stream, dequantized_data, quantized_data, scale, valid_seq_lens,
-          batch_size, num_heads, cache_sequence_length, head_size, quant_type, is_input_bsnh);
+          batch_size, num_heads, cache_sequence_length, head_size, quant_type, is_input_bsnh, query_seqlens);
     }
   }
 
@@ -389,7 +402,7 @@ Status LaunchDequantizeKV(cudaStream_t stream, T* dequantized_data,
   int64_t total_elements = static_cast<int64_t>(batch_size) * num_heads * cache_sequence_length * head_size;
   const int blocks = static_cast<int>((total_elements + kThreadsPerBlock - 1) / kThreadsPerBlock);
   DequantizeKernel<T, T_QUANT, T_SCALE><<<blocks, kThreadsPerBlock, 0, stream>>>(
-      dequantized_data, quantized_data, scale, past_seq_lens, valid_seq_lens,
+      dequantized_data, quantized_data, scale, past_seq_lens, valid_seq_lens, query_seqlens,
       batch_size, num_heads, cache_sequence_length,
       head_size, bit_width, quant_type, is_input_bsnh);
 
@@ -416,6 +429,7 @@ __global__ void DequantizeKVPairKernel(T* __restrict__ k_dequantized, T* __restr
                                        const T_SCALE* __restrict__ k_scale,
                                        const T_SCALE* __restrict__ v_scale,
                                        const int* __restrict__ valid_seq_lens,
+                                       const int* __restrict__ query_seqlens,
                                        int num_heads,
                                        int cache_sequence_length,
                                        int head_size,
@@ -448,10 +462,14 @@ __global__ void DequantizeKVPairKernel(T* __restrict__ k_dequantized, T* __restr
   const int bn = blockIdx.y;  // b * num_heads + n
   const int n = bn % num_heads;
   const int b = bn / num_heads;
+  if (query_seqlens != nullptr && query_seqlens[b] <= 0) {
+    return;
+  }
 
   const int limit = (valid_seq_lens == nullptr)
                         ? cache_sequence_length
-                        : ValidRowLimit(valid_seq_lens[b], cache_sequence_length);
+                        : (query_seqlens != nullptr ? min(valid_seq_lens[b], cache_sequence_length)
+                                                    : ValidRowLimit(valid_seq_lens[b], cache_sequence_length));
 
   const int h0 = vec_in_row * kVecSize;
 
@@ -518,7 +536,8 @@ Status LaunchDequantizeKVPair(cudaStream_t stream, T* k_dequantized, T* v_dequan
                               int batch_size, int num_heads, int cache_sequence_length,
                               int head_size, int bit_width,
                               KVQuantizationType k_quant_type, KVQuantizationType v_quant_type,
-                              bool is_input_bsnh, const int* valid_seq_lens) {
+                              bool is_input_bsnh, const int* valid_seq_lens,
+                              const int* query_seqlens = nullptr) {
   if (cache_sequence_length == 0) return Status::OK();
 
   constexpr int kFusedVecSize = 8;
@@ -547,7 +566,7 @@ Status LaunchDequantizeKVPair(cudaStream_t stream, T* k_dequantized, T* v_dequan
       DequantizeKVPairKernel<T, T_QUANT, T_SCALE, kFusedVecSize, kFusedBlockThreads>
           <<<grid, kFusedBlockThreads, 0, stream>>>(
               k_dequantized, v_dequantized, k_quantized, v_quantized, k_scale, v_scale,
-              valid_seq_lens, num_heads, cache_sequence_length, head_size,
+              valid_seq_lens, query_seqlens, num_heads, cache_sequence_length, head_size,
               k_quant_type, v_quant_type, is_input_bsnh);
 
       return CUDA_CALL(cudaGetLastError());
@@ -556,11 +575,11 @@ Status LaunchDequantizeKVPair(cudaStream_t stream, T* k_dequantized, T* v_dequan
 
   ORT_RETURN_IF_ERROR((LaunchDequantizeKV<T, T_QUANT, T_SCALE>(
       stream, k_dequantized, k_quantized, k_scale, nullptr, batch_size, num_heads,
-      cache_sequence_length, head_size, bit_width, k_quant_type, is_input_bsnh, valid_seq_lens)));
+      cache_sequence_length, head_size, bit_width, k_quant_type, is_input_bsnh, valid_seq_lens, query_seqlens)));
 
   return LaunchDequantizeKV<T, T_QUANT, T_SCALE>(
       stream, v_dequantized, v_quantized, v_scale, nullptr, batch_size, num_heads,
-      cache_sequence_length, head_size, bit_width, v_quant_type, is_input_bsnh, valid_seq_lens);
+      cache_sequence_length, head_size, bit_width, v_quant_type, is_input_bsnh, valid_seq_lens, query_seqlens);
 }
 
 // ============================================================================

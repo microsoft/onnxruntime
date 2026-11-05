@@ -45,7 +45,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "5c210da409e7f1e51ddf445134a4376fdbd70d7d",
+          "commitHash": "84d107bf416c6bab9ae68ad285876600d230490d",
           "repositoryUrl": "https://github.com/dmlc/dlpack.git"
         }
       }

@@ -44,7 +44,9 @@ Status LaunchUngroup(const GroupQueryAttentionParameters& parameters,
                      const int buff_seqlen, const int og_seqlen,
                      const bool is_bsnh,
                      cudaStream_t stream,
-                     const int max_threads_per_block);
+                     const int max_threads_per_block,
+                     const int* valid_seq_lens = nullptr,
+                     const int* query_seqlens = nullptr);
 
 // query_seqlens is an optional device array [batch_size] with the number of valid rows of a right-padded
 // query chunk. When it is set, the past length of each entry is derived from it instead of from
@@ -85,7 +87,8 @@ Status LaunchCompactKvCache(void* k_cache,
 // Copies `rows` entries between two BNSH KV caches, reading from row src_offsets[b] + s (or from
 // row s when src_offsets is null) and writing to row s. Used to seed the staging cache that a
 // multi-token step of a windowed (sliding_window_cache) KV cache runs against, and to copy the
-// surviving window back into the real cache afterwards.
+// surviving window back into the real cache afterwards. Optional query_seqlens skips idle entries;
+// this is safe only when their original past and present caches alias.
 Status LaunchCopyKvCacheWindow(void* dst_k,
                                void* dst_v,
                                const void* src_k,
@@ -97,7 +100,8 @@ Status LaunchCopyKvCacheWindow(void* dst_k,
                                const int rows,
                                const int* src_offsets,
                                const int row_bytes,
-                               cudaStream_t stream);
+                               cudaStream_t stream,
+                               const int* query_seqlens = nullptr);
 
 }  // namespace cuda
 }  // namespace contrib
