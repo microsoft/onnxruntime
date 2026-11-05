@@ -14,6 +14,7 @@
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <math.h>
+#include <cfloat>
 #include <cstdint>
 #include <limits>
 

@@ -2463,10 +2463,10 @@ static void RunAliasedStateTwoCallContinuationIOBinding(
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(ep)));
   }
   auto cpu_alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
-  const OrtMemoryInfo* device_info = &cpu_alloc->Info();
+  OrtMemoryInfo copied_device_info = cpu_alloc->Info();
   if (!is_cpu_ep) {
     auto allocators = ep_ptr->CreatePreferredAllocators();
-    device_info = nullptr;
+    const OrtMemoryInfo* device_info = nullptr;
     for (const auto& allocator : allocators) {
       if (allocator->Info().device.Type() == OrtDevice::GPU &&
           allocator->Info().mem_type == OrtMemTypeDefault) {
@@ -2474,11 +2474,12 @@ static void RunAliasedStateTwoCallContinuationIOBinding(
       }
     }
     ASSERT_NE(device_info, nullptr);
+    copied_device_info = *device_info;
   }
-  const OrtMemoryInfo copied_device_info = *device_info;
   ASSERT_STATUS_OK(session.Load(stream));
   ASSERT_STATUS_OK(session.Initialize());
   auto device_alloc = is_cpu_ep ? cpu_alloc : session.GetAllocator(copied_device_info);
+  ASSERT_NE(device_alloc, nullptr);
 
   auto make_device = [&](const auto& data, MLDataType data_type, const TensorShape& shape) {
     using Elem = typename std::decay_t<decltype(data)>::value_type;
