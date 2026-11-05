@@ -55,6 +55,10 @@ class CudaGraphManager {
   /// End capture, instantiate the graph, and store the executable.
   void CaptureEnd(CudaGraphAnnotation_t id);
 
+  /// End the in-progress capture and drop what was recorded, without instantiating or storing a graph.
+  /// For a run that failed while being captured, where the recorded work is incomplete.
+  void DiscardCapture() noexcept;
+
   /// Launch a previously captured graph. Returns OrtStatus on error.
   OrtStatus* Replay(CudaGraphAnnotation_t id, bool sync = true);
 
@@ -81,6 +85,8 @@ class CudaGraphManager {
   /// Tracks the number of regular (non-captured) runs per annotation ID.
   /// Graph capture is deferred until the count reaches `min_num_runs_before_cuda_graph_capture`.
   std::unordered_map<CudaGraphAnnotation_t, int> run_count_;
+  bool has_captured_any_ = false;
+  bool recapture_immediately_ = false;
 };
 
 }  // namespace cuda_plugin

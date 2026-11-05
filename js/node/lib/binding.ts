@@ -70,6 +70,9 @@ export const binding =
       maxDataSize: number,
       name: string,
     ) => Promise<Buffer>;
+    /** @internal Compares native WebGPU buffer handles for binding lifetime tests. */
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    __testGpuBuffersAlias: (first: Tensor, second: Tensor) => boolean;
   };
 
 let ortInitialized = false;

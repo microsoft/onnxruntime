@@ -38,7 +38,8 @@ class GraphOptimizerRegistry {
    */
   GraphOptimizerRegistry(const onnxruntime::SessionOptions* sess_options,
                          const onnxruntime::IExecutionProvider* cpu_ep,
-                         const logging::Logger* logger);
+                         const logging::Logger* logger,
+                         bool capability_optimizations_supported = true);
 
   /**
    * Get optimizer selection function. If the optimizer name can't be found, return nullopt.
@@ -60,10 +61,15 @@ class GraphOptimizerRegistry {
    */
   const logging::Logger* GetLogger() const { return logger_; }
 
+  // Describes the capability consumer, not a model filename or configuration hint.
+  // Consumers that do not execute capability optimization callbacks must opt out.
+  bool SupportsCapabilityOptimizations() const noexcept { return capability_optimizations_supported_; }
+
  private:
   const onnxruntime::SessionOptions* session_options_;
   const onnxruntime::IExecutionProvider* cpu_ep_;
   const logging::Logger* logger_;
+  const bool capability_optimizations_supported_;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   InlinedHashMap<std::string, SelectionFunc> transformer_name_to_selection_func_;

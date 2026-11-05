@@ -60,6 +60,7 @@
 #include "core/optimizer/group_query_attention_pre_norm_fusion.h"
 #include "core/optimizer/matmul_nbits_qkv_fusion.h"
 #include "core/optimizer/matmul_nbits_mlp_fusion.h"
+#include "core/optimizer/matmul_nbits_qlora_fusion.h"
 #include "core/optimizer/matmul_bn_fusion.h"
 #include "core/optimizer/matmul_integer_to_float.h"
 #include "core/optimizer/matmul_scale_fusion.h"
@@ -88,6 +89,7 @@
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/slice_concat_to_space_to_depth_fusion.h"
+#include "core/optimizer/swiglu_fusion.h"
 #include "core/optimizer/transpose_optimizer.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 #ifdef ENABLE_TRAINING
@@ -428,6 +430,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // Expose pre-opset-20 tanh GELU to ConvActivationFusion on WebGPU.
       transformers.emplace_back(std::make_unique<FastGeluFusion>(cpu_cuda_dml_webgpu_eps));
       transformers.emplace_back(std::make_unique<QuickGeluFusion>(cpu_acl_cuda_dml_js_webgpu_eps));
+      transformers.emplace_back(std::make_unique<SwiGluFusion>(cuda_eps));
 
       // GeluApproximation has side effects which may change results. It needs to be manually enabled,
       // or alternatively the model can be updated offline using a model conversion script
@@ -465,6 +468,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<GroupQueryAttentionPreNormFusion>(
           InlinedHashSet<std::string_view>{onnxruntime::kCudaExecutionProvider,
                                            onnxruntime::kWebGpuExecutionProvider}));
+      bool has_matmul_nbits_qlora_kernel = false;
       bool has_matmul_nbits_mlp_kernel = false;
       bool has_matmul_nbits_qkv_kernel = false;
       if (execution_providers != nullptr) {
@@ -482,10 +486,14 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                              nullptr)
                   .IsOK();
             };
+            has_matmul_nbits_qlora_kernel = has_webgpu_kernel("MatMulNBitsQLoRA");
             has_matmul_nbits_mlp_kernel = has_webgpu_kernel("MatMulNBitsMlp");
             has_matmul_nbits_qkv_kernel = has_webgpu_kernel("MatMulNBitsQkv");
           }
         }
+      }
+      if (has_matmul_nbits_qlora_kernel) {
+        transformers.emplace_back(std::make_unique<MatMulNBitsQLoRAFusion>());
       }
       if (has_matmul_nbits_mlp_kernel) {
         transformers.emplace_back(std::make_unique<MatMulNBitsMlpFusion>(

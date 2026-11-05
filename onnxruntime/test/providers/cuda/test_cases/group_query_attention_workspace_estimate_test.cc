@@ -57,6 +57,7 @@ using contrib::cuda::SetGroupQueryAttentionWorkspaceRequirements;
 
 constexpr int kMath = static_cast<int>(AttentionBackend::MATH);
 constexpr int kFlash = static_cast<int>(AttentionBackend::FLASH_ATTENTION);
+constexpr int kCudnn = static_cast<int>(AttentionBackend::CUDNN_FLASH_ATTENTION);
 
 WorkspaceInputShape Known(std::initializer_list<int64_t> dims) {
   return WorkspaceInputShape::PresentWithShape(TensorShape{TensorShapeVector{dims}});
@@ -174,7 +175,8 @@ void SetValueInfo(ONNX_NAMESPACE::ValueInfoProto& value_info,
   }
 }
 
-std::string BuildGroupQueryAttentionKernelModel() {
+std::string BuildGroupQueryAttentionKernelModel(bool sliding_window_cache = true,
+                                                bool include_head_sink = true) {
   ONNX_NAMESPACE::ModelProto model;
   model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
   auto* onnx_opset = model.add_opset_import();
@@ -192,9 +194,10 @@ std::string BuildGroupQueryAttentionKernelModel() {
   node->set_op_type("GroupQueryAttention");
   for (const char* input_name :
        {"query", "key", "value", "past_key", "past_value", "seqlens_k",
-        "total_sequence_length", "", "", "", "", "head_sink"}) {
+        "total_sequence_length", "", "", "", ""}) {
     node->add_input(input_name);
   }
+  node->add_input(include_head_sink ? "head_sink" : "");
   node->add_output("output");
   node->add_output("present_key");
   node->add_output("present_value");
@@ -207,8 +210,10 @@ std::string BuildGroupQueryAttentionKernelModel() {
   };
   add_int_attribute("num_heads", 8);
   add_int_attribute("kv_num_heads", 2);
-  add_int_attribute("local_window_size", 256);
-  add_int_attribute("sliding_window_cache", 1);
+  if (sliding_window_cache) {
+    add_int_attribute("local_window_size", 256);
+    add_int_attribute("sliding_window_cache", 1);
+  }
 
   constexpr int32_t kFloat16 = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
   constexpr int32_t kInt32 = ONNX_NAMESPACE::TensorProto_DataType_INT32;
@@ -223,11 +228,13 @@ std::string BuildGroupQueryAttentionKernelModel() {
   SetValueInfo(*graph->add_output(), "present_key", kFloat16, {2, 2, 256, 64});
   SetValueInfo(*graph->add_output(), "present_value", kFloat16, {2, 2, 256, 64});
 
-  auto* head_sink = graph->add_initializer();
-  head_sink->set_name("head_sink");
-  head_sink->set_data_type(kFloat16);
-  head_sink->add_dims(8);
-  head_sink->mutable_raw_data()->assign(8 * sizeof(uint16_t), '\0');
+  if (include_head_sink) {
+    auto* head_sink = graph->add_initializer();
+    head_sink->set_name("head_sink");
+    head_sink->set_data_type(kFloat16);
+    head_sink->add_dims(8);
+    head_sink->mutable_raw_data()->assign(8 * sizeof(uint16_t), '\0');
+  }
 
   std::string bytes;
   model.SerializeToString(&bytes);
@@ -246,6 +253,58 @@ const Node* FindNodeByOpType(const Graph& graph, const char* op_type) {
 bool HasCudaDevice() {
   int device_count = 0;
   return cudaGetDeviceCount(&device_count) == cudaSuccess && device_count > 0;
+}
+
+void CheckNonWindowedStaticCacheCapacityBound(int kernel_selection, GQABackend backend) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kernel_selection, true);
+  auto config = Config();
+  config.sliding_window_cache = false;
+  config.local_window_size = -1;
+  config.enable_xqa = false;
+  config.max_total_sequence_length = 512;
+  constexpr int64_t kPastCapacity = 1024;
+  const auto estimate = EstimateGroupQueryAttentionWorkspace(
+      config, SeparateShapes(/*sequence=*/1, /*head=*/64, kPastCapacity),
+      Device(), options);
+  ASSERT_TRUE(estimate.has_value());
+  const bool use_mea = backend == GQABackend::MemoryEfficient;
+  ASSERT_TRUE(HasGQAReachableBackend(
+      estimate->sized_backends,
+      use_mea ? GQAReachableBackend::MemoryEfficient : GQAReachableBackend::Unfused));
+
+  GQAWorkspaceProblem problem;
+  problem.qkv_element_size = 2;
+  problem.cache_element_size = 2;
+  problem.batch_size = 2;
+  problem.sequence_length = 1;
+  problem.num_heads = 8;
+  problem.kv_num_heads = 2;
+  problem.head_size = 64;
+  problem.present_kv_cache_capacity = kPastCapacity;
+  problem.requires_separate_past_buffer = true;
+  problem.past_kv_cache_capacity = kPastCapacity;
+  GQAConcreteRoute route;
+  route.backend = backend;
+  route.preparation.preprocess_mode =
+      use_mea ? GQAPreprocessMode::MemoryEfficient : GQAPreprocessMode::Unfused;
+  route.unfused.total_sequence_length = config.max_total_sequence_length;
+  const auto runtime = GetGQACompleteWorkspaceRecipe(problem, route);
+  ASSERT_TRUE(runtime.status.IsOK());
+  constexpr size_t kPastBytes = 2 * 2 * kPastCapacity * 64 * 2;
+  EXPECT_EQ(runtime.recipe.preparation.separate_past_bytes, kPastBytes);
+  if (use_mea) {
+    constexpr size_t kExpandedCacheBytes = 2 * 8 * kPastCapacity * 64 * 2;
+    EXPECT_EQ(runtime.recipe.memory_efficient.expanded_key_bytes, kExpandedCacheBytes);
+    EXPECT_EQ(runtime.recipe.memory_efficient.expanded_value_bytes, kExpandedCacheBytes);
+  }
+  EXPECT_GE(estimate->total_workspace_bytes, runtime.recipe.total_workspace_bytes);
+
+  const auto smaller_cache = EstimateGroupQueryAttentionWorkspace(
+      config, SeparateShapes(/*sequence=*/1, /*head=*/64, /*capacity=*/512),
+      Device(), options);
+  ASSERT_TRUE(smaller_cache.has_value());
+  EXPECT_GT(estimate->total_workspace_bytes, smaller_cache->total_workspace_bytes);
 }
 
 TEST(GroupQueryAttentionWorkspaceEstimateTest, ParsesPackedAndSeparateLayouts) {
@@ -332,7 +391,36 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, NodeAdapterParsesAttributesAndTyp
   EXPECT_GT(estimate->total_workspace_bytes, 0u);
 }
 
-TEST(GroupQueryAttentionWorkspaceEstimateTest, ParsedEnvelopeReachesNodeConfigWithoutChangingEstimate) {
+TEST(GroupQueryAttentionWorkspaceEstimateTest, NodeAdapterForwardsDispatchPolicy) {
+  WithGroupQueryAttentionNode([](const Node& node) {
+    const auto default_config = GetGroupQueryAttentionWorkspaceEstimateConfigForTest(&node);
+    ASSERT_TRUE(default_config.has_value());
+    EXPECT_EQ(default_config->dispatch_policy, KernelDispatchPolicy::Auto);
+
+    AttentionKernelOptions options;
+    options.InitializeOnce(kMath, true);
+    const auto baseline = EstimateGroupQueryAttentionWorkspaceForTest(
+        &node, SeparateShapes(), Device(), options);
+    ASSERT_TRUE(baseline.has_value());
+
+    for (const auto policy : {KernelDispatchPolicy::Auto, KernelDispatchPolicy::Latency,
+                              KernelDispatchPolicy::Memory, KernelDispatchPolicy::Safe}) {
+      SCOPED_TRACE(static_cast<int>(policy));
+      const auto config = GetGroupQueryAttentionWorkspaceEstimateConfigForTest(
+          &node, false, 4096, policy);
+      ASSERT_TRUE(config.has_value());
+      EXPECT_EQ(config->max_total_sequence_length, int64_t{4096});
+      EXPECT_EQ(config->dispatch_policy, policy);
+      const auto estimate = EstimateGroupQueryAttentionWorkspaceForTest(
+          &node, SeparateShapes(), Device(), options, false, 4096, policy);
+      ASSERT_TRUE(estimate.has_value());
+      EXPECT_EQ(estimate->total_workspace_bytes, baseline->total_workspace_bytes);
+      EXPECT_EQ(estimate->sized_backends, baseline->sized_backends);
+    }
+  });
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, ParsedEnvelopePreservesWindowedEstimateAndEnablesNonWindowed) {
   WithGroupQueryAttentionNode([](const Node& node) {
     AttentionKernelOptions options;
     options.InitializeOnce(kMath, true);
@@ -372,9 +460,10 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, ParsedEnvelopeReachesNodeConfigWi
 
       auto non_windowed_config = *gqa_config;
       non_windowed_config.sliding_window_cache = false;
-      EXPECT_FALSE(EstimateGroupQueryAttentionWorkspace(
-                       non_windowed_config, SeparateShapes(), Device(), options)
-                       .has_value());
+      EXPECT_EQ(EstimateGroupQueryAttentionWorkspace(
+                    non_windowed_config, SeparateShapes(), Device(), options)
+                    .has_value(),
+                test_case.expected > 0);
     }
   });
 }
@@ -487,16 +576,189 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, GetCapabilityBudgetUsesLevel1Esti
   }
 }
 
-TEST(GroupQueryAttentionWorkspaceEstimateTest, NonWindowedTotalKvAndAliasingAreUnavailable) {
+TEST(GroupQueryAttentionWorkspaceEstimateTest, CapacityAwarePartitioningRequiresProvenEstimate) {
+  if (!HasCudaDevice()) {
+    GTEST_SKIP() << "A CUDA device is required for the budget integration test.";
+  }
+
+  ScopedEnvironmentVariables scoped_env_vars{{{"ORT_ENABLE_XQA", "0"}}};
+  const std::string model_bytes = BuildGroupQueryAttentionKernelModel(
+      /*sliding_window_cache=*/false, /*include_head_sink=*/false);
+
+  struct Case {
+    int kernel_selection;
+    const char* envelope;
+    bool expect_cuda;
+  };
+  for (const auto& test_case : {
+           Case{kMath, nullptr, false},
+           Case{kCudnn, "512", false},
+           Case{kMath, "512", true},
+       }) {
+    SCOPED_TRACE(testing::Message()
+                 << "kernel=" << test_case.kernel_selection
+                 << " envelope=" << (test_case.envelope == nullptr ? "<unset>" : test_case.envelope));
+    SessionOptions session_options;
+    session_options.graph_optimization_level = TransformerLevel::Default;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsResourceCudaPartitioningSettings, "1048576,"));
+    if (test_case.envelope != nullptr) {
+      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+          kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength, test_case.envelope));
+    }
+
+    CUDAExecutionProviderInfo provider_info;
+    provider_info.sdpa_kernel = test_case.kernel_selection;
+    InferenceSessionWrapper session(session_options, GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+        std::make_shared<CUDAExecutionProvider>(provider_info)));
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    const Node* node = FindNodeByOpType(session.GetGraph(), "GroupQueryAttention");
+    ASSERT_NE(node, nullptr);
+    EXPECT_EQ(node->GetExecutionProviderType() == kCudaExecutionProvider,
+              test_case.expect_cuda);
+  }
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, NonWindowedWithoutEnvelopeIsUnavailable) {
   AttentionKernelOptions options;
   options.InitializeOnce(kMath, true);
   auto config = Config();
   config.sliding_window_cache = false;
   config.local_window_size = -1;
+  // total_sequence_length is a runtime scalar. Without the declared KV-length
+  // envelope the non-windowed estimate cannot bound the present length, so it
+  // declines -- the behavior before the envelope knob existed.
   EXPECT_FALSE(EstimateGroupQueryAttentionWorkspace(
                    config, SeparateShapes(/*sequence=*/1, /*head=*/64, /*capacity=*/128),
                    Device(), options)
                    .has_value());
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, NonWindowedEnvelopeBoundsWorkspace) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kMath, true);
+  auto config = Config();
+  config.sliding_window_cache = false;
+  config.local_window_size = -1;
+  config.max_total_sequence_length = 512;
+  const auto estimate = EstimateGroupQueryAttentionWorkspace(
+      config, SeparateShapes(/*sequence=*/4, /*head=*/64, /*capacity=*/256),
+      Device(), options);
+  ASSERT_TRUE(estimate.has_value());
+  EXPECT_GT(estimate->total_workspace_bytes, 0u);
+
+  // The envelope is the KV length the estimate is taken over, so raising it
+  // cannot lower the bound.
+  auto larger = config;
+  larger.max_total_sequence_length = 1024;
+  const auto larger_estimate = EstimateGroupQueryAttentionWorkspace(
+      larger, SeparateShapes(/*sequence=*/4, /*head=*/64, /*capacity=*/256),
+      Device(), options);
+  ASSERT_TRUE(larger_estimate.has_value());
+  EXPECT_GE(larger_estimate->total_workspace_bytes, estimate->total_workspace_bytes);
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, NonWindowedStaticCacheCapacityBoundsPreservation) {
+  CheckNonWindowedStaticCacheCapacityBound(kMath, GQABackend::Unfused);
+}
+
+#if USE_MEMORY_EFFICIENT_ATTENTION
+TEST(GroupQueryAttentionWorkspaceEstimateTest, NonWindowedStaticCacheCapacityBoundsMeaExpansion) {
+  CheckNonWindowedStaticCacheCapacityBound(
+      static_cast<int>(AttentionBackend::EFFICIENT_ATTENTION), GQABackend::MemoryEfficient);
+}
+#endif
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, NonWindowedEnvelopeCannotBeSmallerThanQueryBound) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kMath, true);
+  auto config = Config();
+  config.sliding_window_cache = false;
+  config.local_window_size = -1;
+  config.max_total_sequence_length = 3;
+  EXPECT_FALSE(EstimateGroupQueryAttentionWorkspace(
+                   config, SeparateShapes(/*sequence=*/4, /*head=*/64, /*capacity=*/1024),
+                   Device(), options)
+                   .has_value());
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, NonWindowedStaticCacheCapacityMustFitInt32) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kMath, true);
+  auto config = Config();
+  config.sliding_window_cache = false;
+  config.local_window_size = -1;
+  config.max_total_sequence_length = 512;
+  const int64_t capacity = static_cast<int64_t>(std::numeric_limits<int32_t>::max()) + 1;
+  EXPECT_FALSE(EstimateGroupQueryAttentionWorkspace(
+                   config, SeparateShapes(/*sequence=*/1, /*head=*/64, capacity),
+                   Device(), options)
+                   .has_value());
+}
+
+TEST(GroupQueryAttentionWorkspaceBoundsTest, PartialAliasPreservationAddsFullPastCopy) {
+  auto bounds = Bounds();
+  bounds.reachable_backends = GQAReachableBackend::Unfused;
+  const auto without = GetGQAWorkspaceAggregateForBounds(bounds);
+  ASSERT_TRUE(without.status.IsOK());
+  EXPECT_GT(without.total_workspace_bytes, 0u);
+
+  // Non-windowed partial aliasing copies the full past cache, which stacks on
+  // top of the selected route's workspace rather than replacing it.
+  bounds.account_partial_alias_preservation = true;
+  const auto with_copy = GetGQAWorkspaceAggregateForBounds(bounds);
+  ASSERT_TRUE(with_copy.status.IsOK());
+
+  const size_t expected_copy =
+      static_cast<size_t>(bounds.batch_size_bound) *
+      static_cast<size_t>(bounds.kv_num_heads) *
+      static_cast<size_t>(bounds.present_kv_cache_capacity_bound) *
+      static_cast<size_t>(bounds.head_size_bound) * bounds.cache_element_size;
+  EXPECT_EQ(with_copy.total_workspace_bytes,
+            without.total_workspace_bytes + expected_copy);
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, DispatchPolicyIsReaderOnlyForBothCacheModes) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kMath, true);
+  for (bool windowed : {false, true}) {
+    SCOPED_TRACE(windowed);
+    auto config = Config();
+    EXPECT_EQ(config.dispatch_policy, KernelDispatchPolicy::Auto);
+    config.sliding_window_cache = windowed;
+    config.local_window_size = windowed ? 256 : -1;
+    config.max_total_sequence_length = windowed ? 0 : 512;
+    const auto baseline = EstimateGroupQueryAttentionWorkspace(
+        config, SeparateShapes(), Device(), options);
+    ASSERT_TRUE(baseline.has_value());
+    for (const auto policy : {KernelDispatchPolicy::Auto, KernelDispatchPolicy::Latency,
+                              KernelDispatchPolicy::Memory, KernelDispatchPolicy::Safe}) {
+      config.dispatch_policy = policy;
+      const auto estimate = EstimateGroupQueryAttentionWorkspace(
+          config, SeparateShapes(), Device(), options);
+      ASSERT_TRUE(estimate.has_value());
+      EXPECT_EQ(estimate->total_workspace_bytes, baseline->total_workspace_bytes);
+      EXPECT_EQ(estimate->sized_backends, baseline->sized_backends);
+    }
+  }
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, DispatchPolicyDoesNotEnableUnspecifiedEnvelope) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kMath, true);
+  auto config = Config();
+  config.sliding_window_cache = false;
+  config.local_window_size = -1;
+  for (const auto policy : {KernelDispatchPolicy::Latency, KernelDispatchPolicy::Memory,
+                            KernelDispatchPolicy::Safe, KernelDispatchPolicy::Auto}) {
+    config.dispatch_policy = policy;
+    EXPECT_FALSE(EstimateGroupQueryAttentionWorkspace(
+                     config, SeparateShapes(), Device(), options)
+                     .has_value());
+  }
 }
 
 TEST(GroupQueryAttentionWorkspaceEstimateTest, RejectsCacheCapacityDifferentFromWindow) {

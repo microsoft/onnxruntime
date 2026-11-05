@@ -207,7 +207,8 @@ Status FusedConvFp16::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
     packed_W_size_ = MlasHalfGemmPackBSize(group_output_channels, kernel_dim, false);
     if (packed_W_size_ != 0) {
       size_t packed_W_data_size = SafeInt<size_t>(group_count) * packed_W_size_;
-      auto* packed_W = static_cast<MLFloat16*>(alloc->Alloc(packed_W_data_size));
+      // MlasHalfGemmPackBSize returns bytes, so step through the buffer in bytes.
+      auto* packed_W = static_cast<std::byte*>(alloc->Alloc(packed_W_data_size));
 
       // Initialize memory to 0 as there could be some padding associated with pre-packed
       // buffer memory and we don not want it uninitialized and generate different hashes
@@ -667,7 +668,7 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
           gemm_params.A = AData;
           gemm_params.lda = lda;
           if (packed_W_buffer_) {
-            gemm_params.B = static_cast<const MLFloat16*>(packed_W_buffer_.get()) + group_id * packed_W_size_,
+            gemm_params.B = static_cast<const std::byte*>(packed_W_buffer_.get()) + group_id * packed_W_size_;
             gemm_params.ldb = 0;
           } else {
             gemm_params.B = reordered_W + group_id * group_output_channels,
@@ -675,7 +676,7 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
           }
           gemm_params.C = worker_output + group_id * group_output_channels;
           gemm_params.ldc = static_cast<size_t>(M);
-          gemm_params.Bias = Bdata;
+          gemm_params.Bias = Bdata == nullptr ? nullptr : Bdata + group_id * group_output_channels;
           gemm_params.OutputProcessor = (!channels_last_ && sum_data) ? nullptr : &act;  // process fused activation and add
           gemm_params.BackendKernelSelectorConfig = &mlas_backend_kernel_selector_config_;
 
