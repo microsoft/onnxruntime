@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -133,7 +135,11 @@ extern "C" void ortenv_setup() {
       }
 
 #if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP) && defined(ORT_UNIT_TEST_CUDA_PLUGIN_EP_LIBRARY_PATH)
-      if (!dynamic_plugin_ep_config_json.has_value()) {
+      const char* cuda_visible_devices = std::getenv("CUDA_VISIBLE_DEVICES");
+      const bool cuda_devices_disabled =
+          cuda_visible_devices != nullptr &&
+          (cuda_visible_devices[0] == '\0' || std::strcmp(cuda_visible_devices, "-1") == 0);
+      if (!dynamic_plugin_ep_config_json.has_value() && !cuda_devices_disabled) {
         dynamic_plugin_ep_config_json.emplace(
             "{\n"
             "  \"ep_library_registration_name\": \"CUDAExecutionProvider\",\n"
