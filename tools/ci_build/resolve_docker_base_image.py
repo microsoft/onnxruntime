@@ -2,7 +2,13 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-"""Resolve shared Docker base-image pins before building or calculating cache keys."""
+"""Resolve shared Docker base-image pins before building or calculating cache keys.
+
+With --family alone, stdout is an immutable repository@sha256:digest reference.
+With --dockerfile, stdout is one line of shell-quoted Docker build arguments,
+preserving supplied arguments and adding the configured BASEIMAGE if needed.
+Resolution errors go to stderr with a nonzero exit code and no result on stdout.
+"""
 
 import argparse
 import json
@@ -78,7 +84,6 @@ def main():
     parser.add_argument("--family", default="", help="Image family from base-images.json.")
     parser.add_argument("--dockerfile", help="Dockerfile whose default family should be used.")
     parser.add_argument("--build-args", default="", help="Additional Docker build arguments.")
-    parser.add_argument("--github-output", type=Path, help="Append resolved build-args to this GitHub output file.")
     args = parser.parse_args()
     try:
         if args.dockerfile:
@@ -91,11 +96,7 @@ def main():
             raise ValueError("Resolved Docker arguments must be a single line")
     except (KeyError, ValueError, OSError) as error:
         return parser.error(str(error))
-    if args.github_output:
-        with args.github_output.open("a", encoding="utf-8") as stream:
-            stream.write(f"build-args={result}\n")
-    else:
-        print(result)
+    print(result)
 
 
 if __name__ == "__main__":

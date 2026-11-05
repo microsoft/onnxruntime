@@ -37,6 +37,14 @@ Both call `resolve_docker_base_image.py`, using the Dockerfile's configured
 default when no family or explicit `BASEIMAGE` argument is supplied.
 Unknown families and conflicting family/explicit-image selections fail.
 
+The resolver CLI writes a single line to stdout: with `--family` alone, an
+immutable `repository@sha256:digest` reference; with `--dockerfile`, shell-quoted
+Docker build arguments, retaining supplied arguments and adding the configured
+`BASEIMAGE` if needed. The GitHub wrapper captures that line and appends
+`build-args=<resolved arguments>` to `$GITHUB_OUTPUT`, exposing
+`steps.resolve.outputs.build-args` to the next step. Resolution failures exit
+before any step output is written.
+
 The GitHub wrapper resolves the digest before invoking the existing Docker
 action, so the digest enters its build-argument cache key. A manifest update
 therefore invalidates the appropriate derived-image cache without changing the

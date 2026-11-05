@@ -34,11 +34,14 @@ runs:
         BASE_IMAGE_FAMILY: ${{ inputs.base-image-family }}
         BUILD_ARGS: ${{ inputs.build-args }}
       run: |
-        python3 "$GITHUB_WORKSPACE/tools/ci_build/resolve_docker_base_image.py" \
+        # The resolver prints shell-quoted Docker build arguments to stdout.
+        # Publish them as steps.resolve.outputs.build-args so the Docker action
+        # below includes the resolved BASEIMAGE digest in its cache key.
+        build_args="$(python3 "$GITHUB_WORKSPACE/tools/ci_build/resolve_docker_base_image.py" \
           --dockerfile "$DOCKERFILE" \
           --family "$BASE_IMAGE_FAMILY" \
-          --build-args="$BUILD_ARGS" \
-          --github-output "$GITHUB_OUTPUT"
+          --build-args="$BUILD_ARGS")"
+        printf 'build-args=%s\n' "$build_args" >> "$GITHUB_OUTPUT"
     - name: Build Docker image
       id: build
       uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
