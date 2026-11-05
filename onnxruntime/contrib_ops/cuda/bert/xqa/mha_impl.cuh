@@ -89,7 +89,7 @@ constexpr uint32_t cvtExpansion = exactDiv(inputElemSize, cacheElemSize);
 constexpr uint32_t preferedKHeadPartBytes = 64;
 __constant__ constexpr uint32_t cacheVTileSeqLen = 32;
 #else
-#if __CUDA_ARCH__ == 860 || __CUDA_ARCH__ == 890 || __CUDA_ARCH__ == 1200
+#if __CUDA_ARCH__ == 860 || __CUDA_ARCH__ == 890 || __CUDA_ARCH__ == 1200 || __CUDA_ARCH__ == 1210
 constexpr uint32_t preferedKHeadPartBytes = 64;
 __constant__ constexpr uint32_t cacheVTileSeqLen = 32;
 #elif __CUDA_ARCH__ == 800 || __CUDA_ARCH__ == 870 || __CUDA_ARCH__ == 900
@@ -1697,6 +1697,8 @@ CUBIN_EXPORT __global__
           if constexpr (!syncKTileEarly) {
             // synchronize k
             ldgsts::waitGroup<1>();
+            // Each lane waits only for its own copies; the K tile is read by the whole warp.
+            __syncwarp();
           }
           const SharedMem::QSmemBuffer& smemQ = smem.q[warpIdx.y][0];
           constexpr uint32_t qOffsetPerPart = exactDiv(elemsPerKHeadPart, inputElemsPerGrain);
@@ -1794,10 +1796,10 @@ CUBIN_EXPORT __global__
       smem.warpRowSum[warpIdx.y][warpIdx.x].storeFromReg<false>(warp, regRowSum);
       unused(xBar.produced.arrive());
     }
-#if defined(XQA_PAGED_INT4)
+    // The last K prefetch (the initial one if this CTA has no tiles) may still be in flight. Land it before the
+    // post-processing warps reuse the shared memory.
     ldgsts::waitGroup<0>();
     __syncthreads();
-#endif
   } else {
     assert(warpIdx.z == 1);
 #if CTA_ROW_MAX_BACKWARD_METHOD == 3
@@ -1999,6 +2001,8 @@ CUBIN_EXPORT __global__
 #else
       assert(!alreadyComplete);
       ldgsts::waitGroup<nbVBuffers - 1>();
+      // Each lane waits only for its own copies; the V tile is read by the whole warp.
+      __syncwarp();
 #endif
     };
     auto testVTileLoad = [&](uint32_t idxVBar, ParityOrNone<grpLoadV> parity) { return test_wait_parity<grpLoadV>(getSmemVBar(idxVBar), parity); };
@@ -2222,10 +2226,9 @@ CUBIN_EXPORT __global__
     }
     const GemmOutRegTile outTile = toFp16(acc);
 
-#if defined(XQA_PAGED_INT4)
+    // cp.async groups are tracked per thread: land the copies of all lanes before the shared memory is reused.
     ldgsts::waitGroup<0>();
     __syncwarp();
-#endif
     auto mergeAndSaveOutTile = [&](const GemmOutRegTile& tile, bool reorder) {
       if constexpr (gemm1NbWarpGrps == 1) {
         // swizzle in shared memory and write output global memory
@@ -2250,6 +2253,7 @@ CUBIN_EXPORT __global__
 
     // merge results from different warp groups
     SharedMem::XSmemBuffer* smemOutTile = mergeAndSaveOutTile(outTile, inputElemSize == 2 && cacheElemSize == 1);
+    bool isLastCta = true;
     if (isMultiBlock) {
       static_assert(ctaShapeInWarps.y == 1, "not implemented");
 #if SPEC_DEC
@@ -2315,10 +2319,9 @@ CUBIN_EXPORT __global__
       __syncthreads();
 
       // merge if we are the last CTA.
-      const bool isLastCta = mbsmem.isLastCta;
-#if defined(XQA_PAGED_INT4)
+      isLastCta = mbsmem.isLastCta;
+      // Latch the flag in every thread before reusing its shared memory for the reduction.
       __syncthreads();
-#endif
       if (isLastCta) {
         MultiBlockSMem::MBBuf& mbbuf = mbsmem.storage[warpIdx.y];
         SMemWarpRowMax& smemRowMax = reinterpret_cast<SMemWarpRowMax&>(smem);
@@ -2333,9 +2336,8 @@ CUBIN_EXPORT __global__
         // rescale and accumulate
         auto getTileBuf = [&](auto& buffers, uint32_t d) -> decltype(buffers[0][0][0])& { return buffers[warpGrpIdx][warpIdxInGrp][d]; };
         auto loadBufAsync = [&](uint32_t n) {
-#if defined(XQA_PAGED_INT4)
+          // All lanes must be done reading the tile buffer that this load overwrites.
           __syncwarp();
-#endif
           const uint32_t d = n / gemm1NbWarpGrps % nbTileBuffers;
           SharedMem::XSmemBuffer& dstTile = getTileBuf(mbbuf.tiles, d);
           SMemWarpRowMax& dstRowSum = getTileBuf(mbbuf.tileRowSums, d);
@@ -2360,9 +2362,8 @@ CUBIN_EXPORT __global__
           }
           ldgsts::commitGroup();
           ldgsts::waitGroup<1>();
-#if defined(XQA_PAGED_INT4)
+          // Each lane waits only for its own copies; the tile is read by the whole warp.
           __syncwarp();
-#endif
           const uint32_t d = n / gemm1NbWarpGrps % nbTileBuffers;
           WarpAcc tile = toWarpAcc(loadGemmOutTile(warp, mbbuf.tiles[warpGrpIdx][warpIdxInGrp][d]));
           const ThrdRegRowMax tileRowMax = getTileBuf(mbbuf.tileRowMax, d).loadToReg<false>(warp);
@@ -2411,7 +2412,8 @@ CUBIN_EXPORT __global__
         smemOutTile = mergeAndSaveOutTile(mergedOutTile, false);
       }
     }
-    if (warpGrpIdx == 0) {
+    // Non-final CTAs must not overwrite the merged output with their partial results.
+    if (isLastCta && warpGrpIdx == 0) {
 #if SPEC_DEC
       copyOutputToGlobalMem(warp, &output[reqSeqOffset * nbQHeads], nbQHeads, headGrpSize,
                             (idxHeadGrp * headGrpSize), nbValidHeadTokens, actualQSeqLen,
@@ -2574,7 +2576,7 @@ void launchMHA(const cudaDeviceProp& prop, uint32_t nbKHeads,
     uint32_t size;
     checkCuda(cudaMemcpyFromSymbol(&size, smemSize, sizeof(smemSize)));
     // Defensive backstop: the kernel's shared-memory footprint is fixed at compile time for its
-    // target SM (sm_80/sm_90 use a larger K/V-tile layout than sm_86/sm_89/sm_120). When such a
+    // target SM (sm_80/sm_90 use a larger K/V-tile layout than sm_86/sm_89/sm_120/sm_121). When such a
     // kernel is JIT-compiled from PTX onto a device with a smaller per-block opt-in limit (e.g.
     // consumer Blackwell sm_120, ~99 KB), cudaFuncSetAttribute below returns cudaErrorInvalidValue.
     // The GQA dispatcher already skips XQA in that case (see GetXQARequiredSharedMemoryBytes); this
@@ -2585,7 +2587,8 @@ void launchMHA(const cudaDeviceProp& prop, uint32_t nbKHeads,
           " bytes of shared memory per block but this GPU allows only " +
           std::to_string(prop.sharedMemPerBlockOptin) +
           " bytes. Build ONNX Runtime with the device's native CUDA architecture (e.g. add 120 to "
-          "CMAKE_CUDA_ARCHITECTURES for sm_120 / RTX 50-series) or disable XQA (ORT_ENABLE_XQA=0).");
+          "CMAKE_CUDA_ARCHITECTURES for sm_120 / RTX 50-series, or 121 for sm_121 / DGX Spark) or "
+          "disable XQA (ORT_ENABLE_XQA=0).");
     }
     checkCuda(cudaFuncSetAttribute(kernel_mha, cudaFuncAttributeMaxDynamicSharedMemorySize, size));
     return size;

@@ -23,6 +23,10 @@ file(GLOB_RECURSE CUDA_EP_CU_SRCS CONFIGURE_DEPENDS
 file(GLOB_RECURSE CUDA_CONTRIB_OPS_CC_SRCS CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cc"
 )
+if(NOT onnxruntime_ENABLE_MLAS_QMOE_OFFLOAD)
+  list(APPEND CUDA_CONTRIB_OPS_CC_SRCS
+     "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/moe/qmoe_shared_layout.cc")
+endif()
 
 file(GLOB_RECURSE CUDA_CONTRIB_OPS_CU_SRCS CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cu"
@@ -214,6 +218,7 @@ if (MSVC)
     )
 
     target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
+        "$<$<COMPILE_LANGUAGE:CXX>:/bigobj>"
         "$<$<COMPILE_LANGUAGE:CXX>:/Zc:preprocessor>"
         # /permissive is required for CUTLASS cute headers (cute::stride.hpp, cute::Layout etc.)
         "$<$<COMPILE_LANGUAGE:CXX>:/permissive>"

@@ -62,12 +62,37 @@ std::optional<size_t> EstimateMatMulNBitsWorkspaceForTest(
 #endif
 
 common::Status LoadCudaExternalDataForTest(
+    const void* loader, const RandomAccessFile& file,
+    FileOffsetType offset, SafeInt<size_t> length, void* tensor) {
+#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_CUDA_MINIMAL)
+  return static_cast<const cuda::ExternalDataLoader*>(loader)->LoadTensor(
+      file, offset, length, *static_cast<Tensor*>(tensor));
+#else
+  ORT_UNUSED_PARAMETER(loader);
+  ORT_UNUSED_PARAMETER(file);
+  ORT_UNUSED_PARAMETER(offset);
+  ORT_UNUSED_PARAMETER(length);
+  ORT_UNUSED_PARAMETER(tensor);
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Not supported in minimal builds.");
+#endif
+}
+
+common::Status LoadCudaExternalDataForTest(
     const void* loader, const Env& env, const std::filesystem::path& path,
     FileOffsetType offset, SafeInt<size_t> length, void* tensor) {
+#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_CUDA_MINIMAL)
   std::unique_ptr<RandomAccessFile> file;
   ORT_RETURN_IF_ERROR(env.OpenRandomAccessFile(path.c_str(), file));
-  return static_cast<const cuda::ExternalDataLoader*>(loader)->LoadTensor(
-      *file, offset, length, *static_cast<Tensor*>(tensor));
+  return LoadCudaExternalDataForTest(loader, *file, offset, length, tensor);
+#else
+  ORT_UNUSED_PARAMETER(loader);
+  ORT_UNUSED_PARAMETER(env);
+  ORT_UNUSED_PARAMETER(path);
+  ORT_UNUSED_PARAMETER(offset);
+  ORT_UNUSED_PARAMETER(length);
+  ORT_UNUSED_PARAMETER(tensor);
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Not supported in minimal builds.");
+#endif
 }
 
 }  // namespace onnxruntime::test
