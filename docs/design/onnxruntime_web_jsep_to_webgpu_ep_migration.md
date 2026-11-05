@@ -56,7 +56,7 @@ and decisions.
 |---|---|---|
 | Phase 0: deprecation announcement and contribution freeze | Done | |
 | Phase 0: blocking native-WebGPU baseline CI | Done | |
-| Phase 0: native-WebGPU IO-binding and proxy CI ([#33842](https://github.com/microsoft/onnxruntime/pull/33842)) | In progress | Merge the validated CI coverage changes. |
+| Phase 0: native-WebGPU IO-binding and proxy CI | Done ([#33842](https://github.com/microsoft/onnxruntime/pull/33842)) | |
 | Phase 0: build configuration parity (§7) | Planned | Measure builds A/B/C and choose the operator/type coverage policy. |
 | Phase 0: GPU IO-binding parity (§8.2) | Planned | Establish zero-copy handoff and lifetime guarantees beyond correctness-suite coverage. |
 | Phase 0: WebNN initialization coverage (§8.3) | Planned | Add and validate blocking coverage in a WebNN-capable browser environment. |
