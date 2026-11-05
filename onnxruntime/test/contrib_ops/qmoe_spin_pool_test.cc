@@ -9,7 +9,9 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <future>
 #include <memory>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -50,26 +52,29 @@ int64_t SumWithPool(qmoe::SpinPool& pool, ptrdiff_t count) {
 constexpr const char* kWorkerThreadName = "qmoe-spin";
 
 // Worker threads are only observable through /proc, so tests that need the real thread count are Linux-only.
-int CountThreadsNamed(const std::string& name) {
-  int count = 0;
+std::set<std::filesystem::path> ThreadsNamed(const std::string& name) {
+  std::set<std::filesystem::path> threads;
   std::error_code ec;
   std::filesystem::directory_iterator end;
   for (std::filesystem::directory_iterator it("/proc/self/task", ec); !ec && it != end; it.increment(ec)) {
     std::ifstream comm(it->path() / "comm");
     std::string value;
-    if (comm && std::getline(comm, value) && value == name) ++count;
+    if (comm && std::getline(comm, value) && value == name) threads.insert(it->path());
   }
-  return count;
+  return threads;
 }
 
-// Thread names are set by the thread itself and a joined thread can linger in /proc for a moment, so poll.
-bool WaitForThreadCount(const std::string& name, int expected) {
+// Exclude baseline thread IDs: a previously joined thread can disappear from /proc after the snapshot.
+bool WaitForThreadCount(const std::string& name, size_t expected,
+                        const std::set<std::filesystem::path>& baseline) {
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-  while (CountThreadsNamed(name) != expected) {
+  for (;;) {
+    auto threads = ThreadsNamed(name);
+    for (const auto& thread : baseline) threads.erase(thread);
+    if (threads.size() == expected) return true;
     if (std::chrono::steady_clock::now() > deadline) return false;
     std::this_thread::sleep_for(std::chrono::milliseconds(2));
   }
-  return true;
 }
 #endif
 
@@ -161,37 +166,58 @@ TEST(QMoESpinPoolRegistryTest, NameCurrentThreadSetsTheCallingThreadName) {
 }
 
 TEST(QMoESpinPoolRegistryTest, ShutdownJoinsWorkerThreads) {
-  const int baseline = CountThreadsNamed(kWorkerThreadName);
+  const auto baseline = ThreadsNamed(kWorkerThreadName);
   qmoe::SpinPoolRegistry registry;
 
   // A pool with N participants owns N - 1 worker threads; the caller is the remaining participant.
   qmoe::SpinPool& pool = registry.GetOrCreate(5, MakePool);
-  ASSERT_TRUE(WaitForThreadCount(kWorkerThreadName, baseline + 4));
+  ASSERT_TRUE(WaitForThreadCount(kWorkerThreadName, 4, baseline));
   EXPECT_EQ(SumWithPool(pool, 1000), 999 * 1000 / 2);
 
   registry.GetOrCreate(3, MakePool);
-  ASSERT_TRUE(WaitForThreadCount(kWorkerThreadName, baseline + 4 + 2));
+  ASSERT_TRUE(WaitForThreadCount(kWorkerThreadName, 4 + 2, baseline));
 
   registry.Shutdown();
-  ASSERT_TRUE(WaitForThreadCount(kWorkerThreadName, baseline));
+  ASSERT_TRUE(WaitForThreadCount(kWorkerThreadName, 0, baseline));
 
   // The threads come back with the pools.
   qmoe::SpinPool& rebuilt = registry.GetOrCreate(5, MakePool);
-  ASSERT_TRUE(WaitForThreadCount(kWorkerThreadName, baseline + 4));
+  ASSERT_TRUE(WaitForThreadCount(kWorkerThreadName, 4, baseline));
   EXPECT_EQ(SumWithPool(rebuilt, 1000), 999 * 1000 / 2);
 
   registry.Shutdown();
-  ASSERT_TRUE(WaitForThreadCount(kWorkerThreadName, baseline));
+  ASSERT_TRUE(WaitForThreadCount(kWorkerThreadName, 0, baseline));
 }
 
 TEST(QMoESpinPoolRegistryTest, DestroyingTheRegistryJoinsWorkerThreads) {
-  const int baseline = CountThreadsNamed(kWorkerThreadName);
+  const auto baseline = ThreadsNamed(kWorkerThreadName);
   {
     qmoe::SpinPoolRegistry registry;
     registry.GetOrCreate(4, MakePool);
-    ASSERT_TRUE(WaitForThreadCount(kWorkerThreadName, baseline + 3));
+    ASSERT_TRUE(WaitForThreadCount(kWorkerThreadName, 3, baseline));
   }
-  ASSERT_TRUE(WaitForThreadCount(kWorkerThreadName, baseline));
+  ASSERT_TRUE(WaitForThreadCount(kWorkerThreadName, 0, baseline));
+}
+
+TEST(QMoESpinPoolRegistryTest, IgnoresThreadsThatExitAfterBaseline) {
+  std::promise<void> thread_named;
+  std::promise<void> finish;
+  auto finished = finish.get_future();
+  std::thread transient([&] {
+    qmoe::NameCurrentThread(kWorkerThreadName);
+    thread_named.set_value();
+    finished.wait();
+  });
+  thread_named.get_future().wait();
+  const auto baseline = ThreadsNamed(kWorkerThreadName);
+  finish.set_value();
+  transient.join();
+  ASSERT_FALSE(baseline.empty());
+
+  auto pool = MakePool(3);
+  ASSERT_TRUE(WaitForThreadCount(kWorkerThreadName, 2, baseline));
+  pool.reset();
+  ASSERT_TRUE(WaitForThreadCount(kWorkerThreadName, 0, baseline));
 }
 #endif
 
