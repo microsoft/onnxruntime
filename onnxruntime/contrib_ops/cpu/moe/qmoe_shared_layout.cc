@@ -613,7 +613,17 @@ void ScalarMxfp4GemmRange(const uint8_t* weights, const uint8_t* block_scales, f
 }
 #endif
 
+std::atomic<bool> g_disable_avx512_for_testing{false};
+
 }  // namespace
+
+void SetDisableAvx512ForTesting(bool disable) noexcept {
+  g_disable_avx512_for_testing.store(disable, std::memory_order_relaxed);
+}
+
+bool IsAvx512DisabledForTesting() noexcept {
+  return g_disable_avx512_for_testing.load(std::memory_order_relaxed);
+}
 
 bool CompilerHasAvx512() noexcept {
 #if QMOE_COMPILER_SUPPORTS_AVX512
@@ -626,13 +636,20 @@ bool CompilerHasAvx512() noexcept {
 bool CpuHasAvx512() {
 #if QMOE_COMPILER_SUPPORTS_AVX512 && QMOE_SHARED_ARCH_X86_64
   static const bool has = []() {
+    // Setting ORT_QMOE_CPU_DISABLE_AVX512=1 disables AVX-512 dispatch so INT4/INT3 cold-expert
+    // GEMMs and FP16/BF16 row conversions fall back to AVX2+FMA+F16C (when available), while
+    // NVFP4/MXFP4 cold-expert GEMMs fall back to scalar.
+    const char* env = std::getenv("ORT_QMOE_CPU_DISABLE_AVX512");
+    if (env != nullptr && env[0] == '1' && env[1] == '\0') {
+      return false;
+    }
 #if defined(QMOE_SHARED_USE_MLAS)
     return MlasPlatformAvx512Supported();
 #else
     return DetectRuntimeAvx512CpuSupport();
 #endif
   }();
-  return has;
+  return has && !g_disable_avx512_for_testing.load(std::memory_order_relaxed);
 #else
   return false;
 #endif
@@ -3175,6 +3192,7 @@ int64_t qmoe_shared_block_bytes(int64_t hidden, int64_t inter) {
 
 int qmoe_shared_cpu_has_avx512(void) { return CpuHasAvx512() ? 1 : 0; }
 int qmoe_shared_cpu_has_avx2(void) { return CpuHasAvx2FmaF16c() ? 1 : 0; }
+void qmoe_shared_set_disable_avx512_for_testing(int disable) { SetDisableAvx512ForTesting(disable != 0); }
 
 int qmoe_shared_accepts_prepack_contract(int64_t weights_prepacked, int64_t block_size) {
   return IsAcceptedPrepackContract(weights_prepacked, block_size) ? 1 : 0;

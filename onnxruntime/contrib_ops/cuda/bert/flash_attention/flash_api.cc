@@ -476,7 +476,8 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        bool is_rotary_interleaved,
                        bool is_packed_qkv,
                        int max_num_blocks_per_seq,
-                       int page_block_size) {
+                       int page_block_size,
+                       const int* seqused_q) {
   auto round_multiple = [](int x, int m) { return (x + m - 1) / m * m; };
   const int head_size_rounded = head_size <= 192 ? round_multiple(head_size, 32) : 256;
   const int seqlen_q_rounded = round_multiple(seqlen_q, 128);
@@ -553,6 +554,7 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
   }
 
   params.is_seqlens_k_cumulative = seqlens_k_ == nullptr;
+  params.seqused_q = seqused_q;
   if (seqlens_k_ != nullptr) {
     params.cu_seqlens_k = static_cast<int*>(seqlens_k_);
   }

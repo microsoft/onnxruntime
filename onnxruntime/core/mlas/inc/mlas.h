@@ -2559,6 +2559,10 @@ struct MlasFlashAttentionGQAArgs {
     // per-(batch, head, q_block) partitioning is used.
     float* flash_decoding_partials;
     int kv_chunk_count;
+
+    // Valid rows per batch for this invocation; sequence_length remains the physical
+    // Q-head/output/bias stride. Negative means all sequence_length rows are valid.
+    int valid_query_length = -1;
 };
 
 /**

@@ -1351,6 +1351,9 @@ AddTest(
   TEST_ARGS ${test_all_args}
 )
 target_include_directories(onnxruntime_test_all PRIVATE ${ONNXRUNTIME_ROOT}/core/flatbuffers/schema) # ort.fbs.h
+if(onnxruntime_ENABLE_DLPACK)
+  target_link_libraries(onnxruntime_test_all PRIVATE dlpack::dlpack)
+endif()
 
 if(onnxruntime_USE_CUDA AND NOT onnxruntime_MINIMAL_BUILD)
   target_link_libraries(onnxruntime_test_all PRIVATE CUDA::cuda_driver)
@@ -2568,7 +2571,7 @@ endif()
     target_link_libraries(compare_two_sessions PRIVATE ${GETOPT_LIB_WIDE} tdh Advapi32)
   endif()
 
-  if(NOT onnxruntime_target_platform STREQUAL "ARM64EC")
+  if(NOT onnxruntime_target_platform STREQUAL "ARM64EC" AND NOT onnxruntime_target_platform STREQUAL "S390X")
     file(GLOB onnxruntime_mlas_test_src CONFIGURE_DEPENDS
       "${TEST_SRC_DIR}/mlas/unittest/*.h"
       "${TEST_SRC_DIR}/mlas/unittest/*.cpp"

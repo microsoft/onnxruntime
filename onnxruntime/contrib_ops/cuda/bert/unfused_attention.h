@@ -61,6 +61,7 @@ struct UnfusedAttentionParams {
   int q_sequence_length = 0;  // S_q
   int total_kv_length = 0;    // total valid K/V positions (past + new)
   int max_kv_length = 0;      // K/V buffer allocated length for stride (>= total_kv_length)
+  int v_buffer_length = 0;    // Optional distinct physical V stride; 0 uses max_kv_length.
 
   // attn_bias (optional): shape [B or 1, N_q or 1, S_q, total_kv_length] (row-major).
   // When broadcast_dim_0 is true, batch axis is broadcast (shape[0]==1).
@@ -81,6 +82,7 @@ struct UnfusedAttentionParams {
   // Per-batch K lengths (optional). When non-null, positions k >= seqlens_k[b]
   // are masked out (useful for right-padded packed batches).
   const int* seqlens_k = nullptr;
+  const int* query_seqlens = nullptr;  // Optional [B] valid Q lengths, preserving physical S_q strides.
 
   // Composed is_causal + attn_mask fully-masked-row -> 0 guard (onnx/onnx#8068, Bug-2).
   // When a query row's every in-range key is masked by a finite additive-bias sentinel,
