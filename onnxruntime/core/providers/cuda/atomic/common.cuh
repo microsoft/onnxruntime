@@ -17,7 +17,6 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #pragma once
-#include <cuda/std/bit>
 #include <cuda/std/type_traits>
 
 #include "cuda.h"
@@ -411,7 +410,8 @@ struct AddFunc {
       const auto result = static_cast<UnsignedT>(
           static_cast<ArithmeticT>(static_cast<UnsignedT>(a)) +
           static_cast<ArithmeticT>(static_cast<UnsignedT>(b)));
-      return ::cuda::std::bit_cast<T>(result);
+      // C++20 integral conversion preserves the wrapped value modulo 2^N.
+      return static_cast<T>(result);
     }
 
     return a + b;
@@ -428,7 +428,7 @@ struct MulFunc {
       const auto result = static_cast<UnsignedT>(
           static_cast<ArithmeticT>(static_cast<UnsignedT>(a)) *
           static_cast<ArithmeticT>(static_cast<UnsignedT>(b)));
-      return ::cuda::std::bit_cast<T>(result);
+      return static_cast<T>(result);
     }
 
     return a * b;

@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <ctime>
+#include <initializer_list>
 #include <limits>
 #include <memory>
 
@@ -11,6 +12,11 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/util/include/default_providers.h"
+
+#if defined(USE_CUDA)
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "test/common/cuda_op_test_utils.h"
+#endif
 
 namespace onnxruntime {
 namespace test {
@@ -744,6 +750,45 @@ TEST(ScatterElements, ContentionBoolLogical) {
   test.ConfigEp(std::move(cuda_ep)).RunWithConfig();
 #endif
 }
+
+#if defined(USE_CUDA)
+template <typename T>
+class CudaScatterElementsReductionWrapTest : public ::testing::Test {};
+
+using CudaScatterElementsReductionWrapTypes = ::testing::Types<int8_t, int16_t, int32_t, int64_t>;
+TYPED_TEST_SUITE(CudaScatterElementsReductionWrapTest, CudaScatterElementsReductionWrapTypes);
+
+template <typename T>
+void RunCudaScatterElementsReductionWrap(const char* reduction, std::initializer_list<T> data,
+                                         std::initializer_list<T> updates, std::initializer_list<T> expected) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA device is required for signed ScatterElements reduction wraparound.";
+  }
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  OpTester test("ScatterElements", 18);
+  test.AddAttribute("reduction", reduction);
+  test.AddInput<T>("data", {4}, data.begin(), data.size());
+  test.AddInput<int64_t>("indices", {4}, {0, 1, 2, 3});
+  test.AddInput<T>("updates", {4}, updates.begin(), updates.size());
+  test.AddOutput<T>("output", {4}, expected.begin(), expected.size());
+  test.Config(options).ConfigEp(DefaultCudaExecutionProvider()).RunWithConfig();
+}
+
+TYPED_TEST(CudaScatterElementsReductionWrapTest, Add) {
+  constexpr TypeParam low = std::numeric_limits<TypeParam>::min();
+  constexpr TypeParam high = std::numeric_limits<TypeParam>::max();
+  RunCudaScatterElementsReductionWrap<TypeParam>("add", {high, low, -1, 1}, {1, -1, high, high},
+                                                 {low, high, high - 1, low});
+}
+
+TYPED_TEST(CudaScatterElementsReductionWrapTest, Mul) {
+  constexpr TypeParam low = std::numeric_limits<TypeParam>::min();
+  constexpr TypeParam high = std::numeric_limits<TypeParam>::max();
+  RunCudaScatterElementsReductionWrap<TypeParam>("mul", {high, low, -1, -1}, {2, -1, low, high},
+                                                 {-2, low, low, -high});
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

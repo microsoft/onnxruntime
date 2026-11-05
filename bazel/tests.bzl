@@ -163,8 +163,10 @@ def core_tests():
         name = "cuda_operator_test",
         srcs = [
             "onnxruntime/test/providers/cpu/math/element_wise_ops_test.cc",
+            "onnxruntime/test/providers/cpu/math/gemm_test.cc",
             "onnxruntime/test/providers/cpu/math/matmul_test.cc",
             "onnxruntime/test/providers/cpu/nn/conv_op_test.cc",
+            "onnxruntime/test/providers/cpu/tensor/scatter_op_test.cc",
             "tools/bazel/test_main.cc",
         ],
         data = native.glob(["onnxruntime/test/testdata/**"]),

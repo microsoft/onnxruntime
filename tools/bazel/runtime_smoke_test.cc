@@ -6,17 +6,22 @@
 #include <filesystem>
 #include <iostream>
 #include <initializer_list>
+#include <ranges>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "onnxruntime_cxx_api.h"
 #include "onnx/onnx_pb.h"
+#include "absl/types/span.h"
 #if defined(CPUINFO_SUPPORTED)
 #include "core/common/cpuid_info.h"
 #endif
 
 namespace {
+
+static_assert(std::ranges::view<absl::Span<const int>>);
+static_assert(std::ranges::borrowed_range<absl::Span<const int>>);
 
 void SetTensorType(ONNX_NAMESPACE::ValueInfoProto& value, const char* name,
                    std::initializer_list<int64_t> shape) {

@@ -334,7 +334,10 @@ cc_test(
     args = ["$(location go/testdata/add_f32.onnx)"],
     data = ["go/testdata/add_f32.onnx"],
     linkstatic = True,
-    deps = [":runtime"],
+    deps = [
+        ":runtime",
+        "@abseil-cpp//absl/types:span",
+    ],
 )
 
 cc_test(
@@ -402,6 +405,7 @@ cc_test(
     deps = [
         ":api_headers",
         ":runtime_shared",
+        "@abseil-cpp//absl/types:span",
         "@ort_onnx//:onnx",
     ],
 )
@@ -424,7 +428,10 @@ cc_test(
         "manual",
         "requires-gpu",
     ],
-    deps = [":runtime"],
+    deps = [
+        ":runtime",
+        "@abseil-cpp//absl/types:span",
+    ],
 )
 
 cc_test(
@@ -456,6 +463,7 @@ cc_test(
     deps = [
         ":api_headers",
         ":runtime_shared",
+        "@abseil-cpp//absl/types:span",
         "@ort_onnx//:onnx",
     ],
 )

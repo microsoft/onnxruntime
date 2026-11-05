@@ -988,10 +988,12 @@ the host interface installed by the runtime.
 in the default CPU configuration, without requiring CUDA SDKs.
 
 The following combinations have executed the fallback-disabled CUDA test on
-an NVIDIA H200 (`sm_90`), driver 580.159.04, with GCC 13.2 on Azure Linux 3:
+an NVIDIA H200 (`sm_90`), driver 580.159.04, on Azure Linux 3. The CUDA 12.0
+run used GCC 12.2; the other rows used GCC 13.2:
 
 | Toolkit | cuDNN | Result |
 | --- | --- | --- |
+| CUDA 12.0.1, NVCC 12.0.140 | 9.14.0.64 | Static/public-shared Add, MatMul, and Conv passed on GPU; 30 selected operator regressions passed on the integrated test graph. |
 | CUDA 12.8, NVCC 12.8.93 | 9.14.0.64 | Add, MatMul, and Conv passed on GPU. |
 | CUDA 13.0.2, NVCC 13.0.88 | 9.14.0.64 | Add, MatMul, and Conv passed on GPU at `35992fc6ad`; selected existing operator cases also passed. |
 | CUDA 13.3, NVCC 13.3.73 | 9.27.0.42 | Add, MatMul, and Conv passed on GPU. |
@@ -1013,6 +1015,57 @@ GoogleTests, zero skipped; `MissingBiasCUDA` explicitly disables CPU fallback.
 The source build executed 781 actions with 992 cached actions in 258.690 seconds;
 the test command took 27.763 seconds wall. This validates the static-runtime
 operator test, not CUDA provider loading through every shared language binding.
+
+The CUDA 12.0.1 lower-boundary run required source compatibility fixes for
+BF16 raw-bit min/max conversions, host-side half bias-scale comparison,
+Abseil range-trait specialization syntax, and integral atomic conversion
+without newer CCCL `bit_cast`. Range concepts remain enabled. On the
+integrated test graph from the dependent PR, the selected Min/Max and Gemm
+tests plus eight signed ScatterElements add/multiply wraparound tests passed
+(30 tests, no skips). BF16, Gemm, and signed wraparound GPU paths disable CPU
+fallback. ScatterND integer reductions remain unsupported; no new kernel
+support was added.
+
+The dependent target includes the existing `gemm_test.cc` and
+`scatter_op_test.cc` sources, not ScatterND integer reductions. After merging
+foundation `a6de7b83a5`, Windows frozen whole-graph analysis including the six
+manual WASM labels passed: 254 targets, 74,561 configured targets, 84.438 seconds,
+zero actions, `--lockfile_mode=error --jobs=2 --build_python_zip=false -c opt --nobuild`.
+The GPU results below are handed-off native validation; no duplicate native
+or GPU build was performed for this integration.
+
+The private xPack GCC 12.2.0-1 distribution defaults to global stack canaries
+and bundles an assembler too old for existing MLAS instructions. This run
+retained stack protection using TLS canaries and a private `as` symlink to
+host GNU assembler 2.41. CPU flags alone do not configure NVCC's host compiler;
+the matching `rules_cuda` setting is required for this particular profile:
+
+```bash
+# AS_PREFIX is a private directory containing the host assembler symlink.
+compiler_flags=(
+  --copt=-mstack-protector-guard=tls --host_copt=-mstack-protector-guard=tls
+  "--copt=-B${AS_PREFIX}/" "--host_copt=-B${AS_PREFIX}/"
+  "--@rules_cuda//cuda:host_copts=-mstack-protector-guard=tls,-B${AS_PREFIX}/"
+)
+bazel test //:runtime_cuda_smoke_test //:runtime_cuda_shared_smoke_test \
+  -c opt --jobs=24 --loading_phase_threads=4 --lockfile_mode=error \
+  --build_python_zip=false --//bazel:cuda --@rules_cuda//cuda:archs=sm_90 \
+  "${compiler_flags[@]}" --local_test_jobs=1 --test_env=LD_LIBRARY_PATH \
+  --test_env=CUDA_VISIBLE_DEVICES=0 --test_output=all --nocache_test_results
+# On the dependent PR's integrated graph, with the same flags/environment:
+# //:cuda_operator_test
+# --test_arg='--gtest_filter=MathOpTest.Min_13_Float16_*:MathOpTest.Max_13_Float16_*:CudaGemmBiasBroadcastTest/*.*:CudaScatterElementsReductionWrapTest/*.*'
+```
+
+Verified SDK/compiler/Bazel setup took 80.12 s, excluding cuDNN installation.
+After earlier compiler/source repairs, successful native compilation/link
+took 203.90 s (571 actions, 1,993 cache hits), both uncached GPU smokes
+46.57 s, and the corrected 30-test regression run 48.74 s including three
+sandbox actions. The unchanged three-target build took 0.911 s with no native
+compilation. These are staged, warm-cache timings, not a cold-build benchmark.
+The compiler-profile adjustments are not requirements for every GCC 12
+installation.
+
 The CUDA 13.0.2 run used a task-private SDK assembled from official,
 SHA-256-verified NVIDIA redistributions, GCC 13.2, 24 jobs, and the same H200
 host. An initial native compilation took 316.52 s but stopped before linking
