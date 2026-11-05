@@ -75,7 +75,8 @@ Status BroadcastBias(cudaStream_t stream, const T* bias, T* output, int rows, in
   const int blocks = static_cast<int>(std::min<int64_t>(CeilDiv(count, threads), 65535));
   const int row_stride = bias_rows == 1 ? 0 : bias_cols;
   const int col_stride = bias_cols == 1 ? 0 : 1;
-  const bool apply_scale = !(scale == T(1));
+  // Older CUDA half comparison operators are device-only.
+  const bool apply_scale = static_cast<double>(scale) != 1.0;
   if (count <= std::numeric_limits<int>::max()) {
     if (apply_scale) {
       LaunchBroadcastBias<T, int, true>(stream, bias, output, count, cols, row_stride, col_stride,

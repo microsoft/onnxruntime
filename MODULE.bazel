@@ -35,6 +35,7 @@ single_version_override(
     patch_strip = 1,
     patches = [
         "//bazel:abseil-includes.patch",
+        "//bazel:abseil-cuda-ranges.patch",
         "//:cmake/vcpkg-ports/abseil/absl_cuda_warnings.patch",
         "//:cmake/vcpkg-ports/abseil/absl_cuda13_member_template.patch",
     ],
