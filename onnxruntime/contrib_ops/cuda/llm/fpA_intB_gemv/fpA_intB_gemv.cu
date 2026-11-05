@@ -22,6 +22,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/fpA_intB_gemv.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/details.h"
+#include "contrib_ops/cuda/llm/fpA_intB_gemv/int8_dequant.cuh"
 
 namespace onnxruntime::llm {
 namespace kernels {
@@ -136,6 +137,37 @@ bool is_supported(int device_arch, int kernel_arch, KernelType kernel_type) {
   }
   return true;
 #endif
+}
+
+bool dequantize_int8_interleaved(KernelType type, const void* weight, const void* scales, void* out, int n, int k,
+                                 int group_size, cudaStream_t stream) {
+  const bool is_bf16 = type == KernelType::BF16Int8Groupwise;
+  if (!is_bf16 && type != KernelType::FP16Int8Groupwise) {
+    return false;
+  }
+  const bool group_ok = group_size >= dequant::kChunkK && (group_size & (group_size - 1)) == 0 && k % group_size == 0;
+  const auto aligned = [](const void* p, uintptr_t a) { return reinterpret_cast<uintptr_t>(p) % a == 0; };
+  if (n <= 0 || n % 16 != 0 || k <= 0 || k % 64 != 0 || !group_ok || !aligned(weight, 16) || !aligned(out, 16) ||
+      !aligned(scales, 4) || static_cast<int64_t>(n / 2) * (k / dequant::kChunkK) >= (int64_t{1} << 31) - dequant::kThreads) {
+    return false;
+  }
+
+  int chunk_group_shift = 0;
+  while ((dequant::kChunkK << chunk_group_shift) < group_size) {
+    ++chunk_group_shift;
+  }
+  const int total = (n / 2) * (k / dequant::kChunkK);
+  const int blocks = (total + dequant::kThreads - 1) / dequant::kThreads;
+  if (is_bf16) {
+    dequant::DequantizeInt8InterleavedKernel<__nv_bfloat16><<<blocks, dequant::kThreads, 0, stream>>>(
+        static_cast<const uint8_t*>(weight), static_cast<const __nv_bfloat16*>(scales),
+        static_cast<__nv_bfloat16*>(out), n, k, chunk_group_shift);
+  } else {
+    dequant::DequantizeInt8InterleavedKernel<half><<<blocks, dequant::kThreads, 0, stream>>>(
+        static_cast<const uint8_t*>(weight), static_cast<const half*>(scales), static_cast<half*>(out), n, k,
+        chunk_group_shift);
+  }
+  return true;
 }
 
 }  // namespace fpA_intB_gemv

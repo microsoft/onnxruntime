@@ -423,6 +423,40 @@ TEST_F(UnitSwishHostTest, UnitSwishStaleSnapshotRejectsWithoutMutation) {
   }
 }
 
+TEST_F(UnitSwishHostTest, ChangedInputProducerPreservesEligibleNodeArgSnapshot) {
+  Enable();
+  UnitSwishGraph f;
+  ASSERT_STATUS_OK(f.graph.Resolve());
+  std::vector<std::unique_ptr<ComputeCapability>> offers;
+  ASSERT_STATUS_OK(Select(GraphViewer(f.graph), offers));
+  ASSERT_EQ(offers.size(), 1u);
+  auto* upstream = f.builder.MakeInput<float>(std::vector<int64_t>{2, 17}, "upstream");
+  f.builder.AddNode("Identity", {upstream}, {f.x});
+  f.graph.SetInputs({upstream});
+  ASSERT_STATUS_OK(f.graph.Resolve());
+  auto& selected = *offers[0]->nodes_to_optimize[0];
+  GraphOptimizerRegistry registry(&options, &cpu, &logger);
+  ASSERT_STATUS_OK(selected.optimization_func(f.graph, selected, *offers[0], registry));
+  ASSERT_EQ(offers[0]->sub_graph->nodes.size(), 1u);
+  const auto* target = f.graph.GetNode(offers[0]->sub_graph->nodes[0]);
+  ASSERT_NE(target, nullptr);
+  EXPECT_EQ(target->OpType(), "ScaledSiLU");
+  EXPECT_EQ(target->InputDefs()[0], f.x);
+  EXPECT_EQ(target->OutputDefs()[0], f.y);
+}
+
+TEST_F(UnitSwishHostTest, UnknownRuleAndNonemptyOutputAreErrors) {
+  UnitSwishGraph f;
+  ASSERT_STATUS_OK(f.graph.Resolve());
+  GraphOptimizerRegistry registry(&options, &cpu, &logger);
+  std::vector<std::unique_ptr<ComputeCapability>> offers;
+  EXPECT_FALSE(cuda_runtime_fusion::Select(GraphViewer(f.graph), lookup, registry, "unknown", offers).IsOK());
+  EXPECT_EQ(lookup.calls, 0u);
+  offers.push_back(std::make_unique<ComputeCapability>(std::make_unique<IndexedSubGraph>()));
+  EXPECT_FALSE(Select(GraphViewer(f.graph), offers).IsOK());
+  EXPECT_EQ(offers.size(), 1u);
+}
+
 TEST_F(UnitSwishHostTest, UnitSwishExternalInitializerDiscoveryNeverReadsPayload) {
   Enable();
   UnitSwishGraph f;

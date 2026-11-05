@@ -34,7 +34,6 @@ Checks: >
   -readability-uppercase-literal-suffix,
 WarningsAsErrors: ""
 HeaderFilterRegex: '.*onnxruntime\/core\/.*'
-AnalyzeTemporaryDtors: false
 FormatStyle: none
 CheckOptions:
   - key: google-readability-braces-around-statements.ShortStatementLines

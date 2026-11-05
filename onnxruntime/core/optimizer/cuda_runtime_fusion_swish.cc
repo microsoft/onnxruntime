@@ -10,12 +10,20 @@
 #include <limits>
 #include <optional>
 
+#include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
+#include "core/optimizer/pattern_rewriter.h"
 
 namespace onnxruntime::cuda_runtime_fusion::detail {
 namespace {
-using namespace onnxruntime::rewrite;
+using namespace rewrite;
+bool Type(const NodeArg* value, int expected, bool required) {
+  const auto* type = value->TypeAsProto();
+  if (!type || !type->has_tensor_type()) return !required && !type;
+  const int element = type->tensor_type().elem_type();
+  return element == expected || (!required && element == 0);
+}
 
 constexpr char kUnitSwishPattern[] = R"(pattern UnitSwish(x) { y=Swish(x); return y })";
 constexpr char kUnitSwishReplacement[] = R"((x)=>{ y=com.microsoft.ScaledSiLU(x,alpha=1.0); return y })";
@@ -43,11 +51,6 @@ struct UnitSwishSnapshot {
            input_type == other.input_type && output_type == other.output_type && attributes == other.attributes;
   }
 };
-
-bool UnitSwishType(const NodeArg* value, int expected) {
-  const auto* type = value->TypeAsProto();
-  return type && type->has_tensor_type() && type->tensor_type().elem_type() == expected;
-}
 
 // No payload inspection, including for initializer inputs. Zero extents annihilate the
 // product before multiplication; unknown extents do not invent a runtime size.
@@ -86,10 +89,12 @@ bool UnitSwishSemantics(const Graph& graph, const Match& match, UnitSwishSnapsho
   const auto* input = match.valueOf("x");
   const auto* output = match.valueOf("y");
   if (!input || !output || !input->Exists() || !output->Exists()) return false;
-  const int type = UnitSwishType(input, ONNX_NAMESPACE::TensorProto_DataType_FLOAT)
-                       ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT
-                       : ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
-  if (!UnitSwishType(input, type) || !UnitSwishType(output, type) ||
+  const auto* input_type = input->TypeAsProto();
+  if (!input_type || !input_type->has_tensor_type()) return false;
+  const int type = input_type->tensor_type().elem_type();
+  if (type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+      type != ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) return false;
+  if (!Type(input, type, true) || !Type(output, type, true) ||
       !UnitSwishShape(input->Shape()) || !UnitSwishShape(output->Shape())) return false;
 #if !defined(DISABLE_SPARSE_TENSORS)
   if (graph.IsSparseInitializer(input->Name())) return false;
@@ -207,7 +212,6 @@ std::unique_ptr<ComputeCapability> OfferSwish(NodeIndex anchor, UnitSwishSnapsho
 Status SwishFusion::Discover(const GraphViewer& viewer, const IExecutionProvider::IKernelLookup& lookup,
                              const logging::Logger& logger,
                              std::vector<std::unique_ptr<ComputeCapability>>& capabilities) {
-  using namespace onnxruntime::rewrite;
   const auto& graph = viewer.GetGraph();
   const auto& imports = graph.DomainToVersionMap();
   if (!imports.count(kOnnxDomain) || imports.at(kOnnxDomain) != 24 ||
@@ -234,7 +238,6 @@ Status SwishFusion::Discover(const GraphViewer& viewer, const IExecutionProvider
   capabilities = std::move(pending);
   return Status::OK();
 }
-
 }  // namespace onnxruntime::cuda_runtime_fusion::detail
 
 #endif

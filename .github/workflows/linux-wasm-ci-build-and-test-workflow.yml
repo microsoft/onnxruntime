@@ -83,9 +83,10 @@ jobs:
         run: python -m pip install flatbuffers
 
       - name: Setup CCache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: ccache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          # Fully qualify by workflow. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
+          # Fully qualify by workflow. `actions/cache/restore` does not isolate by workflow, unlike ADO cache actions.
           key: ccache | web.yml | ${{ inputs.job_name }}
           path: ~/.cache/ccache
 
@@ -198,7 +199,7 @@ jobs:
 
       - name: Upload WASM artifacts
         if: ${{ inputs.skip_publish != true }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.build_config }}_wasm
           path: ${{ github.workspace }}/artifacts/wasm
@@ -227,7 +228,14 @@ jobs:
 
       - name: Publish test results
         if: ${{ always() && inputs.build_config == 'Debug' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-results
           path: ${{ github.workspace }}/build/**/*.results.xml
+
+      - name: Save CCache
+        if: ${{ success() && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+          path: ~/.cache/ccache

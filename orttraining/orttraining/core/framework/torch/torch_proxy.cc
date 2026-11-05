@@ -136,9 +136,7 @@ void ProcessReturnValues(std::vector<PyObject*>& results,
     } else {
       GilGuard guard;
       ORT_ENFORCE(Py_REFCNT(dl_tensor_pointer) == 1, "Ref count of dl_tensor_pointer should be 1.");
-      // Todo (pengwa): be noted we did not pass whether tensor is bool or not.
-      // Currently we assume we don't pass boolean data.
-      returned_ortvalues.push_back(training::framework::torch::FromDlpack(dl_tensor_pointer, false));
+      returned_ortvalues.push_back(training::framework::torch::FromDlpack(dl_tensor_pointer));
     }
   }
 }

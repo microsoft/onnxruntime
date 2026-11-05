@@ -3,13 +3,14 @@
 These EP-owned optimizations use ORT's existing capability optimization callbacks
 and the generic `Pattern` / `PatternRewriter` APIs for matching and graph rewriting.
 
-## Unit-Swish
+## Unit-Swish kernel replacement
 
 The internal session entry `ep.cuda.runtime_fusion.unit_swish` enables the
-Swish kernel replacement (internal identifier `unit_swish_scaled_silu_v1`).
+EP-owned replacement of standard unit-alpha Swish with an existing CUDA kernel.
 It is off by default and accepts only the exact strings `"0"` and `"1"`.
+The internal identifier remains `unit_swish_scaled_silu_v1`.
 
-This optimization replaces standard ONNX Swish-24 with absent or FLOAT alpha=1 by the
+The replacement maps standard ONNX Swish-24 with absent or FLOAT alpha=1 to the
 existing `com.microsoft.ScaledSiLU-1`, with alpha=1 and no scale input.
 Input and output must be dense, matching FLOAT or BF16 tensors with compatible
 shape and initializer metadata. FLOAT16, DOUBLE, mixed types, non-unit alpha,
@@ -17,6 +18,13 @@ and nonfinite alpha are not admitted. No casts, schema changes, or target
 kernel changes are introduced.
 
 ### Discovery and acceptance
+
+`cuda_runtime_fusion::Select` validates configuration and common admission gates,
+then delegates to `detail::SwishFusion::Discover`. Discovery finds candidates;
+the case-local `OfferSwish` constructs each capability and its deferred
+optimization callback. Constructing an offer does not modify the source graph.
+ORT invokes the callback only after checking that the selected region is
+available for assignment.
 
 Discovery requires a capability consumer that executes optimization callbacks,
 optimization level 2 or higher, ONNX-24/Microsoft-1 imports, an unfiltered main

@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <optional>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "core/common/common.h"
@@ -374,9 +375,11 @@ void ProfileComputePlan(NSURL* compileUrl, MLModelConfiguration* config) {
   [MLComputePlan loadContentsOfURL:compileUrl
                      configuration:config
                  completionHandler:^(MLComputePlan* _Nullable computePlan, NSError* _Nullable error) {
+                   auto signal_completion = gsl::finally([fd_sema]() {
+                     dispatch_semaphore_signal(fd_sema);
+                   });
                    if (!computePlan) {
                      NSLog(@"Error loading compute plan: %@", error);
-                     // Handle error.
                      return;
                    }
                    MLModelStructureProgram* program = computePlan.modelStructure.program;
@@ -390,10 +393,12 @@ void ProfileComputePlan(NSURL* compileUrl, MLModelConfiguration* config) {
                                                                                                      BOOL* _Nonnull __unused stop) {
                      NSLog(@"profile function : %@", function_name);
                      ProfileBlock(computePlan, function.block);
-                     dispatch_semaphore_signal(fd_sema);
                    }];
                  }];
-  long status = dispatch_semaphore_wait(fd_sema, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * 60 * NSEC_PER_SEC)));
+  // Core ML only provides an asynchronous API; finish profiling before model loading continues.
+  // NOLINTNEXTLINE(clang-analyzer-optin.performance.GCDAntipattern)
+  const auto status = dispatch_semaphore_wait(
+      fd_sema, dispatch_time(DISPATCH_TIME_NOW, static_cast<int64_t>(5 * 60 * NSEC_PER_SEC)));
   if (status != 0) {
     NSLog(@"profile function : timeout");
   }
@@ -691,7 +696,7 @@ Status Execution::Predict(const std::unordered_map<std::string, OnnxTensorData>&
                                                    num_blocks, block_size, stride, tensor_info);
             }
 
-            ORT_RETURN_IF_ERROR(copy_status);
+            ORT_RETURN_IF_ERROR(std::move(copy_status));
           }
         }
       }

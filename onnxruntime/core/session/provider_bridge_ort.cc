@@ -2951,6 +2951,38 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2, _In_
         ORT_INVALID_ARGUMENT,
         message.c_str());
   }
+  if (cuda_options->external_data_loader_pinned_memory_bytes <
+          OrtCUDAProviderOptionsV2::kMinExternalDataLoaderPinnedMemoryBytes ||
+      cuda_options->external_data_loader_pinned_memory_bytes >
+          OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderPinnedMemoryBytes ||
+      (cuda_options->external_data_loader_pinned_memory_bytes %
+       OrtCUDAProviderOptionsV2::kExternalDataLoaderPinnedMemoryAlignment) != 0) {
+    const auto message = onnxruntime::MakeString(
+        "external_data_loader_pinned_memory_bytes must be between ",
+        OrtCUDAProviderOptionsV2::kMinExternalDataLoaderPinnedMemoryBytes, " and ",
+        OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderPinnedMemoryBytes,
+        " bytes and a multiple of ",
+        OrtCUDAProviderOptionsV2::kExternalDataLoaderPinnedMemoryAlignment, ".");
+    return OrtApis::CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        message.c_str());
+  }
+  if (cuda_options->external_data_loader_chunk_bytes <
+          OrtCUDAProviderOptionsV2::kMinExternalDataLoaderChunkBytes ||
+      cuda_options->external_data_loader_chunk_bytes >
+          OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderChunkBytes ||
+      (cuda_options->external_data_loader_chunk_bytes %
+       OrtCUDAProviderOptionsV2::kExternalDataLoaderChunkAlignment) != 0) {
+    const auto message = onnxruntime::MakeString(
+        "external_data_loader_chunk_bytes must be between ",
+        OrtCUDAProviderOptionsV2::kMinExternalDataLoaderChunkBytes, " and ",
+        OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderChunkBytes,
+        " bytes and a multiple of ",
+        OrtCUDAProviderOptionsV2::kExternalDataLoaderChunkAlignment, ".");
+    return OrtApis::CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        message.c_str());
+  }
 
   auto factory = onnxruntime::CudaProviderFactoryCreator::Create(cuda_options);
   if (!factory) {
