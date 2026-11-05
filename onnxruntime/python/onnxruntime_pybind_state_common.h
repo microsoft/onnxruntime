@@ -539,6 +539,10 @@ bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
                    const std::string& name,
                    /*out*/ ONNX_NAMESPACE::TypeProto& type_proto);
 
+// Transfer an owned reference to the existing deferred cleanup queue.
+void DeferPythonRelease(PyObject* object) noexcept;
+void ReleasePythonObject(PyObject* object) noexcept;
+
 #if defined(ENABLE_DLPACK)
 
 // Allocate a capsule retaining an OrtValue reference via OrtValueToDlpack.
@@ -546,7 +550,7 @@ bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
 PyObject* ToDlpack(OrtValue& ort_value, pybind11::object stream = pybind11::none());
 
 // Import a DLPack protocol object or legacy capsule, transferring tensor ownership.
-OrtValue FromDlpack(pybind11::object data);
+OrtValue FromDlpack(pybind11::object data, bool synchronize = true);
 
 // Destructor for Capsule object holding a DLPack structure.
 void DlpackCapsuleDestructor(PyObject* data);

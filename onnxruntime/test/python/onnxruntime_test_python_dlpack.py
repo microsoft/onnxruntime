@@ -52,6 +52,37 @@ PACKED_DTYPES = (
 SHAPES = ((), (2, 3), (2, 1, 3), (0,), (2, 0, 3))
 
 
+class DLDevice(ctypes.Structure):
+    _fields_ = (("device_type", ctypes.c_int), ("device_id", ctypes.c_int))
+
+
+class DLDataType(ctypes.Structure):
+    _fields_ = (("code", ctypes.c_uint8), ("bits", ctypes.c_uint8), ("lanes", ctypes.c_uint16))
+
+
+class DLTensor(ctypes.Structure):
+    _fields_ = (
+        ("data", ctypes.c_void_p),
+        ("device", DLDevice),
+        ("ndim", ctypes.c_int),
+        ("dtype", DLDataType),
+        ("shape", ctypes.POINTER(ctypes.c_int64)),
+        ("strides", ctypes.POINTER(ctypes.c_int64)),
+        ("byte_offset", ctypes.c_uint64),
+    )
+
+
+class DLManagedTensor(ctypes.Structure):
+    _fields_ = (("dl_tensor", DLTensor), ("manager_ctx", ctypes.c_void_p), ("deleter", ctypes.c_void_p))
+
+
+def managed_tensor_from_capsule(capsule):
+    get_pointer = ctypes.pythonapi.PyCapsule_GetPointer
+    get_pointer.argtypes = [ctypes.py_object, ctypes.c_char_p]
+    get_pointer.restype = ctypes.c_void_p
+    return ctypes.cast(get_pointer(capsule, b"dltensor"), ctypes.POINTER(DLManagedTensor))
+
+
 def tensor_bytes(tensor):
     # Reshape first because PyTorch cannot reinterpret a scalar as a smaller dtype.
     return tensor.reshape(-1).view(torch.uint8)
@@ -224,6 +255,81 @@ class TestDlpackPyTorch(unittest.TestCase):
         self.assertIsNone(owner_ref())
         torch.testing.assert_close(result, torch.arange(6, dtype=torch.float32).flip(0))
 
+    def test_numpy_owner_release_without_gil(self):
+        for contiguous in (False, True):
+            with self.subTest(contiguous=contiguous):
+                array = np.arange(6, dtype=np.float32)
+                if not contiguous:
+                    array = array[::-1]
+                owner_ref = weakref.ref(array)
+                value = ort.OrtValue.ortvalue_from_numpy(array)
+                capsule = value.__dlpack__()
+                managed = managed_tensor_from_capsule(capsule)
+                deleter = ctypes.CFUNCTYPE(None, ctypes.POINTER(DLManagedTensor))(managed.contents.deleter)
+                set_name = ctypes.pythonapi.PyCapsule_SetName
+                set_name.argtypes = [ctypes.py_object, ctypes.c_char_p]
+                set_name.restype = ctypes.c_int
+                self.assertEqual(set_name(capsule, b"used_dltensor"), 0)
+                del value, array
+                gc.collect()
+                self.assertEqual(owner_ref() is not None, contiguous)
+                # CFUNCTYPE releases the GIL while calling the actual C++ deleter.
+                deleter(managed)
+                self.assertEqual(ctypes.pythonapi.Py_MakePendingCalls(), 0)
+                gc.collect()
+                self.assertIsNone(owner_ref())
+
+    def test_gpu_vendor_metadata_without_gpu_allocation(self):
+        new_capsule = ctypes.pythonapi.PyCapsule_New
+        new_capsule.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p]
+        new_capsule.restype = ctypes.py_object
+        # Empty tensors exercise device metadata without allocating or reading GPU memory.
+        shape = (ctypes.c_int64 * 1)(0)
+        for device_type in (2, 10):  # kDLCUDA, kDLROCM
+            with self.subTest(device_type=device_type):
+                managed = DLManagedTensor(
+                    DLTensor(None, DLDevice(device_type, 3), 1, DLDataType(2, 32, 1), shape, None, 0), None, None
+                )
+                capsule = new_capsule(ctypes.addressof(managed), b"dltensor", None)
+                imported = ort.OrtValue.from_dlpack(capsule, synchronize=False)
+                exported = None
+                result = None
+                values = C.OrtValueVector()
+                try:
+                    self.assertEqual(imported.__dlpack_device__(), (device_type, 3))
+                    values.push_back(imported._get_c_value())
+                    exported = values.to_dlpacks(None, synchronize=False)
+                    for result in (imported.__dlpack__(stream=-1), *exported):
+                        device = managed_tensor_from_capsule(result).contents.dl_tensor.device
+                        self.assertEqual((device.device_type, device.device_id), (device_type, 3))
+                finally:
+                    # The synthetic producer's descriptor must outlive every native owner.
+                    del result, imported, exported, values
+
+    def test_import_synchronization_opt_out(self):
+        source = torch.arange(6, dtype=torch.float32)
+        for value_type in (ort.OrtValue, C.OrtValue):
+            with self.subTest(value_type=value_type):
+                imported = value_type.from_dlpack(source, synchronize=False)
+                self.assert_tensor(torch.from_dlpack(imported), source)
+        values = C.OrtValueVector()
+        values.push_back(source, synchronize=False)
+        self.assert_tensor(values.to_dlpacks(torch.from_dlpack, synchronize=False)[0], source)
+
+    def test_unsupported_gpu_vendor_is_not_exported_as_cuda(self):
+        array = np.empty(1, dtype=np.float32)
+        # A zero-element DirectML-labelled tensor requires no actual GPU memory.
+        device = C.OrtDevice(C.OrtDevice.gpu(), C.OrtDevice.default_memory(), 0x1414, 0)
+        values = C.OrtValueVector()
+        values.push_back_batch([array], [array.ctypes.data], [array.dtype], [[0]], [device])
+        value = values[0]
+        for export in (value.__dlpack_device__, value.__dlpack__, lambda: values.to_dlpacks(None)):
+            with (
+                self.subTest(export=export),
+                self.assertRaisesRegex(RuntimeError, "supports only NVIDIA CUDA and AMD ROCm"),
+            ):
+                export()
+
     def test_numpy_reinterpret_rejects_noncontiguous_storage(self):
         for value_type in (ort.OrtValue, C.OrtValue):
             for array in (np.arange(6, dtype=np.float32)[::-1], np.zeros((2, 3), dtype=np.float32).T):
@@ -346,6 +452,26 @@ class TestDlpackPyTorch(unittest.TestCase):
         self.assertEqual(len(results), 2)
         self.assertEqual(len(values), 42)
         self.assertEqual([result.item() for result in results], [1, 2])
+
+    def test_vector_preparation_failure_does_not_invoke_consumer(self):
+        array = np.arange(6, dtype=np.float32)
+        owner_ref = weakref.ref(array)
+        values = C.OrtValueVector()
+        values.push_back(ort.OrtValue.ortvalue_from_numpy(array)._get_c_value())
+        device = C.OrtDevice(C.OrtDevice.gpu(), C.OrtDevice.default_memory(), 0x1414, 0)
+        values.push_back_batch([array], [array.ctypes.data], [array.dtype], [[0]], [device])
+        calls = []
+
+        def consumer(capsule):
+            calls.append(capsule)
+            return torch.from_dlpack(capsule)
+
+        with self.assertRaisesRegex(RuntimeError, "supports only NVIDIA CUDA and AMD ROCm"):
+            values.to_dlpacks(consumer)
+        self.assertEqual(calls, [])
+        del array, values
+        gc.collect()
+        self.assertIsNone(owner_ref())
 
     def test_vector_invalid_consumer(self):
         for size in (0, 1):
@@ -512,10 +638,56 @@ class TestDlpackCUDA(unittest.TestCase):
         torch.cuda.synchronize()
         torch.testing.assert_close(torch.from_dlpack(capsule), source)
 
+    def test_no_sync_import_and_batch_export_are_capture_safe(self):
+        source = torch.ones(6, device="cuda")
+        for value_type in (ort.OrtValue, C.OrtValue):
+            with self.subTest(value_type=value_type):
+                graph = torch.cuda.CUDAGraph()
+                with torch.cuda.graph(graph):
+                    source.add_(1)
+                    imported = value_type.from_dlpack(source, synchronize=False)
+                    values = C.OrtValueVector()
+                    values.push_back(source, synchronize=False)
+                    capsules = values.to_dlpacks(None, synchronize=False)
+                graph.replay()
+                torch.cuda.synchronize()
+                torch.testing.assert_close(torch.from_dlpack(imported), source)
+                torch.testing.assert_close(torch.from_dlpack(capsules[0]), source)
+
+    def test_batch_prepares_all_capsules_before_callbacks(self):
+        source = torch.ones(6, device="cuda")
+        values = C.OrtValueVector()
+        values.push_back(source, synchronize=False)
+        values.push_back(source, synchronize=False)
+        graph = torch.cuda.CUDAGraph()
+        stream = torch.cuda.Stream()
+        calls = 0
+
+        def consumer(capsule):
+            nonlocal calls
+            if calls == 0:
+                # Any later device-wide fence would invalidate this capture.
+                graph.capture_begin()
+                source.add_(1)
+            calls += 1
+            return torch.from_dlpack(capsule)
+
+        with torch.cuda.stream(stream):
+            try:
+                results = values.to_dlpacks(consumer)
+            finally:
+                if torch.cuda.is_current_stream_capturing():
+                    graph.capture_end()
+            graph.replay()
+        stream.synchronize()
+        self.assertEqual(calls, 2)
+        for result in results:
+            torch.testing.assert_close(result, source)
+
     def test_invalid_cuda_stream(self):
         value = ort.OrtValue.from_dlpack(torch.ones(1, device="cuda"))
         for stream in (0, -2):
-            with self.subTest(stream=stream), self.assertRaisesRegex(ValueError, "Invalid CUDA DLPack stream"):
+            with self.subTest(stream=stream), self.assertRaisesRegex(ValueError, "Invalid GPU DLPack stream"):
                 value.__dlpack__(stream=stream)
         for stream in (False, 1.5, "invalid"):
             with self.subTest(stream=stream), self.assertRaisesRegex(TypeError, "must be an integer"):

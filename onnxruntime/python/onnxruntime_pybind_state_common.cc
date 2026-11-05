@@ -9,6 +9,18 @@ namespace py = pybind11;
 
 const std::string onnxruntime::python::SessionObjectInitializer::default_logger_id = "Default";
 
+void ReleasePythonObject(PyObject* object) noexcept {
+  // After interpreter shutdown, retaining the reference is safer than touching Python.
+  if (object == nullptr || !Py_IsInitialized()) {
+    return;
+  }
+  if (PyGILState_Check()) {
+    Py_DECREF(object);
+  } else {
+    DeferPythonRelease(object);
+  }
+}
+
 #if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
 // TODO remove deprecated global config
 std::string openvino_device_type;
@@ -54,40 +66,50 @@ void DlpackCapsuleDestructor(PyObject* data) {
 
 namespace {
 void SynchronizeDlpackDevice(const DLDevice& device) {
-  if (device.device_type != kDLCUDA) {
+  if (device.device_type == kDLCPU) {
     return;
   }
+  if (device.device_type == kDLCUDA) {
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
-  if (auto* provider = TryGetProviderInfo_CUDA()) {
-    ORT_THROW_IF_ERROR(provider->SynchronizeDevice(device.device_id));
-    return;
-  }
+    if (auto* provider = TryGetProviderInfo_CUDA()) {
+      ORT_THROW_IF_ERROR(provider->SynchronizeDevice(device.device_id));
+      return;
+    }
 #endif
+  } else if (device.device_type == kDLROCM) {
+#ifdef USE_MIGRAPHX
+    if (auto* provider = TryGetProviderInfo_MIGraphX()) {
+      ORT_THROW_IF_ERROR(provider->SynchronizeDevice(device.device_id));
+      return;
+    }
+#endif
+  }
   throw py::buffer_error(
-      "CUDA DLPack interchange requires an available CUDA provider to synchronize the tensor's device. "
-      "Install a CUDA-enabled ONNX Runtime package and load its CUDA provider. For an already synchronized "
-      "export, call __dlpack__(stream=-1) explicitly.");
+      "DLPack synchronization requires a provider matching the tensor's device (CUDA for NVIDIA, MIGraphX for AMD). "
+      "Install and load the matching provider, or explicitly opt out only after arranging stream ordering: "
+      "__dlpack__(stream=-1), from_dlpack(..., synchronize=False), or to_dlpacks(..., synchronize=False).");
 }
 }  // namespace
 
 PyObject* ToDlpack(OrtValue& ort_value, py::object stream) {
+  ORT_ENFORCE(ort_value.IsTensor(), "DLPack export requires a dense tensor OrtValue; initialize the value before exporting.");
   const auto device = dlpack::GetDlpackDevice(ort_value, ort_value.Get<Tensor>().Location().device.Id());
   bool synchronize = true;
   if (!stream.is_none()) {
-    if (device.device_type != kDLCUDA) {
+    if (device.device_type != kDLCUDA && device.device_type != kDLROCM) {
       throw py::buffer_error("CPU DLPack exports require stream=None; omit the stream argument.");
     }
     if (!PyLong_Check(stream.ptr()) || PyBool_Check(stream.ptr())) {
-      throw py::type_error("A CUDA DLPack stream must be an integer: -1, 1, 2, or a positive stream handle.");
+      throw py::type_error("A GPU DLPack stream must be an integer: -1, a default-stream identifier, or a stream handle.");
     }
     const auto stream_id = PyLong_AsLongLong(stream.ptr());
     if (PyErr_Occurred()) {
       throw py::error_already_set();
     }
-    if (stream_id == 0 || stream_id < -1) {
+    if ((device.device_type == kDLCUDA && stream_id == 0) || stream_id < -1) {
       throw py::value_error(
-          "Invalid CUDA DLPack stream: use 1 for the legacy default, 2 for the per-thread default, "
-          "a positive stream handle, or -1 to opt out of synchronization.");
+          "Invalid GPU DLPack stream: CUDA accepts 1 or 2 for default streams; ROCm accepts 0 or 1. "
+          "Use a positive stream handle, or -1 to opt out of synchronization.");
     }
     synchronize = stream_id != -1;
   }
@@ -105,7 +127,7 @@ PyObject* ToDlpack(OrtValue& ort_value, py::object stream) {
   return capsule;
 }
 
-OrtValue FromDlpack(py::object data) {
+OrtValue FromDlpack(py::object data, bool synchronize) {
   if (!PyCapsule_CheckExact(data.ptr())) {
     auto method = py::reinterpret_steal<py::object>(PyObject_GetAttrString(data.ptr(), "__dlpack__"));
     if (method) {
@@ -125,7 +147,9 @@ OrtValue FromDlpack(py::object data) {
   DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(dlpack_tensor, "dltensor");
   // The producer's default-stream handoff alone is insufficient for ORT's
   // session-specific streams. Fence before importing both objects and raw capsules.
-  SynchronizeDlpackDevice(dlmanaged_tensor->dl_tensor.device);
+  if (synchronize) {
+    SynchronizeDlpackDevice(dlmanaged_tensor->dl_tensor.device);
+  }
   OrtValue ort_value = dlpack::DlpackToOrtValue(dlmanaged_tensor);
   // Make sure this capsule will never be used again.
   PyCapsule_SetName(dlpack_tensor, "used_dltensor");

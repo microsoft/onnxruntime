@@ -13,6 +13,7 @@
 #include "core/framework/tensor.h"
 #include "core/framework/sparse_tensor.h"
 #include "core/framework/TensorSeq.h"
+#include "core/common/inlined_containers.h"
 namespace onnxruntime {
 namespace python {
 
@@ -28,15 +29,12 @@ void RetainNumpyOwner(OrtValue& ort_value, const py::object& array) {
   OrtValue tensor_owner = ort_value;
   auto* tensor = tensor_owner.GetMutable<Tensor>();
   auto type = tensor_owner.Type();
-  auto array_owner = tensor->OwnsBuffer() ? py::object{} : array;
-  // Retain the owner in the native value so copies, vectors and DLPack consumers
-  // remain safe independently of the Python wrapper, including destruction without the GIL.
-  ort_value.Init(tensor, type,
-                 [tensor_owner = std::move(tensor_owner), array_owner = std::move(array_owner)](void*) mutable {
-                   py::gil_scoped_acquire acquire;
-                   tensor_owner = OrtValue{};
-                   array_owner = py::object{};
-                 });
+  // The original tensor may itself own a copied NumPy array. Release both
+  // owners under the GIL, without blocking an ORT worker that another thread is joining.
+  auto owners = py::make_tuple(py::cast(tensor_owner, py::return_value_policy::copy),
+                               tensor->OwnsBuffer() ? py::none() : array);
+  auto owner = std::shared_ptr<PyObject>(owners.release().ptr(), ReleasePythonObject);
+  ort_value.Init(tensor, type, [owner = std::move(owner)](void*) mutable { owner.reset(); });
 }
 
 std::unique_ptr<OrtValue> OrtValueFromShapeAndType(const std::vector<int64_t>& shape,
@@ -526,13 +524,15 @@ void addOrtValueMethods(pybind11::module& m) {
 #endif
       })
 #if defined(ENABLE_DLPACK)
-      .def_static("from_dlpack", &FromDlpack, py::arg("data"), "Imports a tensor from a DLPack protocol object or legacy capsule without copying.")
+      .def_static("from_dlpack", &FromDlpack, py::arg("data"), py::kw_only(), py::arg("synchronize") = true,
+                  "Imports a DLPack object or capsule without copying. Set synchronize=False only when the caller "
+                  "arranges producer/consumer stream ordering.")
       .def("__dlpack__", [](OrtValue* ort_value, py::object stream) -> py::object {
         ORT_ENFORCE(!IsWebGpuBuffer(*ort_value), "DLPack export is not supported for WebGPU OrtValues.");
         return py::reinterpret_steal<py::object>(ToDlpack(*ort_value, std::move(stream))); }, py::arg("stream") = py::none(),
            "Returns a DLPack representing the tensor (part of __dlpack__ protocol). "
            "The capsule retains the tensor and its NumPy owner without copying. "
-           "CUDA exports synchronize the tensor's device unless stream=-1 requests no synchronization.")
+           "GPU exports synchronize the tensor's device unless stream=-1 requests no synchronization.")
       .def("__dlpack_device__", [](const OrtValue* ort_value) -> py::tuple {
             ORT_ENFORCE(ort_value->IsTensor(), "Only tensor type OrtValues are supported");
             ORT_ENFORCE(!IsWebGpuBuffer(*ort_value), "DLPack export is not supported for WebGPU OrtValues.");
@@ -558,7 +558,7 @@ void addOrtValueMethods(pybind11::module& m) {
         v->push_back(ortvalue);
       })
 #if defined(ENABLE_DLPACK)
-      .def("push_back", [](std::vector<OrtValue>* v, py::object data) { v->push_back(FromDlpack(std::move(data))); }, "Add an OrtValue imported from a DLPack protocol object or legacy capsule.", py::arg("dlpack_tensor"))
+      .def("push_back", [](std::vector<OrtValue>* v, py::object data, bool synchronize) { v->push_back(FromDlpack(std::move(data), synchronize)); }, "Add an OrtValue imported from a DLPack object or capsule. Set synchronize=False only when arranging stream ordering.", py::arg("dlpack_tensor"), py::kw_only(), py::arg("synchronize") = true)
       .def("push_back_batch", [](std::vector<OrtValue>* v, std::vector<py::object>& torch_tensors, std::vector<int64_t>& data_ptrs, std::vector<py::object>& element_types, const std::vector<std::vector<int64_t>>& shapes, const std::vector<OrtDevice>& devices) {
             for (size_t i = 0; i < torch_tensors.size(); ++i) {
               py::object& element_type = element_types.at(i);
@@ -602,16 +602,28 @@ void addOrtValueMethods(pybind11::module& m) {
            "Raises an exception in any other case.",
            py::arg("idx"))
 #if defined(ENABLE_DLPACK)
-      .def("to_dlpacks", [](const std::vector<OrtValue>& v, py::object to_tensor) -> py::list {
+      .def("to_dlpacks", [](const std::vector<OrtValue>& v, py::object to_tensor, bool synchronize) -> py::list {
             if (!to_tensor.is_none() && !PyCallable_Check(to_tensor.ptr())) {
               throw py::type_error("OrtValueVector.to_dlpacks expects a callable consumer or None.");
             }
             // Callbacks can mutate the original vector, including reallocating its storage.
             auto values = v;
-            py::list results;
+            InlinedHashSet<std::pair<int, int>> synchronized_devices;
+            py::list capsules;
             for (auto& value : values) {
+              ORT_ENFORCE(value.IsTensor(), "DLPack export requires a dense tensor OrtValue; initialize the value before exporting.");
               ORT_ENFORCE(!IsWebGpuBuffer(value), "DLPack export is not supported for WebGPU OrtValues.");
-              auto capsule = py::reinterpret_steal<py::object>(ToDlpack(value));
+              const auto device = dlpack::GetDlpackDevice(value, value.Get<Tensor>().Location().device.Id());
+              py::object stream = py::none();
+              if (device.device_type == kDLCUDA || device.device_type == kDLROCM) {
+                if (!synchronize || !synchronized_devices.emplace(device.device_type, device.device_id).second) {
+                  stream = py::int_(-1);
+                }
+              }
+              capsules.append(py::reinterpret_steal<py::object>(ToDlpack(value, std::move(stream))));
+            }
+            py::list results;
+            for (auto capsule : capsules) {
               results.append(to_tensor.is_none() ? capsule : to_tensor(capsule));
             }
             return results; },
@@ -624,13 +636,15 @@ references when destroyed, including when conversion fails.
     a new tensor which becomes the new owner of the data. This function takes one python object and
     returns a new python object. It fits the same signature as `torch.from_dlpack`,
     if None, the method returns a capsule for every new DLPack structure.
+:param synchronize: synchronize each distinct GPU device once before preparing its
+    capsules. Set False only when the caller arranges producer/consumer stream ordering.
 :return: a list containing the new tensors or the new capsules if *to_tensor* is None
 
 Use `ort_values.to_dlpacks(torch.from_dlpack)` to avoid creating a Python OrtValue
-wrapper for every tensor. Each capsule may be consumed only once. CUDA exports
-synchronize the tensor's device before invoking the consumer.
+wrapper for every tensor. Each capsule may be consumed only once. All capsules
+are prepared before any consumer callback runs.
 )pbdoc",
-           py::arg("to_tensor"))
+           py::arg("to_tensor"), py::kw_only(), py::arg("synchronize") = true)
 #endif
       ;
 }

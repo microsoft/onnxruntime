@@ -1538,9 +1538,10 @@ class OrtValue:
         WebGPU OrtValues cannot be exported through DLPack because their data
         is stored in opaque WebGPU buffers rather than CUDA-addressable memory.
 
-        :param stream: CUDA consumer stream: ``None`` or ``1`` for the legacy
+        :param stream: GPU consumer stream: for CUDA, ``None`` or ``1`` for the legacy
             default, ``2`` for the per-thread default, or a positive stream handle.
-            Since OrtValues do not track their producer stream, CUDA exports
+            ROCm also accepts ``0`` for its default stream.
+            Since OrtValues do not track their producer stream, GPU exports
             synchronize the entire tensor device before returning. ``-1`` skips
             synchronization; the caller must ensure the data is ready. CPU exports
             require ``None``.
@@ -1562,7 +1563,7 @@ class OrtValue:
         return self._ortvalue.__dlpack_device__()
 
     @classmethod
-    def from_dlpack(cls, data, /) -> OrtValue:
+    def from_dlpack(cls, data, /, *, synchronize: bool = True) -> OrtValue:
         """
         Construct an OrtValue from an object that implements the DLPack protocol.
 
@@ -1585,15 +1586,19 @@ class OrtValue:
         PyTorch cannot consume ORT's packed float4, int4/uint4, or int2/uint2.
 
         No data is copied; the new OrtValue shares memory with the source.
-        CUDA imports synchronize the tensor's device before returning, so ORT
-        can safely use the storage on its own streams.
+        GPU imports synchronize the tensor's device before returning, so ORT
+        can safely use the storage on its own streams. CUDA and ROCm require
+        their corresponding CUDA or MIGraphX provider for synchronization.
 
         :param data: A tensor object supporting the DLPack protocol, or a raw
             DLPack PyCapsule.
+        :param synchronize: Set False only when the caller arranges producer/consumer
+            stream ordering before using the imported tensor, for example during
+            graph capture or when preparing a batch followed by one stream wait.
         :return: An OrtValue wrapping the tensor data.
         :raises TypeError: If the object does not provide a valid DLPack capsule.
         """
-        return cls(C.OrtValue.from_dlpack(data))
+        return cls(C.OrtValue.from_dlpack(data, synchronize=synchronize))
 
     def update_inplace(self, data) -> None:
         """

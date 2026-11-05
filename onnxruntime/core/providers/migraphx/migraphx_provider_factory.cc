@@ -69,6 +69,19 @@ struct ProviderInfo_MIGraphX_Impl final : ProviderInfo_MIGraphX {
     HIP_CALL_THROW(hipMemcpy(dst, src, count, hipMemcpyDeviceToHost));
   }
 
+  Status SynchronizeDevice(int device_id) override {
+    int original_device;
+    HIP_RETURN_IF_ERROR(hipGetDevice(&original_device));
+    if (original_device != device_id) {
+      HIP_RETURN_IF_ERROR(hipSetDevice(device_id));
+    }
+    const auto sync_error = hipDeviceSynchronize();
+    const auto restore_error = original_device != device_id ? hipSetDevice(original_device) : hipSuccess;
+    HIP_RETURN_IF_ERROR(sync_error);
+    HIP_RETURN_IF_ERROR(restore_error);
+    return Status::OK();
+  }
+
   std::shared_ptr<IAllocator> CreateMIGraphXAllocator(OrtDevice::DeviceId device_id, size_t mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy,
                                                       void* alloc_fn, void* free_fn, void* empty_cache_fn, const OrtArenaCfg* default_memory_arena_cfg) override {
     if (alloc_fn != nullptr && free_fn != nullptr) {
