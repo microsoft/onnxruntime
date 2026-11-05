@@ -78,7 +78,7 @@ class TrainingManager(GraphExecutionManager):
                 forward_inputs.push_back(C.aten_ort_tensor_to_ort_value(input))
             else:
                 valid_ort_tensor = _utils._torch_tensor_to_dlpack(input)
-                forward_inputs.push_back(valid_ort_tensor, input.dtype == torch.bool)
+                forward_inputs.push_back(valid_ort_tensor)
 
         forward_outputs = C.OrtValueVector()
         # Run and return module outputs.
@@ -186,9 +186,7 @@ class TrainingManager(GraphExecutionManager):
                     if grad_output.device.type == "ort":
                         backward_inputs.push_back(C.aten_ort_tensor_to_ort_value(grad_output))
                     else:
-                        backward_inputs.push_back(
-                            _utils._torch_tensor_to_dlpack(grad_output), grad_output.dtype is torch.bool
-                        )
+                        backward_inputs.push_back(_utils._torch_tensor_to_dlpack(grad_output))
                 backward_inputs.shrink_to_fit()
 
                 # Run and get results

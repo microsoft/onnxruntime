@@ -32,6 +32,7 @@
 
 #include <cuda_bf16.h>
 #include <cuda_runtime.h>
+#include <math_constants.h>
 
 #include <cstdint>
 #include <type_traits>
@@ -203,6 +204,9 @@ __global__ void __launch_bounds__(kThreads, MinCtasPerSm(kM)) MoeGemvTcInt4Kerne
   int row0 = cid;
   int expert = -1;
   int routes = 0;
+  // Without expert_first_token_offset the route-to-expert map is unsorted; the routes of one chunk are then listed in
+  // `members`, one byte per route.
+  uint64_t members = 0;
   if constexpr (kCompact80) {
     const int e0 = p.permuted_row_to_expert[lane];
     const int e1 = p.permuted_row_to_expert[32 + lane];
@@ -250,17 +254,51 @@ __global__ void __launch_bounds__(kThreads, MinCtasPerSm(kM)) MoeGemvTcInt4Kerne
     const int64_t last = p.expert_first_token_offset[expert + 1];
     routes = (last - row0) < kMaxRoutes ? static_cast<int>(last - row0) : kMaxRoutes;
   } else {
-    expert = p.permuted_row_to_expert[row0];
+    expert = __ldg(&p.permuted_row_to_expert[row0]);
     if (expert < 0 || expert >= p.num_experts) {
       return;
     }
-    const int64_t first = p.expert_first_token_offset[expert];
-    const int64_t last = p.expert_first_token_offset[expert + 1];
-    // Rows of one expert are contiguous; every kMaxRoutes-th row of a run leads a chunk.
-    if (((row0 - first) & (kMaxRoutes - 1)) != 0) {
-      return;
+    if (p.expert_first_token_offset != nullptr) {
+      const int64_t first = p.expert_first_token_offset[expert];
+      const int64_t last = p.expert_first_token_offset[expert + 1];
+      // Rows of one expert are contiguous; every kMaxRoutes-th row of a run leads a chunk.
+      if (((row0 - first) & (kMaxRoutes - 1)) != 0) {
+        return;
+      }
+      routes = (last - row0) < kMaxRoutes ? static_cast<int>(last - row0) : kMaxRoutes;
+    } else {
+      const int total = p.expanded_num_rows;
+      int ev[8];
+#pragma unroll
+      for (int i = 0; i < 8; ++i) {
+        const int idx = i * 32 + lane;
+        ev[i] = idx < total ? __ldg(p.permuted_row_to_expert + idx) : -1;
+      }
+      const int c0 = row0 >> 5;
+      const int b0 = row0 & 31;
+      uint32_t match[8];
+      int rank = 0;
+#pragma unroll
+      for (int i = 0; i < 8; ++i) {
+        match[i] = __ballot_sync(0xffffffffu, ev[i] == expert);
+        const uint32_t below = i < c0 ? 0xffffffffu : (i == c0 ? ((1u << b0) - 1u) : 0u);
+        rank += __popc(match[i] & below);
+      }
+      // Every kMaxRoutes-th route of an expert leads a chunk of up to kMaxRoutes routes.
+      if ((rank & (kMaxRoutes - 1)) != 0) {
+        return;
+      }
+#pragma unroll
+      for (int i = 0; i < 8; ++i) {
+        uint32_t bits = match[i] & (i < c0 ? 0u : (i == c0 ? (0xffffffffu << b0) : 0xffffffffu));
+        while (bits != 0u && routes < kMaxRoutes) {
+          const int pos = (i << 5) + (__ffs(bits) - 1);
+          bits &= bits - 1u;
+          members |= static_cast<uint64_t>(pos) << (8 * routes);
+          ++routes;
+        }
+      }
     }
-    routes = (last - row0) < kMaxRoutes ? static_cast<int>(last - row0) : kMaxRoutes;
   }
 
   // An interleaved weight row holds 4 real columns (k * 4 bits each = 2k bytes); inside a 64-wide K
@@ -274,10 +312,13 @@ __global__ void __launch_bounds__(kThreads, MinCtasPerSm(kM)) MoeGemvTcInt4Kerne
   // Lanes without a route (g >= routes) read the activations of the last route (same sectors, so no extra memory
   // traffic); their MMA columns are never stored.
   const int g_act = min(g, max(routes - 1, 0));
-  int src_row = row0 + g_act;
+  const int route_g = (p.expert_first_token_offset != nullptr)
+                          ? (row0 + g_act)
+                          : static_cast<int>((members >> (8 * g_act)) & 0xffu);
+  int src_row = route_g;
   if constexpr (kSwiglu) {
     if (p.permuted_row_to_source_row != nullptr) {
-      src_row = p.permuted_row_to_source_row[row0 + g_act] % p.num_rows;
+      src_row = p.permuted_row_to_source_row[route_g] % p.num_rows;
     }
   }
   const __nv_bfloat16* aptr =
@@ -398,6 +439,9 @@ __global__ void __launch_bounds__(kThreads, MinCtasPerSm(kM)) MoeGemvTcInt4Kerne
       if (route >= routes) {
         continue;
       }
+      const int out_row = (p.expert_first_token_offset != nullptr)
+                              ? (row0 + route)
+                              : static_cast<int>((members >> (8 * route)) & 0xffu);
       float even = h == 0 ? d.x : d.y;
       float odd = h == 0 ? d.z : d.w;
       if (bias != nullptr) {
@@ -413,10 +457,10 @@ __global__ void __launch_bounds__(kThreads, MinCtasPerSm(kM)) MoeGemvTcInt4Kerne
         }
         linear += beta;
         const float sigmoid = 1.0f / (1.0f + expf(-alpha * gate));
-        p.out[static_cast<int64_t>(row0 + route) * (n / 2) + col / 2] =
+        p.out[static_cast<int64_t>(out_row) * (n / 2) + col / 2] =
             __float2bfloat16_rn(gate * sigmoid * linear);
       } else {
-        *reinterpret_cast<__nv_bfloat162*>(p.out + static_cast<int64_t>(row0 + route) * n + col) =
+        *reinterpret_cast<__nv_bfloat162*>(p.out + static_cast<int64_t>(out_row) * n + col) =
             __floats2bfloat162_rn(even, odd);
       }
     }
@@ -459,9 +503,16 @@ inline bool DeviceSupportsBf16Mma() {
   int major = 0;
   if (cudaGetDevice(&device) != cudaSuccess ||
       cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device) != cudaSuccess) {
+    (void)cudaGetLastError();
     return false;
   }
   return major >= 8;
+}
+
+// Compact leader scheduling finds the expert runs of the sorted routes, so it needs expert_first_token_offset.
+inline bool UsesCompact80(const Params& p, int64_t expanded_num_rows) {
+  return p.expert_first_token_offset != nullptr && expanded_num_rows == 80 &&
+         (p.num_rows == 0 || p.num_rows <= kMaxRoutes);
 }
 
 template <bool kSwiglu, int kWarpsK, int kM>
@@ -469,7 +520,7 @@ inline void Launch(const Params& p, int64_t expanded_num_rows, cudaStream_t stre
   constexpr int kTileN = (kWarps / kWarpsK) * kM * kMmaM;
   const unsigned n_tiles = static_cast<unsigned>(p.n / kTileN);
   if constexpr (!kSwiglu && kM == 2) {
-    if (expanded_num_rows == 80 && (p.num_rows == 0 || p.num_rows <= kMaxRoutes)) {
+    if (UsesCompact80(p, expanded_num_rows)) {
       const dim3 grid(n_tiles, static_cast<unsigned>(expanded_num_rows));
       MoeGemvTcInt4Kernel<kSwiglu, kWarpsK, kM, true><<<grid, kThreads, 0, stream>>>(p);
       return;
@@ -488,7 +539,8 @@ inline bool TryLaunchInt4Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
                               const float* swiglu_alpha, const float* swiglu_beta, const float* swiglu_limit,
                               float alpha, float beta, float limit, const int* permuted_row_to_source_row,
                               int64_t num_rows, cudaStream_t stream, int tensor_core_min_rows) {
-  if (group_size != 32 || permuted_row_to_expert == nullptr || expert_first_token_offset == nullptr ||
+  if (group_size != 32 || permuted_row_to_expert == nullptr ||
+      (expert_first_token_offset == nullptr && expanded_num_rows > 256) ||
       expanded_num_rows < tensor_core_min_rows || tensor_core_min_rows == 0 || !DeviceSupportsBf16Mma()) {
     return false;
   }
@@ -500,6 +552,7 @@ inline bool TryLaunchInt4Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
   cudaFuncAttributes attributes{};
   const auto kernel = swiglu ? MoeGemvTcInt4Kernel<true, 4, 4> : MoeGemvTcInt4Kernel<false, 1, 1>;
   if (cudaFuncGetAttributes(&attributes, kernel) != cudaSuccess || attributes.ptxVersion < 80) {
+    (void)cudaGetLastError();
     return false;
   }
 
@@ -524,13 +577,14 @@ inline bool TryLaunchInt4Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
   p.n = static_cast<int>(n);
   p.k = static_cast<int>(k);
   p.num_rows = static_cast<int>(num_rows);
+  p.expanded_num_rows = static_cast<int>(expanded_num_rows);
 
   // FC1: the four warps split K (n = 1280 columns, five steps each). FC2: when compact leader scheduling is active
   // (expanded_num_rows == 80), each warp owns two 16-column m-blocks (n_tiles = 20, 80 registers, 6 CTAs/SM = 792
   // CTAs/wave) so all active CTAs fit in Wave 1; otherwise each warp owns one 16-column m-block.
   if (swiglu) {
     Launch<true, 4, 4>(p, expanded_num_rows, stream);
-  } else if (expanded_num_rows == 80 && (p.num_rows == 0 || p.num_rows <= kMaxRoutes)) {
+  } else if (UsesCompact80(p, expanded_num_rows)) {
     Launch<false, 1, 2>(p, expanded_num_rows, stream);
   } else {
     Launch<false, 1, 1>(p, expanded_num_rows, stream);
@@ -545,13 +599,16 @@ inline bool TryLaunchInt4Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
 // matched with the 64 BF16 activations `b_lo[0..3]` and `b_hi[0..3]` of route `g`.
 
 // MaskIdx in {0, 1, 2} selects 2-bit fields at bits {0..1, 2..3, 4..5} in both 16-bit halves of `x`,
-// all of which fit inside BF16's 7-bit mantissa (0x007F007F).
+// all of which fit inside BF16's 7-bit mantissa (0x007F007F). Each centered code in {-2, -1, 0, +1} is scaled by
+// 0.5 into {-1.0, -0.5, 0.0, +0.5} before multiplying by `scale2` so that even `scale = 2^127` with code -2 stays
+// finite in BF16; `finalize` restores the factor of 2 in FP32.
+// This is not full-range BF16 support: code +1 at scale 2^-133 rounds to zero before MMA, losing its contribution.
 template <int MaskIdx>
 __device__ __forceinline__ uint32_t DequantPairInt2Masked(uint32_t x, uint32_t scale2) {
   static_assert(MaskIdx >= 0 && MaskIdx < 3);
   constexpr uint32_t kMask = (MaskIdx == 0) ? 0x00030003u : ((MaskIdx == 1) ? 0x000C000Cu : 0x00300030u);
-  constexpr uint32_t kMul = (MaskIdx == 0) ? 0x3F803F80u : ((MaskIdx == 1) ? 0x3E803E80u : 0x3D803D80u);
-  constexpr uint32_t kAdd = (MaskIdx == 0) ? 0xC302C302u : ((MaskIdx == 1) ? 0xC208C208u : 0xC120C120u);
+  constexpr uint32_t kMul = (MaskIdx == 0) ? 0x3F003F00u : ((MaskIdx == 1) ? 0x3E003E00u : 0x3D003D00u);
+  constexpr uint32_t kAdd = (MaskIdx == 0) ? 0xC282C282u : ((MaskIdx == 1) ? 0xC188C188u : 0xC0A0C0A0u);
   uint32_t v;
   asm("lop3.b32 %0, %1, %2, %3, %4;\n"
       : "=r"(v)
@@ -599,6 +656,7 @@ __device__ __forceinline__ void ComputeWordInt2(float (&acc)[kM][4], int mb, con
   MmaBf16(acc[mb], e6, o6, e7, o7, Comp<J>(b_hi[2]), Comp<J>(b_hi[3]));
 }
 
+template <int kRouteChunks = 8>
 __device__ __forceinline__ bool DiscoverExpertRouteChunk(const Params& p, int row0, int expert, int lane,
                                                          int& routes, uint64_t& members, bool& contiguous_routes) {
   members = 0;
@@ -614,19 +672,19 @@ __device__ __forceinline__ bool DiscoverExpertRouteChunk(const Params& p, int ro
     return routes > 0;
   }
   const int total = p.expanded_num_rows;
-  if (total <= 256) {
-    int ev[8];
+  if (total <= kRouteChunks * 32) {
+    int ev[kRouteChunks];
 #pragma unroll
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < kRouteChunks; ++i) {
       const int idx = i * 32 + lane;
       ev[i] = idx < total ? __ldg(p.permuted_row_to_expert + idx) : -1;
     }
     const int c0 = row0 >> 5;
     const int b0 = row0 & 31;
-    uint32_t match[8];
+    uint32_t match[kRouteChunks];
     int rank = 0;
 #pragma unroll
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < kRouteChunks; ++i) {
       match[i] = __ballot_sync(0xffffffffu, ev[i] == expert);
       const uint32_t below = i < c0 ? 0xffffffffu : (i == c0 ? ((1u << b0) - 1u) : 0u);
       rank += __popc(match[i] & below);
@@ -635,7 +693,7 @@ __device__ __forceinline__ bool DiscoverExpertRouteChunk(const Params& p, int ro
       return false;
     }
 #pragma unroll
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < kRouteChunks; ++i) {
       uint32_t bits = match[i] & (i < c0 ? 0u : (i == c0 ? (0xffffffffu << b0) : 0xffffffffu));
       while (bits != 0u && routes < kMaxRoutes) {
         const int pos = (i << 5) + (__ffs(bits) - 1);
@@ -675,7 +733,7 @@ constexpr int Int2MinCtasPerSm(int kM) {
   return kM == 1 ? 6 : 4;
 }
 
-template <bool kSwiglu, int kWarpsK, int kM, int kGroupSize>
+template <bool kSwiglu, int kWarpsK, int kM, int kGroupSize, int kRouteChunks = 8>
 __global__ void __launch_bounds__(kThreads, Int2MinCtasPerSm(kM)) MoeGemvTcInt2Kernel(const Params p) {
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
   static_assert(kWarps % kWarpsK == 0, "warps must split evenly over K");
@@ -693,7 +751,7 @@ __global__ void __launch_bounds__(kThreads, Int2MinCtasPerSm(kM)) MoeGemvTcInt2K
   uint64_t members = 0;
   int routes = 0;
   bool contiguous_routes = false;
-  if (!DiscoverExpertRouteChunk(p, row0, expert, lane, routes, members, contiguous_routes)) {
+  if (!DiscoverExpertRouteChunk<kRouteChunks>(p, row0, expert, lane, routes, members, contiguous_routes)) {
     return;
   }
 
@@ -842,8 +900,9 @@ __global__ void __launch_bounds__(kThreads, Int2MinCtasPerSm(kM)) MoeGemvTcInt2K
       const int out_row = contiguous_routes
                               ? (row0 + route)
                               : static_cast<int>((members >> (8 * route)) & 0xffu);
-      float even = h == 0 ? d.x : d.y;
-      float odd = h == 0 ? d.z : d.w;
+      // Match the INT2 SIMT and CPU projection boundary before adding bias in FP32.
+      float even = __bfloat162float(__float2bfloat16_rn((h == 0 ? d.x : d.y) * 2.0f));
+      float odd = __bfloat162float(__float2bfloat16_rn((h == 0 ? d.z : d.w) * 2.0f));
       if (bias != nullptr) {
         even += __bfloat162float(bias[col]);
         odd += __bfloat162float(bias[col + 1]);
@@ -857,8 +916,10 @@ __global__ void __launch_bounds__(kThreads, Int2MinCtasPerSm(kM)) MoeGemvTcInt2K
         }
         linear += beta;
         const float sigmoid = 1.0f / (1.0f + expf(-alpha * gate));
+        const bool silu_limit_is_zero = (alpha > 0.0f && gate == -CUDART_INF_F) ||
+                                        (alpha < 0.0f && gate == CUDART_INF_F);
         p.out[static_cast<int64_t>(out_row) * (n / 2) + col / 2] =
-            __float2bfloat16_rn(gate * sigmoid * linear);
+            __float2bfloat16_rn((silu_limit_is_zero ? 0.0f : gate * sigmoid) * linear);
       } else {
         *reinterpret_cast<__nv_bfloat162*>(p.out + static_cast<int64_t>(out_row) * n + col) =
             __floats2bfloat162_rn(even, odd);
@@ -901,7 +962,11 @@ template <bool kSwiglu, int kWarpsK, int kM, int kGroupSize>
 inline void LaunchInt2(const Params& p, int64_t expanded_num_rows, cudaStream_t stream) {
   constexpr int kTileN = (kWarps / kWarpsK) * kM * kMmaM;
   const dim3 grid(static_cast<unsigned>(expanded_num_rows), static_cast<unsigned>(p.n / kTileN));
-  MoeGemvTcInt2Kernel<kSwiglu, kWarpsK, kM, kGroupSize><<<grid, kThreads, 0, stream>>>(p);
+  if (expanded_num_rows <= 96) {
+    MoeGemvTcInt2Kernel<kSwiglu, kWarpsK, kM, kGroupSize, 3><<<grid, kThreads, 0, stream>>>(p);
+  } else {
+    MoeGemvTcInt2Kernel<kSwiglu, kWarpsK, kM, kGroupSize, 8><<<grid, kThreads, 0, stream>>>(p);
+  }
 }
 
 inline bool TryLaunchInt2Bf16(bool swiglu, const __nv_bfloat16* act, const uint8_t* weight,
@@ -912,6 +977,7 @@ inline bool TryLaunchInt2Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
                               float alpha, float beta, float limit, const int* permuted_row_to_source_row,
                               int64_t num_rows, cudaStream_t stream, int tensor_core_min_rows) {
   if ((group_size != 32 && group_size != 64 && group_size != 128) || permuted_row_to_expert == nullptr ||
+      (expert_first_token_offset == nullptr && expanded_num_rows > 256) ||
       expanded_num_rows < tensor_core_min_rows || tensor_core_min_rows == 0 || !DeviceSupportsBf16Mma()) {
     return false;
   }
@@ -929,6 +995,7 @@ inline bool TryLaunchInt2Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
                                                : (use_2warps_k ? MoeGemvTcInt2Kernel<true, 2, 2, 128>
                                                                : MoeGemvTcInt2Kernel<false, 1, 1, 128>);
   if (cudaFuncGetAttributes(&attributes, check_kernel) != cudaSuccess || attributes.ptxVersion < 80) {
+    (void)cudaGetLastError();
     return false;
   }
 
@@ -964,7 +1031,11 @@ inline bool TryLaunchInt2Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
         LaunchInt2<true, 1, 1, kG>(p, expanded_num_rows, stream);
       }
     } else {
-      LaunchInt2<false, 1, 1, kG>(p, expanded_num_rows, stream);
+      if (n % 128 == 0) {
+        LaunchInt2<false, 1, 2, kG>(p, expanded_num_rows, stream);
+      } else {
+        LaunchInt2<false, 1, 1, kG>(p, expanded_num_rows, stream);
+      }
     }
   };
   if (group_size == 64) {

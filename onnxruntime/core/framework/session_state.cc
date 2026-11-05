@@ -1781,8 +1781,11 @@ bool ValidateNodeForMoeOffload(const Node& node,
     const bool is_int3_raw =
         (uniform_bits && weight_bits == 3 && prepacked == 0 &&
          (blk == 32 || blk == 64 || blk == 128));
-    if (!is_int4_prepacked && !is_int3_raw) {
-      out_reason = "quant_type='int' offload requires (bits=4, weights_prepacked=1, block_size=32) or (bits=3, weights_prepacked=0, block_size in {32,64,128})";
+    const bool is_int2_prepacked =
+        (uniform_bits && weight_bits == 2 && prepacked == 1 &&
+         (blk == 32 || blk == 64 || blk == 128));
+    if (!is_int4_prepacked && !is_int3_raw && !is_int2_prepacked) {
+      out_reason = "quant_type='int' offload requires (bits=4, weights_prepacked=1, block_size=32), (bits=3, weights_prepacked=0, block_size in {32,64,128}), or (bits=2, weights_prepacked=1, block_size in {32,64,128})";
       return false;
     }
   } else {
@@ -1919,17 +1922,18 @@ bool ValidateNodeForMoeOffload(const Node& node,
       return false;
     }
   } else {
-    if (fc1_d1 == fc2_d2 * 2 && fc1_d2 == fc2_d1) {
+    const int64_t pack_factor = (quant_type == "int" && weight_bits == 2) ? 4 : 2;
+    if (fc1_d1 == fc2_d2 * pack_factor && fc1_d2 * pack_factor == 2 * fc2_d1) {
       hidden = fc1_d1;
       inter = fc2_d1;
-    } else if (fc1_d1 == fc2_d2 * 4 && fc1_d2 * 2 == fc2_d1) {
+    } else if (fc1_d1 == fc2_d2 * 2 * pack_factor && fc1_d2 * pack_factor == fc2_d1) {
       hidden = fc2_d1;
       inter = fc1_d1 / 2;
     } else {
       out_reason = "expert weight shapes do not match a supported QMoE offload layout";
       return false;
     }
-    scale_group = (quant_type == "nvfp4") ? 16 : 32;
+    scale_group = (quant_type == "int" && weight_bits == 2) ? blk : ((quant_type == "nvfp4") ? 16 : 32);
     const int64_t required_tile = (quant_type == "int") ? 64 : 32;
     if (hidden <= 0 || inter <= 0 || hidden > kMaxDim || inter > kMaxDim / 2 ||
         hidden % scale_group != 0 || inter % scale_group != 0 ||
