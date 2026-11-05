@@ -44,12 +44,18 @@ def _test_impl(ctx):
         is_executable = True,
     )
     runfiles = ctx.runfiles(files = [ctx.file.runtime])
+    test_environment = test[RunEnvironmentInfo]
+    environment = dict(test_environment.environment)
+    environment["ORT_LIB_PATH"] = "../../" + ctx.file.runtime.short_path
     return [
         DefaultInfo(
             executable = executable,
             runfiles = runfiles.merge(test[DefaultInfo].default_runfiles),
         ),
-        RunEnvironmentInfo(environment = {"ORT_LIB_PATH": "../../" + ctx.file.runtime.short_path}),
+        RunEnvironmentInfo(
+            environment = environment,
+            inherited_environment = test_environment.inherited_environment,
+        ),
     ]
 
 desktop_go_test = rule(

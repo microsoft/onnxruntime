@@ -28,8 +28,9 @@ $env:BAZEL_SH = 'C:\Program Files\Git\bin\bash.exe'
 ```sh
 bazel build -c opt //:runtime_library
 bazel test -c opt //:runtime_smoke_test //:common_test
-# Include all desktop bindings and their tests:
-bazel test -c opt //...
+# Analyze the full graph without executing complete suites:
+bazel build -c opt //... --nobuild
+bazel test -c opt //:go_test //:java_smoke_test //:python_smoke_test //:node_smoke_test //:csharp_smoke_test
 ```
 
 These same Bazel commands run natively on each host; Windows does not require
@@ -39,6 +40,16 @@ on macOS. The public headers remain
 under `include/onnxruntime/`; the `//:api_headers` target exports their include
 paths. `//:runtime_shared` exposes the shared library to other Bazel C/C++
 targets. `//:runtime` is the static runtime library.
+
+When invoking Bazel from Git Bash on Windows, set
+`export MSYS2_ARG_CONV_EXCL='*'` so labels and test filters are not rewritten
+as filesystem paths. CI also uses a short Windows output base to avoid path
+length limits.
+
+The MLAS baseline archive is retained because ISA archives call back into
+its helpers on ELF linkers. macOS logging is compiled as Objective-C++ rather
+than placed in a C++-only source list, and Intel constants use Mach-O sections.
+These graph fixes do not substitute for native macOS execution evidence.
 
 Dependencies are pinned in `MODULE.bazel` and `bazel/dependencies.bzl`. Source
 archives have SHA-256 checksums. Protobuf sources and configuration headers are
@@ -154,6 +165,11 @@ all seven default test targets on Azure Linux 3 with GCC 13.2, with
 `CUDA_PATH`, `CUDNN_PATH`, and `LD_LIBRARY_PATH` unset. This includes all five
 desktop-language smoke/unit targets and 20 existing C++ utility tests.
 
+A fresh Linux source build also passed all seven explicit targets with frozen
+locks after the portability fixes below (2,390 build actions, followed by an
+uncached seven-target test run). The Go wrapper preserves rules_go's run
+environment so its configured test directory and runtime-library path agree.
+
 On Windows x86-64 with Visual Studio 2022 (MSVC 14.44), Bazel 8.4.2,
 and the managed JDK 25 runtime, the following also passed all seven targets:
 
@@ -171,12 +187,15 @@ utility tests. `//:go_test` runs the existing self-contained Go tests. The
 language smoke tests are integration tests, not replacements for each binding's
 complete test suite.
 
-The `Native Bazel desktop` workflow runs the default graph on `ubuntu-24.04`,
-`windows-2022`, `macos-15`, and `macos-15-intel`, including all five desktop
-bindings. Passing Linux tests alone is not evidence that the other hosts work.
+The `Native Bazel desktop` workflow analyzes the default graph and executes
+explicit smoke/utility targets on `ubuntu-24.04`, `windows-2022`, and
+`macos-15`, including all five desktop bindings. It does not execute wildcard
+suites. Passing Linux tests alone is not evidence that the other hosts work.
+
+Training is intentionally excluded from this migration.
 
 Remaining work includes the full provider/operator suites, contrib operators,
-training, additional EPs, additional architecture variants, release packaging,
+additional EPs, additional architecture variants, release packaging,
 cross-compilation, sanitizers, and the CUDA/toolchain matrix. Those are separate
 native targets/toolchains to add, not reasons to delegate back to the old build
 system.
