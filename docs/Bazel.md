@@ -10,8 +10,9 @@ The native graph targets Linux x86-64, Windows x86-64, and macOS on Intel and
 Apple Silicon. Linux and native Windows execution have been validated; macOS
 validation is still pending. This is not yet a replacement for the
 release build: additional execution providers,
-most mobile/web cross-compilation, and complete language-specific release packaging are not included.
-An experimental Android ARM64 runtime/JNI/AAR path is available below.
+browser GPU execution providers, and complete language-specific release packaging
+are not included. Experimental Android ARM64 runtime/JNI/AAR and single-threaded
+CPU WebAssembly paths are described below.
 `orttraining` build and test migration is intentionally out of scope.
 
 ## CPU contrib operators
@@ -445,6 +446,94 @@ available, so Intel and Apple Silicon native validation remain pending.
 Windows smoke-target analysis (`bazel build -c opt //:runtime_smoke_test
 --nobuild`) passed; this portability slice did not rebuild the Windows runtime.
 
+## WebAssembly CPU (experimental)
+
+The opt-in WebAssembly graph compiles the same runtime sources with the pinned
+Emscripten 4.0.19 Bazel toolchain. It selects wasm32, POSIX platform sources,
+single-threaded MLAS, C++ exceptions, and either scalar kernels or fixed SIMD128
+kernels. It does not compile host x86/ARM MLAS kernels for the target. SDK source
+and compiler archives are checksummed; no prebuilt ORT WASM or npm runtime is used.
+The WebAssembly targets are `manual`, and their underlying C++ binaries are
+incompatible with desktop platforms, so normal `//...` remains a desktop build.
+
+```sh
+bazel build -c opt //:wasm_scalar //:wasm_simd
+bazel build -c opt //:web_scalar_package //:web_simd_package
+bazel test -c opt //:wasm_scalar_test --test_filter=WebAssemblyTest.test
+bazel test -c opt //:wasm_simd_test --test_filter=WebAssemblyTest.test
+bazel test -c opt //:web_scalar_smoke_test //:web_simd_smoke_test
+bazel test -c opt //:web_scalar_browser_test //:web_simd_browser_test \
+  --test_env=ORT_BAZEL_BROWSER=/absolute/path/to/chromium
+```
+
+Windows needs the Python 3 launcher (`py -3`) required by the SDK's compiler
+driver, in addition to the desktop prerequisites above. With a per-user Python
+installation, pass `--action_env=PATH` so the strict action environment can find
+that launcher. Use a short isolated output root to avoid MSVC response-file path
+limits while Bazel builds the host `protoc`, for example:
+
+```powershell
+bazel --output_user_root=C:\b\ort-wasm test -c opt //:wasm_scalar_test --test_filter=WebAssemblyTest.test --action_env=PATH
+```
+
+The package targets source-assemble the checked-in common and WebAssembly
+TypeScript frontend and emit `ort-web.js`, `ort_wasm.mjs`, and `ort_wasm.wasm` in
+`bazel-bin/web_{scalar,simd}_package/`. In a browser, serve those three assets
+together and load `ort-web.js` as a classic script; it exposes the common
+`ort.Tensor`, `ort.InferenceSession`, and LoRA APIs. In Node, `require()` the same
+`ort-web.js`. The frontend defaults to one thread and selects its companion
+native-compiled module, rather than a release CDN artifact. All CPU inference
+functions declared in `onnxruntime/wasm/api.h` are retained through the original
+`EMSCRIPTEN_KEEPALIVE` declarations. The original `pre.js` and `js_post_js.js` are
+linker inputs, preserving external-data mounting and the pointer-size contract.
+
+The `wasm_*_test` targets compile the existing
+`onnxruntime/test/wasm/test_inference.cc` and preload its checked-in
+`mul_1.onnx` fixture. Gtest case selection is forwarded to the WASM executable;
+an invalid or zero-match selection fails. The frontend and browser smoke targets
+independently run Mul and MatMul through `ort.InferenceSession`, checking shapes
+`[3, 2]` and `[3, 1]` and every output value. The Node smoke also checks invalid-model
+rejection and the declared CPU inference API exports. The browser test requires Chromium/Edge and fails
+explicitly if none is configured; on Windows it also detects the default Edge
+installation. Each browser invocation uses an isolated test profile.
+
+Linux x86-64 validation used Bazel 8.4.2, Emscripten 4.0.19, managed Node
+24.22.1, and the frozen module lock. These commands passed with `--jobs=24`:
+
+```sh
+bazel test -c opt //:wasm_scalar_test //:wasm_simd_test \
+  //:web_scalar_smoke_test //:web_simd_smoke_test
+bazel test -c opt //:wasm_scalar_test //:wasm_simd_test \
+  --test_filter=WebAssemblyTest.test
+bazel test -c opt //:runtime_smoke_test \
+  //:web_scalar_smoke_test //:web_simd_smoke_test
+bazel test -c opt //:web_scalar_browser_test //:web_simd_browser_test \
+  --test_env=ORT_BAZEL_BROWSER=/absolute/path/to/chrome-headless-shell \
+  --test_env=LD_LIBRARY_PATH
+```
+
+Both browser variants executed Mul and MatMul in Chrome for Testing
+157.0.8103.38 with its sandbox enabled. Missing Azure Linux browser libraries
+were downloaded/extracted into the task's tools directory, not installed
+globally; `LD_LIBRARY_PATH` exposed those libraries to the browser. The
+`runtime_smoke_test` command freshly rebuilt and executed the native desktop
+runtime as a regression check. Selecting `DefinitelyNoSuchCase` or `-*` on
+`//:wasm_scalar_test` failed with Bazel exit 3, as intended. No CMake, `build.py`,
+prebuilt ORT runtime, or release npm ORT package was used.
+
+Windows compilation reached native Emscripten source compilation but was
+stopped for shared-host resource scheduling; it is not an end-to-end Windows
+build validation. Local managed Edge redirected fresh profiles to
+`edge://force-signin`, so browser validation ran on Linux rather than bypassing
+that policy.
+
+This is a CPU inference slice, not complete `onnxruntime-web` release packaging.
+Threading, worker proxying, relaxed SIMD, memory64, JSPI/Asyncify, WebGPU, WebNN,
+JSEP, WebGL, XNNPACK, training, and the complete JavaScript Web test suite are
+not enabled. Requests for threading or proxy mode fail instead of silently
+running single-threaded. Browser GPU backends are not registered. Contrib
+operators remain excluded, matching the native CPU graph.
+
 ## Language extensions
 
 ```sh
@@ -466,7 +555,7 @@ bazel test -c opt \
 | Node.js | `//:onnxruntime_binding.node`, `//:node_js_package`, `//:node_test` | Native Node-API extension, source-assembled common/Node JavaScript packages, and four existing test files with file/case selection. Not release npm packaging or the complete Node suite. |
 | C# | `//:csharp_binding`, `//:csharp_smoke_test`, `//:csharp_tests` | .NET 8 binding and existing desktop test sources compiled directly with `rules_dotnet`, exercised on .NET 10. Native xUnit discovery/execution supports exact class/method selection, theories and fixtures. Training APIs are not enabled. Not a NuGet package. |
 | Objective-C / Swift import surface | `//objectivec:onnxruntime_objc`, `//objectivec:inference_tests` | Native ARC Objective-C++ inference wrappers, an explicit `onnxruntime_objc` Clang module, and existing hostless XCTest cases/fixtures. macOS only; Apple compilation/execution and Swift import are not yet validated. Not an iOS framework, XCFramework, or Swift package. |
-| JavaScript Web / WebAssembly | Not implemented | Requires an Emscripten toolchain, WASM-specific runtime configuration, exported C functions, worker/assets packaging, and browser tests. Native Linux compilation does not validate this surface. |
+| JavaScript Web / WebAssembly | `//:wasm_scalar`, `//:wasm_simd`, `//:web_scalar_package`, `//:web_simd_package` | Source-native Emscripten CPU runtime and source-assembled frontend; selectable existing WASM inference test and Node/browser smoke targets. Single-threaded scalar/fixed SIMD only, not the complete release or Web test suite. |
 | React Native | Not implemented | Requires the Android/iOS cross-compilation and packaging graphs plus the React Native bridge. A working Node addon is not evidence of mobile support. |
 | Rust | `//rust/onnxruntime-sys:onnxruntime_sys`, `//rust/onnxruntime:onnxruntime`, `//rust:smoke_test` | Both existing first-party crates, current-header bindgen generation, and selected existing unit/integration tests. Native `rules_rust` compilation and explicit loading of the source-built runtime; no Cargo build or legacy native acquisition. Not crates.io packaging. |
 

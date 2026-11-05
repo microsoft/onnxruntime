@@ -5,6 +5,22 @@ load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 
 package(default_visibility = ["//visibility:public"])
 
+config_setting(
+    name = "wasm",
+    constraint_values = ["@platforms//cpu:wasm32"],
+)
+
+bool_flag(
+    name = "wasm_simd",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "wasm_simd_enabled",
+    constraint_values = ["@platforms//cpu:wasm32"],
+    flag_values = {":wasm_simd": "True"},
+)
+
 constraint_setting(name = "cgo_compiler")
 
 constraint_value(
@@ -86,6 +102,7 @@ config_setting(
 
 exports_files([
     "rules-apple-platform-compatibility.patch",
+    "googletest-wasm.patch",
     "onnx.BUILD.bazel",
     "abseil-includes.patch",
     "onnxruntime.lds",

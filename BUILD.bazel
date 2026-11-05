@@ -15,6 +15,7 @@ load("//bazel:packaging.bzl", "runtime_sdk_package")
 load("//bazel:platforms.bzl", "desktop_shared_library")
 load("//bazel:python_wheel.bzl", "python_wheel_package")
 load("//bazel:tests.bzl", "core_tests")
+load("//bazel:wasm.bzl", "wasm_targets")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -78,6 +79,11 @@ cc_library(
             "_USE_MATH_DEFINES",
             "_WIN32_WINNT=0x0A00",
             "WINVER=0x0A00",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        "//bazel:wasm": [
+            "BUILD_MLAS_NO_ONNXRUNTIME",
         ],
         "//conditions:default": [],
     }) + select({
@@ -229,6 +235,7 @@ cc_library(
             "-ldl",
             "-llog",
         ],
+        "//bazel:wasm": [],
         "//bazel:windows": [
             "advapi32.lib",
             "dbghelp.lib",
@@ -346,6 +353,8 @@ python_wheel_package()
 java_native_package()
 
 core_tests()
+
+wasm_targets()
 
 cc_test(
     name = "runtime_cuda_smoke_test",

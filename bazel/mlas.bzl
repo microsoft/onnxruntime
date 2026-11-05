@@ -268,6 +268,8 @@ def mlas_libraries():
             "//bazel:android": [],
             "//conditions:default": [_LIB + source + ".cpp" for source in ["activate_fp16", "dwconv", "pooling_fp16"]],
         }) + select({
+            "//bazel:wasm_simd_enabled": native.glob([_LIB + "wasm_simd/*.cpp"]) + [_LIB + "qgemm_kernel_wasmsimd.cpp"],
+            "//bazel:wasm": native.glob([_LIB + "scalar/*.cpp"]),
             "//bazel:x86_64": [_LIB + "qgemm_kernel_avx2.cpp"],
             "//conditions:default": [],
         }),
@@ -280,6 +282,7 @@ def mlas_libraries():
             ],
             "//conditions:default": [],
         }) + select({
+            "//bazel:wasm": [],
             "//bazel:aarch64": [":mlas_neon"],
             "//conditions:default": [
                 ":mlas_sse2",

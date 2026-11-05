@@ -73,6 +73,23 @@ android_ndk_repository(
     api_level = 27,
 )
 
+bazel_dep(name = "emsdk", version = "4.0.19")
+archive_override(
+    module_name = "emsdk",
+    sha256 = "ba981f50a1664c99d56e435d45cb15bdeb17727cbc6455bb3a56014e8e5853e6",
+    strip_prefix = "emsdk-4.0.19/bazel",
+    urls = ["https://github.com/emscripten-core/emsdk/archive/refs/tags/4.0.19.tar.gz"],
+)
+
+emscripten = use_extension("@emsdk//:emscripten_deps.bzl", "emscripten_deps")
+emscripten.config(version = "4.0.19")
+
+single_version_override(
+    module_name = "googletest",
+    patch_strip = 1,
+    patches = ["//bazel:googletest-wasm.patch"],
+)
+
 csharp_test_deps = use_extension("//bazel:csharp_dependencies.bzl", "csharp_test_dependencies")
 use_repo(
     csharp_test_deps,
