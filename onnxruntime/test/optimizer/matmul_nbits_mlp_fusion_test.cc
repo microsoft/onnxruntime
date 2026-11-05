@@ -440,6 +440,24 @@ TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionLeavesQLoRAWithoutKernel) {
       TransformerLevel::Level2, 0, nullptr, CheckQLoRAMlpUnfusedGraph));
 }
 
+TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionProbesPluginAdapterSupport) {
+  for (bool adapter_aware : {false, true}) {
+    SCOPED_TRACE(adapter_aware ? "adapter-aware plugin" : "base-only plugin");
+    auto qlora_fusion = GenerateWebGpuFusionTransformerForTest("MatMulNBitsMlpFusion", adapter_aware);
+    ASSERT_NE(qlora_fusion, nullptr);
+    ASSERT_STATUS_OK(TestGraphTransformer(
+        BuildQLoRAMlpActive, 21, *logger_, std::move(qlora_fusion),
+        TransformerLevel::Level2, adapter_aware ? 1 : 0, nullptr,
+        adapter_aware ? CheckQLoRAMlpFusedGraph : CheckQLoRAMlpUnfusedGraph));
+
+    auto base_fusion = GenerateWebGpuFusionTransformerForTest("MatMulNBitsMlpFusion", adapter_aware);
+    ASSERT_NE(base_fusion, nullptr);
+    ASSERT_STATUS_OK(TestGraphTransformer(
+        BuildMatMulNBitsMlpSimplifiedWebGpuPatternNoBias, 21, *logger_, std::move(base_fusion),
+        TransformerLevel::Level2, 1, nullptr, CheckMatMulNBitsMlpSimplifiedFusedGraph));
+  }
+}
+
 TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionQLoRANumerics) {
   if (!DefaultWebGpuExecutionProvider()) GTEST_SKIP() << "WebGPU EP unavailable in this build.";
   for (auto build : {BuildQLoRAMlpActive, BuildQLoRAMlpEmpty,

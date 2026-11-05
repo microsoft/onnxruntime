@@ -383,6 +383,24 @@ TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionLeavesQLoRAWithoutKernel) {
       TransformerLevel::Level2, 0, nullptr, CheckQLoRAQkvUnfusedGraph));
 }
 
+TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionProbesPluginAdapterSupport) {
+  for (bool adapter_aware : {false, true}) {
+    SCOPED_TRACE(adapter_aware ? "adapter-aware plugin" : "base-only plugin");
+    auto qlora_fusion = GenerateWebGpuFusionTransformerForTest("MatMulNBitsQkvFusion", adapter_aware);
+    ASSERT_NE(qlora_fusion, nullptr);
+    ASSERT_STATUS_OK(TestGraphTransformer(
+        BuildQLoRAQkvActive, 21, *logger_, std::move(qlora_fusion),
+        TransformerLevel::Level2, adapter_aware ? 1 : 0, nullptr,
+        adapter_aware ? CheckQLoRAQkvFusedGraph : CheckQLoRAQkvUnfusedGraph));
+
+    auto base_fusion = GenerateWebGpuFusionTransformerForTest("MatMulNBitsQkvFusion", adapter_aware);
+    ASSERT_NE(base_fusion, nullptr);
+    ASSERT_STATUS_OK(TestGraphTransformer(
+        BuildMatMulNBitsQkvWebGpuPattern, 21, *logger_, std::move(base_fusion),
+        TransformerLevel::Level2, 1, nullptr, CheckMatMulNBitsQkvFusedGraph));
+  }
+}
+
 TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionQLoRANumerics) {
   if (!DefaultWebGpuExecutionProvider()) GTEST_SKIP() << "WebGPU EP unavailable in this build.";
   int case_index = 0;

@@ -23,13 +23,11 @@ class MatMulNBitsQkv : public WebGpuKernel {
     epsilon_ = info.GetAttrOrDefault<float>("epsilon", 1e-6f);
     lora_bits_ = info.GetAttrOrDefault<int64_t>("lora_bits", 8);
     lora_block_size_ = info.GetAttrOrDefault<int64_t>("lora_block_size", 32);
-    const auto& inputs = info.node().InputDefs();
-    auto input_exists = [&](size_t i) { return inputs[i] != nullptr && inputs[i]->Exists(); };
-    has_adapter_inputs_ = inputs.size() > 12 && input_exists(12);
-    for (size_t i = 12; i < inputs.size(); ++i) {
-      ORT_ENFORCE(input_exists(i) == has_adapter_inputs_,
-                  "MatMulNBitsQkv requires all adapter inputs when any is present.");
-    }
+    // GetInputCount is available through the plugin EP API. The schema checks
+    // that the optional adapter inputs are either all present or all absent.
+    has_adapter_inputs_ = info.GetInputCount() > 12;
+    ORT_ENFORCE(!has_adapter_inputs_ || info.GetInputCount() == 24,
+                "MatMulNBitsQkv requires all adapter inputs when any is present.");
     ORT_ENFORCE(bits_ == 4,
                 "MatMulNBitsQkv currently supports 4-bit weights only.");
   }
