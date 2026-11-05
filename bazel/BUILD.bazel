@@ -96,6 +96,16 @@ exports_files([
 ])
 
 bool_flag(
+    name = "contrib",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "contrib_enabled",
+    flag_values = {":contrib": "True"},
+)
+
+bool_flag(
     name = "cuda",
     build_setting_default = False,
     visibility = ["//visibility:public"],

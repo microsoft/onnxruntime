@@ -9,10 +9,76 @@ their location under `cmake/` does not make them build-system dependencies.
 The native graph targets Linux x86-64, Windows x86-64, and macOS on Intel and
 Apple Silicon. Linux and native Windows execution have been validated; macOS
 validation is still pending. This is not yet a replacement for the
-release build: contrib operators, additional execution providers,
+release build: additional execution providers,
 most mobile/web cross-compilation, and language-specific release packaging are not included.
 An experimental Android ARM64 runtime/JNI/AAR path is available below.
 `orttraining` build and test migration is intentionally out of scope.
+
+## CPU contrib operators
+
+CPU contrib operators are opt-in; the established default still defines
+`DISABLE_CONTRIB_OPS`. Enable them for a runtime, binding, or test invocation
+with `--//bazel:contrib`. This compiles the existing contrib schemas, CPU
+kernel registration table, and inference implementations directly from source,
+using the same MLAS, Eigen (including unsupported special functions), RE2,
+ONNX, and protobuf targets as the standard CPU runtime. No external runtime
+or CMake-generated artifact is used.
+
+```sh
+bazel build -c opt --//bazel:contrib //:runtime_library
+bazel test -c opt --//bazel:contrib //:contrib_quantization_test \
+  --test_filter=DynamicQuantizeMatMul.Int8
+bazel test -c opt --//bazel:contrib //:contrib_attention_test \
+  --test_filter=ContribOpLinearAttentionTest.LinearRule_MultiToken
+bazel test -c opt --//bazel:contrib //:contrib_sparse_test \
+  --test_filter=SparseToDenseMatMul.TestCsr
+```
+
+The selectable tests compile existing sources under `onnxruntime/test/contrib_ops`
+and use the existing `OpTester` infrastructure. These targets are incompatible
+without the contrib flag, rather than silently running a no-contrib binary.
+The attention target includes linear attention and its fused gate tests;
+the quantization target includes dynamic quantized matrix multiplication.
+The sparse target includes sparse-to-dense matrix multiplication.
+This is representative coverage, not migration of the complete contrib test suite.
+
+The source selection in `bazel/contrib.bzl` follows CPU inference categories:
+top-level kernels, attention LSTM, BERT/attention, math, MoE, quantization,
+sparse, tensor, generation/transformers, and utilities. It includes the
+contrib-dependent GQA graph transformers. It does not select CUDA, JS,
+WebGPU, or `orttraining` sources. ATen interop is not enabled and its source
+directory is excluded; training-only `ShrunkenGather` remains behind its
+existing `ENABLE_TRAINING_OPS` guard. The QMoE baseline translation unit
+includes its ISA-specific `.cc` implementations, which are declared as textual
+inputs instead of compiled twice. Optional MLAS QMoE offload and KleidiAI
+configurations are not enabled. Existing platform and feature guards govern
+the registered inference kernels; this is not a reduced hand-picked registration
+table or a claim that every contrib schema has a CPU implementation.
+
+Linux x86-64 validation used Bazel 8.4.2, GCC 13.2.0, and the frozen module
+lock on Azure Linux 3.0. The native source build and this focused invocation
+passed **four existing cases** (two attention/gate, one quantization, one sparse),
+with zero skipped cases:
+
+```sh
+bazel test -c opt --//bazel:contrib --jobs=24 \
+  //:contrib_attention_test //:contrib_quantization_test //:contrib_sparse_test \
+  --test_filter='ContribOpLinearAttentionTest.LinearRule_MultiToken:ContribOpGatedRMSNormTest.Float_PerHead:DynamicQuantizeMatMul.Int8:SparseToDenseMatMul.TestCsr' \
+  --nocache_test_results --test_output=summary
+```
+
+The default configuration, with no contrib flag, also source-built and passed
+**one existing standard CPU case**, with zero skipped cases:
+
+```sh
+bazel test -c opt --jobs=24 //:cpu_provider_test \
+  --test_filter=MathOpTest.Add_float --test_output=summary
+```
+
+Explicitly requesting `//:contrib_sparse_test` without the flag failed analysis
+as an incompatible target, as intended. No full suites were executed. The new
+contrib configuration has not been validated on macOS; Windows compilation was
+stopped before completion when validation moved to the larger Linux host.
 
 ## Getting started
 
@@ -314,7 +380,7 @@ bazel test -c opt \
 
 | Surface | Native Bazel targets | Current scope |
 | --- | --- | --- |
-| C/C++ | `//:runtime`, `//:runtime_library`, `//:runtime_smoke_test` | Standard ONNX CPU operators; inference through the public C++ API. |
+| C/C++ | `//:runtime`, `//:runtime_library`, `//:runtime_smoke_test` | Standard ONNX CPU operators and optional `--//bazel:contrib` CPU inference kernels; inference through the public C++ API. |
 | Python | `//:python_native_library`, `//:python_runtime_package`, `//:python_tests`, `//:python_wheel` | CPython 3.12 extension, source-assembled high-level CPU inference package, selected existing unittest cases, and CPU Windows/Linux x86-64 wheels. Not a complete Python suite/tooling migration. |
 | Java/JNI | `//:java_binding`, `//:java_native_library`, `//:java_smoke_test` | Java sources and JNI sources; JNI headers come from Bazel's Java compiler. No Gradle invocation. Not an AAR or Maven publication. |
 | Android Java/JNI | `//:android_java`, `//:android_aar` | Android Java sources, source-built ARM64 runtime/JNI, and single-ABI AAR; Linux-host cross-build validated. Not React Native or device execution. |

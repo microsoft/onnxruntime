@@ -7,6 +7,7 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//bazel:android.bzl", "android_bindings")
 load("//bazel:bindings.bzl", "language_bindings")
+load("//bazel:contrib.bzl", "cpu_contrib_sources")
 load("//bazel:cuda.bzl", "cuda_libraries")
 load("//bazel:mlas.bzl", "mlas_libraries")
 load("//bazel:packaging.bzl", "runtime_sdk_package")
@@ -58,14 +59,17 @@ cc_library(
         "include/onnxruntime/**/*.inc",
         "onnxruntime/**/*.h",
         "onnxruntime/**/*.inc",
+        "onnxruntime/**/*.inl",
         "model_package/include/*.h",
         "model_package/src/*.h",
     ]),
     defines = [
-        "DISABLE_CONTRIB_OPS",
         "ONNX_ML=1",
         "ONNX_NAMESPACE=onnx",
     ] + select({
+        "//bazel:contrib_enabled": [],
+        "//conditions:default": ["DISABLE_CONTRIB_OPS"],
+    }) + select({
         "//bazel:windows": [
             "PLATFORM_WINDOWS",
             "NOMINMAX",
@@ -85,7 +89,12 @@ cc_library(
         "model_package/include",
         "onnxruntime",
     ],
-    textual_hdrs = ["onnxruntime/core/framework/ort_value_tensor_slicer.cc"],
+    textual_hdrs = ["onnxruntime/core/framework/ort_value_tensor_slicer.cc"] + select({
+        "//bazel:contrib_enabled": glob([
+            "onnxruntime/contrib_ops/cpu/moe/qmoe_shared_layout_*avx*.cc",
+        ]),
+        "//conditions:default": [],
+    }),
     deps = [
         ":generated_headers",
         "@abseil-cpp//:ort_include_path",
@@ -175,7 +184,7 @@ cc_library(
             "onnxruntime/core/optimizer/gqa_value_layout_boundaries.cc",
             "onnxruntime/core/optimizer/gqa_value_layout_transformer.cc",
         ],
-    ) + [
+    ) + cpu_contrib_sources() + [
         "onnxruntime/core/platform/check_intel.cc",
         "onnxruntime/core/platform/device_discovery_common.cc",
         "onnxruntime/core/platform/device_discovery_default.cc",

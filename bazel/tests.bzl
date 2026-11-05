@@ -99,9 +99,11 @@ def core_tests():
         ],
         "optimizer_test": native.glob(
             ["onnxruntime/test/optimizer/*.cc"],
-            # The CPU-only runtime omits this contrib-GQA transformer.
             exclude = ["onnxruntime/test/optimizer/gqa_value_layout_transformer_test.cc"],
-        ),
+        ) + select({
+            "//bazel:contrib_enabled": ["onnxruntime/test/optimizer/gqa_value_layout_transformer_test.cc"],
+            "//conditions:default": [],
+        }),
         "cpu_provider_test": native.glob(
             ["onnxruntime/test/providers/cpu/**/*.cc"],
             # This runner needs the separately downloaded ONNX model corpus.
@@ -117,6 +119,28 @@ def core_tests():
             # ORT's test environment already owns the process default logger.
             local_defines = ["SKIP_DEFAULT_LOGGER_TESTS"] if name == "logging_test" else [],
             deps = [":ort_test_main"],
+            linkstatic = True,
+            size = "large",
+            timeout = "long",
+        )
+    for name, srcs in {
+        "contrib_sparse_test": ["onnxruntime/test/contrib_ops/math/matmul_sparse_test.cc"],
+        "contrib_quantization_test": ["onnxruntime/test/contrib_ops/dynamic_quantize_matmul_test.cc"],
+        "contrib_attention_test": [
+            "onnxruntime/test/contrib_ops/linear_attention_gates_op_test.cc",
+            "onnxruntime/test/contrib_ops/linear_attention_op_test.cc",
+        ],
+    }.items():
+        cc_test(
+            name = name,
+            srcs = srcs + ["tools/bazel/test_main.cc"],
+            data = native.glob(["onnxruntime/test/testdata/**"]),
+            copts = test_copts,
+            deps = [":ort_test_main"],
+            target_compatible_with = select({
+                "//bazel:contrib_enabled": [],
+                "//conditions:default": ["@platforms//:incompatible"],
+            }),
             linkstatic = True,
             size = "large",
             timeout = "long",
