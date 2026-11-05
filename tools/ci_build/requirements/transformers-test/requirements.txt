@@ -9,7 +9,8 @@ torchvision==0.25.0
 pillow>=13.0.0
 transformers==5.10.1
 parameterized>=0.8.1
-sentencepiece
+# Newer generated SentencePiece protos require protobuf 7, above the runtime pinned here.
+sentencepiece==0.2.1
 psutil
 einops
 onnxscript==0.6.2

@@ -9,6 +9,8 @@ The dtype contract below targets the PyTorch 2.10 version installed by build.py.
 import ctypes
 import gc
 import math
+import threading
+import time
 import unittest
 import weakref
 
@@ -322,6 +324,35 @@ class TestDlpackPyTorch(unittest.TestCase):
         values.push_back(source, synchronize=False)
         self.assert_tensor(values.to_dlpacks(torch.from_dlpack, synchronize=False)[0], source)
 
+    def test_failed_gpu_synchronization_consumes_capsule_once(self):
+        devices = ((2, "CUDAExecutionProvider"), (10, "MIGraphXExecutionProvider"))
+        device_type = next((kind for kind, provider in devices if provider not in ort.get_available_providers()), None)
+        if device_type is None:
+            self.skipTest("requires a GPU backend without its matching provider")
+        new_capsule = ctypes.pythonapi.PyCapsule_New
+        new_capsule.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p]
+        new_capsule.restype = ctypes.py_object
+        shape = (ctypes.c_int64 * 1)(0)
+        for value_type in (ort.OrtValue, C.OrtValue):
+            with self.subTest(value_type=value_type):
+                releases = []
+                deleter = ctypes.CFUNCTYPE(None, ctypes.c_void_p)(
+                    lambda pointer, releases=releases: releases.append(pointer)
+                )
+                managed = DLManagedTensor(
+                    DLTensor(None, DLDevice(device_type, 0), 1, DLDataType(2, 32, 1), shape, None, 0),
+                    None,
+                    ctypes.cast(deleter, ctypes.c_void_p),
+                )
+                capsule = new_capsule(ctypes.addressof(managed), b"dltensor", None)
+                with self.assertRaisesRegex(BufferError, "provider matching the tensor's device"):
+                    value_type.from_dlpack(capsule)
+                self.assertEqual(len(releases), 1)
+                with self.assertRaisesRegex(TypeError, "valid DLPack capsule"):
+                    value_type.from_dlpack(capsule, synchronize=False)
+                del capsule
+                self.assertEqual(len(releases), 1)
+
     def test_import_opt_out_without_gpu_metadata_omits_stream(self):
         source = torch.arange(6, dtype=torch.float32)
 
@@ -611,6 +642,69 @@ class TestDlpackPyTorch(unittest.TestCase):
     "requires PyTorch CUDA and the ORT CUDA execution provider",
 )
 class TestDlpackCUDA(unittest.TestCase):
+    def test_import_claims_capsule_before_releasing_gil(self):
+        source = torch.zeros(6, device="cuda")
+        torch.cuda.synchronize()
+        is_valid = ctypes.pythonapi.PyCapsule_IsValid
+        is_valid.argtypes = [ctypes.py_object, ctypes.c_char_p]
+        is_valid.restype = ctypes.c_int
+        for value_type in (ort.OrtValue, C.OrtValue):
+            with self.subTest(value_type=value_type):
+                capsule = source.__dlpack__()
+                producer = torch.cuda.Stream()
+                with torch.cuda.stream(producer):
+                    torch.cuda._sleep(1_000_000_000)
+                    source.fill_(7)
+                    ready = torch.cuda.Event()
+                    ready.record()
+                observed = []
+                stop = threading.Event()
+
+                def observer(stop=stop, capsule=capsule, observed=observed, ready=ready):
+                    while not stop.is_set():
+                        if is_valid(capsule, b"used_dltensor"):
+                            try:
+                                C.OrtValue.from_dlpack(capsule, synchronize=False)
+                            except TypeError:
+                                observed.append(not ready.query())
+                            return
+                        time.sleep(0.001)
+
+                thread = threading.Thread(target=observer)
+                thread.start()
+                try:
+                    imported = value_type.from_dlpack(capsule)
+                    thread.join(timeout=5)
+                finally:
+                    stop.set()
+                    thread.join()
+                self.assertEqual(observed, [True], "Another Python thread must run while the import waits for CUDA.")
+                torch.testing.assert_close(torch.from_dlpack(imported), source)
+
+    def test_export_releases_gil_during_device_wait(self):
+        source = torch.ones(6, device="cuda")
+        value = ort.OrtValue.from_dlpack(source)
+        producer = torch.cuda.Stream()
+        with torch.cuda.stream(producer):
+            torch.cuda._sleep(1_000_000_000)
+            source.add_(1)
+            ready = torch.cuda.Event()
+            ready.record()
+        observed = []
+
+        def observer():
+            time.sleep(0.05)
+            observed.append(not ready.query())
+
+        thread = threading.Thread(target=observer)
+        thread.start()
+        try:
+            capsule = value.__dlpack__()
+        finally:
+            thread.join()
+        self.assertEqual(observed, [True], "Another Python thread must run while the export waits for CUDA.")
+        torch.testing.assert_close(torch.from_dlpack(capsule), source)
+
     def test_import_waits_for_producer_stream(self):
         tensor_device = torch.cuda.device_count() - 1
         producer = torch.cuda.Stream(device=tensor_device)

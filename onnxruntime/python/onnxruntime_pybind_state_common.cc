@@ -90,6 +90,7 @@ void SynchronizeDlpackDevice(const DLDevice& device) {
   if (device.device_type == kDLCUDA) {
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
     if (auto* provider = TryGetProviderInfo_CUDA()) {
+      py::gil_scoped_release release;
       ORT_THROW_IF_ERROR(provider->SynchronizeDevice(device.device_id));
       return;
     }
@@ -97,6 +98,7 @@ void SynchronizeDlpackDevice(const DLDevice& device) {
   } else if (device.device_type == kDLROCM) {
 #if defined(USE_MIGRAPHX) || defined(USE_MIGRAPHX_PROVIDER_INTERFACE)
     if (auto* provider = TryGetProviderInfo_MIGraphX()) {
+      py::gil_scoped_release release;
       ORT_THROW_IF_ERROR(provider->SynchronizeDevice(device.device_id));
       return;
     }
@@ -110,8 +112,9 @@ void SynchronizeDlpackDevice(const DLDevice& device) {
 }  // namespace
 
 PyObject* ToDlpack(OrtValue& ort_value, py::object stream) {
-  ORT_ENFORCE(ort_value.IsTensor(), "DLPack export requires a dense tensor OrtValue; initialize the value before exporting.");
-  const auto device = dlpack::GetDlpackDevice(ort_value, ort_value.Get<Tensor>().Location().device.Id());
+  OrtValue owner = ort_value;
+  ORT_ENFORCE(owner.IsTensor(), "DLPack export requires a dense tensor OrtValue; initialize the value before exporting.");
+  const auto device = dlpack::GetDlpackDevice(owner, owner.Get<Tensor>().Location().device.Id());
   bool synchronize = true;
   if (!stream.is_none()) {
     if (device.device_type != kDLCUDA && device.device_type != kDLROCM) {
@@ -136,7 +139,7 @@ PyObject* ToDlpack(OrtValue& ort_value, py::object stream) {
   if (synchronize) {
     SynchronizeDlpackDevice(device);
   }
-  DLManagedTensor* dlmanaged_tensor = dlpack::OrtValueToDlpack(ort_value);
+  DLManagedTensor* dlmanaged_tensor = dlpack::OrtValueToDlpack(owner);
   PyObject* capsule = PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
   if (!capsule) {
     dlmanaged_tensor->deleter(dlmanaged_tensor);
@@ -167,14 +170,15 @@ OrtValue FromDlpack(py::object data, bool synchronize) {
 
   // Extract DLPack tensor pointer from the capsule carrier.
   DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(dlpack_tensor, "dltensor");
+  OrtValue ort_value = dlpack::DlpackToOrtValue(dlmanaged_tensor);
+  // Claim exclusive ownership under the GIL before the native wait releases it.
+  // The OrtValue also releases the producer if synchronization subsequently fails.
+  PyCapsule_SetName(dlpack_tensor, "used_dltensor");
   // The producer's default-stream handoff alone is insufficient for ORT's
   // session-specific streams. Fence before importing both objects and raw capsules.
   if (synchronize) {
     SynchronizeDlpackDevice(dlmanaged_tensor->dl_tensor.device);
   }
-  OrtValue ort_value = dlpack::DlpackToOrtValue(dlmanaged_tensor);
-  // Make sure this capsule will never be used again.
-  PyCapsule_SetName(dlpack_tensor, "used_dltensor");
   return ort_value;
 }
 

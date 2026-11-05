@@ -1589,6 +1589,8 @@ class OrtValue:
         GPU imports synchronize the tensor's device before returning, so ORT
         can safely use the storage on its own streams. CUDA and ROCm require
         their corresponding CUDA or MIGraphX provider for synchronization.
+        The capsule is consumed before synchronization; if that wait fails, the
+        imported storage is released and the capsule cannot be retried.
 
         :param data: A tensor object supporting the DLPack protocol, or a raw
             DLPack PyCapsule.
