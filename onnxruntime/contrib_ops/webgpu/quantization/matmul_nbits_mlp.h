@@ -39,10 +39,20 @@ class MatMulNBitsMlp : public WebGpuKernel {
     epsilon_ = info.GetAttrOrDefault<float>("epsilon", 1e-5f);
     lora_bits_ = info.GetAttrOrDefault<int64_t>("lora_bits", 8);
     lora_block_size_ = info.GetAttrOrDefault<int64_t>("lora_block_size", 32);
-    // GetInputCount is available through the plugin EP API. The schema checks
-    // that the optional adapter inputs are either all present or all absent.
-    has_adapter_inputs_ = info.GetInputCount() > 9;
-    ORT_ENFORCE(!has_adapter_inputs_ || info.GetInputCount() == 17,
+    // Trailing optional slots may be present in the node even when their edges
+    // are omitted. Inspect each edge rather than relying on GetInputCount().
+    bool all_adapter_inputs = true;
+    has_adapter_inputs_ = false;
+    for (size_t i = 9; i < 17; ++i) {
+#ifdef ORT_USE_EP_API_ADAPTERS
+      const bool exists = info.node().InputExists(i);
+#else
+      const bool exists = i < static_cast<size_t>(info.GetInputCount()) && info.node().InputDefs()[i]->Exists();
+#endif
+      has_adapter_inputs_ |= exists;
+      all_adapter_inputs &= exists;
+    }
+    ORT_ENFORCE(!has_adapter_inputs_ || all_adapter_inputs,
                 "MatMulNBitsMlp requires all adapter inputs when any is present.");
     std::string activation;
     ORT_ENFORCE(info.GetAttr<std::string>("activation", &activation).IsOK(),

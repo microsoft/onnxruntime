@@ -52,6 +52,60 @@ void RunEmptyAndActiveAdapters() {
 TEST(MatMulNBitsQLoRA, EmptyAndActiveAdapters) { RunEmptyAndActiveAdapters<MLFloat16>(); }
 TEST(MatMulNBitsQLoRA, EmptyAndActiveAdaptersFp32) { RunEmptyAndActiveAdapters<float>(); }
 
+TEST(MatMulNBitsQLoRA, BaseOnlyFusedOpsWithPaddedAdapterInputs) {
+  for (bool qkv : {false, true}) {
+    const int projection_count = qkv ? 3 : 2;
+    const int adapter_count = qkv ? 12 : 8;
+    for (int padded_inputs : {1, adapter_count}) {
+      SCOPED_TRACE(MakeString(qkv ? "QKV" : "MLP", ", padded_inputs=", padded_inputs));
+      auto ep = DefaultWebGpuExecutionProvider();
+      ASSERT_NE(ep, nullptr);
+      OpTester test(qkv ? "MatMulNBitsQkv" : "MatMulNBitsMlp", 1, kMSDomain);
+      test.AddAttribute<int64_t>("K", 32);
+      test.AddAttribute<int64_t>(qkv ? "Nq" : "N", 8);
+      if (qkv) {
+        test.AddAttribute<int64_t>("Nkv", 4);
+      } else {
+        test.AddAttribute("activation", "silu");
+      }
+      test.AddAttribute<int64_t>("bits", 4);
+      test.AddAttribute<int64_t>("block_size", 32);
+      test.AddInput<float>("A", {1, 32}, std::vector<float>(32, 0.5f));
+      test.AddOptionalInputEdge<float>();  // skip
+      if (qkv) {
+        test.AddInput<float>("norm_scale", {32}, std::vector<float>(32, 1.0f));
+      } else {
+        test.AddOptionalInputEdge<float>();  // norm_scale
+      }
+      for (int projection = 0; projection < projection_count; ++projection) {
+        const int64_t n = qkv && projection > 0 ? 4 : 8;
+        test.AddInput<uint8_t>(MakeString("weight_", projection).c_str(), {n, 1, 16},
+                               std::vector<uint8_t>(n * 16, 0x88), true);
+        test.AddInput<float>(MakeString("scales_", projection).c_str(), {n, 1},
+                             std::vector<float>(n, 0.03125f), true);
+        test.AddOptionalInputEdge<float>();  // bias
+      }
+      for (int i = 0; i < padded_inputs; ++i) {
+        if (i % 4 == 0 || i % 4 == 2) {
+          test.AddOptionalInputEdge<uint8_t>();
+        } else {
+          test.AddOptionalInputEdge<float>();
+        }
+      }
+      if (qkv) {
+        test.AddOutput<float>("Q", {1, 8}, std::vector<float>(8));
+        test.AddOutput<float>("K", {1, 4}, std::vector<float>(4));
+        test.AddOutput<float>("V", {1, 4}, std::vector<float>(4));
+      } else {
+        test.AddOutput<float>("Y", {1, 8}, std::vector<float>(8));
+      }
+      std::vector<std::unique_ptr<IExecutionProvider>> eps;
+      eps.push_back(std::move(ep));
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+    }
+  }
+}
+
 TEST(MatMulNBitsQLoRA, FusedEmptyAdaptersRejectMalformedBaseWeights) {
   for (bool qkv : {false, true}) {
     const int projection_count = qkv ? 3 : 2;

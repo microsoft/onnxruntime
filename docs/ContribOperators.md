@@ -4444,7 +4444,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   derived from the runtime shape of A and the shared attributes K and N.
   
   The operator contract includes a string attribute describing the fused gate activation.
-
+  
   Optional gate and up LoRA inputs apply MatMulNBitsQLoRA to each projection before the
   activation. Empty adapter-up weights use the base projection. The adapter inputs are
   runtime tensors and may change between calls.
@@ -9386,3 +9386,5 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
+
+
