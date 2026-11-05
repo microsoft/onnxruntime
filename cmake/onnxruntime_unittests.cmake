@@ -2563,7 +2563,8 @@ endif()
     target_link_libraries(compare_two_sessions PRIVATE ${GETOPT_LIB_WIDE} tdh Advapi32)
   endif()
 
-  if(NOT onnxruntime_target_platform STREQUAL "ARM64EC" AND NOT onnxruntime_target_platform STREQUAL "S390X")
+  string(TOUPPER "${onnxruntime_target_platform}" onnxruntime_target_platform_upper)
+  if(NOT onnxruntime_target_platform_upper STREQUAL "ARM64EC" AND NOT onnxruntime_target_platform_upper STREQUAL "S390X")
     file(GLOB onnxruntime_mlas_test_src CONFIGURE_DEPENDS
       "${TEST_SRC_DIR}/mlas/unittest/*.h"
       "${TEST_SRC_DIR}/mlas/unittest/*.cpp"
