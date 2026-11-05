@@ -167,32 +167,43 @@ __global__ void QMoEOffloadClassifyKernel(
     uint64_t* doorbell_seq_dev, volatile uint64_t* doorbell_req_host,
     volatile int32_t* doorbell_tile_rows_host, int tile_rows,
     bool skip_zero_cold, volatile uint64_t* doorbell_done_host,
-    QMoEOffloadTelemetry* telemetry) {
+    QMoEOffloadTelemetry* telemetry,
+    float* topk_scales_for_cold_prune, float min_cold_expert_weight) {
   const int row = blockIdx.x * blockDim.x + threadIdx.x;
   int exp = 0;
   int slot = -1;
+  bool skipped_tail = false;
   if (row < row_count) {
     if (unit_scales != nullptr) unit_scales[row] = 1.0f;
     if (identity_permutation != nullptr) identity_permutation[row] = row;
     const int route = row < route_count ? row : 0;
     exp = topk_indices[route];
-    const bool valid_expert = static_cast<unsigned int>(exp) < static_cast<unsigned int>(num_experts);
+    skipped_tail = (exp == -2);
+    const bool valid_expert = !skipped_tail && static_cast<unsigned int>(exp) < static_cast<unsigned int>(num_experts);
     slot = (row < route_count && valid_expert) ? expert_slot[exp] : -1;
+    const int rank_in_tok = (k_for_source_rows > 0) ? (route % k_for_source_rows) : (route % 10);
+    if (!skipped_tail && row < route_count && slot < 0 && min_cold_expert_weight > 0.0f &&
+        topk_scales_for_cold_prune != nullptr && rank_in_tok > 0 &&
+        topk_scales_for_cold_prune[route] < min_cold_expert_weight) {
+      topk_scales_for_cold_prune[route] = 0.0f;
+      exp = -2;
+      skipped_tail = true;
+    }
     hit_ids[row] = (k_for_source_rows > 0 && row < route_count) ? (route / k_for_source_rows) : route;
     hit_compact[row] = slot < 0 ? dummy_slot : slot;
     if (row < route_count) {
-      hit_flag[row] = slot >= 0;
+      hit_flag[row] = (slot >= 0) || skipped_tail;
     }
   }
   const bool has_doorbell = (doorbell_seq_dev != nullptr && doorbell_req_host != nullptr && gridDim.x == 1);
-  const int is_cold = (row < route_count) ? (slot < 0) : 0;
+  const int is_cold = (row < route_count) ? (slot < 0 && !skipped_tail) : 0;
   const int cold_count = has_doorbell ? __syncthreads_count(is_cold) : 0;
   const bool zero_cold_bypass = has_doorbell && skip_zero_cold && cold_count == 0 && doorbell_done_host != nullptr;
   if (!zero_cold_bypass) {
     if (row < route_count && host_indices_out != nullptr) {
       host_indices_out[row] = exp;
     }
-    if (input_dev != nullptr && host_input_out != nullptr) {
+    if (input_dev != nullptr && host_input_out != nullptr && (!has_doorbell || cold_count > 0)) {
       for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < input_vec4_count; i += gridDim.x * blockDim.x) {
         host_input_out[i] = input_dev[i];
       }
@@ -306,7 +317,8 @@ cudaError_t LaunchQMoEOffloadClassify(
     uint64_t* doorbell_seq_dev, volatile uint64_t* doorbell_req_host,
     volatile int32_t* doorbell_tile_rows_host, int tile_rows,
     bool skip_zero_cold, volatile uint64_t* doorbell_done_host,
-    QMoEOffloadTelemetry* telemetry) {
+    QMoEOffloadTelemetry* telemetry,
+    float* topk_scales_for_cold_prune, float min_cold_expert_weight) {
   if (row_count <= 0) return cudaSuccess;
   if (doorbell_seq_dev != nullptr && doorbell_req_host != nullptr && row_count <= 256) {
     QMoEOffloadClassifyKernel<<<1, 256, 0, stream>>>(
@@ -315,7 +327,8 @@ cudaError_t LaunchQMoEOffloadClassify(
         host_indices_out, reinterpret_cast<const uint4*>(input_dev),
         reinterpret_cast<uint4*>(host_input_out), input_vec4_count,
         doorbell_seq_dev, doorbell_req_host, doorbell_tile_rows_host, tile_rows,
-        skip_zero_cold, doorbell_done_host, telemetry);
+        skip_zero_cold, doorbell_done_host, telemetry,
+        topk_scales_for_cold_prune, min_cold_expert_weight);
     return cudaGetLastError();
   }
   const int blocks = row_count / 128 + (row_count % 128 != 0);
@@ -324,7 +337,8 @@ cudaError_t LaunchQMoEOffloadClassify(
       unit_scales, identity_permutation, k_for_source_rows,
       host_indices_out, reinterpret_cast<const uint4*>(input_dev),
       reinterpret_cast<uint4*>(host_input_out), input_vec4_count,
-      nullptr, nullptr, nullptr, tile_rows, false, nullptr, nullptr);
+      nullptr, nullptr, nullptr, tile_rows, false, nullptr, nullptr,
+      topk_scales_for_cold_prune, min_cold_expert_weight);
   return cudaGetLastError();
 }
 
@@ -384,7 +398,7 @@ __global__ void QMoEOffloadMergeFinalizeCombineKernel(
       preloaded_shared = shared_v[static_cast<size_t>(original_row) * num_vec4 + threadIdx.x];
     }
     for (int k_idx = 0; k_idx < k && k_idx < 16; ++k_idx) {
-      if (s_hit[k_idx]) {
+      if (s_hit[k_idx] && s_scale[k_idx] != 0.0f) {
         const int route = original_row * k + k_idx;
         preloaded_wave[k_idx] = wave_v[static_cast<size_t>(route) * num_vec4 + threadIdx.x];
       }
@@ -404,12 +418,13 @@ __global__ void QMoEOffloadMergeFinalizeCombineKernel(
   for (int elem_idx = threadIdx.x; elem_idx < num_vec4; elem_idx += blockDim.x) {
     float acc[8] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
     for (int k_idx = 0; k_idx < k; ++k_idx) {
+      const float scale = s_scale[k_idx];
+      if (scale == 0.0f) continue;
       const int route = original_row * k + k_idx;
       const size_t target_row = static_cast<size_t>(k_idx) * tile_rows + original_row;
       const uint4 raw = s_hit[k_idx]
                             ? (single_pass ? preloaded_wave[k_idx] : wave_v[static_cast<size_t>(route) * num_vec4 + elem_idx])
                             : cpu_v[target_row * num_vec4 + elem_idx];
-      const float scale = s_scale[k_idx];
       const __nv_bfloat162* b2 = reinterpret_cast<const __nv_bfloat162*>(&raw);
 #pragma unroll
       for (int i = 0; i < 4; ++i) {
@@ -1191,6 +1206,34 @@ void DispatchSoftmaxTopK(const T* logits, float* topk_scales, int* topk_indices,
   }
 }
 
+__global__ void PruneTopKTailKernel(float* topk_scales, int* topk_indices,
+                                    int num_rows, int k, float min_expert_weight,
+                                    bool renormalize_after_prune) {
+  const int row = blockIdx.x * blockDim.x + threadIdx.x;
+  if (row >= num_rows) return;
+  float* row_scales = topk_scales + static_cast<size_t>(row) * k;
+  int* row_indices = topk_indices + static_cast<size_t>(row) * k;
+  float kept_sum = row_scales[0];
+  bool any_pruned = false;
+  for (int r = 1; r < k; ++r) {
+    if (row_scales[r] < min_expert_weight) {
+      row_scales[r] = 0.0f;
+      row_indices[r] = -2;
+      any_pruned = true;
+    } else {
+      kept_sum += row_scales[r];
+    }
+  }
+  if (renormalize_after_prune && any_pruned && kept_sum > kTopKNormalizeEpsilon) {
+    const float inv_kept = 1.0f / kept_sum;
+    for (int r = 0; r < k; ++r) {
+      if (row_indices[r] >= 0) {
+        row_scales[r] *= inv_kept;
+      }
+    }
+  }
+}
+
 void LaunchSoftmaxTopK(
     const float* logits,
     float* topk_scales,
@@ -1199,8 +1242,14 @@ void LaunchSoftmaxTopK(
     int num_experts,
     int k,
     bool normalize_scales,
-    cudaStream_t stream) {
+    cudaStream_t stream,
+    float min_expert_weight,
+    bool renormalize_after_prune) {
   DispatchSoftmaxTopK<float>(logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales, stream);
+  if (min_expert_weight > 0.0f && num_rows > 0 && k > 1) {
+    PruneTopKTailKernel<<<Compute1DGridSize(num_rows, 256), 256, 0, stream>>>(
+        topk_scales, topk_indices, num_rows, k, min_expert_weight, renormalize_after_prune);
+  }
 }
 
 void LaunchSoftmaxTopK(
@@ -1211,8 +1260,14 @@ void LaunchSoftmaxTopK(
     int num_experts,
     int k,
     bool normalize_scales,
-    cudaStream_t stream) {
+    cudaStream_t stream,
+    float min_expert_weight,
+    bool renormalize_after_prune) {
   DispatchSoftmaxTopK<half>(logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales, stream);
+  if (min_expert_weight > 0.0f && num_rows > 0 && k > 1) {
+    PruneTopKTailKernel<<<Compute1DGridSize(num_rows, 256), 256, 0, stream>>>(
+        topk_scales, topk_indices, num_rows, k, min_expert_weight, renormalize_after_prune);
+  }
 }
 
 void LaunchSoftmaxTopK(
@@ -1223,8 +1278,14 @@ void LaunchSoftmaxTopK(
     int num_experts,
     int k,
     bool normalize_scales,
-    cudaStream_t stream) {
+    cudaStream_t stream,
+    float min_expert_weight,
+    bool renormalize_after_prune) {
   DispatchSoftmaxTopK<__nv_bfloat16>(logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales, stream);
+  if (min_expert_weight > 0.0f && num_rows > 0 && k > 1) {
+    PruneTopKTailKernel<<<Compute1DGridSize(num_rows, 256), 256, 0, stream>>>(
+        topk_scales, topk_indices, num_rows, k, min_expert_weight, renormalize_after_prune);
+  }
 }
 
 template <typename T>

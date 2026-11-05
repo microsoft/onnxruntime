@@ -3666,6 +3666,15 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
   max_routes_ = SafeInt<int>(std::max(max_sync_tile_tokens_, async_max_tokens_)) * k_;
   shared_gpu_limit_ = static_cast<size_t>(gpu_limit);
   shared_pinned_limit_ = static_cast<size_t>(pinned_limit);
+  min_expert_weight_ = v4_planned_mode_ ? v4_policy_.min_expert_weight : 0.0f;
+  if (min_expert_weight_ <= 0.0f) {
+    const std::string env_min_w = GetEnvironmentVar("ORT_QMOE_MIN_EXPERT_WEIGHT");
+    if (!env_min_w.empty()) {
+      onnxruntime::moe_offload::MoeOffloadSessionPolicy::TryParseFloat01(env_min_w, min_expert_weight_);
+    }
+  }
+  skip_tail_cold_only_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SKIP_TAIL_COLD_ONLY", 0) == 1;
+  renorm_after_prune_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_RENORM_AFTER_PRUNE", 0) == 1;
 
   if (v4_planned_mode_) {
     deterministic_replay_ =
@@ -8412,10 +8421,12 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
 
     if (is_bf16_) {
       LaunchSoftmaxTopK(reinterpret_cast<const __nv_bfloat16*>(router->DataRaw()) + router_start,
-                        scales, indices, tile_rows, num_experts_, static_cast<int>(k_), normalize_routing_weights_, stream);
+                        scales, indices, tile_rows, num_experts_, static_cast<int>(k_), normalize_routing_weights_, stream,
+                        min_expert_weight_, renorm_after_prune_);
     } else {
       LaunchSoftmaxTopK(reinterpret_cast<const half*>(router->DataRaw()) + router_start,
-                        scales, indices, tile_rows, num_experts_, static_cast<int>(k_), normalize_routing_weights_, stream);
+                        scales, indices, tile_rows, num_experts_, static_cast<int>(k_), normalize_routing_weights_, stream,
+                        min_expert_weight_, renorm_after_prune_);
     }
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_indices, indices, SafeInt<size_t>(routes) * sizeof(int), cudaMemcpyDeviceToHost, stream));
@@ -8438,6 +8449,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
 
     for (auto& assignments : expert_routes) assignments.clear();
     hits.clear();
+    uint64_t active_tile_routes = 0;
     for (int token = 0; token < tile_rows; ++token) {
       const int token_phase = host_phases[token];
       ORT_RETURN_IF(token_phase < 0 || token_phase >= 5, "QMoEOffload invalid token_phase.");
@@ -8446,6 +8458,8 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
       for (int rank = 0; rank < k_; ++rank) {
         const int route = token * static_cast<int>(k_) + rank;
         const int expert = host_indices[route];
+        if (expert == -2) continue;
+        ++active_tile_routes;
         ORT_RETURN_IF(expert < 0 || expert >= num_experts_, "QMoEOffload invalid routed expert.");
         for (int previous = 0; previous < rank; ++previous) {
           ORT_RETURN_IF(host_indices[token * static_cast<int>(k_) + previous] == expert,
@@ -9130,7 +9144,8 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
       stream_experts_ += stream_count;
       stream_routes_ += tile_stream_routes;
       stream_waves_ += static_cast<uint64_t>(waves);
-      stream_cpu_routes_ += static_cast<uint64_t>(routes) - hits.size() - tile_stream_routes;
+      const uint64_t accounted = static_cast<uint64_t>(hits.size()) + tile_stream_routes;
+      stream_cpu_routes_ += active_tile_routes > accounted ? (active_tile_routes - accounted) : 0;
     }
 
     run_cpu_tail_experts();
@@ -9291,6 +9306,7 @@ void QMoEOffload::RunAsyncCpu(AsyncTile& tile) const {
     for (int rank = 0; rank < k_ && valid; ++rank) {
       const int route = token * static_cast<int>(k_) + rank;
       const int expert = tile.host_indices[route];
+      if (expert == -2) continue;
       valid = expert >= 0 && expert < num_experts_;
       if (!valid) {
         err_msg = "Out-of-range expert=" + std::to_string(expert) + " at route " + std::to_string(route);
@@ -9328,6 +9344,7 @@ void QMoEOffload::RunAsyncCpu(AsyncTile& tile) const {
       staged_routes.reserve(static_cast<size_t>(tile.tile_rows) * static_cast<size_t>(k_));
     }
   }
+  uint64_t active_decode_routes = 0;
   for (int token = 0; token < tile.tile_rows; ++token) {
     const int token_phase = tile.has_phases ? static_cast<int>(tile.host_phases[token]) : 1;
     if (tile.counts) ++tile.counts[token_phase];
@@ -9335,6 +9352,8 @@ void QMoEOffload::RunAsyncCpu(AsyncTile& tile) const {
     for (int rank = 0; rank < k_; ++rank) {
       const int route = token * static_cast<int>(k_) + rank;
       const int expert = tile.host_indices[route];
+      if (expert == -2) continue;
+      ++active_decode_routes;
       const size_t statistic = static_cast<size_t>(token_phase) * num_experts_ + expert;
       if (tile.route_rows) ++tile.route_rows[statistic];
       if (tile.route_calls) tile.route_calls[statistic] = 1;
@@ -9366,7 +9385,7 @@ void QMoEOffload::RunAsyncCpu(AsyncTile& tile) const {
       cold_experts += assignments.empty() ? 0 : 1;
     }
     ++timing_calls_;
-    timing_routes_ += static_cast<uint64_t>(tile.tile_rows) * k_;
+    timing_routes_ += active_decode_routes;
     timing_cold_routes_ += cold_routes;
     timing_cold_experts_ += cold_experts;
   }
@@ -9937,12 +9956,15 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
   };
 
   auto enqueue = [&]() -> Status {
+    const float softmax_min_w = skip_tail_cold_only_ ? 0.0f : min_expert_weight_;
     if (is_bf16_) {
       LaunchSoftmaxTopK(reinterpret_cast<const __nv_bfloat16*>(router->DataRaw()), scales, indices, tile_rows, num_experts_,
-                        static_cast<int>(k_), normalize_routing_weights_, stream);
+                        static_cast<int>(k_), normalize_routing_weights_, stream,
+                        softmax_min_w, renorm_after_prune_);
     } else {
       LaunchSoftmaxTopK(reinterpret_cast<const half*>(router->DataRaw()), scales, indices, tile_rows, num_experts_,
-                        static_cast<int>(k_), normalize_routing_weights_, stream);
+                        static_cast<int>(k_), normalize_routing_weights_, stream,
+                        softmax_min_w, renorm_after_prune_);
     }
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
@@ -10046,7 +10068,9 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
           decode_state_->doorbell_tile_rows_host, tile_rows,
           v4_policy_.skip_zero_cold_doorbell && resident_promotions_ == 0 &&
               !DoorbellService::Instance().CrossLayerPromotionEnabled(),
-          decode_state_->doorbell_done_host, decode_state_->telemetry));
+          decode_state_->doorbell_done_host, decode_state_->telemetry,
+          skip_tail_cold_only_ ? scales : nullptr,
+          skip_tail_cold_only_ ? min_expert_weight_ : 0.0f));
       ORT_RETURN_IF_ERROR(enqueue_hits());
       if (finalize_bias_gpu_ptr) {
         if (is_bf16_) {
