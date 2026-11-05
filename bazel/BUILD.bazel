@@ -85,6 +85,15 @@ config_setting(
     ],
 )
 
+config_setting(
+    name = "linux_x86_64_opt",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+    values = {"compilation_mode": "opt"},
+)
+
 exports_files([
     "onnx.BUILD.bazel",
     "abseil-includes.patch",

@@ -230,16 +230,84 @@ comparisons against the release build. The current source-level audit found:
   compared with matching operator/provider coverage, architecture, debug
   information, and stripping settings.
 
-No matched inference benchmark or binary-size comparison has been completed.
-Such a comparison must use the same source revision, compiler, hardware,
-features, model inputs, thread settings, and warm-up policy. Report fresh and
-incremental build wall times separately from session initialization and warmed
-inference latency/throughput; record VM specifications and job counts with
-build timings.
-
 The new standalone cpuinfo test passed a fresh Windows MSVC build with two
 jobs: 25 actions, 51.35 seconds wall time including startup/dependency analysis,
 and 0.2 seconds test execution. No ORT runtime was rebuilt for this isolated
 check. The preceding foundation revision `d473c4e677` passed all seven native
 runtime/binding targets in Linux, Windows, and macOS CI; those results do not
-validate the subsequent cpuinfo integration, which needs its own native CI.
+validate later changes.
+
+### Timed Linux comparison
+
+A controlled CPU-only comparison used source `f268b6bf43`, Azure Linux 3,
+GCC 13.2, and an Intel Xeon Platinum 8480C VM with 96 vCPUs and 1.8 TiB RAM.
+Both builds used 24 jobs, C++20, `-O2 -DNDEBUG -D_FORTIFY_SOURCE=1`, full
+protobuf, cpuinfo, no contrib operators, no CUDA, and no LTO. CMake was invoked
+independently with Ninja solely as a measurement baseline; it is not part of
+the Bazel graph. This is not a comparison against an official release artifact
+or an untouched CMake Release configuration.
+
+| Runtime build at `f268b6bf43` | Bazel 8.4.2 | CMake/Ninja |
+| --- | ---: | ---: |
+| Fresh native build, wall time | 176.41 s | 164.63 s |
+| Separate configure, wall time | Included above | 8.77 s |
+| Configure plus fresh build | 176.41 s | 173.40 s |
+| No-change build, wall time | 0.559 s | 0.064 s |
+| Unstripped shared library | 25,539,768 bytes | 26,288,464 bytes |
+| Stripped shared library | 19,466,944 bytes | 20,546,224 bytes |
+
+Bazel performed 1,422 actions for the fresh runtime. Its subsequent
+`//:cpuinfo_test //:runtime_smoke_test --nocache_test_results` took 139.20 s,
+including 882 additional native compilations for the static test variant;
+this is not pure test execution time. Both tests passed, with Intel vendor
+detection and complete Add/MatMul/Conv output checks. Build directories and
+dependency caches were task-private and initially empty; shared-host OS caches
+were not cleared. Tool installation and source extraction are outside these
+timings. These single-run build measurements do not establish a build-speed
+advantage.
+
+Initial inference trials exposed an approximately 9% Conv latency gap. A
+controlled MLAS-only `-fomit-frame-pointer` experiment removed most of it:
+the Bazel Linux toolchain otherwise supplies `-fno-omit-frame-pointer`, whereas
+the controlled CMake `-O2` build omits frame pointers by default. The native
+graph now applies `-fomit-frame-pointer` only to Linux x86-64 MLAS targets in
+`-c opt` mode. Debug, Windows, and macOS flags are unchanged; other runtime
+code retains the toolchain defaults. For frame-pointer-based profiling, this
+MLAS choice can be overridden with
+`--per_file_copt='onnxruntime/core/mlas/lib/.*@-fno-omit-frame-pointer'`.
+
+The actual selector-based change, without experimental command-line compiler
+overrides, rebuilt and passed the two native tests in 18.40 s (187 actions,
+2,125 action-cache hits). Linux optimized/debug action inspection confirmed
+the flag is respectively present/absent; Windows optimized analysis confirmed
+it is absent, with zero native build actions.
+
+Final inference measurements used five alternating trials per library, pinned
+to the same allowed logical CPU, one intra/inter-op thread, graph optimizations
+enabled, 20 warm-ups, and 100 measured runs per model. The same independently
+compiled `dlopen` harness checked every output element against deterministic
+all-ones references before timing. Entries are medians across the five trial
+medians or p95s, in microseconds:
+
+| FP32 model | Bazel median | CMake median | Bazel p95 | CMake p95 |
+| --- | ---: | ---: | ---: | ---: |
+| Add, 1,024 elements | 1.408 | 1.398 | 1.461 | 1.451 |
+| MatMul, 512 x 512 | 1,503.95 | 1,494.22 | 1,536.78 | 1,531.19 |
+| Conv, 1 x 16 x 64 x 64, 32 filters, 3 x 3 | 361.60 | 358.57 | 421.64 | 380.06 |
+
+The unchanged pre-fix Bazel library measured 396.62 microseconds for Conv in
+the same final trial batch. The fixed stripped library is 19,471,680 bytes,
+about 5.2% smaller than this CMake baseline. Both final libraries measured
+26,112 KiB process peak RSS. Library loading plus environment and first Add
+session construction took median 12.42 ms for Bazel and 12.83 ms for CMake;
+timing only session construction would misleadingly omit initialization work
+performed earlier by CMake.
+
+The three warmed median latencies are within 1% in this bounded experiment;
+tail latency varies on the shared VM, and these are not representative-model,
+multithreaded, GPU, or cross-platform performance results. The 114 compiled
+MLAS runtime source files match, but other definitions still differ, including
+RTTI, stream support, and Eigen flags. Smaller size alone therefore does not
+prove equivalent feature coverage or better optimization. Release parity
+requires broader feature/flag alignment and model benchmarks, not merely
+matching `-O2` or passing these microbenchmarks.
