@@ -454,6 +454,13 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
         PROPERTIES COMPILE_FLAGS "-msse4.1")
 
+      # clang-cl, unlike cl.exe under /fp:precise, contracts a*b+c into an FMA
+      # when the TU enables FMA (/arch:AVX2 above). The 2-bit fp-zero-point
+      # dequant kernel must stay bit-identical to the scalar kernel, so keep
+      # the multiply and add separate, as the non-MSVC branch does.
+      set_property(SOURCE ${MLAS_SRC_DIR}/intrinsics/avx2/q2_dq_avx2.cpp
+        APPEND PROPERTY COMPILE_OPTIONS "/clang:-ffp-contract=off")
+
       set_source_files_properties(
         ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
         ${MLAS_SRC_DIR}/qkv_quant_kernel_avx2.cpp
@@ -467,9 +474,10 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2vnni.cpp
         PROPERTIES COMPILE_FLAGS "${mlas_clang_cl_avx2_flags} -mavxvnni")
 
-      set_source_files_properties(
-        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp
-        PROPERTIES COMPILE_FLAGS "${mlas_clang_cl_avx512_flags}")
+      # sqnbitgemm_kernel_avx512_2bit.cpp is intentionally left without ISA
+      # flags: its scalar packers are also used by the AVX2 dispatch tables,
+      # so enabling AVX-512 here would let clang auto-vectorize them into
+      # instructions AVX2-only CPUs lack (see the matching non-MSVC note).
 
       set_source_files_properties(
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512.cpp
