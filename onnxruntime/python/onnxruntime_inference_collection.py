@@ -1529,9 +1529,10 @@ class OrtValue:
         ``from_dlpack(ortvalue)`` (e.g. ``torch.from_dlpack``,
         ``jax.dlpack.from_dlpack``, ``numpy.from_dlpack``).
 
-        The OrtValue must hold a contiguous tensor. No data is copied;
-        the consumer shares memory with this OrtValue, which must remain
-        alive while the capsule is in use.
+        The OrtValue must hold a contiguous tensor. No data is copied.
+        The capsule and its consumer retain the tensor allocation, so this
+        OrtValue can be released. For externally owned buffers (for example,
+        a NumPy-backed CPU OrtValue), the external owner must remain alive.
         WebGPU OrtValues cannot be exported through DLPack because their data
         is stored in opaque WebGPU buffers rather than CUDA-addressable memory.
 
@@ -1570,6 +1571,12 @@ class OrtValue:
         All implemented ORT numeric and boolean tensor types are supported,
         including float8, packed float4, int4/uint4, and int2/uint2. String,
         complex, and float6 tensors are not supported.
+
+        Interchange also depends on the other framework's representation.
+        PyTorch 2.10 exchanges all byte-aligned ORT numeric and boolean types,
+        including bfloat16 and the five float8 types. Its float4 uses two lanes (unsupported here),
+        and its int2/int4 shell dtypes export as int8/uint8, not packed types.
+        PyTorch cannot consume ORT's packed float4, int4/uint4, or int2/uint2.
 
         No data is copied; the new OrtValue shares memory with the source.
 

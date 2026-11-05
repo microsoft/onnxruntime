@@ -176,12 +176,11 @@ DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
   ort_dlmanaged_tensor->tensor.dl_tensor.device = GetDlpackDevice(ort_value, tensor.Location().device.Id());
   ort_dlmanaged_tensor->tensor.dl_tensor.ndim = static_cast<int>(tensor.Shape().NumDimensions());
   ort_dlmanaged_tensor->tensor.dl_tensor.dtype = GetDlpackDataType(ort_value);
-  ort_dlmanaged_tensor->tensor.dl_tensor.shape =
-      tensor.Shape().NumDimensions() > 0 ? &const_cast<TensorShape&>(tensor.Shape())[0] : nullptr;
-  auto& strides = ort_dlmanaged_tensor->strides;
-  strides.reserve(tensor.Shape().NumDimensions());
-  // Empty tensors have no addressable elements, so zero strides avoid overflowing dimension products.
   const auto dims = tensor.Shape().GetDims();
+  ort_dlmanaged_tensor->tensor.dl_tensor.shape = dims.empty() ? nullptr : const_cast<int64_t*>(dims.data());
+  auto& strides = ort_dlmanaged_tensor->strides;
+  strides.reserve(dims.size());
+  // Empty tensors have no addressable elements, so zero strides avoid overflowing dimension products.
   const bool is_empty = std::find(dims.begin(), dims.end(), 0) != dims.end();
   SafeInt<int64_t> stride = 1;
   for (size_t i = tensor.Shape().NumDimensions(); i > 0; --i) {

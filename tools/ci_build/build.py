@@ -1960,6 +1960,15 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             run_subprocess(
                 [sys.executable, "onnxruntime_test_python.py"], cwd=cwd, dll_path=dll_path, python_path=python_path
             )
+            if args.enable_transformers_tool_test and not args.disable_contrib_ops:
+                # These inference-only tests require the pinned PyTorch installed above.
+                # Keep them mandatory on these legs: missing DLPack/dtypes must fail, not skip.
+                run_subprocess(
+                    [sys.executable, "onnxruntime_test_python_dlpack.py"],
+                    cwd=cwd,
+                    dll_path=dll_path,
+                    python_path=python_path,
+                )
             run_subprocess(
                 [sys.executable, "onnxruntime_test_python_fpa_intb_tune.py"],
                 cwd=cwd,

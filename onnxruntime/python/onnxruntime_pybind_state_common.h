@@ -541,10 +541,9 @@ bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
 
 #if defined(ENABLE_DLPACK)
 
-// Allocate a new Capsule object, which takes the ownership of OrtValue.
-// Caller is responsible for releasing.
-// This function calls OrtValueToDlpack(...).
-PyObject* ToDlpack(OrtValue ort_value);
+// Allocate a capsule retaining an OrtValue reference via OrtValueToDlpack.
+// Caller is responsible for releasing the capsule.
+PyObject* ToDlpack(OrtValue& ort_value);
 
 // Consume a Capsule object and claims the ownership of its underlying tensor to
 // create a OrtValue. This function calls DlpackToOrtValue(...) to do the conversion.

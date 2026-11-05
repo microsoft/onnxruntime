@@ -508,16 +508,15 @@ void addOrtValueMethods(pybind11::module& m) {
       .def("to_dlpack", [](OrtValue* ort_value) -> py::object {
         ORT_ENFORCE(!IsWebGpuBuffer(*ort_value), "DLPack export is not supported for WebGPU OrtValues.");
         return py::reinterpret_steal<py::object>(ToDlpack(*ort_value)); },
-           "Returns a DLPack representing the tensor. This method does not copy the pointer shape, "
-           "instead, it copies the pointer value. The OrtValue must be persist until the dlpack structure "
-           "is consumed.")
+           "Returns a DLPack capsule sharing the tensor buffer without copying. "
+           "The capsule retains the OrtValue; externally owned buffers must remain alive.")
       .def_static("from_dlpack", [](py::object data) { return FromDlpack(data.ptr()); }, py::arg("data"), "Converts a tensor from a external library into an OrtValue by means of the __dlpack__ protocol.")
       .def("__dlpack__", [](OrtValue* ort_value, py::object /* stream */) -> py::object {
         ORT_ENFORCE(!IsWebGpuBuffer(*ort_value), "DLPack export is not supported for WebGPU OrtValues.");
         return py::reinterpret_steal<py::object>(ToDlpack(*ort_value)); }, py::arg("stream") = py::none(),
            "Returns a DLPack representing the tensor (part of __dlpack__ protocol). "
-           "This method does not copy the pointer shape, instead, it copies the pointer value. "
-           "The OrtValue must persist until the dlpack structure is consumed.")
+           "The capsule retains the OrtValue and shares its buffer without copying; "
+           "externally owned buffers must remain alive.")
       .def("__dlpack_device__", [](const OrtValue* ort_value) -> py::tuple {
             ORT_ENFORCE(ort_value->IsTensor(), "Only tensor type OrtValues are supported");
             ORT_ENFORCE(!IsWebGpuBuffer(*ort_value), "DLPack export is not supported for WebGPU OrtValues.");

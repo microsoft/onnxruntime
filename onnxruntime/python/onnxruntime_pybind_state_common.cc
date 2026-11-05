@@ -56,10 +56,7 @@ void DlpackCapsuleDestructor(PyObject* data) {
   }
 }
 
-// Allocate a new Capsule object, which takes the ownership of OrtValue.
-// Caller is responsible for releasing.
-// This function calls OrtValueToDlpack(...).
-PyObject* ToDlpack(OrtValue ort_value) {
+PyObject* ToDlpack(OrtValue& ort_value) {
   DLManagedTensor* dlmanaged_tensor = dlpack::OrtValueToDlpack(ort_value);
   return PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
 }
