@@ -131,6 +131,45 @@ class GetDockerImageTest(unittest.TestCase):
             get_docker_image.main()
         self.assertEqual(run.call_count, 2)
 
+    def test_family_is_resolved_for_both_build_paths(self):
+        family = "cuda13_x64_almalinux8_gcc14"
+        for registry_args in ([], ["--container-registry", "test-registry"]):
+            with (
+                self.subTest(registry_args=registry_args),
+                patch.object(
+                    sys,
+                    "argv",
+                    [*self.arguments[:-2], "--base-image-family", family, *registry_args],
+                ),
+                patch.object(get_docker_image, "run") as run,
+            ):
+                self.assertEqual(get_docker_image.main(), 0)
+                expected = get_docker_image.resolve_build_args("Dockerfile.test", family=family)
+                build_arguments = run.call_args_list[0].args
+                index = build_arguments.index(expected[-1])
+                self.assertEqual(list(build_arguments[index - 1 : index + 1]), expected)
+
+    def test_dockerfile_default_is_resolved(self):
+        arguments = list(self.arguments[:-2])
+        arguments[2] = str(Path(__file__).parent / "github/linux/docker/Dockerfile.manylinux2_28_cpu")
+        with patch.object(sys, "argv", arguments), patch.object(get_docker_image, "run") as run:
+            self.assertEqual(get_docker_image.main(), 0)
+        self.assertTrue(any("BASEIMAGE=" in value and "@sha256:" in value for value in run.call_args_list[0].args))
+
+    def test_invalid_or_conflicting_family_never_builds_or_pushes(self):
+        for arguments in (
+            [*self.arguments, "--base-image-family", "cuda13_x64_almalinux8_gcc14"],
+            [*self.arguments[:-2], "--base-image-family", "missing-family"],
+        ):
+            with (
+                self.subTest(arguments=arguments),
+                patch.object(sys, "argv", [*arguments, "--container-registry", "test-registry"]),
+                patch.object(get_docker_image, "run") as run,
+                self.assertRaises(ValueError),
+            ):
+                get_docker_image.main()
+            run.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

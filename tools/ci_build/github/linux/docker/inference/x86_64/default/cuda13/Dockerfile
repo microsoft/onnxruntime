@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 # This file is used by Zip-Nuget Packaging NoContribOps Pipeline,Zip-Nuget-Java Packaging Pipeline
-ARG BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14_dotnet@sha256:2d1d88d6610917cc7dc394c7bfac4e6c9f86ce58e33d8775b5de5395c5f6606a
+ARG BASEIMAGE
 FROM $BASEIMAGE
 
 RUN dnf install -y perl-core && dnf clean all

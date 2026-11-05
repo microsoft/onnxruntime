@@ -28,6 +28,11 @@ on:
         required: false
         type: string
         default: ''
+      base_image_family:
+        description: 'Base-image family from base-images.json; otherwise use the Dockerfile default'
+        required: false
+        type: string
+        default: ''
       execution_providers:
         description: 'Space-separated list of execution providers to enable (passed to build.py)'
         required: false
@@ -92,12 +97,13 @@ jobs:
           python-version: ${{ inputs.python_version }}
 
       - name: Build Docker Image (${{ inputs.architecture }} / ${{ inputs.build_config }})
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: ./.github/actions/build-docker-image
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/${{ inputs.dockerfile_path }}
           image-name: ghcr.io/microsoft/onnxruntime/${{ inputs.docker_image_repo }}
           build-args: ${{ inputs.docker_build_args }}
+          base-image-family: ${{ inputs.base_image_family }}
           push: true
           azure-container-registry-name: onnxruntimebuildcache
         env:
