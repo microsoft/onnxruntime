@@ -42,7 +42,7 @@ the temporary `/jsep` export can be withdrawn (§10) — at minimum one release 
 
 ### 1.1 Implementation status
 
-**Status last reviewed:** 2026-11-03.
+**Status last reviewed:** 2026-11-05.
 
 Use **Planned**, **In progress**, **Blocked**, or **Done**. On the default branch, **Done** means the changes are
 merged and the required validation is complete. Once the other changes in an implementing PR are approved and
@@ -60,7 +60,7 @@ and decisions.
 | Phase 0: build configuration parity (§7) | Planned | Measure builds A/B/C and choose the operator/type coverage policy. |
 | Phase 0: GPU IO-binding parity (§8.2) | Planned | Establish zero-copy handoff and lifetime guarantees beyond correctness-suite coverage. |
 | Phase 0: WebNN initialization coverage (§8.3) | Planned | Add and validate blocking coverage in a WebNN-capable browser environment. |
-| Phase 0: global WebGPU settings (§8.4) | Planned | Wire power preference with a behavior-preserving default and document unsupported settings. |
+| Phase 0: global WebGPU settings (§8.4) | In progress | Validate and merge preference forwarding, session overrides, and custom-device coverage; resolve unset-default compatibility before the default flip. |
 | Phase 0: JSPI browser coverage (§8.6) | Planned | Exercise the native JSPI path in a compatible browser. |
 | Phase 1: compatibility export, warnings, and migration preparation (§9) | Planned | Rename the build flag, add `/jsep` and warnings, retarget operator docs, open the tracking issue, and prepare migration guidance and the usage baseline. |
 | Phase 1: default flip (§9) | Blocked | Meet the release gate and land an isolated default change. |
@@ -217,23 +217,24 @@ Phase 0 is the pre-work, in three parts:
    either way); the flip only swaps the JS init bridge (`jsepInit('webnn', …)` → `webnnInit(…)`, same
    `WebNNBackend`). Blocking browser coverage must establish equivalent native `webnnInit` behavior, including
    session creation and inference, in a `navigator.ml`-capable environment.
-4. **Global `env.webgpu.*` settings.** `wasm-core-impl.ts` requests a `GPUAdapter` on the JS side and
-   then calls `webgpuInit()` without forwarding it, so `adapter`, `powerPreference` and `forceFallbackAdapter` are
-   silently dropped on the native path. Resolution:
+4. **Global `env.webgpu.*` settings.** Preserve supported adapter-selection behavior without requesting an
+   adapter that the native path does not consume:
    - **`powerPreference`** — forward it to the existing `kPowerPreference` EP option
      (`ep.webgpuexecutionprovider.powerPreference` in `webgpu_provider_options.h`), set in `session-options.ts`
-     alongside the other `webgpu` options. Note that the two differ when it is *unset*: JSEP passes `undefined`
-     to `requestAdapter()` and lets the browser choose, while `WebGpuContextConfig::power_preference`
-     (`webgpu_context.h`) defaults to `WGPUPowerPreference_HighPerformance`. Left alone, the flip would move
-     users who never expressed a preference onto a discrete GPU, so the wiring needs a behavior-preserving
-     default.
-   - **`adapter` / `forceFallbackAdapter`** — both are `@deprecated` in `js/common/lib/env.ts`, which names
-     `env.webgpu.device` as the replacement. That pointer is wrong: `env.webgpu.device` is output-only — both
-     paths write it after init and neither reads it. Custom devices go through the per-session option instead,
+     alongside the other `webgpu` options, for both string and object EP configurations. An explicit session
+     `extra` entry overrides the global preference, including in minimal builds that create the provider during
+     EP registration. When neither setting is supplied, the native WebGPU EP retains its existing
+     `WGPUPowerPreference_HighPerformance` default in both WASM and non-WASM builds. JSEP leaves the preference
+     unspecified. Alignment for the
+     default-package migration requires a separately reviewed compatibility decision before the default flip;
+     do not silently change the selection policy for existing native-WebGPU users.
+   - **`adapter` / `forceFallbackAdapter`** — both are deprecated and must be documented as no-ops on the native
+     path. `env.webgpu.device` is output-only; setting it does not select a device. Custom devices go through the
+     per-session option instead,
      `executionProviders: [{ name: 'webgpu', device }]`, which `session-options.ts` already registers via
-     `webgpuRegisterDevice`. Document `adapter` / `forceFallbackAdapter` as no-ops on the native path, and fix
-     the `env.webgpu.device` doc comment.
-   - Drop the now-dead `navigator.gpu.requestAdapter()` call on the native path once nothing consumes its result.
+     `webgpuRegisterDevice`.
+   - Native initialization must retain availability checks but leave adapter/device creation to the EP.
+     Supplying a custom device must not trigger an additional `navigator.gpu.requestAdapter()` call.
 5. **Profiling.** `env.webgpu.profiling.ondata` is a JSEP-only mechanism: a per-dispatch JavaScript callback
    receiving `kernelId` / `kernelType` / `kernelName` / `programName`, timestamps and input/output tensor metadata
    (`WebGpuProfilingDataV1` in `js/common/lib/env.ts`), falling back to `console.log` when unset. The native
