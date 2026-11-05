@@ -84,9 +84,3 @@ also needs a patched NVIDIA payload, not a newer host Go compiler. Keep profilin
 enabled and retain that vendor fix as an outstanding remediation gate. The historical AlmaLinux9
 ARM64 family must not be replaced by an AlmaLinux8 image from current producer
 main.
-
-Run the helper's source-only regression tests from the ORT repository root:
-
-```shell
-python -m unittest discover -s tools/ci_build -p "test_*docker*.py"
-```
