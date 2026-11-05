@@ -1374,9 +1374,11 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
     set(bridge_test_target onnxruntime_provider_bridge_${mode}_test)
     set(bridge_test_sources "${TEST_SRC_DIR}/shared_lib/provider_bridge_test.cc" ${onnxruntime_unittest_main_src})
     if(mode STREQUAL "no_exceptions")
-      list(APPEND bridge_test_sources
-        "${ONNXRUNTIME_ROOT}/core/session/provider_bridge_ort.cc"
-        "${ONNXRUNTIME_ROOT}/core/common/helper.cc")
+      # These no-exception copies override library definitions. List them first so lld-link,
+      # which resolves inputs in command-line order, sees them before any referencing object.
+      list(PREPEND bridge_test_sources
+        "${ONNXRUNTIME_ROOT}/core/common/helper.cc"
+        "${ONNXRUNTIME_ROOT}/core/session/provider_bridge_ort.cc")
     endif()
     AddTest(TARGET ${bridge_test_target}
       SOURCES ${bridge_test_sources}
