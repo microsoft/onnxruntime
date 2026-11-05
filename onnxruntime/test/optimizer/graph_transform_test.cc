@@ -5003,6 +5003,43 @@ TEST_F(GraphTransformationTests, FuseConvAddNoBias) {
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
 }
 
+// Folding a float16 Add into an existing Conv bias must not round away the Add offset.
+// https://github.com/microsoft/onnxruntime/issues/33345
+TEST_F(GraphTransformationTests, FuseConvAddFloat16BiasOnlyWhenExact) {
+  auto run_test = [&](float add_value, int expected_add_count) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input = builder.MakeInput<MLFloat16>({{1, 1, 2, 2}});
+      auto* weight = builder.MakeInitializer<MLFloat16>({1, 1, 1, 1}, {MLFloat16(1.0f)});
+      auto* bias = builder.MakeInitializer<MLFloat16>({1}, {MLFloat16(-1.0f)});
+      auto* offset = builder.MakeInitializer<MLFloat16>({1, 1, 1, 1}, {MLFloat16(add_value)});
+      auto* conv_out = builder.MakeIntermediate();
+      auto* add_out = builder.MakeIntermediate();
+      auto* output = builder.MakeOutput();
+
+      builder.AddNode("Conv", {input, weight, bias}, {conv_out});
+      builder.AddNode("Add", {conv_out, offset}, {add_out});
+      builder.AddNode("Identity", {add_out}, {output});
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      auto op_to_count = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_to_count["Conv"] == 1);
+      TEST_RETURN_IF_NOT(op_to_count["Add"] == expected_add_count);
+      return Status::OK();
+    };
+
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<ConvAddFusion>()));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(rule_transformer),
+                                          TransformerLevel::Level1, 1, nullptr, post_graph_checker));
+  };
+
+  // -1 + 1e-4 is not representable in float16 (it would round to -1), so the nodes are not fused.
+  run_test(1e-4f, 1);
+  // -1 + 0.5 is exact, so the Add is folded into the Conv bias.
+  run_test(0.5f, 0);
+}
+
 // if IR version is 4 or higher the weights can be overridden if there's a matching graph input.
 // check that we don't fuse if that is the case
 TEST_F(GraphTransformationTests, NegativeFuseConvAddNoBias) {

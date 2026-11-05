@@ -10,6 +10,29 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
+namespace {
+
+// Returns true if conv_B + add_B is exactly representable in T for every element.
+template <typename T>
+bool IsBiasSumExact(const Initializer& conv_B, const Initializer& add_B) {
+  const auto conv_B_data = conv_B.DataAsSpan<T>();
+  const auto add_B_data = add_B.DataAsSpan<T>();
+  for (size_t i = 0; i < conv_B_data.size(); ++i) {
+    const double a = conv_B_data[i].ToFloat();
+    const double b = add_B_data[i].ToFloat();
+    const double sum = a + b;
+    // TwoSum: err is the exact rounding error of the double addition (non-zero only for extreme bfloat16 ranges).
+    const double b_virtual = sum - a;
+    const double err = (a - (sum - b_virtual)) + (b - b_virtual);
+    if (err != 0.0 || static_cast<double>(T(static_cast<float>(sum)).ToFloat()) != sum) {
+      return false;
+    }
+  }
+  return true;
+}
+
+}  // namespace
+
 Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modified, const logging::Logger&) const {
   auto& conv_node = node;
   auto& add_node = *graph.GetNode(conv_node.OutputNodesBegin()->Index());  // get mutable next node
@@ -66,6 +89,14 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
     Initializer add_B{graph, *add_B_tensor_proto, graph.ModelPath()};
 
     if (conv_B.size() != add_B.size()) {
+      return Status::OK();
+    }
+
+    // Folding the two biases rounds conv_B + add_B to the bias type. With 16-bit floats that rounding can
+    // exceed the error of the unfused graph and remove small offsets entirely (e.g. -1 + 1e-4 becomes -1 in
+    // float16), so only fuse when the folded bias is exact.
+    if ((conv_B.data_type() == TensorProto_DataType_FLOAT16 && !IsBiasSumExact<MLFloat16>(conv_B, add_B)) ||
+        (conv_B.data_type() == TensorProto_DataType_BFLOAT16 && !IsBiasSumExact<BFloat16>(conv_B, add_B))) {
       return Status::OK();
     }
 
