@@ -505,19 +505,13 @@ void addOrtValueMethods(pybind11::module& m) {
 #endif
       })
 #if defined(ENABLE_DLPACK)
-      .def("to_dlpack", [](OrtValue* ort_value) -> py::object {
-        ORT_ENFORCE(!IsWebGpuBuffer(*ort_value), "DLPack export is not supported for WebGPU OrtValues.");
-        return py::reinterpret_steal<py::object>(ToDlpack(*ort_value)); },
-           "Returns a DLPack representing the tensor. This method does not copy the pointer shape, "
-           "instead, it copies the pointer value. The OrtValue must be persist until the dlpack structure "
-           "is consumed.")
-      .def_static("from_dlpack", [](py::object data) { return FromDlpack(data.ptr()); }, py::arg("data"), "Converts a tensor from a external library into an OrtValue by means of the __dlpack__ protocol.")
+      .def_static("from_dlpack", &FromDlpack, py::arg("data"), "Imports a tensor from a DLPack protocol object or legacy capsule without copying.")
       .def("__dlpack__", [](OrtValue* ort_value, py::object /* stream */) -> py::object {
         ORT_ENFORCE(!IsWebGpuBuffer(*ort_value), "DLPack export is not supported for WebGPU OrtValues.");
         return py::reinterpret_steal<py::object>(ToDlpack(*ort_value)); }, py::arg("stream") = py::none(),
            "Returns a DLPack representing the tensor (part of __dlpack__ protocol). "
-           "This method does not copy the pointer shape, instead, it copies the pointer value. "
-           "The OrtValue must persist until the dlpack structure is consumed.")
+           "The capsule retains the OrtValue and shares its buffer without copying; "
+           "externally owned buffers must remain alive.")
       .def("__dlpack_device__", [](const OrtValue* ort_value) -> py::tuple {
             ORT_ENFORCE(ort_value->IsTensor(), "Only tensor type OrtValues are supported");
             ORT_ENFORCE(!IsWebGpuBuffer(*ort_value), "DLPack export is not supported for WebGPU OrtValues.");
@@ -543,7 +537,7 @@ void addOrtValueMethods(pybind11::module& m) {
         v->push_back(ortvalue);
       })
 #if defined(ENABLE_DLPACK)
-      .def("push_back", [](std::vector<OrtValue>* v, py::object dlpack_tensor) { v->push_back(FromDlpack(dlpack_tensor.ptr())); }, "Add a new OrtValue after being ownership was transferred from the DLPack structure.", py::arg("dlpack_tensor"))
+      .def("push_back", [](std::vector<OrtValue>* v, py::object data) { v->push_back(FromDlpack(std::move(data))); }, "Add an OrtValue imported from a DLPack protocol object or legacy capsule.", py::arg("dlpack_tensor"))
       .def("push_back_batch", [](std::vector<OrtValue>* v, std::vector<py::object>& torch_tensors, std::vector<int64_t>& data_ptrs, std::vector<py::object>& element_types, const std::vector<std::vector<int64_t>>& shapes, const std::vector<OrtDevice>& devices) {
             for (size_t i = 0; i < torch_tensors.size(); ++i) {
               py::object& element_type = element_types.at(i);
@@ -648,12 +642,12 @@ consuming the DLPack structure or return a list of capsule if this function is N
 
 :param to_tensor: this function takes a capsule holding a pointer onto a DLPack structure and returns
     a new tensor which becomes the new owner of the data. This function takes one python object and
-    returns a new python object. It fits the same signature as `torch.utils.from_dlpack`,
+    returns a new python object. It fits the same signature as `torch.from_dlpack`,
     if None, the method returns a capsule for every new DLPack structure.
 :return: a list containing the new tensors or a the new capsules if *to_tensor* is None
 
-This method is used to replace `tuple(torch._C._from_dlpack(ov.to_dlpack()) for ov in ort_values)`
-by a faster instruction `tuple(ort_values.to_dlpack(torch._C._from_dlpack))`. This loop
+This method is used to replace `tuple(torch.from_dlpack(ov) for ov in ort_values)`
+by a faster instruction `tuple(ort_values.to_dlpacks(torch.from_dlpack))`. This loop
 is difficult to parallelize as it goes through the GIL many times.
 It creates many tensors acquiring ownership of existing OrtValue.
 This method saves one object creation and an C++ allocation

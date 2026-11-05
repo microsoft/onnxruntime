@@ -11,10 +11,8 @@
 namespace onnxruntime {
 namespace dlpack {
 
-// This convertor will take an OrtValue and wrap it as a DLPack tensor
-// This may create a new ownership to the underlying tensor in OrtValue,
-// so we do pass-by-value here. We don't use pass-by-reference because
-// it implies no new ownership.
+// Wrap an OrtValue as a DLPack tensor, retaining a copy of the OrtValue
+// until the consumer calls the DLPack deleter.
 DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value);
 
 // Imports a contiguous tensor, preserving its DLPack dtype (including kDLBool).

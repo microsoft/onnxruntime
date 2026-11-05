@@ -56,17 +56,23 @@ void DlpackCapsuleDestructor(PyObject* data) {
   }
 }
 
-// Allocate a new Capsule object, which takes the ownership of OrtValue.
-// Caller is responsible for releasing.
-// This function calls OrtValueToDlpack(...).
-PyObject* ToDlpack(OrtValue ort_value) {
+PyObject* ToDlpack(OrtValue& ort_value) {
   DLManagedTensor* dlmanaged_tensor = dlpack::OrtValueToDlpack(ort_value);
   return PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
 }
 
-// Consume a Capsule object and claims the ownership of its underlying tensor to
-// create a OrtValue. This function calls DlpackToOrtValue(...) to do the conversion.
-OrtValue FromDlpack(PyObject* dlpack_tensor) {
+OrtValue FromDlpack(py::object data) {
+  if (!PyCapsule_CheckExact(data.ptr())) {
+    auto method = py::reinterpret_steal<py::object>(PyObject_GetAttrString(data.ptr(), "__dlpack__"));
+    if (method) {
+      data = method();
+    } else if (PyErr_ExceptionMatches(PyExc_AttributeError)) {
+      PyErr_Clear();
+    } else {
+      throw py::error_already_set();
+    }
+  }
+  PyObject* dlpack_tensor = data.ptr();
   if (!PyCapsule_IsValid(dlpack_tensor, "dltensor")) {
     throw py::type_error("from_dlpack expected a valid DLPack capsule named 'dltensor'");
   }

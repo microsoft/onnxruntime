@@ -50,7 +50,8 @@ def _ortvalue_from_torch_tensor(torch_tensor: torch.Tensor) -> C.OrtValue:
     """Converts a torch tensor to an OrtValue."""
     if torch_tensor.device.type == "ort":
         return C.aten_ort_tensor_to_ort_value(torch_tensor)
-    return C.OrtValue.from_dlpack(to_dlpack(torch_tensor))
+    # The protocol rejects requires_grad tensors; ORTModule manages autograd separately.
+    return C.OrtValue.from_dlpack(torch_tensor.detach() if torch_tensor.requires_grad else torch_tensor)
 
 
 def _ortvalues_to_torch_tensor(
