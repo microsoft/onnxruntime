@@ -441,7 +441,7 @@ function(setup_mlas_source_for_windows)
       # -m<feature> flags (mirroring the non-MSVC branch) so each kernel gets
       # exactly the ISA it uses. MLAS selects these kernels at runtime via CPUID,
       # so enabling features per translation unit is safe.
-      set(mlas_clang_cl_avx2_flags "-mavx2 -mfma -mf16c -mavxvnni")
+      set(mlas_clang_cl_avx2_flags "-mavx2 -mfma -mf16c")
       set(mlas_clang_cl_avx512_flags "-mfma -mavx512f -mavx512bw -mavx512dq -mavx512vl")
       set(mlas_clang_cl_avx512vnni_flags "${mlas_clang_cl_avx512_flags} -mavx512vnni")
       set(mlas_clang_cl_amx_flags "${mlas_clang_cl_avx512_flags} -mavx2 -mamx-tile -mamx-int8")
@@ -461,6 +461,12 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
         PROPERTIES COMPILE_FLAGS "${mlas_clang_cl_avx2_flags}")
 
+      # Keep AVX-VNNI confined to its own TU so the auto-vectorizer cannot emit
+      # VNNI instructions in the pure-AVX2 kernels above.
+      set_source_files_properties(
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2vnni.cpp
+        PROPERTIES COMPILE_FLAGS "${mlas_clang_cl_avx2_flags} -mavxvnni")
+
       set_source_files_properties(
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp
         PROPERTIES COMPILE_FLAGS "${mlas_clang_cl_avx512_flags}")
@@ -468,6 +474,7 @@ function(setup_mlas_source_for_windows)
       set_source_files_properties(
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni_2bit.cpp
         ${MLAS_SRC_DIR}/qkv_quant_kernel_avx512vnni.cpp
         ${MLAS_SRC_DIR}/q4gemm_avx512.cpp
         PROPERTIES COMPILE_FLAGS "${mlas_clang_cl_avx512vnni_flags}")
