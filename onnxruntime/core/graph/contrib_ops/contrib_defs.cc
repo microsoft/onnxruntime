@@ -4409,6 +4409,10 @@ derived from the runtime shape of A and the shared attributes K and N.
 
 The operator contract includes a string attribute describing the fused gate activation.
 
+Optional gate and up LoRA inputs apply MatMulNBitsQLoRA to each projection before the
+activation. Empty adapter-up weights use the base projection. The adapter inputs are
+runtime tensors and may change between calls.
+
 When fused from SkipSimplifiedLayerNormalization, the optional residual-sum output may also be materialized:
 
   A_norm, input_skip_bias_sum = SkipSimplifiedLayerNormalization(A, skip, norm_scale, epsilon)
@@ -4436,6 +4440,9 @@ When fused from SkipSimplifiedLayerNormalization, the optional residual-sum outp
       .Attr("epsilon",
             "Epsilon used by the optional fused (Skip)SimplifiedLayerNormalization. Defaults to 1e-5.",
             AttributeProto::FLOAT, 1e-5f)
+      .Attr("lora_bits", "Bit-width of optional adapter weights.", AttributeProto::INT, int64_t{8})
+      .Attr("lora_block_size", "Quantization block size of optional adapter weights.", AttributeProto::INT,
+            int64_t{32})
       .Input(0, "A", "The shared input tensor.", "T1")
       .Input(1, "skip", "Optional skip input used by SkipSimplifiedLayerNormalization.", "T1", OpSchema::Optional)
       .Input(2, "norm_scale", "Optional RMSNorm scale with shape [K] used by SimplifiedLayerNormalization or SkipSimplifiedLayerNormalization.", "T1", OpSchema::Optional)
@@ -4445,12 +4452,27 @@ When fused from SkipSimplifiedLayerNormalization, the optional residual-sum outp
       .Input(6, "up_B", "Packed uint8 tensor for the up projection weights.", "T2")
       .Input(7, "up_scales", "Per-block scaling factors for the up projection.", "T1")
       .Input(8, "up_bias", "Optional bias for the up projection with shape [N].", "T1", OpSchema::Optional)
+      .Input(9, "gate_lora_A", "Optional packed gate adapter-down weights.", "TAdapter", OpSchema::Optional)
+      .Input(10, "gate_lora_A_scales", "Optional gate adapter-down scales.", "T1", OpSchema::Optional)
+      .Input(11, "gate_lora_B", "Optional packed gate adapter-up weights; may be empty.", "TAdapter", OpSchema::Optional)
+      .Input(12, "gate_lora_B_scales", "Optional gate adapter-up scales.", "T1", OpSchema::Optional)
+      .Input(13, "up_lora_A", "Optional packed up adapter-down weights.", "TAdapter", OpSchema::Optional)
+      .Input(14, "up_lora_A_scales", "Optional up adapter-down scales.", "T1", OpSchema::Optional)
+      .Input(15, "up_lora_B", "Optional packed up adapter-up weights; may be empty.", "TAdapter", OpSchema::Optional)
+      .Input(16, "up_lora_B_scales", "Optional up adapter-up scales.", "T1", OpSchema::Optional)
       .Output(0, "Y", "The fused gated MLP output tensor.", "T1")
       .Output(1, "input_skip_bias_sum", "Optional residual-sum output for SkipSimplifiedLayerNormalization.", "T1", OpSchema::Optional)
       .TypeConstraint("T1", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                       "Constrain input and output types to float tensors.")
       .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain quantized weight types to uint8.")
+      .TypeConstraint("TAdapter", {"tensor(uint8)"}, "Constrain packed adapter weights to uint8.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        const bool has_adapter_inputs = ctx.hasInput(9);
+        for (int i = 9; i < 17; ++i) {
+          if (ctx.hasInput(i) != has_adapter_inputs) {
+            fail_shape_inference("all gate and up adapter inputs must be present together");
+          }
+        }
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         if (ctx.getNumOutputs() > 1) {
           propagateElemTypeFromInputToOutput(ctx, 0, 1);
@@ -4522,6 +4544,8 @@ If skip is provided, the operator computes the SkipSimplifiedLayerNormalization 
 and may also return the input+skip residual sum as output 3.
 
 This operator is intended as a decode-oriented QKV fusion primitive.
+Optional Q, K, and V LoRA inputs apply MatMulNBitsQLoRA to each projection. Empty
+adapter-up weights use the base projection, and runtime adapters may change between calls.
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBitsQkv)
@@ -4539,6 +4563,9 @@ This operator is intended as a decode-oriented QKV fusion primitive.
             "The minimum accuracy level of input A. It follows the same semantics as MatMulNBits.",
             AttributeProto::INT, static_cast<int64_t>(0))
       .Attr("epsilon", "Epsilon used by the simplified layer norm reduction.", AttributeProto::FLOAT, 1e-6f)
+      .Attr("lora_bits", "Bit-width of optional adapter weights.", AttributeProto::INT, int64_t{8})
+      .Attr("lora_block_size", "Quantization block size of optional adapter weights.", AttributeProto::INT,
+            int64_t{32})
       .Input(0, "A", "The shared input tensor.", "T1")
       .Input(1, "skip", "Optional residual input for SkipSimplifiedLayerNormalization.", "T1", OpSchema::Optional)
       .Input(2, "norm_scale", "Scale input for the simplified layer norm with shape [K].", "T1")
@@ -4551,6 +4578,18 @@ This operator is intended as a decode-oriented QKV fusion primitive.
       .Input(9, "v_B", "Packed uint8 tensor for the V projection weights.", "T2")
       .Input(10, "v_scales", "Per-block scaling factors for the V projection.", "T1")
       .Input(11, "v_bias", "Optional bias for the V projection with shape [Nkv].", "T1", OpSchema::Optional)
+      .Input(12, "q_lora_A", "Optional packed Q adapter-down weights.", "TAdapter", OpSchema::Optional)
+      .Input(13, "q_lora_A_scales", "Optional Q adapter-down scales.", "T1", OpSchema::Optional)
+      .Input(14, "q_lora_B", "Optional packed Q adapter-up weights; may be empty.", "TAdapter", OpSchema::Optional)
+      .Input(15, "q_lora_B_scales", "Optional Q adapter-up scales.", "T1", OpSchema::Optional)
+      .Input(16, "k_lora_A", "Optional packed K adapter-down weights.", "TAdapter", OpSchema::Optional)
+      .Input(17, "k_lora_A_scales", "Optional K adapter-down scales.", "T1", OpSchema::Optional)
+      .Input(18, "k_lora_B", "Optional packed K adapter-up weights; may be empty.", "TAdapter", OpSchema::Optional)
+      .Input(19, "k_lora_B_scales", "Optional K adapter-up scales.", "T1", OpSchema::Optional)
+      .Input(20, "v_lora_A", "Optional packed V adapter-down weights.", "TAdapter", OpSchema::Optional)
+      .Input(21, "v_lora_A_scales", "Optional V adapter-down scales.", "T1", OpSchema::Optional)
+      .Input(22, "v_lora_B", "Optional packed V adapter-up weights; may be empty.", "TAdapter", OpSchema::Optional)
+      .Input(23, "v_lora_B_scales", "Optional V adapter-up scales.", "T1", OpSchema::Optional)
       .Output(0, "Q", "The Q projection output tensor.", "T1")
       .Output(1, "K", "The K projection output tensor.", "T1")
       .Output(2, "V", "The V projection output tensor.", "T1")
@@ -4558,7 +4597,14 @@ This operator is intended as a decode-oriented QKV fusion primitive.
       .TypeConstraint("T1", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                       "Constrain input and output types to float tensors.")
       .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain quantized weight types to uint8.")
+      .TypeConstraint("TAdapter", {"tensor(uint8)"}, "Constrain packed adapter weights to uint8.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        const bool has_adapter_inputs = ctx.hasInput(12);
+        for (int i = 12; i < 24; ++i) {
+          if (ctx.hasInput(i) != has_adapter_inputs) {
+            fail_shape_inference("all Q, K, and V adapter inputs must be present together");
+          }
+        }
         for (size_t output_index = 0; output_index < ctx.getNumOutputs(); ++output_index) {
           propagateElemTypeFromInputToOutput(ctx, 0, output_index);
         }
@@ -4584,7 +4630,7 @@ This operator is intended as a decode-oriented QKV fusion primitive.
         set_output_shape(0, q_out_features);
         set_output_shape(1, kv_out_features);
         set_output_shape(2, kv_out_features);
-        if (ctx.getNumOutputs() > 3) {
+        if (ctx.hasOutput(3)) {
           auto* output_shape = getOutputShape(ctx, 3);
           *output_shape = input_shape;
         }

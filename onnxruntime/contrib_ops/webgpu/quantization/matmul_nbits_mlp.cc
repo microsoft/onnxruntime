@@ -6,6 +6,7 @@
 #include <optional>
 
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
+#include "contrib_ops/webgpu/quantization/matmul_nbits_qlora.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/dp4a_matmul_nbits.h"
@@ -240,10 +241,18 @@ ONNX_OPERATOR_KERNEL_EX(
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T1", WebGpuSupportedFloatTypes())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("TAdapter", DataTypeImpl::GetTensorType<uint8_t>()),
     MatMulNBitsMlp);
 
 Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
+  if (has_adapter_inputs_) {
+    return ComputeWithAdapters(context);
+  }
+  return ComputeBase(context);
+}
+
+Status MatMulNBitsMlp::ComputeBase(onnxruntime::webgpu::ComputeContext& context) const {
   const Tensor* a = context.Input<Tensor>(0);
   const Tensor* skip = context.Input<Tensor>(1);
   const Tensor* norm_scale = context.Input<Tensor>(2);
@@ -540,6 +549,75 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                          activation_kind_,
                          context,
                          y);
+}
+
+// Empty adapter B tensors reuse the base decode shader, including normalization.
+Status MatMulNBitsMlp::ComputeWithAdapters(onnxruntime::webgpu::ComputeContext& context) const {
+  ORT_RETURN_IF_NOT(context.InputCount() == 17 && bits_ == 4 && block_size_ == 32 &&
+                        K_ > 0 && K_ % 32 == 0 && N_ > 0 &&
+                        lora_bits_ == 8 && lora_block_size_ == 32,
+                    "WebGPU MatMulNBitsMlp requires 4-bit block-32 base and 8-bit block-32 adapters.");
+  ORT_RETURN_IF(context.Input<Tensor>(5) != nullptr || context.Input<Tensor>(8) != nullptr,
+                "MatMulNBitsMlp with adapters does not support projection biases.");
+  const Tensor* gate_lora_b = context.Input<Tensor>(11);
+  const Tensor* up_lora_b = context.Input<Tensor>(15);
+  if (gate_lora_b->Shape().Size() == 0 && up_lora_b->Shape().Size() == 0) {
+    ORT_RETURN_IF_ERROR(ValidateQLoRABaseWeights(context.Input<Tensor>(3), context.Input<Tensor>(4), K_, N_));
+    ORT_RETURN_IF_ERROR(ValidateQLoRABaseWeights(context.Input<Tensor>(6), context.Input<Tensor>(7), K_, N_));
+    return ComputeBase(context);
+  }
+
+  const Tensor* a = context.Input<Tensor>(0);
+  const Tensor* skip = context.Input<Tensor>(1);
+  const Tensor* norm_scale = context.Input<Tensor>(2);
+  ORT_RETURN_IF(skip != nullptr && norm_scale == nullptr,
+                "MatMulNBitsMlp with adapters requires norm_scale when skip is present.");
+  ORT_RETURN_IF(norm_scale != nullptr && norm_scale->Shape().Size() != K_,
+                "MatMulNBitsMlp with adapters requires norm_scale to contain K elements.");
+
+  MatMulComputeHelper helper;
+  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), TensorShape({N_, K_}), false, true));
+  Tensor* y = context.Output(0, helper.OutputShape());
+  Tensor* skip_sum = skip != nullptr && context.OutputCount() > 1 ? context.Output(1, a->Shape()) : nullptr;
+  if (y->Shape().Size() == 0) return Status::OK();
+
+  std::optional<Tensor> normalized;
+  const Tensor* projection_input = a;
+  if (norm_scale != nullptr) {
+    normalized.emplace(context.CreateGPUTensor(a->DataType(), a->Shape()));
+    if (skip != nullptr) {
+      ORT_RETURN_IF_ERROR(RunSkipLayerNormProgram(context, a, skip, norm_scale,
+                                                  nullptr, nullptr, epsilon_, true, &*normalized, skip_sum));
+    } else {
+      const auto& shape = a->Shape();
+      const int64_t norm_size = shape[shape.NumDimensions() - 1];
+      const uint32_t norm_count = narrow<uint32_t>(shape.Size() / norm_size);
+      ORT_RETURN_IF_ERROR(onnxruntime::webgpu::RunLayerNormProgram(
+          context, a, norm_scale, nullptr, epsilon_, norm_count, norm_size,
+          true, &*normalized, nullptr, nullptr));
+    }
+    projection_input = &*normalized;
+  }
+
+  Tensor gate = context.CreateGPUTensor(a->DataType(), helper.OutputShape());
+  Tensor up = context.CreateGPUTensor(a->DataType(), helper.OutputShape());
+  ORT_RETURN_IF_ERROR(ApplyMatMulNBitsQLoRA(projection_input, context.Input<Tensor>(3), context.Input<Tensor>(4),
+                                            context.Input<Tensor>(9), context.Input<Tensor>(10),
+                                            gate_lora_b, context.Input<Tensor>(12),
+                                            K_, N_, accuracy_level_, context, &gate));
+  ORT_RETURN_IF_ERROR(ApplyMatMulNBitsQLoRA(projection_input, context.Input<Tensor>(6), context.Input<Tensor>(7),
+                                            context.Input<Tensor>(13), context.Input<Tensor>(14),
+                                            up_lora_b, context.Input<Tensor>(16),
+                                            K_, N_, accuracy_level_, context, &up));
+
+  const uint32_t vec_size = (narrow<uint32_t>(y->Shape().Size()) + 3u) / 4u;
+  MatMulNBitsMlpProgram program{activation_kind_};
+  program.AddInputs({{&gate, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4},
+                     {&up, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4}})
+      .AddOutput({y, ProgramTensorMetadataDependency::Type, {vec_size}, 4})
+      .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+      .AddUniformVariables({vec_size});
+  return context.RunProgram(program);
 }
 
 }  // namespace webgpu

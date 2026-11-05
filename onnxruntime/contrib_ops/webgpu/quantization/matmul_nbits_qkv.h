@@ -11,7 +11,7 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 
-class MatMulNBitsQkv final : public WebGpuKernel {
+class MatMulNBitsQkv : public WebGpuKernel {
  public:
   explicit MatMulNBitsQkv(const OpKernelInfo& info) : WebGpuKernel(info) {
     K_ = info.GetAttr<int64_t>("K");
@@ -21,6 +21,15 @@ class MatMulNBitsQkv final : public WebGpuKernel {
     bits_ = info.GetAttr<int64_t>("bits");
     accuracy_level_ = info.GetAttrOrDefault<int64_t>("accuracy_level", 4);
     epsilon_ = info.GetAttrOrDefault<float>("epsilon", 1e-6f);
+    lora_bits_ = info.GetAttrOrDefault<int64_t>("lora_bits", 8);
+    lora_block_size_ = info.GetAttrOrDefault<int64_t>("lora_block_size", 32);
+    const auto& inputs = info.node().InputDefs();
+    auto input_exists = [&](size_t i) { return inputs[i] != nullptr && inputs[i]->Exists(); };
+    has_adapter_inputs_ = inputs.size() > 12 && input_exists(12);
+    for (size_t i = 12; i < inputs.size(); ++i) {
+      ORT_ENFORCE(input_exists(i) == has_adapter_inputs_,
+                  "MatMulNBitsQkv requires all adapter inputs when any is present.");
+    }
     ORT_ENFORCE(bits_ == 4,
                 "MatMulNBitsQkv currently supports 4-bit weights only.");
   }
@@ -28,6 +37,9 @@ class MatMulNBitsQkv final : public WebGpuKernel {
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
 
  private:
+  Status ComputeBase(onnxruntime::webgpu::ComputeContext& context) const;
+  Status ComputeWithAdapters(onnxruntime::webgpu::ComputeContext& context) const;
+
   int64_t K_;
   int64_t Nq_;
   int64_t Nkv_;
@@ -35,6 +47,9 @@ class MatMulNBitsQkv final : public WebGpuKernel {
   int64_t accuracy_level_;
   int64_t bits_;
   float epsilon_;
+  int64_t lora_bits_;
+  int64_t lora_block_size_;
+  bool has_adapter_inputs_;
 };
 
 }  // namespace webgpu
