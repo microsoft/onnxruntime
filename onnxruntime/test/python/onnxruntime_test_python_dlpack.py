@@ -297,6 +297,12 @@ class TestDlpackPyTorch(unittest.TestCase):
                 values = C.OrtValueVector()
                 try:
                     self.assertEqual(imported.__dlpack_device__(), (device_type, 3))
+                    for value_type in (ort.OrtValue, C.OrtValue):
+                        for producer in (imported, imported._get_c_value()):
+                            copied = value_type.from_dlpack(producer, synchronize=False)
+                            self.assertEqual(copied.__dlpack_device__(), (device_type, 3))
+                            del copied
+                    del producer
                     values.push_back(imported._get_c_value())
                     exported = values.to_dlpacks(None, synchronize=False)
                     for result in (imported.__dlpack__(stream=-1), *exported):
@@ -315,6 +321,23 @@ class TestDlpackPyTorch(unittest.TestCase):
         values = C.OrtValueVector()
         values.push_back(source, synchronize=False)
         self.assert_tensor(values.to_dlpacks(torch.from_dlpack, synchronize=False)[0], source)
+
+    def test_import_opt_out_without_gpu_metadata_omits_stream(self):
+        source = torch.arange(6, dtype=torch.float32)
+
+        class Producer:
+            def __dlpack__(self):
+                return source.__dlpack__()
+
+        class CpuProducer(Producer):
+            def __dlpack_device__(self):
+                return (1, 0)
+
+        for value_type in (ort.OrtValue, C.OrtValue):
+            for producer in (Producer(), CpuProducer()):
+                with self.subTest(value_type=value_type, producer=producer):
+                    imported = value_type.from_dlpack(producer, synchronize=False)
+                    self.assert_tensor(torch.from_dlpack(imported), source)
 
     def test_unsupported_gpu_vendor_is_not_exported_as_cuda(self):
         array = np.empty(1, dtype=np.float32)
@@ -516,6 +539,11 @@ class TestDlpackPyTorch(unittest.TestCase):
             def __dlpack__(self):
                 raise ValueError("DLPack lookup failed")
 
+        class InvalidAttributeDescriptor:
+            @property
+            def __dlpack__(self):
+                raise AttributeError("DLPack descriptor failed")
+
         for value_type in (ort.OrtValue, C.OrtValue):
             for producer, error in (
                 (InvalidProducer(), "DLPack producer failed"),
@@ -523,6 +551,12 @@ class TestDlpackPyTorch(unittest.TestCase):
             ):
                 with self.subTest(value_type=value_type, producer=producer), self.assertRaisesRegex(ValueError, error):
                     value_type.from_dlpack(producer)
+            for synchronize in (False, True):
+                with (
+                    self.subTest(value_type=value_type, synchronize=synchronize),
+                    self.assertRaisesRegex(AttributeError, "DLPack descriptor failed"),
+                ):
+                    value_type.from_dlpack(InvalidAttributeDescriptor(), synchronize=synchronize)
 
     def test_packed_dtype_boundaries(self):
         for dtype, onnx_type, storage_type, bits, error in PACKED_DTYPES:
@@ -646,12 +680,14 @@ class TestDlpackCUDA(unittest.TestCase):
                 with torch.cuda.graph(graph):
                     source.add_(1)
                     imported = value_type.from_dlpack(source, synchronize=False)
+                    copied = value_type.from_dlpack(imported, synchronize=False)
                     values = C.OrtValueVector()
                     values.push_back(source, synchronize=False)
                     capsules = values.to_dlpacks(None, synchronize=False)
                 graph.replay()
                 torch.cuda.synchronize()
                 torch.testing.assert_close(torch.from_dlpack(imported), source)
+                torch.testing.assert_close(torch.from_dlpack(copied), source)
                 torch.testing.assert_close(torch.from_dlpack(capsules[0]), source)
 
     def test_batch_prepares_all_capsules_before_callbacks(self):

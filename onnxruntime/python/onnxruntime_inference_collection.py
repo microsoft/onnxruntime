@@ -1595,6 +1595,7 @@ class OrtValue:
         :param synchronize: Set False only when the caller arranges producer/consumer
             stream ordering before using the imported tensor, for example during
             graph capture or when preparing a batch followed by one stream wait.
+            GPU protocol producers are asked to export with ``stream=-1`` in this mode.
         :return: An OrtValue wrapping the tensor data.
         :raises TypeError: If the object does not provide a valid DLPack capsule.
         """

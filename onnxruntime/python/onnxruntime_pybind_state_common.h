@@ -182,10 +182,11 @@ extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 }  // namespace onnxruntime
 #endif
 
-#ifdef USE_MIGRAPHX
+#if defined(USE_MIGRAPHX) || defined(USE_MIGRAPHX_PROVIDER_INTERFACE)
 namespace onnxruntime {
 ProviderInfo_MIGraphX* TryGetProviderInfo_MIGraphX();
 ProviderInfo_MIGraphX& GetProviderInfo_MIGraphX();
+#ifdef USE_MIGRAPHX
 namespace python::migraphx::external {
 extern void* alloc_fn;
 extern void* free_fn;
@@ -194,6 +195,7 @@ inline bool UseExternalAllocator() {
   return alloc_fn != nullptr && free_fn != nullptr;
 }
 }  // namespace python::migraphx::external
+#endif
 }  // namespace onnxruntime
 
 #endif

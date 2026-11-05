@@ -65,6 +65,24 @@ void DlpackCapsuleDestructor(PyObject* data) {
 }
 
 namespace {
+py::object GetOptionalDlpackAttribute(const py::object& data, const char* name) {
+  auto attribute = py::reinterpret_steal<py::object>(PyObject_GetAttrString(data.ptr(), name));
+  if (attribute) {
+    return attribute;
+  }
+  py::error_already_set error;
+  if (!error.matches(PyExc_AttributeError)) {
+    throw error;
+  }
+  // AttributeError from an existing descriptor is a producer failure, not an
+  // absent protocol method. Static lookup does not invoke that descriptor again.
+  auto declared = py::module_::import("inspect").attr("getattr_static")(data, name, py::none());
+  if (!declared.is_none()) {
+    throw error;
+  }
+  return py::none();
+}
+
 void SynchronizeDlpackDevice(const DLDevice& device) {
   if (device.device_type == kDLCPU) {
     return;
@@ -77,7 +95,7 @@ void SynchronizeDlpackDevice(const DLDevice& device) {
     }
 #endif
   } else if (device.device_type == kDLROCM) {
-#ifdef USE_MIGRAPHX
+#if defined(USE_MIGRAPHX) || defined(USE_MIGRAPHX_PROVIDER_INTERFACE)
     if (auto* provider = TryGetProviderInfo_MIGraphX()) {
       ORT_THROW_IF_ERROR(provider->SynchronizeDevice(device.device_id));
       return;
@@ -129,13 +147,17 @@ PyObject* ToDlpack(OrtValue& ort_value, py::object stream) {
 
 OrtValue FromDlpack(py::object data, bool synchronize) {
   if (!PyCapsule_CheckExact(data.ptr())) {
-    auto method = py::reinterpret_steal<py::object>(PyObject_GetAttrString(data.ptr(), "__dlpack__"));
-    if (method) {
-      data = method();
-    } else if (PyErr_ExceptionMatches(PyExc_AttributeError)) {
-      PyErr_Clear();
-    } else {
-      throw py::error_already_set();
+    auto method = GetOptionalDlpackAttribute(data, "__dlpack__");
+    if (!method.is_none()) {
+      bool request_no_sync = false;
+      if (!synchronize) {
+        auto device_method = GetOptionalDlpackAttribute(data, "__dlpack_device__");
+        if (!device_method.is_none()) {
+          const auto device = device_method().cast<std::pair<int, int>>();
+          request_no_sync = device.first == kDLCUDA || device.first == kDLROCM;
+        }
+      }
+      data = request_no_sync ? method(py::arg("stream") = -1) : method();
     }
   }
   PyObject* dlpack_tensor = data.ptr();
