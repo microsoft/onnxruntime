@@ -26,9 +26,13 @@ and a Bash location visible to Bazel:
 $env:BAZEL_SH = 'C:\Program Files\Git\bin\bash.exe'
 ```
 
+When invoking Bazel from Git Bash, keep any `MSYS2_ARG_CONV_EXCL=*` label
+protection on that invocation. Windows JavaScript targets clear the override
+only inside their launchers so native Node can resolve `/c/...` entrypoint paths.
+
 ```sh
 bazel build -c opt //:runtime_library
-bazel test -c opt //:runtime_smoke_test //:common_test
+bazel test -c opt //:runtime_smoke_test //:runtime_shared_smoke_test //:common_test
 # Analyze the full graph without executing complete suites:
 bazel build -c opt //... --nobuild
 bazel test -c opt //:go_test //:java_smoke_test //:python_smoke_test //:node_smoke_test //:csharp_smoke_test
