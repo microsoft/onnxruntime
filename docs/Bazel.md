@@ -515,6 +515,15 @@ now includes `//:node_npm_test` and `//:csharp_nuget_test`; YAML and all seven
 Bash blocks passed syntax checks. Windows/macOS package consumption is not
 claimed from graph analysis or CI configuration.
 
+CI follow-up fixes pin checkout/upload-artifact v4 to immutable commits and
+disable MSYS argument conversion on Windows so package-qualified Bazel labels
+and slash-containing test filters reach Bazel unchanged. `apple_support`
+is a direct dependency before `rules_cc`, as required by its pinned toolchain
+setup documentation: Apple CC must take priority over the generic C++ toolchain
+for Objective-C/XCTest analysis. Frozen Windows analysis still passed all
+239 targets with zero actions and no lock changes. Native macOS analysis and
+execution of this correction await the pushed CI run; Apple tests remain enabled.
+
 ### Desktop portability checks
 
 Linux x86-64 portability validation used Bazel 8.4.2 with the frozen module
