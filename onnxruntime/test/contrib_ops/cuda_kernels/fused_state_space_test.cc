@@ -264,6 +264,44 @@ TEST_F(FusedStateSpaceKernelTest, RouterNaNsSortLastWithStableExpertTies) {
     }
   }
 }
+
+TEST_F(FusedStateSpaceKernelTest, RouterMixedNumericAndExceptionalScoreOrdering) {
+  constexpr int width = 256, experts = 40, topk = 32;
+  const float infinity = std::numeric_limits<float>::infinity();
+  const std::vector<float> values{
+      -infinity, -2.f, std::nextafter(-0.5f, -infinity), -0.5f,
+      std::nextafter(-0.5f, infinity), 0.f, 2.f, infinity,
+      std::numeric_limits<float>::quiet_NaN()};
+  std::vector<uint16_t> x(width), weight(experts * width);
+  std::vector<float> bias(experts);
+  for (int e = 0; e < experts; ++e) bias[e] = values[e % values.size()];
+  std::vector<int32_t> expected(experts);
+  std::iota(expected.begin(), expected.end(), 0);
+  std::stable_sort(expected.begin(), expected.end(), [&](int a, int b) {
+    const float va = 0.5f + bias[a], vb = 0.5f + bias[b];
+    if (std::isnan(va)) return false;
+    if (std::isnan(vb)) return true;
+    return va > vb;
+  });
+  expected.resize(topk);
+  auto dx = Allocate(x.size() * sizeof(uint16_t)), dw = Allocate(weight.size() * sizeof(uint16_t));
+  auto db = Allocate(bias.size() * sizeof(float)), di = Allocate(topk * sizeof(int32_t));
+  auto dout = Allocate(topk * sizeof(float)), ds = Allocate(experts * sizeof(float));
+  for (const auto* ptr : {dx.get(), dw.get(), db.get(), di.get(), dout.get(), ds.get()}) ASSERT_NE(ptr, nullptr);
+  ASSERT_EQ(cudaMemcpy(dx.get(), x.data(), x.size() * sizeof(uint16_t), cudaMemcpyHostToDevice), cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(dw.get(), weight.data(), weight.size() * sizeof(uint16_t), cudaMemcpyHostToDevice), cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(db.get(), bias.data(), bias.size() * sizeof(float), cudaMemcpyHostToDevice), cudaSuccess);
+  ASSERT_EQ(contrib::cuda::LaunchBiasCorrectedMoERoute(
+                nullptr, 1, width, experts, topk, 1.f, dx.get(), dw.get(), static_cast<const float*>(db.get()),
+                static_cast<int32_t*>(di.get()), static_cast<float*>(dout.get()), static_cast<float*>(ds.get())),
+            cudaSuccess);
+  std::vector<int32_t> actual(topk);
+  std::vector<float> weights(topk);
+  ASSERT_EQ(cudaMemcpy(actual.data(), di.get(), topk * sizeof(int32_t), cudaMemcpyDeviceToHost), cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(weights.data(), dout.get(), topk * sizeof(float), cudaMemcpyDeviceToHost), cudaSuccess);
+  EXPECT_EQ(actual, expected);
+  for (float value : weights) EXPECT_FLOAT_EQ(value, 1.f / topk);
+}
 }  // namespace
 }  // namespace onnxruntime::test
 #endif
