@@ -405,7 +405,7 @@ or Windows/macOS-hosted Android cross-build validation. Contrib ops remain
 disabled by default.
 
 **React Native Android is not implemented by this AAR.** Its actual bridge
-needs source-built ReactAndroid/JSI, CallInvoker and fbjni, Java React bridge
+uses matching ReactAndroid/JSI, CallInvoker and fbjni SDKs, Java React bridge
 and AndroidX APIs, plus `cpp-adapter.cpp` and the shared JSI C++ sources
 listed in `js/react_native/android/CMakeLists.txt`. The separate React Native graph is described below. The Java/JNI AAR neither builds
 `libonnxruntimejsi.so` nor contains `OnnxruntimeModule`/`OnnxruntimePackage`;
@@ -692,7 +692,7 @@ bazel test -c opt \
 | C# | `//:csharp_binding`, `//:csharp_smoke_test`, `//:csharp_tests`, `//:csharp_nuget` | .NET 8 binding and existing desktop test sources compiled directly with `rules_dotnet`, exercised on .NET 10. Native xUnit discovery/execution supports exact class/method selection, theories and fixtures. Single-RID CPU NuGet package; training APIs are not enabled. |
 | Objective-C / Swift import surface | `//objectivec:onnxruntime_objc`, `//objectivec:inference_tests`, `//objectivec:ios_framework`, `//objectivec:ios_inference_tests` | Native ARC inference wrappers, explicit module, macOS XCTest and iOS static framework/test-bundle graphs. Native Apple compilation/execution and Swift import remain unverified. Not an XCFramework or Swift package. |
 | JavaScript Web / WebAssembly | `//:wasm_scalar`, `//:wasm_simd`, `//:web_scalar_package`, `//:web_simd_package` | Source-native Emscripten CPU runtime and source-assembled frontend; selectable existing WASM inference test and Node/browser smoke targets. Single-threaded scalar/fixed SIMD only, not the complete release or Web test suite. |
-| React Native | `//js/react_native:android_jsi_native_archive`, `//js/react_native:data_policy_test` | Genuine Android ARM64 JNI/JSI adapter plus source-native ORT runtime, compiled against pinned official ReactAndroid/fbjni SDKs. Native ZIP and existing policy tests verified; not a full Java/AAR/npm/mobile application or iOS React Native migration. |
+| React Native | `//js/react_native:android_package`, `//js/react_native:android_jsi_native_archive`, `//js/react_native:ios_adapter_framework` | Genuine Android ARM64 Java/JNI/JSI AAR and offline-installable npm package with source-native ORT, compiled against matching pinned SDKs. iOS adapter framework graph uses actual React headers; Apple compilation and application/device inference remain unverified. |
 | Rust | `//rust/onnxruntime-sys:onnxruntime_sys`, `//rust/onnxruntime:onnxruntime`, `//rust:smoke_test` | Both existing first-party crates, current-header bindgen generation, and selected existing unit/integration tests. Native `rules_rust` compilation and explicit loading of the source-built runtime; no Cargo build or legacy native acquisition. Not crates.io packaging. |
 
 The language toolchains are managed by their Bazel rules, including a pinned
@@ -995,7 +995,55 @@ uses the existing Metro TypeScript sources and compiler-emitted common
 JavaScript/declarations; the included Gradle metadata only exposes the finished
 AAR, never invokes a legacy ORT build. React Native autolinking declares the
 actual Java package. Matching React 18.2/React Native 0.73.11 is supplied by
-the host application. Combined native package validation is pending below.
+the host application.
+
+The combined Linux-host Android build passed from an empty native output,
+using Bazel 8.4.2, NDK r27d, eight jobs/two loading threads, frozen lock, and
+the same Xeon Platinum 8480C/96-logical-CPU VM described below. SDK setup took
+17 seconds. An initial analysis-only failure exposed that the common
+JavaScript compiler needed the host execution configuration; after fixing
+that transition, the first completed build took 316.862 seconds wall,
+executing 1,450 actions (1,104 sandboxed), without substituting native binaries.
+The final notices/verifier packaging update took 6.218 seconds and 15 actions,
+reusing 1,444 actions; no native recompilation was required. The unchanged
+repeat took 0.256 seconds, one internal action/no native compilation.
+
+```sh
+bazel build --config=android_arm64 -c opt //js/react_native:android_package //js/react_native:android_jsi_native_archive --jobs=8 --loading_phase_threads=2 --lockfile_mode=error --build_python_zip=false
+package_dir="$(bazel info --config=android_arm64 -c opt --lockfile_mode=error bazel-bin)/js/react_native"
+bazel run -c opt //:react_native_package_consumer --jobs=8 --loading_phase_threads=2 --lockfile_mode=error --build_python_zip=false -- "$package_dir/onnxruntime-react-native-android-arm64.tgz" "$package_dir/onnxruntime-react-native-android-arm64.aar"
+bazel test //js/react_native:package_test --lockfile_mode=error --jobs=2 --test_output=errors
+```
+
+The real pinned-Node/npm offline consumer passed in 2.303 seconds wall:
+installed AAR bytes, autolinking metadata, emitted common JavaScript,
+source version, and installed common TypeScript declarations. Peer
+installation is intentionally disabled for this package-structure check;
+it does not create a React host or substitute fake React APIs. Five package
+regressions passed on Windows. The AAR contains exactly the actual three
+compiled Java classes, not copied React SDK classes, plus byte-identical
+source-built ORT/JSI and NDK shared-runtime payloads. ELF inspection confirmed
+AArch64, `JNI_OnLoad`, expected SDK dependencies, and 16 KB load alignment
+for both source-built libraries. Source Metro files match the checked-in
+TypeScript byte-for-byte; React/fbjni/NDK license notices are retained.
+The host app must resolve its single compatible shared C++ runtime when
+combining this AAR with React SDK AARs; complete app packaging, Metro execution,
+emulator/device installation and inference remain unverified.
+
+| Artifact | Bytes | SHA256 |
+| --- | ---: | --- |
+| `onnxruntime-react-native-android-arm64.aar` | 8,028,972 | `472570bb924887ba563a31577085b006dc8e9906a876937daea0b5d469f637a5` |
+| `onnxruntime-react-native-android-arm64.tgz` | 8,047,387 | `81769bf8f303656bfbd2aa58217ff2866bdf87739c92cc967c74d673e0245ec2` |
+| `onnxruntime-react-native-android-arm64.zip` | 8,025,508 | `3e91a795e0ecf475a6fe8cde2d5fee418a127fe1d12ea21ffe28283ab84fb2f9` |
+
+These are final artifacts from source `c941097eb7`, not the earlier native ZIP
+below. Final Windows frozen wildcard/manual-WASM analysis passed 252 targets,
+74,497 configured targets and zero build actions at jobs=2. This analysis
+also includes the integrated handed-off CUDA test graph, but does not execute
+GPU or Apple-incompatible targets. Artifacts and logs were preserved before
+stopping the RN Bazel server and removing only its completed private 7.8 GiB
+VM root, source-transfer archive, and SSH credentials; `/home` retained 256 GiB
+free. The independent CUDA task's files were untouched.
 
 `//js/react_native:ios_adapter_framework` adds the existing Objective-C++ JSI
 adapter and shared C++ implementation to a native static framework against
