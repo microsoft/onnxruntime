@@ -108,9 +108,10 @@ $env:BAZEL_SH = 'C:\Program Files\Git\bin\bash.exe'
 
 ```sh
 bazel build -c opt //:runtime_library
-bazel test -c opt //:runtime_smoke_test //:common_test
-# Include all desktop bindings and their tests:
-bazel test -c opt //...
+bazel test -c opt //:runtime_smoke_test
+bazel test -c opt //:common_test --test_filter=NarrowTest.Basic
+# Analyze every target without compiling or executing full suites:
+bazel build -c opt //... --nobuild
 ```
 
 These same Bazel commands run natively on each host; Windows does not require
@@ -407,6 +408,12 @@ java -Djava.library.path= --class-path onnxruntime-native.jar RuntimeSmokeTest.j
 The Java test exercises the resource-loading path; the existing three-argument
 smoke test additionally confirms that explicit native paths still work.
 Windows and macOS package execution and Maven publication remain unverified.
+
+After integration with the platform and test layers, frozen Windows
+`bazel build //... -c opt --nobuild --lockfile_mode=error
+--build_python_zip=false --jobs=2` passed analysis of 217 targets (60,530
+configured targets), with zero build actions. No fresh Windows JNI/runtime
+build was started for this package check.
 
 ### Desktop portability checks
 
@@ -1231,14 +1238,25 @@ utility tests. `//:go_test` runs the existing self-contained Go tests. The
 language smoke tests are integration tests, not replacements for each binding's
 complete test suite.
 
-The `Native Bazel desktop` workflow runs the default graph on `ubuntu-24.04`,
-`windows-2022`, and Apple Silicon `macos-15`, including all five desktop
-bindings. Intel macOS source support remains, but there is no Intel macOS CI
-leg; native macOS verification prioritizes Apple Silicon. Passing Linux tests
-alone is not evidence that the other hosts work.
+The historical wildcard commands above applied to the seven-target foundation,
+not the expanded test graph. The `Native Bazel desktop` workflow now performs
+frozen wildcard **analysis only**, then executes explicit binding/package
+checks and selected existing C++ and managed-language cases. It never uses
+`bazel test //...` to run the migrated full suites. Apple native inference is
+selected only on macOS, the CPU Python wheel on Windows/Linux, and standalone
+DLL loading only on Windows. The Windows runner uses a short output base to
+avoid Rust dependency build-script path-length failures.
 
-Remaining work includes the full provider/operator suites, contrib operators,
-additional EPs, additional architecture variants, release packaging,
+The workflow retains `ubuntu-24.04`, `windows-2022`, and Apple Silicon
+`macos-15`. Intel macOS source support remains, but there is no Intel macOS CI
+leg; native macOS verification prioritizes Apple Silicon. This defines CI
+coverage, not a claim that the updated workflow or native Mac tests have passed.
+Passing Linux tests alone is not evidence that the other hosts work.
+The updated workflow YAML parsed successfully and all seven Bash steps passed
+`bash -n`; the matrix and absence of wildcard test execution were also checked.
+
+Remaining work includes remaining provider/operator/contrib test coverage,
+additional EPs, additional architecture variants, complete release packaging,
 cross-compilation, sanitizers, and the CUDA/toolchain matrix. Those are separate
 native targets/toolchains to add, not reasons to delegate back to the old build
 system.
