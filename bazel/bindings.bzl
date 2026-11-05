@@ -18,6 +18,7 @@ load("//bazel:python_tests.bzl", "python_runtime_tests")
 load(":go_desktop.bzl", "desktop_go_library", "desktop_go_test")
 load(":jni_headers.bzl", "jni_headers")
 load(":platforms.bzl", "ORIGIN_RPATH", "desktop_shared_library")
+load(":shared_library_bundle.bzl", "shared_library_bundle")
 
 def language_bindings():
     """Declare language bindings using native Bazel compilation actions."""
@@ -47,11 +48,31 @@ def language_bindings():
         output_group = "interface_library",
     )
     cc_import(
-        name = "runtime_shared",
+        name = "_runtime_shared_default",
         shared_library = ":runtime_library",
         interface_library = select({
             "//bazel:windows": ":runtime_interface_library",
             "//conditions:default": None,
+        }),
+    )
+    shared_library_bundle(
+        name = "_runtime_shared_cuda",
+        runtime = ":runtime_library",
+        plugins = [
+            ":libonnxruntime_providers_shared.so",
+            ":libonnxruntime_providers_cuda.so",
+        ],
+        tags = ["manual"],
+        target_compatible_with = select({
+            "//bazel:linux_x86_64_cuda": [],
+            "//conditions:default": ["@platforms//:incompatible"],
+        }),
+    )
+    native.alias(
+        name = "runtime_shared",
+        actual = select({
+            "//bazel:linux_x86_64_cuda": ":_runtime_shared_cuda",
+            "//conditions:default": ":_runtime_shared_default",
         }),
     )
     windows = select({"//bazel:windows": True, "//conditions:default": False})

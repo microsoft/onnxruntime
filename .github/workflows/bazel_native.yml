@@ -52,7 +52,8 @@ jobs:
         run: |
           set -o pipefail
           bazelisk ${BAZEL_STARTUP_OPTIONS:-} test -c opt \
-            //:runtime_smoke_test //:cpuinfo_test //:go_test //:java_smoke_test \
+            //:runtime_smoke_test //:runtime_shared_smoke_test //:cpuinfo_test \
+            //:go_test //:java_smoke_test \
             //:python_smoke_test //:node_smoke_test //:csharp_smoke_test \
             //rust:smoke_test //:runtime_sdk_archive_test //:java_native_jar_test \
             //:node_npm_test //:csharp_nuget_test \
