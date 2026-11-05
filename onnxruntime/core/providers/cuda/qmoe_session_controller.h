@@ -1137,7 +1137,9 @@ class QMoESessionController {
     uint64_t total_vram = 0;
     uint64_t non_local_before = 0;
     QueryPlatformUsableDeviceMemory(device_id_, &usable_free_vram, &total_vram, &non_local_before);
+#if defined(_WIN32)
     const uint64_t platform_free_vram = usable_free_vram;
+#endif
     if (auto acct = BudgetAccount()) {
       for (const auto& st : {acct->GetAccountStats(), acct->GetGroupStats(), acct->GetPhysicalStats()}) {
         if (st.limit < std::numeric_limits<size_t>::max()) {
@@ -1271,10 +1273,6 @@ class QMoESessionController {
             }
             if (live_optimal < admitted_gpu_expert_budget) {
               admitted_gpu_expert_budget = std::max(total_base_bytes, live_optimal);
-            } else if (live_optimal > admitted_gpu_expert_budget &&
-                       policy.reserve_device_bytes <= (3ULL << 30)) {
-              admitted_gpu_expert_budget =
-                  std::min(live_optimal, admitted_gpu_expert_budget + (1024ULL << 20));
             }
           }
         }

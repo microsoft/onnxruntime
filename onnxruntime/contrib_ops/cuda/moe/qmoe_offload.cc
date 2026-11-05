@@ -280,8 +280,7 @@ onnxruntime::cuda::QMoERunControls* RunControlsOf(const void* session_scope) noe
 
 inline bool IsInQMoEWarmup(const void* session_scope) noexcept {
   const auto* controls = RunControlsOf(session_scope);
-  if (controls != nullptr && controls->InWarmup()) return true;
-  return ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_IN_WARMUP", 0) == 1;
+  return controls != nullptr && controls->InWarmup();
 }
 
 inline bool ConsumeQMoEPrefillNewTurn(const void* session_scope) noexcept {
@@ -5103,7 +5102,8 @@ Status QMoEOffload::EnsurePersistentDecodeState(OpKernelContext* context, size_t
       if (session_controller_) {
         SessionPromotionBudget::Instance().ReleaseIdleBounce(session_controller_.get());
       }
-      if (!try_reserve_decode_pinned() && stream_shared_ && stream_shared_->pinned) {
+      bool reserved = try_reserve_decode_pinned();
+      if (!reserved && stream_shared_ && stream_shared_->pinned) {
         std::lock_guard<std::mutex> ring_lock(stream_shared_->mutex);
         if (stream_shared_->pinned && stream_shared_->pinned_bytes > 0) {
           if (stream_shared_->copy_stream) {
@@ -5119,8 +5119,9 @@ Status QMoEOffload::EnsurePersistentDecodeState(OpKernelContext* context, size_t
           if (sess_pinned) sess_pinned->FinishFree(free_bytes, ok);
           if (host_ledger_free) host_ledger_free->FinishFreeAllocated(free_bytes, ok);
         }
+        reserved = try_reserve_decode_pinned();
       }
-      if (!try_reserve_decode_pinned()) {
+      if (!reserved) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                "QMoEOffload persistent decode pinned budget exhausted (requested ", want_host,
                                " bytes).");

@@ -105,8 +105,8 @@ struct MoeOffloadSessionPolicy {
   int32_t async_max_tokens{8};       // Decode vs. prefill streaming token threshold (S <= 8 DFlash2)
   int32_t prefill_wave_experts{32};  // Max active cold experts per DMA wave
   bool skip_zero_cold_doorbell{false};
-  float min_expert_weight{0.0f};     // Minimum routing probability for rank >= 1 experts (0 = keep all top-k)
-  bool skip_tail_cold_only{true};    // Default true: during decode, keep GPU-resident tail experts and skip only cold misses
+  float min_expert_weight{0.0f};   // Minimum routing probability for rank >= 1 experts (0 = keep all top-k)
+  bool skip_tail_cold_only{true};  // Default true: during decode, keep GPU-resident tail experts and skip only cold misses
 
   std::filesystem::path source_root;
   std::filesystem::path derived_cache_dir;
