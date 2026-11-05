@@ -448,6 +448,65 @@ After integration with the platform and test layers, frozen Windows
 configured targets), with zero build actions. No fresh Windows JNI/runtime
 build was started for this package check.
 
+### Native npm and NuGet distributions
+
+```sh
+bazel build -c opt //:node_npm //:csharp_nuget
+bazel test -c opt //:node_npm_test //:csharp_nuget_test //:node_smoke_test //:csharp_smoke_test --jobs=24 --loading_phase_threads=4 --build_python_zip=false --lockfile_mode=error --test_output=all --nocache_test_results
+```
+
+`bazel-bin/onnxruntime-node-bazel.tgz` is a production-only, single-platform CPU
+`onnxruntime-node` package. It contains the source-built Node-API addon,
+runtime and provider bridge under the existing
+`bin/napi-v6/<platform>/<architecture>/` loader path, compiler-produced
+JavaScript and declarations, the bundled `onnxruntime-common` API, and notices.
+It excludes tests, fixtures, and legacy install/build scripts. TypeScript 5.9.3
+checks the production sources before emitting; declaration generation does not
+silence semantic diagnostics. Pinned Node 20 types support that compilation.
+The installed declaration consumer is also checked with Node types.
+
+Install the tarball with `npm install --offline --ignore-scripts
+/absolute/path/to/onnxruntime-node-bazel.tgz`. Its bundled common API needs no
+registry fetch. `//:node_npm_test` uses the pinned Node/npm toolchain and a fresh
+offline consumer directory, checks installed metadata and declarations, and
+runs high-level CPU Add inference through the installed package rather than
+the raw addon. It requires Node 20 or newer.
+
+`bazel-bin/Microsoft.ML.OnnxRuntime.Bazel.1.32.0.nupkg` contains the directly
+compiled `lib/net8.0/Microsoft.ML.OnnxRuntime.dll`, source-built runtime and
+provider bridge under `runtimes/<rid>/native/`, NuGet metadata, and notices.
+The experimental package ID is `Microsoft.ML.OnnxRuntime.Bazel`; do not combine
+it with another package supplying the same managed assembly. Its declared
+dependency is exactly `System.Numerics.Tensors` 9.0.0. Artifact production uses
+`rules_dotnet` and `rules_pkg`, not `dotnet pack`, MSBuild, or a downloaded ORT
+package. The archive test verifies exact compiled payload bytes, RID layout,
+version, dependency metadata, notices, and the absence of unexpected files.
+
+On Linux x86-64, all four targets in the command above passed. The native
+runtime, managed assembly, and Node addon were genuinely compiled from source
+on the VM; no native artifact substitutions were used. A separate .NET 10
+consumer restored this exact NuGet and the pinned Tensor dependency from a
+local-only feed, built its own small consumer project, and passed Add inference
+using normal RID-native resolution with no DLL resolver or native-library
+argument. That consumer's standard `dotnet restore`/`dotnet build` validates
+NuGet consumption; neither command builds ORT or assembles the package.
+The loader trace confirmed the consumer's own `libonnxruntime.so` was loaded
+with `LD_LIBRARY_PATH` and `LD_PRELOAD` unset.
+
+Integration validation used source snapshot
+`8390d2f3be7aeafd33bea86179255bbc4284c4cc` plus this additive package slice.
+Frozen `bazel build -c opt //... --nobuild --jobs=2
+--loading_phase_threads=2 --build_python_zip=false --lockfile_mode=error`
+passed all 233 Linux targets with zero actions. The existing
+`//:node_model_metadata_test --test_filter='symbol shape$'` also completed
+one real case with no skips after the Node declaration dependency change.
+
+Both archive graphs define desktop Windows/Linux/macOS x64 and arm64 layouts,
+but package installation/execution evidence here is Linux x64 only. These are
+CPU, single-platform experimental artifacts, not universal packages or release
+registry publication. CUDA, mobile, and additional runtime variants are not
+implicitly included.
+
 ### Desktop portability checks
 
 Linux x86-64 portability validation used Bazel 8.4.2 with the frozen module
@@ -593,8 +652,8 @@ bazel test -c opt \
 | Java/JNI | `//:java_binding`, `//:java_native_library`, `//:java_smoke_test`, `//:java_native_jar` | Java and JNI sources; JNI headers come from Bazel's Java compiler. Standalone single-platform CPU JAR includes native libraries and uses the existing resource loader. No Gradle invocation; not Maven publication. |
 | Android Java/JNI | `//:android_java`, `//:android_aar` | Android Java sources, source-built ARM64 runtime/JNI, and single-ABI AAR; Linux-host cross-build validated. Not React Native or device execution. |
 | Go | `//:go_binding`, `//:go_test` | First-party cgo binding and existing fixture-based unit tests. Tests explicitly load the Bazel-built shared library; they do not take the binding's missing-library skip path. External Qwen model tests are excluded. |
-| Node.js | `//:onnxruntime_binding.node`, `//:node_js_package`, `//:node_test` | Native Node-API extension, source-assembled common/Node JavaScript packages, and four existing test files with file/case selection. Not release npm packaging or the complete Node suite. |
-| C# | `//:csharp_binding`, `//:csharp_smoke_test`, `//:csharp_tests` | .NET 8 binding and existing desktop test sources compiled directly with `rules_dotnet`, exercised on .NET 10. Native xUnit discovery/execution supports exact class/method selection, theories and fixtures. Training APIs are not enabled. Not a NuGet package. |
+| Node.js | `//:onnxruntime_binding.node`, `//:node_js_package`, `//:node_test`, `//:node_npm` | Native Node-API extension, source-assembled common/Node JavaScript packages, four selectable existing test files, and production-only CPU npm tarball with declarations and offline install/inference validation. Not registry publication or the complete Node suite. |
+| C# | `//:csharp_binding`, `//:csharp_smoke_test`, `//:csharp_tests`, `//:csharp_nuget` | .NET 8 binding and existing desktop test sources compiled directly with `rules_dotnet`, exercised on .NET 10. Native xUnit discovery/execution supports exact class/method selection, theories and fixtures. Single-RID CPU NuGet package; training APIs are not enabled. |
 | Objective-C / Swift import surface | `//objectivec:onnxruntime_objc`, `//objectivec:inference_tests` | Native ARC Objective-C++ inference wrappers, an explicit `onnxruntime_objc` Clang module, and existing hostless XCTest cases/fixtures. macOS only; Apple compilation/execution and Swift import are not yet validated. Not an iOS framework, XCFramework, or Swift package. |
 | JavaScript Web / WebAssembly | `//:wasm_scalar`, `//:wasm_simd`, `//:web_scalar_package`, `//:web_simd_package` | Source-native Emscripten CPU runtime and source-assembled frontend; selectable existing WASM inference test and Node/browser smoke targets. Single-threaded scalar/fixed SIMD only, not the complete release or Web test suite. |
 | React Native | Not implemented | Requires the Android/iOS cross-compilation and packaging graphs plus the React Native bridge. A working Node addon is not evidence of mobile support. |

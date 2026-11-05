@@ -11,6 +11,8 @@ load("//bazel:contrib.bzl", "cpu_contrib_sources")
 load("//bazel:cuda.bzl", "cuda_libraries")
 load("//bazel:java_package.bzl", "java_native_package")
 load("//bazel:mlas.bzl", "mlas_libraries")
+load("//bazel:node_npm.bzl", "node_npm_package")
+load("//bazel:nuget_package.bzl", "csharp_nuget_package")
 load("//bazel:packaging.bzl", "runtime_sdk_package")
 load("//bazel:platforms.bzl", "desktop_shared_library")
 load("//bazel:python_wheel.bzl", "python_wheel_package")
@@ -351,6 +353,10 @@ runtime_sdk_package()
 python_wheel_package()
 
 java_native_package()
+
+csharp_nuget_package()
+
+node_npm_package()
 
 core_tests()
 

@@ -16,7 +16,10 @@ npm_link_all_packages(name = "node_modules")
 js_library(
     name = "compiler",
     srcs = ["package.json"],
-    deps = [":node_modules/typescript"],
+    deps = [
+        ":node_modules/@types/node",
+        ":node_modules/typescript",
+    ],
 )
 
 js_library(

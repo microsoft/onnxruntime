@@ -5,6 +5,7 @@
     "onlyBuiltDependencies": []
   },
   "dependencies": {
+    "@types/node": "20.19.0",
     "fs-extra": "11.3.2",
     "jsonc": "2.0.0",
     "mocha": "11.7.5",
