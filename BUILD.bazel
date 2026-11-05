@@ -195,10 +195,13 @@ cc_library(
         "onnxruntime/core/platform/telemetry.cc",
         "onnxruntime/core/platform/telemetry_sha256.cc",
     ] + select({
+        # Standard Android FP16 Conv also needs this parser without contrib ops.
+        "//bazel:contrib_enabled": ["onnxruntime/contrib_ops/cpu/fused_activation.cc"],
+        "//bazel:android": ["onnxruntime/contrib_ops/cpu/fused_activation.cc"],
+        "//conditions:default": [],
+    }) + select({
         "//bazel:android": [
             "onnxruntime/core/platform/android/logging/android_log_sink.cc",
-            # Standard FP16 Conv also uses this activation attribute parser.
-            "onnxruntime/contrib_ops/cpu/fused_activation.cc",
             "onnxruntime/core/platform/posix/env.cc",
             "onnxruntime/core/platform/posix/stacktrace.cc",
         ],

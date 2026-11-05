@@ -20,8 +20,9 @@ def cpu_contrib_sources():
                 "onnxruntime/contrib_ops/cpu/transformers/*.cc",
                 "onnxruntime/contrib_ops/cpu/utils/*.cc",
             ],
-            # The baseline QMoE TU includes these ISA implementations itself.
             exclude = [
+                "onnxruntime/contrib_ops/cpu/fused_activation.cc",
+                # The baseline QMoE TU includes these ISA implementations itself.
                 "onnxruntime/contrib_ops/cpu/moe/qmoe_shared_layout_*avx*.cc",
             ],
         ) + [

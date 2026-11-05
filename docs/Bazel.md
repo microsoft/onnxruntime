@@ -10,7 +10,7 @@ The native graph targets Linux x86-64, Windows x86-64, and macOS on Intel and
 Apple Silicon. Linux and native Windows execution have been validated; macOS
 validation is still pending. This is not yet a replacement for the
 release build: additional execution providers,
-most mobile/web cross-compilation, and language-specific release packaging are not included.
+most mobile/web cross-compilation, and complete language-specific release packaging are not included.
 An experimental Android ARM64 runtime/JNI/AAR path is available below.
 `orttraining` build and test migration is intentionally out of scope.
 
@@ -79,6 +79,19 @@ Explicitly requesting `//:contrib_sparse_test` without the flag failed analysis
 as an incompatible target, as intended. No full suites were executed. The new
 contrib configuration has not been validated on macOS; Windows compilation was
 stopped before completion when validation moved to the larger Linux host.
+
+After integration, frozen Windows analysis passed both the default wildcard
+graph (214 targets, 16,493 newly configured targets, zero build actions) and
+the three enabled contrib targets (9,653 configured targets, zero build actions):
+
+```sh
+bazel build //... -c opt --nobuild --lockfile_mode=error --build_python_zip=false --jobs=2
+bazel build -c opt --//bazel:contrib //:contrib_attention_test //:contrib_quantization_test //:contrib_sparse_test --nobuild --lockfile_mode=error --build_python_zip=false --jobs=2
+```
+
+The shared activation parser is selected once when either Android FP16 Conv or
+CPU contrib needs it, rather than duplicated when both flags are selected.
+Android-plus-contrib native execution has not been validated.
 
 ## Getting started
 
@@ -175,8 +188,9 @@ source-built native DLL/import library. For that archive, the documented `cl`
 command compiled the bundled example using only extracted headers/import library
 and passed Add inference using the extracted DLL. That standalone example check
 is separate from the source-native archive test above; all temporary graph
-substitutions were removed. Linux, macOS, and CUDA archive execution remain
-unvalidated.
+substitutions were removed. Subsequent source-native Linux archive validation
+is recorded with the wheel results below; macOS and CUDA archive execution
+remain unvalidated.
 
 After integrating the desktop shared-provider bridge, the following source-native
 Windows command also passed: one SDK archive test and eight Rust selector-runner
@@ -242,11 +256,24 @@ interpreter with the declared NumPy dependency; the bridge initialization
 warning was absent. The native extension substitution was then removed.
 `bazel build -c opt //:python_wheel_test //:runtime_sdk_archive_test --nobuild
 --jobs=2 --loading_phase_threads=2` passed analysis of the final source-extension
-and SDK graphs with zero build actions. This slice did not rebuild the full native extension
-or execute the Linux wheel, and does not claim complete Python suite coverage.
-The integrated Windows worktree has no warm native Python-extension objects;
-fresh extension compilation is deferred to separate Linux validation rather
-than starting another heavy local build.
+and SDK graphs with zero build actions. That Windows package-only check did not
+rebuild the full native extension. The integrated Windows worktree has no warm
+native Python-extension objects, so no additional heavy local extension build
+was started.
+
+Subsequent **fresh source-native Linux x86-64 validation** of integrated commit
+`43bef85f0d` passed all three targets below, using a task-private repository cache:
+
+```sh
+bazel test -c opt //:python_wheel_test //:python_smoke_test //:runtime_sdk_archive_test --jobs=16 --loading_phase_threads=4 --build_python_zip=false --lockfile_mode=error --test_output=all --nocache_test_results
+```
+
+The build executed 1,462 actions (1,138 Linux sandbox actions), compiling the
+runtime, pybind extension, and shared-provider bridge from source without
+substitutions. Wheel metadata/every RECORD hash/isolated high-level Add
+inference, low-level NumPy Add inference, and extracted SDK runtime loading
+all passed; no bridge initialization warning occurred. This is not complete
+Python suite or manylinux publication validation.
 
 The consolidated source graph, including Apple, Rust, wheel, SDK, and C++ test
 targets, passed frozen-lock Windows analysis without executing build actions:
