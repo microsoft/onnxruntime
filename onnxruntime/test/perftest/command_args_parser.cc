@@ -216,7 +216,10 @@ ABSL_FLAG(std::string, filter_ep_devices, "",
           "Above example will append npu device first if available, followed by cpu device.");
 ABSL_FLAG(bool, plugin_ep_force_cpu_allocator, DefaultPerformanceTestConfig().plugin_ep_force_cpu_allocator,
           "Forces the use of the CPU allocator instead of a plugin EP's own allocator when running with plugin execution providers.\n");
-ABSL_FLAG(bool, compile_ep_context, DefaultPerformanceTestConfig().run_config.compile_ep_context, "Generate an EP context model");
+ABSL_FLAG(bool, compile_ep_context, DefaultPerformanceTestConfig().run_config.compile_ep_context,
+          "Generate an EP context model.\n"
+          "If -p is also specified, the compile step is profiled too and writes its own profile "
+          "with the '<profile_file>_compile' prefix.");
 ABSL_FLAG(std::string, compile_model_path, "model_ctx.onnx", "The compiled model path for saving EP context model. Overwrites if already exists");
 ABSL_FLAG(bool, compile_binary_embed, DefaultPerformanceTestConfig().run_config.compile_binary_embed, "Embed binary blob within EP context node");
 ABSL_FLAG(bool, compile_only, DefaultPerformanceTestConfig().run_config.compile_only, "Only compile EP context model without running it");

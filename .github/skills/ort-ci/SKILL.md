@@ -234,10 +234,11 @@ no longer match what's committed** — typically after you add/modify an operato
 registrations but forget to regenerate `docs/ContribOperators.md` / `docs/OperatorKernels.md`.
 Re-running will **not** help; you must update the docs.
 
-The easiest fix is to download the regenerated docs the failed job already produced: on failure
-the workflow uploads a **single artifact named `updated-docs`** that contains both
-`OperatorKernels.md` and `ContribOperators.md` at its top level, so you can replace the committed
-copies without building locally.
+The easiest fix is to download the regenerated docs the failed validation already produced.
+After successful generation, the workflow uploads a **single artifact named `updated-docs`**
+whether validation passes or finds stale docs. It contains `OperatorKernels.md`,
+`ContribOperators.md`, and `generation-metadata.json` at its top level. Build or plugin-query
+failures do not produce a new artifact.
 
 ```bash
 HEAD_SHA=$(gh api repos/microsoft/onnxruntime/pulls/<number> --jq .head.sha)
@@ -250,10 +251,10 @@ run_id=$(gh run list --repo microsoft/onnxruntime --commit "$HEAD_SHA" --limit 1
 # Confirm the artifact is present (expect: updated-docs)
 gh api repos/microsoft/onnxruntime/actions/runs/$run_id/artifacts --jq '.artifacts[].name'
 
-# gh run download does not overwrite existing files. Remove both stale generated docs first,
-# then extract their replacements (the artifact always holds both files).
-rm docs/OperatorKernels.md docs/ContribOperators.md
-gh run download "$run_id" --repo microsoft/onnxruntime -n updated-docs --dir docs/
+# Download separately so provenance stays out of the source docs directory.
+artifact_dir=$(mktemp -d)
+gh run download "$run_id" --repo microsoft/onnxruntime -n updated-docs --dir "$artifact_dir"
+cp "$artifact_dir/OperatorKernels.md" "$artifact_dir/ContribOperators.md" docs/
 ```
 
 Then review, commit, and push — the check re-runs on the new commit:
@@ -266,12 +267,13 @@ git commit -m "Update operator docs" && git push
 
 Notes:
 - The `updated-docs` artifact always contains **both** `OperatorKernels.md` and
-  `ContribOperators.md` at its top level. Remove both committed files before downloading because
-  `gh run download` refuses to overwrite them; `--dir docs/` then recreates both. Only the file(s)
-  whose generated content changed will show up in `git diff` after extraction.
-- Equivalent local alternative: `python tools/ci_build/build.py --config Release --build_dir
-  build/Linux --gen_doc` after a build, then commit the regenerated files. Downloading the
-  artifact is faster since it avoids a full build.
+  `ContribOperators.md`. Copy both; only changed content will appear in `git diff`.
+  `generation-metadata.json` records the source commit, runtime/plugin versions, options, and
+  hashes. Keep it with the downloaded artifact; do not commit it under `docs/`.
+- Canonical generation requires CPU, CUDA, DirectML, and the native WebGPU plugin from the
+  same source checkout. For the matching Windows build and regeneration commands, see
+  [How To Update ONNX](../../../docs/How_To_Update_ONNX_Dev_Notes.md).
+  Downloading the CI artifact avoids this full build.
 
 ## Special-Case Check Handling
 
@@ -279,7 +281,7 @@ Notes:
 |---|---|---|
 | `license/cla` | CLA bot | Comment `@microsoft-github-policy-service rerun` (§2) |
 | `Python format` (`lint-python-format`) | GitHub Actions | Fix with `lintrunner -a`, commit, push (§3) — rerun alone won't fix |
-| `ONNX Runtime Windows GPU Doc Gen CI` | GitHub Actions | Download the `updated-docs` artifact into `docs/`, commit, push (§5) — rerun alone won't fix |
+| `ONNX Runtime Windows GPU Doc Gen CI` | GitHub Actions | Copy the Markdown files from `updated-docs` into `docs/`, commit, push (§5) — rerun alone won't fix |
 | `Optional Lint`, `Optional Lint C++` | GitHub Actions | Non-required reviewdog checks; fix warnings or ignore |
 | Most CI (Linux/Windows/Mac/CUDA/TensorRT/WebGPU/Web/Android/iOS, `windows_x64_*`, Builds, PR Checks) | GitHub Actions | `rerun_failed_ci.sh <number>` (§1) |
 | `Linux Android Emulator QNN CI Pipeline` | Azure DevOps | `/azp run Linux Android Emulator QNN CI Pipeline` (§4), then API fallback |

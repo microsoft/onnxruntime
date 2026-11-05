@@ -152,6 +152,8 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
     mPairedGemvMode = mode;
   }
 
+  void setTensorCoreGemv(bool enabled) { mTensorCoreGemv = enabled; }
+
   void setWaveAwareGemv(bool enabled) {
     mWaveAwareGemv = enabled;
   }
@@ -211,6 +213,7 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   onnxruntime::llm::gemm_cache::CacheAccess mCacheAccess;
   std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> mTuningResultsCache;
   bool mWaveAwareGemv = false;
+  bool mTensorCoreGemv = true;
   std::vector<int> mProfileMOverride;
 };
 

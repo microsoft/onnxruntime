@@ -80,8 +80,9 @@ class DropDQNodeGroupSelector : public NodeGroupSelector {
 // single input. default is to only support uint8.
 class UnaryNodeGroupSelector : public NodeGroupSelector {
  public:
-  explicit UnaryNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true)
-      : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
+  explicit UnaryNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true,
+                                  bool allow_nonpositive_scale = true)
+      : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit), allow_nonpositive_scale_(allow_nonpositive_scale) {}
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
@@ -90,6 +91,7 @@ class UnaryNodeGroupSelector : public NodeGroupSelector {
 
   bool allow_16bit_;
   bool allow_4bit_;
+  bool allow_nonpositive_scale_;
 };
 
 class ClipNodeGroupSelector : public NodeGroupSelector {
@@ -259,11 +261,19 @@ class MatMulNodeGroupSelector : public NodeGroupSelector {
 };
 
 // Convert "1 DQ node for input B -> MatMul" to "MatMulNBits"
+// When allow_16bit_activation_boundaries is true, an INT16/UINT16 activation DQ on input 0 and/or INT16/UINT16
+// Q consumers of the output are also accepted. They stay in the graph; only the weight DQ is fused.
 class DQMatMulNodeGroupSelector : public NodeGroupSelector {
+ public:
+  explicit DQMatMulNodeGroupSelector(bool allow_16bit_activation_boundaries = false)
+      : allow_16bit_activation_boundaries_(allow_16bit_activation_boundaries) {}
+
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
+
+  bool allow_16bit_activation_boundaries_;
 };
 
 // Input: DQ nodes for A, B and optional C
@@ -399,8 +409,9 @@ class DropDQNodesSelector : public BaseSelector {
 class UnarySelector : public BaseSelector {
  public:
   explicit UnarySelector(gsl::span<const char*> compatible_providers = {}, bool allow_16bit = false,
-                         bool allow_4bit = false)
-      : BaseSelector(std::make_unique<UnaryNodeGroupSelector>(allow_16bit, allow_4bit), compatible_providers) {}
+                         bool allow_4bit = false, bool allow_nonpositive_scale = true)
+      : BaseSelector(std::make_unique<UnaryNodeGroupSelector>(allow_16bit, allow_4bit, allow_nonpositive_scale),
+                     compatible_providers) {}
 };
 
 class BinarySelector : public BaseSelector {
@@ -465,12 +476,14 @@ class MatMulSelector : public BaseSelector {
 // Convert "1 DQ node for input B -> MatMul/Gemm" to "MatMulNBits"
 class DQMatMulToMatMulNBitsSelector : public BaseSelector {
  public:
-  explicit DQMatMulToMatMulNBitsSelector(gsl::span<const char*> compatible_providers = {})
-      : BaseSelector(std::make_unique<DQMatMulNodeGroupSelector>(), compatible_providers) {}
+  explicit DQMatMulToMatMulNBitsSelector(gsl::span<const char*> compatible_providers = {},
+                                         bool allow_16bit_activation_boundaries = false)
+      : BaseSelector(std::make_unique<DQMatMulNodeGroupSelector>(allow_16bit_activation_boundaries),
+                     compatible_providers) {}
 
-  // Only keep the weight DQ in the selection. Any bias DQ (for Gemm) is excluded
-  // so that RemoveNodes does not remove it — its output is wired through to MatMulNBits.
-  void UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const override;
+  // The selection contains only the weight DQ (the one feeding input 1) and the target, with no output nodes.
+  // Activation/bias DQs and output Qs are left outside the selection so they are not removed.
+  std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override;
 };
 
 // Input: DQ nodes for A, B and optional C

@@ -1821,5 +1821,30 @@ TEST(ConvTest, Conv2D_InvalidBiasRank) {
       .RunWithConfig();
 }
 
+TEST(ConvTest, Rank1InputAndWeightRejected) {
+  OpTester test("Conv", 11);
+  test.AddShapeToTensorData(false);  // must precede AddInput/AddOutput so runtime rank reaches the kernel
+  test.AddAttribute<int64_t>("group", 3);
+  test.AddInput<float>("X", {3}, {1.0f, 2.0f, 3.0f});
+  test.AddInput<float>("W", {3}, {1.0f, 1.0f, 1.0f});
+  test.AddOutput<float>("Y", {3}, {0.0f, 0.0f, 0.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "X num_dims must be >= 3", {}, nullptr, &eps);
+}
+
+TEST(ConvTest, Rank2InputAndWeightRejected) {
+  OpTester test("Conv", 11);
+  test.AddShapeToTensorData(false);  // must precede AddInput/AddOutput so runtime rank reaches the kernel
+  test.AddInput<float>("X", {1, 1}, {1.0f});
+  test.AddInput<float>("W", {1, 1}, {1.0f});
+  test.AddOutput<float>("Y", {1, 1}, {0.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "X num_dims must be >= 3", {}, nullptr, &eps);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -13,8 +13,10 @@
 // K dimension iterated in kChunkSizeK(32) blocks
 
 #param n_bits
+#param acc_f32
 #param has_zero_points
 #param has_bias
+#param has_qlora_up
 #param has_tail_buffer
 #param has_weight_idx
 #param has_weight_idx_indirect
@@ -55,15 +57,25 @@ const kSgMatCountK : u32 = kChunkSizeK / kSgMatDimK;   // Number of subgroup_mat
 
 alias SgMatLeft = subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>;
 alias SgMatRight = subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>;
+#if acc_f32
+alias SgMatResult = subgroup_matrix_result<f32, sg_mat_n, sg_mat_m>;
+// The narrow down projection accumulates over long K in FP32, then rounds T to FP16.
+var<workgroup> result_f32 : array<f32, kTileM * kTileN>;
+#else
 alias SgMatResult = subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
+#endif
 
 // Shared local memory for dequantized B weights [kTileN, kChunkSizeK], column-major
 var<workgroup> tile_b : array<f16, kTileN * kChunkSizeK>;
 
 #if has_bias
-// Scratch space for bounds-checked write-out with bias addition, [kTileM, kTileN],
-// row-major. The no-bias path never needs this - see `has_tail_buffer` below.
+// Scratch space for bounds-checked write-out with bias addition, [kTileM, kTileN], row-major.
 var<workgroup> scratch : array<f16, kTileM * kTileN>;
+#endif
+
+#if has_qlora_up
+const kQLoRARank : u32 = 32;
+var<workgroup> lora_a : array<f16, kTileM * kQLoRARank>;
 #endif
 
 // --- Data Loading Functions ---
@@ -89,6 +101,17 @@ fn load_b(row : u32, pack_idx : u32, weight_offset : u32) -> PackT {
 }
 
 // --- Main Compute ---
+
+#if has_qlora_up
+alias QLoRAElement = f16;
+const kQLoRAMatM = kSgMatDimM;
+const kQLoRAMatN = kSgMatDimN;
+const kQLoRAAddCount = 2u;
+const kQLoRABaseCapacity = kTileN * kChunkSizeK;
+const kQLoRADeltaCapacity = kTileM * kQLoRARank;
+const kQLoRASubgroups = kSgMatCountM;
+#include "quantization/subgroup_matrix_qlora_add.wgsl.template"
+#endif
 
 $MAIN {
   // Resolve the (possibly indirect) weight index once per workgroup.
@@ -176,8 +199,80 @@ $MAIN {
     workgroupBarrier();
   }
 
+#if has_qlora_up
+  for (var n = 0u; n < kSgMatCountN; n += kQLoRAAddCount) {
+    for (var load_unit = local_idx; load_unit < kTileM * (kQLoRARank / 4u);
+         load_unit += workgroup_size_x) {
+      let row_in_tile = load_unit / (kQLoRARank / 4u);
+      let r4 = load_unit % (kQLoRARank / 4u);
+      let global_m = global_base_m + row_in_tile;
+      let offset = row_in_tile * kQLoRARank + r4 * 4u;
+      if (global_m < uniforms.M) {
+        let values = lora_t.getByOffset(global_m * (kQLoRARank / 4u) + r4);
+        for (var i = 0u; i < 4u; i++) {
+          lora_a[offset + i] = f16(values[i]);
+        }
+      } else {
+        for (var i = 0u; i < 4u; i++) {
+          lora_a[offset + i] = f16(0.0);
+        }
+      }
+    }
+    for (var load_unit = local_idx; load_unit < 32u * (kQLoRARank / 4u);
+         load_unit += workgroup_size_x) {
+      let col_in_tile = load_unit / (kQLoRARank / 4u);
+      let r4 = load_unit % (kQLoRARank / 4u);
+      let global_n = global_base_n + n * kSgMatDimN + col_in_tile;
+      let offset = col_in_tile * kQLoRARank + r4 * 4u;
+      if (global_n < uniforms.N) {
+        let values = qlora_weight(global_n, r4);
+        for (var i = 0u; i < 4u; i++) {
+          tile_b[offset + i] = f16(values[i]);
+        }
+      } else {
+        for (var i = 0u; i < 4u; i++) {
+          tile_b[offset + i] = f16(0.0);
+        }
+      }
+    }
+    workgroupBarrier();
+
+
+    let lora_a_base = sg_idx * kSgMatDimM * kQLoRARank;
+    // Reset the adapter accumulation for each output-column group.
+    var delta = QLoRAMatGroup();
+    for (var k = 0u; k < kQLoRARank; k += kSgMatDimK) {
+      let a = subgroupMatrixLoad<SgMatLeft, row_major>(&lora_a, lora_a_base + k, kQLoRARank);
+      for (var i = 0u; i < kQLoRAAddCount; i++) {
+        let b = subgroupMatrixLoad<SgMatRight, col_major>(&tile_b, i * kSgMatStrideN + k, kQLoRARank);
+        delta[i] = subgroupMatrixMultiplyAccumulate(a, b, delta[i]);
+      }
+    }
+    let result = qlora_add(QLoRAMatGroup(sg_mat_acc[n], sg_mat_acc[n + 1u]), delta,
+                            &tile_b, &lora_a, sg_idx, local_idx % 32u, 32u);
+    sg_mat_acc[n] = result[0];
+    sg_mat_acc[n + 1u] = result[1];
+  }
+#endif
+
   // Write out
-#if has_bias
+#if acc_f32
+  let scratch_store_base = sg_idx * kSgMatDimM * kTileN;
+  for (var sg_mat_n_idx = 0u; sg_mat_n_idx < kSgMatCountN; sg_mat_n_idx++) {
+    subgroupMatrixStore<row_major>(&result_f32,
+                                   scratch_store_base + sg_mat_n_idx * kSgMatDimN,
+                                   sg_mat_acc[sg_mat_n_idx],
+                                   kTileN);
+  }
+  workgroupBarrier();
+  for (var i = local_idx; i < kTileM * kTileN; i += workgroup_size_x) {
+    let row = global_base_m + i / kTileN;
+    let col = global_base_n + i % kTileN;
+    if (row < uniforms.M && col < uniforms.N) {
+      output.setByOffset(row * uniforms.N + col, output_element_t(result_f32[i]));
+    }
+  }
+#elif has_bias
   let scratch_store_base = sg_idx * kSgMatDimM * kTileN;
   for (var sg_mat_n_idx = 0u; sg_mat_n_idx < kSgMatCountN; sg_mat_n_idx++) {
     subgroupMatrixStore<row_major>(&scratch,
@@ -205,7 +300,7 @@ $MAIN {
 #endif
     for (var i : u32 = 0; i < ElemsPerThreadRow; i++) {
       if (out_global_n_base + i < uniforms.N) {
-        let val = f16(scratch[scratch_base + i]) + bias[bias_offset + out_global_n_base + i];
+        let val = output_element_t(scratch[scratch_base + i]) + bias[bias_offset + out_global_n_base + i];
         output.setByOffset(out_base + i, val);
       }
     }
