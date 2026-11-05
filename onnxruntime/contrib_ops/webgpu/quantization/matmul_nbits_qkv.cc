@@ -407,6 +407,9 @@ class MatMulNBitsQLoRAQkv final : public MatMulNBitsQkv {
     if (context.Input<Tensor>(14)->Shape().Size() == 0 &&
         context.Input<Tensor>(18)->Shape().Size() == 0 &&
         context.Input<Tensor>(22)->Shape().Size() == 0) {
+      ORT_RETURN_IF_ERROR(ValidateQLoRABaseWeights(context.Input<Tensor>(3), context.Input<Tensor>(4), K_, Nq_));
+      ORT_RETURN_IF_ERROR(ValidateQLoRABaseWeights(context.Input<Tensor>(6), context.Input<Tensor>(7), K_, Nkv_));
+      ORT_RETURN_IF_ERROR(ValidateQLoRABaseWeights(context.Input<Tensor>(9), context.Input<Tensor>(10), K_, Nkv_));
       return MatMulNBitsQkv::ComputeInternal(context);
     }
 

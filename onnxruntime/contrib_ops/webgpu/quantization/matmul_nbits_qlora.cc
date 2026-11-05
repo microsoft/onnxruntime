@@ -89,6 +89,14 @@ Status ApplyQLoRAOutput(onnxruntime::webgpu::ComputeContext& context, const Tens
   return context.RunProgram(program);
 }
 
+Status ValidateQLoRABaseWeights(const Tensor* w, const Tensor* scales, int64_t k, int64_t n) {
+  ORT_RETURN_IF_NOT(w != nullptr && scales != nullptr &&
+                        w->Shape() == TensorShape({n, k / 32, 16}) &&
+                        scales->Shape().Size() == SafeInt<int64_t>(n) * (k / 32),
+                    "Invalid base weight/scales shape.");
+  return Status::OK();
+}
+
 class MatMulNBitsQLoRA final : public WebGpuKernel {
  public:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MatMulNBitsQLoRA);
@@ -127,9 +135,7 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
     ORT_RETURN_IF_NOT(x->Shape().NumDimensions() >= 2, "WebGPU MatMulNBitsQLoRA requires X rank at least two.");
     ORT_RETURN_IF_NOT(aq->Shape().NumDimensions() == 3 && bq->Shape().NumDimensions() == 3,
                       "Invalid quantized LoRA input ranks.");
-    ORT_RETURN_IF_NOT(
-        w->Shape() == TensorShape({n, k / 32, 16}) && s->Shape().Size() == SafeInt<int64_t>(n) * (k / 32),
-        "Invalid base weight/scales shape.");
+    ORT_RETURN_IF_ERROR(ValidateQLoRABaseWeights(w, s, k, n));
     // TODO: Support arbitrary adapter ranks with a rank uniform, per-block up scales,
     // and vector-tail handling while preserving rank-32 performance.
     const auto rank_a = aq->Shape()[0];
