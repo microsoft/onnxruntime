@@ -45,8 +45,7 @@ correction. Link to existing design documentation or domain skills for detailed 
 Keep a path-scoped instruction file short when it can route to one owning subsystem skill. Put the skill's shared
 procedure and completion criteria in `SKILL.md`, and conditional checks in focused references. For example,
 [`code-review-webgpu`](../.github/skills/code-review-webgpu/SKILL.md) uses eight references: kernels/registration,
-shaders/identity/numerics/layout, runtime/plugin contracts, devices, builds, graph transformations, profiling, and validation. Its
-[coverage audit](WebGPU_Review_Coverage.md) records the source boundaries and historical evidence behind the categories.
+shaders/identity/numerics/layout, runtime/plugin contracts, devices, builds, graph transformations, profiling, and validation.
 The routes apply to implementation and review; the generic `code-review` skill
 continues to own the review workflow and finding format.
 

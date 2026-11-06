@@ -5,6 +5,8 @@ description: Use only for changes with a direct or traceable effect on the nativ
 
 # Native WebGPU EP review
 
+Derived from [Devang Patel's contribution](https://github.com/microsoft/onnxruntime/commit/4453ec99843d2561e1f99071525db8a2c5ce48eb).
+
 ## Scope gate
 
 Select this skill only when the changed behavior directly belongs to native
@@ -96,6 +98,3 @@ snapshots belong in maintenance evidence, outside the active references.
 Combine checks normally used together; keep independently triggered workflows
 separate. Write concise triggers, invariants, corrections, and regression checks,
 preserving conditions and exceptions when shortening text.
-When extending categories, consult the source/evidence map and limits in
-[WebGPU review coverage](../../../docs/WebGPU_Review_Coverage.md); ordinary
-reviews do not need to load that audit or the historical corpus.
