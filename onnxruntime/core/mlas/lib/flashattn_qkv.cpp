@@ -43,6 +43,8 @@ MlasFlashAttentionQuantizedKVThreaded(
     const ptrdiff_t num_heads = static_cast<ptrdiff_t>(args->num_heads);
     const ptrdiff_t kv_num_heads = static_cast<ptrdiff_t>(args->kv_num_heads);
     const ptrdiff_t sequence_length = static_cast<ptrdiff_t>(args->sequence_length);
+    const ptrdiff_t valid_query_length =
+        args->valid_query_length < 0 ? sequence_length : args->valid_query_length;
     const ptrdiff_t total_seqlen = static_cast<ptrdiff_t>(args->total_seqlen);
     const ptrdiff_t head_size = static_cast<ptrdiff_t>(args->head_size);
     const ptrdiff_t past_seqlen = static_cast<ptrdiff_t>(args->past_seqlen);
@@ -62,7 +64,7 @@ MlasFlashAttentionQuantizedKVThreaded(
 #endif
 
     // Total tasks: one per (batch, head, q_block)
-    const ptrdiff_t q_chunk_count = (sequence_length + q_block_size - 1) / q_block_size;
+    const ptrdiff_t q_chunk_count = (valid_query_length + q_block_size - 1) / q_block_size;
     const ptrdiff_t total_task_count = batch_size * num_heads * q_chunk_count;
 
     ptrdiff_t task_start = 0;
@@ -95,14 +97,14 @@ MlasFlashAttentionQuantizedKVThreaded(
         float* scores = m + q_block_size;
         float* temp_output = scores + q_block_size * kv_block_size;
 
-        // Initialize running state
-        for (ptrdiff_t t = 0; t < q_block_size; ++t) {
+        const size_t row_size_q = static_cast<size_t>(std::min(q_block_size, valid_query_length - q_idx));
+
+        // Initialize only the active rows; scratch tile strides remain fixed.
+        for (size_t t = 0; t < row_size_q; ++t) {
             m[t] = std::numeric_limits<float>::lowest();
             l[t] = 0.0f;
         }
-        memset(temp_output, 0, static_cast<size_t>(q_block_size * head_size) * sizeof(float));
-
-        const size_t row_size_q = static_cast<size_t>(std::min(q_block_size, sequence_length - q_idx));
+        memset(temp_output, 0, row_size_q * static_cast<size_t>(head_size) * sizeof(float));
 
         // Determine KV head index for GQA head sharing
         const size_t kv_head_idx = static_cast<size_t>(head_idx) / kv_num_heads_factor;
@@ -637,6 +639,9 @@ void
         MLAS_THREADPOOL* ThreadPool
     )
 {
+    if (args->valid_query_length == 0) {
+        return;
+    }
     if (args->flash_decoding_partials != nullptr && args->sequence_length == 1) {
         // Flash decoding: two-phase approach.
         // Phase 1: parallel partial computation over (batch, head, kv_chunk).

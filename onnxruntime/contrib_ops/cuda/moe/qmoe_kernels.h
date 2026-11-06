@@ -110,7 +110,7 @@ cudaError_t LaunchQMoEOffloadClassify(
     uint64_t* doorbell_seq_dev = nullptr, volatile uint64_t* doorbell_req_host = nullptr,
     volatile int32_t* doorbell_tile_rows_host = nullptr, int tile_rows = 0,
     bool skip_zero_cold = false, volatile uint64_t* doorbell_done_host = nullptr,
-    volatile int32_t* cold_count_host = nullptr, QMoEOffloadTelemetry* telemetry = nullptr);
+    QMoEOffloadTelemetry* telemetry = nullptr);
 
 cudaError_t LaunchQMoEOffloadMerge(
     const half* wave_output, const half* cpu_rows, const int* hit_flag, half* contributions,
@@ -732,7 +732,8 @@ void LaunchPrePackInt3Weights(const uint8_t* raw_weights, uint8_t* packed_weight
 void LaunchPrePackInt3Scales(const __nv_bfloat16* raw_scales, __nv_bfloat16* packed_scales,
                              int num_experts, int n, int k, cudaStream_t stream);
 
-cudaError_t LaunchInt3Moe(const Int3MoeParams& params, cudaStream_t stream);
+cudaError_t LaunchInt3Moe(const Int3MoeParams& params, cudaStream_t stream,
+                          bool* used_grouped = nullptr, bool* used_tensor_core = nullptr);
 cudaError_t ValidateInt3MoeContent(const Int3Projection& projection, size_t rows,
                                    int logical_k, int block_size, bool is_bfloat16,
                                    int* invalid, cudaStream_t stream);

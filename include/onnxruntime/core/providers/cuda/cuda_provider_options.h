@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <limits>
 
 #include "onnxruntime_c_api.h"
@@ -18,6 +19,16 @@
 /// </summary>
 struct OrtCUDAProviderOptionsV2 {
   static constexpr size_t kMaxExternalDataLoaderReadingThreadCount = 64;
+  static constexpr size_t kDefaultExternalDataLoaderReadingThreadCount = 4;
+  static constexpr size_t kMinExternalDataLoaderPinnedMemoryBytes = 1024 * 1024;
+  static constexpr size_t kMaxExternalDataLoaderPinnedMemoryBytes = 1024 * 1024 * 1024;
+  static constexpr size_t kExternalDataLoaderPinnedMemoryAlignment = 8192;
+  static constexpr size_t kDefaultExternalDataLoaderPinnedMemoryBytes = 32 * 1024 * 1024;
+  static constexpr size_t kMinExternalDataLoaderChunkBytes = 4096;
+  static constexpr size_t kMaxExternalDataLoaderChunkBytes = 64 * 1024 * 1024;
+  static constexpr size_t kExternalDataLoaderChunkAlignment = 4096;
+  static constexpr size_t kDefaultExternalDataLoaderChunkBytes = 2 * 1024 * 1024;
+  static constexpr size_t kDefaultExternalDataLoaderMinSizeBytes = 16 * 1024 * 1024;
 
   int device_id = 0;                                                                                           // cuda device id.
   int has_user_compute_stream = 0;                                                                             // indicator of user specified CUDA compute stream.
@@ -42,6 +53,14 @@ struct OrtCUDAProviderOptionsV2 {
   int use_tf32 = 1;                                                                                            // use TF32
   int fuse_conv_bias = 0;                                                                                      // Enable CUDNN Frontend kernel fusing, results in JIT compiles
   int sdpa_kernel = 0;                                                                                         // Scaled Dot Product Attention kernel option
-  size_t external_data_loader_reading_threads = 4;                                                             // Number of CPU read tasks per external-data staging buffer. 0 disables the loader; 1 disables parallel reads.
+  size_t external_data_loader_reading_threads = kDefaultExternalDataLoaderReadingThreadCount;                  // Number of CPU read tasks per external-data staging buffer. 0 disables the loader; 1 disables parallel reads.
+  size_t external_data_loader_pinned_memory_bytes = kDefaultExternalDataLoaderPinnedMemoryBytes;               // Total pinned host staging memory across the two reusable buffers.
+  size_t external_data_loader_chunk_bytes = kDefaultExternalDataLoaderChunkBytes;                              // Maximum per-transfer chunk size for parallel external-data reads.
   int min_num_runs_before_cuda_graph_capture = 2;                                                              // Number of regular (warm-up) runs before CUDA graph capture starts. Only used when enable_cuda_graph is set.
+
+  // Set when the corresponding external-data loader option was explicitly supplied, even if it equals the default.
+  // Explicitly supplied provider options take precedence over session config entries.
+  int external_data_loader_reading_threads_explicit = 0;
+  int external_data_loader_pinned_memory_bytes_explicit = 0;
+  int external_data_loader_chunk_bytes_explicit = 0;
 };

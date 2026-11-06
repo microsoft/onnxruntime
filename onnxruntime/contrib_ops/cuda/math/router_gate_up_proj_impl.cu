@@ -17,6 +17,10 @@ namespace cuda {
 namespace {
 
 constexpr int kSplitThreads = 256;
+// SplitActivationVec8Kernel serializes 8 SwiGluActivation (expf) calls per thread, which under-occupies the GPU when
+// the launch is smaller than one full wave of CTAs (128 CTAs = 32,768 uint4 vectors, e.g. 256 rows at router=512,
+// inter=640). Keep the 1-element-per-thread scalar kernel below this threshold and use the uint4 kernel above it.
+constexpr int64_t kMinSplitVec8Threads = 128 * kSplitThreads;
 
 __device__ __forceinline__ float ToFloat(__nv_bfloat16 v) { return __bfloat162float(v); }
 __device__ __forceinline__ float ToFloat(__half v) { return __half2float(v); }
@@ -77,11 +81,11 @@ __global__ void SplitActivationVec8Kernel(int64_t rows, int n_vecs, int router_v
 template <typename V>
 void LaunchSplitActivation(cudaStream_t stream, int64_t rows, int64_t n, int64_t router, int64_t inter, float limit,
                            float alpha, float beta, const void* y, void* router_out, void* act_out) {
-  if ((router & 7) == 0 && (inter & 7) == 0 &&
+  const int64_t total_vecs = rows * ((router + inter) >> 3);
+  if (total_vecs >= kMinSplitVec8Threads && (router & 7) == 0 && (inter & 7) == 0 &&
       ((reinterpret_cast<uintptr_t>(y) | reinterpret_cast<uintptr_t>(router_out) |
         reinterpret_cast<uintptr_t>(act_out)) &
        15u) == 0) {
-    const int64_t total_vecs = rows * ((router + inter) >> 3);
     const int64_t want = (total_vecs + kSplitThreads - 1) / kSplitThreads;
     const int blocks = static_cast<int>(want < 65535 ? want : 65535);
     SplitActivationVec8Kernel<V><<<blocks, kSplitThreads, 0, stream>>>(

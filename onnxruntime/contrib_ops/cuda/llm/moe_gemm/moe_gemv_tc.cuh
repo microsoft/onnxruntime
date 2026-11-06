@@ -32,6 +32,7 @@
 
 #include <cuda_bf16.h>
 #include <cuda_runtime.h>
+#include <math_constants.h>
 
 #include <cstdint>
 #include <type_traits>
@@ -502,6 +503,7 @@ inline bool DeviceSupportsBf16Mma() {
   int major = 0;
   if (cudaGetDevice(&device) != cudaSuccess ||
       cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device) != cudaSuccess) {
+    (void)cudaGetLastError();
     return false;
   }
   return major >= 8;
@@ -550,6 +552,7 @@ inline bool TryLaunchInt4Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
   cudaFuncAttributes attributes{};
   const auto kernel = swiglu ? MoeGemvTcInt4Kernel<true, 4, 4> : MoeGemvTcInt4Kernel<false, 1, 1>;
   if (cudaFuncGetAttributes(&attributes, kernel) != cudaSuccess || attributes.ptxVersion < 80) {
+    (void)cudaGetLastError();
     return false;
   }
 
@@ -596,13 +599,16 @@ inline bool TryLaunchInt4Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
 // matched with the 64 BF16 activations `b_lo[0..3]` and `b_hi[0..3]` of route `g`.
 
 // MaskIdx in {0, 1, 2} selects 2-bit fields at bits {0..1, 2..3, 4..5} in both 16-bit halves of `x`,
-// all of which fit inside BF16's 7-bit mantissa (0x007F007F).
+// all of which fit inside BF16's 7-bit mantissa (0x007F007F). Each centered code in {-2, -1, 0, +1} is scaled by
+// 0.5 into {-1.0, -0.5, 0.0, +0.5} before multiplying by `scale2` so that even `scale = 2^127` with code -2 stays
+// finite in BF16; `finalize` restores the factor of 2 in FP32.
+// This is not full-range BF16 support: code +1 at scale 2^-133 rounds to zero before MMA, losing its contribution.
 template <int MaskIdx>
 __device__ __forceinline__ uint32_t DequantPairInt2Masked(uint32_t x, uint32_t scale2) {
   static_assert(MaskIdx >= 0 && MaskIdx < 3);
   constexpr uint32_t kMask = (MaskIdx == 0) ? 0x00030003u : ((MaskIdx == 1) ? 0x000C000Cu : 0x00300030u);
-  constexpr uint32_t kMul = (MaskIdx == 0) ? 0x3F803F80u : ((MaskIdx == 1) ? 0x3E803E80u : 0x3D803D80u);
-  constexpr uint32_t kAdd = (MaskIdx == 0) ? 0xC302C302u : ((MaskIdx == 1) ? 0xC208C208u : 0xC120C120u);
+  constexpr uint32_t kMul = (MaskIdx == 0) ? 0x3F003F00u : ((MaskIdx == 1) ? 0x3E003E00u : 0x3D003D00u);
+  constexpr uint32_t kAdd = (MaskIdx == 0) ? 0xC282C282u : ((MaskIdx == 1) ? 0xC188C188u : 0xC0A0C0A0u);
   uint32_t v;
   asm("lop3.b32 %0, %1, %2, %3, %4;\n"
       : "=r"(v)
@@ -894,8 +900,9 @@ __global__ void __launch_bounds__(kThreads, Int2MinCtasPerSm(kM)) MoeGemvTcInt2K
       const int out_row = contiguous_routes
                               ? (row0 + route)
                               : static_cast<int>((members >> (8 * route)) & 0xffu);
-      float even = h == 0 ? d.x : d.y;
-      float odd = h == 0 ? d.z : d.w;
+      // Match the INT2 SIMT and CPU projection boundary before adding bias in FP32.
+      float even = __bfloat162float(__float2bfloat16_rn((h == 0 ? d.x : d.y) * 2.0f));
+      float odd = __bfloat162float(__float2bfloat16_rn((h == 0 ? d.z : d.w) * 2.0f));
       if (bias != nullptr) {
         even += __bfloat162float(bias[col]);
         odd += __bfloat162float(bias[col + 1]);
@@ -909,8 +916,10 @@ __global__ void __launch_bounds__(kThreads, Int2MinCtasPerSm(kM)) MoeGemvTcInt2K
         }
         linear += beta;
         const float sigmoid = 1.0f / (1.0f + expf(-alpha * gate));
+        const bool silu_limit_is_zero = (alpha > 0.0f && gate == -CUDART_INF_F) ||
+                                        (alpha < 0.0f && gate == CUDART_INF_F);
         p.out[static_cast<int64_t>(out_row) * (n / 2) + col / 2] =
-            __float2bfloat16_rn(gate * sigmoid * linear);
+            __float2bfloat16_rn((silu_limit_is_zero ? 0.0f : gate * sigmoid) * linear);
       } else {
         *reinterpret_cast<__nv_bfloat162*>(p.out + static_cast<int64_t>(out_row) * n + col) =
             __floats2bfloat162_rn(even, odd);
@@ -968,6 +977,7 @@ inline bool TryLaunchInt2Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
                               float alpha, float beta, float limit, const int* permuted_row_to_source_row,
                               int64_t num_rows, cudaStream_t stream, int tensor_core_min_rows) {
   if ((group_size != 32 && group_size != 64 && group_size != 128) || permuted_row_to_expert == nullptr ||
+      (expert_first_token_offset == nullptr && expanded_num_rows > 256) ||
       expanded_num_rows < tensor_core_min_rows || tensor_core_min_rows == 0 || !DeviceSupportsBf16Mma()) {
     return false;
   }
@@ -985,6 +995,7 @@ inline bool TryLaunchInt2Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
                                                : (use_2warps_k ? MoeGemvTcInt2Kernel<true, 2, 2, 128>
                                                                : MoeGemvTcInt2Kernel<false, 1, 1, 128>);
   if (cudaFuncGetAttributes(&attributes, check_kernel) != cudaSuccess || attributes.ptxVersion < 80) {
+    (void)cudaGetLastError();
     return false;
   }
 

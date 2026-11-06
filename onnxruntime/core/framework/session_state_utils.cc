@@ -1,9 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+#include <charconv>
 #include <functional>
 #include <limits>
 #include <memory>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 
@@ -84,7 +87,8 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                                              OrtValue& ort_value, const DataTransferManager& data_transfer_mgr,
                                              const ExternalDataLoaderManager& external_data_loader_mgr,
                                              PrepackedWeightsForGraph& prepacked_for_graph,
-                                             bool use_device_allocator_for_initializers = false) {
+                                             bool use_device_allocator_for_initializers = false,
+                                             utils::ExternalDataFileCache* file_cache = nullptr) {
   if (alloc != nullptr && memory_buffer != nullptr) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "DeserializeTensorProto() takes either pre-allocated buffer or an allocator!");
@@ -127,9 +131,8 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
             AllocateTensor(memory_buffer, tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));
       }
       ORT_RETURN_IF_ERROR(utils::LoadExtDataToTensorFromTensorProto(env, proto_path, tensor_proto,
-                                                                    *external_data_loader, alloc, tensor));
-      ORT_RETURN_IF_ERROR(utils::LoadPrepackedWeightsFromExternalData(env, proto_path, tensor_proto,
-                                                                      prepacked_for_graph));
+                                                                    *external_data_loader, alloc, tensor,
+                                                                    &prepacked_for_graph, file_cache));
 
       Tensor::InitOrtValue(std::move(tensor), ort_value);
       return common::Status::OK();
@@ -140,7 +143,8 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       // utilize the mmap'd buffer directly.
       ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(env, proto_path, tensor_proto,
                                                            ort_value,
-                                                           &prepacked_for_graph));
+                                                           &prepacked_for_graph,
+                                                           file_cache));
       return common::Status::OK();
     } else {  // non-cpu tensor or tensor in a cpu accessible memory
       if (utils::HasString(tensor_proto)) {
@@ -158,7 +162,8 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       OrtValue deserialized_value;
       ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(env, proto_path, tensor_proto,
                                                            deserialized_value,
-                                                           &prepacked_for_graph));
+                                                           &prepacked_for_graph,
+                                                           file_cache));
 
       const Tensor& cpu_staging_tensor = deserialized_value.Get<Tensor>();
       // Bool external initializers are copied verbatim and may carry bytes outside the canonical
@@ -420,7 +425,10 @@ common::Status SaveInitializedTensors(
       session_options.config_options.GetConfigOrDefault(
           kOrtSessionOptionsUseDeviceAllocatorForInitializers, "0") == "1";
 
-#if defined(ENABLE_D3D12_FILE_LOADING)
+  // Keep opened external-data file handles alive until the loaders drain their queued work.
+  [[maybe_unused]] constexpr size_t kMaxCachedExternalDataFiles = 64;
+  utils::ExternalDataFileCache external_file_cache;
+#if !defined(ORT_MINIMAL_BUILD) || defined(ENABLE_D3D12_FILE_LOADING)
   ORT_RETURN_IF_ERROR(external_data_loader_mgr.BeginLoad());
   bool external_data_load_ended = false;
   auto end_external_data_load = gsl::finally([&]() {
@@ -428,7 +436,9 @@ common::Status SaveInitializedTensors(
       external_data_loader_mgr.EndLoad();
     }
   });
+#endif
 
+#if defined(ENABLE_D3D12_FILE_LOADING)
   for (const auto& entry : id_to_initialized_tensor) {
     if (user_supplied_initializer_ids.contains(entry.first) ||
         !utils::HasExternalData(*entry.second) ||
@@ -454,8 +464,86 @@ common::Status SaveInitializedTensors(
       [&session_options]() { return session_options.IsLoadCancellationFlagSet(); }));
 #endif
 
-  // 3. create weight tensors based on weights buffer
+  // Sort initializers so external weights from the same file are read in ascending offset order
+  // instead of arbitrary hash-table bucket order.
+  struct OrderedInitializerEntry {
+    int ort_value_index{0};
+    const ONNX_NAMESPACE::TensorProto* tensor_proto{nullptr};
+    bool has_file_external_data{false};
+    std::string_view external_location{};
+    int64_t external_offset{0};
+  };
+  InlinedVector<OrderedInitializerEntry> ordered_initializers;
+  ordered_initializers.reserve(id_to_initialized_tensor.size());
   for (const auto& entry : id_to_initialized_tensor) {
+    OrderedInitializerEntry item{entry.first, entry.second, false, {}, 0};
+#if !defined(ORT_MINIMAL_BUILD)
+    if (entry.second != nullptr && utils::HasExternalData(*entry.second) &&
+        !utils::HasExternalDataInMemory(*entry.second)) {
+      item.has_file_external_data = true;
+      for (const auto& kv : entry.second->external_data()) {
+        if (kv.key() == "location") {
+          item.external_location = kv.value();
+        } else if (kv.key() == "offset") {
+          int64_t parsed_offset = 0;
+          const auto& val = kv.value();
+          const auto res = std::from_chars(val.data(), val.data() + val.size(), parsed_offset);
+          if (res.ec == std::errc{} && res.ptr == val.data() + val.size()) {
+            item.external_offset = parsed_offset;
+          }
+        }
+      }
+    }
+#endif
+    ordered_initializers.push_back(item);
+  }
+#if !defined(ORT_MINIMAL_BUILD)
+  std::sort(ordered_initializers.begin(), ordered_initializers.end(),
+            [](const OrderedInitializerEntry& a, const OrderedInitializerEntry& b) {
+              if (a.has_file_external_data != b.has_file_external_data) {
+                return !a.has_file_external_data;
+              }
+              if (a.has_file_external_data) {
+                if (a.external_location != b.external_location) {
+                  return a.external_location < b.external_location;
+                }
+                if (a.external_offset != b.external_offset) {
+                  return a.external_offset < b.external_offset;
+                }
+              }
+              return a.ort_value_index < b.ort_value_index;
+            });
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // Tell each loader the total external bytes it will receive so size-based decisions don't depend on how the
+  // load is split into batches.
+  {
+    InlinedHashMap<const IExternalDataLoader*, size_t> expected_bytes;
+    for (const auto& item : ordered_initializers) {
+      if (!item.has_file_external_data || item.tensor_proto->name().empty() ||
+          user_supplied_initializer_ids.contains(item.ort_value_index)) {
+        continue;
+      }
+      const OrtMemoryInfo location_info("", OrtAllocatorType::OrtDeviceAllocator,
+                                        exec_plan.GetLocation(item.ort_value_index));
+      const auto* loader = external_data_loader_mgr.GetExternalDataLoader(location_info,
+                                                                          item.tensor_proto->data_type());
+      size_t bytes = 0;
+      if (loader != nullptr && utils::GetSizeInBytesFromTensorProto<0>(*item.tensor_proto, &bytes).IsOK()) {
+        expected_bytes[loader] += bytes;
+      }
+    }
+    for (const auto& [loader, bytes] : expected_bytes) {
+      loader->SetExpectedLoadBytes(bytes);
+    }
+  }
+#endif
+
+  // 3. create weight tensors based on weights buffer
+  for (const auto& ordered_entry : ordered_initializers) {
+    const std::pair<int, const ONNX_NAMESPACE::TensorProto*> entry{
+        ordered_entry.ort_value_index, ordered_entry.tensor_proto};
     // We check for cancellation for every initializer since mapping from disk can be costly
     if (session_options.IsLoadCancellationFlagSet()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
@@ -511,13 +599,24 @@ common::Status SaveInitializedTensors(
         // if in memory we were expecting to find it above.
         ORT_ENFORCE(!utils::HasExternalDataInMemory(tensor_proto));
 
+#if !defined(ORT_MINIMAL_BUILD)
+        // Queued loads hold raw file pointers, so handles can only be released after the loaders have drained.
+        // Flush periodically to keep the number of open files bounded for models with many external files.
+        if (external_file_cache.files.size() >= kMaxCachedExternalDataFiles) {
+          ORT_RETURN_IF_ERROR(external_data_loader_mgr.FinalizeLoad(
+              [&session_options]() { return session_options.IsLoadCancellationFlagSet(); }));
+          external_file_cache.files.clear();
+        }
+#endif
+
         // We need to deserialize the tensor proto into an OrtValue
         // using the preallocated buffer or allocator.
         Status st = DeserializeTensorProto(env, graph_loc, tensor_proto,
                                            (memory_buffer.has_value()) ? &*memory_buffer : nullptr,
                                            alloc, default_cpu_alloc, ort_value, data_transfer_mgr,
                                            external_data_loader_mgr, prepacked_for_graph,
-                                           use_device_allocator_for_initializers);
+                                           use_device_allocator_for_initializers,
+                                           &external_file_cache);
         if (!st.IsOK()) {
           std::ostringstream oss;
           oss << "Deserialize tensor " << name << " failed." << st.ErrorMessage();
@@ -541,10 +640,9 @@ common::Status SaveInitializedTensors(
 #endif
   }
 
-#if defined(ENABLE_D3D12_FILE_LOADING)
-  // EndLoad is the idempotent end-of-batch cleanup hook. All claimed
-  // allocations have transferred ownership, so this only releases metadata
-  // and any unclaimed resources left by a successful batch.
+#if !defined(ORT_MINIMAL_BUILD) || defined(ENABLE_D3D12_FILE_LOADING)
+  ORT_RETURN_IF_ERROR(external_data_loader_mgr.FinalizeLoad(
+      [&session_options]() { return session_options.IsLoadCancellationFlagSet(); }));
   external_data_loader_mgr.EndLoad();
   external_data_load_ended = true;
 #endif
