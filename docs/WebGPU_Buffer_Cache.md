@@ -28,8 +28,14 @@ automatically. No bucket table configuration is required.
   can expire at a later maintenance event. A slow active run does not expire.
   Session destruction removes its contribution immediately. Allocations outside a
   tracked session run use a 60-second spare-return grace period instead.
-- Reclamation runs synchronously at run/replay completion and session release.
-  A return outside an active run checks surplus only in that buffer's size class.
+  If all sessions are idle and grace periods have expired, all ordinary bucket
+  spares can be released; another session's recent demand can still retain spares.
+- Ordinary reclamation is batched every 16 completed runs of each session.
+  Demand history still advances each run. Late buffer returns from a cleanup run
+  check only that buffer's size class; returns between batches wait for a later
+  cleanup. Unsuccessful runs, idle expiry and session release trigger maintenance
+  immediately, without advancing another session's run count.
+  A shared scan can reclaim any surplus whose demand has already aged out.
   Run starts, submissions (including empty flushes) and allocation misses can
   trigger idle maintenance once the next idle deadline is reached. The normal
   run-demand check inspects surplus entries rather than scanning retained buffers.

@@ -156,6 +156,7 @@ class BucketCacheManager : public IBufferCacheManager {
   // Retain a peak through four completed runs of its own session. Other
   // sessions' submissions and partial-run flushes cannot advance this history.
   static constexpr size_t kHistoryLength = 4;
+  static constexpr size_t kCleanupInterval = 16;
   static constexpr auto kIdleTimeout = std::chrono::seconds{60};
   struct Demand {
     size_t unavailable = 0;
@@ -169,6 +170,7 @@ class BucketCacheManager : public IBufferCacheManager {
   struct Session {
     bool active = false;
     size_t next_history = 0;
+    size_t runs_since_cleanup = 0;
     Clock::time_point last_activity;
     InlinedHashMap<size_t, Demand> demand;
   };
@@ -231,7 +233,7 @@ class BucketCacheManager : public IBufferCacheManager {
     }
     auto& buffers = buckets_[capacity];
     buffers.push_back({std::move(owned_buffer), deadline});
-    if (borrower && !borrower->active) {
+    if (borrower && !borrower->active && borrower->runs_since_cleanup == 0) {
       size_t keep = 0;
       for (const auto& [recording, session] : sessions_) {
         if (auto it = session->demand.find(capacity); it != session->demand.end()) {
@@ -286,7 +288,12 @@ class BucketCacheManager : public IBufferCacheManager {
     session.active = false;
     session.last_activity = now;
     next_idle_check_ = std::min(next_idle_check_, now + kIdleTimeout);
-    Trim(now);
+    // Batch ordinary reclamation on this session's completed-run timeline.
+    // Late returns from a cleanup run share its maintenance opportunity.
+    if (!completed || ++session.runs_since_cleanup == kCleanupInterval) {
+      session.runs_since_cleanup = 0;
+      Trim(now);
+    }
   }
 
   void OnSessionRelease(const CommandRecordingState& recording) override {
@@ -294,6 +301,7 @@ class BucketCacheManager : public IBufferCacheManager {
     // but no longer reserve spares for a destroyed session (or a reused address).
     if (auto it = sessions_.find(&recording); it != sessions_.end()) {
       it->second->active = false;
+      it->second->runs_since_cleanup = 0;
       sessions_.erase(it);
     }
     Trim(Clock::now());
@@ -314,6 +322,7 @@ class BucketCacheManager : public IBufferCacheManager {
       }
       const auto deadline = session->last_activity + kIdleTimeout;
       if (now >= deadline) {
+        session->runs_since_cleanup = 0;
         for (auto d = session->demand.begin(); d != session->demand.end();) {
           d->second.history.fill(0);
           if (d->second.unavailable == 0) {

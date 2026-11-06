@@ -1193,25 +1193,21 @@ TEST_F(WebGpuBucketCacheTest, CompletedRunsTrimSurplusWithinAnActiveClass) {
   manager_->Release(wgpu::Buffer{obsolete}.MoveToCHandle());
   manager_->OnRunEnd(recording_, true);
 
-  // Partial flushes and unsuccessful runs must not age this working set.
-  for (size_t step = 0; step < 8; ++step) {
+  // Demand ages each run; surplus remains reusable until the cleanup batch.
+  for (size_t run = 2; run <= 16; ++run) {
     manager_->OnRunStart(recording_);
-    ASSERT_STATUS_OK(context_->Flush(*manager_, recording_));
-    manager_->OnRunEnd(recording_, false);
-  }
-  for (size_t step = 0; step < 4; ++step) {
-    manager_->OnRunStart(recording_);
+    // Partial submissions must not advance the completed-run cleanup counter.
+    for (size_t submit = 0; submit < 4; ++submit) {
+      ASSERT_STATUS_OK(context_->Flush(*manager_, recording_));
+    }
     auto hot = Create(1537);
     EXPECT_EQ(hot.Get(), originals.back().Get());
     manager_->Release(hot.MoveToCHandle());
     manager_->OnRunEnd(recording_, true);
-    if (step < 3) {
-      manager_->OnRunStart(recording_);
-      auto still_recent = Create(70 * 1024);
-      EXPECT_EQ(still_recent.Get(), obsolete.Get());
-      // Do not renew the obsolete class's completed-run demand.
-      manager_->Release(still_recent.MoveToCHandle());
-      manager_->OnRunEnd(recording_, false);
+    if (run == 5) {
+      auto between_batches = Create(70 * 1024);
+      EXPECT_EQ(between_batches.Get(), obsolete.Get());
+      manager_->Release(between_batches.MoveToCHandle());
     }
   }
   InlinedVector<wgpu::Buffer> acquired;
@@ -1223,6 +1219,29 @@ TEST_F(WebGpuBucketCacheTest, CompletedRunsTrimSurplusWithinAnActiveClass) {
   EXPECT_EQ(reused, 1u);
   auto replacement = Create(70 * 1024);
   EXPECT_NE(replacement.Get(), obsolete.Get());
+}
+
+TEST_F(WebGpuBucketCacheTest, LateReturnsRespectCleanupBatches) {
+  manager_->OnRunStart(recording_);
+  auto original = Create(1537);
+  manager_->Release(wgpu::Buffer{original}.MoveToCHandle());
+  manager_->OnRunEnd(recording_, true);
+  for (size_t run = 2; run <= 5; ++run) {
+    manager_->OnRunStart(recording_);
+    manager_->OnRunEnd(recording_, true);
+  }
+  // Returning a buffer outside Run must not turn every release into a sweep.
+  for (size_t repeat = 0; repeat < 8; ++repeat) {
+    auto reused = Create(1537);
+    EXPECT_EQ(reused.Get(), original.Get());
+    manager_->Release(reused.MoveToCHandle());
+  }
+  for (size_t run = 6; run <= 16; ++run) {
+    manager_->OnRunStart(recording_);
+    manager_->OnRunEnd(recording_, true);
+  }
+  auto replacement = Create(1537);
+  EXPECT_NE(replacement.Get(), original.Get());
 }
 
 TEST_F(WebGpuBucketCacheTest, IdleExpiryProtectsActiveLiveAndPendingBuffers) {
@@ -1391,16 +1410,30 @@ TEST(WebGpuContextTest, FailedOrTerminatedRunsDoNotAdvanceBufferAge) {
     webgpu::CommandRecordingState observer;
     auto still_recent = wgpu::Buffer::Acquire(manager.Create(observer, 64, usage));
     EXPECT_EQ(still_recent.Get(), first.Get());
-    for (size_t step = 0; step < 4; ++step) {
+    for (size_t step = 0; step < 16; ++step) {
       ASSERT_STATUS_OK(ep.OnRunStart(regular));
       ASSERT_STATUS_OK(ep.OnRunEnd(false, regular));
     }
     auto aged = wgpu::Buffer::Acquire(manager.Create(observer, 128, usage));
     EXPECT_NE(aged.Get(), second.Get());
+
+    ASSERT_STATUS_OK(ep.OnRunStart(regular));
+    auto surplus = wgpu::Buffer::Acquire(manager.Create(ep.Recording(), 256, usage));
+    manager.Release(wgpu::Buffer{surplus}.MoveToCHandle());
+    ASSERT_STATUS_OK(ep.OnRunEnd(false, regular));
+    for (size_t step = 0; step < 4; ++step) {
+      ASSERT_STATUS_OK(ep.OnRunStart(regular));
+      ASSERT_STATUS_OK(ep.OnRunEnd(false, regular));
+    }
+    // Failure forces maintenance even between ordinary cleanup batches.
+    ASSERT_STATUS_OK(ep.OnRunStart(regular));
+    ASSERT_STATUS_OK(ep.OnRunEnd(false, failed));
+    auto after_failure = wgpu::Buffer::Acquire(manager.Create(observer, 256, usage));
+    EXPECT_NE(after_failure.Get(), surplus.Get());
   });
 }
 
-TEST(WebGpuContextTest, CapturedReplayAdvancesOwnRunAgeWithoutDoubleCountingCapture) {
+TEST(WebGpuContextTest, CapturedReplayAdvancesOwnCleanupCadenceWithoutDoubleCountingCapture) {
   RunWithFreshDefaultContext([]() {
     ConfigOptions options;
     ASSERT_STATUS_OK(options.AddConfigEntry(kEnableGraphCapture, "1"));
@@ -1416,8 +1449,10 @@ TEST(WebGpuContextTest, CapturedReplayAdvancesOwnRunAgeWithoutDoubleCountingCapt
     ASSERT_STATUS_OK(ep.OnRunStart(regular));
     auto first = wgpu::Buffer::Acquire(shared.Create(ep.Recording(), 64, usage));
     auto second = wgpu::Buffer::Acquire(shared.Create(ep.Recording(), 128, usage));
+    auto third = wgpu::Buffer::Acquire(shared.Create(ep.Recording(), 256, usage));
     shared.Release(wgpu::Buffer{first}.MoveToCHandle(), &ep.Recording());
     shared.Release(wgpu::Buffer{second}.MoveToCHandle(), &ep.Recording());
+    shared.Release(wgpu::Buffer{third}.MoveToCHandle(), &ep.Recording());
     ASSERT_STATUS_OK(ep.OnRunEnd(false, regular));
 
     RunOptions capture;
@@ -1429,6 +1464,12 @@ TEST(WebGpuContextTest, CapturedReplayAdvancesOwnRunAgeWithoutDoubleCountingCapt
     webgpu::CommandRecordingState observer;
     auto before_expiry = wgpu::Buffer::Acquire(shared.Create(observer, 64, usage));
     EXPECT_EQ(before_expiry.Get(), first.Get());
+    for (size_t step = 0; step < 11; ++step) {
+      ASSERT_STATUS_OK(ep.ReplayGraph(0));
+    }
+    // Counting initial capture twice would have triggered cleanup already.
+    auto before_cleanup = wgpu::Buffer::Acquire(shared.Create(observer, 256, usage));
+    EXPECT_EQ(before_cleanup.Get(), third.Get());
     ASSERT_STATUS_OK(ep.ReplayGraph(0));
     auto after_expiry = wgpu::Buffer::Acquire(shared.Create(observer, 128, usage));
     EXPECT_NE(after_expiry.Get(), second.Get());
