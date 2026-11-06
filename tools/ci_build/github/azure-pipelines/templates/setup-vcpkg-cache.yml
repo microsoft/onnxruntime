@@ -9,6 +9,12 @@ parameters:
 
 steps:
 - pwsh: |
+    $infoPath = Join-Path $env:BUILD_SOURCESDIRECTORY tools ci_build build_tool_info.json
+    $vcpkg = (Get-Content -Raw $infoPath | ConvertFrom-Json).vcpkg
+    if ($vcpkg.sha512 -isnot [string] -or $vcpkg.sha512 -cnotmatch '\A[0-9a-fA-F]{128}\z') {
+      throw "Invalid vcpkg SHA-512"
+    }
+    Write-Host "##vso[task.setvariable variable=VCPKG_TOOL_SHA512]$($vcpkg.sha512)"
     New-Item -ItemType Directory -Path $env:VCPKG_CACHE_PATH -Force | Out-Null
     Write-Host "##vso[task.setvariable variable=VCPKG_DEFAULT_BINARY_CACHE]$env:VCPKG_CACHE_PATH"
   displayName: Configure vcpkg binary cache
@@ -23,7 +29,8 @@ steps:
     key: >-
       "vcpkg-cache-v1" | "$(Agent.OS)" | "$(Agent.OSArchitecture)" |
       "$(System.DefinitionId)" | "${{ parameters.key }}" |
-      cmake/vcpkg.json,cmake/vcpkg-configuration.json,cmake/vcpkg-ports/**,tools/ci_build/vcpkg_tool_info.json,tools/python/util/vcpkg_helpers.py |
+      "$(VCPKG_TOOL_SHA512)" |
+      cmake/vcpkg.json,cmake/vcpkg-configuration.json,cmake/vcpkg-ports/**,tools/python/util/vcpkg_helpers.py |
       "$(Build.SourceVersion)"
     # Release branches may restore exact keys, but must not fall back to older caches.
     ${{ if not(startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')) }}:
