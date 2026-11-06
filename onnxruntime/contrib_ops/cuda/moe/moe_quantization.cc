@@ -31,6 +31,7 @@
 #include "contrib_ops/cuda/llm/moe_gemm/moe_util_kernels.h"
 #include "contrib_ops/cuda/quantization/dequantize_blockwise.cuh"
 #include "contrib_ops/cuda/quantization/packed_moe_impl.h"
+#include "contrib_ops/cuda/sequence/fused_state_space_impl.h"
 #if defined(HAS_SM90_OR_LATER) && defined(USE_DEEP_GEMM)
 #include "contrib_ops/cuda/llm/moe_gemm/deep_gemm_sm90.h"
 #endif
@@ -39,6 +40,7 @@
 #include "contrib_ops/cpu/utils/debug_macros.h"
 
 #include <algorithm>
+#include <cmath>
 #include <optional>
 #include <array>
 #include <cstring>
@@ -449,6 +451,14 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   ORT_ENFORCE(quant_type_ == "iq2_xxs" ||
                   (GetOffloadInputName(op_kernel_info, 21).empty() && GetOffloadInputName(op_kernel_info, 22).empty()),
               "QMoE preselected routing currently requires quant_type='iq2_xxs'.");
+  const bool fused_router = !GetOffloadInputName(op_kernel_info, 23).empty() ||
+                            !GetOffloadInputName(op_kernel_info, 24).empty() ||
+                            !GetOffloadInputName(op_kernel_info, 25).empty();
+  const float router_scale = op_kernel_info.GetAttrOrDefault<float>("router_scale", 1.0f);
+  ORT_ENFORCE(std::isfinite(router_scale) && (fused_router || router_scale == 1.0f),
+              "QMoE router_scale must be finite and requires fused router inputs when not 1.");
+  ORT_ENFORCE(!fused_router || quant_type_ == "iq2_xxs",
+              "QMoE fused routing currently requires quant_type='iq2_xxs'.");
   const bool use_int_dequant_fallback =
       quant_type_ == "int" && !has_int3_ && (is_mixed_width || expert_weight_bits_ == 2);
   enable_int2_gemv_ = quant_type_ == "int" &&
@@ -549,9 +559,18 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       ORT_ENFORCE(GetOffloadInputName(op_kernel_info, index).empty(),
                   "QMoE IQ2_XXS does not accept input ", index, ".");
     }
-    ORT_ENFORCE(!GetOffloadInputName(op_kernel_info, 21).empty() &&
-                    !GetOffloadInputName(op_kernel_info, 22).empty(),
-                "QMoE IQ2_XXS requires expert_indices and expert_weights.");
+    if (fused_router) {
+      ORT_ENFORCE(!GetOffloadInputName(op_kernel_info, 23).empty() &&
+                      !GetOffloadInputName(op_kernel_info, 24).empty() &&
+                      !GetOffloadInputName(op_kernel_info, 25).empty() &&
+                      GetOffloadInputName(op_kernel_info, 21).empty() &&
+                      GetOffloadInputName(op_kernel_info, 22).empty(),
+                  "QMoE fused routing requires all three router inputs and no preselected routes.");
+    } else {
+      ORT_ENFORCE(!GetOffloadInputName(op_kernel_info, 21).empty() &&
+                      !GetOffloadInputName(op_kernel_info, 22).empty(),
+                  "QMoE IQ2_XXS requires expert_indices and expert_weights.");
+    }
     return;
   }
   if (has_int3_) {
@@ -1465,15 +1484,21 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     const auto* scale2 = context->Input<Tensor>(6);
     const auto* indices = context->Input<Tensor>(21);
     const auto* weights = context->Input<Tensor>(22);
-    ORT_RETURN_IF_NOT(x && fc1 && scale1 && fc2 && scale2 && indices && weights,
-                      "QMoE IQ2_XXS requires input, weights, scales and preselected routes.");
+    const auto* router_input = context->Input<Tensor>(23);
+    const auto* router_weight = context->Input<Tensor>(24);
+    const auto* router_bias = context->Input<Tensor>(25);
+    const bool fused_router = router_input || router_weight || router_bias;
+    ORT_RETURN_IF_NOT(x && fc1 && scale1 && fc2 && scale2,
+                      "QMoE IQ2_XXS requires input, weights and scales.");
     ORT_RETURN_IF_NOT(x->Shape().NumDimensions() == 2 && x->Shape()[1] == 1024 &&
                           x->Shape()[0] >= 1 && x->Shape()[0] <= 8 && x->Shape()[0] * k_ <= 128,
                       "QMoE IQ2_XXS requires X[R,1024], 1<=R<=8 and R*k<=128.");
     const int rows = static_cast<int>(x->Shape()[0]), topk = static_cast<int>(k_), pairs = rows * topk;
-    ORT_RETURN_IF_NOT(indices->Shape() == TensorShape({rows, topk}) &&
-                          weights->Shape() == indices->Shape(),
-                      "QMoE IQ2_XXS routing matrices must have shape [R,k].");
+    if (!fused_router) {
+      ORT_RETURN_IF_NOT(indices && weights && indices->Shape() == TensorShape({rows, topk}) &&
+                            weights->Shape() == indices->Shape(),
+                        "QMoE IQ2_XXS routing matrices must have shape [R,k].");
+    }
     ORT_RETURN_IF_NOT(scale1->IsDataType<MLFloat16>() && scale2->IsDataType<MLFloat16>(),
                       "QMoE IQ2_XXS requires FP16 super-scales, independent of BF16 activations.");
     ORT_RETURN_IF_NOT(fc1->Shape().NumDimensions() == 3 &&
@@ -1486,14 +1511,39 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                           fc2->Shape() == TensorShape({experts, 1024, intermediate / 4}) &&
                           scale2->Shape() == TensorShape({experts, 1024, intermediate / 256}),
                       "QMoE IQ2_XXS projection and super-scale shapes disagree.");
+    IAllocatorUniquePtr<int32_t> routed_indices;
+    IAllocatorUniquePtr<float> routed_weights, router_scores;
+    if (fused_router) {
+      ORT_RETURN_IF_NOT(router_input && router_weight && router_bias && !indices && !weights &&
+                            router_input->Shape().NumDimensions() == 2 &&
+                            router_input->Shape()[0] == rows && router_input->Shape()[1] > 0 &&
+                            router_input->Shape()[1] <= std::numeric_limits<int>::max() &&
+                            router_input->Shape()[1] % 256 == 0 && experts <= 512,
+                        "QMoE fused routing requires router_input[R,H], positive int32 H divisible by 256, "
+                        "E<=512 and no preselected routes.");
+      const int width = static_cast<int>(router_input->Shape()[1]);
+      ORT_RETURN_IF_NOT(router_weight->Shape() == TensorShape({experts, width}) &&
+                            router_bias->Shape() == TensorShape({experts}),
+                        "QMoE fused routing requires router_weight[E,H] and router_bias[E].");
+      routed_indices = GetScratchBuffer<int32_t>(pairs, GetComputeStream(context));
+      routed_weights = GetScratchBuffer<float>(pairs, GetComputeStream(context));
+      router_scores = GetScratchBuffer<float>(SafeInt<size_t>(rows) * experts, GetComputeStream(context));
+      // Reuse the source routing arithmetic and ordering before any aliased output is written.
+      CUDA_RETURN_IF_ERROR(LaunchBiasCorrectedMoERoute(
+          Stream(context), rows, width, experts, topk, Info().GetAttrOrDefault<float>("router_scale", 1.0f),
+          router_input->DataRaw(), router_weight->DataRaw(), router_bias->Data<float>(),
+          routed_indices.get(), routed_weights.get(), router_scores.get()));
+    }
     // FC1 consumes X before the final same-stream kernel writes Y, including an in-place Y.
     auto hidden = GetScratchBuffer<BFloat16>(SafeInt<size_t>(pairs) * intermediate, GetComputeStream(context));
     auto partial = GetScratchBuffer<float>(SafeInt<size_t>(pairs) * 1024, GetComputeStream(context));
     auto metadata = GetScratchBuffer<int32_t>(1 + pairs * 9, GetComputeStream(context));
     auto* y = context->Output(0, x->Shape());
     CUDA_RETURN_IF_ERROR(LaunchMoEPackedIQ2XXS(
-        Stream(context), rows, topk, experts, intermediate, x->DataRaw(), indices->Data<int32_t>(),
-        weights->Data<float>(), fc1->Data<uint8_t>(), scale1->DataRaw(), fc2->Data<uint8_t>(),
+        Stream(context), rows, topk, experts, intermediate, x->DataRaw(),
+        fused_router ? routed_indices.get() : indices->Data<int32_t>(),
+        fused_router ? routed_weights.get() : weights->Data<float>(),
+        fc1->Data<uint8_t>(), scale1->DataRaw(), fc2->Data<uint8_t>(),
         scale2->DataRaw(), y->MutableDataRaw(), hidden.get(), partial.get(), metadata.get()));
     return Status::OK();
   }

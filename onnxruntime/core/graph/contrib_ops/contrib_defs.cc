@@ -1659,11 +1659,22 @@ static void QMoETypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   const auto has_input = [&](size_t index) {
     return index < ctx.getNumInputs() && ctx.getInputType(index) != nullptr;
   };
+  const bool fused_router = has_input(23) || has_input(24) || has_input(25);
   if (is_iq2_xxs) {
-    if (has_input(1) || !has_input(21) || !has_input(22)) {
+    if (fused_router) {
+      if (has_input(1) || has_input(21) || has_input(22) ||
+          !has_input(23) || !has_input(24) || !has_input(25)) {
+        fail_shape_inference(
+            "QMoE fused routing requires router_input, router_weight and router_bias, "
+            "without router_probs, expert_indices or expert_weights.");
+      }
+    } else if (has_input(1) || !has_input(21) || !has_input(22)) {
       fail_shape_inference("QMoE IQ2_XXS requires preselected expert_indices and expert_weights, without router_probs.");
     }
     return;
+  }
+  if (fused_router) {
+    fail_shape_inference("QMoE fused routing currently requires quant_type='iq2_xxs'.");
   }
   if (has_input(21) || has_input(22)) {
     fail_shape_inference("QMoE preselected routing currently requires quant_type='iq2_xxs'.");
@@ -1872,8 +1883,12 @@ static OpSchema QMoESchema() {
       "'iq2_xxs' uses nonlinear IQ2_XXS codebooks with 8-byte records per 32 weights, "
       "containing four grid indices followed by packed signs and a local scale, "
       "and FP16 super-scales per 256 weights. It requires expert_weight_bits=2, block_size=256, "
-      "weights_prepacked=0, activation_type='relu2', and preselected expert_indices/expert_weights "
-      "instead of router_probs. CUDA currently supports BF16 [R,1024], 1<=R<=8, "
+      "weights_prepacked=0, activation_type='relu2', and either preselected expert_indices/expert_weights "
+      "or all three fused router inputs instead of router_probs. "
+      "Fused routing computes sigmoid router scores with FP32 accumulation, selects k experts using "
+      "score + router_bias (ties prefer lower IDs), and mixes using the uncorrected scores normalized "
+      "by their selected sum plus 1e-20, then multiplied by router_scale. "
+      "CUDA currently supports BF16 [R,1024], 1<=R<=8, "
       "1<=k<=32, R*k<=128, and positive intermediate sizes divisible by 256 on SM80+. "
       "Biases, FC3, zero points, auxiliary scales, routing normalization, sparse mixer, "
       "required offloading and expert tracking are not supported for IQ2_XXS. "
@@ -1888,6 +1903,11 @@ static OpSchema QMoESchema() {
                           "Number of top experts to select from expert pool",
                           AttributeProto::INT,
                           static_cast<int64_t>(1))
+                    .Attr("router_scale",
+                          "Optional finite FP32 multiplier for fused IQ2_XXS router mixing weights (default 1). "
+                          "Must remain 1 when fused router inputs are omitted.",
+                          AttributeProto::FLOAT,
+                          OPTIONAL_VALUE)
                     .Attr("normalize_routing_weights",
                           "Whether to normalize routing weights",
                           AttributeProto::INT,
@@ -2117,8 +2137,26 @@ static OpSchema QMoESchema() {
                            OpSchema::Optional)
                     .Input(22,
                            "expert_weights",
-                           "FP32 mixing weights [R,k] corresponding to expert_indices. Required with "
-                           "quant_type='iq2_xxs'; used as provided without normalization or BF16 rounding.",
+                           "FP32 mixing weights [R,k] corresponding to expert_indices. Required for "
+                           "IQ2_XXS preselected routing; used as provided without normalization or BF16 rounding.",
+                           "T4",
+                           OpSchema::Optional)
+                    .Input(23,
+                           "router_input",
+                           "BF16 routing activations [R,H], independent of the expert input width. "
+                           "IQ2_XXS fused routing requires H positive, divisible by 256 and fitting int32, "
+                           "all three router inputs, and no preselected routes or router_probs.",
+                           "tensor(bfloat16)",
+                           OpSchema::Optional)
+                    .Input(24,
+                           "router_weight",
+                           "BF16 routing matrix [E,H], with k<=E<=512. Used without prepacking.",
+                           "tensor(bfloat16)",
+                           OpSchema::Optional)
+                    .Input(25,
+                           "router_bias",
+                           "FP32 expert-selection correction [E]. Added only for top-k selection, "
+                           "not to the selected mixing weights. Supported only with IQ2_XXS fused routing.",
                            "T4",
                            OpSchema::Optional)
                     .Output(0,

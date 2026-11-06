@@ -7015,7 +7015,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>normalize_routing_weights</tt> : int</dt>
 <dd>Whether to normalize routing weights</dd>
 <dt><tt>quant_type</tt> : string</dt>
-<dd>Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, 'nvfp4' for NVFP4 quantization, 'fp8' for FP8 e4m3 weight-only quantization, or 'wfp4afp8' for MXFP4 weight with FP8 activation. When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. 'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales with block_size 16. 'fp8' uses float8e4m3fn weights and, when block_size > 0, float32, float16, or bfloat16 square-block scales in fc*_scales instead of fc*_global_scale. 'iq2_xxs' uses nonlinear IQ2_XXS codebooks with 8-byte records per 32 weights, containing four grid indices followed by packed signs and a local scale, and FP16 super-scales per 256 weights. It requires expert_weight_bits=2, block_size=256, weights_prepacked=0, activation_type='relu2', and preselected expert_indices/expert_weights instead of router_probs. CUDA currently supports BF16 [R,1024], 1<=R<=8, 1<=k<=32, R*k<=128, and positive intermediate sizes divisible by 256 on SM80+. Biases, FC3, zero points, auxiliary scales, routing normalization, sparse mixer, required offloading and expert tracking are not supported for IQ2_XXS. The INT3 profile requires integer quantization.</dd>
+<dd>Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, 'nvfp4' for NVFP4 quantization, 'fp8' for FP8 e4m3 weight-only quantization, or 'wfp4afp8' for MXFP4 weight with FP8 activation. When quant_type is 'fp4' or 'nvfp4', weights are stored in E2M1 FP4 format (2 values per byte), fc*_scales inputs contain the FP4 block scales, and fc*_global_scale inputs must be provided. 'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales with block_size 16. 'fp8' uses float8e4m3fn weights and, when block_size > 0, float32, float16, or bfloat16 square-block scales in fc*_scales instead of fc*_global_scale. 'iq2_xxs' uses nonlinear IQ2_XXS codebooks with 8-byte records per 32 weights, containing four grid indices followed by packed signs and a local scale, and FP16 super-scales per 256 weights. It requires expert_weight_bits=2, block_size=256, weights_prepacked=0, activation_type='relu2', and either preselected expert_indices/expert_weights or all three fused router inputs instead of router_probs. Fused routing computes sigmoid router scores with FP32 accumulation, selects k experts using score + router_bias (ties prefer lower IDs), and mixes using the uncorrected scores normalized by their selected sum plus 1e-20, then multiplied by router_scale. CUDA currently supports BF16 [R,1024], 1<=R<=8, 1<=k<=32, R*k<=128, and positive intermediate sizes divisible by 256 on SM80+. Biases, FC3, zero points, auxiliary scales, routing normalization, sparse mixer, required offloading and expert tracking are not supported for IQ2_XXS. The INT3 profile requires integer quantization.</dd>
+<dt><tt>router_scale</tt> : float</dt>
+<dd>Optional finite FP32 multiplier for fused IQ2_XXS router mixing weights (default 1). Must remain 1 when fused router inputs are omitted.</dd>
 <dt><tt>swiglu_fusion</tt> : int</dt>
 <dd>Gate/up layout for swiglu or geglu. 0: not fused (swiglu only), 1: fused and interleaved, 2: fused and not interleaved ([gate | up] for geglu).</dd>
 <dt><tt>swiglu_limit</tt> : float</dt>
@@ -7026,7 +7028,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Expert-weight layout selector with quantization-specific meanings. For quant_type='int', -1 and 1 select execution-provider-specific prepacked int4/int8 fc1/fc2 layouts. 0 selects raw [E,N,K/pack] tensors as produced by quantize_matmul_{4,8}bits. For quant_type='nvfp4' on CUDA, -1 (default) and 0 select legacy N-packed [E,K,N/2] bytes; 1 selects K-packed row-major [E,N,K/2] bytes while retaining logical [E,K,N/2] dimensions. NVFP4 block scales and global scales retain their original layouts and values. IQ2_XXS requires 0 for raw records. Ignored for other quantization types. Supported values are -1, 0, and 1; defaults to -1.</dd>
 </dl>
 
-#### Inputs (6 - 23)
+#### Inputs (6 - 26)
 
 <dl>
 <dt><tt>input</tt> : T</dt>
@@ -7074,7 +7076,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>expert_indices</tt> (optional) : tensor(int32)</dt>
 <dd>Preselected int32 expert IDs [R,k], currently supported only for quant_type='iq2_xxs'. Order is preserved for FP32 weighted accumulation. An out-of-range or duplicate ID makes its whole output row NaN.</dd>
 <dt><tt>expert_weights</tt> (optional) : T4</dt>
-<dd>FP32 mixing weights [R,k] corresponding to expert_indices. Required with quant_type='iq2_xxs'; used as provided without normalization or BF16 rounding.</dd>
+<dd>FP32 mixing weights [R,k] corresponding to expert_indices. Required for IQ2_XXS preselected routing; used as provided without normalization or BF16 rounding.</dd>
+<dt><tt>router_input</tt> (optional) : tensor(bfloat16)</dt>
+<dd>BF16 routing activations [R,H], independent of the expert input width. IQ2_XXS fused routing requires H positive, divisible by 256 and fitting int32, all three router inputs, and no preselected routes or router_probs.</dd>
+<dt><tt>router_weight</tt> (optional) : tensor(bfloat16)</dt>
+<dd>BF16 routing matrix [E,H], with k<=E<=512. Used without prepacking.</dd>
+<dt><tt>router_bias</tt> (optional) : T4</dt>
+<dd>FP32 expert-selection correction [E]. Added only for top-k selection, not to the selected mixing weights. Supported only with IQ2_XXS fused routing.</dd>
 </dl>
 
 #### Outputs

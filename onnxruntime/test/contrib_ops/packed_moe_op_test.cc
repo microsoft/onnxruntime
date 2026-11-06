@@ -28,12 +28,15 @@ void AddPreselectedRoutes(OpTester& tester, int rows, int topk,
 }
 
 template <typename Scale>
-void TestReusedExperts(int rows, bool qmoe = false, const std::string& expected_error = "") {
-  constexpr int experts = 2, intermediate = 256, topk = 2;
+void TestReusedExperts(int rows, bool qmoe = false, const std::string& expected_error = "",
+                       bool fused_router = false, int router_width = 256, float router_scale = 5.f) {
+  constexpr int intermediate = 256, topk = 2;
+  const int experts = fused_router ? 3 : 2;
   const int pairs = rows * topk;
   OpTester tester(qmoe ? "QMoE" : "MoEPackedIQ2XXS", 1, kMSDomain);
   if (qmoe) {
     ConfigureIQ2QMoE(tester, topk);
+    if (fused_router) tester.AddAttribute("router_scale", router_scale);
   } else {
     tester.AddAttribute("topk", int64_t{topk});
   }
@@ -41,10 +44,12 @@ void TestReusedExperts(int rows, bool qmoe = false, const std::string& expected_
   std::vector<int32_t> indices(pairs);
   std::vector<float> weights(pairs);
   for (int r = 0; r < rows; ++r) {
-    indices[r * 2] = r & 1;
-    indices[r * 2 + 1] = 1 - (r & 1);
-    weights[r * 2] = (r & 1) ? 2.f : 0.5f;
-    weights[r * 2 + 1] = (r & 1) ? 0.5f : 2.f;
+    indices[r * 2] = fused_router ? 2 : r & 1;
+    indices[r * 2 + 1] = fused_router ? 0 : 1 - (r & 1);
+    weights[r * 2] = fused_router ? router_scale / 2.f : (r & 1) ? 2.f
+                                                                 : 0.5f;
+    weights[r * 2 + 1] = fused_router ? router_scale / 2.f : (r & 1) ? 0.5f
+                                                                     : 2.f;
   }
   if (qmoe) {
     tester.AddOptionalInputEdge<BFloat16>();
@@ -65,7 +70,7 @@ void TestReusedExperts(int rows, bool qmoe = false, const std::string& expected_
   } else {
     tester.AddInput<uint8_t>("fc1", {experts, intermediate, 32, 8}, make_packed(experts * intermediate * 256));
   }
-  auto make_scale = [](int elements) {
+  auto make_scale = [experts](int elements) {
     std::vector<Scale> data;
     data.reserve(elements * experts);
     for (int e = 0; e < experts; ++e) {
@@ -82,10 +87,22 @@ void TestReusedExperts(int rows, bool qmoe = false, const std::string& expected_
     tester.AddInput<uint8_t>("fc2", {experts, 1024, 8, 8}, make_packed(experts * 1024 * 64));
   }
   tester.AddInput<Scale>("scale2", {experts, 1024, 1}, make_scale(1024));
-  if (qmoe) AddPreselectedRoutes(tester, rows, topk, indices, weights);
+  if (qmoe) {
+    if (fused_router) {
+      for (int index = 7; index <= 22; ++index) tester.AddOptionalInputEdge<BFloat16>();
+      tester.AddInput<BFloat16>("router_input", {rows, router_width},
+                                std::vector<BFloat16>(rows * router_width, BFloat16(1.f)));
+      tester.AddInput<BFloat16>("router_weight", {experts, router_width},
+                                std::vector<BFloat16>(experts * router_width, BFloat16(0.f)));
+      // Equal sigmoid scores select experts 2 and 0, but their mixing weights remain equal.
+      tester.AddInput<float>("router_bias", {experts}, {1.f, -2.f, 2.f});
+    } else {
+      AddPreselectedRoutes(tester, rows, topk, indices, weights);
+    }
+  }
   std::vector<BFloat16> hidden(pairs * intermediate);
   std::vector<float> partial(pairs * 1024);
-  float expert_hidden[experts], expert_partial[experts];
+  std::vector<float> expert_hidden(experts), expert_partial(experts);
   for (int e = 0; e < experts; ++e) {
     const float d = MLFloat16(e == 0 ? 0.019f : 0.023f).ToFloat();
     const float sum8 = BFloat16(d * 0.125f * 43.f).ToFloat() + 7.f * BFloat16(d).ToFloat();
@@ -99,11 +116,14 @@ void TestReusedExperts(int rows, bool qmoe = false, const std::string& expected_
     std::fill_n(partial.begin() + p * 1024, 1024, expert_partial[e]);
   }
   std::vector<int32_t> metadata(1 + 9 * pairs, -1);
-  metadata[0] = 2;
-  metadata[1] = 0;
-  metadata[2] = 1;
-  for (int p = 0; p < pairs; ++p) metadata[1 + pairs + indices[p] * 8 + p / topk] = p;
-  const BFloat16 sum(0.5f * expert_partial[0] + 2.f * expert_partial[1]);
+  if (!qmoe) {
+    metadata[0] = 2;
+    metadata[1] = 0;
+    metadata[2] = 1;
+    for (int p = 0; p < pairs; ++p) metadata[1 + pairs + indices[p] * 8 + p / topk] = p;
+  }
+  const BFloat16 sum(fused_router ? router_scale / 2.f * expert_partial[2] + router_scale / 2.f * expert_partial[0]
+                                  : 0.5f * expert_partial[0] + 2.f * expert_partial[1]);
   tester.AddOutput<BFloat16>("Y", {rows, 1024}, std::vector<BFloat16>(rows * 1024, sum));
   if (!qmoe) {
     tester.AddOutput<BFloat16>("hidden", {pairs, intermediate}, hidden);
@@ -373,6 +393,20 @@ TEST(QMoEIQ2XXSTest, ReusedExpertsAndIndependentFP16Scales) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   for (int rows : {1, 3, 8}) TestReusedExperts<MLFloat16>(rows, true);
 }
+
+TEST(QMoEIQ2XXSTest, FusedBiasCorrectedRouterPreservesUncorrectedWeightsAndScale) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (int rows : {1, 3, 8}) TestReusedExperts<MLFloat16>(rows, true, "", true);
+}
+
+#ifndef ORT_NO_EXCEPTIONS
+TEST(QMoEIQ2XXSTest, FusedRouterRejectsUnsupportedWidthAndNonfiniteScale) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  TestReusedExperts<MLFloat16>(1, true, "positive int32 H divisible by 256", true, 128);
+  TestReusedExperts<MLFloat16>(1, true, "router_scale must be finite", true, 256,
+                               std::numeric_limits<float>::quiet_NaN());
+}
+#endif
 
 TEST(QMoEIQ2XXSTest, SparseRoutesAndOrderedFP32Accumulation) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
