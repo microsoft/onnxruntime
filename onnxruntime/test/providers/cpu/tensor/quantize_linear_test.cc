@@ -4458,6 +4458,10 @@ void DequantizeLinearSubByteMatchesReferenceAllShapes() {
       {{70, 9}, 0, 16},       // blocked, short rows
       {{33, 1031}, 0, 8},     // blocked, long rows starting mid-byte
       {{2, 37, 3, 7}, 1, 5},  // blocked on a middle axis
+      // block_size larger than the axis. 4294967295 is SIZE_MAX on 32-bit builds, where it used to wrap the
+      // block count to zero.
+      {{2, 3}, 1, 4294967295},
+      {{2, 3, 2}, 1, 4294967295},
   };
   for (const auto& c : cases) {
     for (bool use_zero_point : {true, false}) {
@@ -4467,12 +4471,13 @@ void DequantizeLinearSubByteMatchesReferenceAllShapes() {
 
   // Large enough for TryParallelFor to split the work across a 4-thread pool, so units run concurrently.
   const std::vector<Case> parallel_cases{
-      {{16, 4096, 7}, 1, 0},  // per-axis, short rows
-      {{4, 3, 40001}, 1, 0},  // per-axis, long rows starting mid-byte
-      {{8, 30001}, 1, 0},     // per-axis on the last axis
-      {{8, 30001}, 1, 32},    // blocked on the last axis
-      {{65536, 7}, 0, 16},    // blocked, short rows
-      {{40, 7001}, 0, 8},     // blocked, long rows starting mid-byte
+      {{16, 4096, 7}, 1, 0},   // per-axis, short rows
+      {{4, 3, 40001}, 1, 0},   // per-axis, long rows starting mid-byte
+      {{8, 30001}, 1, 0},      // per-axis on the last axis
+      {{8, 30001}, 1, 32},     // blocked on the last axis
+      {{2, 30001}, 1, 20000},  // blocked on the last axis, blocks split across units
+      {{65536, 7}, 0, 16},     // blocked, short rows
+      {{40, 7001}, 0, 8},      // blocked, long rows starting mid-byte
   };
   for (const auto& c : parallel_cases) {
     for (bool use_zero_point : {true, false}) {

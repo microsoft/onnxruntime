@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <limits>
 #include <type_traits>
 #include <utility>
@@ -565,7 +566,8 @@ void DequantizeSubByteShortRows(size_t M, size_t K, size_t N, size_t quant_block
                                 concurrency::ThreadPool* thread_pool) {
   const size_t num_rows = M * K;
   const size_t rows_per_unit = kSubByteChunk / N;
-  const size_t num_blocks = quant_block_size ? (K + quant_block_size - 1) / quant_block_size : 0;
+  // Not (K + quant_block_size - 1) / quant_block_size, which can wrap for a huge block_size on 32-bit builds.
+  const size_t num_blocks = quant_block_size ? K / quant_block_size + (K % quant_block_size != 0) : 0;
   ParallelForSubByte<OutT>(
       thread_pool, (num_rows + rows_per_unit - 1) / rows_per_unit, rows_per_unit * N, [&](size_t unit) {
         const size_t row_begin = unit * rows_per_unit;
@@ -669,7 +671,25 @@ struct DequantizeLinearApply<T, ScaleT, OutT, true, elements_per_byte> {
     if (M * K * N == 0) {
       return;
     }
-    const size_t num_blocks = (K + quant_block_size - 1) / quant_block_size;
+    const size_t num_blocks = K / quant_block_size + (K % quant_block_size != 0);
+
+    if (N == 1 && quant_block_size >= kSubByteChunk) {
+      // Long blocks: split each block into chunks so that a single block is still parallel.
+      const size_t chunks_per_block = (std::min(K, quant_block_size) + kSubByteChunk - 1) / kSubByteChunk;
+      ParallelForSubByte<OutT>(thread_pool, M * num_blocks * chunks_per_block, kSubByteChunk, [&](size_t unit) {
+        const size_t block = unit / chunks_per_block;
+        const size_t c = (unit % chunks_per_block) * kSubByteChunk;
+        const size_t m = block / num_blocks;
+        const size_t k = (block % num_blocks) * quant_block_size + c;
+        if (k >= K) {
+          return;  // past the end of a partial last block
+        }
+        const size_t len = std::min({kSubByteChunk, quant_block_size - c, K - k});
+        DequantizeSubByteRun<T, ScaleT, OutT, elements_per_byte, false>(input, m * K + k, len, scale + block,
+                                                                        zero_point, block, output + m * K + k);
+      });
+      return;
+    }
 
     if (N == 1) {
       // Each quantize block is a contiguous run of elements with one scale and zero point.
