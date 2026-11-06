@@ -10,6 +10,7 @@
 #include "core/common/string_utils.h"
 
 #include "core/framework/config_options.h"
+#include "core/framework/cuda_gqa_workspace_config.h"
 #include "core/framework/kernel_dispatch_policy.h"
 #include "core/framework/max_shape_override.h"
 #include "core/framework/murmurhash3.h"
@@ -552,17 +553,7 @@ Status ParseCudaGqaWorkspaceMaxTotalSequenceLength(
     return Status::OK();
   }
 
-  int64_t parsed = 0;
-  if (!TryParseStringWithClassicLocale(*knob, parsed) || parsed < 0 ||
-      parsed > std::numeric_limits<int32_t>::max()) {
-    return ORT_MAKE_STATUS(
-        ONNXRUNTIME, INVALID_ARGUMENT,
-        kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength,
-        " must be a decimal integer in [0, INT32_MAX], but got: '", *knob, "'");
-  }
-
-  max_total_sequence_length = parsed;
-  return Status::OK();
+  return ParseCudaGqaWorkspaceMaxTotalSequenceLength(std::string_view{*knob}, max_total_sequence_length);
 }
 
 Status CreateAccountants(
