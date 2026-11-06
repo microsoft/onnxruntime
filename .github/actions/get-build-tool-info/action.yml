@@ -40,35 +40,36 @@ runs:
   steps:
   - name: Read build tool info
     id: tool-info
-    shell: bash
+    shell: ${{ runner.os == 'Windows' && 'python {0}' || 'python3 {0}' }}
     env:
       GET_CMAKE: ${{ inputs.cmake }}
       GET_VCPKG: ${{ inputs.vcpkg }}
       GET_CCACHE: ${{ inputs.ccache }}
     run: |
-      for flag in "$GET_CMAKE" "$GET_VCPKG" "$GET_CCACHE"; do
-        if [[ "$flag" != "true" && "$flag" != "false" ]]; then
-          echo "::error::Tool selection inputs must be 'true' or 'false'."
-          exit 1
-        fi
-      done
+      import os
+      import sys
+      from pathlib import Path
 
-      tool_names=()
-      if [[ "$GET_CMAKE" == "true" ]]; then
-        tool_names+=(cmake)
-      fi
-      if [[ "$GET_VCPKG" == "true" ]]; then
-        tool_names+=(vcpkg)
-      fi
-      if [[ "$GET_CCACHE" == "true" ]]; then
-        tool_names+=(ccache)
-      fi
+      sys.path.insert(0, str(Path(os.environ["GITHUB_ACTION_PATH"]).parents[2] / "tools" / "ci_build"))
+      from build_tool_info import get_tool_info
 
-      if [[ "$RUNNER_OS" == "Windows" ]]; then
-        python_command=python
-      else
-        python_command=python3
-      fi
+      tool_names = []
+      for tool in ("cmake", "vcpkg", "ccache"):
+          flag = os.environ[f"GET_{tool.upper()}"]
+          if flag not in ("true", "false"):
+              sys.exit("::error::Tool selection inputs must be 'true' or 'false'.")
+          if flag == "true":
+              tool_names.append(tool)
 
-      "$python_command" "$GITHUB_ACTION_PATH/../../../tools/ci_build/build_tool_info.py" --tools "${tool_names[@]}" \
-        | tee -a "$GITHUB_OUTPUT"
+      if not tool_names:
+          sys.exit("::error::At least one tool must be requested.")
+
+      lines = []
+      for tool in tool_names:
+          info = get_tool_info(tool)
+          lines.extend((f"{tool}-version={info.version}", f"{tool}-sha512={info.sha512}"))
+      text = "\n".join(lines) + "\n"
+
+      print(text, end="")
+      with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+          output.write(text)

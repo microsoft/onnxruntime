@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-import argparse
 import json
 import platform
 import re
@@ -69,20 +68,3 @@ def get_tool_info(tool: str, *, host_os: str | None = None, host_arch: str | Non
         raise ValueError(f"Invalid {tool} SHA-512")
 
     return ToolInfo(version, sha512)
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--tools", nargs="+", choices=_BUILD_TOOL_INFO.keys(), required=True, help="Tools to look up.")
-    args = parser.parse_args()
-
-    outputs = []
-    for tool_name in args.tools:
-        info = get_tool_info(tool_name)
-        outputs.extend((f"{tool_name}-version={info.version}", f"{tool_name}-sha512={info.sha512}"))
-
-    print("\n".join(outputs))
-
-
-if __name__ == "__main__":
-    main()
