@@ -2498,7 +2498,7 @@ TEST(PagedAttention, CudaRejectsZeroPhysicalCacheBlocks) {
   c.max_num_blocks_per_seq = 1;
   c.block_table = {-1};
   c.allow_malformed_sequence_metadata = true;
-  c.expected_error = "requires at least one physical cache block";
+  c.expected_error = "has zero blocks";
   RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
 }
 

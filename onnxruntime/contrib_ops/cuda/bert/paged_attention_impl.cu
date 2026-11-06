@@ -1932,14 +1932,16 @@ Status PagedDecodeAttention(
 //     [num_heads] order -- so only a dtype conversion is needed.
 
 // block_table [batch, max_num_blocks_per_seq] -> page_table [batch, max_num_blocks_per_seq * pages_per_block],
-// for the backends that cannot skip a block (FlashAttention, cuDNN, XQA). A -1 is only legal where the mask
-// already excludes it (below the window or past kv_len), so redirecting invalid entries to block 0 keeps
-// reads in bounds.
+// for the backends that cannot skip a block (cuDNN, XQA) or that mask unmapped pages themselves (FlashAttention).
+// A -1 is only legal where the mask already excludes it (below the window or past kv_len), so cuDNN/XQA redirect
+// invalid entries to block 0 to keep reads in bounds. FlashAttention (keep_unmapped) keeps them as -1, which it
+// masks natively, so an out-of-range entry behaves exactly like an explicit -1.
 __global__ void ExpandBlockTableToPages(const int* __restrict__ block_table,
                                         int* __restrict__ page_table,
                                         const int max_num_blocks_per_seq,
                                         const int pages_per_block,
                                         const int num_blocks,
+                                        const bool keep_unmapped,
                                         const int64_t total_pages) {
   const int64_t stride = static_cast<int64_t>(gridDim.x) * blockDim.x;
   const int64_t pages_per_seq = static_cast<int64_t>(max_num_blocks_per_seq) * pages_per_block;
@@ -1948,6 +1950,10 @@ __global__ void ExpandBlockTableToPages(const int* __restrict__ block_table,
     const int page_in_seq = static_cast<int>(i - seq * pages_per_seq);
     int block_id = block_table[seq * max_num_blocks_per_seq + page_in_seq / pages_per_block];
     if (block_id < 0 || block_id >= num_blocks) {
+      if (keep_unmapped) {
+        page_table[i] = -1;
+        continue;
+      }
       block_id = 0;
     }
     page_table[i] = block_id * pages_per_block + (page_in_seq % pages_per_block);
@@ -1956,7 +1962,7 @@ __global__ void ExpandBlockTableToPages(const int* __restrict__ block_table,
 
 Status LaunchExpandBlockTableToPages(const int* block_table, int* page_table, const int batch_size,
                                      const int max_num_blocks_per_seq, const int pages_per_block,
-                                     const int num_blocks, cudaStream_t stream) {
+                                     const int num_blocks, const bool keep_unmapped, cudaStream_t stream) {
   const int64_t total_pages = static_cast<int64_t>(batch_size) * max_num_blocks_per_seq * pages_per_block;
   if (total_pages == 0) {
     return Status::OK();
@@ -1964,7 +1970,7 @@ Status LaunchExpandBlockTableToPages(const int* block_table, int* page_table, co
   constexpr int kThreads = 256;
   const int blocks = static_cast<int>(std::min<int64_t>((total_pages + kThreads - 1) / kThreads, 65535));
   ExpandBlockTableToPages<<<blocks, kThreads, 0, stream>>>(block_table, page_table, max_num_blocks_per_seq,
-                                                           pages_per_block, num_blocks, total_pages);
+                                                           pages_per_block, num_blocks, keep_unmapped, total_pages);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -2115,7 +2121,7 @@ Status PagedXqaDecodeAttention(
   ORT_RETURN_IF_NOT(data.xqa_page_table_scratch, "XQA page-table scratch was not allocated.");
   ORT_RETURN_IF_ERROR(LaunchExpandBlockTableToPages(data.block_table, data.xqa_page_table_scratch, batch_size,
                                                     parameters.max_num_blocks_per_seq, pages_per_block,
-                                                    parameters.num_blocks, stream));
+                                                    parameters.num_blocks, /*keep_unmapped*/ false, stream));
   const int* page_table = data.xqa_page_table_scratch;
 
   const bool k_per_channel = parameters.k_quant_type == KVQuantizationType::PER_CHANNEL;
@@ -2340,7 +2346,8 @@ Status FlashAttention(
   } else {
     ORT_RETURN_IF_NOT(data.clamped_block_table, "Clamped block-table scratch was not allocated.");
     ORT_RETURN_IF_ERROR(LaunchExpandBlockTableToPages(block_table, data.clamped_block_table, batch_size,
-                                                      max_num_blocks_per_seq, 1, parameters.num_blocks, stream));
+                                                      max_num_blocks_per_seq, 1, parameters.num_blocks,
+                                                      /*keep_unmapped*/ true, stream));
     void* key_cache = reinterpret_cast<void*>(data.key_cache);
     void* value_cache = reinterpret_cast<void*>(data.value_cache);
     ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_varlen_fwd(
