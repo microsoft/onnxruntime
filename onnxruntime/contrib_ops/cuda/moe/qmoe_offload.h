@@ -183,6 +183,8 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   bool v4_planned_mode_ = false;
   onnxruntime::moe_offload::MoeOffloadSessionPolicy v4_policy_{};
   onnxruntime::moe_offload::MoeNodeExecutionPlan v4_plan_{};
+  std::array<std::string, 6> v4_bank_paths_{};
+  std::array<uint64_t, 6> v4_bank_offsets_{};
   bool nvfp4_mode_ = false;
   bool mxfp4_mode_ = false;
   bool int4_bank_mode_ = false;
@@ -250,6 +252,9 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   int async_max_tokens_ = 32;
   int stream_min_tokens_ = 33;
   int prefill_chunk_tokens_ = 0;
+  float min_expert_weight_ = 0.0f;
+  bool skip_tail_cold_only_ = true;
+  bool renorm_after_prune_ = false;
 
   bool async_ = false;
   bool experts_registered_ = false;
