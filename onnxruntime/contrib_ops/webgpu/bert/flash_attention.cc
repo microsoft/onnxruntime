@@ -174,7 +174,8 @@ FlashAttentionProgram::FlashAttentionProgram(const std::string& kernel_name,
                                              bool has_local_window,
                                              uint32_t kv_cache_quantization_bits,
                                              int compressed_head_size_u32,
-                                             bool use_seqlens_q)
+                                             bool use_seqlens_q,
+                                             bool has_softcap)
     : Program{kernel_name},
       has_attention_bias_(has_attention_bias),
       is_qualcomm_(is_qualcomm),
@@ -191,7 +192,8 @@ FlashAttentionProgram::FlashAttentionProgram(const std::string& kernel_name,
       kv_cache_quantization_(kv_cache_quantization_bits != 0),
       kv_cache_quantization_bits_(kv_cache_quantization_bits),
       compressed_head_size_u32_(compressed_head_size_u32),
-      use_seqlens_q_(use_seqlens_q) {
+      use_seqlens_q_(use_seqlens_q),
+      has_softcap_(has_softcap) {
 }
 
 Status SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
@@ -448,12 +450,14 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(has_attention_bias, has_attention_bias_),
                              WGSL_TEMPLATE_PARAMETER(has_head_sink, has_head_sink_),
                              WGSL_TEMPLATE_PARAMETER(has_local_window, has_local_window_),
+                             WGSL_TEMPLATE_PARAMETER(has_softcap, has_softcap_),
                              WGSL_TEMPLATE_PARAMETER(is_qualcomm, is_qualcomm_),
                              WGSL_TEMPLATE_PARAMETER(is_unidirectional, is_unidirectional_),
                              WGSL_TEMPLATE_PARAMETER(kv_cache_quantization, kv_cache_quantization_),
                              WGSL_TEMPLATE_PARAMETER(max_k_step_param, max_k_step_),
                              WGSL_TEMPLATE_PARAMETER(prefer_subgroupshuffle, !is_nvidia_),
                              WGSL_TEMPLATE_PARAMETER(q_BNSH, q_BNSH_),
+                             WGSL_TEMPLATE_PARAMETER(qc_cooperative, is_qualcomm_ && SubgroupSize() == 128),
                              WGSL_TEMPLATE_PARAMETER(qkv_head_size, qkv_head_size_),
                              WGSL_TEMPLATE_PARAMETER(qkv_num_heads, qkv_num_heads_),
                              WGSL_TEMPLATE_PARAMETER(unroll_shm_inner, unroll_shm_inner),
@@ -1216,7 +1220,8 @@ Status ApplyDensePrefill(const Tensor* Q, Tensor* present_key, Tensor* present_v
                                 has_local_window,
                                 kv_cache_quantization_bits,
                                 compressed_head_size_u32,
-                                use_seqlens_q};
+                                use_seqlens_q,
+                                parameters.softcap_ > 0.0f};
   program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, 4},
                      {present_key, ProgramTensorMetadataDependency::TypeAndRank,
                       kv_cache_quantization_enabled ? 1 : 4},
@@ -1236,17 +1241,27 @@ Status ApplyDensePrefill(const Tensor* Q, Tensor* present_key, Tensor* present_v
   }
   program.AddOutputs({{attn_output, ProgramTensorMetadataDependency::TypeAndRank, 4}});
 
-  // On Apple GPUs, use a larger workgroup size to reduce barrier overhead.
-  const uint32_t prefill_tile_size = is_apple ? 128 : tile_size;
+  // Share each query across four lanes to reduce register pressure on Qualcomm.
+  const bool qc_cooperative = is_qualcomm && is_fp16 && has_subgroups &&
+                              parameters.head_size_ == 128 && parameters.sequence_length_ >= 128 &&
+                              !kv_cache_quantization_enabled &&
+                              context.HasWGSLLanguageFeature(wgpu::WGSLLanguageFeatureName::SubgroupId) &&
+                              context.HasFeature(wgpu::FeatureName::SubgroupSizeControl) &&
+                              context.AdapterInfo().subgroupMinSize <= 128 && context.AdapterInfo().subgroupMaxSize >= 128;
+  const uint32_t prefill_tile_size = qc_cooperative ? 64 : (is_apple ? 128 : tile_size);
+  if (qc_cooperative) {
+    program.SetSubgroupSize(128);
+    program.SetUseSubgroupId(true);
+  }
   const uint32_t num_seq_tile = (parameters.sequence_length_ + prefill_tile_size - 1) / prefill_tile_size;
 
   program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_seq_tile)
-      .SetWorkgroupSize(prefill_tile_size)
+      .SetWorkgroupSize(qc_cooperative ? 256 : prefill_tile_size)
       .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_,
                  parameters.is_unidirectional_, is_qualcomm, is_nvidia, is_apple,
                  has_subgroups, q_BNSH, use_seqlen_k, has_head_sink, has_local_window,
                  kv_cache_quantization_bits,
-                 compressed_head_size_u32, program.max_k_step(), use_seqlens_q)
+                 compressed_head_size_u32, program.max_k_step(), use_seqlens_q, parameters.softcap_ > 0.0f)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                             {static_cast<uint32_t>(parameters.total_sequence_length_)},
                             {static_cast<uint32_t>(present_sequence_length)},
@@ -1257,7 +1272,8 @@ Status ApplyDensePrefill(const Tensor* Q, Tensor* present_key, Tensor* present_v
                             {attn_bias_dim0},
                             {attn_bias_dim1},
                             {attn_bias_dim3},
-                            {static_cast<uint32_t>(has_local_window ? local_window_size : 0)}});
+                            {static_cast<uint32_t>(has_local_window ? local_window_size : 0)},
+                            {parameters.softcap_}});
 
   return context.RunProgram(program);
 }
