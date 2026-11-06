@@ -105,6 +105,8 @@ struct MoeOffloadSessionPolicy {
   int32_t async_max_tokens{8};       // Decode vs. prefill streaming token threshold (S <= 8 DFlash2)
   int32_t prefill_wave_experts{32};  // Max active cold experts per DMA wave
   bool skip_zero_cold_doorbell{false};
+  float min_expert_weight{0.0f};   // Minimum routing probability for rank >= 1 experts (0 = keep all top-k)
+  bool skip_tail_cold_only{true};  // Default true: during decode, keep GPU-resident tail experts and skip only cold misses
 
   std::filesystem::path source_root;
   std::filesystem::path derived_cache_dir;
@@ -160,6 +162,17 @@ struct MoeOffloadSessionPolicy {
     if (s.empty()) return false;
     const auto res = std::from_chars(s.data(), s.data() + s.size(), value, 10);
     return res.ec == std::errc{} && res.ptr == s.data() + s.size();
+  }
+
+  static bool TryParseFloat01(std::string_view s, float& value) noexcept {
+    s = TrimAscii(s);
+    if (s.empty()) return false;
+    std::string tmp(s);
+    char* end_ptr = nullptr;
+    const float v = std::strtof(tmp.c_str(), &end_ptr);
+    if (end_ptr != tmp.c_str() + tmp.size() || !(v >= 0.0f && v <= 1.0f)) return false;
+    value = v;
+    return true;
   }
 
   static bool TryParseBudgetSpec(std::string_view s, BudgetSpec& spec) noexcept {
@@ -394,24 +407,48 @@ struct MoeOffloadSessionPolicy {
               "Invalid ", kOrtSessionOptionsMoeOffloadNodeOverrides, " value '", val,
               "'; expected semicolon-separated 'node_name:max_resident_slots=<N>,device_expert_bytes=<B>'.");
         }
-      } else if (key != kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell) {
+      } else if (key != kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell &&
+                 key != kOrtSessionOptionsMoeOffloadMinExpertWeight &&
+                 key != kOrtSessionOptionsMoeOffloadSkipTailColdOnly) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Unknown session.moe.offload.* configuration key: ", key);
       }
     }
 
     const auto skip_it = kv_map.find(kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell);
+    const char* env_skip = std::getenv("ORT_QMOE_SKIP_ZERO_COLD_DOORBELL");
     const std::string_view skip = (skip_it != kv_map.end())
                                       ? std::string_view(skip_it->second)
-                                      : (std::getenv("ORT_QMOE_SKIP_ZERO_COLD_DOORBELL") != nullptr
-                                             ? std::string_view(std::getenv("ORT_QMOE_SKIP_ZERO_COLD_DOORBELL"))
-                                             : std::string_view("0"));
+                                      : (env_skip != nullptr ? std::string_view(env_skip) : std::string_view("0"));
     if (skip != "0" && skip != "1") {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Invalid ", kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell,
                              " value '", skip, "'; expected '0' or '1'.");
     }
     out.skip_zero_cold_doorbell = (skip == "1");
+
+    const auto min_w_it = kv_map.find(kOrtSessionOptionsMoeOffloadMinExpertWeight);
+    const char* env_min_w = std::getenv("ORT_QMOE_MIN_EXPERT_WEIGHT");
+    const std::string_view min_w_raw = (min_w_it != kv_map.end())
+                                           ? std::string_view(min_w_it->second)
+                                           : (env_min_w != nullptr ? std::string_view(env_min_w) : std::string_view("0"));
+    if (!TryParseFloat01(min_w_raw, out.min_expert_weight)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Invalid ", kOrtSessionOptionsMoeOffloadMinExpertWeight,
+                             " value '", min_w_raw, "'; expected a float in [0, 1].");
+    }
+
+    const auto cold_only_it = kv_map.find(kOrtSessionOptionsMoeOffloadSkipTailColdOnly);
+    const char* env_cold_only = std::getenv("ORT_QMOE_SKIP_TAIL_COLD_ONLY");
+    const std::string_view cold_only = (cold_only_it != kv_map.end())
+                                           ? std::string_view(cold_only_it->second)
+                                           : (env_cold_only != nullptr ? std::string_view(env_cold_only) : std::string_view("1"));
+    if (cold_only != "0" && cold_only != "1") {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Invalid ", kOrtSessionOptionsMoeOffloadSkipTailColdOnly,
+                             " value '", cold_only, "'; expected '0' or '1'.");
+    }
+    out.skip_tail_cold_only = (cold_only == "1");
 
     if (out.source_root.empty() && !base_dir.empty()) {
       out.source_root = base_dir;

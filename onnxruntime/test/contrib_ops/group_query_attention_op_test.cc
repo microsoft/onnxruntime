@@ -13,6 +13,7 @@
 #include <string>
 #include <type_traits>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -1040,12 +1041,12 @@ static void RunGQAQuerySeqlensGoldenTest(GqaTargetEp target_ep) {
     }
   }
 
-  // Single-token decode ignores query_seqlens; each entry's past length comes from seqlens_k alone.
+  // Single-token decode honors explicit lengths, including an idle batch entry.
   GqaQuerySeqlensCase decode;
   decode.batch_size = 2;
   decode.sequence_length = 1;
   decode.seqlens_k = {19, 7};
-  decode.query_seqlens = {1, 1};
+  decode.query_seqlens = {0, 1};
   RunGQAQuerySeqlensTest<T>(target_ep, decode);
 
   // A cache that grows between steps: past_key/past_value hold only the `past_rows` cached tokens, while the
@@ -1094,14 +1095,28 @@ TEST(GroupQueryAttentionTest, QuerySeqlensRightPaddedChunk_CUDA) {
   }
 }
 
-TEST(GroupQueryAttentionTest, QuerySeqlensBatchedChunkRejected_CUDA) {
-  GqaQuerySeqlensCase test_case;
-  test_case.batch_size = 2;
-  test_case.seqlens_k = {7, 7};
-  test_case.query_seqlens = {8, 8};
-  RunGQAQuerySeqlensTest<MLFloat16>(
-      GqaTargetEp::kCuda, test_case, OpTester::ExpectResult::kExpectFailure,
-      "batch_size must be 1 when query_seqlens is given and sequence_length > 1.");
+TEST(GroupQueryAttentionTest, QuerySeqlensBatchedChunks_CUDA) {
+  for (const auto& [disable_flash, disable_memory_efficient] :
+       std::vector<std::pair<const char*, const char*>>{{"0", "0"}, {"1", "0"}, {"1", "1"}}) {
+    ScopedEnvironmentVariables scoped_env_vars{{
+        {"ORT_DISABLE_FLASH_ATTENTION", disable_flash},
+        {"ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", disable_memory_efficient},
+        {"ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"},
+        {"ORT_ENABLE_XQA", "0"},
+    }};
+    for (const auto& valid : std::vector<std::vector<int32_t>>{{1, 8}, {0, 3}, {0, 0}}) {
+      GqaQuerySeqlensCase test_case;
+      test_case.batch_size = 2;
+      test_case.seqlens_k = {15, 15};
+      test_case.query_seqlens = valid;
+      RunGQAQuerySeqlensTest<MLFloat16>(GqaTargetEp::kCuda, test_case);
+    }
+    GqaQuerySeqlensCase mixed;
+    mixed.batch_size = 2;
+    mixed.seqlens_k = {7, 15};
+    mixed.query_seqlens = {8, 8};
+    RunGQAQuerySeqlensTest<MLFloat16>(GqaTargetEp::kCuda, mixed);
+  }
 }
 
 TEST(GroupQueryAttentionTest, QuerySeqlensWrongShapeRejected_CUDA) {
@@ -1299,9 +1314,10 @@ TEST(GroupQueryAttentionTest, QuerySeqlensOutOfRangeRejected_CPU) {
     const char* expected_message;
   };
   const std::vector<InvalidCase> cases = {
-      {15, 0, 32, "query_seqlens[0] = 0 must be in [1, min(sequence_length, seqlens_k[0] + 1)] = [1, 8]."},
-      {15, 9, 32, "query_seqlens[0] = 9 must be in [1, min(sequence_length, seqlens_k[0] + 1)] = [1, 8]."},
-      {2, 5, 32, "query_seqlens[0] = 5 must be in [1, min(sequence_length, seqlens_k[0] + 1)] = [1, 3]."},
+      {15, -1, 32, "query_seqlens[0] = -1 must be in [0, min(sequence_length, seqlens_k[0] + 1)] = [0, 8]."},
+      {15, 9, 32, "query_seqlens[0] = 9 must be in [0, min(sequence_length, seqlens_k[0] + 1)] = [0, 8]."},
+      {2, 5, 32, "query_seqlens[0] = 5 must be in [0, min(sequence_length, seqlens_k[0] + 1)] = [0, 3]."},
+      {-1, 0, 32, "seqlens_k[0] = -1 must not be negative when query_seqlens is given."},
       {15, 8, 8, "seqlens_k[0] + 1 = 16 exceeds total_sequence_length (8) when query_seqlens is given."},
       // P = 25 cached tokens plus the padded chunk of 8 rows needs 33 rows on a 32-row cache.
       {27, 3, 32, "does not fit in the KV cache capacity (32)."},
@@ -1318,14 +1334,24 @@ TEST(GroupQueryAttentionTest, QuerySeqlensOutOfRangeRejected_CPU) {
   }
 }
 
-TEST(GroupQueryAttentionTest, QuerySeqlensBatchedChunkRejected_CPU) {
-  GqaQuerySeqlensCase test_case;
-  test_case.batch_size = 2;
-  test_case.seqlens_k = {7, 7};
-  test_case.query_seqlens = {8, 8};
-  RunGQAQuerySeqlensTest<float>(
-      GqaTargetEp::kCpu, test_case, OpTester::ExpectResult::kExpectFailure,
-      "batch_size must be 1 when query_seqlens is given and sequence_length > 1.");
+TEST(GroupQueryAttentionTest, QuerySeqlensBatchedChunks_CPU) {
+  for (const char* disable_flash : {"0", "1"}) {
+    ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash}}};
+    for (const auto& valid : std::vector<std::vector<int32_t>>{{1, 8}, {0, 3}, {0, 0}}) {
+      GqaQuerySeqlensCase test_case;
+      test_case.batch_size = 2;
+      test_case.seqlens_k = {15, 15};
+      test_case.query_seqlens = valid;
+      RunGQAQuerySeqlensTest<float>(GqaTargetEp::kCpu, test_case);
+      RunGQAQuerySeqlensTest<MLFloat16>(GqaTargetEp::kCpu, test_case);
+    }
+    GqaQuerySeqlensCase mixed;
+    mixed.batch_size = 2;
+    mixed.seqlens_k = {7, 15};
+    mixed.query_seqlens = {8, 8};
+    RunGQAQuerySeqlensTest<float>(GqaTargetEp::kCpu, mixed);
+    RunGQAQuerySeqlensTest<MLFloat16>(GqaTargetEp::kCpu, mixed);
+  }
 }
 
 TEST(GroupQueryAttentionTest, QuerySeqlensWrongShapeRejected_CPU) {
@@ -1361,7 +1387,7 @@ TEST(GroupQueryAttentionTest, QuerySeqlensWithoutPresentOutputsRejected_CPU) {
       "query_seqlens requires the present_key and present_value outputs.");
 }
 
-// A single-token step ignores query_seqlens, but the requirement on the outputs does not depend on the chunk length.
+// The requirement on the outputs does not depend on the chunk length.
 TEST(GroupQueryAttentionTest, QuerySeqlensSingleTokenWithoutPresentOutputsRejected_CPU) {
   GqaQuerySeqlensCase test_case;
   test_case.sequence_length = 1;
@@ -8067,6 +8093,15 @@ TEST(GroupQueryAttentionTest, WebGPU_FP16_HighMagnitude_FlashPrefillUnrollBounda
     // Large Q/K values also catch accidental FP16 score accumulation.
     RunFp16HighMagnitudeAttention(/*sequence_length=*/65, /*bit_width=*/0, head_size);
   }
+}
+
+// head_size / 4 is neither a power of two nor a multiple of 16, which exercises partial V slices in flash prefill.
+TEST(GroupQueryAttentionTest, WebGPU_FP16_HighMagnitude_FlashPrefill_HeadSize80) {
+  RunFp16HighMagnitudeAttention(/*sequence_length=*/40, /*bit_width=*/0, /*head_size=*/80);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_FP16_HighMagnitude_FlashPrefill_HeadSize96) {
+  RunFp16HighMagnitudeAttention(/*sequence_length=*/40, /*bit_width=*/0, /*head_size=*/96);
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_FP16_HighMagnitude_SplitReduce) {

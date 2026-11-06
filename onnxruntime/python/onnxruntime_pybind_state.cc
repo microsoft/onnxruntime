@@ -1333,28 +1333,6 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
                           << "https://onnxruntime.ai/docs/execution-providers/"
                           << "Vitis-AI-ExecutionProvider.html#requirements to ensure all dependencies are met.";
 #endif
-  } else if (type == kAclExecutionProvider) {
-#ifdef USE_ACL
-    bool enable_fast_math = false;
-    auto it = provider_options_map.find(type);
-    if (it != provider_options_map.end()) {
-      for (auto option : it->second) {
-        if (option.first == "enable_fast_math") {
-          std::set<std::string> supported_values = {"true", "True", "false", "False"};
-          if (supported_values.find(option.second) != supported_values.end()) {
-            enable_fast_math = (option.second == "true") || (option.second == "True");
-          } else {
-            ORT_THROW(
-                "Invalid value for enable_fast_math. "
-                "Select from 'true' or 'false'\n");
-          }
-        } else {
-          ORT_THROW("Unrecognized option: ", option.first);
-        }
-      }
-    }
-    return onnxruntime::ACLProviderFactoryCreator::Create(enable_fast_math);
-#endif
   } else if (type == kDmlExecutionProvider) {
 #ifdef USE_DML
     auto cit = provider_options_map.find(type);
@@ -3529,8 +3507,19 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             model_compiler->ClearEpContextDataWriteFunc();
           },
           R"pbdoc(Clear the external EPContext data write callback.)pbdoc")
+      .def(
+          "set_ep_context_binary_information",
+          [](PyModelCompiler* model_compiler, const std::string& output_directory, const std::string& model_name) {
+            OrtPybindThrowIfError(model_compiler->SetEpContextBinaryInformation(output_directory, model_name));
+          },
+          py::arg("output_directory"), py::arg("model_name"),
+          R"pbdoc(Set the directory and model name EPs use to place their EPContext binary files.)pbdoc")
 #endif  // !defined(ORT_MINIMAL_BUILD)
       ;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  addModelPackageMethods(m);
+#endif
 }
 
 bool InitArray() {

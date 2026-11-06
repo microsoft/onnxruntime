@@ -57,6 +57,15 @@ CudaDataTransfer::CudaDataTransfer(const OrtApi& ort_api, const OrtEpApi& ep_api
   auto* dt = static_cast<CudaDataTransfer*>(this_ptr);
   bool need_stream_sync = false;
 
+  int prev_device = -1;
+  const bool have_prev_device = TryGetCurrentCudaDevice(prev_device);
+  int active_device = have_prev_device ? prev_device : -1;
+  auto restore_device = gsl::finally([have_prev_device, prev_device, &active_device]() {
+    if (have_prev_device && active_device != prev_device) {
+      static_cast<void>(cudaSetDevice(prev_device));
+    }
+  });
+
   for (size_t i = 0; i < count; ++i) {
     Ort::ConstValue src{src_tensors[i]};
     Ort::UnownedValue dst{dst_tensors[i]};
@@ -79,13 +88,25 @@ CudaDataTransfer::CudaDataTransfer(const OrtApi& ort_api, const OrtEpApi& ep_api
     auto src_dev_type = dt->ep_api_.MemoryDevice_GetDeviceType(src_dev);
     auto dst_dev_type = dt->ep_api_.MemoryDevice_GetDeviceType(dst_dev);
     auto src_mem_type = dt->ep_api_.MemoryDevice_GetMemoryType(src_dev);
+    auto dst_mem_type = dt->ep_api_.MemoryDevice_GetMemoryType(dst_dev);
+
+    // Pinned staging memory reports a GPU device type with HOST_ACCESSIBLE memory; it is host memory for copies.
+    const bool src_is_host = src_dev_type == OrtMemoryInfoDeviceType_CPU ||
+                             (src_dev_type == OrtMemoryInfoDeviceType_GPU &&
+                              src_mem_type == OrtDeviceMemoryType_HOST_ACCESSIBLE);
+    const bool dst_is_host = dst_dev_type == OrtMemoryInfoDeviceType_CPU ||
+                             (dst_dev_type == OrtMemoryInfoDeviceType_GPU &&
+                              dst_mem_type == OrtDeviceMemoryType_HOST_ACCESSIBLE);
+
+    // Use the device-resident side to choose the CUDA device.
+    const OrtMemoryInfo* gpu_info = !dst_is_host ? dst_mem_info : (!src_is_host ? src_mem_info : dst_mem_info);
+    int gpu_device_id = 0;
+    if (auto* id_status = dt->ort_api_.MemoryInfoGetId(gpu_info, &gpu_device_id); id_status != nullptr) {
+      return id_status;
+    }
 
     if (src_data == nullptr || dst_data == nullptr) {
-      int device_id = 0;
-      const auto* gpu_info = dst_dev_type == OrtMemoryInfoDeviceType_GPU ? dst_mem_info : src_mem_info;
-      auto* id_status = dt->ort_api_.MemoryInfoGetId(gpu_info, &device_id);
-      if (id_status != nullptr) return id_status;
-      const auto budget = GetCudaDeviceMemoryBudget(static_cast<OrtDevice::DeviceId>(device_id))->GetStats();
+      const auto budget = GetCudaDeviceMemoryBudget(static_cast<OrtDevice::DeviceId>(gpu_device_id))->GetStats();
       return dt->ort_api_.CreateStatus(
           ORT_FAIL, ("CUDA tensor allocation failed before copy: requested " + std::to_string(bytes) +
                      " bytes; device memory budget limit " + std::to_string(budget.limit) +
@@ -93,13 +114,26 @@ CudaDataTransfer::CudaDataTransfer(const OrtApi& ort_api, const OrtEpApi& ep_api
                         .c_str());
     }
 
+    if (active_device != gpu_device_id) {
+      // cudaStreamSynchronize(nullptr) only drains the current device, so drain pending
+      // default-stream copies before switching away from it.
+      if (need_stream_sync) {
+        PL_CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(nullptr));
+        need_stream_sync = false;
+      }
+      PL_CUDA_RETURN_IF_ERROR(cudaSetDevice(gpu_device_id));
+      active_device = gpu_device_id;
+    }
+
     cudaMemcpyKind copy_kind;
-    if (src_dev_type == OrtMemoryInfoDeviceType_CPU && dst_dev_type == OrtMemoryInfoDeviceType_GPU) {
+    if (src_is_host && !dst_is_host) {
       copy_kind = cudaMemcpyHostToDevice;
-    } else if (src_dev_type == OrtMemoryInfoDeviceType_GPU && dst_dev_type == OrtMemoryInfoDeviceType_CPU) {
+    } else if (!src_is_host && dst_is_host) {
       copy_kind = cudaMemcpyDeviceToHost;
-    } else if (src_dev_type == OrtMemoryInfoDeviceType_GPU && dst_dev_type == OrtMemoryInfoDeviceType_GPU) {
+    } else if (!src_is_host && !dst_is_host) {
       copy_kind = cudaMemcpyDeviceToDevice;
+    } else if (src_dev_type == OrtMemoryInfoDeviceType_GPU || dst_dev_type == OrtMemoryInfoDeviceType_GPU) {
+      copy_kind = cudaMemcpyHostToHost;
     } else {
       return dt->ort_api_.CreateStatus(ORT_EP_FAIL, "Unsupported copy direction");
     }
