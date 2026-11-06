@@ -198,7 +198,7 @@ sequenceDiagram
   participant B as CreateCapabilityPlanningBinding
 
   P->>D: query + source view + lookup + registry
-  D->>D: reset result; validate query
+  D->>D: reset result and validate query
   Note over D,E: EP is called only if the query is valid
   D->>E: GetExecutionCandidates(..., query_context)
   E-->>D: candidate vector
