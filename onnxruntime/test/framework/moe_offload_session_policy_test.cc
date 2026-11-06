@@ -108,6 +108,39 @@ TEST(MoeOffloadSessionPolicyTest, MisspelledOffloadKeyIsStillRejected) {
       "Unknown session.moe.offload.* configuration key");
 }
 
+TEST(MoeOffloadSessionPolicyTest, TailExpertPruningOptionsDefaultAndParse) {
+  EXPECT_STREQ(kOrtSessionOptionsMoeOffloadMinExpertWeight, "session.moe.offload.min_expert_weight");
+  EXPECT_STREQ(kOrtSessionOptionsMoeOffloadSkipTailColdOnly, "session.moe.offload.skip_tail_cold_only");
+
+  MoeOffloadSessionPolicy defaults;
+  ASSERT_STATUS_OK(ParsePolicy({}, defaults));
+  EXPECT_FLOAT_EQ(defaults.min_expert_weight, 0.0f);
+  EXPECT_TRUE(defaults.skip_tail_cold_only);
+
+  MoeOffloadSessionPolicy configured;
+  ASSERT_STATUS_OK(ParsePolicy({{kOrtSessionOptionsMoeOffloadMinExpertWeight, "0.065"},
+                                {kOrtSessionOptionsMoeOffloadSkipTailColdOnly, "0"}},
+                               configured));
+  EXPECT_FLOAT_EQ(configured.min_expert_weight, 0.065f);
+  EXPECT_FALSE(configured.skip_tail_cold_only);
+
+  ASSERT_STATUS_OK(ParsePolicy({{kOrtSessionOptionsMoeOffloadSkipTailColdOnly, "1"}}, configured));
+  EXPECT_TRUE(configured.skip_tail_cold_only);
+
+  for (const char* bad_weight : {"-0.1", "1.1", "abc", ""}) {
+    MoeOffloadSessionPolicy bad;
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+        ParsePolicy({{kOrtSessionOptionsMoeOffloadMinExpertWeight, bad_weight}}, bad),
+        kOrtSessionOptionsMoeOffloadMinExpertWeight);
+  }
+  for (const char* bad_flag : {"2", "-1", "true", ""}) {
+    MoeOffloadSessionPolicy bad;
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+        ParsePolicy({{kOrtSessionOptionsMoeOffloadSkipTailColdOnly, bad_flag}}, bad),
+        kOrtSessionOptionsMoeOffloadSkipTailColdOnly);
+  }
+}
+
 }  // namespace onnxruntime::test
 
 #endif  // !defined(ORT_MINIMAL_BUILD)

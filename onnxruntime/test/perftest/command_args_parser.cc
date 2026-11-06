@@ -58,7 +58,7 @@ ABSL_FLAG(std::string, F, "",
           " -f \"dimension_denotation1:override_value1 dimension_denotation2 : override_value2... \". Override value must > 0.");
 ABSL_FLAG(std::string, m, "duration", "Specifies the test mode. Value could be 'duration' or 'times'.");
 ABSL_FLAG(std::string, e, "cpu",
-          "Specifies the provider 'cpu','cuda','dnnl','tensorrt', 'openvino', 'dml', 'acl', 'nnapi', "
+          "Specifies the provider 'cpu','cuda','dnnl','tensorrt', 'openvino', 'dml', 'nnapi', "
           "'coreml', 'qnn', 'snpe', 'migraphx', 'xnnpack', 'vitisai' or 'webgpu'.");
 ABSL_FLAG(size_t, r, DefaultPerformanceTestConfig().run_config.repeated_times, "Specifies the repeated times if running in 'times' test mode.");
 ABSL_FLAG(size_t, t, DefaultPerformanceTestConfig().run_config.duration_in_seconds, "Specifies the seconds to run for 'duration' mode.");
@@ -75,8 +75,6 @@ ABSL_FLAG(bool, opt_save_prepacks, false, "Saves pre-packs to the file specified
 ABSL_FLAG(std::string, i, "",
           "Specifies EP specific runtime options as key-value pairs.\n Different runtime options available are: \n"
           "  [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>'\n"
-          "\n"
-          "  [ACL only] [enable_fast_math]: Options: 'true', 'false', default: 'false', \n"
           "\n"
           "  [DML only] [performance_preference]: DML device performance preference, options: 'default', 'minimum_power', 'high_performance', \n"
           "  [DML only] [device_filter]: DML device filter, options: 'any', 'gpu', 'npu', \n"
@@ -367,8 +365,6 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
         test_config.machine_config.provider_type_name = onnxruntime::kCoreMLExecutionProvider;
       } else if (ep == "dml") {
         test_config.machine_config.provider_type_name = onnxruntime::kDmlExecutionProvider;
-      } else if (ep == "acl") {
-        test_config.machine_config.provider_type_name = onnxruntime::kAclExecutionProvider;
       } else if (ep == "migraphx") {
         test_config.machine_config.provider_type_name = onnxruntime::kMIGraphXExecutionProvider;
       } else if (ep == "xnnpack") {
