@@ -1,0 +1,125 @@
+# WebGPU Review Coverage
+
+This document records the boundaries and evidence behind
+[`code-review-webgpu`](../.github/skills/code-review-webgpu/SKILL.md).
+Consult it when maintaining the guidance or auditing coverage; routine reviews
+start with the skill's scope gate and cumulative reading table.
+
+## Scope and category design
+
+The skill applies only to changes with a direct or traceable effect on the
+native WebGPU EP. It also covers that EP's browser/WASM and plugin deployment
+paths. It does not activate merely because a shared file, old PR, or comment
+mentions WebGPU. CPU/CUDA-only work, shared optimizer/test changes without an
+affected WebGPU consumer, and packaging without WebGPU artifacts retain their
+existing review guidance. JSEP-only work uses
+[its own instructions](../.github/instructions/jsep-deprecated.instructions.md).
+Mixed PRs apply these checks only to the affected WebGPU portion.
+
+The initial kernel-centered grouping combined too many independent contracts
+under runtime/portability and shader semantics. The following 13 categories
+separate those contracts without creating 13 always-loaded skills. Each has one
+owning reference, an explicit reading trigger, corrective checks, and validation
+prompts. Cross-cutting changes select multiple rows.
+
+Paths below are relative to `onnxruntime/` unless otherwise stated. Source was
+inspected against commit
+[`527971bcece3d944cf18147472ba1e5010289c2e`](https://github.com/microsoft/onnxruntime/commit/527971bcece3d944cf18147472ba1e5010289c2e).
+They identify controlling implementation, not a claim that every line or
+operator was independently proven correct.
+
+| Category and owning checks | Source boundary inspected | Evidence and regression focus |
+| --- | --- | --- |
+| [Kernel contract](../.github/skills/code-review-webgpu/references/kernel-contract.md) | `core/providers/webgpu/compute_context.*`, kernel `ComputeInternal`, host-input placement | [#28721](https://github.com/microsoft/onnxruntime/pull/28721), [#29255](https://github.com/microsoft/onnxruntime/pull/29255): validated shapes, safe narrowing, GPU-derived indices |
+| [Cache identity](../.github/skills/code-review-webgpu/references/cache-identity.md) | `program_cache_key.cc`, `program_manager.*`, `program.*`, templates | [#33153](https://github.com/microsoft/onnxruntime/pull/33153), [#33693](https://github.com/microsoft/onnxruntime/pull/33693): complete keys, output components, overrides, same-context both-order tests |
+| [Dispatch and WGSL](../.github/skills/code-review-webgpu/references/dispatch-and-wgsl.md) | dispatch normalization, `shader_helper.*`, `shader_variable.*`, generated kernels | [#32343](https://github.com/microsoft/onnxruntime/pull/32343), [#32796](https://github.com/microsoft/onnxruntime/pull/32796): normalized indices, partial tiles, subgroup ownership, binding limits |
+| [Numerical semantics](../.github/skills/code-review-webgpu/references/numerical-semantics.md) | `math/gemm_utils.cc`, normalization and quantization kernels, contrib attention | [#33057](https://github.com/microsoft/onnxruntime/pull/33057), [#32528](https://github.com/microsoft/onnxruntime/pull/32528), [#33074](https://github.com/microsoft/onnxruntime/pull/33074): partial precision, int64, quantization ties, masks and selection |
+| [Tensor layout/prepacking](../.github/skills/code-review-webgpu/references/tensor-layout-and-prepacking.md) | `nn/conv*`, `math/matmul*`, views/accessors, contrib `quantization/matmul_nbits*` | [#32688](https://github.com/microsoft/onnxruntime/pull/32688), [#33231](https://github.com/microsoft/onnxruntime/pull/33231): logical versus physical shape, groups, initializer/dynamic/disabled modes |
+| [Runtime and memory](../.github/skills/code-review-webgpu/references/runtime-and-portability.md) | context/recording, allocator, buffer manager, session pool, data transfer and external loaders | [#32874](https://github.com/microsoft/onnxruntime/pull/32874), [#32587](https://github.com/microsoft/onnxruntime/pull/32587), [#33509](https://github.com/microsoft/onnxruntime/pull/33509): streamless ordering, reuse lifetime, capture failure/cleanup |
+| [Devices and features](../.github/skills/code-review-webgpu/references/devices-and-features.md) | `webgpu_provider_factory.cc`, options, context creation/reuse, `ep/factory.cc` | [#32319](https://github.com/microsoft/onnxruntime/pull/32319), [#33481](https://github.com/microsoft/onnxruntime/pull/33481), [#33724](https://github.com/microsoft/onnxruntime/pull/33724): selector identity, enabled features, compile-only versus execution |
+| [Plugin contracts](../.github/skills/code-review-webgpu/references/plugin-contracts.md) | `ep/`, public API/adapters, session `plugin_ep/ep_factory_webgpu.*` | [#32587](https://github.com/microsoft/onnxruntime/pull/32587): ABI exceptions, ownership, capability parity; source `ep/runtime_compatibility.*` and `ep/api.cc`: host negotiation and exports |
+| [Builds and dependencies](../.github/skills/code-review-webgpu/references/build-and-dependencies.md) | repository `cmake/`, Dawn patches/manifests, `plugin-ep-webgpu/paths.txt`, staging/package/update tools | [#32686](https://github.com/microsoft/onnxruntime/pull/32686), [#33396](https://github.com/microsoft/onnxruntime/pull/33396): DXC redistribution, exact patch/DEPS coordinates, rollback and package consumers |
+| [Graph transformations](../.github/skills/code-review-webgpu/references/graph-transformations.md) | native/plugin capability discovery, `core/optimizer/` Conv/MatMulNBits/GQA fusions and transformer registration | [#33363](https://github.com/microsoft/onnxruntime/pull/33363), [#32929](https://github.com/microsoft/onnxruntime/pull/32929): preserved attributes/outputs, accepted/rejected rewrites, actual partition/layout |
+| [Registration](../.github/skills/code-review-webgpu/references/registration.md) | native and contrib registry tables, supported types, NHWC domains, generated kernel docs | Domain/opset/type/host-input consistency; exercise the advertised contract in native and plugin paths |
+| [Profiling and performance](../.github/skills/code-review-webgpu/references/profiling-and-performance.md) | `webgpu_profiler.*`, context query/flush/readback paths, Dawn platform and PIX integration | [#33781](https://github.com/microsoft/onnxruntime/pull/33781): clock domains; legacy [#18894](https://github.com/microsoft/onnxruntime/pull/18894) and [#19791](https://github.com/microsoft/onnxruntime/pull/19791): dispatch metadata and scoped workarounds |
+| [Validation](../.github/skills/code-review-webgpu/references/validation.md) | provider/shared tests, test helpers, shader-key validator and current CI definitions | [#33242](https://github.com/microsoft/onnxruntime/pull/33242), [#33269](https://github.com/microsoft/onnxruntime/pull/33269): skip before tester construction, optional features, no fallback, test migration |
+
+This map covers standard kernels plus contrib attention/transformer, diffusion,
+MoE, and quantization families through their behavior. A new operator family
+does not automatically require a new category. Add one when its contract cannot
+be expressed by existing ownership boundaries and reading predicates.
+
+## Historical audit method and limits
+
+The 2026-11-06 discovery queried public `microsoft/onnxruntime` PRs with
+`is:pr webgpu in:title,body,comments`, split by creation year 2018–2026 and fully
+paginated. Results were 180 in 2023, 260 in 2024, 463 in 2025, and 832 in 2026:
+1,735 keyword matches. The union with 668 PR numbers extracted from native
+WebGPU path history and 209 existing review records added 44 PRs, yielding
+1,779 discovered PRs, including 65 authored by `gyagp`. An archive entry for
+issue #32716 was excluded from PR counts. The path inventory contains 679 tracked files across the
+provider, contrib, native tests, public headers, plugin, CMake/patch, and WGSL
+generator roots used for history discovery.
+
+The collection refreshes PR descriptions, current base/head/merge revisions,
+general discussion, submitted review bodies, and inline comments including
+replies, with pagination: 7,888 general comments, 10,965 submitted reviews
+(including empty approvals), and 12,177 inline comments. Raw API responses and a heuristic category index stay
+in local audit evidence, outside repository startup context. Keyword labels
+assist triage; they are not accepted findings. Workflow approvals, bot commands,
+empty approvals, and resolved/outdated flags do not establish technical review
+or a verified fix.
+
+Source-guided semantic inspection prioritizes the author's PRs and the review
+threads linked above, including their replies and affected code. Rules in the
+references are preventive checks corroborated by controlling implementation or
+scoped historical evidence, not assertions that an open PR is fixed or merged.
+Legacy JSEP discussions contribute only an invariant that also makes sense for
+the native implementation; their obsolete APIs and backend assumptions are not
+imported as native rules.
+
+Discovery and collection are broad; semantic validation is selective. This is
+not a line-by-line re-review of every historical patch/comment, a proof that
+every relevant PR is discoverable, or a guarantee of complete bug detection.
+Shared-only changes with no WebGPU keyword/path-history signal can be missed;
+deleted/private discussions and later updates are outside the snapshot. No new
+GPU runs or live hosted Copilot review were performed for this documentation
+audit. These limits must remain explicit when describing category completeness.
+
+The current result is complete routing and maintained checks for each category
+in this source/evidence map. Further verified lessons extend their owning
+reference; an unverified suggestion stays in task evidence until checked against
+its affected revision. Re-audit when a new subsystem, deployment contract, or
+failure mode invalidates the map.
+
+## Context retention and review walkthroughs
+
+Local and GitHub Copilot reviews use the same committed checks. Local task
+handoffs and raw logs preserve exact revisions, tested cases, unresolved work,
+and links to evidence outside the skill. Hosted Copilot receives repository
+guidance on the PR head branch; local history/personal skills do not transfer
+automatically. Promote a verified reusable lesson into its owning reference
+before expecting a hosted reviewer to use it. See
+[agent guidance](Agent_Coding_Guidance.md#copilot-pull-request-reviews-on-github)
+for platform settings and adoption evidence.
+
+The following are manual selection walkthroughs, not measured hosted-model
+evaluations. They check both exclusion and cumulative inclusion:
+
+| Change and established effect | Expected selection |
+| --- | --- |
+| CPU-only kernel fix, CUDA-only attention change, or unrelated Python tooling | Existing review guidance; no WebGPU skill/references |
+| Shared optimizer rule that excludes WebGPU, or shared test edit with no affected WebGPU execution | No WebGPU skill/references |
+| Documentation that merely links an old WebGPU PR | No WebGPU skill/references |
+| JSEP-only backend maintenance | JSEP guidance; no native WebGPU skill |
+| Shared Gemm helper changing native WebGPU arithmetic and generated types | Kernel, cache, dispatch, numerics, validation; other rows only if their behavior changes |
+| New ConvTranspose prepack layout | Kernel, layout/prepacking, cache, dispatch, numerics, registration, validation; runtime if ownership changes |
+| Plugin streamless allocator/copy change | Runtime/memory, plugin contracts, validation; builds if target boundaries change |
+| Dawn/DXC artifact removal | Builds/dependencies and validation; plugin/device/runtime rows for affected ABI/features/ownership |
+| Shared GQA fusion changing WebGPU partition and epsilons | Graph transformations, numerics, registration, validation; kernel/cache rows if kernel behavior/codegen changes |
+| Native timestamp correlation change | Profiling/performance and validation; runtime, device, plugin or dependency rows according to changed integration |
+
+After selecting the skill, account for every reading-table row as checked with
+evidence, inapplicable with a reason, or unverified with the check needed. Keep
+the review report brief. Only selected references enter the active context;
+the complete historical corpus and this maintenance audit need not.
