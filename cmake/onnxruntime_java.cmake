@@ -52,7 +52,6 @@ file(GLOB onnxruntime4j_native_src
     "${JAVA_ROOT}/src/main/native/*.c"
     "${JAVA_ROOT}/src/main/native/*.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/*.h"
-    "${REPO_ROOT}/orttraining/orttraining/training_api/include/*.h"
     )
 # Build the JNI library
 onnxruntime_add_shared_library_module(onnxruntime4j_jni ${onnxruntime4j_native_src})
@@ -71,7 +70,7 @@ endif()
 add_dependencies(onnxruntime4j_jni onnxruntime4j)
 onnxruntime_add_include_to_target(onnxruntime4j_jni onnxruntime_session)
 # the JNI headers are generated in the onnxruntime4j target
-target_include_directories(onnxruntime4j_jni PRIVATE ${REPO_ROOT}/include ${REPO_ROOT}/orttraining/orttraining/training_api/include ${JAVA_ROOT}/build/headers ${JNI_INCLUDE_DIRS})
+target_include_directories(onnxruntime4j_jni PRIVATE ${REPO_ROOT}/include ${JAVA_ROOT}/build/headers ${JNI_INCLUDE_DIRS})
 target_link_libraries(onnxruntime4j_jni PUBLIC onnxruntime)
 
 set(JAVA_PACKAGE_OUTPUT_DIR ${JAVA_OUTPUT_DIR}/build)
@@ -256,9 +255,6 @@ set(GRADLE_ARGS cmakeBuild -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR})
 
 # Append relevant native build flags to gradle command
 set(GRADLE_ARGS ${GRADLE_ARGS} ${ORT_PROVIDER_FLAGS})
-if (onnxruntime_ENABLE_TRAINING_APIS)
-    set(GRADLE_ARGS ${GRADLE_ARGS} "-DENABLE_TRAINING_APIS=1")
-endif()
 
 message(STATUS "GRADLE_ARGS: ${GRADLE_ARGS}")
 add_custom_command(TARGET onnxruntime4j_jni POST_BUILD
@@ -285,7 +281,6 @@ if (ANDROID)
       -b build-android.gradle -c settings-android.gradle
       -DjniLibsDir=${ANDROID_PACKAGE_JNILIBS_DIR} -DbuildDir=${ANDROID_PACKAGE_OUTPUT_DIR}
       -DminSdkVer=${ANDROID_MIN_SDK} -DheadersDir=${ANDROID_HEADERS_DIR}
-      $<$<BOOL:${onnxruntime_ENABLE_TRAINING_APIS}>:-DENABLE_TRAINING_APIS=1>
       --stacktrace
     WORKING_DIRECTORY ${JAVA_ROOT})
 

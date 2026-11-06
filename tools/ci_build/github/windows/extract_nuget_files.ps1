@@ -70,9 +70,6 @@ $aars = Get-ChildItem "$Env:BUILD_BINARIESDIRECTORY\nuget-artifact" -Filter *.aa
 if ($aars.Count -eq 1) {
     $aar = $aars[0]
     $aar_prefix = "onnxruntime"
-    if ($aar.Name -like "onnxruntime-training*") {
-        $aar_prefix = "onnxruntime-training"
-    }
     $target_dir = "$nuget_artifacts_dir\$aar_prefix-android-aar"
     # Remove version info from the filename for consistency.
     $target_file = "$target_dir\onnxruntime.aar"
@@ -85,20 +82,9 @@ elseif ($aars.Count -gt 1) {
     Write-Error "Expected at most one Android .aar file but got: [$aars]"
 }
 
-# Check if this is a training pipeline by looking for a specific directory.
-$is_training_pipeline = Test-Path -Path "$nuget_artifacts_dir\onnxruntime-training-win-x64-*"
-if ($is_training_pipeline) {
-    Write-Output "onnxruntime-training-win-x64-* dir exists. This is a training pipeline."
-}
-
 # Copy onnxruntime and protoc binaries required by tests.
 $destinationDir = "$Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\RelWithDebInfo"
-if ($is_training_pipeline) {
-    Copy-Item -Path "$nuget_artifacts_dir\onnxruntime-training-win-x64-*\lib\*" -Destination $destinationDir -Recurse
-}
-else {
-    Copy-Item -Path "$nuget_artifacts_dir\onnxruntime-win-x64-*\lib\*" -Destination $destinationDir -Recurse
-}
+Copy-Item -Path "$nuget_artifacts_dir\onnxruntime-win-x64-*\lib\*" -Destination $destinationDir -Recurse
 
 # Rename directories to remove the architecture-specific suffix.
 Write-Output "Renaming onnxruntime directories..."

@@ -24,8 +24,6 @@ class GatherBase__Prepare;
 class ConcatBase_InlinedTensorsVector;
 class SliceOp__PrepareForComputeMetadata;  // Directly maps to SliceOp::PrepareForComputeMetadata
 class UnsqueezeBase__Prepare;              // Directly maps to UnsqueezeBase::Prepare
-class contrib__AdamWOptimizerBase__Prepare;
-class contrib__SGDOptimizerV2Base__Prepare;
 class UpsampleBase;
 class EinsumComputePreprocessor;
 
@@ -245,43 +243,6 @@ struct ProviderHostCPU {
 #endif
 #endif
 
-#ifdef ENABLE_TRAINING_OPS
-  virtual Status contrib__Group__Compute(const contrib::Group* p, OpKernelContext* context) = 0;
-  virtual Status contrib__PassThrough__Compute(const contrib::PassThrough* p, OpKernelContext* context) = 0;
-  virtual void contrib__VerifyLogitWeightAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, const TensorShape* weight_shape) = 0;
-  virtual void contrib__GetNDCFromLogitAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, int64_t& N_D, int64_t& C) = 0;
-  virtual void contrib__GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, TensorShapeVector& new_shape, std::vector<size_t>& permutations) = 0;
-  virtual Status contrib__PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) = 0;
-  // From cpu/optimizer/adamwbase.h
-  virtual Status contrib__AdamWOptimizerBase__PrepareForCompute(const contrib::AdamWOptimizerBase* p, OpKernelContext* ctx, contrib__AdamWOptimizerBase__Prepare& prepare) = 0;
-  // From cpu/optimizer/sgdbase.h
-  virtual Status contrib__SGDOptimizerV2Base__PrepareForCompute(const contrib::SGDOptimizerV2Base* p, OpKernelContext* ctx, contrib__SGDOptimizerV2Base__Prepare& prepare) = 0;
-
-  // Should remove the shrunken_gather include from ENABLE_TRAINING_OPS once 1). compute optimizer is enabled for inference or
-  // 2). this is needed by inference for other purpose.
-  virtual void contrib__ShrunkenGatherCommon__CheckInput(const contrib::ShrunkenGatherCommon* p,
-                                                         const Tensor* input_tensor, const Tensor* indices_tensor,
-                                                         int64_t axis_in) const = 0;
-#endif
-
-#ifdef ENABLE_TRAINING
-  virtual void contrib__record_event_in_tensor(const Tensor& event_id_tensor) = 0;
-  virtual void contrib__wait_event_in_tensor(const Tensor& event_id_tensor) = 0;
-  virtual Status contrib__YieldOp__Compute(const contrib::YieldOp* p, OpKernelContext* context) = 0;
-
-  // From aten_op.h
-  virtual bool contrib__IsATenOperatorExecutorInitialized() = 0;
-  virtual Status contrib__ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims) = 0;
-#endif
-
-#ifdef ENABLE_TRITON
-  virtual Status contrib__TritonOp__Compute(const contrib::TritonOp* p, OpKernelContext* context) = 0;
-  virtual bool contrib__IsTritonOpExecutorInitialized() = 0;
-  virtual Status contrib__ExecuteTritonOpByFuncName(
-      OpKernelContext* p_ctx, const std::string& func_name, size_t input_count, size_t output_count,
-      const InlinedHashMap<std::string, std::pair<std::string, int>>& kwargs) = 0;
-#endif
-
 #endif
 };
 
@@ -307,39 +268,6 @@ inline Status ValidateInputs(const Tensor* depth, const Tensor* values) { return
 inline Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis,
                                  int64_t& prefix_dim_size, int64_t& suffix_dim_size,
                                  TensorShapeVector& output_shape) { return g_host_cpu.PrepareOutputShape(indices, depth_val, axis, prefix_dim_size, suffix_dim_size, output_shape); }
-
-#ifdef ENABLE_TRAINING_OPS
-namespace contrib {
-inline void VerifyLogitWeightAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, const TensorShape* weight_shape) { g_host_cpu.contrib__VerifyLogitWeightAndLabelShape(logit_shape, label_shape, weight_shape); }
-inline void GetNDCFromLogitAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, int64_t& N_D, int64_t& C) { g_host_cpu.contrib__GetNDCFromLogitAndLabelShape(logit_shape, label_shape, N_D, C); }
-inline void GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, TensorShapeVector& new_shape, std::vector<size_t>& permutations) { g_host_cpu.contrib__GetPermutationAndShape(ncd_to_ndc, tensor_shape, new_shape, permutations); }
-inline Status PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) { return g_host_cpu.contrib__PrepareForTrainingCompute(input_shape, num_outputs, axis, before_dims, after_dims_including_split_axis, after_dims_excluding_split, split_sizes); }
-}  // namespace contrib
-#endif
-
-#ifdef ENABLE_TRAINING
-namespace contrib {
-inline void record_event_in_tensor(const Tensor& event_id_tensor) { return g_host_cpu.contrib__record_event_in_tensor(event_id_tensor); }
-inline void wait_event_in_tensor(const Tensor& event_id_tensor) { return g_host_cpu.contrib__wait_event_in_tensor(event_id_tensor); }
-
-// From aten_op.h
-inline bool IsATenOperatorExecutorInitialized() { return g_host_cpu.contrib__IsATenOperatorExecutorInitialized(); }
-inline Status ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims) {
-  return g_host_cpu.contrib__ExecuteReduceSumATen(p_ctx, axes, keepdims);
-}
-}  // namespace contrib
-#endif  // ENABLE_TRAINING
-
-#ifdef ENABLE_TRITON
-namespace contrib {
-inline bool IsTritonOpExecutorInitialized() { return g_host_cpu.contrib__IsTritonOpExecutorInitialized(); }
-inline Status ExecuteTritonOpByFuncName(OpKernelContext* p_ctx, const std::string& func_name, size_t input_count,
-                                        size_t output_count,
-                                        const InlinedHashMap<std::string, std::pair<std::string, int>>& kwargs) {
-  return g_host_cpu.contrib__ExecuteTritonOpByFuncName(p_ctx, func_name, input_count, output_count, kwargs);
-}
-}  // namespace contrib
-#endif  // ENABLE_TRITON
 
 #endif  // USE_CUDA || USE_CUDA_PROVIDER_INTERFACE
 #endif

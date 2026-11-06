@@ -541,13 +541,10 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
 
-#ifdef ENABLE_TRAINING_CORE
-#else
     // scale as 1D
     if (axes_values.size() != 1) {
       continue;
     }
-#endif
 
     // Get the inputs for the new LayerNormalization node.
     // scale and bias could be multi-dims; we only support it for training at the moment
@@ -627,12 +624,6 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // move output definitions and output edges from mul_node (last in list) to layer_norm_node.
     // remove all the other nodes.
     graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, layer_norm_node);
-
-#ifdef ENABLE_TRAINING_CORE
-    // add two extra output defs, so we have 3 output defs that match what gradient builder expected
-    layer_norm_node.MutableOutputDefs().push_back(&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("saved_mean"), nullptr));
-    layer_norm_node.MutableOutputDefs().push_back(&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("saved_inv_std_var"), nullptr));
-#endif
 
     modified = true;
   }
@@ -756,16 +747,14 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // 3. x->Cast(to:fp16)->y : SimplifiedLayerNorm(T:float,V:fp16)
     // 4. x->y : SimplifiedLayerNorm(T:float,V:float)
     // They all work for GPU EP.
-    // For CPU EP, we have only SimplifiedlayerNorm(T:float,V:float) implementation, so only #4 works. We made an
-    // exception here, since pre-training optimization happens without device assignment. skip_device_check_ is the
-    // flag to disable device check intent only for pre-training optimization.
+    // For CPU EP, we have only SimplifiedlayerNorm(T:float,V:float) implementation, so only #4 works.
     // For #1 and #2, if we treat the entry Cast as a normal node, meaning has_leading_cast is false, then for #2,
     // we can still fuse it to "Cast(to:float)->SimplifiedlayerNorm(T:float,V:float)" (same as applying #4 to the x->y
     // after Cast), so the condition for CPU EP to fuse or not is always setting has_leading_cast to false and checking
     // if there is a Cast between x and y. Having Cast between means cannot fuse.
     const Node* p_pow_input_node = graph_utils::GetInputNode(pow_node, 0);
     bool has_leading_cast = false;
-    bool is_gpu_ep = pow_node.GetExecutionProviderType() == kCudaExecutionProvider || skip_device_check_;
+    bool is_gpu_ep = pow_node.GetExecutionProviderType() == kCudaExecutionProvider;
     if (is_gpu_ep && p_pow_input_node) {
       Node& pow_input_node = *graph.GetNode(p_pow_input_node->Index());
       // If input to Pow is a Cast, and the Cast has 2 consumers only (Pow, Div)
@@ -806,13 +795,10 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
       continue;
     }
 
-#ifdef ENABLE_TRAINING_CORE
-#else
     // scale as 1D
     if (axes_values.size() != 1) {
       continue;
     }
-#endif
 
     // Get the inputs for the new LayerNormalization node.
     // scale and bias could be multi-dims; we only support it for training at the moment
@@ -822,17 +808,10 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
       if (mul_node.MutableInputDefs()[i]->Shape() == nullptr) {
         continue;
       }
-#ifdef ENABLE_TRAINING_CORE
-      if (axes_values.empty() ||
-          mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
-        scale = mul_node.MutableInputDefs()[i];
-      }
-#else
       // Scale must be 1d.
       if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == 1) {
         scale = mul_node.MutableInputDefs()[i];
       }
-#endif
     }
 
     if (scale == nullptr) {
@@ -907,12 +886,6 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
         graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *unused_input_node);
       }
     }
-
-#ifdef ENABLE_TRAINING_CORE
-    // add one extra output def, so we have 2 output defs that match what gradient builder expected
-    layer_norm_node.MutableOutputDefs().push_back(
-        &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("saved_inv_std_var"), nullptr));
-#endif
 
     modified = true;
   }

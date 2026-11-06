@@ -13,7 +13,6 @@ from onnxruntime import RunOptions
 
 # Allowlist of RunOptions attributes that are safe to set via the backend API.
 # 'terminate' excluded: setting it True would deny the current inference call.
-# 'training_mode' excluded: silently switches inference behavior in training builds.
 _ALLOWED_RUN_OPTIONS = frozenset(
     {
         "log_severity_level",

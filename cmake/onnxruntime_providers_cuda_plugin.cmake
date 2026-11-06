@@ -105,9 +105,6 @@ list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/size\\.cc$")
 # non-plugin build). Registering Shape on the EP keeps it off the CPU EP and
 # avoids Memcpy nodes that would otherwise break CUDA Graph capture.
 
-# Exclude contrib training ops (shrunken_gather depends on provider_api.h in header).
-list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/tensor/shrunken_gather\\.cc$")
-
 
 # Exclude contrib transformers/ (beam search, greedy search, sampling). Those need subgraph inference.
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/transformers/.*")

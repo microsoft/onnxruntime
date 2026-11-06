@@ -111,7 +111,6 @@ void RunAttentionProjectionLimitTest(const AttentionEpFactory& create_ep) {
       .RunWithConfig();
 }
 
-#ifndef ENABLE_TRAINING
 class AttentionInitializationTester : public OpTester {
  public:
   AttentionInitializationTester() : OpTester("Attention", 1, kMSDomain) {}
@@ -129,7 +128,6 @@ class AttentionInitializationTester : public OpTester {
     EXPECT_NE(status.ErrorMessage().find(expected_error), std::string::npos) << status.ErrorMessage();
   }
 };
-#endif
 
 }  // namespace
 
@@ -145,7 +143,6 @@ TEST(ContribOpAttentionTest, ProjectionSizeLimitCPU) {
   RunAttentionProjectionLimitTest([] { return DefaultCpuExecutionProvider(); });
 }
 
-#ifndef ENABLE_TRAINING
 // Full training builds disable prepacking. Other EPs do not use the CPU Attention prepacker.
 TEST(ContribOpAttentionTest, InvalidProjectionSizesDuringPrepack) {
   for (const auto& test_case : InvalidAttentionProjections()) {
@@ -155,7 +152,6 @@ TEST(ContribOpAttentionTest, InvalidProjectionSizesDuringPrepack) {
     tester.ExpectInitializationFailure(test_case.expected_error);
   }
 }
-#endif
 
 // These EPs share AttentionBase validation. DirectML and JSEP use independent validation paths.
 #ifdef USE_CUDA
@@ -2668,7 +2664,6 @@ TEST(ContribOpAttentionTest, DISABLED_Attention_Mask1D_Fp16_B2_FusedNoPadding) {
   }
 }
 
-#ifndef ENABLE_TRAINING
 // Prepacking is disabled in full training build so no need to test the feature in a training build.
 TEST(ContribOpAttentionTest, SharedPrepackedWeightsUnequalHiddenSizes) {
   std::vector<float> weight_data(24, 1.0f);
@@ -2852,7 +2847,6 @@ TEST(ContribOpAttentionTest, SharedPrepackedWeights) {
               static_cast<size_t>(number_of_shared_pre_packed_weights_counter));
   }
 }
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime

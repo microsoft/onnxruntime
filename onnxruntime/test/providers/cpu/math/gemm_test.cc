@@ -1550,7 +1550,6 @@ TYPED_TEST(GemmOpTypedTests, TestGemmWithAlphaOpset11) {
       .RunWithConfig();
 }
 
-#ifndef ENABLE_TRAINING
 // Prepacking is disabled in training builds so no need to test the feature in a training build.
 TEST(GemmOpTest, SharedPrepackedWeights) {
   OpTester test("Gemm");
@@ -1633,7 +1632,6 @@ TEST(GemmOpTest, SharedPrepackedWeights) {
               static_cast<size_t>(number_of_shared_pre_packed_weights_counter));
   }
 }
-#endif
 
 // Common helper function for GEMM optimize packed tests
 auto run_gemm_optimize_packed_test = [](int64_t M, int64_t K, int64_t N, BiasType bias_type, bool transA, bool transB) {

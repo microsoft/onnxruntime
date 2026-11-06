@@ -5,6 +5,8 @@
 # Minimum CMake required
 cmake_minimum_required(VERSION 3.28)
 
+include(onnxruntime_training_retirement.cmake)
+
 if(onnxruntime_USE_ACL)
   message(FATAL_ERROR "The ACL execution provider has been removed. Remove onnxruntime_USE_ACL from your build configuration.")
 endif()
@@ -279,13 +281,9 @@ option(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE "Run model tests even in debug mo
 # build configuration for fuzz testing is in onnxruntime_fuzz_test.cmake
 option(onnxruntime_FUZZ_TEST "Enable Fuzz testing" OFF)
 
-# training options
+# Profiling and compute options
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_MEMORY_PROFILE "Enable memory profile." OFF)
-option(onnxruntime_ENABLE_TRAINING "Enable full training functionality. Includes ORTModule and ORT Training APIs" OFF)
-option(onnxruntime_ENABLE_TRAINING_APIS "Enable ort training apis." OFF)
-option(onnxruntime_ENABLE_TRAINING_OPS "Include training operators but no training session support." OFF)
-option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
 option(onnxruntime_ENABLE_CPU_FP16_OPS "Build with advanced instruction sets" ON)
 option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
 
@@ -305,25 +303,13 @@ option(onnxruntime_ENABLE_WEBASSEMBLY_RELAXED_SIMD "Enable WebAssembly Relaxed S
 # Enable bitcode for iOS
 option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
 
-# build Pytorch's LazyTensor support
-cmake_dependent_option(onnxruntime_ENABLE_LAZY_TENSOR "Enable ORT as a LazyTensor backend in Pytorch." ON "onnxruntime_ENABLE_TRAINING" OFF)
-
-# build separate library of schemas of (custom) ops used by ORT (for ONNX to MLIR translation)
-option(onnxruntime_BUILD_OPSCHEMA_LIB "Build op schema library" ON)
-
 # option to enable custom operators in onnxruntime-extensions
 option(onnxruntime_USE_EXTENSIONS "Build with onnxruntime-extensions for more features" OFF)
 
 # option to enable custom operators in onnxruntime-extensions with a custom path
 option(onnxruntime_EXTENSIONS_OVERRIDDEN, "Enable onnxruntime-extensions overridden" OFF)
 
-# Enable registering custom op schemas from shared libraries in python environment.
-option(onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS "Enable registering user defined custom op schemas dynamically" OFF)
-
 set(ONNX_CUSTOM_PROTOC_EXECUTABLE "" CACHE STRING "Specify custom protoc executable to build ONNX")
-
-# pre-build python path
-option(onnxruntime_PREBUILT_PYTORCH_PATH "Path to pytorch installation dir")
 
 # external transformer src path
 option(onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH "Path to external transformer src dir")
@@ -336,7 +322,7 @@ option(onnxruntime_ENABLE_CPUINFO "Enable cpuinfo" ON)
 option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 
 # dlpack support
-cmake_dependent_option(onnxruntime_ENABLE_DLPACK "Enable dlpack" ON "onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_ATEN OR onnxruntime_ENABLE_PYTHON" OFF)
+cmake_dependent_option(onnxruntime_ENABLE_DLPACK "Enable dlpack" ON "onnxruntime_ENABLE_ATEN OR onnxruntime_ENABLE_PYTHON" OFF)
 option(onnxruntime_USE_AZURE "Build with azure inferencing support" OFF)
 option(onnxruntime_USE_LOCK_FREE_QUEUE "Build with lock-free task queue for threadpool." OFF)
 option(onnxruntime_FORCE_GENERIC_ALGORITHMS "Disable optimized arch-specific algorithms. Use only for testing and debugging generic algorithms." OFF)
@@ -362,39 +348,7 @@ endif()
 
 include(detect_onnxruntime_target_platform.cmake)
 
-# ENABLE_TRAINING includes all training functionality
-# The following 2 entry points
-# 1. ORTModule
-# 2. ORT Training APIs
-# It includes all the feature additions as well like
-# 1. Python OP
-# 2. Aten Fallback
-# 3. Strided Tensors
-# 4. All training ops including communication and  collectives ops
-# 5. ONNXBlock (Front end for training preparation when using training apis)
-# Some features are only enabled when onnxruntime_ENABLE_PYTHON is ON as they are only relevant
-# when using python env
-if (onnxruntime_ENABLE_TRAINING)
-  set(onnxruntime_ENABLE_TRAINING_APIS ON)
-  set(onnxruntime_ENABLE_TRAINING_OPS ON)
-  set(onnxruntime_ENABLE_ATEN ON)
-  set(onnxruntime_ENABLE_TRITON ON)
-  if (NOT APPLE)
-    set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP ON)
-  endif()
-endif()
 
-if (onnxruntime_ENABLE_TRAINING_APIS)
-  set(onnxruntime_ENABLE_TRAINING_OPS ON)
-  if (onnxruntime_ENABLE_PYTHON AND NOT onnxruntime_ENABLE_TRAINING)
-    message(FATAL_ERROR "Standalone On-Device Training build is not supported with Python bindings! "
-    "Please use the --enable_training flag instead of the --enable_training_apis flag.")
-  endif()
-endif()
-
-if (onnxruntime_DISABLE_STREAM AND onnxruntime_ENABLE_TRAINING)
-  message(FATAL_ERROR "onnxruntime_DISABLE_STREAM=ON is not supported with onnxruntime_ENABLE_TRAINING=ON.")
-endif()
 
 
 # Single output directory for all binaries
@@ -463,40 +417,8 @@ endif()
 
 set(ONNX_ML 1)
 
-if (NOT (UNIX AND onnxruntime_ENABLE_PYTHON AND onnxruntime_ENABLE_TRAINING AND (NOT onnxruntime_BUILD_SHARED_LIB)))
-  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    message(WARNING "onnxruntime_ENABLE_TRAINING_TORCH_INTEROP is turned OFF due to incompatible build combinations.")
-  endif()
-  set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OFF)
-endif()
-
-if (NOT (UNIX AND onnxruntime_USE_CUDA AND onnxruntime_ENABLE_PYTHON AND onnxruntime_ENABLE_TRAINING AND (NOT onnxruntime_BUILD_SHARED_LIB)))
-  if (onnxruntime_ENABLE_TRITON)
-    message(WARNING "onnxruntime_ENABLE_TRITON is turned OFF because it's designed to support CUDA training on Linux only currently.")
-  endif()
-  set(onnxruntime_ENABLE_TRITON OFF)
-endif()
-
 set(onnxruntime_REQUIRE_PYTHON_EMBED_LIB OFF)
-if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-  add_compile_definitions(ENABLE_TRAINING_TORCH_INTEROP)
 
-  # Python::Python is required for building unit test executables.
-  if (onnxruntime_BUILD_UNIT_TESTS)
-    set(onnxruntime_REQUIRE_PYTHON_EMBED_LIB ON)
-  endif()
-endif()
-
-if (onnxruntime_ENABLE_TRITON)
-  # Need SetOutputMLValue.
-  set(onnxruntime_ENABLE_ATEN ON)
-  add_compile_definitions(ENABLE_TRITON)
-
-  # Python::Python is required for building unit test executables.
-  if (onnxruntime_BUILD_UNIT_TESTS)
-    set(onnxruntime_REQUIRE_PYTHON_EMBED_LIB ON)
-  endif()
-endif()
 
 # Building plugin EPs that depend on EP API adapters.
 if(onnxruntime_USE_EP_API_ADAPTERS)
@@ -573,8 +495,6 @@ if (onnxruntime_EXTENDED_MINIMAL_BUILD AND NOT onnxruntime_MINIMAL_BUILD)
 endif()
 
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
-set(ORTTRAINING_ROOT ${PROJECT_SOURCE_DIR}/../orttraining)
-set(ORTTRAINING_SOURCE_DIR ${ORTTRAINING_ROOT}/orttraining)
 
 include(adjust_global_compile_flags.cmake)
 
@@ -721,7 +641,6 @@ endif()
 
 #Dependencies begin
 get_filename_component(ONNXRUNTIME_ROOT "${ONNXRUNTIME_ROOT}" ABSOLUTE)
-get_filename_component(ORTTRAINING_ROOT "${ORTTRAINING_ROOT}" ABSOLUTE)
 get_filename_component(REPO_ROOT "${REPO_ROOT}" ABSOLUTE)
 set(ONNXRUNTIME_INCLUDE_DIR ${REPO_ROOT}/include/onnxruntime)
 
@@ -804,11 +723,6 @@ else()
   check_cxx_compiler_flag(-Wunused-variable HAS_UNUSED_VARIABLE)
   check_cxx_compiler_flag(-Wuseless-cast HAS_USELESS_CAST)
 
-  if(onnxruntime_ENABLE_TRAINING_APIS)
-    if(HAS_DANGLING_REFERENCE)
-      list(APPEND ORT_WARNING_FLAGS -Wno-dangling-reference)
-    endif()
-  endif()
   check_function_exists(reallocarray HAS_REALLOCARRAY)
   if (NOT APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_target_platform STREQUAL "aarch64")
    check_cxx_compiler_flag(-march=armv8.2-a+bf16 HAS_ARM64_BFLOAT16)
@@ -1172,25 +1086,10 @@ if (onnxruntime_FORCE_GENERIC_ALGORITHMS)
     add_compile_definitions(FORCE_GENERIC_ALGORITHMS)
 endif()
 
-if (onnxruntime_ENABLE_LAZY_TENSOR)
-  # To support LazyTensor, ORT needs to call Python function from C/C++.
-  # so onnxruntime_ENABLE_PYTHON is required.
-  if (NOT onnxruntime_ENABLE_TRAINING OR NOT onnxruntime_ENABLE_PYTHON)
-    message(
-        FATAL_ERROR
-        "Option onnxruntime_ENABLE_LAZY_TENSOR can only be set when onnxruntime_ENABLE_TRAINING and onnxruntime_ENABLE_PYTHON are enabled")
-  endif()
-  # TODO: In the future, we can compile LazyTensor into a standalone
-  # library target, onnxruntime_lazy_tensor, to make the buid
-  # cleaner.
-endif()
 
 function(onnxruntime_set_compile_flags target_name)
     if (CPUINFO_SUPPORTED)
       onnxruntime_add_include_to_target(${target_name} cpuinfo::cpuinfo)
-    endif()
-    if(onnxruntime_ENABLE_LAZY_TENSOR)
-      target_compile_definitions(${target_name} PRIVATE ENABLE_LAZY_TENSOR)
     endif()
 	# Enable stream for all the non-minimal build unless disabled
     if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_DISABLE_STREAM)
@@ -1374,9 +1273,6 @@ function(onnxruntime_configure_target target_name)
     set_target_properties(${target_name} PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/EnableVisualStudioCodeAnalysis.props)
   endif()
   target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
-  if (onnxruntime_ENABLE_TRAINING_OPS)
-    target_include_directories(${target_name} PRIVATE ${ORTTRAINING_ROOT})
-  endif()
   if (onnxruntime_ENABLE_LTO)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
@@ -1483,11 +1379,6 @@ include_directories(
   ${REPO_ROOT}/include/onnxruntime/core/session
 )
 
-if (onnxruntime_ENABLE_TRAINING_APIS)
-  include_directories(
-    ${REPO_ROOT}/orttraining/orttraining/training_api/include/
-  )
-endif()
 
 if (onnxruntime_USE_OPENVINO)
 
@@ -1695,27 +1586,12 @@ if (onnxruntime_USE_DML)
   include(dml)
 endif()
 
-if (onnxruntime_ENABLE_TRAINING_APIS)
-  add_compile_definitions(ENABLE_TRAINING_CORE)
-  add_compile_definitions(ENABLE_TRAINING_APIS)
-endif()
 
-if (onnxruntime_ENABLE_TRAINING_OPS)
-  add_compile_definitions(ENABLE_TRAINING_OPS)
-endif()
 
 if (onnxruntime_ENABLE_CUDA_PROFILING)
   add_compile_definitions(ENABLE_CUDA_PROFILING)
 endif()
 
-if (onnxruntime_ENABLE_TRAINING)
-  add_compile_definitions(ENABLE_TRAINING_CORE)
-  add_compile_definitions(ENABLE_STRIDED_TENSORS)
-  add_compile_definitions(ENABLE_TRAINING)
-
-  add_subdirectory(tensorboard EXCLUDE_FROM_ALL)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tensorboard)
-endif()
 
 if (onnxruntime_ENABLE_DLPACK)
   add_compile_definitions(ENABLE_DLPACK)
@@ -1785,7 +1661,7 @@ if (UNIX OR onnxruntime_USE_NCCL)
 
       add_definitions(-DORT_USE_NCCL=1)
       message( STATUS "NCCL is enabled in Linux GPU Build." )
-    else ()
+    else()
       set(onnxruntime_USE_NCCL OFF)
       message(
           FATAL_ERROR
@@ -1911,14 +1787,7 @@ if (onnxruntime_BUILD_WINML_TESTS)
   list(APPEND ONNXRUNTIME_CMAKE_FILES winml_unittests)
 endif()
 
-# onnxruntime_training depends on onnxruntime_unittests since onnxruntime_training.cmake uses a variable `TEST_SRC_DIR`
 # that is defined in onnxruntime_unittests.cmake
-if (onnxruntime_ENABLE_TRAINING)
-  list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_training)
-  if (onnxruntime_ENABLE_TRAINING_E2E_TESTS)
-    list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_training_e2e_tests)
-  endif()
-endif()
 
 if (onnxruntime_BUILD_CSHARP)
   message(STATUS "CSharp Build is enabled")
@@ -1961,10 +1830,6 @@ if (BUILD_PKGCONFIG_FILES)
     ${CMAKE_INSTALL_LIBDIR}/pkgconfig )
 endif()
 
-if (onnxruntime_BUILD_OPSCHEMA_LIB AND onnxruntime_ENABLE_TRAINING)
-  # opschema library requires training ops as well
-  include(onnxruntime_opschema_lib.cmake)
-endif()
 
 if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
   add_compile_definitions(DEBUG_NODE_INPUTS_OUTPUTS)
@@ -1974,27 +1839,6 @@ if (onnxruntime_DUMP_TENSOR)
   add_compile_definitions(DUMP_TENSOR_LEVEL=1)
 endif()
 
-if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
-  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    message(FATAL_ERROR "External custom operator schemas feature is only supported on Linux")
-  endif()
-
-  if (NOT ${ONNX_CUSTOM_PROTOC_EXECUTABLE} STREQUAL "")
-    message(FATAL_ERROR "External custom operator schemas is not supported with the user specified protoc executable")
-  endif()
-
-  if (NOT onnxruntime_ENABLE_TRAINING)
-    message(FATAL_ERROR "External custom operator schemas is supported only with --enable-training option")
-  endif()
-
-  add_custom_target(install_protobuf ALL DEPENDS ${PROTOBUF_LIB} protobuf::protoc)
-  add_custom_command(
-    TARGET install_protobuf
-    COMMAND ${CMAKE_COMMAND} -DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR} -P cmake_install.cmake
-    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/external/protobuf/cmake
-    COMMENT "Installing protobuf"
-  )
-endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB AND
     (onnxruntime_USE_WEBGPU OR (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_USE_XNNPACK)))

@@ -29,14 +29,8 @@ static Status ValidateCudaVersion(const std::string& value) {
 }
 
 std::string CudaTuningResultsValidator::GetOrtBuildConfig() const {
-  std::ostringstream oss;
-#ifdef ENABLE_TRITON
-  constexpr int kTriton = 1;
-#else
-  constexpr int kTriton = 0;
-#endif
-  oss << "ENABLE_TRITON=" << kTriton << "|";
-  return oss.str();
+  // Preserve the inference tuning-cache fingerprint after retiring the training Triton backend.
+  return "ENABLE_TRITON=0|";
 }
 
 std::string CudaTuningResultsValidator::GetDeviceModel() const {

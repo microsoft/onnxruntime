@@ -452,7 +452,6 @@ TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_GEMM) {
   RunMatMulIntegerU8X8TestBatch(4, 8, 68);
 }
 
-#ifndef ENABLE_TRAINING
 // Prepacking is disabled in full training build so no need to test the feature in a training build.
 TEST(MatmulIntegerOpTest, SharedPrepackedWeights) {
   OpTester test("MatMulInteger", 10);
@@ -523,7 +522,6 @@ TEST(MatmulIntegerOpTest, SharedPrepackedWeights) {
               static_cast<size_t>(number_of_shared_pre_packed_weights_counter));
   }
 }
-#endif
 
 // Regression test: 1D vector dot product with matching K dimension should succeed.
 // A=[K], B=[K] -> scalar output (dot product).

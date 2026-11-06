@@ -331,7 +331,6 @@ TEST(MathOpTest, MatMulUint64Type_FastMath) {
   RunMatMulTest<uint64_t>(9);
 }
 
-#ifndef ENABLE_TRAINING
 // Prepacking is disabled in full training build so no need to test the feature in a training build.
 TEST(MathOpTest, MatMulSharedPrepackedWeights_FastMath) {
   OpTester test("MatMul");
@@ -422,8 +421,6 @@ TEST(MathOpTest, MatMulSharedPrepackedWeights_FastMath) {
               static_cast<size_t>(number_of_shared_pre_packed_weights_counter));
   }
 }
-
-#endif
 
 // Dummy run to disable the FastMath mode for the current session
 TEST(MathOpTest, MatMulUint64Type_DisableFastMath) {

@@ -175,14 +175,7 @@ jobs:
         run: |
           CLANG_TIDY_CHECKS="-*,clang-analyzer-*"
 
-          # Match the inference-only Objective-C sources selected by CMake.
-          OBJC_SOURCES=()
-          for source in ./objectivec/*.mm; do
-            case "$source" in
-              ./objectivec/ort_checkpoint.mm|./objectivec/ort_training_session.mm) continue ;;
-            esac
-            OBJC_SOURCES+=("$source")
-          done
+          OBJC_SOURCES=(./objectivec/*.mm)
 
           "$(brew --prefix llvm@18)/bin/clang-tidy" \
             -p=./build/Debug \

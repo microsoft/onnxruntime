@@ -11,9 +11,8 @@ import platform
 import shlex
 import subprocess
 import sys
-from glob import glob, iglob
+from glob import glob
 from os import environ, getcwd, path, popen, remove
-from pathlib import Path
 from shutil import copyfile
 
 from packaging.tags import sys_tags
@@ -25,6 +24,13 @@ nightly_build = False
 package_name = "onnxruntime"
 wheel_name_suffix = None
 logger = logging.getLogger()
+
+for retired_option in ("--enable_training", "--enable_training_apis", "--default_training_package_device"):
+    if any(argument.split("=", 1)[0] == retired_option for argument in sys.argv[1:]):
+        raise SystemExit(
+            f"ORT training has been retired. {retired_option} is no longer supported. "
+            "Remove this option to package ONNX Runtime for inference."
+        )
 
 
 def parse_arg_remove_boolean(argv, arg_name):
@@ -544,19 +550,6 @@ if not path.exists(README):
 with open(README, encoding="utf-8") as fdesc:
     long_description = fdesc.read()
 
-# Include files in onnxruntime/external if --enable_external_custom_op_schemas build.sh command
-# line option is specified.
-# If the options is not specified this following condition fails as onnxruntime/external folder is not created in the
-# build flow under the build binary directory.
-if path.isdir(path.join("onnxruntime", "external")):
-    # Gather all files under onnxruntime/external directory.
-    extra.extend(
-        [
-            str(Path(*Path(x).parts[1:]))
-            for x in list(iglob(path.join(path.join("onnxruntime", "external"), "**/*.*"), recursive=True))
-        ]
-    )
-
 packages = [
     "onnxruntime",
     "onnxruntime.backend",
@@ -594,10 +587,7 @@ data_files = []
 requirements_file = "requirements.txt"
 
 local_version = None
-enable_training = parse_arg_remove_boolean(sys.argv, "--enable_training")
-enable_training_apis = parse_arg_remove_boolean(sys.argv, "--enable_training_apis")
 disable_auditwheel_repair = parse_arg_remove_boolean(sys.argv, "--disable_auditwheel_repair")
-default_training_package_device = parse_arg_remove_boolean(sys.argv, "--default_training_package_device")
 
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -620,80 +610,6 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 
-if enable_training or enable_training_apis:
-    packages.append("onnxruntime.training")
-    if enable_training:
-        packages.extend(
-            [
-                "onnxruntime.training.amp",
-                "onnxruntime.training.experimental",
-                "onnxruntime.training.experimental.gradient_graph",
-                "onnxruntime.training.optim",
-                "onnxruntime.training.ortmodule",
-                "onnxruntime.training.ortmodule.experimental",
-                "onnxruntime.training.ortmodule.experimental.json_config",
-                "onnxruntime.training.ortmodule.experimental.hierarchical_ortmodule",
-                "onnxruntime.training.ortmodule.torch_cpp_extensions",
-                "onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor",
-                "onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils",
-                "onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator",
-                "onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops",
-                "onnxruntime.training.ortmodule.graph_optimizers",
-                "onnxruntime.training.ortmodule.experimental.pipe",
-                "onnxruntime.training.ort_triton",
-                "onnxruntime.training.ort_triton.kernel",
-                "onnxruntime.training.utils",
-                "onnxruntime.training.utils.data",
-                "onnxruntime.training.utils.hooks",
-                "onnxruntime.training.api",
-                "onnxruntime.training.onnxblock",
-                "onnxruntime.training.onnxblock.loss",
-                "onnxruntime.training.onnxblock.optim",
-            ]
-        )
-
-        package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor"] = ["*.cc"]
-        package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils"] = ["*.cc", "*.h"]
-        package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator"] = ["*.cc"]
-        package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops"] = [
-            "*.cpp",
-            "*.cu",
-            "*.cuh",
-            "*.h",
-        ]
-
-    requirements_file = "requirements-training.txt"
-    # with training, we want to follow this naming convention:
-    # stable:
-    # onnxruntime-training-1.7.0+cu111-cp36-cp36m-linux_x86_64.whl
-    # nightly:
-    # onnxruntime-training-1.7.0.dev20210408+cu111-cp36-cp36m-linux_x86_64.whl
-    # this is needed immediately by pytorch/ort so that the user is able to
-    # install an onnxruntime training package with matching torch cuda version.
-    if not is_openvino:
-        # To support the package consisting of both openvino and training modules part of it
-        package_name = "onnxruntime-training"
-
-        disable_local_version = environ.get("ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION", "0")
-        disable_local_version = (
-            disable_local_version == "1"
-            or disable_local_version.lower() == "true"
-            or disable_local_version.lower() == "yes"
-        )
-        # local version should be disabled for internal feeds.
-        if not disable_local_version:
-            # we want put default training packages to pypi. pypi does not accept package with a local version.
-            if not default_training_package_device or nightly_build:
-                if cuda_version:
-                    # removing '.' to make Cuda version number in the same form as Pytorch.
-                    local_version = "+cu" + cuda_version.replace(".", "")
-                else:
-                    # cpu version for documentation
-                    local_version = "+cpu"
-        else:
-            if not cuda_version:
-                # Training CPU package for ADO feeds is called onnxruntime-training-cpu
-                package_name = "onnxruntime-training-cpu"
 
 if package_name == "onnxruntime-tvm":
     packages += ["onnxruntime.providers.tvm"]
@@ -722,7 +638,7 @@ if nightly_build:
         # as long as there are less than 1000 runs per day, we will not have the problem.
         # to test this code locally, run:
         # NIGHTLY_BUILD=1 BUILD_BUILDNUMBER=202107011 python tools/ci_build/build.py --config RelWithDebInfo \
-        #   --enable_training --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ \
+        #   --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ \
         #   --nccl_home /usr/lib/x86_64-linux-gnu/ --build_dir build/Linux --build --build_wheel --skip_tests \
         #   --cuda_version 11.1
         def check_date_format(date_str):
@@ -750,30 +666,13 @@ if nightly_build:
     elif len(build_suffix) >= 12:
         raise RuntimeError(f'Incorrect build suffix: "{build_suffix}"')
 
-    if enable_training:
-        from packaging import version
-        from packaging.version import Version
-
-        # with training package, we need to bump up version minor number so that
-        # nightly releases take precedence over the latest release when --pre is used during pip install.
-        # eventually this shall be the behavior of all onnxruntime releases.
-        # alternatively we may bump up version number right after every release.
-        ort_version = version.parse(version_number)
-        if isinstance(ort_version, Version):
-            # TODO: this is the last time we have to do this!!!
-            # We shall bump up release number right after release cut.
-            if ort_version.major == 1 and ort_version.minor == 8 and ort_version.micro == 0:
-                version_number = f"{ort_version.major}.{ort_version.minor + 1}.{ort_version.micro}"
-
     version_number = version_number + ".dev" + build_suffix
 
 if local_version:
     version_number = version_number + local_version
 
 if wheel_name_suffix:
-    if not (enable_training and wheel_name_suffix == "gpu"):
-        # for training packages, local version is used to indicate device types
-        package_name = f"{package_name}-{wheel_name_suffix}"
+    package_name = f"{package_name}-{wheel_name_suffix}"
 
 cmd_classes = {}
 if bdist_wheel is not None:
@@ -792,9 +691,6 @@ with open(requirements_path) as f:
 
 
 def save_build_and_package_info(package_name, version_number, cuda_version, qnn_version):
-    sys.path.append(path.join(path.dirname(__file__), "onnxruntime", "python"))
-    from onnxruntime_collect_build_info import find_cudart_versions  # noqa: PLC0415
-
     version_path = path.join("onnxruntime", "capi", "build_and_package_info.py")
     with open(version_path, "w") as f:
         f.write(f"package_name = '{package_name}'\n")
@@ -803,21 +699,6 @@ def save_build_and_package_info(package_name, version_number, cuda_version, qnn_
         if cuda_version:
             f.write(f"cuda_version = '{cuda_version}'\n")
 
-            # The cudart version used in building training packages in Linux.
-            # It is possible to parse version.json at cuda_home in build.py, then pass in the parameter directly.
-            if enable_training and platform.system().lower() == "linux":
-                cudart_versions = find_cudart_versions(build_env=True)
-                if cudart_versions and len(cudart_versions) == 1:
-                    f.write(f"cudart_version = {cudart_versions[0]}\n")
-                else:
-                    print(
-                        "Error getting cudart version. ",
-                        (
-                            "did not find any cudart library"
-                            if not cudart_versions or len(cudart_versions) == 0
-                            else "found multiple cudart libraries"
-                        ),
-                    )
         elif qnn_version:
             f.write(f"qnn_version = '{qnn_version}'\n")
 

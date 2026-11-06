@@ -5,11 +5,10 @@
 
 /** \mainpage ONNX Runtime
  *
- * ONNX Runtime is a high-performance inference and training graph execution engine for deep learning models.
+ * ONNX Runtime is a high-performance inference graph execution engine for deep learning models.
  *
  * ONNX Runtime's C, C++ APIs offer an easy to use interface to onboard and execute onnx models.
  * - \subpage c_cpp_api "Core C, C++ APIs"
- * - \subpage training_c_cpp_api "Training C, C++ APIs for on-device training"
  *
  * \page c_cpp_api Core C, C++ APIs
  * <h1>C</h1>
@@ -4415,17 +4414,14 @@ struct OrtApi {
 
   /// \name Ort Training
   /// @{
-  /** \brief Gets the Training C Api struct
+  /** \brief Reserved compatibility entry for the retired Training C API
    *
-   * Call this function to access the ::OrtTrainingApi structure that holds pointers to functions that enable
-   * training with onnxruntime.
-   * \note A NULL pointer will be returned and no error message will be printed if the training api
-   * is not supported with this build. A NULL pointer will be returned and an error message will be
-   * printed if the provided version is unsupported, for example when using a runtime older than the
-   * version created with this header file.
+   * ORT training is no longer supported. This entry is retained to preserve the layout of
+   * the ::OrtApi structure for existing inference clients. It always returns NULL without
+   * printing an error message.
    *
-   * \param[in] version Must be ::ORT_API_VERSION
-   * \return The ::OrtTrainingApi struct for the version requested.
+   * \param[in] version Ignored.
+   * \return NULL.
    *
    * \since Version 1.13
    */

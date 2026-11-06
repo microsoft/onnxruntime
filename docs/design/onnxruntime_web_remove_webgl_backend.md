@@ -46,7 +46,7 @@ transparent redirect (§5.1):
 
 - **JSEP → native WebGPU EP migration** — tracked separately in
   [onnxruntime_web_jsep_to_webgpu_ep_migration.md](onnxruntime_web_jsep_to_webgpu_ep_migration.md).
-- **No change to the Node binding, React-Native package, or ORT training-web.**
+- **No change to the Node binding or React-Native package.**
 
 ---
 

@@ -1418,7 +1418,6 @@ TEST(ConvTransposeTest, ConvTranspose_AutoPad_with_non_default_strides) {
                        kDmlExecutionProvider});     // TODO: Unskip when fixed #41968513
 }
 
-#ifndef ENABLE_TRAINING
 // Prepacking is disabled in full training build so no need to test the feature in a training build.
 TEST(ConvTransposeTest, SharedPrepackedWeights) {
   OpTester test("ConvTranspose", 11);
@@ -1600,7 +1599,6 @@ TEST(ConvTransposeTest, SharedPrepackedWeights) {
               static_cast<size_t>(number_of_shared_pre_packed_weights_counter));
   }
 }
-#endif
 
 // Verify that non-positive stride/dilation values are rejected by ConvAttributes kernel validation.
 // Uses OpTester directly (not TestConvTransposeOp) so we can call AddShapeToTensorData(false) to

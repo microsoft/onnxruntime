@@ -36,9 +36,6 @@
 #include "core/graph/contrib_ops/internal_nhwc_onnx_schemas.h"
 #include "core/graph/contrib_ops/ms_opset.h"
 #include "core/graph/contrib_ops/onnx_deprecated_opset.h"
-#if defined(ENABLE_TRAINING_OPS)
-#include "onnx/defs/operator_sets_training.h"
-#endif
 #endif
 #ifndef DISABLE_CONTRIB_OPS
 #include "core/graph/contrib_ops/contrib_defs.h"
@@ -52,17 +49,6 @@
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
 #include "core/platform/tracing.h"
-#endif
-
-#if defined(ENABLE_TRAINING_OPS)
-#include "orttraining/core/graph/training_op_defs.h"
-#endif
-#ifdef ENABLE_TRAINING
-#include "orttraining/core/graph/gradient_builder_registry.h"
-#include "orttraining/core/graph/optimizer_builder.h"
-#include "orttraining/core/graph/optimizer_graph_builder_registry.h"
-#include "orttraining/core/graph/loss_function_registry.h"
-#include "orttraining/core/optimizer/graph_transformer_registry.h"
 #endif
 
 #if !defined(NDEBUG) && defined(__linux__) && !defined(__ANDROID__)
@@ -337,25 +323,8 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
         RegisterOnnxMLOperatorSetSchema();
 #endif
 
-#if defined(ENABLE_TRAINING_OPS)
-        RegisterOnnxTrainingOperatorSetSchema();
-#endif
       }
 
-#if defined(ENABLE_TRAINING_OPS)
-      // preserve this order until <training schemas>: this depends on operatorsetschema registration.
-      training::RegisterTrainingOpSchemas();
-#endif
-#ifdef ENABLE_TRAINING
-      training::GradientBuilderRegistry::GetInstance().RegisterGradientBuilders();
-      training::LossFunctionRegistry::GetInstance().RegisterNonOperatorLossFunctions();
-      training::OptimizerBuilderRegistry::GetInstance().RegisterBuilders();
-      training::OptimizerGraphBuilderRegistry::GetInstance().RegisterGraphBuilders();
-      // <training schemas>
-      // This was added for a partner team and is most probably no longer in use.
-      // Can be removed once we have the confirmation.
-      training::GraphTransformerRegistry::GetInstance().RegisterExternalGraphTransformers();
-#endif
     });
 
     // Register MemCpy schema;

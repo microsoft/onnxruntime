@@ -62,12 +62,6 @@ struct Notification;
 
 void reset_saturation_count();
 
-#ifdef ENABLE_TRAINING
-struct PartialGraphExecutionState;
-using OrtValueCache = InlinedHashMap<std::string, OrtValue>;
-using OrtValueCachePtr = std::shared_ptr<OrtValueCache>;
-#endif
-
 namespace logging {
 class LoggingManager;
 }
@@ -423,29 +417,6 @@ class InferenceSession {
    * @param graph_annotation_id The annotation ID of the captured graph to release.
    */
   [[nodiscard]] common::Status ReleaseCapturedGraph(int graph_annotation_id);
-
-#ifdef ENABLE_TRAINING
-  /**
-   * Partially run a pre-loaded and pre-intialized model.
-   * @param run_options run options.
-   * @param mutable_feeds inputs owned by client code and will be released as long as the feeds be set in session states.
-   * Then the feeds will purely managed in the session states.
-   * @param fetches outputs produced after the execution of this function.
-   * @param state State of the graph needed to resume partial graph run.
-   * @param feeds_fetches_manager Contains feed/fetches name to internal indices mapping and information for device
-   *                              copy/checks.
-   * @param cache Contains node arg name to OrtValue map stashed from previous run
-   *              for frontier tensors
-   * @param partial_graph_index Index of the partial graph to run.
-   */
-  common::Status PartialRun(onnxruntime::RunOptions& run_options,
-                            std::vector<OrtValue>& mutable_feeds,
-                            std::vector<OrtValue>& fetches,
-                            PartialGraphExecutionState& state,
-                            FeedsFetchesManager& feeds_fetches_manager,
-                            const OrtValueCachePtr& cache,
-                            int32_t partial_graph_index);
-#endif
 
   /**
    * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.

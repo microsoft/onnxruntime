@@ -113,15 +113,5 @@ Status SliceImpl(cudaStream_t stream, const size_t element_size, const int32_t d
                             input_data, output_data, N);
 }
 
-#ifdef ENABLE_TRAINING_OPS
-Status SliceImplGrad(cudaStream_t stream, const size_t element_size, const int32_t dimension_count,
-                     const TArray<int64_t>& starts, const TArray<int64_t>& steps, const TArray<int64_t>& input_strides,
-                     const TArray<fast_divmod>& output_strides, const void* input_data, void* output_data,
-                     const size_t N) {
-  return SliceImplEx<true>(stream, element_size, dimension_count, starts, steps, input_strides, output_strides,
-                           input_data, output_data, N);
-}
-#endif  // ENABLE_TRAINING_OPS
-
 }  // namespace cuda
 }  // namespace onnxruntime

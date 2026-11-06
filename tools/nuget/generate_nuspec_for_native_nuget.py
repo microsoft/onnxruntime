@@ -18,8 +18,8 @@ platform_version_maccatalyst = "18.0"
 # What does the names of our C API tarball/zip files looks like
 # os: win, linux, osx
 # ep: cuda, tensorrt, None
-def get_package_name(os, cpu_arch, ep, is_training_package):
-    pkg_name = "onnxruntime-training" if is_training_package else "onnxruntime"
+def get_package_name(os, cpu_arch, ep):
+    pkg_name = "onnxruntime"
     if os == "win":
         pkg_name += "-win-"
         pkg_name += cpu_arch
@@ -62,13 +62,13 @@ def is_this_file_needed(ep, filename, package_name):
 # ep: cuda, tensorrt, None
 # files_list: a list of xml string pieces to append
 # This function has no return value. It updates files_list directly
-def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs, is_training_package, package_name):
+def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs, package_name):
     for child in nuget_artifacts_dir.iterdir():
         if not child.is_dir():
             continue
 
         for cpu_arch in ["x86", "x64", "arm", "arm64"]:
-            if child.name == get_package_name("win", cpu_arch, ep, is_training_package):
+            if child.name == get_package_name("win", cpu_arch, ep):
                 child = child / "lib"  # noqa: PLW2901
                 for child_file in child.iterdir():
                     suffixes = [".dll", ".lib", ".pdb"] if include_pdbs else [".dll", ".lib"]
@@ -81,7 +81,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
                             '<file src="' + str(child_file) + f'" target="runtimes/win-{cpu_arch}/native"/>'
                         )
         for cpu_arch in ["x86_64", "arm64"]:
-            if child.name == get_package_name("osx", cpu_arch, ep, is_training_package):
+            if child.name == get_package_name("osx", cpu_arch, ep):
                 child = child / "lib"  # noqa: PLW2901
                 if cpu_arch == "x86_64":
                     cpu_arch = "x64"  # noqa: PLW2901
@@ -93,7 +93,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
                             '<file src="' + str(child_file) + f'" target="runtimes/osx-{cpu_arch}/native"/>'
                         )
         for cpu_arch in ["x64", "aarch64"]:
-            if child.name == get_package_name("linux", cpu_arch, ep, is_training_package):
+            if child.name == get_package_name("linux", cpu_arch, ep):
                 child = child / "lib"  # noqa: PLW2901
                 if cpu_arch == "x86_64":
                     cpu_arch = "x64"  # noqa: PLW2901
@@ -111,7 +111,7 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs,
                             '<file src="' + str(child_file) + f'" target="runtimes/linux-{cpu_arch}/native"/>'
                         )
 
-        if child.name == "onnxruntime-android" or child.name == "onnxruntime-training-android":
+        if child.name == "onnxruntime-android":
             for child_file in child.iterdir():
                 if child_file.suffix in [".aar"]:
                     files_list.append('<file src="' + str(child_file) + '" target="runtimes/android/native"/>')
@@ -181,14 +181,6 @@ def generate_description(line_list, package_name):
 
     if package_name == "Microsoft.AI.MachineLearning":
         description = "This package contains Windows ML binaries."
-    elif "Microsoft.ML.OnnxRuntime.Training" in package_name:  # This is a Microsoft.ML.OnnxRuntime.Training.* package
-        description = (
-            "The onnxruntime-training native shared library artifacts are designed to efficiently train and infer "
-            + "a wide range of ONNX models on edge devices, such as client machines, gaming consoles, and other "
-            + "portable devices with a focus on minimizing resource usage and maximizing accuracy."
-            + "See https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training for "
-            + "more details."
-        )
     elif "Microsoft.ML.OnnxRuntime.Gpu.Linux" in package_name:
         description = "This package contains Linux native shared library artifacts for ONNX Runtime with CUDA."
     elif "Microsoft.ML.OnnxRuntime.Gpu.Windows" in package_name:
@@ -335,8 +327,6 @@ def generate_release_notes(line_list, dependency_sdk_info):
 
 def generate_metadata(line_list, args):
     tags = "native ONNX Runtime ONNXRuntime Machine Learning MachineLearning"
-    if "Microsoft.ML.OnnxRuntime.Training." in args.package_name:
-        tags.append(" ONNXRuntime-Training Learning-on-The-Edge On-Device-Training On-Device Training")
 
     metadata_list = ["<metadata>"]
     generate_id(metadata_list, args.package_name)
@@ -368,7 +358,6 @@ def generate_files(line_list, args):
     is_cpu_package = args.package_name in [
         "Microsoft.ML.OnnxRuntime",
         "Microsoft.ML.OnnxRuntime.OpenMP",
-        "Microsoft.ML.OnnxRuntime.Training",
     ]
     is_mklml_package = args.package_name == "Microsoft.ML.OnnxRuntime.MKLML"
     is_cuda_gpu_package = args.package_name == "Microsoft.ML.OnnxRuntime.Gpu"
@@ -379,10 +368,6 @@ def generate_files(line_list, args):
     is_snpe_package = args.package_name == "Microsoft.ML.OnnxRuntime.Snpe"
     is_qnn_package = args.package_name == "Microsoft.ML.OnnxRuntime.QNN"
     is_migraphx_package = args.package_name == "Microsoft.ML.OnnxRuntime.MIGraphX"
-    is_training_package = args.package_name in [
-        "Microsoft.ML.OnnxRuntime.Training",
-        "Microsoft.ML.OnnxRuntime.Training.Gpu",
-    ]
 
     includes_winml = is_windowsai_package
     includes_directml = (is_dml_package or is_windowsai_package) and (
@@ -489,16 +474,6 @@ def generate_files(line_list, args):
             + '" target="'
             + include_dir
             + '" />'
-        )
-
-    if is_training_package:
-        files_list.append(
-            "<file src="
-            + '"'
-            + os.path.join(
-                args.sources_path, "orttraining\\orttraining\\training_api\\include\\onnxruntime_training_*.h"
-            )
-            + '" target="build\\native\\include" />'
         )
 
     if args.execution_provider == "openvino":
@@ -641,9 +616,7 @@ def generate_files(line_list, args):
             else:
                 ep_list = [None]
             for ep in ep_list:
-                generate_file_list_for_ep(
-                    nuget_artifacts_dir, ep, files_list, include_pdbs, is_training_package, args.package_name
-                )
+                generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs, args.package_name)
             is_ado_packaging_build = True
         else:
             # Code path for local dev build
@@ -1121,41 +1094,6 @@ def generate_files(line_list, args):
                 + f'" target="buildTransitive\\net9.0-maccatalyst{platform_version_maccatalyst}" />'
             )
 
-        # Process Training specific targets and props
-        if args.package_name == "Microsoft.ML.OnnxRuntime.Training":
-            net9_android_source_targets = os.path.join(
-                args.sources_path,
-                "csharp",
-                "src",
-                "Microsoft.ML.OnnxRuntime",
-                "targets",
-                "net9.0-android",
-                "targets.xml",
-            )
-            net9_android_target_targets = os.path.join(
-                args.sources_path,
-                "csharp",
-                "src",
-                "Microsoft.ML.OnnxRuntime",
-                "targets",
-                "net9.0-android",
-                args.package_name + ".targets",
-            )
-
-            copy_file(net9_android_source_targets, net9_android_target_targets)
-            files_list.append(
-                "<file src="
-                + '"'
-                + net9_android_target_targets
-                + f'" target="build\\net9.0-android{platform_version_android}" />'
-            )
-            files_list.append(
-                "<file src="
-                + '"'
-                + net9_android_target_targets
-                + f'" target="buildTransitive\\net9.0-android{platform_version_android}" />'
-            )
-
     # README
     files_list.append(
         "<file src=" + '"' + os.path.join(args.sources_path, "tools/nuget/nupkg.README.md") + '" target="README.md" />'
@@ -1191,6 +1129,10 @@ def generate_files(line_list, args):
 
 
 def generate_nuspec(args):
+    if args.package_name == "Microsoft.ML.OnnxRuntime.Training" or args.package_name.startswith(
+        "Microsoft.ML.OnnxRuntime.Training."
+    ):
+        raise ValueError("ORT training has been retired. Training NuGet packages are no longer supported.")
     lines = ['<?xml version="1.0"?>']
     lines.append("<package>")
     generate_metadata(lines, args)

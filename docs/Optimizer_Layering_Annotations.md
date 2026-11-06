@@ -87,7 +87,6 @@ Failing to propagate the EP assignment causes the new node to fall back to the d
 ## When You Do NOT Need to Propagate Annotations
 
 - **Level 2+ optimizers** — annotations have already been consumed and cleared (but EP assignments must still be propagated, see above).
-- **Training optimizers** — training runs after partitioning.
 - **Optimizers that only remove nodes** (e.g., identity elimination) — no new nodes are created.
 - **Optimizers that modify nodes in-place** — the annotation remains on the existing node.
 

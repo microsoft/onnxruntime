@@ -41,7 +41,6 @@
 namespace onnxruntime {
 namespace test {
 
-#ifndef ENABLE_TRAINING
 #if defined(USE_WEBGPU)
 // This must be used before constructing OpTester: an unexecuted OpTester traps in Debug builds.
 #define GET_WEBGPU_EP_OR_SKIP(name)                               \
@@ -1792,7 +1791,6 @@ TEST(MoETest, QMoETest_WebGPU_Int2RejectUnalignedFc3) {
 
 #undef GET_WEBGPU_EP_OR_SKIP
 #endif
-#endif  // ENABLE_TRAINING
 
 }  // namespace test
 }  // namespace onnxruntime

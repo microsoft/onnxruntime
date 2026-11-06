@@ -297,13 +297,8 @@ constexpr std::array kOnnxDomainNonDeterministicOps{"RandomUniform", "RandomNorm
 //
 // TODO(adrianlizarraga): Investigate converting to lists of *non-deterministic* MS domain operators to be consistent
 // with the above ONNX list. With the current approach, only MS domain Q/DQ operators
-// (plus ShrunkenGather for training) are considered deterministic.
-#ifdef ENABLE_TRAINING_OPS
-constexpr std::array kMSDomainDeterministicOps{"ShrunkenGather", "QuantizeLinear", "DequantizeLinear",
-                                               "ConcatTraining", "PadAndUnflatten"};
-#else
+// are considered deterministic.
 constexpr std::array kMSDomainDeterministicOps{"QuantizeLinear", "DequantizeLinear"};
-#endif
 
 bool IsOperationDeterministic(const std::string& domain, const std::string& op) {
   if (domain.compare(kOnnxDomain) == 0) {

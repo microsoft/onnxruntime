@@ -22,16 +22,6 @@ if(NOT onnxruntime_MINIMAL_BUILD)
   add_subdirectory(${MODEL_PACKAGE_LIB_DIR} ${CMAKE_CURRENT_BINARY_DIR}/model_package EXCLUDE_FROM_ALL)
 endif()
 
-if (onnxruntime_ENABLE_TRAINING_APIS)
-  file(GLOB_RECURSE training_api_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/training_api/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/training_api/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/core/framework/checkpoint_common.cc"
-    "${ORTTRAINING_SOURCE_DIR}/core/framework/checkpoint_common.h"
-  )
-
-  list(APPEND onnxruntime_session_srcs ${training_api_srcs})
-endif()
 
 # disable for all minimal builds. enabling this pulls in all the provider bridge stuff,
 # which is not enabled for any minimal builds.
@@ -77,13 +67,7 @@ add_dependencies(onnxruntime_session ${onnxruntime_EXTERNAL_DEPENDENCIES})
 set_target_properties(onnxruntime_session PROPERTIES FOLDER "ONNXRuntime")
 
 
-if (onnxruntime_ENABLE_TRAINING_OPS)
-  target_include_directories(onnxruntime_session PRIVATE ${ORTTRAINING_ROOT})
-endif()
 
-if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-  onnxruntime_add_include_to_target(onnxruntime_session Python::Module)
-endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)
     install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/session  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)

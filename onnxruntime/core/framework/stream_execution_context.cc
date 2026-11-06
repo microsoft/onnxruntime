@@ -203,11 +203,6 @@ void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& sess
   auto& execution_plan = ctx.GetSessionState().GetExecutionPlan()->execution_plan;
   auto& logic_stream = execution_plan[stream_idx];
   size_t end = logic_stream->steps_.size();
-#ifdef ENABLE_TRAINING
-  auto* range = ctx.GetCurrentRange();
-  if (range)
-    end = std::min(end, range->stream_pc_range[stream_idx].second);
-#endif
 
 #ifdef ORT_ENABLE_STREAM
   // If the device stream has corresponding SetDevice function registered, it means GPU device should be properly set to the correct device.

@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
   "name": "onnxruntime",
   "version-date": "2025-01-31",
-  "description": "ONNX Runtime: cross-platform, high performance ML inferencing and training accelerator",
+  "description": "ONNX Runtime: cross-platform, high performance ML inference accelerator",
   "homepage": "https://onnxruntime.ai/",
   "license": "MIT",
   "dependencies": [
@@ -23,7 +23,6 @@
       "name": "cpuinfo",
       "platform": "!osx"
     },
-    "cxxopts",
     "date",
     "dlpack",
     "eigen3",

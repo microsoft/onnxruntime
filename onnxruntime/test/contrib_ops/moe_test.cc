@@ -40,8 +40,6 @@ namespace test {
 // Note: QMoE CPU implementation now always applies softmax normalization to top-k selected experts
 // regardless of the normalize_routing_weights parameter value for mathematical correctness.
 
-#ifndef ENABLE_TRAINING
-
 // The CUTLASS SIMT kernel (128x128x8 tile) used on the CUDA MoE path requires minimum
 // problem dimensions. For float on SM80+, both hidden_size and inter_size must be >= 128.
 // For fp16/bf16 on SM90 TMA WS path, K (hidden_size) must be >= 64.
@@ -7607,7 +7605,6 @@ TEST(MoETest, QMoETest_CPU_KExceedsNumExperts) {
   GTEST_SKIP() << "Skipping CPU QMoE test";
 #endif
 }
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -18,8 +18,6 @@ function(substitute_op_reduction_srcs all_srcs)
     "${ONNXRUNTIME_ROOT}/core/providers/cpu/cpu_execution_provider.cc"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_execution_provider.cc"
     "${ONNXRUNTIME_ROOT}/core/providers/op_kernel_type_control_overrides.inc"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/cpu_training_kernels.cc"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/cuda_training_kernels.cc"
     )
 
   set(replacement_srcs)
@@ -51,9 +49,6 @@ endfunction()
 # `target`.
 function(add_op_reduction_include_dirs target)
   set(op_reduction_include_dirs "${op_reduction_root}/onnxruntime")
-  if (onnxruntime_ENABLE_TRAINING_OPS)
-    list(APPEND op_reduction_include_dirs "${op_reduction_root}/orttraining")
-  endif()
   # add include directories BEFORE so they are searched first, giving op reduction file paths precedence
   target_include_directories(${target} BEFORE PRIVATE ${op_reduction_include_dirs})
 endfunction()

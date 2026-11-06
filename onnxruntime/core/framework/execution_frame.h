@@ -59,18 +59,6 @@ class IExecutionFrame {
   Status SetOutputMLValue(int index, const OrtValue& ort_value);
 #endif
 
-#ifdef ENABLE_TRAINING
-  // Referenced by PartialGraphExecutionState which is applicable when using ORTModule.
-  // These wont be needed when using ORT Training APIs
-  void UpdateFeeds(gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds);
-  void UpdateFetches(gsl::span<const int> fetch_mlvalue_idxs, gsl::span<const OrtValue> fetches,
-
-                     const std::unordered_map<int, OrtValue>& initializers);
-  Status GetOutputs(gsl::span<const int> fetch_mlvalue_idxs, std::vector<OrtValue>& fetches);
-  // if OOM happens, then release all values, so session can run next batch.
-  void ReleaseAllMLValues();
-#endif
-
   // TO DO: make it thread safe
   // This method is not thread safe!
   // Return S_OK and nullptr if index map to an value that is an unused optional input/output
@@ -178,13 +166,9 @@ class ExecutionFrame final : public IExecutionFrame {
   }
 #endif
 
-  // This function try retrieve the inferred shapes for the given NodeArg index.
-  // If the retrival is successful, this function returns true and false otherwise.
-  bool TryGetInferredShape(int index, TensorShape& shape) const override;
-
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Return the size of virtual memory allocated in runtime.
-  // The memory is usually used for activations in forward and backward passes.
+  // The memory is used for intermediate activations.
   const std::unordered_map<std::string, size_t>& GetDynamicMemorySizeInfo() const {
     // This function is not thread-safe. Please make sure dynamic_activation_memory_sizes_in_byte_
     // is not being changed when calling this function.
@@ -194,7 +178,7 @@ class ExecutionFrame final : public IExecutionFrame {
   }
 
   // Return the size of virtual memory allocated before computation.
-  // The memory is usually used for activations in forward and backward passes.
+  // The memory is used for intermediate activations.
   const std::unordered_map<std::string, size_t>& GetStaticMemorySizeInfo() const {
     // This function is not thread-safe. Please make sure static_activation_memory_sizes_in_byte_
     // is not being changed when calling this function.
@@ -251,13 +235,6 @@ class ExecutionFrame final : public IExecutionFrame {
 
   // Big chunks on different locations that will be used by mem_pattern.
   InlinedHashMap<OrtDevice, BufferUniquePtr> buffers_;
-
-  // Given the input shapes of the executed graph, ExecutionFrame tries inferring
-  // all symbolic shapes. inferred_shapes_[i] is the shape of OrtValue indexed
-  // by i, if the key i exists.
-  // inferred_shapes_ is generated together with mem_patterns_.
-  // It is never updated after creation
-  const InlinedHashMap<int, TensorShape>* inferred_shapes_{nullptr};
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Size of virtual memory allocated before any kernel execution.

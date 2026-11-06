@@ -9,12 +9,10 @@ on:
       - main
     paths:
       - include/onnxruntime/core/session/**
-      - orttraining/orttraining/training_api/include/**
       - docs/c_cxx/**
   pull_request:
     paths:
       - include/onnxruntime/core/session/**
-      - orttraining/orttraining/training_api/include/**
       - docs/c_cxx/**
   schedule:
     - cron: '0 0 * * 0'

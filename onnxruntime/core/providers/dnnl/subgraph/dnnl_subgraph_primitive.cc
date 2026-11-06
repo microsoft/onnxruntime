@@ -29,12 +29,6 @@
 #include "dnnl_transpose.h"
 #include "dnnl_unsqueeze.h"
 
-#if defined(ENABLE_TRAINING)
-#include "dnnl_convgrad.h"
-#include "dnnl_poolgrad.h"
-#include "dnnl_relugrad.h"
-#endif
-
 #include <inttypes.h>
 #include <stdio.h>
 #include <iostream>
@@ -224,16 +218,6 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlTranspose().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Unsqueeze") {
       DnnlUnsqueeze().CreatePrimitive(*this, node);
-#if defined(ENABLE_TRAINING)
-    } else if (node.OpType() == "AveragePoolGrad" || node.OpType() == "MaxPoolGrad") {
-      DnnlPoolGrad().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "ConvGrad") {
-      DnnlConvGrad().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "ReluGrad") {
-      DnnlReluGrad().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "SoftmaxGrad") {
-      DnnlSoftmaxGrad().CreatePrimitive(*this, node);
-#endif
     } else {
       throw std::invalid_argument("Kernel not found");
     }

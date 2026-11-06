@@ -1152,7 +1152,6 @@ TEST(MatMulNBits, WebGpu_DP4A_KParallel_Int8) {
 #endif
 
 #if !defined(USE_CUDA) && !defined(USE_WEBGPU)
-#ifndef ENABLE_TRAINING
 // Pre-packing (and therefore cross-session sharing of pre-packed weights) is disabled in a full
 // training build and is only implemented for the CPU EP, so these tests are CPU-only.
 
@@ -1198,7 +1197,6 @@ TEST(MatMulNBits, SharedPrepackedWeights_8b_NotSharedWithoutOptIn) {
   RunTest8Bits<MLFloat16>(MakeSharingTestOptions8Bits(32, /*has_zero_point*/ false, /*has_bias*/ false,
                                                       PrepackSharingMode::kNoSharing));
 }
-#endif  // !ENABLE_TRAINING
 #endif  // !USE_CUDA && !USE_WEBGPU
 
 }  // namespace test

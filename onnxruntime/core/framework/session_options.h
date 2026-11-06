@@ -28,7 +28,7 @@ namespace onnxruntime {
 enum class ExecutionOrder {
   DEFAULT = 0,           // default topological sort
   PRIORITY_BASED = 1,    // priority-based topological sort
-  MEMORY_EFFICIENT = 2,  // memory-efficient topological sort for training purposes.
+  MEMORY_EFFICIENT = 2,  // Reserved value for the retired training execution order.
 };
 
 inline std::ostream& operator<<(std::ostream& os, const ExecutionOrder& order) {

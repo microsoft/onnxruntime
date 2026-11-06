@@ -1,4 +1,4 @@
-﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #include "core/framework/session_state.h"
@@ -401,42 +401,6 @@ const PrepackedWeightsForGraph& onnxruntime::SessionState::GetPrepackedIniitiali
 #if !defined(DISABLE_SPARSE_TENSORS)
 bool SessionState::IsSparseInitializer(int ort_value_index) const {
   return sparse_initialized_tensors_.count(ort_value_index) > 0;
-}
-#endif
-
-#ifdef ENABLE_TRAINING
-Status SessionState::GetInitializedTensors(
-    const std::unordered_set<std::string>& interested_weights,
-    bool allow_missing_weights, NameMLValMap& retrieved_weights) const {
-  NameMLValMap result;
-  result.reserve(interested_weights.size());
-  for (const auto& weight_name : interested_weights) {
-    int idx;
-    const auto status = GetOrtValueNameIdxMap().GetIdx(weight_name, idx);
-    if (!status.IsOK()) {
-      ORT_RETURN_IF_NOT(
-          allow_missing_weights,
-          "Failed to get OrtValue index from name: ", status.ErrorMessage());
-      continue;
-    }
-    if (initialized_tensors_.find(idx) != initialized_tensors_.end()) {
-      result.emplace(weight_name, initialized_tensors_.at(idx));
-    } else {
-      ORT_RETURN_IF_NOT(
-          allow_missing_weights,
-          "Failed to get initializer with name: ", weight_name, " and index:", idx);
-      continue;
-    }
-  }
-  retrieved_weights = std::move(result);
-  return Status::OK();
-}
-
-NameMLValMap SessionState::GetInitializedTensors(const std::unordered_set<std::string>& interested_weights) const {
-  NameMLValMap result;
-  const auto status = GetInitializedTensors(interested_weights, true, result);
-  ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-  return result;
 }
 #endif
 
@@ -944,271 +908,16 @@ CalculateMemoryPatternsKey(const gsl::span<const OrtValue>& tensor_inputs) {
   return key;
 }
 
-#ifdef ENABLE_TRAINING
-namespace {
-Status ResolveDimParams(const GraphViewer& graph,
-                        const InlinedHashMap<std::string, TensorShape>& feeds,
-                        InlinedHashMap<std::string, int64_t>& out) {
-  out.reserve(graph.GetInputs().size());
-  for (const auto* input : graph.GetInputs()) {
-    auto* shape = input->Shape();
-    auto it = feeds.find(input->Name());
-    if (it == feeds.end()) {
-      return Status(ONNXRUNTIME, FAIL,
-                    "Graph input " + input->Name() +
-                        " is not found in the feed list, unable to resolve the value for dynamic shape.");
-    }
-    if (it->second.NumDimensions() == 0 && !shape) {
-      // This is a scalar, which has nothing to do with symbolic shapes.
-      continue;
-    }
-    if (!shape || shape->dim_size() != static_cast<int>(it->second.NumDimensions())) {
-      return Status(ONNXRUNTIME, FAIL, "Graph input " + input->Name() +
-                                           "'s shape is not present or its shape doesn't match feed's shape."
-                                           "Unable to resolve the value for dynamic shape");
-    }
-    for (int k = 0, end = shape->dim_size(); k < end; ++k) {
-      if (shape->dim()[k].has_dim_param()) {
-        out.insert({shape->dim()[k].dim_param(), it->second.GetDims()[k]});
-      }
-    }
-  }
-  return Status::OK();
-}
-
-Status TryResolveShape(
-    const NodeArg* arg,
-    const InlinedHashMap<std::string, int64_t>& symbolic_dimensions,
-    size_t& is_resolved,  // indicate whether resolve successfully or not.
-    TensorShapeVector& resolved_shape) {
-  if (!arg->Shape()) {
-    is_resolved = 0;
-    return Status::OK();
-  }
-
-  TensorShapeVector shape;
-
-  SafeInt<size_t> safe_size = 1;
-  for (auto& dim : arg->Shape()->dim()) {
-    if (dim.has_dim_param()) {
-      auto it = symbolic_dimensions.find(dim.dim_param());
-      if (it == symbolic_dimensions.end()) {
-        return Status(ONNXRUNTIME, FAIL, "Unknown symbolic dimension, " + dim.dim_param() + ", found in memory pattern compute.");
-      }
-      safe_size *= it->second;
-      shape.push_back(it->second);
-    } else if (dim.has_dim_value() && dim.dim_value() > 0) {
-      safe_size *= dim.dim_value();
-      shape.push_back(dim.dim_value());
-    } else {
-      // tensor shape is unknown.
-      safe_size = 0;
-    }
-  }
-
-  is_resolved = safe_size;
-  // Only assign shape if all symbolic dimensions are resolved.
-  if (is_resolved != 0) {
-    resolved_shape = std::move(shape);
-  }
-
-  return Status::OK();
-}
-
-void TryCalculateSizeFromResolvedShape(int ml_value_idx, const InlinedHashMap<int, TensorShape>& resolved_shapes, size_t& size) {
-  size = 0;
-  auto shape = resolved_shapes.find(ml_value_idx);
-  if (shape != resolved_shapes.end()) {
-    size = 1;
-    for (auto dim : shape->second.GetDims())
-      size *= dim;
-  }
-}
-
-}  // namespace
-
-// If this function fails NO memory planning will take place, hence lets ONLY FAIL and stop training where warranted, example SIZE overflow.
-Status SessionState::GeneratePatternGroupCache(gsl::span<const OrtValue> tensor_inputs,
-                                               gsl::span<const int> feed_mlvalue_idxs,
-                                               MemoryPatternGroup& output,
-                                               InlinedHashMap<int, TensorShape>& resolved_shapes) const {
-  InlinedHashMap<std::string, TensorShape> feeds;
-  feeds.reserve(feed_mlvalue_idxs.size());
-  for (size_t i = 0, end = feed_mlvalue_idxs.size(); i < end; ++i) {
-    std::string name;
-    ORT_RETURN_IF_ERROR(this->ort_value_name_idx_map_.GetName(feed_mlvalue_idxs[i], name));
-    feeds.emplace(std::move(name), tensor_inputs[i].Get<Tensor>().Shape());
-  }
-  InlinedHashMap<std::string, int64_t> map;
-  ORT_RETURN_IF_ERROR(ResolveDimParams(*graph_viewer_, feeds, map));
-  auto* exe_plan = GetExecutionPlan();
-  ORT_ENFORCE(exe_plan);
-  OrtValuePatternPlanner mem_planner(*exe_plan, /*using counters*/ true);
-
-  // Try to resolve shapes for activations.
-  auto& node_index_info = GetNodeIndexInfo();
-  auto& execution_order = exe_plan->node_execution_order_in_training;
-  for (auto& node_idx : execution_order) {
-    int node_index = node_index_info.GetNodeOffset(node_idx);
-    auto* node = graph_viewer_->GetNode(node_idx);
-    int output_start = node_index + static_cast<int>(node->InputDefs().size()) +
-                       static_cast<int>(node->ImplicitInputDefs().size());
-
-    for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
-      const auto ml_value_idx = node_index_info.GetMLValueIndex(output_start + i);
-      if (ml_value_idx == NodeIndexInfo::kInvalidEntry)
-        continue;
-
-      const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
-      if (!ml_type->IsTensorType())
-        continue;
-
-      auto* arg = node->OutputDefs()[i];
-      size_t is_resolved = 0;
-      TensorShapeVector resolved_shape;
-
-      // Tensors whose shape cannot be resolved statically will be allocated at runtime.
-      if (TryResolveShape(arg, map, is_resolved, resolved_shape).IsOK()) {
-        // Store all valid resolved shapes. They will be queried in, for example,
-        // Recv operator to bypass the dependency of output shapes on inputs.
-        if (is_resolved != 0) {
-          resolved_shapes[ml_value_idx] = gsl::make_span(resolved_shape);
-        }
-      } else {
-        LOGS(logger_, INFO) << "[Static memory planning] Could not resolve shape for tensor with ML index "
-                            << ml_value_idx << ", will allocate dynamically.";
-      }
-    }
-  }
-
-  // Allocate activations that want to be laid out contiguously in memory.
-  for (auto ml_value_idx : exe_plan->activation_allocation_order) {
-    ORT_ENFORCE(ml_value_idx >= 0);
-
-    const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
-    if (!ml_type->IsTensorType())
-      continue;
-
-    const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
-    if (exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate &&
-        ml_data_type != DataTypeImpl::GetType<std::string>()) {
-      size_t size = 0;
-      TryCalculateSizeFromResolvedShape(ml_value_idx, resolved_shapes, size);
-      if (size == 0) {
-        std::string node_name;
-        ORT_RETURN_IF_ERROR(this->ort_value_name_idx_map_.GetName(ml_value_idx, node_name));
-        return Status(ONNXRUNTIME, FAIL, "Unknown shape found in memory pattern compute, node name is : " + node_name);
-      }
-
-      if (!IAllocator::CalcMemSizeForArrayWithAlignment<kAllocAlignment>(size, ml_data_type->Size(), &size)) {
-        return Status(ONNXRUNTIME, FAIL, "Size overflow");
-      }
-
-      ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate);
-
-      const auto& counter = exe_plan->allocation_plan[ml_value_idx].program_counter;
-      ORT_RETURN_IF_ERROR(mem_planner.TraceAllocation(ml_value_idx, counter, size));
-    }
-  }
-  // TODO: add check for single stream
-  // Allocate all other activations.
-  for (auto& step_index : execution_order) {
-    int node_index = node_index_info.GetNodeOffset(step_index);
-    auto* node = graph_viewer_->GetNode(step_index);
-    int output_start = node_index + static_cast<int>(node->InputDefs().size()) +
-                       static_cast<int>(node->ImplicitInputDefs().size());
-    // allocate output
-    for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
-      const auto ml_value_idx = node_index_info.GetMLValueIndex(output_start + i);
-      if (ml_value_idx == NodeIndexInfo::kInvalidEntry ||
-          (std::find(exe_plan->activation_allocation_order.begin(),
-                     exe_plan->activation_allocation_order.end(), ml_value_idx) !=
-           exe_plan->activation_allocation_order.end()))
-        continue;
-      const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
-      if (!ml_type->IsTensorType())
-        continue;
-
-      if (exe_plan->allocation_plan[ml_value_idx].location.MemType() != OrtDevice::MemType::DEFAULT)
-        continue;
-
-      const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
-      size_t size = 0;
-      TryCalculateSizeFromResolvedShape(ml_value_idx, resolved_shapes, size);
-
-      // Plan memory if conditions are met.
-      if (exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate &&
-          ml_data_type != DataTypeImpl::GetType<std::string>() && size != 0) {
-        size_t aligned_size = 0;
-        if (!IAllocator::CalcMemSizeForArrayWithAlignment<kAllocAlignment>(size, ml_data_type->Size(), &aligned_size)) {
-          return Status(ONNXRUNTIME, FAIL, "Size overflow");
-        }
-
-        ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate);
-
-        const auto& counter = exe_plan->allocation_plan[ml_value_idx].program_counter;
-        ORT_RETURN_IF_ERROR(mem_planner.TraceAllocation(ml_value_idx, counter, aligned_size));
-      }
-    }
-
-    // release nodes
-    auto& release_actions = exe_plan->node_release_list[step_index];
-    for (auto it = release_actions.begin(); it != release_actions.end(); ++it) {
-      auto& action = exe_plan->release_actions[*it];
-      // if the value consumed by multiple stream, we can't pre-release it statically.
-      if (action.ref_count != 1)
-        continue;
-
-      auto ml_value_idx = action.value_index;
-      const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
-      if (!ml_type->IsTensorType())
-        continue;
-      const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
-      if (ml_data_type != DataTypeImpl::GetType<std::string>()) {
-        ORT_RETURN_IF_ERROR(mem_planner.TraceFree(static_cast<int>(ml_value_idx)));
-      }
-    }
-  }
-
-  if (!mem_planner.GeneratePatterns(output).IsOK()) {
-    return Status(ONNXRUNTIME, FAIL, "Generate Memory Pattern failed");
-  }
-  return Status::OK();
-}
-
-#endif
-
 // MemoryPatternGroup pointer is cached. It only inserted upon creation
 // and is not updated if already present.
-const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(
-    gsl::span<const OrtValue> tensor_inputs,
-    gsl::span<const int> feed_mlvalue_idxs,
-    const InlinedHashMap<int, TensorShape>*& out_inferred_shapes) const {
-  out_inferred_shapes = nullptr;
+const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(gsl::span<const OrtValue> tensor_inputs) const {
   int64_t key = CalculateMemoryPatternsKey(tensor_inputs);
   std::lock_guard<std::mutex> lock(mem_patterns_lock_);
   auto it = mem_patterns_.find(key);
   if (it == mem_patterns_.end()) {
-#ifdef ENABLE_TRAINING
-    MemoryPatternGroup mem_patterns;
-    InlinedHashMap<int, TensorShape> inferred_shapes;
-    if (GeneratePatternGroupCache(tensor_inputs, feed_mlvalue_idxs, mem_patterns, inferred_shapes).IsOK()) {
-      auto patt_insert = mem_patterns_.insert_or_assign(key, std::move(mem_patterns));
-      auto ptr = &patt_insert.first->second;
-      auto shape_insert = shape_patterns_.insert_or_assign(key, std::move(inferred_shapes));
-      out_inferred_shapes = &shape_insert.first->second;
-      return ptr;
-    }
-#else
-    ORT_UNUSED_PARAMETER(feed_mlvalue_idxs);
-#endif
     return nullptr;
   }
 
-  auto patt_hit = shape_patterns_.find(key);
-  if (patt_hit != shape_patterns_.cend()) {
-    out_inferred_shapes = &patt_hit->second;
-  }
   return &it->second;
 }
 
@@ -1396,48 +1105,6 @@ const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
   ORT_ENFORCE(node_index_info_.has_value(), "SetGraphAndCreateKernels must be called prior to GetExecutionInfo.");
   return *node_index_info_;
 }
-
-#ifdef ENABLE_TRAINING
-void SessionState::UpdateToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs) {
-  InlinedVector<int> sorted_idxs;
-  sorted_idxs.reserve(fetch_mlvalue_idxs.size());
-  sorted_idxs.assign(fetch_mlvalue_idxs.begin(), fetch_mlvalue_idxs.end());
-  std::sort(sorted_idxs.begin(), sorted_idxs.end());
-  if (to_be_executed_nodes_.find(sorted_idxs) != to_be_executed_nodes_.end())
-    return;
-
-  // Get the nodes generating the fetches.
-  InlinedVector<const Node*> nodes;
-  nodes.reserve(fetch_mlvalue_idxs.size());
-  InlinedHashSet<NodeIndex> reachable_nodes;
-  reachable_nodes.reserve(graph_.NumberOfNodes());
-
-  for (auto idx : fetch_mlvalue_idxs) {
-    std::string node_arg_name;
-    const auto status = this->GetOrtValueNameIdxMap().GetName(idx, node_arg_name);
-    ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-    auto ending_node = graph_.GetProducerNode(node_arg_name);
-    nodes.push_back(ending_node);
-  }
-
-  // Reversely traverse to get reachable nodes.
-  graph_.ReverseDFSFrom(
-      nodes, {}, [&reachable_nodes](const Node* n) { reachable_nodes.insert(n->Index()); });
-
-  // global start, end doesn't matters
-  to_be_executed_nodes_.emplace(std::move(sorted_idxs), std::move(reachable_nodes));
-}
-
-const InlinedHashSet<NodeIndex>* SessionState::GetToBeExecutedRange(
-    gsl::span<int const> fetch_mlvalue_idxs) const {
-  InlinedVector<int> sorted_idxs;
-  sorted_idxs.reserve(fetch_mlvalue_idxs.size());
-  sorted_idxs.assign(fetch_mlvalue_idxs.begin(), fetch_mlvalue_idxs.end());
-  std::sort(sorted_idxs.begin(), sorted_idxs.end());
-  auto it = to_be_executed_nodes_.find(sorted_idxs);
-  return (it != to_be_executed_nodes_.end()) ? &it->second : nullptr;
-}
-#endif
 
 Status SessionState::CreateSubgraphSessionState() {
   for (auto& node : graph_.Nodes()) {
@@ -2462,23 +2129,13 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   GetMemoryProfiler()->Init(GetExecutionPlan(), GetOrtValueNameIdxMap());
 #endif
 
-  // Note: For Training Prepacking should be always disabled.
-  // For inference it is enabled by default, but users can choose to disable it via session options.
   const bool disable_prepacking =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisablePrepacking, "0") == "1";
   // Memory pattern tracer allocates all initializers on a single contiguous
   // buffer. This has the effect of reducing memory fragmentation.
-  // Further more, in training scenarios NCCL kernels require initializers to be allocated
-  // contiguously.
-  //
-  // In inferencing scenarios, however, we often want to pre-process and then
-  // release some initializers. See OpKernel::PrePack(). Letting all initializers
+  // Prepacking can release some initializers. See OpKernel::PrePack(). Letting all initializers
   // sharing a single buffer makes it hard to release individual ones, leading
   // to memory waste.
-  //
-  // TODO!! disabling memory pattern tracer increases fragmentation, leading to
-  //  out of memory error in some training tests. Need to create kernel first,
-  //  and let the kernel tells us whether the initializer needs to be traced.
   //
   std::unique_ptr<ITensorAllocator> tensor_allocator = nullptr;
   if (disable_prepacking) {

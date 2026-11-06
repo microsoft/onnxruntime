@@ -1716,8 +1716,8 @@ static Status GetFileContent(const RandomAccessFile& file, FileOffsetType offset
 }
 #endif
 
-// Backstop validation for callers that load external data outside Graph::Resolve (e.g. training
-// checkpoints, custom-op initializers). Passes through ORT's in-memory address markers — those are
+// Backstop validation for callers that load external data outside Graph::Resolve (e.g. custom-op
+// initializers). Passes through ORT's in-memory address markers — those are
 // validated at higher layers (Graph::ConvertInitializersIntoOrtValues for dense; markers on sparse
 // sub-tensors are rejected outright in SparseTensorProtoToDenseTensorProto). For declared file paths,
 // defers to ValidateExternalDataPath, which rejects absolute paths and paths that escape the model

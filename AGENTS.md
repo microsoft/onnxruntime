@@ -28,7 +28,7 @@ Pipelines, `Python format`, and `license/cla`).
 
 ## Architecture Overview
 
-ONNX Runtime is a cross-platform inference and training engine for ONNX models. The core pipeline is: **Load model → Build graph → Optimize graph → Partition across Execution Providers → Execute**.
+ONNX Runtime is a cross-platform inference engine for ONNX models. The core pipeline is: **Load model → Build graph → Optimize graph → Partition across Execution Providers → Execute**.
 
 ### Key layers (`onnxruntime/core/`)
 
@@ -43,10 +43,6 @@ ONNX Runtime is a cross-platform inference and training engine for ONNX models. 
 ### Contrib ops (`onnxruntime/contrib_ops/`)
 
 Custom operators not in the ONNX standard, organized by EP (`cpu/`, `cuda/`, `js/`, `webgpu/`). Each EP has its own contrib kernel registration file (e.g., `cpu_contrib_kernels.cc`, `cuda_contrib_kernels.cc`, `js_contrib_kernels.cc`, `webgpu_contrib_kernels.cc`).
-
-### Training (`orttraining/`)
-
-Training-specific code (gradient ops, loss functions, optimizers, `TrainingSession`) layered on top of the inference framework.
 
 ### Language bindings
 
@@ -134,7 +130,10 @@ If a virtual environment already exists (e.g., `.venv/`), activate it rather tha
 
 ## C API Conventions
 
-The main public C API header is `include/onnxruntime/core/session/onnxruntime_c_api.h`. Other public headers are in `include/onnxruntime/core/session/` and `orttraining/orttraining/training_api/include/`.
+The main public C API header is `include/onnxruntime/core/session/onnxruntime_c_api.h`. Other public headers are in `include/onnxruntime/core/session/`.
+
+Training support has been retired. Preserve the opaque `OrtTrainingApi` declaration and the shipped
+`OrtApi::GetTrainingApi` compatibility slot (always returning `nullptr`), including mirrored API table layouts.
 
 - Functions that may fail return `OrtStatus*` (`nullptr` on success); release/cleanup functions return `void`
 - Object lifecycle: `OrtCreateXxx` / `OrtReleaseXxx`

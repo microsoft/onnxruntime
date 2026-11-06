@@ -291,11 +291,6 @@ steps:
             if exist "%ARTIFACT%\lib\onnxruntime_providers_tensorrt.pdb" del "%ARTIFACT%\lib\onnxruntime_providers_tensorrt.pdb"
           )
 
-          REM Training API headers (if built)
-          if exist "$(Build.SourcesDirectory)\orttraining\orttraining\training_api\include\onnxruntime_training*.h" (
-            copy "$(Build.SourcesDirectory)\orttraining\orttraining\training_api\include\onnxruntime_training*.h" "%ARTIFACT%\include"
-          )
-
           REM Docs and License -> root\
           copy "$(Build.SourcesDirectory)\README.md"             "%ARTIFACT%\README.md"
           copy "$(Build.SourcesDirectory)\docs\Privacy.md"       "%ARTIFACT%\Privacy.md"
@@ -322,7 +317,7 @@ steps:
 
           # ---------- Include directory ----------
           if (Test-Path $includeDir) {
-              $allowedIncludeDirs = @('core', 'cuda', 'training')
+              $allowedIncludeDirs = @('core', 'cuda')
               $unexpectedDirs = Get-ChildItem -Path $includeDir -Directory | Where-Object {
                   $_.Name -notin $allowedIncludeDirs
               }
@@ -330,7 +325,7 @@ steps:
                   Write-Host "##vso[task.logissue type=error]Unexpected directories in include/: $($unexpectedDirs.Name -join ', ')"
                   exit 1
               }
-              # Allow loose files directly under include/ that are ORT's own public/training headers
+              # Allow loose files directly under include/ that are ORT's own public headers
               $allowedLooseHeaderPattern = '^(onnxruntime.*\.(h|inc)|([a-z0-9_]+_)?provider_(factory|options)\.h)$'
               $looseFiles = Get-ChildItem -Path $includeDir -File | Where-Object {
                   $_.Name -notmatch $allowedLooseHeaderPattern

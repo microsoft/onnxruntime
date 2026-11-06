@@ -126,9 +126,6 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
       re2::re2
     )
 
-    if (onnxruntime_ENABLE_TRAINING)
-      bundle_static_library(onnxruntime_webassembly tensorboard)
-    endif()
 
     if (onnxruntime_BUILD_UNIT_TESTS)
       file(GLOB_RECURSE onnxruntime_webassembly_test_src CONFIGURE_DEPENDS
@@ -210,9 +207,6 @@ else()
     target_link_libraries(onnxruntime_webassembly PRIVATE onnxruntime_providers_webnn)
   endif()
 
-  if (onnxruntime_ENABLE_TRAINING)
-    target_link_libraries(onnxruntime_webassembly PRIVATE tensorboard)
-  endif()
 
   set(onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/pre.js")
 
@@ -378,9 +372,6 @@ else()
 
   set(target_name_list ort)
 
-  if (onnxruntime_ENABLE_TRAINING_APIS)
-    list(APPEND target_name_list  "training")
-  endif()
 
   list(APPEND target_name_list  "wasm")
 

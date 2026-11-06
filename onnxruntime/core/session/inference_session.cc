@@ -107,11 +107,6 @@
 #include "core/framework/customregistry.h"
 #include "core/session/custom_ops.h"
 #endif
-#ifdef ENABLE_TRAINING
-#include "core/framework/partial_graph_execution_state.h"
-#include "core/framework/stream_execution_context.h"
-#include "orttraining/core/optimizer/memory_optimizer/memory_optimizer.h"
-#endif
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -1927,29 +1922,10 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
           workspace_reservations.erase(graph_it);
         }
       });
-#ifdef ENABLE_TRAINING
-  graph.SetNodeCloneCallback(
-      [&workspace_reservations](const Graph& modified_graph,
-                                NodeIndex source_node_index,
-                                NodeIndex cloned_node_index) {
-        auto graph_it = workspace_reservations.find(&modified_graph);
-        if (graph_it == workspace_reservations.end()) {
-          return;
-        }
-
-        const auto source_it = graph_it->second.find(source_node_index);
-        if (source_it != graph_it->second.end()) {
-          graph_it->second.insert_or_assign(cloned_node_index, source_it->second);
-        }
-      });
-#endif
   auto clear_node_mutation_callbacks =
       gsl::finally([&graph]() {
         graph.SetNodeReplacementCallback({});
         graph.SetNodeRemovalCallback({});
-#ifdef ENABLE_TRAINING
-        graph.SetNodeCloneCallback({});
-#endif
       });
 
 #if defined(ORT_ENABLE_GQA_VALUE_LAYOUT)
@@ -2087,20 +2063,6 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     MemcpyTransformer copy_transformer{std::move(providers), kernel_registry_manager_};
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(copy_transformer, *session_logger_, graph));
   }
-
-#ifdef ENABLE_TRAINING
-  // Enable memory optimizations.
-  // Only applicable for training scenarios.
-  {
-    const std::string memory_optimizer_config_file =
-        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryOptimizerApplyConfig, "");
-    const std::string probe_config =
-        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryOptimizerProbeConfig, "0:0");
-
-    MemoryOptimizer mem_transformer{memory_optimizer_config_file, probe_config};
-    ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(mem_transformer, *session_logger_, graph));
-  }
-#endif
 
   // Second serialization point for the plain optimized (non-EPContext) output model. Reached only for an
   // explicitly requested level >= Level2 (level < Level2 was already serialized before the loop above). This runs
@@ -2275,7 +2237,7 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
                 "The ORT format model version [", fbs_ort_model_version->string_view(),
                 "] is not supported in this build ", ORT_VERSION, ". ",
                 kOrtFormatVersion5BreakingChangeNote);
-#else   // ^^ defined(ORT_MINIMAL_BUILD) ^^ / vv !defined(ORT_MINIMAL_BUILD) vv
+#else
   const auto has_saved_runtime_optimizations = [](const fbs::InferenceSession& fbs_session) -> bool {
     if (const auto* fbs_model = fbs_session.model()) {
       if (const auto* fbs_graph = fbs_model->graph()) {
@@ -3239,7 +3201,7 @@ common::Status InferenceSession::Initialize() {
 
       // Update temporary copies of metadata, input- and output definitions to the same state as the resolved graph
       ORT_RETURN_IF_ERROR_SESSIONID_(SaveModelMetadata(*model_));
-#else   // !defined(ORT_MINIMAL_BUILD)
+#else
       ORT_RETURN_IF_ERROR_SESSIONID_(
           ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                           "Loading anything other than ORT format models is not enabled in this build."));
@@ -3620,87 +3582,6 @@ common::Status InferenceSession::ValidateOutputs(gsl::span<const std::string> ou
   return ValidateInputsOutputs(output_names, fetches, output_def_map_, ArgType::kOutput);
 }
 
-#ifdef ENABLE_TRAINING
-Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
-                                    std::vector<OrtValue>& feeds,
-                                    std::vector<OrtValue>& fetches,
-                                    PartialGraphExecutionState& state,
-                                    FeedsFetchesManager& feeds_fetches_manager,
-                                    const OrtValueCachePtr& cache,
-                                    int32_t partial_graph_index) {
-  Status retval = Status::OK();
-  std::vector<IExecutionProvider*> exec_providers_to_stop;
-  exec_providers_to_stop.reserve(execution_providers_.NumProviders());
-
-  ORT_TRY {
-    if (!is_inited_) {
-      LOGS(*session_logger_, ERROR) << "Session was not initialized";
-      return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
-    }
-
-#if !defined(ORT_MINIMAL_BUILD)
-    ORT_RETURN_IF(session_state_->GetMoeExpertState() != nullptr,
-                  "MoE expert counting and statistics are not supported by the deprecated PartialRun path.");
-#endif
-
-    if (!run_options.run_tag.empty()) {
-      LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
-    }
-
-    // scope of owned_run_logger is just the call to Execute.
-    // If Execute ever becomes async we need a different approach
-    std::unique_ptr<logging::Logger> owned_run_logger;
-    auto run_logger = CreateLoggerForRun(run_options, owned_run_logger);
-
-    // info all execution providers InferenceSession:Run started
-    // TODO: only call OnRunStart for all providers in-use
-    for (auto& xp : execution_providers_) {
-      // call OnRunStart and add to exec_providers_to_stop if successful
-      auto start_func = [&xp, &exec_providers_to_stop, run_options]() {
-        auto status = xp->OnRunStart(run_options);
-        if (status.IsOK())
-          exec_providers_to_stop.push_back(xp.get());
-
-        return status;
-      };
-
-      ORT_CHECK_AND_SET_RETVAL(start_func());
-    }
-
-    ORT_ENFORCE(run_options.only_execute_path_to_fetches == false, "only_execute_path_to_fetches is not supported.");
-
-    ORT_ENFORCE(session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL, "Only sequential mode is supported.");
-
-    // execute the graph
-#ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    if (state.GetProgramCounterStart() == 0) {
-      session_state_->IncrementGraphExecutionCounter();
-    }
-#endif
-    ORT_CHECK_AND_SET_RETVAL(utils::ExecutePartialGraph(*session_state_, feeds_fetches_manager, feeds, fetches,
-                                                        run_logger, state, cache, run_options.terminate,
-                                                        partial_graph_index,
-                                                        /*parent stream*/ nullptr));
-  }
-  ORT_CATCH(const std::exception& e) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
-    });
-  }
-  ORT_CATCH(...) {
-    retval = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Run()");
-  }
-
-  // info all execution providers InferenceSession:Run ended
-  for (auto* xp : exec_providers_to_stop) {
-    auto status = xp->OnRunEnd(/*sync_stream*/ false, run_options);
-    ORT_CHECK_AND_SET_RETVAL(status);
-  }
-
-  return retval;
-}
-#endif
-
 namespace {
 // Concurrent runs counting and thread-pool spin control
 struct ThreadPoolSpinningSwitch {
@@ -3978,15 +3859,6 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 
         ORT_CHECK_AND_SET_RETVAL(start_func());
       }
-
-#ifdef ENABLE_TRAINING
-      if (run_options.only_execute_path_to_fetches) {
-        // TODO: this method is not thread safe, if multiple Run happened in parallel we might hit race condition issue.
-        // currently it only used in training, there is no parallel run execution in training so it is ok.
-        // but it is better we can fix it with a better solution.
-        session_state_->UpdateToBeExecutedRange(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
-      }
-#endif
 
       // execute the graph
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS

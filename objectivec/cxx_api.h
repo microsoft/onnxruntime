@@ -20,13 +20,8 @@
 #endif
 // clang-format on
 
-#if __has_include(ORT_C_CXX_HEADER_FILE_PATH(onnxruntime_training_c_api.h))
-#include ORT_C_CXX_HEADER_FILE_PATH(onnxruntime_training_c_api.h)
-#include ORT_C_CXX_HEADER_FILE_PATH(onnxruntime_training_cxx_api.h)
-#else
 #include ORT_C_CXX_HEADER_FILE_PATH(onnxruntime_c_api.h)
 #include ORT_C_CXX_HEADER_FILE_PATH(onnxruntime_cxx_api.h)
-#endif
 
 #if __has_include(ORT_C_CXX_HEADER_FILE_PATH(coreml_provider_factory.h))
 #define ORT_OBJC_API_COREML_EP_AVAILABLE 1

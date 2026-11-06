@@ -530,15 +530,6 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
                                   const bool& terminate_flag,
                                   SessionScope& session_scope) {
   auto* p_kernel = ctx.GetSessionState().GetKernel(idx);
-  if (p_kernel->KernelDef().OpName() == "YieldOp") {
-    // Do not execute YieldOp (it is an no-op anyways).
-    // Decrement the reference count of tensors that are not needed beyond this point.
-    // REVIEW(codemzs): The current model assumes the intermediate tensors that are exported
-    // as graph outputs are owned by ORT, the risk of caller freeing the tensor or manipulating tensor
-    // memory lingers while the tensor is used downstream after the export.
-    ctx.RecycleNodeInputs(idx);
-    return Status::OK();
-  }
   // TODO: set terminate flag from run_option
   OpKernelContextInternal kernel_ctx(ctx.GetSessionState(),
                                      ctx.GetExecutionFrame(),
@@ -554,36 +545,6 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
   } else {
     KernelScope kernel_scope(session_scope, kernel_ctx, *p_kernel);
     ORT_TRY {
-#ifdef ENABLE_TRAINING
-      // AllocateInputsContiguously - is only required for NCCL kernels
-      // can be moved under USE_NCCL
-      if (p_kernel->KernelDef().AllocateInputsContiguously()) {
-        ORT_RETURN_IF_ERROR(utils::VerifyInputTensorsAllocatedContiguously(&kernel_ctx));
-      }
-
-      // This is most probably deprecated code and is causing unnecessary complexity.
-      // Can be removed.
-      // Cache lookup. Currently we only cache single-output nodes,
-      // to keep memory overhead impact in check. Hence we only look in cache
-      // if the current node has one output.
-      bool reuse_cached_value = false;
-      std::string cached_arg_name;
-      auto& cache = ctx.GetOrtValueCache();
-      if (cache != nullptr) {
-        if (p_kernel->Node().OutputDefs().size() == 1) {
-          cached_arg_name = p_kernel->Node().OutputDefs()[0]->Name();
-          if (cache.get()->count(cached_arg_name)) {  // found arg in cache_
-            VLOGS(logger, 1) << "Found OrtValue in cache for arg: " << cached_arg_name;
-            reuse_cached_value = true;
-          }
-        }
-      }
-      if (!reuse_cached_value) {
-        status = p_kernel->Compute(&kernel_ctx);
-      } else {
-        status = kernel_ctx.SetOutputMLValue(0, cache.get()->at(cached_arg_name));
-      }
-#else
       status = p_kernel->Compute(&kernel_ctx);
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -643,7 +604,6 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
         const std::string name = IResourceAccountant::MakeUniqueNodeName(node);
         node_stats_recorder->ReportNodeStats(name, node_stats);
       }
-#endif
 #endif
 #if !defined(ORT_MINIMAL_BUILD)
       if (status.IsOK()) {
@@ -728,14 +688,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                              logger,
                              single_thread_mode);
 #endif
-#ifdef ENABLE_TRAINING
-  if (only_execute_path_to_fetches) {
-    auto* node_to_execute = session_state.GetToBeExecutedRange(fetch_mlvalue_idxs);
-    ctx.SetNodeToExecute(node_to_execute);
-  }
-#else
   ORT_UNUSED_PARAMETER(only_execute_path_to_fetches);
-#endif
 
   SessionScope session_scope(session_state, ctx.GetExecutionFrame(), run_profiler);
 
@@ -775,60 +728,5 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
 
   return Status::OK();
 }
-
-#ifdef ENABLE_TRAINING
-onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
-                                          std::vector<OrtValue>& feeds,
-                                          gsl::span<const int> fetch_mlvalue_idxs,
-                                          std::vector<OrtValue>& fetches,
-                                          const std::unordered_map<size_t, IExecutor::CustomAllocator>&
-                                              fetch_allocators,
-                                          const logging::Logger& logger,
-                                          const DeviceStreamCollection* device_streams,
-                                          const bool& terminate_flag,
-                                          bool single_thread_mode,
-                                          PartialGraphExecutionState& state,
-                                          const OrtValueCachePtr& cache,
-                                          int32_t partial_graph_index) {
-  // Be noted: feeds will be std::move to ctx, so it will be empty after this function.
-  auto& ctx = state.GetExecutionContext(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
-                                        fetch_allocators, session_state, logger, device_streams);
-
-  auto* plan = session_state.GetExecutionPlan();
-
-  ctx.SetCurrentRange(&state.GetProgramRegions(session_state));
-
-  SessionScope session_scope(session_state, ctx.GetExecutionFrame(), nullptr);
-
-#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-  // Only flush memory info for the 2nd partial graph execution (since ORTModule runs this function twice).
-  session_scope.SetFlushMemoryInfoFlag(partial_graph_index == 1);
-#else
-  ORT_UNUSED_PARAMETER(partial_graph_index);
-#endif
-
-  ctx.SetOrtValueCache(cache);
-
-  auto* tp = single_thread_mode ? nullptr : session_state.GetInterOpThreadPool();
-
-  for (size_t i = 0; i < plan->execution_plan.size(); ++i) {
-    if (!plan->execution_plan[i]->steps_.empty()) {
-      concurrency::ThreadPool::Schedule(tp, [i, &ctx, &terminate_flag, &session_scope]() {
-        auto* range = ctx.GetCurrentRange();
-        size_t start = !range ? 0 : range->stream_pc_range[i].first;
-        RunSince(i, ctx, session_scope, terminate_flag, start);
-      });
-    }
-  }
-
-  if (!single_thread_mode) {
-    ctx.WaitAll();
-  }
-
-  ORT_RETURN_IF_ERROR(ctx.TaskStatus());
-  ORT_RETURN_IF_ERROR(ctx.GetExecutionFrame().GetOutputs(fetches));
-  return Status::OK();
-}
-#endif
 
 }  // namespace onnxruntime

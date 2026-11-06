@@ -1142,57 +1142,6 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       {"reduce_sum_empty_set", "unknown version", {}},
       {"reduce_sum_square_empty_set_expanded", "unknown version", {}},
       {"averagepool_3d_dilations_large_count_include_pad_is_1_ceil_mode_is_True", "TODO(titaiwang): enable this in the next ONNX release."},
-#ifdef ENABLE_TRAINING_CORE
-      {"adagrad", "not a registered function/op", {}},                  // Op not registered.
-      {"adagrad_multiple", "not a registered function/op", {}},         // Op not registered.
-      {"adam", "not a registered function/op", {}},                     // Op not registered.
-      {"adam_multiple", "not a registered function/op", {}},            // Op not registered.
-      {"gradient_of_add", "not a registered function/op", {}},          // Op not registered.
-      {"gradient_of_add_and_mul", "not a registered function/op", {}},  // Op not registered.
-      {"momentum", "not a registered function/op", {}},                 // Op not registered.
-      {"momentum_multiple", "not a registered function/op", {}},        // Op not registered.
-      {"nesterov_momentum", "not a registered function/op", {}},        // Op not registered.
-      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight", "type error", {"opset12"}},
-      {"softmax_cross_entropy_mean_weight_ignore_index_log_prob", "type error", {"opset12"}},
-      {"softmax_cross_entropy_input_shape_is_NCd1_mean_weight_negative_ignore_index_log_prob",
-       "type error",
-       {"opset12"}},
-      {"softmax_cross_entropy_mean_weight_log_prob", "type error", {"opset12"}},
-      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_log_prob", "type error", {"opset12"}},
-      {"softmax_cross_entropy_mean_weight_ignore_index_3d", "type error", {"opset12"}},
-      {"softmax_cross_entropy_mean_weight_ignore_index_4d_log_prob", "type error", {"opset12"}},
-      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob", "type error", {"opset12"}},
-      {"softmax_cross_entropy_mean_weight_ignore_index_4d", "type error", {"opset12"}},
-      {"softmax_cross_entropy_mean", "type error", {"opset12"}},
-      {"softmax_cross_entropy_mean_log_prob", "type error", {"opset12"}},
-      {"softmax_cross_entropy_mean_no_weight_ignore_index", "type error", {"opset12"}},
-      {"softmax_cross_entropy_input_shape_is_NCd1d2d3_sum_weight_high_ignore_index_log_prob",
-       "type error",
-       {"opset12"}},
-      {"softmax_cross_entropy_mean_3d_log_prob", "type error", {"opset12"}},
-      {"softmax_cross_entropy_none_log_prob", "type error", {"opset12"}},
-      {"softmax_cross_entropy_mean_3d", "type error", {"opset12"}},
-      {"softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index", "type error", {"opset12"}},
-      {"softmax_cross_entropy_mean_weight_ignore_index_3d_log_prob", "type error", {"opset12"}},
-      {"softmax_cross_entropy_mean_no_weight_ignore_index_3d_log_prob", "type error", {"opset12"}},
-      {"softmax_cross_entropy_none_weights_log_prob", "type error", {"opset12"}},
-      {"softmax_cross_entropy_sum_log_prob", "type error", {"opset12"}},
-      {"softmax_cross_entropy_mean_weight_ignore_index", "type error", {"opset12"}},
-      {"softmax_cross_entropy_mean_no_weight_ignore_index_log_prob", "type error", {"opset12"}},
-      {"softmax_cross_entropy_mean_no_weight_ignore_index_3d", "type error", {"opset12"}},
-      {"softmax_cross_entropy_input_shape_is_NCd1d2d3_sum_weight_high_ignore_index", "type error", {"opset12"}},
-      {"softmax_cross_entropy_sum", "type error", {"opset12"}},
-      {"softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_log_prob",
-       "type error",
-       {"opset12"}},
-      {"softmax_cross_entropy_none_weights", "type error", {"opset12"}},
-      {"softmax_cross_entropy_mean_no_weight_ignore_index_4d_log_prob", "type error", {"opset12"}},
-      {"softmax_cross_entropy_none", "type error", {"opset12"}},
-      {"softmax_cross_entropy_input_shape_is_NCd1_mean_weight_negative_ignore_index", "type error", {"opset12"}},
-      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight", "type error", {"opset12"}},
-      {"softmax_cross_entropy_mean_weight", "type error", {"opset12"}},
-      {"softmax_cross_entropy_mean_no_weight_ignore_index_4d", "type error", {"opset12"}},
-#endif
       {"mask_rcnn_keras", "this model currently has an invalid contrib op version set to 10", {}},
       // ONNX 1.16.0 fix: https://github.com/onnx/onnx/pull/5741
       // ORT pending PR: https://github.com/microsoft/onnxruntime/pull/18377
@@ -1222,10 +1171,6 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
   // std::set<std::string> broken_tests_keyword_set = {};
 
   if (provider_name == "cuda") {
-#ifdef ENABLE_TRAINING_CORE
-    // cudnn frontend exception in orttraining-linux-gpu-ci-pipeline.
-    broken_tests->insert({"keras_lotus_resnet3D", "Temporarily disabled pending investigation", {}});
-#endif
 #ifdef _WIN32
     broken_tests->insert({"LSTM_Seq_lens_unpacked", "this test fails with new image since Aug 25."});
     broken_tests->insert({"bidaf", "this test fails with new image since Aug 25."});
