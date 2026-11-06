@@ -1681,7 +1681,8 @@ ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enu
 
 #if !defined(__wasm__)
 static Status GetFileContent(const RandomAccessFile& file, FileOffsetType offset,
-                             size_t length, IAllocatorUniquePtr<void>& external_data) {
+                             size_t length, IAllocatorUniquePtr<void>& external_data,
+                             size_t alignment = 0) {
   // query length if it is 0
   if (length == 0) {
     uint64_t file_length = 0;
@@ -1693,7 +1694,8 @@ static Status GetFileContent(const RandomAccessFile& file, FileOffsetType offset
   {
     RandomAccessFile::MappedMemoryPtr mapped_memory{};
     auto status = file.Map(offset, length, mapped_memory);
-    if (status.IsOK()) {
+    if (status.IsOK() &&
+        (alignment == 0 || reinterpret_cast<uintptr_t>(mapped_memory.get()) % alignment == 0)) {
       const auto mapped_memory_deleter = mapped_memory.get_deleter();
       IAllocatorUniquePtr<void>::deleter_type raw_buffer_deleter =
           [mapped_memory_deleter](void* p) {
@@ -1704,6 +1706,15 @@ static Status GetFileContent(const RandomAccessFile& file, FileOffsetType offset
       external_data.swap(raw_buffer);
       return Status::OK();
     }
+  }
+
+  if (alignment != 0) {
+    IAllocatorUniquePtr<void> buffer{
+        AllocatorDefaultAllocAligned(length, alignment),
+        [alignment](void* p) { AllocatorDefaultFreeAligned(p, alignment); }};
+    ORT_RETURN_IF_ERROR(file.Read(offset, gsl::make_span(static_cast<char*>(buffer.get()), length)));
+    external_data.swap(buffer);
+    return Status::OK();
   }
 
   // if that fails, try to copy
@@ -1752,7 +1763,7 @@ static Status LoadPrepackedWeightsFromFile(const RandomAccessFile& file,
                     " is out of bounds and can not read in full");
 
       IAllocatorUniquePtr<void> data_ptr;
-      ORT_RETURN_IF_ERROR(GetFileContent(file, blob_offset, blob_length, data_ptr));
+      ORT_RETURN_IF_ERROR(GetFileContent(file, blob_offset, blob_length, data_ptr, kAllocAlignment));
       prepacked_weights.buffers_.push_back(std::move(data_ptr));
       prepacked_weights.buffer_sizes_.push_back(blob_length);
     }
