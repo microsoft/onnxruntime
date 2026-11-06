@@ -84,19 +84,23 @@ inline __m256 UnpackDequant8Int3WeightsAvx2(
   }
 }
 
-inline __m256 Int3LookupAvx2(float scale, bool bf16) {
+inline __m256 Int3LookupAvx2(uint16_t s_bits, float scale, bool bf16) noexcept {
   __m256 values = _mm256_mul_ps(_mm256_setr_ps(-4.0f, -3.0f, -2.0f, -1.0f, 0.0f, 1.0f, 2.0f, 3.0f),
                                 _mm256_set1_ps(scale));
   if (bf16) {
     const __m256i bits = _mm256_castps_si256(values);
-    const __m256i exponent = _mm256_and_si256(bits, _mm256_set1_epi32(0x7f800000));
-    const __m256i nonfinite = _mm256_cmpeq_epi32(exponent, _mm256_set1_epi32(0x7f800000));
     const __m256i lsb = _mm256_and_si256(_mm256_srli_epi32(bits, 16), _mm256_set1_epi32(1));
     const __m256i rounded = _mm256_and_si256(_mm256_add_epi32(bits, _mm256_add_epi32(_mm256_set1_epi32(0x7fff), lsb)),
                                              _mm256_set1_epi32(static_cast<int>(0xffff0000u)));
-    const __m256 nan_mask = _mm256_cmp_ps(values, values, _CMP_UNORD_Q);
-    values = _mm256_castsi256_ps(_mm256_blendv_epi8(rounded, bits, nonfinite));
-    values = _mm256_blendv_ps(values, _mm256_castsi256_ps(_mm256_set1_epi32(0x7fc00000)), nan_mask);
+    if ((s_bits & 0x7FFFu) < 0x7E80u) {
+      values = _mm256_castsi256_ps(rounded);
+    } else {
+      const __m256i exponent = _mm256_and_si256(bits, _mm256_set1_epi32(0x7f800000));
+      const __m256i nonfinite = _mm256_cmpeq_epi32(exponent, _mm256_set1_epi32(0x7f800000));
+      const __m256 nan_mask = _mm256_cmp_ps(values, values, _CMP_UNORD_Q);
+      values = _mm256_castsi256_ps(_mm256_blendv_epi8(rounded, bits, nonfinite));
+      values = _mm256_blendv_ps(values, _mm256_castsi256_ps(_mm256_set1_epi32(0x7fc00000)), nan_mask);
+    }
   } else {
     values = _mm256_cvtph_ps(_mm256_cvtps_ph(values, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
   }
@@ -148,21 +152,19 @@ void Int3Group8Avx2(const uint8_t* w_base, const uint8_t* next_w_base, const uin
         _mm_prefetch(reinterpret_cast<const char*>(next_w_base + c * raw_w_stride + byte_off), _MM_HINT_T0);
       }
     }
-    __m256 a0[kChunks32], a1[kChunks32], a2[kChunks32], a3[kChunks32];
-    for (int ch = 0; ch < kChunks32; ++ch) {
-      a0[ch] = _mm256_loadu_ps(a_natural + kb * BlockSize + ch * 32 + 0);
-      a1[ch] = _mm256_loadu_ps(a_natural + kb * BlockSize + ch * 32 + 8);
-      a2[ch] = _mm256_loadu_ps(a_natural + kb * BlockSize + ch * 32 + 16);
-      a3[ch] = _mm256_loadu_ps(a_natural + kb * BlockSize + ch * 32 + 24);
-    }
     auto step_col = [&](int c) QMOE_AVX2_LAMBDA_INLINE {
       const uint8_t* p = w_base + c * raw_w_stride + byte_off;
-      const float s_val = ScaleIsBf16 ? Avx2Int3BFloat16BitsToFloat(scales[(n0 + c) * blocks + kb])
-                                      : Avx2Int3HalfBitsToFloat(scales[(n0 + c) * blocks + kb]);
-      const __m256 table = DeferredScale ? _mm256_set1_ps(s_val) : Int3LookupAvx2(s_val, ScaleIsBf16);
+      const uint16_t s_bits = scales[(n0 + c) * blocks + kb];
+      const float s_val = ScaleIsBf16 ? Avx2Int3BFloat16BitsToFloat(s_bits)
+                                      : Avx2Int3HalfBitsToFloat(s_bits);
+      const __m256 table = DeferredScale ? _mm256_set1_ps(s_val) : Int3LookupAvx2(s_bits, s_val, ScaleIsBf16);
       __m256 prod0 = _mm256_setzero_ps();
       for (int ch = 0; ch < kChunks32; ++ch) {
-        const __m256 d0 = Dot32Int3Avx2<DeferredScale>(p + ch * 12, a0[ch], a1[ch], a2[ch], a3[ch], shifts, mask7, four, table);
+        const __m256 a0 = _mm256_loadu_ps(a_natural + kb * BlockSize + ch * 32 + 0);
+        const __m256 a1 = _mm256_loadu_ps(a_natural + kb * BlockSize + ch * 32 + 8);
+        const __m256 a2 = _mm256_loadu_ps(a_natural + kb * BlockSize + ch * 32 + 16);
+        const __m256 a3 = _mm256_loadu_ps(a_natural + kb * BlockSize + ch * 32 + 24);
+        const __m256 d0 = Dot32Int3Avx2<DeferredScale>(p + ch * 12, a0, a1, a2, a3, shifts, mask7, four, table);
         prod0 = (ch == 0) ? d0 : _mm256_add_ps(prod0, d0);
       }
       acc[c] = DeferredScale ? _mm256_fmadd_ps(prod0, table, acc[c]) : _mm256_add_ps(prod0, acc[c]);
@@ -207,9 +209,10 @@ void Int3Group4Avx2(const uint8_t* w_base, const uint8_t* next_w_base, const uin
     }
     auto step_col = [&](int c, __m256& acc_r0, __m256& acc_r1) QMOE_AVX2_LAMBDA_INLINE {
       const uint8_t* p = w_base + c * raw_w_stride + byte_off;
-      const float s_val = ScaleIsBf16 ? Avx2Int3BFloat16BitsToFloat(scales[(n0 + c) * blocks + kb])
-                                      : Avx2Int3HalfBitsToFloat(scales[(n0 + c) * blocks + kb]);
-      const __m256 table = DeferredScale ? _mm256_set1_ps(s_val) : Int3LookupAvx2(s_val, ScaleIsBf16);
+      const uint16_t s_bits = scales[(n0 + c) * blocks + kb];
+      const float s_val = ScaleIsBf16 ? Avx2Int3BFloat16BitsToFloat(s_bits)
+                                      : Avx2Int3HalfBitsToFloat(s_bits);
+      const __m256 table = DeferredScale ? _mm256_set1_ps(s_val) : Int3LookupAvx2(s_bits, s_val, ScaleIsBf16);
       __m256 prod0 = _mm256_setzero_ps();
       __m256 prod1 = _mm256_setzero_ps();
       for (int ch = 0; ch < kChunks32; ++ch) {
