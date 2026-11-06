@@ -166,6 +166,16 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, SwiGLU);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, SwiGLU);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, RouterGateUpProj);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, RouterGateUpProj);
+class CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, float, int32_t, GatherPacked);
+class CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, float, int64_t, GatherPacked);
+class CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, MLFloat16, int32_t, GatherPacked);
+class CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, MLFloat16, int64_t, GatherPacked);
+class CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, BFloat16, int32_t, GatherPacked);
+class CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, BFloat16, int64_t, GatherPacked);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MatMulPacked);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MatMulPacked);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MoEPacked);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MoEPacked);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MRotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MRotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MRotaryEmbedding);
@@ -541,6 +551,16 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, SwiGLU)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, RouterGateUpProj)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, RouterGateUpProj)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, float, int32_t, GatherPacked)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, float, int64_t, GatherPacked)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, MLFloat16, int32_t, GatherPacked)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, MLFloat16, int64_t, GatherPacked)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, BFloat16, int32_t, GatherPacked)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TWO_TYPED_CLASS_NAME(1, BFloat16, int64_t, GatherPacked)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MatMulPacked)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MatMulPacked)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MoEPacked)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MoEPacked)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MRotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MRotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MRotaryEmbedding)>,
