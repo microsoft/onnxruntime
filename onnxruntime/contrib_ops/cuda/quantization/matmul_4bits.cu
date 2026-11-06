@@ -32,11 +32,7 @@ static bool IsSingleRowGemvSpecializationDisabled() {
 }
 
 static bool IsSingleWarp4BitsGemvEnabled() {
-  if (const auto enabled = ParseEnvironmentVariable<bool>("ORT_ENABLE_SINGLE_WARP_INT4_GEMV")) {
-    return *enabled;
-  }
-  // Preserve existing deployments; an explicitly set generic control takes precedence.
-  return ParseEnvironmentVariableWithDefault<bool>("ORT_ENABLE_QWEN2B_GEMV_SPECIALIZATION", false);
+  return ParseEnvironmentVariableWithDefault<bool>("ORT_ENABLE_SINGLE_WARP_INT4_GEMV", false);
 }
 
 // Reduces kUnroll groups of kPerIter elements per step, advancing the packed-weight pointer, scale

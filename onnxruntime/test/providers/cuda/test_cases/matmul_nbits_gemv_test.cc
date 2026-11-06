@@ -127,10 +127,8 @@ class MatMulNBitsGemvDispatchTest : public ::testing::Test {
     EXPECT_EQ(params.gridDim.z, 1u);
   }
 
-  EnvVarMap Controls(optional<std::string> generic, optional<std::string> legacy,
-                     optional<std::string> disable = {}) {
+  EnvVarMap Controls(optional<std::string> generic, optional<std::string> disable = {}) {
     return {{"ORT_ENABLE_SINGLE_WARP_INT4_GEMV", std::move(generic)},
-            {"ORT_ENABLE_QWEN2B_GEMV_SPECIALIZATION", std::move(legacy)},
             {"ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION", std::move(disable)}};
   }
 
@@ -141,42 +139,35 @@ class MatMulNBitsGemvDispatchTest : public ::testing::Test {
 };
 
 TEST_F(MatMulNBitsGemvDispatchTest, GenericOptInSelectsAllTunedKernels) {
-  ScopedEnvironmentVariables controls{Controls("1", {})};
+  ScopedEnvironmentVariables controls{Controls("1")};
   CheckLaunch(1024, 2048, true);
   CheckLaunch(2048, 2048, true);
   CheckLaunch(2048, 6144, true);
 }
 
-TEST_F(MatMulNBitsGemvDispatchTest, LegacyAliasSelectsTunedKernel) {
-  ScopedEnvironmentVariables controls{Controls({}, "1")};
-  CheckLaunch(2048, 2048, true);
-}
-
-TEST_F(MatMulNBitsGemvDispatchTest, DefaultKeepsExistingKernel) {
-  ScopedEnvironmentVariables controls{Controls({}, {})};
+TEST_F(MatMulNBitsGemvDispatchTest, DefaultKeepsExistingKernels) {
+  ScopedEnvironmentVariables controls{Controls({})};
+  CheckLaunch(1024, 2048, false);
   CheckLaunch(2048, 2048, false);
+  CheckLaunch(2048, 6144, false);
 }
 
-TEST_F(MatMulNBitsGemvDispatchTest, GenericOptOutOverridesLegacyOptIn) {
-  ScopedEnvironmentVariables controls{Controls("0", "1")};
+TEST_F(MatMulNBitsGemvDispatchTest, GenericOptOutKeepsExistingKernels) {
+  ScopedEnvironmentVariables controls{Controls("0")};
+  CheckLaunch(1024, 2048, false);
   CheckLaunch(2048, 2048, false);
+  CheckLaunch(2048, 6144, false);
 }
 
-TEST_F(MatMulNBitsGemvDispatchTest, GenericOptInIgnoresLegacyOptOutAndMalformedValues) {
-  for (const auto* legacy : {"0", "invalid"}) {
-    SCOPED_TRACE(legacy);
-    ScopedEnvironmentVariables controls{Controls("1", legacy)};
-    CheckLaunch(2048, 2048, true);
-  }
-}
-
-TEST_F(MatMulNBitsGemvDispatchTest, GlobalDisableOverridesBothOptIns) {
-  ScopedEnvironmentVariables controls{Controls("1", "1", "1")};
+TEST_F(MatMulNBitsGemvDispatchTest, GlobalDisableOverridesGenericOptIn) {
+  ScopedEnvironmentVariables controls{Controls("1", "1")};
+  CheckLaunch(1024, 2048, false);
   CheckLaunch(2048, 2048, false);
+  CheckLaunch(2048, 6144, false);
 }
 
 TEST_F(MatMulNBitsGemvDispatchTest, UnsupportedShapesAndMetadataKeepExistingKernels) {
-  ScopedEnvironmentVariables controls{Controls("1", "1")};
+  ScopedEnvironmentVariables controls{Controls("1")};
   CheckLaunch(6144, 2048, false);
   CheckLaunch(2056, 2048, false);
   CheckLaunch(2048, 2048, false, 64);
@@ -185,12 +176,12 @@ TEST_F(MatMulNBitsGemvDispatchTest, UnsupportedShapesAndMetadataKeepExistingKern
 }
 
 TEST_F(MatMulNBitsGemvDispatchTest, BiasFallsBackWithoutLaunchingAGemvKernel) {
-  ScopedEnvironmentVariables controls{Controls("1", "1")};
+  ScopedEnvironmentVariables controls{Controls("1")};
   CheckLaunch(2048, 2048, false, 32, false, true);
 }
 
-TEST_F(MatMulNBitsGemvDispatchTest, InvalidGenericControlIsNotHiddenByLegacyOptIn) {
-  ScopedEnvironmentVariables controls{Controls("invalid", "1")};
+TEST_F(MatMulNBitsGemvDispatchTest, InvalidGenericControlThrows) {
+  ScopedEnvironmentVariables controls{Controls("invalid")};
   CheckLaunch(2048, 2048, false, 32, false, false, true);
 }
 

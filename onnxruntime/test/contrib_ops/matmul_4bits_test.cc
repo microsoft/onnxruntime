@@ -1784,14 +1784,9 @@ TEST(MatMulNBits, Fp16_Int4_GptOssRouterShapeNoZeroPoint) {
 
 TEST(MatMulNBits, Fp16_Int4_SingleWarpShapeNoZeroPoint) {
   for (const auto& controls : {
-           EnvVarMap{{"ORT_ENABLE_SINGLE_WARP_INT4_GEMV", "1"},
-                     {"ORT_ENABLE_QWEN2B_GEMV_SPECIALIZATION", std::optional<std::string>{}}},
-           EnvVarMap{{"ORT_ENABLE_SINGLE_WARP_INT4_GEMV", std::optional<std::string>{}},
-                     {"ORT_ENABLE_QWEN2B_GEMV_SPECIALIZATION", "1"}},
-           EnvVarMap{{"ORT_ENABLE_SINGLE_WARP_INT4_GEMV", "0"},
-                     {"ORT_ENABLE_QWEN2B_GEMV_SPECIALIZATION", "1"}},
-           EnvVarMap{{"ORT_ENABLE_SINGLE_WARP_INT4_GEMV", "1"},
-                     {"ORT_ENABLE_QWEN2B_GEMV_SPECIALIZATION", "invalid"}},
+           EnvVarMap{{"ORT_ENABLE_SINGLE_WARP_INT4_GEMV", "1"}},
+           EnvVarMap{{"ORT_ENABLE_SINGLE_WARP_INT4_GEMV", std::optional<std::string>{}}},
+           EnvVarMap{{"ORT_ENABLE_SINGLE_WARP_INT4_GEMV", "0"}},
        }) {
     ScopedEnvironmentVariables scoped_controls{controls};
     ScopedEnvironmentVariables scoped_fpa{EnvVarMap{{"ORT_FPA_INTB_GEMM", "0"}}};
