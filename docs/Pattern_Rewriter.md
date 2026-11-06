@@ -161,12 +161,14 @@ by literal patterns. Unused initializers are permitted, but unmatched `Constant`
 operators and output-unreachable extra work are not. Clean up dead work before
 matching an unoptimized function body.
 
-For example, this matches a Loop whose body passes through its condition and
-carried state, as in `PatternGraphTests.LoopFormalInputsAndPassthroughOutputs`:
+For example, this matches a Loop whose body copies its condition and carried
+state through explicit Identity operators:
 
 ```text
 pattern LoopBody(iteration,condition,state) -> (continue_loop,result) {
-  return (continue_loop=condition,result=state)
+  next_condition=Identity(condition)
+  next_state=Identity(state)
+  return (continue_loop=next_condition,result=next_state)
 }
 pattern LoopPattern(trip,condition,initial_state) {
   y=Loop(trip,condition,initial_state,body=LoopBody)
@@ -183,6 +185,10 @@ local initializer). The Loop example is structural matching, not an elimination
 rule: `match.instance("y.body").valueOf("state")` is body-local and cannot be
 promoted to a parent replacement input. Any rewrite must separately establish
 iteration, condition, and state semantics.
+The named return entries label the two Identity results; they do not alias
+graph inputs to graph outputs. Unlike the zero-node body in
+`PatternGraphTests.LoopFormalInputsAndPassthroughOutputs`, this pattern requires
+both Identity nodes to be present in the matched body.
 
 Nested bindings are separate matches, not nodes in the outer deletion set.
 `match.instance("result.then_branch")` provides the body `BindingView`; an
@@ -689,9 +695,11 @@ previously unused target names. No `product.port` notation is needed.
 ### Expressions, alternatives, and branch-local inputs
 
 The example factors optional scaling outside the shared Sigmoid/Mul suffix:
-`scaled = (Mul(g, alpha) | g)`. An assignment `scaled = g` is an alias to the exact
-same `NodeArg`, not an inserted Identity. Reusing both names therefore imposes
-the same binding-identity requirement as reusing either name.
+`scaled = (Mul(g, alpha) | g)`. The bare-value alternative binds `scaled` to the
+exact same `NodeArg` as `g`, not an inserted Identity. This is an internal pattern
+binding, not a recommendation to reuse graph input names as graph outputs.
+Reusing both names therefore imposes the same binding-identity requirement as
+reusing either name.
 
 Alternatives are tried in source order, expanding into complete concrete
 plans. Put multiplication first to prefer it when both alternatives can match.
@@ -783,7 +791,7 @@ Thus a library
 may contain useful callable patterns that cannot independently serve as rules:
 
 ```text
-pattern identity(x) -> (y) { return x }
+pattern copy(x) -> (y) { y = Identity(x); return y }
 pattern branches(x, z) {
   left = Identity(x)
   right = Neg(z)
@@ -791,13 +799,15 @@ pattern branches(x, z) {
 }
 pattern join(x, z) {
   left, right = branches(x, z)
-  value = identity(left)
+  value = copy(left)
   return Add(value, right)
 }
 ```
 
-`GetPattern("join")` succeeds; `GetPattern("identity")` and
-`GetPattern("branches")` fail. These checks apply equally to body patterns,
+`GetPattern("join")` and `GetPattern("copy")` succeed;
+`GetPattern("branches")` fails because its outputs have independent roots.
+The copy pattern requires an actual Identity node with a distinct output,
+not an input/output alias. These checks apply equally to body patterns,
 aliases and alternative definitions. Legacy standalone `Pattern("(x) => ...")`
 syntax remains supported; its operator-root and output-boundary checks are unchanged.
 
