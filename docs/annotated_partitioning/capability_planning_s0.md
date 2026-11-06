@@ -238,7 +238,7 @@ is not a substitute for requirement discovery.
 The future dispatcher returns `Status` separately from
 `CapabilityPlanningQueryResult`; this draft does not add its signature. See
 [Capability Planning Interfaces](capability_planning_interfaces.md) for the
-proposed `GetCapability` planning overload and dispatcher.
+proposed planning virtual (`GetExecutionCandidates`) and dispatcher.
 `ValidateCapabilityPlanningResult` accepts completed, planning-safe empty
 discovery and reportable unresolved contracts, but rejects non-participation,
 missing metadata, stale snapshots, and malformed identities/bounded claims.

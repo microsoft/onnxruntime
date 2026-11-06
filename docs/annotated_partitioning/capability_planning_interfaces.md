@@ -1,4 +1,4 @@
-# Capability Planning Interfaces: `GetCapability` and `ComputeCapability`
+# Capability Planning Interfaces: Execution Candidates and `ComputeCapability`
 
 This draft defines the signatures and contracts that [S0](capability_planning_s0.md) leaves open: how an execution
 provider (EP) answers a *planning* query, and how each execution candidate is carried in a `ComputeCapability`. It
@@ -10,19 +10,24 @@ It does not define the planner, covers, budget admission, recipe application, or
 (see [Out of scope](#14-out-of-scope)). Start with sections 1, 3 and 5. Sections 11 and 13 list the decisions that
 need reviewer input.
 
-> **Design decision.** Planning reuses the existing shapes. The planning `GetCapability` returns the same
-> `std::vector<std::unique_ptr<ComputeCapability>>` as the legacy overload, takes the query context as its fourth
-> argument, and carries all planning data in the optional `ComputeCapability::planning` member that S0 added. The
-> legacy overload, `ComputeCapability`, `nodes_to_optimize`, and `optimization_func` keep their current signatures and
-> meaning. This is the call shape sketched in the proposal:
-> `GetCapability(graph_view, kernel_lookup, optimizer_registry, query_context) -> execution_candidates[]`.
-> A variant that returns `Status` and fills a result out-parameter is Alternative D in
-> [section 11](#11-alternatives-considered).
+> **Design decision.** Planning reuses the existing shapes. A new virtual,
+> `IExecutionProvider::GetExecutionCandidates`, returns the same `std::vector<std::unique_ptr<ComputeCapability>>` as
+> `GetCapability`, takes the query context as its fourth argument, and carries all planning data in the optional
+> `ComputeCapability::planning` member that S0 added. `GetCapability`, `ComputeCapability`, `nodes_to_optimize`, and
+> `optimization_func` keep their current signatures and meaning. The new virtual has its own name and is declared
+> after every existing virtual, so it adds one vtable slot and moves none, on both the Itanium and MSVC ABIs
+> ([section 9.1](#91-abi-compatibility)).
+>
+> The call shape is the one sketched in the proposal,
+> `GetCapability(graph_view, kernel_lookup, optimizer_registry, query_context) -> execution_candidates[]`, under a
+> different name. Alternatives in [section 11](#11-alternatives-considered): A keeps the proposal's name as a same-name
+> overload, B is one signature keyed on `mode`, and D returns `Status` and fills a result out-parameter. The name
+> `GetExecutionCandidates` is illustrative ([open question 6](#13-open-questions)).
 
 | Item | Status |
 |:-----|:-------|
 | Planning types, `ComputeCapability::planning`, `ValidateCapabilityPlanningResult`, `CreateCapabilityPlanningBinding`, `ValidateCapabilityPlanningBindingIdentity` | In S0 (#33841) |
-| Planning overload of `IExecutionProvider::GetCapability`, its base default, and a forward declaration of `CapabilityPlanningQuery` | **Proposed here**, lands with C1 |
+| Planning virtual `IExecutionProvider::GetExecutionCandidates`, its base default, and a forward declaration of `CapabilityPlanningQuery` | **Proposed here**, lands with C1 |
 | Host dispatcher `QueryCapabilityPlanning` and exported `ValidateCapabilityPlanningQuery` | **Proposed here**, lands with C1 |
 | Shared-provider bridge entries | **Proposed here**, append-only, lands with C1 |
 | Plugin-EP C ABI | Mapping requirements only (S0.4). No names or layouts are proposed |
@@ -43,13 +48,14 @@ GetCapability(const onnxruntime::GraphViewer& graph_viewer,
               const GraphOptimizerRegistry& graph_optimizer_registry,
               IResourceAccountant* resource_accountant = nullptr) const;
 
-// New. Same return type. The fourth argument is the planning query context instead of an accountant.
+// New. Declared after the last existing virtual of the class, under a name no other member has (section 9.1).
+// Same return type. The fourth argument is the planning query context instead of an accountant.
 // Overriding it is an EP's opt-in to planning-safe discovery.
 virtual std::vector<std::unique_ptr<ComputeCapability>>
-GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-              const IKernelLookup& kernel_lookup,
-              const GraphOptimizerRegistry& graph_optimizer_registry,
-              const std::shared_ptr<const CapabilityPlanningQuery>& query_context) const;
+GetExecutionCandidates(const onnxruntime::GraphViewer& graph_viewer,
+                       const IKernelLookup& kernel_lookup,
+                       const GraphOptimizerRegistry& graph_optimizer_registry,
+                       const std::shared_ptr<const CapabilityPlanningQuery>& query_context) const;
 ```
 
 `ComputeCapability` keeps its shape. Planning adds nothing beyond the optional member that S0 already added (members
@@ -68,9 +74,9 @@ struct ComputeCapability {
 
 Design points:
 
-1. **Same shapes.** Same name, same return type, same `ComputeCapability`. The planning overload differs from the
-   legacy one only in its fourth parameter. Nothing in the existing partitioner calls it, so default behavior is
-   unchanged.
+1. **Same shapes.** Same return type, same `ComputeCapability`, same first three parameters. The planning virtual
+   differs from `GetCapability` in its name and its fourth parameter. Nothing in the existing partitioner calls it, so
+   default behavior is unchanged.
 2. **Participation is a candidate.** An EP takes part in a planning query by returning `ComputeCapability` objects
    whose `planning` is set. There is no `Status`, `support` flag, or out-parameter at the EP boundary. The host-side
    dispatcher (5.4) packages the vector into S0's `CapabilityPlanningQueryResult`.
@@ -85,6 +91,9 @@ Design points:
 6. **No side effects. Existing hooks coexist.** Discovery does not mutate the graph, run `optimization_func`, compile,
    create kernels, allocate device weights, or charge an `IResourceAccountant`. A candidate may still carry
    `nodes_to_optimize` and `optimization_func` for the later application step. Planning never invokes them.
+7. **Append-safe vtable.** The virtual is declared last and has a name no other virtual has. A same-name overload
+   would join the legacy `GetCapability` group on MSVC and move the legacy slot and every later one. See
+   [section 9.1](#91-abi-compatibility).
 
 | EP behavior | Result at the host |
 |:------------|:-------------------|
@@ -125,7 +134,7 @@ flowchart LR
   subgraph PLN["Planning discovery (new, internal)"]
     direction TB
     P1["Planner (C1 and later)"] -->|"query context + source view"| P2["QueryCapabilityPlanning<br/>host dispatcher"]
-    P2 -->|"validated query"| P3["GetCapability<br/>4th argument: query_context<br/>read-only, no accountant"]
+    P2 -->|"validated query"| P3["GetExecutionCandidates<br/>4th argument: query_context<br/>read-only, no accountant"]
     P3 -->|"vector of ComputeCapability with planning set"| P4["CapabilityPlanningQueryResult<br/>candidate set"]
     P4 -->|"validated result"| P5["Planner picks cover and contracts"]
     P5 -->|"CapabilityPlanningSelection"| P6["CreateCapabilityPlanningBinding"]
@@ -137,6 +146,7 @@ flowchart LR
 | | Legacy | Planning |
 |:--|:-------|:---------|
 | Caller | `GraphPartitioner` | `QueryCapabilityPlanning`, called by the future planner |
+| Virtual | `GetCapability` | `GetExecutionCandidates` |
 | Fourth argument | `IResourceAccountant*`, default `nullptr` | `std::shared_ptr<const CapabilityPlanningQuery>` |
 | Graph shown | The partitioner's current view | The source view named by `query_context->source_view_id`, before any selected-placement filter. Placement context arrives in `tentative_assignments` and `node_constraints` |
 | Resource accounting | Optional `IResourceAccountant*`, charged during discovery | None. Requirements are returned in each contract |
@@ -191,7 +201,8 @@ S0 names the planning members as follows:
 
 The query context maps the same way: `user_constraints` is `node_constraints`, `device/configuration` is
 `execution_device`, `ep_configuration`, and the concurrency bounds, and `mode` is `CapabilityQueryMode`. S0 validates
-that `mode` is `Planning`, but the overload already implies it. `mode` would carry the choice under Alternative B.
+that `mode` is `Planning`, but the virtual's name already implies it. `mode` would carry the choice under
+Alternative B.
 
 ### 4.2 Types
 
@@ -206,9 +217,10 @@ classDiagram
   }
   class IndexedSubGraph {
     +vector~NodeIndex~ nodes
-    +MetaDef metadef
+    -unique_ptr~MetaDef~ meta_def_
   }
   class CapabilityPlanningQuery {
+    +CapabilityQueryMode mode
     +uint64 query_id
     +string graph_id
     +uint64 graph_revision
@@ -268,7 +280,9 @@ classDiagram
 
 `nodes_to_optimize` holds child `ComputeCapability` objects of the same type. `planning` is
 `std::shared_ptr<const CapabilityPlanningInfo>` in code. `allocation_requirements` is an `std::optional`: unset means
-the list is unknown, not that there are no allocations.
+the list is unknown, not that there are no allocations. `IndexedSubGraph` keeps its `MetaDef` in a private member,
+read with `GetMetaDef()` and set with `SetMetaDef()`. The boxes show the main fields only. `capability_planning.h`
+has the full definitions.
 
 How each member is read in planning mode:
 
@@ -311,14 +325,14 @@ Rules for an EP that sets both:
    different fusion or implementation. S0 does not check this. See [open question 5](#13-open-questions).
 3. **No borrowed graph state in closures.** Anything stored on the candidate outlives the discovery call. Do not
    capture that call's `GraphViewer`, `Node*`, or `NodeArg*` in `optimization_func`.
-4. **Selection functions are allowed.** The planning overload keeps `graph_optimizer_registry`. An EP may look up a
+4. **Selection functions are allowed.** The planning virtual keeps `graph_optimizer_registry`. An EP may look up a
    registered optimizer and run its selection function, which takes a `const GraphViewer&`, to build
    `nodes_to_optimize`, following steps 1 to 4 in the `GetCapability` header comment. It must not run the
    `optimization_func` that the selection returns.
 5. **Existing producers.** TensorRT EP and the CUDA runtime-fusion work (#33705, #33757) already populate these hooks
    on the legacy path. Planning integration for them is future work (see [Out of scope](#14-out-of-scope)).
 
-## 5. `GetCapability`
+## 5. `GetExecutionCandidates`
 
 ### 5.1 Parameters
 
@@ -330,7 +344,7 @@ Rules for an EP that sets both:
 | `query_context` | Immutable snapshot of workload, constraints, and placement context. It is a `shared_ptr` so every candidate can hold the same snapshot. Never null: the dispatcher validates it first |
 | Return value | The EP's execution candidates, each a `ComputeCapability` with `planning` set. An empty vector means no planning-safe answer (5.3) |
 
-There is no `IResourceAccountant*`. Passing a null accountant to the legacy overload would not discover requirements
+There is no `IResourceAccountant*`. Passing a null accountant to `GetCapability` would not discover requirements
 (the CUDA EP then returns bare single-node capabilities without its resource queries), and passing a real one would
 charge resources during discovery. Planning reports requirements as data instead.
 
@@ -354,57 +368,36 @@ virtual's signature.
 | Host | Call one EP instance serially, as the partitioner does today |
 | Host | Treat the candidate set as unusable unless the dispatcher returned OK |
 
-### 5.3 Default Behavior and Overload Mechanics
+### 5.3 Default Behavior and Placement
 
 ```cpp
 // execution_provider.cc. provider_bridge_provider.cc defines the same default for shared-provider libraries.
 std::vector<std::unique_ptr<ComputeCapability>>
-IExecutionProvider::GetCapability(const GraphViewer&, const IKernelLookup&, const GraphOptimizerRegistry&,
-                                  const std::shared_ptr<const CapabilityPlanningQuery>&) const {
+IExecutionProvider::GetExecutionCandidates(const GraphViewer&, const IKernelLookup&, const GraphOptimizerRegistry&,
+                                           const std::shared_ptr<const CapabilityPlanningQuery>&) const {
   return {};
 }
 ```
 
 - **Out of line.** `ComputeCapability` is incomplete in `execution_provider.h`, so the default is defined in a `.cc`
-  file.
+  file. A shared-provider library defines its own copy in `provider_bridge_provider.cc`. It returns without calling
+  core, so it needs no `ProviderHost` entry.
 - **No side effects, and it does not wrap legacy output.** The legacy base default claims every node that has a kernel
   (`execution_provider.cc`) and carries no requirement data. An EP's legacy override may also compile or charge an
   accountant. Neither is planning-safe. A "proven legacy adapter" can be an opt-in helper that an EP calls from its own
-  planning override. It is not an implicit default.
+  `GetExecutionCandidates` override. It is not an implicit default.
 - **Empty means unsupported.** A vector return cannot tell "this EP has no planning-safe discovery" from "this EP
   looked and found nothing eligible". The dispatcher resolves the tie toward `Unsupported`, so a missing override is
   never read as a proven-empty answer. S0's `PlanningSafe`-with-no-candidates state stays valid, but this call path
   cannot produce it. See [open question 2](#13-open-questions).
-- **The CPU EP** does not override the legacy overload; it uses the base kernel-lookup default. It therefore reports
-  planning as unsupported until it gets a planning override or an explicit adapter
+- **The CPU EP** does not override `GetCapability`; it uses the base kernel-lookup default. It therefore reports
+  planning as unsupported until it gets a `GetExecutionCandidates` override or an explicit adapter
   ([open question 8](#13-open-questions)).
-- **Placement.** Declare the new virtual after the existing ones, as `ProviderHost` does for its entries.
-
-Which overload a call selects, through an `IExecutionProvider` reference (the partitioner's path):
-
-| Fourth argument | Overload | Why |
-|:----------------|:---------|:----|
-| None | Legacy | Only the legacy overload has a default for it |
-| `nullptr` | Legacy | A null-pointer conversion beats the user-defined conversion to `shared_ptr` |
-| `IResourceAccountant*` | Legacy | Exact match. `shared_ptr`'s pointer constructor is `explicit` |
-| `shared_ptr<const CapabilityPlanningQuery>`, or a non-const `shared_ptr` | Planning | There is no conversion to `IResourceAccountant*` |
-
-Six test call sites in three files pass a literal `nullptr` as the fourth argument (`qnn_test_utils.cc`,
-`pattern_rewriter_components_test.cc`, `ep_plugin_provider_test.cc`). They keep binding to the legacy overload.
-
-**Name hiding.**
-
-- A class that overrides one of the two overloads hides the other in its own scope. Calls through
-  `IExecutionProvider&`, which is how the partitioner and the dispatcher call, are unaffected. A direct call on the
-  concrete type to the hidden overload fails to compile. `using IExecutionProvider::GetCapability;` un-hides it.
-- The reverse case is quieter. A class that overrides only the planning overload hides the legacy one, so on that
-  concrete type a literal `nullptr` fourth argument binds to the planning overload with a null query. Override both
-  overloads, or add the using-declaration.
-- **Warnings.** Overriding one of two same-named virtuals does not warn under Clang `-Wall -Wextra`. Clang warns only
-  when a derived function overrides none of the same-named base virtuals. GCC 13 and later enable
-  `-Woverloaded-virtual=1` under `-Wall`, which per its documentation does not warn when every derived declaration
-  overrides something. MSVC C4266 does flag both partial-override shapes, but it is off by default and ORT does not
-  enable it. [Section 12](#12-verification-evidence) lists what was executed.
+- **Placement.** Declare the new virtual after `GetEpContextDataCallbackRequirements`, the last virtual of
+  `IExecutionProvider` today, and give it a name no other member of the class has. Together these add one vtable slot
+  and move none, on both the Itanium and MSVC ABIs ([section 9.1](#91-abi-compatibility)).
+- **No overload mechanics.** `GetCapability` and `GetExecutionCandidates` never compete in overload resolution. An EP
+  that overrides one hides nothing, and no existing call site changes meaning.
 
 ### 5.4 Dispatcher
 
@@ -428,7 +421,7 @@ Status QueryCapabilityPlanning(const IExecutionProvider& ep,
 
   std::vector<std::unique_ptr<ComputeCapability>> candidates;
   ORT_TRY {
-    candidates = ep.GetCapability(graph_viewer, kernel_lookup, graph_optimizer_registry, query_context);
+    candidates = ep.GetExecutionCandidates(graph_viewer, kernel_lookup, graph_optimizer_registry, query_context);
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -464,14 +457,14 @@ Status ValidateCapabilityPlanningQuery(const std::shared_ptr<const CapabilityPla
 sequenceDiagram
   participant P as Planner (future)
   participant D as QueryCapabilityPlanning
-  participant E as EP planning overload
+  participant E as EP GetExecutionCandidates
 
   P->>D: query context, graph view, kernel lookup, registry
   Note over D: reset result<br/>ValidateCapabilityPlanningQuery
   alt query is malformed
     D-->>P: INVALID_ARGUMENT, EP never called
   else query is valid
-    D->>E: GetCapability with query_context
+    D->>E: GetExecutionCandidates with query_context
     alt EP threw
       E-->>D: std::exception
       D-->>P: FAIL, message preserved
@@ -527,6 +520,39 @@ flowchart TD
 | `NOT_IMPLEMENTED` | An empty return (including the base default), or a candidate with no `planning` | Unknown, not zero cost. Whether this blocks planning is planner policy |
 | `INVALID_ARGUMENT` | Malformed query (EP not called), or an invalid candidate: null entry, foreign query pointer, duplicate or empty ids, malformed bounded claims | Bug. Never convert to empty discovery |
 | `FAIL` | The EP threw during discovery | Propagated unchanged |
+
+### 5.6 If the Proposal's Name Is Kept (Alternative A)
+
+Alternative A declares the planning virtual as a second overload of `GetCapability`, with the query context in place
+of the accountant. The language mechanics below were checked with a standalone probe
+([section 12](#12-verification-evidence)). The MSVC vtable cost is in [section 9.1](#91-abi-compatibility). A distinct
+name needs none of this.
+
+Which overload a call selects, through an `IExecutionProvider` reference (the partitioner's path):
+
+| Fourth argument | Overload | Why |
+|:----------------|:---------|:----|
+| None | Legacy | Only the legacy overload has a default for it |
+| `nullptr` | Legacy | A null-pointer conversion beats the user-defined conversion to `shared_ptr` |
+| `IResourceAccountant*` | Legacy | Exact match. `shared_ptr`'s pointer constructor is `explicit` |
+| `shared_ptr<const CapabilityPlanningQuery>`, or a non-const `shared_ptr` | Planning | There is no conversion to `IResourceAccountant*` |
+
+Six test call sites in three files pass a literal `nullptr` as the fourth argument (`qnn_test_utils.cc`,
+`pattern_rewriter_components_test.cc`, `ep_plugin_provider_test.cc`). They keep binding to the legacy overload.
+
+**Name hiding.**
+
+- A class that overrides one of the two overloads hides the other in its own scope. Calls through
+  `IExecutionProvider&`, which is how the partitioner and the dispatcher call, are unaffected. A direct call on the
+  concrete type to the hidden overload fails to compile. `using IExecutionProvider::GetCapability;` un-hides it.
+- The reverse case is quieter. A class that overrides only the planning overload hides the legacy one, so on that
+  concrete type a literal `nullptr` fourth argument binds to the planning overload with a null query. Override both
+  overloads, or add the using-declaration.
+- **Warnings.** Overriding one of two same-named virtuals does not warn under Clang `-Wall -Wextra`. Clang warns only
+  when a derived function overrides none of the same-named base virtuals. GCC 13 and later enable
+  `-Woverloaded-virtual=1` under `-Wall`, which per its documentation does not warn when every derived declaration
+  overrides something. MSVC C4266 does flag both partial-override shapes, but it is off by default and ORT does not
+  enable it. [Section 12](#12-verification-evidence) lists what was executed.
 
 ## 6. Selection and Binding
 
@@ -674,7 +700,7 @@ EP's library. Sessions must release candidates and bindings before that library 
 flowchart LR
   subgraph CORE["onnxruntime core"]
     direction TB
-    PL["Planner and dispatcher"] --> IEP["IExecutionProvider<br/>planning overload of GetCapability"]
+    PL["Planner and dispatcher"] --> IEP["IExecutionProvider<br/>planning virtual GetExecutionCandidates"]
     IEP --> INT["In-tree EP<br/>overrides directly"]
     IEP --> PEP["PluginExecutionProvider<br/>inherits the empty default for now"]
   end
@@ -704,7 +730,8 @@ flowchart LR
   [open question 4](#13-open-questions).
 - **Host-only result type.** `CapabilityPlanningQueryResult` is filled by the dispatcher. EP code never sees it, and
   its special members stay out of line in core.
-- **Append-only bridge.** New `ProviderHost` entries go after the existing ones.
+- **Append-only bridge.** New `ProviderHost` entries go after the existing ones, and no existing entry is retyped
+  ([section 9.1](#91-abi-compatibility)).
 
 The published C callback stays as it is:
 
@@ -719,23 +746,42 @@ handle with a release callback (ownership transfers on success only), and no STL
 or borrowed graph pointers across the ABI. New table members are append-only, per
 `.github/instructions/c-api.instructions.md`. This document proposes no C names or layouts.
 
+### 9.1 ABI Compatibility
+
+What this design does to each boundary an EP can sit behind:
+
+| Boundary | What crosses it | Existing rule | Effect of this design |
+|:---------|:----------------|:--------------|:----------------------|
+| Plugin EP C ABI | `OrtEp` callbacks and `OrtEpApi` builders | Published structs are append-only and tagged `\since`. `OrtEp::GetCapability` is `\since 1.23` and cannot change (`.github/instructions/c-api.instructions.md`) | None now. Planning needs a version-gated optional callback and appended builders (S0.4). That is the same under every alternative in [section 11](#11-alternatives-considered) |
+| `ProviderHost` vtable | Calls from a shared-provider library into core | Append-only. `provider_interfaces.h` says "Retained for provider vtable ABI compatibility" and "appended at end to preserve vtable ABI compatibility" | One entry appended, `ComputeCapability__SetPlanning`. The planning default is defined in the library, so it needs no entry. Alternative B would retype `IExecutionProvider__GetCapability` |
+| `IExecutionProvider` vtable | Calls from core to a shared-provider library's EP object. `execution_provider.h` is compiled into both | None stated. `SupportsMoeOffload` (#33575) was inserted before the older `GetTuningContext`, and `ProviderLibrary::Load` has no version check, so core and the libraries are built together | One virtual declared last under a new name. No existing slot moves on Itanium or MSVC |
+| Planning payload | `CapabilityPlanningInfo` and its `std::string`, `InlinedVector`, `std::optional`, and `shared_ptr` members, when a library builds candidates | None stated. The legacy path already returns `std::vector<std::unique_ptr<ComputeCapability>>` across the same boundary | Extends the same layout assumption over a larger surface ([open question 4](#13-open-questions)) |
+
+- **Why the virtual has its own name.** The Itanium ABI (GCC and Clang on Linux and macOS) lays virtual functions out in
+  declaration order, so a virtual declared last is appended. MSVC groups virtuals by name: a group sits where its name
+  is first declared, and within a group the newest overload comes first. A second virtual named `GetCapability` would
+  therefore take the group's first slot and move the legacy `GetCapability` and the 32 virtuals declared after it,
+  wherever the new one is declared. A new name starts its own group at the end. The rule comes from Clang's
+  implementation of the MSVC layout (`MicrosoftVTableContext`). It was not run with MSVC
+  ([section 12](#12-verification-evidence)).
+- **What lockstep covers.** Core and a shared-provider library are built from the same sources, so lockstep builds do
+  not need this placement. It costs nothing and keeps every existing slot in place if a mixed pair is ever loaded. It
+  does not let core call the new virtual on a library built without it, because that reads past the end of the
+  library's vtable. The planning path is opt-in and off by default, and
+  [open question 9](#13-open-questions) asks whether a check is needed.
+
 ## 10. Worked Example: GQA
 
-An EP opts in by overriding both overloads. The values mirror the S0 test fixture. Node 42 is that fixture's GQA node.
-Real discovery of GQA nodes and bounds belongs to C3.
+An EP opts in by overriding `GetExecutionCandidates`. Its `GetCapability` override, if any, is untouched. The values
+mirror the S0 test fixture. Node 42 is that fixture's GQA node. Real discovery of GQA nodes and bounds belongs to C3.
 
 ```cpp
 class ExampleEp : public IExecutionProvider {
  public:
   ExampleEp() : IExecutionProvider{"ExampleEp"} {}
 
-  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
-      const GraphViewer&, const IKernelLookup&, const GraphOptimizerRegistry&,
-      IResourceAccountant*) const override {
-    return {};  // legacy discovery, unchanged
-  }
-
-  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
+  // GetCapability (legacy discovery) keeps its existing override, if any.
+  std::vector<std::unique_ptr<ComputeCapability>> GetExecutionCandidates(
       const GraphViewer&, const IKernelLookup&, const GraphOptimizerRegistry&,
       const std::shared_ptr<const CapabilityPlanningQuery>& query_context) const override {
     auto sub_graph = std::make_unique<IndexedSubGraph>();
@@ -819,16 +865,16 @@ candidate_set = CapabilityPlanningQueryResult{};  // frees S_lat. The binding ke
 
 ## 11. Alternatives Considered
 
-A is the design in this document. B, D, and E are the realistic alternatives. They keep the core idea (EPs return
-candidates against one shared query) and change only the call shape, the return shape, or the name.
+E is the design in this document. A, B, and D are the realistic alternatives. They keep the core idea (EPs return
+candidates against one shared query) and change only the name, the call shape, or the return shape.
 
 | Option | Shape | Verdict |
 |:-------|:------|:--------|
-| A. Planning overload with `query_context` | `std::vector<std::unique_ptr<ComputeCapability>> GetCapability(..., const std::shared_ptr<const CapabilityPlanningQuery>& query_context)`. Planning data in `ComputeCapability::planning` | **Recommended.** Same return type and `ComputeCapability`. Opt-in by override, and no existing override or call site changes. Costs: overload hiding (5.3) and the empty-return ambiguity ([open question 2](#13-open-questions)) |
-| B. One signature keyed on `mode` | The proposal's literal sketch: a single `GetCapability(graph_view, kernel_lookup, optimizer_registry, query_context)`. `query_context.mode` selects Legacy or Planning | **Alternative.** No overload mechanics. Every override changes (21 header declarations and 14 inline test doubles in this repository, plus out-of-tree EPs), and the accountant needs a new home, for example a field of the context. See [open question 1](#13-open-questions) |
+| A. Same-name overload | `std::vector<std::unique_ptr<ComputeCapability>> GetCapability(..., const std::shared_ptr<const CapabilityPlanningQuery>& query_context)`, declared last. Planning data in `ComputeCapability::planning` | **Variant of E that keeps the proposal's name.** Same return type and `ComputeCapability`. Opt-in by override, and no existing override changes. Itanium-safe when declared last. On MSVC it joins the legacy overload's vtable group and moves the legacy slot and every later one, so it cannot be append-only there ([section 9.1](#91-abi-compatibility)). Also costs the overload mechanics in 5.6 and the empty-return ambiguity ([open question 2](#13-open-questions)) |
+| B. One signature keyed on `mode` | The proposal's literal sketch: a single `GetCapability(graph_view, kernel_lookup, optimizer_registry, query_context)`. `query_context.mode` selects Legacy or Planning | **Alternative.** No overload mechanics, but it changes the shipped `GetCapability` signature, and with it the `IExecutionProvider__GetCapability` `ProviderHost` entry, against the append-only convention ([section 9.1](#91-abi-compatibility)). Every override changes (21 header declarations and 14 inline test doubles in this repository, plus out-of-tree EPs), and the accountant needs a new home, for example a field of the context. See [open question 1](#13-open-questions) |
 | C. Reuse an existing carrier | An accessor on `IKernelLookup`, state on `GraphOptimizerRegistry`, the `IResourceAccountant*`, a thread-local, an EP setter, or a defaulted fifth parameter | Rejected. Each is hidden state, the wrong semantics (an accountant charges), or a signature change that touches every override anyway |
-| D. `Status` and an out-parameter | `Status GetCapability(..., query_context, CapabilityPlanningQueryResult& result)` | **Fallback.** Carries `Status` and `support` explicitly, so it has no empty-return ambiguity and a failure channel that does not need exceptions. Costs a second return shape for the same concept, and makes `CapabilityPlanningQueryResult` visible to EP code |
-| E. Distinct name | `GetExecutionCandidates(...)` returning the same vector | **Fallback.** No overload or hiding questions, at the cost of one more name. Only the identifier changes. Sections 5.1 to 5.5 stay valid |
+| D. `Status` and an out-parameter | `Status GetExecutionCandidates(..., query_context, CapabilityPlanningQueryResult& result)`, with the same placement as E | **Fallback.** Carries `Status` and `support` explicitly, so it has no empty-return ambiguity and a failure channel that does not need exceptions. Costs a second return shape for the same concept, and makes `CapabilityPlanningQueryResult` visible to EP code |
+| E. Distinct name | `std::vector<std::unique_ptr<ComputeCapability>> GetExecutionCandidates(graph_viewer, kernel_lookup, graph_optimizer_registry, query_context)`, declared last. Planning data in `ComputeCapability::planning` | **Recommended.** Same return type and `ComputeCapability`. Opt-in by override, and no existing override, call site, or vtable slot changes on Itanium or MSVC. No overload resolution or name hiding. Costs: a second name for a call the proposal sketches as `GetCapability`, and the empty-return ambiguity ([open question 2](#13-open-questions)). The name is illustrative ([open question 6](#13-open-questions)) |
 | F. New `ExecutionCandidate` type | | Rejected. The proposal reuses `ComputeCapability` and its consumers |
 | G. Mixin interface and `dynamic_cast` | | Rejected. Needs RTTI across provider libraries |
 | H. Throwing base default | The planning default throws `NOT_IMPLEMENTED` | Rejected. A throw is the failure channel for real EP errors, and builds without exceptions abort |
@@ -836,21 +882,27 @@ candidates against one shared query) and change only the call shape, the return 
 
 ## 12. Verification Evidence
 
-The following was checked with throwaway programs that are not in the repository. C1 should carry the behavioral checks
-as unit tests. Nothing in this design was built inside ORT: the planning overload, the dispatcher, and the example were
-not compiled against ORT's headers.
+The overload and validator rows below were checked with throwaway programs that are not in the repository. C1 should
+carry the behavioral checks as unit tests. Nothing in this design was built inside ORT: the planning virtual, the
+dispatcher, and the example were not compiled against ORT's headers. The ABI rows come from reading source and history,
+and ran nothing.
 
 | Claim | Check | Status |
 |:------|:------|:-------|
-| Overload resolution matches the table in 5.3 | Standalone probe with stub types, not ORT headers. Both overloads return `vector<unique_ptr<Cap>>`. MSVC (VS 2022), `/std:c++17 /W4 /WX`. Calls with 3 arguments, `nullptr`, an accountant pointer, `shared_ptr<const Query>`, and `shared_ptr<Query>`, through a base reference and on concrete classes | Executed |
-| A concrete class that overrides only one overload cannot call the other, and a using-declaration fixes it | Same probe. Negative compiles, then `using Base::GetCapability;` | Executed |
-| A planning-only override binds a literal `nullptr` to the planning overload with a null query | Same probe | Executed |
-| Overriding one of two overloads does not warn | MSVC C4266 (`/w14266`, off by default, not enabled by ORT) flags both partial-override shapes but not overriding both or the using-declaration form. Clang 19.1.5 `-Wall -Wextra` gives no `-Woverloaded-virtual` warning for a partial override | Executed. GCC behavior is from its documentation only and was not run |
+| Alternative A: overload resolution matches the table in 5.6 | Standalone probe with stub types, not ORT headers. Both overloads return `vector<unique_ptr<Cap>>`. MSVC (VS 2022), `/std:c++17 /W4 /WX`. Calls with 3 arguments, `nullptr`, an accountant pointer, `shared_ptr<const Query>`, and `shared_ptr<Query>`, through a base reference and on concrete classes | Executed |
+| Alternative A: a concrete class that overrides only one overload cannot call the other, and a using-declaration fixes it | Same probe. Negative compiles, then `using Base::GetCapability;` | Executed |
+| Alternative A: a planning-only override binds a literal `nullptr` to the planning overload with a null query | Same probe | Executed |
+| Alternative A: overriding one of two overloads does not warn | MSVC C4266 (`/w14266`, off by default, not enabled by ORT) flags both partial-override shapes but not overriding both or the using-declaration form. Clang 19.1.5 `-Wall -Wextra` gives no `-Woverloaded-virtual` warning for a partial override | Executed. GCC behavior is from its documentation only and was not run |
+| MSVC groups same-name virtuals at the position of the group's first declaration, newest overload first | Read from Clang's `MicrosoftVTableContext` (`GroupNewVirtualOverloads` in `clang/lib/AST/VTableBuilder.cpp`), which implements the MSVC layout | Source reading. **Not run with MSVC** |
+| The Itanium ABI lays virtuals out in declaration order | Itanium C++ ABI, virtual table layout | Specification reading, not run |
+| `IExecutionProvider` has no append-only record, and `ProviderLibrary::Load` has no version check | `git log -S` shows `SupportsMoeOffload` (#33575) added before the older `GetTuningContext`. `ProviderLibrary::Load` in `provider_bridge_ort.cc` resolves `GetProvider` and calls `Initialize` with no version check | Code and history reading |
+| `ProviderHost` is append-only by convention | Comments in `provider_interfaces.h`: "Retained for provider vtable ABI compatibility" and "appended at end to preserve vtable ABI compatibility" | Code reading |
+| `OrtEp::GetCapability` is published and cannot change | `\since Version 1.23` in `onnxruntime_ep_c_api.h`, and the append-only rule in `.github/instructions/c-api.instructions.md` | Code reading |
 | The S0 validator and binder behave as described in sections 4 to 6, and the dispatcher flow holds | A 47-check harness linked against the real `capability_planning.cc` and `status.cc` (MSVC 14.44, `/std:c++20 /W4 /WX`). It used a dispatcher for the earlier `Status` and out-parameter shape (Alternative D). The validator and binder are the same code used here | Executed on the earlier call shape. The vector-return dispatcher in 5.4 was not run |
-| The planning overload in the real `execution_provider.h`, the dispatcher in 5.4, and the example in section 10 compile | | **Not compiled** |
+| The planning virtual in the real `execution_provider.h`, the dispatcher in 5.4, and the example in section 10 compile | | **Not compiled** |
 | The provider bridge entry `ComputeCapability__SetPlanning`, and `capability_planning.h` under `SHARED_PROVIDER` | | **Not checked** |
 | Plugin EP mapping | | Not started. S0.4 lists the requirements |
-| The existing partitioner never reaches the planning overload, and the legacy path is unchanged | Read from `graph_partitioner.cc` and the existing call sites | Reasoned from code reading, not tested |
+| The existing partitioner never reaches the planning virtual, and the legacy path is unchanged | Read from `graph_partitioner.cc` and the existing call sites | Reasoned from code reading, not tested |
 
 Findings that shaped the design:
 
@@ -866,11 +918,13 @@ Findings that shaped the design:
 
 ## 13. Open Questions
 
-1. **Overload or one signature keyed on `mode`.** This document keeps the legacy signature and adds an overload, so no
-   existing override changes. The proposal sketches a single `GetCapability(graph_view, kernel_lookup,
-   optimizer_registry, query_context)` that returns execution candidates. That version removes the overload mechanics
-   and rewrites every override (Alternative B). Which should the final design use? `mode` is already validated, so the
-   query side is ready for B.
+1. **Name and signature of the planning virtual.** This document keeps `GetCapability` as it is and adds a distinctly
+   named virtual, `GetExecutionCandidates`, declared last (Alternative E). No existing override changes, and no vtable
+   slot moves on Itanium or MSVC. The proposal sketches a single `GetCapability(graph_view, kernel_lookup,
+   optimizer_registry, query_context)` that returns execution candidates. Two other routes to it: a same-name overload
+   (Alternative A), which keeps the proposal's name but joins the legacy overload's vtable group on MSVC, and one
+   signature keyed on `mode` (Alternative B), which retypes the shipped signature and rewrites every override. Which
+   should the final design use? `mode` is already validated, so the query side is ready for B.
 2. **What an empty return means.** An empty vector is reported as `Unsupported` (unknown, not zero). An EP that has
    opted in and found nothing eligible cannot say "known none" through this call. Options: keep it as is; add an
    opt-in marker such as a defaulted `SupportsCapabilityPlanning()` virtual, so an empty return from an opted-in EP
@@ -883,19 +937,29 @@ Findings that shaped the design:
 4. **Provider-library access to S0 types.** Recommended: shared-provider builds include `capability_planning.h` (plain
    data), attach `planning` through one `ComputeCapability__SetPlanning` accessor, and define the planning default
    locally. The alternative is an opaque accessor for every field, which is a large append-only `ProviderHost` surface.
-   Whether the header compiles under `SHARED_PROVIDER` is unchecked.
+   Two things are unchecked. One is whether the header compiles under `SHARED_PROVIDER`. The other is the layout
+   assumption: including the header makes core and the library agree on the layout of `CapabilityPlanningInfo`, with its
+   `std::string`, `InlinedVector`, `std::optional`, and `shared_ptr` members. The legacy path already makes the same
+   assumption for `std::vector<std::unique_ptr<ComputeCapability>>`, over a smaller surface.
 5. **Hook and metadata hygiene.** S0 does not check that `nodes_to_optimize`, `optimization_func`, and `MetaDef`
    describe the same implementation as `planning->recipe`. Options: leave it to F2 reconciliation (current); add cheap
    structural checks to the result validator, for example hooks only when `graph_effects` is not `Unchanged`; or both.
    Related: does F2 reuse the stored closure, or rebuild the application from `recipe.prepared_state`?
-6. **Dispatcher name and home.** `QueryCapabilityPlanning` and the header that hosts it are illustrative.
+6. **Names, homes, and build guards.** `GetExecutionCandidates`, `QueryCapabilityPlanning`, and the header that hosts
+   the dispatcher are illustrative. `SupportsMoeOffload` is compiled out of minimal builds "to avoid growing the
+   vtable". If the planner is not built in minimal builds, should the new virtual get the same guard?
 7. **Reporting errors without exceptions.** The vector return leaves exceptions as the only failure channel, and a
    build without exceptions aborts on a throw. Is that acceptable, with EPs describing expected unknowns through
    `unresolved_terms` and `bound_status`? If not, Alternative D adds an explicit `Status`.
-8. **The CPU EP.** It does not override the legacy `GetCapability`, so it has no planning-safe answer until it gets a
+8. **The CPU EP.** It does not override `GetCapability`, so it has no planning-safe answer until it gets a
    planning override or an explicit adapter. The proposal discovers CPU candidates independently. Should C1 add a CPU
    planning override, for example requirement-free candidates for nodes that have a CPU kernel, or defer it until the
    planner needs it?
+9. **Version check for shared-provider libraries.** `ProviderLibrary::Load` resolves `GetProvider` and calls
+   `Initialize` with no version handshake, so core and a library are expected to come from the same build. Appending
+   the virtual keeps existing calls valid for a mixed pair, but core cannot tell whether a library's vtable has the new
+   slot. Is lockstep enough, or should C1 add something the library can report, for example a capability flag, before
+   the planner calls the virtual?
 
 ## 14. Out of Scope
 
@@ -904,4 +968,4 @@ Findings that shaped the design:
 - GQA contract and binding wiring in CUDA (C3).
 - Planning integration for existing hook producers: TensorRT EP and the CUDA runtime-fusion work (#33705, #33757).
 - A concrete C API for plugin EPs.
-- Any change to the legacy partitioner path or the legacy `GetCapability` overload.
+- Any change to the legacy partitioner path or to `GetCapability`.
