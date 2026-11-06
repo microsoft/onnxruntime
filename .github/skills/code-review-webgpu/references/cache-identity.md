@@ -32,21 +32,13 @@ no additional key; options varying between sessions sharing that context do.
 - Component-count branches or shape-derived fast paths without matching keys.
 - A new member in `GenerateShaderCode` or template argument without a key.
 - Floats keyed by `std::to_string`, which keeps six decimals and loses identity.
-  `onnxruntime/test/providers/webgpu/activation_cache_key_test.cc` demonstrates
-  key tests; encode keyed values exactly.
+  Encode keyed values exactly.
 
 Pass per-run sizes, strides, offsets, and scalar attributes as uniforms using
 `WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES` and `AddUniformVariables`. Formatting
 them into WGSL compiles a new pipeline per distinct value. Conversely, an extra
 key component that does not change the WGSL only duplicates pipelines; report
 it when it causes measurable compile churn.
-
-## Regression anchors
-
-- [#33153](https://github.com/microsoft/onnxruntime/pull/33153), collision diagnostics;
-  [#33693](https://github.com/microsoft/onnxruntime/pull/33693), nightly validation.
-- [#32343](https://github.com/microsoft/onnxruntime/pull/32343), dispatch-shape
-  specialization: check both identity and [addressing](dispatch-and-wgsl.md).
 
 See [validation](validation.md#shader-generation-and-cache-keys) for shader dumps
 and the key validator. A dump must exercise differing specializations to test reuse.

@@ -6,7 +6,7 @@ coverage, and regression-test routing. Performance methods live in
 repository build/test skills.
 **Update when:** Validation tools, test routing, CI runtime coverage, or the
 evidence required for a changed variant changes. Recheck live workflows rather
-than treating the hardware examples below as permanent coverage guarantees.
+than treating a past CI configuration as a permanent coverage guarantee.
 
 ## Select tests that execute the change
 
@@ -16,9 +16,6 @@ ranks, broadcast/non-broadcast, empty tensors, and large tensors for indexing
 changes. Shared `OpTester` tests use WebGPU when built unless excluded; verify
 the intended path actually executes, with nonzero test counts and skips
 reported separately.
-
-`onnxruntime/test/providers/webgpu/` includes `conv_large_index_test.cc`,
-`matmul_large_test.cc`, and `activation_cache_key_test.cc`.
 
 An exclusion of `kWebGpuExecutionProvider` or a looser tolerance needs a stated
 reason. f16 precision can justify tolerance; relaxed f32 tolerance usually
@@ -40,17 +37,12 @@ hides a defect and needs evidence.
   Remove unused generators/binaries only after checking consumers. Shared tests
   also need other-provider review; new test location alone adds no coverage.
 
-Review evidence: [#33242 skip placement](https://github.com/microsoft/onnxruntime/pull/33242#discussion_r4236769458),
-[#33057 fallback](https://github.com/microsoft/onnxruntime/pull/33057#discussion_r4161278467),
-[#32796 coverage](https://github.com/microsoft/onnxruntime/pull/32796#discussion_r4101460222),
-and [#33269 test migration](https://github.com/microsoft/onnxruntime/pull/33269).
-
 ## Coverage and claims
 
-- Inspect the current jobs. The imported guidance's CI baseline is Linux
-  build-only, Windows tests on NVIDIA, macOS on Apple GPUs. This does not
-  establish Intel, AMD, or Qualcomm execution: vendor-specific changes need
-  results from that hardware in the PR description, or an explicit gap.
+- Inspect the current jobs and their actual hardware, backend, and workload.
+  Distinguish build-only, software-adapter, and hardware execution coverage.
+  Vendor-specific changes need results from that hardware in the PR description,
+  or an explicit gap.
 - Follow `ort-build` and `ort-test`, plus the active checkout's local build
   instructions. Do not substitute CPU fallback or another branch's binary for
   WebGPU runtime evidence. Build-only is valid evidence only for compilation.
@@ -62,13 +54,6 @@ Distinguish a missing regression test from an existing test that could not be
 executed in the review environment. Do not claim a local or hardware run from
 source inspection alone.
 
-Portable Linux example (adapt to local build requirements):
-
-```bash
-./build.sh --config Release --parallel --use_webgpu
-./build/Linux/Release/onnxruntime_provider_test --gtest_filter="*<OpName>*"
-```
-
 Without hardware on Linux, load `webgpu-local-testing` for lavapipe's scope and
 limitations; it does not establish hardware/vendor coverage.
 
@@ -76,26 +61,16 @@ limitations; it does not establish hardware/vendor coverage.
 
 Run the shader-key validation used by nightly CI when shader generation or
 identity changes. Find the current job by searching for the validator or
-`ORT_WEBGPU_EP_SHADER_DUMP_FILE`; workflow filenames can move. Run from the
-repository root, using the active build's provider test binary:
-
-```bash
-export ORT_WEBGPU_EP_SHADER_DUMP_FILE=/tmp/webgpu_shaders.log
-./build/Linux/Release/onnxruntime_provider_test --gtest_filter="*<OpName>*"
-node .github/actions/webgpu-validate-shader-key/validate-shader-key.js < /tmp/webgpu_shaders.log
-```
-
-In PowerShell set `$env:ORT_WEBGPU_EP_SHADER_DUMP_FILE` and pipe
-`Get-Content <dump>` into `node .github/actions/webgpu-validate-shader-key/validate-shader-key.js`.
-Use a fresh task-specific dump and check both commands' exit codes. A passing
+`ORT_WEBGPU_EP_SHADER_DUMP_FILE`; workflow filenames can move. Set that environment
+variable to a fresh task-specific dump path and run the active build's provider
+tests for the changed operators. From the repository root, pass the dump on stdin
+to `node .github/actions/webgpu-validate-shader-key/validate-shader-key.js`.
+Check both commands' exit codes. A passing
 validator on an empty dump or an unexercised specialization proves nothing.
 The dump includes WGSL for each program and key.
 
 For WebGPU validation errors, set EP option `validationMode` (config key
 `ep.webgpuexecutionprovider.validationMode`) to `full`. Check the effective
-default/options in the reviewed revision; `WebGpuContextConfig` currently uses
-`basic` in Release and `full` in Debug. For template-generator changes, run:
-
-```bash
-python tools/python/wgsl_template/test/run_tests.py
-```
+defaults/options in `WebGpuContextConfig` and the public parsers in the reviewed
+revision. For template-generator changes, run
+`python tools/python/wgsl_template/test/run_tests.py`.

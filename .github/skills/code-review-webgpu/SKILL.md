@@ -57,12 +57,6 @@ selects checks. If a required reference cannot be read, name it as a review gap.
 | Changing profiling, timestamps, instrumentation, performance claims, or hardware workarounds | [Profiling and performance](references/profiling-and-performance.md) |
 | Selecting or assessing validation for any WebGPU behavior/build change, or changing WebGPU/shared OpTester tests, exclusions, or tolerances | [Validation](references/validation.md) |
 
-Typical infrastructure owners include `webgpu_context.*`, `program_manager.*`,
-`buffer_manager.*`, `allocator.*`, `data_transfer.*`, `session_buffer_pool.*`,
-`compute_context.*`, `ep/`, and `webgpu_provider_factory.cc`. Build changes include
-`cmake/onnxruntime_providers_webgpu.cmake`, `cmake/patches/dawn/`, and
-`plugin-ep-webgpu/`. These are discovery hints, not an exhaustive scope.
-
 ## Complete the review
 
 Before reporting, account for every reading-table row: checked with source/test
@@ -92,6 +86,9 @@ reference states its boundary and when its meaning needs updating. Put a rule
 with one owner and link to it from other routes. Add or change the reading row
 alongside its reference; an unrouteable check is incomplete guidance. Keep
 PR status, raw evidence, and experiments in the task handoff rather than here.
+Replace superseded checks as the implementation evolves. Keep examples only
+when they clarify an otherwise ambiguous rule; historical PR lists and audit
+snapshots belong in maintenance evidence, outside the active references.
 When extending categories, consult the source/evidence map and limits in
 [WebGPU review coverage](../../../docs/WebGPU_Review_Coverage.md); ordinary
 reviews do not need to load that audit or the historical corpus.

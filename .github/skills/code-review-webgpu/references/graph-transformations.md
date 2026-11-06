@@ -31,7 +31,4 @@ layout conversion, or model/export patterns change.
 Source landmarks: `core/optimizer/graph_transformer_utils.cc`,
 `conv_activation_fusion.cc`, `group_query_attention_pre_norm_fusion.cc`,
 `matmul_nbits_*fusion*`, native/plugin capability discovery, and
-`test/optimizer/` tests. Regression examples include
-[#33363](https://github.com/microsoft/onnxruntime/pull/33363) for normalization
-fusion and [#32929](https://github.com/microsoft/onnxruntime/pull/32929) for
-WebGPU Conv activation paths. Recheck exact schemas and guards in the PR head.
+`test/optimizer/` tests. Recheck exact schemas and guards in the PR head.

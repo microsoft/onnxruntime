@@ -17,8 +17,7 @@ registration rules belong in registration.
    standard kernels under `core/providers/webgpu` and contrib kernels under
    `contrib_ops/webgpu` (relative to `onnxruntime/`). Shader-backed kernels use
    `WebGpuKernel::ComputeInternal` and `Program`/`GenerateShaderCode`; keep
-   invocation data local. For a template-based example, inspect native
-   `tensor/pad.h`, `pad.cc`, and `pad.wgsl.template`. Follow the
+   invocation data local. Follow the
    [template build workflow](../../../../onnxruntime/core/providers/webgpu/wgsl_templates/README.md)
    rather than editing generated build headers. A view/copy-only kernel may
    reuse the existing context path without introducing a shader.
@@ -84,16 +83,5 @@ defects usually involve lines the diff did not change.
   per-segment indexing rather than narrowing the whole count.
 - For indices, positions, sequence lengths, and offsets read from tensor data
   on the GPU, find the shader clamp or skip **after negative-index wrapping**.
-  The host cannot validate these values without a readback. Compare with
-  RotaryEmbedding's `position_ids` bounds validation. Keep decisions on-device;
+  The host cannot validate these values without a readback. Keep decisions on-device;
   use [capture-safe interaction](runtime-and-portability.md#graph-capture).
-
-## Regression anchors
-
-These are historical examples; verify the affected code in the reviewed revision.
-
-| Failure | Evidence | Check |
-| --- | --- | --- |
-| int64 attribute truncated to int32, then out-of-bounds read | [#28721](https://github.com/microsoft/onnxruntime/pull/28721), Pad | Range-check before narrowing |
-| Missing host validation of degenerate inputs | [#29255](https://github.com/microsoft/onnxruntime/pull/29255), GridSample; [#29595](https://github.com/microsoft/onnxruntime/pull/29595), LSTM | Validate before program setup |
-| Unbounded GPU-read indices | RotaryEmbedding `position_ids` validation | Clamp or skip in WGSL |

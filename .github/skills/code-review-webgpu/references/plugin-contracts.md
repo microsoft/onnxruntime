@@ -32,5 +32,4 @@ memory-device semantics, or native/plugin support predicates change.
 
 Source landmarks: `ep/api.cc`, `ep/ep.cc`, `ep/factory.cc`, `ep/allocator.cc`,
 `ep/sync_stream.cc`, public EP API/adapters, and session `ep_factory_webgpu.*`.
-See [#32587 callback containment](https://github.com/microsoft/onnxruntime/pull/32587#discussion_r4045166833)
-and [build/deployment checks](build-and-dependencies.md).
+See [build/deployment checks](build-and-dependencies.md).

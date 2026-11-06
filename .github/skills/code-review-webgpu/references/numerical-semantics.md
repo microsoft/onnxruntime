@@ -33,11 +33,3 @@ operator mathematical contracts change.
 - Force scalar, packed, subgroup-matrix, and Split-K variants where eligible.
   Choose reductions long enough to expose the precision failure; do not broaden
   tolerances without an error analysis. Scope performance tradeoffs to evidence.
-
-Review evidence: [#33057 partial storage](https://github.com/microsoft/onnxruntime/pull/33057#discussion_r4163219361),
-[shared callers](https://github.com/microsoft/onnxruntime/pull/33057#discussion_r4169930321),
-[#32528 full-width indices](https://github.com/microsoft/onnxruntime/pull/32528#discussion_r4168826629),
-[precision before selection](https://github.com/microsoft/onnxruntime/pull/32528#discussion_r4168824365),
-and [#33074 quantization domains](https://github.com/microsoft/onnxruntime/pull/33074#discussion_r4198720082).
-These are regression prompts; read replies and the affected revision before
-claiming a current defect.

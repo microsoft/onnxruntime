@@ -31,7 +31,6 @@ ownership change. Shader reuse belongs in cache-identity.
 
 Source landmarks: `nn/conv.cc`, `nn/conv_transpose.cc`, `math/matmul.cc`,
 `shader_variable.cc`, and contrib `quantization/matmul_nbits*` under the WebGPU
-provider roots. See [#32688 prepack coverage](https://github.com/microsoft/onnxruntime/pull/32688#discussion_r4058961972)
-and [#32796 tile coverage](https://github.com/microsoft/onnxruntime/pull/32796#discussion_r4101460158).
+provider roots.
 Apply [cache identity](cache-identity.md) when layout/components change codegen;
 test distinct specializations in one shared context and both invocation orders.

@@ -61,7 +61,7 @@ a WebGPU consumer must not select `code-review-webgpu` or its references. In mix
 the affected portion. Keep this boundary explicit in the skill description as well as its workflow.
 
 Keep each rule in one maintained location. When reorganizing guidance, maintain a temporary requirement-to-destination
-map covering the original instructions, procedures, regression examples, and validation commands. Treat an unmapped
+map covering the original checks, workflows, validation commands, and provenance. Treat an unmapped
 requirement as lost until checked. Keep migration evidence and PR status in the task handoff rather than startup guidance.
 
 Before handoff, check link and route completeness and account for each applicable check with evidence or an explicit
@@ -69,7 +69,8 @@ validation gap. When scope changes, repeat reference selection. This preserves c
 to load all subsystem history.
 
 Save a new verified review lesson in the reference that owns the affected invariant. Retain its applicability,
-failure trigger, corrective rule, regression check, and immutable source/review evidence link. Keep raw transcripts,
+failure trigger, corrective rule, and regression check. Keep immutable source/review provenance in maintenance
+evidence; include examples in active references only when they clarify an otherwise ambiguous check. Keep raw transcripts,
 logs, experiments, and current task status in the task handoff. Update routing when the lesson introduces a new
 reading condition. A lesson in a separate local learning store becomes available to a hosted reviewer only after
 its reusable check is incorporated into repository guidance and included in the reviewed branch.

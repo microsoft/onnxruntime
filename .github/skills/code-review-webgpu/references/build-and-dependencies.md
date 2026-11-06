@@ -63,9 +63,5 @@ packaging inputs, or supported deployment configurations change.
   mocks that allow the rollback write. Keep generated/temporary outputs out of
   the target-relative PR diff.
 
-Review evidence: [#32686 packaging](https://github.com/microsoft/onnxruntime/pull/32686#discussion_r4043364266),
-[patch integrity](https://github.com/microsoft/onnxruntime/pull/32686#discussion_r4043364307),
-[component revisions](https://github.com/microsoft/onnxruntime/pull/32686#discussion_r4058704693),
-and [#33396 rollback](https://github.com/microsoft/onnxruntime/pull/33396#discussion_r4321149690).
 Use [validation](validation.md) to distinguish compilation, mock packaging,
 artifact loading, shader compilation, and real GPU execution evidence.

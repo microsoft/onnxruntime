@@ -56,14 +56,3 @@ numeric behavior change.
   retry updates, and bitcast representations for float/packed reductions.
 - WGSL evaluates both operands of `select`; an unselected out-of-range operand
   still reads memory. Clamp the index.
-
-## Regression anchors
-
-| Failure | Historical evidence |
-| --- | --- |
-| Subgroup-matrix loads/stores past partial tiles | [#32364](https://github.com/microsoft/onnxruntime/pull/32364), [#32582](https://github.com/microsoft/onnxruntime/pull/32582) |
-| Empty output dispatch | [#33668](https://github.com/microsoft/onnxruntime/pull/33668), pooling |
-| Rank-0/empty-rank inputs | [#33664](https://github.com/microsoft/onnxruntime/pull/33664), Gemm scalar bias; [#33171](https://github.com/microsoft/onnxruntime/pull/33171), MatMul/DequantizeLinear |
-| Dispatch-shape specialization | [#32343](https://github.com/microsoft/onnxruntime/pull/32343), 1D fast path |
-| Rounding ties | [#28757](https://github.com/microsoft/onnxruntime/pull/28757), Resize nearest |
-| Tensors exceeding one storage binding | [#29463](https://github.com/microsoft/onnxruntime/pull/29463), Conv offset helpers |

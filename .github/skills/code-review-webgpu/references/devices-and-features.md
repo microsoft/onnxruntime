@@ -33,8 +33,4 @@ reuse, device-free modes, or hardware fast-path predicates change.
 
 Source landmarks: `webgpu_provider_factory.cc`, `webgpu_context.cc`,
 `webgpu_provider_options.h`, and `ep/factory.cc`.
-Review evidence: [#32319 selector identity](https://github.com/microsoft/onnxruntime/pull/32319#discussion_r3884572913),
-[runtime test gap](https://github.com/microsoft/onnxruntime/pull/32319#discussion_r3884572887),
-and [#33724](https://github.com/microsoft/onnxruntime/pull/33724) hardware eligibility.
-See [#33481 public-option forwarding](https://github.com/microsoft/onnxruntime/pull/33481#discussion_r4320681317).
 Session-varying codegen options also need [cache identity](cache-identity.md).

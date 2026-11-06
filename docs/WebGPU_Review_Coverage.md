@@ -3,7 +3,10 @@
 This document records the boundaries and evidence behind
 [`code-review-webgpu`](../.github/skills/code-review-webgpu/SKILL.md).
 Consult it when maintaining the guidance or auditing coverage; routine reviews
-start with the skill's scope gate and cumulative reading table.
+start with the skill's scope gate and cumulative reading table. Historical links
+below are maintenance provenance, not required reading for ordinary reviews.
+The active references retain checks and validation procedures rather than PR
+stories or example inventories.
 
 ## Scope and category design
 
@@ -40,19 +43,19 @@ operator was independently proven correct.
 
 | Category and owning checks | Source boundary inspected | Evidence and regression focus |
 | --- | --- | --- |
-| [Kernel contract](../.github/skills/code-review-webgpu/references/kernel-contract.md) | `core/providers/webgpu/compute_context.*`, kernel `ComputeInternal`, host-input placement | [#28721](https://github.com/microsoft/onnxruntime/pull/28721), [#29255](https://github.com/microsoft/onnxruntime/pull/29255): validated shapes, safe narrowing, GPU-derived indices |
+| [Kernel contract](../.github/skills/code-review-webgpu/references/kernel-contract.md) | `core/providers/webgpu/compute_context.*`, kernel `ComputeInternal`, host-input placement | [#28721](https://github.com/microsoft/onnxruntime/pull/28721), [#29255](https://github.com/microsoft/onnxruntime/pull/29255): validated shapes, safe narrowing, GPU-derived indices; provenance: [#29595](https://github.com/microsoft/onnxruntime/pull/29595) |
 | [Cache identity](../.github/skills/code-review-webgpu/references/cache-identity.md) | `program_cache_key.cc`, `program_manager.*`, `program.*`, templates | [#33153](https://github.com/microsoft/onnxruntime/pull/33153), [#33693](https://github.com/microsoft/onnxruntime/pull/33693): complete keys, output components, overrides, same-context both-order tests |
-| [Dispatch and WGSL](../.github/skills/code-review-webgpu/references/dispatch-and-wgsl.md) | dispatch normalization, `shader_helper.*`, `shader_variable.*`, generated kernels | [#32343](https://github.com/microsoft/onnxruntime/pull/32343), [#32796](https://github.com/microsoft/onnxruntime/pull/32796): normalized indices, partial tiles, subgroup ownership, binding limits |
-| [Numerical semantics](../.github/skills/code-review-webgpu/references/numerical-semantics.md) | `math/gemm_utils.cc`, normalization and quantization kernels, contrib attention | [#33057](https://github.com/microsoft/onnxruntime/pull/33057), [#32528](https://github.com/microsoft/onnxruntime/pull/32528), [#33074](https://github.com/microsoft/onnxruntime/pull/33074): partial precision, int64, quantization ties, masks and selection |
-| [Tensor layout/prepacking](../.github/skills/code-review-webgpu/references/tensor-layout-and-prepacking.md) | `nn/conv*`, `math/matmul*`, views/accessors, contrib `quantization/matmul_nbits*` | [#32688](https://github.com/microsoft/onnxruntime/pull/32688), [#33231](https://github.com/microsoft/onnxruntime/pull/33231): logical versus physical shape, groups, initializer/dynamic/disabled modes |
-| [Runtime and memory](../.github/skills/code-review-webgpu/references/runtime-and-portability.md) | context/recording, allocator, buffer manager, session pool, data transfer and external loaders | [#32874](https://github.com/microsoft/onnxruntime/pull/32874), [#32587](https://github.com/microsoft/onnxruntime/pull/32587), [#33509](https://github.com/microsoft/onnxruntime/pull/33509): streamless ordering, reuse lifetime, capture failure/cleanup |
-| [Devices and features](../.github/skills/code-review-webgpu/references/devices-and-features.md) | `webgpu_provider_factory.cc`, options, context creation/reuse, `ep/factory.cc` | [#32319](https://github.com/microsoft/onnxruntime/pull/32319), [#33481](https://github.com/microsoft/onnxruntime/pull/33481), [#33724](https://github.com/microsoft/onnxruntime/pull/33724): selector identity, enabled features, compile-only versus execution |
-| [Plugin contracts](../.github/skills/code-review-webgpu/references/plugin-contracts.md) | `ep/`, public API/adapters, session `plugin_ep/ep_factory_webgpu.*` | [#32587](https://github.com/microsoft/onnxruntime/pull/32587): ABI exceptions, ownership, capability parity; source `ep/runtime_compatibility.*` and `ep/api.cc`: host negotiation and exports |
-| [Builds and dependencies](../.github/skills/code-review-webgpu/references/build-and-dependencies.md) | repository `cmake/`, Dawn patches/manifests, `plugin-ep-webgpu/paths.txt`, staging/package/update tools | [#32686](https://github.com/microsoft/onnxruntime/pull/32686), [#33396](https://github.com/microsoft/onnxruntime/pull/33396): DXC redistribution, exact patch/DEPS coordinates, rollback and package consumers |
+| [Dispatch and WGSL](../.github/skills/code-review-webgpu/references/dispatch-and-wgsl.md) | dispatch normalization, `shader_helper.*`, `shader_variable.*`, generated kernels | [#32343](https://github.com/microsoft/onnxruntime/pull/32343), [#32796](https://github.com/microsoft/onnxruntime/pull/32796): normalized indices, partial tiles, subgroup ownership, binding limits; provenance: [#32364](https://github.com/microsoft/onnxruntime/pull/32364), [#32582](https://github.com/microsoft/onnxruntime/pull/32582), [#33668](https://github.com/microsoft/onnxruntime/pull/33668), [#33664](https://github.com/microsoft/onnxruntime/pull/33664), [#33171](https://github.com/microsoft/onnxruntime/pull/33171), [#28757](https://github.com/microsoft/onnxruntime/pull/28757), [#29463](https://github.com/microsoft/onnxruntime/pull/29463) |
+| [Numerical semantics](../.github/skills/code-review-webgpu/references/numerical-semantics.md) | `math/gemm_utils.cc`, normalization and quantization kernels, contrib attention | [#33057](https://github.com/microsoft/onnxruntime/pull/33057), [#32528](https://github.com/microsoft/onnxruntime/pull/32528), [#33074](https://github.com/microsoft/onnxruntime/pull/33074): partial precision, int64, quantization ties, masks and selection; provenance: [#33057 partial storage](https://github.com/microsoft/onnxruntime/pull/33057#discussion_r4163219361), [#33057: shared callers](https://github.com/microsoft/onnxruntime/pull/33057#discussion_r4169930321), [#32528 full-width indices](https://github.com/microsoft/onnxruntime/pull/32528#discussion_r4168826629), [#32528: precision before selection](https://github.com/microsoft/onnxruntime/pull/32528#discussion_r4168824365), [#33074 quantization domains](https://github.com/microsoft/onnxruntime/pull/33074#discussion_r4198720082) |
+| [Tensor layout/prepacking](../.github/skills/code-review-webgpu/references/tensor-layout-and-prepacking.md) | `nn/conv*`, `math/matmul*`, views/accessors, contrib `quantization/matmul_nbits*` | [#32688](https://github.com/microsoft/onnxruntime/pull/32688), [#33231](https://github.com/microsoft/onnxruntime/pull/33231): logical versus physical shape, groups, initializer/dynamic/disabled modes; provenance: [#32688 prepack coverage](https://github.com/microsoft/onnxruntime/pull/32688#discussion_r4058961972), [#32796 tile coverage](https://github.com/microsoft/onnxruntime/pull/32796#discussion_r4101460158) |
+| [Runtime and memory](../.github/skills/code-review-webgpu/references/runtime-and-portability.md) | context/recording, allocator, buffer manager, session pool, data transfer and external loaders | [#32874](https://github.com/microsoft/onnxruntime/pull/32874), [#32587](https://github.com/microsoft/onnxruntime/pull/32587), [#33509](https://github.com/microsoft/onnxruntime/pull/33509): streamless ordering, reuse lifetime, capture failure/cleanup; provenance: [#29625](https://github.com/microsoft/onnxruntime/pull/29625), [#33362](https://github.com/microsoft/onnxruntime/pull/33362), [#32874 streamless ordering](https://github.com/microsoft/onnxruntime/pull/32874#discussion_r4165616715), [#32874: the relaxed-atomic invariant](https://github.com/microsoft/onnxruntime/pull/32874#discussion_r4141059183), [#32587 deferred native allocation issue](https://github.com/microsoft/onnxruntime/pull/32587#discussion_r4068605107) |
+| [Devices and features](../.github/skills/code-review-webgpu/references/devices-and-features.md) | `webgpu_provider_factory.cc`, options, context creation/reuse, `ep/factory.cc` | [#32319](https://github.com/microsoft/onnxruntime/pull/32319), [#33481](https://github.com/microsoft/onnxruntime/pull/33481), [#33724](https://github.com/microsoft/onnxruntime/pull/33724): selector identity, enabled features, compile-only versus execution; provenance: [#32319 selector identity](https://github.com/microsoft/onnxruntime/pull/32319#discussion_r3884572913), [#32319: runtime test gap](https://github.com/microsoft/onnxruntime/pull/32319#discussion_r3884572887), [#33481 public-option forwarding](https://github.com/microsoft/onnxruntime/pull/33481#discussion_r4320681317) |
+| [Plugin contracts](../.github/skills/code-review-webgpu/references/plugin-contracts.md) | `ep/`, public API/adapters, session `plugin_ep/ep_factory_webgpu.*` | [#32587](https://github.com/microsoft/onnxruntime/pull/32587): ABI exceptions, ownership, capability parity; source `ep/runtime_compatibility.*` and `ep/api.cc`: host negotiation and exports; provenance: [#32587 callback containment](https://github.com/microsoft/onnxruntime/pull/32587#discussion_r4045166833) |
+| [Builds and dependencies](../.github/skills/code-review-webgpu/references/build-and-dependencies.md) | repository `cmake/`, Dawn patches/manifests, `plugin-ep-webgpu/paths.txt`, staging/package/update tools | [#32686](https://github.com/microsoft/onnxruntime/pull/32686), [#33396](https://github.com/microsoft/onnxruntime/pull/33396): DXC redistribution, exact patch/DEPS coordinates, rollback and package consumers; provenance: [#32686 packaging](https://github.com/microsoft/onnxruntime/pull/32686#discussion_r4043364266), [#32686: patch integrity](https://github.com/microsoft/onnxruntime/pull/32686#discussion_r4043364307), [#32686: component revisions](https://github.com/microsoft/onnxruntime/pull/32686#discussion_r4058704693), [#33396 rollback](https://github.com/microsoft/onnxruntime/pull/33396#discussion_r4321149690) |
 | [Graph transformations](../.github/skills/code-review-webgpu/references/graph-transformations.md) | native/plugin capability discovery, `core/optimizer/` Conv/MatMulNBits/GQA fusions and transformer registration | [#33363](https://github.com/microsoft/onnxruntime/pull/33363), [#32929](https://github.com/microsoft/onnxruntime/pull/32929): preserved attributes/outputs, accepted/rejected rewrites, actual partition/layout |
 | [Registration](../.github/skills/code-review-webgpu/references/registration.md) | native and contrib registry tables, supported types, NHWC domains, generated kernel docs | Domain/opset/type/host-input consistency; exercise the advertised contract in native and plugin paths |
-| [Profiling and performance](../.github/skills/code-review-webgpu/references/profiling-and-performance.md) | `webgpu_profiler.*`, context query/flush/readback paths, Dawn platform and PIX integration | [#33781](https://github.com/microsoft/onnxruntime/pull/33781): clock domains; legacy [#18894](https://github.com/microsoft/onnxruntime/pull/18894) and [#19791](https://github.com/microsoft/onnxruntime/pull/19791): dispatch metadata and scoped workarounds |
-| [Validation](../.github/skills/code-review-webgpu/references/validation.md) | provider/shared tests, test helpers, shader-key validator and current CI definitions | [#33242](https://github.com/microsoft/onnxruntime/pull/33242), [#33269](https://github.com/microsoft/onnxruntime/pull/33269): skip before tester construction, optional features, no fallback, test migration |
+| [Profiling and performance](../.github/skills/code-review-webgpu/references/profiling-and-performance.md) | `webgpu_profiler.*`, context query/flush/readback paths, Dawn platform and PIX integration | [#33781](https://github.com/microsoft/onnxruntime/pull/33781): clock domains; legacy [#18894](https://github.com/microsoft/onnxruntime/pull/18894) and [#19791](https://github.com/microsoft/onnxruntime/pull/19791): dispatch metadata and scoped workarounds; provenance: [#18894 dispatch metadata](https://github.com/microsoft/onnxruntime/pull/18894#discussion_r1439969295), [#18894: profiling cache effects](https://github.com/microsoft/onnxruntime/pull/18894#discussion_r1448124255), [#19791 workaround scope](https://github.com/microsoft/onnxruntime/pull/19791#discussion_r1515358917) |
+| [Validation](../.github/skills/code-review-webgpu/references/validation.md) | provider/shared tests, test helpers, shader-key validator and current CI definitions | [#33242](https://github.com/microsoft/onnxruntime/pull/33242), [#33269](https://github.com/microsoft/onnxruntime/pull/33269): skip before tester construction, optional features, no fallback, test migration; provenance: [#33242 skip placement](https://github.com/microsoft/onnxruntime/pull/33242#discussion_r4236769458), [#33057 fallback](https://github.com/microsoft/onnxruntime/pull/33057#discussion_r4161278467), [#32796 coverage](https://github.com/microsoft/onnxruntime/pull/32796#discussion_r4101460222) |
 
 This map covers standard kernels plus contrib attention/transformer, diffusion,
 MoE, and quantization families through their behavior. A new operator family
@@ -81,8 +84,8 @@ These workflows have explicit entry-table triggers and stay within the existing
 - [New-kernel authoring](../.github/skills/code-review-webgpu/references/kernel-contract.md#author-a-new-native-kernel)
   composes schema/semantics, host validation, program/WGSL generation,
   accessors, identity, numerics/layout/features, registration, source/template
-  integration, and tests. Native Pad and the template README demonstrate the
-  integration shape. Authoring still selects all applicable category rows;
+  integration, and tests. The template workflow documents the
+  current integration interfaces. Authoring selects all applicable category rows;
   it does not duplicate their detailed checks in the entry point.
 
 These are source-backed guidance additions. No Dawn update, concurrency test,
@@ -132,7 +135,7 @@ reference; an unverified suggestion stays in task evidence until checked against
 its affected revision. Re-audit when a new subsystem, deployment contract, or
 failure mode invalidates the map.
 
-## Context retention and review walkthroughs
+## Context retention and maintenance
 
 Local and GitHub Copilot reviews use the same committed checks. Local task
 handoffs and raw logs preserve exact revisions, tested cases, unresolved work,
@@ -143,27 +146,10 @@ before expecting a hosted reviewer to use it. See
 [agent guidance](Agent_Coding_Guidance.md#copilot-pull-request-reviews-on-github)
 for platform settings and adoption evidence.
 
-The following are manual selection walkthroughs, not measured hosted-model
-evaluations. They check both exclusion and cumulative inclusion:
-
-| Change and established effect | Expected selection |
-| --- | --- |
-| CPU-only kernel fix, CUDA-only attention change, or unrelated Python tooling | Existing review guidance; no WebGPU skill/references |
-| Shared optimizer rule that excludes WebGPU, or shared test edit with no affected WebGPU execution | No WebGPU skill/references |
-| Documentation that merely links an old WebGPU PR | No WebGPU skill/references |
-| JSEP correctness/security fix; native counterpart checked and unaffected | JSEP policy and focused regression coverage; no native WebGPU references |
-| JSEP kernel fix exposing the same native defect | JSEP policy plus matching native checks; flag a missing native fix/regression |
-| New JSEP operator, feature, or performance-only optimization | Report under JSEP policy and direct work to native EP; do not treat it as accepted JSEP maintenance |
-| JSEP migration/removal touching native integration | JSEP migration policy plus native checks for the affected native portion |
-| Shared Gemm helper changing native WebGPU arithmetic and generated types | Kernel, cache, dispatch, numerics, validation; other rows only if their behavior changes |
-| New ConvTranspose prepack layout | Kernel, layout/prepacking, cache, dispatch, numerics, registration, validation; runtime if ownership changes |
-| Plugin streamless allocator/copy change | Runtime/memory, plugin contracts, validation; builds if target boundaries change |
-| Dawn/DXC artifact removal | Builds/dependencies and validation; plugin/device/runtime rows for affected ABI/features/ownership |
-| Dawn pin roll changing Tint validation or native callbacks | Builds/dependencies and validation; inspect upstream range, then select shader/runtime/device checks for affected behavior |
-| Plugin multi-thread support or host-version concurrency gate change | Runtime/memory, plugin contracts, validation; devices/builds where required synchronization features or target guards change; keep same-session and compatibility-mode serialization distinct |
-| New native shader kernel | Kernel authoring workflow, cache, dispatch, numerics, registration, validation; runtime/layout/devices/builds/graph/performance rows for the contracts introduced or changed |
-| Shared GQA fusion changing WebGPU partition and epsilons | Graph transformations, numerics, registration, validation; kernel/cache rows if kernel behavior/codegen changes |
-| Native timestamp correlation change | Profiling/performance and validation; runtime, device, plugin or dependency rows according to changed integration |
+Validate exclusion, cumulative reference selection, and rule retention against
+the current reading table after guidance edits. Keep scenario snapshots and
+exact validation results in task evidence. Structural/manual checks do not
+establish hosted model behavior.
 
 After selecting the skill, account for every reading-table row as checked with
 evidence, inapplicable with a reason, or unverified with the check needed. Keep

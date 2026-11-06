@@ -114,15 +114,3 @@ them. Use [validation](validation.md) for execution evidence and fallback checks
 
 Device capability checks live in [devices and features](devices-and-features.md);
 deployment checks in [builds and dependencies](build-and-dependencies.md).
-
-## Regression anchors
-
-- [#29625](https://github.com/microsoft/onnxruntime/pull/29625): exceptions from callbacks.
-- [#32587](https://github.com/microsoft/onnxruntime/pull/32587): concurrent-session state.
-- [#33509](https://github.com/microsoft/onnxruntime/pull/33509), clears, and
-  [#33362](https://github.com/microsoft/onnxruntime/pull/33362), copies: work missing from capture.
-- Subgroup-matrix configuration fix for WebAssembly: verify non-native table initialization.
-- [#32874 streamless ordering](https://github.com/microsoft/onnxruntime/pull/32874#discussion_r4165616715)
-  and [the relaxed-atomic invariant](https://github.com/microsoft/onnxruntime/pull/32874#discussion_r4141059183).
-- [#32587 deferred native allocation issue](https://github.com/microsoft/onnxruntime/pull/32587#discussion_r4068605107):
-  a resolved thread explicitly deferred the concern; verify the reviewed path.
