@@ -1230,7 +1230,7 @@ class QMoESessionController {
       if (!policy.device_working_bytes_explicit && policy.device_working_bytes < (560ULL << 20)) {
         policy.device_working_bytes = 560ULL << 20;
       }
-      if (!policy.pinned_bytes_explicit && policy.pinned_bytes < (160ULL << 20)) {
+      if (!policy.pinned_bytes_explicit && policy.pinned_bytes < (192ULL << 20)) {
         bool has_sufficient_ram = true;
 #if defined(_WIN32)
         MEMORYSTATUSEX mem_stat{};
@@ -1240,7 +1240,7 @@ class QMoESessionController {
         }
 #endif
         if (has_sufficient_ram) {
-          policy.pinned_bytes = 160ULL << 20;
+          policy.pinned_bytes = 192ULL << 20;
           std::lock_guard<std::mutex> lock(mutex_);
           if (pinned_budget_ && pinned_budget_->GetStats().limit < static_cast<size_t>(policy.pinned_bytes)) {
             pinned_budget_->SetExactLimit(static_cast<size_t>(policy.pinned_bytes));
@@ -1259,8 +1259,10 @@ class QMoESessionController {
         const DWORD strict_len = GetEnvironmentVariableA("ORT_QMOE_STRICT_DEVICE_EXPERT_BYTES", strict_buf, sizeof(strict_buf));
         const bool strict_budget = (strict_len > 0 && strict_buf[0] == '1');
         if (!strict_budget) {
+          const uint64_t extra_wddm_reserve =
+              (total_vram >= (28ULL << 30)) ? (1792ULL << 20) : (1536ULL << 20);
           const uint64_t post_session_reserve =
-              policy.reserve_device_bytes + policy.device_working_bytes + (1536ULL << 20);
+              policy.reserve_device_bytes + policy.device_working_bytes + extra_wddm_reserve;
           const uint64_t acct_internal_reserve = policy.device_working_bytes + (640ULL << 20);
           const uint64_t acct_cap =
               (usable_free_vram > acct_internal_reserve)

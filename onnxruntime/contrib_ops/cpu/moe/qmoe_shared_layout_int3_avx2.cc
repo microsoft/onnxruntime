@@ -73,10 +73,15 @@ inline float Avx2Int3ReduceAddPs(__m256 v) noexcept {
   return _mm_cvtss_f32(_mm_add_ss(sums, _mm_movehl_ps(shuf, sums)));
 }
 
-inline __m256 Unpack8Int3WeightsAvx2(
-    uint32_t u24, const __m256i& shifts, const __m256i& mask7, const __m256i& four) noexcept {
-  return _mm256_cvtepi32_ps(
-      _mm256_sub_epi32(_mm256_and_si256(_mm256_srlv_epi32(_mm256_set1_epi32(static_cast<int>(u24)), shifts), mask7), four));
+template <bool DeferredScale>
+inline __m256 UnpackDequant8Int3WeightsAvx2(
+    uint32_t u24, const __m256i& shifts, const __m256i& mask7, const __m256i& four, const __m256& table) noexcept {
+  const __m256i ucodes = _mm256_and_si256(_mm256_srlv_epi32(_mm256_set1_epi32(static_cast<int>(u24)), shifts), mask7);
+  if constexpr (DeferredScale) {
+    return _mm256_cvtepi32_ps(_mm256_sub_epi32(ucodes, four));
+  } else {
+    return _mm256_permutevar8x32_ps(table, ucodes);
+  }
 }
 
 inline __m256 Int3LookupAvx2(float scale, bool bf16) {
@@ -99,12 +104,6 @@ inline __m256 Int3LookupAvx2(float scale, bool bf16) {
 }
 
 template <bool DeferredScale>
-inline __m256 DequantInt3Avx2(__m256 codes, __m256 table, __m256i four) {
-  if constexpr (DeferredScale) return codes;
-  return _mm256_permutevar8x32_ps(table, _mm256_add_epi32(_mm256_cvtps_epi32(codes), four));
-}
-
-template <bool DeferredScale>
 inline __m256 Dot32Int3Avx2(
     const uint8_t* p, const __m256& a0, const __m256& a1, const __m256& a2, const __m256& a3,
     const __m256i& shifts, const __m256i& mask7, const __m256i& four, const __m256& table) noexcept {
@@ -114,11 +113,11 @@ inline __m256 Dot32Int3Avx2(
   std::memcpy(&u2, p + 6, sizeof(uint32_t));
   std::memcpy(&u3, p + 8, sizeof(uint32_t));
   u3 >>= 8;
-  const __m256 w0 = DequantInt3Avx2<DeferredScale>(Unpack8Int3WeightsAvx2(u0, shifts, mask7, four), table, four);
-  const __m256 w1 = DequantInt3Avx2<DeferredScale>(Unpack8Int3WeightsAvx2(u1, shifts, mask7, four), table, four);
+  const __m256 w0 = UnpackDequant8Int3WeightsAvx2<DeferredScale>(u0, shifts, mask7, four, table);
+  const __m256 w1 = UnpackDequant8Int3WeightsAvx2<DeferredScale>(u1, shifts, mask7, four, table);
   const __m256 p01 = _mm256_fmadd_ps(w0, a0, _mm256_mul_ps(w1, a1));
-  const __m256 w2 = DequantInt3Avx2<DeferredScale>(Unpack8Int3WeightsAvx2(u2, shifts, mask7, four), table, four);
-  const __m256 w3 = DequantInt3Avx2<DeferredScale>(Unpack8Int3WeightsAvx2(u3, shifts, mask7, four), table, four);
+  const __m256 w2 = UnpackDequant8Int3WeightsAvx2<DeferredScale>(u2, shifts, mask7, four, table);
+  const __m256 w3 = UnpackDequant8Int3WeightsAvx2<DeferredScale>(u3, shifts, mask7, four, table);
   const __m256 p23 = _mm256_fmadd_ps(w2, a2, _mm256_mul_ps(w3, a3));
   return _mm256_add_ps(p01, p23);
 }

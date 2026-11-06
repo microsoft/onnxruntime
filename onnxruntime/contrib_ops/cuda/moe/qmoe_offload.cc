@@ -3811,7 +3811,7 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
     stream_min_tokens_ = 1;
     stream_min_rows_ = 1;
     const int default_disabled_wave =
-        (is_int_bank && shared_pinned_limit_ <= (size_t{128} << 20))
+        is_int_bank
             ? std::min(16, static_cast<int>(v4_policy_.prefill_wave_experts))
             : static_cast<int>(v4_policy_.prefill_wave_experts);
     stream_wave_ = std::clamp(default_disabled_wave, 1, num_experts_);
@@ -3836,7 +3836,7 @@ void QMoEOffload::InitializeNvfp4Offload(const OpKernelInfo& info) {
         "ORT_QMOE_SHARED_STREAM_MIN_ROWS", is_int_bank ? 8 : 16);
     int default_wave = ParseEnvironmentVariableWithDefault<int>(
         "ORT_QMOE_SHARED_STREAM_WAVE",
-        (is_int_bank && shared_pinned_limit_ <= (size_t{128} << 20)) ? 16 : 32);
+        is_int_bank ? 16 : 32);
     if (v4_planned_mode_ && std::getenv("ORT_QMOE_SHARED_STREAM_WAVE") == nullptr &&
         v4_policy_.prefill_wave_experts > 0) {
       default_wave = std::min(default_wave, static_cast<int>(v4_policy_.prefill_wave_experts));
@@ -6525,7 +6525,11 @@ Status QMoEOffload::PromoteResident(cudaStream_t stream, const InlinedVector<Inl
   // Step 1: Poll and publish any completed background promotions (v3 Section 7.5 / F3).
   if (!pending_promotions_.empty()) {
     if (use_bg_promo && promo_ready_ != nullptr) {
-      CUDA_RETURN_IF_ERROR(cudaEventSynchronize(promo_ready_));
+      const cudaError_t q_err = cudaEventQuery(promo_ready_);
+      if (q_err == cudaErrorNotReady) {
+        return Status::OK();
+      }
+      CUDA_RETURN_IF_ERROR(q_err);
     } else if (promo_stream_ != nullptr) {
       CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(promo_stream_));
     }
@@ -6842,7 +6846,8 @@ Status QMoEOffload::PromoteResident(cudaStream_t stream, const InlinedVector<Inl
           }
         });
         bounce_reads_queued = pinned_bounce_slot != nullptr;
-        for (size_t bank = 0; bank < 6; ++bank) {
+        const size_t active_banks = (int4_bank_mode_ || int3_bank_mode_ || int2_bank_mode_) ? 4 : 6;
+        for (size_t bank = 0; bank < active_banks; ++bank) {
           const size_t slot_offset = resident_bank_offsets_[bank] + static_cast<size_t>(SafeInt<size_t>(target_slot) * resident_bank_bytes_[bank]);
           const uint8_t* copy_src = host_sources[bank];
           const bool need_sync_xpose = (int4_bank_mode_ || int2_bank_mode_) && pinned_bounce_slot == nullptr && (bank == 2 || bank == 3);
@@ -7975,7 +7980,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
     route_slots = std::max(route_cap, kGroupedMoeMinRows);
     route_bytes = SafeInt<size_t>(route_slots) * sizeof(int);
     wave_route_slots = nvfp4_mode_ ? std::min(route_slots, 4096) : route_slots;
-    stream_no_cpu_tail = streaming && (stream_min_rows_ <= 1 || tile_limit >= 2048);
+    stream_no_cpu_tail = streaming && (stream_min_rows_ <= 1 || tile_limit >= 1024);
     eff_min_rows_cap = stream_no_cpu_tail ? 1 : stream_min_rows_;
     cpu_row_cap = streaming ? std::min(route_cap, (eff_min_rows_cap - 1) * num_experts_) : route_cap;
     contribution_bytes = SafeInt<size_t>(route_cap) * hidden_size_ * elem_size;
@@ -8443,7 +8448,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
       const int8_t inferred_phase = (rows > async_max_tokens_) ? 0 : 1;
       std::fill_n(host_phases, tile_rows, inferred_phase);
     }
-    const bool tile_no_cpu_tail = stream_no_cpu_tail || (streaming && (stream_min_rows_ <= 1 || tile_rows >= 2048));
+    const bool tile_no_cpu_tail = stream_no_cpu_tail || (streaming && (stream_min_rows_ <= 1 || tile_rows >= 1024));
     if (!tile_no_cpu_tail) {
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_input, static_cast<const uint8_t*>(input->DataRaw()) + activation_start * elem_size,
                                            SafeInt<size_t>(tile_rows) * hidden_size_ * elem_size, cudaMemcpyDeviceToHost, stream));
