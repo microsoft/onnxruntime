@@ -96,6 +96,7 @@ option(onnxruntime_USE_ARM_NEON_NCHWC "Build with ARM Neon NCHWc kernels in MLAS
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
 option(onnxruntime_USE_QMX_KLEIDIAI_COEXIST "Build with QMX and Arm KLEIDIAI libraries" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
+option(onnxruntime_BUILD_EP_OP_CONFORMANCE_TESTS "Build native public-API EP operator conformance tests" OFF)
 option(onnxruntime_RUN_MLAS_TESTS "Run a targeted subset of MLAS unit tests with CTest" OFF)
 # Declare both prerequisites before evaluating this dependent option on a fresh configure.
 # Enable ONNX Runtime CUDA EP's internal unit tests that directly access the EP's internal functions instead of through
@@ -570,6 +571,25 @@ endif()
 # 'extended' implies minimal.
 if (onnxruntime_EXTENDED_MINIMAL_BUILD AND NOT onnxruntime_MINIMAL_BUILD)
   set(onnxruntime_MINIMAL_BUILD ON)
+endif()
+
+if(onnxruntime_BUILD_EP_OP_CONFORMANCE_TESTS)
+  if(EMSCRIPTEN)
+    message(FATAL_ERROR "The EP op conformance runner loads native runtime/provider libraries; "
+                        "Emscripten requires a separate WebAssembly host")
+  endif()
+  if(NOT onnxruntime_BUILD_SHARED_LIB)
+    message(FATAL_ERROR "The EP op conformance runner dynamically loads ORT and requires "
+                        "onnxruntime_BUILD_SHARED_LIB=ON; static runtime linkage is not supported by this runner")
+  endif()
+  if(onnxruntime_MINIMAL_BUILD)
+    message(FATAL_ERROR "The EP op conformance runner loads ONNX models; "
+                        "minimal runtimes without ONNX model loading are not supported")
+  endif()
+  if(CMAKE_CROSSCOMPILING OR ANDROID OR IOS)
+    message(FATAL_ERROR "EP op conformance main-build integration is not yet supported for "
+                        "cross-compilation, Android, or iOS")
+  endif()
 endif()
 
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
@@ -2074,6 +2094,11 @@ endif()
 
 if(onnxruntime_BUILD_UNIT_TESTS)
   include("${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_test_pch.cmake")
+endif()
+
+if(onnxruntime_BUILD_EP_OP_CONFORMANCE_TESTS)
+  set(EP_OP_CONFORMANCE_PARENT_BUILD ON)
+  add_subdirectory("${ONNXRUNTIME_ROOT}/test/ep_op_conformance" "ep_op_conformance")
 endif()
 
 # Include precompiled header configuration for providers

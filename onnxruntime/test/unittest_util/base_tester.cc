@@ -505,6 +505,7 @@ bool SetEpsForAllNodes(Graph& graph,
 }
 
 BaseTester& BaseTester::Config(const SessionOptions& sess_options) {
+  custom_session_options_configured_ = true;
   ctx_.session_options = sess_options;
   return *this;
 }
@@ -521,6 +522,7 @@ BaseTester& BaseTester::ConfigExcludeEps(const std::unordered_set<std::string>& 
 }
 
 BaseTester& BaseTester::Config(const RunOptions* run_options) {
+  custom_run_options_configured_ = true;
   ctx_.run_options = run_options;
   return *this;
 }
@@ -533,7 +535,16 @@ BaseTester& BaseTester::ConfigEps(std::vector<std::unique_ptr<IExecutionProvider
 }
 
 BaseTester& BaseTester::Config(const Graph::ResolveOptions& resolve_options) {
+  custom_resolve_options_configured_ = true;
   ctx_.resolve_options = resolve_options;
+  return *this;
+}
+
+BaseTester& BaseTester::ConfigEpOpConformanceExport(std::string directory, std::string stable_id) {
+  ORT_ENFORCE(!directory.empty() && !stable_id.empty(), "EP op conformance export requires a directory and stable ID");
+  ORT_ENFORCE(ep_op_conformance_export_directory_.empty(), "EP op conformance export is already configured");
+  ep_op_conformance_export_directory_ = std::move(directory);
+  ep_op_conformance_export_id_ = std::move(stable_id);
   return *this;
 }
 
@@ -551,7 +562,8 @@ void BaseTester::Run(ExpectResult expect_result, const std::string& expected_fai
   so.use_deterministic_compute = use_determinism_;
   so.graph_optimization_level = TransformerLevel::Default;  // 'Default' == off
 
-  Run(so, expect_result, expected_failure_string, excluded_provider_types, run_options, execution_providers, options);
+  RunWithOptions(so, expect_result, expected_failure_string, excluded_provider_types,
+                 run_options, execution_providers, options);
 }
 
 #define ASSERT_PROVIDER_STATUS_OK(function)                                                         \
@@ -568,6 +580,20 @@ void BaseTester::Run(SessionOptions so,
                      const Graph::ResolveOptions& options,
                      /*out*/ size_t* number_of_pre_packed_weights_counter,
                      /*out*/ size_t* number_of_shared_pre_packed_weights_counter) {
+  custom_session_options_configured_ = true;
+  RunWithOptions(std::move(so), expect_result, expected_failure_string, excluded_provider_types,
+                 run_options, execution_providers, options, number_of_pre_packed_weights_counter,
+                 number_of_shared_pre_packed_weights_counter);
+}
+
+void BaseTester::RunWithOptions(SessionOptions so, ExpectResult expect_result,
+                                const std::string& expected_failure_string,
+                                const std::unordered_set<std::string>& excluded_provider_types,
+                                const RunOptions* run_options,
+                                std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers,
+                                const Graph::ResolveOptions& options,
+                                size_t* number_of_pre_packed_weights_counter,
+                                size_t* number_of_shared_pre_packed_weights_counter) {
   if (execution_providers == nullptr) {
     ctx_.run_with_specified_eps = false;
     ctx_.execution_providers.clear();
@@ -585,11 +611,11 @@ void BaseTester::Run(SessionOptions so,
     execution_providers->resize(ctx_.execution_providers.size());
   }
 
-  Config(so);
+  ctx_.session_options = std::move(so);
   Config(expect_result, expected_failure_string);
-  Config(run_options);
+  ctx_.run_options = run_options;
   ConfigExcludeEps(excluded_provider_types);
-  Config(options);
+  ctx_.resolve_options = options;
 
   RunWithConfig(number_of_pre_packed_weights_counter, number_of_shared_pre_packed_weights_counter);
 }
@@ -639,6 +665,14 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
     std::vector<std::string> output_names;
     FillFeedsAndOutputNames(feeds, output_names);
     number_of_nodes_ = model.MainGraph().NumberOfNodes();
+
+    if (!ep_op_conformance_export_directory_.empty() && !ep_op_conformance_exported_) {
+      ORT_ENFORCE(number_of_pre_packed_weights_counter == nullptr &&
+                      number_of_shared_pre_packed_weights_counter == nullptr,
+                  "EP op conformance export does not support prepacked weight counters");
+      ExportEpOpConformanceCase(model, feeds);
+      ep_op_conformance_exported_ = true;
+    }
 
     // Run the model
     if (ctx_.run_with_specified_eps) {
