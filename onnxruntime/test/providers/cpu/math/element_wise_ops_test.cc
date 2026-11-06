@@ -1368,6 +1368,77 @@ TEST(MathOpTest, Pow_Float_15) {
   test.Run();
 }
 
+#ifdef USE_CUDA
+static void TestCudaPowReciprocalSqrt(int opset,
+                                      const std::vector<int64_t>& base_shape,
+                                      const std::vector<float>& bases,
+                                      const std::vector<int64_t>& exponent_shape,
+                                      const std::vector<float>& exponents,
+                                      const std::vector<int64_t>& output_shape,
+                                      const std::vector<float>& expected,
+                                      bool constant_exponent = false) {
+  OpTester test("Pow", opset);
+  test.AddInput<float>("X", base_shape, bases);
+  test.AddInput<float>("Y", exponent_shape, exponents, constant_exponent);
+  test.AddOutput<float>("Z", output_shape, expected);
+  test.SetCustomOutputVerifier([expected](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
+    ASSERT_EQ(provider_type, kCudaExecutionProvider);
+    ASSERT_EQ(fetches.size(), 1u);
+    const auto& tensor = fetches[0].Get<Tensor>();
+    ASSERT_EQ(tensor.Shape().Size(), static_cast<int64_t>(expected.size()));
+    const auto* actual = tensor.Data<float>();
+    for (size_t i = 0; i < expected.size(); ++i) {
+      if (std::isnan(expected[i])) {
+        EXPECT_TRUE(std::isnan(actual[i])) << "output index " << i;
+      } else {
+        EXPECT_EQ(actual[i], expected[i]) << "output index " << i;
+        EXPECT_EQ(std::signbit(actual[i]), std::signbit(expected[i])) << "output index " << i;
+      }
+    }
+  });
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(options).ConfigEp(DefaultCudaExecutionProvider()).RunWithConfig();
+}
+
+TEST(MathOpTest, Pow_ReciprocalSqrt_CUDA) {
+  // Direct CUDA rsqrtf rounding, including values where powf differs by one ULP.
+  const std::vector<float> bases{0x1p-7f, 0x1.2cc1ap-4f, 0x1.577fc2p+0f,
+                                 std::numeric_limits<float>::min(), std::numeric_limits<float>::max(), 4.0f};
+  const std::vector<float> expected{0x1.6a09e4p+3f, 0x1.d85ecap+1f, 0x1.ba0146p-1f,
+                                    0x1p+63f, 0x1p-64f, 0.5f};
+  for (int opset : {7, 12, 15}) {
+    for (bool constant : {false, true}) {
+      TestCudaPowReciprocalSqrt(opset, {2, 3}, bases, {}, {-0.5f}, {2, 3}, expected, constant);
+      TestCudaPowReciprocalSqrt(opset, {2, 3}, bases, {2, 3}, std::vector<float>(6, -0.5f),
+                                {2, 3}, expected, constant);
+      TestCudaPowReciprocalSqrt(opset, {2, 3}, bases, {3}, std::vector<float>(3, -0.5f),
+                                {2, 3}, expected, constant);
+    }
+  }
+}
+
+TEST(MathOpTest, Pow_ReciprocalSqrt_EdgeCases_CUDA) {
+  const float inf = std::numeric_limits<float>::infinity();
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  // The smallest subnormal distinguishes the powf fallback from direct rsqrtf.
+  const std::vector<float> bases{0.0f, -0.0f, inf, -inf, -4.0f, nan, 0x1p-149f, -0x1p-149f};
+  const std::vector<float> expected{inf, inf, 0.0f, 0.0f, nan, nan, 0x1.6a09e6p+74f, nan};
+  for (int opset : {7, 12, 15}) {
+    TestCudaPowReciprocalSqrt(opset, {8}, bases, {}, {-0.5f}, {8}, expected);
+    TestCudaPowReciprocalSqrt(opset, {8}, bases, {8}, std::vector<float>(8, -0.5f), {8}, expected);
+    TestCudaPowReciprocalSqrt(opset, {0, 3}, {}, {}, {-0.5f}, {0, 3}, {});
+  }
+}
+
+TEST(MathOpTest, Pow_ReciprocalSqrt_MixedExponents_CUDA) {
+  for (int opset : {7, 12, 15}) {
+    TestCudaPowReciprocalSqrt(opset, {2, 1}, {4.0f, 16.0f}, {1, 4}, {-0.5f, 0.5f, 2.0f, -1.0f},
+                              {2, 4}, {0.5f, 2.0f, 16.0f, 0.25f, 0.25f, 4.0f, 256.0f, 0.0625f});
+  }
+}
+#endif
+
 #if defined(USE_DNNL) || defined(USE_CUDA)
 TEST(MathOpTest, Pow_bfloat16_15) {
 #ifdef USE_DNNL

@@ -7,6 +7,9 @@
 #include "core/framework/allocator.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/plugin/cuda_plugin_temp_space_allocator.h"
+
+#include <stdexcept>
 
 namespace onnxruntime {
 namespace test {
@@ -112,6 +115,43 @@ TEST(AllocatorTest, CUDAAllocatorFallbackTest) {
 
   auto last_error = cudaGetLastError();
   EXPECT_EQ(last_error, cudaSuccess) << "Last error should be cleared if handled gracefully";
+}
+
+// Kernels request temporary buffers from the plugin's temp-space allocator. It has to charge the session's own budget
+// account, otherwise those buffers escape the session limit.
+TEST(AllocatorTest, CudaPluginTempSpaceAllocatorChargesSessionBudgetAccount) {
+  constexpr OrtDevice::DeviceId cuda_device_id = 0;
+  constexpr size_t kSessionLimit = 4096;
+
+  CUDA_CALL_THROW(cudaSetDevice(cuda_device_id));
+
+  auto account = std::make_shared<SessionBudgetAccount>(GetCudaDeviceMemoryBudget(cuda_device_id), kSessionLimit);
+  CUDAAllocator session_allocator(cuda_device_id, CUDA, account);
+  AllocatorPtr temp_allocator = cuda_plugin::CreateCudaPluginTempSpaceAllocator(cuda_device_id, account);
+
+  ASSERT_EQ(static_cast<CUDAAllocator*>(temp_allocator.get())->GetBudgetAccount(), account);
+
+  // Fill the session account through the session's own allocator.
+  void* session_buffer = session_allocator.Alloc(kSessionLimit);
+  ASSERT_NE(session_buffer, nullptr);
+  ASSERT_EQ(account->GetAccountStats().committed, kSessionLimit);
+
+  // The temp-space allocator now has to be rejected. With its own unlimited account it allocated 8192 bytes here.
+  EXPECT_THROW(static_cast<void>(temp_allocator->Alloc(2 * kSessionLimit)), std::runtime_error);
+  EXPECT_THROW(static_cast<void>(temp_allocator->Alloc(1)), std::runtime_error);
+  EXPECT_EQ(account->GetAccountStats().committed, kSessionLimit);
+
+  session_allocator.Free(session_buffer);
+  ASSERT_EQ(account->GetAccountStats().committed, 0u);
+
+  // Charges also flow the other way: temp-space allocations are visible to the session's allocator.
+  void* temp_buffer = temp_allocator->Alloc(kSessionLimit);
+  ASSERT_NE(temp_buffer, nullptr);
+  EXPECT_EQ(account->GetAccountStats().committed, kSessionLimit);
+  EXPECT_THROW(static_cast<void>(session_allocator.Alloc(1)), std::runtime_error);
+
+  temp_allocator->Free(temp_buffer);
+  EXPECT_EQ(account->GetAccountStats().committed, 0u);
 }
 }  // namespace test
 }  // namespace onnxruntime

@@ -1,0 +1,44 @@
+name: Finish sccache
+description: Report compiler-cache statistics, stop the server, and save successful main builds.
+
+inputs:
+  cache-primary-key:
+    description: Snapshot key from setup-sccache.
+    required: true
+  cache-hit:
+    description: Exact-match result from setup-sccache.
+    required: true
+  save:
+    description: Whether compilation succeeded. Pass the build step's outcome comparison.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Compiler cache statistics
+      if: always()
+      shell: python
+      run: |
+        import os
+        import subprocess
+
+        stats = subprocess.check_output(["sccache", "--show-stats"], text=True)
+        print(stats, end="")
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+            summary.write(f"### Compiler cache\n```text\n{stats}\n```\n")
+
+    - name: Stop compiler cache
+      if: always()
+      shell: python
+      run: |
+        import subprocess
+
+        subprocess.run(["sccache", "--stop-server"], check=True)
+
+    # Flush pending writes before snapshotting, and never publish failed compilations or PR outputs.
+    - name: Save compiler cache (main only)
+      if: ${{ success() && inputs.save == 'true' && github.ref == 'refs/heads/main' && inputs.cache-hit != 'true' }}
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ env.SCCACHE_DIR }}
+        key: ${{ inputs.cache-primary-key }}

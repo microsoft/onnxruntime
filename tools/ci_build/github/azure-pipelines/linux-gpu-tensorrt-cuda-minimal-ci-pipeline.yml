@@ -81,10 +81,14 @@ jobs:
       "
       Repository: onnxruntimetensorrtcudaminimalbuild
 
+  - template: templates/setup-vcpkg-cache.yml
+
   - task: CmdLine@2
     inputs:
       script: |
           docker run \
+              --volume "${VCPKG_DEFAULT_BINARY_CACHE}:/vcpkg-binary-cache" \
+              -e VCPKG_DEFAULT_BINARY_CACHE=/vcpkg-binary-cache \
               --gpus all \
               --rm \
               --volume "/data/models:/build/models:ro" \

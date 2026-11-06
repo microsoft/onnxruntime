@@ -4,11 +4,15 @@
 // provider_api.h must be first to set SHARED_PROVIDER
 #include "core/providers/shared_library/provider_api.h"
 
+#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_CUDA_MINIMAL)
+
 #include "core/providers/cuda/cuda_external_data_loader.h"
 
 #include <algorithm>
+#include <atomic>
 #include <bit>
 #include <exception>
+#include <vector>
 
 #include "core/common/inlined_containers.h"
 #include "core/providers/cuda/cuda_common.h"
@@ -47,10 +51,11 @@ common::Status ReadChunk(const RandomAccessFile& file, FileOffsetType offset, si
       length >= kExternalDataLoaderParallelReadThreshold ? configured_reader_count : 1;
   common::Status status = Status::OK();
   ORT_TRY {
-    if (reader_count == 1) {
+    if (reader_count <= 1) {
       return file.Read(offset, gsl::span<char>{static_cast<char*>(buffer), length});
     }
-    if (!reader_pool) {
+    if (!reader_pool || reader_pool->Size() != reader_count) {
+      reader_pool.reset();
       reader_pool = std::make_unique<ExternalDataLoaderThreadPool>(reader_count);
     }
     return reader_pool->Run([&](size_t reader) {
@@ -74,39 +79,22 @@ common::Status ReadChunk(const RandomAccessFile& file, FileOffsetType offset, si
   return status;
 }
 
-void SwapByteOrderInplace(void* buffer, size_t length, size_t element_size) {
-  auto* bytes = static_cast<uint8_t*>(buffer);
-  for (size_t offset = 0; offset < length; offset += element_size) {
-    std::reverse(bytes + offset, bytes + offset + element_size);
-  }
-}
+common::Status LoadTaskWithPageableBuffer(const ExternalDataLoadTask& task,
+                                          size_t single_buffer_size,
+                                          size_t configured_reader_count,
+                                          std::unique_ptr<ExternalDataLoaderThreadPool>& reader_pool) {
+  InlinedVector<uint8_t> buffer(std::min(single_buffer_size, task.length));
 
-common::Status LoadWithPageableBuffer(const RandomAccessFile& file, FileOffsetType data_offset,
-                                      size_t length, Tensor& tensor,
-                                      size_t configured_reader_count,
-                                      std::unique_ptr<ExternalDataLoaderThreadPool>& reader_pool) {
-  InlinedVector<uint8_t> buffer(std::min(kExternalDataLoaderBufferSize, length));
-  auto* destination = static_cast<uint8_t*>(tensor.MutableDataRaw());
-
-  for (size_t offset = 0; offset < length;) {
-    const size_t chunk_size = std::min(buffer.size(), length - offset);
+  for (size_t offset = 0; offset < task.length;) {
+    const size_t chunk_size = std::min(buffer.size(), task.length - offset);
     ORT_RETURN_IF_ERROR(
-        ReadChunk(file, data_offset + offset, chunk_size, buffer.data(), configured_reader_count, reader_pool));
+        ReadChunk(*task.file, task.file_offset + static_cast<FileOffsetType>(offset),
+                  chunk_size, buffer.data(), configured_reader_count, reader_pool));
 
-    if (tensor.IsDataType<bool>()) {
-      std::transform(buffer.begin(), buffer.begin() + chunk_size, buffer.begin(),
-                     [](uint8_t value) { return value != 0; });
-    }
-
-    if constexpr (std::endian::native != std::endian::little) {
-      const size_t element_size = tensor.DataType()->Size();
-      if (element_size > 1) {
-        SwapByteOrderInplace(buffer.data(), chunk_size, element_size);
-      }
-    }
+    TransformExternalDataStagingBuffer(buffer.data(), chunk_size, task.is_bool, task.element_size);
 
     CUDA_RETURN_IF_ERROR(
-        cudaMemcpy(destination + offset, buffer.data(), chunk_size, cudaMemcpyHostToDevice));
+        cudaMemcpy(task.destination + offset, buffer.data(), chunk_size, cudaMemcpyHostToDevice));
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(nullptr));
     offset += chunk_size;
   }
@@ -119,8 +107,39 @@ common::Status LoadWithPageableBuffer(const RandomAccessFile& file, FileOffsetTy
 ExternalDataLoader::ExternalDataLoader(int device_id, size_t reading_thread_count,
                                        AllocatePinnedBufferFn allocate_pinned_buffer,
                                        CreateStreamFn create_stream)
+    : ExternalDataLoader(device_id,
+                         reading_thread_count,
+                         ExternalDataLoaderOptions::kDefaultPinnedMemoryBytes,
+                         ExternalDataLoaderOptions::kDefaultChunkBytes,
+                         /*reading_threads_explicit=*/false,
+                         /*pinned_memory_bytes_explicit=*/false,
+                         /*chunk_bytes_explicit=*/false,
+                         ExternalDataLoaderOptions::kDefaultMinSizeBytes,
+                         /*min_size_bytes_explicit=*/false,
+                         allocate_pinned_buffer,
+                         create_stream) {}
+
+ExternalDataLoader::ExternalDataLoader(int device_id,
+                                       size_t reading_thread_count,
+                                       size_t pinned_memory_bytes,
+                                       size_t chunk_bytes,
+                                       bool reading_threads_explicit,
+                                       bool pinned_memory_bytes_explicit,
+                                       bool chunk_bytes_explicit,
+                                       size_t min_size_bytes,
+                                       bool min_size_bytes_explicit,
+                                       AllocatePinnedBufferFn allocate_pinned_buffer,
+                                       CreateStreamFn create_stream)
     : device_id_(device_id),
       reading_thread_count_(reading_thread_count),
+      batch_reading_thread_count_(ResolveExternalDataBatchThreadCount(reading_thread_count, reading_threads_explicit)),
+      pinned_memory_bytes_(pinned_memory_bytes),
+      chunk_bytes_(chunk_bytes),
+      min_size_bytes_(min_size_bytes),
+      reading_threads_explicit_(reading_threads_explicit),
+      pinned_memory_bytes_explicit_(pinned_memory_bytes_explicit),
+      chunk_bytes_explicit_(chunk_bytes_explicit),
+      min_size_bytes_explicit_(min_size_bytes_explicit),
       allocate_pinned_buffer_(allocate_pinned_buffer),
       create_stream_(create_stream) {}
 
@@ -137,19 +156,140 @@ bool ExternalDataLoader::CanLoad(const OrtMemoryInfo& target_memory_info) const 
          device.Id() == device_id_;
 }
 
+bool ExternalDataLoader::IsEnabled() const noexcept {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return reading_thread_count_ > 0;
+}
+
+common::Status ExternalDataLoader::Configure(const ExternalDataLoaderOptions& options) const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  bool changed = false;
+  if (options.reading_threads.has_value() && !reading_threads_explicit_) {
+    ORT_RETURN_IF_ERROR(ExternalDataLoaderOptions::ValidateReadingThreads(
+        *options.reading_threads, "session.external_data_loader.threads"));
+    reading_thread_count_ = *options.reading_threads;
+    batch_reading_thread_count_ = *options.reading_threads;
+    reading_threads_explicit_ = true;
+    changed = true;
+  } else if (options.auto_reading_threads.has_value() && !reading_threads_explicit_ &&
+             reading_thread_count_ == ExternalDataLoaderOptions::kDefaultReadingThreads) {
+    ORT_RETURN_IF_ERROR(ExternalDataLoaderOptions::ValidateReadingThreads(
+        *options.auto_reading_threads, "session.external_data_loader.threads"));
+    if (reading_thread_count_ != *options.auto_reading_threads ||
+        batch_reading_thread_count_ != *options.auto_reading_threads) {
+      reading_thread_count_ = *options.auto_reading_threads;
+      batch_reading_thread_count_ = *options.auto_reading_threads;
+      changed = true;
+    }
+  }
+  if (options.pinned_memory_bytes.has_value() && !pinned_memory_bytes_explicit_) {
+    ORT_RETURN_IF_ERROR(ExternalDataLoaderOptions::ValidatePinnedMemoryBytes(
+        *options.pinned_memory_bytes, "session.external_data_loader.pinned_memory_bytes"));
+    pinned_memory_bytes_ = *options.pinned_memory_bytes;
+    pinned_memory_bytes_explicit_ = true;
+    changed = true;
+  }
+  if (options.chunk_bytes.has_value() && !chunk_bytes_explicit_) {
+    ORT_RETURN_IF_ERROR(ExternalDataLoaderOptions::ValidateChunkBytes(
+        *options.chunk_bytes, "session.external_data_loader.chunk_bytes"));
+    chunk_bytes_ = *options.chunk_bytes;
+    chunk_bytes_explicit_ = true;
+  }
+  if (options.min_size_bytes.has_value() && !min_size_bytes_explicit_) {
+    ORT_RETURN_IF_ERROR(ExternalDataLoaderOptions::ValidateMinSizeBytes(
+        *options.min_size_bytes, "session.external_data_loader.min_size_bytes"));
+    min_size_bytes_ = *options.min_size_bytes;
+    min_size_bytes_explicit_ = true;
+  }
+  if (changed && buffers_[0] != nullptr) {
+    ReleaseResources();
+  }
+  return Status::OK();
+}
+
+common::Status ExternalDataLoader::BeginLoad() const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  in_batch_load_ = true;
+  pending_tasks_.clear();
+  pending_bytes_ = 0;
+  flushed_bytes_ = 0;
+  expected_total_bytes_ = 0;
+  return Status::OK();
+}
+
+void ExternalDataLoader::EndLoad() const noexcept {
+  std::lock_guard<std::mutex> lock(mutex_);
+  in_batch_load_ = false;
+  pending_tasks_.clear();
+  pending_bytes_ = 0;
+  flushed_bytes_ = 0;
+  expected_total_bytes_ = 0;
+}
+
+void ExternalDataLoader::SetExpectedLoadBytes(size_t total_bytes) const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  expected_total_bytes_ = total_bytes;
+}
+
+common::Status ExternalDataLoader::FinalizeLoad(const std::function<bool()>& is_canceled) const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (pending_tasks_.empty()) {
+    return Status::OK();
+  }
+
+  auto tasks = std::move(pending_tasks_);
+  const size_t total_pending_bytes = pending_bytes_;
+  // Gate on the whole transaction so early flushes (e.g. to bound open files) don't force the pageable path.
+  flushed_bytes_ += total_pending_bytes;
+  const size_t gate_bytes = std::max(flushed_bytes_, expected_total_bytes_);
+  pending_tasks_.clear();
+  pending_bytes_ = 0;
+
+  CudaDeviceGuard device_guard;
+  ORT_RETURN_IF_ERROR(device_guard.SetDevice(device_id_));
+  const size_t single_buffer_size = pinned_memory_bytes_ / 2;
+
+  const auto load_all_pageable = [&](size_t reader_threads) -> common::Status {
+    for (const auto& task : tasks) {
+      if (is_canceled && is_canceled()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                               "Saving session state weights is canceled due to user request.");
+      }
+      ORT_RETURN_IF_ERROR(LoadTaskWithPageableBuffer(task, single_buffer_size, reader_threads, reader_pool_));
+    }
+    return Status::OK();
+  };
+
+  if (reading_thread_count_ == 0 || gate_bytes < min_size_bytes_) {
+    return load_all_pageable(1);
+  }
+
+  if (!EnsureResources().IsOK()) {
+    return load_all_pageable(reading_thread_count_);
+  }
+
+  return ExecuteTasks(tasks, /*allow_small_parallel=*/true, is_canceled);
+}
+
 common::Status ExternalDataLoader::EnsureResources() const {
   if (buffers_[0] != nullptr) {
     return Status::OK();
   }
 
+  const size_t single_buffer_size = pinned_memory_bytes_ / 2;
   for (size_t i = 0; i < buffers_.size(); ++i) {
-    auto status = CUDA_CALL(allocate_pinned_buffer_(&buffers_[i], kExternalDataLoaderBufferSize));
+    auto status = CUDA_CALL(allocate_pinned_buffer_(&buffers_[i], single_buffer_size));
     if (!status.IsOK()) {
       ReleaseResources();
       return status;
     }
+  }
 
-    status = CUDA_CALL(create_stream_(&streams_[i], cudaStreamNonBlocking));
+  const size_t max_threads = std::max(reading_thread_count_, batch_reading_thread_count_);
+  const size_t stream_count = 2 * std::max<size_t>(1, max_threads);
+  streams_.assign(stream_count, nullptr);
+  for (size_t i = 0; i < stream_count; ++i) {
+    auto status = CUDA_CALL(create_stream_(&streams_[i], cudaStreamNonBlocking));
     if (!status.IsOK()) {
       ReleaseResources();
       return status;
@@ -173,6 +313,7 @@ void ExternalDataLoader::ReleaseResources() const noexcept {
       stream = nullptr;
     }
   }
+  streams_.clear();
 
   for (auto& buffer : buffers_) {
     if (buffer != nullptr) {
@@ -184,6 +325,32 @@ void ExternalDataLoader::ReleaseResources() const noexcept {
   if (restore_device) {
     ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaSetDevice(previous_device)));
   }
+}
+
+common::Status ExternalDataLoader::ExecuteTasks(gsl::span<const ExternalDataLoadTask> tasks,
+                                                bool allow_small_parallel,
+                                                const std::function<bool()>& is_canceled) const {
+  const size_t single_buffer_size = pinned_memory_bytes_ / 2;
+  return ExecuteExternalDataLoadTasks(
+      tasks,
+      allow_small_parallel,
+      reading_thread_count_,
+      batch_reading_thread_count_,
+      single_buffer_size,
+      chunk_bytes_,
+      buffers_,
+      reader_pool_,
+      is_canceled,
+      [this](size_t /*worker_id*/) -> common::Status {
+        return CUDA_CALL(cudaSetDevice(device_id_));
+      },
+      [this](size_t stream_index) -> common::Status {
+        return CUDA_CALL(cudaStreamSynchronize(streams_[stream_index]));
+      },
+      [this](void* dst_device, void* src_pinned, size_t bytes, size_t stream_index) -> common::Status {
+        return CUDA_CALL(
+            cudaMemcpyAsync(dst_device, src_pinned, bytes, cudaMemcpyHostToDevice, streams_[stream_index]));
+      });
 }
 
 common::Status ExternalDataLoader::LoadTensor(const RandomAccessFile& file,
@@ -203,80 +370,41 @@ common::Status ExternalDataLoader::LoadTensor(const RandomAccessFile& file,
   const SafeInt<FileOffsetType> end_offset = SafeInt<FileOffsetType>(data_offset) + length;
   ORT_RETURN_IF(data_offset < 0 || end_offset > file_length,
                 "External data range is outside the file.");
+  if (length == 0) {
+    return Status::OK();
+  }
 
   std::lock_guard<std::mutex> lock(mutex_);
+  const ExternalDataLoadTask task{
+      &file,
+      data_offset,
+      static_cast<uint8_t*>(tensor.MutableDataRaw()),
+      length,
+      tensor.DataType()->Size(),
+      tensor.IsDataType<bool>()};
+
+  if (in_batch_load_) {
+    pending_tasks_.push_back(task);
+    pending_bytes_ += length;
+    return Status::OK();
+  }
+
   CudaDeviceGuard device_guard;
   ORT_RETURN_IF_ERROR(device_guard.SetDevice(device_id_));
+  const size_t single_buffer_size = pinned_memory_bytes_ / 2;
+  if (reading_thread_count_ == 0) {
+    return LoadTaskWithPageableBuffer(task, single_buffer_size, 1, reader_pool_);
+  }
+
   const auto resource_status = EnsureResources();
   if (!resource_status.IsOK()) {
-    // TODO: Remember setup failures during initialization and report the first CUDA error
-    // so later initializers do not repeatedly retry unavailable pinned buffers or streams.
-    return LoadWithPageableBuffer(file, data_offset, length, tensor, reading_thread_count_, reader_pool_);
+    return LoadTaskWithPageableBuffer(task, single_buffer_size, reading_thread_count_, reader_pool_);
   }
 
-  auto* destination = static_cast<uint8_t*>(tensor.MutableDataRaw());
-  std::array<bool, 2> stream_used{};
-  auto synchronize_streams = [&]() {
-    common::Status status = Status::OK();
-    for (size_t i = 0; i < streams_.size(); ++i) {
-      if (stream_used[i]) {
-        const auto sync_status = CUDA_CALL(cudaStreamSynchronize(streams_[i]));
-        if (status.IsOK() && !sync_status.IsOK()) {
-          status = sync_status;
-        }
-        stream_used[i] = false;
-      }
-    }
-    return status;
-  };
-
-  for (size_t offset = 0, chunk_index = 0; offset < length; ++chunk_index) {
-    const size_t buffer_index = chunk_index % buffers_.size();
-    const size_t chunk_size = std::min(kExternalDataLoaderBufferSize, length - offset);
-
-    if (stream_used[buffer_index]) {
-      const auto sync_status = CUDA_CALL(cudaStreamSynchronize(streams_[buffer_index]));
-      stream_used[buffer_index] = false;
-      if (!sync_status.IsOK()) {
-        ORT_IGNORE_RETURN_VALUE(synchronize_streams());
-        return sync_status;
-      }
-    }
-
-    const auto read_status =
-        ReadChunk(file, data_offset + offset, chunk_size, buffers_[buffer_index],
-                  reading_thread_count_, reader_pool_);
-    if (!read_status.IsOK()) {
-      ORT_IGNORE_RETURN_VALUE(synchronize_streams());
-      return read_status;
-    }
-
-    if (tensor.IsDataType<bool>()) {
-      auto* bool_data = static_cast<uint8_t*>(buffers_[buffer_index]);
-      std::transform(bool_data, bool_data + chunk_size, bool_data,
-                     [](uint8_t value) { return value != 0; });
-    }
-
-    if constexpr (std::endian::native != std::endian::little) {
-      const size_t element_size = tensor.DataType()->Size();
-      if (element_size > 1) {
-        SwapByteOrderInplace(buffers_[buffer_index], chunk_size, element_size);
-      }
-    }
-
-    const auto copy_status =
-        CUDA_CALL(cudaMemcpyAsync(destination + offset, buffers_[buffer_index], chunk_size,
-                                  cudaMemcpyHostToDevice, streams_[buffer_index]));
-    if (!copy_status.IsOK()) {
-      ORT_IGNORE_RETURN_VALUE(synchronize_streams());
-      return copy_status;
-    }
-    stream_used[buffer_index] = true;
-    offset += chunk_size;
-  }
-
-  return synchronize_streams();
+  return ExecuteTasks(gsl::span<const ExternalDataLoadTask>(&task, 1), /*allow_small_parallel=*/false, {});
 }
 
 }  // namespace cuda
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD) && !defined(USE_CUDA_MINIMAL)

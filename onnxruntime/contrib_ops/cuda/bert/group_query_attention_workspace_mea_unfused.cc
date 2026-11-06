@@ -237,6 +237,28 @@ GQAUnfusedWorkspaceResult GetGQAUnfusedWorkspaceRecipe(
   result.status = CheckedGQAWorkspaceAdd(
       recipe.softmax_offset_bytes, recipe.softmax_bytes, recipe.total_backend_bytes);
   if (!result.status.IsOK()) return result;
+  if (problem.has_query_seqlens) {
+    // Dense SV reads every physical key row. Mask V in scratch, not in the resident cache:
+    // a zero probability does not suppress NaNs in unused cache storage.
+    size_t v_bytes = 0;
+    result.status = MultiplyMany(
+        problem.qkv_element_size,
+        static_cast<size_t>(problem.batch_size),
+        static_cast<size_t>(problem.kv_num_heads),
+        static_cast<size_t>(problem.head_size),
+        v_bytes);
+    if (!result.status.IsOK()) return result;
+    result.status = CheckedGQAWorkspaceMultiply(
+        v_bytes, static_cast<size_t>(total_sequence_length), v_bytes);
+    if (!result.status.IsOK()) return result;
+    result.status = CheckedGQAWorkspaceAlign(
+        v_bytes, kGQAWorkspaceAlignment, recipe.v_scratch_bytes);
+    if (!result.status.IsOK()) return result;
+    recipe.v_scratch_offset_bytes = recipe.total_backend_bytes;
+    result.status = CheckedGQAWorkspaceAdd(
+        recipe.v_scratch_offset_bytes, recipe.v_scratch_bytes, recipe.total_backend_bytes);
+    if (!result.status.IsOK()) return result;
+  }
 
   result.status = ValidateGQAUnfusedWorkspaceRecipe(recipe);
   if (result.status.IsOK()) result.recipe = recipe;
@@ -287,6 +309,16 @@ GQAWorkspaceStatus ValidateGQAUnfusedWorkspaceRecipe(
   status = CheckedGQAWorkspaceAdd(
       expected_softmax_offset, recipe.softmax_bytes, expected_total);
   if (!status.IsOK()) return status;
+  if (recipe.v_scratch_bytes != 0) {
+    if (recipe.v_scratch_offset_bytes != expected_total ||
+        recipe.v_scratch_bytes % kGQAWorkspaceAlignment != 0) {
+      return Invalid("Unfused V scratch has invalid offset or alignment.");
+    }
+    status = CheckedGQAWorkspaceAdd(expected_total, recipe.v_scratch_bytes, expected_total);
+    if (!status.IsOK()) return status;
+  } else if (recipe.v_scratch_offset_bytes != 0) {
+    return Invalid("Empty unfused V scratch has a nonzero offset.");
+  }
   return recipe.qk_offset_bytes == expected_qk_offset &&
                  recipe.softmax_offset_bytes == expected_softmax_offset &&
                  recipe.total_backend_bytes == expected_total

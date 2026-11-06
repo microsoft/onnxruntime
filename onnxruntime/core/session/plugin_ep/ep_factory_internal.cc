@@ -32,6 +32,7 @@ EpFactoryInternal::EpFactoryInternal(std::unique_ptr<EpFactoryInternalImpl> impl
   OrtEpFactory::CreateDataTransfer = Forward::CreateDataTransfer;
   OrtEpFactory::IsStreamAware = Forward::IsStreamAware;
   OrtEpFactory::CreateSyncStreamForDevice = Forward::CreateSyncStreamForDevice;
+  OrtEpFactory::GetDeviceMemoryCapacity = Forward::GetDeviceMemoryCapacity;
   OrtEpFactory::CreateExternalResourceImporterForDevice = Forward::CreateExternalResourceImporterForDevice;
   OrtEpFactory::GetHardwareDeviceIncompatibilityDetails = Forward::GetHardwareDeviceIncompatibilityDetails;
   OrtEpFactory::InitGraphicsInterop = Forward::InitGraphicsInterop;

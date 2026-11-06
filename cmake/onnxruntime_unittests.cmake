@@ -718,10 +718,6 @@ if(onnxruntime_USE_COREML)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_coreml coreml_proto)
 endif()
 
-if(onnxruntime_USE_ACL)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_acl)
-endif()
-
 set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
     # CUDA, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime.
     # QNN EP can be built as either a dynamic and static libs.
@@ -731,7 +727,6 @@ set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
     ${PROVIDERS_SNPE}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
-    ${PROVIDERS_ACL}
     ${PROVIDERS_COREML}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_AZURE}
@@ -1084,6 +1079,8 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_P
     NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
   set(onnxruntime_test_providers_cuda_plugin_internal_test_src
     "${TEST_SRC_DIR}/providers/cuda/test_cases/allocator_cuda_test.cc"
+    "${TEST_SRC_DIR}/providers/cuda/test_cases/cuda_budget_group_test.cc"
+    "${TEST_SRC_DIR}/providers/cuda/test_cases/cuda_ep_account_binding_test.cc"
     "${TEST_SRC_DIR}/providers/cuda/test_cases/cuda_utils_test.cc"
     "${TEST_SRC_DIR}/providers/cuda/test_cases/group_query_attention_workspace_header_test.cc"
     "${TEST_SRC_DIR}/providers/cuda/test_cases/packed_attention_workspace_header_test.cc"
@@ -1349,6 +1346,13 @@ AddTest(
   TEST_ARGS ${test_all_args}
 )
 target_include_directories(onnxruntime_test_all PRIVATE ${ONNXRUNTIME_ROOT}/core/flatbuffers/schema) # ort.fbs.h
+if(onnxruntime_ENABLE_DLPACK)
+  target_link_libraries(onnxruntime_test_all PRIVATE dlpack::dlpack)
+endif()
+
+if(onnxruntime_USE_CUDA AND NOT onnxruntime_MINIMAL_BUILD)
+  target_link_libraries(onnxruntime_test_all PRIVATE CUDA::cuda_driver)
+endif()
 
 onnxruntime_apply_test_target_workarounds(onnxruntime_test_all)
 
@@ -1486,9 +1490,10 @@ if (MSVC)
   target_compile_options(onnxruntime_test_all PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd4244>"
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4244>")
 
-  # Avoid this compile error in large optimizer test translation units:
+  # Avoid this compile error in large test translation units:
   # fatal error C1128: number of sections exceeded object file format limit: compile with /bigobj
-  set_property(SOURCE "${TEST_SRC_DIR}/optimizer/graph_transform_test.cc"
+  set_property(SOURCE "${TEST_SRC_DIR}/framework/inference_session_test.cc"
+                      "${TEST_SRC_DIR}/optimizer/graph_transform_test.cc"
                       "${TEST_SRC_DIR}/optimizer/qdq_transformer_test.cc"
                       "${TEST_SRC_DIR}/optimizer/pattern_rewriter_test.cc"
                APPEND PROPERTY COMPILE_OPTIONS "/bigobj")
@@ -2553,7 +2558,7 @@ endif()
     target_link_libraries(compare_two_sessions PRIVATE ${GETOPT_LIB_WIDE} tdh Advapi32)
   endif()
 
-  if(NOT onnxruntime_target_platform STREQUAL "ARM64EC")
+  if(NOT onnxruntime_target_platform STREQUAL "ARM64EC" AND NOT onnxruntime_target_platform STREQUAL "S390X")
     file(GLOB onnxruntime_mlas_test_src CONFIGURE_DEPENDS
       "${TEST_SRC_DIR}/mlas/unittest/*.h"
       "${TEST_SRC_DIR}/mlas/unittest/*.cpp"
