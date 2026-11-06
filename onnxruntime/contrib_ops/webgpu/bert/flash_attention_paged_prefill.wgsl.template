@@ -46,9 +46,9 @@ const head_size : u32 = qkv_head_size;
 const num_heads : u32 = qkv_num_heads;
 
 #if is_fp16
-const min_value = q_element_t(-65504.0);
+const min_value = -65504.0f;
 #else
-const min_value = q_element_t(-3.4028234663852886e+38f);
+const min_value = -3.4028234663852886e+38f;
 #endif
 
 const max_k_step : u32 = max_k_step_param;
@@ -66,8 +66,9 @@ var<workgroup> v_tile : array<array<q_value_t, head_size_vec>, max_k_step>;
 
 // Private per-lane state.
 var<private> q_tile : array<q_value_t, head_size_vec>;
-var<private> o_tile : array<q_value_t, head_size_vec>;
-var<private> qk_scores : array<q_element_t, max_k_step>;
+// FP16 running sums can stop advancing long before the context limit.
+var<private> o_tile : array<vec4<f32>, head_size_vec>;
+var<private> qk_scores : array<f32, max_k_step>;
 
 fn loadq(batch_idx : u32, q_idx_global : u32, head_idx : u32, alpha : q_element_t) {
 #if q_varlen
@@ -134,7 +135,7 @@ fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32) {
                o_idx_global * num_heads * head_size_vec + head_idx * head_size_vec;
 #endif
   for (var idx : u32 = 0; idx < head_size_vec; idx++) {
-    output.setByOffset(offset + idx, o_tile[idx]);
+    output.setByOffset(offset + idx, q_value_t(o_tile[idx]));
   }
 }
 
@@ -161,8 +162,8 @@ $MAIN {
     loadq(batch_idx, q_idx_global, head_idx, q_element_t(uniforms.alpha));
   }
 
-  var previous_max : q_element_t = min_value;
-  var previous_denom : q_element_t = 0;
+  var previous_max : f32 = min_value;
+  var previous_denom : f32 = 0;
   // Per-batch total KV length (past + new).
   let total_sequence_length = u32(seqlens_k[batch_idx]) + 1u;
 
@@ -187,9 +188,9 @@ $MAIN {
     workgroupBarrier();
 
     for (var k = 0u; k < max_k_step; k++) {
-      var score = q_element_t(0);
+      var score = 0.0f;
       for (var i = 0u; i < head_size_vec; i++) {
-        score += dot(q_tile[i], k_tile[k][i]);
+        score += dot(vec4<f32>(q_tile[i]), vec4<f32>(k_tile[k][i]));
       }
       qk_scores[k] = select(min_value, score, k_start + k < seq_causal_length);
     }
@@ -200,16 +201,16 @@ $MAIN {
     }
     let new_max = max(previous_max, local_max);
 
-    var sum = q_element_t(0);
+    var sum = 0.0f;
     for (var k = 0u; k < max_k_step; k++) {
-      let exp_val = q_element_t(exp(f32(qk_scores[k]) - f32(new_max)));
+      let exp_val = exp(qk_scores[k] - new_max);
       qk_scores[k] = exp_val;
       sum += exp_val;
     }
 
-    let dleft = previous_denom * q_element_t(exp(f32(previous_max) - f32(new_max)));
+    let dleft = previous_denom * exp(previous_max - new_max);
     var d = dleft + sum;
-    d = select(d, q_element_t(0.0000001), d == 0);
+    d = select(d, 0.0000001f, d == 0);
 
     for (var k = 0u; k < max_k_step; k++) {
       qk_scores[k] = qk_scores[k] / d;
@@ -219,9 +220,9 @@ $MAIN {
     let o_ratio = dleft / d;
 
     for (var i : u32 = 0; i < head_size_vec; i++) {
-      var acc = q_value_t(0);
+      var acc = vec4<f32>(0);
       for (var k = 0u; k < max_k_step; k++) {
-        acc += v_tile[k][i] * qk_scores[k];
+        acc += vec4<f32>(v_tile[k][i]) * qk_scores[k];
       }
       o_tile[i] = o_tile[i] * o_ratio + acc;
     }

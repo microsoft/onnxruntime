@@ -50,6 +50,18 @@ tabs, Electron desktop apps, native WebGPU on Windows/macOS via Dawn).
 | `is_causal = 0` with `local_window_size = W > 0` | Supported through the same dense fallback. Query `q` in a sequence with `P` past tokens and `Q` new tokens attends to keys `[max(0, P + q + 1 - W), P + Q)`. Only the right causal bound is removed; the left bound remains query-relative. |
 | `T = bfloat16` | v1 rejects (registers `MLFloat16` only). FA has no `bf16` path yet either; both add together in Phase 2 when Dawn's `bf16` support on target adapters stabilizes. |
 
+### Shared paged-prefill accumulator precision
+
+The shared paged-prefill shader uses FP32 QK dot products, scores, softmax state,
+and output accumulation before converting to the output storage type. This is a
+backend-independent numerical correction: FP16 running sums can stop advancing
+at long context lengths. It is not Apple-only tuning.
+
+For FP16 inputs, the declared private score/output array storage doubles.
+Register allocation, spilling, and throughput effects are backend/compiler
+dependent and require separate qualification on other vendors; native Apple
+Metal correctness tests do not establish that performance qualification.
+
 ---
 
 ## 3. Op contract
