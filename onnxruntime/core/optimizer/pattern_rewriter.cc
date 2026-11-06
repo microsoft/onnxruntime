@@ -1009,11 +1009,21 @@ class PatternParser {
     auto symbol = [&](size_t index, std::string_view text) {
       return tokens[index].first == Kind::Symbol && tokens[index].second == text;
     };
+    InlinedVector<bool> call_arguments;
     for (size_t i = 0; i + 1 < tokens.size(); ++i) {
+      if (symbol(i, "(")) {
+        call_arguments.push_back(i > 0 &&
+                                 ((tokens[i - 1].first == Kind::Identifier && tokens[i - 1].second != "return") ||
+                                  symbol(i - 1, ")")));
+      } else if (symbol(i, ")") && !call_arguments.empty()) {
+        call_arguments.pop_back();
+      }
       if (tokens[i].first == Kind::Identifier && tokens[i].second.find('.') == std::string::npos &&
           symbol(i + 1, "(") && (i == 0 || !symbol(i - 1, "::")))
         names.push_back(tokens[i].second);
-      if (symbol(i, "=") && tokens[i + 1].first == Kind::Identifier)
+      if (symbol(i, "=") && tokens[i + 1].first == Kind::Identifier &&
+          !call_arguments.empty() && call_arguments.back() && i >= 2 &&
+          tokens[i - 1].first == Kind::Identifier && (symbol(i - 2, "(") || symbol(i - 2, ",")))
         names.push_back(tokens[i + 1].second);
       if (!symbol(i, "(")) continue;
       InlinedVector<std::string> members;
@@ -2969,6 +2979,12 @@ Status PatternRewriter::RunImpl(Graph& graph, Statistics& statistics, InlinedHas
         if (!winning_pattern->IsInput(value)) continue;
         auto it = producers.find(winning_match.values[value]);
         if (it != producers.end()) affected.push_back(it->second);
+      }
+      for (const Node* node : winning_match.nodes) {
+        for (const NodeArg* input : node->ImplicitInputDefs()) {
+          auto it = producers.find(input);
+          if (it != producers.end()) affected.push_back(it->second);
+        }
       }
       InlinedVector<NodeIndex> added;
       auto recipe = rules_[winner].replacement(graph, winning_match);

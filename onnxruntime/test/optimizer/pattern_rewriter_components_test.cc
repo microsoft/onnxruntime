@@ -2361,6 +2361,85 @@ TEST(PatternGraphTests, ReferencesDetectCyclesAndBindingAmbiguity) {
                OnnxRuntimeException);
 }
 
+TEST(PatternGraphTests, DependenciesIgnoreLocalAliasesAndReturnLabels) {
+  for (const char* text : {
+           "pattern P(P) { alias=P; return Identity(alias) }",
+           "pattern P(P) -> (result) { copy=Identity(P); return (result=copy) }",
+           "pattern P(x) -> (result) { P=Identity(x); return (result=P) }",
+           "pattern P(x) -> (first,second) { a=Identity(x);P=Neg(x);return (first=a,second=P) }",
+           "pattern P(x) { copy=Identity(x); return copy } "
+           "pattern Q(P) { alias=P; return Identity(alias) }"}) {
+    EXPECT_NO_THROW((void)PatternLibrary{text}) << text;
+  }
+  PatternLibrary forward(R"(
+    pattern P(c) { y=If(c,then_branch=Branch,else_branch=Branch); return y }
+    pattern Branch(x) { return Identity(x) }
+  )");
+  EXPECT_EQ(forward.GetPattern("P").Nodes()[0].graphs.size(), 2u);
+  EXPECT_THROW((PatternLibrary("pattern P(c) { return If(c,then_branch=P,else_branch=P) }")),
+               OnnxRuntimeException);
+}
+
+TEST(PatternGraphTests, RemovingImplicitConsumersRevisitsRejectedProducers) {
+  PatternLibrary library(R"(
+    pattern Branch(x) { return Identity(x) }
+    pattern Conditional(c) { y=If(c,then_branch=Branch,else_branch=Branch); return y }
+  )");
+  for (bool indexed : {false, true}) {
+    TestGraph test;
+    auto& b = test.builder;
+    auto* x = b.MakeInput<float>({2}, {1.0f, 2.0f});
+    auto* z = b.MakeInput<float>({2}, {3.0f, 4.0f});
+    auto* condition = b.MakeInitializerBool({}, {false});
+    auto* middle = b.MakeIntermediate();
+    b.AddNode("Identity", {x}, {middle});
+    auto branch = [&](const NodeArg* captured) {
+      ONNX_NAMESPACE::GraphProto body;
+      body.set_name("branch");
+      auto* output = body.add_output();
+      output->set_name("branch_output");
+      output->mutable_type()->CopyFrom(*x->TypeAsProto());
+      auto* identity = body.add_node();
+      identity->set_op_type("Identity");
+      identity->add_input(captured->Name());
+      identity->add_output(output->name());
+      return body;
+    };
+    auto& conditional = b.AddNode("If", {condition}, {b.MakeOutput()});
+    conditional.AddAttribute("then_branch", branch(middle));
+    conditional.AddAttribute("else_branch", branch(z));
+    auto& pair_root = b.AddNode("Identity", {middle}, {b.MakeOutput()});
+    b.SetGraphOutputs();
+    test.graph.SetInputs({x, z});
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    GraphViewer viewer(test.graph);
+    const auto& order = viewer.GetNodesInTopologicalOrder();
+    EXPECT_LT(std::find(order.begin(), order.end(), pair_root.Index()),
+              std::find(order.begin(), order.end(), conditional.Index()));
+    bool rejected_boundary = false;
+    Options options;
+    options.indexed = indexed;
+    options.on_failure = [&](const MatchFailure& failure) {
+      if (failure.rule == "IdentityPair" && failure.stage == FailureStage::Boundary)
+        rejected_boundary = true;
+    };
+    auto is_false = [](const Graph& graph, Match& match) {
+      const auto* value = graph.GetConstantInitializer(match.valueOf("c")->Name(), false);
+      return value && value->data_type() == ONNX_NAMESPACE::TensorProto_DataType_BOOL &&
+             value->dims_size() == 0 && value->has_raw_data() && value->raw_data() == std::string(1, '\0');
+    };
+    Rule parent{"FalseBranch", library.GetPattern("Conditional"), "(y.else_branch.x)=>Identity(y.else_branch.x)", is_false, {{kOnnxDomain, 17, 17}}};
+    Rule pair{"IdentityPair", "(x)=>{a=Identity(x);return Identity(a)}", "(x)=>Identity(x)", {}, {{kOnnxDomain, 17, 17}}};
+    Statistics statistics;
+    ASSERT_STATUS_OK(PatternRewriter({parent, pair}, options).Run(test.graph, statistics));
+    EXPECT_TRUE(rejected_boundary);
+    EXPECT_EQ(statistics.rewrites, 2u);
+    EXPECT_EQ(Count(test.graph, "If"), 0u);
+    EXPECT_EQ(Count(test.graph, "Identity"), 2u);
+    ASSERT_STATUS_OK(test.graph.Resolve());
+  }
+}
+
 TEST(PatternGraphTests, IfCaptureRewriteAndNumerics) {
   PatternLibrary library(R"(
     pattern Branch(x:float[N]) { a=Identity(x); return a }
