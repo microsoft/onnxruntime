@@ -88,6 +88,12 @@ class Pattern {
     InlinedVector<Value> inputs;
     InlinedVector<Value> outputs;
     InlinedVector<AttributeMatcher, 1> attributes;
+    struct GraphAttribute {
+      std::string name;
+      std::string instance;
+      std::shared_ptr<const Pattern> pattern;
+    };
+    InlinedVector<GraphAttribute, 1> graphs{};
   };
   const auto& Nodes() const { return nodes_; }
   size_t ValueCount() const { return value_count_; }
@@ -104,6 +110,9 @@ class Pattern {
   // Visit rewrite-safe candidates at one root in expansion order. true continues; false stops.
   // Requires a resolved graph. The visitor must not mutate it. Does not filter opsets or providers.
   Status VisitMatches(const Graph& graph, NodeIndex root, const std::function<bool(Match&)>& visitor) const;
+  // Match a complete resolved graph, anchored to its ordered outputs.
+  Status MatchGraph(const Graph& graph, std::optional<Match>& result) const;
+  const auto& GraphInputs() const { return graph_inputs_; }
 
  private:
   friend class detail::PatternParser;
@@ -128,6 +137,7 @@ class Pattern {
   InlinedVector<Value> values_;
   InlinedHashMap<int, Literal> constants_;
   InlinedVector<Value> outputs_;
+  InlinedVector<Value> graph_inputs_;
   InlinedHashSet<int> optional_inputs_;
   InlinedHashSet<std::string> attribute_names_;
   InlinedHashMap<int, InlinedVector<TypeConstraint, 1>> type_constraints_;
@@ -154,6 +164,7 @@ class PatternLibrary {
  public:
   explicit PatternLibrary(std::string_view text);
   Pattern GetPattern(std::string_view name) const;
+  Pattern GetGraphPattern(std::string_view name) const;
 
  private:
   std::shared_ptr<const detail::PatternModule> module_;
@@ -170,6 +181,7 @@ class BindingView {
   const Dimension& dimensionOf(std::string_view name) const;
   std::optional<int32_t> elementTypeOf(std::string_view name) const;
   BindingView instance(std::string_view name) const;
+  const Graph& graph() const;
   std::string_view definition() const;
   std::string_view interfaceName() const;
   // Empty for a body call; otherwise the selected immediate member name.
@@ -206,6 +218,10 @@ struct Match {
   std::optional<int32_t> elementTypeOf(std::string_view name) const;
   BindingView bindings() const { return BindingView(*this, ""); }
   BindingView instance(std::string_view name) const { return bindings().instance(name); }
+  const Graph& graph() const;
+  // Nested bodies borrow their graphs; they are not part of nodes' deletion set.
+  InlinedHashMap<std::string, std::shared_ptr<const Match>> subgraphs;
+  const Graph* matched_graph = nullptr;
   void ClearUpdates() {
     extra_attributes_.clear();
     rejection_reason_.clear();

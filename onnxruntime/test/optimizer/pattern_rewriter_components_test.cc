@@ -23,8 +23,9 @@ namespace {
 using namespace rewrite;
 
 struct TestGraph {
-  explicit TestGraph(const PathString& model_path = {})
-      : model{"rewrite-components", false, ModelMetaData(), model_path, IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 17}}, {}, DefaultLoggingManager().DefaultLogger()} {}
+  explicit TestGraph(const PathString& model_path = {},
+                     const std::unordered_map<std::string, int>& opsets = {{kOnnxDomain, 17}})
+      : model{"rewrite-components", false, ModelMetaData(), model_path, IOnnxRuntimeOpSchemaRegistryList(), opsets, {}, DefaultLoggingManager().DefaultLogger()} {}
   Model model;
   Graph& graph = model.MainGraph();
   ModelTestBuilder builder{graph};
@@ -2235,6 +2236,433 @@ TEST(PatternRewriterTests, ComposeTransposeRuleIntegrationAndNumerics) {
     }
   }
 }
+
+TEST(PatternGraphTests, OrderedIndependentRootsAndCompleteCoverage) {
+  PatternLibrary library(R"(
+    pattern Both(x,y) { a=Identity(x); b=Neg(y); return a,b }
+  )");
+  EXPECT_THROW(library.GetPattern("Both"), OnnxRuntimeException);
+  for (int scenario = 0; scenario < 4; ++scenario) {
+    TestGraph test;
+    auto& b = test.builder;
+    auto* x = b.MakeInput<float>({2}, {1.0f, 2.0f});
+    auto* y = b.MakeInput<float>({2}, {3.0f, 4.0f});
+    b.AddNode("Identity", {x}, {b.MakeOutput()});
+    b.AddNode("Neg", {y}, {b.MakeOutput()});
+    if (scenario == 1) b.AddNode("Identity", {x}, {b.MakeIntermediate()});
+    if (scenario == 2) b.MakeInitializer<float>({1}, {5.0f});
+    b.SetGraphOutputs();
+    if (scenario == 3) test.graph.SetOutputs({test.graph.GetOutputs()[1], test.graph.GetOutputs()[0]});
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    std::optional<Match> match;
+    ASSERT_STATUS_OK(library.GetGraphPattern("Both").MatchGraph(test.graph, match));
+    EXPECT_EQ(match.has_value(), scenario == 0 || scenario == 2);
+    if (match) {
+      EXPECT_EQ(match->valueOf("x"), x);
+      EXPECT_EQ(match->valueOf("y"), y);
+      EXPECT_EQ(&match->graph(), &test.graph);
+    }
+  }
+}
+
+TEST(PatternGraphTests, PassthroughRepeatedOutputsAndUnusedFormal) {
+  PatternLibrary library(R"(
+    pattern Pass(x,unused) -> (first,second) { return (first=x,second=x) }
+  )");
+  TestGraph test;
+  auto* x = test.builder.MakeInput<float>({2}, {1.0f, 2.0f});
+  auto* unused = test.builder.MakeInput<float>({2}, {3.0f, 4.0f});
+  test.graph.SetInputs({x, unused});
+  test.graph.SetOutputs({x, x});
+  ASSERT_STATUS_OK(test.graph.Resolve());
+  std::optional<Match> match;
+  ASSERT_STATUS_OK(library.GetGraphPattern("Pass").MatchGraph(test.graph, match));
+  ASSERT_TRUE(match);
+  EXPECT_TRUE(match->nodes.empty());
+  EXPECT_EQ(match->valueOf("unused"), unused);
+  EXPECT_THROW(library.GetPattern("Pass"), OnnxRuntimeException);
+  test.graph.SetOutputs({x, unused});
+  ASSERT_STATUS_OK(test.graph.Resolve());
+  ASSERT_STATUS_OK(library.GetGraphPattern("Pass").MatchGraph(test.graph, match));
+  EXPECT_FALSE(match);
+}
+
+TEST(PatternGraphTests, ReferencesDetectCyclesAndBindingAmbiguity) {
+  EXPECT_THROW((PatternLibrary(R"(
+    pattern P(c) { y=If(c,then_branch=P,else_branch=P); return y }
+  )")),
+               OnnxRuntimeException);
+  EXPECT_THROW((PatternLibrary(R"(
+    pattern Branch(x) { y=Identity(x); return y }
+    pattern P(c,Branch) { y=If(c,then_branch=Branch,else_branch=Branch); return y }
+  )")),
+               OnnxRuntimeException);
+  PatternLibrary forward(R"(
+    pattern P(c) { y=If(c,then_branch=Branch,else_branch=Branch); return y }
+    pattern Branch(x) { y=Identity(x); return y }
+  )");
+  EXPECT_EQ(forward.GetPattern("P").Nodes()[0].graphs.size(), 2u);
+}
+
+TEST(PatternGraphTests, IfCaptureRewriteAndNumerics) {
+  PatternLibrary library(R"(
+    pattern Branch(x:float[N]) { a=Identity(x); return a }
+    pattern P(c) { y=If(c,then_branch=Branch,else_branch=Branch); return y }
+  )");
+  for (bool condition : {false, true}) {
+    for (bool indexed : {false, true}) {
+      TestGraph test;
+      auto& b = test.builder;
+      auto* x = b.MakeInput<float>({2}, {1.0f, -2.0f});
+      auto* c = b.MakeInput<bool>({}, {condition});
+      ONNX_NAMESPACE::GraphProto branch;
+      branch.set_name("branch");
+      auto* output = branch.add_output();
+      output->set_name("branch_output");
+      output->mutable_type()->CopyFrom(*x->TypeAsProto());
+      auto* identity = branch.add_node();
+      identity->set_op_type("Identity");
+      identity->add_input(x->Name());
+      identity->add_output(output->name());
+      auto& node = b.AddNode("If", {c}, {b.MakeOutput()});
+      node.AddAttribute("then_branch", branch);
+      node.AddAttribute("else_branch", branch);
+      b.SetGraphOutputs();
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      const auto original = test.model.ToProto().SerializeAsString();
+      auto check = [](const Graph& graph, Match& match) {
+        auto then_body = match.instance("y.then_branch");
+        auto else_body = match.instance("y.else_branch");
+        EXPECT_EQ(then_body.valueOf("x")->Name(), else_body.valueOf("x")->Name());
+        EXPECT_EQ(then_body.graph().ParentGraph(), &graph);
+        EXPECT_EQ(std::get<int64_t>(then_body.dimensionOf("N")), 2);
+        EXPECT_EQ(match.nodes.size(), 1u);
+        return then_body.valueOf("x")->Name() == else_body.valueOf("x")->Name();
+      };
+      Rule rule{"SameBranches", library.GetPattern("P"), "(y.then_branch.x)=>Identity(y.then_branch.x)", check, {{kOnnxDomain, 17, 17}}};
+      Statistics stats;
+      ASSERT_STATUS_OK(PatternRewriter({rule}, {.indexed = indexed}).Run(test.graph, stats));
+      EXPECT_EQ(stats.rewrites, 1u);
+      EXPECT_EQ(Count(test.graph, "If"), 0u);
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      auto execute = [&](const std::string& serialized, std::vector<OrtValue>& outputs) {
+        SessionOptions options;
+        options.graph_optimization_level = TransformerLevel::Default;
+        options.intra_op_param.thread_pool_size = 1;
+        InferenceSessionWrapper session{options, GetEnvironment()};
+        std::istringstream stream(serialized);
+        ORT_RETURN_IF_ERROR(session.Load(stream));
+        ORT_RETURN_IF_ERROR(session.Initialize());
+        return session.Run(RunOptions{}, b.feeds_, b.output_names_, &outputs);
+      };
+      std::vector<OrtValue> before, after;
+      ASSERT_STATUS_OK(execute(original, before));
+      ASSERT_STATUS_OK(execute(test.model.ToProto().SerializeAsString(), after));
+      ASSERT_EQ(before.size(), 1u);
+      ASSERT_EQ(after.size(), 1u);
+      for (int64_t i = 0; i < 2; ++i)
+        EXPECT_EQ(before[0].Get<Tensor>().Data<float>()[i], after[0].Get<Tensor>().Data<float>()[i]);
+    }
+  }
+}
+
+TEST(PatternGraphTests, LoopFormalInputsAndPassthroughOutputs) {
+  PatternLibrary library(R"(
+    pattern Body(iteration,condition,state) -> (continue_loop,result) {
+      return (continue_loop=condition,result=state)
+    }
+    pattern P(trip,condition,state) { y=Loop(trip,condition,state,body=Body); return y }
+  )");
+  TestGraph test;
+  auto& b = test.builder;
+  auto* trip = b.MakeInput<int64_t>({}, {3});
+  auto* condition = b.MakeInput<bool>({}, {true});
+  auto* state = b.MakeInput<float>({2}, {1.0f, 2.0f});
+  ONNX_NAMESPACE::GraphProto body;
+  body.set_name("loop_body");
+  auto formal = [&](const char* name, const NodeArg* prototype) {
+    auto* input = body.add_input();
+    input->set_name(name);
+    input->mutable_type()->CopyFrom(*prototype->TypeAsProto());
+  };
+  formal("iteration", trip);
+  formal("condition", condition);
+  formal("state", state);
+  body.add_output()->CopyFrom(body.input(1));
+  body.add_output()->CopyFrom(body.input(2));
+  auto& loop = b.AddNode("Loop", {trip, condition, state}, {b.MakeOutput()});
+  loop.AddAttribute("body", body);
+  b.SetGraphOutputs();
+  ASSERT_STATUS_OK(test.graph.Resolve());
+  std::optional<Match> match;
+  ASSERT_STATUS_OK(library.GetPattern("P").MatchAt(test.graph, loop.Index(), match));
+  ASSERT_TRUE(match);
+  auto inner = match->instance("y.body");
+  EXPECT_EQ(inner.valueOf("state"), inner.graph().GetInputs()[2]);
+  EXPECT_EQ(inner.valueOf("iteration"), inner.graph().GetInputs()[0]);
+  Rule unsafe{"NoFormalPromotion", library.GetPattern("P"), "(y.body.state)=>Identity(y.body.state)", {}, {{kOnnxDomain, 17, 17}}};
+  const auto before = test.model.ToProto().SerializeAsString();
+  Statistics statistics;
+  EXPECT_FALSE(PatternRewriter({unsafe}).Run(test.graph, statistics).IsOK());
+  EXPECT_EQ(test.model.ToProto().SerializeAsString(), before);
+}
+
+TEST(PatternGraphTests, LocalShadowPartialBodyAndProviderSafety) {
+  for (int scenario = 0; scenario < 6; ++scenario) {
+    PatternLibrary library(scenario == 2   ? R"(
+      pattern Branch(x) { a=Identity(x); return a }
+      pattern P(c) { y=If(c,then_branch=Branch); return y }
+    )"
+                           : scenario == 4 ? R"(
+      pattern Branch(x:float[3]) { a=Identity(x); return a }
+      pattern P(c) { y=If(c,then_branch=Branch,else_branch=Branch); return y }
+    )"
+                                           : R"(
+      pattern Branch(x) { a=Identity(x); return a }
+      pattern P(c) { y=If(c,then_branch=Branch,else_branch=Branch); return y }
+    )");
+    TestGraph test;
+    auto& b = test.builder;
+    auto* x = b.MakeInput<float>({2}, {1.0f, 2.0f});
+    auto* c = b.MakeInput<bool>({}, {true});
+    ONNX_NAMESPACE::GraphProto branch;
+    branch.set_name("safety_branch");
+    auto* output = branch.add_output();
+    output->set_name("branch_output");
+    output->mutable_type()->CopyFrom(*x->TypeAsProto());
+    auto* identity = branch.add_node();
+    identity->set_op_type("Identity");
+    identity->add_input(x->Name());
+    identity->add_output(output->name());
+    if (scenario == 0) {
+      auto* shadow = branch.add_initializer();
+      shadow->set_name(x->Name());
+      shadow->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      shadow->add_dims(2);
+      shadow->add_float_data(10.0f);
+      shadow->add_float_data(20.0f);
+    }
+    if (scenario == 1) {
+      auto* extra = branch.add_node();
+      extra->set_op_type("Neg");
+      extra->add_input(x->Name());
+      extra->add_output("extra");
+    }
+    if (scenario == 5) {
+      auto* extra = branch.add_node();
+      extra->set_op_type("Constant");
+      extra->add_output("unused_constant");
+      auto* value = extra->add_attribute();
+      value->set_name("value_float");
+      value->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT);
+      value->set_f(2.0f);
+    }
+    auto& conditional = b.AddNode("If", {c}, {b.MakeOutput()});
+    conditional.AddAttribute("then_branch", branch);
+    conditional.AddAttribute("else_branch", branch);
+    b.SetGraphOutputs();
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    if (scenario == 3)
+      conditional.GetMutableGraphAttribute("then_branch")->Nodes().begin()->SetExecutionProviderType(kCpuExecutionProvider);
+    const auto before = test.model.ToProto().SerializeAsString();
+    Rule rule{"Safety", library.GetPattern("P"), "(y.then_branch.x)=>Identity(y.then_branch.x)", {}, {{kOnnxDomain, 17, 17}}};
+    Statistics statistics;
+    const auto status = PatternRewriter({rule}).Run(test.graph, statistics);
+    EXPECT_EQ(status.IsOK(), scenario != 0) << status;
+    EXPECT_EQ(statistics.rewrites, 0u);
+    EXPECT_EQ(test.model.ToProto().SerializeAsString(), before);
+    ASSERT_STATUS_OK(test.graph.Resolve());
+  }
+}
+
+TEST(PatternGraphTests, NestedReferencesAndAlternativeState) {
+  PatternLibrary library(R"(
+    pattern Negative(x:float[N]) { a=Neg(x); return a }
+    pattern IdentityBody(x:float[N]) { a=Identity(x); return a }
+    pattern Forms=Negative|IdentityBody
+    pattern Outer(c) { y=If(c,then_branch=Forms,else_branch=Forms); return y }
+    pattern P(c) { y=If(c,then_branch=Outer,else_branch=Outer); return y }
+  )");
+  for (bool indexed : {false, true}) {
+    TestGraph test;
+    auto& b = test.builder;
+    auto* x = b.MakeInput<float>({2}, {1.0f, 2.0f});
+    auto* c = b.MakeInput<bool>({}, {true});
+    ONNX_NAMESPACE::GraphProto inner;
+    inner.set_name("inner");
+    auto* output = inner.add_output();
+    output->set_name("inner_output");
+    output->mutable_type()->CopyFrom(*x->TypeAsProto());
+    auto* identity = inner.add_node();
+    identity->set_op_type("Identity");
+    identity->add_input(x->Name());
+    identity->add_output(output->name());
+    ONNX_NAMESPACE::GraphProto outer;
+    outer.set_name("outer");
+    outer.add_output()->CopyFrom(*output);
+    auto* conditional = outer.add_node();
+    conditional->set_op_type("If");
+    conditional->add_input(c->Name());
+    conditional->add_output(output->name());
+    for (const char* name : {"then_branch", "else_branch"}) {
+      auto* attribute = conditional->add_attribute();
+      attribute->set_name(name);
+      attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+      attribute->mutable_g()->CopyFrom(inner);
+    }
+    auto& node = b.AddNode("If", {c}, {b.MakeOutput()});
+    node.AddAttribute("then_branch", outer);
+    node.AddAttribute("else_branch", outer);
+    b.SetGraphOutputs();
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    auto check = [](const Graph&, Match& match) {
+      auto body = match.instance("y.then_branch").instance("y.then_branch");
+      EXPECT_EQ(body.alternative(), "IdentityBody");
+      EXPECT_EQ(body.valueOf("x")->Shape()->dim(0).dim_value(), 2);
+      EXPECT_EQ(std::get<int64_t>(body.dimensionOf("N")), 2);
+      return true;
+    };
+    Rule rule{"Nested", library.GetPattern("P"), "(y.then_branch.y.then_branch.x)=>Identity(y.then_branch.y.then_branch.x)", check, {{kOnnxDomain, 17, 17}}};
+    Statistics statistics;
+    ASSERT_STATUS_OK(PatternRewriter({rule}, {.indexed = indexed}).Run(test.graph, statistics));
+    EXPECT_EQ(statistics.rewrites, 1u);
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    EXPECT_EQ(test.graph.Nodes().begin()->InputDefs()[0], x);
+  }
+  std::string too_large = "pattern B(x){y=Identity(x);return y}\n";
+  std::string previous = "B";
+  for (int i = 0; i < 10; ++i) {
+    const std::string name = "B" + std::to_string(i);
+    too_large += "pattern " + name + "(c){y=If(c,then_branch=" + previous +
+                 ",else_branch=" + previous + ");return y}\n";
+    previous = name;
+  }
+  EXPECT_THROW(PatternLibrary{too_large}, OnnxRuntimeException);
+}
+
+#ifndef DISABLE_CONTRIB_OPS
+TEST(PatternGraphTests, MobiusLinearAttentionScanEnvelopeNumerics) {
+  // Equal-head FP32 specialization of Mobius' linear_attention Scan recurrence.
+  // https://github.com/onnxruntime/mobius/blob/1100038138f84eeb7bd59ccb9471c392deda4820/src/mobius/functions/linear_attention.py
+  PatternLibrary library(R"(
+    pattern Body(state,q,k,v) {
+      ku=Unsqueeze(k,[-1]); vu=Unsqueeze(v,[-2])
+      update=MatMul(ku,vu); new_state=Add(state,update)
+      qu=Unsqueeze(q,[-2]); product=MatMul(qu,new_state)
+      output=Squeeze(product,[-2])
+      return new_state,output
+    }
+    pattern P(q:float[1,T,4],k:float[1,T,4],v:float[1,T,4],past:float[1,1,4,4]) {
+      qs=Mul(q,0.5)
+      qr=Reshape(qs,[0,0,1,4]); kr=Reshape(k,[0,0,1,4]); vr=Reshape(v,[0,0,1,4])
+      qt=Transpose(qr,perm=[1,0,2,3]); kt=Transpose(kr,perm=[1,0,2,3]); vt=Transpose(vr,perm=[1,0,2,3])
+      state,sequence=Scan(past,qt,kt,vt,num_scan_inputs=3,body=Body)
+      packed=Transpose(sequence,perm=[1,0,2,3])
+      output=Reshape(packed,[0,0,4])
+      return output,state
+    }
+  )");
+  for (int64_t length : {int64_t{1}, int64_t{3}}) {
+    TestGraph test({}, {{kOnnxDomain, 17}, {kMSDomain, 1}});
+    auto& b = test.builder;
+    auto* q = b.MakeInput<float>({1, length, 4}, -0.5f, 0.5f);
+    auto* k = b.MakeInput<float>({1, length, 4}, -0.5f, 0.5f);
+    auto* v = b.MakeInput<float>({1, length, 4}, -0.5f, 0.5f);
+    auto* past = b.MakeInput<float>({1, 1, 4, 4}, -0.1f, 0.1f);
+    auto* qs = b.MakeIntermediate();
+    b.AddNode("Mul", {q, b.MakeScalarInitializer<float>(0.5f)}, {qs});
+    auto* shape = b.MakeInitializer<int64_t>({4}, {0, 0, 1, 4});
+    InlinedVector<NodeArg*> scan_inputs{past};
+    for (NodeArg* input : {qs, k, v}) {
+      auto* reshaped = b.MakeIntermediate();
+      b.AddNode("Reshape", {input, shape}, {reshaped});
+      auto* transposed = b.MakeIntermediate();
+      b.AddNode("Transpose", {reshaped}, {transposed}).AddAttribute("perm", std::vector<int64_t>{1, 0, 2, 3});
+      scan_inputs.push_back(transposed);
+    }
+    ONNX_NAMESPACE::GraphProto body;
+    body.set_name("linear_attention_body");
+    auto port = [](ONNX_NAMESPACE::ValueInfoProto* info, const char* name, std::initializer_list<int64_t> dims) {
+      info->set_name(name);
+      auto* tensor = info->mutable_type()->mutable_tensor_type();
+      tensor->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      for (int64_t dim : dims) tensor->mutable_shape()->add_dim()->set_dim_value(dim);
+    };
+    port(body.add_input(), "state", {1, 1, 4, 4});
+    for (const char* name : {"q", "k", "v"}) port(body.add_input(), name, {1, 1, 4});
+    port(body.add_output(), "new_state", {1, 1, 4, 4});
+    port(body.add_output(), "output", {1, 1, 4});
+    auto axes = [&](const char* name, int64_t axis) {
+      auto* constant = body.add_node();
+      constant->set_op_type("Constant");
+      constant->add_output(name);
+      auto* attribute = constant->add_attribute();
+      attribute->set_name("value_ints");
+      attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INTS);
+      attribute->add_ints(axis);
+    };
+    axes("last_axis", -1);
+    axes("matrix_axis", -2);
+    auto node = [&](const char* op, std::initializer_list<const char*> inputs, const char* output) {
+      auto* operation = body.add_node();
+      operation->set_op_type(op);
+      for (const char* input : inputs) operation->add_input(input);
+      operation->add_output(output);
+    };
+    node("Unsqueeze", {"k", "last_axis"}, "ku");
+    node("Unsqueeze", {"v", "matrix_axis"}, "vu");
+    node("MatMul", {"ku", "vu"}, "update");
+    node("Add", {"state", "update"}, "new_state");
+    node("Unsqueeze", {"q", "matrix_axis"}, "qu");
+    node("MatMul", {"qu", "new_state"}, "product");
+    node("Squeeze", {"product", "matrix_axis"}, "output");
+    auto* final_state = b.MakeOutput();
+    auto* sequence = b.MakeIntermediate();
+    auto& scan = b.AddNode("Scan", std::vector<NodeArg*>(scan_inputs.begin(), scan_inputs.end()), {final_state, sequence});
+    scan.AddAttribute("num_scan_inputs", int64_t{3});
+    scan.AddAttribute("body", body);
+    auto* packed = b.MakeIntermediate();
+    b.AddNode("Transpose", {sequence}, {packed}).AddAttribute("perm", std::vector<int64_t>{1, 0, 2, 3});
+    b.AddNode("Reshape", {packed, b.MakeInitializer<int64_t>({3}, {0, 0, 4})}, {b.MakeOutput()});
+    b.SetGraphOutputs();
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    const auto original = test.model.ToProto().SerializeAsString();
+    Rule rule{"LinearAttentionScan", library.GetPattern("P"),
+              "(q,k,v,past)=>{output,state=com.microsoft.LinearAttention(q,k,v,past,None,None,"
+              "q_num_heads=1,kv_num_heads=1,scale=0.5,update_rule='linear');return output,state}",
+              {},
+              {{kOnnxDomain, 17, 17}, {kMSDomain, 1, 1}}};
+    Statistics statistics;
+    ASSERT_STATUS_OK(PatternRewriter({rule}).Run(test.graph, statistics));
+    ASSERT_EQ(statistics.rewrites, 1u);
+    EXPECT_EQ(Count(test.graph, "Scan"), 0u);
+    EXPECT_EQ(Count(test.graph, "LinearAttention"), 1u);
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    auto execute = [&](const std::string& serialized, std::vector<OrtValue>& outputs) {
+      SessionOptions options;
+      options.graph_optimization_level = TransformerLevel::Default;
+      options.intra_op_param.thread_pool_size = 1;
+      InferenceSessionWrapper session{options, GetEnvironment()};
+      std::istringstream stream(serialized);
+      ORT_RETURN_IF_ERROR(session.Load(stream));
+      ORT_RETURN_IF_ERROR(session.Initialize());
+      return session.Run(RunOptions{}, b.feeds_, b.output_names_, &outputs);
+    };
+    std::vector<OrtValue> before, after;
+    ASSERT_STATUS_OK(execute(original, before));
+    ASSERT_STATUS_OK(execute(test.model.ToProto().SerializeAsString(), after));
+    ASSERT_EQ(before.size(), 2u);
+    ASSERT_EQ(after.size(), 2u);
+    for (size_t output = 0; output < before.size(); ++output) {
+      const Tensor& expected = before[output].Get<Tensor>();
+      const Tensor& actual = after[output].Get<Tensor>();
+      ASSERT_EQ(expected.Shape(), actual.Shape());
+      for (int64_t i = 0; i < expected.Shape().Size(); ++i)
+        EXPECT_NEAR(expected.Data<float>()[i], actual.Data<float>()[i], 1e-5f);
+    }
+  }
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

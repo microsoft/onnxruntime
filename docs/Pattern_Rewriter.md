@@ -116,6 +116,75 @@ other roots/subgraphs. After introducing pattern disjunction below,
 [matching alternatives at one root](#matching-alternatives-at-one-root) describes
 first-match ordering and the separate ordered visitor API.
 
+### Control-flow graph attributes and whole-graph matching
+
+A library pattern can constrain a **GRAPH** attribute using `attribute=PatternName`:
+
+```text
+pattern Branch(x:float[N]) { y=Identity(x); return y }
+pattern Conditional(condition) {
+  result=If(condition,then_branch=Branch,else_branch=Branch)
+  return result
+}
+```
+
+The attribute identifier must name a concrete library definition (including an
+alternative group). Forward references are supported; recursive references are
+rejected. A name that is also a declared tensor/attribute binding is ambiguous
+and rejected. Other identifier attributes retain their ordinary capture meaning.
+Every graph owned by a matched node must have an explicit pattern constraint.
+Missing graph attributes do not match. `GRAPHS` attributes are not supported.
+Matching uses the resolved `Node::GetGraphAttribute`, not the attribute's original
+serialized graph.
+
+`PatternLibrary::GetGraphPattern(name)` retrieves a graph-entry pattern;
+`pattern.MatchGraph(graph, result)` matches an entire resolved graph independently
+of a rewriter. Its ordered return values match `Graph::GetOutputs()` positionally.
+Returns may come from unrelated operators, alias the same value more than once,
+or pass through formal inputs without any operators. Ordinary `GetPattern`,
+`MatchAt`, and rewrite-rule entries retain their single-root restrictions; the
+graph-entry API does not enable whole-graph replacement of these output aliases.
+Like `MatchAt`, `MatchGraph` clears the result on nonmatch and preserves it on
+configuration/status errors.
+
+The first `Graph::GetInputs().size()` tensor parameters in the pattern header
+bind to the graph's formal inputs in order, including unused formals. This API
+excludes initializer inputs. Any remaining header parameters bind structurally
+to lexical captures or immutable local initializers; unused extra parameters
+do not match. Attribute parameters are not formal tensor inputs. The match must
+cover **every operator**, except exact `Constant` producers consumed and validated
+by literal patterns. Unused initializers are permitted, but unmatched `Constant`
+operators and output-unreachable extra work are not. Clean up dead work before
+matching an unoptimized function body.
+
+Nested bindings are separate matches, not nodes in the outer deletion set.
+`match.instance("result.then_branch")` provides the body `BindingView`; an
+unassigned final operator uses `root.then_branch`. Composition prefixes these
+paths in the same way as ordinary pattern instances. The view's `graph()` is the
+owning resolved graph; `valueOf`, dimensions, element types, and further instances
+are scoped to that match. Type/dimension names do not implicitly unify across
+graphs: a semantic checker must explicitly compare parent and body bindings.
+Each concrete alternative gets fresh matching state. Graph references participate
+in dependency-cycle detection, the 64-level dependency limit, the transitive
+256-call expansion limit, and the 64-concrete-plan limit.
+
+A replacement may name a scoped body **input**, for example
+`(result.then_branch.x)=>Identity(result.then_branch.x)`. It is promoted only if
+resolved implicit-input identities prove it is visible in the replacement graph:
+every intervening graph must capture that value, with no formal-input,
+initializer, or producer shadow. Body-local initializers, formal inputs,
+produced tensors, and captures produced inside the outer deletion set cannot
+escape through this mechanism. All participating body operators must satisfy the
+outer rule's provider, layer, and opset policy. A semantic checker remains
+responsible for branch equivalence, iteration counts, state/output ordering,
+Scan axes/directions, and other operator semantics.
+
+Deleting the parent deletes its bodies; inner nodes are never independently
+deleted by the outer rewrite. Matches and views borrow graph objects and become
+invalid after graph mutation (including parent deletion). Engine replacements
+still cannot construct control-flow nodes. This feature is opt-in through rules;
+it does not register a production optimizer.
+
 ### Pattern syntax and shared replacement notation
 
 Definitions start with named inputs and `=>`. Braces around the body are optional;
