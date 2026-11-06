@@ -44,8 +44,8 @@ correction. Link to existing design documentation or domain skills for detailed 
 
 Keep a path-scoped instruction file short when it can route to one owning subsystem skill. Put the skill's shared
 procedure and completion criteria in `SKILL.md`, and conditional checks in focused references. For example,
-[`code-review-webgpu`](../.github/skills/code-review-webgpu/SKILL.md) routes kernel, arithmetic, layout, cache, runtime,
-device, plugin, build, graph, profiling, registration, and validation work to focused references. Its
+[`code-review-webgpu`](../.github/skills/code-review-webgpu/SKILL.md) uses eight references: kernels/registration,
+shaders/identity/numerics/layout, runtime/plugin contracts, devices, builds, graph transformations, profiling, and validation. Its
 [coverage audit](WebGPU_Review_Coverage.md) records the source boundaries and historical evidence behind the categories.
 The routes apply to implementation and review; the generic `code-review` skill
 continues to own the review workflow and finding format.
@@ -54,6 +54,9 @@ Give each reference a clear ownership boundary and a predicate describing which 
 The entry point owns a reading table whose "When to read" predicates can be evaluated from the task or diff without
 opening the targets. Select every matching row, including indirect effects through shared callers. Do not treat
 the rows as mutually exclusive or load every reference by default.
+Combine checks generally used together; keep independently triggered workflows separate. Open each selected file
+once and apply its relevant sections. Keep wording concise while preserving triggers, invariants, corrections,
+exceptions, and regression checks.
 
 Gate domain-skill selection on a direct or traceable effect on that domain. A shared filename or passing keyword
 does not establish applicability. For example, unrelated CPU/CUDA changes and shared optimizer/test edits without
@@ -90,9 +93,26 @@ and ignored evidence are not substitutes for repository files available to the h
 After requesting a review, inspect any skill attributions on review comments and the linked review session for
 available evidence of which guidance was used. A local structure/link check establishes discoverability, not that
 a hosted review selected every reference or detected every defect. Record inaccessible references and unavailable
-GPU/runtime checks as validation gaps. Guidance does not provide a GPU runner by itself.
+GPU/runtime checks as validation gaps. WebGPU reviews do not configure/build, install dependencies, execute
+validation workloads, or trigger CI. CI bots own build/test execution; reviewers inspect the source and available
+results and identify evidence still needed.
 
 See GitHub's [skill setup](https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/customize-cloud-agent/add-skills),
 [repository instruction settings](https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/add-custom-instructions/add-repository-instructions),
 and [Copilot review guidance](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/use-code-review)
 when checking current platform support. Do not assume IDE review surfaces have identical capabilities.
+
+### Trial before merging
+
+Keep new guidance unmerged during a trial. Selected draft PRs can carry it on their head branch alongside real
+code changes, because Copilot reads guidance from that branch. A documentation-only review does not exercise
+WebGPU defect checks.
+
+Compare the same code revision with and without the guidance over a chosen trial period. Include WebGPU changes
+and unrelated changes to check finding quality, false positives, and scope exclusion. Record guidance/code SHAs,
+review links, available skill attributions/session evidence, and validation gaps in trial notes. These reviews
+produce real PR comments; this procedure does not provide a silent shadow mode.
+
+Adjust the guidance from verified results before merging. Merge makes it available to subsequent reviews whose
+head branches include it, subject to settings and skill selection; it does not itself request a review or prove
+adoption. Run trials only on authorized PRs; changing settings or inviting reviewers is a separate action.

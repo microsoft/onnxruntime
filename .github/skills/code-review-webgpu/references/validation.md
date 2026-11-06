@@ -1,76 +1,69 @@
 # Validation
 
-**Owns:** Evidence establishing WebGPU behavior, shader-key consistency, target
-coverage, and regression-test routing. Performance methods live in
-[profiling and performance](profiling-and-performance.md). General build/test mechanics stay in the
-repository build/test skills.
-**Update when:** Validation tools, test routing, CI runtime coverage, or the
-evidence required for a changed variant changes. Recheck live workflows rather
-than treating a past CI configuration as a permanent coverage guarantee.
+**Owns:** WebGPU execution evidence, shader-key consistency, target coverage, and
+regression routing. [Performance methods](profiling-and-performance.md) and
+repository build/test mechanics have separate owners. Review inspects source
+and existing CI results; **do not build, configure, install dependencies, trigger
+CI, or run the validation commands below**. CI bots execute build/test validation.
+**Update when:** Tools, test routing, CI coverage, or variant-evidence needs change.
+Recheck live workflows rather than relying on past coverage.
 
 ## Select tests that execute the change
 
-Every behavior change needs an `OpTester` or WebGPU-specific test that runs on
-WebGPU. Cover each new shader variant: f16/f32, vectorized/scalar, supported
-ranks, broadcast/non-broadcast, empty tensors, and large tensors for indexing
-changes. Shared `OpTester` tests use WebGPU when built unless excluded; verify
-the intended path actually executes, with nonzero test counts and skips
-reported separately.
+Every behavior change needs an `OpTester`/WebGPU test executing it on WebGPU.
+Cover each new variant across f16/f32, vector/scalar, every supported rank,
+broadcast/non-broadcast, empty tensors, and large tensors for indexing changes.
+Shared `OpTester` tests include WebGPU unless excluded: verify the path, nonzero
+counts, and separate skips. Explain exclusions of `kWebGpuExecutionProvider` and
+tolerance changes; f16 may justify tolerance, while relaxed f32 can hide defects
+and needs error analysis.
 
-An exclusion of `kWebGpuExecutionProvider` or a looser tolerance needs a stated
-reason. f16 precision can justify tolerance; relaxed f32 tolerance usually
-hides a defect and needs evidence.
-
-- Acquire the provider and check required capabilities before constructing
-  `OpTester`. `GTEST_SKIP()` returns only from its containing function; a helper
-  skipping after construction can leave a tester that never ran and traps in
-  Debug. Disable CPU fallback when a regression claims WebGPU execution.
-- Provider availability does not prove optional f16 or subgroup-matrix support.
-  Guard native-context probes/includes for plugin adapter builds; use supported
-  capability APIs. Choose nonzero, distinguishable inputs that expose row/head,
-  component, stride, and candidate-order errors.
-- For cache variants, execute both orders in one context and control cold/warm
-  state and earlier session lifetimes. For tiled paths, verify checked output
-  from every new wave, BK choice, and tail, not only padded/inactive lanes.
-- For test moves/extraction, preserve provider setup, fallbacks, options, dtype
-  tolerances, conditional compilation, fixtures, and build-source registration.
-  Remove unused generators/binaries only after checking consumers. Shared tests
-  also need other-provider review; new test location alone adds no coverage.
+- Acquire provider/capabilities **before** constructing `OpTester`. `GTEST_SKIP()`
+  returns only from its function; helper skips after construction can leave an
+  unrun tester that traps in Debug. Disable CPU fallback for WebGPU regressions.
+- Provider availability does not prove f16/subgroup-matrix support. Guard native
+  probes/includes in plugin adapter builds and use supported capability APIs.
+  Choose nonzero, distinguishable data exposing row/head/component/stride/order errors.
+- Cache tests need both orders in one context, controlled cold/warm state and
+  earlier-session lifetimes. Tiled tests must check output from every new wave,
+  BK choice, and tail, including active lanes.
+- Prefer test-only storage limits to huge allocations for segmentation coverage.
+  Count every segmented binding; gate optional-output cases on device limits
+  before constructing `OpTester`, retaining cases supported by minimum limits.
+- Test moves/extraction must preserve provider setup, fallbacks/options,
+  tolerances, guards, fixtures, and source registration. Check consumers before
+  deleting generators/binaries; review other providers for shared tests.
+  Relocation alone adds no coverage.
 
 ## Coverage and claims
 
-- Inspect the current jobs and their actual hardware, backend, and workload.
-  Distinguish build-only, software-adapter, and hardware execution coverage.
-  Vendor-specific changes need results from that hardware in the PR description,
-  or an explicit gap.
-- Follow `ort-build` and `ort-test`, plus the active checkout's local build
-  instructions. Do not substitute CPU fallback or another branch's binary for
-  WebGPU runtime evidence. Build-only is valid evidence only for compilation.
-
-In a hosted PR review, inspect the changed tests and available CI evidence.
-Run checks when the review environment supports them; if the required GPU,
-backend, or dependency is unavailable, state the gap and the check needed.
-Distinguish a missing regression test from an existing test that could not be
-executed in the review environment. Do not claim a local or hardware run from
-source inspection alone.
-
-Without hardware on Linux, load `webgpu-local-testing` for lavapipe's scope and
-limitations; it does not establish hardware/vendor coverage.
+- Assess source, tests, and existing CI evidence; record unverified requirements
+  for CI/author follow-up. Intentionally manual tests do not require new
+  CI wiring unless the repository contract or changed behavior requires it.
+- Inspect current jobs' hardware/backend/workload; separate compilation,
+  software adapters, and hardware runs. Vendor changes need that hardware's
+  results in the PR description or an explicit gap.
+- Check CI configuration against `ort-build`/`ort-test` and checkout instructions.
+  CPU fallback or another branch's binary is not WebGPU evidence; build-only
+  proves compilation.
+- Local and hosted reviews inspect tests/CI without launching validation. Name unavailable
+  GPU/backend/dependencies and the needed check. Distinguish missing tests from
+  tests present but unexecuted; source inspection proves no runtime result.
+- For Linux software-adapter evidence, consult `webgpu-local-testing` only for
+  lavapipe's scope/limits; its build/run workflow is outside review, and its
+  results do not establish hardware/vendor coverage.
 
 ## Shader generation and cache keys
 
-Run the shader-key validation used by nightly CI when shader generation or
-identity changes. Find the current job by searching for the validator or
-`ORT_WEBGPU_EP_SHADER_DUMP_FILE`; workflow filenames can move. Set that environment
-variable to a fresh task-specific dump path and run the active build's provider
-tests for the changed operators. From the repository root, pass the dump on stdin
-to `node .github/actions/webgpu-validate-shader-key/validate-shader-key.js`.
-Check both commands' exit codes. A passing
-validator on an empty dump or an unexercised specialization proves nothing.
-The dump includes WGSL for each program and key.
+For codegen/identity changes, assess nightly CI or author-provided evidence.
+Find the job via the validator or `ORT_WEBGPU_EP_SHADER_DUMP_FILE`: it should
+use a fresh dump from the reviewed build's affected provider tests and pass it
+on stdin, from the repository root, to
+`node .github/actions/webgpu-validate-shader-key/validate-shader-key.js`.
+Verify recorded exit codes and a nonempty dump exercising differing specializations;
+the dump contains each program's WGSL/key. Empty/unexercised validation proves nothing.
 
-For WebGPU validation errors, set EP option `validationMode` (config key
-`ep.webgpuexecutionprovider.validationMode`) to `full`. Check the effective
-defaults/options in `WebGpuContextConfig` and the public parsers in the reviewed
-revision. For template-generator changes, run
-`python tools/python/wgsl_template/test/run_tests.py`.
+For WebGPU errors, evidence should use `validationMode`
+(`ep.webgpuexecutionprovider.validationMode`) set to `full`; inspect effective
+defaults/options in `WebGpuContextConfig` and public parsers. Template-generator
+changes need results from `python tools/python/wgsl_template/test/run_tests.py`.

@@ -30,6 +30,14 @@ For implementation, apply the same checks to the resulting behavior. Pin the
 base and head or working state; inspect changed functions in full, their base
 versions, controlling code, callers, and tests. Do not review only diff hunks.
 
+Reviewers do **not** configure or build ORT/Dawn, install dependencies, run tests
+or validation workloads, or trigger CI jobs. CI bots own build/test execution.
+Inspect source, test coverage, and existing CI evidence; report missing, failed,
+or insufficient validation.
+Validation commands in references identify evidence to assess, not actions to
+execute during review. Implementation tasks follow their separately authorized
+workflow; this review skill never initiates a build.
+
 ## Select the checks
 
 Read the live table and load **every matching row**. Routes are cumulative:
@@ -38,22 +46,18 @@ just filenames; follow shared helpers to all affected operators. If relevance
 is unclear, inspect the controlling code before marking a row inapplicable.
 Re-evaluate the table when the scope grows.
 
-Open the applicable reference files before judging the change; the table only
-selects checks. If a required reference cannot be read, name it as a review gap.
+Open each selected file once and apply every relevant section; related checks
+share a file to avoid repeated loading. The table selects checks, not substitutes
+for them. Name unreadable required references as review gaps.
 
 | When to read | Reference |
 | --- | --- |
-| Authoring a new kernel, or changing host inputs, shape computation, program setup, GPU-derived indices, or host/GPU input placement | [Kernel contract](references/kernel-contract.md) |
-| Changing generated WGSL, template parameters, program metadata, specialization, provider options, or program-cache behavior | [Cache identity](references/cache-identity.md) |
-| Changing shader execution, indexing, synchronization, dispatch, workgroup/subgroup sizing, or bindings | [Dispatch and WGSL](references/dispatch-and-wgsl.md) |
-| Changing arithmetic, reductions, casts, quantization, masks, ordering, or accuracy options | [Numerical semantics](references/numerical-semantics.md) |
-| Changing vectorization, tensor views, packed/quantized storage, layout, or prepacking | [Tensor layout and prepacking](references/tensor-layout-and-prepacking.md) |
-| Adding multi-thread support or changing thread safety, callbacks, shared mutable state, allocation/cache policy, transfers, external data, capture, or resource lifetime | [Runtime and memory](references/runtime-and-portability.md) |
+| Authoring kernels; changing host inputs/placement, shapes, program setup, GPU-derived indices, supported behavior/domain/opset/type/layout, or registration | [Kernels and registration](references/kernels.md) |
+| Changing WGSL/templates, program metadata/specialization/options/cache, execution/indexing/synchronization/dispatch/workgroups/subgroups/bindings, arithmetic/reductions/casts/quantization/masks/ordering/accuracy, or vectorization/views/packing/layout/prepacking | [Shaders, identity, numerics, and layout](references/shaders.md) |
+| Adding multi-thread support; changing thread safety, callbacks/shared state, allocation/cache policy, transfers/external data, capture/lifetimes, plugin adapters/capabilities/API negotiation/exports, or static/shared plugin integration | [Runtime and plugin contracts](references/runtime.md) |
 | Changing provider-option parsing, context reuse, adapter selection, feature enable/disable, or hardware fast-path eligibility | [Devices and features](references/devices-and-features.md) |
-| Changing plugin adapters, capabilities, API/version negotiation, exported callbacks, or static/shared plugin integration | [Plugin contracts](references/plugin-contracts.md) |
 | Rolling Dawn or changing native/WASM build boundaries, Dawn/DXC, patches/manifests, deployment artifacts, or release automation | [Builds and dependencies](references/build-and-dependencies.md) |
 | Changing graph transformations, fusion, partitioning, layout conversion, or optimizer/provider support predicates | [Graph transformations](references/graph-transformations.md) |
-| Changing an operator's supported behavior, domain, opset, types, host-read inputs, or registration | [Registration](references/registration.md) |
 | Changing profiling, timestamps, instrumentation, performance claims, or hardware workarounds | [Profiling and performance](references/profiling-and-performance.md) |
 | Selecting or assessing validation for any WebGPU behavior/build change, or changing WebGPU/shared OpTester tests, exclusions, or tolerances | [Validation](references/validation.md) |
 
@@ -89,6 +93,9 @@ PR status, raw evidence, and experiments in the task handoff rather than here.
 Replace superseded checks as the implementation evolves. Keep examples only
 when they clarify an otherwise ambiguous rule; historical PR lists and audit
 snapshots belong in maintenance evidence, outside the active references.
+Combine checks normally used together; keep independently triggered workflows
+separate. Write concise triggers, invariants, corrections, and regression checks,
+preserving conditions and exceptions when shortening text.
 When extending categories, consult the source/evidence map and limits in
 [WebGPU review coverage](../../../docs/WebGPU_Review_Coverage.md); ordinary
 reviews do not need to load that audit or the historical corpus.
