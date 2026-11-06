@@ -440,15 +440,15 @@ TEST(TransformerTest, IsIsolatedFp16NodeOnCpuTest) {
 }
 
 // Regression test for a Level2+ fusion transformer assigning a fused node to the CPU EP without
-// checking that a kernel actually exists for it. com.microsoft.BiasGelu only has a CPU kernel for
-// float, not float16, but fusing an fp16 Add and an fp16 Gelu (both of which do have CPU kernels)
-// can still produce a CPU-assigned fp16 BiasGelu node. The node here has no input edges (it only
+// checking that a kernel actually exists for it. com.microsoft.QuickGelu only has a CPU kernel for
+// float, not float16, but fusing an fp16 Sigmoid and an fp16 Mul (both of which do have CPU kernels)
+// can still produce a CPU-assigned fp16 QuickGelu node. The node here has no input edges (it only
 // consumes graph inputs) and produces a graph output, so the pre-fix "isolated fp16 node" check
 // would have skipped it entirely, leaving it fp16 and causing kernel lookup to fail when a session
 // is initialized with this graph. IsFp16NodeOnCpuWithoutKernel must force it to fp32 regardless.
 TEST(TransformerTest, Fp16FusedNodeWithNoCpuKernelForcedToFp32) {
 #if defined(DISABLE_CONTRIB_OPS)
-  GTEST_SKIP() << "BiasGelu is unavailable when contrib ops are disabled.";
+  GTEST_SKIP() << "QuickGelu is unavailable when contrib ops are disabled.";
 #endif
   auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = model->MainGraph();
@@ -457,14 +457,13 @@ TEST(TransformerTest, Fp16FusedNodeWithNoCpuKernelForcedToFp32) {
   tensor_float_16.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
 
   onnxruntime::NodeArg a_def("A", &tensor_float_16),
-      b_def("B", &tensor_float_16),
       c_def("C", &tensor_float_16);
 
-  auto& bias_gelu = graph.AddNode("bias_gelu", "BiasGelu", "fp16 fusion output with no CPU fp16 kernel",
-                                  ArgMap{&a_def, &b_def}, ArgMap{&c_def}, nullptr, kMSDomain);
+  auto& quick_gelu = graph.AddNode("quick_gelu", "QuickGelu", "fp16 fusion output with no CPU fp16 kernel",
+                                   ArgMap{&a_def}, ArgMap{&c_def}, nullptr, kMSDomain);
   // Simulate the fusion transformer assigning the fused node the CPU EP without checking for a kernel.
-  bias_gelu.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
-  graph.SetOutputs({bias_gelu.OutputDefs()[0]});
+  quick_gelu.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+  graph.SetOutputs({quick_gelu.OutputDefs()[0]});
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -483,14 +482,13 @@ TEST(TransformerTest, Fp16FusedNodeWithNoCpuKernelForcedToFp32) {
            DataTypeImpl::TypeFromProto(*node_arg.TypeAsProto()) == type;
   };
 
-  EXPECT_TRUE(is_type(*bias_gelu.InputDefs()[0], DataTypeImpl::GetTensorType<float>()));
-  EXPECT_TRUE(is_type(*bias_gelu.InputDefs()[1], DataTypeImpl::GetTensorType<float>()));
-  EXPECT_TRUE(is_type(*bias_gelu.OutputDefs()[0], DataTypeImpl::GetTensorType<float>()));
-  EXPECT_EQ(bias_gelu.GetExecutionProviderType(), onnxruntime::kCpuExecutionProvider);
+  EXPECT_TRUE(is_type(*quick_gelu.InputDefs()[0], DataTypeImpl::GetTensorType<float>()));
+  EXPECT_TRUE(is_type(*quick_gelu.OutputDefs()[0], DataTypeImpl::GetTensorType<float>()));
+  EXPECT_EQ(quick_gelu.GetExecutionProviderType(), onnxruntime::kCpuExecutionProvider);
 
-  // Cast A and B to fp32 on the way in, and cast the output back to fp16 for the graph output.
+  // Cast A to fp32 on the way in, and cast the output back to fp16 for the graph output.
   auto ops = CountOpsInGraph(graph);
-  EXPECT_EQ(ops["Cast"], 3);
+  EXPECT_EQ(ops["Cast"], 2);
 }
 
 // Contrast case for Fp16FusedNodeWithNoCpuKernelForcedToFp32: Round has a genuine CPU fp16 kernel,
