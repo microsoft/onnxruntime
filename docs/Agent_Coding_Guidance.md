@@ -44,8 +44,8 @@ correction. Link to existing design documentation or domain skills for detailed 
 
 Keep a path-scoped instruction file short when it can route to one owning subsystem skill. Put the skill's shared
 procedure and completion criteria in `SKILL.md`, and conditional checks in focused references. For example,
-[`code-review-webgpu`](../.github/skills/code-review-webgpu/SKILL.md) uses eight references: kernels/registration,
-shaders/identity/numerics/layout, runtime/plugin contracts, devices, builds, graph transformations, profiling, and validation.
+[`code-review-webgpu`](../.github/skills/code-review-webgpu/SKILL.md) uses three broad categories: operators and computation,
+execution and memory, and platform support and release. Test/performance evidence belongs to shared review steps.
 The routes apply to implementation and review; the generic `code-review` skill
 continues to own the review workflow and finding format.
 
@@ -53,8 +53,9 @@ Give each reference a clear ownership boundary and a predicate describing which 
 The entry point owns a reading table whose "When to read" predicates can be evaluated from the task or diff without
 opening the targets. Select every matching row, including indirect effects through shared callers. Do not treat
 the rows as mutually exclusive or load every reference by default.
-Combine checks generally used together; keep independently triggered workflows separate. Open each selected file
-once and apply its relevant sections. Keep wording concise while preserving triggers, invariants, corrections,
+Use plain category names and separate responsibilities. Keep strongly coupled implementation parts, such as kernel
+host code and shaders, together. Give each check one owner; a PR may affect several categories. Read only relevant
+sections within large categories. Keep wording concise while preserving triggers, invariants, corrections,
 exceptions, and regression checks.
 
 Gate domain-skill selection on a direct or traceable effect on that domain. A shared filename or passing keyword

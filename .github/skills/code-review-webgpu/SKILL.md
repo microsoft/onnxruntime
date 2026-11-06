@@ -1,6 +1,6 @@
 ---
 name: code-review-webgpu
-description: Use only for changes with a direct or traceable effect on the native WebGPU EP, including shared tests, optimizers, dependencies, packaging, and native defects exposed by JSEP fixes. Cover new kernel authoring, WGSL, numerics, packing, caches, thread safety, runtime, devices, plugin ABI, Dawn rolls, builds, profiling, registration, and validation, locally or in GitHub Copilot. Apply during implementation too. Exclude unrelated CPU/CUDA or shared-file edits without WebGPU impact. Deprecated JSEP follows its own policy; use native checks only where affected. Use code-review for review workflow.
+description: Review native WebGPU changes through operators and computation, execution and memory, and platform support and release. Use only for direct or traceable WebGPU effects, including affected shared code and native defects exposed by JSEP fixes. Apply during implementation too. Exclude unrelated CPU/CUDA or shared-file edits without WebGPU impact. Deprecated JSEP follows its own policy. Use code-review for review workflow.
 ---
 
 # Native WebGPU EP review
@@ -42,30 +42,39 @@ workflow; this review skill never initiates a build.
 
 ## Select the checks
 
-Read the live table and load **every matching row**. Routes are cumulative:
-one kernel change can require several references. Classify by behavior, not
-just filenames; follow shared helpers to all affected operators. If relevance
-is unclear, inspect the controlling code before marking a row inapplicable.
-Re-evaluate the table when the scope grows.
+The three categories separate responsibilities, not C++ versus WGSL files or
+quality concerns. Kernel host code and shaders implement one computation and
+belong together. Testing and performance evidence are shared review steps.
 
-Open each selected file once and apply every relevant section; related checks
-share a file to avoid repeated loading. The table selects checks, not substitutes
-for them. Name unreadable required references as review gaps.
+| Category | When to read | Reference |
+| --- | --- | --- |
+| Operators and computation | Operator/schema support, host inputs/shapes, registration and native/plugin acceptance, WGSL/templates, dispatch/indexing/barriers, cache keys, numerics, layouts/prepacking, graph rewrites/fusion/partitioning | [Computation](references/computation.md) |
+| Execution and memory | Submission/order, threads and shared state, callbacks, buffers/allocators/transfers/external data, capture/replay, cache storage/lifetime, profiling/timestamp/trace implementation | [Execution](references/execution.md) |
+| Platform support and release | Public options, context/device selection, enabled features and hardware restrictions, host/plugin API/ABI, native/WASM/static/shared integration, Dawn/DXC rolls/patches/manifests, builds/packages/release tools | [Platform](references/platform.md) |
 
-| When to read | Reference |
-| --- | --- |
-| Authoring kernels; changing host inputs/placement, shapes, program setup, GPU-derived indices, supported behavior/domain/opset/type/layout, or registration | [Kernels and registration](references/kernels.md) |
-| Changing WGSL/templates, program metadata/specialization/options/cache, execution/indexing/synchronization/dispatch/workgroups/subgroups/bindings, arithmetic/reductions/casts/quantization/masks/ordering/accuracy, or vectorization/views/packing/layout/prepacking | [Shaders, identity, numerics, and layout](references/shaders.md) |
-| Adding multi-thread support; changing thread safety, callbacks/shared state, allocation/cache policy, transfers/external data, capture/lifetimes, plugin adapters/capabilities/API negotiation/exports, or static/shared plugin integration | [Runtime and plugin contracts](references/runtime.md) |
-| Changing provider-option parsing, context reuse, adapter selection, feature enable/disable, or hardware fast-path eligibility | [Devices and features](references/devices-and-features.md) |
-| Rolling Dawn or changing native/WASM build boundaries, Dawn/DXC, patches/manifests, deployment artifacts, or release automation | [Builds and dependencies](references/build-and-dependencies.md) |
-| Changing graph transformations, fusion, partitioning, layout conversion, or optimizer/provider support predicates | [Graph transformations](references/graph-transformations.md) |
-| Changing profiling, timestamps, instrumentation, performance claims, or hardware workarounds | [Profiling and performance](references/profiling-and-performance.md) |
-| Selecting or assessing validation for any WebGPU behavior/build change, or changing WebGPU/shared OpTester tests, exclusions, or tolerances | [Validation](references/validation.md) |
+Select **every affected category**, including indirect shared consumers. A PR
+can change several responsibilities; do not assign it exactly one label.
+Using an unchanged allocator/device API does not alone select another category;
+check that the changed caller obeys its contract, and expand scope if it does not.
+Inspect controlling code before excluding an uncertain category; reselect when
+scope grows. Read relevant sections within selected references, rather than all
+sections of every large category. Name unreadable required sections as gaps.
+
+Keep boundaries explicit: cache-key correctness belongs to computation, cache
+storage/thread safety to execution; native/plugin operator acceptance belongs
+to computation, host ABI compatibility to platform. Layout math belongs to
+computation, buffer lifetime to execution. Each check has one owner.
+
+For every WebGPU behavior/build review, also assess the relevant sections of
+[test and performance evidence](references/validation.md): regression coverage,
+existing CI, shader-key evidence for codegen changes, and measurements for
+performance claims. These steps do not launch tests or builds and are not a
+fourth subsystem category. Test-only changes can use these shared steps without
+loading an unrelated implementation category.
 
 ## Complete the review
 
-Before reporting, account for every reading-table row: checked with source/test
+Before reporting, account for all three categories: checked with source/test
 evidence, inapplicable with a reason, or unverified with the check that would
 settle it. Keep this brief in the review or handoff; do not dump all checklists
 into the report. A green build, skipped test, CPU fallback, or one vendor's run
@@ -89,12 +98,13 @@ impact, and correction. For WebGPU findings:
 
 This skill owns recurring native WebGPU implementation/review checks. Each
 reference states its boundary and when its meaning needs updating. Put a rule
-with one owner and link to it from other routes. Add or change the reading row
-alongside its reference; an unrouteable check is incomplete guidance. Keep
+with one owner and link to it from other routes. Update the category route or
+shared-step trigger alongside its reference; an unrouteable check is incomplete guidance. Keep
 PR status, raw evidence, and experiments in the task handoff rather than here.
 Replace superseded checks as the implementation evolves. Keep examples only
 when they clarify an otherwise ambiguous rule; historical PR lists and audit
 snapshots belong in maintenance evidence, outside the active references.
-Combine checks normally used together; keep independently triggered workflows
-separate. Write concise triggers, invariants, corrections, and regression checks,
-preserving conditions and exceptions when shortening text.
+Organize by responsibility; keep strongly coupled parts of one computation
+together. Keep shared evidence steps outside the category list. Write concise
+triggers, invariants, corrections, and regression checks, preserving conditions
+and exceptions when shortening text.

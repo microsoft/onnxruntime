@@ -1,12 +1,11 @@
-# Validation
+# Test and performance evidence
 
-**Owns:** WebGPU execution evidence, shader-key consistency, target coverage, and
-regression routing. [Performance methods](profiling-and-performance.md) and
-repository build/test mechanics have separate owners. Review inspects source
-and existing CI results; **do not build, configure, install dependencies, trigger
-CI, or run the validation commands below**. CI bots execute build/test validation.
-**Update when:** Tools, test routing, CI coverage, or variant-evidence needs change.
-Recheck live workflows rather than relying on past coverage.
+**Owns:** Shared review steps for test coverage, existing CI evidence, shader-key
+validation evidence, and performance claims. This is not a subsystem category.
+**Update when:** Test tools/routing, CI coverage, or measurement methods change.
+Read relevant sections for every WebGPU behavior/build review. Do not configure,
+build, install dependencies, run workloads/commands below, or dispatch CI.
+CI bots execute validation; reviewers assess its evidence and record gaps.
 
 ## Select tests that execute the change
 
@@ -67,3 +66,13 @@ For WebGPU errors, evidence should use `validationMode`
 (`ep.webgpuexecutionprovider.validationMode`) set to `full`; inspect effective
 defaults/options in `WebGpuContextConfig` and public parsers. Template-generator
 changes need results from `python tools/python/wgsl_template/test/run_tests.py`.
+
+## Performance evidence
+
+- Claims need before/after model/shapes/dtype, GPU/backend/driver, options/build,
+  warmup/repetitions/method (`docs/PR_Guidelines.md`). Separate initialization/
+  prepack/compile, steady runs, and replay; control partitions, CPU fallback,
+  transfers, and cold/warm caches.
+- Tie regression concerns to per-run compilation, readback/copies, lost
+  vectorization, padded waves, or retained memory. Less theoretical work does
+  not prove lower latency.

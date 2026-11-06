@@ -1,9 +1,10 @@
-# Runtime, thread safety, and plugin contracts
+# Execution and memory
 
-**Owns:** Thread/session/callback state, capture, memory/transfers, and plugin ABI.
-**Update when:** Execution/concurrency, callbacks, recording, allocation/loading,
-host negotiation, APIs/exports, memory identity, or deployment contracts change.
-Device configuration lives in [devices and features](devices-and-features.md).
+**Owns:** How work is submitted and resources are shared/retained: threads,
+callbacks, buffers, transfers, capture/replay, program-cache storage, and profiling code.
+**Update when:** Scheduling, synchronization, resource ownership, callbacks, or event collection changes.
+Cache-key correctness belongs to [computation](computation.md#cache-identity);
+host/API compatibility belongs to [platform support and release](platform.md#plugin-contracts).
 
 ## Thread-safety contract
 
@@ -40,7 +41,7 @@ Establish implementation, host version, mode, and sharing boundary using the liv
 - `ComputeInternal` is `const`; concurrent plugin sessions share context/cache.
   Flag per-run mutable members, device objects/per-run data in local statics,
   and unsynchronized globals. Session-varying WGSL options need
-  [cache identity](shaders.md#cache-identity).
+  [cache identity](computation.md#cache-identity).
 - Check delivery mode/thread, result publication, failed waits, cancellation,
   device loss, and teardown. Failed waits do not cancel delivery. Preserve
   resources without retaining dead sessions indefinitely; contain callback/ABI failures.
@@ -96,29 +97,26 @@ plugin/WASM/device gaps via [validation](validation.md).
   identity, upload completion, and failure ownership. Check ordinary/accelerated
   paths and platform guards; unsupported modes must fail clearly or fall back.
 
-## Plugin contracts
+## Profiling and traces
 
-- Distinguish release version, build SDK/API bounds, minimum host, and runtime
-  negotiation. Verify API and patch-release predicates in `ep/runtime_compatibility.*`;
-  one fixed release line does not cover intervening lines. Preserve conservative
-  compatibility/overrides; mocks do not prove multi-runtime GPU support.
-- Initialize APIs before wrappers or exception-to-status macros; failed
-  negotiation still needs supported status reporting. Audit transitive
-  allocation/Free/destruction under `noexcept` C callbacks; contain exceptions
-  using boundary conventions and preserve cleanup.
-- Compare native `GetCapability` and plugin `ep/ep.cc` predicates for affected
-  operators/attributes/dtypes/features/layouts. Shared source does not prove
-  acceptance parity. Check evidence of graph acceptance/execution, rejection, and
-  supported CPU partition boundaries.
-- Distinguish `OrtMemType`, `OrtDeviceMemoryType`, and memory-device identity.
-  Verify vendor/device IDs, default/read-only allocators, session/Env ownership,
-  streams/notifications, and release order against the host ABI.
-- Shared plugins need exact exports/runtime dependencies; static plugins need
-  prefixed entry points/API initialization. Check factory registration/removal
-  and context/logger/library teardown.
-- New internal dependencies must reach `plugin-ep-webgpu/paths.txt` and EP
-  adapters. Inspect other adapter consumers (including CUDA) and affected native,
-  shared/static plugin, and WASM integration via [build checks](build-and-dependencies.md).
+- Separate GPU duration, queue delay, and end-to-end latency. Prove clock domains,
+  units/origin, conversion/normalization, precision, and reset behavior before
+  alignment; first-submit offsets do not prove hardware-clock correlation.
+  Native calibration requires ownership of the installed Dawn proc table;
+  omitted options on a later context do not establish it. External Dawn may
+  require the host's clock API; inspect the pinned behavior.
 
-Inspect `ep/{api,ep,factory,allocator,sync_stream}.cc`, public EP APIs/adapters,
-and session `ep_factory_webgpu.*`.
+- Match each dispatch/query pair/readback/event, including repeated dispatches
+  before flush; retain metadata/buffers through asynchronous completion. Check
+  session/run profiling, repeated runs, capture/replay, unsupported queries, and failures.
+
+- Instrumentation must preserve algorithm, cache, synchronization, and capture
+  eligibility. Keep controls when reproducing hangs; disabling profiling changes
+  the experiment.
+
+- Trace consumers must retain cross-run events and scale to long generation.
+  Compare baseline configurations structurally, ignoring JSON key order; reject
+  materially incomparable runs. Test repeated/overlapping spans and replay encoding.
+
+Inspect `webgpu_profiler.*`, `webgpu_context.*` timestamp/query/flush paths,
+Dawn platform/PIX integration, and perf tests.
