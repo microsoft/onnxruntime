@@ -159,6 +159,69 @@ TEST_F(CudaGraphCaptureTest, ExternalBuffersRetainProviderLifetime) {
   }
 }
 
+TEST_F(CudaGraphCaptureTest, OwnedBuffersReleaseOnlyWithTheirGraph) {
+  CUDAExecutionProviderInfo info;
+  info.enable_cuda_graph = true;
+  info.min_num_runs_before_cuda_graph_capture = 1;
+  info.has_user_compute_stream = true;
+  info.user_compute_stream = stream_;
+  CUDAExecutionProvider provider(info);
+  provider.SetLogger(&logging::LoggingManager::DefaultLogger());
+
+  constexpr std::array<int, 2> graph_ids{7, 8};
+  std::array<std::weak_ptr<int>, 2> retained;
+  for (size_t index = 0; index < graph_ids.size(); ++index) {
+    auto buffer = std::make_shared<int>(0);
+    retained[index] = buffer;
+    Ort::RunOptions options;
+    options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, std::to_string(graph_ids[index]).c_str());
+    for (int run = 0; run < 2; ++run) {
+      ORT_THROW_IF_ERROR(provider.OnRunStart(*options));
+      cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+      CUDA_CALL_THROW(cudaStreamIsCapturing(stream_, &capture_status));
+      if (capture_status == cudaStreamCaptureStatusActive) {
+        provider.RetainBufferForGraphCapture(buffer);
+      }
+      CUDA_CALL_THROW(cudaLaunchHostFunc(
+          stream_, [](void* value) { ++*static_cast<int*>(value); }, buffer.get()));
+      ORT_THROW_IF_ERROR(provider.OnRunEnd(/*sync_stream=*/true, *options));
+    }
+    ASSERT_TRUE(provider.IsGraphCaptured(graph_ids[index]));
+    buffer.reset();
+    ASSERT_FALSE(retained[index].expired());
+  }
+
+  for (size_t index = 0; index < graph_ids.size(); ++index) {
+    auto buffer = retained[index].lock();
+    ASSERT_NE(buffer, nullptr);
+    const int before = *buffer;
+    buffer.reset();
+    ORT_THROW_IF_ERROR(provider.ReplayGraph(graph_ids[index], /*sync=*/true));
+    buffer = retained[index].lock();
+    ASSERT_NE(buffer, nullptr);
+    EXPECT_EQ(*buffer, before + 1);
+  }
+
+  ORT_THROW_IF_ERROR(provider.ReleaseCapturedGraph(graph_ids[0]));
+  EXPECT_TRUE(retained[0].expired());
+  ASSERT_FALSE(retained[1].expired());
+
+  int before = 0;
+  {
+    auto buffer = retained[1].lock();
+    ASSERT_NE(buffer, nullptr);
+    before = *buffer;
+  }
+  ORT_THROW_IF_ERROR(provider.ReplayGraph(graph_ids[1], /*sync=*/true));
+  {
+    auto buffer = retained[1].lock();
+    ASSERT_NE(buffer, nullptr);
+    EXPECT_EQ(*buffer, before + 1);
+  }
+  ORT_THROW_IF_ERROR(provider.ReleaseCapturedGraph(graph_ids[1]));
+  EXPECT_TRUE(retained[1].expired());
+}
+
 TEST(CudaGraphCaptureDeviceTest, SharedContextSelectsDeviceForSerializedThreads) {
   int device_count = 0;
   CUDA_CALL_THROW(cudaGetDeviceCount(&device_count));
