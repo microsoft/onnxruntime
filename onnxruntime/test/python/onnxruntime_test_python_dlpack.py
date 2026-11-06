@@ -9,10 +9,12 @@ The dtype contract below targets the PyTorch 2.10 version installed by build.py.
 import ctypes
 import gc
 import math
+import os
 import threading
 import time
 import unittest
 import weakref
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -360,7 +362,7 @@ class TestDlpackPyTorch(unittest.TestCase):
                     ctypes.cast(deleter, ctypes.c_void_p),
                 )
                 capsule = new_capsule(ctypes.addressof(managed), b"dltensor", None)
-                with self.assertRaisesRegex(BufferError, "provider matching the tensor's device"):
+                with self.assertRaisesRegex(BufferError, "matching provider"):
                     value_type.from_dlpack(capsule)
                 self.assertEqual(len(releases), 1)
                 with self.assertRaisesRegex(TypeError, "valid DLPack capsule"):
@@ -650,6 +652,135 @@ class TestDlpackPyTorch(unittest.TestCase):
         source = torch.arange(6, dtype=torch.float32).reshape(2, 3).t()
         with self.assertRaisesRegex(RuntimeError, "ORT only supports contiguous tensor"):
             ort.OrtValue.from_dlpack(source)
+
+
+class TestDlpackPluginCallbacks(unittest.TestCase):
+    device_id = 32760  # Avoid colliding with a real GPU provider registered by the build.
+
+    def setUp(self):
+        library_name = "example_plugin_ep.dll" if os.name == "nt" else "libexample_plugin_ep.so"
+        self.library_path = Path.cwd() / library_name
+        if not self.library_path.is_file():
+            self.skipTest("requires the example_plugin_ep test library in the build output directory")
+        self.library = ctypes.CDLL(str(self.library_path))
+        self.current_device = self.library.ExampleEpTestHooks_GetDlpackCurrentDevice
+        self.sync_count = self.library.ExampleEpTestHooks_GetDlpackSyncCount
+        self.release_count = self.library.ExampleEpTestHooks_GetDlpackReleaseCount
+        for method in (self.current_device, self.sync_count, self.release_count):
+            method.argtypes = []
+            method.restype = ctypes.c_int
+        self.library.ExampleEpTestHooks_ResetDlpack()
+        self.block_sync = self.library.ExampleEpTestHooks_SetDlpackSyncBlocked
+        self.block_sync.argtypes = [ctypes.c_int]
+        self.block_sync.restype = None
+        self.registrations = []
+        self.descriptors = []
+
+    def tearDown(self):
+        for registration in reversed(getattr(self, "registrations", [])):
+            ort.unregister_execution_provider_library(registration)
+
+    def register(self, suffix):
+        name = f"example_ep_dlpack_{suffix}"
+        ort.register_execution_provider_library(name, str(self.library_path))
+        self.registrations.append(name)
+        return name
+
+    def unregister(self, name):
+        ort.unregister_execution_provider_library(name)
+        self.registrations.remove(name)
+
+    def capsule(self):
+        shape = (ctypes.c_int64 * 1)(0)
+        managed = DLManagedTensor(
+            DLTensor(None, DLDevice(2, self.device_id), 1, DLDataType(2, 32, 1), shape, None, 0), None, None
+        )
+        self.descriptors.append((shape, managed))
+        new_capsule = ctypes.pythonapi.PyCapsule_New
+        new_capsule.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p]
+        new_capsule.restype = ctypes.py_object
+        return new_capsule(ctypes.addressof(managed), b"dltensor", None)
+
+    def test_complementary_factory_capabilities(self):
+        self.register("sync")
+        self.register("context")
+        test = self
+
+        class Producer:
+            def __dlpack_device__(self):
+                return (2, test.device_id)
+
+            def __dlpack__(self, *, stream=None):
+                test.assertEqual(test.current_device(), test.device_id)
+                return test.capsule()
+
+        for value_type in (ort.OrtValue, C.OrtValue):
+            value = value_type.from_dlpack(Producer())
+            self.assertEqual(self.current_device(), 7)
+            before = self.sync_count()
+            capsule = value.__dlpack__()
+            self.assertEqual(self.sync_count(), before + 1)
+            self.assertEqual(value.__dlpack_device__(), (2, self.device_id))
+            del capsule, value
+        self.assertEqual(self.sync_count(), 4)
+
+    def test_unregister_inside_producer_pins_factory_until_restoration(self):
+        name = self.register("both")
+        test = self
+
+        class Producer:
+            def __dlpack_device__(self):
+                return (2, test.device_id)
+
+            def __dlpack__(self, *, stream=None):
+                test.assertEqual(test.current_device(), test.device_id)
+                test.unregister(name)
+                test.assertEqual(test.release_count(), 0)
+                raise ValueError("Producer export failed after unregister")
+
+        with self.assertRaisesRegex(ValueError, "Producer export failed after unregister"):
+            ort.OrtValue.from_dlpack(Producer(), synchronize=False)
+        self.assertEqual(self.current_device(), 7)
+        self.assertEqual(self.release_count(), 1)
+
+    def test_unregister_during_native_wait_pins_factory(self):
+        name = self.register("sync")
+        capsule = self.capsule()
+        results = []
+        errors = []
+
+        def import_value():
+            try:
+                results.append(ort.OrtValue.from_dlpack(capsule))
+            except Exception as error:
+                errors.append(error)
+
+        worker = threading.Thread(target=import_value)
+        self.block_sync(1)
+        worker.start()
+        try:
+            deadline = time.monotonic() + 5
+            while self.sync_count() == 0 and time.monotonic() < deadline:
+                time.sleep(0.001)
+            self.assertEqual(self.sync_count(), 1)
+            self.unregister(name)
+            self.assertEqual(self.release_count(), 0)
+        finally:
+            self.block_sync(0)
+            worker.join(timeout=5)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(errors, [])
+        self.assertEqual(len(results), 1)
+        self.assertEqual(self.release_count(), 1)
+
+    def test_old_factory_callbacks_are_not_read(self):
+        self.register("old")
+        value = ort.OrtValue.from_dlpack(self.capsule(), synchronize=False)
+        with self.assertRaises((BufferError, RuntimeError)):
+            value.__dlpack__()
+        self.assertEqual(self.sync_count(), 0)
+        self.assertEqual(self.current_device(), 7)
+        del value
 
 
 @unittest.skipUnless(

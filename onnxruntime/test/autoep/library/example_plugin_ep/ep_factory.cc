@@ -4,21 +4,32 @@
 #include "ep_factory.h"
 
 #include <cassert>
+#include <atomic>
+#include <chrono>
 #include <limits>
 #include <optional>
 #include <string_view>
+#include <thread>
 
 #include "ep.h"
 #include "ep_allocator.h"
 #include "ep_arena.h"
 #include "ep_data_transfer.h"
 #include "ep_stream_support.h"
+#define EXAMPLE_PLUGIN_EP_BUILD
 #include "ep_test_hooks.h"
+#undef EXAMPLE_PLUGIN_EP_BUILD
 
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace {
+thread_local int dlpack_current_device = 7;
+constexpr int kDlpackTestDeviceId = 32760;
+std::atomic<int> dlpack_sync_count{0};
+std::atomic<int> dlpack_release_count{0};
+std::atomic<bool> dlpack_sync_blocked{false};
+
 int CompatibilityRank(OrtCompiledModelCompatibility c) {
   switch (c) {
     case OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL:
@@ -56,6 +67,19 @@ std::optional<std::string> GetCompatibilityField(const std::string& info, std::s
   }
 }
 }  // namespace
+
+extern "C" {
+EXPORT_SYMBOL int ExampleEpTestHooks_GetDlpackCurrentDevice() { return dlpack_current_device; }
+EXPORT_SYMBOL int ExampleEpTestHooks_GetDlpackSyncCount() { return dlpack_sync_count.load(); }
+EXPORT_SYMBOL int ExampleEpTestHooks_GetDlpackReleaseCount() { return dlpack_release_count.load(); }
+EXPORT_SYMBOL void ExampleEpTestHooks_ResetDlpack() {
+  dlpack_current_device = 7;
+  dlpack_sync_count = 0;
+  dlpack_release_count = 0;
+  dlpack_sync_blocked = false;
+}
+EXPORT_SYMBOL void ExampleEpTestHooks_SetDlpackSyncBlocked(int blocked) { dlpack_sync_blocked = blocked != 0; }
+}
 
 ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtLogger& default_logger,
                                    bool create_duplicate_virtual_devices)
@@ -98,11 +122,43 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
   SelectBestModelCandidate = SelectBestModelCandidateImpl;
   GetDeviceMemoryCapacity = GetDeviceMemoryCapacityImpl;
 
+  const bool dlpack_test = ep_name_.starts_with("example_ep_dlpack");
+  if (dlpack_test) {
+    if (ep_name_.find("context") == std::string::npos) {
+      SynchronizeDevice = [](OrtEpFactory* self, int device_id) noexcept -> OrtStatus* {
+        auto* factory = static_cast<ExampleEpFactory*>(self);
+        if (device_id != kDlpackTestDeviceId) {
+          return factory->ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Expected DLPack test device 32760.");
+        }
+        ++dlpack_sync_count;
+        while (dlpack_sync_blocked.load()) {
+          std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return nullptr;
+      };
+    }
+    if (ep_name_.find("sync") == std::string::npos) {
+      GetCurrentDevice = [](OrtEpFactory*, int* device_id) noexcept -> OrtStatus* {
+        *device_id = dlpack_current_device;
+        return nullptr;
+      };
+      SetCurrentDevice = [](OrtEpFactory*, int device_id) noexcept -> OrtStatus* {
+        dlpack_current_device = device_id;
+        return nullptr;
+      };
+    }
+    if (ep_name_.find("old") != std::string::npos) {
+      ort_version_supported = 31;
+    }
+  }
+  const uint32_t memory_vendor = dlpack_test ? 0x10DE : 0xBE57;
+  const uint32_t memory_device_id = dlpack_test ? static_cast<uint32_t>(kDlpackTestDeviceId) : 0;
+
   // setup the OrtMemoryInfo instances required by the EP.
   // We pretend the device the EP is running on is GPU.
   default_memory_info_ = Ort::MemoryInfo{"ExampleEP GPU",
                                          OrtMemoryInfoDeviceType_GPU,
-                                         /*vendor*/ 0xBE57, /* device_id */ 0,
+                                         /*vendor*/ memory_vendor, /* device_id */ memory_device_id,
                                          OrtDeviceMemoryType_DEFAULT,
                                          /*alignment*/ 0,
                                          // it is invalid to use OrtArenaAllocator as that is reserved for the internal
@@ -116,7 +172,7 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
   // create read-only allocator for use with initializers. same info as DEFAULT memory apart from the allocator type.
   readonly_memory_info_ = Ort::MemoryInfo{"ExampleEP GPU readonly",
                                           OrtMemoryInfoDeviceType_GPU,
-                                          /*vendor*/ 0xBE57, /* device_id */ 0,
+                                          /*vendor*/ memory_vendor, /* device_id */ memory_device_id,
                                           OrtDeviceMemoryType_DEFAULT,
                                           /*alignment*/ 0,
                                           OrtAllocatorType::OrtReadOnlyAllocator};
@@ -125,7 +181,7 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
   // accessible from. we infer from the type of HOST_ACCESSIBLE that it's CPU accessible.
   host_accessible_memory_info_ = Ort::MemoryInfo{"ExampleEP GPU pinned",
                                                  OrtMemoryInfoDeviceType_GPU,
-                                                 /*vendor*/ 0xBE57, /* device_id */ 0,
+                                                 /*vendor*/ memory_vendor, /* device_id */ memory_device_id,
                                                  OrtDeviceMemoryType_HOST_ACCESSIBLE,
                                                  /*alignment*/ 0,
                                                  OrtAllocatorType::OrtDeviceAllocator};
@@ -148,6 +204,9 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
 }
 
 ExampleEpFactory::~ExampleEpFactory() {
+  if (ep_name_.starts_with("example_ep_dlpack")) {
+    ++dlpack_release_count;
+  }
   for (auto* device : virtual_hardware_devices_) {
     ep_api.ReleaseHardwareDevice(device);
   }

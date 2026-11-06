@@ -598,8 +598,9 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "EP library is already registered under ", registration_name);
       }
 
-      std::unique_ptr<EpInfo> ep_info;
-      ORT_RETURN_IF_ERROR(EpInfo::Create(std::move(ep_library), ep_info, internal_factories));
+      std::unique_ptr<EpInfo> created_ep_info;
+      ORT_RETURN_IF_ERROR(EpInfo::Create(std::move(ep_library), created_ep_info, internal_factories));
+      std::shared_ptr<EpInfo> ep_info{std::move(created_ep_info)};
 
       // Register shared allocators
       const size_t max_allocator_count = SafeInt<size_t>(ep_info->execution_devices.size()) * 2;
@@ -703,7 +704,7 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
       // Notes:
       // `ep_info`'s target must stay alive for any rollback logic that may need to run.
       // Directly moving into `ep_libraries_.emplace()` could cause it to be prematurely destroyed if emplace throws
-      // after ownership has transferred from `ep_info`. This is why we first emplace an empty unique_ptr and then
+      // after ownership has transferred from `ep_info`. This is why we first emplace an empty shared_ptr and then
       // swap into it.
       //
       // We ignore `emplace_result.second` since we already checked for an existing entry in `ep_libraries_` above.
@@ -795,6 +796,26 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
   ORT_RETURN_IF_ERROR(LoadPluginOrProviderBridge(registration_name, lib_path, ep_library, internal_factories));
 
   return RegisterExecutionProviderLibrary(registration_name, std::move(ep_library), internal_factories);
+}
+
+Environment::DeviceInterop Environment::GetDeviceInterop(const OrtDevice& device,
+                                                         DeviceInteropCapability capability) const {
+  std::lock_guard<std::mutex> lock{mutex_};
+  for (const auto& [name, info] : ep_libraries_) {
+    ORT_UNUSED_PARAMETER(name);
+    for (const auto& ep_device : info->execution_devices) {
+      auto* factory = ep_device->GetMutableFactory();
+      if (ep_device->device_memory_info != nullptr &&
+          ep_device->device_memory_info->device == device &&
+          factory->ort_version_supported >= 32 &&
+          (capability == DeviceInteropCapability::Synchronize
+               ? factory->SynchronizeDevice != nullptr
+               : factory->GetCurrentDevice != nullptr && factory->SetCurrentDevice != nullptr)) {
+        return {info, factory};
+      }
+    }
+  }
+  return {};
 }
 
 Status Environment::UnregisterExecutionProviderLibrary(const std::string& registration_name) {

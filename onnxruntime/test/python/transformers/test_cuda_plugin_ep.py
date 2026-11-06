@@ -14,6 +14,7 @@ from cuda_plugin_ep_helper import CUDA_PLUGIN_EP_NAME, ensure_cuda_plugin_ep_reg
 from onnx import OperatorSetIdProto, TensorProto, helper, save
 
 import onnxruntime as onnxrt
+from onnxruntime.capi import _pybind_state as C
 
 try:
     import faulthandler
@@ -32,6 +33,76 @@ NO_CUDNN_PLUGIN_TEST = os.getenv("ORT_TEST_CUDA_PLUGIN_NO_CUDNN", "").upper() in
 requires_cudnn = unittest.skipIf(NO_CUDNN_PLUGIN_TEST, "test requires cuDNN-backed CUDA plugin kernels")
 # CUDA plugin runtime currently supports released ai.onnx opsets through 27.
 DEFAULT_ONNX_OPSET = 27
+
+
+class TestCudaPluginDlpack(unittest.TestCase):
+    def setUp(self):
+        require_cuda_plugin_ep()
+        if not torch.cuda.is_available():
+            self.skipTest("requires PyTorch CUDA")
+        self.device_id = get_cuda_plugin_device_id(get_cuda_plugin_device())
+
+    def test_default_import_export_waits_for_all_streams(self):
+        device = f"cuda:{self.device_id}"
+        producer = torch.cuda.Stream(device=self.device_id)
+        for value_type in (onnxrt.OrtValue, C.OrtValue):
+            for raw_capsule in (False, True):
+                with self.subTest(value_type=value_type, raw_capsule=raw_capsule):
+                    with torch.cuda.stream(producer):
+                        source = torch.zeros(6, device=device)
+                        torch.cuda._sleep(50_000_000)
+                        source.fill_(7)
+                        ready = torch.cuda.Event()
+                        ready.record()
+                        exported = source.__dlpack__(stream=-1) if raw_capsule else source
+                    imported = value_type.from_dlpack(exported)
+                    self.assertTrue(ready.query())
+                    self.assertEqual(imported.__dlpack_device__(), (2, self.device_id))
+                    with torch.cuda.stream(producer):
+                        torch.cuda._sleep(50_000_000)
+                        source.add_(1)
+                        ready.record()
+                    result = torch.from_dlpack(imported)
+                    self.assertTrue(ready.query())
+                    torch.testing.assert_close(result, torch.full((6,), 8.0, device=device))
+
+        values = C.OrtValueVector()
+        values.push_back(source, synchronize=False)
+        values.push_back(source, synchronize=False)
+        with torch.cuda.stream(producer):
+            torch.cuda._sleep(50_000_000)
+            source.add_(1)
+            ready.record()
+        results = values.to_dlpacks(torch.from_dlpack)
+        self.assertTrue(ready.query())
+        for result in results:
+            torch.testing.assert_close(result, source)
+
+    @unittest.skipUnless(torch.cuda.device_count() >= 2, "requires two CUDA devices")
+    def test_protocol_import_restores_device_on_success_and_exception(self):
+        device_id = get_cuda_plugin_device_id(get_cuda_plugin_devices()[-1])
+        original_device = (device_id + 1) % torch.cuda.device_count()
+        source = torch.arange(6, dtype=torch.float32, device=f"cuda:{device_id}")
+        torch.cuda.synchronize(device_id)
+
+        class InvalidProducer:
+            def __dlpack_device__(self):
+                return (2, device_id)
+
+            def __dlpack__(self, *, stream=None):
+                if torch.cuda.current_device() != device_id:
+                    raise AssertionError("Producer device was not selected")
+                raise ValueError("Producer export failed")
+
+        for value_type in (onnxrt.OrtValue, C.OrtValue):
+            for synchronize in (False, True):
+                with self.subTest(value_type=value_type, synchronize=synchronize), torch.cuda.device(original_device):
+                    imported = value_type.from_dlpack(source, synchronize=synchronize)
+                    self.assertEqual(torch.cuda.current_device(), original_device)
+                    torch.testing.assert_close(torch.from_dlpack(imported), source)
+                    with self.assertRaisesRegex(ValueError, "Producer export failed"):
+                        value_type.from_dlpack(InvalidProducer(), synchronize=synchronize)
+                    self.assertEqual(torch.cuda.current_device(), original_device)
 
 
 def _make_released_opset_model(graph, producer_name="onnx-example"):

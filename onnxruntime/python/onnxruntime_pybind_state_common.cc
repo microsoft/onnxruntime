@@ -67,6 +67,19 @@ void DlpackCapsuleDestructor(PyObject* data) {
 }
 
 namespace {
+#if !defined(ORT_MINIMAL_BUILD)
+Environment::DeviceInterop GetPluginDeviceInterop(int device_type, int device_id,
+                                                  Environment::DeviceInteropCapability capability) {
+  if (device_type != kDLCUDA && device_type != kDLROCM) {
+    return {};
+  }
+  const auto vendor = device_type == kDLCUDA ? OrtDevice::VendorIds::NVIDIA : OrtDevice::VendorIds::AMD;
+  return GetOrtEnv()->GetEnvironment().GetDeviceInterop(
+      OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, vendor, gsl::narrow<OrtDevice::DeviceId>(device_id)),
+      capability);
+}
+#endif
+
 template <typename SetDevice>
 py::object ExportDlpackOnDevice(const py::object& method, bool no_sync, int device_id,
                                 int original_device, SetDevice set_device) {
@@ -91,6 +104,17 @@ py::object ExportDlpackOnDevice(const py::object& method, bool no_sync, int devi
 }
 
 py::object ExportDlpack(const py::object& method, bool no_sync, const std::pair<int, int>& device) {
+#if !defined(ORT_MINIMAL_BUILD)
+  if (auto interop = GetPluginDeviceInterop(device.first, device.second,
+                                            Environment::DeviceInteropCapability::CurrentDevice);
+      interop.factory != nullptr) {
+    auto* factory = interop.factory;
+    int original_device;
+    Ort::ThrowOnError(factory->GetCurrentDevice(factory, &original_device));
+    return ExportDlpackOnDevice(method, no_sync, device.second, original_device,
+                                [factory](int id) { Ort::ThrowOnError(factory->SetCurrentDevice(factory, id)); });
+  }
+#endif
   if (device.first == kDLCUDA) {
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
     if (auto* provider = TryGetProviderInfo_CUDA()) {
@@ -133,6 +157,15 @@ void SynchronizeDlpackDevice(const DLDevice& device) {
   if (device.device_type == kDLCPU) {
     return;
   }
+#if !defined(ORT_MINIMAL_BUILD)
+  if (auto interop = GetPluginDeviceInterop(device.device_type, device.device_id,
+                                            Environment::DeviceInteropCapability::Synchronize);
+      interop.factory != nullptr) {
+    py::gil_scoped_release release;
+    Ort::ThrowOnError(interop.factory->SynchronizeDevice(interop.factory, device.device_id));
+    return;
+  }
+#endif
   if (device.device_type == kDLCUDA) {
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
     if (auto* provider = TryGetProviderInfo_CUDA()) {
@@ -151,8 +184,9 @@ void SynchronizeDlpackDevice(const DLDevice& device) {
 #endif
   }
   throw py::buffer_error(
-      "DLPack synchronization requires a provider matching the tensor's device (CUDA for NVIDIA, MIGraphX for AMD). "
-      "Install and load the matching provider, or explicitly opt out only after arranging stream ordering: "
+      "DLPack synchronization requires device-wide synchronization from a matching provider "
+      "(CUDA for NVIDIA, MIGraphX for AMD). Install and load a provider implementing this capability, "
+      "or explicitly opt out only after arranging stream ordering: "
       "__dlpack__(stream=-1), from_dlpack(..., synchronize=False), or to_dlpacks(..., synchronize=False).");
 }
 }  // namespace

@@ -27,6 +27,8 @@ class ProviderBridgeEpFactory : public EpFactoryInternalImpl {
   }
 
  private:
+  OrtEpFactory* GetDeviceInteropFactory() const noexcept override { return &ep_factory_; }
+
   OrtStatus* GetSupportedDevices(EpFactoryInternal& ep_factory,
                                  const OrtHardwareDevice* const* devices,
                                  size_t num_devices,

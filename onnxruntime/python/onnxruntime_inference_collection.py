@@ -1588,7 +1588,8 @@ class OrtValue:
         No data is copied; the new OrtValue shares memory with the source.
         GPU imports synchronize the tensor's device before returning, so ORT
         can safely use the storage on its own streams. CUDA and ROCm require
-        their corresponding CUDA or MIGraphX provider for synchronization.
+        their corresponding CUDA or MIGraphX provider for synchronization,
+        including registered plugin providers with device-wide synchronization support.
         When that provider is available, GPU protocol exports run with the producer's
         device selected and restore the caller's current device, including on failure.
         The capsule is consumed before synchronization; if that wait fails, the

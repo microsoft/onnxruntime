@@ -28,6 +28,11 @@ EXPORT_SYMBOL void ExampleEpTestHooks_ResetPreallocatedOutputQuery();
 EXPORT_SYMBOL int ExampleEpTestHooks_GetPreallocatedOutputQueryResult();
 EXPORT_SYMBOL int ExampleEpTestHooks_GetPreallocatedOutputBadIndexRejected();
 EXPORT_SYMBOL void ExampleEpTestHooks_SetCreateDataTransferFailure(int enabled);
+EXPORT_SYMBOL int ExampleEpTestHooks_GetDlpackCurrentDevice();
+EXPORT_SYMBOL int ExampleEpTestHooks_GetDlpackSyncCount();
+EXPORT_SYMBOL int ExampleEpTestHooks_GetDlpackReleaseCount();
+EXPORT_SYMBOL void ExampleEpTestHooks_ResetDlpack();
+EXPORT_SYMBOL void ExampleEpTestHooks_SetDlpackSyncBlocked(int blocked);
 }
 
 // Internal to the library; not exported.
