@@ -75,6 +75,7 @@ Status Inverse::Compute(OpKernelContext* ctx) const {
   int64_t num_batches = 1;
   const int64_t rows = input_shape.GetDims()[num_dim - 2];
   const int64_t cols = input_shape.GetDims()[num_dim - 1];
+  ORT_RETURN_IF_NOT(rows == cols, "Inverse: the last two dimensions must form a square matrix, got: ", rows, "x", cols);
   if (num_dim > 2) {
     num_batches = input_shape.SizeToDimension(num_dim - 2);
   }
