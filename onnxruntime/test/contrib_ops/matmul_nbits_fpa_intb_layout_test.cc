@@ -217,6 +217,46 @@ TEST(MatMulNBitsFpAIntBLayout, Int2WeightsRoundTripExactly) {
   ExpectExactDequantizedWeights(2);
 }
 
+TEST(MatMulNBitsFpAIntBLayout, Int2GemvBiasPreservesProjectionPrecision) {
+#if !USE_FPA_INTB_GEMM || USE_COMPACT_FPA_INTB_GEMM
+  GTEST_SKIP() << "Requires non-compact fpA_intB kernels with fused bias support";
+#else
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "fpA_intB GEMV requires SM80+";
+  ScopedEnvironmentVariables env{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
+  constexpr int64_t n = 512, k = 512, block = 64;
+  for (bool overflow : {false, true}) {
+    SCOPED_TRACE(overflow ? "finite result after bias cancels FP16 overflow" : "midpoint before bias cancellation");
+    std::vector<MLFloat16> input(k, MLFloat16(overflow ? 128.0f : 4.0f));
+    if (!overflow) input.back() = MLFloat16(5.0f);
+    OpTester test("MatMulNBits", 1, kMSDomain);
+    test.AddAttribute<int64_t>("K", k);
+    test.AddAttribute<int64_t>("N", n);
+    test.AddAttribute<int64_t>("block_size", block);
+    test.AddAttribute<int64_t>("bits", 2);
+    test.AddInput<MLFloat16>("A", {1, k}, input);
+    test.AddInput<uint8_t>("B", {n, k / block, block / 4},
+                           std::vector<uint8_t>(n * k / 4, 0xFF), true);
+    test.AddInput<MLFloat16>("scales", {n, k / block},
+                             std::vector<MLFloat16>(n * k / block, MLFloat16(1.0f)), true);
+    test.AddOptionalInputEdge<uint8_t>();
+    test.AddOptionalInputEdge<int32_t>();
+    test.AddInput<MLFloat16>("bias", {n},
+                             std::vector<MLFloat16>(n, MLFloat16(overflow ? -1024.0f : -2048.0f)), true);
+    test.AddOutput<MLFloat16>("Y", {1, n},
+                              std::vector<MLFloat16>(n, MLFloat16(overflow ? 64512.0f : 1.0f)));
+    test.SetOutputAbsErr("Y", 0.0f);
+    test.SetOutputRelErr("Y", 0.0f);
+    SessionOptions options;
+    // Deterministic M < 16 selects GEMV rather than autotuning to a correct GEMM fallback.
+    options.use_deterministic_compute = true;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  }
+#endif
+}
+
 TEST(MatMulNBitsFpAIntBLayout, DeterministicWeightsRoundTripExactly) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "fpA_intB layout test requires SM80+";
   for (int64_t bits : {2, 4, 8}) {

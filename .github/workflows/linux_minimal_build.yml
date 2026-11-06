@@ -47,13 +47,6 @@ jobs:
       - name: Install libuuid development files
         run: sudo apt-get update -y && sudo apt-get install -y uuid-dev
 
-      - name: Setup CCache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          # Fully qualify by workflow. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
-          key: ccache | linux_minimal_build.yml | build_full_ort
-          path: ~/.cache/ccache
-
       - name: Setup VCPKG Cache
         uses: ./.github/actions/setup-vcpkg-cache
         with:
@@ -65,8 +58,10 @@ jobs:
 
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
+          # Required by the shared action even though this job does not use ccache.
           ccache-version: 4.13.1
           ccache-hash: 626407a9b81dd86f8ec9867bff396b32dd1f00344f5b323526579a64f6d4104927f83e8d7a05ad9806fd78f4491e0adb4cff73388000a62050cb1b00766214ee
+          add-ccache-to-path: 'false'
           vcpkg-version: ${{ steps.vcpkg-tool-info.outputs.release_tag }}
           vcpkg-hash: ${{ steps.vcpkg-tool-info.outputs.sha512 }}
           cmake-version: '3.31.6'
@@ -74,17 +69,41 @@ jobs:
           add-cmake-to-path: 'true'
           disable-terrapin: 'true'
 
-      - name: Build Full ORT and Prepare Test Files
-        uses: microsoft/onnxruntime-github-actions/build-and-prep-ort-files@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+      - name: Install Python requirements
+        run: python3 -m pip install --user -r tools/ci_build/github/linux/python/requirements.txt
+
+      - name: Build Full ORT
+        run: |
+          python3 tools/ci_build/op_registration_validator.py
+          python3 tools/ci_build/build.py \
+            --build_dir "$RUNNER_TEMP" --cmake_generator Ninja --config Debug \
+            --skip_submodule_sync --parallel \
+            --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
+            --use_binskim_compliant_compile_flags \
+            --build_wheel --skip_tests --use_nnapi --use_coreml
+
+      - name: Install built ORT wheel
+        shell: bash
+        run: |
+          shopt -s nullglob
+          wheels=("$RUNNER_TEMP"/Debug/dist/onnxruntime-*.whl)
+          if [ "${#wheels[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one onnxruntime wheel, found ${#wheels[@]}"
+            exit 1
+          fi
+          python3 -m pip install --user --force-reinstall --no-deps "${wheels[0]}"
+
+      - name: Prepare Test Files
+        run: python3 tools/ci_build/prepare_minimal_build_test_data.py --build-dir "$RUNNER_TEMP"
 
       - name: Upload Test Data Artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test_data
           path: ${{ runner.temp }}/minimal_build_test_data/
           if-no-files-found: error # Fail if test data wasn't generated
 
-  # Job 2: Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED, training ops ENABLED]
+  # Job 2: Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED]
   build_minimal_exceptions_disabled:
     name: 2. Build Minimal (Exceptions Disabled)
     runs-on: [ort-github-linux-16-amd-wcus-ss]
@@ -114,7 +133,7 @@ jobs:
           key: linux-minimal-exceptions-disabled
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: ./.github/actions/build-docker-image
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -138,7 +157,6 @@ jobs:
             --skip_tests
             --minimal_build
             --disable_exceptions
-            --enable_training_ops
 
       - name: Run Build 2 (Build)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
@@ -154,7 +172,6 @@ jobs:
             --skip_tests
             --minimal_build
             --disable_exceptions
-            --enable_training_ops
 
   # Job 3a: Build minimal onnxruntime [exceptions ENABLED, type reduction DISABLED, custom ops ENABLED] and run tests
   build_minimal_custom_ops:
@@ -357,7 +374,7 @@ jobs:
           key: linux-extended-minimal
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: ./.github/actions/build-docker-image
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -426,7 +443,7 @@ jobs:
           submodules: false
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: ./.github/actions/build-docker-image
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -526,7 +543,7 @@ jobs:
           touch ${{ runner.temp }}/.test_data/include_no_operators.config
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: ./.github/actions/build-docker-image
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -609,7 +626,7 @@ jobs:
           touch ${{ runner.temp }}/.test_data/include_no_operators.config
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: ./.github/actions/build-docker-image
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -702,7 +719,7 @@ jobs:
           path: ${{ runner.temp }}/.test_data/
 
       - name: Get Docker Image using Action
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: ./.github/actions/build-docker-image
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile

@@ -70,6 +70,10 @@ stages:
         parameters:
           host_cpu_arch: ${{ parameters.BuildArch }}
 
+      - template: ../templates/setup-vcpkg-cache.yml
+        parameters:
+          key: '$(System.StageName)-${{ parameters.sln_platform }}-$(BuildConfig)'
+
       # need to set PROCESSOR_ARCHITECTURE so the x86 SDK is installed correctly
       - template: ../templates/setup-dotnet.yml
         parameters:
@@ -99,7 +103,7 @@ stages:
           displayName: 'Set build flags for WebGPU cross-compilation'
 
       - powershell: |
-          python tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) ${{ parameters.BuildCommand }} $(BuildCommandExtra) --use_binskim_compliant_compile_flags --parallel --build --update --config $(BuildConfig) --msbuild_extra_options IncludeMobileTargets=false ${{ variables.build_py_lto_flag }}
+          python tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) ${{ parameters.BuildCommand }} $(BuildCommandExtra) --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags --parallel --build --update --config $(BuildConfig) --msbuild_extra_options IncludeMobileTargets=false ${{ variables.build_py_lto_flag }}
 
       - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
         # Use cross-compiled protoc

@@ -174,6 +174,38 @@ inline __m512 RoundInt4WeightsAvx512(__m512 values, float scale) {
   }
 }
 
+template <bool ScaleIsBf16>
+inline __m512 Int4LookupAvx512(uint16_t s_bits, float scale) noexcept {
+  const __m512 kCodes = _mm512_setr_ps(
+      -8.0f, -7.0f, -6.0f, -5.0f, -4.0f, -3.0f, -2.0f, -1.0f,
+      0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f);
+  if constexpr (ScaleIsBf16) {
+    if ((s_bits & 0x7FFFu) < 0x7E00u) {
+      const __m512 values = _mm512_mul_ps(kCodes, _mm512_set1_ps(scale));
+      const __m512i bits = _mm512_castps_si512(values);
+      const __m512i lsb = _mm512_and_si512(_mm512_srli_epi32(bits, 16), _mm512_set1_epi32(1));
+      const __m512i rounded = _mm512_and_si512(
+          _mm512_add_epi32(bits, _mm512_add_epi32(_mm512_set1_epi32(0x7fff), lsb)),
+          _mm512_set1_epi32(static_cast<int>(0xffff0000u)));
+      return _mm512_castsi512_ps(rounded);
+    }
+  }
+  const __m512 values = _mm512_mul_ps(kCodes, _mm512_set1_ps(scale));
+  if constexpr (!ScaleIsBf16) {
+    return _mm512_cvtph_ps(_mm512_cvtps_ph(values, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
+  } else {
+    const __m512i bits = _mm512_castps_si512(values);
+    const __mmask16 finite = _mm512_cmpneq_epi32_mask(_mm512_and_si512(bits, _mm512_set1_epi32(0x7f800000)),
+                                                      _mm512_set1_epi32(0x7f800000));
+    const __m512i lsb = _mm512_and_si512(_mm512_srli_epi32(bits, 16), _mm512_set1_epi32(1));
+    const __m512i rounded = _mm512_and_si512(_mm512_add_epi32(bits, _mm512_add_epi32(_mm512_set1_epi32(0x7fff), lsb)),
+                                             _mm512_set1_epi32(static_cast<int>(0xffff0000u)));
+    const __mmask16 nan = _mm512_cmp_ps_mask(values, values, _CMP_UNORD_Q);
+    const __m512 res = _mm512_castsi512_ps(_mm512_mask_mov_epi32(bits, finite, rounded));
+    return _mm512_mask_mov_ps(res, nan, _mm512_castsi512_ps(_mm512_set1_epi32(0x7fc00000)));
+  }
+}
+
 template <int RT, bool WeightsPrepacked, bool ScalesBlockMajor, bool ScaleIsBf16, bool DeferredScale>
 void Int4Group8Avx512(const uint8_t* w_base, const uint8_t* next_w_base, const uint16_t* scales,
                       int64_t n_total, int64_t n0, int64_t k,
@@ -212,22 +244,25 @@ void Int4Group8Avx512(const uint8_t* w_base, const uint8_t* next_w_base, const u
     }
     auto step_col = [&](int c, const uint8_t* byte_ptr, __m512& a0, __m512& a1) QMOE_LAMBDA_INLINE {
       const __m128i x = _mm_loadu_si128(reinterpret_cast<const __m128i*>(byte_ptr));
-      const __m128i lo = _mm_and_si128(x, mask);
-      const __m128i hi = _mm_and_si128(_mm_srli_epi16(x, 4), mask);
-      __m512 wl = _mm512_cvtepi32_ps(_mm512_sub_epi32(_mm512_cvtepu8_epi32(lo), eight));
-      __m512 wh = _mm512_cvtepi32_ps(_mm512_sub_epi32(_mm512_cvtepu8_epi32(hi), eight));
+      const __m512i lo32 = _mm512_cvtepu8_epi32(_mm_and_si128(x, mask));
+      const __m512i hi32 = _mm512_cvtepu8_epi32(_mm_and_si128(_mm_srli_epi16(x, 4), mask));
       const uint16_t s_bits = ScalesBlockMajor ? scales[kb * n_total + n0 + c] : scales[(n0 + c) * blocks + kb];
       const float s_val = ScaleIsBf16 ? Avx512BFloat16BitsToFloat(s_bits) : Avx512HalfBitsToFloat(s_bits);
+      __m512 wl, wh;
       if constexpr (!DeferredScale) {
-        wl = RoundInt4WeightsAvx512<ScaleIsBf16>(wl, s_val);
-        wh = RoundInt4WeightsAvx512<ScaleIsBf16>(wh, s_val);
+        const __m512 table = Int4LookupAvx512<ScaleIsBf16>(s_bits, s_val);
+        wl = _mm512_permutexvar_ps(lo32, table);
+        wh = _mm512_permutexvar_ps(hi32, table);
+      } else {
+        wl = _mm512_cvtepi32_ps(_mm512_sub_epi32(lo32, eight));
+        wh = _mm512_cvtepi32_ps(_mm512_sub_epi32(hi32, eight));
       }
       const __m512 s = _mm512_set1_ps(DeferredScale ? s_val : 1.0f);
       const __m512 prod0 = _mm512_fmadd_ps(wl, al0, _mm512_mul_ps(wh, ah0));
-      a0 = _mm512_fmadd_ps(prod0, s, a0);
+      a0 = DeferredScale ? _mm512_fmadd_ps(prod0, s, a0) : _mm512_add_ps(prod0, a0);
       if constexpr (RT >= 2) {
         const __m512 prod1 = _mm512_fmadd_ps(wl, al1, _mm512_mul_ps(wh, ah1));
-        a1 = _mm512_fmadd_ps(prod1, s, a1);
+        a1 = DeferredScale ? _mm512_fmadd_ps(prod1, s, a1) : _mm512_add_ps(prod1, a1);
       }
     };
     step_col(0, WeightsPrepacked ? (tile0 + 0 * 32) : (w_base + 0 * raw_w_stride + kb * 16), acc0_0, acc0_1);
@@ -288,20 +323,23 @@ void Int4Group4Avx512(const uint8_t* w_base, const uint8_t* next_w_base, const u
     auto step_col = [&](int c) QMOE_LAMBDA_INLINE {
       const uint8_t* byte_ptr = WeightsPrepacked ? (tile + c * 32) : (w_base + c * raw_w_stride + kb * 16);
       const __m128i x = _mm_loadu_si128(reinterpret_cast<const __m128i*>(byte_ptr));
-      const __m128i lo = _mm_and_si128(x, mask);
-      const __m128i hi = _mm_and_si128(_mm_srli_epi16(x, 4), mask);
-      __m512 wl = _mm512_cvtepi32_ps(_mm512_sub_epi32(_mm512_cvtepu8_epi32(lo), eight));
-      __m512 wh = _mm512_cvtepi32_ps(_mm512_sub_epi32(_mm512_cvtepu8_epi32(hi), eight));
+      const __m512i lo32 = _mm512_cvtepu8_epi32(_mm_and_si128(x, mask));
+      const __m512i hi32 = _mm512_cvtepu8_epi32(_mm_and_si128(_mm_srli_epi16(x, 4), mask));
       const uint16_t s_bits = ScalesBlockMajor ? scales[kb * n_total + n0 + c] : scales[(n0 + c) * blocks + kb];
       const float s_val = ScaleIsBf16 ? Avx512BFloat16BitsToFloat(s_bits) : Avx512HalfBitsToFloat(s_bits);
+      __m512 wl, wh;
       if constexpr (!DeferredScale) {
-        wl = RoundInt4WeightsAvx512<ScaleIsBf16>(wl, s_val);
-        wh = RoundInt4WeightsAvx512<ScaleIsBf16>(wh, s_val);
+        const __m512 table = Int4LookupAvx512<ScaleIsBf16>(s_bits, s_val);
+        wl = _mm512_permutexvar_ps(lo32, table);
+        wh = _mm512_permutexvar_ps(hi32, table);
+      } else {
+        wl = _mm512_cvtepi32_ps(_mm512_sub_epi32(lo32, eight));
+        wh = _mm512_cvtepi32_ps(_mm512_sub_epi32(hi32, eight));
       }
       const __m512 s = _mm512_set1_ps(DeferredScale ? s_val : 1.0f);
       for (int r = 0; r < RT; ++r) {
         const __m512 prod = _mm512_fmadd_ps(wl, al[r], _mm512_mul_ps(wh, ah[r]));
-        acc[c][r] = _mm512_fmadd_ps(prod, s, acc[c][r]);
+        acc[c][r] = DeferredScale ? _mm512_fmadd_ps(prod, s, acc[c][r]) : _mm512_add_ps(prod, acc[c][r]);
       }
     };
     step_col(0);

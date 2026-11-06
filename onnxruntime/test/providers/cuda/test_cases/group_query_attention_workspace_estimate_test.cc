@@ -524,6 +524,34 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, ParsesPackedAndSeparateLayouts) {
   EXPECT_GT(packed->total_workspace_bytes, separate->total_workspace_bytes);
 }
 
+TEST(GroupQueryAttentionWorkspaceEstimateTest, ExplicitQueryLengthsIncludeMaskedValueScratch) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kMath, true);
+  const auto separate = SeparateShapes();
+  std::array<WorkspaceInputShape, 17> shapes;
+  std::copy(separate.begin(), separate.end(), shapes.begin());
+  shapes[16] = Known({2});
+  for (const auto policy : {KernelDispatchPolicy::Auto, KernelDispatchPolicy::Latency,
+                            KernelDispatchPolicy::Memory, KernelDispatchPolicy::Safe}) {
+    SCOPED_TRACE(static_cast<int>(policy));
+    auto config = Config();
+    config.dispatch_policy = policy;
+    const auto estimate = EstimateGroupQueryAttentionWorkspace(config, shapes, Device(), options);
+    ASSERT_TRUE(estimate.has_value());
+
+    auto bounds = Bounds();
+    bounds.is_windowed_kv_cache = true;
+    bounds.reachable_backends = GQAReachableBackend::Unfused;
+    const auto without = GetGQAWorkspaceAggregateForBounds(bounds, policy);
+    ASSERT_TRUE(without.status.IsOK()) << without.status.message;
+    bounds.has_query_seqlens = true;
+    const auto with = GetGQAWorkspaceAggregateForBounds(bounds, policy);
+    ASSERT_TRUE(with.status.IsOK()) << with.status.message;
+    EXPECT_GT(with.total_workspace_bytes, without.total_workspace_bytes);
+    EXPECT_GE(estimate->total_workspace_bytes, with.total_workspace_bytes);
+  }
+}
+
 // H512 with a sink has no general-phase route; budget its XQA workspace in decode-only bounds.
 TEST(GroupQueryAttentionWorkspaceBoundsTest, H512DecodeBoundsDominateCompleteRuntimeWorkspace) {
   for (int group : {3, 33}) {

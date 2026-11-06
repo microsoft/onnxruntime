@@ -28,7 +28,9 @@ void LaunchSoftmaxTopK(
     int num_experts,
     int k,
     bool normalize_scales,
-    cudaStream_t stream);
+    cudaStream_t stream,
+    float min_expert_weight = 0.0f,
+    bool renormalize_after_prune = false);
 
 void LaunchSoftmaxTopK(
     const half* logits,
@@ -38,7 +40,9 @@ void LaunchSoftmaxTopK(
     int num_experts,
     int k,
     bool normalize_scales,
-    cudaStream_t stream);
+    cudaStream_t stream,
+    float min_expert_weight = 0.0f,
+    bool renormalize_after_prune = false);
 
 void LaunchSoftmaxTopK(
     const __nv_bfloat16* logits,
@@ -48,7 +52,9 @@ void LaunchSoftmaxTopK(
     int num_experts,
     int k,
     bool normalize_scales,
-    cudaStream_t stream);
+    cudaStream_t stream,
+    float min_expert_weight = 0.0f,
+    bool renormalize_after_prune = false);
 
 // Decode-only fused routing: softmax + top-k (bit-identical to LaunchSoftmaxTopK) and the (expert, token)-sorted expert
 // maps of fusedBuildExpertMapsSortFirstToken in one single-CTA launch. Returns false (nothing launched) outside its
@@ -102,7 +108,7 @@ cudaError_t LaunchQMoEOffloadScatterBias(
 // `expert_slot` has `num_experts` entries. A routed index outside [0, num_experts) is classified as a miss (never
 // reads `expert_slot`) and is forwarded unchanged through `host_indices_out` so the host can reject the invocation.
 cudaError_t LaunchQMoEOffloadClassify(
-    const int* topk_indices, const int* expert_slot, int num_experts, int route_count, int row_count,
+    int* topk_indices, const int* expert_slot, int num_experts, int route_count, int row_count,
     int* hit_ids, int* hit_compact, int* hit_flag, cudaStream_t stream,
     int dummy_slot = 0, float* unit_scales = nullptr, int* identity_permutation = nullptr,
     int k_for_source_rows = 0, int* host_indices_out = nullptr,
@@ -110,7 +116,9 @@ cudaError_t LaunchQMoEOffloadClassify(
     uint64_t* doorbell_seq_dev = nullptr, volatile uint64_t* doorbell_req_host = nullptr,
     volatile int32_t* doorbell_tile_rows_host = nullptr, int tile_rows = 0,
     bool skip_zero_cold = false, volatile uint64_t* doorbell_done_host = nullptr,
-    volatile int32_t* cold_count_host = nullptr, QMoEOffloadTelemetry* telemetry = nullptr);
+    QMoEOffloadTelemetry* telemetry = nullptr,
+    float* topk_scales_for_cold_prune = nullptr, float min_cold_expert_weight = 0.0f,
+    int top_k_for_cold_prune = 0);
 
 cudaError_t LaunchQMoEOffloadMerge(
     const half* wave_output, const half* cpu_rows, const int* hit_flag, half* contributions,
@@ -675,6 +683,12 @@ struct Int3Projection {
   int bits = 0;
 };
 
+struct Int3ExpertTileDesc {
+  int expert;
+  int start_idx;
+  int count;
+};
+
 struct Int3MoeParams {
   int tensor_core_min_routes = 33;  // 0 disables the tensor-core decode path.
   const void* input = nullptr;
@@ -726,7 +740,8 @@ void LaunchPrePackInt3Weights(const uint8_t* raw_weights, uint8_t* packed_weight
 void LaunchPrePackInt3Scales(const __nv_bfloat16* raw_scales, __nv_bfloat16* packed_scales,
                              int num_experts, int n, int k, cudaStream_t stream);
 
-cudaError_t LaunchInt3Moe(const Int3MoeParams& params, cudaStream_t stream);
+cudaError_t LaunchInt3Moe(const Int3MoeParams& params, cudaStream_t stream,
+                          bool* used_grouped = nullptr, bool* used_tensor_core = nullptr);
 cudaError_t ValidateInt3MoeContent(const Int3Projection& projection, size_t rows,
                                    int logical_k, int block_size, bool is_bfloat16,
                                    int* invalid, cudaStream_t stream);

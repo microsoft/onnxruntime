@@ -27,6 +27,7 @@ const createModel = (querySeqlens: 'omitted' | 'empty' | 'present'): Uint8Array 
   if (querySeqlens === 'present') {
     inputs.push(valueInfo('query_seqlens', onnx.TensorProto.DataType.INT32, [1]));
   }
+  // Proxy mode transfers this buffer; keep protobufjs's shared allocation pool attached.
   return onnx.ModelProto.encode({
     irVersion: 9,
     opsetImport: [{ domain: 'com.microsoft', version: 1 }],
@@ -48,8 +49,25 @@ const createModel = (querySeqlens: 'omitted' | 'empty' | 'present'): Uint8Array 
         },
       ],
     },
-  }).finish();
+  })
+    .finish()
+    .slice();
 };
+
+describe('#UnitTest# - GroupQueryAttention model serialization', () => {
+  it('keeps serializing models after transferring each model buffer', () => {
+    for (const querySeqlens of ['omitted', 'empty', 'present'] as const) {
+      const model = createModel(querySeqlens);
+      const byteLength = model.byteLength;
+      const transferred = structuredClone(model, { transfer: [model.buffer] });
+      expect(model.byteLength).to.equal(0);
+      expect(transferred.byteLength).to.equal(byteLength);
+      const decoded = onnx.ModelProto.decode(transferred);
+      expect(decoded.graph!.input).to.have.lengthOf(querySeqlens === 'present' ? 8 : 7);
+      expect(decoded.graph!.node![0].opType).to.equal('GroupQueryAttention');
+    }
+  });
+});
 
 describe('#UnitTest# - JSEP GroupQueryAttention query_seqlens admission', function () {
   before(async function (this: Mocha.Context) {

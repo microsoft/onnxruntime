@@ -28,6 +28,11 @@ on:
         required: false
         type: string
         default: ''
+      base_image_family:
+        description: 'Base-image family from base-images.json; otherwise use the Dockerfile default'
+        required: false
+        type: string
+        default: ''
       execution_providers:
         description: 'Space-separated list of execution providers to enable (passed to build.py)'
         required: false
@@ -92,12 +97,13 @@ jobs:
           python-version: ${{ inputs.python_version }}
 
       - name: Build Docker Image (${{ inputs.architecture }} / ${{ inputs.build_config }})
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: ./.github/actions/build-docker-image
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/${{ inputs.dockerfile_path }}
           image-name: ghcr.io/microsoft/onnxruntime/${{ inputs.docker_image_repo }}
           build-args: ${{ inputs.docker_build_args }}
+          base-image-family: ${{ inputs.base_image_family }}
           push: true
           azure-container-registry-name: onnxruntimebuildcache
         env:
@@ -201,7 +207,7 @@ jobs:
       # ------------- Upload Build Output Step -------------
       - name: Upload Build Output Artifact
         if: inputs.upload_build_output == true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: build-output-${{ inputs.architecture }}-${{ inputs.build_config }}
           path: ${{ runner.temp }}/${{ inputs.build_config }}
@@ -210,7 +216,7 @@ jobs:
       # ------------- Upload Log on Build Failure Step -------------
       - name: Upload VCPKG Manifest Install Log on Update or Build Failure
         if: steps.update_step.outcome == 'failure' || steps.build_step.outcome == 'failure'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: vcpkg-manifest-install-log-${{ inputs.architecture }}-${{ inputs.build_config }}
           path: ${{ runner.temp }}/${{ inputs.build_config }}/${{ inputs.build_config }}/vcpkg-manifest-install.log

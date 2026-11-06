@@ -179,6 +179,7 @@ struct GQAWorkspaceBounds {
   bool do_rotary = false;
   bool is_packed_qkv = false;
   bool use_qk_norm = false;
+  bool has_query_seqlens = false;
   bool prefill_reachable = false;
   bool decode_reachable = false;
   bool chunked_prefill_reachable = false;

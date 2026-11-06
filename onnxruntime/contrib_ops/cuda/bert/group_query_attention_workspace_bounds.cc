@@ -94,6 +94,7 @@ GQAWorkspaceProblem MakeProblem(const GQAWorkspaceBounds& bounds,
   problem.do_rotary = bounds.do_rotary;
   problem.is_packed_qkv = bounds.is_packed_qkv;
   problem.use_qk_norm = bounds.use_qk_norm;
+  problem.has_query_seqlens = bounds.has_query_seqlens;
   return problem;
 }
 

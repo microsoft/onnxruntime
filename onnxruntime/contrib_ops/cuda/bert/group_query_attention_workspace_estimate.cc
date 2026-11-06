@@ -42,6 +42,7 @@ constexpr size_t kKScale = 12;
 constexpr size_t kVScale = 13;
 constexpr size_t kQNorm = 14;
 constexpr size_t kKNorm = 15;
+constexpr size_t kQuerySeqlens = 16;
 
 bool Present(gsl::span<const WorkspaceInputShape> shapes, size_t index) {
   return GetWorkspaceInputShape(shapes, index).GetState() != WorkspaceInputShapeState::Missing;
@@ -315,6 +316,7 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
   bounds.do_rotary = config.do_rotary;
   bounds.is_packed_qkv = packed;
   bounds.use_qk_norm = Present(shapes, kQNorm);
+  bounds.has_query_seqlens = Present(shapes, kQuerySeqlens);
   bounds.prefill_reachable = true;
   bounds.decode_reachable = true;
   bounds.chunked_prefill_reachable = sequence_bound > 1;

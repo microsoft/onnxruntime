@@ -198,7 +198,7 @@ jobs:
 
       - name: Upload WASM artifacts
         if: ${{ inputs.skip_publish != true }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.build_config }}_wasm
           path: ${{ github.workspace }}/artifacts/wasm
@@ -227,7 +227,7 @@ jobs:
 
       - name: Publish test results
         if: ${{ always() && inputs.build_config == 'Debug' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-results
           path: ${{ github.workspace }}/build/**/*.results.xml
