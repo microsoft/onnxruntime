@@ -10,6 +10,7 @@
 #include <memory>
 #include <sstream>
 
+#include "allocator.h"
 #include "core/framework/tensor.h"
 #include "core/session/onnxruntime_type_conversion.h"
 
@@ -33,16 +34,7 @@ inline onnxruntime::Tensor CreateTensorFromApiValue(OrtValue* ort_value) {
                              utils::ToTensorProtoElementType(element_type))
                              ->GetElementType();
 
-  OrtMemoryInfo tensor_memory_info{memory_info.GetAllocatorName(),
-                                   memory_info.GetAllocatorType(),
-                                   OrtDevice{
-                                       static_cast<OrtDevice::DeviceType>(memory_info.GetDeviceType()),
-                                       static_cast<OrtDevice::MemoryType>(memory_info.GetMemoryType()),
-                                       static_cast<OrtDevice::VendorId>(memory_info.GetVendorId()),
-                                       static_cast<OrtDevice::DeviceId>(memory_info.GetDeviceId()),
-
-                                   },
-                                   memory_info.GetMemoryType()};
+  const auto tensor_memory_info = CreateMemoryInfoFromApi(memory_info);
 
   return Tensor(data_type,
                 TensorShape{shape.shape, shape.shape_len},

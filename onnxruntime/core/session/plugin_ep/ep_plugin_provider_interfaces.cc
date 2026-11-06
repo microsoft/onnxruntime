@@ -22,6 +22,7 @@
 #include "core/framework/external_data_loader.h"
 #include "core/framework/external_data_loader_thread_pool.h"
 #include "core/framework/plugin_data_transfer.h"
+#include "core/framework/plugin_external_data_loader.h"
 #include "core/framework/plugin_ep_stream.h"
 #include "core/framework/resource_accountant.h"
 #include "core/framework/tensor.h"
@@ -1389,6 +1390,10 @@ class PluginExternalDataLoader final : public IExternalDataLoader {
 }  // namespace
 
 std::unique_ptr<onnxruntime::IExternalDataLoader> PluginExecutionProvider::GetExternalDataLoader() const {
+  if (auto loader = plugin_ep::CreateExternalDataLoader(*ort_ep_); loader != nullptr) {
+    return loader;
+  }
+
 #if defined(ORT_MINIMAL_BUILD) || defined(__wasm__)
   return nullptr;
 #else
