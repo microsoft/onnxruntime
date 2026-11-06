@@ -121,7 +121,9 @@ TEST(MathOpTest, Clip_int64_above_int32_max) {
   test.AddOutput<int64_t>("Y", dims, {0, 0});
 
   // TensorRT does not support Clip opset 12 yet.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  // WebGPU computes int64 Clip in i32, which wraps values above INT32_MAX.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(MathOpTest, Clip_Default_uint64) {

@@ -504,7 +504,6 @@ target_include_directories(onnxruntime_providers_cuda_plugin PRIVATE
     ${ONNXRUNTIME_ROOT}
     ${CUDAToolkit_INCLUDE_DIRS}
     ${CUDA_PLUGIN_CUDNN_INCLUDE_DIR}
-    ${Eigen3_SOURCE_DIR}
     ${cutlass_SOURCE_DIR}/include
     ${cutlass_SOURCE_DIR}/examples
     ${cutlass_SOURCE_DIR}/tools/util/include
@@ -529,6 +528,7 @@ onnxruntime_add_include_to_target(
     onnx_proto
     ${PROTOBUF_LIB}
     flatbuffers::flatbuffers
+    Eigen3::Eigen
 )
 
 # Ensure generated headers (e.g. onnx-ml.pb.h) are available before compiling.
