@@ -1,26 +1,40 @@
 # Capability Planning Interfaces: `GetCapability` and `ComputeCapability`
 
 This draft defines the signatures and contracts that [S0](capability_planning_s0.md) leaves open: how an execution
-provider (EP) answers a *planning* query, and how each answer is carried in a `ComputeCapability`. It supports the
-discovery step of the [region-aware placement proposal](https://github.com/microsoft/onnxruntime/pull/33372)
+provider (EP) answers a *planning* query, and how each execution candidate is carried in a `ComputeCapability`. It
+supports the discovery step of the
+[region-aware placement proposal](https://github.com/microsoft/onnxruntime/pull/33372)
 ([pinned design section](https://github.com/microsoft/onnxruntime/blob/c3f809596077921ad5f8500564f3476c4bc0927c/docs/annotated_partitioning/PartitioningWithAnnotationsAndMemoryConstraints.md#proposed-automatic-region-aware-cpugpu-placement)).
 
 It does not define the planner, covers, budget admission, recipe application, or any kernel policy
 (see [Out of scope](#14-out-of-scope)). Start with sections 1, 3 and 5. Sections 11 and 13 list the decisions that
 need reviewer input.
 
+> **Design decision.** Planning reuses the existing shapes. The planning `GetCapability` returns the same
+> `std::vector<std::unique_ptr<ComputeCapability>>` as the legacy overload, takes the query context as its fourth
+> argument, and carries all planning data in the optional `ComputeCapability::planning` member that S0 added. The
+> legacy overload, `ComputeCapability`, `nodes_to_optimize`, and `optimization_func` keep their current signatures and
+> meaning. This is the call shape sketched in the proposal:
+> `GetCapability(graph_view, kernel_lookup, optimizer_registry, query_context) -> execution_candidates[]`.
+> A variant that returns `Status` and fills a result out-parameter is Alternative D in
+> [section 11](#11-alternatives-considered).
+
 | Item | Status |
 |:-----|:-------|
 | Planning types, `ComputeCapability::planning`, `ValidateCapabilityPlanningResult`, `CreateCapabilityPlanningBinding`, `ValidateCapabilityPlanningBindingIdentity` | In S0 (#33841) |
-| Planning overload of `IExecutionProvider::GetCapability` and its default | **Proposed here**, lands with C1 |
-| Dispatcher `QueryCapabilityPlanning` and exported `ValidateCapabilityPlanningQuery` | **Proposed here**, lands with C1 |
+| Planning overload of `IExecutionProvider::GetCapability`, its base default, and a forward declaration of `CapabilityPlanningQuery` | **Proposed here**, lands with C1 |
+| Host dispatcher `QueryCapabilityPlanning` and exported `ValidateCapabilityPlanningQuery` | **Proposed here**, lands with C1 |
 | Shared-provider bridge entries | **Proposed here**, append-only, lands with C1 |
 | Plugin-EP C ABI | Mapping requirements only (S0.4). No names or layouts are proposed |
+| Code in this document | Illustrative. It was not compiled against ORT's headers. [Section 12](#12-verification-evidence) lists what was and was not checked |
 
 ## 1. Summary
 
 ```cpp
 // include/onnxruntime/core/framework/execution_provider.h
+
+// Forward declaration, next to IResourceAccountant and outside #ifndef SHARED_PROVIDER.
+struct CapabilityPlanningQuery;
 
 // Unchanged. Existing EPs and the partitioner keep using it.
 virtual std::vector<std::unique_ptr<ComputeCapability>>
@@ -29,77 +43,90 @@ GetCapability(const onnxruntime::GraphViewer& graph_viewer,
               const GraphOptimizerRegistry& graph_optimizer_registry,
               IResourceAccountant* resource_accountant = nullptr) const;
 
-// New. Overriding it is an EP's opt-in to planning-safe discovery.
-virtual common::Status
+// New. Same return type. The fourth argument is the planning query context instead of an accountant.
+// Overriding it is an EP's opt-in to planning-safe discovery.
+virtual std::vector<std::unique_ptr<ComputeCapability>>
 GetCapability(const onnxruntime::GraphViewer& graph_viewer,
               const IKernelLookup& kernel_lookup,
               const GraphOptimizerRegistry& graph_optimizer_registry,
-              const std::shared_ptr<const CapabilityPlanningQuery>& query,
-              CapabilityPlanningQueryResult& result) const;
+              const std::shared_ptr<const CapabilityPlanningQuery>& query_context) const;
 ```
 
-`ComputeCapability` keeps its shape. Planning only uses the optional member that S0 added:
+`ComputeCapability` keeps its shape. Planning adds nothing beyond the optional member that S0 already added (members
+only; constructors and comments omitted):
 
 ```cpp
 struct ComputeCapability {
-  std::unique_ptr<IndexedSubGraph> sub_graph;                         // which nodes (unchanged)
-  std::function<Status(...)> optimization_func;                       // legacy hook, not used by planning
-  std::vector<std::unique_ptr<ComputeCapability>> nodes_to_optimize;  // legacy, not used by planning
-  std::shared_ptr<const CapabilityPlanningInfo> planning;             // S0: views, recipe, contracts
+  std::unique_ptr<IndexedSubGraph> sub_graph;  // existing: which source nodes
+  std::function<Status(Graph&, const ComputeCapability& /*this_optimization*/, ComputeCapability& /*cc_to_update*/,
+                       const GraphOptimizerRegistry&)>
+      optimization_func;                                              // existing, optional
+  std::vector<std::unique_ptr<ComputeCapability>> nodes_to_optimize;  // existing, optional
+  std::shared_ptr<const CapabilityPlanningInfo> planning;             // S0, optional: views, recipe, contracts
 };
 ```
 
-Design in five points:
+Design points:
 
-1. **One discovery name, two overloads.** The legacy overload takes 3-4 arguments and the planning overload takes 5, so
-   a call never matches both. Nothing in the existing partitioner calls the planning overload, so default behavior is
+1. **Same shapes.** Same name, same return type, same `ComputeCapability`. The planning overload differs from the
+   legacy one only in its fourth parameter. Nothing in the existing partitioner calls it, so default behavior is
    unchanged.
-2. **Opt-in by override.** The base default reports `Unsupported`. There is no separate `SupportsPlanning()` virtual
-   that could disagree with the override.
-3. **`Status` plus an out-parameter.** A vector return cannot tell "the EP cannot answer" from "the EP answered:
-   nothing eligible". The planning overload can (table below).
-4. **One shared query snapshot.** Every offer holds the same `shared_ptr` to the query. The S0 validator compares
-   pointers, so a stale or foreign offer is rejected.
-5. **No side effects.** Discovery does not mutate the graph, run `optimization_func`, compile, create kernels, allocate
-   device weights, or charge an `IResourceAccountant`. Requirements come back as data.
+2. **Participation is a candidate.** An EP takes part in a planning query by returning `ComputeCapability` objects
+   whose `planning` is set. There is no `Status`, `support` flag, or out-parameter at the EP boundary. The host-side
+   dispatcher (5.4) packages the vector into S0's `CapabilityPlanningQueryResult`.
+3. **The query context takes the accountant's place.** Passing a null accountant makes the CUDA EP skip its resource
+   queries, and passing a real one would charge during discovery. Planning returns requirements as data in each
+   candidate's contracts.
+4. **Opt-in by override. An empty vector means unsupported.** The base default returns an empty vector, and the
+   dispatcher reports an empty vector as `Unsupported` (unknown, not zero). There is no separate `SupportsPlanning()`
+   virtual that could disagree with the override. The cost of this choice is [open question 2](#13-open-questions).
+5. **One shared query snapshot.** Every candidate holds the same `shared_ptr` to the query. The S0 validator compares
+   pointers, so a stale or foreign candidate is rejected.
+6. **No side effects. Existing hooks coexist.** Discovery does not mutate the graph, run `optimization_func`, compile,
+   create kernels, allocate device weights, or charge an `IResourceAccountant`. A candidate may still carry
+   `nodes_to_optimize` and `optimization_func` for the later application step. Planning never invokes them.
 
-| EP outcome | Legacy overload | Planning overload |
-|:-----------|:----------------|:------------------|
-| Real failure | Exception, or silently empty | Non-OK `Status`, preserved |
-| Cannot answer in planning-safe mode | Empty (indistinguishable from the next row) | `Unsupported` (the default) |
-| Answered, nothing eligible | Empty | OK, `PlanningSafe`, no offers |
-| Answered | Non-empty | OK, `PlanningSafe`, one or more offers |
+| EP behavior | Result at the host |
+|:------------|:-------------------|
+| Returns candidates that all carry valid `planning` | OK, `PlanningSafe` |
+| Returns an empty vector (also what the base default returns) | `NOT_IMPLEMENTED`: unknown, not zero |
+| Returns a candidate with no `planning`, for example forwarded legacy output | `NOT_IMPLEMENTED` |
+| Returns an invalid candidate: null entry, foreign query, duplicate or empty ids, malformed bounded claims | `INVALID_ARGUMENT`. The whole result is rejected |
+| Throws | `FAIL`, message preserved |
 
 ## 2. Terms
 
 | Term | Meaning |
 |:-----|:--------|
-| Query | `CapabilityPlanningQuery`: an immutable snapshot of graph identity, workload bounds, node constraints, tentative placement, and EP configuration. |
-| Offer | One `ComputeCapability` with `planning` set: one way this EP could cover a set of source nodes. Identified by `planning->candidate_id`. |
-| Menu | The `CapabilityPlanningQueryResult` for one EP: all offers plus `support` and `diagnostic`. Nothing is selected yet. |
-| View | A named version of the graph that an offer applies to, for example `V_source` (as imported) or `V_opt` (with an EP fusion applied). Listed in `alternative_view_ids`. |
-| Recipe | How an offer is realized: `Standalone`, `RegisteredFusion`, or `CompiledRegion`, plus its declared graph effects. |
-| Contract | A policy-specific (`KernelDispatchPolicy`) promise: eligibility, workload coverage, allocation requirements, and EP-private resolved state. An offer may carry several. |
+| Query context | `CapabilityPlanningQuery`, passed as `query_context`: an immutable snapshot of graph identity, workload bounds, node constraints, tentative placement, and EP configuration. |
+| Execution candidate | One `ComputeCapability` with `planning` set: one way this EP could cover a set of source nodes. Identified by `planning->candidate_id`. S0 text and error messages call it an "offer". |
+| Candidate set | An EP's candidates for one query, packaged by the dispatcher into S0's `CapabilityPlanningQueryResult` together with `support` and `diagnostic`. Nothing is selected yet. EP code never sees this type. |
+| View | A named version of the graph that a candidate applies to, for example `V_source` (as imported) or `V_opt` (with an EP fusion applied). Listed in `alternative_view_ids`. |
+| Recipe | How a candidate is realized: `Standalone`, `RegisteredFusion`, or `CompiledRegion`, plus its declared graph effects. |
+| Contract | A policy-specific (`KernelDispatchPolicy`) promise: eligibility, workload coverage, allocation requirements, and EP-private resolved state. A candidate may carry several. |
 | Selection | `CapabilityPlanningSelection`: the planner's choice of candidate, recipe, view, contract, and plan generation. |
 | Binding | `CapabilityPlanningBinding`: the const, validated result of a selection. It keeps only the chosen recipe and contract. |
 
 ## 3. End-to-End Flow
 
-Planning discovery is a second path next to the legacy one, not a replacement.
+Planning discovery is a second path next to the legacy one, not a replacement. Both paths return the same
+`ComputeCapability` shape.
 
 ```mermaid
 flowchart LR
   subgraph LEG["Legacy discovery (unchanged)"]
     direction TB
-    L1["GraphPartitioner"] --> L2["GetCapability, 4 args<br/>may charge IResourceAccountant"]
+    L1["GraphPartitioner"]
+    L2["GetCapability<br/>4th argument: IResourceAccountant<br/>may charge during discovery"]
+    L1 --> L2
     L2 --> L3["vector of ComputeCapability<br/>sub_graph, optional MetaDef"]
-    L3 --> L4["assign nodes, optimization_func, compile"]
+    L3 --> L4["assign nodes, run optimization_func, compile"]
   end
   subgraph PLN["Planning discovery (new, internal)"]
     direction TB
-    P1["Planner (C1 and later)"] -->|"query + source view"| P2["QueryCapabilityPlanning"]
-    P2 -->|"validated query"| P3["GetCapability, 5 args<br/>read-only, no accountant"]
-    P3 --> P4["CapabilityPlanningQueryResult<br/>menu of offers"]
+    P1["Planner (C1 and later)"] -->|"query context + source view"| P2["QueryCapabilityPlanning<br/>host dispatcher"]
+    P2 -->|"validated query"| P3["GetCapability<br/>4th argument: query_context<br/>read-only, no accountant"]
+    P3 -->|"vector of ComputeCapability with planning set"| P4["CapabilityPlanningQueryResult<br/>candidate set"]
     P4 -->|"validated result"| P5["Planner picks cover and contracts"]
     P5 -->|"CapabilityPlanningSelection"| P6["CreateCapabilityPlanningBinding"]
     P6 -->|"const CapabilityPlanningBinding"| P7["Later stages<br/>admission, apply recipe, init, run"]
@@ -110,20 +137,67 @@ flowchart LR
 | | Legacy | Planning |
 |:--|:-------|:---------|
 | Caller | `GraphPartitioner` | `QueryCapabilityPlanning`, called by the future planner |
-| Graph shown | The partitioner's current view | The source view named by `query->source_view_id`, before any selected-placement filter. Placement context arrives in `query->tentative_assignments` and `query->node_constraints` |
+| Fourth argument | `IResourceAccountant*`, default `nullptr` | `std::shared_ptr<const CapabilityPlanningQuery>` |
+| Graph shown | The partitioner's current view | The source view named by `query_context->source_view_id`, before any selected-placement filter. Placement context arrives in `tentative_assignments` and `node_constraints` |
 | Resource accounting | Optional `IResourceAccountant*`, charged during discovery | None. Requirements are returned in each contract |
-| Result | Vector of `ComputeCapability` with `sub_graph` and optional `MetaDef` | `Status` plus a menu of `ComputeCapability` offers with `planning` set |
+| Result | `ComputeCapability` with `sub_graph` and optional `MetaDef`. The partitioner later consumes `nodes_to_optimize` and `optimization_func` | `ComputeCapability` with `planning` set. Planning never invokes `nodes_to_optimize` or `optimization_func` |
 
 ## 4. `ComputeCapability`
+
+### 4.1 Shape
+
+The proposal's information model, with the existing hooks kept in place:
+
+```text
+ComputeCapability
+|-- sub_graph
+|   `-- source-node membership and supplied or derived boundary inputs/outputs
+|-- nodes_to_optimize (optional, existing)
+|   `-- child ComputeCapability requests identifying subsets to optimize
+|-- optimization_func (optional, existing)
+|   `-- callback on an optimization request; mutates the Graph and updates the parent capability
+`-- planning (optional, S0)
+    |-- candidate_id + graph_revision
+    |-- alternative_view_ids + compatibility_constraints
+    |-- implementation_recipe
+    |   |-- standalone kernel, fused kernel, or compiled-region lowering
+    |   |-- application_handle / recipe_state
+    |   `-- planning_graph or graph_effects_description
+    `-- contracts[]
+        |-- contract_id + EP-owned resolved contract state
+        |-- eligibility / workload coverage / explicit-failure conditions
+        |-- allocation_requirements[]
+        `-- bound_status / unresolved_terms
+```
+
+S0 names the planning members as follows:
+
+| Proposal name | S0 member | Notes |
+|:--------------|:----------|:------|
+| `sub_graph` membership | `sub_graph->nodes` | The part of `sub_graph` that S0 validates: non-empty and duplicate-free |
+| Boundary inputs and outputs | `sub_graph->GetMetaDef()`, or `recipe.graph_effects.boundary_inputs` and `boundary_outputs` | Supplied by the EP or derived from the graph. The proposal does not imply that every boundary field already exists on `IndexedSubGraph`. S0 does not validate `MetaDef` |
+| `candidate_id` | `planning->candidate_id` | Unique within one result. S0 also requires `implementation_id` |
+| `graph_revision` | `planning->query->graph_revision` | Not copied onto the candidate. The shared query pointer is the validity token |
+| `alternative_view_ids` | `planning->alternative_view_ids` | At least one entry, unique |
+| `compatibility_constraints` | `planning->compatibility` | `required_candidates`, `excluded_candidates`, `boundary_constraints` |
+| `implementation_recipe` | `planning->recipe` | `recipe_id`, `kind` (`Standalone`, `RegisteredFusion`, `CompiledRegion`, or `Unresolved`), `unresolved_terms` |
+| `application_handle / recipe_state` | `recipe.prepared_state` | Opaque `CapabilityPlanningState` |
+| `planning_graph or graph_effects_description` | `recipe.graph_effects` | `Unresolved`, `Unchanged`, or `Described`. S0 has no planning-graph type, only the compact description |
+| `contracts[]` | `planning->contracts` | At least one. Members below |
+| `contract_id` and resolved state | `contract_id`, `resolved_state` | EP-owned, opaque |
+| Eligibility, coverage, failure conditions | `eligibility` with `eligibility_reason`, `workload_coverage`, `explicit_failure_conditions` | |
+| `allocation_requirements[]` | `allocation_requirements` | `std::optional`. Unset means unknown, not none |
+| `bound_status` and `unresolved_terms` | `bound_status`, `unresolved_terms` | |
+
+The query context maps the same way: `user_constraints` is `node_constraints`, `device/configuration` is
+`execution_device`, `ep_configuration`, and the concurrency bounds, and `mode` is `CapabilityQueryMode`. S0 validates
+that `mode` is `Planning`, but the overload already implies it. `mode` would carry the choice under Alternative B.
+
+### 4.2 Types
 
 ```mermaid
 classDiagram
   direction TB
-  class CapabilityPlanningQueryResult {
-    +CapabilityPlanningSupport support
-    +string diagnostic
-    +InlinedVector~unique_ptr~ComputeCapability~~ capabilities
-  }
   class ComputeCapability {
     +unique_ptr~IndexedSubGraph~ sub_graph
     +function optimization_func
@@ -181,10 +255,9 @@ classDiagram
   class CapabilityPlanningState {
     <<opaque>>
   }
-  CapabilityPlanningQueryResult "1" *-- "0..*" ComputeCapability : capabilities
   ComputeCapability "1" *-- "1" IndexedSubGraph : sub_graph
   ComputeCapability "1" o-- "0..1" CapabilityPlanningInfo : planning
-  CapabilityPlanningInfo --> CapabilityPlanningQuery : query, same pointer for every offer
+  CapabilityPlanningInfo --> CapabilityPlanningQuery : query, same pointer for every candidate
   CapabilityPlanningInfo "1" *-- "1" CapabilityCompatibilityConstraints : compatibility
   CapabilityPlanningInfo "1" *-- "1" CapabilityImplementationRecipe : recipe
   CapabilityPlanningInfo "1" *-- "1..*" CapabilityExecutionContract : contracts
@@ -193,30 +266,57 @@ classDiagram
   CapabilityExecutionContract o-- "0..1" CapabilityPlanningState : resolved_state
 ```
 
-`planning` is `std::shared_ptr<const CapabilityPlanningInfo>` in code. `allocation_requirements` is an
-`std::optional`: unset means the list is unknown, not that there are no allocations.
+`nodes_to_optimize` holds child `ComputeCapability` objects of the same type. `planning` is
+`std::shared_ptr<const CapabilityPlanningInfo>` in code. `allocation_requirements` is an `std::optional`: unset means
+the list is unknown, not that there are no allocations.
 
 How each member is read in planning mode:
 
 | Member | Legacy meaning | Planning meaning |
 |:-------|:---------------|:-----------------|
-| `sub_graph->nodes` | Nodes the EP claims | Source nodes this offer covers. Must be non-empty and duplicate-free |
-| `sub_graph->GetMetaDef()` | Fused-node definition the partitioner turns into a node | Not validated by S0 and never applied during planning. See [open question 4](#13-open-questions) |
-| `optimization_func` | EP-specific optimization the partitioner runs after assignment | Never invoked. A recipe describes the optimization declaratively instead |
-| `nodes_to_optimize` | Nested capabilities for `optimization_func` | Not used |
+| `sub_graph->nodes` | Nodes the EP claims | Source nodes this candidate covers. Must be non-empty and duplicate-free |
+| `sub_graph->GetMetaDef()` | Fused-node definition the partitioner turns into a node | Optional boundary description. S0 neither validates nor applies it. See [open question 5](#13-open-questions) |
+| `nodes_to_optimize` | Child capabilities naming node subsets to optimize | Optional, existing. Carried, never read by the dispatcher, planner, or binder |
+| `optimization_func` | Callback the partitioner runs after assignment: it mutates the `Graph` and updates the parent capability | Optional, existing. Carried, never invoked during discovery, planning, or binding |
 | `planning` | Absent | Declarative metadata. Absence does not establish zero planning requirements |
 
-**Enforced by `ValidateCapabilityPlanningResult` (S0).** Per offer: non-null; `sub_graph` present with valid `nodes`;
-`planning` present and `planning->query` is the same pointer as the query; non-empty `candidate_id` (unique within the
-result), `implementation_id`, and `recipe_id`; at least one unique `alternative_view_ids` entry and at least one
-contract; an `Unresolved` recipe or graph effects must list `unresolved_terms`; `Unchanged` effects cannot declare
+**Enforced by `ValidateCapabilityPlanningResult` (S0).** Per candidate: non-null; `sub_graph` present with valid
+`nodes`; `planning` present and `planning->query` is the same pointer as the query; non-empty `candidate_id` (unique
+within the result), `implementation_id`, and `recipe_id`; at least one unique `alternative_view_ids` entry and at least
+one contract; an `Unresolved` recipe or graph effects must list `unresolved_terms`; `Unchanged` effects cannot declare
 introduced, removed, or aliased values; contract ids are unique; a contract that is not `Eligible` needs
 `eligibility_reason`; a `Bounded` contract needs a complete requirement list (unique ids, known kind, lifetime, device,
-size, and alignment); an `Unresolved` contract needs `unresolved_terms`.
+size, and alignment); an `Unresolved` contract needs `unresolved_terms`. A result with candidates must also be marked
+`PlanningSafe`, which the dispatcher does.
 
-**Conventions (not enforced today).** An EP should leave `optimization_func` and `nodes_to_optimize` unset on planning
-offers and should not set `MetaDef` until F1 defines how a fused node is described. See
-[open question 4](#13-open-questions).
+### 4.3 The existing hooks coexist with `planning`
+
+The proposal treats `nodes_to_optimize` and `optimization_func` as *application* hooks, not pre-assignment requirement
+descriptions. A candidate can carry the hooks and `planning` together. Each stage reads a different part:
+
+| Stage | Reads | Does not touch |
+|:------|:------|:---------------|
+| Discovery (the EP) | Builds `sub_graph`, `planning`, and optionally the hooks | |
+| Dispatcher and result validator | `sub_graph->nodes`, `planning` | The hooks |
+| Planner (covers and contracts) | `sub_graph->nodes`, `planning` | The hooks |
+| Binder | `planning`: the selected recipe and contract | The hooks |
+| Recipe application (F2, later) | The selected candidate's hooks, then reconciles against `planning->recipe` | |
+| Legacy partitioner | `sub_graph`, `nodes_to_optimize`, `optimization_func` | `planning` |
+
+Rules for an EP that sets both:
+
+1. **Planning does not run the hooks.** S0: binding does not run `optimization_func`; F2 later applies and reconciles
+   the selected recipe.
+2. **Same implementation.** A hook must apply the recipe the candidate describes. It must not independently select a
+   different fusion or implementation. S0 does not check this. See [open question 5](#13-open-questions).
+3. **No borrowed graph state in closures.** Anything stored on the candidate outlives the discovery call. Do not
+   capture that call's `GraphViewer`, `Node*`, or `NodeArg*` in `optimization_func`.
+4. **Selection functions are allowed.** The planning overload keeps `graph_optimizer_registry`. An EP may look up a
+   registered optimizer and run its selection function, which takes a `const GraphViewer&`, to build
+   `nodes_to_optimize`, following steps 1 to 4 in the `GetCapability` header comment. It must not run the
+   `optimization_func` that the selection returns.
+5. **Existing producers.** TensorRT EP and the CUDA runtime-fusion work (#33705, #33757) already populate these hooks
+   on the legacy path. Planning integration for them is future work (see [Out of scope](#14-out-of-scope)).
 
 ## 5. `GetCapability`
 
@@ -226,55 +326,90 @@ offers and should not set `MetaDef` until F1 defines how a fused node is describ
 |:----------|:-----|
 | `graph_viewer` | Read-only view of the source graph, before any selected-placement filter. Call-scoped: do not keep it or any `Node` or `NodeArg` pointer after returning |
 | `kernel_lookup` | Same as legacy: is a kernel registered for this node on this EP |
-| `graph_optimizer_registry` | Same object as legacy. Read-only in planning: the EP must not run registered optimizers on the graph |
-| `query` | Immutable snapshot of workload, constraints, and placement context. It is a `shared_ptr` so every offer can hold the same snapshot |
-| `result` | Host-owned and filled in place by the EP. Its special members are defined out of line in core, so EP code never constructs, moves, or destroys it |
+| `graph_optimizer_registry` | Same object as legacy. An EP may look up optimizers and run their read-only selection functions (4.3). It must not run an `optimization_func` or otherwise change the graph |
+| `query_context` | Immutable snapshot of workload, constraints, and placement context. It is a `shared_ptr` so every candidate can hold the same snapshot. Never null: the dispatcher validates it first |
+| Return value | The EP's execution candidates, each a `ComputeCapability` with `planning` set. An empty vector means no planning-safe answer (5.3) |
 
 There is no `IResourceAccountant*`. Passing a null accountant to the legacy overload would not discover requirements
-(the CUDA EP skips its resource queries when no accountant is supplied), and passing a real one would charge resources
-during discovery. Planning reports requirements as data instead.
+(the CUDA EP then returns bare single-node capabilities without its resource queries), and passing a real one would
+charge resources during discovery. Planning reports requirements as data instead.
 
-New inputs belong in `CapabilityPlanningQuery`, new outputs in `CapabilityPlanningQueryResult`. Neither changes the
+New inputs belong in `CapabilityPlanningQuery` and new outputs in `CapabilityPlanningInfo`. Neither changes the
 virtual's signature.
 
 ### 5.2 Contract
 
 | Party | Rule |
 |:------|:-----|
-| EP | **Read-only.** Do not mutate the `Graph`, run `optimization_func` or a registered optimizer, compile, create kernels, allocate bulk device memory such as weights, or charge an accountant |
+| EP | **Read-only.** Do not mutate the `Graph`, run `optimization_func`, compile, create kernels, allocate bulk device memory such as weights, or charge an accountant |
 | EP | **Call-scoped graph access.** Do not retain `GraphViewer`, `Node`, or `NodeArg` pointers. State that must outlive the call goes in an EP-owned `CapabilityPlanningState` |
-| EP | **Repeatable.** The same graph and query give the same menu. The host may re-query when placement changes |
-| EP | **Same query.** Set every offer's `planning->query` to the `query` argument itself, not a copy |
-| EP | **Set `support`.** `PlanningSafe` when the EP took part, even with no offers. `Unsupported` otherwise, with `capabilities` empty |
-| EP | **Errors.** Return non-OK only for real failures. Nothing to offer is OK, `PlanningSafe`, and no offers |
-| EP | **Describe, do not guess.** Put unknown terms in `unresolved_terms` instead of inventing numbers |
+| EP | **Repeatable.** The same graph and query give the same candidates. The host may re-query when placement changes |
+| EP | **Same query.** Set every candidate's `planning->query` to the `query_context` argument itself, not a copy |
+| EP | **Return planning candidates.** Every returned `ComputeCapability` has `planning` set. Forwarded legacy output is rejected as `NOT_IMPLEMENTED`, because a missing payload is not zero cost |
+| EP | **Return only candidates this EP owns.** Combining candidates across EPs is the planner's job |
+| EP | **Describe, do not guess.** Put unknown terms in `unresolved_terms` instead of inventing numbers or throwing |
+| EP | **Throw only for real failures.** The dispatcher converts an exception to `FAIL` (5.4). With exceptions disabled a throw aborts |
 | Host | Pass a validated query. The dispatcher guarantees it (5.4) |
-| Host | Pass the viewer of `query->source_view_id`. Convey placement through `tentative_assignments` and `node_constraints`, not by filtering the viewer |
+| Host | Pass the viewer of `query_context->source_view_id`. Convey placement through `tentative_assignments` and `node_constraints`, not by filtering the viewer |
 | Host | Call one EP instance serially, as the partitioner does today |
-| Host | Treat `result` as unusable unless the dispatcher returned OK |
+| Host | Treat the candidate set as unusable unless the dispatcher returned OK |
 
-### 5.3 Default Behavior
+### 5.3 Default Behavior and Overload Mechanics
 
 ```cpp
-// execution_provider.cc
-Status IExecutionProvider::GetCapability(const GraphViewer&, const IKernelLookup&, const GraphOptimizerRegistry&,
-                                         const std::shared_ptr<const CapabilityPlanningQuery>&,
-                                         CapabilityPlanningQueryResult& result) const {
-  result.support = CapabilityPlanningSupport::Unsupported;
-  result.diagnostic = "Execution provider has not implemented planning-safe capability discovery.";
-  return Status::OK();
+// execution_provider.cc. provider_bridge_provider.cc defines the same default for shared-provider libraries.
+std::vector<std::unique_ptr<ComputeCapability>>
+IExecutionProvider::GetCapability(const GraphViewer&, const IKernelLookup&, const GraphOptimizerRegistry&,
+                                  const std::shared_ptr<const CapabilityPlanningQuery>&) const {
+  return {};
 }
 ```
 
-- The default does not wrap legacy output. A legacy `GetCapability` may charge an accountant, change EP state, or
-  silently omit requirements, so its output is not planning-safe.
-- A "proven legacy adapter" can be an opt-in helper that an EP calls from its own planning override. It is not an
-  implicit default.
-- Returning OK with `Unsupported` lets one place, the result validator, own the `NOT_IMPLEMENTED` mapping.
+- **Out of line.** `ComputeCapability` is incomplete in `execution_provider.h`, so the default is defined in a `.cc`
+  file.
+- **No side effects, and it does not wrap legacy output.** The legacy base default claims every node that has a kernel
+  (`execution_provider.cc`) and carries no requirement data. An EP's legacy override may also compile or charge an
+  accountant. Neither is planning-safe. A "proven legacy adapter" can be an opt-in helper that an EP calls from its own
+  planning override. It is not an implicit default.
+- **Empty means unsupported.** A vector return cannot tell "this EP has no planning-safe discovery" from "this EP
+  looked and found nothing eligible". The dispatcher resolves the tie toward `Unsupported`, so a missing override is
+  never read as a proven-empty answer. S0's `PlanningSafe`-with-no-candidates state stays valid, but this call path
+  cannot produce it. See [open question 2](#13-open-questions).
+- **The CPU EP** does not override the legacy overload; it uses the base kernel-lookup default. It therefore reports
+  planning as unsupported until it gets a planning override or an explicit adapter
+  ([open question 8](#13-open-questions)).
+- **Placement.** Declare the new virtual after the existing ones, as `ProviderHost` does for its entries.
+
+Which overload a call selects, through an `IExecutionProvider` reference (the partitioner's path):
+
+| Fourth argument | Overload | Why |
+|:----------------|:---------|:----|
+| None | Legacy | Only the legacy overload has a default for it |
+| `nullptr` | Legacy | A null-pointer conversion beats the user-defined conversion to `shared_ptr` |
+| `IResourceAccountant*` | Legacy | Exact match. `shared_ptr`'s pointer constructor is `explicit` |
+| `shared_ptr<const CapabilityPlanningQuery>`, or a non-const `shared_ptr` | Planning | There is no conversion to `IResourceAccountant*` |
+
+Six test call sites in three files pass a literal `nullptr` as the fourth argument (`qnn_test_utils.cc`,
+`pattern_rewriter_components_test.cc`, `ep_plugin_provider_test.cc`). They keep binding to the legacy overload.
+
+**Name hiding.**
+
+- A class that overrides one of the two overloads hides the other in its own scope. Calls through
+  `IExecutionProvider&`, which is how the partitioner and the dispatcher call, are unaffected. A direct call on the
+  concrete type to the hidden overload fails to compile. `using IExecutionProvider::GetCapability;` un-hides it.
+- The reverse case is quieter. A class that overrides only the planning overload hides the legacy one, so on that
+  concrete type a literal `nullptr` fourth argument binds to the planning overload with a null query. Override both
+  overloads, or add the using-declaration.
+- **Warnings.** Overriding one of two same-named virtuals does not warn under Clang `-Wall -Wextra`. Clang warns only
+  when a derived function overrides none of the same-named base virtuals. GCC 13 and later enable
+  `-Woverloaded-virtual=1` under `-Wall`, which per its documentation does not warn when every derived declaration
+  overrides something. MSVC C4266 does flag both partial-override shapes, but it is off by default and ORT does not
+  enable it. [Section 12](#12-verification-evidence) lists what was executed.
 
 ### 5.4 Dispatcher
 
-The host never calls the virtual directly. It calls a dispatcher that validates on both sides of the EP call.
+The host never calls the virtual directly. It calls a dispatcher that validates on both sides of the EP call and turns
+the returned vector into S0's result type.
 
 ```cpp
 // New header that includes execution_provider.h. Name and location are illustrative:
@@ -283,17 +418,38 @@ Status QueryCapabilityPlanning(const IExecutionProvider& ep,
                                const GraphViewer& graph_viewer,
                                const IExecutionProvider::IKernelLookup& kernel_lookup,
                                const GraphOptimizerRegistry& graph_optimizer_registry,
-                               const std::shared_ptr<const CapabilityPlanningQuery>& query,
+                               const std::shared_ptr<const CapabilityPlanningQuery>& query_context,
                                CapabilityPlanningQueryResult& result) {
   result = CapabilityPlanningQueryResult{};
-  auto status = ValidateCapabilityPlanningQuery(query);  // EP code never sees a malformed query
+  auto status = ValidateCapabilityPlanningQuery(query_context);  // EP code never sees a malformed query
   if (!status.IsOK()) {
     return status;
   }
-  status = ep.GetCapability(graph_viewer, kernel_lookup, graph_optimizer_registry, query, result);
-  if (status.IsOK()) {
-    status = ValidateCapabilityPlanningResult(query, result);
+
+  std::vector<std::unique_ptr<ComputeCapability>> candidates;
+  ORT_TRY {
+    candidates = ep.GetCapability(graph_viewer, kernel_lookup, graph_optimizer_registry, query_context);
   }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "EP threw during planning discovery: ", ex.what());
+    });
+  }
+  if (!status.IsOK()) {
+    return status;
+  }
+
+  for (auto& candidate : candidates) {
+    result.capabilities.push_back(std::move(candidate));  // null entries are kept so the validator reports them
+  }
+  if (result.capabilities.empty()) {
+    result.support = CapabilityPlanningSupport::Unsupported;
+    result.diagnostic = "The EP returned no planning execution candidates.";
+  } else {
+    result.support = CapabilityPlanningSupport::PlanningSafe;
+  }
+
+  status = ValidateCapabilityPlanningResult(query_context, result);
   if (!status.IsOK()) {
     result = CapabilityPlanningQueryResult{};
   }
@@ -310,26 +466,44 @@ sequenceDiagram
   participant D as QueryCapabilityPlanning
   participant E as EP planning overload
 
-  P->>D: query, graph view, kernel lookup, registry
+  P->>D: query context, graph view, kernel lookup, registry
   Note over D: reset result<br/>ValidateCapabilityPlanningQuery
   alt query is malformed
     D-->>P: INVALID_ARGUMENT, EP never called
   else query is valid
-    D->>E: GetCapability with query and result
-    E-->>D: Status and filled result
-    Note over D: if OK, ValidateCapabilityPlanningResult<br/>if anything failed, reset result
-    D-->>P: OK with validated menu, or failing Status
+    D->>E: GetCapability with query_context
+    alt EP threw
+      E-->>D: std::exception
+      D-->>P: FAIL, message preserved
+    else EP returned
+      E-->>D: vector of ComputeCapability
+      Note over D: package into CapabilityPlanningQueryResult<br/>empty vector means Unsupported
+      Note over D: ValidateCapabilityPlanningResult<br/>any failure resets the result
+      D-->>P: OK with validated candidate set, or failing Status
+    end
   end
-  Note over P,D: choose cover and contracts, assign plan_generation<br/>then CreateCapabilityPlanningBinding (section 6)
+  Note over P,D: choose cover and contracts, assign plan_generation
+  Note over P,D: then CreateCapabilityPlanningBinding (section 6)
 ```
 
-Why the dispatcher validates the query before the EP: S0 validates the query only as part of result validation, which
-runs after the EP returns. A throwaway EP that read `query->source_view_id` crashed with an access violation when given
-a null query. Exporting the existing `ValidateQuery` as `ValidateCapabilityPlanningQuery` closes this. EP code is then
-guaranteed a non-null, well-formed query.
-
-The dispatcher resets `result` on any failure and does not drop individual offers. One invalid offer fails the whole
-EP result: a partial menu would hide an EP bug and could hand the planner an incomplete cover.
+- **Why the query is validated before the EP is called.** S0 validates the query only as part of result validation,
+  which runs after the EP returns. A throwaway EP that read `query_context->source_view_id` crashed with an access
+  violation when given a null query. Exporting the existing `ValidateQuery` as `ValidateCapabilityPlanningQuery`
+  closes this: EP code is guaranteed a non-null, well-formed query.
+- **Why invalid entries are kept.** The legacy partitioner silently erases null capabilities and capabilities without a
+  `sub_graph`. The dispatcher moves every returned entry into the result so the validator reports it. A dropped entry
+  would hide an EP bug and could hand the planner an incomplete cover.
+- **Failure is all or nothing.** The dispatcher resets the result on any failure and does not drop individual
+  candidates. One invalid candidate fails the whole EP result. The returned code is that of the first failing
+  candidate. `result.diagnostic` is cleared with the rest of the result, so the text survives only in the returned
+  `Status`.
+- **Exceptions are the only failure channel.** The vector return has no `Status`. The dispatcher converts a
+  `std::exception` into `FAIL`. In a build without exceptions a throw aborts, so an EP should describe expected
+  unknowns through `unresolved_terms` and `bound_status` instead of throwing.
+  [Open question 7](#13-open-questions) asks whether this is enough.
+- **Plain status checks.** The snippet does not use `ORT_RETURN_IF_ERROR`, which also logs a run error.
+  `NOT_IMPLEMENTED` from planning is an expected planner input, and S0 leaves reporting of planning diagnostics to the
+  caller.
 
 ### 5.5 Outcomes
 
@@ -338,11 +512,9 @@ flowchart TD
   Q1{"Dispatcher Status"}
   Q1 -->|"INVALID_ARGUMENT"| BUG["Contract violation<br/>surface it, no fallback"]
   Q1 -->|"NOT_IMPLEMENTED"| UNK["Planning unsupported<br/>unknown, not zero cost"]
-  Q1 -->|"other non-OK"| ERR["EP error<br/>propagate unchanged"]
-  Q1 -->|"OK"| Q2{"Offers in result?"}
-  Q2 -->|"none"| EMPTY["Known empty<br/>for this query"]
-  Q2 -->|"one or more"| MENU["Menu of offers"]
-  MENU --> E1{"Contract eligibility"}
+  Q1 -->|"FAIL"| ERR["EP threw<br/>propagate unchanged"]
+  Q1 -->|"OK"| SET["Validated candidate set<br/>one or more candidates"]
+  SET --> E1{"Contract eligibility"}
   E1 -->|"not Eligible"| NS["Not selectable<br/>binder: INVALID_ARGUMENT"]
   E1 -->|"Eligible"| B1{"Contract bound_status"}
   B1 -->|"Unresolved"| REP["Reportable only<br/>binder: NOT_IMPLEMENTED"]
@@ -351,15 +523,14 @@ flowchart TD
 
 | Dispatcher result | Cause | Planner meaning |
 |:------------------|:------|:----------------|
-| OK, `PlanningSafe`, no offers | EP took part and found nothing eligible | Known empty for this query |
-| OK, `PlanningSafe`, offers | Validated menu | Choose a cover and contracts |
-| `NOT_IMPLEMENTED` | `Unsupported` (including OK from the default) or an offer without `planning` | Unknown, not zero cost. Whether this blocks planning is planner policy |
-| `INVALID_ARGUMENT` | Malformed query, or an invalid EP result: foreign query pointer, duplicate or empty ids, null capability, offers with `Unsupported`, malformed bounded claims | Bug. Never convert to empty discovery |
-| Any other non-OK | The EP's own failure | Propagated unchanged |
+| OK, `PlanningSafe`, one or more candidates | Validated candidate set | Choose a cover and contracts |
+| `NOT_IMPLEMENTED` | An empty return (including the base default), or a candidate with no `planning` | Unknown, not zero cost. Whether this blocks planning is planner policy |
+| `INVALID_ARGUMENT` | Malformed query (EP not called), or an invalid candidate: null entry, foreign query pointer, duplicate or empty ids, malformed bounded claims | Bug. Never convert to empty discovery |
+| `FAIL` | The EP threw during discovery | Propagated unchanged |
 
 ## 6. Selection and Binding
 
-The planner picks one offer, one view, and one contract and asks for a binding.
+The planner picks one candidate, one view, and one contract and asks for a binding.
 
 ```cpp
 Status CreateCapabilityPlanningBinding(const std::shared_ptr<const CapabilityPlanningQuery>& query,
@@ -373,8 +544,8 @@ Checks run in this order. The first failure wins and leaves `binding` unchanged.
 | Step | Check | Failure |
 |:-----|:------|:--------|
 | 1 | Query is valid | `INVALID_ARGUMENT` |
-| 2 | The whole offer is valid, including contracts that were not selected | `NOT_IMPLEMENTED` if `planning` is missing, otherwise `INVALID_ARGUMENT` |
-| 3 | `plan_generation` is nonzero, and the candidate, recipe, and view match the offer | `INVALID_ARGUMENT` |
+| 2 | The whole candidate is valid, including contracts that were not selected | `NOT_IMPLEMENTED` if `planning` is missing, otherwise `INVALID_ARGUMENT` |
+| 3 | `plan_generation` is nonzero, and the selection's candidate, recipe, and view ids match the candidate | `INVALID_ARGUMENT` |
 | 4 | Recipe kind, recipe terms, graph effects, and effect terms are all resolved | `NOT_IMPLEMENTED` |
 | 5 | A `CompiledRegion` recipe or `Described` graph effects has `prepared_state` | `INVALID_ARGUMENT` |
 | 6 | The selected `contract_id` exists | `INVALID_ARGUMENT` |
@@ -384,8 +555,10 @@ Checks run in this order. The first failure wins and leaves `binding` unchanged.
 | 10 | For covered nodes with a query constraint: the required EP instance matches, and the contract policy is permitted | `INVALID_ARGUMENT` |
 | 11 | Build the binding and assign the output | none |
 
-Step 2 validates the offer as a unit. A malformed sibling contract therefore blocks binding of a healthy one. An
+Step 2 validates the candidate as a unit. A malformed sibling contract therefore blocks binding of a healthy one. An
 `Unresolved` contract fails only its own binding at step 8 and does not affect its siblings.
+
+The binder reads `planning` only. It does not read or run `optimization_func` or `nodes_to_optimize`.
 
 A binding is a local check. It does not prove whole-plan feasibility and is not budget admission.
 `ValidateCapabilityPlanningBindingIdentity(query, plan_generation, binding)` later guards that a binding still
@@ -393,7 +566,7 @@ belongs to the active query and plan generation.
 
 ## 7. Views and Covers
 
-One EP can offer several ways to cover the same nodes. `alternative_view_ids` says which views an offer belongs to.
+One EP can return several ways to cover the same nodes. `alternative_view_ids` says which views a candidate belongs to.
 The planner picks a view and a complete, non-overlapping cover of it. For `A -> T -> B -> C`, where the EP can fuse
 `A` and `B`:
 
@@ -403,7 +576,7 @@ flowchart LR
     direction LR
     A["node A"] -->|"T"| B["node B"] --> C["node C"]
   end
-  subgraph MENU["Menu from one EP (PlanningSafe)"]
+  subgraph CANDS["Candidates from one EP (PlanningSafe)"]
     direction TB
     cA["cand_A<br/>nodes A<br/>views V_source"]
     cB["cand_B<br/>nodes B<br/>views V_source"]
@@ -427,42 +600,45 @@ flowchart LR
   cC --> VO
 ```
 
-| Cover | View | Offers | Valid |
-|:------|:-----|:-------|:------|
+| Cover | View | Candidates | Valid |
+|:------|:-----|:-----------|:------|
 | 1 | `V_source` | cand_A, cand_B, cand_C | Yes |
 | 2 | `V_opt` | cand_AB, cand_C | Yes, if `A` and `B` are placed together on this EP |
 | 3 | `V_opt` | cand_AB, cand_B, cand_C | No: `B` is covered twice |
-| 4 | `V_source` | cand_A, cand_C | Only if another EP offers `B` |
+| 4 | `V_source` | cand_A, cand_C | Only if another EP provides a candidate for `B` |
 
-- These are alternative sets of capabilities, not necessarily two `ComputeCapability` objects per view. An offer like
+- These are alternative sets of candidates, not necessarily two `ComputeCapability` objects per view. A candidate like
   `cand_C` appears once and lists both views.
-- Cross-offer rules are declared in `planning->compatibility` (`required_candidates`, `excluded_candidates`,
+- Cross-candidate rules are declared in `planning->compatibility` (`required_candidates`, `excluded_candidates`,
   `boundary_constraints`). The planner enforces them.
 - If a placement boundary falls between `A` and `B`, `cand_AB` is not usable. The planner publishes a new query with
   the new tentative assignments and re-queries.
-- An indivisible fused or compiled offer is accepted whole or rejected. Nodes that are already fused in the input stay
-  atomic.
-- `cand_AB` eliminates the internal value `T`. If a consumer outside `A` and `B` also read `T`, the recipe must preserve
-  it or be rejected.
+- An indivisible fused or compiled candidate is accepted whole or rejected. Nodes that are already fused in the input
+  stay atomic.
+- `cand_AB` eliminates the internal value `T`. If a consumer outside `A` and `B` also read `T`, the recipe must
+  preserve it or be rejected.
+- If `cand_AB` also carries `optimization_func` and `nodes_to_optimize`, they are applied only after `cand_AB` is
+  selected. The hooks of an unselected candidate never run.
 
 ## 8. Ownership and Lifetime
 
-The example offer has recipe `R_GQA`, which points to `prepared_state` `P`, and two contracts: `C_memory`, which points
-to `resolved_state` `S_mem`, and `C_latency`, which points to `S_lat`. Each pointer is a
-`shared_ptr<const CapabilityPlanningState>`. The planner binds `C_memory`. The diagram shows who keeps each state alive.
+The example candidate has recipe `R_GQA`, which points to `prepared_state` `P`, and two contracts: `C_memory`, which
+points to `resolved_state` `S_mem`, and `C_latency`, which points to `S_lat`. Each pointer is a
+`shared_ptr<const CapabilityPlanningState>`. The planner binds `C_memory`. The diagram shows who keeps each state
+alive.
 
 ```mermaid
 flowchart LR
   subgraph S1["1. After discovery"]
     direction TB
-    M1["Menu holds<br/>P, S_mem, S_lat"]
+    M1["Candidate set holds<br/>P, S_mem, S_lat"]
   end
   subgraph S2["2. After binding C_memory"]
     direction TB
-    M2["Menu holds<br/>P, S_mem, S_lat"]
+    M2["Candidate set holds<br/>P, S_mem, S_lat"]
     B2["Binding holds<br/>P, S_mem<br/>via copies of R_GQA and C_memory"]
   end
-  subgraph S3["3. After the menu is discarded"]
+  subgraph S3["3. After the candidate set is discarded"]
     direction TB
     F3["S_lat freed"]
     B3["Binding holds<br/>P, S_mem"]
@@ -480,17 +656,17 @@ flowchart LR
 
 | Object | Held by | Released when |
 |:-------|:--------|:--------------|
-| `CapabilityPlanningQuery` | The planner, every offer, every binding | The last holder drops it |
-| Offer and its `CapabilityPlanningInfo` | The menu | The menu is discarded |
-| Unselected contract state (`S_lat`) | The menu only | The menu is discarded |
-| Selected recipe and contract state (`P`, `S_mem`) | The menu and the binding | The last of the two is dropped |
+| `CapabilityPlanningQuery` | The planner, every candidate, every binding | The last holder drops it |
+| Candidate and its `CapabilityPlanningInfo` | The candidate set | The candidate set is discarded |
+| Unselected contract state (`S_lat`) | The candidate set only | The candidate set is discarded |
+| Selected recipe and contract state (`P`, `S_mem`) | The candidate set and the binding | The last of the two is dropped |
 | `CapabilityPlanningBinding` | Later stages (C3, I2) | The session or kernel owners release it. S0 does not install owners yet |
 
-A binding copies only the selected recipe and contract and does not keep the menu. Discarding the menu therefore frees
-unused contract state while the selected state stays valid.
+A binding copies only the selected recipe and contract and does not keep the candidate set. Discarding the candidate
+set therefore frees unused contract state while the selected state stays valid.
 
-`CapabilityPlanningState` subclasses are defined and destroyed in the EP's library. Sessions must release offers and
-bindings before that library unloads.
+`CapabilityPlanningState` subclasses, and the closures held by `optimization_func`, are defined and destroyed in the
+EP's library. Sessions must release candidates and bindings before that library unloads.
 
 ## 9. Crossing EP Boundaries
 
@@ -500,10 +676,10 @@ flowchart LR
     direction TB
     PL["Planner and dispatcher"] --> IEP["IExecutionProvider<br/>planning overload of GetCapability"]
     IEP --> INT["In-tree EP<br/>overrides directly"]
-    IEP --> PEP["PluginExecutionProvider<br/>host-side adapter, overrides"]
+    IEP --> PEP["PluginExecutionProvider<br/>inherits the empty default for now"]
   end
   subgraph DLL["Shared-provider library, for example CUDA"]
-    CUDA["EP class<br/>overrides and builds offers through<br/>the opaque ComputeCapability wrapper"]
+    CUDA["EP class<br/>overrides and builds candidates through<br/>the opaque ComputeCapability wrapper"]
   end
   subgraph PLUGIN["Plugin EP library"]
     OREP["OrtEp<br/>C GetCapability callback<br/>future planning builders"]
@@ -512,15 +688,23 @@ flowchart LR
   PEP -->|"C ABI, opaque handles only"| OREP
 ```
 
-| EP kind | Reached by | Offers are built by | C1 work |
-|:--------|:-----------|:--------------------|:--------|
-| In-tree | Direct virtual override | `std::make_unique<ComputeCapability>`, then assign `planning` | The override |
-| Shared-provider library (CUDA, ...) | Virtual call through the library's `IExecutionProvider` vtable | `ComputeCapability` is an opaque wrapper created through `ProviderHost`. Attach `planning` through a new append-only accessor such as `ComputeCapability__SetPlanning` | Define the planning default in `provider_bridge_provider.cc` (the library's vtable references it). Add the accessor to `provider_interfaces.h`, `provider_wrappedtypes.h`, and `provider_bridge_ort.cc` |
-| Plugin EP | `PluginExecutionProvider` overrides the planning overload | The adapter maps C builders into internal `ComputeCapability` and `planning`, and attaches the host's query snapshot | Return `Unsupported` until a planning-safe C extension exists |
+| EP kind | Reached by | Candidates are built by | C1 work |
+|:--------|:-----------|:------------------------|:--------|
+| In-tree | Direct virtual override | `std::make_unique<ComputeCapability>`, then assign `planning`. Hooks, if any, use the existing members | The override |
+| Shared-provider library (CUDA, ...) | Virtual call through the library's `IExecutionProvider` vtable | `ComputeCapability` is an opaque wrapper created through `ProviderHost`. Attach `planning` through a new append-only accessor such as `ComputeCapability__SetPlanning`. The existing `ComputeCapability__copy_optimization_func` and `ComputeCapability__add_nodes_to_optimize` already bridge the hooks | Define the planning default in `provider_bridge_provider.cc` (the library's vtable references it). Add the accessor to `provider_interfaces.h`, `provider_wrappedtypes.h`, and `provider_bridge_ort.cc` |
+| Plugin EP | `PluginExecutionProvider` | It inherits the empty default, so planning is reported as unsupported | Nothing. A later change maps C builders into `ComputeCapability` and `planning` and attaches the host's query snapshot |
 
-`ProviderHost` is append-only. Shared-provider code needs the complete `CapabilityPlanningQueryResult` to fill it, so
-the recommended approach is to let provider builds include the S0 plain-data header. See
-[open question 3](#13-open-questions).
+- **Forward declaration.** `execution_provider.h` is compiled by core and by shared-provider libraries. Declare
+  `struct CapabilityPlanningQuery;` next to `class IResourceAccountant;`, outside the `#ifndef SHARED_PROVIDER` include
+  block at the top of the header, so both builds see the type name. The virtual only needs the name.
+- **S0 types in provider libraries.** An EP that builds candidates needs the complete `CapabilityPlanningInfo`. The
+  recommended approach is to let provider builds include `capability_planning.h`. It is plain data and includes only
+  `core/common` headers, the dispatch-policy header that the CUDA EP already includes, `max_shape_override.h`, and
+  `ortdevice.h`. Whether it compiles under `SHARED_PROVIDER` has not been checked. See
+  [open question 4](#13-open-questions).
+- **Host-only result type.** `CapabilityPlanningQueryResult` is filled by the dispatcher. EP code never sees it, and
+  its special members stay out of line in core.
+- **Append-only bridge.** New `ProviderHost` entries go after the existing ones.
 
 The published C callback stays as it is:
 
@@ -529,11 +713,11 @@ ORT_API2_STATUS(GetCapability, _In_ OrtEp* this_ptr, _In_ const OrtGraph* graph,
                 _Inout_ OrtEpGraphSupportInfo* graph_support_info);
 ```
 
-S0.4 lists the mapping requirements for a future versioned extension: an explicit planning-safe feature check, versioned
-`OrtEpApi` accessors for a borrowed query view, new builders on `OrtEpGraphSupportInfo`, an opaque state handle with a
-release callback (ownership transfers on success only), and no STL types, virtual classes, `shared_ptr`, or borrowed
-graph pointers across the ABI. New table members are append-only, per `.github/instructions/c-api.instructions.md`.
-This document proposes no C names or layouts.
+S0.4 lists the mapping requirements for a future versioned extension: an explicit planning-safe feature check,
+versioned `OrtEpApi` accessors for a borrowed query view, new builders on `OrtEpGraphSupportInfo`, an opaque state
+handle with a release callback (ownership transfers on success only), and no STL types, virtual classes, `shared_ptr`,
+or borrowed graph pointers across the ABI. New table members are append-only, per
+`.github/instructions/c-api.instructions.md`. This document proposes no C names or layouts.
 
 ## 10. Worked Example: GQA
 
@@ -551,18 +735,18 @@ class ExampleEp : public IExecutionProvider {
     return {};  // legacy discovery, unchanged
   }
 
-  Status GetCapability(const GraphViewer&, const IKernelLookup&, const GraphOptimizerRegistry&,
-                       const std::shared_ptr<const CapabilityPlanningQuery>& query,
-                       CapabilityPlanningQueryResult& result) const override {
+  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
+      const GraphViewer&, const IKernelLookup&, const GraphOptimizerRegistry&,
+      const std::shared_ptr<const CapabilityPlanningQuery>& query_context) const override {
     auto sub_graph = std::make_unique<IndexedSubGraph>();
     sub_graph->nodes = {42};
     auto capability = std::make_unique<ComputeCapability>(std::move(sub_graph));
 
     auto planning = std::make_shared<CapabilityPlanningInfo>();
-    planning->query = query;
+    planning->query = query_context;
     planning->candidate_id = "GQA_42";
     planning->implementation_id = "GQA_cuda_fp16";
-    planning->alternative_view_ids = {query->source_view_id};
+    planning->alternative_view_ids = {query_context->source_view_id};
     planning->recipe.recipe_id = "R_GQA";
     planning->recipe.kind = CapabilityRecipeKind::Standalone;
     planning->recipe.graph_effects.kind = CapabilityGraphEffectsKind::Unchanged;
@@ -570,7 +754,7 @@ class ExampleEp : public IExecutionProvider {
     CapabilityAllocationRequirement workspace;
     workspace.resource_id = "workspace";
     workspace.kind = CapabilityAllocationKind::ExecutionWorkspace;
-    workspace.device = query->execution_device;
+    workspace.device = query_context->execution_device;
     workspace.size_bound_bytes = 213248;
     workspace.alignment_bytes = 0;
     workspace.lifetime = CapabilityAllocationLifetime::Operation;
@@ -580,16 +764,19 @@ class ExampleEp : public IExecutionProvider {
     memory.policy = KernelDispatchPolicy::Memory;
     memory.eligibility = CapabilityContractEligibility::Eligible;
     memory.workload_coverage = "declared prefill, chunked-prefill and decode envelope";
-    memory.resolved_state = std::make_shared<const ExampleGqaState>();  // EP-private routes
+    memory.resolved_state = std::make_shared<const ExampleGqaState>();  // EP-defined CapabilityPlanningState subclass
     memory.bound_status = CapabilityRequirementBoundStatus::Bounded;
     memory.allocation_requirements = InlinedVector<CapabilityAllocationRequirement, 1>{workspace};
     planning->contracts.push_back(std::move(memory));
     // C_latency: same shape, policy Latency, 1,245,440 byte workspace, routes Flash, MEA, unfused.
 
+    // A fusion candidate would also carry a MetaDef, nodes_to_optimize, and optimization_func for the later
+    // application step. Planning never invokes them.
     capability->planning = std::move(planning);
-    result.capabilities.push_back(std::move(capability));
-    result.support = CapabilityPlanningSupport::PlanningSafe;
-    return Status::OK();
+
+    std::vector<std::unique_ptr<ComputeCapability>> candidates;
+    candidates.push_back(std::move(capability));
+    return candidates;
   }
 };
 ```
@@ -597,8 +784,11 @@ class ExampleEp : public IExecutionProvider {
 The planner side, using S0 fixture values (query id 1, graph `decoder` revision 17, plan generation 7):
 
 ```cpp
-CapabilityPlanningQueryResult menu;
-ORT_RETURN_IF_ERROR(QueryCapabilityPlanning(ep, graph_viewer, kernel_lookup, registry, query, menu));
+CapabilityPlanningQueryResult candidate_set;
+auto status = QueryCapabilityPlanning(ep, graph_viewer, kernel_lookup, registry, query, candidate_set);
+if (!status.IsOK()) {
+  return status;  // NOT_IMPLEMENTED means unknown, not zero cost. Whether that blocks planning is planner policy
+}
 
 CapabilityPlanningSelection selection;
 selection.candidate_id = "GQA_42";
@@ -608,8 +798,11 @@ selection.contract_id = "C_memory";
 selection.plan_generation = 7;
 
 std::shared_ptr<const CapabilityPlanningBinding> binding;
-ORT_RETURN_IF_ERROR(CreateCapabilityPlanningBinding(query, *menu.capabilities.front(), selection, binding));
-menu = CapabilityPlanningQueryResult{};  // frees C_latency state. The binding keeps R_GQA and C_memory state alive
+status = CreateCapabilityPlanningBinding(query, *candidate_set.capabilities.front(), selection, binding);
+if (!status.IsOK()) {
+  return status;
+}
+candidate_set = CapabilityPlanningQueryResult{};  // frees S_lat. The binding keeps P and S_mem alive (section 8)
 ```
 
 | Query field | Value |
@@ -626,55 +819,89 @@ menu = CapabilityPlanningQueryResult{};  // frees C_latency state. The binding k
 
 ## 11. Alternatives Considered
 
+A is the design in this document. B, D, and E are the realistic alternatives. They keep the core idea (EPs return
+candidates against one shared query) and change only the call shape, the return shape, or the name.
+
 | Option | Shape | Verdict |
 |:-------|:------|:--------|
-| A. Same-name overload | `Status GetCapability(..., query, result)` | **Recommended.** Opt-in by override, legacy untouched, arities never collide. Caveat: a concrete class that overrides only one overload hides the other unless it adds `using IExecutionProvider::GetCapability;`. The framework calls through `IExecutionProvider&`, so this is benign |
-| B. Distinct name | For example `Status GetExecutionCandidates(...)` | **Fallback.** No overload or hiding questions, at the cost of one more name. Only the identifier changes; sections 5.1 to 5.5 stay valid |
-| C. Add parameters to the legacy virtual | | Rejected. Breaks about 22 EP overrides, and a vector return cannot carry `Status` or `support` |
-| D. Mixin interface and `dynamic_cast` | | Rejected. Needs RTTI across provider libraries |
-| E. New `ExecutionCandidate` type | | Rejected. The proposal reuses `ComputeCapability` and its consumers |
-| F. Non-virtual wrapper over a protected virtual | | Possible later. The dispatcher already centralizes validation, so it is deferred |
-| G. Separate `SupportsPlanning()` virtual | | Rejected. A second source of truth that can disagree with the override |
+| A. Planning overload with `query_context` | `std::vector<std::unique_ptr<ComputeCapability>> GetCapability(..., const std::shared_ptr<const CapabilityPlanningQuery>& query_context)`. Planning data in `ComputeCapability::planning` | **Recommended.** Same return type and `ComputeCapability`. Opt-in by override, and no existing override or call site changes. Costs: overload hiding (5.3) and the empty-return ambiguity ([open question 2](#13-open-questions)) |
+| B. One signature keyed on `mode` | The proposal's literal sketch: a single `GetCapability(graph_view, kernel_lookup, optimizer_registry, query_context)`. `query_context.mode` selects Legacy or Planning | **Alternative.** No overload mechanics. Every override changes (21 header declarations and 14 inline test doubles in this repository, plus out-of-tree EPs), and the accountant needs a new home, for example a field of the context. See [open question 1](#13-open-questions) |
+| C. Reuse an existing carrier | An accessor on `IKernelLookup`, state on `GraphOptimizerRegistry`, the `IResourceAccountant*`, a thread-local, an EP setter, or a defaulted fifth parameter | Rejected. Each is hidden state, the wrong semantics (an accountant charges), or a signature change that touches every override anyway |
+| D. `Status` and an out-parameter | `Status GetCapability(..., query_context, CapabilityPlanningQueryResult& result)` | **Fallback.** Carries `Status` and `support` explicitly, so it has no empty-return ambiguity and a failure channel that does not need exceptions. Costs a second return shape for the same concept, and makes `CapabilityPlanningQueryResult` visible to EP code |
+| E. Distinct name | `GetExecutionCandidates(...)` returning the same vector | **Fallback.** No overload or hiding questions, at the cost of one more name. Only the identifier changes. Sections 5.1 to 5.5 stay valid |
+| F. New `ExecutionCandidate` type | | Rejected. The proposal reuses `ComputeCapability` and its consumers |
+| G. Mixin interface and `dynamic_cast` | | Rejected. Needs RTTI across provider libraries |
+| H. Throwing base default | The planning default throws `NOT_IMPLEMENTED` | Rejected. A throw is the failure channel for real EP errors, and builds without exceptions abort |
+| I. Defaulted `SupportsCapabilityPlanning()` virtual | An EP declares planning support separately, so an empty return from an opted-in EP can mean "known none" | Not adopted. It is a second source of truth that can disagree with the override. It is the way to resolve [open question 2](#13-open-questions) if reviewers want "known none" |
 
 ## 12. Verification Evidence
 
-The following was checked with throwaway programs that are not in the repository. C1 should carry the behavioral
-checks as unit tests.
+The following was checked with throwaway programs that are not in the repository. C1 should carry the behavioral checks
+as unit tests. Nothing in this design was built inside ORT: the planning overload, the dispatcher, and the example were
+not compiled against ORT's headers.
 
-| Claim | Check | Result |
+| Claim | Check | Status |
 |:------|:------|:-------|
-| The planning overload compiles against the real S0 headers under ORT-style flags | Scratch translation unit with a patched copy of `execution_provider.h` (two forward declarations plus the new virtual). MSVC 14.44, `/std:c++20 /W4 /WX`. `static_assert`s on the shape of `ComputeCapability` and `CapabilityPlanningQueryResult` | Clean |
-| Both overloads are callable through `IExecutionProvider&` without ambiguity | Calls with 3, 4, and 5 arguments in the same unit | Clean |
-| A concrete class overriding only the legacy overload cannot call the planning overload | Negative probe | C2660 as expected. `using IExecutionProvider::GetCapability;` fixes it |
-| Overriding one overload does not warn | MSVC: only `/w14266`, which ORT does not enable. Clang and GCC: read from compiler source and documentation, **not executed here** | No warning expected |
-| The dispatcher, validator, and binder behave as described in sections 5 and 6 | A harness linked against the real `capability_planning.cc` and `status.cc`: 47 checks | All passed |
+| Overload resolution matches the table in 5.3 | Standalone probe with stub types, not ORT headers. Both overloads return `vector<unique_ptr<Cap>>`. MSVC (VS 2022), `/std:c++17 /W4 /WX`. Calls with 3 arguments, `nullptr`, an accountant pointer, `shared_ptr<const Query>`, and `shared_ptr<Query>`, through a base reference and on concrete classes | Executed |
+| A concrete class that overrides only one overload cannot call the other, and a using-declaration fixes it | Same probe. Negative compiles, then `using Base::GetCapability;` | Executed |
+| A planning-only override binds a literal `nullptr` to the planning overload with a null query | Same probe | Executed |
+| Overriding one of two overloads does not warn | MSVC C4266 (`/w14266`, off by default, not enabled by ORT) flags both partial-override shapes but not overriding both or the using-declaration form. Clang 19.1.5 `-Wall -Wextra` gives no `-Woverloaded-virtual` warning for a partial override | Executed. GCC behavior is from its documentation only and was not run |
+| The S0 validator and binder behave as described in sections 4 to 6, and the dispatcher flow holds | A 47-check harness linked against the real `capability_planning.cc` and `status.cc` (MSVC 14.44, `/std:c++20 /W4 /WX`). It used a dispatcher for the earlier `Status` and out-parameter shape (Alternative D). The validator and binder are the same code used here | Executed on the earlier call shape. The vector-return dispatcher in 5.4 was not run |
+| The planning overload in the real `execution_provider.h`, the dispatcher in 5.4, and the example in section 10 compile | | **Not compiled** |
+| The provider bridge entry `ComputeCapability__SetPlanning`, and `capability_planning.h` under `SHARED_PROVIDER` | | **Not checked** |
+| Plugin EP mapping | | Not started. S0.4 lists the requirements |
+| The existing partitioner never reaches the planning overload, and the legacy path is unchanged | Read from `graph_partitioner.cc` and the existing call sites | Reasoned from code reading, not tested |
 
 Findings that shaped the design:
 
-- A null or malformed query reached EP code, and a throwaway EP crashed on it, until the dispatcher validated the query
-  first. The call-count check now shows zero EP calls for a malformed query and exactly one for a valid one.
+- A null or malformed query reached EP code, and a throwaway EP crashed on it with an access violation, until the query
+  was validated before the EP call. With the check, a malformed query makes zero EP calls and a valid one makes exactly
+  one.
 - A malformed unselected sibling contract blocks binding of a healthy contract.
-- An `Unresolved` bound contract returns `NOT_IMPLEMENTED` while its sibling still binds.
-- Unselected contract state expires when the menu is discarded. Selected state expires when the binding is reset.
+- An `Unresolved` bounded contract returns `NOT_IMPLEMENTED` while its sibling still binds.
+- Unselected contract state expires when the candidate set is discarded. Selected state expires when the binding is
+  reset.
+- The legacy base default claims every node that has a kernel (code reading). That is why the planning default cannot
+  wrap it, and why the CPU EP has no planning-safe answer yet.
 
 ## 13. Open Questions
 
-1. **Overload or distinct name.** Same-name overload (recommended) or `GetExecutionCandidates`. See section 11.
-2. **Where the query is validated.** Export `ValidateCapabilityPlanningQuery` and validate in the dispatcher
-   (recommended), or guarantee validity in the query builder only. The second leaves EP code exposed to any builder bug.
-3. **Provider-library access to S0 types.** Recommended: shared-provider builds include `capability_planning.h` (plain
-   data, with `CapabilityPlanningQueryResult`'s special members out of line in core), attach `planning` through one
-   `ComputeCapability__SetPlanning` accessor, and define the planning default locally. The alternative is an opaque
-   accessor for every field, which is a large append-only `ProviderHost` surface.
-4. **Offer hygiene.** Should the result validator also reject planning offers that set `optimization_func` or
-   `nodes_to_optimize`, or whose `MetaDef` disagrees with `recipe.graph_effects`? The first two are cheap to enforce
-   and keep a planning offer from entering the legacy optimizer path. `MetaDef` agreement can wait for F1.
-5. **Dispatcher name and home.** `QueryCapabilityPlanning` and the header that hosts it are illustrative.
+1. **Overload or one signature keyed on `mode`.** This document keeps the legacy signature and adds an overload, so no
+   existing override changes. The proposal sketches a single `GetCapability(graph_view, kernel_lookup,
+   optimizer_registry, query_context)` that returns execution candidates. That version removes the overload mechanics
+   and rewrites every override (Alternative B). Which should the final design use? `mode` is already validated, so the
+   query side is ready for B.
+2. **What an empty return means.** An empty vector is reported as `Unsupported` (unknown, not zero). An EP that has
+   opted in and found nothing eligible cannot say "known none" through this call. Options: keep it as is; add an
+   opt-in marker such as a defaulted `SupportsCapabilityPlanning()` virtual, so an empty return from an opted-in EP
+   means "known none" (Alternative I); or return `Status` explicitly (Alternative D). Plugin EPs will get an explicit
+   planning-safe feature check in their C extension (S0.4), so a marker may only be needed for in-tree and
+   shared-provider EPs.
+3. **Where the query is validated.** Export `ValidateCapabilityPlanningQuery` and validate in the dispatcher
+   (recommended), or guarantee validity in the query builder only. The second leaves EP code exposed to any builder
+   bug.
+4. **Provider-library access to S0 types.** Recommended: shared-provider builds include `capability_planning.h` (plain
+   data), attach `planning` through one `ComputeCapability__SetPlanning` accessor, and define the planning default
+   locally. The alternative is an opaque accessor for every field, which is a large append-only `ProviderHost` surface.
+   Whether the header compiles under `SHARED_PROVIDER` is unchecked.
+5. **Hook and metadata hygiene.** S0 does not check that `nodes_to_optimize`, `optimization_func`, and `MetaDef`
+   describe the same implementation as `planning->recipe`. Options: leave it to F2 reconciliation (current); add cheap
+   structural checks to the result validator, for example hooks only when `graph_effects` is not `Unchanged`; or both.
+   Related: does F2 reuse the stored closure, or rebuild the application from `recipe.prepared_state`?
+6. **Dispatcher name and home.** `QueryCapabilityPlanning` and the header that hosts it are illustrative.
+7. **Reporting errors without exceptions.** The vector return leaves exceptions as the only failure channel, and a
+   build without exceptions aborts on a throw. Is that acceptable, with EPs describing expected unknowns through
+   `unresolved_terms` and `bound_status`? If not, Alternative D adds an explicit `Status`.
+8. **The CPU EP.** It does not override the legacy `GetCapability`, so it has no planning-safe answer until it gets a
+   planning override or an explicit adapter. The proposal discovers CPU candidates independently. Should C1 add a CPU
+   planning override, for example requirement-free candidates for nodes that have a CPU kernel, or defer it until the
+   planner needs it?
 
 ## 14. Out of Scope
 
 - The planner, cover search, selection policy, and whole-plan or budget admission.
 - Recipe application and initialization (F1, F2, I2), and the L1-to-allocation adapter (C2).
 - GQA contract and binding wiring in CUDA (C3).
+- Planning integration for existing hook producers: TensorRT EP and the CUDA runtime-fusion work (#33705, #33757).
 - A concrete C API for plugin EPs.
 - Any change to the legacy partitioner path or the legacy `GetCapability` overload.
