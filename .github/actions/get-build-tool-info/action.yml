@@ -40,7 +40,7 @@ runs:
   steps:
   - name: Read build tool info
     id: tool-info
-    shell: ${{ runner.os == 'Windows' && 'python {0}' || 'python3 {0}' }}
+    shell: 'python3 {0}'
     env:
       GET_CMAKE: ${{ inputs.cmake }}
       GET_VCPKG: ${{ inputs.vcpkg }}
