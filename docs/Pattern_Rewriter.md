@@ -161,6 +161,29 @@ by literal patterns. Unused initializers are permitted, but unmatched `Constant`
 operators and output-unreachable extra work are not. Clean up dead work before
 matching an unoptimized function body.
 
+For example, this matches a Loop whose body passes through its condition and
+carried state, as in `PatternGraphTests.LoopFormalInputsAndPassthroughOutputs`:
+
+```text
+pattern LoopBody(iteration,condition,state) -> (continue_loop,result) {
+  return (continue_loop=condition,result=state)
+}
+pattern LoopPattern(trip,condition,initial_state) {
+  y=Loop(trip,condition,initial_state,body=LoopBody)
+  return y
+}
+```
+
+`LoopBody` binds the body's three formal inputs positionally: iteration number,
+per-iteration condition, and carried state. These are not lexical captures or
+one-to-one aliases of the Loop's outer operands; even the unused iteration
+formal is part of the body signature. In contrast, the If branches above have
+no formal inputs, so their `x` binds structurally to a capture (or an immutable
+local initializer). The Loop example is structural matching, not an elimination
+rule: `match.instance("y.body").valueOf("state")` is body-local and cannot be
+promoted to a parent replacement input. Any rewrite must separately establish
+iteration, condition, and state semantics.
+
 Nested bindings are separate matches, not nodes in the outer deletion set.
 `match.instance("result.then_branch")` provides the body `BindingView`; an
 unassigned final operator uses `root.then_branch`. Composition prefixes these
