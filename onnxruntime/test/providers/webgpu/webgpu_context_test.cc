@@ -1194,7 +1194,7 @@ TEST_F(WebGpuBucketCacheTest, CompletedRunsTrimSurplusWithinAnActiveClass) {
   manager_->OnRunEnd(recording_, true);
 
   // Demand ages each run; surplus remains reusable until the cleanup batch.
-  for (size_t run = 2; run <= 16; ++run) {
+  for (size_t run = 2; run <= 32; ++run) {
     manager_->OnRunStart(recording_);
     // Partial submissions must not advance the completed-run cleanup counter.
     for (size_t submit = 0; submit < 4; ++submit) {
@@ -1204,10 +1204,19 @@ TEST_F(WebGpuBucketCacheTest, CompletedRunsTrimSurplusWithinAnActiveClass) {
     EXPECT_EQ(hot.Get(), originals.back().Get());
     manager_->Release(hot.MoveToCHandle());
     manager_->OnRunEnd(recording_, true);
-    if (run == 5) {
+    if (run == 16) {
       auto between_batches = Create(70 * 1024);
       EXPECT_EQ(between_batches.Get(), obsolete.Get());
       manager_->Release(between_batches.MoveToCHandle());
+      // The first cleanup still sees the initial peak in its sixteen-run window.
+      InlinedVector<wgpu::Buffer> before_expiry;
+      for (size_t i = 0; i < originals.size(); ++i) {
+        before_expiry.emplace_back(Create(1537));
+        EXPECT_EQ(identities.count(before_expiry.back().Get()), 1u);
+      }
+      for (auto it = before_expiry.rbegin(); it != before_expiry.rend(); ++it) {
+        manager_->Release(it->MoveToCHandle());
+      }
     }
   }
   InlinedVector<wgpu::Buffer> acquired;
@@ -1226,7 +1235,7 @@ TEST_F(WebGpuBucketCacheTest, LateReturnsRespectCleanupBatches) {
   auto original = Create(1537);
   manager_->Release(wgpu::Buffer{original}.MoveToCHandle());
   manager_->OnRunEnd(recording_, true);
-  for (size_t run = 2; run <= 5; ++run) {
+  for (size_t run = 2; run <= 17; ++run) {
     manager_->OnRunStart(recording_);
     manager_->OnRunEnd(recording_, true);
   }
@@ -1236,7 +1245,7 @@ TEST_F(WebGpuBucketCacheTest, LateReturnsRespectCleanupBatches) {
     EXPECT_EQ(reused.Get(), original.Get());
     manager_->Release(reused.MoveToCHandle());
   }
-  for (size_t run = 6; run <= 16; ++run) {
+  for (size_t run = 18; run <= 32; ++run) {
     manager_->OnRunStart(recording_);
     manager_->OnRunEnd(recording_, true);
   }
@@ -1288,7 +1297,7 @@ TEST_F(WebGpuBucketCacheTest, SharedSpareDemandSurvivesCrossSessionBorrowing) {
   manager_->Release(wgpu::Buffer{first}.MoveToCHandle());
   manager_->Release(wgpu::Buffer{second}.MoveToCHandle());
   manager_->OnRunEnd(recording_, true);
-  for (size_t step = 0; step < 16; ++step) {
+  for (size_t step = 0; step < 32; ++step) {
     manager_->OnRunStart(other);
     auto borrowed = manager_->Create(other, 1537, kUsage);
     EXPECT_EQ(borrowed, second.Get());
@@ -1403,7 +1412,7 @@ TEST(WebGpuContextTest, FailedOrTerminatedRunsDoNotAdvanceBufferAge) {
     ASSERT_STATUS_OK(failed.config_options.AddConfigEntry("__ort.run_outcome", "failed"));
     RunOptions terminated;
     terminated.terminate = true;
-    for (size_t step = 0; step < 8; ++step) {
+    for (size_t step = 0; step < 32; ++step) {
       ASSERT_STATUS_OK(ep.OnRunStart(regular));
       ASSERT_STATUS_OK(ep.OnRunEnd(false, step % 2 == 0 ? failed : terminated));
     }
@@ -1421,7 +1430,7 @@ TEST(WebGpuContextTest, FailedOrTerminatedRunsDoNotAdvanceBufferAge) {
     auto surplus = wgpu::Buffer::Acquire(manager.Create(ep.Recording(), 256, usage));
     manager.Release(wgpu::Buffer{surplus}.MoveToCHandle());
     ASSERT_STATUS_OK(ep.OnRunEnd(false, regular));
-    for (size_t step = 0; step < 4; ++step) {
+    for (size_t step = 0; step < 16; ++step) {
       ASSERT_STATUS_OK(ep.OnRunStart(regular));
       ASSERT_STATUS_OK(ep.OnRunEnd(false, regular));
     }
@@ -1464,7 +1473,7 @@ TEST(WebGpuContextTest, CapturedReplayAdvancesOwnCleanupCadenceWithoutDoubleCoun
     webgpu::CommandRecordingState observer;
     auto before_expiry = wgpu::Buffer::Acquire(shared.Create(observer, 64, usage));
     EXPECT_EQ(before_expiry.Get(), first.Get());
-    for (size_t step = 0; step < 11; ++step) {
+    for (size_t step = 0; step < 27; ++step) {
       ASSERT_STATUS_OK(ep.ReplayGraph(0));
     }
     // Counting initial capture twice would have triggered cleanup already.

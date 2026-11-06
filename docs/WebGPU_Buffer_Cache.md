@@ -16,7 +16,7 @@ automatically. No bucket table configuration is required.
   recreated. Different sessions can reuse compatible spares from the shared
   context; concurrently live buffers still require separate allocations.
 - Reuse takes the most recently returned buffer of the matching capacity. Each
-  session records peak simultaneous demand per capacity over its four most recent
+  session records peak simultaneous demand per capacity over its 16 most recent
   completed runs, including live buffers carried into a run and buffers still
   awaiting submission. A smaller working set eventually replaces an earlier peak,
   allowing surplus buffers within a still-active size class to be released.
@@ -30,10 +30,12 @@ automatically. No bucket table configuration is required.
   tracked session run use a 60-second spare-return grace period instead.
   If all sessions are idle and grace periods have expired, all ordinary bucket
   spares can be released; another session's recent demand can still retain spares.
-- Ordinary reclamation is batched every 16 completed runs of each session.
-  Demand history still advances each run. Late buffer returns from a cleanup run
-  check only that buffer's size class; returns between batches wait for a later
-  cleanup. Unsuccessful runs, idle expiry and session release trigger maintenance
+- The same 16-run window controls demand history and ordinary reclamation.
+  Cleanup is batched every 16 completed runs of each session, while demand history
+  advances each run. An old peak can remain cached until the next cleanup after
+  it leaves that history. Late buffer returns from a cleanup run check only that
+  buffer's size class; returns between batches wait for a later cleanup.
+  Unsuccessful runs, idle expiry and session release trigger maintenance
   immediately, without advancing another session's run count.
   A shared scan can reclaim any surplus whose demand has already aged out.
   Run starts, submissions (including empty flushes) and allocation misses can

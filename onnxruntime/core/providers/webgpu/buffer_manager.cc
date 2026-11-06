@@ -153,15 +153,14 @@ class SimpleCacheManager : public IBufferCacheManager {
 };
 
 class BucketCacheManager : public IBufferCacheManager {
-  // Retain a peak through four completed runs of its own session. Other
-  // sessions' submissions and partial-run flushes cannot advance this history.
-  static constexpr size_t kHistoryLength = 4;
-  static constexpr size_t kCleanupInterval = 16;
+  // Use one completed-run window for demand history and ordinary cleanup.
+  // Other sessions and partial-run flushes cannot advance this session's window.
+  static constexpr size_t kRunWindow = 16;
   static constexpr auto kIdleTimeout = std::chrono::seconds{60};
   struct Demand {
     size_t unavailable = 0;
     size_t peak = 0;
-    std::array<size_t, kHistoryLength> history{};
+    std::array<size_t, kRunWindow> history{};
 
     size_t RecentPeak(bool active) const {
       return std::max(active ? peak : size_t{0}, *std::max_element(history.begin(), history.end()));
@@ -283,14 +282,14 @@ class BucketCacheManager : public IBufferCacheManager {
       }
     }
     if (completed) {
-      session.next_history = (session.next_history + 1) % kHistoryLength;
+      session.next_history = (session.next_history + 1) % kRunWindow;
     }
     session.active = false;
     session.last_activity = now;
     next_idle_check_ = std::min(next_idle_check_, now + kIdleTimeout);
     // Batch ordinary reclamation on this session's completed-run timeline.
     // Late returns from a cleanup run share its maintenance opportunity.
-    if (!completed || ++session.runs_since_cleanup == kCleanupInterval) {
+    if (!completed || ++session.runs_since_cleanup == kRunWindow) {
       session.runs_since_cleanup = 0;
       Trim(now);
     }
