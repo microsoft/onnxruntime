@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -1031,12 +1030,14 @@ TEST_F(WebGpuBucketCacheTest, RelativeSizeClassesLimitPaddingAtKvBoundaries) {
   }
 }
 
-TEST_F(WebGpuBucketCacheTest, GraphRetainsRelativeSizeClassesAcrossIdleRefreshAndDonation) {
+TEST_F(WebGpuBucketCacheTest, GraphRetainsRelativeSizeClassesAcrossMaintenanceAndDonation) {
   ResetCache(webgpu::BufferCacheMode::Graph);
   auto buffer = Create(3000);
   ASSERT_EQ(buffer.GetSize(), 3072u);
   manager_->Release(wgpu::Buffer{buffer}.MoveToCHandle());
-  manager_->OnIdleCheck(webgpu::IBufferCacheManager::Clock::now() + std::chrono::seconds{61});
+  manager_->OnRunStart(recording_);
+  manager_->OnRunEnd(recording_, false);
+  manager_->OnSessionRelease(recording_);
   ASSERT_STATUS_OK(context_->Flush(*manager_, recording_));
   auto reused = Create(3000);
   EXPECT_EQ(reused.Get(), buffer.Get());
@@ -1136,17 +1137,22 @@ TEST_F(WebGpuBucketCacheTest, ANewSizeDoesNotDiscardAnotherWorkingSet) {
   EXPECT_EQ(reused.Get(), first.Get());
 }
 
-TEST_F(WebGpuBucketCacheTest, OtherRecordingsDoNotAdvanceIdleAgeBySubmissionCount) {
+TEST_F(WebGpuBucketCacheTest, FlushesAndMissesDoNotEvictPausedSessionDemand) {
+  manager_->OnRunStart(recording_);
   auto original = Create(1537);
   manager_->Release(wgpu::Buffer{original}.MoveToCHandle());
+  manager_->OnRunEnd(recording_, true);
   webgpu::CommandRecordingState other;
   for (size_t step = 0; step < 256; ++step) {
-    auto active = manager_->Create(other, 70 * 1024, kUsage);
+    auto active = manager_->Create(other, 70 * 1024 + step * 4096, kUsage);
     manager_->Release(active, &other);
     ASSERT_STATUS_OK(context_->Flush(*manager_, other));
   }
+  manager_->OnRunStart(recording_);
   auto reused = Create(1537);
   EXPECT_EQ(reused.Get(), original.Get());
+  manager_->Release(reused.MoveToCHandle());
+  manager_->OnRunEnd(recording_, true);
 }
 
 TEST_F(WebGpuBucketCacheTest, ConcurrentRecordingsNeverAcquireTheSameLiveBuffer) {
@@ -1257,16 +1263,14 @@ TEST_F(WebGpuBucketCacheTest, LateReturnsRespectCleanupBatches) {
   EXPECT_NE(replacement.Get(), original.Get());
 }
 
-TEST_F(WebGpuBucketCacheTest, IdleExpiryProtectsActiveLiveAndPendingBuffers) {
-  using Clock = webgpu::IBufferCacheManager::Clock;
-  const auto now = Clock::now();
-  manager_->OnRunStart(recording_, now);
+TEST_F(WebGpuBucketCacheTest, MaintenanceProtectsPausedDemandAndActiveLiveAndPendingBuffers) {
+  manager_->OnRunStart(recording_);
   auto idle = Create(1537);
   manager_->Release(wgpu::Buffer{idle}.MoveToCHandle());
-  manager_->OnRunEnd(recording_, true, now);
+  manager_->OnRunEnd(recording_, true);
 
   webgpu::CommandRecordingState slow;
-  manager_->OnRunStart(slow, now);
+  manager_->OnRunStart(slow);
   auto live = wgpu::Buffer::Acquire(manager_->Create(slow, 64, kUsage));
   auto pending = wgpu::Buffer::Acquire(manager_->Create(slow, 128, kUsage));
   auto spare = wgpu::Buffer::Acquire(manager_->Create(slow, 256, kUsage));
@@ -1274,10 +1278,18 @@ TEST_F(WebGpuBucketCacheTest, IdleExpiryProtectsActiveLiveAndPendingBuffers) {
   context_->GetCommandEncoder(slow).ClearBuffer(pending, 0, 128);
   manager_->Release(wgpu::Buffer{pending}.MoveToCHandle(), &slow);
 
-  // No real sleeps: an event after the idle deadline expires only idle demand.
-  manager_->OnIdleCheck(now + std::chrono::seconds{61});
-  auto replaced = Create(1537);
-  EXPECT_NE(replaced.Get(), idle.Get());
+  // Another session's cleanup, failure and teardown preserve both the paused
+  // session's history and the active session's observed demand and lifetimes.
+  webgpu::CommandRecordingState other;
+  for (size_t step = 0; step < 32; ++step) {
+    manager_->OnRunStart(other);
+    manager_->OnRunEnd(other, true);
+  }
+  manager_->OnRunStart(other);
+  manager_->OnRunEnd(other, false);
+  manager_->OnSessionRelease(other);
+  auto reused = Create(1537);
+  EXPECT_EQ(reused.Get(), idle.Get());
   auto hot = wgpu::Buffer::Acquire(manager_->Create(slow, 256, kUsage));
   EXPECT_EQ(hot.Get(), spare.Get());
   auto before_submission = Create(128);
@@ -1290,7 +1302,7 @@ TEST_F(WebGpuBucketCacheTest, IdleExpiryProtectsActiveLiveAndPendingBuffers) {
   EXPECT_EQ(returned_live.Get(), live.Get());
   manager_->Release(hot.MoveToCHandle(), &slow);
   manager_->Release(returned_live.MoveToCHandle(), &slow);
-  manager_->OnRunEnd(slow, true, now + std::chrono::seconds{62});
+  manager_->OnRunEnd(slow, true);
 }
 
 TEST_F(WebGpuBucketCacheTest, SharedSpareDemandSurvivesCrossSessionBorrowing) {
@@ -1374,10 +1386,22 @@ TEST_F(WebGpuBucketCacheTest, LateReturnAfterActiveSessionRemovalDoesNotRetainSp
   EXPECT_NE(replacement.Get(), live.Get());
 }
 
-TEST_F(WebGpuBucketCacheTest, UnattributedBuffersExpireOnAnIdleEvent) {
+TEST_F(WebGpuBucketCacheTest, UnattributedBuffersRemainReusableUntilRunMaintenance) {
   auto original = Create(1537);
   manager_->Release(wgpu::Buffer{original}.MoveToCHandle());
-  manager_->OnIdleCheck(webgpu::IBufferCacheManager::Clock::now() + std::chrono::seconds{61});
+  for (size_t step = 0; step < 32; ++step) {
+    ASSERT_STATUS_OK(context_->Flush(*manager_, recording_));
+    auto missed = Create(4096 + step * 256);
+    manager_->Release(missed.MoveToCHandle());
+  }
+  auto reused = Create(1537);
+  EXPECT_EQ(reused.Get(), original.Get());
+  manager_->Release(reused.MoveToCHandle());
+  // No tracked run used this capacity, so normal maintenance can reclaim it.
+  for (size_t step = 0; step < 16; ++step) {
+    manager_->OnRunStart(recording_);
+    manager_->OnRunEnd(recording_, true);
+  }
   auto replacement = Create(1537);
   EXPECT_NE(replacement.Get(), original.Get());
 }

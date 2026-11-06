@@ -3,7 +3,6 @@
 
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <deque>
 
 #include "core/providers/webgpu/buffer_manager.h"
@@ -157,8 +156,8 @@ class BucketCacheManager : public IBufferCacheManager {
   // its own successful runs. Reuse is attributed to the current borrower;
   // free buffers have no session owner or run age. Use the same window for
   // demand history and ordinary cleanup; partial-run flushes do not advance it.
+  // Pauses between chat turns do not age demand or trigger reclamation.
   static constexpr size_t kRunWindow = 16;
-  static constexpr auto kIdleTimeout = std::chrono::seconds{60};
   struct Demand {
     size_t unavailable = 0;
     size_t peak = 0;
@@ -172,20 +171,13 @@ class BucketCacheManager : public IBufferCacheManager {
     bool active = false;
     size_t next_history = 0;
     size_t runs_since_cleanup = 0;
-    Clock::time_point last_activity;
     InlinedHashMap<size_t, Demand> demand;
   };
   struct BorrowedBuffer {
     std::shared_ptr<Session> session;
     size_t capacity;
   };
-  struct CachedBuffer {
-    wgpu::Buffer buffer;
-    // Allocations outside a session Run have no run history. Retain these
-    // briefly too, without retaining call-local recording identities.
-    Clock::time_point untracked_deadline;
-  };
-  using BufferQueue = std::deque<CachedBuffer>;
+  using BufferQueue = std::deque<wgpu::Buffer>;
 
  public:
   size_t CalculateBufferSize(size_t request_size) override {
@@ -195,11 +187,10 @@ class BucketCacheManager : public IBufferCacheManager {
   WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size) override {
     auto it = buckets_.find(buffer_size);
     if (it != buckets_.end() && !it->second.empty()) {
-      auto buffer = it->second.back().buffer.MoveToCHandle();
+      auto buffer = it->second.back().MoveToCHandle();
       it->second.pop_back();
       return buffer;
     }
-    OnIdleCheck(Clock::now());
     return nullptr;
   }
 
@@ -228,12 +219,8 @@ class BucketCacheManager : public IBufferCacheManager {
     auto owned_buffer = wgpu::Buffer::Acquire(buffer);
     const auto capacity = static_cast<size_t>(owned_buffer.GetSize());
     auto borrower = Retire(buffer);
-    const auto deadline = borrower ? Clock::time_point::min() : Clock::now() + kIdleTimeout;
-    if (!borrower) {
-      next_idle_check_ = std::min(next_idle_check_, deadline);
-    }
     auto& buffers = buckets_[capacity];
-    buffers.push_back({std::move(owned_buffer), deadline});
+    buffers.push_back(std::move(owned_buffer));
     if (borrower && !borrower->active && borrower->runs_since_cleanup == 0) {
       size_t keep = 0;
       for (const auto& [recording, session] : sessions_) {
@@ -245,25 +232,23 @@ class BucketCacheManager : public IBufferCacheManager {
           }
         }
       }
-      TrimBucket(buffers, keep, Clock::now());
+      TrimBucket(buffers, keep);
     }
   }
 
-  void OnRunStart(const CommandRecordingState& recording, Clock::time_point now) override {
-    OnIdleCheck(now);
+  void OnRunStart(const CommandRecordingState& recording) override {
     auto& session = sessions_[&recording];
     if (!session) {
       session = std::make_shared<Session>();
     }
     session->active = true;
-    session->last_activity = now;
     for (auto& [capacity, demand] : session->demand) {
       // Include carried-over live inputs, not just allocations made in this Run.
       demand.peak = demand.unavailable;
     }
   }
 
-  void OnRunEnd(const CommandRecordingState& recording, bool completed, Clock::time_point now) override {
+  void OnRunEnd(const CommandRecordingState& recording, bool completed) override {
     auto it = sessions_.find(&recording);
     if (it == sessions_.end()) {
       return;
@@ -287,13 +272,11 @@ class BucketCacheManager : public IBufferCacheManager {
       session.next_history = (session.next_history + 1) % kRunWindow;
     }
     session.active = false;
-    session.last_activity = now;
-    next_idle_check_ = std::min(next_idle_check_, now + kIdleTimeout);
     // Batch ordinary reclamation on this session's completed-run timeline.
     // Late returns from a cleanup run share its maintenance opportunity.
     if (!completed || ++session.runs_since_cleanup == kRunWindow) {
       session.runs_since_cleanup = 0;
-      Trim(now);
+      Trim();
     }
   }
 
@@ -305,39 +288,10 @@ class BucketCacheManager : public IBufferCacheManager {
       it->second->runs_since_cleanup = 0;
       sessions_.erase(it);
     }
-    Trim(Clock::now());
+    Trim();
   }
 
-  void OnRefresh(GraphCaptureState /*graph_capture_state*/) override {
-    OnIdleCheck(Clock::now());
-  }
-
-  void OnIdleCheck(Clock::time_point now) override {
-    if (now < next_idle_check_) {
-      return;
-    }
-    next_idle_check_ = Clock::time_point::max();
-    for (auto& [recording, session] : sessions_) {
-      if (session->active) {
-        continue;
-      }
-      const auto deadline = session->last_activity + kIdleTimeout;
-      if (now >= deadline) {
-        session->runs_since_cleanup = 0;
-        for (auto d = session->demand.begin(); d != session->demand.end();) {
-          d->second.history.fill(0);
-          if (d->second.unavailable == 0) {
-            session->demand.erase(d++);
-          } else {
-            ++d;
-          }
-        }
-      } else {
-        next_idle_check_ = std::min(next_idle_check_, deadline);
-      }
-    }
-    Trim(now);
-  }
+  void OnRefresh(GraphCaptureState /*graph_capture_state*/) override {}
 
  private:
   std::shared_ptr<Session> Retire(WGPUBuffer buffer) {
@@ -351,7 +305,7 @@ class BucketCacheManager : public IBufferCacheManager {
     return session;
   }
 
-  void Trim(Clock::time_point now) {
+  void Trim() {
     // Per capacity, retain sum(max(peak - unavailable, 0)) over all registered
     // sessions. Cleanup triggered by one session still includes the others.
     // The peak combines valid history and demand already observed in an active
@@ -369,7 +323,7 @@ class BucketCacheManager : public IBufferCacheManager {
     for (auto it = buckets_.begin(); it != buckets_.end();) {
       auto& buffers = it->second;
       const auto keep = spare_demand[it->first];
-      TrimBucket(buffers, keep, now);
+      TrimBucket(buffers, keep);
       if (buffers.empty()) {
         buckets_.erase(it++);
       } else {
@@ -378,24 +332,17 @@ class BucketCacheManager : public IBufferCacheManager {
     }
   }
 
-  void TrimBucket(BufferQueue& buffers, size_t keep, Clock::time_point now) {
-    // Only inspect surplus entries. MRU spares cover all sessions' recent demand;
-    // unattributed spares retain their own grace period when interleaved.
-    const auto retained = std::min(keep, buffers.size());
-    for (auto b = buffers.end() - retained; b != buffers.begin();) {
-      --b;
-      if (now < b->untracked_deadline) {
-        next_idle_check_ = std::min(next_idle_check_, b->untracked_deadline);
-      } else {
-        b = buffers.erase(b);
-      }
+  void TrimBucket(BufferQueue& buffers, size_t keep) {
+    // Keep MRU spares for all sessions' recent demand; release only surplus.
+    // Outside-run allocations share this pool without reserving extra spares.
+    while (buffers.size() > keep) {
+      buffers.pop_front();
     }
   }
 
   InlinedHashMap<size_t, BufferQueue> buckets_;
   InlinedHashMap<const CommandRecordingState*, std::shared_ptr<Session>> sessions_;
   InlinedHashMap<WGPUBuffer, BorrowedBuffer> borrowed_;
-  Clock::time_point next_idle_check_ = Clock::time_point::max();
 };
 
 class GraphCacheManager : public IBufferCacheManager {
@@ -890,17 +837,17 @@ void BufferManager::DiscardPendingBuffers(CommandRecordingState& recording) cons
   }
 }
 
-void BufferManager::OnRunStart(const CommandRecordingState& recording, IBufferCacheManager::Clock::time_point now) const {
+void BufferManager::OnRunStart(const CommandRecordingState& recording) const {
   std::lock_guard<std::mutex> lock{mutex_};
   for (auto* cache : {storage_cache_.get(), uniform_cache_.get(), query_resolve_cache_.get(), default_cache_.get()}) {
-    cache->OnRunStart(recording, now);
+    cache->OnRunStart(recording);
   }
 }
 
-void BufferManager::OnRunEnd(const CommandRecordingState& recording, bool completed, IBufferCacheManager::Clock::time_point now) const {
+void BufferManager::OnRunEnd(const CommandRecordingState& recording, bool completed) const {
   std::lock_guard<std::mutex> lock{mutex_};
   for (auto* cache : {storage_cache_.get(), uniform_cache_.get(), query_resolve_cache_.get(), default_cache_.get()}) {
-    cache->OnRunEnd(recording, completed, now);
+    cache->OnRunEnd(recording, completed);
   }
 }
 
@@ -908,13 +855,6 @@ void BufferManager::OnSessionRelease(const CommandRecordingState& recording) con
   std::lock_guard<std::mutex> lock{mutex_};
   for (auto* cache : {storage_cache_.get(), uniform_cache_.get(), query_resolve_cache_.get(), default_cache_.get()}) {
     cache->OnSessionRelease(recording);
-  }
-}
-
-void BufferManager::OnIdleCheck(IBufferCacheManager::Clock::time_point now) const {
-  std::lock_guard<std::mutex> lock{mutex_};
-  for (auto* cache : {storage_cache_.get(), uniform_cache_.get(), query_resolve_cache_.get(), default_cache_.get()}) {
-    cache->OnIdleCheck(now);
   }
 }
 

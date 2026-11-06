@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include <chrono>
 #include <iosfwd>
 #include <mutex>
 #include <utility>
@@ -45,12 +44,11 @@ std::ostream& operator<<(std::ostream& os, BufferCacheMode mode);
 // - Disabled: no cache. always allocate a new buffer and release it immediately after use.
 // - LazyRelease: no cache. the difference from Disabled is that it delays the release of buffers until the next refresh.
 // - Simple: a simple cache that always keeps buffers. when a buffer is requested, it tries to find a buffer in the cache.
-// - Bucket: fine size-class reuse with per-session run-demand aging and idle spare eviction.
+// - Bucket: fine size-class reuse with per-session run-demand aging and event-driven spare eviction.
 // - Graph: used for graph capturing storage buffer cache mode. All buffers will be cached. Buffers can be reused across runs and in one run.
 // - GraphSimple: used for graph capturing uniform buffer cache mode. All buffers will be cached. Buffers can be reused across runs but can't be reused in one run.
 class IBufferCacheManager {
  public:
-  using Clock = std::chrono::steady_clock;
   virtual ~IBufferCacheManager() = default;
 
   virtual bool SupportsBufferReuse() const { return true; }
@@ -74,10 +72,9 @@ class IBufferCacheManager {
   // is independent of the recording used to eventually release the buffer.
   virtual void OnAcquire(WGPUBuffer, const CommandRecordingState&) {}
   virtual void OnDiscard(WGPUBuffer) {}
-  virtual void OnRunStart(const CommandRecordingState&, Clock::time_point) {}
-  virtual void OnRunEnd(const CommandRecordingState&, bool, Clock::time_point) {}
+  virtual void OnRunStart(const CommandRecordingState&) {}
+  virtual void OnRunEnd(const CommandRecordingState&, bool) {}
   virtual void OnSessionRelease(const CommandRecordingState&) {}
-  virtual void OnIdleCheck(Clock::time_point) {}
 
   // Extract all cached buffers from this manager, transferring ownership to the
   // caller. The cache's internal containers are cleared. Default returns empty;
@@ -122,12 +119,9 @@ class BufferManager {
   void RefreshPendingBuffers(CommandRecordingState& recording, GraphCaptureState graph_capture_state) const;
   // Drop retained references when a recording is abandoned instead of submitted.
   void DiscardPendingBuffers(CommandRecordingState& recording) const;
-  void OnRunStart(const CommandRecordingState& recording,
-                  IBufferCacheManager::Clock::time_point now = IBufferCacheManager::Clock::now()) const;
-  void OnRunEnd(const CommandRecordingState& recording, bool completed,
-                IBufferCacheManager::Clock::time_point now = IBufferCacheManager::Clock::now()) const;
+  void OnRunStart(const CommandRecordingState& recording) const;
+  void OnRunEnd(const CommandRecordingState& recording, bool completed) const;
   void OnSessionRelease(const CommandRecordingState& recording) const;
-  void OnIdleCheck(IBufferCacheManager::Clock::time_point now = IBufferCacheManager::Clock::now()) const;
 
   std::vector<std::pair<size_t, WGPUBuffer>> ExtractCachedBuffers(wgpu::BufferUsage usage);
   void AbsorbCachedBuffers(wgpu::BufferUsage usage,

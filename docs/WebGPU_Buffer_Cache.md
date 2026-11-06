@@ -24,29 +24,27 @@ automatically. No bucket table configuration is required.
   outstanding buffers. Each session advances only its own history. Partial
   submissions and another session's runs do not age its demand. Graph replay counts
   as a run; the replay performed during initial capture does not count twice.
-- After a session has no active run for 60 seconds, its retained-demand history
-  can expire at a later maintenance event. A slow active run does not expire.
-  Session destruction removes its contribution immediately. Allocations outside a
-  tracked session run use a 60-second spare-return grace period instead.
-  If all sessions are idle and grace periods have expired, all ordinary bucket
-  spares can be released; another session's recent demand can still retain spares.
+- Pauses between runs do not age retained demand, so a chat can reuse its working
+  set after a long gap. Session destruction removes its contribution immediately.
+  Allocations outside tracked runs share the spare pool without reserving extra
+  demand; surplus can be reclaimed at the next run or session-release maintenance.
 - The same 16-run window controls demand history and ordinary reclamation.
   Cleanup is batched every 16 completed runs of each session, while demand history
   advances each run. An old peak can remain cached until the next cleanup after
   it leaves that history. Late buffer returns from a cleanup run check only that
   buffer's size class; returns between batches wait for a later cleanup.
-  Unsuccessful runs, idle expiry and session release trigger maintenance
+  Unsuccessful runs and session release trigger maintenance
   immediately, without advancing another session's run count.
   A shared scan can reclaim any surplus whose demand has already aged out.
-  Run starts, submissions (including empty flushes) and allocation misses can
-  trigger idle maintenance once the next idle deadline is reached. The normal
-  run-demand check inspects surplus entries rather than scanning retained buffers.
+  Run starts, cache refreshes and allocation misses do not scan for eviction.
+  Submissions still retire pending buffers and apply the late-return rule above.
+  The run-demand check releases surplus entries without scanning retained buffers.
 
-There is no background thread or timer for cache maintenance. With no subsequent
-maintenance event, buffers remain cached even after 60 seconds. Only free spares
-can be evicted; live buffers and unsubmitted recordings remain protected. The
-history window and idle timeout are reuse heuristics, not measurements of available
-GPU memory. A later request can recreate buffers whose previous demand aged out.
+There is no background thread, timer or wall-clock expiry for cache maintenance.
+Only free spares can be evicted; live buffers and unsubmitted recordings remain
+protected. The history window is a reuse heuristic, not a measurement of available
+GPU memory. A later request can recreate buffers whose previous demand aged out
+through that session's own runs.
 
 Portable WebGPU APIs do not expose remaining GPU memory. This policy does not
 bound total device memory or guarantee allocation success. Live tensors,
@@ -57,5 +55,5 @@ are introduced.
 
 Buffers awaiting submission retain their existing lifetime protection. Graph
 capture uses the same storage size classes, while retaining buffers under its
-separate lifetime policy without idle eviction. No predefined size table is used.
+separate lifetime policy. No predefined size table is used.
 The deprecated JSEP backend is separate.
