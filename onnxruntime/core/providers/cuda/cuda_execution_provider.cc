@@ -505,6 +505,13 @@ CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadCont
     if (context_state_.active_contexts.empty()) {
       context_state_.active_contexts.insert(
           std::make_shared<PerThreadContext>(info_.device_id, stream_, info_));
+    } else {
+      // A reused context does not select CUDA's thread-local current device.
+      int current_device = 0;
+      CUDA_CALL_THROW(cudaGetDevice(&current_device));
+      if (current_device != info_.device_id) {
+        CUDA_CALL_THROW(cudaSetDevice(info_.device_id));
+      }
     }
     return **context_state_.active_contexts.begin();
   }

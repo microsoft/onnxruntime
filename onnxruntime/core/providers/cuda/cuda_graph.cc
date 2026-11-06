@@ -61,10 +61,8 @@ void CUDAGraphManager::CaptureBegin(CudaGraphAnnotation_t cuda_graph_annotation_
               " that already used. Please use a different annotation id.");
 
   CUDA_CALL_THROW(cudaStreamSynchronize(stream_));
-  // For now cuda graph can only work with a single thread. In the future, we
-  // will support multiple threads. For multiple threads with multiple graphs
-  // and streams, `cudaStreamCaptureModeGlobal` needs to be changed to
-  // `cudaStreamCaptureModeThreadLocal`
+  // Begin and end each capture on the same caller thread. Serialized runs may
+  // use different caller threads while sharing this stream and graph manager.
   CUDA_CALL_THROW(cudaStreamBeginCapture(stream_, cudaStreamCaptureModeGlobal));
   cuda_graph_annotation_id_ = cuda_graph_annotation_id;
 }
@@ -108,6 +106,7 @@ void CUDAGraphManager::DiscardCapture() noexcept {
   // A capture invalidated by the failed run reports that here and yields no graph. The stream leaves capture mode
   // either way.
   const cudaError_t end_status = cudaStreamEndCapture(stream_, &graph);
+  cuda_graph_annotation_id_ = kCudaGraphAnnotationSkip;
   if (graph != NULL) {
     static_cast<void>(cudaGraphDestroy(graph));
   }

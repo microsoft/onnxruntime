@@ -1,7 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
 #include <chrono>
+#include <cstdint>
 #include <future>
 #include <latch>
 #include <memory>
@@ -11,6 +13,8 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_graph.h"
+#include "onnxruntime_cxx_api.h"
+#include "onnxruntime_run_options_config_keys.h"
 
 namespace onnxruntime {
 namespace test {
@@ -153,6 +157,72 @@ TEST_F(CudaGraphCaptureTest, ExternalBuffersRetainProviderLifetime) {
     }
     EXPECT_TRUE(retained.expired());
   }
+}
+
+TEST(CudaGraphCaptureDeviceTest, SharedContextSelectsDeviceForSerializedThreads) {
+  int device_count = 0;
+  CUDA_CALL_THROW(cudaGetDeviceCount(&device_count));
+  if (device_count < 2) {
+    GTEST_SKIP() << "Requires two visible CUDA devices";
+  }
+
+  int original_device = 0;
+  CUDA_CALL_THROW(cudaGetDevice(&original_device));
+  const auto restore_device = gsl::finally([&] {
+    EXPECT_EQ(cudaSetDevice(original_device), cudaSuccess);
+  });
+  CUDAExecutionProviderInfo info;
+  info.device_id = 1;
+  info.enable_cuda_graph = true;
+  info.min_num_runs_before_cuda_graph_capture = 1;
+  CUDAExecutionProvider provider(info);
+  provider.SetLogger(&logging::LoggingManager::DefaultLogger());
+  EXPECT_FALSE(provider.IsGraphCaptured(0));
+
+  constexpr size_t kBufferBytes = 16;
+  void* buffer = nullptr;
+  CUDA_CALL_THROW(cudaMalloc(&buffer, kBufferBytes));
+  const auto release_buffer = gsl::finally([&] {
+    EXPECT_EQ(cudaSetDevice(info.device_id), cudaSuccess);
+    EXPECT_EQ(cudaFree(buffer), cudaSuccess);
+  });
+  const auto read_buffer = [&] {
+    std::array<uint8_t, kBufferBytes> output{};
+    CUDA_CALL_THROW(cudaMemcpy(output.data(), buffer, kBufferBytes, cudaMemcpyDeviceToHost));
+    return output;
+  };
+
+  uint8_t value = 0;
+  std::array<uint8_t, kBufferBytes> expected{};
+  for (const int graph_id : {0, kCudaGraphAnnotationSkip, 0}) {
+    expected.fill(++value);
+    auto run = std::async(std::launch::async, [&, graph_id, value] {
+      CUDA_CALL_THROW(cudaSetDevice(0));
+      Ort::RunOptions options;
+      options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, std::to_string(graph_id).c_str());
+      ORT_THROW_IF_ERROR(provider.OnRunStart(*options));
+      int current_device = -1;
+      CUDA_CALL_THROW(cudaGetDevice(&current_device));
+      EXPECT_EQ(current_device, info.device_id);
+      CUDA_CALL_THROW(cudaMemsetAsync(buffer, value, kBufferBytes, provider.ComputeStream()));
+      ORT_THROW_IF_ERROR(provider.OnRunEnd(/*sync_stream=*/true, *options));
+      return read_buffer();
+    });
+    EXPECT_EQ(run.get(), expected);
+  }
+
+  EXPECT_TRUE(provider.IsGraphCaptured(0));
+  CUDA_CALL_THROW(cudaMemset(buffer, 0, kBufferBytes));
+  auto replay = std::async(std::launch::async, [&] {
+    CUDA_CALL_THROW(cudaSetDevice(0));
+    ORT_THROW_IF_ERROR(provider.ReplayGraph(0));
+    int current_device = -1;
+    CUDA_CALL_THROW(cudaGetDevice(&current_device));
+    EXPECT_EQ(current_device, info.device_id);
+    return read_buffer();
+  });
+  EXPECT_EQ(replay.get(), expected);
+  ORT_THROW_IF_ERROR(provider.ReleaseCapturedGraph(0));
 }
 
 }  // namespace test
