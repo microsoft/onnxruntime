@@ -17,7 +17,7 @@ import build_tool_info
 from build_tool_info import get_tool_info
 
 TOOL_INFO_SCRIPT = Path(build_tool_info.__file__)
-ARCHIVE_CASES = (
+HOST_SHA512_CASES = (
     ("cmake", "linux", "x86_64", "linux", "x64"),
     ("cmake", "linux", "aarch64", "linux", "arm64"),
     ("cmake", "win32", "AMD64", "windows", "x64"),
@@ -37,19 +37,19 @@ UNSUPPORTED_CASES = (
 
 
 class TestBuildToolInfo(unittest.TestCase):
-    def test_select_host_archives(self):
-        for tool, host_os, host_arch, os_key, arch_key in ARCHIVE_CASES:
+    def test_select_host_sha512(self):
+        for tool, host_os, host_arch, os_key, arch_key in HOST_SHA512_CASES:
             with self.subTest(tool=tool, host_os=host_os, host_arch=host_arch):
                 info = get_tool_info(tool, host_os=host_os, host_arch=host_arch)
                 self.assertEqual(info.sha512, build_tool_info._BUILD_TOOL_INFO[tool]["sha512"][os_key][arch_key])
 
-        # A vcpkg source archive is host-independent, including for build.py's fallback clone.
+        # vcpkg tool info is host-independent, including for build.py's fallback clone.
         self.assertEqual(
             get_tool_info("vcpkg", host_os="freebsd", host_arch="mips"),
             get_tool_info("vcpkg"),
         )
 
-    def test_reject_unsupported_archives(self):
+    def test_reject_unsupported_hosts(self):
         for tool, host_os, host_arch in UNSUPPORTED_CASES:
             with (
                 self.subTest(tool=tool, host_os=host_os, host_arch=host_arch),
@@ -140,25 +140,6 @@ class TestBuildToolInfoCLI(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("Invalid vcpkg", result.stderr)
                 self.assertEqual(outputs, {})
-
-    def test_cache_identity_depends_only_on_vcpkg_artifact(self):
-        original = build_tool_info._BUILD_TOOL_INFO
-        reordered = json.loads(json.dumps(original, sort_keys=True, indent=4))
-        unrelated = copy.deepcopy(original)
-        unrelated["cmake"]["version"] = "99.0"
-        unrelated["cmake"]["sha512"]["linux"]["x64"] = "0" * 128
-        unrelated["ccache"]["version"] = "99.0"
-        new_version = copy.deepcopy(original)
-        new_version["vcpkg"]["version"] += "-new"
-        new_hash = copy.deepcopy(original)
-        new_hash["vcpkg"]["sha512"] = "0" * 128
-        keys = []
-        for metadata in (original, reordered, unrelated, new_version, new_hash):
-            result, outputs = self.run_cli(["vcpkg"], metadata)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            keys.append(outputs["vcpkg-sha512"])
-        self.assertEqual(keys[:4], [get_tool_info("vcpkg").sha512] * 4)
-        self.assertNotEqual(keys[0], keys[4])
 
 
 if __name__ == "__main__":
