@@ -415,6 +415,15 @@ class QMoESessionController {
     return graph_generation_.load(std::memory_order_acquire);
   }
 
+  // A warm-up run of this session loaded cold-expert host pages that the next live run should not inherit.
+  void MarkWarmupTouchedHostPages() noexcept {
+    warmup_touched_host_pages_.store(true, std::memory_order_release);
+  }
+
+  bool ConsumeWarmupTouchedHostPages() noexcept {
+    return warmup_touched_host_pages_.exchange(false, std::memory_order_acq_rel);
+  }
+
   common::Status OnBeforeGraphReplay(cudaStream_t stream) {
     std::vector<GraphReplayNodeHook> hooks;
     {
@@ -1699,6 +1708,7 @@ class QMoESessionController {
   int device_id_ = 0;
   std::atomic<bool> shutting_down_{false};
   std::atomic<uint64_t> graph_generation_{0};
+  std::atomic<bool> warmup_touched_host_pages_{false};
   QMoERunControls run_controls_;
   mutable std::mutex mutex_;
   // Written under mutex_; read without it by HasOffloadNodes().
