@@ -54,6 +54,8 @@
 // FP16 HGEMM kernels
 #include "kai/ukernels/matmul/matmul_clamp_f16_f16_f16p/kai_matmul_clamp_f16_f16_f16p2vlx2b_1x8vl_sme_mla.h"
 #include "kai/ukernels/matmul/matmul_clamp_f16_f16_f16p/kai_matmul_clamp_f16_f16_f16p2vlx2b_1x16vl_sme2_dot.h"
+//   DWCONV
+#include "kai/ukernels/dwconv/dwconv_f32_f32_f32p/kai_dwconv_clamp_f32_f32_f32p1vlx1b_3x3_s1_4xc_sme2_mla.h"
 
 #if defined(ENABLE_QMX_KERNELS)
 // QMX kernels (optional)
@@ -305,6 +307,9 @@ const KaiF16IMatmulKernel imatmul_f16_conv_sme2 =
 const KaiBF16SBgemmKernel sbgemm_gemm_sme2 =
     KAI_WRAP_UKERNEL_RUN_MATMUL_11(matmul_clamp_f32_bf16p2vlx2_bf16p2vlx2_2vlx2vl_sme2_mopa);
 
+const KaiF32DepthwiseConvKernel dwconv_sme2 =
+    KAI_WRAP_UKERNEL_RUN_DWCONV_PLANAR_4(dwconv_clamp_f32_f32_f32p1vlx1b_3x3_s1_4xc_sme2_mla);
+
 #if defined(ENABLE_QMX_KERNELS)
 const KaiF32IMatmulKernel imatmul_conv_qmx =
     KAI_WRAP_UKERNEL_RUN_IMATMUL_PACKED_7(imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_qmx_mopa);
@@ -492,4 +497,9 @@ const KaiF16HgemmKernel& GetKleidiAIHgemmUKernel() {
     } else {
         return hgemm_sme;
     }
+}
+
+const KaiF32DepthwiseConvKernel& GetKleidiAIDepthwiseConvUKernel() {
+    // Currently only an SME2 variant exists for FP32 depthwise convolution.
+    return dwconv_sme2;
 }
