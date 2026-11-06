@@ -1372,9 +1372,11 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
     set(bridge_test_target onnxruntime_provider_bridge_${mode}_test)
     set(bridge_test_sources "${TEST_SRC_DIR}/shared_lib/provider_bridge_test.cc" ${onnxruntime_unittest_main_src})
     if(mode STREQUAL "no_exceptions")
-      list(APPEND bridge_test_sources
-        "${ONNXRUNTIME_ROOT}/core/session/provider_bridge_ort.cc"
-        "${ONNXRUNTIME_ROOT}/core/common/helper.cc")
+      # These no-exception copies override library definitions. List them first so lld-link,
+      # which resolves inputs in command-line order, sees them before any referencing object.
+      list(PREPEND bridge_test_sources
+        "${ONNXRUNTIME_ROOT}/core/common/helper.cc"
+        "${ONNXRUNTIME_ROOT}/core/session/provider_bridge_ort.cc")
     endif()
     AddTest(TARGET ${bridge_test_target}
       SOURCES ${bridge_test_sources}
@@ -1422,9 +1424,11 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
     set(probe_target onnxruntime_optional_provider_probe_${mode}_test)
     set(probe_sources "${TEST_SRC_DIR}/shared_lib/optional_provider_probe_test.cc" ${onnxruntime_unittest_main_src})
     if(mode STREQUAL "no_exceptions")
-      list(APPEND probe_sources
-        "${ONNXRUNTIME_ROOT}/core/session/provider_bridge_ort.cc"
-        "${ONNXRUNTIME_ROOT}/core/common/helper.cc")
+      # These no-exception copies override library definitions. List them first so lld-link,
+      # which resolves inputs in command-line order, sees them before any referencing object.
+      list(PREPEND probe_sources
+        "${ONNXRUNTIME_ROOT}/core/common/helper.cc"
+        "${ONNXRUNTIME_ROOT}/core/session/provider_bridge_ort.cc")
     endif()
     AddTest(TARGET ${probe_target}
       SOURCES ${probe_sources}
@@ -2223,7 +2227,11 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     file(GLOB onnxruntime_perf_test_src CONFIGURE_DEPENDS
       ${onnxruntime_perf_test_src_patterns}
       )
-    onnxruntime_add_executable(onnxruntime_perf_test ${onnxruntime_perf_test_src} ${ONNXRUNTIME_ROOT}/core/platform/path_lib.cc)
+    # path_lib.cc is intentionally NOT compiled directly here: onnxruntime_common (linked below in
+    # both the shared and non-shared configurations) already provides GetDirNameFromFilePath.
+    # Compiling it directly as well produces a duplicate definition that MSVC's link.exe tolerates
+    # but lld-link (clang-cl) rejects.
+    onnxruntime_add_executable(onnxruntime_perf_test ${onnxruntime_perf_test_src})
 
     # ABSL_FLAGS_STRIP_NAMES is set to 1 by default to disable flag registration when building for Android, iPhone, and "embedded devices".
     # See the issue: https://github.com/abseil/abseil-cpp/issues/1875

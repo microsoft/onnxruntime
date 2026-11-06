@@ -433,6 +433,73 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/amd64/ErfKernelFma3.asm
     )
 
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+      # clang-cl, unlike MSVC cl.exe, refuses to emit an intrinsic unless the
+      # translation unit is compiled with the matching target feature. The MSVC
+      # branch above relies on cl.exe not feature-gating intrinsics, so these
+      # per-ISA kernels carry no /arch: flag. Give clang-cl the equivalent
+      # -m<feature> flags (mirroring the non-MSVC branch) so each kernel gets
+      # exactly the ISA it uses. MLAS selects these kernels at runtime via CPUID,
+      # so enabling features per translation unit is safe.
+      set(mlas_clang_cl_avx2_flags "-mavx2 -mfma -mf16c")
+      set(mlas_clang_cl_avx512_flags "-mfma -mavx512f -mavx512bw -mavx512dq -mavx512vl")
+      set(mlas_clang_cl_avx512vnni_flags "${mlas_clang_cl_avx512_flags} -mavx512vnni")
+      set(mlas_clang_cl_amx_flags "${mlas_clang_cl_avx512_flags} -mavx2 -mamx-tile -mamx-int8")
+
+      # qgemm_kernel_sse41.cpp is built only on the MSVC/Windows x64 path (the
+      # non-MSVC branch skips it and dispatches SSE2 -> AVX2). It uses SSSE3
+      # intrinsics (e.g. _mm_hadd_epi32); -msse4.1 pulls in SSE3/SSSE3/SSE4.1.
+      # qgemm_kernel_sse.cpp only uses SSE2, which is baseline on x86_64.
+      set_source_files_properties(
+        ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
+        PROPERTIES COMPILE_FLAGS "-msse4.1")
+
+      # clang-cl, unlike cl.exe under /fp:precise, contracts a*b+c into an FMA
+      # when the TU enables FMA (/arch:AVX2 above). The 2-bit fp-zero-point
+      # dequant kernel must stay bit-identical to the scalar kernel, so keep
+      # the multiply and add separate, as the non-MSVC branch does.
+      set_property(SOURCE ${MLAS_SRC_DIR}/intrinsics/avx2/q2_dq_avx2.cpp
+        APPEND PROPERTY COMPILE_OPTIONS "/clang:-ffp-contract=off")
+
+      set_source_files_properties(
+        ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
+        ${MLAS_SRC_DIR}/qkv_quant_kernel_avx2.cpp
+        ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.cpp
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
+        PROPERTIES COMPILE_FLAGS "${mlas_clang_cl_avx2_flags}")
+
+      # Keep AVX-VNNI confined to its own TU so the auto-vectorizer cannot emit
+      # VNNI instructions in the pure-AVX2 kernels above.
+      set_source_files_properties(
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2vnni.cpp
+        PROPERTIES COMPILE_FLAGS "${mlas_clang_cl_avx2_flags} -mavxvnni")
+
+      # sqnbitgemm_kernel_avx512_2bit.cpp is intentionally left without ISA
+      # flags: its scalar packers are also used by the AVX2 dispatch tables,
+      # so enabling AVX-512 here would let clang auto-vectorize them into
+      # instructions AVX2-only CPUs lack (see the matching non-MSVC note).
+
+      # sqnbitgemm_kernel_avx512.cpp backs MlasSQNBitGemmDispatchAvx512, which
+      # is selected on AVX-512 CPUs without VNNI, so it must not enable VNNI.
+      set_source_files_properties(
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512.cpp
+        PROPERTIES COMPILE_FLAGS "${mlas_clang_cl_avx512_flags}")
+
+      # q4gemm_avx512.cpp mixes the non-VNNI MlasFpQ4GemmDispatchAvx512 with
+      # the VNNI-only MlasQ8Q4GemmDispatchAvx512vnni, whose kernels call VNNI
+      # intrinsics, so it needs -mavx512vnni (as on the non-MSVC branch).
+      set_source_files_properties(
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni_2bit.cpp
+        ${MLAS_SRC_DIR}/qkv_quant_kernel_avx512vnni.cpp
+        ${MLAS_SRC_DIR}/q4gemm_avx512.cpp
+        PROPERTIES COMPILE_FLAGS "${mlas_clang_cl_avx512vnni_flags}")
+
+      set_source_files_properties(
+        ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
+        PROPERTIES COMPILE_FLAGS "${mlas_clang_cl_amx_flags}")
+    endif()
+
     if(onnxruntime_ENABLE_CONVSYMKERNELAVX2_SAT_CHECKER)
       set_source_files_properties(${MLAS_SRC_DIR}/amd64/ConvSymKernelAvx2.asm PROPERTIES COMPILE_FLAGS "-DENABLE_CONVSYMKERNELAVX2_SAT_CHECKER")
     endif()
