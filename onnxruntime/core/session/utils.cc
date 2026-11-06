@@ -64,11 +64,6 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
     // get internal factory if available.
     EpFactoryInternal* internal_factory = env.GetEpFactoryInternal(ep_device->ep_factory);
 
-    // in the real implementation multiple devices can be assigned to an EP
-    // in our current test-able setup it's 1:1
-    std::vector<const OrtHardwareDevice*> devices{ep_device->device};
-    std::vector<const OrtKeyValuePairs*> ep_metadata{&ep_device->ep_metadata};
-
     // add ep_options to SessionOptions with prefix.
     // preserve any user provided values.
     const std::string ep_options_prefix = OrtSessionOptions::GetProviderOptionPrefix(ep_device->ep_name.c_str());
@@ -84,19 +79,13 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
 
     if (internal_factory) {
       // this is a factory we created and registered. internal or provider bridge EP.
+      // The regular EP selection path supports multiple devices per EP. This test helper selects only one.
       ORT_RETURN_IF_ERROR(ToStatusAndRelease(internal_factory->CreateIExecutionProvider(
-          devices.data(), ep_metadata.data(), devices.size(), &ort_so, &api_session_logger, &ep)));
+          {&ep_device, 1}, &ort_so, &api_session_logger, &ep)));
     } else {
       // in the real setup we need an IExecutionProvider wrapper implementation that uses the OrtEp internally,
       // and we would add that IExecutionProvider to the InferenceSession.
       ORT_NOT_IMPLEMENTED("IExecutionProvider that wraps OrtEp has not been implemented.");
-
-      /*
-      OrtEp* api_ep = nullptr;
-      ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_device->ep_factory->CreateEp(
-          ep_device->ep_factory, devices.data(), ep_metadata.data(), devices.size(),
-          &ort_so, &api_session_logger, &api_ep)));
-      */
     }
 
     ORT_RETURN_IF_ERROR(sess.RegisterExecutionProvider(std::move(ep)));
