@@ -24,6 +24,17 @@ class SwishFusion {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SwishFusion);
 };
 
+class CausalConvFusion {
+ public:
+  static Status Discover(const GraphViewer& viewer, const IExecutionProvider::IKernelLookup& lookup,
+                         const logging::Logger& logger,
+                         std::vector<std::unique_ptr<ComputeCapability>>& capabilities);
+
+ private:
+  CausalConvFusion() = delete;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CausalConvFusion);
+};
+
 Status ProbeTarget(Graph& graph, const rewrite::Replacement& recipe,
                    const rewrite::Replacement::TensorBindings& bindings,
                    const NodeAttributes& attributes, size_t output_count,
