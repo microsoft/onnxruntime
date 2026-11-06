@@ -559,6 +559,8 @@ class MatMulNBitsQLoRAMlp final : public MatMulNBitsMlp {
                   "MatMulNBitsQLoRAMlp does not support projection biases.");
     const Tensor* gate_lora_b = context.Input<Tensor>(11);
     const Tensor* up_lora_b = context.Input<Tensor>(15);
+    ORT_RETURN_IF_ERROR(ValidateQLoRAPackedAdapters(context.Input<Tensor>(9), gate_lora_b, K_, N_));
+    ORT_RETURN_IF_ERROR(ValidateQLoRAPackedAdapters(context.Input<Tensor>(13), up_lora_b, K_, N_));
     if (gate_lora_b->Shape().Size() == 0 && up_lora_b->Shape().Size() == 0) {
       ORT_RETURN_IF_ERROR(ValidateQLoRABaseWeights(context.Input<Tensor>(3), context.Input<Tensor>(4), K_, N_));
       ORT_RETURN_IF_ERROR(ValidateQLoRABaseWeights(context.Input<Tensor>(6), context.Input<Tensor>(7), K_, N_));

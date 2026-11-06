@@ -188,7 +188,8 @@ void BuildMatMulNBitsMlpWebGpuPatternImpl(ModelTestBuilder& builder,
                                           BiasKind bias_kind = BiasKind::kWithBias,
                                           ActivationShape activation_shape = ActivationShape::kSilu,
                                           SkipNormVariant skip_norm_variant = SkipNormVariant::kDefault,
-                                          bool qlora = false, bool empty_adapter = false) {
+                                          bool qlora = false, bool empty_adapter = false,
+                                          bool projections_use_residual = false) {
   constexpr int64_t k = 32;
   constexpr int64_t n = 8;
   constexpr int64_t block_size = 32;
@@ -221,6 +222,7 @@ void BuildMatMulNBitsMlpWebGpuPatternImpl(ModelTestBuilder& builder,
                          : optional_tensor;
 
   NodeArg* normalized_input = builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{1, k});
+  NodeArg* projection_input = normalized_input;
   NodeArg* gate_out = builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{1, n});
   NodeArg* up_out = builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{1, n});
   NodeArg* activated_out = builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{1, n});
@@ -248,6 +250,7 @@ void BuildMatMulNBitsMlpWebGpuPatternImpl(ModelTestBuilder& builder,
       norm_outputs.push_back(optional_norm_output_1);
       norm_outputs.push_back(optional_norm_output_2);
       norm_outputs.push_back(residual_output);
+      if (projections_use_residual) projection_input = residual_output;
     }
     std::vector<NodeArg*> norm_inputs{input, skip_input, norm_scale};
     if (norm_bias != nullptr) {
@@ -265,8 +268,8 @@ void BuildMatMulNBitsMlpWebGpuPatternImpl(ModelTestBuilder& builder,
     }
   }
 
-  std::vector<NodeArg*> gate_inputs{normalized_input, gate_weight, gate_scale};
-  std::vector<NodeArg*> up_inputs{normalized_input, up_weight, up_scale};
+  std::vector<NodeArg*> gate_inputs{projection_input, gate_weight, gate_scale};
+  std::vector<NodeArg*> up_inputs{projection_input, up_weight, up_scale};
   if (qlora) {
     const std::vector<int64_t> down_shape{32, 1, 32};
     const std::vector<int64_t> up_shape{n, empty_adapter ? 0 : 1, 32};
@@ -371,6 +374,13 @@ void BuildQLoRAMlpSkipActive(ModelTestBuilder& builder) {
                                        true, false);
 }
 
+void BuildQLoRAMlpResidualAsProjectionInput(ModelTestBuilder& builder) {
+  BuildMatMulNBitsMlpWebGpuPatternImpl(builder, NormAnchorKind::kSkipSimplified,
+                                       SkipOutputKind::kGraphOutput, BiasKind::kNoBias,
+                                       ActivationShape::kSilu, SkipNormVariant::kDefault,
+                                       true, false, true);
+}
+
 void BuildQLoRAMlpSkipEmpty(ModelTestBuilder& builder) {
   BuildMatMulNBitsMlpWebGpuPatternImpl(builder, NormAnchorKind::kSkipSimplified, SkipOutputKind::kGraphOutput,
                                        BiasKind::kNoBias, ActivationShape::kSilu, SkipNormVariant::kDefault,
@@ -437,6 +447,13 @@ TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionLeavesQLoRAWithoutKernel) {
   ASSERT_STATUS_OK(TestGraphTransformer(
       BuildQLoRAMlpActive, 21, *logger_,
       std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      TransformerLevel::Level2, 0, nullptr, CheckQLoRAMlpUnfusedGraph));
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionRejectsResidualProjectionInput) {
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      BuildQLoRAMlpResidualAsProjectionInput, 21, *logger_,
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}, true),
       TransformerLevel::Level2, 0, nullptr, CheckQLoRAMlpUnfusedGraph));
 }
 

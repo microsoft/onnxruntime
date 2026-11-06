@@ -404,6 +404,9 @@ class MatMulNBitsQLoRAQkv final : public MatMulNBitsQkv {
     ORT_RETURN_IF(context.Input<Tensor>(5) != nullptr || context.Input<Tensor>(8) != nullptr ||
                       context.Input<Tensor>(11) != nullptr,
                   "MatMulNBitsQLoRAQkv does not support projection biases.");
+    ORT_RETURN_IF_ERROR(ValidateQLoRAPackedAdapters(context.Input<Tensor>(12), context.Input<Tensor>(14), K_, Nq_));
+    ORT_RETURN_IF_ERROR(ValidateQLoRAPackedAdapters(context.Input<Tensor>(16), context.Input<Tensor>(18), K_, Nkv_));
+    ORT_RETURN_IF_ERROR(ValidateQLoRAPackedAdapters(context.Input<Tensor>(20), context.Input<Tensor>(22), K_, Nkv_));
     if (context.Input<Tensor>(14)->Shape().Size() == 0 &&
         context.Input<Tensor>(18)->Shape().Size() == 0 &&
         context.Input<Tensor>(22)->Shape().Size() == 0) {

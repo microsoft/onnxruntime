@@ -117,6 +117,9 @@ const Node* GetNormProducer(const Graph& graph,
   if (!HasProducedOutput(*gate_input, 0)) {
     return nullptr;
   }
+  if (gate_matmul.InputDefs()[0] != gate_input->OutputDefs()[0]) {
+    return nullptr;
+  }
 
   if (graph.NodeProducesGraphOutput(*gate_input) && !ProducesOnlyOptionalSkipOutputAsGraphOutput(graph, *gate_input)) {
     return nullptr;

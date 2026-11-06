@@ -43,6 +43,11 @@ Status ApplyQLoRAOutput(onnxruntime::webgpu::ComputeContext& context, const Tens
 // Match the packed base-weight contract checked by the standalone QLoRA kernel.
 Status ValidateQLoRABaseWeights(const Tensor* w, const Tensor* scales, int64_t k, int64_t n);
 
+// Validate packed adapter weights before either a fused or standalone kernel
+// takes its empty-up-weight shortcut. Unused adapter scales are checked only
+// when the corresponding up projection runs.
+Status ValidateQLoRAPackedAdapters(const Tensor* aq, const Tensor* bq, int64_t k, int64_t n);
+
 Status ApplyMatMulNBitsQLoRA(const Tensor* x, const Tensor* w, const Tensor* s,
                              const Tensor* aq, const Tensor* as, const Tensor* bq, const Tensor* bs,
                              int64_t k, int64_t n, int64_t accuracy_level,

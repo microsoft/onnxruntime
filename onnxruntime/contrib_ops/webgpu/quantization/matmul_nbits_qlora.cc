@@ -97,6 +97,20 @@ Status ValidateQLoRABaseWeights(const Tensor* w, const Tensor* scales, int64_t k
   return Status::OK();
 }
 
+Status ValidateQLoRAPackedAdapters(const Tensor* aq, const Tensor* bq, int64_t k, int64_t n) {
+  ORT_RETURN_IF_NOT(aq != nullptr && bq != nullptr &&
+                        aq->Shape().NumDimensions() == 3 && bq->Shape().NumDimensions() == 3,
+                    "Invalid quantized LoRA input ranks.");
+  const auto rank_a = aq->Shape()[0];
+  const auto blocks_b = bq->Shape()[1];
+  ORT_RETURN_IF_NOT((rank_a == 0 || rank_a == 32) && (blocks_b == 0 || blocks_b == 1),
+                    "WebGPU MatMulNBitsQLoRA supports only adapter rank 32 (or empty adapters).");
+  ORT_RETURN_IF_NOT(aq->Shape()[1] == k / 32 && aq->Shape()[2] == 32 &&
+                        bq->Shape()[0] == n && bq->Shape()[2] == 32,
+                    "Invalid packed adapter dimensions.");
+  return Status::OK();
+}
+
 class MatMulNBitsQLoRA final : public WebGpuKernel {
  public:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MatMulNBitsQLoRA);
@@ -133,18 +147,12 @@ class MatMulNBitsQLoRA final : public WebGpuKernel {
                                   const MatMulComputeHelper& helper,
                                   onnxruntime::webgpu::ComputeContext& context, Tensor* y) {
     ORT_RETURN_IF_NOT(x->Shape().NumDimensions() >= 2, "WebGPU MatMulNBitsQLoRA requires X rank at least two.");
-    ORT_RETURN_IF_NOT(aq->Shape().NumDimensions() == 3 && bq->Shape().NumDimensions() == 3,
-                      "Invalid quantized LoRA input ranks.");
     ORT_RETURN_IF_ERROR(ValidateQLoRABaseWeights(w, s, k, n));
+    ORT_RETURN_IF_ERROR(ValidateQLoRAPackedAdapters(aq, bq, k, n));
     // TODO: Support arbitrary adapter ranks with a rank uniform, per-block up scales,
     // and vector-tail handling while preserving rank-32 performance.
     const auto rank_a = aq->Shape()[0];
     const auto blocks_b = bq->Shape()[1];
-    ORT_RETURN_IF_NOT((rank_a == 0 || rank_a == 32) && (blocks_b == 0 || blocks_b == 1),
-                      "WebGPU MatMulNBitsQLoRA supports only adapter rank 32 (or empty adapters).");
-    ORT_RETURN_IF_NOT(aq->Shape()[1] == k / 32 &&
-                          aq->Shape()[2] == 32 && bq->Shape()[0] == n && bq->Shape()[2] == 32,
-                      "Invalid packed adapter dimensions.");
     if (y->Shape().Size() == 0) return Status::OK();
     if (blocks_b == 0) {
       return ApplyMatMulNBits(x, w, s, nullptr, nullptr, k, n, 32, accuracy_level, 4, context, y);
