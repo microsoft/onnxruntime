@@ -6,6 +6,7 @@
 #include "core/common/float16.h"
 #include "gtest/gtest.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <memory>
@@ -175,7 +176,8 @@ void CheckCooperativeGroupingExcludesInvalidRows(int intermediate) {
   ASSERT_EQ(cudaMemcpy(dw.get(), weights.data(), weights.size() * sizeof(float), cudaMemcpyHostToDevice), cudaSuccess);
   for (int kind = 0; kind < 8; ++kind) {
     SCOPED_TRACE(testing::Message() << "kind=" << kind);
-    InlinedVector<int32_t> indices(pairs), metadata(1 + 9 * pairs, -1), unique;
+    std::array<int32_t, pairs> indices{};
+    InlinedVector<int32_t> metadata(1 + 9 * pairs, -1), unique;
     bool invalid[rows]{};
     for (int r = 0; r < rows; ++r)
       for (int k = 0; k < topk; ++k) indices[r * topk + k] = (r * 3 + k) % experts;
