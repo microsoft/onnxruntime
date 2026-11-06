@@ -5,11 +5,11 @@ This draft defines planning-safe execution-provider (EP) discovery for the
 An **execution candidate** is a `ComputeCapability` with a `CapabilityPlanningInfo` payload: one implementation
 of a source-node set, with alternative execution contracts. It is not a placement decision or a memory reservation.
 
-**Decision:** keep legacy `GetCapability` unchanged; add `GetExecutionCandidates` with the same return type and
-planning context as its fourth argument. Carry planning output in `ComputeCapability::planning`.
+**Decision:** keep the legacy `GetCapability` signature unchanged; add a planning `GetCapability` overload with the
+same return type and planning context as its fourth argument. Carry planning output in `ComputeCapability::planning`.
 
 **Status:** [S0](capability_planning_s0.md) (#33841) supplies the payload types, validators, and binding helpers.
-The discovery virtual, host dispatcher, and shared-provider bridge below are proposed C1 work, not implemented in S0.
+The planning overload, host dispatcher, and shared-provider bridge below are proposed C1 work, not implemented in S0.
 The planner, whole-plan admission, recipe application, and runtime integration are outside this interface draft.
 
 ## Discovery API
@@ -26,13 +26,19 @@ GetCapability(const onnxruntime::GraphViewer& graph_viewer,
               const GraphOptimizerRegistry& graph_optimizer_registry,
               IResourceAccountant* resource_accountant = nullptr) const;
 
-// Proposed: declare after the last existing virtual, under a distinct name.
+// Proposed planning overload: declare after the last existing virtual (see ABI discussion).
 virtual std::vector<std::unique_ptr<ComputeCapability>>
-GetExecutionCandidates(const onnxruntime::GraphViewer& graph_viewer,
-                       const IKernelLookup& kernel_lookup,
-                       const GraphOptimizerRegistry& graph_optimizer_registry,
-                       const std::shared_ptr<const CapabilityPlanningQuery>& query_context) const;
+GetCapability(const onnxruntime::GraphViewer& graph_viewer,
+              const IKernelLookup& kernel_lookup,
+              const GraphOptimizerRegistry& graph_optimizer_registry,
+              const std::shared_ptr<const CapabilityPlanningQuery>& query_context) const;
 ```
+
+Only the legacy overload defaults its fourth argument. Through `IExecutionProvider&`, three arguments or a fourth
+`nullptr`/`IResourceAccountant*` select legacy; a query `shared_ptr` selects planning. Overriding one overload hides
+the other on a concrete EP type: use `using IExecutionProvider::GetCapability;` or override both to expose both.
+Without that using-declaration, a planning-only concrete EP call with `nullptr` can select planning with a null query.
+The dispatcher calls through the base reference.
 
 The first three parameters retain their roles. The host supplies the query's **source graph view**, before any
 selected-placement filter. `query_context` is a validated, immutable snapshot containing:
@@ -47,7 +53,7 @@ selected-placement filter. `query_context` is a validated, immutable snapshot co
 Planning has no accountant: requirements are returned as data, not charged during discovery. Passing a null
 accountant to legacy discovery is not equivalent; for example, CUDA skips its resource queries in that case.
 
-An EP opts in by overriding the new virtual. The base default returns `{}` without calling legacy discovery.
+An EP opts in by overriding the planning overload. The base default returns `{}` without calling legacy discovery.
 Define it out of line in `execution_provider.cc`, and separately in `provider_bridge_provider.cc` for shared
 providers; `ComputeCapability` is incomplete in `execution_provider.h`. The CPU EP also needs an explicit planning
 override or adapter; its legacy kernel-lookup default does not establish planning support.
@@ -194,13 +200,13 @@ Export S0's existing query validator and call it **before entering EP code**. Th
 sequenceDiagram
   participant P as Planner
   participant D as QueryCapabilityPlanning
-  participant E as EP GetExecutionCandidates
+  participant E as EP planning GetCapability
   participant B as CreateCapabilityPlanningBinding
 
   P->>D: query + source view + lookup + registry
   D->>D: reset result and validate query
   Note over D,E: EP is called only if the query is valid
-  D->>E: GetExecutionCandidates(..., query_context)
+  D->>E: GetCapability(..., query_context)
   E-->>D: candidate vector
   D->>D: package and validate entire result
   D-->>P: Status + candidate set
@@ -277,40 +283,42 @@ implementation and reconcile its actual effects against `planning->recipe`. S0 d
 
 ## EP boundaries and ABI
 
-The recommended distinct-name virtual is **Alternative E**. Declare it after `GetEpContextDataCallbackRequirements`,
-the last existing virtual, so existing slots stay in place on both Itanium and MSVC.
+The chosen interface is **Alternative A: a planning `GetCapability` overload**. Declare it after
+`GetEpContextDataCallbackRequirements`, the last existing virtual, to preserve existing slot order on Itanium.
+This does not preserve existing slot order on MSVC.
 
 | Boundary | Required integration |
 |:---------|:---------------------|
-| In-tree EP | Override `GetExecutionCandidates` and attach `planning` directly. |
+| In-tree EP | Override the planning `GetCapability` overload and attach `planning` directly. |
 | Shared-provider C++ library | Use the opaque `ComputeCapability` wrapper; append `ComputeCapability__SetPlanning` to `ProviderHost`. Define the empty default locally, so it needs no host forwarding entry. |
 | Plugin EP C ABI | Preserve the published `OrtEp::GetCapability`. Future version-gated C builders and explicit planning-safe opt-in map into internal metadata; no STL, C++ virtual objects, or `shared_ptr` representations cross this boundary. See S0.4. |
 
-**Why a distinct name:** MSVC groups same-name virtual overloads at their first declaration, newest overload first.
-Adding a `GetCapability` overload can therefore shift existing slots even when declared last. Itanium uses
+**MSVC caveat:** MSVC groups same-name virtual overloads at their first declaration, newest overload first.
+The added overload shifts the legacy `GetCapability` and later slots even when declared last. Itanium uses
 declaration order. This MSVC analysis comes from Clang's ABI implementation, not an MSVC layout test.
 
-`IExecutionProvider` does not have a strictly append-only history (`SupportsMoeOffload`, #33575); core and shared
-providers are rebuilt together. Keeping slots stable is an additional safeguard, not permission to call the new
-virtual on an older library. `ProviderLibrary::Load` has no version handshake. `ProviderHost` entries and published
-C API tables retain their append-only constraints.
+This choice relies on **rebuilding core and shared providers together**, not mixed-version compatibility.
+`IExecutionProvider` does not have a strictly append-only history (`SupportsMoeOffload`, #33575), and
+`ProviderLibrary::Load` has no version handshake. `ProviderHost` entries and published C API tables retain their
+append-only constraints.
 
 Letting provider builds include `capability_planning.h` extends existing C++ layout assumptions to its STL,
 `InlinedVector`, `optional`, and shared-state members. Header compatibility under `SHARED_PROVIDER` remains unchecked.
 
 | Alternative | Tradeoff |
 |:------------|:---------|
-| A. Same-name `GetCapability` overload | Keeps the proposal's name and existing overrides, but adds name hiding/overload mechanics and shifts MSVC slots. |
+| A. Same-name `GetCapability` overload | **Chosen.** Keeps the proposal's name, return shape, and existing overrides; requires overload/name-hiding care and matching rebuilt libraries. |
 | B. One `GetCapability` keyed on `mode` | Removes overload mechanics, but changes every override and retypes the shipped `IExecutionProvider__GetCapability` bridge entry. |
-| D. `Status GetExecutionCandidates(..., result)` | Explicit errors and support/empty-result semantics, but changes the return shape and exposes `CapabilityPlanningQueryResult` to EP code. |
+| D. `Status GetCapability(..., query_context, result)` | Explicit errors and support/empty-result semantics, but changes the return shape and exposes `CapabilityPlanningQueryResult` to EP code. |
+| E. Distinct-name planning virtual | Avoids overload/name-hiding mechanics and preserves existing slots on both ABIs, but introduces a second discovery name. |
 
 ## Remaining decisions
 
 - **Empty results and failure channel:** keep the conservative vector convention, add an opt-in marker for
   known-empty discovery, or adopt Alternative D.
-- **Shared providers:** confirm payload-header/layout compatibility and whether lockstep builds suffice or a library
-  feature/version check is needed before calling the new virtual.
-- **Integration:** choose the CPU planning adapter, minimal-build guard, and final API/header names.
+- **Shared providers:** confirm payload-header/layout compatibility and whether to enforce matching library versions
+  before using the changed `IExecutionProvider` vtable.
+- **Integration:** choose the CPU planning adapter, minimal-build guard, and header locations.
 - **Application:** decide how later stages reconcile stored hooks with prepared recipes.
 
 The proposed discovery/dispatcher interfaces have not been compiled against ORT headers, the bridge has not been
