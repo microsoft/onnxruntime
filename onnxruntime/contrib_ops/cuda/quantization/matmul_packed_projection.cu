@@ -21,7 +21,7 @@ constexpr float kXScale = 1.0f / 64.0f;
 
 // A warp owns ROWS weight rows; lane l handles 16-byte (32-value) chunks l + 32*it. All weight loads are issued up
 // front.
-template <int R, int ROWS, int IT>
+template <int R, int ROWS, int IT, bool ALIGNED>
 __global__ void Nvfp4GemvKernel(const bf16* __restrict__ x, const uint8_t* __restrict__ w,
                                 const uint8_t* __restrict__ ws, const float* __restrict__ gscale, int N, int K,
                                 bf16* __restrict__ y) {
@@ -39,8 +39,12 @@ __global__ void Nvfp4GemvKernel(const bf16* __restrict__ x, const uint8_t* __res
 #pragma unroll
     for (int it = 0; it < IT; ++it) {
       const int cb = it * 512 + lane * 16;
-      wv[i][it] = *reinterpret_cast<const uint4*>(w + static_cast<int64_t>(n) * kbytes + cb);
-      sc[i][it] = *reinterpret_cast<const uint16_t*>(ws + static_cast<int64_t>(n) * kscale + (cb >> 3));
+      const uint8_t* wp = w + static_cast<int64_t>(n) * kbytes + cb;
+      if constexpr (ALIGNED)
+        wv[i][it] = *reinterpret_cast<const uint4*>(wp);
+      else
+        wv[i][it] = LoadPackedVector(wp);
+      sc[i][it] = LoadPackedScalePair<ALIGNED>(ws + static_cast<int64_t>(n) * kscale + (cb >> 3));
     }
   }
   float acc[ROWS][R];
@@ -55,9 +59,11 @@ __global__ void Nvfp4GemvKernel(const bf16* __restrict__ x, const uint8_t* __res
     for (int r = 0; r < R; ++r) {
       __half2 xp[16];
       const uint4* xq = reinterpret_cast<const uint4*>(x + static_cast<int64_t>(r) * K + k0);
+      uint4 xv[4];
+      if constexpr (!ALIGNED) LoadX<2>(x + static_cast<int64_t>(r) * K + k0, true, 0, 0, xv);
 #pragma unroll
       for (int g = 0; g < 4; ++g) {
-        const uint4 v = xq[g];
+        const uint4 v = ALIGNED ? xq[g] : xv[g];
         const bf16* b = reinterpret_cast<const bf16*>(&v);
 #pragma unroll
         for (int p = 0; p < 4; ++p) xp[g * 4 + p] = __floats2half2_rn(B2F(b[p]) * kXScale, B2F(b[p + 4]) * kXScale);
@@ -101,28 +107,28 @@ __global__ void Nvfp4GemvKernel(const bf16* __restrict__ x, const uint8_t* __res
 #endif
 }
 
-template <int R, int IT>
+template <int R, int IT, bool ALIGNED>
 void LaunchNvfp4Impl(const bf16* x, const uint8_t* w, const uint8_t* ws, const float* g, int N, int K, bf16* y,
                      cudaStream_t s) {
   if (N <= 8192) {
     constexpr int ROWS = 1, WARPS = 4;
-    Nvfp4GemvKernel<R, ROWS, IT><<<(N + WARPS - 1) / WARPS, WARPS * 32, 0, s>>>(x, w, ws, g, N, K, y);
+    Nvfp4GemvKernel<R, ROWS, IT, ALIGNED><<<(N + WARPS - 1) / WARPS, WARPS * 32, 0, s>>>(x, w, ws, g, N, K, y);
   } else {
     constexpr int ROWS = 2, WARPS = 8;
     const int per_block = ROWS * WARPS;
-    Nvfp4GemvKernel<R, ROWS, IT><<<(N + per_block - 1) / per_block, WARPS * 32, 0, s>>>(x, w, ws, g, N, K, y);
+    Nvfp4GemvKernel<R, ROWS, IT, ALIGNED><<<(N + per_block - 1) / per_block, WARPS * 32, 0, s>>>(x, w, ws, g, N, K, y);
   }
 }
-template <int R>
+template <int R, bool ALIGNED>
 void LaunchNvfp4(const bf16* x, const uint8_t* w, const uint8_t* ws, const float* g, int N, int K, bf16* y,
                  cudaStream_t s) {
   if (K == 4096)
-    LaunchNvfp4Impl<R, 4>(x, w, ws, g, N, K, y, s);
+    LaunchNvfp4Impl<R, 4, ALIGNED>(x, w, ws, g, N, K, y, s);
   else
-    LaunchNvfp4Impl<R, 8>(x, w, ws, g, N, K, y, s);
+    LaunchNvfp4Impl<R, 8, ALIGNED>(x, w, ws, g, N, K, y, s);
 }
 
-template <int FMT, bool WIDE, int MT, int KW, int UNR, bool ALIGNED_X = false>
+template <int FMT, bool WIDE, int MT, int KW, int UNR, bool ALIGNED_X = false, bool ALIGNED_W = true>
 __global__ void __launch_bounds__(KW * 32)
     MmaGemvKernel(const bf16* __restrict__ x, const uint8_t* __restrict__ w, const void* __restrict__ sc,
                   const float* __restrict__ gscale, int R, int N, int K, bf16* __restrict__ y) {
@@ -144,7 +150,7 @@ __global__ void __launch_bounds__(KW * 32)
 #pragma unroll
       for (int h = 0; h < 2; ++h) {
         const int64_t row = min(n_base + m * 16 + g + 8 * h, static_cast<int64_t>(N - 1));
-        LoadWeightRow<FMT, WIDE>(w, sc, row, K, c, t, st.raw[m][h], st.sc[m][h]);
+        LoadWeightRow<FMT, WIDE, ALIGNED_W && FMT != kFmtIq2N>(w, sc, row, K, c, t, st.raw[m][h], st.sc[m][h]);
       }
     if constexpr (ALIGNED_X)
       LoadAlignedX<NH>(xr, xvalid, c, t, st.x);
@@ -157,19 +163,32 @@ __global__ void __launch_bounds__(KW * 32)
   });
 }
 
-template <int FMT, bool WIDE, int MT, int KW, int UNR = 1>
-void LaunchMmaGemvImpl(const bf16* x, const uint8_t* w, const void* sc, const float* gs, int R, int N, int K, bf16* y,
-                       cudaStream_t s) {
+template <int FMT, bool WIDE, int MT, int KW, int UNR, bool ALIGNED_W>
+void LaunchMmaGemvWeights(const bf16* x, const uint8_t* w, const void* sc, const float* gs, int R, int N, int K, bf16* y,
+                          cudaStream_t s) {
   const int blocks = (N + MT * 16 - 1) / (MT * 16);
   if constexpr (FMT == kFmtFp4) {
     if (K % 8 == 0 && (reinterpret_cast<uintptr_t>(x) & 15) == 0) {
-      MmaGemvKernel<FMT, WIDE, MT, KW, UNR, true>
+      MmaGemvKernel<FMT, WIDE, MT, KW, UNR, true, ALIGNED_W>
           <<<blocks, KW * 32, KW * MT * 16 * 8 * sizeof(float), s>>>(x, w, sc, gs, R, N, K, y);
       return;
     }
   }
-  MmaGemvKernel<FMT, WIDE, MT, KW, UNR>
+  MmaGemvKernel<FMT, WIDE, MT, KW, UNR, false, ALIGNED_W>
       <<<blocks, KW * 32, KW * MT * 16 * 8 * sizeof(float), s>>>(x, w, sc, gs, R, N, K, y);
+}
+
+template <int FMT, bool WIDE, int MT, int KW, int UNR = 1>
+void LaunchMmaGemvImpl(const bf16* x, const uint8_t* w, const void* sc, const float* gs, int R, int N, int K, bf16* y,
+                       cudaStream_t s) {
+  if constexpr (FMT != kFmtIq2N) {
+    if ((reinterpret_cast<uintptr_t>(w) & 15) != 0 ||
+        (FMT == kFmtFp4 && (reinterpret_cast<uintptr_t>(sc) & 1) != 0)) {
+      LaunchMmaGemvWeights<FMT, WIDE, MT, KW, UNR, false>(x, w, sc, gs, R, N, K, y, s);
+      return;
+    }
+  }
+  LaunchMmaGemvWeights<FMT, WIDE, MT, KW, UNR, true>(x, w, sc, gs, R, N, K, y, s);
 }
 
 template <int FMT>
@@ -206,7 +225,7 @@ __device__ __forceinline__ float DotU8x16(const uint4 wv, const float* x) {
   return acc;
 }
 
-template <int BITS, int R, int ROWS, int IT>
+template <int BITS, int R, int ROWS, int IT, bool ALIGNED>
 __global__ void QGemvKernel(const bf16* __restrict__ x, const uint8_t* __restrict__ w, const bf16* __restrict__ sc,
                             int N, int K, bf16* __restrict__ y) {
   const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
@@ -223,9 +242,10 @@ __global__ void QGemvKernel(const bf16* __restrict__ x, const uint8_t* __restric
     for (int it = 0; it < IT; ++it) {
       const int b = lane + 32 * it;
       if (b < nb) {
-        const uint4* wp = reinterpret_cast<const uint4*>(w + (static_cast<int64_t>(n) * nb + b) * (BITS * 4));
+        const uint8_t* wp = w + (static_cast<int64_t>(n) * nb + b) * (BITS * 4);
 #pragma unroll
-        for (int c = 0; c < CH; ++c) wv[i][it][c] = wp[c];
+        for (int c = 0; c < CH; ++c)
+          wv[i][it][c] = ALIGNED ? reinterpret_cast<const uint4*>(wp)[c] : LoadPackedVector(wp + 16 * c);
         sv[i][it] = B2F(sc[static_cast<int64_t>(n) * nb + b]);
       } else {
         sv[i][it] = 0.f;
@@ -247,9 +267,11 @@ __global__ void QGemvKernel(const bf16* __restrict__ x, const uint8_t* __restric
     for (int r = 0; r < R; ++r) {
       float xf[32];
       const uint4* xq = reinterpret_cast<const uint4*>(x + static_cast<int64_t>(r) * K + b * 32);
+      uint4 xv[4];
+      if constexpr (!ALIGNED) LoadX<2>(x + static_cast<int64_t>(r) * K + b * 32, true, 0, 0, xv);
 #pragma unroll
       for (int q = 0; q < 4; ++q) {
-        const uint4 v = xq[q];
+        const uint4 v = ALIGNED ? xq[q] : xv[q];
         const bf16* bb = reinterpret_cast<const bf16*>(&v);
 #pragma unroll
         for (int i = 0; i < 8; ++i) xf[q * 8 + i] = B2F(bb[i]);
@@ -274,28 +296,28 @@ __global__ void QGemvKernel(const bf16* __restrict__ x, const uint8_t* __restric
     }
 }
 
-template <int BITS, int R, int IT>
+template <int BITS, int R, int IT, bool ALIGNED>
 void LaunchQGemvImpl(const bf16* x, const uint8_t* w, const bf16* sc, int N, int K, bf16* y, cudaStream_t s) {
   if (N <= 4096) {  // small N: one row per warp to fill the GPU
     constexpr int ROWS = 1, WARPS = 4;
-    QGemvKernel<BITS, R, ROWS, IT><<<(N + WARPS - 1) / WARPS, WARPS * 32, 0, s>>>(x, w, sc, N, K, y);
+    QGemvKernel<BITS, R, ROWS, IT, ALIGNED><<<(N + WARPS - 1) / WARPS, WARPS * 32, 0, s>>>(x, w, sc, N, K, y);
   } else {
     constexpr int ROWS = 2, WARPS = 8;
     const int per_block = ROWS * WARPS;
-    QGemvKernel<BITS, R, ROWS, IT><<<(N + per_block - 1) / per_block, WARPS * 32, 0, s>>>(x, w, sc, N, K, y);
+    QGemvKernel<BITS, R, ROWS, IT, ALIGNED><<<(N + per_block - 1) / per_block, WARPS * 32, 0, s>>>(x, w, sc, N, K, y);
   }
 }
-template <int BITS, int R>
+template <int BITS, int R, bool ALIGNED>
 void LaunchQGemvR(const bf16* x, const uint8_t* w, const bf16* sc, int N, int K, bf16* y, cudaStream_t s) {
   const int nb = K / 32;
   if (nb <= 32)
-    LaunchQGemvImpl<BITS, R, 1>(x, w, sc, N, K, y, s);
+    LaunchQGemvImpl<BITS, R, 1, ALIGNED>(x, w, sc, N, K, y, s);
   else if (nb <= 64)
-    LaunchQGemvImpl<BITS, R, 2>(x, w, sc, N, K, y, s);
+    LaunchQGemvImpl<BITS, R, 2, ALIGNED>(x, w, sc, N, K, y, s);
   else if (nb <= 128)
-    LaunchQGemvImpl<BITS, R, 4>(x, w, sc, N, K, y, s);
+    LaunchQGemvImpl<BITS, R, 4, ALIGNED>(x, w, sc, N, K, y, s);
   else
-    LaunchQGemvImpl<BITS, R, 6>(x, w, sc, N, K, y, s);
+    LaunchQGemvImpl<BITS, R, 6, ALIGNED>(x, w, sc, N, K, y, s);
 }
 
 }  // namespace
@@ -314,7 +336,12 @@ cudaError_t LaunchPackedProjection(PackedProjectionFormat format, const void* a,
         return cudaErrorInvalidValue;
       }
       if (rows == 1) {
-        LaunchNvfp4<1>(x, b, static_cast<const uint8_t*>(scales), global_scale, n, k, output, stream);
+        const auto* ws = static_cast<const uint8_t*>(scales);
+        if ((reinterpret_cast<uintptr_t>(x) & 15) == 0 && (reinterpret_cast<uintptr_t>(b) & 15) == 0 &&
+            (reinterpret_cast<uintptr_t>(ws) & 1) == 0)
+          LaunchNvfp4<1, true>(x, b, ws, global_scale, n, k, output, stream);
+        else
+          LaunchNvfp4<1, false>(x, b, ws, global_scale, n, k, output, stream);
       } else {
         LaunchMmaGemv<kFmtFp4>(x, b, scales, global_scale, rows, n, k, output, stream);
       }
@@ -324,7 +351,10 @@ cudaError_t LaunchPackedProjection(PackedProjectionFormat format, const void* a,
         LaunchMmaGemv<kFmtQ8F16>(x, b, scales, nullptr, rows, n, k, output, stream);
       } else if (rows == 1) {
         if (k > 6144) return cudaErrorInvalidValue;
-        LaunchQGemvR<8, 1>(x, b, static_cast<const bf16*>(scales), n, k, output, stream);
+        if ((reinterpret_cast<uintptr_t>(x) & 15) == 0 && (reinterpret_cast<uintptr_t>(b) & 15) == 0)
+          LaunchQGemvR<8, 1, true>(x, b, static_cast<const bf16*>(scales), n, k, output, stream);
+        else
+          LaunchQGemvR<8, 1, false>(x, b, static_cast<const bf16*>(scales), n, k, output, stream);
       } else {
         LaunchMmaGemv<kFmtQ8>(x, b, scales, nullptr, rows, n, k, output, stream);
       }

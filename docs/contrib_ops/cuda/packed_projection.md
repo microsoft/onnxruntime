@@ -23,6 +23,11 @@ NVFP4 requires K divisible by 1024; row one additionally requires K=4096 or
 8192. Q8 requires K divisible by 64; its BF16-scale row-one path requires
 K<=6144. IQ2XXS requires K divisible by 256.
 
+External bindings need only their element-type alignment: one byte for UINT8,
+two bytes for BF16/FP16, and four bytes for FP32. Offset bindings use scalar
+loads where necessary without changing reduction order or rounding; aligned
+bindings retain vectorized loads. Bias additions remain separate graph nodes.
+
 All MMA paths fix the source's default reduction topology: MT=2/KW=4 for
 N>=8192, MT=1/KW=16 otherwise. The private source environment-variable tuning
 overrides are deliberately not part of these operator contracts.

@@ -19,7 +19,7 @@ DeviceBuffer Allocate(size_t bytes) {
   return DeviceBuffer(ptr, cudaFree);
 }
 
-TEST(PackedProjectionKernelTest, Nvfp4MmaAlignedAndOffsetActivations) {
+TEST(PackedProjectionKernelTest, Nvfp4AlignedAndOffsetBindings) {
   int count = 0;
   ASSERT_EQ(cudaGetDeviceCount(&count), cudaSuccess);
   if (count == 0) GTEST_SKIP() << "Requires CUDA";
@@ -29,7 +29,7 @@ TEST(PackedProjectionKernelTest, Nvfp4MmaAlignedAndOffsetActivations) {
   constexpr float global_scale = 0.75f;
   constexpr uint8_t local_bits[] = {0x30, 0x38, 0x3c, 0x40};
   constexpr float local_values[] = {0.5f, 1.f, 1.5f, 2.f};
-  for (int rows : {3, 8}) {
+  for (int rows : {1, 3, 8}) {
     for (int k : {4096, 8192}) {
       for (int n : {19, 8193, 18560}) {
         SCOPED_TRACE(testing::Message() << "rows=" << rows << " K=" << k << " N=" << n);
@@ -46,22 +46,25 @@ TEST(PackedProjectionKernelTest, Nvfp4MmaAlignedAndOffsetActivations) {
             expected[r * n + j] =
                 BFloat16((r + 1) / 4096.f * k * sign * local_values[j % 4] * global_scale).val;
         }
-        auto da = Allocate((a.size() + 1) * sizeof(uint16_t)), db = Allocate(b.size());
-        auto ds = Allocate(scales.size()), dg = Allocate(sizeof(float));
+        auto da = Allocate((a.size() + 1) * sizeof(uint16_t)), db = Allocate(b.size() + 1);
+        auto ds = Allocate(scales.size() + 1), dg = Allocate(sizeof(float));
         auto dy = Allocate(actual.size() * sizeof(uint16_t));
         for (const auto* ptr : {da.get(), db.get(), ds.get(), dg.get(), dy.get()}) ASSERT_NE(ptr, nullptr);
-        ASSERT_EQ(cudaMemcpy(db.get(), b.data(), b.size(), cudaMemcpyHostToDevice), cudaSuccess);
-        ASSERT_EQ(cudaMemcpy(ds.get(), scales.data(), scales.size(), cudaMemcpyHostToDevice), cudaSuccess);
         ASSERT_EQ(cudaMemcpy(dg.get(), &global_scale, sizeof(float), cudaMemcpyHostToDevice), cudaSuccess);
-        for (int offset : {0, 1}) {
-          SCOPED_TRACE(testing::Message() << "activation_offset=" << offset);
-          auto* input = static_cast<uint16_t*>(da.get()) + offset;
+        // Independently offset BF16 A by two bytes and UINT8 B/scales by one byte.
+        for (int offsets = 0; offsets < 8; ++offsets) {
+          SCOPED_TRACE(testing::Message() << "offset_mask=" << offsets);
+          auto* input = static_cast<uint16_t*>(da.get()) + (offsets & 1);
+          auto* weights = static_cast<uint8_t*>(db.get()) + ((offsets >> 1) & 1);
+          auto* local_scales = static_cast<uint8_t*>(ds.get()) + ((offsets >> 2) & 1);
           auto* output = static_cast<uint16_t*>(dy.get()) + 1;
           ASSERT_EQ(cudaMemcpy(input, a.data(), a.size() * sizeof(uint16_t), cudaMemcpyHostToDevice), cudaSuccess);
+          ASSERT_EQ(cudaMemcpy(weights, b.data(), b.size(), cudaMemcpyHostToDevice), cudaSuccess);
+          ASSERT_EQ(cudaMemcpy(local_scales, scales.data(), scales.size(), cudaMemcpyHostToDevice), cudaSuccess);
           ASSERT_EQ(cudaMemset(dy.get(), 0x55, actual.size() * sizeof(uint16_t)), cudaSuccess);
           ASSERT_EQ(contrib::cuda::LaunchPackedProjection(
                         contrib::cuda::PackedProjectionFormat::NVFP4, input,
-                        static_cast<const uint8_t*>(db.get()), ds.get(), static_cast<const float*>(dg.get()),
+                        weights, local_scales, static_cast<const float*>(dg.get()),
                         false, rows, n, k, output, nullptr),
                     cudaSuccess);
           ASSERT_EQ(cudaMemcpy(actual.data(), dy.get(), actual.size() * sizeof(uint16_t), cudaMemcpyDeviceToHost),
@@ -70,6 +73,65 @@ TEST(PackedProjectionKernelTest, Nvfp4MmaAlignedAndOffsetActivations) {
           EXPECT_EQ(actual.back(), 0x5555);
           for (int i = 0; i < rows * n; ++i) {
             ASSERT_EQ(actual[i + 1], expected[i]) << i;
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST(PackedProjectionKernelTest, Q8AlignedAndOffsetBindings) {
+  int count = 0;
+  ASSERT_EQ(cudaGetDeviceCount(&count), cudaSuccess);
+  if (count == 0) GTEST_SKIP() << "Requires CUDA";
+  cudaDeviceProp prop{};
+  ASSERT_EQ(cudaGetDeviceProperties(&prop, 0), cudaSuccess);
+  if (prop.major < 8) GTEST_SKIP() << "Requires CUDA SM80+";
+  constexpr float local_values[] = {0.5f, 1.f, 1.5f, 2.f};
+  for (int rows : {1, 3, 8}) {
+    for (int k : {1088, 6144}) {
+      for (int n : {19, 8193}) {
+        for (bool fp16_scale : {false, true}) {
+          SCOPED_TRACE(testing::Message() << "rows=" << rows << " K=" << k << " N=" << n
+                                          << " fp16_scale=" << fp16_scale);
+          InlinedVector<uint16_t> a(rows * k), scales(n * k / 32), actual(rows * n + 2), expected(rows * n);
+          InlinedVector<uint8_t> b(n * k);
+          for (int r = 0; r < rows; ++r)
+            std::fill_n(a.begin() + r * k, k, BFloat16((r + 1) / 4096.f).val);
+          for (int j = 0; j < n; ++j) {
+            const float scale = local_values[j % 4];
+            const float sign = j % 2 == 0 ? 1.f : -1.f;
+            std::fill_n(b.begin() + j * k, k, j % 2 == 0 ? 129 : 127);
+            std::fill_n(scales.begin() + j * k / 32, k / 32,
+                        fp16_scale ? MLFloat16(scale).val : BFloat16(scale).val);
+            for (int r = 0; r < rows; ++r)
+              expected[r * n + j] = BFloat16((r + 1) / 4096.f * k * sign * scale).val;
+          }
+          auto da = Allocate((a.size() + 1) * sizeof(uint16_t)), db = Allocate(b.size() + 1);
+          auto ds = Allocate((scales.size() + 1) * sizeof(uint16_t)), dy = Allocate(actual.size() * sizeof(uint16_t));
+          for (const auto* ptr : {da.get(), db.get(), ds.get(), dy.get()}) ASSERT_NE(ptr, nullptr);
+          for (int offsets = 0; offsets < 8; ++offsets) {
+            SCOPED_TRACE(testing::Message() << "offset_mask=" << offsets);
+            auto* input = static_cast<uint16_t*>(da.get()) + (offsets & 1);
+            auto* weights = static_cast<uint8_t*>(db.get()) + ((offsets >> 1) & 1);
+            auto* local_scales = static_cast<uint16_t*>(ds.get()) + ((offsets >> 2) & 1);
+            auto* output = static_cast<uint16_t*>(dy.get()) + 1;
+            ASSERT_EQ(cudaMemcpy(input, a.data(), a.size() * sizeof(uint16_t), cudaMemcpyHostToDevice), cudaSuccess);
+            ASSERT_EQ(cudaMemcpy(weights, b.data(), b.size(), cudaMemcpyHostToDevice), cudaSuccess);
+            ASSERT_EQ(cudaMemcpy(local_scales, scales.data(), scales.size() * sizeof(uint16_t), cudaMemcpyHostToDevice),
+                      cudaSuccess);
+            ASSERT_EQ(cudaMemset(dy.get(), 0x55, actual.size() * sizeof(uint16_t)), cudaSuccess);
+            ASSERT_EQ(contrib::cuda::LaunchPackedProjection(
+                          contrib::cuda::PackedProjectionFormat::Q8, input, weights, local_scales,
+                          nullptr, fp16_scale, rows, n, k, output, nullptr),
+                      cudaSuccess);
+            ASSERT_EQ(cudaMemcpy(actual.data(), dy.get(), actual.size() * sizeof(uint16_t), cudaMemcpyDeviceToHost),
+                      cudaSuccess);
+            EXPECT_EQ(actual.front(), 0x5555);
+            EXPECT_EQ(actual.back(), 0x5555);
+            for (int i = 0; i < rows * n; ++i) {
+              ASSERT_EQ(actual[i + 1], expected[i]) << i;
+            }
           }
         }
       }

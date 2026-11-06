@@ -381,6 +381,28 @@ __device__ __forceinline__ void Iq2TablesInit() {
   __syncthreads();
 }
 
+__device__ __forceinline__ uint32_t LoadUnalignedWord(const uint8_t* p) {
+  uint32_t word = 0;
+#pragma unroll
+  for (int i = 0; i < 4; ++i) word |= static_cast<uint32_t>(__ldg(p + i)) << (8 * i);
+  return word;
+}
+
+template <bool ALIGNED = false>
+__device__ __forceinline__ uint4 LoadPackedVector(const uint8_t* p) {
+  if (ALIGNED || (reinterpret_cast<uintptr_t>(p) & 15) == 0)
+    return __ldg(reinterpret_cast<const uint4*>(p));
+  return make_uint4(LoadUnalignedWord(p), LoadUnalignedWord(p + 4),
+                    LoadUnalignedWord(p + 8), LoadUnalignedWord(p + 12));
+}
+
+template <bool ALIGNED = false>
+__device__ __forceinline__ uint16_t LoadPackedScalePair(const uint8_t* p) {
+  if (ALIGNED || (reinterpret_cast<uintptr_t>(p) & 1) == 0)
+    return *reinterpret_cast<const uint16_t*>(p);
+  return static_cast<uint16_t>(__ldg(p)) | (static_cast<uint16_t>(__ldg(p + 1)) << 8);
+}
+
 // WIDE (int4 / fp4 only): a thread loads 16 bytes = 32 k of a row per chunk (chunk = 128 k, 64 contiguous bytes per row
 // for the 4 threads t) instead of 8 bytes; the two 16-k halves are consumed as two MMA groups.
 template <int FMT, bool WIDE, bool ALIGNED = false>
@@ -409,7 +431,7 @@ __device__ __forceinline__ void LoadWeightRow(const uint8_t* w, const void* sc, 
     raw = make_uint4((rec.x >> (16 * h)) & 0xFFu, (rec.x >> (16 * h + 8)) & 0xFFu, sa, sb);
     scale[0] = d * (0.5f + static_cast<float>(sg >> 28)) * 0.25f;
   } else if constexpr (FMT == kFmtQ8 || FMT == kFmtQ8F16) {
-    raw = __ldg(reinterpret_cast<const uint4*>(w + row * K + 64 * c + 16 * t));
+    raw = LoadPackedVector<ALIGNED>(w + row * K + 64 * c + 16 * t);
     const int64_t index = row * (K / 32) + 2 * c + (t >> 1);
     if constexpr (FMT == kFmtQ8F16) {
       // Preserve source FP16 scales until the existing FP32 reconstruction / BF16 store.
@@ -418,19 +440,22 @@ __device__ __forceinline__ void LoadWeightRow(const uint8_t* w, const void* sc, 
       scale[0] = B2F(reinterpret_cast<const bf16*>(sc)[index]);
     }
   } else if constexpr (!WIDE) {
-    const uint2 v = __ldg(reinterpret_cast<const uint2*>(w + row * (K / 2) + 32 * c + 8 * t));
+    const uint8_t* p = w + row * (K / 2) + 32 * c + 8 * t;
+    const uint2 v = ALIGNED || (reinterpret_cast<uintptr_t>(p) & 7) == 0
+                        ? __ldg(reinterpret_cast<const uint2*>(p))
+                        : make_uint2(LoadUnalignedWord(p), LoadUnalignedWord(p + 4));
     raw = make_uint4(v.x, v.y, 0u, 0u);
     if constexpr (FMT == kFmtQ4 || FMT == kFmtIq2)
       scale[0] = B2F(reinterpret_cast<const bf16*>(sc)[row * (K / 32) + 2 * c + (t >> 1)]);
     else
       scale[0] = Fp8E4M3ToFloat(reinterpret_cast<const uint8_t*>(sc)[row * (K / 16) + 4 * c + t]) * 0x1p110f;
   } else {
-    raw = __ldg(reinterpret_cast<const uint4*>(w + row * (K / 2) + 64 * c + 16 * t));
+    raw = LoadPackedVector<ALIGNED>(w + row * (K / 2) + 64 * c + 16 * t);
     if constexpr (FMT == kFmtQ4 || FMT == kFmtIq2) {
       scale[0] = B2F(reinterpret_cast<const bf16*>(sc)[row * (K / 32) + 4 * c + t]);
     } else {
-      const uint16_t two =
-          *reinterpret_cast<const uint16_t*>(reinterpret_cast<const uint8_t*>(sc) + row * (K / 16) + 8 * c + 2 * t);
+      const uint16_t two = LoadPackedScalePair<ALIGNED>(
+          reinterpret_cast<const uint8_t*>(sc) + row * (K / 16) + 8 * c + 2 * t);
       scale[0] = Fp8E4M3ToFloat(two & 0xFFu) * 0x1p110f;
       scale[1] = Fp8E4M3ToFloat(two >> 8) * 0x1p110f;
     }
