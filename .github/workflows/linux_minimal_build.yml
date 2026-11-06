@@ -103,7 +103,7 @@ jobs:
           path: ${{ runner.temp }}/minimal_build_test_data/
           if-no-files-found: error # Fail if test data wasn't generated
 
-  # Job 2: Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED, training ops ENABLED]
+  # Job 2: Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED]
   build_minimal_exceptions_disabled:
     name: 2. Build Minimal (Exceptions Disabled)
     runs-on: [ort-github-linux-16-amd-wcus-ss]
@@ -157,7 +157,6 @@ jobs:
             --skip_tests
             --minimal_build
             --disable_exceptions
-            --enable_training_ops
 
       - name: Run Build 2 (Build)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
@@ -173,7 +172,6 @@ jobs:
             --skip_tests
             --minimal_build
             --disable_exceptions
-            --enable_training_ops
 
   # Job 3a: Build minimal onnxruntime [exceptions ENABLED, type reduction DISABLED, custom ops ENABLED] and run tests
   build_minimal_custom_ops:
