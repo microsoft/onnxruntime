@@ -42,6 +42,16 @@ Dawn build, then builds a separate package-backed ONNX Runtime DLL. It runs the
 same native host against that DLL, verifies Abs inference with CPU fallback
 disabled, and checks missing proc-table and invalid-package failures.
 
+## Mixed-precision subgroup matrices
+
+The pinned source build of Dawn (`v20261013.193955`) carries
+`cmake/patches/dawn/dawn_metal_mixed_precision.patch` to support Metal
+subgroup matrices with FP16 operands and FP32 results. This does not change
+the accumulation precision to FP16. External Dawn hosts must advertise a
+matching subgroup matrix configuration before ORT selects a consumer of this
+capability; otherwise ORT retains its existing fallback kernels. Matching
+headers alone do not imply that the host implementation supports the feature.
+
 ## Host-owned devices and caches
 
 ### Cache callbacks on an ORT-owned device
