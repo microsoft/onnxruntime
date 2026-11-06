@@ -4324,7 +4324,6 @@ TEST(PatternRewriterTests, PatternCompositionLibraryErrorsAndBounds) {
       "interface I(x)->(x)",
       "interface I(x:float[x])->(y)",
       "interface I(x:float[N])->(y:tensor<N>[])",
-      "interface I(x)->(y) pattern f implements I:(unused:float[])->{y=Identity(x);return (y=y)}",
       "interface I(x)->(y) pattern f implements I {a=Identity(x);y=Identity(a);return (y=a)}",
       "interface I(x)->(y) pattern f implements I {y=Identity(x);return (y=y)} "
       "pattern P(x){a=f(x,x);return a.y}",
@@ -4350,6 +4349,10 @@ TEST(PatternRewriterTests, PatternCompositionLibraryErrorsAndBounds) {
     SCOPED_TRACE(text);
     EXPECT_THROW(PatternLibrary{text}, OnnxRuntimeException);
   }
+  PatternLibrary unused_formal(
+      "interface I(x)->(y) pattern f implements I:(unused:float[])->{y=Identity(x);return (y=y)}");
+  EXPECT_THROW(unused_formal.GetPattern("f"), OnnxRuntimeException);
+  EXPECT_NO_THROW(unused_formal.GetGraphPattern("f"));
   std::string too_many = R"(
     interface I(x)->(y)
     pattern f implements I {return (y=x)}
@@ -5799,7 +5802,6 @@ TEST(PatternRewriterTests, PositionalExpressionValidationAndLimits) {
            "pattern E(x,a) { y=One(x) | Different(x,a);return y }",
            "pattern E(x) { y=One(x) | Two(x);return Identity(y) }",
            "pattern E(x,a,b) { alpha=Add(a,b);v=(Mul(x,alpha)|x);return Sigmoid(v) }",
-           "pattern E(x,a) { v=(Mul(x,a)|x);return Sigmoid(v) }",
            "pattern E(x) { y=One(x,x);return y }",
            "pattern E(x) { y=Attribute(x,_);return y }",
            "pattern E(x) { y=Alias(missing);return Identity(y) }",
@@ -5808,6 +5810,9 @@ TEST(PatternRewriterTests, PositionalExpressionValidationAndLimits) {
     SCOPED_TRACE(entry);
     EXPECT_THROW((void)PatternLibrary(definitions + entry), OnnxRuntimeException);
   }
+  PatternLibrary unused_alternative("pattern E(x,a) { v=(Mul(x,a)|x);return Sigmoid(v) }");
+  EXPECT_THROW(unused_alternative.GetPattern("E"), OnnxRuntimeException);
+  EXPECT_NO_THROW(unused_alternative.GetGraphPattern("E"));
   EXPECT_NO_THROW((void)PatternLibrary(R"(
     pattern E(x,a,b) {
       alpha=Add(a,b);v=(Mul(x,alpha)|x);s=Sigmoid(v);return Add(s,alpha)

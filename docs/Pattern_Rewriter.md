@@ -144,6 +144,8 @@ Returns may come from unrelated operators, alias the same value more than once,
 or pass through formal inputs without any operators. Ordinary `GetPattern`,
 `MatchAt`, and rewrite-rule entries retain their single-root restrictions; the
 graph-entry API does not enable whole-graph replacement of these output aliases.
+Library construction permits unused header parameters for graph formals;
+ordinary entry retrieval rejects unused inputs in every expanded alternative.
 Like `MatchAt`, `MatchGraph` clears the result on nonmatch and preserves it on
 configuration/status errors.
 
@@ -184,6 +186,9 @@ Scan axes/directions, and other operator semantics.
 promotion to semantic callbacks (and leaves `result` unchanged on error).
 For example, compare both branches' successfully resolved inputs by pointer
 identity in the parent graph, not by their possibly shadowed local names.
+Captures may pass through an intervening graph without a local `NodeArg`, but
+the replacement graph must already own the resolved input `NodeArg`; promotion
+does not manufacture local bindings.
 
 Deleting the parent deletes its bodies; inner nodes are never independently
 deleted by the outer rewrite. Matches and views borrow graph objects and become

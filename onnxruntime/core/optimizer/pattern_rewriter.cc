@@ -494,12 +494,15 @@ Status ResolveInput(const Match& match, std::string_view name, const Graph& targ
     auto captured = std::find_if(captures.begin(), captures.end(),
                                  [&](const NodeArg* arg) { return arg->Name() == input->Name(); });
     const Graph* parent = scope->ParentGraph();
-    ORT_RETURN_IF(captured == captures.end() || parent->GetNodeArg(input->Name()) != *captured,
+    ORT_RETURN_IF(captured == captures.end() || parent->GetNodeArgIncludingParentGraphs(input->Name()) != *captured,
                   "Capture does not identify a value in the replacement's ancestor graph.");
     input = *captured;
     scope = parent;
   }
-  result = input;
+  const NodeArg* target_input = target.GetNodeArg(input->Name());
+  ORT_RETURN_IF(!target_input || target_input != input,
+                "Replacement graph must already own the resolved input NodeArg.");
+  result = target_input;
   return Status::OK();
 }
 

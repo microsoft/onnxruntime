@@ -2385,6 +2385,7 @@ TEST(PatternGraphTests, IfCaptureRewriteAndNumerics) {
       node.AddAttribute("then_branch", branch);
       node.AddAttribute("else_branch", branch);
       b.SetGraphOutputs();
+      test.graph.SetInputs({x, c});
       ASSERT_STATUS_OK(test.graph.Resolve());
       const auto original = test.model.ToProto().SerializeAsString();
       auto check = [](const Graph& graph, Match& match) {
@@ -2513,6 +2514,7 @@ TEST(PatternGraphTests, ApplyMatchesBodiesAfterRecursiveRewriting) {
     conditional.AddAttribute("then_branch", branch);
     conditional.AddAttribute("else_branch", branch);
     b.SetGraphOutputs();
+    test.graph.SetInputs({x, c});
     ASSERT_STATUS_OK(test.graph.Resolve());
     auto check = [](const Graph& graph, Match& match) {
       const NodeArg* then_input = nullptr;
@@ -2594,6 +2596,7 @@ TEST(PatternGraphTests, LocalShadowPartialBodyAndProviderSafety) {
     }
     conditional.AddAttribute("else_branch", branch);
     b.SetGraphOutputs();
+    test.graph.SetInputs({x, c});
     ASSERT_STATUS_OK(test.graph.Resolve());
     if (scenario == 5) {
       Graph* body = conditional.GetMutableGraphAttribute("then_branch");
@@ -2662,12 +2665,19 @@ TEST(PatternGraphTests, NestedReferencesAndAlternativeState) {
     node.AddAttribute("then_branch", outer);
     node.AddAttribute("else_branch", outer);
     b.SetGraphOutputs();
+    test.graph.SetInputs({x, c});
     ASSERT_STATUS_OK(test.graph.Resolve());
-    auto check = [](const Graph&, Match& match) {
+    auto check = [](const Graph& graph, Match& match) {
       auto body = match.instance("y.then_branch").instance("y.then_branch");
       EXPECT_EQ(body.alternative(), "IdentityBody");
       EXPECT_EQ(body.valueOf("x")->Shape()->dim(0).dim_value(), 2);
       EXPECT_EQ(std::get<int64_t>(body.dimensionOf("N")), 2);
+      const NodeArg* resolved = nullptr;
+      EXPECT_EQ(body.graph().ParentGraph()->GetNodeArg(body.valueOf("x")->Name()), nullptr);
+      EXPECT_FALSE(body.resolveInput("x", *body.graph().ParentGraph(), resolved).IsOK());
+      EXPECT_EQ(resolved, nullptr);
+      EXPECT_TRUE(body.resolveInput("x", graph, resolved).IsOK());
+      EXPECT_EQ(resolved, graph.GetInputs()[0]);
       return true;
     };
     Rule rule{"Nested", library.GetPattern("P"), "(y.then_branch.y.then_branch.x)=>Identity(y.then_branch.y.then_branch.x)", check, {{kOnnxDomain, 17, 17}}};
