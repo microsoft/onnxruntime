@@ -46,4 +46,4 @@ CheckpointState.save_checkpoint(state, "checkpoint_export.ckpt")
 
 ```
 
-For more detailed information refer to [Module](https://github.com/microsoft/onnxruntime/blob/main/orttraining/orttraining/python/training/api/Module.py) and [Optimizer](https://github.com/microsoft/onnxruntime/blob/main/orttraining/orttraining/python/training/api/Optimizer.py).
+For more detailed information refer to [Module](https://github.com/microsoft/onnxruntime/blob/main/orttraining/orttraining/python/training/api/module.py) and [Optimizer](https://github.com/microsoft/onnxruntime/blob/main/orttraining/orttraining/python/training/api/optimizer.py).
