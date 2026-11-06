@@ -10,6 +10,11 @@
 #error ORT_CPUINFO_DLOPEN_TEST_LIBRARY must name the test DLL.
 #endif
 
+namespace {
+// This storage must remain valid through DLL teardown, including process-exit error paths.
+bool cpuinfo_deinitialized = false;
+}  // namespace
+
 int wmain() {
   HMODULE library = LoadLibraryW(ORT_CPUINFO_DLOPEN_TEST_LIBRARY);
   if (library == nullptr) {
@@ -17,19 +22,17 @@ int wmain() {
     return EXIT_FAILURE;
   }
 
-  using GetCpuinfoAllocation = const void* (*)();
-  const auto get_cpuinfo_allocation = reinterpret_cast<GetCpuinfoAllocation>(
-      GetProcAddress(library, "OrtGetCpuinfoAllocationForTesting"));
-  if (get_cpuinfo_allocation == nullptr) {
+  using InitializeCpuinfo = bool (*)(bool*);
+  const auto initialize_cpuinfo = reinterpret_cast<InitializeCpuinfo>(
+      GetProcAddress(library, "OrtInitializeCpuinfoForTesting"));
+  if (initialize_cpuinfo == nullptr) {
     std::cerr << "GetProcAddress failed with error " << GetLastError() << std::endl;
     FreeLibrary(library);
     return EXIT_FAILURE;
   }
 
-  const void* allocation = get_cpuinfo_allocation();
-  HANDLE process_heap = GetProcessHeap();
-  if (allocation == nullptr || !HeapValidate(process_heap, 0, allocation)) {
-    std::cerr << "cpuinfo did not return a valid process-heap allocation" << std::endl;
+  if (!initialize_cpuinfo(&cpuinfo_deinitialized)) {
+    std::cerr << "cpuinfo did not expose valid processor data" << std::endl;
     FreeLibrary(library);
     return EXIT_FAILURE;
   }
@@ -39,8 +42,8 @@ int wmain() {
     return EXIT_FAILURE;
   }
 
-  if (HeapValidate(process_heap, 0, allocation)) {
-    std::cerr << "cpuinfo allocation remained valid after the CPUIDInfo test DLL was unloaded" << std::endl;
+  if (!cpuinfo_deinitialized) {
+    std::cerr << "cpuinfo remained initialized after the CPUIDInfo test DLL was unloaded" << std::endl;
     return EXIT_FAILURE;
   }
 
