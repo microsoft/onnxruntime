@@ -4525,7 +4525,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>block_size</tt> : int (required)</dt>
 <dd>Size of each quantization block along the K (input feature) dimension. Must be a power of two and ≥ 16 (e.g., 16, 32, 64, 128).</dd>
 <dt><tt>gemv_kernel</tt> : string</dt>
-<dd>CUDA arithmetic selection. 'auto' preserves existing affine-quantization dispatch. 'fixed' uses BF16 operands, FP32 accumulation and one final BF16 output rounding with unmodified offset-UINT8 Q8 weights and FP16 scales; it requires bits=8, block_size=32 and K divisible by 64. 'fixed_iq2_xxs' instead decodes nonlinear IQ2_XXS grid/sign/local-multiplier records, rounding complete dequantized operands to BF16 before FP32 accumulation and final BF16 rounding. This is not affine 2-bit quantization. It requires bits=2, block_size=256 and K divisible by 256. Both fixed profiles require SM80+, BF16 activations, accuracy_level=0, weight_prepacked=0, omitted scales/zero_points/g_idx/bias, and literal FP16 scales_fp16 [N,K/block_size]. K must be positive and fit int32; N must be positive and at most INT32_MAX-32. Flattened activation rows must be in [1,8]. Unsupported shapes fail rather than changing arithmetic.</dd>
+<dd>CUDA arithmetic selection. 'auto' preserves existing affine-quantization dispatch. 'fixed' uses BF16 operands, FP32 accumulation and one final BF16 output rounding with unmodified offset-UINT8 Q8 weights and FP16 or BF16 scales; it requires bits=8, block_size=32 and K divisible by 64. For BF16 scales and one activation row, FP32 block dot products are scaled before warp reduction without intermediate BF16 weight rounding, and K must not exceed 6144. 'fixed_iq2_xxs' instead decodes nonlinear IQ2_XXS grid/sign/local-multiplier records, rounding complete dequantized operands to BF16 before FP32 accumulation and final BF16 rounding. This is not affine 2-bit quantization. It requires bits=2, block_size=256 and K divisible by 256. Both fixed profiles require SM80+, BF16 activations, accuracy_level=0, weight_prepacked=0, omitted scales/zero_points/g_idx/bias, and fixed_scales [N,K/block_size]. IQ2_XXS requires literal FP16 fixed_scales; Q8 preserves the supplied FP16 or BF16 scale dtype. K must be positive and fit int32; N must be positive and at most INT32_MAX-32. Flattened activation rows must be in [1,8]. Unsupported shapes fail rather than changing arithmetic.</dd>
 <dt><tt>weight_prepacked</tt> : int</dt>
 <dd>If set, input B is already prepacked into an EP-specific layout and the EP skips runtime weight prepacking. 0 (default): not prepacked. 1: prepacked in the CUDA SM80 fpA_intB layout. 2: prepacked in the CUDA SM90 (Hopper) fpA_intB layout, consumed by the native SM90 kernel (requires a compute capability 9.0 device and block_size in {64, 128}).</dd>
 </dl>
@@ -4545,8 +4545,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>group_idx. This input is deprecated</dd>
 <dt><tt>bias</tt> (optional) : T1</dt>
 <dd>Bias to add to result. It should have shape [N].</dd>
-<dt><tt>scales_fp16</tt> (optional) : tensor(float16)</dt>
-<dd>Independent literal FP16 scales [N,K/block_size], required only for fixed gemv_kernel profiles. Preserves FP16 scale precision with BF16 activations without early BF16 scale rounding.</dd>
+<dt><tt>fixed_scales</tt> (optional) : S</dt>
+<dd>Independent FP16 or BF16 scales [N,K/block_size], required only for fixed gemv_kernel profiles. Q8 preserves the supplied scale dtype and its arithmetic; IQ2_XXS requires literal FP16 scales. FP16 scales are not rounded early to the BF16 activation dtype.</dd>
 </dl>
 
 #### Outputs
@@ -4567,6 +4567,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain quantized zero point types to uint8 or float tensors.</dd>
 <dt><tt>T4</tt> : tensor(int32)</dt>
 <dd>the index tensor.</dd>
+<dt><tt>S</tt> : tensor(float16), tensor(bfloat16)</dt>
+<dd>Independent fixed-profile scale precision.</dd>
 </dl>
 
 

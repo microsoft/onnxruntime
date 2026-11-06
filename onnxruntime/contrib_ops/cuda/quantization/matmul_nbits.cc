@@ -1252,26 +1252,29 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
     const auto* a = ctx->Input<Tensor>(0);
     const auto* b = ctx->Input<Tensor>(1);
     const auto* scales = ctx->Input<Tensor>(6);
-    ORT_RETURN_IF_NOT(a && b && scales && scales->IsDataType<MLFloat16>(),
-                      "MatMulNBits fixed requires activations, raw weights and FP16 scales.");
+    ORT_RETURN_IF_NOT(a && b && scales &&
+                          (scales->IsDataType<MLFloat16>() || (nbits_ == 8 && scales->IsDataType<BFloat16>())),
+                      "MatMulNBits fixed requires activations, raw weights and FP16 or Q8 BF16 scales.");
     const auto& shape = a->Shape();
     ORT_RETURN_IF_NOT(shape.NumDimensions() >= 1 && shape[shape.NumDimensions() - 1] == K_,
                       "MatMulNBits fixed activation last dimension must equal K.");
     const int64_t rows = shape.SizeToDimension(shape.NumDimensions() - 1);
     ORT_RETURN_IF_NOT(rows >= 1 && rows <= 8,
                       "MatMulNBits fixed flattened activation rows must be in [1,8].");
+    ORT_RETURN_IF_NOT(rows != 1 || !scales->IsDataType<BFloat16>() || K_ <= 6144,
+                      "MatMulNBits fixed Q8 BF16-scale row-one path requires K <= 6144.");
     const int64_t blocks = K_ / block_size_, blob_size = block_size_ * nbits_ / 8;
     ORT_RETURN_IF_NOT(b->Shape() == TensorShape({N_, blocks, blob_size}) &&
                           scales->Shape() == TensorShape({N_, blocks}),
                       "MatMulNBits fixed requires B[N,K/block_size,block_size*bits/8] "
-                      "and scales_fp16[N,K/block_size].");
+                      "and fixed_scales[N,K/block_size].");
     TensorShapeVector output_dims(shape.GetDims().begin(), shape.GetDims().end() - 1);
     output_dims.push_back(N_);
     auto* y = ctx->Output(0, TensorShape(output_dims));
     CUDA_RETURN_IF_ERROR(LaunchPackedProjection(
         nbits_ == 2 ? PackedProjectionFormat::IQ2XXS : PackedProjectionFormat::Q8,
         a->DataRaw(), b->Data<uint8_t>(), scales->DataRaw(),
-        nullptr, true, static_cast<int>(rows), static_cast<int>(N_), static_cast<int>(K_),
+        nullptr, scales->IsDataType<MLFloat16>(), static_cast<int>(rows), static_cast<int>(N_), static_cast<int>(K_),
         y->MutableDataRaw(), Stream(ctx)));
     return Status::OK();
   }

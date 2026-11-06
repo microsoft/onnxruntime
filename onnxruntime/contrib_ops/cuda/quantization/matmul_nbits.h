@@ -306,7 +306,9 @@ class MatMulNBits final : public CudaKernel {
                       !has_zero_points_ && !has_g_idx_ && !has_bias_,
                   "MatMulNBits ", kernel, " requires SM80+, BF16, ",
                   iq2 ? "bits=2, block_size=256, accuracy_level=0, " : "bits=8, block_size=32, accuracy_level=0, ",
-                  "weight_prepacked=0, scales_fp16 and no scales, zero_points, g_idx or bias.");
+                  "weight_prepacked=0, fixed_scales and no scales, zero_points, g_idx or bias.");
+      ORT_ENFORCE(!iq2 || GetInputElementType(info, 6) == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+                  "MatMulNBits fixed_iq2_xxs requires literal FP16 fixed_scales.");
       const int64_t k_alignment = iq2 ? 256 : 64;
       ORT_ENFORCE(K_ > 0 && K_ <= std::numeric_limits<int>::max() && K_ % k_alignment == 0 &&
                       N_ > 0 && N_ <= std::numeric_limits<int>::max() - 32,
@@ -315,7 +317,7 @@ class MatMulNBits final : public CudaKernel {
       return;
     }
     ORT_ENFORCE(InputExists(info, kInputIndexScale) && !InputExists(info, 6),
-                "MatMulNBits auto requires scales and does not accept scales_fp16.");
+                "MatMulNBits auto requires scales and does not accept fixed_scales.");
     is_zero_points_scale_same_type_ = has_zero_points_ && GetInputElementType(info, kInputIndexZeroPoints) == GetInputElementType(info, kInputIndexScale);
 
     const Tensor* group_index_initializer = nullptr;

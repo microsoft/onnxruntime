@@ -45,7 +45,7 @@ void AddPackedScales(OpTester& test, int n, int blocks, const std::vector<S>& sc
     test.AddOptionalInputEdge<uint8_t>();
     test.AddOptionalInputEdge<int32_t>();
     test.AddOptionalInputEdge<BFloat16>();
-    test.AddInput<S>("scales_fp16", {n, blocks}, scales);
+    test.AddInput<S>("fixed_scales", {n, blocks}, scales);
   } else {
     test.AddInput<S>("scales", {n, blocks}, scales);
   }
@@ -318,7 +318,63 @@ TEST(MatMulNBitsFixedBF16, MultipleChunksAndLargeNDispatch) {
   CheckQ8Chunks<MLFloat16>(8, 19, 4096, true);
 }
 
+TEST(MatMulNBitsFixedBF16, IndependentBF16ScalePrecisionAndLeadingDimensions) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "CUDA SM80 is required.";
+  for (int rows = 1; rows <= 8; ++rows) {
+    for (int n : {1, 17, 33}) CheckQ8<BFloat16>(rows, n, true);
+  }
+}
+
+TEST(MatMulNBitsFixedBF16, BF16ScaleChunksAndRowOneBoundary) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "CUDA SM80 is required.";
+  CheckQ8Chunks<BFloat16>(3, 19, 1088, true);
+  CheckQ8Chunks<BFloat16>(3, 8193, 1088, true);
+  CheckQ8Chunks<BFloat16>(1, 19, 4096, true);
+  CheckQ8Chunks<BFloat16>(1, 19, 6144, true);
+  CheckQ8Chunks<BFloat16>(3, 19, 6208, true);
+  CheckQ8Chunks<MLFloat16>(1, 19, 6208, true);
+}
+
+TEST(MatMulNBitsFixedBF16, BF16ScaleRowOneKeepsBlockDotBeforeScale) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "CUDA SM80 is required.";
+  constexpr int k = 64;
+  for (int n : {19, 4097}) {
+    std::vector<BFloat16> a(k, BFloat16(0.f));
+    a[0] = BFloat16(1.f);
+    a[1] = BFloat16(-1.f);
+    std::vector<uint8_t> b(n * k, 128);
+    for (int col = 0; col < n; ++col) {
+      b[col * k] = 255;
+      b[col * k + 1] = 254;
+    }
+    // (127 - 126) * scale is 1.0078125; rounding weights before the dot gives 1.
+    const auto scale = BFloat16::FromBits(0x3f81);
+    OpTester test("MatMulNBits", 1, kMSDomain);
+    ConfigureFixedQ8(test, k, n);
+    test.AddInput<BFloat16>("A", {1, k}, a);
+    test.AddInput<uint8_t>("B", {n, k / 32, 32}, b);
+    AddPackedScales(test, n, k / 32, std::vector<BFloat16>(n * k / 32, scale), true);
+    test.AddOutput<BFloat16>("Y", {1, n}, std::vector<BFloat16>(n, scale));
+    RunPacked(test);
+  }
+}
+
 #ifndef ORT_NO_EXCEPTIONS
+TEST(MatMulNBitsFixedBF16, RejectsBF16ScaleRowOneBeyondSupportedK) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "CUDA SM80 is required.";
+  constexpr int k = 6208;
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  ConfigureFixedQ8(test, k, 1);
+  test.AddInput<BFloat16>("A", {1, k}, std::vector<BFloat16>(k, BFloat16(1.f)));
+  test.AddInput<uint8_t>("B", {1, k / 32, 32}, std::vector<uint8_t>(k, 129));
+  AddPackedScales(test, 1, k / 32, std::vector<BFloat16>(k / 32, BFloat16(1.f)), true);
+  test.AddOutput<BFloat16>("Y", {1, 1}, {BFloat16(0.f)});
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "BF16-scale row-one path requires K <= 6144",
+           {}, nullptr, &providers);
+}
+
 TEST(MatMulNBitsFixedBF16, RejectsUnsupportedRowsAndKInsteadOfFallingBack) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "CUDA SM80 is required.";
   for (bool bad_k : {false, true}) {
@@ -365,6 +421,20 @@ TEST(MatMulNBitsFixedIQ2XXS, MultipleBlocksPartialChunksAndLargeNDispatch) {
 }
 
 #ifndef ORT_NO_EXCEPTIONS
+TEST(MatMulNBitsFixedIQ2XXS, RejectsBF16ScaleInterpretation) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "CUDA SM80 is required.";
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  ConfigureFixedIQ2(test, 256, 1);
+  test.AddInput<BFloat16>("A", {1, 256}, std::vector<BFloat16>(256, BFloat16(0.f)));
+  test.AddInput<uint8_t>("B", {1, 1, 64}, std::vector<uint8_t>(64));
+  AddPackedScales(test, 1, 1, std::vector<BFloat16>{BFloat16(1.f)}, true);
+  test.AddOutput<BFloat16>("Y", {1, 1}, {BFloat16(0.f)});
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "requires literal FP16 fixed_scales",
+           {}, nullptr, &providers);
+}
+
 TEST(MatMulNBitsFixedIQ2XXS, RejectsAffineProfilesAndMismatchedCodecMetadata) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "CUDA SM80 is required.";
   struct Case {
