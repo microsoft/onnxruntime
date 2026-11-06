@@ -1,5 +1,64 @@
 # Python Helpers
 
+## generate_matmul_nbits_cases.py
+
+Generate deterministic, single-operator `com.microsoft::MatMulNBits` models for workload-estimation experiments.
+Requires NumPy and ONNX; generation does not require an ORT wheel or GPU.
+
+```bash
+python tools/python/generate_matmul_nbits_cases.py --output /tmp/matmul-nbits-pilot --seed 123
+```
+
+The default 14-case INT4 pilot includes decode/prefill, bias and zero-point variants, vector/batched inputs,
+unaligned K/N held-out cases, FP16, and a requested INT8 accuracy level. It is not exhaustive route coverage.
+For other configurations, use `--config experiments.json` with an explicit case list:
+
+```json
+{
+  "cases": [
+    {
+      "a_shape": [2, 3, 65],
+      "n": 32,
+      "bits": 4,
+      "block_size": 32,
+      "dtype": "float32",
+      "bias": true,
+      "zero_points": true,
+      "accuracy_level": 0,
+      "cohort": "held_out"
+    }
+  ]
+}
+```
+
+Required fields are `a_shape` and `n`. Other defaults are bits=4, block_size=32, dtype=float32, bias=false,
+zero_points=false, accuracy_level=0 and cohort=calibration. Supported generation settings are 2/4/8 bits,
+FP32/FP16, positive dimensions, and power-of-two block sizes >=16. Kernel eligibility must be checked during
+execution; an accuracy level is a request, not proof of the effective compute mode. BF16, empty dimensions,
+dynamic shapes and EP-specific prepacked layouts are outside this initial generator.
+
+Each case directory contains `model.onnx` with constant weights/scales/optional bias/zero points and
+`inputs.npz` containing only activation `A` (load with `allow_pickle=False`). The final `manifest.json` lists
+relative paths, settings, per-case seeds, output shapes, expected invocation multiplicity, and exact logical
+core/bias reference counts as decimal strings. Case IDs and generated tensors are independent of list ordering
+and cohort assignment; duplicate settings across cohorts are rejected to prevent validation leakage.
+The manifest records NumPy/ONNX versions; reproduce with the same dependencies and base seed.
+
+Weights are synthetic unsigned quantized codes, not quantized real/model weights. Packing uses the standard
+column-wise low-bits-first layout, including packed zero points and zero-valued dequantized K padding.
+Positive power-of-two scales keep the data controlled. An omitted zero point means the schema's midpoint.
+No executed-FLOP reference, whole-op count, numerical reference output, timing or route validation is claimed.
+
+Existing output directories are rejected, never overwritten. Invalid configuration is rejected before creating
+the output directory. Generation failures are explicit and may leave partial case files, but no completed
+manifest; retry in a new directory. Large explicit cases can consume substantial memory/disk.
+
+Targeted validation:
+
+```bash
+python -m pytest tools/python/test_generate_matmul_nbits_cases.py
+```
+
 ## Authentication method for Azure DevOps
 
 Generally speaking Azure DevOps services has three ways of doing authentication:
