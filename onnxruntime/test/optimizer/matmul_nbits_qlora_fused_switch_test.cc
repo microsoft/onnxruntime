@@ -75,10 +75,11 @@ void RunAdapterSwitchTest(bool qkv, SwitchTestConfig config = {}) {
               DefaultLoggingManager().DefaultLogger());
   ModelTestBuilder builder(model.MainGraph());
   const std::vector<int64_t> input_shape{config.batch, config.rows, 32};
-  NodeArg* x = builder.MakeInput<T>(input_shape, T(0.5f), T(0.5f));
+  // ModelTestBuilder uses a fixed seed; vary rows and channels reproducibly.
+  NodeArg* x = builder.MakeInput<T>(input_shape, T(0.25f), T(0.75f));
   NodeArg* norm_scale = builder.MakeInitializer<T>({32}, T(1.0f), T(1.0f));
   NodeArg* normalized = builder.MakeIntermediate<T>(input_shape);
-  NodeArg* skip = config.skip ? builder.MakeInput<T>(input_shape, T(0.25f), T(0.25f)) : nullptr;
+  NodeArg* skip = config.skip ? builder.MakeInput<T>(input_shape, T(-0.125f), T(0.125f)) : nullptr;
   std::vector<NodeArg*> graph_inputs{x};
   if (skip) graph_inputs.push_back(skip);
   NodeArg* residual = config.skip ? builder.MakeOutput<T>(input_shape) : nullptr;
