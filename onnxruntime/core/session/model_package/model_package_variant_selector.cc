@@ -21,6 +21,10 @@ namespace {
 struct VariantMatchResult {
   bool matched{false};
   int score{std::numeric_limits<int>::min()};
+  // ORT could not determine whether the variant matches the EP: a required device could not be checked because no
+  // devices were captured, or the compatibility callback returned an error.
+  // The built-in CPU EP can match a CPU requirement without captured devices.
+  bool unchecked{false};
 };
 
 std::string ToLower(std::string_view s) {
@@ -42,21 +46,6 @@ bool MatchesDevice(OrtHardwareDeviceType type, std::string_view value) {
     default:
       return false;
   }
-}
-
-const OrtHardwareDevice* FindMatchingHardwareDevice(std::string_view device_constraint,
-                                                    gsl::span<const OrtHardwareDevice* const> hardware_devices) {
-  if (device_constraint.empty()) {
-    return nullptr;
-  }
-
-  for (const auto* hd : hardware_devices) {
-    if (hd != nullptr && MatchesDevice(hd->type, device_constraint)) {
-      return hd;
-    }
-  }
-
-  return nullptr;
 }
 
 int CompatibilityToScore(OrtCompiledModelCompatibility compatibility) {
@@ -113,16 +102,27 @@ VariantMatchResult MatchVariantForEp(VariantInfo& variant, const VariantSelectio
     return result;
   }
 
-  // 2. Match device constraint.
+  // 2. Match the device constraint. For the compatibility callback, use the EP's captured hardware devices matching
+  // the variant's declared device type, or all captured hardware devices for that EP if no type is declared
+  // (see ModelPackageComponentContext::SelectedEpDevices).
   bool device_ok = !ec.device.has_value() || ec.device->empty();
   std::vector<const OrtHardwareDevice*> constraint_devices = ep_info.hardware_devices;
 
   if (!device_ok) {
     if (ep_info.hardware_devices.empty()) {
-      device_ok = ep_info.ep_name == kCpuExecutionProvider && MatchesDevice(OrtHardwareDeviceType_CPU, *ec.device);
-    } else if (const auto* matched_hd = FindMatchingHardwareDevice(*ec.device, ep_info.hardware_devices)) {
-      device_ok = true;
-      constraint_devices = {matched_hd};
+      if (ep_info.ep_name != kCpuExecutionProvider) {
+        result.unchecked = true;
+        return result;
+      }
+      device_ok = MatchesDevice(OrtHardwareDeviceType_CPU, *ec.device);
+    } else {
+      constraint_devices.clear();
+      for (const OrtHardwareDevice* hardware_device : ep_info.hardware_devices) {
+        if (MatchesVariantDevice(hardware_device, *ec.device)) {
+          constraint_devices.push_back(hardware_device);
+        }
+      }
+      device_ok = !constraint_devices.empty();
     }
   }
 
@@ -139,6 +139,7 @@ VariantMatchResult MatchVariantForEp(VariantInfo& variant, const VariantSelectio
   if (!st.IsOK()) {
     LOGS_DEFAULT(WARNING) << "Failed to validate compiled model compatibility for variant '"
                           << variant.variant_name << "'. Error: " << st.ErrorMessage();
+    result.unchecked = true;
     return result;
   }
 
@@ -155,29 +156,18 @@ VariantMatchResult MatchVariantForEp(VariantInfo& variant, const VariantSelectio
 
 }  // namespace
 
+bool MatchesVariantDevice(const OrtHardwareDevice* hardware_device, std::string_view device) {
+  return device.empty() || (hardware_device != nullptr && MatchesDevice(hardware_device->type, device));
+}
+
 Status VariantSelector::SelectVariant(const ModelPackageComponentContext& context,
                                       gsl::span<const VariantSelectionEpInfo> ep_infos,
-                                      std::optional<VariantInfo>& selected_variant) const {
-  selected_variant.reset();
+                                      std::optional<VariantSelection>& selection) const {
+  selection.reset();
 
   std::vector<VariantInfo> variants = context.GetVariantInfos();
   if (variants.empty()) {
     return Status::OK();
-  }
-
-  const VariantSelectionEpInfo* selected_ep_info = nullptr;
-  if (!ep_infos.empty()) {
-    // For now we only consider the first captured EP for variant matching.
-    //
-    // ModelPackageOptions may capture multiple EPs (e.g. when EP selection comes from a policy that
-    // returns a ranked list such as [CUDA, WebGPU, CPU]). We use only the first EP. Callers that
-    // need a specific EP should put it first in the captured order.
-    // TODO: extend to rank variants across the full EP list, honoring captured priority order.
-    selected_ep_info = &ep_infos[0];
-    if (ep_infos.size() > 1) {
-      LOGS_DEFAULT(INFO) << "Multiple EPs captured for model package; using only the first ('"
-                         << ep_infos[0].ep_name << "') for variant matching.";
-    }
   }
 
   // EP/device compatibility pass.
@@ -186,24 +176,23 @@ Status VariantSelector::SelectVariant(const ModelPackageComponentContext& contex
   // parse or decompose the compatibility string -- EP validates the compatibility string and
   // returns an OrtCompiledModelCompatibility enum indicating the level of compatibility.
   //
-  // Selection algorithm:
-  //   For each variant whose single EP/device declaration matches the selected EP, call
-  //   OrtEpFactory::ValidateCompiledModelCompatibilityInfo() and map the returned
-  //   OrtCompiledModelCompatibility enum to a numeric score. Pick the highest-scoring variant.
-  //   On ties, the first variant in manifest declaration order wins.
+  // If ORT cannot check a variant for an EP and no other variant matches that EP, selection returns an error instead
+  // of considering EPs with lower priority.
   //
   // Planned fallback ladder (not yet wired -- TODO):
-  //   a) If the EP implements OrtEpFactory::SelectBestCompiledModelCandidate() (PR #28387), gather
+  //   a) If the EP implements OrtEpFactory::SelectBestModelCandidate() (PR #28387), gather
   //      every matching variant into a candidate list and let the EP pick the best index. SIZE_MAX
   //      means "none acceptable", fall through to (b).
   //   b) Otherwise, use ValidateCompiledModelCompatibilityInfo() per variant as we do today.
   //   c) If neither ABI is implemented, return the first variant whose ep/device matches.
-  if (selected_ep_info != nullptr) {
+  for (size_t ep_index = 0; ep_index < ep_infos.size(); ++ep_index) {
     int best_score = std::numeric_limits<int>::min();
     std::optional<size_t> best_index;
+    bool has_unchecked_variant = false;
 
     for (size_t i = 0, end = variants.size(); i < end; ++i) {
-      VariantMatchResult m = MatchVariantForEp(variants[i], *selected_ep_info);
+      VariantMatchResult m = MatchVariantForEp(variants[i], ep_infos[ep_index]);
+      has_unchecked_variant = has_unchecked_variant || m.unchecked;
       if (!m.matched) {
         continue;
       }
@@ -216,8 +205,17 @@ Status VariantSelector::SelectVariant(const ModelPackageComponentContext& contex
     }
 
     if (best_index.has_value()) {
-      selected_variant = std::move(variants[*best_index]);
+      selection = VariantSelection{std::move(variants[*best_index]), ep_index};
       return Status::OK();
+    }
+
+    if (has_unchecked_variant) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "No suitable model variant found for the configured execution providers: "
+                             "selection stopped at execution provider '",
+                             ep_infos[ep_index].ep_name,
+                             "' because some variants could not be checked. They require a device but no devices "
+                             "were captured for this EP, or its compatibility callback returned an error.");
     }
   }
 

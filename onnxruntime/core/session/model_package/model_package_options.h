@@ -5,6 +5,7 @@
 #if !defined(ORT_MINIMAL_BUILD)
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "core/common/status.h"
@@ -24,7 +25,8 @@ class ModelPackageOptions {
   const std::vector<VariantSelectionEpInfo>& EpInfos() const noexcept { return ep_infos_; }
   const std::vector<const OrtEpDevice*>& ExecutionDevices() const noexcept { return execution_devices_; }
   const std::vector<const OrtEpDevice*>& DevicesSelected() const noexcept { return devices_selected_; }
-  bool FromPolicy() const noexcept { return from_policy_; }
+  // Returns the policy used to select the EPs, if any.
+  const std::optional<EpSelectionPolicy>& SelectionPolicy() const noexcept { return selection_policy_; }
 
  private:
   void ResolveEpSelection(const Environment& env, const OrtSessionOptions& session_options);
@@ -32,7 +34,7 @@ class ModelPackageOptions {
   std::vector<VariantSelectionEpInfo> ep_infos_{};
   std::vector<const OrtEpDevice*> execution_devices_{};
   std::vector<const OrtEpDevice*> devices_selected_{};
-  bool from_policy_{false};
+  std::optional<EpSelectionPolicy> selection_policy_{};
 };
 
 }  // namespace onnxruntime
