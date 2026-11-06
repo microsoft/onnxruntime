@@ -18,7 +18,8 @@ struct ProviderLibrary {
   ProviderLibrary(const ORTCHAR_T* filename, bool unload = true, ProviderLibraryPathType pathType = ProviderLibraryPathType::Default);
   ~ProviderLibrary();
 
-  Status Load();
+  // If requested, a missing GetProvider leaves the library loaded until Unload() is called.
+  Status Load(bool retain_library_on_missing_get_provider = false);
   Provider& Get();
   void Unload();
 
