@@ -655,6 +655,10 @@ int ThreadPool::DegreeOfParallelism(const concurrency::ThreadPool* tp) {
   }
 }
 
+int ThreadPool::WorkerThreadCount(const concurrency::ThreadPool* tp) {
+  return tp ? tp->NumThreads() : 0;
+}
+
 void ThreadPool::StartProfiling(concurrency::ThreadPool* tp) {
   if (tp) {
     tp->StartProfiling();
