@@ -26,9 +26,15 @@ numeric behavior change.
   minimum limits are 16 KiB storage and 256 invocations per workgroup; stay
   within these or the limits queried from the adapter. Count bindings against
   `maxStorageBuffersPerShaderStage`.
-- Tensors exceeding `maxStorageBufferBindingSize` need shader variable accessors
-  (`GetByOffset`, `SetByOffset`, `GetByIndices`) because the EP splits them into
-  binding segments.
+- Access tensor storage buffers only through `ShaderVariableHelper` accessors
+  (`Get`, `GetByOffset`, `GetByIndices`, `Set`, `SetByOffset`, `SetByIndices`)
+  at kernel/template call sites. Do not handwrite `input[index]`, `output[index]`,
+  or equivalent storage-name indexing, even for small tensors. The helpers
+  preserve binding segmentation above `maxStorageBufferBindingSize`, buffer-view
+  offsets, and storage/value conversions. Extend the helper API when an operation
+  needs unsupported access instead of bypassing it. This rule permits storage
+  indexing emitted inside the helper implementation and does not apply to
+  workgroup/private arrays.
 - Do not bind one buffer twice in a dispatch when either binding is writable;
   WebGPU rejects aliasing writable bindings.
 
