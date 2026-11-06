@@ -1,17 +1,156 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
+#include <numeric>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#if defined(USE_WEBGPU)
+#include "core/common/logging/logging.h"
+#include "core/providers/webgpu/math/top_k.h"
+#include "core/providers/webgpu/webgpu_context.h"
+#endif
+#include "default_providers.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
+
+template <typename T>
+static void RunWebGpuSmallK(int64_t cols, int64_t k, bool largest, int64_t axis,
+                            bool infinite_ties = false, bool zero_ties = false) {
+  ConfigOptions config;
+  ASSERT_STATUS_OK(config.AddConfigEntry("ep.webgpuexecutionprovider.validationMode", "full"));
+  auto ep = WebGpuExecutionProviderWithOptions(config);
+  if (!ep) {
+    GTEST_SKIP() << "WebGPU EP not available.";
+  }
+  constexpr int64_t rows = 3;
+  const std::vector<int64_t> shape = axis == 0 ? std::vector<int64_t>{cols, rows}
+                                               : std::vector<int64_t>{rows, cols};
+  const std::vector<int64_t> output_shape = axis == 0 ? std::vector<int64_t>{k, rows}
+                                                      : std::vector<int64_t>{rows, k};
+  std::vector<float> input_values(rows * cols);
+  std::vector<T> input(rows * cols);
+  std::vector<T> expected_values(rows * k);
+  std::vector<int64_t> expected_indices(rows * k);
+  for (int64_t row = 0; row < rows; ++row) {
+    for (int64_t col = 0; col < cols; ++col) {
+      const auto offset = axis == 0 ? col * rows + row : row * cols + col;
+      const float value = zero_ties ? (col % 2 == 0 ? -0.0f : 0.0f) : infinite_ties ? (largest ? -std::numeric_limits<float>::infinity() : std::numeric_limits<float>::infinity())
+                                                                                    : static_cast<float>((col * 17 + row * 7) % 29) - 14.0f;
+      input_values[offset] = value;
+      input[offset] = T(value);
+    }
+    std::vector<int64_t> order(cols);
+    std::iota(order.begin(), order.end(), 0);
+    std::stable_sort(order.begin(), order.end(), [&](int64_t a, int64_t b) {
+      const auto offset_a = axis == 0 ? a * rows + row : row * cols + a;
+      const auto offset_b = axis == 0 ? b * rows + row : row * cols + b;
+      return largest ? input_values[offset_a] > input_values[offset_b]
+                     : input_values[offset_a] < input_values[offset_b];
+    });
+    for (int64_t i = 0; i < k; ++i) {
+      const auto offset = axis == 0 ? i * rows + row : row * k + i;
+      const auto input_offset = axis == 0 ? order[i] * rows + row : row * cols + order[i];
+      expected_values[offset] = input[input_offset];
+      expected_indices[offset] = order[i];
+    }
+  }
+  OpTester test("TopK", 21);
+  test.AddAttribute("axis", axis);
+  test.AddAttribute("largest", int64_t{largest});
+  test.AddInput<T>("X", shape, input);
+  test.AddInput<int64_t>("K", {1}, {k}, true);
+  test.AddOutput<T>("Values", output_shape, expected_values);
+  test.AddOutput<int64_t>("Indices", output_shape, expected_indices);
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+#if defined(USE_WEBGPU)
+  const auto& context = webgpu::WebGpuContextFactory::GetContext(ep->GetDeviceId());
+  const auto& adapter = context.AdapterInfo();
+  const bool expect_subgroup = cols > 2048 && k <= 16 &&
+                               context.DeviceHasFeature(wgpu::FeatureName::Subgroups) &&
+                               webgpu::detail::SupportsAppleHierarchicalTopK(
+                                   adapter.vendor, adapter.backendType, adapter.subgroupMinSize, adapter.subgroupMaxSize,
+                                   context.DeviceLimits(), rows * ((cols + 255) / 256));
+  const auto severity = logging::LoggingManager::DefaultLogger().GetSeverity();
+  logging::LoggingManager::SetDefaultLoggerSeverity(logging::Severity::kINFO);
+  auto restore_severity = gsl::finally([severity] { logging::LoggingManager::SetDefaultLoggerSeverity(severity); });
+  options.session_log_severity_level = static_cast<int>(logging::Severity::kINFO);
+  testing::internal::CaptureStderr();
+#endif
+  test.Config(options).ConfigEp(std::move(ep)).RunWithConfig();
+#if defined(USE_WEBGPU)
+  const auto log = testing::internal::GetCapturedStderr();
+  EXPECT_EQ(log.find("Starting program \"TopKSubgroupSelect") != std::string::npos, expect_subgroup) << log;
+#endif
+}
+
+#if defined(USE_WEBGPU)
+TEST(TopKOperator, WebGpuHierarchicalCapabilityFallback) {
+  using webgpu::detail::SupportsAppleHierarchicalTopK;
+  wgpu::Limits limits{};
+  limits.maxComputeWorkgroupSizeX = 32;
+  limits.maxComputeInvocationsPerWorkgroup = 32;
+  limits.maxComputeWorkgroupsPerDimension = 65535;
+  EXPECT_TRUE(SupportsAppleHierarchicalTopK("apple", wgpu::BackendType::Metal, 32, 32, limits, 65535));
+  for (std::string_view vendor : {"intel", "amd", "nvidia", "qualcomm"}) {
+    EXPECT_FALSE(SupportsAppleHierarchicalTopK(vendor, wgpu::BackendType::Metal, 32, 32, limits, 1));
+  }
+  EXPECT_FALSE(SupportsAppleHierarchicalTopK("apple", wgpu::BackendType::Vulkan, 32, 32, limits, 1));
+  EXPECT_FALSE(SupportsAppleHierarchicalTopK("apple", wgpu::BackendType::Metal, 16, 32, limits, 1));
+  EXPECT_FALSE(SupportsAppleHierarchicalTopK("apple", wgpu::BackendType::Metal, 32, 32, limits, 65536));
+  limits.maxComputeInvocationsPerWorkgroup = 31;
+  EXPECT_FALSE(SupportsAppleHierarchicalTopK("apple", wgpu::BackendType::Metal, 32, 32, limits, 1));
+}
+#endif
+
+TEST(TopKOperator, WebGpuSmallKSignedZeroTies) {
+  for (bool largest : {false, true}) {
+    RunWebGpuSmallK<float>(4103, 16, largest, -1, false, true);
+    RunWebGpuSmallK<MLFloat16>(4103, 16, largest, -1, false, true);
+  }
+}
+
+TEST(TopKOperator, WebGpuSmallKHierarchicalStable) {
+  for (bool largest : {false, true}) {
+    for (int64_t k : {1, 7, 16}) {
+      SCOPED_TRACE(MakeString("largest=", largest, ", k=", k));
+      RunWebGpuSmallK<float>(65539, k, largest, -1);
+      RunWebGpuSmallK<MLFloat16>(65539, k, largest, -1);
+    }
+  }
+}
+
+TEST(TopKOperator, WebGpuSmallKTransposedStable) {
+  for (bool largest : {false, true}) {
+    RunWebGpuSmallK<float>(4103, 16, largest, 0);
+    RunWebGpuSmallK<MLFloat16>(4103, 16, largest, 0);
+  }
+}
+
+TEST(TopKOperator, WebGpuSmallKExtremePadding) {
+  for (bool largest : {false, true}) {
+    RunWebGpuSmallK<float>(2053, 16, largest, -1, true);
+    RunWebGpuSmallK<MLFloat16>(2053, 16, largest, -1, true);
+  }
+}
+
+TEST(TopKOperator, WebGpuSmallKFallbackPadding) {
+  for (bool largest : {false, true}) {
+    for (int64_t cols : {65, 2053}) {
+      SCOPED_TRACE(MakeString("largest=", largest, ", cols=", cols));
+      RunWebGpuSmallK<float>(cols, 17, largest, -1, true);
+      RunWebGpuSmallK<MLFloat16>(cols, 17, largest, -1, true);
+    }
+  }
+}
 
 template <typename T = float>
 static void RunTest(int op_set,

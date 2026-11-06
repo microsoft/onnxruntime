@@ -37,3 +37,12 @@ The bindings forward lists without maintaining a second registry.
 Only capabilities that can be gated per session are registered today;
 future device-creation-only features need separate lifecycle handling and
 documented scope. Numeric and enum settings remain explicit typed options.
+
+## Precision and device-specific routing
+
+Apple Metal TopK can use hierarchical subgroup selection for more than 2048
+columns and K up to 16. Selection preserves value ordering, stable lower-index
+ties (including signed zeros and infinities), axis semantics, and int64 output
+indices. Fixed 32-lane subgroups, workgroup limits, and dispatch bounds are
+required; other adapters and shapes retain bitonic sorting. Padding uses
+infinities rather than finite extrema so valid extreme values are not displaced.
