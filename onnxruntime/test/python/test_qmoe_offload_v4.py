@@ -3982,6 +3982,54 @@ TestQMoEOffloadV4()._check_int2_bf16_tensorcore_scale_limits_and_dispatch()
             del ref
             gc.collect()
 
+    def test_v4_int4_many_experts_large_bounded_host_cache_is_initialized(self):
+        # The backend must keep the finite host cache that admission granted, whatever the amount of system RAM.
+        # A cache of at least 64 MiB for at least 64 experts used to be dropped on low-RAM Windows hosts.
+        self._skip_unless_int4_bf16_runner()
+        hidden, inter, num_experts = 1536, 640, 64
+        device_slot_bytes = (hidden * inter * 27) // 16 + 8
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            mock.patch.dict(os.environ, {"ORT_QMOE_SHARED_RESIDENT_LOG": "1"}),
+        ):
+            model = self._build_int_qmoe_model(
+                tmpdir, [(4, 32, 1)], num_experts=num_experts, hidden_size=hidden, inter_size=inter
+            )
+            ref = self._make_session(model, {"session.moe.offload.mode": "disabled"})
+            rng = np.random.default_rng(33916)
+            with _capture_native_stderr() as captured:
+                sess = self._make_session(
+                    model,
+                    {
+                        "session.moe.offload.mode": "required",
+                        "session.moe.offload.placement": "static",
+                        "session.moe.offload.popularity_file": "expert-profile.bin",
+                        "session.moe.offload.cpu_execution": "enabled",
+                        # Experts 0 and 3 stay resident. The host cache holds fewer than the 62 cold experts.
+                        "session.moe.offload.device_expert_bytes": str(num_experts * 8 + 2 * device_slot_bytes + 4096),
+                        "session.moe.offload.host_expert_bytes": str(80 << 20),
+                    },
+                )
+                for step in range(5):
+                    x = rng.standard_normal((4, hidden), dtype=np.float32) * 0.5
+                    router = np.full((4, num_experts), -10.0, dtype=np.float32)
+                    router[:, 0] = 10.0
+                    router[:, 4 + step % 4] = 10.0
+                    self._assert_int_offload_parity(
+                        self._run_bf16(ref, x, router),
+                        self._run_bf16(sess, x, router),
+                        f"large_bounded_host_cache({step=})",
+                    )
+                del sess
+                gc.collect()
+            accesses = [
+                int(hits) + int(misses)
+                for hits, misses in re.findall(r"ssd_hits=(\d+) ssd_pf_hits=\d+ ssd_misses=(\d+)", captured[0])
+            ]
+            self.assertTrue(accesses and any(count > 0 for count in accesses), captured[0])
+            del ref
+            gc.collect()
+
     def test_v4_int4_default_stream_tile_and_wave_fit_the_working_budget(self):
         self._skip_unless_int4_bf16_runner()
         rows = 2048

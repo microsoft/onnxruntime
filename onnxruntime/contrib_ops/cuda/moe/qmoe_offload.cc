@@ -2689,21 +2689,6 @@ QMoEOffload::QMoEOffload(const OpKernelInfo& info,
   host_complement_mode_ = false;
   ssd_cache_slots_ = 0;
   host_cache_bytes_ = static_cast<size_t>(plan.host_cache_bytes);
-#if defined(_WIN32)
-  if (host_cache_bytes_ >= (64ULL << 20) && desc.num_experts >= 64) {
-    char force_buf[8]{};
-    const DWORD force_len = GetEnvironmentVariableA("ORT_QMOE_FORCE_BOUNDED_HOST_CACHE", force_buf, sizeof(force_buf));
-    const bool force_bounded = (force_len > 0 && force_buf[0] == '1');
-    if (!force_bounded) {
-      MEMORYSTATUSEX mem_stat{};
-      mem_stat.dwLength = sizeof(mem_stat);
-      if (GlobalMemoryStatusEx(&mem_stat) &&
-          mem_stat.ullTotalPhys < policy.host_expert_bytes.bytes + (24ULL << 30)) {
-        host_cache_bytes_ = 0;
-      }
-    }
-  }
-#endif
   swap_victim_to_host_cache_ = (host_cache_bytes_ > 0);
   ::onnxruntime::cuda::SetQMoEDeviceArenasShrunkHook(&OnQMoEDeviceArenasShrunk);
   ORT_ENFORCE(sm_ >= 80, "QMoEOffload requires SM80 or later.");
