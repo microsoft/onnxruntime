@@ -14,6 +14,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/unittest_util/graph_transform_test_builder.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/temp_dir.h"
 
@@ -2405,6 +2406,23 @@ TEST(PatternGraphTests, LoopFormalInputsAndPassthroughOutputs) {
   Statistics statistics;
   EXPECT_FALSE(PatternRewriter({unsafe}).Run(test.graph, statistics).IsOK());
   EXPECT_EQ(test.model.ToProto().SerializeAsString(), before);
+  for (int64_t iterations : {int64_t{0}, int64_t{3}}) {
+    NameMLValMap feeds = b.feeds_;
+    CreateMLValue<int64_t>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], {}, {iterations},
+                           &feeds.at(trip->Name()));
+    SessionOptions options;
+    options.graph_optimization_level = TransformerLevel::Default;
+    options.intra_op_param.thread_pool_size = 1;
+    InferenceSessionWrapper session{options, GetEnvironment()};
+    std::istringstream stream(before);
+    ASSERT_STATUS_OK(session.Load(stream));
+    ASSERT_STATUS_OK(session.Initialize());
+    std::vector<OrtValue> outputs;
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, b.output_names_, &outputs));
+    ASSERT_EQ(outputs.size(), 1u);
+    EXPECT_EQ(outputs[0].Get<Tensor>().Data<float>()[0], 1.0f);
+    EXPECT_EQ(outputs[0].Get<Tensor>().Data<float>()[1], 2.0f);
+  }
 }
 
 TEST(PatternGraphTests, LocalShadowPartialBodyAndProviderSafety) {
@@ -2562,7 +2580,10 @@ TEST(PatternGraphTests, MobiusLinearAttentionScanEnvelopeNumerics) {
       return output,state
     }
   )");
-  for (int64_t length : {int64_t{1}, int64_t{3}}) {
+  std::string decode_original, decode_rewritten;
+  for (int scenario = 0; scenario < 4; ++scenario) {
+    const int64_t length = scenario == 0 ? 0 : scenario == 1 ? 1
+                                                             : 3;
     TestGraph test({}, {{kOnnxDomain, 17}, {kMSDomain, 1}});
     auto& b = test.builder;
     auto* q = b.MakeInput<float>({1, length, 4}, -0.5f, 0.5f);
@@ -2621,23 +2642,52 @@ TEST(PatternGraphTests, MobiusLinearAttentionScanEnvelopeNumerics) {
     auto& scan = b.AddNode("Scan", std::vector<NodeArg*>(scan_inputs.begin(), scan_inputs.end()), {final_state, sequence});
     scan.AddAttribute("num_scan_inputs", int64_t{3});
     scan.AddAttribute("body", body);
+    if (scenario == 3) scan.AddAttribute("scan_input_directions", std::vector<int64_t>{1, 0, 0});
     auto* packed = b.MakeIntermediate();
     b.AddNode("Transpose", {sequence}, {packed}).AddAttribute("perm", std::vector<int64_t>{1, 0, 2, 3});
     b.AddNode("Reshape", {packed, b.MakeInitializer<int64_t>({3}, {0, 0, 4})}, {b.MakeOutput()});
     b.SetGraphOutputs();
     ASSERT_STATUS_OK(test.graph.Resolve());
     const auto original = test.model.ToProto().SerializeAsString();
+    auto check = [](const Graph&, Match& match) {
+      const auto* length = std::get_if<int64_t>(&match.dimensionOf("T"));
+      if (!length || *length <= 0) return match.Reject("This example requires a nonempty known sequence.");
+      const Node* scan_node = nullptr;
+      for (const Node* node : match.nodes)
+        if (node->OpType() == "Scan") scan_node = node;
+      if (!scan_node) return match.Reject("Missing Scan.");
+      for (const auto& [name, count] : {std::pair{"scan_input_axes", 3}, {"scan_output_axes", 1}, {"scan_input_directions", 3}, {"scan_output_directions", 1}}) {
+        auto found = scan_node->GetAttributes().find(name);
+        if (found == scan_node->GetAttributes().end()) continue;
+        const auto& attribute = found->second;
+        if (attribute.type() != ONNX_NAMESPACE::AttributeProto_AttributeType_INTS ||
+            attribute.ints_size() != count ||
+            std::any_of(attribute.ints().begin(), attribute.ints().end(), [](int64_t value) { return value != 0; }))
+          return match.Reject("This example requires time-first forward Scan axes and directions.");
+      }
+      return true;
+    };
     Rule rule{"LinearAttentionScan", library.GetPattern("P"),
               "(q,k,v,past)=>{output,state=com.microsoft.LinearAttention(q,k,v,past,None,None,"
               "q_num_heads=1,kv_num_heads=1,scale=0.5,update_rule='linear');return output,state}",
-              {},
+              check,
               {{kOnnxDomain, 17, 17}, {kMSDomain, 1, 1}}};
     Statistics statistics;
     ASSERT_STATUS_OK(PatternRewriter({rule}).Run(test.graph, statistics));
-    ASSERT_EQ(statistics.rewrites, 1u);
+    ASSERT_EQ(statistics.rewrites, scenario == 0 || scenario == 3 ? 0u : 1u);
+    if (scenario == 0 || scenario == 3) {
+      EXPECT_EQ(Count(test.graph, "Scan"), 1u);
+      EXPECT_EQ(test.model.ToProto().SerializeAsString(), original);
+      continue;
+    }
     EXPECT_EQ(Count(test.graph, "Scan"), 0u);
     EXPECT_EQ(Count(test.graph, "LinearAttention"), 1u);
     ASSERT_STATUS_OK(test.graph.Resolve());
+    const auto rewritten = test.model.ToProto().SerializeAsString();
+    if (length == 1) {
+      decode_original = original;
+      decode_rewritten = rewritten;
+    }
     auto execute = [&](const std::string& serialized, std::vector<OrtValue>& outputs) {
       SessionOptions options;
       options.graph_optimization_level = TransformerLevel::Default;
@@ -2650,7 +2700,7 @@ TEST(PatternGraphTests, MobiusLinearAttentionScanEnvelopeNumerics) {
     };
     std::vector<OrtValue> before, after;
     ASSERT_STATUS_OK(execute(original, before));
-    ASSERT_STATUS_OK(execute(test.model.ToProto().SerializeAsString(), after));
+    ASSERT_STATUS_OK(execute(rewritten, after));
     ASSERT_EQ(before.size(), 2u);
     ASSERT_EQ(after.size(), 2u);
     for (size_t output = 0; output < before.size(); ++output) {
@@ -2659,6 +2709,36 @@ TEST(PatternGraphTests, MobiusLinearAttentionScanEnvelopeNumerics) {
       ASSERT_EQ(expected.Shape(), actual.Shape());
       for (int64_t i = 0; i < expected.Shape().Size(); ++i)
         EXPECT_NEAR(expected.Data<float>()[i], actual.Data<float>()[i], 1e-5f);
+    }
+    if (length == 3) {
+      ASSERT_FALSE(decode_original.empty());
+      for (const std::string* serialized : {&decode_original, &decode_rewritten}) {
+        SessionOptions options;
+        options.graph_optimization_level = TransformerLevel::Default;
+        options.intra_op_param.thread_pool_size = 1;
+        InferenceSessionWrapper session{options, GetEnvironment()};
+        std::istringstream stream(*serialized);
+        ASSERT_STATUS_OK(session.Load(stream));
+        ASSERT_STATUS_OK(session.Initialize());
+        NameMLValMap feeds = b.feeds_;
+        for (int64_t token = 0; token < length; ++token) {
+          for (const NodeArg* input : {q, k, v}) {
+            const auto data = b.feeds_.at(input->Name()).Get<Tensor>().DataAsSpan<float>();
+            CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], {1, 1, 4},
+                                 data.subspan(static_cast<size_t>(token * 4), 4), &feeds.at(input->Name()));
+          }
+          std::vector<OrtValue> step;
+          ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, b.output_names_, &step));
+          ASSERT_EQ(step.size(), 2u);
+          for (int64_t i = 0; i < 4; ++i)
+            EXPECT_NEAR(step[1].Get<Tensor>().Data<float>()[i],
+                        before[1].Get<Tensor>().Data<float>()[token * 4 + i], 1e-5f);
+          feeds.at(past->Name()) = step[0];
+        }
+        const Tensor& carried = feeds.at(past->Name()).Get<Tensor>();
+        for (int64_t i = 0; i < 16; ++i)
+          EXPECT_NEAR(carried.Data<float>()[i], before[0].Get<Tensor>().Data<float>()[i], 1e-5f);
+      }
     }
   }
 }
