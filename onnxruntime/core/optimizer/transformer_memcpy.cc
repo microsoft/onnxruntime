@@ -87,13 +87,7 @@ class TransformerMemcpyImpl {
 @param check_outer_scope If true and the graph is a subgraph, check parent graph/s for 'name' if not found in 'graph'.
 */
 static const onnx::TensorProto* GetInitializer(const Graph& graph, const std::string& name, bool check_outer_scope) {
-  const onnx::TensorProto* initializer = nullptr;
-  if (graph.GetInitializedTensor(name, initializer)) {
-    return initializer;
-  } else if (check_outer_scope && graph.IsSubgraph()) {
-    return GetInitializer(*graph.ParentGraph(), name, check_outer_scope);
-  }
-  return initializer;
+  return graph.GetInitializer(name, check_outer_scope);
 }
 
 // very simple GraphTransformer that uses TransformerMemcpyImpl for each graph
@@ -453,6 +447,10 @@ bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& ker
       } else {
         ORT_IGNORE_RETURN_VALUE(graph_utils::AddInitializer(graph_, new_tensor_proto));
       }
+      Graph::ExternalInitializerFileSource file_source;
+      if (graph_.GetExternalInitializerFileSource(name, file_source, check_outer_scope_true)) {
+        graph_.SetExternalInitializerFileSource(new_tensor_proto.name(), std::move(file_source));
+      }
 
       replacements.insert(std::make_pair(provider_def, &new_def));
     }
@@ -488,7 +486,11 @@ bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& ker
   }
 
   // This denotes a modification to the graph
-  return !replacements.empty();
+  if (!replacements.empty()) {
+    graph_.SetGraphProtoSyncNeeded();
+    return true;
+  }
+  return false;
 }
 
 }  // namespace onnxruntime

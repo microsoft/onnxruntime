@@ -1755,6 +1755,13 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddExternalInitializersFrom
 }
 
 template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetExternalInitializerFileHandles(
+    const char* const* names, const OrtFileHandle* handles, size_t count) {
+  ThrowOnError(GetApi().SessionOptionsSetExternalInitializerFileHandles(this->p_, names, handles, count));
+  return *this;
+}
+
+template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_CPU(int use_arena) {
   ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CPU(this->p_, use_arena));
   return *this;

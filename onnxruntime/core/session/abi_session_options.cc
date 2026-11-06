@@ -642,6 +642,47 @@ ORT_API_STATUS_IMPL(OrtApis::AddExternalInitializersFromFilesInMemory, _In_ OrtS
 #endif
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetExternalInitializerFileHandles, _Inout_ OrtSessionOptions* options,
+                    _In_reads_(count) const char* const* names,
+                    _In_reads_(count) const OrtFileHandle* handles,
+                    size_t count) {
+#if (defined(_WIN32) || defined(__linux__) || defined(__ANDROID__) || defined(__APPLE__)) && \
+    !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(options == nullptr || (count != 0 && (names == nullptr || handles == nullptr)),
+                    ORT_INVALID_ARGUMENT, "Invalid external initializer file-source arguments");
+  ORT_API_RETURN_IF(!options->value.external_initializer_files_mmap.empty(),
+                    ORT_INVALID_ARGUMENT, "Cannot combine external initializer buffers and file sources");
+  auto sources = std::make_shared<
+      std::unordered_map<onnxruntime::PathString, std::shared_ptr<onnxruntime::RandomAccessFile>>>();
+  for (size_t i = 0; i < count; ++i) {
+    ORT_API_RETURN_IF(names[i] == nullptr, ORT_INVALID_ARGUMENT, "Null initializer file name");
+    const std::string_view name{names[i]};
+    ORT_API_RETURN_IF(name.empty() || name == "." || name == ".." ||
+                          name.find_first_of("/\\:") != std::string_view::npos,
+                      ORT_INVALID_ARGUMENT, "Initializer file names must be flat relative names");
+    const auto path = onnxruntime::ToPathString(name);
+    ORT_API_RETURN_IF(sources->count(path) != 0, ORT_INVALID_ARGUMENT,
+                      "Duplicate initializer file name");
+    std::shared_ptr<onnxruntime::RandomAccessFile> file;
+    const auto status = onnxruntime::Env::Default().DuplicateReadOnlyFileHandle(handles[i], file);
+    if (!status.IsOK()) {
+      return onnxruntime::ToOrtStatus(status);
+    }
+    sources->emplace(path, std::move(file));
+  }
+  options->value.external_initializer_file_sources = std::move(sources);
+  return nullptr;
+  API_IMPL_END
+#else
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(names);
+  ORT_UNUSED_PARAMETER(handles);
+  ORT_UNUSED_PARAMETER(count);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "File-source loading requires a supported full build");
+#endif
+}
+
 ORT_API_STATUS_IMPL(OrtApis::SetDeterministicCompute, _Inout_ OrtSessionOptions* options, bool value) {
   API_IMPL_BEGIN
   options->value.use_deterministic_compute = value;

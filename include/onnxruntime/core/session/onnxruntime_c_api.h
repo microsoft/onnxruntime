@@ -655,6 +655,20 @@ typedef enum OrtEpContextDataCallbackSupportFlags {
   OrtEpContextDataCallbackSupportFlags_WRITE = 1 << 1,
 } OrtEpContextDataCallbackSupportFlags;
 
+#ifdef _WIN32
+/** \brief A native Windows file HANDLE, not a C runtime file descriptor.
+ *
+ * \since Version 1.32.
+ */
+typedef void* OrtFileHandle;
+#else
+/** \brief A POSIX file descriptor.
+ *
+ * \since Version 1.32.
+ */
+typedef int OrtFileHandle;
+#endif
+
 /** \brief Function called by ORT to allow user to specify how an initializer should be saved, that is, either
  * written to an external file or stored within the model. ORT calls this function for every initializer when
  * generating a model.
@@ -7761,6 +7775,43 @@ struct OrtApi {
   ORT_API2_STATUS(EpDevice_GetMemoryCapacity, _In_ const OrtEpDevice* ep_device,
                   _In_ OrtDeviceMemoryType memory_type,
                   _Out_opt_ uint64_t* total_memory_bytes, _Out_opt_ uint64_t* available_memory_bytes);
+
+  /** \brief Register a complete set of pre-opened external initializer files.
+   *
+   * Supported on Windows, Linux, Android, macOS and iOS. Handles are duplicated on
+   * success; callers retain ownership of their originals. Windows uses native HANDLEs
+   * with read access; duplicates have only read access. POSIX requires read-only file
+   * descriptors. Only regular files are supported.
+   * Each name must be a flat relative ONNX external-data location. Registration replaces
+   * the previous set atomically. Sessions and cloned options retain the files independently.
+   * Graph initializer and Constant output names must be unique; duplicates are rejected before graph construction.
+   * A zero count installs an empty registry; missing sources still fail without path fallback.
+   * The registry is retained when loading session options from model metadata.
+   * Tensor ranges are loaded or mapped from the registered handles without resolving or canonicalizing file paths.
+   * Subgraph checking does not inline mapped initializer payloads.
+   * Small tensors may be inlined; unaligned numeric ranges and BOOL tensors are copied into owned storage.
+   * BOOL elements are normalized to zero or one.
+   * Files must remain immutable while dependent sessions/tensors exist. Missing sources
+   * and invalid ranges fail without filesystem fallback. Supports ONNX graph initializers,
+   * including subgraphs, but not external sparse tensors, external tensor attributes,
+   * external data in model-local functions, or model packages.
+   * Sessions without a registered file-source set retain their existing loading behavior.
+   * This does not change execution-provider selection or provide a sandbox.
+   * Unsupported platforms, minimal builds, and builds without external initializers return ORT_NOT_IMPLEMENTED.
+   *
+   * \param[in] options Session options to configure.
+   * \param[in] names Array of null-terminated UTF-8 flat relative file names. May be NULL when `count` is zero.
+   * \param[in] handles Array of native file handles. May be NULL when `count` is zero.
+   * \param[in] count Number of entries in `names` and `handles`.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(SessionOptionsSetExternalInitializerFileHandles, _Inout_ OrtSessionOptions* options,
+                  _In_reads_(count) const char* const* names,
+                  _In_reads_(count) const OrtFileHandle* handles,
+                  size_t count);
 };
 
 /*

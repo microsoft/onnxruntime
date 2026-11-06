@@ -50,6 +50,7 @@ struct IndexedSubGraph;
 class Model;
 struct ModelSavingOptions;
 class OpSignature;
+class RandomAccessFile;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 class RuntimeOptimizationRecordContainer;
@@ -770,6 +771,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   common::Status InjectExternalInitializersFromFilesInMemory(
       const InlinedHashMap<PathString, std::pair<char*, size_t>>& external_initializer_files,
       bool use_buffers_directly = false);
+
+  common::Status InjectExternalInitializersFromFileSources(
+      const std::unordered_map<PathString, std::shared_ptr<RandomAccessFile>>& files);
 #endif  // !defined(DISABLE_EXTERNAL_INITIALIZERS)
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -843,6 +847,33 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /// <returns>True if `name` refers to an initializer with data in an external file. Otherwise, returns false</returns>
   bool GetExternalInitializerInfo(const std::string& name, std::unique_ptr<ExternalDataInfo>& ext_info,
                                   bool check_outer_scope = false) const;
+
+  struct ExternalInitializerFileSource {
+    PathString location;
+    std::shared_ptr<RandomAccessFile> file;
+    int64_t offset = 0;
+    size_t length = 0;
+  };
+
+  bool HasExternalInitializerFileSource(const std::string& name,
+                                        bool check_outer_scope = false) const {
+    ExternalInitializerFileSource source;
+    return GetExternalInitializerFileSource(name, source, check_outer_scope);
+  }
+
+  bool GetExternalInitializerFileSource(const std::string& name,
+                                        ExternalInitializerFileSource& source,
+                                        bool check_outer_scope = false) const;
+
+  void SetExternalInitializerFileSource(const std::string& name,
+                                        ExternalInitializerFileSource source) {
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+    external_initializer_file_sources_.insert_or_assign(name, std::move(source));
+#else
+    ORT_UNUSED_PARAMETER(name);
+    ORT_UNUSED_PARAMETER(source);
+#endif
+  }
 
   /** Gets all the initializer tensors in this Graph. */
   const InitializedTensorSet& GetAllInitializedTensors() const noexcept { return name_to_initial_tensor_; }
@@ -1980,13 +2011,16 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /// with OrtValue from the customer, in which case we enforce that the original initializer must have external data</param>
   /// <returns></returns>
   Status ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initializer,
-                                      OrtValue ort_value, bool must_replace_external);
+                                      OrtValue ort_value, bool must_replace_external,
+                                      ONNX_NAMESPACE::TensorProto* existing_initializer = nullptr);
 
   template <typename StringRange>  // range-initializer returning std::string
   std::vector<NodeArg*> CreateNodeArgs(const StringRange& names,
                                        const ArgNameToTypeMap& name_to_type_map);
 
   void ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const;
+  void ToGraphProtoForFileSourceChecker(ONNX_NAMESPACE::GraphProto& graph_proto) const;
+  static void NodeToProtoForFileSourceChecker(const Node& node, ONNX_NAMESPACE::NodeProto& node_proto);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -2100,6 +2134,12 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
+  // File-source graphs use a payload-free subgraph view for ONNX checking.
+  bool file_source_initializers_injected_ = false;
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
+  InlinedHashMap<std::string, ExternalInitializerFileSource> external_initializer_file_sources_;
+#endif
+
   IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;
 
   // Currently to make the ORT in-memory graph work, we have to create a temporary op schema
