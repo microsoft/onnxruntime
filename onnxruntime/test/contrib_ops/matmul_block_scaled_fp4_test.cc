@@ -30,6 +30,87 @@ namespace onnxruntime::test {
 // E4M3 (float8e4m3fn) scale byte encodings:
 //   1.0 -> 0x38, 2.0 -> 0x40, 0.5 -> 0x30
 
+TEST(MatMulBlockQuantizedFp4WeightOpTest, FixedGemvHalfPairCancellation) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA SM80 is required.";
+  }
+  for (int64_t k : {4096, 8192}) {
+    std::vector<BFloat16> a(k, BFloat16(0.f));
+    a[0] = BFloat16(16384.f);
+    a[1] = BFloat16(1.f);
+    a[2] = BFloat16(-16384.f);
+    // The unit is lost in FP16-pair accumulation, unlike the default FP32 MMA path.
+    OpTester test("MatMulBlockQuantizedFp4Weight", 1, kMSDomain);
+    test.AddAttribute<std::string>("gemv_kernel", "fixed");
+    test.AddInput<BFloat16>("A", {1, k}, a);
+    test.AddInput<uint8_t>("B", {1, k / 2}, std::vector<uint8_t>(k / 2, 0x22));
+    test.AddInput<uint8_t>("weight_scale", {1, k / 16}, std::vector<uint8_t>(k / 16, 0x38));
+    test.AddInput<float>("weight_scale_2", {1}, {1.f});
+    test.AddOutput<BFloat16>("Y", {1, 1}, {BFloat16(0.f)});
+    test.SetOutputTolerance(0, 0);
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  }
+}
+
+TEST(MatMulBlockQuantizedFp4WeightOpTest, FixedGemvMultiRowAndColumnTails) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA SM80 is required.";
+  }
+  for (int64_t m : {3, 8}) {
+    for (int64_t n : {19, 8193}) {
+      constexpr int64_t k = 4096;
+      std::vector<BFloat16> a(m * k), expected(m * n);
+      std::vector<uint8_t> b(n * k / 2), scales(n * k / 16);
+      for (int64_t row = 0; row < m; ++row) {
+        std::fill_n(a.begin() + row * k, k, BFloat16(float(row + 1) / float(k)));
+      }
+      for (int64_t col = 0; col < n; ++col) {
+        const bool negative = col % 2 != 0;
+        std::fill_n(b.begin() + col * k / 2, k / 2, negative ? 0xaa : 0x22);
+        std::fill_n(scales.begin() + col * k / 16, k / 16, 0x3a);
+        for (int64_t row = 0; row < m; ++row) {
+          expected[row * n + col] = BFloat16(float(row + 1) * (negative ? -1.f : 1.f) * 1.25f * 0.75f);
+        }
+      }
+      OpTester test("MatMulBlockQuantizedFp4Weight", 1, kMSDomain);
+      test.AddAttribute<std::string>("gemv_kernel", "fixed");
+      test.AddInput<BFloat16>("A", {1, m, k}, a);
+      test.AddInput<uint8_t>("B", {n, k / 2}, b);
+      test.AddInput<uint8_t>("weight_scale", {n, k / 16}, scales);
+      test.AddInput<float>("weight_scale_2", {1}, {0.75f});
+      test.AddOutput<BFloat16>("Y", {1, m, n}, expected);
+      test.SetOutputTolerance(0, 0);
+      std::vector<std::unique_ptr<IExecutionProvider>> providers;
+      providers.push_back(DefaultCudaExecutionProvider());
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+    }
+  }
+}
+
+#ifndef ORT_NO_EXCEPTIONS
+TEST(MatMulBlockQuantizedFp4WeightOpTest, RejectsInvalidFixedGemvSelection) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA SM80 is required.";
+  }
+  for (const std::string kernel : {"invalid", "fixed"}) {
+    OpTester test("MatMulBlockQuantizedFp4Weight", 1, kMSDomain);
+    test.AddAttribute<std::string>("gemv_kernel", kernel);
+    test.AddInput<BFloat16>("A", {9, 16}, std::vector<BFloat16>(9 * 16));
+    test.AddInput<uint8_t>("B", {1, 8}, std::vector<uint8_t>(8));
+    test.AddInput<uint8_t>("weight_scale", {1, 1}, {0x38});
+    test.AddInput<float>("weight_scale_2", {1}, {1.f});
+    test.AddOutput<BFloat16>("Y", {9, 1}, std::vector<BFloat16>(9));
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectFailure,
+             kernel == "invalid" ? "gemv_kernel must be" : "gemv_kernel='fixed' requires",
+             {}, nullptr, &providers);
+  }
+}
+#endif
+
 // A -> [M, K] all ones per row scaled by (m + 1); weights are constant per row, so the
 // operator must reproduce Y[m, n] = W_val[n] * sum_k A[m, k].
 TEST(MatMulBlockQuantizedFp4WeightOpTest, WeightOnlyBasicFp16) {

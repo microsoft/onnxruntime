@@ -3463,6 +3463,15 @@ The output columns `N` and the contraction dimension `K` are derived from the we
 `N = B.shape[0]` and `K = 2 * B.shape[1]`. `K` must therefore be even.)DOC")
         .Attr("block_size", "Number of consecutive K values that share one E4M3 weight scale. Default 16.",
               AttributeProto::INT, static_cast<int64_t>(16))
+        .Attr("gemv_kernel",
+              "CUDA GEMV arithmetic selection. 'auto' preserves the default dispatch. "
+              "'fixed' uses fixed-order BF16 MMA for 2-8 flattened activation rows, "
+              "or FP16-pair accumulation for one row, with the global scale applied after reduction. "
+              "It requires SM80+, BF16 activations, block_size=16, no bias, N<=INT_MAX-32 "
+              "and positive K divisible by 1024; one row additionally requires K=4096 or K=8192. "
+              "Unsupported nonempty inputs are rejected rather than silently selecting another kernel. "
+              "GEMV environment tuning does not change the fixed arithmetic.",
+              AttributeProto::STRING, std::string("auto"))
         .Input(0, "A", "Row-major FP16/BF16 activation of shape [..., K].", "T")
         .Input(1, "B",
                "Packed NVFP4 weight of shape [N, K/2] stored as uint8 (two E2M1 values per byte, low nibble first).",
