@@ -7,7 +7,9 @@
 #include <utility>
 
 #include "core/common/safeint.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/providers/webgpu/vendor/intel/math/gemm_subgroup.h"
+#include "core/providers/webgpu/vendor/intel/math/gemm_subgroup16.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -252,13 +254,24 @@ Status MatMulExecutionPlanner::ValidateExecutionPlan(
                             effective_batch_size > 0 && effective_batch_size <= kMaxUint32,
                         "MatMul subgroup dimensions must fit in uint32.");
 
+      // Must match the kernel and tile height that ApplyMatMulSubgroup derives from the same facts.
+      const bool use_subgroup16_kernel =
+          intel::UseMatMulSubgroup16Kernel(params.adapter_architecture, configuration.subgroup_size);
+      const bool f32_accumulator = params.use_f32_accumulation ||
+                                   params.a_data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
       const uint32_t elements_per_thread_y = static_cast<uint32_t>(
-          intel::MatMulSubgroupElementsPerThreadY(params.adapter_architecture,
-                                                  static_cast<uint32_t>(effective_m)));
+          use_subgroup16_kernel
+              ? intel::MatMulSubgroup16ElementsPerThreadY(
+                    static_cast<uint32_t>(effective_m), static_cast<uint32_t>(params.n), effective_batch_size,
+                    f32_accumulator, intel::CanLoadMatMulSubgroup16AVec4(static_cast<uint64_t>(params.k)))
+              : intel::MatMulSubgroupElementsPerThreadY(params.adapter_architecture,
+                                                        static_cast<uint32_t>(effective_m)));
       const auto dispatch_x = TryGetMatMulPackedDispatchGroupCount(
-          static_cast<uint64_t>(params.n), intel::kSubgroupLogicalWorkGroupSizeX, 4);
+          static_cast<uint64_t>(params.n),
+          use_subgroup16_kernel ? intel::kSubgroup16WorkGroupSizeX : intel::kSubgroupLogicalWorkGroupSizeX, 4);
       const auto dispatch_y = TryGetMatMulPackedDispatchGroupCount(
-          static_cast<uint64_t>(effective_m), intel::kSubgroupLogicalWorkGroupSizeY,
+          static_cast<uint64_t>(effective_m),
+          use_subgroup16_kernel ? intel::kSubgroup16WorkGroupSizeY : intel::kSubgroupLogicalWorkGroupSizeY,
           elements_per_thread_y);
       const auto dispatch_z = TryGetMatMulPackedDispatchGroupCount(
           effective_batch_size, intel::kSubgroupLogicalWorkGroupSizeZ, 1);

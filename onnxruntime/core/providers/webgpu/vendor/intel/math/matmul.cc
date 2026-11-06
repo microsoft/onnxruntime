@@ -5,6 +5,7 @@
 #include "core/providers/webgpu/webgpu_utils.h"
 #include "core/providers/webgpu/math/matmul_utils.h"
 #include "core/providers/webgpu/vendor/intel/math/gemm_subgroup.h"
+#include "core/providers/webgpu/vendor/intel/math/gemm_subgroup16.h"
 #include "core/providers/webgpu/math/gemm_utils.h"
 #include "core/providers/webgpu/vendor/intel/math/matmul.h"
 
@@ -38,6 +39,10 @@ Status MatMulSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
   MatMulReadFnSource(shader, a, b, &batch_dims, /*transA = */ false, /*transB = */ false);
   MatMulWriteFnSourceForMatMul(shader, output, bias, apply_activation, is_channels_last_);
   // generate the main function
+  if (use_subgroup16_kernel_) {
+    return MakeMatMulSubgroup16Source(shader, elements_per_thread_, &batch_dims, is_vec4_, a_vec4_,
+                                      use_f32_accumulation_);
+  }
   ORT_RETURN_IF_ERROR(MakeMatMulSubgroupSource(shader, elements_per_thread_, &batch_dims, is_vec4_, a_vec4_,
                                                b_is_fp16_, use_f32_accumulation_));
   return Status::OK();
@@ -65,6 +70,20 @@ std::optional<uint32_t> SelectMatMulSubgroupSize(uint32_t adapter_min_subgroup_s
   return std::nullopt;
 }
 
+std::optional<uint32_t> SelectMatMulSubgroupSize(std::string_view architecture,
+                                                 uint32_t adapter_min_subgroup_size,
+                                                 uint32_t adapter_max_subgroup_size,
+                                                 bool has_subgroup_size_control) {
+  const bool can_use_size_16 =
+      (adapter_min_subgroup_size == kMatMulSubgroup16Size && adapter_max_subgroup_size == kMatMulSubgroup16Size) ||
+      (has_subgroup_size_control && adapter_min_subgroup_size <= kMatMulSubgroup16Size &&
+       kMatMulSubgroup16Size <= adapter_max_subgroup_size);
+  if (can_use_size_16 && UseMatMulSubgroup16Kernel(architecture, kMatMulSubgroup16Size)) {
+    return kMatMulSubgroup16Size;
+  }
+  return SelectMatMulSubgroupSize(adapter_min_subgroup_size, adapter_max_subgroup_size, has_subgroup_size_control);
+}
+
 std::optional<uint32_t> SelectMatMulSubgroupSize(const ComputeContext& context) {
   if (!context.HasFeature(wgpu::FeatureName::Subgroups)) {
     return std::nullopt;
@@ -72,6 +91,7 @@ std::optional<uint32_t> SelectMatMulSubgroupSize(const ComputeContext& context) 
 
   const auto& adapter_info = context.AdapterInfo();
   return SelectMatMulSubgroupSize(
+      adapter_info.architecture,
       adapter_info.subgroupMinSize,
       adapter_info.subgroupMaxSize,
       context.HasFeature(wgpu::FeatureName::SubgroupSizeControl));
@@ -137,20 +157,34 @@ Status ApplyMatMulSubgroup(ComputeContext& context,
 
   // Always access A with 1-component when using subgroup.
   const bool is_vec4 = dim_b_outer % 4 == 0;
+  const bool use_f32_accumulation = context.EnableMatmulFp32Accumulation() && a->IsDataType<MLFloat16>();
+  const bool use_subgroup16_kernel = UseMatMulSubgroup16Kernel(arch, subgroup_size);
   // vec4 A loads and double-buffering of the B tile are only enabled on Xe-3LPG.
   const bool is_xe_3lpg = arch == gpu_arch::kXe3Lpg;
   // Double-buffering of the B tile (held in workgroup memory) is only enabled for float16 B inputs.
-  const bool b_is_fp16 = is_xe_3lpg && b->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
-  const bool use_f32_accumulation = context.EnableMatmulFp32Accumulation() && a->IsDataType<MLFloat16>();
-  InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({4, ElementsPerThreadY(context, dim_a_outer), 1});
-  // Fall back to scalar A loads when rows cannot be distributed evenly among
-  // the cooperative vec4 lane groups (for example, forced low-M execution).
-  const bool a_vec4 = CanUseAVec4CooperativeLoad(arch, dim_inner, elements_per_thread[1]);
+  const bool b_is_fp16 = !use_subgroup16_kernel && is_xe_3lpg &&
+                         b->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+  bool a_vec4 = false;
+  InlinedVector<int64_t> elements_per_thread;
+  if (use_subgroup16_kernel) {
+    a_vec4 = CanLoadMatMulSubgroup16AVec4(dim_inner);
+    const bool f32_accumulator = use_f32_accumulation || !a->IsDataType<MLFloat16>();
+    const int64_t elements_per_thread_y = MatMulSubgroup16ElementsPerThreadY(
+        dim_a_outer, dim_b_outer, static_cast<uint64_t>(batch_size), f32_accumulator, a_vec4);
+    elements_per_thread = {4, elements_per_thread_y, 1};
+  } else {
+    elements_per_thread = {4, ElementsPerThreadY(context, dim_a_outer), 1};
+    // Fall back to scalar A loads when rows cannot be distributed evenly among
+    // the cooperative vec4 lane groups (for example, forced low-M execution).
+    a_vec4 = CanUseAVec4CooperativeLoad(arch, dim_inner, elements_per_thread[1]);
+  }
+  const uint32_t workgroup_size_x = use_subgroup16_kernel ? kSubgroup16WorkGroupSizeX : kSubgroupLogicalWorkGroupSizeX;
+  const uint32_t workgroup_size_y = use_subgroup16_kernel ? kSubgroup16WorkGroupSizeY : kSubgroupLogicalWorkGroupSizeY;
 
-  const uint32_t dispatch_x = narrow<uint32_t>((dim_b_outer + kSubgroupLogicalWorkGroupSizeX * elements_per_thread[0] - 1) /
-                                               (kSubgroupLogicalWorkGroupSizeX * elements_per_thread[0]));
-  const uint32_t dispatch_y = narrow<uint32_t>((dim_a_outer + kSubgroupLogicalWorkGroupSizeY * elements_per_thread[1] - 1) /
-                                               (kSubgroupLogicalWorkGroupSizeY * elements_per_thread[1]));
+  const uint32_t dispatch_x = narrow<uint32_t>((dim_b_outer + workgroup_size_x * elements_per_thread[0] - 1) /
+                                               (workgroup_size_x * elements_per_thread[0]));
+  const uint32_t dispatch_y = narrow<uint32_t>((dim_a_outer + workgroup_size_y * elements_per_thread[1] - 1) /
+                                               (workgroup_size_y * elements_per_thread[1]));
   const uint32_t dispatch_z = narrow<uint32_t>(CeilDiv(
       batch_size, kSubgroupLogicalWorkGroupSizeZ * elements_per_thread[2]));
 
@@ -162,20 +196,20 @@ Status ApplyMatMulSubgroup(ComputeContext& context,
   const TensorShape output_shape_temp = TensorShape({batch_size, dim_a_outer, dim_b_outer / components});
 
   MatMulSubgroupProgram program{activation, has_bias, is_vec4, a_vec4, b_is_fp16, use_f32_accumulation,
-                                is_channels_last, elements_per_thread};
+                                is_channels_last, use_subgroup16_kernel, elements_per_thread};
   if (context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
     program.SetSubgroupSize(subgroup_size);
   }
   program
       .CacheHint(activation.CacheKey(), absl::StrJoin(elements_per_thread, "-"),
-                 a_vec4, b_is_fp16, use_f32_accumulation, is_channels_last)
+                 a_vec4, b_is_fp16, use_f32_accumulation, is_channels_last, use_subgroup16_kernel)
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, a_components},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, b_components}})
       .AddOutputs({{output, ProgramTensorMetadataDependency::Rank, output_shape_temp, components}})
       .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}, {dispatch_x}, {dispatch_y}, {dispatch_z}})
       .AddIndices(outer_dims)
       .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
-      .SetWorkgroupSize(kSubgroupLogicalWorkGroupSizeX * kSubgroupLogicalWorkGroupSizeY, 1, 1);
+      .SetWorkgroupSize(workgroup_size_x * workgroup_size_y, 1, 1);
   // Activation uniforms must remain last because definitions and values are matched by index.
   AppendActivationUniformsData(activation, program);
 
