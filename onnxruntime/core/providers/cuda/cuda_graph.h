@@ -22,6 +22,7 @@ struct CudaGraphSet {
   ~CudaGraphSet();
 
   void Clear();
+  Status Remove(CudaGraphAnnotation_t cuda_graph_annotation_id);
   bool Contains(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
   void Put(CudaGraphAnnotation_t cuda_graph_annotation_id, cudaGraphExec_t graph_exec);
   cudaGraphExec_t Get(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
@@ -30,6 +31,7 @@ struct CudaGraphSet {
   CudaGraphSet_t cuda_graphs_;
 };
 
+// Callers serialize access and pair capture begin/end on the same thread with the same ID.
 struct CUDAGraphManager {
   CUDAGraphManager() {};
   CUDAGraphManager(cudaStream_t stream);
@@ -42,6 +44,9 @@ struct CUDAGraphManager {
   // For a run that failed while being captured, where the recorded work is incomplete.
   void DiscardCapture() noexcept;
   Status Replay(CudaGraphAnnotation_t cuda_graph_annotation_id, bool sync_status_flag = true);
+  Status Release(CudaGraphAnnotation_t cuda_graph_annotation_id);
+  // Returns kCudaGraphAnnotationSkip when no ORT-owned capture is active, including external capture.
+  CudaGraphAnnotation_t CapturingGraphId() const;
 
   void Reset();
 
@@ -50,7 +55,7 @@ struct CUDAGraphManager {
 
  private:
   CudaGraphSet cuda_graph_set_;
-  CudaGraphAnnotation_t cuda_graph_annotation_id_ = kCudaGraphAnnotationDefault;
+  CudaGraphAnnotation_t cuda_graph_annotation_id_ = kCudaGraphAnnotationSkip;
 
   cudaStream_t stream_ = nullptr;  // Does not own the stream
 };

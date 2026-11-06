@@ -14,8 +14,13 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-template <class T, int block_size, bool has_zero_point, bool TailN = false>
-__global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat4BitsKernelM1(
+// ColumnsPerBlock sets the warps per block: one warp computes one output column.
+// UnrollFactor sets the main K-reduction unroll through UnRollReduction below;
+// fixed 4- and 1-way passes handle remaining full tiles before the partial-tile tail.
+// Defaults preserve existing tiling and reduction behavior for unchanged callers.
+template <class T, int block_size, bool has_zero_point, bool TailN = false,
+          int ColumnsPerBlock = kColsPerThreadBlock, int UnrollFactor = 16>
+__global__ void __launch_bounds__(kWarpSize* ColumnsPerBlock) MatMulFloat4BitsKernelM1(
     T* output,
     const T* a_data,
     const uint8_t* b_data_quant,
@@ -25,21 +30,23 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat4Bi
     int n,
     int k,
     int blocks_per_K) {
+  static_assert(ColumnsPerBlock > 0 && ColumnsPerBlock <= 32);
+  static_assert(UnrollFactor == 4 || UnrollFactor == 8 || UnrollFactor == 16);
   const int n_block_id = blockIdx.x;
   const int m_id = blockIdx.y;
   const int lane_id = threadIdx.x;
   const int warp_id = WarpUniform(threadIdx.y);
-  const int n_id = n_block_id * kColsPerThreadBlock + warp_id;
+  const int n_id = n_block_id * ColumnsPerBlock + warp_id;
   constexpr int k_per_iter = kWarpSize * kElementsPerThreadPerIteration;
 
   extern __shared__ char shared_buffer[];
   T* b_scale_vec = (T*)shared_buffer;
-  int offset = n_block_id * kColsPerThreadBlock * blocks_per_K;
-  for (int i = warp_id * kWarpSize + lane_id; i < kColsPerThreadBlock * blocks_per_K;
-       i += kColsPerThreadBlock * kWarpSize) {
+  int offset = n_block_id * ColumnsPerBlock * blocks_per_K;
+  for (int i = warp_id * kWarpSize + lane_id; i < ColumnsPerBlock * blocks_per_K;
+       i += ColumnsPerBlock * kWarpSize) {
     if constexpr (TailN) {
-      const int remaining_cols = n - n_block_id * kColsPerThreadBlock;
-      const int valid_cols = remaining_cols < kColsPerThreadBlock ? remaining_cols : kColsPerThreadBlock;
+      const int remaining_cols = n - n_block_id * ColumnsPerBlock;
+      const int valid_cols = remaining_cols < ColumnsPerBlock ? remaining_cols : ColumnsPerBlock;
       b_scale_vec[i] = i < valid_cols * blocks_per_K ? scales_data[offset + i] : T(0.f);
     } else {
       b_scale_vec[i] = scales_data[offset + i];
@@ -49,11 +56,11 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat4Bi
   uint8_t* b_zp_vec;
   (void)b_zp_vec;
   if constexpr (has_zero_point) {
-    b_zp_vec = reinterpret_cast<uint8_t*>(b_scale_vec + kColsPerThreadBlock * blocks_per_K);
+    b_zp_vec = reinterpret_cast<uint8_t*>(b_scale_vec + ColumnsPerBlock * blocks_per_K);
     const int b_zp_k = (blocks_per_K + 1) / 2;
-    int zp_offset = n_block_id * kColsPerThreadBlock * b_zp_k;
-    for (int i = warp_id * kWarpSize + lane_id; i < kColsPerThreadBlock * b_zp_k;
-         i += kColsPerThreadBlock * kWarpSize) {
+    int zp_offset = n_block_id * ColumnsPerBlock * b_zp_k;
+    for (int i = warp_id * kWarpSize + lane_id; i < ColumnsPerBlock * b_zp_k;
+         i += ColumnsPerBlock * kWarpSize) {
       b_zp_vec[2 * i] = (zero_points[zp_offset + i] & 0x0f);
       b_zp_vec[2 * i + 1] = (zero_points[zp_offset + i] >> 4);
     }
@@ -96,7 +103,7 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat4Bi
     }                                                                                             \
   } while (false)
 
-  UnRollReduction(16);
+  UnRollReduction(UnrollFactor);
   UnRollReduction(4);
   UnRollReduction(1);
 #undef UnRollReduction

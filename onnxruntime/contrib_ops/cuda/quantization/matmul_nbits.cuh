@@ -16,6 +16,24 @@ constexpr bool IsSupportedSingleRowGemvShape(bool has_zero_points, int m, int n,
          (n == 248320 && k == 2560 && block_size == 32);
 }
 
+// This is a performance-tuned whitelist, not the set of all kernel-compatible shapes.
+// Match dimensions, not model identity; other valid shapes retain existing kernels.
+// Add shapes only after correctness and performance validation on target GPUs.
+constexpr bool IsSupportedSingleWarp4BitsGemvShape(
+    bool is_fp16, bool has_zero_points, bool has_bias, int m, int n, int k, int block_size) {
+  if (!is_fp16 || has_zero_points || has_bias || m != 1 || block_size != 32) {
+    return false;
+  }
+  // These (N, K) points cover the tuned attention and MLP-down projection shapes.
+  // Gate/up (6144, 2048) and the LM head (151936, 2048) keep existing kernels.
+  return (k == 2048 && (n == 1024 || n == 2048)) ||
+         (k == 6144 && n == 2048);
+}
+
+void MatMul4BitsM1SingleWarp(
+    half* output, const half* a_data, const uint8_t* b_data_quant,
+    const half* scales_data, int n, int k, cudaStream_t stream);
+
 inline constexpr int kMatMul8BitsDefaultMaxRows = 5;
 inline constexpr int kMatMul8BitsSm121Fp16MaxRows = 8;
 
