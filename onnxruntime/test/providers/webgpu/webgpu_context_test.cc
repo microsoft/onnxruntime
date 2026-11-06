@@ -113,7 +113,9 @@ void RunWithFreshDefaultContext(TestBody test_body, bool compile_only_parent = f
         testing::ExitedWithCode(EXIT_SUCCESS), "");
   }
 
-  EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(0).Device().Get(), existing_device);
+  if (existing_provider) {
+    EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(0).Device().Get(), existing_device);
+  }
 #if defined(GTEST_HAS_ABSL) && !defined(GTEST_NO_ABSL_FLAGS)
   flag_error.clear();
   EXPECT_TRUE(death_test_style_flag->ParseFrom(previous_style, &flag_error)) << flag_error;
