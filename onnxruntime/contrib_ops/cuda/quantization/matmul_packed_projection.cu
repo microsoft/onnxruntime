@@ -122,7 +122,7 @@ void LaunchNvfp4(const bf16* x, const uint8_t* w, const uint8_t* ws, const float
     LaunchNvfp4Impl<R, 8>(x, w, ws, g, N, K, y, s);
 }
 
-template <int FMT, bool WIDE, int MT, int KW, int UNR>
+template <int FMT, bool WIDE, int MT, int KW, int UNR, bool ALIGNED_X = false>
 __global__ void __launch_bounds__(KW * 32)
     MmaGemvKernel(const bf16* __restrict__ x, const uint8_t* __restrict__ w, const void* __restrict__ sc,
                   const float* __restrict__ gscale, int R, int N, int K, bf16* __restrict__ y) {
@@ -146,7 +146,10 @@ __global__ void __launch_bounds__(KW * 32)
         const int64_t row = min(n_base + m * 16 + g + 8 * h, static_cast<int64_t>(N - 1));
         LoadWeightRow<FMT, WIDE>(w, sc, row, K, c, t, st.raw[m][h], st.sc[m][h]);
       }
-    LoadX<NH>(xr, xvalid, c, t, st.x);
+    if constexpr (ALIGNED_X)
+      LoadAlignedX<NH>(xr, xvalid, c, t, st.x);
+    else
+      LoadX<NH>(xr, xvalid, c, t, st.x);
   });
   const float gs = (gscale ? gscale[0] : 1.0f) * (FMT == kFmtFp4 ? 0x1p16f : 1.0f);
   ReduceEpilogue<MT, KW>(acc, warp, g, t, [&](int rl, int col, float v) {
@@ -158,6 +161,13 @@ template <int FMT, bool WIDE, int MT, int KW, int UNR = 1>
 void LaunchMmaGemvImpl(const bf16* x, const uint8_t* w, const void* sc, const float* gs, int R, int N, int K, bf16* y,
                        cudaStream_t s) {
   const int blocks = (N + MT * 16 - 1) / (MT * 16);
+  if constexpr (FMT == kFmtFp4) {
+    if (K % 8 == 0 && (reinterpret_cast<uintptr_t>(x) & 15) == 0) {
+      MmaGemvKernel<FMT, WIDE, MT, KW, UNR, true>
+          <<<blocks, KW * 32, KW * MT * 16 * 8 * sizeof(float), s>>>(x, w, sc, gs, R, N, K, y);
+      return;
+    }
+  }
   MmaGemvKernel<FMT, WIDE, MT, KW, UNR>
       <<<blocks, KW * 32, KW * MT * 16 * 8 * sizeof(float), s>>>(x, w, sc, gs, R, N, K, y);
 }

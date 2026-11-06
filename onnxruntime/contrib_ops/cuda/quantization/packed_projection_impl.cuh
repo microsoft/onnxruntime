@@ -517,6 +517,14 @@ __device__ __forceinline__ void DequantRow(const uint4& raw, float scale, uint32
   }
 }
 
+// Preserve the source's predicated vector loads when alignment is guaranteed at launch.
+template <int NH>
+__device__ __forceinline__ void LoadAlignedX(const bf16* xr, bool valid, int c, int t, uint4* xo) {
+  const uint4* xp = reinterpret_cast<const uint4*>(xr + 64 * NH * c + 16 * NH * t);
+#pragma unroll
+  for (int i = 0; i < 2 * NH; ++i) xo[i] = valid ? __ldg(xp + i) : make_uint4(0, 0, 0, 0);
+}
+
 // Loads the x fragments of one chunk: 16 (or 32) contiguous k of activation row g for this thread.
 template <int NH, bool ALIGNED = false>
 __device__ __forceinline__ void LoadX(const bf16* xr, bool valid, int c, int t, uint4* xo) {
