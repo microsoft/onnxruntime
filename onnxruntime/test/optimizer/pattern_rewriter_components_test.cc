@@ -2289,6 +2289,25 @@ TEST(PatternGraphTests, ComposedWildcardUsesTheSameInitializerBoundary) {
   }
 }
 
+TEST(PatternGraphTests, OnlyValidatedLiteralConstantProducersAreExempt) {
+  PatternLibrary library("pattern P(){return Identity(2.0)}");
+  for (int scenario = 0; scenario < 3; ++scenario) {
+    TestGraph test;
+    auto& b = test.builder;
+    auto* value = b.MakeIntermediate();
+    b.AddNode("Constant", {}, {value}).AddAttribute("value_float", scenario == 2 ? 3.0f : 2.0f);
+    b.AddNode("Identity", {value}, {b.MakeOutput()});
+    if (scenario == 1)
+      b.AddNode("Constant", {}, {b.MakeIntermediate()}).AddAttribute("value_float", 4.0f);
+    b.SetGraphOutputs();
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    EXPECT_EQ(Count(test.graph, "Constant"), scenario == 1 ? 2u : 1u);
+    std::optional<Match> match;
+    ASSERT_STATUS_OK(library.GetGraphPattern("P").MatchGraph(test.graph, match));
+    EXPECT_EQ(match.has_value(), scenario == 0);
+  }
+}
+
 TEST(PatternGraphTests, PassthroughRepeatedOutputsAndUnusedFormal) {
   PatternLibrary library(R"(
     pattern Pass(x,unused) -> (first,second) { return (first=x,second=x) }
@@ -2556,15 +2575,6 @@ TEST(PatternGraphTests, LocalShadowPartialBodyAndProviderSafety) {
       extra->add_input(x->Name());
       extra->add_output("extra");
     }
-    if (scenario == 5) {
-      auto* extra = branch.add_node();
-      extra->set_op_type("Constant");
-      extra->add_output("unused_constant");
-      auto* value = extra->add_attribute();
-      value->set_name("value_float");
-      value->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT);
-      value->set_f(2.0f);
-    }
     auto& conditional = b.AddNode("If", {c}, {b.MakeOutput()});
     if (scenario == 6) branch.clear_initializer();
     conditional.AddAttribute("then_branch", branch);
@@ -2579,6 +2589,13 @@ TEST(PatternGraphTests, LocalShadowPartialBodyAndProviderSafety) {
     conditional.AddAttribute("else_branch", branch);
     b.SetGraphOutputs();
     ASSERT_STATUS_OK(test.graph.Resolve());
+    if (scenario == 5) {
+      Graph* body = conditional.GetMutableGraphAttribute("then_branch");
+      auto& extra = body->GetOrCreateNodeArg("unused_constant", nullptr);
+      body->AddNode("unused", "Constant", "", {}, {&extra}).AddAttribute("value_float", 2.0f);
+      ASSERT_STATUS_OK(test.graph.Resolve());
+      EXPECT_EQ(Count(*body, "Constant"), 1u);
+    }
     if (scenario == 3)
       conditional.GetMutableGraphAttribute("then_branch")->Nodes().begin()->SetExecutionProviderType(kCpuExecutionProvider);
     const auto before = test.model.ToProto().SerializeAsString();
