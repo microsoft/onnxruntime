@@ -24,18 +24,19 @@ namespace ep {
 // | App API use    | CreateTensor/Alloc without Session                 | CreateTensor/Alloc via a Session allocator  |
 // | Internal use   | Not used for EP kernel scratch                     | Run input/intermediate/output and scratch   |
 // | Buffer manager | Context-shared BufferManager                       | Context-shared BufferManager                |
-// | Capture route  | Still context-shared default                       | Session-owned per-graph manager during Run  |
+// | Capture route  | Still context-shared default                       | Kernel-scoped AllocOnStream only            |
 // | Recording      | Per-call encoder; no Session recording             | AllocOnStream/Free borrow EP Recording()    |
 // | Lifetime       | Getter retains Context; no Session                 | EP must outlive allocator use/tensor frees  |
 // | Alloc          | Submit cached clear before return                  | Submit cached clear, even during Run        |
 // | AllocOnStream  | Not exposed by the C API wrapper                   | Matching Session stream: defer cached clear |
 // |                |                                                    | Null stream: same policy as plain Alloc     |
 //
-// Per-graph routing applies when graph capture is enabled and the Run's graph annotation ID is not -1.
+// Per-graph routing requires an active graph Run (capture enabled, annotation ID != -1) and allocation
+// within WebGpuKernel::Compute. In concurrent mode, it also requires the matching Session stream;
+// plain Alloc always uses the context-shared default manager, even during capture.
+// External BindInput allocations use the default manager, including those on the Session stream.
 // Either can supply tensors to other Sessions on the same WebGPU device/context. A shared buffer
 // cache does not imply a shared recording; callers must order writes before another Session uses them.
-// Alloc vs AllocOnStream is a stream-based distinction, not an external-vs-internal API distinction:
-// BindInput can allocate on a Session stream before Run; streamless allocation during Run uses Alloc.
 // Read-only initializers and writable prepacked weights use separate GpuBufferAllocator instances
 // with InitializerBufferManager(). Read-only initializers skip clears.
 // The table describes concurrent mode. Both plugin modes use Session-owned recordings.

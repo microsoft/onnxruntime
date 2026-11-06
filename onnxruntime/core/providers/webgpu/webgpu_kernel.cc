@@ -16,6 +16,7 @@ WebGpuKernel::WebGpuKernel(const OpKernelInfo& info)
 }
 
 Status WebGpuKernel::Compute(OpKernelContext* p_op_kernel_context) const {
+  auto compute_scope = ep_.EnterKernelCompute();
   ComputeContext context{webgpu_context_,
                          ep_,
                          *this,

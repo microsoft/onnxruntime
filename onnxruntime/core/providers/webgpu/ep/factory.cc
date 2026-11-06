@@ -226,7 +226,11 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
       false,
       UseSerializedExecutionMode()
           ? std::function<bool()>{[webgpu_ep_ptr]() { return !webgpu_ep_ptr->IsRunActive(); }}
-          : std::function<bool()>{});
+          : std::function<bool()>{},
+      [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->DefaultBufferManager(); },
+      [webgpu_ep_ptr](WGPUBuffer buffer, const webgpu::CommandRecordingState* recording) {
+        webgpu_ep_ptr->ReleaseBuffer(buffer, recording);
+      });
   Ep::Config webgpu_ep_config{
       CPUAllocator::DefaultInstance(),  // CPU allocator
       device_alloc,                     // also retained by the EP adapter as the kernel temp-space allocator

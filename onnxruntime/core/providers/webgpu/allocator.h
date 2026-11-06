@@ -9,6 +9,7 @@
 #include "core/common/narrow.h"
 #include "core/framework/allocator.h"
 #include "core/framework/ortdevice.h"
+#include "core/providers/webgpu/webgpu_external_header.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -42,7 +43,9 @@ class GpuBufferAllocator : public IAllocator {
                      std::function<const BufferManager&()> buffer_manager_getter,
                      std::function<CommandRecordingState&()> recording_getter,
                      bool is_read_only_allocator,
-                     std::function<bool()> should_submit_zero_initialize = {});
+                     std::function<bool()> should_submit_zero_initialize = {},
+                     std::function<const BufferManager&()> streamless_buffer_manager_getter = {},
+                     std::function<void(WGPUBuffer, const CommandRecordingState*)> buffer_releaser = {});
 
   virtual void* Alloc(size_t size) override;
   virtual void Free(void* p) override;
@@ -54,11 +57,14 @@ class GpuBufferAllocator : public IAllocator {
 #endif
 
  private:
-  void* Allocate(size_t size, CommandRecordingState& recording, bool submit_zero_initialize);
+  void* Allocate(size_t size, const BufferManager& buffer_manager, CommandRecordingState& recording,
+                 bool submit_zero_initialize);
   std::atomic<int64_t> num_allocs_{0};
   std::function<const BufferManager&()> buffer_manager_getter_;
+  std::function<const BufferManager&()> streamless_buffer_manager_getter_;
   std::function<CommandRecordingState&()> recording_getter_;
   std::function<bool()> should_submit_zero_initialize_;
+  std::function<void(WGPUBuffer, const CommandRecordingState*)> buffer_releaser_;
   bool mapped_at_creation_;
   // Cached writable buffers are cleared explicitly by BufferManager::Create. Fresh buffers rely on Dawn's
   // "lazy_clear_resource_on_first_use" toggle, which is enabled by WebGpuContext.
@@ -86,7 +92,9 @@ AllocatorPtr CreateWebGpuAllocator(int context_id,
                                    std::function<const BufferManager&()> buffer_manager_getter,
                                    std::function<CommandRecordingState&()> recording_getter,
                                    bool is_read_only_allocator,
-                                   std::function<bool()> should_submit_zero_initialize = {});
+                                   std::function<bool()> should_submit_zero_initialize = {},
+                                   std::function<const BufferManager&()> streamless_buffer_manager_getter = {},
+                                   std::function<void(WGPUBuffer, const CommandRecordingState*)> buffer_releaser = {});
 
 }  // namespace webgpu
 }  // namespace onnxruntime
