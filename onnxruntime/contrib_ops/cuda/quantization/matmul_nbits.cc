@@ -482,8 +482,9 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
     return std::nullopt;
   }
   for (const auto& attr : node.GetAttributes()) {
-    if (attr.first == "gemv_kernel" && attr.second.s() == "fixed") {
-      // Raw initializers are already accounted for; this profile neither prepacks nor uses scratch.
+    if (attr.first == "gemv_kernel" &&
+        (attr.second.s() == "fixed" || attr.second.s() == "fixed_iq2_xxs")) {
+      // Raw initializers are already accounted for; these profiles neither prepack nor use scratch.
       return Level1MemoryEstimate{};
     }
   }
@@ -1259,14 +1260,17 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
     const int64_t rows = shape.SizeToDimension(shape.NumDimensions() - 1);
     ORT_RETURN_IF_NOT(rows >= 1 && rows <= 8,
                       "MatMulNBits fixed flattened activation rows must be in [1,8].");
-    ORT_RETURN_IF_NOT(b->Shape() == TensorShape({N_, K_ / 32, 32}) &&
-                          scales->Shape() == TensorShape({N_, K_ / 32}),
-                      "MatMulNBits fixed requires B[N,K/32,32] and scales_fp16[N,K/32].");
+    const int64_t blocks = K_ / block_size_, blob_size = block_size_ * nbits_ / 8;
+    ORT_RETURN_IF_NOT(b->Shape() == TensorShape({N_, blocks, blob_size}) &&
+                          scales->Shape() == TensorShape({N_, blocks}),
+                      "MatMulNBits fixed requires B[N,K/block_size,block_size*bits/8] "
+                      "and scales_fp16[N,K/block_size].");
     TensorShapeVector output_dims(shape.GetDims().begin(), shape.GetDims().end() - 1);
     output_dims.push_back(N_);
     auto* y = ctx->Output(0, TensorShape(output_dims));
     CUDA_RETURN_IF_ERROR(LaunchPackedProjection(
-        PackedProjectionFormat::Q8, a->DataRaw(), b->Data<uint8_t>(), scales->DataRaw(),
+        nbits_ == 2 ? PackedProjectionFormat::IQ2XXS : PackedProjectionFormat::Q8,
+        a->DataRaw(), b->Data<uint8_t>(), scales->DataRaw(),
         nullptr, true, static_cast<int>(rows), static_cast<int>(N_), static_cast<int>(K_),
         y->MutableDataRaw(), Stream(ctx)));
     return Status::OK();

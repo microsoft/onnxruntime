@@ -30,16 +30,24 @@ void ConfigureFixedQ8(OpTester& test, int k, int n) {
   test.AddAttribute("gemv_kernel", std::string("fixed"));
 }
 
+void ConfigureFixedIQ2(OpTester& test, int k, int n) {
+  test.AddAttribute("K", static_cast<int64_t>(k));
+  test.AddAttribute("N", static_cast<int64_t>(n));
+  test.AddAttribute("bits", int64_t{2});
+  test.AddAttribute("block_size", int64_t{256});
+  test.AddAttribute("gemv_kernel", std::string("fixed_iq2_xxs"));
+}
+
 template <typename S>
-void AddQ8Scales(OpTester& test, int n, int k, const std::vector<S>& scales, bool fixed) {
+void AddPackedScales(OpTester& test, int n, int blocks, const std::vector<S>& scales, bool fixed) {
   if (fixed) {
     test.AddOptionalInputEdge<BFloat16>();
     test.AddOptionalInputEdge<uint8_t>();
     test.AddOptionalInputEdge<int32_t>();
     test.AddOptionalInputEdge<BFloat16>();
-    test.AddInput<S>("scales_fp16", {n, k / 32}, scales);
+    test.AddInput<S>("scales_fp16", {n, blocks}, scales);
   } else {
-    test.AddInput<S>("scales", {n, k / 32}, scales);
+    test.AddInput<S>("scales", {n, blocks}, scales);
   }
 }
 
@@ -69,13 +77,13 @@ void CheckQ8(int rows, int n, bool fixed = false) {
   // Non-matrix leading dimensions must survive flattening.
   test.AddInput<BFloat16>("A", {1, rows, k}, a);
   test.AddInput<uint8_t>("B", {n, k / 32, 32}, b);
-  AddQ8Scales(test, n, k, scales, fixed);
+  AddPackedScales(test, n, k / 32, scales, fixed);
   test.AddOutput<BFloat16>("Y", {1, rows, n}, expected);
   RunPacked(test);
 }
 
 template <typename S>
-void CheckIQ2(int rows, int n) {
+void CheckIQ2(int rows, int n, bool fixed = false) {
   constexpr int k = 256;
   std::vector<BFloat16> a(rows * k, BFloat16(0.0f));
   std::vector<uint8_t> b(n * k / 4, 0);
@@ -101,11 +109,16 @@ void CheckIQ2(int rows, int n) {
     }
   }
   for (int r = 0; r < rows; ++r) a[r * k + r * 32] = BFloat16(1.0f);
-  OpTester test("MatMulPackedIQ2XXS", 1, kMSDomain);
-  test.AddInput<BFloat16>("A", {rows, k}, a);
-  test.AddInput<uint8_t>("B", {n, k / 32, 8}, b);
-  test.AddInput<S>("scales", {n, k / 256}, scales);
-  test.AddOutput<BFloat16>("Y", {rows, n}, expected);
+  OpTester test(fixed ? "MatMulNBits" : "MatMulPackedIQ2XXS", 1, kMSDomain);
+  if (fixed) ConfigureFixedIQ2(test, k, n);
+  const std::vector<int64_t> shape = fixed ? std::vector<int64_t>{1, rows, k}
+                                           : std::vector<int64_t>{rows, k};
+  test.AddInput<BFloat16>("A", shape, a);
+  test.AddInput<uint8_t>("B", fixed ? std::vector<int64_t>{n, k / 256, 64} : std::vector<int64_t>{n, k / 32, 8}, b);
+  AddPackedScales(test, n, k / 256, scales, fixed);
+  auto output_shape = shape;
+  output_shape.back() = n;
+  test.AddOutput<BFloat16>("Y", output_shape, expected);
   RunPacked(test);
 }
 
@@ -172,13 +185,13 @@ void CheckQ8Chunks(int rows, int n, int k, bool fixed = false) {
   if (fixed) ConfigureFixedQ8(test, k, n);
   test.AddInput<BFloat16>("A", {rows, k}, a);
   test.AddInput<uint8_t>("B", {n, k / 32, 32}, b);
-  AddQ8Scales(test, n, k, scales, fixed);
+  AddPackedScales(test, n, k / 32, scales, fixed);
   test.AddOutput<BFloat16>("Y", {rows, n}, expected);
   RunPacked(test);
 }
 
 template <typename S>
-void CheckIQ2Chunks(int rows, int n) {
+void CheckIQ2Chunks(int rows, int n, bool fixed = false) {
   constexpr int k = 1280;  // 20 MMA chunks: multiple iterations and a final partial KW=16 batch.
   constexpr std::array<std::array<float, 8>, 3> grids{
       {{8, 8, 8, 8, 8, 8, 8, 8},
@@ -231,10 +244,11 @@ void CheckIQ2Chunks(int rows, int n) {
     for (int r = 0; r < rows; ++r)
       expected[r * n + col] = BFloat16(sums[r]);
   }
-  OpTester test("MatMulPackedIQ2XXS", 1, kMSDomain);
+  OpTester test(fixed ? "MatMulNBits" : "MatMulPackedIQ2XXS", 1, kMSDomain);
+  if (fixed) ConfigureFixedIQ2(test, k, n);
   test.AddInput<BFloat16>("A", {rows, k}, a);
-  test.AddInput<uint8_t>("B", {n, k / 32, 8}, b);
-  test.AddInput<S>("scales", {n, k / 256}, scales);
+  test.AddInput<uint8_t>("B", fixed ? std::vector<int64_t>{n, k / 256, 64} : std::vector<int64_t>{n, k / 32, 8}, b);
+  AddPackedScales(test, n, k / 256, scales, fixed);
   test.AddOutput<BFloat16>("Y", {rows, n}, expected);
   RunPacked(test);
 }
@@ -313,7 +327,7 @@ TEST(MatMulNBitsFixedBF16, RejectsUnsupportedRowsAndKInsteadOfFallingBack) {
     ConfigureFixedQ8(test, k, 1);
     test.AddInput<BFloat16>("A", {rows, k}, std::vector<BFloat16>(rows * k, BFloat16(1.f)));
     test.AddInput<uint8_t>("B", {1, k / 32, 32}, std::vector<uint8_t>(k, 129));
-    AddQ8Scales(test, 1, k, std::vector<MLFloat16>(k / 32, MLFloat16(1.f)), true);
+    AddPackedScales(test, 1, k / 32, std::vector<MLFloat16>(k / 32, MLFloat16(1.f)), true);
     test.AddOutput<BFloat16>("Y", {rows, 1}, std::vector<BFloat16>(rows, BFloat16(0.f)));
     std::vector<std::unique_ptr<IExecutionProvider>> providers;
     providers.push_back(DefaultCudaExecutionProvider());
@@ -333,6 +347,65 @@ TEST(MatMulNBitsFixedBF16, DefaultDispatchStillRequiresScales) {
   test.AddInput<uint8_t>("B", {1, 2, 32}, std::vector<uint8_t>(64, 129));
   test.AddOutput<float>("Y", {1, 1}, {0.f});
   test.Run(OpTester::ExpectResult::kExpectFailure, "auto requires scales");
+}
+#endif
+
+TEST(MatMulNBitsFixedIQ2XXS, NonlinearOperandsLiteralHalfScalesAndLeadingDimensions) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "CUDA SM80 is required.";
+  for (int rows = 1; rows <= 8; ++rows) {
+    for (int n : {1, 19, 33}) CheckIQ2<MLFloat16>(rows, n, true);
+  }
+}
+
+TEST(MatMulNBitsFixedIQ2XXS, MultipleBlocksPartialChunksAndLargeNDispatch) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "CUDA SM80 is required.";
+  for (int rows : {1, 3, 8}) {
+    for (int n : {19, 8192, 8193}) CheckIQ2Chunks<MLFloat16>(rows, n, true);
+  }
+}
+
+#ifndef ORT_NO_EXCEPTIONS
+TEST(MatMulNBitsFixedIQ2XXS, RejectsAffineProfilesAndMismatchedCodecMetadata) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "CUDA SM80 is required.";
+  struct Case {
+    int64_t bits, block;
+    const char* kernel;
+  };
+  for (const Case spec : {Case{8, 256, "fixed_iq2_xxs"}, Case{2, 32, "fixed_iq2_xxs"},
+                          Case{2, 256, "fixed"}}) {
+    OpTester test("MatMulNBits", 1, kMSDomain);
+    test.AddAttribute("K", int64_t{256});
+    test.AddAttribute("N", int64_t{1});
+    test.AddAttribute("bits", spec.bits);
+    test.AddAttribute("block_size", spec.block);
+    test.AddAttribute("gemv_kernel", std::string(spec.kernel));
+    test.AddInput<BFloat16>("A", {1, 256}, std::vector<BFloat16>(256, BFloat16(0.f)));
+    test.AddInput<uint8_t>("B", {1, 1, 64}, std::vector<uint8_t>(64));
+    AddPackedScales(test, 1, 1, std::vector<MLFloat16>{MLFloat16(0.001003f)}, true);
+    test.AddOutput<BFloat16>("Y", {1, 1}, {BFloat16(0.f)});
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectFailure,
+             std::string("MatMulNBits ") + spec.kernel + " requires", {}, nullptr, &providers);
+  }
+}
+
+TEST(MatMulNBitsFixedIQ2XXS, RejectsUnsupportedRowsAndKInsteadOfFallingBack) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "CUDA SM80 is required.";
+  for (bool bad_k : {false, true}) {
+    const int rows = bad_k ? 1 : 9, k = bad_k ? 128 : 256;
+    OpTester test("MatMulNBits", 1, kMSDomain);
+    ConfigureFixedIQ2(test, k, 1);
+    test.AddInput<BFloat16>("A", {rows, k}, std::vector<BFloat16>(rows * k, BFloat16(0.f)));
+    test.AddInput<uint8_t>("B", {1, 1, 64}, std::vector<uint8_t>(64));
+    AddPackedScales(test, 1, 1, std::vector<MLFloat16>{MLFloat16(0.001003f)}, true);
+    test.AddOutput<BFloat16>("Y", {rows, 1}, std::vector<BFloat16>(rows, BFloat16(0.f)));
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectFailure,
+             bad_k ? "positive int32 K divisible by 256" : "flattened activation rows must be in [1,8]",
+             {}, nullptr, &providers);
+  }
 }
 #endif
 

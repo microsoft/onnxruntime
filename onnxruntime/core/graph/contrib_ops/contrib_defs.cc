@@ -4477,11 +4477,15 @@ Empty packed weights are currently supported by the CPU and WebGPU execution pro
             "(requires a compute capability 9.0 device and block_size in {64, 128}).",
             AttributeProto::INT, static_cast<int64_t>(0))
       .Attr("gemv_kernel",
-            "CUDA arithmetic selection. 'auto' preserves existing dispatch. 'fixed' uses BF16 operands, "
-            "FP32 accumulation and one final BF16 output rounding with unmodified UINT8 weights and FP16 scales. "
-            "The fixed profile requires SM80+, bits=8, block_size=32, accuracy_level=0, weight_prepacked=0, "
-            "omitted scales/zero_points/g_idx/bias, and scales_fp16 [N,K/32]. "
-            "K must be positive, fit int32 and be divisible by 64; N must be positive and at most INT32_MAX-32. "
+            "CUDA arithmetic selection. 'auto' preserves existing affine-quantization dispatch. "
+            "'fixed' uses BF16 operands, FP32 accumulation and one final BF16 output rounding with "
+            "unmodified offset-UINT8 Q8 weights and FP16 scales; it requires bits=8, block_size=32 and K divisible by 64. "
+            "'fixed_iq2_xxs' instead decodes nonlinear IQ2_XXS grid/sign/local-multiplier records, "
+            "rounding complete dequantized operands to BF16 before FP32 accumulation and final BF16 rounding. "
+            "This is not affine 2-bit quantization. It requires bits=2, block_size=256 and K divisible by 256. "
+            "Both fixed profiles require SM80+, BF16 activations, accuracy_level=0, weight_prepacked=0, "
+            "omitted scales/zero_points/g_idx/bias, and literal FP16 scales_fp16 [N,K/block_size]. "
+            "K must be positive and fit int32; N must be positive and at most INT32_MAX-32. "
             "Flattened activation rows must be in [1,8]. Unsupported shapes fail rather than changing arithmetic.",
             AttributeProto::STRING, std::string("auto"))
       .Input(0, "A", "The input tensor, not quantized.", "T1")
@@ -4493,7 +4497,7 @@ Empty packed weights are currently supported by the CPU and WebGPU execution pro
              "T2")
       .Input(2, "scales",
              "Per-block scaling factors for dequantization with shape (N, k_blocks) and same data type as input A. "
-             "Required for default dispatch; must be omitted with gemv_kernel='fixed'.",
+             "Required for default dispatch; must be omitted with either fixed gemv_kernel profile.",
              "T1", OpSchema::Optional)
       .Input(3, "zero_points",
              "Per-block zero point for dequantization. It can be either packed or unpacked: "
@@ -4504,7 +4508,7 @@ Empty packed weights are currently supported by the CPU and WebGPU execution pro
       .Input(4, "g_idx", "group_idx. This input is deprecated", "T4", OpSchema::Optional)
       .Input(5, "bias", "Bias to add to result. It should have shape [N].", "T1", OpSchema::Optional)
       .Input(6, "scales_fp16",
-             "Independent FP16 scales [N,K/32], required only for gemv_kernel='fixed'. "
+             "Independent literal FP16 scales [N,K/block_size], required only for fixed gemv_kernel profiles. "
              "Preserves FP16 scale precision with BF16 activations without early BF16 scale rounding.",
              "tensor(float16)", OpSchema::Optional)
       .Output(0, "Y", "tensor. The output tensor has the same rank as the input. ", "T1")
@@ -4517,17 +4521,20 @@ Empty packed weights are currently supported by the CPU and WebGPU execution pro
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         const auto* kernel_attr = ctx.getAttribute("gemv_kernel");
         const std::string kernel = kernel_attr ? kernel_attr->s() : "auto";
-        if (kernel != "auto" && kernel != "fixed") {
-          fail_shape_inference("MatMulNBits gemv_kernel must be 'auto' or 'fixed'.");
+        if (kernel != "auto" && kernel != "fixed" && kernel != "fixed_iq2_xxs") {
+          fail_shape_inference("MatMulNBits gemv_kernel must be 'auto', 'fixed' or 'fixed_iq2_xxs'.");
         }
-        if (kernel == "fixed") {
+        if (kernel != "auto") {
+          const bool iq2 = kernel == "fixed_iq2_xxs";
           if (ctx.hasInput(2) || !ctx.hasInput(6) || ctx.hasInput(3) || ctx.hasInput(4) || ctx.hasInput(5) ||
-              getAttribute(ctx, "bits", 4) != 8 || getAttribute(ctx, "block_size", 0) != 32 ||
+              getAttribute(ctx, "bits", 4) != (iq2 ? 2 : 8) ||
+              getAttribute(ctx, "block_size", 0) != (iq2 ? 256 : 32) ||
               getAttribute(ctx, "accuracy_level", 0) != 0 || getAttribute(ctx, "weight_prepacked", 0) != 0 ||
               !ctx.hasInput(0) ||
               ctx.getInputType(0)->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto::BFLOAT16) {
             fail_shape_inference(
-                "MatMulNBits fixed requires BF16, bits=8, block_size=32, accuracy_level=0, "
+                "MatMulNBits ", kernel, " requires BF16, ",
+                iq2 ? "bits=2, block_size=256, accuracy_level=0, " : "bits=8, block_size=32, accuracy_level=0, ",
                 "weight_prepacked=0, scales_fp16 and no scales, zero_points, g_idx or bias.");
           }
         } else if (!ctx.hasInput(2) || ctx.hasInput(6)) {

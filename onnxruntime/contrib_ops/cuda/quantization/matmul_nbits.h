@@ -293,20 +293,25 @@ class MatMulNBits final : public CudaKernel {
     has_g_idx_ = InputExists(info, kInputIndexGroupIndex);
     has_bias_ = InputExists(info, kInputIndexBias);
     const auto kernel = info.GetAttrOrDefault<std::string>("gemv_kernel", "auto");
-    ORT_ENFORCE(kernel == "auto" || kernel == "fixed", "MatMulNBits gemv_kernel must be 'auto' or 'fixed'.");
-    fixed_bf16_ = kernel == "fixed";
+    ORT_ENFORCE(kernel == "auto" || kernel == "fixed" || kernel == "fixed_iq2_xxs",
+                "MatMulNBits gemv_kernel must be 'auto', 'fixed' or 'fixed_iq2_xxs'.");
+    fixed_bf16_ = kernel != "auto";
     if (fixed_bf16_) {
+      const bool iq2 = kernel == "fixed_iq2_xxs";
       ORT_ENFORCE((std::is_same_v<T, BFloat16>) && GetDeviceProp().major >= 8 &&
-                      nbits_ == 8 && block_size_ == 32 &&
+                      nbits_ == (iq2 ? 2 : 8) && block_size_ == (iq2 ? 256 : 32) &&
                       info.GetAttrOrDefault<int64_t>("accuracy_level", 0) == 0 &&
                       info.GetAttrOrDefault<int64_t>("weight_prepacked", 0) == 0 &&
                       !InputExists(info, kInputIndexScale) && InputExists(info, 6) &&
                       !has_zero_points_ && !has_g_idx_ && !has_bias_,
-                  "MatMulNBits fixed requires SM80+, BF16, bits=8, block_size=32, accuracy_level=0, "
+                  "MatMulNBits ", kernel, " requires SM80+, BF16, ",
+                  iq2 ? "bits=2, block_size=256, accuracy_level=0, " : "bits=8, block_size=32, accuracy_level=0, ",
                   "weight_prepacked=0, scales_fp16 and no scales, zero_points, g_idx or bias.");
-      ORT_ENFORCE(K_ > 0 && K_ <= std::numeric_limits<int>::max() && K_ % 64 == 0 &&
+      const int64_t k_alignment = iq2 ? 256 : 64;
+      ORT_ENFORCE(K_ > 0 && K_ <= std::numeric_limits<int>::max() && K_ % k_alignment == 0 &&
                       N_ > 0 && N_ <= std::numeric_limits<int>::max() - 32,
-                  "MatMulNBits fixed requires positive int32 K divisible by 64 and 0 < N <= INT32_MAX-32.");
+                  "MatMulNBits ", kernel, " requires positive int32 K divisible by ", k_alignment,
+                  " and 0 < N <= INT32_MAX-32.");
       return;
     }
     ORT_ENFORCE(InputExists(info, kInputIndexScale) && !InputExists(info, 6),

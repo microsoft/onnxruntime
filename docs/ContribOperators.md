@@ -4525,7 +4525,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>block_size</tt> : int (required)</dt>
 <dd>Size of each quantization block along the K (input feature) dimension. Must be a power of two and ≥ 16 (e.g., 16, 32, 64, 128).</dd>
 <dt><tt>gemv_kernel</tt> : string</dt>
-<dd>CUDA arithmetic selection. 'auto' preserves existing dispatch. 'fixed' uses BF16 operands, FP32 accumulation and one final BF16 output rounding with unmodified UINT8 weights and FP16 scales. The fixed profile requires SM80+, bits=8, block_size=32, accuracy_level=0, weight_prepacked=0, omitted scales/zero_points/g_idx/bias, and scales_fp16 [N,K/32]. K must be positive, fit int32 and be divisible by 64; N must be positive and at most INT32_MAX-32. Flattened activation rows must be in [1,8]. Unsupported shapes fail rather than changing arithmetic.</dd>
+<dd>CUDA arithmetic selection. 'auto' preserves existing affine-quantization dispatch. 'fixed' uses BF16 operands, FP32 accumulation and one final BF16 output rounding with unmodified offset-UINT8 Q8 weights and FP16 scales; it requires bits=8, block_size=32 and K divisible by 64. 'fixed_iq2_xxs' instead decodes nonlinear IQ2_XXS grid/sign/local-multiplier records, rounding complete dequantized operands to BF16 before FP32 accumulation and final BF16 rounding. This is not affine 2-bit quantization. It requires bits=2, block_size=256 and K divisible by 256. Both fixed profiles require SM80+, BF16 activations, accuracy_level=0, weight_prepacked=0, omitted scales/zero_points/g_idx/bias, and literal FP16 scales_fp16 [N,K/block_size]. K must be positive and fit int32; N must be positive and at most INT32_MAX-32. Flattened activation rows must be in [1,8]. Unsupported shapes fail rather than changing arithmetic.</dd>
 <dt><tt>weight_prepacked</tt> : int</dt>
 <dd>If set, input B is already prepacked into an EP-specific layout and the EP skips runtime weight prepacking. 0 (default): not prepacked. 1: prepacked in the CUDA SM80 fpA_intB layout. 2: prepacked in the CUDA SM90 (Hopper) fpA_intB layout, consumed by the native SM90 kernel (requires a compute capability 9.0 device and block_size in {64, 128}).</dd>
 </dl>
@@ -4538,7 +4538,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>B</tt> : T2</dt>
 <dd>Packed uint8 tensor of shape (N, k_blocks, blob_size), where k_blocks = ceil(K / block_size) and blob_size = (block_size * bits / 8). With weight_prepacked=0, one or more dimensions may be 0 to omit the projection as described above. The quantized weights are stored in a bit-packed format along the K dimension, packed within each block_size.</dd>
 <dt><tt>scales</tt> (optional) : T1</dt>
-<dd>Per-block scaling factors for dequantization with shape (N, k_blocks) and same data type as input A. Required for default dispatch; must be omitted with gemv_kernel='fixed'.</dd>
+<dd>Per-block scaling factors for dequantization with shape (N, k_blocks) and same data type as input A. Required for default dispatch; must be omitted with either fixed gemv_kernel profile.</dd>
 <dt><tt>zero_points</tt> (optional) : T3</dt>
 <dd>Per-block zero point for dequantization. It can be either packed or unpacked: Packed (uint8) format has shape (N, ceil(k_blocks * bits / 8)), and it uses same bit-packing method as Input B. Unpacked (same type as A) format has shape (N, k_blocks). If not provided, a default zero point is used: 2^(bits - 1) (e.g., 8 for 4-bit quantization, 128 for 8-bit). </dd>
 <dt><tt>g_idx</tt> (optional) : T4</dt>
@@ -4546,7 +4546,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>bias</tt> (optional) : T1</dt>
 <dd>Bias to add to result. It should have shape [N].</dd>
 <dt><tt>scales_fp16</tt> (optional) : tensor(float16)</dt>
-<dd>Independent FP16 scales [N,K/32], required only for gemv_kernel='fixed'. Preserves FP16 scale precision with BF16 activations without early BF16 scale rounding.</dd>
+<dd>Independent literal FP16 scales [N,K/block_size], required only for fixed gemv_kernel profiles. Preserves FP16 scale precision with BF16 activations without early BF16 scale rounding.</dd>
 </dl>
 
 #### Outputs
