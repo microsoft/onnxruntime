@@ -11,6 +11,7 @@
 
 #if defined(USE_CUDA) && !defined(USE_CUDA_MINIMAL)
 #include "core/framework/data_transfer.h"
+#include "core/framework/kernel_registry.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session.h"
 #include "test/util/include/asserts.h"
@@ -395,61 +396,25 @@ TEST(FusedStateSpaceTest, MambaInvalidSelectorsProduceNaNWithoutStateReads) {
   }
 }
 
-TEST(FusedStateSpaceTest, RouterBiasOnlySelectionAndNonunitScale) {
+TEST(FusedStateSpaceTest, OnlyMambaRemainsAmongProvisionalOperators) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
-  OpTester tester("BiasCorrectedMoERoute", 1, kMSDomain);
-  tester.AddAttribute("topk", int64_t{2});
-  tester.AddAttribute("scale", 5.f);
-  tester.AddInput<BFloat16>("X", {2, 256}, std::vector<BFloat16>(512, BFloat16(1.f)));
-  std::vector<BFloat16> weight(4 * 256, BFloat16(0.f));
-  weight[256] = BFloat16(1.f);
-  weight[512] = BFloat16(-1.f);
-  tester.AddInput<BFloat16>("W", {4, 256}, weight);
-  tester.AddInput<float>("bias", {4}, {0.f, 0.f, 2.f, 0.f});
-  const float high = 1.f / (1.f + std::exp(-1.f)), low = 1.f / (1.f + std::exp(1.f));
-  tester.AddOutput<int32_t>("indices", {2, 2}, {2, 1, 2, 1});
-  tester.AddOutput<float>("weights", {2, 2}, {low * 5.f, high * 5.f, low * 5.f, high * 5.f});
-  tester.AddOutput<float>("scores", {2, 4}, {0.5f, high, low, 0.5f, 0.5f, high, low, 0.5f});
-  RunCuda(tester);
-}
-
-TEST(FusedStateSpaceTest, RouterTiesPreferLowerExpert) {
-  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
-  OpTester tester("BiasCorrectedMoERoute", 1, kMSDomain);
-  tester.AddAttribute("topk", int64_t{3});
-  tester.AddInput<BFloat16>("X", {1, 256}, std::vector<BFloat16>(256, BFloat16(0.f)));
-  tester.AddInput<BFloat16>("W", {40, 256}, std::vector<BFloat16>(40 * 256, BFloat16(0.f)));
-  tester.AddInput<float>("bias", {40}, std::vector<float>(40, 0.f));
-  tester.AddOutput<int32_t>("indices", {1, 3}, {0, 1, 2});
-  tester.AddOutput<float>("weights", {1, 3}, {1.f / 3, 1.f / 3, 1.f / 3});
-  tester.AddOutput<float>("scores", {1, 40}, std::vector<float>(40, 0.5f));
-  RunCuda(tester);
-}
-
-TEST(FusedStateSpaceTest, RouterNegativeInfinityIsAnEligibleScore) {
-  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
-  OpTester tester("BiasCorrectedMoERoute", 1, kMSDomain);
-  tester.AddAttribute("topk", int64_t{2});
-  tester.AddInput<BFloat16>("X", {1, 256}, std::vector<BFloat16>(256, BFloat16(0.f)));
-  tester.AddInput<BFloat16>("W", {2, 256}, std::vector<BFloat16>(512, BFloat16(0.f)));
-  tester.AddInput<float>("bias", {2}, {0.f, -std::numeric_limits<float>::infinity()});
-  tester.AddOutput<int32_t>("indices", {1, 2}, {0, 1});
-  tester.AddOutput<float>("weights", {1, 2}, {0.5f, 0.5f});
-  tester.AddOutput<float>("scores", {1, 2}, {0.5f, 0.5f});
-  tester.SetOutputTolerance(0.f, 0.f);
-  RunCuda(tester);
-}
-
-TEST(FusedStateSpaceTest, ReluSquaredSingleRoundingAndEmpty) {
-  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
-  OpTester tester("ReluSquared", 1, kMSDomain);
-  tester.AddInput<BFloat16>("X", {5}, {BFloat16(-2.f), BFloat16(0.f), BFloat16(1.125f), BFloat16(2.5f), BFloat16(std::numeric_limits<float>::quiet_NaN())});
-  tester.AddOutput<BFloat16>("Y", {5}, {BFloat16(0.f), BFloat16(0.f), BFloat16(1.125f * 1.125f), BFloat16(6.25f), BFloat16(0.f)});
-  RunCuda(tester);
-  OpTester empty("ReluSquared", 1, kMSDomain);
-  empty.AddInput<BFloat16>("X", {0}, {});
-  empty.AddOutput<BFloat16>("Y", {0}, {});
-  RunCuda(empty);
+  (void)GetEnvironment();
+  auto provider = DefaultCudaExecutionProvider();
+  ASSERT_NE(provider, nullptr);
+  const auto registry = provider->GetKernelRegistry();
+  ASSERT_NE(registry, nullptr);
+  for (const char* name : {"Mamba2Verify", "BiasCorrectedMoERoute", "ReluSquared", "MoEPackedIQ2XXS",
+                           "MatMulPackedNVFP4", "MatMulPackedQ8", "MatMulPackedIQ2XXS"}) {
+    SCOPED_TRACE(name);
+    const bool retained = std::strcmp(name, "Mamba2Verify") == 0;
+    EXPECT_EQ(ONNX_NAMESPACE::OpSchemaRegistry::Schema(name, 1, kMSDomain) != nullptr, retained);
+    const auto& kernels = registry->GetKernelCreateMap();
+    const bool registered = std::any_of(kernels.begin(), kernels.end(), [name](const auto& entry) {
+      const auto& definition = *entry.second.kernel_def;
+      return definition.Domain() == kMSDomain && definition.OpName() == name;
+    });
+    EXPECT_EQ(registered, retained);
+  }
 }
 #endif
 }  // namespace onnxruntime::test

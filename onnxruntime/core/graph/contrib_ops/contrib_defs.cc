@@ -14,7 +14,6 @@
 #include "core/graph/contrib_ops/attn_lstm_schema_defs.h"
 #include "core/graph/contrib_ops/range_schema_defs.h"
 #include "core/graph/contrib_ops/fused_state_space_defs.h"
-#include "core/graph/contrib_ops/packed_moe_defs.h"
 #include "core/graph/op.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/mlas/inc/mlas_q4.h"
@@ -3594,151 +3593,6 @@ The output columns `N` and the contraction dimension `K` are derived from the we
           updateOutputShape(ctx, 0, output_shape);
         }));
 
-namespace {
-void PackedProjectionShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, bool fp4, bool iq2) {
-  propagateElemTypeFromInputToOutput(ctx, 0, 0);
-  if (hasInputShape(ctx, 2) && getInputShape(ctx, 2).dim_size() != 2) {
-    fail_shape_inference("Packed projection scales must have rank two.");
-  }
-  if (fp4 && hasInputShape(ctx, 3)) {
-    for (const auto& dim : getInputShape(ctx, 3).dim()) {
-      if (dim.has_dim_value() && dim.dim_value() != 1) {
-        fail_shape_inference("Global scale must contain one element.");
-      }
-    }
-  }
-  if (!hasNInputShapes(ctx, 2)) return;
-  const auto& a = getInputShape(ctx, 0);
-  const auto& b = getInputShape(ctx, 1);
-  if (a.dim_size() < 1 || b.dim_size() != (fp4 ? 2 : 3)) {
-    fail_shape_inference("Invalid packed projection activation or weight rank.");
-  }
-  if (b.dim(0).has_dim_value() &&
-      (b.dim(0).dim_value() <= 0 || b.dim(0).dim_value() > std::numeric_limits<int>::max() - 32)) {
-    fail_shape_inference("N must be positive and fit the CUDA launch dimensions.");
-  }
-  if (!fp4 && b.dim(2).has_dim_value() && b.dim(2).dim_value() != (iq2 ? 8 : 32)) {
-    fail_shape_inference("Incorrect packed record byte count.");
-  }
-  int64_t rows = 1;
-  bool known_rows = true;
-  for (int i = 0; i + 1 < a.dim_size(); ++i) {
-    const auto& dim = a.dim(i);
-    if (!dim.has_dim_value()) {
-      known_rows = false;
-    } else if (dim.dim_value() < 1 || dim.dim_value() > 8 || rows > 8 / dim.dim_value()) {
-      fail_shape_inference("Flattened activation rows must be in [1,8].");
-    } else {
-      rows *= dim.dim_value();
-    }
-  }
-  const auto& ak = a.dim(a.dim_size() - 1);
-  if (ak.has_dim_value()) {
-    const int64_t k = ak.dim_value();
-    if (k <= 0 || k > std::numeric_limits<int>::max() || k % (fp4 ? 1024 : iq2 ? 256
-                                                                               : 64) !=
-                                                             0) {
-      fail_shape_inference("Invalid packed projection contraction dimension.");
-    }
-    if (fp4 && known_rows && rows == 1 && k != 4096 && k != 8192) {
-      fail_shape_inference("NVFP4 row-one path requires K=4096 or K=8192.");
-    }
-    if (!fp4 && !iq2 && known_rows && rows == 1 && k > 6144 &&
-        ctx.getInputType(2) != nullptr &&
-        ctx.getInputType(2)->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
-      fail_shape_inference("Q8 BF16-scale row-one path requires K <= 6144.");
-    }
-    if (b.dim(1).has_dim_value() && b.dim(1).dim_value() != k / (fp4 ? 2 : 32)) {
-      fail_shape_inference("A and packed B have incompatible K dimensions.");
-    }
-  }
-  if (hasInputShape(ctx, 2)) {
-    const auto& s = getInputShape(ctx, 2);
-    if (s.dim(0).has_dim_value() && b.dim(0).has_dim_value() &&
-        s.dim(0).dim_value() != b.dim(0).dim_value()) {
-      fail_shape_inference("Scale N does not match packed B.");
-    }
-    if (ak.has_dim_value() && s.dim(1).has_dim_value() &&
-        s.dim(1).dim_value() != ak.dim_value() / (fp4 ? 16 : iq2 ? 256
-                                                                 : 32)) {
-      fail_shape_inference("Incorrect scale block count.");
-    }
-  }
-  // Use ONNX inference helpers without constructing a protobuf shape.
-  for (int i = 0; i + 1 < a.dim_size(); ++i) {
-    appendSingleDimCopiedFromInputTypeToOutputType(ctx, 0, 0, i);
-  }
-  appendSingleDimCopiedFromInputTypeToOutputType(ctx, 1, 0, 0);
-}
-}  // namespace
-
-ONNX_MS_OPERATOR_SET_SCHEMA(
-    MatMulPackedNVFP4, 1,
-    OpSchema()
-        .SetDoc(R"DOC(Packed NVFP4 projection with BF16 activation/output and source-exact small-row arithmetic.
-A is [...,K], with 1..8 flattened rows; B is UINT8 [N,K/2], low-nibble-first E2M1.
-Scales are raw E4M3 bytes [N,K/16]; global_scale is one FP32 multiplier.
-K is divisible by 1024. Row one additionally requires K=4096 or 8192 and uses FP16-pair FMA
-partial sums with activation scaling by 1/64. Rows 2..8 use BF16 tensor-core operands,
-FP32 accumulation and the source block reduction topology. Global scaling precedes BF16 output rounding.
-These paths are intentionally NOT interchangeable with MatMulNVFP4A16's general accumulation contract.
-No fused bias, activation quantization, general (>8 row) prefill, or empty dimensions.)DOC")
-        .Input(0, "A", "BF16 activation [...,K].", "T")
-        .Input(1, "B", "Packed E2M1 bytes [N,K/2].", "T1")
-        .Input(2, "scales", "E4M3 bytes [N,K/16].", "T1")
-        .Input(3, "global_scale", "One-element FP32 multiplier.", "T2")
-        .Output(0, "Y", "BF16 projection [...,N].", "T")
-        .TypeConstraint("T", {"tensor(bfloat16)"}, "Activation/output type.")
-        .TypeConstraint("T1", {"tensor(uint8)"}, "Packed weight/scale bytes.")
-        .TypeConstraint("T2", {"tensor(float)"}, "Global multiplier.")
-        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          PackedProjectionShapeInference(ctx, true, false);
-        }));
-
-ONNX_MS_OPERATOR_SET_SCHEMA(
-    MatMulPackedQ8, 1,
-    OpSchema()
-        .SetDoc(R"DOC(Packed offset-binary Q8 projection with BF16 activations/output and separate block scales.
-B is UINT8 [N,K/32,32]: q = byte - 128, NOT signed GGML Q8_0 records.
-S is [N,K/32] with FP16 or BF16 scales; A is [...,K] with 1..8 flattened rows, K divisible by 64.
-FP16 scales are retained through FP32 reconstruction, then each full q*S operand is rounded to BF16.
-Rows 2..8 with BF16 scales use the same reconstruction and BF16 tensor-core multiplication.
-Row one with BF16 scales instead accumulates FP32 dot products against unscaled integer weights per block, multiplies
-by the block scale in FP32, and uses the source warp-XOR reduction; K must be <=6144.
-All MMA paths use the source block reduction topology. No fused bias, empty dimensions, or >8-row prefill.)DOC")
-        .Input(0, "A", "BF16 activation [...,K].", "T")
-        .Input(1, "B", "Offset-binary Q8 bytes [N,K/32,32].", "T1")
-        .Input(2, "scales", "Source scales [N,K/32], not prematurely rounded.", "S")
-        .Output(0, "Y", "BF16 projection [...,N].", "T")
-        .TypeConstraint("T", {"tensor(bfloat16)"}, "Activation/output type.")
-        .TypeConstraint("T1", {"tensor(uint8)"}, "Packed weights.")
-        .TypeConstraint("S", {"tensor(float16)", "tensor(bfloat16)"}, "Source block scale type.")
-        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          PackedProjectionShapeInference(ctx, false, false);
-        }));
-
-ONNX_MS_OPERATOR_SET_SCHEMA(
-    MatMulPackedIQ2XXS, 1,
-    OpSchema()
-        .SetDoc(R"DOC(Aligned IQ2_XXS projection with BF16 activations/output, not GGML's interleaved 66-byte records.
-B is UINT8 [N,K/32,8]. Each 8-byte record contains four grid indices followed by a little-endian
-32-bit word containing four 7-bit sign indices and a 4-bit local scale. S [N,K/256] holds raw FP16
-superblock scales. BF16-typed S is accepted ONLY as a bit-preserving carrier of those FP16 bits.
-The BF16 operand is round_BF16(signed_grid * (float(FP16(S)) * (0.5 + local_scale) * 0.25)),
-without separately rounding the intermediate scale. BF16 MMA, FP32 accumulation and source block reduction
-precede BF16 output rounding. A is [...,K], K divisible by 256, with 1..8 flattened rows.
-No bias, empty dimensions, or general (>8 row) prefill.)DOC")
-        .Input(0, "A", "BF16 activation [...,K].", "T")
-        .Input(1, "B", "Aligned IQ2_XXS records [N,K/32,8].", "T1")
-        .Input(2, "scales", "Raw FP16 superblock scales [N,K/256]; BF16 is a raw-bit carrier.", "S")
-        .Output(0, "Y", "BF16 projection [...,N].", "T")
-        .TypeConstraint("T", {"tensor(bfloat16)"}, "Activation/output type.")
-        .TypeConstraint("T1", {"tensor(uint8)"}, "Packed records.")
-        .TypeConstraint("S", {"tensor(float16)", "tensor(bfloat16)"}, "FP16 scales or bit-preserving BF16 carrier.")
-        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          PackedProjectionShapeInference(ctx, false, true);
-        }));
-
 ONNX_MS_OPERATOR_SET_SCHEMA(
     MatMulBlockQuantizedFp8Weight, 1,
     OpSchema()
@@ -3824,9 +3678,6 @@ static void MatmulWithQuantWeightShapeInference(ONNX_NAMESPACE::InferenceContext
 
 void RegisterContribSchemas() {
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Mamba2Verify, Mamba2VerifySchema);
-  ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(BiasCorrectedMoERoute, BiasCorrectedMoERouteSchema);
-  ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(ReluSquared, ReluSquaredSchema);
-  ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(MoEPackedIQ2XXS, MoEPackedIQ2XXSSchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
 

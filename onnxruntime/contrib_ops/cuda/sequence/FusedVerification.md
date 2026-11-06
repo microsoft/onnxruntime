@@ -1,39 +1,34 @@
-# Local fused verification operators
+# Source-exact verification using contrib operators
 
-These **provisional, local-only** `com.microsoft` version-1 names require maintainer review.
-They replace four frozen plugin node types without decomposing the fused computation.
+`Mamba2Verify` is the only new, provisional `com.microsoft` version-1 operator.
+Routing and IQ2 MoE use the existing `QMoE` operator's opt-in profile; squared
+ReLU uses standard ONNX operators.
 There is no plugin registration or runtime DSO dependency in these implementations.
 
-## Base extraction and qualification status
+## Integration boundary
 
-This contribution is extracted onto PR #33400's actual base,
-`648f708a73450c2f484f56c83ef9b6621e3c2b6b`, not its head. Registrations are anchored
-to the base files. The adapters explicitly include the base's `core/common/narrow.h`.
-No PR #33400 generic quantization operators or their schemas are required.
-
-The only new cross-contribution dependency is
-`quantization/packed_projection_impl.cuh` from the packed projection contribution.
+The shared dependency is `quantization/packed_projection_impl.cuh`.
 It supplies inline IQ2 decode/MMA/reduction primitives; no dense projection kernel
-registration or implementation object is needed by these fused operators.
-
-The original head-worktree implementation passed 12 standalone bit-exact GPU cases
-on the reserved H100, including capture, state aliasing and accepted-row replay.
-The base extraction preserves CUDA math byte-for-byte. The base extraction was
-CPU-only: **base compilation, full ORT linking and provider-test execution are
-NOT_RUN**. The C++ provider tests were compiled to objects in the original worktree,
-not linked or executed as ORT operator tests.
+registration is needed by the routed engine. Packed dense projections also use
+existing contrib profiles, described in `docs/contrib_ops/cuda/packed_projection.md`.
 
 | Frozen node | Built-in replacement | Inputs / outputs |
 |---|---|---|
 | `bolt::MambaVerify` | `Mamba2Verify` | 10 / 5, original order |
-| `bolt::MoeRoute` | `BiasCorrectedMoERoute` | 3 / 3, original order |
-| `bolt::Relu2` | `ReluSquared` | 1 / 1 |
-| `bolt_iq2_source::MoeVerify`, `iq2=2` | `MoEPackedIQ2XXS` | 7 / 4, original order; remove `iq2` |
+| `bolt::MoeRoute` plus IQ2 MoE | `QMoE`, `quant_type="iq2_xxs"` with fused router inputs | `router_input`, `router_weight`, `router_bias`; one public output |
+| `bolt::Relu2` | BF16-to-FP32 `Cast`, FP32 `ThresholdedRelu(alpha=0)`, FP32 `Mul`, BF16 `Cast` | 1 / 1; one final BF16 rounding |
+| `bolt_iq2_source::MoeVerify`, `iq2=2` | `QMoE`, `quant_type="iq2_xxs"` with preselected routing | `expert_indices`, `expert_weights`; one public output |
 
 Schemas document types, layouts, attributes, and equations. All inputs are device tensors,
 including the Mamba snapshot selector and MoE expert indices.
 `Mamba2Verify` keeps `heads`, `head_dim`, `d_state`, `n_groups`, `epsilon`,
-and `time_step_min`. The router keeps `topk` and `scale`; the MoE keeps `topk`.
+and `time_step_min`. QMoE uses `k` instead of `topk`, and `router_scale` instead
+of `scale`. IQ2 requires `expert_weight_bits=2`, `block_size=256`,
+`weights_prepacked=0`, `activation_type="relu2"`, literal FP16 super-scales and
+exactly one complete routing source. Its router probabilities input is omitted.
+Private hidden/expert/grouping buffers are not added as public QMoE outputs.
+ThresholdedRelu, rather than ordinary Relu, preserves the source's NaN-to-zero
+activation behavior.
 
 ## Frozen provenance and arithmetic
 
@@ -105,19 +100,29 @@ Focused provider tests:
 
 ```text
 FusedStateSpaceTest.*
-PackedMoETest.*
+QMoEIQ2XXSTest.*
+QMoEShapeInferenceTest.*
 ```
 
 They cover post-token recurrence/readout, nonzero accepted snapshot selection, trailing
 state slots, 1/3/8/16-row Mamba paths, 1024-wide gated normalization, corrected routing
-versus unbiased weights, ties, nonunit scale, squared ReLU, empty tensors, reused experts,
-and raw FP16 super-scales carried in BF16 or FP16 storage.
+versus unbiased weights, nonunit scale, reused experts, literal FP16 super-scales,
+and rejection of BF16 scale carriers and unsupported dispatch.
 Additional review regressions cover eligible negative-infinity router scores, both invalid
 selector bounds, multi-group nonuniform states and rank-2 convolution weights, explicit
 IOBinding device aliasing of each/both state buffers at R=8 with selector=3, sparse
 row-distinct expert routes, multiple FC2 superblocks, topk=9 and cancellation-sensitive
 ordered FP32 sums. Source-exact MoE checks set both tolerances to zero after adding outputs.
-These review regressions have not yet been compiled or run on a GPU.
+The retained internal scalar-reference suites independently verify routing ties
+and exceptional values, hidden activations, expert outputs and grouping metadata.
+They must execute, not skip, when qualifying this profile on SM80+.
+
+The consolidated H100 qualification executed 369 native cases with 43 inherited
+unrelated-provider skips, including all retained private oracles and a live
+schema/kernel-registry check. A candidate-only full-model run matched all 1,782
+complete frozen-control tensor hashes, finite checks, ordinary/k=7 sequences and
+882 counter rows. This establishes equivalence to the frozen seven-operator
+control, not an independent HuggingFace qualification.
 
 ### CUDA internal kernel validation
 
@@ -148,7 +153,8 @@ For a standalone harness calling the other launchers directly:
 - The nonuniform Mamba oracle rounds convolution activation to BF16, retains FP32
   recurrent states and uses two ordered readout partitions for R=1, four otherwise.
   Check all five outputs and preserve slots R..slots-1, including invalid selectors.
-- IQ2 super-scales are raw FP16 bits even when stored in BF16-typed buffers.
+- Private IQ2 launchers consume raw FP16 super-scale bits. The public QMoE profile
+  requires literal FP16 tensors and rejects BF16-typed carriers.
   Decode and round each complete grid-times-scale operand to BF16. Round FC1 to
   BF16 before squared ReLU, round hidden to BF16, and round FC2 to BF16 before
   storing its FP32-valued expert output. Do not reassociate the ordered FP32

@@ -90,61 +90,8 @@ class Mamba2Verify final : public CudaKernel {
   float epsilon_, time_step_min_;
 };
 
-class BiasCorrectedMoERoute final : public CudaKernel {
- public:
-  explicit BiasCorrectedMoERoute(const OpKernelInfo& info) : CudaKernel(info) {
-    topk_ = narrow<int>(info.GetAttrOrDefault<int64_t>("topk", 0));
-    scale_ = info.GetAttrOrDefault<float>("scale", 1.0f);
-    ORT_ENFORCE(topk_ > 0 && topk_ <= 32 && std::isfinite(scale_));
-  }
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(BiasCorrectedMoERoute);
-  Status ComputeInternal(OpKernelContext* context) const override {
-    const auto* x = context->Input<Tensor>(0);
-    const auto* weight = context->Input<Tensor>(1);
-    const auto* bias = context->Input<Tensor>(2);
-    ORT_RETURN_IF_NOT(x->Shape().NumDimensions() == 2 && weight->Shape().NumDimensions() == 2, "Expected matrices");
-    const int rows = narrow<int>(x->Shape()[0]);
-    const int width = narrow<int>(x->Shape()[1]);
-    const int experts = narrow<int>(weight->Shape()[0]);
-    ORT_RETURN_IF_NOT(rows > 0 && width > 0 && width % 256 == 0 && experts >= topk_ && experts <= 512 &&
-                          weight->Shape()[1] == width && bias->Shape() == TensorShape({experts}),
-                      "Unsupported router shape");
-    auto* indices = context->Output(0, {rows, topk_});
-    auto* weights = context->Output(1, {rows, topk_});
-    auto* scores = context->Output(2, {rows, experts});
-    CUDA_RETURN_IF_ERROR(LaunchBiasCorrectedMoERoute(
-        Stream(context), rows, width, experts, topk_, scale_, x->DataRaw(), weight->DataRaw(), bias->Data<float>(),
-        indices->MutableData<int32_t>(), weights->MutableData<float>(), scores->MutableData<float>()));
-    return Status::OK();
-  }
-
- private:
-  int topk_;
-  float scale_;
-};
-
-class ReluSquared final : public CudaKernel {
- public:
-  explicit ReluSquared(const OpKernelInfo& info) : CudaKernel(info) {}
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ReluSquared);
-  Status ComputeInternal(OpKernelContext* context) const override {
-    const auto* x = context->Input<Tensor>(0);
-    auto* y = context->Output(0, x->Shape());
-    CUDA_RETURN_IF_ERROR(LaunchReluSquared(Stream(context), x->DataRaw(), y->MutableDataRaw(), x->Shape().Size()));
-    return Status::OK();
-  }
-};
-
 ONNX_OPERATOR_KERNEL_EX(
     Mamba2Verify, kMSDomain, 1, kCudaExecutionProvider,
     (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>()).TypeConstraint("F", DataTypeImpl::GetTensorType<float>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int32_t>()).MayInplace(1, 1).MayInplace(2, 2),
     Mamba2Verify);
-ONNX_OPERATOR_KERNEL_EX(
-    BiasCorrectedMoERoute, kMSDomain, 1, kCudaExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>()).TypeConstraint("F", DataTypeImpl::GetTensorType<float>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int32_t>()),
-    BiasCorrectedMoERoute);
-ONNX_OPERATOR_KERNEL_EX(
-    ReluSquared, kMSDomain, 1, kCudaExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>()), ReluSquared);
-
 }  // namespace onnxruntime::contrib::cuda

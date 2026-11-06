@@ -90,44 +90,4 @@ No accepted-length truncation, hidden mutable state, host reads or synchronizati
       });
 }
 
-inline ONNX_NAMESPACE::OpSchema BiasCorrectedMoERouteSchema(ONNX_NAMESPACE::OpSchema schema) {
-  using namespace ONNX_NAMESPACE;
-  return schema.SetDomain(kMSDomain).SinceVersion(1).SetDoc(
-                                                        "FP32 sigmoid(X*W^T); top-k by score+bias (ties prefer lower index). "
-                                                        "Weights use unbiased scores normalized by sum+1e-20 and multiplied by scale. "
-                                                        "BF16 X[R,K], W[E,K]; K positive and divisible by 256, topk<=min(E,32), E<=512.")
-      .Attr("topk", "Number of selected experts.", AttributeProto::INT)
-      .Attr("scale", "Multiplier after normalization.", AttributeProto::FLOAT, 1.0f)
-      .Input(0, "X", "BF16 input [R,K].", "T")
-      .Input(1, "W", "BF16 router weight [E,K].", "T")
-      .Input(2, "bias", "FP32 correction [E], used only for selection.", "F")
-      .Output(0, "indices", "Ordered selected experts [R,topk].", "I")
-      .Output(1, "weights", "Normalized unbiased scores [R,topk].", "F")
-      .Output(2, "scores", "Unbiased sigmoid scores [R,E].", "F")
-      .TypeConstraint("T", {"tensor(bfloat16)"}, "BF16 input.")
-      .TypeConstraint("F", {"tensor(float)"}, "FP32 scores.")
-      .TypeConstraint("I", {"tensor(int32)"}, "Expert indices.")
-      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-        const auto topk = getAttribute(ctx, "topk", 0);
-        if (topk <= 0 || topk > 32) fail_shape_inference("topk must be in [1,32]");
-        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto_DataType_INT32);
-        propagateElemTypeFromInputToOutput(ctx, 2, 1);
-        propagateElemTypeFromInputToOutput(ctx, 2, 2);
-        if (!hasInputShape(ctx, 0)) return;
-        if (getInputShape(ctx, 0).dim_size() != 2) fail_shape_inference("X must have rank 2");
-        for (size_t output : {size_t{0}, size_t{1}}) {
-          appendSingleDimCopiedFromInputTypeToOutputType(ctx, 0, output, 0);
-          appendDim(getOutputShape(ctx, output), topk);
-        }
-        if (hasInputShape(ctx, 2)) {
-          if (getInputShape(ctx, 2).dim_size() != 1) fail_shape_inference("bias must have rank 1");
-          updateOutputShape(ctx, 2, {getInputShape(ctx, 0).dim(0), getInputShape(ctx, 2).dim(0)});
-        }
-      });
-}
-
-inline ONNX_NAMESPACE::OpSchema ReluSquaredSchema(ONNX_NAMESPACE::OpSchema schema) {
-  using namespace ONNX_NAMESPACE;
-  return schema.SetDomain(kMSDomain).SinceVersion(1).SetDoc("Y=BF16(fmax(float(X),0)^2), with one final BF16 rounding. fmax maps NaN to zero.").Input(0, "X", "BF16 tensor.", "T").Output(0, "Y", "Same shape as X.", "T").TypeConstraint("T", {"tensor(bfloat16)"}, "BF16 input and output.").TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput);
-}
 }  // namespace onnxruntime::contrib
