@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import platform
 import re
@@ -23,9 +24,16 @@ class ToolInfo:
 
 
 def get_tool_info(tool: str, *, host_os: str | None = None, host_arch: str | None = None) -> ToolInfo:
-    """Return tool metadata for the host, not the cross-compilation target.
+    """Return tool info for the specified host OS and architecture.
 
-    host_os uses sys.platform names; host_arch accepts Node and platform.machine() names.
+    Args:
+        tool: Tool name in build_tool_info.json.
+        host_os: Host OS in sys.platform format, or None to use sys.platform.
+        host_arch: Host architecture in platform.machine() format, or None to
+            use platform.machine().
+
+    Returns:
+        The tool's version and SHA-512 digest for the specified host.
     """
     info = _BUILD_TOOL_INFO[tool]
 
@@ -61,3 +69,20 @@ def get_tool_info(tool: str, *, host_os: str | None = None, host_arch: str | Non
         raise ValueError(f"Invalid {tool} SHA-512")
 
     return ToolInfo(version, sha512)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--tools", nargs="+", choices=_BUILD_TOOL_INFO.keys(), required=True, help="Tools to look up.")
+    args = parser.parse_args()
+
+    outputs = []
+    for tool_name in args.tools:
+        info = get_tool_info(tool_name)
+        outputs.extend((f"{tool_name}-version={info.version}", f"{tool_name}-sha512={info.sha512}"))
+
+    print("\n".join(outputs))
+
+
+if __name__ == "__main__":
+    main()

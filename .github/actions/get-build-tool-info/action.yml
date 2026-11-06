@@ -1,22 +1,74 @@
 name: 'Get build tool info'
 description: 'Reads common build tool versions and SHA-512 digests.'
+
 inputs:
-  tools:
-    description: 'Comma-separated tools to look up: cmake, vcpkg, ccache.'
-    required: true
+  cmake:
+    description: 'Return CMake tool info.'
+    required: false
+    default: 'false'
+  vcpkg:
+    description: 'Return vcpkg tool info.'
+    required: false
+    default: 'false'
+  ccache:
+    description: 'Return ccache tool info.'
+    required: false
+    default: 'false'
+
 outputs:
   cmake-version:
     description: 'The CMake version, if requested.'
+    value: ${{ steps.tool-info.outputs.cmake-version }}
   cmake-sha512:
     description: 'The SHA-512 of the host CMake archive, if requested.'
+    value: ${{ steps.tool-info.outputs.cmake-sha512 }}
   vcpkg-version:
     description: 'The vcpkg release tag, if requested.'
+    value: ${{ steps.tool-info.outputs.vcpkg-version }}
   vcpkg-sha512:
     description: 'The SHA-512 of the vcpkg release archive, if requested.'
+    value: ${{ steps.tool-info.outputs.vcpkg-sha512 }}
   ccache-version:
     description: 'The ccache version, if requested.'
+    value: ${{ steps.tool-info.outputs.ccache-version }}
   ccache-sha512:
     description: 'The SHA-512 of the host ccache archive, if requested.'
+    value: ${{ steps.tool-info.outputs.ccache-sha512 }}
+
 runs:
-  using: 'node24'
-  main: 'index.js'
+  using: 'composite'
+  steps:
+  - name: Read build tool info
+    id: tool-info
+    shell: bash
+    env:
+      GET_CMAKE: ${{ inputs.cmake }}
+      GET_VCPKG: ${{ inputs.vcpkg }}
+      GET_CCACHE: ${{ inputs.ccache }}
+    run: |
+      for flag in "$GET_CMAKE" "$GET_VCPKG" "$GET_CCACHE"; do
+        if [[ "$flag" != "true" && "$flag" != "false" ]]; then
+          echo "::error::Tool selection inputs must be 'true' or 'false'."
+          exit 1
+        fi
+      done
+
+      tool_names=()
+      if [[ "$GET_CMAKE" == "true" ]]; then
+        tool_names+=(cmake)
+      fi
+      if [[ "$GET_VCPKG" == "true" ]]; then
+        tool_names+=(vcpkg)
+      fi
+      if [[ "$GET_CCACHE" == "true" ]]; then
+        tool_names+=(ccache)
+      fi
+
+      if [[ "$RUNNER_OS" == "Windows" ]]; then
+        python_command=python
+      else
+        python_command=python3
+      fi
+
+      "$python_command" "$GITHUB_ACTION_PATH/../../../tools/ci_build/build_tool_info.py" --tools "${tool_names[@]}" \
+        | tee -a "$GITHUB_OUTPUT"

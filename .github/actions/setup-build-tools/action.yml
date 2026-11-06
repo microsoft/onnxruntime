@@ -16,7 +16,9 @@ runs:
     id: tool-config
     uses: ./.github/actions/get-build-tool-info
     with:
-      tools: ${{ inputs.install-ccache == 'true' && 'cmake,vcpkg,ccache' || 'cmake,vcpkg' }}
+      cmake: 'true'
+      vcpkg: 'true'
+      ccache: ${{ inputs.install-ccache == 'true' }}
 
   - name: Install build tools
     uses: microsoft/onnxruntime-github-actions/setup-build-tools@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14

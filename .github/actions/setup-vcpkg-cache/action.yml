@@ -17,7 +17,7 @@ runs:
       id: tool-info
       uses: ./.github/actions/get-build-tool-info
       with:
-        tools: vcpkg
+        vcpkg: 'true'
 
     - name: Configure Windows vcpkg binary cache
       if: runner.os == 'Windows'

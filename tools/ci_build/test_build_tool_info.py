@@ -3,13 +3,11 @@
 
 import copy
 import json
-import os
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
-from dataclasses import asdict
 from pathlib import Path
 from unittest.mock import patch
 
@@ -18,8 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_tool_info
 from build_tool_info import get_tool_info
 
-REPO_DIR = Path(__file__).resolve().parents[2]
-ACTION_SCRIPT = REPO_DIR / ".github" / "actions" / "get-build-tool-info" / "index.js"
+TOOL_INFO_SCRIPT = Path(build_tool_info.__file__)
 ARCHIVE_CASES = (
     ("cmake", "linux", "x86_64", "linux", "x64"),
     ("cmake", "linux", "aarch64", "linux", "arm64"),
@@ -83,97 +80,66 @@ class TestBuildToolInfo(unittest.TestCase):
             get_tool_info("unknown")
 
 
-@unittest.skipUnless(shutil.which("node"), "Node.js is required for action integration tests")
-class TestBuildToolAction(unittest.TestCase):
-    def run_action(self, tools, metadata):
+class TestBuildToolInfoCLI(unittest.TestCase):
+    def run_cli(self, tools, metadata):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            script = root / ".github" / "actions" / "get-build-tool-info" / "index.js"
-            script.parent.mkdir(parents=True)
-            shutil.copyfile(ACTION_SCRIPT, script)
-            info_path = root / "tools" / "ci_build" / "build_tool_info.json"
-            info_path.parent.mkdir(parents=True)
+            script = root / "build_tool_info.py"
+            shutil.copyfile(TOOL_INFO_SCRIPT, script)
+            info_path = script.with_suffix(".json")
             info_path.write_text(json.dumps(metadata), encoding="utf-8")
-            output_path = root / "output"
-            output_path.touch()
+            command = [sys.executable, "-I", "-S", str(script)]
+            if tools is not None:
+                command.extend(("--tools", *tools))
             result = subprocess.run(
-                ["node", str(script)],
-                env={**os.environ, "INPUT_TOOLS": tools, "GITHUB_OUTPUT": str(output_path)},
+                command,
+                cwd=root,
                 capture_output=True,
                 text=True,
                 check=False,
                 timeout=30,
             )
-            outputs = dict(line.split("=", 1) for line in output_path.read_text(encoding="utf-8").splitlines())
+            outputs = dict(line.split("=", 1) for line in result.stdout.splitlines())
             return result, outputs
 
-    def run_node(self, code, payload):
-        script = (
-            'const reader = require(process.argv[1]); const fs = require("fs"); '
-            'const input = JSON.parse(fs.readFileSync(0, "utf8")); '
-        ) + code
-        result = subprocess.run(
-            ["node", "-e", script, str(ACTION_SCRIPT)],
-            input=json.dumps(payload),
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=30,
-        )
-        return json.loads(result.stdout)
-
-    def test_node_and_python_select_same_archives(self):
-        cases = [case[:3] for case in ARCHIVE_CASES] + [("vcpkg", "freebsd", "mips")]
-        actual = self.run_node(
-            "console.log(JSON.stringify(input.cases.map(args => reader.getToolInfo(input.metadata, ...args))));",
-            {"metadata": build_tool_info._BUILD_TOOL_INFO, "cases": cases},
-        )
-        expected = [
-            asdict(get_tool_info(tool, host_os=host_os, host_arch=host_arch)) for tool, host_os, host_arch in cases
-        ]
-        self.assertEqual(actual, expected)
-
-    def test_node_rejects_unsupported_and_invalid_metadata(self):
-        metadata = copy.deepcopy(build_tool_info._BUILD_TOOL_INFO)
-        del metadata["cmake"]["sha512"]["windows"]["arm64"]
-        cases = [*UNSUPPORTED_CASES, ("cmake", "win32", "arm64"), ("unknown", "linux", "x64")]
-        errors = self.run_node(
-            """console.log(JSON.stringify(input.cases.map(args => {
-              try { reader.getToolInfo(input.metadata, ...args); return null; }
-              catch (error) { return error.message; }
-            })));""",
-            {"metadata": metadata, "cases": cases},
-        )
-        self.assertTrue(all(errors), errors)
-        for field, value in (("sha512", "invalid"), ("version", "invalid\nversion"), ("version", "invalid\n")):
-            with self.subTest(field=field):
-                metadata = copy.deepcopy(build_tool_info._BUILD_TOOL_INFO)
-                metadata["vcpkg"][field] = value
-                errors = self.run_node(
-                    """try { reader.getToolInfo(input, "vcpkg"); console.log("null"); }
-                    catch (error) { console.log(JSON.stringify(error.message)); }""",
-                    metadata,
-                )
-                self.assertIn("Invalid vcpkg", errors)
-
-    def test_action_outputs_only_requested_tools(self):
-        host_os, host_arch = self.run_node("console.log(JSON.stringify([process.platform, process.arch]));", None)
-        for tools in ("vcpkg", "cmake,vcpkg", "cmake,unknown"):
+    def test_cli_outputs_only_requested_tools(self):
+        for tools in (["vcpkg"], ["cmake", "vcpkg"]):
             with self.subTest(tools=tools):
-                result, outputs = self.run_action(tools, build_tool_info._BUILD_TOOL_INFO)
-                if "unknown" in tools:
-                    self.assertNotEqual(result.returncode, 0)
-                    self.assertIn("Unknown build tool", result.stderr)
-                    self.assertEqual(outputs, {})
-                    continue
+                result, outputs = self.run_cli(tools, build_tool_info._BUILD_TOOL_INFO)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 expected_keys = set()
-                for tool in tools.split(","):
-                    info = get_tool_info(tool, host_os=host_os, host_arch=host_arch)
+                for tool in tools:
+                    info = get_tool_info(tool)
                     self.assertEqual(outputs[f"{tool}-version"], info.version)
                     self.assertEqual(outputs[f"{tool}-sha512"], info.sha512)
                     expected_keys.update((f"{tool}-version", f"{tool}-sha512"))
                 self.assertEqual(set(outputs), expected_keys)
+
+    def test_cli_rejects_missing_or_unknown_tools(self):
+        cases = (
+            (None, "required: --tools"),
+            ([], "expected at least one argument"),
+            ([""], "invalid choice"),
+            ([" "], "invalid choice"),
+            (["cmake", "unknown"], "invalid choice"),
+            (["cmake,vcpkg"], "invalid choice"),
+        )
+        for tools, expected_error in cases:
+            with self.subTest(tools=tools):
+                result, outputs = self.run_cli(tools, build_tool_info._BUILD_TOOL_INFO)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(expected_error, result.stderr)
+                self.assertEqual(outputs, {})
+
+    def test_cli_rejects_invalid_metadata_without_partial_outputs(self):
+        for field, value in (("sha512", "invalid"), ("version", "invalid\nversion"), ("version", "invalid\n")):
+            with self.subTest(field=field):
+                metadata = copy.deepcopy(build_tool_info._BUILD_TOOL_INFO)
+                metadata["vcpkg"][field] = value
+                result, outputs = self.run_cli(["cmake", "vcpkg"], metadata)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("Invalid vcpkg", result.stderr)
+                self.assertEqual(outputs, {})
 
     def test_cache_identity_depends_only_on_vcpkg_artifact(self):
         original = build_tool_info._BUILD_TOOL_INFO
@@ -188,7 +154,7 @@ class TestBuildToolAction(unittest.TestCase):
         new_hash["vcpkg"]["sha512"] = "0" * 128
         keys = []
         for metadata in (original, reordered, unrelated, new_version, new_hash):
-            result, outputs = self.run_action("vcpkg", metadata)
+            result, outputs = self.run_cli(["vcpkg"], metadata)
             self.assertEqual(result.returncode, 0, result.stderr)
             keys.append(outputs["vcpkg-sha512"])
         self.assertEqual(keys[:4], [get_tool_info("vcpkg").sha512] * 4)
