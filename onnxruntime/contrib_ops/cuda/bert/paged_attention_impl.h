@@ -69,7 +69,7 @@ Status LaunchPrepareCudnnBlockTable(const int32_t* block_table, int32_t* cudnn_b
                                     const int32_t* cumulative_seqlens_kv,
                                     int32_t* cudnn_seqlens_kv, int32_t* sequence_validity,
                                     size_t element_count, int batch_size,
-                                    int max_num_blocks_per_seq, int block_size,
+                                    int max_num_blocks_per_seq, int block_size, int num_blocks,
                                     cudaStream_t stream);
 // Paged decode backend sizing helpers, used by paged_attention.cc to test eligibility (the kernel
 // needs more dynamic shared memory than the device provides for very wide heads) and to size the
