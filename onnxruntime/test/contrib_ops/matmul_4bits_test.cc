@@ -1782,35 +1782,6 @@ TEST(MatMulNBits, Fp16_Int4_GptOssRouterShapeNoZeroPoint) {
   }
 }
 
-TEST(MatMulNBits, Fp16_Int4_SingleWarpShapeNoZeroPoint) {
-  for (const auto& controls : {
-           EnvVarMap{{"ORT_ENABLE_SINGLE_WARP_INT4_GEMV", "1"},
-                     {"ORT_ENABLE_QWEN2B_GEMV_SPECIALIZATION", std::optional<std::string>{}}},
-           EnvVarMap{{"ORT_ENABLE_SINGLE_WARP_INT4_GEMV", std::optional<std::string>{}},
-                     {"ORT_ENABLE_QWEN2B_GEMV_SPECIALIZATION", "1"}},
-           EnvVarMap{{"ORT_ENABLE_SINGLE_WARP_INT4_GEMV", "0"},
-                     {"ORT_ENABLE_QWEN2B_GEMV_SPECIALIZATION", "1"}},
-           EnvVarMap{{"ORT_ENABLE_SINGLE_WARP_INT4_GEMV", "1"},
-                     {"ORT_ENABLE_QWEN2B_GEMV_SPECIALIZATION", "invalid"}},
-       }) {
-    ScopedEnvironmentVariables scoped_controls{controls};
-    ScopedEnvironmentVariables scoped_fpa{EnvVarMap{{"ORT_FPA_INTB_GEMM", "0"}}};
-    for (auto shape : {std::pair{1024, 2048}, std::pair{2048, 2048},
-                       std::pair{6144, 2048}, std::pair{2048, 6144}}) {
-      TestOptions opts{};
-      opts.M = 1, opts.N = shape.first, opts.K = shape.second;
-      opts.block_size = 32;
-      opts.has_zero_point = false;
-      opts.zp_is_4bit = true;
-      opts.output_abs_error = 0.1f;
-      opts.output_rel_error = 0.02f;
-      std::vector<std::unique_ptr<IExecutionProvider>> eps;
-      eps.push_back(DefaultCudaExecutionProvider());
-      RunTest<MLFloat16>(opts, std::move(eps));
-    }
-  }
-}
-
 TEST(MatMulNBits, BFloat16_Int4_NoZeroPoint) {
   if (!HasCudaEnvironment(800)) {
     GTEST_SKIP() << "Skipping BFloat16 8-bit MatMul tests on CUDA < 8.0";

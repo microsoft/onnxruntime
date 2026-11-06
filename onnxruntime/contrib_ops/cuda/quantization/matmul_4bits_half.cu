@@ -11,25 +11,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-void MatMul4BitsM1SingleWarp(
-    half* output, const half* a_data, const uint8_t* b_data_quant,
-    const half* scales_data, int n, int k, cudaStream_t stream) {
-  constexpr int columns_per_block = 1;
-  const int blocks_per_k = k / 32;
-  const size_t shared_mem_size = sizeof(half) * blocks_per_k * columns_per_block;
-  const dim3 blocks(n / columns_per_block, 1);
-  const dim3 threads(onnxruntime::cuda::GPU_WARP_SIZE_HOST, columns_per_block);
-  if (n == 1024 && k == 2048) {
-    MatMulFloat4BitsKernelM1<half, 32, false, false, columns_per_block, 8>
-        <<<blocks, threads, shared_mem_size, stream>>>(
-            output, a_data, b_data_quant, scales_data, nullptr, 1, n, k, blocks_per_k);
-  } else {
-    MatMulFloat4BitsKernelM1<half, 32, false, false, columns_per_block>
-        <<<blocks, threads, shared_mem_size, stream>>>(
-            output, a_data, b_data_quant, scales_data, nullptr, 1, n, k, blocks_per_k);
-  }
-}
-
 template <class T>
 bool TryMatMulUnaligned4Bits(
     T* output, const T* a_data, const uint8_t* b_data_quant, const T* scales_data,

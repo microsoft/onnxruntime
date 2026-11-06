@@ -31,14 +31,6 @@ static bool IsSingleRowGemvSpecializationDisabled() {
   return ParseEnvironmentVariableWithDefault<bool>("ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION", false);
 }
 
-static bool IsSingleWarp4BitsGemvEnabled() {
-  if (const auto enabled = ParseEnvironmentVariable<bool>("ORT_ENABLE_SINGLE_WARP_INT4_GEMV")) {
-    return *enabled;
-  }
-  // Preserve existing deployments; an explicitly set generic control takes precedence.
-  return ParseEnvironmentVariableWithDefault<bool>("ORT_ENABLE_QWEN2B_GEMV_SPECIALIZATION", false);
-}
-
 // Reduces kUnroll groups of kPerIter elements per step, advancing the packed-weight pointer, scale
 // index and k position in lockstep. Factored out of MatMulFloatInt4SingleRowKernel so the three unroll
 // factors (16, 4, 1) share one implementation instead of a macro.
@@ -692,15 +684,6 @@ bool TryMatMul4Bits(
     return false;
   }
 
-  if constexpr (std::is_same_v<T, half>) {
-    if (IsSupportedSingleWarp4BitsGemvShape(
-            true, zero_points != nullptr, bias_data != nullptr, m, n, k, block_size) &&
-        IsSingleWarp4BitsGemvEnabled() &&
-        !IsSingleRowGemvSpecializationDisabled()) {
-      MatMul4BitsM1SingleWarp(output, a_data, b_data_quant, scales_data, n, k, stream);
-      return true;
-    }
-  }
   if (IsSupportedSingleRowGemvShape(zero_points != nullptr, m, n, k, block_size) &&
       !IsSingleRowGemvSpecializationDisabled()) {
     const dim3 blocks(n / kColsPerThreadBlock, 1);
