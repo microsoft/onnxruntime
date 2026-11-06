@@ -3490,7 +3490,7 @@ TEST(PagedAttention, WebGpu_Prefill_LongContextSoftmaxPrecision) {
     testing::internal::CaptureStderr();
     test.Config(options).ConfigEp(std::move(ep)).RunWithConfig();
     const auto log = testing::internal::GetCapturedStderr();
-    EXPECT_NE(log.find("Starting program \"FlashAttentionPagedPrefill\""), std::string::npos) << log;
+    EXPECT_NE(log.find("Starting program \"FlashAttentionPagedPrefill"), std::string::npos) << log;
     EXPECT_EQ(log.find("Starting program \"FlashAttentionPagedGqaMatrix"), std::string::npos) << log;
   }
 }
