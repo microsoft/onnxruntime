@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
+// Licensed under the MIT License.
+
 #include "core/common/narrow.h"
 #include "core/providers/cpu/rnn/lstm_base.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
@@ -77,7 +80,7 @@ Status DynamicQuantizeLSTM::TryPackWeights(const Tensor& weights, PackedWeights&
 
   const auto* weights_data = static_cast<const uint8_t*>(weights.DataRaw());
   for (int i = 0; i < num_directions_; i++) {
-    MlasGemmPackB(N, K, weights_data, N, false /*AIsSigned*/, is_weight_signed, packed_weights_data);
+    MlasGemmPackB(N, K, weights_data, N, false /*AIsSigned*/, is_weight_signed, packed_weights_data, &mlas_backend_kernel_selector_config_);
     packed_weights_data = static_cast<uint8_t*>(packed_weights_data) + packed_weights_size;
     weights_data += N * K;
   }

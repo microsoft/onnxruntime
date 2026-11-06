@@ -1,5 +1,5 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
-# SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
+# SPDX-FileCopyrightText: Copyright 2024-2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 # Licensed under the MIT License.
 
 # Minimum CMake required
@@ -717,6 +717,13 @@ if(onnxruntime_USE_KLEIDIAI)
     message(WARNING "onnxruntime_USE_KLEIDIAI was set but it is not supported. It will be disabled.")
     set(onnxruntime_USE_KLEIDIAI OFF)
   endif()
+endif()
+
+# Keep Darwin/Windows INT8 unchanged; this Ops integration targets Linux/Android.
+set(onnxruntime_KLEIDIAI_INT8_OPS_AVAILABLE OFF)
+if(onnxruntime_USE_KLEIDIAI AND NOT MSVC AND
+   (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR ANDROID))
+  set(onnxruntime_KLEIDIAI_INT8_OPS_AVAILABLE ON)
 endif()
 
 #Dependencies begin

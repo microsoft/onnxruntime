@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include "core/framework/op_kernel.h"
@@ -457,7 +458,8 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
                       group_output_channels,
                       std::is_same<ActType, int8_t>::value,
                       is_W_signed_,
-                      packed_W);
+                      packed_W,
+                      &mlas_backend_kernel_selector_config_);
         packed_W += packed_W_size_;
         Wdata += W_offset;
       }

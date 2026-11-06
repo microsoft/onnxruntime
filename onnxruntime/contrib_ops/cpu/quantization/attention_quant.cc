@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include "core/framework/op_kernel.h"
@@ -102,7 +103,7 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr
   memset(packed_weights_data, 0, packed_weights_data_size);
 
   for (size_t i = 0; i < loop_len; i++) {
-    MlasGemmPackB(head_size, input_hidden_size, weights_data, hidden_size_x3, false /*AIsSigned*/, weights_is_signed_, packed_weights_data);
+    MlasGemmPackB(head_size, input_hidden_size, weights_data, hidden_size_x3, false /*AIsSigned*/, weights_is_signed_, packed_weights_data, &mlas_backend_kernel_selector_config_);
     packed_weights_data += packed_weights_size_;
     weights_data += head_size;
   }

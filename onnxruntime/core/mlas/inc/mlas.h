@@ -1,6 +1,7 @@
 /*++
 
 Copyright (c) Microsoft Corporation. All rights reserved.
+SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 
 Licensed under the MIT License.
 
@@ -855,6 +856,20 @@ MlasGemmPackB(
     bool AIsSigned,
     bool BIsSigned,
     void* PackedB
+    );
+
+// Sizing and packing must use the same selector because packed formats can differ.
+void
+MLASCALL
+MlasGemmPackB(
+    size_t N,
+    size_t K,
+    const uint8_t* B,
+    size_t ldb,
+    bool AIsSigned,
+    bool BIsSigned,
+    void* PackedB,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     );
 
 /**

@@ -1,4 +1,5 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
+# SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 # Licensed under the MIT License.
 
 set(MLAS_ROOT ${ONNXRUNTIME_ROOT}/core/mlas)
@@ -473,6 +474,21 @@ function(setup_kleidiai)
   )
   target_link_libraries(onnxruntime_mlas PRIVATE kleidiai)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai)
+  if(onnxruntime_KLEIDIAI_INT8_OPS_AVAILABLE)
+    target_sources(onnxruntime_mlas PRIVATE ${MLAS_SRC_DIR}/kleidiai/qgemm_ops_kleidiai.cpp)
+    mlas_add_private_compile_definitions(MLAS_KLEIDIAI_INT8_OPS_AVAILABLE=1)
+    target_link_libraries(onnxruntime_mlas PRIVATE kleidiai_ops)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai_ops)
+    get_target_property(kleidiai_ops_source_dir kleidiai_ops SOURCE_DIR)
+    target_include_directories(onnxruntime_mlas PRIVATE ${kleidiai_ops_source_dir})
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+      set_source_files_properties(${MLAS_SRC_DIR}/kleidiai/qgemm_ops_kleidiai.cpp
+        PROPERTIES COMPILE_OPTIONS "-Wno-shorten-64-to-32")
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+      set_source_files_properties(${MLAS_SRC_DIR}/kleidiai/qgemm_ops_kleidiai.cpp
+        PROPERTIES COMPILE_OPTIONS "-Wno-unused-parameter")
+    endif()
+  endif()
   if(onnxruntime_USE_QMX_KLEIDIAI_COEXIST)
           target_link_libraries(onnxruntime_mlas PRIVATE  kleidiai-qmx)
           target_compile_definitions(onnxruntime_mlas PRIVATE ENABLE_QMX_KERNELS=1)
