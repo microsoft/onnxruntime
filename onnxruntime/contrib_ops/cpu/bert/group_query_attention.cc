@@ -797,17 +797,24 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     const T* k_data = packed_qkv ? nullptr : k_rotary;
     const T* v_data = packed_qkv ? nullptr : V.Get<Tensor>().Data<T>();
 
-    // Non-quantized flash attention path (float only). Uses the tiled online-softmax
-    // kernel to avoid materializing the full attention score matrix. Falls back to the
-    // naive path when an unsupported feature is requested (softcap, smooth softmax,
-    // head sink, or QK output).
-    //
-    // Prefill (sequence_length > 1) uses the tiled kernel; single-token decode
-    // (sequence_length == 1 with total_sequence_length > 1) uses the dedicated GEMV
-    // decode kernel. Both are reached when total_sequence_length > 1.
     const bool read_only_cache = kv_sequence_length == 0 && attention_past_key != nullptr &&
                                  attention_past_value != nullptr && attention_present_key == nullptr &&
                                  attention_present_value == nullptr;
+
+    // fp32 and fp16 caches: all query heads of a KV head share each cache tile, the softmax stays in fp32, and decode
+    // splits the cache across threads when there are fewer (batch, KV head) pairs than threads. Steps it doesn't take
+    // go to the fp32 flash path or the per-head path below.
+    if (CanApplyAttentionGrouped<T>(output_qk != nullptr,
+                                    attention_present_key != nullptr && attention_present_value != nullptr,
+                                    read_only_cache, parameters.sequence_length)) {
+      return ApplyAttentionGrouped(q_rotary, k_data, v_data, head_sink_data,
+                                   attention_bias, attention_bias_offsets, attention_past_key, attention_past_value,
+                                   output, attention_present_key, attention_present_value, attention_seqlens_k,
+                                   parameters, allocator, context, attention_past_seqlens, query_seqlens_data);
+    }
+
+    // fp32 flash path: MLAS's tiled online-softmax kernel for prefill and its GEMV kernel for single-token decode, which
+    // off x64 is still faster than the grouped kernel when every query head has its own KV head.
     if constexpr (std::is_same_v<T, float>) {
       const bool use_flash = !disable_gqa_flash_ &&
                              is_unidirectional_ &&

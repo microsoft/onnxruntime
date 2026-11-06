@@ -17,7 +17,10 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/group_query_attention_helper.h"
+#include "contrib_ops/cpu/bert/grouped_flash_attention.h"
+#include "core/framework/allocator.h"
 #include "core/common/inlined_containers.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -2857,6 +2860,337 @@ TEST(GroupQueryAttentionTest, SharedKV_ReadOnlyCache_BatchedPrefillAndDecode_CPU
         }
       }
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Grouped flash attention: the CPU path for fp32 and fp16 caches that multiplies all query heads of a KV head against
+// each cache tile together, splits long decode caches across threads and keeps the softmax in fp32.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct GroupedFlashCase {
+  const char* name;
+  int sequence_length;
+  std::vector<int32_t> total_lengths;
+  std::vector<int32_t> causal_offsets;
+  std::vector<int32_t> query_lengths;  // empty: every token is valid
+  bool causal = true;
+  int local_window_size = -1;
+  float softcap = 0.0f;
+  bool bias = false;
+  int sink = 0;  // 0: none, 1: smooth softmax, 2: head_sink
+};
+
+template <typename T>
+void RunGroupedFlashAttentionCase(const GroupedFlashCase& test_case, int group_size, int head_size,
+                                  concurrency::ThreadPool* thread_pool) {
+  constexpr int kv_num_heads = 2;
+  constexpr int bias_offset_step = 3;
+  constexpr float kUnwritten = 7.0f;
+  const int batch_size = static_cast<int>(test_case.total_lengths.size());
+  const int num_heads = kv_num_heads * group_size;
+  const int sequence_length = test_case.sequence_length;
+  const int capacity = *std::max_element(test_case.total_lengths.begin(), test_case.total_lengths.end()) + 5;
+  const int bias_columns = capacity + bias_offset_step * batch_size;
+  const float scale = 1.0f / std::sqrt(static_cast<float>(head_size));
+
+  auto high = [&](int b, int s) {
+    return test_case.causal ? std::min(test_case.causal_offsets[b] + s + 1, test_case.total_lengths[b])
+                            : test_case.total_lengths[b];
+  };
+  auto low = [&](int hi) {
+    return test_case.local_window_size > 0 && hi > test_case.local_window_size ? hi - test_case.local_window_size : 0;
+  };
+  auto valid_tokens = [&](int b) {
+    return test_case.query_lengths.empty() ? sequence_length : test_case.query_lengths[b];
+  };
+
+  std::mt19937 random(1234);
+  std::uniform_real_distribution<float> distribution(-1.0f, 1.0f);
+  auto make = [&](size_t count, float amplitude) {
+    std::vector<T> values(count);
+    for (auto& value : values) value = T(amplitude * distribution(random));
+    return values;
+  };
+  std::vector<T> query = make(static_cast<size_t>(batch_size) * num_heads * sequence_length * head_size, 2.0f);
+  std::vector<T> key = make(static_cast<size_t>(batch_size) * kv_num_heads * capacity * head_size, 1.0f);
+  std::vector<T> value = make(key.size(), 1.0f);
+  std::vector<T> bias = make(static_cast<size_t>(batch_size) * num_heads * sequence_length * bias_columns, 2.0f);
+  std::vector<T> head_sink = make(num_heads, 3.0f);
+  std::vector<int32_t> bias_offsets(batch_size);
+  for (int b = 0; b < batch_size; ++b) bias_offsets[b] = b * bias_offset_step;
+
+  // Cached rows no query may see must not be read at all: unused capacity, and history before the first query's
+  // window.
+  for (int b = 0; b < batch_size; ++b) {
+    for (int kv = 0; kv < kv_num_heads; ++kv) {
+      for (int t = 0; t < capacity; ++t) {
+        if (t >= test_case.total_lengths[b] || t < low(high(b, 0))) {
+          const size_t row = ((static_cast<size_t>(b) * kv_num_heads + kv) * capacity + t) * head_size;
+          std::fill_n(key.begin() + row, head_size, T(std::numeric_limits<float>::quiet_NaN()));
+          std::fill_n(value.begin() + row, head_size, T(std::numeric_limits<float>::quiet_NaN()));
+        }
+      }
+    }
+  }
+
+  std::vector<T> output(static_cast<size_t>(batch_size) * sequence_length * num_heads * head_size, T(kUnwritten));
+  contrib::GroupedFlashAttentionArgs<T> args;
+  args.batch_size = batch_size;
+  args.sequence_length = sequence_length;
+  args.num_heads = num_heads;
+  args.kv_num_heads = kv_num_heads;
+  args.head_size = head_size;
+  args.v_head_size = head_size;
+  args.query = query.data();
+  args.q_seq_stride = head_size;
+  args.q_head_stride = static_cast<size_t>(sequence_length) * head_size;
+  args.q_batch_stride = static_cast<size_t>(num_heads) * args.q_head_stride;
+  args.key = key.data();
+  args.value = value.data();
+  args.k_row_stride = args.v_row_stride = head_size;
+  args.k_head_stride = args.v_head_stride = static_cast<size_t>(capacity) * head_size;
+  args.k_batch_stride = args.v_batch_stride = static_cast<size_t>(kv_num_heads) * args.k_head_stride;
+  args.output = output.data();
+  args.o_head_stride = head_size;
+  args.o_seq_stride = static_cast<size_t>(num_heads) * head_size;
+  args.o_batch_stride = static_cast<size_t>(sequence_length) * args.o_seq_stride;
+  args.total_lengths = test_case.total_lengths.data();
+  args.causal_offsets = test_case.causal_offsets.data();
+  args.query_lengths = test_case.query_lengths.empty() ? nullptr : test_case.query_lengths.data();
+  args.causal = test_case.causal;
+  args.local_window_size = test_case.local_window_size;
+  args.scale = scale;
+  args.softcap = test_case.softcap;
+  if (test_case.bias) {
+    args.attention_bias = bias.data();
+    args.bias_seq_stride = bias_columns;
+    args.bias_head_stride = static_cast<size_t>(sequence_length) * bias_columns;
+    args.bias_batch_stride = static_cast<size_t>(num_heads) * args.bias_head_stride;
+    args.bias_offsets = bias_offsets.data();
+  }
+  args.use_sink = test_case.sink != 0;
+  args.head_sink = test_case.sink == 2 ? head_sink.data() : nullptr;
+  ASSERT_STATUS_OK(contrib::RunGroupedFlashAttention(args, std::make_shared<CPUAllocator>(), thread_pool));
+
+  const double tolerance = std::is_same_v<T, float> ? 2e-5 : 1e-3;
+  for (int b = 0; b < batch_size; ++b) {
+    for (int s = 0; s < sequence_length; ++s) {
+      for (int h = 0; h < num_heads; ++h) {
+        const T* actual = output.data() + ((static_cast<size_t>(b) * sequence_length + s) * num_heads + h) * head_size;
+        if (s >= valid_tokens(b)) {
+          for (int d = 0; d < head_size; ++d) ASSERT_EQ(static_cast<float>(actual[d]), kUnwritten);
+          continue;
+        }
+        const int kv = h / group_size;
+        const int hi = high(b, s);
+        const int lo = low(hi);
+        const T* q = query.data() + ((static_cast<size_t>(b) * num_heads + h) * sequence_length + s) * head_size;
+        const size_t cache_head = (static_cast<size_t>(b) * kv_num_heads + kv) * capacity;
+        std::vector<double> scores(hi - lo);
+        double maximum = -std::numeric_limits<double>::infinity();
+        for (int t = lo; t < hi; ++t) {
+          double score = 0.0;
+          for (int d = 0; d < head_size; ++d) {
+            score += static_cast<double>(static_cast<float>(q[d])) *
+                     static_cast<float>(key[(cache_head + t) * head_size + d]);
+          }
+          score *= scale;
+          if (test_case.softcap > 0.0f) score = test_case.softcap * std::tanh(score / test_case.softcap);
+          if (test_case.bias) {
+            score += static_cast<float>(
+                bias[((static_cast<size_t>(b) * num_heads + h) * sequence_length + s) * bias_columns +
+                     bias_offsets[b] + t]);
+          }
+          scores[t - lo] = score;
+          maximum = std::max(maximum, score);
+        }
+        const double sink = test_case.sink == 2 ? static_cast<float>(head_sink[h]) : 0.0;
+        if (test_case.sink != 0) maximum = std::max(maximum, sink);
+        double denominator = test_case.sink != 0 ? std::exp(sink - maximum) : 0.0;
+        for (auto& score : scores) {
+          score = std::exp(score - maximum);
+          denominator += score;
+        }
+        for (int d = 0; d < head_size; ++d) {
+          double expected = 0.0;
+          for (int t = lo; t < hi; ++t) {
+            expected += scores[t - lo] * static_cast<float>(value[(cache_head + t) * head_size + d]);
+          }
+          ASSERT_NEAR(static_cast<float>(actual[d]), expected / denominator, tolerance)
+              << "b=" << b << " s=" << s << " h=" << h << " d=" << d;
+        }
+      }
+    }
+  }
+}
+
+}  // namespace
+
+// Exercises the kernel directly with a fixed 4-thread pool, so decode always splits long caches across threads.
+TEST(GroupQueryAttentionTest, GroupedFlashAttention_Reference_CPU) {
+  concurrency::ThreadPool thread_pool(&Env::Default(), ThreadOptions{}, nullptr, 4, concurrency::kSpinDurationDefault,
+                                      false);
+  const std::vector<GroupedFlashCase> cases = {
+      {"decode_split", 1, {1500, 777}, {1499, 776}, {}},
+      {"decode_window_softcap_bias_sink", 1, {1300, 900}, {1299, 899}, {}, true, 257, 30.0f, true, 2},
+      {"prefill_past_padded", 37, {637, 20}, {600, 0}, {37, 20}, true, -1, 0.0f, false, 1},
+      {"prefill_window_bias", 150, {1150, 150}, {1000, 0}, {}, true, 300, 0.0f, true, 0},
+      {"bidirectional_bias", 5, {700, 5}, {695, 0}, {}, false, -1, 0.0f, true, 0},
+  };
+  for (const auto& test_case : cases) {
+    for (int group_size : {1, 3, 8}) {
+      for (int head_size : {40, 128}) {
+        SCOPED_TRACE(testing::Message() << test_case.name << " group=" << group_size << " head_size=" << head_size);
+        RunGroupedFlashAttentionCase<float>(test_case, group_size, head_size, &thread_pool);
+        RunGroupedFlashAttentionCase<MLFloat16>(test_case, group_size, head_size, &thread_pool);
+      }
+    }
+  }
+}
+
+namespace {
+
+struct GqaPathCase {
+  const char* name;
+  int sequence_length;
+  std::vector<int32_t> past_lengths;
+  int local_window_size = -1;
+  float softcap = 0.0f;
+  bool bias = false;
+  bool head_sink = false;
+  bool smooth_softmax = false;
+};
+
+// Runs GroupQueryAttention on the CPU EP and returns output, present_key and present_value as float.
+template <typename T>
+std::vector<std::vector<float>> RunGqaPathCase(const GqaPathCase& test_case, bool disable_flash, bool qk_output) {
+  constexpr int num_heads = 6;
+  constexpr int kv_num_heads = 2;
+  constexpr int head_size = 64;
+  const int batch_size = static_cast<int>(test_case.past_lengths.size());
+  const int sequence_length = test_case.sequence_length;
+  const int past_capacity = *std::max_element(test_case.past_lengths.begin(), test_case.past_lengths.end());
+  const int total_length = past_capacity + sequence_length;
+
+  std::mt19937 random(7);
+  std::uniform_real_distribution<float> distribution(-1.0f, 1.0f);
+  auto make = [&](size_t count, float amplitude) {
+    std::vector<float> values(count);
+    for (auto& value : values) value = amplitude * distribution(random);
+    return values;
+  };
+  auto to_t = [](const std::vector<float>& values) {
+    if constexpr (std::is_same_v<T, float>) {
+      return values;
+    } else {
+      return ToFloat16(values);
+    }
+  };
+
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{{"ORT_GQA_DISABLE_FLASH_ATTENTION", std::string(disable_flash ? "1" : "0")}}};
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  tester.AddAttribute<int64_t>("local_window_size", test_case.local_window_size);
+  tester.AddAttribute<float>("softcap", test_case.softcap);
+  tester.AddAttribute<int64_t>("smooth_softmax", test_case.smooth_softmax ? 1 : 0);
+  if (qk_output) {
+    tester.AddAttribute<int64_t>("qk_output", static_cast<int64_t>(contrib::QKOutputType::AFTER_SOFTMAX));
+  }
+  tester.AddInput<T>("query", {batch_size, sequence_length, num_heads * head_size},
+                     to_t(make(static_cast<size_t>(batch_size) * sequence_length * num_heads * head_size, 2.0f)));
+  const std::vector<int64_t> new_kv_shape{batch_size, sequence_length, kv_num_heads * head_size};
+  const size_t new_kv_size = static_cast<size_t>(batch_size) * sequence_length * kv_num_heads * head_size;
+  tester.AddInput<T>("key", new_kv_shape, to_t(make(new_kv_size, 1.0f)));
+  tester.AddInput<T>("value", new_kv_shape, to_t(make(new_kv_size, 1.0f)));
+  const std::vector<int64_t> past_shape{batch_size, kv_num_heads, past_capacity, head_size};
+  const size_t past_size = static_cast<size_t>(batch_size) * kv_num_heads * past_capacity * head_size;
+  tester.AddInput<T>("past_key", past_shape, to_t(make(past_size, 1.0f)));
+  tester.AddInput<T>("past_value", past_shape, to_t(make(past_size, 1.0f)));
+  std::vector<int32_t> seqlens_k(batch_size);
+  for (int b = 0; b < batch_size; ++b) seqlens_k[b] = test_case.past_lengths[b] + sequence_length - 1;
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, seqlens_k);
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_length});
+  tester.AddOptionalInputEdge<T>();        // cos_cache
+  tester.AddOptionalInputEdge<T>();        // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  if (test_case.bias) {
+    tester.AddInput<T>("attention_bias", {batch_size, 1, sequence_length, total_length},
+                       to_t(make(static_cast<size_t>(batch_size) * sequence_length * total_length, 2.0f)));
+  } else {
+    tester.AddOptionalInputEdge<T>();
+  }
+  if (test_case.head_sink) {
+    tester.AddInput<T>("head_sink", {num_heads}, to_t(make(num_heads, 3.0f)));
+  } else {
+    tester.AddOptionalInputEdge<T>();
+  }
+
+  const std::vector<int64_t> output_shape{batch_size, sequence_length, num_heads * head_size};
+  const std::vector<int64_t> present_shape{batch_size, kv_num_heads, total_length, head_size};
+  tester.AddOutput<T>("output", output_shape,
+                      std::vector<T>(static_cast<size_t>(batch_size) * sequence_length * num_heads * head_size));
+  const size_t present_size = static_cast<size_t>(batch_size) * kv_num_heads * total_length * head_size;
+  tester.AddOutput<T>("present_key", present_shape, std::vector<T>(present_size));
+  tester.AddOutput<T>("present_value", present_shape, std::vector<T>(present_size));
+  if (qk_output) {
+    const size_t qk_size = static_cast<size_t>(batch_size) * num_heads * sequence_length * total_length;
+    tester.AddOutput<T>("output_qk", {batch_size, num_heads, sequence_length, total_length}, std::vector<T>(qk_size));
+  }
+  tester.SetOutputTolerance(1e6f);  // compared below
+
+  SessionOptions session_options;
+  session_options.intra_op_param.thread_pool_size = 4;
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+  std::vector<std::vector<float>> results;
+  const auto fetches = tester.GetFetches();
+  for (size_t i = 0; i < 3; ++i) {
+    const Tensor& tensor = fetches[i].Get<Tensor>();
+    const T* data = tensor.Data<T>();
+    std::vector<float>& result = results.emplace_back(static_cast<size_t>(tensor.Shape().Size()));
+    for (size_t j = 0; j < result.size(); ++j) result[j] = static_cast<float>(data[j]);
+  }
+  return results;
+}
+
+template <typename T>
+void ExpectGqaPathsMatch(const GqaPathCase& test_case) {
+  const float tolerance = std::is_same_v<T, float> ? 2e-5f : 2e-3f;
+  const auto grouped = RunGqaPathCase<T>(test_case, /*disable_flash*/ false, /*qk_output*/ false);
+  // The old per-head path, selected by the environment variable or by a feature the grouped path doesn't cover.
+  for (bool qk_output : {false, true}) {
+    SCOPED_TRACE(testing::Message() << "fallback=" << (qk_output ? "qk_output" : "ORT_GQA_DISABLE_FLASH_ATTENTION"));
+    const auto reference = RunGqaPathCase<T>(test_case, /*disable_flash*/ !qk_output, qk_output);
+    for (size_t i = 0; i < grouped.size(); ++i) {
+      ASSERT_EQ(grouped[i].size(), reference[i].size());
+      for (size_t j = 0; j < grouped[i].size(); ++j) {
+        ASSERT_NEAR(grouped[i][j], reference[i][j], tolerance) << "output " << i << " element " << j;
+      }
+    }
+  }
+}
+
+}  // namespace
+
+// The grouped path must agree with the per-head path it replaces, including the present cache it writes.
+TEST(GroupQueryAttentionTest, GroupedFlashAttentionMatchesPerHeadPath_CPU) {
+  const std::vector<GqaPathCase> cases = {
+      {"decode_long", 1, {1100, 700}},
+      {"decode_features", 1, {1100, 700}, 333, 20.0f, true, true, false},
+      {"prefill_features", 9, {300}, -1, 0.0f, true, false, true},
+      {"prefill_window_softcap", 200, {700}, 64, 15.0f, false, false, false},
+  };
+  for (const auto& test_case : cases) {
+    SCOPED_TRACE(test_case.name);
+    ExpectGqaPathsMatch<float>(test_case);
+    ExpectGqaPathsMatch<MLFloat16>(test_case);
   }
 }
 
