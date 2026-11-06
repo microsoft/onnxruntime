@@ -134,6 +134,7 @@ TEST(PluginExternalDataLoader, OptionalDataTypeFilter) {
   EXPECT_TRUE(loader.SupportsDataType(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64));
 }
 
+#ifndef ORT_NO_EXCEPTIONS
 TEST(PluginExternalDataLoader, CreationAndCapabilityErrorsPropagate) {
   LoaderState state;
   TestEp ep{state};
@@ -164,6 +165,7 @@ TEST(PluginExternalDataLoader, InvalidLoaderIsReleased) {
   EXPECT_EQ(state.created, 1);
   EXPECT_EQ(state.released, 1);
 }
+#endif
 
 #if !defined(__wasm__)
 class MemoryFile final : public RandomAccessFile {
