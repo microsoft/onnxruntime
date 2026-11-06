@@ -21,7 +21,7 @@ runs:
       ccache: ${{ inputs.install-ccache == 'true' }}
 
   - name: Install build tools
-    uses: microsoft/onnxruntime-github-actions/setup-build-tools@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
+    uses: microsoft/onnxruntime-github-actions/setup-build-tools@bf42db193ec161ac5f861671d0bda3c94e7a5124
     with:
       ccache-version: ${{ inputs.install-ccache == 'true' && steps.tool-config.outputs.ccache-version || '' }}
       ccache-hash: ${{ inputs.install-ccache == 'true' && steps.tool-config.outputs.ccache-sha512 || '' }}
