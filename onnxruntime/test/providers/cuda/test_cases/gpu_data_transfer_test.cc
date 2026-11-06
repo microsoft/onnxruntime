@@ -68,7 +68,7 @@ TEST(GPUDataTransferSameBufferTest, CopyTensorAsyncSelfCopyIsNoOp) {
 
   cudaStream_t cuda_stream = nullptr;
   ASSERT_EQ(cudaStreamCreate(&cuda_stream), cudaSuccess);
-  CudaStream stream(cuda_stream, gpu_allocator->Info().device, pinned_alloc, false, false, nullptr, nullptr, info);
+  CudaStream stream(cuda_stream, gpu_allocator->Info().device, pinned_alloc, false, true, nullptr, nullptr, info);
 
   auto tensor = MakePinnedTensor(pinned_alloc);
 
@@ -77,7 +77,6 @@ TEST(GPUDataTransferSameBufferTest, CopyTensorAsyncSelfCopyIsNoOp) {
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   ASSERT_EQ(cudaStreamSynchronize(cuda_stream), cudaSuccess);
-  ASSERT_EQ(cudaStreamDestroy(cuda_stream), cudaSuccess);
 }
 
 // Variant B: a same-buffer host->host copy inside a CUDA-graph capture region must not
@@ -94,7 +93,7 @@ TEST(GPUDataTransferSameBufferTest, CopyTensorAsyncSelfCopyDuringCaptureKeepsCap
 
   cudaStream_t cuda_stream = nullptr;
   ASSERT_EQ(cudaStreamCreate(&cuda_stream), cudaSuccess);
-  CudaStream stream(cuda_stream, gpu_allocator->Info().device, pinned_alloc, false, false, nullptr, nullptr, info);
+  CudaStream stream(cuda_stream, gpu_allocator->Info().device, pinned_alloc, false, true, nullptr, nullptr, info);
 
   auto tensor = MakePinnedTensor(pinned_alloc);
 
@@ -110,7 +109,6 @@ TEST(GPUDataTransferSameBufferTest, CopyTensorAsyncSelfCopyDuringCaptureKeepsCap
   if (graph != nullptr) {
     cudaGraphDestroy(graph);
   }
-  ASSERT_EQ(cudaStreamDestroy(cuda_stream), cudaSuccess);
 }
 
 }  // namespace test
