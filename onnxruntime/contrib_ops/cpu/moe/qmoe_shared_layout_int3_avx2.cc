@@ -73,10 +73,15 @@ inline float Avx2Int3ReduceAddPs(__m256 v) noexcept {
   return _mm_cvtss_f32(_mm_add_ss(sums, _mm_movehl_ps(shuf, sums)));
 }
 
-inline __m256 Unpack8Int3WeightsAvx2(
-    uint32_t u24, const __m256i& shifts, const __m256i& mask7, const __m256i& four) noexcept {
-  return _mm256_cvtepi32_ps(
-      _mm256_sub_epi32(_mm256_and_si256(_mm256_srlv_epi32(_mm256_set1_epi32(static_cast<int>(u24)), shifts), mask7), four));
+template <bool DeferredScale>
+inline __m256 UnpackDequant8Int3WeightsAvx2(
+    uint32_t u24, const __m256i& shifts, const __m256i& mask7, const __m256i& four, const __m256& table) noexcept {
+  const __m256i ucodes = _mm256_and_si256(_mm256_srlv_epi32(_mm256_set1_epi32(static_cast<int>(u24)), shifts), mask7);
+  if constexpr (DeferredScale) {
+    return _mm256_cvtepi32_ps(_mm256_sub_epi32(ucodes, four));
+  } else {
+    return _mm256_permutevar8x32_ps(table, ucodes);
+  }
 }
 
 inline __m256 Int3LookupAvx2(float scale, bool bf16) {
@@ -99,12 +104,6 @@ inline __m256 Int3LookupAvx2(float scale, bool bf16) {
 }
 
 template <bool DeferredScale>
-inline __m256 DequantInt3Avx2(__m256 codes, __m256 table, __m256i four) {
-  if constexpr (DeferredScale) return codes;
-  return _mm256_permutevar8x32_ps(table, _mm256_add_epi32(_mm256_cvtps_epi32(codes), four));
-}
-
-template <bool DeferredScale>
 inline __m256 Dot32Int3Avx2(
     const uint8_t* p, const __m256& a0, const __m256& a1, const __m256& a2, const __m256& a3,
     const __m256i& shifts, const __m256i& mask7, const __m256i& four, const __m256& table) noexcept {
@@ -114,11 +113,11 @@ inline __m256 Dot32Int3Avx2(
   std::memcpy(&u2, p + 6, sizeof(uint32_t));
   std::memcpy(&u3, p + 8, sizeof(uint32_t));
   u3 >>= 8;
-  const __m256 w0 = DequantInt3Avx2<DeferredScale>(Unpack8Int3WeightsAvx2(u0, shifts, mask7, four), table, four);
-  const __m256 w1 = DequantInt3Avx2<DeferredScale>(Unpack8Int3WeightsAvx2(u1, shifts, mask7, four), table, four);
+  const __m256 w0 = UnpackDequant8Int3WeightsAvx2<DeferredScale>(u0, shifts, mask7, four, table);
+  const __m256 w1 = UnpackDequant8Int3WeightsAvx2<DeferredScale>(u1, shifts, mask7, four, table);
   const __m256 p01 = _mm256_fmadd_ps(w0, a0, _mm256_mul_ps(w1, a1));
-  const __m256 w2 = DequantInt3Avx2<DeferredScale>(Unpack8Int3WeightsAvx2(u2, shifts, mask7, four), table, four);
-  const __m256 w3 = DequantInt3Avx2<DeferredScale>(Unpack8Int3WeightsAvx2(u3, shifts, mask7, four), table, four);
+  const __m256 w2 = UnpackDequant8Int3WeightsAvx2<DeferredScale>(u2, shifts, mask7, four, table);
+  const __m256 w3 = UnpackDequant8Int3WeightsAvx2<DeferredScale>(u3, shifts, mask7, four, table);
   const __m256 p23 = _mm256_fmadd_ps(w2, a2, _mm256_mul_ps(w3, a3));
   return _mm256_add_ps(p01, p23);
 }
@@ -206,20 +205,6 @@ void Int3Group4Avx2(const uint8_t* w_base, const uint8_t* next_w_base, const uin
         _mm_prefetch(reinterpret_cast<const char*>(next_w_base + c * raw_w_stride + byte_off), _MM_HINT_T0);
       }
     }
-    __m256 a0_0[kChunks32], a1_0[kChunks32], a2_0[kChunks32], a3_0[kChunks32];
-    __m256 a0_1[kChunks32], a1_1[kChunks32], a2_1[kChunks32], a3_1[kChunks32];
-    for (int ch = 0; ch < kChunks32; ++ch) {
-      a0_0[ch] = _mm256_loadu_ps(a_natural + 0 * k + kb * BlockSize + ch * 32 + 0);
-      a1_0[ch] = _mm256_loadu_ps(a_natural + 0 * k + kb * BlockSize + ch * 32 + 8);
-      a2_0[ch] = _mm256_loadu_ps(a_natural + 0 * k + kb * BlockSize + ch * 32 + 16);
-      a3_0[ch] = _mm256_loadu_ps(a_natural + 0 * k + kb * BlockSize + ch * 32 + 24);
-      if constexpr (RT >= 2) {
-        a0_1[ch] = _mm256_loadu_ps(a_natural + 1 * k + kb * BlockSize + ch * 32 + 0);
-        a1_1[ch] = _mm256_loadu_ps(a_natural + 1 * k + kb * BlockSize + ch * 32 + 8);
-        a2_1[ch] = _mm256_loadu_ps(a_natural + 1 * k + kb * BlockSize + ch * 32 + 16);
-        a3_1[ch] = _mm256_loadu_ps(a_natural + 1 * k + kb * BlockSize + ch * 32 + 24);
-      }
-    }
     auto step_col = [&](int c, __m256& acc_r0, __m256& acc_r1) QMOE_AVX2_LAMBDA_INLINE {
       const uint8_t* p = w_base + c * raw_w_stride + byte_off;
       const float s_val = ScaleIsBf16 ? Avx2Int3BFloat16BitsToFloat(scales[(n0 + c) * blocks + kb])
@@ -228,11 +213,19 @@ void Int3Group4Avx2(const uint8_t* w_base, const uint8_t* next_w_base, const uin
       __m256 prod0 = _mm256_setzero_ps();
       __m256 prod1 = _mm256_setzero_ps();
       for (int ch = 0; ch < kChunks32; ++ch) {
-        const __m256 d0 = Dot32Int3Avx2<DeferredScale>(p + ch * 12, a0_0[ch], a1_0[ch], a2_0[ch], a3_0[ch], shifts, mask7, four, table);
+        const __m256 a0_0 = _mm256_loadu_ps(a_natural + 0 * k + kb * BlockSize + ch * 32 + 0);
+        const __m256 a1_0 = _mm256_loadu_ps(a_natural + 0 * k + kb * BlockSize + ch * 32 + 8);
+        const __m256 a2_0 = _mm256_loadu_ps(a_natural + 0 * k + kb * BlockSize + ch * 32 + 16);
+        const __m256 a3_0 = _mm256_loadu_ps(a_natural + 0 * k + kb * BlockSize + ch * 32 + 24);
+        const __m256 d0 = Dot32Int3Avx2<DeferredScale>(p + ch * 12, a0_0, a1_0, a2_0, a3_0, shifts, mask7, four, table);
         prod0 = (ch == 0) ? d0 : _mm256_add_ps(prod0, d0);
         if constexpr (RT >= 2) {
+          const __m256 a0_1 = _mm256_loadu_ps(a_natural + 1 * k + kb * BlockSize + ch * 32 + 0);
+          const __m256 a1_1 = _mm256_loadu_ps(a_natural + 1 * k + kb * BlockSize + ch * 32 + 8);
+          const __m256 a2_1 = _mm256_loadu_ps(a_natural + 1 * k + kb * BlockSize + ch * 32 + 16);
+          const __m256 a3_1 = _mm256_loadu_ps(a_natural + 1 * k + kb * BlockSize + ch * 32 + 24);
           const __m256 d1 =
-              Dot32Int3Avx2<DeferredScale>(p + ch * 12, a0_1[ch], a1_1[ch], a2_1[ch], a3_1[ch], shifts, mask7, four, table);
+              Dot32Int3Avx2<DeferredScale>(p + ch * 12, a0_1, a1_1, a2_1, a3_1, shifts, mask7, four, table);
           prod1 = (ch == 0) ? d1 : _mm256_add_ps(prod1, d1);
         }
       }

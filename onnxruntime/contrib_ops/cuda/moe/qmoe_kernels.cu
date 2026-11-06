@@ -160,7 +160,7 @@ cudaError_t LaunchQMoEOffloadSourceRows(
 // route is classified as a miss and its raw index is forwarded through `host_indices_out`, where the host rejects it
 // and fails the invocation.
 __global__ void QMoEOffloadClassifyKernel(
-    const int* topk_indices, const int* expert_slot, int num_experts, int route_count, int row_count,
+    int* topk_indices, const int* expert_slot, int num_experts, int route_count, int row_count,
     int* hit_ids, int* hit_compact, int* hit_flag, int dummy_slot,
     float* unit_scales, int* identity_permutation, int k_for_source_rows,
     int* host_indices_out, const uint4* input_dev, uint4* host_input_out, int input_vec4_count,
@@ -168,7 +168,8 @@ __global__ void QMoEOffloadClassifyKernel(
     volatile int32_t* doorbell_tile_rows_host, int tile_rows,
     bool skip_zero_cold, volatile uint64_t* doorbell_done_host,
     QMoEOffloadTelemetry* telemetry,
-    float* topk_scales_for_cold_prune, float min_cold_expert_weight) {
+    float* topk_scales_for_cold_prune, float min_cold_expert_weight,
+    int top_k_for_cold_prune) {
   const int row = blockIdx.x * blockDim.x + threadIdx.x;
   int exp = 0;
   int slot = -1;
@@ -181,11 +182,14 @@ __global__ void QMoEOffloadClassifyKernel(
     skipped_tail = (exp == -2);
     const bool valid_expert = !skipped_tail && static_cast<unsigned int>(exp) < static_cast<unsigned int>(num_experts);
     slot = (row < route_count && valid_expert) ? expert_slot[exp] : -1;
-    const int rank_in_tok = (k_for_source_rows > 0) ? (route % k_for_source_rows) : (route % 10);
+    const int eff_k = (top_k_for_cold_prune > 0) ? top_k_for_cold_prune
+                                                 : ((k_for_source_rows > 0) ? k_for_source_rows : 10);
+    const int rank_in_tok = (eff_k > 1) ? (route % eff_k) : 0;
     if (!skipped_tail && row < route_count && slot < 0 && min_cold_expert_weight > 0.0f &&
         topk_scales_for_cold_prune != nullptr && rank_in_tok > 0 &&
         topk_scales_for_cold_prune[route] < min_cold_expert_weight) {
       topk_scales_for_cold_prune[route] = 0.0f;
+      topk_indices[route] = -2;
       exp = -2;
       skipped_tail = true;
     }
@@ -310,7 +314,7 @@ __global__ void QMoEOffloadMergeKernel(
 }
 
 cudaError_t LaunchQMoEOffloadClassify(
-    const int* topk_indices, const int* expert_slot, int num_experts, int route_count, int row_count,
+    int* topk_indices, const int* expert_slot, int num_experts, int route_count, int row_count,
     int* hit_ids, int* hit_compact, int* hit_flag, cudaStream_t stream, int dummy_slot,
     float* unit_scales, int* identity_permutation, int k_for_source_rows,
     int* host_indices_out, const void* input_dev, void* host_input_out, int input_vec4_count,
@@ -318,7 +322,8 @@ cudaError_t LaunchQMoEOffloadClassify(
     volatile int32_t* doorbell_tile_rows_host, int tile_rows,
     bool skip_zero_cold, volatile uint64_t* doorbell_done_host,
     QMoEOffloadTelemetry* telemetry,
-    float* topk_scales_for_cold_prune, float min_cold_expert_weight) {
+    float* topk_scales_for_cold_prune, float min_cold_expert_weight,
+    int top_k_for_cold_prune) {
   if (row_count <= 0) return cudaSuccess;
   if (doorbell_seq_dev != nullptr && doorbell_req_host != nullptr && row_count <= 256) {
     QMoEOffloadClassifyKernel<<<1, 256, 0, stream>>>(
@@ -328,7 +333,7 @@ cudaError_t LaunchQMoEOffloadClassify(
         reinterpret_cast<uint4*>(host_input_out), input_vec4_count,
         doorbell_seq_dev, doorbell_req_host, doorbell_tile_rows_host, tile_rows,
         skip_zero_cold, doorbell_done_host, telemetry,
-        topk_scales_for_cold_prune, min_cold_expert_weight);
+        topk_scales_for_cold_prune, min_cold_expert_weight, top_k_for_cold_prune);
     return cudaGetLastError();
   }
   const int blocks = row_count / 128 + (row_count % 128 != 0);
@@ -338,7 +343,7 @@ cudaError_t LaunchQMoEOffloadClassify(
       host_indices_out, reinterpret_cast<const uint4*>(input_dev),
       reinterpret_cast<uint4*>(host_input_out), input_vec4_count,
       nullptr, nullptr, nullptr, tile_rows, false, nullptr, nullptr,
-      topk_scales_for_cold_prune, min_cold_expert_weight);
+      topk_scales_for_cold_prune, min_cold_expert_weight, top_k_for_cold_prune);
   return cudaGetLastError();
 }
 

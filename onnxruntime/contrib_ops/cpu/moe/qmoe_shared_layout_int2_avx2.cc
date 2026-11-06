@@ -173,96 +173,6 @@ void Int2Group4Avx2(const uint8_t* w_base, const uint8_t* next_w_base, const uin
   }
 }
 
-template <int BlockSize, bool ScalesBlockMajor, bool ScaleIsBf16>
-void Int2Group8PrepackedAvx2(const uint8_t* w_base, const uint8_t* next_w_base, const uint16_t* scales,
-                             int64_t n_total, int64_t n0, int64_t k,
-                             const float* a_reordered, float (&result)[8]) {
-  static_assert(BlockSize == 32 || BlockSize == 64 || BlockSize == 128,
-                "Int2Group8PrepackedAvx2 requires BlockSize 32, 64, or 128");
-  constexpr int64_t kTileK = 64;
-  const int64_t tiles64 = k / kTileK;
-  const int64_t scale_blocks = k / BlockSize;
-  const __m128i mask = _mm_set1_epi8(0x03);
-  const __m128i two8 = _mm_set1_epi8(2);
-  __m256 acc[8];
-  for (int c = 0; c < 8; ++c) {
-    acc[c] = _mm256_setzero_ps();
-  }
-  auto read_scale = [&](int c, int64_t sb) QMOE_AVX2_LAMBDA_INLINE -> float {
-    const uint16_t s_bits =
-        ScalesBlockMajor ? scales[sb * n_total + n0 + c] : scales[(n0 + c) * scale_blocks + sb];
-    return ScaleIsBf16 ? Int2Avx2BFloat16BitsToFloat(s_bits) : Int2Avx2HalfBitsToFloat(s_bits);
-  };
-
-  for (int64_t kb64 = 0; kb64 < tiles64; ++kb64) {
-    const uint8_t* tile = w_base + kb64 * 128;
-    if (next_w_base != nullptr && (kb64 & 1) == 0) {
-      _mm_prefetch(reinterpret_cast<const char*>(next_w_base + kb64 * 128), _MM_HINT_T0);
-      _mm_prefetch(reinterpret_cast<const char*>(next_w_base + kb64 * 128 + 64), _MM_HINT_T0);
-    }
-    __m256 a_lo[4], a_hi[4];
-    for (int s = 0; s < 4; ++s) {
-      a_lo[s] = _mm256_loadu_ps(a_reordered + kb64 * kTileK + s * 16 + 0);
-      a_hi[s] = _mm256_loadu_ps(a_reordered + kb64 * kTileK + s * 16 + 8);
-    }
-    auto step_col = [&](int c) QMOE_AVX2_LAMBDA_INLINE {
-      const __m128i x = _mm_loadu_si128(reinterpret_cast<const __m128i*>(tile + c * 16));
-      const __m128i b0 = _mm_sub_epi8(_mm_and_si128(x, mask), two8);
-      const __m128i b1 = _mm_sub_epi8(_mm_and_si128(_mm_srli_epi16(x, 2), mask), two8);
-      const __m128i b2 = _mm_sub_epi8(_mm_and_si128(_mm_srli_epi16(x, 4), mask), two8);
-      const __m128i b3 = _mm_sub_epi8(_mm_and_si128(_mm_srli_epi16(x, 6), mask), two8);
-      __m256 w0_lo = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(b0));
-      __m256 w0_hi = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_bsrli_si128(b0, 8)));
-      __m256 w1_lo = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(b1));
-      __m256 w1_hi = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_bsrli_si128(b1, 8)));
-      __m256 w2_lo = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(b2));
-      __m256 w2_hi = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_bsrli_si128(b2, 8)));
-      __m256 w3_lo = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(b3));
-      __m256 w3_hi = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_bsrli_si128(b3, 8)));
-      __m256 s_lo, s_hi;
-      if constexpr (BlockSize == 32) {
-        const __m256 s0 = _mm256_set1_ps(read_scale(c, 2 * kb64));
-        const __m256 s1 = _mm256_set1_ps(read_scale(c, 2 * kb64 + 1));
-        s_lo = _mm256_blend_ps(s0, s1, 0xAA);
-        s_hi = s_lo;
-      } else {
-        const int64_t sb = (BlockSize == 64) ? kb64 : (kb64 >> 1);
-        s_lo = _mm256_set1_ps(read_scale(c, sb));
-        s_hi = s_lo;
-      }
-      // Scale weights before products to avoid overflowing an unscaled dot product.
-      w0_lo = _mm256_mul_ps(w0_lo, s_lo);
-      w0_hi = _mm256_mul_ps(w0_hi, s_hi);
-      w1_lo = _mm256_mul_ps(w1_lo, s_lo);
-      w1_hi = _mm256_mul_ps(w1_hi, s_hi);
-      w2_lo = _mm256_mul_ps(w2_lo, s_lo);
-      w2_hi = _mm256_mul_ps(w2_hi, s_hi);
-      w3_lo = _mm256_mul_ps(w3_lo, s_lo);
-      w3_hi = _mm256_mul_ps(w3_hi, s_hi);
-      const __m256 prod_lo =
-          _mm256_fmadd_ps(w0_lo, a_lo[0],
-                          _mm256_fmadd_ps(w1_lo, a_lo[1],
-                                          _mm256_fmadd_ps(w2_lo, a_lo[2], _mm256_mul_ps(w3_lo, a_lo[3]))));
-      const __m256 prod_hi =
-          _mm256_fmadd_ps(w0_hi, a_hi[0],
-                          _mm256_fmadd_ps(w1_hi, a_hi[1],
-                                          _mm256_fmadd_ps(w2_hi, a_hi[2], _mm256_mul_ps(w3_hi, a_hi[3]))));
-      acc[c] = _mm256_add_ps(prod_lo, _mm256_add_ps(prod_hi, acc[c]));
-    };
-    step_col(0);
-    step_col(1);
-    step_col(2);
-    step_col(3);
-    step_col(4);
-    step_col(5);
-    step_col(6);
-    step_col(7);
-  }
-  for (int c = 0; c < 8; ++c) {
-    result[c] = Int2Avx2ReduceAddPs(acc[c]);
-  }
-}
-
 template <int RT, int BlockSize>
 void Int2RowTileAvx2(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias,
                      bool scales_are_block_major, bool weights_are_prepacked,
@@ -286,39 +196,7 @@ void Int2RowTileAvx2(const uint8_t* weights, const uint16_t* scales, const uint1
                     out, out_stride, n_begin, aligned_begin, /*force_scalar=*/true);
     }
     const int64_t group_stride = kInt2ColsInterleaved * (k / 4);
-    for (int64_t n0 = aligned_begin; n0 < aligned_end;) {
-      if constexpr (RT == 1) {
-        if ((n0 & 7) == 0 && n0 + 8 <= aligned_end) {
-          const uint8_t* group = weights + (n0 / kInt2ColsInterleaved) * group_stride;
-          const uint8_t* next_group = (n0 + kInt2ColsInterleaved < aligned_end) ? (group + group_stride) : nullptr;
-          float result8[8];
-          if (scales_are_block_major) {
-            if (scale_is_bf16) {
-              Int2Group8PrepackedAvx2<BlockSize, true, true>(
-                  group, next_group, scales, n_total, n0, k, a_reordered, result8);
-            } else {
-              Int2Group8PrepackedAvx2<BlockSize, true, false>(
-                  group, next_group, scales, n_total, n0, k, a_reordered, result8);
-            }
-          } else {
-            if (scale_is_bf16) {
-              Int2Group8PrepackedAvx2<BlockSize, false, true>(
-                  group, next_group, scales, n_total, n0, k, a_reordered, result8);
-            } else {
-              Int2Group8PrepackedAvx2<BlockSize, false, false>(
-                  group, next_group, scales, n_total, n0, k, a_reordered, result8);
-            }
-          }
-          for (int c = 0; c < 8; ++c) {
-            const float b = (bias != nullptr)
-                                ? (bias_is_bf16 ? Int2Avx2BFloat16BitsToFloat(bias[n0 + c]) : Int2Avx2HalfBitsToFloat(bias[n0 + c]))
-                                : 0.0f;
-            out[n0 + c - n_begin] = result8[c] + b;
-          }
-          n0 += 8;
-          continue;
-        }
-      }
+    for (int64_t n0 = aligned_begin; n0 < aligned_end; n0 += 4) {
       const uint8_t* group = weights + (n0 / kInt2ColsInterleaved) * group_stride;
       const uint8_t* next_group = (n0 + kInt2ColsInterleaved < aligned_end) ? (group + group_stride) : nullptr;
       float result[4][RT];
@@ -345,7 +223,6 @@ void Int2RowTileAvx2(const uint8_t* weights, const uint16_t* scales, const uint1
                             : 0.0f;
         for (int r = 0; r < RT; ++r) out[r * out_stride + (n0 + c - n_begin)] = result[c][r] + b;
       }
-      n0 += 4;
     }
     if (aligned_end < n_end) {
       Int2GemmRange(weights, scales, bias, BlockSize, scales_are_block_major, weights_are_prepacked,

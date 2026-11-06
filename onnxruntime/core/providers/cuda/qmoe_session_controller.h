@@ -1230,21 +1230,23 @@ class QMoESessionController {
       if (!policy.device_working_bytes_explicit && policy.device_working_bytes < (560ULL << 20)) {
         policy.device_working_bytes = 560ULL << 20;
       }
-      if (!policy.pinned_bytes_explicit && policy.pinned_bytes < (160ULL << 20)) {
-        bool has_sufficient_ram = true;
+      uint64_t auto_pinned_target = 192ULL << 20;
+      bool has_sufficient_ram = true;
 #if defined(_WIN32)
-        MEMORYSTATUSEX mem_stat{};
-        mem_stat.dwLength = sizeof(mem_stat);
-        if (GlobalMemoryStatusEx(&mem_stat)) {
-          has_sufficient_ram = (mem_stat.ullTotalPhys >= (16ULL << 30));
+      MEMORYSTATUSEX mem_stat{};
+      mem_stat.dwLength = sizeof(mem_stat);
+      if (GlobalMemoryStatusEx(&mem_stat)) {
+        has_sufficient_ram = (mem_stat.ullTotalPhys >= (16ULL << 30));
+        if (mem_stat.ullTotalPhys < (48ULL << 30)) {
+          auto_pinned_target = 160ULL << 20;
         }
+      }
 #endif
-        if (has_sufficient_ram) {
-          policy.pinned_bytes = 160ULL << 20;
-          std::lock_guard<std::mutex> lock(mutex_);
-          if (pinned_budget_ && pinned_budget_->GetStats().limit < static_cast<size_t>(policy.pinned_bytes)) {
-            pinned_budget_->SetExactLimit(static_cast<size_t>(policy.pinned_bytes));
-          }
+      if (has_sufficient_ram && !policy.pinned_bytes_explicit && policy.pinned_bytes < auto_pinned_target) {
+        policy.pinned_bytes = auto_pinned_target;
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (pinned_budget_ && pinned_budget_->GetStats().limit < static_cast<size_t>(policy.pinned_bytes)) {
+          pinned_budget_->SetExactLimit(static_cast<size_t>(policy.pinned_bytes));
         }
       }
     }
@@ -1259,8 +1261,10 @@ class QMoESessionController {
         const DWORD strict_len = GetEnvironmentVariableA("ORT_QMOE_STRICT_DEVICE_EXPERT_BYTES", strict_buf, sizeof(strict_buf));
         const bool strict_budget = (strict_len > 0 && strict_buf[0] == '1');
         if (!strict_budget) {
+          const uint64_t extra_wddm_reserve =
+              (total_vram >= (28ULL << 30)) ? (1792ULL << 20) : (1536ULL << 20);
           const uint64_t post_session_reserve =
-              policy.reserve_device_bytes + policy.device_working_bytes + (1536ULL << 20);
+              policy.reserve_device_bytes + policy.device_working_bytes + extra_wddm_reserve;
           const uint64_t acct_internal_reserve = policy.device_working_bytes + (640ULL << 20);
           const uint64_t acct_cap =
               (usable_free_vram > acct_internal_reserve)
@@ -1271,7 +1275,8 @@ class QMoESessionController {
             if (acct_cap > 0) {
               live_optimal = std::min(live_optimal, acct_cap);
             }
-            if (live_optimal < admitted_gpu_expert_budget) {
+            if (admitted_gpu_expert_budget >= total_base_bytes &&
+                live_optimal < admitted_gpu_expert_budget) {
               admitted_gpu_expert_budget = std::max(total_base_bytes, live_optimal);
             }
           }
@@ -1529,33 +1534,23 @@ class QMoESessionController {
       }
     }
 
-    bool prefer_direct_win32_file_map = false;
-#if defined(_WIN32)
-    if (partial_layers > 0 && !policy.host_expert_bytes.is_auto && policy.allow_file_backing &&
-        policy.host_expert_bytes.bytes >= (4ULL << 30)) {
-      char force_buf[8]{};
-      const DWORD force_len = GetEnvironmentVariableA("ORT_QMOE_FORCE_BOUNDED_HOST_CACHE", force_buf, sizeof(force_buf));
-      const bool force_bounded = (force_len > 0 && force_buf[0] == '1');
-      if (!force_bounded) {
-        MEMORYSTATUSEX mem_stat{};
-        mem_stat.dwLength = sizeof(mem_stat);
-        if (GlobalMemoryStatusEx(&mem_stat) &&
-            mem_stat.ullTotalPhys < policy.host_expert_bytes.bytes + (24ULL << 30)) {
-          prefer_direct_win32_file_map = true;
-        }
-      }
-    }
-#endif
     const bool use_bounded_file_cache =
         partial_layers > 0 &&
         !policy.host_expert_bytes.is_auto &&
         policy.host_expert_bytes.bytes < total_cold_bytes &&
-        policy.allow_file_backing &&
-        !prefer_direct_win32_file_map;
+        policy.allow_file_backing;
 
     std::vector<int32_t> host_cache_counts(num_layers, 0);
     if (use_bounded_file_cache && partial_layers > 0) {
-      uint64_t rem_host = std::min(policy.host_expert_bytes.bytes, total_cold_bytes);
+      uint64_t effective_host_budget = std::min(policy.host_expert_bytes.bytes, total_cold_bytes);
+#if defined(_WIN32)
+      MEMORYSTATUSEX mem_stat{};
+      mem_stat.dwLength = sizeof(mem_stat);
+      if (GlobalMemoryStatusEx(&mem_stat) && mem_stat.ullTotalPhys < effective_host_budget) {
+        effective_host_budget = std::clamp(mem_stat.ullTotalPhys, min_bounded_host_bytes, effective_host_budget);
+      }
+#endif
+      uint64_t rem_host = effective_host_budget;
       // 1) Reserve each partial layer's required minimum number of bounded host cache slots first (F07). Admission
       // above guarantees that these minimums fit in the host budget.
       for (size_t i = 0; i < num_layers; ++i) {
@@ -1572,7 +1567,7 @@ class QMoESessionController {
         const auto& caps = nodes[i]->GetBackendCapabilities();
         const int32_t max_cold = desc.num_experts - resident_counts[i];
         if (max_cold <= host_cache_counts[i] || caps.cpu_slot_bytes == 0) continue;
-        const uint64_t base_share = policy.host_expert_bytes.bytes / partial_layers;
+        const uint64_t base_share = effective_host_budget / partial_layers;
         const int32_t target_slots = static_cast<int32_t>(
             std::clamp<uint64_t>(base_share / caps.cpu_slot_bytes, 1ULL, static_cast<uint64_t>(max_cold)));
         const int32_t extra_slots = std::max<int32_t>(0, target_slots - host_cache_counts[i]);
