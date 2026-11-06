@@ -38,8 +38,6 @@ jobs:
 
       - name: Setup Android NDK
         uses: ./.github/actions/setup-android-ndk
-        with:
-          ndk-version: '28'
 
       - name: Get vcpkg tool info
         id: vcpkg-tool-info
@@ -142,8 +140,6 @@ jobs:
 
       - name: Setup Android Emulator
         uses: ./.github/actions/setup-android-ndk
-        with:
-          ndk-version: '28'
 
       - name: Run React Native Detox Android e2e Tests
         run: |
