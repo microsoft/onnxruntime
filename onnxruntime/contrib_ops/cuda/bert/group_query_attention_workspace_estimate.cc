@@ -601,7 +601,7 @@ void SetGroupQueryAttentionWorkspaceRequirements(
     const GQAWorkspaceAggregate& estimate,
     InlinedVector<WorkspaceRequirement>& requirements) {
   requirements.clear();
-  if (!estimate.status.IsOK() || estimate.total_workspace_bytes == 0) return;
+  if (!estimate.status.IsOK()) return;
   requirements.push_back(
       {estimate.total_workspace_bytes, 0, kGQAWorkspaceAlignment});
 }
@@ -609,10 +609,8 @@ void SetGroupQueryAttentionWorkspaceRequirements(
 void SetGroupQueryAttentionLevel1MemoryEstimate(
     const GQAWorkspaceAggregate& workspace,
     Level1MemoryEstimate& estimate) {
-  if (workspace.status.IsOK() && workspace.total_workspace_bytes != 0) {
-    estimate.runtime_workspace_bytes = workspace.total_workspace_bytes;
-  }
   if (workspace.status.IsOK()) {
+    estimate.runtime_workspace_bytes = workspace.total_workspace_bytes;
     estimate.persistent_prepack_bytes = workspace.persistent_prepack_bytes;
     estimate.initialization_scratch_bytes =
         workspace.initialization_scratch_bytes;
