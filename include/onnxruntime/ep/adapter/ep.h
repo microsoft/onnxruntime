@@ -8,6 +8,7 @@
 #endif
 
 #include "data_transfer_manager.h"
+#include "external_data_loader.h"
 
 #include "core/framework/execution_provider.h"
 
@@ -28,6 +29,9 @@ class Ep : public OrtEp {
         temp_space_cpu_allocator_{temp_space_cpu_allocator},
         temp_space_allocator_{temp_space_allocator} {
     ort_version_supported = ORT_API_VERSION;
+#if defined(__wasm__)
+    CreateExternalDataLoader = CreateExternalDataLoaderImpl;
+#endif
   }
 
  public:
@@ -47,6 +51,22 @@ class Ep : public OrtEp {
   }
 
  private:
+#if defined(__wasm__)
+  static OrtStatus* ORT_API_CALL CreateExternalDataLoaderImpl(
+      const OrtEp* this_ptr, OrtExternalDataLoaderImpl** loader) noexcept {
+    EXCEPTION_TO_RETURNED_STATUS_BEGIN
+    auto impl = static_cast<const Ep*>(this_ptr)->impl_->GetExternalDataLoader();
+    if (impl == nullptr) {
+      *loader = nullptr;
+      return nullptr;
+    }
+    auto result = std::make_unique<ExternalDataLoader>(std::move(impl));
+    *loader = result.release();
+    return nullptr;
+    EXCEPTION_TO_RETURNED_STATUS_END
+  }
+#endif
+
   std::unique_ptr<IExecutionProvider> impl_;
   DataTransferManager data_transfer_manager_;
   std::unique_ptr<profiling::EpProfiler> profiler_;

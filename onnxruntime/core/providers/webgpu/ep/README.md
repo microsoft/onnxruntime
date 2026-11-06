@@ -22,6 +22,27 @@ To ensure both static library and dynamic library builds work, we need to make a
 
   - use a bridge to connect EP ABI and the internal classes
 
+### External initializer loading
+
+On WebAssembly hosts providing the ORT 1.32 plugin interface, the EP adapter exposes
+`OrtEp::CreateExternalDataLoader`. The session creates a fresh loader for initialization and
+selects it by destination memory information and element type. WebGPU external weights are
+uploaded from the mounted JavaScript bytes to GPU staging buffers without first materializing
+the weights in the ORT Wasm CPU heap. CPU-targeted external weights retain CPU loading.
+The loader is released after graph and subgraph initialization, including on failure.
+
+The capability is optional. Older hosts, older plugins, and plugins returning a null loader
+retain the host's existing loading path, including CPU staging or the native CUDA plugin loader.
+Errors creating or using a provided loader fail initialization;
+they do not silently select a different loading path.
+
+The public capability accepts a preallocated destination tensor and a borrowed
+`OrtExternalDataSource`. Native sources provide a bounded reader tied to ORT's already-open,
+validated file; a plugin must use that reader rather than reopen the source path. WebAssembly
+sources identify mounted external data and have no native reader. The current C++ EP adapter
+forwards this capability only for WebAssembly; native accelerated loading and its options
+are unchanged.
+
 ### Runtime compatibility
 
 The plugin supports ORT 1.24.4 and later. Both execution modes use Session-owned recordings.
