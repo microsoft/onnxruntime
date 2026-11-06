@@ -4447,6 +4447,37 @@ with tempfile.TemporaryDirectory() as directory:
                     self.assertEqual(item["zero_cold_short_circuits"], 1)
                     self.assertEqual(item["cpu_doorbell_wakeups"], 0)
 
+    def test_v4_tail_substitution_covers_speculative_verify_tiles(self):
+        with tempfile.TemporaryDirectory() as model_dir:
+            model_path, config = self._build_decode_optimization_model(model_dir, use_fp16=True)
+            rows = 8
+            rng = np.random.default_rng(33577)
+            x = rng.standard_normal((rows, 256), dtype=np.float32) * 0.25
+            router = np.tile(
+                np.array([3, 2.8, 2.6, 2.4, 2.2, 2, 0.99, 0.98, -1, -2, 1.1, 1, -5, -5, -5, -5], dtype=np.float32),
+                (rows, 1),
+            )
+            _, disabled_stats = self._run_decode_with_telemetry(model_path, config, [(x, router)], True)
+            _, stats = self._run_decode_with_telemetry(
+                model_path,
+                {
+                    **config,
+                    "session.moe.offload.skip_zero_cold_doorbell": "1",
+                    "session.moe.offload.tail_substitution_threshold": "0.01",
+                    "session.moe.offload.tail_substitution_min_rank": "6",
+                },
+                [(x, router)],
+                True,
+            )
+            for disabled_item, item in zip(disabled_stats, stats, strict=True):
+                indices = np.asarray(item["last_indices"]).reshape(rows, 8)
+                np.testing.assert_array_equal(indices, np.tile(np.arange(8), (rows, 1)))
+                weights = np.asarray(item["last_weights"], dtype=np.float32).reshape(rows, 8)
+                np.testing.assert_allclose(weights.sum(axis=1), 1.0, rtol=0, atol=2e-7)
+                self.assertEqual(disabled_item["substituted_routes_count"], 0)
+                self.assertEqual(item["substituted_routes_count"], 2 * rows)
+                self.assertEqual(item["zero_cold_conversions_count"], rows)
+
     def test_v4_tail_substitution_stable_normalization_after_replacing_every_route(self):
         for use_fp16 in (True, False):
             if not use_fp16 and not self._int4_bf16_runner_supported:

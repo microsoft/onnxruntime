@@ -12,12 +12,15 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+// Largest decode tile (rows) that tail expert substitution handles; covers speculative verify steps.
+constexpr int kQMoETailSubstitutionMaxRows = 16;
+
 struct QMoEOffloadTelemetry {
   uint64_t layer_calls;
   uint64_t zero_cold_short_circuits;
   uint64_t cold_routes;
-  uint64_t substituted_routes_count[4];
-  uint64_t zero_cold_conversions_count[4];
+  uint64_t substituted_routes_count[kQMoETailSubstitutionMaxRows];
+  uint64_t zero_cold_conversions_count[kQMoETailSubstitutionMaxRows];
   int last_route_count;
   int last_cold_count;
   int last_indices[256];
