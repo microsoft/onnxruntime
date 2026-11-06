@@ -865,6 +865,12 @@ class InferenceSession {
   [[nodiscard]] common::Status ValidateOutputs(gsl::span<const std::string> output_names,
                                                const std::vector<OrtValue>* p_fetches) const;
 
+  [[nodiscard]] common::Status ValidateOpaqueInputOutputAliases(
+      gsl::span<const std::string> feed_names,
+      gsl::span<const OrtValue> feeds,
+      gsl::span<const std::string> output_names,
+      const std::vector<OrtValue>* p_fetches) const;
+
   [[nodiscard]] common::Status ValidateInputsOutputs(gsl::span<const std::string> feed_fetches_names,
                                                      gsl::span<const OrtValue> feeds_fetches,
                                                      const InputOutputDefMetaMap& input_output_meta_map,
