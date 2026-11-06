@@ -39,6 +39,7 @@ option(USE_CUDA "Build with CUDA support" OFF)
 option(USE_TENSORRT "Build with TensorRT support" OFF)
 option(USE_COREML "Build with CoreML support" OFF)
 option(USE_QNN "Build with QNN support" OFF)
+option(USE_OPENVINO "Build with OpenVINO support" OFF)
 
 if(USE_DML)
   add_compile_definitions(USE_DML=1)
@@ -57,6 +58,9 @@ if(USE_COREML)
 endif()
 if(USE_QNN)
   add_compile_definitions(USE_QNN=1)
+endif()
+if(USE_OPENVINO)
+  add_compile_definitions(USE_OPENVINO=1)
 endif()
 
 # source files

@@ -39,6 +39,8 @@ const USE_TENSORRT = !!buildArgs.use_tensorrt;
 const USE_COREML = !!buildArgs.use_coreml;
 // --use_qnn
 const USE_QNN = !!buildArgs.use_qnn;
+// --use_openvino
+const USE_OPENVINO = !!buildArgs.use_openvino;
 // --dll_deps=
 const DLL_DEPS = buildArgs.dll_deps;
 
@@ -83,6 +85,9 @@ if (USE_COREML) {
 }
 if (USE_QNN) {
   args.push('--CDUSE_QNN=ON');
+}
+if (USE_OPENVINO) {
+  args.push('--CDUSE_OPENVINO=ON');
 }
 if (DLL_DEPS) {
   args.push(`--CDORT_NODEJS_DLL_DEPS=${DLL_DEPS}`);
