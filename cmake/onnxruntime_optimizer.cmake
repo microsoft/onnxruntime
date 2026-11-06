@@ -68,8 +68,6 @@ else()
     "${ONNXRUNTIME_INCLUDE_DIR}/core/optimizer/*.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/*.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/*.cc"
-    "${ONNXRUNTIME_ROOT}/core/optimizer/compute_optimizer/*.h"
-    "${ONNXRUNTIME_ROOT}/core/optimizer/compute_optimizer/*.cc"
     "${ONNXRUNTIME_ROOT}/core/optimizer/layout_transformation/*.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/layout_transformation/*.cc"
     "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/*.h"
@@ -85,16 +83,6 @@ else()
   )
 endif()
 
-if (onnxruntime_ENABLE_TRAINING)
-  list(APPEND onnxruntime_optimizer_src_patterns
-    "${ORTTRAINING_SOURCE_DIR}/core/optimizer/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/core/optimizer/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/core/optimizer/compute_optimizer/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/core/optimizer/compute_optimizer/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/core/optimizer/memory_optimizer/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/core/optimizer/memory_optimizer/*.cc"
-  )
-endif()
 
 file(GLOB onnxruntime_optimizer_srcs CONFIGURE_DEPENDS ${onnxruntime_optimizer_src_patterns})
 
@@ -126,17 +114,6 @@ onnxruntime_add_static_library(onnxruntime_optimizer ${onnxruntime_optimizer_src
 
 onnxruntime_add_include_to_target(onnxruntime_optimizer onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface)
 target_include_directories(onnxruntime_optimizer PRIVATE ${ONNXRUNTIME_ROOT})
-if (onnxruntime_ENABLE_TRAINING)
-  target_include_directories(onnxruntime_optimizer PRIVATE ${ORTTRAINING_ROOT})
-  onnxruntime_add_include_to_target(onnxruntime_optimizer nlohmann_json::nlohmann_json)
-  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    onnxruntime_add_include_to_target(onnxruntime_optimizer Python::Module)
-  endif()
-endif()
-if (onnxruntime_ENABLE_TRITON)
-  target_link_libraries(onnxruntime_optimizer PRIVATE nlohmann_json::nlohmann_json)
-  onnxruntime_add_include_to_target(onnxruntime_optimizer Python::Module)
-endif()
 add_dependencies(onnxruntime_optimizer ${onnxruntime_EXTERNAL_DEPENDENCIES})
 set_target_properties(onnxruntime_optimizer PROPERTIES FOLDER "ONNXRuntime")
 

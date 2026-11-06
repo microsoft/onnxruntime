@@ -94,10 +94,8 @@ def _parse_args():
             `python run_workflows_for_branch.py [my/BranchName]`
           Run only Linux CIs
             `python run_workflows_for_branch.py --include linux [my/BranchName]`
-          Exclude training CIs
-            `python run_workflows_for_branch.py --exclude training [my/BranchName]`
-          Run non-training Linux CIs
-            `python run_workflows_for_branch.py --include linux --exclude training [my/BranchName]`
+          Run Linux CIs excluding GPU workflows
+            `python run_workflows_for_branch.py --include linux --exclude gpu [my/BranchName]`
         """,
     )
 

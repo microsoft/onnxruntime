@@ -18,8 +18,7 @@
         "TargetFramework": "net8.0",
         "Nullable": "enable",
         "LangVersion": "8.0",
-        "IncludeMobileTargets": "false",
-        "EnableTrainingApis": "true"
+        "IncludeMobileTargets": "false"
       },
       "filter": "filterConfig.yml"
     }

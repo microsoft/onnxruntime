@@ -13,69 +13,51 @@ import contextlib
 __version__ = "1.32.0"
 __author__ = "Microsoft"
 
-# we need to do device version validation (for example to check Cuda version for an onnxruntime-training package).
-# in order to know whether the onnxruntime package is for training it needs
-# to do import onnxruntime.training.ortmodule first.
-# onnxruntime.capi._pybind_state is required before import onnxruntime.training.ortmodule.
-# however, import onnxruntime.capi._pybind_state will already raise an exception if a required Cuda version
-# is not found.
-# here we need to save the exception and continue with Cuda version validation in order to post
-# meaningful messages to the user.
-# the saved exception is raised after device version validation.
-try:
-    from onnxruntime.capi._pybind_state import (
-        ExecutionMode,  # noqa: F401
-        ExecutionOrder,  # noqa: F401
-        GraphOptimizationLevel,  # noqa: F401
-        LoraAdapter,  # noqa: F401
-        ModelMetadata,  # noqa: F401
-        NodeArg,  # noqa: F401
-        OrtAllocatorType,  # noqa: F401
-        OrtArenaCfg,  # noqa: F401
-        OrtCompileApiFlags,  # noqa: F401
-        OrtDeviceMemoryType,  # noqa: F401
-        OrtEpAssignedNode,  # noqa: F401
-        OrtEpAssignedSubgraph,  # noqa: F401
-        OrtEpDevice,  # noqa: F401
-        OrtExecutionProviderDevicePolicy,  # noqa: F401
-        OrtExternalInitializerInfo,  # noqa: F401
-        OrtHardwareDevice,  # noqa: F401
-        OrtHardwareDeviceType,  # noqa: F401
-        OrtMemoryInfo,  # noqa: F401
-        OrtMemoryInfoDeviceType,  # noqa: F401
-        OrtMemType,  # noqa: F401
-        OrtSparseFormat,  # noqa: F401
-        OrtSyncStream,  # noqa: F401
-        RunOptions,  # noqa: F401
-        SessionIOBinding,  # noqa: F401
-        SessionOptions,  # noqa: F401
-        create_and_register_allocator,  # noqa: F401
-        create_and_register_allocator_v2,  # noqa: F401
-        disable_telemetry_events,  # noqa: F401
-        enable_telemetry_events,  # noqa: F401
-        get_all_providers,  # noqa: F401
-        get_available_providers,  # noqa: F401
-        get_build_info,
-        get_device,  # noqa: F401
-        get_ep_devices,  # noqa: F401
-        get_version_string,  # noqa: F401
-        has_collective_ops,  # noqa: F401
-        register_execution_provider_library,
-        set_default_logger_severity,  # noqa: F401
-        set_default_logger_verbosity,  # noqa: F401
-        set_global_thread_pool_sizes,  # noqa: F401
-        set_seed,  # noqa: F401
-        unregister_execution_provider_library,  # noqa: F401
-    )
-
-    import_capi_exception = None
-except Exception as e:
-    import_capi_exception = e
-
 from onnxruntime.capi import onnxruntime_validation
-
-if import_capi_exception:
-    raise import_capi_exception
+from onnxruntime.capi._pybind_state import (
+    ExecutionMode,  # noqa: F401
+    ExecutionOrder,  # noqa: F401
+    GraphOptimizationLevel,  # noqa: F401
+    LoraAdapter,  # noqa: F401
+    ModelMetadata,  # noqa: F401
+    NodeArg,  # noqa: F401
+    OrtAllocatorType,  # noqa: F401
+    OrtArenaCfg,  # noqa: F401
+    OrtCompileApiFlags,  # noqa: F401
+    OrtDeviceMemoryType,  # noqa: F401
+    OrtEpAssignedNode,  # noqa: F401
+    OrtEpAssignedSubgraph,  # noqa: F401
+    OrtEpDevice,  # noqa: F401
+    OrtExecutionProviderDevicePolicy,  # noqa: F401
+    OrtExternalInitializerInfo,  # noqa: F401
+    OrtHardwareDevice,  # noqa: F401
+    OrtHardwareDeviceType,  # noqa: F401
+    OrtMemoryInfo,  # noqa: F401
+    OrtMemoryInfoDeviceType,  # noqa: F401
+    OrtMemType,  # noqa: F401
+    OrtSparseFormat,  # noqa: F401
+    OrtSyncStream,  # noqa: F401
+    RunOptions,  # noqa: F401
+    SessionIOBinding,  # noqa: F401
+    SessionOptions,  # noqa: F401
+    create_and_register_allocator,  # noqa: F401
+    create_and_register_allocator_v2,  # noqa: F401
+    disable_telemetry_events,  # noqa: F401
+    enable_telemetry_events,  # noqa: F401
+    get_all_providers,  # noqa: F401
+    get_available_providers,  # noqa: F401
+    get_build_info,
+    get_device,  # noqa: F401
+    get_ep_devices,  # noqa: F401
+    get_version_string,  # noqa: F401
+    has_collective_ops,  # noqa: F401
+    register_execution_provider_library,
+    set_default_logger_severity,  # noqa: F401
+    set_default_logger_verbosity,  # noqa: F401
+    set_global_thread_pool_sizes,  # noqa: F401
+    set_seed,  # noqa: F401
+    unregister_execution_provider_library,  # noqa: F401
+)
 
 with contextlib.suppress(ImportError):
     from onnxruntime.capi._pybind_state import OrtEpContextData, OrtEpContextDataBuffer  # noqa: F401

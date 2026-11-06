@@ -59,13 +59,6 @@
     target_compile_definitions(onnxruntime_providers_migraphx PRIVATE HAVE_MIGRAPHX_API_ONNX_OPTIONS_SET_EXTERNAL_DATA_PATH=1)
   endif()
 
-  if (onnxruntime_ENABLE_TRAINING_OPS)
-    onnxruntime_add_include_to_target(onnxruntime_providers_migraphx onnxruntime_training)
-    target_link_libraries(onnxruntime_providers_migraphx PRIVATE onnxruntime_training)
-    if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-      onnxruntime_add_include_to_target(onnxruntime_providers_migraphx Python::Module)
-    endif()
-  endif()
 
   if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     foreach(file migraphx-hiprtc-driver.exe migraphx.dll migraphx_c.dll migraphx_cpu.dll migraphx_device.dll migraphx_gpu.dll migraphx_onnx.dll migraphx_tf.dll)

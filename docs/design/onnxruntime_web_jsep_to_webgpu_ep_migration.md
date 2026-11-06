@@ -93,7 +93,7 @@ and decisions.
 ### Non-goals
 
 - **WebGL removal** — tracked in [onnxruntime_web_remove_webgl_backend.md](onnxruntime_web_remove_webgl_backend.md).
-- No change to the Node binding, React-Native package, or ORT training-web.
+- No change to the Node binding or React-Native package.
 - No new WebGPU features — this is a consolidation.
 
 ---

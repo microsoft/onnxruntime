@@ -731,7 +731,6 @@ TEST(MatMulNBits, Float32_4b_Accuracy4_Batch) {
   RunTest<float>(opts);
 }
 
-#ifndef ENABLE_TRAINING
 // Pre-packing (and therefore cross-session sharing of pre-packed weights) is disabled in a full
 // training build, so there is nothing to exercise there.
 
@@ -1046,8 +1045,6 @@ TEST(MatMulNBits, ParallelPrepack) {
     EXPECT_EQ(result.first, COMPARE_RESULT::SUCCESS) << result.second;
   }
 }
-
-#endif  // !ENABLE_TRAINING
 
 #endif
 #endif

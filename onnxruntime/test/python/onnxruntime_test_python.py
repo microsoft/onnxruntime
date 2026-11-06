@@ -136,6 +136,38 @@ class TestInferenceSession(unittest.TestCase):
         self.assertIsNot(onnxrt.get_build_info(), None)
         self.assertIn("Build Info", onnxrt.get_build_info())
 
+    def test_training_retirement_preserves_inference_schemas(self):
+        schemas = {(schema.domain, schema.name) for schema in C.get_all_operator_schema()}
+        for name in ("YieldOp", "SGDOptimizerV2", "AdamWOptimizer", "ShrunkenGather"):
+            self.assertNotIn(("com.microsoft", name), schemas)
+        for name in ("Dropout", "BatchNormalization", "SoftmaxCrossEntropyLoss"):
+            self.assertIn(("", name), schemas)
+
+    def test_retired_training_operator_models_are_rejected(self):
+        from onnx import TensorProto, helper  # noqa: PLC0415
+
+        for name in ("YieldOp", "SGDOptimizerV2", "AdamWOptimizer", "ShrunkenGather"):
+            with self.subTest(op_type=name):
+                graph = helper.make_graph(
+                    [helper.make_node(name, ["X"], ["Y"], domain="com.microsoft")],
+                    "retired_training_operator",
+                    [helper.make_tensor_value_info("X", TensorProto.FLOAT, [1])],
+                    [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1])],
+                )
+                model = helper.make_model(
+                    graph,
+                    opset_imports=[helper.make_opsetid("", 13), helper.make_opsetid("com.microsoft", 1)],
+                    ir_version=8,
+                )
+                with self.assertRaisesRegex(C.Fail, "not a registered function/op"):
+                    onnxrt.InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"])
+
+    def test_retired_memory_efficient_execution_order_is_rejected(self):
+        options = onnxrt.SessionOptions()
+        options.execution_order = onnxrt.ExecutionOrder.MEMORY_EFFICIENT
+        with self.assertRaisesRegex(C.Fail, "ORT training has been retired"):
+            onnxrt.InferenceSession(get_name("mul_1.onnx"), options, providers=["CPUExecutionProvider"])
+
     def test_model_serialization(self):
         try:
             so = onnxrt.SessionOptions()

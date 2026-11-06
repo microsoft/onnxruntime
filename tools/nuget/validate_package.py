@@ -41,17 +41,6 @@ dmlep_related_header_files = [
     "onnxruntime_experimental_c_api.h",
     "onnxruntime_experimental_c_api.inc",
 ]
-training_related_header_files = [
-    "onnxruntime_c_api.h",
-    "onnxruntime_float16.h",
-    "onnxruntime_cxx_api.h",
-    "onnxruntime_cxx_inline.h",
-    "onnxruntime_training_c_api.h",
-    "onnxruntime_training_cxx_api.h",
-    "onnxruntime_training_cxx_inline.h",
-    "onnxruntime_experimental_c_api.h",
-    "onnxruntime_experimental_c_api.inc",
-]
 
 
 def parse_arguments():
@@ -109,7 +98,6 @@ def check_if_dlls_are_present(
     is_windows_ai_package,
     is_gpu_package,
     is_dml_package,
-    is_training_package,
     platforms_supported,
     zip_file,
     package_path,
@@ -164,11 +152,6 @@ def check_if_dlls_are_present(
 
             if is_dml_package:
                 check_if_headers_are_present(dmlep_related_header_files, header_folder, file_list_in_package, platform)
-
-            if is_training_package:
-                check_if_headers_are_present(
-                    training_related_header_files, header_folder, file_list_in_package, platform
-                )
 
         elif platform.startswith("linux"):
             if package_type == "nuget":
@@ -247,13 +230,11 @@ def validate_tarball(args):
     is_windows_ai_package = False
     zip_file = None
     is_dml_package = False
-    is_training_package = False
     check_if_dlls_are_present(
         args.package_type,
         is_windows_ai_package,
         is_gpu_package,
         is_dml_package,
-        is_training_package,
         args.platforms_supported,
         zip_file,
         package_folder,
@@ -274,14 +255,12 @@ def validate_zip(args):
 
     is_windows_ai_package = False
     is_dml_package = False
-    is_training_package = False
     zip_file = zipfile.ZipFile(package_name)
     check_if_dlls_are_present(
         args.package_type,
         is_windows_ai_package,
         is_gpu_package,
         is_dml_package,
-        is_training_package,
         args.platforms_supported,
         zip_file,
         package_folder,
@@ -315,10 +294,8 @@ def validate_nuget(args):
     else:
         is_dml_package = False
 
-    if "Training" in nuget_file_name:
-        is_training_package = True
-    else:
-        is_training_package = False
+    if "microsoft.ml.onnxruntime.training" in nuget_file_name.lower():
+        raise ValueError("ORT training has been retired. Training NuGet packages are no longer supported.")
 
     exit_code = 0
 
@@ -351,7 +328,6 @@ def validate_nuget(args):
             is_windows_ai_package,
             is_gpu_package,
             is_dml_package,
-            is_training_package,
             args.platforms_supported,
             zip_file,
             None,

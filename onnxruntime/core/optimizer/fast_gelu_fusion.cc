@@ -211,7 +211,7 @@ MatchResult FastGeluFusion::CheckSecondFormula(Graph& graph, Node& pow1_node,
 }
 
 /**
-In case of ORTModule, there are extra Cast nodes exported for fp16. They should be fused into two nodes:
+Mixed-precision exports can contain extra Cast nodes for fp16. They should be fused into two nodes:
 
 x --> Cast --> FastGelu
 

@@ -10,9 +10,6 @@
 #include "core/graph/basic_types.h"
 #include "core/common/inlined_containers.h"
 #include "core/framework/memory_info.h"
-#ifdef ENABLE_TRAINING
-#include "core/framework/partial_graph_execution_state.h"
-#endif
 
 namespace onnxruntime {
 class SessionState;
@@ -116,36 +113,7 @@ class StreamExecutionContext {
   // Release the OrtValues after a step, based on the execution plan.
   void RecycleNodeInputs(onnxruntime::NodeIndex node_index);
 
-#ifdef ENABLE_TRAINING
-  void SetOrtValueCache(OrtValueCachePtr cache) {
-    cache_ = std::move(cache);
-  }
-
-  OrtValueCachePtr& GetOrtValueCache() {
-    return cache_;
-  }
-#endif
-
   ~StreamExecutionContext();
-
-#ifdef ENABLE_TRAINING
-  const ProgramRegion* GetCurrentRange() {
-    return program_range_;
-  }
-
-  void SetCurrentRange(const ProgramRegion* range) {
-    program_range_ = range;
-  }
-
-  const InlinedHashSet<NodeIndex>* GetNodeToExecute() {
-    return node_to_execute_;
-  }
-
-  void SetNodeToExecute(const InlinedHashSet<NodeIndex>* node_to_execute) {
-    node_to_execute_ = node_to_execute;
-  }
-
-#endif
 
  private:
   const SessionState* session_state_;
@@ -160,15 +128,6 @@ class StreamExecutionContext {
 
   Status task_status_{Status::OK()};
 
-#ifdef ENABLE_TRAINING
-  const ProgramRegion* program_range_{nullptr};
-
-  OrtValueCachePtr cache_{nullptr};
-
-  // TODO: this is mainly for ort trainer
-  // Should we deprecate it?
-  const InlinedHashSet<NodeIndex>* node_to_execute_{nullptr};
-#endif
   const bool single_thread_mode_;
 
 #ifdef ORT_ENABLE_STREAM

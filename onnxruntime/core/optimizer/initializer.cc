@@ -122,17 +122,6 @@ struct ToFp16<double> {
 };
 
 template <typename T>
-struct TensorToProtoFP16 {
-  void operator()(const Tensor& data, ONNX_NAMESPACE::TensorProto& proto) const {
-    ToFp16<T> to_fp16;
-    auto span = data.DataAsSpan<T>();
-    for (const auto& v : span) {
-      proto.add_int32_data(to_fp16(v));
-    }
-  }
-};
-
-template <typename T>
 struct TensorToFP16 {
   void operator()(const Tensor& data, Tensor& dst) const {
     ToFp16<T> to_fp16;
@@ -175,17 +164,6 @@ struct ToBFloat16<double> {
     // The same code as in Eigen. We assume the loss of precision will occur
     // hence static_cast
     return BFloat16(static_cast<float>(d)).val;
-  }
-};
-
-template <typename T>
-struct TensorToProtoBFloat16 {
-  void operator()(const Tensor& data, ONNX_NAMESPACE::TensorProto& proto) const {
-    ToBFloat16<T> to_bfloat16;
-    auto span = data.DataAsSpan<T>();
-    for (const auto& v : span) {
-      proto.add_int32_data(to_bfloat16(v));
-    }
   }
 };
 
@@ -254,35 +232,7 @@ struct TensorToFloat32<MLFloat16> {
   }
 };
 
-inline void SetNameDims(const std::string& name,
-                        gsl::span<const int64_t> dims,
-                        ONNX_NAMESPACE::TensorProto_DataType dt,
-                        ONNX_NAMESPACE::TensorProto& tensor_proto) {
-  tensor_proto.set_name(name);
-  tensor_proto.set_data_type(dt);
-
-  for (auto d : dims) {
-    tensor_proto.add_dims(d);
-  }
-}
-
 }  // namespace
-
-ONNX_NAMESPACE::TensorProto Initializer::ToFP16(const std::string& name) const {
-  ONNX_NAMESPACE::TensorProto tensor_proto;
-  SetNameDims(name, data_->Shape().GetDims(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, tensor_proto);
-  utils::MLTypeCallDispatcher<MLFloat16, float, double> t_disp(data_->GetElementType());
-  t_disp.Invoke<TensorToProtoFP16>(*data_, tensor_proto);
-  return tensor_proto;
-}
-
-ONNX_NAMESPACE::TensorProto Initializer::ToBFloat16(const std::string& name) const {
-  ONNX_NAMESPACE::TensorProto tensor_proto;
-  SetNameDims(name, data_->Shape().GetDims(), ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16, tensor_proto);
-  utils::MLTypeCallDispatcher<BFloat16, float, double> t_disp(data_->GetElementType());
-  t_disp.Invoke<TensorToProtoBFloat16>(*data_, tensor_proto);
-  return tensor_proto;
-}
 
 OrtValue onnxruntime::Initializer::ToFP16() const {
   if (data_->IsDataType<MLFloat16>()) {

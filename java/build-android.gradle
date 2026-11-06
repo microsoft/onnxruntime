@@ -13,7 +13,9 @@ if ((telemetryJavaSrcDir == null) != (telemetryResourceDir == null)) {
 	throw new GradleException('telemetryJavaSrcDir and telemetryResourceDir must be set together')
 }
 def telemetryEnabled = telemetryJavaSrcDir != null
-boolean enableTrainingApis = (System.properties['ENABLE_TRAINING_APIS'] ?: "0") == "1"
+if (["1", "on", "true", "yes", "y"].contains((System.properties['ENABLE_TRAINING_APIS'] ?: "0").toLowerCase(Locale.ROOT))) {
+	throw new GradleException("ORT training has been retired. ENABLE_TRAINING_APIS is no longer supported.")
+}
 def releaseVersionSuffix = System.properties['releaseVersionSuffix'] ?: ""
 // Expected format for qnnVersion: major.minor.patch (e.g., 2.26.0)
 // QNN package version does not follow Semantic Versioning (SemVer) format.
@@ -49,8 +51,7 @@ def project_version = rootProject.file('../VERSION_NUMBER').text.trim()
 project.version = releaseVersionSuffix ? "${project_version}${releaseVersionSuffix}" : project_version
 project.group = "com.microsoft.onnxruntime"
 
-def tmpArtifactId = enableTrainingApis ? project.name + "-training" : project.name
-def mavenArtifactId = tmpArtifactId + '-android' + (qnnVersion != null ? '-qnn' : '')
+def mavenArtifactId = project.name + '-android' + (qnnVersion != null ? '-qnn' : '')
 
 //should the mavenArtifactId be read from the packageName variable as
 //that's how it's used in the build_aar_copy_artifacts.sh while copying the artifacts
@@ -58,10 +59,6 @@ def mavenArtifactId = tmpArtifactId + '-android' + (qnnVersion != null ? '-qnn' 
 def defaultDescription = 'ONNX Runtime is a performance-focused inference engine for ONNX (Open Neural Network ' +
 	'Exchange) models. This package contains the Android (aar) build of ONNX Runtime. It includes support for all ' +
 	'types and operators, for ONNX format models. All standard ONNX models can be executed with this package.'
-def trainingDescription = 'The onnxruntime-training android package is designed to efficiently train and infer a ' +
-	'wide range of ONNX models on edge devices, such as mobile phones, tablets, and other portable devices with ' +
-	'a focus on minimizing resource usage and maximizing accuracy.' +
-	'See https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training for more details.'
 def qnnDescription = 'ONNX Runtime is a performance-focused inference engine for ONNX (Open Neural Network ' +
 	'Exchange) models. This package contains the Android (aar) build of ONNX Runtime with the QNN Execution Provider.' +
 	'It includes support for all types and operators, for ONNX format models. All standard ONNX models can be executed' +
@@ -191,8 +188,8 @@ publishing {
 			artifact sourcesJar
 
 			pom {
-				name = qnnVersion != null ? 'onnxruntime-qnn' : (enableTrainingApis ? 'onnxruntime-training' : 'onnx-runtime')
-				description = qnnVersion != null ? qnnDescription : (enableTrainingApis ? trainingDescription : defaultDescription)
+				name = qnnVersion != null ? 'onnxruntime-qnn' : 'onnx-runtime'
+				description = qnnVersion != null ? qnnDescription : defaultDescription
 
 				url = 'https://microsoft.github.io/onnxruntime/'
 				licenses {

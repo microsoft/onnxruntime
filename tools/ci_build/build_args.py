@@ -247,17 +247,28 @@ def add_testing_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--code_coverage", action="store_true", help="Generate code coverage report (Android only).")
 
 
-def add_training_args(parser: argparse.ArgumentParser) -> None:
-    """Adds arguments related to ONNX Runtime Training."""
-    parser.add_argument(
-        "--enable_training",
-        action="store_true",
-        help="Enable full ORT Training (ORTModule, Training APIs).",
-    )
-    parser.add_argument("--enable_training_apis", action="store_true", help="Enable ORT Training APIs.")
-    parser.add_argument("--enable_training_ops", action="store_true", help="Enable training ops in inference graph.")
-    parser.add_argument("--enable_nccl", action="store_true", help="Enable NCCL for distributed training.")
+class _RetiredTrainingOption(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        parser.error(
+            f"ORT training has been retired. {option_string} is no longer supported. "
+            "Remove this option to build ONNX Runtime for inference."
+        )
+
+
+def add_collective_args(parser: argparse.ArgumentParser) -> None:
+    """Adds arguments for inference collectives."""
+    parser.add_argument("--enable_nccl", action="store_true", help="Enable NCCL for inference collectives.")
     parser.add_argument("--nccl_home", help="Path to NCCL installation directory.")
+
+
+def add_retired_training_args(parser: argparse.ArgumentParser) -> None:
+    for option in (
+        "--enable_training",
+        "--enable_training_apis",
+        "--enable_training_ops",
+        "--enable_external_custom_op_schemas",
+    ):
+        parser.add_argument(option, action=_RetiredTrainingOption, nargs=0, default=False, help=argparse.SUPPRESS)
 
 
 def add_general_profiling_args(parser: argparse.ArgumentParser) -> None:
@@ -505,11 +516,6 @@ def add_linux_specific_args(parser: argparse.ArgumentParser) -> None:
         "--allow_running_as_root",
         action="store_true",
         help="Allow build script to run as root (disallowed by default).",
-    )
-    parser.add_argument(
-        "--enable_external_custom_op_schemas",
-        action="store_true",
-        help="Enable loading custom op schemas from external shared libraries (Ubuntu only).",
     )
 
 
@@ -866,7 +872,9 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
 
 def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for other miscellaneous features."""
-    parser.add_argument("--enable_lazy_tensor", action="store_true", help="Enable ORT backend for PyTorch LazyTensor.")
+    parser.add_argument(
+        "--enable_lazy_tensor", action=_RetiredTrainingOption, nargs=0, default=False, help=argparse.SUPPRESS
+    )
     parser.add_argument("--ms_experimental", action="store_true", help="Build Microsoft experimental operators.")
     parser.add_argument(
         "--enable_msinternal", action="store_true", help="[MS Internal] Enable Microsoft internal build features."
@@ -987,7 +995,8 @@ def parse_arguments() -> argparse.Namespace:
     add_core_build_args(parser)
     add_cmake_build_config_args(parser)
     add_testing_args(parser)
-    add_training_args(parser)
+    add_collective_args(parser)
+    add_retired_training_args(parser)
     add_general_profiling_args(parser)
     add_debugging_sanitizer_args(parser)
     add_documentation_args(parser)

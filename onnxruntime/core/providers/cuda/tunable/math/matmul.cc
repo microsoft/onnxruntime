@@ -21,26 +21,6 @@ MatMulParams<T>::MatMulParams(float alpha, bool trans_a, bool trans_b, bool tran
       helper_(helper),
       matmul_kernel_(matmul_kernel),
       ctx_(ctx) {
-#ifdef ENABLE_TRITON
-  const TensorShape& shape_x = ctx->Input<Tensor>(0)->Shape();
-  const TensorShape& shape_y = ctx->Input<Tensor>(1)->Shape();
-  size_t rank_x = shape_x.NumDimensions();
-  size_t rank_y = shape_y.NumDimensions();
-  has_triton_support_ = contrib::IsTritonOpExecutorInitialized() &&
-                        (std::is_same<T, MLFloat16>::value || std::is_same<T, float>::value) && !trans_batch_a &&
-                        !trans_batch_b && rank_x > 1 && rank_y > 1;
-  if (has_triton_support_ && rank_x > 2 && rank_y > 2) {
-    has_triton_support_ = rank_x == rank_y;
-    if (has_triton_support_) {
-      for (size_t i = 0; i < rank_x - 2; ++i) {
-        if (shape_x[i] != shape_y[i]) {
-          has_triton_support_ = false;
-          break;
-        }
-      }
-    }
-  }
-#endif
 }
 
 template <typename T>
@@ -58,28 +38,11 @@ common::Status DefaultMatMulOp(const MatMulParams<T>* params) {
   return params->matmul_kernel_->ComputeDefault(params->ctx_, params->helper_);
 }
 
-#ifdef ENABLE_TRITON
-template <typename T>
-common::Status TritonMatMulOp(const MatMulParams<T>* params) {
-  TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!params->has_triton_support_);
-  InlinedHashMap<std::string, std::pair<std::string, int>> kwargs;
-  if (params->trans_a_) kwargs.insert({"trans_a", {"true", ONNX_NAMESPACE::TensorProto_DataType_BOOL}});
-  if (params->trans_b_) kwargs.insert({"trans_b", {"true", ONNX_NAMESPACE::TensorProto_DataType_BOOL}});
-  if (params->alpha_ != 1.0f) {
-    kwargs.insert({"alpha", {std::to_string(params->alpha_), ONNX_NAMESPACE::TensorProto_DataType_FLOAT}});
-  }
-  return contrib::ExecuteTritonOpByFuncName(params->ctx_, "triton_matmul_out", 2, 1, kwargs);
-}
-#endif
-
 template <typename T>
 class MatMulTunableOp : public TunableOp<MatMulParams<T>> {
  public:
   MatMulTunableOp() {
     this->RegisterOp(DefaultMatMulOp<T>);
-#ifdef ENABLE_TRITON
-    this->RegisterOp(TritonMatMulOp<T>);
-#endif
   }
 };
 

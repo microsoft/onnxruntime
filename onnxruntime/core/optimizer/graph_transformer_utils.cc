@@ -92,15 +92,6 @@
 #include "core/optimizer/swiglu_fusion.h"
 #include "core/optimizer/transpose_optimizer.h"
 #include "core/optimizer/unsqueeze_elimination.h"
-#ifdef ENABLE_TRAINING
-#include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
-#include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
-#include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
-#endif
-#ifdef ENABLE_TRITON
-#include "orttraining/core/optimizer/triton_fusion.h"
-#include "orttraining/core/framework/triton/triton_op_executor.h"
-#endif  // ENABLE_TRITON
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -420,21 +411,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         transformers.emplace_back(std::make_unique<GeluApproximation>(cpu_cuda_eps));
       }
 
-#ifdef ENABLE_TRITON
-      if (training::framework::triton::TritonOpExecutor::Instance().IsInitialized()) {
-        transformers.emplace_back(
-            std::make_unique<TritonFusion>(training::framework::triton::TritonOpExecutor::Instance().GetConfigJson(),
-                                           InlinedHashSet<std::string_view>{onnxruntime::kCudaExecutionProvider}));
-      }
-#endif  // ENABLE_TRITON
-
       transformers.emplace_back(std::make_unique<BiasSoftmaxFusion>(cpu_cuda_eps));
       transformers.emplace_back(std::make_unique<BiasDropoutFusion>(cuda_eps));
-#ifdef ENABLE_TRAINING
-      transformers.emplace_back(std::make_unique<BitmaskDropoutReplacement>(cuda_eps));
-      transformers.emplace_back(std::make_unique<BiasSoftmaxDropoutFusion>(cuda_eps));
-      transformers.emplace_back(std::make_unique<SceLossGradBiasFusion>(cpu_cuda_eps));
-#endif
 
       transformers.emplace_back(std::make_unique<MatMulScaleFusion>(cpu_cuda_dml_eps));
       transformers.emplace_back(std::make_unique<MatMulActivationFusion>(dml_ep));
@@ -583,7 +561,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
 
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_ep, apply_context));
       transformers.emplace_back(std::make_unique<MatMulNBitsFusion>(cpu_ep, apply_context));
-#else   // !defined(DISABLE_CONTRIB_OPS)
+#else
       ORT_UNUSED_PARAMETER(apply_context);
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 

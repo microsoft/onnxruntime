@@ -57,8 +57,6 @@ parameters:
   displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
   type: number
 
-# for inference packages '', for training packages '-training'
-# used for drop-extra and c api artifacts (onnxruntime-win-* or onnxrutime-training-win-*)
 - name: artifact_name_suffix
   type: string
   default: ''

@@ -14,9 +14,6 @@
 #include "core/platform/threadpool.h"
 #include "core/providers/common.h"
 #include "core/providers/op_kernel_type_control.h"
-#if defined(ENABLE_TRAINING_OPS)
-#include "orttraining/training_ops/cpu/tensor/gather_elements_grad_impl.h"
-#endif
 
 namespace onnxruntime {
 
@@ -511,42 +508,5 @@ Status Scatter<EnabledDataTypes>::Compute(OpKernelContext* context) const {
 
   return status;
 }
-
-#if defined(ENABLE_TRAINING_OPS)
-
-namespace contrib {
-
-template <class T>
-struct Func_Add {
-  void operator()(T* a, const T* b) const {
-    *a = *a + *b;
-  }
-};
-
-template <class Tin, class Tdata>
-Status GatherElementsGradImpl(const Tensor* indices_input, const Tensor* updates_input,
-                              const int64_t axis, Tensor* data_output) {
-  std::vector<int64_t> indices_data{};
-  ORT_RETURN_IF_ERROR(GetIndices<Tin>(*data_output, *indices_input, axis, nullptr, indices_data));
-  return ScatterData<Tdata>(Func_Add<Tdata>(), data_output, indices_data, updates_input, axis, nullptr, data_output);
-}
-
-#define GATHER_ELEMENTS_GRAD_IMPL_SPECIALIZED(Tin, Tdata) \
-  template Status GatherElementsGradImpl<Tin, Tdata>(     \
-      const Tensor* indices_input,                        \
-      const Tensor* updates_input,                        \
-      const int64_t axis,                                 \
-      Tensor* data_output)
-
-#define GATHER_ELEMENTS_GRAD_IMPL_TDATA_SPECIALIZED(Tdata) \
-  GATHER_ELEMENTS_GRAD_IMPL_SPECIALIZED(int32_t, Tdata);   \
-  GATHER_ELEMENTS_GRAD_IMPL_SPECIALIZED(int64_t, Tdata);
-
-GATHER_ELEMENTS_GRAD_IMPL_TDATA_SPECIALIZED(float)
-GATHER_ELEMENTS_GRAD_IMPL_TDATA_SPECIALIZED(double)
-
-}  // namespace contrib
-
-#endif
 
 }  // namespace onnxruntime

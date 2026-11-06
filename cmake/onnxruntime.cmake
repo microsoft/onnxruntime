@@ -40,11 +40,6 @@ function(get_c_cxx_api_headers HEADERS_VAR)
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_type_conversion.h"
   )
 
-  if (onnxruntime_ENABLE_TRAINING_APIS)
-    list(APPEND _headers "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_c_api.h")
-    list(APPEND _headers "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_api.h")
-    list(APPEND _headers "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_cxx_inline.h")
-  endif()
 
   # need to add header files for enabled EPs
   foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})

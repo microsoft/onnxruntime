@@ -465,7 +465,6 @@ TEST(DynamicQuantLSTMTest, MismatchedWeightShapeIsRejected) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "Input W must have shape");
 }
 
-#ifndef ENABLE_TRAINING
 // Prepacking is disabled in full training build so no need to test the feature in a training build.
 TEST(DynamicQuantLSTMTest, SharedPrepackedWeights) {
   OpTester test("DynamicQuantizeLSTM", 1 /*opset_version*/, onnxruntime::kMSDomain /*domain*/);
@@ -626,7 +625,6 @@ TEST(DynamicQuantLSTMTest, SharedPrepackedWeights) {
               static_cast<size_t>(number_of_shared_pre_packed_weights_counter));
   }
 }
-#endif
 
 // Builds a minimal DynamicQuantizeLSTM and runs it expecting the kernel's input validation to reject
 // the recurrence quantization parameters. The caller supplies the R_scale and R_zero_point shapes

@@ -207,13 +207,6 @@
     target_compile_definitions(onnxruntime_providers_tensorrt PRIVATE USE_CUDA_MINIMAL=1)
   endif()
 
-  # Needed for the provider interface, as it includes training headers when training is enabled
-  if (onnxruntime_ENABLE_TRAINING_OPS)
-    target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ORTTRAINING_ROOT})
-    if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-      onnxruntime_add_include_to_target(onnxruntime_providers_tensorrt Python::Module)
-    endif()
-  endif()
 
   if(APPLE)
     set_property(TARGET onnxruntime_providers_tensorrt APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/core/providers/tensorrt/exported_symbols.lst")

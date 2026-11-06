@@ -129,27 +129,6 @@ static const char* const kOrtSessionOptionsDisableAheadOfTimeFunctionInlining = 
 static const char* const kOrtSessionOptionsFunctionExpansionNodeLimit = "session.function_expansion_node_limit";
 static const char* const kOrtSessionOptionsFunctionExpansionByteLimit = "session.function_expansion_byte_limit";
 
-#ifdef ENABLE_TRAINING
-// Specifies a path of the file containing a list of memory optimization configurations.
-// The value should be a string indicating the file path of the config file.
-// The content of the config file is a JSON struct like this:
-// [
-//   "Gelu+Cast+:1:0",
-//   "Dropout+:1:1"
-// ]
-// Taking the example of "Gelu+Cast+:1:0",
-// > "Gelu+Cast+" is the subgraph string, a valid "subgraph string" should be one subgraph representation
-//    output by ORT graph transformations.
-// > "1" is "optimization strategy", valid values: 0 - disabled, 1 - recompute.
-// > "0" is "number of subgraph to apply" which is used to control how many subgraphs to apply optimization,
-//    to avoid "oversaving" the memory.
-static const char* const kOrtSessionOptionsMemoryOptimizerApplyConfig = "optimization.memory_optimizer_config";
-
-// Specifies the config for detecting subgraphs for memory footprint reduction.
-// The value should be a string contains int separated using commas. The default value is "0:0".
-static const char* const kOrtSessionOptionsMemoryOptimizerProbeConfig = "optimization.enable_memory_probe_recompute_config";
-#endif
-
 // This setting if set should contain a comma separated list of optimizers names that should be disabled.
 // Optimizers may take time to execute and affect model loading time. If you feel that a specific optimizer
 // does not provider runtime benefits, but affects your model loading time you may disable it using this config

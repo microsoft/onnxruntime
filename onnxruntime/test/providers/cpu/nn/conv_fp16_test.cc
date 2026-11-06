@@ -1607,7 +1607,6 @@ TEST(ConvFp16Test, Conv2D_Bias_Z_Relu) {
 
 #endif  // CONTRIB_OPS
 
-#ifndef ENABLE_TRAINING
 // Prepacking is disabled in full training build so no need to test the feature in a training build.
 
 const onnxruntime::RunOptions run_options = []() {
@@ -1860,8 +1859,6 @@ TEST(ConvFp16Test, SharedPrepackedWeights_HalfConvEligible_BiasNotShared) {
     ASSERT_EQ(number_of_shared_pre_packed_weights_counter, static_cast<size_t>(1));
   }
 }
-
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime

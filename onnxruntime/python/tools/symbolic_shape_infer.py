@@ -229,7 +229,6 @@ class SymbolicShapeInference:
             "PackedMultiHeadAttention": self._infer_PackedMultiHeadAttention,
             "PagedAttention": self._infer_PagedAttention,
             "SparsePagedAttention": self._infer_PagedAttention,
-            "PythonOp": self._infer_PythonOp,
             "QLinearAdd": self._infer_QLinearBinary,
             "QLinearMul": self._infer_QLinearBinary,
             "QuantizeLinear": self._infer_QuantizeLinear,
@@ -496,7 +495,6 @@ class SymbolicShapeInference:
             "PackedAttention",
             "PagedAttention",
             "SparsePagedAttention",
-            "PythonOp",
             "QuantizeLinear",
             "QuickGelu",
             "RelativePositionBias",
@@ -2909,53 +2907,6 @@ class SymbolicShapeInference:
             self._propagate_shape_and_type(node, input_index=1, output_index=0)
             self._propagate_shape_and_type(node, input_index=1, output_index=1)
             self._propagate_shape_and_type(node, input_index=0, output_index=2)  # true output
-
-    def _infer_PythonOp(self, node):  # noqa: N802
-        output_tensor_types = get_attribute(node, "output_tensor_types")
-        assert output_tensor_types, f"PythonOp '{node.name}' has no output_tensor_types attribute."
-        output_tensor_ranks = get_attribute(node, "output_tensor_ranks")
-        assert output_tensor_ranks, f"PythonOp '{node.name}' has no output_tensor_ranks attribute."
-
-        from onnxruntime.capi._pybind_state import get_shape_inference_function  # noqa: PLC0415
-
-        func_name = get_attribute(node, "func_name").decode()
-        shape_inferer = get_shape_inference_function(func_name)
-
-        # Set the context output separately.
-        # The first output is torch.autograd.Function''s context.
-        vi = self.known_vi_[node.output[0]]
-        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT64, []))
-
-        if shape_inferer is not None:
-            input_shapes = []
-            input_dtypes = []
-            for input_index in range(len(node.input)):
-                shape = self._get_shape(node, input_index)
-                input_shapes.append(shape)
-                input_dtype = self.known_vi_[node.input[input_index]].type.tensor_type.elem_type
-                input_dtypes.append(input_dtype)
-            output_shapes, output_dtypes = shape_inferer(node, input_shapes, input_dtypes)
-            assert len(output_shapes) == len(output_dtypes) == (len(node.output) - 1), (
-                f"PythonOp '{func_name}' returned {len(output_shapes)} shapes and {len(output_dtypes)} dtypes, "
-                f"but expected {len(node.output) - 1} outputs."
-            )
-            for i in range(len(node.output) - 1):
-                output_index = i + 1
-                vi = self.known_vi_[node.output[output_index]]
-                vi.CopyFrom(
-                    helper.make_tensor_value_info(node.output[output_index], output_dtypes[i], output_shapes[i])
-                )
-        else:
-            # General shape inference for PythonOp.
-            # Outputs after torch.autograd.Function's context are tensors.
-            # We assume their ranks are fixed for different model inputs.
-            for i in range(len(node.output) - 1):
-                # Process the i-th tensor outputs.
-                vi = self.known_vi_[node.output[i + 1]]
-                sympy_shape = self._new_symbolic_shape(output_tensor_ranks[i], node)
-                shape = get_shape_from_sympy_shape(sympy_shape)
-                value_info = helper.make_tensor_value_info(node.output[i + 1], output_tensor_types[i], shape)
-                vi.CopyFrom(value_info)
 
     def _propagate_shape_and_type(self, node, input_index=0, output_index=0):
         shape = self._get_shape(node, input_index)

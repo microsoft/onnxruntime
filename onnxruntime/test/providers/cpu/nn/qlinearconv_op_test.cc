@@ -1805,7 +1805,6 @@ TEST(QLinearConvTest, Conv2D_S8S8_Depthwise_Kernelsize_PerChannel) {
   TestQLinearConv2dDepthwiseKernelsizePerChannel<int8_t, int8_t>();
 }
 
-#ifndef ENABLE_TRAINING
 // Prepacking is disabled in full training build so no need to test the feature in a training build.
 TEST(QLinearConvTest, SharedPrepackedWeights) {
   QuantizedTensor X({0.45246148109436035f, 0.15498268604278564f, 0.11199361085891724f, -0.39421093463897705f,
@@ -1912,7 +1911,6 @@ TEST(QLinearConvTest, SharedPrepackedWeights) {
               static_cast<size_t>(number_of_shared_pre_packed_weights_counter));
   }
 }
-#endif
 
 TEST(QLinearConvTest, Rank0InputRejected) {
   OpTester test("QLinearConv", 10);

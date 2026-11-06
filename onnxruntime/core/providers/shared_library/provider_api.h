@@ -238,13 +238,6 @@ struct SessionOptions;
 
 namespace contrib {
 class ATen;
-class Group;
-class PassThrough;
-class YieldOp;
-class TritonOp;
-class AdamWOptimizerBase;
-class SGDOptimizerV2Base;
-class ShrunkenGatherCommon;
 }  // namespace contrib
 
 class UnsqueezeBase;

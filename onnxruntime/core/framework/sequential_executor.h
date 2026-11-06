@@ -15,20 +15,11 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/common/inlined_containers.h"
 
-#ifdef ENABLE_TRAINING
-#include "core/framework/partial_graph_execution_state.h"
-#endif
-
 namespace onnxruntime {
 
 class StreamExecutionContext;
 class DeviceStreamCollection;
 class SessionScope;
-
-#ifdef ENABLE_TRAINING
-using OrtValueCache = InlinedHashMap<std::string, OrtValue>;
-using OrtValueCachePtr = std::shared_ptr<OrtValueCache>;
-#endif
 
 onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
                                   NodeIndex idx,
@@ -49,17 +40,4 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                                    bool single_thread_mode,
                                    profiling::Profiler* run_profiler = nullptr);
 
-#ifdef ENABLE_TRAINING
-onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
-                                          std::vector<OrtValue>& feeds, gsl::span<const int> fetch_mlvalue_idxs,
-                                          std::vector<OrtValue>& fetches,
-                                          const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                          const logging::Logger& logger,
-                                          const DeviceStreamCollection* device_streams,
-                                          const bool& terminate_flag,
-                                          bool single_thread_mode,
-                                          PartialGraphExecutionState& state,
-                                          const OrtValueCachePtr& cache,
-                                          int32_t partial_graph_index);
-#endif
 }  // namespace onnxruntime

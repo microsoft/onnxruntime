@@ -43,13 +43,6 @@ struct OrtRunOptions {
   // Only used when enable_profiling is true.
   std::basic_string<ORTCHAR_T> profile_file_prefix = ORT_TSTR("onnxruntime_run_profile");
 
-#ifdef ENABLE_TRAINING
-  // Used by onnxruntime::training::TrainingSession. This class is now deprecated.
-  // Delete training_mode when TrainingSession is deleted.
-  // Set to 'true' to run in training mode.
-  bool training_mode = true;
-#endif
-
   // Stores the configurations for this run
   // To add a configuration value to this specific run, call OrtApis::AddRunConfigEntry
   // To get a configuration value, call OrtApis::GetRunConfigEntry

@@ -50,9 +50,7 @@ def main():
 
     managed_dir = csharp_root / "src" / "Microsoft.ML.OnnxRuntime"
     native_methods = managed_dir / "NativeMethods.shared.cs"
-    training_native_methods = managed_dir / "Training" / "NativeTrainingMethods.shared.cs"
     errors = check_all_delegates_have_unmanaged_function_pointer_attribute(native_methods)
-    errors += check_all_delegates_have_unmanaged_function_pointer_attribute(training_native_methods)
 
     if errors:
         raise ValueError(f"{errors} errors were found. Please check output for specifics.")

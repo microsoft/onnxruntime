@@ -25,11 +25,6 @@ class Node;
 #endif
 class Tensor;
 struct KernelCreateInfo;
-#ifdef ENABLE_TRAINING
-struct PartialGraphExecutionState;
-typedef InlinedHashMap<std::string, OrtValue> OrtValueCache;
-typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
-#endif
 
 namespace logging {
 class Logger;
@@ -103,16 +98,6 @@ common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManag
 #endif
                             const logging::Logger& logger,
                             profiling::Profiler* run_profiler = nullptr);
-
-#ifdef ENABLE_TRAINING
-common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
-                                   std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
-                                   const logging::Logger& logger, PartialGraphExecutionState& state,
-                                   const OrtValueCachePtr& cache,
-                                   const bool& terminate_flag,
-                                   int32_t partial_graph_index,
-                                   Stream* parent_stream);
-#endif
 
 // Execute a subgraph. The feeds_fetches_manager should have been finalized prior to calling this function.
 // See IControlFlowNode::SetupSubgraphExecutionInfo usage in the control flow kernels.
@@ -262,10 +247,6 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float4E2M1x2>()
 #endif
 
 int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType);
-
-#ifdef ENABLE_TRAINING
-common::Status VerifyInputTensorsAllocatedContiguously(OpKernelContext* context);
-#endif
 
 }  // namespace utils
 }  // namespace onnxruntime

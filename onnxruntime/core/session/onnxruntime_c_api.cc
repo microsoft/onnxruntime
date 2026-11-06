@@ -69,11 +69,6 @@ ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 }
 #endif
 
-#ifdef ENABLE_TRAINING_APIS
-#include "orttraining/training_api/include/onnxruntime_training_c_api.h"
-#include "orttraining/training_api/ort_training_apis.h"
-#endif
-
 #ifdef USE_CANN
 #include "core/providers/cann/cann_provider_factory.h"
 #include "core/providers/cann/cann_execution_provider_info.h"
@@ -3690,18 +3685,9 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetEpName, _In_ const OrtNode* node,
 }
 
 ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
-#ifdef ENABLE_TRAINING_APIS
-  if (version >= 13 && version <= ORT_API_VERSION)
-    return OrtTrainingApis::GetTrainingApi(version);
-
-  fprintf(stderr, "The given version [%u] is not supported. Training api only supports version 13 to %u.\n",
-          version, ORT_API_VERSION);
-  return nullptr;
-#else
   ORT_UNUSED_PARAMETER(version);
 
   return nullptr;
-#endif
 }
 
 ORT_API(const OrtModelEditorApi*, OrtApis::GetModelEditorApi) {

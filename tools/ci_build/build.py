@@ -534,11 +534,6 @@ def generate_build_tree(
             ]
             if args.use_dml and not (args.dml_path or args.dml_external_project):
                 raise BuildError("You must set dml_path or dml_external_project when building with the GDK.")
-    elif not is_macOS():
-        cmake_args.append(
-            "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS="
-            + ("ON" if args.enable_external_custom_op_schemas else "OFF")
-        )
     cmake_args += [
         "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
@@ -600,13 +595,8 @@ def generate_build_tree(
         "-Donnxruntime_WEBGPU_STATIC_PLUGIN=" + ("ON" if args.use_webgpu == "static_plugin" else "OFF"),
         "-Donnxruntime_USE_EXTERNAL_DAWN=" + ("ON" if args.use_external_dawn else "OFF"),
         "-DDAWN_USE_AGILITY_SDK=" + ("ON" if args.use_dawn_agility_sdk else "OFF"),
-        # Training related flags
         "-Donnxruntime_ENABLE_NVTX_PROFILE=" + ("ON" if args.enable_nvtx_profile else "OFF"),
-        "-Donnxruntime_ENABLE_TRAINING=" + ("ON" if args.enable_training else "OFF"),
-        "-Donnxruntime_ENABLE_TRAINING_OPS=" + ("ON" if args.enable_training_ops else "OFF"),
-        "-Donnxruntime_ENABLE_TRAINING_APIS=" + ("ON" if args.enable_training_apis else "OFF"),
-        # Enable advanced computations such as AVX for some traininig related ops.
-        "-Donnxruntime_ENABLE_CPU_FP16_OPS=" + ("ON" if args.enable_training else "OFF"),
+        "-Donnxruntime_ENABLE_CPU_FP16_OPS=OFF",
         "-Donnxruntime_USE_NCCL=" + ("ON" if args.enable_nccl else "OFF"),
         "-Donnxruntime_BUILD_BENCHMARKS=" + ("ON" if args.build_micro_benchmarks else "OFF"),
         "-Donnxruntime_GCOV_COVERAGE=" + ("ON" if args.code_coverage else "OFF"),
@@ -625,7 +615,6 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_PROFILING=" + ("ON" if args.enable_wasm_profiling else "OFF"),
-        "-Donnxruntime_ENABLE_LAZY_TENSOR=" + ("ON" if args.enable_lazy_tensor else "OFF"),
         "-Donnxruntime_ENABLE_CUDA_PROFILING=" + ("ON" if args.enable_cuda_profiling else "OFF"),
         "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
         "-Donnxruntime_USE_WEBNN=" + ("ON" if args.use_webnn else "OFF"),
@@ -1187,12 +1176,6 @@ def generate_build_tree(
             "-Donnxruntime_FUZZ_TEST=ON",
             "-Donnxruntime_USE_FULL_PROTOBUF=ON",
         ]
-
-    if args.enable_lazy_tensor:
-        import torch  # noqa: PLC0415
-
-        cmake_args += [f"-Donnxruntime_PREBUILT_PYTORCH_PATH={os.path.dirname(torch.__file__)}"]
-        cmake_args += ["-D_GLIBCXX_USE_CXX11_ABI=" + str(int(torch._C._GLIBCXX_USE_CXX11_ABI))]
 
     if args.enable_dx_interop:
         cmake_args += ["-Donnxruntime_USE_DX_INTEROP=ON"]
@@ -2188,11 +2171,8 @@ def build_python_wheel(
     use_qnn,
     qnn_home,
     wheel_name_suffix,
-    enable_training,
     nightly_build=False,
-    default_training_package_device=False,
     use_ninja=False,
-    enable_training_apis=False,
 ):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
@@ -2204,14 +2184,8 @@ def build_python_wheel(
         # Any combination of the following arguments can be applied
         if nightly_build:
             args.append("--nightly_build")
-        if default_training_package_device:
-            args.append("--default_training_package_device")
         if wheel_name_suffix:
             args.append(f"--wheel_name_suffix={wheel_name_suffix}")
-        if enable_training:
-            args.append("--enable_training")
-        if enable_training_apis:
-            args.append("--enable_training_apis")
 
         # The following arguments are mutually exclusive
         if use_cuda:
@@ -2258,7 +2232,6 @@ def build_nuget_package(
     use_qnn,
     use_dml,
     use_migraphx,
-    enable_training_apis,
     msbuild_extra_options,
 ):
     if not (is_windows() or is_linux()):
@@ -2278,15 +2251,8 @@ def build_nuget_package(
     target_name = "/t:CreatePackage"
     execution_provider = "/p:ExecutionProvider=None"
     package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime"
-    enable_training_tests = "/p:TrainingEnabledNativeBuild=false"
 
-    if enable_training_apis:
-        enable_training_tests = "/p:TrainingEnabledNativeBuild=true"
-        if use_cuda:
-            package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.Training.Gpu"
-        else:
-            package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.Training"
-    elif use_winml:
+    if use_winml:
         package_name = "/p:OrtPackageId=Microsoft.AI.MachineLearning"
         target_name = "/t:CreateWindowsAIPackage"
     elif use_openvino:
@@ -2352,7 +2318,6 @@ def build_nuget_package(
                 sln,
                 package_name,
                 ort_build_dir,
-                enable_training_tests,
                 *extra_options,
             ]
 
@@ -2409,7 +2374,6 @@ def run_csharp_tests(
     use_openvino,
     use_tensorrt,
     use_dnnl,
-    enable_training_apis,
     configs,
     msbuild_extra_options,
 ):
@@ -2428,8 +2392,6 @@ def run_csharp_tests(
         macros.append("USE_DNNL")
     if use_cuda:
         macros.append("USE_CUDA")
-    if enable_training_apis:
-        macros += ["__TRAINING_ENABLED_NATIVE_BUILD__", "__ENABLE_TRAINING_APIS__"]
 
     define_constants = ""
     if macros:
@@ -2583,19 +2545,11 @@ def main():
     if args.use_tensorrt:
         args.use_cuda = True
 
-    if args.build_wheel or args.gen_doc or args.enable_training:
+    if args.build_wheel or args.gen_doc:
         args.enable_pybind = True
 
-    if (
-        args.build_csharp
-        or args.build_nuget
-        or args.build_java
-        or args.build_nodejs
-        or (args.enable_pybind and not args.enable_training)
-    ):
-        # If pyhon bindings are enabled, we embed the shared lib in the python package.
-        # If training is enabled, we don't embed the shared lib in the python package since training requires
-        # torch interop.
+    if args.build_csharp or args.build_nuget or args.build_java or args.build_nodejs or args.enable_pybind:
+        # Python bindings embed the shared library in the Python package.
         args.build_shared_lib = True
 
     if args.enable_pybind:
@@ -2642,11 +2596,6 @@ def main():
     # GDK builds don't support testing
     if is_windows() and args.use_gdk:
         args.test = False
-
-    # enable_training is a higher level flag that enables all training functionality.
-    if args.enable_training:
-        args.enable_training_apis = True
-        args.enable_training_ops = True
 
     configs = set(args.config)
 
@@ -2859,7 +2808,6 @@ def main():
         #  the target OS is Windows
         if args.build_wheel:
             nightly_build = bool(os.getenv("NIGHTLY_BUILD") == "1")
-            default_training_package_device = bool(os.getenv("DEFAULT_TRAINING_PACKAGE_DEVICE") == "1")
             build_python_wheel(
                 source_dir,
                 build_dir,
@@ -2879,11 +2827,8 @@ def main():
                 args.use_qnn,
                 args.qnn_home,
                 args.wheel_name_suffix,
-                args.enable_training,
                 nightly_build=nightly_build,
-                default_training_package_device=default_training_package_device,
                 use_ninja=(args.cmake_generator == "Ninja"),
-                enable_training_apis=args.enable_training_apis,
             )
 
         if args.build_nuget:
@@ -2900,7 +2845,6 @@ def main():
                 args.use_qnn,
                 getattr(args, "use_dml", False),
                 args.use_migraphx,
-                args.enable_training_apis,
                 args.msbuild_extra_options,
             )
 
@@ -2912,7 +2856,6 @@ def main():
             args.use_openvino,
             args.use_tensorrt,
             args.use_dnnl,
-            args.enable_training_apis,
             configs,
             args.msbuild_extra_options,
         )

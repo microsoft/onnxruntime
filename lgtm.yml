@@ -17,7 +17,7 @@ extraction:
       - "export PATH=$(pwd)/custom_cmake/bin:${PATH}"
     index:
       build_command:
-        - ./build.sh --cmake_generator Ninja --config Debug --skip_submodule_sync --build_shared_lib --parallel --skip_tests --minimal_build --disable_exceptions --enable_training_ops
+        - ./build.sh --cmake_generator Ninja --config Debug --skip_submodule_sync --build_shared_lib --parallel --skip_tests --minimal_build --disable_exceptions
   csharp:
     index:
       solution: ["csharp/OnnxRuntime.CSharp.sln"]

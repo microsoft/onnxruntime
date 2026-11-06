@@ -42,28 +42,6 @@
 #endif
 #endif
 
-#ifdef ENABLE_TRAINING_OPS
-#include "orttraining/training_ops/cpu/controlflow/group.h"
-#include "orttraining/training_ops/cpu/loss/softmax_cross_entropy_loss.h"
-#include "orttraining/training_ops/cpu/tensor/split.h"
-#include "orttraining/training_ops/cpu/optimizer/adamw/adamwbase.h"
-#include "orttraining/training_ops/cpu/optimizer/sgd/sgdbase.h"
-
-// Should remove the shrunken_gather include from ENABLE_TRAINING_OPS once 1). compute optimizer is enabled for inference or
-// 2). this is needed by inference for other purpose.
-#include "contrib_ops/cpu/tensor/shrunken_gather.h"
-#endif
-
-#ifdef ENABLE_TRAINING
-#include "orttraining/training_ops/cpu/controlflow/record.h"
-#include "orttraining/training_ops/cpu/controlflow/wait.h"
-#include "orttraining/training_ops/cpu/controlflow/yield.h"
-#endif
-
-#ifdef ENABLE_TRITON
-#include "orttraining/training_ops/cpu/triton/triton_op.h"
-#endif
-
 #include "cpu_provider_shared.h"
 #include <limits>
 
@@ -334,58 +312,6 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
 #ifdef ENABLE_ATEN
   Status ATen__Compute(const contrib::ATen* p, OpKernelContext* p_ctx) override { return p->ATen::Compute(p_ctx); }
 #endif
-#endif
-
-#ifdef ENABLE_TRAINING_OPS
-  Status contrib__Group__Compute(const contrib::Group* p, OpKernelContext* context) override { return p->Group::Compute(context); }
-  Status contrib__PassThrough__Compute(const contrib::PassThrough* p, OpKernelContext* context) override { return p->PassThrough::Compute(context); }
-  void contrib__VerifyLogitWeightAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, const TensorShape* weight_shape) override { contrib::VerifyLogitWeightAndLabelShape(logit_shape, label_shape, weight_shape); }
-  void contrib__GetNDCFromLogitAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, int64_t& N_D, int64_t& C) override { contrib::GetNDCFromLogitAndLabelShape(logit_shape, label_shape, N_D, C); }
-  void contrib__GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, TensorShapeVector& new_shape, std::vector<size_t>& permutations) override { contrib::GetPermutationAndShape(ncd_to_ndc, tensor_shape, new_shape, permutations); }
-  Status contrib__PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) override { return contrib::PrepareForTrainingCompute(input_shape, num_outputs, axis, before_dims, after_dims_including_split_axis, after_dims_excluding_split, split_sizes); }
-  // From cpu/optimizer/adamwbase.h (direct)
-  Status contrib__AdamWOptimizerBase__PrepareForCompute(const contrib::AdamWOptimizerBase* p, OpKernelContext* ctx,
-                                                        contrib__AdamWOptimizerBase__Prepare& prepare) override {
-    return p->AdamWOptimizerBase::PrepareForCompute(ctx,
-                                                    reinterpret_cast<contrib::AdamWOptimizerBase::Prepare&>(prepare));
-  }
-  Status contrib__SGDOptimizerV2Base__PrepareForCompute(const contrib::SGDOptimizerV2Base* p, OpKernelContext* ctx,
-                                                        contrib__SGDOptimizerV2Base__Prepare& prepare) override {
-    return p->SGDOptimizerV2Base::PrepareForCompute(ctx,
-                                                    reinterpret_cast<contrib::SGDOptimizerV2Base::Prepare&>(prepare));
-  }
-  void contrib__ShrunkenGatherCommon__CheckInput(const contrib::ShrunkenGatherCommon* p, const Tensor* input_tensor,
-                                                 const Tensor* indices_tensor, int64_t axis_in) const override {
-    return p->ShrunkenGatherCommon::CheckInput(input_tensor, indices_tensor, axis_in);
-  }
-
-#endif
-
-#ifdef ENABLE_TRAINING
-  void contrib__record_event_in_tensor(const Tensor& event_id_tensor) override { return contrib::record_event_in_tensor(event_id_tensor); }
-  void contrib__wait_event_in_tensor(const Tensor& event_id_tensor) override { return contrib::wait_event_in_tensor(event_id_tensor); }
-  Status contrib__YieldOp__Compute(const contrib::YieldOp* p, OpKernelContext* context) override { return p->YieldOp::Compute(context); }
-
-  // From aten_op.h (direct)
-  bool contrib__IsATenOperatorExecutorInitialized() override {
-    return contrib::IsATenOperatorExecutorInitialized();
-  }
-  Status contrib__ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims)
-      override {
-    return contrib::ExecuteReduceSumATen(p_ctx, axes, keepdims);
-  }
-#endif
-
-#ifdef ENABLE_TRITON
-  Status contrib__TritonOp__Compute(const contrib::TritonOp* p, OpKernelContext* context) override {
-    return p->TritonOp::Compute(context);
-  }
-  bool contrib__IsTritonOpExecutorInitialized() override { return contrib::IsTritonOpExecutorInitialized(); }
-  Status contrib__ExecuteTritonOpByFuncName(
-      OpKernelContext* p_ctx, const std::string& func_name, size_t input_count, size_t output_count,
-      const InlinedHashMap<std::string, std::pair<std::string, int>>& kwargs) override {
-    return contrib::ExecuteTritonOpByFuncName(p_ctx, func_name, input_count, output_count, kwargs);
-  }
 #endif
 
 #endif

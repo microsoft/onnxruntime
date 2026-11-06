@@ -14,7 +14,6 @@ sys.path.append(str(_script_dir.parent))
 from c.assemble_c_pod_package import get_pod_config_file as get_c_pod_config_file  # noqa: E402
 from package_assembly_utils import (  # noqa: E402
     copy_repo_relative_to_dir,
-    filter_files,
     gen_file_from_template,
     get_podspec_values,
     load_json_config,
@@ -47,38 +46,6 @@ all_objc_files = {
     ],
     "test_resource_files": [
         "objectivec/test/testdata/*.ort",
-        "onnxruntime/test/testdata/training_api/*.onnx",
-        "onnxruntime/test/testdata/training_api/*.ckpt",
-        "onnxruntime/test/testdata/training_api/*.in",
-        "onnxruntime/test/testdata/training_api/*.out",
-    ],
-}
-
-training_only_objc_files = {
-    "source_files": [
-        "objectivec/include/onnxruntime_training.h",
-        "objectivec/include/ort_checkpoint.h",
-        "objectivec/include/ort_training_session.h",
-        "objectivec/ort_checkpoint.mm",
-        "objectivec/ort_checkpoint_internal.h",
-        "objectivec/ort_training_session_internal.h",
-        "objectivec/ort_training_session.mm",
-    ],
-    "public_header_files": [
-        "objectivec/include/ort_checkpoint.h",
-        "objectivec/include/ort_training_session.h",
-        "objectivec/include/onnxruntime_training.h",
-    ],
-    "test_source_files": [
-        "objectivec/test/ort_training_session_test.mm",
-        "objectivec/test/ort_checkpoint_test.mm",
-        "objectivec/test/ort_training_utils_test.mm",
-    ],
-    "test_resource_files": [
-        "onnxruntime/test/testdata/training_api/*.onnx",
-        "onnxruntime/test/testdata/training_api/*.ckpt",
-        "onnxruntime/test/testdata/training_api/*.in",
-        "onnxruntime/test/testdata/training_api/*.out",
     ],
 }
 
@@ -87,11 +54,7 @@ def get_pod_files():
     """
     Gets the source and header files.
     """
-    # return files that are in pod_files but not in training_only_objc_files
-    filtered_pod_files = {}
-    for key, value in all_objc_files.items():
-        filtered_pod_files[key] = filter_files(value, training_only_objc_files[key])
-    return filtered_pod_files
+    return {key: list(value) for key, value in all_objc_files.items()}
 
 
 def get_pod_config_file():
