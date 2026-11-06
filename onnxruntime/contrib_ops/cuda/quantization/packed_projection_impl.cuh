@@ -384,7 +384,14 @@ __device__ __forceinline__ void Iq2TablesInit() {
   __syncthreads();
 }
 
+template <int ALIGNMENT = 1>
 __device__ __forceinline__ uint32_t LoadUnalignedWord(const uint8_t* p) {
+  if (ALIGNMENT >= 4 || (ALIGNMENT == 1 && (reinterpret_cast<uintptr_t>(p) & 3) == 0))
+    return __ldg(reinterpret_cast<const uint32_t*>(p));
+  if (ALIGNMENT >= 2 || (reinterpret_cast<uintptr_t>(p) & 1) == 0) {
+    const auto* halves = reinterpret_cast<const uint16_t*>(p);
+    return static_cast<uint32_t>(__ldg(halves)) | (static_cast<uint32_t>(__ldg(halves + 1)) << 16);
+  }
   uint32_t word = 0;
 #pragma unroll
   for (int i = 0; i < 4; ++i) word |= static_cast<uint32_t>(__ldg(p + i)) << (8 * i);
@@ -395,6 +402,12 @@ template <bool ALIGNED = false>
 __device__ __forceinline__ uint4 LoadPackedVector(const uint8_t* p) {
   if (ALIGNED || (reinterpret_cast<uintptr_t>(p) & 15) == 0)
     return __ldg(reinterpret_cast<const uint4*>(p));
+  if ((reinterpret_cast<uintptr_t>(p) & 3) == 0)
+    return make_uint4(LoadUnalignedWord<4>(p), LoadUnalignedWord<4>(p + 4),
+                      LoadUnalignedWord<4>(p + 8), LoadUnalignedWord<4>(p + 12));
+  if ((reinterpret_cast<uintptr_t>(p) & 1) == 0)
+    return make_uint4(LoadUnalignedWord<2>(p), LoadUnalignedWord<2>(p + 4),
+                      LoadUnalignedWord<2>(p + 8), LoadUnalignedWord<2>(p + 12));
   return make_uint4(LoadUnalignedWord(p), LoadUnalignedWord(p + 4),
                     LoadUnalignedWord(p + 8), LoadUnalignedWord(p + 12));
 }
@@ -406,8 +419,10 @@ __device__ __forceinline__ uint16_t LoadPackedScalePair(const uint8_t* p) {
   return static_cast<uint16_t>(__ldg(p)) | (static_cast<uint16_t>(__ldg(p + 1)) << 8);
 }
 
+template <bool WORD_ALIGNED = false>
 __device__ __forceinline__ uint2 LoadNativeNvfp4Group(const uint8_t* p) {
-  const uint32_t a = LoadUnalignedWord(p), b = LoadUnalignedWord(p + 4);
+  const uint32_t a = LoadUnalignedWord<WORD_ALIGNED ? 4 : 1>(p),
+                 b = LoadUnalignedWord<WORD_ALIGNED ? 4 : 1>(p + 4);
   auto interleave = [](uint32_t word) {
     const uint32_t pairs = (word & 0x000F000Fu) | ((word >> 4) & 0x00F000F0u);
     return (pairs & 0xFFu) | ((pairs >> 8) & 0xFF00u);
@@ -465,11 +480,11 @@ __device__ __forceinline__ void LoadWeightRow(const uint8_t* w, const void* sc, 
     const int group = WIDE ? 8 * c + 2 * t : 4 * c + t;
     const uint8_t* block = w + (row * (K / 64) + (group >> 2)) * 36;
     const int local = group & 3;
-    const auto first = LoadNativeNvfp4Group(block + 4 + local * 8);
+    const auto first = LoadNativeNvfp4Group<ALIGNED>(block + 4 + local * 8);
     raw = make_uint4(first.x, first.y, 0u, 0u);
     scale[0] = NativeNvfp4Scale(__ldg(block + local)) * 0x1p110f;
     if constexpr (WIDE) {
-      const auto second = LoadNativeNvfp4Group(block + 4 + (local + 1) * 8);
+      const auto second = LoadNativeNvfp4Group<ALIGNED>(block + 4 + (local + 1) * 8);
       raw.z = second.x;
       raw.w = second.y;
       scale[1] = NativeNvfp4Scale(__ldg(block + local + 1)) * 0x1p110f;

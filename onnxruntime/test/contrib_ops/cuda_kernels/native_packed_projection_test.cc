@@ -61,7 +61,7 @@ void CompareNativeAndSplitLayouts(bool q8, bool bf16_scales = false) {
           }
         }
         auto da = AllocateNative((a.size() + 1) * sizeof(uint16_t));
-        auto dn = AllocateNative(native.size() + 1), dr = AllocateNative(records.size());
+        auto dn = AllocateNative(native.size() + 4), dr = AllocateNative(records.size());
         auto ds = AllocateNative(scales.size() * sizeof(uint16_t));
         auto dy = AllocateNative(actual.size() * sizeof(uint16_t));
         auto de = AllocateNative(expected.size() * sizeof(uint16_t));
@@ -70,10 +70,10 @@ void CompareNativeAndSplitLayouts(bool q8, bool bf16_scales = false) {
         ASSERT_EQ(cudaMemcpy(dr.get(), records.data(), records.size(), cudaMemcpyHostToDevice), cudaSuccess);
         ASSERT_EQ(cudaMemcpy(ds.get(), scales.data(), scales.size() * sizeof(uint16_t), cudaMemcpyHostToDevice),
                   cudaSuccess);
-        for (int offsets = 0; offsets < 4; ++offsets) {
+        for (int offsets = 0; offsets < 10; ++offsets) {
           SCOPED_TRACE(testing::Message() << "offset_mask=" << offsets);
           auto* input = static_cast<uint16_t*>(da.get()) + (offsets & 1);
-          auto* weights = static_cast<uint8_t*>(dn.get()) + ((offsets >> 1) & 1);
+          auto* weights = static_cast<uint8_t*>(dn.get()) + (offsets >> 1);
           auto* output = static_cast<uint16_t*>(dy.get()) + 1;
           ASSERT_EQ(cudaMemcpy(input, a.data(), a.size() * sizeof(uint16_t), cudaMemcpyHostToDevice), cudaSuccess);
           ASSERT_EQ(cudaMemcpy(weights, native.data(), native.size(), cudaMemcpyHostToDevice), cudaSuccess);
@@ -150,7 +150,7 @@ TEST(NativePackedProjectionKernelTest, NVFP4NativeAndSplitLayoutsWithOffsets) {
           }
         }
         auto da = AllocateNative((a.size() + 1) * sizeof(uint16_t));
-        auto dn = AllocateNative(native.size() + 1), dp = AllocateNative(packed.size());
+        auto dn = AllocateNative(native.size() + 4), dp = AllocateNative(packed.size());
         auto ds = AllocateNative(scales.size()), dg = AllocateNative(sizeof(float));
         auto dy = AllocateNative(actual.size() * sizeof(uint16_t));
         auto de = AllocateNative(expected.size() * sizeof(uint16_t));
@@ -159,10 +159,10 @@ TEST(NativePackedProjectionKernelTest, NVFP4NativeAndSplitLayoutsWithOffsets) {
         ASSERT_EQ(cudaMemcpy(dp.get(), packed.data(), packed.size(), cudaMemcpyHostToDevice), cudaSuccess);
         ASSERT_EQ(cudaMemcpy(ds.get(), scales.data(), scales.size(), cudaMemcpyHostToDevice), cudaSuccess);
         ASSERT_EQ(cudaMemcpy(dg.get(), &global, sizeof(float), cudaMemcpyHostToDevice), cudaSuccess);
-        for (int offsets = 0; offsets < 4; ++offsets) {
+        for (int offsets = 0; offsets < 10; ++offsets) {
           SCOPED_TRACE(testing::Message() << "offset_mask=" << offsets);
           auto* input = static_cast<uint16_t*>(da.get()) + (offsets & 1);
-          auto* weights = static_cast<uint8_t*>(dn.get()) + ((offsets >> 1) & 1);
+          auto* weights = static_cast<uint8_t*>(dn.get()) + (offsets >> 1);
           auto* output = static_cast<uint16_t*>(dy.get()) + 1;
           ASSERT_EQ(cudaMemcpy(input, a.data(), a.size() * sizeof(uint16_t), cudaMemcpyHostToDevice), cudaSuccess);
           ASSERT_EQ(cudaMemcpy(weights, native.data(), native.size(), cudaMemcpyHostToDevice), cudaSuccess);

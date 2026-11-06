@@ -162,7 +162,7 @@ __global__ void __launch_bounds__(KW * 32)
 #pragma unroll
       for (int h = 0; h < 2; ++h) {
         const int64_t row = min(n_base + m * 16 + g + 8 * h, static_cast<int64_t>(N - 1));
-        LoadWeightRow<FMT, WIDE, ALIGNED_W && FMT != kFmtIq2N && FMT != kFmtIq2Gguf && FMT != kFmtFp4Gguf>(
+        LoadWeightRow<FMT, WIDE, ALIGNED_W && FMT != kFmtIq2N && FMT != kFmtIq2Gguf>(
             w, sc, row, K, c, t, st.raw[m][h], st.sc[m][h]);
       }
     if constexpr (ALIGNED_X)
@@ -194,6 +194,13 @@ void LaunchMmaGemvWeights(const bf16* x, const uint8_t* w, const void* sc, const
 template <int FMT, bool WIDE, int MT, int KW, int UNR = 1>
 void LaunchMmaGemvImpl(const bf16* x, const uint8_t* w, const void* sc, const float* gs, int R, int N, int K, bf16* y,
                        cudaStream_t s) {
+  if constexpr (FMT == kFmtFp4Gguf) {
+    // Native 36-byte blocks and their 4-byte header preserve word alignment.
+    if ((reinterpret_cast<uintptr_t>(w) & 3) != 0) {
+      LaunchMmaGemvWeights<FMT, WIDE, MT, KW, UNR, false>(x, w, sc, gs, R, N, K, y, s);
+      return;
+    }
+  }
   if constexpr (FMT != kFmtIq2N && FMT != kFmtIq2Gguf && FMT != kFmtQ8Gguf && FMT != kFmtFp4Gguf) {
     if ((reinterpret_cast<uintptr_t>(w) & 15) != 0 ||
         (FMT == kFmtFp4 && (reinterpret_cast<uintptr_t>(sc) & 1) != 0)) {
