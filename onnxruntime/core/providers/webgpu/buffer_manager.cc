@@ -153,8 +153,10 @@ class SimpleCacheManager : public IBufferCacheManager {
 };
 
 class BucketCacheManager : public IBufferCacheManager {
-  // Use one completed-run window for demand history and ordinary cleanup.
-  // Other sessions and partial-run flushes cannot advance this session's window.
+  // Buffers share a pool, while each session ages its per-capacity demand on
+  // its own successful runs. Reuse is attributed to the current borrower;
+  // free buffers have no session owner or run age. Use the same window for
+  // demand history and ordinary cleanup; partial-run flushes do not advance it.
   static constexpr size_t kRunWindow = 16;
   static constexpr auto kIdleTimeout = std::chrono::seconds{60};
   struct Demand {
@@ -350,6 +352,11 @@ class BucketCacheManager : public IBufferCacheManager {
   }
 
   void Trim(Clock::time_point now) {
+    // Per capacity, retain sum(max(peak - unavailable, 0)) over all registered
+    // sessions. Cleanup triggered by one session still includes the others.
+    // The peak combines valid history and demand already observed in an active
+    // run; unavailable covers live/pending buffers. Future demand is not predicted.
+    // Session teardown removes only that session's contribution.
     InlinedHashMap<size_t, size_t> spare_demand;
     for (const auto& [recording, session] : sessions_) {
       for (const auto& [capacity, demand] : session->demand) {
