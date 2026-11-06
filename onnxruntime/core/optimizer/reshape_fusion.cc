@@ -450,6 +450,7 @@ bool ReshapeFusion::Fuse_Subgraph(Node& reshape, Graph& graph, const logging::Lo
   // Loop through the inputs of concat node to calculate the shape_value for a potential reshape fusion.
   InlinedVector<int64_t> shape_value;
   shape_value.reserve(concat_input_count);
+  bool added_inferred_dimension = false;
 
   for (int i = 0; i < concat_input_count; ++i) {
     // First check if the i-th argument is a constant initializer.
@@ -476,6 +477,7 @@ bool ReshapeFusion::Fuse_Subgraph(Node& reshape, Graph& graph, const logging::Lo
       // This node has met all required criteria thus far.
       // This node could lead to a potential subgraph pattern fusion.
       shape_value.push_back(-1);
+      added_inferred_dimension = true;
       continue;
     }
     return false;
@@ -491,6 +493,24 @@ bool ReshapeFusion::Fuse_Subgraph(Node& reshape, Graph& graph, const logging::Lo
     if ((*it) == -1) {
       if (++subgraph_cnt > 1) {
         // If more than one "-1" value is present in shape_value, return false to exit current fusion.
+        return false;
+      }
+    }
+  }
+
+  if (added_inferred_dimension) {
+    // A copied zero dimension makes an inferred dimension ambiguous. Preserve the shape
+    // subgraph unless every copied dimension is known to be positive.
+    const auto* input_shape = root_input.Shape();
+    for (size_t i = 0; i < shape_value.size(); ++i) {
+      if (shape_value[i] != 0) {
+        continue;
+      }
+      if (input_shape == nullptr || i >= static_cast<size_t>(input_shape->dim_size())) {
+        return false;
+      }
+      const auto& input_dim = input_shape->dim(static_cast<int>(i));
+      if (!input_dim.has_dim_value() || input_dim.dim_value() <= 0) {
         return false;
       }
     }
