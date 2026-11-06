@@ -68,6 +68,10 @@ The host calls each EP instance serially. Graph and node views are call-scoped a
 identifies an implementation, declares compatible graph views and companion constraints, describes how to realize
 the implementation, and offers policy-specific execution contracts. Source-node membership stays in `sub_graph`.
 
+`sub_graph->nodes` identifies source work, not necessarily nodes remaining after lowering. Boundary information,
+including external value/initializer dependencies, comes from its `MetaDef` or the source graph. A planning region
+can contain several candidates; each candidate is indivisible.
+
 The attachment in `ComputeCapability` is optional; existing members and constructors remain unchanged. Member-only
 view:
 
@@ -96,14 +100,14 @@ struct CapabilityPlanningInfo {
 };
 ```
 
-| Field | Meaning and invariant |
-|:------|:----------------------|
-| `query` | The exact snapshot passed to discovery, not a copy with matching IDs. It supplies graph revision, workload, configuration, and EP identity. |
-| `candidate_id` | Non-empty and unique within this EP's result. Cross-candidate references also name the EP instance. |
+| Field | Meaning and responsibility |
+|:------|:---------------------------|
+| `query` | The original discovery snapshot, not a copy. It supplies `query->graph_revision`, EP identity, workload, and configuration. It is the validity token; matching IDs alone neither prove safe reuse nor form a complete cache key. |
+| `candidate_id` | Identifies this particular offer from an EP instance. Non-empty and unique within this EP's result; cross-candidate references also name the EP instance. |
 | `implementation_id` | Non-empty identity of the implementation this candidate describes. |
-| `alternative_view_ids` | One or more unique, non-empty view IDs in which the candidate can participate. |
-| `compatibility` | Required/excluded candidates and boundary layout/device constraints. The planner enforces these relationships. |
-| `recipe` | One identified realization: standalone kernel, registered fusion, compiled region, or explicitly unresolved. Different recipes are different candidates. |
+| `alternative_view_ids` | Identifies alternative sets of capabilities produced together, such as standalone and optimized views. A shared candidate can belong to several views; its view IDs must be unique and non-empty. |
+| `compatibility` | `required_candidates`, `excluded_candidates`, and `boundary_constraints` express required companions, exclusions, and layout/device agreements. Disjoint source membership alone does not establish compatibility; the planner enforces these relationships. |
+| `recipe` | Identifies the reproducible implementation: standalone kernel, registered fused kernel, compiled-region lowering, or explicitly unresolved. A standalone recipe may require no rewrite. Different recipes are different candidates. |
 | `contracts` | One or more contracts with distinct IDs. These are alternative policies for this implementation, not simultaneous memory charges. |
 
 ```mermaid
@@ -120,6 +124,8 @@ flowchart LR
 
 A **recipe** says how to realize the candidate. A **contract** says under which policy and workload that
 implementation is eligible, what it may allocate, and which EP-owned state must survive selection.
+State pointers retain opaque, EP-owned `CapabilityPlanningState` host metadata, not compiled executables,
+materialized kernels, or borrowed graph views.
 
 ```cpp
 using CapabilityPlanningStatePtr = std::shared_ptr<const CapabilityPlanningState>;
@@ -147,12 +153,15 @@ struct CapabilityExecutionContract {
 };
 ```
 
-| Supporting type | Content |
-|:----------------|:--------|
-| `CapabilityCompatibilityConstraints` | `required_candidates`, `excluded_candidates`, and `boundary_constraints`. |
-| `CapabilityGraphEffects` | `Unresolved`, `Unchanged`, or `Described`; boundary inputs/outputs, introduced tensors, removed values, aliases, and unresolved terms. `Unchanged` cannot declare rewrites or alias changes. |
-| `CapabilityAllocationRequirement` | Resource ID, category, device, byte upper bound, alignment, lifetime, and optional alias/non-overlap relationships. Categories include workspace, persistent prepack, initialization scratch, runtime preparation, and other implementation-owned storage. |
-| `CapabilityPlanningState` | Opaque EP-owned host metadata. `prepared_state` retains match/lowering data; `resolved_state` retains the contract's resolved permissions. Neither is a materialized device kernel or borrowed graph view. |
+| Nested field | Meaning and responsibility |
+|:-------------|:---------------------------|
+| `recipe.prepared_state` | Retains the prepared match, replacement/lowering choice, and dependencies needed to apply that implementation without independently selecting a different one. This can be CPU-side metadata. |
+| `recipe.graph_effects` | Describes resulting tensors, boundaries, shapes/types, aliases, and storage effects compactly, without a full graph copy per candidate. S0 provides this descriptor, not a separate `planning_graph` type. Its kind is `Unresolved`, `Unchanged`, or `Described`; `Unchanged` cannot declare rewrites or alias changes. |
+| `contracts[].contract_id`, `contracts[].policy`, `contracts[].resolved_state` | Identifies an enforceable execution policy, including permitted runtime choices. The ID references retained, query-bound EP state, not just an intent string that may later resolve differently. |
+| `contracts[].eligibility`, `contracts[].eligibility_reason` | Distinguishes static support conditions from allocation-bound status, with a reason when support is unresolved or ineligible. |
+| `contracts[].workload_coverage`, `contracts[].explicit_failure_conditions` | Describes admitted runtime states and conditions that must fail instead of escaping to an unaccounted implementation. A bounded contract need not guarantee successful execution for every request. |
+| `contracts[].allocation_requirements` | Describes implementation-owned persistent/prepack storage, initialization scratch, runtime preparation, workspace, and other storage by resource identity, device, size bound, alignment, and lifetime. Declared alias/non-overlap relationships require later validation; whole-plan logic resolves physical backing. |
+| `contracts[].bound_status`, `contracts[].unresolved_terms` | Records whether requirements are sufficiently bounded for this query and which terms remain unknown or unsupported. A candidate may be executable yet lack enough information for strict-budget admission. |
 
 **Unknown is not zero.** An unset `allocation_requirements` means unknown. A present empty list with `Bounded`
 asserts no relevant implementation-owned allocations. A bounded list must identify every allocation's kind,
