@@ -31,6 +31,7 @@
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
+#include "core/providers/webgpu/webgpu_provider_factory.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/inference_session.h"
@@ -69,7 +70,8 @@ ConfigOptions KvCacheQuantizationOptions(const char* value) {
 }
 
 template <typename TestBody>
-void RunWithFreshDefaultContext(TestBody test_body, bool compile_only_parent = false) {
+void RunWithFreshDefaultContext(TestBody test_body, bool compile_only_parent = false,
+                                const char* expected_error = nullptr) {
 #if GTEST_HAS_DEATH_TEST
   // Context 0 can outlive an individual test. Re-exec instead of forking its
   // initialized Dawn device or clearing state that another EP still owns.
@@ -100,12 +102,16 @@ void RunWithFreshDefaultContext(TestBody test_body, bool compile_only_parent = f
     existing_device = webgpu::WebGpuContextFactory::GetContext(0).Device().Get();
   }
 
-  EXPECT_EXIT(
-      {
-        test_body();
-        std::_Exit(testing::Test::HasFailure() || testing::Test::IsSkipped() ? EXIT_FAILURE : EXIT_SUCCESS);
-      },
-      testing::ExitedWithCode(EXIT_SUCCESS), "");
+  if (expected_error != nullptr) {
+    EXPECT_DEATH(test_body(), expected_error);
+  } else {
+    EXPECT_EXIT(
+        {
+          test_body();
+          std::_Exit(testing::Test::HasFailure() || testing::Test::IsSkipped() ? EXIT_FAILURE : EXIT_SUCCESS);
+        },
+        testing::ExitedWithCode(EXIT_SUCCESS), "");
+  }
 
   EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(0).Device().Get(), existing_device);
 #if defined(GTEST_HAS_ABSL) && !defined(GTEST_NO_ABSL_FLAGS)
@@ -116,9 +122,31 @@ void RunWithFreshDefaultContext(TestBody test_body, bool compile_only_parent = f
 #endif
 #else
   ORT_UNUSED_PARAMETER(compile_only_parent);
+  if (expected_error != nullptr) {
+    GTEST_SKIP() << "Configuration failure validation requires death-test support.";
+  }
   test_body();
 #endif
 }
+
+#if !defined(__wasm__)
+template <typename TestBody>
+void ExpectDawnCacheConfigurationFailure(TestBody test_body, const char* expected_error) {
+#if defined(ORT_NO_EXCEPTIONS)
+  RunWithFreshDefaultContext(test_body, true, expected_error);
+#else
+  RunWithFreshDefaultContext([&]() {
+    try {
+      test_body();
+      ADD_FAILURE() << "Expected invalid Dawn cache configuration to throw.";
+    } catch (const OnnxRuntimeException& error) {
+      EXPECT_THAT(error.what(), testing::HasSubstr(expected_error));
+    }
+  },
+                             true);
+#endif
+}
+#endif
 
 ConfigOptions WeightLoadAccelerationOptions(const char* value) {
   ConfigOptions options;
@@ -256,6 +284,72 @@ void TestCopyAfterDeferredDispatch(bool upload, bool checked_completion = false)
   expected.fill(8);
   EXPECT_EQ(result, expected);
 }
+
+#if !defined(__wasm__)
+TEST(WebGpuContextTest, DawnCacheInterfaceSharedContextIdentity) {
+  RunWithFreshDefaultContext([]() {
+    OrtDawnCacheInterface cache{};
+    cache.version = ORT_DAWN_CACHE_INTERFACE_VERSION;
+    cache.load = [](const void*, size_t, void*, size_t, void*) -> size_t { return 0; };
+    cache.store = [](const void*, size_t, const void*, size_t, void*) {};
+    ConfigOptions options;
+    ASSERT_STATUS_OK(options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+    const auto address = std::to_string(reinterpret_cast<uintptr_t>(&cache));
+    ASSERT_STATUS_OK(options.AddConfigEntry(kDawnCacheInterface, address.c_str()));
+    auto first = WebGpuProviderFactoryCreator::Create(options);
+    ASSERT_NE(first, nullptr);
+    auto second = WebGpuProviderFactoryCreator::Create(options);
+    ASSERT_NE(second, nullptr);
+    auto& shared = webgpu::WebGpuContextFactory::DefaultContext();
+    EXPECT_EQ(&shared, &webgpu::WebGpuContextFactory::GetContext(0));
+    webgpu::WebGpuContextFactory::ReleaseContext(0);
+  },
+                             true);
+}
+
+TEST(WebGpuContextTest, DawnCacheInterfaceRejectsConflictingConfiguration) {
+  ExpectDawnCacheConfigurationFailure([]() {
+    OrtDawnCacheInterface cache{};
+    cache.version = ORT_DAWN_CACHE_INTERFACE_VERSION;
+    cache.load = [](const void*, size_t, void*, size_t, void*) -> size_t { return 0; };
+    cache.store = [](const void*, size_t, const void*, size_t, void*) {};
+    ConfigOptions options;
+    ASSERT_STATUS_OK(options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+    const auto address = std::to_string(reinterpret_cast<uintptr_t>(&cache));
+    ASSERT_STATUS_OK(options.AddConfigEntry(kDawnCacheInterface, address.c_str()));
+    auto first = WebGpuProviderFactoryCreator::Create(options);
+    ASSERT_NE(first, nullptr);
+    auto other_cache = cache;
+    const auto other_address = std::to_string(reinterpret_cast<uintptr_t>(&other_cache));
+    ASSERT_STATUS_OK(options.AddConfigEntry(kDawnCacheInterface, other_address.c_str()));
+    WebGpuProviderFactoryCreator::Create(options);
+  },
+                                      "different dawnCacheInterface");
+}
+
+TEST(WebGpuContextTest, DawnCacheInterfaceRejectsInvalidConfiguration) {
+  ConfigOptions options;
+  ASSERT_STATUS_OK(options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+  for (const char* value : {"", "-8", "1", "not-a-pointer", "16trailing",
+                            "184467440737095516160"}) {
+    SCOPED_TRACE(value);
+    ASSERT_STATUS_OK(options.AddConfigEntry(kDawnCacheInterface, value));
+    ExpectDawnCacheConfigurationFailure([&]() { WebGpuProviderFactoryCreator::Create(options); },
+                                        "dawnCacheInterface");
+  }
+  OrtDawnCacheInterface cache{};
+  cache.version = ORT_DAWN_CACHE_INTERFACE_VERSION;
+  const auto address = std::to_string(reinterpret_cast<uintptr_t>(&cache));
+  ASSERT_STATUS_OK(options.AddConfigEntry(kDawnCacheInterface, address.c_str()));
+  ExpectDawnCacheConfigurationFailure([&]() { WebGpuProviderFactoryCreator::Create(options); },
+                                      "dawnCacheInterface");
+  cache.load = [](const void*, size_t, void*, size_t, void*) -> size_t { return 0; };
+  cache.store = [](const void*, size_t, const void*, size_t, void*) {};
+  ++cache.version;
+  ExpectDawnCacheConfigurationFailure([&]() { WebGpuProviderFactoryCreator::Create(options); },
+                                      "dawnCacheInterface");
+}
+#endif
 
 TEST(WebGpuContextTest, UploadFollowsDeferredDispatch) {
   TestCopyAfterDeferredDispatch(true);

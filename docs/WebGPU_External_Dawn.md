@@ -44,6 +44,43 @@ disabled, and checks missing proc-table and invalid-package failures.
 
 ## Host-owned devices and caches
 
+### Cache callbacks on an ORT-owned device
+
+For native WebGPU, include `webgpu_provider_factory.h` and initialize an
+`OrtDawnCacheInterface` with `version = ORT_DAWN_CACHE_INTERFACE_VERSION`,
+`load`, `store`, `userdata`, and an optional `isolation_key`. Supply its decimal
+address as the `dawnCacheInterface` provider option (session configuration key
+`ep.webgpuexecutionprovider.dawnCacheInterface`). This works with both bundled
+and external Dawn. External Dawn still requires a matching `dawnProcTable`.
+
+The interface and its referenced state must remain alive and unchanged until
+the device is released. Callbacks may be invoked concurrently and must not
+throw. A load with a null destination is a size probe; return zero for a miss.
+For a copy, require an exact destination size and return zero if the blob
+changed between the probe and copy.
+
+Omitting the option or passing `"0"` leaves caching disabled. Configure it
+before the first session or shared allocation creates the default device.
+Shared allocator registration alone does not create the device; its first
+allocation retains an existing session device or creates an uncached default
+device if no session exists. Sessions reusing a device must use the same
+interface address. Conflicting interfaces, unsupported interface versions,
+missing callbacks, and malformed addresses are rejected using ORT's normal
+configuration-error policy (fail-fast in no-exceptions builds).
+
+Applications creating an allocator-initialization session before their model
+session must forward this option to that first session as well. ONNX Runtime
+GenAI forwards `dawnCacheInterface` with its other global WebGPU options to
+its persistent initialization session. This requires a GenAI build containing
+that forwarding change; updating ONNX Runtime alone is insufficient.
+
+These callbacks cache Dawn compiled shader/pipeline blobs, not model weights.
+They do not change ORT's internally created device or accelerated D3D12
+weight-loading path. Do not pass this option for a host-owned device: attach
+its Dawn cache descriptor when creating the device instead.
+
+### Host-owned device configuration
+
 A host can create a native Dawn instance and device, including its own
 `DawnCacheDeviceDescriptor` load/store callbacks and isolation key, before
 creating the ORT session. Pass the handles as decimal pointer values through
