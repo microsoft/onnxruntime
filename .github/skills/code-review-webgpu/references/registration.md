@@ -21,5 +21,8 @@ kernel-document generation change.
   range for the operator.
 - Regenerate `docs/OperatorKernels.md` when registration changes. The
   `windows_gpu_doc_gen.yml` workflow validates it with WebGPU enabled.
+- `js/web/docs/webgpu-operators.md` describes deprecated JSEP, despite its name.
+  Use the native registry and `docs/OperatorKernels.md` to establish native EP
+  support; a JSEP operator entry does not prove a native kernel exists.
 - Verify tests reach the changed domain, opset, and types on WebGPU using
   [validation](validation.md).

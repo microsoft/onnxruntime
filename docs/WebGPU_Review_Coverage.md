@@ -12,9 +12,19 @@ native WebGPU EP. It also covers that EP's browser/WASM and plugin deployment
 paths. It does not activate merely because a shared file, old PR, or comment
 mentions WebGPU. CPU/CUDA-only work, shared optimizer/test changes without an
 affected WebGPU consumer, and packaging without WebGPU artifacts retain their
-existing review guidance. JSEP-only work uses
-[its own instructions](../.github/instructions/jsep-deprecated.instructions.md).
+existing review guidance. JSEP is deprecated and uses
+[its own review policy](../.github/instructions/jsep-deprecated.instructions.md),
+with [the deprecation notice](JSEP_Deprecation.md) as the authoritative source.
 Mixed PRs apply these checks only to the affected WebGPU portion.
+
+JSEP correctness/security fixes require focused regression coverage and a check
+of the corresponding native kernel; apply native review checks when the same
+defect affects it, even if the PR omitted the native fix. New operators,
+features, and performance-only work belong in the native EP. Deprecation,
+migration, and removal follow the linked JSEP policy and migration plan.
+Deprecation does not mean JSEP has already been removed or that a removal date
+is fixed. Both implementations use the JavaScript backend key `webgpu`, so
+identify the build/import/WASM artifact before selecting checks.
 
 The initial kernel-centered grouping combined too many independent contracts
 under runtime/portability and shader semantics. The following 13 categories
@@ -74,9 +84,9 @@ Source-guided semantic inspection prioritizes the author's PRs and the review
 threads linked above, including their replies and affected code. Rules in the
 references are preventive checks corroborated by controlling implementation or
 scoped historical evidence, not assertions that an open PR is fixed or merged.
-Legacy JSEP discussions contribute only an invariant that also makes sense for
+Deprecated JSEP discussions contribute only an invariant that also makes sense for
 the native implementation; their obsolete APIs and backend assumptions are not
-imported as native rules.
+imported as native rules or used to justify new performance work in JSEP.
 
 Discovery and collection are broad; semantic validation is selective. This is
 not a line-by-line re-review of every historical patch/comment, a proof that
@@ -111,7 +121,10 @@ evaluations. They check both exclusion and cumulative inclusion:
 | CPU-only kernel fix, CUDA-only attention change, or unrelated Python tooling | Existing review guidance; no WebGPU skill/references |
 | Shared optimizer rule that excludes WebGPU, or shared test edit with no affected WebGPU execution | No WebGPU skill/references |
 | Documentation that merely links an old WebGPU PR | No WebGPU skill/references |
-| JSEP-only backend maintenance | JSEP guidance; no native WebGPU skill |
+| JSEP correctness/security fix; native counterpart checked and unaffected | JSEP policy and focused regression coverage; no native WebGPU references |
+| JSEP kernel fix exposing the same native defect | JSEP policy plus matching native checks; flag a missing native fix/regression |
+| New JSEP operator, feature, or performance-only optimization | Report under JSEP policy and direct work to native EP; do not treat it as accepted JSEP maintenance |
+| JSEP migration/removal touching native integration | JSEP migration policy plus native checks for the affected native portion |
 | Shared Gemm helper changing native WebGPU arithmetic and generated types | Kernel, cache, dispatch, numerics, validation; other rows only if their behavior changes |
 | New ConvTranspose prepack layout | Kernel, layout/prepacking, cache, dispatch, numerics, registration, validation; runtime if ownership changes |
 | Plugin streamless allocator/copy change | Runtime/memory, plugin contracts, validation; builds if target boundaries change |

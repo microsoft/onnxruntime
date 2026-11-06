@@ -1,6 +1,6 @@
 ---
 name: code-review-webgpu
-description: Use only for changes with a direct or traceable effect on the native WebGPU EP, including its shared tests, optimizer paths, dependencies, and packaging. Review kernels, WGSL, numerics, packing, caches, runtime, devices, plugin ABI, builds, profiling, registration, and validation, locally or in GitHub Copilot. Also applies during implementation. Do not select for unrelated CPU/CUDA work, generic shared-file edits without WebGPU impact, or JSEP-only changes. Use code-review for review workflow.
+description: Use only for changes with a direct or traceable effect on the native WebGPU EP, including shared tests, optimizers, dependencies, packaging, and native defects exposed by JSEP fixes. Review kernels, WGSL, numerics, packing, caches, runtime, devices, plugin ABI, builds, profiling, registration, and validation, locally or in GitHub Copilot. Apply during implementation too. Exclude unrelated CPU/CUDA or shared-file edits without WebGPU impact. Deprecated JSEP follows its own policy; use native checks only where affected. Use code-review for review workflow.
 ---
 
 # Native WebGPU EP review
@@ -13,9 +13,17 @@ test configuration, or deployed artifact affected by the diff. Shared-file
 location, a historical PR link, and a passing mention of WebGPU are insufficient.
 An unrelated CPU/CUDA kernel, optimizer rule excluding WebGPU, packaging job
 without a WebGPU artifact, or shared-test edit that cannot affect WebGPU does
-not use this skill or its references. JSEP-only changes use their own guidance.
+not use this skill or its references.
 If selected in error, stop applying it. For mixed PRs, apply these checks only
 to the WebGPU-related portion and affected shared consumers.
+
+JSEP is deprecated. Follow the [JSEP review policy](../../instructions/jsep-deprecated.instructions.md)
+and its authoritative [deprecation notice](../../../docs/JSEP_Deprecation.md).
+For a JSEP kernel fix, inspect the native counterpart as that policy requires;
+if the same defect applies, use this skill for the affected native behavior,
+including a missing native fix/regression test. Pure JSEP maintenance does not
+load native references. Identify the implementation from the build/import/WASM
+artifact: the JavaScript backend name `webgpu` alone does not distinguish them.
 
 For reviews, use [code-review](../code-review/SKILL.md) for scope and reporting.
 For implementation, apply the same checks to the resulting behavior. Pin the

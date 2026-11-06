@@ -17,4 +17,6 @@ changes or JSEP-only work; in mixed changes, scope checks to WebGPU effects.
 A `Program` generates WGSL compiled and reused by program cache key. The same EP
 serves native Dawn (D3D12, Vulkan, Metal), browser WebAssembly, and the WebGPU
 plugin EP. Classify changes by affected behavior and callers, including shared
-helpers outside these paths. JSEP has [separate guidance](jsep-deprecated.instructions.md).
+helpers outside these paths. JSEP is deprecated; follow its
+[review policy](jsep-deprecated.instructions.md), including checking the native
+counterpart of a JSEP kernel fix before deciding native applicability.

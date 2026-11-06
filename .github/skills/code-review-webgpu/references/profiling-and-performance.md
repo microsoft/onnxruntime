@@ -37,6 +37,6 @@ paths, Dawn platform integration, PIX support, and perf tests.
 Historical review evidence: [#18894 dispatch metadata](https://github.com/microsoft/onnxruntime/pull/18894#discussion_r1439969295),
 [profiling cache effects](https://github.com/microsoft/onnxruntime/pull/18894#discussion_r1448124255),
 and [#19791 workaround scope](https://github.com/microsoft/onnxruntime/pull/19791#discussion_r1515358917).
-Those two PRs concern legacy JSEP: transfer the verified invariant only, not its
+Those two PRs concern deprecated JSEP: transfer the verified invariant only, not its
 obsolete APIs or current-native applicability. See also native
 [#33781](https://github.com/microsoft/onnxruntime/pull/33781) clock correlation.
