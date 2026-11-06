@@ -2326,6 +2326,14 @@ TEST(PatternGraphTests, ReferencesDetectCyclesAndBindingAmbiguity) {
     pattern Branch(x) { y=Identity(x); return y }
   )");
   EXPECT_EQ(forward.GetPattern("P").Nodes()[0].graphs.size(), 2u);
+  EXPECT_THROW((PatternLibrary(R"(
+    pattern B(x) { y=Identity(x); return y }
+    pattern P(c) {
+      root=If(c,then_branch=B,else_branch=B)
+      return If(root,then_branch=B,else_branch=B)
+    }
+  )")),
+               OnnxRuntimeException);
 }
 
 TEST(PatternGraphTests, IfCaptureRewriteAndNumerics) {

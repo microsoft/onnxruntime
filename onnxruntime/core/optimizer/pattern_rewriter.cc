@@ -1530,7 +1530,12 @@ class PatternParser {
                                   pattern_.expanded_calls_ >= 256 - body->expanded_calls_,
                               Error("expanded graph call limit of 256 exceeded"));
                 pattern_.expanded_calls_ += body->expanded_calls_ + 1;
-                graphs.push_back({name, (names.empty() ? std::string("root") : names.front()) + "." + name, body});
+                const std::string instance = (names.empty() ? std::string("root") : names.front()) + "." + name;
+                for (const auto& previous : pattern_.Nodes())
+                  ORT_RETURN_IF(std::any_of(previous.graphs.begin(), previous.graphs.end(),
+                                            [&](const auto& graph) { return graph.instance == instance; }),
+                                Error("duplicate graph instance; assign the final control-flow operator a unique name"));
+                graphs.push_back({name, instance, body});
                 if (token_ != ",") break;
                 ORT_RETURN_IF_ERROR(Next());
                 continue;
@@ -2633,6 +2638,7 @@ void Match::update(std::string_view name, ONNX_NAMESPACE::AttributeProto value) 
               "Extra bindings require a name and a concrete attribute value.");
   ORT_ENFORCE(!dimensions_.count(std::string(name)) && !element_types_.count(std::string(name)),
               "Extra attribute binding cannot overwrite a dimension or element type: ", name);
+  ORT_ENFORCE(!subgraphs.count(std::string(name)), "Extra attribute binding cannot overwrite a graph instance: ", name);
   if (pattern) {
     ORT_ENFORCE(!pattern->aliases_.count(std::string(name)) && !pattern->instances_.count(std::string(name)),
                 "Extra attribute binding cannot overwrite a pattern binding: ", name);
