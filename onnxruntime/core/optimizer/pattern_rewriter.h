@@ -182,6 +182,9 @@ class BindingView {
   std::optional<int32_t> elementTypeOf(std::string_view name) const;
   BindingView instance(std::string_view name) const;
   const Graph& graph() const;
+  // Resolve a tensor input in an ancestor graph using proven lexical-capture identity.
+  // Body-local values return an error. On error result is unchanged.
+  Status resolveInput(std::string_view name, const Graph& target, const NodeArg*& result) const;
   std::string_view definition() const;
   std::string_view interfaceName() const;
   // Empty for a body call; otherwise the selected immediate member name.

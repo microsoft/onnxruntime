@@ -2266,6 +2266,29 @@ TEST(PatternGraphTests, OrderedIndependentRootsAndCompleteCoverage) {
   }
 }
 
+TEST(PatternGraphTests, ComposedWildcardUsesTheSameInitializerBoundary) {
+  PatternLibrary library(R"(
+    pattern Leaf(x) { y=Identity(x); return y }
+    pattern Direct(w) { y=Identity(w); return y }
+    pattern Composed() { y=Leaf(_); return y }
+  )");
+  for (bool overridable : {false, true}) {
+    TestGraph test;
+    auto* weight = test.builder.MakeInitializer<float>({2}, {1.0f, 2.0f});
+    test.builder.AddNode("Identity", {weight}, {test.builder.MakeOutput()});
+    test.builder.SetGraphOutputs();
+    if (overridable) test.graph.SetInputs({weight});
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    ASSERT_TRUE(test.graph.GetInputs().empty());
+    EXPECT_EQ(test.graph.GetConstantInitializer(weight->Name(), false) != nullptr, !overridable);
+    for (const char* name : {"Direct", "Composed"}) {
+      std::optional<Match> match;
+      ASSERT_STATUS_OK(library.GetGraphPattern(name).MatchGraph(test.graph, match));
+      EXPECT_EQ(match.has_value(), !overridable) << name;
+    }
+  }
+}
+
 TEST(PatternGraphTests, PassthroughRepeatedOutputsAndUnusedFormal) {
   PatternLibrary library(R"(
     pattern Pass(x,unused) -> (first,second) { return (first=x,second=x) }
@@ -2338,7 +2361,12 @@ TEST(PatternGraphTests, IfCaptureRewriteAndNumerics) {
         EXPECT_EQ(then_body.graph().ParentGraph(), &graph);
         EXPECT_EQ(std::get<int64_t>(then_body.dimensionOf("N")), 2);
         EXPECT_EQ(match.nodes.size(), 1u);
-        return then_body.valueOf("x")->Name() == else_body.valueOf("x")->Name();
+        const NodeArg* then_input = nullptr;
+        const NodeArg* else_input = nullptr;
+        const auto then_status = then_body.resolveInput("x", graph, then_input);
+        const auto else_status = else_body.resolveInput("x", graph, else_input);
+        if (!then_status.IsOK() || !else_status.IsOK()) return match.Reject("Branches contain local inputs.");
+        return then_input == else_input;
       };
       Rule rule{"SameBranches", library.GetPattern("P"), "(y.then_branch.x)=>Identity(y.then_branch.x)", check, {{kOnnxDomain, 17, 17}}};
       Statistics stats;
@@ -2425,8 +2453,62 @@ TEST(PatternGraphTests, LoopFormalInputsAndPassthroughOutputs) {
   }
 }
 
+TEST(PatternGraphTests, ApplyMatchesBodiesAfterRecursiveRewriting) {
+  PatternLibrary library(R"(
+    pattern Branch(x) { a=Identity(x); return a }
+    pattern P(c) { y=If(c,then_branch=Branch,else_branch=Branch); return y }
+  )");
+  for (bool use_apply : {false, true}) {
+    TestGraph test;
+    auto& b = test.builder;
+    auto* x = b.MakeInput<float>({2}, {1.0f, 2.0f});
+    auto* c = b.MakeInput<bool>({}, {true});
+    ONNX_NAMESPACE::GraphProto branch;
+    branch.set_name("recursive_branch");
+    auto* output = branch.add_output();
+    output->set_name("branch_output");
+    output->mutable_type()->CopyFrom(*x->TypeAsProto());
+    auto* first = branch.add_node();
+    first->set_op_type("Identity");
+    first->add_input(x->Name());
+    first->add_output("middle");
+    auto* second = branch.add_node();
+    second->set_op_type("Identity");
+    second->add_input("middle");
+    second->add_output(output->name());
+    auto& conditional = b.AddNode("If", {c}, {b.MakeOutput()});
+    conditional.AddAttribute("then_branch", branch);
+    conditional.AddAttribute("else_branch", branch);
+    b.SetGraphOutputs();
+    ASSERT_STATUS_OK(test.graph.Resolve());
+    auto check = [](const Graph& graph, Match& match) {
+      const NodeArg* then_input = nullptr;
+      const NodeArg* else_input = nullptr;
+      const auto then_status = match.instance("y.then_branch").resolveInput("x", graph, then_input);
+      const auto else_status = match.instance("y.else_branch").resolveInput("x", graph, else_input);
+      return then_status.IsOK() && else_status.IsOK() && then_input == else_input;
+    };
+    Rule parent{"SameBranches", library.GetPattern("P"), "(y.then_branch.x)=>Identity(y.then_branch.x)", check, {{kOnnxDomain, 17, 17}}};
+    Rule child{"IdentityPair", "(x)=>{a=Identity(x);return Identity(a)}", "(x)=>Identity(x)", {}, {{kOnnxDomain, 17, 17}}};
+    PatternRewriter rewriter({parent, child});
+    if (use_apply) {
+      bool modified = false;
+      ASSERT_STATUS_OK(rewriter.Apply(test.graph, modified, DefaultLoggingManager().DefaultLogger()));
+      EXPECT_TRUE(modified);
+      EXPECT_FALSE(test.graph.GraphResolveNeeded());
+      EXPECT_EQ(Count(test.graph, "If"), 0u);
+      EXPECT_EQ(Count(test.graph, "Identity"), 1u);
+    } else {
+      Statistics statistics;
+      ASSERT_STATUS_OK(rewriter.Run(test.graph, statistics));
+      EXPECT_EQ(statistics.rewrites, 0u);
+      EXPECT_EQ(Count(test.graph, "If"), 1u);
+    }
+  }
+}
+
 TEST(PatternGraphTests, LocalShadowPartialBodyAndProviderSafety) {
-  for (int scenario = 0; scenario < 6; ++scenario) {
+  for (int scenario = 0; scenario < 7; ++scenario) {
     PatternLibrary library(scenario == 2   ? R"(
       pattern Branch(x) { a=Identity(x); return a }
       pattern P(c) { y=If(c,then_branch=Branch); return y }
@@ -2452,7 +2534,7 @@ TEST(PatternGraphTests, LocalShadowPartialBodyAndProviderSafety) {
     identity->set_op_type("Identity");
     identity->add_input(x->Name());
     identity->add_output(output->name());
-    if (scenario == 0) {
+    if (scenario == 0 || scenario == 6) {
       auto* shadow = branch.add_initializer();
       shadow->set_name(x->Name());
       shadow->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
@@ -2476,14 +2558,31 @@ TEST(PatternGraphTests, LocalShadowPartialBodyAndProviderSafety) {
       value->set_f(2.0f);
     }
     auto& conditional = b.AddNode("If", {c}, {b.MakeOutput()});
+    if (scenario == 6) branch.clear_initializer();
     conditional.AddAttribute("then_branch", branch);
+    if (scenario == 6) {
+      auto* shadow = branch.add_initializer();
+      shadow->set_name(x->Name());
+      shadow->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      shadow->add_dims(2);
+      shadow->add_float_data(10.0f);
+      shadow->add_float_data(20.0f);
+    }
     conditional.AddAttribute("else_branch", branch);
     b.SetGraphOutputs();
     ASSERT_STATUS_OK(test.graph.Resolve());
     if (scenario == 3)
       conditional.GetMutableGraphAttribute("then_branch")->Nodes().begin()->SetExecutionProviderType(kCpuExecutionProvider);
     const auto before = test.model.ToProto().SerializeAsString();
-    Rule rule{"Safety", library.GetPattern("P"), "(y.then_branch.x)=>Identity(y.then_branch.x)", {}, {{kOnnxDomain, 17, 17}}};
+    auto check = [scenario](const Graph& graph, Match& match) {
+      if (scenario != 6) return true;
+      const NodeArg* then_input = nullptr;
+      const NodeArg* else_input = nullptr;
+      const auto then_status = match.instance("y.then_branch").resolveInput("x", graph, then_input);
+      const auto else_status = match.instance("y.else_branch").resolveInput("x", graph, else_input);
+      return then_status.IsOK() && else_status.IsOK() && then_input == else_input;
+    };
+    Rule rule{"Safety", library.GetPattern("P"), "(y.then_branch.x)=>Identity(y.then_branch.x)", check, {{kOnnxDomain, 17, 17}}};
     Statistics statistics;
     const auto status = PatternRewriter({rule}).Run(test.graph, statistics);
     EXPECT_EQ(status.IsOK(), scenario != 0) << status;

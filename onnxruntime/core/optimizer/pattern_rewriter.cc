@@ -416,14 +416,17 @@ bool MatchPattern(const Pattern& pattern, const Graph& graph, const Node* root, 
     for (const auto& node : graph.Nodes())
       if (!distinct.count(node.Index()) && !literal_nodes.count(node.Index()))
         return fail(FailureStage::Boundary, "Graph contains an unmatched operator.");
-    for (Value input : pattern.GraphInputs()) {
+    for (int handle = 0; handle < static_cast<int>(pattern.ValueCount()); ++handle) {
+      const Value input{handle};
+      if (!pattern.IsInput(input) || pattern.IsAttribute(input) || pattern.Constants().count(handle)) continue;
       const NodeArg* actual = match.values[input];
+      if (!actual && pattern.IsOptional(input)) continue;
       if (std::find(graph.GetInputs().begin(), graph.GetInputs().end(), actual) != graph.GetInputs().end())
         continue;
       if (!actual || (graph.GetInitializer(actual->Name(), false)
                           ? !graph.GetConstantInitializer(actual->Name(), false)
                           : !graph.IsOuterScopeValue(actual->Name())))
-        return fail(FailureStage::Boundary, "Additional graph input is not an initializer or lexical capture.");
+        return fail(FailureStage::Boundary, "Graph tensor leaf is not a formal input, immutable initializer, or lexical capture.");
     }
   }
   InlinedHashSet<const NodeArg*> exposed;
@@ -2586,6 +2589,9 @@ const Graph& Match::graph() const {
   return *matched_graph;
 }
 const Graph& BindingView::graph() const { return match_->graph(); }
+Status BindingView::resolveInput(std::string_view name, const Graph& target, const NodeArg*& result) const {
+  return rewrite::ResolveInput(*match_, Qualify(name), target, result);
+}
 const Pattern::Instance& BindingView::Selection() const {
   ORT_ENFORCE(match_->pattern && match_->pattern->instances_.count(path_), "No definition at binding path: ", path_);
   const auto* selection = &match_->pattern->instances_.at(path_);
@@ -3022,7 +3028,15 @@ Status PatternRewriter::RunImpl(Graph& graph, Statistics& statistics, InlinedHas
 }
 
 Status PatternRewriter::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
-  for (auto& node : graph.Nodes()) ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
+  bool bodies_modified = false;
+  for (auto& node : graph.Nodes()) ORT_RETURN_IF_ERROR(Recurse(node, bodies_modified, graph_level, logger));
+  modified |= bodies_modified;
+  const bool matches_graphs = std::any_of(rules_.begin(), rules_.end(), [](const Rule& rule) {
+    return std::any_of(rule.pattern.Nodes().begin(), rule.pattern.Nodes().end(),
+                       [](const auto& node) { return !node.graphs.empty(); });
+  });
+  // Parent graph patterns need refreshed body outputs, types, and lexical captures.
+  if (bodies_modified && matches_graphs) ORT_RETURN_IF_ERROR(graph.Resolve());
   Statistics statistics;
   ORT_RETURN_IF_ERROR(Run(graph, statistics));
   modified |= statistics.rewrites != 0;

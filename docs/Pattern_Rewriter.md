@@ -151,7 +151,9 @@ The first `Graph::GetInputs().size()` tensor parameters in the pattern header
 bind to the graph's formal inputs in order, including unused formals. This API
 excludes initializer inputs. Any remaining header parameters bind structurally
 to lexical captures or immutable local initializers; unused extra parameters
-do not match. Attribute parameters are not formal tensor inputs. The match must
+do not match. The same boundary applies to tensor leaves introduced by
+composition or wildcards; optional absent operands are allowed. Attribute
+parameters are not formal tensor inputs. The match must
 cover **every operator**, except exact `Constant` producers consumed and validated
 by literal patterns. Unused initializers are permitted, but unmatched `Constant`
 operators and output-unreachable extra work are not. Clean up dead work before
@@ -178,12 +180,19 @@ escape through this mechanism. All participating body operators must satisfy the
 outer rule's provider, layer, and opset policy. A semantic checker remains
 responsible for branch equivalence, iteration counts, state/output ordering,
 Scan axes/directions, and other operator semantics.
+`view.resolveInput(name, target_graph, result)` exposes the same checked
+promotion to semantic callbacks (and leaves `result` unchanged on error).
+For example, compare both branches' successfully resolved inputs by pointer
+identity in the parent graph, not by their possibly shadowed local names.
 
 Deleting the parent deletes its bodies; inner nodes are never independently
 deleted by the outer rewrite. Matches and views borrow graph objects and become
 invalid after graph mutation (including parent deletion). Engine replacements
 still cannot construct control-flow nodes. This feature is opt-in through rules;
 it does not register a production optimizer.
+Transformer `Apply` rewrites bodies first and resolves their changed interfaces
+before matching parent graph attributes. `Run` still processes only its supplied
+graph and does not recursively rewrite bodies.
 
 ### Pattern syntax and shared replacement notation
 
