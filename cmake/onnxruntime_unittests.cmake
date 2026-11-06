@@ -3134,6 +3134,10 @@ if (onnxruntime_USE_WEBGPU AND NOT onnxruntime_BUILD_DAWN_SHARED_LIBRARY AND TAR
             DEPENDS ${all_dependencies})
   endif()
   onnxruntime_add_include_to_target(onnxruntime_webgpu_external_dawn_test dawn::dawncpp_headers dawn::dawn_headers)
+  # Dawn's generated C++ wrappers use type-punning casts that trigger GCC strict-aliasing warnings.
+  target_include_directories(onnxruntime_webgpu_external_dawn_test SYSTEM PRIVATE
+    $<TARGET_PROPERTY:dawn::dawncpp_headers,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:dawn::dawn_headers,INTERFACE_INCLUDE_DIRECTORIES>)
   target_compile_features(onnxruntime_webgpu_external_dawn_test PRIVATE cxx_std_20)
   if (onnxruntime_USE_EP_API_ADAPTERS AND NOT onnxruntime_WEBGPU_STATIC_PLUGIN)
     add_dependencies(onnxruntime_webgpu_external_dawn_test onnxruntime_providers_webgpu)
