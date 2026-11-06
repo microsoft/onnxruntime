@@ -1043,7 +1043,9 @@ present. `ComputeInternal` then:
 
 | Variable | Type / default | Effect |
 |----------|----------------|--------|
-| `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION` | bool, `0` | Disable the router GEMV specialization (§4.3); shapes fall back to the generic GEMV / dequant path. Useful for A/B benchmarking. |
+| `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION` | bool, `0` | Disable the router GEMV specialization (§4.3) and the opt-in single-warp INT4 path; shapes fall back to the existing GEMV / dequant path. Useful for A/B benchmarking. |
+| `ORT_ENABLE_SINGLE_WARP_INT4_GEMV` | bool, `0` | Opt in to one-warp CTAs for FP16, symmetric group32 INT4, `M=1`, no explicit zero points or fused bias, and `(N, K)` in `{(1024, 2048), (2048, 2048), (2048, 6144)}`. Other shapes keep existing dispatch. |
+| `ORT_ENABLE_QWEN2B_GEMV_SPECIALIZATION` | bool, `0` | Legacy alias used only when `ORT_ENABLE_SINGLE_WARP_INT4_GEMV` is unset. An explicit generic value, including `0`, takes precedence. Selection is shape-based, not model-based. |
 | `ORT_FPA_INTB_GEMM` | int/string, `0` | Enable the CUTLASS weight-only path (§6). `0` or `off` disables it, otherwise enables it. |
 | `ORT_MATMULNBITS_UNALIGNED4_FAST_PATH` | `0` or `1`, `0` | Opt in to FP16 scale-only raw INT4 tail-output kernels for N%8=4, block32 and M1..4 (§4.5). |
 | `ORT_FPA_INTB_PROFILE_M` | comma list, unset | Override the M buckets profiled for the fpA_intB tactic cache (§6.1). The maximum value also bounds the initial profile range. Session-config equivalent: `ep.cuda.fpa_intb_profile_m`. |
