@@ -15,24 +15,30 @@ automatically. No bucket table configuration is required.
   total spare-byte cap that would force an otherwise reusable working set to be
   recreated. Different sessions can reuse compatible spares from the shared
   context; concurrently live buffers still require separate allocations.
-- Reuse takes the most recently returned buffer of the matching capacity. Every
-  spare records its own return time, so reusing one buffer does not keep an
-  entire size class's historical peak alive.
-- Reclamation runs synchronously when a submission boundary (including an empty
-  flush) or a cache miss triggers a maintenance check. A check skips scanning if
-  the previous scan was less than one second ago; otherwise it releases spares
-  unused for at least one second. These time thresholds only control eligibility
-  and throttle event-triggered work. They never schedule a scan. Returning a
-  buffer records its return time without triggering a scan.
-  Elapsed time, rather than a submission count, prevents a busy session from
-  advancing other sessions' aging clocks. The thresholds are policy heuristics,
-  not measurements of available GPU memory.
+- Reuse takes the most recently returned buffer of the matching capacity. Each
+  session records peak simultaneous demand per capacity over its four most recent
+  completed runs, including live buffers carried into a run and buffers still
+  awaiting submission. A smaller working set eventually replaces an earlier peak,
+  allowing surplus buffers within a still-active size class to be released.
+- Shared spare demand combines the sessions' recent peaks after subtracting their
+  outstanding buffers. Each session advances only its own history. Partial
+  submissions and another session's runs do not age its demand. Graph replay counts
+  as a run; the replay performed during initial capture does not count twice.
+- After a session has no active run for 60 seconds, its retained-demand history
+  can expire at a later maintenance event. A slow active run does not expire.
+  Session destruction removes its contribution immediately. Allocations outside a
+  tracked session run use a 60-second spare-return grace period instead.
+- Reclamation runs synchronously at run/replay completion and session release.
+  A return outside an active run checks surplus only in that buffer's size class.
+  Run starts, submissions (including empty flushes) and allocation misses can
+  trigger idle maintenance once the next idle deadline is reached. The normal
+  run-demand check inspects surplus entries rather than scanning retained buffers.
 
-There is no background thread or timer for cache maintenance. With no submission
-or cache-miss event, no scan occurs, regardless of how much time passes. Context
-destruction releases its cache. A compatible spare can still be reused before the
-next maintenance pass even after its idle period. Workloads whose reuse intervals
-exceed the idle period may recreate buffers.
+There is no background thread or timer for cache maintenance. With no subsequent
+maintenance event, buffers remain cached even after 60 seconds. Only free spares
+can be evicted; live buffers and unsubmitted recordings remain protected. The
+history window and idle timeout are reuse heuristics, not measurements of available
+GPU memory. A later request can recreate buffers whose previous demand aged out.
 
 Portable WebGPU APIs do not expose remaining GPU memory. This policy does not
 bound total device memory or guarantee allocation success. Live tensors,
