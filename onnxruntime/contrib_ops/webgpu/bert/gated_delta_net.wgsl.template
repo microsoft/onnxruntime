@@ -13,9 +13,16 @@
 #param capture_state_updates
 #param vectorized_value_io
 #param value_channels_per_workgroup
+#param subgroup_reductions
+#param single_subgroup
 #use .getByOffset .setByOffset
 
 const VALUE_CHANNELS_PER_WORKGROUP: u32 = value_channels_per_workgroup;
+#if subgroup_reductions
+const REDUCTION_RESULT_INDEX = workgroup_size_x / 32u;
+#else
+const REDUCTION_RESULT_INDEX = 0u;
+#endif
 var<workgroup> retrieved: array<f32, workgroup_size_x * VALUE_CHANNELS_PER_WORKGROUP>;
 var<workgroup> pre_output: array<f32, workgroup_size_x * VALUE_CHANNELS_PER_WORKGROUP>;
 var<workgroup> key_query: array<f32, workgroup_size_x>;
@@ -43,7 +50,14 @@ fn gdn_sigmoid(x: f32) -> f32 {
   return e / (1.0 + e);
 }
 
+#if single_subgroup
+#include "bert/gated_delta_net_subgroup.wgsl.template"
+#endif
+
 $MAIN {
+#if single_subgroup
+  gdnSingleSubgroup(local_idx, workgroup_idx);
+#else
   let workgroup = workgroup_idx;
   let num_value_tiles = (uniforms.head_size_v + VALUE_CHANNELS_PER_WORKGROUP - 1u) / VALUE_CHANNELS_PER_WORKGROUP;
   if (workgroup >= uniforms.batch_size * uniforms.num_heads_v * num_value_tiles) {
@@ -97,6 +111,19 @@ $MAIN {
       query_value = f32(query.getByOffset((token * uniforms.num_heads_q + query_head) * uniforms.head_size_qk + key_index));
     }
 #if qk_l2_norm
+#if subgroup_reductions
+    let key_sum = subgroupAdd(key_value * key_value);
+    let query_sum = subgroupAdd(query_value * query_value);
+    if (sg_id == 0u) {
+      key_norm[key_index / 32u] = key_sum;
+      query_norm[key_index / 32u] = query_sum;
+    }
+    workgroupBarrier();
+    let total_key = subgroupAdd(select(0.0f, key_norm[sg_id], sg_id < REDUCTION_RESULT_INDEX));
+    let total_query = subgroupAdd(select(0.0f, query_norm[sg_id], sg_id < REDUCTION_RESULT_INDEX));
+    key_value *= inverseSqrt(total_key + 1e-12);
+    query_value *= inverseSqrt(total_query + 1e-12);
+#else
     key_norm[key_index] = key_value * key_value;
     query_norm[key_index] = query_value * query_value;
     workgroupBarrier();
@@ -109,6 +136,7 @@ $MAIN {
     }
     key_value *= inverseSqrt(key_norm[0] + 1e-12);
     query_value *= inverseSqrt(query_norm[0] + 1e-12);
+#endif
 #endif
 #if update_rule == 1 || update_rule == 3
     if (key_index == 0u) {
@@ -127,6 +155,38 @@ $MAIN {
       state[value_offset] *= gate_scale;
     }
 #endif
+#if subgroup_reductions
+    for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+      let retrieved_sum = subgroupAdd(state[value_offset] * key_value);
+      let output_sum = subgroupAdd(state[value_offset] * query_value);
+      if (sg_id == 0u) {
+        let reduction_offset = value_offset * workgroup_size_x + key_index / 32u;
+        retrieved[reduction_offset] = retrieved_sum;
+        pre_output[reduction_offset] = output_sum;
+      }
+    }
+    let key_query_sum = subgroupAdd(key_value * query_value);
+    if (sg_id == 0u) {
+      key_query[key_index / 32u] = key_query_sum;
+    }
+    workgroupBarrier();
+    // Masked lanes must not read the separate final-sum slot while it is written.
+    let partial_index = min(sg_id, REDUCTION_RESULT_INDEX - 1u);
+    for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+      let reduction_offset = value_offset * workgroup_size_x;
+      let retrieved_sum = subgroupAdd(select(0.0f, retrieved[reduction_offset + partial_index], sg_id < REDUCTION_RESULT_INDEX));
+      let output_sum = subgroupAdd(select(0.0f, pre_output[reduction_offset + partial_index], sg_id < REDUCTION_RESULT_INDEX));
+      if (key_index == 0u) {
+        retrieved[reduction_offset + REDUCTION_RESULT_INDEX] = retrieved_sum;
+        pre_output[reduction_offset + REDUCTION_RESULT_INDEX] = output_sum;
+      }
+    }
+    let key_query_total = subgroupAdd(select(0.0f, key_query[partial_index], sg_id < REDUCTION_RESULT_INDEX));
+    if (key_index == 0u) {
+      key_query[REDUCTION_RESULT_INDEX] = key_query_total;
+    }
+    workgroupBarrier();
+#else
     for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
       let reduction_offset = value_offset * workgroup_size_x + key_index;
       retrieved[reduction_offset] = state[value_offset] * key_value;
@@ -145,6 +205,7 @@ $MAIN {
       }
       workgroupBarrier();
     }
+#endif
     if (key_index == 0u) {
       var beta_value = 1.0;
 #if update_rule == 2 || update_rule == 3
@@ -169,7 +230,7 @@ $MAIN {
         if (value_index < uniforms.head_size_v) {
           var retrieved_value = 0.0;
 #if update_rule == 2 || update_rule == 3
-          retrieved_value = retrieved[value_offset * workgroup_size_x];
+          retrieved_value = retrieved[value_offset * workgroup_size_x + REDUCTION_RESULT_INDEX];
 #endif
 #if vectorized_value_io
           delta[value_offset] = beta_value * (value_vector[value_offset] - retrieved_value);
@@ -179,7 +240,8 @@ $MAIN {
           delta[value_offset] = beta_value * (f32(value.getByOffset(value_tensor_offset)) - retrieved_value);
 #endif
           let output_value =
-              (pre_output[value_offset * workgroup_size_x] + delta[value_offset] * key_query[0]) * uniforms.scale;
+              (pre_output[value_offset * workgroup_size_x + REDUCTION_RESULT_INDEX] +
+               delta[value_offset] * key_query[REDUCTION_RESULT_INDEX]) * uniforms.scale;
 #if vectorized_value_io
           output_vector[value_offset] = output_value;
 #else
@@ -238,5 +300,6 @@ $MAIN {
       }
     }
   }
+#endif
 #endif
 }

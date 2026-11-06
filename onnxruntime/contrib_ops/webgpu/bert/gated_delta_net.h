@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <string_view>
+
 #include <algorithm>
 #include <cstdint>
 #include <limits>
@@ -17,6 +19,19 @@ namespace contrib {
 namespace webgpu {
 
 using namespace onnxruntime::webgpu;
+
+namespace detail {
+
+inline bool SupportsAppleGdnSubgroups(std::string_view vendor, wgpu::BackendType backend,
+                                      uint32_t subgroup_min, uint32_t subgroup_max,
+                                      const wgpu::Limits& limits, uint32_t threads) {
+  return vendor == "apple" && backend == wgpu::BackendType::Metal &&
+         subgroup_min == 32 && subgroup_max == 32 && threads >= 32 &&
+         limits.maxComputeWorkgroupSizeX >= threads &&
+         limits.maxComputeInvocationsPerWorkgroup >= threads;
+}
+
+}  // namespace detail
 
 enum class GatedDeltaNetUpdateRule {
   Linear,
@@ -73,7 +88,7 @@ class GatedDeltaNetProgram final : public Program<GatedDeltaNetProgram> {
   GatedDeltaNetProgram(GatedDeltaNetUpdateRule update_rule, bool has_cu_seqlens, bool has_initial_state,
                        bool initial_state_in_final_state, bool output_final_state, bool qwen_gate,
                        bool sigmoid_beta, bool qk_l2_norm, bool use_packed_params, bool capture_state_updates,
-                       bool vectorized_value_io)
+                       bool vectorized_value_io, bool subgroup_reductions, bool single_subgroup)
       : Program{"GatedDeltaNet"},
         update_rule_(update_rule),
         has_cu_seqlens_(has_cu_seqlens),
@@ -85,7 +100,9 @@ class GatedDeltaNetProgram final : public Program<GatedDeltaNetProgram> {
         qk_l2_norm_(qk_l2_norm),
         use_packed_params_(use_packed_params),
         capture_state_updates_(capture_state_updates),
-        vectorized_value_io_(vectorized_value_io) {}
+        vectorized_value_io_(vectorized_value_io),
+        subgroup_reductions_(subgroup_reductions),
+        single_subgroup_(single_subgroup) {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override;
 
@@ -111,6 +128,8 @@ class GatedDeltaNetProgram final : public Program<GatedDeltaNetProgram> {
   bool use_packed_params_;
   bool capture_state_updates_;
   bool vectorized_value_io_;
+  bool subgroup_reductions_;
+  bool single_subgroup_;
 };
 
 class GatedDeltaNetClearProgram final : public Program<GatedDeltaNetClearProgram> {

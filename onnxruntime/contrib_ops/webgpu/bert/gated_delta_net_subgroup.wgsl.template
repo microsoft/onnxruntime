@@ -1,0 +1,140 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param has_initial_state
+#param initial_state_in_final_state
+#param has_cu_seqlens
+#param capture_state_updates
+#param use_packed_params
+#param vectorized_value_io
+#param output_final_state
+#use .getByOffset .setByOffset
+
+fn gdnSingleSubgroup(local_idx: u32, workgroup_idx: u32) {
+  let value_tiles = uniforms.head_size_v / VALUE_CHANNELS_PER_WORKGROUP;
+  if (workgroup_idx >= uniforms.batch_size * uniforms.num_heads_v * value_tiles) {
+    return;
+  }
+  let value_start = (workgroup_idx % value_tiles) * VALUE_CHANNELS_PER_WORKGROUP;
+  let value_head = (workgroup_idx / value_tiles) % uniforms.num_heads_v;
+  let batch = workgroup_idx / (value_tiles * uniforms.num_heads_v);
+  let query_head = value_head / (uniforms.num_heads_v / uniforms.num_heads_q);
+  let key_start = local_idx * 4u;
+  var state: array<vec4<f32>, VALUE_CHANNELS_PER_WORKGROUP>;
+#if has_initial_state
+  for (var channel = 0u; channel < VALUE_CHANNELS_PER_WORKGROUP; channel++) {
+    let offset = ((batch * uniforms.num_heads_v + value_head) * uniforms.head_size_v +
+                  value_start + channel) * uniforms.head_size_qk + key_start;
+    for (var component = 0u; component < 4u; component++) {
+#if initial_state_in_final_state
+      state[channel][component] = f32(final_state.getByOffset(offset + component));
+#else
+      state[channel][component] = f32(initial_state.getByOffset(offset + component));
+#endif
+    }
+  }
+#endif
+  var first = batch * (uniforms.total_tokens / uniforms.batch_size);
+  var last = first + uniforms.total_tokens / uniforms.batch_size;
+#if has_cu_seqlens
+  first = u32(clamp(cu_seqlens.getByOffset(batch), 0, i32(uniforms.total_tokens)));
+  last = u32(clamp(cu_seqlens.getByOffset(batch + 1u), i32(first), i32(uniforms.total_tokens)));
+#endif
+#if capture_state_updates
+  let captured = min(u32(max(capture_count.getByOffset(batch), 0)),
+                     min(uniforms.state_update_capacity, last - first));
+  let key_offset = uniforms.state_update_capacity * uniforms.num_heads_v;
+  let delta_offset = key_offset + uniforms.state_update_capacity * uniforms.num_heads_q * uniforms.head_size_qk;
+  let row_width = delta_offset + uniforms.state_update_capacity * uniforms.num_heads_v * uniforms.head_size_v;
+#endif
+  for (var token = first; token < last; token++) {
+    let qk_offset = (token * uniforms.num_heads_q + query_head) * uniforms.head_size_qk + key_start;
+    var k: vec4<f32>;
+    var q: vec4<f32>;
+    for (var component = 0u; component < 4u; component++) {
+      k[component] = f32(key.getByOffset(qk_offset + component));
+      q[component] = f32(query.getByOffset(qk_offset + component));
+    }
+    k *= inverseSqrt(subgroupAdd(dot(k, k)) + 1e-12);
+    q *= inverseSqrt(subgroupAdd(dot(q, q)) + 1e-12);
+    var gate = 0.0f;
+    var beta_value = 0.0f;
+    if (local_idx == 0u) {
+#if use_packed_params
+      gate = exp(parameters.getByOffset((token * uniforms.num_heads_v + value_head) * 2u));
+      beta_value = parameters.getByOffset((token * uniforms.num_heads_v + value_head) * 2u + 1u);
+#else
+      let raw_gate = decay.getByOffset(token * uniforms.num_heads_v + value_head);
+      gate = exp(-exp(a_log.getByOffset(value_head)) *
+                 gdn_softplus(raw_gate + dt_bias.getByOffset(value_head)));
+      beta_value = gdn_sigmoid(beta.getByOffset(token * uniforms.num_heads_v + value_head));
+#endif
+    }
+    let gate_value = subgroupBroadcastFirst(gate);
+    beta_value = subgroupBroadcastFirst(beta_value);
+    let key_query_value = subgroupAdd(dot(k, q));
+    var deltas: vec4<f32>;
+    var result: vec4<f32>;
+#if vectorized_value_io
+    let value_vector_offset = ((token * uniforms.num_heads_v + value_head) * uniforms.head_size_v +
+                               value_start) / VALUE_CHANNELS_PER_WORKGROUP;
+    let values = vec4<f32>(value.getByOffset(value_vector_offset));
+#endif
+    for (var channel = 0u; channel < VALUE_CHANNELS_PER_WORKGROUP; channel++) {
+      state[channel] *= gate_value;
+      let retrieved_value = subgroupAdd(dot(state[channel], k));
+      let projected_value = subgroupAdd(dot(state[channel], q));
+#if vectorized_value_io
+      let input_value = values[channel];
+#else
+      let value_offset = (token * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_start + channel;
+      let input_value = f32(value.getByOffset(value_offset));
+#endif
+      deltas[channel] = beta_value * (input_value - retrieved_value);
+      result[channel] = (projected_value + deltas[channel] * key_query_value) * uniforms.scale;
+      state[channel] += k * deltas[channel];
+    }
+    if (local_idx == 0u) {
+#if vectorized_value_io
+      output.setByOffset(value_vector_offset, output_value_t(result));
+#else
+      for (var channel = 0u; channel < VALUE_CHANNELS_PER_WORKGROUP; channel++) {
+        let output_offset = (token * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_start + channel;
+        output.setByOffset(output_offset, output_element_t(result[channel]));
+      }
+#endif
+    }
+#if capture_state_updates
+    let slot = token - first;
+    if (slot < captured) {
+      let row_base = batch * row_width;
+      if (value_start == 0u && local_idx == 0u) {
+        state_update.setByOffset(row_base + slot * uniforms.num_heads_v + value_head, gate_value);
+      }
+      if (value_start == 0u && value_head == query_head * (uniforms.num_heads_v / uniforms.num_heads_q)) {
+        for (var component = 0u; component < 4u; component++) {
+          let offset = row_base + key_offset + (slot * uniforms.num_heads_q + query_head) * uniforms.head_size_qk +
+                       key_start + component;
+          state_update.setByOffset(offset, k[component]);
+        }
+      }
+      if (local_idx == 0u) {
+        for (var channel = 0u; channel < VALUE_CHANNELS_PER_WORKGROUP; channel++) {
+          let offset = row_base + delta_offset + (slot * uniforms.num_heads_v + value_head) * uniforms.head_size_v +
+                       value_start + channel;
+          state_update.setByOffset(offset, deltas[channel]);
+        }
+      }
+    }
+#endif
+  }
+#if output_final_state
+  for (var channel = 0u; channel < VALUE_CHANNELS_PER_WORKGROUP; channel++) {
+    let offset = ((batch * uniforms.num_heads_v + value_head) * uniforms.head_size_v +
+                  value_start + channel) * uniforms.head_size_qk + key_start;
+    for (var component = 0u; component < 4u; component++) {
+      final_state.setByOffset(offset + component, state[channel][component]);
+    }
+  }
+#endif
+}

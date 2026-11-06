@@ -37,3 +37,11 @@ The bindings forward lists without maintaining a second registry.
 Only capabilities that can be gated per session are registered today;
 future device-creation-only features need separate lifecycle handling and
 documented scope. Numeric and enum settings remain explicit typed options.
+
+## Precision and device-specific routing
+
+GatedDeltaNet's Apple Metal subgroup recurrence keeps state, normalization,
+reductions, and rollback capsules in FP32. Its short-query specialization
+requires the Qwen gated-delta update rule, head dimensions 128, and fixed
+32-lane subgroups. The original recurrent implementation remains available
+for other vendors, backends, subgroup sizes, and unsupported workgroup limits.

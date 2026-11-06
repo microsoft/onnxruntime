@@ -115,6 +115,8 @@ Status GatedDeltaNetProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(qk_l2_norm, qk_l2_norm_),
                              WGSL_TEMPLATE_PARAMETER(qwen_gate, qwen_gate_),
                              WGSL_TEMPLATE_PARAMETER(sigmoid_beta, sigmoid_beta_),
+                             WGSL_TEMPLATE_PARAMETER(single_subgroup, single_subgroup_),
+                             WGSL_TEMPLATE_PARAMETER(subgroup_reductions, subgroup_reductions_),
                              WGSL_TEMPLATE_PARAMETER(update_rule, update_rule),
                              WGSL_TEMPLATE_PARAMETER(use_packed_params, use_packed_params_),
                              WGSL_TEMPLATE_PARAMETER(value_channels_per_workgroup, kValueChannelsPerWorkgroup),
@@ -908,9 +910,19 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
 
   const bool vectorized_value_io = !use_packed_qkv && dv % kValueChannelsPerWorkgroup == 0;
   const int value_io_components = vectorized_value_io ? onnxruntime::narrow<int>(kValueChannelsPerWorkgroup) : 1;
+  const bool subgroup_reductions = detail::SupportsAppleGdnSubgroups(
+                                       context.AdapterInfo().vendor, context.AdapterInfo().backendType,
+                                       context.AdapterInfo().subgroupMinSize, context.AdapterInfo().subgroupMaxSize,
+                                       context.DeviceLimits(), workgroup_size) &&
+                                   context.HasFeature(wgpu::FeatureName::Subgroups);
+  const bool single_subgroup = subgroup_reductions && dk == 128 && dv == 128 &&
+                               total_tokens <= batch * 8 &&
+                               update_rule_ == GatedDeltaNetUpdateRule::GatedDelta &&
+                               qwen_gate_ && sigmoid_beta_ && qk_l2_norm_;
+  const uint32_t recurrent_workgroup_size = single_subgroup ? 32u : workgroup_size;
   GatedDeltaNetProgram program{update_rule_, cu_seqlens != nullptr, initial_state != nullptr, state_alias,
                                final_state != nullptr, qwen_gate_, sigmoid_beta_, qk_l2_norm_, use_packed_params,
-                               capture_state_updates, vectorized_value_io};
+                               capture_state_updates, vectorized_value_io, subgroup_reductions, single_subgroup};
   if (use_packed_qkv) {
     add_qkv_inputs(program);
   } else {
@@ -933,10 +945,11 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   if (capture_state_updates) program.AddOutput({state_update, ProgramTensorMetadataDependency::None});
   program
       .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(batch * hv) * value_tiles)
-      .SetWorkgroupSize(workgroup_size)
+      .SetWorkgroupSize(recurrent_workgroup_size)
       .CacheHint(static_cast<int>(update_rule_), cu_seqlens != nullptr, initial_state != nullptr, state_alias,
                  final_state != nullptr, qwen_gate_, sigmoid_beta_, qk_l2_norm_, use_packed_qkv, use_packed_params,
-                 capture_state_updates, vectorized_value_io, workgroup_size, kValueChannelsPerWorkgroup)
+                 capture_state_updates, vectorized_value_io, subgroup_reductions, single_subgroup,
+                 recurrent_workgroup_size, kValueChannelsPerWorkgroup)
       .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total_tokens)},
                             {onnxruntime::narrow<uint32_t>(batch)},
                             {onnxruntime::narrow<uint32_t>(hq)},

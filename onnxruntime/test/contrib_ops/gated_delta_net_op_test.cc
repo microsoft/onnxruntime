@@ -16,6 +16,9 @@
 #include <vector>
 
 #include "core/common/logging/logging.h"
+#if defined(USE_WEBGPU)
+#include "contrib_ops/webgpu/bert/gated_delta_net.h"
+#endif
 #include "core/graph/model.h"
 #include "core/providers/cuda/cuda_provider_options.h"
 #include "core/session/IOBinding.h"
@@ -41,6 +44,25 @@
 
 namespace onnxruntime {
 namespace test {
+
+#if defined(USE_WEBGPU)
+TEST(GatedDeltaNetTest, WebGpuSubgroupCapabilityFallback) {
+  using contrib::webgpu::detail::SupportsAppleGdnSubgroups;
+  wgpu::Limits limits{};
+  limits.maxComputeWorkgroupSizeX = 128;
+  limits.maxComputeInvocationsPerWorkgroup = 128;
+  EXPECT_TRUE(SupportsAppleGdnSubgroups("apple", wgpu::BackendType::Metal, 32, 32, limits, 128));
+  for (std::string_view vendor : {"intel", "amd", "nvidia", "qualcomm"}) {
+    EXPECT_FALSE(SupportsAppleGdnSubgroups(vendor, wgpu::BackendType::Metal, 32, 32, limits, 128));
+  }
+  EXPECT_FALSE(SupportsAppleGdnSubgroups("apple", wgpu::BackendType::Vulkan, 32, 32, limits, 128));
+  EXPECT_FALSE(SupportsAppleGdnSubgroups("apple", wgpu::BackendType::Metal, 16, 32, limits, 128));
+  EXPECT_FALSE(SupportsAppleGdnSubgroups("apple", wgpu::BackendType::Metal, 32, 32, limits, 16));
+  limits.maxComputeInvocationsPerWorkgroup = 127;
+  EXPECT_FALSE(SupportsAppleGdnSubgroups("apple", wgpu::BackendType::Metal, 32, 32, limits, 128));
+  EXPECT_TRUE(SupportsAppleGdnSubgroups("apple", wgpu::BackendType::Metal, 32, 32, limits, 32));
+}
+#endif
 
 namespace {
 
@@ -1087,6 +1109,57 @@ TEST(GatedDeltaNetWebGpuTest, CompactStateUpdatesFp16QwenGeometry) {
   options.state_update_capacity = 7;
   RunCase(g, options, inputs, 3e-2f, 3e-2f,
           /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
+}
+
+TEST(GatedDeltaNetWebGpuTest, SubgroupReductionsRaggedCapturedState) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  ConfigOptions config;
+  ASSERT_STATUS_OK(config.AddConfigEntry("ep.webgpuexecutionprovider.validationMode", "full"));
+  for (int dk : {32, 64, 128}) {
+    SCOPED_TRACE(MakeString("dk=", dk));
+    Geometry geometry{257, 3, 2, 6, dk, 7};
+    Inputs inputs = MakeInputs(geometry, 1523 + dk);
+    inputs.cu_seqlens = {0, 8, 8, 257};
+    inputs.capture_count = {8, -1, 7};
+    Options options;
+    options.gate_activation = "softplus";
+    options.beta_activation = "sigmoid";
+    options.qk_l2_norm = 1;
+    options.state_update_capacity = 8;
+    RunTypedCase<float>(geometry, options, inputs, 4e-4f, 4e-4f,
+                        false, nullptr, true, false, &config);
+    RunTypedCase<MLFloat16>(geometry, options, inputs, 2e-3f, 4e-4f,
+                            false, nullptr, true, false, &config);
+  }
+}
+
+TEST(GatedDeltaNetWebGpuTest, SubgroupRecurrentEmptyRowsAndPackedCaptures) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  ConfigOptions config;
+  ASSERT_STATUS_OK(config.AddConfigEntry("ep.webgpuexecutionprovider.validationMode", "full"));
+  const Geometry geometry{9, 3, 2, 6, 128, 128};
+  Options options;
+  options.gate_activation = "softplus";
+  options.beta_activation = "sigmoid";
+  options.qk_l2_norm = 1;
+  options.state_update_capacity = 7;
+  for (bool with_state : {false, true}) {
+    Inputs inputs = MakeInputs(geometry, 1559, with_state);
+    inputs.cu_seqlens = {0, 0, 1, 9};
+    inputs.capture_count = {8, -1, 99};
+    for (bool packed : {false, true}) {
+      if (packed && !with_state) {
+        continue;
+      }
+      SCOPED_TRACE(MakeString("with_state=", with_state, " packed=", packed));
+      RunTypedCase<MLFloat16>(geometry, options, inputs, 2e-3f, 4e-4f,
+                              false, nullptr, true, false, &config, 0, packed);
+    }
+  }
 }
 
 #ifdef USE_WEBGPU
