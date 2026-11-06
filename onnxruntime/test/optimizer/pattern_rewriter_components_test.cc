@@ -3,6 +3,7 @@
 #include <limits>
 #include <fstream>
 #include <sstream>
+#include <unordered_map>
 
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_external_data_info.h"
@@ -2328,6 +2329,11 @@ TEST(PatternGraphTests, PassthroughRepeatedOutputsAndUnusedFormal) {
   ASSERT_STATUS_OK(test.graph.Resolve());
   ASSERT_STATUS_OK(library.GetGraphPattern("Pass").MatchGraph(test.graph, match));
   EXPECT_FALSE(match);
+  PatternLibrary repeated(R"(
+    pattern P(x) -> (first,second) { y=Identity(x); return (first=y,second=y) }
+  )");
+  EXPECT_THROW((PatternRewriter({Rule{"NoGraphEntryRewrite", repeated.GetGraphPattern("P"), "(x)=>{a,b=Split(x);return a,b}", {}, {{kOnnxDomain, 17, 17}}}})),
+               OnnxRuntimeException);
 }
 
 TEST(PatternGraphTests, ReferencesDetectCyclesAndBindingAmbiguity) {

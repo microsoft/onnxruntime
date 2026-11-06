@@ -2781,21 +2781,7 @@ PatternRewriter::PatternRewriter(Rules rules, Options options)
       }
       recipe->plan_ = std::make_shared<const InlinedVector<Replacement::NodeRecipe, 1>>(std::move(nodes));
     }
-    // Every node must reach the last node. Disconnected definitions are not patterns.
-    const auto& root_outputs = rule.pattern.Nodes().back().outputs;
-    InlinedHashSet<int> reachable;
-    for (Value output : root_outputs) reachable.insert(output.handle);
-    for (auto it = rule.pattern.Nodes().rbegin(); it != rule.pattern.Nodes().rend(); ++it) {
-      ORT_ENFORCE(
-          std::any_of(it->outputs.begin(), it->outputs.end(), [&](Value output) { return reachable.count(output); }),
-          "Disconnected pattern node.");
-      for (Value output : it->outputs) reachable.insert(output.handle);
-      for (Value input : it->inputs)
-        if (input.handle >= 0) reachable.insert(input.handle);
-    }
-    for (int handle : rule.pattern.attribute_inputs_) reachable.insert(handle);
-    for (int handle : rule.pattern.optional_inputs_) reachable.insert(handle);
-    ORT_ENFORCE(reachable.size() == rule.pattern.ValueCount(), "Unused pattern input.");
+    detail::PatternModule::ValidateEntry(rule.pattern, rule.name);
     invalidation_depth_ = std::max(invalidation_depth_, rule.pattern.Nodes().size());
     if (!options_.indexed) continue;
     std::string signature = Signature(rule.pattern);
