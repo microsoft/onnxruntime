@@ -75,6 +75,7 @@ template <int RT, int BlockSize, bool WeightsPrepacked, bool ScalesBlockMajor, b
 void Int2Group4Avx2(const uint8_t* w_base, const uint8_t* next_w_base, const uint16_t* scales,
                     int64_t n_total, int64_t n0, int64_t c0_in_group, int64_t k,
                     const float* a_reordered, float (&result)[4][RT]) {
+  static_assert(RT == 1 || RT == 2, "Int2Group4Avx2 is specialized for RT=1,2 to stay within 16 AVX2 YMM registers");
   static_assert(BlockSize == 32 || BlockSize == 64 || BlockSize == 128,
                 "Int2Group4Avx2 requires BlockSize 32, 64, or 128");
   constexpr int64_t kTileK = 64;
@@ -83,12 +84,10 @@ void Int2Group4Avx2(const uint8_t* w_base, const uint8_t* next_w_base, const uin
   const int64_t raw_w_stride = k / 4;
   const __m128i mask = _mm_set1_epi8(0x03);
   const __m128i two8 = _mm_set1_epi8(2);
-  __m256 acc[4][RT];
-  for (int c = 0; c < 4; ++c) {
-    for (int r = 0; r < RT; ++r) {
-      acc[c][r] = _mm256_setzero_ps();
-    }
-  }
+  __m256 acc0_0 = _mm256_setzero_ps(), acc0_1 = _mm256_setzero_ps();
+  __m256 acc1_0 = _mm256_setzero_ps(), acc1_1 = _mm256_setzero_ps();
+  __m256 acc2_0 = _mm256_setzero_ps(), acc2_1 = _mm256_setzero_ps();
+  __m256 acc3_0 = _mm256_setzero_ps(), acc3_1 = _mm256_setzero_ps();
   auto read_scale = [&](int c, int64_t sb) QMOE_AVX2_LAMBDA_INLINE -> float {
     const uint16_t s_bits =
         ScalesBlockMajor ? scales[sb * n_total + n0 + c] : scales[(n0 + c) * scale_blocks + sb];
@@ -99,31 +98,18 @@ void Int2Group4Avx2(const uint8_t* w_base, const uint8_t* next_w_base, const uin
     const uint8_t* tile = WeightsPrepacked ? (w_base + kb64 * 128 + c0_in_group * 16) : nullptr;
     if (next_w_base != nullptr && (kb64 & 1) == 0) {
       if constexpr (WeightsPrepacked) {
-        _mm_prefetch(reinterpret_cast<const char*>(next_w_base + kb64 * 128), _MM_HINT_T0);
+        if (c0_in_group != 0) {
+          _mm_prefetch(reinterpret_cast<const char*>(next_w_base + kb64 * 128), _MM_HINT_T0);
+        }
       }
     }
-    __m256 a_lo[4][RT], a_hi[4][RT];
-    for (int s = 0; s < 4; ++s) {
-      for (int r = 0; r < RT; ++r) {
-        a_lo[s][r] = _mm256_loadu_ps(a_reordered + r * k + kb64 * kTileK + s * 16 + 0);
-        a_hi[s][r] = _mm256_loadu_ps(a_reordered + r * k + kb64 * kTileK + s * 16 + 8);
-      }
-    }
-    auto step_col = [&](int c) QMOE_AVX2_LAMBDA_INLINE {
+    auto step_col = [&](int c, __m256& acc_r0, __m256& acc_r1) QMOE_AVX2_LAMBDA_INLINE {
       const uint8_t* byte_ptr = WeightsPrepacked ? (tile + c * 16) : (w_base + c * raw_w_stride + kb64 * 16);
       const __m128i x = _mm_loadu_si128(reinterpret_cast<const __m128i*>(byte_ptr));
       const __m128i b0 = _mm_sub_epi8(_mm_and_si128(x, mask), two8);
       const __m128i b1 = _mm_sub_epi8(_mm_and_si128(_mm_srli_epi16(x, 2), mask), two8);
       const __m128i b2 = _mm_sub_epi8(_mm_and_si128(_mm_srli_epi16(x, 4), mask), two8);
       const __m128i b3 = _mm_sub_epi8(_mm_and_si128(_mm_srli_epi16(x, 6), mask), two8);
-      __m256 w0_lo = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(b0));
-      __m256 w0_hi = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_bsrli_si128(b0, 8)));
-      __m256 w1_lo = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(b1));
-      __m256 w1_hi = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_bsrli_si128(b1, 8)));
-      __m256 w2_lo = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(b2));
-      __m256 w2_hi = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_bsrli_si128(b2, 8)));
-      __m256 w3_lo = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(b3));
-      __m256 w3_hi = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_bsrli_si128(b3, 8)));
       __m256 s_lo, s_hi;
       if constexpr (BlockSize == 32) {
         const __m256 s0 = _mm256_set1_ps(read_scale(c, 2 * kb64));
@@ -140,36 +126,65 @@ void Int2Group4Avx2(const uint8_t* w_base, const uint8_t* next_w_base, const uin
         s_lo = _mm256_set1_ps(read_scale(c, sb));
         s_hi = s_lo;
       }
-      // Scale weights before products to avoid overflowing an unscaled dot product.
-      w0_lo = _mm256_mul_ps(w0_lo, s_lo);
-      w0_hi = _mm256_mul_ps(w0_hi, s_hi);
-      w1_lo = _mm256_mul_ps(w1_lo, s_lo);
-      w1_hi = _mm256_mul_ps(w1_hi, s_hi);
-      w2_lo = _mm256_mul_ps(w2_lo, s_lo);
-      w2_hi = _mm256_mul_ps(w2_hi, s_hi);
-      w3_lo = _mm256_mul_ps(w3_lo, s_lo);
-      w3_hi = _mm256_mul_ps(w3_hi, s_hi);
-      for (int r = 0; r < RT; ++r) {
-        const __m256 prod_lo =
-            _mm256_fmadd_ps(w0_lo, a_lo[0][r],
-                            _mm256_fmadd_ps(w1_lo, a_lo[1][r],
-                                            _mm256_fmadd_ps(w2_lo, a_lo[2][r], _mm256_mul_ps(w3_lo, a_lo[3][r]))));
-        const __m256 prod_hi =
-            _mm256_fmadd_ps(w0_hi, a_hi[0][r],
-                            _mm256_fmadd_ps(w1_hi, a_hi[1][r],
-                                            _mm256_fmadd_ps(w2_hi, a_hi[2][r], _mm256_mul_ps(w3_hi, a_hi[3][r]))));
-        acc[c][r] = _mm256_add_ps(prod_lo, _mm256_add_ps(prod_hi, acc[c][r]));
+      // Scale weights before products to avoid overflowing an unscaled dot product, processing the low and high
+      // 8-element halves sequentially with short-lived activation loads so the working set fits in 16 YMM registers.
+      {
+        const __m256 w0_lo = _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(b0)), s_lo);
+        const __m256 w1_lo = _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(b1)), s_lo);
+        const __m256 w2_lo = _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(b2)), s_lo);
+        const __m256 w3_lo = _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(b3)), s_lo);
+        const float* a0_base = a_reordered + 0 * k + kb64 * kTileK;
+        const __m256 prod_lo_0 =
+            _mm256_fmadd_ps(w0_lo, _mm256_loadu_ps(a0_base + 0),
+                            _mm256_fmadd_ps(w1_lo, _mm256_loadu_ps(a0_base + 16),
+                                            _mm256_fmadd_ps(w2_lo, _mm256_loadu_ps(a0_base + 32),
+                                                            _mm256_mul_ps(w3_lo, _mm256_loadu_ps(a0_base + 48)))));
+        __m256 prod_lo_1 = _mm256_setzero_ps();
+        if constexpr (RT >= 2) {
+          const float* a1_base = a_reordered + 1 * k + kb64 * kTileK;
+          prod_lo_1 =
+              _mm256_fmadd_ps(w0_lo, _mm256_loadu_ps(a1_base + 0),
+                              _mm256_fmadd_ps(w1_lo, _mm256_loadu_ps(a1_base + 16),
+                                              _mm256_fmadd_ps(w2_lo, _mm256_loadu_ps(a1_base + 32),
+                                                              _mm256_mul_ps(w3_lo, _mm256_loadu_ps(a1_base + 48)))));
+        }
+        const __m256 w0_hi = _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_bsrli_si128(b0, 8))), s_hi);
+        const __m256 w1_hi = _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_bsrli_si128(b1, 8))), s_hi);
+        const __m256 w2_hi = _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_bsrli_si128(b2, 8))), s_hi);
+        const __m256 w3_hi = _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_bsrli_si128(b3, 8))), s_hi);
+        const __m256 prod_hi_0 =
+            _mm256_fmadd_ps(w0_hi, _mm256_loadu_ps(a0_base + 8),
+                            _mm256_fmadd_ps(w1_hi, _mm256_loadu_ps(a0_base + 24),
+                                            _mm256_fmadd_ps(w2_hi, _mm256_loadu_ps(a0_base + 40),
+                                                            _mm256_mul_ps(w3_hi, _mm256_loadu_ps(a0_base + 56)))));
+        acc_r0 = _mm256_add_ps(prod_lo_0, _mm256_add_ps(prod_hi_0, acc_r0));
+        if constexpr (RT >= 2) {
+          const float* a1_base = a_reordered + 1 * k + kb64 * kTileK;
+          const __m256 prod_hi_1 =
+              _mm256_fmadd_ps(w0_hi, _mm256_loadu_ps(a1_base + 8),
+                              _mm256_fmadd_ps(w1_hi, _mm256_loadu_ps(a1_base + 24),
+                                              _mm256_fmadd_ps(w2_hi, _mm256_loadu_ps(a1_base + 40),
+                                                              _mm256_mul_ps(w3_hi, _mm256_loadu_ps(a1_base + 56)))));
+          acc_r1 = _mm256_add_ps(prod_lo_1, _mm256_add_ps(prod_hi_1, acc_r1));
+        } else {
+          (void)acc_r1;
+        }
       }
     };
-    step_col(0);
-    step_col(1);
-    step_col(2);
-    step_col(3);
+    step_col(0, acc0_0, acc0_1);
+    step_col(1, acc1_0, acc1_1);
+    step_col(2, acc2_0, acc2_1);
+    step_col(3, acc3_0, acc3_1);
   }
-  for (int c = 0; c < 4; ++c) {
-    for (int r = 0; r < RT; ++r) {
-      result[c][r] = Int2Avx2ReduceAddPs(acc[c][r]);
-    }
+  result[0][0] = Int2Avx2ReduceAddPs(acc0_0);
+  result[1][0] = Int2Avx2ReduceAddPs(acc1_0);
+  result[2][0] = Int2Avx2ReduceAddPs(acc2_0);
+  result[3][0] = Int2Avx2ReduceAddPs(acc3_0);
+  if constexpr (RT >= 2) {
+    result[0][1] = Int2Avx2ReduceAddPs(acc0_1);
+    result[1][1] = Int2Avx2ReduceAddPs(acc1_1);
+    result[2][1] = Int2Avx2ReduceAddPs(acc2_1);
+    result[3][1] = Int2Avx2ReduceAddPs(acc3_1);
   }
 }
 
@@ -271,27 +286,16 @@ void Avx2Int2GemmRangeByBlock(const uint8_t* weights, const uint16_t* scales, co
                               int64_t n_total, int64_t k, const float* a_reordered, int64_t m,
                               float* out, int64_t out_stride, int64_t n_begin, int64_t n_end) {
   int64_t r = 0;
-  while (r < m) {
-    const int64_t left = m - r;
-    const float* ar = a_reordered + r * k;
-    float* orow = out + r * out_stride;
-    if (left >= 4) {
-      Int2RowTileAvx2<4, BlockSize>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
-                                    scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
-      r += 4;
-    } else if (left == 3) {
-      Int2RowTileAvx2<3, BlockSize>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
-                                    scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
-      r += 3;
-    } else if (left == 2) {
-      Int2RowTileAvx2<2, BlockSize>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
-                                    scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
-      r += 2;
-    } else {
-      Int2RowTileAvx2<1, BlockSize>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
-                                    scale_is_bf16, bias_is_bf16, n_total, k, ar, orow, out_stride, n_begin, n_end);
-      r += 1;
-    }
+  while (r + 2 <= m) {
+    Int2RowTileAvx2<2, BlockSize>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                                  scale_is_bf16, bias_is_bf16, n_total, k, a_reordered + r * k,
+                                  out + r * out_stride, out_stride, n_begin, n_end);
+    r += 2;
+  }
+  if (r < m) {
+    Int2RowTileAvx2<1, BlockSize>(weights, scales, bias, scales_are_block_major, weights_are_prepacked,
+                                  scale_is_bf16, bias_is_bf16, n_total, k, a_reordered + r * k,
+                                  out + r * out_stride, out_stride, n_begin, n_end);
   }
 }
 
