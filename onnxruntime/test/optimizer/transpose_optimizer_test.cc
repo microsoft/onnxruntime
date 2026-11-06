@@ -9,6 +9,7 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
+#include "core/framework/int4.h"
 #include "core/framework/op_node_proto_helper.h"
 #include "core/graph/graph.h"
 #include "core/graph/node_attr_utils.h"
@@ -4259,6 +4260,84 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearNoZeroPoint) {
   auto check_valid = [](InferenceSessionWrapper& /*session*/) {};
   TransformerTester(build_test_case, check_valid, TransformerLevel::Default,
                     TransformerLevel::Level1, /*opset_version*/ 19);
+}
+
+// Regression test for #33443: DequantizeLinear accepts INT32 data with an explicit INT32 zero
+// point, but QuantizeLinear cannot produce INT32 output. Pushing the trailing Transpose through
+// the Softmax and DequantizeLinear must not insert a QuantizeLinear reusing the INT32 zero point;
+// the optimizer must leave the dequantized INT32 path unquantized so the optimized session still
+// initializes and matches the unoptimized result (0.25 for the all-zero input below, as equal
+// dequantized logits give a uniform Softmax over 4 elements).
+TEST(TransposeOptimizerTests, TestDequantizeLinearInt32ZeroPointThroughSoftmax) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<uint8_t>(builder, {{1, 4, 4}}, {1, 4, 4}, std::vector<uint8_t>(16, 0));
+    auto* scale_arg = builder.MakeScalarInitializer<float>(0.123f);
+    auto* zp_input_arg = builder.MakeScalarInitializer<uint8_t>(0);
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* cast_1_out_0 = builder.MakeIntermediate();
+    auto* cast_2_out_0 = builder.MakeIntermediate();
+    auto* dq_out_0 = builder.MakeIntermediate();
+    auto* softmax_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+    auto& cast_1 = builder.AddNode("Cast", {transpose_1_out_0}, {cast_1_out_0});
+    cast_1.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_INT32));
+    auto& cast_2 = builder.AddNode("Cast", {zp_input_arg}, {cast_2_out_0});
+    cast_2.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_INT32));
+    builder.AddNode("DequantizeLinear", {cast_1_out_0, scale_arg, cast_2_out_0}, {dq_out_0});
+    auto& softmax = builder.AddNode("Softmax", {dq_out_0}, {softmax_out_0});
+    softmax.AddAttribute("axis", static_cast<int64_t>(2));
+    auto& transpose_2 = builder.AddNode("Transpose", {softmax_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+  };
+
+  // The optimized graph must remain valid and contain no inserted QuantizeLinear.
+  // TransformerTester also runs the optimized model and compares its outputs against the
+  // unoptimized model, so an INT32 QuantizeLinear (session creation failure) or a changed
+  // result would fail here.
+  auto check_no_quantize_inserted = [](InferenceSessionWrapper& session) {
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count.count("QuantizeLinear"), 0);
+  };
+  TransformerTester(build_test_case, check_no_quantize_inserted, TransformerLevel::Default,
+                    TransformerLevel::Level1, /*opset_version*/ {12, 13, 21});
+}
+
+// Positive counterpart to the #33443 regression test above: a per-tensor 4-bit
+// DequantizeLinear with an explicit zero point must still get the Q/DQ repair. QuantizeLinear
+// supports INT4 output at opset 21 even though api::DataType has no INT4 enumerator, so the
+// INT32 guard must not reject it. The graph is DQ -> Transpose -> graph output with no
+// leading Transpose: a leading Transpose would be pushed through the DQ and cancel the
+// trailing one in the core pass, before the Q/DQ fix-up runs, so a transpose-cost assertion
+// would pass even if MakeQDQNodeUnit wrongly rejected INT4. Asserting the inserted op
+// counts instead verifies the repair itself.
+TEST(TransposeOptimizerTests, TestDequantizeLinearInt4ZeroPoint) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput(std::vector<int64_t>{2, 4, 6, 3},
+                                         Int4x2(Int4x2::min_val, 0), Int4x2(Int4x2::max_val, 0));
+    auto* scale_arg = builder.MakeInput<float>(std::vector<int64_t>{}, std::vector<float>{0.05f});
+    auto* zp_arg = builder.MakeInput<Int4x2>(std::vector<int64_t>{}, std::vector<Int4x2>{Int4x2(0, 0)});
+
+    auto* dq_out_0 = builder.MakeIntermediate();
+    auto* transpose_out_0 = builder.MakeOutput();
+
+    builder.AddNode("DequantizeLinear", {input0_arg, scale_arg, zp_arg}, {dq_out_0});
+    auto& transpose = builder.AddNode("Transpose", {dq_out_0}, {transpose_out_0});
+    transpose.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  // The Q/DQ repair must insert exactly one QuantizeLinear and a second DequantizeLinear
+  // after the Transpose; TransformerTester also runs the optimized model and compares its
+  // outputs against the unoptimized model.
+  auto check_qdq_repair = [](InferenceSessionWrapper& session) {
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count.count("QuantizeLinear"), 1);
+    EXPECT_EQ(op_to_count.count("DequantizeLinear"), 2);
+  };
+  TransformerTester(build_test_case, check_qdq_repair, TransformerLevel::Default,
+                    TransformerLevel::Level1, /*opset_version*/ 21);
 }
 
 TEST(TransposeOptimizerTests, TestCast) {
