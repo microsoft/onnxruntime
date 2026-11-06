@@ -92,11 +92,11 @@ template <typename T>
 Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
-  const Tensor* fc1_experts_weights = context->Input<Tensor>(2);
+  const Tensor* fc1_experts_weights = packed_fc1_fc3_ ? nullptr : context->Input<Tensor>(2);
   const Tensor* fc1_experts_bias_optional = context->Input<Tensor>(3);
   const Tensor* fc2_experts_weights = context->Input<Tensor>(4);
   const Tensor* fc2_experts_bias_optional = context->Input<Tensor>(5);
-  const Tensor* fc3_experts_weights_optional = context->Input<Tensor>(6);
+  const Tensor* fc3_experts_weights_optional = packed_fc1_fc3_ ? nullptr : context->Input<Tensor>(6);
   const Tensor* fc3_experts_bias_optional = context->Input<Tensor>(7);
 
   const TensorShape* fc1_shape = fc1_experts_weights ? &fc1_experts_weights->Shape() : nullptr;

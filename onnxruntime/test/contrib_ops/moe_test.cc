@@ -1114,6 +1114,31 @@ TEST(MoETest, CudaSiluGatedDisablePrepacking) {
   RunCudaSiluGatedMoETest<MLFloat16>(true, true, true);
 }
 
+TEST(MoETest, CudaSiluGatedPrepackTmaSm90) {
+#if defined(USE_CUDA) && defined(HAS_SM90_OR_LATER) && !defined(EXCLUDE_SM_90) && !defined(_MSC_VER)
+  if (GetCudaArchitecture() != 900) {
+    GTEST_SKIP() << "SM90 is required for the Hopper TMA activation regression";
+  }
+  // TMA tactics come first on non-MSVC SM90 builds; bypass profiling to select one.
+  ScopedEnvironmentVariables env{{{"ORT_FORCE_DETERMINISTIC_MOE", "1"}}};
+  for (int rows : {8, 1024}) {
+    for (const auto& [fc1_initializer, fc3_initializer] :
+         {std::pair{true, true}, std::pair{false, false}, std::pair{true, false}, std::pair{false, true}}) {
+      RunCudaSiluGatedMoETest<MLFloat16>(fc1_initializer, fc3_initializer, false, rows);
+#if defined(ENABLE_BF16)
+      RunCudaSiluGatedMoETest<BFloat16>(fc1_initializer, fc3_initializer, false, rows);
+#endif
+    }
+    RunCudaSiluGatedMoETest<MLFloat16>(true, true, true, rows);
+#if defined(ENABLE_BF16)
+    RunCudaSiluGatedMoETest<BFloat16>(true, true, true, rows);
+#endif
+  }
+#else
+  GTEST_SKIP() << "Hopper TMA grouped GEMMs are not compiled in this build";
+#endif
+}
+
 TEST(MoETest, MoETest_Mixtral) {
   // This test uses FC3 (gated SiLU / Mixtral pattern) with dimensions too small for the
   // CUTLASS SIMT kernel (needs hidden_size >= 128, inter_size >= 128). CPU MoE does not
