@@ -229,7 +229,8 @@ class MlasFgemmTest : public MlasTestBase {
                      size_t ldb,
                      T beta,
                      T* C,
-                     size_t ldc) {
+                     size_t ldc,
+                     const T* Bias = nullptr) {
     for (size_t batch = 0; batch < BatchSize; batch++) {
       if (TransA == CblasNoTrans) {
         if (TransB == CblasNoTrans) {
@@ -246,7 +247,7 @@ class MlasFgemmTest : public MlasTestBase {
                 a += 1;
               }
 
-              *c = (*c * beta) + (sum * alpha);
+              *c = ((Bias != nullptr ? Bias[batch * N + n] : *c) * beta) + (sum * alpha);
             }
           }
 
@@ -264,7 +265,7 @@ class MlasFgemmTest : public MlasTestBase {
                 a += 1;
               }
 
-              *c = (*c * beta) + (sum * alpha);
+              *c = ((Bias != nullptr ? Bias[batch * N + n] : *c) * beta) + (sum * alpha);
             }
           }
         }
@@ -284,7 +285,7 @@ class MlasFgemmTest : public MlasTestBase {
                 a += lda;
               }
 
-              *c = (*c * beta) + (sum * alpha);
+              *c = ((Bias != nullptr ? Bias[batch * N + n] : *c) * beta) + (sum * alpha);
             }
           }
 
@@ -302,7 +303,7 @@ class MlasFgemmTest : public MlasTestBase {
                 a += lda;
               }
 
-              *c = (*c * beta) + (sum * alpha);
+              *c = ((Bias != nullptr ? Bias[batch * N + n] : *c) * beta) + (sum * alpha);
             }
           }
         }

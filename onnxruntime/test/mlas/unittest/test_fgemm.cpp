@@ -29,6 +29,62 @@ TEST(FGemmPackB, SizeBounds) {
   EXPECT_EQ(MlasGemmPackBSize(CblasNoTrans, CblasNoTrans, 5, 0, &config), size_t{0});
 }
 
+TEST(SGemm, Bias) {
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG config{};
+  config.use_kleidiai = false;
+  MlasFgemmTest<float, true, false> test;
+  MatrixGuardBuffer<float> BufferBias;
+  MatrixGuardBuffer<uint8_t> BufferPackedB;
+  constexpr float alpha = 0.25f, beta = 0.5f;
+  for (const bool Packed : {false, true}) {
+    for (size_t M : {1, 4}) {
+      for (const auto TransA : {CblasNoTrans, CblasTrans}) {
+        for (size_t N : {32, 33}) {
+          // Packed K blocks contain 256 elements; bias only initializes the first.
+          for (size_t K : {256, 513}) {
+            const size_t lda = TransA == CblasTrans ? M + 1 : K;
+            const size_t ldc = N + 1;
+            const float* A = test.BufferA.GetBuffer(TransA == CblasTrans ? K * lda : M * lda);
+            const float* B = test.BufferB.GetBuffer(K * N);
+            const float* Bias = BufferBias.GetBuffer(N);
+            float* C = test.BufferC.GetBuffer(M * ldc);
+            float* CReference = test.BufferCReference.GetBuffer(M * ldc);
+            std::fill_n(C, M * ldc, 2.0f);
+            std::fill_n(CReference, M * ldc, 2.0f);
+
+            MLAS_SGEMM_DATA_PARAMS data;
+            data.A = A;
+            data.lda = lda;
+            data.B = B;
+            data.ldb = N;
+            data.C = C;
+            data.ldc = ldc;
+            data.alpha = alpha;
+            data.beta = beta;
+            data.BIsPacked = Packed;
+            data.Bias = Bias;
+            if (Packed) {
+              const size_t PackedBSize = MlasGemmPackBSize(TransA, CblasNoTrans, N, K, &config);
+              ASSERT_NE(PackedBSize, size_t{0});
+              void* PackedB = BufferPackedB.GetBuffer(PackedBSize, true);
+              MlasGemmPackB(TransA, CblasNoTrans, N, K, B, N, PackedB, &config);
+              data.B = static_cast<const float*>(PackedB);
+            }
+            MlasGemm(TransA, CblasNoTrans, M, N, K, data, nullptr, &config);
+            test.ReferenceGemm(TransA, CblasNoTrans, M, N, K, 1, alpha, A, lda, B, N, beta, CReference, ldc, Bias);
+            for (size_t m = 0; m < M; ++m) {
+              // Include padding, which the reference leaves at the sentinel value.
+              for (size_t n = 0; n < ldc; ++n) {
+                ASSERT_EQ(C[m * ldc + n], CReference[m * ldc + n]) << "m=" << m << " n=" << n;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 static size_t FGemmRegistLongExecute() {
   size_t count = 0;
 

@@ -264,6 +264,7 @@ struct MLAS_SGEMM_DATA_PARAMS {
     float alpha = 1.0f;       /**< Supplies the scalar alpha multiplier (see SGEMM definition) */
     float beta = 0.0f;        /**< Supplies the scalar beta multiplier (see SGEMM definition) */
     bool BIsPacked = false;   /**< Whether B is pre-packed */
+    const float* Bias = nullptr; /**< N-element row vector for beta*C */
 };
 
 /**
@@ -408,6 +409,7 @@ MlasGemm(
  * @param BackendKernelSelectorConfig - Supplies the backend kernel selector
                                         configuration options, else nullptr if the
                                         default configuration should be used.
+ * @param Bias                        - Supplies an optional bias
  */
 inline
 void
@@ -424,7 +426,8 @@ MlasGemm(
     float* C,
     size_t ldc,
     MLAS_THREADPOOL* ThreadPool,
-    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig,
+    const float* Bias = nullptr
     )
 {
     MLAS_SGEMM_DATA_PARAMS DataParams;
@@ -437,6 +440,7 @@ MlasGemm(
     DataParams.alpha = alpha;
     DataParams.beta = beta;
     DataParams.BIsPacked = true;
+    DataParams.Bias = Bias;
 
     MlasGemmBatch(TransA,
                   CblasTrans,  // does not matter when B is packed
