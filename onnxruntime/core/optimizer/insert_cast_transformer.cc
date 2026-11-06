@@ -52,16 +52,34 @@ bool InsertCastTransformer::NeedInsertCast(const onnxruntime::Node* node, const 
   return true;
 }
 
+static void CollectDescendantGraphs(Graph& graph, InlinedVector<const Graph*>& descendant_graphs) {
+  for (auto& node : graph.Nodes()) {
+    for (const auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
+      descendant_graphs.push_back(entry.second);
+      CollectDescendantGraphs(*entry.second, descendant_graphs);
+    }
+  }
+}
+
 onnxruntime::NodeArg* AddCastNode(onnxruntime::Graph& graph,
                                   onnxruntime::NodeArg* old_arg,
                                   TypeProto* new_type,
                                   bool new_on_input,
                                   int64_t to_type,
-                                  onnxruntime::ProviderType providerType) {
+                                  onnxruntime::ProviderType providerType,
+                                  gsl::span<const Graph* const> descendant_graphs) {
   // insert cast op to cast input
   std::string node_name = graph.GenerateNodeName("InsertedPrecisionFreeCast_" + old_arg->Name());
 
-  auto* new_arg = &graph.GetOrCreateNodeArg(node_name, new_type);
+  // Tensor values have a separate namespace and must not shadow values in enclosing or nested graphs.
+  std::string value_name;
+  do {
+    value_name = graph.GenerateNodeArgName(node_name);
+  } while (graph.GetNodeArgIncludingParentGraphs(value_name) != nullptr ||
+           std::any_of(descendant_graphs.begin(), descendant_graphs.end(),
+                       [&value_name](const Graph* subgraph) { return subgraph->GetNodeArg(value_name) != nullptr; }));
+
+  auto* new_arg = &graph.GetOrCreateNodeArg(value_name, new_type);
 
   std::vector<onnxruntime::NodeArg*> input_defs = {new_on_input ? new_arg : old_arg};
   std::vector<onnxruntime::NodeArg*> output_defs = {new_on_input ? old_arg : new_arg};
@@ -620,6 +638,10 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
                                                            nodes_with_recorded_cpu_assignment,
                                                            nodes_forced_to_fp32));
 
+  // Keep graph pointers so later parent Casts also see values inserted during earlier subgraph recursion.
+  InlinedVector<const Graph*> descendant_graphs;
+  CollectDescendantGraphs(graph, descendant_graphs);
+
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
   TypeProto float_16_tensor_proto;
@@ -649,7 +671,8 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
                                      false,
                                      static_cast<int64_t>(TensorProto_DataType_FLOAT),
                                      // right now we only cast for cpu cases.
-                                     onnxruntime::kCpuExecutionProvider);
+                                     onnxruntime::kCpuExecutionProvider,
+                                     descendant_graphs);
           replacement_defs[src_arg] = dst_arg;
           input_def_updates[src_arg] = dst_arg;
         }
@@ -720,7 +743,8 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
                                      &float_tensor_proto,
                                      true,
                                      static_cast<int64_t>(TensorProto_DataType_FLOAT16),
-                                     onnxruntime::kCpuExecutionProvider);
+                                     onnxruntime::kCpuExecutionProvider,
+                                     descendant_graphs);
           replacement_defs[dst_arg] = src_arg;
         }
       }
