@@ -59,6 +59,36 @@ MoE, and quantization families through their behavior. A new operator family
 does not automatically require a new category. Add one when its contract cannot
 be expressed by existing ownership boundaries and reading predicates.
 
+## Dawn rolls, threading, and new kernels
+
+These workflows have explicit entry-table triggers and stay within the existing
+13 owners. A follow-up inspected source at
+[`3e531e98c4117679b8b8497be5f65a336e3eb278`](https://github.com/microsoft/onnxruntime/commit/3e531e98c4117679b8b8497be5f65a336e3eb278):
+
+- [Dawn rolls](../.github/skills/code-review-webgpu/references/build-and-dependencies.md#dawn-roll-workflow)
+  use `plugin-ep-webgpu/tools/dawn/README.md` and `update_dawn.py`, the component
+  policy, active CMake patches, and downstream consumers. Review the upstream
+  revision range as well as generated metadata; tool success is not runtime
+  validation. Source pins, redistributed DXC, Agility SDK, and package DLL lists
+  have separate update boundaries.
+- [Multi-thread support and thread safety](../.github/skills/code-review-webgpu/references/runtime-and-portability.md#thread-safety-contract)
+  use `ep/README.md`, `ep/runtime_compatibility.*`, native/plugin concurrent-Run
+  callbacks, `CommandRecordingState`, and `ProgramManager` cache ownership.
+  Distinguish supported concurrent plugin sessions, serialized same-session
+  Runs, caller-serialized compatibility mode, and built-in/WASM contracts.
+  `plugin/test_webgpu_concurrency.cc` provides concrete regression scenarios;
+  the callback and allocator tests cover separate lifetime/order boundaries.
+- [New-kernel authoring](../.github/skills/code-review-webgpu/references/kernel-contract.md#author-a-new-native-kernel)
+  composes schema/semantics, host validation, program/WGSL generation,
+  accessors, identity, numerics/layout/features, registration, source/template
+  integration, and tests. Native Pad and the template README demonstrate the
+  integration shape. Authoring still selects all applicable category rows;
+  it does not duplicate their detailed checks in the entry point.
+
+These are source-backed guidance additions. No Dawn update, concurrency test,
+new kernel implementation, or GPU run was performed for this documentation
+follow-up. Unavailable execution evidence remains a review gap.
+
 ## Historical audit method and limits
 
 The 2026-11-06 discovery queried public `microsoft/onnxruntime` PRs with
@@ -129,6 +159,9 @@ evaluations. They check both exclusion and cumulative inclusion:
 | New ConvTranspose prepack layout | Kernel, layout/prepacking, cache, dispatch, numerics, registration, validation; runtime if ownership changes |
 | Plugin streamless allocator/copy change | Runtime/memory, plugin contracts, validation; builds if target boundaries change |
 | Dawn/DXC artifact removal | Builds/dependencies and validation; plugin/device/runtime rows for affected ABI/features/ownership |
+| Dawn pin roll changing Tint validation or native callbacks | Builds/dependencies and validation; inspect upstream range, then select shader/runtime/device checks for affected behavior |
+| Plugin multi-thread support or host-version concurrency gate change | Runtime/memory, plugin contracts, validation; devices/builds where required synchronization features or target guards change; keep same-session and compatibility-mode serialization distinct |
+| New native shader kernel | Kernel authoring workflow, cache, dispatch, numerics, registration, validation; runtime/layout/devices/builds/graph/performance rows for the contracts introduced or changed |
 | Shared GQA fusion changing WebGPU partition and epsilons | Graph transformations, numerics, registration, validation; kernel/cache rows if kernel behavior/codegen changes |
 | Native timestamp correlation change | Profiling/performance and validation; runtime, device, plugin or dependency rows according to changed integration |
 

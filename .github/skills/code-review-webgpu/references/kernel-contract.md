@@ -1,9 +1,51 @@
 # Kernel contract
 
-**Owns:** Tracing a kernel from host-visible inputs through program setup and
-GPU-read tensor data. Arithmetic belongs in numerical-semantics;
+**Owns:** New kernel authoring and tracing a kernel from host-visible inputs
+through program setup and GPU-read tensor data. Arithmetic belongs in numerical-semantics;
 registration rules belong in registration.
-**Update when:** The host/device validation or program-setup contract changes.
+**Update when:** Kernel integration, host/device validation, or program setup changes.
+
+## Author a new native kernel
+
+1. Define the ONNX/contrib domain, opset semantics, attributes/defaults, input
+   placement, supported types/ranks/layouts, output shape, and optional inputs.
+   Compare the schema and reference implementation; a similarly named CPU or
+   deprecated JSEP kernel is not proof of the native contract. Decide which
+   unsupported configurations should remain on another provider rather than
+   registering a kernel that cannot execute them.
+2. Reuse an existing native kernel/helper when its semantics match. Place new
+   standard kernels under `core/providers/webgpu` and contrib kernels under
+   `contrib_ops/webgpu` (relative to `onnxruntime/`). Shader-backed kernels use
+   `WebGpuKernel::ComputeInternal` and `Program`/`GenerateShaderCode`; keep
+   invocation data local. For a template-based example, inspect native
+   `tensor/pad.h`, `pad.cc`, and `pad.wgsl.template`. Follow the
+   [template build workflow](../../../../onnxruntime/core/providers/webgpu/wgsl_templates/README.md)
+   rather than editing generated build headers. A view/copy-only kernel may
+   reuse the existing context path without introducing a shader.
+3. Trace the five stages below. Allocate/run through the compute context and
+   apply [capture and ownership checks](runtime-and-portability.md), keeping
+   per-run state local under supported concurrency. For shaders, use
+   [buffer-access, dispatch, and synchronization checks](dispatch-and-wgsl.md)
+   and [cache identity](cache-identity.md). Tensor values that merely vary at
+   runtime belong in inputs/uniforms; values specializing generated code need
+   identity coverage. Apply [numerical semantics](numerical-semantics.md),
+   [layout/prepacking](tensor-layout-and-prepacking.md), and
+   [device/feature eligibility](devices-and-features.md) as applicable, retaining
+   a supported fallback for optional fast paths.
+4. Complete [registration](registration.md): definition plus registry entry,
+   opset/type/host-input constraints, required layout variants, and generated
+   operator documentation. Recheck capability/partitioning or optimizer
+   predicates if they separately gate the operator. Follow
+   [build integration](build-and-dependencies.md) for new sources/dependencies:
+   verify built-in, plugin/static-plugin, and WASM source/template discovery
+   as affected, including `plugin-ep-webgpu/paths.txt` for extracted sources.
+5. Add [validation](validation.md) for the advertised contract and each new
+   specialization, including malformed inputs, scalars/empty tensors, tails,
+   broadcasts, dtype/opset boundaries, and optional-feature fallback as
+   applicable. Prove WebGPU execution and test cache reuse across changing
+   inputs/shapes in one context. Measure any claimed optimization using
+   [profiling and performance](profiling-and-performance.md). Record target
+   gaps; compilation or CPU fallback does not establish a working new kernel.
 
 ## Trace each changed kernel
 

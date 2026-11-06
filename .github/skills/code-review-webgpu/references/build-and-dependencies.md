@@ -1,9 +1,40 @@
 # Builds and dependencies
 
-**Owns:** Native/WASM/plugin build boundaries, Dawn/DXC pins, retained patches,
+**Owns:** Dawn rolls, native/WASM/plugin build boundaries, Dawn/DXC pins, retained patches,
 component manifests, staged artifacts, and dependency-update automation.
 **Update when:** Dependency coordinates, build flags/targets, export sets,
 packaging inputs, or supported deployment configurations change.
+
+## Dawn roll workflow
+
+1. Record the old and new exact Dawn commits, tag/archive checksum, and reason
+   for the roll. Inspect the upstream change range for ORT-facing WebGPU/proc
+   APIs, callback/future behavior, Tint/WGSL validation, features, limits, and
+   backend changes. Select runtime, device, shader, or numerical checks for
+   affected behavior; a metadata-only ORT diff can still change execution.
+2. For authoring, use the repository's [Dawn update workflow](../../../../plugin-ep-webgpu/tools/dawn/README.md)
+   with the intended `--revision`. Review its generated report and final diff.
+   It updates the source pin/checksum, dependency registrations, Linux test
+   SwiftShader pin, and active patches, then validates metadata and patches.
+   Successful tool validation does not establish compilation or GPU behavior.
+3. Audit the exact new DEPS and fetcher's required dependencies using the
+   [component manifest policy](../../../../cgmanifests/webgpu/README.md).
+   Classify new/removed components against actual build options and shipped
+   contents. Preserve the independently redistributed DXC release identity;
+   the updater does not roll DXC, Agility SDK, or package DLL lists. Revisit
+   dormant integration pins if their build path becomes active.
+4. Apply the active patch stack in CMake order to pristine pinned source.
+   Explain retained, refreshed, or removed patches; verify an upstream fix
+   before dropping its workaround. Review patch behavior as well as clean
+   application, including backend guards and security/build flags.
+5. Follow the build, external-host, and packaging checks below. Exercise
+   changed shaders with full validation and actual GPU execution on affected
+   backends; include capture, callbacks, or concurrent-session tests when the
+   roll changes those contracts. Recheck browser/WASM compatibility for changed
+   shared API/WGSL use. Record unavailable targets and tests as gaps using
+   [validation](validation.md), with the tested Dawn and compiler identities.
+
+## Build and artifact checks
 
 - Trace supported native Dawn backends (D3D12/Vulkan/Metal), browser WASM,
   built-in provider, shared plugin, and static plugin as affected. Inspect

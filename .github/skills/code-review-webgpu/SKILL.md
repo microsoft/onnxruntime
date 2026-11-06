@@ -1,6 +1,6 @@
 ---
 name: code-review-webgpu
-description: Use only for changes with a direct or traceable effect on the native WebGPU EP, including shared tests, optimizers, dependencies, packaging, and native defects exposed by JSEP fixes. Review kernels, WGSL, numerics, packing, caches, runtime, devices, plugin ABI, builds, profiling, registration, and validation, locally or in GitHub Copilot. Apply during implementation too. Exclude unrelated CPU/CUDA or shared-file edits without WebGPU impact. Deprecated JSEP follows its own policy; use native checks only where affected. Use code-review for review workflow.
+description: Use only for changes with a direct or traceable effect on the native WebGPU EP, including shared tests, optimizers, dependencies, packaging, and native defects exposed by JSEP fixes. Cover new kernel authoring, WGSL, numerics, packing, caches, thread safety, runtime, devices, plugin ABI, Dawn rolls, builds, profiling, registration, and validation, locally or in GitHub Copilot. Apply during implementation too. Exclude unrelated CPU/CUDA or shared-file edits without WebGPU impact. Deprecated JSEP follows its own policy; use native checks only where affected. Use code-review for review workflow.
 ---
 
 # Native WebGPU EP review
@@ -43,15 +43,15 @@ selects checks. If a required reference cannot be read, name it as a review gap.
 
 | When to read | Reference |
 | --- | --- |
-| Changing or reviewing a kernel's host inputs, shape computation, program setup, GPU-derived indices, or host/GPU input placement | [Kernel contract](references/kernel-contract.md) |
+| Authoring a new kernel, or changing host inputs, shape computation, program setup, GPU-derived indices, or host/GPU input placement | [Kernel contract](references/kernel-contract.md) |
 | Changing generated WGSL, template parameters, program metadata, specialization, provider options, or program-cache behavior | [Cache identity](references/cache-identity.md) |
 | Changing shader execution, indexing, synchronization, dispatch, workgroup/subgroup sizing, or bindings | [Dispatch and WGSL](references/dispatch-and-wgsl.md) |
 | Changing arithmetic, reductions, casts, quantization, masks, ordering, or accuracy options | [Numerical semantics](references/numerical-semantics.md) |
 | Changing vectorization, tensor views, packed/quantized storage, layout, or prepacking | [Tensor layout and prepacking](references/tensor-layout-and-prepacking.md) |
-| Changing callbacks, shared mutable state, allocation/cache policy, transfers, external data, capture, or resource lifetime | [Runtime and memory](references/runtime-and-portability.md) |
+| Adding multi-thread support or changing thread safety, callbacks, shared mutable state, allocation/cache policy, transfers, external data, capture, or resource lifetime | [Runtime and memory](references/runtime-and-portability.md) |
 | Changing provider-option parsing, context reuse, adapter selection, feature enable/disable, or hardware fast-path eligibility | [Devices and features](references/devices-and-features.md) |
 | Changing plugin adapters, capabilities, API/version negotiation, exported callbacks, or static/shared plugin integration | [Plugin contracts](references/plugin-contracts.md) |
-| Changing native/WASM build boundaries, Dawn/DXC, patches/manifests, deployment artifacts, or release automation | [Builds and dependencies](references/build-and-dependencies.md) |
+| Rolling Dawn or changing native/WASM build boundaries, Dawn/DXC, patches/manifests, deployment artifacts, or release automation | [Builds and dependencies](references/build-and-dependencies.md) |
 | Changing graph transformations, fusion, partitioning, layout conversion, or optimizer/provider support predicates | [Graph transformations](references/graph-transformations.md) |
 | Changing an operator's supported behavior, domain, opset, types, host-read inputs, or registration | [Registration](references/registration.md) |
 | Changing profiling, timestamps, instrumentation, performance claims, or hardware workarounds | [Profiling and performance](references/profiling-and-performance.md) |

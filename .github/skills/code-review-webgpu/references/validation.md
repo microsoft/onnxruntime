@@ -92,8 +92,9 @@ validator on an empty dump or an unexercised specialization proves nothing.
 The dump includes WGSL for each program and key.
 
 For WebGPU validation errors, set EP option `validationMode` (config key
-`ep.webgpuexecutionprovider.validationMode`) to `full`. Release defaults to
-`disabled`. For template-generator changes, run:
+`ep.webgpuexecutionprovider.validationMode`) to `full`. Check the effective
+default/options in the reviewed revision; `WebGpuContextConfig` currently uses
+`basic` in Release and `full` in Debug. For template-generator changes, run:
 
 ```bash
 python tools/python/wgsl_template/test/run_tests.py
