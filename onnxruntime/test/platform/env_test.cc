@@ -121,6 +121,42 @@ TEST_F(RandomAccessFileTest, ReadsRangesAndLengthFromOneOpenFile) {
   EXPECT_EQ(output, legacy_output);
 }
 
+#ifndef __wasm__
+// Windows ReadFile loops cap each transfer at 16 MB. Read a larger range at a non-zero offset
+// through both RandomAccessFile::Read and ReadFileIntoBuffer.
+TEST_F(RandomAccessFileTest, ReadsRangeLargerThanSixteenMegabyteChunk) {
+  constexpr size_t kChunkCap = 1 << 24;
+  constexpr size_t kExtra = 8 * 1024;
+  constexpr FileOffsetType kOffset = 4096;
+  const size_t file_size = static_cast<size_t>(kOffset) + kChunkCap + kExtra;
+
+  file_.reset();
+  contents_.assign(file_size, '\0');
+  for (size_t i = 0; i < contents_.size(); ++i) {
+    contents_[i] = static_cast<char>((i * 31 + i / 257) & 0xff);
+  }
+  {
+    std::ofstream writer(path_, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(writer.is_open());
+    writer.write(contents_.data(), static_cast<std::streamsize>(contents_.size()));
+    writer.close();
+    ASSERT_FALSE(writer.fail());
+  }
+  ASSERT_STATUS_OK(Env::Default().OpenRandomAccessFile(path_.c_str(), file_));
+  ASSERT_NE(file_, nullptr);
+
+  const size_t read_length = kChunkCap + kExtra;
+  std::string random_access_output(read_length, '\0');
+  ASSERT_STATUS_OK(file_->Read(kOffset, gsl::span<char>(random_access_output)));
+  EXPECT_EQ(random_access_output, contents_.substr(static_cast<size_t>(kOffset), read_length));
+
+  std::string legacy_output(read_length, '\0');
+  ASSERT_STATUS_OK(Env::Default().ReadFileIntoBuffer(path_.c_str(), kOffset, read_length,
+                                                     gsl::span<char>(legacy_output)));
+  EXPECT_EQ(legacy_output, random_access_output);
+}
+#endif
+
 TEST_F(RandomAccessFileTest, MappingUsesOpenedFileAfterPathReplacement) {
   PathString replacement_path;
   ScopedFileDeleter replacement_deleter;
