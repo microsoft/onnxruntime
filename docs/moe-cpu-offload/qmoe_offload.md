@@ -127,6 +127,10 @@ session creation with `ORT_INVALID_ARGUMENT`.
 | `session.moe.offload.derived_cache_dir` | Relative or absolute path | `""` | Optional directory for derived cache artifacts. |
 | `session.moe.offload.node_overrides` | Semicolon-separated spec | `""` | Optional per-node overrides (`"node_name:max_resident_slots=<N>,device_expert_bytes=<B>"`). |
 
+Session configuration entries take precedence over their environment fallbacks.
+Environment values are read through ORT's platform environment API, including for
+the CUDA plugin EP on Windows; unset or empty environment values use the documented defaults.
+
 Tail substitution tuning (Qwen3.8-Flash-Next RC5, `k = 10`, 256 experts, 46.7% GPU residency, S=8 speculative decode, RTX 4090 + AVX2 host): `tail_substitution_min_rank = 2` is far more effective than the `k`-relative default of `6`, because a substituted route stays GPU-resident while skipping a cold route only drops work. At `min_rank = 2`, `threshold = 0.01 / 0.02 / 0.04` removed 58% / 75% / 84% of cold experts per step and raised decode from 24.5 to 47.7 / 62.6 / 77.3 tok/s, with MMLU-Pro accuracy within noise of exact routing (`threshold = 0.04`: 165 / 200 versus 162 / 200 exact, 3.7x decode throughput). `min_rank <= 1` or `threshold >= 0.08` was less faithful to the exact greedy token stream. Combining substitution with `min_expert_weight` (tail skipping) added no measurable speed on top of substitution alone, and tail skipping also prunes prefill routes.
 
 ### 3.2 Standalone Python Usage Example

@@ -43,6 +43,7 @@
 #include "core/common/status.h"
 #include "core/framework/config_options.h"
 #include "core/framework/tensor_shape.h"
+#include "core/platform/env.h"
 #endif
 #include "core/common/parse_string.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -421,11 +422,15 @@ struct MoeOffloadSessionPolicy {
       }
     }
 
-    const auto config_or_env = [&](const char* key, const char* env, std::string_view fallback) -> std::string_view {
+    const auto config_or_env = [&](const char* key, const char* env, std::string_view fallback) -> std::string {
       const auto it = kv_map.find(key);
       if (it != kv_map.end()) return it->second;
-      const char* value = std::getenv(env);
-      return value != nullptr ? std::string_view(value) : fallback;
+#ifdef SHARED_PROVIDER
+      const auto value = GetEnvironmentVar(env);
+#else
+      const auto value = Env::Default().GetEnvironmentVar(env);
+#endif
+      return !value.empty() ? value : std::string(fallback);
     };
     const auto skip = config_or_env(kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell,
                                     "ORT_QMOE_SKIP_ZERO_COLD_DOORBELL", "0");
@@ -455,22 +460,16 @@ struct MoeOffloadSessionPolicy {
                              " value '", min_rank, "'; expected a non-negative integer less than k when enabled.");
     }
 
-    const auto min_w_it = kv_map.find(kOrtSessionOptionsMoeOffloadMinExpertWeight);
-    const char* env_min_w = std::getenv("ORT_QMOE_MIN_EXPERT_WEIGHT");
-    const std::string_view min_w_raw = (min_w_it != kv_map.end())
-                                           ? std::string_view(min_w_it->second)
-                                           : (env_min_w != nullptr ? std::string_view(env_min_w) : std::string_view("0"));
+    const auto min_w_raw = config_or_env(kOrtSessionOptionsMoeOffloadMinExpertWeight,
+                                         "ORT_QMOE_MIN_EXPERT_WEIGHT", "0");
     if (!TryParseFloat01(min_w_raw, out.min_expert_weight)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Invalid ", kOrtSessionOptionsMoeOffloadMinExpertWeight,
                              " value '", min_w_raw, "'; expected a float in [0, 1].");
     }
 
-    const auto cold_only_it = kv_map.find(kOrtSessionOptionsMoeOffloadSkipTailColdOnly);
-    const char* env_cold_only = std::getenv("ORT_QMOE_SKIP_TAIL_COLD_ONLY");
-    const std::string_view cold_only = (cold_only_it != kv_map.end())
-                                           ? std::string_view(cold_only_it->second)
-                                           : (env_cold_only != nullptr ? std::string_view(env_cold_only) : std::string_view("1"));
+    const auto cold_only = config_or_env(kOrtSessionOptionsMoeOffloadSkipTailColdOnly,
+                                         "ORT_QMOE_SKIP_TAIL_COLD_ONLY", "1");
     if (cold_only != "0" && cold_only != "1") {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Invalid ", kOrtSessionOptionsMoeOffloadSkipTailColdOnly,
