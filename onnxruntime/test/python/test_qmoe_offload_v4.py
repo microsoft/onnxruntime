@@ -4478,6 +4478,31 @@ with tempfile.TemporaryDirectory() as directory:
                 self.assertEqual(item["substituted_routes_count"], 2 * rows)
                 self.assertEqual(item["zero_cold_conversions_count"], rows)
 
+    def test_v4_tail_substitution_keeps_cold_routes_above_the_weight_cap(self):
+        with tempfile.TemporaryDirectory() as model_dir:
+            model_path, config = self._build_decode_optimization_model(model_dir, use_fp16=True)
+            rows = 2
+            x = np.random.default_rng(33944).standard_normal((rows, 256), dtype=np.float32) * 0.25
+            # Eight equally weighted routes (0.125 each, above the 0.05 cap): experts 0, 1 and the cold experts 10..15.
+            # The unselected resident experts are almost as likely, so both gap checks pass for a 0.001 threshold.
+            router = np.full((rows, 16), 0.995, dtype=np.float32)
+            router[:, [0, 1, 10, 11, 12, 13, 14, 15]] = 1.0
+            _, stats = self._run_decode_with_telemetry(
+                model_path,
+                {
+                    **config,
+                    "session.moe.offload.tail_substitution_threshold": "0.001",
+                    "session.moe.offload.tail_substitution_min_rank": "6",
+                },
+                [(x, router)],
+                True,
+            )
+            for item in stats:
+                indices = np.asarray(item["last_indices"]).reshape(rows, 8)
+                for row in indices:
+                    self.assertEqual(sorted(row.tolist()), [0, 1, 10, 11, 12, 13, 14, 15])
+                self.assertEqual(item["substituted_routes_count"], 0)
+
     def test_v4_tail_substitution_stable_normalization_after_replacing_every_route(self):
         for use_fp16 in (True, False):
             if not use_fp16 and not self._int4_bf16_runner_supported:

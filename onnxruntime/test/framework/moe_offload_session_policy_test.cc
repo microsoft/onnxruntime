@@ -15,6 +15,7 @@
 #include "core/framework/moe_offload_plan.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/scoped_env_vars.h"
 
 namespace onnxruntime::test {
 namespace {
@@ -139,6 +140,65 @@ TEST(MoeOffloadSessionPolicyTest, TailExpertPruningOptionsDefaultAndParse) {
         ParsePolicy({{kOrtSessionOptionsMoeOffloadSkipTailColdOnly, bad_flag}}, bad),
         kOrtSessionOptionsMoeOffloadSkipTailColdOnly);
   }
+}
+
+TEST(MoeOffloadSessionPolicyTest, TailSubstitutionOptionsDefaultAndParse) {
+  EXPECT_STREQ(kOrtSessionOptionsMoeOffloadTailSubstitutionThreshold,
+               "session.moe.offload.tail_substitution_threshold");
+  EXPECT_STREQ(kOrtSessionOptionsMoeOffloadTailSubstitutionMinRank,
+               "session.moe.offload.tail_substitution_min_rank");
+
+  ScopedEnvironmentVariables clean_env{{{"ORT_QMOE_TAIL_SUBSTITUTION_THRESHOLD", nullopt},
+                                        {"ORT_QMOE_TAIL_SUBSTITUTION_MIN_RANK", nullopt}}};
+
+  MoeOffloadSessionPolicy defaults;
+  ASSERT_STATUS_OK(ParsePolicy({}, defaults));
+  EXPECT_FLOAT_EQ(defaults.tail_substitution_threshold, 0.0f);
+  EXPECT_EQ(defaults.tail_substitution_min_rank, 6);
+
+  MoeOffloadSessionPolicy configured;
+  ASSERT_STATUS_OK(ParsePolicy({{kOrtSessionOptionsMoeOffloadTailSubstitutionThreshold, "0.04"},
+                                {kOrtSessionOptionsMoeOffloadTailSubstitutionMinRank, "2"}},
+                               configured));
+  EXPECT_FLOAT_EQ(configured.tail_substitution_threshold, 0.04f);
+  EXPECT_EQ(configured.tail_substitution_min_rank, 2);
+
+  MoeOffloadSessionPolicy zero;
+  ASSERT_STATUS_OK(ParsePolicy({{kOrtSessionOptionsMoeOffloadTailSubstitutionThreshold, "0"},
+                                {kOrtSessionOptionsMoeOffloadTailSubstitutionMinRank, "0"}},
+                               zero));
+  EXPECT_FLOAT_EQ(zero.tail_substitution_threshold, 0.0f);
+  EXPECT_EQ(zero.tail_substitution_min_rank, 0);
+
+  for (const char* bad_threshold : {"-0.1", "nan", "inf", "0.01junk", " 0.01", ""}) {
+    MoeOffloadSessionPolicy bad;
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+        ParsePolicy({{kOrtSessionOptionsMoeOffloadTailSubstitutionThreshold, bad_threshold}}, bad),
+        kOrtSessionOptionsMoeOffloadTailSubstitutionThreshold);
+  }
+  for (const char* bad_rank : {"-1", "abc", "1.5", " 6", ""}) {
+    MoeOffloadSessionPolicy bad;
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+        ParsePolicy({{kOrtSessionOptionsMoeOffloadTailSubstitutionMinRank, bad_rank}}, bad),
+        kOrtSessionOptionsMoeOffloadTailSubstitutionMinRank);
+  }
+}
+
+TEST(MoeOffloadSessionPolicyTest, TailSubstitutionEnvironmentFallbackAndConfigPrecedence) {
+  ScopedEnvironmentVariables env{{{"ORT_QMOE_TAIL_SUBSTITUTION_THRESHOLD", "0.02"},
+                                  {"ORT_QMOE_TAIL_SUBSTITUTION_MIN_RANK", "3"}}};
+
+  MoeOffloadSessionPolicy from_env;
+  ASSERT_STATUS_OK(ParsePolicy({}, from_env));
+  EXPECT_FLOAT_EQ(from_env.tail_substitution_threshold, 0.02f);
+  EXPECT_EQ(from_env.tail_substitution_min_rank, 3);
+
+  MoeOffloadSessionPolicy from_config;
+  ASSERT_STATUS_OK(ParsePolicy({{kOrtSessionOptionsMoeOffloadTailSubstitutionThreshold, "0.04"},
+                                {kOrtSessionOptionsMoeOffloadTailSubstitutionMinRank, "2"}},
+                               from_config));
+  EXPECT_FLOAT_EQ(from_config.tail_substitution_threshold, 0.04f);
+  EXPECT_EQ(from_config.tail_substitution_min_rank, 2);
 }
 
 }  // namespace onnxruntime::test

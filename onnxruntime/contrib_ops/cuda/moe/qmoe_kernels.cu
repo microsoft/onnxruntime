@@ -383,32 +383,18 @@ __global__ void QMoETailSubstitutionKernel(
   const int mask_words = num_experts / 32 + (num_experts % 32 != 0);
   for (int word = lane; word < mask_words; word += 32) selected[word] = 0;
   __syncwarp();
-  float orig_selected_max = -FLT_MAX;
   int cold_before = 0;
   for (int rank = lane; rank < k; rank += 32) {
     const int expert = row_indices[rank];
     if (expert < 0) continue;  // Pruned by SoftmaxTopK.
     atomicOr(selected + expert / 32, uint32_t{1} << (expert % 32));
     cold_before += expert_slot[expert] < 0;
-    orig_selected_max = fmaxf(orig_selected_max, static_cast<float>(row_logits[expert]));
   }
   __syncwarp();
   for (int offset = 16; offset > 0; offset /= 2) {
     cold_before += __shfl_down_sync(0xffffffffu, cold_before, offset);
-    orig_selected_max = fmaxf(orig_selected_max, __shfl_down_sync(0xffffffffu, orig_selected_max, offset));
   }
   cold_before = __shfl_sync(0xffffffffu, cold_before, 0);
-  orig_selected_max = __shfl_sync(0xffffffffu, orig_selected_max, 0);
-  float orig_selected_sum = 0.0f;
-  for (int rank = lane; rank < k; rank += 32) {
-    if (row_indices[rank] < 0) continue;
-    orig_selected_sum += expf(static_cast<float>(row_logits[row_indices[rank]]) - orig_selected_max);
-  }
-  for (int offset = 16; offset > 0; offset /= 2) {
-    orig_selected_sum += __shfl_down_sync(0xffffffffu, orig_selected_sum, offset);
-  }
-  orig_selected_sum = __shfl_sync(0xffffffffu, orig_selected_sum, 0);
-  const float orig_scale_denom = fmaxf(orig_selected_sum, kTopKNormalizeEpsilon);
 
   int substitutions = 0;
   uint32_t sub_rank_mask = 0u;
@@ -441,8 +427,10 @@ __global__ void QMoETailSubstitutionKernel(
     const float expert_logit = static_cast<float>(row_logits[expert]);
     const float original_probability = expf(expert_logit - row_max) / row_sum;
     const float replacement_probability = expf(best_logit - row_max) / row_sum;
-    const float orig_scale = expf(expert_logit - orig_selected_max) / orig_scale_denom;
-    const float repl_scale = expf(best_logit - orig_selected_max) / orig_scale_denom;
+    // The retained scale already reflects SoftmaxTopK's pruning and normalization mode, so compare against it rather
+    // than renormalizing over the experts that happen to survive.
+    const float orig_scale = row_scales[rank];
+    const float repl_scale = orig_scale * expf(best_logit - expert_logit);
     const float prob_gap = original_probability - replacement_probability;
     const float scale_gap = orig_scale - repl_scale;
     const float effective_gap =
@@ -450,8 +438,7 @@ __global__ void QMoETailSubstitutionKernel(
             ? sqrtf(prob_gap * fmaxf(0.0f, scale_gap))
             : prob_gap;
     const bool scale_within_bound =
-        !normalize_scales || min_rank == 0 || scale_gap <= threshold ||
-        orig_scale <= fmaxf(threshold * 25.0f, 0.050f);
+        !normalize_scales || min_rank == 0 || orig_scale <= fmaxf(threshold * 25.0f, 0.050f);
     if (best_expert < num_experts && effective_gap <= threshold && scale_within_bound) {
       if (lane == 0) {
         row_indices[rank] = best_expert;

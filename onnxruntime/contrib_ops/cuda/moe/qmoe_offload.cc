@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cinttypes>
 #include <cmath>
 #include <condition_variable>
 #include <cstring>
@@ -3142,36 +3143,41 @@ QMoEOffload::~QMoEOffload() {
         substitutions += telemetry.substituted_routes_count[row];
         conversions += telemetry.zero_cold_conversions_count[row];
       }
-      std::fprintf(stderr,
-                   "QMoEOffload telemetry {\"layer\":%" PRId64 ",\"layer_calls\":%" PRIu64
-                   ","
-                   "\"zero_cold_short_circuits\":%" PRIu64 ",\"cpu_doorbell_wakeups\":%" PRIu64
-                   ","
-                   "\"cold_routes\":%" PRIu64 ",\"substituted_routes_count\":%" PRIu64
-                   ","
-                   "\"zero_cold_conversions_count\":%" PRIu64
-                   ",\"last_cold_count\":%d,"
-                   "\"launched_seq\":%" PRIu64 ",\"request_seq\":%" PRIu64 ",\"done_seq\":%" PRIu64
-                   ","
-                   "\"last_serviced_seq\":%" PRIu64 ",\"last_promoted_seq\":%" PRIu64 ",\"last_indices\":[",
-                   static_cast<int64_t>(layer_index_), static_cast<uint64_t>(telemetry.layer_calls),
-                   static_cast<uint64_t>(telemetry.zero_cold_short_circuits),
-                   static_cast<uint64_t>(decode_state_->cpu_doorbell_wakeups),
-                   static_cast<uint64_t>(telemetry.cold_routes),
-                   static_cast<uint64_t>(substitutions), static_cast<uint64_t>(conversions),
-                   telemetry.last_cold_count, static_cast<uint64_t>(decode_state_->launched_seq),
-                   static_cast<uint64_t>(decode_state_->doorbell_req_host ? *decode_state_->doorbell_req_host : 0),
-                   static_cast<uint64_t>(decode_state_->doorbell_done_host ? *decode_state_->doorbell_done_host : 0),
-                   static_cast<uint64_t>(decode_state_->last_serviced_seq),
-                   static_cast<uint64_t>(decode_state_->last_promoted_seq));
-      for (int route = 0; route < telemetry.last_route_count; ++route) {
-        std::fprintf(stderr, "%s%d", route == 0 ? "" : ",", telemetry.last_indices[route]);
+      // Emit the whole record with one write so concurrent session teardown cannot interleave partial JSON.
+      char head[768];
+      const int head_len = std::snprintf(
+          head, sizeof(head),
+          "QMoEOffload telemetry {\"layer\":%" PRId64 ",\"layer_calls\":%" PRIu64
+          ",\"zero_cold_short_circuits\":%" PRIu64 ",\"cpu_doorbell_wakeups\":%" PRIu64
+          ",\"cold_routes\":%" PRIu64 ",\"substituted_routes_count\":%" PRIu64
+          ",\"zero_cold_conversions_count\":%" PRIu64
+          ",\"last_cold_count\":%d,\"launched_seq\":%" PRIu64 ",\"request_seq\":%" PRIu64 ",\"done_seq\":%" PRIu64
+          ",\"last_serviced_seq\":%" PRIu64 ",\"last_promoted_seq\":%" PRIu64 ",\"last_indices\":[",
+          static_cast<int64_t>(layer_index_), static_cast<uint64_t>(telemetry.layer_calls),
+          static_cast<uint64_t>(telemetry.zero_cold_short_circuits),
+          static_cast<uint64_t>(decode_state_->cpu_doorbell_wakeups),
+          static_cast<uint64_t>(telemetry.cold_routes),
+          static_cast<uint64_t>(substitutions), static_cast<uint64_t>(conversions),
+          telemetry.last_cold_count, static_cast<uint64_t>(decode_state_->launched_seq),
+          static_cast<uint64_t>(decode_state_->doorbell_req_host ? *decode_state_->doorbell_req_host : 0),
+          static_cast<uint64_t>(decode_state_->doorbell_done_host ? *decode_state_->doorbell_done_host : 0),
+          static_cast<uint64_t>(decode_state_->last_serviced_seq),
+          static_cast<uint64_t>(decode_state_->last_promoted_seq));
+      std::string record(head, head_len > 0 ? std::min<size_t>(static_cast<size_t>(head_len), sizeof(head) - 1) : 0);
+      const int logged_routes = std::clamp(telemetry.last_route_count, 0, 256);
+      for (int route = 0; route < logged_routes; ++route) {
+        record += (route == 0 ? "" : ",");
+        record += std::to_string(telemetry.last_indices[route]);
       }
-      std::fprintf(stderr, "],\"last_weights\":[");
-      for (int route = 0; route < telemetry.last_route_count; ++route) {
-        std::fprintf(stderr, "%s%.9g", route == 0 ? "" : ",", telemetry.last_weights[route]);
+      record += "],\"last_weights\":[";
+      for (int route = 0; route < logged_routes; ++route) {
+        char weight[32];
+        std::snprintf(weight, sizeof(weight), "%.9g", telemetry.last_weights[route]);
+        record += (route == 0 ? "" : ",");
+        record += weight;
       }
-      std::fprintf(stderr, "]}\n");
+      record += "]}\n";
+      std::fwrite(record.data(), 1, record.size(), stderr);
       std::fflush(stderr);
     }
   }
