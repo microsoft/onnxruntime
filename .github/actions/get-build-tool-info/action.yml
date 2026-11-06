@@ -1,0 +1,23 @@
+name: 'Get build tool info'
+description: 'Reads shared build-tool versions and host archive SHA-512 digests.'
+inputs:
+  tools:
+    description: 'Comma-separated tools to look up: cmake, vcpkg, ccache.'
+    required: false
+    default: 'cmake,vcpkg'
+outputs:
+  cmake-version:
+    description: 'The CMake version, if requested.'
+  cmake-sha512:
+    description: 'The SHA-512 of the host CMake archive, if requested.'
+  vcpkg-version:
+    description: 'The vcpkg release tag, if requested.'
+  vcpkg-sha512:
+    description: 'The SHA-512 of the vcpkg release archive, if requested.'
+  ccache-version:
+    description: 'The ccache version, if requested.'
+  ccache-sha512:
+    description: 'The SHA-512 of the host ccache archive, if requested.'
+runs:
+  using: 'node24'
+  main: 'index.js'

@@ -12,48 +12,19 @@ inputs:
 runs:
   using: 'composite'
   steps:
-  - name: Configure tool versions and hashes
+  - name: Get build tool info
     id: tool-config
-    shell: python
-    run: |
-      import os
-
-      CMAKE_VERSION = "3.31.8"
-      CMAKE_SHA512_BY_OS = {
-          "Linux": (
-              "7939260931098c3f00d2b36de3bee6a0ee3bcae2dba001598c492ed5c82d295c9aa9969654f1ff937fec4d71679541238baaa648c5246f36e14f28f0a62337a0"
-          ),
-          "Windows": (
-              "807b774fcb12defff8ce869e602fc5b6279d5b7bf7229ebcf3f7490da3f887d516b9c49a00d50f9179e552ed8737d19835a19ef8f366d1ffda1ad6f3352a90c2"
-          ),
-          "macOS": (
-              "99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8"
-          ),
-      }
-
-      CCACHE_VERSION = "4.13.1"
-      CCACHE_SHA512 = (
-          "626407a9b81dd86f8ec9867bff396b32dd1f00344f5b323526579a64f6d4104927f83e8d7a05ad9806fd78f4491e0adb4cff73388000a62050cb1b00766214ee"
-      )
-
-      cmake_sha512 = CMAKE_SHA512_BY_OS[os.environ["RUNNER_OS"]]
-      with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-          output.write(f"cmake-version={CMAKE_VERSION}\n")
-          output.write(f"cmake-sha512={cmake_sha512}\n")
-          output.write(f"ccache-version={CCACHE_VERSION}\n")
-          output.write(f"ccache-sha512={CCACHE_SHA512}\n")
-
-  - name: Get vcpkg tool info
-    id: vcpkg-tool-info
-    uses: ./.github/actions/get-vcpkg-tool-info
+    uses: ./.github/actions/get-build-tool-info
+    with:
+      tools: ${{ inputs.install-ccache == 'true' && 'cmake,vcpkg,ccache' || 'cmake,vcpkg' }}
 
   - name: Install build tools
     uses: microsoft/onnxruntime-github-actions/setup-build-tools@efa14f1fd8b27f52a47d9f0cacdbf642972c6090 # v0.0.14
     with:
       ccache-version: ${{ inputs.install-ccache == 'true' && steps.tool-config.outputs.ccache-version || '' }}
       ccache-hash: ${{ inputs.install-ccache == 'true' && steps.tool-config.outputs.ccache-sha512 || '' }}
-      vcpkg-version: ${{ steps.vcpkg-tool-info.outputs.release_tag }}
-      vcpkg-hash: ${{ steps.vcpkg-tool-info.outputs.sha512 }}
+      vcpkg-version: ${{ steps.tool-config.outputs.vcpkg-version }}
+      vcpkg-hash: ${{ steps.tool-config.outputs.vcpkg-sha512 }}
       cmake-version: ${{ steps.tool-config.outputs.cmake-version }}
       cmake-hash: ${{ steps.tool-config.outputs.cmake-sha512 }}
       add-cmake-to-path: 'true'
