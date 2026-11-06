@@ -292,6 +292,25 @@ class MatMulNBits final : public CudaKernel {
     has_zero_points_ = InputExists(info, kInputIndexZeroPoints);
     has_g_idx_ = InputExists(info, kInputIndexGroupIndex);
     has_bias_ = InputExists(info, kInputIndexBias);
+    const auto kernel = info.GetAttrOrDefault<std::string>("gemv_kernel", "auto");
+    ORT_ENFORCE(kernel == "auto" || kernel == "fixed", "MatMulNBits gemv_kernel must be 'auto' or 'fixed'.");
+    fixed_bf16_ = kernel == "fixed";
+    if (fixed_bf16_) {
+      ORT_ENFORCE((std::is_same_v<T, BFloat16>) && GetDeviceProp().major >= 8 &&
+                      nbits_ == 8 && block_size_ == 32 &&
+                      info.GetAttrOrDefault<int64_t>("accuracy_level", 0) == 0 &&
+                      info.GetAttrOrDefault<int64_t>("weight_prepacked", 0) == 0 &&
+                      !InputExists(info, kInputIndexScale) && InputExists(info, 6) &&
+                      !has_zero_points_ && !has_g_idx_ && !has_bias_,
+                  "MatMulNBits fixed requires SM80+, BF16, bits=8, block_size=32, accuracy_level=0, "
+                  "weight_prepacked=0, scales_fp16 and no scales, zero_points, g_idx or bias.");
+      ORT_ENFORCE(K_ > 0 && K_ <= std::numeric_limits<int>::max() && K_ % 64 == 0 &&
+                      N_ > 0 && N_ <= std::numeric_limits<int>::max() - 32,
+                  "MatMulNBits fixed requires positive int32 K divisible by 64 and 0 < N <= INT32_MAX-32.");
+      return;
+    }
+    ORT_ENFORCE(InputExists(info, kInputIndexScale) && !InputExists(info, 6),
+                "MatMulNBits auto requires scales and does not accept scales_fp16.");
     is_zero_points_scale_same_type_ = has_zero_points_ && GetInputElementType(info, kInputIndexZeroPoints) == GetInputElementType(info, kInputIndexScale);
 
     const Tensor* group_index_initializer = nullptr;
@@ -567,6 +586,7 @@ class MatMulNBits final : public CudaKernel {
   // TEST INSTRUMENTATION ONLY (see LastComputeWorkspaceBytes above).
   mutable std::atomic<size_t> last_compute_workspace_bytes_{0};
 #endif
+  bool fixed_bf16_{false};
 };
 
 }  // namespace cuda

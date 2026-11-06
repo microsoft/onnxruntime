@@ -29,6 +29,7 @@
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cpu/utils/dump_tensor.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
+#include "contrib_ops/cuda/quantization/matmul_packed_projection.cuh"
 #include "contrib_ops/cuda/quantization/dequantize_blockwise.cuh"
 #if USE_FPA_INTB_GEMM
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
@@ -92,6 +93,9 @@ Status MatMulNBits<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr
                                /*out*/ bool& is_packed,
                                /*out*/ PrePackedWeights* /*prepacked_weights*/) {
   is_packed = false;
+  if (fixed_bf16_) {
+    return Status::OK();
+  }
   if (tensor.Shape().Size() == 0) {
     // Reject empty weights before fpA_intB prepacking can read their buffer.
     if (input_idx == MatMulNBits_Input_B) {
@@ -476,6 +480,12 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
   const int64_t weight_prepacked = get_attr("weight_prepacked", kMatMulNBitsWeightNotPrepacked);
   if (nbits != 2 && nbits != 4 && nbits != 8) {
     return std::nullopt;
+  }
+  for (const auto& attr : node.GetAttributes()) {
+    if (attr.first == "gemv_kernel" && attr.second.s() == "fixed") {
+      // Raw initializers are already accounted for; this profile neither prepacks nor uses scratch.
+      return Level1MemoryEstimate{};
+    }
   }
 
   constexpr int kInputIndexGroupIndex = 4;
@@ -1237,6 +1247,30 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   // outputs, and GEMV/non-fpA_intB paths, so the value always describes the latest call.
   last_compute_workspace_bytes_.store(0, std::memory_order_relaxed);
 #endif
+  if (fixed_bf16_) {
+    const auto* a = ctx->Input<Tensor>(0);
+    const auto* b = ctx->Input<Tensor>(1);
+    const auto* scales = ctx->Input<Tensor>(6);
+    ORT_RETURN_IF_NOT(a && b && scales && scales->IsDataType<MLFloat16>(),
+                      "MatMulNBits fixed requires activations, raw weights and FP16 scales.");
+    const auto& shape = a->Shape();
+    ORT_RETURN_IF_NOT(shape.NumDimensions() >= 1 && shape[shape.NumDimensions() - 1] == K_,
+                      "MatMulNBits fixed activation last dimension must equal K.");
+    const int64_t rows = shape.SizeToDimension(shape.NumDimensions() - 1);
+    ORT_RETURN_IF_NOT(rows >= 1 && rows <= 8,
+                      "MatMulNBits fixed flattened activation rows must be in [1,8].");
+    ORT_RETURN_IF_NOT(b->Shape() == TensorShape({N_, K_ / 32, 32}) &&
+                          scales->Shape() == TensorShape({N_, K_ / 32}),
+                      "MatMulNBits fixed requires B[N,K/32,32] and scales_fp16[N,K/32].");
+    TensorShapeVector output_dims(shape.GetDims().begin(), shape.GetDims().end() - 1);
+    output_dims.push_back(N_);
+    auto* y = ctx->Output(0, TensorShape(output_dims));
+    CUDA_RETURN_IF_ERROR(LaunchPackedProjection(
+        PackedProjectionFormat::Q8, a->DataRaw(), b->Data<uint8_t>(), scales->DataRaw(),
+        nullptr, true, static_cast<int>(rows), static_cast<int>(N_), static_cast<int>(K_),
+        y->MutableDataRaw(), Stream(ctx)));
+    return Status::OK();
+  }
 
   if constexpr (std::is_same_v<T, BFloat16>) {
     if (sm_ < 80) {

@@ -363,6 +363,37 @@ TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionFusesSimplifiedWebGpuPatter
       CheckMatMulNBitsMlpSimplifiedFusedGraph));
 }
 
+TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionDoesNotDropIndependentFP16Scales) {
+  const auto build = [](ModelTestBuilder& builder) {
+    constexpr int64_t k = 64, n = 8;
+    auto* input = builder.MakeInput<BFloat16>(std::vector<int64_t>{1, k}, std::vector<BFloat16>(k, BFloat16(1.f)));
+    auto* gamma = builder.MakeInitializer<BFloat16>({k}, BFloat16(1.f), BFloat16(1.f));
+    auto* empty = builder.MakeOptionalTensor();
+    auto* normalized = builder.MakeIntermediate<BFloat16>(std::vector<int64_t>{1, k});
+    auto* gate = builder.MakeIntermediate<BFloat16>(std::vector<int64_t>{1, n});
+    auto* up = builder.MakeIntermediate<BFloat16>(std::vector<int64_t>{1, n});
+    auto* sigmoid = builder.MakeIntermediate<BFloat16>(std::vector<int64_t>{1, n});
+    auto* activated = builder.MakeIntermediate<BFloat16>(std::vector<int64_t>{1, n});
+    auto* output = builder.MakeOutput<BFloat16>(std::vector<int64_t>{1, n});
+    auto attrs = MakeMatMulNBitsAttrs(k, n, 32, 8, 0);
+    utils::SetNodeAttribute(utils::MakeAttribute("gemv_kernel", std::string("fixed")), attrs);
+    builder.AddNode("SimplifiedLayerNormalization", {input, gamma}, {normalized});
+    for (auto* projection : {gate, up}) {
+      auto* weight = builder.MakeInitializer<uint8_t>({n, k / 32, 32}, uint8_t{128}, uint8_t{129});
+      auto* scales = builder.MakeInitializer<MLFloat16>({n, k / 32}, MLFloat16(0.019f), MLFloat16(0.019f));
+      builder.AddNode("MatMulNBits", {normalized, weight, empty, empty, empty, empty, scales},
+                      {projection}, kMSDomain, &attrs);
+    }
+    builder.AddNode("Sigmoid", {gate}, {sigmoid});
+    builder.AddNode("Mul", {gate, sigmoid}, {activated});
+    SetWebGpuProvider(builder.AddNode("Mul", {activated, up}, {output}));
+  };
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, 21, *logger_,
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      TransformerLevel::Level2, 0, nullptr, CheckMatMulNBitsMlpSimplifiedPatternNotFusedGraph));
+}
+
 TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionFusesSkipWebGpuPattern) {
   ASSERT_STATUS_OK(TestGraphTransformer(
       BuildMatMulNBitsMlpSkipWebGpuPattern,

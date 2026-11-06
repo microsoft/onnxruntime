@@ -4396,6 +4396,14 @@ Empty packed weights are currently supported by the CPU and WebGPU execution pro
             "2: prepacked in the CUDA SM90 (Hopper) fpA_intB layout, consumed by the native SM90 kernel "
             "(requires a compute capability 9.0 device and block_size in {64, 128}).",
             AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("gemv_kernel",
+            "CUDA arithmetic selection. 'auto' preserves existing dispatch. 'fixed' uses BF16 operands, "
+            "FP32 accumulation and one final BF16 output rounding with unmodified UINT8 weights and FP16 scales. "
+            "The fixed profile requires SM80+, bits=8, block_size=32, accuracy_level=0, weight_prepacked=0, "
+            "omitted scales/zero_points/g_idx/bias, and scales_fp16 [N,K/32]. "
+            "K must be positive, fit int32 and be divisible by 64; N must be positive and at most INT32_MAX-32. "
+            "Flattened activation rows must be in [1,8]. Unsupported shapes fail rather than changing arithmetic.",
+            AttributeProto::STRING, std::string("auto"))
       .Input(0, "A", "The input tensor, not quantized.", "T1")
       .Input(1, "B",
              "Packed uint8 tensor of shape (N, k_blocks, blob_size), "
@@ -4403,7 +4411,10 @@ Empty packed weights are currently supported by the CPU and WebGPU execution pro
              "With weight_prepacked=0, one or more dimensions may be 0 to omit the projection as described above. "
              "The quantized weights are stored in a bit-packed format along the K dimension, packed within each block_size.",
              "T2")
-      .Input(2, "scales", "Per-block scaling factors for dequantization with shape (N, k_blocks) and same data type as input A.", "T1")
+      .Input(2, "scales",
+             "Per-block scaling factors for dequantization with shape (N, k_blocks) and same data type as input A. "
+             "Required for default dispatch; must be omitted with gemv_kernel='fixed'.",
+             "T1", OpSchema::Optional)
       .Input(3, "zero_points",
              "Per-block zero point for dequantization. It can be either packed or unpacked: "
              "Packed (uint8) format has shape (N, ceil(k_blocks * bits / 8)), and it uses same bit-packing method as Input B. "
@@ -4412,6 +4423,10 @@ Empty packed weights are currently supported by the CPU and WebGPU execution pro
              "T3", OpSchema::Optional)
       .Input(4, "g_idx", "group_idx. This input is deprecated", "T4", OpSchema::Optional)
       .Input(5, "bias", "Bias to add to result. It should have shape [N].", "T1", OpSchema::Optional)
+      .Input(6, "scales_fp16",
+             "Independent FP16 scales [N,K/32], required only for gemv_kernel='fixed'. "
+             "Preserves FP16 scale precision with BF16 activations without early BF16 scale rounding.",
+             "tensor(float16)", OpSchema::Optional)
       .Output(0, "Y", "tensor. The output tensor has the same rank as the input. ", "T1")
       .TypeConstraint("T1", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                       "Constrain input and output types to float tensors.")
@@ -4420,6 +4435,24 @@ Empty packed weights are currently supported by the CPU and WebGPU execution pro
                       "Constrain quantized zero point types to uint8 or float tensors.")
       .TypeConstraint("T4", {"tensor(int32)"}, "the index tensor.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        const auto* kernel_attr = ctx.getAttribute("gemv_kernel");
+        const std::string kernel = kernel_attr ? kernel_attr->s() : "auto";
+        if (kernel != "auto" && kernel != "fixed") {
+          fail_shape_inference("MatMulNBits gemv_kernel must be 'auto' or 'fixed'.");
+        }
+        if (kernel == "fixed") {
+          if (ctx.hasInput(2) || !ctx.hasInput(6) || ctx.hasInput(3) || ctx.hasInput(4) || ctx.hasInput(5) ||
+              getAttribute(ctx, "bits", 4) != 8 || getAttribute(ctx, "block_size", 0) != 32 ||
+              getAttribute(ctx, "accuracy_level", 0) != 0 || getAttribute(ctx, "weight_prepacked", 0) != 0 ||
+              !ctx.hasInput(0) ||
+              ctx.getInputType(0)->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto::BFLOAT16) {
+            fail_shape_inference(
+                "MatMulNBits fixed requires BF16, bits=8, block_size=32, accuracy_level=0, "
+                "weight_prepacked=0, scales_fp16 and no scales, zero_points, g_idx or bias.");
+          }
+        } else if (!ctx.hasInput(2) || ctx.hasInput(6)) {
+          fail_shape_inference("MatMulNBits auto requires scales and does not accept scales_fp16.");
+        }
         // Type inference
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         // Shape inference

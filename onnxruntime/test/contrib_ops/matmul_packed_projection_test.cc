@@ -22,8 +22,29 @@ void RunPacked(OpTester& test) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
+void ConfigureFixedQ8(OpTester& test, int k, int n) {
+  test.AddAttribute("K", static_cast<int64_t>(k));
+  test.AddAttribute("N", static_cast<int64_t>(n));
+  test.AddAttribute("bits", int64_t{8});
+  test.AddAttribute("block_size", int64_t{32});
+  test.AddAttribute("gemv_kernel", std::string("fixed"));
+}
+
 template <typename S>
-void CheckQ8(int rows, int n) {
+void AddQ8Scales(OpTester& test, int n, int k, const std::vector<S>& scales, bool fixed) {
+  if (fixed) {
+    test.AddOptionalInputEdge<BFloat16>();
+    test.AddOptionalInputEdge<uint8_t>();
+    test.AddOptionalInputEdge<int32_t>();
+    test.AddOptionalInputEdge<BFloat16>();
+    test.AddInput<S>("scales_fp16", {n, k / 32}, scales);
+  } else {
+    test.AddInput<S>("scales", {n, k / 32}, scales);
+  }
+}
+
+template <typename S>
+void CheckQ8(int rows, int n, bool fixed = false) {
   constexpr int k = 256;
   std::vector<BFloat16> a(rows * k, BFloat16(0.0f));
   std::vector<uint8_t> b(n * k);
@@ -43,11 +64,12 @@ void CheckQ8(int rows, int n) {
           BFloat16(static_cast<float>(scales[col * (k / 32) + kk / 32]) * (int(b[col * k + kk]) - 128));
     }
   }
-  OpTester test("MatMulPackedQ8", 1, kMSDomain);
+  OpTester test(fixed ? "MatMulNBits" : "MatMulPackedQ8", 1, kMSDomain);
+  if (fixed) ConfigureFixedQ8(test, k, n);
   // Non-matrix leading dimensions must survive flattening.
   test.AddInput<BFloat16>("A", {1, rows, k}, a);
   test.AddInput<uint8_t>("B", {n, k / 32, 32}, b);
-  test.AddInput<S>("scales", {n, k / 32}, scales);
+  AddQ8Scales(test, n, k, scales, fixed);
   test.AddOutput<BFloat16>("Y", {1, rows, n}, expected);
   RunPacked(test);
 }
@@ -114,7 +136,7 @@ void CheckNVFP4(int rows, int n) {
 // Dyadic fixtures keep sums exact in FP32, so a scalar oracle is independent of
 // the kernels' MMA tiling, warp reduction order, and GEMV iteration counts.
 template <typename S>
-void CheckQ8Chunks(int rows, int n, int k) {
+void CheckQ8Chunks(int rows, int n, int k, bool fixed = false) {
   SCOPED_TRACE(testing::Message() << "rows=" << rows << " N=" << n << " K=" << k);
   std::vector<BFloat16> a(rows * k, BFloat16(0.0f));
   std::vector<uint8_t> b(n * k);
@@ -146,10 +168,11 @@ void CheckQ8Chunks(int rows, int n, int k) {
       expected[r * n + col] = BFloat16(sum);
     }
   }
-  OpTester test("MatMulPackedQ8", 1, kMSDomain);
+  OpTester test(fixed ? "MatMulNBits" : "MatMulPackedQ8", 1, kMSDomain);
+  if (fixed) ConfigureFixedQ8(test, k, n);
   test.AddInput<BFloat16>("A", {rows, k}, a);
   test.AddInput<uint8_t>("B", {n, k / 32, 32}, b);
-  test.AddInput<S>("scales", {n, k / 32}, scales);
+  AddQ8Scales(test, n, k, scales, fixed);
   test.AddOutput<BFloat16>("Y", {rows, n}, expected);
   RunPacked(test);
 }
@@ -265,6 +288,53 @@ TEST(MatMulPackedProjection, Q8SourceScalePrecisionAndRowTails) {
     CheckQ8<BFloat16>(rows, 19);
   }
 }
+
+TEST(MatMulNBitsFixedBF16, IndependentFP16ScalePrecisionAndLeadingDimensions) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "CUDA SM80 is required.";
+  for (int rows = 1; rows <= 8; ++rows) {
+    for (int n : {1, 17, 33}) CheckQ8<MLFloat16>(rows, n, true);
+  }
+}
+
+TEST(MatMulNBitsFixedBF16, MultipleChunksAndLargeNDispatch) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "CUDA SM80 is required.";
+  CheckQ8Chunks<MLFloat16>(3, 19, 1088, true);
+  CheckQ8Chunks<MLFloat16>(3, 8193, 1088, true);
+  CheckQ8Chunks<MLFloat16>(1, 19, 4096, true);
+  CheckQ8Chunks<MLFloat16>(8, 19, 4096, true);
+}
+
+#ifndef ORT_NO_EXCEPTIONS
+TEST(MatMulNBitsFixedBF16, RejectsUnsupportedRowsAndKInsteadOfFallingBack) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "CUDA SM80 is required.";
+  for (bool bad_k : {false, true}) {
+    const int rows = bad_k ? 1 : 9, k = bad_k ? 32 : 64;
+    OpTester test("MatMulNBits", 1, kMSDomain);
+    ConfigureFixedQ8(test, k, 1);
+    test.AddInput<BFloat16>("A", {rows, k}, std::vector<BFloat16>(rows * k, BFloat16(1.f)));
+    test.AddInput<uint8_t>("B", {1, k / 32, 32}, std::vector<uint8_t>(k, 129));
+    AddQ8Scales(test, 1, k, std::vector<MLFloat16>(k / 32, MLFloat16(1.f)), true);
+    test.AddOutput<BFloat16>("Y", {rows, 1}, std::vector<BFloat16>(rows, BFloat16(0.f)));
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectFailure,
+             bad_k ? "positive int32 K divisible by 64" : "flattened activation rows must be in [1,8]",
+             {}, nullptr, &providers);
+  }
+}
+
+TEST(MatMulNBitsFixedBF16, DefaultDispatchStillRequiresScales) {
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute("K", int64_t{64});
+  test.AddAttribute("N", int64_t{1});
+  test.AddAttribute("bits", int64_t{8});
+  test.AddAttribute("block_size", int64_t{32});
+  test.AddInput<float>("A", {1, 64}, std::vector<float>(64, 1.f));
+  test.AddInput<uint8_t>("B", {1, 2, 32}, std::vector<uint8_t>(64, 129));
+  test.AddOutput<float>("Y", {1, 1}, {0.f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "auto requires scales");
+}
+#endif
 
 TEST(MatMulPackedProjection, IQ2CompleteOperandRoundingAndRawScaleBits) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "CUDA SM80 is required.";

@@ -52,6 +52,7 @@ bool AdapterShape(const Graph& graph, const NodeArg& arg, std::initializer_list<
 bool Projection(const Node* node, int64_t bits) {
   using namespace matmul_nbits_fusion_utils;
   return node && graph_utils::IsSupportedOptypeVersionAndDomain(*node, "MatMulNBits", {1}, kMSDomain) &&
+         HasInput(*node, 2) && !HasInput(*node, 6) &&
          node->GetExecutionProviderType() == kWebGpuExecutionProvider && GetIntAttr(*node, "bits", 4) == bits &&
          GetIntAttr(*node, "block_size", -1, true) == 32 && GetIntAttr(*node, "weight_prepacked", 0) == 0 &&
          !HasInput(*node, 3) && !HasInput(*node, 4) && !HasInput(*node, 5) &&
@@ -113,6 +114,7 @@ Status MatMulNBitsQLoRAFusion::ApplyImpl(Graph& graph, bool& modified, int graph
     if (!flat_scales && !Shape(*inputs[2], {n, k / 32})) continue;
     auto attrs = base->GetAttributes();
     attrs.erase("weight_prepacked");
+    attrs.erase("gemv_kernel");
     utils::SetNodeAttribute(utils::MakeAttribute("lora_bits", int64_t{8}), attrs);
     utils::SetNodeAttribute(utils::MakeAttribute("lora_block_size", int64_t{32}), attrs);
     auto& fused = graph.AddNode(graph.GenerateNodeName("MatMulNBitsQLoRA"), "MatMulNBitsQLoRA",

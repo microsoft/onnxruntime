@@ -4522,25 +4522,29 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Bit-width used to quantize the weights (supported values: 2, 4, 8)</dd>
 <dt><tt>block_size</tt> : int (required)</dt>
 <dd>Size of each quantization block along the K (input feature) dimension. Must be a power of two and ≥ 16 (e.g., 16, 32, 64, 128).</dd>
+<dt><tt>gemv_kernel</tt> : string</dt>
+<dd>CUDA arithmetic selection. 'auto' preserves existing dispatch. 'fixed' uses BF16 operands, FP32 accumulation and one final BF16 output rounding with unmodified UINT8 weights and FP16 scales. The fixed profile requires SM80+, bits=8, block_size=32, accuracy_level=0, weight_prepacked=0, omitted scales/zero_points/g_idx/bias, and scales_fp16 [N,K/32]. K must be positive, fit int32 and be divisible by 64; N must be positive and at most INT32_MAX-32. Flattened activation rows must be in [1,8]. Unsupported shapes fail rather than changing arithmetic.</dd>
 <dt><tt>weight_prepacked</tt> : int</dt>
 <dd>If set, input B is already prepacked into an EP-specific layout and the EP skips runtime weight prepacking. 0 (default): not prepacked. 1: prepacked in the CUDA SM80 fpA_intB layout. 2: prepacked in the CUDA SM90 (Hopper) fpA_intB layout, consumed by the native SM90 kernel (requires a compute capability 9.0 device and block_size in {64, 128}).</dd>
 </dl>
 
-#### Inputs (3 - 6)
+#### Inputs (2 - 7)
 
 <dl>
 <dt><tt>A</tt> : T1</dt>
 <dd>The input tensor, not quantized.</dd>
 <dt><tt>B</tt> : T2</dt>
 <dd>Packed uint8 tensor of shape (N, k_blocks, blob_size), where k_blocks = ceil(K / block_size) and blob_size = (block_size * bits / 8). With weight_prepacked=0, one or more dimensions may be 0 to omit the projection as described above. The quantized weights are stored in a bit-packed format along the K dimension, packed within each block_size.</dd>
-<dt><tt>scales</tt> : T1</dt>
-<dd>Per-block scaling factors for dequantization with shape (N, k_blocks) and same data type as input A.</dd>
+<dt><tt>scales</tt> (optional) : T1</dt>
+<dd>Per-block scaling factors for dequantization with shape (N, k_blocks) and same data type as input A. Required for default dispatch; must be omitted with gemv_kernel='fixed'.</dd>
 <dt><tt>zero_points</tt> (optional) : T3</dt>
 <dd>Per-block zero point for dequantization. It can be either packed or unpacked: Packed (uint8) format has shape (N, ceil(k_blocks * bits / 8)), and it uses same bit-packing method as Input B. Unpacked (same type as A) format has shape (N, k_blocks). If not provided, a default zero point is used: 2^(bits - 1) (e.g., 8 for 4-bit quantization, 128 for 8-bit). </dd>
 <dt><tt>g_idx</tt> (optional) : T4</dt>
 <dd>group_idx. This input is deprecated</dd>
 <dt><tt>bias</tt> (optional) : T1</dt>
 <dd>Bias to add to result. It should have shape [N].</dd>
+<dt><tt>scales_fp16</tt> (optional) : tensor(float16)</dt>
+<dd>Independent FP16 scales [N,K/32], required only for gemv_kernel='fixed'. Preserves FP16 scale precision with BF16 activations without early BF16 scale rounding.</dd>
 </dl>
 
 #### Outputs
