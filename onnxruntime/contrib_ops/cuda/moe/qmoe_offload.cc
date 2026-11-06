@@ -109,19 +109,6 @@ std::atomic<int64_t> g_last_end_ns{0};
 std::atomic<int64_t> g_step_start_ns{0}, g_step_end_ns{0};
 std::atomic<uint64_t> g_gap_in_ns{0}, g_gap_in_n{0}, g_gap_out_ns{0}, g_gap_out_n{0};
 std::atomic<uint64_t> g_t1_ns{0}, g_t2_ns{0}, g_t3_ns{0}, g_inter_n{0};
-std::atomic<bool> g_warmup_touched_host_pages{false};
-
-inline void MaybeTrimPostWarmupWorkingSet() noexcept {
-  if (!g_warmup_touched_host_pages.exchange(false, std::memory_order_acq_rel)) return;
-#if defined(_WIN32)
-  MEMORYSTATUSEX mem_stat{};
-  mem_stat.dwLength = sizeof(mem_stat);
-  if (GlobalMemoryStatusEx(&mem_stat) && mem_stat.ullTotalPhys < (48ULL << 30)) {
-    static_cast<void>(SetProcessWorkingSetSizeEx(
-        GetCurrentProcess(), static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1), 0));
-  }
-#endif
-}
 }  // namespace
 
 namespace {
@@ -299,6 +286,28 @@ inline bool IsInQMoEWarmup(const void* session_scope) noexcept {
 inline bool ConsumeQMoEPrefillNewTurn(const void* session_scope) noexcept {
   auto* controls = RunControlsOf(session_scope);
   return controls != nullptr && controls->ConsumePrefillNewTurn();
+}
+
+// The pending-trim state belongs to the session that warmed up, so another session's live run cannot consume it.
+inline void MarkQMoEWarmupTouchedHostPages(const void* session_scope) noexcept {
+  if (session_scope == nullptr) return;
+  static_cast<onnxruntime::cuda::QMoESessionController*>(const_cast<void*>(session_scope))
+      ->MarkWarmupTouchedHostPages();
+}
+
+// Trims the process working set once, on the first live run after this session's warm-up touched cold-expert pages.
+inline void MaybeTrimPostWarmupWorkingSet(const void* session_scope) noexcept {
+  if (session_scope == nullptr) return;
+  auto* controller = static_cast<onnxruntime::cuda::QMoESessionController*>(const_cast<void*>(session_scope));
+  if (!controller->ConsumeWarmupTouchedHostPages()) return;
+#if defined(_WIN32)
+  MEMORYSTATUSEX mem_stat{};
+  mem_stat.dwLength = sizeof(mem_stat);
+  if (GlobalMemoryStatusEx(&mem_stat) && mem_stat.ullTotalPhys < (48ULL << 30)) {
+    static_cast<void>(SetProcessWorkingSetSizeEx(
+        GetCurrentProcess(), static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1), 0));
+  }
+#endif
 }
 
 inline int QMoEPrefillTotalTokens(const void* session_scope, int default_value) noexcept {
@@ -5565,7 +5574,7 @@ Status QMoEOffload::StepBetweenRuns(cudaStream_t stream) const {
       (layer_index_ == 0 && !IsInQMoEWarmup(session_controller_.get()) &&
        ConsumeQMoEPrefillNewTurn(session_controller_.get()));
   if (layer_index_ == 0 && !IsInQMoEWarmup(session_controller_.get())) {
-    MaybeTrimPostWarmupWorkingSet();
+    MaybeTrimPostWarmupWorkingSet(session_controller_.get());
   }
   if (g_prefill_dma_active.load(std::memory_order_acquire) || new_turn_env) {
     if (new_turn_env) {
@@ -8466,9 +8475,9 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
   // The flag is sampled once so that every tile of this invocation agrees.
   const bool in_warmup = IsInQMoEWarmup(session_controller_.get());
   if (in_warmup && num_experts_ >= 64) {
-    g_warmup_touched_host_pages.store(true, std::memory_order_release);
+    MarkQMoEWarmupTouchedHostPages(session_controller_.get());
   } else if (!in_warmup && layer_index_ == 0) {
-    MaybeTrimPostWarmupWorkingSet();
+    MaybeTrimPostWarmupWorkingSet(session_controller_.get());
   }
 
   for (int64_t start = 0; start < rows;) {
@@ -9594,9 +9603,14 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
   CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture));
   const bool is_capturing = (capture != cudaStreamCaptureStatusNone);
 
+  // Decode-sized warm-ups reach this path instead of ComputeShared, so they must also arm the post-warm-up trim.
+  if (num_experts_ >= 64 && IsInQMoEWarmup(session_controller_.get())) {
+    MarkQMoEWarmupTouchedHostPages(session_controller_.get());
+  }
+
   if (!is_capturing) {
     if (layer_index_ == 0 && !IsInQMoEWarmup(session_controller_.get())) {
-      MaybeTrimPostWarmupWorkingSet();
+      MaybeTrimPostWarmupWorkingSet(session_controller_.get());
     }
     if (g_prefill_dma_active.load(std::memory_order_acquire)) {
       FinalizeQMoEPrefillAndSeedDecode(device_id_, stream, session_controller_.get());

@@ -4030,6 +4030,41 @@ TestQMoEOffloadV4()._check_int2_bf16_tensorcore_scale_limits_and_dispatch()
             del ref
             gc.collect()
 
+    def test_v4_int4_decode_sized_warmup_with_many_experts_then_live_runs_match(self):
+        # Decode-sized warm-up runs take the asynchronous path and, with at least 64 experts, arm the post-warm-up
+        # working-set trim. The trim must not change results of the live runs that follow.
+        self._skip_unless_int4_bf16_runner()
+        warmup = ort.RunOptions()
+        warmup.add_run_config_entry("ep.cuda.qmoe_in_warmup", "1")
+        num_experts = 64
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model = self._build_int_qmoe_model(tmpdir, [(4, 32, 1)], num_experts=num_experts)
+            ref = self._make_session(model, {"session.moe.offload.mode": "disabled"})
+            sess = self._make_session(
+                model,
+                {
+                    "session.moe.offload.mode": "required",
+                    "session.moe.offload.placement": "static",
+                    "session.moe.offload.popularity_file": "expert-profile.bin",
+                    "session.moe.offload.cpu_execution": "enabled",
+                    "session.moe.offload.device_expert_bytes": str(num_experts * 8 + 2 * 55304),
+                    "session.moe.offload.host_expert_bytes": str(2 * 55808),
+                },
+            )
+            rng = np.random.default_rng(33935)
+            for step, run_options in enumerate([warmup, warmup, None, None, warmup, None]):
+                x = rng.standard_normal((4, 256), dtype=np.float32) * 0.5
+                router = np.full((4, num_experts), -10.0, dtype=np.float32)
+                router[:, 0] = 10.0
+                router[:, 4 + step % 4] = 10.0
+                self._assert_int_offload_parity(
+                    self._run_bf16(ref, x, router),
+                    _run_qmoe_bf16(sess, x, router, run_options),
+                    f"decode_sized_warmup({step=},warmup={run_options is not None})",
+                )
+            del sess, ref
+            gc.collect()
+
     def test_v4_int4_default_stream_tile_and_wave_fit_the_working_budget(self):
         self._skip_unless_int4_bf16_runner()
         rows = 2048
