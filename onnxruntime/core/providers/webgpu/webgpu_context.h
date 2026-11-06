@@ -270,6 +270,8 @@ class WebGpuContextFactory {
  private:
   WebGpuContextFactory() {}
 
+  static WebGpuContext& CreateContextImpl(const WebGpuContextConfig& config, bool retain_existing);
+
   static std::mutex mutex_;
   static std::once_flag init_default_flag_;
 

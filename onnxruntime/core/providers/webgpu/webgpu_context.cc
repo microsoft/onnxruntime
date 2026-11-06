@@ -1725,9 +1725,23 @@ std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo>* WebGpuCont
 WebGpuInstanceWrapper* WebGpuContextFactory::default_instance_ = nullptr;
 
 WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& config) {
+  return CreateContextImpl(config, false);
+}
+
+WebGpuContext& WebGpuContextFactory::CreateContextImpl(const WebGpuContextConfig& config, bool retain_existing) {
+  std::lock_guard<std::mutex> lock(mutex_);
   const int context_id = config.context_id;
   WGPUInstance instance = config.instance;
   WGPUDevice device = config.device;
+
+  // Allocators retain the configured context without requesting a configuration change.
+  if (retain_existing && contexts_ != nullptr) {
+    auto it = contexts_->find(context_id);
+    if (it != contexts_->end()) {
+      ++it->second.ref_count;
+      return *it->second.context;
+    }
+  }
 
   std::call_once(init_default_flag_, [
 #if !defined(__wasm__)
@@ -1752,8 +1766,6 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
 #endif
 #endif
   });
-
-  std::lock_guard<std::mutex> lock(mutex_);
 
   if (default_instance_ == nullptr) {
     // Create wgpu::Instance
@@ -1870,18 +1882,8 @@ void WebGpuContextFactory::Cleanup() {
 }
 
 WebGpuContext& WebGpuContextFactory::DefaultContext() {
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (contexts_ != nullptr) {
-      auto it = contexts_->find(0);
-      if (it != contexts_->end()) {
-        ++it->second.ref_count;
-        return *it->second.context;
-      }
-    }
-  }
   WebGpuContextConfig config{};
-  return WebGpuContextFactory::CreateContext(config);
+  return CreateContextImpl(config, true);
 }
 
 void CleanupWebGpuContexts() {

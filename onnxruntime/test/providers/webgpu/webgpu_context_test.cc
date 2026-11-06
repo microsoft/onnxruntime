@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <barrier>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -12,6 +13,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -327,6 +329,41 @@ TEST(WebGpuContextTest, DawnCacheInterfaceRejectsConflictingConfiguration) {
     WebGpuProviderFactoryCreator::Create(options);
   },
                                       "different dawnCacheInterface");
+}
+
+TEST(WebGpuContextTest, DawnCacheInterfaceConcurrentDefaultContextAcquisition) {
+  RunWithFreshDefaultContext([]() {
+    OrtDawnCacheInterface cache{};
+    cache.version = ORT_DAWN_CACHE_INTERFACE_VERSION;
+    cache.load = [](const void*, size_t, void*, size_t, void*) -> size_t { return 0; };
+    cache.store = [](const void*, size_t, const void*, size_t, void*) {};
+    ConfigOptions options;
+    ASSERT_STATUS_OK(options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+    ASSERT_STATUS_OK(options.AddConfigEntry(
+        kDawnCacheInterface, std::to_string(reinterpret_cast<uintptr_t>(&cache)).c_str()));
+    auto provider = WebGpuProviderFactoryCreator::Create(options);
+    auto* configured_context = &webgpu::WebGpuContextFactory::GetContext(0);
+
+    constexpr size_t thread_count = 16;
+    std::array<webgpu::WebGpuContext*, thread_count> acquired_contexts{};
+    std::barrier start{static_cast<ptrdiff_t>(thread_count)};
+    std::vector<std::thread> threads;
+    threads.reserve(thread_count);
+    for (size_t index = 0; index < thread_count; ++index) {
+      threads.emplace_back([&, index]() {
+        start.arrive_and_wait();
+        acquired_contexts[index] = &webgpu::WebGpuContextFactory::DefaultContext();
+      });
+    }
+    for (auto& thread : threads) {
+      thread.join();
+    }
+    for (auto* context : acquired_contexts) {
+      EXPECT_EQ(context, configured_context);
+      webgpu::WebGpuContextFactory::ReleaseContext(0);
+    }
+  },
+                             true);
 }
 
 TEST(WebGpuContextTest, DawnCacheInterfaceRejectsInvalidConfiguration) {

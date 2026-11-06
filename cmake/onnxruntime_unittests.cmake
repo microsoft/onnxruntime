@@ -64,7 +64,7 @@ function(onnxruntime_disable_gtest_character_conversion_as_error target_name)
 endfunction()
 
 function(AddTest)
-  cmake_parse_arguments(_UT "DYN" "TARGET;TEST_NAME" "LIBS;SOURCES;DEPENDS;TEST_ARGS" ${ARGN})
+  cmake_parse_arguments(_UT "DYN;NO_GTEST_REPORT" "TARGET;TEST_NAME" "LIBS;SOURCES;DEPENDS;TEST_ARGS" ${ARGN})
   if (NOT _UT_TEST_NAME)
     set(_UT_TEST_NAME ${_UT_TARGET})
   endif()
@@ -185,7 +185,7 @@ function(AddTest)
   endif()
 
   set(TEST_ARGS ${_UT_TEST_ARGS})
-  if (onnxruntime_GENERATE_TEST_REPORTS)
+  if (onnxruntime_GENERATE_TEST_REPORTS AND NOT _UT_NO_GTEST_REPORT)
     # generate a report file next to the test program
     if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       # WebAssembly use a memory file system, so we do not use full path
@@ -3113,20 +3113,33 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_USE_OPENVINO AND
                ${ONNXRUNTIME_CUSTOM_OP_OPENVINO_WRAPPER_LIB_LINK_FLAG})
 endif()
 
-if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EXTERNAL_DAWN AND TARGET dawn::dawn_native)
+if (onnxruntime_USE_WEBGPU AND NOT onnxruntime_BUILD_DAWN_SHARED_LIBRARY AND TARGET dawn::dawn_native)
+  set(webgpu_dawn_test_args)
+  if (onnxruntime_WEBGPU_STATIC_PLUGIN)
+    list(APPEND webgpu_dawn_test_args --static_plugin)
+  elseif (onnxruntime_USE_EP_API_ADAPTERS)
+    list(APPEND webgpu_dawn_test_args --plugin $<TARGET_FILE:onnxruntime_providers_webgpu>)
+  endif()
   if (onnxruntime_BUILD_SHARED_LIB)
-    AddTest(DYN TARGET onnxruntime_webgpu_external_dawn_test
+    AddTest(DYN NO_GTEST_REPORT TARGET onnxruntime_webgpu_external_dawn_test
             SOURCES ${onnxruntime_webgpu_external_dawn_test_SRC}
             LIBS dawn::dawn_native dawn::dawn_proc
+            TEST_ARGS ${webgpu_dawn_test_args}
             DEPENDS ${all_dependencies})
   else()
-    AddTest(TARGET onnxruntime_webgpu_external_dawn_test
+    AddTest(NO_GTEST_REPORT TARGET onnxruntime_webgpu_external_dawn_test
             SOURCES ${onnxruntime_webgpu_external_dawn_test_SRC}
             LIBS dawn::dawn_native dawn::dawn_proc ${onnxruntime_test_providers_libs}
+            TEST_ARGS ${webgpu_dawn_test_args}
             DEPENDS ${all_dependencies})
   endif()
   onnxruntime_add_include_to_target(onnxruntime_webgpu_external_dawn_test dawn::dawncpp_headers dawn::dawn_headers)
   target_compile_features(onnxruntime_webgpu_external_dawn_test PRIVATE cxx_std_20)
+  if (onnxruntime_USE_EP_API_ADAPTERS AND NOT onnxruntime_WEBGPU_STATIC_PLUGIN)
+    add_dependencies(onnxruntime_webgpu_external_dawn_test onnxruntime_providers_webgpu)
+  endif()
+  add_test(NAME onnxruntime_webgpu_owned_cache_test
+           COMMAND onnxruntime_webgpu_external_dawn_test --ort_owned_cache ${webgpu_dawn_test_args})
 endif()
 
 if (onnxruntime_USE_WEBGPU AND WIN32 AND onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)

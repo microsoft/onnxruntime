@@ -63,8 +63,10 @@ Omitting the option or passing `"0"` leaves caching disabled. Configure it
 before the first session or shared allocation creates the default device.
 Shared allocator registration alone does not create the device; its first
 allocation retains an existing session device or creates an uncached default
-device if no session exists. Sessions reusing a device must use the same
-interface address. Conflicting interfaces, unsupported interface versions,
+device if no session exists. Acquisition and creation share the same lock, so
+an allocator cannot accidentally request default configuration after a
+concurrent session creates the configured context. Sessions reusing a device
+must use the same interface address. Conflicting interfaces, unsupported interface versions,
 missing callbacks, and malformed addresses are rejected using ORT's normal
 configuration-error policy (fail-fast in no-exceptions builds).
 
@@ -78,6 +80,15 @@ These callbacks cache Dawn compiled shader/pipeline blobs, not model weights.
 They do not change ORT's internally created device or accelerated D3D12
 weight-loading path. Do not pass this option for a host-owned device: attach
 its Dawn cache descriptor when creating the device instead.
+
+When native Dawn is built for testing (bundled or source-based external Dawn),
+`ctest -C RelWithDebInfo -R "^onnxruntime_webgpu_owned_cache_test$"` (using the
+built configuration) runs Abs inference with CPU
+fallback disabled on three newly created ORT-owned devices. It verifies
+callback userdata, cold stores, warm cache hits, and misses with a different
+isolation key. The plugin allocator tests additionally cover registering a
+shared allocator and making zero-size/null calls before supplying cache options,
+then retaining and using the configured device after session destruction.
 
 ### Host-owned device configuration
 
