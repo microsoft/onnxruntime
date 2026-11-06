@@ -48,7 +48,7 @@ common::Status ResolveQMoE(const QMoEShapeCase& spec,
               IOnnxRuntimeOpSchemaRegistryList(), versions, {}, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   auto& empty = graph.GetOrCreateNodeArg("", nullptr);
-  std::vector<NodeArg*> inputs(21, &empty);
+  std::vector<NodeArg*> inputs(23, &empty);
   for (const auto& [index, dimensions] : spec.shapes) {
     ONNX_NAMESPACE::TypeProto type;
     int element_type = index == 2 || index == 5 || index == 8 || (index >= 11 && index <= 13)
@@ -113,6 +113,38 @@ TEST(QMoEShapeInferenceTest, Int3BaselineCombinationsAndTypes) {
       }
     }
   }
+}
+
+TEST(QMoEShapeInferenceTest, IQ2PreselectedRoutingAndLegacyRequiredRouter) {
+  QMoEShapeCase spec;
+  spec.activation_type = TensorProto::BFLOAT16;
+  spec.root_bits = 2;
+  spec.fc1_bits.reset();
+  spec.fc2_bits.reset();
+  spec.fc3_bits.reset();
+  spec.quant_type = "iq2_xxs";
+  spec.block = 256;
+  spec.fusion = 0;
+  spec.activation = "relu2";
+  spec.shapes = {{0, {3, 1024}}, {2, {12, 512, 256}}, {3, {12, 512, 4}}, {5, {12, 1024, 128}}, {6, {12, 1024, 2}}, {21, {3, 9}}, {22, {3, 9}}};
+  spec.types = {{3, TensorProto::FLOAT16}, {6, TensorProto::FLOAT16}, {21, TensorProto::INT32}, {22, TensorProto::FLOAT}};
+  ASSERT_STATUS_OK(ResolveQMoE(spec, [](const Node&, const NodeArg& output) {
+    ASSERT_NE(output.Shape(), nullptr);
+    EXPECT_EQ(output.Shape()->dim(0).dim_value(), 3);
+    EXPECT_EQ(output.Shape()->dim(1).dim_value(), 1024);
+    EXPECT_EQ(output.TypeAsProto()->tensor_type().elem_type(), TensorProto::BFLOAT16);
+  }));
+  spec.shapes.erase(22);
+  EXPECT_FALSE(ResolveQMoE(spec).IsOK());
+  spec.shapes[22] = {3, 9};
+  spec.shapes[1] = {3, 12};
+  EXPECT_FALSE(ResolveQMoE(spec).IsOK());
+  spec.shapes.erase(1);
+  spec.quant_type = "int";
+  EXPECT_FALSE(ResolveQMoE(spec).IsOK());
+  spec.shapes.erase(21);
+  spec.shapes.erase(22);
+  EXPECT_FALSE(ResolveQMoE(spec).IsOK());
 }
 
 TEST(QMoEShapeInferenceTest, InheritanceAndLegacyActivationChoices) {

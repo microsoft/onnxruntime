@@ -30,6 +30,7 @@
 #include "contrib_ops/cuda/llm/moe_gemm/moe_int2_prefill.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_util_kernels.h"
 #include "contrib_ops/cuda/quantization/dequantize_blockwise.cuh"
+#include "contrib_ops/cuda/quantization/packed_moe_impl.h"
 #if defined(HAS_SM90_OR_LATER) && defined(USE_DEEP_GEMM)
 #include "contrib_ops/cuda/llm/moe_gemm/deep_gemm_sm90.h"
 #endif
@@ -443,8 +444,11 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
                   quant_type_ == "int",
               "CUDA QMoE GEGLU currently supports only quant_type='int'.");
   ORT_ENFORCE(quant_type_ == "int" || quant_type_ == "fp4" || quant_type_ == "nvfp4" ||
-                  quant_type_ == "fp8" || quant_type_ == "wfp4afp8",
-              "quant_type must be 'int', 'fp4', 'nvfp4', 'fp8', or 'wfp4afp8', but got '", quant_type_, "'");
+                  quant_type_ == "fp8" || quant_type_ == "wfp4afp8" || quant_type_ == "iq2_xxs",
+              "quant_type must be 'int', 'fp4', 'nvfp4', 'fp8', 'wfp4afp8', or 'iq2_xxs', but got '", quant_type_, "'");
+  ORT_ENFORCE(quant_type_ == "iq2_xxs" ||
+                  (GetOffloadInputName(op_kernel_info, 21).empty() && GetOffloadInputName(op_kernel_info, 22).empty()),
+              "QMoE preselected routing currently requires quant_type='iq2_xxs'.");
   const bool use_int_dequant_fallback =
       quant_type_ == "int" && !has_int3_ && (is_mixed_width || expert_weight_bits_ == 2);
   enable_int2_gemv_ = quant_type_ == "int" &&
@@ -526,6 +530,30 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   is_fp16_ = is_fp16;
   // The offload backend is set up at the end of the constructor, and only when the policy enables it for this node.
   const auto offload_controller = ParseOffloadPolicy(op_kernel_info);
+  if (quant_type_ == "iq2_xxs") {
+    ORT_ENFORCE(!is_fp16_ && sm_ >= 80 &&
+                    expert_weight_bits_ == 2 && fc1_expert_weight_bits_ == 2 &&
+                    fc2_expert_weight_bits_ == 2 && fc3_expert_weight_bits_ == 2 &&
+                    block_size_ == 256 && weights_prepacked_mode_ == 0 &&
+                    activation_type_ == ActivationType::Relu2 &&
+                    !normalize_routing_weights_ && !use_sparse_mixer_,
+                "QMoE IQ2_XXS requires SM80+, BF16, 2-bit weights, block_size=256, "
+                "weights_prepacked=0, relu2, and no routing normalization or sparse mixer.");
+    ORT_ENFORCE(k_ > 0 && k_ <= 32, "QMoE IQ2_XXS requires 1 <= k <= 32.");
+    ORT_ENFORCE(offload_policy_.mode != onnxruntime::moe_offload::OffloadMode::kRequired,
+                "QMoE IQ2_XXS does not support required offloading.");
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+    ORT_ENFORCE(!routing_snapshot_, "QMoE IQ2_XXS does not support expert tracking.");
+#endif
+    for (size_t index : {1, 4, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}) {
+      ORT_ENFORCE(GetOffloadInputName(op_kernel_info, index).empty(),
+                  "QMoE IQ2_XXS does not accept input ", index, ".");
+    }
+    ORT_ENFORCE(!GetOffloadInputName(op_kernel_info, 21).empty() &&
+                    !GetOffloadInputName(op_kernel_info, 22).empty(),
+                "QMoE IQ2_XXS requires expert_indices and expert_weights.");
+    return;
+  }
   if (has_int3_) {
     ORT_ENFORCE(quant_type_ == "int" && weights_prepacked_mode == 0,
                 "INT3 CUDA QMoE requires quant_type='int' and weights_prepacked=0.");
@@ -1429,6 +1457,46 @@ bool AcquireOffloadPrefillWeights(const OffloadPrefillWeightRequest& request, in
 }  // namespace
 
 Status QMoE::ComputeInternal(OpKernelContext* context) const {
+  if (quant_type_ == "iq2_xxs") {
+    const auto* x = context->Input<Tensor>(0);
+    const auto* fc1 = context->Input<Tensor>(2);
+    const auto* scale1 = context->Input<Tensor>(3);
+    const auto* fc2 = context->Input<Tensor>(5);
+    const auto* scale2 = context->Input<Tensor>(6);
+    const auto* indices = context->Input<Tensor>(21);
+    const auto* weights = context->Input<Tensor>(22);
+    ORT_RETURN_IF_NOT(x && fc1 && scale1 && fc2 && scale2 && indices && weights,
+                      "QMoE IQ2_XXS requires input, weights, scales and preselected routes.");
+    ORT_RETURN_IF_NOT(x->Shape().NumDimensions() == 2 && x->Shape()[1] == 1024 &&
+                          x->Shape()[0] >= 1 && x->Shape()[0] <= 8 && x->Shape()[0] * k_ <= 128,
+                      "QMoE IQ2_XXS requires X[R,1024], 1<=R<=8 and R*k<=128.");
+    const int rows = static_cast<int>(x->Shape()[0]), topk = static_cast<int>(k_), pairs = rows * topk;
+    ORT_RETURN_IF_NOT(indices->Shape() == TensorShape({rows, topk}) &&
+                          weights->Shape() == indices->Shape(),
+                      "QMoE IQ2_XXS routing matrices must have shape [R,k].");
+    ORT_RETURN_IF_NOT(scale1->IsDataType<MLFloat16>() && scale2->IsDataType<MLFloat16>(),
+                      "QMoE IQ2_XXS requires FP16 super-scales, independent of BF16 activations.");
+    ORT_RETURN_IF_NOT(fc1->Shape().NumDimensions() == 3 &&
+                          fc1->Shape()[0] >= topk && fc1->Shape()[0] <= std::numeric_limits<int>::max() &&
+                          fc1->Shape()[1] > 0 && fc1->Shape()[1] <= std::numeric_limits<int>::max() &&
+                          fc1->Shape()[1] % 256 == 0 && fc1->Shape()[2] == 256,
+                      "QMoE IQ2_XXS requires FC1[E,I,256], E>=k, positive I divisible by 256 and int32 dimensions.");
+    const int experts = static_cast<int>(fc1->Shape()[0]), intermediate = static_cast<int>(fc1->Shape()[1]);
+    ORT_RETURN_IF_NOT(scale1->Shape() == TensorShape({experts, intermediate, 4}) &&
+                          fc2->Shape() == TensorShape({experts, 1024, intermediate / 4}) &&
+                          scale2->Shape() == TensorShape({experts, 1024, intermediate / 256}),
+                      "QMoE IQ2_XXS projection and super-scale shapes disagree.");
+    // FC1 consumes X before the final same-stream kernel writes Y, including an in-place Y.
+    auto hidden = GetScratchBuffer<BFloat16>(SafeInt<size_t>(pairs) * intermediate, GetComputeStream(context));
+    auto partial = GetScratchBuffer<float>(SafeInt<size_t>(pairs) * 1024, GetComputeStream(context));
+    auto metadata = GetScratchBuffer<int32_t>(1 + pairs * 9, GetComputeStream(context));
+    auto* y = context->Output(0, x->Shape());
+    CUDA_RETURN_IF_ERROR(LaunchMoEPackedIQ2XXS(
+        Stream(context), rows, topk, experts, intermediate, x->DataRaw(), indices->Data<int32_t>(),
+        weights->Data<float>(), fc1->Data<uint8_t>(), scale1->DataRaw(), fc2->Data<uint8_t>(),
+        scale2->DataRaw(), y->MutableDataRaw(), hidden.get(), partial.get(), metadata.get()));
+    return Status::OK();
+  }
   if (offload_backend_ != nullptr) {
     bool handled = false;
     ORT_RETURN_IF_ERROR(TryComputeWithOffloadBackend(context, handled));
@@ -4415,6 +4483,9 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                      bool& is_packed, PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
   is_packed = false;
+  if (quant_type_ == "iq2_xxs") {
+    return Status::OK();
+  }
   if (offload_node_registered_ && !offload_prepack_bypass_) {
     return Status::OK();
   }
