@@ -79,6 +79,10 @@ TEST(GPUDataTransferSameBufferTest, CopyTensorAsyncSelfCopyIsNoOp) {
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
   ASSERT_EQ(cudaStreamSynchronize(cuda_stream), cudaSuccess);
+#ifdef USE_CUDA_MINIMAL
+  // ~CudaStream does not destroy owned streams in CUDA minimal builds.
+  ASSERT_EQ(cudaStreamDestroy(cuda_stream), cudaSuccess);
+#endif
 }
 
 // Variant B: a same-buffer host->host copy inside a CUDA-graph capture region must not
@@ -113,6 +117,10 @@ TEST(GPUDataTransferSameBufferTest, CopyTensorAsyncSelfCopyDuringCaptureKeepsCap
   if (graph != nullptr) {
     cudaGraphDestroy(graph);
   }
+#ifdef USE_CUDA_MINIMAL
+  // ~CudaStream does not destroy owned streams in CUDA minimal builds.
+  ASSERT_EQ(cudaStreamDestroy(cuda_stream), cudaSuccess);
+#endif
 }
 
 }  // namespace test
