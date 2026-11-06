@@ -4309,6 +4309,114 @@ with tempfile.TemporaryDirectory() as directory:
             self.assertEqual(enabled[0]["zero_cold_short_circuits"], 1)
             self.assertEqual(explicit_zero[0]["zero_cold_short_circuits"], 0)
 
+    def test_v4_min_expert_weight_env_override_and_callback_doorbell_equivalence(self):
+        with tempfile.TemporaryDirectory() as model_dir:
+            model_path = self._build_int_qmoe_model(
+                model_dir,
+                layer_specs=[(2, 64, 1)],
+                num_experts=8,
+                hidden_size=256,
+                inter_size=128,
+                top_k=4,
+                use_fp16=False,
+            )
+            slot_bytes = 27656  # H=256, I=128, INT2 b64
+            fixed_bytes = 2 * 8 * 4
+            base_cfg = {
+                "session.moe.offload.mode": "required",
+                "session.moe.offload.placement": "static",
+                "session.moe.offload.popularity_file": "expert-profile.bin",
+                "session.moe.offload.device_expert_bytes": str(fixed_bytes + 2 * slot_bytes),
+                "session.moe.offload.cpu_threads": "2",
+            }
+            rng = np.random.default_rng(33916)
+            x = _round_to_act_dtype(rng.standard_normal((2, 256), dtype=np.float32) * 0.5)
+            # Normalized top-4 softmax probabilities for [4.0, 2.5, 1.0, 0.5]:
+            # rank 0 (expert 0, resident) ~ 0.775, rank 1 (expert 3, resident) ~ 0.173,
+            # rank 2 (expert 4, cold) ~ 0.038, rank 3 (expert 5, cold) ~ 0.023.
+            router = np.full((2, 8), -20.0, dtype=np.float32)
+            router[:, 0] = 4.0
+            router[:, 3] = 2.5
+            router[:, 4] = 1.0
+            router[:, 5] = 0.5
+
+            # 1. Explicit session.moe.offload.min_expert_weight="0" must disable pruning even when
+            # ORT_QMOE_MIN_EXPERT_WEIGHT="0.10" is set in the process environment.
+            unpruned_out, unpruned_stats = self._run_decode_with_telemetry(
+                model_path, {**base_cfg, "session.moe.offload.min_expert_weight": "0"}, [(x, router)], use_fp16=False
+            )
+            self.assertEqual(unpruned_stats[0]["cold_routes"], 4)
+            with mock.patch.dict(os.environ, {"ORT_QMOE_MIN_EXPERT_WEIGHT": "0.10"}):
+                env_pruned_out, env_pruned_stats = self._run_decode_with_telemetry(
+                    model_path, base_cfg, [(x, router)], use_fp16=False
+                )
+                opt_out_out, opt_out_stats = self._run_decode_with_telemetry(
+                    model_path,
+                    {**base_cfg, "session.moe.offload.min_expert_weight": "0"},
+                    [(x, router)],
+                    use_fp16=False,
+                )
+            self.assertEqual(env_pruned_stats[0]["cold_routes"], 0)
+            self.assertEqual(opt_out_stats[0]["cold_routes"], 4)
+            np.testing.assert_array_equal(unpruned_out[0], opt_out_out[0])
+            self.assertFalse(np.allclose(unpruned_out[0], env_pruned_out[0], atol=1e-3))
+
+            # 2. Callback decode (ORT_QMOE_DOORBELL=0) and Doorbell decode (ORT_QMOE_DOORBELL=1) must produce
+            # identical cold-only pruned outputs and identical CPU cold route counts, including when resident
+            # tail experts (rank 1 = expert 3, weight ~ 0.173 < 0.25) are retained while cold tail experts
+            # (ranks 2, 3 = experts 4, 5, weights < 0.25) are pruned.
+            prune_cfg = {
+                **base_cfg,
+                "session.moe.offload.min_expert_weight": "0.25",
+                "session.moe.offload.skip_tail_cold_only": "1",
+            }
+            with (
+                mock.patch.dict(os.environ, {"ORT_QMOE_DOORBELL": "1", "ORT_QMOE_SHARED_CPU_TIMING": "1"}),
+                _capture_native_stderr() as db_log,
+            ):
+                sess_db = self._make_session(model_path, prune_cfg)
+                out_db = self._run_bf16(sess_db, x, router)
+                del sess_db
+                gc.collect()
+            with (
+                mock.patch.dict(os.environ, {"ORT_QMOE_DOORBELL": "0", "ORT_QMOE_SHARED_CPU_TIMING": "1"}),
+                _capture_native_stderr() as cb_log,
+            ):
+                sess_cb = self._make_session(model_path, prune_cfg)
+                out_cb = self._run_bf16(sess_cb, x, router)
+                del sess_cb
+                gc.collect()
+            np.testing.assert_allclose(out_db, out_cb, rtol=0, atol=0)
+            self.assertEqual(_cpu_path_route_rows(db_log[0])[0][2], 0, db_log[0])
+            self.assertEqual(_cpu_path_route_rows(cb_log[0])[0][2], 0, cb_log[0])
+            self.assertFalse(np.allclose(out_db, unpruned_out[0], atol=1e-3))
+
+            # 3. All-cold decode (device_expert_bytes="0", 0 resident slots) must also prune cold tail experts.
+            all_cold_cfg = {
+                **prune_cfg,
+                "session.moe.offload.device_expert_bytes": "0",
+                "session.moe.offload.min_expert_weight": "0.10",
+            }
+            all_cold_skip_all_cfg = {
+                **all_cold_cfg,
+                "session.moe.offload.skip_tail_cold_only": "0",
+            }
+            with (
+                mock.patch.dict(os.environ, {"ORT_QMOE_SHARED_CPU_TIMING": "1"}),
+                _capture_native_stderr() as ac_log,
+            ):
+                sess_ac = self._make_session(model_path, all_cold_cfg)
+                out_ac = self._run_bf16(sess_ac, x, router)
+                del sess_ac
+                gc.collect()
+            sess_ac_all = self._make_session(model_path, all_cold_skip_all_cfg)
+            out_ac_all = self._run_bf16(sess_ac_all, x, router)
+            del sess_ac_all
+            gc.collect()
+            np.testing.assert_allclose(out_ac, out_ac_all, rtol=0, atol=0)
+            # Only ranks 0 and 1 (2 routes/token * 2 tokens = 4 routes) survive the 0.10 threshold in all-cold mode.
+            self.assertEqual(_cpu_path_route_rows(ac_log[0])[0][2], 4, ac_log[0])
+
     def test_v4_int4_and_int3_bf16_int4_prepacked_offload_parity(self):
         # Quick builds (ORT_QUICK_BUILD) do not compile the native BF16 INT4 QMoE runner that every session here needs.
         self._skip_unless_int4_bf16_runner()
