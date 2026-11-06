@@ -82,7 +82,7 @@ __global__ void MoeGroupKernel(const int32_t* idx, int P, int topk, int experts,
   if (q >= 0) meta[1 + P + srank[q] * 8 + p / topk] = p;
 }
 
-template <int PH, int KW>
+template <int PH, int KW, bool ALIGNED = false>
 __global__ void __launch_bounds__(KW * 32)
     MoeMmaKernel(const bf16* xin, const int32_t* meta, int P, int R, int Nrows, int K,
                  const uint8_t* w, const bf16* sc, void* out) {
@@ -115,10 +115,10 @@ __global__ void __launch_bounds__(KW * 32)
 #pragma unroll
       for (int h = 0; h < 2; ++h) {
         const int64_t row = e * Nrows + min(n_base + m * 16 + g + 8 * h, Nrows - 1);
-        LoadWeightRow<FMT, false>(w, sc, row, K, c, t, st.raw[m][h], st.sc[m][h]);
+        LoadWeightRow<FMT, false, ALIGNED>(w, sc, row, K, c, t, st.raw[m][h], st.sc[m][h]);
       }
     }
-    LoadX<1>(xr, xvalid, c, t, st.x);
+    LoadX<1, ALIGNED>(xr, xvalid, c, t, st.x);
   });
   ReduceEpilogue<MT, KW>(acc, warp, g, t, [&](int rl, int col, float v) {
     const int j = n_base + rl;
@@ -195,9 +195,19 @@ cudaError_t LaunchMoEPackedIQ2XXS(cudaStream_t stream, int rows, int topk, int e
   MoeMmaKernel<1, 4><<<dim3(intermediate_size / 32, pairs), 128, 4 * 2 * 16 * 8 * sizeof(float), stream>>>(
       static_cast<const bf16*>(input), metadata, pairs, rows, intermediate_size, 1024,
       fc1, static_cast<const bf16*>(scale1), hidden);
-  MoeMmaKernel<2, 8><<<dim3(1024 / 32, pairs), 256, 8 * 2 * 16 * 8 * sizeof(float), stream>>>(
-      static_cast<const bf16*>(hidden), metadata, pairs, rows, 1024, intermediate_size,
-      fc2, static_cast<const bf16*>(scale2), expert_output);
+  // Check base and BF16 row-stride alignment once, outside the per-chunk load loop.
+  const bool aligned_fc2 = intermediate_size % 8 == 0 &&
+                           (reinterpret_cast<uintptr_t>(hidden) & 15) == 0 &&
+                           (reinterpret_cast<uintptr_t>(fc2) & 7) == 0;
+  if (aligned_fc2) {
+    MoeMmaKernel<2, 8, true><<<dim3(1024 / 32, pairs), 256, 8 * 2 * 16 * 8 * sizeof(float), stream>>>(
+        static_cast<const bf16*>(hidden), metadata, pairs, rows, 1024, intermediate_size,
+        fc2, static_cast<const bf16*>(scale2), expert_output);
+  } else {
+    MoeMmaKernel<2, 8><<<dim3(1024 / 32, pairs), 256, 8 * 2 * 16 * 8 * sizeof(float), stream>>>(
+        static_cast<const bf16*>(hidden), metadata, pairs, rows, 1024, intermediate_size,
+        fc2, static_cast<const bf16*>(scale2), expert_output);
+  }
   MoeFinalizeKernel<<<dim3(rows, 4), 64, 0, stream>>>(expert_output, weights, topk, static_cast<bf16*>(output));
   return cudaGetLastError();
 }

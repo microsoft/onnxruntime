@@ -20,23 +20,26 @@ DeviceBuffer Allocate(size_t bytes) {
   return DeviceBuffer(ptr, cudaFree);
 }
 
-TEST(PackedMoEKernelTest, MultiWarpGroupingAndOffsetBindings) {
+void CheckMultiWarpGroupingAndOffsetBindings(int intermediate) {
   int count = 0;
   ASSERT_EQ(cudaGetDeviceCount(&count), cudaSuccess);
   if (count == 0) GTEST_SKIP() << "Requires CUDA";
   cudaDeviceProp prop{};
   ASSERT_EQ(cudaGetDeviceProperties(&prop, 0), cudaSuccess);
   if (prop.major < 8) GTEST_SKIP() << "Requires CUDA SM80+";
-  constexpr int rows = 8, topk = 16, pairs = rows * topk, experts = 64, intermediate = 256;
-  InlinedVector<uint16_t> x(rows * 1024), scale1(experts * intermediate * 4), scale2(experts * 1024);
+  constexpr int rows = 8, topk = 16, pairs = rows * topk, experts = 64;
+  const int scale2_per_expert = 1024 * (intermediate / 256);
+  InlinedVector<uint16_t> x(rows * 1024), scale1(experts * intermediate * 4),
+      scale2(experts * scale2_per_expert);
   // Grid zero with zero signs/scale nibble decodes to the raw FP16 super-scale.
-  InlinedVector<uint8_t> fc1(experts * intermediate * 256, 0), fc2(experts * 1024 * 64, 0);
+  InlinedVector<uint8_t> fc1(experts * intermediate * 256, 0), fc2(experts * 1024 * (intermediate / 4), 0);
   InlinedVector<int32_t> indices(pairs), metadata(1 + 9 * pairs, -1), unique;
   InlinedVector<float> weights(pairs), expected_part(pairs * 1024);
   InlinedVector<uint16_t> expected_hidden(pairs * intermediate), expected_y(rows * 1024);
   for (int e = 0; e < experts; ++e) {
     std::fill_n(scale1.begin() + e * intermediate * 4, intermediate * 4, MLFloat16((e + 1) / 256.f).val);
-    std::fill_n(scale2.begin() + e * 1024, 1024, MLFloat16((e % 7 + 1) / 16.f).val);
+    std::fill_n(scale2.begin() + e * scale2_per_expert, scale2_per_expert,
+                MLFloat16((e % 7 + 1) / 16.f).val);
   }
   for (int r = 0; r < rows; ++r) {
     const float activation = BFloat16((r + 1) / 1024.f).ToFloat();
@@ -59,7 +62,7 @@ TEST(PackedMoEKernelTest, MultiWarpGroupingAndOffsetBindings) {
       const BFloat16 hidden(relu * relu);
       std::fill_n(expected_hidden.begin() + p * intermediate, intermediate, hidden.val);
       dot = 0.f;
-      const float w2 = BFloat16(MLFloat16::FromBits(scale2[e * 1024]).ToFloat()).ToFloat();
+      const float w2 = BFloat16(MLFloat16::FromBits(scale2[e * scale2_per_expert]).ToFloat()).ToFloat();
       for (int i = 0; i < intermediate; ++i) dot = std::fma(hidden.ToFloat(), w2, dot);
       std::fill_n(expected_part.begin() + p * 1024, 1024, BFloat16(dot).ToFloat());
     }
@@ -127,6 +130,13 @@ TEST(PackedMoEKernelTest, MultiWarpGroupingAndOffsetBindings) {
     EXPECT_EQ(actual_hidden, expected_hidden);
     EXPECT_EQ(actual_part, expected_part);
     EXPECT_EQ(actual_y, expected_y);
+  }
+}
+
+TEST(PackedMoEKernelTest, MultiWarpGroupingAndOffsetBindings) {
+  for (int intermediate : {256, 1536, 2304}) {
+    SCOPED_TRACE(testing::Message() << "intermediate=" << intermediate);
+    ASSERT_NO_FATAL_FAILURE(CheckMultiWarpGroupingAndOffsetBindings(intermediate));
   }
 }
 

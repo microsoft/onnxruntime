@@ -383,14 +383,14 @@ __device__ __forceinline__ void Iq2TablesInit() {
 
 // WIDE (int4 / fp4 only): a thread loads 16 bytes = 32 k of a row per chunk (chunk = 128 k, 64 contiguous bytes per row
 // for the 4 threads t) instead of 8 bytes; the two 16-k halves are consumed as two MMA groups.
-template <int FMT, bool WIDE>
+template <int FMT, bool WIDE, bool ALIGNED = false>
 __device__ __forceinline__ void LoadWeightRow(const uint8_t* w, const void* sc, int64_t row, int K, int c, int t,
                                               uint4& raw, float* scale) {
   if constexpr (FMT == kFmtIq2N) {
     // chunk c = 64 k = two 32-k groups of 8-byte records; thread t owns half (t & 1) of group 2c + (t >> 1)
     const uint8_t* record = w + (row * (K / 32) + 2 * c + (t >> 1)) * 8;
     uint2 rec;
-    if ((reinterpret_cast<uintptr_t>(record) & 7) == 0) {
+    if (ALIGNED || (reinterpret_cast<uintptr_t>(record) & 7) == 0) {
       rec = __ldg(reinterpret_cast<const uint2*>(record));
     } else {
       rec = make_uint2(0, 0);
@@ -518,14 +518,14 @@ __device__ __forceinline__ void DequantRow(const uint4& raw, float scale, uint32
 }
 
 // Loads the x fragments of one chunk: 16 (or 32) contiguous k of activation row g for this thread.
-template <int NH>
+template <int NH, bool ALIGNED = false>
 __device__ __forceinline__ void LoadX(const bf16* xr, bool valid, int c, int t, uint4* xo) {
   const uint16_t* xp = reinterpret_cast<const uint16_t*>(xr + 64 * NH * c + 16 * NH * t);
 #pragma unroll
   for (int i = 0; i < 2 * NH; ++i) {
     if (!valid) {
       xo[i] = make_uint4(0, 0, 0, 0);
-    } else if ((reinterpret_cast<uintptr_t>(xp) & 15) == 0) {
+    } else if (ALIGNED || (reinterpret_cast<uintptr_t>(xp) & 15) == 0) {
       xo[i] = __ldg(reinterpret_cast<const uint4*>(xp) + i);
     } else {
       uint32_t words[4];
