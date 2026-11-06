@@ -6661,6 +6661,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Whether to use sparse mixer</dd>
 <dt><tt>weights_prepacked</tt> : int</dt>
 <dd>Expert-weight layout selector with quantization-specific meanings. For quant_type='int', -1 and 1 select execution-provider-specific prepacked int4/int8 fc1/fc2 layouts. 0 selects raw [E,N,K/pack] tensors as produced by quantize_matmul_{4,8}bits. For quant_type='nvfp4' on CUDA, -1 (default) and 0 select legacy N-packed [E,K,N/2] bytes; 1 selects K-packed row-major [E,N,K/2] bytes while retaining logical [E,K,N/2] dimensions. NVFP4 block scales and global scales retain their original layouts and values. Ignored for other quantization types. Supported values are -1, 0, and 1; defaults to -1.</dd>
+<dt><tt>zero_point_offset</tt> : float</dt>
+<dd>Fractional zero-point center for 2-bit integer block-wise quantization (CUDA only). When set, dequantization uses (code - zero_point_offset) * scale instead of the default symmetric center 2^(bits-1). Typical value 1.5 for balanced 2-bit quantization. Must be finite; only valid when quant_type='int', block_size > 0, and every expert weight width is 2 bits (INT3 and mixed widths are rejected). Cannot be combined with fc*_zero_points tensor inputs. Other execution providers reject this attribute.</dd>
 </dl>
 
 #### Inputs (6 - 21)
