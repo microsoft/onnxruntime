@@ -12,7 +12,7 @@ forwards this option to the helper.
 
 The manylinux CPU, CUDA and WebGPU images inherit Node/npm from their producer
 bases instead of reinstalling them. Custom `BASEIMAGE` overrides must also provide
-Node/npm; the retained AlmaLinux9 ARM64 bases keep their existing versions.
+Node/npm.
 
 Build and promote upstream test images before changing `BASEIMAGE` defaults or
 pipeline/workflow overrides for validation. Use verified immutable digests, preserve the
@@ -72,15 +72,16 @@ supported for custom images and historical packaging metadata.
 
 ## Current official base images
 
-The manifest records the eight consumed official AlmaLinux8 families alongside
+The manifest records the nine consumed official AlmaLinux8 and AlmaLinux9 families alongside
 their tags, digests and producer build IDs. Its `producer_builds` entries record
 the source commits for those builds. ADO and GitHub consumers
 select these families rather than duplicating their pins or current release
 provenance in this document or CI files.
 
-CUDA13 ARM64 selections retain their existing AlmaLinux9 `20260323.1` base,
-now pinned to the digest resolved from that tag;
-the new AlmaLinux8 ARM64 CUDA family is not an ABI-compatible replacement.
+CUDA13 ARM64 selections use the refreshed AlmaLinux9 family from the same
+official producer build as the AlmaLinux8 families. Its repository now uses the
+shared promotion namespace rather than the historical image's namespace.
+The AlmaLinux8 ARM64 CUDA family is not an ABI-compatible replacement.
 The new bases provide CPython 3.11--3.14, not 3.10, so CUDA, TensorRT and WebGPU
 CI jobs that previously selected `/opt/python/cp310-cp310` now select
 `/opt/python/cp311-cp311` consistently for build and test.
@@ -88,6 +89,4 @@ CI jobs that previously selected `/opt/python/cp310-cp310` now select
 The dependency refresh alone is not a clean-scan claim. npm 11.21.1 still bundles
 `ip-address` 10.7.2, below the report's 10.7.4 target. CUDA's Nsight `nic_sampler`
 also needs a patched NVIDIA payload, not a newer host Go compiler. Keep profiling
-enabled and retain that vendor fix as an outstanding remediation gate. The historical AlmaLinux9
-ARM64 family must not be replaced by an AlmaLinux8 image from current producer
-main.
+enabled and retain that vendor fix as an outstanding remediation gate.
