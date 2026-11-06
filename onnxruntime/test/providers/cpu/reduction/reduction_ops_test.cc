@@ -2070,6 +2070,78 @@ TEST(ReductionOpTest, ReduceMean_bfloat16_cuda_opset18) {
   execution_providers.push_back(DefaultCudaExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
+
+static void RunHalfCudaReduction(const char* op, const std::vector<int64_t>& dims, const std::vector<float>& data,
+                                 const std::vector<int64_t>& axes, const std::vector<int64_t>& reduced_dims,
+                                 const std::vector<float>& expected) {
+  OpTester test(op, 18);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<MLFloat16>("data", dims, FloatsToMLFloat16s(data));
+  test.AddInput<int64_t>("axes", {static_cast<int64_t>(axes.size())}, axes, true);
+  test.AddOutput<MLFloat16>("reduced", reduced_dims, FloatsToMLFloat16s(expected));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ReductionOpTest, ReduceMean_half_cuda_large_sum_last_axis) {
+  constexpr int64_t n = 40000;
+  std::vector<float> data(n, 2.0f);
+  data.insert(data.end(), n, -1.75f);
+  RunHalfCudaReduction("ReduceMean", {2, n}, data, {1}, {2, 1}, {2.0f, -1.75f});
+}
+
+TEST(ReductionOpTest, ReduceMean_half_cuda_large_sum_first_axis) {
+  constexpr int64_t n = 40000;
+  std::vector<float> data;
+  for (int64_t i = 0; i < n; ++i) {
+    data.insert(data.end(), {2.0f, -1.75f});
+  }
+  RunHalfCudaReduction("ReduceMean", {n, 2}, data, {0}, {1, 2}, {2.0f, -1.75f});
+}
+
+// With two rows, one block reduces each column and stores the mean directly.
+TEST(ReductionOpTest, ReduceMean_half_cuda_large_sum_two_rows) {
+  constexpr int64_t n = 64;
+  std::vector<float> data(n, 40960.0f);
+  data.insert(data.end(), n, 49152.0f);
+  RunHalfCudaReduction("ReduceMean", {2, n}, data, {0}, {1, n}, std::vector<float>(n, 45056.0f));
+}
+
+TEST(ReductionOpTest, ReduceMean_half_cuda_large_count) {
+  constexpr int64_t n = 70000;
+  std::vector<float> data(n, 0.25f);
+  data.insert(data.end(), n, -0.25f);
+  RunHalfCudaReduction("ReduceMean", {2, n}, data, {1}, {2, 1}, {0.25f, -0.25f});
+}
+
+TEST(ReductionOpTest, ReduceLogSum_half_cuda_large_sum_last_axis) {
+  constexpr int64_t n = 40000;
+  std::vector<float> data(n, 2.0f);
+  data.insert(data.end(), n, 3.0f);
+  RunHalfCudaReduction("ReduceLogSum", {2, n}, data, {1}, {2, 1}, {std::log(2.0f * n), std::log(3.0f * n)});
+}
+
+TEST(ReductionOpTest, ReduceLogSum_half_cuda_large_sum_first_axis) {
+  constexpr int64_t n = 40000;
+  std::vector<float> data;
+  for (int64_t i = 0; i < n; ++i) {
+    data.insert(data.end(), {2.0f, 3.0f});
+  }
+  RunHalfCudaReduction("ReduceLogSum", {n, 2}, data, {0}, {1, 2}, {std::log(2.0f * n), std::log(3.0f * n)});
+}
+
+// Non-contiguous axes go through cuDNN.
+TEST(ReductionOpTest, ReduceLogSum_half_cuda_large_sum_non_contiguous_axes) {
+  constexpr int64_t d = 200;
+  std::vector<float> data;
+  for (int64_t i = 0; i < d; ++i) {
+    data.insert(data.end(), d, 2.0f);
+    data.insert(data.end(), d, 3.0f);
+  }
+  RunHalfCudaReduction("ReduceLogSum", {d, 2, d}, data, {0, 2}, {1, 2, 1},
+                       {std::log(2.0f * d * d), std::log(3.0f * d * d)});
+}
 #endif
 
 #ifdef USE_DNNL
