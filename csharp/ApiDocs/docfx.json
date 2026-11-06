@@ -15,7 +15,7 @@
       "noRestore": true,
       "properties": {
         "AllowUnsafeBlocks": "true",
-        "TargetFramework": "net8.0",
+        "TargetFramework": "net10.0",
         "Nullable": "enable",
         "LangVersion": "8.0",
         "IncludeMobileTargets": "false",

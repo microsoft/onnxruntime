@@ -22,11 +22,11 @@ This project does not include the capability to start an Appium server locally o
 
 ### Run instructions
 1. Build the Microsoft.ML.OnnxRuntime.Tests.MAUI project into a signed APK.
-    1. Run the following: `dotnet publish -c Release -f net9.0-android` in the Microsoft.ML.OnnxRuntime.Tests.MAUI directory.
-    2. Search for the APK files generated. They should be located in `bin\Release\net9.0-android\publish`.
+    1. Run the following with the .NET 10 SDK and Android MAUI workload: `dotnet publish -c Release -f net10.0-android` in the Microsoft.ML.OnnxRuntime.Tests.MAUI directory.
+    2. Search for the APK files generated. They should be located in `bin\Release\net10.0-android\publish`.
     3. If they're in a different location, edit the `browserstack.yml` file to target the path to the signed APK.
 2. Ensure you've set the BrowserStack credentials as environment variables.
-3. Run the following in the Microsoft.ML.OnnxRuntime.Tests.Android.BrowserStack directory: `dotnet test`
+3. Run `dotnet tool restore` and then `dotnet test` in the Microsoft.ML.OnnxRuntime.Tests.BrowserStack.Android directory. The local BrowserStack tool manifest allows runtime roll-forward so the tool can run with .NET 10.
 4. Navigate to the [BrowserStack App Automate dashboard](https://app-automate.browserstack.com/dashboard/v2/builds) to see your test running!
 
 ## Troubleshooting & Resources

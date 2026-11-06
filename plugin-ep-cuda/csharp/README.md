@@ -13,7 +13,7 @@ csharp/
 │   └── README.md                                   # Package readme (shipped inside .nupkg)
 └── test/
     └── CudaEpNuGetTest/
-        ├── CudaEpNuGetTest.csproj                  # Test console app (net8.0)
+        ├── CudaEpNuGetTest.csproj                  # Test console app (net10.0)
         ├── Program.cs                              # Registers EP, runs inference, validates output
         ├── mul.onnx                                # Test model (element-wise multiply)
         └── generate_mul_model.py                   # Script to regenerate mul.onnx
@@ -21,7 +21,7 @@ csharp/
 
 ## Prerequisites
 
-- .NET SDK 8.0 or later
+- .NET SDK 10.0 or later
 - A built CUDA plugin EP shared library
 - NVIDIA GPU with CUDA support
 - CUDA toolkit and cuDNN installed on the system
