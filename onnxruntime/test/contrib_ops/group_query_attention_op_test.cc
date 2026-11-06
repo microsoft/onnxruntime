@@ -4938,7 +4938,7 @@ static std::string RunGQARaggedBidirectionalPromptCase(bool reject_cudnn_graph) 
           const MLFloat16* row = output + (b * sequence_length + token) * hidden_size + head * head_size;
           for (int d = 0; d < head_size; ++d) {
             const float actual = row[d].ToFloat();
-            if (std::abs(actual - expected) > 0.005f && mismatches++ == 0) {
+            if ((!std::isfinite(actual) || std::abs(actual - expected) > 0.005f) && mismatches++ == 0) {
               ADD_FAILURE() << "batch " << b << " (valid length " << valid_length << ") token " << token
                             << " head " << head << " dim " << d << ": got " << actual << ", expected " << expected;
             }
@@ -4971,11 +4971,26 @@ TEST(GroupQueryAttentionTest, CudaCudnnSdpaRejectedRaggedBidirectionalPromptMask
                  << cudnn_log;
   }
 
+  // A kernel left out of the build is skipped, so the next one in dispatch order runs.
+#if USE_MEMORY_EFFICIENT_ATTENTION
+  const char* const kernel_without_flash = "SdpaKernel=EFFICIENT_ATTENTION";
+#else
+  const char* const kernel_without_flash = "SdpaKernel=MATH";
+#endif
+#if USE_FLASH_ATTENTION
+  const char* const kernel_with_flash = "SdpaKernel=FLASH_ATTENTION";
+#else
+  const char* const kernel_with_flash = kernel_without_flash;
+#endif
+
   struct Fallback {
     const char* disable_flash;
     const char* disable_memory_efficient;
+    const char* expected_kernel;
   };
-  for (const Fallback& fallback : {Fallback{"0", "0"}, Fallback{"1", "0"}, Fallback{"1", "1"}}) {
+  for (const Fallback& fallback : {Fallback{"0", "0", kernel_with_flash},
+                                   Fallback{"1", "0", kernel_without_flash},
+                                   Fallback{"1", "1", "SdpaKernel=MATH"}}) {
     SCOPED_TRACE(std::string("ORT_DISABLE_FLASH_ATTENTION=") + fallback.disable_flash +
                  " ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION=" + fallback.disable_memory_efficient);
     ScopedEnvironmentVariables fallback_env{{
@@ -4983,7 +4998,7 @@ TEST(GroupQueryAttentionTest, CudaCudnnSdpaRejectedRaggedBidirectionalPromptMask
         {"ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", fallback.disable_memory_efficient},
     }};
     const std::string fallback_log = RunGQARaggedBidirectionalPromptCase(/*reject_cudnn_graph=*/true);
-    EXPECT_NE(fallback_log.find("SdpaKernel="), std::string::npos) << fallback_log;
+    EXPECT_NE(fallback_log.find(fallback.expected_kernel), std::string::npos) << fallback_log;
     EXPECT_EQ(fallback_log.find("SdpaKernel=CUDNN_FLASH_ATTENTION"), std::string::npos) << fallback_log;
   }
 }
