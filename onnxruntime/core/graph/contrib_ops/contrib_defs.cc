@@ -3446,6 +3446,83 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GemmFloat8, 1,
                                 }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
+    MatMulPacked, 1,
+    OpSchema()
+        .SetDoc(R"DOC(Weight-only matrix multiplication with native GGUF tensor block payloads.
+
+Computes Y = A @ dequantize(B).T. With quant_type="iq2_xxs", each
+256-weight block contains a little-endian FP16 scale followed by 64 bytes of
+grid indices, sign indices and local multipliers, without padding or repacking.
+With quant_type="q8_0", each 32-weight block contains a little-endian FP16 scale
+followed by 32 signed INT8 values.
+With quant_type="nvfp4", each 64-weight block contains four unsigned E4M3
+scale bytes followed by 32 E2M1 bytes pairing elements j and j+8 in each
+16-weight group. Its separate FP32 global_scale input is required.
+B contains row-major tensor payload bytes, not a GGUF file header or metadata.
+IQ2_XXS and Q8_0 round complete weights to BF16 before FP32 MMA accumulation.
+NVFP4 retains source GEMV FP16 paired partial sums for one row and rescaled
+BF16/FP32 MMA for multiple rows; its global scale is applied after accumulation.
+The CUDA implementation requires SM80+ and 1 through 8 flattened activation rows.
+Bias, if needed, is a separate Add.)DOC")
+        .Attr("quant_type", "Native GGUF block codec: 'iq2_xxs', 'q8_0' or 'nvfp4'.", AttributeProto::STRING)
+        .Attr("K", "Logical input features: a multiple of 256 for IQ2_XXS, of 64 for Q8_0, or 4096/8192 for NVFP4.", AttributeProto::INT)
+        .Attr("N", "Logical output feature dimension.", AttributeProto::INT)
+        .Input(0, "A", "BF16 activation of shape [..., K], rank at least one.", "T")
+        .Input(1, "B", "Native bytes [N, packed_row_bytes]: (K/256)*66 for IQ2_XXS, (K/32)*34 for Q8_0, or (K/64)*36 for NVFP4.", "TW")
+        .Input(2, "global_scale", "Scalar or one-element FP32 global scale, required only for NVFP4.", "TF", OpSchema::Optional)
+        .Output(0, "Y", "BF16 output of shape [..., N].", "T")
+        .TypeConstraint("T", {"tensor(bfloat16)"}, "Activation and output type.")
+        .TypeConstraint("TW", {"tensor(uint8)"}, "Unmodified packed tensor bytes.")
+        .TypeConstraint("TF", {"tensor(float)"}, "NVFP4 global scale.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          const auto* quant_type = ctx.getAttribute("quant_type");
+          const bool iq2 = quant_type && quant_type->s() == "iq2_xxs";
+          const bool q8 = quant_type && quant_type->s() == "q8_0";
+          const bool nvfp4 = quant_type && quant_type->s() == "nvfp4";
+          const int64_t k = getAttribute(ctx, "K", 0);
+          const int64_t n = getAttribute(ctx, "N", 0);
+          if ((!iq2 && !q8 && !nvfp4) || k <= 0 ||
+              k > std::numeric_limits<int32_t>::max() || k % (iq2 ? 256 : 64) != 0 ||
+              n <= 0 || n > std::numeric_limits<int32_t>::max() - 32) {
+            fail_shape_inference(
+                "MatMulPacked requires quant_type='iq2_xxs', 'q8_0' or 'nvfp4', positive int32 K "
+                "divisible by 256 (IQ2_XXS) or 64 (Q8_0), and positive N <= INT32_MAX-32.");
+          }
+          if (nvfp4 && k != 4096 && k != 8192)
+            fail_shape_inference("MatMulPacked NVFP4 requires K=4096 or K=8192.");
+          const bool has_global = ctx.getNumInputs() > 2 && ctx.getInputType(2) != nullptr;
+          if (nvfp4 != has_global)
+            fail_shape_inference("MatMulPacked global_scale is required for NVFP4 and must be absent for other codecs.");
+          if (has_global && hasInputShape(ctx, 2)) {
+            const auto& global_shape = getInputShape(ctx, 2);
+            if (global_shape.dim_size() > 1 ||
+                (global_shape.dim_size() == 1 && global_shape.dim(0).has_dim_value() &&
+                 global_shape.dim(0).dim_value() != 1))
+              fail_shape_inference("MatMulPacked global_scale must be a scalar or a one-element vector.");
+          }
+          const int64_t packed_row_bytes = iq2 ? (k / 256) * 66 : nvfp4 ? (k / 64) * 36
+                                                                        : (k / 32) * 34;
+          if (hasInputShape(ctx, 1)) {
+            const auto& b = getInputShape(ctx, 1);
+            if (b.dim_size() != 2 ||
+                (b.dim(0).has_dim_value() && b.dim(0).dim_value() != n) ||
+                (b.dim(1).has_dim_value() && b.dim(1).dim_value() != packed_row_bytes)) {
+              fail_shape_inference("MatMulPacked B must have shape [N, packed_row_bytes] for the selected codec.");
+            }
+          }
+          if (!hasInputShape(ctx, 0)) return;
+          auto output = getInputShape(ctx, 0);
+          if (output.dim_size() < 1 ||
+              (output.dim(output.dim_size() - 1).has_dim_value() &&
+               output.dim(output.dim_size() - 1).dim_value() != k)) {
+            fail_shape_inference("MatMulPacked A must have shape [..., K].");
+          }
+          output.mutable_dim(output.dim_size() - 1)->set_dim_value(n);
+          updateOutputShape(ctx, 0, output);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
     MatMulBlockQuantizedFp4Weight, 1,
     OpSchema()
         .SetDoc(R"DOC(Weight-only NVFP4 (E2M1) matrix multiplication.
