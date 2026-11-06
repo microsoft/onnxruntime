@@ -7,29 +7,9 @@ namespace onnxruntime::contrib::cuda {
 namespace {
 using namespace packed_projection;
 
-__device__ bool ValidRouteRow(const int32_t* idx, int topk, int experts) {
-  for (int k = 0; k < topk; ++k) {
-    if (idx[k] < 0 || idx[k] >= experts) return false;
-    for (int j = 0; j < k; ++j)
-      if (idx[j] == idx[k]) return false;
-  }
-  return true;
-}
-
-__global__ void MoeInvalidRowsKernel(const int32_t* idx, int topk, int experts, int intermediate, bf16* hidden,
-                                     float* part) {
-  const int row = blockIdx.x;
-  if (ValidRouteRow(idx + row * topk, topk, experts)) return;
-  for (int k = 0; k < topk; ++k) {
-    const int pair = row * topk + k;
-    for (int i = threadIdx.x; i < intermediate; i += blockDim.x)
-      hidden[static_cast<int64_t>(pair) * intermediate + i] = __float2bfloat16(NAN);
-    for (int i = threadIdx.x; i < 1024; i += blockDim.x) part[static_cast<int64_t>(pair) * 1024 + i] = NAN;
-  }
-}
-
 // Group in first-occurrence order; one expert tile serves up to eight token rows.
-__global__ void MoeGroupKernel(const int32_t* idx, int P, int topk, int experts, int32_t* meta) {
+__global__ void MoeGroupKernel(const int32_t* idx, int P, int topk, int experts, int32_t* meta,
+                               int intermediate, bf16* hidden, float* part) {
   __shared__ int sidx[128], srank[128], warp_tot[4], invalid_rows[8];
   const int p = threadIdx.x, lane = p & 31, warp = p >> 5;
 #pragma unroll 5
@@ -52,6 +32,17 @@ __global__ void MoeGroupKernel(const int32_t* idx, int P, int topk, int experts,
   // The block-wide vote makes this conditional barrier uniform.
   if (__syncthreads_or(invalid)) {
     if (p < P && invalid_rows[p / topk]) sidx[p] = -1;
+    // Excluded rows are never written by either MMA kernel; preserve their NaN outputs.
+    for (int row = 0; row < P / topk; ++row) {
+      if (!invalid_rows[row]) continue;
+      for (int k = 0; k < topk; ++k) {
+        const int pair = row * topk + k;
+        for (int i = p; i < intermediate; i += blockDim.x)
+          hidden[static_cast<int64_t>(pair) * intermediate + i] = __float2bfloat16(NAN);
+        for (int i = p; i < 1024; i += blockDim.x)
+          part[static_cast<int64_t>(pair) * 1024 + i] = NAN;
+      }
+    }
     __syncthreads();
   }
   int q = -1;
@@ -188,9 +179,8 @@ cudaError_t LaunchMoEPackedIQ2XXS(cudaStream_t stream, int rows, int topk, int e
                                   const void* scale1, const uint8_t* fc2, const void* scale2, void* output,
                                   void* hidden, float* expert_output, int32_t* metadata) {
   const int pairs = rows * topk;
-  MoeInvalidRowsKernel<<<rows, 128, 0, stream>>>(indices, topk, experts, intermediate_size, static_cast<bf16*>(hidden),
-                                                 expert_output);
-  MoeGroupKernel<<<1, 128, 0, stream>>>(indices, pairs, topk, experts, metadata);
+  MoeGroupKernel<<<1, 128, 0, stream>>>(indices, pairs, topk, experts, metadata, intermediate_size,
+                                        static_cast<bf16*>(hidden), expert_output);
   // Frozen default: FC1 uses 2 MMA tiles/4 warps, FC2 uses 2 tiles/8 warps, narrow native IQ2 chunks.
   MoeMmaKernel<1, 4><<<dim3(intermediate_size / 32, pairs), 128, 4 * 2 * 16 * 8 * sizeof(float), stream>>>(
       static_cast<const bf16*>(input), metadata, pairs, rows, intermediate_size, 1024,

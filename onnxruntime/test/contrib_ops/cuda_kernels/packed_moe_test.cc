@@ -7,6 +7,7 @@
 #include "gtest/gtest.h"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <memory>
 
 #if defined(USE_CUDA) && !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS)
@@ -140,16 +141,18 @@ TEST(PackedMoEKernelTest, MultiWarpGroupingAndOffsetBindings) {
   }
 }
 
-TEST(PackedMoEKernelTest, CooperativeGroupingExcludesInvalidRows) {
+void CheckCooperativeGroupingExcludesInvalidRows(int intermediate) {
   int count = 0;
   ASSERT_EQ(cudaGetDeviceCount(&count), cudaSuccess);
   if (count == 0) GTEST_SKIP() << "Requires CUDA";
   cudaDeviceProp prop{};
   ASSERT_EQ(cudaGetDeviceProperties(&prop, 0), cudaSuccess);
   if (prop.major < 8) GTEST_SKIP() << "Requires CUDA SM80+";
-  constexpr int rows = 8, topk = 9, pairs = rows * topk, experts = 16, intermediate = 256;
-  InlinedVector<uint16_t> x(rows * 1024, 0), scale1(experts * intermediate * 4, 0), scale2(experts * 1024, 0);
-  InlinedVector<uint8_t> fc1(experts * intermediate * 256, 0), fc2(experts * 1024 * 64, 0);
+  constexpr int rows = 8, topk = 9, pairs = rows * topk, experts = 16;
+  constexpr int guard = 8;
+  InlinedVector<uint16_t> x(rows * 1024, 0), scale1(experts * intermediate * 4, 0),
+      scale2(experts * 1024 * (intermediate / 256), 0);
+  InlinedVector<uint8_t> fc1(experts * intermediate * 256, 0), fc2(experts * 1024 * (intermediate / 4), 0);
   InlinedVector<float> weights(pairs, 1.f);
   auto dx = Allocate(x.size() * sizeof(uint16_t));
   auto d1 = Allocate(fc1.size()), d2 = Allocate(fc2.size());
@@ -157,8 +160,10 @@ TEST(PackedMoEKernelTest, CooperativeGroupingExcludesInvalidRows) {
   auto dw = Allocate(weights.size() * sizeof(float));
   auto di = Allocate((pairs + 1) * sizeof(int32_t));
   auto dm = Allocate((1 + 9 * pairs + 2) * sizeof(int32_t));
-  auto dh = Allocate(pairs * intermediate * sizeof(uint16_t)), dp = Allocate(pairs * 1024 * sizeof(float));
-  auto dy = Allocate(rows * 1024 * sizeof(uint16_t));
+  const int hidden_size = pairs * intermediate + 2 * guard + 1, part_size = pairs * 1024 + 2 * guard + 1;
+  const int output_size = rows * 1024 + 2 * guard + 1;
+  auto dh = Allocate(hidden_size * sizeof(uint16_t)), dp = Allocate(part_size * sizeof(float));
+  auto dy = Allocate(output_size * sizeof(uint16_t));
   for (const auto* ptr : {dx.get(), d1.get(), d2.get(), ds1.get(), ds2.get(), dw.get(),
                           di.get(), dm.get(), dh.get(), dp.get(), dy.get()})
     ASSERT_NE(ptr, nullptr);
@@ -168,7 +173,7 @@ TEST(PackedMoEKernelTest, CooperativeGroupingExcludesInvalidRows) {
   ASSERT_EQ(cudaMemcpy(ds1.get(), scale1.data(), scale1.size() * sizeof(uint16_t), cudaMemcpyHostToDevice), cudaSuccess);
   ASSERT_EQ(cudaMemcpy(ds2.get(), scale2.data(), scale2.size() * sizeof(uint16_t), cudaMemcpyHostToDevice), cudaSuccess);
   ASSERT_EQ(cudaMemcpy(dw.get(), weights.data(), weights.size() * sizeof(float), cudaMemcpyHostToDevice), cudaSuccess);
-  for (int kind = 0; kind < 6; ++kind) {
+  for (int kind = 0; kind < 8; ++kind) {
     SCOPED_TRACE(testing::Message() << "kind=" << kind);
     InlinedVector<int32_t> indices(pairs), metadata(1 + 9 * pairs, -1), unique;
     bool invalid[rows]{};
@@ -189,6 +194,10 @@ TEST(PackedMoEKernelTest, CooperativeGroupingExcludesInvalidRows) {
         indices[r * topk] = -1;
         invalid[r] = true;
       }
+    } else if (kind == 6) {
+      indices[0] = experts;
+      indices[(rows - 1) * topk + 1] = indices[(rows - 1) * topk];
+      invalid[0] = invalid[rows - 1] = true;
     }
     for (int r = 0; r < rows; ++r) {
       if (invalid[r]) continue;
@@ -208,16 +217,23 @@ TEST(PackedMoEKernelTest, CooperativeGroupingExcludesInvalidRows) {
       SCOPED_TRACE(testing::Message() << "offset=" << offset);
       auto* pi = static_cast<int32_t*>(di.get()) + offset;
       auto* pm = static_cast<int32_t*>(dm.get()) + 1;
+      const int output_offset = guard + offset;
+      auto* ph = static_cast<uint16_t*>(dh.get()) + output_offset;
+      auto* pp = static_cast<float*>(dp.get()) + output_offset;
+      auto* py = static_cast<uint16_t*>(dy.get()) + output_offset;
       ASSERT_EQ(cudaMemcpy(pi, indices.data(), pairs * sizeof(int32_t), cudaMemcpyHostToDevice), cudaSuccess);
       ASSERT_EQ(cudaMemset(dm.get(), 0x55, (metadata.size() + 2) * sizeof(int32_t)), cudaSuccess);
+      ASSERT_EQ(cudaMemset(dh.get(), 0x55, hidden_size * sizeof(uint16_t)), cudaSuccess);
+      ASSERT_EQ(cudaMemset(dp.get(), 0x55, part_size * sizeof(float)), cudaSuccess);
+      ASSERT_EQ(cudaMemset(dy.get(), 0x55, output_size * sizeof(uint16_t)), cudaSuccess);
       ASSERT_EQ(contrib::cuda::LaunchMoEPackedIQ2XXS(
                     nullptr, rows, topk, experts, intermediate, dx.get(), pi, static_cast<const float*>(dw.get()),
                     static_cast<const uint8_t*>(d1.get()), ds1.get(), static_cast<const uint8_t*>(d2.get()),
-                    ds2.get(), dy.get(), dh.get(), static_cast<float*>(dp.get()), pm),
+                    ds2.get(), py, ph, pp, pm),
                 cudaSuccess);
       InlinedVector<int32_t> actual_metadata(metadata.size() + 2);
-      InlinedVector<uint16_t> hidden(pairs * intermediate), y(rows * 1024);
-      InlinedVector<float> part(pairs * 1024);
+      InlinedVector<uint16_t> hidden(hidden_size), y(output_size);
+      InlinedVector<float> part(part_size);
       ASSERT_EQ(cudaMemcpy(actual_metadata.data(), dm.get(), actual_metadata.size() * sizeof(int32_t),
                            cudaMemcpyDeviceToHost),
                 cudaSuccess);
@@ -227,25 +243,50 @@ TEST(PackedMoEKernelTest, CooperativeGroupingExcludesInvalidRows) {
       EXPECT_EQ(actual_metadata.front(), 0x55555555);
       EXPECT_EQ(actual_metadata.back(), 0x55555555);
       EXPECT_TRUE(std::equal(metadata.begin(), metadata.end(), actual_metadata.begin() + 1));
+      for (int i = 0; i < hidden_size; ++i)
+        if (i < output_offset || i >= output_offset + pairs * intermediate) {
+          ASSERT_EQ(hidden[i], 0x5555);
+        }
+      for (int i = 0; i < part_size; ++i)
+        if (i < output_offset || i >= output_offset + pairs * 1024) {
+          uint32_t bits;
+          std::memcpy(&bits, &part[i], sizeof(bits));
+          ASSERT_EQ(bits, 0x55555555);
+        }
+      for (int i = 0; i < output_size; ++i)
+        if (i < output_offset || i >= output_offset + rows * 1024) {
+          ASSERT_EQ(y[i], 0x5555);
+        }
       for (int r = 0; r < rows; ++r) {
         SCOPED_TRACE(testing::Message() << "row=" << r);
         for (int k = 0; k < topk; ++k) {
           const int p = r * topk + k;
           for (int j = 0; j < intermediate; ++j) {
-            const float value = BFloat16::FromBits(hidden[p * intermediate + j]).ToFloat();
+            const float value = BFloat16::FromBits(hidden[output_offset + p * intermediate + j]).ToFloat();
             ASSERT_TRUE(invalid[r] ? std::isnan(value) : value == 0.f);
           }
           for (int j = 0; j < 1024; ++j) {
-            const float value = part[p * 1024 + j];
+            const float value = part[output_offset + p * 1024 + j];
             ASSERT_TRUE(invalid[r] ? std::isnan(value) : value == 0.f);
           }
         }
         for (int j = 0; j < 1024; ++j) {
-          const float value = BFloat16::FromBits(y[r * 1024 + j]).ToFloat();
+          const float value = BFloat16::FromBits(y[output_offset + r * 1024 + j]).ToFloat();
           ASSERT_TRUE(invalid[r] ? std::isnan(value) : value == 0.f);
         }
       }
     }
+  }
+}
+
+TEST(PackedMoEKernelTest, CooperativeGroupingExcludesInvalidRows) {
+  ASSERT_NO_FATAL_FAILURE(CheckCooperativeGroupingExcludesInvalidRows(256));
+}
+
+TEST(PackedMoEKernelTest, InvalidRowsInitializeProductionSizeOffsetOutputs) {
+  for (int intermediate : {1536, 2304}) {
+    SCOPED_TRACE(testing::Message() << "intermediate=" << intermediate);
+    ASSERT_NO_FATAL_FAILURE(CheckCooperativeGroupingExcludesInvalidRows(intermediate));
   }
 }
 }  // namespace
