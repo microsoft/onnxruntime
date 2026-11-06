@@ -20,10 +20,10 @@ constexpr size_t NormalizeBufferSize(size_t size) {
 }
 
 size_t CalculateBucketBufferSize(size_t request_size) {
-  // Two intervals per doubling balance padding against reuse as tensor sizes grow.
+  // Four intervals per doubling limit padding while preserving reuse as tensor sizes grow.
   request_size = std::max(size_t{64}, request_size);
   size_t alignment = 16;
-  while ((request_size - 1) / 4 >= alignment) {
+  while ((request_size - 1) / 8 >= alignment) {
     alignment *= 2;
   }
   return (SafeInt<size_t>(request_size) + alignment - 1) / alignment * alignment;

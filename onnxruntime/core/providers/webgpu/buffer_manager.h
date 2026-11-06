@@ -80,8 +80,8 @@ class IBufferCacheManager {
   virtual void OnIdleCheck(Clock::time_point) {}
 
   // Extract all cached buffers from this manager, transferring ownership to the
-  // caller. The cache's internal containers are cleared (but bucket keys, if any,
-  // are preserved). Default returns empty; only graph-mode caches implement this.
+  // caller. The cache's internal containers are cleared. Default returns empty;
+  // only graph-mode caches implement this.
   virtual std::vector<std::pair<size_t, WGPUBuffer>> ExtractCachedBuffers() {
     return {};
   }

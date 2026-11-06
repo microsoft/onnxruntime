@@ -998,20 +998,24 @@ TEST_F(WebGpuBucketCacheTest, SharedAllocatorClearsCachedBuffersAcrossThreads) {
 }
 #endif
 
-TEST_F(WebGpuBucketCacheTest, RelativeSizeClassesAvoidKvBoundaryJump) {
+TEST_F(WebGpuBucketCacheTest, RelativeSizeClassesLimitPaddingAtKvBoundaries) {
   constexpr size_t kMiB = 1024 * 1024;
   const std::pair<size_t, size_t> cases[] = {
       {0, 64},
-      {65, 96},
+      {65, 80},
       {127, 128},
-      {129, 192},
+      {129, 160},
       {3000, 3072},
-      {70 * 1024, 96 * 1024},
+      {70 * 1024, 80 * 1024},
       {4 * kMiB, 4 * kMiB},
-      {4 * kMiB + 1024, 6 * kMiB},
-      {8 * kMiB + 1024, 12 * kMiB},
-      {12 * kMiB + 1024, 16 * kMiB},
-      {33 * kMiB, 48 * kMiB},
+      {4 * kMiB + 1024, 5 * kMiB},
+      {5 * kMiB, 5 * kMiB},
+      {5 * kMiB + 1024, 6 * kMiB},
+      {6 * kMiB + 1024, 7 * kMiB},
+      {7 * kMiB + 1024, 8 * kMiB},
+      {8 * kMiB + 1024, 10 * kMiB},
+      {12 * kMiB + 1024, 14 * kMiB},
+      {33 * kMiB, 40 * kMiB},
   };
   for (auto mode : {webgpu::BufferCacheMode::Bucket, webgpu::BufferCacheMode::Graph}) {
     SCOPED_TRACE(static_cast<int>(mode));
@@ -1381,7 +1385,7 @@ TEST_F(WebGpuBucketCacheTest, UnattributedBuffersExpireOnAnIdleEvent) {
 TEST_F(WebGpuBucketCacheTest, LargeBuffersUseRelativeClassesAndAreRetained) {
   constexpr size_t kMiB = 1024 * 1024;
   constexpr size_t kRequest = 256 * kMiB + 1;
-  constexpr size_t kCapacity = 384 * kMiB;
+  constexpr size_t kCapacity = 320 * kMiB;
   if (context_->DeviceLimits().maxBufferSize < kCapacity) {
     GTEST_SKIP() << "Device cannot allocate the selected large size class.";
   }
