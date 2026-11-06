@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <string>
 
@@ -10,6 +11,30 @@
 #include "core/framework/allocator.h"
 #include "core/framework/external_data_loader_manager.h"
 #include "core/framework/plugin_external_data_loader.h"
+#include "core/session/onnxruntime_cxx_api.h"
+
+#if defined(__wasm__) && !defined(ORT_NO_EXCEPTIONS)
+#include <emscripten.h>
+#pragma push_macro("ORT_PLUGIN_EP_SKIP_API_MANUAL_INIT")
+#undef ORT_PLUGIN_EP_SKIP_API_MANUAL_INIT
+#define ORT_PLUGIN_EP_SKIP_API_MANUAL_INIT
+#include "ep/common.h"
+#pragma pop_macro("ORT_PLUGIN_EP_SKIP_API_MANUAL_INIT")
+#endif
+
+// Exercise the header-only adapters without changing the host test's EP build mode.
+#pragma push_macro("EP_ENFORCE")
+#undef EP_ENFORCE
+#define EP_ENFORCE ORT_ENFORCE
+#pragma push_macro("ORT_EP_API_ADAPTER_HEADER_INCLUDED")
+#undef ORT_EP_API_ADAPTER_HEADER_INCLUDED
+#define ORT_EP_API_ADAPTER_HEADER_INCLUDED
+#include "ep/adapter/tensor_helper.h"
+#if defined(__wasm__) && !defined(ORT_NO_EXCEPTIONS)
+#include "ep/adapter/external_data_loader.h"
+#endif
+#pragma pop_macro("ORT_EP_API_ADAPTER_HEADER_INCLUDED")
+#pragma pop_macro("EP_ENFORCE")
 
 namespace onnxruntime {
 namespace test {
@@ -164,6 +189,119 @@ TEST(PluginExternalDataLoader, InvalidLoaderIsReleased) {
   EXPECT_THROW(plugin_ep::CreateExternalDataLoader(ep), OnnxRuntimeException);
   EXPECT_EQ(state.created, 1);
   EXPECT_EQ(state.released, 1);
+}
+#endif
+
+TEST(PluginExternalDataLoader, TensorAdapterPreservesMemoryTypes) {
+  const Ort::MemoryInfo infos[] = {
+      Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault),
+      Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPUOutput),
+      Ort::MemoryInfo{"Pinned", OrtMemoryInfoDeviceType_GPU, 0x10de, 3,
+                      OrtDeviceMemoryType_HOST_ACCESSIBLE, 0, OrtDeviceAllocator}};
+  std::array<float, 2> data{};
+  const int64_t shape[] = {2};
+  for (const auto& info : infos) {
+    SCOPED_TRACE(info.GetAllocatorName());
+    auto value = Ort::Value::CreateTensor<float>(info, data.data(), data.size(), shape, 1);
+    auto tensor = ep::adapter::CreateTensorFromApiValue(value);
+    EXPECT_EQ(tensor.MutableDataRaw(), data.data());
+    EXPECT_EQ(tensor.Location().mem_type, info.GetMemoryType());
+    EXPECT_EQ(tensor.Location().device.Type(), static_cast<OrtDevice::DeviceType>(info.GetDeviceType()));
+    EXPECT_EQ(tensor.Location().device.MemType(),
+              static_cast<OrtDevice::MemoryType>(info.GetDeviceMemoryType()));
+    EXPECT_EQ(tensor.Location().device.Vendor(), info.GetVendorId());
+    EXPECT_EQ(tensor.Location().device.Id(), info.GetDeviceId());
+  }
+}
+
+#if defined(__wasm__) && !defined(ORT_NO_EXCEPTIONS)
+struct AdapterLoaderState {
+  mutable int loads{0};
+  mutable OrtMemType memory_type{OrtMemTypeDefault};
+  mutable OrtDevice::MemoryType device_memory_type{OrtDevice::MemType::DEFAULT};
+};
+
+class WasmTestLoader final : public IExternalDataLoader {
+ public:
+  explicit WasmTestLoader(AdapterLoaderState& state) : state_(state) {}
+  bool CanLoad(const OrtMemoryInfo& info) const override {
+    state_.memory_type = info.mem_type;
+    state_.device_memory_type = info.device.MemType();
+    return true;
+  }
+  Status LoadTensor(const Env& env, const std::filesystem::path& path, FileOffsetType offset,
+                    SafeInt<size_t> length, Tensor& tensor) const override {
+    ++state_.loads;
+    return LoadWebAssemblyExternalData(env, path, offset, length, ExternalDataLoadType::CPU,
+                                       tensor.MutableDataRaw());
+  }
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WasmTestLoader);
+  AdapterLoaderState& state_;
+};
+
+TEST(PluginExternalDataLoader, WasmAdapterPreservesCapabilityMemoryTypes) {
+  AdapterLoaderState state;
+  ep::adapter::ExternalDataLoader loader{std::make_unique<WasmTestLoader>(state)};
+  const Ort::MemoryInfo infos[] = {
+      Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault),
+      Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPUOutput),
+      Ort::MemoryInfo{"Pinned", OrtMemoryInfoDeviceType_GPU, 0x10de, 3,
+                      OrtDeviceMemoryType_HOST_ACCESSIBLE, 0, OrtDeviceAllocator}};
+  for (const auto& info : infos) {
+    bool can_load = false;
+    Ort::Status status{loader.CanLoad(&loader, info, &can_load)};
+    ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+    EXPECT_TRUE(can_load);
+    EXPECT_EQ(state.memory_type, info.GetMemoryType());
+    EXPECT_EQ(state.device_memory_type, static_cast<OrtDevice::MemoryType>(info.GetDeviceMemoryType()));
+  }
+}
+
+TEST(PluginExternalDataLoader, WasmAdapterRejectsOffsetTruncationBeforeLoading) {
+  // clang-format off
+  EM_ASM(({
+    if (!Module.MountedFiles) {
+      Module.MountedFiles = new Map();
+    }
+    Module.MountedFiles.set('loader-test.data', new Uint8Array([0, 0, 0, 0, 0, 160, 63, 0, 0, 32, 192]));
+  }));
+  // clang-format on
+  AdapterLoaderState state;
+  ep::adapter::ExternalDataLoader loader{std::make_unique<WasmTestLoader>(state)};
+  const auto info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+  std::array<float, 2> data{7.0f, 9.0f};
+  const int64_t shape[] = {2};
+  auto value = Ort::Value::CreateTensor<float>(info, data.data(), data.size(), shape, 1);
+  OrtExternalDataSource source{};
+  source.file_path = "loader-test.data";
+  source.byte_size = sizeof(data);
+  const int64_t offsets[] = {-1, (int64_t{1} << 32) + 3, (int64_t{1} << 32) - 8,
+                             int64_t{1} << 32, std::numeric_limits<int64_t>::max()};
+  for (const auto offset : offsets) {
+    SCOPED_TRACE(offset);
+    source.file_offset = offset;
+    Ort::Status status{loader.LoadTensor(&loader, &source, value)};
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_EQ(status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+    EXPECT_EQ(state.loads, 0);
+    EXPECT_FLOAT_EQ(data[0], 7.0f);
+    EXPECT_FLOAT_EQ(data[1], 9.0f);
+  }
+  source.file_offset = (int64_t{1} << 32) - 9;
+  Ort::Status boundary_status{loader.LoadTensor(&loader, &source, value)};
+  ASSERT_FALSE(boundary_status.IsOK());
+  EXPECT_EQ(boundary_status.GetErrorCode(), ORT_FAIL);
+  EXPECT_NE(std::string{boundary_status.GetErrorMessage()}.find("Out of bounds."), std::string::npos);
+  EXPECT_EQ(state.loads, 1);
+  source.file_offset = 3;
+  Ort::Status status{loader.LoadTensor(&loader, &source, value)};
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  EXPECT_EQ(state.loads, 2);
+  EXPECT_FLOAT_EQ(data[0], 1.25f);
+  EXPECT_FLOAT_EQ(data[1], -2.5f);
+  EM_ASM({ Module.MountedFiles.delete('loader-test.data'); });
 }
 #endif
 

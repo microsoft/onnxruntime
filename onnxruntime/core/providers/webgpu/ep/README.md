@@ -42,6 +42,8 @@ validated file; a plugin must use that reader rather than reopen the source path
 sources identify mounted external data and have no native reader. The current C++ EP adapter
 forwards this capability only for WebAssembly; native accelerated loading and its options
 are unchanged.
+The WebAssembly adapter preserves the existing initializer limit: offsets must be nonnegative
+and offset plus byte size must be strictly less than 4 GiB, before any JavaScript offset conversion.
 
 ### Runtime compatibility
 

@@ -11,6 +11,7 @@
 #include <memory>
 #include <utility>
 
+#include "allocator.h"
 #include "tensor_helper.h"
 #include "core/framework/external_data_loader.h"
 
@@ -37,14 +38,7 @@ class ExternalDataLoader final : public OrtExternalDataLoaderImpl {
   static OrtStatus* ORT_API_CALL CanLoadImpl(const OrtExternalDataLoaderImpl* this_ptr,
                                              const OrtMemoryInfo* memory_info, bool* can_load) noexcept {
     EXCEPTION_TO_RETURNED_STATUS_BEGIN
-    Ort::ConstMemoryInfo info{memory_info};
-    OrtMemoryInfo native_info{
-        info.GetAllocatorName(), info.GetAllocatorType(),
-        OrtDevice{static_cast<OrtDevice::DeviceType>(info.GetDeviceType()),
-                  static_cast<OrtDevice::MemoryType>(info.GetMemoryType()),
-                  static_cast<OrtDevice::VendorId>(info.GetVendorId()),
-                  static_cast<OrtDevice::DeviceId>(info.GetDeviceId())},
-        info.GetMemoryType()};
+    const auto native_info = CreateMemoryInfoFromApi(memory_info);
     *can_load = static_cast<const ExternalDataLoader*>(this_ptr)->impl_->CanLoad(native_info);
     return nullptr;
     EXCEPTION_TO_RETURNED_STATUS_END
@@ -64,6 +58,15 @@ class ExternalDataLoader final : public OrtExternalDataLoaderImpl {
                                                 const OrtExternalDataSource* source,
                                                 OrtValue* value) noexcept {
     EXCEPTION_TO_RETURNED_STATUS_BEGIN
+    // Match the Wasm initializer limit before the JavaScript loader narrows offsets to 32 bits.
+    constexpr uint64_t kWasmOffsetLimit = uint64_t{1} << 32;
+    if (source->file_offset < 0 ||
+        static_cast<uint64_t>(source->file_offset) >= kWasmOffsetLimit ||
+        source->byte_size >= kWasmOffsetLimit - static_cast<uint64_t>(source->file_offset)) {
+      return Ort::Status{"External initializer offset and size are out of bounds or cannot be read in full (>4GB).",
+                         ORT_INVALID_ARGUMENT}
+          .release();
+    }
     auto tensor = CreateTensorFromApiValue(value);
     const auto status = static_cast<ExternalDataLoader*>(this_ptr)->impl_->LoadTensor(
         Env::Default(), std::filesystem::path{source->file_path}, source->file_offset,
