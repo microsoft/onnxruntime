@@ -1,4 +1,7 @@
-"""Read the build-tool versions and archive SHA-512 digests shared by CI and build.py."""
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+"""Read the common build tool versions and SHA-512 digests."""
 
 from __future__ import annotations
 

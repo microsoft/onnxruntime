@@ -1,5 +1,5 @@
 name: 'Get build tool info'
-description: 'Reads shared build-tool versions and host archive SHA-512 digests.'
+description: 'Reads common build tool versions and SHA-512 digests.'
 inputs:
   tools:
     description: 'Comma-separated tools to look up: cmake, vcpkg, ccache.'
