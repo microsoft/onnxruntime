@@ -25,6 +25,7 @@ runs:
     with:
       ccache-version: ${{ inputs.install-ccache == 'true' && steps.tool-config.outputs.ccache-version || '' }}
       ccache-hash: ${{ inputs.install-ccache == 'true' && steps.tool-config.outputs.ccache-sha512 || '' }}
+      add-ccache-to-path: ${{ inputs.install-ccache == 'true' }}
       vcpkg-version: ${{ steps.tool-config.outputs.vcpkg-version }}
       vcpkg-hash: ${{ steps.tool-config.outputs.vcpkg-sha512 }}
       cmake-version: ${{ steps.tool-config.outputs.cmake-version }}
