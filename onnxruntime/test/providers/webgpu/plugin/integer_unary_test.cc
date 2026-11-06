@@ -26,7 +26,7 @@ void RunIntegerUnary(const char* op, int first_version, int latest_version,
                                 std::vector<int64_t>{}, std::vector<int64_t>{0}}) {
         SCOPED_TRACE(version);
         SCOPED_TRACE(initializer);
-        SCOPED_TRACE(shape);
+        SCOPED_TRACE(::testing::PrintToString(shape));
         const bool scalar = shape.empty();
         const bool empty = shape == std::vector<int64_t>{0};
         const auto values = empty ? std::vector<T>{} : scalar ? std::vector<T>{input.front()}
