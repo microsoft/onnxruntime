@@ -68,7 +68,8 @@ TEST(GPUDataTransferSameBufferTest, CopyTensorAsyncSelfCopyIsNoOp) {
 
   cudaStream_t cuda_stream = nullptr;
   ASSERT_EQ(cudaStreamCreate(&cuda_stream), cudaSuccess);
-  CudaStream stream(cuda_stream, gpu_allocator->Info().device, pinned_alloc, false, true, nullptr, nullptr, info);
+  auto release_stream = gsl::finally([&]() { EXPECT_EQ(cudaStreamDestroy(cuda_stream), cudaSuccess); });
+  Stream stream(cuda_stream, gpu_allocator->Info().device);
 
   auto tensor = MakePinnedTensor(pinned_alloc);
 
@@ -93,7 +94,8 @@ TEST(GPUDataTransferSameBufferTest, CopyTensorAsyncSelfCopyDuringCaptureKeepsCap
 
   cudaStream_t cuda_stream = nullptr;
   ASSERT_EQ(cudaStreamCreate(&cuda_stream), cudaSuccess);
-  CudaStream stream(cuda_stream, gpu_allocator->Info().device, pinned_alloc, false, true, nullptr, nullptr, info);
+  auto release_stream = gsl::finally([&]() { EXPECT_EQ(cudaStreamDestroy(cuda_stream), cudaSuccess); });
+  Stream stream(cuda_stream, gpu_allocator->Info().device);
 
   auto tensor = MakePinnedTensor(pinned_alloc);
 
