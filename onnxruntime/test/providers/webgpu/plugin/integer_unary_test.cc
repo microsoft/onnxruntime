@@ -58,11 +58,12 @@ const std::vector<int64_t> kInt64Input{kMin, -kLarge, -kLarge - 17, -1, 0, 1,
                                        kLarge + 17, kMax, int64_t{1} << 32};
 
 TEST(WebGpuIntegerUnaryTest, AbsInt8) {
-  RunIntegerUnary<int8_t>("Abs", 6, 13, kInt8Input, {-128, 127, 17, 1, 0, 1, 17, 127, 64});
+  // The layout transformer requires model opset 7; this exercises the 6-12 kernel.
+  RunIntegerUnary<int8_t>("Abs", 7, 13, kInt8Input, {-128, 127, 17, 1, 0, 1, 17, 127, 64});
 }
 
 TEST(WebGpuIntegerUnaryTest, NegInt8) {
-  RunIntegerUnary<int8_t>("Neg", 6, 13, kInt8Input, {-128, 127, 17, 1, 0, -1, -17, -127, 64});
+  RunIntegerUnary<int8_t>("Neg", 7, 13, kInt8Input, {-128, 127, 17, 1, 0, -1, -17, -127, 64});
 }
 
 TEST(WebGpuIntegerUnaryTest, ReluInt8) {
@@ -74,12 +75,12 @@ TEST(WebGpuIntegerUnaryTest, SignInt8) {
 }
 
 TEST(WebGpuIntegerUnaryTest, AbsInt64) {
-  RunIntegerUnary<int64_t>("Abs", 6, 13, kInt64Input,
+  RunIntegerUnary<int64_t>("Abs", 7, 13, kInt64Input,
                            {kMin, kLarge, kLarge + 17, 1, 0, 1, kLarge + 17, kMax, int64_t{1} << 32});
 }
 
 TEST(WebGpuIntegerUnaryTest, NegInt64) {
-  RunIntegerUnary<int64_t>("Neg", 6, 13, kInt64Input,
+  RunIntegerUnary<int64_t>("Neg", 7, 13, kInt64Input,
                            {kMin, kLarge, kLarge + 17, 1, 0, -1, -kLarge - 17, -kMax, -(int64_t{1} << 32)});
 }
 
