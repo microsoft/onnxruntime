@@ -3138,7 +3138,7 @@ QMoEOffload::~QMoEOffload() {
     if (cudaMemcpy(&telemetry, decode_state_->telemetry, sizeof(telemetry), cudaMemcpyDeviceToHost) == cudaSuccess) {
       uint64_t substitutions = 0;
       uint64_t conversions = 0;
-      for (int row = 0; row < 4; ++row) {
+      for (int row = 0; row < kQMoETailSubstitutionMaxRows; ++row) {
         substitutions += telemetry.substituted_routes_count[row];
         conversions += telemetry.zero_cold_conversions_count[row];
       }
@@ -10069,7 +10069,7 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
     if (v4_planned_mode_ && v4_policy_.tail_substitution_threshold > 0.0f &&
-        tile_rows <= 4 && k_ > 0 && k_ <= 32 &&
+        tile_rows <= kQMoETailSubstitutionMaxRows && k_ > 0 && k_ <= 32 &&
         v4_policy_.tail_substitution_min_rank < static_cast<int>(k_) &&
         resident && !all_experts_resident) {
       auto* telemetry = use_persistent_decode ? decode_state_->telemetry : nullptr;

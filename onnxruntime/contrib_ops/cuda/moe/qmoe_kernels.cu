@@ -387,6 +387,7 @@ __global__ void QMoETailSubstitutionKernel(
   int cold_before = 0;
   for (int rank = lane; rank < k; rank += 32) {
     const int expert = row_indices[rank];
+    if (expert < 0) continue;  // Pruned by SoftmaxTopK.
     atomicOr(selected + expert / 32, uint32_t{1} << (expert % 32));
     cold_before += expert_slot[expert] < 0;
     orig_selected_max = fmaxf(orig_selected_max, static_cast<float>(row_logits[expert]));
@@ -400,6 +401,7 @@ __global__ void QMoETailSubstitutionKernel(
   orig_selected_max = __shfl_sync(0xffffffffu, orig_selected_max, 0);
   float orig_selected_sum = 0.0f;
   for (int rank = lane; rank < k; rank += 32) {
+    if (row_indices[rank] < 0) continue;
     orig_selected_sum += expf(static_cast<float>(row_logits[row_indices[rank]]) - orig_selected_max);
   }
   for (int offset = 16; offset > 0; offset /= 2) {
@@ -413,7 +415,7 @@ __global__ void QMoETailSubstitutionKernel(
   float sub_orig_scale_mass = 0.0f;
   for (int rank = min_rank; rank < k; ++rank) {
     const int expert = row_indices[rank];
-    if (expert_slot[expert] >= 0) continue;
+    if (expert < 0 || expert_slot[expert] >= 0) continue;
     float best_logit = -FLT_MAX;
     int best_expert = num_experts;
     for (int candidate = lane; candidate < num_experts; candidate += 32) {
@@ -510,7 +512,7 @@ cudaError_t LaunchQMoETailSubstitutionImpl(
     const T* logits, float* topk_scales, int* topk_indices, const int* expert_slot,
     int num_rows, int num_experts, int k, int min_rank, float threshold,
     bool normalize_scales, cudaStream_t stream, QMoEOffloadTelemetry* telemetry) {
-  if (num_rows <= 0 || num_rows > 4 || k <= 0 || k > 32 || k > num_experts || min_rank < 0 || min_rank >= k ||
+  if (num_rows <= 0 || num_rows > kQMoETailSubstitutionMaxRows || k <= 0 || k > 32 || k > num_experts || min_rank < 0 || min_rank >= k ||
       threshold <= 0.0f || logits == nullptr || topk_scales == nullptr ||
       topk_indices == nullptr || expert_slot == nullptr) return cudaErrorInvalidValue;
   const size_t mask_bytes = static_cast<size_t>(num_experts / 32 + (num_experts % 32 != 0)) * sizeof(uint32_t);
