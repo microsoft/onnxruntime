@@ -166,7 +166,8 @@ jobs:
           python3 tools/ci_build/test_telemetry_package.py -v
 
       - name: Setup CCache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: ccache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           # Fully qualify by workflow. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
           key: ccache | android.yml | android_nnapi_ep
@@ -234,6 +235,13 @@ jobs:
           fi
         shell: bash
 
+      - name: Save CCache
+        if: ${{ success() && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+          path: ~/.cache/ccache
+
   android_cpu_ep:
     name: Android CI Pipeline
     runs-on: [ort-github-linux-16-amd-wcus-ss]
@@ -276,7 +284,8 @@ jobs:
           ndk-version: 28.0.13004108
 
       - name: Setup CCache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: ccache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           # Fully qualify by workflow. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
           key: ccache | android.yml | android_cpu_ep
@@ -334,3 +343,10 @@ jobs:
            echo "Emulator PID file was expected to exist but does not."
           fi
         shell: bash
+
+      - name: Save CCache
+        if: ${{ success() && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+          path: ~/.cache/ccache

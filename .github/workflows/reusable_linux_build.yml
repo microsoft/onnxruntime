@@ -104,7 +104,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
       - name: Setup CCache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: ccache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: 'ccache | "${{ inputs.job_identifier }}" | "${{ inputs.architecture }}" | "${{ inputs.build_config }}"'
           path: ~/.cache/cache
@@ -215,3 +216,10 @@ jobs:
           name: vcpkg-manifest-install-log-${{ inputs.architecture }}-${{ inputs.build_config }}
           path: ${{ runner.temp }}/${{ inputs.build_config }}/${{ inputs.build_config }}/vcpkg-manifest-install.log
           if-no-files-found: ignore
+
+      - name: Save CCache
+        if: ${{ success() && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+          path: ~/.cache/cache
