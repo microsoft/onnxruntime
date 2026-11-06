@@ -423,10 +423,14 @@ static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersMin
 static const char* const kOrtSessionOptionsModelExternalInitializersFileFolderPath =
     "session.model_external_initializers_file_folder_path";
 
-// Use buffers supplied through AddExternalInitializersFromFilesInMemory directly for eligible main-graph initializers.
-// The application must keep each buffer unchanged and alive until all sessions created from the options are released.
-// "0": Copy initializer data during session creation. [DEFAULT]
-// "1": Borrow naturally aligned, native-endian initializer slices and copy other slices.
+// Use CPU buffers supplied through AddExternalInitializers or AddExternalInitializersFromFilesInMemory directly for
+// eligible main-graph initializers.
+// "0": Copy caller-owned CPU buffers during session creation. [DEFAULT]
+// "1": Borrow naturally aligned CPU buffers larger than 127 bytes on little-endian hosts and copy other buffers.
+// The application must keep borrowed buffers unchanged and alive until all sessions using them are released.
+// AddExternalInitializers accepts only non-owning, contiguous tensors containing native-endian values;
+// files contain serialized little-endian values.
+// Device tensors are always copied to owned CPU staging memory before optimization and shape inference.
 static const char* const kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly =
     "session.use_external_initializer_file_buffers_directly";
 
