@@ -3,8 +3,7 @@ description: 'Reads common build tool versions and SHA-512 digests.'
 inputs:
   tools:
     description: 'Comma-separated tools to look up: cmake, vcpkg, ccache.'
-    required: false
-    default: 'cmake,vcpkg'
+    required: true
 outputs:
   cmake-version:
     description: 'The CMake version, if requested.'
