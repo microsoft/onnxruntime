@@ -74,7 +74,7 @@ export class OnnxruntimeWebAssemblyBackend implements Backend {
     // init wasm
     await initializeWebAssemblyAndOrtRuntime();
 
-    // performe EP specific initialization
+    // perform EP specific initialization
     await initializeOrtEp(backendName);
   }
   createInferenceSessionHandler(
