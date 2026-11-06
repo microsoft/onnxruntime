@@ -154,9 +154,14 @@ std::string CalculateAccStr(const ShaderIndicesHelper* batch_dims, int64_t eleme
 
 }  // namespace
 
+bool CanAutoSelectSubgroupGemm(std::string_view architecture) {
+  return architecture != gpu_arch::kGen12Hp;
+}
+
 bool CanApplySubgroup(const ComputeContext& context, int64_t M, int64_t N, int64_t K, bool transA, bool transB) {
   if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
-    bool use_subgroup = context.HasFeature(wgpu::FeatureName::Subgroups) &&
+    bool use_subgroup = CanAutoSelectSubgroupGemm(context.AdapterInfo().architecture) &&
+                        context.HasFeature(wgpu::FeatureName::Subgroups) &&
                         M >= 64 && N >= 512 && K >= 32 && !transA && !transB;
     return use_subgroup;
   }

@@ -12,9 +12,13 @@ namespace webgpu {
 namespace intel {
 
 namespace gpu_arch {
+inline constexpr std::string_view kGen12Hp = "gen-12hp";
 inline constexpr std::string_view kXeLpg = "xe-lpg";
 inline constexpr std::string_view kXe3Lpg = "xe-3lpg";
 }  // namespace gpu_arch
+
+// Whether automatic algorithm selection may choose the subgroup GEMM/MatMul kernel on `architecture`.
+bool CanAutoSelectSubgroupGemm(std::string_view architecture);
 
 bool ShouldFoldMatMulSubgroupBatch(std::string_view architecture,
                                    int64_t m,
