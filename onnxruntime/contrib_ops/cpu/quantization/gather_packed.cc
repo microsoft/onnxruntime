@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <algorithm>
-#include <cstring>
-#include <vector>
+#include <type_traits>
 
 #include "contrib_ops/cpu/quantization/gguf_quant_tables.h"
 #include "core/common/common.h"
 #include "core/common/float16.h"
+#include "core/common/inlined_containers.h"
+#include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor_shape.h"
 #include "core/platform/threadpool.h"
@@ -21,6 +21,7 @@ class GatherPacked final : public OpKernel {
   explicit GatherPacked(const OpKernelInfo& info) : OpKernel(info) {
     ORT_ENFORCE(info.GetAttr<int64_t>("K", &k_).IsOK() && k_ > 0, "GatherPacked requires K > 0");
     ORT_ENFORCE(info.GetAttr<int64_t>("packed_type", &ggml_type_).IsOK(), "GatherPacked requires packed_type");
+    ORT_ENFORCE(gguf_quant::IsGgmlTypeSupported(ggml_type_), "GatherPacked: unsupported packed_type=", ggml_type_);
     row_bytes_ = gguf_quant::GgmlRowBytes(static_cast<int>(ggml_type_), k_);
     ORT_ENFORCE(row_bytes_ > 0, "GatherPacked: unsupported packed_type=", ggml_type_, " or invalid K=", k_);
   }
@@ -41,6 +42,7 @@ class GatherPacked final : public OpKernel {
 
     const int64_t num_rows = indices_shape.Size();
     if (num_rows == 0) return Status::OK();
+    ORT_RETURN_IF_NOT(vocab_size > 0, "GatherPacked requires a nonempty vocabulary for nonempty indices");
 
     const uint8_t* data_ptr = data->Data<uint8_t>();
     const Tind* idx_ptr = indices->Data<Tind>();
@@ -48,22 +50,23 @@ class GatherPacked final : public OpKernel {
 
     auto* tp = context->GetOperatorThreadPool();
     const int type_id = static_cast<int>(ggml_type_);
-    const int64_t k = k_;
-    const int64_t rb = row_bytes_;
+    const size_t k = SafeInt<size_t>(k_);
+    const size_t rb = SafeInt<size_t>(row_bytes_);
+    const std::ptrdiff_t rows = SafeInt<std::ptrdiff_t>(num_rows);
 
     concurrency::ThreadPool::TryBatchParallelFor(
-        tp, static_cast<std::ptrdiff_t>(num_rows),
+        tp, rows,
         [&](std::ptrdiff_t r) {
           const int64_t raw_id = static_cast<int64_t>(idx_ptr[r]);
           const int64_t tok = (raw_id >= 0 && raw_id < vocab_size) ? raw_id : 0;
-          const uint8_t* src_row = data_ptr + tok * rb;
-          T2* dst_row = out_ptr + static_cast<int64_t>(r) * k;
+          const uint8_t* src_row = data_ptr + static_cast<size_t>(tok) * rb;
+          T2* dst_row = out_ptr + static_cast<size_t>(r) * k;
           if constexpr (std::is_same_v<T2, float>) {
-            gguf_quant::DequantizeGgufRowCpu(src_row, type_id, k, dst_row);
+            ORT_ENFORCE(gguf_quant::DequantizeGgufRowCpu(src_row, type_id, k_, dst_row));
           } else {
-            std::vector<float> tmp(static_cast<size_t>(k));
-            gguf_quant::DequantizeGgufRowCpu(src_row, type_id, k, tmp.data());
-            for (int64_t j = 0; j < k; ++j) {
+            InlinedVector<float> tmp(k);
+            ORT_ENFORCE(gguf_quant::DequantizeGgufRowCpu(src_row, type_id, k_, tmp.data()));
+            for (size_t j = 0; j < k; ++j) {
               dst_row[j] = T2(tmp[j]);
             }
           }
@@ -79,16 +82,16 @@ class GatherPacked final : public OpKernel {
   int64_t row_bytes_{0};
 };
 
-#define REGISTER_GATHER_PACKED_CPU(T2, Tind)                              \
-  ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(                                      \
-      GatherPacked,                                                       \
-      kMSDomain, 1,                                                       \
-      T2, Tind,                                                           \
-      kCpuExecutionProvider,                                              \
-      (*KernelDefBuilder::Create())                                       \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())   \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())        \
-          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tind>()),   \
+#define REGISTER_GATHER_PACKED_CPU(T2, Tind)                            \
+  ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(                                    \
+      GatherPacked,                                                     \
+      kMSDomain, 1,                                                     \
+      T2, Tind,                                                         \
+      kCpuExecutionProvider,                                            \
+      (*KernelDefBuilder::Create())                                     \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>()) \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())      \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tind>()), \
       GatherPacked<T2, Tind>);
 
 REGISTER_GATHER_PACKED_CPU(float, int32_t)
