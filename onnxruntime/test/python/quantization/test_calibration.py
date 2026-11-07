@@ -582,10 +582,11 @@ class TestCalibrateMinMaxCalibrator(unittest.TestCase):
 
     def test_percentile_constant_and_zero_dominated(self):
         for c in (1e-5, 3.0, -2.5):
-            with self.subTest(c=c):
-                collector = self._symmetric_percentile(2048, 99.999, [np.full(1000, c, dtype=np.float32)])
-                lowest, highest = collector.compute_collection_result()["input"][:2]
-                self.assertEqual((lowest, highest), (np.float32(c), np.float32(c)))
+            for percentile in (50, 99.999):
+                with self.subTest(c=c, percentile=percentile):
+                    collector = self._symmetric_percentile(2048, percentile, [np.full(1000, c, dtype=np.float32)])
+                    lowest, highest = collector.compute_collection_result()["input"][:2]
+                    self.assertEqual((lowest, highest), (np.float32(c), np.float32(c)))
         data = np.zeros(100001, dtype=np.float32)
         data[-1] = 1
         for batches in ([data], [data[:-1], data[-1:]]):

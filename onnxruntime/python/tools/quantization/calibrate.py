@@ -1084,6 +1084,9 @@ class HistogramCollector(CalibrationDataCollector):
                 frac = (target - below) / hist[idx] if target > below else 0.0
                 lo, hi = float(hist_edges[idx]), float(hist_edges[idx + 1])
                 threshold = lo + frac * (hi - lo)
+                # Keep the observed-bound clamp from inverting one-sign ranges.
+                if histogram[2] > 0 or histogram[3] < 0:
+                    threshold = max(threshold, min(abs(histogram[2]), abs(histogram[3])))
 
                 thresholds_dict[tensor] = (
                     -np.array(threshold, dtype=hist_edges.dtype),
