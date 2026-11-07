@@ -5,6 +5,7 @@
 
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS)
 #include <gsl/gsl>
+#include <utility>
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
 #include "test/util/include/scoped_env_vars.h"
@@ -14,23 +15,22 @@ namespace test {
 
 TEST(MatMulNBitsGemv, SingleWarp4BitsEligibility) {
   using contrib::cuda::IsSupportedSingleWarp4BitsGemvShape;
-  for (int n : {1024, 2048}) {
-    EXPECT_TRUE(IsSupportedSingleWarp4BitsGemvShape(true, false, false, 1, n, 2048, 32));
+  for (auto shape : {std::pair{1024, 2048}, std::pair{2048, 6144}}) {
+    EXPECT_TRUE(IsSupportedSingleWarp4BitsGemvShape(true, false, false, 1, shape.first, shape.second, 32));
+    EXPECT_FALSE(IsSupportedSingleWarp4BitsGemvShape(false, false, false, 1, shape.first, shape.second, 32));
+    EXPECT_FALSE(IsSupportedSingleWarp4BitsGemvShape(true, true, false, 1, shape.first, shape.second, 32));
+    EXPECT_FALSE(IsSupportedSingleWarp4BitsGemvShape(true, false, true, 1, shape.first, shape.second, 32));
+    for (int m : {0, 2, 8, 16, 17}) {
+      EXPECT_FALSE(IsSupportedSingleWarp4BitsGemvShape(true, false, false, m, shape.first, shape.second, 32));
+    }
+    for (int block_size : {16, 64, 128}) {
+      EXPECT_FALSE(IsSupportedSingleWarp4BitsGemvShape(true, false, false, 1, shape.first, shape.second, block_size));
+    }
+    EXPECT_FALSE(IsSupportedSingleWarp4BitsGemvShape(true, false, false, 1, shape.first, shape.second + 8, 32));
   }
-  EXPECT_TRUE(IsSupportedSingleWarp4BitsGemvShape(true, false, false, 1, 2048, 6144, 32));
-  EXPECT_FALSE(IsSupportedSingleWarp4BitsGemvShape(false, false, false, 1, 2048, 2048, 32));
-  EXPECT_FALSE(IsSupportedSingleWarp4BitsGemvShape(true, true, false, 1, 2048, 2048, 32));
-  EXPECT_FALSE(IsSupportedSingleWarp4BitsGemvShape(true, false, true, 1, 2048, 2048, 32));
-  for (int m : {0, 2, 8, 16, 17}) {
-    EXPECT_FALSE(IsSupportedSingleWarp4BitsGemvShape(true, false, false, m, 2048, 2048, 32));
-  }
-  for (int block_size : {16, 64, 128}) {
-    EXPECT_FALSE(IsSupportedSingleWarp4BitsGemvShape(true, false, false, 1, 2048, 2048, block_size));
-  }
-  for (int n : {32, 2052, 6144, 151936, 248320}) {
+  for (int n : {32, 2048, 2052, 6144, 151936, 248320}) {
     EXPECT_FALSE(IsSupportedSingleWarp4BitsGemvShape(true, false, false, 1, n, 2048, 32));
   }
-  EXPECT_FALSE(IsSupportedSingleWarp4BitsGemvShape(true, false, false, 1, 2048, 2056, 32));
 }
 
 TEST(MatMulNBitsGemv, ExistingSpecializationsRemainEligible) {
@@ -141,8 +141,12 @@ class MatMulNBitsGemvDispatchTest : public ::testing::Test {
 TEST_F(MatMulNBitsGemvDispatchTest, GenericOptInSelectsAllTunedKernels) {
   ScopedEnvironmentVariables controls{Controls("1")};
   CheckLaunch(1024, 2048, true);
-  CheckLaunch(2048, 2048, true);
   CheckLaunch(2048, 6144, true);
+}
+
+TEST_F(MatMulNBitsGemvDispatchTest, HotCacheRegressingShapeKeepsExistingKernel) {
+  ScopedEnvironmentVariables controls{Controls("1")};
+  CheckLaunch(2048, 2048, false);
 }
 
 TEST_F(MatMulNBitsGemvDispatchTest, DefaultKeepsExistingKernels) {
@@ -170,19 +174,19 @@ TEST_F(MatMulNBitsGemvDispatchTest, UnsupportedShapesAndMetadataKeepExistingKern
   ScopedEnvironmentVariables controls{Controls("1")};
   CheckLaunch(6144, 2048, false);
   CheckLaunch(2056, 2048, false);
-  CheckLaunch(2048, 2048, false, 64);
-  CheckLaunch(2048, 2048, false, 32, true);
-  CheckLaunch<float>(2048, 2048, false);
+  CheckLaunch(1024, 2048, false, 64);
+  CheckLaunch(1024, 2048, false, 32, true);
+  CheckLaunch<float>(1024, 2048, false);
 }
 
 TEST_F(MatMulNBitsGemvDispatchTest, BiasFallsBackWithoutLaunchingAGemvKernel) {
   ScopedEnvironmentVariables controls{Controls("1")};
-  CheckLaunch(2048, 2048, false, 32, false, true);
+  CheckLaunch(1024, 2048, false, 32, false, true);
 }
 
 TEST_F(MatMulNBitsGemvDispatchTest, InvalidGenericControlThrows) {
   ScopedEnvironmentVariables controls{Controls("invalid")};
-  CheckLaunch(2048, 2048, false, 32, false, false, true);
+  CheckLaunch(1024, 2048, false, 32, false, false, true);
 }
 
 }  // namespace test

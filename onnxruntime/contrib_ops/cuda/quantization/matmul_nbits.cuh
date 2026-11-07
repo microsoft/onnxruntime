@@ -25,8 +25,9 @@ constexpr bool IsSupportedSingleWarp4BitsGemvShape(
     return false;
   }
   // These (N, K) points cover the tuned attention and MLP-down projection shapes.
+  // (2048, 2048) keeps the existing kernel to avoid its hot-cache regression.
   // Gate/up (6144, 2048) and the LM head (151936, 2048) keep existing kernels.
-  return (k == 2048 && (n == 1024 || n == 2048)) ||
+  return (k == 2048 && n == 1024) ||
          (k == 6144 && n == 2048);
 }
 
