@@ -5,6 +5,7 @@
 
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
+#include <cuda_fp8.h>
 #include <cuda_runtime.h>
 #include <cstdint>
 
@@ -116,6 +117,17 @@ __device__ __forceinline__ void DecodeGgufSubBlock8Impl(
     for (int j = 0; j < 4; ++j) {
       out[j] = d * static_cast<float>(static_cast<int8_t>((q0 >> (8 * j)) & 0xFFu));
       out[j + 4] = d * static_cast<float>(static_cast<int8_t>((q1 >> (8 * j)) & 0xFFu));
+    }
+  } else if constexpr (kCompileType == kGgmlTypeNVFP4) {
+    const uint8_t* blk = row_ptr + static_cast<int64_t>(sb32_idx >> 1) * 36;
+    const int group = 2 * (sb32_idx & 1) + (l >> 1);
+    const uint8_t scale = __ldg(blk + group);
+    const float d = scale == 127 ? 0.0f : __half2float(__half(__nv_cvt_fp8_to_halfraw(static_cast<__nv_fp8_storage_t>(scale), __NV_E4M3)));
+    const uint8_t* codes = blk + 4 + group * 8;
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const int code = (__ldg(codes + j) >> (4 * (l & 1))) & 15;
+      out[j] = d * (0.5f * static_cast<float>(kvalues_fp4[code]));
     }
   } else if constexpr (kCompileType == kGgmlTypeQ4_0) {
     const uint8_t* blk = row_ptr + static_cast<int64_t>(sb32_idx) * 18;
@@ -320,6 +332,9 @@ __device__ __forceinline__ void DecodeGgufSubBlock8(
       return;
     case kGgmlTypeQ8_0:
       DecodeGgufSubBlock8Impl<kGgmlTypeQ8_0>(row_ptr, sb32_idx, l, out);
+      return;
+    case kGgmlTypeNVFP4:
+      DecodeGgufSubBlock8Impl<kGgmlTypeNVFP4>(row_ptr, sb32_idx, l, out);
       return;
     case kGgmlTypeQ4_0:
       DecodeGgufSubBlock8Impl<kGgmlTypeQ4_0>(row_ptr, sb32_idx, l, out);
