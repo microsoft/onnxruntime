@@ -52,7 +52,8 @@ MatMulPacked<T>::MatMulPacked(const OpKernelInfo& info) : CudaKernel(info) {
   ORT_ENFORCE(k_ % 32 == 0, "MatMulPacked requires K to be a multiple of 32");
   ORT_ENFORCE(info.GetAttr<int64_t>("packed_type", &ggml_type_).IsOK() && ggml_type_ >= 0,
               "MatMulPacked requires packed_type >= 0");
-  ORT_ENFORCE(gguf_quant::IsGgmlTypeSupported(ggml_type_), "MatMulPacked: unsupported packed_type=", ggml_type_);
+  ORT_ENFORCE(gguf_quant::IsGgmlTypeSupported(ggml_type_) || ggml_type_ == gguf_quant::kGgmlTypeNVFP4,
+              "MatMulPacked: unsupported packed_type=", ggml_type_);
   ORT_ENFORCE(gguf_quant::GgmlRowBytes(static_cast<int>(ggml_type_), k_) > 0,
               "MatMulPacked: invalid K=", k_, " for packed_type=", ggml_type_);
   if constexpr (std::is_same_v<T, BFloat16>) {
