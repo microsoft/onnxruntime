@@ -411,8 +411,9 @@ Status CheckInputs(const T* query,
                            "total_sequence_length tensor must be of one element.");
   }
 
-  // When graph capture is enabled, total_seqlen is on GPU and cannot be read. Skip validation.
-  const bool is_total_seqlen_on_cpu = (total_seqlen->Location().device.Type() == OrtDevice::CPU);
+  // A value on the device itself cannot be read here (WebGPU under graph capture), so validation is skipped. One
+  // copied from a device node sits in host-accessible memory, and the planner waits for that copy before this kernel.
+  const bool is_total_seqlen_on_cpu = total_seqlen->Location().device.UsesCpuMemory();
   int total_sequence_length = is_total_seqlen_on_cpu ? *((*total_seqlen).template Data<int32_t>()) : 0;
   if (is_total_seqlen_on_cpu && total_sequence_length <= 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
