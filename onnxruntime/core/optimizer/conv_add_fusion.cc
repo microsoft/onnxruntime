@@ -12,19 +12,14 @@ namespace onnxruntime {
 
 namespace {
 
-// Returns true if conv_B + add_B is exactly representable in T for every element.
-template <typename T>
-bool IsBiasSumExact(const Initializer& conv_B, const Initializer& add_B) {
-  const auto conv_B_data = conv_B.DataAsSpan<T>();
-  const auto add_B_data = add_B.DataAsSpan<T>();
+// Returns true if conv_B + add_B is exactly representable in float16 for every element. The sum of two float16
+// values is always exact in double, so it only has to be checked against float16.
+bool IsFloat16BiasSumExact(const Initializer& conv_B, const Initializer& add_B) {
+  const auto conv_B_data = conv_B.DataAsSpan<MLFloat16>();
+  const auto add_B_data = add_B.DataAsSpan<MLFloat16>();
   for (size_t i = 0; i < conv_B_data.size(); ++i) {
-    const double a = conv_B_data[i].ToFloat();
-    const double b = add_B_data[i].ToFloat();
-    const double sum = a + b;
-    // TwoSum: err is the exact rounding error of the double addition (non-zero only for extreme bfloat16 ranges).
-    const double b_virtual = sum - a;
-    const double err = (a - (sum - b_virtual)) + (b - b_virtual);
-    if (err != 0.0 || static_cast<double>(T(static_cast<float>(sum)).ToFloat()) != sum) {
+    const double sum = static_cast<double>(conv_B_data[i].ToFloat()) + static_cast<double>(add_B_data[i].ToFloat());
+    if (static_cast<double>(MLFloat16(static_cast<float>(sum)).ToFloat()) != sum) {
       return false;
     }
   }
@@ -92,11 +87,10 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
       return Status::OK();
     }
 
-    // Folding the two biases rounds conv_B + add_B to the bias type. With 16-bit floats that rounding can
-    // exceed the error of the unfused graph and remove small offsets entirely (e.g. -1 + 1e-4 becomes -1 in
-    // float16), so only fuse when the folded bias is exact.
-    if ((conv_B.data_type() == TensorProto_DataType_FLOAT16 && !IsBiasSumExact<MLFloat16>(conv_B, add_B)) ||
-        (conv_B.data_type() == TensorProto_DataType_BFLOAT16 && !IsBiasSumExact<BFloat16>(conv_B, add_B))) {
+    // Folding the two biases rounds conv_B + add_B to the bias type. In float16 that rounding can exceed the
+    // error of the unfused graph and remove small offsets entirely (e.g. -1 + 1e-4 becomes -1), so only fuse
+    // when the folded bias is exact. bfloat16 never gets here (see IsFloatingPointDataType above).
+    if (conv_B.data_type() == TensorProto_DataType_FLOAT16 && !IsFloat16BiasSumExact(conv_B, add_B)) {
       return Status::OK();
     }
 
