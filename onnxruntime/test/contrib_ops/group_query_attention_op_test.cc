@@ -3054,7 +3054,12 @@ TEST(GroupQueryAttentionTest, CUDA_FusedRoPE_RotaryDim24_Fallback_MatchesReferen
   const auto status = session.Run(RunOptions{}, *binding);
   const std::string kernel_log = testing::internal::GetCapturedStdout();
   ASSERT_STATUS_OK(status);
-  EXPECT_NE(kernel_log.find("SdpaKernel=FLASH_ATTENTION"), std::string::npos) << kernel_log;
+  // Non-16-aligned rotary configurations safely fall back to paths that perform element-wise
+  // RoPE via PrepareQKV before kernel execution: standard FlashAttention when eligible, or
+  // the unfused GQA kernel (MATH) when FlashAttention is uncompiled for the head size (e.g. ORT_QUICK_BUILD).
+  EXPECT_TRUE(kernel_log.find("SdpaKernel=FLASH_ATTENTION") != std::string::npos ||
+              kernel_log.find("SdpaKernel=MATH") != std::string::npos)
+      << "Expected fallback kernel (FLASH_ATTENTION or MATH), but got: " << kernel_log;
 
   // Read output back to host and verify against reference
   auto& gpu_out = binding->GetOutputs()[0].Get<Tensor>();
