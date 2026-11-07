@@ -931,6 +931,7 @@ WebGpuExecutionProvider::~WebGpuExecutionProvider() {
     // A failed Run may leave an unsubmitted recording in the context-shared pools.
     context_.BufferManager().DiscardPendingBuffers(*recording_);
     context_.InitializerBufferManager().DiscardPendingBuffers(*recording_);
+    context_.BufferManager().OnSessionRelease(*recording_);
   }
   recording_.reset();
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
@@ -1010,6 +1011,7 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
     }
   }
 
+  context_.BufferManager().OnRunStart(*recording_);
   run_active_.store(true);
 #if defined(ORT_USE_EP_API_ADAPTERS)
   started = true;
@@ -1018,7 +1020,9 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
 }
 
 Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& run_options) {
+  bool completed = false;
   auto end_run = gsl::finally([&] {
+    context_.BufferManager().OnRunEnd(*recording_, completed);
     graph_buffer_mgr_active_ = false;
     run_active_.store(false);
 #if defined(ORT_USE_EP_API_ADAPTERS)
@@ -1077,10 +1081,11 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
   run_active_.store(false);
 
   if (context_.ValidationMode() >= ValidationMode::Basic) {
-    return context_.PopErrorScope();
-  } else {
-    return Status::OK();
+    ORT_RETURN_IF_ERROR(context_.PopErrorScope());
   }
+  completed = !run_options.terminate &&
+              run_options.config_options.GetConfigOrDefault("__ort.run_outcome", "ok") == "ok";
+  return Status::OK();
 }
 
 bool WebGpuExecutionProvider::IsGraphCaptureEnabled() const {
@@ -1103,6 +1108,17 @@ Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id, bool /*sync
     }
   });
 #endif
+  // Initial capture replays within OnRunEnd; only standalone replay is a new Run.
+  const bool standalone_run = !IsRunActive();
+  bool completed = false;
+  if (standalone_run) {
+    context_.BufferManager().OnRunStart(*recording_);
+  }
+  auto end_run = gsl::finally([&] {
+    if (standalone_run) {
+      context_.BufferManager().OnRunEnd(*recording_, completed);
+    }
+  });
   // The sync parameter is ignored: WebGPU EP always replays synchronously.
   ORT_ENFORCE(IsGraphCaptured(graph_annotation_id));
 #if defined(ORT_USE_EP_API_ADAPTERS)
@@ -1121,6 +1137,7 @@ Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id, bool /*sync
     // Session-level profiling: collect into profiler's own events storage.
     context_.CollectProfilingData(session_profiler_->GpuEvents());
   }
+  completed = true;
   return Status::OK();
 }
 

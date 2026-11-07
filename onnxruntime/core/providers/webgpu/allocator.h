@@ -36,7 +36,7 @@ class GpuBufferAllocator : public IAllocator {
   // TODO: Remove this callback once built-in WebGPU can distinguish external allocators used outside Run
   // from internal allocators used during Run.
   // Serialized-mode Session Alloc uses its recording and submits clears outside Run, deferring them during Run.
-  // Other plugin Alloc calls submit independent clears.
+  // Other plugin Alloc calls and built-in allocations outside Run submit independent clears.
   // Plugin Env allocators omit recording_getter, as they never use a Session stream.
   GpuBufferAllocator(int context_id,
                      std::function<const BufferManager&()> buffer_manager_getter,

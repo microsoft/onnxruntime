@@ -44,7 +44,7 @@ std::ostream& operator<<(std::ostream& os, BufferCacheMode mode);
 // - Disabled: no cache. always allocate a new buffer and release it immediately after use.
 // - LazyRelease: no cache. the difference from Disabled is that it delays the release of buffers until the next refresh.
 // - Simple: a simple cache that always keeps buffers. when a buffer is requested, it tries to find a buffer in the cache.
-// - Bucket: a cache that keeps buffers in different buckets based on the buffer size, with a maximum number of buffers in each bucket.
+// - Bucket: fine size-class reuse with shared run-demand windows and event-driven spare eviction.
 // - Graph: used for graph capturing storage buffer cache mode. All buffers will be cached. Buffers can be reused across runs and in one run.
 // - GraphSimple: used for graph capturing uniform buffer cache mode. All buffers will be cached. Buffers can be reused across runs but can't be reused in one run.
 class IBufferCacheManager {
@@ -68,9 +68,17 @@ class IBufferCacheManager {
   // when a stream refresh is requested
   virtual void OnRefresh(GraphCaptureState graph_capture_state) = 0;
 
+  // Only caches with a run-demand policy need these hooks. Acquisition attribution
+  // is independent of the recording used to eventually release the buffer.
+  virtual void OnAcquire(WGPUBuffer, const CommandRecordingState&) {}
+  virtual void OnDiscard(WGPUBuffer) {}
+  virtual void OnRunStart(const CommandRecordingState&) {}
+  virtual void OnRunEnd(const CommandRecordingState&, bool) {}
+  virtual void OnSessionRelease(const CommandRecordingState&) {}
+
   // Extract all cached buffers from this manager, transferring ownership to the
-  // caller. The cache's internal containers are cleared (but bucket keys, if any,
-  // are preserved). Default returns empty; only graph-mode caches implement this.
+  // caller. The cache's internal containers are cleared. Default returns empty;
+  // only graph-mode caches implement this.
   virtual std::vector<std::pair<size_t, WGPUBuffer>> ExtractCachedBuffers() {
     return {};
   }
@@ -111,6 +119,9 @@ class BufferManager {
   void RefreshPendingBuffers(CommandRecordingState& recording, GraphCaptureState graph_capture_state) const;
   // Drop retained references when a recording is abandoned instead of submitted.
   void DiscardPendingBuffers(CommandRecordingState& recording) const;
+  void OnRunStart(const CommandRecordingState& recording) const;
+  void OnRunEnd(const CommandRecordingState& recording, bool completed) const;
+  void OnSessionRelease(const CommandRecordingState& recording) const;
 
   std::vector<std::pair<size_t, WGPUBuffer>> ExtractCachedBuffers(wgpu::BufferUsage usage);
   void AbsorbCachedBuffers(wgpu::BufferUsage usage,

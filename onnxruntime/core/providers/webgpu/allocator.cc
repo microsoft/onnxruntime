@@ -47,7 +47,13 @@ void* GpuBufferAllocator::Alloc(size_t size) {
   CommandRecordingState recording;
   return Allocate(size, recording, true);
 #else
-  return Allocate(size, recording_getter_(), should_submit_zero_initialize_ && should_submit_zero_initialize_());
+  if (should_submit_zero_initialize_ && should_submit_zero_initialize_()) {
+    // External callers may share a Session allocator across concurrent Sessions.
+    // Submit each clear independently instead of mutating the allocator Session's recording.
+    CommandRecordingState recording;
+    return Allocate(size, recording, true);
+  }
+  return Allocate(size, recording_getter_(), false);
 #endif
 }
 
