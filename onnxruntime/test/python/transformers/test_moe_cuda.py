@@ -1352,6 +1352,7 @@ def create_swiglu_moe_onnx_graph(
     activation_alpha: float = 1.702,
     activation_beta: float = 1.0,
     swiglu_limit: float = 7.0,
+    swiglu_limit_after_activation=None,
 ):
     use_quant = quant_bits > 0
     op_name = "QMoE" if use_quant else "MoE"
@@ -1399,6 +1400,8 @@ def create_swiglu_moe_onnx_graph(
     # standard SwiGLU.
     if swiglu_limit is not None and math.isfinite(swiglu_limit):
         nodes[0].attribute.extend([helper.make_attribute("swiglu_limit", float(swiglu_limit))])
+    if swiglu_limit_after_activation is not None:
+        nodes[0].attribute.append(helper.make_attribute("swiglu_limit_after_activation", swiglu_limit_after_activation))
 
     if use_quant:
         nodes[0].attribute.extend([helper.make_attribute("expert_weight_bits", quant_bits)])
@@ -1598,6 +1601,66 @@ swiglu_test_cases = list(
 
 @unittest.skipIf(not use_cuda, "skipping moe test since it requires cuda environment.")
 class TestSwigluMoE(unittest.TestCase):
+    @parameterized.expand(
+        [(TensorProto.FLOAT16, 4.0, 4, 2), (TensorProto.BFLOAT16, 5.0, 4, 2), (TensorProto.BFLOAT16, 7.0, 512, 8)]
+    )
+    def test_post_activation_clipping(self, onnx_dtype, limit, experts, top_k):
+        hidden, inter = 128, 64
+        dtype = onnx_to_torch_type_map[onnx_dtype]
+        gate = torch.tensor([10.0, 4.0, 0.0, -1.0, -10.0, 2.0, 6.0, 3.0]).repeat(inter // 8)
+        up = torch.tensor([2.0, -8.0, 2.0, 6.0, -6.0, 1.0, -1.0, 2.0]).repeat(inter // 8)
+        for fusion in (1, 2):
+            bias = torch.stack((gate, up), -1).flatten() if fusion == 1 else torch.cat((gate, up))
+            for rows in (1, 65):
+                default = None
+                for mode in (None, 0, 1):
+                    with self.subTest(fusion=fusion, rows=rows, mode=mode):
+                        model = create_swiglu_moe_onnx_graph(
+                            rows,
+                            experts,
+                            hidden,
+                            inter,
+                            top_k,
+                            onnx_dtype,
+                            0,
+                            torch.zeros(experts, 2 * inter, hidden),
+                            bias.repeat(experts, 1),
+                            torch.eye(hidden, inter).repeat(experts, 1, 1),
+                            torch.zeros(experts, hidden),
+                            swiglu_fusion=fusion,
+                            activation_alpha=1.0,
+                            activation_beta=0.0,
+                            swiglu_limit=limit,
+                            swiglu_limit_after_activation=mode,
+                        )
+                        options = SessionOptions()
+                        options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+                        session = InferenceSession(model, options, providers=get_ort_provider())
+                        x = torch.zeros(rows, hidden, device=device, dtype=dtype)
+                        router = torch.linspace(1.0, -3.0, experts, device=device, dtype=dtype).repeat(rows, 1)
+                        output = torch.empty_like(x)
+                        binding = session.io_binding()
+                        for name, tensor in (("input", x), ("router_probs", router)):
+                            binding.bind_input(name, "cuda", 0, onnx_dtype, tensor.shape, tensor.data_ptr())
+                        binding.bind_output("output", "cuda", 0, onnx_dtype, output.shape, output.data_ptr())
+                        torch.cuda.synchronize()
+                        binding.synchronize_inputs()
+                        session.run_with_iobinding(binding)
+                        binding.synchronize_outputs()
+                        actual = output.cpu().float()
+                        activated = F.silu(gate).clamp(max=limit) if mode == 1 else F.silu(gate.clamp(max=limit))
+                        expected = torch.zeros(hidden)
+                        expected[:inter] = activated * up.clamp(-limit, limit)
+                        torch.testing.assert_close(
+                            actual, expected.to(dtype).float().repeat(rows, 1), atol=0.02, rtol=0.003
+                        )
+                        if mode is None:
+                            default = actual
+                        elif mode == 0:
+                            torch.testing.assert_close(actual, default, atol=0, rtol=0)
+                        else:
+                            self.assertEqual(actual[0, 0].item(), 2.0 * limit)
+
     @parameterized.expand(swiglu_test_cases)
     def test_swiglu_moe_parity(self, batch_size, sequence_length, quant_bits):
         config = SwigluMoeConfig(

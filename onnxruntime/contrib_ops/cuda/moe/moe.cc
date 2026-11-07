@@ -390,6 +390,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
         params.beta = activation_beta_;
         params.swiglu_fusion = swiglu_fusion;
         params.limit = swiglu_limit_;
+        params.swiglu_limit_after_activation = swiglu_limit_after_activation_;
         return params;
       }(),
       onnxruntime::llm::kernels::cutlass_kernels::FusedRoutingParams{},
