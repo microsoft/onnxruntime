@@ -50,7 +50,8 @@ jobs:
           # were UK spellings (e.g. "behaviour", "cancelled") rather than typos, and some can't be changed: the public
           # CANCELLED status code and GitHub's "cancelled" API value. Real misspellings are still flagged either way.
           # Case-insensitive false positive: NTO = NodesToOptimize alias used in optimizer code.
-          ignore: nto
+          # "spectre" is the MSVC /Qspectre mitigation and Spectre CRT library name, not a misspelling of "specter".
+          ignore: nto,spectre
           exclude: |
             ./.git/*
             */package-lock.json
