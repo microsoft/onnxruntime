@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <numeric>
 #include <sstream>
@@ -1727,19 +1728,239 @@ TEST(CausalConvWithStateTest, BFloat16_Cuda) {
 TEST(ContribOpVarlenCausalConvWithStateTest, SchemaResolution) {
   const auto* schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema("VarlenCausalConvWithState", 1, kMSDomain);
   ASSERT_NE(schema, nullptr);
-  EXPECT_EQ(schema->inputs().size(), 6u);
+  EXPECT_EQ(schema->inputs().size(), 8u);
   EXPECT_EQ(schema->outputs().size(), 3u);
   EXPECT_GT(schema->attributes().count("activation"), 0u);
   EXPECT_EQ(schema->attributes().count("ndim"), 0u);
   EXPECT_EQ(schema->attributes().count("state_window"), 0u);
   EXPECT_GT(schema->attributes().count("state_update_capacity"), 0u);
+  EXPECT_GT(schema->attributes().count("group_size"), 0u);
+  EXPECT_GT(schema->attributes().count("delta_offset"), 0u);
 
   const auto bfloat16_type = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("tensor(bfloat16)");
   EXPECT_EQ(schema->inputs()[0].GetTypes().count(bfloat16_type), 1u);
   EXPECT_EQ(schema->inputs()[4].GetTypes().count(bfloat16_type), 1u);
+  EXPECT_EQ(schema->inputs()[6].GetTypes().count(bfloat16_type), 1u);
+  EXPECT_EQ(schema->inputs()[7].GetTypes().count(bfloat16_type), 1u);
   EXPECT_EQ(schema->outputs()[1].GetTypes().count(bfloat16_type), 1u);
   EXPECT_EQ(schema->outputs()[2].GetTypes().count(bfloat16_type), 1u);
 }
+
+namespace {
+Status ResolveDynamicVarlenShape(const std::vector<int64_t>& delta_dims = {3, 4, 2},
+                                 const std::vector<int64_t>& mask_dims = {3, 1},
+                                 int64_t group_size = 2, int64_t delta_offset = 2,
+                                 int64_t kernel_size = 2) {
+  std::vector<ONNX_NAMESPACE::FunctionProto> functions;
+  Model model("dynamic_varlen_shape", true, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{kMSDomain, 1}}, functions,
+              DefaultLoggingManager().DefaultLogger(), ModelOptions(true, true));
+  auto& graph = model.MainGraph();
+  auto make_arg = [&](const std::string& name, int elem_type, const std::vector<int64_t>& dims) -> NodeArg& {
+    ONNX_NAMESPACE::TypeProto type;
+    auto* tensor = type.mutable_tensor_type();
+    tensor->set_elem_type(elem_type);
+    for (int64_t dim : dims) tensor->mutable_shape()->add_dim()->set_dim_value(dim);
+    return graph.GetOrCreateNodeArg(name, &type);
+  };
+  auto& empty = graph.GetOrCreateNodeArg("", nullptr);
+  auto& input = make_arg("input", ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16, {3, 4});
+  auto& weight = make_arg("weight", ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16, {4, 1, kernel_size});
+  auto& offsets = make_arg("offsets", ONNX_NAMESPACE::TensorProto_DataType_INT32, {3});
+  auto& state = make_arg("state", ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16, {2, 4, 1});
+  auto& delta = delta_dims.empty() ? empty : make_arg("delta", ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16, delta_dims);
+  auto& mask = mask_dims.empty() ? empty : make_arg("mask", ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16, mask_dims);
+  auto& output = graph.GetOrCreateNodeArg("output", nullptr);
+  auto& final_state = graph.GetOrCreateNodeArg("final_state", nullptr);
+  auto& node = graph.AddNode("dynamic", "VarlenCausalConvWithState", "",
+                             {&input, &weight, &offsets, &empty, &state, &empty, &delta, &mask},
+                             {&output, &final_state}, nullptr, kMSDomain);
+  node.AddAttribute("group_size", group_size);
+  node.AddAttribute("delta_offset", delta_offset);
+  const Status status = graph.Resolve();
+  if (status.IsOK()) {
+    EXPECT_EQ(output.Shape()->dim_size(), 2);
+    EXPECT_EQ(output.Shape()->dim(0).dim_value(), 3);
+    EXPECT_EQ(final_state.Shape()->dim_size(), 3);
+    EXPECT_EQ(final_state.Shape()->dim(0).dim_value(), 2);
+    EXPECT_EQ(final_state.Shape()->dim(2).dim_value(), 1);
+  }
+  return status;
+}
+}  // namespace
+
+TEST(ContribOpVarlenCausalConvWithStateTest, DynamicShapeInference) {
+  EXPECT_TRUE(ResolveDynamicVarlenShape().IsOK());
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, DynamicShapeInferenceRejectsInvalidInputs) {
+  EXPECT_FALSE(ResolveDynamicVarlenShape({3, 4, 2}, {}).IsOK());
+  EXPECT_FALSE(ResolveDynamicVarlenShape({}, {3, 1}).IsOK());
+  EXPECT_FALSE(ResolveDynamicVarlenShape({3, 4, 2}, {3, 1}, 0).IsOK());
+  EXPECT_FALSE(ResolveDynamicVarlenShape({3, 4, 2}, {3, 1}, 3).IsOK());
+  EXPECT_FALSE(ResolveDynamicVarlenShape({3, 4, 2}, {3, 1}, 2, 3).IsOK());
+  EXPECT_FALSE(ResolveDynamicVarlenShape({3, 4, 3}).IsOK());
+  EXPECT_FALSE(ResolveDynamicVarlenShape({2, 4, 2}).IsOK());
+  EXPECT_FALSE(ResolveDynamicVarlenShape({3, 4, 2}, {3, 2}).IsOK());
+  EXPECT_FALSE(ResolveDynamicVarlenShape({3, 4, 2}, {3, 1}, 2, 2, 3).IsOK());
+}
+
+#ifdef USE_CUDA
+namespace {
+template <typename ElementT>
+void RunDynamicVarlenCase(const std::vector<int>& sequence_lengths, int channels, int group_size,
+                          int delta_offset = 0, int capacity = 0, bool special_values = false) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA device not available for dynamic Varlen tests";
+  }
+  const int batch_size = static_cast<int>(sequence_lengths.size());
+  std::vector<int32_t> offsets(batch_size + 1, 0);
+  for (int batch = 0; batch < batch_size; ++batch) offsets[batch + 1] = offsets[batch] + sequence_lengths[batch];
+  const int total_tokens = offsets.back();
+  const int groups = channels / group_size;
+  auto as_float = [](ElementT value) {
+    if constexpr (std::is_same_v<ElementT, float>)
+      return value;
+    else
+      return value.ToFloat();
+  };
+  std::vector<ElementT> input(static_cast<size_t>(total_tokens) * channels);
+  std::vector<ElementT> weight(static_cast<size_t>(channels) * 2);
+  std::vector<ElementT> delta(static_cast<size_t>(total_tokens) * 4 * groups);
+  std::vector<ElementT> mask(total_tokens);
+  std::vector<ElementT> state(static_cast<size_t>(batch_size) * channels);
+  for (size_t index = 0; index < input.size(); ++index) input[index] = ElementT(std::sin(index * 0.37f));
+  for (size_t index = 0; index < weight.size(); ++index) weight[index] = ElementT(std::cos(index * 0.23f));
+  for (size_t index = 0; index < delta.size(); ++index) delta[index] = ElementT(0.4f * std::sin(index * 0.11f));
+  for (size_t index = 0; index < state.size(); ++index) state[index] = ElementT(2.0f + std::cos(index * 0.31f));
+  std::vector<int32_t> capture_count(batch_size);
+  for (int batch = 0; batch < batch_size; ++batch) {
+    capture_count[batch] = batch % 3 == 0 ? -1 : (batch % 3 == 1 ? capacity + 5 : 1);
+    for (int position = 0; position < sequence_lengths[batch]; ++position) {
+      mask[offsets[batch] + position] = ElementT(position == 0 && batch % 2 == 0 ? 0.0f : (position % 3 == 0 ? -0.5f : 1.0f));
+    }
+  }
+  if (special_values) {
+    std::fill(delta.begin(), delta.end(), ElementT(0.0f));
+    const float large = std::is_same_v<ElementT, MLFloat16> ? 1.0e4f : 1.0e20f;
+    for (int token = 0; token < total_tokens; ++token) {
+      input[static_cast<size_t>(token) * channels] = ElementT(0.0f);
+      input[static_cast<size_t>(token) * channels + 1] = ElementT(std::numeric_limits<float>::infinity());
+      input[static_cast<size_t>(token) * channels + 2] = ElementT(std::numeric_limits<float>::quiet_NaN());
+      input[static_cast<size_t>(token) * channels + 3] = ElementT(large);
+      mask[token] = ElementT(0.0f);
+    }
+    weight[0] = weight[1] = ElementT(-1.0f);
+    weight[6] = weight[7] = ElementT(large);
+    for (int batch = 0; batch < batch_size; ++batch) {
+      state[static_cast<size_t>(batch) * channels] = ElementT(1.0f);
+      state[static_cast<size_t>(batch) * channels + 3] = ElementT(large);
+    }
+  }
+  std::vector<ElementT> expected_output(input.size());
+  std::vector<ElementT> expected_final(state.size());
+  std::vector<ElementT> expected_updates(static_cast<size_t>(batch_size) * capacity * channels, ElementT(0.0f));
+  for (int batch = 0; batch < batch_size; ++batch) {
+    for (int channel = 0; channel < channels; ++channel) {
+      ElementT previous = state[static_cast<size_t>(batch) * channels + channel];
+      for (int position = 0; position < sequence_lengths[batch]; ++position) {
+        const int token = offsets[batch] + position;
+        const size_t input_index = static_cast<size_t>(token) * channels + channel;
+        const size_t delta_index = (static_cast<size_t>(token) * 4 + delta_offset) * groups + channel / group_size;
+        volatile float current_sum = as_float(weight[channel * 2 + 1]) + as_float(delta[delta_index]);
+        volatile float previous_sum = as_float(weight[channel * 2]) + as_float(delta[delta_index + groups]);
+        const ElementT current_coefficient(current_sum);
+        const ElementT previous_coefficient(previous_sum);
+        volatile float current_product = as_float(input[input_index]) * as_float(current_coefficient);
+        volatile float previous_product = as_float(previous) * as_float(previous_coefficient);
+        const ElementT current_term(current_product);
+        const ElementT previous_term(previous_product);
+        volatile float masked_product = as_float(previous_term) * as_float(mask[token]);
+        const ElementT masked_term(masked_product);
+        volatile float result = as_float(current_term) + as_float(masked_term);
+        expected_output[input_index] = ElementT(result);
+        if (position < std::max(0, std::min({capture_count[batch], capacity, sequence_lengths[batch]}))) {
+          expected_updates[(static_cast<size_t>(batch) * capacity + position) * channels + channel] = input[input_index];
+        }
+        previous = input[input_index];
+      }
+      expected_final[static_cast<size_t>(batch) * channels + channel] = previous;
+    }
+  }
+  OpTester tester("VarlenCausalConvWithState", 1, kMSDomain);
+  tester.AddAttribute<int64_t>("group_size", group_size);
+  tester.AddAttribute<int64_t>("delta_offset", delta_offset);
+  tester.AddAttribute<int64_t>("state_update_capacity", capacity);
+  tester.AddInput<ElementT>("input", {total_tokens, channels}, input);
+  tester.AddInput<ElementT>("weight", {channels, 1, 2}, weight);
+  tester.AddInput<int32_t>("cumulative_sequence_length", {batch_size + 1}, offsets);
+  tester.AddOptionalInputEdge<ElementT>();
+  tester.AddInput<ElementT>("initial_state", {batch_size, channels, 1}, state);
+  if (capacity > 0)
+    tester.AddInput<int32_t>("capture_count", {batch_size}, capture_count);
+  else
+    tester.AddOptionalInputEdge<int32_t>();
+  tester.AddInput<ElementT>("kernel_delta", {total_tokens, 4, groups}, delta);
+  tester.AddInput<ElementT>("previous_mask", {total_tokens, 1}, mask);
+  tester.AddOutput<ElementT>("output", {total_tokens, channels}, expected_output);
+  tester.AddOutput<ElementT>("final_state", {batch_size, channels, 1}, expected_final);
+  if (capacity > 0) tester.AddOutput<ElementT>("state_update", {batch_size, capacity, channels}, expected_updates);
+  tester.SetCustomOutputVerifier([=](const std::vector<OrtValue>& fetches, const std::string& provider) {
+    EXPECT_EQ(provider, kCudaExecutionProvider);
+    ASSERT_EQ(fetches.size(), capacity > 0 ? 3u : 2u);
+    auto compare = [&](size_t output_index, const std::vector<ElementT>& expected) {
+      const ElementT* actual = fetches[output_index].Get<Tensor>().Data<ElementT>();
+      for (size_t index = 0; index < expected.size(); ++index) {
+        if (std::isnan(as_float(expected[index])))
+          EXPECT_TRUE(std::isnan(as_float(actual[index])));
+        else
+          EXPECT_EQ(std::memcmp(actual + index, expected.data() + index, sizeof(ElementT)), 0)
+              << "output " << output_index << " element " << index;
+      }
+    };
+    compare(0, expected_output);
+    compare(1, expected_final);
+    if (capacity > 0) compare(2, expected_updates);
+  });
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+}  // namespace
+
+TEST(ContribOpVarlenCausalConvWithStateTest, DynamicFloatRagged) {
+  RunDynamicVarlenCase<float>({3, 1, 8}, 10, 2, 0);
+  RunDynamicVarlenCase<float>({3, 1, 8}, 10, 2, 2);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, DynamicFloat16Ragged) {
+  RunDynamicVarlenCase<MLFloat16>({1, 2, 8}, 258, 2, 0);
+  RunDynamicVarlenCase<MLFloat16>({1, 2, 8}, 258, 2, 2);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, DynamicBFloat16RC14) {
+  RunDynamicVarlenCase<BFloat16>({8, 8, 8}, 3584, 16, 0);
+  RunDynamicVarlenCase<BFloat16>({8, 8, 8}, 3584, 16, 2);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, DynamicAllOnesDecode) {
+  RunDynamicVarlenCase<float>({1, 1, 1}, 10, 2);
+  RunDynamicVarlenCase<MLFloat16>({1, 1, 1}, 10, 2);
+  RunDynamicVarlenCase<BFloat16>({1, 1, 1}, 10, 2);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, DynamicCapture) {
+  RunDynamicVarlenCase<float>({3, 1, 2, 8}, 16, 4, 2, 8);
+  RunDynamicVarlenCase<MLFloat16>({3, 1, 2, 8}, 16, 4, 2, 8);
+  RunDynamicVarlenCase<BFloat16>({3, 1, 2, 8}, 16, 4, 2, 8);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, DynamicSignedZeroAndNonfinite) {
+  RunDynamicVarlenCase<float>({2, 1, 3}, 16, 4, 0, 0, true);
+  RunDynamicVarlenCase<MLFloat16>({2, 1, 3}, 16, 4, 0, 0, true);
+  RunDynamicVarlenCase<BFloat16>({2, 1, 3}, 16, 4, 0, 0, true);
+}
+#endif
 
 #if defined(USE_CUDA) || defined(USE_WEBGPU)
 namespace {
@@ -2390,7 +2611,8 @@ static void RunAliasedStateTwoCallContinuationIOBinding(
     int kernel_size,
     const std::vector<float>& expected_output,
     const std::vector<float>& expected_state,
-    uint64_t max_storage_buffer_binding_size = 0) {
+    uint64_t max_storage_buffer_binding_size = 0,
+    bool dynamic = false) {
   auto ep = max_storage_buffer_binding_size == 0
                 ? TryGetEpWithVarlenCausalConvWithState()
                 : GetWebGpuEpWithTestStorageBufferBindingSize(max_storage_buffer_binding_size);
@@ -2399,6 +2621,7 @@ static void RunAliasedStateTwoCallContinuationIOBinding(
     return;
   }
   const int pad = kernel_size - 1;
+  const int channels = dynamic ? 258 : 1;
 
   std::unordered_map<std::string, int> domain_to_version = {{kMSDomain, 1}};
   std::vector<ONNX_NAMESPACE::FunctionProto> functions;
@@ -2408,7 +2631,7 @@ static void RunAliasedStateTwoCallContinuationIOBinding(
       DefaultLoggingManager().DefaultLogger(), ModelOptions(true, true));
   auto& graph = model->MainGraph();
   std::vector<ONNX_NAMESPACE::TypeProto> types;
-  types.reserve(7);
+  types.reserve(dynamic ? 9 : 7);
   auto tensor_type = [&](int elem_type, std::initializer_list<int64_t> dims) {
     types.emplace_back();
     auto* type = &types.back();
@@ -2419,20 +2642,27 @@ static void RunAliasedStateTwoCallContinuationIOBinding(
     return type;
   };
   auto& input_arg = graph.GetOrCreateNodeArg(
-      "input", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {total_tokens, 1}));
+      "input", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {total_tokens, channels}));
   auto& weight_arg = graph.GetOrCreateNodeArg(
-      "weight", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, 1, kernel_size}));
+      "weight", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {channels, 1, kernel_size}));
   auto& offsets_arg = graph.GetOrCreateNodeArg(
       "cumulative_sequence_length",
       tensor_type(ONNX_NAMESPACE::TensorProto_DataType_INT32, {2}));
   auto& empty = graph.GetOrCreateNodeArg("", nullptr);
   auto& state_arg = graph.GetOrCreateNodeArg(
-      "initial_state", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, 1, pad}));
+      "initial_state", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, channels, pad}));
   auto& output_arg = graph.GetOrCreateNodeArg(
-      "output", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {total_tokens, 1}));
+      "output", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {total_tokens, channels}));
   auto& final_arg = graph.GetOrCreateNodeArg(
-      "final_state", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, 1, pad}));
+      "final_state", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, channels, pad}));
   std::vector<NodeArg*> inputs = {&input_arg, &weight_arg, &offsets_arg, &empty, &state_arg};
+  if (dynamic) {
+    auto& delta_arg = graph.GetOrCreateNodeArg(
+        "kernel_delta", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {total_tokens, 2, channels}));
+    auto& mask_arg = graph.GetOrCreateNodeArg(
+        "previous_mask", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {total_tokens, 1}));
+    inputs.insert(inputs.end(), {&empty, &delta_arg, &mask_arg});
+  }
   std::vector<NodeArg*> outputs = {&output_arg, &final_arg};
   auto& node = graph.AddNode("varlen", "VarlenCausalConvWithState", "alias continuation",
                              inputs, outputs, nullptr, kMSDomain);
@@ -2470,18 +2700,20 @@ static void RunAliasedStateTwoCallContinuationIOBinding(
     Tensor::InitOrtValue(std::move(gpu), result);
     return result;
   };
-  std::vector<float> input(static_cast<size_t>(total_tokens));
-  std::iota(input.begin(), input.end(), 1.0f);
+  std::vector<float> input(static_cast<size_t>(total_tokens) * channels);
+  for (int token = 0; token < total_tokens; ++token) {
+    std::fill_n(input.begin() + static_cast<size_t>(token) * channels, channels, static_cast<float>(token + 1));
+  }
   auto input_value = make_gpu(input, DataTypeImpl::GetType<float>(),
-                              TensorShape({total_tokens, 1}));
-  auto weight_value = make_gpu(std::vector<float>(static_cast<size_t>(kernel_size), 1.0f),
-                               DataTypeImpl::GetType<float>(), TensorShape({1, 1, kernel_size}));
+                              TensorShape({total_tokens, channels}));
+  auto weight_value = make_gpu(std::vector<float>(static_cast<size_t>(channels) * kernel_size, 1.0f),
+                               DataTypeImpl::GetType<float>(), TensorShape({channels, 1, kernel_size}));
   auto offsets_value = make_gpu(std::vector<int32_t>{0, total_tokens}, DataTypeImpl::GetType<int32_t>(),
                                 TensorShape({2}));
-  auto state_value = make_gpu(std::vector<float>(static_cast<size_t>(pad)),
-                              DataTypeImpl::GetType<float>(), TensorShape({1, 1, pad}));
-  auto output_value = make_gpu(std::vector<float>(static_cast<size_t>(total_tokens)),
-                               DataTypeImpl::GetType<float>(), TensorShape({total_tokens, 1}));
+  auto state_value = make_gpu(std::vector<float>(static_cast<size_t>(channels) * pad),
+                              DataTypeImpl::GetType<float>(), TensorShape({1, channels, pad}));
+  auto output_value = make_gpu(std::vector<float>(static_cast<size_t>(total_tokens) * channels),
+                               DataTypeImpl::GetType<float>(), TensorShape({total_tokens, channels}));
 
   std::unique_ptr<IOBinding> binding;
   ASSERT_STATUS_OK(session.NewIOBinding(&binding));
@@ -2489,6 +2721,14 @@ static void RunAliasedStateTwoCallContinuationIOBinding(
   ASSERT_STATUS_OK(binding->BindInput("weight", weight_value));
   ASSERT_STATUS_OK(binding->BindInput("cumulative_sequence_length", offsets_value));
   ASSERT_STATUS_OK(binding->BindInput("initial_state", state_value));
+  if (dynamic) {
+    auto delta_value = make_gpu(std::vector<float>(static_cast<size_t>(total_tokens) * 2 * channels, 0.0f),
+                                DataTypeImpl::GetType<float>(), TensorShape({total_tokens, 2, channels}));
+    auto mask_value = make_gpu(std::vector<float>(static_cast<size_t>(total_tokens), 1.0f),
+                               DataTypeImpl::GetType<float>(), TensorShape({total_tokens, 1}));
+    ASSERT_STATUS_OK(binding->BindInput("kernel_delta", delta_value));
+    ASSERT_STATUS_OK(binding->BindInput("previous_mask", mask_value));
+  }
   ASSERT_STATUS_OK(binding->BindOutput("output", output_value));
   ASSERT_STATUS_OK(binding->BindOutput("final_state", state_value));
   RunOptions run_options;
@@ -2498,18 +2738,38 @@ static void RunAliasedStateTwoCallContinuationIOBinding(
   EXPECT_EQ(binding->GetOutputs()[1].Get<Tensor>().Data<float>(),
             state_value.Get<Tensor>().Data<float>());
 
-  std::vector<float> actual_state(static_cast<size_t>(pad));
-  Tensor cpu_result(DataTypeImpl::GetType<float>(), TensorShape({1, 1, pad}),
+  std::vector<float> actual_state(static_cast<size_t>(channels) * pad);
+  Tensor cpu_result(DataTypeImpl::GetType<float>(), TensorShape({1, channels, pad}),
                     actual_state.data(), cpu_alloc->Info());
   ASSERT_STATUS_OK(ep_ptr->GetDataTransfer()->CopyTensor(state_value.Get<Tensor>(), cpu_result));
-  EXPECT_EQ(actual_state, expected_state);
+  for (int channel = 0; channel < channels; ++channel) {
+    for (int position = 0; position < pad; ++position) {
+      EXPECT_EQ(actual_state[static_cast<size_t>(channel) * pad + position], expected_state[position]);
+    }
+  }
 
-  std::vector<float> actual_output(static_cast<size_t>(total_tokens));
-  Tensor cpu_output(DataTypeImpl::GetType<float>(), TensorShape({total_tokens, 1}),
+  std::vector<float> actual_output(static_cast<size_t>(total_tokens) * channels);
+  Tensor cpu_output(DataTypeImpl::GetType<float>(), TensorShape({total_tokens, channels}),
                     actual_output.data(), cpu_alloc->Info());
   ASSERT_STATUS_OK(ep_ptr->GetDataTransfer()->CopyTensor(output_value.Get<Tensor>(), cpu_output));
-  EXPECT_EQ(actual_output, expected_output);
+  for (int token = 0; token < total_tokens; ++token) {
+    for (int channel = 0; channel < channels; ++channel) {
+      EXPECT_EQ(actual_output[static_cast<size_t>(token) * channels + channel], expected_output[token]);
+    }
+  }
 }
+
+#ifdef USE_CUDA
+TEST(ContribOpVarlenCausalConvWithStateTest, DynamicAliasedGeneralTwoCallContinuation) {
+  if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA device not available";
+  RunAliasedStateTwoCallContinuationIOBinding(3, 2, {4.0f, 3.0f, 5.0f}, {3.0f}, 0, true);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, DynamicAliasedDecodeTwoCallContinuation) {
+  if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA device not available";
+  RunAliasedStateTwoCallContinuationIOBinding(1, 2, {2.0f}, {1.0f}, 0, true);
+}
+#endif
 
 TEST(ContribOpVarlenCausalConvWithStateTest, AliasedGeneralKernelTwoCallContinuation) {
   RunAliasedStateTwoCallContinuationIOBinding(

@@ -8846,47 +8846,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.VarlenCausalConvWithState"></a><a name="com.microsoft.varlencausalconvwithstate">**com.microsoft.VarlenCausalConvWithState**</a>
 
-  Stateful causal depthwise convolution over a packed, token-major batch of variable-length
-  sequences (CUDA and WebGPU).
-  
-  input and output have shape (total_tokens, channels). cumulative_sequence_length is a
-  device-resident int32 tensor of shape (batch_size + 1); sequence i occupies
-  [cumulative_sequence_length[i], cumulative_sequence_length[i + 1]). Every sequence contributes
-  at least one token. weight has shape (channels, 1, kernel_size), and optional bias has shape
-  (channels). The convolution never reads across a sequence boundary.
-  
-  initial_state is required and has shape (batch_size, channels, state_length), where
-  state_length = (kernel_size - 1) * dilation. It contains
-  the committed raw activation samples immediately preceding this call. final_state has the same
-  shape and type and is fully written with the state after each sequence's final token. State
-  uses the activation type because it stores raw samples, not accumulated convolution values.
-  initial_state and final_state may use the same allocation. Such in-place execution is
-  transaction-safe only when the whole operator call is unconditionally committed; a caller that
-  may select a prefix or roll back must preserve initial_state and replay the compact state update.
-  
-  When state_update_capacity is positive, capture_count is required with shape (batch_size), and
-  state_update has shape (batch_size, state_update_capacity, channels).
-  For request b, slots [0, clamp(capture_count[b], 0,
-  min(state_update_capacity, sequence_length[b]))) contain the original local input token values.
-  These values represent the append component of each shift-left-and-append state transition.
-  All remaining slots are zero. capture_count is forbidden when state_update_capacity is zero.
-  
-  For memory-safety containment, each GPU work item validates cumulative_sequence_length[0] == 0,
-  cumulative_sequence_length[batch_size] == total_tokens, and its local range
-  0 <= start < end <= total_tokens before accessing input, state, or output.
-  Malformed offsets cause affected work to return without those accesses; outputs are unspecified.
-  This device-side containment is not a synchronous validation or rejection mechanism.
-  
-  The optional activation attribute supports none, SiLU, and Swish.
-  
-  The dilation attribute spaces the kernel taps along the sequence axis: local token t of a request
-  reads that request's local positions t - (kernel_size - 1 - j) * dilation for tap j, and positions
-  before the request's first token come from the carry state. The carry state therefore holds
-  state_length = (kernel_size - 1) * dilation positions per request instead of kernel_size - 1.
-  Dilation 1 (the default) is the undilated case and keeps the original state length, so models
-  exported before the attribute existed are unaffected. input and output are already token-major
-  (sequence-major, channels-last), so this op needs no separate layout attribute.
-
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
@@ -8896,38 +8855,46 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>activation</tt> : string</dt>
 <dd>Fused activation function. One of: 'silu', 'swish', 'none'. Default is 'none'.</dd>
+<dt><tt>delta_offset</tt> : int</dt>
+<dd>Projected-tap index of the current coefficient; the next index supplies the previous coefficient (CUDA dynamic mode only). Default is 0.</dd>
 <dt><tt>dilation</tt> : int</dt>
 <dd>Spacing between kernel taps along the sequence axis. The receptive field spans (kernel_size - 1) * dilation positions before the current token, and initial_state / final_state hold that many positions per request. Must be >= 1. Default is 1 (undilated).</dd>
+<dt><tt>group_size</tt> : int</dt>
+<dd>Number of contiguous channels sharing each projected delta (CUDA dynamic mode only). Must divide channels. Default is 1.</dd>
 <dt><tt>state_update_capacity</tt> : int</dt>
 <dd>Static number of compact contiguous-prefix transition values to expose per request. Valid range is [0, 8]. capture_count is required exactly when this is positive.</dd>
 </dl>
 
-#### Inputs (5 - 6)
+#### Inputs (5 - 8)
 
 <dl>
 <dt><tt>input</tt> : T</dt>
-<dd>Token-major packed input with shape (total_tokens, channels).</dd>
+<dd></dd>
 <dt><tt>weight</tt> : T</dt>
-<dd>Depthwise convolution kernel with shape (channels, 1, kernel_size).</dd>
+<dd></dd>
 <dt><tt>cumulative_sequence_length</tt> : M</dt>
-<dd>Device tensor with shape (batch_size + 1) giving the half-open packed token range of each sequence.</dd>
+<dd></dd>
 <dt><tt>bias</tt> (optional) : T</dt>
-<dd>Optional per-channel bias with shape (channels). Because the following initial_state input is required, an omitted bias must still occupy this position as an empty input name so initial_state stays at input index 4.</dd>
+<dd></dd>
 <dt><tt>initial_state</tt> : T</dt>
-<dd>Required committed carry state with shape (batch_size, channels, (kernel_size - 1) * dilation).</dd>
+<dd></dd>
 <dt><tt>capture_count</tt> (optional) : M</dt>
-<dd>Optional device int32 tensor with shape (batch_size). For each request, captures that many local tokens from the contiguous prefix, clamped to the sequence length and state_update_capacity. Required exactly when state_update_capacity is positive.</dd>
+<dd></dd>
+<dt><tt>kernel_delta</tt> (optional) : T</dt>
+<dd></dd>
+<dt><tt>previous_mask</tt> (optional) : T</dt>
+<dd></dd>
 </dl>
 
 #### Outputs (2 - 3)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>Token-major convolution output with the same shape as input.</dd>
+<dd></dd>
 <dt><tt>final_state</tt> : T</dt>
-<dd>Fully written state after each sequence's final token, with shape (batch_size, channels, (kernel_size - 1) * dilation).</dd>
+<dd></dd>
 <dt><tt>state_update</tt> (optional) : T</dt>
-<dd>Optional compact transition values with shape (batch_size, state_update_capacity, channels). Inactive slots are zero.</dd>
+<dd></dd>
 </dl>
 
 #### Type Constraints
