@@ -61,6 +61,7 @@ struct Params {
   float alpha;
   float beta;
   float limit;
+  bool swiglu_limit_after_activation = false;
   int64_t weight_expert_stride;  // bytes
   int64_t scale_expert_stride;   // elements
   int num_experts;
@@ -448,13 +449,22 @@ __global__ void __launch_bounds__(kThreads, MinCtasPerSm(kM)) MoeGemvTcInt4Kerne
         float gate = even;
         float linear = odd;
         if (isfinite(limit)) {
-          gate = fminf(gate, limit);
+          if (!p.swiglu_limit_after_activation) {
+            gate = fminf(gate, limit);
+          }
           linear = fminf(fmaxf(linear, -limit), limit);
         }
         linear += beta;
         const float sigmoid = 1.0f / (1.0f + expf(-alpha * gate));
+        float activated = gate * sigmoid;
+        if (p.swiglu_limit_after_activation) {
+          if ((alpha > 0.0f && gate == -CUDART_INF_F) || (alpha < 0.0f && gate == CUDART_INF_F)) {
+            activated = 0.0f;
+          }
+          activated = fminf(activated, limit);
+        }
         p.out[static_cast<int64_t>(out_row) * (n / 2) + col / 2] =
-            __float2bfloat16_rn(gate * sigmoid * linear);
+            __float2bfloat16_rn(activated * linear);
       } else {
         *reinterpret_cast<__nv_bfloat162*>(p.out + static_cast<int64_t>(out_row) * n + col) =
             __floats2bfloat162_rn(even, odd);
@@ -538,7 +548,8 @@ inline bool TryLaunchInt4Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
                               int num_experts, int64_t expanded_num_rows, int64_t n, int64_t k, int group_size,
                               const float* swiglu_alpha, const float* swiglu_beta, const float* swiglu_limit,
                               float alpha, float beta, float limit, const int* permuted_row_to_source_row,
-                              int64_t num_rows, cudaStream_t stream, int tensor_core_min_rows) {
+                              int64_t num_rows, cudaStream_t stream, int tensor_core_min_rows,
+                              bool swiglu_limit_after_activation = false) {
   if (group_size != 32 || permuted_row_to_expert == nullptr ||
       (expert_first_token_offset == nullptr && expanded_num_rows > 256) ||
       expanded_num_rows < tensor_core_min_rows || tensor_core_min_rows == 0 || !DeviceSupportsBf16Mma()) {
@@ -571,6 +582,7 @@ inline bool TryLaunchInt4Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
   p.alpha = alpha;
   p.beta = beta;
   p.limit = limit;
+  p.swiglu_limit_after_activation = swiglu_limit_after_activation;
   p.weight_expert_stride = n * k / 2;
   p.scale_expert_stride = (k / group_size) * n;
   p.num_experts = num_experts;

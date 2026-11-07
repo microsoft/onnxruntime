@@ -495,7 +495,9 @@ __device__ __forceinline__ void swiglu_epilogue(void* out, void* tile_acc, void*
       linear += static_cast<float>(reinterpret_cast<TypeA*>(bias)[linear_idx]);
     }
     if (isfinite(activation_params.limit)) {
-      gate = fminf(gate, activation_params.limit);
+      if (!activation_params.swiglu_limit_after_activation) {
+        gate = fminf(gate, activation_params.limit);
+      }
       linear = fminf(fmaxf(linear, -activation_params.limit), activation_params.limit);
     }
     linear += activation_params.beta;
@@ -503,7 +505,11 @@ __device__ __forceinline__ void swiglu_epilogue(void* out, void* tile_acc, void*
     // SiLU's limit is zero where exp(-alpha * gate) overflows.
     const bool silu_limit_is_zero = (activation_params.alpha > 0.0f && gate == -CUDART_INF_F) ||
                                     (activation_params.alpha < 0.0f && gate == CUDART_INF_F);
-    reinterpret_cast<TypeA*>(out)[pair] = static_cast<TypeA>((silu_limit_is_zero ? 0.0f : gate * sigmoid) * linear);
+    float activated = silu_limit_is_zero ? 0.0f : gate * sigmoid;
+    if (activation_params.swiglu_limit_after_activation) {
+      activated = fminf(activated, activation_params.limit);
+    }
+    reinterpret_cast<TypeA*>(out)[pair] = static_cast<TypeA>(activated * linear);
   }
 }
 
@@ -707,14 +713,20 @@ __global__ void moe_gemv_splitk_reduce_swiglu_kernel(
     linear += static_cast<float>(bias[linear_idx]);
   }
   if (isfinite(act_limit)) {
-    gate = fminf(gate, act_limit);
+    if (!activation_params.swiglu_limit_after_activation) {
+      gate = fminf(gate, act_limit);
+    }
     linear = fminf(fmaxf(linear, -act_limit), act_limit);
   }
   linear += act_beta;
   const float sigmoid = 1.0f / (1.0f + expf(-act_alpha * gate));
   const bool silu_limit_is_zero = (act_alpha > 0.0f && gate == -CUDART_INF_F) ||
                                   (act_alpha < 0.0f && gate == CUDART_INF_F);
-  out[static_cast<int64_t>(row) * inter_size + col] = static_cast<TypeA>((silu_limit_is_zero ? 0.0f : gate * sigmoid) * linear);
+  float activated = silu_limit_is_zero ? 0.0f : gate * sigmoid;
+  if (activation_params.swiglu_limit_after_activation) {
+    activated = fminf(activated, act_limit);
+  }
+  out[static_cast<int64_t>(row) * inter_size + col] = static_cast<TypeA>(activated * linear);
 #endif
 }
 
@@ -1362,7 +1374,8 @@ bool launch_moe_gemv_int_symmetric_interleaved_swiglu(
             expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, inter_size * 2, k,
             group_size, activation_params.swiglu_alpha, activation_params.swiglu_beta,
             activation_params.swiglu_limit, activation_params.alpha, activation_params.beta,
-            activation_params.limit, permuted_row_to_source_row, num_rows, stream, tensor_core_min_rows)) {
+            activation_params.limit, permuted_row_to_source_row, num_rows, stream, tensor_core_min_rows,
+            activation_params.swiglu_limit_after_activation)) {
       return true;
     }
   }

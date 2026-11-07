@@ -4777,6 +4777,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Gate/up layout for swiglu or geglu. 0: not fused (swiglu only), 1: fused and interleaved, 2: fused and not interleaved ([gate | up] for geglu).</dd>
 <dt><tt>swiglu_limit</tt> : float</dt>
 <dd>The limit used to clamp in SwiGLU. No clamp when limit is not provided. Does not affect GEGLU.</dd>
+<dt><tt>swiglu_limit_after_activation</tt> : int</dt>
+<dd>When 1, clamp the activated gate instead of the gate input: min(gate * sigmoid(activation_alpha * gate), swiglu_limit) * (clamp(up, -swiglu_limit, swiglu_limit) + activation_beta). Requires activation_type='swiglu' and CUDA. The default 0 preserves input clipping.</dd>
 <dt><tt>use_sparse_mixer</tt> : int</dt>
 <dd>Whether to use sparse mixer</dd>
 </dl>
@@ -6723,6 +6725,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Gate/up layout for swiglu or geglu. 0: not fused (swiglu only), 1: fused and interleaved, 2: fused and not interleaved ([gate | up] for geglu).</dd>
 <dt><tt>swiglu_limit</tt> : float</dt>
 <dd>The limit used to clamp inputs in SwiGLU. It is infinite when limit is not provided. Does not affect GEGLU.</dd>
+<dt><tt>swiglu_limit_after_activation</tt> : int</dt>
+<dd>When 1, clamp the activated gate instead of the gate input: min(gate * sigmoid(activation_alpha * gate), swiglu_limit) * (clamp(up, -swiglu_limit, swiglu_limit) + activation_beta). Requires activation_type='swiglu' and CUDA with INT4/INT8 or block-FP8 weights. Offload is unsupported. The default 0 preserves input clipping.</dd>
 <dt><tt>use_sparse_mixer</tt> : int</dt>
 <dd>Whether to use sparse mixer</dd>
 <dt><tt>weights_prepacked</tt> : int</dt>

@@ -29,7 +29,7 @@ import numpy
 import torch
 import torch.nn.functional as F
 from cuda_plugin_ep_helper import resolve_cuda_plugin_ep
-from onnx import helper
+from onnx import helper, load_model_from_string
 from parameterized import parameterized
 from torch import nn
 
@@ -3257,6 +3257,159 @@ class TestQMoEOfflinePrepackedIntParity(unittest.TestCase):
                     session = self._build_session(fc1, fc2, bits, block_size, 1, **kwargs)
                     session.run(None, {"x": x, "router": router})
                 self.assertIn(f"{name}_scales shape [E,N,K/block_size]", str(ctx.exception))
+
+
+class TestQMoEPostActivationClipping(unittest.TestCase):
+    def _model(self, bits, onnx_dtype, fusion, after_activation, limit=4.0, alpha=1.0, beta=0.0):
+        hidden, inter, experts, block = 512, 512, 4, 32
+        fc1_bits, fc2_bits = bits if isinstance(bits, tuple) else (bits, bits)
+        fc1 = torch.full((experts, inter * 2, hidden), 1 << (fc1_bits - 1), dtype=torch.uint8)
+        fc2 = torch.full((experts, hidden, inter), 1 << (fc2_bits - 1), dtype=torch.uint8)
+        fc2[:, torch.arange(inter), torch.arange(inter)] += 1
+        gate = torch.tensor([10.0, 4.0, 0.0, -1.0, -10.0, 2.0, 6.0, 3.0]).repeat(inter // 8)
+        up = torch.tensor([2.0, -8.0, 2.0, 6.0, -6.0, 1.0, -1.0, 2.0]).repeat(inter // 8)
+        bias = torch.stack((gate, up), -1).flatten() if fusion == 1 else torch.cat((gate, up))
+        model = load_model_from_string(
+            create_moe_onnx_graph(
+                hidden,
+                None,
+                experts,
+                2,
+                inter,
+                onnx_to_torch_type_map[onnx_dtype],
+                onnx_dtype,
+                torch.from_numpy(TestQMoEOfflinePrepackedIntParity._raw_bytes(fc1.numpy(), fc1_bits)),
+                torch.from_numpy(TestQMoEOfflinePrepackedIntParity._raw_bytes(fc2.numpy(), fc2_bits)),
+                fc1_bias=bias.repeat(experts, 1),
+                fc1_scales=torch.ones(experts, inter * 2, hidden // block),
+                fc2_scales=torch.ones(experts, hidden, inter // block),
+                use_swiglu=True,
+                use_quant=True,
+                quant_bits=fc1_bits,
+                swiglu_fusion=fusion,
+                block_size=block,
+            )
+        )
+        node = model.graph.node[0]
+        for attr in node.attribute:
+            if attr.name in {"activation_alpha", "activation_beta", "swiglu_limit"}:
+                attr.f = {"activation_alpha": alpha, "activation_beta": beta, "swiglu_limit": limit}[attr.name]
+        node.attribute.append(helper.make_attribute("weights_prepacked", 0))
+        if fc1_bits != fc2_bits:
+            node.attribute.append(helper.make_attribute("fc2_expert_weight_bits", fc2_bits))
+        if after_activation is not None:
+            node.attribute.append(helper.make_attribute("swiglu_limit_after_activation", after_activation))
+        model.ir_version = 10
+        del model.opset_import[:]
+        model.opset_import.extend([helper.make_opsetid("", 21), helper.make_opsetid("com.microsoft", 1)])
+        clipped_gate = gate if after_activation == 1 else gate.clamp(max=limit)
+        activated = clipped_gate * torch.sigmoid(alpha * clipped_gate)
+        if after_activation == 1:
+            activated = activated.clamp(max=limit)
+        expected = torch.zeros(hidden)
+        expected[:inter] = activated * (up.clamp(-limit, limit) + beta)
+        return model.SerializeToString(), expected
+
+    @parameterized.expand(
+        [
+            (4, TensorProto.FLOAT16, False, 4.0),
+            (4, TensorProto.BFLOAT16, False, 5.0),
+            (4, TensorProto.BFLOAT16, True, 4.0),
+            (8, TensorProto.FLOAT16, False, 7.0),
+            (8, TensorProto.BFLOAT16, False, 4.0),
+            ((4, 8), TensorProto.BFLOAT16, False, 4.0, 1.3, 0.5),
+            ((8, 4), TensorProto.FLOAT16, False, 4.0),
+            (4, TensorProto.BFLOAT16, True, 4.0, 1.3, 0.5),
+        ]
+    )
+    @unittest.skipUnless(torch.cuda.is_available(), "CUDA is required")
+    def test_prefill_and_decode(self, bits, onnx_dtype, tensor_core, limit, alpha=1.0, beta=0.0):
+        dtype = onnx_to_torch_type_map[onnx_dtype]
+        for fusion in (1, 2):
+            defaults = {}
+            for mode in (None, 0, 1):
+                with self.subTest(fusion=fusion, mode=mode):
+                    model, expected = self._model(bits, onnx_dtype, fusion, mode, limit, alpha, beta)
+                    options = onnxruntime.SessionOptions()
+                    options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+                    options.add_session_config_entry("ep.cuda.disable_moe_gemv_tc", "0" if tensor_core else "1")
+                    options.add_session_config_entry("ep.cuda.moe_gemv_tc_min_rows", "1")
+                    session = onnxruntime.InferenceSession(
+                        model, options, providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")]
+                    )
+                    for rows in (1, 65):
+                        tensors = {
+                            "input": torch.ones(rows, 512, device=device, dtype=dtype),
+                            "router_probs": torch.tensor([1.0, 0.0, -2.0, -3.0], device=device, dtype=dtype).repeat(
+                                rows, 1
+                            ),
+                        }
+                        output = torch.empty_like(tensors["input"])
+                        binding = session.io_binding()
+                        for name, tensor in tensors.items():
+                            binding.bind_input(name, "cuda", 0, onnx_dtype, tensor.shape, tensor.data_ptr())
+                        binding.bind_output("output", "cuda", 0, onnx_dtype, output.shape, output.data_ptr())
+                        torch.cuda.synchronize()
+                        binding.synchronize_inputs()
+                        session.run_with_iobinding(binding)
+                        binding.synchronize_outputs()
+                        actual = output.cpu().float()
+                        torch.testing.assert_close(
+                            actual, expected.to(dtype).float().repeat(rows, 1), atol=0.02, rtol=0.003
+                        )
+                        if mode is None:
+                            defaults[rows] = actual
+                        elif mode == 0:
+                            torch.testing.assert_close(actual, defaults[rows], atol=0, rtol=0)
+                        else:
+                            self.assertEqual(actual[0, 0].item(), (2.0 + beta) * limit)
+
+    def test_cpu_rejects_post_activation_clipping(self):
+        model, _ = self._model(4, TensorProto.FLOAT, 1, 1)
+        with self.assertRaisesRegex(Exception, "Post-activation SwiGLU clipping currently requires CUDA"):
+            onnxruntime.InferenceSession(model, providers=["CPUExecutionProvider"])
+
+    @unittest.skipUnless(torch.cuda.is_available(), "CUDA is required")
+    def test_invalid_clipping_attributes(self):
+        cases = [
+            ("swiglu_limit_after_activation", 2, "must be 0 or 1"),
+            ("swiglu_limit", -1.0, "nonnegative, non-NaN limit"),
+            ("swiglu_limit", float("nan"), "nonnegative, non-NaN limit"),
+            ("activation_type", "gelu", "requires activation_type='swiglu'"),
+            ("expert_weight_bits", 2, "supports only INT4/INT8 and block-FP8"),
+            ("expert_weight_bits", 3, "supports only INT4/INT8 and block-FP8"),
+            ("quant_type", "fp4", "supports only INT4/INT8 and block-FP8"),
+        ]
+        for name, value, message in cases:
+            with self.subTest(attribute=name, value=value):
+                model, _ = self._model(4, TensorProto.FLOAT16, 1, 1)
+                model = load_model_from_string(model)
+                node = model.graph.node[0]
+                replaced = {name, "swiglu_fusion"} if name == "activation_type" else {name}
+                attributes = [attribute for attribute in node.attribute if attribute.name not in replaced]
+                del node.attribute[:]
+                node.attribute.extend(attributes)
+                node.attribute.append(helper.make_attribute(name, value))
+                if name == "activation_type":
+                    node.attribute.append(helper.make_attribute("swiglu_fusion", 0))
+                if name == "expert_weight_bits" and value == 3:
+                    for tensor in model.graph.initializer:
+                        if tensor.name in (node.input[2], node.input[5]):
+                            shape = list(tensor.dims)
+                            shape[-1] = shape[-1] * 3 // 4
+                            tensor.CopyFrom(
+                                helper.make_tensor(
+                                    tensor.name, TensorProto.UINT8, shape, bytes(numpy.prod(shape)), raw=True
+                                )
+                            )
+                options = onnxruntime.SessionOptions()
+                options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+                with self.assertRaisesRegex(Exception, message):
+                    onnxruntime.InferenceSession(
+                        model.SerializeToString(),
+                        options,
+                        providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")],
+                    )
 
 
 class TestQMoECudaGraph(unittest.TestCase):
