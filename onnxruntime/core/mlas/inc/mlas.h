@@ -1238,6 +1238,31 @@ MlasComputeLogistic(
     size_t N
     );
 
+/**
+ * @brief Returns the maximum of Input[0..N). N must be positive.
+ */
+float
+MLASCALL
+MlasReduceMaximum(
+    const float* Input,
+    size_t N
+    );
+
+/**
+ * @brief Computes Output[i] = exp(Input[i] + NegativeMaximum) and returns their sum. Output may alias Input or be
+ *        nullptr when only the sum is needed. Building block for online (flash-style) softmax.
+ *        NegativeMaximum must be at most -max(Input), as with a softmax's running maximum: exponents above zero
+ *        are not range checked.
+ */
+float
+MLASCALL
+MlasComputeSumExp(
+    const float* Input,
+    float* Output,
+    size_t N,
+    float NegativeMaximum
+    );
+
 template <typename T>
 void
 MLASCALL

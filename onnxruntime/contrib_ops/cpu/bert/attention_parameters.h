@@ -159,6 +159,15 @@ struct PagedAttentionParameters : AttentionParameters {
   int rotary_offset = 0;
 };
 
+// Parameters for MultiHeadLatentAttention. One latent cache row of head_size channels is the key of every query
+// head, and channels [v_offset, v_offset + v_head_size) of the same row are its value. past_sequence_length is the
+// length of the past_kv buffer (0 when it is absent).
+struct MultiHeadLatentAttentionParameters : AttentionParameters {
+  int v_offset = 0;
+  int present_sequence_length = 0;  // max(total_sequence_length, past_sequence_length)
+  bool is_first_prompt = false;     // sequence_length == total_sequence_length
+};
+
 // Parameters for sparse attention.
 struct SparseAttentionParameters : AttentionParameters {
   int kv_hidden_size;              // hidden size of key or value
