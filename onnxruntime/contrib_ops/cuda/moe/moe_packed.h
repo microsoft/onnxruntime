@@ -28,6 +28,15 @@ struct MoEPackedParams {
   int inter_size{0};
   int k{0};
   bool normalize_routing_weights{true};
+  bool relu_squared{false};
+  bool sigmoid_routing{false};
+  int router_width{0};
+  float router_scale{1.0f};
+  const void* router_input{nullptr};
+  const void* router_weight{nullptr};
+  const float* router_bias{nullptr};
+  const int32_t* expert_indices{nullptr};
+  const float* expert_weights{nullptr};
   int gate_type{0};
   int up_type{0};
   int down_type{0};
@@ -60,6 +69,8 @@ class MoEPacked final : public CudaKernel {
   int64_t k_{0};
   int64_t normalize_routing_weights_{1};
   std::string activation_type_;
+  std::string routing_function_;
+  float router_scale_{1.0f};
   int64_t gate_type_{-1};
   int64_t up_type_{-1};
   int64_t down_type_{-1};
