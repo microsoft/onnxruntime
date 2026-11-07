@@ -66,6 +66,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.LinearAttentionGate">com.microsoft.LinearAttentionGate</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
   * <a href="#com.microsoft.MRotaryEmbedding">com.microsoft.MRotaryEmbedding</a>
+  * <a href="#com.microsoft.Mamba2Verify">com.microsoft.Mamba2Verify</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp4Weight">com.microsoft.MatMulBlockQuantizedFp4Weight</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp8Weight">com.microsoft.MatMulBlockQuantizedFp8Weight</a>
   * <a href="#com.microsoft.MatMulBnb4">com.microsoft.MatMulBnb4</a>
@@ -4044,6 +4045,94 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>M</tt> : tensor(int64)</dt>
 <dd>Constrain position_ids to integer tensors</dd>
+</dl>
+
+
+### <a name="com.microsoft.Mamba2Verify"></a><a name="com.microsoft.mamba2verify">**com.microsoft.Mamba2Verify**</a>
+
+  Fused causal convolution, selective state-space recurrence and gated grouped RMS normalization.
+  Local provisional contract: head_dim=64, d_state=128, 1<=R<=16.
+  projection[R, 2*di+2*n_groups*d_state+heads] packs [gate, xBC, dt], di=heads*head_dim.
+  state_row is a device int32[1] selecting the starting snapshot (0<=state_row<slots).
+  Convolution has four taps, with BF16 SiLU output. The FP32 recurrence is
+  dt=max(softplus(projection_dt+dt_bias),time_step_min),
+  S=exp(A_negative*dt)*S+(dt*x)*B, readout=D*x+sum(C*S).
+  Readout is gated by FP32 SiLU(gate), normalized per group, scaled by norm_weight and rounded to BF16.
+  Every processed token writes its post-token convolution and SSM snapshot to the corresponding output row.
+  The final/accepted state is chosen by the caller through state_row on the next invocation.
+  Input states may alias their corresponding outputs. Slots R..slots-1 are preserved.
+  No accepted-length truncation, hidden mutable state, host reads or synchronization is performed.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>d_state</tt> : int</dt>
+<dd>Currently 128.</dd>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Grouped RMS epsilon.</dd>
+<dt><tt>head_dim</tt> : int</dt>
+<dd>Currently 64.</dd>
+<dt><tt>heads</tt> : int (required)</dt>
+<dd>Number of heads.</dd>
+<dt><tt>n_groups</tt> : int (required)</dt>
+<dd>Number of B/C and normalization groups, dividing heads.</dd>
+<dt><tt>time_step_min</tt> : float</dt>
+<dd>Lower bound for softplus time step.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>projection</tt> : T</dt>
+<dd>Packed projection [R, width].</dd>
+<dt><tt>conv_state</tt> : T</dt>
+<dd>Snapshots [slots, di+2*n_groups*d_state, 3].</dd>
+<dt><tt>ssm_state</tt> : F</dt>
+<dd>Snapshots [slots, heads, d_state, head_dim].</dd>
+<dt><tt>conv_weight</tt> : T</dt>
+<dd>Depthwise weights [channels,4] or [channels,1,4].</dd>
+<dt><tt>conv_bias</tt> : T</dt>
+<dd>Depthwise convolution bias [channels].</dd>
+<dt><tt>dt_bias</tt> : F</dt>
+<dd>Time-step bias [heads].</dd>
+<dt><tt>A_negative</tt> : F</dt>
+<dd>Negative decay coefficient [heads], not A_log.</dd>
+<dt><tt>D</tt> : F</dt>
+<dd>Skip coefficient [heads].</dd>
+<dt><tt>norm_weight</tt> : F</dt>
+<dd>Normalization weight [di].</dd>
+<dt><tt>state_row</tt> : I</dt>
+<dd>Starting snapshot index int32[1], on device.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Normalized mixer result [R, di].</dd>
+<dt><tt>conv_snapshots</tt> : T</dt>
+<dd>Post-token convolution snapshots, same shape as conv_state.</dd>
+<dt><tt>ssm_snapshots</tt> : F</dt>
+<dd>Post-token recurrence snapshots, same shape as ssm_state.</dd>
+<dt><tt>xbc</tt> : T</dt>
+<dd>BF16 convolution SiLU result [R, channels].</dd>
+<dt><tt>readout</tt> : F</dt>
+<dd>FP32 recurrence readout before gating [R, di].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16)</dt>
+<dd>BF16 activation and convolution parameters.</dd>
+<dt><tt>F</tt> : tensor(float)</dt>
+<dd>FP32 recurrence and normalization.</dd>
+<dt><tt>I</tt> : tensor(int32)</dt>
+<dd>Device snapshot selector.</dd>
 </dl>
 
 
