@@ -31,6 +31,12 @@ class BiasFusion : public NodeSelector {
       return std::nullopt;
     }
 
+    // Fixed-arithmetic profiles do not implement a fused bias.
+    if (const auto* kernel = graph_utils::GetNodeAttribute(node, "gemv_kernel");
+        kernel != nullptr && (kernel->s() == "fixed" || kernel->s() == "fixed_iq2_xxs")) {
+      return std::nullopt;
+    }
+
     // check if MatMulNBits node already has a bias input
     if (const auto input_defs = node.InputDefs();
         input_defs.size() > 5 && input_defs[5]->Exists()) {

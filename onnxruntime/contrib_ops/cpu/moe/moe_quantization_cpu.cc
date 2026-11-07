@@ -956,6 +956,12 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
   }
 
   quant_type_ = op_kernel_info.GetAttrOrDefault<std::string>("quant_type", "int");
+  ORT_ENFORCE(quant_type_ != "iq2_xxs", "CPU QMoE does not support IQ2_XXS.");
+  const auto& route_input_defs = op_kernel_info.node().InputDefs();
+  for (size_t index = 21; index < route_input_defs.size(); ++index) {
+    ORT_ENFORCE(!route_input_defs[index]->Exists(),
+                "CPU QMoE does not support preselected expert routing.");
+  }
   const int64_t prepacked = op_kernel_info.GetAttrOrDefault<int64_t>("weights_prepacked", -1);
   ORT_ENFORCE(prepacked >= -1 && prepacked <= 1, "weights_prepacked must be -1, 0, or 1.");
   const bool is_shared_fp4 = ((quant_type_ == "nvfp4" || quant_type_ == "fp4") && prepacked == 1);

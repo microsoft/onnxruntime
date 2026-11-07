@@ -76,6 +76,11 @@
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
   )
 
+  # Packed projection reductions reproduce source FP16/BF16 rounding, not fast-math approximations.
+  set_source_files_properties(
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/quantization/matmul_packed_projection.cu"
+    PROPERTIES COMPILE_OPTIONS "--ftz=false;--prec-div=true;--prec-sqrt=true;--fmad=true")
+
   include(onnxruntime_cuda_source_filters.cmake)
   include(onnxruntime_cuda_cccl.cmake)
   onnxruntime_filter_cuda_cu_sources(onnxruntime_cuda_contrib_ops_cu_srcs)

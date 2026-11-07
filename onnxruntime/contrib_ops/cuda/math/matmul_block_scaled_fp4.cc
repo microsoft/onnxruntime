@@ -4,6 +4,8 @@
 #include "contrib_ops/cuda/math/matmul_block_scaled_fp4.h"
 
 #include <algorithm>
+#include <limits>
+#include <string>
 #include <type_traits>
 
 #include "core/common/safeint.h"
@@ -11,6 +13,7 @@
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/platform/env_var_utils.h"
+#include "contrib_ops/cuda/quantization/matmul_packed_projection.cuh"
 
 namespace onnxruntime::contrib::cuda {
 using namespace onnxruntime::cuda;
@@ -44,6 +47,10 @@ int64_t RoundUp(int64_t value, int64_t alignment) {
 MatMulBlockQuantizedFp4Weight::MatMulBlockQuantizedFp4Weight(const OpKernelInfo& info) : CudaKernel(info) {
   block_size_ = info.GetAttrOrDefault<int64_t>("block_size", static_cast<int64_t>(16));
   ORT_ENFORCE(block_size_ > 0, "block_size must be positive, got ", block_size_);
+  const auto gemv_kernel = info.GetAttrOrDefault<std::string>("gemv_kernel", "auto");
+  ORT_ENFORCE(gemv_kernel == "auto" || gemv_kernel == "fixed",
+              "gemv_kernel must be 'auto' or 'fixed', got ", gemv_kernel);
+  fixed_gemv_ = gemv_kernel == "fixed";
   sm_ = GetDeviceProp().major * 10 + GetDeviceProp().minor;
 }
 
@@ -176,6 +183,23 @@ Status MatMulBlockQuantizedFp4Weight::ComputeImpl(OpKernelContext* context) cons
           std::is_same<T, BFloat16>::value,
           Stream(context)));
     }
+    return Status::OK();
+  }
+
+  if (fixed_gemv_) {
+    ORT_RETURN_IF_NOT(
+        (std::is_same_v<T, BFloat16> && sm_ >= 80 && block_size_ == 16 &&
+         bias == nullptr && m_i >= 1 && m_i <= 8 && k_i % 1024 == 0 &&
+         n_i <= std::numeric_limits<int>::max() - 32 &&
+         (m_i != 1 || k_i == 4096 || k_i == 8192)),
+        "gemv_kernel='fixed' requires SM80+, BF16, block_size=16, no bias, "
+        "1 <= M <= 8, N <= INT_MAX-32 and positive K divisible by 1024; "
+        "M=1 additionally requires K=4096 or K=8192.");
+    // Preserve the complete arithmetic path, not just its inter-warp K split.
+    CUDA_RETURN_IF_ERROR(LaunchPackedProjection(
+        PackedProjectionFormat::NVFP4, a->DataRaw(), b->Data<uint8_t>(),
+        weight_scale->DataRaw(), weight_scale_2->Data<float>(), false,
+        m_i, n_i, k_i, Y->MutableDataRaw(), Stream(context)));
     return Status::OK();
   }
 
