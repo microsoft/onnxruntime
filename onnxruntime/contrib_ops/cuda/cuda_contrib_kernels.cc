@@ -170,6 +170,10 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MRotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MRotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MRotaryEmbedding);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GemmaRotaryEmbedding);
+#if USE_MEMORY_EFFICIENT_ATTENTION
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, CausalRightAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, CausalRightAttention);
+#endif
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, LinearAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LinearAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, LinearAttention);
@@ -545,6 +549,10 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MRotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MRotaryEmbedding)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GemmaRotaryEmbedding)>,
+#if USE_MEMORY_EFFICIENT_ATTENTION
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, CausalRightAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, CausalRightAttention)>,
+#endif
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, LinearAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, LinearAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, LinearAttention)>,
