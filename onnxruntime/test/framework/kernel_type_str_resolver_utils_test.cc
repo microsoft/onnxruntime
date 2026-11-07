@@ -6,9 +6,11 @@
 #include <iostream>
 #include <sstream>
 #include <iomanip>
+#include <tuple>
 #include "gtest/gtest.h"
 
 #include "core/flatbuffers/schema/ort.fbs.h"
+#include "core/framework/kernel_registry.h"
 #include "core/graph/constants.h"
 #include "core/graph/model.h"
 #include "core/graph/schema_registry.h"
@@ -61,6 +63,72 @@ TEST(KernelTypeStrResolverUtilsTest, VerifyLayoutTransformationRequiredOpsResolv
 }
 
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+TEST(KernelTypeStrResolverUtilsTest, LegacyMatMulNBitsFusionsResolveAdapterKernel) {
+  for (const auto& [op_type, first_adapter_input, adapter_input_count] :
+       {std::tuple{"MatMulNBitsMlp", size_t{9}, size_t{4}},
+        std::tuple{"MatMulNBitsQkv", size_t{12}, size_t{6}}}) {
+    SCOPED_TRACE(op_type);
+    // Reproduce the type-string metadata written before these version-1 ops
+    // acquired optional adapter inputs.
+    ONNX_NAMESPACE::OpSchema old_schema;
+    old_schema.SetName(op_type)
+        .SetDomain(kMSDomain)
+        .SinceVersion(1)
+        .Output(0, "Y", "Result", "T1")
+        .TypeConstraint("T1", {"tensor(float)"}, "Activation type")
+        .TypeConstraint("T2", {"tensor(uint8)"}, "Packed weight type");
+    for (size_t i = 0; i < first_adapter_input; ++i) {
+      old_schema.Input(static_cast<int>(i), "input_" + std::to_string(i), "Base input",
+                       i >= 3 && i % 3 == 0 ? "T2" : "T1");
+    }
+    KernelTypeStrResolver old_resolver;
+    ASSERT_STATUS_OK(old_resolver.RegisterOpSchema(old_schema));
+
+    flatbuffers::DetachedBuffer buffer;
+    gsl::span<const uint8_t> buffer_span;
+    ASSERT_STATUS_OK(kernel_type_str_resolver_utils::SaveKernelTypeStrResolverToBuffer(
+        old_resolver, buffer, buffer_span));
+    KernelTypeStrResolver loaded_resolver;
+    ASSERT_STATUS_OK(kernel_type_str_resolver_utils::LoadKernelTypeStrResolverFromBuffer(
+        loaded_resolver, buffer_span));
+
+    Model model("legacy_matmul_nbits_fusion", false, DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+    ONNX_NAMESPACE::TypeProto float_type;
+    float_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    ONNX_NAMESPACE::TypeProto uint8_type;
+    uint8_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+    std::vector<NodeArg*> base_inputs;
+    for (size_t i = 0; i < first_adapter_input; ++i) {
+      base_inputs.push_back(&graph.GetOrCreateNodeArg(
+          "input_" + std::to_string(i), i >= 3 && i % 3 == 0 ? &uint8_type : &float_type));
+    }
+    auto& output = graph.GetOrCreateNodeArg("output", &float_type);
+    auto& node = graph.AddNode("base_fusion", op_type, "", base_inputs, {&output}, nullptr, kMSDomain);
+    node.SetSinceVersion(1);
+
+    gsl::span<const ArgTypeAndIndex> resolved_args;
+    ASSERT_STATUS_OK(loaded_resolver.ResolveKernelTypeStr(node, "TAdapter", resolved_args));
+    ASSERT_EQ(resolved_args.size(), adapter_input_count);
+    EXPECT_EQ(resolved_args.front(), (ArgTypeAndIndex{ArgType::kInput, first_adapter_input}));
+
+    KernelRegistry registry;
+    KernelDefBuilder builder;
+    builder.SetName(op_type)
+        .SetDomain(kMSDomain)
+        .SinceVersion(1)
+        .Provider(kWebGpuExecutionProvider)
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("TAdapter", DataTypeImpl::GetTensorType<uint8_t>());
+    ASSERT_STATUS_OK(registry.Register(builder, {}));
+    const KernelCreateInfo* kernel = nullptr;
+    ASSERT_STATUS_OK(registry.TryFindKernel(node, kWebGpuExecutionProvider, loaded_resolver,
+                                            DefaultLoggingManager().DefaultLogger(), &kernel));
+    ASSERT_NE(kernel, nullptr);
+  }
+}
+
 TEST(KernelTypeStrResolverUtilsTest, ResolveNhwcFusedConvFromLayoutTransformationRequiredOps) {
   KernelTypeStrResolver resolver;
   ASSERT_STATUS_OK(kernel_type_str_resolver_utils::AddLayoutTransformationRequiredOpsToKernelTypeStrResolver(resolver));

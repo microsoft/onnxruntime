@@ -452,24 +452,33 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       bool has_matmul_nbits_qlora_kernel = false;
       bool has_matmul_nbits_mlp_kernel = false;
       bool has_matmul_nbits_qkv_kernel = false;
+      bool has_matmul_nbits_mlp_adapter_kernel = false;
+      bool has_matmul_nbits_qkv_adapter_kernel = false;
       if (execution_providers != nullptr) {
         const auto* webgpu_ep = execution_providers->Get(onnxruntime::kWebGpuExecutionProvider);
         if (webgpu_ep != nullptr) {
           auto registry = webgpu_ep->GetKernelRegistry();
           if (registry) {
-            auto has_webgpu_kernel = [&](std::string_view op_type) {
+            auto has_webgpu_kernel = [&](std::string_view op_type,
+                                         const KernelRegistry::TypeConstraintMap& type_constraints) {
               return registry->TryFindKernel(onnxruntime::kWebGpuExecutionProvider,
                                              op_type,
                                              kMSDomain,
                                              1,
-                                             KernelRegistry::TypeConstraintMap{},
+                                             type_constraints,
                                              logger,
                                              nullptr)
                   .IsOK();
             };
-            has_matmul_nbits_qlora_kernel = has_webgpu_kernel("MatMulNBitsQLoRA");
-            has_matmul_nbits_mlp_kernel = has_webgpu_kernel("MatMulNBitsMlp");
-            has_matmul_nbits_qkv_kernel = has_webgpu_kernel("MatMulNBitsQkv");
+            const KernelRegistry::TypeConstraintMap no_constraints{};
+            const KernelRegistry::TypeConstraintMap adapter_constraint{
+                {"TAdapter", DataTypeImpl::GetTensorType<uint8_t>()}};
+            has_matmul_nbits_qlora_kernel = has_webgpu_kernel("MatMulNBitsQLoRA", no_constraints);
+            has_matmul_nbits_mlp_kernel = has_webgpu_kernel("MatMulNBitsMlp", no_constraints);
+            has_matmul_nbits_qkv_kernel = has_webgpu_kernel("MatMulNBitsQkv", no_constraints);
+            // Older WebGPU plugins expose the base kernels without the adapter type constraint.
+            has_matmul_nbits_mlp_adapter_kernel = has_webgpu_kernel("MatMulNBitsMlp", adapter_constraint);
+            has_matmul_nbits_qkv_adapter_kernel = has_webgpu_kernel("MatMulNBitsQkv", adapter_constraint);
           }
         }
       }
@@ -478,11 +487,13 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
       if (has_matmul_nbits_mlp_kernel) {
         transformers.emplace_back(std::make_unique<MatMulNBitsMlpFusion>(
-            InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
+            InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider},
+            has_matmul_nbits_mlp_adapter_kernel));
       }
       if (has_matmul_nbits_qkv_kernel) {
         transformers.emplace_back(std::make_unique<MatMulNBitsQkvFusion>(
-            InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
+            InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider},
+            has_matmul_nbits_qkv_adapter_kernel));
       }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)

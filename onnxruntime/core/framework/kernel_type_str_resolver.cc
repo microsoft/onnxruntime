@@ -274,9 +274,31 @@ static std::string LoadFromOrtFormatImpl(const fbs::KernelTypeStrResolver& fbs_k
 
 Status KernelTypeStrResolver::LoadFromOrtFormat(const fbs::KernelTypeStrResolver& fbs_kernel_type_str_resolver) {
   const auto error_message = LoadFromOrtFormatImpl(fbs_kernel_type_str_resolver, op_kernel_type_str_map_);
-  return error_message.empty() ? Status::OK()
-                               : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, error_message, " ",
-                                                 fbs::utils::kInvalidOrtFormatModelMessage);
+  if (!error_message.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, error_message, " ",
+                           fbs::utils::kInvalidOrtFormatModelMessage);
+  }
+
+  // These version-1 schemas gained optional QLoRA inputs. Older ORT-format
+  // models have only the base inputs and omit TAdapter from their saved
+  // resolver. Add the new mapping so the updated WebGPU kernel can still
+  // match those base-only nodes. Missing optional inputs are skipped by the
+  // kernel type matcher.
+  for (auto& [op_id, type_str_map] : op_kernel_type_str_map_) {
+    if (op_id.domain != kMSDomain || op_id.since_version != 1 || Contains(type_str_map, "TAdapter")) {
+      continue;
+    }
+
+    if (op_id.op_type == "MatMulNBitsMlp") {
+      auto& args = type_str_map["TAdapter"];
+      for (size_t i = 9; i < 17; i += 2) args.emplace_back(ArgType::kInput, i);
+    } else if (op_id.op_type == "MatMulNBitsQkv") {
+      auto& args = type_str_map["TAdapter"];
+      for (size_t i = 12; i < 24; i += 2) args.emplace_back(ArgType::kInput, i);
+    }
+  }
+
+  return Status::OK();
 }
 
 void KernelTypeStrResolver::Merge(KernelTypeStrResolver src) {

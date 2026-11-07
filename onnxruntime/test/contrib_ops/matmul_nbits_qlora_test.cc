@@ -52,6 +52,125 @@ void RunEmptyAndActiveAdapters() {
 TEST(MatMulNBitsQLoRA, EmptyAndActiveAdapters) { RunEmptyAndActiveAdapters<MLFloat16>(); }
 TEST(MatMulNBitsQLoRA, EmptyAndActiveAdaptersFp32) { RunEmptyAndActiveAdapters<float>(); }
 
+TEST(MatMulNBitsQLoRA, BaseOnlyFusedOpsWithPaddedAdapterInputs) {
+  for (bool qkv : {false, true}) {
+    const int projection_count = qkv ? 3 : 2;
+    const int adapter_count = qkv ? 12 : 8;
+    for (int padded_inputs : {1, adapter_count}) {
+      SCOPED_TRACE(MakeString(qkv ? "QKV" : "MLP", ", padded_inputs=", padded_inputs));
+      auto ep = DefaultWebGpuExecutionProvider();
+      ASSERT_NE(ep, nullptr);
+      OpTester test(qkv ? "MatMulNBitsQkv" : "MatMulNBitsMlp", 1, kMSDomain);
+      test.AddAttribute<int64_t>("K", 32);
+      test.AddAttribute<int64_t>(qkv ? "Nq" : "N", 8);
+      if (qkv) {
+        test.AddAttribute<int64_t>("Nkv", 4);
+      } else {
+        test.AddAttribute("activation", "silu");
+      }
+      test.AddAttribute<int64_t>("bits", 4);
+      test.AddAttribute<int64_t>("block_size", 32);
+      test.AddInput<float>("A", {1, 32}, std::vector<float>(32, 0.5f));
+      test.AddOptionalInputEdge<float>();  // skip
+      if (qkv) {
+        test.AddInput<float>("norm_scale", {32}, std::vector<float>(32, 1.0f));
+      } else {
+        test.AddOptionalInputEdge<float>();  // norm_scale
+      }
+      for (int projection = 0; projection < projection_count; ++projection) {
+        const int64_t n = qkv && projection > 0 ? 4 : 8;
+        test.AddInput<uint8_t>(MakeString("weight_", projection).c_str(), {n, 1, 16},
+                               std::vector<uint8_t>(n * 16, 0x88), true);
+        test.AddInput<float>(MakeString("scales_", projection).c_str(), {n, 1},
+                             std::vector<float>(n, 0.03125f), true);
+        test.AddOptionalInputEdge<float>();  // bias
+      }
+      for (int i = 0; i < padded_inputs; ++i) {
+        if (i % 4 == 0 || i % 4 == 2) {
+          test.AddOptionalInputEdge<uint8_t>();
+        } else {
+          test.AddOptionalInputEdge<float>();
+        }
+      }
+      if (qkv) {
+        test.AddOutput<float>("Q", {1, 8}, std::vector<float>(8));
+        test.AddOutput<float>("K", {1, 4}, std::vector<float>(4));
+        test.AddOutput<float>("V", {1, 4}, std::vector<float>(4));
+      } else {
+        test.AddOutput<float>("Y", {1, 8}, std::vector<float>(8));
+      }
+      std::vector<std::unique_ptr<IExecutionProvider>> eps;
+      eps.push_back(std::move(ep));
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+    }
+  }
+}
+
+TEST(MatMulNBitsQLoRA, FusedEmptyAdaptersRejectMalformedBaseWeights) {
+  for (bool qkv : {false, true}) {
+    const int projection_count = qkv ? 3 : 2;
+    for (int bad_projection = 0; bad_projection < projection_count; ++bad_projection) {
+      for (bool bad_weight : {false, true}) {
+        SCOPED_TRACE(MakeString(qkv ? "QKV" : "MLP", ", projection=", bad_projection,
+                                ", bad_weight=", bad_weight));
+        auto ep = DefaultWebGpuExecutionProvider();
+        ASSERT_NE(ep, nullptr);
+        OpTester test(qkv ? "MatMulNBitsQkv" : "MatMulNBitsMlp", 1, kMSDomain);
+        test.AddAttribute<int64_t>("K", 32);
+        if (qkv) {
+          test.AddAttribute<int64_t>("Nq", 8);
+          test.AddAttribute<int64_t>("Nkv", 4);
+        } else {
+          test.AddAttribute<int64_t>("N", 8);
+          test.AddAttribute("activation", "silu");
+        }
+        test.AddAttribute<int64_t>("bits", 4);
+        test.AddAttribute<int64_t>("block_size", 32);
+        test.AddAttribute<int64_t>("lora_bits", 8);
+        test.AddAttribute<int64_t>("lora_block_size", 32);
+        test.AddInput<MLFloat16>("A", {1, 32}, std::vector<MLFloat16>(32, MLFloat16(0.5f)));
+        test.AddOptionalInputEdge<MLFloat16>();  // skip
+        if (qkv) {
+          test.AddInput<MLFloat16>("norm_scale", {32}, std::vector<MLFloat16>(32, MLFloat16(1.0f)));
+        } else {
+          test.AddOptionalInputEdge<MLFloat16>();  // norm_scale
+        }
+        for (int projection = 0; projection < projection_count; ++projection) {
+          const int64_t n = qkv && projection > 0 ? 4 : 8;
+          const bool invalid = projection == bad_projection;
+          const int64_t weight_n = invalid && bad_weight ? n - 1 : n;
+          const int64_t scale_n = invalid && !bad_weight ? n / 2 : n;
+          test.AddInput<uint8_t>(MakeString("weight_", projection).c_str(), {weight_n, 1, 16},
+                                 std::vector<uint8_t>(weight_n * 16, 0x99), true);
+          test.AddInput<MLFloat16>(MakeString("scales_", projection).c_str(), {scale_n, 1},
+                                   std::vector<MLFloat16>(scale_n, MLFloat16(0.03125f)), true);
+          test.AddOptionalInputEdge<MLFloat16>();  // bias
+        }
+        for (int projection = 0; projection < projection_count; ++projection) {
+          const int64_t n = qkv && projection > 0 ? 4 : 8;
+          test.AddInput<uint8_t>(MakeString("lora_A_", projection).c_str(), {32, 1, 32},
+                                 std::vector<uint8_t>(1024, 129));
+          test.AddInput<MLFloat16>(MakeString("lora_A_scales_", projection).c_str(), {32, 1},
+                                   std::vector<MLFloat16>(32, MLFloat16(0.03125f)));
+          test.AddInput<uint8_t>(MakeString("lora_B_", projection).c_str(), {n, 0, 32}, {});
+          test.AddInput<MLFloat16>(MakeString("lora_B_scales_", projection).c_str(), {n, 1},
+                                   std::vector<MLFloat16>(n, MLFloat16(0.0625f)));
+        }
+        if (qkv) {
+          test.AddOutput<MLFloat16>("Q", {1, 8}, std::vector<MLFloat16>(8));
+          test.AddOutput<MLFloat16>("K", {1, 4}, std::vector<MLFloat16>(4));
+          test.AddOutput<MLFloat16>("V", {1, 4}, std::vector<MLFloat16>(4));
+        } else {
+          test.AddOutput<MLFloat16>("Y", {1, 8}, std::vector<MLFloat16>(8));
+        }
+        std::vector<std::unique_ptr<IExecutionProvider>> eps;
+        eps.push_back(std::move(ep));
+        test.Run(OpTester::ExpectResult::kExpectFailure, "Invalid base weight/scales shape.", {}, nullptr, &eps);
+      }
+    }
+  }
+}
+
 #ifndef ORT_NO_EXCEPTIONS
 TEST(MatMulNBitsQLoRA, RejectsUnsupportedWebGpuConfigurations) {
   struct Config {

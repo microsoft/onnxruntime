@@ -11,7 +11,7 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 
-class MatMulNBitsQkv final : public WebGpuKernel {
+class MatMulNBitsQkv : public WebGpuKernel {
  public:
   explicit MatMulNBitsQkv(const OpKernelInfo& info) : WebGpuKernel(info) {
     K_ = info.GetAttr<int64_t>("K");
@@ -21,6 +21,23 @@ class MatMulNBitsQkv final : public WebGpuKernel {
     bits_ = info.GetAttr<int64_t>("bits");
     accuracy_level_ = info.GetAttrOrDefault<int64_t>("accuracy_level", 4);
     epsilon_ = info.GetAttrOrDefault<float>("epsilon", 1e-6f);
+    lora_bits_ = info.GetAttrOrDefault<int64_t>("lora_bits", 8);
+    lora_block_size_ = info.GetAttrOrDefault<int64_t>("lora_block_size", 32);
+    // Trailing optional slots may be present in the node even when their edges
+    // are omitted. Inspect each edge rather than relying on GetInputCount().
+    bool all_adapter_inputs = true;
+    has_adapter_inputs_ = false;
+    for (size_t i = 12; i < 24; ++i) {
+#ifdef ORT_USE_EP_API_ADAPTERS
+      const bool exists = info.node().InputExists(i);
+#else
+      const bool exists = i < static_cast<size_t>(info.GetInputCount()) && info.node().InputDefs()[i]->Exists();
+#endif
+      has_adapter_inputs_ |= exists;
+      all_adapter_inputs &= exists;
+    }
+    ORT_ENFORCE(!has_adapter_inputs_ || all_adapter_inputs,
+                "MatMulNBitsQkv requires all adapter inputs when any is present.");
     ORT_ENFORCE(bits_ == 4,
                 "MatMulNBitsQkv currently supports 4-bit weights only.");
   }
@@ -28,6 +45,9 @@ class MatMulNBitsQkv final : public WebGpuKernel {
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
 
  private:
+  Status ComputeBase(onnxruntime::webgpu::ComputeContext& context) const;
+  Status ComputeWithAdapters(onnxruntime::webgpu::ComputeContext& context) const;
+
   int64_t K_;
   int64_t Nq_;
   int64_t Nkv_;
@@ -35,6 +55,9 @@ class MatMulNBitsQkv final : public WebGpuKernel {
   int64_t accuracy_level_;
   int64_t bits_;
   float epsilon_;
+  int64_t lora_bits_;
+  int64_t lora_block_size_;
+  bool has_adapter_inputs_;
 };
 
 }  // namespace webgpu
