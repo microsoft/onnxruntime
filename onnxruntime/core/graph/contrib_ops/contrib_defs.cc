@@ -992,6 +992,92 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
         }));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    GatherPacked, 1,
+    OpSchema()
+        .SetDoc("Gather rows from a 2D block-packed embedding table and dequantize on the fly.")
+        .Attr("K", "Logical embedding dimension.", AttributeProto::INT)
+        .Attr("packed_type",
+              "Packed quantization format enum (0..99 map to GGUF ggml_type; >=100 reserved for custom formats).",
+              AttributeProto::INT)
+        .Attr("output_dtype", "ONNX TensorProto DataType for output (default 16 = BFLOAT16).",
+              AttributeProto::INT, static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16))
+        .Input(0, "data", "2D packed weight blob [vocab_size, row_bytes].", "T1")
+        .Input(1, "indices", "Token indices of arbitrary rank.", "Tind")
+        .Output(0, "output", "Dequantized gathered embeddings [..., K].", "T2")
+        .TypeConstraint("T1", {"tensor(uint8)"}, "Packed byte storage.")
+        .TypeConstraint("T2", {"tensor(bfloat16)", "tensor(float16)", "tensor(float)"}, "Output floating-point type.")
+        .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Index type.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          const int64_t k = getAttribute(ctx, "K", 0);
+          if (k <= 0) fail_shape_inference("GatherPacked K must be positive.");
+          const int64_t out_dt = getAttribute(
+              ctx, "output_dtype", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16));
+          ctx.getOutputType(0)->mutable_tensor_type()->set_elem_type(static_cast<int32_t>(out_dt));
+          if (!hasInputShape(ctx, 1)) return;
+          const auto& indices_shape = getInputShape(ctx, 1);
+          auto* out_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+          for (int i = 0; i < indices_shape.dim_size(); ++i) {
+            *out_shape->add_dim() = indices_shape.dim(i);
+          }
+          out_shape->add_dim()->set_dim_value(k);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    MatMulPacked, 1,
+    OpSchema()
+        .SetDoc("Matrix multiplication Y = A @ B^T where B is a 2D block-packed weight tensor.")
+        .Attr("K", "Reduction dimension.", AttributeProto::INT)
+        .Attr("N", "Output dimension.", AttributeProto::INT)
+        .Attr("packed_type",
+              "Packed quantization format enum for B (0..99 map to GGUF ggml_type; >=100 reserved for custom formats).",
+              AttributeProto::INT)
+        .Input(0, "A", "Input activations [..., K].", "T1")
+        .Input(1, "B", "Packed weight blob [N, row_bytes].", "T2")
+        .Output(0, "Y", "Output activations [..., N].", "T1")
+        .TypeConstraint("T1", {"tensor(bfloat16)", "tensor(float16)"}, "Activation type.")
+        .TypeConstraint("T2", {"tensor(uint8)"}, "Packed byte storage.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          const int64_t n = getAttribute(ctx, "N", 0);
+          if (n <= 0) fail_shape_inference("MatMulPacked N must be positive.");
+          if (!hasInputShape(ctx, 0)) return;
+          const auto& a_shape = getInputShape(ctx, 0);
+          if (a_shape.dim_size() < 1) fail_shape_inference("MatMulPacked A must have rank >= 1.");
+          auto* y_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+          for (int i = 0; i + 1 < a_shape.dim_size(); ++i) {
+            *y_shape->add_dim() = a_shape.dim(i);
+          }
+          y_shape->add_dim()->set_dim_value(n);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    MoEPacked, 1,
+    OpSchema()
+        .SetDoc("Mixture-of-Experts layer consuming 3D block-packed gate, up, and down expert weight blobs.")
+        .Attr("k", "Number of selected experts per token.", AttributeProto::INT)
+        .Attr("normalize_routing_weights", "Whether to normalize top-k routing probabilities.",
+              AttributeProto::INT, static_cast<int64_t>(1))
+        .Attr("activation_type", "Expert activation function ('swiglu').",
+              AttributeProto::STRING, std::string("swiglu"))
+        .Attr("gate_type", "Packed quantization format enum of gate_experts_weights.", AttributeProto::INT)
+        .Attr("up_type", "Packed quantization format enum of up_experts_weights.", AttributeProto::INT)
+        .Attr("down_type", "Packed quantization format enum of down_experts_weights.", AttributeProto::INT)
+        .Input(0, "input", "Input hidden states [..., hidden_size].", "T")
+        .Input(1, "router_probs", "Router logits [num_rows, num_experts].", "T")
+        .Input(2, "gate_experts_weights", "3D packed gate weight blob [num_experts, inter_size, gate_row_bytes].", "T2")
+        .Input(3, "up_experts_weights", "3D packed up weight blob [num_experts, inter_size, up_row_bytes].", "T2")
+        .Input(4, "down_experts_weights", "3D packed down weight blob [num_experts, hidden_size, down_row_bytes].", "T2")
+        .Output(0, "output", "Output hidden states [..., hidden_size].", "T")
+        .TypeConstraint("T", {"tensor(bfloat16)", "tensor(float16)"}, "Activation type.")
+        .TypeConstraint("T2", {"tensor(uint8)"}, "Packed byte storage.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (hasInputShape(ctx, 0)) {
+            *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape() = getInputShape(ctx, 0);
+          }
+        }));
+
 ONNX_MS_OPERATOR_SET_SCHEMA(BiasDropout, 1,
                             OpSchema()
                                 .SetDoc(
