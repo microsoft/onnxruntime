@@ -959,6 +959,7 @@ TEST_F(WebGpuBucketCacheTest, SharedAllocatorClearsCachedBuffersAcrossThreads) {
       [this]() -> webgpu::CommandRecordingState& { return recording_; }, false, [] { return true; }};
   constexpr size_t kCount = 256;
   std::atomic<size_t> ready{0};
+  std::atomic<size_t> nonzero_readbacks{0};
   std::mutex failures_mutex;
   InlinedVector<std::string> failures;
   InlinedVector<std::thread> workers;
@@ -974,8 +975,8 @@ TEST_F(WebGpuBucketCacheTest, SharedAllocatorClearsCachedBuffersAcrossThreads) {
           auto* buffer = static_cast<WGPUBuffer>(allocator.Alloc(kCount * sizeof(uint32_t)));
           std::array<uint32_t, kCount> values{};
           manager_->Download(transfer, buffer, values.data(), sizeof(values));
-          for (auto value : values) {
-            EXPECT_EQ(value, 0u);
+          if (std::any_of(values.begin(), values.end(), [](auto value) { return value != 0; })) {
+            nonzero_readbacks.fetch_add(1, std::memory_order_relaxed);
           }
           values.fill(static_cast<uint32_t>(worker + 1));
           manager_->Upload(transfer, values.data(), buffer, sizeof(values));
@@ -990,6 +991,7 @@ TEST_F(WebGpuBucketCacheTest, SharedAllocatorClearsCachedBuffersAcrossThreads) {
   for (auto& worker : workers) {
     worker.join();
   }
+  EXPECT_EQ(nonzero_readbacks.load(), 0u);
   EXPECT_TRUE(failures.empty()) << (failures.empty() ? "" : failures.front());
   AllocatorStats stats;
   allocator.GetStats(&stats);
@@ -1513,39 +1515,50 @@ TEST(WebGpuContextTest, CapturedReplayAdvancesOwnCleanupCadenceWithoutDoubleCoun
   });
 }
 
-TEST(WebGpuContextTest, BucketRoundingFitsDeviceBufferLimit) {
+void TestBucketRoundingFitsDeviceBufferLimit(size_t limit) {
 #if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  ORT_UNUSED_PARAMETER(limit);
   GTEST_SKIP() << "Dawn native device creation is unavailable.";
 #else
   ConfigOptions options;
   auto owned_ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
-  if (webgpu::WebGpuContextFactory::GetContext(0).DeviceLimits().maxBufferSize < 273 * 1024 * 1024) {
+  if (webgpu::WebGpuContextFactory::GetContext(0).DeviceLimits().maxBufferSize < limit) {
     GTEST_SKIP() << "Device cannot allocate the selected custom size limit.";
   }
-  RunWithFreshDefaultContext([]() {
-    constexpr size_t kLimit = 273 * 1024 * 1024;
+  RunWithFreshDefaultContext([limit]() {
     RunWithExternalCompletionContext(
-        [](webgpu::WebGpuContext& context, auto& ep, const auto&, auto&) {
-          constexpr size_t kSize = 273 * 1024 * 1024;
-          ASSERT_EQ(context.DeviceLimits().maxBufferSize, kSize);
+        [limit](webgpu::WebGpuContext& context, auto& ep, const auto&, auto&) {
+          ASSERT_EQ(context.DeviceLimits().maxBufferSize, limit);
           constexpr auto usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc |
                                  wgpu::BufferUsage::CopyDst;
           for (auto mode : {webgpu::BufferCacheMode::Bucket, webgpu::BufferCacheMode::Graph}) {
             SCOPED_TRACE(static_cast<int>(mode));
             webgpu::BufferManager manager(context, mode, webgpu::BufferCacheMode::Disabled,
                                           webgpu::BufferCacheMode::Disabled, webgpu::BufferCacheMode::Disabled);
-            context.PushErrorScope();
-            auto buffer = wgpu::Buffer::Acquire(manager.Create(ep.Recording(), kSize, usage));
-            EXPECT_EQ(buffer.GetSize(), kSize);
-            manager.Release(wgpu::Buffer{buffer}.MoveToCHandle());
-            auto reused = wgpu::Buffer::Acquire(manager.Create(ep.Recording(), kSize, usage));
-            EXPECT_EQ(reused.Get(), buffer.Get());
-            ASSERT_STATUS_OK(context.PopErrorScope());
+            for (const size_t request : {limit - 16, limit - 1, limit}) {
+              SCOPED_TRACE(testing::Message() << "limit=" << limit << ", request=" << request);
+              context.PushErrorScope();
+              auto buffer = wgpu::Buffer::Acquire(manager.Create(ep.Recording(), request, usage));
+              EXPECT_GE(buffer.GetSize(), request);
+              EXPECT_LE(buffer.GetSize(), limit);
+              manager.Release(wgpu::Buffer{buffer}.MoveToCHandle());
+              auto reused = wgpu::Buffer::Acquire(manager.Create(ep.Recording(), request, usage));
+              EXPECT_EQ(reused.Get(), buffer.Get());
+              ASSERT_STATUS_OK(context.PopErrorScope());
+            }
           }
         },
-        true, kLimit);
+        true, limit);
   });
 #endif
+}
+
+TEST(WebGpuContextTest, BucketRoundingFitsDeviceBufferLimit) {
+  TestBucketRoundingFitsDeviceBufferLimit(273 * 1024 * 1024);
+}
+
+TEST(WebGpuContextTest, BucketRoundingFitsUnalignedDeviceBufferLimit) {
+  TestBucketRoundingFitsDeviceBufferLimit(273 * 1024 * 1024 + 7);
 }
 
 TEST(WebGpuContextTest, BufferReleasedAfterSubmissionIsReusableWithoutAnotherFlush) {

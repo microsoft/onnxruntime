@@ -678,7 +678,8 @@ WGPUBuffer BufferManager::Create(CommandRecordingState& recording, size_t size, 
     buffer_size = cache.CalculateBufferSize(size);
     // Rounding must not make an otherwise valid allocation exceed the device limit.
     if (buffer_size > context_.DeviceLimits().maxBufferSize && size <= context_.DeviceLimits().maxBufferSize) {
-      buffer_size = NormalizeBufferSize(size);
+      // Preserve padding when possible, including when the limit is not 16-byte aligned.
+      buffer_size = std::min(NormalizeBufferSize(size), static_cast<size_t>(context_.DeviceLimits().maxBufferSize));
     }
     buffer = cache.TryAcquireCachedBuffer(buffer_size);
     if (buffer) {

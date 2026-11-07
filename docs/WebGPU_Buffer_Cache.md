@@ -10,7 +10,9 @@ automatically. No bucket table configuration is required.
   70 KiB and 33 MiB use 3,072 bytes, 80 KiB and 40 MiB. The reported
   4,195,328-byte KV request uses 5 MiB rather than 8 MiB. Coarser classes retain
   reuse over a wider range of growing requests; finer classes can retain more
-  abandoned capacities and increase physical allocations.
+  abandoned capacities and increase physical allocations. If rounding exceeds the
+  device's buffer-size limit, reduce padding to fit while covering the requested
+  size; the resulting capacity need not be a multiple of 16 bytes.
 - Spare counts follow actual demand. There is no fixed per-size count limit or
   total spare-byte cap that would force an otherwise reusable working set to be
   recreated. Different sessions can reuse compatible spares from the shared
