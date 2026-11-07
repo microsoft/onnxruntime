@@ -1,14 +1,42 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+#include <cmath>
+
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/conv_mul_fusion.h"
 #include "core/optimizer/utils.h"
+#include "core/util/math.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
+namespace {
+
+bool HasOnlyFiniteValues(const Initializer& initializer) {
+  switch (initializer.data_type()) {
+    case TensorProto_DataType_FLOAT: {
+      const auto values = initializer.DataAsSpan<float>();
+      return std::all_of(values.begin(), values.end(), [](float value) { return std::isfinite(value); });
+    }
+    case TensorProto_DataType_FLOAT16: {
+      const auto values = initializer.DataAsSpan<MLFloat16>();
+      return std::all_of(values.begin(), values.end(), [](MLFloat16 value) {
+        return std::isfinite(math::halfToFloat(value.val));
+      });
+    }
+    case TensorProto_DataType_DOUBLE: {
+      const auto values = initializer.DataAsSpan<double>();
+      return std::all_of(values.begin(), values.end(), [](double value) { return std::isfinite(value); });
+    }
+    default:
+      return false;
+  }
+}
+
+}  // namespace
 
 Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
   auto& conv_node = node;
@@ -52,8 +80,13 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
     }
   }
 
-  Initializer conv_W{graph, *conv_W_tensor_proto, graph.ModelPath()};
   Initializer mul_B{graph, *mul_B_tensor_proto, graph.ModelPath()};
+  if (!HasOnlyFiniteValues(mul_B)) {
+    rule_effect = RewriteRuleEffect::kNone;
+    return Status::OK();
+  }
+
+  Initializer conv_W{graph, *conv_W_tensor_proto, graph.ModelPath()};
 
   const ONNX_NAMESPACE::TensorProto* conv_B_tensor_proto = nullptr;
   std::optional<Initializer> conv_B;
