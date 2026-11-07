@@ -10259,6 +10259,50 @@ TEST_F(GraphTransformationTests, GeluFusionTestFormat2GraphOutput) {
   ASSERT_TRUE(op_to_count["com.microsoft.BiasGelu"] == 0);
 }
 
+// The GELU input is produced by a Mul, which must not be mistaken for the 0.5 Mul of pattern 1.
+TEST_F(GraphTransformationTests, GeluFusionTestFormat2MulInput) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{2, 3, 64}});
+    auto* factor = builder.MakeInitializer<float>({}, {2.0f});
+    auto* sqrt2 = builder.MakeInitializer<float>({}, {1.4142135f});
+    auto* one = builder.MakeInitializer<float>({}, {1.0f});
+    auto* half = builder.MakeInitializer<float>({}, {0.5f});
+
+    auto* x = builder.MakeIntermediate();
+    auto* div_out = builder.MakeIntermediate();
+    auto* erf_out = builder.MakeIntermediate();
+    auto* add_out = builder.MakeIntermediate();
+    auto* mul1_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Mul", {input, factor}, {x});
+    builder.AddNode("Div", {x, sqrt2}, {div_out});
+    builder.AddNode("Erf", {div_out}, {erf_out});
+    builder.AddNode("Add", {one, erf_out}, {add_out});
+    builder.AddNode("Mul", {add_out, x}, {mul1_out});
+    builder.AddNode("Mul", {half, mul1_out}, {output});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["Gelu"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["Div"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Erf"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Add"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Mul"] == 1);
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() == "Gelu") {
+        const Node* producer = graph_utils::GetInputNode(node, 0);
+        TEST_RETURN_IF_NOT(producer != nullptr && producer->OpType() == "Mul");
+      }
+    }
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 20, *logger_, std::make_unique<GeluFusion>(),
+                                        TransformerLevel::Level1, 1, nullptr, post_graph_checker));
+}
+
 TEST_F(GraphTransformationTests, BiasGeluTest) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/bias_gelu_fusion.onnx";
   std::shared_ptr<Model> p_model;
