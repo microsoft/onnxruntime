@@ -15,8 +15,12 @@ import (
 
 // SessionOptions configures how a Session is created.
 type SessionOptions struct {
-	handle *C.OrtSessionOptions
-	mu     sync.Mutex
+	handle          *C.OrtSessionOptions
+	mu              sync.Mutex
+	protected       bool
+	policyAttempted bool
+	successfulV2    bool
+	resources       sessionResources
 }
 
 // NewSessionOptions creates a new SessionOptions with default values.
@@ -125,11 +129,43 @@ func (o *SessionOptions) Clone() (*SessionOptions, error) {
 		return nil, err
 	}
 	defer o.unlock()
+	mu.Lock()
+	defer mu.Unlock()
+	if err := checkInit(); err != nil {
+		return nil, err
+	}
+	return o.cloneLocked()
+}
+
+// cloneLocked requires the source options mutex and package mu.
+// Constructors use the same native snapshot as public Clone. Retain the reader
+// only after native cloning and source-buffer restoration succeed.
+func (o *SessionOptions) cloneLocked() (*SessionOptions, error) {
+	return o.cloneLockedWithRestore(restoreSourceModelBuffer, releaseNativeOptions)
+}
+
+// The operation parameters keep native restoration failure testable without a
+// public fault-injection setting. Both callers hold the source and package locks.
+func (o *SessionOptions) cloneLockedWithRestore(restore func(*SessionOptions) error, release func(*SessionOptions)) (*SessionOptions, error) {
 	var out *C.OrtSessionOptions
 	if err := checkStatus(C.ort_CloneSessionOptions(o.handle, &out)); err != nil {
+		if out != nil {
+			C.ort_ReleaseSessionOptions(out)
+		}
 		return nil, wrapErr("clone session options", err)
 	}
-	return &SessionOptions{handle: out}, nil
+	clone := &SessionOptions{handle: out, policyAttempted: o.policyAttempted, successfulV2: o.successfulV2, resources: o.resources}
+	if o.resources.source != nil {
+		if err := restore(clone); err != nil {
+			release(clone)
+			return nil, err
+		}
+	}
+	clone.resources.retain()
+	if o.protected {
+		clone.protectLocked()
+	}
+	return clone, nil
 }
 
 // DisableMemPattern disables memory pattern optimization.
@@ -236,8 +272,8 @@ func (o *SessionOptions) SetExecutionMode(mode ExecutionMode) error {
 
 // GetExecutionMode returns the current execution mode. Requires ORT >= 1.27.
 func (o *SessionOptions) GetExecutionMode() (ExecutionMode, error) {
-	if apiVersion < 27 {
-		return 0, fmt.Errorf("ort: GetExecutionMode requires ORT >= 1.27 (have API version %d)", apiVersion)
+	if err := checkInit(); err != nil {
+		return 0, err
 	}
 	if err := o.lockUsable("get execution mode"); err != nil {
 		return 0, err
@@ -252,8 +288,8 @@ func (o *SessionOptions) GetExecutionMode() (ExecutionMode, error) {
 
 // IsMemPatternEnabled reports whether memory pattern optimization is enabled. Requires ORT >= 1.27.
 func (o *SessionOptions) IsMemPatternEnabled() (bool, error) {
-	if apiVersion < 27 {
-		return false, fmt.Errorf("ort: IsMemPatternEnabled requires ORT >= 1.27 (have API version %d)", apiVersion)
+	if err := checkInit(); err != nil {
+		return false, err
 	}
 	if err := o.lockUsable("get mem pattern enabled"); err != nil {
 		return false, err
@@ -368,8 +404,14 @@ func (o *SessionOptions) Close() error {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.handle != nil {
-		C.ort_ReleaseSessionOptions(o.handle)
-		o.handle = nil
+		releaseNativeOptions(o)
+		o.resources.release()
+		mu.Lock()
+		if o.protected {
+			protectedOptionsCount--
+			o.protected = false
+		}
+		mu.Unlock()
 	}
 	return nil
 }
@@ -479,4 +521,22 @@ func validateStringMap(values map[string]string, context string) error {
 		}
 	}
 	return nil
+}
+
+// SetDeterministicCompute requests deterministic kernels where supported by the
+// provider. Requires API 17. It does not guarantee determinism for every kernel.
+func (o *SessionOptions) SetDeterministicCompute(enabled bool) error {
+	if err := checkInit(); err != nil {
+		return err
+	}
+	if err := o.lockUsable("set deterministic compute"); err != nil {
+		return err
+	}
+	defer o.unlock()
+	return wrapErr("set deterministic compute", checkStatus(C.ort_SetDeterministicCompute(o.handle, C.bool(enabled))))
+}
+
+func releaseNativeOptions(o *SessionOptions) {
+	C.ort_ReleaseSessionOptions(o.handle)
+	o.handle = nil
 }

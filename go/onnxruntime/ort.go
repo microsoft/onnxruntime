@@ -15,16 +15,21 @@ import (
 	"unsafe"
 )
 
+const apiVersionMax = int(C.ORT_GO_API_VERSION_MAX)
+
 var (
-	mu           sync.Mutex
-	libPath      string
-	libModule    libHandle
-	initialized  atomic.Bool
-	shutdown     atomic.Bool
-	apiVersion   int
-	env          *C.OrtEnv
-	cpuMemInfo   *C.OrtMemoryInfo
-	sessionCount atomic.Int64
+	mu                     sync.Mutex
+	libPath                string
+	libModule              libHandle
+	initialized            atomic.Bool
+	shutdown               atomic.Bool
+	apiVersion             int
+	env                    *C.OrtEnv
+	cpuMemInfo             *C.OrtMemoryInfo
+	sessionCount           atomic.Int64
+	environmentGeneration  uint64 = 1
+	protectedOptionsCount  int
+	inFlightSessionCreates int
 )
 
 // SetSharedLibraryPath sets the path to the ONNX Runtime shared library.
@@ -61,20 +66,22 @@ func Init() error {
 	var cVersion C.int
 	rc := C.ort_init_api(fn, &cVersion)
 	if rc == 1 {
+		C.ort_reset_api()
 		closeLibrary(handle)
 		return wrapErr("init api", fmt.Errorf("OrtGetApiBase returned NULL"))
 	}
 	if rc == 2 {
+		C.ort_reset_api()
 		closeLibrary(handle)
 		return wrapErr("init api", fmt.Errorf("GetApi failed; ORT library may be too old (need API >= %d)", C.ORT_GO_API_VERSION_MIN))
 	}
-	apiVersion = int(cVersion)
 
 	cLogID := C.CString("onnxruntime-go")
 	defer C.free(unsafe.Pointer(cLogID))
 
 	var ortEnv *C.OrtEnv
 	if err := checkStatus(C.ort_CreateEnv(C.ORT_LOGGING_LEVEL_WARNING, cLogID, &ortEnv)); err != nil {
+		C.ort_reset_api()
 		closeLibrary(handle)
 		return wrapErr("create env", err)
 	}
@@ -82,6 +89,7 @@ func Init() error {
 	var memInfo *C.OrtMemoryInfo
 	if err := checkStatus(C.ort_CreateCpuMemoryInfo(C.OrtDeviceAllocator, C.OrtMemTypeDefault, &memInfo)); err != nil {
 		C.ort_ReleaseEnv(ortEnv)
+		C.ort_reset_api()
 		closeLibrary(handle)
 		return wrapErr("create cpu memory info", err)
 	}
@@ -89,6 +97,7 @@ func Init() error {
 	env = ortEnv
 	cpuMemInfo = memInfo
 	libModule = handle
+	apiVersion = int(cVersion)
 	initialized.Store(true)
 	return nil
 }
@@ -102,6 +111,21 @@ func GetVersion() (string, error) {
 		return "", errNotInitialized
 	}
 	return C.GoString(C.ort_GetVersionString()), nil
+}
+
+// GetBuildInfo returns a copy of the loaded runtime's build diagnostics.
+// Requires API 15 and successful Init.
+func GetBuildInfo() (string, error) {
+	mu.Lock()
+	defer mu.Unlock()
+	if !initialized.Load() {
+		return "", errNotInitialized
+	}
+	var info *C.char
+	if err := checkStatus(C.ort_GetBuildInfoString(&info)); err != nil {
+		return "", wrapErr("get build info", err)
+	}
+	return C.GoString(info), nil
 }
 
 // APIVersion returns the ORT API version negotiated during Init.
@@ -119,7 +143,8 @@ func IsInitialized() bool {
 }
 
 // Shutdown releases the ONNX Runtime environment. It returns an error if
-// any sessions are still open. After Shutdown, Init cannot be called again.
+// any sessions, protected options or session constructors are still live.
+// After Shutdown, Init cannot be called again.
 // Shutdown must not run concurrently with other calls into this package:
 // it releases the shared environment that those calls use.
 func Shutdown() error {
@@ -137,6 +162,11 @@ func Shutdown() error {
 	if n := sessionCount.Load(); n > 0 {
 		return fmt.Errorf("ort: cannot shut down: %d session(s) still open", n)
 	}
+
+	if protectedOptionsCount != 0 || inFlightSessionCreates != 0 {
+		return fmt.Errorf("ort: cannot shut down: %d protected options, %d session creations still live", protectedOptionsCount, inFlightSessionCreates)
+	}
+	environmentGeneration++
 
 	C.ort_ReleaseMemoryInfo(cpuMemInfo)
 	cpuMemInfo = nil
