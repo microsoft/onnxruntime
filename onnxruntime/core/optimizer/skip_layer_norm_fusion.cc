@@ -64,6 +64,10 @@ static bool CheckFirstAdd(Node& add, ProviderType providertype) {
 // Add2 is the 2nd add of the to be fused sub-graph
 // The 1st input should be a 3D tensor
 // The 2nd input should be a 1D constant value
+static bool IsResidualAddSafeForFusion(const Graph& graph, const Node& add) {
+  return !graph.NodeProducesGraphOutput(add) && add.GetOutputEdgesCount() == 1;
+}
+
 static bool CheckSecondAdd(Graph& graph, Node& add, ProviderType providertype) {
   if (providertype != add.GetExecutionProviderType() ||
       !IsSupportedDataType(add) ||
@@ -212,8 +216,8 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 
       if (CheckFirstAdd(*p_add1, ln_node.GetExecutionProviderType()) &&
           CheckSecondAdd(graph, *p_add2, ln_node.GetExecutionProviderType()) &&
-          !graph.NodeProducesGraphOutput(*p_add1) &&
-          !graph.NodeProducesGraphOutput(*p_add2)) {
+          IsResidualAddSafeForFusion(graph, *p_add1) &&
+          IsResidualAddSafeForFusion(graph, *p_add2)) {
         matched_format = Format::Format1;
       }
     }
@@ -229,8 +233,8 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 
         if (CheckFirstAdd(*p_add1, ln_node.GetExecutionProviderType()) &&
             CheckSecondAdd(graph, *p_add2, ln_node.GetExecutionProviderType()) &&
-            !graph.NodeProducesGraphOutput(*p_add1) &&
-            !graph.NodeProducesGraphOutput(*p_add2)) {
+            IsResidualAddSafeForFusion(graph, *p_add1) &&
+            IsResidualAddSafeForFusion(graph, *p_add2)) {
           matched_format = Format::Format2;
         }
       }
@@ -244,7 +248,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
         p_add1 = const_cast<Node*>(&edges[0]->GetNode());
 
         if (CheckFirstAdd(*p_add1, ln_node.GetExecutionProviderType()) &&
-            !graph.NodeProducesGraphOutput(*p_add1)) {
+            IsResidualAddSafeForFusion(graph, *p_add1)) {
           matched_format = Format::Format3;
         }
       }
