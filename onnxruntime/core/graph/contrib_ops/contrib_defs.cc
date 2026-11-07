@@ -1092,6 +1092,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT, static_cast<int64_t>(1))
         .Attr("activation_type", "Expert activation function ('swiglu' or 'relu_squared').",
               AttributeProto::STRING, std::string("swiglu"))
+        .Attr("routing_function", "Internal routing: softmax logits or projected FP32 sigmoid with selection-only bias.",
+              AttributeProto::STRING, std::string("softmax"))
+        .Attr("router_scale", "Finite post-normalization scale for projected sigmoid routing.",
+              AttributeProto::FLOAT, 1.0f)
         .Attr("gate_type", "Stable packed-format ID of gate_experts_weights. Only contract-listed IDs are supported.",
               AttributeProto::INT)
         .Attr("up_type", "Stable packed-format ID of up_experts_weights; required for swiglu. "
@@ -1113,6 +1117,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Tind", OpSchema::Optional)
         .Input(6, "expert_weights",
                "Preselected FP32 weights [num_rows, k], preserved without normalization and mixed in supplied order.",
+               "Tweight", OpSchema::Optional)
+        .Input(7, "router_input",
+               "Projected sigmoid routing input [num_rows, router_width]; omit other routing inputs. "
+               "Requires relu_squared, routing_function='sigmoid' and normalize_routing_weights=1.",
+               "T", OpSchema::Optional)
+        .Input(8, "router_weight", "Sigmoid router weight [num_experts, router_width].", "T", OpSchema::Optional)
+        .Input(9, "router_bias", "FP32 correction bias [num_experts], used only for expert selection.",
                "Tweight", OpSchema::Optional)
         .Output(0, "output", "Output hidden states [..., hidden_size].", "T")
         .TypeConstraint("T", {"tensor(bfloat16)", "tensor(float16)"}, "Activation type.")
