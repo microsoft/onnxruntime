@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/tensor_shape.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/common.h"
 #include "core/providers/coreml/builders/helper.h"
@@ -64,6 +65,90 @@ bool ShouldUseFloorDiv(const Node& node, const logging::Logger& logger) {
 
   return input_type0 == ONNX_NAMESPACE::TensorProto_DataType_INT32 ||
          input_type0 == ONNX_NAMESPACE::TensorProto_DataType_INT64;
+}
+
+bool TryAddScaledKeyTranspose(ModelBuilder& model_builder, const Node& node) {
+  if (!model_builder.EnableAttentionLayoutWorkaround() || node.OpType() != "Mul" ||
+      node.Domain() != kOnnxDomain) {
+    return false;
+  }
+
+  const auto& graph = model_builder.GetGraphViewer();
+  const auto& output_name = node.OutputDefs()[0]->Name();
+  bool feeds_matmul_rhs = false;
+  for (const auto* consumer : graph.GetConsumerNodes(output_name)) {
+    if (graph.GetNode(consumer->Index()) != nullptr && consumer->Domain() == kOnnxDomain &&
+        consumer->OpType() == "MatMul" && consumer->InputDefs()[1]->Name() == output_name) {
+      feeds_matmul_rhs = true;
+      break;
+    }
+  }
+  if (!feeds_matmul_rhs) {
+    return false;
+  }
+
+  for (size_t tensor_index = 0; tensor_index < 2; ++tensor_index) {
+    const auto& scale = *node.InputDefs()[1 - tensor_index];
+    const auto* initializer = model_builder.GetConstantInitializer(scale.Name());
+    if (initializer == nullptr || initializer->data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+        initializer->dims_size() > 1 || (initializer->dims_size() == 1 && initializer->dims(0) != 1)) {
+      continue;
+    }
+
+    const auto* transpose = graph.GetProducerNode(node.InputDefs()[tensor_index]->Name());
+    // GraphViewer producer/consumer lookup includes nodes outside a filtered EP partition.
+    if (transpose == nullptr || graph.GetNode(transpose->Index()) == nullptr ||
+        transpose->Domain() != kOnnxDomain || transpose->OpType() != "Transpose") {
+      continue;
+    }
+    const auto& input = *transpose->InputDefs()[0];
+    const auto* shape = input.Shape();
+    if (shape == nullptr || shape->dim_size() != 4 ||
+        input.TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      continue;
+    }
+    const auto& attributes = transpose->GetAttributes();
+    const auto perm_it = attributes.find("perm");
+    if (perm_it == attributes.end()) {
+      continue;
+    }
+    const auto& perm = perm_it->second.ints();
+    if (perm.size() != 4) {
+      continue;
+    }
+    // The transpose optimizer can compose decoder K's layout into [1,2,3,0].
+    const bool supported_perm =
+        (perm[0] == 0 && perm[1] == 2 && perm[2] == 3 && perm[3] == 1) ||
+        (perm[0] == 0 && perm[1] == 1 && perm[2] == 3 && perm[3] == 2) ||
+        (perm[0] == 1 && perm[1] == 2 && perm[2] == 3 && perm[3] == 0);
+    if (!supported_perm) {
+      continue;
+    }
+
+    // Keep the original transpose for any other consumers. Only this Mul's MIL lowering changes.
+    // Do not combine Q/K scales: changing their arithmetic is unnecessary for this workaround.
+    auto mul_op = model_builder.CreateOperation(node, "mul", "_before_k_transpose");
+    AddOperationInput(*mul_op, "x", tensor_index == 0 ? input.Name() : scale.Name());
+    AddOperationInput(*mul_op, "y", tensor_index == 1 ? input.Name() : scale.Name());
+    const std::string scaled_key = model_builder.GetUniqueName(node, "_scaled_key");
+    TensorShapeVector input_shape;
+    for (const auto& dim : shape->dim()) {
+      input_shape.push_back(dim.has_dim_value() ? dim.dim_value() : -1);
+    }
+    AddIntermediateOperationOutput(*mul_op, scaled_key, ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                                   gsl::span<const int64_t>{input_shape});
+    model_builder.AddOperation(std::move(mul_op));
+
+    auto transpose_op = model_builder.CreateOperation(node, "transpose", "_after_k_scale");
+    AddOperationInput(*transpose_op, "x", scaled_key);
+    AddOperationInput(*transpose_op, "perm",
+                      model_builder.AddConstant("transpose", "perm", gsl::span<const int64_t>{perm.data(), 4}));
+    AddOperationOutput(*transpose_op, *node.OutputDefs()[0]);
+    model_builder.AddOperation(std::move(transpose_op));
+    return true;
+  }
+
+  return false;
 }
 }  // namespace
 
@@ -130,6 +215,10 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
+
+    if (TryAddScaledKeyTranspose(model_builder, node)) {
+      return Status::OK();
+    }
 
     // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#module-coremltools.converters.mil.mil.ops.defs.iOS15.elementwise_binary
     std::string_view coreml_op_type;

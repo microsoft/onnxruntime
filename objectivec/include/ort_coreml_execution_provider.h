@@ -81,6 +81,7 @@ NS_ASSUME_NONNULL_BEGIN
  *      kCoremlProviderOption_ModelFormat: one of "MLProgram", "NeuralNetwork"
  *      kCoremlProviderOption_RequireStaticInputShapes: "1" or "0"
  *      kCoremlProviderOption_EnableOnSubgraphs: "1" or "0"
+ *      kCoremlProviderOption_EnableAttentionLayoutWorkaround: "1" or "0" (default "0", MLProgram only)
  * @param error Optional error information set if an error occurs.
  * @return Whether the provider was enabled successfully.
  */

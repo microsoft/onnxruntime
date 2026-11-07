@@ -61,6 +61,7 @@ void CoreMLOptions::ValidateAndParseProviderOption(const ProviderOptions& option
       kCoremlProviderOption_ProfileComputePlan,
       kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU,
       kCoremlProviderOption_ModelCacheDirectory,
+      kCoremlProviderOption_EnableAttentionLayoutWorkaround,
   };
   // Validate the options
   for (const auto& option : options) {
@@ -95,6 +96,10 @@ void CoreMLOptions::ValidateAndParseProviderOption(const ProviderOptions& option
       allow_low_precision_accumulation_on_gpu_ = option.second == "1";
     } else if (kCoremlProviderOption_ModelCacheDirectory == option.first) {
       model_cache_directory_ = option.second;
+    } else if (kCoremlProviderOption_EnableAttentionLayoutWorkaround == option.first) {
+      ORT_ENFORCE(option.second == "0" || option.second == "1",
+                  "Invalid value for option ", option.first, ": ", option.second, ". Valid values are 0 and 1.");
+      enable_attention_layout_workaround_ = option.second == "1";
     }
   }
 }
@@ -120,6 +125,7 @@ ProviderOptions CoreMLOptions::ToProviderOptions() const {
       // The effective value: profiling applies to MLProgram models only.
       {kCoremlProviderOption_ProfileComputePlan, ProfileComputePlan() ? "1" : "0"},
       {kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU, allow_low_precision_accumulation_on_gpu_ ? "1" : "0"},
+      {kCoremlProviderOption_EnableAttentionLayoutWorkaround, EnableAttentionLayoutWorkaround() ? "1" : "0"},
   };
 
   if (!model_cache_directory_.empty()) {

@@ -447,6 +447,9 @@ std::string GetModelOutputPath(const CoreMLOptions& coreml_options,
 
     if (coreml_options.CreateMLProgram()) {
       path += "_mlprogram";
+      if (coreml_options.EnableAttentionLayoutWorkaround()) {
+        path += "_attention_layout_v2";
+      }
     } else {
       path += "_nn";
     }
