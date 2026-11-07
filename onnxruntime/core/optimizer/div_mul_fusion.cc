@@ -60,16 +60,6 @@ bool DivMulFusion::SatisfyCondition(const Graph& graph, const Node& node, const 
         return false;
       }
       break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      if (*div_A.data<int32_t>() != static_cast<int32_t>(1)) {
-        return false;
-      }
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      if (*div_A.data<int64_t>() != static_cast<int64_t>(1)) {
-        return false;
-      }
-      break;
     default:
       return false;
   }
