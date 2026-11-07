@@ -20,6 +20,12 @@
 // If the config value is set to "1" then the prepacking is disabled, otherwise prepacking is enabled (default value)
 static const char* const kOrtSessionOptionsConfigDisablePrepacking = "session.disable_prepacking";
 
+// Experimental MatMulTernary CPU packing: "current" (default), "tiled", or "masks".
+// Disk tensors remain T8 v1. Constant weights are packed at session initialization.
+static const char* const kOrtSessionOptionsConfigTernaryPrepack = "session.ternary.prepack";
+// Activation rows sharing decoded masks: "1" (default) or "2"; "current" requires "1".
+static const char* const kOrtSessionOptionsConfigTernaryRowTile = "session.ternary.row_tile";
+
 // Log MoE expert-counter updates at INFO severity. This enables counter updates even when expert counting is disabled.
 // At most 1024 updates are logged per Run; further updates emit one WARNING truncation marker but still count.
 // "0": disable (default); "1": enable.

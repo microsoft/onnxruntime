@@ -778,6 +778,32 @@ typedef void(MLASCALL MLAS_LAYERNORM_F16_KERNEL)(
     bool Simplified
 );
 
+//
+// T8 ternary GEMM. Weight layouts: T8 v1 bit planes, MlasT8Pack tiled words,
+// or MlasT8Pack decoded nonzero/sign masks. The kernel computes output units
+// [UnitBegin, UnitEnd) (five columns each) for Rows (1 or 2) rows of A, which
+// are contiguous with stride K; C rows have stride N.
+//
+
+enum class MLAS_T8_WEIGHT_LAYOUT {
+    Planes,
+    Tiled,
+    Masks,
+};
+
+typedef void(MLASCALL MLAS_T8_GEMM_KERNEL)(
+    size_t Rows,
+    size_t N,
+    size_t K,
+    size_t UnitBegin,
+    size_t UnitEnd,
+    const float* A,
+    const uint32_t* B,
+    const MLAS_FP16* Scales,
+    float* C,
+    MLAS_T8_WEIGHT_LAYOUT Layout
+);
+
 typedef
 void
 (MLASCALL MLAS_QLINEAR_BINARY_OP_S8_KERNEL)(
@@ -1730,6 +1756,11 @@ extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchNeon;
 extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchSve;
 extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchRvv;
 
+#if defined(MLAS_TARGET_AMD64)
+MLAS_T8_GEMM_KERNEL MlasT8GemmKernelAvx2;
+MLAS_T8_GEMM_KERNEL MlasT8GemmKernelAvx512F;
+#endif
+
 //
 // Quantized depthwise convolution kernels.
 //
@@ -1987,6 +2018,7 @@ MLAS_COMPUTE_TANH_FP16_KERNEL* TanhFP16KernelRoutine = nullptr;
     const MLAS_ELTWISE_DISPATCH* EltwiseDispatch{nullptr};
     const MLAS_KV_QUANT_GEMM_DISPATCH* KVQuantGemmDispatch{nullptr};
     const MLAS_LINEAR_ATTENTION_DISPATCH* LinearAttentionDispatch{nullptr};
+    MLAS_T8_GEMM_KERNEL* T8GemmKernel{nullptr};
 };
 
 inline
