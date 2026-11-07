@@ -963,6 +963,9 @@ class HistogramCollector(CalibrationDataCollector):
                 temp_amax = np.nanmax(data_arr_np)
                 if temp_amax > old_hist_edges[-1]:
                     # widen the range by merging k adjacent bins so num_bins and counts stay exact
+                    # (old counts move with their whole bin: when the old top edge is also a new bin edge, a value
+                    # equal to it stays in the merged bin ending there, one bin lower than binning the same values
+                    # with the new edges would place it)
                     top = float(old_hist_edges[-1])
                     k = int(np.ceil(float(temp_amax) / top))
                     old_hist = np.add.reduceat(old_hist, range(0, len(old_hist), k))
