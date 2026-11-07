@@ -4,6 +4,7 @@
 #include "core/session/inference_session.h"
 #include "core/framework/resource_accountant.h"
 #include "core/graph/model.h"
+#include "core/graph/node_attr_utils.h"
 
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/test_environment.h"
@@ -894,6 +895,29 @@ TEST_F(GraphTransformationTests, TransposeReplacementWithoutPerm) {
     auto* input = builder.MakeInput<float>({{2, 3}});
     auto* output = builder.MakeOutput();
     builder.AddNode("Transpose", {input}, {output});
+  };
+
+  auto check_not_replaced = [](Graph& graph) {
+    const auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count.at("Transpose") == 1);
+    TEST_RETURN_IF(op_count.count("Reshape") != 0);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<RuleBasedGraphTransformer>("TransposeReplacement");
+  ASSERT_STATUS_OK(transformer->Register(std::make_unique<TransposeReplacement>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer),
+                                        TransformerLevel::Level1, 1,
+                                        check_not_replaced, check_not_replaced));
+}
+
+TEST_F(GraphTransformationTests, TransposeReplacementWithZeroSizedDimension) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{0, 1}});
+    auto* output = builder.MakeOutput();
+    NodeAttributes perm_attr;
+    utils::SetNodeAttribute(utils::MakeAttribute("perm", std::vector<int64_t>{1, 0}), perm_attr);
+    builder.AddNode("Transpose", {input}, {output}, "", &perm_attr);
   };
 
   auto check_not_replaced = [](Graph& graph) {
