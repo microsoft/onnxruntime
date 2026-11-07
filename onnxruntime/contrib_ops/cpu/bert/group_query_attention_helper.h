@@ -192,10 +192,10 @@ Status CheckRotaryCaches(const T* cos_cache, const T* sin_cache, int head_size, 
 
   const auto& cos_dims = cos_cache->Shape().GetDims();
 
-  if (head_size % 16 != 0) {
+  if (head_size % 8 != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "head_size shall be a multiple of 16. Got head_size % 16 == ",
-                           head_size % 16);
+                           "head_size shall be a multiple of 8. Got head_size % 8 == ",
+                           head_size % 8);
   }
 
   if (cos_dims[0] < total_sequence_length) {
@@ -203,9 +203,9 @@ Status CheckRotaryCaches(const T* cos_cache, const T* sin_cache, int head_size, 
                            "cos_cache dimension 0 shall not be less than total_sequence_length.");
   }
 
-  if (cos_dims[1] > (head_size / 16) * 8 || cos_dims[1] % 8 != 0) {
+  if (cos_dims[1] > head_size / 2 || cos_dims[1] % 4 != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "cos_cache dimension 1 must be <= head_size / 2 and a multiple of 8.");
+                           "cos_cache dimension 1 must be <= head_size / 2 and a multiple of 4.");
   }
 
   rotary_dim = static_cast<int>(cos_dims[1] * 2);
