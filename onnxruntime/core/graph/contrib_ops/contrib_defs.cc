@@ -1032,11 +1032,19 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("packed_type",
               "Packed quantization format enum for B (0..99 map to GGUF ggml_type; >=100 reserved for custom formats).",
               AttributeProto::INT)
+        .Attr("dequantize_to_activation_dtype",
+              "Round complete dequantized weights to A's dtype before decode accumulation. Default preserves "
+              "the existing decode path; prefill already dequantizes to A's dtype.",
+              AttributeProto::INT, static_cast<int64_t>(0))
         .Input(0, "A", "Input activations [..., K].", "T1")
         .Input(1, "B", "Packed weight blob [N, row_bytes].", "T2")
+        .Input(2, "global_scale",
+               "Optional scalar FP32 multiplier for NVFP4, applied to FP32 accumulation before the output cast.",
+               "Tscale", OpSchema::Optional)
         .Output(0, "Y", "Output activations [..., N].", "T1")
         .TypeConstraint("T1", {"tensor(bfloat16)", "tensor(float16)"}, "Activation type.")
         .TypeConstraint("T2", {"tensor(uint8)"}, "Packed byte storage.")
+        .TypeConstraint("Tscale", {"tensor(float)"}, "Global scale type.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           const int64_t n = getAttribute(ctx, "N", 0);
