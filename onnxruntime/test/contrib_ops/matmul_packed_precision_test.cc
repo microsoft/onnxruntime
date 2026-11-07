@@ -139,6 +139,43 @@ TEST(MatMulPackedPrecisionTest, CompleteOperandRoundingIsOptIn) {
   }
 }
 
+TEST(MatMulPackedPrecisionTest, RoundedBf16ContiguousKCancellation) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  constexpr int k = 256;
+  constexpr int n = 17;
+  constexpr int row_bytes = (k / 32) * 34;
+  std::vector<uint8_t> packed(n * row_bytes, 0);
+  const MLFloat16 scale(1.f);
+  for (int row = 0; row < n; ++row) {
+    for (int block = 0; block < k / 32; ++block) {
+      auto* bytes = packed.data() + row * row_bytes + block * 34;
+      bytes[0] = static_cast<uint8_t>(scale.val);
+      bytes[1] = static_cast<uint8_t>(scale.val >> 8);
+      bytes[2] = 1;
+    }
+  }
+  for (int rows : {1, 7, 8}) {
+    std::vector<BFloat16> a(rows * k, BFloat16(0.f));
+    for (int row = 0; row < rows; ++row) {
+      // The contiguous MMA layout retains both unit terms; interleaving
+      // 32-K partitions loses one at the cross-warp reduction.
+      a[row * k] = BFloat16(0x1p25f);
+      a[row * k + 32] = BFloat16(1.f);
+      a[row * k + 64] = BFloat16(-0x1p25f);
+      a[row * k + 96] = BFloat16(1.f);
+    }
+    OpTester test("MatMulPacked", 1, kMSDomain);
+    test.AddAttribute("K", int64_t{k});
+    test.AddAttribute("N", int64_t{n});
+    test.AddAttribute("packed_type", int64_t{8});
+    test.AddAttribute("dequantize_to_activation_dtype", int64_t{1});
+    test.AddInput<BFloat16>("A", {rows, k}, a);
+    test.AddInput<uint8_t>("B", {n, row_bytes}, packed);
+    test.AddOutput<BFloat16>("Y", {rows, n}, std::vector<BFloat16>(rows * n, BFloat16(2.f)));
+    RunPackedCuda(test);
+  }
+}
+
 }  // namespace
 }  // namespace onnxruntime::test
 #endif
