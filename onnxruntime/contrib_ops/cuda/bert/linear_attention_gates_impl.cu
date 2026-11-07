@@ -315,6 +315,7 @@ __global__ void MoEGroupRouterGeneralKernel(
   __shared__ float s_biased[512];
   __shared__ float s_grp_scores[512];
   __shared__ bool s_grp_active[512];
+  __shared__ bool s_expert_used[512];
 
   const int64_t row = blockIdx.x;
   if (row >= num_rows) return;
@@ -326,6 +327,7 @@ __global__ void MoEGroupRouterGeneralKernel(
     const float sv = SigmoidFloat(to_float<T>(row_in[e]));
     s_scores[e] = sv;
     s_biased[e] = sv + expert_bias[e];
+    s_expert_used[e] = false;
     row_out[e] = from_float<T>(router_sentinel);
   }
   __syncthreads();
@@ -334,21 +336,21 @@ __global__ void MoEGroupRouterGeneralKernel(
   const int eff_group_k = min(group_topk, experts_per_group);
   for (int g = tid; g < n_group; g += blockDim.x) {
     float sum = 0.0f;
-    uint64_t used_mask = 0;
     for (int k = 0; k < eff_group_k; ++k) {
       float best_v = -FLT_MAX;
       int best_i = -1;
       for (int i = 0; i < experts_per_group; ++i) {
-        if (i < 64 && ((used_mask >> i) & 1ULL)) continue;
-        const float v = s_biased[g * experts_per_group + i];
+        const int e = g * experts_per_group + i;
+        if (s_expert_used[e]) continue;
+        const float v = s_biased[e];
         if (v > best_v) {
           best_v = v;
-          best_i = i;
+          best_i = e;
         }
       }
       if (best_i >= 0) {
         sum += best_v;
-        if (best_i < 64) used_mask |= (1ULL << best_i);
+        s_expert_used[best_i] = true;
       }
     }
     s_grp_scores[g] = sum;

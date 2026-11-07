@@ -197,11 +197,12 @@ template class GatedRMSNorm<BFloat16>;
 
 template <typename T>
 MoEGroupRouter<T>::MoEGroupRouter(const OpKernelInfo& info) : OpKernel(info) {
-  ORT_ENFORCE(info.GetAttr<int64_t>("top_k", &top_k_).IsOK() && top_k_ > 0);
+  ORT_THROW_IF_ERROR(info.GetAttr<int64_t>("top_k", &top_k_));
   n_group_ = info.GetAttrOrDefault<int64_t>("n_group", 1);
   topk_group_ = info.GetAttrOrDefault<int64_t>("topk_group", 1);
   group_topk_ = info.GetAttrOrDefault<int64_t>("group_topk", 2);
   router_sentinel_ = info.GetAttrOrDefault<float>("router_sentinel", -10000.0f);
+  ORT_THROW_IF_ERROR(ValidateMoEGroupRouterAttributes(top_k_, n_group_, topk_group_, group_topk_));
 }
 
 template <typename T>

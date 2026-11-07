@@ -10,6 +10,7 @@
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
+#include <utility>
 #include "gtest/gtest.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/kernel_registry.h"
@@ -1867,13 +1868,23 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
   }
   const int total_tokens = cu_seqlens[B];
 
+  // Run the FP32 reference on the actual input precision, including cancellation-prone weights.
+  const auto round_input = [&c](float value) {
+    if (c.use_fp16) {
+      return MLFloat16(value).ToFloat();
+    }
+    if (c.use_bf16) {
+      return BFloat16(value).ToFloat();
+    }
+    return value;
+  };
   std::vector<float> weight(static_cast<size_t>(D) * K);
   for (size_t idx = 0; idx < weight.size(); idx++) {
-    weight[idx] = 0.25f * std::cos(static_cast<float>(idx) * 0.21f);
+    weight[idx] = round_input(0.25f * std::cos(static_cast<float>(idx) * 0.21f));
   }
   std::vector<float> bias(D, 0.0f);
   if (c.with_bias) {
-    for (int d = 0; d < D; d++) bias[d] = 0.01f * static_cast<float>(d) - 0.02f;
+    for (int d = 0; d < D; d++) bias[d] = round_input(0.01f * static_cast<float>(d) - 0.02f);
   }
   const std::vector<float>* bias_ptr = c.with_bias ? &bias : nullptr;
 
@@ -1889,11 +1900,11 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
     const int L = c.seq_lens[i];
     std::vector<float> input(static_cast<size_t>(D) * L);
     if (c.adversarial_constants) {
-      const float value = (i % 2 == 0) ? 1000.0f : -1000.0f;
+      const float value = round_input((i % 2 == 0) ? 1000.0f : -1000.0f);
       std::fill(input.begin(), input.end(), value);
     } else {
       for (size_t idx = 0; idx < input.size(); idx++) {
-        input[idx] = 0.5f * std::sin(static_cast<float>(idx + seed) * 0.37f);
+        input[idx] = round_input(0.5f * std::sin(static_cast<float>(idx + seed) * 0.37f));
       }
     }
     seed += 53;
@@ -1901,7 +1912,7 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
     std::vector<float> initial_state(slot_elems, 0.0f);
     if (c.with_initial_state) {
       for (size_t idx = 0; idx < initial_state.size(); idx++) {
-        initial_state[idx] = 0.1f * std::cos(static_cast<float>(idx + i * 11) * 0.3f);
+        initial_state[idx] = round_input(0.1f * std::cos(static_cast<float>(idx + i * 11) * 0.3f));
       }
     }
     const std::vector<float>* past = &initial_state;
@@ -2102,6 +2113,56 @@ TEST(ContribOpVarlenCausalConvWithStateTest, SingleRequestPrefill) {
   VarlenCausalConvCase c;
   c.seq_lens = {6};
   RunVarlenCausalConvCase(c);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, BatchedShortSequences) {
+  for (const auto& shape : {std::pair{128, 8}, std::pair{512, 2}}) {
+    for (int type = 0; type < 3; ++type) {
+      VarlenCausalConvCase c;
+      c.seq_lens.assign(static_cast<size_t>(shape.first), shape.second);
+      c.channels = 130;
+      c.kernel_size = 4;
+      c.with_initial_state = true;
+      c.use_fp16 = type == 1;
+      c.use_bf16 = type == 2;
+      RunVarlenCausalConvCase(c);
+    }
+  }
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, PackedTokenTilesRespectRequestBoundaries) {
+  for (const auto& kernel : {std::pair{4, 1}, std::pair{3, 2}, std::pair{1, 1}, std::pair{5, 3}}) {
+    for (int type = 0; type < 3; ++type) {
+      VarlenCausalConvCase c;
+      c.seq_lens = {1, 2, 33, 34, 49, 81};
+      c.channels = 130;
+      c.kernel_size = kernel.first;
+      c.dilation = kernel.second;
+      c.activation = "none";
+      c.with_bias = false;
+      c.with_initial_state = true;
+      c.adversarial_constants = true;
+      c.use_fp16 = type == 1;
+      c.use_bf16 = type == 2;
+      RunVarlenCausalConvCase(c);
+    }
+  }
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, PackedTokenTilesWithCompactCapture) {
+  for (const auto& kernel : {std::pair{4, 1}, std::pair{5, 3}}) {
+    VarlenCausalConvCase c;
+    c.seq_lens = {1, 2, 33, 34, 49, 81};
+    c.channels = 130;
+    c.kernel_size = kernel.first;
+    c.dilation = kernel.second;
+    c.with_initial_state = true;
+    c.state_update_capacity = 8;
+    c.capture_count = {0, 1, 4, 40, -1, 6};
+    c.request_state_update = true;
+    c.verify_compact_replay = true;
+    RunVarlenCausalConvCase(c);
+  }
 }
 
 TEST(ContribOpVarlenCausalConvWithStateTest, WithInitialState) {
@@ -2555,6 +2616,21 @@ static void RunAliasedStateTwoCallContinuationIOBinding(
 TEST(ContribOpVarlenCausalConvWithStateTest, AliasedGeneralKernelTwoCallContinuation) {
   RunAliasedStateTwoCallContinuationIOBinding(
       3, 3, {6.0f, 6.0f, 6.0f}, {2.0f, 3.0f});
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, AliasedPackedPrefillTwoCallContinuation) {
+  for (int length : {20, 33, 65}) {
+    std::vector<float> expected(static_cast<size_t>(length));
+    expected[0] = static_cast<float>(3 * length - 2);
+    expected[1] = static_cast<float>(2 * length + 2);
+    expected[2] = static_cast<float>(length + 6);
+    for (int t = 3; t < length; ++t) {
+      expected[static_cast<size_t>(t)] = static_cast<float>(4 * t - 2);
+    }
+    RunAliasedStateTwoCallContinuationIOBinding(
+        length, 4, expected,
+        {static_cast<float>(length - 2), static_cast<float>(length - 1), static_cast<float>(length)});
+  }
 }
 
 TEST(ContribOpVarlenCausalConvWithStateTest, AliasedDecodeKernelSize1TwoCallContinuation) {

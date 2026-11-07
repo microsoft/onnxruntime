@@ -4833,15 +4833,15 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>group_topk</tt> : int</dt>
-<dd>Number of top experts summed within each group for group scoring.</dd>
+<dd>Positive number of top experts summed within each group, clamped to the group size.</dd>
 <dt><tt>n_group</tt> : int</dt>
-<dd>Number of expert groups.</dd>
+<dd>Positive number of expert groups.</dd>
 <dt><tt>router_sentinel</tt> : float</dt>
 <dd>Value written to non-selected expert positions.</dd>
 <dt><tt>top_k</tt> : int (required)</dt>
-<dd>Number of experts selected per token.</dd>
+<dd>Positive number of experts selected per token.</dd>
 <dt><tt>topk_group</tt> : int</dt>
-<dd>Number of active expert groups selected per token.</dd>
+<dd>Positive number of active expert groups selected per token.</dd>
 </dl>
 
 #### Inputs

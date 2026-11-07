@@ -941,10 +941,10 @@ constexpr int kKdaScanThreads = kKdaScanWarps * 32;
 // ---------------------------------------------------------------------------
 // KDA (per-key-dim decay) K1 prepare kernel for BT=16, DK=128, DV=128.
 // ---------------------------------------------------------------------------
-template <typename T, int DK, int DV, int BT>
+template <typename T, int DK, int DV, int BT, bool kNativeState = false>
 __global__ __launch_bounds__(kKdaPrepThreads) void GatedDeltaNetKdaPrepareKernel(
-    VariantPack<T> pack, KernelParams p, T* tiles, float* uv_tiles, float* decays, int chunk_base,
-    int chunks_per_pass) {
+    VariantPack<T> pack, KernelParams p, T* tiles, float* uv_tiles, float* decays, float* qg_loss_bounds,
+    int chunk_base, int chunks_per_pass) {
   static_assert(BT == 16 && DK == 128 && DV == 128,
                 "KDA prepare kernel is specialized for BT=16, DK=128, DV=128");
   using L = SplitLd<DK, DV, BT, 64>;
@@ -986,19 +986,13 @@ __global__ __launch_bounds__(kKdaPrepThreads) void GatedDeltaNetKdaPrepareKernel
     return EffectiveDecay(raw, pack.a_log, pack.dt_bias, hv, d_idx, DK, dt_bias_per_key_dim,
                           p.gate_lower_bound, p.gate_activation);
   };
-  // exp of the log decays summed over steps (from_t, to_t], from_t <= to_t, for key dim d_idx. `checked` is a
-  // std::integral_constant that is true when some prefix sum of the chunk is non-finite. The difference of two prefixes
-  // is undefined then (-inf - -inf), so the interval is summed again from the individual decays.
+  // Prefix subtraction also loses intervals after a large finite reset. Re-sum the individual decays for chunks whose
+  // prefixes are non-finite or lost meaningful log-decay information; ordinary chunks keep the prefix-subtraction path.
   auto relative_decay = [&](auto checked, int from_t, int to_t, int d_idx) -> float {
     if constexpr (!decltype(checked)::value) {
       return __expf(s.gc[to_t * L::kKh + d_idx] - s.gc[from_t * L::kKh + d_idx]);
     } else {
       if (from_t >= to_t) return 1.0f;
-      const float gc_from = s.gc[from_t * L::kKh + d_idx];
-      const float gc_to = s.gc[to_t * L::kKh + d_idx];
-      if (isfinite(gc_from) && isfinite(gc_to)) {
-        return __expf(gc_to - gc_from);
-      }
       float sum = 0.0f;
       for (int u = from_t + 1; u <= to_t; ++u) {
         sum += load_decay(u, d_idx);
@@ -1035,6 +1029,7 @@ __global__ __launch_bounds__(kKdaPrepThreads) void GatedDeltaNetKdaPrepareKernel
   T* kd_out = p_out + Tile::kP;
   float* uv_out = uv_tiles + tile_base * Tile::kUv;
   float* decay_out = decays + tile_base * DK;
+  float* qg_loss_out = qg_loss_bounds + tile_base * kKdaSplitGuardMetadataFloats;
 
   if (p.qk_l2_norm) {
     for (int t = warp_id; t < BT; t += kKdaPrepWarps) {
@@ -1060,25 +1055,26 @@ __global__ __launch_bounds__(kKdaPrepThreads) void GatedDeltaNetKdaPrepareKernel
       }
     }
   }
-  bool prefix_nonfinite = false;
+  bool prefix_inaccurate = false;
   if (tid < DK) {
     float acc = 0.0f;
 #pragma unroll
     for (int t = 0; t < BT; ++t) {
-      acc += s.gc[t * L::kKh + tid];
+      const float step = s.gc[t * L::kKh + tid];
+      const float previous = acc;
+      acc += step;
+      // The absolute log-error bound avoids treating harmless FP32 roundoff as a slow-path chunk.
+      prefix_inaccurate |= !isfinite(acc) || fabsf((acc - previous) - step) > 1e-5f;
       s.gc[t * L::kKh + tid] = acc;
     }
     decay_out[tid] = __expf(acc);
-    // A non-finite decay (or an overflowing sum) leaves every later prefix non-finite, so the last prefix of each key
-    // dim witnesses all of them.
-    prefix_nonfinite = !isfinite(acc);
   }
   for (int idx = tid; idx < BT * BT; idx += kKdaPrepThreads) {
     s.m_f[idx] = 0.0f;
     p_out[idx] = FloatToElem<T>(0.0f);
   }
   // Block-uniform, so the loops below choose the unchecked relative decay once instead of testing every element.
-  const bool any_prefix_nonfinite = __syncthreads_or(prefix_nonfinite ? 1 : 0) != 0;
+  const bool any_prefix_inaccurate = __syncthreads_or(prefix_inaccurate ? 1 : 0) != 0;
 
   // Compute only the lower-triangular BT*(BT+1)/2 = 136 pairs (sc <= t) using 32 8-thread subwarps.
   constexpr int kLowerPairs = (BT * (BT + 1)) / 2;
@@ -1112,7 +1108,7 @@ __global__ __launch_bounds__(kKdaPrepThreads) void GatedDeltaNetKdaPrepareKernel
       }
     }
   };
-  if (any_prefix_nonfinite) {
+  if (any_prefix_inaccurate) {
     accumulate_pairs(std::true_type{});
   } else {
     accumulate_pairs(std::false_type{});
@@ -1179,28 +1175,160 @@ __global__ __launch_bounds__(kKdaPrepThreads) void GatedDeltaNetKdaPrepareKernel
     for (int idx = tid; idx < BT * DK; idx += kKdaPrepThreads) {
       const int t = idx / DK, d = idx % DK;
       const float gc_td = s.gc[t * L::kKh + d];
-      qg_out[idx] =
-          FloatToElem<T>((t < len) ? ElemToFloat(s.q_h[t * L::kKh + d]) * __expf(gc_td) : 0.0f);
+      const float qg = (t < len) ? ElemToFloat(s.q_h[t * L::kKh + d]) * __expf(gc_td) : 0.0f;
+      const T qg_h = FloatToElem<T>(qg);
+      qg_out[idx] = qg_h;
+      if constexpr (!kNativeState && std::is_same_v<T, __half>) {
+        // M is dead here. Each warp records a partial row L1 norm of query factors lost to zero.
+        float lost = ElemToFloat(qg_h) == 0.0f ? fabsf(qg) : 0.0f;
+        if (__any_sync(0xffffffff, lost != 0.0f)) {
+#pragma unroll
+          for (int off = 16; off > 0; off >>= 1) {
+            lost += __shfl_xor_sync(0xffffffff, lost, off);
+          }
+        }
+        if (lane == 0) s.m_f[t * (DK / 32) + d / 32] = lost;
+      }
       kd_out[idx] = FloatToElem<T>(
           (t < len) ? ElemToFloat(s.k_h[t * L::kKh + d]) * relative_decay(checked, t, len - 1, d) : 0.0f);
     }
   };
-  if (any_prefix_nonfinite) {
+  if (any_prefix_inaccurate) {
     store_qg_kd(std::true_type{});
   } else {
     store_qg_kd(std::false_type{});
   }
+  if constexpr (!kNativeState && std::is_same_v<T, __half>) {
+    __syncthreads();
+    if (warp_id == 0) {
+      float lost = 0.0f;
+      if (lane < BT) {
+#pragma unroll
+        for (int w = 0; w < DK / 32; ++w) lost += s.m_f[lane * (DK / 32) + w];
+      }
+#pragma unroll
+      for (int off = 16; off > 0; off >>= 1) {
+        lost = fmaxf(lost, __shfl_xor_sync(0xffffffff, lost, off));
+      }
+      if (lane == 0) *qg_loss_out = lost;
+    }
+  } else if (tid == 0) {
+    *qg_loss_out = 0.0f;
+  }
 }
 
 // ---------------------------------------------------------------------------
+// A guarded chunk with an oversized state or a meaningful Qg contribution lost to zero must not use K1's narrowed
+// W/Qg/Kd factors. Recompute the whole chunk before narrowing.
+template <typename T, int DK, int DV, int BT, int DVB>
+__device__ __noinline__ void RunKdaScanStepRecurrent(
+    const ScanSmem<T, DK, DV, BT, DVB>& s, const VariantPack<T>& pack, const KernelParams& p,
+    int64_t tok_base, int chunk0, int len, int hv, int v0, int tid, int warp_id, int lane) {
+  using L = SplitLd<DK, DV, BT, DVB>;
+  static_assert(2 * BT * L::kF2 >= 3 * DK + 3, "scan scratch must hold Q, K, decay and scalar gates");
+  float* q = s.t_f;
+  float* k = q + DK;
+  float* decay = k + DK;
+  float* beta = decay + DK;
+  float* norms = beta + 1;
+  const int hq = hv * p.num_heads_q / p.num_heads_v;
+  const int hk = hv * p.num_heads_k / p.num_heads_v;
+  const int64_t q_stride = static_cast<int64_t>(p.num_heads_q) * DK;
+  const int64_t k_stride = static_cast<int64_t>(p.num_heads_k) * DK;
+  const int64_t v_stride = static_cast<int64_t>(p.num_heads_v) * DV;
+  const bool needs_decay = pack.decay != nullptr &&
+                           (p.update_rule == UpdateRule::kGated || p.update_rule == UpdateRule::kGatedDelta);
+  const bool needs_retrieval = p.update_rule == UpdateRule::kDelta || p.update_rule == UpdateRule::kGatedDelta;
+
+  for (int t = 0; t < len; ++t) {
+    const int64_t tok = tok_base + chunk0 + t;
+    const int64_t gi = tok * p.num_heads_v + hv;
+    if (tid < DK) {
+      q[tid] = ElemToFloat(pack.query[tok * q_stride + hq * DK + tid]);
+      k[tid] = ElemToFloat(pack.key[tok * k_stride + hk * DK + tid]);
+      decay[tid] = needs_decay
+                       ? __expf(EffectiveDecay(LoadGate<T>(pack.decay, gi * DK + tid, pack.gates_in_input_type),
+                                               pack.a_log, pack.dt_bias, hv, tid, DK,
+                                               p.dt_bias_per_key_dim_flag != 0, p.gate_lower_bound, p.gate_activation))
+                       : 1.0f;
+    }
+    if (tid == 0) {
+      *beta = pack.beta != nullptr
+                  ? EffectiveBeta(LoadGate<T>(pack.beta, gi, pack.gates_in_input_type), p.beta_activation)
+                  : 1.0f;
+    }
+    __syncthreads();
+    if (p.qk_l2_norm) {
+      if (warp_id == 0) {
+        float sq = 0.0f, sk = 0.0f;
+#pragma unroll
+        for (int d = lane; d < DK; d += 32) {
+          sq += q[d] * q[d];
+          sk += k[d] * k[d];
+        }
+#pragma unroll
+        for (int off = 16; off > 0; off >>= 1) {
+          sq += __shfl_xor_sync(0xffffffff, sq, off);
+          sk += __shfl_xor_sync(0xffffffff, sk, off);
+        }
+        if (lane == 0) {
+          const float eps = p.gate_activation == GateActivation::kSigmoidDecay ? 1e-6f : 1e-12f;
+          norms[0] = rsqrtf(sq + eps);
+          norms[1] = rsqrtf(sk + eps);
+        }
+      }
+      __syncthreads();
+      if (tid < DK) {
+        q[tid] *= norms[0];
+        k[tid] *= norms[1];
+      }
+      __syncthreads();
+    }
+
+    // Each warp owns disjoint value columns, with its lanes spanning the key dimension.
+    for (int c = warp_id; c < DVB; c += kKdaScanWarps) {
+      float state[DK / 32];
+      float retrieval = 0.0f;
+#pragma unroll
+      for (int i = 0; i < DK / 32; ++i) {
+        const int d = lane + i * 32;
+        state[i] = s.s_f[d * L::kSf + c] * decay[d];
+        if (needs_retrieval) retrieval += state[i] * k[d];
+      }
+#pragma unroll
+      for (int off = 16; off > 0; off >>= 1) {
+        retrieval += __shfl_xor_sync(0xffffffff, retrieval, off);
+      }
+      const float delta = *beta * (ElemToFloat(pack.value[tok * v_stride + hv * DV + v0 + c]) - retrieval);
+      float output = 0.0f;
+#pragma unroll
+      for (int i = 0; i < DK / 32; ++i) {
+        const int d = lane + i * 32;
+        state[i] += k[d] * delta;
+        s.s_f[d * L::kSf + c] = state[i];
+        output += q[d] * state[i];
+      }
+#pragma unroll
+      for (int off = 16; off > 0; off >>= 1) {
+        output += __shfl_xor_sync(0xffffffff, output, off);
+      }
+      if (lane == 0) {
+        pack.output[tok * v_stride + hv * DV + v0 + c] = FloatToElem<T>(p.scale * output);
+      }
+    }
+    __syncthreads();
+  }
+}
+
 // KDA (per-key-dim decay) K2 scan kernel for BT=16, DK=128, DV=128.
 // ---------------------------------------------------------------------------
 // kNativeState rounds the FP32 state to T for the tensor-core products. Otherwise the state stays in FP32: bf16 splits it
-// into slices, and fp16 computes the exact FP32 product for a tile that holds an element beyond the fp16 range.
+// into slices, and fp16 recomputes chunks with oversized state or potentially representable Qg contributions lost
+// to zero.
 template <typename T, int DK, int DV, int BT, int DVB, bool kNativeState = false>
 __global__ __launch_bounds__(kKdaScanThreads) void GatedDeltaNetKdaScanKernel(
     VariantPack<T> pack, KernelParams p, const T* tiles, const float* uv_tiles,
-    const float* decays, float* carry, int chunk_base, int chunks_per_pass, int n_chunks,
+    const float* decays, const float* qg_loss_bounds, float* carry, int chunk_base, int chunks_per_pass, int n_chunks,
     bool first_pass, bool last_pass) {
   static_assert(BT == 16 && DK == 128 && DV == 128,
                 "KDA scan kernel is specialized for BT=16, DK=128, DV=128");
@@ -1236,6 +1364,23 @@ __global__ __launch_bounds__(kKdaScanThreads) void GatedDeltaNetKdaScanKernel(
     const int chunk0 = (chunk_base + c_local) * BT;
     if (chunk0 >= seq_len) break;
     const int len = min(BT, seq_len - chunk0);
+
+    if constexpr (!kNativeState && std::is_same_v<T, __half>) {
+      // L * max(abs(S)) bounds each lost Qg @ S output. Ignore bounds below the FP16 rounding-to-zero threshold.
+      const float lost = qg_loss_bounds[(head_base + c_local) * kKdaSplitGuardMetadataFloats];
+      const float loss_limit = lost > 0.0f ? 0x1p-25f / (fabsf(p.scale) * lost) : 65504.0f;
+      const float state_limit = fminf(65504.0f, loss_limit);
+      bool state_overflow = false;
+      for (int idx = tid; idx < DK * DVB; idx += kKdaScanThreads) {
+        const float sf = s.s_f[(idx / DVB) * L::kSf + idx % DVB];
+        state_overflow |= !isfinite(sf) || fabsf(sf) > state_limit;
+      }
+      if (__syncthreads_or(state_overflow ? 1 : 0)) {
+        RunKdaScanStepRecurrent<T, DK, DV, BT, DVB>(
+            s, pack, p, tok_base, chunk0, len, hv, v0, tid, warp_id, lane);
+        continue;
+      }
+    }
 
     const T* in = tiles + (head_base + c_local) * Tile::kHalves;
     const float* uv_in = uv_tiles + (head_base + c_local) * Tile::kUv;
@@ -1373,10 +1518,12 @@ Status LaunchGatedDeltaNetKdaSplit(const Descriptor& desc, const Plan& plan,
       static_cast<int64_t>(desc.batch) * desc.num_heads_v * chunks_per_pass;
   float* uv_tiles = reinterpret_cast<float*>(pack.workspace);
   float* decays = uv_tiles + tiles_per_pass * PrepTile<DK, DV, BT>::kUv;
-  float* carry = total_chunks > chunks_per_pass ? decays + tiles_per_pass * DK : nullptr;
+  float* qg_loss_bounds = decays + tiles_per_pass * DK;
+  float* guard_end = qg_loss_bounds + tiles_per_pass * kKdaSplitGuardMetadataFloats;
+  float* carry = total_chunks > chunks_per_pass ? guard_end : nullptr;
   float* after_floats = carry != nullptr ? carry + static_cast<int64_t>(desc.batch) *
                                                        desc.num_heads_v * DV * DK
-                                         : decays + tiles_per_pass * DK;
+                                         : guard_end;
   T* tiles = reinterpret_cast<T*>(after_floats);
 
   const int dvb = plan.v_block;
@@ -1386,11 +1533,11 @@ Status LaunchGatedDeltaNetKdaSplit(const Descriptor& desc, const Plan& plan,
   auto launch_pass = [&]<bool kNativeState>(int base, int n, bool first, bool last) -> Status {
     static DynamicSmemConfig prep_smem_config;
     ORT_RETURN_IF_ERROR(SetMaxDynamicSmem(
-        GatedDeltaNetKdaPrepareKernel<T, DK, DV, BT>, prep_smem, prep_smem_config));
+        GatedDeltaNetKdaPrepareKernel<T, DK, DV, BT, kNativeState>, prep_smem, prep_smem_config));
     const dim3 prep_grid(desc.batch, desc.num_heads_v, n);
-    GatedDeltaNetKdaPrepareKernel<T, DK, DV, BT>
-        <<<prep_grid, kKdaPrepThreads, prep_smem, stream>>>(pack, p, tiles, uv_tiles, decays, base,
-                                                            chunks_per_pass);
+    GatedDeltaNetKdaPrepareKernel<T, DK, DV, BT, kNativeState>
+        <<<prep_grid, kKdaPrepThreads, prep_smem, stream>>>(pack, p, tiles, uv_tiles, decays, qg_loss_bounds,
+                                                            base, chunks_per_pass);
 
     const dim3 scan_grid(desc.batch, desc.num_heads_v, DV / dvb);
     if (dvb == 16) {
@@ -1399,7 +1546,7 @@ Status LaunchGatedDeltaNetKdaSplit(const Descriptor& desc, const Plan& plan,
           GatedDeltaNetKdaScanKernel<T, DK, DV, BT, 16, kNativeState>, scan_smem, scan16_smem_config));
       GatedDeltaNetKdaScanKernel<T, DK, DV, BT, 16, kNativeState>
           <<<scan_grid, kKdaScanThreads, scan_smem, stream>>>(pack, p, tiles, uv_tiles, decays,
-                                                              carry, base, chunks_per_pass, n,
+                                                              qg_loss_bounds, carry, base, chunks_per_pass, n,
                                                               first, last);
     } else if (dvb == 32) {
       static DynamicSmemConfig scan32_smem_config;
@@ -1407,7 +1554,7 @@ Status LaunchGatedDeltaNetKdaSplit(const Descriptor& desc, const Plan& plan,
           GatedDeltaNetKdaScanKernel<T, DK, DV, BT, 32, kNativeState>, scan_smem, scan32_smem_config));
       GatedDeltaNetKdaScanKernel<T, DK, DV, BT, 32, kNativeState>
           <<<scan_grid, kKdaScanThreads, scan_smem, stream>>>(pack, p, tiles, uv_tiles, decays,
-                                                              carry, base, chunks_per_pass, n,
+                                                              qg_loss_bounds, carry, base, chunks_per_pass, n,
                                                               first, last);
     } else {
       static DynamicSmemConfig scan64_smem_config;
@@ -1415,7 +1562,7 @@ Status LaunchGatedDeltaNetKdaSplit(const Descriptor& desc, const Plan& plan,
           GatedDeltaNetKdaScanKernel<T, DK, DV, BT, 64, kNativeState>, scan_smem, scan64_smem_config));
       GatedDeltaNetKdaScanKernel<T, DK, DV, BT, 64, kNativeState>
           <<<scan_grid, kKdaScanThreads, scan_smem, stream>>>(pack, p, tiles, uv_tiles, decays,
-                                                              carry, base, chunks_per_pass, n,
+                                                              qg_loss_bounds, carry, base, chunks_per_pass, n,
                                                               first, last);
     }
     return CUDA_CALL(cudaGetLastError());

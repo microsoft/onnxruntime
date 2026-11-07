@@ -4123,8 +4123,8 @@ TEST(GatedDeltaNetTest, KdaCudaMultiPassCarryAndExtremeFp16State) {
   if (NeedSkipGatedDeltaNetTest()) return;
   // 1. Force multiple workspace passes in KDA split prefill:
   // At batch=2, hv=128, dk=128, dv=128, BT=16, one chunk across all batch*heads uses
-  // 2 * 128 * KdaSplitTileBytes(16, 128, 128) = 256 * 21504 = 5.25 MiB.
-  // 13 chunks per sequence (416 total tokens) require 68.25 MiB > 64 MiB workspace cap,
+  // 2 * 128 * KdaSplitTileBytes(16, 128, 128) = 256 * 21520 ~= 5.25 MiB.
+  // 13 chunks per sequence (416 total tokens) require 68.30 MiB > 64 MiB workspace cap,
   // forcing multiple passes (chunks_per_pass = 9 < 13) through the carry buffer.
   {
     namespace gdn = onnxruntime::contrib::cuda::gated_delta_net;
@@ -4384,6 +4384,146 @@ TEST(GatedDeltaNetTest, KdaSplitFiniteSaturatingGates) {
     SCOPED_TRACE(isolated_resets);
     RunKdaSaturatedGatesCase<MLFloat16>(isolated_resets);
     RunKdaSaturatedGatesCase<BFloat16>(isolated_resets);
+  }
+}
+
+template <typename T>
+void RunKdaSingleFiniteResetCase(int reset_token, bool native_state) {
+  Geometry g{reset_token == 0 ? 32 : 33, 1, 1, 1, kDim, kDim};
+  const size_t qkv_size = static_cast<size_t>(g.total_tokens) * g.dk;
+  std::vector<float> q(qkv_size, 0.0f), k(qkv_size, 0.0f), v(qkv_size, 0.0f);
+  std::vector<float> decay(qkv_size, -0.2f);
+  std::vector<float> beta(static_cast<size_t>(g.total_tokens), 0.5f);
+  std::vector<float> state0(static_cast<size_t>(g.dv) * g.dk, 0.0f);
+  for (int t = 0; t < g.total_tokens; ++t) {
+    q[static_cast<size_t>(t) * g.dk] = 1.0f;
+    k[static_cast<size_t>(t) * g.dk] = 1.0f;
+    v[static_cast<size_t>(t) * g.dv] = 1.0f;
+  }
+  // Exactly one finite reset: the later FP32 prefixes stay finite and equal, unlike repeated-reset overflow cases.
+  std::fill_n(decay.begin() + static_cast<size_t>(reset_token) * g.dk, g.dk,
+              -std::numeric_limits<float>::max());
+  std::vector<float> ref_out(qkv_size, 0.0f), ref_state(state0.size(), 0.0f);
+  double state = 0.0;
+  for (int t = 0; t < g.total_tokens; ++t) {
+    state = 0.5 + 0.5 * std::exp(static_cast<double>(decay[static_cast<size_t>(t) * g.dk])) * state;
+    ref_out[static_cast<size_t>(t) * g.dv] = static_cast<float>(state);
+  }
+  ref_state[0] = static_cast<float>(state);
+  ASSERT_NEAR(ref_out[static_cast<size_t>(reset_token + 15) * g.dv], 0.846547f, 1e-6f);
+
+  OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("update_rule", std::string("gated_delta"));
+  test.AddAttribute("gate_activation", std::string("none"));
+  test.AddAttribute("beta_activation", std::string("none"));
+  test.AddAttribute("qk_l2_norm", static_cast<int64_t>(0));
+  test.AddAttribute("scale", 1.0f);
+  test.AddInput<T>("query", {g.total_tokens, 1, g.dk}, ToTensorType<T>(q));
+  test.AddInput<T>("key", {g.total_tokens, 1, g.dk}, ToTensorType<T>(k));
+  test.AddInput<T>("value", {g.total_tokens, 1, g.dv}, ToTensorType<T>(v));
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddInput<float>("decay", {g.total_tokens, 1, g.dk}, decay);
+  test.AddInput<float>("beta", {g.total_tokens, 1}, beta);
+  test.AddInput<float>("initial_state", {1, 1, g.dv, g.dk}, state0);
+  const float tolerance = std::is_same_v<T, MLFloat16> ? 2e-3f : 1e-2f;
+  test.AddOutput<T>("output", {g.total_tokens, 1, g.dv}, ToTensorType<T>(ref_out), false, tolerance, tolerance);
+  test.AddOutput<float>("final_state", {1, 1, g.dv, g.dk}, ref_state, false, tolerance, tolerance);
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsCudaGatedDeltaNetFp16StateGuard, native_state ? "0" : "1"));
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsCudaGatedDeltaNetBf16Precision, native_state ? "bf16" : "fp32"));
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCudaExecutionProvider());
+  test.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+}
+
+TEST(GatedDeltaNetTest, KdaSplitSingleFiniteResetPreservesRelativeDecay) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_GDN_PLAN", "chunked_split"}}};
+  for (int reset_token : {0, 16}) {
+    for (bool native_state : {false, true}) {
+      SCOPED_TRACE(MakeString("reset_token=", reset_token, ", native_state=", native_state));
+      RunKdaSingleFiniteResetCase<MLFloat16>(reset_token, native_state);
+      RunKdaSingleFiniteResetCase<BFloat16>(reset_token, native_state);
+    }
+  }
+}
+
+template <typename T>
+void RunKdaLargeStateWithDecayCase(int total_tokens, float initial_state = 1e8f, int query_start = 7) {
+  Geometry g{total_tokens, 1, 1, 1, kDim, kDim};
+  const size_t qkv_size = static_cast<size_t>(g.total_tokens) * g.dk;
+  std::vector<float> q(qkv_size, 0.0f), k(qkv_size, 0.0f), v(qkv_size, 0.0f);
+  std::vector<float> decay(qkv_size, -2.5f), beta(static_cast<size_t>(g.total_tokens), 0.0f);
+  std::vector<float> state0(static_cast<size_t>(g.dv) * g.dk, 0.0f);
+  state0[0] = initial_state;
+  for (int t = 0; t < g.total_tokens; ++t) {
+    if (t >= query_start) q[static_cast<size_t>(t) * g.dk] = 1.0f;
+    k[static_cast<size_t>(t) * g.dk] = 1.0f;
+  }
+  std::vector<float> ref_out(qkv_size, 0.0f), ref_state(state0.size(), 0.0f);
+  double state = state0[0];
+  for (int t = 0; t < g.total_tokens; ++t) {
+    state *= std::exp(-2.5);
+    if (t >= query_start) ref_out[static_cast<size_t>(t) * g.dv] = static_cast<float>(state);
+  }
+  ref_state[0] = static_cast<float>(state);
+  ASSERT_NEAR(ref_out[static_cast<size_t>(query_start) * g.dv],
+              initial_state * std::exp(-2.5 * (query_start + 1)), 1e-6);
+
+  OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("update_rule", std::string("gated_delta"));
+  test.AddAttribute("gate_activation", std::string("none"));
+  test.AddAttribute("beta_activation", std::string("none"));
+  test.AddAttribute("qk_l2_norm", static_cast<int64_t>(0));
+  test.AddAttribute("scale", 1.0f);
+  test.AddInput<T>("query", {g.total_tokens, 1, g.dk}, ToTensorType<T>(q));
+  test.AddInput<T>("key", {g.total_tokens, 1, g.dk}, ToTensorType<T>(k));
+  test.AddInput<T>("value", {g.total_tokens, 1, g.dv}, ToTensorType<T>(v));
+  test.AddOptionalInputEdge<int32_t>();
+  if (total_tokens == 32) {
+    test.AddInput<float>("decay", {g.total_tokens, 1, g.dk}, decay);
+    test.AddInput<float>("beta", {g.total_tokens, 1}, beta);
+  } else {
+    test.AddInput<T>("decay", {g.total_tokens, 1, g.dk}, ToTensorType<T>(decay));
+    test.AddInput<T>("beta", {g.total_tokens, 1}, ToTensorType<T>(beta));
+  }
+  test.AddInput<float>("initial_state", {1, 1, g.dv, g.dk}, state0);
+  // No absolute floor: it would hide zeros in the small multi-chunk outputs and final state.
+  test.AddOutput<T>("output", {g.total_tokens, 1, g.dv}, ToTensorType<T>(ref_out), false, 0.0f, 1e-2f);
+  test.AddOutput<float>("final_state", {1, 1, g.dv, g.dk}, ref_state, false, 0.0f, 2e-3f);
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsCudaGatedDeltaNetFp16StateGuard, "1"));
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsCudaGatedDeltaNetBf16Precision, "fp32"));
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCudaExecutionProvider());
+  test.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+}
+
+TEST(GatedDeltaNetTest, KdaSplitLargeFp32StateWithNonzeroDecay) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_GDN_PLAN", "chunked_split"}}};
+  for (int total_tokens : {32, 33}) {
+    SCOPED_TRACE(total_tokens);
+    RunKdaLargeStateWithDecayCase<MLFloat16>(total_tokens);
+    RunKdaLargeStateWithDecayCase<BFloat16>(total_tokens);
+  }
+}
+
+TEST(GatedDeltaNetTest, KdaSplitFp16StateGuardPreservesUnderflowedQueryFactors) {
+  if (NeedSkipGatedDeltaNetTest()) return;
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_GDN_PLAN", "chunked_split"}}};
+  for (int total_tokens : {32, 33}) {
+    // All seeds fit in FP16. For 60000, token 6 is ~0.001506599 despite Qg rounding to zero;
+    // the 0.5 seed instead bounds the lost contribution below half an FP16 subnormal quantum.
+    for (float initial_state : {60000.0f, 600.0f, 0.5f}) {
+      SCOPED_TRACE(MakeString("total_tokens=", total_tokens, ", initial_state=", initial_state));
+      RunKdaLargeStateWithDecayCase<MLFloat16>(total_tokens, initial_state, 6);
+      RunKdaLargeStateWithDecayCase<BFloat16>(total_tokens, initial_state, 6);
+    }
   }
 }
 

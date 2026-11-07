@@ -6119,11 +6119,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     MoEGroupRouter, 1,
     OpSchema()
         .SetDoc(MoEGroupRouter_ver1_doc)
-        .Attr("top_k", "Number of experts selected per token.", AttributeProto::INT)
-        .Attr("n_group", "Number of expert groups.", AttributeProto::INT, static_cast<int64_t>(1))
-        .Attr("topk_group", "Number of active expert groups selected per token.", AttributeProto::INT,
+        .Attr("top_k", "Positive number of experts selected per token.", AttributeProto::INT)
+        .Attr("n_group", "Positive number of expert groups.", AttributeProto::INT, static_cast<int64_t>(1))
+        .Attr("topk_group", "Positive number of active expert groups selected per token.", AttributeProto::INT,
               static_cast<int64_t>(1))
-        .Attr("group_topk", "Number of top experts summed within each group for group scoring.",
+        .Attr("group_topk", "Positive number of top experts summed within each group, clamped to the group size.",
               AttributeProto::INT, static_cast<int64_t>(2))
         .Attr("router_sentinel", "Value written to non-selected expert positions.",
               AttributeProto::FLOAT, -10000.0f)

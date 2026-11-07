@@ -70,6 +70,20 @@ input tokens → router (top-k softmax) → permute by expert
 
 ## 2. QMoE Operator Schema
 
+### Fused group-limited router
+
+`com.microsoft::MoEGroupRouter` is a separate CPU/CUDA operator that selects groups
+using the sum of their highest biased sigmoid scores, then selects experts within
+the active groups. It emits log-sigmoid scores at selected experts and
+`router_sentinel` elsewhere for consumption by MoE/QMoE.
+
+`top_k`, `n_group`, `topk_group`, and `group_topk` must be positive. `group_topk`
+is clamped to the number of experts per group. CUDA requires these attributes to
+fit in a signed 32-bit integer and supports up to 512 experts, including groups
+wider than 64 experts. The specialized 128-expert/eight-group path is unchanged.
+Run `onnxruntime_provider_test --gtest_filter="MoEGroupRouterTest.*:GatedDeltaNetTest.MoEGroupRouterCpuAndCuda"`
+for validation and general/specialized routing coverage.
+
 ### 2.1 Attributes
 
 | Attribute | Type | Default | Description |

@@ -87,8 +87,8 @@ struct Descriptor {
   // Benchmarking override. kAuto lets the heuristic choose.
   Engine preferred_engine = Engine::kAuto;
   Bf16Precision bf16_precision = Bf16Precision::kFp32;
-  // float16 per-key-decay (KDA) chunked prefill: keep the FP32 state exact for tiles holding an element beyond the float16
-  // range. false rounds the state to float16 for the tensor-core products, which is faster but overflows there.
+  // float16 KDA prefill: protect oversized FP32 state and query factors narrowed to zero with a representable output
+  // contribution. false rounds the state/factors to float16 for every tensor-core product.
   bool fp16_state_guard = true;
   int sm_major = 0;
 };
@@ -201,9 +201,12 @@ inline size_t KdaSplitScanSmemBytes(int bt, int dk, int dvb) {
   return f + h;
 }
 
+// One loss bound plus padding keeps the following workspace arrays 16-byte aligned.
+inline constexpr int kKdaSplitGuardMetadataFloats = 4;
+
 inline size_t KdaSplitTileBytes(int bt, int dk, int dv) {
   return sizeof(uint16_t) * static_cast<size_t>(bt) * (3 * dk + bt) +
-         sizeof(float) * (static_cast<size_t>(bt) * dv + dk);
+         sizeof(float) * (static_cast<size_t>(bt) * dv + dk + kKdaSplitGuardMetadataFloats);
 }
 
 inline Plan SelectPlan(const Descriptor& desc, size_t smem_per_block_optin) {
