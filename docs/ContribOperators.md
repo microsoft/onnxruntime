@@ -66,6 +66,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.LinearAttentionGate">com.microsoft.LinearAttentionGate</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
   * <a href="#com.microsoft.MRotaryEmbedding">com.microsoft.MRotaryEmbedding</a>
+  * <a href="#com.microsoft.Mamba2Verify">com.microsoft.Mamba2Verify</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp4Weight">com.microsoft.MatMulBlockQuantizedFp4Weight</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp8Weight">com.microsoft.MatMulBlockQuantizedFp8Weight</a>
   * <a href="#com.microsoft.MatMulBnb4">com.microsoft.MatMulBnb4</a>
@@ -3403,9 +3404,9 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   Only the valid rows are appended to the cache, at positions `[P, T)`. Query row `s` is at absolute position `P + s`: causal attention, `local_window_size` and rotary embedding (when `position_ids` is not given) use that position. Output rows `[Q, S)` are unspecified, and so are cache rows at or beyond `T`. For every valid row the result equals that of the same call with an unpadded chunk of `Q` tokens retaining `query_seqlens` and the same `total_sequence_length`, so a caller can run every chunk of a prompt with one fixed `S`. With a quantized CUDA cache and `P = 0, Q > 1`, attention reads the original floating-point new K/V; omitting `query_seqlens` while retaining a capacity-valued bound can instead select legacy quantized-cache reads. For `P = 0, Q = 1`, both padded and unpadded calls read floating-point new K/V only when `total_sequence_length = 1`; a larger bound preserves quantized-cache reads.
   
-  The scalar `total_sequence_length` is only an upper bound of the absolute `T` in this case. It is not used to tell a first prompt from a later chunk and it does not determine `P`. A windowed cache may have a capacity smaller than `T`, so its capacity is not necessarily a valid upper bound.
+  The scalar `total_sequence_length` is only an upper bound of `T` in this case (for example the cache capacity). It is not used to tell a first prompt from a later chunk and it does not determine `P`.
   
-  Requirements: `causal=1`; new key/value with `kv_sequence_length == sequence_length`; `past_key` and `past_value` present; `T >= 1`, `0 <= Q <= min(S, T)` and `T <= total_sequence_length` for every batch entry (the existing rule that `total_sequence_length >= sequence_length` for a cache that is not windowed still applies, but a growing cache is not required to have `total_sequence_length == past_sequence_length + sequence_length`). Batched multi-token chunks are supported. `Q = 0` marks an idle entry with an already-populated cache: keep its `seqlens_k` unchanged and ignore all its output rows. The input is honored also when `sequence_length == 1`, where `Q` is 0 or 1. A cache that is not windowed must also hold the `P` cached tokens in `past_key` (`P` is at most the sequence dimension of `past_key`) and have room for the whole padded chunk, `P + S <= C`, where `C` is the sequence dimension of `present_key`. A windowed cache has no such requirement because it is staged internally. An execution provider that can read the values reports a violation with `INVALID_ARGUMENT`; the CUDA execution provider reads them on the device, clamps `Q` into `[0, min(S, T)]` and leaves the result unspecified. When `query_seqlens` is omitted, `Q = min(S, T)` and the behavior is unchanged.
+  Requirements: `causal=1`; new key/value with `kv_sequence_length == sequence_length`; `past_key` and `past_value` present; `1 <= Q <= min(S, T)` and `T <= total_sequence_length` for every batch entry (the existing rule that `total_sequence_length >= sequence_length` for a cache that is not windowed still applies, but a growing cache is not required to have `total_sequence_length == past_sequence_length + sequence_length`); `sequence_length > 1` requires `batch_size == 1`; and `Q == 1` when `sequence_length == 1`. A cache that is not windowed must also hold the `P` cached tokens in `past_key` (`P` is at most the sequence dimension of `past_key`) and have room for the whole padded chunk, `P + S <= C`, where `C` is the sequence dimension of `present_key`. A windowed cache has no such requirement because it is staged internally. An execution provider that can read the values reports a violation with `INVALID_ARGUMENT`; the CUDA execution provider reads them on the device, clamps `Q` into `[1, min(S, T)]` and leaves the result unspecified. When `query_seqlens` is omitted, `Q = min(S, T)` and the behavior is unchanged.
   
   **Windowed KV Cache (`sliding_window_cache` attribute):**
   When `sliding_window_cache` is 1, the past/present buffers are window-sized instead of full-length and the operator evicts internally. Let `C` be the cache capacity (dimension 2 of `past_key`, which is also the sequence dimension of `present_key`), `W` be `local_window_size`, and `T` be the absolute number of tokens processed so far by this batch entry, i.e. `seqlens_k[b] + 1`. The scalar `total_sequence_length` input is only the batch maximum of `T` (or only an upper bound of `T` when `query_seqlens` is given); the layout below is per batch entry, so a ragged batch gets a different resident range per entry. `C` must be at least `W`.
@@ -3420,7 +3421,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   Hence `min(T, W) <= L(T) <= min(T, C)`: the whole window stays resident, and eviction reclaims `G` positions at once rather than one position per step, so consumers must not assume that the cache is kept full at `min(T, C)`.
   
-    Because `L` depends only on `T`, the resulting layout is independent of how the tokens were split into steps: a multi-token step of `S` tokens (speculative decoding, chunked prefill) leaves exactly the layout that the same tokens would produce one at a time. A right-padded chunk (`query_seqlens`) leaves the layout of its `Q` valid tokens only, because padding rows never enter the cache. Any `S >= 1` is accepted, including `S > C`; a step that would evict positions it still has to read is staged internally, so the capacity does not have to cover the step. Without `query_seqlens`, the existing restriction with past context still applies: `sequence_length > 1` requires `batch_size == 1`.
+    Because `L` depends only on `T`, the resulting layout is independent of how the tokens were split into steps: a multi-token step of `S` tokens (speculative decoding, chunked prefill) leaves exactly the layout that the same tokens would produce one at a time. A right-padded chunk (`query_seqlens`) leaves the layout of its `Q` valid tokens only, because padding rows never enter the cache. Any `S >= 1` is accepted, including `S > C`; a step that would evict positions it still has to read is staged internally, so the capacity does not have to cover the step. When past context is present, the existing operator restriction still applies: `sequence_length > 1` requires `batch_size == 1`.
   
     An execution provider may accept only part of the `C >= W` range. A configuration with `C < W` (equivalently, `W > C`) is invalid and is rejected with `INVALID_ARGUMENT`. The CUDA implementation requires `C == W`, so there `G` is 1 and `L(T)` is `min(T, C)`; a larger capacity is rejected. The CPU implementation accepts any `C >= W`, and slack above the window amortizes compaction over `G` steps.
   
@@ -3473,7 +3474,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>scale</tt> : float</dt>
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 <dt><tt>sliding_window_cache</tt> : int</dt>
-<dd>Set to 1 when the past/present KV buffers are window-sized instead of holding the whole sequence. The op then evicts internally and indexes the buffers in cache-relative coordinates, keeping the most recent positions contiguously at rows [0, L) with min(T, local_window_size) <= L <= min(T, capacity), where T is seqlens_k[b] + 1 for that batch entry. Requires local_window_size > 0 and a cache capacity of at least local_window_size; a smaller capacity (W > C) is rejected with INVALID_ARGUMENT. The CUDA implementation additionally requires the capacity to equal local_window_size. Multi-token steps of any length are supported and produce the same layout as single-token steps, so the capacity need not cover the entire step. Without query_seqlens, when past context is present, sequence_length > 1 requires batch_size == 1. See the Windowed KV Cache section of the operator description for the exact resident-range, eviction and rollback contract. Default value is 0 (full-length cache).</dd>
+<dd>Set to 1 when the past/present KV buffers are window-sized instead of holding the whole sequence. The op then evicts internally and indexes the buffers in cache-relative coordinates, keeping the most recent positions contiguously at rows [0, L) with min(T, local_window_size) <= L <= min(T, capacity), where T is seqlens_k[b] + 1 for that batch entry. Requires local_window_size > 0 and a cache capacity of at least local_window_size; a smaller capacity (W > C) is rejected with INVALID_ARGUMENT. The CUDA implementation additionally requires the capacity to equal local_window_size. Multi-token steps of any length are supported and produce the same layout as single-token steps, so the capacity need not cover the entire step. When past context is present, sequence_length > 1 requires batch_size == 1. See the Windowed KV Cache section of the operator description for the exact resident-range, eviction and rollback contract. Default value is 0 (full-length cache).</dd>
 <dt><tt>smooth_softmax</tt> : int</dt>
 <dd>Use a smooth factor in softmax.</dd>
 <dt><tt>softcap</tt> : float</dt>
@@ -3518,7 +3519,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>k_norm_weight</tt> (optional) : T</dt>
 <dd>Optional 1D tensor of shape (head_size). See q_norm_weight. Must be provided together with q_norm_weight.</dd>
 <dt><tt>query_seqlens</tt> (optional) : M</dt>
-<dd>Optional 1D tensor of shape (batch_size) with the number of valid, non-padded tokens in the query/key/value chunk of each batch entry. The chunk is right-padded: rows [0, query_seqlens[b]) are valid and rows [query_seqlens[b], sequence_length) are padding. Unlike seqlens_k this is a count, not a count minus one. After the step the cache holds seqlens_k[b] + 1 tokens, so entry b had seqlens_k[b] + 1 - query_seqlens[b] tokens before it. Requires seqlens_k[b] >= 0 and 0 <= query_seqlens[b] <= min(sequence_length, seqlens_k[b] + 1). Zero marks an idle entry whose cache is unchanged, also when sequence_length is 1. Batched chunks are supported. When omitted, query_seqlens[b] = min(sequence_length, seqlens_k[b] + 1), which is the behavior without this input. See the Right-padded query chunks section of the operator description for the full contract. Currently honored by the CPU and CUDA execution providers; other EPs must reject the node when this input is set.</dd>
+<dd>Optional 1D tensor of shape (batch_size) with the number of valid, non-padded tokens in the query/key/value chunk of each batch entry. The chunk is right-padded: rows [0, query_seqlens[b]) are valid and rows [query_seqlens[b], sequence_length) are padding. Unlike seqlens_k this is a count, not a count minus one. After the step the cache holds seqlens_k[b] + 1 tokens, so entry b had seqlens_k[b] + 1 - query_seqlens[b] tokens before it. Requires 1 <= query_seqlens[b] <= min(sequence_length, seqlens_k[b] + 1). When omitted, query_seqlens[b] = min(sequence_length, seqlens_k[b] + 1), which is the behavior without this input. See the Right-padded query chunks section of the operator description for the full contract. Currently honored by the CPU and CUDA execution providers; other EPs must reject the node when this input is set.</dd>
 </dl>
 
 #### Outputs (1 - 4)
@@ -4064,6 +4065,94 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>M</tt> : tensor(int64)</dt>
 <dd>Constrain position_ids to integer tensors</dd>
+</dl>
+
+
+### <a name="com.microsoft.Mamba2Verify"></a><a name="com.microsoft.mamba2verify">**com.microsoft.Mamba2Verify**</a>
+
+  Fused causal convolution, selective state-space recurrence and gated grouped RMS normalization.
+  Local provisional contract: head_dim=64, d_state=128, 1<=R<=16.
+  projection[R, 2*di+2*n_groups*d_state+heads] packs [gate, xBC, dt], di=heads*head_dim.
+  state_row is a device int32[1] selecting the starting snapshot (0<=state_row<slots).
+  Convolution has four taps, with BF16 SiLU output. The FP32 recurrence is
+  dt=max(softplus(projection_dt+dt_bias),time_step_min),
+  S=exp(A_negative*dt)*S+(dt*x)*B, readout=D*x+sum(C*S).
+  Readout is gated by FP32 SiLU(gate), normalized per group, scaled by norm_weight and rounded to BF16.
+  Every processed token writes its post-token convolution and SSM snapshot to the corresponding output row.
+  The final/accepted state is chosen by the caller through state_row on the next invocation.
+  Input states may alias their corresponding outputs. Slots R..slots-1 are preserved.
+  No accepted-length truncation, hidden mutable state, host reads or synchronization is performed.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>d_state</tt> : int</dt>
+<dd>Currently 128.</dd>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Grouped RMS epsilon.</dd>
+<dt><tt>head_dim</tt> : int</dt>
+<dd>Currently 64.</dd>
+<dt><tt>heads</tt> : int (required)</dt>
+<dd>Number of heads.</dd>
+<dt><tt>n_groups</tt> : int (required)</dt>
+<dd>Number of B/C and normalization groups, dividing heads.</dd>
+<dt><tt>time_step_min</tt> : float</dt>
+<dd>Lower bound for softplus time step.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>projection</tt> : T</dt>
+<dd>Packed projection [R, width].</dd>
+<dt><tt>conv_state</tt> : T</dt>
+<dd>Snapshots [slots, di+2*n_groups*d_state, 3].</dd>
+<dt><tt>ssm_state</tt> : F</dt>
+<dd>Snapshots [slots, heads, d_state, head_dim].</dd>
+<dt><tt>conv_weight</tt> : T</dt>
+<dd>Depthwise weights [channels,4] or [channels,1,4].</dd>
+<dt><tt>conv_bias</tt> : T</dt>
+<dd>Depthwise convolution bias [channels].</dd>
+<dt><tt>dt_bias</tt> : F</dt>
+<dd>Time-step bias [heads].</dd>
+<dt><tt>A_negative</tt> : F</dt>
+<dd>Negative decay coefficient [heads], not A_log.</dd>
+<dt><tt>D</tt> : F</dt>
+<dd>Skip coefficient [heads].</dd>
+<dt><tt>norm_weight</tt> : F</dt>
+<dd>Normalization weight [di].</dd>
+<dt><tt>state_row</tt> : I</dt>
+<dd>Starting snapshot index int32[1], on device.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Normalized mixer result [R, di].</dd>
+<dt><tt>conv_snapshots</tt> : T</dt>
+<dd>Post-token convolution snapshots, same shape as conv_state.</dd>
+<dt><tt>ssm_snapshots</tt> : F</dt>
+<dd>Post-token recurrence snapshots, same shape as ssm_state.</dd>
+<dt><tt>xbc</tt> : T</dt>
+<dd>BF16 convolution SiLU result [R, channels].</dd>
+<dt><tt>readout</tt> : F</dt>
+<dd>FP32 recurrence readout before gating [R, di].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16)</dt>
+<dd>BF16 activation and convolution parameters.</dd>
+<dt><tt>F</tt> : tensor(float)</dt>
+<dd>FP32 recurrence and normalization.</dd>
+<dt><tt>I</tt> : tensor(int32)</dt>
+<dd>Device snapshot selector.</dd>
 </dl>
 
 
