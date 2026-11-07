@@ -288,6 +288,18 @@ Tensor-Core kernel `MoeGemvTcInt2Kernel` (`mma.sync.m16n8k16`, grouping up to
 8 routes sharing an expert per warp tile and extracting three 2-bit fields per
 shift inside BF16's 7-bit mantissa).
 
+The INT2 Tensor-Core decoder halves the centered codes before BF16 scale
+multiplication and doubles the accumulated result in FP32. This avoids overflow
+for code `-2` with scale `2^127`, but does **not** provide full-range BF16
+support: code `+1` with the smallest positive BF16 scale, `2^-133`, rounds
+to zero when halved. For example, 64 such weights with activations `2^126`
+have a mathematical dot product of `0.5`, but this kernel returns zero.
+Other very small weights can also lose precision during BF16 rounding.
+Models using this extreme lower range must not assume Tensor-Core/SIMT parity;
+disable the Tensor-Core GEMV when its weight underflow is unacceptable.
+`ORT_QMOE_SHARED_RESIDENT_LOG=1` (set before the first launch) also reports successful INT2 Tensor-Core
+launches with their projection (`swiglu`), route count, and row threshold.
+
 ### 4.1 Per-mode dispatch matrix
 
 | Mode | SM75-89 (Ampere/Ada) | SM90 (Hopper) | SM100 (Blackwell) | SM120 (RTX 5090) |
@@ -1824,7 +1836,7 @@ Ordinary CUDA `QMoE` supports a wider set of attributes and optional inputs than
   - Raw INT3 offload requires explicit `weights_prepacked=0`, `swiglu_fusion=1`, and `block_size` in `{32, 64, 128}`.
 - **Device capability & dimension alignment**: Offload admission requires an **SM80+** CUDA device (`E > 0`, `0 < k <= E`). Prepacked INT4 requires `H % 64 == 0` and `I % 64 == 0` (complete 64-element reduction tiles); NVFP4 and INT3 require `H % 32 == 0`, `I % 32 == 0`, `H % block_size == 0`, and `I % block_size == 0`.
 - **Symmetric quantization, optional biases & global scales**: Asymmetric zero-point inputs (`slots 11..13`), separate `fc3` weights/scales/bias (`slots 8..10`), separate `router_weights` (`slot 14`), activation scales (`slots 17..20`), `use_sparse_mixer=1`, and `swiglu_fusion=2` are rejected by offload admission. When optional `fc1_experts_bias` (`slot 4`) or `fc2_experts_bias` (`slot 7`) are present, they must match the activation dtype and have shapes `[E, 2*I]` and `[E, H]`. Unused `fc1_global_scale` / `fc2_global_scale` inputs (`slots 15, 16`) on integer nodes are ignored and replaced by synthesized unit (`1.0f`) scales.
-- **Integer vs. NVFP4 tile & streaming defaults**: For integer (`int4_bank_mode_` / `int3_bank_mode_`) offload nodes, `max_sync_tile_tokens` defaults to `256`, `stream_min_tokens` defaults to `max_sync_tile_tokens + 1` (`257`, unless explicitly overridden by `stream_min_tokens` or `ORT_QMOE_STREAM_MIN_TOKENS`), and `stream_min_rows` defaults to `8`. CPU grouping defaults to `group_calls=64`, `fc1_cols=128`, `fc2_cols=256` (while NVFP4 retains `group_calls=32`, `fc1_cols=64`, `fc2_cols=128`). `stream_rows` defaults to at most `2048` (when `resident_slots < E`) and `stream_wave` to at most `min(16, prefill_wave_experts)` under `pinned_bytes <= 128 MiB`, clamped to `E`. These defaults are upper bounds: at session creation the offload halves them until the streaming scratch, the double-buffered landing slabs, and the pinned staging fit `device_working_bytes` and `pinned_bytes`. It keeps the largest tile (down to `max_sync_tile_tokens + 1`) for which some wave fits, then the largest wave (down to `1`) for that tile. Planned NVFP4/MXFP4 offload nodes keep the previous fitting behavior: an explicit `stream_rows` shrinks the wave and then the tile until it fits. When it still does not fit, streaming is disabled unless `cpu_execution=disabled`. For integer nodes with `cpu_execution=disabled` the tile keeps its configured size and only the wave shrinks. Explicit integer-node `stream_rows`/`stream_wave` attributes or `ORT_QMOE_SHARED_STREAM_ROWS`/`ORT_QMOE_SHARED_STREAM_WAVE` values are used as written and fail with the shared-scratch limit error when they do not fit. The exception is `cpu_execution=disabled`, which ignores those overrides: the tile is the largest of `token_tile_size`, `max_sync_tile_tokens` (or `ORT_QMOE_MAX_SYNC_TILE_TOKENS`) and the `session.moe.offload.async_max_tokens` policy, and the wave starts from `session.moe.offload.prefill_wave_experts` (capped at `16` for integer nodes under `pinned_bytes <= 128 MiB`) before fitting. With `ORT_QMOE_SHARED_RESIDENT_LOG=1`, a `stream budget` line reports each reduced default.
+- **Integer vs. NVFP4 tile & streaming defaults**: For integer (`int4_bank_mode_` / `int3_bank_mode_`) offload nodes, `max_sync_tile_tokens` defaults to `256`, `stream_min_tokens` defaults to `token_tile_size + 1` (`33`, unless explicitly overridden by `stream_min_tokens` or `ORT_QMOE_STREAM_MIN_TOKENS`), and `stream_min_rows` defaults to `8`. CPU grouping defaults to `group_calls=64`, `fc1_cols=128`, `fc2_cols=256` (while NVFP4 retains `group_calls=32`, `fc1_cols=64`, `fc2_cols=128`). `stream_rows` defaults to at most `2048` for INT4 and `8192` for INT3 (when `resident_slots < E`), and `stream_wave` to at most `min(16, prefill_wave_experts)` under `pinned_bytes <= 128 MiB`, clamped to `E`. These defaults are upper bounds: for INT4 at session creation the offload halves them until the streaming scratch, the double-buffered landing slabs, and the pinned staging fit `device_working_bytes` and `pinned_bytes`. It keeps the largest tile (down to `stream_min_tokens`) for which some wave fits, then the largest wave (down to `1`) for that tile. INT3 defers tile and wave budget fitting to execution (`ComputeShared`), where each call halves the wave or tile until its GPU scratch, landing slabs, and pinned staging (including optional pinned weight/scale wave staging when headroom permits) fit the available `device_working_bytes` and `pinned_bytes` budgets. If allocating or growing the shared landing/pinned ring or synchronous pinned buffer hits a budget limit at execution time, `ComputeShared` releases idle promotion bounce buffers and persistent decode pinned buffers before retrying. Planned NVFP4/MXFP4 offload nodes keep the previous fitting behavior: an explicit `stream_rows` shrinks the wave and then the tile until it fits. When it still does not fit, streaming is disabled unless `cpu_execution=disabled`. For INT4 nodes with `cpu_execution=disabled` the tile keeps its configured size at session creation and only the wave shrinks. Explicit INT4 `stream_rows`/`stream_wave` attributes or `ORT_QMOE_SHARED_STREAM_ROWS`/`ORT_QMOE_SHARED_STREAM_WAVE` values are used as written and fail with the shared-scratch limit error when they do not fit. The exception is `cpu_execution=disabled`, which ignores those overrides: the tile is the largest of `token_tile_size`, `max_sync_tile_tokens` (or `ORT_QMOE_MAX_SYNC_TILE_TOKENS`) and the `session.moe.offload.async_max_tokens` policy, and the wave starts from `session.moe.offload.prefill_wave_experts` (capped at `16` for integer nodes under `pinned_bytes <= 128 MiB`) before fitting. With `ORT_QMOE_SHARED_RESIDENT_LOG=1`, a `stream budget` line reports each reduced session-creation default.
 - **SwiGLU layout**: NVFP4/INT4 offload accepts an omitted, `0`, or `1` `swiglu_fusion` and always treats the banks as interleaved (`swiglu_fusion=1`), like the standard CUDA `QMoE` remap in [§8](#8-swiglu-fusion). INT3 offload requires an explicit `swiglu_fusion=1`.
 - **INT4 prefill workspace**: Eligible batches use CUTLASS with at most 4,096 routes per chunk. Workspace is sized for the invocation, which supplies weight scales only and so reserves no activation-smoothing buffer. It is charged against `device_working_bytes`, including the streaming landing buffers. The runner reduces its chunk capacity or falls back to GEMV when its workspace does not fit; batches below 256 routes reserve no runner workspace.
 
@@ -1855,7 +1867,7 @@ full-model CUDA Graph:
      activations (`<= 20 KiB`) directly into UVA-mapped pinned host memory (`host_indices`, `host_input`),
      executes `__threadfence_system()`, increments the device sequence counter `*doorbell_seq_dev`,
      and writes `*doorbell_req_host = next_seq` to wake the persistent `DoorbellService` host thread.
-2. **Concurrent GPU Resident GEMV & CPU Cold-Expert AVX-512 Execution**:
+2. **Concurrent GPU Resident GEMV & CPU Cold-Expert SIMD Execution**:
    - **On the GPU (`stream`)**: `MoeGemvFp4DecodeKernel` executes FC1 (SwiGLU) and FC2 immediately on
      the GPU resident slab (`[C_l + S_l, ...]`). Because `MoeGemvFp4DecodeKernel` natively skips
      negative slot indices (`slot < 0`), **zero dummy slots (`dummy_slots = 0`)** are allocated or read.
@@ -1864,13 +1876,21 @@ full-model CUDA Graph:
    - **On the CPU (`DoorbellService` + `SpinPool`)**: `DoorbellService` detects `*doorbell_req_host == next_seq`
      and dispatches the missed experts across `SpinPool` workers pinned to distinct physical cores
      alternating across NUMA sockets / L3 CCDs (`DiscoverPhysicalCoreCount()`).
-   - **AVX-512 Cold-Expert Microkernels (`Fp4Group4Avx512<RT=1..4>`)**: Cold NVFP4 experts are
-     evaluated directly from their row-major `[N, K/2]` storage without weight conversion using
-     `_mm512_permutex2var_ps` 2D LUT permutes (`stack_fma = 0`, `stack_mov = 0`), multi-row contiguous
-     activation reuse (`RT = 1..4` tokens routed to the same cold expert share a single DDR5 weight
-     read), and a single fused `ParallelFor(total_fc1 + total_fc2)` coordinated by per-expert atomic
-     readiness counters (`fc1_done[slot]`) so each expert's FC2 tasks start immediately after its own
-     FC1 tasks finish. Results are written directly into UVA-mapped pinned `host_result`.
+   - **Cold-Expert SIMD Microkernels (`Fp4Group4Avx512<RT=1..4>`, `Int4Group8Avx512`, `Int4Group8Avx2<RT=1..4>`, `Int3Group4Avx512`)**:
+     Cold experts dispatch at runtime in order `AVX-512` $\to$ `AVX2+FMA+F16C` $\to$ scalar (`CpuHasAvx512()`,
+     `CpuHasAvx2FmaF16c()`). Cold NVFP4 experts use `Fp4Group4Avx512<RT=1..4>` directly from row-major
+     `[N, K/2]` storage using `_mm512_permutex2var_ps` 2D LUT permutes (`stack_fma = 0`, `stack_mov = 0`).
+     Cold INT4 experts (`block_size = 32`, both SM80 prepacked `ColumnMajorTileInterleave<64,4>` and raw
+     row-major `[N, K/2]`, with FP16 or BF16 scales/biases and row conversions) execute via `Avx512Int4GemmRange`
+     on AVX-512 hosts or `Avx2Int4GemmRange` (`Int4Group8Avx2` / `Int4Group4Avx2`) on AVX2+FMA+F16C hosts
+     (e.g., AMD EPYC Zen 2). Setting `ORT_QMOE_CPU_DISABLE_AVX512=1` at process start makes `INT4`/`INT3`
+     cold-expert kernels and `FP16`/`BF16` row conversions fall back to `AVX2+FMA+F16C` (when available),
+     whereas `NVFP4`/`MXFP4` cold-expert kernels fall back to scalar.
+     Multi-row contiguous activation reuse (`RT = 1..4` tokens
+     routed to the same cold expert share a single DDR weight read) and a single fused
+     `ParallelFor(total_fc1 + total_fc2)` coordinated by per-expert atomic readiness counters (`fc1_done[slot]`)
+     allow each expert's FC2 tasks to start immediately after its own FC1 tasks finish. Results are written
+     directly into UVA-mapped pinned `host_result`.
 3. **Fused Wait, Merge, Finalize & Combine (`QMoEOffloadMergeFinalizeCombineKernel`)**:
    - Preloads GPU-resident `wave_output` hits and `shared_out` into registers while thread 0 spins on
      `*doorbell_done_host >= *doorbell_seq_dev`, then reads CPU cold outputs zero-copy from mapped
@@ -1949,7 +1969,7 @@ Implementation files:
 | [test_qmoe_fp4_cuda.py](onnxruntime/test/python/transformers/test_qmoe_fp4_cuda.py) | MXFP4 QMoE: quantization utilities, packing, FP16/BF16, SiLU/SwiGLU, top-k and expert-count variants. On SM80+ (including SM120) `TestQMoEFP4Sm80SingleWeightCopy` checks the SM80 grouped GEMM + fused GEMV regime against the dequant fallback. |
 | [test_qmoe_fp8_cuda.py](onnxruntime/test/python/transformers/test_qmoe_fp8_cuda.py) | Legacy FP8 W8A16 native/dequant paths and square-block FP8 fallback, separate FC3, fused SwiGLU, partial blocks, top-10, validation errors, and opt-in official Qwen dimensions. |
 | [test_qmoe_wfp4afp8_cuda.py](onnxruntime/test/python/transformers/test_qmoe_wfp4afp8_cuda.py) | WFP4AFP8 — native Blackwell path requires SM100+; SM<100 exercises the dequant fallback. |
-| [test_qmoe_shared_layout.py](onnxruntime/test/python/transformers/test_qmoe_shared_layout.py) | Shared 4-bit expert block layouts (`INT4`, `MXFP4`, `NVFP4`), scalar vs. AVX-512 cold-expert kernel parity, and `FileExpertStore` roundtrips. |
+| [test_qmoe_shared_layout.py](onnxruntime/test/python/transformers/test_qmoe_shared_layout.py) | Shared expert block layouts (`INT4`, `INT3`, `MXFP4`, `NVFP4`), scalar vs. AVX-512 and AVX2+FMA+F16C cold-expert kernel parity, and `FileExpertStore` roundtrips. |
 | [test_qmoe_offload_v4.py](onnxruntime/test/python/test_qmoe_offload_v4.py) | Portable QMoE Offload v4 (`session.moe.offload.*` on canonical `com.microsoft::QMoE`): rejection of invalid/legacy config keys, numerical parity across `disabled`, `auto`, `static`, `adaptive`, and `bounded_host` (`FileExpertStore`) modes for decode (`T=1,2,4`) and prefill (`T=16`), and full CUDA Graph capture and replay. |
 
 ### Reference computation

@@ -116,7 +116,7 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   Status ComputeShared(OpKernelContext* context) const;
   Status PromoteResident(cudaStream_t stream, const InlinedVector<InlinedVector<int>>& cold_routes,
                          int max_promotions = 0, const int* streamed_experts = nullptr,
-                         int streamed_count = 0) const;
+                         int streamed_count = 0, bool allow_stream_reuse = true) const;
   void RecordResidentRoute(int phase, int expert, bool hit, float weight = 1.0f) const;
   void CommitInvocationObservation(const std::array<int, 5>& phase_rows,
                                    const std::array<std::vector<int>, 5>& phase_expert_rows,
@@ -183,11 +183,15 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   bool v4_planned_mode_ = false;
   onnxruntime::moe_offload::MoeOffloadSessionPolicy v4_policy_{};
   onnxruntime::moe_offload::MoeNodeExecutionPlan v4_plan_{};
+  std::array<std::string, 6> v4_bank_paths_{};
+  std::array<uint64_t, 6> v4_bank_offsets_{};
   bool nvfp4_mode_ = false;
   bool mxfp4_mode_ = false;
   bool int4_bank_mode_ = false;
   bool int3_bank_mode_ = false;
+  bool int2_bank_mode_ = false;
   int int3_block_size_ = 32;
+  int int2_block_size_ = 64;
   int moe_tc_min_rows_ = 33;
   int int3_tc_min_routes_ = 33;
   bool disable_int3_tc_prefill_ = false;
@@ -248,6 +252,9 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   int async_max_tokens_ = 32;
   int stream_min_tokens_ = 33;
   int prefill_chunk_tokens_ = 0;
+  float min_expert_weight_ = 0.0f;
+  bool skip_tail_cold_only_ = true;
+  bool renorm_after_prune_ = false;
 
   bool async_ = false;
   bool experts_registered_ = false;
@@ -348,6 +355,7 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   int stream_rows_ = 0;
   int stream_min_rows_ = 16;
   int stream_wave_ = 32;
+  bool shrink_stream_tile_ = false;
   int stream_promotions_ = 16;
   bool stream_promotion_reuse_ = false;
   size_t stream_gpu_limit_ = 0;
@@ -365,6 +373,7 @@ class QMoEOffload final : public onnxruntime::cuda::CudaKernel, public MoEBase {
   mutable uint64_t callback_runs_ = 0;
 
   bool cpu_timing_ = false;
+  bool offload_telemetry_ = false;
   bool cpu_fp16_boundaries_ = false;
   int fc1_cols_ = 64;
   int fc2_cols_ = 128;

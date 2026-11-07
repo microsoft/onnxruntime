@@ -670,7 +670,6 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           kTensorrtExecutionProvider,
           kOpenVINOExecutionProvider,
           kDmlExecutionProvider,
-          kAclExecutionProvider,
           kNnapiExecutionProvider,
           kVSINPUExecutionProvider,
           kCoreMLExecutionProvider,
@@ -735,8 +734,6 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultVSINPUExecutionProvider();
         else if (provider_type == onnxruntime::kRknpuExecutionProvider)
           execution_provider = DefaultRknpuExecutionProvider();
-        else if (provider_type == onnxruntime::kAclExecutionProvider)
-          execution_provider = DefaultAclExecutionProvider();
         else if (provider_type == onnxruntime::kCoreMLExecutionProvider)
           execution_provider = DefaultCoreMLExecutionProvider();
         else if (provider_type == kCoreMLExecutionProviderMLProgram)
