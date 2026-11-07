@@ -1333,6 +1333,118 @@ void LaunchMoEPackedFc2Bf16TcDispatch(
   }
 }
 
+template <bool kFc1, int KW>
+__global__ __launch_bounds__(KW * 32) void MoEPackedReluIq2ContiguousKKernel(
+    const __nv_bfloat16* input,
+    const uint8_t* weights,
+    const int* sorted_routes,
+    const MoEPackedTile* tiles,
+    const int* d_num_tiles,
+    MoEPackedParams p,
+    __nv_bfloat16* output) {
+  const int tile_index = static_cast<int>(blockIdx.y);
+  if (tile_index >= __ldg(d_num_tiles)) return;
+  const MoEPackedTile tile = tiles[tile_index];
+  const int first = static_cast<int>(blockIdx.z) * 8;
+  const int remaining = tile.count - first;
+  if (remaining <= 0) return;
+  const int count = remaining < 8 ? remaining : 8;
+  constexpr int MT = 2;
+  __shared__ int routes[8];
+  __shared__ float reduction[KW][MT * 16][8];
+  const int tid = static_cast<int>(threadIdx.x);
+  if (tid < 8) {
+    routes[tid] = tid < count ? __ldg(sorted_routes + tile.start_route + first + tid) : 0;
+  }
+  __syncthreads();
+  const int warp = tid >> 5;
+  const int lane = tid & 31;
+  const int g = lane >> 2;
+  const int t = lane & 3;
+  const int n = kFc1 ? p.inter_size : p.hidden_size;
+  const int k = kFc1 ? p.hidden_size : p.inter_size;
+  const int64_t row_bytes = kFc1 ? p.gate_row_bytes : p.down_row_bytes;
+  const int base = static_cast<int>(blockIdx.x) * (MT * 16);
+  const int input_row = kFc1 ? routes[g] / p.k : routes[g];
+  const auto* x_row = input + static_cast<int64_t>(input_row) * k;
+  float acc[MT][4] = {};
+  // IQ2 operands and activation fragments share contiguous 64-K partitions.
+  // FC1 and FC2 retain their four- and eight-warp FP32 reduction boundaries.
+  for (int chunk = warp; chunk < k / 64; chunk += KW) {
+    const int offset = chunk * 64 + t * 16;
+    const uint4 x0 = g < count ? MoEPackedLoadRouter8(x_row + offset) : make_uint4(0, 0, 0, 0);
+    const uint4 x1 = g < count ? MoEPackedLoadRouter8(x_row + offset + 8) : make_uint4(0, 0, 0, 0);
+    const uint32_t x_words[8] = {x0.x, x0.y, x0.z, x0.w, x1.x, x1.y, x1.z, x1.w};
+#pragma unroll
+    for (int m = 0; m < MT; ++m) {
+      const int low_row = base + m * 16 + g;
+      const int high_row = low_row + 8;
+      float low_values[16] = {};
+      float high_values[16] = {};
+      if (low_row < n) {
+        const auto* row = weights + (static_cast<int64_t>(tile.expert) * n + low_row) * row_bytes;
+        gguf_cuda::DecodeGgufSubBlock16Impl<gguf_quant::kGgmlTypeIQ2_XXS>(
+            row, offset / 32, (offset / 16) & 1, low_values);
+      }
+      if (high_row < n) {
+        const auto* row = weights + (static_cast<int64_t>(tile.expert) * n + high_row) * row_bytes;
+        gguf_cuda::DecodeGgufSubBlock16Impl<gguf_quant::kGgmlTypeIQ2_XXS>(
+            row, offset / 32, (offset / 16) & 1, high_values);
+      }
+      float e0[8], e1[8], o0[8], o1[8];
+#pragma unroll
+      for (int s = 0; s < 4; ++s) {
+        e0[2 * s] = low_values[4 * s];
+        e0[2 * s + 1] = low_values[4 * s + 1];
+        e1[2 * s] = low_values[4 * s + 2];
+        e1[2 * s + 1] = low_values[4 * s + 3];
+        o0[2 * s] = high_values[4 * s];
+        o0[2 * s + 1] = high_values[4 * s + 1];
+        o1[2 * s] = high_values[4 * s + 2];
+        o1[2 * s + 1] = high_values[4 * s + 3];
+      }
+      const uint4 e_low = gguf_cuda::PackFloat8ToBf16x2(e0);
+      const uint4 e_high = gguf_cuda::PackFloat8ToBf16x2(e1);
+      const uint4 o_low = gguf_cuda::PackFloat8ToBf16x2(o0);
+      const uint4 o_high = gguf_cuda::PackFloat8ToBf16x2(o1);
+      const uint32_t el[4] = {e_low.x, e_low.y, e_low.z, e_low.w};
+      const uint32_t eh[4] = {e_high.x, e_high.y, e_high.z, e_high.w};
+      const uint32_t ol[4] = {o_low.x, o_low.y, o_low.z, o_low.w};
+      const uint32_t oh[4] = {o_high.x, o_high.y, o_high.z, o_high.w};
+#pragma unroll
+      for (int s = 0; s < 4; ++s) {
+        gguf_cuda::MmaBf16(acc[m], el[s], ol[s], eh[s], oh[s], x_words[2 * s], x_words[2 * s + 1]);
+      }
+    }
+  }
+#pragma unroll
+  for (int m = 0; m < MT; ++m) {
+    reduction[warp][m * 16 + g][2 * t] = acc[m][0];
+    reduction[warp][m * 16 + g][2 * t + 1] = acc[m][1];
+    reduction[warp][m * 16 + g + 8][2 * t] = acc[m][2];
+    reduction[warp][m * 16 + g + 8][2 * t + 1] = acc[m][3];
+  }
+  __syncthreads();
+  for (int index = tid; index < MT * 16 * 8; index += KW * 32) {
+    const int row = index / 8;
+    const int column = index & 7;
+    if (column < count && base + row < n) {
+      float sum = 0.f;
+#pragma unroll
+      for (int w = 0; w < KW; ++w) sum += reduction[w][row][column];
+      const auto rounded = __float2bfloat16_rn(sum);
+      if constexpr (kFc1) {
+        const float value = __bfloat162float(rounded);
+        const float positive = value < 0.f ? 0.f : value;
+        output[static_cast<int64_t>(routes[column]) * n + base + row] =
+            __float2bfloat16_rn(positive * positive);
+      } else {
+        output[static_cast<int64_t>(routes[column]) * n + base + row] = rounded;
+      }
+    }
+  }
+}
+
 template <typename CudaT>
 Status DispatchMoEPackedCuda(
     cudaStream_t stream,
@@ -1420,6 +1532,20 @@ Status DispatchMoEPackedCuda(
 
   if (use_tensor_cores) {
     if constexpr (kIsBf16) {
+    if (params.relu_squared && params.gate_type == gguf_quant::kGgmlTypeIQ2_XXS &&
+        params.down_type == gguf_quant::kGgmlTypeIQ2_XXS) {
+      const unsigned int subtiles = use_prefill_tiles ? 4u : 1u;
+      const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 31) / 32),
+                          static_cast<unsigned int>(launch_tiles), subtiles);
+      MoEPackedReluIq2ContiguousKKernel<true, 4><<<fc1_grid, 128, 0, stream>>>(
+          input, gate_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
+      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+      const dim3 fc2_grid(static_cast<unsigned int>((params.hidden_size + 31) / 32),
+                          static_cast<unsigned int>(launch_tiles), subtiles);
+      MoEPackedReluIq2ContiguousKKernel<false, 8><<<fc2_grid, 256, 0, stream>>>(
+          fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
+      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+    } else {
       // 3. Tensor-Core FC1 (64 inter_size channels/CTA in prefill, 16 inter_size channels/CTA Warp-K-Split in decode)
       if (use_prefill_tiles) {
         const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 63) / 64),
@@ -1445,6 +1571,7 @@ Status DispatchMoEPackedCuda(
             stream, fc2_grid, fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
       }
       ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+    }
     }
   } else {
     // Keep staging within CUDA's default shared-memory limit; larger shapes read activations directly.
