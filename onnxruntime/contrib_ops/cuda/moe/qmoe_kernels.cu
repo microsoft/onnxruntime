@@ -442,11 +442,14 @@ __global__ void QMoETailSubstitutionKernel(
     if (best_expert < num_experts && effective_gap <= threshold && scale_within_bound) {
       if (lane == 0) {
         row_indices[rank] = best_expert;
+        if (!normalize_scales) {
+          row_scales[rank] = repl_scale;
+        }
         selected[expert / 32] &= ~(uint32_t{1} << (expert % 32));
         selected[best_expert / 32] |= uint32_t{1} << (best_expert % 32);
       }
       sub_rank_mask |= (uint32_t{1} << rank);
-      sub_orig_scale_mass += row_scales[rank];
+      sub_orig_scale_mass += orig_scale;
       ++substitutions;
       __syncwarp();
     }
@@ -479,12 +482,6 @@ __global__ void QMoETailSubstitutionKernel(
     for (int rank = lane; rank < k; rank += 32) {
       if ((sub_rank_mask & (uint32_t{1} << rank)) != 0u) {
         row_scales[rank] = mass * expf(static_cast<float>(row_logits[row_indices[rank]]) - sub_max) / sub_denom;
-      }
-    }
-  } else {
-    for (int rank = lane; rank < k; rank += 32) {
-      if ((sub_rank_mask & (uint32_t{1} << rank)) != 0u) {
-        row_scales[rank] = expf(static_cast<float>(row_logits[row_indices[rank]]) - row_max) / row_sum;
       }
     }
   }

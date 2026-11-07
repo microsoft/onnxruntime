@@ -694,6 +694,7 @@ class TestQMoEOffloadV4(unittest.TestCase):
             "test_v4_int2",
             "test_v4_zero_cold_doorbell_",
             "test_v4_skip_zero_cold_doorbell_",
+            "test_v4_tail_substitution_",
         )
         if not self._nvfp4_supported and not self._testMethodName.startswith(int_only_prefixes):
             self.skipTest(self._nvfp4_skip_reason or "This build does not enable USE_FP4_QMOE (NVFP4 QMoE)")
@@ -2605,6 +2606,7 @@ int main() {
         scale_range: tuple[float, float] = (0.04, 0.12),
         swiglu_fusion: int | None = 1,
         swiglu_limit: float = float("inf"),
+        normalize_routing_weights: int = 1,
     ) -> str:
         """Build an INT4/INT3/INT2 model with layer specs (weight_bits, block_size, prepacked)."""
         rng = np.random.default_rng(seed)
@@ -2715,7 +2717,7 @@ int main() {
                 out_name = "Y" if l_idx == len(layer_specs) - 1 else f"H_{l_idx}"
                 node_kwargs = {
                     "activation_type": "swiglu",
-                    "normalize_routing_weights": 1,
+                    "normalize_routing_weights": normalize_routing_weights,
                     "k": min(top_k, max(1, num_experts)),
                     "expert_weight_bits": bits,
                     "block_size": blk_size,
@@ -4207,6 +4209,7 @@ TestQMoEOffloadV4()._check_int2_bf16_tensorcore_scale_limits_and_dispatch()
         num_experts: int = 16,
         resident_slots: int = 10,
         top_k: int = 8,
+        normalize_routing_weights: int = 1,
     ):
         model_path = self._build_int_qmoe_model(
             model_dir,
@@ -4216,6 +4219,7 @@ TestQMoEOffloadV4()._check_int2_bf16_tensorcore_scale_limits_and_dispatch()
             inter_size=128,
             top_k=top_k,
             use_fp16=use_fp16,
+            normalize_routing_weights=normalize_routing_weights,
         )
         pairs = [(layer, expert) for expert in range(num_experts) for layer in range(num_layers)]
         Path(model_dir, "expert-profile.bin").write_bytes(
@@ -4446,6 +4450,76 @@ with tempfile.TemporaryDirectory() as directory:
                     self.assertEqual(item["zero_cold_conversions_count"], 4)
                     self.assertEqual(item["zero_cold_short_circuits"], 1)
                     self.assertEqual(item["cpu_doorbell_wakeups"], 0)
+
+    def test_v4_tail_substitution_preserves_pruning_scales_without_topk_normalization(self):
+        for use_fp16 in (True, False):
+            if not use_fp16 and not self._int4_bf16_runner_supported:
+                continue
+            with self.subTest(use_fp16=use_fp16), tempfile.TemporaryDirectory() as model_dir:
+                model_path, config = self._build_decode_optimization_model(
+                    model_dir,
+                    num_layers=1,
+                    use_fp16=use_fp16,
+                    num_experts=5,
+                    resident_slots=2,
+                    top_k=4,
+                    normalize_routing_weights=0,
+                )
+                Path(model_dir, "expert-profile.bin").write_bytes(
+                    struct.pack("<6I", 0x50525453, 1, 1, 5, 5, 5)
+                    + b"".join(struct.pack("<2H", 0, expert) for expert in (0, 2, 1, 3, 4))
+                )
+                config.update(
+                    {
+                        "session.moe.offload.skip_tail_cold_only": "0",
+                        "session.moe.offload.min_expert_weight": "0.21",
+                        "session.moe.offload.tail_substitution_min_rank": "1",
+                    }
+                )
+                x = np.full((1, 256), 0.125, dtype=np.float32)
+                # Pruning frees resident expert 2 to replace the nearby cold expert 1.
+                router = np.log(np.array([[0.5, 0.211, 0.209, 0.04, 0.04]], dtype=np.float32))
+                rounded_router = _round_to_act_dtype(router, use_fp16)
+                probabilities = np.exp(rounded_router - np.max(rounded_router, axis=1, keepdims=True))
+                probabilities /= np.sum(probabilities, axis=1, keepdims=True)
+                for renorm_after_prune in (0, 1):
+                    with (
+                        self.subTest(renorm_after_prune=renorm_after_prune),
+                        mock.patch.dict(
+                            os.environ,
+                            {"ORT_QMOE_DOORBELL": "1", "ORT_QMOE_RENORM_AFTER_PRUNE": str(renorm_after_prune)},
+                        ),
+                    ):
+                        _, baseline_stats = self._run_decode_with_telemetry(
+                            model_path,
+                            {**config, "session.moe.offload.tail_substitution_threshold": "0"},
+                            [(x, router)],
+                            use_fp16,
+                        )
+                        _, stats = self._run_decode_with_telemetry(
+                            model_path,
+                            {**config, "session.moe.offload.tail_substitution_threshold": "0.004"},
+                            [(x, router)],
+                            use_fp16,
+                        )
+                        self.assertEqual(len(baseline_stats), 1)
+                        self.assertEqual(len(stats), 1)
+                        np.testing.assert_array_equal(baseline_stats[0]["last_indices"], [0, 1, -2, -2])
+                        np.testing.assert_array_equal(stats[0]["last_indices"], [0, 2, -2, -2])
+                        baseline_weights = np.asarray(baseline_stats[0]["last_weights"], dtype=np.float32)
+                        weights = np.asarray(stats[0]["last_weights"], dtype=np.float32)
+                        expected = np.zeros(4, dtype=np.float32)
+                        expected[:2] = probabilities[0, :2]
+                        if renorm_after_prune:
+                            expected /= np.sum(expected)
+                        np.testing.assert_allclose(baseline_weights, expected, rtol=1e-6, atol=1e-7)
+                        np.testing.assert_array_equal(
+                            weights[[0, 2, 3]].view(np.uint32), baseline_weights[[0, 2, 3]].view(np.uint32)
+                        )
+                        expected[1] *= np.exp(rounded_router[0, 2] - rounded_router[0, 1])
+                        np.testing.assert_allclose(weights, expected, rtol=1e-6, atol=1e-7)
+                        self.assertEqual(stats[0]["substituted_routes_count"], 1)
+                        self.assertEqual(stats[0]["last_cold_count"], 0)
 
     def test_v4_tail_substitution_covers_speculative_verify_tiles(self):
         with tempfile.TemporaryDirectory() as model_dir:
