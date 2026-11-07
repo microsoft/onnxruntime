@@ -21,20 +21,28 @@ void RunMoeCuda(OpTester& test) {
   test.Run(SessionOptions{}, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
-void TestPreselectedReluSquared(int rows, int topk, int malformed = 0) {
+template <typename T = BFloat16>
+void TestPreselectedReluSquared(int rows, int topk, int malformed = 0, bool sigmoid = false) {
   constexpr int experts = 32;
   constexpr int hidden_size = 1024;
   constexpr int inter_size = 256;
   std::vector<uint8_t> gate(experts * inter_size * 264);
   std::vector<uint8_t> down(experts * hidden_size * 66);
-  std::vector<BFloat16> input(rows * hidden_size), expected(rows * hidden_size);
+  std::vector<T> input(rows * hidden_size), expected(rows * hidden_size);
   std::vector<int32_t> indices(rows * topk);
   std::vector<float> weights(rows * topk);
   std::vector<float> sum8(experts);
+  const auto probability = [](int expert) {
+    return 1.f / (1.f + std::exp(expert & 1 ? 1.f : -1.f));
+  };
+  float sigmoid_sum = 0.f;
+  if (sigmoid) {
+    for (int rank = 0; rank < topk; ++rank) sigmoid_sum += probability(experts - 1 - rank);
+  }
   for (int expert = 0; expert < experts; ++expert) {
     const MLFloat16 d(expert & 1 ? .023f : .019f);
-    sum8[expert] = BFloat16(d.ToFloat() * .125f * 43.f).ToFloat() +
-                   7.f * BFloat16(d.ToFloat()).ToFloat();
+    sum8[expert] = T(d.ToFloat() * .125f * 43.f).ToFloat() +
+                   7.f * T(d.ToFloat()).ToFloat();
     for (int stage = 0; stage < 2; ++stage) {
       const int n = stage == 0 ? inter_size : hidden_size;
       const int blocks = stage == 0 ? hidden_size / 256 : inter_size / 256;
@@ -58,42 +66,62 @@ void TestPreselectedReluSquared(int rows, int topk, int malformed = 0) {
   }
   for (int row = 0; row < rows; ++row) {
     const float factor = static_cast<float>(1 + (row & 1));
-    for (int col = 0; col < hidden_size; ++col) input[row * hidden_size + col] = BFloat16(factor / 32.f);
+    for (int col = 0; col < hidden_size; ++col) input[row * hidden_size + col] = T(factor / 32.f);
     float mixed = 0.f;
     for (int rank = 0; rank < topk; ++rank) {
-      const int expert = row & 1 ? (experts - 1 - rank) : rank;
+      const int expert = sigmoid || (row & 1) ? (experts - 1 - rank) : rank;
       indices[row * topk + rank] = expert;
-      const float weight = rank == 0 ? .333333f : .5001f;
+      const float weight = sigmoid ? (probability(expert) / (sigmoid_sum + 1e-20f) * 5.f)
+                                   : (rank == 0 ? .333333f : .5001f);
       weights[row * topk + rank] = weight;
-      const float fc1 = expert % 5 == 4 ? 0.f : BFloat16(4.f * factor * sum8[expert]).ToFloat();
-      const float activation = BFloat16(fc1 * fc1).ToFloat();
-      const float fc2 = BFloat16(32.f * activation * sum8[expert]).ToFloat();
+      const float fc1 = expert % 5 == 4 ? 0.f : T(4.f * factor * sum8[expert]).ToFloat();
+      const float activation = T(fc1 * fc1).ToFloat();
+      const float fc2 = T(32.f * activation * sum8[expert]).ToFloat();
       mixed = std::fma(weight, fc2, mixed);
     }
-    for (int col = 0; col < hidden_size; ++col) expected[row * hidden_size + col] = BFloat16(mixed);
+    for (int col = 0; col < hidden_size; ++col) expected[row * hidden_size + col] = T(mixed);
   }
   if (malformed) {
     if (malformed == 1) indices[0] = -1;
     if (malformed == 2) indices[1] = indices[0];
     if (malformed == 3) weights[0] = std::numeric_limits<float>::infinity();
     for (int col = 0; col < hidden_size; ++col) {
-      expected[col] = BFloat16(std::numeric_limits<float>::quiet_NaN());
+      expected[col] = T(std::numeric_limits<float>::quiet_NaN());
     }
   }
   OpTester test("MoEPacked", 1, kMSDomain);
   test.AddAttribute("k", static_cast<int64_t>(topk));
-  test.AddAttribute("normalize_routing_weights", int64_t{0});
+  test.AddAttribute("normalize_routing_weights", int64_t{sigmoid ? 1 : 0});
   test.AddAttribute("activation_type", std::string("relu_squared"));
   test.AddAttribute("gate_type", int64_t{16});
   test.AddAttribute("down_type", int64_t{16});
-  test.AddInput<BFloat16>("input", {1, rows, hidden_size}, input);
-  test.AddOptionalInputEdge<BFloat16>();
+  test.AddInput<T>("input", {1, rows, hidden_size}, input);
+  test.AddOptionalInputEdge<T>();
   test.AddInput<uint8_t>("gate", {experts, inter_size, 264}, gate, true);
   test.AddOptionalInputEdge<uint8_t>();
   test.AddInput<uint8_t>("down", {experts, hidden_size, 66}, down, true);
-  test.AddInput<int32_t>("expert_indices", {rows, topk}, indices);
-  test.AddInput<float>("expert_weights", {rows, topk}, weights);
-  test.AddOutput<BFloat16>("output", {1, rows, hidden_size}, expected);
+  if (sigmoid) {
+    constexpr int router_width = 256;
+    test.AddAttribute("routing_function", std::string("sigmoid"));
+    test.AddAttribute("router_scale", 5.f);
+    test.AddOptionalInputEdge<int32_t>();
+    test.AddOptionalInputEdge<float>();
+    std::vector<T> router_input(rows * router_width, T(0.f));
+    std::vector<T> router_weight(experts * router_width, T(0.f));
+    for (int row = 0; row < rows; ++row) router_input[row * router_width] = T(1.f);
+    for (int expert = 0; expert < experts; ++expert) {
+      router_weight[expert * router_width] = T(expert & 1 ? -1.f : 1.f);
+    }
+    test.AddInput<T>("router_input", {rows, router_width}, router_input);
+    test.AddInput<T>("router_weight", {experts, router_width}, router_weight, true);
+    std::vector<float> bias(experts);
+    for (int expert = 0; expert < experts; ++expert) bias[expert] = static_cast<float>(expert) * 2.f;
+    test.AddInput<float>("router_bias", {experts}, bias, true);
+  } else {
+    test.AddInput<int32_t>("expert_indices", {rows, topk}, indices);
+    test.AddInput<float>("expert_weights", {rows, topk}, weights);
+  }
+  test.AddOutput<T>("output", {1, rows, hidden_size}, expected);
   RunMoeCuda(test);
 }
 
@@ -112,6 +140,24 @@ TEST(MoEPackedRoutingTest, MalformedRoutesPoisonOnlyTheirToken) {
   for (int malformed : {1, 2, 3}) {
     SCOPED_TRACE(testing::Message() << "malformed=" << malformed);
     TestPreselectedReluSquared(2, 2, malformed);
+  }
+}
+
+TEST(MoEPackedRoutingTest, ReluSquaredPreservesPreselectedFp16Routing) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (int rows : {1, 9}) {
+    for (int topk : {2, 32}) TestPreselectedReluSquared<MLFloat16>(rows, topk);
+  }
+}
+
+TEST(MoEPackedRoutingTest, SigmoidCorrectionBiasUsesUnbiasedWeights) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (int rows : {1, 8, 9, 17}) {
+    for (int topk : {2, 32}) {
+      SCOPED_TRACE(testing::Message() << "rows=" << rows << " k=" << topk);
+      TestPreselectedReluSquared(rows, topk, 0, true);
+      TestPreselectedReluSquared<MLFloat16>(rows, topk, 0, true);
+    }
   }
 }
 

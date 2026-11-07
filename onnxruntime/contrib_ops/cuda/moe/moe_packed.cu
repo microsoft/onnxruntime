@@ -19,6 +19,133 @@ namespace {
 constexpr int kMoEPackedMaxExperts = 512;
 constexpr int kMoEPackedMaxK = 16;
 
+template <typename CudaT>
+__device__ __forceinline__ uint4 MoEPackedLoadRouter8(const CudaT* input) {
+  if ((reinterpret_cast<uintptr_t>(input) & 15u) == 0) {
+    return __ldg(reinterpret_cast<const uint4*>(input));
+  }
+  uint4 result;
+  CudaT* values = reinterpret_cast<CudaT*>(&result);
+#pragma unroll
+  for (int j = 0; j < 8; ++j) values[j] = input[j];
+  return result;
+}
+
+template <typename CudaT>
+__global__ void MoEPackedSigmoidScoresKernel(
+    const CudaT* input, const CudaT* weight, int width, int experts, float* scores) {
+  const int row = blockIdx.x;
+  const int warp = threadIdx.x >> 5;
+  const int lane = threadIdx.x & 31;
+  const int expert = blockIdx.y * 8 + warp;
+  if (expert >= experts) return;
+  const CudaT* x = input + static_cast<int64_t>(row) * width;
+  const CudaT* w = weight + static_cast<int64_t>(expert) * width;
+  float sum = 0.0f;
+  for (int offset = lane * 8; offset < width; offset += 256) {
+    const uint4 xv = MoEPackedLoadRouter8(x + offset);
+    const uint4 wv = MoEPackedLoadRouter8(w + offset);
+    const CudaT* xp = reinterpret_cast<const CudaT*>(&xv);
+    const CudaT* wp = reinterpret_cast<const CudaT*>(&wv);
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      sum += gguf_cuda::CudaTypeToFloat<CudaT>(xp[j]) * gguf_cuda::CudaTypeToFloat<CudaT>(wp[j]);
+    }
+  }
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    sum += __shfl_down_sync(0xffffffffu, sum, offset);
+  }
+  if (lane == 0) scores[static_cast<int64_t>(row) * experts + expert] = 1.0f / (1.0f + expf(-sum));
+}
+
+__device__ __forceinline__ uint32_t MoEPackedSigmoidScoreRank(float value) {
+  const uint32_t bits = __float_as_uint(value);
+  const uint32_t magnitude = bits & 0x7fffffffu;
+  if (magnitude > 0x7f800000u) return 1u;
+  if (magnitude == 0) return 0x80000000u;
+  return (bits & 0x80000000u) ? ~bits : (bits ^ 0x80000000u);
+}
+
+template <typename Rank>
+__device__ __forceinline__ void MoEPackedSelectSigmoidRoutes(
+    Rank (&choices)[16], const float (&scores)[16], int k, float scale, Rank empty,
+    int32_t* indices, float* weights) {
+  const int lane = threadIdx.x;
+  int selected = -1;
+  float selected_score = 0.0f;
+  float sum = 0.0f;
+  for (int rank = 0; rank < k; ++rank) {
+    Rank best = empty;
+    float best_score = 0.0f;
+    int best_expert = -1;
+#pragma unroll
+    for (int slot = 0; slot < 16; ++slot) {
+      if (choices[slot] > best) {
+        best = choices[slot];
+        best_score = scores[slot];
+        best_expert = lane + 32 * slot;
+      }
+    }
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      const Rank other = __shfl_xor_sync(0xffffffffu, best, offset);
+      const int other_expert = __shfl_xor_sync(0xffffffffu, best_expert, offset);
+      if (other > best || (other == best && other_expert >= 0 &&
+                           (best_expert < 0 || other_expert < best_expert))) {
+        best = other;
+        best_expert = other_expert;
+      }
+    }
+    const int winner_lane = best_expert & 31;
+    const int winner_slot = best_expert >> 5;
+    if (best_expert >= 0 && winner_lane == lane) {
+#pragma unroll
+      for (int slot = 0; slot < 16; ++slot) {
+        if (slot == winner_slot) choices[slot] = empty;
+      }
+    }
+    const float score = best_expert >= 0 ? __shfl_sync(0xffffffffu, best_score, winner_lane) : 0.0f;
+    if (lane == rank) {
+      selected = best_expert;
+      selected_score = score;
+    }
+    // Preserve selected-rank FP32 normalization and post-normalization scaling.
+    sum += score;
+  }
+  if (lane < k) {
+    indices[lane] = selected;
+    weights[lane] = selected_score / (sum + 1e-20f) * scale;
+  }
+}
+
+__global__ void MoEPackedSigmoidTopKKernel(
+    const float* probabilities, const float* bias, int experts, int k, float scale,
+    int32_t* indices, float* weights) {
+  const int row = blockIdx.x;
+  const int lane = threadIdx.x;
+  float choices[16];
+  float scores[16];
+  bool finite = true;
+#pragma unroll
+  for (int slot = 0; slot < 16; ++slot) {
+    const int expert = lane + 32 * slot;
+    scores[slot] = expert < experts ? probabilities[static_cast<int64_t>(row) * experts + expert] : 0.0f;
+    choices[slot] = expert < experts ? scores[slot] + bias[expert] : -INFINITY;
+    finite = finite && (expert >= experts || isfinite(choices[slot]));
+  }
+  indices += static_cast<int64_t>(row) * k;
+  weights += static_cast<int64_t>(row) * k;
+  if (__all_sync(0xffffffffu, finite)) {
+    MoEPackedSelectSigmoidRoutes(choices, scores, k, scale, -INFINITY, indices, weights);
+    return;
+  }
+  uint32_t ranks[16];
+#pragma unroll
+  for (int slot = 0; slot < 16; ++slot) {
+    ranks[slot] = lane + 32 * slot < experts ? MoEPackedSigmoidScoreRank(choices[slot]) : 0u;
+  }
+  MoEPackedSelectSigmoidRoutes(ranks, scores, k, scale, 0u, indices, weights);
+}
+
 // Softmax + top-k over 512 experts for arbitrary num_rows (8 warps per CTA, 1 warp per row).
 // Uses the exact same warp reduction and tie-breaking key as FusedSoftmaxTopKMapsKernel.
 template <typename CudaT>
@@ -1238,7 +1365,16 @@ Status DispatchMoEPackedCuda(
 
   // 1. Softmax + TopK
   const dim3 route_grid(static_cast<unsigned int>((params.num_rows + 7) / 8));
-  if (params.expert_indices) {
+  if (params.sigmoid_routing) {
+    float* scores = reinterpret_cast<float*>(
+        ws_ptr + AlignUpWorkspace(static_cast<size_t>(total_routes) * params.hidden_size * sizeof(CudaT)));
+    MoEPackedSigmoidScoresKernel<CudaT><<<dim3(params.num_rows, (params.num_experts + 7) / 8), 256, 0, stream>>>(
+        static_cast<const CudaT*>(params.router_input), static_cast<const CudaT*>(params.router_weight),
+        params.router_width, params.num_experts, scores);
+    ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+    MoEPackedSigmoidTopKKernel<<<params.num_rows, 32, 0, stream>>>(
+        scores, params.router_bias, params.num_experts, params.k, params.router_scale, topk_indices, topk_scales);
+  } else if (params.expert_indices) {
     MoEPackedPreselectedRoutesKernel<<<static_cast<unsigned int>((total_routes + 255) / 256), 256, 0, stream>>>(
         params.expert_indices, params.expert_weights, topk_indices, topk_scales,
         total_routes, params.k, params.num_experts);
@@ -1344,6 +1480,9 @@ size_t GetMoEPackedWorkspaceBytes(const MoEPackedParams& params, size_t elem_byt
   bytes += AlignUpWorkspace(sizeof(int));
   bytes += AlignUpWorkspace(total_routes * static_cast<size_t>(params.inter_size) * elem_bytes);
   bytes += AlignUpWorkspace(total_routes * static_cast<size_t>(params.hidden_size) * elem_bytes);
+  if (params.sigmoid_routing) {
+    bytes += AlignUpWorkspace(static_cast<size_t>(params.num_rows) * params.num_experts * sizeof(float));
+  }
   return bytes;
 }
 
