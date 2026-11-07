@@ -65,6 +65,7 @@
 #include "core/optimizer/matmul_integer_to_float.h"
 #include "core/optimizer/matmul_scale_fusion.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
+#include "core/optimizer/mul_reducesum_matmul_fusion.h"
 #include "core/optimizer/nchwc_transformer.h"
 #include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
@@ -437,6 +438,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 #endif
 
       transformers.emplace_back(std::make_unique<MatMulScaleFusion>(cpu_cuda_dml_eps));
+      transformers.emplace_back(std::make_unique<MulReduceSumToMatMulFusion>(cpu_ep));
       transformers.emplace_back(std::make_unique<MatMulActivationFusion>(dml_ep));
 
 #ifdef MLAS_TARGET_AMD64_IX86
