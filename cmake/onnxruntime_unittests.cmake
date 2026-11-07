@@ -1255,6 +1255,16 @@ if (onnxruntime_USE_OPENVINO)
        ${ONNXRUNTIME_ROOT}/core/providers/openvino/ov_factory.cc)
 endif()
 
+if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
+  # cuda_graph_plugin.cc lives under core/providers/cuda/plugin (not test/), so
+  # partition_provider_test_srcs would route it to onnxruntime_test_all. Append it here after the
+  # partition so it is compiled into onnxruntime_provider_test alongside cuda_graph_plugin_test.cc,
+  # because the CUDA plugin EP is a dynamically-loaded module and is not statically linked into the
+  # test binary.
+  list(APPEND onnxruntime_provider_test_srcs
+       ${ONNXRUNTIME_ROOT}/core/providers/cuda/plugin/cuda_graph_plugin.cc)
+endif()
+
 # Workarounds for onnxruntime test targets.
 function(onnxruntime_apply_test_target_workarounds target)
   if (MSVC)
