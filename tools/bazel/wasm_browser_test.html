@@ -1,0 +1,34 @@
+<!doctype html>
+<!-- Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT License. -->
+<meta charset="utf-8">
+<title>Native Bazel WASM inference</title>
+<script src="/ort-web.js"></script>
+<script>
+  async function run() {
+    for (const [name, shape, values] of [
+      ['mul_1', [3, 2], [1, 4, 9, 16, 25, 36]],
+      ['matmul_1', [3, 1], [5, 11, 17]],
+    ]) {
+      const model = new Uint8Array(await (await fetch('/' + name + '.onnx')).arrayBuffer());
+      const session = await ort.InferenceSession.create(model, {executionProviders: ['wasm']});
+      try {
+        const {Y} = await session.run({
+          X: new ort.Tensor('float32', Float32Array.from([1, 2, 3, 4, 5, 6]), [3, 2]),
+        });
+        if (JSON.stringify(Y.dims) !== JSON.stringify(shape) ||
+            JSON.stringify([...Y.data]) !== JSON.stringify(values)) {
+          throw new Error('Unexpected shape or inference values: ' + JSON.stringify({dims: Y.dims, data: [...Y.data]}));
+        }
+      } finally {
+        await session.release();
+      }
+    }
+    document.documentElement.dataset.result = 'passed';
+    await fetch('/result', {method: 'POST', body: 'passed'});
+  }
+  run().catch((error) => {
+    document.documentElement.dataset.result = 'failed';
+    document.documentElement.dataset.error = String(error);
+    fetch('/result', {method: 'POST', body: String(error)});
+  });
+</script>

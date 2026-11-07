@@ -3,8 +3,27 @@
 
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+load(":apple_platform_test.bzl", "apple_platform_test")
 
 package(default_visibility = ["//visibility:public"])
+
+apple_platform_test(name = "apple_platform_test")
+
+config_setting(
+    name = "wasm",
+    constraint_values = ["@platforms//cpu:wasm32"],
+)
+
+bool_flag(
+    name = "wasm_simd",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "wasm_simd_enabled",
+    constraint_values = ["@platforms//cpu:wasm32"],
+    flag_values = {":wasm_simd": "True"},
+)
 
 constraint_setting(name = "cgo_compiler")
 
@@ -46,8 +65,18 @@ toolchain(
         "linux",
         "windows",
         "macos",
+        "ios",
+        "android",
     ]
 ]
+
+platform(
+    name = "android_arm64",
+    constraint_values = [
+        "@platforms//os:android",
+        "@platforms//cpu:aarch64",
+    ],
+)
 
 [
     config_setting(
@@ -59,6 +88,14 @@ toolchain(
         "aarch64",
     ]
 ]
+
+selects.config_setting_group(
+    name = "apple",
+    match_any = [
+        ":macos",
+        ":ios",
+    ],
+)
 
 selects.config_setting_group(
     name = "cpuinfo_supported",
@@ -113,6 +150,8 @@ config_setting(
 )
 
 exports_files([
+    "rules-apple-platform-compatibility.patch",
+    "googletest-wasm.patch",
     "onnx.BUILD.bazel",
     "abseil-includes.patch",
     "onnxruntime.lds",
@@ -121,6 +160,16 @@ exports_files([
     "cuda_provider.lds",
     "mingw.BUILD.bazel",
 ])
+
+bool_flag(
+    name = "contrib",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "contrib_enabled",
+    flag_values = {":contrib": "True"},
+)
 
 bool_flag(
     name = "cuda",

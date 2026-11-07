@@ -5,21 +5,245 @@ load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
-load("@rules_python//python:defs.bzl", "py_test")
+load("@rules_python//python:defs.bzl", "py_binary", "py_test")
+load("//bazel:android.bzl", "android_bindings")
 load("//bazel:bindings.bzl", "language_bindings")
+load("//bazel:contrib.bzl", "cpu_contrib_sources")
 load("//bazel:cuda.bzl", "cuda_libraries")
+load("//bazel:go_package.bzl", "go_release_package")
+load("//bazel:java_package.bzl", "java_native_package")
 load("//bazel:mlas.bzl", "mlas_libraries")
+load("//bazel:node_npm.bzl", "node_npm_package")
+load("//bazel:nuget_package.bzl", "csharp_nuget_package")
+load("//bazel:packaging.bzl", "runtime_sdk_package")
 load("//bazel:platforms.bzl", "ORIGIN_RPATH", "desktop_shared_library")
+load("//bazel:python_wheel.bzl", "python_wheel_package")
+load("//bazel:react_native_package.bzl", "react_native_javascript")
+load("//bazel:release_inventory.bzl", "release_inventory")
 load("//bazel:release_native_binary.bzl", "release_native_binary")
+load("//bazel:tests.bzl", "core_tests")
+load("//bazel:wasm.bzl", "wasm_targets")
 
 package(default_visibility = ["//visibility:public"])
 
+py_binary(
+    name = "release_cargo",
+    srcs = ["tools/bazel/release_cargo.py"],
+    main = "tools/bazel/release_cargo.py",
+)
+
+py_binary(
+    name = "release_go",
+    srcs = ["tools/bazel/release_go.py"],
+    main = "tools/bazel/release_go.py",
+)
+
+go_release_package(go_tool = "//:release_go")
+
+_NATIVE_RELEASE_PAYLOADS = [
+    (
+        ":runtime_sdk_archive",
+        [
+            ":runtime_release_library",
+            ":providers_shared_release_library",
+        ],
+    ),
+    (
+        ":java_maven",
+        [
+            ":runtime_release_library",
+            ":providers_shared_release_library",
+            ":java_native_release_library",
+        ],
+    ),
+    (
+        ":node_npm",
+        [
+            ":runtime_release_library",
+            ":providers_shared_release_library",
+            ":node_native_release_library",
+        ],
+    ),
+    (
+        ":python_wheel",
+        [
+            ":python_native_release_library",
+            ":providers_shared_release_library",
+        ],
+    ),
+    (
+        ":csharp_nuget",
+        [
+            ":runtime_release_library",
+            ":providers_shared_release_library",
+        ],
+    ),
+]
+
+py_test(
+    name = "native_release_payload_test",
+    srcs = ["tools/bazel/native_release_payload_test.py"],
+    args = [
+        argument
+        for package, binaries in _NATIVE_RELEASE_PAYLOADS
+        for argument in [
+            "--package",
+            "$(rootpath {})".format(package),
+        ] + [
+            "$(rootpath {})".format(binary)
+            for binary in binaries
+        ]
+    ] + select({
+        "//bazel:cuda_enabled": [
+            "--cuda-binary",
+            "$(rootpath :cuda_provider_release_library)",
+        ],
+        "//conditions:default": [],
+    }),
+    data = [
+        ":csharp_nuget",
+        ":java_maven",
+        ":java_native_release_library",
+        ":node_native_release_library",
+        ":node_npm",
+        ":providers_shared_release_library",
+        ":python_native_release_library",
+        ":python_wheel",
+        ":runtime_release_library",
+        ":runtime_sdk_archive",
+    ] + select({
+        "//bazel:cuda_enabled": [":cuda_provider_release_library"],
+        "//conditions:default": [],
+    }),
+    target_compatible_with = select({
+        "//bazel:windows": [],
+        "//bazel:linux": [],
+        "//bazel:macos": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+)
+
+py_binary(
+    name = "release_inventory_tool",
+    srcs = ["tools/bazel/release_inventory.py"],
+    main = "tools/bazel/release_inventory.py",
+)
+
+py_test(
+    name = "python_wheel_release_payload_test",
+    srcs = ["tools/bazel/native_release_payload_test.py"],
+    args = [
+        "--package",
+        "$(rootpath :python_wheel)",
+        "$(rootpath :python_native_release_library)",
+        "$(rootpath :providers_shared_release_library)",
+    ] + select({
+        "//bazel:cuda_enabled": [
+            "--cuda-binary",
+            "$(rootpath :cuda_provider_release_library)",
+        ],
+        "//conditions:default": [],
+    }),
+    data = [
+        ":providers_shared_release_library",
+        ":python_native_release_library",
+        ":python_wheel",
+    ] + select({
+        "//bazel:cuda_enabled": [":cuda_provider_release_library"],
+        "//conditions:default": [],
+    }),
+    main = "tools/bazel/native_release_payload_test.py",
+    target_compatible_with = select({
+        "//bazel:windows": [],
+        "//bazel:linux": [],
+        "//bazel:macos": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+)
+
+py_test(
+    name = "release_inventory_test",
+    srcs = [
+        "tools/bazel/release_inventory.py",
+        "tools/bazel/release_inventory_test.py",
+    ],
+    imports = ["tools/bazel"],
+    main = "tools/bazel/release_inventory_test.py",
+)
+
+release_inventory(
+    name = "java_release_inventory",
+    packages = [":java_maven"],
+    platform = select({
+        "//bazel:windows": "win-",
+        "//bazel:macos": "osx-",
+        "//conditions:default": "linux-",
+    }) + select({
+        "//bazel:aarch64": "aarch64",
+        "//conditions:default": "x64",
+    }),
+    tags = ["manual"],
+    variant = select({
+        "//bazel:cuda_enabled": "cuda",
+        "//conditions:default": "cpu",
+    }),
+)
+
+release_inventory(
+    name = "desktop_release_inventory",
+    packages = [
+        ":common_npm",
+        ":csharp_nuget",
+        ":csharp_nuget_managed",
+        ":csharp_nuget_symbols",
+        ":java_maven",
+        ":node_npm",
+        ":python_wheel",
+    ] + select({
+        "//bazel:cuda_enabled": [],
+        "//conditions:default": [
+            ":go_module_proxy_artifacts",
+            ":go_release_archive",
+            "//rust:crates_io_artifacts",
+            "//rust:release_archive",
+        ],
+    }),
+    platform = select({
+        "//bazel:windows": "win-",
+        "//bazel:macos": "osx-",
+        "//conditions:default": "linux-",
+    }) + select({
+        "//bazel:aarch64": "aarch64",
+        "//conditions:default": "x64",
+    }),
+    tags = ["manual"],
+    variant = select({
+        "//bazel:cuda_enabled": "cuda",
+        "//conditions:default": "cpu",
+    }),
+)
+
+react_native_javascript()
+
 exports_files([
+    "tools/bazel/apple_package.py",
+    "tools/bazel/apple_package_consumer.py",
+    "tools/bazel/catalyst_xcframework.py",
+    "tools/bazel/react_native_package.py",
+    "tools/bazel/react_native_package_test.py",
     "cmake/patches/cpuinfo/fix_missing_sysfs_fallback.patch",
     "cmake/patches/cpuinfo/enable_deinit_refcounting.patch",
     "cmake/patches/onnx/onnx.patch",
     "cmake/vcpkg-ports/abseil/absl_cuda_warnings.patch",
     "cmake/vcpkg-ports/abseil/absl_cuda13_member_template.patch",
+    "tools/bazel/rust_smoke.rs",
+    "tools/bazel/rust_package_test.py",
+    "tools/bazel/rust_package_consumer_test.py",
+    "tools/bazel/rust_crate_package.py",
+    "tools/bazel/rust_crate_package_test.py",
+    "tools/bazel/rust_crate_consumer_test.py",
+    "tools/bazel/rust_test_runner.py",
+    "tools/bazel/rust_test_runner_test.py",
 ])
 
 genrule(
@@ -55,14 +279,17 @@ cc_library(
         "include/onnxruntime/**/*.inc",
         "onnxruntime/**/*.h",
         "onnxruntime/**/*.inc",
+        "onnxruntime/**/*.inl",
         "model_package/include/*.h",
         "model_package/src/*.h",
     ]),
     defines = [
-        "DISABLE_CONTRIB_OPS",
         "ONNX_ML=1",
         "ONNX_NAMESPACE=onnx",
     ] + select({
+        "//bazel:contrib_enabled": [],
+        "//conditions:default": ["DISABLE_CONTRIB_OPS"],
+    }) + select({
         "//bazel:cpuinfo_supported": ["CPUINFO_SUPPORTED"],
         "//conditions:default": [],
     }) + select({
@@ -76,6 +303,11 @@ cc_library(
         ],
         "//conditions:default": [],
     }) + select({
+        "//bazel:wasm": [
+            "BUILD_MLAS_NO_ONNXRUNTIME",
+        ],
+        "//conditions:default": [],
+    }) + select({
         "//bazel:cuda_enabled": ["ORT_ENABLE_STREAM"],
         "//conditions:default": [],
     }),
@@ -85,7 +317,12 @@ cc_library(
         "model_package/include",
         "onnxruntime",
     ],
-    textual_hdrs = ["onnxruntime/core/framework/ort_value_tensor_slicer.cc"],
+    textual_hdrs = ["onnxruntime/core/framework/ort_value_tensor_slicer.cc"] + select({
+        "//bazel:contrib_enabled": glob([
+            "onnxruntime/contrib_ops/cpu/moe/qmoe_shared_layout_*avx*.cc",
+        ]),
+        "//conditions:default": [],
+    }),
     deps = [
         ":generated_headers",
         "@abseil-cpp//:ort_include_path",
@@ -153,7 +390,10 @@ objc_library(
     name = "apple_log_sink",
     srcs = ["onnxruntime/core/platform/apple/logging/apple_log_sink.mm"],
     sdk_frameworks = ["Foundation"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = select({
+        "//bazel:apple": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     deps = [":headers"],
 )
 
@@ -178,7 +418,7 @@ cc_library(
             "onnxruntime/core/optimizer/gqa_value_layout_boundaries.cc",
             "onnxruntime/core/optimizer/gqa_value_layout_transformer.cc",
         ],
-    ) + [
+    ) + cpu_contrib_sources() + [
         "onnxruntime/core/platform/check_intel.cc",
         "onnxruntime/core/platform/device_discovery_common.cc",
         "onnxruntime/core/platform/device_discovery_default.cc",
@@ -189,6 +429,16 @@ cc_library(
         "onnxruntime/core/platform/telemetry.cc",
         "onnxruntime/core/platform/telemetry_sha256.cc",
     ] + select({
+        # Standard Android FP16 Conv also needs this parser without contrib ops.
+        "//bazel:contrib_enabled": ["onnxruntime/contrib_ops/cpu/fused_activation.cc"],
+        "//bazel:android": ["onnxruntime/contrib_ops/cpu/fused_activation.cc"],
+        "//conditions:default": [],
+    }) + select({
+        "//bazel:android": [
+            "onnxruntime/core/platform/android/logging/android_log_sink.cc",
+            "onnxruntime/core/platform/posix/env.cc",
+            "onnxruntime/core/platform/posix/stacktrace.cc",
+        ],
         "//bazel:windows": [
             "onnxruntime/core/platform/windows/debug_alloc.cc",
             "onnxruntime/core/platform/windows/dll_load_error.cc",
@@ -208,13 +458,18 @@ cc_library(
         "//conditions:default": [],
     }),
     linkopts = select({
+        "//bazel:android": [
+            "-ldl",
+            "-llog",
+        ],
+        "//bazel:wasm": [],
         "//bazel:windows": [
             "advapi32.lib",
             "dbghelp.lib",
             "ole32.lib",
             "shell32.lib",
         ],
-        "//bazel:macos": [
+        "//bazel:apple": [
             "-pthread",
             "-framework",
             "Foundation",
@@ -235,7 +490,7 @@ cc_library(
         ":model_package",
         ":posix_clock",
     ] + select({
-        "//bazel:macos": [":apple_log_sink"],
+        "//bazel:apple": [":apple_log_sink"],
         "//conditions:default": [],
     }),
     alwayslink = True,
@@ -290,6 +545,39 @@ release_native_binary(
     src = ":runtime_library",
 )
 
+release_native_binary(
+    name = "providers_shared_release_library",
+    src = ":providers_shared_library",
+)
+
+release_native_binary(
+    name = "java_native_release_library",
+    src = ":java_native_library",
+)
+
+release_native_binary(
+    name = "python_native_release_library",
+    src = select({
+        "//bazel:windows": ":python_windows_extension",
+        "//bazel:macos": ":python_macos_extension",
+        "//conditions:default": ":onnxruntime_pybind11_state.so",
+    }),
+)
+
+release_native_binary(
+    name = "node_native_release_library",
+    src = ":onnxruntime_binding.node",
+)
+
+release_native_binary(
+    name = "cuda_provider_release_library",
+    src = ":libonnxruntime_providers_cuda.so",
+    target_compatible_with = select({
+        "//bazel:linux_x86_64_cuda": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+)
+
 cc_test(
     name = "cpuinfo_test",
     srcs = ["tools/bazel/cpuinfo_test.cc"],
@@ -341,9 +629,44 @@ cc_test(
     ],
 )
 
+desktop_shared_library(
+    name = "providers_shared_library",
+    srcs = [
+        "onnxruntime/core/providers/shared/common.cc",
+        "onnxruntime/core/providers/shared/common.h",
+    ],
+    linkopts = select({
+        "//bazel:windows": [
+            "/EXPORT:Provider_GetHost",
+            "/EXPORT:Provider_SetHost",
+        ],
+        "//conditions:default": [],
+    }),
+    linux = "libonnxruntime_providers_shared.so",
+    macos = "libonnxruntime_providers_shared.dylib",
+    tags = ["manual"],
+    windows = "onnxruntime_providers_shared.dll",
+)
+
 cuda_libraries()
 
 language_bindings()
+
+android_bindings()
+
+runtime_sdk_package()
+
+python_wheel_package()
+
+java_native_package()
+
+csharp_nuget_package()
+
+node_npm_package()
+
+core_tests()
+
+wasm_targets()
 
 cc_test(
     name = "runtime_shared_smoke_test",

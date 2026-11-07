@@ -19,14 +19,6 @@ def cuda_libraries():
         name = "cuda_host_headers",
         deps = [":headers"],
     )
-    cc_binary(
-        name = "libonnxruntime_providers_shared.so",
-        srcs = ["onnxruntime/core/providers/shared/common.cc"],
-        linkshared = True,
-        deps = [":cuda_host_headers"],
-        target_compatible_with = cuda_compatible,
-        tags = ["manual"],
-    )
     cc_import(
         name = "providers_shared",
         shared_library = ":libonnxruntime_providers_shared.so",

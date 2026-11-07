@@ -53,7 +53,10 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
       JavaScriptContextHolder jsContext = getReactApplicationContext().getJavaScriptContextHolder();
       CallInvokerHolderImpl jsCallInvokerHolder =
         (CallInvokerHolderImpl) getReactApplicationContext().getCatalystInstance().getJSCallInvokerHolder();
-      long newEnvHandle = nativeInstall(jsContext.get(), jsCallInvokerHolder);
+      long newEnvHandle;
+      synchronized (jsContext) {
+        newEnvHandle = nativeInstall(jsContext.get(), jsCallInvokerHolder);
+      }
       if (nativeEnvHandle != 0) {
         nativeCleanup(nativeEnvHandle);
       }

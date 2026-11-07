@@ -24,7 +24,7 @@ jobs:
   desktop:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -36,20 +36,125 @@ jobs:
         shell: pwsh
         run: |
           "BAZEL_SH=C:\Program Files\Git\bin\bash.exe" >> $env:GITHUB_ENV
-          "MSYS2_ARG_CONV_EXCL=*" >> $env:GITHUB_ENV
           "BAZEL_STARTUP_OPTIONS=--output_base=C:/b/ort" >> $env:GITHUB_ENV
-      - name: Build and test runtime and desktop bindings
+          "MSYS2_ARG_CONV_EXCL=*" >> $env:GITHUB_ENV
+      - name: Analyze the complete native graph
         shell: bash
         run: |
           set -o pipefail
-          bazelisk ${BAZEL_STARTUP_OPTIONS:-} build //... -c opt --nobuild \
+          bazelisk ${BAZEL_STARTUP_OPTIONS:-} build //... \
+            //:wasm_scalar_test //:wasm_simd_test \
+            //:web_scalar_smoke_test //:web_simd_smoke_test \
+            //:web_scalar_browser_test //:web_simd_browser_test -c opt --nobuild \
             --lockfile_mode=error --jobs=3 --build_python_zip=false 2>&1 | tee bazel-desktop.log
-          bazelisk ${BAZEL_STARTUP_OPTIONS:-} test -c opt \
-            //:runtime_smoke_test //:runtime_shared_smoke_test //:common_test //:cpuinfo_test \
+      - name: Test native bindings and package consumers
+        shell: bash
+        run: |
+          set -o pipefail
+          bazelisk ${BAZEL_STARTUP_OPTIONS:-} test --config=release \
+            //:runtime_smoke_test //:runtime_shared_smoke_test //:cpuinfo_test \
             //:go_test //:java_smoke_test \
             //:python_smoke_test //:node_smoke_test //:csharp_smoke_test \
+            //rust:smoke_test //:runtime_sdk_archive_test //:java_native_jar_test \
+            //:java_maven_test //:java_maven_copy_test //bazel:apple_platform_test \
+            //:java_release_tool_test //:release_inventory_test //:release_parity_test \
+            //:python_wheel_packager_test //:python_wheel_subprocess_test //:common_npm_test \
+            //rust:crates_io_artifacts_test //:go_module_proxy_artifacts_test \
+            //objectivec:apple_package_test \
+            //objectivec:catalyst_xcframework_test \
+            //objectivec:apple_package_consumer_contract_test \
+            //:node_npm_test //:csharp_nuget_test \
+            //:csharp_nuget_symbols_test \
+            //:csharp_nuget_mobile_metadata_test \
+            //:python_test_runner_test //:node_test_runner_test \
+            //rust:test_runner_test //objectivec:test_runner_test \
+            //:android_aar_packager_test \
+            //js/react_native:data_policy_test \
+            //js/react_native:package_test \
             --lockfile_mode=error --jobs=3 --local_test_jobs=1 \
             --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-desktop.log
+      - name: Test selected existing C++ cases
+        shell: bash
+        run: |
+          set -o pipefail
+          filter='NarrowTest.Basic:AllocatorTest.CPUAllocatorTest:GraphViewer.FilteredGraph'
+          filter+=':FreeDimensionOverrideDenotationTransformerTest.Test:InferenceSessionTests.DisableCPUArena:MathOpTest.MatMulFloatType'
+          filter+=':CApiTest.run_options:CustomOpRegistration.TestUsingFuncNameCApi:OrtEpLibrary.PluginEp_AppendV2_MulInference:*.simple/0'
+          filter+=':GetRuntimePathFromSharedLibraryTest.Basic:ProviderBridgeTest.MissingExportUnloadsLibraryAndAllowsRetry'
+          filter+=':OptionalProviderProbeTest.MissingExportUnloadsAndAllowsReplacement:AutoEpSelection.CpuEP'
+          bazelisk ${BAZEL_STARTUP_OPTIONS:-} test -c opt \
+            //:common_test //:framework_test //:session_test //:graph_test \
+            //:optimizer_test //:cpu_provider_test //:shared_api_test \
+            //:global_threadpool_test //:custom_op_registration_test //:plugin_api_test \
+            //:runtime_path_test //:provider_bridge_test //:optional_provider_probe_test //:autoep_tests \
+            --test_filter="$filter" --lockfile_mode=error --jobs=3 --local_test_jobs=1 \
+            --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-desktop.log
+      - name: Test selected existing managed binding cases
+        shell: bash
+        run: |
+          set -o pipefail
+          flags=(-c opt --lockfile_mode=error --jobs=3 --local_test_jobs=1 --build_python_zip=false --test_output=errors)
+          bazelisk ${BAZEL_STARTUP_OPTIONS:-} test //:java_tensor_test "${flags[@]}" \
+            --test_filter='ai.onnxruntime.OnnxTensorTest#testArrayCreation' 2>&1 | tee -a bazel-desktop.log
+          bazelisk ${BAZEL_STARTUP_OPTIONS:-} test //:python_inference_test "${flags[@]}" \
+            --test_filter=onnxruntime_test_python.TestInferenceSession.test_run_model 2>&1 | tee -a bazel-desktop.log
+          bazelisk ${BAZEL_STARTUP_OPTIONS:-} test //:node_model_metadata_test "${flags[@]}" \
+            --test_filter='symbol shape$' 2>&1 | tee -a bazel-desktop.log
+          bazelisk ${BAZEL_STARTUP_OPTIONS:-} test //:csharp_tests "${flags[@]}" \
+            --test_filter=Microsoft.ML.OnnxRuntime.Tests.InferenceTest.CanCreateAndDisposeSessionWithModelPath 2>&1 | tee -a bazel-desktop.log
+      - name: Test CPU Python wheel
+        if: runner.os != 'macOS'
+        shell: bash
+        run: |
+          set -o pipefail
+          bazelisk ${BAZEL_STARTUP_OPTIONS:-} test --config=release \
+            //:python_wheel_test //:native_release_payload_test \
+            --lockfile_mode=error --jobs=3 --local_test_jobs=1 \
+            --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-desktop.log
+      - name: Test selected native Apple inference
+        if: ${{ !cancelled() && runner.os == 'macOS' }}
+        shell: bash
+        run: |
+          set -o pipefail
+          bazelisk ${BAZEL_STARTUP_OPTIONS:-} test -c opt //objectivec:inference_tests \
+            --test_filter=ORTSessionTest/testInitAndRunOk \
+            --lockfile_mode=error --jobs=3 --local_test_jobs=1 \
+            --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-desktop.log
+          bazelisk ${BAZEL_STARTUP_OPTIONS:-} test -c opt //objectivec:swift_inference_tests \
+            --test_filter=ORTSwiftInferenceTest/testAddInference \
+            --lockfile_mode=error --jobs=3 --local_test_jobs=1 \
+            --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-desktop.log
+      - name: Test standalone Windows runtime loading
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -o pipefail
+          bazelisk ${BAZEL_STARTUP_OPTIONS:-} test -c opt //:runtime_dlopen_test \
+            --lockfile_mode=error --jobs=3 --local_test_jobs=1 \
+            --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-desktop.log
+      - name: Build native iOS framework and existing test bundle
+        if: ${{ !cancelled() && runner.os == 'macOS' }}
+        shell: bash
+        run: |
+          set -o pipefail
+          bazelisk ${BAZEL_STARTUP_OPTIONS:-} build -c opt \
+            //objectivec:ios_framework //objectivec:ios_inference_tests \
+            //js/react_native:ios_adapter_framework \
+            --ios_multi_cpus=sim_arm64 \
+            --lockfile_mode=error --jobs=3 --build_python_zip=false \
+            2>&1 | tee -a bazel-desktop.log
+      - name: Test native Apple release packages including Catalyst
+        if: ${{ !cancelled() && runner.os == 'macOS' }}
+        shell: bash
+        run: |
+          set -o pipefail
+          bazelisk ${BAZEL_STARTUP_OPTIONS:-} test --config=release \
+            //objectivec:swift_package_consumer_test //:csharp_nuget_apple_test \
+            //objectivec:base_xcframework_intermediates_test \
+            //objectivec:catalyst_xcframework_intermediates_test \
+            --lockfile_mode=error --jobs=3 --local_test_jobs=1 \
+            --build_python_zip=false --test_output=errors \
+            2>&1 | tee -a bazel-desktop.log
       - name: Preserve build and test diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

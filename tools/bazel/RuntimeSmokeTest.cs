@@ -11,11 +11,20 @@ internal static class RuntimeSmokeTest
 {
     private static void Main(string[] args)
     {
-        string libraryPath = Path.GetFullPath(args[1]);
-        NativeLibrary.SetDllImportResolver(
-            typeof(InferenceSession).Assembly,
-            (name, assembly, searchPath) =>
-                name == "onnxruntime" ? NativeLibrary.Load(libraryPath) : IntPtr.Zero);
+        if (args.Length != 1 && args.Length != 2)
+        {
+            throw new ArgumentException(
+                "Expected <model.onnx> [native-library]; " +
+                "omit the library path to test NuGet runtime asset loading.");
+        }
+        if (args.Length == 2)
+        {
+            string libraryPath = Path.GetFullPath(args[1]);
+            NativeLibrary.SetDllImportResolver(
+                typeof(InferenceSession).Assembly,
+                (name, assembly, searchPath) =>
+                    name == "onnxruntime" ? NativeLibrary.Load(libraryPath) : IntPtr.Zero);
+        }
         using var session = new InferenceSession(args[0]);
         using var options = new RunOptions();
         using var a = OrtValue.CreateTensorValueFromMemory(

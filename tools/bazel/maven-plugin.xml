@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin>
+  <name>ONNX Runtime Maven Resolution Probe</name>
+  <description>Validates offline runtime dependency resolution and native inference.</description>
+  <groupId>com.microsoft.onnxruntime.fixture</groupId>
+  <artifactId>maven-resolution-probe</artifactId>
+  <version>1.0.0</version>
+  <goalPrefix>ort-resolution</goalPrefix>
+  <isolatedRealm>false</isolatedRealm>
+  <inheritedByDefault>true</inheritedByDefault>
+  <requiredJavaVersion>8</requiredJavaVersion>
+  <requiredMavenVersion>3.9.9</requiredMavenVersion>
+  <mojos>
+    <mojo>
+      <goal>run</goal>
+      <description>Run inference using the consumer project's resolved runtime artifacts.</description>
+      <requiresDependencyResolution>runtime</requiresDependencyResolution>
+      <requiresProject>true</requiresProject>
+      <requiresOnline>false</requiresOnline>
+      <phase>validate</phase>
+      <implementation>MavenResolutionMojo</implementation>
+      <language>java</language>
+      <instantiationStrategy>per-lookup</instantiationStrategy>
+      <executionStrategy>once-per-session</executionStrategy>
+      <parameters>
+        <parameter>
+          <name>project</name>
+          <type>org.apache.maven.project.MavenProject</type>
+          <required>true</required>
+          <editable>false</editable>
+        </parameter>
+        <parameter>
+          <name>model</name>
+          <type>java.lang.String</type>
+          <required>true</required>
+          <editable>true</editable>
+        </parameter>
+        <parameter>
+          <name>variant</name>
+          <type>java.lang.String</type>
+          <required>true</required>
+          <editable>true</editable>
+        </parameter>
+      </parameters>
+      <configuration>
+        <project implementation="org.apache.maven.project.MavenProject" default-value="${project}"/>
+        <model implementation="java.lang.String">${ort.model}</model>
+        <variant implementation="java.lang.String">${ort.variant}</variant>
+      </configuration>
+    </mojo>
+  </mojos>
+  <dependencies/>
+</plugin>

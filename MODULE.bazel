@@ -3,6 +3,7 @@
 
 module(name = "onnxruntime")
 
+# Apple CC must register before rules_cc's generic toolchain for objc_library.
 bazel_dep(name = "apple_support", version = "1.23.1")
 bazel_dep(name = "rules_cc", version = "0.2.16")
 bazel_dep(name = "rules_license", version = "1.0.0")
@@ -17,15 +18,124 @@ bazel_dep(name = "rules_cuda", version = "0.3.0")
 bazel_dep(name = "rules_go", version = "0.65.0")
 bazel_dep(name = "rules_java", version = "8.16.1")
 bazel_dep(name = "rules_python", version = "1.6.0")
+bazel_dep(name = "rules_pkg", version = "1.0.1")
 bazel_dep(name = "aspect_rules_js", version = "2.7.0")
 bazel_dep(name = "rules_nodejs", version = "6.7.7")
 bazel_dep(name = "rules_dotnet", version = "0.22.2")
+bazel_dep(name = "rules_apple", version = "3.16.0")
+bazel_dep(name = "rules_swift", version = "2.1.1")
+
+single_version_override(
+    module_name = "apple_support",
+    patch_strip = 1,
+    patches = ["//bazel:apple-support-maccatalyst.patch"],
+)
+
+single_version_override(
+    module_name = "rules_apple",
+    patch_strip = 1,
+    patches = ["//bazel:rules-apple-platform-compatibility.patch"],
+)
+
+bazel_dep(name = "rules_rust", version = "0.65.0")
+bazel_dep(name = "rules_rust_bindgen", version = "0.65.0")
+single_version_override(
+    module_name = "rules_rust_bindgen",
+    patch_strip = 1,
+    patches = ["//bazel/rust:bindgen-windows-import-library.patch"],
+)
+
+rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
+rust.toolchain(
+    edition = "2018",
+    versions = ["1.90.0"],
+)
+use_repo(rust, "rust_toolchains")
+
+register_toolchains("@rust_toolchains//:all")
+
+register_toolchains("//bazel/rust:bindgen_toolchain")
+
+rust_crates = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
+rust_crates.from_cargo(
+    name = "ort_rust_crates",
+    cargo_lockfile = "//rust:Cargo.lock",
+    lockfile = "//rust:Cargo.Bazel.lock",
+    manifests = ["//rust:Cargo.toml"],
+    supported_platform_triples = [
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+        "x86_64-pc-windows-msvc",
+        "x86_64-unknown-linux-gnu",
+    ],
+)
+use_repo(rust_crates, "ort_rust_crates")
+
+rust_clang = use_extension("//bazel/rust:dependencies.bzl", "rust_clang_dependencies")
+use_repo(rust_clang, "ort_rust_libclang")
+
+bazel_dep(name = "rules_android_ndk", version = "0.1.5")
+
+react_native = use_extension("//bazel:react_native.bzl", "react_native_sdk")
+use_repo(react_native, "ort_fbjni", "ort_react_android")
+use_repo(react_native, "ort_android_platform", "ort_androidx_annotation", "ort_react_kotlin")
+use_repo(react_native, "ort_react_headers")
+use_repo(react_native, "ort_fbjni_license", "ort_react_license")
+
+ndk_shared_runtime = use_repo_rule("//bazel:react_native.bzl", "ndk_shared_runtime")
+
+ndk_shared_runtime(name = "ort_ndk_shared_runtime")
+
+# Explicitly selected by --config=android_arm64; desktop builds need no NDK.
+android_ndk_repository = use_repo_rule("@rules_android_ndk//:rules.bzl", "android_ndk_repository")
+
+android_ndk_repository(
+    name = "ort_android_ndk",
+    api_level = 27,
+)
+
+bazel_dep(name = "emsdk", version = "4.0.19")
+archive_override(
+    module_name = "emsdk",
+    sha256 = "ba981f50a1664c99d56e435d45cb15bdeb17727cbc6455bb3a56014e8e5853e6",
+    strip_prefix = "emsdk-4.0.19/bazel",
+    urls = ["https://github.com/emscripten-core/emsdk/archive/refs/tags/4.0.19.tar.gz"],
+)
+
+emscripten = use_extension("@emsdk//:emscripten_deps.bzl", "emscripten_deps")
+emscripten.config(version = "4.0.19")
+
+single_version_override(
+    module_name = "googletest",
+    patch_strip = 1,
+    patches = ["//bazel:googletest-wasm.patch"],
+)
+
+csharp_test_deps = use_extension("//bazel:csharp_dependencies.bzl", "csharp_test_dependencies")
+use_repo(
+    csharp_test_deps,
+    "google_protobuf",
+    "newtonsoft_json",
+    "xunit_abstractions",
+    "xunit_assert",
+    "xunit_extensibility_core",
+    "xunit_extensibility_execution",
+    "xunit_skippablefact",
+)
 
 node = use_extension("@rules_nodejs//nodejs:extensions.bzl", "node")
 node.toolchain(node_version = "24.22.1")
 use_repo(node, "nodejs_toolchains")
 
 register_toolchains("@nodejs_toolchains//:all")
+
+npm = use_extension("@aspect_rules_js//npm:extensions.bzl", "npm")
+npm.npm_translate_lock(
+    name = "ort_node_npm",
+    pnpm_lock = "//bazel/node:pnpm-lock.yaml",
+    run_lifecycle_hooks = False,
+)
+use_repo(npm, "ort_node_npm")
 
 go_sdk = use_extension("@rules_go//go:extensions.bzl", "go_sdk")
 go_sdk.download(version = "1.26.0")
@@ -47,15 +157,28 @@ use_repo(ort_deps, "ort_cudnn_frontend", "ort_cutlass")
 use_repo(ort_deps, "ort_pybind11")
 use_repo(ort_deps, "ort_node_addon_api", "ort_node_headers")
 use_repo(ort_deps, "ort_node_import_library")
-use_repo(ort_deps, "ort_dotnet_tensors")
+use_repo(ort_deps, "ort_dotnet_memory", "ort_dotnet_tensors")
+use_repo(ort_deps, "ort_dotnet_android_ref", "ort_dotnet_ios_ref", "ort_dotnet_maccatalyst_ref")
 use_repo(ort_deps, "ort_wil")
 use_repo(ort_deps, "ort_mingw")
+use_repo(ort_deps, "ort_junit", "ort_test_protobuf_java")
+use_repo(ort_deps, "ort_maven")
 use_repo(ort_deps, "ort_cpuinfo")
 
 register_toolchains("//bazel:windows_cgo_toolchain")
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
-python.toolchain(python_version = "3.12")
+python.defaults(python_version = "3.12")
+
+[
+    python.toolchain(python_version = version)
+    for version in [
+        "3.11",
+        "3.12",
+        "3.13",
+        "3.14",
+    ]
+]
 
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 pip.whl_mods(
@@ -73,13 +196,22 @@ cc_library(
 )
 use_repo(pip, "ort_numpy_mods")
 
-pip.parse(
-    extra_hub_aliases = {"numpy": ["numpy_headers"]},
-    hub_name = "ort_pip",
-    python_version = "3.12",
-    requirements_lock = "//bazel:requirements.txt",
-    whl_modifications = {"@ort_numpy_mods//:numpy.json": "numpy"},
-)
+[
+    pip.parse(
+        extra_hub_aliases = {"numpy": ["numpy_headers"]},
+        hub_name = "ort_pip",
+        python_version = version,
+        requirements_lock = "//bazel:requirements.txt",
+        whl_modifications = {"@ort_numpy_mods//:numpy.json": "numpy"},
+    )
+    for version in [
+        "3.11",
+        "3.12",
+        "3.13",
+        "3.14",
+    ]
+]
+
 use_repo(pip, "ort_pip")
 
 cuda = use_extension("@rules_cuda//cuda:extensions.bzl", "toolchain")

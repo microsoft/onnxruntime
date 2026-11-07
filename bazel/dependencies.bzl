@@ -22,7 +22,53 @@ cc_library(
 """ % include_dir,
     )
 
+def _dotnet_reference_pack(name, package_id, version, sha256, assemblies):
+    content = 'load("@rules_dotnet//dotnet:defs.bzl", "import_dll")\n'
+    for target, assembly in assemblies:
+        content += """
+import_dll(
+    name = %r,
+    dll = %r,
+    version = %r,
+    visibility = ["//visibility:public"],
+)
+""" % (target, "ref/net9.0/" + assembly + ".dll", version)
+    http_archive(
+        name = name,
+        urls = [
+            "https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-public/nuget/v3/flat2/{0}/{1}/{0}.{1}.nupkg".format(package_id, version),
+            "https://api.nuget.org/v3-flatcontainer/{0}/{1}/{0}.{1}.nupkg".format(package_id, version),
+        ],
+        sha256 = sha256,
+        type = "zip",
+        build_file_content = content,
+    )
+
 def _dependencies_impl(_ctx):
+    http_archive(
+        name = "ort_maven",
+        urls = ["https://archive.apache.org/dist/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.zip"],
+        sha256 = "4ec3f26fb1a692473aea0235c300bd20f0f9fe741947c82c1234cefd76ac3a3c",
+        strip_prefix = "apache-maven-3.9.9",
+        build_file_content = """
+load("@rules_java//java:defs.bzl", "java_import")
+package(default_visibility = ["//visibility:public"])
+java_import(name = "maven_libraries", jars = glob(["lib/*.jar", "boot/*.jar"]))
+filegroup(name = "home_marker", srcs = ["bin/mvn"])
+filegroup(name = "distribution", srcs = glob(["**"]))
+""",
+    )
+    for name, artifact, version, sha256 in [
+        ("ort_junit", "org/junit/platform/junit-platform-console-standalone", "1.11.4", "b016ef6b1c3454d6d7c2c88ce081dabf289699686af6622d6e4e2e1b54b4a2fc"),
+        ("ort_test_protobuf_java", "com/google/protobuf/protobuf-java", "3.25.5", "8540247fad9e06baefa8fb45eb313802d019f485f14300e0f9d6b556ed88e753"),
+    ]:
+        jar = artifact.split("/")[-1] + "-" + version + ".jar"
+        http_file(
+            name = name,
+            urls = ["https://repo.maven.apache.org/maven2/" + artifact + "/" + version + "/" + jar],
+            sha256 = sha256,
+            downloaded_file_path = jar,
+        )
     http_archive(
         name = "ort_cpuinfo",
         urls = ["https://github.com/pytorch/cpuinfo/archive/66ee79c038d70dad9f08705b2c9b3e58f6d8f512.zip"],
@@ -71,6 +117,50 @@ import_dll(
     visibility = ["//visibility:public"],
 )
 """,
+    )
+    http_archive(
+        name = "ort_dotnet_memory",
+        urls = [
+            "https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-public/nuget/v3/flat2/system.memory/4.5.5/system.memory.4.5.5.nupkg",
+            "https://api.nuget.org/v3-flatcontainer/system.memory/4.5.5/system.memory.4.5.5.nupkg",
+        ],
+        sha256 = "10f43da352a29fb2b3188e4edd4dcf5100194c8b526e4f61fe2e2b5623775a22",
+        type = "zip",
+        build_file_content = """
+load("@rules_dotnet//dotnet:defs.bzl", "import_dll")
+import_dll(
+    name = "memory",
+    dll = "lib/netstandard2.0/System.Memory.dll",
+    version = "4.5.5",
+    visibility = ["//visibility:public"],
+)
+""",
+    )
+    _dotnet_reference_pack(
+        "ort_dotnet_android_ref",
+        "microsoft.android.ref.35",
+        "35.0.105",
+        "e5a1152e1cba434a793b6dc3f60254645006a5c95eecf928e39de96ecf594ecd",
+        [
+            ("java_interop", "Java.Interop"),
+            ("mono_android_export", "Mono.Android.Export"),
+            ("mono_android_runtime", "Mono.Android.Runtime"),
+            ("mono_android", "Mono.Android"),
+        ],
+    )
+    _dotnet_reference_pack(
+        "ort_dotnet_ios_ref",
+        "microsoft.ios.ref.net9.0_18.0",
+        "18.0.9617",
+        "21d2ac22f3e7287221e8875a2f4dae333d5e1d286bcc2f068f191d1e7d2699ea",
+        [("ios", "Microsoft.iOS")],
+    )
+    _dotnet_reference_pack(
+        "ort_dotnet_maccatalyst_ref",
+        "microsoft.maccatalyst.ref.net9.0_18.0",
+        "18.0.9617",
+        "2e7734f85e8381e03fa3b8f4d322cb4bbfa5a660b535010ab28ce3281b688377",
+        [("maccatalyst", "Microsoft.MacCatalyst")],
     )
     _headers(
         "ort_node_headers",

@@ -26,3 +26,10 @@ test --test_output=errors
 # LTO remains an explicit platform/toolchain choice until each toolchain is validated.
 build:release --compilation_mode=opt
 build:release --strip=always
+
+# NDK resolution is opt-in so desktop builds do not require a mobile SDK.
+build:android_arm64 --platforms=//bazel:android_arm64
+build:android_arm64 --extra_toolchains=@ort_android_ndk//:all
+build:android_arm64 --cxxopt=-std=c++20
+build:android_arm64 --copt=-fexceptions
+build:android_arm64 --copt=-frtti

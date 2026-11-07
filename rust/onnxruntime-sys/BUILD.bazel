@@ -1,0 +1,72 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_rust//rust:defs.bzl", "rust_library")
+load("@rules_rust_bindgen//:defs.bzl", "rust_bindgen")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["Cargo.toml"])
+
+filegroup(
+    name = "crate_package_files",
+    srcs = glob([
+        "examples/**/*.rs",
+        "src/**/*.rs",
+    ]) + ["build.rs"],
+)
+
+cc_library(
+    name = "binding_headers",
+    deps = [
+        "//:api_headers",
+        "@ort_rust_libclang//:headers",
+    ],
+)
+
+rust_bindgen(
+    name = "bindings",
+    bindgen_flags = [
+        "--dynamic-loading",
+        "onnxruntime",
+        "--allowlist-type",
+        "Ort.*",
+        "--allowlist-type",
+        "Onnx.*",
+        "--allowlist-type",
+        "ONNX.*",
+        "--allowlist-function",
+        "Ort.*",
+        "--allowlist-var",
+        "ORT.*",
+        "--rustified-enum",
+        ".*",
+    ],
+    cc_lib = ":binding_headers",
+    clang_flags = select({
+        "@rules_rust//rust/platform:aarch64-apple-darwin": ["--target=arm64-apple-darwin"],
+        "@rules_rust//rust/platform:x86_64-apple-darwin": ["--target=x86_64-apple-darwin"],
+        "//conditions:default": [],
+    }),
+    header = "//:include/onnxruntime/core/session/onnxruntime_c_api.h",
+    merge_cc_lib_objects_into_rlib = False,
+)
+
+filegroup(
+    name = "bindings_source",
+    srcs = [":bindings"],
+    output_group = "bindgen_bindings",
+)
+
+rust_library(
+    name = "onnxruntime_sys",
+    srcs = ["src/lib.rs"],
+    compile_data = [":bindings_source"],
+    crate_name = "onnxruntime_sys",
+    crate_root = "src/lib.rs",
+    data = ["//:runtime_library"],
+    edition = "2018",
+    rustc_env = {"OUT_DIR": "$${pwd}/$(BINDIR)/rust/onnxruntime-sys"},
+    deps = ["@ort_rust_crates//:libloading"],
+)
