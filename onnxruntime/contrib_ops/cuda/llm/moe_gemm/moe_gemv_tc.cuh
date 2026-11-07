@@ -982,8 +982,12 @@ inline bool TryLaunchInt2Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
                               const float* swiglu_alpha, const float* swiglu_beta, const float* swiglu_limit,
                               float alpha, float beta, float limit, const int* permuted_row_to_source_row,
                               int64_t num_rows, cudaStream_t stream, int tensor_core_min_rows) {
+  const bool sorted_expert_map = (reinterpret_cast<uintptr_t>(expert_first_token_offset) == 1u);
+  if (sorted_expert_map) {
+    expert_first_token_offset = nullptr;
+  }
   if ((group_size != 32 && group_size != 64 && group_size != 128) || permuted_row_to_expert == nullptr ||
-      (expert_first_token_offset == nullptr && expanded_num_rows > 256) ||
+      (expert_first_token_offset == nullptr && !sorted_expert_map && expanded_num_rows > 256) ||
       expanded_num_rows < tensor_core_min_rows || tensor_core_min_rows == 0 || !DeviceSupportsBf16Mma()) {
     return false;
   }

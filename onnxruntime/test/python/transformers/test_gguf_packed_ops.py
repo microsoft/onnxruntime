@@ -6,7 +6,7 @@ import sys
 import unittest
 
 import numpy as np
-from onnx import TensorProto, helper
+from onnx import TensorProto, helper, numpy_helper
 
 import onnxruntime as ort
 
@@ -1012,6 +1012,69 @@ class TestGgufPackedOps(unittest.TestCase):
                         got = _run_cuda_bound(session, inputs, (m, hidden_size), dtype)
                         ref = _moe_reference(x, logits, *weights, 2, dtype, True)
                         np.testing.assert_allclose(got, ref, rtol=2e-2, atol=2e-3)
+
+    def test_moe_packed_cuda_offload_parity(self):
+        num_experts = 16
+        hidden_size = 256
+        inter_size = 64
+        top_k = 4
+        formats = ((16, 256, 66), (16, 256, 66), (42, 64, 18))
+        rng = np.random.default_rng(1234)
+        raw_weights = []
+        weights = []
+        for out_size, k, (gtype, bel, bbytes) in zip(
+            (inter_size, inter_size, hidden_size), (hidden_size, hidden_size, inter_size), formats, strict=True
+        ):
+            raw = _make_synthetic_gguf_rows(rng, num_experts * out_size, k, gtype, bel, bbytes)
+            raw = raw.reshape(num_experts, out_size, -1)
+            raw_weights.append(raw)
+            weights.append(_dequantize_weights(raw, k, gtype))
+
+        row_bytes = [w.shape[-1] for w in raw_weights]
+        for dtype in self.activation_dtypes:
+            model = _model(
+                [
+                    helper.make_node("Cast", ["X_f32"], ["X"], to=int(dtype)),
+                    helper.make_node("Cast", ["R_f32"], ["R"], to=int(dtype)),
+                    helper.make_node(
+                        "MoEPacked",
+                        ["X", "R", "G", "U", "D"],
+                        ["Y"],
+                        domain="com.microsoft",
+                        k=top_k,
+                        normalize_routing_weights=1,
+                        activation_type="swiglu",
+                        gate_type=formats[0][0],
+                        up_type=formats[1][0],
+                        down_type=formats[2][0],
+                    ),
+                    helper.make_node("Cast", ["Y"], ["Y_f32"], to=int(TensorProto.FLOAT)),
+                ],
+                [
+                    helper.make_tensor_value_info("X_f32", TensorProto.FLOAT, ["M", hidden_size]),
+                    helper.make_tensor_value_info("R_f32", TensorProto.FLOAT, ["M", num_experts]),
+                ],
+                [helper.make_tensor_value_info("Y_f32", TensorProto.FLOAT, ["M", hidden_size])],
+            )
+            for name, raw in zip(("G", "U", "D"), raw_weights, strict=True):
+                model.graph.initializer.append(numpy_helper.from_array(raw, name=name))
+
+            slot_bytes = sum(inter_size * rb for rb in row_bytes[:2]) + hidden_size * row_bytes[2]
+            so = ort.SessionOptions()
+            so.add_session_config_entry("session.moe.offload.mode", "required")
+            so.add_session_config_entry("session.moe.offload.placement", "adaptive")
+            so.add_session_config_entry("session.moe.offload.cpu_execution", "auto")
+            so.add_session_config_entry("session.moe.offload.device_expert_bytes", str(6 * slot_bytes + 4096))
+            sess_offload = ort.InferenceSession(
+                model.SerializeToString(), sess_options=so, providers=["CUDAExecutionProvider"]
+            )
+
+            for m in (1, 4, 32):
+                x = rng.standard_normal((m, hidden_size), dtype=np.float32) * 0.2
+                logits = rng.standard_normal((m, num_experts), dtype=np.float32)
+                got = sess_offload.run(None, {"X_f32": x, "R_f32": logits})[0]
+                ref = _moe_reference(x, logits, *weights, top_k, dtype, True)
+                np.testing.assert_allclose(got, ref, rtol=2e-2, atol=2e-3)
 
 
 if __name__ == "__main__":

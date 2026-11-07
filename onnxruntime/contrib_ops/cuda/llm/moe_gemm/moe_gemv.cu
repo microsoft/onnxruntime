@@ -1293,6 +1293,9 @@ bool launch_moe_gemv_int_symmetric(const T* act, const WeightType* weight, const
     }
   }
 #endif
+  if (reinterpret_cast<uintptr_t>(expert_first_token_offset) == 1u) {
+    expert_first_token_offset = nullptr;
+  }
   using Details = typename DetailsForTAndWeight<T, WeightType>::Details;
   using TypeA = typename DetailsForTAndWeight<T, WeightType>::TypeA;
   // Accumulate fp16 activations in fp16 by default. ORT_MOE_GEMV_FP32_ACCUM=1
@@ -1378,6 +1381,9 @@ bool launch_moe_gemv_int_symmetric_interleaved_swiglu(
     }
   }
 #endif
+  if (reinterpret_cast<uintptr_t>(expert_first_token_offset) == 1u) {
+    expert_first_token_offset = nullptr;
+  }
   using Details = typename DetailsForTAndWeight<T, WeightType>::Details;
   using TypeA = typename DetailsForTAndWeight<T, WeightType>::TypeA;
   // Accumulation policy matches launch_moe_gemv_int_symmetric.

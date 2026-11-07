@@ -1733,6 +1733,9 @@ bool IsMoeOffloadExpertInputIndex(std::string_view op_type, size_t input_idx) no
   if (op_type == "QMoE") {
     return (input_idx >= 2 && input_idx <= 13) || input_idx == 15 || input_idx == 16;
   }
+  if (op_type == "MoEPacked") {
+    return input_idx >= 2 && input_idx <= 4;
+  }
   return false;
 }
 
@@ -1740,10 +1743,6 @@ bool ValidateNodeForMoeOffload(const Node& node,
                                const GraphViewer& graph_viewer,
                                const InlinedHashSet<std::string_view>& graph_output_names,
                                std::string& out_reason) {
-  if (node.OpType() != "QMoE") {
-    out_reason = "operator '" + node.OpType() + "' does not support the QMoE offload backend";
-    return false;
-  }
   // An initializer that is also a graph input can be overridden at run time, so it is not constant. The offload
   // backend only accepts constants (OpKernelInfo::TryGetConstantInput), so such banks must not be relocated to CPU.
   auto get_constant_initializer = [&graph_viewer](const std::string& name) -> const ONNX_NAMESPACE::TensorProto* {
@@ -1760,6 +1759,68 @@ bool ValidateNodeForMoeOffload(const Node& node,
     if (it != attrs.end() && it->second.has_i()) return it->second.i();
     return def_val;
   };
+
+  if (node.OpType() == "MoEPacked") {
+    const std::string act_type =
+        moe_offload::MoeOffloadSessionPolicy::ToLowerAscii(get_str_attr("activation_type", "swiglu"));
+    if (act_type != "swiglu") {
+      out_reason = "unsupported activation_type='" + act_type + "' for MoEPacked offload (expected 'swiglu')";
+      return false;
+    }
+    const int64_t top_k = get_int_attr("k", 0);
+    if (top_k <= 0 || top_k > 16) {
+      out_reason = "MoEPacked offload requires attribute k in 1..16";
+      return false;
+    }
+    const auto& input_defs = node.InputDefs();
+    if (input_defs.size() < 5) {
+      out_reason = "MoEPacked requires 5 inputs";
+      return false;
+    }
+    for (size_t i = 0; i < 5; ++i) {
+      if (input_defs[i] == nullptr || !input_defs[i]->Exists() || input_defs[i]->Name().empty()) {
+        out_reason = "MoEPacked missing required input " + std::to_string(i);
+        return false;
+      }
+    }
+    const auto* gw_tp = get_constant_initializer(input_defs[2]->Name());
+    const auto* uw_tp = get_constant_initializer(input_defs[3]->Name());
+    const auto* dw_tp = get_constant_initializer(input_defs[4]->Name());
+    if (!gw_tp || !uw_tp || !dw_tp) {
+      out_reason = "MoEPacked expert weight inputs 2..4 must be constant initializers";
+      return false;
+    }
+    for (size_t i : {size_t{2}, size_t{3}, size_t{4}}) {
+      if (graph_output_names.find(input_defs[i]->Name()) != graph_output_names.end()) {
+        out_reason = "MoEPacked expert initializer '" + input_defs[i]->Name() + "' is also a graph output";
+        return false;
+      }
+    }
+    if (gw_tp->data_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
+        uw_tp->data_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
+        dw_tp->data_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
+        gw_tp->dims_size() != 3 || uw_tp->dims_size() != 3 || dw_tp->dims_size() != 3) {
+      out_reason = "MoEPacked expert weight inputs 2..4 must be 3D UINT8 tensors";
+      return false;
+    }
+    const int64_t experts = gw_tp->dims(0);
+    const int64_t inter = gw_tp->dims(1);
+    const int64_t hidden = dw_tp->dims(1);
+    if (experts <= 0 || experts > 512 || top_k > experts ||
+        uw_tp->dims(0) != experts || dw_tp->dims(0) != experts ||
+        uw_tp->dims(1) != inter || inter <= 0 || hidden <= 0 ||
+        (inter % 32) != 0 || (hidden % 32) != 0 ||
+        gw_tp->dims(2) <= 0 || uw_tp->dims(2) <= 0 || dw_tp->dims(2) <= 0) {
+      out_reason = "MoEPacked expert weight dimensions are invalid for offload";
+      return false;
+    }
+    return true;
+  }
+
+  if (node.OpType() != "QMoE") {
+    out_reason = "operator '" + node.OpType() + "' does not support the QMoE offload backend";
+    return false;
+  }
 
   const std::string quant_type = moe_offload::MoeOffloadSessionPolicy::ToLowerAscii(get_str_attr("quant_type", "int"));
   // Only NVFP4 with weights_prepacked=1, SM80-prepacked INT4 (weights_prepacked=1, block_size=32), or raw INT3
@@ -2052,7 +2113,7 @@ Status PlaceMoeOffloadInitializersOnCpu(const GraphViewer& graph_viewer,
     }
 
     const bool is_cuda_moe_node = (node.Domain() == kMSDomain) &&
-                                  (node.OpType() == "QMoE" || node.OpType() == "MoE") &&
+                                  (node.OpType() == "QMoE" || node.OpType() == "MoE" || node.OpType() == "MoEPacked") &&
                                   (node.GetExecutionProviderType() == kCudaExecutionProvider);
     bool node_eligible = false;
     if (is_cuda_moe_node) {

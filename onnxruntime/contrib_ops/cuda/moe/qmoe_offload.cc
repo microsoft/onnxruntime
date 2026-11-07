@@ -7609,6 +7609,18 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
     auto fc1_task = [&](ptrdiff_t task) {
       fc1_task_for_slot(static_cast<int>(task) / fc1_tasks, static_cast<int>(task) % fc1_tasks);
     };
+    int slot_compact_row_base[CpuWork::kMaxGroupSlots]{};
+    if (compact) {
+      for (int slot = 0; slot < group_size; ++slot) {
+        if (static_cast<size_t>(slot) < CpuWork::kMaxGroupSlots) {
+          slot_compact_row_base[slot] = cpu_rows_written;
+        }
+        const auto& assignments = expert_routes[group[slot].expert];
+        for (int row = 0; row < group[slot].count; ++row) {
+          host_cpu_ids[cpu_rows_written++] = assignments[group[slot].first + row];
+        }
+      }
+    }
     auto fc2_task_for_slot = [&](int slot, int col_tile) {
       const int begin = col_tile * fc2_cols_;
       const int end = std::min(begin + fc2_cols_, hidden_size_);
@@ -7688,9 +7700,16 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
                               group[slot].count, work.result.data() + slot * call_rows * hidden_size_,
                               begin, end, false, false);
       }
-      if (!compact) {
+      const int col_count = end - begin;
+      if (compact && static_cast<size_t>(slot) < CpuWork::kMaxGroupSlots) {
+        const int base_row = slot_compact_row_base[slot];
+        for (int row = 0; row < group[slot].count; ++row) {
+          const size_t destination = SafeInt<size_t>(static_cast<size_t>(base_row + row)) * hidden_size_ + begin;
+          const float* source = work.result.data() + (slot * call_rows + row) * hidden_size_ + begin;
+          FloatToActRow(source, host_result + destination, col_count);
+        }
+      } else if (!compact) {
         const auto& assignments = expert_routes[group[slot].expert];
-        const int col_count = end - begin;
         for (int row = 0; row < group[slot].count; ++row) {
           const int route = assignments[group[slot].first + row];
           const size_t expanded_row = SafeInt<size_t>(route % static_cast<int>(k_)) * tile_rows +
@@ -7737,16 +7756,17 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
       ORT_ENFORCE(group_ok, "QMoEOffload FileExpertStore parallel chunk load failed.");
     }
     const auto t_write = timed ? now() : std::chrono::steady_clock::time_point{};
-    if (compact) {
-      for (int slot = 0; slot < group_size; ++slot) {
+    if (compact && static_cast<size_t>(group_size) > CpuWork::kMaxGroupSlots) {
+      for (size_t slot = CpuWork::kMaxGroupSlots; slot < static_cast<size_t>(group_size); ++slot) {
         const auto& assignments = expert_routes[group[slot].expert];
+        int base_row = 0;
+        for (size_t prev = 0; prev < slot; ++prev) base_row += group[prev].count;
         for (int row = 0; row < group[slot].count; ++row) {
-          const int route = assignments[group[slot].first + row];
-          host_cpu_ids[cpu_rows_written] = route;
-          const size_t destination = SafeInt<size_t>(static_cast<size_t>(cpu_rows_written++)) * hidden_size_;
+          const size_t destination = SafeInt<size_t>(static_cast<size_t>(base_row + row)) * hidden_size_;
           const float* source = work.result.data() + (slot * call_rows + row) * hidden_size_;
           FloatToActRow(source, host_result + destination, hidden_size_);
         }
+        (void)assignments;
       }
     }
     if (timed) {
@@ -8332,13 +8352,15 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
     }
     if (int2_bank_mode_) {
       if (is_bf16_) {
+        const int64_t* const sorted_expert_map_tag =
+            reinterpret_cast<const int64_t*>(static_cast<uintptr_t>(1));
         gemv::launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, cutlass::uint2b_t>(
             static_cast<const __nv_bfloat16*>(act_in),
             reinterpret_cast<const cutlass::uint2b_t*>(fc1_w),
             reinterpret_cast<const __nv_bfloat16*>(fc1_s),
             static_cast<const __nv_bfloat16*>(fc1_bias_dev),
             reinterpret_cast<__nv_bfloat16*>(nvfp4_inter_buf),
-            nullptr, expert_map, num_exp, num_r, inter_size_, hidden_size_, int2_block_size_, sm_,
+            sorted_expert_map_tag, expert_map, num_exp, num_r, inter_size_, hidden_size_, int2_block_size_, sm_,
             runner_activation, nullptr, num_r, nullptr, stream
 #if __has_include("contrib_ops/cuda/cuda_session_options.h")
             ,
@@ -8352,7 +8374,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
             reinterpret_cast<const __nv_bfloat16*>(fc2_s),
             nullptr,
             static_cast<__nv_bfloat16*>(out_buf),
-            nullptr, expert_map, num_exp, num_r, hidden_size_, inter_size_, int2_block_size_, sm_, stream
+            sorted_expert_map_tag, expert_map, num_exp, num_r, hidden_size_, inter_size_, int2_block_size_, sm_, stream
 #if __has_include("contrib_ops/cuda/cuda_session_options.h")
             ,
             moe_tc_min_rows_
