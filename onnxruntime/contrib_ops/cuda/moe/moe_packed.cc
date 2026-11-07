@@ -4,6 +4,8 @@
 #include "contrib_ops/cuda/moe/moe_packed.h"
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <type_traits>
 
 #include "contrib_ops/cpu/quantization/gguf_quant_tables.h"
@@ -50,6 +52,13 @@ MoEPacked<T>::MoEPacked(const OpKernelInfo& info) : CudaKernel(info) {
               "MoEPacked requires k in 1..32; internally routed mode requires k <= 16");
   normalize_routing_weights_ = info.GetAttrOrDefault<int64_t>("normalize_routing_weights", 1);
   activation_type_ = info.GetAttrOrDefault<std::string>("activation_type", "swiglu");
+  routing_function_ = info.GetAttrOrDefault<std::string>("routing_function", "softmax");
+  router_scale_ = info.GetAttrOrDefault<float>("router_scale", 1.0f);
+  ORT_ENFORCE(routing_function_ == "softmax" || routing_function_ == "sigmoid",
+              "MoEPacked routing_function must be softmax or sigmoid");
+  ORT_ENFORCE(std::isfinite(router_scale_) &&
+                  (routing_function_ == "sigmoid" || router_scale_ == 1.0f),
+              "MoEPacked router_scale must be finite and non-default scaling requires sigmoid routing");
   ORT_ENFORCE(activation_type_ == "swiglu" || activation_type_ == "relu_squared",
               "MoEPacked supports activation_type='swiglu' or 'relu_squared'");
   ORT_ENFORCE(info.GetAttr<int64_t>("gate_type", &gate_type_).IsOK(), "MoEPacked requires gate_type");
@@ -78,11 +87,22 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* down_w = context->Input<Tensor>(4);
   const Tensor* indices = context->InputCount() > 5 ? context->Input<Tensor>(5) : nullptr;
   const Tensor* weights = context->InputCount() > 6 ? context->Input<Tensor>(6) : nullptr;
+  const Tensor* router_input = context->InputCount() > 7 ? context->Input<Tensor>(7) : nullptr;
+  const Tensor* router_weight = context->InputCount() > 8 ? context->Input<Tensor>(8) : nullptr;
+  const Tensor* router_bias = context->InputCount() > 9 ? context->Input<Tensor>(9) : nullptr;
+  const bool sigmoid_routing = routing_function_ == "sigmoid";
   const bool preselected = indices || weights;
   const bool relu_squared = activation_type_ == "relu_squared";
   ORT_RETURN_IF_NOT(input && gate_w && down_w, "MoEPacked requires input, gate and down weights");
-  ORT_RETURN_IF_NOT(preselected ? (indices && weights && !router_probs && normalize_routing_weights_ == 0)
-                                : (router_probs && k_ <= 16),
+  ORT_RETURN_IF_NOT(sigmoid_routing
+                        ? (router_input && router_weight && router_bias && !router_probs && !preselected &&
+                           normalize_routing_weights_ == 1 && relu_squared)
+                        : (!router_input && !router_weight && !router_bias),
+                    "MoEPacked sigmoid routing requires router_input, router_weight, router_bias, "
+                    "relu_squared and normalize_routing_weights=1, with no other routing inputs");
+  ORT_RETURN_IF_NOT(sigmoid_routing ||
+                        (preselected ? (indices && weights && !router_probs && normalize_routing_weights_ == 0)
+                                     : (router_probs && k_ <= 16)),
                     "MoEPacked preselected routing requires both indices and weights, no router_probs and "
                     "normalize_routing_weights=0; internal routing requires router_probs and k <= 16");
   ORT_RETURN_IF_NOT(relu_squared ? !up_w : up_w != nullptr,
@@ -108,7 +128,19 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
                     "MoEPacked requires hidden_size and inter_size in 1..", kMoEPackedMaxDimension);
   ORT_RETURN_IF_NOT(num_rows >= 0, "MoEPacked requires a nonnegative row count");
   ORT_RETURN_IF_NOT(num_experts >= k_ && num_experts <= 512, "MoEPacked requires k <= num_experts <= 512");
-  if (preselected) {
+  int64_t router_width = 0;
+  if (sigmoid_routing) {
+    ORT_RETURN_IF_NOT(router_input->Shape().NumDimensions() == 2 &&
+                          router_input->Shape()[0] == num_rows,
+                      "MoEPacked sigmoid router_input must be [num_rows, router_width]");
+    router_width = router_input->Shape()[1];
+    ORT_RETURN_IF_NOT(router_width > 0 && router_width <= std::numeric_limits<int>::max() &&
+                          router_width % 256 == 0 &&
+                          router_weight->Shape() == TensorShape({num_experts, router_width}) &&
+                          router_bias->Shape() == TensorShape({num_experts}),
+                      "MoEPacked sigmoid routing requires positive int32 width divisible by 256, "
+                      "router_weight[num_experts,width] and router_bias[num_experts]");
+  } else if (preselected) {
     ORT_RETURN_IF_NOT(indices->Shape() == TensorShape({num_rows, k_}) && weights->Shape() == indices->Shape(),
                       "MoEPacked preselected routes require indices and weights [num_rows, k]");
   } else {
@@ -157,6 +189,9 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
   max_params.normalize_routing_weights = (normalize_routing_weights_ != 0);
   max_params.bf16_tc_supported = bf16_tc_supported_;
   max_params.relu_squared = relu_squared;
+  max_params.sigmoid_routing = sigmoid_routing;
+  max_params.router_width = static_cast<int>(router_width);
+  max_params.router_scale = router_scale_;
   max_params.gate_type = static_cast<int>(gate_type_);
   max_params.up_type = static_cast<int>(relu_squared ? gate_type_ : up_type_);
   max_params.down_type = static_cast<int>(down_type_);
@@ -182,6 +217,12 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
     const size_t router_offset = SafeInt<size_t>(r0) * num_experts * sizeof(T);
     chunk_params.expert_indices = indices ? indices->Data<int32_t>() + r0 * k_ : nullptr;
     chunk_params.expert_weights = weights ? weights->Data<float>() + r0 * k_ : nullptr;
+    chunk_params.router_input = router_input
+                                    ? static_cast<const uint8_t*>(router_input->DataRaw()) +
+                                          static_cast<size_t>(r0 * router_width) * sizeof(T)
+                                    : nullptr;
+    chunk_params.router_weight = router_weight ? router_weight->DataRaw() : nullptr;
+    chunk_params.router_bias = router_bias ? router_bias->Data<float>() : nullptr;
     ORT_RETURN_IF_ERROR(LaunchMoEPackedCuda(
         Stream(context),
         is_bf16,
