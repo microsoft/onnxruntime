@@ -280,7 +280,9 @@ void ExpectSubmissionLinks(const profiling::Events& events, std::initializer_lis
     const auto& id = event.args.at("submission_id");
     EXPECT_FALSE(id.empty());
     EXPECT_TRUE(submissions.emplace(id, &event).second);
-    if (previous_ids) EXPECT_TRUE(previous_ids->insert(id).second);
+    if (previous_ids) {
+      EXPECT_TRUE(previous_ids->insert(id).second);
+    }
     ASSERT_NE(expected, dispatch_counts.end());
     EXPECT_EQ(std::count_if(events.begin(), events.end(), [&](const auto& dispatch) {
                 return dispatch.args.contains("clock_alignment") && dispatch.args.contains("submission_id") &&
