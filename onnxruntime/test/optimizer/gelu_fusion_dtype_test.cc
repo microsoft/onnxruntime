@@ -44,6 +44,40 @@ void BuildCpuErfGeluPattern(ModelTestBuilder& builder) {
 }
 
 template <typename T>
+void BuildCpuErfGeluPatternWithUpstreamMul(ModelTestBuilder& builder) {
+  auto* input = builder.MakeInput<T>(
+      {1, 4}, std::vector<T>{T(-1.0f), T(-0.25f), T(0.5f), T(1.0f)});
+  auto* sqrt_two = builder.MakeScalarInitializer<T>(T(1.4142099618911743f));
+  auto* one = builder.MakeScalarInitializer<T>(T(1.0f));
+  auto* half = builder.MakeScalarInitializer<T>(T(0.5f));
+  auto* factor = builder.MakeScalarInitializer<T>(T(2.0f));
+
+  auto* gelu_input = builder.MakeIntermediate();
+  Node& upstream_mul = builder.AddNode("Mul", {input, factor}, {gelu_input});
+  upstream_mul.SetExecutionProviderType(kCpuExecutionProvider);
+
+  auto* div_output = builder.MakeIntermediate();
+  Node& div = builder.AddNode("Div", {gelu_input, sqrt_two}, {div_output});
+  div.SetExecutionProviderType(kCpuExecutionProvider);
+
+  auto* erf_output = builder.MakeIntermediate();
+  Node& erf = builder.AddNode("Erf", {div_output}, {erf_output});
+  erf.SetExecutionProviderType(kCpuExecutionProvider);
+
+  auto* add_output = builder.MakeIntermediate();
+  Node& add = builder.AddNode("Add", {erf_output, one}, {add_output});
+  add.SetExecutionProviderType(kCpuExecutionProvider);
+
+  auto* mul_output = builder.MakeIntermediate();
+  Node& mul = builder.AddNode("Mul", {gelu_input, add_output}, {mul_output});
+  mul.SetExecutionProviderType(kCpuExecutionProvider);
+
+  auto* output = builder.MakeOutput();
+  Node& final_mul = builder.AddNode("Mul", {mul_output, half}, {output});
+  final_mul.SetExecutionProviderType(kCpuExecutionProvider);
+}
+
+template <typename T>
 void BuildErfGeluPattern(ModelTestBuilder& builder, const std::string& provider_type) {
   auto* input = builder.MakeInput<T>(
       {1, 4}, std::vector<T>{T(-1.0f), T(-0.25f), T(0.5f), T(1.0f)});
@@ -151,6 +185,21 @@ void RunLevel1OnnxGeluFusionTest(const std::string& provider_type, bool expect_f
 }
 
 }  // namespace
+
+TEST(GeluFusionDtypeTest, CpuFloatGeluWithUpstreamMulIsFused) {
+  auto build = [](ModelTestBuilder& builder) { BuildCpuErfGeluPatternWithUpstreamMul<float>(builder); };
+  auto post_check = [](Graph& graph) { return CheckCpuGeluFusion(graph, true); };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build,
+      /*opset_version=*/17,
+      DefaultLoggingManager().DefaultLogger(),
+      std::make_unique<GeluFusion>(InlinedHashSet<std::string_view>{}, TransformerLevel::Level2),
+      TransformerLevel::Level2,
+      /*steps=*/1,
+      /*pre_graph_checker=*/{},
+      post_check));
+}
 
 TEST(GeluFusionDtypeTest, CpuFloatContribGeluIsFused) {
   RunCpuContribGeluFusionTest<float>(true);
