@@ -15,6 +15,7 @@ Abstract:
 --*/
 
 #include "test_halfgemm.h"
+#include "core/common/inlined_containers.h"
 #include "core/mlas/lib/halfgemm.h"
 #if defined(USE_KLEIDIAI)
 #include "core/mlas/lib/mlasi.h"
@@ -312,7 +313,102 @@ void RunKleidiAIWithoutOutputProcessorCases(const HalfGemmCase* test_cases, size
   });
 }
 
+void RunHalfGemmDecodeCase(size_t N, size_t K, size_t BatchSize, MLAS_THREADPOOL* ThreadPool) {
+  const MLFp16 alpha(0.5f);
+  const MLFp16 beta(-0.25f);
+
+  for (CBLAS_TRANSPOSE trans_b : {CblasNoTrans, CblasTrans}) {
+    std::vector<MLFp16> A(BatchSize * K);
+    std::vector<MLFp16> B(BatchSize * K * N);
+    std::vector<MLFp16> C(BatchSize * N);
+    std::vector<float> CReference(BatchSize * N);
+    onnxruntime::InlinedVector<MLAS_HGEMM_DATA_PARAMS> data(BatchSize);
+    for (size_t batch = 0; batch < BatchSize; ++batch) {
+      const float batch_offset = static_cast<float>(batch);
+      for (size_t k = 0; k < K; ++k) {
+        A[batch * K + k] = MLFp16(static_cast<float>(static_cast<int>(k % 7) - 3) * 0.125f +
+                                  batch_offset * 0.0625f);
+      }
+      for (size_t n = 0; n < N; ++n) {
+        C[batch * N + n] = MLFp16(static_cast<float>(static_cast<int>(n % 5) - 2) * 0.25f +
+                                  batch_offset * 0.125f);
+        float sum = 0.0f;
+        for (size_t k = 0; k < K; ++k) {
+          const size_t b_index = batch * K * N + (trans_b == CblasNoTrans ? k * N + n : n * K + k);
+          B[b_index] = MLFp16(static_cast<float>(static_cast<int>((k + n) % 11) - 5) * 0.0625f +
+                              batch_offset * 0.03125f);
+          sum = std::fma(float(A[batch * K + k]), float(B[b_index]), sum);
+        }
+        CReference[batch * N + n] = std::fma(float(beta), float(C[batch * N + n]), float(alpha) * sum);
+      }
+
+      data[batch].A = reinterpret_cast<const MLAS_FP16*>(A.data() + batch * K);
+      data[batch].lda = K;
+      data[batch].B = reinterpret_cast<const MLAS_FP16*>(B.data() + batch * K * N);
+      data[batch].ldb = trans_b == CblasNoTrans ? N : K;
+      data[batch].ldc = N;
+      data[batch].alpha = alpha.val;
+      data[batch].beta = beta.val;
+    }
+    const auto CInitial = C;
+
+    for (bool threaded : {false, true}) {
+      MLAS_THREADPOOL* thread_pool = threaded ? ThreadPool : nullptr;
+      if (threaded && thread_pool == nullptr) {
+        continue;
+      }
+
+      C = CInitial;
+      for (size_t batch = 0; batch < BatchSize; ++batch) {
+        data[batch].C = reinterpret_cast<MLAS_FP16*>(C.data() + batch * N);
+      }
+      MlasGemmBatch(CblasNoTrans, trans_b, 1, N, K, data.data(), BatchSize, thread_pool);
+
+      for (size_t i = 0; i < C.size(); ++i) {
+        ASSERT_TRUE(CloseEnough(float(C[i]), CReference[i]))
+            << "transB=" << (trans_b == CblasTrans) << " threaded=" << threaded
+            << " N=" << N << " K=" << K << " batch=" << i / N << " column=" << i % N;
+      }
+    }
+  }
+}
+
 }  // namespace
+
+TEST(HalfGemmDecode, Avx2F16CLayoutsAndTileBoundaries) {
+  if (!MlasHalfGemmDecodeSupported(CblasNoTrans, CblasNoTrans) ||
+      !MlasHalfGemmDecodeSupported(CblasNoTrans, CblasTrans)) {
+    GTEST_SKIP() << "AVX2/F16C half GEMV is unavailable.";
+  }
+
+  constexpr std::array<size_t, 10> ReductionSizes{7, 8, 9, 31, 32, 33, 40, 63, 64, 65};
+  constexpr std::array<size_t, 9> OutputSizes{1, 7, 8, 9, 63, 64, 65, 137, 2049};
+  for (size_t K : ReductionSizes) {
+    for (size_t N : OutputSizes) {
+      ASSERT_NO_FATAL_FAILURE(RunHalfGemmDecodeCase(N, K, 1, GetMlasThreadPool()));
+    }
+  }
+}
+
+TEST(HalfGemmDecode, Avx2F16CBatchedColumnTasks) {
+  if (!MlasHalfGemmDecodeSupported(CblasNoTrans, CblasNoTrans) ||
+      !MlasHalfGemmDecodeSupported(CblasNoTrans, CblasTrans)) {
+    GTEST_SKIP() << "AVX2/F16C half GEMV is unavailable.";
+  }
+
+#if !defined(BUILD_MLAS_NO_ONNXRUNTIME)
+  constexpr size_t BatchSize = 3;
+  constexpr size_t N = 2049;
+  constexpr size_t K = 65;
+  // Complexity exceeds six HGEMM thread budgets; six threads split each batch into two column tasks.
+  onnxruntime::concurrency::ThreadPool thread_pool(
+      &onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr, 6, true);
+  ASSERT_EQ(onnxruntime::concurrency::ThreadPool::DegreeOfParallelism(&thread_pool), 6);
+  ASSERT_NO_FATAL_FAILURE(RunHalfGemmDecodeCase(N, K, BatchSize, &thread_pool));
+#else
+  GTEST_SKIP() << "The batched column-task test requires an ONNX Runtime thread pool.";
+#endif
+}
 
 TEST(HalfGemm, ZeroKInitializesBiasAndRunsOutputProcessor) {
   constexpr size_t M = 3;
