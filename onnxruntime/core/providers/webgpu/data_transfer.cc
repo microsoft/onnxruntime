@@ -32,10 +32,10 @@ common::Status DataTransferImpl::CopyTensor(void const* src_data,
       }
     } else {
       // copy from GPU to CPU
-      buffer_manager_.Download(command_state,
-                               static_cast<WGPUBuffer>(const_cast<void*>(src_data)),
-                               dst_data,
-                               bytes);
+      return buffer_manager_.Download(command_state,
+                                      static_cast<WGPUBuffer>(const_cast<void*>(src_data)),
+                                      dst_data,
+                                      bytes);
     }
   }
 

@@ -107,7 +107,7 @@ class BufferManager {
   bool SupportsUMA() const;  // Check if CreateUMA is supported (i.e., the device has BufferMapExtendedUsages feature)
   // A null recording releases directly to the cache (e.g., plugin Env allocations).
   void Release(WGPUBuffer buffer, const CommandRecordingState* recording = nullptr) const;
-  void Download(CommandRecordingState& recording, WGPUBuffer src, void* dst, size_t size) const;
+  Status Download(CommandRecordingState& recording, WGPUBuffer src, void* dst, size_t size) const;
   void RefreshPendingBuffers(CommandRecordingState& recording, GraphCaptureState graph_capture_state) const;
   // Drop retained references when a recording is abandoned instead of submitted.
   void DiscardPendingBuffers(CommandRecordingState& recording) const;

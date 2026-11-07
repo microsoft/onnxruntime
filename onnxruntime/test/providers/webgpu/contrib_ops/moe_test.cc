@@ -488,7 +488,7 @@ static void CheckSingleTokenGateIndices(const std::vector<float>& logits, int k,
   ASSERT_STATUS_OK(compute_context.RunProgram(gate));
 
   std::vector<uint32_t> actual(k);
-  webgpu_ep.BufferManager().Download(recording, indices_buffer.Get(), actual.data(), actual.size() * sizeof(uint32_t));
+  ASSERT_STATUS_OK(webgpu_ep.BufferManager().Download(recording, indices_buffer.Get(), actual.data(), actual.size() * sizeof(uint32_t)));
   EXPECT_EQ(actual, expected);
 }
 

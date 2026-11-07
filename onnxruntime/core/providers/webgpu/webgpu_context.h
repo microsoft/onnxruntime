@@ -512,10 +512,16 @@ class WebGpuContext final {
   struct DeviceErrorState {
     std::mutex mutex;
     Status status;
+    // Set when the device is lost, even if an earlier error was recorded in `status`.
+    Status lost_status;
   };
   std::shared_ptr<DeviceErrorState> device_error_state_{std::make_shared<DeviceErrorState>()};
   wgpu::Instance instance_;
   wgpu::Device device_;
+#if defined(__EMSCRIPTEN__)
+  // The lost future of a device created by this context, raced against every Wait().
+  wgpu::Future device_lost_future_{};
+#endif
 
   webgpu::ValidationMode validation_mode_;
   bool validation_mode_explicitly_set_;

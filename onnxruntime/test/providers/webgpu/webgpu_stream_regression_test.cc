@@ -64,7 +64,7 @@ TEST(WebGpuContextTest, FillZeroClearsSessionBuffer) {
   data.fill(42);
   webgpu_ep.BufferManager().Upload(recording, data.data(), buffer.Get(), sizeof(data));
   compute_context.FillZero(tensor);
-  webgpu_ep.BufferManager().Download(recording, buffer.Get(), data.data(), sizeof(data));
+  ASSERT_STATUS_OK(webgpu_ep.BufferManager().Download(recording, buffer.Get(), data.data(), sizeof(data)));
   for (auto value : data) {
     EXPECT_EQ(value, 0u);
   }
@@ -83,7 +83,7 @@ TEST(WebGpuContextTest, FillZeroClearsSessionBuffer) {
     data.fill(run);
     webgpu_ep.BufferManager().Upload(recording, data.data(), captured_buffer, sizeof(data));
     context.Replay(commands, webgpu_ep.BufferManager(), recording);
-    webgpu_ep.BufferManager().Download(recording, captured_buffer, data.data(), sizeof(data));
+    ASSERT_STATUS_OK(webgpu_ep.BufferManager().Download(recording, captured_buffer, data.data(), sizeof(data)));
     for (auto value : data) {
       EXPECT_EQ(value, 0u);
     }

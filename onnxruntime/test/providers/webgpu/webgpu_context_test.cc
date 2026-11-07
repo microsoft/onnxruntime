@@ -283,7 +283,7 @@ void TestCopyAfterDeferredDispatch(bool upload, bool checked_completion = false)
   EXPECT_TRUE(recording.deferred_dispatches.empty());
 
   std::array<uint32_t, 16> result{};
-  buffer_manager.Download(recording, upload ? output.Get() : copy.Get(), result.data(), sizeof(result));
+  ASSERT_STATUS_OK(buffer_manager.Download(recording, upload ? output.Get() : copy.Get(), result.data(), sizeof(result)));
   std::array<uint32_t, 16> expected;
   expected.fill(8);
   EXPECT_EQ(result, expected);
@@ -418,7 +418,7 @@ TEST(WebGpuQueueUploadTest, SizesSourceOffsetsAndPartialWrites) {
       manager.Upload(recording, source.data() + source_offset, buffer.Get(), size);
       std::fill(source.begin(), source.end(), 0xcc);
       InlinedVector<uint8_t> result(capacity);
-      manager.Download(recording, buffer.Get(), result.data(), capacity);
+      ASSERT_STATUS_OK(manager.Download(recording, buffer.Get(), result.data(), capacity));
       for (size_t i = 0; i < size; ++i) {
         ASSERT_EQ(result[i], static_cast<uint8_t>(i * 31 + 7)) << i;
       }
@@ -448,7 +448,7 @@ TEST(WebGpuQueueUploadTest, MappedAtCreation) {
     ASSERT_EQ(buffer.GetMapState(), wgpu::BufferMapState::Unmapped);
     EXPECT_FALSE(recording.command_encoder);
     std::array<uint32_t, 16> result{};
-    context.BufferManager().Download(recording, buffer.Get(), result.data(), sizeof(result));
+    ASSERT_STATUS_OK(context.BufferManager().Download(recording, buffer.Get(), result.data(), sizeof(result)));
     auto expected = data;
     if (size == 0) expected.fill(0);
     EXPECT_EQ(result, expected);
@@ -481,9 +481,9 @@ TEST(WebGpuQueueUploadTest, RepeatedUploadsFollowRecordedCopies) {
       source->fill(99);
     }
     std::array<uint32_t, 16> result{};
-    manager.Download(recording, snapshot.Get(), result.data(), sizeof(result));
+    ASSERT_STATUS_OK(manager.Download(recording, snapshot.Get(), result.data(), sizeof(result)));
     for (auto actual : result) EXPECT_EQ(actual, value - 1);
-    manager.Download(recording, buffer.Get(), result.data(), sizeof(result));
+    ASSERT_STATUS_OK(manager.Download(recording, buffer.Get(), result.data(), sizeof(result)));
     for (auto actual : result) EXPECT_EQ(actual, value);
   }
   ASSERT_STATUS_OK(context.PopErrorScope());
@@ -507,7 +507,7 @@ TEST(WebGpuQueueUploadTest, CaptureAndReplayRetainStagingPath) {
     context.BufferManager().Upload(recording, data.data(), buffer.Get(), sizeof(data));
     recording.graph_capture_state = webgpu::GraphCaptureState::Default;
     std::array<uint32_t, 16> result{};
-    context.BufferManager().Download(recording, buffer.Get(), result.data(), sizeof(result));
+    ASSERT_STATUS_OK(context.BufferManager().Download(recording, buffer.Get(), result.data(), sizeof(result)));
     EXPECT_EQ(result, data);
   }
   ASSERT_STATUS_OK(context.PopErrorScope());
@@ -539,7 +539,7 @@ TYPED_TEST(WebGpuQueueUploadTypeTest, PreservesTensorBytesAndHostLifetime) {
     context.BufferManager().Upload(recording, data.data(), buffer.Get(), bytes);
     data.fill(TypeParam{});
     std::array<uint8_t, capacity> result{};
-    context.BufferManager().Download(recording, buffer.Get(), result.data(), result.size());
+    ASSERT_STATUS_OK(context.BufferManager().Download(recording, buffer.Get(), result.data(), result.size()));
     EXPECT_EQ(std::memcmp(result.data(), expected.data(), bytes), 0);
   }
   ASSERT_STATUS_OK(context.PopErrorScope());
