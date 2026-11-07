@@ -82,6 +82,11 @@ struct ProviderInfo_CUDA_TestImpl : ProviderInfo_CUDA {
 
   int cudaGetDeviceCount() override { return 0; }
 
+  Status SynchronizeDevice(int) override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "The CUDA test provider does not support DLPack device synchronization.");
+  }
+
   void CUDAExecutionProviderInfo__FromProviderOptions(const ProviderOptions&, CUDAExecutionProviderInfo&) override {}
 
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P) && defined(ENABLE_TRAINING)

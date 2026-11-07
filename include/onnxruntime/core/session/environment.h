@@ -173,6 +173,17 @@ class Environment {
     return execution_devices_;
   }
 
+  struct DeviceInterop {
+    std::shared_ptr<void> library_owner;
+    OrtEpFactory* factory = nullptr;
+  };
+
+  enum class DeviceInteropCapability { Synchronize,
+                                       CurrentDevice };
+
+  // Pins the library across native waits and arbitrary external producer callbacks.
+  DeviceInterop GetDeviceInterop(const OrtDevice& device, DeviceInteropCapability capability) const;
+
   /// Get hardware device incompatibility details for a specific EP.
   /// @param ep_name The name of the execution provider to check.
   /// @param hw The hardware device to check for incompatibility.
@@ -308,7 +319,7 @@ class Environment {
   };
 
   // registration name to EpInfo for library
-  std::unordered_map<std::string, std::unique_ptr<EpInfo>> ep_libraries_;
+  std::unordered_map<std::string, std::shared_ptr<EpInfo>> ep_libraries_;
 
   // combined set of OrtEpDevices for all registered OrtEpFactory instances
   // std::vector so we can use directly in GetEpDevices.

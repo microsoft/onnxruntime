@@ -1477,8 +1477,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(numpy_arr_input.shape, tuple(ortvalue.shape()))
         ptr = ortvalue._ortvalue.data_ptr()
 
-        dlp = ortvalue._ortvalue.to_dlpack()
-        ortvalue2 = C.OrtValue.from_dlpack(dlp)
+        ortvalue2 = C.OrtValue.from_dlpack(ortvalue)
         self.assertEqual(ptr, ortvalue2.data_ptr())
         new_array = ortvalue2.numpy()
         np.testing.assert_equal(numpy_arr_input, new_array)
@@ -1506,13 +1505,11 @@ class TestInferenceSession(unittest.TestCase):
             with self.subTest(shape=shape):
                 arr = np.zeros(shape, dtype=np.float32)
                 # Test via numpy __dlpack__ protocol
-                dlp = arr.__dlpack__()
-                ortvalue = C.OrtValue.from_dlpack(dlp)
+                ortvalue = C.OrtValue.from_dlpack(arr)
                 self.assertEqual(list(shape), list(ortvalue.shape()))
                 # Test round-trip: OrtValue -> dlpack -> OrtValue
                 ort_input = onnxrt.OrtValue.ortvalue_from_numpy(arr)
-                dlp2 = ort_input._ortvalue.to_dlpack()
-                ortvalue2 = C.OrtValue.from_dlpack(dlp2)
+                ortvalue2 = C.OrtValue.from_dlpack(ort_input._ortvalue)
                 self.assertEqual(list(shape), list(ortvalue2.shape()))
 
     def test_ort_value_array_protocol(self):
@@ -1692,9 +1689,11 @@ class TestInferenceSession(unittest.TestCase):
 
         with self.assertRaisesRegex(TypeError, error):
             onnxrt.OrtValue.from_dlpack(InvalidDlpackProvider())
+        with self.assertRaisesRegex(TypeError, error):
+            C.OrtValue.from_dlpack(InvalidDlpackProvider())
 
         source = onnxrt.OrtValue.ortvalue_from_numpy(np.array([1.0], dtype=np.float32))
-        capsule = source._ortvalue.to_dlpack()
+        capsule = source.__dlpack__()
         C.OrtValue.from_dlpack(capsule)
         with self.assertRaisesRegex(TypeError, error):
             C.OrtValue.from_dlpack(capsule)
@@ -2443,7 +2442,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(run_and_copy_output(session, io_binding), expected)
         raw_outputs = io_binding._iobinding.get_outputs()
         with self.assertRaisesRegex(RuntimeError, "DLPack export"):
-            raw_outputs.dlpack_at(0)
+            raw_outputs[0].__dlpack__()
         with self.assertRaisesRegex(RuntimeError, "DLPack export"):
             raw_outputs.to_dlpacks(None)
         indexed_raw_output = raw_outputs[0]

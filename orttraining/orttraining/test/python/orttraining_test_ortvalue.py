@@ -32,13 +32,12 @@ def C_ort_from_dlpack(dlpack):
     return from_dlpack(dlpack)
 
 
-def _torch_tensor_from_dl_pack(dlpack, device):
-    return from_dlpack(dlpack) if device.type != "ort" else C_ort_from_dlpack(dlpack)
+def _torch_tensor_from_dl_pack(tensor, device):
+    return from_dlpack(tensor) if device.type != "ort" else C_ort_from_dlpack(tensor.__dlpack__())
 
 
 def _ortvalue_to_torch_tensor(ortvalue, device):
-    dlpack_tensor = ortvalue.to_dlpack()
-    return _torch_tensor_from_dl_pack(dlpack_tensor, device)
+    return _torch_tensor_from_dl_pack(ortvalue, device)
 
 
 def _ortvalues_to_torch_tensor(vect, device):
@@ -52,8 +51,7 @@ class TestOrtValue(unittest.TestCase):
         self.assertEqual(numpy_arr_input.shape, tuple(ortvalue.shape()))
         ptr = ortvalue._ortvalue.data_ptr()
 
-        dlp = ortvalue._ortvalue.to_dlpack()
-        ortvalue2 = C_OrtValue.from_dlpack(dlp)
+        ortvalue2 = C_OrtValue.from_dlpack(ortvalue)
         self.assertEqual(ptr, ortvalue2.data_ptr())
         new_array = ortvalue2.numpy()
         assert_almost_equal(numpy_arr_input, new_array)
@@ -73,8 +71,7 @@ class TestOrtValue(unittest.TestCase):
         self.assertEqual(numpy_arr_input.shape, tuple(ortvalue.shape()))
         ptr = ortvalue._ortvalue.data_ptr()
 
-        dlp = ortvalue._ortvalue.to_dlpack()
-        ortvalue2 = C_OrtValue.from_dlpack(dlp)
+        ortvalue2 = C_OrtValue.from_dlpack(ortvalue)
         self.assertEqual(ptr, ortvalue2.data_ptr())
         new_array = ortvalue2.numpy()
         assert_almost_equal(numpy_arr_input, new_array)
@@ -182,10 +179,19 @@ class TestOrtValue(unittest.TestCase):
                 original = torch.tensor([1, 0, 1, 0], dtype=dtype)
                 ortvalue = _utils._ortvalue_from_torch_tensor(original)
                 self.assertEqual(ortvalue.data_ptr(), original.data_ptr())
-                result = from_dlpack(ortvalue.to_dlpack())
+                result = from_dlpack(ortvalue)
                 self.assertEqual(result.dtype, dtype)
                 self.assertEqual(result.data_ptr(), original.data_ptr())
                 torch.testing.assert_close(original, result)
+
+    def test_torch_dlpack_preserves_autograd_source(self):
+        original = torch.tensor([1.0, 2.0], requires_grad=True)
+        ortvalue = _utils._ortvalue_from_torch_tensor(original)
+        result = from_dlpack(ortvalue)
+        self.assertEqual(result.data_ptr(), original.data_ptr())
+        self.assertTrue(original.requires_grad)
+        self.assertFalse(result.requires_grad)
+        torch.testing.assert_close(result, original)
 
     def testOrtValueVectorDlPackNone_cpu(self):
         self.OrtValueVectorDlPackOrtValue(None, None, "cpu")

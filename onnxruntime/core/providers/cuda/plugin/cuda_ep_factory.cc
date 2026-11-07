@@ -62,6 +62,41 @@ CudaEpFactory::CudaEpFactory(const OrtApi& ort_api, const OrtEpApi& ep_api,
   IsStreamAware = IsStreamAwareImpl;
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
   GetDeviceMemoryCapacity = GetDeviceMemoryCapacityImpl;
+  SynchronizeDevice = SynchronizeDeviceImpl;
+  GetCurrentDevice = GetCurrentDeviceImpl;
+  SetCurrentDevice = SetCurrentDeviceImpl;
+}
+
+OrtStatus* ORT_API_CALL CudaEpFactory::SynchronizeDeviceImpl(OrtEpFactory*, int device_id) noexcept {
+  EXCEPTION_TO_STATUS_BEGIN
+  int original_device;
+  PL_CUDA_RETURN_IF_ERROR(cudaGetDevice(&original_device));
+  Ort::Status status = StatusFromCudaError(cudaSetDevice(device_id));
+  if (status.IsOK()) {
+    status = StatusFromCudaError(cudaDeviceSynchronize());
+  }
+  Ort::Status restore_status = StatusFromCudaError(cudaSetDevice(original_device));
+  if (!restore_status.IsOK()) {
+    return restore_status.release();
+  }
+  return status.release();
+  EXCEPTION_TO_STATUS_END
+}
+
+OrtStatus* ORT_API_CALL CudaEpFactory::GetCurrentDeviceImpl(OrtEpFactory*, int* device_id) noexcept {
+  EXCEPTION_TO_STATUS_BEGIN
+  int current_device;
+  PL_CUDA_RETURN_IF_ERROR(cudaGetDevice(&current_device));
+  *device_id = current_device;
+  return nullptr;
+  EXCEPTION_TO_STATUS_END
+}
+
+OrtStatus* ORT_API_CALL CudaEpFactory::SetCurrentDeviceImpl(OrtEpFactory*, int device_id) noexcept {
+  EXCEPTION_TO_STATUS_BEGIN
+  PL_CUDA_RETURN_IF_ERROR(cudaSetDevice(device_id));
+  return nullptr;
+  EXCEPTION_TO_STATUS_END
 }
 
 CudaEpFactory::~CudaEpFactory() {

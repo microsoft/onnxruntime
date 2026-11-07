@@ -92,6 +92,9 @@ class EpFactoryInternalImpl {
                                  "GetDeviceMemoryCapacity is not implemented for this EP factory.");
   }
 
+  // Provider-bridge wrappers expose only the callbacks supported by the underlying factory.
+  virtual OrtEpFactory* GetDeviceInteropFactory() const noexcept { return nullptr; }
+
   virtual OrtStatus* CreateExternalResourceImporterForDevice(
       _In_ const OrtEpDevice* /*ep_device*/,
       _Outptr_result_maybenull_ OrtExternalResourceImporterImpl** importer) noexcept {

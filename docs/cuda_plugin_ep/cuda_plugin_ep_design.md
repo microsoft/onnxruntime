@@ -346,6 +346,16 @@ Implementation details:
 
 This is intentionally conservative and correct for the plugin EP's first sync integration. A narrower stream-scoped synchronization strategy can be considered later if profiling shows a need.
 
+For session-independent DLPack handoffs, `CudaEpFactory` also implements the optional
+`SynchronizeDevice`, `GetCurrentDevice`, and `SetCurrentDevice` callbacks. Python imports
+select the producer's device around its protocol callback and restore the original device,
+including on exceptions. Default imports and exports use a device-wide barrier; explicit
+no-sync handoffs remain available when the caller arranges stream ordering.
+The environment pins the factory's library throughout each handoff callback or wait, so
+unregistering the library concurrently cannot unload executing code.
+These are provider implementation callbacks rather than application APIs; no C++ wrapper
+is needed.
+
 #### 5.1.2 Python Host/Device Tensor Copies
 
 The Python `OrtValue` helpers (`update_inplace()` for host-to-device and `numpy()` for device-to-host) historically reached CUDA copies through the legacy provider bridge (`GetProviderInfo_CUDA()`). That bridge requires the provider shared library to export `GetProvider()`, which the CUDA plugin intentionally does not export.

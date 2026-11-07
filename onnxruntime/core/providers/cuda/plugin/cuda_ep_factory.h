@@ -125,6 +125,10 @@ class CudaEpFactory : public OrtEpFactory {
       uint64_t* total_memory_bytes,
       uint64_t* available_memory_bytes) noexcept;
 
+  static OrtStatus* ORT_API_CALL SynchronizeDeviceImpl(OrtEpFactory* this_ptr, int device_id) noexcept;
+  static OrtStatus* ORT_API_CALL GetCurrentDeviceImpl(OrtEpFactory* this_ptr, int* device_id) noexcept;
+  static OrtStatus* ORT_API_CALL SetCurrentDeviceImpl(OrtEpFactory* this_ptr, int device_id) noexcept;
+
   const OrtApi& ort_api_;
   const OrtEpApi& ep_api_;
   const OrtLogger& default_logger_;
