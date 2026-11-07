@@ -19,6 +19,8 @@ using onnxruntime::webgpu::ComputeContext;
 class MoE : public WebGpuKernel {
  public:
   MoE(const OpKernelInfo& info) : WebGpuKernel(info) {
+    ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("swiglu_limit_after_activation", 0) == 0,
+                "Post-activation SwiGLU clipping currently requires CUDA.");
     activation_alpha_ = static_cast<float>(info.GetAttrOrDefault<float>("activation_alpha", 1.0));
     activation_beta_ = static_cast<float>(info.GetAttrOrDefault<float>("activation_beta", 0.0));
     swiglu_fusion_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("swiglu_fusion", 0));

@@ -1561,6 +1561,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU) and geglu (GELU-tanh(gate) * up). GEGLU requires fused FC1 gate/up weights, swiglu_fusion=1 or 2, and no FC3 inputs. Default is relu", AttributeProto::STRING, std::string("relu"))
         .Attr("swiglu_fusion", "Gate/up layout for swiglu or geglu. 0: not fused (swiglu only), 1: fused and interleaved, 2: fused and not interleaved ([gate | up] for geglu).", AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("swiglu_limit", "The limit used to clamp in SwiGLU. No clamp when limit is not provided. Does not affect GEGLU.", AttributeProto::FLOAT, OPTIONAL_VALUE)
+        .Attr("swiglu_limit_after_activation",
+              "When 1, clamp the activated gate instead of the gate input: "
+              "min(gate * sigmoid(activation_alpha * gate), swiglu_limit) * "
+              "(clamp(up, -swiglu_limit, swiglu_limit) + activation_beta). "
+              "Requires activation_type='swiglu' and CUDA. The default 0 preserves input clipping.",
+              AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("activation_alpha", "Alpha parameter used in activation function.", AttributeProto::FLOAT, 1.0f)
         .Attr("activation_beta", "Beta parameter used in activation function.", AttributeProto::FLOAT, 0.0f)
         .Attr("k", "Number of top experts to select from expert pool", AttributeProto::INT, static_cast<int64_t>(1))
@@ -1898,6 +1904,13 @@ static OpSchema QMoESchema() {
                           "The limit used to clamp inputs in SwiGLU. It is infinite when limit is not provided. Does not affect GEGLU.",
                           AttributeProto::FLOAT,
                           OPTIONAL_VALUE)
+                    .Attr("swiglu_limit_after_activation",
+                          "When 1, clamp the activated gate instead of the gate input: "
+                          "min(gate * sigmoid(activation_alpha * gate), swiglu_limit) * "
+                          "(clamp(up, -swiglu_limit, swiglu_limit) + activation_beta). "
+                          "Requires activation_type='swiglu' and CUDA with INT4/INT8 or block-FP8 weights. "
+                          "Offload is unsupported. The default 0 preserves input clipping.",
+                          AttributeProto::INT, static_cast<int64_t>(0))
                     .Attr("activation_alpha",
                           "Alpha parameter used in activation function.",
                           AttributeProto::FLOAT, 1.0f)
