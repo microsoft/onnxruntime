@@ -82,13 +82,129 @@ const std::vector<MLDataType>& SignedNumberTypes() {
 }
 }  // namespace
 
+enum class IntegerUnaryOp { Abs,
+                            Neg,
+                            Relu,
+                            Sign };
+
+class IntegerUnaryProgram final : public Program<IntegerUnaryProgram> {
+ public:
+  IntegerUnaryProgram(IntegerUnaryOp op, bool is_int64)
+      : Program{"IntegerUnary"}, op_{op}, is_int64_{is_int64} {}
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"size", ProgramUniformVariableDataType::Uint32});
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    const auto& input = shader.AddInput("x", ShaderUsage::UseUniform);
+    const auto& output = shader.AddOutput("y", ShaderUsage::UseUniform);
+    auto& body = shader.MainFunctionBody();
+    body << shader.GuardAgainstOutOfBoundsWorkgroupSizes(
+        is_int64_ ? "uniforms.size" : "(uniforms.size - 1u) / 4u + 1u");
+    if (is_int64_) {
+      body << "let words = " << input.GetByOffset("global_idx", true) << ";\n";
+      if (op_ == IntegerUnaryOp::Abs || op_ == IntegerUnaryOp::Neg) {
+        // Negate both words, including carry; INT64_MIN retains its bit pattern.
+        body << "let low = ~words.x + 1u;\n"
+             << "let negative = vec2<u32>(low, ~words.y + select(0u, 1u, low == 0u));\n";
+        if (op_ == IntegerUnaryOp::Abs) {
+          body << "let result = select(words, negative, vec2<bool>((words.y & 0x80000000u) != 0u));\n";
+        } else {
+          body << "let result = negative;\n";
+        }
+      } else if (op_ == IntegerUnaryOp::Relu) {
+        body << "let result = select(words, vec2<u32>(0u), vec2<bool>((words.y & 0x80000000u) != 0u));\n";
+      } else {
+        body << "let positive = select(0u, 1u, (words.x | words.y) != 0u);\n"
+             << "let result = select(vec2<u32>(positive, 0u), vec2<u32>(0xffffffffu),\n"
+             << "                    vec2<bool>((words.y & 0x80000000u) != 0u));\n";
+      }
+      body << output.SetByOffset("global_idx", "result", true);
+    } else {
+      body << "let word = " << input.GetByOffset("global_idx", true) << ";\n"
+           << "let raw = (vec4<u32>(word) >> vec4<u32>(0u, 8u, 16u, 24u)) & vec4<u32>(255u);\n"
+           << "let a = bitcast<vec4<i32>>(raw << vec4<u32>(24u)) >> vec4<u32>(24u);\n";
+      switch (op_) {
+        case IntegerUnaryOp::Abs:
+          body << "let result = abs(a);\n";
+          break;
+        case IntegerUnaryOp::Neg:
+          body << "let result = -a;\n";
+          break;
+        case IntegerUnaryOp::Relu:
+          body << "let result = max(a, vec4<i32>(0));\n";
+          break;
+        case IntegerUnaryOp::Sign:
+          body << "let result = vec4<i32>(a > vec4<i32>(0)) - vec4<i32>(a < vec4<i32>(0));\n";
+          break;
+      }
+      body << "let lanes = select(vec4<i32>(0), result,\n"
+           << "    global_idx * 4u + vec4<u32>(0u, 1u, 2u, 3u) < vec4<u32>(uniforms.size));\n"
+           << output.SetByOffset("global_idx", "lanes");
+    }
+    return Status::OK();
+  }
+
+ private:
+  IntegerUnaryOp op_;
+  bool is_int64_;
+};
+
+template <typename T, IntegerUnaryOp Op>
+class IntegerUnary final : public WebGpuKernel {
+ public:
+  explicit IntegerUnary(const OpKernelInfo& info) : WebGpuKernel{info} {}
+
+  Status ComputeInternal(ComputeContext& context) const override {
+    const auto* input = context.Input(0);
+    auto* output = context.Output(0, input->Shape());
+    const int64_t size = input->Shape().Size();
+    ORT_RETURN_IF_NOT(size <= std::numeric_limits<uint32_t>::max(),
+                      "Integer unary input exceeds WebGPU index range.");
+    if (size == 0) {
+      return Status::OK();
+    }
+    constexpr bool is_int64 = sizeof(T) == 8;
+    constexpr int components = is_int64 ? 1 : 4;
+    const auto count = static_cast<uint32_t>(size);
+    const auto words = (count - 1) / components + 1;
+    IntegerUnaryProgram program{Op, is_int64};
+    program.AddInput({input, ProgramTensorMetadataDependency::Type, {words}, components})
+        .AddOutput({output, ProgramTensorMetadataDependency::Type, {words}, components})
+        .AddUniformVariables({count})
+        .SetDispatchGroupSize((words - 1) / WORKGROUP_SIZE + 1)
+        .CacheHint(static_cast<int>(Op), is_int64);
+    return context.RunProgram(program);
+  }
+};
+
+template <typename T>
+using AbsInteger = IntegerUnary<T, IntegerUnaryOp::Abs>;
+template <typename T>
+using NegInteger = IntegerUnary<T, IntegerUnaryOp::Neg>;
+template <typename T>
+using ReluInteger = IntegerUnary<T, IntegerUnaryOp::Relu>;
+template <typename T>
+using SignInteger = IntegerUnary<T, IntegerUnaryOp::Sign>;
+
+#define WEBGPU_INTEGER_UNARY_KERNEL(OP, TYPE, FROM, TO, SINCE)                                         \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                             \
+      OP, kOnnxDomain, FROM, TO, TYPE, kWebGpuExecutionProvider,                                       \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()), OP##Integer<TYPE>); \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                       \
+      OP, kOnnxDomain, SINCE, TYPE, kWebGpuExecutionProvider,                                          \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<TYPE>()), OP##Integer<TYPE>);
+
 WEBGPU_ELEMENTWISE_IMPL(Abs, "abs(a)")
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Abs, 6, 12, WebGpuSupportedNumberTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Abs, 13, WebGpuSupportedNumberTypes())
+WEBGPU_INTEGER_UNARY_KERNEL(Abs, int8_t, 6, 12, 13)
+WEBGPU_INTEGER_UNARY_KERNEL(Abs, int64_t, 6, 12, 13)
 
 WEBGPU_ELEMENTWISE_IMPL(Neg, "-a")
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Neg, 6, 12, SignedNumberTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Neg, 13, SignedNumberTypes())
+WEBGPU_INTEGER_UNARY_KERNEL(Neg, int8_t, 6, 12, 13)
+WEBGPU_INTEGER_UNARY_KERNEL(Neg, int64_t, 6, 12, 13)
 
 WEBGPU_ELEMENTWISE_IMPL(Floor, "floor(a)")
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Floor, 6, 12, WebGpuSupportedFloatTypes())
@@ -114,6 +230,8 @@ WEBGPU_ELEMENTWISE_KERNEL(Round, 22, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_IMPL(Sign, "sign(a)")
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Sign, 9, 12, SignedNumberTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Sign, 13, SignedNumberTypes())
+WEBGPU_INTEGER_UNARY_KERNEL(Sign, int8_t, 9, 12, 13)
+WEBGPU_INTEGER_UNARY_KERNEL(Sign, int64_t, 9, 12, 13)
 
 // Evaluated in f32: float16 exp() is up to 2 ULP off, which WebNN conformance rejects.
 WEBGPU_ELEMENTWISE_IMPL(Exp, "x_value_t(exp(vec4<f32>(a)))", "", ShaderUsage::UseValueTypeAlias)
@@ -598,6 +716,8 @@ WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Relu, 6, 12, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Relu, 13, 13, WebGpuSupportedFloatTypes())
 // Relu-14 adds signed integer types; int32 is the one WGSL supports natively.
 WEBGPU_ELEMENTWISE_KERNEL(Relu, 14, SignedNumberTypes())
+WEBGPU_INTEGER_UNARY_KERNEL(Relu, int8_t, 14, 20, 21)
+WEBGPU_INTEGER_UNARY_KERNEL(Relu, int64_t, 14, 20, 21)
 
 WEBGPU_LU_IMPL(LeakyRelu, "select(x_element_t(uniforms.attr) * a, a, a >= vec4<x_element_t>(0))", "", 0.01f)
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(LeakyRelu, 6, 15, WebGpuSupportedFloatTypes())
