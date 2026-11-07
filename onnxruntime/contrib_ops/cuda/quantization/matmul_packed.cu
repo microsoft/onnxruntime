@@ -21,7 +21,7 @@ namespace {
 // Warp-K-Split Tensor-Core BF16 GEMV/GEMM kernel for M in 1..8 on large-N projections (e.g. lm_head).
 // KW warps (KW*32 threads) split K across the KW warps with zero __syncthreads() in the K-loop,
 // while computing MT*16 output columns per CTA.
-template <int KW, int MT, int kCompileType>
+template <int KW, int MT, int kCompileType, int kChunk = 32>
 __global__ __launch_bounds__(KW * 32) void MatMulPackedBf16TcWarpKSplitKernel(
     const __nv_bfloat16* __restrict__ a,
     MatMulPackedParams p,
@@ -59,26 +59,109 @@ __global__ __launch_bounds__(KW * 32) void MatMulPackedBf16TcWarpKSplitKernel(
   const bool a_valid = (g < m_rt);
   const __nv_bfloat16* a_row = a + static_cast<int64_t>(a_valid ? g : 0) * p.k;
 
-  const int num_sb32 = p.k >> 5;
-  for (int sb32_idx = warp; sb32_idx < num_sb32; sb32_idx += KW) {
-    const uint4 b_vec = a_valid
-                            ? gguf_cuda::LoadU4Dev(a_row + sb32_idx * 32 + t * 8)
-                            : make_uint4(0u, 0u, 0u, 0u);
+  if constexpr (kChunk != 32) {
+    // Keep contiguous 64/128-K partitions and their MMA operand order together;
+    // interleaving 32-K partitions changes cancellation before the warp reduction.
+    constexpr int kHalves = kChunk / 64;
+    for (int chunk = warp; chunk < p.k / kChunk; chunk += KW) {
 #pragma unroll
-    for (int m = 0; m < MT; ++m) {
-      float w_lo[8] = {};
-      float w_hi[8] = {};
-      if (valid_lo[m]) {
-        gguf_cuda::DecodeGgufSubBlock8Tpl<kCompileType>(row_ptrs_lo[m], p.ggml_type, sb32_idx, t, w_lo);
+      for (int half = 0; half < kHalves; ++half) {
+        const int offset = chunk * kChunk + t * (kChunk / 4) + half * 16;
+        uint4 x0 = make_uint4(0u, 0u, 0u, 0u);
+        uint4 x1 = x0;
+        if (a_valid) {
+          const auto* input = a_row + offset;
+          if ((reinterpret_cast<uintptr_t>(input) & 15u) == 0) {
+            x0 = __ldg(reinterpret_cast<const uint4*>(input));
+            x1 = __ldg(reinterpret_cast<const uint4*>(input + 8));
+          } else {
+            const auto* bits = reinterpret_cast<const uint16_t*>(input);
+            auto* low = reinterpret_cast<uint32_t*>(&x0);
+            auto* high = reinterpret_cast<uint32_t*>(&x1);
+#pragma unroll
+            for (int i = 0; i < 4; ++i) {
+              low[i] = __ldg(bits + 2 * i) | (static_cast<uint32_t>(__ldg(bits + 2 * i + 1)) << 16);
+              high[i] = __ldg(bits + 8 + 2 * i) | (static_cast<uint32_t>(__ldg(bits + 9 + 2 * i)) << 16);
+            }
+          }
+        }
+        const uint32_t x_words[8] = {x0.x, x0.y, x0.z, x0.w, x1.x, x1.y, x1.z, x1.w};
+#pragma unroll
+        for (int m = 0; m < MT; ++m) {
+          float w_lo[16] = {};
+          float w_hi[16] = {};
+          if (valid_lo[m]) {
+            gguf_cuda::DecodeGgufSubBlock16Impl<kCompileType>(
+                row_ptrs_lo[m], offset / 32, (offset / 16) & 1, w_lo);
+          }
+          if (valid_hi[m]) {
+            gguf_cuda::DecodeGgufSubBlock16Impl<kCompileType>(
+                row_ptrs_hi[m], offset / 32, (offset / 16) & 1, w_hi);
+          }
+          float e0[8], e1[8], o0[8], o1[8];
+#pragma unroll
+          for (int s = 0; s < 4; ++s) {
+            constexpr bool adjacent = kCompileType == gguf_quant::kGgmlTypeIQ2_XXS;
+            const int i0 = adjacent ? 4 * s : s;
+            const int i1 = adjacent ? i0 + 1 : s + 4;
+            const int i2 = adjacent ? i0 + 2 : s + 8;
+            const int i3 = adjacent ? i0 + 3 : s + 12;
+            e0[2 * s] = w_lo[i0];
+            e0[2 * s + 1] = w_lo[i1];
+            e1[2 * s] = w_lo[i2];
+            e1[2 * s + 1] = w_lo[i3];
+            o0[2 * s] = w_hi[i0];
+            o0[2 * s + 1] = w_hi[i1];
+            o1[2 * s] = w_hi[i2];
+            o1[2 * s + 1] = w_hi[i3];
+          }
+          const uint4 e_lo = gguf_cuda::PackFloat8ToBf16x2(e0);
+          const uint4 e_hi = gguf_cuda::PackFloat8ToBf16x2(e1);
+          const uint4 o_lo = gguf_cuda::PackFloat8ToBf16x2(o0);
+          const uint4 o_hi = gguf_cuda::PackFloat8ToBf16x2(o1);
+          const uint32_t e_low[4] = {e_lo.x, e_lo.y, e_lo.z, e_lo.w};
+          const uint32_t e_high[4] = {e_hi.x, e_hi.y, e_hi.z, e_hi.w};
+          const uint32_t o_low[4] = {o_lo.x, o_lo.y, o_lo.z, o_lo.w};
+          const uint32_t o_high[4] = {o_hi.x, o_hi.y, o_hi.z, o_hi.w};
+#pragma unroll
+          for (int s = 0; s < 4; ++s) {
+            uint32_t b0, b1;
+            if constexpr (kCompileType == gguf_quant::kGgmlTypeIQ2_XXS) {
+              b0 = x_words[2 * s];
+              b1 = x_words[2 * s + 1];
+            } else {
+              const int word = s / 2;
+              const int selector = (s & 1) ? 0x7632 : 0x5410;
+              b0 = __byte_perm(x_words[word], x_words[word + 2], selector);
+              b1 = __byte_perm(x_words[word + 4], x_words[word + 6], selector);
+            }
+            gguf_cuda::MmaBf16(acc[m], e_low[s], o_low[s], e_high[s], o_high[s], b0, b1);
+          }
+        }
       }
-      if (valid_hi[m]) {
-        gguf_cuda::DecodeGgufSubBlock8Tpl<kCompileType>(row_ptrs_hi[m], p.ggml_type, sb32_idx, t, w_hi);
+    }
+  } else {
+    const int num_sb32 = p.k >> 5;
+    for (int sb32_idx = warp; sb32_idx < num_sb32; sb32_idx += KW) {
+      const uint4 b_vec = a_valid
+                              ? gguf_cuda::LoadU4Dev(a_row + sb32_idx * 32 + t * 8)
+                              : make_uint4(0u, 0u, 0u, 0u);
+#pragma unroll
+      for (int m = 0; m < MT; ++m) {
+        float w_lo[8] = {};
+        float w_hi[8] = {};
+        if (valid_lo[m]) {
+          gguf_cuda::DecodeGgufSubBlock8Tpl<kCompileType>(row_ptrs_lo[m], p.ggml_type, sb32_idx, t, w_lo);
+        }
+        if (valid_hi[m]) {
+          gguf_cuda::DecodeGgufSubBlock8Tpl<kCompileType>(row_ptrs_hi[m], p.ggml_type, sb32_idx, t, w_hi);
+        }
+        // Warp-synchronous MMA requires every lane, including padded output rows.
+        const uint4 e_vec = gguf_cuda::PackFloat8ToBf16x2(w_lo);
+        const uint4 o_vec = gguf_cuda::PackFloat8ToBf16x2(w_hi);
+        gguf_cuda::MmaBf16(acc[m], e_vec.x, o_vec.x, e_vec.y, o_vec.y, b_vec.x, b_vec.y);
+        gguf_cuda::MmaBf16(acc[m], e_vec.z, o_vec.z, e_vec.w, o_vec.w, b_vec.z, b_vec.w);
       }
-      // mma.sync requires every lane to participate, including partial output tiles.
-      const uint4 e_vec = gguf_cuda::PackFloat8ToBf16x2(w_lo);
-      const uint4 o_vec = gguf_cuda::PackFloat8ToBf16x2(w_hi);
-      gguf_cuda::MmaBf16(acc[m], e_vec.x, o_vec.x, e_vec.y, o_vec.y, b_vec.x, b_vec.y);
-      gguf_cuda::MmaBf16(acc[m], e_vec.z, o_vec.z, e_vec.w, o_vec.w, b_vec.z, b_vec.w);
     }
   }
 
@@ -355,6 +438,31 @@ void LaunchMatMulPackedBf16TcWarpKSplit(
   }
 }
 
+template <int KW, int MT, int kChunk>
+void LaunchMatMulPackedBf16ContiguousK(
+    cudaStream_t stream,
+    const __nv_bfloat16* a,
+    const MatMulPackedParams& params,
+    __nv_bfloat16* y,
+    int rows) {
+  const dim3 grid(static_cast<unsigned int>((params.n + MT * 16 - 1) / (MT * 16)));
+  using namespace onnxruntime::contrib::gguf_quant;
+  switch (params.ggml_type) {
+    case kGgmlTypeQ8_0:
+      MatMulPackedBf16TcWarpKSplitKernel<KW, MT, kGgmlTypeQ8_0, kChunk>
+          <<<grid, KW * 32, 0, stream>>>(a, params, y, rows);
+      return;
+    case kGgmlTypeIQ2_XXS:
+      MatMulPackedBf16TcWarpKSplitKernel<KW, MT, kGgmlTypeIQ2_XXS, kChunk>
+          <<<grid, KW * 32, 0, stream>>>(a, params, y, rows);
+      return;
+    case kGgmlTypeNVFP4:
+      MatMulPackedBf16TcWarpKSplitKernel<KW, MT, kGgmlTypeNVFP4, kChunk>
+          <<<grid, KW * 32, 0, stream>>>(a, params, y, rows);
+      return;
+  }
+}
+
 template <typename CudaT>
 Status DispatchMatMulPackedCuda(
     cublasHandle_t cublas,
@@ -377,6 +485,23 @@ Status DispatchMatMulPackedCuda(
     const int m_int = static_cast<int>(m);
 
     if constexpr (std::is_same<CudaT, __nv_bfloat16>::value) {
+      if (params.bf16_tc_supported && params.dequantize_to_activation_dtype && params.k % 64 == 0 &&
+          (params.ggml_type == kGgmlTypeQ8_0 || params.ggml_type == kGgmlTypeIQ2_XXS ||
+           params.ggml_type == kGgmlTypeNVFP4)) {
+        const bool wide = params.ggml_type == kGgmlTypeNVFP4 && params.k % 128 == 0;
+        if (params.n >= 8192) {
+          if (wide)
+            LaunchMatMulPackedBf16ContiguousK<4, 2, 128>(stream, a, params, y, m_int);
+          else
+            LaunchMatMulPackedBf16ContiguousK<4, 2, 64>(stream, a, params, y, m_int);
+        } else {
+          if (wide)
+            LaunchMatMulPackedBf16ContiguousK<16, 1, 128>(stream, a, params, y, m_int);
+          else
+            LaunchMatMulPackedBf16ContiguousK<16, 1, 64>(stream, a, params, y, m_int);
+        }
+        return CUDA_CALL(cudaGetLastError());
+      }
       if ((params.n >= kMatMulPackedBf16TcMinN || params.dequantize_to_activation_dtype) &&
           params.bf16_tc_supported) {
         LaunchMatMulPackedBf16TcWarpKSplit<4, 2>(stream, a, params, y, m_int);
