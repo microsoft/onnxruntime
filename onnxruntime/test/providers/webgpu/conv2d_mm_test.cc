@@ -15,7 +15,8 @@ namespace test {
 namespace {
 
 template <typename T>
-void RunConv2dMMInputChannelsTest(int64_t input_channels, bool weights_are_initializers) {
+void RunConv2dMMInputChannelsTest(int64_t input_channels, bool weights_are_initializers,
+                                  int64_t output_channels = 16) {
   auto webgpu_ep = DefaultWebGpuExecutionProvider();
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU execution provider is not available.";
@@ -24,7 +25,6 @@ void RunConv2dMMInputChannelsTest(int64_t input_channels, bool weights_are_initi
   constexpr int64_t batch = 2;
   constexpr int64_t height = 8;
   constexpr int64_t width = 8;
-  constexpr int64_t output_channels = 16;
   constexpr int64_t kernel_size = 3;
   std::vector<float> input(static_cast<size_t>(batch * input_channels * height * width));
   std::vector<float> weights(static_cast<size_t>(output_channels * input_channels * kernel_size * kernel_size));
@@ -99,6 +99,19 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Combine(::testing::Values(int64_t{3}, int64_t{6}, int64_t{9}, int64_t{15},
                                          int64_t{5}, int64_t{4}, int64_t{12}),
                        ::testing::Bool()));
+
+class Conv2dMMReportedChannelsTest : public ::testing::TestWithParam<std::tuple<int64_t, bool>> {};
+
+TEST_P(Conv2dMMReportedChannelsTest, Float) {
+  const auto [input_channels, weights_are_initializers] = GetParam();
+  RunConv2dMMInputChannelsTest<float>(input_channels, weights_are_initializers, 64);
+}
+
+// The FP32 accuracy report in #32777 has 64 output channels and therefore selects the
+// vec3 input path. Keep the spatial size small for the CPU reference calculation.
+INSTANTIATE_TEST_SUITE_P(
+    Conv_WebGPU, Conv2dMMReportedChannelsTest,
+    ::testing::Combine(::testing::Values(int64_t{99}, int64_t{303}), ::testing::Bool()));
 
 }  // namespace
 }  // namespace test
