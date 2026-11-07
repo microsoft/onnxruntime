@@ -1,0 +1,429 @@
+# Native Bazel build (experimental)
+
+This is an independent, native Bazel build graph. Bazel compiles ONNX Runtime,
+MLAS, ONNX, protobuf, execution-provider code, and language extensions directly.
+It does **not** invoke CMake, `build.py`, Gradle, MSBuild, `cmake-js`, or
+`rules_foreign_cc`. Existing ONNX and Abseil **source patches** are reused;
+their location under `cmake/` does not make them build-system dependencies.
+
+The native graph targets Linux x86-64, Windows x86-64, and macOS on Intel and
+Apple Silicon. The runtime and five desktop bindings passed native Linux,
+Windows, and Apple Silicon macOS CI at `d473c4e677`; later changes have separate
+validation evidence below. Intel macOS execution is not claimed. This is not
+yet a replacement for the release build: contrib operators, training, additional execution providers,
+mobile/web cross-compilation, and release packaging are not included.
+
+## Getting started
+
+Install [Bazelisk](https://github.com/bazelbuild/bazelisk), which reads the pinned
+version from `.bazelversion`, or install that Bazel version directly. Install
+the host's native development tools: GCC/Clang and development headers on Linux,
+Visual Studio 2022's Desktop development with C++ workload and Windows SDK on
+Windows, or Xcode command-line tools on macOS. Windows also needs Git for Windows
+and a Bash location visible to Bazel:
+
+```powershell
+$env:BAZEL_SH = 'C:\Program Files\Git\bin\bash.exe'
+```
+
+When invoking Bazel from Git Bash, keep any `MSYS2_ARG_CONV_EXCL=*` label
+protection on that invocation. Windows JavaScript targets clear the override
+only inside their launchers so native Node can resolve `/c/...` entrypoint paths.
+
+```sh
+bazel build -c opt //:runtime_library
+bazel test -c opt //:runtime_smoke_test //:runtime_shared_smoke_test //:common_test
+# Analyze the full graph without executing complete suites:
+bazel build -c opt //... --nobuild
+bazel test -c opt //:go_test //:java_smoke_test //:python_smoke_test //:node_smoke_test //:csharp_smoke_test
+```
+
+These same Bazel commands run natively on each host; Windows does not require
+WSL. The selected shared library is `bazel-bin/libonnxruntime.so` on Linux,
+`bazel-bin/onnxruntime.dll` on Windows, or `bazel-bin/libonnxruntime.dylib`
+on macOS. The public headers remain
+under `include/onnxruntime/`; the `//:api_headers` target exports their include
+paths. `//:runtime_shared` exposes the shared library to other Bazel C/C++
+targets. `//:runtime` is the static runtime library.
+
+For a package-ready native payload, build:
+
+```sh
+bazel build --config=release //:runtime_release_library
+```
+
+The output is under `bazel-bin/runtime_release_library/`, with the same
+platform-specific filename as the raw library. The release profile selects
+optimized compilation without LTO. Its additional linker optimizations apply
+only in opt builds. `--strip=always` alone does not remove all unnecessary ELF
+symbols, so the release target invokes the selected C++ toolchain's strip action:
+`--strip-unneeded` on Linux, or `-S -x` on macOS. Windows forwards the DLL without
+stripping it. `//:runtime_library` remains available for linking and debugging.
+
+The strip action declares the toolchain's files and uses its action environment.
+An auto-configured Linux C++ toolchain can still select system executables;
+source dependency checksums do not make those host tools hermetic.
+
+`//:release_parity_test` covers the release comparison helper. To compare
+extracted Linux payload directories and paired latency samples, run:
+
+```sh
+python tools/bazel/release_parity.py \
+  --baseline-payload /path/to/baseline --candidate-payload /path/to/candidate \
+  --strip-tool /usr/bin/strip --size-tool /usr/bin/size \
+  --baseline-benchmarks baseline.json --candidate-benchmarks candidate.json \
+  --max-performance-regression-percent 0 --output comparison.json
+```
+
+Each benchmark JSON contains a `workloads` object mapping identical workload
+names to at least five positive, finite latency samples. Baseline and candidate
+samples must be paired in the same trial order. The gate compares the median
+of paired candidate/baseline ratios and its paired-bootstrap 95% confidence
+interval. Both regressions and inconclusive intervals fail the gate; a zero
+threshold requires the interval's upper bound to be no greater than one.
+Payload file sets must match, and raw, stripped, ELF-section, and compressed
+sizes must not grow. Run comparable feature configurations and record source,
+toolchain, and payload hashes; the helper cannot establish feature equivalence.
+
+When invoking Bazel from Git Bash on Windows, set
+`export MSYS2_ARG_CONV_EXCL='*'` so labels and test filters are not rewritten
+as filesystem paths. CI also uses a short Windows output base to avoid path
+length limits.
+
+The MLAS baseline archive is retained because ISA archives call back into
+its helpers on ELF linkers. macOS logging is compiled as Objective-C++ rather
+than placed in a C++-only source list, and Intel constants use Mach-O sections.
+These graph fixes do not substitute for native macOS execution evidence.
+
+Dependencies are pinned in `MODULE.bazel` and `bazel/dependencies.bzl`. Source
+archives have SHA-256 checksums. Protobuf sources and configuration headers are
+generated by Bazel actions. MLAS ISA flags are confined to dispatched kernel
+targets rather than applied to the entire runtime.
+
+Local commands and CI enforce `--lockfile_mode=error`: stale or incomplete
+module lock state fails instead of being updated implicitly. After an intentional
+dependency change, run `bazel mod deps --lockfile_mode=update`, then review and
+commit the resulting `MODULE.bazel.lock` changes. Normal builds and tests must
+not override the frozen-lock setting.
+
+## Language extensions
+
+```sh
+bazel test -c opt \
+  //:go_test \
+  //:java_smoke_test \
+  //:python_smoke_test \
+  //:node_smoke_test \
+  //:csharp_smoke_test
+```
+
+| Surface | Native Bazel targets | Current scope |
+| --- | --- | --- |
+| C/C++ | `//:runtime`, `//:runtime_library`, `//:runtime_smoke_test` | Standard ONNX CPU operators; inference through the public C++ API. |
+| Python | `//:python_native_library`, `//:python_smoke_test` | CPython 3.12 extension and NumPy inference. Not a wheel or the high-level Python package layout. |
+| Java/JNI | `//:java_binding`, `//:java_native_library`, `//:java_smoke_test` | Java sources and JNI sources; JNI headers come from Bazel's Java compiler. No Gradle invocation. Not an AAR or Maven publication. |
+| Go | `//:go_binding`, `//:go_test` | First-party cgo binding and existing fixture-based unit tests. Tests explicitly load the Bazel-built shared library; they do not take the binding's missing-library skip path. External Qwen model tests are excluded. |
+| Node.js | `//:onnxruntime_binding.node`, `//:node_smoke_test` | Native Node-API extension and inference through its binding interface. The smoke test supplies the binding's Tensor constructor contract; TypeScript/npm packaging is not included. |
+| C# | `//:csharp_binding`, `//:csharp_smoke_test` | .NET 8 managed sources compiled directly with `rules_dotnet`, including the pinned `System.Numerics.Tensors` dependency, and exercised on .NET 10. Training APIs are not enabled. Not a NuGet package. |
+| Objective-C / Swift | Not implemented | Requires Apple SDK/toolchain rules, Objective-C wrapper targets, framework/module-map packaging, and Apple-host validation. |
+| JavaScript Web / WebAssembly | Not implemented | Requires an Emscripten toolchain, WASM-specific runtime configuration, exported C functions, worker/assets packaging, and browser tests. Native Linux compilation does not validate this surface. |
+| React Native | Not implemented | Requires the Android/iOS cross-compilation and packaging graphs plus the React Native bridge. A working Node addon is not evidence of mobile support. |
+| Rust | No first-party target | Third-party Rust bindings can consume the C ABI, but are not part of this source-build migration. |
+
+The language toolchains are managed by their Bazel rules, including a pinned
+Node.js 24 LTS runtime. Windows cgo uses a pinned LLVM-MinGW compiler in a
+separate Bazel platform configuration; ORT itself still uses MSVC and MASM.
+Windows Java tests use the managed JDK 25 runtime: the managed JDK 11 bundles
+an older MSVC runtime that crashes when loading this MSVC-built native library.
+There is no global MinGW installation or compiler switch. Python dependencies
+are listed in `bazel/requirements.txt`, without a separate wheel-hash lock;
+pip selects the host-compatible wheel from the configured index. Building native extensions
+is intentionally separate from producing release packages.
+
+The smoke tests use the checked-in `go/testdata/add_f32.onnx` model and verify
+its `[2, 3]` output and every expected value, not just library loading. The
+C++ test additionally creates MatMul and Conv models in memory, exercising
+MLAS on CPU and cuBLAS/cuDNN on CUDA.
+
+## CUDA
+
+CUDA is opt-in and currently restricted to Linux x86-64. Native desktop CPU
+support does not imply Windows CUDA support. CPU builds do not need a CUDA toolkit or cuDNN installation.
+Use a local development toolkit and a cuDNN SDK with `include/cudnn.h`:
+
+```sh
+export CUDA_PATH=/usr/local/cuda
+export CUDNN_PATH=/path/to/cudnn
+export LD_LIBRARY_PATH="$CUDNN_PATH/lib:$CUDA_PATH/lib64:${LD_LIBRARY_PATH:-}"
+
+bazel test -c opt \
+  --//bazel:cuda \
+  --@rules_cuda//cuda:archs=sm_90 \
+  --test_env=LD_LIBRARY_PATH \
+  //:runtime_cuda_smoke_test \
+  //:runtime_cuda_shared_smoke_test
+
+bazel build -c opt \
+  --//bazel:cuda \
+  --@rules_cuda//cuda:archs=sm_90 \
+  //:libonnxruntime.so \
+  //:libonnxruntime_providers_shared.so \
+  //:libonnxruntime_providers_cuda.so
+```
+
+Choose architectures appropriate for the GPU and toolkit; `sm_90` is the H200
+example, not a universal deployment setting. `rules_cuda` compiles `.cu`
+translation units directly. cuDNN and cuFFT are dynamically loaded using ORT's
+existing loaders. Preserve all three ORT shared libraries together, and make
+the CUDA/cuDNN runtime libraries discoverable.
+
+The CUDA smoke tests disable CPU execution-provider fallback. Passing them
+therefore requires GPU execution of Add, MatMul, and Conv, not merely detection of an
+installed GPU. GPU tests are tagged `manual`/`requires-gpu` and must be requested
+explicitly. The shared variant links only the public runtime API. Its CUDA
+import co-locates runtime and provider runfiles using native C++ linking
+metadata, so ORT's sibling-library loader works inside Bazel's `_solib`
+directory. Providers are not linked eagerly: their initialization requires
+the host interface installed by the runtime.
+
+`//:runtime_shared_smoke_test` also exercises the public shared-runtime import
+in the default CPU configuration, without requiring CUDA SDKs.
+
+The following combinations have executed the fallback-disabled CUDA test on
+an NVIDIA H200 (`sm_90`), driver 580.159.04, on Azure Linux 3. The CUDA 12.0
+run used GCC 12.2; the other rows used GCC 13.2:
+
+| Toolkit | cuDNN | Result |
+| --- | --- | --- |
+| CUDA 12.0.1, NVCC 12.0.140 | 9.14.0.64 | Static/public-shared Add, MatMul, and Conv passed on GPU; 30 selected operator regressions passed on the integrated test graph. |
+| CUDA 12.8, NVCC 12.8.93 | 9.14.0.64 | Add, MatMul, and Conv passed on GPU. |
+| CUDA 13.0.2, NVCC 13.0.88 | 9.14.0.64 | Add, MatMul, and Conv passed on GPU at `35992fc6ad`. |
+| CUDA 13.3, NVCC 13.3.73 | 9.27.0.42 | Add, MatMul, and Conv passed on GPU. |
+
+These are tested combinations, not a claim that every CUDA 12/13 minor release,
+GPU architecture, or driver/cuDNN combination has passed. The existing
+Abseil NVCC 13.3 source workaround is included.
+
+The CUDA 12.0.1 lower-boundary run required source compatibility fixes for
+BF16 raw-bit min/max conversions, host-side half bias-scale comparison,
+Abseil range-trait specialization syntax, and integral atomic conversion
+without newer CCCL `bit_cast`. Range concepts remain enabled. On the
+integrated test graph from the dependent PR, the selected Min/Max and Gemm
+tests plus eight signed ScatterElements add/multiply wraparound tests passed
+(30 tests, no skips). BF16, Gemm, and signed wraparound GPU paths disable CPU
+fallback. ScatterND integer reductions remain unsupported; no new kernel
+support was added.
+
+The private xPack GCC 12.2.0-1 distribution defaults to global stack canaries
+and bundles an assembler too old for existing MLAS instructions. This run
+retained stack protection using TLS canaries and a private `as` symlink to
+host GNU assembler 2.41. CPU flags alone do not configure NVCC's host compiler;
+the matching `rules_cuda` setting is required for this particular profile:
+
+```bash
+# AS_PREFIX is a private directory containing the host assembler symlink.
+compiler_flags=(
+  --copt=-mstack-protector-guard=tls --host_copt=-mstack-protector-guard=tls
+  "--copt=-B${AS_PREFIX}/" "--host_copt=-B${AS_PREFIX}/"
+  "--@rules_cuda//cuda:host_copts=-mstack-protector-guard=tls,-B${AS_PREFIX}/"
+)
+bazel test //:runtime_cuda_smoke_test //:runtime_cuda_shared_smoke_test \
+  -c opt --jobs=24 --loading_phase_threads=4 --lockfile_mode=error \
+  --build_python_zip=false --//bazel:cuda --@rules_cuda//cuda:archs=sm_90 \
+  "${compiler_flags[@]}" --local_test_jobs=1 --test_env=LD_LIBRARY_PATH \
+  --test_env=CUDA_VISIBLE_DEVICES=0 --test_output=all --nocache_test_results
+# On the dependent PR's integrated graph, with the same flags/environment:
+# //:cuda_operator_test
+# --test_arg='--gtest_filter=MathOpTest.Min_13_Float16_*:MathOpTest.Max_13_Float16_*:CudaGemmBiasBroadcastTest/*.*:CudaScatterElementsReductionWrapTest/*.*'
+```
+
+Verified SDK/compiler/Bazel setup took 80.12 s, excluding cuDNN installation.
+After earlier compiler/source repairs, successful native compilation/link
+took 203.90 s (571 actions, 1,993 cache hits), both uncached GPU smokes
+46.57 s, and the corrected 30-test regression run 48.74 s including three
+sandbox actions. The unchanged three-target build took 0.911 s with no native
+compilation. These are staged, warm-cache timings, not a cold-build benchmark.
+The compiler-profile adjustments are not requirements for every GCC 12
+installation.
+
+The CUDA 13.0.2 run used a task-private SDK assembled from official,
+SHA-256-verified NVIDIA redistributions, GCC 13.2, 24 jobs, and the same H200
+host. An initial native compilation took 316.52 s but stopped before linking
+because the manually assembled SDK lacked the separate `cuda_culibos` package.
+After completing the SDK, the successful incremental compilation/link took
+175.19 s, the no-change build took 0.422 s, and the uncached fallback-disabled
+GPU test took 23.76 s. Dependency downloads were warm and partial object
+outputs were reused; these are staged validation timings, not an uninterrupted
+cold-build benchmark. Standard complete toolkit installations do not require
+this manual redistribution assembly.
+
+The shared-runtime regression subsequently passed the same three
+fallback-disabled CUDA operations on that SDK/H200 configuration in 23.05 s
+wall time, using already compiled runtime/provider objects. ELF inspection
+confirmed that the executable depends on `libonnxruntime.so`, not eagerly
+loaded provider libraries. The default CPU shared-runtime test passed with
+`CUDA_PATH`, `CUDNN_PATH`, and `LD_LIBRARY_PATH` unset in 113.45 s including
+550 actions (1,127 cache hits), using 24 jobs. These are incremental
+regression timings, not cold-build comparisons.
+
+The provider links with `--no-undefined` and exports only its `GetProvider`
+entry point, so missing implementation dependencies fail the build rather
+than surfacing later during provider loading.
+
+Contrib CUDA kernels and optional FlashAttention, memory-efficient attention,
+and XQA paths are not enabled. Some shared attention infrastructure is compiled
+because standard ONNX operators use it; this does not register contrib ops.
+
+## Tests and remaining migration
+
+Before cpuinfo integration,
+`bazel test //... -c opt --jobs=16 --keep_going --nocache_test_results` passed
+all seven default test targets on Azure Linux 3 with GCC 13.2, with
+`CUDA_PATH`, `CUDNN_PATH`, and `LD_LIBRARY_PATH` unset. This includes all five
+desktop-language smoke/unit targets and 20 existing C++ utility tests.
+
+A fresh Linux source build also passed all seven explicit targets with frozen
+locks after the portability fixes below (2,390 build actions, followed by an
+uncached seven-target test run). The Go wrapper preserves rules_go's run
+environment so its configured test directory and runtime-library path agree.
+
+On Windows x86-64 with Visual Studio 2022 (MSVC 14.44), Bazel 8.4.2,
+and the managed JDK 25 runtime, the following also passed all seven targets:
+
+```powershell
+bazel test //... -c opt --jobs=8 --keep_going --test_output=errors --nocache_test_results
+```
+
+This includes actual Add/MatMul/Conv inference through C++, the 20 C++ utility
+tests, and Go, Java/JNI, Python/NumPy, Node-API, and C# tests. The frozen Bazel
+module lock remained enabled. The local company package mirrors were configured
+in the user's Bazel RC, not embedded in repository dependencies.
+
+`//:common_test` runs existing narrow, SafeInt, semantic-version, span, and string
+utility tests. `//:go_test` runs the existing self-contained Go tests. The
+language smoke tests are integration tests, not replacements for each binding's
+complete test suite.
+
+The `Native Bazel desktop` workflow analyzes the default graph and executes
+explicit smoke/utility targets on `ubuntu-24.04`, `windows-2022`, and
+`macos-15`, including all five desktop bindings. It does not execute wildcard
+suites. Passing Linux tests alone is not evidence that the other hosts work.
+
+Training is intentionally excluded from this migration.
+
+Remaining work includes the full provider/operator suites, contrib operators,
+additional EPs, additional architecture variants, release packaging,
+cross-compilation, sanitizers, and the CUDA/toolchain matrix. Those are separate
+native targets/toolchains to add, not reasons to delegate back to the old build
+system.
+
+## Optimization and size parity
+
+Correctness results above are not inference-performance or binary-size
+comparisons against the release build. The current source-level audit found:
+
+- The pinned rules_cc native Linux toolchain uses `-O2`, `-DNDEBUG`,
+  function/data sections, and linker garbage collection in `-c opt` mode.
+  Its MSVC toolchain uses `/O2`, `/DNDEBUG`, and
+  `/OPT:ICF`/`/OPT:REF`. These are toolchain defaults, not evidence that every
+  effective compile/link action matches a particular release configuration.
+- MLAS ISA-specific sources retain their separate architecture flags and
+  runtime dispatch. The runtime and baseline MLAS archives use `alwayslink`
+  for registration and link-order correctness; this is not a minimal build.
+- This graph does not enable LTO explicitly. The CMake option
+  `onnxruntime_ENABLE_LTO` also defaults to off, but a release pipeline can
+  enable it. Comparing against such a build requires matching that setting.
+- The audit found missing PyTorch cpuinfo integration. Native Linux, Windows,
+  and macOS now compile its existing pinned source with upstream Bazel rules
+  and ORT's existing lifecycle/sysfs patches. `CPUINFO_SUPPORTED` and the
+  dependency are propagated together. Other target operating systems retain
+  their prior fallback detection; this does not enable cpuinfo for WASM or
+  Android. The standalone `//:cpuinfo_test` checks vendor/topology detection,
+  reference counting, and reinitialization; the runtime smoke test checks ORT's
+  detected vendor as well. This closes a source-graph gap, not proof of
+  equivalent kernel dispatch or inference performance.
+- Contrib operators are disabled in this foundation. Binary sizes must be
+  compared with matching operator/provider coverage, architecture, debug
+  information, and stripping settings.
+
+The new standalone cpuinfo test passed a fresh Windows MSVC build with two
+jobs: 25 actions, 51.35 seconds wall time including startup/dependency analysis,
+and 0.2 seconds test execution. No ORT runtime was rebuilt for this isolated
+check. The preceding foundation revision `d473c4e677` passed all seven native
+runtime/binding targets in Linux, Windows, and macOS CI; those results do not
+validate later changes.
+
+### Timed Linux comparison
+
+A controlled CPU-only comparison used source `f268b6bf43`, Azure Linux 3,
+GCC 13.2, and an Intel Xeon Platinum 8480C VM with 96 vCPUs and 1.8 TiB RAM.
+Both builds used 24 jobs, C++20, `-O2 -DNDEBUG -D_FORTIFY_SOURCE=1`, full
+protobuf, cpuinfo, no contrib operators, no CUDA, and no LTO. CMake was invoked
+independently with Ninja solely as a measurement baseline; it is not part of
+the Bazel graph. This is not a comparison against an official release artifact
+or an untouched CMake Release configuration.
+
+| Runtime build at `f268b6bf43` | Bazel 8.4.2 | CMake/Ninja |
+| --- | ---: | ---: |
+| Fresh native build, wall time | 176.41 s | 164.63 s |
+| Separate configure, wall time | Included above | 8.77 s |
+| Configure plus fresh build | 176.41 s | 173.40 s |
+| No-change build, wall time | 0.559 s | 0.064 s |
+| Unstripped shared library | 25,539,768 bytes | 26,288,464 bytes |
+| Stripped shared library | 19,466,944 bytes | 20,546,224 bytes |
+
+Bazel performed 1,422 actions for the fresh runtime. Its subsequent
+`//:cpuinfo_test //:runtime_smoke_test --nocache_test_results` took 139.20 s,
+including 882 additional native compilations for the static test variant;
+this is not pure test execution time. Both tests passed, with Intel vendor
+detection and complete Add/MatMul/Conv output checks. Build directories and
+dependency caches were task-private and initially empty; shared-host OS caches
+were not cleared. Tool installation and source extraction are outside these
+timings. These single-run build measurements do not establish a build-speed
+advantage.
+
+Initial inference trials exposed an approximately 9% Conv latency gap. A
+controlled MLAS-only `-fomit-frame-pointer` experiment removed most of it:
+the Bazel Linux toolchain otherwise supplies `-fno-omit-frame-pointer`, whereas
+the controlled CMake `-O2` build omits frame pointers by default. The native
+graph now applies `-fomit-frame-pointer` only to Linux x86-64 MLAS targets in
+`-c opt` mode. Debug, Windows, and macOS flags are unchanged; other runtime
+code retains the toolchain defaults. For frame-pointer-based profiling, this
+MLAS choice can be overridden with
+`--per_file_copt='onnxruntime/core/mlas/lib/.*@-fno-omit-frame-pointer'`.
+
+The actual selector-based change, without experimental command-line compiler
+overrides, rebuilt and passed the two native tests in 18.40 s (187 actions,
+2,125 action-cache hits). Linux optimized/debug action inspection confirmed
+the flag is respectively present/absent; Windows optimized analysis confirmed
+it is absent, with zero native build actions.
+
+Final inference measurements used five alternating trials per library, pinned
+to the same allowed logical CPU, one intra/inter-op thread, graph optimizations
+enabled, 20 warm-ups, and 100 measured runs per model. The same independently
+compiled `dlopen` harness checked every output element against deterministic
+all-ones references before timing. Entries are medians across the five trial
+medians or p95s, in microseconds:
+
+| FP32 model | Bazel median | CMake median | Bazel p95 | CMake p95 |
+| --- | ---: | ---: | ---: | ---: |
+| Add, 1,024 elements | 1.408 | 1.398 | 1.461 | 1.451 |
+| MatMul, 512 x 512 | 1,503.95 | 1,494.22 | 1,536.78 | 1,531.19 |
+| Conv, 1 x 16 x 64 x 64, 32 filters, 3 x 3 | 361.60 | 358.57 | 421.64 | 380.06 |
+
+The unchanged pre-fix Bazel library measured 396.62 microseconds for Conv in
+the same final trial batch. The fixed stripped library is 19,471,680 bytes,
+about 5.2% smaller than this CMake baseline. Both final libraries measured
+26,112 KiB process peak RSS. Library loading plus environment and first Add
+session construction took median 12.42 ms for Bazel and 12.83 ms for CMake;
+timing only session construction would misleadingly omit initialization work
+performed earlier by CMake.
+
+The three warmed median latencies are within 1% in this bounded experiment;
+tail latency varies on the shared VM, and these are not representative-model,
+multithreaded, GPU, or cross-platform performance results. The 114 compiled
+MLAS runtime source files match, but other definitions still differ, including
+RTTI, stream support, and Eigen flags. Smaller size alone therefore does not
+prove equivalent feature coverage or better optimization. Release parity
+requires broader feature/flag alignment and model benchmarks, not merely
+matching `-O2` or passing these microbenchmarks.

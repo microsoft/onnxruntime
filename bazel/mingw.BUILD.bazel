@@ -1,0 +1,48 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+load("@rules_cc//cc/private/toolchain:unix_cc_toolchain_config.bzl", "cc_toolchain_config")
+load("@rules_cc//cc/toolchains:cc_toolchain.bzl", "cc_toolchain")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(name = "files", srcs = glob(["**"]))
+
+cc_toolchain_config(
+    name = "config",
+    abi_libc_version = "ucrt",
+    abi_version = "mingw",
+    compiler = "mingw-clang",
+    cpu = "x64_windows",
+    cxx_builtin_include_directories = ["%crosstool_top%/"],
+    host_system_name = "x86_64-w64-mingw32",
+    target_libc = "ucrt",
+    target_system_name = "x86_64-w64-mingw32",
+    tool_paths = {
+        "gcc": "bin/x86_64-w64-mingw32-gcc.exe",
+        "ar": "bin/llvm-ar.exe",
+        "cpp": "bin/x86_64-w64-mingw32-gcc.exe",
+        "gcov": "bin/llvm-cov.exe",
+        "ld": "bin/ld.lld.exe",
+        "nm": "bin/llvm-nm.exe",
+        "objcopy": "bin/llvm-objcopy.exe",
+        "objdump": "bin/llvm-objdump.exe",
+        "strip": "bin/llvm-strip.exe",
+    },
+    toolchain_identifier = "ort-windows-cgo",
+)
+
+cc_toolchain(
+    name = "cc_toolchain",
+    all_files = ":files",
+    ar_files = ":files",
+    as_files = ":files",
+    compiler_files = ":files",
+    dwp_files = ":files",
+    linker_files = ":files",
+    objcopy_files = ":files",
+    strip_files = ":files",
+    supports_param_files = 1,
+    toolchain_config = ":config",
+    toolchain_identifier = "ort-windows-cgo",
+)

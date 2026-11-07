@@ -1,0 +1,144 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+load("@bazel_skylib//lib:selects.bzl", "selects")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+
+package(default_visibility = ["//visibility:public"])
+
+constraint_setting(name = "cgo_compiler")
+
+constraint_value(
+    name = "gnu_cgo",
+    constraint_setting = ":cgo_compiler",
+)
+
+platform(
+    name = "windows_cgo",
+    constraint_values = [
+        "@platforms//os:windows",
+        "@platforms//cpu:x86_64",
+        ":gnu_cgo",
+    ],
+)
+
+toolchain(
+    name = "windows_cgo_toolchain",
+    exec_compatible_with = [
+        "@platforms//os:windows",
+        "@platforms//cpu:x86_64",
+    ],
+    target_compatible_with = [
+        "@platforms//os:windows",
+        "@platforms//cpu:x86_64",
+        ":gnu_cgo",
+    ],
+    toolchain = "@ort_mingw//:cc_toolchain",
+    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+)
+
+[
+    config_setting(
+        name = os,
+        constraint_values = ["@platforms//os:" + os],
+    )
+    for os in [
+        "linux",
+        "windows",
+        "macos",
+    ]
+]
+
+[
+    config_setting(
+        name = cpu,
+        constraint_values = ["@platforms//cpu:" + cpu],
+    )
+    for cpu in [
+        "x86_64",
+        "aarch64",
+    ]
+]
+
+selects.config_setting_group(
+    name = "cpuinfo_supported",
+    match_any = [
+        ":linux",
+        ":windows",
+        ":macos",
+    ],
+)
+
+config_setting(
+    name = "windows_x86_64",
+    constraint_values = [
+        "@platforms//os:windows",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+config_setting(
+    name = "linux_x86_64",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+config_setting(
+    name = "linux_x86_64_opt",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+    values = {"compilation_mode": "opt"},
+)
+
+config_setting(
+    name = "linux_opt",
+    constraint_values = ["@platforms//os:linux"],
+    values = {"compilation_mode": "opt"},
+)
+
+config_setting(
+    name = "macos_opt",
+    constraint_values = ["@platforms//os:macos"],
+    values = {"compilation_mode": "opt"},
+)
+
+config_setting(
+    name = "windows_opt",
+    constraint_values = ["@platforms//os:windows"],
+    values = {"compilation_mode": "opt"},
+)
+
+exports_files([
+    "onnx.BUILD.bazel",
+    "abseil-includes.patch",
+    "onnxruntime.lds",
+    "python.lds",
+    "requirements.txt",
+    "cuda_provider.lds",
+    "mingw.BUILD.bazel",
+])
+
+bool_flag(
+    name = "cuda",
+    build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "cuda_enabled",
+    flag_values = {":cuda": "True"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "linux_x86_64_cuda",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+    flag_values = {":cuda": "True"},
+)

@@ -1,0 +1,17 @@
+diff --git a/absl/types/span.h b/absl/types/span.h
+--- a/absl/types/span.h
++++ b/absl/types/span.h
+@@ -91,9 +91,11 @@
+ #if defined(__cpp_lib_ranges) && __cpp_lib_ranges >= 201911L
+ #include <ranges>  // NOLINT(build/c++20)
++namespace std::ranges {
+ template <typename T>
+  // NOLINTNEXTLINE(build/c++20)
+-inline constexpr bool std::ranges::enable_view<absl::Span<T>> = true;
++inline constexpr bool enable_view<::absl::Span<T>> = true;
+ template <typename T>
+  // NOLINTNEXTLINE(build/c++20)
+-inline constexpr bool std::ranges::enable_borrowed_range<absl::Span<T>> = true;
++inline constexpr bool enable_borrowed_range<::absl::Span<T>> = true;
++}  // namespace std::ranges
+ #endif

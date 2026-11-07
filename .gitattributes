@@ -12,6 +12,9 @@
 # make sure build.sh retains Unix line endings, even when checked out on windows.
 *.sh text eol=lf
 
+# Frozen Bazel extension digests must match across host checkout conventions.
+*.bzl text eol=lf
+
 # Git hooks must have Unix line endings to work on all platforms
 .githooks/* text eol=lf
 

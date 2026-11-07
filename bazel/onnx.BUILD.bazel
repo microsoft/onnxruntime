@@ -1,0 +1,60 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("@protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("@protobuf//bazel:proto_library.bzl", "proto_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+proto_library(
+    name = "model_proto",
+    srcs = ["onnx/onnx-ml.proto"],
+)
+
+proto_library(
+    name = "operators_proto",
+    srcs = ["onnx/onnx-operators-ml.proto"],
+    deps = [":model_proto"],
+)
+
+proto_library(
+    name = "data_proto",
+    srcs = ["onnx/onnx-data.proto"],
+    deps = [":model_proto"],
+)
+
+[
+    cc_proto_library(
+        name = name + "_cc",
+        deps = [":" + name],
+    )
+    for name in ["model_proto", "operators_proto", "data_proto"]
+]
+
+write_file(
+    name = "version_header",
+    out = "onnx/common/version.h",
+    content = [
+        "#pragma once",
+        "#define ONNX_VERSION_MAJOR 1",
+        "#define ONNX_VERSION_MINOR 23",
+        "#define ONNX_VERSION_PATCH 2",
+        "#define ONNX_VERSION_STRING \"1.23.2\"",
+        "namespace ONNX_NAMESPACE { constexpr const char* LAST_RELEASE_VERSION = ONNX_VERSION_STRING; }",
+    ],
+)
+
+cc_library(
+    name = "onnx",
+    srcs = glob(
+        ["onnx/**/*.cc"],
+        exclude = ["onnx/cpp2py_export.cc", "onnx/test/**"],
+    ),
+    hdrs = glob(["onnx/**/*.h"]) + [":version_header"],
+    defines = ["ONNX_ML=1", "ONNX_NAMESPACE=onnx"],
+    includes = ["."],
+    deps = [":model_proto_cc", ":operators_proto_cc", ":data_proto_cc"],
+    alwayslink = True,
+)
