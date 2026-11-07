@@ -3523,6 +3523,93 @@ Bias, if needed, is a separate Add.)DOC")
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
+    MoEPacked, 1,
+    OpSchema()
+        .SetDoc(R"DOC(Mixture-of-experts with native GGUF IQ2_XXS tensor blocks and squared ReLU.
+
+Computes BF16 FC2(relu2(FC1(X))) for each selected expert and mixes its
+BF16 output using FP32 weights in the original route order, then rounds Y
+to BF16. Complete dequantized weights round to BF16 before FP32 MMA.
+Each native 256-weight block is a little-endian FP16 scale followed by
+64 IQ2_XXS record bytes. No separate per-block scale inputs are used.
+
+Routing is either preselected indices/weights or fused BF16 router input
+and weight with FP32 correction bias. Fused routing selects by
+sigmoid(Xr @ Wr.T) + bias, breaking ties by lower expert index, but mixes
+uncorrected sigmoid scores normalized by their selected sum plus 1e-20
+and multiplied by router_scale. Preselected weights are not renormalized.
+Duplicate or out-of-range preselected indices produce NaN for that token
+row without invalidating other rows.
+
+The initial CUDA kernel supports SM80+, X[R,1024], 1<=R<=8, 1<=k<=32,
+R*k<=128 and positive int32 intermediate I divisible by 256.
+Fused routing additionally requires E<=512 and positive int32 router
+width H divisible by 256. Temporary workspaces are internal.)DOC")
+        .Attr("quant_type", "Native expert block codec; initially 'iq2_xxs'.", AttributeProto::STRING)
+        .Attr("k", "Number of selected experts per token, in [1,32].", AttributeProto::INT)
+        .Attr("router_scale", "Finite fused-router weight multiplier; preselected routing requires 1.", AttributeProto::FLOAT, 1.0f)
+        .Input(0, "X", "BF16 expert input [R,1024].", "T")
+        .Input(1, "FC1", "UINT8 native IQ2_XXS blocks [E,I,264].", "TW")
+        .Input(2, "FC2", "UINT8 native IQ2_XXS blocks [E,1024,(I/256)*66].", "TW")
+        .Input(3, "indices", "Preselected INT32 expert indices [R,k].", "TI", OpSchema::Optional)
+        .Input(4, "weights", "Preselected FP32 mixing weights [R,k].", "TF", OpSchema::Optional)
+        .Input(5, "router_input", "Fused-router BF16 input [R,H].", "T", OpSchema::Optional)
+        .Input(6, "router_weight", "Fused-router BF16 weight [E,H].", "T", OpSchema::Optional)
+        .Input(7, "router_bias", "Fused-router FP32 correction bias [E].", "TF", OpSchema::Optional)
+        .Output(0, "Y", "BF16 expert mixture [R,1024].", "T")
+        .TypeConstraint("T", {"tensor(bfloat16)"}, "Activation, router and output type.")
+        .TypeConstraint("TW", {"tensor(uint8)"}, "Native expert block bytes.")
+        .TypeConstraint("TI", {"tensor(int32)"}, "Preselected expert indices.")
+        .TypeConstraint("TF", {"tensor(float)"}, "Mixing weights and correction bias.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          const auto* quant_type = ctx.getAttribute("quant_type");
+          const int64_t topk = getAttribute(ctx, "k", 0);
+          if (!quant_type || quant_type->s() != "iq2_xxs" || topk < 1 || topk > 32)
+            fail_shape_inference("MoEPacked requires quant_type='iq2_xxs' and 1 <= k <= 32.");
+          const auto present = [&ctx](size_t index) {
+            return ctx.getNumInputs() > index && ctx.getInputType(index) != nullptr;
+          };
+          const bool fused_router = present(5) || present(6) || present(7);
+          if (fused_router) {
+            if (!present(5) || !present(6) || !present(7) || present(3) || present(4))
+              fail_shape_inference("MoEPacked fused routing requires all three router inputs and no preselected routes.");
+          } else if (!present(3) || !present(4)) {
+            fail_shape_inference("MoEPacked preselected routing requires indices and weights.");
+          }
+          const auto* scale_attr = ctx.getAttribute("router_scale");
+          const float scale = scale_attr ? scale_attr->f() : 1.0f;
+          if (!std::isfinite(scale) || (!fused_router && scale != 1.0f))
+            fail_shape_inference("MoEPacked router_scale must be finite and non-default scale requires fused routing.");
+          for (size_t index : {size_t{1}, size_t{2}}) {
+            if (!hasInputShape(ctx, index)) continue;
+            const auto& b = getInputShape(ctx, index);
+            if (b.dim_size() != 3 ||
+                (b.dim(0).has_dim_value() &&
+                 (b.dim(0).dim_value() < topk || b.dim(0).dim_value() > std::numeric_limits<int32_t>::max())))
+              fail_shape_inference("MoEPacked expert weights require rank three and int32 E>=k.");
+            if (index == 1) {
+              if ((b.dim(1).has_dim_value() &&
+                   (b.dim(1).dim_value() <= 0 || b.dim(1).dim_value() > std::numeric_limits<int32_t>::max() ||
+                    b.dim(1).dim_value() % 256 != 0)) ||
+                  (b.dim(2).has_dim_value() && b.dim(2).dim_value() != 264))
+                fail_shape_inference("MoEPacked requires FC1[E,I,264], positive int32 I divisible by 256.");
+            } else if ((b.dim(1).has_dim_value() && b.dim(1).dim_value() != 1024) ||
+                       (b.dim(2).has_dim_value() &&
+                        (b.dim(2).dim_value() <= 0 || b.dim(2).dim_value() % 66 != 0))) {
+              fail_shape_inference("MoEPacked requires FC2[E,1024,(I/256)*66].");
+            }
+          }
+          if (!hasInputShape(ctx, 0)) return;
+          const auto& x = getInputShape(ctx, 0);
+          if (x.dim_size() != 2 || (x.dim(1).has_dim_value() && x.dim(1).dim_value() != 1024) ||
+              (x.dim(0).has_dim_value() &&
+               (x.dim(0).dim_value() < 1 || x.dim(0).dim_value() > 8 || x.dim(0).dim_value() * topk > 128)))
+            fail_shape_inference("MoEPacked requires X[R,1024], 1<=R<=8 and R*k<=128.");
+          updateOutputShape(ctx, 0, x);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
     MatMulBlockQuantizedFp4Weight, 1,
     OpSchema()
         .SetDoc(R"DOC(Weight-only NVFP4 (E2M1) matrix multiplication.
