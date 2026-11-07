@@ -8,6 +8,7 @@
 #include <complex>
 #include <functional>
 #include <limits>
+#include <type_traits>
 #include <vector>
 #include <core/common/safeint.h>
 
@@ -413,6 +414,19 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, 
     } else {
       ORT_RETURN_IF_ERROR(
           (dft_bluestein_z_chirp<T, U>(ctx, X, Y, b_fft, chirp, X_offset, X_stride, Y_offset, Y_stride, axis, onnxruntime::narrow<size_t>(dft_length), window, is_onesided, inverse, V, temp_output)));
+    }
+
+    // For a real input the DC bin and, for an even length, the Nyquist bin are exactly real. Their computed imaginary
+    // parts are only rounding noise whose sign varies, which makes the phase (e.g. atan2) of these bins flip by 2*pi.
+    if constexpr (std::is_same_v<U, T>) {
+      if (!inverse) {
+        auto* Y_data = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw()) + Y_offset;
+        Y_data[0] = std::complex<T>(Y_data[0].real(), T{0});
+        if (dft_length % 2 == 0) {
+          std::complex<T>& nyquist = Y_data[static_cast<size_t>(dft_length / 2) * Y_stride];
+          nyquist = std::complex<T>(nyquist.real(), T{0});
+        }
+      }
     }
   }
 
