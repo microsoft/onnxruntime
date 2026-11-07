@@ -2,11 +2,13 @@
 // Licensed under the MIT License.
 
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <future>
 #include <latch>
 #include <memory>
+#include <string>
 #include <gsl/gsl>
 
 #include "gtest/gtest.h"
@@ -80,17 +82,43 @@ TEST_F(CudaGraphCaptureTest, FailedCaptureEndClearsOwner) {
 
 TEST_F(CudaGraphCaptureTest, ReleaseWaitsForAsynchronousReplay) {
   struct PendingReplay {
+    int* buffer{};
+    std::atomic<bool> block{false};
+    int observed{};
     std::promise<void> started;
     std::latch finish{1};
   } pending;
   auto started = pending.started.get_future();
-  CUDAGraphManager graph(stream_);
+  CUDAExecutionProviderInfo info;
+  info.enable_cuda_graph = true;
+  info.min_num_runs_before_cuda_graph_capture = 1;
+  info.has_user_compute_stream = true;
+  info.user_compute_stream = stream_;
+  CUDAExecutionProvider provider(info);
+  provider.SetLogger(&logging::LoggingManager::DefaultLogger());
+
+  CUDA_CALL_THROW(cudaHostAlloc(&pending.buffer, sizeof(int), cudaHostAllocDefault));
+  auto buffer = std::shared_ptr<int>(pending.buffer, [](int* value) {
+    EXPECT_EQ(cudaFreeHost(value), cudaSuccess);
+  });
+  *buffer = 0;
+  std::weak_ptr<int> retained = buffer;
+  std::future<Status> replay;
   std::future<Status> release;
+  std::latch keep_replay_thread_alive{1};
+  std::promise<Status> replay_started;
+  auto replaying = replay_started.get_future();
   std::promise<void> release_started;
   auto releasing = release_started.get_future();
   const auto unblock = gsl::finally([&] {
     if (!pending.finish.try_wait()) {
       pending.finish.count_down();
+    }
+    if (!keep_replay_thread_alive.try_wait()) {
+      keep_replay_thread_alive.count_down();
+    }
+    if (replay.valid()) {
+      replay.wait();
     }
     if (release.valid()) {
       release.wait();
@@ -98,29 +126,75 @@ TEST_F(CudaGraphCaptureTest, ReleaseWaitsForAsynchronousReplay) {
     EXPECT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
   });
 
-  graph.CaptureBegin(7);
-  CUDA_CALL_THROW(cudaLaunchHostFunc(
-      stream_, [](void* data) {
-        auto& pending = *static_cast<PendingReplay*>(data);
-        pending.started.set_value();
-        pending.finish.wait();
-      },
-      &pending));
-  graph.CaptureEnd(7);
-  const auto replay_status = graph.Replay(7, false);
+  Ort::RunOptions options;
+  options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "7");
+  for (int run = 0; run < 2; ++run) {
+    ORT_THROW_IF_ERROR(provider.OnRunStart(*options));
+    cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+    CUDA_CALL_THROW(cudaStreamIsCapturing(stream_, &capture_status));
+    if (capture_status == cudaStreamCaptureStatusActive) {
+      provider.RetainBufferForGraphCapture(buffer);
+    }
+    CUDA_CALL_THROW(cudaLaunchHostFunc(
+        stream_, [](void* data) {
+          auto& pending = *static_cast<PendingReplay*>(data);
+          if (pending.block) {
+            pending.started.set_value();
+            pending.finish.wait();
+          }
+          pending.observed = ++*pending.buffer;
+        },
+        &pending));
+    ORT_THROW_IF_ERROR(provider.OnRunEnd(/*sync_stream=*/true, *options));
+  }
+  ASSERT_TRUE(provider.IsGraphCaptured(7));
+  const int before = *buffer;
+  buffer.reset();
+  ASSERT_FALSE(retained.expired());
+  pending.block = true;
+  replay = std::async(std::launch::async, [&] {
+    CUDA_CALL_THROW(cudaSetDevice(info.device_id));
+    const auto status = provider.ReplayGraph(7, /*sync=*/false);
+    replay_started.set_value(status);
+    keep_replay_thread_alive.wait();
+    return status;
+  });
+  ASSERT_EQ(replaying.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+  const auto replay_status = replaying.get();
   ASSERT_TRUE(replay_status.IsOK()) << replay_status.ErrorMessage();
   ASSERT_EQ(started.wait_for(std::chrono::seconds(5)), std::future_status::ready);
 
   release = std::async(std::launch::async, [&] {
+    CUDA_CALL_THROW(cudaSetDevice(info.device_id));
     release_started.set_value();
-    return graph.Release(7);
+    return provider.ReleaseCapturedGraph(7);
   });
-  releasing.wait();
+  ASSERT_EQ(releasing.wait_for(std::chrono::seconds(5)), std::future_status::ready);
   EXPECT_EQ(release.wait_for(std::chrono::milliseconds(50)), std::future_status::timeout);
+  EXPECT_FALSE(retained.expired());
+  EXPECT_EQ(replay.wait_for(std::chrono::milliseconds(0)), std::future_status::timeout);
   pending.finish.count_down();
   const auto release_status = release.get();
   EXPECT_TRUE(release_status.IsOK()) << release_status.ErrorMessage();
-  EXPECT_FALSE(graph.IsGraphCaptured(7));
+  EXPECT_TRUE(retained.expired());
+  EXPECT_EQ(pending.observed, before + 1);
+  EXPECT_FALSE(provider.IsGraphCaptured(7));
+  keep_replay_thread_alive.count_down();
+  EXPECT_TRUE(replay.get().IsOK());
+}
+
+TEST_F(CudaGraphCaptureTest, PerThreadUserStreamRejectedOnlyForGraphSessions) {
+  CUDAExecutionProviderInfo info;
+  info.has_user_compute_stream = true;
+  info.user_compute_stream = cudaStreamPerThread;
+  EXPECT_NO_THROW(CUDAExecutionProvider{info});
+  info.enable_cuda_graph = true;
+  try {
+    CUDAExecutionProvider provider(info);
+    ADD_FAILURE() << "Accepted a thread-local stream for a graph-enabled session";
+  } catch (const OnnxRuntimeException& error) {
+    EXPECT_NE(std::string(error.what()).find("cudaStreamPerThread"), std::string::npos);
+  }
 }
 
 TEST_F(CudaGraphCaptureTest, ExternalBuffersRetainProviderLifetime) {

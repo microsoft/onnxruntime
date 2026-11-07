@@ -387,6 +387,10 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
           info.gpu_device_mem_limit > 0 ? info.gpu_device_mem_limit : std::numeric_limits<size_t>::max())},
       info_{info},
       tuning_context_(this, &info_.tunable_op) {
+  ORT_ENFORCE(!(info_.enable_cuda_graph && info_.has_user_compute_stream &&
+                static_cast<cudaStream_t>(info_.user_compute_stream) == cudaStreamPerThread),
+              "cudaStreamPerThread is not supported with enable_cuda_graph; use an explicit CUDA stream "
+              "that is shared across caller threads");
   if (qmoe_controller_) {
     qmoe_controller_->SetBudgetAccount(session_budget_account_);
   }
