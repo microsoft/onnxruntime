@@ -76,7 +76,7 @@ class ComputeContextBase {
     return webgpu_context_.DeviceLimits();
   }
   inline bool HasFeature(wgpu::FeatureName feature) const {
-    return webgpu_context_.DeviceHasFeature(feature);
+    return ep_.DeviceHasFeature(feature);
   }
   inline bool HasWGSLLanguageFeature(wgpu::WGSLLanguageFeatureName feature) const {
     return webgpu_context_.Instance().HasWGSLLanguageFeature(feature);

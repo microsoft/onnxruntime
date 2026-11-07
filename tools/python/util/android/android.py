@@ -10,6 +10,7 @@ import signal
 import subprocess
 import time
 import typing
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from ..logger import get_logger
@@ -44,8 +45,55 @@ def get_sdk_tool_paths(sdk_root: str):
     )
 
 
+def _validate_system_image(sdk_root: Path, package_name: str):
+    parts = package_name.split(";")
+    if (
+        len(parts) != 4
+        or parts[0] != "system-images"
+        or any(not part or part in (".", "..") or "/" in part or "\\" in part for part in parts)
+        or not parts[1].startswith("android-")
+    ):
+        raise ValueError(f"Invalid system-image package name: {package_name}")
+
+    package_dir = sdk_root.joinpath(*parts)
+    root = ET.parse(package_dir / "package.xml").getroot()
+    local_package = next((element for element in root.iter() if element.tag.rsplit("}", 1)[-1] == "localPackage"), None)
+    if local_package is None or local_package.get("path") != package_name:
+        raise ValueError(f"Incorrect package identity in {package_dir / 'package.xml'}")
+
+    properties = {}
+    for line in (package_dir / "source.properties").read_text(encoding="utf-8").splitlines():
+        key, separator, value = line.partition("=")
+        if separator:
+            properties[key.strip()] = value.strip()
+    for key, expected in (
+        ("AndroidVersion.ApiLevel", parts[1].removeprefix("android-")),
+        ("SystemImage.TagId", parts[2]),
+        ("SystemImage.Abi", parts[3]),
+    ):
+        if properties.get(key) != expected:
+            raise ValueError(f"Incorrect {key} in {package_dir / 'source.properties'}; expected {expected}")
+    if not properties.get("Pkg.Revision"):
+        raise ValueError(f"Missing package revision in {package_dir / 'source.properties'}")
+
+    system_image = package_dir / "system.img"
+    if not system_image.is_file() or system_image.stat().st_size == 0:
+        raise ValueError(f"Missing or empty system image: {system_image}")
+
+
 def create_virtual_device(sdk_tool_paths: SdkToolPaths, system_image_package_name: str, avd_name: str):
-    run(sdk_tool_paths.sdkmanager, "--install", system_image_package_name, input=b"y")
+    sdk_root = Path(sdk_tool_paths.emulator).parent.parent
+    try:
+        _validate_system_image(sdk_root, system_image_package_name)
+    except (OSError, ValueError, ET.ParseError) as error:
+        _log.warning(
+            "Local system-image validation failed for %s: %s. Falling back to sdkmanager --install.",
+            system_image_package_name,
+            error,
+        )
+        run(sdk_tool_paths.sdkmanager, "--install", system_image_package_name, input=b"y")
+    else:
+        _log.info("Using installed system image %s from %s", system_image_package_name, sdk_root)
     android_avd_home = os.environ["ANDROID_AVD_HOME"]
 
     if android_avd_home is not None:

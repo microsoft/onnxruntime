@@ -443,6 +443,41 @@ TEST(OrtModelTest, RejectsInputArgCountTotalOverflow) {
   }
 }
 
+TEST(OrtModelTest, RejectsMissingKernelTypeStrResolverEntryOnInitialize) {
+  // Build an ORT format v5+ model with a ReduceSum:13 node, but omit the
+  // KernelTypeStrResolver table so ResolveKernelTypeStr fails during
+  // InferenceSession::Initialize() -> MatchKernelDefTypes(). Verify that
+  // Initialize() returns a failing Status rather than throwing/aborting.
+  const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
+        fbs::CreateValueInfoDirect(builder, "data", "", CreateFloatTensorTypeInfo(builder, 2)),
+        fbs::CreateValueInfoDirect(builder, "reduced", "", CreateFloatTensorTypeInfo(builder, 1))};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> inputs{builder.CreateSharedString("data")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> outputs{builder.CreateSharedString("reduced")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> implicit_inputs;
+    std::vector<int32_t> input_arg_counts{1};
+    std::vector<flatbuffers::Offset<fbs::Node>> nodes{
+        fbs::CreateNodeDirect(builder, "reduce_sum_0", "", "", 13, 0, "ReduceSum",
+                              fbs::NodeType::Primitive, nullptr,
+                              &inputs, &outputs, nullptr,
+                              &input_arg_counts, &implicit_inputs)};
+
+    return fbs::CreateGraphDirect(builder, nullptr, &node_args, &nodes, 1, nullptr, &inputs, &outputs);
+  });
+
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
+
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(buffer.data(), static_cast<int>(buffer.size())));
+
+  const Status status = session_object.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+  EXPECT_THAT(status.ErrorMessage(),
+              testing::HasSubstr("Could not find an implementation for ReduceSum(13) node with name 'reduce_sum_0'"));
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 TEST(OrtModelTest, NormalizesValidVariadicInputArgCounts) {
   const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {

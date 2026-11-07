@@ -353,14 +353,16 @@ Status ProgramManager::Build(const ProgramBase& program,
 
   // Dump shader code, if requested. It is dumped to `shader_dump_fn_` if set or VERBOSE logging otherwise.
   {
-    const auto shader_content = [&program, &program_key, &code]() {
-      return MakeString("\n=== WebGPU Shader code [", program.Name(),
-                        ", Key=\"", program_key, "\"",
-                        "] Start ===\n\n",
-                        code,
-                        "\n=== WebGPU Shader code [", program.Name(),
-                        ", Key=\"", program_key, "\"",
-                        "] End ===\n");
+    const auto shader_content = [this, &program, &program_key, &code]() {
+      // Generated WGSL source depends on these device settings as well as the program key.
+      const auto configuration = MakeStringWithClassicLocale(
+          "subgroups=", webgpu_context_.DeviceHasFeature(wgpu::FeatureName::Subgroups),
+          ";subgroup_matrix=", webgpu_context_.DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix),
+          ";max_storage_buffer_binding_size=", webgpu_context_.DeviceLimits().maxStorageBufferBindingSize);
+      const auto header = MakeString("=== WebGPU Shader code [", program.Name(),
+                                     ", Configuration=\"", configuration,
+                                     "\", Key=\"", program_key, "\"]");
+      return MakeString("\n", header, " Start ===\n\n", code, "\n", header, " End ===\n");
     };
 
     if (shader_dump_fn_) {
@@ -381,7 +383,7 @@ Status ProgramManager::Build(const ProgramBase& program,
 
   // TODO: a new cache hierarchy for constants.
   //
-  // Explaination:
+  // Explanation:
   // Currently, we use Uniforms for dynamic data. This helps to reduce the number of program artifacts.
   //
   // "dynamic data" here means the data the determined at runtime, such as the shape of the input tensor.
@@ -399,7 +401,7 @@ Status ProgramManager::Build(const ProgramBase& program,
   size_t constant_count = program.OverridableConstants().size();
 
   // making a copy of the constant names is required because they are stored as std::string_view in the program
-  // metadata. A value of std::string_view is not guaranteed to be a C-stlye string (null-terminated) and hence
+  // metadata. A value of std::string_view is not guaranteed to be a C-style string (null-terminated) and hence
   // cannot be used directly in the WebGPU API (which expects a const char*).
   std::vector<std::string> constant_names;
   constant_names.reserve(constant_count);

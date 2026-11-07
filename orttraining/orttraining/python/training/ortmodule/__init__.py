@@ -125,7 +125,8 @@ with contextlib.suppress(Exception):
 # assign them new values. Importing them directly do not propagate changes.
 ################################################################################
 ONNX_OPSET_VERSION = 17
-MINIMUM_RUNTIME_PYTORCH_VERSION_STR = "1.8.1"
+# Native DLPack bool interchange requires PyTorch 2.2.
+MINIMUM_RUNTIME_PYTORCH_VERSION_STR = "2.2.0"
 ORTMODULE_TORCH_CPP_DIR = os.path.join(os.path.dirname(__file__), "torch_cpp_extensions")
 _FALLBACK_INIT_EXCEPTION = None
 ORTMODULE_FALLBACK_POLICY = (

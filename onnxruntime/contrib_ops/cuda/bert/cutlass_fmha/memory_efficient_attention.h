@@ -64,6 +64,7 @@ struct MemoryEfficientAttentionParams {
   const int32_t* seqstart_q_ptr = nullptr;  // [B + 1], cumulated sequence lengths of queries
   const int32_t* seqstart_k_ptr = nullptr;  // [B + 1], cumulated sequence lengths of keys
   const int32_t* seqlen_k_ptr = nullptr;    // [B], sequence lengths of keys
+  const int32_t* seqlen_q_ptr = nullptr;    // [B], optional valid Q lengths, with fixed physical strides
   const void* query = nullptr;              // [B, S, N, H]
   const void* key = nullptr;                // [B, L, N, H], where L is kv_sequence_length
   const void* value = nullptr;              // [B, L, N, H_v]

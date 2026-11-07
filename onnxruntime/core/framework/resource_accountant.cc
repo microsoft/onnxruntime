@@ -575,6 +575,8 @@ Status CreateAccountants(
       config_options.GetConfigEntry(kOrtSessionOptionsCudaMatMulNBitsMChunkSize)};
   estimator_config.kernel_dispatch_policy =
       config_options.GetConfigEntry(kOrtSessionOptionsKernelDispatchPolicy);
+  estimator_config.cuda_fpa_intb_dequant_gemm_min_m =
+      config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBDequantGemmMinM);
   if (estimator_config.kernel_dispatch_policy.has_value()) {
     KernelDispatchPolicy parsed_policy = KernelDispatchPolicy::Auto;
     if (!TryParseKernelDispatchPolicy(
