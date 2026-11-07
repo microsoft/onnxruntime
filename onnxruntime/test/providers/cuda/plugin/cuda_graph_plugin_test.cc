@@ -21,6 +21,7 @@
 #include <memory>
 #include <mutex>
 #include <new>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -35,6 +36,12 @@
 
 namespace onnxruntime {
 namespace test {
+
+std::optional<std::string> ReadEnvironmentVariableOptional(const char* name);
+bool IsCudaVisibleDevicesExplicitlyDisabled(const std::optional<std::string>& cuda_visible_devices);
+bool ShouldAutoRegisterCudaPluginEp(const std::optional<std::string>& dynamic_plugin_ep_config_json,
+                                    const std::optional<std::string>& cuda_visible_devices);
+
 namespace {
 
 struct MockCudaGraphCallbacks {
@@ -1040,6 +1047,39 @@ TEST(CudaPluginGraphRetirementHostTest,
 
   ASSERT_EQ(MockCudaGraphCallbacks::destroyed_handles.size(), 1u);
   EXPECT_EQ(MockCudaGraphCallbacks::destroyed_handles[0], fake_exec_77);
+}
+
+TEST(CudaPluginGraphRetirementHostTest, CudaVisibleDevicesAutoRegistrationPolicy) {
+  // Unset CUDA_VISIBLE_DEVICES must not classify CUDA as explicitly disabled.
+  EXPECT_FALSE(IsCudaVisibleDevicesExplicitlyDisabled(std::nullopt));
+  EXPECT_TRUE(ShouldAutoRegisterCudaPluginEp(std::nullopt, std::nullopt));
+
+  // Explicitly empty "" or exact "-1" must preserve intentional disable behavior.
+  EXPECT_TRUE(IsCudaVisibleDevicesExplicitlyDisabled(std::optional<std::string>{""}));
+  EXPECT_FALSE(ShouldAutoRegisterCudaPluginEp(std::nullopt, std::optional<std::string>{""}));
+  EXPECT_TRUE(IsCudaVisibleDevicesExplicitlyDisabled(std::optional<std::string>{"-1"}));
+  EXPECT_FALSE(ShouldAutoRegisterCudaPluginEp(std::nullopt, std::optional<std::string>{"-1"}));
+
+  // Device indices / UUIDs and non-exact strings must preserve auto-registration.
+  EXPECT_FALSE(IsCudaVisibleDevicesExplicitlyDisabled(std::optional<std::string>{"0"}));
+  EXPECT_TRUE(ShouldAutoRegisterCudaPluginEp(std::nullopt, std::optional<std::string>{"0"}));
+  EXPECT_FALSE(IsCudaVisibleDevicesExplicitlyDisabled(std::optional<std::string>{"0,1"}));
+  EXPECT_TRUE(ShouldAutoRegisterCudaPluginEp(std::nullopt, std::optional<std::string>{"0,1"}));
+  EXPECT_FALSE(IsCudaVisibleDevicesExplicitlyDisabled(std::optional<std::string>{"GPU-1be37795-b43f-34ae-4871-f249699e949c"}));
+  EXPECT_TRUE(ShouldAutoRegisterCudaPluginEp(
+      std::nullopt, std::optional<std::string>{"GPU-1be37795-b43f-34ae-4871-f249699e949c"}));
+  EXPECT_FALSE(IsCudaVisibleDevicesExplicitlyDisabled(std::optional<std::string>{"-10"}));
+  EXPECT_TRUE(ShouldAutoRegisterCudaPluginEp(std::nullopt, std::optional<std::string>{"-10"}));
+
+  // An explicit dynamic plugin configuration retains precedence over default auto-registration.
+  const std::optional<std::string> explicit_config{"{\"selected_ep_name\":\"CUDAExecutionProvider\"}"};
+  EXPECT_FALSE(ShouldAutoRegisterCudaPluginEp(explicit_config, std::nullopt));
+  EXPECT_FALSE(ShouldAutoRegisterCudaPluginEp(explicit_config, std::optional<std::string>{"0"}));
+  EXPECT_FALSE(ShouldAutoRegisterCudaPluginEp(explicit_config, std::optional<std::string>{""}));
+  EXPECT_FALSE(ShouldAutoRegisterCudaPluginEp(explicit_config, std::optional<std::string>{"-1"}));
+
+  // Reading a guaranteed-unset variable name returns std::nullopt without mutating process env.
+  EXPECT_FALSE(ReadEnvironmentVariableOptional("ORT_UNIT_TEST_UNSET_ENV_VAR_33927_CHECK").has_value());
 }
 
 }  // namespace test

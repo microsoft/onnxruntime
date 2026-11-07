@@ -3,7 +3,6 @@
 
 #include <algorithm>
 #include <cstdlib>
-#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -65,6 +64,44 @@ constexpr const char* kDynamicPluginEpConfigJson = "ORT_UNIT_TEST_MAIN_DYNAMIC_P
 constexpr const char* kDynamicPluginEpConfigJsonFile = "ORT_UNIT_TEST_MAIN_DYNAMIC_PLUGIN_EP_CONFIG_JSON_FILE";
 #endif  // defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
 }  // namespace env_var_names
+
+namespace onnxruntime {
+namespace test {
+
+std::optional<std::string> ReadEnvironmentVariableOptional(const char* name) {
+  ORT_ENFORCE(name != nullptr);
+#ifdef _WIN32
+  char* buffer = nullptr;
+  size_t buffer_size = 0;
+  const errno_t err = _dupenv_s(&buffer, &buffer_size, name);
+  std::unique_ptr<char, decltype(&std::free)> buffer_holder(buffer, &std::free);
+  ORT_ENFORCE(err == 0, "_dupenv_s() failed for environment variable ", name, " with errno: ", err);
+  if (buffer == nullptr) {
+    return std::nullopt;
+  }
+  return std::string(buffer);
+#else
+  const char* value = std::getenv(name);
+  if (value == nullptr) {
+    return std::nullopt;
+  }
+  return std::string(value);
+#endif
+}
+
+bool IsCudaVisibleDevicesExplicitlyDisabled(const std::optional<std::string>& cuda_visible_devices) {
+  return cuda_visible_devices.has_value() &&
+         (cuda_visible_devices->empty() || *cuda_visible_devices == "-1");
+}
+
+bool ShouldAutoRegisterCudaPluginEp(const std::optional<std::string>& dynamic_plugin_ep_config_json,
+                                    const std::optional<std::string>& cuda_visible_devices) {
+  return !dynamic_plugin_ep_config_json.has_value() &&
+         !IsCudaVisibleDevicesExplicitlyDisabled(cuda_visible_devices);
+}
+
+}  // namespace test
+}  // namespace onnxruntime
 
 // ortenv_setup() and ortenv_teardown() are used by onnxruntime/test/xctest/xcgtest.mm so can't be file local
 extern "C" void ortenv_setup() {
@@ -135,11 +172,8 @@ extern "C" void ortenv_setup() {
       }
 
 #if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP) && defined(ORT_UNIT_TEST_CUDA_PLUGIN_EP_LIBRARY_PATH)
-      const char* cuda_visible_devices = std::getenv("CUDA_VISIBLE_DEVICES");
-      const bool cuda_devices_disabled =
-          cuda_visible_devices != nullptr &&
-          (cuda_visible_devices[0] == '\0' || std::strcmp(cuda_visible_devices, "-1") == 0);
-      if (!dynamic_plugin_ep_config_json.has_value() && !cuda_devices_disabled) {
+      const auto cuda_visible_devices = onnxruntime::test::ReadEnvironmentVariableOptional("CUDA_VISIBLE_DEVICES");
+      if (onnxruntime::test::ShouldAutoRegisterCudaPluginEp(dynamic_plugin_ep_config_json, cuda_visible_devices)) {
         dynamic_plugin_ep_config_json.emplace(
             "{\n"
             "  \"ep_library_registration_name\": \"CUDAExecutionProvider\",\n"
