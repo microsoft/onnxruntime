@@ -195,23 +195,21 @@ class BatchNorm : public OpKernel {
 #endif
         is_spatial_ ? C : sample_size_incl_all_channels);
 
-    // We can fuse the output computation as follows:
-    //   ((x - est_mean) * (inv_var) * scale + bias
-    // to
-    //   (x * inv_var * scale) + (bias - est_mean * inv_var * scale)
-    Eigen::Array<T, Eigen::Dynamic, 1> new_scale = inv_std * scale_arr;
-    Eigen::Array<T, Eigen::Dynamic, 1> new_bias = bias_arr - mean_arr * new_scale;
+    // Compute the output directly instead of fusing the mean into the bias.
+    // The fused form (bias - mean * inv_std * scale) produces NaN when
+    // mean == 0 and scale is infinite (0 * Inf = NaN), which differs from
+    // the ONNX reference formula: (X - mean) * inv_std * scale + bias.
     EigenArrayMap<T> Y_arr(Y->MutableData<T>(),
                            use_spatial_map ? sample_size : sample_size_incl_all_channels,
                            use_spatial_map ? N * C : N);
 
     if (use_spatial_map) {
       for (size_t nc = 0; nc < N * C; ++nc) {
-        Y_arr.col(nc) = X_arr.col(nc) * new_scale(nc % C) + new_bias(nc % C);
+        Y_arr.col(nc) = (X_arr.col(nc) - mean_arr(nc % C)) * inv_std(nc % C) * scale_arr(nc % C) + bias_arr(nc % C);
       }
     } else {
       for (size_t n = 0; n < N; ++n) {
-        Y_arr.col(n) = X_arr.col(n) * new_scale.col(0) + new_bias.col(0);
+        Y_arr.col(n) = (X_arr.col(n) - mean_arr) * inv_std * scale_arr + bias_arr;
       }
     }
     return Status::OK();
