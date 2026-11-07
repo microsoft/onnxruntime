@@ -15,6 +15,8 @@ using namespace onnxruntime::cuda;
 
 struct MatMulPackedParams {
   const uint8_t* b_data{nullptr};
+  const float* global_scale{nullptr};
+  bool dequantize_to_activation_dtype{false};
   int k{0};
   int n{0};
   int64_t row_bytes{0};
@@ -28,6 +30,7 @@ Status LaunchMatMulPackedCuda(
     const void* a,
     const MatMulPackedParams& params,
     void* scratch_w,
+    float* scratch_y,
     void* y,
     int64_t m);
 
@@ -41,6 +44,7 @@ class MatMulPacked final : public CudaKernel {
   int64_t k_{0};
   int64_t n_{0};
   int64_t ggml_type_{-1};
+  bool dequantize_to_activation_dtype_{false};
 };
 
 }  // namespace cuda

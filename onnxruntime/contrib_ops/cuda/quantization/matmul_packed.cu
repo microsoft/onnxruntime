@@ -94,7 +94,8 @@ __global__ __launch_bounds__(KW * 32) void MatMulPackedBf16TcWarpKSplitKernel(
       for (int w = 0; w < KW; ++w) {
         sum += s_red[w][rl][row_m];
       }
-      y[static_cast<int64_t>(row_m) * p.n + col] = __float2bfloat16_rn(sum);
+      y[static_cast<int64_t>(row_m) * p.n + col] =
+          __float2bfloat16_rn(p.global_scale ? sum * *p.global_scale : sum);
     }
   }
 }
@@ -127,6 +128,13 @@ __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
     const int l = q_idx & 3;
     float w_vals[8];
     gguf_cuda::DecodeGgufSubBlock8Tpl<kCompileType>(row_ptr, p.ggml_type, sb32_idx, l, w_vals);
+    if (p.dequantize_to_activation_dtype) {
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        w_vals[j] = gguf_cuda::CudaTypeToFloat(
+            gguf_cuda::FloatToCudaType<CudaT>(w_vals[j]));
+      }
+    }
     const int k_offset = sb32_idx * 32 + (l << 3);
 
     if constexpr (M_FIXED > 0) {
@@ -165,11 +173,13 @@ __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
     if constexpr (M_FIXED > 0) {
 #pragma unroll
       for (int m = 0; m < M_FIXED; ++m) {
-        y[static_cast<int64_t>(m) * p.n + n_out] = gguf_cuda::FloatToCudaType<CudaT>(acc[m]);
+        y[static_cast<int64_t>(m) * p.n + n_out] =
+            gguf_cuda::FloatToCudaType<CudaT>(p.global_scale ? acc[m] * *p.global_scale : acc[m]);
       }
     } else {
       for (int m = 0; m < M; ++m) {
-        y[static_cast<int64_t>(m) * p.n + n_out] = gguf_cuda::FloatToCudaType<CudaT>(acc[m]);
+        y[static_cast<int64_t>(m) * p.n + n_out] =
+            gguf_cuda::FloatToCudaType<CudaT>(p.global_scale ? acc[m] * *p.global_scale : acc[m]);
       }
     }
   }
@@ -240,6 +250,15 @@ void LaunchMatMulPackedGemvByM(
   }
 }
 
+template <typename CudaT>
+__global__ void MatMulPackedScaleOutputKernel(
+    const float* input, const float* global_scale, CudaT* output, int64_t count) {
+  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index < count) {
+    output[index] = gguf_cuda::FloatToCudaType<CudaT>(input[index] * *global_scale);
+  }
+}
+
 template <int KW, int MT>
 void LaunchMatMulPackedBf16TcWarpKSplit(
     cudaStream_t stream,
@@ -278,6 +297,7 @@ Status DispatchMatMulPackedCuda(
     const CudaT* a,
     const MatMulPackedParams& params,
     CudaT* scratch_w,
+    float* scratch_y,
     CudaT* y,
     int64_t m) {
   if (m == 0) return Status::OK();
@@ -288,7 +308,7 @@ Status DispatchMatMulPackedCuda(
     const int m_int = static_cast<int>(m);
 
     if constexpr (std::is_same<CudaT, __nv_bfloat16>::value) {
-      if (params.n >= 65536) {
+      if (params.n >= 65536 || params.dequantize_to_activation_dtype) {
         LaunchMatMulPackedBf16TcWarpKSplit<4, 2>(stream, a, params, y, m_int);
         return CUDA_CALL(cudaGetLastError());
       }
@@ -326,7 +346,8 @@ Status DispatchMatMulPackedCuda(
   const float alpha = 1.0f;
   const float beta = 0.0f;
   const cudaDataType_t data_type = is_bf16 ? CUDA_R_16BF : CUDA_R_16F;
-  return CUBLAS_CALL(cublasGemmEx(
+  ORT_RETURN_IF_NOT(!params.global_scale || scratch_y, "Scaled prefill requires FP32 output workspace");
+  ORT_RETURN_IF_ERROR(CUBLAS_CALL(cublasGemmEx(
       cublas,
       CUBLAS_OP_T,
       CUBLAS_OP_N,
@@ -341,11 +362,18 @@ Status DispatchMatMulPackedCuda(
       data_type,
       params.k,
       &beta,
-      y,
-      data_type,
+      params.global_scale ? static_cast<void*>(scratch_y) : static_cast<void*>(y),
+      params.global_scale ? CUDA_R_32F : data_type,
       params.n,
       CUBLAS_COMPUTE_32F,
-      CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+      CUBLAS_GEMM_DEFAULT_TENSOR_OP)));
+  if (params.global_scale) {
+    const int64_t count = m * params.n;
+    MatMulPackedScaleOutputKernel<CudaT><<<static_cast<unsigned int>((count + 255) / 256), 256, 0, stream>>>(
+        scratch_y, params.global_scale, y, count);
+    return CUDA_CALL(cudaGetLastError());
+  }
+  return Status::OK();
 }
 
 }  // namespace
@@ -357,16 +385,17 @@ Status LaunchMatMulPackedCuda(
     const void* a,
     const MatMulPackedParams& params,
     void* scratch_w,
+    float* scratch_y,
     void* y,
     int64_t m) {
   if (is_bf16) {
     return DispatchMatMulPackedCuda<__nv_bfloat16>(
         cublas, stream, true, static_cast<const __nv_bfloat16*>(a), params,
-        static_cast<__nv_bfloat16*>(scratch_w), static_cast<__nv_bfloat16*>(y), m);
+        static_cast<__nv_bfloat16*>(scratch_w), scratch_y, static_cast<__nv_bfloat16*>(y), m);
   }
   return DispatchMatMulPackedCuda<half>(
       cublas, stream, false, static_cast<const half*>(a), params,
-      static_cast<half*>(scratch_w), static_cast<half*>(y), m);
+      static_cast<half*>(scratch_w), scratch_y, static_cast<half*>(y), m);
 }
 
 }  // namespace cuda
