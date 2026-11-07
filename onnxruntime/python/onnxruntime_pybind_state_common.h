@@ -28,7 +28,7 @@ struct OrtStatus {
   char msg[1];  // a null-terminated string
 };
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_DML BACKEND_CANN BACKEND_WEBGPU
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_DML BACKEND_CANN BACKEND_WEBGPU
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/provider_factory_creators.h"
@@ -88,12 +88,6 @@ struct OrtStatus {
 #define BACKEND_OPENBLAS ""
 #endif
 
-#if USE_ACL
-#define BACKEND_ACL "-ACL"
-#else
-#define BACKEND_ACL ""
-#endif
-
 #if USE_DML
 #define BACKEND_DML "-DML"
 #else
@@ -132,9 +126,6 @@ namespace python {
 extern std::string openvino_device_type;
 }
 }  // namespace onnxruntime
-#endif
-#ifdef USE_ACL
-#include "core/providers/acl/acl_provider_factory.h"
 #endif
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"
@@ -564,7 +555,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGrap
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(const OrtDnnlProviderOptions* params);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(bool enable_fast_math);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(
     uint32_t flags, const optional<std::string>& partitioning_stop_ops_list);

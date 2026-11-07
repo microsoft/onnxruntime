@@ -46,9 +46,9 @@ Status LaunchSanitizeBlockTable(const int32_t* block_table, int32_t* sanitized_b
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "block_table element count exceeds the CUDA kernel indexing limit.");
   }
-  constexpr int kThreadsPerBlock = 256;
-  const size_t blocks = (element_count + kThreadsPerBlock - 1) / kThreadsPerBlock;
-  SanitizeBlockTableKernel<<<static_cast<unsigned int>(blocks), kThreadsPerBlock, 0, stream>>>(
+  constexpr int kBlockThreads = 256;
+  const size_t blocks = (element_count + kBlockThreads - 1) / kBlockThreads;
+  SanitizeBlockTableKernel<<<static_cast<unsigned int>(blocks), kBlockThreads, 0, stream>>>(
       block_table, sanitized_block_table, element_count, num_blocks);
   return CUDA_CALL(cudaGetLastError());
 }
@@ -132,11 +132,11 @@ Status LaunchMaskInvalidSequenceOutputs(
     T* output, const int32_t* sequence_validity,
     const int32_t* cumulative_seqlens_q, int batch_size,
     int v_hidden_size, cudaStream_t stream) {
-  constexpr int kThreadsPerBlock = 256;
+  constexpr int kBlockThreads = 256;
   constexpr int kMaxBlocks = 65535;
   if (batch_size > 0 && v_hidden_size > 0) {
     const int blocks = std::min(batch_size, kMaxBlocks);
-    MaskInvalidSequenceOutputs<<<blocks, kThreadsPerBlock, 0, stream>>>(
+    MaskInvalidSequenceOutputs<<<blocks, kBlockThreads, 0, stream>>>(
         output, sequence_validity, cumulative_seqlens_q, batch_size, v_hidden_size);
   }
   return CUDA_CALL(cudaGetLastError());
@@ -692,10 +692,10 @@ Status LaunchSanitizeSequenceLengths(int32_t* sanitized_cumulative_seqlens_q,
         max_num_blocks_per_seq, block_size, token_count);
     return CUDA_CALL(cudaGetLastError());
   }
-  constexpr int kThreadsPerBlock = 256;
+  constexpr int kBlockThreads = 256;
   const int cumulative_element_count = batch_size + 1;
-  const int cumulative_blocks = (cumulative_element_count + kThreadsPerBlock - 1) / kThreadsPerBlock;
-  ClampCumulativeSequenceLengths<<<cumulative_blocks, kThreadsPerBlock, 0, stream>>>(
+  const int cumulative_blocks = (cumulative_element_count + kBlockThreads - 1) / kBlockThreads;
+  ClampCumulativeSequenceLengths<<<cumulative_blocks, kBlockThreads, 0, stream>>>(
       sanitized_cumulative_seqlens_q, cumulative_seqlens_q, batch_size, token_count);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
   CUDA_RETURN_IF_ERROR(cub::DeviceScan::InclusiveScan(
@@ -703,8 +703,8 @@ Status LaunchSanitizeSequenceLengths(int32_t* sanitized_cumulative_seqlens_q,
       sanitized_cumulative_seqlens_q, sanitized_cumulative_seqlens_q,
       MaxInt32{}, cumulative_element_count, stream));
 
-  const int batch_blocks = (batch_size + kThreadsPerBlock - 1) / kThreadsPerBlock;
-  SanitizePastSequenceLengths<<<batch_blocks, kThreadsPerBlock, 0, stream>>>(
+  const int batch_blocks = (batch_size + kBlockThreads - 1) / kBlockThreads;
+  SanitizePastSequenceLengths<<<batch_blocks, kBlockThreads, 0, stream>>>(
       sanitized_past_seqlens, sequence_validity, cumulative_seqlens_kv, sanitized_cumulative_seqlens_q,
       past_seqlens, batch_size, max_num_blocks_per_seq, block_size);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());

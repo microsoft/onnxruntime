@@ -8,6 +8,9 @@ parameters:
 - name: DockerBuildArgs
   type: string
   default: ""
+- name: BaseImageFamily
+  type: string
+  default: ""
 - name: Repository
   type: string
 - name: UseImageCacheContainerRegistry
@@ -62,6 +65,7 @@ steps:
             --dockerfile "${{ parameters.Dockerfile }}" \
             --context "${{ parameters.Context }}" \
             --docker-build-args "${{ parameters.DockerBuildArgs }}" \
+            --base-image-family "${{ parameters.BaseImageFamily }}" \
             --container-registry onnxruntimebuildcache \
             --repository "${{ parameters.Repository }}"
         displayName: "Get ${{ parameters.Repository }} image for ${{ parameters.Dockerfile }}"
@@ -78,6 +82,7 @@ steps:
             --dockerfile "${{ parameters.Dockerfile }}" \
             --context "${{ parameters.Context }}" \
             --docker-build-args "${{ parameters.DockerBuildArgs }}" \
+            --base-image-family "${{ parameters.BaseImageFamily }}" \
             --repository "${{ parameters.Repository }}"
         displayName: "Get ${{ parameters.Repository }} image for ${{ parameters.Dockerfile }}"
         env:

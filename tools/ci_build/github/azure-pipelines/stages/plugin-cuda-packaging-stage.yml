@@ -68,14 +68,14 @@ parameters:
   displayName: 'Build fpA_intB GEMM CUDA kernels'
   default: true
 
-- name: docker_base_image
+- name: docker_base_image_family
   type: string
-  displayName: 'Linux x86_64 docker base image'
-  default: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1'
+  displayName: 'Linux x86_64 docker base-image family'
+  default: cuda12_x64_almalinux8_gcc14
 
-- name: docker_base_image_aarch64
+- name: docker_base_image_family_aarch64
   type: string
-  displayName: 'Linux aarch64 docker base image'
+  displayName: 'Linux aarch64 docker base-image family'
   default: ''
 
 - name: cmake_windows_x64_cuda_archs
@@ -131,23 +131,22 @@ stages:
             targetPath: '$(Build.ArtifactStagingDirectory)/metadata'
             artifactName: cuda_plugin_metadata
         steps:
-        - checkout: none
+        - checkout: self
+          fetchDepth: 1
+          submodules: false
+          persistCredentials: false
 
         - pwsh: |
             $ErrorActionPreference = 'Stop'
 
-            $tsaConfigDir = Join-Path '$(Build.SourcesDirectory)' '.config'
-            $tsaConfigPath = Join-Path $tsaConfigDir 'tsaoptions.json'
-            $tsaConfigUrl = 'https://raw.githubusercontent.com/microsoft/onnxruntime/$(Build.SourceVersion)/.config/tsaoptions.json'
+            $tsaConfigPath = Join-Path '$(Build.SourcesDirectory)' '.config/tsaoptions.json'
             $metadataDir = Join-Path '$(Build.ArtifactStagingDirectory)' 'metadata'
             $metadataPath = Join-Path $metadataDir 'metadata.json'
 
-            New-Item -ItemType Directory -Path $tsaConfigDir -Force | Out-Null
             New-Item -ItemType Directory -Path $metadataDir -Force | Out-Null
 
-            # Guardian's TSA upload step still runs for this job, so fetch the exact config
-            # file from the commit being packaged instead of doing a source checkout.
-            Invoke-WebRequest -Uri $tsaConfigUrl -OutFile $tsaConfigPath
+            $dockerBaseImage = & python tools/ci_build/resolve_docker_base_image.py --family $env:BASE_IMAGE_FAMILY
+            if ($LASTEXITCODE -ne 0) { throw 'Failed to resolve the CUDA plugin base image' }
 
             $metadata = [ordered]@{
               package_type = '${{ parameters.package_type }}'
@@ -157,7 +156,7 @@ stages:
               cuda_version_win_x64_no_dot = '${{ replace(parameters.cuda_version, '.', '') }}'
               cuda_version_win_arm64 = '${{ parameters.arm64_cuda_version }}'
               cuda_version_win_arm64_no_dot = '${{ replace(parameters.arm64_cuda_version, '.', '') }}'
-              docker_base_image_linux_x64 = '${{ parameters.docker_base_image }}'
+              docker_base_image_linux_x64 = $dockerBaseImage
               python_artifact_linux_x64 = 'cuda_plugin_python_linux_x64_cuda${{ replace(parameters.cuda_version, '.', '') }}'
               python_artifact_linux_aarch64 = 'cuda_plugin_python_linux_aarch64_cuda${{ replace(parameters.cuda_version, '.', '') }}'
               python_artifact_win_x64 = 'cuda_plugin_python_win_x64_cuda${{ replace(parameters.cuda_version, '.', '') }}'
@@ -172,7 +171,9 @@ stages:
             $metadata | ConvertTo-Json | Set-Content -Path $metadataPath -Encoding UTF8
             Get-Content $tsaConfigPath
             Get-Content $metadataPath
-          displayName: 'Fetch TSA config and create metadata.json'
+          displayName: 'Resolve base image and create metadata.json'
+          env:
+            BASE_IMAGE_FAMILY: ${{ parameters.docker_base_image_family }}
 
     # Windows x64
     - ${{ if eq(parameters.build_windows_x64, true) }}:
@@ -216,7 +217,7 @@ stages:
           version_file: ${{ parameters.version_file }}
           python_package_name: ${{ parameters.python_package_name }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
-          docker_base_image: ${{ parameters.docker_base_image }}
+          docker_base_image_family: ${{ parameters.docker_base_image_family }}
           python_version: ${{ parameters.python_version }}
           docker_python_exe_path: ${{ parameters.docker_python_exe_path }}
           artifact_name: cuda_plugin_linux_x64
@@ -236,7 +237,7 @@ stages:
           version_file: ${{ parameters.version_file }}
           python_package_name: ${{ parameters.python_package_name }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
-          docker_base_image: ${{ parameters.docker_base_image_aarch64 }}
+          docker_base_image_family: ${{ parameters.docker_base_image_family_aarch64 }}
           python_version: ${{ parameters.python_version }}
           docker_python_exe_path: ${{ parameters.docker_python_exe_path }}
           artifact_name: cuda_plugin_linux_aarch64
