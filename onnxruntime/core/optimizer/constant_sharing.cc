@@ -104,11 +104,8 @@ void ReplaceInputsToUseSharedInitializer(Graph& graph,
     }
     graph.RemoveConsumerNode(origin_initializer_node_arg->Name(), node);
 
-    //  Add consumer ref count for shared scalar initializer.
-    std::vector<const Node*> consumers = graph.GetConsumerNodes(shared_initializer_node_arg->Name());
-    if (std::find(consumers.begin(), consumers.end(), node) == consumers.end()) {
-      graph.AddConsumerNode(shared_initializer_node_arg->Name(), node);
-    }
+    // Add consumer ref count for shared scalar initializer. The consumer set ignores duplicates.
+    graph.AddConsumerNode(shared_initializer_node_arg->Name(), node);
   }
 
   // Remove the initializer if no other consumer nodes.
