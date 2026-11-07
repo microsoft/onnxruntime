@@ -668,15 +668,8 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
 #endif
           kDnnlExecutionProvider,
           kTensorrtExecutionProvider,
-#ifdef USE_NV
-          // Only include NV TRT RTX EP when is ORT is built with the provider-bridge
-          // version of the EP (i.e., USE_NV is defined). This allows use of the plugin EP version of the EP
-          // when ORT is not built any provider-bridge EPs.
-          kNvTensorRTRTXExecutionProvider,
-#endif
           kOpenVINOExecutionProvider,
           kDmlExecutionProvider,
-          kAclExecutionProvider,
           kNnapiExecutionProvider,
           kVSINPUExecutionProvider,
           kCoreMLExecutionProvider,
@@ -733,8 +726,6 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultDnnlExecutionProvider();
         else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)
           execution_provider = DefaultOpenVINOExecutionProvider();
-        else if (provider_type == onnxruntime::kNvTensorRTRTXExecutionProvider)
-          execution_provider = DefaultNvTensorRTRTXExecutionProvider();
         else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
           execution_provider = DefaultTensorrtExecutionProvider();
         else if (provider_type == onnxruntime::kNnapiExecutionProvider)
@@ -743,8 +734,6 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultVSINPUExecutionProvider();
         else if (provider_type == onnxruntime::kRknpuExecutionProvider)
           execution_provider = DefaultRknpuExecutionProvider();
-        else if (provider_type == onnxruntime::kAclExecutionProvider)
-          execution_provider = DefaultAclExecutionProvider();
         else if (provider_type == onnxruntime::kCoreMLExecutionProvider)
           execution_provider = DefaultCoreMLExecutionProvider();
         else if (provider_type == kCoreMLExecutionProviderMLProgram)
@@ -855,9 +844,6 @@ void BaseTester::ExecuteModelForEps(
       constexpr std::array kEpsThatCompileNodes{
           kOpenVINOExecutionProvider,
           kTensorrtExecutionProvider,  // uses kernel registry for Memcpy* nodes only
-#ifdef USE_NV
-          kNvTensorRTRTXExecutionProvider,  // uses kernel registry for Memcpy* nodes only
-#endif
           kNnapiExecutionProvider,
           kVSINPUExecutionProvider,
           kCoreMLExecutionProvider,

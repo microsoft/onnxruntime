@@ -39,6 +39,10 @@ ShaderHelper::ShaderHelper(const ProgramBase& program,
 
 Status ShaderHelper::Init() {
   // dispatch group size is normalized so no need to validate it here
+  ORT_RETURN_IF_NOT(!program_.UseSubgroupId() ||
+                        (webgpu_context_.DeviceHasFeature(wgpu::FeatureName::Subgroups) &&
+                         webgpu_context_.Instance().HasWGSLLanguageFeature(wgpu::WGSLLanguageFeatureName::SubgroupId)),
+                    "Program ", program_.Name(), " requires subgroups and the subgroup_id WGSL language feature.");
 
   // validate workgroup size
   // normalize 0 (meaning "use default") the same way GenerateSourceCode() does, so validation
@@ -87,9 +91,11 @@ Status ShaderHelper::Init() {
               "        @builtin(local_invocation_id) local_id : vec3<u32>";
   if (webgpu_context_.DeviceHasFeature(wgpu::FeatureName::Subgroups)) {
     body_ss_ << ",\n"
-                "        @builtin(subgroup_invocation_id) sg_id : u32,\n"
-                "        @builtin(subgroup_id) subgroup_index : u32,\n"
-                "        @builtin(subgroup_size) sg_size : u32";
+                "        @builtin(subgroup_invocation_id) sg_id : u32,\n";
+    if (program_.UseSubgroupId()) {
+      body_ss_ << "        @builtin(subgroup_id) subgroup_index : u32,\n";
+    }
+    body_ss_ << "        @builtin(subgroup_size) sg_size : u32";
   }
   // When using indirect dispatch, avoid @builtin(num_workgroups) to skip Dawn's validation
   // and duplication overhead in TransformIndirectDispatchBuffer.

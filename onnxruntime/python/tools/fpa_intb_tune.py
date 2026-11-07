@@ -57,6 +57,7 @@ _CACHE_KEY_COLUMNS = (
     "packing_sm",
     "paired_gemv_mode",
     "wave_aware_gemv",
+    "tensor_core_gemv",
 )
 _CACHE_CONFIG_COLUMNS = (
     "valid_config",
@@ -220,7 +221,7 @@ def _summarize_cache(cache_path: str, signature: dict[str, str], *, display: boo
         **signature,
         "ort_cuda_gemm_tactic_cache": "v1",
         "table": "matmulnbits_fpa_intb",
-        "tactic_selection_version": "4",
+        "tactic_selection_version": "5",
     }
     for key, value in expected.items():
         if header.get(key) != value:

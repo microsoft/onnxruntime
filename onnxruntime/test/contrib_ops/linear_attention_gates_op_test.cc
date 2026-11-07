@@ -360,6 +360,27 @@ TEST(ContribOpGatedRMSNormTest, BFloat16_Sigmoid_PerHead) {
   RunGatedRMSNormTest<BFloat16>(1, 4, 32, 128, 1e-6f, 2e-2f, GatedRMSNormActivation::kSigmoid, "sigmoid");
 }
 
+// The 16-bit, 128-wide CUDA path maps one row to a warp and four rows to a CTA, so 1, 3 and 5 rows
+// leave inactive warps in the final CTA. Every other test here uses a row count divisible by four.
+TEST(ContribOpGatedRMSNormTest, Float16_PartialFinalCta) {
+  for (int rows : {1, 3, 5}) {
+    SCOPED_TRACE("rows: " + std::to_string(rows));
+    RunGatedRMSNormTest<MLFloat16>(1, 1, rows, 128, 1e-6f, 2e-3f, GatedRMSNormActivation::kSilu);
+    RunGatedRMSNormTest<MLFloat16>(1, 1, rows, 128, 1e-6f, 2e-3f, GatedRMSNormActivation::kSigmoid, "sigmoid");
+  }
+}
+
+TEST(ContribOpGatedRMSNormTest, BFloat16_PartialFinalCta) {
+  if (!CudaHasBF16Support()) {
+    GTEST_SKIP() << "bfloat16 requires compute capability 8.0 or later";
+  }
+  for (int rows : {1, 3, 5}) {
+    SCOPED_TRACE("rows: " + std::to_string(rows));
+    RunGatedRMSNormTest<BFloat16>(1, 1, rows, 128, 1e-6f, 2e-2f, GatedRMSNormActivation::kSilu);
+    RunGatedRMSNormTest<BFloat16>(1, 1, rows, 128, 1e-6f, 2e-2f, GatedRMSNormActivation::kSigmoid, "sigmoid");
+  }
+}
+
 TEST(ContribOpGatedRMSNormTest, InvalidActivationFails) {
   auto execution_providers = AvailableGatedOpExecutionProviders();
   const std::vector<int64_t> dims = {1, 2, 8};

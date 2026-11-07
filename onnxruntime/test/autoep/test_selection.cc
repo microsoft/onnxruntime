@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <string_view>
 #include <unordered_set>
 // #include <absl/base/config.h>
 #include <gmock/gmock.h>
@@ -256,6 +257,31 @@ TEST(AutoEpSelection, CudaEP) {
   const auto cuda_ep_lib_path =
       std::filesystem::path{GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_cuda"))};
   RunBasicTest(kCudaExecutionProvider, cuda_ep_lib_path, provider_options);
+}
+
+TEST(AutoEpSelection, CudaEPMemoryCapacity) {
+  const auto cuda_ep_lib_path =
+      std::filesystem::path{GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_cuda"))};
+  if (!IsRegistered(kCudaExecutionProvider)) {
+    ASSERT_ORTSTATUS_OK(Ort::GetApi().RegisterExecutionProviderLibrary(
+        *ort_env, kCudaExecutionProvider, cuda_ep_lib_path.c_str()));
+  }
+
+  size_t tested = 0;
+  for (const auto& device : ort_env->GetEpDevices()) {
+    if (std::string_view(device.EpName()) != kCudaExecutionProvider) {
+      continue;
+    }
+
+    ++tested;
+    const auto [total, available] = device.GetMemoryCapacity();
+    EXPECT_GT(total, 0u);
+    EXPECT_LE(available, total);
+    EXPECT_EQ(device.GetTotalMemoryCapacity(), total);
+    EXPECT_THROW(device.GetMemoryCapacity(OrtDeviceMemoryType_HOST_ACCESSIBLE), Ort::Exception);
+  }
+
+  EXPECT_GT(tested, 0u);
 }
 #endif
 

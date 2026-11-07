@@ -174,7 +174,7 @@ __device__ __forceinline__ float HorizontalAdd(__nv_bfloat162 acc) {
 #endif
 }
 
-template <class T, int block_size, bool has_zero_point, int CtaM, int CtaN>
+template <class T, int block_size, bool has_zero_point, int CtaM, int CtaN, bool TailN = false>
 __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock, 3) MatMulFloat4BatchedKernel(
     T* output,
     const T* a_data,
@@ -189,6 +189,13 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock, 3) MatMulFloat
   const int lane_id = threadIdx.x;
   const int warp_id = WarpUniform(threadIdx.y);
   const int col_base = (blockIdx.x * kColsPerThreadBlock + warp_id) * CtaN;
+  if constexpr (TailN) {
+    static_assert(CtaN == 1 && !has_zero_point, "TailN needs one scale-only output per warp");
+    // This register-only kernel has no CTA barriers; the whole invalid warp exits before pointers.
+    if (col_base >= n) {
+      return;
+    }
+  }
   const int m_base = blockIdx.y * CtaM;
   const int valid = m - m_base;
   constexpr int k_per_iter = kWarpSize * kElementsPerThreadPerIteration;

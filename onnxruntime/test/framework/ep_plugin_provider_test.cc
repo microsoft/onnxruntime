@@ -11,6 +11,7 @@
 #include <fstream>
 #include <functional>
 #include <limits>
+#include <optional>
 #include "gsl/gsl"
 #include "gtest/gtest.h"
 
@@ -155,9 +156,11 @@ struct MakeTestOrtEpResult {
 // `setup` runs on the raw TestOrtEp before PluginExecutionProvider is constructed --
 // callbacks consulted at construction time (e.g., GetDefaultMemoryDevice seeding
 // default_device_) must be configured here.
+// `session_options` defaults to empty session options; pass entries to exercise the host's session config handling.
 MakeTestOrtEpResult MakeTestOrtEp(OrtEpFactory& ep_factory,
                                   std::vector<const OrtEpDevice*> ep_devices,
-                                  std::function<void(TestOrtEp&)> setup = nullptr) {
+                                  std::function<void(TestOrtEp&)> setup = nullptr,
+                                  const Ort::SessionOptions* session_options = nullptr) {
   // Default OrtHardwareDevice and OrtEpDevice used if the caller does not explicitly provide ep_devices.
   static std::unique_ptr<OrtHardwareDevice> ort_hw_device = MakeTestOrtHardwareDevice(OrtHardwareDeviceType_CPU);
   static std::unique_ptr<OrtEpDevice> ort_ep_device = MakeTestOrtEpDevice(ort_hw_device.get());
@@ -167,7 +170,9 @@ MakeTestOrtEpResult MakeTestOrtEp(OrtEpFactory& ep_factory,
   if (setup) {
     setup(*ort_ep_raw);
   }
-  auto ort_session_options = Ort::SessionOptions{};
+  const Ort::SessionOptions default_session_options{};
+  const Ort::SessionOptions& ort_session_options = session_options != nullptr ? *session_options
+                                                                              : default_session_options;
 
   if (ep_devices.empty()) {
     ep_devices.push_back(ort_ep_device.get());
@@ -1696,6 +1701,105 @@ TEST(PluginExecutionProviderTest, CreatePreferredAllocators_RejectsAllocatorWith
 }
 #endif  // !defined(ORT_NO_EXCEPTIONS)
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+namespace {
+
+// What the host handed OrtEpFactory::CreateAllocator while creating a PluginExecutionProvider's allocators.
+struct CapturedAllocatorOptions {
+  int calls{0};
+  std::optional<std::string> device_mem_limit;
+};
+
+CapturedAllocatorOptions g_captured_allocator_options;
+
+OrtStatus* ORT_API_CALL CapturingFactoryCreateAllocator(OrtEpFactory*, const OrtMemoryInfo*,
+                                                        const OrtKeyValuePairs* options,
+                                                        OrtAllocator** out) noexcept {
+  ++g_captured_allocator_options.calls;
+  if (options != nullptr) {
+    if (const char* limit = Ort::GetApi().GetKeyValue(options, "gpu_device_mem_limit")) {
+      g_captured_allocator_options.device_mem_limit = limit;
+    }
+  }
+  *out = nullptr;
+  return nullptr;
+}
+
+const char* ORT_API_CALL CudaEpName(const OrtEp*) noexcept {
+  return kCudaExecutionProvider;
+}
+
+// Creates the allocators of a PluginExecutionProvider built from `session_config` and reports what its factory saw.
+CapturedAllocatorOptions CaptureAllocatorOptions(
+    bool is_cuda_ep, const std::vector<std::pair<std::string, std::string>>& session_config) {
+  g_captured_allocator_options = {};
+
+  auto ort_device = test_plugin_ep::MakeTestOrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT);
+  auto ort_memory_info = std::make_unique<OrtMemoryInfo>("FakeGPU", OrtAllocatorType::OrtDeviceAllocator,
+                                                         ort_device, OrtMemTypeDefault);
+  auto ort_hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
+
+  test_plugin_ep::TestOrtEpFactory ep_factory;
+  ep_factory.CreateAllocator = CapturingFactoryCreateAllocator;
+  ep_factory.ReleaseAllocator = FakeReleaseAllocator;
+  auto ort_ep_device = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device.get(), ep_factory, ort_memory_info.get(),
+                                                           /*host_accessible_memory_info*/ nullptr);
+
+  Ort::SessionOptions session_options;
+  for (const auto& [key, value] : session_config) {
+    session_options.AddConfigEntry(key.c_str(), value.c_str());
+  }
+
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp(
+      ep_factory, {ort_ep_device.get()},
+      [is_cuda_ep](test_plugin_ep::TestOrtEp& test_ep) {
+        if (is_cuda_ep) {
+          test_ep.GetName = CudaEpName;
+        }
+      },
+      &session_options);
+
+  static_cast<void>(ep->CreatePreferredAllocators());
+  return g_captured_allocator_options;
+}
+
+}  // namespace
+
+// session.moe.offload.gpu_device_mem_limit is a session-level key, not an ep.cuda.* option. The host hands it to the
+// CUDA plugin EP's allocator factory so an allocator request that no pending session account owns still gets the limit.
+TEST(PluginExecutionProviderTest, CreatePreferredAllocators_ForwardsSessionDeviceMemLimitToCudaEp) {
+  const auto captured = CaptureAllocatorOptions(
+      /*is_cuda_ep*/ true, {{kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit, "4096"}});
+
+  EXPECT_EQ(captured.calls, 1);
+  ASSERT_TRUE(captured.device_mem_limit.has_value());
+  EXPECT_EQ(*captured.device_mem_limit, "4096");
+}
+
+TEST(PluginExecutionProviderTest, CreatePreferredAllocators_OmitsDeviceMemLimitWhenSessionKeyIsUnset) {
+  const auto captured = CaptureAllocatorOptions(/*is_cuda_ep*/ true, {{"ep.cuda.arena.max_mem", "2097152"}});
+
+  EXPECT_EQ(captured.calls, 1);
+  EXPECT_FALSE(captured.device_mem_limit.has_value());
+}
+
+TEST(PluginExecutionProviderTest, CreatePreferredAllocators_DoesNotForwardDeviceMemLimitToOtherEps) {
+  const auto captured = CaptureAllocatorOptions(
+      /*is_cuda_ep*/ false, {{kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit, "4096"}});
+
+  EXPECT_EQ(captured.calls, 1);
+  EXPECT_FALSE(captured.device_mem_limit.has_value());
+}
+
+// The limit is spelled only as the session-level key; an EP-scoped spelling is not an alias for it.
+TEST(PluginExecutionProviderTest, CreatePreferredAllocators_IgnoresEpScopedDeviceMemLimit) {
+  const auto captured = CaptureAllocatorOptions(/*is_cuda_ep*/ true, {{"ep.cuda.gpu_device_mem_limit", "4096"}});
+
+  EXPECT_EQ(captured.calls, 1);
+  EXPECT_FALSE(captured.device_mem_limit.has_value());
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 TEST(PluginExecutionProviderTest, IsGraphCaptureEnabled) {
   auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
 
@@ -2272,5 +2376,374 @@ TEST(PluginDataTransferTest, RejectsImplementationWithMissingRequiredFunction) {
   }
 }
 #endif
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(__wasm__)
+namespace {
+
+struct ExternalDataLoaderPluginTestContext {
+  struct MockDataTransferImpl : OrtDataTransferImpl {
+    explicit MockDataTransferImpl(ExternalDataLoaderPluginTestContext& owner) : owner(owner) {
+      ort_version_supported = ORT_API_VERSION;
+      Release = ReleaseImpl;
+      CanCopy = CanCopyImpl;
+      CopyTensors = CopyTensorsImpl;
+    }
+
+    static void ORT_API_CALL ReleaseImpl(OrtDataTransferImpl* this_ptr) noexcept {
+      auto* self = static_cast<MockDataTransferImpl*>(this_ptr);
+      ++self->owner.data_transfer_release_count;
+      delete self;
+    }
+
+    static bool ORT_API_CALL CanCopyImpl(const OrtDataTransferImpl* this_ptr,
+                                         const OrtMemoryDevice* src_device,
+                                         const OrtMemoryDevice* dst_device) noexcept {
+      const auto& ctx = static_cast<const MockDataTransferImpl*>(this_ptr)->owner;
+      const auto& src = *static_cast<const OrtDevice*>(src_device);
+      const auto& dst = *static_cast<const OrtDevice*>(dst_device);
+      if (dst.Type() != OrtDevice::GPU || dst.MemType() != OrtDevice::MemType::DEFAULT) {
+        return false;
+      }
+      if (src.Type() == OrtDevice::GPU && src.MemType() == OrtDevice::MemType::HOST_ACCESSIBLE) {
+        return ctx.allow_pinned_to_device;
+      }
+      if (src.Type() == OrtDevice::CPU) {
+        return ctx.allow_pageable_to_device;
+      }
+      return false;
+    }
+
+    static OrtStatus* ORT_API_CALL CopyTensorsImpl(OrtDataTransferImpl*,
+                                                   const OrtValue**,
+                                                   OrtValue**,
+                                                   OrtSyncStream**,
+                                                   size_t) noexcept {
+      return nullptr;
+    }
+
+    ExternalDataLoaderPluginTestContext& owner;
+  };
+
+  ExternalDataLoaderPluginTestContext() {
+    ResetCallbacks();
+  }
+
+  void ResetCallbacks() {
+    ep_factory.CreateDataTransfer = CreateDataTransferImpl;
+    ep_factory.IsStreamAware = IsStreamAwareImpl;
+    ep_factory.CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
+    ep_factory.CreateAllocator = CreateAllocatorImpl;
+    ep_factory.ReleaseAllocator = FakeReleaseAllocator;
+
+    is_cuda_ep = true;
+    is_stream_aware = true;
+    create_data_transfer_fails = false;
+    create_data_transfer_returns_null = false;
+    null_data_transfer_can_copy = false;
+    null_data_transfer_copy_tensors = false;
+    allow_pinned_to_device = true;
+    allow_pageable_to_device = true;
+  }
+
+  static OrtStatus* ORT_API_CALL CreateDataTransferImpl(OrtEpFactory* this_ptr,
+                                                        OrtDataTransferImpl** out) noexcept {
+    auto& ctx = *reinterpret_cast<ExternalDataLoaderPluginTestContext*>(
+        reinterpret_cast<char*>(this_ptr) - offsetof(ExternalDataLoaderPluginTestContext, ep_factory));
+    if (ctx.create_data_transfer_fails) {
+      *out = nullptr;
+      return Ort::GetApi().CreateStatus(ORT_FAIL, "simulated CreateDataTransfer failure");
+    }
+    if (ctx.create_data_transfer_returns_null) {
+      *out = nullptr;
+      return nullptr;
+    }
+    auto impl = std::make_unique<MockDataTransferImpl>(ctx);
+    if (ctx.null_data_transfer_can_copy) {
+      impl->CanCopy = nullptr;
+    }
+    if (ctx.null_data_transfer_copy_tensors) {
+      impl->CopyTensors = nullptr;
+    }
+    *out = impl.release();
+    return nullptr;
+  }
+
+  static bool ORT_API_CALL IsStreamAwareImpl(const OrtEpFactory* this_ptr) noexcept {
+    const auto& ctx = *reinterpret_cast<const ExternalDataLoaderPluginTestContext*>(
+        reinterpret_cast<const char*>(this_ptr) - offsetof(ExternalDataLoaderPluginTestContext, ep_factory));
+    return ctx.is_stream_aware;
+  }
+
+  static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(OrtEpFactory*,
+                                                               const OrtMemoryDevice*,
+                                                               const OrtKeyValuePairs*,
+                                                               OrtSyncStreamImpl** out) noexcept {
+    *out = nullptr;
+    return nullptr;
+  }
+
+  static OrtStatus* ORT_API_CALL EpCreateSyncStreamForDeviceImpl(OrtEp*,
+                                                                 const OrtMemoryDevice*,
+                                                                 OrtSyncStreamImpl** out) noexcept {
+    *out = nullptr;
+    return nullptr;
+  }
+
+  static OrtStatus* ORT_API_CALL CreateAllocatorImpl(OrtEpFactory*,
+                                                     const OrtMemoryInfo*,
+                                                     const OrtKeyValuePairs*,
+                                                     OrtAllocator** out) noexcept {
+    *out = nullptr;
+    return nullptr;
+  }
+
+  test_plugin_ep::MakeTestOrtEpResult MakeEp(
+      const std::vector<std::pair<std::string, std::string>>& session_config = {},
+      uint32_t vendor_id = OrtDevice::VendorIds::NVIDIA,
+      OrtDevice::DeviceType device_type = OrtDevice::GPU,
+      bool include_device_mem_info = true,
+      bool include_host_accessible_mem_info = true,
+      std::function<void(test_plugin_ep::TestOrtEp&)> extra_setup = nullptr) {
+    gpu_device = OrtDevice(device_type, OrtDevice::MemType::DEFAULT, vendor_id, /*device_id*/ 0, /*alignment*/ 16);
+    pinned_device = OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, vendor_id, /*device_id*/ 0,
+                              /*alignment*/ 16);
+    device_memory_info = std::make_unique<OrtMemoryInfo>(
+        "Cuda", OrtAllocatorType::OrtDeviceAllocator, gpu_device, OrtMemTypeDefault);
+    host_accessible_memory_info = std::make_unique<OrtMemoryInfo>(
+        "CudaPinned", OrtAllocatorType::OrtDeviceAllocator, pinned_device, OrtMemTypeCPUInput);
+    hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(
+        device_type == OrtDevice::GPU ? OrtHardwareDeviceType_GPU : OrtHardwareDeviceType_CPU);
+    ep_device = test_plugin_ep::MakeTestOrtEpDevice(
+        hw_device.get(), ep_factory,
+        include_device_mem_info ? device_memory_info.get() : nullptr,
+        include_host_accessible_mem_info ? host_accessible_memory_info.get() : nullptr);
+
+    Ort::SessionOptions session_options;
+    for (const auto& [key, value] : session_config) {
+      session_options.AddConfigEntry(key.c_str(), value.c_str());
+    }
+
+    return test_plugin_ep::MakeTestOrtEp(
+        ep_factory, {ep_device.get()},
+        [this, extra_setup](test_plugin_ep::TestOrtEp& test_ep) {
+          if (is_cuda_ep) {
+            test_ep.GetName = CudaEpName;
+          }
+          if (extra_setup) {
+            extra_setup(test_ep);
+          }
+        },
+        &session_options);
+  }
+
+  test_plugin_ep::TestOrtEpFactory ep_factory;
+  OrtDevice gpu_device;
+  OrtDevice pinned_device;
+  std::unique_ptr<OrtMemoryInfo> device_memory_info;
+  std::unique_ptr<OrtMemoryInfo> host_accessible_memory_info;
+  std::unique_ptr<OrtHardwareDevice> hw_device;
+  std::unique_ptr<OrtEpDevice> ep_device;
+
+  bool is_cuda_ep{true};
+  bool is_stream_aware{true};
+  bool create_data_transfer_fails{false};
+  bool create_data_transfer_returns_null{false};
+  bool null_data_transfer_can_copy{false};
+  bool null_data_transfer_copy_tensors{false};
+  bool allow_pinned_to_device{true};
+  bool allow_pageable_to_device{true};
+  size_t data_transfer_release_count{0};
+};
+
+}  // namespace
+
+TEST(PluginExecutionProviderTest, GetExternalDataLoaderSelectionAndConfiguration) {
+  ExternalDataLoaderPluginTestContext ctx;
+
+  // Baseline: CUDA plugin with all required callbacks and transfer capabilities returns an enabled loader.
+  {
+    ctx.ResetCallbacks();
+    auto [ep, ort_ep] = ctx.MakeEp();
+    auto loader = ep->GetExternalDataLoader();
+    ASSERT_NE(loader, nullptr);
+    EXPECT_TRUE(loader->IsEnabled());
+    EXPECT_TRUE(loader->CanLoad(*ctx.device_memory_info));
+    EXPECT_FALSE(loader->CanLoad(*ctx.host_accessible_memory_info));
+  }
+
+  // Non-CUDA plugin EPs or non-NVIDIA devices are rejected.
+  {
+    ctx.ResetCallbacks();
+    ctx.is_cuda_ep = false;
+    auto [ep, ort_ep] = ctx.MakeEp();
+    EXPECT_EQ(ep->GetExternalDataLoader(), nullptr);
+  }
+  {
+    ctx.ResetCallbacks();
+    auto [ep, ort_ep] = ctx.MakeEp({}, /*vendor_id=*/0xBE57);
+    EXPECT_EQ(ep->GetExternalDataLoader(), nullptr);
+  }
+  {
+    ctx.ResetCallbacks();
+    auto [ep, ort_ep] = ctx.MakeEp({}, OrtDevice::VendorIds::NVIDIA, OrtDevice::CPU);
+    EXPECT_EQ(ep->GetExternalDataLoader(), nullptr);
+  }
+  {
+    ctx.ResetCallbacks();
+    auto [ep, ort_ep] = ctx.MakeEp({}, OrtDevice::VendorIds::NVIDIA, OrtDevice::GPU,
+                                   /*include_device_mem_info=*/false, /*include_host_accessible_mem_info=*/true);
+    EXPECT_EQ(ep->GetExternalDataLoader(), nullptr);
+  }
+  {
+    ctx.ResetCallbacks();
+    auto [ep, ort_ep] = ctx.MakeEp({}, OrtDevice::VendorIds::NVIDIA, OrtDevice::GPU,
+                                   /*include_device_mem_info=*/true, /*include_host_accessible_mem_info=*/false);
+    EXPECT_EQ(ep->GetExternalDataLoader(), nullptr);
+  }
+
+  // Missing required factory/EP callbacks return nullptr.
+  {
+    ctx.ResetCallbacks();
+    ctx.ep_factory.CreateDataTransfer = nullptr;
+    auto [ep, ort_ep] = ctx.MakeEp();
+    EXPECT_EQ(ep->GetExternalDataLoader(), nullptr);
+  }
+  {
+    ctx.ResetCallbacks();
+    ctx.ep_factory.IsStreamAware = nullptr;
+    auto [ep, ort_ep] = ctx.MakeEp();
+    EXPECT_EQ(ep->GetExternalDataLoader(), nullptr);
+  }
+  {
+    ctx.ResetCallbacks();
+    ctx.is_stream_aware = false;
+    auto [ep, ort_ep] = ctx.MakeEp();
+    EXPECT_EQ(ep->GetExternalDataLoader(), nullptr);
+  }
+  {
+    ctx.ResetCallbacks();
+    ctx.ep_factory.CreateSyncStreamForDevice = nullptr;
+    auto [ep, ort_ep] = ctx.MakeEp();
+    EXPECT_EQ(ep->GetExternalDataLoader(), nullptr);
+
+    ort_ep->CreateSyncStreamForDevice = ExternalDataLoaderPluginTestContext::EpCreateSyncStreamForDeviceImpl;
+    EXPECT_NE(ep->GetExternalDataLoader(), nullptr);
+  }
+  {
+    ctx.ResetCallbacks();
+    ctx.ep_factory.CreateAllocator = nullptr;
+    auto [ep, ort_ep] = ctx.MakeEp();
+    EXPECT_EQ(ep->GetExternalDataLoader(), nullptr);
+
+    ort_ep->CreateAllocator = FakeCreateNullAllocator;
+    EXPECT_NE(ep->GetExternalDataLoader(), nullptr);
+  }
+
+  // Null/failing CreateDataTransfer or incomplete OrtDataTransferImpl callbacks return nullptr.
+  {
+    ctx.ResetCallbacks();
+    ctx.create_data_transfer_fails = true;
+    auto [ep, ort_ep] = ctx.MakeEp();
+    EXPECT_EQ(ep->GetExternalDataLoader(), nullptr);
+  }
+  {
+    ctx.ResetCallbacks();
+    ctx.create_data_transfer_returns_null = true;
+    auto [ep, ort_ep] = ctx.MakeEp();
+    EXPECT_EQ(ep->GetExternalDataLoader(), nullptr);
+  }
+  {
+    ctx.ResetCallbacks();
+    auto [ep, ort_ep] = ctx.MakeEp();
+    ctx.ep_factory.CreateDataTransfer = [](OrtEpFactory*, OrtDataTransferImpl** out) noexcept -> OrtStatus* {
+      static OrtDataTransferImpl incomplete{};
+      incomplete = {};
+      incomplete.CanCopy = ExternalDataLoaderPluginTestContext::MockDataTransferImpl::CanCopyImpl;
+      incomplete.CopyTensors = ExternalDataLoaderPluginTestContext::MockDataTransferImpl::CopyTensorsImpl;
+      *out = &incomplete;
+      return nullptr;
+    };
+    EXPECT_EQ(ep->GetExternalDataLoader(), nullptr);
+  }
+  {
+    ctx.ResetCallbacks();
+    ctx.null_data_transfer_can_copy = true;
+    const size_t releases_before = ctx.data_transfer_release_count;
+    auto [ep, ort_ep] = ctx.MakeEp();
+    EXPECT_EQ(ep->GetExternalDataLoader(), nullptr);
+    EXPECT_EQ(ctx.data_transfer_release_count, releases_before + 1);
+  }
+  {
+    ctx.ResetCallbacks();
+    ctx.null_data_transfer_copy_tensors = true;
+    const size_t releases_before = ctx.data_transfer_release_count;
+    auto [ep, ort_ep] = ctx.MakeEp();
+    EXPECT_EQ(ep->GetExternalDataLoader(), nullptr);
+    EXPECT_EQ(ctx.data_transfer_release_count, releases_before + 1);
+  }
+
+  // CanCopy rejecting either pinned-to-device or pageable-to-device returns nullptr.
+  {
+    ctx.ResetCallbacks();
+    ctx.allow_pinned_to_device = false;
+    const size_t releases_before = ctx.data_transfer_release_count;
+    auto [ep, ort_ep] = ctx.MakeEp();
+    EXPECT_EQ(ep->GetExternalDataLoader(), nullptr);
+    EXPECT_EQ(ctx.data_transfer_release_count, releases_before + 1);
+  }
+  {
+    ctx.ResetCallbacks();
+    ctx.allow_pageable_to_device = false;
+    const size_t releases_before = ctx.data_transfer_release_count;
+    auto [ep, ort_ep] = ctx.MakeEp();
+    EXPECT_EQ(ep->GetExternalDataLoader(), nullptr);
+    EXPECT_EQ(ctx.data_transfer_release_count, releases_before + 1);
+  }
+
+  // Provider option aliases and disablement via reading_threads=0.
+  for (const char* key : {"ep.cudaexecutionprovider.external_data_loader_reading_threads",
+                          "ep.cuda.external_data_loader_reading_threads",
+                          "external_data_loader_reading_threads"}) {
+    SCOPED_TRACE(key);
+    ctx.ResetCallbacks();
+    auto [ep, ort_ep] = ctx.MakeEp({{key, "0"}});
+    EXPECT_EQ(ep->GetExternalDataLoader(), nullptr);
+  }
+
+  // Canonical EP-prefixed key takes precedence over flat alias and session-level Configure().
+  {
+    ctx.ResetCallbacks();
+    auto [ep, ort_ep] = ctx.MakeEp({
+        {"external_data_loader_reading_threads", "0"},
+        {"ep.cudaexecutionprovider.external_data_loader_reading_threads", "4"},
+    });
+    auto loader = ep->GetExternalDataLoader();
+    ASSERT_NE(loader, nullptr);
+    EXPECT_TRUE(loader->IsEnabled());
+
+    ExternalDataLoaderOptions session_options{};
+    session_options.reading_threads = 0;
+    ASSERT_STATUS_OK(loader->Configure(session_options));
+    EXPECT_TRUE(loader->IsEnabled());
+  }
+
+  // Session-level Configure() can disable or validate options when provider options were not explicitly set.
+  {
+    ctx.ResetCallbacks();
+    auto [ep, ort_ep] = ctx.MakeEp();
+    auto loader = ep->GetExternalDataLoader();
+    ASSERT_NE(loader, nullptr);
+
+    ExternalDataLoaderOptions invalid_options{};
+    invalid_options.reading_threads = ExternalDataLoaderOptions::kMaxReadingThreads + 1;
+    EXPECT_FALSE(loader->Configure(invalid_options).IsOK());
+
+    ExternalDataLoaderOptions disable_options{};
+    disable_options.reading_threads = 0;
+    ASSERT_STATUS_OK(loader->Configure(disable_options));
+    EXPECT_FALSE(loader->IsEnabled());
+  }
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) && !defined(__wasm__)
 
 }  // namespace onnxruntime::test

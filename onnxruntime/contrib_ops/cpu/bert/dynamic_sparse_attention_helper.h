@@ -122,7 +122,8 @@ Status CheckInputs(const T* query,
   ORT_RETURN_IF_NOT(total_sequence_length != nullptr &&
                         onnxruntime::IsScalarOr1ElementVector(total_sequence_length),
                     "DynamicSparseAttention: total_sequence_length must be a scalar or one-element vector.");
-  const int total_length = *total_sequence_length->template Data<int32_t>();
+  const int raw_total_length = *total_sequence_length->template Data<int32_t>();
+  const int total_length = past_key != nullptr ? std::min(raw_total_length, past_cache_capacity) : raw_total_length;
   ORT_RETURN_IF_NOT(total_length >= sequence_length,
                     "DynamicSparseAttention: total_sequence_length must be at least sequence length.");
   ORT_RETURN_IF_NOT(past_key != nullptr || total_length == sequence_length,

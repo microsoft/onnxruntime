@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <barrier>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -12,6 +13,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -31,6 +33,7 @@
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
+#include "core/providers/webgpu/webgpu_provider_factory.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/inference_session.h"
@@ -69,7 +72,8 @@ ConfigOptions KvCacheQuantizationOptions(const char* value) {
 }
 
 template <typename TestBody>
-void RunWithFreshDefaultContext(TestBody test_body, bool compile_only_parent = false) {
+void RunWithFreshDefaultContext(TestBody test_body, bool compile_only_parent = false,
+                                const char* expected_error = nullptr) {
 #if GTEST_HAS_DEATH_TEST
   // Context 0 can outlive an individual test. Re-exec instead of forking its
   // initialized Dawn device or clearing state that another EP still owns.
@@ -100,14 +104,20 @@ void RunWithFreshDefaultContext(TestBody test_body, bool compile_only_parent = f
     existing_device = webgpu::WebGpuContextFactory::GetContext(0).Device().Get();
   }
 
-  EXPECT_EXIT(
-      {
-        test_body();
-        std::_Exit(testing::Test::HasFailure() || testing::Test::IsSkipped() ? EXIT_FAILURE : EXIT_SUCCESS);
-      },
-      testing::ExitedWithCode(EXIT_SUCCESS), "");
+  if (expected_error != nullptr) {
+    EXPECT_DEATH(test_body(), expected_error);
+  } else {
+    EXPECT_EXIT(
+        {
+          test_body();
+          std::_Exit(testing::Test::HasFailure() || testing::Test::IsSkipped() ? EXIT_FAILURE : EXIT_SUCCESS);
+        },
+        testing::ExitedWithCode(EXIT_SUCCESS), "");
+  }
 
-  EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(0).Device().Get(), existing_device);
+  if (existing_provider) {
+    EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(0).Device().Get(), existing_device);
+  }
 #if defined(GTEST_HAS_ABSL) && !defined(GTEST_NO_ABSL_FLAGS)
   flag_error.clear();
   EXPECT_TRUE(death_test_style_flag->ParseFrom(previous_style, &flag_error)) << flag_error;
@@ -116,9 +126,31 @@ void RunWithFreshDefaultContext(TestBody test_body, bool compile_only_parent = f
 #endif
 #else
   ORT_UNUSED_PARAMETER(compile_only_parent);
+  if (expected_error != nullptr) {
+    GTEST_SKIP() << "Configuration failure validation requires death-test support.";
+  }
   test_body();
 #endif
 }
+
+#if !defined(__wasm__)
+template <typename TestBody>
+void ExpectDawnCacheConfigurationFailure(TestBody test_body, const char* expected_error) {
+#if defined(ORT_NO_EXCEPTIONS)
+  RunWithFreshDefaultContext(test_body, true, expected_error);
+#else
+  RunWithFreshDefaultContext([&]() {
+    try {
+      test_body();
+      ADD_FAILURE() << "Expected invalid Dawn cache configuration to throw.";
+    } catch (const OnnxRuntimeException& error) {
+      EXPECT_THAT(error.what(), testing::HasSubstr(expected_error));
+    }
+  },
+                             true);
+#endif
+}
+#endif
 
 ConfigOptions WeightLoadAccelerationOptions(const char* value) {
   ConfigOptions options;
@@ -257,8 +289,302 @@ void TestCopyAfterDeferredDispatch(bool upload, bool checked_completion = false)
   EXPECT_EQ(result, expected);
 }
 
+#if !defined(__wasm__)
+TEST(WebGpuContextTest, DawnCacheInterfaceSharedContextIdentity) {
+  RunWithFreshDefaultContext([]() {
+    OrtDawnCacheInterface cache{};
+    cache.version = ORT_DAWN_CACHE_INTERFACE_VERSION;
+    cache.load = [](const void*, size_t, void*, size_t, void*) -> size_t { return 0; };
+    cache.store = [](const void*, size_t, const void*, size_t, void*) {};
+    ConfigOptions options;
+    ASSERT_STATUS_OK(options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+    const auto address = std::to_string(reinterpret_cast<uintptr_t>(&cache));
+    ASSERT_STATUS_OK(options.AddConfigEntry(kDawnCacheInterface, address.c_str()));
+    auto first = WebGpuProviderFactoryCreator::Create(options);
+    ASSERT_NE(first, nullptr);
+    auto second = WebGpuProviderFactoryCreator::Create(options);
+    ASSERT_NE(second, nullptr);
+    auto& shared = webgpu::WebGpuContextFactory::DefaultContext();
+    EXPECT_EQ(&shared, &webgpu::WebGpuContextFactory::GetContext(0));
+    webgpu::WebGpuContextFactory::ReleaseContext(0);
+  },
+                             true);
+}
+
+TEST(WebGpuContextTest, DawnCacheInterfaceRejectsConflictingConfiguration) {
+  ExpectDawnCacheConfigurationFailure([]() {
+    OrtDawnCacheInterface cache{};
+    cache.version = ORT_DAWN_CACHE_INTERFACE_VERSION;
+    cache.load = [](const void*, size_t, void*, size_t, void*) -> size_t { return 0; };
+    cache.store = [](const void*, size_t, const void*, size_t, void*) {};
+    ConfigOptions options;
+    ASSERT_STATUS_OK(options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+    const auto address = std::to_string(reinterpret_cast<uintptr_t>(&cache));
+    ASSERT_STATUS_OK(options.AddConfigEntry(kDawnCacheInterface, address.c_str()));
+    auto first = WebGpuProviderFactoryCreator::Create(options);
+    ASSERT_NE(first, nullptr);
+    auto other_cache = cache;
+    const auto other_address = std::to_string(reinterpret_cast<uintptr_t>(&other_cache));
+    ASSERT_STATUS_OK(options.AddConfigEntry(kDawnCacheInterface, other_address.c_str()));
+    WebGpuProviderFactoryCreator::Create(options);
+  },
+                                      "different dawnCacheInterface");
+}
+
+TEST(WebGpuContextTest, DawnCacheInterfaceConcurrentDefaultContextAcquisition) {
+  RunWithFreshDefaultContext([]() {
+    OrtDawnCacheInterface cache{};
+    cache.version = ORT_DAWN_CACHE_INTERFACE_VERSION;
+    cache.load = [](const void*, size_t, void*, size_t, void*) -> size_t { return 0; };
+    cache.store = [](const void*, size_t, const void*, size_t, void*) {};
+    ConfigOptions options;
+    ASSERT_STATUS_OK(options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+    ASSERT_STATUS_OK(options.AddConfigEntry(
+        kDawnCacheInterface, std::to_string(reinterpret_cast<uintptr_t>(&cache)).c_str()));
+    auto provider = WebGpuProviderFactoryCreator::Create(options);
+    auto* configured_context = &webgpu::WebGpuContextFactory::GetContext(0);
+
+    constexpr size_t thread_count = 16;
+    std::array<webgpu::WebGpuContext*, thread_count> acquired_contexts{};
+    std::barrier start{static_cast<ptrdiff_t>(thread_count)};
+    std::vector<std::thread> threads;
+    threads.reserve(thread_count);
+    for (size_t index = 0; index < thread_count; ++index) {
+      threads.emplace_back([&, index]() {
+        start.arrive_and_wait();
+        acquired_contexts[index] = &webgpu::WebGpuContextFactory::DefaultContext();
+      });
+    }
+    for (auto& thread : threads) {
+      thread.join();
+    }
+    for (auto* context : acquired_contexts) {
+      EXPECT_EQ(context, configured_context);
+      webgpu::WebGpuContextFactory::ReleaseContext(0);
+    }
+  },
+                             true);
+}
+
+TEST(WebGpuContextTest, DawnCacheInterfaceRejectsInvalidConfiguration) {
+  ConfigOptions options;
+  ASSERT_STATUS_OK(options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+  for (const char* value : {"", "-8", "1", "not-a-pointer", "16trailing",
+                            "184467440737095516160"}) {
+    SCOPED_TRACE(value);
+    ASSERT_STATUS_OK(options.AddConfigEntry(kDawnCacheInterface, value));
+    ExpectDawnCacheConfigurationFailure([&]() { WebGpuProviderFactoryCreator::Create(options); },
+                                        "dawnCacheInterface");
+  }
+  OrtDawnCacheInterface cache{};
+  cache.version = ORT_DAWN_CACHE_INTERFACE_VERSION;
+  const auto address = std::to_string(reinterpret_cast<uintptr_t>(&cache));
+  ASSERT_STATUS_OK(options.AddConfigEntry(kDawnCacheInterface, address.c_str()));
+  ExpectDawnCacheConfigurationFailure([&]() { WebGpuProviderFactoryCreator::Create(options); },
+                                      "dawnCacheInterface");
+  cache.load = [](const void*, size_t, void*, size_t, void*) -> size_t { return 0; };
+  cache.store = [](const void*, size_t, const void*, size_t, void*) {};
+  ++cache.version;
+  ExpectDawnCacheConfigurationFailure([&]() { WebGpuProviderFactoryCreator::Create(options); },
+                                      "dawnCacheInterface");
+}
+#endif
+
 TEST(WebGpuContextTest, UploadFollowsDeferredDispatch) {
   TestCopyAfterDeferredDispatch(true);
+}
+
+TEST(WebGpuQueueUploadTest, SizesSourceOffsetsAndPartialWrites) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto& recording = static_cast<WebGpuExecutionProvider*>(ep.get())->Recording();
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  auto& manager = context.BufferManager();
+  context.PushErrorScope();
+  for (const size_t size : {0u, 1u, 2u, 3u, 4u, 5u, 7u, 8u, 15u, 16u, 17u, 255u, 256u, 257u,
+                            65536u, 1048572u, 1048576u, 1048577u, 1048580u, 4194308u}) {
+    for (const size_t source_offset : {0u, 1u, 3u}) {
+      SCOPED_TRACE(testing::Message() << "size=" << size << ", source_offset=" << source_offset);
+      const size_t capacity = (size + 15) / 16 * 16 + 32;
+      wgpu::BufferDescriptor desc{};
+      desc.size = capacity;
+      desc.usage = wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
+      auto buffer = context.Device().CreateBuffer(&desc);
+      InlinedVector<uint8_t> initial(capacity, 0xa5);
+      manager.Upload(recording, initial.data(), buffer.Get(), capacity);
+      InlinedVector<uint8_t> source(size + source_offset + 1);
+      for (size_t i = 0; i < size; ++i) source[source_offset + i] = static_cast<uint8_t>(i * 31 + 7);
+      manager.Upload(recording, source.data() + source_offset, buffer.Get(), size);
+      std::fill(source.begin(), source.end(), 0xcc);
+      InlinedVector<uint8_t> result(capacity);
+      manager.Download(recording, buffer.Get(), result.data(), capacity);
+      for (size_t i = 0; i < size; ++i) {
+        ASSERT_EQ(result[i], static_cast<uint8_t>(i * 31 + 7)) << i;
+      }
+      // The legacy unaligned fallback copies padding up to a four-byte boundary.
+      for (size_t i = (size + 3) / 4 * 4; i < capacity; ++i) ASSERT_EQ(result[i], 0xa5) << i;
+    }
+  }
+  ASSERT_STATUS_OK(context.PopErrorScope());
+}
+
+TEST(WebGpuQueueUploadTest, MappedAtCreation) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto& recording = static_cast<WebGpuExecutionProvider*>(ep.get())->Recording();
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  std::array<uint32_t, 16> data;
+  data.fill(17);
+  wgpu::BufferDescriptor desc{};
+  desc.size = sizeof(data);
+  desc.usage = wgpu::BufferUsage::MapWrite | wgpu::BufferUsage::CopySrc;
+  desc.mappedAtCreation = true;
+  context.PushErrorScope();
+  for (const size_t size : {size_t{0}, sizeof(data)}) {
+    auto buffer = context.Device().CreateBuffer(&desc);
+    context.BufferManager().Upload(recording, data.data(), buffer.Get(), size);
+    ASSERT_EQ(buffer.GetMapState(), wgpu::BufferMapState::Unmapped);
+    EXPECT_FALSE(recording.command_encoder);
+    std::array<uint32_t, 16> result{};
+    context.BufferManager().Download(recording, buffer.Get(), result.data(), sizeof(result));
+    auto expected = data;
+    if (size == 0) expected.fill(0);
+    EXPECT_EQ(result, expected);
+  }
+  ASSERT_STATUS_OK(context.PopErrorScope());
+}
+
+TEST(WebGpuQueueUploadTest, RepeatedUploadsFollowRecordedCopies) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto& recording = static_cast<WebGpuExecutionProvider*>(ep.get())->Recording();
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  auto& manager = context.BufferManager();
+  std::array<uint32_t, 16> data;
+  data.fill(7);
+  wgpu::BufferDescriptor desc{};
+  desc.size = sizeof(data);
+  desc.usage = wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
+  auto buffer = context.Device().CreateBuffer(&desc);
+  auto snapshot = context.Device().CreateBuffer(&desc);
+  context.PushErrorScope();
+  manager.Upload(recording, data.data(), buffer.Get(), sizeof(data));
+  for (uint32_t value = 8; value < 16; ++value) {
+    manager.MemCpy(recording, buffer.Get(), snapshot.Get(), sizeof(data));
+    {
+      auto source = std::make_unique<std::array<uint32_t, 16>>();
+      source->fill(value);
+      manager.Upload(recording, source->data(), buffer.Get(), sizeof(*source));
+      source->fill(99);
+    }
+    std::array<uint32_t, 16> result{};
+    manager.Download(recording, snapshot.Get(), result.data(), sizeof(result));
+    for (auto actual : result) EXPECT_EQ(actual, value - 1);
+    manager.Download(recording, buffer.Get(), result.data(), sizeof(result));
+    for (auto actual : result) EXPECT_EQ(actual, value);
+  }
+  ASSERT_STATUS_OK(context.PopErrorScope());
+}
+
+TEST(WebGpuQueueUploadTest, CaptureAndReplayRetainStagingPath) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto& recording = static_cast<WebGpuExecutionProvider*>(ep.get())->Recording();
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  std::array<uint32_t, 16> data;
+  data.fill(23);
+  wgpu::BufferDescriptor desc{};
+  desc.size = sizeof(data);
+  desc.usage = wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
+  auto buffer = context.Device().CreateBuffer(&desc);
+  context.PushErrorScope();
+  for (const auto state : {webgpu::GraphCaptureState::Capturing, webgpu::GraphCaptureState::Replaying}) {
+    recording.graph_capture_state = state;
+    context.BufferManager().Upload(recording, data.data(), buffer.Get(), sizeof(data));
+    recording.graph_capture_state = webgpu::GraphCaptureState::Default;
+    std::array<uint32_t, 16> result{};
+    context.BufferManager().Download(recording, buffer.Get(), result.data(), sizeof(result));
+    EXPECT_EQ(result, data);
+  }
+  ASSERT_STATUS_OK(context.PopErrorScope());
+}
+
+template <typename T>
+class WebGpuQueueUploadTypeTest : public testing::Test {};
+
+using QueueUploadTypes = testing::Types<uint8_t, int8_t, bool, MLFloat16, float, int32_t, uint32_t, int64_t, uint64_t>;
+TYPED_TEST_SUITE(WebGpuQueueUploadTypeTest, QueueUploadTypes);
+
+TYPED_TEST(WebGpuQueueUploadTypeTest, PreservesTensorBytesAndHostLifetime) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto& recording = static_cast<WebGpuExecutionProvider*>(ep.get())->Recording();
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  std::array<TypeParam, 17> data;
+  constexpr size_t capacity = (sizeof(data) + 15) / 16 * 16;
+  wgpu::BufferDescriptor desc{};
+  desc.size = capacity;
+  desc.usage = wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
+  auto buffer = context.Device().CreateBuffer(&desc);
+  context.PushErrorScope();
+  for (const size_t elements : {16u, 17u}) {
+    for (size_t i = 0; i < data.size(); ++i) data[i] = static_cast<TypeParam>(static_cast<float>(i + 1));
+    const auto expected = data;
+    const size_t bytes = elements * sizeof(TypeParam);
+    context.BufferManager().Upload(recording, data.data(), buffer.Get(), bytes);
+    data.fill(TypeParam{});
+    std::array<uint8_t, capacity> result{};
+    context.BufferManager().Download(recording, buffer.Get(), result.data(), result.size());
+    EXPECT_EQ(std::memcmp(result.data(), expected.data(), bytes), 0);
+  }
+  ASSERT_STATUS_OK(context.PopErrorScope());
+}
+
+TEST(WebGpuContextTest, QueueUploadReportsValidationAndCleansScopes) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "Dawn native device creation is unavailable.";
+#else
+  RunWithExternalCompletionContext([](auto& context, auto& ep, const auto&, auto&) {
+    struct UploadCase {
+      size_t size;
+      webgpu::GraphCaptureState state;
+      bool invalid_range;
+      bool queue_upload;
+    };
+    using webgpu::GraphCaptureState;
+    for (const auto& test : {UploadCase{64, GraphCaptureState::Default, true, true},
+                             UploadCase{64, GraphCaptureState::Default, false, true},
+                             UploadCase{1048572, GraphCaptureState::Default, false, true},
+                             UploadCase{1048576, GraphCaptureState::Default, false, true},
+                             UploadCase{1048580, GraphCaptureState::Default, false, false},
+                             UploadCase{3, GraphCaptureState::Default, false, false},
+                             UploadCase{64, GraphCaptureState::Capturing, false, false},
+                             UploadCase{64, GraphCaptureState::Replaying, false, false}}) {
+      SCOPED_TRACE(testing::Message() << "size=" << test.size << ", state=" << static_cast<int>(test.state)
+                                      << ", invalid_range=" << test.invalid_range);
+      wgpu::BufferDescriptor desc{};
+      desc.size = test.invalid_range ? 16 : (test.size + 15) / 16 * 16;
+      desc.usage = test.invalid_range ? wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst
+                                      : wgpu::BufferUsage::CopySrc;
+      auto buffer = context.Device().CreateBuffer(&desc);
+      InlinedVector<uint8_t> source(test.size);
+      ep.Recording().graph_capture_state = test.state;
+      const auto status = context.RunAndWaitChecked(ep.BufferManager(), ep.Recording(), [&]() {
+        ep.BufferManager().Upload(ep.Recording(), source.data(), buffer.Get(), source.size());
+        return Status::OK();
+      });
+      ep.Recording().graph_capture_state = GraphCaptureState::Default;
+      EXPECT_FALSE(status.IsOK());
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(test.queue_upload ? "WriteBuffer" : "CopyBufferToBuffer"));
+      ASSERT_STATUS_OK(context.FlushAndWaitChecked(ep.BufferManager(), ep.Recording()));
+    }
+  });
+#endif
 }
 
 TEST(WebGpuContextTest, MemCpyFollowsDeferredDispatch) {
@@ -1043,6 +1369,43 @@ TEST(WebGpuContextTest, ReplaysCopyOnlyGraphAndRetainsBuffersUntilRelease) {
   EXPECT_TRUE(commands.empty());
 }
 
+TEST(WebGpuContextTest, ReplaysPartialClearBetweenCopies) {
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  webgpu::BufferManager manager(context, webgpu::BufferCacheMode::Disabled,
+                                webgpu::BufferCacheMode::Disabled, webgpu::BufferCacheMode::Disabled,
+                                webgpu::BufferCacheMode::Disabled);
+  webgpu::CommandRecordingState recording;
+  constexpr auto usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst;
+  std::array<uint32_t, 3> values{1, 2, 3};
+  auto source = wgpu::Buffer::Acquire(manager.Create(recording, sizeof(values), usage));
+  auto intermediate = wgpu::Buffer::Acquire(manager.Create(recording, sizeof(values), usage));
+  auto destination = wgpu::Buffer::Acquire(manager.Create(recording, sizeof(values), usage));
+  manager.Upload(recording, values.data(), source.Get(), sizeof(values));
+
+  std::vector<webgpu::CapturedCommand> commands;
+  context.CaptureBegin(&commands, manager, recording);
+  manager.MemCpy(recording, source.Get(), intermediate.Get(), sizeof(values));
+  context.ClearBuffer(intermediate.Get(), 2 * sizeof(uint32_t), recording);
+  manager.MemCpy(recording, intermediate.Get(), destination.Get(), sizeof(values));
+  ASSERT_STATUS_OK(context.Flush(manager, recording));
+  context.CaptureEnd(recording);
+  ASSERT_EQ(commands.size(), 3u);
+  EXPECT_EQ(ReadBufferWithExternalCommandEncoder<3>(context, destination.Get()),
+            (std::array<uint32_t, 3>{0, 0, values[2]}));
+
+  for (uint32_t run = 1; run <= 3; ++run) {
+    values.fill(run);
+    manager.Upload(recording, values.data(), source.Get(), sizeof(values));
+    context.Replay(commands, manager, recording);
+    EXPECT_EQ(ReadBufferWithExternalCommandEncoder<3>(context, destination.Get()),
+              (std::array<uint32_t, 3>{0, 0, values[2]}));
+    EXPECT_EQ(recording.num_pending_dispatches, 0u);
+  }
+  context.ReleaseGraphResources(commands);
+}
+
 TEST(WebGpuContextTest, DoesNotCaptureDeviceAllocatorBufferClear) {
   ConfigOptions options;
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
@@ -1254,6 +1617,97 @@ TEST(WebGpuContextTest, EnableRobustnessUsesBuildDefault) {
 
 TEST(WebGpuContextTest, EnableRobustnessRejectsInvalidValue) {
   EXPECT_THROW(WebGpuProviderFactoryCreator::Create(RobustnessOptions("true")), OnnxRuntimeException);
+}
+
+TEST(WebGpuContextTest, FeatureListsRejectInvalidEntries) {
+  for (const auto* key : {kEnableFeatures, kDisableFeatures}) {
+    for (const char* value : {"unknown", "subgroupMatrix,subgroupMatrix", "subgroupMatrix,", ",subgroupMatrix"}) {
+      ConfigOptions options;
+      ASSERT_STATUS_OK(options.AddConfigEntry(key, value));
+      EXPECT_THROW(WebGpuProviderFactoryCreator::Create(options), OnnxRuntimeException);
+    }
+  }
+  ConfigOptions options;
+  ASSERT_STATUS_OK(options.AddConfigEntry(kEnableFeatures, "subgroupMatrix"));
+  ASSERT_STATUS_OK(options.AddConfigEntry(kDisableFeatures, "subgroupMatrix"));
+  EXPECT_THROW(WebGpuProviderFactoryCreator::Create(options), OnnxRuntimeException);
+}
+
+TEST(WebGpuContextTest, EnableFeaturesRespectsHardwareCapabilities) {
+  RunWithFreshDefaultContext([]() {
+    ConfigOptions options;
+    ASSERT_STATUS_OK(options.AddConfigEntry(kEnableFeatures, "subgroupMatrix"));
+    ASSERT_STATUS_OK(options.AddConfigEntry(kDisableFeatures, ""));
+    auto default_ep = WebGpuProviderFactoryCreator::Create(ConfigOptions{})->CreateProvider();
+    auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+    auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+    const auto feature = wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix;
+    EXPECT_EQ(static_cast<WebGpuExecutionProvider&>(*ep).DeviceHasFeature(feature),
+              context.Device().HasFeature(feature));
+    EXPECT_EQ(context.DeviceHasFeature(feature), context.Device().HasFeature(feature));
+    ConfigOptions conflicting_options;
+    ASSERT_STATUS_OK(conflicting_options.AddConfigEntry(kDisableFeatures, "subgroupMatrix"));
+    auto disabled_ep = WebGpuProviderFactoryCreator::Create(conflicting_options)->CreateProvider();
+    EXPECT_FALSE(static_cast<WebGpuExecutionProvider&>(*disabled_ep).DeviceHasFeature(feature));
+    EXPECT_EQ(static_cast<WebGpuExecutionProvider&>(*default_ep).DeviceHasFeature(feature),
+              context.Device().HasFeature(feature));
+  });
+}
+
+TEST(WebGpuContextTest, DisableFeaturesDoesNotRestrictLaterSessions) {
+  RunWithFreshDefaultContext([]() {
+    ConfigOptions options;
+    ASSERT_STATUS_OK(options.AddConfigEntry(kDisableFeatures, "subgroupMatrix"));
+    auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+    auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+    const auto feature = wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix;
+    const auto device = context.Device().Get();
+    EXPECT_FALSE(static_cast<WebGpuExecutionProvider&>(*ep).DeviceHasFeature(feature));
+    EXPECT_EQ(context.DeviceHasFeature(feature), context.Device().HasFeature(feature));
+    auto matching_ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+    auto omitted_ep = WebGpuProviderFactoryCreator::Create(ConfigOptions{})->CreateProvider();
+    EXPECT_EQ(static_cast<WebGpuExecutionProvider&>(*omitted_ep).DeviceHasFeature(feature),
+              context.Device().HasFeature(feature));
+    ConfigOptions conflicting_options;
+    ASSERT_STATUS_OK(conflicting_options.AddConfigEntry(kEnableFeatures, "subgroupMatrix"));
+    auto enabled_ep = WebGpuProviderFactoryCreator::Create(conflicting_options)->CreateProvider();
+    EXPECT_EQ(static_cast<WebGpuExecutionProvider&>(*enabled_ep).DeviceHasFeature(feature),
+              context.Device().HasFeature(feature));
+    EXPECT_FALSE(static_cast<WebGpuExecutionProvider&>(*ep).DeviceHasFeature(feature));
+    EXPECT_EQ(context.Device().Get(), device);
+  });
+}
+
+TEST(WebGpuContextTest, DisableFeaturesMasksExternalDeviceFeature) {
+  ConfigOptions default_options;
+  auto default_ep = WebGpuProviderFactoryCreator::Create(default_options)->CreateProvider();
+  if (!webgpu::WebGpuContextFactory::GetContext(0).Device().HasFeature(
+          wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
+    GTEST_SKIP() << "The adapter does not support subgroup matrices.";
+  }
+  RunWithFreshDefaultContext([]() {
+    ConfigOptions options;
+    ASSERT_STATUS_OK(options.AddConfigEntry(kEnableFeatures, "subgroupMatrix"));
+    auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+    auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+    const auto feature = wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix;
+    EXPECT_EQ(context.DeviceHasFeature(feature), context.Device().HasFeature(feature));
+    ASSERT_TRUE(context.Device().HasFeature(feature));
+
+    ConfigOptions external_options;
+    ASSERT_STATUS_OK(external_options.AddConfigEntry(kDeviceId, "1"));
+    ASSERT_STATUS_OK(external_options.AddConfigEntry(kDisableFeatures, "subgroupMatrix"));
+    ASSERT_STATUS_OK(external_options.AddConfigEntry(
+        kWebGpuInstance, std::to_string(reinterpret_cast<uintptr_t>(context.Instance().Get())).c_str()));
+    ASSERT_STATUS_OK(external_options.AddConfigEntry(
+        kWebGpuDevice, std::to_string(reinterpret_cast<uintptr_t>(context.Device().Get())).c_str()));
+    auto external_ep = WebGpuProviderFactoryCreator::Create(external_options)->CreateProvider();
+    auto& external_context = webgpu::WebGpuContextFactory::GetContext(1);
+    EXPECT_TRUE(external_context.Device().HasFeature(feature));
+    EXPECT_TRUE(external_context.DeviceHasFeature(feature));
+    EXPECT_FALSE(static_cast<WebGpuExecutionProvider&>(*external_ep).DeviceHasFeature(feature));
+    EXPECT_TRUE(context.DeviceHasFeature(feature));
+  });
 }
 
 TEST(WebGpuContextTest, KvCacheQuantizationAcceptsSupportedBitWidths) {
@@ -1514,17 +1968,26 @@ TEST(WebGpuContextTest, D3D12AcceleratedCanBeEnabledAfterInitialOffSession) {
     auto off_ep = off_factory->CreateProvider();
     ASSERT_NE(off_ep, nullptr);
 
+    auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+    if (context.SelectedBackendType() != wgpu::BackendType::D3D12 ||
+        !context.D3D12SharedResourceFeaturesAvailable()) {
+      GTEST_SKIP() << "The selected adapter does not support D3D12 weight loading.";
+    }
+    ASSERT_NE(context.WeightLoadingD3D12Device(), nullptr);
+    auto* native_device = context.WeightLoadingD3D12Device();
+    auto* webgpu_device = context.Device().Get();
+    EXPECT_EQ(off_ep->GetExternalDataLoader(), nullptr);
+
     auto required_factory = WebGpuProviderFactoryCreator::Create(
         WeightLoadAccelerationOptions(kWeightLoadAcceleration_Required));
     auto required_ep = required_factory->CreateProvider();
     ASSERT_NE(required_ep, nullptr);
 
-    auto& context = webgpu::WebGpuContextFactory::GetContext(0);
     const auto support_status =
         webgpu::CheckD3D12AcceleratedExternalWeightsSupport(context);
-    if (!support_status.IsOK()) {
-      GTEST_SKIP() << support_status.ErrorMessage();
-    }
+    ASSERT_STATUS_OK(support_status);
+    EXPECT_EQ(context.Device().Get(), webgpu_device);
+    EXPECT_EQ(context.WeightLoadingD3D12Device(), native_device);
     EXPECT_TRUE(context.DeviceHasFeature(
         wgpu::FeatureName::SharedBufferMemoryD3D12Resource));
     EXPECT_TRUE(context.DeviceHasFeature(
@@ -1534,6 +1997,17 @@ TEST(WebGpuContextTest, D3D12AcceleratedCanBeEnabledAfterInitialOffSession) {
     ASSERT_NE(loader, nullptr);
     EXPECT_STATUS_OK(loader->BeginLoad());
     loader->EndLoad();
+
+    auto preferred_ep = WebGpuProviderFactoryCreator::Create(
+                            WeightLoadAccelerationOptions(kWeightLoadAcceleration_Preferred))
+                            ->CreateProvider();
+    ASSERT_NE(preferred_ep, nullptr);
+    auto preferred_loader = preferred_ep->GetExternalDataLoader();
+    ASSERT_NE(preferred_loader, nullptr);
+    EXPECT_STATUS_OK(preferred_loader->BeginLoad());
+    preferred_loader->EndLoad();
+    EXPECT_EQ(context.Device().Get(), webgpu_device);
+    EXPECT_EQ(context.WeightLoadingD3D12Device(), native_device);
   });
 }
 

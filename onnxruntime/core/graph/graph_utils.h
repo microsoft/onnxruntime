@@ -82,7 +82,7 @@ NodeArg& AddInitializerWithOrtValue(Graph& graph, const ONNX_NAMESPACE::TensorPr
 /// <param name="dst_graph">destination</param>
 /// <param name="name">initializers name</param>
 /// <param name="copy_in_memory_data ">if external data is in memory, copy data inline.
-///  default is false. This is to accomodate EPs who load initializers on their own and do not understand
+///  default is false. This is to accommodate EPs who load initializers on their own and do not understand
 ///          our /*/_ORT_MEM_ADDR_/*/ external data reference</param>
 void MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph, const std::string& name,
                                    bool copy_in_memory_data = false);

@@ -31,11 +31,10 @@ struct Level1MemoryEstimate {
   // Initialization-only scratch, including prepack conversion and constructor-time profiling.
   size_t initialization_scratch_bytes = 0;
 
-  // Temporary allocation used by runtime preparation outside normal kernel execution, such as
-  // lazy tactic profiling for a previously unseen input-size bucket. Because profiling completes
-  // before normal execution, this allocation does not overlap runtime_workspace_bytes. The
-  // accountant therefore uses their peak (or the peak with fallback workspace) instead of
-  // summing them:
+  // Complete temporary-memory peak during runtime preparation, such as lazy tactic profiling
+  // for a previously unseen input-size bucket. Include ordinary workspace retained during that
+  // preparation (for example, across chunked GEMM launches). The accountant takes the maximum
+  // with normal execution or fallback workspace, rather than summing two potentially overlapping peaks:
   //   runtime_peak_bytes = std::max(runtime_workspace_bytes, runtime_transient_bytes)
   size_t runtime_transient_bytes = 0;
 };
