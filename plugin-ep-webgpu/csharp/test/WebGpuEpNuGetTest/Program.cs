@@ -20,11 +20,16 @@ class Program
 
         try
         {
-            // Find the OrtEpDevice for the WebGPU EP
+            // macOS also has built-in WebGPU. Select the library registered above.
             OrtEpDevice? epDevice = null;
+            var pathComparison = OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
             foreach (var d in env.GetEpDevices())
             {
-                if (string.Equals(epName, d.EpName, StringComparison.Ordinal))
+                using var metadata = d.EpMetadata;
+                if (string.Equals(epName, d.EpName, StringComparison.Ordinal) &&
+                    metadata.Entries.TryGetValue("library_path", out var libraryPath) &&
+                    string.Equals(Path.GetFullPath(epLibPath), Path.GetFullPath(libraryPath), pathComparison))
                 {
                     epDevice = d;
                     break;
@@ -33,7 +38,7 @@ class Program
 
             if (epDevice == null)
             {
-                Console.Error.WriteLine($"ERROR: Unable to find OrtEpDevice with name '{epName}'");
+                Console.Error.WriteLine($"ERROR: Unable to find OrtEpDevice for '{epName}' from '{epLibPath}'");
                 return 1;
             }
             Console.WriteLine($"Found OrtEpDevice for EP: {epName}");
