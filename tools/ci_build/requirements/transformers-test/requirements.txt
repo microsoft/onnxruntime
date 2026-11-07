@@ -9,8 +9,8 @@ torchvision==0.25.0
 pillow>=13.0.0
 transformers==5.10.1
 parameterized>=0.8.1
-# 0.2.3 generates protobuf 7 code, incompatible with the pinned protobuf 6 runtime.
-sentencepiece==0.2.1
+# SentencePiece 0.2.3 requires protobuf 7.x, but CI uses protobuf 6.x.
+sentencepiece==0.2.2
 psutil
 einops
 onnxscript==0.6.2
