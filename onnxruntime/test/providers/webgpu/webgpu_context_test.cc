@@ -1322,6 +1322,193 @@ TEST_F(WebGpuBucketCacheTest, ConcurrentRecordingsNeverAcquireTheSameLiveBuffer)
   EXPECT_TRUE(active.empty());
 }
 
+TEST_F(WebGpuBucketCacheTest, GlobalRunWindowCombinesCompletedSessions) {
+  webgpu::CommandRecordingState other;
+  for (size_t run = 0; run < 31; ++run) {
+    auto& recording = run % 2 == 0 ? recording_ : other;
+    manager_->OnRunStart(recording);
+    manager_->OnRunEnd(recording, false);
+  }
+  webgpu::CommandRecordingState observer;
+  auto original = wgpu::Buffer::Acquire(manager_->Create(observer, 1537, kUsage));
+  manager_->Release(wgpu::Buffer{original}.MoveToCHandle());
+  for (size_t run = 0; run < 16; ++run) {
+    auto& recording = run % 2 == 0 ? recording_ : other;
+    manager_->OnRunStart(recording);
+    manager_->OnRunEnd(recording, true);
+    if (run == 14) {
+      auto before_cleanup = wgpu::Buffer::Acquire(manager_->Create(observer, 1537, kUsage));
+      EXPECT_EQ(before_cleanup.Get(), original.Get());
+      manager_->Release(before_cleanup.MoveToCHandle());
+    }
+  }
+  // Each session completed only eight runs, but the shared window is complete.
+  auto replacement = wgpu::Buffer::Acquire(manager_->Create(observer, 1537, kUsage));
+  EXPECT_NE(replacement.Get(), original.Get());
+}
+
+TEST_F(WebGpuBucketCacheTest, GlobalWindowUpdatesCompletedDemandAndPreservesPausedSessions) {
+  webgpu::CommandRecordingState fast;
+  auto fast_run = [&]() {
+    manager_->OnRunStart(fast);
+    auto buffer = manager_->Create(fast, 1537, kUsage);
+    manager_->Release(buffer, &fast);
+    manager_->OnRunEnd(fast, true);
+  };
+  manager_->OnRunStart(recording_);
+  InlinedVector<wgpu::Buffer> originals;
+  InlinedHashSet<WGPUBuffer> identities;
+  for (size_t i = 0; i < 8; ++i) {
+    originals.emplace_back(Create(1537));
+    identities.insert(originals.back().Get());
+  }
+  for (const auto& buffer : originals) {
+    manager_->Release(wgpu::Buffer{buffer}.MoveToCHandle());
+  }
+  manager_->OnRunEnd(recording_, true);
+  for (size_t run = 0; run < 47; ++run) {
+    fast_run();
+  }
+  // Three shared windows must not forget the paused session's demand of eight.
+  InlinedVector<wgpu::Buffer> paused_reuse;
+  for (size_t i = 0; i < 8; ++i) {
+    paused_reuse.emplace_back(Create(1537));
+    EXPECT_EQ(identities.count(paused_reuse.back().Get()), 1u);
+  }
+  for (auto it = paused_reuse.rbegin(); it != paused_reuse.rend(); ++it) {
+    manager_->Release(it->MoveToCHandle());
+  }
+  manager_->OnRunStart(recording_);
+  auto first = Create(1537);
+  auto second = Create(1537);
+  manager_->Release(first.MoveToCHandle());
+  manager_->Release(second.MoveToCHandle());
+  manager_->OnRunEnd(recording_, true);
+  for (size_t run = 0; run < 15; ++run) {
+    fast_run();
+  }
+  // The completed window now observed two for this session and one for fast.
+  InlinedVector<wgpu::Buffer> acquired;
+  size_t reused = 0;
+  for (size_t i = 0; i < 8; ++i) {
+    acquired.emplace_back(Create(1537));
+    reused += identities.count(acquired.back().Get());
+  }
+  EXPECT_EQ(reused, 3u);
+  for (auto it = acquired.rbegin(); it != acquired.rend(); ++it) {
+    manager_->Release(it->MoveToCHandle());
+  }
+}
+
+TEST_F(WebGpuBucketCacheTest, CompletedSlowRunsAdvanceDeferredWindowsWhileSessionsStayBusy) {
+  webgpu::CommandRecordingState fast;
+  auto fast_run = [&]() {
+    manager_->OnRunStart(fast);
+    auto buffer = manager_->Create(fast, 1537, kUsage);
+    manager_->Release(buffer, &fast);
+    manager_->OnRunEnd(fast, true);
+  };
+  manager_->OnRunStart(recording_);
+  InlinedVector<wgpu::Buffer> originals;
+  InlinedHashSet<WGPUBuffer> identities;
+  for (size_t i = 0; i < 64; ++i) {
+    originals.emplace_back(Create(1537));
+    identities.insert(originals.back().Get());
+  }
+  for (const auto& buffer : originals) {
+    manager_->Release(wgpu::Buffer{buffer}.MoveToCHandle());
+  }
+  manager_->OnRunEnd(recording_, true);
+  for (size_t run = 0; run < 15; ++run) {
+    fast_run();
+  }
+  for (size_t cycle = 0; cycle < 32; ++cycle) {
+    manager_->OnRunStart(recording_);
+    InlinedVector<wgpu::Buffer> live;
+    for (size_t i = 0; i < 8; ++i) {
+      live.emplace_back(Create(1537));
+    }
+    // Every shared boundary occurs while slow is active, not at its run end.
+    for (size_t run = 0; run < (cycle == 0 ? 16u : 15u); ++run) {
+      fast_run();
+    }
+    for (auto& buffer : live) {
+      manager_->Release(buffer.MoveToCHandle(), &recording_);
+    }
+    manager_->OnRunEnd(recording_, true);
+  }
+  InlinedVector<wgpu::Buffer> acquired;
+  size_t reused = 0;
+  for (size_t i = 0; i < 64; ++i) {
+    acquired.emplace_back(Create(1537));
+    reused += identities.count(acquired.back().Get());
+  }
+  // Completed slow runs replace the initial peak: eight for slow plus one for fast.
+  EXPECT_EQ(reused, 9u);
+  for (auto it = acquired.rbegin(); it != acquired.rend(); ++it) {
+    manager_->Release(it->MoveToCHandle());
+  }
+}
+
+TEST_F(WebGpuBucketCacheTest, GlobalWindowDefersDemandReductionDuringSlowRun) {
+  webgpu::CommandRecordingState fast;
+  auto fast_run = [&]() {
+    manager_->OnRunStart(fast);
+    auto buffer = manager_->Create(fast, 1537, kUsage);
+    manager_->Release(buffer, &fast);
+    manager_->OnRunEnd(fast, true);
+  };
+  manager_->OnRunStart(recording_);
+  InlinedVector<wgpu::Buffer> originals;
+  InlinedHashSet<WGPUBuffer> identities;
+  for (size_t i = 0; i < 8; ++i) {
+    originals.emplace_back(Create(1537));
+    identities.insert(originals.back().Get());
+  }
+  for (const auto& buffer : originals) {
+    manager_->Release(wgpu::Buffer{buffer}.MoveToCHandle());
+  }
+  manager_->OnRunEnd(recording_, true);
+  for (size_t run = 0; run < 15; ++run) {
+    fast_run();
+  }
+  // A small completed run is followed by a slow run that allocates incrementally.
+  manager_->OnRunStart(recording_);
+  auto small_first = Create(1537);
+  auto small_second = Create(1537);
+  manager_->Release(small_first.MoveToCHandle());
+  manager_->Release(small_second.MoveToCHandle());
+  manager_->OnRunEnd(recording_, true);
+  manager_->OnRunStart(recording_);
+  InlinedVector<wgpu::Buffer> live;
+  live.emplace_back(Create(1537));
+  live.emplace_back(Create(1537));
+  for (size_t run = 0; run < 15; ++run) {
+    fast_run();
+  }
+  // Fast closes the window while slow has observed only two buffers so far.
+  // Retain slow's earlier peak, so its later six allocations still reuse the pool.
+  for (size_t i = 2; i < 8; ++i) {
+    live.emplace_back(Create(1537));
+  }
+  for (const auto& buffer : live) {
+    EXPECT_EQ(identities.count(buffer.Get()), 1u);
+    manager_->Release(wgpu::Buffer{buffer}.MoveToCHandle(), &recording_);
+  }
+  manager_->OnRunEnd(recording_, true);
+  for (size_t run = 0; run < 15; ++run) {
+    fast_run();
+  }
+  InlinedVector<wgpu::Buffer> reused;
+  for (size_t i = 0; i < 8; ++i) {
+    reused.emplace_back(Create(1537));
+    EXPECT_EQ(identities.count(reused.back().Get()), 1u);
+  }
+  for (auto& buffer : reused) {
+    manager_->Release(buffer.MoveToCHandle());
+  }
+}
+
 TEST_F(WebGpuBucketCacheTest, CompletedRunsTrimSurplusWithinAnActiveClass) {
   manager_->OnRunStart(recording_);
   InlinedVector<wgpu::Buffer> originals;
@@ -1337,7 +1524,7 @@ TEST_F(WebGpuBucketCacheTest, CompletedRunsTrimSurplusWithinAnActiveClass) {
   manager_->Release(wgpu::Buffer{obsolete}.MoveToCHandle());
   manager_->OnRunEnd(recording_, true);
 
-  // Demand ages each run; surplus remains reusable until the cleanup batch.
+  // The window records each completed run; surplus remains until its cleanup batch.
   for (size_t run = 2; run <= 32; ++run) {
     manager_->OnRunStart(recording_);
     // Partial submissions must not advance the completed-run cleanup counter.
@@ -1413,7 +1600,7 @@ TEST_F(WebGpuBucketCacheTest, MaintenanceProtectsPausedDemandAndActiveLiveAndPen
   manager_->Release(wgpu::Buffer{pending}.MoveToCHandle(), &slow);
 
   // Another session's cleanup, failure and teardown preserve both the paused
-  // session's history and the active session's observed demand and lifetimes.
+  // session's retained demand and the active session's observed demand and lifetimes.
   webgpu::CommandRecordingState other;
   for (size_t step = 0; step < 32; ++step) {
     manager_->OnRunStart(other);
@@ -1581,7 +1768,8 @@ TEST(WebGpuContextTest, FailedOrTerminatedRunsDoNotAdvanceBufferAge) {
     webgpu::CommandRecordingState observer;
     auto still_recent = wgpu::Buffer::Acquire(manager.Create(observer, 64, usage));
     EXPECT_EQ(still_recent.Get(), first.Get());
-    for (size_t step = 0; step < 16; ++step) {
+    // Failures do not rotate the global window; two complete windows retire the peak.
+    for (size_t step = 0; step < 31; ++step) {
       ASSERT_STATUS_OK(ep.OnRunStart(regular));
       ASSERT_STATUS_OK(ep.OnRunEnd(false, regular));
     }
@@ -1589,13 +1777,12 @@ TEST(WebGpuContextTest, FailedOrTerminatedRunsDoNotAdvanceBufferAge) {
     EXPECT_NE(aged.Get(), second.Get());
 
     ASSERT_STATUS_OK(ep.OnRunStart(regular));
-    auto surplus = wgpu::Buffer::Acquire(manager.Create(ep.Recording(), 256, usage));
-    manager.Release(wgpu::Buffer{surplus}.MoveToCHandle());
     ASSERT_STATUS_OK(ep.OnRunEnd(false, regular));
-    for (size_t step = 0; step < 16; ++step) {
-      ASSERT_STATUS_OK(ep.OnRunStart(regular));
-      ASSERT_STATUS_OK(ep.OnRunEnd(false, regular));
-    }
+    auto surplus = wgpu::Buffer::Acquire(manager.Create(observer, 256, usage));
+    manager.Release(wgpu::Buffer{surplus}.MoveToCHandle());
+    auto before_failure = wgpu::Buffer::Acquire(manager.Create(observer, 256, usage));
+    EXPECT_EQ(before_failure.Get(), surplus.Get());
+    manager.Release(before_failure.MoveToCHandle());
     // Failure forces maintenance even between ordinary cleanup batches.
     ASSERT_STATUS_OK(ep.OnRunStart(regular));
     ASSERT_STATUS_OK(ep.OnRunEnd(false, failed));
@@ -1604,7 +1791,7 @@ TEST(WebGpuContextTest, FailedOrTerminatedRunsDoNotAdvanceBufferAge) {
   });
 }
 
-TEST(WebGpuContextTest, CapturedReplayAdvancesOwnCleanupCadenceWithoutDoubleCountingCapture) {
+TEST(WebGpuContextTest, CapturedReplayAdvancesSharedWindowWithoutDoubleCountingCapture) {
   RunWithFreshDefaultContext([]() {
     ConfigOptions options;
     ASSERT_STATUS_OK(options.AddConfigEntry(kEnableGraphCapture, "1"));

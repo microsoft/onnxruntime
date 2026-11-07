@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
-#include <array>
 #include <deque>
 
 #include "core/providers/webgpu/buffer_manager.h"
@@ -152,25 +151,30 @@ class SimpleCacheManager : public IBufferCacheManager {
 };
 
 class BucketCacheManager : public IBufferCacheManager {
-  // Buffers share a pool, while each session ages its per-capacity demand on
-  // its own successful runs. Reuse is attributed to the current borrower;
-  // free buffers have no session owner or run age. Use the same window for
-  // demand history and ordinary cleanup; partial-run flushes do not advance it.
-  // Pauses between chat turns do not age demand or trigger reclamation.
+  // One shared window ends after 16 successful runs across this context's sessions.
+  // Spares have no session owner: demand follows the current borrower, regardless
+  // of which recording eventually returns the buffer. Partial flushes do not count.
   static constexpr size_t kRunWindow = 16;
   struct Demand {
     size_t unavailable = 0;
     size_t peak = 0;
-    std::array<size_t, kRunWindow> history{};
+    size_t window_peak = 0;
+    size_t retained_peak = 0;
 
     size_t RecentPeak(bool active) const {
-      return std::max(active ? peak : size_t{0}, *std::max_element(history.begin(), history.end()));
+      return std::max({retained_peak, window_peak, active ? peak : size_t{0}});
+    }
+
+    void AdvanceWindow() {
+      retained_peak = window_peak;
+      window_peak = 0;
     }
   };
   struct Session {
     bool active = false;
-    size_t next_history = 0;
-    size_t runs_since_cleanup = 0;
+    bool completed_in_window = false;
+    bool window_update_pending = false;
+    bool trim_late_returns = false;
     InlinedHashMap<size_t, Demand> demand;
   };
   struct BorrowedBuffer {
@@ -221,7 +225,7 @@ class BucketCacheManager : public IBufferCacheManager {
     auto borrower = Retire(buffer);
     auto& buffers = buckets_[capacity];
     buffers.push_back(std::move(owned_buffer));
-    if (borrower && !borrower->active && borrower->runs_since_cleanup == 0) {
+    if (borrower && !borrower->active && borrower->trim_late_returns) {
       size_t keep = 0;
       for (const auto& [recording, session] : sessions_) {
         if (auto it = session->demand.find(capacity); it != session->demand.end()) {
@@ -242,8 +246,9 @@ class BucketCacheManager : public IBufferCacheManager {
       session = std::make_shared<Session>();
     }
     session->active = true;
+    session->trim_late_returns = false;
     for (auto& [capacity, demand] : session->demand) {
-      // Include carried-over live inputs, not just allocations made in this Run.
+      // Include carried-over live inputs, not just allocations made in this run.
       demand.peak = demand.unavailable;
     }
   }
@@ -254,38 +259,38 @@ class BucketCacheManager : public IBufferCacheManager {
       return;
     }
     auto& session = *it->second;
-    for (auto d = session.demand.begin(); d != session.demand.end();) {
-      auto& demand = d->second;
-      if (completed) {
-        demand.history[session.next_history] = demand.peak;
-      } else {
-        // An unsuccessful submission is not an opportunity to age past demand.
-        demand.history[session.next_history] = std::max(demand.history[session.next_history], demand.peak);
+    // A run crossing a shared boundary completes that session's deferred window.
+    // Updating here prevents continuous overlap from retaining an old peak forever,
+    // without adding a pool scan between the ordinary 16-run cleanup batches.
+    const bool update = completed && session.window_update_pending;
+    for (auto& [capacity, demand] : session.demand) {
+      demand.window_peak = std::max(demand.window_peak, demand.peak);
+      if (update) {
+        demand.AdvanceWindow();
+      } else if (!completed) {
+        // Failure is not evidence that this session's previous demand decreased.
+        demand.retained_peak = std::max(demand.retained_peak, demand.peak);
       }
-      if (demand.unavailable == 0 && demand.RecentPeak(false) == 0) {
-        session.demand.erase(d++);
-      } else {
-        ++d;
-      }
-    }
-    if (completed) {
-      session.next_history = (session.next_history + 1) % kRunWindow;
     }
     session.active = false;
-    // Batch ordinary reclamation on this session's completed-run timeline.
-    // Late returns from a cleanup run share its maintenance opportunity.
-    if (!completed || ++session.runs_since_cleanup == kRunWindow) {
-      session.runs_since_cleanup = 0;
+    if (!completed) {
       Trim();
+    } else {
+      session.completed_in_window = !update;
+      session.window_update_pending = false;
+      if (++runs_since_cleanup_ == kRunWindow) {
+        runs_since_cleanup_ = 0;
+        Trim(true);
+      }
     }
   }
 
   void OnSessionRelease(const CommandRecordingState& recording) override {
-    // Outstanding allocations keep their attribution alive until they return,
-    // but no longer reserve spares for a destroyed session (or a reused address).
+    // Outstanding allocations retain their old attribution, but teardown drops
+    // this session's spare demand even if a new session reuses its address.
     if (auto it = sessions_.find(&recording); it != sessions_.end()) {
       it->second->active = false;
-      it->second->runs_since_cleanup = 0;
+      it->second->trim_late_returns = true;
       sessions_.erase(it);
     }
     Trim();
@@ -305,25 +310,45 @@ class BucketCacheManager : public IBufferCacheManager {
     return session;
   }
 
-  void Trim() {
-    // Per capacity, retain sum(max(peak - unavailable, 0)) over all registered
-    // sessions. Cleanup triggered by one session still includes the others.
-    // The peak combines valid history and demand already observed in an active
-    // run; unavailable covers live/pending buffers. Future demand is not predicted.
-    // Session teardown removes only that session's contribution.
+  void Trim(bool advance_window = false) {
     InlinedHashMap<size_t, size_t> spare_demand;
     for (const auto& [recording, session] : sessions_) {
-      for (const auto& [capacity, demand] : session->demand) {
+      // A fast session's boundary preserves paused sessions and defers active
+      // sessions until their complete run ends. Slow runs can need more spares
+      // later, including buffers returned by other sessions. Previously completed
+      // peaks are carried into the deferred window; unavailable buffers stay live.
+      const bool update = advance_window && session->completed_in_window && !session->active;
+      if (advance_window && session->active) {
+        session->window_update_pending = true;
+      }
+      for (auto it = session->demand.begin(); it != session->demand.end();) {
+        auto& demand = it->second;
+        if (update) {
+          demand.AdvanceWindow();
+        }
+        // Per capacity, sum remaining observed demand over all sessions. Live
+        // and pending buffers are unavailable; free buffers can serve any borrower.
         const auto peak = demand.RecentPeak(session->active);
         if (peak > demand.unavailable) {
-          spare_demand[capacity] += peak - demand.unavailable;
+          spare_demand[it->first] += peak - demand.unavailable;
+        }
+        if (demand.unavailable == 0 && peak == 0) {
+          session->demand.erase(it++);
+        } else {
+          ++it;
         }
       }
+      if (update) {
+        session->completed_in_window = false;
+        session->window_update_pending = false;
+      }
+      // Returns associated with this maintenance opportunity check only their
+      // size class. A subsequent run starts a new allocation/reuse opportunity.
+      session->trim_late_returns = true;
     }
     for (auto it = buckets_.begin(); it != buckets_.end();) {
       auto& buffers = it->second;
-      const auto keep = spare_demand[it->first];
-      TrimBucket(buffers, keep);
+      TrimBucket(buffers, spare_demand[it->first]);
       if (buffers.empty()) {
         buckets_.erase(it++);
       } else {
@@ -333,13 +358,14 @@ class BucketCacheManager : public IBufferCacheManager {
   }
 
   void TrimBucket(BufferQueue& buffers, size_t keep) {
-    // Keep MRU spares for all sessions' recent demand; release only surplus.
-    // Outside-run allocations share this pool without reserving extra spares.
+    // Keep MRU spares for observed demand; release only surplus. Outside-run
+    // allocations share the pool without reserving additional spare demand.
     while (buffers.size() > keep) {
       buffers.pop_front();
     }
   }
 
+  size_t runs_since_cleanup_ = 0;
   InlinedHashMap<size_t, BufferQueue> buckets_;
   InlinedHashMap<const CommandRecordingState*, std::shared_ptr<Session>> sessions_;
   InlinedHashMap<WGPUBuffer, BorrowedBuffer> borrowed_;

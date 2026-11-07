@@ -17,36 +17,44 @@ automatically. No bucket table configuration is required.
   total spare-byte cap that would force an otherwise reusable working set to be
   recreated. Different sessions can reuse compatible spares from the shared
   context; concurrently live buffers still require separate allocations.
-- Reuse takes the most recently returned buffer of the matching capacity. Each
-  session records peak simultaneous demand per capacity over its 16 most recent
-  completed runs, including live buffers carried into a run and buffers still
-  awaiting submission. A smaller working set eventually replaces an earlier peak,
-  allowing surplus buffers within a still-active size class to be released.
-- Shared spare demand combines the sessions' recent peaks after subtracting their
-  outstanding buffers. Each session advances only its own history. Partial
-  submissions and another session's runs do not age its demand. Graph replay counts
-  as a run; the replay performed during initial capture does not count twice.
+- Reuse takes the most recently returned buffer of the matching capacity. A shared
+  window ends after 16 successful runs across the sessions using this context's
+  pool. Each session records its peak simultaneous demand per capacity within
+  that window, including live buffers carried into a run and buffers awaiting
+  submission. Graph replay counts as a run; initial capture does not count twice.
+- At a window boundary, a session with completed runs and no active run replaces
+  its retained demand with its window peaks. Unused capacities can then lose their
+  spare reservation. Sessions without completed runs preserve their previous
+  demand. Active sessions defer replacement until their full run ends and carry
+  their window peaks forward: a slow run may need more buffers later, even after
+  an earlier small run completed. This update does not add a pool scan; surplus
+  waits for ordinary maintenance. A session stores retained and window peaks
+  rather than a history array per run.
+- Shared spare demand sums each session's retained, window and active-run maximum
+  after subtracting its outstanding buffers. Acquisition follows the current
+  borrower, regardless of the recording used to release the buffer. Free buffers
+  have no session owner and can serve any compatible request.
 - Pauses between runs do not age retained demand, so a chat can reuse its working
   set after a long gap. Session destruction removes its contribution immediately.
   Allocations outside tracked runs share the spare pool without reserving extra
   demand; surplus can be reclaimed at the next run or session-release maintenance.
-- The same 16-run window controls demand history and ordinary reclamation.
-  Cleanup is batched every 16 completed runs of each session, while demand history
-  advances each run. An old peak can remain cached until the next cleanup after
-  it leaves that history. Late buffer returns from a cleanup run check only that
-  buffer's size class; returns between batches wait for a later cleanup.
-  Unsuccessful runs and session release trigger maintenance
-  immediately, without advancing another session's run count.
-  A shared scan can reclaim any surplus whose demand has already aged out.
+- The same global 16-run window controls demand statistics and ordinary
+  reclamation. A smaller observed working set replaces an earlier peak at a
+  window boundary or when a deferred run finishes. Late returns from maintenance check
+  only that buffer's size class; starting another run ends that return opportunity.
+  Unsuccessful runs and session release trigger maintenance immediately, without
+  advancing or resetting the successful-run counter. Failures can raise observed
+  demand but do not justify reducing it. Partial submissions do not count as runs.
+  Maintenance considers all sessions and releases only surplus spares.
   Run starts, cache refreshes and allocation misses do not scan for eviction.
   Submissions still retire pending buffers and apply the late-return rule above.
   The run-demand check releases surplus entries without scanning retained buffers.
 
 There is no background thread, timer or wall-clock expiry for cache maintenance.
 Only free spares can be evicted; live buffers and unsubmitted recordings remain
-protected. The history window is a reuse heuristic, not a measurement of available
-GPU memory. A later request can recreate buffers whose previous demand aged out
-through that session's own runs.
+protected. The run window is a reuse heuristic, not a measurement of available
+GPU memory. One small completed run in a global window can replace a larger
+previous peak at its boundary, so a later large request may recreate buffers.
 
 Portable WebGPU APIs do not expose remaining GPU memory. This policy does not
 bound total device memory or guarantee allocation success. Live tensors,

@@ -44,7 +44,7 @@ std::ostream& operator<<(std::ostream& os, BufferCacheMode mode);
 // - Disabled: no cache. always allocate a new buffer and release it immediately after use.
 // - LazyRelease: no cache. the difference from Disabled is that it delays the release of buffers until the next refresh.
 // - Simple: a simple cache that always keeps buffers. when a buffer is requested, it tries to find a buffer in the cache.
-// - Bucket: fine size-class reuse with per-session run-demand aging and event-driven spare eviction.
+// - Bucket: fine size-class reuse with shared run-demand windows and event-driven spare eviction.
 // - Graph: used for graph capturing storage buffer cache mode. All buffers will be cached. Buffers can be reused across runs and in one run.
 // - GraphSimple: used for graph capturing uniform buffer cache mode. All buffers will be cached. Buffers can be reused across runs but can't be reused in one run.
 class IBufferCacheManager {
