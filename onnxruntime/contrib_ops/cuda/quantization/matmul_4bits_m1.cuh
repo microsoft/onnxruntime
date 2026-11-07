@@ -23,6 +23,7 @@ bool TryMatMul4BitsM1(
     int k,
     int block_size,
     size_t shared_mem_per_block,
+    int sm_count,
     cudaStream_t stream);
 
 }  // namespace cuda

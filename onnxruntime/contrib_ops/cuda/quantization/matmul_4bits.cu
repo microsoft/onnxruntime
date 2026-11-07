@@ -679,6 +679,7 @@ bool TryMatMul4Bits(
     int k,
     int block_size,
     size_t shared_mem_per_block,
+    int sm_count,
     cudaStream_t stream) {
   if (n % kColsPerThreadBlock != 0 || k % 8 != 0 || m > SmallMCap<T>()) {
     return false;
@@ -728,7 +729,7 @@ bool TryMatMul4Bits(
   }
 
   return TryMatMul4BitsM1<T>(output, a_data, b_data_quant, scales_data, zero_points,
-                             n, k, block_size, shared_mem_per_block, stream);
+                             n, k, block_size, shared_mem_per_block, sm_count, stream);
 }
 
 template bool TryMatMul4Bits<float>(
@@ -743,6 +744,7 @@ template bool TryMatMul4Bits<float>(
     int k,
     int block_size,
     size_t shared_mem_per_block,
+    int sm_count,
     cudaStream_t stream);
 
 template bool TryMatMul4Bits<half>(
@@ -757,6 +759,7 @@ template bool TryMatMul4Bits<half>(
     int k,
     int block_size,
     size_t shared_mem_per_block,
+    int sm_count,
     cudaStream_t stream);
 
 template bool TryMatMul4Bits<nv_bfloat16>(
@@ -771,6 +774,7 @@ template bool TryMatMul4Bits<nv_bfloat16>(
     int k,
     int block_size,
     size_t shared_mem_per_block,
+    int sm_count,
     cudaStream_t stream);
 
 template <typename T>
