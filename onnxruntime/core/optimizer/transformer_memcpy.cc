@@ -103,6 +103,19 @@ Status MemcpyTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_leve
   for (const auto& provider : providers_) {
     const auto& provider_type = provider->Type();
     if (!utils::ProviderIsCpuBased(*provider)) {
+      for (const auto& node : graph.Nodes()) {
+        const auto& node_provider_type = node.GetExecutionProviderType();
+        if (node_provider_type.empty()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                                 "No execution provider supports ", node.OpType(), "(", node.SinceVersion(),
+                                 ") node '", node.Name(), "'.");
+        }
+        if (providers_by_type_.find(node_provider_type) == providers_by_type_.end()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Execution provider '", node_provider_type, "' assigned to node '",
+                                 node.Name(), "' is not registered.");
+        }
+      }
       TransformerMemcpyImpl copy_impl(graph, *provider, providers_by_type_);
 
       int copy_node_counter = 0;
