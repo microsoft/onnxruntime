@@ -488,6 +488,98 @@ TEST(CoreMLExecutionProviderTest, TestModelCache) {
 #endif
 }
 
+#if defined(__APPLE__)
+// The ML Program cache should only keep the compiled model, not the ML Package it was compiled from.
+// https://github.com/microsoft/onnxruntime/issues/33566
+TEST(CoreMLExecutionProviderTest, TestMLProgramModelCacheKeepsOnlyCompiledModel) {
+  TemporaryDirectory cache_dir(ORT_TSTR("coreml_mlprogram_cache_test"));
+  const std::filesystem::path cache_path = cache_dir.Path();
+
+  onnx::ModelProto model;
+  {
+    std::ifstream in("testdata/coreml_argmax_cast_test.onnx", std::ios_base::binary);
+    ASSERT_TRUE(model.ParseFromIstream(&in));
+  }
+  auto* metadata_props = model.add_metadata_props();
+  metadata_props->set_key(kCOREML_CACHE_KEY);
+  metadata_props->set_value("mlprogramcache123");
+  std::string out_string;
+  model.SerializeToString(&out_string);
+  gsl::span<const std::byte> model_data{reinterpret_cast<const std::byte*>(out_string.data()), out_string.size()};
+
+  std::vector<int64_t> dims_mul_x = {3, 2, 2};
+  std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
+  OrtValue ml_value_x;
+  CreateMLValue<float>(CPUAllocator::DefaultInstance(), dims_mul_x, values_mul_x, &ml_value_x);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  auto run_session = [&]() {
+    RunAndVerifyOutputsWithEP(model_data, CurrentTestName(),
+                              MakeCoreMLExecutionProvider("MLProgram", "CPUOnly", cache_path.string()),
+                              feeds);
+  };
+
+  // <cache_dir>/<cache key>/<subgraph id>_<shape mode>_mlprogram/model
+  auto find_cached_model_dir = [&]() {
+    std::filesystem::path model_dir;
+    for (const auto& entry : std::filesystem::directory_iterator(cache_path / "mlprogramcache123")) {
+      if (entry.is_directory() && std::filesystem::exists(entry.path() / "model")) {
+        model_dir = entry.path() / "model";
+      }
+    }
+    return model_dir;
+  };
+
+  auto expect_only_compiled_model = [](const std::filesystem::path& model_dir) {
+    ASSERT_TRUE(std::filesystem::is_directory(model_dir / "compiled_model.mlmodelc"));
+    for (const auto& entry : std::filesystem::directory_iterator(model_dir)) {
+      EXPECT_EQ(entry.path().filename().string(), "compiled_model.mlmodelc")
+          << "Unexpected cache entry " << entry.path().string();
+    }
+  };
+
+  // First session builds, compiles and caches the model.
+  run_session();
+  const auto model_dir = find_cached_model_dir();
+  ASSERT_FALSE(model_dir.empty());
+  expect_only_compiled_model(model_dir);
+  EXPECT_FALSE(std::filesystem::exists(model_dir / "Data"));
+  EXPECT_FALSE(std::filesystem::exists(model_dir / "Manifest.json"));
+  const auto compiled_model_time = std::filesystem::last_write_time(model_dir / "compiled_model.mlmodelc");
+
+  // Second session loads the compiled model from the cache.
+  run_session();
+  expect_only_compiled_model(model_dir);
+  EXPECT_EQ(std::filesystem::last_write_time(model_dir / "compiled_model.mlmodelc"), compiled_model_time);
+
+  // Caches created by older versions also contain the ML Package. It is removed when the cache is loaded.
+  {
+    const auto weights_dir = model_dir / "Data" / "com.microsoft.OnnxRuntime" / "weights";
+    ASSERT_TRUE(std::filesystem::create_directories(weights_dir));
+    ASSERT_TRUE(std::filesystem::create_directory(model_dir / "tmp"));
+    std::ofstream(weights_dir / "weight.bin") << "weights";
+    std::ofstream(model_dir / "Manifest.json") << "{}";
+    std::ofstream(model_dir / "tmp" / "weight.bin");
+  }
+  run_session();
+  expect_only_compiled_model(model_dir);
+  EXPECT_EQ(std::filesystem::last_write_time(model_dir / "compiled_model.mlmodelc"), compiled_model_time);
+
+  // If the compiled model is removed from the cache, the model is rebuilt.
+  std::filesystem::remove_all(model_dir / "compiled_model.mlmodelc");
+  run_session();
+  expect_only_compiled_model(model_dir);
+
+  // A cache with package files but no compiled model (e.g. a compile that failed) is also rebuilt.
+  std::filesystem::remove_all(model_dir / "compiled_model.mlmodelc");
+  ASSERT_TRUE(std::filesystem::create_directories(model_dir / "Data" / "com.microsoft.OnnxRuntime" / "weights"));
+  std::ofstream(model_dir / "Manifest.json") << "{}";
+  run_session();
+  expect_only_compiled_model(model_dir);
+}
+#endif  // defined(__APPLE__)
+
 // Test that CoreML EP can load a model with initializers stored in an external data file.
 // Regression test for https://github.com/microsoft/onnxruntime/issues/28005
 // The bug was that TensorProtoWithExternalDataToTensorProto passed a model file path
