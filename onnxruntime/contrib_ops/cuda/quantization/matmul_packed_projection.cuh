@@ -20,4 +20,9 @@ cudaError_t LaunchPackedProjection(PackedProjectionFormat format, const void* a,
                                    const float* global_scale, bool fp16_scales, int rows, int n, int k, void* y,
                                    cudaStream_t stream);
 
+// Lossless runtime layout conversion for immutable native Q8_0/NVFP4 initializers.
+cudaError_t LaunchRepackNativeProjection(PackedProjectionFormat format, const uint8_t* native,
+                                         uint8_t* weights, uint8_t* scales, int n, int k,
+                                         cudaStream_t stream);
+
 }  // namespace onnxruntime::contrib::cuda

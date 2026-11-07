@@ -21,10 +21,10 @@ void Configure(OpTester& test, int64_t k, int64_t n, const std::string& quant_ty
 }
 
 void RunCuda(OpTester& test, OpTester::ExpectResult expected = OpTester::ExpectResult::kExpectSuccess,
-             const std::string& error = "") {
+             const std::string& error = "", size_t* packed_count = nullptr) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(DefaultCudaExecutionProvider());
-  test.Run(expected, error, {}, nullptr, &providers);
+  test.Run(SessionOptions{}, expected, error, {}, nullptr, &providers, {}, packed_count);
 }
 
 TEST(MatMulPackedTest, NativeIQ2XXSBlocks) {
@@ -115,13 +115,17 @@ TEST(MatMulPackedTest, NativeQ8Blocks) {
         }
         for (int row = 0; row < rows; ++row) expected[row * n + col] = BFloat16(sums[row]);
       }
-      OpTester test("MatMulPacked", 1, kMSDomain);
-      Configure(test, k, n, "q8_0");
-      test.AddInput<BFloat16>("A", {1, rows, k}, a);
-      test.AddInput<uint8_t>("B", {n, (k / 32) * 34}, b);
-      test.AddOutput<BFloat16>("Y", {1, rows, n}, expected);
-      test.SetOutputTolerance(0, 0);
-      RunCuda(test);
+      for (bool initializer : {false, true}) {
+        OpTester test("MatMulPacked", 1, kMSDomain);
+        Configure(test, k, n, "q8_0");
+        test.AddInput<BFloat16>("A", {1, rows, k}, a);
+        test.AddInput<uint8_t>("B", {n, (k / 32) * 34}, b, initializer);
+        test.AddOutput<BFloat16>("Y", {1, rows, n}, expected);
+        test.SetOutputTolerance(0, 0);
+        size_t packed_count = 0;
+        RunCuda(test, OpTester::ExpectResult::kExpectSuccess, "", &packed_count);
+        ASSERT_EQ(packed_count, initializer ? 1u : 0u);
+      }
     }
   }
 }
@@ -164,14 +168,18 @@ TEST(MatMulPackedTest, NativeNVFP4Blocks) {
             expected[row * n + col] = BFloat16(weight * float(row + 1) / 8.f * global);
           }
         }
-        OpTester test("MatMulPacked", 1, kMSDomain);
-        Configure(test, k, n, "nvfp4");
-        test.AddInput<BFloat16>("A", {1, rows, k}, a);
-        test.AddInput<uint8_t>("B", {n, (k / 64) * 36}, b);
-        test.AddInput<float>("global_scale", {}, {global});
-        test.AddOutput<BFloat16>("Y", {1, rows, n}, expected);
-        test.SetOutputTolerance(0, 0);
-        RunCuda(test);
+        for (bool initializer : {false, true}) {
+          OpTester test("MatMulPacked", 1, kMSDomain);
+          Configure(test, k, n, "nvfp4");
+          test.AddInput<BFloat16>("A", {1, rows, k}, a);
+          test.AddInput<uint8_t>("B", {n, (k / 64) * 36}, b, initializer);
+          test.AddInput<float>("global_scale", {}, {global});
+          test.AddOutput<BFloat16>("Y", {1, rows, n}, expected);
+          test.SetOutputTolerance(0, 0);
+          size_t packed_count = 0;
+          RunCuda(test, OpTester::ExpectResult::kExpectSuccess, "", &packed_count);
+          ASSERT_EQ(packed_count, initializer ? 1u : 0u);
+        }
       }
     }
   }

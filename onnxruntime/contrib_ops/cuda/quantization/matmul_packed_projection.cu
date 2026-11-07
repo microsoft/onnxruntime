@@ -13,6 +13,34 @@ namespace {
 
 using namespace packed_projection;
 
+template <bool NVFP4>
+__global__ void RepackNativeProjectionKernel(const uint8_t* native, uint8_t* weights, uint8_t* scales,
+                                             int64_t blocks) {
+  for (int64_t block = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       block < blocks; block += static_cast<int64_t>(blockDim.x) * gridDim.x) {
+    const uint8_t* source = native + block * (NVFP4 ? 36 : 34);
+    if constexpr (NVFP4) {
+#pragma unroll
+      for (int group = 0; group < 4; ++group) {
+        scales[block * 4 + group] = source[group] == 127 ? 0 : source[group];
+#pragma unroll
+        for (int byte = 0; byte < 8; ++byte) {
+          const int element = 2 * byte;
+          const int shift = element < 8 ? 0 : 4;
+          const uint8_t lo = (source[4 + group * 8 + (element & 7)] >> shift) & 15;
+          const uint8_t hi = (source[4 + group * 8 + ((element + 1) & 7)] >> shift) & 15;
+          weights[block * 32 + group * 8 + byte] = lo | (hi << 4);
+        }
+      }
+    } else {
+      scales[block * 2] = source[0];
+      scales[block * 2 + 1] = source[1];
+#pragma unroll
+      for (int byte = 0; byte < 32; ++byte) weights[block * 32 + byte] = source[2 + byte] ^ 128u;
+    }
+  }
+}
+
 // Source-qualified projection engines retain their distinct arithmetic contracts;
 // MatMulPacked's public contract is documented in matmul_packed.md.
 // x is pre-scaled by 2^-6 so that fp16 partial sums of 16 products cannot overflow for |x| < ~4e4 (massive
@@ -342,6 +370,21 @@ void LaunchQGemvR(const bf16* x, const uint8_t* w, const bf16* sc, int N, int K,
 }
 
 }  // namespace
+
+cudaError_t LaunchRepackNativeProjection(PackedProjectionFormat format, const uint8_t* native,
+                                         uint8_t* weights, uint8_t* scales, int n, int k,
+                                         cudaStream_t stream) {
+  if (n <= 0 || k <= 0 || k % 64 != 0 || native == nullptr || weights == nullptr || scales == nullptr ||
+      (format != PackedProjectionFormat::Q8GGUF && format != PackedProjectionFormat::NVFP4GGUF))
+    return cudaErrorInvalidValue;
+  const int64_t blocks = static_cast<int64_t>(n) * (k / (format == PackedProjectionFormat::NVFP4GGUF ? 64 : 32));
+  const int grid = static_cast<int>(std::min<int64_t>((blocks + 255) / 256, 65535));
+  if (format == PackedProjectionFormat::NVFP4GGUF)
+    RepackNativeProjectionKernel<true><<<grid, 256, 0, stream>>>(native, weights, scales, blocks);
+  else
+    RepackNativeProjectionKernel<false><<<grid, 256, 0, stream>>>(native, weights, scales, blocks);
+  return cudaGetLastError();
+}
 
 cudaError_t LaunchPackedProjection(PackedProjectionFormat format, const void* a, const uint8_t* b, const void* scales,
                                    const float* global_scale, bool fp16_scales, int rows, int n, int k, void* y,

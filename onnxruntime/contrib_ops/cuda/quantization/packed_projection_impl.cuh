@@ -457,12 +457,7 @@ __device__ __forceinline__ void LoadWeightRow(const uint8_t* w, const void* sc, 
     if (ALIGNED || (reinterpret_cast<uintptr_t>(record) & 7) == 0) {
       rec = __ldg(reinterpret_cast<const uint2*>(record));
     } else {
-      rec = make_uint2(0, 0);
-#pragma unroll
-      for (int b = 0; b < 4; ++b) {
-        rec.x |= static_cast<uint32_t>(__ldg(record + b)) << (8 * b);
-        rec.y |= static_cast<uint32_t>(__ldg(record + 4 + b)) << (8 * b);
-      }
+      rec = make_uint2(LoadUnalignedWord(record), LoadUnalignedWord(record + 4));
     }
     const int h = t & 1;
     uint16_t scale_bits;

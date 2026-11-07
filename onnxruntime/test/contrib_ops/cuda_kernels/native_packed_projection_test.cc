@@ -112,6 +112,74 @@ TEST(NativePackedProjectionKernelTest, Q8LosslessBF16ScaleMultirowLayouts) {
   CompareNativeAndSplitLayouts(true, true);
 }
 
+TEST(NativePackedProjectionKernelTest, InitializerRepackingPreservesCompleteLayouts) {
+  int count = 0;
+  ASSERT_EQ(cudaGetDeviceCount(&count), cudaSuccess);
+  if (count == 0) GTEST_SKIP() << "Requires CUDA";
+  for (bool nvfp4 : {false, true}) {
+    const int k = nvfp4 ? 4096 : 64;
+    const int scale_bytes = nvfp4 ? 4 : 2;
+    for (int n : {19, 8193}) {
+      const size_t blocks = static_cast<size_t>(n) * (k / (nvfp4 ? 64 : 32));
+      InlinedVector<uint8_t> expected_weights(blocks * 32), expected_scales(blocks * scale_bytes);
+      InlinedVector<uint8_t> native(blocks * (32 + scale_bytes));
+      uint32_t random = 17;
+      for (size_t block = 0; block < blocks; ++block) {
+        auto* bytes = native.data() + block * (32 + scale_bytes);
+        for (int byte = 0; byte < 32; ++byte) {
+          random = random * 1664525u + 1013904223u;
+          expected_weights[block * 32 + byte] = static_cast<uint8_t>(random >> 24);
+          if (!nvfp4) bytes[2 + byte] = expected_weights[block * 32 + byte] ^ 128u;
+        }
+        for (int byte = 0; byte < scale_bytes; ++byte) {
+          random = random * 1664525u + 1013904223u;
+          bytes[byte] = static_cast<uint8_t>(random >> 24);
+          expected_scales[block * scale_bytes + byte] = nvfp4 && bytes[byte] == 127 ? 0 : bytes[byte];
+        }
+        if (nvfp4) {
+          for (int group = 0; group < 4; ++group) {
+            auto element = [&](int index) {
+              return (expected_weights[block * 32 + group * 8 + index / 2] >> (4 * (index & 1))) & 15;
+            };
+            for (int byte = 0; byte < 8; ++byte)
+              bytes[4 + group * 8 + byte] = element(byte) | (element(byte + 8) << 4);
+          }
+        }
+      }
+      auto dn = AllocateNative(native.size() + 4);
+      auto dw = AllocateNative(expected_weights.size() + 2);
+      auto ds = AllocateNative(expected_scales.size() + 2);
+      ASSERT_NE(dn.get(), nullptr);
+      ASSERT_NE(dw.get(), nullptr);
+      ASSERT_NE(ds.get(), nullptr);
+      for (int offset = 0; offset <= 4; ++offset) {
+        SCOPED_TRACE(testing::Message() << "nvfp4=" << nvfp4 << " N=" << n << " offset=" << offset);
+        auto* source = static_cast<uint8_t*>(dn.get()) + offset;
+        ASSERT_EQ(cudaMemcpy(source, native.data(), native.size(), cudaMemcpyHostToDevice), cudaSuccess);
+        ASSERT_EQ(cudaMemset(dw.get(), 0x55, expected_weights.size() + 2), cudaSuccess);
+        ASSERT_EQ(cudaMemset(ds.get(), 0x55, expected_scales.size() + 2), cudaSuccess);
+        ASSERT_EQ(contrib::cuda::LaunchRepackNativeProjection(
+                      nvfp4 ? contrib::cuda::PackedProjectionFormat::NVFP4GGUF
+                            : contrib::cuda::PackedProjectionFormat::Q8GGUF,
+                      source, static_cast<uint8_t*>(dw.get()) + 1,
+                      static_cast<uint8_t*>(ds.get()) + 1, n, k, nullptr),
+                  cudaSuccess);
+        for (bool scales : {false, true}) {
+          const auto& expected = scales ? expected_scales : expected_weights;
+          InlinedVector<uint8_t> actual(expected.size() + 2);
+          ASSERT_EQ(cudaMemcpy(actual.data(), scales ? ds.get() : dw.get(), actual.size(),
+                               cudaMemcpyDeviceToHost),
+                    cudaSuccess);
+          ASSERT_EQ(actual.front(), 0x55);
+          ASSERT_EQ(actual.back(), 0x55);
+          for (size_t byte = 0; byte < expected.size(); ++byte)
+            ASSERT_EQ(actual[byte + 1], expected[byte]) << "scales=" << scales << " byte=" << byte;
+        }
+      }
+    }
+  }
+}
+
 TEST(NativePackedProjectionKernelTest, NVFP4NativeAndSplitLayoutsWithOffsets) {
   int count = 0;
   ASSERT_EQ(cudaGetDeviceCount(&count), cudaSuccess);

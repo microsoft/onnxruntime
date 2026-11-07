@@ -50,6 +50,19 @@ leading activation dimensions. It has no CPU kernel, fused bias or
 general-prefill implementation. Unsupported codecs and shapes fail explicitly.
 UINT8 bindings need only byte alignment; BF16 bindings need two-byte alignment.
 
+Immutable Q8_0 and NVFP4 initializers are losslessly rearranged once during
+session initialization into aligned packed-weight and scale buffers. Q8_0
+keeps every FP16 scale bit; NVFP4 changes only nibble layout and maps its
+reserved zero-scale byte to the runtime's zero representation. This is not
+dequantization or requantization. The serialized `B` tensor remains native
+GGUF storage, and the existing arithmetic engines consume the runtime buffers.
+Initialization completes the conversion before inference can use the buffers.
+
+Dynamic `B` inputs continue to use the offset-safe native kernels; IQ2_XXS
+does not allocate another weight layout. The initialization buffers are owned
+by each kernel instance, not a cross-session shared-weight cache. The source
+and converted buffers may coexist until ORT can release the packed initializer.
+
 The private MMA helpers and reduction topology originate from the qualified
 projection implementation at commit
 `491dc043952066267b2212ba979f0325da318573`. Native block addressing replaces

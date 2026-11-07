@@ -3,8 +3,10 @@
 
 #include <limits>
 #include <string>
+#include <utility>
 
 #include "contrib_ops/cuda/quantization/matmul_packed_projection.cuh"
+#include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime::contrib::cuda {
@@ -32,9 +34,43 @@ class MatMulPacked final : public onnxruntime::cuda::CudaKernel {
                                                       : (k_ / 32) * 34;
   }
 
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 bool& is_packed, PrePackedWeights* /*prepacked_weights*/) override {
+    is_packed = false;
+    if (input_idx != 1 || format_ == PackedProjectionFormat::IQ2XXSGGUF)
+      return Status::OK();
+    ORT_RETURN_IF_NOT(tensor.Shape().NumDimensions() == 2 && tensor.Shape()[0] == n_ &&
+                          tensor.Shape()[1] == packed_row_bytes_,
+                      "MatMulPacked B must have shape [N, packed_row_bytes] for the selected codec.");
+    const bool nvfp4 = format_ == PackedProjectionFormat::NVFP4GGUF;
+    auto weights = IAllocator::MakeUniquePtr<uint8_t>(
+        alloc, SafeInt<size_t>(n_) * (nvfp4 ? k_ / 2 : k_), true);
+    auto scales = IAllocator::MakeUniquePtr<uint8_t>(
+        alloc, SafeInt<size_t>(n_) * (nvfp4 ? k_ / 16 : (k_ / 32) * 2), true);
+    IAllocatorUniquePtr<uint8_t> staging;
+    const uint8_t* native = tensor.Data<uint8_t>();
+    const cudaStream_t stream = cudaStreamPerThread;
+    if (tensor.Location().device.Type() != OrtDevice::GPU) {
+      const size_t bytes = SafeInt<size_t>(n_) * packed_row_bytes_;
+      staging = IAllocator::MakeUniquePtr<uint8_t>(alloc, bytes, true);
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(staging.get(), native, bytes, cudaMemcpyDefault, stream));
+      native = staging.get();
+    }
+    const auto repack_status = LaunchRepackNativeProjection(
+        format_, native, weights.get(), scales.get(), static_cast<int>(n_), static_cast<int>(k_), stream);
+    // Initialization has no compute stream; finish before publishing or freeing staging.
+    const auto completion_status = cudaStreamSynchronize(stream);
+    CUDA_RETURN_IF_ERROR(repack_status);
+    CUDA_RETURN_IF_ERROR(completion_status);
+    packed_weights_ = std::move(weights);
+    packed_scales_ = std::move(scales);
+    is_packed = true;
+    return Status::OK();
+  }
+
   Status ComputeInternal(OpKernelContext* context) const override {
     const auto* a = context->Input<Tensor>(0);
-    const auto* b = context->Input<Tensor>(1);
+    const auto* b = packed_weights_ ? nullptr : context->Input<Tensor>(1);
     const auto* global_scale = context->InputCount() > 2 ? context->Input<Tensor>(2) : nullptr;
     const bool nvfp4 = format_ == PackedProjectionFormat::NVFP4GGUF;
     ORT_RETURN_IF_NOT(nvfp4 == (global_scale != nullptr),
@@ -45,8 +81,8 @@ class MatMulPacked final : public onnxruntime::cuda::CudaKernel {
     const auto& shape = a->Shape();
     ORT_RETURN_IF_NOT(shape.NumDimensions() >= 1 && shape.GetDims().back() == k_,
                       "MatMulPacked A must have shape [..., K].");
-    ORT_RETURN_IF_NOT(b->Shape().NumDimensions() == 2 && b->Shape()[0] == n_ &&
-                          b->Shape()[1] == packed_row_bytes_,
+    ORT_RETURN_IF_NOT(packed_weights_ || (b && b->Shape().NumDimensions() == 2 && b->Shape()[0] == n_ &&
+                                          b->Shape()[1] == packed_row_bytes_),
                       "MatMulPacked B must have shape [N, packed_row_bytes] for the selected codec.");
     const int64_t rows = shape.Size() / k_;
     ORT_RETURN_IF_NOT(rows >= 1 && rows <= 8, "MatMulPacked CUDA supports 1 through 8 activation rows.");
@@ -54,10 +90,14 @@ class MatMulPacked final : public onnxruntime::cuda::CudaKernel {
     auto output_shape = shape.AsShapeVector();
     output_shape.back() = n_;
     auto* y = context->Output(0, TensorShape(output_shape));
+    const auto execution_format = packed_weights_ ? (nvfp4 ? PackedProjectionFormat::NVFP4
+                                                           : PackedProjectionFormat::Q8)
+                                                  : format_;
     CUDA_RETURN_IF_ERROR(LaunchPackedProjection(
-        format_, a->DataRaw(), b->Data<uint8_t>(), nullptr,
+        execution_format, a->DataRaw(), packed_weights_ ? packed_weights_.get() : b->Data<uint8_t>(),
+        packed_scales_.get(),
         global_scale ? global_scale->Data<float>() : nullptr,
-        false, static_cast<int>(rows), static_cast<int>(n_), static_cast<int>(k_),
+        packed_weights_ && !nvfp4, static_cast<int>(rows), static_cast<int>(n_), static_cast<int>(k_),
         y->MutableDataRaw(), Stream(context)));
     return Status::OK();
   }
@@ -68,6 +108,8 @@ class MatMulPacked final : public onnxruntime::cuda::CudaKernel {
   int64_t n_;
   int64_t packed_row_bytes_;
   PackedProjectionFormat format_;
+  IAllocatorUniquePtr<uint8_t> packed_weights_;
+  IAllocatorUniquePtr<uint8_t> packed_scales_;
 };
 
 ONNX_OPERATOR_KERNEL_EX(
