@@ -756,7 +756,7 @@ __global__ __launch_bounds__(256) void MoEPackedFc2Bf16TcKernel(
 }
 
 // Fallback SIMT FC1 + SwiGLU kernel (used for FP16).
-template <typename CudaT>
+template <typename CudaT, bool kUseShared>
 __global__ __launch_bounds__(256) void MoEPackedFc1SwiGLUSimtKernel(
     const CudaT* __restrict__ input,
     const uint8_t* __restrict__ gate_weights,
@@ -776,14 +776,16 @@ __global__ __launch_bounds__(256) void MoEPackedFc1SwiGLUSimtKernel(
   const int count = tile.count < 8 ? tile.count : 8;
   const int expert = tile.expert;
 
-  const int total_elems = count * p.hidden_size;
-  for (int idx = static_cast<int>(threadIdx.x); idx < total_elems; idx += 256) {
-    const int m = idx / p.hidden_size;
-    const int col = idx - m * p.hidden_size;
-    const int token_row = sorted_routes[tile.start_route + m] / p.k;
-    s_x[idx] = input[static_cast<int64_t>(token_row) * p.hidden_size + col];
+  if constexpr (kUseShared) {
+    const int total_elems = count * p.hidden_size;
+    for (int idx = static_cast<int>(threadIdx.x); idx < total_elems; idx += 256) {
+      const int m = idx / p.hidden_size;
+      const int col = idx - m * p.hidden_size;
+      const int token_row = sorted_routes[tile.start_route + m] / p.k;
+      s_x[idx] = input[static_cast<int64_t>(token_row) * p.hidden_size + col];
+    }
+    __syncthreads();
   }
-  __syncthreads();
 
   const int warp = static_cast<int>(threadIdx.x) >> 5;
   const int lane = static_cast<int>(threadIdx.x) & 31;
@@ -808,7 +810,13 @@ __global__ __launch_bounds__(256) void MoEPackedFc1SwiGLUSimtKernel(
 
     const int k_offset = h_idx * 16;
     for (int m = 0; m < count; ++m) {
-      const CudaT* xm = s_x + m * p.hidden_size + k_offset;
+      const CudaT* xm;
+      if constexpr (kUseShared) {
+        xm = s_x + m * p.hidden_size + k_offset;
+      } else {
+        const int token_row = sorted_routes[tile.start_route + m] / p.k;
+        xm = input + static_cast<int64_t>(token_row) * p.hidden_size + k_offset;
+      }
 #pragma unroll
       for (int c = 0; c < 16; ++c) {
         const float xv = gguf_cuda::CudaTypeToFloat<CudaT>(xm[c]);
@@ -839,7 +847,7 @@ __global__ __launch_bounds__(256) void MoEPackedFc1SwiGLUSimtKernel(
 }
 
 // Fallback SIMT FC2 kernel (used for FP16).
-template <typename CudaT>
+template <typename CudaT, bool kUseShared>
 __global__ __launch_bounds__(256) void MoEPackedFc2SimtKernel(
     const CudaT* __restrict__ fc1_out,
     const uint8_t* __restrict__ down_weights,
@@ -858,13 +866,15 @@ __global__ __launch_bounds__(256) void MoEPackedFc2SimtKernel(
   const int count = tile.count < 8 ? tile.count : 8;
   const int expert = tile.expert;
 
-  const int total_elems = count * p.inter_size;
-  for (int idx = static_cast<int>(threadIdx.x); idx < total_elems; idx += 256) {
-    const int m = idx / p.inter_size;
-    const int col = idx - m * p.inter_size;
-    s_act[idx] = fc1_out[static_cast<int64_t>(sorted_routes[tile.start_route + m]) * p.inter_size + col];
+  if constexpr (kUseShared) {
+    const int total_elems = count * p.inter_size;
+    for (int idx = static_cast<int>(threadIdx.x); idx < total_elems; idx += 256) {
+      const int m = idx / p.inter_size;
+      const int col = idx - m * p.inter_size;
+      s_act[idx] = fc1_out[static_cast<int64_t>(sorted_routes[tile.start_route + m]) * p.inter_size + col];
+    }
+    __syncthreads();
   }
-  __syncthreads();
 
   const int warp = static_cast<int>(threadIdx.x) >> 5;
   const int lane = static_cast<int>(threadIdx.x) & 31;
@@ -885,7 +895,12 @@ __global__ __launch_bounds__(256) void MoEPackedFc2SimtKernel(
 
     const int k_offset = h_idx * 16;
     for (int m = 0; m < count; ++m) {
-      const CudaT* am = s_act + m * p.inter_size + k_offset;
+      const CudaT* am;
+      if constexpr (kUseShared) {
+        am = s_act + m * p.inter_size + k_offset;
+      } else {
+        am = fc1_out + static_cast<int64_t>(sorted_routes[tile.start_route + m]) * p.inter_size + k_offset;
+      }
 #pragma unroll
       for (int c = 0; c < 16; ++c) {
         down_acc[m] += d_vals[c] * gguf_cuda::CudaTypeToFloat<CudaT>(am[c]);
@@ -1234,16 +1249,28 @@ Status DispatchMoEPackedCuda(
     }
     ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
   } else {
+    // Keep staging within CUDA's default shared-memory limit; larger shapes read activations directly.
+    constexpr size_t kMaxStagingBytes = 48 * 1024;
     const size_t fc1_smem = static_cast<size_t>(8) * params.hidden_size * sizeof(CudaT);
     const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 7) / 8), static_cast<unsigned int>(max_tiles));
-    MoEPackedFc1SwiGLUSimtKernel<CudaT><<<fc1_grid, 256, fc1_smem, stream>>>(
-        input, gate_weights, up_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
+    if (fc1_smem <= kMaxStagingBytes) {
+      MoEPackedFc1SwiGLUSimtKernel<CudaT, true><<<fc1_grid, 256, fc1_smem, stream>>>(
+          input, gate_weights, up_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
+    } else {
+      MoEPackedFc1SwiGLUSimtKernel<CudaT, false><<<fc1_grid, 256, 0, stream>>>(
+          input, gate_weights, up_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
+    }
     ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
 
     const size_t fc2_smem = static_cast<size_t>(8) * params.inter_size * sizeof(CudaT);
     const dim3 fc2_grid(static_cast<unsigned int>((params.hidden_size + 7) / 8), static_cast<unsigned int>(max_tiles));
-    MoEPackedFc2SimtKernel<CudaT><<<fc2_grid, 256, fc2_smem, stream>>>(
-        fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
+    if (fc2_smem <= kMaxStagingBytes) {
+      MoEPackedFc2SimtKernel<CudaT, true><<<fc2_grid, 256, fc2_smem, stream>>>(
+          fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
+    } else {
+      MoEPackedFc2SimtKernel<CudaT, false><<<fc2_grid, 256, 0, stream>>>(
+          fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
+    }
     ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
   }
 

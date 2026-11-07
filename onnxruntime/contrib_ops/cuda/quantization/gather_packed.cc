@@ -12,16 +12,16 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_GATHER_PACKED_CUDA(T2, Tind)                             \
-  ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(                                      \
-      GatherPacked,                                                       \
-      kMSDomain, 1,                                                       \
-      T2, Tind,                                                           \
-      kCudaExecutionProvider,                                             \
-      (*KernelDefBuilder::Create())                                       \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())   \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())        \
-          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tind>()),   \
+#define REGISTER_GATHER_PACKED_CUDA(T2, Tind)                           \
+  ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(                                    \
+      GatherPacked,                                                     \
+      kMSDomain, 1,                                                     \
+      T2, Tind,                                                         \
+      kCudaExecutionProvider,                                           \
+      (*KernelDefBuilder::Create())                                     \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>()) \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())      \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tind>()), \
       GatherPacked<T2, Tind>);
 
 REGISTER_GATHER_PACKED_CUDA(float, int32_t)
@@ -37,6 +37,7 @@ template <typename T2, typename Tind>
 GatherPacked<T2, Tind>::GatherPacked(const OpKernelInfo& info) : CudaKernel(info) {
   ORT_ENFORCE(info.GetAttr<int64_t>("K", &k_).IsOK() && k_ > 0, "GatherPacked requires K > 0");
   ORT_ENFORCE(info.GetAttr<int64_t>("packed_type", &ggml_type_).IsOK(), "GatherPacked requires packed_type");
+  ORT_ENFORCE(gguf_quant::IsGgmlTypeSupported(ggml_type_), "GatherPacked: unsupported packed_type=", ggml_type_);
   row_bytes_ = gguf_quant::GgmlRowBytes(static_cast<int>(ggml_type_), k_);
   ORT_ENFORCE(row_bytes_ > 0, "GatherPacked: unsupported packed_type=", ggml_type_, " or invalid K=", k_);
 }
@@ -58,6 +59,7 @@ Status GatherPacked<T2, Tind>::ComputeInternal(OpKernelContext* context) const {
 
   const int64_t num_rows = indices_shape.Size();
   if (num_rows == 0) return Status::OK();
+  ORT_RETURN_IF_NOT(vocab_size > 0, "GatherPacked requires a nonempty vocabulary for nonempty indices");
 
   constexpr int out_dtype =
       std::is_same_v<T2, BFloat16> ? 16 : (std::is_same_v<T2, MLFloat16> ? 10 : 1);
