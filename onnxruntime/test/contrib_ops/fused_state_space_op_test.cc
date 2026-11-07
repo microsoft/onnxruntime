@@ -1,0 +1,420 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+#include "gtest/gtest.h"
+#include "test/common/cuda_op_test_utils.h"
+#include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <limits>
+
+#if defined(USE_CUDA) && !defined(USE_CUDA_MINIMAL)
+#include "core/framework/data_transfer.h"
+#include "core/framework/kernel_registry.h"
+#include "core/session/IOBinding.h"
+#include "core/session/inference_session.h"
+#include "test/util/include/asserts.h"
+#include "test/util/include/test_environment.h"
+#endif
+
+namespace onnxruntime::test {
+#if defined(USE_CUDA) && !defined(USE_CUDA_MINIMAL)
+namespace {
+void RunCuda(OpTester& tester) {
+  std::vector<std::unique_ptr<IExecutionProvider> > providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+float Rounded(float x) { return BFloat16(x).ToFloat(); }
+
+class MambaSession : public InferenceSession {
+ public:
+  using InferenceSession::InferenceSession;
+  Status LoadModel(Model& model) {
+    // The OpTester owns the model and outlives this session.
+    return LoadWithLoader(
+        [&model](std::shared_ptr<Model>& loaded) {
+          loaded = std::shared_ptr<Model>(&model, [](Model*) {});
+          return Status::OK();
+        },
+        "mamba_alias_test");
+  }
+};
+
+class MambaTester : public OpTester {
+ public:
+  MambaTester() : OpTester("Mamba2Verify", 1, kMSDomain) {
+    SetCustomOutputVerifier([this](const std::vector<OrtValue>& actual, const std::string& provider) {
+      auto& expected = GetOutputData();
+      ASSERT_EQ(actual.size(), expected.size());
+      for (size_t i = 0; i < actual.size(); ++i) {
+        CheckOrtValuesAreEqual(expected[i].def.Name(), expected[i].data, actual[i], expected[i].validation_params,
+                               provider);
+        const auto& want = expected[i].data.Get<Tensor>();
+        if (!want.IsDataType<BFloat16>()) continue;
+        const auto& got = actual[i].Get<Tensor>();
+        ASSERT_EQ(want.Shape(), got.Shape());
+        ASSERT_TRUE(got.IsDataType<BFloat16>());
+        // The base BF16 checker checks the expected, not actual, NaN.
+        for (int64_t j = 0; j < want.Shape().Size(); ++j) {
+          if (std::isnan(want.Data<BFloat16>()[j].ToFloat())) {
+            EXPECT_TRUE(std::isnan(got.Data<BFloat16>()[j].ToFloat())) << expected[i].def.Name() << ", " << j;
+          }
+        }
+      }
+    });
+  }
+
+  void CheckDeviceAliasing(int rows) {
+    SetTestFunctionCalled();
+    auto& model = BuildModel();
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+    SessionOptions options;
+    MambaSession session(options, GetEnvironment());
+    auto provider = DefaultCudaExecutionProvider();
+    ASSERT_NE(provider, nullptr);
+    auto* ep = provider.get();
+    const auto transfer = ep->GetDataTransfer();
+    ASSERT_NE(transfer, nullptr);
+    const auto allocators = ep->CreatePreferredAllocators();
+    const OrtMemoryInfo* gpu_info = nullptr;
+    for (const auto& allocator : allocators)
+      if (allocator->Info().device.Type() == OrtDevice::GPU && allocator->Info().mem_type == OrtMemTypeDefault)
+        gpu_info = &allocator->Info();
+    ASSERT_NE(gpu_info, nullptr);
+    const OrtMemoryInfo info = *gpu_info;
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(provider)));
+    ASSERT_STATUS_OK(session.LoadModel(model));
+    ASSERT_STATUS_OK(session.Initialize());
+    const auto gpu_allocator = session.GetAllocator(info);
+    ASSERT_NE(gpu_allocator, nullptr);
+    const auto cpu_allocator = DefaultCpuExecutionProvider()->CreatePreferredAllocators()[0];
+    std::unordered_map<std::string, OrtValue> cpu_feeds, gpu_feeds;
+    std::vector<std::string> names;
+    FillFeedsAndOutputNames(cpu_feeds, names);
+    for (const auto& [name, value] : cpu_feeds) {
+      const auto& tensor = value.Get<Tensor>();
+      Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(), gpu_allocator, gpu_feeds[name]);
+    }
+    std::vector<OrtValue> baseline;
+    // Test convolution-only, SSM-only and simultaneous input/output device aliasing.
+    for (int mask = 0; mask < 4; ++mask) {
+      for (const auto& [name, value] : cpu_feeds)
+        ASSERT_STATUS_OK(transfer->CopyTensor(value.Get<Tensor>(), *gpu_feeds[name].GetMutable<Tensor>()));
+      std::unique_ptr<IOBinding> binding;
+      ASSERT_STATUS_OK(session.NewIOBinding(&binding));
+      for (const auto& [name, value] : gpu_feeds) ASSERT_STATUS_OK(binding->BindInput(name, value));
+      for (const auto& name : names) {
+        if (name == "conv_snapshots" && (mask & 1)) {
+          ASSERT_STATUS_OK(binding->BindOutput(name, gpu_feeds.at("conv_state")));
+        } else if (name == "ssm_snapshots" && (mask & 2)) {
+          ASSERT_STATUS_OK(binding->BindOutput(name, gpu_feeds.at("ssm_state")));
+        } else {
+          ASSERT_STATUS_OK(binding->BindOutput(name, info.device));
+        }
+      }
+      ASSERT_STATUS_OK(binding->SynchronizeInputs());
+      ASSERT_STATUS_OK(session.Run(RunOptions{}, *binding));
+      ASSERT_STATUS_OK(binding->SynchronizeOutputs());
+      const auto& outputs = binding->GetOutputs();
+      ASSERT_EQ(outputs.size(), names.size());
+      for (size_t i = 0; i < outputs.size(); ++i) {
+        const auto& tensor = outputs[i].Get<Tensor>();
+        OrtValue actual;
+        Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(), cpu_allocator, actual);
+        ASSERT_STATUS_OK(transfer->CopyTensor(tensor, *actual.GetMutable<Tensor>()));
+        if (mask == 0) {
+          baseline.push_back(actual);
+        } else {
+          EXPECT_EQ(
+              std::memcmp(actual.Get<Tensor>().DataRaw(), baseline[i].Get<Tensor>().DataRaw(), tensor.SizeInBytes()), 0)
+              << names[i] << ", alias mask " << mask;
+        }
+        const char* input_name = names[i] == "conv_snapshots"  ? "conv_state"
+                                 : names[i] == "ssm_snapshots" ? "ssm_state"
+                                                               : nullptr;
+        if (input_name) {
+          const auto& input = cpu_feeds.at(input_name).Get<Tensor>();
+          const size_t offset = input.SizeInBytes() / static_cast<size_t>(input.Shape()[0]) * rows;
+          EXPECT_EQ(std::memcmp(static_cast<const uint8_t*>(actual.Get<Tensor>().DataRaw()) + offset,
+                                static_cast<const uint8_t*>(input.DataRaw()) + offset, input.SizeInBytes() - offset),
+                    0);
+          const int bit = names[i] == "conv_snapshots" ? 1 : 2;
+          if (mask & bit) {
+            EXPECT_EQ(tensor.DataRaw(), gpu_feeds.at(input_name).Get<Tensor>().DataRaw());
+          } else {
+            EXPECT_NE(tensor.DataRaw(), gpu_feeds.at(input_name).Get<Tensor>().DataRaw());
+          }
+        }
+      }
+    }
+  }
+};
+
+void TestMambaNonuniform(int rows, int selected, bool alias = false, bool trailing_slots = true) {
+  constexpr int heads = 4, groups = 2, di = heads * 64, channels = di + groups * 256;
+  constexpr int stride = di + channels + heads, state_stride = heads * 128 * 64;
+  const int slots = trailing_slots ? std::max(rows + 2, 4) : rows;
+  const bool valid = selected >= 0 && selected < slots;
+  std::vector<BFloat16> proj(rows * stride), conv(slots * channels * 3), cw(channels * 4), cb(channels);
+  std::vector<float> state(slots * state_stride), decay(heads), skip(heads), dt_bias(heads), gamma(di);
+  for (int r = 0; r < rows; ++r) {
+    for (int j = 0; j < di; ++j) proj[r * stride + j] = BFloat16((j % 11 - 5 + r) / 16.f);
+    for (int j = 0; j < channels; ++j) proj[r * stride + di + j] = BFloat16((j % 19 - 7 + r * 2 + j / 128) / 64.f);
+    for (int h = 0; h < heads; ++h) proj[r * stride + di + channels + h] = BFloat16((r - h - 2) / 16.f);
+  }
+  for (int s = 0; s < slots; ++s) {
+    for (int j = 0; j < channels; ++j)
+      for (int k = 0; k < 3; ++k) conv[(s * channels + j) * 3 + k] = BFloat16((s * 3 + j % 13 - k * 2) / 128.f);
+    for (int h = 0; h < heads; ++h)
+      for (int n = 0; n < 128; ++n)
+        for (int p = 0; p < 64; ++p)
+          state[s * state_stride + (h * 128 + n) * 64 + p] = (s * 2 + h * 3 + n % 17 - p % 7) / 1024.f;
+  }
+  for (int j = 0; j < channels; ++j) {
+    for (int k = 0; k < 4; ++k) cw[j * 4 + k] = BFloat16((k + 1 + j % 3) / 16.f);
+    cb[j] = BFloat16((j % 7 - 3) / 128.f);
+  }
+  for (int h = 0; h < heads; ++h) {
+    decay[h] = -(h + 1) / 16.f;
+    skip[h] = (h + 1) / 8.f;
+    dt_bias[h] = (h - 1) / 32.f;
+  }
+  for (int j = 0; j < di; ++j) gamma[j] = (j % 9 + 1) / 8.f;
+  auto conv_expected = conv;
+  auto state_expected = state;
+  std::vector<BFloat16> xbc(rows * channels), y(rows * di);
+  std::vector<float> readout(rows * di), st(state_stride), history(channels * 3);
+  if (valid) {
+    std::copy_n(state.begin() + selected * state_stride, state_stride, st.begin());
+    for (int j = 0; j < channels * 3; ++j) history[j] = conv[selected * channels * 3 + j].ToFloat();
+  }
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  for (int r = 0; r < rows; ++r) {
+    for (int j = 0; j < channels; ++j) {
+      const float input = proj[r * stride + di + j].ToFloat();
+      float acc = cb[j].ToFloat();
+      for (int k = 0; k < 3; ++k) acc = std::fma(cw[j * 4 + k].ToFloat(), history[j * 3 + k], acc);
+      acc = std::fma(cw[j * 4 + 3].ToFloat(), input, acc);
+      xbc[r * channels + j] = BFloat16(valid ? acc / (1.f + std::exp(-acc)) : nan);
+      history[j * 3] = history[j * 3 + 1];
+      history[j * 3 + 1] = history[j * 3 + 2];
+      history[j * 3 + 2] = input;
+      for (int k = 0; k < 3; ++k)
+        conv_expected[(r * channels + j) * 3 + k] = BFloat16(valid ? history[j * 3 + k] : nan);
+    }
+    for (int h = 0; h < heads; ++h) {
+      const int g = h / (heads / groups);
+      const float raw = proj[r * stride + di + channels + h].ToFloat() + dt_bias[h];
+      const float dt = std::max(std::log1p(std::exp(raw)), 0.01f);
+      const float dA = std::exp(decay[h] * dt);
+      for (int p = 0; p < 64; ++p) {
+        const float x = xbc[r * channels + h * 64 + p].ToFloat();
+        const int parts = rows == 1 ? 2 : 4;
+        float result = skip[h] * x;
+        for (int q = 0; q < parts; ++q) {
+          float partial = 0.f;
+          for (int n = q * (128 / parts); n < (q + 1) * (128 / parts); ++n) {
+            const int pos = (h * 128 + n) * 64 + p;
+            const float b = xbc[r * channels + di + g * 128 + n].ToFloat();
+            const float c = xbc[r * channels + di + groups * 128 + g * 128 + n].ToFloat();
+            st[pos] = std::fma(st[pos], dA, (dt * x) * b);
+            state_expected[r * state_stride + pos] = valid ? st[pos] : nan;
+            partial = std::fma(c, st[pos], partial);
+          }
+          result += partial;
+        }
+        readout[r * di + h * 64 + p] = valid ? result : nan;
+      }
+    }
+    for (int g = 0; g < groups; ++g) {
+      float square = 0.f;
+      std::vector<float> gated(di / groups);
+      for (int j = 0; j < di / groups; ++j) {
+        const int col = g * (di / groups) + j;
+        const float gate = proj[r * stride + col].ToFloat();
+        gated[j] = readout[r * di + col] * (gate / (1.f + std::exp(-gate)));
+        square += gated[j] * gated[j];
+      }
+      for (int j = 0; j < di / groups; ++j) {
+        const int col = g * (di / groups) + j;
+        y[r * di + col] = BFloat16(gated[j] / std::sqrt(square / (di / groups) + 1e-5f) * gamma[col]);
+      }
+    }
+  }
+  MambaTester tester;
+  tester.AddAttribute("heads", int64_t{heads});
+  tester.AddAttribute("n_groups", int64_t{groups});
+  tester.AddAttribute("time_step_min", 0.01f);
+  tester.AddInput<BFloat16>("projection", {rows, stride}, proj);
+  tester.AddInput<BFloat16>("conv_state", {slots, channels, 3}, conv);
+  tester.AddInput<float>("ssm_state", {slots, heads, 128, 64}, state);
+  tester.AddInput<BFloat16>("conv_weight", {channels, 4}, cw);
+  tester.AddInput<BFloat16>("conv_bias", {channels}, cb);
+  tester.AddInput<float>("dt_bias", {heads}, dt_bias);
+  tester.AddInput<float>("A_negative", {heads}, decay);
+  tester.AddInput<float>("D", {heads}, skip);
+  tester.AddInput<float>("norm_weight", {di}, gamma);
+  tester.AddInput<int32_t>("state_row", {1}, {selected});
+  tester.AddOutput<BFloat16>("Y", {rows, di}, y);
+  tester.AddOutput<BFloat16>("conv_snapshots", {slots, channels, 3}, conv_expected);
+  tester.AddOutput<float>("ssm_snapshots", {slots, heads, 128, 64}, state_expected);
+  tester.AddOutput<BFloat16>("xbc", {rows, channels}, xbc);
+  tester.AddOutput<float>("readout", {rows, di}, readout);
+  tester.SetOutputAbsErr("conv_snapshots", 0.f);
+  tester.SetOutputRelErr("conv_snapshots", 0.f);
+  tester.SetOutputAbsErr("ssm_snapshots", 2e-5f);
+  tester.SetOutputAbsErr("readout", 2e-4f);
+  RunCuda(tester);
+  if (alias) tester.CheckDeviceAliasing(rows);
+}
+
+void TestMambaSnapshots(int rows, int selected, int heads = 2) {
+  const int di = heads * 64, channels = di + 256, stride = di + channels + heads;
+  const int slots = std::max(rows, selected + 1) + 1;
+  std::vector<BFloat16> proj(rows * stride), conv(slots * channels * 3), cw(channels * 4);
+  std::vector<float> state(static_cast<size_t>(slots) * heads * 128 * 64);
+  for (int r = 0; r < rows; ++r) {
+    for (int j = 0; j < di; ++j) proj[r * stride + j] = BFloat16(0.5f);
+    for (int j = 0; j < channels; ++j) proj[r * stride + di + j] = BFloat16(0.25f + r * 0.03125f);
+    for (int h = 0; h < heads; ++h) proj[r * stride + di + channels + h] = BFloat16(-0.25f + r * 0.03125f);
+  }
+  for (int s = 0; s < slots; ++s) {
+    for (int j = 0; j < channels; ++j) {
+      for (int k = 0; k < 3; ++k) conv[(s * channels + j) * 3 + k] = BFloat16((s + 1) * (k + 1) * 0.03125f);
+    }
+    std::fill_n(state.begin() + static_cast<size_t>(s) * heads * 128 * 64, heads * 128 * 64, (s + 1) * 0.015625f);
+  }
+  for (int j = 0; j < channels; ++j) {
+    cw[j * 4] = BFloat16(0.125f);
+    cw[j * 4 + 1] = BFloat16(0.25f);
+    cw[j * 4 + 2] = BFloat16(0.5f);
+    cw[j * 4 + 3] = BFloat16(1.f);
+  }
+  auto conv_expected = conv;
+  auto state_expected = state;
+  std::vector<BFloat16> xbc(rows * channels), y(rows * di);
+  std::vector<float> readout(rows * di), st(heads, (selected + 1) * 0.015625f);
+  float history[3] = {(selected + 1) * 0.03125f, (selected + 1) * 0.0625f, (selected + 1) * 0.09375f};
+  for (int r = 0; r < rows; ++r) {
+    const float input = Rounded(0.25f + r * 0.03125f);
+    const float value = -0.125f + 0.125f * history[0] + 0.25f * history[1] + 0.5f * history[2] + input;
+    const float x = Rounded(value / (1.f + std::exp(-value)));
+    std::fill_n(xbc.begin() + r * channels, channels, BFloat16(x));
+    history[0] = history[1];
+    history[1] = history[2];
+    history[2] = input;
+    for (int j = 0; j < channels; ++j) {
+      for (int k = 0; k < 3; ++k) conv_expected[(r * channels + j) * 3 + k] = BFloat16(history[k]);
+    }
+    const float dt = std::max(std::log1p(std::exp(-0.125f + r * 0.03125f)), 0.01f);
+    float mean_square = 0.f;
+    for (int h = 0; h < heads; ++h) {
+      st[h] = std::fma(st[h], std::exp((-0.125f - h * 0.0078125f) * dt), (dt * x) * x);
+      std::fill_n(state_expected.begin() + (static_cast<size_t>(r) * heads + h) * 128 * 64, 128 * 64, st[h]);
+      float partial = 0.f;
+      const int parts = rows == 1 ? 2 : 4;
+      for (int n = 0; n < 128 / parts; ++n) partial = std::fma(x, st[h], partial);
+      float result = 0.25f * x;
+      for (int q = 0; q < parts; ++q) result += partial;
+      std::fill_n(readout.begin() + r * di + h * 64, 64, result);
+      const float gated = result * (0.5f / (1.f + std::exp(-0.5f)));
+      mean_square += gated * gated / heads;
+    }
+    for (int j = 0; j < di; ++j) {
+      const float gated = readout[r * di + j] * (0.5f / (1.f + std::exp(-0.5f)));
+      y[r * di + j] = BFloat16(gated / std::sqrt(mean_square + 1e-5f) * 1.25f);
+    }
+  }
+  OpTester tester("Mamba2Verify", 1, kMSDomain);
+  tester.AddAttribute("heads", static_cast<int64_t>(heads));
+  tester.AddAttribute("n_groups", int64_t{1});
+  tester.AddAttribute("time_step_min", 0.01f);
+  tester.AddInput<BFloat16>("projection", {rows, stride}, proj);
+  tester.AddInput<BFloat16>("conv_state", {slots, channels, 3}, conv);
+  tester.AddInput<float>("ssm_state", {slots, heads, 128, 64}, state);
+  tester.AddInput<BFloat16>("conv_weight", {channels, 1, 4}, cw);
+  tester.AddInput<BFloat16>("conv_bias", {channels}, std::vector<BFloat16>(channels, BFloat16(-0.125f)));
+  tester.AddInput<float>("dt_bias", {heads}, std::vector<float>(heads, 0.125f));
+  std::vector<float> decay(heads);
+  for (int h = 0; h < heads; ++h) decay[h] = -0.125f - h * 0.0078125f;
+  tester.AddInput<float>("A_negative", {heads}, decay);
+  tester.AddInput<float>("D", {heads}, std::vector<float>(heads, 0.25f));
+  tester.AddInput<float>("norm_weight", {di}, std::vector<float>(di, 1.25f));
+  tester.AddInput<int32_t>("state_row", {1}, {selected});
+  tester.AddOutput<BFloat16>("Y", {rows, di}, y);
+  tester.AddOutput<BFloat16>("conv_snapshots", {slots, channels, 3}, conv_expected);
+  tester.AddOutput<float>("ssm_snapshots", {slots, heads, 128, 64}, state_expected);
+  tester.AddOutput<BFloat16>("xbc", {rows, channels}, xbc);
+  tester.AddOutput<float>("readout", {rows, di}, readout);
+  tester.SetOutputAbsErr("conv_snapshots", 0.f);
+  tester.SetOutputRelErr("conv_snapshots", 0.f);
+  tester.SetOutputAbsErr("ssm_snapshots", 2e-5f);
+  tester.SetOutputAbsErr("readout", 2e-4f);
+  RunCuda(tester);
+}
+}  // namespace
+
+TEST(FusedStateSpaceTest, MambaRecurrenceAndAcceptedSnapshot) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  TestMambaSnapshots(1, 3);
+  TestMambaSnapshots(3, 1);
+  TestMambaSnapshots(8, 7);
+  TestMambaSnapshots(16, 5);
+}
+
+TEST(FusedStateSpaceTest, MambaEightRows1024WideNorm) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  TestMambaSnapshots(8, 3, 16);
+}
+
+TEST(FusedStateSpaceTest, MambaMultigroupNonuniformStateAndRankTwoWeights) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  TestMambaNonuniform(1, 3);
+  TestMambaNonuniform(3, 1);
+  TestMambaNonuniform(8, 3);
+}
+
+TEST(FusedStateSpaceTest, MambaEightRowsDeviceStateAliasing) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  TestMambaNonuniform(8, 3, true);
+}
+
+TEST(FusedStateSpaceTest, MambaFullyOverwritesSnapshotsWithoutTrailingSlots) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  TestMambaNonuniform(1, 0, false, false);
+  TestMambaNonuniform(8, 3, false, false);
+  TestMambaNonuniform(8, -1, false, false);
+}
+
+TEST(FusedStateSpaceTest, MambaInvalidSelectorsProduceNaNWithoutStateReads) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (int rows : {1, 8}) {
+    TestMambaNonuniform(rows, -1);
+    TestMambaNonuniform(rows, std::max(rows + 2, 4));
+  }
+}
+
+TEST(FusedStateSpaceTest, OnlyMambaRemainsAmongProvisionalOperators) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  (void)GetEnvironment();
+  auto provider = DefaultCudaExecutionProvider();
+  ASSERT_NE(provider, nullptr);
+  const auto registry = provider->GetKernelRegistry();
+  ASSERT_NE(registry, nullptr);
+  for (const char* name : {"Mamba2Verify", "BiasCorrectedMoERoute", "ReluSquared", "MoEPackedIQ2XXS",
+                           "MatMulPackedNVFP4", "MatMulPackedQ8", "MatMulPackedIQ2XXS"}) {
+    SCOPED_TRACE(name);
+    const bool retained = std::strcmp(name, "Mamba2Verify") == 0;
+    EXPECT_EQ(ONNX_NAMESPACE::OpSchemaRegistry::Schema(name, 1, kMSDomain) != nullptr, retained);
+    const auto& kernels = registry->GetKernelCreateMap();
+    const bool registered = std::any_of(kernels.begin(), kernels.end(), [name](const auto& entry) {
+      const auto& definition = *entry.second.kernel_def;
+      return definition.Domain() == kMSDomain && definition.OpName() == name;
+    });
+    EXPECT_EQ(registered, retained);
+  }
+}
+#endif
+}  // namespace onnxruntime::test

@@ -13,6 +13,7 @@
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/attn_lstm_schema_defs.h"
 #include "core/graph/contrib_ops/range_schema_defs.h"
+#include "core/graph/contrib_ops/fused_state_space_defs.h"
 #include "core/graph/op.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/mlas/inc/mlas_q4.h"
@@ -3748,6 +3749,7 @@ static void MatmulWithQuantWeightShapeInference(ONNX_NAMESPACE::InferenceContext
 }
 
 void RegisterContribSchemas() {
+  ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Mamba2Verify, Mamba2VerifySchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
 
