@@ -136,8 +136,8 @@ EM_ASYNC_JS(int, OrtLoadWebAssemblyExternalDataAsync,
       case 1:
         // Load external data to GPU.
         // TODO: use a unified interface for upload external buffer.
-        if (Module.webgpuUploadExternalBuffer) {
-          Module.webgpuUploadExternalBuffer(dataIdOrBuffer, data);
+        if (Module.webgpuUploadExternalBufferAsync) {
+          await Module.webgpuUploadExternalBufferAsync(dataIdOrBuffer, data);
         } else {
           Module.jsepUploadExternalBuffer(dataIdOrBuffer, data);
         }
