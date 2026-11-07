@@ -303,8 +303,7 @@ class TestDlpackPyTorch(unittest.TestCase):
         shape = (ctypes.c_int64 * 1)(0)
         for device_type in (2, 10):  # kDLCUDA, kDLROCM
             with self.subTest(device_type=device_type):
-                provider = "CUDAExecutionProvider" if device_type == 2 else "MIGraphXExecutionProvider"
-                device_id = 0 if provider in ort.get_available_providers() else 3
+                device_id = 0
                 managed = DLManagedTensor(
                     DLTensor(None, DLDevice(device_type, device_id), 1, DLDataType(2, 32, 1), shape, None, 0),
                     None,
