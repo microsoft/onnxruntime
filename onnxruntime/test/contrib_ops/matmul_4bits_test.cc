@@ -514,6 +514,34 @@ TEST(MatMulNBits, Float32_4b_Accuracy4) {
   TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 4>();
 }
 
+// B is 18 MB as fp32, more than the 16 MB that the CPU kernel's unpacked path dequantizes whole, so the path
+// dequantizes and multiplies it in blocks of columns instead (32 columns at K = 4096; the last block is partial).
+// That path serves the configurations without an MLAS QNBit GEMM kernel, such as g_idx, floating-point zero
+// points, and every MatMulNBits node in WebAssembly builds.
+TEST(MatMulNBits, Float32_4b_UnpackedTiles) {
+  TestMatMulNBitsTyped<float, 3, 1100, 4096, 32, 0>();
+
+  TestOptions opts{};
+  opts.batch_count = 2;
+  opts.M = 3;
+  opts.N = 1100;
+  opts.K = 4096;
+  opts.block_size = 32;
+  opts.has_zero_point = true;
+  opts.has_bias = true;
+  opts.output_abs_error = 0.05f;
+  opts.output_rel_error = 0.02f;
+  std::vector<std::unique_ptr<IExecutionProvider>> explicit_eps;
+  explicit_eps.emplace_back(DefaultCpuExecutionProvider());
+  RunTest<float>(opts, std::move(explicit_eps));
+}
+
+#if !defined(USE_DML)
+TEST(MatMulNBits, Float16_4b_UnpackedTiles) {
+  TestMatMulNBitsTyped<MLFloat16, 3, 1100, 4096, 32, 0>(0.1f);
+}
+#endif
+
 TEST(MatMulNBits, Float32_4b_Accuracy4_ForceFp32) {
 #if !defined(MLAS_TARGET_AMD64_IX86)
   GTEST_SKIP() << "Forced QNBit CompFp32 is currently supported only on x86/x64.";
