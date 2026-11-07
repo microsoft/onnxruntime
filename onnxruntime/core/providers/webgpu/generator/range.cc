@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
+#include <limits>
+
 #include "core/providers/webgpu/generator/range.h"
 #include "core/providers/webgpu/shader_helper.h"
 
@@ -13,11 +16,12 @@ Status Range<T>::ComputeInternal(ComputeContext& context) const {
   T limit = context.Input<Tensor>(1)->Data<T>()[0];
   T delta = context.Input<Tensor>(2)->Data<T>()[0];
 
-  GSL_SUPPRESS(io.2)  // Ignore warning about potential overflow in (limit - start)
-  int64_t n = static_cast<int64_t>(ceil((1.0 * (limit - start)) / delta));
-  if (n <= 0) {
-    n = 0;
-  }
+  ORT_RETURN_IF(delta == T{0}, "Range delta must not be zero.");
+  const double count = std::ceil((static_cast<double>(limit) - static_cast<double>(start)) /
+                                 static_cast<double>(delta));
+  ORT_RETURN_IF(!std::isfinite(count) || count > std::numeric_limits<uint32_t>::max(),
+                "Range output size exceeds WebGPU supported limits.");
+  const int64_t n = count > 0 ? static_cast<int64_t>(count) : 0;
   auto* output_tensor = context.Output(0, TensorShape{n});
   if (n == 0) {
     return Status::OK();

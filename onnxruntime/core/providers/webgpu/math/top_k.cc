@@ -75,8 +75,11 @@ Status TopKProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // The index tiebreaker flips direction based on largest_ to achieve this.
   const std::string asc_tiebreak = largest_ ? "ia < ib" : "ia > ib";
   const std::string desc_tiebreak = largest_ ? "ia > ib" : "ia < ib";
-  const std::string asc_swap = "va > vb || (va == vb && " + asc_tiebreak + ")";
-  const std::string desc_swap = "va < vb || (va == vb && " + desc_tiebreak + ")";
+  // Padding must lose to every valid value, including infinities and tied extrema.
+  const std::string asc_padding_swap = largest_ ? "(ia >= 0 && ib < 0)" : "(ia < 0 && ib >= 0)";
+  const std::string desc_padding_swap = largest_ ? "(ia < 0 && ib >= 0)" : "(ia >= 0 && ib < 0)";
+  const std::string asc_swap = asc_padding_swap + " || (ia >= 0 && ib >= 0 && (va > vb || (va == vb && " + asc_tiebreak + ")))";
+  const std::string desc_swap = desc_padding_swap + " || (ia >= 0 && ib >= 0 && (va < vb || (va == vb && " + desc_tiebreak + ")))";
 
   // Declare shared memory for bitonic sort
   shader.AdditionalImplementation()
@@ -170,8 +173,11 @@ Status TopKSortStepProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const std::string asc_expr = largest_ ? "(((i - base) / uniforms.block_size) & 1u) != 0u" : "(((i - base) / uniforms.block_size) & 1u) == 0u";
   const std::string asc_tiebreak = largest_ ? "ia < ib" : "ia > ib";
   const std::string desc_tiebreak = largest_ ? "ia > ib" : "ia < ib";
-  const std::string asc_swap = "va > vb || (va == vb && " + asc_tiebreak + ")";
-  const std::string desc_swap = "va < vb || (va == vb && " + desc_tiebreak + ")";
+  // Padding must lose to every valid value, including infinities and tied extrema.
+  const std::string asc_padding_swap = largest_ ? "(ia >= 0 && ib < 0)" : "(ia < 0 && ib >= 0)";
+  const std::string desc_padding_swap = largest_ ? "(ia < 0 && ib >= 0)" : "(ia >= 0 && ib < 0)";
+  const std::string asc_swap = asc_padding_swap + " || (ia >= 0 && ib >= 0 && (va > vb || (va == vb && " + asc_tiebreak + ")))";
+  const std::string desc_swap = desc_padding_swap + " || (ia >= 0 && ib >= 0 && (va < vb || (va == vb && " + desc_tiebreak + ")))";
 
   shader.MainFunctionBody()
       << "if (global_idx >= uniforms.total_threads) { return; }\n"
