@@ -2116,6 +2116,86 @@ TEST(ConvTransposeTest, ZeroInputChannelsFillOutputWithBias) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+TEST(ConvTransposeTest, Depthwise1DStreaming) {
+  for (int threads : {1, 4}) {
+    for (bool initializer : {false, true}) {
+      SessionOptions options;
+      options.intra_op_param.thread_pool_size = threads;
+      auto run = [&](int64_t length, int64_t kernel, int64_t dilation, int64_t left, int64_t right,
+                     const std::vector<float>& input, const std::vector<float>& filter,
+                     const std::vector<float>& bias, const std::vector<float>& expected) {
+        const int64_t output_length = (length - 1) * 2 + (kernel - 1) * dilation + 2 - left - right;
+        OpTester test("ConvTranspose", 11);
+        test.AddAttribute<int64_t>("group", 3);
+        test.AddAttribute("strides", std::vector<int64_t>{2});
+        test.AddAttribute("dilations", std::vector<int64_t>{dilation});
+        test.AddAttribute("pads", std::vector<int64_t>{left, right});
+        test.AddAttribute("output_padding", std::vector<int64_t>{1});
+        test.AddInput<float>("X", {2, 3, length}, input);
+        test.AddInput<float>("W", {3, 1, kernel}, filter, initializer);
+        test.AddInput<float>("B", {3}, bias, initializer);
+        test.AddOutput<float>("Y", {2, 3, output_length}, expected);
+        test.SetOutputAbsErr("Y", 0.0f);
+        test.SetOutputRelErr("Y", 0.0f);
+        std::vector<std::unique_ptr<IExecutionProvider>> providers;
+        providers.push_back(DefaultCpuExecutionProvider());
+        test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+      };
+      const std::vector<float> input = {
+          1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+          13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24};
+      run(4, 3, 2, 1, 2, input, {1, -2, 3, -1, .5f, 2, .25f, -1, 2}, {1, -2, .5f},
+          {1.0f, 1.0f, 1.0f, 3.0f, 1.0f, 5.0f, 1.0f, 2.0f, 1.0f, -2.0f,
+           -5.5f, -2.0f, 4.0f, -2.0f, 5.5f, -2.0f, 16.0f, -2.0f, 0.5f, -6.0f,
+           0.5f, 11.25f, 0.5f, 12.5f, 0.5f, 10.5f, 0.5f, 1.0f, -11.0f, 1.0f,
+           27.0f, 1.0f, 29.0f, 1.0f, 14.0f, 1.0f, -2.0f, -11.5f, -2.0f, 22.0f,
+           -2.0f, 23.5f, -2.0f, 46.0f, -2.0f, 0.5f, -15.0f, 0.5f, 26.25f, 0.5f,
+           27.5f, 0.5f, 22.5f, 0.5f});
+
+      constexpr int64_t length = 1027;
+      constexpr int64_t kernel = 12;
+      constexpr int64_t output_length = (length - 1) * 2 + kernel + 1 - 5 - 4;
+      std::vector<float> large_input(2 * 3 * length), filter(3 * kernel), expected(2 * 3 * output_length);
+      const std::vector<float> bias{.5f, -1, 2};
+      for (int64_t batch = 0; batch < 2; ++batch) {
+        for (int64_t channel = 0; channel < 3; ++channel) {
+          const float value = static_cast<float>(batch * 4 + channel + 1);
+          const float weight = static_cast<float>(channel - 1);
+          std::fill_n(large_input.begin() + (batch * 3 + channel) * length, length, value);
+          std::fill_n(filter.begin() + channel * kernel, kernel, weight);
+          for (int64_t position = 0; position < output_length; ++position) {
+            const int64_t low = std::max<int64_t>(0, (position + 5 - (kernel - 1) + 1) / 2);
+            const int64_t high = std::min<int64_t>(length - 1, (position + 5) / 2);
+            const int64_t overlaps = std::max<int64_t>(0, high - low + 1);
+            expected[(batch * 3 + channel) * output_length + position] =
+                static_cast<float>(overlaps) * value * weight + bias[channel];
+          }
+        }
+      }
+      run(length, kernel, 1, 5, 4, large_input, filter, bias, expected);
+
+      auto repeat = [](const std::vector<float>& values, size_t count) {
+        std::vector<float> result;
+        result.reserve(values.size() * count);
+        for (size_t i = 0; i < count; ++i) {
+          result.insert(result.end(), values.begin(), values.end());
+        }
+        return result;
+      };
+      // Separate rounding gives 0 at position 2; fused accumulation gives -1.
+      run(2, 3, 1, 0, 0,
+          repeat({4097.0f, 16785408.0f}, 6),
+          repeat({1.0f, 0.0f, -4097.0f}, 3), {0.0f, 0.0f, 0.0f},
+          repeat({4097.0f, 0.0f, 0.0f, 0.0f, -68769816576.0f, 0.0f}, 6));
+      // Ascending tap order gives 1 at position 4; reversing it gives 0.
+      run(3, 5, 1, 0, 0,
+          repeat({1.0f, 1.0f, 1.0f}, 6),
+          repeat({-16777216.0f, 0.0f, 16777216.0f, 0.0f, 1.0f}, 3), {0.0f, 0.0f, 0.0f},
+          repeat({-16777216.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 16777216.0f, 0.0f, 1.0f, 0.0f}, 6));
+    }
+  }
+}
+
 #if !defined(ORT_NO_EXCEPTIONS)
 TEST(ConvTransposeTest, NonzeroInputChannelsRejectColBufferSizeOverflow) {
   constexpr size_t kNonzeroInputImageSize = 2;
