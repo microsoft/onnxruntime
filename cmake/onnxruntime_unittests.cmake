@@ -1035,6 +1035,18 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_
     set(onnxruntime_cuda_ut_sources ${onnxruntime_test_providers_cuda_ut_src})
   endif()
   onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_ut ${onnxruntime_cuda_ut_sources} $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
+  # Fault injection is confined to the test module, without production hooks.
+  # Wrap all runtime aliases used by supported CUDA toolkit headers.
+  if(NOT onnxruntime_DISABLE_EXCEPTIONS AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
+     CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_definitions(onnxruntime_providers_cuda_ut PRIVATE ORT_CUDA_GRAPH_FAILURE_TESTS)
+    target_link_options(onnxruntime_providers_cuda_ut PRIVATE
+      "LINKER:--wrap=cudaGraphInstantiate"
+      "LINKER:--wrap=cudaGraphInstantiate_v2"
+      "LINKER:--wrap=cudaGraphInstantiateWithFlags"
+      "LINKER:--wrap=cudaGraphDestroy"
+      "LINKER:--wrap=cudaGraphExecDestroy")
+  endif()
   foreach(cuda_ut_target IN LISTS onnxruntime_cuda_ut_compile_targets)
     config_cuda_provider_shared_module(${cuda_ut_target})
     target_compile_options(${cuda_ut_target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")

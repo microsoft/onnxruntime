@@ -338,8 +338,17 @@ Status CUDAExecutionProvider::PerThreadContext::ReplayGraph(CudaGraphAnnotation_
   return cuda_graph_.Replay(graph_annotation_id, sync);
 }
 
+Status CUDAExecutionProvider::PerThreadContext::ReleaseCapturedGraph(CudaGraphAnnotation_t graph_annotation_id) {
+  ORT_RETURN_IF_ERROR(cuda_graph_.Release(graph_annotation_id));
+  graph_id_to_run_count_.erase(graph_annotation_id);
+  return Status::OK();
+}
+
 void CUDAExecutionProvider::PerThreadContext::IncrementRegularRunCountBeforeGraphCapture(
     CudaGraphAnnotation_t cuda_graph_annotation_id) {
+  if (cuda_graph_annotation_id == kCudaGraphAnnotationSkip) {
+    return;
+  }
   if (graph_id_to_run_count_.find(cuda_graph_annotation_id) == graph_id_to_run_count_.end()) {
     graph_id_to_run_count_[cuda_graph_annotation_id] = 1;
     return;
@@ -378,6 +387,10 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
           info.gpu_device_mem_limit > 0 ? info.gpu_device_mem_limit : std::numeric_limits<size_t>::max())},
       info_{info},
       tuning_context_(this, &info_.tunable_op) {
+  ORT_ENFORCE(!(info_.enable_cuda_graph && info_.has_user_compute_stream &&
+                static_cast<cudaStream_t>(info_.user_compute_stream) == cudaStreamPerThread),
+              "cudaStreamPerThread is not supported with enable_cuda_graph; use an explicit CUDA stream "
+              "that is shared across caller threads");
   if (qmoe_controller_) {
     qmoe_controller_->SetBudgetAccount(session_budget_account_);
   }
@@ -489,6 +502,24 @@ std::unique_ptr<profiling::EpProfiler> CUDAExecutionProvider::GetProfiler() {
 #endif
 
 CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadContext() const {
+  if (IsGraphCaptureEnabled()) {
+    // Run and ReleaseCapturedGraph hold the session mutex. Avoid pinning a new
+    // handle workspace and graph manager for every transient caller thread.
+    std::lock_guard<std::mutex> lock(context_state_.mutex);
+    if (context_state_.active_contexts.empty()) {
+      context_state_.active_contexts.insert(
+          std::make_shared<PerThreadContext>(info_.device_id, stream_, info_));
+    } else {
+      // A reused context does not select CUDA's thread-local current device.
+      int current_device = 0;
+      CUDA_CALL_THROW(cudaGetDevice(&current_device));
+      if (current_device != info_.device_id) {
+        CUDA_CALL_THROW(cudaSetDevice(info_.device_id));
+      }
+    }
+    return **context_state_.active_contexts.begin();
+  }
+
   const auto& per_thread_context_cache = PerThreadContextCache();
 
   // try to use cached context
@@ -744,9 +775,31 @@ Status CUDAExecutionProvider::ReplayGraph(int graph_annotation_id, bool sync) {
   return GetPerThreadContext().ReplayGraph(graph_annotation_id, sync);
 }
 
-void CUDAExecutionProvider::RetainBufferForGraphCapture(std::shared_ptr<void> buffer) const {
+Status CUDAExecutionProvider::ReleaseCapturedGraph(int graph_annotation_id) {
+  if (!IsGraphCaptureEnabled() || graph_annotation_id == kCudaGraphAnnotationSkip) {
+    return Status::OK();
+  }
+  {
+    std::lock_guard<std::mutex> lock(context_state_.mutex);
+    for (const auto& context : context_state_.active_contexts) {
+      ORT_RETURN_IF_ERROR(context->ReleaseCapturedGraph(graph_annotation_id));
+    }
+    for (const auto& context : context_state_.retired_context_pool) {
+      ORT_RETURN_IF_ERROR(context->ReleaseCapturedGraph(graph_annotation_id));
+    }
+  }
   std::lock_guard<std::mutex> lock(captured_host_buffers_mutex_);
-  captured_host_buffers_.push_back(std::move(buffer));
+  std::erase_if(captured_host_buffers_, [graph_annotation_id](const CapturedHostBuffer& entry) {
+    return entry.graph_id == graph_annotation_id;
+  });
+  return Status::OK();
+}
+
+void CUDAExecutionProvider::RetainBufferForGraphCapture(std::shared_ptr<void> buffer) const {
+  // Unowned captures use the skip ID, which ReleaseCapturedGraph never releases.
+  const auto graph_id = GetPerThreadContext().CapturingGraphId();
+  std::lock_guard<std::mutex> lock(captured_host_buffers_mutex_);
+  captured_host_buffers_.push_back({graph_id, std::move(buffer)});
 }
 
 void CUDAExecutionProvider::SetSessionModelPath(std::filesystem::path path) const {
