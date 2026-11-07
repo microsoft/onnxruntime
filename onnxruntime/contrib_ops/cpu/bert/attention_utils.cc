@@ -206,7 +206,8 @@ Status MaybeTransposeToBNSHAndAddBias(OpKernelContext* context, AllocatorPtr all
       reshaped = std::make_unique<Tensor>(in->DataType(), in->Shape(), const_cast<void*>(in->DataRaw()), in->Location());
       ORT_RETURN_IF_ERROR(Reshape_BSD_to_BSNH(reshaped.get(), batch_size, sequence_length, num_heads, head_size));
     }
-    ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH((reshaped == nullptr) ? in : reshaped.get(), out));
+    ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH((reshaped == nullptr) ? in : reshaped.get(), out,
+                                               context->GetOperatorThreadPool()));
   } else {
     const auto* qkv_bias = bias->Data<T>();
     if (sequence_length == 1) {
