@@ -41,8 +41,6 @@ jobs:
 
     - name: Setup Android NDK
       uses: ./.github/actions/setup-android-ndk
-      with:
-        ndk-version: 28.0.13004108
 
     - name: Get Docker Image using Action
       uses: ./.github/actions/build-docker-image
@@ -156,8 +154,6 @@ jobs:
 
       - name: Setup Android NDK
         uses: ./.github/actions/setup-android-ndk
-        with:
-          ndk-version: 28.0.13004108
 
       - name: Test static telemetry package dependencies on Linux and Android
         shell: bash
@@ -280,8 +276,6 @@ jobs:
 
       - name: Setup Android NDK
         uses: ./.github/actions/setup-android-ndk
-        with:
-          ndk-version: 28.0.13004108
 
       - name: Setup CCache
         id: ccache
