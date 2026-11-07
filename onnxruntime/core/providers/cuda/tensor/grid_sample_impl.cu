@@ -91,8 +91,8 @@ __device__ T PixelAtGrid(const T* input_data, int64_t bIdx, int64_t cIdx, int64_
     y = max((int64_t)0, min((int64_t)H - 1, (int64_t)y));
     pixel = input_data[PixelOffset(x, y)];
   } else {  // Reflection
-    x = (int64_t)GsReflect<T>(x, border[0], border[2]);
-    y = (int64_t)GsReflect<T>(y, border[1], border[3]);
+    x = (int64_t)GsReflect<float>(x, border[0], border[2]);
+    y = (int64_t)GsReflect<float>(y, border[1], border[3]);
     // Safety clamp: GsReflect is computed in floating point and cast back to int64_t.
     // Extreme grid coordinates can overflow that cast, so clamp the resulting indices
     // back into the image range before indexing.
@@ -173,12 +173,13 @@ __global__ void _GridSampleKernel(
   // Following computer vision convention, the coordinates in the length-r location vector
   // are listed from the innermost tensor dimension to the outermost, the opposite of regular
   // tensor indexing.
-  T grid_X = grid_data[grid_idx * 2 + 0];
-  T grid_Y = grid_data[grid_idx * 2 + 1];
+  // Keep coordinate transforms and interpolation in FP32 for FP16 tensors.
+  float grid_X = grid_data[grid_idx * 2 + 0];
+  float grid_Y = grid_data[grid_idx * 2 + 1];
   int outIdx = idx;
 
-  T grid_x_imgSpace = GsDenormalize(grid_X, W_in, align_corners == 1);
-  T grid_y_imgSpace = GsDenormalize(grid_Y, H_in, align_corners == 1);
+  float grid_x_imgSpace = GsDenormalize(grid_X, W_in, align_corners == 1);
+  float grid_y_imgSpace = GsDenormalize(grid_Y, H_in, align_corners == 1);
   if (mode == 1) {  // nearest
     grid_x_imgSpace = nearbyint(grid_x_imgSpace);
     grid_y_imgSpace = nearbyint(grid_y_imgSpace);
@@ -222,27 +223,27 @@ __global__ void _GridSampleKernel(
     int64_t y1 = static_cast<int64_t>(floor(grid_y_imgSpace));
     int64_t x2 = x1 + 1;
     int64_t y2 = y1 + 1;
-    T w_lt = 0.0f;
-    T w_rt = 0.0f;
-    T w_lb = 0.0f;
-    T w_rb = 0.0f;
+    float w_lt = 0.0f;
+    float w_rt = 0.0f;
+    float w_lb = 0.0f;
+    float w_rb = 0.0f;
 
-    T w_r = grid_x_imgSpace - x1;
-    T w_l = 1.0f - w_r;
-    T w_b = grid_y_imgSpace - y1;
-    T w_t = 1.0f - w_b;
+    float w_r = grid_x_imgSpace - x1;
+    float w_l = 1.0f - w_r;
+    float w_b = grid_y_imgSpace - y1;
+    float w_t = 1.0f - w_b;
 
     w_lt = w_t * w_l;
     w_rt = w_t * w_r;
     w_lb = w_b * w_l;
     w_rb = w_b * w_r;
 
-    T lt_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y1, x1, padding_mode, N, C, H_in, W_in, border);
-    T rt_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y1, x2, padding_mode, N, C, H_in, W_in, border);
-    T lb_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y2, x1, padding_mode, N, C, H_in, W_in, border);
-    T rb_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y2, x2, padding_mode, N, C, H_in, W_in, border);
-    T interpoV = w_lt * lt_v + w_rt * rt_v + w_lb * lb_v + w_rb * rb_v;
-    output_data[outIdx] = interpoV;
+    float lt_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y1, x1, padding_mode, N, C, H_in, W_in, border);
+    float rt_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y1, x2, padding_mode, N, C, H_in, W_in, border);
+    float lb_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y2, x1, padding_mode, N, C, H_in, W_in, border);
+    float rb_v = PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, y2, x2, padding_mode, N, C, H_in, W_in, border);
+    float interpoV = w_lt * lt_v + w_rt * rt_v + w_lb * lb_v + w_rb * rb_v;
+    output_data[outIdx] = static_cast<T>(interpoV);
     return;
   }
   if (mode == 1) {  // nearest
@@ -255,16 +256,16 @@ __global__ void _GridSampleKernel(
   if (mode == 2) {                                                       // bicubic
     int64_t x0 = static_cast<int64_t>(std::floor(grid_x_imgSpace)) - 1;  // top-left corner of the bbox
     int64_t y0 = static_cast<int64_t>(std::floor(grid_y_imgSpace)) - 1;
-    T p[4][4] = {};  // [H][W]
+    float p[4][4] = {};  // [H][W]
     for (int64_t h = 0; h < 4; h++) {
       for (int64_t w = 0; w < 4; w++) {
         p[h][w] =
             PixelAtGrid<T, Layout>(input_data, BIdx, cIdx, h + y0, w + x0, padding_mode, N, C, H_in, W_in, border);
       }
     }
-    T dx = grid_x_imgSpace - x0 - 1;
-    T dy = grid_y_imgSpace - y0 - 1;
-    output_data[outIdx] = GsBicubicInterpolate(p, dx, dy);
+    float dx = grid_x_imgSpace - x0 - 1;
+    float dy = grid_y_imgSpace - y0 - 1;
+    output_data[outIdx] = static_cast<T>(GsBicubicInterpolate(p, dx, dy));
   }
 }
 
@@ -283,7 +284,7 @@ void GridSampleImpl(
   using Ch = Channels<IsNHWC>;
 
   int blocksPerGrid = static_cast<int>(
-      ceil(static_cast<T>(dims[Ch::N] * dims[Ch::C] * H_out * W_out) / GridDim::maxThreadsPerBlock));
+      CeilDiv(dims[Ch::N] * dims[Ch::C] * H_out * W_out, GridDim::maxThreadsPerBlock));
   _GridSampleKernel<T, IsNHWC><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       input_data, grid_data, mode, padding_mode, align_corners,
       dims[Ch::N], dims[Ch::C], dims[Ch::H], dims[Ch::W],
@@ -297,6 +298,8 @@ void GridSampleImpl(
 
 SPECIALIZED_IMPL(float, false)  // NCHW
 SPECIALIZED_IMPL(float, true)   // NHWC
+SPECIALIZED_IMPL(half, false)   // NCHW
+SPECIALIZED_IMPL(half, true)    // NHWC
 
 template <typename T, bool Layout>
 __device__ T PixelAtGrid3D(const T* input_data, int64_t bIdx, int64_t cIdx, int64_t z, int64_t y, int64_t x,
@@ -320,9 +323,9 @@ __device__ T PixelAtGrid3D(const T* input_data, int64_t bIdx, int64_t cIdx, int6
 
     pixel = input_data[PixelOffset3D(z, y, x)];
   } else {  // Reflection
-    z = (int64_t)GsReflect<T>(z, border[0], border[3]);
-    y = (int64_t)GsReflect<T>(y, border[1], border[4]);
-    x = (int64_t)GsReflect<T>(x, border[2], border[5]);
+    z = (int64_t)GsReflect<float>(z, border[0], border[3]);
+    y = (int64_t)GsReflect<float>(y, border[1], border[4]);
+    x = (int64_t)GsReflect<float>(x, border[2], border[5]);
     // Safety clamp: GsReflect is computed in floating point and cast back to int64_t.
     // Extreme grid coordinates can overflow that cast, so clamp the resulting indices
     // back into the volume range before indexing.
@@ -390,15 +393,16 @@ __global__ void _GridSampleKernel3D(
   // Following computer vision convention, the coordinates in the length-r location vector
   // are listed from the innermost tensor dimension to the outermost, the opposite of regular
   // tensor indexing.
-  T grid_X = grid_data[grid_idx * 3 + 0];
-  T grid_Y = grid_data[grid_idx * 3 + 1];
-  T grid_Z = grid_data[grid_idx * 3 + 2];
+  // Keep coordinate transforms and interpolation in FP32 for FP16 tensors.
+  float grid_X = grid_data[grid_idx * 3 + 0];
+  float grid_Y = grid_data[grid_idx * 3 + 1];
+  float grid_Z = grid_data[grid_idx * 3 + 2];
 
   int outIdx = idx;
 
-  T grid_x_volSpace = GsDenormalize(grid_X, W_in, align_corners == 1);
-  T grid_y_volSpace = GsDenormalize(grid_Y, H_in, align_corners == 1);
-  T grid_z_volSpace = GsDenormalize(grid_Z, D_in, align_corners == 1);
+  float grid_x_volSpace = GsDenormalize(grid_X, W_in, align_corners == 1);
+  float grid_y_volSpace = GsDenormalize(grid_Y, H_in, align_corners == 1);
+  float grid_z_volSpace = GsDenormalize(grid_Z, D_in, align_corners == 1);
 
   if (mode == 1) {  // nearest
     grid_x_volSpace = nearbyint(grid_x_volSpace);
@@ -460,23 +464,23 @@ __global__ void _GridSampleKernel3D(
     int64_t x2 = x1 + 1;
 
     // Weights
-    T w_lt_front = 0.0f;
-    T w_rt_front = 0.0f;
-    T w_lb_front = 0.0f;
-    T w_rb_front = 0.0f;
+    float w_lt_front = 0.0f;
+    float w_rt_front = 0.0f;
+    float w_lb_front = 0.0f;
+    float w_rb_front = 0.0f;
 
-    T w_lt_back = 0.0f;
-    T w_rt_back = 0.0f;
-    T w_lb_back = 0.0f;
-    T w_rb_back = 0.0f;
+    float w_lt_back = 0.0f;
+    float w_rt_back = 0.0f;
+    float w_lb_back = 0.0f;
+    float w_rb_back = 0.0f;
 
     // Assign weight values
-    T w_back = grid_z_volSpace - z1;
-    T w_front = 1.0f - w_back;
-    T w_b = grid_y_volSpace - y1;
-    T w_t = 1.0f - w_b;
-    T w_r = grid_x_volSpace - x1;
-    T w_l = 1.0f - w_r;
+    float w_back = grid_z_volSpace - z1;
+    float w_front = 1.0f - w_back;
+    float w_b = grid_y_volSpace - y1;
+    float w_t = 1.0f - w_b;
+    float w_r = grid_x_volSpace - x1;
+    float w_l = 1.0f - w_r;
 
     w_lt_front = w_t * w_l * w_front;
     w_rt_front = w_t * w_r * w_front;
@@ -488,20 +492,20 @@ __global__ void _GridSampleKernel3D(
     w_lb_back = w_b * w_l * w_back;
     w_rb_back = w_b * w_r * w_back;
 
-    T lt_front_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z1, y1, x1, padding_mode, N, C, D_in, H_in, W_in, border);
-    T rt_front_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z1, y1, x2, padding_mode, N, C, D_in, H_in, W_in, border);
-    T lb_front_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z1, y2, x1, padding_mode, N, C, D_in, H_in, W_in, border);
-    T rb_front_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z1, y2, x2, padding_mode, N, C, D_in, H_in, W_in, border);
+    float lt_front_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z1, y1, x1, padding_mode, N, C, D_in, H_in, W_in, border);
+    float rt_front_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z1, y1, x2, padding_mode, N, C, D_in, H_in, W_in, border);
+    float lb_front_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z1, y2, x1, padding_mode, N, C, D_in, H_in, W_in, border);
+    float rb_front_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z1, y2, x2, padding_mode, N, C, D_in, H_in, W_in, border);
 
-    T lt_back_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z2, y1, x1, padding_mode, N, C, D_in, H_in, W_in, border);
-    T rt_back_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z2, y1, x2, padding_mode, N, C, D_in, H_in, W_in, border);
-    T lb_back_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z2, y2, x1, padding_mode, N, C, D_in, H_in, W_in, border);
-    T rb_back_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z2, y2, x2, padding_mode, N, C, D_in, H_in, W_in, border);
+    float lt_back_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z2, y1, x1, padding_mode, N, C, D_in, H_in, W_in, border);
+    float rt_back_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z2, y1, x2, padding_mode, N, C, D_in, H_in, W_in, border);
+    float lb_back_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z2, y2, x1, padding_mode, N, C, D_in, H_in, W_in, border);
+    float rb_back_v = PixelAtGrid3D<T, Layout>(input_data, BIdx, cIdx, z2, y2, x2, padding_mode, N, C, D_in, H_in, W_in, border);
 
-    T interpoV = w_lt_front * lt_front_v + w_rt_front * rt_front_v + w_lb_front * lb_front_v + w_rb_front * rb_front_v +
-                 w_lt_back * lt_back_v + w_rt_back * rt_back_v + w_lb_back * lb_back_v + w_rb_back * rb_back_v;
+    float interpoV = w_lt_front * lt_front_v + w_rt_front * rt_front_v + w_lb_front * lb_front_v + w_rb_front * rb_front_v +
+                     w_lt_back * lt_back_v + w_rt_back * rt_back_v + w_lb_back * lb_back_v + w_rb_back * rb_back_v;
 
-    output_data[outIdx] = interpoV;
+    output_data[outIdx] = static_cast<T>(interpoV);
     return;
   }
   if (mode == 1) {  // nearest
@@ -552,7 +556,7 @@ void GridSampleImpl3D(
   }
 
   int blocksPerGrid = static_cast<int>(
-      ceil(static_cast<T>(N * C * D_out * H_out * W_out) / GridDim::maxThreadsPerBlock));
+      CeilDiv(N * C * D_out * H_out * W_out, GridDim::maxThreadsPerBlock));
   _GridSampleKernel3D<T, IsNHWC><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       input_data, grid_data, mode, padding_mode, align_corners,
       N, C, D_in, H_in, W_in,
@@ -568,6 +572,15 @@ template void GridSampleImpl3D<float, true>(cudaStream_t stream, const float* in
                                             const int64_t mode, const int64_t padding_mode, const int64_t align_corners,
                                             const int64_t dims[5], const int64_t D_out, const int64_t H_out, const int64_t W_out,
                                             float* output_data);
+template void GridSampleImpl3D<half, false>(cudaStream_t stream, const half* input_data, const half* grid_data,
+                                            const int64_t mode, const int64_t padding_mode, const int64_t align_corners,
+                                            const int64_t dims[5], const int64_t D_out, const int64_t H_out, const int64_t W_out,
+                                            half* output_data);
+
+template void GridSampleImpl3D<half, true>(cudaStream_t stream, const half* input_data, const half* grid_data,
+                                           const int64_t mode, const int64_t padding_mode, const int64_t align_corners,
+                                           const int64_t dims[5], const int64_t D_out, const int64_t H_out, const int64_t W_out,
+                                           half* output_data);
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

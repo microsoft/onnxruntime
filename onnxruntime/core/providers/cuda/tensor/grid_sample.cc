@@ -39,12 +39,15 @@ REGISTER_KERNEL_TYPED(float, 1, LAYOUT_NCHW, kMSDomain)
 #ifdef ENABLE_CUDA_NHWC_OPS
 // Op was introduced in opset 16
 REGISTER_KERNEL_VERSIONED_TYPED(float, 16, 19, LAYOUT_NHWC, kMSInternalNHWCDomain)
+REGISTER_KERNEL_VERSIONED_TYPED(MLFloat16, 16, 19, LAYOUT_NHWC, kMSInternalNHWCDomain)
 
 // Op was modified to support multiple spatial dimensions in opset 20
 REGISTER_KERNEL_VERSIONED_TYPED(float, 20, 21, LAYOUT_NHWC, kMSInternalNHWCDomain)
+REGISTER_KERNEL_VERSIONED_TYPED(MLFloat16, 20, 21, LAYOUT_NHWC, kMSInternalNHWCDomain)
 
 // Op spec introduced BFloat16 support in opset 22
 REGISTER_KERNEL_TYPED(float, 22, LAYOUT_NHWC, kMSInternalNHWCDomain)
+REGISTER_KERNEL_TYPED(MLFloat16, 22, LAYOUT_NHWC, kMSInternalNHWCDomain)
 #endif
 
 template <typename T, bool IsNHWC>
@@ -198,11 +201,14 @@ Status GridSample<T, IsNHWC>::ComputeInternal(OpKernelContext* context) const {
 namespace cuda {
 // Op was introduced in opset 16
 REGISTER_KERNEL_VERSIONED_TYPED(float, 16, 19, LAYOUT_NCHW, kOnnxDomain)
+REGISTER_KERNEL_VERSIONED_TYPED(MLFloat16, 16, 19, LAYOUT_NCHW, kOnnxDomain)
 
 // Op was modified to support multiple spatial dimensions in opset 20
 REGISTER_KERNEL_VERSIONED_TYPED(float, 20, 21, LAYOUT_NCHW, kOnnxDomain)
+REGISTER_KERNEL_VERSIONED_TYPED(MLFloat16, 20, 21, LAYOUT_NCHW, kOnnxDomain)
 
 // Op spec introduced BFloat16 support in opset 22
 REGISTER_KERNEL_TYPED(float, 22, LAYOUT_NCHW, kOnnxDomain)
+REGISTER_KERNEL_TYPED(MLFloat16, 22, LAYOUT_NCHW, kOnnxDomain)
 }  // namespace cuda
 }  // namespace onnxruntime
