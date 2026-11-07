@@ -120,7 +120,8 @@ const setExecutionProviders = async (
   sessionOptionsHandle: number,
   sessionOptions: InferenceSession.SessionOptions,
   allocs: number[],
-): Promise<void> => {
+): Promise<Set<string>> => {
+  const earlyConfigKeys = new Set<string>();
   const executionProviders = sessionOptions.executionProviders!;
   for (const ep of executionProviders) {
     let epName = typeof ep === 'string' ? ep : ep.name;
@@ -311,6 +312,16 @@ const setExecutionProviders = async (
         epOptionsCount,
       );
     } else {
+      // Legacy WebGPU registration snapshots its configuration while appending the provider.
+      // V2 defers creation, so keep its existing late application of extra options below.
+      if (epName === 'WebGPU' && sessionOptions.extra !== undefined) {
+        iterateExtraOptions(sessionOptions.extra, '', new WeakSet<Record<string, unknown>>(), (key, value) => {
+          if (key.startsWith('ep.webgpuexecutionprovider.')) {
+            appendSessionConfig(sessionOptionsHandle, key, value, allocs);
+            earlyConfigKeys.add(key);
+          }
+        });
+      }
       const epNameDataOffset = allocWasmString(epName, allocs);
       appendErrorCode = await getInstance()._OrtAppendExecutionProvider(
         sessionOptionsHandle,
@@ -325,6 +336,7 @@ const setExecutionProviders = async (
       checkLastError(`Can't append execution provider: ${epName}.`);
     }
   }
+  return earlyConfigKeys;
 };
 
 export const setSessionOptions = async (options?: InferenceSession.SessionOptions): Promise<[number, number[]]> => {
@@ -372,9 +384,9 @@ export const setSessionOptions = async (options?: InferenceSession.SessionOption
       checkLastError("Can't create session options.");
     }
 
-    if (sessionOptions.executionProviders) {
-      await setExecutionProviders(sessionOptionsHandle, sessionOptions, allocs);
-    }
+    const earlyConfigKeys = sessionOptions.executionProviders
+      ? await setExecutionProviders(sessionOptionsHandle, sessionOptions, allocs)
+      : new Set<string>();
 
     if (sessionOptions.enableGraphCapture !== undefined) {
       if (typeof sessionOptions.enableGraphCapture !== 'boolean') {
@@ -405,7 +417,9 @@ export const setSessionOptions = async (options?: InferenceSession.SessionOption
 
     if (sessionOptions.extra !== undefined) {
       iterateExtraOptions(sessionOptions.extra, '', new WeakSet<Record<string, unknown>>(), (key, value) => {
-        appendSessionConfig(sessionOptionsHandle, key, value, allocs);
+        if (!earlyConfigKeys.has(key)) {
+          appendSessionConfig(sessionOptionsHandle, key, value, allocs);
+        }
       });
     }
 
