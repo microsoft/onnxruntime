@@ -7,6 +7,9 @@
 #param initial_state_in_final_state
 #param output_final_state
 #param qwen_gate
+#param kda_gate
+#param decay_per_key_dim
+#param dt_bias_per_key_dim
 #param sigmoid_beta
 #param qk_l2_norm
 #param use_packed_params
@@ -24,7 +27,7 @@ var<workgroup> key_norm: array<f32, workgroup_size_x>;
 var<workgroup> query_norm: array<f32, workgroup_size_x>;
 #endif
 var<workgroup> delta: array<f32, VALUE_CHANNELS_PER_WORKGROUP>;
-#if update_rule == 1 || update_rule == 3
+#if (update_rule == 1 || update_rule == 3) && !decay_per_key_dim
 var<workgroup> gate_scale: f32;
 #endif
 
@@ -85,7 +88,12 @@ $MAIN {
     captured = min(u32(raw_capture_count), min(uniforms.state_update_capacity, last_token - first_token));
   }
   let decay_offset = 0u;
-  let key_offset = uniforms.state_update_capacity * uniforms.num_heads_v;
+#if decay_per_key_dim
+  let decay_width_per_token = uniforms.num_heads_v * uniforms.head_size_qk;
+#else
+  let decay_width_per_token = uniforms.num_heads_v;
+#endif
+  let key_offset = uniforms.state_update_capacity * decay_width_per_token;
   let delta_offset = key_offset + uniforms.state_update_capacity * uniforms.num_heads_q * uniforms.head_size_qk;
   let row_width = delta_offset + uniforms.state_update_capacity * uniforms.num_heads_v * uniforms.head_size_v;
 #endif
@@ -107,17 +115,53 @@ $MAIN {
       }
       workgroupBarrier();
     }
+#if kda_gate
+    key_value *= inverseSqrt(key_norm[0] + 1e-6);
+    query_value *= inverseSqrt(query_norm[0] + 1e-6);
+#else
     key_value *= inverseSqrt(key_norm[0] + 1e-12);
     query_value *= inverseSqrt(query_norm[0] + 1e-12);
 #endif
+#endif
 #if update_rule == 1 || update_rule == 3
+#if decay_per_key_dim
+    var my_gate_scale = 1.0;
+    if (key_index < uniforms.head_size_qk) {
+#if use_packed_params
+      var gate = f32(parameters.getByOffset((token * uniforms.num_heads_v + value_head) * (uniforms.head_size_qk + 1u) + key_index));
+#else
+      var gate = f32(decay.getByOffset((token * uniforms.num_heads_v + value_head) * uniforms.head_size_qk + key_index));
+#if qwen_gate
+#if dt_bias_per_key_dim
+      let dt = f32(dt_bias.getByOffset(value_head * uniforms.head_size_qk + key_index));
+#else
+      let dt = f32(dt_bias.getByOffset(value_head));
+#endif
+      gate = -exp(f32(a_log.getByOffset(value_head))) * gdn_softplus(gate + dt);
+#elif kda_gate
+#if dt_bias_per_key_dim
+      let dt = f32(dt_bias.getByOffset(value_head * uniforms.head_size_qk + key_index));
+#else
+      let dt = f32(dt_bias.getByOffset(value_head));
+#endif
+      gate = uniforms.gate_lower_bound * gdn_sigmoid(exp(f32(a_log.getByOffset(value_head))) * (gate + dt));
+#endif
+#endif
+      my_gate_scale = exp(gate);
+    }
+    for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+      state[value_offset] *= my_gate_scale;
+    }
+#else
     if (key_index == 0u) {
 #if use_packed_params
       var gate = parameters.getByOffset((token * uniforms.num_heads_v + value_head) * 2u);
 #else
-      var gate = decay.getByOffset(token * uniforms.num_heads_v + value_head);
+      var gate = f32(decay.getByOffset(token * uniforms.num_heads_v + value_head));
 #if qwen_gate
-      gate = -exp(a_log.getByOffset(value_head)) * gdn_softplus(gate + dt_bias.getByOffset(value_head));
+      gate = -exp(f32(a_log.getByOffset(value_head))) * gdn_softplus(gate + f32(dt_bias.getByOffset(value_head)));
+#elif kda_gate
+      gate = uniforms.gate_lower_bound * gdn_sigmoid(exp(f32(a_log.getByOffset(value_head))) * (gate + f32(dt_bias.getByOffset(value_head))));
 #endif
 #endif
       gate_scale = exp(gate);
@@ -126,6 +170,7 @@ $MAIN {
     for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
       state[value_offset] *= gate_scale;
     }
+#endif
 #endif
     for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
       let reduction_offset = value_offset * workgroup_size_x + key_index;
@@ -149,9 +194,13 @@ $MAIN {
       var beta_value = 1.0;
 #if update_rule == 2 || update_rule == 3
 #if use_packed_params
-      beta_value = parameters.getByOffset((token * uniforms.num_heads_v + value_head) * 2u + 1u);
+#if decay_per_key_dim
+      beta_value = f32(parameters.getByOffset((token * uniforms.num_heads_v + value_head) * (uniforms.head_size_qk + 1u) + uniforms.head_size_qk));
 #else
-      beta_value = beta.getByOffset(token * uniforms.num_heads_v + value_head);
+      beta_value = parameters.getByOffset((token * uniforms.num_heads_v + value_head) * 2u + 1u);
+#endif
+#else
+      beta_value = f32(beta.getByOffset(token * uniforms.num_heads_v + value_head));
 #if sigmoid_beta
       beta_value = gdn_sigmoid(beta_value);
 #endif
@@ -200,6 +249,15 @@ $MAIN {
     let slot = token - first_token;
     if (slot < captured) {
       let row_base = batch * row_width;
+#if decay_per_key_dim
+      if (value_start == 0u && key_index < uniforms.head_size_qk) {
+#if update_rule == 1 || update_rule == 3
+        state_update.setByOffset(row_base + decay_offset + (slot * uniforms.num_heads_v + value_head) * uniforms.head_size_qk + key_index, my_gate_scale);
+#else
+        state_update.setByOffset(row_base + decay_offset + (slot * uniforms.num_heads_v + value_head) * uniforms.head_size_qk + key_index, 1.0);
+#endif
+      }
+#else
       if (value_start == 0u && key_index == 0u) {
 #if update_rule == 1 || update_rule == 3
         state_update.setByOffset(row_base + decay_offset + slot * uniforms.num_heads_v + value_head, gate_scale);
@@ -207,6 +265,7 @@ $MAIN {
         state_update.setByOffset(row_base + decay_offset + slot * uniforms.num_heads_v + value_head, 1.0);
 #endif
       }
+#endif
       if (value_start == 0u && value_head == query_head * (uniforms.num_heads_v / uniforms.num_heads_q) &&
           key_index < uniforms.head_size_qk) {
         state_update.setByOffset(row_base + key_offset + (slot * uniforms.num_heads_q + query_head) * uniforms.head_size_qk + key_index, key_value);
