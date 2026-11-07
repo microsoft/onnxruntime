@@ -192,6 +192,42 @@ TEST(MoEPackedRoutingTest, ExistingSwigluRoutingDefaultsRemainUnchanged) {
   }
 }
 
+TEST(MoEPackedRoutingTest, ReluIq2PreservesContiguousKCancellation) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  constexpr int hidden = 1024;
+  constexpr int intermediate = 256;
+  std::vector<uint8_t> gate(intermediate * 264, 0), down(hidden * 66, 0);
+  for (size_t block = 0; block < gate.size() / 66; ++block) gate[block * 66 + 1] = 0x3c;
+  for (size_t block = 0; block < down.size() / 66; ++block) down[block * 66 + 1] = 0x3c;
+  for (int rows : {1, 8, 17, 129}) {
+    SCOPED_TRACE(testing::Message() << "rows=" << rows);
+    std::vector<BFloat16> input(rows * hidden, BFloat16(0.f));
+    for (int row = 0; row < rows; ++row) {
+      input[row * hidden] = BFloat16(0x1p25f);
+      input[row * hidden + 32] = BFloat16(1.f);
+      input[row * hidden + 64] = BFloat16(-0x1p25f);
+      input[row * hidden + 96] = BFloat16(1.f);
+    }
+    // FC1 retains both unit terms, then BF16 ReLU-square and FC2 produce 1024.
+    OpTester test("MoEPacked", 1, kMSDomain);
+    test.AddAttribute("k", int64_t{1});
+    test.AddAttribute("activation_type", std::string("relu_squared"));
+    test.AddAttribute("gate_type", int64_t{16});
+    test.AddAttribute("down_type", int64_t{16});
+    test.AddAttribute("normalize_routing_weights", int64_t{0});
+    test.AddInput<BFloat16>("input", {rows, hidden}, input);
+    test.AddOptionalInputEdge<BFloat16>();
+    test.AddInput<uint8_t>("gate", {1, intermediate, 264}, gate, true);
+    test.AddOptionalInputEdge<uint8_t>();
+    test.AddInput<uint8_t>("down", {1, hidden, 66}, down, true);
+    test.AddInput<int32_t>("indices", {rows, 1}, std::vector<int32_t>(rows, 0));
+    test.AddInput<float>("weights", {rows, 1}, std::vector<float>(rows, 1.f));
+    test.AddOutput<BFloat16>("output", {rows, hidden},
+                             std::vector<BFloat16>(rows * hidden, BFloat16(1024.f)));
+    RunMoeCuda(test);
+  }
+}
+
 }  // namespace
 }  // namespace onnxruntime::test
 #endif
