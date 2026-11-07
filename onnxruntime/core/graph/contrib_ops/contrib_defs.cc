@@ -1090,22 +1090,35 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("k", "Number of selected experts per token.", AttributeProto::INT)
         .Attr("normalize_routing_weights", "Whether to normalize top-k routing probabilities.",
               AttributeProto::INT, static_cast<int64_t>(1))
-        .Attr("activation_type", "Expert activation function ('swiglu').",
+        .Attr("activation_type", "Expert activation function ('swiglu' or 'relu_squared').",
               AttributeProto::STRING, std::string("swiglu"))
         .Attr("gate_type", "Stable packed-format ID of gate_experts_weights. Only contract-listed IDs are supported.",
               AttributeProto::INT)
-        .Attr("up_type", "Stable packed-format ID of up_experts_weights. Only contract-listed IDs are supported.",
-              AttributeProto::INT)
+        .Attr("up_type", "Stable packed-format ID of up_experts_weights; required for swiglu. "
+                        "Only contract-listed IDs are supported.",
+              AttributeProto::INT, static_cast<int64_t>(-1))
         .Attr("down_type", "Stable packed-format ID of down_experts_weights. Only contract-listed IDs are supported.",
               AttributeProto::INT)
         .Input(0, "input", "Input hidden states [..., hidden_size].", "T")
-        .Input(1, "router_probs", "Router logits [num_rows, num_experts].", "T")
+        .Input(1, "router_probs", "Router logits [num_rows, num_experts]; omit when supplying preselected routes.",
+               "T", OpSchema::Optional)
         .Input(2, "gate_experts_weights", "3D packed gate weight blob [num_experts, inter_size, gate_row_bytes].", "T2")
-        .Input(3, "up_experts_weights", "3D packed up weight blob [num_experts, inter_size, up_row_bytes].", "T2")
+        .Input(3, "up_experts_weights",
+               "3D packed up weight blob [num_experts, inter_size, up_row_bytes]; omit for relu_squared.",
+               "T2", OpSchema::Optional)
         .Input(4, "down_experts_weights", "3D packed down weight blob [num_experts, hidden_size, down_row_bytes].", "T2")
+        .Input(5, "expert_indices",
+               "Preselected distinct expert IDs [num_rows, k], k <= 32. Requires expert_weights, no router_probs "
+               "and normalize_routing_weights=0. Invalid IDs poison only their token row.",
+               "Tind", OpSchema::Optional)
+        .Input(6, "expert_weights",
+               "Preselected FP32 weights [num_rows, k], preserved without normalization and mixed in supplied order.",
+               "Tweight", OpSchema::Optional)
         .Output(0, "output", "Output hidden states [..., hidden_size].", "T")
         .TypeConstraint("T", {"tensor(bfloat16)", "tensor(float16)"}, "Activation type.")
         .TypeConstraint("T2", {"tensor(uint8)"}, "Packed byte storage.")
+        .TypeConstraint("Tind", {"tensor(int32)"}, "Preselected expert index type.")
+        .TypeConstraint("Tweight", {"tensor(float)"}, "Preselected routing weight type.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           if (hasInputShape(ctx, 0)) {

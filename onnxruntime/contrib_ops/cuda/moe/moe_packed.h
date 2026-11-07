@@ -58,6 +58,9 @@ struct MoEPackedParams {
   int k{0};
   bool normalize_routing_weights{true};
   bool bf16_tc_supported{false};
+  bool relu_squared{false};
+  const int32_t* expert_indices{nullptr};
+  const float* expert_weights{nullptr};
   int gate_type{0};
   int up_type{0};
   int down_type{0};

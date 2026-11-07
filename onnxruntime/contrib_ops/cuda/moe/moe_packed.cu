@@ -411,11 +411,13 @@ __global__ __launch_bounds__(KW * 32) void MoEPackedFc1DecodeWarpKSplitKernel(
     for (int m = 0; m < MT; ++m) {
       if (valid_rows[m]) {
         float g_vals[8];
-        float u_vals[8];
+        float u_vals[8] = {};
         gguf_cuda::DecodeGgufSubBlock8SmemLutTpl<kGateUpType>(
             gate_ptrs[m], p.gate_type, sb32_idx, t, s_lut, g_vals);
-        gguf_cuda::DecodeGgufSubBlock8SmemLutTpl<kGateUpType>(
-            up_ptrs[m], p.up_type, sb32_idx, t, s_lut, u_vals);
+        if (!p.relu_squared) {
+          gguf_cuda::DecodeGgufSubBlock8SmemLutTpl<kGateUpType>(
+              up_ptrs[m], p.up_type, sb32_idx, t, s_lut, u_vals);
+        }
         const uint4 e_vec = gguf_cuda::PackFloat8ToBf16x2(g_vals);
         const uint4 o_vec = gguf_cuda::PackFloat8ToBf16x2(u_vals);
         gguf_cuda::MmaBf16(acc[m], e_vec.x, o_vec.x, e_vec.y, o_vec.y, b_vec.x, b_vec.y);
@@ -449,9 +451,10 @@ __global__ __launch_bounds__(KW * 32) void MoEPackedFc1DecodeWarpKSplitKernel(
       }
       const float g_val = __bfloat162float(__float2bfloat16_rn(g_raw));
       const float u_val = __bfloat162float(__float2bfloat16_rn(u_raw));
-      const float swiglu = u_val * (g_val / (1.0f + expf(-g_val)));
+      const float positive = g_val < 0.f ? 0.f : g_val;
+      const float activation = p.relu_squared ? positive * positive : u_val * (g_val / (1.0f + expf(-g_val)));
       fc1_out[static_cast<int64_t>(s_routes[col]) * p.inter_size + j_out] =
-          __float2bfloat16_rn(swiglu);
+          __float2bfloat16_rn(activation);
     }
   }
 }
@@ -586,9 +589,11 @@ __global__ __launch_bounds__((kMaxSubTiles == 1) ? 128 : 256) void MoEPackedFc1S
       for (int sb_local = 0; sb_local < num_sb32; ++sb_local) {
         const int sb32_idx = sb32_base + sb_local;
         float g_vals[8];
-        float u_vals[8];
+        float u_vals[8] = {};
         gguf_cuda::DecodeGgufSubBlock8SmemLutTpl<kGateUpType>(gate_row_ptr, p.gate_type, sb32_idx, t, s_lut, g_vals);
-        gguf_cuda::DecodeGgufSubBlock8SmemLutTpl<kGateUpType>(up_row_ptr, p.up_type, sb32_idx, t, s_lut, u_vals);
+        if (!p.relu_squared) {
+          gguf_cuda::DecodeGgufSubBlock8SmemLutTpl<kGateUpType>(up_row_ptr, p.up_type, sb32_idx, t, s_lut, u_vals);
+        }
         const uint4 e_vec = gguf_cuda::PackFloat8ToBf16x2(g_vals);
         const uint4 o_vec = gguf_cuda::PackFloat8ToBf16x2(u_vals);
 #pragma unroll
@@ -618,9 +623,10 @@ __global__ __launch_bounds__((kMaxSubTiles == 1) ? 128 : 256) void MoEPackedFc1S
             const float u_raw = (h == 0) ? acc[st][2] : acc[st][3];
             const float g_val = __bfloat162float(__float2bfloat16_rn(g_raw));
             const float u_val = __bfloat162float(__float2bfloat16_rn(u_raw));
-            const float swiglu = u_val * (g_val / (1.0f + expf(-g_val)));
+            const float positive = g_val < 0.f ? 0.f : g_val;
+            const float activation = p.relu_squared ? positive * positive : u_val * (g_val / (1.0f + expf(-g_val)));
             const int route = s_routes[m];
-            fc1_out[static_cast<int64_t>(route) * p.inter_size + j_out] = __float2bfloat16_rn(swiglu);
+            fc1_out[static_cast<int64_t>(route) * p.inter_size + j_out] = __float2bfloat16_rn(activation);
           }
         }
       }
@@ -864,14 +870,16 @@ __global__ __launch_bounds__(256) void MoEPackedFc1SwiGLUSimtKernel(
     const int sb32_idx = h_idx >> 1;
     const int half16 = h_idx & 1;
     float g_vals[16];
-    float u_vals[16];
+    float u_vals[16] = {};
     gguf_cuda::DecodeGgufSubBlock32(gate_row_ptr, p.gate_type, sb32_idx, half16, g_vals);
-    gguf_cuda::DecodeGgufSubBlock32(up_row_ptr, p.up_type, sb32_idx, half16, u_vals);
-    if constexpr (std::is_same_v<CudaT, __nv_bfloat16>) {
+    if (!p.relu_squared) {
+      gguf_cuda::DecodeGgufSubBlock32(up_row_ptr, p.up_type, sb32_idx, half16, u_vals);
+    }
+    if (p.relu_squared || std::is_same_v<CudaT, __nv_bfloat16>) {
 #pragma unroll
       for (int c = 0; c < 16; ++c) {
-        g_vals[c] = __bfloat162float(__float2bfloat16_rn(g_vals[c]));
-        u_vals[c] = __bfloat162float(__float2bfloat16_rn(u_vals[c]));
+        g_vals[c] = gguf_cuda::CudaTypeToFloat(gguf_cuda::FloatToCudaType<CudaT>(g_vals[c]));
+        u_vals[c] = gguf_cuda::CudaTypeToFloat(gguf_cuda::FloatToCudaType<CudaT>(u_vals[c]));
       }
     }
 
@@ -906,9 +914,10 @@ __global__ __launch_bounds__(256) void MoEPackedFc1SwiGLUSimtKernel(
     for (int m = 0; m < count; ++m) {
       const float g = gguf_cuda::CudaTypeToFloat<CudaT>(gguf_cuda::FloatToCudaType<CudaT>(gate_acc[m]));
       const float u = gguf_cuda::CudaTypeToFloat<CudaT>(gguf_cuda::FloatToCudaType<CudaT>(up_acc[m]));
-      const float swiglu = u * (g / (1.0f + expf(-g)));
+      const float positive = g < 0.f ? 0.f : g;
+      const float activation = p.relu_squared ? positive * positive : u * (g / (1.0f + expf(-g)));
       fc1_out[static_cast<int64_t>(sorted_routes[tile.start_route + m]) * p.inter_size + j_out] =
-          gguf_cuda::FloatToCudaType<CudaT>(swiglu);
+          gguf_cuda::FloatToCudaType<CudaT>(activation);
     }
   }
 }
@@ -959,10 +968,10 @@ __global__ __launch_bounds__(256) void MoEPackedFc2SimtKernel(
     const int half16 = h_idx & 1;
     float d_vals[16];
     gguf_cuda::DecodeGgufSubBlock32(down_row_ptr, p.down_type, sb32_idx, half16, d_vals);
-    if constexpr (std::is_same_v<CudaT, __nv_bfloat16>) {
+    if (p.relu_squared || std::is_same_v<CudaT, __nv_bfloat16>) {
 #pragma unroll
       for (int c = 0; c < 16; ++c) {
-        d_vals[c] = __bfloat162float(__float2bfloat16_rn(d_vals[c]));
+        d_vals[c] = gguf_cuda::CudaTypeToFloat(gguf_cuda::FloatToCudaType<CudaT>(d_vals[c]));
       }
     }
 
@@ -1065,6 +1074,21 @@ size_t AlignUpWorkspace(size_t count, size_t element_bytes = 1) {
   ORT_ENFORCE(IAllocator::CalcMemSizeForArrayWithAlignment(count, element_bytes, 256, &bytes),
               "MoEPacked workspace byte size overflow");
   return bytes;
+}
+
+__global__ void MoEPackedPreselectedRoutesKernel(
+    const int32_t* indices, const float* weights, int* output_indices, float* output_weights,
+    int count, int k, int num_experts) {
+  const int route = static_cast<int>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (route >= count) return;
+  const int expert = indices[route];
+  bool invalid = expert < 0 || expert >= num_experts || !isfinite(weights[route]);
+  for (int previous = (route / k) * k; previous < route; ++previous) {
+    invalid = invalid || indices[previous] == expert;
+  }
+  output_indices[route] = invalid ? 0 : expert;
+  // Preserve valid FP32 weights; NaN marks a malformed token without unsafe expert indexing.
+  output_weights[route] = invalid ? __int_as_float(0x7fffffff) : weights[route];
 }
 
 void LaunchMoEPackedFc1DecodeBf16TcDispatch(
@@ -1297,7 +1321,11 @@ Status DispatchMoEPackedCuda(
 
   // 1. Softmax + TopK
   const dim3 route_grid(static_cast<unsigned int>((params.num_rows + 7) / 8));
-  if (params.num_experts == 512) {
+  if (params.expert_indices) {
+    MoEPackedPreselectedRoutesKernel<<<static_cast<unsigned int>((total_routes + 255) / 256), 256, 0, stream>>>(
+        params.expert_indices, params.expert_weights, topk_indices, topk_scales,
+        total_routes, params.k, params.num_experts);
+  } else if (params.num_experts == 512) {
     MoEPackedSoftmaxTopK512Kernel<CudaT><<<route_grid, 256, 0, stream>>>(
         router_probs, topk_scales, topk_indices, params.num_rows, params.k, params.normalize_routing_weights);
   } else {
