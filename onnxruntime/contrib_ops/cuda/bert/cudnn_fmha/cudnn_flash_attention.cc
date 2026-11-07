@@ -55,6 +55,28 @@ void run(
   ORT_THROW("OnnxRuntime was not compiled with cuDNN Flash Attention.");
 }
 
+bool try_build_graph(
+    int /*batch_size*/,
+    int /*num_heads_q*/,
+    int /*num_heads_kv*/,
+    int /*head_size_qk*/,
+    int /*head_size_v*/,
+    int /*sequence_length_q*/,
+    int /*sequence_length_kv*/,
+    float /*scale*/,
+    bool /*is_causal*/,
+    bool /*is_bf16*/,
+    bool /*has_bias*/,
+    bool /*broadcast_attn_bias_dim_0*/,
+    bool /*broadcast_attn_bias_dim_1*/,
+    bool /*has_padding_mask*/,
+    int /*sliding_window*/,
+    AttentionQkvFormat /*qkv_format*/,
+    cudnnHandle_t /*handle*/,
+    Stream* /*stream*/) {
+  return false;
+}
+
 bool is_supported_paged(const cudaDeviceProp& /*dprops*/,
                         int /*num_heads_q*/,
                         int /*num_heads_kv*/,
@@ -381,8 +403,9 @@ std::shared_ptr<fe::graph::Graph> build_graph(GraphParams& params) {
       .set_stride(stride)
       .set_uid(O_UID);
 
+  // A planner rejection is recoverable: try_build_graph reports it to the caller, and run() throws.
   if (!mha_graph->build(handle, {fe::HeurMode_t::A}).is_good()) {
-    ORT_THROW("Failed to build cuDNN graph for Flash Attention:", *mha_graph, "cudnn version:", cudnnGetVersion());
+    return nullptr;
   }
 
   return mha_graph;
@@ -408,8 +431,93 @@ struct BytesHash {
 };
 
 // Use thread local caches because cuDNN execution plans are not guaranteed to be thread safe.
+// A nullptr value records a planner rejection found by try_build_graph.
 // TODO(tianleiwu): since the key includes sequence lengths, we may want to limit the cache size.
 thread_local std::unordered_map<GraphParams, std::shared_ptr<fe::graph::Graph>, BytesHash<GraphParams> > mha_graph_cache;
+
+// Shared by run() and try_build_graph() so both compute the same cache key. Zero the struct first
+// so BytesHash sees deterministic padding bytes.
+static void FillGraphParams(GraphParams& params,
+                            int batch_size,
+                            int num_heads_q,
+                            int num_heads_kv,
+                            int head_size_qk,
+                            int head_size_v,
+                            int sequence_length_q,
+                            int sequence_length_kv,
+                            float scale,
+                            bool is_causal,
+                            bool is_bf16,
+                            bool has_bias,
+                            bool broadcast_attn_bias_dim_0,
+                            bool broadcast_attn_bias_dim_1,
+                            bool has_padding_mask,
+                            int sliding_window,
+                            AttentionQkvFormat qkv_format,
+                            cudnnHandle_t handle) {
+  std::memset(&params, 0, sizeof(params));
+  params.batch_size = batch_size;
+  params.num_heads_q = num_heads_q;
+  params.num_heads_kv = num_heads_kv;
+  params.head_size_qk = head_size_qk;
+  params.head_size_v = head_size_v;
+  params.sequence_length_q = sequence_length_q;
+  params.sequence_length_kv = sequence_length_kv;
+  params.scale = scale;
+  // A single query token (s_q == 1, e.g. decode) attends to all keys up to its own position, so causal
+  // masking is a no-op and the padding / kv sequence length bounds the valid keys. Dropping the causal
+  // mask here also avoids a cuDNN limitation where decode-only graphs (s_q == 1) with a causal
+  // right-bound fail to build on cuDNN backend versions <= 9.9.0.
+  params.is_causal = is_causal && (sequence_length_q > 1);
+  params.is_bf16 = is_bf16;
+  params.qkv_format = qkv_format;
+  params.handle = handle;
+  params.has_bias = has_bias;
+  params.broadcast_bias_dim_0 = broadcast_attn_bias_dim_0;
+  params.broadcast_bias_dim_1 = broadcast_attn_bias_dim_1;
+  params.has_padding_mask_q = has_padding_mask;
+  params.has_padding_mask_kv = has_padding_mask;
+  params.sliding_window = sliding_window;
+}
+
+bool try_build_graph(
+    int batch_size,
+    int num_heads_q,
+    int num_heads_kv,
+    int head_size_qk,
+    int head_size_v,
+    int sequence_length_q,
+    int sequence_length_kv,
+    float scale,
+    bool is_causal,
+    bool is_bf16,
+    bool has_bias,
+    bool broadcast_attn_bias_dim_0,
+    bool broadcast_attn_bias_dim_1,
+    bool has_padding_mask,
+    int sliding_window,
+    AttentionQkvFormat qkv_format,
+    cudnnHandle_t handle,
+    Stream* stream) {
+  GraphParams params;
+  FillGraphParams(params, batch_size, num_heads_q, num_heads_kv, head_size_qk, head_size_v,
+                  sequence_length_q, sequence_length_kv, scale, is_causal, is_bf16, has_bias,
+                  broadcast_attn_bias_dim_0, broadcast_attn_bias_dim_1, has_padding_mask, sliding_window,
+                  qkv_format, handle);
+
+  auto it = mha_graph_cache.find(params);
+  if (it != mha_graph_cache.end()) {
+    return it->second != nullptr;
+  }
+  // cuDNN plan build is not capturable.
+  cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
+  if (onnxruntime::llm::common::isCapturing(cuda_stream)) {
+    return false;
+  }
+  auto mha_graph = build_graph(params);
+  mha_graph_cache.emplace(params, mha_graph);
+  return mha_graph != nullptr;
+}
 
 // Allocate a device buffer of shape [batch_size] filled with a constant sequence length.
 // Used to synthesize a no-op padding mask for one side when cuDNN requires both seq_len_q and
@@ -452,45 +560,14 @@ void run(
     cudnnHandle_t handle,
     Stream* stream,
     AllocatorPtr allocator) {
-  // cuDNN requires both seq_len_q and seq_len_kv to be present when a padding mask is used. When the
-  // caller provides only one side, synthesize the other as the full (unpadded) sequence length so it
-  // behaves as a no-op padding mask on that side.
-  IAllocatorUniquePtr<int> synthesized_seq_len_q;
-  IAllocatorUniquePtr<int> synthesized_seq_len_kv;
-  if (mask_sequence_lengths_q != nullptr || mask_sequence_lengths_kv != nullptr) {
-    if (mask_sequence_lengths_q == nullptr) {
-      synthesized_seq_len_q = CreateConstantSeqLenBuffer(allocator, stream, batch_size, sequence_length_q);
-      mask_sequence_lengths_q = synthesized_seq_len_q.get();
-    }
-    if (mask_sequence_lengths_kv == nullptr) {
-      synthesized_seq_len_kv = CreateConstantSeqLenBuffer(allocator, stream, batch_size, sequence_length_kv);
-      mask_sequence_lengths_kv = synthesized_seq_len_kv.get();
-    }
-  }
-
+  // The graph has a padding mask when either side is given; the missing side is synthesized below,
+  // after the graph is known to be buildable.
+  const bool has_padding_mask = mask_sequence_lengths_q != nullptr || mask_sequence_lengths_kv != nullptr;
   GraphParams params;
-  params.batch_size = batch_size;
-  params.num_heads_q = num_heads_q;
-  params.num_heads_kv = num_heads_kv;
-  params.head_size_qk = head_size_qk;
-  params.head_size_v = head_size_v;
-  params.sequence_length_q = sequence_length_q;
-  params.sequence_length_kv = sequence_length_kv;
-  params.scale = scale;
-  // A single query token (s_q == 1, e.g. decode) attends to all keys up to its own position, so causal
-  // masking is a no-op and the padding / kv sequence length bounds the valid keys. Dropping the causal
-  // mask here also avoids a cuDNN limitation where decode-only graphs (s_q == 1) with a causal
-  // right-bound fail to build on cuDNN backend versions <= 9.9.0.
-  params.is_causal = is_causal && (sequence_length_q > 1);
-  params.is_bf16 = is_bf16;
-  params.qkv_format = qkv_format;
-  params.handle = handle;
-  params.has_bias = attn_bias != nullptr;
-  params.broadcast_bias_dim_0 = broadcast_attn_bias_dim_0;
-  params.broadcast_bias_dim_1 = broadcast_attn_bias_dim_1;
-  params.has_padding_mask_q = (mask_sequence_lengths_q != nullptr);
-  params.has_padding_mask_kv = (mask_sequence_lengths_kv != nullptr);
-  params.sliding_window = sliding_window;
+  FillGraphParams(params, batch_size, num_heads_q, num_heads_kv, head_size_qk, head_size_v,
+                  sequence_length_q, sequence_length_kv, scale, is_causal, is_bf16, attn_bias != nullptr,
+                  broadcast_attn_bias_dim_0, broadcast_attn_bias_dim_1, has_padding_mask,
+                  sliding_window, qkv_format, handle);
 
   std::shared_ptr<fe::graph::Graph> mha_graph;
   auto it = mha_graph_cache.find(params);
@@ -499,6 +576,31 @@ void run(
   } else {
     mha_graph = build_graph(params);
     mha_graph_cache[params] = mha_graph;
+  }
+
+  if (mha_graph == nullptr) {
+    ORT_THROW("Failed to build cuDNN graph for Flash Attention. batch_size:", batch_size,
+              " num_heads_q:", num_heads_q, " num_heads_kv:", num_heads_kv, " head_size_qk:", head_size_qk,
+              " head_size_v:", head_size_v, " sequence_length_q:", sequence_length_q,
+              " sequence_length_kv:", sequence_length_kv, " is_causal:", params.is_causal, " is_bf16:", is_bf16,
+              " has_bias:", params.has_bias, " has_padding_mask:", params.has_padding_mask_q,
+              " sliding_window:", sliding_window, " cudnn version:", cudnnGetVersion());
+  }
+
+  // cuDNN requires both seq_len_q and seq_len_kv to be present when a padding mask is used. When the
+  // caller provides only one side, synthesize the other as the full (unpadded) sequence length so it
+  // behaves as a no-op padding mask on that side.
+  IAllocatorUniquePtr<int> synthesized_seq_len_q;
+  IAllocatorUniquePtr<int> synthesized_seq_len_kv;
+  if (has_padding_mask) {
+    if (mask_sequence_lengths_q == nullptr) {
+      synthesized_seq_len_q = CreateConstantSeqLenBuffer(allocator, stream, batch_size, sequence_length_q);
+      mask_sequence_lengths_q = synthesized_seq_len_q.get();
+    }
+    if (mask_sequence_lengths_kv == nullptr) {
+      synthesized_seq_len_kv = CreateConstantSeqLenBuffer(allocator, stream, batch_size, sequence_length_kv);
+      mask_sequence_lengths_kv = synthesized_seq_len_kv.get();
+    }
   }
 
   std::unordered_map<fe::graph::Tensor_attributes::uid_t, void*> variant_pack = {
