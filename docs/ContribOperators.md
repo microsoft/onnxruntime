@@ -4985,7 +4985,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>activation_type</tt> : string</dt>
-<dd>Expert activation function ('swiglu').</dd>
+<dd>Expert activation function ('swiglu' or 'relu_squared').</dd>
 <dt><tt>down_type</tt> : int (required)</dt>
 <dd>Stable packed-format ID of down_experts_weights. Only contract-listed IDs are supported.</dd>
 <dt><tt>gate_type</tt> : int (required)</dt>
@@ -4994,23 +4994,37 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Number of selected experts per token.</dd>
 <dt><tt>normalize_routing_weights</tt> : int</dt>
 <dd>Whether to normalize top-k routing probabilities.</dd>
-<dt><tt>up_type</tt> : int (required)</dt>
-<dd>Stable packed-format ID of up_experts_weights. Only contract-listed IDs are supported.</dd>
+<dt><tt>router_scale</tt> : float</dt>
+<dd>Finite post-normalization scale for projected sigmoid routing.</dd>
+<dt><tt>routing_function</tt> : string</dt>
+<dd>Internal routing: softmax logits or projected FP32 sigmoid with selection-only bias.</dd>
+<dt><tt>up_type</tt> : int</dt>
+<dd>Stable packed-format ID of up_experts_weights; required for swiglu. Only contract-listed IDs are supported.</dd>
 </dl>
 
-#### Inputs
+#### Inputs (5 - 10)
 
 <dl>
 <dt><tt>input</tt> : T</dt>
 <dd>Input hidden states [..., hidden_size].</dd>
-<dt><tt>router_probs</tt> : T</dt>
-<dd>Router logits [num_rows, num_experts].</dd>
+<dt><tt>router_probs</tt> (optional) : T</dt>
+<dd>Router logits [num_rows, num_experts]; omit when supplying preselected routes.</dd>
 <dt><tt>gate_experts_weights</tt> : T2</dt>
 <dd>3D packed gate weight blob [num_experts, inter_size, gate_row_bytes].</dd>
-<dt><tt>up_experts_weights</tt> : T2</dt>
-<dd>3D packed up weight blob [num_experts, inter_size, up_row_bytes].</dd>
+<dt><tt>up_experts_weights</tt> (optional) : T2</dt>
+<dd>3D packed up weight blob [num_experts, inter_size, up_row_bytes]; omit for relu_squared.</dd>
 <dt><tt>down_experts_weights</tt> : T2</dt>
 <dd>3D packed down weight blob [num_experts, hidden_size, down_row_bytes].</dd>
+<dt><tt>expert_indices</tt> (optional) : Tind</dt>
+<dd>Preselected distinct expert IDs [num_rows, k], k <= 32. Requires expert_weights, no router_probs and normalize_routing_weights=0. Invalid IDs poison only their token row.</dd>
+<dt><tt>expert_weights</tt> (optional) : Tweight</dt>
+<dd>Preselected FP32 weights [num_rows, k], preserved without normalization and mixed in supplied order.</dd>
+<dt><tt>router_input</tt> (optional) : T</dt>
+<dd>Projected sigmoid routing input [num_rows, router_width]; omit other routing inputs. Requires relu_squared, routing_function='sigmoid' and normalize_routing_weights=1.</dd>
+<dt><tt>router_weight</tt> (optional) : T</dt>
+<dd>Sigmoid router weight [num_experts, router_width].</dd>
+<dt><tt>router_bias</tt> (optional) : Tweight</dt>
+<dd>FP32 correction bias [num_experts], used only for expert selection.</dd>
 </dl>
 
 #### Outputs
@@ -5027,6 +5041,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Activation type.</dd>
 <dt><tt>T2</tt> : tensor(uint8)</dt>
 <dd>Packed byte storage.</dd>
+<dt><tt>Tind</tt> : tensor(int32)</dt>
+<dd>Preselected expert index type.</dd>
+<dt><tt>Tweight</tt> : tensor(float)</dt>
+<dd>Preselected routing weight type.</dd>
 </dl>
 
 
