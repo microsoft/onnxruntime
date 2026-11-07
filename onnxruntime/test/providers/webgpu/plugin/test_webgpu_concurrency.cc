@@ -1347,26 +1347,39 @@ TEST_F(PluginEpWebGpuConcurrency, SameSessionAllocatorCreatesAndCopiesDuringGrap
   ASSERT_FALSE(error.Failed()) << error.Message();
 }
 
-TEST_F(PluginEpWebGpuConcurrency, SessionAllocatorReusesBuffersFreedDuringGraphReplay) {
+TEST_F(PluginEpWebGpuConcurrency, SessionAllocatorFreesBuffersDuringGraphReplay) {
   auto session = CreateSession(true);
   Ort::Allocator allocator(*session, Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
   auto gpu_input = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
   auto gpu_output = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
+  const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::array<float, kElements> input_data{};
+  input_data.fill(2.0f);
+  auto cpu_input = Ort::Value::CreateTensor<float>(
+      cpu_memory, input_data.data(), input_data.size(), kShape.data(), kShape.size());
+  Ort::ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_input, nullptr));
   Ort::IoBinding binding(*session);
   binding.BindInput("X", gpu_input);
   binding.BindOutput("Y", gpu_output);
   session->Run(Ort::RunOptions{nullptr}, binding);
 
-  // Hold a full bucket so all available buffers of this size belong to this test.
-  // The model's tensors use the separate 64-byte bucket.
+  // These buffers are outside the model's working set and may be evicted during replay.
+  // Fill them so any retained buffer must be cleared on reacquisition.
   constexpr size_t kBufferSize = 4096;
-  constexpr size_t kBucketCapacity = 200;
+  constexpr size_t kBufferCount = 200;
+  constexpr std::array<int64_t, 1> buffer_shape{kBufferSize / sizeof(float)};
+  std::array<float, kBufferSize / sizeof(float)> buffer_data;
+  buffer_data.fill(3.0f);
+  auto cpu_buffer = Ort::Value::CreateTensor<float>(
+      cpu_memory, buffer_data.data(), buffer_data.size(), buffer_shape.data(), buffer_shape.size());
   InlinedVector<std::optional<Ort::MemoryAllocation>> buffers;
-  InlinedHashSet<void*> handles;
-  for (size_t i = 0; i < kBucketCapacity; ++i) {
+  for (size_t i = 0; i < kBufferCount; ++i) {
     buffers.emplace_back(allocator.GetAllocation(kBufferSize));
     ASSERT_NE(buffers.back()->get(), nullptr);
-    handles.insert(buffers.back()->get());
+    auto gpu_buffer = Ort::Value::CreateTensor(
+        Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT), buffers.back()->get(), kBufferSize,
+        buffer_shape.data(), buffer_shape.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+    Ort::ThrowOnError(ort_env->CopyTensor(cpu_buffer, gpu_buffer, nullptr));
   }
 
   FirstError error;
@@ -1385,13 +1398,25 @@ TEST_F(PluginEpWebGpuConcurrency, SessionAllocatorReusesBuffersFreedDuringGraphR
   ASSERT_FALSE(error.Failed()) << error.Message();
   // Submit once after every Free has completed, including frees at the end of the replay loop.
   session->Run(Ort::RunOptions{nullptr}, binding);
+  std::array<float, kElements> output_data{};
+  auto cpu_output = Ort::Value::CreateTensor<float>(
+      cpu_memory, output_data.data(), output_data.size(), kShape.data(), kShape.size());
+  Ort::ThrowOnError(ort_env->CopyTensor(gpu_output, cpu_output, nullptr));
+  VerifyOutput(output_data, 2.0f);
 
   InlinedVector<Ort::MemoryAllocation> reacquired;
-  for (size_t i = 0; i < kBucketCapacity; ++i) {
+  InlinedHashSet<void*> live_handles;
+  for (size_t i = 0; i < kBufferCount; ++i) {
+    SCOPED_TRACE(i);
     reacquired.emplace_back(allocator.GetAllocation(kBufferSize));
-    EXPECT_EQ(handles.erase(reacquired.back().get()), 1u);
+    ASSERT_TRUE(live_handles.insert(reacquired.back().get()).second);
+    auto gpu_buffer = Ort::Value::CreateTensor(
+        Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT), reacquired.back().get(), kBufferSize,
+        buffer_shape.data(), buffer_shape.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+    buffer_data.fill(-1.0f);
+    Ort::ThrowOnError(ort_env->CopyTensor(gpu_buffer, cpu_buffer, nullptr));
+    EXPECT_EQ(buffer_data, (std::array<float, kBufferSize / sizeof(float)>{}));
   }
-  EXPECT_TRUE(handles.empty());
 }
 
 TEST_F(PluginEpWebGpuConcurrency, SameSessionCapturedGraphsReplayConcurrently) {
