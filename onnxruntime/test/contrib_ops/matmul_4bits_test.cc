@@ -1799,6 +1799,7 @@ TEST(MatMulNBits, Fp16_Int4_SingleWarpShapeNoZeroPoint) {
       opts.zp_is_4bit = true;
       opts.output_abs_error = 0.1f;
       opts.output_rel_error = 0.02f;
+      opts.disable_cpu_ep_fallback = true;
       std::vector<std::unique_ptr<IExecutionProvider>> eps;
       eps.push_back(DefaultCudaExecutionProvider());
       RunTest<MLFloat16>(opts, std::move(eps));
