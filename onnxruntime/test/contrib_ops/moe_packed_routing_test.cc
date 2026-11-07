@@ -204,10 +204,11 @@ TEST(MoEPackedRoutingTest, ReluIq2PreservesContiguousKCancellation) {
     std::vector<BFloat16> input(rows * hidden, BFloat16(0.f));
     for (int row = 0; row < rows; ++row) {
       input[row * hidden] = BFloat16(0x1p25f);
-      input[row * hidden + 32] = BFloat16(1.f);
       input[row * hidden + 64] = BFloat16(-0x1p25f);
-      input[row * hidden + 96] = BFloat16(1.f);
+      input[row * hidden + 128] = BFloat16(1.f);
+      input[row * hidden + 160] = BFloat16(1.f);
     }
+    // Separate small terms from large MMA partials on both Ampere and Hopper.
     // FC1 retains both unit terms, then BF16 ReLU-square and FC2 produce 1024.
     OpTester test("MoEPacked", 1, kMSDomain);
     test.AddAttribute("k", int64_t{1});
