@@ -1,0 +1,61 @@
+name: sccache storage maintenance
+
+on:
+  schedule:
+    - cron: '37 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Report planned evictions without deleting caches
+        type: boolean
+        default: true
+  pull_request:
+    paths:
+      - '.github/scripts/*prune_sccache.py'
+      - '.github/workflows/sccache-maintenance.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event_name == 'pull_request' && github.ref || 'main' }}
+      - run: python -m unittest discover -s .github/scripts -p test_prune_sccache.py -v
+
+  cleanup:
+    needs: test
+    if: >-
+      github.repository == 'microsoft/onnxruntime' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
+    concurrency:
+      group: sccache-storage-maintenance
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Enforce per-OS archived compiler-cache budgets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ "$DRY_RUN" != "true" ]]; then
+            args+=(--apply)
+          fi
+          python .github/scripts/prune_sccache.py "${args[@]}"
