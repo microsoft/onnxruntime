@@ -3,6 +3,8 @@
 
 #include "contrib_ops/cpu/quantization/matmul_nbits_impl.h"
 
+#include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -52,6 +54,16 @@ constexpr bool kQNBitForceFp32Supported = true;
 #else
 constexpr bool kQNBitForceFp32Supported = false;
 #endif
+
+// The unpacked compute path dequantizes B to fp32 and runs an fp32 GEMM. MLAS has no QNBit GEMM kernels for some
+// targets, WebAssembly among them, so there every MatMulNBits node takes this path. A B matrix up to this size as
+// fp32 is dequantized whole, then multiplied with one GEMM.
+constexpr size_t kUnpackedBMaxWholeBytes = size_t{16} * 1024 * 1024;
+
+// A larger B (1 GB as fp32 for a 2048 x 128000 LLM output layer) is processed in blocks of columns (N) of about
+// this size instead: each thread dequantizes a block into its own buffer and multiplies it into the output while
+// the block is still in cache, so the scratch memory is threads x this size.
+constexpr size_t kUnpackedBBlockBytes = size_t{512} * 1024;
 
 Status ValidatePrePackInitializerShape(const OpKernelInfo& info,
                                        const Tensor& tensor,
@@ -472,6 +484,28 @@ class MatMulNBits final : public OpKernel {
                           const MatMulComputeHelper& helper) const {
     ORT_THROW("ComputeBUnpacked is not supported for T1 type.");
   }
+
+  // Computes C = A x dequantized(B)^T + bias in fp32, dequantizing B whole or in blocks of columns.
+  void GemmWithUnpackedB(const float* a_data,
+                         const uint8_t* b_data,
+                         const float* scales_data,
+                         const Tensor* zero_points,
+                         const int32_t* reorder_idx_data,
+                         const float* bias_data,
+                         float* c_data,
+                         AllocatorPtr& allocator,
+                         concurrency::ThreadPool* thread_pool,
+                         const MatMulComputeHelper& helper) const;
+
+  // Dequantizes columns [n_start, n_start + n_count) of B into dst as a row-major [n_count, K] fp32 matrix.
+  void DequantizeBColumns(float* dst,
+                          const uint8_t* b_data,
+                          const float* scales_data,
+                          const Tensor* zero_points,
+                          const int32_t* reorder_idx_data,
+                          size_t n_start,
+                          size_t n_count,
+                          concurrency::ThreadPool* thread_pool) const;
 
   Status ComputeBPacked(const Tensor* a,
                         const Tensor* scales,
@@ -1454,6 +1488,154 @@ Status MatMulNBits<MLFloat16>::ComputeBPacked(const Tensor* a,
 }
 #endif  // end of !MLAS_F16VEC_INTRINSICS_SUPPORTED || !MLAS_TARGET_AMD64
 
+template <typename T1>
+void MatMulNBits<T1>::DequantizeBColumns(float* dst,
+                                         const uint8_t* b_data,
+                                         const float* scales_data,
+                                         const Tensor* zero_points,
+                                         const int32_t* reorder_idx_data,
+                                         size_t n_start,
+                                         size_t n_count,
+                                         concurrency::ThreadPool* thread_pool) const {
+  // B is [N, k_blocks, blob_size], scales and floating-point zero points are [N, k_blocks], and uint8 zero points
+  // are [N, ceil(k_blocks * bits / 8)], so a range of columns is contiguous in each of them. g_idx indexes K and
+  // is shared by all columns.
+  const size_t k_blocks = (K_ + block_size_ - 1) / block_size_;
+  const bool fp_zero_points = zero_points != nullptr && zero_points->IsDataType<T1>();
+  b_data += n_start * k_blocks * (block_size_ * nbits_ / 8);
+  scales_data += n_start * k_blocks;
+  const uint8_t* zero_points_u8 =
+      zero_points != nullptr && !fp_zero_points
+          ? zero_points->Data<uint8_t>() + n_start * ((k_blocks * nbits_ + 7) / 8)
+          : nullptr;
+  const T1* zero_points_fp = fp_zero_points ? zero_points->Data<T1>() + n_start * k_blocks : nullptr;
+
+  const auto block_size = static_cast<int32_t>(block_size_);
+  const auto rows = static_cast<int32_t>(K_);
+  const auto columns = static_cast<int32_t>(n_count);
+
+  if (reorder_idx_data == nullptr && !fp_zero_points) {
+    // dequantize b, only 2b, 4b, and 8b quantization is supported for now
+    if (nbits_ == 2) {
+      MlasDequantizeBlockwise<float, 2>(dst, b_data, scales_data, zero_points_u8, block_size,
+                                        column_wise_quant_, rows, columns, thread_pool);
+    } else if (nbits_ == 4) {
+      MlasDequantizeBlockwise<float, 4>(dst, b_data, scales_data, zero_points_u8, block_size,
+                                        column_wise_quant_, rows, columns, thread_pool);
+    } else {  // If it isn't 2bit or 4bit, it has to be 8-bit quantization
+      MlasDequantizeBlockwise<float, 8>(dst, b_data, scales_data, zero_points_u8, block_size,
+                                        column_wise_quant_, rows, columns, thread_pool);
+    }
+    return;
+  }
+
+  // Hitting any of the below is very rare. GemmWithUnpackedB checked that they are supported.
+  // Note: The kernel registration constrains T3 to {uint8_t, T1}, so only T1 floating-point zero points
+  // can reach this branch.
+  if (fp_zero_points) {
+    if (nbits_ == 2) {
+      MlasDequantizeBlockwiseFpZeroPoint<float, T1, 2>(dst, b_data, scales_data, zero_points_fp, block_size,
+                                                       rows, columns, thread_pool);
+    } else {
+      DequantizeBlockwise<float, T1>(dst, b_data, scales_data, zero_points_fp, reorder_idx_data, block_size,
+                                     column_wise_quant_, rows, columns, thread_pool);
+    }
+  } else {
+    DequantizeBlockwise<float, uint8_t>(dst, b_data, scales_data, zero_points_u8, reorder_idx_data, block_size,
+                                        column_wise_quant_, rows, columns, thread_pool);
+  }
+}
+
+template <typename T1>
+void MatMulNBits<T1>::GemmWithUnpackedB(const float* a_data,
+                                        const uint8_t* b_data,
+                                        const float* scales_data,
+                                        const Tensor* zero_points,
+                                        const int32_t* reorder_idx_data,
+                                        const float* bias_data,
+                                        float* c_data,
+                                        AllocatorPtr& allocator,
+                                        concurrency::ThreadPool* thread_pool,
+                                        const MatMulComputeHelper& helper) const {
+  // Check here, not in DequantizeBColumns, which may run on the thread pool's threads.
+  if (reorder_idx_data != nullptr || (zero_points != nullptr && zero_points->IsDataType<T1>())) {
+    ORT_ENFORCE(column_wise_quant_, "Row-wise quantization is not supported for now");
+    ORT_ENFORCE(nbits_ == 2 || nbits_ == 4,
+                "Only 2b and 4b quantization is supported for unpacked compute for now");
+    ORT_ENFORCE(nbits_ != 2 || reorder_idx_data == nullptr || zero_points == nullptr ||
+                    !zero_points->IsDataType<T1>(),
+                "g_idx (reorder index) is not supported for 2-bit quantization with floating-point zero points");
+  } else {
+    ORT_ENFORCE(nbits_ == 2 || nbits_ == 4 || nbits_ == 8);
+  }
+
+  const size_t batch_count = helper.OutputOffsets().size();
+  const size_t M = static_cast<size_t>(helper.M());
+  const size_t N = static_cast<size_t>(helper.N());
+  const size_t K = static_cast<size_t>(helper.K());
+  const size_t lda = helper.Lda(false);
+  const size_t ldb = helper.Ldb(true);
+
+  // Multiplies the dequantized columns [n_start, n_start + n_count) of B, a row-major [n_count, K] matrix,
+  // into the same columns of C. B is a single [N, K] matrix: its RightOffsets() are all zero.
+  auto gemm_columns = [&](const float* b_columns, size_t n_start, size_t n_count,
+                          concurrency::ThreadPool* gemm_thread_pool) {
+    InlinedVector<MLAS_SGEMM_DATA_PARAMS, 4> data(batch_count);
+    for (size_t i = 0; i < batch_count; i++) {
+      data[i].BIsPacked = false;
+      data[i].A = a_data + helper.LeftOffsets()[i];
+      data[i].lda = lda;
+      data[i].B = b_columns;
+      data[i].ldb = ldb;
+      data[i].C = c_data + helper.OutputOffsets()[i] + n_start;
+      data[i].ldc = N;
+      data[i].alpha = 1.f;
+      data[i].beta = 0.0f;
+
+      // if there is a bias input, copy bias values into C and set beta to 1.0f
+      if (bias_data != nullptr) {
+        float* C_row = data[i].C;
+        for (size_t m = 0; m < M; ++m) {
+          std::copy_n(bias_data + n_start, n_count, C_row);
+          C_row += N;
+        }
+        data[i].beta = 1.0f;
+      }
+    }
+
+    MlasGemmBatch(CblasNoTrans, CblasTrans, M, n_count, K, data.data(), batch_count, gemm_thread_pool,
+                  &mlas_backend_kernel_selector_config_);
+  };
+
+  // TODO(fajin): move B dequant to prepack
+  if (SafeInt<size_t>(K) * N * sizeof(float) <= kUnpackedBMaxWholeBytes) {
+    auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K) * N, true);
+    DequantizeBColumns(tmp_b_data_ptr.get(), b_data, scales_data, zero_points, reorder_idx_data, 0, N, thread_pool);
+    gemm_columns(tmp_b_data_ptr.get(), 0, N, thread_pool);
+    return;
+  }
+
+  // Blocks of a multiple of 16 columns (the fp32 GEMM kernels' strip width), shared out among the threads.
+  const size_t block_n = std::max<size_t>(kUnpackedBBlockBytes / (K * sizeof(float)) / 16 * 16, 16);
+  const size_t num_blocks = (N + block_n - 1) / block_n;
+  const size_t num_workers = std::min<size_t>(
+      static_cast<size_t>(concurrency::ThreadPool::DegreeOfParallelism(thread_pool)), num_blocks);
+  auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K) * block_n * num_workers, true);
+
+  std::atomic<size_t> next_block{0};
+  concurrency::ThreadPool::TrySimpleParallelFor(
+      thread_pool, static_cast<std::ptrdiff_t>(num_workers),
+      [&](std::ptrdiff_t worker) {
+        float* b_block = tmp_b_data_ptr.get() + static_cast<size_t>(worker) * K * block_n;
+        for (size_t block = next_block++; block < num_blocks; block = next_block++) {
+          const size_t n_start = block * block_n;
+          const size_t n_count = std::min(block_n, N - n_start);
+          DequantizeBColumns(b_block, b_data, scales_data, zero_points, reorder_idx_data, n_start, n_count, nullptr);
+          gemm_columns(b_block, n_start, n_count, nullptr);
+        }
+      });
+}
+
 template <>
 Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
                                             const Tensor* b,
@@ -1465,144 +1647,14 @@ Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
                                             AllocatorPtr& allocator,
                                             concurrency::ThreadPool* thread_pool,
                                             const MatMulComputeHelper& helper) const {
-  const auto* a_data = a->Data<float>();
-  const uint8_t* b_data = b->Data<uint8_t>();
-  const auto* scales_data = scales->Data<float>();
-  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
-  const auto* reorder_idx_data = reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>();
-  auto* y_data = y->MutableData<float>();
-
-  const size_t batch_count = helper.OutputOffsets().size();
-  const size_t M = static_cast<size_t>(helper.M());
-  const size_t N = static_cast<size_t>(helper.N());
-  const size_t K = static_cast<size_t>(helper.K());
-  const size_t lda = helper.Lda(false);
-  const size_t ldb = helper.Ldb(true);
-
-  // TODO(fajin): move B dequant to prepack
-  auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_, true);
-
-  if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<float>())) {
-    // dequantize b, only 2b, 4b, and 8b quantization is supported for now
-    if (this->nbits_ == 2) {
-      MlasDequantizeBlockwise<float, 2>(
-          tmp_b_data_ptr.get(),                           // dequantized output
-          b_data,                                         // quantized input
-          scales_data,                                    // quantization scales
-          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
-          static_cast<int32_t>(block_size_),              // quantization block size
-          column_wise_quant_,                             // columnwise quantization or row-wise
-          static_cast<int32_t>(K_),                       // number of rows in quantized input
-          static_cast<int32_t>(N_),                       // number of columns in quantized input
-          thread_pool);
-    } else if (this->nbits_ == 4) {
-      MlasDequantizeBlockwise<float, 4>(
-          tmp_b_data_ptr.get(),                           // dequantized output
-          b_data,                                         // quantized input
-          scales_data,                                    // quantization scales
-          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
-          static_cast<int32_t>(block_size_),              // quantization block size
-          column_wise_quant_,                             // columnwise quantization or row-wise
-          static_cast<int32_t>(K_),                       // number of rows in quantized input
-          static_cast<int32_t>(N_),                       // number of columns in quantized input
-          thread_pool);
-    } else {  // If it isn't 4bit, it has to be 8-bit quantization
-      ORT_ENFORCE(nbits_ == 8);
-      MlasDequantizeBlockwise<float, 8>(
-          tmp_b_data_ptr.get(),                           // dequantized output
-          b_data,                                         // quantized input
-          scales_data,                                    // quantization scales
-          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
-          static_cast<int32_t>(block_size_),              // quantization block size
-          column_wise_quant_,                             // columnwise quantization or row-wise
-          static_cast<int32_t>(K_),                       // number of rows in quantized input
-          static_cast<int32_t>(N_),                       // number of columns in quantized input
-          thread_pool);
-    }
-  } else {
-    // Hitting any of the below is very rare
-    ORT_ENFORCE(column_wise_quant_, "Row-wise quantization is not supported for now");
-    ORT_ENFORCE(nbits_ == 2 || nbits_ == 4,
-                "Only 2b and 4b quantization is supported for unpacked compute for now");
-
-    // Note: The kernel registration constrains T3 to {uint8_t, T1}, so for
-    // MatMulNBits<float> only float (not MLFloat16) ZP can reach this branch.
-    if (zero_points && zero_points->IsDataType<float>()) {
-      if (nbits_ == 2) {
-        ORT_ENFORCE(reorder_idx_data == nullptr,
-                    "g_idx (reorder index) is not supported for 2-bit quantization with floating-point zero points");
-        MlasDequantizeBlockwiseFpZeroPoint<float, float, 2>(
-            tmp_b_data_ptr.get(),
-            b_data,
-            scales_data,
-            static_cast<const float*>(zero_points_data),
-            static_cast<int32_t>(block_size_),
-            static_cast<int32_t>(K_),
-            static_cast<int32_t>(N_),
-            thread_pool);
-      } else {
-        DequantizeBlockwise<float, float>(
-            tmp_b_data_ptr.get(),                         // dequantized output
-            b_data,                                       // quantized input
-            scales_data,                                  // quantization scales
-            static_cast<const float*>(zero_points_data),  // quantization zero points
-            reorder_idx_data,
-            static_cast<int32_t>(block_size_),  // quantization block size
-            column_wise_quant_,                 // columnwise quantization or row-wise
-            static_cast<int32_t>(K_),           // number of rows in quantized input
-            static_cast<int32_t>(N_),           // number of columns in quantized input
-            thread_pool);
-      }
-    } else {
-      DequantizeBlockwise<float, uint8_t>(
-          tmp_b_data_ptr.get(),                           // dequantized output
-          b_data,                                         // quantized input
-          scales_data,                                    // quantization scales
-          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
-          reorder_idx_data,
-          static_cast<int32_t>(block_size_),  // quantization block size
-          column_wise_quant_,                 // columnwise quantization or row-wise
-          static_cast<int32_t>(K_),           // number of rows in quantized input
-          static_cast<int32_t>(N_),           // number of columns in quantized input
-          thread_pool);
-    }
-  }
-#if 0  // for debug
-  auto tm_b_data_ptr_trans = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
-  MlasTranspose(tmp_b_data_ptr.get(), tm_b_data_ptr_trans.get(), N_, K_);
-#endif
-
-  std::vector<MLAS_SGEMM_DATA_PARAMS> data(batch_count);
-  for (size_t i = 0; i < batch_count; i++) {
-    data[i].BIsPacked = false;
-    data[i].A = a_data + helper.LeftOffsets()[i];
-    data[i].lda = lda;
-    data[i].B = tmp_b_data_ptr.get() + helper.RightOffsets()[i];
-    data[i].ldb = ldb;
-    data[i].C = y_data + helper.OutputOffsets()[i];
-    data[i].ldc = N;
-    data[i].alpha = 1.f;
-    data[i].beta = 0.0f;
-  }
-
-  // if there is a bias input, copy bias values into C and set beta to 1.0f
-  if (bias) {
-    gsl::span<const float> bias_span = bias->DataAsSpan<float>();
-    for (size_t i = 0; i < batch_count; ++i) {
-      float* C_row = data[i].C;
-      const size_t ldc = data[i].ldc;
-      for (size_t m = 0; m < M; ++m) {
-        memcpy(C_row, bias_span.data(), bias_span.size_bytes());
-        C_row += ldc;
-      }
-
-      data[i].beta = 1.0f;
-    }
-  }
-
-  MlasGemmBatch(CblasNoTrans, CblasTrans,
-                M, N, K, data.data(), batch_count, thread_pool, &mlas_backend_kernel_selector_config_);
-
+  GemmWithUnpackedB(a->Data<float>(),
+                    b->Data<uint8_t>(),
+                    scales->Data<float>(),
+                    zero_points,
+                    reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>(),
+                    bias == nullptr ? nullptr : bias->Data<float>(),
+                    y->MutableData<float>(),
+                    allocator, thread_pool, helper);
   return Status::OK();
 }
 
@@ -1617,169 +1669,47 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
                                                 AllocatorPtr& allocator,
                                                 concurrency::ThreadPool* thread_pool,
                                                 const MatMulComputeHelper& helper) const {
-  const auto* a_data = a->Data<MLFloat16>();
-  const uint8_t* b_data = b->Data<uint8_t>();
-  const auto* scales_data = scales->Data<MLFloat16>();
-  const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
-  const auto* reorder_idx_data = reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>();
-  auto* y_data = y->MutableData<MLFloat16>();
-
-  const size_t batch_count = helper.OutputOffsets().size();
-  const size_t M = static_cast<size_t>(helper.M());
-  const size_t N = static_cast<size_t>(helper.N());
-  const size_t K = static_cast<size_t>(helper.K());
-  const size_t lda = helper.Lda(false);
-  const size_t ldb = helper.Ldb(true);
-
   float* scales_ptr = nullptr;
   IAllocatorUniquePtr<float> temp_scales;
   if (!scales_fp32_) {
     auto scales_size = static_cast<size_t>(scales->Shape().Size());
     temp_scales = IAllocator::MakeUniquePtr<float>(allocator, scales_size, true);
-    MlasConvertHalfToFloatBuffer(scales_data, temp_scales.get(), scales_size);
+    MlasConvertHalfToFloatBuffer(scales->Data<MLFloat16>(), temp_scales.get(), scales_size);
     scales_ptr = temp_scales.get();
   } else {
     scales_ptr = scales_fp32_.get();
   }
 
-  // TODO(fajin): move B dequant to prepack
-  auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_, true);
-
-  if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<MLFloat16>())) {
-    if (nbits_ == 2) {
-      MlasDequantizeBlockwise<float, 2>(
-          tmp_b_data_ptr.get(),                           // dequantized output
-          b_data,                                         // quantized input
-          scales_ptr,                                     // quantization scales
-          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
-          static_cast<int32_t>(block_size_),              // quantization block size
-          column_wise_quant_,                             // columnwise quantization or row-wise
-          static_cast<int32_t>(K_),                       // number of rows in quantized input
-          static_cast<int32_t>(N_),                       // number of columns in quantized input
-          thread_pool);
-    } else if (nbits_ == 4) {
-      MlasDequantizeBlockwise<float, 4>(
-          tmp_b_data_ptr.get(),                           // dequantized output
-          b_data,                                         // quantized input
-          scales_ptr,                                     // quantization scales
-          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
-          static_cast<int32_t>(block_size_),              // quantization block size
-          column_wise_quant_,                             // columnwise quantization or row-wise
-          static_cast<int32_t>(K_),                       // number of rows in quantized input
-          static_cast<int32_t>(N_),                       // number of columns in quantized input
-          thread_pool);
-    } else {  // If it isn't 2bit or 4bit, it has to be 8-bit quantization
-      ORT_ENFORCE(nbits_ == 8);
-      MlasDequantizeBlockwise<float, 8>(
-          tmp_b_data_ptr.get(),                           // dequantized output
-          b_data,                                         // quantized input
-          scales_ptr,                                     // quantization scales
-          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
-          static_cast<int32_t>(block_size_),              // quantization block size
-          column_wise_quant_,                             // columnwise quantization or row-wise
-          static_cast<int32_t>(K_),                       // number of rows in quantized input
-          static_cast<int32_t>(N_),                       // number of columns in quantized input
-          thread_pool);
-    }
-  } else {
-    // Hitting any of the below is very rare
-    ORT_ENFORCE(column_wise_quant_, "Row-wise quantization is not supported for now");
-    ORT_ENFORCE(nbits_ == 2 || nbits_ == 4,
-                "Only 2b and 4b quantization is supported for unpacked compute for now");
-
-    // Note: The kernel registration constrains T3 to {uint8_t, T1}, so for
-    // MatMulNBits<MLFloat16> only MLFloat16 (not float) ZP can reach this branch.
-    if (zero_points && zero_points->IsDataType<MLFloat16>()) {
-      if (nbits_ == 2) {
-        ORT_ENFORCE(reorder_idx_data == nullptr,
-                    "g_idx (reorder index) is not supported for 2-bit quantization with floating-point zero points");
-        MlasDequantizeBlockwiseFpZeroPoint<float, MLFloat16, 2>(
-            tmp_b_data_ptr.get(),
-            b_data,
-            scales_ptr,
-            static_cast<const MLFloat16*>(zero_points_data),
-            static_cast<int32_t>(block_size_),
-            static_cast<int32_t>(K_),
-            static_cast<int32_t>(N_),
-            thread_pool);
-      } else {
-        DequantizeBlockwise<float, MLFloat16>(
-            tmp_b_data_ptr.get(),                             // dequantized output
-            b_data,                                           // quantized input
-            scales_ptr,                                       // quantization scales
-            static_cast<const MLFloat16*>(zero_points_data),  // quantization zero points
-            reorder_idx_data,
-            static_cast<int32_t>(block_size_),  // quantization block size
-            column_wise_quant_,                 // columnwise quantization or row-wise
-            static_cast<int32_t>(K_),           // number of rows in quantized input
-            static_cast<int32_t>(N_),           // number of columns in quantized input
-            thread_pool);
-      }
-    } else {
-      DequantizeBlockwise<float, uint8_t>(
-          tmp_b_data_ptr.get(),                           // dequantized output
-          b_data,                                         // quantized input
-          scales_ptr,                                     // quantization scales
-          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
-          reorder_idx_data,
-          static_cast<int32_t>(block_size_),  // quantization block size
-          column_wise_quant_,                 // columnwise quantization or row-wise
-          static_cast<int32_t>(K_),           // number of rows in quantized input
-          static_cast<int32_t>(N_),           // number of columns in quantized input
-          thread_pool);
-    }
-  }
-#if 0  // for debug
-  auto tm_b_data_ptr_trans = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_);
-  MlasTranspose(tmp_b_data_ptr.get(), tm_b_data_ptr_trans.get(), N_, K_);
-#endif
-
-  std::vector<MLAS_SGEMM_DATA_PARAMS> data(batch_count);
-
-  auto a_size = static_cast<size_t>(a->Shape().Size());
-  auto tmp_a_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, a_size, true);
-  MlasConvertHalfToFloatBuffer(a_data, tmp_a_data_ptr.get(), a_size);
-
-  auto c_size = static_cast<size_t>(y->Shape().Size());
-  auto tmp_c_ptr = IAllocator::MakeUniquePtr<float>(allocator, c_size, true);
-
-  for (size_t i = 0; i < batch_count; i++) {
-    data[i].BIsPacked = false;
-    data[i].A = tmp_a_data_ptr.get() + helper.LeftOffsets()[i];
-    data[i].lda = lda;
-    data[i].B = tmp_b_data_ptr.get() + helper.RightOffsets()[i];
-    data[i].ldb = ldb;
-    data[i].C = tmp_c_ptr.get() + helper.OutputOffsets()[i];
-    data[i].ldc = N;
-    data[i].alpha = 1.f;
-    data[i].beta = 0.0f;
-  }
-
-  // if there is a bias input, copy bias values into C and set beta to 1.0f
+  const float* bias_ptr = nullptr;
+  IAllocatorUniquePtr<float> bias_temp;
   if (bias) {
-    float* bias_ptr = nullptr;
-    const size_t bias_size = static_cast<size_t>(bias->Shape().Size());
-    IAllocatorUniquePtr<float> bias_temp;
     if (!bias_fp32_) {
+      const size_t bias_size = static_cast<size_t>(bias->Shape().Size());
       bias_temp = IAllocator::MakeUniquePtr<float>(allocator, bias_size, true);
       MlasConvertHalfToFloatBuffer(bias->Data<MLFloat16>(), bias_temp.get(), bias_size);
       bias_ptr = bias_temp.get();
     } else {
       bias_ptr = bias_fp32_.get();
     }
-    for (size_t i = 0; i < batch_count; ++i) {
-      float* C_row = data[i].C;
-      const size_t ldc = data[i].ldc;
-      for (size_t m = 0; m < M; ++m) {
-        std::copy(bias_ptr, bias_ptr + bias_size, C_row);
-        C_row += ldc;
-      }
-      data[i].beta = 1.0f;
-    }
   }
 
-  MlasGemmBatch(CblasNoTrans, CblasTrans, M, N, K, data.data(), batch_count, thread_pool, &mlas_backend_kernel_selector_config_);
-  MlasConvertFloatToHalfBuffer(tmp_c_ptr.get(), y_data, c_size);
+  auto a_size = static_cast<size_t>(a->Shape().Size());
+  auto tmp_a_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, a_size, true);
+  MlasConvertHalfToFloatBuffer(a->Data<MLFloat16>(), tmp_a_data_ptr.get(), a_size);
+
+  auto c_size = static_cast<size_t>(y->Shape().Size());
+  auto tmp_c_ptr = IAllocator::MakeUniquePtr<float>(allocator, c_size, true);
+
+  GemmWithUnpackedB(tmp_a_data_ptr.get(),
+                    b->Data<uint8_t>(),
+                    scales_ptr,
+                    zero_points,
+                    reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>(),
+                    bias_ptr,
+                    tmp_c_ptr.get(),
+                    allocator, thread_pool, helper);
+
+  MlasConvertFloatToHalfBuffer(tmp_c_ptr.get(), y->MutableData<MLFloat16>(), c_size);
   return Status::OK();
 }
 
