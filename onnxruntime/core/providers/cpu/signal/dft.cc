@@ -421,9 +421,10 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, 
     if constexpr (std::is_same_v<U, T>) {
       if (!inverse) {
         auto* Y_data = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw()) + Y_offset;
-        Y_data->imag(0);
+        Y_data[0] = std::complex<T>(Y_data[0].real(), T{0});
         if (dft_length % 2 == 0) {
-          (Y_data + static_cast<size_t>(dft_length / 2) * Y_stride)->imag(0);
+          std::complex<T>& nyquist = Y_data[static_cast<size_t>(dft_length / 2) * Y_stride];
+          nyquist = std::complex<T>(nyquist.real(), T{0});
         }
       }
     }

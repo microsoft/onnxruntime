@@ -296,7 +296,8 @@ TEST(SignalOpsTest, STFTFloat) {
 }
 
 // Reference DFT of each length-`frame_length` frame of a real signal, computed in double.
-static vector<double> ReferenceRealDFT(const vector<float>& signal, const vector<float>& window, size_t frame_length,
+template <typename T>
+static vector<double> ReferenceRealDFT(const vector<T>& signal, const vector<T>& window, size_t frame_length,
                                        size_t frame_step, size_t num_bins) {
   const size_t num_frames = (signal.size() - frame_length) / frame_step + 1;
   vector<double> result;
@@ -319,55 +320,63 @@ static vector<double> ReferenceRealDFT(const vector<float>& signal, const vector
 
 // For a real input the DC bin and, for an even length, the Nyquist bin are exactly real, so their imaginary parts must
 // be exactly 0 rather than rounding noise whose sign varies (https://github.com/microsoft/onnxruntime/issues/33314).
+template <typename T>
 static void VerifyRealInputSpectrum(const vector<OrtValue>& fetches, const vector<double>& expected, size_t num_bins,
                                     size_t dft_length) {
   ASSERT_EQ(fetches.size(), 1u);
-  auto output = fetches[0].Get<Tensor>().DataAsSpan<float>();
+  auto output = fetches[0].Get<Tensor>().DataAsSpan<T>();
   ASSERT_EQ(output.size(), expected.size());
   for (size_t i = 0; i < output.size(); i++) {
     EXPECT_NEAR(output[i], expected[i], 1e-4) << "index " << i;
   }
   for (size_t frame = 0; frame < output.size() / (num_bins * 2); frame++) {
-    const float* bins = output.data() + frame * num_bins * 2;
-    EXPECT_EQ(bins[1], 0.0f) << "DC bin of frame " << frame;
+    const T* bins = output.data() + frame * num_bins * 2;
+    EXPECT_EQ(bins[1], T{0}) << "DC bin of frame " << frame;
     if (dft_length % 2 == 0) {
-      EXPECT_EQ(bins[(dft_length / 2) * 2 + 1], 0.0f) << "Nyquist bin of frame " << frame;
+      EXPECT_EQ(bins[(dft_length / 2) * 2 + 1], T{0}) << "Nyquist bin of frame " << frame;
     }
   }
 }
 
-static vector<float> RealTestSignal(size_t size) {
-  vector<float> signal(size);
+template <typename T>
+static vector<T> RealTestSignal(size_t size) {
+  vector<T> signal(size);
   for (size_t n = 0; n < size; n++) {
     const double t = static_cast<double>(n);
-    signal[n] = static_cast<float>(0.7 * std::sin(0.37 * t) + 0.25 * std::cos(1.91 * t + 0.4) + 0.05 * std::sin(2.9 * t));
+    signal[n] = static_cast<T>(0.7 * std::sin(0.37 * t) + 0.25 * std::cos(1.91 * t + 0.4) + 0.05 * std::sin(2.9 * t));
   }
   return signal;
 }
 
+// Runs a batch of two signals so that each DFT in the batch writes to its own output offset.
+template <typename T>
 static void TestDFTRealInputDCAndNyquistBinsAreReal(int64_t dft_length, bool onesided) {
+  constexpr int64_t kBatch = 2;
   const size_t length = static_cast<size_t>(dft_length);
   const size_t num_bins = onesided ? length / 2 + 1 : length;
-  const vector<float> signal = RealTestSignal(length);
-  const vector<double> expected = ReferenceRealDFT(signal, {}, length, length, num_bins);
+  const vector<T> signal = RealTestSignal<T>(kBatch * length);
+  const vector<double> expected = ReferenceRealDFT<T>(signal, {}, length, length, num_bins);
 
   OpTester test("DFT", kOpsetVersion20);
-  test.AddInput<float>("input", {1, dft_length, 1}, signal);
+  test.AddInput<T>("input", {kBatch, dft_length, 1}, signal);
   test.AddInput<int64_t>("dft_length", {}, {dft_length});
   test.AddInput<int64_t>("axis", {}, {1});
   test.AddAttribute<int64_t>("onesided", static_cast<int64_t>(onesided));
-  test.AddOutput<float>("output", {1, static_cast<int64_t>(num_bins), 2}, vector<float>(num_bins * 2));
+  test.AddOutput<T>("output", {kBatch, static_cast<int64_t>(num_bins), 2}, vector<T>(kBatch * num_bins * 2));
   test.SetCustomOutputVerifier([&](const vector<OrtValue>& fetches, const std::string&) {
-    VerifyRealInputSpectrum(fetches, expected, num_bins, length);
+    VerifyRealInputSpectrum<T>(fetches, expected, num_bins, length);
   });
   test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
 
 TEST(SignalOpsTest, DFT20_RealInput_DCAndNyquistBinsAreReal) {
   for (bool onesided : {false, true}) {
-    TestDFTRealInputDCAndNyquistBinsAreReal(8, onesided);   // radix-2
-    TestDFTRealInputDCAndNyquistBinsAreReal(12, onesided);  // Bluestein, even length
-    TestDFTRealInputDCAndNyquistBinsAreReal(7, onesided);   // Bluestein, odd length (no Nyquist bin)
+    TestDFTRealInputDCAndNyquistBinsAreReal<float>(8, onesided);   // radix-2
+    TestDFTRealInputDCAndNyquistBinsAreReal<float>(12, onesided);  // Bluestein, even length
+    TestDFTRealInputDCAndNyquistBinsAreReal<float>(7, onesided);   // Bluestein, odd length (no Nyquist bin)
+    TestDFTRealInputDCAndNyquistBinsAreReal<double>(8, onesided);
+    TestDFTRealInputDCAndNyquistBinsAreReal<double>(12, onesided);
+    TestDFTRealInputDCAndNyquistBinsAreReal<double>(7, onesided);
   }
 }
 
@@ -379,8 +388,8 @@ TEST(SignalOpsTest, STFTFloat_RealInput_DCAndNyquistBinsAreReal) {
   for (size_t n = 0; n < kFrameLength; n++) {
     window[n] = static_cast<float>(0.5 - 0.5 * std::cos(2.0 * std::numbers::pi * static_cast<double>(n) / kFrameLength));
   }
-  const vector<float> signal = RealTestSignal(kSignalLength);
-  const vector<double> expected = ReferenceRealDFT(signal, window, kFrameLength, kFrameStep, kNumBins);
+  const vector<float> signal = RealTestSignal<float>(kSignalLength);
+  const vector<double> expected = ReferenceRealDFT<float>(signal, window, kFrameLength, kFrameStep, kNumBins);
 
   OpTester test("STFT", kMinOpsetVersion);
   test.AddInput<float>("signal", {1, static_cast<int64_t>(kSignalLength), 1}, signal);
@@ -390,7 +399,7 @@ TEST(SignalOpsTest, STFTFloat_RealInput_DCAndNyquistBinsAreReal) {
   test.AddOutput<float>("output", {1, static_cast<int64_t>(kNumFrames), static_cast<int64_t>(kNumBins), 2},
                         vector<float>(kNumFrames * kNumBins * 2));
   test.SetCustomOutputVerifier([&](const vector<OrtValue>& fetches, const std::string&) {
-    VerifyRealInputSpectrum(fetches, expected, kNumBins, kFrameLength);
+    VerifyRealInputSpectrum<float>(fetches, expected, kNumBins, kFrameLength);
   });
   test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
