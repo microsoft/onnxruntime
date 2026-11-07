@@ -1695,7 +1695,7 @@ TEST(QMoESharedLayoutTest, CanonicalInt4ExpertViewMatchesReferenceAcrossPrepacke
   for (bool prepacked : {true, false}) {
     for (bool is_bf16 : {false, true}) {
       for (bool apply_fc2_bias : {true, false}) {
-        for (int64_t m_rows : {int64_t{1}, int64_t{2}, int64_t{4}, rows}) {
+        for (int64_t m_rows : {int64_t{1}, int64_t{2}, int64_t{3}, int64_t{4}, rows}) {
           shared::Int4ExpertView view{};
           view.fc1_weights = prepacked ? fc1_sm80.data() : fc1_raw.data();
           view.fc1_scales = is_bf16 ? fc1_s_bf16.data() : fc1_s_fp16.data();
@@ -1989,7 +1989,7 @@ TEST(QMoESharedLayoutTest, IntegerDeferredScaleModesPreservePartialRanges) {
       for (int64_t block : {int64_t{32}, int64_t{64}, int64_t{128}}) {
         if (bits == 4 && block != 32) continue;  // The direct INT4 GEMM interface has block size 32.
         std::vector<uint16_t> scales(static_cast<size_t>(n * k / block), scale);
-        for (int64_t rows : {int64_t{1}, int64_t{3}, int64_t{8}}) {
+        for (int64_t rows : {int64_t{1}, int64_t{2}, int64_t{3}, int64_t{4}, int64_t{8}}) {
           std::vector<float> x(static_cast<size_t>(rows * k), 0.0f), reordered(x.size());
           for (int64_t r = 0; r < rows; ++r) {
             x[r * k] = 1024;
@@ -1997,22 +1997,28 @@ TEST(QMoESharedLayoutTest, IntegerDeferredScaleModesPreservePartialRanges) {
             shared::ReorderRawInt4ActivationRow(x.data() + r * k, reordered.data() + r * k, k);
           }
           for (bool deferred : {false, true}) {
-            for (bool scalar : {false, true}) {
-              for (auto [begin, end] : {std::pair<int64_t, int64_t>{0, n}, {1, 8}}) {
-                std::vector<float> out(static_cast<size_t>(rows * n), -999.0f);
-                if (bits == 3) {
-                  shared::Int3GemmRange(weights.data(), scales.data(), nullptr, block, bf16, bf16, n, k,
-                                        x.data(), rows, out.data() + begin, n, begin, end, scalar, deferred);
-                } else {
-                  shared::Int4GemmRange(weights.data(), scales.data(), nullptr, false, false, bf16, bf16, n, k,
-                                        reordered.data(), rows, out.data() + begin, n, begin, end, scalar, deferred);
-                }
-                for (int64_t r = 0; r < rows; ++r) {
-                  for (int64_t c = 0; c < n; ++c) {
-                    const float expected = c < begin || c >= end ? -999.0f : (deferred ? 0.0f : typed_expected);
-                    EXPECT_EQ(out[r * n + c], expected)
-                        << "bits=" << bits << " bf16=" << bf16 << " block=" << block
-                        << " rows=" << rows << " deferred=" << deferred << " scalar=" << scalar << " c=" << c;
+            for (bool disable_avx512 : {false, true}) {
+              if (disable_avx512 && !shared::CpuHasAvx2FmaF16c()) continue;
+              std::optional<shared::ScopedDisableAvx512ForTesting> avx512_guard;
+              if (disable_avx512) avx512_guard.emplace();
+              for (bool scalar : {false, true}) {
+                for (auto [begin, end] : {std::pair<int64_t, int64_t>{0, n}, {1, 8}}) {
+                  std::vector<float> out(static_cast<size_t>(rows * n), -999.0f);
+                  if (bits == 3) {
+                    shared::Int3GemmRange(weights.data(), scales.data(), nullptr, block, bf16, bf16, n, k,
+                                          x.data(), rows, out.data() + begin, n, begin, end, scalar, deferred);
+                  } else {
+                    shared::Int4GemmRange(weights.data(), scales.data(), nullptr, false, false, bf16, bf16, n, k,
+                                          reordered.data(), rows, out.data() + begin, n, begin, end, scalar, deferred);
+                  }
+                  for (int64_t r = 0; r < rows; ++r) {
+                    for (int64_t c = 0; c < n; ++c) {
+                      const float expected = c < begin || c >= end ? -999.0f : (deferred ? 0.0f : typed_expected);
+                      EXPECT_EQ(out[r * n + c], expected)
+                          << "bits=" << bits << " bf16=" << bf16 << " block=" << block
+                          << " rows=" << rows << " deferred=" << deferred
+                          << " disable_avx512=" << disable_avx512 << " scalar=" << scalar << " c=" << c;
+                    }
                   }
                 }
               }
@@ -2309,7 +2315,7 @@ TEST(QMoESharedLayoutTest, Int2ReorderedPositionAndGemmMatchIndependentReference
           }
           ref[static_cast<size_t>(n)] = static_cast<float>(col_acc);
         }
-        for (int64_t rows : {1, 2, 3, 5, shared::kMaxRowsPerCall}) {
+        for (int64_t rows : {1, 2, 3, 4, 5, shared::kMaxRowsPerCall}) {
           std::vector<float> activations(static_cast<size_t>(rows * k));
           const auto& row = prepacked ? a_prepacked : a_raw;
           for (int64_t r = 0; r < rows; ++r) {
@@ -2399,7 +2405,7 @@ TEST(QMoESharedLayoutTest, Int2GemmAndExpertRangesMatchScalarAcrossBlockSizesFp1
           view.weights_are_prepacked = prepacked;
 
           const shared::SwiGluParams swiglu{1.702f, 1.0f, 7.0f};
-          for (int64_t rows : {int64_t{1}, int64_t{2}, int64_t{5}, int64_t{shared::kMaxRowsPerCall}}) {
+          for (int64_t rows : {int64_t{1}, int64_t{2}, int64_t{3}, int64_t{4}, int64_t{5}, int64_t{shared::kMaxRowsPerCall}}) {
             std::vector<float> x(static_cast<size_t>(rows * hidden));
             for (size_t i = 0; i < x.size(); ++i) x[i] = (static_cast<int>(i % 19) - 9) / 32.0f;
 

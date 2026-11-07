@@ -288,6 +288,28 @@ inline bool ConsumeQMoEPrefillNewTurn(const void* session_scope) noexcept {
   return controls != nullptr && controls->ConsumePrefillNewTurn();
 }
 
+// The pending-trim state belongs to the session that warmed up, so another session's live run cannot consume it.
+inline void MarkQMoEWarmupTouchedHostPages(const void* session_scope) noexcept {
+  if (session_scope == nullptr) return;
+  static_cast<onnxruntime::cuda::QMoESessionController*>(const_cast<void*>(session_scope))
+      ->MarkWarmupTouchedHostPages();
+}
+
+// Trims the process working set once, on the first live run after this session's warm-up touched cold-expert pages.
+inline void MaybeTrimPostWarmupWorkingSet(const void* session_scope) noexcept {
+  if (session_scope == nullptr) return;
+  auto* controller = static_cast<onnxruntime::cuda::QMoESessionController*>(const_cast<void*>(session_scope));
+  if (!controller->ConsumeWarmupTouchedHostPages()) return;
+#if defined(_WIN32)
+  MEMORYSTATUSEX mem_stat{};
+  mem_stat.dwLength = sizeof(mem_stat);
+  if (GlobalMemoryStatusEx(&mem_stat) && mem_stat.ullTotalPhys < (48ULL << 30)) {
+    static_cast<void>(SetProcessWorkingSetSizeEx(
+        GetCurrentProcess(), static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1), 0));
+  }
+#endif
+}
+
 inline int QMoEPrefillTotalTokens(const void* session_scope, int default_value) noexcept {
   const auto* controls = RunControlsOf(session_scope);
   return controls != nullptr ? controls->PrefillTotalTokens(default_value) : default_value;
@@ -370,11 +392,8 @@ struct QMoEOffload::CpuWork {
   std::array<const float*, kMaxGroupSlots> slot_act_in{};
   std::array<qmoe_shared::Nvfp4ExpertView, kMaxGroupSlots> slot_view{};
 
-  CpuWork(int group_calls, int num_experts, int hidden_size, int inter_size)
-      : reordered(static_cast<size_t>(SafeInt<size_t>(group_calls) * qmoe_shared::kMaxRowsPerCall * hidden_size)),
-        intermediate(static_cast<size_t>(SafeInt<size_t>(group_calls) * qmoe_shared::kMaxRowsPerCall * inter_size)),
-        result(static_cast<size_t>(SafeInt<size_t>(group_calls) * qmoe_shared::kMaxRowsPerCall * hidden_size)),
-        natural(hidden_size),
+  CpuWork(int /*group_calls*/, int num_experts, int hidden_size, int /*inter_size*/)
+      : natural(hidden_size),
         expert_invocation_rows(num_experts, 0),
         expert_routes(num_experts) {}
 };
@@ -580,11 +599,21 @@ class SessionPromotionBudget {
     void EnsureCapacity(int b, size_t bytes) noexcept {
       size_t eff_bytes = bytes;
       if (session_pinned_budget) {
-        const size_t pinned_limit = session_pinned_budget->GetStats().limit;
+        const auto stats = session_pinned_budget->GetStats();
+        const size_t pinned_limit = stats.limit;
         if (pinned_limit > 0 && pinned_limit < std::numeric_limits<size_t>::max() / 2) {
-          eff_bytes = std::min(eff_bytes, std::max<size_t>(size_t{4} << 20, pinned_limit / 6));
+          eff_bytes = std::min(eff_bytes, std::max<size_t>(size_t{4} << 20, pinned_limit / 8));
+          const size_t used_other =
+              (stats.committed + stats.pending > pinned_accounted[b])
+                  ? (stats.committed + stats.pending - pinned_accounted[b])
+                  : 0;
+          const size_t rem = (pinned_limit > used_other) ? (pinned_limit - used_other) : 0;
+          const size_t other_slot_need = (pinned_accounted[1 - b] == 0) ? (rem / 2) : 0;
+          const size_t avail_for_slot = (rem > other_slot_need) ? (rem - other_slot_need) : 0;
+          eff_bytes = std::min(eff_bytes, avail_for_slot);
         }
       }
+      if (eff_bytes == 0) return;
       if (pinned_bounce[b] != nullptr && pinned_cap[b] >= eff_bytes) return;
       ReleaseSlot(b);
       auto host_ledger = GetCudaHostPinnedMemoryBudget();
@@ -2669,21 +2698,6 @@ QMoEOffload::QMoEOffload(const OpKernelInfo& info,
   host_complement_mode_ = false;
   ssd_cache_slots_ = 0;
   host_cache_bytes_ = static_cast<size_t>(plan.host_cache_bytes);
-#if defined(_WIN32)
-  if (host_cache_bytes_ >= (64ULL << 20) && desc.num_experts >= 64) {
-    char force_buf[8]{};
-    const DWORD force_len = GetEnvironmentVariableA("ORT_QMOE_FORCE_BOUNDED_HOST_CACHE", force_buf, sizeof(force_buf));
-    const bool force_bounded = (force_len > 0 && force_buf[0] == '1');
-    if (!force_bounded) {
-      MEMORYSTATUSEX mem_stat{};
-      mem_stat.dwLength = sizeof(mem_stat);
-      if (GlobalMemoryStatusEx(&mem_stat) &&
-          mem_stat.ullTotalPhys < policy.host_expert_bytes.bytes + (24ULL << 30)) {
-        host_cache_bytes_ = 0;
-      }
-    }
-  }
-#endif
   swap_victim_to_host_cache_ = (host_cache_bytes_ > 0);
   ::onnxruntime::cuda::SetQMoEDeviceArenasShrunkHook(&OnQMoEDeviceArenasShrunk);
   ORT_ENFORCE(sm_ >= 80, "QMoEOffload requires SM80 or later.");
@@ -5559,6 +5573,9 @@ Status QMoEOffload::StepBetweenRuns(cudaStream_t stream) const {
   const bool new_turn_env =
       (layer_index_ == 0 && !IsInQMoEWarmup(session_controller_.get()) &&
        ConsumeQMoEPrefillNewTurn(session_controller_.get()));
+  if (layer_index_ == 0 && !IsInQMoEWarmup(session_controller_.get())) {
+    MaybeTrimPostWarmupWorkingSet(session_controller_.get());
+  }
   if (g_prefill_dma_active.load(std::memory_order_acquire) || new_turn_env) {
     if (new_turn_env) {
       const int next_prompt_tokens = QMoEPrefillTotalTokens(session_controller_.get(), 0);
@@ -7210,6 +7227,13 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
   ORT_ENFORCE(!(v4_planned_mode_ &&
                 v4_policy_.cpu_execution == onnxruntime::moe_offload::CpuExecutionMode::kDisabled),
               "QMoEOffload CPU cold expert execution is forbidden when session.moe.offload.cpu_execution='disabled'.");
+  const size_t max_group = std::min(group_calls, calls.size());
+  const size_t need_reordered = SafeInt<size_t>(max_group) * call_rows * hidden_size_;
+  const size_t need_inter = SafeInt<size_t>(max_group) * call_rows * inter_size_;
+  const size_t need_result = SafeInt<size_t>(max_group) * call_rows * hidden_size_;
+  if (work.reordered.size() < need_reordered) work.reordered.resize(need_reordered);
+  if (work.intermediate.size() < need_inter) work.intermediate.resize(need_inter);
+  if (work.result.size() < need_result) work.result.resize(need_result);
   cpu_expert_invocations_.fetch_add(calls.size(), std::memory_order_relaxed);
   const bool use_ssd = !host_complement_mode_ && file_expert_store_.IsInitialized();
   const int fc1_tasks = (2 * inter_size_ + fc1_cols_ - 1) / fc1_cols_;
@@ -7657,7 +7681,7 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
     const ptrdiff_t total_fc1 = static_cast<ptrdiff_t>(group_size) * fc1_tasks;
     const ptrdiff_t total_fc2 = static_cast<ptrdiff_t>(group_size) * fc2_tasks;
     bool group_ok = true;
-    if (per_expert_ready && static_cast<size_t>(group_size) <= CpuWork::kMaxGroupSlots) {
+    if (use_ssd && per_expert_ready && static_cast<size_t>(group_size) <= CpuWork::kMaxGroupSlots) {
       auto on_slot_lease_ready = [&](int s, const qmoe_shared::ExpertBlockLease& lease) {
         if (nvfp4_mode_) {
           work.slot_view[s] = make_nvfp4_view(group[s].expert, lease.data);
@@ -8450,6 +8474,11 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
   // A warm-up run (ep.cuda.qmoe_in_warmup) must not feed scores, route statistics or promotions, like the async path.
   // The flag is sampled once so that every tile of this invocation agrees.
   const bool in_warmup = IsInQMoEWarmup(session_controller_.get());
+  if (in_warmup && num_experts_ >= 64) {
+    MarkQMoEWarmupTouchedHostPages(session_controller_.get());
+  } else if (!in_warmup && layer_index_ == 0) {
+    MaybeTrimPostWarmupWorkingSet(session_controller_.get());
+  }
 
   for (int64_t start = 0; start < rows;) {
     const int tile_rows = static_cast<int>(std::min<int64_t>(tile_limit, rows - start));
@@ -8624,12 +8653,16 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
       const size_t stream_count = stream_list.size();
       const int waves = static_cast<int>((stream_count + wave_experts - 1) / wave_experts);
 #if defined(_WIN32)
-      if (start == 0 && (int4_bank_mode_ || int2_bank_mode_ || (int3_bank_mode_ && !expert_blocks_)) &&
+      if (!in_warmup && start == 0 && (int4_bank_mode_ || int2_bank_mode_ || (int3_bank_mode_ && !expert_blocks_)) &&
           !(host_cache_bytes_ > 0 && file_expert_store_.IsInitialized()) &&
           nvfp4_fc1_w_ && nvfp4_fc2_w_ && nvfp4_fc1_s_ && nvfp4_fc2_s_) {
         static const bool enable_win_prefetch =
             ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_WIN_PREFETCH_MMAP", 1) == 1;
-        if (enable_win_prefetch) {
+        MEMORYSTATUSEX pf_mem_stat{};
+        pf_mem_stat.dwLength = sizeof(pf_mem_stat);
+        const bool has_free_phys =
+            GlobalMemoryStatusEx(&pf_mem_stat) && pf_mem_stat.ullAvailPhys >= (2ULL << 30);
+        if (enable_win_prefetch && has_free_phys) {
           const uint8_t* w1_b = static_cast<const uint8_t*>(nvfp4_fc1_w_->DataRaw());
           const uint8_t* w2_b = static_cast<const uint8_t*>(nvfp4_fc2_w_->DataRaw());
           const uint8_t* s1_b = static_cast<const uint8_t*>(nvfp4_fc1_s_->DataRaw());
@@ -9570,7 +9603,15 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
   CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture));
   const bool is_capturing = (capture != cudaStreamCaptureStatusNone);
 
+  // Decode-sized warm-ups reach this path instead of ComputeShared, so they must also arm the post-warm-up trim.
+  if (num_experts_ >= 64 && IsInQMoEWarmup(session_controller_.get())) {
+    MarkQMoEWarmupTouchedHostPages(session_controller_.get());
+  }
+
   if (!is_capturing) {
+    if (layer_index_ == 0 && !IsInQMoEWarmup(session_controller_.get())) {
+      MaybeTrimPostWarmupWorkingSet(session_controller_.get());
+    }
     if (g_prefill_dma_active.load(std::memory_order_acquire)) {
       FinalizeQMoEPrefillAndSeedDecode(device_id_, stream, session_controller_.get());
     } else if (layer_index_ == 0 && !IsInQMoEWarmup(session_controller_.get()) &&

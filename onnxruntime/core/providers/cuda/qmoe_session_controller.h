@@ -415,6 +415,15 @@ class QMoESessionController {
     return graph_generation_.load(std::memory_order_acquire);
   }
 
+  // A warm-up run of this session loaded cold-expert host pages that the next live run should not inherit.
+  void MarkWarmupTouchedHostPages() noexcept {
+    warmup_touched_host_pages_.store(true, std::memory_order_release);
+  }
+
+  bool ConsumeWarmupTouchedHostPages() noexcept {
+    return warmup_touched_host_pages_.exchange(false, std::memory_order_acq_rel);
+  }
+
   common::Status OnBeforeGraphReplay(cudaStream_t stream) {
     std::vector<GraphReplayNodeHook> hooks;
     {
@@ -1261,8 +1270,11 @@ class QMoESessionController {
         const DWORD strict_len = GetEnvironmentVariableA("ORT_QMOE_STRICT_DEVICE_EXPERT_BYTES", strict_buf, sizeof(strict_buf));
         const bool strict_budget = (strict_len > 0 && strict_buf[0] == '1');
         if (!strict_budget) {
-          const uint64_t extra_wddm_reserve =
+          uint64_t extra_wddm_reserve =
               (total_vram >= (28ULL << 30)) ? (1792ULL << 20) : (1536ULL << 20);
+          if (total_vram < (28ULL << 30) && policy.reserve_device_bytes <= (5700ULL << 20)) {
+            extra_wddm_reserve = 256ULL << 20;
+          }
           const uint64_t post_session_reserve =
               policy.reserve_device_bytes + policy.device_working_bytes + extra_wddm_reserve;
           const uint64_t acct_internal_reserve = policy.device_working_bytes + (640ULL << 20);
@@ -1696,6 +1708,7 @@ class QMoESessionController {
   int device_id_ = 0;
   std::atomic<bool> shutting_down_{false};
   std::atomic<uint64_t> graph_generation_{0};
+  std::atomic<bool> warmup_touched_host_pages_{false};
   QMoERunControls run_controls_;
   mutable std::mutex mutex_;
   // Written under mutex_; read without it by HasOffloadNodes().
