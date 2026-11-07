@@ -610,10 +610,10 @@ def get_depth_image(image):
     """
     Create depth map for SDXL depth control net.
     """
-    from transformers import DPTFeatureExtractor, DPTForDepthEstimation  # noqa: PLC0415
+    from transformers import DPTForDepthEstimation, DPTImageProcessor  # noqa: PLC0415
 
     depth_estimator = DPTForDepthEstimation.from_pretrained("Intel/dpt-hybrid-midas").to("cuda")
-    feature_extractor = DPTFeatureExtractor.from_pretrained("Intel/dpt-hybrid-midas")
+    feature_extractor = DPTImageProcessor.from_pretrained("Intel/dpt-hybrid-midas")
 
     image = feature_extractor(images=image, return_tensors="pt").pixel_values.to("cuda")
     with torch.no_grad(), torch.autocast("cuda"):

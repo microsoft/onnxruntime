@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <unordered_map>
+#include <vector>
+
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -156,6 +159,20 @@ TEST(CompressTest, Compress_3dims_neg_axis) {
   test.Run();
 }
 
+TEST(CompressTest, BFloat16Opset28NegativeAxis) {
+  OpTester test("Compress", 28);
+  test.AddAttribute("axis", int64_t(-2));
+  test.AddInput<BFloat16>("input", {2, 3, 2},
+                          {BFloat16(1.0f), BFloat16(2.0f), BFloat16(3.0f), BFloat16(4.0f),
+                           BFloat16(5.0f), BFloat16(6.0f), BFloat16(7.0f), BFloat16(8.0f),
+                           BFloat16(9.0f), BFloat16(10.0f), BFloat16(11.0f), BFloat16(12.0f)});
+  test.AddInput<bool>("condition", {3}, {false, true, true});
+  test.AddOutput<BFloat16>("output", {2, 2, 2},
+                           {BFloat16(3.0f), BFloat16(4.0f), BFloat16(5.0f), BFloat16(6.0f),
+                            BFloat16(9.0f), BFloat16(10.0f), BFloat16(11.0f), BFloat16(12.0f)});
+  test.Run();
+}
+
 #ifdef USE_CUDA
 // Regression test for the CUDA Compress prefix-sum sizing path. A bool condition byte may hold a
 // non-canonical value (e.g. 0xFF) at runtime — initializers are normalized to {0, 1} on unpack,
@@ -166,8 +183,13 @@ TEST(CompressTest, Compress_3dims_neg_axis) {
 // inputs to {0, 1}) and asserts the output is sized by truthiness.
 TEST(CompressTest, Compress_cuda_non_canonical_bool_condition) {
   // Build: output = Compress(input, condition, axis=0)
-  auto model = std::make_unique<onnxruntime::Model>("compress_non_canonical_bool", false,
-                                                    DefaultLoggingManager().DefaultLogger());
+  const std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 27}};
+  auto model = std::make_unique<onnxruntime::Model>(
+      "compress_non_canonical_bool", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+      domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>{}, DefaultLoggingManager().DefaultLogger());
+  ASSERT_EQ(model->ToProto().opset_import_size(), 1);
+  EXPECT_EQ(model->ToProto().opset_import(0).domain(), kOnnxDomain);
+  EXPECT_EQ(model->ToProto().opset_import(0).version(), 27);
   onnxruntime::Graph& graph = model->MainGraph();
 
   ONNX_NAMESPACE::TypeProto tensor_float;

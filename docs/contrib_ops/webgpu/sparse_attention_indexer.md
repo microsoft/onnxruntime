@@ -31,10 +31,13 @@ The rank-3 query projection is logically reshaped into heads inside the shader. 
 projections therefore both connect directly to the operator; their consecutive norm-weight inputs
 are applied internally before rotary embedding.
 
-The initial implementation prioritizes correctness and uses one independently
-writable workgroup per query or completed CSA window. Candidate scoring during
-selection is recomputed rather than materialized, avoiding candidate-count
-limits and GPU-to-CPU synchronization at the cost of additional computation.
+The implementation uses one independently writable workgroup per query or
+completed CSA window. For QSA, each workgroup caches visible token positions
+and candidate scores, and reuses query/key RMS normalization within a score.
+The caches cover up to 3,072 visible tokens and 768 candidate blocks within
+WebGPU's guaranteed 16 KiB of workgroup storage. Beyond either bound, the
+corresponding lookup falls back to visibility scans or score recomputation,
+preserving exact TopK ordering without host readback.
 
 ## Follow-up work
 
@@ -43,7 +46,7 @@ limits and GPU-to-CPU synchronization at the cost of additional computation.
 - specialized large-candidate TopK;
 - subgroup-optimized reductions;
 - fused projection, pooling, and scoring;
-- reduced recomputation and temporary-buffer use;
+- staged scoring and selection for rows exceeding workgroup-cache bounds;
 - selector/executor fusion;
 - WebGPU `DynamicSparseAttention` and `SparsePagedAttention`;
 - additional element types.

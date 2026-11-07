@@ -43,7 +43,9 @@ ONNX_NAMESPACE::TypeProto FunctionTestCase::TensorType(int32_t elem_type, std::v
   return typeProto;
 }
 
-std::vector<OrtValue> FunctionTestCase::Run(onnxruntime::Model& model, NameMLValMap& feeds, std::vector<std::string> output_names) {
+std::vector<OrtValue> FunctionTestCase::Run(onnxruntime::Model& model, NameMLValMap& feeds,
+                                            std::vector<std::string> output_names,
+                                            bool allow_released_opsets_only) {
   SessionOptions session_options;
   InferenceSession session_object{session_options, GetEnvironment()};
 
@@ -51,7 +53,7 @@ std::vector<OrtValue> FunctionTestCase::Run(onnxruntime::Model& model, NameMLVal
   const bool serialization_status = model.ToProto().SerializeToString(&serialized_model);
   EXPECT_TRUE(serialization_status) << "Failed to serialize proto to string";
   std::stringstream sstr(serialized_model);
-  auto status = session_object.Load(sstr);
+  auto status = session_object.Load(sstr, allow_released_opsets_only);
   EXPECT_TRUE(status.IsOK());
   status = session_object.Initialize();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -128,7 +130,7 @@ onnxruntime::Node& FunctionTestCase::AddCallNodeTo(onnxruntime::Graph& graph) {
   return graph.AddNode("fncallnode", opname, "function call node", input_arg_ptrs, output_arg_ptrs, &attributes, domain);
 }
 
-std::unique_ptr<Model> FunctionTestCase::CreateModel(bool inline_call) {
+std::unique_ptr<Model> FunctionTestCase::CreateModel(bool inline_call, bool allow_released_opsets_only) {
   if (opsets.size() == 0) {
     // Default opsets
     opsets[kOnnxDomain] = 13;
@@ -136,7 +138,8 @@ std::unique_ptr<Model> FunctionTestCase::CreateModel(bool inline_call) {
   }
 
   std::unique_ptr<Model> model(new Model("test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-                                         opsets, {}, DefaultLoggingManager().DefaultLogger()));
+                                         opsets, {}, DefaultLoggingManager().DefaultLogger(),
+                                         ModelOptions{allow_released_opsets_only, false}));
 
   onnxruntime::Graph& graph = model->MainGraph();
   auto& call_node = AddCallNodeTo(graph);
@@ -154,12 +157,12 @@ std::unique_ptr<Model> FunctionTestCase::CreateModel(bool inline_call) {
   return model;
 }
 
-void FunctionTestCase::RunTest() {
-  auto model1 = CreateModel(false);
-  auto results1 = Run(*model1, input_value_map, output_names);
+void FunctionTestCase::RunTest(bool allow_released_opsets_only) {
+  auto model1 = CreateModel(false, allow_released_opsets_only);
+  auto results1 = Run(*model1, input_value_map, output_names, allow_released_opsets_only);
 
-  auto model2 = CreateModel(true);
-  auto results2 = Run(*model2, input_value_map, output_names);
+  auto model2 = CreateModel(true, allow_released_opsets_only);
+  auto results2 = Run(*model2, input_value_map, output_names, allow_released_opsets_only);
 
   AssertEqual(results1, results2);
 }

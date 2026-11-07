@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import { InferenceSession as InferenceSessionImpl } from './inference-session-impl.js';
+import type { LoraAdapter } from './lora-adapter.js';
 import { OnnxModelOptions } from './onnx-model.js';
 import { OnnxValue, OnnxValueDataLocation } from './onnx-value.js';
 import type { Tensor } from './tensor.js';
@@ -47,6 +48,33 @@ export declare namespace InferenceSession {
    * A set of configurations for session behavior.
    */
   export interface SessionOptions extends OnnxModelOptions {
+    /**
+     * Configure loading external data referenced by EPContext nodes.
+     *
+     * The callback is invoked synchronously with the external data name and must return a `Uint8Array`. The returned
+     * bytes are copied into ONNX Runtime-owned memory during the enclosing native operation. Do not modify or reuse the
+     * returned view's backing storage until that operation completes; return a fresh array when using mutable shared
+     * storage. Empty arrays are supported. Callback invocations may originate from multiple ONNX Runtime threads; the
+     * native JavaScript bindings serialize calls before invoking JavaScript.
+     *
+     * `maxDataSize` is a required, finite, positive safe integer. Session creation fails if the callback throws, returns
+     * another type, or returns more bytes than this limit. ONNX Runtime does not fall back to loading the data from disk
+     * after a callback failure.
+     *
+     * The binding retains and enforces this limit in its callback state before allocating the native output buffer.
+     * It is not configured in the native API and does not constrain allocations made inside the JavaScript callback.
+     *
+     * This setting is available only in the Node.js and React Native bindings. ONNX Runtime Web rejects it because a
+     * JavaScript callback cannot currently be registered safely through the WebAssembly ABI.
+     *
+     * JavaScript does not currently expose model compilation, so the corresponding EPContext data write callback is not
+     * available.
+     */
+    epContextDataRead?: {
+      callback: (name: string) => Uint8Array;
+      maxDataSize: number;
+    };
+
     /**
      * An array of execution provider options.
      *
@@ -273,6 +301,22 @@ export declare namespace InferenceSession {
     validationMode?: 'disabled' | 'wgpuOnly' | 'basic' | 'full';
 
     /**
+     * Permit named ORT features when supported by the device; unsupported features use existing fallbacks.
+     * Supported feature: 'subgroupMatrix' (enabled by default). Options apply independently to each session,
+     * including sessions sharing a device. Omitted features use their defaults.
+     * Unknown names, duplicates, and names present in both lists are rejected.
+     */
+    enableFeatures?: readonly string[];
+
+    /**
+     * Prevent ORT from using named features, including with a custom GPU device.
+     * 'subgroupMatrix' uses existing fallback kernels when disabled. Options apply only to this session;
+     * other sessions sharing the device retain their own settings. This does not change the device's features.
+     * See enableFeatures for supported names and validation rules.
+     */
+    disableFeatures?: readonly string[];
+
+    /**
      * Enable robust buffer access for an ORT-created Dawn device. This is a global, first-device-wins option. Later
      * conflicting values and values supplied with an external device are ignored with a warning.
      *
@@ -281,6 +325,18 @@ export declare namespace InferenceSession {
      * @default `true` in Debug builds; `false` in Release and RelWithDebInfo builds
      */
     enableRobustness?: boolean;
+
+    /**
+     * Select accelerated external-weight loading for the native Windows WebGPU execution provider.
+     * - 'off': Disable accelerated weight loading.
+     * - 'preferred': Use D3D12 accelerated loading when available and otherwise use the ordinary loading path.
+     * - 'required': Require D3D12 accelerated loading support.
+     *
+     * This setting is available only in ONNX Runtime (Node.js binding) builds with D3D12 file loading support.
+     *
+     * @default 'off'
+     */
+    weightLoadAcceleration?: 'off' | 'preferred' | 'required';
 
     /**
      * Specify the cache mode for storage buffers.
@@ -541,6 +597,19 @@ export declare namespace InferenceSession {
      * ```
      */
     extra?: Record<string, unknown>;
+
+    /**
+     * A list of LoRA adapters to activate for this run. See `LoraAdapter`.
+     *
+     * The adapters must be created by the same backend as the session. Parameters of different adapters that are
+     * active at the same time must not overlap.
+     *
+     * This setting is available only in WebAssembly backend. It is not supported yet in proxy mode
+     * (`env.wasm.proxy`), or for a session that uses IO binding. IO binding is used when an output is preferred to be
+     * on GPU (see `SessionOptions.preferredOutputLocation`), when graph capture is enabled, and in some cases with the
+     * WebNN execution provider.
+     */
+    activeLoraAdapters?: readonly LoraAdapter[];
   }
 
   // #endregion

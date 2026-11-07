@@ -46,17 +46,11 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
 #ifdef USE_TENSORRT
             onnxruntime::TensorrtProviderFactoryCreator::Create(0),
 #endif
-#ifdef USE_NV
-            onnxruntime::NvProviderFactoryCreator::Create(0),
-#endif
 #ifdef USE_MIGRAPHX
             onnxruntime::MIGraphXProviderFactoryCreator::Create(0),
 #endif
 #ifdef USE_VITISAI
             onnxruntime::VitisAIProviderFactoryCreator::Create(ProviderOptions{}),
-#endif
-#ifdef USE_ACL
-            onnxruntime::ACLProviderFactoryCreator::Create(false),
 #endif
 #ifdef USE_DML
             []() {

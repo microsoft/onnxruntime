@@ -9,6 +9,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 # -------------------------------------------------------------------------
+import functools
 import gc
 import math
 import os
@@ -21,6 +22,7 @@ import typing
 import unittest
 from copy import deepcopy
 from dataclasses import dataclass
+from unittest import mock
 
 import numpy
 import torch
@@ -40,7 +42,7 @@ from onnx import TensorProto, helper
 from packaging import version
 from parameterized import parameterized
 
-from onnxruntime import InferenceSession, SessionOptions, get_build_info
+from onnxruntime import InferenceSession, OrtValue, SessionOptions, get_available_providers, get_build_info
 from onnxruntime import __version__ as ort_version
 
 # Set seed for reproducibility
@@ -72,6 +74,438 @@ enable_deterministic_check = True
 # #################################################################################################
 #  Configuration and Helper Classes
 # #################################################################################################
+
+
+class TestBorrowedKVCache(unittest.TestCase):
+    @parameterized.expand(
+        [
+            (provider, device, dtype, tensor_type, head_size, query_length, with_past)
+            for provider, device, dtype, tensor_type in (
+                ("CPUExecutionProvider", "cpu", numpy.float32, TensorProto.FLOAT),
+                ("CUDAExecutionProvider", "cuda", numpy.float16, TensorProto.FLOAT16),
+            )
+            for head_size in (64, 512)
+            for query_length, with_past in ((1, True), (7, False), (7, True))
+        ]
+    )
+    def test_cache_inputs_remain_unchanged(
+        self, provider, device, dtype, tensor_type, head_size, query_length, with_past
+    ):
+        """Omitted present outputs must preserve borrowed caches across repeated runs."""
+        if provider not in get_available_providers():
+            self.skipTest(f"{provider} unavailable")
+        self.check_borrowed_cache(provider, device, dtype, tensor_type, head_size, query_length, with_past)
+
+    @parameterized.expand([(head_size, query_length) for head_size in (16, 64) for query_length in (1, 7)])
+    def test_cpu_fp16_generic_reference(self, head_size, query_length):
+        """Check generic CPU FP16 attention with padded caches and multiple KV heads."""
+        self.check_borrowed_cache(
+            "CPUExecutionProvider", "cpu", numpy.float16, TensorProto.FLOAT16, head_size, query_length, True
+        )
+
+    @parameterized.expand(
+        [
+            (head_size, query_length, window)
+            for head_size in (64, 128, 256)
+            for query_length in (1, 7)
+            for window in (1, 16, 32)
+        ]
+    )
+    def test_unfused_sliding_window_reference(self, head_size, query_length, window):
+        """Force unfused CUDA attention and verify that the window includes the current token."""
+        if "CUDAExecutionProvider" not in get_available_providers():
+            self.skipTest("CUDAExecutionProvider unavailable")
+        with (
+            scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "1"),
+            scoped_env_var("ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", "1"),
+            scoped_env_var("ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"),
+            scoped_env_var("ORT_ENABLE_XQA", "0"),
+            scoped_env_var("ORT_DISABLE_FLASH_DECODE", "1"),
+        ):
+            kernel = get_sdpa_kernel_from_debug_info(
+                lambda: self.check_borrowed_cache(
+                    "CUDAExecutionProvider",
+                    "cuda",
+                    numpy.float16,
+                    TensorProto.FLOAT16,
+                    head_size,
+                    query_length,
+                    True,
+                    window,
+                )
+            )
+            self.assertEqual(kernel, "MATH")
+
+    @parameterized.expand(
+        [
+            (kernel, query_length, valid_length, capacity, window)
+            for kernel in ("FLASH_ATTENTION", "EFFICIENT_ATTENTION", "MATH")
+            for query_length, valid_length, capacity in ((8, 3, 9), (128, 64, 64))
+            for window in (-1, 2)
+        ]
+    )
+    def test_query_longer_than_borrowed_kv(self, kernel, query_length, valid_length, capacity, window):
+        if "CUDAExecutionProvider" not in get_available_providers():
+            self.skipTest("CUDAExecutionProvider unavailable")
+        if not torch.cuda.is_available() or torch.cuda.get_device_capability()[0] < 8:
+            self.skipTest("Forced Flash/MEA regression requires SM80 or later")
+        if not has_sdpa_kernel(kernel):
+            self.skipTest(f"{kernel} is not built into this CUDA execution provider")
+        kernels, actual = run_query_longer_than_borrowed_kv(kernel, query_length, valid_length, capacity, window)
+        self.assertEqual(set(kernels), {kernel})
+        expected = numpy.zeros(actual.shape, dtype=numpy.float16)
+        for row in range(query_length - valid_length, query_length):
+            end = valid_length - query_length + row + 1
+            start = max(0, end - window) if window > 0 else 0
+            expected[:, row] = numpy.arange(start + 1, end + 1).mean()
+        # MEA's legacy fully masked prefix is unspecified; compare every row that has causal keys.
+        first_row = query_length - valid_length if kernel == "EFFICIENT_ATTENTION" else 0
+        numpy.testing.assert_allclose(actual[:, first_row:], expected[:, first_row:], rtol=2e-3, atol=2e-3)
+
+    def check_borrowed_cache(
+        self, provider, device, dtype, tensor_type, head_size, query_length, with_past, local_window_size=16
+    ):
+        random = numpy.random.default_rng(42)
+        batch_size = 1 if query_length > 1 and with_past else 2
+        shapes = {
+            "query": [batch_size, query_length, 8 * head_size],
+            "key": [batch_size, 0, 2 * head_size],
+            "value": [batch_size, 0, 2 * head_size],
+            "past_key": [batch_size, 2, 64, head_size],
+            "past_value": [batch_size, 2, 64, head_size],
+        }
+        feeds = {name: random.uniform(-1, 1, shape).astype(dtype) for name, shape in shapes.items()}
+        lengths = [32, 28] if query_length == 1 else ([38] if with_past else [6, 4])
+        feeds["seqlens_k"] = numpy.asarray(lengths, dtype=numpy.int32)
+        feeds["total_sequence_length"] = numpy.asarray([max(lengths) + 1], dtype=numpy.int32)
+        inputs = [helper.make_tensor_value_info(name, tensor_type, shape) for name, shape in shapes.items()]
+        inputs += [helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, [batch_size])]
+        inputs += [helper.make_tensor_value_info("total_sequence_length", TensorProto.INT32, [1])]
+        options = SessionOptions()
+        options.intra_op_num_threads = 12
+        if device == "cuda":
+            options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+
+        def make_session(omit_outputs):
+            outputs = [helper.make_tensor_value_info("output", tensor_type, shapes["query"])]
+            if not omit_outputs:
+                outputs += [
+                    helper.make_tensor_value_info("present_key", tensor_type, shapes["past_key"]),
+                    helper.make_tensor_value_info("present_value", tensor_type, shapes["past_value"]),
+                ]
+            node = helper.make_node(
+                "GroupQueryAttention",
+                list(feeds),
+                [output.name for output in outputs],
+                domain="com.microsoft",
+                num_heads=8,
+                kv_num_heads=2,
+                local_window_size=local_window_size,
+            )
+            model = helper.make_model(
+                helper.make_graph([node], "borrowed-cache", inputs, outputs),
+                opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)],
+                ir_version=10,
+            )
+            return InferenceSession(model.SerializeToString(), options, providers=[provider])
+
+        expected_session = make_session(False)
+        borrowed_session = make_session(True)
+        caches = {name: OrtValue.ortvalue_from_numpy(feeds[name], device, 0) for name in ("past_key", "past_value")}
+        originals = {name: feeds[name].copy() for name in caches}
+        for _ in range(2):
+            expected = expected_session.run(["output"], feeds)[0]
+            binding = borrowed_session.io_binding()
+            for name, values in feeds.items():
+                if name in caches:
+                    binding.bind_ortvalue_input(name, caches[name])
+                else:
+                    binding.bind_cpu_input(name, values)
+            binding.bind_output("output", device)
+            borrowed_session.run_with_iobinding(binding)
+            actual = binding.copy_outputs_to_cpu()[0]
+            self.assertTrue(numpy.isfinite(actual).all())
+            tolerance = 2e-3 if dtype == numpy.float16 else 2e-5
+            numpy.testing.assert_allclose(actual, expected, rtol=tolerance, atol=2e-5)
+            if with_past:
+                reference = numpy.empty((batch_size, query_length, 8, head_size), dtype=numpy.float64)
+                queries = feeds["query"].reshape(reference.shape).astype(numpy.float64)
+                for batch_index, last_position in enumerate(feeds["seqlens_k"]):
+                    for query_index in range(query_length):
+                        end = int(last_position) + 2 - query_length + query_index
+                        start = max(0, end - local_window_size)
+                        for head_index in range(8):
+                            keys = originals["past_key"][batch_index, head_index // 4, start:end].astype(numpy.float64)
+                            values = originals["past_value"][batch_index, head_index // 4, start:end].astype(
+                                numpy.float64
+                            )
+                            scores = keys @ queries[batch_index, query_index, head_index] / math.sqrt(head_size)
+                            weights = numpy.exp(scores - scores.max())
+                            reference[batch_index, query_index, head_index] = (weights / weights.sum()) @ values
+                numpy.testing.assert_allclose(
+                    actual,
+                    reference.reshape(actual.shape),
+                    rtol=tolerance,
+                    atol=tolerance,
+                )
+                feeds["seqlens_k"] -= 3
+                feeds["total_sequence_length"] -= 3
+            for name, cache in caches.items():
+                numpy.testing.assert_array_equal(cache.numpy(), originals[name])
+            feeds["query"] = random.uniform(-1, 1, shapes["query"]).astype(dtype)
+
+
+class TestQuerySeqlensQuantizedCache(unittest.TestCase):
+    def run_chunk(
+        self,
+        past,
+        padded,
+        valid,
+        packed,
+        shares=((False, False), (False, True), (True, False), (True, True)),
+        windowed=False,
+        total_sequence_length=16,
+        absolute_past=None,
+    ):
+        """Runs one INT8 PER_TENSOR chunk on a 16-row cache, once for each way of sharing past and present.
+
+        valid is the query_seqlens value. None omits the input. Unit scales and
+        V = 0.4 tell the two attention inputs apart: reading the quantized cache gives 0 for the new rows and
+        reading the float K/V gives 0.4. Returns (share_key, share_value, kernels, feeds, output, present)
+        for every entry of shares. past counts resident rows; absolute_past can override the absolute
+        past length for a windowed cache.
+        """
+        if "CUDAExecutionProvider" not in get_available_providers() or not has_quantized_kv_cache():
+            self.skipTest("CUDA quantized KV cache is unavailable")
+        if not has_sdpa_kernel("FLASH_ATTENTION"):
+            self.skipTest("Quantized FlashAttention is not built into this CUDA execution provider")
+        capacity, head_size = 16, 128
+        cache_shape = [1, 1, capacity, head_size]
+        query = numpy.zeros((1, padded, 2 * head_size), dtype=numpy.float16)
+        key = numpy.zeros((1, padded, head_size), dtype=numpy.float16)
+        value = numpy.full_like(key, 0.4)
+        feeds = {"query": numpy.concatenate((query, key, value), axis=2) if packed else query}
+        if not packed:
+            feeds.update(key=key, value=value)
+        feeds.update(
+            past_key=numpy.zeros(cache_shape, dtype=numpy.int8),
+            past_value=numpy.zeros(cache_shape, dtype=numpy.int8),
+            seqlens_k=numpy.asarray(
+                [(past if absolute_past is None else absolute_past) + (padded if valid is None else valid) - 1],
+                dtype=numpy.int32,
+            ),
+            total_sequence_length=numpy.asarray([total_sequence_length], dtype=numpy.int32),
+            k_scale=numpy.ones(1, dtype=numpy.float32),
+            v_scale=numpy.ones(1, dtype=numpy.float32),
+        )
+        if valid is not None:
+            feeds["query_seqlens"] = numpy.asarray([valid], dtype=numpy.int32)
+        for token in range(past):
+            feeds["past_value"][:, :, token] = 2 * token + 1
+        names = [
+            "query",
+            "" if packed else "key",
+            "" if packed else "value",
+            "past_key",
+            "past_value",
+            "seqlens_k",
+            "total_sequence_length",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "k_scale",
+            "v_scale",
+            "",
+            "",
+            "query_seqlens" if valid is not None else "",
+        ]
+        inputs = [
+            helper.make_tensor_value_info(name, helper.np_dtype_to_tensor_dtype(array.dtype), array.shape)
+            for name, array in feeds.items()
+        ]
+        outputs = [helper.make_tensor_value_info("output", TensorProto.FLOAT16, query.shape)]
+        outputs += [
+            helper.make_tensor_value_info(name, TensorProto.INT8, cache_shape)
+            for name in ("present_key", "present_value")
+        ]
+        node = helper.make_node(
+            "GroupQueryAttention",
+            names,
+            [out.name for out in outputs],
+            domain="com.microsoft",
+            num_heads=2,
+            kv_num_heads=1,
+            causal=1,
+            k_quant_type="PER_TENSOR",
+            v_quant_type="PER_TENSOR",
+            kv_cache_bit_width=8,
+            sliding_window_cache=int(windowed),
+            local_window_size=capacity if windowed else -1,
+        )
+        model = helper.make_model(
+            helper.make_graph([node], "quantized-query-seqlens", inputs, outputs),
+            opset_imports=[helper.make_opsetid("com.microsoft", 1)],
+            ir_version=10,
+        )
+        options = SessionOptions()
+        options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+        results = []
+        with (
+            scoped_env_var("ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"),
+            scoped_env_var("ORT_ENABLE_XQA", "0"),
+            scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "0"),
+            scoped_env_var("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", "1"),
+        ):
+            session = InferenceSession(model.SerializeToString(), options, providers=["CUDAExecutionProvider"])
+            for share_key, share_value in shares:
+                binding = session.io_binding()
+                values = {
+                    name: OrtValue.ortvalue_from_numpy(array, "cuda" if name != "total_sequence_length" else "cpu", 0)
+                    for name, array in feeds.items()
+                }
+                for name, ort_value in values.items():
+                    binding.bind_ortvalue_input(name, ort_value)
+                present = []
+                for name, share in (("key", share_key), ("value", share_value)):
+                    dest = (
+                        values[f"past_{name}"]
+                        if share
+                        else OrtValue.ortvalue_from_numpy(numpy.full(cache_shape, -37, dtype=numpy.int8), "cuda", 0)
+                    )
+                    present.append(dest)
+                    binding.bind_ortvalue_output(f"present_{name}", dest)
+                binding.bind_output("output", "cuda")
+                kernels = get_sdpa_kernel_from_debug_info(
+                    lambda binding=binding: session.run_with_iobinding(binding), all_kernels=True
+                )
+                output = binding.copy_outputs_to_cpu()[-1]
+                results.append((share_key, share_value, kernels, feeds, output, present))
+        return results
+
+    @parameterized.expand([(past, padded, packed) for past in (0, 3) for padded in (2, 8) for packed in (False, True)])
+    def test_first_chunk_and_separate_present(self, past, padded, packed):
+        valid = 2
+        for share_key, share_value, kernels, feeds, actual, present in self.run_chunk(past, padded, valid, packed):
+            with self.subTest(share_key=share_key, share_value=share_value):
+                self.assertEqual(set(kernels), {"FLASH_ATTENTION"})
+                if past == 0:
+                    numpy.testing.assert_allclose(actual[:, :valid], numpy.float16(0.4), rtol=1e-3, atol=1e-3)
+                else:
+                    for row in range(valid):
+                        numpy.testing.assert_allclose(
+                            actual[:, row], past * past / (past + row + 1), rtol=1e-3, atol=1e-3
+                        )
+                for name, dest in zip(("key", "value"), present, strict=True):
+                    expected = feeds[f"past_{name}"].copy()
+                    expected[:, :, past : past + valid] = 0
+                    numpy.testing.assert_array_equal(dest.numpy()[:, :, : past + valid], expected[:, :, : past + valid])
+
+    @parameterized.expand(
+        [
+            (padded, packed, windowed, bound)
+            for padded in (2, 8)
+            for packed in (False, True)
+            for windowed, bound in ((False, 16), (True, 16), (True, 1))
+        ]
+    )
+    def test_single_valid_row_matches_single_token_step(self, padded, packed, windowed, bound):
+        # Match both legacy singleton classifications: a tight bound is a first prompt, a capacity
+        # bound is quantized decode. Windowed caches permit the tight bound even when S > T.
+        ((_, _, single_kernels, _, single, _),) = self.run_chunk(
+            0,
+            1,
+            None,
+            packed,
+            shares=((True, True),) if windowed else ((False, False),),
+            windowed=windowed,
+            total_sequence_length=bound,
+        )
+        self.assertEqual(set(single_kernels), {"FLASH_ATTENTION"})
+        numpy.testing.assert_allclose(single, numpy.float16(0.4) if bound == 1 else 0, atol=1e-3)
+        for share_key, share_value, kernels, _, actual, present in self.run_chunk(
+            0,
+            padded,
+            1,
+            packed,
+            shares=((True, True),) if windowed else ((False, False), (False, True), (True, False), (True, True)),
+            windowed=windowed,
+            total_sequence_length=bound,
+        ):
+            with self.subTest(share_key=share_key, share_value=share_value):
+                self.assertEqual(set(kernels), {"FLASH_ATTENTION"})
+                numpy.testing.assert_array_equal(actual[:, :1], single)
+                for dest in present:
+                    numpy.testing.assert_array_equal(dest.numpy()[:, :, :1], 0)
+
+    def test_windowed_int_max_absolute_length(self):
+        # Absolute P + S exceeds INT_MAX, but all cache-relative geometry fits in the 16-row window.
+        maximum_length = numpy.iinfo(numpy.int32).max
+        ((_, _, kernels, feeds, actual, present),) = self.run_chunk(
+            16,
+            8,
+            1,
+            False,
+            shares=((True, True),),
+            windowed=True,
+            total_sequence_length=maximum_length,
+            absolute_past=maximum_length - 1,
+        )
+        self.assertEqual(set(kernels), {"FLASH_ATTENTION"})
+        expected_value = feeds["past_value"][0, 0, 1:, 0].astype(numpy.float32).sum() / 16
+        numpy.testing.assert_allclose(actual[:, :1], expected_value, rtol=1e-3, atol=1e-3)
+        for name, dest in zip(("key", "value"), present, strict=True):
+            expected = numpy.zeros_like(feeds[f"past_{name}"])
+            expected[:, :, :-1] = feeds[f"past_{name}"][:, :, 1:]
+            numpy.testing.assert_array_equal(dest.numpy(), expected)
+
+    @parameterized.expand([(padded, packed) for padded in (2, 8) for packed in (False, True)])
+    def test_omitted_query_seqlens_keeps_quantized_read(self, padded, packed):
+        # Without query_seqlens, a first chunk whose total_sequence_length is the cache capacity is a
+        # subsequent chunk: it attends to the quantized cache, which the new input must not change.
+        ((_, _, _, _, actual, _),) = self.run_chunk(0, padded, None, packed, shares=((False, False),))
+        numpy.testing.assert_allclose(actual, 0, atol=1e-3)
+
+
+def has_openvino_gpu():
+    try:
+        import openvino  # noqa: PLC0415
+    except ImportError:
+        return False
+    return any(device.startswith("GPU") for device in openvino.Core().available_devices)
+
+
+class TestOpenVINOQuerySeqlensCapability(unittest.TestCase):
+    def test_query_seqlens_declined_during_partitioning(self):
+        if "OpenVINOExecutionProvider" not in get_available_providers():
+            self.skipTest("OpenVINOExecutionProvider unavailable")
+        if not has_openvino_gpu():
+            self.skipTest("OpenVINO Python runtime or GPU device unavailable")
+        config = GQAConfig(
+            batch_size=1,
+            q_sequence_length=2,
+            kv_sequence_length=2,
+            num_heads=2,
+            kv_num_heads=1,
+            head_size=128,
+            past_kv_sequence_length=0,
+            buffer_sequence_length=16,
+            kv_cache_type="fp16",
+            share_buffer=True,
+        )
+        options = SessionOptions()
+        options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+        providers = [("OpenVINOExecutionProvider", {"device_type": "GPU"})]
+        # The otherwise identical unpadded node must be claimable, so rejection cannot pass vacuously.
+        InferenceSession(
+            create_group_query_attention_graph_prompt(config, TensorProto.FLOAT16), options, providers=providers
+        )
+        config.has_query_seqlens = True
+        with self.assertRaisesRegex(Exception, "fallback to CPU EP has been explicitly disabled"):
+            InferenceSession(
+                create_group_query_attention_graph_prompt(config, TensorProto.FLOAT16), options, providers=providers
+            )
 
 
 class CaptureStdout:
@@ -111,7 +545,7 @@ class CaptureStdout:
         os.close(self._duped_fd)
 
 
-def get_sdpa_kernel_from_debug_info(run_func):
+def get_sdpa_kernel_from_debug_info(run_func, all_kernels=False):
     captured_text = None
     with scoped_env_var("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", "1"):
         with CaptureStdout() as captured:
@@ -119,6 +553,8 @@ def get_sdpa_kernel_from_debug_info(run_func):
         captured_text = captured.output.decode(errors="replace")
 
     if captured_text is not None:
+        if all_kernels:
+            return re.findall(r"SdpaKernel=([A-Z_]+)", captured_text)
         match = re.search(r"SdpaKernel=(?P<kernel>[A-Z_]+)", captured_text)
         if match is not None:
             return match.group("kernel")
@@ -126,6 +562,100 @@ def get_sdpa_kernel_from_debug_info(run_func):
         print("Failed to get sdpa kernel from debug info:", captured_text)
 
     return None
+
+
+def run_query_longer_than_borrowed_kv(kernel, query_length, valid_length, capacity, window):
+    """Runs one borrowed-KV CUDA GQA call whose query is longer than the valid cache, forcing `kernel`.
+
+    The cache holds valid_length tokens followed by poisoned rows that no kernel may read. Returns the
+    SDPA kernels reported by the debug info and the output.
+    """
+    head_size = 128
+    shapes = {
+        "query": [1, query_length, 2 * head_size],
+        "key": [1, 0, head_size],
+        "value": [1, 0, head_size],
+        "past_key": [1, 1, capacity, head_size],
+        "past_value": [1, 1, capacity, head_size],
+    }
+    feeds = {name: numpy.zeros(shape, dtype=numpy.float16) for name, shape in shapes.items()}
+    feeds["past_value"][:] = 50  # Poison cache capacity beyond the true key length.
+    for token in range(valid_length):
+        feeds["past_value"][:, :, token] = token + 1
+    feeds["seqlens_k"] = numpy.asarray([valid_length - 1], dtype=numpy.int32)
+    feeds["total_sequence_length"] = numpy.asarray([valid_length], dtype=numpy.int32)
+    inputs = [helper.make_tensor_value_info(name, TensorProto.FLOAT16, shape) for name, shape in shapes.items()]
+    inputs += [
+        helper.make_tensor_value_info(name, TensorProto.INT32, [1]) for name in ("seqlens_k", "total_sequence_length")
+    ]
+    output = helper.make_tensor_value_info("output", TensorProto.FLOAT16, shapes["query"])
+    node = helper.make_node(
+        "GroupQueryAttention",
+        list(feeds),
+        ["output"],
+        domain="com.microsoft",
+        num_heads=2,
+        kv_num_heads=1,
+        causal=1,
+        local_window_size=window,
+    )
+    model = helper.make_model(
+        helper.make_graph([node], "borrowed-negative-offset", inputs, [output]),
+        opset_imports=[helper.make_opsetid("com.microsoft", 1)],
+        ir_version=10,
+    )
+    options = SessionOptions()
+    options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+    with (
+        scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "0" if kernel == "FLASH_ATTENTION" else "1"),
+        scoped_env_var("ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", "1" if kernel == "MATH" else "0"),
+        scoped_env_var("ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"),
+        scoped_env_var("ORT_ENABLE_XQA", "0"),
+        scoped_env_var("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", "1"),
+    ):
+        session = InferenceSession(model.SerializeToString(), options, providers=["CUDAExecutionProvider"])
+        results = []
+        kernels = get_sdpa_kernel_from_debug_info(
+            lambda: results.append(session.run(None, feeds)[0]),
+            all_kernels=True,
+        )
+    return kernels, results[0]
+
+
+@functools.cache
+def has_sdpa_kernel(kernel):
+    """Whether CUDA GroupQueryAttention dispatches to `kernel` when it is the only fused kernel enabled.
+
+    Flash attention and memory efficient attention are optional build features that are independent of the GPU,
+    and a build without one falls back to the next kernel. Tests that assert an exact dispatch therefore have to
+    check the build, which is done by forcing the kernel once on a small supported call.
+    """
+    if "CUDAExecutionProvider" not in get_available_providers() or not torch.cuda.is_available():
+        return False
+    if kernel == "MATH":
+        return True
+    if torch.cuda.get_device_capability()[0] < 8:
+        return False
+    kernels, _ = run_query_longer_than_borrowed_kv(kernel, 8, 8, 9, -1)
+    return set(kernels) == {kernel}
+
+
+class TestSDPAKernelAvailability(unittest.TestCase):
+    @parameterized.expand(["FLASH_ATTENTION", "EFFICIENT_ATTENTION", "MATH"])
+    def test_unavailable_without_torch_cuda(self, kernel):
+        with (
+            mock.patch(f"{__name__}.get_available_providers", return_value=["CUDAExecutionProvider"]),
+            mock.patch.object(torch.cuda, "is_available", return_value=False),
+        ):
+            self.assertFalse(has_sdpa_kernel.__wrapped__(kernel))
+
+    def test_math_available_before_sm80(self):
+        with (
+            mock.patch(f"{__name__}.get_available_providers", return_value=["CUDAExecutionProvider"]),
+            mock.patch.object(torch.cuda, "is_available", return_value=True),
+            mock.patch.object(torch.cuda, "get_device_capability", return_value=(7, 5)),
+        ):
+            self.assertTrue(has_sdpa_kernel.__wrapped__("MATH"))
 
 
 @dataclass
@@ -147,6 +677,9 @@ class GQAConfig:
     # Slack above local_window_size is worth allocating anyway: it lets the append point drift, so
     # the CPU kernel compacts once every C - W + 1 steps instead of on every step.
     sliding_window_cache: int = 0
+    # Adds the optional query_seqlens input (input 16), the number of valid rows in a right-padded
+    # query chunk. The step runners bind it; its value is not part of the config.
+    has_query_seqlens: bool = False
     # Length of the cos/sin caches. 0 means "same as buffer_sequence_length". A windowed KV cache is
     # shorter than the sequence, so RoPE positions must be driven by a separately sized rotary cache.
     rope_cache_length: int = 0
@@ -362,6 +895,7 @@ def create_gqa_node_and_io(
         else ("v_scale" if config.v_quant_type != "NONE" else ""),
         "q_norm_weight" if config.has_qk_norm else "",
         "k_norm_weight" if config.has_qk_norm else "",
+        "query_seqlens" if config.has_query_seqlens else "",
     ]
 
     # Remove trailing empty strings
@@ -483,6 +1017,9 @@ def create_gqa_node_and_io(
     if config.has_qk_norm:
         graph_input.append(helper.make_tensor_value_info("q_norm_weight", ort_type, [config.head_size]))
         graph_input.append(helper.make_tensor_value_info("k_norm_weight", ort_type, [config.head_size]))
+
+    if config.has_query_seqlens:
+        graph_input.append(helper.make_tensor_value_info("query_seqlens", TensorProto.INT32, [config.batch_size]))
 
     # --- Graph Outputs ---
     output_k_shape = [config.batch_size, config.kv_num_heads, present_kv_seqlen, config.head_size]
@@ -831,6 +1368,11 @@ def gqa_past_func(
     if config.has_qk_norm and q_norm_weight is not None and k_norm_weight is not None:
         bind_tensor(io_binding, "q_norm_weight", q_norm_weight, device, ort_type)
         bind_tensor(io_binding, "k_norm_weight", k_norm_weight, device, ort_type)
+
+    if config.has_query_seqlens:
+        # Every query row is valid here; decode steps (q_sequence_length == 1) ignore the input.
+        query_seqlens = torch.full((config.batch_size,), config.q_sequence_length, dtype=torch.int32, device=device)
+        bind_tensor(io_binding, "query_seqlens", query_seqlens, device, TensorProto.INT32)
 
     # 6. Quantization
     if k_scale is not None:
@@ -4235,6 +4777,7 @@ def _windowed_run_steps(
     k_scale=None,
     v_scale=None,
     providers=None,
+    use_capacity_bound=False,
 ):
     """Drives a GroupQueryAttention node token-chunk by token-chunk over a shared past/present buffer.
 
@@ -4257,13 +4800,15 @@ def _windowed_run_steps(
     outputs = []
     past_length = 0
 
-    for step_length in step_lengths:
+    for step in step_lengths:
+        valid_length, step_length = step if isinstance(step, tuple) else (step, step)
         config = deepcopy(base_config)
         config.q_sequence_length = step_length
         config.kv_sequence_length = step_length
         config.past_kv_sequence_length = past_length
         config.buffer_sequence_length = buffer_sequence_length
         config.sliding_window_cache = sliding_window_cache
+        config.has_query_seqlens = any(isinstance(item, tuple) for item in step_lengths)
 
         if step_length not in sessions:
             sessions[step_length] = _windowed_make_session(config, ort_type, providers=providers)
@@ -4271,9 +4816,17 @@ def _windowed_run_steps(
 
         io_binding = session.io_binding()
 
-        q = q_all[:, past_length : past_length + step_length].reshape(batch_size, step_length, q_hidden_size)
-        k = k_all[:, past_length : past_length + step_length].reshape(batch_size, step_length, kv_hidden_size)
-        v = v_all[:, past_length : past_length + step_length].reshape(batch_size, step_length, kv_hidden_size)
+        q = q_all[:, past_length : past_length + valid_length].reshape(batch_size, valid_length, q_hidden_size)
+        k = k_all[:, past_length : past_length + valid_length].reshape(batch_size, valid_length, kv_hidden_size)
+        v = v_all[:, past_length : past_length + valid_length].reshape(batch_size, valid_length, kv_hidden_size)
+        if step_length > valid_length:
+            pad_len = step_length - valid_length
+            q_pad = torch.full((batch_size, pad_len, q_hidden_size), 50.0, device=device, dtype=torch_type)
+            k_pad = torch.full((batch_size, pad_len, kv_hidden_size), 50.0, device=device, dtype=torch_type)
+            v_pad = torch.full((batch_size, pad_len, kv_hidden_size), 50.0, device=device, dtype=torch_type)
+            q = torch.cat([q, q_pad], dim=1)
+            k = torch.cat([k, k_pad], dim=1)
+            v = torch.cat([v, v_pad], dim=1)
         # Keep references: io_binding only records data pointers, so temporaries would be freed.
         q, k, v = q.contiguous(), k.contiguous(), v.contiguous()
         bind_tensor(io_binding, "query", q, device, ort_type)
@@ -4282,12 +4835,18 @@ def _windowed_run_steps(
         bind_tensor(io_binding, "past_key", cache_k, device, cache_ort_type)
         bind_tensor(io_binding, "past_value", cache_v, device, cache_ort_type)
 
-        total_length = past_length + step_length
+        total_length = past_length + valid_length
+        padded_total_length = past_length + step_length
         seqlens_k = torch.full((batch_size,), total_length - 1, dtype=torch.int32, device=device)
         bind_tensor(io_binding, "seqlens_k", seqlens_k, device, TensorProto.INT32)
+        if config.has_query_seqlens:
+            query_seqlens = torch.full((batch_size,), valid_length, dtype=torch.int32, device=device)
+            bind_tensor(io_binding, "query_seqlens", query_seqlens, device, TensorProto.INT32)
         cpu_device = torch.device("cpu")
         # Keep a reference: io_binding only records the data pointer, so a temporary would be freed.
-        total_sequence_length = torch.tensor([total_length], dtype=torch.int32, device=cpu_device)
+        # total_sequence_length is only an upper bound on seqlens_k + 1 when query_seqlens is given.
+        length_bound = buffer_sequence_length if use_capacity_bound else padded_total_length
+        total_sequence_length = torch.tensor([length_bound], dtype=torch.int32, device=cpu_device)
         bind_tensor(
             io_binding,
             "total_sequence_length",
@@ -4301,11 +4860,17 @@ def _windowed_run_steps(
             bind_tensor(io_binding, "sin_cache", sin, device, ort_type)
 
         if position_ids_all is not None:
-            position_ids = position_ids_all[:, past_length:total_length].contiguous()
+            position_ids = position_ids_all[:, past_length:total_length]
+            if step_length > valid_length:
+                pos_pad = torch.zeros((batch_size, step_length - valid_length), dtype=torch.int64, device=device)
+                position_ids = torch.cat([position_ids, pos_pad], dim=1)
+            position_ids = position_ids.contiguous()
             bind_tensor(io_binding, "position_ids", position_ids, device, TensorProto.INT64)
 
         if attention_bias_all is not None:
-            attention_bias = attention_bias_all[:, :, past_length:total_length, :total_length].contiguous()
+            attention_bias = attention_bias_all[
+                :, :, past_length:padded_total_length, :padded_total_length
+            ].contiguous()
             bind_tensor(io_binding, "attention_bias", attention_bias, device, ort_type)
 
         if head_sink is not None:
@@ -4324,7 +4889,7 @@ def _windowed_run_steps(
         session.run_with_iobinding(io_binding)
         io_binding.synchronize_outputs()
 
-        outputs.append(out.clone())
+        outputs.append(out[:, :valid_length].clone())
         past_length = total_length
 
     return outputs, cache_k, cache_v
@@ -4365,14 +4930,24 @@ class TestGQAWindowedKvCache(unittest.TestCase):
             setattr(config, name, value)
         return config
 
-    def _check_parity(self, base_config, step_lengths, rtol=1e-3, atol=1e-3, buffer_sequence_length=None):
+    def _check_parity(
+        self,
+        base_config,
+        step_lengths,
+        rtol=1e-3,
+        atol=1e-3,
+        buffer_sequence_length=None,
+        full_cache_length_bound=None,
+        full_cache_only=False,
+    ):
         self._require_ep()
 
         device = self.device
         torch_type = self.torch_type
         ort_type = self.ort_type
         capacity = buffer_sequence_length or min(self.max_length, self.window_size + self.slack)
-        total_length = sum(step_lengths)
+        unpadded_steps = [step[0] if isinstance(step, tuple) else step for step in step_lengths]
+        total_length = sum(unpadded_steps)
         self.assertLessEqual(total_length, self.max_length)
 
         torch.manual_seed(0)
@@ -4395,11 +4970,13 @@ class TestGQAWindowedKvCache(unittest.TestCase):
 
         attention_bias_all = None
         if base_config.has_attention_bias:
+            # Padded steps read bias rows up to the padded total, which exceeds the valid total.
+            bias_length = sum(step[1] if isinstance(step, tuple) else step for step in step_lengths)
             bias_shape = (
                 1 if base_config.attention_bias_broadcast_dim_0 else base_config.batch_size,
                 base_config.num_heads if base_config.attention_bias_per_head else 1,
-                total_length,
-                total_length,
+                bias_length,
+                bias_length,
             )
             attention_bias_all = torch.randn(bias_shape, dtype=torch_type, device=device) * 0.5
 
@@ -4432,13 +5009,43 @@ class TestGQAWindowedKvCache(unittest.TestCase):
             "v_scale": v_scale,
             "providers": self.providers,
         }
-        reference, reference_cache_k, reference_cache_v = _windowed_run_steps(base_config, self.max_length, 0, **common)
+        reference_common = {**common, "step_lengths": unpadded_steps}
+        reference, reference_cache_k, reference_cache_v = _windowed_run_steps(
+            base_config, self.max_length, 0, **reference_common
+        )
         if base_config.k_quant_type != "NONE" and any(torch.isnan(step).any() for step in reference):
             # A quantized KV cache is only read correctly by the flash-attention prefill kernels.
             # Builds without them route the first prompt through memory-efficient attention, which
             # reinterprets the quantized cache as unquantized and produces NaN for both the
             # windowed and the full-length run, so there is nothing to compare.
             self.skipTest("quantized prefill needs a build with flash attention enabled")
+        if step_lengths != unpadded_steps or full_cache_length_bound is not None:
+            padded_full, padded_full_k, padded_full_v = _windowed_run_steps(
+                base_config,
+                full_cache_length_bound or self.max_length,
+                0,
+                **common,
+                use_capacity_bound=full_cache_length_bound is not None,
+            )
+            for step_index, (expected, actual) in enumerate(zip(reference, padded_full, strict=True)):
+                numpy.testing.assert_allclose(
+                    actual.float().cpu().numpy(),
+                    expected.float().cpu().numpy(),
+                    rtol=rtol,
+                    atol=atol,
+                    err_msg=f"full-cache padded mismatch at step {step_index} (step_lengths={step_lengths})",
+                )
+            for name, actual_cache, reference_cache in (
+                ("present_key", padded_full_k, reference_cache_k),
+                ("present_value", padded_full_v, reference_cache_v),
+            ):
+                numpy.testing.assert_array_equal(
+                    actual_cache[:, :, :total_length].cpu().numpy(),
+                    reference_cache[:, :, :total_length].cpu().numpy(),
+                    err_msg=f"{name} full-cache padded valid range mismatch (T={total_length})",
+                )
+        if full_cache_only:
+            return
         windowed, cache_k, cache_v = _windowed_run_steps(base_config, capacity, 1, **common)
 
         for step_index, (expected, actual) in enumerate(zip(reference, windowed, strict=True)):
@@ -4481,6 +5088,158 @@ class TestGQAWindowedKvCache(unittest.TestCase):
         # GroupQueryAttention only allows a subsequent prompt (1 < S < T) at batch_size 1.
         steps = [128] * 6 + [1] * 32
         self._check_parity(self._base_config(batch_size=1), steps)
+
+    def test_right_padded_chunked_prefill(self):
+        # Fixed-length prefill chunks (e.g. NPU/static-shape constraint where the last chunk has
+        # only 1 or a few valid tokens right-padded to the chunk size) across Flash, MEA, and
+        # Unfused backends, both with and without sliding_window_cache.
+        if self.device != "cuda":
+            self.skipTest("CUDA right-padded chunked prefill test")
+        steps = [(1, 128), 128, (1, 128), (7, 128), 1, 1]
+        for expected_kernel, disable_flash, disable_mea in (
+            ("FLASH_ATTENTION", "0", "0"),
+            ("EFFICIENT_ATTENTION", "1", "0"),
+            ("MATH", "1", "1"),
+        ):
+            if not has_sdpa_kernel(expected_kernel):
+                continue  # Flash and memory efficient attention are optional build features.
+            with (
+                scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", disable_flash),
+                scoped_env_var("ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", disable_mea),
+                scoped_env_var("ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"),
+                scoped_env_var("ORT_ENABLE_XQA", "0"),
+                scoped_env_var("ORT_DISABLE_FLASH_DECODE", "1"),
+            ):
+                kernels = get_sdpa_kernel_from_debug_info(
+                    lambda: self._check_parity(self._base_config(batch_size=1, head_size=128, rotary=True), steps),
+                    all_kernels=True,
+                )
+                self.assertEqual(set(kernels), {expected_kernel})
+
+    def test_right_padded_global_prefill_cudnn_fallback(self):
+        if self.device != "cuda":
+            self.skipTest("CUDA right-padded cuDNN fallback regression")
+        with (
+            scoped_env_var("ORT_ENABLE_CUDNN_FLASH_ATTENTION", "1"),
+            scoped_env_var("ORT_ENABLE_XQA", "0"),
+            scoped_env_var("ORT_DISABLE_FLASH_DECODE", "1"),
+        ):
+            self._check_parity(
+                self._base_config(batch_size=1, rotary=True, local_window_size=-1),
+                [128, (1, 128), (7, 128), 1],
+                full_cache_only=True,
+            )
+
+    def test_unpadded_chunked_prefill_capacity_bound(self):
+        if self.device != "cuda":
+            self.skipTest("CUDA capacity-valued length regression")
+        # At the second step, capacity - query_length = 384 is not the true past (300).
+        for disable_flash, disable_mea in (("0", "0"), ("1", "0"), ("1", "1")):
+            with (
+                scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", disable_flash),
+                scoped_env_var("ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", disable_mea),
+                scoped_env_var("ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"),
+                scoped_env_var("ORT_ENABLE_XQA", "0"),
+                scoped_env_var("ORT_DISABLE_FLASH_DECODE", "1"),
+            ):
+                self._check_parity(
+                    self._base_config(batch_size=1, rotary=True),
+                    [300, 128, 1],
+                    full_cache_length_bound=512,
+                )
+
+    def test_right_padded_chunked_prefill_capacity_bound(self):
+        if self.device != "cuda":
+            self.skipTest("CUDA right-padded capacity-valued length regression")
+        # Prompt of 300 in chunks of 128 on a 512-row cache. total_sequence_length is the cache
+        # capacity at every step, which is only an upper bound of seqlens_k + 1 when query_seqlens is
+        # given. The last chunk has 44 valid rows, then decode.
+        for disable_flash, disable_mea in (("0", "0"), ("1", "0"), ("1", "1")):
+            with (
+                scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", disable_flash),
+                scoped_env_var("ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", disable_mea),
+                scoped_env_var("ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"),
+                scoped_env_var("ORT_ENABLE_XQA", "0"),
+                scoped_env_var("ORT_DISABLE_FLASH_DECODE", "1"),
+            ):
+                self._check_parity(
+                    self._base_config(batch_size=1, rotary=True),
+                    [128, 128, (44, 128), 1],
+                    full_cache_length_bound=512,
+                )
+
+    def test_right_padded_chunked_prefill_features(self):
+        if self.device != "cuda":
+            self.skipTest("CUDA right-padded chunked prefill feature test")
+        steps = [(100, 128), 128, (7, 128), 1, 1]
+        with (
+            scoped_env_var("ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"),
+            scoped_env_var("ORT_ENABLE_XQA", "0"),
+            scoped_env_var("ORT_DISABLE_FLASH_DECODE", "1"),
+        ):
+            for feature, overrides in (
+                ("head_sink", {"has_head_sink": True}),
+                ("position_ids", {"has_position_ids": True}),
+                ("softcap", {"softcap": 20.0}),
+            ):
+                with self.subTest(feature=feature):
+                    self._check_parity(self._base_config(batch_size=1, rotary=True, **overrides), steps)
+
+            # attention_bias runs on the unfused path and is not available with a windowed cache. Its
+            # last dimension must equal total_sequence_length, so the padded total length is used.
+            with self.subTest(feature="attention_bias"):
+                self._check_parity(
+                    self._base_config(batch_size=1, rotary=True, has_attention_bias=True, attention_bias_per_head=True),
+                    steps,
+                    full_cache_only=True,
+                )
+
+    def test_query_seqlens_single_token_decode(self):
+        if self.device != "cuda":
+            self.skipTest("CUDA query_seqlens decode regression")
+        self._require_ep()
+        # Explicit Q == 1 agrees with ordinary decode; idle Q == 0 is covered separately below.
+        with (
+            scoped_env_var("ORT_ENABLE_XQA", "0"),
+            scoped_env_var("ORT_DISABLE_FLASH_DECODE", "1"),
+        ):
+            parity_check_gqa_past(
+                config=self._base_config(
+                    batch_size=2,
+                    past_kv_sequence_length=300,
+                    buffer_sequence_length=512,
+                    rope_cache_length=512,
+                    has_query_seqlens=True,
+                    rotary=True,
+                ),
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                causal=True,
+                rtol=1e-3,
+                atol=1e-3,
+            )
+
+    @unittest.skipIf(not has_quantized_kv_cache(), "Quantized KV cache is not available, skipping test.")
+    def test_right_padded_chunked_prefill_int8(self):
+        if self.device != "cuda":
+            self.skipTest("CUDA right-padded quantized chunked prefill test")
+        steps = [(1, 128), 128, (1, 128), (5, 128), 1, 1]
+        self._check_parity(
+            self._base_config(
+                batch_size=1,
+                head_size=128,
+                rotary=True,
+                kv_cache_type="int8",
+                k_quant_type="PER_CHANNEL",
+                v_quant_type="PER_CHANNEL",
+                kv_cache_bit_width=8,
+            ),
+            steps,
+            rtol=5e-2,
+            atol=1e-1,
+        )
 
     def test_eviction_boundaries(self):
         # Land exactly on capacity - 1, capacity and capacity + 1 with single-token steps.
@@ -4658,6 +5417,577 @@ class TestGQAWindowedKvCacheCpu(TestGQAWindowedKvCache):
                 ),
                 step_lengths=[self.window_size + self.slack, 1, 1],
             )
+
+    def test_right_padded_chunked_prefill(self):
+        steps = [(1, 32), 32, (1, 32), (7, 32), 1, 1]
+        for disable_flash in ("0", "1"):
+            for capacity in (self.window_size, self.window_size + 8):
+                with scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash):
+                    self._check_parity(
+                        self._base_config(batch_size=1, rotary=True),
+                        step_lengths=steps,
+                        buffer_sequence_length=capacity,
+                    )
+
+    def test_right_padded_chunked_prefill_past_capacity(self):
+        # 137 valid tokens fill the cache (capacity 128 or 136), so the later padded steps start from a
+        # nearly full cache: appending all S padded rows in place would run past the capacity.
+        steps = [(1, 32), 32, (1, 32), (7, 32), 32, 32, 32, (1, 32), (3, 64), 1, (40, 64), (1, 64), 64, 1, 1]
+        for disable_flash in ("0", "1"):
+            for capacity in (self.window_size, self.window_size + 8):
+                with scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash):
+                    self._check_parity(
+                        self._base_config(batch_size=1, rotary=True),
+                        step_lengths=steps,
+                        buffer_sequence_length=capacity,
+                    )
+
+    def test_right_padded_chunked_prefill_int8(self):
+        steps = [64, (1, 64), (5, 64), 1, 1]
+        self._check_right_padded_int8(steps)
+
+    def test_right_padded_chunked_prefill_int8_past_capacity(self):
+        steps = [64, (1, 64), (5, 64), 64, (1, 64), (40, 64), (1, 64), 64, 1, 1]
+        self._check_right_padded_int8(steps)
+
+    def test_unpadded_chunked_prefill_capacity_bound(self):
+        # Without query_seqlens, total_sequence_length is not a hint about the past length even when it is
+        # the cache capacity: at the second step capacity - query_length = 384 is not the true past (300).
+        for disable_flash in ("0", "1"):
+            with scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash):
+                self._check_parity(
+                    self._base_config(batch_size=1, rotary=True),
+                    [300, 128, 1],
+                    full_cache_length_bound=512,
+                )
+
+    def test_right_padded_chunked_prefill_capacity_bound(self):
+        # Prompt of 300 in chunks of 128 on a 512-row cache. total_sequence_length is the cache capacity at
+        # every step, which is only an upper bound of seqlens_k + 1 when query_seqlens is given. The last
+        # chunk has 44 valid rows, then decode.
+        for disable_flash in ("0", "1"):
+            for capacity in (self.window_size, self.window_size + 8):
+                with scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash):
+                    self._check_parity(
+                        self._base_config(batch_size=1, rotary=True),
+                        [128, 128, (44, 128), 1],
+                        buffer_sequence_length=capacity,
+                        full_cache_length_bound=512,
+                    )
+
+    def test_right_padded_chunked_prefill_features(self):
+        # Eviction starts at the 5th chunk, so the padded steps also cross the windowed layout changes.
+        steps = [(20, 32), 32, 32, 32, 32, (7, 32), 1, 1]
+        # Without query_seqlens a first prompt reads only position_ids[0] and uses consecutive positions,
+        # whereas a chunk that has query_seqlens honours every entry, also for the first chunk. A single
+        # token comes first so that the unpadded reference reads the same positions.
+        position_ids_steps = [1, (19, 32), *steps[1:]]
+        features = (
+            ("head_sink", {"has_head_sink": True}, steps),
+            ("position_ids", {"has_position_ids": True}, position_ids_steps),
+            ("softcap", {"softcap": 20.0}, steps),
+            # The bias covers the padded total length, and its rows are those of the valid and padded queries.
+            ("attention_bias", {"has_attention_bias": True, "attention_bias_per_head": True}, steps),
+        )
+        for disable_flash in ("0", "1"):
+            for capacity in (self.window_size, self.window_size + 8):
+                for feature, overrides, feature_steps in features:
+                    with (
+                        self.subTest(feature=feature, disable_flash=disable_flash, capacity=capacity),
+                        scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash),
+                    ):
+                        self._check_parity(
+                            self._base_config(batch_size=1, rotary=True, **overrides),
+                            step_lengths=feature_steps,
+                            buffer_sequence_length=capacity,
+                        )
+
+    def test_query_seqlens_single_token_decode(self):
+        parity_check_gqa_past(
+            config=self._base_config(
+                batch_size=2,
+                past_kv_sequence_length=300,
+                buffer_sequence_length=512,
+                rope_cache_length=512,
+                has_query_seqlens=True,
+                rotary=True,
+            ),
+            ep="CPUExecutionProvider",
+            device="cpu",
+            torch_type=torch.float32,
+            ort_type=TensorProto.FLOAT,
+            causal=True,
+            rtol=1e-3,
+            atol=1e-3,
+        )
+
+    def _check_right_padded_int8(self, steps):
+        for disable_flash in ("0", "1"):
+            for capacity in (self.window_size, self.window_size + 8):
+                with scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash):
+                    self._check_parity(
+                        self._base_config(
+                            batch_size=1,
+                            rotary=True,
+                            kv_cache_type="int8",
+                            k_quant_type="PER_CHANNEL",
+                            v_quant_type="PER_CHANNEL",
+                            kv_cache_bit_width=8,
+                        ),
+                        step_lengths=steps,
+                        buffer_sequence_length=capacity,
+                        rtol=5e-2,
+                        atol=1e-1,
+                    )
+
+
+class TestGQABatchedPaddedChunks(unittest.TestCase):
+    """Compare ragged batches with independent, unpadded single-entry full-cache calls."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.addClassCleanup(torch.set_num_threads, torch.get_num_threads())
+        torch.set_num_threads(2)
+
+    @parameterized.expand(
+        [
+            (dtype, quantized, packed)
+            for dtype in ("float32", "float16")
+            for quantized in (False, "int8", "int4")
+            for packed in (False, True)
+        ]
+    )
+    def test_cpu_windowed_idle_entries(self, dtype, quantized, packed):
+        for disable_flash in ("0", "1"):
+            for alias in (False, True):
+                with (
+                    self.subTest(disable_flash=disable_flash, alias=alias),
+                    scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash),
+                ):
+                    self._check_chunks("cpu", dtype, quantized, packed, 1023, alias)
+
+    @parameterized.expand(
+        [
+            (kernel, dtype, packed)
+            for kernel in ("FLASH_ATTENTION", "EFFICIENT_ATTENTION", "MATH")
+            for dtype in ("float16", "bfloat16")
+            for packed in (False, True)
+        ]
+    )
+    def test_cuda_windowed_idle_entries(self, kernel, dtype, packed):
+        if not has_sdpa_kernel(kernel):
+            self.skipTest(f"{kernel} unavailable")
+        with (
+            scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "0" if kernel == "FLASH_ATTENTION" else "1"),
+            scoped_env_var("ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", "1" if kernel == "MATH" else "0"),
+            scoped_env_var("ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"),
+            scoped_env_var("ORT_ENABLE_XQA", "0"),
+            scoped_env_var("ORT_DISABLE_FLASH_DECODE", "1"),
+        ):
+            kernels = get_sdpa_kernel_from_debug_info(
+                lambda: self._check_chunks("cuda", dtype, False, packed, 512, True),
+                all_kernels=True,
+            )
+        self.assertEqual(set(kernels), {kernel})
+
+    @parameterized.expand(
+        [
+            (dtype, quantized, packed)
+            for dtype in ("float16", "bfloat16")
+            for quantized in ("int8", "int4")
+            for packed in (False, True)
+        ]
+    )
+    def test_cuda_quantized_idle_entries(self, dtype, quantized, packed):
+        if not has_quantized_kv_cache() or not has_sdpa_kernel("FLASH_ATTENTION"):
+            self.skipTest("Quantized FlashAttention unavailable")
+        if quantized == "int4" and not has_int4_kv_cache:
+            self.skipTest("INT4 KV cache unavailable")
+        with (
+            scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "0"),
+            scoped_env_var("ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"),
+            scoped_env_var("ORT_ENABLE_XQA", "0"),
+            scoped_env_var("ORT_DISABLE_FLASH_DECODE", "1"),
+        ):
+            kernels = get_sdpa_kernel_from_debug_info(
+                lambda: self._check_chunks("cuda", dtype, quantized, packed, 512, True),
+                all_kernels=True,
+            )
+        self.assertEqual(set(kernels), {"FLASH_ATTENTION"})
+
+    @parameterized.expand(["FLASH_ATTENTION", "EFFICIENT_ATTENTION", "MATH"])
+    def test_cuda_graph_device_query_lengths(self, kernel):
+        if not has_sdpa_kernel(kernel):
+            self.skipTest(f"{kernel} unavailable")
+        with (
+            scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "0" if kernel == "FLASH_ATTENTION" else "1"),
+            scoped_env_var("ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", "1" if kernel == "MATH" else "0"),
+            scoped_env_var("ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"),
+            scoped_env_var("ORT_ENABLE_XQA", "0"),
+            scoped_env_var("ORT_DISABLE_FLASH_DECODE", "1"),
+            scoped_env_var("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", "1"),
+        ):
+            config = GQAConfig(
+                batch_size=2,
+                q_sequence_length=16,
+                kv_sequence_length=16,
+                num_heads=2,
+                kv_num_heads=1,
+                head_size=128,
+                past_kv_sequence_length=16,
+                buffer_sequence_length=16,
+                local_window_size=16,
+                sliding_window_cache=1,
+                kv_cache_type="float16",
+                has_query_seqlens=True,
+            )
+            options = SessionOptions()
+            options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+            session = InferenceSession(
+                create_group_query_attention_graph_past(config, TensorProto.FLOAT16),
+                options,
+                providers=[(resolve_cuda_plugin_ep("CUDAExecutionProvider"), {"enable_cuda_graph": "1"})],
+            )
+            tensors = {
+                "query": torch.zeros((2, 16, 256), device="cuda", dtype=torch.float16),
+                "key": torch.zeros((2, 16, 128), device="cuda", dtype=torch.float16),
+                "value": torch.ones((2, 16, 128), device="cuda", dtype=torch.float16),
+                "past_key": torch.zeros((2, 1, 16, 128), device="cuda", dtype=torch.float16),
+                "past_value": torch.zeros((2, 1, 16, 128), device="cuda", dtype=torch.float16),
+                "seqlens_k": torch.tensor([15, 15], device="cuda", dtype=torch.int32),
+                "query_seqlens": torch.tensor([16, 16], device="cuda", dtype=torch.int32),
+                "total_sequence_length": torch.tensor([64], dtype=torch.int32),
+            }
+            output = torch.full((2, 16, 256), 17, device="cuda", dtype=torch.float16)
+            binding = session.io_binding()
+            for name, value in tensors.items():
+                bind_tensor(
+                    binding,
+                    name,
+                    value,
+                    value.device,
+                    TensorProto.INT32 if value.dtype == torch.int32 else TensorProto.FLOAT16,
+                )
+            bind_output_tensor(binding, "output", output, output.device, TensorProto.FLOAT16)
+            for name in ("key", "value"):
+                cache = tensors[f"past_{name}"]
+                bind_output_tensor(binding, f"present_{name}", cache, cache.device, TensorProto.FLOAT16)
+
+            def run():
+                binding.synchronize_inputs()
+                session.run_with_iobinding(binding)
+                binding.synchronize_outputs()
+
+            self.assertEqual(get_sdpa_kernel_from_debug_info(run), kernel)
+            torch.testing.assert_close(output, torch.ones_like(output))
+            before = [tensors[f"past_{name}"].clone() for name in ("key", "value")]
+            tensors["query_seqlens"].copy_(torch.tensor([0, 3], device="cuda", dtype=torch.int32))
+            tensors["seqlens_k"].copy_(torch.tensor([15, 18], device="cuda", dtype=torch.int32))
+            for name in ("query", "key", "value"):
+                tensors[name].fill_(float("nan"))
+                tensors[name][1, :3].fill_(2 if name == "value" else 0)
+            output.fill_(17)
+            run()
+            self.assertTrue(torch.all(output[0] == 17))
+            self.assertTrue(torch.all(output[1, 3:] == 17))
+            expected = torch.tensor([17 / 16, 18 / 16, 19 / 16], device="cuda", dtype=torch.float16)
+            torch.testing.assert_close(output[1, :3], expected[:, None].expand(3, 256))
+            for name, previous in zip(("key", "value"), before, strict=True):
+                torch.testing.assert_close(tensors[f"past_{name}"][0], previous[0], rtol=0, atol=0)
+
+            before = [tensors[f"past_{name}"].clone() for name in ("key", "value")]
+            tensors["query_seqlens"].zero_()
+            output.fill_(17)
+            run()
+            self.assertTrue(torch.all(output == 17))
+            for name, previous in zip(("key", "value"), before, strict=True):
+                torch.testing.assert_close(tensors[f"past_{name}"], previous, rtol=0, atol=0)
+
+    def test_cuda_mea_large_head_idle_entries(self):
+        if not has_sdpa_kernel("EFFICIENT_ATTENTION"):
+            self.skipTest("MemoryEfficientAttention unavailable")
+        with (
+            scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "1"),
+            scoped_env_var("ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", "0"),
+            scoped_env_var("ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"),
+            scoped_env_var("ORT_ENABLE_XQA", "0"),
+            scoped_env_var("ORT_DISABLE_FLASH_DECODE", "1"),
+        ):
+            kernels = get_sdpa_kernel_from_debug_info(
+                lambda: self._check_chunks("cuda", "float16", False, False, 512, True, head_size=512),
+                all_kernels=True,
+            )
+        # The unpadded single-token reference can use math at this head size.
+        self.assertIn("EFFICIENT_ATTENTION", kernels)
+        self.assertLessEqual(set(kernels), {"EFFICIENT_ATTENTION", "MATH"})
+
+    def _check_chunks(self, device, dtype, quantized, packed, capacity, alias, head_size=128):
+        torch_type = TORCH_DTYPE_MAP[dtype]
+        ort_type = ONNX_TENSOR_TYPE_MAP[dtype]
+        cache_type = quantized or dtype
+        cache_dtype = TORCH_DTYPE_MAP[cache_type]
+        cache_ort_type = ONNX_TENSOR_TYPE_MAP[cache_type]
+        full_capacity, window, heads, kv_heads = 2048, 512, 4, 2
+        generator = torch.Generator().manual_seed(33505)
+        sources = [
+            (torch.randn((2, full_capacity, h * head_size), generator=generator) * 0.2).to(torch_type)
+            for h in (heads, kv_heads, kv_heads)
+        ]
+        angle = torch.rand((full_capacity, head_size // 2), generator=generator) * (2 * math.pi)
+        cos, sin = (
+            torch.cos(angle).to(device=device, dtype=torch_type),
+            torch.sin(angle).to(device=device, dtype=torch_type),
+        )
+        scales = [torch.tensor([0.02], device=device, dtype=torch.float32) for _ in range(2)]
+        sessions = {}
+
+        def make_session(batch, length, cache_capacity, windowed):
+            key = (batch, length, cache_capacity, windowed)
+            if key not in sessions:
+                config = GQAConfig(
+                    batch_size=batch,
+                    q_sequence_length=length,
+                    kv_sequence_length=length,
+                    num_heads=heads,
+                    kv_num_heads=kv_heads,
+                    head_size=head_size,
+                    past_kv_sequence_length=1,
+                    buffer_sequence_length=cache_capacity,
+                    local_window_size=window,
+                    sliding_window_cache=int(windowed),
+                    kv_cache_type=cache_type,
+                    share_buffer=True,
+                    has_query_seqlens=True,
+                    packed=packed,
+                    rotary=True,
+                    rope_cache_length=full_capacity,
+                    k_quant_type="PER_TENSOR" if quantized else "NONE",
+                    v_quant_type="PER_TENSOR" if quantized else "NONE",
+                    kv_cache_bit_width=(4 if cache_type == "int4" else 8) if quantized else 0,
+                )
+                options = SessionOptions()
+                options.intra_op_num_threads = 2
+                if device == "cuda":
+                    options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+                providers = (
+                    ["CPUExecutionProvider"] if device == "cpu" else [resolve_cuda_plugin_ep("CUDAExecutionProvider")]
+                )
+                sessions[key] = InferenceSession(
+                    create_group_query_attention_graph_past(config, ort_type),
+                    options,
+                    providers=providers,
+                )
+            return sessions[key]
+
+        def new_cache(batch, length):
+            return [
+                torch.full(
+                    (batch, kv_heads, length, head_size // 2 if cache_type == "int4" else head_size),
+                    0xF1 if cache_type == "int4" else (-121 if quantized else float("nan")),
+                    dtype=cache_dtype,
+                    device=device,
+                )
+                for _ in range(2)
+            ]
+
+        def run(entries, pasts, valids, length, cache, windowed, share):
+            batch, cache_capacity = len(entries), cache[0].shape[2]
+            inputs = []
+            for source in sources:
+                x = torch.full((batch, length, source.shape[-1]), float("nan"), dtype=torch_type)
+                for b, (entry, past, valid) in enumerate(zip(entries, pasts, valids, strict=True)):
+                    x[b, :valid] = source[entry, past : past + valid]
+                inputs.append(x.to(device))
+            query = torch.cat(inputs, dim=-1).contiguous() if packed else inputs[0]
+            tensors = {
+                "query": query,
+                "past_key": cache[0],
+                "past_value": cache[1],
+                "seqlens_k": torch.tensor(
+                    [p + q - 1 for p, q in zip(pasts, valids, strict=True)], dtype=torch.int32, device=device
+                ),
+                "query_seqlens": torch.tensor(valids, dtype=torch.int32, device=device),
+                "total_sequence_length": torch.tensor([max(p + q for p, q in zip(pasts, valids, strict=True))]),
+                "cos_cache": cos,
+                "sin_cache": sin,
+            }
+            tensors["total_sequence_length"] = tensors["total_sequence_length"].to(torch.int32)
+            if not packed:
+                tensors.update(key=inputs[1], value=inputs[2])
+            if quantized:
+                tensors.update(k_scale=scales[0], v_scale=scales[1])
+            sess = make_session(batch, length, cache_capacity, windowed)
+            binding = sess.io_binding()
+            for name, value in tensors.items():
+                element_type = (
+                    TensorProto.INT32
+                    if value.dtype == torch.int32
+                    else (cache_ort_type if name in ("past_key", "past_value") else ort_type)
+                )
+                if name in ("k_scale", "v_scale"):
+                    element_type = TensorProto.FLOAT
+                bind_tensor(binding, name, value, value.device, element_type)
+            output = torch.full((batch, length, heads * head_size), 17, dtype=torch_type, device=device)
+            present = cache if share else [torch.empty_like(x) for x in cache]
+            bind_output_tensor(binding, "output", output, output.device, ort_type)
+            for name, value in zip(("present_key", "present_value"), present, strict=True):
+                bind_output_tensor(binding, name, value, value.device, cache_ort_type)
+            binding.synchronize_inputs()
+            sess.run_with_iobinding(binding)
+            binding.synchronize_outputs()
+            for b, valid in enumerate(valids):
+                # The row guard must avoid even writing padded attention outputs.
+                self.assertTrue(torch.all(output[b, valid:] == 17))
+            return output, present
+
+        def check_steps(steps):
+            cache = new_cache(2, capacity)
+            reference_caches = [new_cache(1, full_capacity), new_cache(1, full_capacity)]
+            pasts = [0, 0]
+            for length, valids in steps:
+                before = [x.clone() for x in cache]
+                actual, present = run([0, 1], pasts, valids, length, cache, True, alias)
+                if not alias:
+                    for old, original in zip(cache, before, strict=True):
+                        torch.testing.assert_close(old, original, rtol=0, atol=0, equal_nan=True)
+                cache = present
+                for b, valid in enumerate(valids):
+                    if valid:
+                        expected, reference_caches[b] = run(
+                            [b], [pasts[b]], [valid], valid, reference_caches[b], False, True
+                        )
+                        atol = 2e-3 if dtype == "bfloat16" else (3e-4 if dtype == "float16" else 1e-4)
+                        torch.testing.assert_close(actual[b, :valid].float(), expected[0].float(), rtol=3e-3, atol=atol)
+                    total = pasts[b] + valid
+                    resident = _windowed_resident_count(total, capacity, window)
+                    for current, reference, previous in zip(cache, reference_caches[b], before, strict=True):
+                        torch.testing.assert_close(
+                            current[b, :, :resident],
+                            reference[0, :, total - resident : total],
+                            rtol=0,
+                            atol=0,
+                        )
+                        if valid == 0:
+                            torch.testing.assert_close(
+                                current[b, :, :resident], previous[b, :, :resident], rtol=0, atol=0
+                            )
+                pasts = [p + q for p, q in zip(pasts, valids, strict=True)]
+
+        check_steps(
+            [
+                (512, [512, 512]),
+                (512, [1, 512]),
+                (512, [0, 1]),
+                (512, [0, 0]),
+                (1, [0, 1]),
+                (1, [1, 1]),
+                (512, [512, 0]),
+            ]
+        )
+        # Equal totals do not imply equal past lengths or causal offsets.
+        check_steps([(512, [128, 256]), (512, [385, 257])])
+
+
+class TestQuerySeqlensQkOutputCpu(unittest.TestCase):
+    """qk_output holds zeros, not scratch memory, in the columns past a batch entry's own total length."""
+
+    num_heads = 2
+    kv_num_heads = 1
+    head_size = 64
+    padded = 8
+    capacity = 16
+
+    def make_session(self, dtype, quantized, qk_output):
+        ort_type = helper.np_dtype_to_tensor_dtype(numpy.dtype(dtype))
+        cache_type = TensorProto.INT8 if quantized else ort_type
+        q_hidden = self.num_heads * self.head_size
+        kv_hidden = self.kv_num_heads * self.head_size
+        cache_shape = [1, self.kv_num_heads, self.capacity, self.head_size]
+        inputs = [
+            helper.make_tensor_value_info("query", ort_type, [1, self.padded, q_hidden]),
+            helper.make_tensor_value_info("key", ort_type, [1, self.padded, kv_hidden]),
+            helper.make_tensor_value_info("value", ort_type, [1, self.padded, kv_hidden]),
+            helper.make_tensor_value_info("past_key", cache_type, cache_shape),
+            helper.make_tensor_value_info("past_value", cache_type, cache_shape),
+            helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, [1]),
+            helper.make_tensor_value_info("total_sequence_length", TensorProto.INT32, [1]),
+            helper.make_tensor_value_info("query_seqlens", TensorProto.INT32, [1]),
+        ]
+        names = ["query", "key", "value", "past_key", "past_value", "seqlens_k", "total_sequence_length"]
+        names += ["", "", "", "", ""]  # cos_cache, sin_cache, position_ids, attention_bias, head_sink
+        attributes = {"num_heads": self.num_heads, "kv_num_heads": self.kv_num_heads, "causal": 1}
+        if quantized:
+            inputs += [helper.make_tensor_value_info(name, TensorProto.FLOAT, [1]) for name in ("k_scale", "v_scale")]
+            names += ["k_scale", "v_scale"]
+            attributes.update(k_quant_type="PER_TENSOR", v_quant_type="PER_TENSOR", kv_cache_bit_width=8)
+        else:
+            names += ["", ""]
+        names += ["", "", "query_seqlens"]  # q_norm_weight, k_norm_weight
+
+        outputs = [
+            helper.make_tensor_value_info("output", ort_type, [1, self.padded, q_hidden]),
+            helper.make_tensor_value_info("present_key", cache_type, cache_shape),
+            helper.make_tensor_value_info("present_value", cache_type, cache_shape),
+            helper.make_tensor_value_info("output_qk", ort_type, [1, self.num_heads, self.padded, self.capacity]),
+        ]
+        node = helper.make_node(
+            "GroupQueryAttention",
+            names,
+            [out.name for out in outputs],
+            domain="com.microsoft",
+            qk_output=qk_output,
+            **attributes,
+        )
+        model = helper.make_model(
+            helper.make_graph([node], "query-seqlens-qk-output", inputs, outputs),
+            opset_imports=[helper.make_opsetid("com.microsoft", 1)],
+            ir_version=10,
+        )
+        return InferenceSession(model.SerializeToString(), SessionOptions(), providers=["CPUExecutionProvider"])
+
+    @parameterized.expand(
+        [
+            (dtype, quantized, qk_output)
+            for dtype in (numpy.float32, numpy.float16)
+            for quantized in (False, True)
+            for qk_output in (1, 2)
+        ]
+    )
+    def test_unattended_columns_are_zero(self, dtype, quantized, qk_output):
+        session = self.make_session(dtype, quantized, qk_output)
+        rng = numpy.random.default_rng(0)
+        cache_shape = (1, self.kv_num_heads, self.capacity, self.head_size)
+        feeds = {
+            "query": rng.standard_normal((1, self.padded, self.num_heads * self.head_size)).astype(dtype),
+            "key": rng.standard_normal((1, self.padded, self.kv_num_heads * self.head_size)).astype(dtype),
+            "value": rng.standard_normal((1, self.padded, self.kv_num_heads * self.head_size)).astype(dtype),
+            "total_sequence_length": numpy.asarray([self.capacity], dtype=numpy.int32),
+        }
+        if quantized:
+            feeds["past_key"] = rng.integers(-8, 8, cache_shape).astype(numpy.int8)
+            feeds["past_value"] = rng.integers(-8, 8, cache_shape).astype(numpy.int8)
+            feeds["k_scale"] = numpy.asarray([0.05], dtype=numpy.float32)
+            feeds["v_scale"] = numpy.asarray([0.05], dtype=numpy.float32)
+        else:
+            feeds["past_key"] = rng.standard_normal(cache_shape).astype(dtype)
+            feeds["past_value"] = rng.standard_normal(cache_shape).astype(dtype)
+
+        def run(total, valid):
+            feeds["seqlens_k"] = numpy.asarray([total - 1], dtype=numpy.int32)
+            feeds["query_seqlens"] = numpy.asarray([valid], dtype=numpy.int32)
+            return session.run(None, feeds)[3]
+
+        # (T, Q): a lone valid row, a padded chunk that has a past, and a full chunk whose total stays below X.
+        for total, valid in ((1, 1), (5, 3), (9, 8)):
+            # A call with T == X scores every column, so the scratch the arena hands to the next call is dirty.
+            run(self.capacity, self.padded)
+            qk = run(total, valid).astype(numpy.float32)
+            with self.subTest(total=total, valid=valid):
+                numpy.testing.assert_array_equal(qk[..., total:], 0)
+                self.assertTrue(numpy.isfinite(qk[..., :valid, :total]).all())
+                if qk_output == 2:
+                    numpy.testing.assert_allclose(qk[..., :valid, :total].sum(-1), 1.0, rtol=2e-2)
 
 
 if __name__ == "__main__":

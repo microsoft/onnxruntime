@@ -8,13 +8,24 @@
 namespace onnxruntime::test {
 
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+std::optional<contrib::cuda::GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimateConfigForTest(
+    const void* node, bool head_sink_is_constant_initializer,
+    int64_t max_total_sequence_length,
+    KernelDispatchPolicy dispatch_policy) {
+  return contrib::cuda::GetGroupQueryAttentionWorkspaceEstimateConfig(
+      *static_cast<const Node*>(node), head_sink_is_constant_initializer,
+      max_total_sequence_length, dispatch_policy);
+}
+
 std::optional<contrib::cuda::GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspaceForTest(
     const void* node, gsl::span<const WorkspaceInputShape> input_shapes,
     const cudaDeviceProp& device_prop, const AttentionKernelOptions& kernel_options,
-    bool head_sink_is_constant_initializer) {
+    bool head_sink_is_constant_initializer,
+    int64_t max_total_sequence_length,
+    KernelDispatchPolicy dispatch_policy) {
   return contrib::cuda::EstimateGroupQueryAttentionWorkspace(
       *static_cast<const Node*>(node), input_shapes, device_prop, kernel_options,
-      head_sink_is_constant_initializer);
+      head_sink_is_constant_initializer, max_total_sequence_length, dispatch_policy);
 }
 
 std::optional<contrib::cuda::PackedAttentionWorkspaceAggregate> EstimatePackedAttentionWorkspaceForTest(
@@ -25,7 +36,7 @@ std::optional<contrib::cuda::PackedAttentionWorkspaceAggregate> EstimatePackedAt
 }
 #endif
 
-#if !defined(DISABLE_CONTRIB_OPS) && defined(USE_FPA_INTB_GEMM) && USE_FPA_INTB_GEMM
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS)
 std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryForTest(
     const void* node, const cudaDeviceProp& device_prop,
     contrib::cuda::MatMulNBitsMemoryEstimateOptions options) {
@@ -51,10 +62,37 @@ std::optional<size_t> EstimateMatMulNBitsWorkspaceForTest(
 #endif
 
 common::Status LoadCudaExternalDataForTest(
+    const void* loader, const RandomAccessFile& file,
+    FileOffsetType offset, SafeInt<size_t> length, void* tensor) {
+#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_CUDA_MINIMAL)
+  return static_cast<const cuda::ExternalDataLoader*>(loader)->LoadTensor(
+      file, offset, length, *static_cast<Tensor*>(tensor));
+#else
+  ORT_UNUSED_PARAMETER(loader);
+  ORT_UNUSED_PARAMETER(file);
+  ORT_UNUSED_PARAMETER(offset);
+  ORT_UNUSED_PARAMETER(length);
+  ORT_UNUSED_PARAMETER(tensor);
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Not supported in minimal builds.");
+#endif
+}
+
+common::Status LoadCudaExternalDataForTest(
     const void* loader, const Env& env, const std::filesystem::path& path,
     FileOffsetType offset, SafeInt<size_t> length, void* tensor) {
-  return static_cast<const cuda::ExternalDataLoader*>(loader)->LoadTensor(
-      env, path, offset, length, *static_cast<Tensor*>(tensor));
+#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_CUDA_MINIMAL)
+  std::unique_ptr<RandomAccessFile> file;
+  ORT_RETURN_IF_ERROR(env.OpenRandomAccessFile(path.c_str(), file));
+  return LoadCudaExternalDataForTest(loader, *file, offset, length, tensor);
+#else
+  ORT_UNUSED_PARAMETER(loader);
+  ORT_UNUSED_PARAMETER(env);
+  ORT_UNUSED_PARAMETER(path);
+  ORT_UNUSED_PARAMETER(offset);
+  ORT_UNUSED_PARAMETER(length);
+  ORT_UNUSED_PARAMETER(tensor);
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Not supported in minimal builds.");
+#endif
 }
 
 }  // namespace onnxruntime::test

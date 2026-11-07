@@ -47,6 +47,48 @@ class CudaEventPool {
   std::vector<cudaEvent_t> events_;
 };
 
+class CudaTuneGraph {
+ public:
+  explicit CudaTuneGraph(cudaStream_t stream) : stream_(stream) {}
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudaTuneGraph);
+  ~CudaTuneGraph() {
+    if (capturing_) {
+      cudaStreamEndCapture(stream_, &graph_);
+    }
+    if (executable_) {
+      cudaGraphExecDestroy(executable_);
+    }
+    if (graph_) {
+      cudaGraphDestroy(graph_);
+    }
+  }
+
+  Status Begin() {
+    CUDA_RETURN_IF_ERROR(cudaStreamBeginCapture(stream_, cudaStreamCaptureModeThreadLocal));
+    capturing_ = true;
+    return Status::OK();
+  }
+
+  Status Instantiate() {
+    const cudaError_t status = cudaStreamEndCapture(stream_, &graph_);
+    capturing_ = false;
+    CUDA_RETURN_IF_ERROR(status);
+    CUDA_RETURN_IF_ERROR(cudaGraphInstantiate(&executable_, graph_, nullptr, nullptr, 0));
+    return Status::OK();
+  }
+
+  Status Launch() {
+    CUDA_RETURN_IF_ERROR(cudaGraphLaunch(executable_, stream_));
+    return Status::OK();
+  }
+
+ private:
+  cudaStream_t stream_{};
+  cudaGraph_t graph_{};
+  cudaGraphExec_t executable_{};
+  bool capturing_{false};
+};
+
 }  // namespace
 
 std::optional<bool> ParseGemmOnOffOption(const std::optional<std::string>& value, const char* name) {
@@ -105,6 +147,7 @@ size_t GemmTuneKeyHash::operator()(const GemmTuneKey& key) const {
   combine(static_cast<size_t>(key.small_n_vectorized));
   combine(static_cast<size_t>(key.candidates));
   combine(static_cast<size_t>(key.tinygemm2_b_is_constant));
+  combine(static_cast<size_t>(key.cuda_graph_replay));
   return seed;
 }
 
@@ -142,8 +185,11 @@ Status IsCudaStreamCapturing(cudaStream_t stream, bool& capturing) {
 }
 
 Status TimeGemmCandidates(cudaStream_t stream, const std::vector<GemmTuneCandidate>& candidates,
-                          const GemmTuneL2State& l2, std::vector<float>& times_ms) {
+                          const GemmTuneL2State& l2, std::vector<float>& times_ms, bool cuda_graph_replay) {
   ORT_RETURN_IF(candidates.empty(), "No GEMM candidate to time.");
+  bool capturing = false;
+  ORT_RETURN_IF_ERROR(IsCudaStreamCapturing(stream, capturing));
+  ORT_RETURN_IF(capturing, "Cannot time GEMM candidates during stream capture.");
   // Slot 0 times an empty region to measure the fixed event overhead.
   const size_t num_slots = candidates.size() + 1;
 
@@ -162,20 +208,39 @@ Status TimeGemmCandidates(cudaStream_t stream, const std::vector<GemmTuneCandida
 
   CudaEventPool events;
   ORT_RETURN_IF_ERROR(events.Create(2 * num_slots * kTimedRuns));
+  CudaTuneGraph graph(stream);
 
-  // Interleave candidates so clock or thermal drift affects all of them alike.
-  ORT_RETURN_IF_ERROR(LaunchGpuDelay(stream, kDelayPerTimedRunNs * num_slots * kTimedRuns));
+  if (cuda_graph_replay) {
+    ORT_RETURN_IF_ERROR(graph.Begin());
+  } else {
+    ORT_RETURN_IF_ERROR(LaunchGpuDelay(stream, kDelayPerTimedRunNs * num_slots * kTimedRuns));
+  }
   for (int run = 0; run < kTimedRuns; ++run) {
     for (size_t slot = 0; slot < num_slots; ++slot) {
       ORT_RETURN_IF_ERROR(LaunchL2Read(stream, l2.flush_buffer, l2.flush_bytes, num_sms));
       ORT_RETURN_IF_ERROR(LaunchL2Read(stream, l2.hot_buffer, l2.hot_bytes, num_sms));
       const size_t index = 2 * (static_cast<size_t>(run) * num_slots + slot);
-      CUDA_RETURN_IF_ERROR(cudaEventRecord(events[index], stream));
+      if (cuda_graph_replay) {
+        CUDA_RETURN_IF_ERROR(cudaEventRecordWithFlags(events[index], stream, cudaEventRecordExternal));
+      } else {
+        CUDA_RETURN_IF_ERROR(cudaEventRecord(events[index], stream));
+      }
       if (slot > 0) {
         ORT_RETURN_IF_ERROR(candidates[slot - 1].run());
       }
-      CUDA_RETURN_IF_ERROR(cudaEventRecord(events[index + 1], stream));
+      if (cuda_graph_replay) {
+        CUDA_RETURN_IF_ERROR(cudaEventRecordWithFlags(events[index + 1], stream, cudaEventRecordExternal));
+      } else {
+        CUDA_RETURN_IF_ERROR(cudaEventRecord(events[index + 1], stream));
+      }
     }
+  }
+  if (cuda_graph_replay) {
+    ORT_RETURN_IF_ERROR(graph.Instantiate());
+    for (int replay = 0; replay <= kWarmupRuns; ++replay) {
+      ORT_RETURN_IF_ERROR(graph.Launch());
+    }
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
   }
   CUDA_RETURN_IF_ERROR(cudaEventSynchronize(events[2 * num_slots * kTimedRuns - 1]));
 
@@ -236,7 +301,7 @@ Status TuneGemmKernel(const GemmTuneKey& key, cudaStream_t stream, const std::ve
   }
 
   std::vector<float> times_ms;
-  ORT_RETURN_IF_ERROR(TimeGemmCandidates(stream, candidates, l2, times_ms));
+  ORT_RETURN_IF_ERROR(TimeGemmCandidates(stream, candidates, l2, times_ms, key.cuda_graph_replay));
   const size_t best = PickFastestGemmCandidate(times_ms, kGemmAutoTuneMinSpeedup);
   selected = cache.Insert(key, candidates[best].kernel);
 
@@ -245,7 +310,8 @@ Status TuneGemmKernel(const GemmTuneKey& key, cudaStream_t stream, const std::ve
     timings << (i == 0 ? "" : ", ") << GemmKernelName(candidates[i].kernel) << "=" << times_ms[i] * 1000.0f << "us";
   }
   LOGS_DEFAULT(VERBOSE) << "GEMM auto-tune " << (key.data_type == GemmDataType::kFloat16 ? "fp16" : "bf16")
-                        << " M=" << key.m << " N=" << key.n << " K=" << key.k << ": " << timings.str()
+                        << " M=" << key.m << " N=" << key.n << " K=" << key.k
+                        << " timing=" << (key.cuda_graph_replay ? "cuda_graph_replay" : "stream") << ": " << timings.str()
                         << " -> " << GemmKernelName(selected);
   return Status::OK();
 }

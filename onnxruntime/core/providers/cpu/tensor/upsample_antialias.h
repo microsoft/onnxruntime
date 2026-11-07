@@ -171,6 +171,8 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
       auto fmax = std::floor(center + support + 0.5f);
       int64_t xmin_real = static_cast<int64_t>(fmin);
       int64_t xmax_real = static_cast<int64_t>(fmax);
+      xmax_real = xmin_real + std::clamp<int64_t>(
+                                  xmax_real - xmin_real, 0, narrow<int64_t>(window_size));
       int64_t xmin_cut = std::clamp<int64_t>(xmin_real, 0, input_size);
       int64_t xmax_cut = std::clamp<int64_t>(xmax_real, 0, input_size);
 

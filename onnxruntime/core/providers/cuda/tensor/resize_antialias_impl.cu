@@ -559,6 +559,7 @@ FUNC_DEF void SetupUpsampleFilterAnitAliasImpl(
 
   int64_t min_real = static_cast<int64_t>(fmin);
   int64_t max_real = static_cast<int64_t>(fmax);
+  max_real = min_real + std::min(std::max<int64_t>(max_real - min_real, 0), static_cast<int64_t>(window_size));
   int64_t min_cut = std::min(std::max<int64_t>(min_real, 0), input_size);
   int64_t max_cut = std::min(std::max<int64_t>(max_real, 0), input_size);
 

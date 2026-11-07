@@ -1,0 +1,53 @@
+name: Build Docker image with shared base pins
+description: Resolve ORT base-image families before the Docker action calculates its cache key.
+inputs:
+  dockerfile:
+    description: Path to the Dockerfile
+    required: true
+  image-name:
+    description: Derived image repository
+    required: true
+  base-image-family:
+    description: Family from base-images.json; otherwise use the Dockerfile's configured default
+    default: ''
+  build-args:
+    description: Additional Docker build arguments
+    default: ''
+  push:
+    description: Allow the upstream action to publish according to its existing event and branch policy
+    default: 'false'
+  azure-container-registry-name:
+    description: Base-image Azure container registry
+    default: onnxruntimebuildcache
+outputs:
+  full-image-name:
+    description: Derived image reference returned by the Docker action
+    value: ${{ steps.build.outputs.full-image-name }}
+runs:
+  using: composite
+  steps:
+    - name: Resolve Docker base image
+      id: resolve
+      shell: bash
+      env:
+        DOCKERFILE: ${{ inputs.dockerfile }}
+        BASE_IMAGE_FAMILY: ${{ inputs.base-image-family }}
+        BUILD_ARGS: ${{ inputs.build-args }}
+      run: |
+        # The resolver prints shell-quoted Docker build arguments to stdout.
+        # Publish them as steps.resolve.outputs.build-args so the Docker action
+        # below includes the resolved BASEIMAGE digest in its cache key.
+        build_args="$(python3 "$GITHUB_WORKSPACE/tools/ci_build/resolve_docker_base_image.py" \
+          --dockerfile "$DOCKERFILE" \
+          --family "$BASE_IMAGE_FAMILY" \
+          --build-args="$BUILD_ARGS")"
+        printf 'build-args=%s\n' "$build_args" >> "$GITHUB_OUTPUT"
+    - name: Build Docker image
+      id: build
+      uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+      with:
+        dockerfile: ${{ inputs.dockerfile }}
+        image-name: ${{ inputs.image-name }}
+        build-args: ${{ steps.resolve.outputs.build-args }}
+        push: ${{ inputs.push }}
+        azure-container-registry-name: ${{ inputs.azure-container-registry-name }}

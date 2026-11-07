@@ -353,6 +353,12 @@ class ProgramBase {
   // requires the device to support wgpu::FeatureName::SubgroupSizeControl; see ShaderHelper::GenerateSourceCode.
   ProgramBase& SetSubgroupSize(uint32_t size);
 
+  // Opt in only when the shader uses subgroup_index and subgroup_id is supported by the instance.
+  ProgramBase& SetUseSubgroupId(bool value) {
+    use_subgroup_id_ = value;
+    return *this;
+  }
+
   // add a uniform variable.
   //
   // the specified uniform variable should match the uniform definition in the class,
@@ -398,6 +404,7 @@ class ProgramBase {
   inline uint32_t WorkgroupSizeY() const { return workgroup_size_y_; }
   inline uint32_t WorkgroupSizeZ() const { return workgroup_size_z_; }
   inline uint32_t SubgroupSize() const { return subgroup_size_; }
+  inline bool UseSubgroupId() const { return use_subgroup_id_; }
   inline const std::vector<ProgramUniformVariableValue>& UniformVariables() const { return variables_; }
   inline const std::vector<ProgramOverridableConstantValue>& OverridableConstants() const { return overridable_constants_; }
 
@@ -427,6 +434,7 @@ class ProgramBase {
   uint32_t workgroup_size_y_;
   uint32_t workgroup_size_z_;
   uint32_t subgroup_size_;
+  bool use_subgroup_id_{false};
 
   std::vector<ProgramUniformVariableValue> variables_;
   std::vector<ProgramOverridableConstantValue> overridable_constants_;

@@ -36,10 +36,6 @@ class EpLibraryProviderBridge : public EpLibrary {
     return &library_path_;
   }
 
-  const std::vector<OrtEpFactory*>& GetFactories() override {
-    return factory_ptrs_;
-  }
-
   // Provider bridge EPs are 'internal' as they can provide an IExecutionProvider instance directly.
   const std::vector<EpFactoryInternal*>& GetInternalFactories() {
     return internal_factory_ptrs_;
@@ -51,6 +47,14 @@ class EpLibraryProviderBridge : public EpLibrary {
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(EpLibraryProviderBridge);
 
  private:
+  size_t GetFactoryCount() const override {
+    return factories_.size();
+  }
+
+  OrtEpFactory* GetFactory(size_t index) const override {
+    return factories_[index].get();
+  }
+
   std::mutex mutex_;
   std::unique_ptr<ProviderLibrary> provider_library_;  // provider bridge EP library
 
@@ -63,7 +67,6 @@ class EpLibraryProviderBridge : public EpLibrary {
   std::filesystem::path library_path_;
 
   std::vector<std::unique_ptr<EpFactoryInternal>> factories_;
-  std::vector<OrtEpFactory*> factory_ptrs_;                // for convenience
   std::vector<EpFactoryInternal*> internal_factory_ptrs_;  // for convenience
 };
 }  // namespace onnxruntime
