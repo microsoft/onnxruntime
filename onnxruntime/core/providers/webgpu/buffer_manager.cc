@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/buffer_manager.h"
+
+#include <memory>
+
 #include "core/providers/webgpu/webgpu_context.h"
 
 namespace onnxruntime {
@@ -695,10 +698,10 @@ void BufferManager::Release(WGPUBuffer buffer, const CommandRecordingState* reco
   cache.ReleaseBuffer(buffer);
 }
 
-void BufferManager::Download(CommandRecordingState& recording, WGPUBuffer src, void* dst, size_t size) const {
+Status BufferManager::Download(CommandRecordingState& recording, WGPUBuffer src, void* dst, size_t size) const {
   // Encode pending deferred dispatches before recording the readback; the flush below submits both
   // in order.
-  ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches(recording));
+  ORT_RETURN_IF_ERROR(context_.EncodeDeferredDispatches(recording));
 
   EnforceBufferUnmapped(context_, src);
   auto buffer_size = NormalizeBufferSize(size);
@@ -711,36 +714,38 @@ void BufferManager::Download(CommandRecordingState& recording, WGPUBuffer src, v
   auto& command_encoder = context_.GetCommandEncoder(recording);
   context_.EndComputePass(recording);
   command_encoder.CopyBufferToBuffer(src, 0, staging_buffer, 0, buffer_size);
-  ORT_THROW_IF_ERROR(context_.Flush(*this, recording));
+  ORT_RETURN_IF_ERROR(context_.Flush(*this, recording));
 
   // TODO: revise wait in whole project
 
   struct MapAsyncResult {
     wgpu::MapAsyncStatus status{};
     std::string message{};
-  } map_async_result;
+  };
+  // The callback may still run after a failed wait (e.g. on device loss), so it must not
+  // reference this stack frame.
+  auto map_async_result = std::make_shared<MapAsyncResult>();
 
-  ORT_THROW_IF_ERROR(context_.Wait(
+  ORT_RETURN_IF_ERROR(context_.Wait(
       staging_buffer.MapAsync(
           wgpu::MapMode::Read, 0, buffer_size, wgpu::CallbackMode::WaitAnyOnly,
           // Note: Don't throw from a Dawn callback.
-          [](wgpu::MapAsyncStatus status, wgpu::StringView message,
-             MapAsyncResult* result) noexcept {
+          [result = map_async_result](wgpu::MapAsyncStatus status, wgpu::StringView message) noexcept {
             result->status = status;
             if (auto message_sv = static_cast<std::string_view>(message);
                 !message_sv.empty()) {
               result->message = std::string{message_sv};
             }
-          },
-          &map_async_result)));
+          })));
 
-  ORT_ENFORCE(map_async_result.status == wgpu::MapAsyncStatus::Success,
-              "Failed to download data from buffer. wgpu::MapAsyncStatus value: ",
-              static_cast<int>(map_async_result.status), ", message: ", map_async_result.message);
+  ORT_RETURN_IF_NOT(map_async_result->status == wgpu::MapAsyncStatus::Success,
+                    "Failed to download data from buffer. wgpu::MapAsyncStatus value: ",
+                    static_cast<int>(map_async_result->status), ", message: ", map_async_result->message);
 
   auto mapped_data = staging_buffer.GetConstMappedRange();
   memcpy(dst, mapped_data, size);
   staging_buffer.Unmap();
+  return Status::OK();
 }
 
 void BufferManager::RefreshPendingBuffers(CommandRecordingState& recording, GraphCaptureState graph_capture_state) const {

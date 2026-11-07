@@ -69,8 +69,8 @@ class MatMulNBitsInputPreparationTest : public ::testing::Test {
   template <typename T>
   std::vector<T> Download(Tensor& tensor) {
     std::vector<T> values(tensor.Shape().Size());
-    Ep().BufferManager().Download(Ep().Recording(), reinterpret_cast<WGPUBuffer>(tensor.MutableDataRaw()),
-                                  values.data(), tensor.SizeInBytes());
+    ORT_THROW_IF_ERROR(Ep().BufferManager().Download(Ep().Recording(), reinterpret_cast<WGPUBuffer>(tensor.MutableDataRaw()),
+                                                     values.data(), tensor.SizeInBytes()));
     return values;
   }
 
