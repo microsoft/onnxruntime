@@ -13,15 +13,15 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_MOE_PACKED_CUDA(T)                                     \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
-      MoEPacked,                                                        \
-      kMSDomain, 1,                                                     \
-      T,                                                                \
-      kCudaExecutionProvider,                                           \
-      (*KernelDefBuilder::Create())                                     \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),\
+#define REGISTER_MOE_PACKED_CUDA(T)                                      \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
+      MoEPacked,                                                         \
+      kMSDomain, 1,                                                      \
+      T,                                                                 \
+      kCudaExecutionProvider,                                            \
+      (*KernelDefBuilder::Create())                                      \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())         \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()), \
       MoEPacked<T>);
 
 REGISTER_MOE_PACKED_CUDA(MLFloat16)
@@ -39,6 +39,9 @@ MoEPacked<T>::MoEPacked(const OpKernelInfo& info) : CudaKernel(info) {
   ORT_ENFORCE(info.GetAttr<int64_t>("gate_type", &gate_type_).IsOK(), "MoEPacked requires gate_type");
   ORT_ENFORCE(info.GetAttr<int64_t>("up_type", &up_type_).IsOK(), "MoEPacked requires up_type");
   ORT_ENFORCE(info.GetAttr<int64_t>("down_type", &down_type_).IsOK(), "MoEPacked requires down_type");
+  ORT_ENFORCE(gguf_quant::IsGgmlTypeSupported(gate_type_), "MoEPacked: unsupported gate_type=", gate_type_);
+  ORT_ENFORCE(gguf_quant::IsGgmlTypeSupported(up_type_), "MoEPacked: unsupported up_type=", up_type_);
+  ORT_ENFORCE(gguf_quant::IsGgmlTypeSupported(down_type_), "MoEPacked: unsupported down_type=", down_type_);
 }
 
 template <typename T>
@@ -68,6 +71,7 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
 
   ORT_RETURN_IF_NOT(rp_shape[0] == num_rows, "MoEPacked router_probs row count mismatch");
   ORT_RETURN_IF_NOT(num_experts > 0 && num_experts <= 512, "MoEPacked supports up to 512 experts");
+  ORT_RETURN_IF_NOT(k_ <= num_experts, "MoEPacked requires k <= num_experts");
   ORT_RETURN_IF_NOT(gw_shape[0] == num_experts && uw_shape[0] == num_experts && dw_shape[0] == num_experts,
                     "MoEPacked expert count mismatch");
   ORT_RETURN_IF_NOT(uw_shape[1] == inter_size && dw_shape[1] == hidden_size,
@@ -78,11 +82,15 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
   const int64_t exp_gate_rb = gguf_quant::GgmlRowBytes(static_cast<int>(gate_type_), hidden_size);
   const int64_t exp_up_rb = gguf_quant::GgmlRowBytes(static_cast<int>(up_type_), hidden_size);
   const int64_t exp_down_rb = gguf_quant::GgmlRowBytes(static_cast<int>(down_type_), inter_size);
-  ORT_RETURN_IF_NOT(gw_shape[2] == exp_gate_rb && uw_shape[2] == exp_up_rb && dw_shape[2] == exp_down_rb,
+  ORT_RETURN_IF_NOT(exp_gate_rb > 0 && exp_up_rb > 0 && exp_down_rb > 0 &&
+                        gw_shape[2] == exp_gate_rb && uw_shape[2] == exp_up_rb && dw_shape[2] == exp_down_rb,
                     "MoEPacked expert weight row_bytes mismatch");
 
   Tensor* output = context->Output(0, in_shape);
   if (num_rows == 0) return Status::OK();
+  constexpr bool is_bf16 = std::is_same_v<T, BFloat16>;
+  ORT_RETURN_IF_NOT(!is_bf16 || GetDeviceProp().major >= 8,
+                    "MoEPacked BF16 requires compute capability 8.0 or higher");
 
   // Process in chunks of at most 2048 rows so workspace stays compact during large prefills.
   constexpr int64_t kMaxChunkRows = 2048;
@@ -104,7 +112,6 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
 
   const size_t ws_bytes = GetMoEPackedWorkspaceBytes(max_params, sizeof(T));
   auto workspace = GetScratchBuffer<uint8_t>(ws_bytes, GetComputeStream(context));
-  constexpr bool is_bf16 = std::is_same_v<T, BFloat16>;
 
   const uint8_t* in_bytes = static_cast<const uint8_t*>(input->DataRaw());
   const uint8_t* rp_bytes = static_cast<const uint8_t*>(router_probs->DataRaw());

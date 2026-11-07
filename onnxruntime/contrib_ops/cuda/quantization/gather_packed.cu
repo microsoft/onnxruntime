@@ -28,6 +28,22 @@ __global__ __launch_bounds__(256) void GatherPackedKernel(
   const uint8_t* row_ptr = data + tok * row_bytes;
   CudaT* dst_row = output + r * static_cast<int64_t>(k);
 
+  // Unquantized rows can end partway through a sub-block.
+  if ((k % 32) != 0) {
+    for (int col = threadIdx.x; col < k; col += blockDim.x) {
+      float value;
+      if (ggml_type == gguf_quant::kGgmlTypeF32) {
+        value = __ldg(reinterpret_cast<const float*>(row_ptr) + col);
+      } else {
+        const uint16_t bits = __ldg(reinterpret_cast<const uint16_t*>(row_ptr) + col);
+        value = ggml_type == gguf_quant::kGgmlTypeF16 ? gguf_cuda::Fp16ToFloatDev(bits)
+                                                      : gguf_cuda::Bf16ToFloatDev(bits);
+      }
+      dst_row[col] = gguf_cuda::FloatToCudaType<CudaT>(value);
+    }
+    return;
+  }
+
   const int total_quarters = k / 8;
   for (int q_idx = threadIdx.x; q_idx < total_quarters; q_idx += blockDim.x) {
     float vals[8];
@@ -53,7 +69,6 @@ Status DispatchGatherPackedByIndex(
     int64_t row_bytes,
     int ggml_type) {
   if (num_rows == 0) return Status::OK();
-  ORT_RETURN_IF_NOT((k % 32) == 0, "GatherPacked CUDA requires K to be a multiple of 32");
   const dim3 grid(static_cast<unsigned int>(num_rows));
   const dim3 block(256);
   if (indices_are_int64) {

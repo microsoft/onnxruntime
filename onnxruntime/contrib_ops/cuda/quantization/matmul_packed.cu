@@ -59,21 +59,19 @@ __global__ __launch_bounds__(KW * 32) void MatMulPackedBf16TcWarpKSplitKernel(
                             : make_uint4(0u, 0u, 0u, 0u);
 #pragma unroll
     for (int m = 0; m < MT; ++m) {
+      float w_lo[8] = {};
+      float w_hi[8] = {};
       if (valid_lo[m]) {
-        float w_lo[8];
-        float w_hi[8];
         gguf_cuda::DecodeGgufSubBlock8Tpl<kCompileType>(row_ptrs_lo[m], p.ggml_type, sb32_idx, t, w_lo);
-        if (valid_hi[m]) {
-          gguf_cuda::DecodeGgufSubBlock8Tpl<kCompileType>(row_ptrs_hi[m], p.ggml_type, sb32_idx, t, w_hi);
-        } else {
-#pragma unroll
-          for (int j = 0; j < 8; ++j) w_hi[j] = 0.0f;
-        }
-        const uint4 e_vec = gguf_cuda::PackFloat8ToBf16x2(w_lo);
-        const uint4 o_vec = gguf_cuda::PackFloat8ToBf16x2(w_hi);
-        gguf_cuda::MmaBf16(acc[m], e_vec.x, o_vec.x, e_vec.y, o_vec.y, b_vec.x, b_vec.y);
-        gguf_cuda::MmaBf16(acc[m], e_vec.z, o_vec.z, e_vec.w, o_vec.w, b_vec.z, b_vec.w);
       }
+      if (valid_hi[m]) {
+        gguf_cuda::DecodeGgufSubBlock8Tpl<kCompileType>(row_ptrs_hi[m], p.ggml_type, sb32_idx, t, w_hi);
+      }
+      // mma.sync requires every lane to participate, including partial output tiles.
+      const uint4 e_vec = gguf_cuda::PackFloat8ToBf16x2(w_lo);
+      const uint4 o_vec = gguf_cuda::PackFloat8ToBf16x2(w_hi);
+      gguf_cuda::MmaBf16(acc[m], e_vec.x, o_vec.x, e_vec.y, o_vec.y, b_vec.x, b_vec.y);
+      gguf_cuda::MmaBf16(acc[m], e_vec.z, o_vec.z, e_vec.w, o_vec.w, b_vec.z, b_vec.w);
     }
   }
 

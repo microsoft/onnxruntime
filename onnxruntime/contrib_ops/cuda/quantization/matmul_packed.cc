@@ -12,15 +12,15 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_MATMUL_PACKED_CUDA(T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
-      MatMulPacked,                                                     \
-      kMSDomain, 1,                                                     \
-      T,                                                                \
-      kCudaExecutionProvider,                                           \
-      (*KernelDefBuilder::Create())                                     \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())       \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),\
+#define REGISTER_MATMUL_PACKED_CUDA(T)                                   \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
+      MatMulPacked,                                                      \
+      kMSDomain, 1,                                                      \
+      T,                                                                 \
+      kCudaExecutionProvider,                                            \
+      (*KernelDefBuilder::Create())                                      \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())        \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()), \
       MatMulPacked<T>);
 
 REGISTER_MATMUL_PACKED_CUDA(MLFloat16)
@@ -34,6 +34,7 @@ MatMulPacked<T>::MatMulPacked(const OpKernelInfo& info) : CudaKernel(info) {
   ORT_ENFORCE(info.GetAttr<int64_t>("N", &n_).IsOK() && n_ > 0, "MatMulPacked requires N > 0");
   ORT_ENFORCE(info.GetAttr<int64_t>("packed_type", &ggml_type_).IsOK() && ggml_type_ >= 0,
               "MatMulPacked requires packed_type >= 0");
+  ORT_ENFORCE(gguf_quant::IsGgmlTypeSupported(ggml_type_), "MatMulPacked: unsupported packed_type=", ggml_type_);
 }
 
 template <typename T>
@@ -69,6 +70,8 @@ Status MatMulPacked<T>::ComputeInternal(OpKernelContext* context) const {
   if (m == 0) return Status::OK();
 
   constexpr bool is_bf16 = std::is_same_v<T, BFloat16>;
+  ORT_RETURN_IF_NOT(!is_bf16 || GetDeviceProp().major >= 8,
+                    "MatMulPacked BF16 requires compute capability 8.0 or higher");
   IAllocatorUniquePtr<T> scratch_w;
   if (m > 8) {
     scratch_w = GetScratchBuffer<T>(static_cast<size_t>(n_ * k_), GetComputeStream(context));

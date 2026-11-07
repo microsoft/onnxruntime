@@ -48,6 +48,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.GatedRelativePositionBias">com.microsoft.GatedRelativePositionBias</a>
   * <a href="#com.microsoft.GatherBlockQuantized">com.microsoft.GatherBlockQuantized</a>
   * <a href="#com.microsoft.GatherND">com.microsoft.GatherND</a>
+  * <a href="#com.microsoft.GatherPacked">com.microsoft.GatherPacked</a>
   * <a href="#com.microsoft.Gelu">com.microsoft.Gelu</a>
   * <a href="#com.microsoft.GemmFastGelu">com.microsoft.GemmFastGelu</a>
   * <a href="#com.microsoft.GemmFloat8">com.microsoft.GemmFloat8</a>
@@ -75,8 +76,10 @@ Do not modify directly.*
   * <a href="#com.microsoft.MatMulNBitsMlp">com.microsoft.MatMulNBitsMlp</a>
   * <a href="#com.microsoft.MatMulNBitsQLoRA">com.microsoft.MatMulNBitsQLoRA</a>
   * <a href="#com.microsoft.MatMulNBitsQkv">com.microsoft.MatMulNBitsQkv</a>
+  * <a href="#com.microsoft.MatMulPacked">com.microsoft.MatMulPacked</a>
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
   * <a href="#com.microsoft.MoE">com.microsoft.MoE</a>
+  * <a href="#com.microsoft.MoEPacked">com.microsoft.MoEPacked</a>
   * <a href="#com.microsoft.MulInteger">com.microsoft.MulInteger</a>
   * <a href="#com.microsoft.MultiHeadAttention">com.microsoft.MultiHeadAttention</a>
   * <a href="#com.microsoft.MurmurHash3">com.microsoft.MurmurHash3</a>
@@ -2946,6 +2949,53 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.GatherPacked"></a><a name="com.microsoft.gatherpacked">**com.microsoft.GatherPacked**</a>
+
+  Gather rows from a 2D block-packed embedding table and dequantize on the fly.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>K</tt> : int (required)</dt>
+<dd>Logical embedding dimension.</dd>
+<dt><tt>output_dtype</tt> : int</dt>
+<dd>ONNX TensorProto DataType for output (default 16 = BFLOAT16).</dd>
+<dt><tt>packed_type</tt> : int (required)</dt>
+<dd>Packed quantization format enum (0..99 map to GGUF ggml_type; >=100 reserved for custom formats).</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>data</tt> : T1</dt>
+<dd>2D packed weight blob [vocab_size, row_bytes].</dd>
+<dt><tt>indices</tt> : Tind</dt>
+<dd>Token indices of arbitrary rank.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T2</dt>
+<dd>Dequantized gathered embeddings [..., K].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(uint8)</dt>
+<dd>Packed byte storage.</dd>
+<dt><tt>T2</tt> : tensor(bfloat16), tensor(float16), tensor(float)</dt>
+<dd>Output floating-point type.</dd>
+<dt><tt>Tind</tt> : tensor(int32), tensor(int64)</dt>
+<dd>Index type.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.Gelu"></a><a name="com.microsoft.gelu">**com.microsoft.Gelu**</a>
 
   Gaussian Error Linear Unit.
@@ -4671,6 +4721,51 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.MatMulPacked"></a><a name="com.microsoft.matmulpacked">**com.microsoft.MatMulPacked**</a>
+
+  Matrix multiplication Y = A @ B^T where B is a 2D block-packed weight tensor.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>K</tt> : int (required)</dt>
+<dd>Reduction dimension.</dd>
+<dt><tt>N</tt> : int (required)</dt>
+<dd>Output dimension.</dd>
+<dt><tt>packed_type</tt> : int (required)</dt>
+<dd>Packed quantization format enum for B (0..99 map to GGUF ggml_type; >=100 reserved for custom formats).</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T1</dt>
+<dd>Input activations [..., K].</dd>
+<dt><tt>B</tt> : T2</dt>
+<dd>Packed weight blob [N, row_bytes].</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T1</dt>
+<dd>Output activations [..., N].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(bfloat16), tensor(float16)</dt>
+<dd>Activation type.</dd>
+<dt><tt>T2</tt> : tensor(uint8)</dt>
+<dd>Packed byte storage.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.MaxpoolWithMask"></a><a name="com.microsoft.maxpoolwithmask">**com.microsoft.MaxpoolWithMask**</a>
 
   For internal use.
@@ -4804,6 +4899,63 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MoEPacked"></a><a name="com.microsoft.moepacked">**com.microsoft.MoEPacked**</a>
+
+  Mixture-of-Experts layer consuming 3D block-packed gate, up, and down expert weight blobs.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>activation_type</tt> : string</dt>
+<dd>Expert activation function ('swiglu').</dd>
+<dt><tt>down_type</tt> : int (required)</dt>
+<dd>Packed quantization format enum of down_experts_weights.</dd>
+<dt><tt>gate_type</tt> : int (required)</dt>
+<dd>Packed quantization format enum of gate_experts_weights.</dd>
+<dt><tt>k</tt> : int (required)</dt>
+<dd>Number of selected experts per token.</dd>
+<dt><tt>normalize_routing_weights</tt> : int</dt>
+<dd>Whether to normalize top-k routing probabilities.</dd>
+<dt><tt>up_type</tt> : int (required)</dt>
+<dd>Packed quantization format enum of up_experts_weights.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>Input hidden states [..., hidden_size].</dd>
+<dt><tt>router_probs</tt> : T</dt>
+<dd>Router logits [num_rows, num_experts].</dd>
+<dt><tt>gate_experts_weights</tt> : T2</dt>
+<dd>3D packed gate weight blob [num_experts, inter_size, gate_row_bytes].</dd>
+<dt><tt>up_experts_weights</tt> : T2</dt>
+<dd>3D packed up weight blob [num_experts, inter_size, up_row_bytes].</dd>
+<dt><tt>down_experts_weights</tt> : T2</dt>
+<dd>3D packed down weight blob [num_experts, hidden_size, down_row_bytes].</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Output hidden states [..., hidden_size].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16), tensor(float16)</dt>
+<dd>Activation type.</dd>
+<dt><tt>T2</tt> : tensor(uint8)</dt>
+<dd>Packed byte storage.</dd>
 </dl>
 
 

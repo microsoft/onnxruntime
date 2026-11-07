@@ -14,67 +14,176 @@ namespace contrib {
 namespace gguf_quant {
 
 enum GgmlType : int {
-  kGgmlTypeF32     = 0,
-  kGgmlTypeF16     = 1,
-  kGgmlTypeQ4_0    = 2,
-  kGgmlTypeQ4_1    = 3,
-  kGgmlTypeQ5_0    = 6,
-  kGgmlTypeQ5_1    = 7,
-  kGgmlTypeQ8_0    = 8,
-  kGgmlTypeQ8_1    = 9,
-  kGgmlTypeQ2_K    = 10,
-  kGgmlTypeQ3_K    = 11,
-  kGgmlTypeQ4_K    = 12,
-  kGgmlTypeQ5_K    = 13,
-  kGgmlTypeQ6_K    = 14,
-  kGgmlTypeQ8_K    = 15,
+  kGgmlTypeF32 = 0,
+  kGgmlTypeF16 = 1,
+  kGgmlTypeQ4_0 = 2,
+  kGgmlTypeQ4_1 = 3,
+  kGgmlTypeQ5_0 = 6,
+  kGgmlTypeQ5_1 = 7,
+  kGgmlTypeQ8_0 = 8,
+  kGgmlTypeQ8_1 = 9,
+  kGgmlTypeQ2_K = 10,
+  kGgmlTypeQ3_K = 11,
+  kGgmlTypeQ4_K = 12,
+  kGgmlTypeQ5_K = 13,
+  kGgmlTypeQ6_K = 14,
+  kGgmlTypeQ8_K = 15,
   kGgmlTypeIQ2_XXS = 16,
-  kGgmlTypeIQ2_XS  = 17,
+  kGgmlTypeIQ2_XS = 17,
   kGgmlTypeIQ3_XXS = 18,
-  kGgmlTypeIQ1_S   = 19,
-  kGgmlTypeIQ4_NL  = 20,
-  kGgmlTypeIQ3_S   = 21,
-  kGgmlTypeIQ2_S   = 22,
-  kGgmlTypeIQ4_XS  = 23,
-  kGgmlTypeIQ1_M   = 29,
-  kGgmlTypeBF16    = 30,
-  kGgmlTypeMXFP4   = 39,
-  kGgmlTypeNVFP4   = 40,
-  kGgmlTypeQ1_0    = 41,
-  kGgmlTypeQ2_0    = 42,
+  kGgmlTypeIQ1_S = 19,
+  kGgmlTypeIQ4_NL = 20,
+  kGgmlTypeIQ3_S = 21,
+  kGgmlTypeIQ2_S = 22,
+  kGgmlTypeIQ4_XS = 23,
+  kGgmlTypeIQ1_M = 29,
+  kGgmlTypeBF16 = 30,
+  kGgmlTypeMXFP4 = 39,
+  kGgmlTypeNVFP4 = 40,
+  kGgmlTypeQ1_0 = 41,
+  kGgmlTypeQ2_0 = 42,
 };
+
+// Formats implemented by both the CPU row decoder and the CUDA sub-block decoders.
+inline bool IsGgmlTypeSupported(int64_t ggml_type) {
+  switch (ggml_type) {
+    case kGgmlTypeF32:
+    case kGgmlTypeF16:
+    case kGgmlTypeBF16:
+    case kGgmlTypeQ4_0:
+    case kGgmlTypeQ5_0:
+    case kGgmlTypeQ8_0:
+    case kGgmlTypeQ5_K:
+    case kGgmlTypeQ6_K:
+    case kGgmlTypeIQ2_XXS:
+    case kGgmlTypeIQ2_XS:
+    case kGgmlTypeIQ3_XXS:
+    case kGgmlTypeIQ4_NL:
+    case kGgmlTypeIQ2_S:
+    case kGgmlTypeIQ4_XS:
+    case kGgmlTypeQ2_0:
+      return true;
+    default:
+      return false;
+  }
+}
 
 inline bool GgmlTypeBlockInfo(int ggml_type, int64_t& block_elems, int64_t& block_bytes) {
   switch (ggml_type) {
-    case kGgmlTypeF32:     block_elems = 1;   block_bytes = 4;   return true;
-    case kGgmlTypeF16:     block_elems = 1;   block_bytes = 2;   return true;
-    case kGgmlTypeBF16:    block_elems = 1;   block_bytes = 2;   return true;
-    case kGgmlTypeQ4_0:    block_elems = 32;  block_bytes = 18;  return true;
-    case kGgmlTypeQ4_1:    block_elems = 32;  block_bytes = 20;  return true;
-    case kGgmlTypeQ5_0:    block_elems = 32;  block_bytes = 22;  return true;
-    case kGgmlTypeQ5_1:    block_elems = 32;  block_bytes = 24;  return true;
-    case kGgmlTypeQ8_0:    block_elems = 32;  block_bytes = 34;  return true;
-    case kGgmlTypeQ8_1:    block_elems = 32;  block_bytes = 36;  return true;
-    case kGgmlTypeQ2_K:    block_elems = 256; block_bytes = 84;  return true;
-    case kGgmlTypeQ3_K:    block_elems = 256; block_bytes = 110; return true;
-    case kGgmlTypeQ4_K:    block_elems = 256; block_bytes = 144; return true;
-    case kGgmlTypeQ5_K:    block_elems = 256; block_bytes = 176; return true;
-    case kGgmlTypeQ6_K:    block_elems = 256; block_bytes = 210; return true;
-    case kGgmlTypeQ8_K:    block_elems = 256; block_bytes = 292; return true;
-    case kGgmlTypeIQ2_XXS: block_elems = 256; block_bytes = 66;  return true;
-    case kGgmlTypeIQ2_XS:  block_elems = 256; block_bytes = 74;  return true;
-    case kGgmlTypeIQ3_XXS: block_elems = 256; block_bytes = 98;  return true;
-    case kGgmlTypeIQ1_S:   block_elems = 256; block_bytes = 50;  return true;
-    case kGgmlTypeIQ4_NL:  block_elems = 32;  block_bytes = 18;  return true;
-    case kGgmlTypeIQ3_S:   block_elems = 256; block_bytes = 110; return true;
-    case kGgmlTypeIQ2_S:   block_elems = 256; block_bytes = 82;  return true;
-    case kGgmlTypeIQ4_XS:  block_elems = 256; block_bytes = 136; return true;
-    case kGgmlTypeIQ1_M:   block_elems = 256; block_bytes = 56;  return true;
-    case kGgmlTypeMXFP4:   block_elems = 32;  block_bytes = 17;  return true;
-    case kGgmlTypeNVFP4:   block_elems = 64;  block_bytes = 36;  return true;
-    case kGgmlTypeQ1_0:    block_elems = 128; block_bytes = 18;  return true;
-    case kGgmlTypeQ2_0:    block_elems = 64;  block_bytes = 18;  return true;
-    default: return false;
+    case kGgmlTypeF32:
+      block_elems = 1;
+      block_bytes = 4;
+      return true;
+    case kGgmlTypeF16:
+      block_elems = 1;
+      block_bytes = 2;
+      return true;
+    case kGgmlTypeBF16:
+      block_elems = 1;
+      block_bytes = 2;
+      return true;
+    case kGgmlTypeQ4_0:
+      block_elems = 32;
+      block_bytes = 18;
+      return true;
+    case kGgmlTypeQ4_1:
+      block_elems = 32;
+      block_bytes = 20;
+      return true;
+    case kGgmlTypeQ5_0:
+      block_elems = 32;
+      block_bytes = 22;
+      return true;
+    case kGgmlTypeQ5_1:
+      block_elems = 32;
+      block_bytes = 24;
+      return true;
+    case kGgmlTypeQ8_0:
+      block_elems = 32;
+      block_bytes = 34;
+      return true;
+    case kGgmlTypeQ8_1:
+      block_elems = 32;
+      block_bytes = 36;
+      return true;
+    case kGgmlTypeQ2_K:
+      block_elems = 256;
+      block_bytes = 84;
+      return true;
+    case kGgmlTypeQ3_K:
+      block_elems = 256;
+      block_bytes = 110;
+      return true;
+    case kGgmlTypeQ4_K:
+      block_elems = 256;
+      block_bytes = 144;
+      return true;
+    case kGgmlTypeQ5_K:
+      block_elems = 256;
+      block_bytes = 176;
+      return true;
+    case kGgmlTypeQ6_K:
+      block_elems = 256;
+      block_bytes = 210;
+      return true;
+    case kGgmlTypeQ8_K:
+      block_elems = 256;
+      block_bytes = 292;
+      return true;
+    case kGgmlTypeIQ2_XXS:
+      block_elems = 256;
+      block_bytes = 66;
+      return true;
+    case kGgmlTypeIQ2_XS:
+      block_elems = 256;
+      block_bytes = 74;
+      return true;
+    case kGgmlTypeIQ3_XXS:
+      block_elems = 256;
+      block_bytes = 98;
+      return true;
+    case kGgmlTypeIQ1_S:
+      block_elems = 256;
+      block_bytes = 50;
+      return true;
+    case kGgmlTypeIQ4_NL:
+      block_elems = 32;
+      block_bytes = 18;
+      return true;
+    case kGgmlTypeIQ3_S:
+      block_elems = 256;
+      block_bytes = 110;
+      return true;
+    case kGgmlTypeIQ2_S:
+      block_elems = 256;
+      block_bytes = 82;
+      return true;
+    case kGgmlTypeIQ4_XS:
+      block_elems = 256;
+      block_bytes = 136;
+      return true;
+    case kGgmlTypeIQ1_M:
+      block_elems = 256;
+      block_bytes = 56;
+      return true;
+    case kGgmlTypeMXFP4:
+      block_elems = 32;
+      block_bytes = 17;
+      return true;
+    case kGgmlTypeNVFP4:
+      block_elems = 64;
+      block_bytes = 36;
+      return true;
+    case kGgmlTypeQ1_0:
+      block_elems = 128;
+      block_bytes = 18;
+      return true;
+    case kGgmlTypeQ2_0:
+      block_elems = 64;
+      block_bytes = 18;
+      return true;
+    default:
+      return false;
   }
 }
 
@@ -92,26 +201,27 @@ inline int64_t GgmlRowBytes(int ggml_type, int64_t K) {
 #else
 #define GGML_TABLE_BEGIN(type, name, size) static constexpr type name[size] = {
 #endif
-#define GGML_TABLE_END() };
+#define GGML_TABLE_END() \
+  }                      \
+  ;
 #endif
 
 GGML_TABLE_BEGIN(uint8_t, kmask_iq2xs, 8)
-    1, 2, 4, 8, 16, 32, 64, 128
-GGML_TABLE_END()
+1, 2, 4, 8, 16, 32, 64, 128 GGML_TABLE_END()
 
-GGML_TABLE_BEGIN(uint8_t, ksigns_iq2xs, 128)
-      0, 129, 130,   3, 132,   5,   6, 135, 136,   9,  10, 139,  12, 141, 142,  15,
-    144,  17,  18, 147,  20, 149, 150,  23,  24, 153, 154,  27, 156,  29,  30, 159,
-    160,  33,  34, 163,  36, 165, 166,  39,  40, 169, 170,  43, 172,  45,  46, 175,
-     48, 177, 178,  51, 180,  53,  54, 183, 184,  57,  58, 187,  60, 189, 190,  63,
-    192,  65,  66, 195,  68, 197, 198,  71,  72, 201, 202,  75, 204,  77,  78, 207,
-     80, 209, 210,  83, 212,  85,  86, 215, 216,  89,  90, 219,  92, 221, 222,  95,
-     96, 225, 226,  99, 228, 101, 102, 231, 232, 105, 106, 235, 108, 237, 238, 111,
+                            GGML_TABLE_BEGIN(uint8_t, ksigns_iq2xs, 128) 0,
+    129, 130, 3, 132, 5, 6, 135, 136, 9, 10, 139, 12, 141, 142, 15,
+    144, 17, 18, 147, 20, 149, 150, 23, 24, 153, 154, 27, 156, 29, 30, 159,
+    160, 33, 34, 163, 36, 165, 166, 39, 40, 169, 170, 43, 172, 45, 46, 175,
+    48, 177, 178, 51, 180, 53, 54, 183, 184, 57, 58, 187, 60, 189, 190, 63,
+    192, 65, 66, 195, 68, 197, 198, 71, 72, 201, 202, 75, 204, 77, 78, 207,
+    80, 209, 210, 83, 212, 85, 86, 215, 216, 89, 90, 219, 92, 221, 222, 95,
+    96, 225, 226, 99, 228, 101, 102, 231, 232, 105, 106, 235, 108, 237, 238, 111,
     240, 113, 114, 243, 116, 245, 246, 119, 120, 249, 250, 123, 252, 125, 126, 255,
-GGML_TABLE_END()
+    GGML_TABLE_END()
 
-GGML_TABLE_BEGIN(uint64_t, ksigns64, 128)
-    0x0000000000000000, 0xff000000000000ff, 0xff0000000000ff00, 0x000000000000ffff,
+        GGML_TABLE_BEGIN(uint64_t, ksigns64, 128) 0x0000000000000000,
+    0xff000000000000ff, 0xff0000000000ff00, 0x000000000000ffff,
     0xff00000000ff0000, 0x0000000000ff00ff, 0x0000000000ffff00, 0xff00000000ffffff,
     0xff000000ff000000, 0x00000000ff0000ff, 0x00000000ff00ff00, 0xff000000ff00ffff,
     0x00000000ffff0000, 0xff000000ffff00ff, 0xff000000ffffff00, 0x00000000ffffffff,
@@ -143,11 +253,10 @@ GGML_TABLE_BEGIN(uint64_t, ksigns64, 128)
     0x00ffffff00ff0000, 0xffffffff00ff00ff, 0xffffffff00ffff00, 0x00ffffff00ffffff,
     0x00ffffffff000000, 0xffffffffff0000ff, 0xffffffffff00ff00, 0x00ffffffff00ffff,
     0xffffffffffff0000, 0x00ffffffffff00ff, 0x00ffffffffffff00, 0xffffffffffffffff,
-GGML_TABLE_END()
+    GGML_TABLE_END()
 
-
-GGML_TABLE_BEGIN(uint64_t, iq2xxs_grid, 256)
-    0x0808080808080808, 0x080808080808082b, 0x0808080808081919, 0x0808080808082b08,
+        GGML_TABLE_BEGIN(uint64_t, iq2xxs_grid, 256) 0x0808080808080808,
+    0x080808080808082b, 0x0808080808081919, 0x0808080808082b08,
     0x0808080808082b2b, 0x0808080808190819, 0x0808080808191908, 0x08080808082b0808,
     0x08080808082b082b, 0x08080808082b2b08, 0x08080808082b2b2b, 0x0808080819080819,
     0x0808080819081908, 0x0808080819190808, 0x0808080819192b08, 0x08080808192b0819,
@@ -211,10 +320,10 @@ GGML_TABLE_BEGIN(uint64_t, iq2xxs_grid, 256)
     0x2b19190819081908, 0x2b19191919190819, 0x2b192b082b080819, 0x2b192b19082b0808,
     0x2b2b08080808082b, 0x2b2b080819190808, 0x2b2b08082b081919, 0x2b2b081908082b19,
     0x2b2b082b08080808, 0x2b2b190808192b08, 0x2b2b2b0819190808, 0x2b2b2b1908081908,
-GGML_TABLE_END()
+    GGML_TABLE_END()
 
-GGML_TABLE_BEGIN(uint64_t, iq2xs_grid, 512)
-    0x0808080808080808, 0x080808080808082b, 0x0808080808081919, 0x0808080808082b08,
+        GGML_TABLE_BEGIN(uint64_t, iq2xs_grid, 512) 0x0808080808080808,
+    0x080808080808082b, 0x0808080808081919, 0x0808080808082b08,
     0x0808080808082b2b, 0x0808080808190819, 0x0808080808191908, 0x080808080819192b,
     0x0808080808192b19, 0x08080808082b0808, 0x08080808082b082b, 0x08080808082b1919,
     0x08080808082b2b08, 0x0808080819080819, 0x0808080819081908, 0x080808081908192b,
@@ -342,10 +451,10 @@ GGML_TABLE_BEGIN(uint64_t, iq2xs_grid, 512)
     0x2b2b2b08082b0808, 0x2b2b2b08082b082b, 0x2b2b2b08082b2b08, 0x2b2b2b082b2b0808,
     0x2b2b2b082b2b2b08, 0x2b2b2b1908081908, 0x2b2b2b192b081908, 0x2b2b2b192b08192b,
     0x2b2b2b2b082b2b08, 0x2b2b2b2b082b2b2b, 0x2b2b2b2b2b190819, 0x2b2b2b2b2b2b2b2b,
-GGML_TABLE_END()
+    GGML_TABLE_END()
 
-GGML_TABLE_BEGIN(uint64_t, iq2s_grid, 1024)
-    0x0808080808080808, 0x080808080808082b, 0x0808080808081919, 0x0808080808082b08,
+        GGML_TABLE_BEGIN(uint64_t, iq2s_grid, 1024) 0x0808080808080808,
+    0x080808080808082b, 0x0808080808081919, 0x0808080808082b08,
     0x0808080808082b2b, 0x0808080808190819, 0x0808080808191908, 0x080808080819192b,
     0x0808080808192b19, 0x08080808082b0808, 0x08080808082b082b, 0x08080808082b1919,
     0x08080808082b2b08, 0x0808080819080819, 0x0808080819081908, 0x080808081908192b,
@@ -601,10 +710,10 @@ GGML_TABLE_BEGIN(uint64_t, iq2s_grid, 1024)
     0x2b2b2b0808082b2b, 0x2b2b2b08082b2b08, 0x2b2b2b082b2b082b, 0x2b2b2b1919191908,
     0x2b2b2b192b08192b, 0x2b2b2b2b08082b08, 0x2b2b2b2b08082b2b, 0x2b2b2b2b082b0808,
     0x2b2b2b2b082b082b, 0x2b2b2b2b082b2b08, 0x2b2b2b2b2b082b08, 0x2b2b2b2b2b2b2b2b,
-GGML_TABLE_END()
+    GGML_TABLE_END()
 
-GGML_TABLE_BEGIN(uint32_t, iq3xxs_grid, 256)
-    0x04040404, 0x04040414, 0x04040424, 0x04040c0c, 0x04040c1c, 0x04040c3e, 0x04041404, 0x04041414,
+        GGML_TABLE_BEGIN(uint32_t, iq3xxs_grid, 256) 0x04040404,
+    0x04040414, 0x04040424, 0x04040c0c, 0x04040c1c, 0x04040c3e, 0x04041404, 0x04041414,
     0x04041c0c, 0x04042414, 0x04043e1c, 0x04043e2c, 0x040c040c, 0x040c041c, 0x040c0c04, 0x040c0c14,
     0x040c140c, 0x040c142c, 0x040c1c04, 0x040c1c14, 0x040c240c, 0x040c2c24, 0x040c3e04, 0x04140404,
     0x04140414, 0x04140424, 0x04140c0c, 0x04141404, 0x04141414, 0x04141c0c, 0x04141c1c, 0x04141c3e,
@@ -636,10 +745,10 @@ GGML_TABLE_BEGIN(uint32_t, iq3xxs_grid, 256)
     0x34341c1c, 0x343e041c, 0x343e140c, 0x3e04041c, 0x3e04042c, 0x3e04043e, 0x3e040c04, 0x3e041c14,
     0x3e042c14, 0x3e0c1434, 0x3e0c2404, 0x3e140c14, 0x3e14242c, 0x3e142c14, 0x3e1c0404, 0x3e1c0c2c,
     0x3e1c1c1c, 0x3e1c3404, 0x3e24140c, 0x3e24240c, 0x3e2c0404, 0x3e2c0414, 0x3e2c1424, 0x3e341c04,
-GGML_TABLE_END()
+    GGML_TABLE_END()
 
-GGML_TABLE_BEGIN(uint32_t, iq3s_grid, 512)
-    0x01010101, 0x01010103, 0x01010105, 0x0101010b, 0x0101010f, 0x01010301, 0x01010303, 0x01010305,
+        GGML_TABLE_BEGIN(uint32_t, iq3s_grid, 512) 0x01010101,
+    0x01010103, 0x01010105, 0x0101010b, 0x0101010f, 0x01010301, 0x01010303, 0x01010305,
     0x01010309, 0x0101030d, 0x01010501, 0x01010503, 0x0101050b, 0x01010707, 0x01010901, 0x01010905,
     0x0101090b, 0x0101090f, 0x01010b03, 0x01010b07, 0x01010d01, 0x01010d05, 0x01010f03, 0x01010f09,
     0x01010f0f, 0x01030101, 0x01030103, 0x01030105, 0x01030109, 0x01030301, 0x01030303, 0x0103030b,
@@ -703,18 +812,19 @@ GGML_TABLE_BEGIN(uint32_t, iq3s_grid, 512)
     0x0f030509, 0x0f030907, 0x0f03090b, 0x0f050103, 0x0f050109, 0x0f050301, 0x0f05030d, 0x0f050503,
     0x0f050701, 0x0f050b03, 0x0f070105, 0x0f070705, 0x0f07070b, 0x0f070b07, 0x0f090103, 0x0f09010b,
     0x0f090307, 0x0f090501, 0x0f090b01, 0x0f0b0505, 0x0f0b0905, 0x0f0d0105, 0x0f0d0703, 0x0f0f0101,
-GGML_TABLE_END()
+    GGML_TABLE_END()
 
-// TODO: fix name to kvalues_iq4_nl
-GGML_TABLE_BEGIN(int8_t, kvalues_iq4nl, 16)
-    -127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113,
-GGML_TABLE_END()
+        // TODO: fix name to kvalues_iq4_nl
+        GGML_TABLE_BEGIN(int8_t, kvalues_iq4nl, 16) -
+        127,
+    -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113,
+    GGML_TABLE_END()
 
-// e2m1 values (doubled), shared by MXFP4 and NVFP4
-// ref: https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf
-GGML_TABLE_BEGIN(int8_t, kvalues_fp4, 16)
-    0, 1, 2, 3, 4, 6, 8, 12, 0, -1, -2, -3, -4, -6, -8, -12,
-GGML_TABLE_END()
+    // e2m1 values (doubled), shared by MXFP4 and NVFP4
+    // ref: https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf
+    GGML_TABLE_BEGIN(int8_t, kvalues_fp4, 16) 0,
+    1, 2, 3, 4, 6, 8, 12, 0, -1, -2, -3, -4, -6, -8, -12,
+    GGML_TABLE_END()
 #define kvalues_mxfp4 kvalues_fp4
 
 #undef GGML_TABLE_BEGIN
@@ -722,7 +832,7 @@ GGML_TABLE_END()
 
 #if !defined(__CUDA_ARCH__)
 
-inline float Fp16BitsToFloatCpu(uint16_t bits) {
+        inline float Fp16BitsToFloatCpu(uint16_t bits) {
   return MLFloat16::FromBits(bits).ToFloat();
 }
 
