@@ -9,6 +9,8 @@ VERS_1.0.0 {
   ExampleEpTestHooks_GetPreallocatedOutputBadIndexRejected;
   ExampleEpTestHooks_SetCreateDataTransferFailure;
   ExampleEpTestHooks_GetDlpackCurrentDevice;
+  ExampleEpTestHooks_SetDlpackCurrentDevice;
+  ExampleEpTestHooks_GetDlpackDeviceEntryCount;
   ExampleEpTestHooks_GetDlpackSyncCount;
   ExampleEpTestHooks_GetDlpackReleaseCount;
   ExampleEpTestHooks_ResetDlpack;

@@ -7,6 +7,8 @@
 #include <atomic>
 #include <chrono>
 #include <limits>
+#include <map>
+#include <mutex>
 #include <optional>
 #include <string_view>
 #include <thread>
@@ -24,7 +26,22 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace {
-thread_local int dlpack_current_device = 7;
+// Darwin keeps libraries containing thread-local storage loaded after dlclose.
+std::mutex dlpack_device_mutex;
+std::map<std::thread::id, int> dlpack_current_devices;
+int GetDlpackCurrentDevice() {
+  std::lock_guard<std::mutex> lock{dlpack_device_mutex};
+  const auto it = dlpack_current_devices.find(std::this_thread::get_id());
+  return it == dlpack_current_devices.end() ? 7 : it->second;
+}
+void SetDlpackCurrentDevice(int device_id) {
+  std::lock_guard<std::mutex> lock{dlpack_device_mutex};
+  if (device_id == 7) {
+    dlpack_current_devices.erase(std::this_thread::get_id());
+  } else {
+    dlpack_current_devices.insert_or_assign(std::this_thread::get_id(), device_id);
+  }
+}
 constexpr int kDlpackTestDeviceId = 32760;
 std::atomic<int> dlpack_sync_count{0};
 std::atomic<int> dlpack_release_count{0};
@@ -69,11 +86,19 @@ std::optional<std::string> GetCompatibilityField(const std::string& info, std::s
 }  // namespace
 
 extern "C" {
-EXPORT_SYMBOL int ExampleEpTestHooks_GetDlpackCurrentDevice() { return dlpack_current_device; }
+EXPORT_SYMBOL int ExampleEpTestHooks_GetDlpackCurrentDevice() { return GetDlpackCurrentDevice(); }
+EXPORT_SYMBOL void ExampleEpTestHooks_SetDlpackCurrentDevice(int device_id) { SetDlpackCurrentDevice(device_id); }
+EXPORT_SYMBOL std::size_t ExampleEpTestHooks_GetDlpackDeviceEntryCount() {
+  std::lock_guard<std::mutex> lock{dlpack_device_mutex};
+  return dlpack_current_devices.size();
+}
 EXPORT_SYMBOL int ExampleEpTestHooks_GetDlpackSyncCount() { return dlpack_sync_count.load(); }
 EXPORT_SYMBOL int ExampleEpTestHooks_GetDlpackReleaseCount() { return dlpack_release_count.load(); }
 EXPORT_SYMBOL void ExampleEpTestHooks_ResetDlpack() {
-  dlpack_current_device = 7;
+  {
+    std::lock_guard<std::mutex> lock{dlpack_device_mutex};
+    dlpack_current_devices.clear();
+  }
   dlpack_sync_count = 0;
   dlpack_release_count = 0;
   dlpack_sync_blocked = false;
@@ -131,6 +156,9 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
           return factory->ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "Expected DLPack test device 32760.");
         }
         ++dlpack_sync_count;
+        if (factory->ep_name_.find("fail") != std::string::npos) {
+          return factory->ort_api.CreateStatus(ORT_FAIL, "DLPack test synchronization failed.");
+        }
         while (dlpack_sync_blocked.load()) {
           std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
@@ -139,12 +167,16 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
     }
     if (ep_name_.find("sync") == std::string::npos) {
       GetCurrentDevice = [](OrtEpFactory*, int* device_id) noexcept -> OrtStatus* {
-        *device_id = dlpack_current_device;
+        EXCEPTION_TO_RETURNED_STATUS_BEGIN
+        *device_id = GetDlpackCurrentDevice();
         return nullptr;
+        EXCEPTION_TO_RETURNED_STATUS_END
       };
       SetCurrentDevice = [](OrtEpFactory*, int device_id) noexcept -> OrtStatus* {
-        dlpack_current_device = device_id;
+        EXCEPTION_TO_RETURNED_STATUS_BEGIN
+        SetDlpackCurrentDevice(device_id);
         return nullptr;
+        EXCEPTION_TO_RETURNED_STATUS_END
       };
     }
     if (ep_name_.find("old") != std::string::npos) {
@@ -160,7 +192,7 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
                                          OrtMemoryInfoDeviceType_GPU,
                                          /*vendor*/ memory_vendor, /* device_id */ memory_device_id,
                                          OrtDeviceMemoryType_DEFAULT,
-                                         /*alignment*/ 0,
+                                         /*alignment*/ dlpack_test ? size_t{256} : size_t{0},
                                          // it is invalid to use OrtArenaAllocator as that is reserved for the internal
                                          // ORT Arena implementation
                                          OrtAllocatorType::OrtDeviceAllocator};

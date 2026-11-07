@@ -806,7 +806,7 @@ Environment::DeviceInterop Environment::GetDeviceInterop(const OrtDevice& device
     for (const auto& ep_device : info->execution_devices) {
       auto* factory = ep_device->GetMutableFactory();
       if (ep_device->device_memory_info != nullptr &&
-          ep_device->device_memory_info->device == device &&
+          ep_device->device_memory_info->device.EqualIgnoringAlignment(device) &&
           factory->ort_version_supported >= 32 &&
           (capability == DeviceInteropCapability::Synchronize
                ? factory->SynchronizeDevice != nullptr

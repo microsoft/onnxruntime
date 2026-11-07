@@ -83,10 +83,9 @@ Environment::DeviceInterop GetPluginDeviceInterop(int device_type, int device_id
 template <typename SetDevice>
 py::object ExportDlpackOnDevice(const py::object& method, bool no_sync, int device_id,
                                 int original_device, SetDevice set_device) {
-  if (original_device == device_id) {
-    return no_sync ? method(py::arg("stream") = -1) : method();
+  if (original_device != device_id) {
+    set_device(device_id);
   }
-  set_device(device_id);
   py::object capsule;
   std::exception_ptr error;
   ORT_TRY {

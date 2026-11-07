@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <cstddef>
 #include <cstdint>
 
 // Export visibility
@@ -29,6 +30,8 @@ EXPORT_SYMBOL int ExampleEpTestHooks_GetPreallocatedOutputQueryResult();
 EXPORT_SYMBOL int ExampleEpTestHooks_GetPreallocatedOutputBadIndexRejected();
 EXPORT_SYMBOL void ExampleEpTestHooks_SetCreateDataTransferFailure(int enabled);
 EXPORT_SYMBOL int ExampleEpTestHooks_GetDlpackCurrentDevice();
+EXPORT_SYMBOL void ExampleEpTestHooks_SetDlpackCurrentDevice(int device_id);
+EXPORT_SYMBOL std::size_t ExampleEpTestHooks_GetDlpackDeviceEntryCount();
 EXPORT_SYMBOL int ExampleEpTestHooks_GetDlpackSyncCount();
 EXPORT_SYMBOL int ExampleEpTestHooks_GetDlpackReleaseCount();
 EXPORT_SYMBOL void ExampleEpTestHooks_ResetDlpack();

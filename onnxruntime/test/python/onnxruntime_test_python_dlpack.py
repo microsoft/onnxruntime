@@ -10,6 +10,7 @@ import ctypes
 import gc
 import math
 import os
+import sys
 import threading
 import time
 import unittest
@@ -341,35 +342,6 @@ class TestDlpackPyTorch(unittest.TestCase):
         values.push_back(source, synchronize=False)
         self.assert_tensor(values.to_dlpacks(torch.from_dlpack, synchronize=False)[0], source)
 
-    def test_failed_gpu_synchronization_consumes_capsule_once(self):
-        devices = ((2, "CUDAExecutionProvider"), (10, "MIGraphXExecutionProvider"))
-        device_type = next((kind for kind, provider in devices if provider not in ort.get_available_providers()), None)
-        if device_type is None:
-            self.skipTest("requires a GPU backend without its matching provider")
-        new_capsule = ctypes.pythonapi.PyCapsule_New
-        new_capsule.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p]
-        new_capsule.restype = ctypes.py_object
-        shape = (ctypes.c_int64 * 1)(0)
-        for value_type in (ort.OrtValue, C.OrtValue):
-            with self.subTest(value_type=value_type):
-                releases = []
-                deleter = ctypes.CFUNCTYPE(None, ctypes.c_void_p)(
-                    lambda pointer, releases=releases: releases.append(pointer)
-                )
-                managed = DLManagedTensor(
-                    DLTensor(None, DLDevice(device_type, 0), 1, DLDataType(2, 32, 1), shape, None, 0),
-                    None,
-                    ctypes.cast(deleter, ctypes.c_void_p),
-                )
-                capsule = new_capsule(ctypes.addressof(managed), b"dltensor", None)
-                with self.assertRaisesRegex(BufferError, "matching provider"):
-                    value_type.from_dlpack(capsule)
-                self.assertEqual(len(releases), 1)
-                with self.assertRaisesRegex(TypeError, "valid DLPack capsule"):
-                    value_type.from_dlpack(capsule, synchronize=False)
-                del capsule
-                self.assertEqual(len(releases), 1)
-
     def test_import_opt_out_without_gpu_metadata_omits_stream(self):
         source = torch.arange(6, dtype=torch.float32)
 
@@ -658,12 +630,24 @@ class TestDlpackPluginCallbacks(unittest.TestCase):
     device_id = 32760  # Avoid colliding with a real GPU provider registered by the build.
 
     def setUp(self):
-        library_name = "example_plugin_ep.dll" if os.name == "nt" else "libexample_plugin_ep.so"
+        library_name = (
+            "example_plugin_ep.dll"
+            if os.name == "nt"
+            else "libexample_plugin_ep.dylib"
+            if sys.platform == "darwin"
+            else "libexample_plugin_ep.so"
+        )
         self.library_path = Path.cwd() / library_name
         if not self.library_path.is_file():
             self.skipTest("requires the example_plugin_ep test library in the build output directory")
         self.library = ctypes.CDLL(str(self.library_path))
         self.current_device = self.library.ExampleEpTestHooks_GetDlpackCurrentDevice
+        self.set_current_device = self.library.ExampleEpTestHooks_SetDlpackCurrentDevice
+        self.set_current_device.argtypes = [ctypes.c_int]
+        self.set_current_device.restype = None
+        self.device_entry_count = self.library.ExampleEpTestHooks_GetDlpackDeviceEntryCount
+        self.device_entry_count.argtypes = []
+        self.device_entry_count.restype = ctypes.c_size_t
         self.sync_count = self.library.ExampleEpTestHooks_GetDlpackSyncCount
         self.release_count = self.library.ExampleEpTestHooks_GetDlpackReleaseCount
         for method in (self.current_device, self.sync_count, self.release_count):
@@ -690,12 +674,14 @@ class TestDlpackPluginCallbacks(unittest.TestCase):
         ort.unregister_execution_provider_library(name)
         self.registrations.remove(name)
 
-    def capsule(self):
+    def capsule(self, deleter=None):
         shape = (ctypes.c_int64 * 1)(0)
         managed = DLManagedTensor(
-            DLTensor(None, DLDevice(2, self.device_id), 1, DLDataType(2, 32, 1), shape, None, 0), None, None
+            DLTensor(None, DLDevice(2, self.device_id), 1, DLDataType(2, 32, 1), shape, None, 0),
+            None,
+            ctypes.cast(deleter, ctypes.c_void_p) if deleter is not None else None,
         )
-        self.descriptors.append((shape, managed))
+        self.descriptors.append((shape, managed, deleter))
         new_capsule = ctypes.pythonapi.PyCapsule_New
         new_capsule.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p]
         new_capsule.restype = ctypes.py_object
@@ -723,6 +709,79 @@ class TestDlpackPluginCallbacks(unittest.TestCase):
             self.assertEqual(value.__dlpack_device__(), (2, self.device_id))
             del capsule, value
         self.assertEqual(self.sync_count(), 4)
+
+    def test_producer_device_changes_are_restored(self):
+        self.register("both")
+        test = self
+
+        class Producer:
+            def __dlpack_device__(self):
+                return (2, test.device_id)
+
+            def __dlpack__(self, *, stream=None):
+                test.assertEqual(test.current_device(), test.device_id)
+                test.set_current_device(9)
+                if fail:
+                    raise ValueError("Producer changed device before failing")
+                return test.capsule()
+
+        for value_type in (ort.OrtValue, C.OrtValue):
+            for original in (7, self.device_id):
+                for synchronize in (False, True):
+                    for fail in (False, True):
+                        with self.subTest(value_type=value_type, original=original, synchronize=synchronize, fail=fail):
+                            self.set_current_device(original)
+                            if fail:
+                                with self.assertRaisesRegex(ValueError, "Producer changed device before failing"):
+                                    value_type.from_dlpack(Producer(), synchronize=synchronize)
+                            else:
+                                value_type.from_dlpack(Producer(), synchronize=synchronize)
+                            self.assertEqual(self.current_device(), original)
+
+    def test_failed_gpu_synchronization_consumes_capsule_once(self):
+        self.register("fail_sync")
+        for value_type in (ort.OrtValue, C.OrtValue):
+            with self.subTest(value_type=value_type):
+                releases = []
+                deleter = ctypes.CFUNCTYPE(None, ctypes.c_void_p)(
+                    lambda pointer, releases=releases: releases.append(pointer)
+                )
+                capsule = self.capsule(deleter)
+                with self.assertRaisesRegex(RuntimeError, "DLPack test synchronization failed"):
+                    value_type.from_dlpack(capsule)
+                self.assertEqual(len(releases), 1)
+                with self.assertRaisesRegex(TypeError, "valid DLPack capsule"):
+                    value_type.from_dlpack(capsule, synchronize=False)
+                del capsule
+                self.assertEqual(len(releases), 1)
+        self.assertEqual(self.sync_count(), 2)
+
+    def test_thread_device_context_is_isolated_and_cleaned(self):
+        self.set_current_device(self.device_id)
+        self.assertEqual(self.device_entry_count(), 1)
+        observed = []
+
+        def change_device():
+            try:
+                observed.append(self.current_device())
+                self.set_current_device(9)
+                observed.append(self.current_device())
+            finally:
+                self.set_current_device(7)
+
+        worker = threading.Thread(target=change_device)
+        worker.start()
+        worker.join(timeout=5)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(observed, [7, 9])
+        self.assertEqual(self.current_device(), self.device_id)
+        self.assertEqual(self.device_entry_count(), 1)
+        worker = threading.Thread(target=lambda: observed.append(self.current_device()))
+        worker.start()
+        worker.join(timeout=5)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(observed, [7, 9, 7])
+        self.assertEqual(self.device_entry_count(), 1)
 
     def test_unregister_inside_producer_pins_factory_until_restoration(self):
         name = self.register("both")
@@ -754,6 +813,8 @@ class TestDlpackPluginCallbacks(unittest.TestCase):
                 results.append(ort.OrtValue.from_dlpack(capsule))
             except Exception as error:
                 errors.append(error)
+            finally:
+                self.set_current_device(7)
 
         worker = threading.Thread(target=import_value)
         self.block_sync(1)
@@ -780,7 +841,6 @@ class TestDlpackPluginCallbacks(unittest.TestCase):
             value.__dlpack__()
         self.assertEqual(self.sync_count(), 0)
         self.assertEqual(self.current_device(), 7)
-        del value
 
 
 @unittest.skipUnless(
