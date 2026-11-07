@@ -132,7 +132,9 @@ void DropDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
 #if !defined(ORT_MINIMAL_BUILD)
   // TODO: Enable 16-bit types in selector when ArgMax supports 16-bit integer input tensors.
   std::vector<const char*> providers = {kCpuExecutionProvider, kDmlExecutionProvider};
-  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::DropDQNodesSelector>(false, false, providers);
+  // ArgMax preserves order only when scale is positive; forbid dropping DQ with non-positive scale.
+  std::unique_ptr<NodeSelector> selector =
+      std::make_unique<QDQ::DropDQNodesSelector>(false, false, false, providers);
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"ArgMax", {}}},
                                                          std::move(selector),
