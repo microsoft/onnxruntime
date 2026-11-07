@@ -1,0 +1,444 @@
+name: Go release archives
+
+on:
+  pull_request:
+    branches: [main, rel-*]
+    paths:
+      - go/**
+      - .github/workflows/go-release-ci.yml
+      - include/onnxruntime/core/session/onnxruntime_c_api.h
+      - include/onnxruntime/core/session/onnxruntime_ep_c_api.h
+      - include/onnxruntime/core/session/onnxruntime_error_code.h
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  archives:
+    name: Go archives (${{ matrix.os }}/${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            runner: ubuntu-24.04
+            cc: gcc
+            asset: onnxruntime-linux-x64-1.31.0.tgz
+            root: onnxruntime-linux-x64-1.31.0
+            sha256: cc5c72baf5ae5c8238a6841f0897227be2d02826b9cf98eaf02fdefaeeb03a57
+            library: libonnxruntime.so
+          - os: linux
+            arch: arm64
+            runner: ubuntu-24.04-arm
+            cc: gcc
+            asset: onnxruntime-linux-aarch64-1.31.0.tgz
+            root: onnxruntime-linux-aarch64-1.31.0
+            sha256: c5b8b3cca31f3d643a3b313b8f42e2d0f16a4fcefd02cda343d97bd5306afaab
+            library: libonnxruntime.so
+          - os: darwin
+            arch: arm64
+            runner: macos-15
+            cc: clang
+            asset: onnxruntime-osx-arm64-1.31.0.tgz
+            root: onnxruntime-osx-arm64-1.31.0
+            sha256: 1031b36dd3bdaa8d976a6130d9cf2a05e9be320b93ae804f8427b91dc3432afc
+            library: libonnxruntime.dylib
+          - os: windows
+            arch: amd64
+            runner: windows-2022
+            cc: gcc
+            asset: onnxruntime-win-x64-1.31.0.zip
+            root: onnxruntime-win-x64-1.31.0
+            sha256: 3958d8a44984160692c1b4ffd0de3cb48f8c39f9d34bb31e433db06e30b82195
+            library: onnxruntime.dll
+    env:
+      CGO_ENABLED: '1'
+      CGO_CFLAGS: ''
+      CGO_CPPFLAGS: ''
+      GOFLAGS: ''
+      CC: ${{ matrix.cc }}
+      TARGET_OS: ${{ matrix.os }}
+      TARGET_ARCH: ${{ matrix.arch }}
+      ASSET: ${{ matrix.asset }}
+      ARCHIVE_ROOT: ${{ matrix.root }}
+      SHA256: ${{ matrix.sha256 }}
+      LIBRARY: ${{ matrix.library }}
+      RELEASE_COMMIT: 402979ac1bef89dcd55add41eaa7277c407599eb
+      ORT_TEST_EXPECT_VERSION: 1.31.0
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+          submodules: false
+
+      - name: Create evidence directory (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          EVIDENCE: ${{ runner.temp }}/go-release-evidence
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          mkdir "$EVIDENCE"
+          printf 'EVIDENCE=%s\n' "$EVIDENCE" >> "$GITHUB_ENV"
+          {
+            git rev-parse HEAD
+            printf 'event=%s\nref=%s\nasset=%s\nsha256=%s\nconsumer_api=27\n' \
+              "$EVENT_NAME" "$EVENT_REF" "$ASSET" "$SHA256"
+          } | tee "$EVIDENCE/summary.txt"
+
+      - name: Create evidence directory (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          EVIDENCE: ${{ runner.temp }}/go-release-evidence
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path $env:EVIDENCE | Out-Null
+          "EVIDENCE=$env:EVIDENCE" >> $env:GITHUB_ENV
+          $sha = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'git rev-parse failed' }
+          @("$sha", "event=$env:EVENT_NAME", "ref=$env:EVENT_REF", "asset=$env:ASSET",
+            "sha256=$env:SHA256", 'consumer_api=27') |
+            Tee-Object -FilePath "$env:EVIDENCE/summary.txt"
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go/go.mod
+          cache: false
+
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+        if: runner.os == 'Windows'
+        id: msys2
+        with:
+          msystem: UCRT64
+          install: mingw-w64-ucrt-x86_64-gcc
+          update: true
+          cache: false
+
+      - name: Select Windows compiler
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bin = Join-Path $env:MSYS2_LOCATION 'ucrt64/bin'
+          $cc = Join-Path $bin 'gcc.exe'
+          if (!(Test-Path -PathType Leaf $cc)) { throw "missing compiler: $cc" }
+          "CC=$cc" >> $env:GITHUB_ENV
+          $bin >> $env:GITHUB_PATH
+
+      - name: Check toolchain and build checker (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        working-directory: go
+        run: |
+          set -euo pipefail
+          test "$(go env GOOS)" = "$TARGET_OS"
+          test "$(go env GOARCH)" = "$TARGET_ARCH"
+          test "$(go env CGO_ENABLED)" = 1
+          {
+            go version
+            go env GOOS GOARCH CGO_ENABLED CC
+            "$CC" --version
+            "$CC" -dumpmachine
+          } | tee -a "$EVIDENCE/summary.txt"
+          go test -race -count=1 ./internal/citest ./examples/basic
+          go vet ./onnxruntime ./internal/citest ./examples/basic
+          citest="$RUNNER_TEMP/citest"
+          go build -o "$citest" ./internal/citest
+          api=$("$citest" api -shim ./onnxruntime/cshim.h -header ./onnxruntime/onnxruntime_c_api.h)
+          printf 'checkout_api=%s\n' "$api" | tee -a "$EVIDENCE/summary.txt"
+          printf 'CITEST=%s\nORT_TEST_EXPECT_API=%s\n' "$citest" "$api" >> "$GITHUB_ENV"
+
+      - name: Check toolchain and build checker (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        working-directory: go
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $os = go env GOOS
+          if ($LASTEXITCODE -ne 0) { throw 'go env GOOS failed' }
+          $arch = go env GOARCH
+          if ($LASTEXITCODE -ne 0) { throw 'go env GOARCH failed' }
+          $cgo = go env CGO_ENABLED
+          if ($LASTEXITCODE -ne 0) { throw 'go env CGO_ENABLED failed' }
+          if ($os -ne $env:TARGET_OS -or $arch -ne $env:TARGET_ARCH -or $cgo -ne '1') {
+            throw "wrong toolchain: $os/$arch cgo=$cgo"
+          }
+          go version | Tee-Object -Append -FilePath "$env:EVIDENCE/summary.txt"
+          if ($LASTEXITCODE -ne 0) { throw 'go version failed' }
+          go env GOOS GOARCH CGO_ENABLED CC | Tee-Object -Append -FilePath "$env:EVIDENCE/summary.txt"
+          if ($LASTEXITCODE -ne 0) { throw 'go env failed' }
+          & $env:CC --version | Tee-Object -Append -FilePath "$env:EVIDENCE/summary.txt"
+          if ($LASTEXITCODE -ne 0) { throw 'gcc version failed' }
+          $target = & $env:CC -dumpmachine
+          if ($LASTEXITCODE -ne 0) { throw 'gcc target failed' }
+          $target | Tee-Object -Append -FilePath "$env:EVIDENCE/summary.txt"
+          if ($target -notmatch '^x86_64-.*mingw') { throw "wrong GCC target: $target" }
+          $sync = & $env:CC '-print-file-name=libsynchronization.a'
+          if ($LASTEXITCODE -ne 0) { throw 'GCC synchronization lookup failed' }
+          if (![IO.Path]::IsPathFullyQualified($sync) -or !(Test-Path -PathType Leaf $sync)) {
+            throw "missing race synchronization library: $sync"
+          }
+          $sync | Tee-Object -Append -FilePath "$env:EVIDENCE/summary.txt"
+          go test -race -count=1 ./internal/citest ./examples/basic
+          if ($LASTEXITCODE -ne 0) { throw 'helper race tests failed' }
+          go vet ./onnxruntime ./internal/citest ./examples/basic
+          if ($LASTEXITCODE -ne 0) { throw 'go vet failed' }
+          $citest = Join-Path $env:RUNNER_TEMP 'citest.exe'
+          go build -o $citest ./internal/citest
+          if ($LASTEXITCODE -ne 0) { throw 'checker build failed' }
+          $api = & $citest api -shim ./onnxruntime/cshim.h -header ./onnxruntime/onnxruntime_c_api.h
+          if ($LASTEXITCODE -ne 0) { throw 'API profile failed' }
+          "checkout_api=$api" | Tee-Object -Append -FilePath "$env:EVIDENCE/summary.txt"
+          "CITEST=$citest" >> $env:GITHUB_ENV
+          "ORT_TEST_EXPECT_API=$api" >> $env:GITHUB_ENV
+
+      - name: Download and verify runtime (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime_dir=$(mktemp -d "$RUNNER_TEMP/ort-runtime.XXXXXX")
+          archive="$runtime_dir/$ASSET"
+          curl --fail --location --retry 3 --connect-timeout 30 --max-time 300 \
+            -o "$archive" "https://github.com/microsoft/onnxruntime/releases/download/v1.31.0/$ASSET"
+          if [ "$TARGET_OS" = linux ]; then
+            printf '%s  %s\n' "$SHA256" "$archive" | sha256sum -c - | tee "$EVIDENCE/digest.txt"
+          else
+            printf '%s  %s\n' "$SHA256" "$archive" | shasum -a 256 -c - | tee "$EVIDENCE/digest.txt"
+          fi
+          tar -xzf "$archive" -C "$runtime_dir"
+          lib="$runtime_dir/$ARCHIVE_ROOT/lib"
+          test -f "$lib/$LIBRARY"
+          printf 'ORT_LIB_PATH=%s\n' "$lib" >> "$GITHUB_ENV"
+          if [ "$TARGET_OS" = linux ]; then
+            printf 'LD_LIBRARY_PATH=%s\n' "$lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+          else
+            printf 'DYLD_LIBRARY_PATH=%s\n' "$lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Download and verify runtime (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runtimeDir = Join-Path $env:RUNNER_TEMP ("ort-runtime-" + [guid]::NewGuid())
+          New-Item -ItemType Directory -Path $runtimeDir | Out-Null
+          $archive = Join-Path $runtimeDir $env:ASSET
+          Invoke-WebRequest -TimeoutSec 300 -Uri "https://github.com/microsoft/onnxruntime/releases/download/v1.31.0/$env:ASSET" -OutFile $archive
+          $digest = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          "$digest  $env:ASSET" | Tee-Object -FilePath "$env:EVIDENCE/digest.txt"
+          if ($digest -ne $env:SHA256) { throw 'archive checksum mismatch' }
+          Expand-Archive -Path $archive -DestinationPath $runtimeDir
+          $lib = Join-Path $runtimeDir "$env:ARCHIVE_ROOT/lib"
+          if (!(Test-Path -PathType Leaf (Join-Path $lib $env:LIBRARY))) { throw 'missing extracted runtime' }
+          "ORT_LIB_PATH=$lib" >> $env:GITHUB_ENV
+          $lib >> $env:GITHUB_PATH
+
+      - name: Check checkout suite and missing runtime (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        working-directory: go
+        run: |
+          set -euo pipefail
+          test -f "$ORT_LIB_PATH/$LIBRARY"
+          if [ "$TARGET_OS" = darwin ]; then
+            export DYLD_LIBRARY_PATH="$ORT_LIB_PATH${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+          fi
+          set +e
+          go test -race -count=1 -timeout=10m -json ./onnxruntime \
+            2> "$EVIDENCE/checkout.stderr" | tee "$EVIDENCE/checkout.json"
+          checkout_status=("${PIPESTATUS[@]}")
+          go_status=${checkout_status[0]}
+          tee_status=${checkout_status[1]}
+          "$CITEST" results -file "$EVIDENCE/checkout.json" -expect-runtime 1.31.0 \
+            -expect-api "$ORT_TEST_EXPECT_API" > "$EVIDENCE/checkout-checker.log" 2>&1
+          checker_status=$?
+          set -e
+          printf 'go=%s tee=%s checker=%s\n' "$go_status" "$tee_status" "$checker_status" | tee "$EVIDENCE/checkout-status.txt"
+          cat "$EVIDENCE/checkout.stderr" "$EVIDENCE/checkout-checker.log"
+          test "$go_status" -eq 0
+          test "$tee_status" -eq 0
+          test "$checker_status" -eq 0
+          missing="$RUNNER_TEMP/ort-missing-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/missing-$LIBRARY"
+          test ! -e "$missing"
+          set +e
+          ORT_LIB_PATH="$missing" go test -race -count=1 -timeout=10m -json ./onnxruntime \
+            > "$EVIDENCE/missing.json" 2> "$EVIDENCE/missing.stderr"
+          go_status=$?
+          "$CITEST" results -file "$EVIDENCE/missing.json" -expect-runtime 1.31.0 \
+            -expect-api "$ORT_TEST_EXPECT_API" > "$EVIDENCE/missing-checker.log" 2>&1
+          checker_status=$?
+          set -e
+          printf 'go=%s checker=%s\n' "$go_status" "$checker_status" | tee "$EVIDENCE/missing-status.txt"
+          test "$go_status" -ne 0
+          test "$checker_status" -ne 0
+          grep -F 'failed to init ORT:' "$EVIDENCE/missing.json" "$EVIDENCE/missing.stderr"
+
+      - name: Check checkout suite and missing runtime (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        working-directory: go
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          if (!(Test-Path -PathType Leaf (Join-Path $env:ORT_LIB_PATH $env:LIBRARY))) { throw 'missing runtime preflight' }
+          go test -race -count=1 -timeout=10m -json ./onnxruntime 2> "$env:EVIDENCE/checkout.stderr" |
+            Tee-Object -FilePath "$env:EVIDENCE/checkout.json"
+          $goStatus = $LASTEXITCODE
+          & $env:CITEST results -file "$env:EVIDENCE/checkout.json" -expect-runtime 1.31.0 `
+            -expect-api $env:ORT_TEST_EXPECT_API > "$env:EVIDENCE/checkout-checker.log" 2>&1
+          $checkerStatus = $LASTEXITCODE
+          "go=$goStatus checker=$checkerStatus" | Tee-Object -FilePath "$env:EVIDENCE/checkout-status.txt"
+          Get-Content "$env:EVIDENCE/checkout.stderr", "$env:EVIDENCE/checkout-checker.log"
+          if ($goStatus -ne 0 -or $checkerStatus -ne 0) { throw 'checkout validation failed' }
+          $missing = Join-Path $env:RUNNER_TEMP "ort-missing-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT/$env:LIBRARY"
+          if (Test-Path $missing) { throw 'negative runtime path exists' }
+          $env:ORT_LIB_PATH = $missing
+          go test -race -count=1 -timeout=10m -json ./onnxruntime > "$env:EVIDENCE/missing.json" 2> "$env:EVIDENCE/missing.stderr"
+          $goStatus = $LASTEXITCODE
+          & $env:CITEST results -file "$env:EVIDENCE/missing.json" -expect-runtime 1.31.0 `
+            -expect-api $env:ORT_TEST_EXPECT_API > "$env:EVIDENCE/missing-checker.log" 2>&1
+          $checkerStatus = $LASTEXITCODE
+          "go=$goStatus checker=$checkerStatus" | Tee-Object -FilePath "$env:EVIDENCE/missing-status.txt"
+          $diagnostic = Select-String -SimpleMatch 'failed to init ORT:' -Path "$env:EVIDENCE/missing.json", "$env:EVIDENCE/missing.stderr"
+          if ($goStatus -eq 0 -or $checkerStatus -eq 0 -or !$diagnostic) { throw 'missing-runtime negative failed' }
+          $diagnostic
+          exit 0
+
+      - name: Verify fixed release consumer (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$ORT_LIB_PATH/$LIBRARY"
+          consumer_dir=$(mktemp -d "$RUNNER_TEMP/ort-consumer.XXXXXX")
+          cp "$GITHUB_WORKSPACE/go/examples/basic/main.go" "$GITHUB_WORKSPACE/go/testdata/add_f32.onnx" "$consumer_dir/"
+          export GOWORK=off GOFLAGS='' GOPROXY=direct
+          export GOMODCACHE="$consumer_dir/module-cache"
+          cd "$consumer_dir"
+          if [ "$TARGET_OS" = darwin ]; then
+            export DYLD_LIBRARY_PATH="$ORT_LIB_PATH${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+          fi
+          run_logged() {
+            local stdout_tmp stderr_tmp command_status
+            stdout_tmp=$(mktemp "$RUNNER_TEMP/ort-consumer-stdout.XXXXXX")
+            stderr_tmp=$(mktemp "$RUNNER_TEMP/ort-consumer-stderr.XXXXXX")
+            set +e
+            "$@" > "$stdout_tmp" 2> "$stderr_tmp"
+            command_status=$?
+            set -e
+            tee -a "$EVIDENCE/consumer.log" < "$stdout_tmp"
+            tee -a "$EVIDENCE/consumer.stderr" < "$stderr_tmp" >&2
+            rm -f "$stdout_tmp" "$stderr_tmp"
+            return "$command_status"
+          }
+          : > "$EVIDENCE/consumer.log"
+          : > "$EVIDENCE/consumer.stderr"
+          run_logged go mod init example.com/ort-release-consumer
+          run_logged go get "github.com/microsoft/onnxruntime/go/onnxruntime@$RELEASE_COMMIT"
+          go list -m -json github.com/microsoft/onnxruntime/go > "$EVIDENCE/module-list.json" \
+            2>> "$EVIDENCE/consumer.stderr"
+          consumer_version=$(go list -m -f '{{.Version}}' github.com/microsoft/onnxruntime/go \
+            2>> "$EVIDENCE/consumer.stderr")
+          go mod download -json "github.com/microsoft/onnxruntime/go@$consumer_version" \
+            > "$EVIDENCE/module-download.json" 2>> "$EVIDENCE/consumer.stderr"
+          run_logged "$CITEST" module -list "$EVIDENCE/module-list.json" -download "$EVIDENCE/module-download.json" \
+            -expect-version "$consumer_version" -expect-commit "$RELEASE_COMMIT"
+          printf 'consumer_version=%s\nconsumer_commit=%s\n' "$consumer_version" "$RELEASE_COMMIT" >> "$EVIDENCE/summary.txt"
+          run_logged go build -race -o consumer .
+          run_logged ./consumer -expect-runtime 1.31.0 -expect-api 27 \
+            -expect-module-version "$consumer_version" ./add_f32.onnx
+          set +e
+          ./consumer -expect-runtime 1.31.0 -expect-api 28 -expect-module-version "$consumer_version" ./add_f32.onnx \
+            > "$EVIDENCE/wrong-api.log" 2>&1
+          api_status=$?
+          ./consumer -expect-runtime 0.0.0 -expect-api 27 -expect-module-version "$consumer_version" ./add_f32.onnx \
+            > "$EVIDENCE/wrong-runtime.log" 2>&1
+          runtime_status=$?
+          "$CITEST" module -list "$EVIDENCE/module-list.json" -download "$EVIDENCE/module-download.json" \
+            -expect-version "$consumer_version" -expect-commit 0000000000000000000000000000000000000000 \
+            > "$EVIDENCE/wrong-origin.log" 2>&1
+          origin_status=$?
+          set -e
+          printf 'api=%s runtime=%s origin=%s\n' "$api_status" "$runtime_status" "$origin_status" | tee "$EVIDENCE/consumer-negative-status.txt"
+          test "$api_status" -ne 0
+          grep -F 'API mismatch:' "$EVIDENCE/wrong-api.log"
+          test "$runtime_status" -ne 0
+          grep -F 'runtime mismatch:' "$EVIDENCE/wrong-runtime.log"
+          test "$origin_status" -ne 0
+          grep -F 'origin mismatch:' "$EVIDENCE/wrong-origin.log"
+
+      - name: Verify fixed release consumer (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          if (!(Test-Path -PathType Leaf (Join-Path $env:ORT_LIB_PATH $env:LIBRARY))) { throw 'missing runtime preflight' }
+          $consumerDir = Join-Path $env:RUNNER_TEMP ("ort-consumer-" + [guid]::NewGuid())
+          New-Item -ItemType Directory -Path $consumerDir | Out-Null
+          Copy-Item "$env:GITHUB_WORKSPACE/go/examples/basic/main.go", "$env:GITHUB_WORKSPACE/go/testdata/add_f32.onnx" $consumerDir
+          $env:GOWORK = 'off'
+          $env:GOFLAGS = ''
+          $env:GOPROXY = 'direct'
+          $env:GOMODCACHE = Join-Path $consumerDir 'module-cache'
+          Set-Location $consumerDir
+          go mod init example.com/ort-release-consumer 2> "$env:EVIDENCE/consumer-setup.stderr" |
+            Tee-Object -FilePath "$env:EVIDENCE/consumer-setup.log"
+          if ($LASTEXITCODE -ne 0) { throw 'consumer mod init failed' }
+          go get "github.com/microsoft/onnxruntime/go/onnxruntime@$env:RELEASE_COMMIT" 2>> "$env:EVIDENCE/consumer-setup.stderr" |
+            Tee-Object -Append -FilePath "$env:EVIDENCE/consumer-setup.log"
+          if ($LASTEXITCODE -ne 0) { throw 'consumer go get failed' }
+          go list -m -json github.com/microsoft/onnxruntime/go > "$env:EVIDENCE/module-list.json"
+          if ($LASTEXITCODE -ne 0) { throw 'module list failed' }
+          $version = go list -m -f '{{.Version}}' github.com/microsoft/onnxruntime/go
+          if ($LASTEXITCODE -ne 0) { throw 'module version failed' }
+          go mod download -json "github.com/microsoft/onnxruntime/go@$version" > "$env:EVIDENCE/module-download.json"
+          if ($LASTEXITCODE -ne 0) { throw 'module download failed' }
+          & $env:CITEST module -list "$env:EVIDENCE/module-list.json" -download "$env:EVIDENCE/module-download.json" `
+            -expect-version $version -expect-commit $env:RELEASE_COMMIT |
+            Tee-Object -FilePath "$env:EVIDENCE/module-checker.log"
+          if ($LASTEXITCODE -ne 0) { throw 'module origin validation failed' }
+          @("consumer_version=$version", "consumer_commit=$env:RELEASE_COMMIT") >> "$env:EVIDENCE/summary.txt"
+          go build -race -o consumer.exe . 2> "$env:EVIDENCE/consumer-build.stderr"
+          if ($LASTEXITCODE -ne 0) { throw 'consumer build failed' }
+          ./consumer.exe -expect-runtime 1.31.0 -expect-api 27 -expect-module-version $version ./add_f32.onnx `
+            2> "$env:EVIDENCE/consumer.stderr" | Tee-Object -FilePath "$env:EVIDENCE/consumer.log"
+          if ($LASTEXITCODE -ne 0) { throw 'consumer failed' }
+          ./consumer.exe -expect-runtime 1.31.0 -expect-api 28 -expect-module-version $version ./add_f32.onnx > "$env:EVIDENCE/wrong-api.log" 2>&1
+          $apiStatus = $LASTEXITCODE
+          ./consumer.exe -expect-runtime 0.0.0 -expect-api 27 -expect-module-version $version ./add_f32.onnx > "$env:EVIDENCE/wrong-runtime.log" 2>&1
+          $runtimeStatus = $LASTEXITCODE
+          & $env:CITEST module -list "$env:EVIDENCE/module-list.json" -download "$env:EVIDENCE/module-download.json" `
+            -expect-version $version -expect-commit '0000000000000000000000000000000000000000' > "$env:EVIDENCE/wrong-origin.log" 2>&1
+          $originStatus = $LASTEXITCODE
+          "api=$apiStatus runtime=$runtimeStatus origin=$originStatus" | Tee-Object -FilePath "$env:EVIDENCE/consumer-negative-status.txt"
+          if ($apiStatus -eq 0 -or !(Select-String -SimpleMatch 'API mismatch:' "$env:EVIDENCE/wrong-api.log")) { throw 'API negative failed' }
+          if ($runtimeStatus -eq 0 -or !(Select-String -SimpleMatch 'runtime mismatch:' "$env:EVIDENCE/wrong-runtime.log")) { throw 'runtime negative failed' }
+          if ($originStatus -eq 0 -or !(Select-String -SimpleMatch 'origin mismatch:' "$env:EVIDENCE/wrong-origin.log")) { throw 'origin negative failed' }
+          Get-Content "$env:EVIDENCE/wrong-api.log", "$env:EVIDENCE/wrong-runtime.log", "$env:EVIDENCE/wrong-origin.log"
+          exit 0
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: go-release-${{ matrix.os }}-${{ matrix.arch }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/go-release-evidence/
+          retention-days: 7
+          if-no-files-found: error
