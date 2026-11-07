@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <limits>
@@ -25,6 +26,10 @@
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/test_environment.h"
+#ifdef USE_CUDA
+#include <cuda_runtime_api.h>
+#include "contrib_ops/cuda/bert/causal_conv_with_state_impl.h"
+#endif
 #ifdef USE_WEBGPU
 #include "core/providers/webgpu/webgpu_context.h"
 #endif
@@ -1717,6 +1722,221 @@ TEST(CausalConvWithStateTest, BFloat16_Cuda) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(ep));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+template <typename T>
+static void RunResourceSafePrefillCase(int batch, int channels, int length, int dilation,
+                                       int window, bool channels_last, bool with_bias, bool with_past) {
+  const int kernel = 3;
+  const int pad = (kernel - 1) * dilation;
+  std::vector<float> input(static_cast<size_t>(batch) * channels * length);
+  std::vector<float> weight(static_cast<size_t>(channels) * kernel);
+  std::vector<float> bias(channels, 0.0625f);
+  std::vector<float> past(static_cast<size_t>(batch) * channels * pad);
+  for (size_t i = 0; i < input.size(); ++i) input[i] = static_cast<float>(static_cast<int>(i % 7) - 3) / 8;
+  constexpr float taps[]{0.25f, -0.5f, 0.125f};
+  for (size_t i = 0; i < weight.size(); ++i) weight[i] = taps[i % 3];
+  for (size_t i = 0; i < past.size(); ++i) past[i] = static_cast<float>(i % 5 + 1) / 8;
+  std::vector<float> output, unused_state;
+  // Dyadic inputs/products/sums are exactly representable in all three element types.
+  CausalConvWithStateReference(input, weight, with_bias ? &bias : nullptr, with_past ? &past : nullptr,
+                               output, unused_state, batch, channels, length, kernel, "none", dilation);
+  const size_t slot_size = past.size();
+  std::vector<float> state(static_cast<size_t>(window) * slot_size, 0);
+  for (int slot = 0; slot < window; ++slot) {
+    const int prefix = length - window + slot + 1;
+    if (prefix <= 0) continue;
+    for (int b = 0; b < batch; ++b) {
+      for (int c = 0; c < channels; ++c) {
+        const auto bc = static_cast<size_t>(b) * channels + c;
+        for (int p = 0; p < pad; ++p) {
+          const int virtual_position = prefix + p;
+          state[static_cast<size_t>(slot) * slot_size + bc * pad + p] =
+              virtual_position < pad ? (with_past ? past[bc * pad + virtual_position] : 0)
+                                     : input[bc * length + virtual_position - pad];
+        }
+      }
+    }
+  }
+  auto convert = [](const std::vector<float>& values) {
+    std::vector<T> result;
+    result.reserve(values.size());
+    for (float value : values) result.push_back(static_cast<T>(value));
+    return result;
+  };
+  auto layout = [&](const std::vector<float>& values, int positions) {
+    return convert(channels_last ? ToChannelsLast(values, batch, channels, positions) : values);
+  };
+  auto window_layout = [&](const std::vector<float>& values) {
+    std::vector<T> result;
+    result.reserve(values.size());
+    for (int slot = 0; slot < window; ++slot) {
+      const auto begin = values.begin() + static_cast<size_t>(slot) * slot_size;
+      const auto converted = layout(std::vector<float>(begin, begin + slot_size), pad);
+      result.insert(result.end(), converted.begin(), converted.end());
+    }
+    return result;
+  };
+  const std::vector<int64_t> input_shape = channels_last ? std::vector<int64_t>{batch, length, channels}
+                                                         : std::vector<int64_t>{batch, channels, length};
+  const std::vector<int64_t> state_shape = channels_last ? std::vector<int64_t>{window, batch, pad, channels}
+                                                         : std::vector<int64_t>{window, batch, channels, pad};
+  OpTester test("CausalConvWithState", 1, kMSDomain);
+  test.AddAttribute<std::string>("activation", "none");
+  test.AddAttribute<int64_t>("channels_last", channels_last);
+  test.AddAttribute<int64_t>("dilation", dilation);
+  test.AddAttribute<int64_t>("state_window", window);
+  test.AddInput<T>("input", input_shape, layout(input, length));
+  test.AddInput<T>("weight", {channels, 1, kernel}, convert(weight));
+  if (with_bias)
+    test.AddInput<T>("bias", {channels}, convert(bias));
+  else
+    test.AddOptionalInputEdge<T>();
+  if (with_past) {
+    // Poison all but the last slot to catch incorrect past-window selection.
+    std::vector<float> windowed_past(static_cast<size_t>(window) * slot_size, -16);
+    std::copy(past.begin(), past.end(), windowed_past.end() - slot_size);
+    test.AddInput<T>("past_state", state_shape, window_layout(windowed_past));
+  } else {
+    test.AddOptionalInputEdge<T>();
+  }
+  test.AddOutput<T>("output", input_shape, layout(output, length));
+  test.AddOutput<T>("present_state", state_shape, window_layout(state));
+  test.SetOutputAbsErr("output", 0);
+  test.SetOutputRelErr("output", 0);
+  test.SetOutputAbsErr("present_state", 0);
+  test.SetOutputRelErr("present_state", 0);
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+}
+
+template <typename T>
+static void RunResourceSafePrefillMatrix() {
+  int device = 0, shared_bytes = 0, optin_bytes = 0;
+  ASSERT_EQ(cudaGetDevice(&device), cudaSuccess);
+  ASSERT_EQ(cudaDeviceGetAttribute(&shared_bytes, cudaDevAttrMaxSharedMemoryPerBlock, device), cudaSuccess);
+  // C=3 selects the single-channel shared candidate: (2*dilation + L + K)*sizeof(float).
+  // Exercise the last fitting length and the first over-budget length on this device.
+  const int fitting_length = shared_bytes / static_cast<int>(sizeof(float)) - 9;
+  ASSERT_GT(fitting_length, 128);
+  RunResourceSafePrefillCase<T>(2, 3, fitting_length, 3, 3, false, true, true);
+  RunResourceSafePrefillCase<T>(2, 3, fitting_length + 1, 3, 3, false, true, true);
+  ASSERT_EQ(cudaDeviceGetAttribute(&optin_bytes, cudaDevAttrMaxSharedMemoryPerBlockOptin, device), cudaSuccess);
+  const int optin_length = std::max(shared_bytes, optin_bytes) / static_cast<int>(sizeof(float)) - 9;
+  RunResourceSafePrefillCase<T>(2, 3, optin_length, 3, 3, false, true, true);
+  RunResourceSafePrefillCase<T>(2, 3, optin_length + 1, 3, 3, false, true, true);
+  for (bool channels_last : {false, true}) {
+    for (int length : {65535, 65536}) {
+      RunResourceSafePrefillCase<T>(2, 3, length, 3, 3, channels_last, length == 65536, !channels_last);
+    }
+  }
+  // Small L but large dilated history exercises the batched candidate's resource limit.
+  // W>L also checks zero-initialized leading slots on that fallback.
+  RunResourceSafePrefillCase<T>(2, 4, 2, 10000, 4, false, false, true);
+  // Cross the CUDA grid.z limit without a large tensor.
+  RunResourceSafePrefillCase<T>(65536, 1, 2, 1, 3, true, true, false);
+}
+
+TEST(CausalConvWithStateTest, ResourceSafePrefillFloatCuda) {
+  if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA is required.";
+  RunResourceSafePrefillMatrix<float>();
+}
+
+TEST(CausalConvWithStateTest, ResourceSafePrefillFloat16Cuda) {
+  if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA is required.";
+  RunResourceSafePrefillMatrix<MLFloat16>();
+}
+
+TEST(CausalConvWithStateTest, ResourceSafePrefillBFloat16Cuda) {
+  if (!CudaHasBF16Support()) GTEST_SKIP() << "CUDA BF16 requires SM80 or newer.";
+  RunResourceSafePrefillMatrix<BFloat16>();
+}
+
+TEST(CausalConvWithStateTest, NativeIndexAndByteBoundariesWithoutAllocations) {
+  using contrib::cuda::CausalConvDecodeFitsNativeIndex;
+  using contrib::cuda::ValidateCausalConvNativeParameters;
+  const int64_t limit = std::numeric_limits<int>::max();
+  EXPECT_TRUE(CausalConvDecodeFitsNativeIndex(1, static_cast<int>(limit)));
+  EXPECT_TRUE(CausalConvDecodeFitsNativeIndex(65536, 32767));
+  EXPECT_FALSE(CausalConvDecodeFitsNativeIndex(65536, 32768));
+  EXPECT_TRUE(ValidateCausalConvNativeParameters(0, 3, limit, 1, limit, 1, 4).IsOK());
+  EXPECT_TRUE(ValidateCausalConvNativeParameters(1, 1, 1, 2, limit, 1, 2).IsOK());
+  for (auto dims : {std::array<int64_t, 6>{limit + 1, 1, 1, 1, 1, 1},
+                    {0, limit + 1, 1, 1, 1, 1},
+                    {0, 1, limit + 1, 1, 1, 1},
+                    {0, 1, 1, limit + 1, 1, 1},
+                    {0, 1, 1, 0, 1, 1},
+                    {0, 0, 1, 1, 1, 1},
+                    {0, 1, 0, 1, 1, 1},
+                    {0, 1, 1, 3, limit, 1},
+                    {limit, limit, 2, 1, 1, 1},
+                    {0, limit, limit, 1, 1, 1},
+                    {0, limit, 1, 2, limit, limit}}) {
+    EXPECT_FALSE(ValidateCausalConvNativeParameters(dims[0], dims[1], dims[2], dims[3], dims[4], dims[5], 4)
+                     .IsOK());
+  }
+}
+
+TEST(CausalConvWithStateTest, ChannelGridBoundaryAndGenericDecodeCuda) {
+  if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA is required.";
+  for (int channels : {65535, 65536}) {
+    RunResourceSafePrefillCase<float>(1, channels, 129, 1, 1, false, true, true);
+  }
+  for (int channels : {4 * 65535, 4 * 65535 + 1}) {
+    RunResourceSafePrefillCase<float>(1, channels, 2, 1, 1, false, true, true);
+  }
+  RunResourceSafePrefillCase<float>(2, 35, 1, 3, 1, false, true, true);
+}
+
+TEST(CausalConvWithStateTest, EmptyBatchCudaPreservesLayoutsAndWindows) {
+  if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA is required.";
+  for (bool channels_last : {false, true}) {
+    for (int window : {0, 3}) {
+      for (int length : {1, 2, 17}) {
+        const std::vector<int64_t> input_shape = channels_last ? std::vector<int64_t>{0, length, 1, 2}
+                                                               : std::vector<int64_t>{0, 2, length};
+        std::vector<int64_t> state_shape = channels_last ? std::vector<int64_t>{0, 4, 1, 2}
+                                                         : std::vector<int64_t>{0, 2, 4};
+        if (window) state_shape.insert(state_shape.begin(), window);
+        OpTester test("CausalConvWithState", 1, kMSDomain);
+        test.AddAttribute<int64_t>("channels_last", channels_last);
+        test.AddAttribute<int64_t>("dilation", 2);
+        test.AddAttribute<int64_t>("state_window", window);
+        test.AddInput<float>("input", input_shape, {});
+        test.AddInput<float>("weight", {2, 1, 3}, std::vector<float>(6, 0.25f));
+        test.AddInput<float>("bias", {2}, {0.25f, -0.25f});
+        test.AddInput<float>("past_state", state_shape, {});
+        test.AddOutput<float>("output", input_shape, {});
+        test.AddOutput<float>("present_state", state_shape, {});
+        std::vector<std::unique_ptr<IExecutionProvider>> eps;
+        eps.push_back(DefaultCudaExecutionProvider());
+        test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+      }
+    }
+  }
+}
+
+TEST(CausalConvWithStateTest, EmptyBatchCudaStillValidatesInputs) {
+  if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA is required.";
+  for (int invalid = 0; invalid < 4; ++invalid) {
+    OpTester test("CausalConvWithState", 1, kMSDomain);
+    test.AddAttribute<int64_t>("state_window", 3);
+    const int length = invalid == 3 ? 0 : 2;
+    const int weight_channels = invalid == 0 ? 3 : 2;
+    const int bias_channels = invalid == 1 ? 3 : 2;
+    test.AddInput<float>("input", {0, 2, length}, {});
+    test.AddInput<float>("weight", {weight_channels, 1, 3}, std::vector<float>(weight_channels * 3, 0.25f));
+    test.AddInput<float>("bias", {bias_channels}, std::vector<float>(bias_channels, 0.25f));
+    test.AddInput<float>("past_state", {3, 0, 2, invalid == 2 ? 3 : 2}, {});
+    test.AddOutput<float>("output", {0, 2, length}, {});
+    test.AddOutput<float>("present_state", {3, 0, 2, 2}, {});
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(DefaultCudaExecutionProvider());
+    const char* error = invalid == 0 ? "weight" : invalid == 1 ? "bias"
+                                              : invalid == 2   ? "past_state"
+                                                               : "positive";
+    test.Run(OpTester::ExpectResult::kExpectFailure, error, {}, nullptr, &eps);
+  }
 }
 #endif  // USE_CUDA
 
