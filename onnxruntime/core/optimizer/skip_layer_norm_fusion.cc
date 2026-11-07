@@ -181,9 +181,11 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     Node& ln_node = *p_layernorm;
     ORT_RETURN_IF_ERROR(Recurse(ln_node, modified, graph_level, logger));
 
+    const auto* axis = graph_utils::GetNodeAttribute(ln_node, "axis");
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(ln_node, "LayerNormalization", {1, 17}) ||
         !graph_utils::IsSupportedProvider(ln_node, GetCompatibleExecutionProviders()) ||
-        !IsSupportedDataType(ln_node)) {
+        !IsSupportedDataType(ln_node) ||
+        (axis != nullptr && axis->i() != -1)) {
       continue;
     }
 
