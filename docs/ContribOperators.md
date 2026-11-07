@@ -4736,17 +4736,21 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Reduction dimension.</dd>
 <dt><tt>N</tt> : int (required)</dt>
 <dd>Output dimension.</dd>
+<dt><tt>dequantize_to_activation_dtype</tt> : int</dt>
+<dd>Round complete dequantized weights to A's dtype before decode accumulation. Default preserves the existing decode path; prefill already dequantizes to A's dtype.</dd>
 <dt><tt>packed_type</tt> : int (required)</dt>
 <dd>Packed quantization format enum for B (0..99 map to GGUF ggml_type; >=100 reserved for custom formats).</dd>
 </dl>
 
-#### Inputs
+#### Inputs (2 - 3)
 
 <dl>
 <dt><tt>A</tt> : T1</dt>
 <dd>Input activations [..., K].</dd>
 <dt><tt>B</tt> : T2</dt>
 <dd>Packed weight blob [N, row_bytes].</dd>
+<dt><tt>global_scale</tt> (optional) : Tscale</dt>
+<dd>Optional scalar FP32 multiplier for NVFP4, applied to FP32 accumulation before the output cast.</dd>
 </dl>
 
 #### Outputs
@@ -4763,6 +4767,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Activation type.</dd>
 <dt><tt>T2</tt> : tensor(uint8)</dt>
 <dd>Packed byte storage.</dd>
+<dt><tt>Tscale</tt> : tensor(float)</dt>
+<dd>Global scale type.</dd>
 </dl>
 
 
@@ -9480,3 +9486,5 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
+
+

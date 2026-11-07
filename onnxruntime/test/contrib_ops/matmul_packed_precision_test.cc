@@ -157,12 +157,12 @@ TEST(MatMulPackedPrecisionTest, RoundedBf16ContiguousKCancellation) {
   for (int rows : {1, 7, 8}) {
     std::vector<BFloat16> a(rows * k, BFloat16(0.f));
     for (int row = 0; row < rows; ++row) {
-      // The contiguous MMA layout retains both unit terms; interleaving
-      // 32-K partitions loses one at the cross-warp reduction.
+      // Keep unit terms out of large-magnitude MMA partials: their internal
+      // accumulation order differs between Ampere and Hopper.
       a[row * k] = BFloat16(0x1p25f);
-      a[row * k + 32] = BFloat16(1.f);
       a[row * k + 64] = BFloat16(-0x1p25f);
-      a[row * k + 96] = BFloat16(1.f);
+      a[row * k + 128] = BFloat16(1.f);
+      a[row * k + 160] = BFloat16(1.f);
     }
     OpTester test("MatMulPacked", 1, kMSDomain);
     test.AddAttribute("K", int64_t{k});

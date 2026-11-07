@@ -35,7 +35,8 @@ MatMulPacked<T>::MatMulPacked(const OpKernelInfo& info) : CudaKernel(info) {
   ORT_ENFORCE(info.GetAttr<int64_t>("N", &n_).IsOK() && n_ > 0, "MatMulPacked requires N > 0");
   ORT_ENFORCE(info.GetAttr<int64_t>("packed_type", &ggml_type_).IsOK() && ggml_type_ >= 0,
               "MatMulPacked requires packed_type >= 0");
-  ORT_ENFORCE(gguf_quant::IsGgmlTypeSupported(ggml_type_), "MatMulPacked: unsupported packed_type=", ggml_type_);
+  ORT_ENFORCE(gguf_quant::IsGgmlTypeSupported(ggml_type_) || ggml_type_ == gguf_quant::kGgmlTypeNVFP4,
+              "MatMulPacked: unsupported packed_type=", ggml_type_);
   const int64_t round_weights = info.GetAttrOrDefault<int64_t>("dequantize_to_activation_dtype", 0);
   ORT_ENFORCE(round_weights == 0 || round_weights == 1, "dequantize_to_activation_dtype must be 0 or 1");
   dequantize_to_activation_dtype_ = round_weights != 0;
