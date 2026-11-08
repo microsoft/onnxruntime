@@ -1,7 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+#include <cmath>
+#include <complex>
 #include <functional>
+#include <random>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -952,6 +956,237 @@ TEST(SignalOpsTest, DFT17_2D_real) {
 
 TEST(SignalOpsTest, DFT20_2D_real) {
   TestDFT2DReal(kOpsetVersion20);
+}
+
+// ---- WebGPU FFT engine coverage -------------------------------------------------------------------
+// The WebGPU kernels pick among single-pass Stockham, real-packed, four-step and Bluestein FFTs by
+// length; these cases compare every path against a double-precision reference DFT.
+
+namespace {
+
+vector<float> RandomValues(size_t count, uint32_t seed) {
+  std::mt19937 rng(seed);
+  std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+  vector<float> values(count);
+  for (auto& v : values) v = dist(rng);
+  return values;
+}
+
+// Length-`length` DFT of `signal`, with exp(sign * 2*pi*i*j*k / length) twiddles.
+vector<std::complex<double>> ReferenceTransform(const vector<std::complex<double>>& signal, int64_t length,
+                                                bool inverse) {
+  const double sign = inverse ? 1.0 : -1.0;
+  vector<std::complex<double>> twiddles(static_cast<size_t>(length));
+  for (int64_t i = 0; i < length; ++i) {
+    const double angle = sign * 2.0 * 3.141592653589793238462643383279502884 * static_cast<double>(i) / static_cast<double>(length);
+    twiddles[static_cast<size_t>(i)] = {std::cos(angle), std::sin(angle)};
+  }
+  vector<std::complex<double>> spectrum(static_cast<size_t>(length));
+  for (int64_t k = 0; k < length; ++k) {
+    std::complex<double> acc = 0;
+    int64_t index = 0;
+    for (int64_t j = 0; j < length; ++j) {
+      acc += signal[static_cast<size_t>(j)] * twiddles[static_cast<size_t>(index)];
+      index += k;
+      if (index >= length) index -= length;
+    }
+    spectrum[static_cast<size_t>(k)] = inverse ? acc / static_cast<double>(length) : acc;
+  }
+  return spectrum;
+}
+
+float FftTolerance(const vector<float>& expected, int64_t length) {
+  float max_abs = 0.0f;
+  for (float v : expected) max_abs = std::max(max_abs, std::abs(v));
+  return 5e-5f * std::log2(2.0f * static_cast<float>(length)) * max_abs + 1e-5f;
+}
+
+void RunOnWebGpu(OpTester& test) {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.ConfigEps(std::move(execution_providers)).RunWithConfig();
+}
+
+// DFT along axis 1 of an [outer, signal_length, inner, components] tensor.
+void TestWebGpuDft(int64_t outer, int64_t signal_length, int64_t inner, int64_t components, int64_t length,
+                   bool inverse, bool onesided) {
+  if (nullptr == DefaultWebGpuExecutionProvider().get()) {
+    GTEST_SKIP() << "Test requires the WebGPU execution provider.";
+  }
+  SCOPED_TRACE(::testing::Message() << "outer=" << outer << " signal_length=" << signal_length << " inner=" << inner
+                                    << " components=" << components << " length=" << length
+                                    << " inverse=" << inverse << " onesided=" << onesided);
+  const bool hermitian = inverse && onesided;
+  const int64_t output_length = onesided && !inverse ? length / 2 + 1 : length;
+  const int64_t output_components = hermitian ? 1 : 2;
+  const vector<float> input = RandomValues(static_cast<size_t>(outer * signal_length * inner * components),
+                                           static_cast<uint32_t>(length * 31 + signal_length));
+  vector<float> expected(static_cast<size_t>(outer * output_length * inner * output_components));
+
+  for (int64_t o = 0; o < outer; ++o) {
+    for (int64_t w = 0; w < inner; ++w) {
+      auto sample = [&](int64_t j) {
+        const size_t off = static_cast<size_t>(((o * signal_length + j) * inner + w) * components);
+        return std::complex<double>(input[off], components == 2 ? input[off + 1] : 0.0f);
+      };
+      vector<std::complex<double>> signal(static_cast<size_t>(length));
+      for (int64_t j = 0; j < length; ++j) {
+        if (hermitian) {
+          const int64_t half = length / 2 + 1;
+          const int64_t provided = std::min(signal_length, half);
+          if (j < half) {
+            signal[static_cast<size_t>(j)] = j < provided ? sample(j) : 0.0;
+          } else if (length - j < provided) {
+            signal[static_cast<size_t>(j)] = std::conj(sample(length - j));
+          }
+        } else if (j < signal_length) {
+          signal[static_cast<size_t>(j)] = sample(j);
+        }
+      }
+      const auto spectrum = ReferenceTransform(signal, length, inverse);
+      for (int64_t k = 0; k < output_length; ++k) {
+        const size_t off = static_cast<size_t>(((o * output_length + k) * inner + w) * output_components);
+        expected[off] = static_cast<float>(spectrum[static_cast<size_t>(k)].real());
+        if (output_components == 2) expected[off + 1] = static_cast<float>(spectrum[static_cast<size_t>(k)].imag());
+      }
+    }
+  }
+
+  OpTester test("DFT", kOpsetVersion20);
+  test.AddInput<float>("input", {outer, signal_length, inner, components}, input);
+  test.AddInput<int64_t>("dft_length", {}, {length});
+  test.AddInput<int64_t>("axis", {}, {1});
+  test.AddAttribute<int64_t>("inverse", static_cast<int64_t>(inverse));
+  test.AddAttribute<int64_t>("onesided", static_cast<int64_t>(onesided));
+  test.AddOutput<float>("output", {outer, output_length, inner, output_components}, expected);
+  test.SetOutputAbsErr("output", FftTolerance(expected, length));
+  RunOnWebGpu(test);
+}
+
+void TestWebGpuDftAllModes(int64_t length, int64_t outer) {
+  TestWebGpuDft(outer, length, 1, 2, length, false, false);        // complex forward
+  TestWebGpuDft(outer, length, 1, 2, length, true, false);         // complex inverse
+  TestWebGpuDft(outer, length, 1, 1, length, false, false);        // real forward, full spectrum
+  TestWebGpuDft(outer, length, 1, 1, length, false, true);         // RFFT
+  TestWebGpuDft(outer, length / 2 + 1, 1, 2, length, true, true);  // IRFFT
+}
+
+}  // namespace
+
+// 13-smooth lengths that fit in workgroup memory: single-pass Stockham (radices 2..13), including
+// short transforms packed several per workgroup.
+TEST(SignalOpsTest, WebGpuDFT_SinglePass) {
+  for (int64_t length : {1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13, 16, 30, 49, 64, 100, 120, 121, 169, 256, 384, 1000,
+                         1024, 2048}) {
+    TestWebGpuDftAllModes(length, 5);
+  }
+}
+
+// Prime and other non-13-smooth lengths: Bluestein chirp-z.
+TEST(SignalOpsTest, WebGpuDFT_Bluestein) {
+  for (int64_t length : {17, 31, 34, 97, 257, 1009, 2053}) {
+    TestWebGpuDftAllModes(length, 3);
+  }
+}
+
+// Lengths beyond workgroup memory: four-step FFT (and four-step inside Bluestein).
+TEST(SignalOpsTest, WebGpuDFT_FourStep) {
+  for (int64_t length : {4096, 6000, 8192, 16384, 4099}) {
+    TestWebGpuDftAllModes(length, 2);
+  }
+}
+
+// Transforms along a non-trailing signal axis, so consecutive transforms interleave in memory.
+TEST(SignalOpsTest, WebGpuDFT_StridedRows) {
+  for (int64_t length : {16, 60, 17, 5000}) {
+    TestWebGpuDft(2, length, 3, 2, length, false, false);
+    TestWebGpuDft(2, length, 3, 1, length, false, true);
+    TestWebGpuDft(2, length / 2 + 1, 3, 2, length, true, true);
+  }
+}
+
+// dft_length that zero-pads or truncates the signal.
+TEST(SignalOpsTest, WebGpuDFT_PadAndTruncate) {
+  for (auto [signal_length, length] : std::vector<std::pair<int64_t, int64_t>>{{5, 8}, {12, 8}, {100, 257}, {300, 17}, {3000, 6000}}) {
+    TestWebGpuDft(3, signal_length, 1, 2, length, false, false);
+    TestWebGpuDft(3, signal_length, 1, 1, length, false, true);
+    TestWebGpuDft(3, signal_length, 1, 2, length, true, true);
+  }
+}
+
+namespace {
+
+void TestWebGpuStft(int64_t batch, int64_t signal_length, int64_t components, int64_t frame_length,
+                    int64_t frame_step, bool use_window, bool pass_frame_length, bool onesided, bool rank2) {
+  if (nullptr == DefaultWebGpuExecutionProvider().get()) {
+    GTEST_SKIP() << "Test requires the WebGPU execution provider.";
+  }
+  SCOPED_TRACE(::testing::Message() << "batch=" << batch << " signal_length=" << signal_length
+                                    << " components=" << components << " frame_length=" << frame_length
+                                    << " frame_step=" << frame_step << " window=" << use_window
+                                    << " onesided=" << onesided);
+  const vector<float> signal = RandomValues(static_cast<size_t>(batch * signal_length * components),
+                                            static_cast<uint32_t>(frame_length * 7 + frame_step));
+  const vector<float> window = RandomValues(static_cast<size_t>(frame_length), 1234u);
+  const int64_t frames = (signal_length - frame_length) / frame_step + 1;
+  const int64_t bins = onesided ? frame_length / 2 + 1 : frame_length;
+
+  vector<float> expected(static_cast<size_t>(batch * frames * bins * 2));
+  for (int64_t b = 0; b < batch; ++b) {
+    for (int64_t f = 0; f < frames; ++f) {
+      vector<std::complex<double>> frame(static_cast<size_t>(frame_length));
+      for (int64_t j = 0; j < frame_length; ++j) {
+        const size_t off = static_cast<size_t>((b * signal_length + f * frame_step + j) * components);
+        const double scale = use_window ? window[static_cast<size_t>(j)] : 1.0;
+        frame[static_cast<size_t>(j)] = std::complex<double>(signal[off], components == 2 ? signal[off + 1] : 0.0f) *
+                                        scale;
+      }
+      const auto spectrum = ReferenceTransform(frame, frame_length, false);
+      for (int64_t k = 0; k < bins; ++k) {
+        const size_t off = static_cast<size_t>(((b * frames + f) * bins + k) * 2);
+        expected[off] = static_cast<float>(spectrum[static_cast<size_t>(k)].real());
+        expected[off + 1] = static_cast<float>(spectrum[static_cast<size_t>(k)].imag());
+      }
+    }
+  }
+
+  OpTester test("STFT", kMinOpsetVersion);
+  test.AddAttribute<int64_t>("onesided", static_cast<int64_t>(onesided));
+  if (rank2) {
+    test.AddInput<float>("signal", {batch, signal_length}, signal);
+  } else {
+    test.AddInput<float>("signal", {batch, signal_length, components}, signal);
+  }
+  test.AddInput<int64_t>("frame_step", {}, {frame_step});
+  if (use_window) {
+    test.AddInput<float>("window", {frame_length}, window);
+  } else {
+    test.AddOptionalInputEdge<float>();
+  }
+  if (pass_frame_length) {
+    test.AddInput<int64_t>("frame_length", {}, {frame_length});
+  }
+  test.AddOutput<float>("output", {batch, frames, bins, 2}, expected);
+  test.SetOutputAbsErr("output", FftTolerance(expected, frame_length));
+  RunOnWebGpu(test);
+}
+
+}  // namespace
+
+TEST(SignalOpsTest, WebGpuSTFT) {
+  // Real signal, onesided (real-packed path), with the usual audio frame sizes.
+  TestWebGpuStft(2, 4000, 1, 400, 160, true, true, true, false);
+  TestWebGpuStft(2, 4000, 1, 512, 128, true, false, true, false);
+  TestWebGpuStft(1, 20000, 1, 2048, 512, true, true, true, true);
+  // Odd, prime (Bluestein) and four-step frame lengths.
+  TestWebGpuStft(2, 3000, 1, 255, 100, true, true, true, false);
+  TestWebGpuStft(2, 3000, 1, 251, 64, true, true, true, false);
+  TestWebGpuStft(1, 20000, 1, 8192, 4000, true, true, true, false);
+  // Full spectrum, complex signals, no window.
+  TestWebGpuStft(3, 1000, 1, 64, 32, true, true, false, false);
+  TestWebGpuStft(3, 1000, 2, 64, 30, true, true, false, false);
+  TestWebGpuStft(3, 1000, 2, 48, 30, false, true, true, false);
+  TestWebGpuStft(2, 777, 2, 97, 41, false, true, false, false);
 }
 
 }  // namespace test

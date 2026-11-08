@@ -1951,6 +1951,7 @@ The **OpSet Version** column uses the following notation:
 |RotaryEmbedding|*in* X:**T**<br> *in* cos_cache:**T**<br> *in* sin_cache:**T**<br> *in* position_ids:**M**<br> *out* Y:**T**|23+|**M** = tensor(int64)<br/> **T** = tensor(float), tensor(float16)|
 |Round|*in* X:**T**<br> *out* Y:**T**|22+|**T** = tensor(float), tensor(float16)|
 |||[11, 21]|**T** = tensor(float), tensor(float16)|
+|STFT|*in* signal:**T1**<br> *in* frame_step:**T2**<br> *in* window:**T1**<br> *in* frame_length:**T2**<br> *out* output:**T1**|17+|**T1** = tensor(float), tensor(float16)<br/> **T2** = tensor(int32), tensor(int64)|
 |ScatterElements|*in* data:**T**<br> *in* indices:**Tind**<br> *in* updates:**T**<br> *out* output:**T**|18+|**T** = tensor(float), tensor(float16), tensor(int32), tensor(uint32)<br/> **Tind** = tensor(int32), tensor(int64)|
 |||[16, 17]|**T** = tensor(float), tensor(float16), tensor(int32), tensor(uint32)<br/> **Tind** = tensor(int32), tensor(int64)|
 |||[13, 15]|**T** = tensor(float), tensor(float16), tensor(int32), tensor(uint32)<br/> **Tind** = tensor(int32), tensor(int64)|
