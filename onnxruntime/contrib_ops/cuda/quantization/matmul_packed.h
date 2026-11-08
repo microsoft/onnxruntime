@@ -18,6 +18,7 @@ using namespace onnxruntime::cuda;
 // Leave room for the largest (32-column) decode tile.
 inline constexpr int64_t kMatMulPackedMaxDimension = std::numeric_limits<int>::max() - 31;
 inline constexpr int kMatMulPackedPrefillNTile = 4096;
+inline constexpr int kMatMulPackedPrefillMTile = 128;
 inline constexpr int kMatMulPackedBf16TcMinN = 65536;
 
 struct MatMulPackedParams {
@@ -27,9 +28,12 @@ struct MatMulPackedParams {
   int64_t row_bytes{0};
   int ggml_type{0};
   bool bf16_tc_supported{false};
+  bool fp32_prefill{false};
 };
 
-Status GetMatMulPackedBf16KernelSupport(bool& supported);
+Status GetMatMulPackedBf16KernelSupport(int device_id, bool& supported);
+
+Status GetMatMulPackedWorkspaceBytes(const MatMulPackedParams& params, int64_t m, size_t& workspace_bytes);
 
 Status LaunchMatMulPackedCuda(
     cublasHandle_t cublas,

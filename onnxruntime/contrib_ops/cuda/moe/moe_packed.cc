@@ -57,7 +57,7 @@ MoEPacked<T>::MoEPacked(const OpKernelInfo& info) : CudaKernel(info) {
   ORT_ENFORCE(gguf_quant::IsGgmlTypeSupported(down_type_), "MoEPacked: unsupported down_type=", down_type_);
   if constexpr (std::is_same_v<T, BFloat16>) {
     ORT_ENFORCE(GetDeviceProp().major >= 8, "MoEPacked BF16 requires compute capability 8.0 or higher");
-    ORT_THROW_IF_ERROR(CheckMoEPackedBf16KernelSupport());
+    ORT_THROW_IF_ERROR(GetMoEPackedBf16KernelSupport(GetDeviceId(), bf16_tc_supported_));
   }
 }
 
@@ -131,7 +131,7 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
   max_params.inter_size = static_cast<int>(inter_size);
   max_params.k = static_cast<int>(k_);
   max_params.normalize_routing_weights = (normalize_routing_weights_ != 0);
-  max_params.bf16_tc_supported = is_bf16;
+  max_params.bf16_tc_supported = bf16_tc_supported_;
   max_params.gate_type = static_cast<int>(gate_type_);
   max_params.up_type = static_cast<int>(up_type_);
   max_params.down_type = static_cast<int>(down_type_);

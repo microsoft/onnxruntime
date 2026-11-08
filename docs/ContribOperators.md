@@ -4734,7 +4734,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.MatMulPacked"></a><a name="com.microsoft.matmulpacked">**com.microsoft.MatMulPacked**</a>
 
   Matrix multiplication Y = A @ B^T where B is a 2D block-packed weight tensor.
-  CUDA prefill dequantizes output-dimension tiles of B to the activation type using bounded scratch memory and uses float32 accumulation and reductions.
+  CUDA prefill uses bounded scratch memory and float32 accumulation and reductions. BF16 activations use BF16-rounded decoded weights; FP16 activations use float32 decoded weights unless the packed format is F16. CUDA execution requires weights in device memory.
 
 #### Version
 
@@ -4968,7 +4968,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.MoEPacked"></a><a name="com.microsoft.moepacked">**com.microsoft.MoEPacked**</a>
 
-  Mixture-of-Experts layer consuming 3D block-packed gate, up, and down expert weight blobs.
+  Mixture-of-Experts layer consuming 3D block-packed gate, up, and down expert weight blobs. CUDA execution requires weights in device memory; host-backed external initializers are copied to the device without changing their packed layout.
 
 #### Version
 

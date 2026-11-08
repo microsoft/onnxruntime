@@ -1016,6 +1016,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (k <= 0) fail_shape_inference("GatherPacked K must be positive.");
           const int64_t out_dt = getAttribute(
               ctx, "output_dtype", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16));
+          if (out_dt != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+              out_dt != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
+              out_dt != ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
+            fail_type_inference("GatherPacked output_dtype must be FLOAT, FLOAT16, or BFLOAT16; got ", out_dt);
+          }
           ctx.getOutputType(0)->mutable_tensor_type()->set_elem_type(static_cast<int32_t>(out_dt));
           if (!hasInputShape(ctx, 1)) return;
           const auto& indices_shape = getInputShape(ctx, 1);
@@ -1030,8 +1035,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     MatMulPacked, 1,
     OpSchema()
         .SetDoc("Matrix multiplication Y = A @ B^T where B is a 2D block-packed weight tensor.\n"
-                "CUDA prefill dequantizes output-dimension tiles of B to the activation type using bounded scratch "
-                "memory and uses float32 accumulation and reductions.")
+                "CUDA prefill uses bounded scratch memory and float32 accumulation and reductions. "
+                "BF16 activations use BF16-rounded decoded weights; FP16 activations use float32 decoded weights "
+                "unless the packed format is F16. CUDA execution requires weights in device memory.")
         .Attr("K",
               "Reduction dimension. Must be a whole number of packed blocks; CUDA requires a positive multiple of 32.",
               AttributeProto::INT)
@@ -1061,7 +1067,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 ONNX_MS_OPERATOR_SET_SCHEMA(
     MoEPacked, 1,
     OpSchema()
-        .SetDoc("Mixture-of-Experts layer consuming 3D block-packed gate, up, and down expert weight blobs.")
+        .SetDoc("Mixture-of-Experts layer consuming 3D block-packed gate, up, and down expert weight blobs. "
+                "CUDA execution requires weights in device memory; host-backed external initializers are copied "
+                "to the device without changing their packed layout.")
         .Attr("k", "Number of selected experts per token.", AttributeProto::INT)
         .Attr("normalize_routing_weights", "Whether to normalize top-k routing probabilities.",
               AttributeProto::INT, static_cast<int64_t>(1))

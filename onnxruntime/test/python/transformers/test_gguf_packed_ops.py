@@ -240,6 +240,43 @@ def _make_synthetic_gguf_rows(
 
 
 class TestGatherPackedKnownAnswers(unittest.TestCase):
+    def test_ggml_known_answer_blocks(self):
+        # Verified with gguf-py from llama.cpp commit 970b51ce7c9b, independently of the ORT decoder.
+        nibbles = bytes.fromhex("f0e1d2c3b4a5968778695a4b3c2d1e0f")
+        iq4_values = [-63.5, -52, -41.5, -32.5, -24.5, -17.5, -11, -5, 0.5, 6.5, 12.5, 19, 26.5, 34.5, 44.5, 56.5]
+        iq4_values += iq4_values[::-1]
+        cases = [
+            (
+                13,
+                bytes.fromhex("003800344182c3044586c70891a2b3c4") + bytes([255]) * 32 + bytes([240]) * 128,
+                np.repeat([6.75, 29.5, 22.25, 60, 129.75, 516.5, 393.25, 59], 32),
+            ),
+            (
+                14,
+                bytes([240]) * 128
+                + bytes([228]) * 64
+                + np.arange(-8, 8, dtype=np.int8).tobytes()
+                + bytes.fromhex("0038"),
+                np.repeat([128, 112, 48, 40, -30, -22.5, -31, -15.5, 0, -16, -16, -24, 30, 37.5, 93, 108.5], 16),
+            ),
+            (20, bytes.fromhex("0038") + nibbles, iq4_values),
+            (
+                23,
+                bytes.fromhex("0038e4e410325476") + nibbles * 8,
+                np.concatenate([np.array(iq4_values) * scale for scale in (-32, -15, 2, 19, -28, -11, 6, 23)]),
+            ),
+            (42, bytes.fromhex("0038") + bytes([228]) * 16, [-0.5, 0, 0.5, 1] * 16),
+        ]
+        for gtype, block, expected_values in cases:
+            raw = np.frombuffer(block, dtype=np.uint8).reshape(1, -1)
+            expected = np.array([expected_values], dtype=np.float32)
+            for dtype in (TensorProto.FLOAT, TensorProto.FLOAT16, TensorProto.BFLOAT16):
+                with self.subTest(gtype=gtype, dtype=dtype):
+                    model = _gather_model(1, expected.shape[1], len(block), gtype, dtype)
+                    got = _session(model, "CPUExecutionProvider").run(None, {"W": raw, "I": np.array([0], np.int64)})[0]
+                    ref = expected if dtype == TensorProto.FLOAT else _round_to_dtype(expected, dtype)
+                    np.testing.assert_array_equal(got, ref)
+
     def test_little_endian_blocks(self):
         values = [1.0, -2.0, 0.5, 0.0]
         iq2_values = [5.375] + [1.0] * 31
@@ -285,8 +322,34 @@ class TestGatherPackedKnownAnswers(unittest.TestCase):
                 )[0]
                 np.testing.assert_array_equal(got[:, 0], np.array([1, 3, 1, 1, 1], dtype=np.float32))
 
+    def test_cpu_low_precision_chunked_rows(self):
+        rng = np.random.default_rng(45)
+        indices = np.array([4, 2, 0, 1], dtype=np.int64)
+        for gtype, bel, bbytes in GGUF_TYPES_INFO:
+            for k in (257, 768, 1025) if bel == 1 else (768,):
+                raw = _make_synthetic_gguf_rows(rng, 5, k, gtype, bel, bbytes, quant_scale=2**-11)
+                expected = _dequantize_weights(raw, k, gtype)[indices]
+                for dtype in (TensorProto.FLOAT16, TensorProto.BFLOAT16):
+                    with self.subTest(gtype=gtype, k=k, dtype=dtype):
+                        session = _session(_gather_model(5, k, raw.shape[1], gtype, dtype), "CPUExecutionProvider")
+                        got = session.run(None, {"W": raw, "I": indices})[0]
+                        np.testing.assert_array_equal(got, _round_to_dtype(expected, dtype))
+
 
 class TestGatherPackedValidation(unittest.TestCase):
+    def test_reject_row_byte_overflow(self):
+        for gtype in (0, 1, 30):
+            for k in ((1 << 62) + 1, (1 << 63) - 1):
+                with self.subTest(gtype=gtype, k=k), self.assertRaisesRegex(Exception, "invalid K"):
+                    _session(_gather_model(1, k, 4, gtype), "CPUExecutionProvider")
+
+    def test_reject_invalid_output_dtype_before_narrowing(self):
+        for dtype in (-1, 0, (1 << 32) + 1, (1 << 32) + 10, (1 << 32) + 16, (1 << 63) - 1):
+            model = _gather_model(1, 1, 4, 0)
+            next(attr for attr in model.graph.node[0].attribute if attr.name == "output_dtype").i = dtype
+            with self.subTest(dtype=dtype), self.assertRaisesRegex(Exception, "output_dtype must be"):
+                _session(model, "CPUExecutionProvider")
+
     def test_reject_partial_quantization_blocks(self):
         for provider in ("CPUExecutionProvider", "CUDAExecutionProvider"):
             if provider not in ort.get_available_providers():
@@ -414,7 +477,7 @@ class TestGgufPackedOps(unittest.TestCase):
                     with self.subTest(gtype=gtype, dtype=dtype, m=m):
                         a = _round_to_dtype(rng.standard_normal((m, k), dtype=np.float32) * 0.2, dtype)
                         got = session.run(None, {"A_f32": a, "B": raw})[0]
-                        target = weights if m <= 8 else _round_to_dtype(weights, dtype)
+                        target = weights if m <= 8 or dtype == TensorProto.FLOAT16 else _round_to_dtype(weights, dtype)
                         ref = _round_to_dtype(a @ target.T, dtype)
                         np.testing.assert_allclose(got, ref, rtol=1e-2, atol=1e-2)
 
@@ -432,6 +495,35 @@ class TestGgufPackedOps(unittest.TestCase):
                     got = session.run(None, {"A_f32": a, "B": raw})[0]
                     # Preserve the residual after cancellation of large partial sums.
                     np.testing.assert_array_equal(got, np.full((m, n), -0.125, dtype=np.float32))
+
+    def test_matmul_packed_fp16_prefill_large_weights(self):
+        q8_block = np.array([1024], dtype="<f2").tobytes() + bytes([127]) * 32
+        q5_block = np.array([4096, 0], dtype="<f2").tobytes() + bytes([1]) * 12 + bytes([255]) * 32 + bytes([240]) * 128
+        cases = [
+            (0, 32, 4099, np.full(32, 100000, dtype="<f4").tobytes()),
+            (30, 32, 3, _f32_to_bf16_u16(np.full(32, 100000, np.float32)).astype("<u2").tobytes()),
+            (8, 32, 3, q8_block),
+            (13, 256, 3, q5_block),
+        ]
+        for gtype, k, n, block in cases:
+            raw = np.tile(np.frombuffer(block, np.uint8), (n, 1))
+            weights = _dequantize_weights(raw, k, gtype)
+            self.assertGreater(np.max(np.abs(weights)), np.finfo(np.float16).max)
+            session = _session(_matmul_model(k, n, raw.shape[1], gtype, TensorProto.FLOAT16), "CUDAExecutionProvider")
+            for m in (1, 8, 9, 129):
+                with self.subTest(gtype=gtype, m=m):
+                    a = _round_to_dtype(np.full((m, k), 1e-5, np.float32), TensorProto.FLOAT16)
+                    got = session.run(None, {"A_f32": a, "B": raw})[0]
+                    ref = _round_to_dtype(a @ weights.T, TensorProto.FLOAT16)
+                    self.assertTrue(np.all(np.isfinite(got)))
+                    np.testing.assert_array_equal(got, ref)
+
+    def test_matmul_packed_reject_partial_blocks_at_session_creation(self):
+        for gtype, bel, bbytes in GGUF_TYPES_INFO:
+            if bel <= 32:
+                continue
+            with self.subTest(gtype=gtype), self.assertRaisesRegex(Exception, "invalid K"):
+                _session(_matmul_model(32, 1, bbytes, gtype, TensorProto.FLOAT16), "CUDAExecutionProvider")
 
     def test_matmul_packed_partial_tensor_core_tile(self):
         if TensorProto.BFLOAT16 not in self.activation_dtypes:
@@ -467,6 +559,24 @@ class TestGgufPackedOps(unittest.TestCase):
                     TensorProto.BFLOAT16,
                 )
                 np.testing.assert_allclose(unaligned, ref, rtol=1e-2, atol=1e-2)
+
+    def test_matmul_packed_tensor_core_multiblock_k_split(self):
+        if TensorProto.BFLOAT16 not in self.activation_dtypes:
+            self.skipTest("BF16 MatMulPacked requires compute capability 8.0 or higher")
+        rng = np.random.default_rng(125)
+        k, n = 512, 65537
+        for gtype, bel, bbytes in GGUF_TYPES_INFO:
+            if gtype not in (0, 8, 13, 14, 23):
+                continue
+            raw = _make_synthetic_gguf_rows(rng, n, k, gtype, bel, bbytes, quant_scale=2**-10)
+            weights = _round_to_dtype(_dequantize_weights(raw, k, gtype), TensorProto.BFLOAT16)
+            session = _session(_matmul_model(k, n, raw.shape[1], gtype), "CUDAExecutionProvider")
+            for m in (1, 7, 8):
+                with self.subTest(gtype=gtype, m=m):
+                    a = _round_to_dtype(rng.standard_normal((m, k), dtype=np.float32) * 0.2, TensorProto.BFLOAT16)
+                    got = session.run(None, {"A_f32": a, "B": raw})[0]
+                    ref = _round_to_dtype(a @ weights.T, TensorProto.BFLOAT16)
+                    np.testing.assert_allclose(got, ref, rtol=1e-2, atol=1e-2)
 
     def test_matmul_packed_dimension_limits(self):
         max_dimension = 2147483616
@@ -576,6 +686,12 @@ class TestGgufPackedOps(unittest.TestCase):
         for hidden_size, inter_size in ((4096, 64), (256, 4096)):
             self._check_moe(2, hidden_size, inter_size, TensorProto.FLOAT16, formats, (4, 48), True)
 
+    def test_moe_packed_bf16_shared_chunk_reuse(self):
+        if TensorProto.BFLOAT16 not in self.activation_dtypes:
+            self.skipTest("BF16 MoEPacked requires compute capability 8.0 or higher")
+        # Bound intermediate-rounding noise without relaxing the shared tolerances.
+        self._check_moe(4, 768, 768, TensorProto.BFLOAT16, ((16, 256, 66),) * 3, (4, 48), True, quant_scale=2**-10)
+
     def test_moe_packed_workspace_reuse_across_chunks(self):
         for dtype in self.activation_dtypes:
             self._check_moe(2, 32, 32, dtype, ((1, 1, 2),) * 3, (2049,), True)
@@ -643,7 +759,9 @@ class TestGgufPackedOps(unittest.TestCase):
                                 (m, n),
                                 dtype,
                             )
-                            target = _round_to_dtype(weights, dtype) if m > 8 else weights
+                            target = (
+                                _round_to_dtype(weights, dtype) if m > 8 and dtype == TensorProto.BFLOAT16 else weights
+                            )
                             ref = _round_to_dtype(_round_to_dtype(a, dtype) @ target.T, dtype)
                             np.testing.assert_allclose(got, ref, rtol=1e-2, atol=1e-2)
 

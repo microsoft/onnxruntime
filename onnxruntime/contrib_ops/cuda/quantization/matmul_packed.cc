@@ -52,10 +52,12 @@ MatMulPacked<T>::MatMulPacked(const OpKernelInfo& info) : CudaKernel(info) {
   ORT_ENFORCE(info.GetAttr<int64_t>("packed_type", &ggml_type_).IsOK() && ggml_type_ >= 0,
               "MatMulPacked requires packed_type >= 0");
   ORT_ENFORCE(gguf_quant::IsGgmlTypeSupported(ggml_type_), "MatMulPacked: unsupported packed_type=", ggml_type_);
+  ORT_ENFORCE(gguf_quant::GgmlRowBytes(static_cast<int>(ggml_type_), k_) > 0,
+              "MatMulPacked: invalid K=", k_, " for packed_type=", ggml_type_);
   if constexpr (std::is_same_v<T, BFloat16>) {
     ORT_ENFORCE(GetDeviceProp().major >= 8, "MatMulPacked BF16 requires compute capability 8.0 or higher");
     if (n_ >= kMatMulPackedBf16TcMinN) {
-      ORT_THROW_IF_ERROR(GetMatMulPackedBf16KernelSupport(bf16_tc_supported_));
+      ORT_THROW_IF_ERROR(GetMatMulPackedBf16KernelSupport(GetDeviceId(), bf16_tc_supported_));
     }
   }
 }
@@ -90,8 +92,6 @@ Status MatMulPacked<T>::ComputeInternal(OpKernelContext* context) const {
                         (m <= 8 || PackedTensorBytesFit(scratch_rows, k_, sizeof(T))),
                     "MatMulPacked tensor byte size exceeds the supported address range");
   constexpr bool is_bf16 = std::is_same_v<T, BFloat16>;
-  ORT_RETURN_IF_NOT(!is_bf16 || m == 0 || m > 8 || n_ < kMatMulPackedBf16TcMinN || bf16_tc_supported_,
-                    "MatMulPacked BF16 Tensor Core decode requires kernels compiled for compute_80 or higher");
 
   MatMulPackedParams params{};
   params.b_data = b->Data<uint8_t>();
@@ -100,6 +100,10 @@ Status MatMulPacked<T>::ComputeInternal(OpKernelContext* context) const {
   params.row_bytes = expected_rb;
   params.ggml_type = static_cast<int>(ggml_type_);
   params.bf16_tc_supported = bf16_tc_supported_;
+  params.fp32_prefill = !is_bf16 && ggml_type_ != gguf_quant::kGgmlTypeF16;
+
+  size_t workspace_bytes = 0;
+  ORT_RETURN_IF_ERROR(GetMatMulPackedWorkspaceBytes(params, m, workspace_bytes));
 
   TensorShapeVector y_dims = a_shape.AsShapeVector();
   y_dims[last_axis] = n_;
@@ -107,10 +111,9 @@ Status MatMulPacked<T>::ComputeInternal(OpKernelContext* context) const {
 
   if (m == 0) return Status::OK();
 
-  IAllocatorUniquePtr<T> scratch_w;
-  if (m > 8) {
-    const size_t scratch_count = SafeInt<size_t>(scratch_rows) * k_;
-    scratch_w = GetScratchBuffer<T>(scratch_count, GetComputeStream(context));
+  IAllocatorUniquePtr<uint8_t> scratch_w;
+  if (workspace_bytes > 0) {
+    scratch_w = GetScratchBuffer<uint8_t>(workspace_bytes, GetComputeStream(context));
   }
 
   return LaunchMatMulPackedCuda(

@@ -30,6 +30,7 @@
 #include <cstdint>
 #include <cstring>
 #include <cmath>
+#include <limits>
 #include "core/common/common.h"
 #include "core/common/endian.h"
 #include "core/common/float16.h"
@@ -217,7 +218,11 @@ inline int64_t GgmlRowBytes(int ggml_type, int64_t K) {
   if (!GgmlTypeBlockInfo(ggml_type, block_elems, block_bytes) || K < 0 || (K % block_elems) != 0) {
     return -1;
   }
-  return (K / block_elems) * block_bytes;
+  const int64_t blocks = K / block_elems;
+  if (blocks > std::numeric_limits<int64_t>::max() / block_bytes) {
+    return -1;
+  }
+  return blocks * block_bytes;
 }
 
 #ifndef GGML_TABLE_BEGIN

@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+#include <array>
 #include <type_traits>
 
 #include "contrib_ops/cpu/quantization/gguf_quant_tables.h"
@@ -53,6 +55,11 @@ class GatherPacked final : public OpKernel {
     const size_t k = SafeInt<size_t>(k_);
     const size_t rb = SafeInt<size_t>(row_bytes_);
     const std::ptrdiff_t rows = SafeInt<std::ptrdiff_t>(num_rows);
+    constexpr size_t kChunkSize = 256;
+    int64_t block_elems = 0, block_bytes = 0;
+    ORT_ENFORCE(gguf_quant::GgmlTypeBlockInfo(type_id, block_elems, block_bytes) &&
+                    kChunkSize % block_elems == 0,
+                "GatherPacked CPU conversion chunks must contain whole packed blocks");
 
     concurrency::ThreadPool::TryBatchParallelFor(
         tp, rows,
@@ -64,10 +71,15 @@ class GatherPacked final : public OpKernel {
           if constexpr (std::is_same_v<T2, float>) {
             ORT_ENFORCE(gguf_quant::DequantizeGgufRowCpu(src_row, type_id, k_, dst_row));
           } else {
-            InlinedVector<float> tmp(k);
-            ORT_ENFORCE(gguf_quant::DequantizeGgufRowCpu(src_row, type_id, k_, tmp.data()));
-            for (size_t j = 0; j < k; ++j) {
-              dst_row[j] = T2(tmp[j]);
+            std::array<float, kChunkSize> tmp;
+            for (size_t offset = 0; offset < k;) {
+              const size_t count = std::min(kChunkSize, k - offset);
+              const uint8_t* src_chunk = src_row + (offset / block_elems) * block_bytes;
+              ORT_ENFORCE(gguf_quant::DequantizeGgufRowCpu(src_chunk, type_id, count, tmp.data()));
+              for (size_t j = 0; j < count; ++j) {
+                dst_row[offset + j] = T2(tmp[j]);
+              }
+              offset += count;
             }
           }
         },

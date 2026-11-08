@@ -3,6 +3,8 @@
 
 #include "contrib_ops/cuda/moe/moe_packed.h"
 
+#include <gsl/util>
+
 #include <climits>
 #include <cstdint>
 #include <type_traits>
@@ -758,7 +760,7 @@ __global__ __launch_bounds__(256) void MoEPackedFc2Bf16TcKernel(
   }
 }
 
-// Fallback SIMT FC1 + SwiGLU kernel (used for FP16).
+// SIMT fallback for FP16 and BF16 builds without Tensor Core bodies.
 template <typename CudaT, bool kUseShared>
 __global__ __launch_bounds__(256) void MoEPackedFc1SwiGLUSimtKernel(
     const CudaT* __restrict__ input,
@@ -810,6 +812,13 @@ __global__ __launch_bounds__(256) void MoEPackedFc1SwiGLUSimtKernel(
     float u_vals[16];
     gguf_cuda::DecodeGgufSubBlock32(gate_row_ptr, p.gate_type, sb32_idx, half16, g_vals);
     gguf_cuda::DecodeGgufSubBlock32(up_row_ptr, p.up_type, sb32_idx, half16, u_vals);
+    if constexpr (std::is_same_v<CudaT, __nv_bfloat16>) {
+#pragma unroll
+      for (int c = 0; c < 16; ++c) {
+        g_vals[c] = __bfloat162float(__float2bfloat16_rn(g_vals[c]));
+        u_vals[c] = __bfloat162float(__float2bfloat16_rn(u_vals[c]));
+      }
+    }
 
     const int k_offset = h_idx * 16;
     for (int m = 0; m < count; ++m) {
@@ -849,7 +858,7 @@ __global__ __launch_bounds__(256) void MoEPackedFc1SwiGLUSimtKernel(
   }
 }
 
-// Fallback SIMT FC2 kernel (used for FP16).
+// SIMT fallback for FP16 and BF16 builds without Tensor Core bodies.
 template <typename CudaT, bool kUseShared>
 __global__ __launch_bounds__(256) void MoEPackedFc2SimtKernel(
     const CudaT* __restrict__ fc1_out,
@@ -895,6 +904,12 @@ __global__ __launch_bounds__(256) void MoEPackedFc2SimtKernel(
     const int half16 = h_idx & 1;
     float d_vals[16];
     gguf_cuda::DecodeGgufSubBlock32(down_row_ptr, p.down_type, sb32_idx, half16, d_vals);
+    if constexpr (std::is_same_v<CudaT, __nv_bfloat16>) {
+#pragma unroll
+      for (int c = 0; c < 16; ++c) {
+        d_vals[c] = __bfloat162float(__float2bfloat16_rn(d_vals[c]));
+      }
+    }
 
     const int k_offset = h_idx * 16;
     for (int m = 0; m < count; ++m) {
@@ -1187,9 +1202,8 @@ Status DispatchMoEPackedCuda(
   if (params.num_rows == 0) return Status::OK();
   const int total_routes = params.num_rows * params.k;
   constexpr bool kIsBf16 = std::is_same<CudaT, __nv_bfloat16>::value;
-  ORT_RETURN_IF_NOT(!kIsBf16 || params.bf16_tc_supported,
-                    "MoEPacked BF16 requires Tensor Core kernels compiled for compute_80 or higher");
-  const bool use_prefill_tiles = kIsBf16 && (total_routes > 128);
+  const bool use_tensor_cores = kIsBf16 && params.bf16_tc_supported;
+  const bool use_prefill_tiles = use_tensor_cores && (total_routes > 128);
   const int max_tiles = use_prefill_tiles
                             ? ((total_routes + 31) / 32 + params.num_experts)
                             : ((total_routes <= 128) ? total_routes : ((total_routes + 7) / 8 + params.num_experts));
@@ -1237,32 +1251,34 @@ Status DispatchMoEPackedCuda(
   }
   ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
 
-  if constexpr (kIsBf16) {
-    // 3. Tensor-Core FC1 (64 inter_size channels/CTA in prefill, 16 inter_size channels/CTA Warp-K-Split in decode)
-    if (use_prefill_tiles) {
-      const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 63) / 64),
-                          static_cast<unsigned int>(max_tiles));
-      LaunchMoEPackedFc1Bf16TcDispatch<4>(
-          stream, fc1_grid, input, gate_weights, up_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
-    } else {
-      const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 15) / 16),
-                          static_cast<unsigned int>(max_tiles));
-      LaunchMoEPackedFc1DecodeBf16TcDispatch(
-          stream, fc1_grid, input, gate_weights, up_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
-    }
-    ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+  if (use_tensor_cores) {
+    if constexpr (kIsBf16) {
+      // 3. Tensor-Core FC1 (64 inter_size channels/CTA in prefill, 16 inter_size channels/CTA Warp-K-Split in decode)
+      if (use_prefill_tiles) {
+        const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 63) / 64),
+                            static_cast<unsigned int>(max_tiles));
+        LaunchMoEPackedFc1Bf16TcDispatch<4>(
+            stream, fc1_grid, input, gate_weights, up_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
+      } else {
+        const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 15) / 16),
+                            static_cast<unsigned int>(max_tiles));
+        LaunchMoEPackedFc1DecodeBf16TcDispatch(
+            stream, fc1_grid, input, gate_weights, up_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
+      }
+      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
 
-    // 4. Tensor-Core FC2 (128 hidden_size channels per CTA)
-    const dim3 fc2_grid(static_cast<unsigned int>((params.hidden_size + 127) / 128),
-                        static_cast<unsigned int>(max_tiles));
-    if (use_prefill_tiles) {
-      LaunchMoEPackedFc2Bf16TcDispatch<4>(
-          stream, fc2_grid, fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
-    } else {
-      LaunchMoEPackedFc2Bf16TcDispatch<1>(
-          stream, fc2_grid, fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
+      // 4. Tensor-Core FC2 (128 hidden_size channels per CTA)
+      const dim3 fc2_grid(static_cast<unsigned int>((params.hidden_size + 127) / 128),
+                          static_cast<unsigned int>(max_tiles));
+      if (use_prefill_tiles) {
+        LaunchMoEPackedFc2Bf16TcDispatch<4>(
+            stream, fc2_grid, fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
+      } else {
+        LaunchMoEPackedFc2Bf16TcDispatch<1>(
+            stream, fc2_grid, fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
+      }
+      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
     }
-    ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
   } else {
     // Keep staging within CUDA's default shared-memory limit; larger shapes read activations directly.
     constexpr size_t kMaxStagingBytes = 48 * 1024;
@@ -1344,14 +1360,22 @@ Status GetMoEPackedWorkspaceBytes(const MoEPackedParams& params, size_t elem_byt
   return Status::OK();
 }
 
-Status CheckMoEPackedBf16KernelSupport() {
+Status GetMoEPackedBf16KernelSupport(int device_id, bool& supported) {
+  int previous_device = -1;
+  CUDA_RETURN_IF_ERROR(cudaGetDevice(&previous_device));
+  auto restore_device = gsl::finally([previous_device, device_id]() {
+    if (previous_device != device_id) {
+      ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaSetDevice(previous_device)));
+    }
+  });
+  if (previous_device != device_id) {
+    CUDA_RETURN_IF_ERROR(cudaSetDevice(device_id));
+  }
   cudaFuncAttributes attributes{};
   // All BF16 MMA instantiations in this translation unit use the same virtual architecture.
   CUDA_RETURN_IF_ERROR(cudaFuncGetAttributes(&attributes, MoEPackedFc1DecodeWarpKSplitKernel<4, 2, -1>));
   // binaryVersion can be >= 80 after JIT of compute_75 PTX, whose MMA body is still unsupported.
-  ORT_RETURN_IF_NOT(attributes.ptxVersion >= 80,
-                    "MoEPacked BF16 requires Tensor Core kernels compiled for compute_80 or higher; got compute_",
-                    attributes.ptxVersion);
+  supported = attributes.ptxVersion >= 80;
   return Status::OK();
 }
 

@@ -45,7 +45,7 @@ struct MoEPackedParams {
 
 Status GetMoEPackedWorkspaceBytes(const MoEPackedParams& params, size_t elem_bytes, size_t& workspace_bytes);
 
-Status CheckMoEPackedBf16KernelSupport();
+Status GetMoEPackedBf16KernelSupport(int device_id, bool& supported);
 
 Status LaunchMoEPackedCuda(
     cudaStream_t stream,
@@ -72,6 +72,7 @@ class MoEPacked final : public CudaKernel {
   int64_t gate_type_{-1};
   int64_t up_type_{-1};
   int64_t down_type_{-1};
+  bool bf16_tc_supported_{false};
 };
 
 }  // namespace cuda
