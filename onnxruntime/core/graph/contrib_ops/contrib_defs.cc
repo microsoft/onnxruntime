@@ -1080,6 +1080,28 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
+    MoERouterPacked, 1,
+    OpSchema()
+        .SetDoc(
+            "Projected sigmoid routing for MoEPacked. FP16/BF16 activations and dense router "
+            "weights are accumulated in FP32. Correction bias changes expert selection only; "
+            "mixture weights use unbiased sigmoid affinities, normalized in selected-rank order "
+            "and multiplied by router_scale. Ties select lower expert IDs. Outputs feed "
+            "MoEPacked's preselected inputs with normalize_routing_weights=0. "
+            "Supports 0..2048 rows, width divisible by 256, and 1<=k<=32 with k<=experts<=512. "
+            "This is not the log-domain router_probs/weight_scale contract used by expert-parallel QMoE.")
+        .Attr("k", "Number of selected experts.", AttributeProto::INT)
+        .Attr("router_scale", "Finite post-normalization routing scale.", AttributeProto::FLOAT, 1.0f)
+        .Input(0, "input", "Router activations [rows,width].", "T")
+        .Input(1, "weight", "Dense router weights [experts,width].", "T")
+        .Input(2, "bias", "FP32 expert-selection-only correction bias [experts].", "Tweight")
+        .Output(0, "indices", "Selected expert IDs [rows,k].", "Tind")
+        .Output(1, "weights", "Unbiased normalized/scaled FP32 mixture weights [rows,k].", "Tweight")
+        .TypeConstraint("T", {"tensor(bfloat16)", "tensor(float16)"}, "Activation and router-weight type.")
+        .TypeConstraint("Tind", {"tensor(int32)"}, "Selected expert index type.")
+        .TypeConstraint("Tweight", {"tensor(float)"}, "Correction-bias and mixture-weight precision."));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
     MoEPacked, 1,
     OpSchema()
         .SetDoc("Mixture-of-Experts layer consuming 3D block-packed gate and down expert weight blobs, "

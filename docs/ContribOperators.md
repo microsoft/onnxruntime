@@ -82,6 +82,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.MoE">com.microsoft.MoE</a>
   * <a href="#com.microsoft.MoEGroupRouter">com.microsoft.MoEGroupRouter</a>
   * <a href="#com.microsoft.MoEPacked">com.microsoft.MoEPacked</a>
+  * <a href="#com.microsoft.MoERouterPacked">com.microsoft.MoERouterPacked</a>
   * <a href="#com.microsoft.MulInteger">com.microsoft.MulInteger</a>
   * <a href="#com.microsoft.MultiHeadAttention">com.microsoft.MultiHeadAttention</a>
   * <a href="#com.microsoft.MurmurHash3">com.microsoft.MurmurHash3</a>
@@ -5132,6 +5133,61 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Preselected expert index type.</dd>
 <dt><tt>Tweight</tt> : tensor(float)</dt>
 <dd>Preselected mixture coefficient type.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MoERouterPacked"></a><a name="com.microsoft.moerouterpacked">**com.microsoft.MoERouterPacked**</a>
+
+  Projected sigmoid routing for MoEPacked. FP16/BF16 activations and dense router
+  weights are accumulated in FP32. Correction bias changes expert selection only;
+  mixture weights use unbiased sigmoid affinities, normalized in selected-rank order
+  and multiplied by router_scale. Ties select lower expert IDs. Outputs feed
+  MoEPacked's preselected inputs with normalize_routing_weights=0.
+  Supports 0..2048 rows, width divisible by 256, and 1<=k<=32 with k<=experts<=512.
+  This is not the log-domain router_probs/weight_scale contract used by expert-parallel QMoE.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>k</tt> : int (required)</dt>
+<dd>Number of selected experts.</dd>
+<dt><tt>router_scale</tt> : float</dt>
+<dd>Finite post-normalization routing scale. Default: 1.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>Router activations [rows,width].</dd>
+<dt><tt>weight</tt> : T</dt>
+<dd>Dense router weights [experts,width].</dd>
+<dt><tt>bias</tt> : Tweight</dt>
+<dd>FP32 expert-selection-only correction bias [experts].</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>indices</tt> : Tind</dt>
+<dd>Selected expert IDs [rows,k].</dd>
+<dt><tt>weights</tt> : Tweight</dt>
+<dd>Unbiased normalized/scaled FP32 mixture weights [rows,k].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16), tensor(float16)</dt>
+<dd>Activation and router-weight type.</dd>
+<dt><tt>Tind</tt> : tensor(int32)</dt>
+<dd>Selected expert index type.</dd>
+<dt><tt>Tweight</tt> : tensor(float)</dt>
+<dd>Correction-bias and mixture-weight precision.</dd>
 </dl>
 
 
