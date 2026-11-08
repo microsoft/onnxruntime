@@ -12,6 +12,7 @@
 #include <type_traits>
 
 #include "contrib_ops/cuda/moe/qmoe_fused_route.cuh"
+#include "contrib_ops/cuda/moe/moe_packed_iq2.cuh"
 #include "contrib_ops/cuda/quantization/gguf_quant_cuda.cuh"
 #include "core/common/safeint.h"
 #include "core/framework/allocator.h"
@@ -1247,38 +1248,15 @@ __global__ __launch_bounds__(KW * 32) void MoEPackedReluIq2ContiguousKKernel(
     for (int m = 0; m < MT; ++m) {
       const int low_row = base + m * 16 + g;
       const int high_row = low_row + 8;
-      float low_values[16] = {};
-      float high_values[16] = {};
+      uint32_t el[4] = {}, eh[4] = {}, ol[4] = {}, oh[4] = {};
       if (low_row < n) {
         const auto* row = weights + (static_cast<int64_t>(tile.expert) * n + low_row) * row_bytes;
-        gguf_cuda::DecodeGgufSubBlock16Impl<gguf_quant::kGgmlTypeIQ2_XXS>(
-            row, offset / 32, (offset / 16) & 1, low_values);
+        MoEPackedIq2Fragment<!kFc1>(row, offset, el, eh);
       }
       if (high_row < n) {
         const auto* row = weights + (static_cast<int64_t>(tile.expert) * n + high_row) * row_bytes;
-        gguf_cuda::DecodeGgufSubBlock16Impl<gguf_quant::kGgmlTypeIQ2_XXS>(
-            row, offset / 32, (offset / 16) & 1, high_values);
+        MoEPackedIq2Fragment<!kFc1>(row, offset, ol, oh);
       }
-      float e0[8], e1[8], o0[8], o1[8];
-#pragma unroll
-      for (int s = 0; s < 4; ++s) {
-        e0[2 * s] = low_values[4 * s];
-        e0[2 * s + 1] = low_values[4 * s + 1];
-        e1[2 * s] = low_values[4 * s + 2];
-        e1[2 * s + 1] = low_values[4 * s + 3];
-        o0[2 * s] = high_values[4 * s];
-        o0[2 * s + 1] = high_values[4 * s + 1];
-        o1[2 * s] = high_values[4 * s + 2];
-        o1[2 * s + 1] = high_values[4 * s + 3];
-      }
-      const uint4 e_low = gguf_cuda::PackFloat8ToBf16x2(e0);
-      const uint4 e_high = gguf_cuda::PackFloat8ToBf16x2(e1);
-      const uint4 o_low = gguf_cuda::PackFloat8ToBf16x2(o0);
-      const uint4 o_high = gguf_cuda::PackFloat8ToBf16x2(o1);
-      const uint32_t el[4] = {e_low.x, e_low.y, e_low.z, e_low.w};
-      const uint32_t eh[4] = {e_high.x, e_high.y, e_high.z, e_high.w};
-      const uint32_t ol[4] = {o_low.x, o_low.y, o_low.z, o_low.w};
-      const uint32_t oh[4] = {o_high.x, o_high.y, o_high.z, o_high.w};
 #pragma unroll
       for (int s = 0; s < 4; ++s) {
         gguf_cuda::MmaBf16(acc[m], el[s], ol[s], eh[s], oh[s], x_words[2 * s], x_words[2 * s + 1]);
