@@ -60,15 +60,18 @@ def image_to_numpy(filename, shape, channels_last, add_batch_dim):
         w_ratio = new_w / w
         h_ratio = new_h / h
         ratio = max(h_ratio, w_ratio)
-        interim_w = int(w * ratio)
-        interim_h = int(h * ratio)
-        img = img.resize((interim_w, interim_h), PIL.Image.ANTIALIAS)
+        interim_w = round(w * ratio)
+        interim_h = round(h * ratio)
+        img = img.resize((interim_w, interim_h), PIL.Image.LANCZOS)
 
         # center crop to the final target size
-        left = (interim_w - new_w) / 2
-        top = (interim_h - new_h) / 2
-        right = (interim_w + new_w) / 2
-        bottom = (interim_h + new_h) / 2
+        # use integer coordinates so the crop is exactly new_w x new_h when (interim - new) is odd.
+        # interim_w and interim_h are rounded (not truncated) so they are never smaller than the target size, which
+        # would put the crop box partly outside the image and produce black padding.
+        left = (interim_w - new_w) // 2
+        top = (interim_h - new_h) // 2
+        right = left + new_w
+        bottom = top + new_h
         img = img.crop((left, top, right, bottom))
 
     img_as_np = np.array(img).astype(np.float32)
