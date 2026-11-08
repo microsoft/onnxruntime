@@ -3316,6 +3316,64 @@ TEST_F(GraphTransformationTests, DivMulFusion_Float) {
   TestDivMulFusionDataType<float>(true);
 }
 
+namespace {
+
+template <typename T>
+void TestDivMulFusionConstantDivisor() {
+  struct TestCase {
+    std::vector<int64_t> x_shape;
+    std::vector<T> x_values;
+    std::vector<int64_t> y_shape;
+    std::vector<T> y_values;
+  };
+  const std::vector<TestCase> test_cases{
+      {{}, {1}, {4}, {0, 4, -7, 17}},
+      {{}, {-1}, {4}, {0, 4, -7, -17}},
+      {{}, {2}, {4}, {4, -4, -17, 17}},
+      {{4}, {1, -1, 2, -3}, {4}, {4, 4, 4, 4}},
+      {{3, 1}, {1, -1, 2}, {1, 2}, {4, -4}},
+  };
+
+  for (size_t i = 0; i < test_cases.size(); ++i) {
+    SCOPED_TRACE(i);
+    for (bool reverse_mul_inputs : {false, true}) {
+      SCOPED_TRACE(reverse_mul_inputs);
+      const auto& test_case = test_cases[i];
+      auto build_test_case = [&test_case, reverse_mul_inputs](ModelTestBuilder& builder) {
+        auto* one = builder.MakeScalarInitializer<T>(T{1});
+        auto* x = builder.MakeInitializer<T>(test_case.x_shape, test_case.x_values);
+        auto* y = builder.MakeInput<T>(test_case.y_shape, test_case.y_values);
+        auto* quotient = builder.MakeIntermediate();
+        auto* output = builder.MakeOutput();
+        builder.AddNode("Div", {one, x}, {quotient});
+        if (reverse_mul_inputs) {
+          builder.AddNode("Mul", {y, quotient}, {output});
+        } else {
+          builder.AddNode("Mul", {quotient, y}, {output});
+        }
+      };
+      auto check_graph = [](InferenceSessionWrapper& session) {
+        const auto counts = CountOpsInGraph(session.GetGraph());
+        const auto div = counts.find("Div");
+        EXPECT_EQ(div == counts.end() ? 0 : div->second, 0);
+      };
+      // Constant folding must remove Div without reassociating integer arithmetic.
+      TransformerTester(build_test_case, check_graph, TransformerLevel::Default,
+                        TransformerLevel::Level1, 13, 0.0, 0.0);
+    }
+  }
+}
+
+}  // namespace
+
+TEST_F(GraphTransformationTests, DivMulFusion_ConstantDivisor_Int32) {
+  TestDivMulFusionConstantDivisor<int32_t>();
+}
+
+TEST_F(GraphTransformationTests, DivMulFusion_ConstantDivisor_Int64) {
+  TestDivMulFusionConstantDivisor<int64_t>();
+}
+
 TEST_F(GraphTransformationTests, DivMulFusion) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/div_mul.onnx";
   std::shared_ptr<Model> model;
