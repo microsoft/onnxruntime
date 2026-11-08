@@ -1180,6 +1180,10 @@ Status MoEPacked<T>::InitializeAdmittedPlan(const onnxruntime::moe_offload::MoeO
 
 template <typename T>
 Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
+  ORT_RETURN_IF(context->Input<Tensor>(5) != nullptr ||
+                    context->Input<Tensor>(6) != nullptr ||
+                    context->Input<Tensor>(7) != nullptr,
+                "MoEPacked CUDA kernel does not support optional expert bias inputs.");
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
   const Tensor* gate_w = context->Input<Tensor>(2);

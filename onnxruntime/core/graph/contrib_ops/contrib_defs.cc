@@ -1103,8 +1103,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(2, "gate_experts_weights", "3D packed gate weight blob [num_experts, inter_size, gate_row_bytes].", "T2")
         .Input(3, "up_experts_weights", "3D packed up weight blob [num_experts, inter_size, up_row_bytes].", "T2")
         .Input(4, "down_experts_weights", "3D packed down weight blob [num_experts, hidden_size, down_row_bytes].", "T2")
+        .Input(5, "gate_bias", "Optional per-expert gate bias [num_experts, inter_size].", "T", OpSchema::Optional)
+        .Input(6, "up_bias", "Optional per-expert up bias [num_experts, inter_size].", "T", OpSchema::Optional)
+        .Input(7, "down_bias", "Optional per-expert down bias [num_experts, hidden_size].", "T", OpSchema::Optional)
         .Output(0, "output", "Output hidden states [..., hidden_size].", "T")
-        .TypeConstraint("T", {"tensor(bfloat16)", "tensor(float16)"}, "Activation type.")
+        .TypeConstraint("T", {"tensor(float)", "tensor(bfloat16)", "tensor(float16)"}, "Activation type.")
         .TypeConstraint("T2", {"tensor(uint8)"}, "Packed byte storage.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);

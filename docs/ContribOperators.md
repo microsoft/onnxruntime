@@ -5205,7 +5205,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Stable packed-format ID of up_experts_weights. Only contract-listed IDs are supported.</dd>
 </dl>
 
-#### Inputs
+#### Inputs (5 - 8)
 
 <dl>
 <dt><tt>input</tt> : T</dt>
@@ -5218,6 +5218,12 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>3D packed up weight blob [num_experts, inter_size, up_row_bytes].</dd>
 <dt><tt>down_experts_weights</tt> : T2</dt>
 <dd>3D packed down weight blob [num_experts, hidden_size, down_row_bytes].</dd>
+<dt><tt>gate_bias</tt> (optional) : T</dt>
+<dd>Optional per-expert gate bias [num_experts, inter_size].</dd>
+<dt><tt>up_bias</tt> (optional) : T</dt>
+<dd>Optional per-expert up bias [num_experts, inter_size].</dd>
+<dt><tt>down_bias</tt> (optional) : T</dt>
+<dd>Optional per-expert down bias [num_experts, hidden_size].</dd>
 </dl>
 
 #### Outputs
@@ -5230,7 +5236,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(bfloat16), tensor(float16)</dt>
+<dt><tt>T</tt> : tensor(float), tensor(bfloat16), tensor(float16)</dt>
 <dd>Activation type.</dd>
 <dt><tt>T2</tt> : tensor(uint8)</dt>
 <dd>Packed byte storage.</dd>
