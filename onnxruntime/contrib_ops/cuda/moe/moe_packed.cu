@@ -1382,7 +1382,13 @@ void LaunchMoEPackedFc2Bf16TcDispatch(
   }
 }
 
-template <bool kFc1, int KW>
+template <bool kAligned>
+__device__ __forceinline__ uint4 MoEPackedLoadContiguousIq2Input(const __nv_bfloat16* input) {
+  if constexpr (kAligned) return __ldg(reinterpret_cast<const uint4*>(input));
+  return LoadPacked8(input);
+}
+
+template <bool kFc1, int KW, bool kAlignedInput = false>
 __global__ __launch_bounds__(KW * 32) void MoEPackedReluIq2ContiguousKKernel(
     const __nv_bfloat16* input,
     const uint8_t* weights,
@@ -1421,8 +1427,8 @@ __global__ __launch_bounds__(KW * 32) void MoEPackedReluIq2ContiguousKKernel(
   // FC1 and FC2 retain their four- and eight-warp FP32 reduction boundaries.
   for (int chunk = warp; chunk < k / 64; chunk += KW) {
     const int offset = chunk * 64 + t * 16;
-    const uint4 x0 = g < count ? LoadPacked8(x_row + offset) : make_uint4(0, 0, 0, 0);
-    const uint4 x1 = g < count ? LoadPacked8(x_row + offset + 8) : make_uint4(0, 0, 0, 0);
+    const uint4 x0 = g < count ? MoEPackedLoadContiguousIq2Input<kAlignedInput>(x_row + offset) : make_uint4(0, 0, 0, 0);
+    const uint4 x1 = g < count ? MoEPackedLoadContiguousIq2Input<kAlignedInput>(x_row + offset + 8) : make_uint4(0, 0, 0, 0);
     const uint32_t x_words[8] = {x0.x, x0.y, x0.z, x0.w, x1.x, x1.y, x1.z, x1.w};
 #pragma unroll
     for (int m = 0; m < MT; ++m) {
@@ -1431,11 +1437,11 @@ __global__ __launch_bounds__(KW * 32) void MoEPackedReluIq2ContiguousKKernel(
       uint32_t el[4] = {}, eh[4] = {}, ol[4] = {}, oh[4] = {};
       if (low_row < n) {
         const auto* row = weights + (static_cast<int64_t>(tile.expert) * n + low_row) * row_bytes;
-        MoEPackedIq2Fragment<!kFc1>(row, offset, el, eh);
+        MoEPackedIq2Fragment<!kFc1, kFc1>(row, offset, el, eh);
       }
       if (high_row < n) {
         const auto* row = weights + (static_cast<int64_t>(tile.expert) * n + high_row) * row_bytes;
-        MoEPackedIq2Fragment<!kFc1>(row, offset, ol, oh);
+        MoEPackedIq2Fragment<!kFc1, kFc1>(row, offset, ol, oh);
       }
 #pragma unroll
       for (int s = 0; s < 4; ++s) {
@@ -1566,8 +1572,14 @@ Status DispatchMoEPackedCuda(
         const unsigned int subtiles = use_prefill_tiles ? 4u : 1u;
         const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 31) / 32),
                             static_cast<unsigned int>(launch_tiles), subtiles);
-        MoEPackedReluIq2ContiguousKKernel<true, 4><<<fc1_grid, 128, 0, stream>>>(
-            input, gate_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
+        // Every 64-K fragment stays vector-aligned when the base and row stride are aligned.
+        if ((reinterpret_cast<uintptr_t>(input) & 15u) == 0 && params.hidden_size % 8 == 0) {
+          MoEPackedReluIq2ContiguousKKernel<true, 4, true><<<fc1_grid, 128, 0, stream>>>(
+              input, gate_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
+        } else {
+          MoEPackedReluIq2ContiguousKKernel<true, 4><<<fc1_grid, 128, 0, stream>>>(
+              input, gate_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
+        }
         ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
         const dim3 fc2_grid(static_cast<unsigned int>((params.hidden_size + 31) / 32),
                             static_cast<unsigned int>(launch_tiles), subtiles);
