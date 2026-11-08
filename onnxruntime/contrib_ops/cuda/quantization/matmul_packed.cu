@@ -323,10 +323,19 @@ Status DispatchMatMulPackedCuda(
   MatMulPackedDequantKernel<CudaT><<<grid, block, 0, stream>>>(params, scratch_w);
   ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
 
+  // FP32 compute alone still permits FP16/BF16 split-K reductions.
+  cublasMath_t previous_math_mode = CUBLAS_DEFAULT_MATH;
+  CUBLAS_RETURN_IF_ERROR(cublasGetMathMode(cublas, &previous_math_mode));
+  const auto math_mode = static_cast<cublasMath_t>(
+      previous_math_mode | CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION);
+  if (math_mode != previous_math_mode) {
+    CUBLAS_RETURN_IF_ERROR(cublasSetMathMode(cublas, math_mode));
+  }
+
   const float alpha = 1.0f;
   const float beta = 0.0f;
   const cudaDataType_t data_type = is_bf16 ? CUDA_R_16BF : CUDA_R_16F;
-  return CUBLAS_CALL(cublasGemmEx(
+  const auto gemm_status = CUBLAS_CALL(cublasGemmEx(
       cublas,
       CUBLAS_OP_T,
       CUBLAS_OP_N,
@@ -346,6 +355,10 @@ Status DispatchMatMulPackedCuda(
       params.n,
       CUBLAS_COMPUTE_32F,
       CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+  if (math_mode != previous_math_mode) {
+    CUBLAS_RETURN_IF_ERROR(cublasSetMathMode(cublas, previous_math_mode));
+  }
+  return gemm_status;
 }
 
 }  // namespace

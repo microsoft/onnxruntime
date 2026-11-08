@@ -90,20 +90,20 @@ def _dequantize_weights(raw, k, gtype):
     return result.reshape(*raw.shape[:-1], k)
 
 
-def _matmul_model(k, n, row_bytes, gtype):
+def _matmul_model(k, n, row_bytes, gtype, dtype=TensorProto.BFLOAT16):
     return _model(
         [
-            helper.make_node("Cast", ["A_f32"], ["A_bf16"], to=int(TensorProto.BFLOAT16)),
+            helper.make_node("Cast", ["A_f32"], ["A_typed"], to=int(dtype)),
             helper.make_node(
                 "MatMulPacked",
-                ["A_bf16", "B"],
-                ["Y_bf16"],
+                ["A_typed", "B"],
+                ["Y_typed"],
                 domain="com.microsoft",
                 K=k,
                 N=n,
                 packed_type=gtype,
             ),
-            helper.make_node("Cast", ["Y_bf16"], ["Y_f32"], to=int(TensorProto.FLOAT)),
+            helper.make_node("Cast", ["Y_typed"], ["Y_f32"], to=int(TensorProto.FLOAT)),
         ],
         [
             helper.make_tensor_value_info("A_f32", TensorProto.FLOAT, ["M", k]),
@@ -295,6 +295,21 @@ class TestGgufPackedOps(unittest.TestCase):
                     target = weights if m <= 8 else _round_to_dtype(weights, TensorProto.BFLOAT16)
                     ref = _round_to_dtype(a @ target.T, TensorProto.BFLOAT16)
                     np.testing.assert_allclose(got, ref, rtol=1e-2, atol=1e-2)
+
+    def test_matmul_packed_prefill_fp32_reduction(self):
+        k, n = 4096, 32
+        weights = np.ones((n, k), dtype=np.float32)
+        weights[:, -1] = 1.125
+        raw = weights.view(np.uint8).reshape(n, k * 4)
+        for dtype in (TensorProto.BFLOAT16, TensorProto.FLOAT16):
+            session = _session(_matmul_model(k, n, raw.shape[1], 0, dtype), "CUDAExecutionProvider")
+            for m in (9, 32):
+                with self.subTest(dtype=dtype, m=m):
+                    a = np.ones((m, k), dtype=np.float32)
+                    a[:, k // 2 :] = -1
+                    got = session.run(None, {"A_f32": a, "B": raw})[0]
+                    # Preserve the residual after cancellation of large partial sums.
+                    np.testing.assert_array_equal(got, np.full((m, n), -0.125, dtype=np.float32))
 
     def test_matmul_packed_partial_tensor_core_tile(self):
         rng = np.random.default_rng(124)

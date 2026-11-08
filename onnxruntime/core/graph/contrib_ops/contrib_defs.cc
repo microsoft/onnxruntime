@@ -1026,7 +1026,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 ONNX_MS_OPERATOR_SET_SCHEMA(
     MatMulPacked, 1,
     OpSchema()
-        .SetDoc("Matrix multiplication Y = A @ B^T where B is a 2D block-packed weight tensor.")
+        .SetDoc("Matrix multiplication Y = A @ B^T where B is a 2D block-packed weight tensor.\n"
+                "CUDA prefill dequantizes B to the activation type and uses float32 accumulation and reductions.")
         .Attr("K", "Reduction dimension.", AttributeProto::INT)
         .Attr("N", "Output dimension.", AttributeProto::INT)
         .Attr("packed_type",

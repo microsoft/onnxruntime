@@ -4724,6 +4724,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.MatMulPacked"></a><a name="com.microsoft.matmulpacked">**com.microsoft.MatMulPacked**</a>
 
   Matrix multiplication Y = A @ B^T where B is a 2D block-packed weight tensor.
+  CUDA prefill dequantizes B to the activation type and uses float32 accumulation and reductions.
 
 #### Version
 
