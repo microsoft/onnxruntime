@@ -56,7 +56,8 @@ template <typename T = BFloat16, typename TR = T>
 void TestFullScoreReluSquared(int rows, int topk, int malformed = 0,
                               int hidden_size = 1024,
                               const char* activation_type = "relu2", bool normalize = false,
-                              int selection_case = 0, int experts = 32, int inter_size = 256) {
+                              int selection_case = 0, int experts = 32, int inter_size = 256,
+                              int grid_offset = -1) {
   const int gate_row_bytes = (hidden_size / 256) * 66;
   std::vector<uint8_t> gate(experts * inter_size * gate_row_bytes);
   const int down_row_bytes = (inter_size / 256) * 66;
@@ -67,8 +68,11 @@ void TestFullScoreReluSquared(int rows, int topk, int malformed = 0,
   std::vector<float> sum8(experts);
   for (int expert = 0; expert < experts; ++expert) {
     const MLFloat16 d(expert & 1 ? .023f : .019f);
-    sum8[expert] = T(d.ToFloat() * .125f * 43.f).ToFloat() +
-                   7.f * T(d.ToFloat()).ToFloat();
+    const int code = grid_offset < 0 ? 1 : expert * 8 + grid_offset;
+    const uint64_t grid = contrib::gguf_quant::iq2xxs_grid[code];
+    for (int j = 0; j < 8; ++j) {
+      sum8[expert] += T(d.ToFloat() * .125f * static_cast<float>((grid >> (8 * j)) & 255u)).ToFloat();
+    }
     for (int stage = 0; stage < 2; ++stage) {
       const int n = stage == 0 ? inter_size : hidden_size;
       const int blocks = stage == 0 ? hidden_size / 256 : inter_size / 256;
@@ -79,8 +83,8 @@ void TestFullScoreReluSquared(int rows, int topk, int malformed = 0,
           bytes[0] = static_cast<uint8_t>(d.val);
           bytes[1] = static_cast<uint8_t>(d.val >> 8);
           for (int record = 0; record < 8; ++record) {
-            for (int group = 0; group < 4; ++group) bytes[2 + record * 8 + group] = 1;
-            if (stage == 0 && expert % 5 == 4) {
+            for (int group = 0; group < 4; ++group) bytes[2 + record * 8 + group] = static_cast<uint8_t>(code);
+            if (stage == 0 && grid_offset < 0 && expert % 5 == 4) {
               for (int byte = 0; byte < 4; ++byte) {
                 bytes[2 + record * 8 + 4 + byte] = static_cast<uint8_t>(0x0fffffffu >> (8 * byte));
               }
@@ -117,7 +121,7 @@ void TestFullScoreReluSquared(int rows, int topk, int malformed = 0,
       weights[row * topk + rank] = raw_weight;
       const float inverse_sum = routing_sum == 0.f ? 0.f : 1.f / routing_sum;
       const float weight = normalize ? raw_weight * inverse_sum : raw_weight;
-      const float fc1 = expert % 5 == 4
+      const float fc1 = grid_offset < 0 && expert % 5 == 4
                             ? 0.f
                             : T(static_cast<float>(hidden_size / 256) * factor * sum8[expert]).ToFloat();
       const float activation = T(fc1 * fc1).ToFloat();
@@ -305,6 +309,14 @@ TEST(MoEPackedRoutingTest, ReluSquaredFullScoresPreserveFp16Experts) {
 TEST(MoEPackedRoutingTest, ReluSquaredAliasRemainsSupported) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   TestFullScoreReluSquared(1, 2, 0, 1024, "relu_squared");
+}
+
+TEST(MoEPackedRoutingTest, Iq2CodebookSweepPreservesFp32ScaleReconstruction) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (int grid_offset = 0; grid_offset < 8; ++grid_offset) {
+    SCOPED_TRACE(testing::Message() << "grid_offset=" << grid_offset);
+    TestFullScoreReluSquared(2, 32, 0, 1024, "relu2", false, 0, 32, 256, grid_offset);
+  }
 }
 
 void TestSwigluRouting(int rows, int topk = 1, bool full_scores = false, bool defaults = false) {
