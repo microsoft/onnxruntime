@@ -78,6 +78,53 @@ __device__ __forceinline__ uint4 PackFloat8ToBf16x2(const float (&v)[8]) {
   return res;
 }
 
+// Both the Q8 row base and its byte stride must be 16-byte aligned. The windows
+// can overlap adjacent records, but never leave the row, including its final half-block.
+__device__ __forceinline__ void DecodeQ8SubBlock16Aligned(
+    const uint8_t* row_ptr, int sb32_idx, int half16, float (&out)[16]) {
+  const uint8_t* block = row_ptr + static_cast<int64_t>(sb32_idx) * 34;
+  const float d = Fp16ToFloatDev(ReadU16Dev(block));
+  const uint8_t* codes = block + 2 + half16 * 16;
+  const unsigned int shift = static_cast<unsigned int>(reinterpret_cast<uintptr_t>(codes) & 15u);
+  const auto* aligned = reinterpret_cast<const uint4*>(codes - shift);
+  const uint4 low = __ldg(aligned);
+  const uint4 high = shift ? __ldg(aligned + 1) : make_uint4(0u, 0u, 0u, 0u);
+  uint4 raw;
+  uint32_t last;
+  switch (shift >> 2) {
+    case 0:
+      raw = low;
+      last = high.x;
+      break;
+    case 1:
+      raw = make_uint4(low.y, low.z, low.w, high.x);
+      last = high.y;
+      break;
+    case 2:
+      raw = make_uint4(low.z, low.w, high.x, high.y);
+      last = high.z;
+      break;
+    default:
+      raw = make_uint4(low.w, high.x, high.y, high.z);
+      last = high.w;
+      break;
+  }
+  if (shift & 2u) {
+    raw = make_uint4(__byte_perm(raw.x, raw.y, 0x5432),
+                     __byte_perm(raw.y, raw.z, 0x5432),
+                     __byte_perm(raw.z, raw.w, 0x5432),
+                     __byte_perm(raw.w, last, 0x5432));
+  }
+  const uint32_t words[4] = {raw.x, raw.y, raw.z, raw.w};
+#pragma unroll
+  for (int w = 0; w < 4; ++w) {
+#pragma unroll
+    for (int b = 0; b < 4; ++b) {
+      out[w * 4 + b] = d * static_cast<float>(static_cast<int8_t>((words[w] >> (8 * b)) & 0xFFu));
+    }
+  }
+}
+
 // Register-only computation of ksigns_iq2xs[x7] (7-bit index -> 8-bit even-parity sign mask).
 __device__ __forceinline__ uint8_t Iq2xsSignsDev(uint32_t x7) {
   const uint32_t s = x7 & 127u;
