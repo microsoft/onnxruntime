@@ -229,7 +229,8 @@ Status ConvTranspose<is_channels_last>::PrePackInternal(ComputeContextBase& cont
   }
 
   if (is_channels_last && UseConvTransposeGemm(tensor.Shape(), group)) {
-    auto packed = std::make_unique<Tensor>(tensor.DataType(), ConvTransposeGemmWeightShape(tensor.Shape()), alloc);
+    auto packed = std::make_unique<Tensor>(ConvTransposeGemmComputeType(tensor.DataType()),
+                                           ConvTransposeGemmWeightShape(tensor.Shape()), alloc);
     ORT_RETURN_IF_ERROR(PackConvTransposeGemmWeight(context, tensor, *packed));
     original_filter_shape_ = tensor.Shape();
     prepacked_filter_ = std::move(packed);

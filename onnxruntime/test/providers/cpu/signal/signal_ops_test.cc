@@ -972,25 +972,81 @@ vector<float> RandomValues(size_t count, uint32_t seed) {
   return values;
 }
 
-// Length-`length` DFT of `signal`, with exp(sign * 2*pi*i*j*k / length) twiddles.
+constexpr double kPi = 3.141592653589793238462643383279502884;
+
+// In-place radix-2 FFT of a power-of-two-sized sequence with exp(sign * 2*pi*i*j*k / n) twiddles, unscaled.
+void Radix2Fft(vector<std::complex<double>>& a, double sign) {
+  const size_t n = a.size();
+  for (size_t i = 1, j = 0; i < n; ++i) {
+    size_t bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) std::swap(a[i], a[j]);
+  }
+  for (size_t len = 2; len <= n; len <<= 1) {
+    for (size_t k = 0; k < len / 2; ++k) {
+      const double angle = sign * 2.0 * kPi * static_cast<double>(k) / static_cast<double>(len);
+      const std::complex<double> w{std::cos(angle), std::sin(angle)};
+      for (size_t i = 0; i < n; i += len) {
+        const auto u = a[i + k];
+        const auto v = a[i + k + len / 2] * w;
+        a[i + k] = u + v;
+        a[i + k + len / 2] = u - v;
+      }
+    }
+  }
+}
+
+// Length-`length` DFT of `signal`, with exp(sign * 2*pi*i*j*k / length) twiddles, in double precision.
+// Short lengths use the direct sum; longer ones a radix-2 FFT, through Bluestein's chirp-z identity
+// jk = (j^2 + k^2 - (k - j)^2) / 2 when the length is not a power of two, so large cases stay cheap.
 vector<std::complex<double>> ReferenceTransform(const vector<std::complex<double>>& signal, int64_t length,
                                                 bool inverse) {
   const double sign = inverse ? 1.0 : -1.0;
-  vector<std::complex<double>> twiddles(static_cast<size_t>(length));
-  for (int64_t i = 0; i < length; ++i) {
-    const double angle = sign * 2.0 * 3.141592653589793238462643383279502884 * static_cast<double>(i) / static_cast<double>(length);
-    twiddles[static_cast<size_t>(i)] = {std::cos(angle), std::sin(angle)};
-  }
-  vector<std::complex<double>> spectrum(static_cast<size_t>(length));
-  for (int64_t k = 0; k < length; ++k) {
-    std::complex<double> acc = 0;
-    int64_t index = 0;
-    for (int64_t j = 0; j < length; ++j) {
-      acc += signal[static_cast<size_t>(j)] * twiddles[static_cast<size_t>(index)];
-      index += k;
-      if (index >= length) index -= length;
+  const size_t n = static_cast<size_t>(length);
+  vector<std::complex<double>> spectrum(n);
+  if (length <= 512) {
+    vector<std::complex<double>> twiddles(n);
+    for (size_t i = 0; i < n; ++i) {
+      const double angle = sign * 2.0 * kPi * static_cast<double>(i) / static_cast<double>(length);
+      twiddles[i] = {std::cos(angle), std::sin(angle)};
     }
-    spectrum[static_cast<size_t>(k)] = inverse ? acc / static_cast<double>(length) : acc;
+    for (size_t k = 0; k < n; ++k) {
+      std::complex<double> acc = 0;
+      size_t index = 0;
+      for (size_t j = 0; j < n; ++j) {
+        acc += signal[j] * twiddles[index];
+        index += k;
+        if (index >= n) index -= n;
+      }
+      spectrum[k] = acc;
+    }
+  } else if ((n & (n - 1)) == 0) {
+    spectrum.assign(signal.begin(), signal.begin() + length);
+    Radix2Fft(spectrum, sign);
+  } else {
+    // chirp[j] = exp(sign * i*pi * j^2 / n), with j^2 reduced mod 2n to keep the angle exact.
+    vector<std::complex<double>> chirp(n);
+    for (size_t j = 0; j < n; ++j) {
+      const double angle = sign * kPi * static_cast<double>((j * j) % (2 * n)) / static_cast<double>(n);
+      chirp[j] = {std::cos(angle), std::sin(angle)};
+    }
+    size_t m = 1;
+    while (m < 2 * n - 1) m <<= 1;
+    vector<std::complex<double>> a(m), b(m);
+    for (size_t j = 0; j < n; ++j) {
+      a[j] = signal[j] * chirp[j];
+      b[j] = std::conj(chirp[j]);
+      if (j > 0) b[m - j] = b[j];
+    }
+    Radix2Fft(a, -1.0);
+    Radix2Fft(b, -1.0);
+    for (size_t i = 0; i < m; ++i) a[i] *= b[i];
+    Radix2Fft(a, 1.0);
+    for (size_t k = 0; k < n; ++k) spectrum[k] = chirp[k] * a[k] / static_cast<double>(m);
+  }
+  if (inverse) {
+    for (auto& v : spectrum) v /= static_cast<double>(length);
   }
   return spectrum;
 }

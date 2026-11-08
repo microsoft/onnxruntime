@@ -24,6 +24,9 @@ bool UseConvTransposeGemm(const TensorShape& onnx_filter_shape, int64_t group);
 // Shape of the packed GEMM weights: [round_up(C_in, 4), round_up(kH * kW * C_out, 4)], zero padded.
 TensorShape ConvTransposeGemmWeightShape(const TensorShape& onnx_filter_shape);
 
+// Element type of the packed weights, the column buffer and the accumulation: f32 for float16 inputs.
+MLDataType ConvTransposeGemmComputeType(MLDataType input_type);
+
 // Packs ONNX weights [C_in, C_out, (kH,) kW] into the GEMM layout.
 Status PackConvTransposeGemmWeight(ComputeContextBase& context, const Tensor& onnx_filter, Tensor& packed);
 
@@ -68,9 +71,16 @@ class ConvTransposeGemmPackInputProgram final : public Program<ConvTransposeGemm
       {"row_offset", ProgramUniformVariableDataType::Uint32});
 };
 
+// Where col2im finds the sum of the earlier row chunks.
+enum class Col2ImAccumulate {
+  kNone,       // first chunk: start from the bias (or zero)
+  kInPlace,    // add to the output written by the previous chunk
+  kFromInput,  // add to a separate f32 "partial" input and write the final output
+};
+
 class ConvTransposeCol2ImProgram final : public Program<ConvTransposeCol2ImProgram> {
  public:
-  ConvTransposeCol2ImProgram(bool has_bias, bool accumulate)
+  ConvTransposeCol2ImProgram(bool has_bias, Col2ImAccumulate accumulate)
       : Program{"ConvTransposeCol2Im"}, has_bias_{has_bias}, accumulate_{accumulate} {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
@@ -94,7 +104,7 @@ class ConvTransposeCol2ImProgram final : public Program<ConvTransposeCol2ImProgr
 
  private:
   bool has_bias_;
-  bool accumulate_;
+  Col2ImAccumulate accumulate_;
 };
 
 }  // namespace webgpu

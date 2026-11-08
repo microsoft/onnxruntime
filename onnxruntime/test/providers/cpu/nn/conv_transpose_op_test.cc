@@ -2181,7 +2181,40 @@ struct WideConvTransposeCase {
   bool has_bias;
 };
 
-void TestWideConvTranspose(const WideConvTransposeCase& c, bool fp16 = false) {
+// Runs one ConvTranspose on the WebGPU EP alone with a reduced storage binding size, with the weights
+// both as initializers (prepacked) and as graph inputs.
+template <typename T>
+void RunConvTransposeOnLimitedWebGpu(const ConvTransposeOpAttributes& attrs, const std::vector<std::vector<T>>& inputs,
+                                     const std::vector<std::vector<int64_t>>& shapes, const std::vector<T>& expected,
+                                     const std::vector<int64_t>& output_shape, uint64_t binding_limit,
+                                     float rel_error, float abs_error) {
+  for (const bool initializer : {true, false}) {
+    WebGpuExecutionProviderTestOptions options{};
+    options.max_storage_buffer_binding_size = binding_limit;
+    auto webgpu = WebGpuExecutionProviderWithTestOptions(options);
+    if (webgpu == nullptr) {
+      GTEST_SKIP() << "Needs the WebGPU execution provider.";
+    }
+    OpTester test("ConvTranspose", 11);
+    test.AddAttribute("kernel_shape", attrs.kernel_shape);
+    test.AddAttribute("group", attrs.group);
+    test.AddAttribute("pads", attrs.pads);
+    test.AddAttribute("output_padding", attrs.output_padding);
+    test.AddAttribute("strides", attrs.strides);
+    test.AddAttribute("dilations", attrs.dilations);
+    const char* names[] = {"X", "W", "B"};
+    for (size_t i = 0; i < inputs.size(); ++i) {
+      test.AddInput<T>(names[i], shapes[i], inputs[i], i > 0 && initializer);
+    }
+    test.AddOutput<T>("Y", output_shape, expected, false, rel_error, abs_error);
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(std::move(webgpu));
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
+// `webgpu_binding_limit`, when set, runs only the WebGPU EP with that storage binding size.
+void TestWideConvTranspose(const WideConvTransposeCase& c, bool fp16 = false, uint64_t webgpu_binding_limit = 0) {
   const bool is_1d = c.in_height == 0;
   const int64_t h = is_1d ? 1 : c.in_height;
   const int64_t kh = is_1d ? 1 : c.kernel_h;
@@ -2261,7 +2294,17 @@ void TestWideConvTranspose(const WideConvTransposeCase& c, bool fp16 = false) {
       is_1d ? std::vector<int64_t>{c.batch, c.out_channels, ow} : std::vector<int64_t>{c.batch, c.out_channels, oh, ow};
   const std::unordered_set<std::string> excluded{kCudaNHWCExecutionProvider, kTensorrtExecutionProvider,
                                                  kQnnExecutionProvider};
-  if (fp16) {
+  if (webgpu_binding_limit != 0) {
+    if (fp16) {
+      std::vector<std::vector<MLFloat16>> inputs16;
+      for (const auto& input : inputs) inputs16.push_back(ToFloat16(input));
+      RunConvTransposeOnLimitedWebGpu(attrs, inputs16, shapes, ToFloat16(expected), output_shape,
+                                      webgpu_binding_limit, 2e-2f, 5e-2f);
+    } else {
+      RunConvTransposeOnLimitedWebGpu(attrs, inputs, shapes, expected, output_shape, webgpu_binding_limit, 1e-4f,
+                                      1e-3f);
+    }
+  } else if (fp16) {
     std::vector<std::vector<MLFloat16>> inputs16;
     for (const auto& input : inputs) inputs16.push_back(ToFloat16(input));
     TestConvTransposeOp(attrs, inputs16, shapes, ToFloat16(expected), output_shape,
@@ -2302,8 +2345,43 @@ TEST(ConvTransposeTest, WideChannels1D_Float16) {
 }
 
 TEST(ConvTransposeTest, WideChannels1D_LargeInput) {
-  // Enough rows that the column buffer may be split into several chunks on small binding limits.
   TestWideConvTranspose({2, 48, 12, 0, 6000, 0, 8, 0, 4, 0, 1, 0, 0, 0, 0, 0, 0, true});
+}
+
+// A 150 KB binding limit splits the 500 KB column buffer of these 1000 input rows into row chunks of
+// 300, 300, 300 and 100. Each output pixel gathers 4 taps from consecutive rows, so contributions
+// straddle every chunk boundary, and the bias must be added once.
+constexpr uint64_t kChunkedBindingLimit = 600 * 256;
+const WideConvTransposeCase kChunkedCase{2, 16, 4, 0, 500, 0, 32, 0, 8, 0, 1, 0, 0, 0, 0, 0, 0, true};
+
+TEST(ConvTransposeTest, WideChannels1D_ChunkedColumns) {
+  TestWideConvTranspose(kChunkedCase, /*fp16=*/false, kChunkedBindingLimit);
+}
+
+TEST(ConvTransposeTest, WideChannels1D_ChunkedColumnsFloat16) {
+  TestWideConvTranspose(kChunkedCase, /*fp16=*/true, kChunkedBindingLimit);
+}
+
+// Per-tap partial sums that do not fit float16 but cancel across taps: every one of the 16 input
+// channels is 1 and has taps {2048, -4096, 2048}, so the middle tap alone sums to -65536 (beyond the
+// float16 range) while each output is exactly 0.
+TEST(ConvTransposeTest, WideChannels1D_Float16CancellingTaps) {
+  auto webgpu = DefaultWebGpuExecutionProvider();
+  if (webgpu == nullptr) {
+    GTEST_SKIP() << "Needs the WebGPU execution provider.";
+  }
+  constexpr int64_t channels = 16;
+  std::vector<float> w;
+  for (int64_t c = 0; c < channels; ++c) w.insert(w.end(), {2048.0f, -4096.0f, 2048.0f});
+  OpTester test("ConvTranspose", 11);
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3});
+  test.AddAttribute("pads", std::vector<int64_t>{2, 2});
+  test.AddInput<MLFloat16>("X", {1, channels, 5}, ToFloat16(std::vector<float>(channels * 5, 1.0f)));
+  test.AddInput<MLFloat16>("W", {channels, 1, 3}, ToFloat16(w), true);
+  test.AddOutput<MLFloat16>("Y", {1, 1, 3}, ToFloat16({0.0f, 0.0f, 0.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 }  // namespace test

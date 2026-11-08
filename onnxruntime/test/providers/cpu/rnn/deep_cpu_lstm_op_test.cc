@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "core/providers/cpu/rnn/deep_cpu_lstm.h"
+#include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "default_providers.h"
 
@@ -1809,6 +1810,35 @@ TEST(LSTMTest, LargerBidirectionalAllOptionsBatchFirst) {
 
 TEST(LSTMTest, LargerReverseClipInputForget) {
   TestLstmAgainstReference({"reverse", 6, 4, 17, 20, 0, true, false, true, true, true, 0.75f});
+}
+
+// float16 input projection that the bias cancels: X = {2048, 1} and a cell-gate row of ones give 2049,
+// which float16 rounds to 2048, and the bias -2048 leaves a preactivation of 1 only if the projection
+// is kept in f32.
+TEST(LSTMTest, Float16ProjectionCancelledByBias) {
+  auto webgpu = DefaultWebGpuExecutionProvider();
+  if (webgpu == nullptr) {
+    GTEST_SKIP() << "Needs the WebGPU execution provider.";
+  }
+  // Gate rows are ordered i, o, f, c; only the cell gate sees the input.
+  const std::vector<float> W = {0, 0, 0, 0, 0, 0, 1, 1};
+  std::vector<float> B(8, 0.0f);
+  B[3] = -2048.0f;
+  const double c = 0.5 * std::tanh(1.0);  // i = sigmoid(0), the initial cell is zero
+  const double h = 0.5 * std::tanh(c);    // o = sigmoid(0)
+
+  OpTester test("LSTM", 14);
+  test.AddAttribute<int64_t>("hidden_size", 1);
+  test.AddInput<MLFloat16>("X", {1, 1, 2}, ToFloat16({2048.0f, 1.0f}));
+  test.AddInput<MLFloat16>("W", {1, 4, 2}, ToFloat16(W), /*is_initializer=*/true);
+  test.AddInput<MLFloat16>("R", {1, 4, 1}, ToFloat16({0, 0, 0, 0}), /*is_initializer=*/true);
+  test.AddInput<MLFloat16>("B", {1, 8}, ToFloat16(B));
+  test.AddOutput<MLFloat16>("Y", {1, 1, 1, 1}, ToFloat16({static_cast<float>(h)}), false, 1e-3f, 1e-3f);
+  test.AddOutput<MLFloat16>("Y_h", {1, 1, 1}, ToFloat16({static_cast<float>(h)}), false, 1e-3f, 1e-3f);
+  test.AddOutput<MLFloat16>("Y_c", {1, 1, 1}, ToFloat16({static_cast<float>(c)}), false, 1e-3f, 1e-3f);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 }  // namespace test

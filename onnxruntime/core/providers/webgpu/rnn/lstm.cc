@@ -720,6 +720,14 @@ Status PackLstmWeights(ComputeContextBase& context, const Tensor& weights, Tenso
 
 TensorShape PackedLstmWeightShape(const TensorShape& shape) { return TensorShape({shape[0], shape[2], shape[1]}); }
 
+// Element-wise copy of `src` into the f32 tensor `dst`: the pack program on a [1, size, 1] view is a cast.
+Status ConvertToF32(ComputeContextBase& context, const Tensor& src, Tensor& dst) {
+  const int64_t size = src.Shape().Size();
+  const Tensor src_view = CreateTensorView(src, TensorShape({1, size, 1}));
+  Tensor dst_view = CreateTensorView(dst, TensorShape({1, 1, size}));
+  return PackLstmWeights(context, src_view, dst_view);
+}
+
 }  // namespace
 
 Status Lstm::PrePackInternal(ComputeContextBase& context, const Tensor& tensor, int input_idx, AllocatorPtr alloc,
@@ -729,8 +737,8 @@ Status Lstm::PrePackInternal(ComputeContextBase& context, const Tensor& tensor, 
   if ((input_idx != 1 && input_idx != 2) || tensor.Shape().NumDimensions() != 3 || tensor.Shape().Size() == 0) {
     return Status::OK();
   }
-  const auto type = input_idx == 1 ? tensor.DataType() : DataTypeImpl::GetType<float>();
-  auto packed = std::make_unique<Tensor>(type, PackedLstmWeightShape(tensor.Shape()), alloc);
+  // Both projections run in f32, like the stepwise kernel, so float16 models keep f32 gate preactivations.
+  auto packed = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), PackedLstmWeightShape(tensor.Shape()), alloc);
   ORT_RETURN_IF_ERROR(PackLstmWeights(context, tensor, *packed));
   (input_idx == 1 ? packed_w_ : packed_r_) = std::move(packed);
   return Status::OK();
@@ -744,10 +752,15 @@ Status Lstm::ComputeInternal(ComputeContext& context) const {
   }
   const int64_t num_directions = direction_ == "bidirectional" ? 2 : 1;
   const int64_t rows = X->Shape()[0] * X->Shape()[1];  // seq_length * batch_size in either layout
-  // The input projection for every timestep and direction must fit in one storage binding.
-  const uint64_t xw_bytes = static_cast<uint64_t>(num_directions) * rows * 4 * hidden_size_ * X->DataType()->Size();
+  // The f32 input projection for every timestep and direction (and, for float16, the f32 copy of X) must
+  // fit in one storage binding.
+  uint64_t max_bytes = static_cast<uint64_t>(num_directions) * rows * 4 * hidden_size_ * sizeof(float);
+  if (X->DataType() != DataTypeImpl::GetType<float>()) {
+    max_bytes = std::max<uint64_t>(max_bytes, static_cast<uint64_t>(X->Shape().Size()) * sizeof(float));
+  }
   const auto& limits = context.DeviceLimits();
-  if (rows == 0 || hidden_size_ <= 0 || xw_bytes > limits.maxStorageBufferBindingSize || xw_bytes > limits.maxBufferSize) {
+  if (rows == 0 || hidden_size_ <= 0 || max_bytes > limits.maxStorageBufferBindingSize ||
+      max_bytes > limits.maxBufferSize) {
     return ComputeStepwise(context);
   }
   return ComputeWithGemm(context);
@@ -801,7 +814,7 @@ Status Lstm::ComputeWithGemm(ComputeContext& context) const {
   const Tensor* w_t = packed_w_.get();
   const Tensor* r_t = packed_r_.get();
   if (w_t == nullptr) {
-    w_for_run = context.CreateGPUTensor(W->DataType(), PackedLstmWeightShape(W_shape));
+    w_for_run = context.CreateGPUTensor(f32, PackedLstmWeightShape(W_shape));
     ORT_RETURN_IF_ERROR(PackLstmWeights(context, *W, w_for_run));
     w_t = &w_for_run;
   }
@@ -814,8 +827,16 @@ Status Lstm::ComputeWithGemm(ComputeContext& context) const {
   // XW[d, row, :] = X[row, :] * W[d]^T for every timestep at once (rows follow X's layout).
   const int64_t rows = seq_length * batch_size;
   const Activation no_activation{};
-  Tensor xw = context.CreateGPUTensor(X->DataType(), TensorShape({num_directions, rows, 4 * hidden}));
-  const Tensor x_rows = CreateTensorView(*X, TensorShape({1, rows, input_size}));
+  // Computed and stored in f32: rounding XW to float16 would lose what the bias and recurrent term cancel.
+  Tensor xw = context.CreateGPUTensor(f32, TensorShape({num_directions, rows, 4 * hidden}));
+  Tensor x_f32;
+  const Tensor* x_src = X;
+  if (X->DataType() != f32) {
+    x_f32 = context.CreateGPUTensor(f32, X_shape);
+    ORT_RETURN_IF_ERROR(ConvertToF32(context, *X, x_f32));
+    x_src = &x_f32;
+  }
+  const Tensor x_rows = CreateTensorView(*x_src, TensorShape({1, rows, input_size}));
   ORT_RETURN_IF_ERROR(matmul_.Compute(context, no_activation, {&x_rows, w_t}, &xw, /*is_channels_last=*/true,
                                       packed_w_ != nullptr));
 

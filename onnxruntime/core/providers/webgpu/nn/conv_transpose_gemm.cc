@@ -32,6 +32,10 @@ uint32_t Dispatch(uint32_t size) { return (size + WORKGROUP_SIZE - 1) / WORKGROU
 
 }  // namespace
 
+MLDataType ConvTransposeGemmComputeType(MLDataType input_type) {
+  return input_type == DataTypeImpl::GetType<MLFloat16>() ? DataTypeImpl::GetType<float>() : input_type;
+}
+
 bool UseConvTransposeGemm(const TensorShape& onnx_filter_shape, int64_t group) {
   const size_t rank = onnx_filter_shape.NumDimensions();
   return group == 1 && (rank == 3 || rank == 4) && onnx_filter_shape[0] >= kGemmMinInputChannels &&
@@ -55,7 +59,7 @@ Status ConvTransposeGemmPackWeightProgram::GenerateShaderCode(ShaderHelper& shad
                             << "  let co = c % uniforms.out_channels;\n"
                             << "  let kh = kk / uniforms.kernel_width;\n"
                             << "  let kw = kk % uniforms.kernel_width;\n"
-                            << "  v = " << w.GetByOffset("((r * uniforms.out_channels + co) * uniforms.kernel_height + kh) * uniforms.kernel_width + kw") << ";\n"
+                            << "  v = packed_value_t(" << w.GetByOffset("((r * uniforms.out_channels + co) * uniforms.kernel_height + kh) * uniforms.kernel_width + kw") << ");\n"
                             << "}\n"
                             << packed.SetByOffset("global_idx", "v") << "\n";
   return Status::OK();
@@ -69,7 +73,7 @@ Status ConvTransposeGemmPackInputProgram::GenerateShaderCode(ShaderHelper& shade
                             << "let c = global_idx % uniforms.padded_k;\n"
                             << "var v = a_value_t(0);\n"
                             << "if (c < uniforms.k) {\n"
-                            << "  v = " << x.GetByOffset("(uniforms.row_offset + r) * uniforms.k + c") << ";\n"
+                            << "  v = a_value_t(" << x.GetByOffset("(uniforms.row_offset + r) * uniforms.k + c") << ");\n"
                             << "}\n"
                             << a.SetByOffset("global_idx", "v") << "\n";
   return Status::OK();
@@ -78,6 +82,8 @@ Status ConvTransposeGemmPackInputProgram::GenerateShaderCode(ShaderHelper& shade
 Status ConvTransposeCol2ImProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& cols = shader.AddInput("cols", ShaderUsage::UseUniform);
   const ShaderVariableHelper* bias = has_bias_ ? &shader.AddInput("bias", ShaderUsage::UseUniform) : nullptr;
+  const ShaderVariableHelper* partial =
+      accumulate_ == Col2ImAccumulate::kFromInput ? &shader.AddInput("partial", ShaderUsage::UseUniform) : nullptr;
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
   // Output pixel o receives tap k of input pixel i when o = i * stride + k * dilation - pad. Taps are
@@ -109,7 +115,9 @@ Status ConvTransposeCol2ImProgram::GenerateShaderCode(ShaderHelper& shader) cons
        << "let nh = pixel / uniforms.out_width;\n"
        << "let oh = nh % uniforms.out_height;\n"
        << "let n = nh / uniforms.out_height;\n";
-  if (accumulate_) {
+  if (partial != nullptr) {
+    body << "var acc = f32(" << partial->GetByOffset("global_idx") << ");\n";
+  } else if (accumulate_ == Col2ImAccumulate::kInPlace) {
     body << "var acc = f32(" << output.GetByOffset("global_idx") << ");\n";
   } else if (bias != nullptr) {
     body << "var acc = f32(" << bias->GetByOffset("co") << ");\n";
@@ -162,25 +170,35 @@ Status ComputeConvTransposeGemm(ComputeContext& context, MatMulComputeDispatcher
   const uint32_t output_size = narrow<uint32_t>(output.Shape().Size());
 
   const bool weights_are_constant = packed_filter != nullptr;
+  // float16 runs the GEMM and the accumulation in f32: a per-tap partial sum can overflow or lose the
+  // precision that later taps would cancel.
+  const MLDataType compute_type = ConvTransposeGemmComputeType(input.DataType());
   Tensor packed_for_run;
   if (packed_filter == nullptr) {
-    packed_for_run = context.CreateGPUTensor(input.DataType(), ConvTransposeGemmWeightShape(onnx_filter.Shape()));
+    packed_for_run = context.CreateGPUTensor(compute_type, ConvTransposeGemmWeightShape(onnx_filter.Shape()));
     ORT_RETURN_IF_ERROR(PackConvTransposeGemmWeight(context, onnx_filter, packed_for_run));
     packed_filter = &packed_for_run;
   }
 
   // Rows of X per GEMM, bounded so the column buffer and the padded input chunk fit in one binding.
-  const uint64_t element_size = input.DataType()->Size();
+  const uint64_t element_size = compute_type->Size();
   const uint64_t max_bytes = std::min<uint64_t>(kMaxChunkBytes, context.DeviceLimits().maxStorageBufferBindingSize);
   const uint64_t row_bytes = element_size * std::max(padded_cols, padded_k);
   const uint32_t chunk_rows = narrow<uint32_t>(std::max<uint64_t>(1, std::min<uint64_t>(m, max_bytes / row_bytes)));
-  const bool pack_input = padded_k != k || chunk_rows < m;
+  const bool pack_input = padded_k != k || chunk_rows < m || compute_type != input.DataType();
 
   Tensor a_buffer;
   if (pack_input) {
-    a_buffer = context.CreateGPUTensor(input.DataType(), TensorShape({chunk_rows, padded_k}));
+    a_buffer = context.CreateGPUTensor(compute_type, TensorShape({chunk_rows, padded_k}));
   }
-  Tensor col_buffer = context.CreateGPUTensor(input.DataType(), TensorShape({chunk_rows, padded_cols}));
+  Tensor col_buffer = context.CreateGPUTensor(compute_type, TensorShape({chunk_rows, padded_cols}));
+  // With several chunks, a narrower output type accumulates in an f32 buffer and is written by the last chunk.
+  const bool multi_chunk = chunk_rows < m;
+  const bool use_partial = multi_chunk && compute_type != output.DataType();
+  Tensor partial_sums;
+  if (use_partial) {
+    partial_sums = context.CreateGPUTensor(compute_type, output.Shape());
+  }
   const Activation no_activation{};
 
   for (uint64_t row_begin = 0; row_begin < m; row_begin += chunk_rows) {
@@ -202,14 +220,23 @@ Status ComputeConvTransposeGemm(ComputeContext& context, MatMulComputeDispatcher
     ORT_RETURN_IF_ERROR(matmul.Compute(context, no_activation, {&a, packed_filter}, &col,
                                        /*is_channels_last=*/true, weights_are_constant));
 
-    const bool accumulate = row_begin > 0;
-    ConvTransposeCol2ImProgram col2im{bias != nullptr, accumulate};
+    const bool first = row_begin == 0;
+    const bool last = row_begin + rows >= m;
+    Col2ImAccumulate accumulate = first ? Col2ImAccumulate::kNone : Col2ImAccumulate::kInPlace;
+    if (use_partial && last) {
+      accumulate = Col2ImAccumulate::kFromInput;
+    }
+    Tensor& target = use_partial && !last ? partial_sums : output;
+    ConvTransposeCol2ImProgram col2im{bias != nullptr && first, accumulate};
     col2im.AddInput({&col, ProgramTensorMetadataDependency::Type});
-    if (bias != nullptr) {
+    if (bias != nullptr && first) {
       col2im.AddInput({bias, ProgramTensorMetadataDependency::Type});
     }
-    col2im.AddOutput({&output, ProgramTensorMetadataDependency::Type})
-        .CacheHint(bias != nullptr, accumulate)
+    if (accumulate == Col2ImAccumulate::kFromInput) {
+      col2im.AddInput({&partial_sums, ProgramTensorMetadataDependency::Type});
+    }
+    col2im.AddOutput({&target, ProgramTensorMetadataDependency::Type})
+        .CacheHint(bias != nullptr && first, static_cast<int>(accumulate))
         .SetDispatchGroupSize(Dispatch(output_size))
         .AddUniformVariables({{output_size},
                               {p.out_channels},
