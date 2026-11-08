@@ -149,7 +149,7 @@ TEST(MatMulPackedPrecisionTest, Nvfp4Bf16ProductionProjectionShapes) {
       0.f, -.5f, -1.f, -1.5f, -2.f, -3.f, -4.f, -6.f};
   constexpr std::array<int, 8> active{0, 17, 63, 128, 255, 512, 1535, 2047};
   constexpr float global_scale = -.333333f;
-  for (const auto& shape : {std::array<int, 2>{18560, 4096}, {4096, 8192}, {35, 192}}) {
+  for (const auto& shape : {std::array<int, 2>{18560, 4096}, {4096, 8192}, {35, 192}, {8191, 640}, {8192, 128}, {8193, 640}}) {
     const int n = shape[0], k = shape[1];
     const int row_bytes = (k / 64) * 36;
     std::vector<uint8_t> packed(n * row_bytes);
@@ -165,7 +165,7 @@ TEST(MatMulPackedPrecisionTest, Nvfp4Bf16ProductionProjectionShapes) {
         }
       }
     }
-    for (int rows : {1, 7, 8}) {
+    for (int rows : {1, 3, 7, 8}) {
       SCOPED_TRACE(testing::Message() << "n=" << n << " k=" << k << " rows=" << rows);
       std::vector<BFloat16> a(rows * k, BFloat16(0.f)), expected(rows * n);
       for (int row = 0; row < rows; ++row) {
