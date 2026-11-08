@@ -56,8 +56,7 @@ template <typename T = BFloat16, typename TR = T>
 void TestFullScoreReluSquared(int rows, int topk, int malformed = 0,
                               int hidden_size = 1024,
                               const char* activation_type = "relu2", bool normalize = false,
-                              int selection_case = 0, int experts = 32) {
-  constexpr int inter_size = 256;
+                              int selection_case = 0, int experts = 32, int inter_size = 256) {
   const int gate_row_bytes = (hidden_size / 256) * 66;
   std::vector<uint8_t> gate(experts * inter_size * gate_row_bytes);
   const int down_row_bytes = (inter_size / 256) * 66;
@@ -122,7 +121,7 @@ void TestFullScoreReluSquared(int rows, int topk, int malformed = 0,
                             ? 0.f
                             : T(static_cast<float>(hidden_size / 256) * factor * sum8[expert]).ToFloat();
       const float activation = T(fc1 * fc1).ToFloat();
-      const float fc2 = T(32.f * activation * sum8[expert]).ToFloat();
+      const float fc2 = T(static_cast<float>(inter_size / 8) * activation * sum8[expert]).ToFloat();
       mixed = std::fma(weight, fc2, mixed);
     }
     for (int col = 0; col < hidden_size; ++col) expected[row * hidden_size + col] = T(mixed);
@@ -283,6 +282,16 @@ TEST(MoEPackedRoutingTest, FullScoresHandleEmptyRowsMaximumExpertsAndChunkBounda
   TestFullScoreReluSquared(2, 32, 0, 256, "relu2", true, 0, 512);
   for (int rows : {2047, 2048, 2049}) {
     TestFullScoreReluSquared(rows, 2, 0, 256, "relu2", true);
+  }
+}
+
+TEST(MoEPackedRoutingTest, Iq2ProductionWidthsPreserveOperandRoundingAndReduction) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (int inter_size : {1536, 2048, 2304, 2560}) {
+    for (int rows : {1, 8, 9}) {
+      SCOPED_TRACE(testing::Message() << "inter_size=" << inter_size << " rows=" << rows);
+      TestFullScoreReluSquared(rows, 9, 0, 1024, "relu2", false, 0, 32, inter_size);
+    }
   }
 }
 
