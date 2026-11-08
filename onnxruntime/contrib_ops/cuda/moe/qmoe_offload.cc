@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cinttypes>
 #include <cmath>
 #include <condition_variable>
 #include <cstring>
@@ -3136,21 +3137,47 @@ QMoEOffload::~QMoEOffload() {
   if (offload_telemetry_ && decode_state_ && decode_state_->telemetry && !context_failed) {
     QMoEOffloadTelemetry telemetry{};
     if (cudaMemcpy(&telemetry, decode_state_->telemetry, sizeof(telemetry), cudaMemcpyDeviceToHost) == cudaSuccess) {
-      std::fprintf(stderr,
-                   "QMoEOffload telemetry {\"layer\":%lld,\"layer_calls\":%llu,"
-                   "\"zero_cold_short_circuits\":%llu,\"cpu_doorbell_wakeups\":%llu,"
-                   "\"cold_routes\":%llu,\"last_cold_count\":%d,\"launched_seq\":%llu,"
-                   "\"request_seq\":%llu,\"done_seq\":%llu,\"last_serviced_seq\":%llu,"
-                   "\"last_promoted_seq\":%llu}\n",
-                   static_cast<long long>(layer_index_), static_cast<unsigned long long>(telemetry.layer_calls),
-                   static_cast<unsigned long long>(telemetry.zero_cold_short_circuits),
-                   static_cast<unsigned long long>(decode_state_->cpu_doorbell_wakeups),
-                   static_cast<unsigned long long>(telemetry.cold_routes),
-                   telemetry.last_cold_count, static_cast<unsigned long long>(decode_state_->launched_seq),
-                   static_cast<unsigned long long>(decode_state_->doorbell_req_host ? *decode_state_->doorbell_req_host : 0),
-                   static_cast<unsigned long long>(decode_state_->doorbell_done_host ? *decode_state_->doorbell_done_host : 0),
-                   static_cast<unsigned long long>(decode_state_->last_serviced_seq),
-                   static_cast<unsigned long long>(decode_state_->last_promoted_seq));
+      uint64_t substitutions = 0;
+      uint64_t conversions = 0;
+      for (int row = 0; row < kQMoETailSubstitutionMaxRows; ++row) {
+        substitutions += telemetry.substituted_routes_count[row];
+        conversions += telemetry.zero_cold_conversions_count[row];
+      }
+      // Emit the whole record with one write so concurrent session teardown cannot interleave partial JSON.
+      char head[768];
+      const int head_len = std::snprintf(
+          head, sizeof(head),
+          "QMoEOffload telemetry {\"layer\":%" PRId64 ",\"layer_calls\":%" PRIu64
+          ",\"zero_cold_short_circuits\":%" PRIu64 ",\"cpu_doorbell_wakeups\":%" PRIu64
+          ",\"cold_routes\":%" PRIu64 ",\"substituted_routes_count\":%" PRIu64
+          ",\"zero_cold_conversions_count\":%" PRIu64
+          ",\"last_cold_count\":%d,\"launched_seq\":%" PRIu64 ",\"request_seq\":%" PRIu64 ",\"done_seq\":%" PRIu64
+          ",\"last_serviced_seq\":%" PRIu64 ",\"last_promoted_seq\":%" PRIu64 ",\"last_indices\":[",
+          static_cast<int64_t>(layer_index_), static_cast<uint64_t>(telemetry.layer_calls),
+          static_cast<uint64_t>(telemetry.zero_cold_short_circuits),
+          static_cast<uint64_t>(decode_state_->cpu_doorbell_wakeups),
+          static_cast<uint64_t>(telemetry.cold_routes),
+          static_cast<uint64_t>(substitutions), static_cast<uint64_t>(conversions),
+          telemetry.last_cold_count, static_cast<uint64_t>(decode_state_->launched_seq),
+          static_cast<uint64_t>(decode_state_->doorbell_req_host ? *decode_state_->doorbell_req_host : 0),
+          static_cast<uint64_t>(decode_state_->doorbell_done_host ? *decode_state_->doorbell_done_host : 0),
+          static_cast<uint64_t>(decode_state_->last_serviced_seq),
+          static_cast<uint64_t>(decode_state_->last_promoted_seq));
+      std::string record(head, head_len > 0 ? std::min<size_t>(static_cast<size_t>(head_len), sizeof(head) - 1) : 0);
+      const int logged_routes = std::clamp(telemetry.last_route_count, 0, 256);
+      for (int route = 0; route < logged_routes; ++route) {
+        record += (route == 0 ? "" : ",");
+        record += std::to_string(telemetry.last_indices[route]);
+      }
+      record += "],\"last_weights\":[";
+      for (int route = 0; route < logged_routes; ++route) {
+        char weight[32];
+        std::snprintf(weight, sizeof(weight), "%.9g", telemetry.last_weights[route]);
+        record += (route == 0 ? "" : ",");
+        record += weight;
+      }
+      record += "]}\n";
+      std::fwrite(record.data(), 1, record.size(), stderr);
       std::fflush(stderr);
     }
   }
@@ -10047,6 +10074,24 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
     }
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
+    if (v4_planned_mode_ && v4_policy_.tail_substitution_threshold > 0.0f &&
+        tile_rows <= kQMoETailSubstitutionMaxRows && k_ > 0 && k_ <= 32 &&
+        v4_policy_.tail_substitution_min_rank < static_cast<int>(k_) &&
+        resident && !all_experts_resident) {
+      auto* telemetry = use_persistent_decode ? decode_state_->telemetry : nullptr;
+      if (is_bf16_) {
+        CUDA_RETURN_IF_ERROR(LaunchQMoETailSubstitution(
+            reinterpret_cast<const __nv_bfloat16*>(router->DataRaw()), scales, indices, CurrentSlotTableDev(),
+            tile_rows, num_experts_, static_cast<int>(k_), v4_policy_.tail_substitution_min_rank,
+            v4_policy_.tail_substitution_threshold, normalize_routing_weights_, stream, telemetry));
+      } else {
+        CUDA_RETURN_IF_ERROR(LaunchQMoETailSubstitution(
+            reinterpret_cast<const half*>(router->DataRaw()), scales, indices, CurrentSlotTableDev(),
+            tile_rows, num_experts_, static_cast<int>(k_), v4_policy_.tail_substitution_min_rank,
+            v4_policy_.tail_substitution_threshold, normalize_routing_weights_, stream, telemetry));
+      }
+    }
+
     // Statically full, populated, published placement fast path (v3 Section 7.3 / F6):
     // Skip CPU D2H, host callback, and H2D result upload when all E experts are resident on GPU.
     if (static_full_resident) {
@@ -10150,7 +10195,7 @@ Status QMoEOffload::ComputeSharedAsync(OpKernelContext* context, const Tensor* i
           decode_state_->doorbell_done_host, decode_state_->telemetry,
           skip_tail_cold_only_ ? scales : nullptr,
           skip_tail_cold_only_ ? min_expert_weight_ : 0.0f,
-          static_cast<int>(k_)));
+          static_cast<int>(k_), scales));
       ORT_RETURN_IF_ERROR(enqueue_hits());
       if (finalize_bias_gpu_ptr) {
         if (is_bf16_) {
