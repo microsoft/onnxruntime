@@ -1984,6 +1984,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if not args.disable_contrib_ops:
                 run_subprocess([sys.executable, "onnxruntime_test_python_sparse_matmul.py"], cwd=cwd, dll_path=dll_path)
 
+            run_subprocess([sys.executable, "onnxruntime_test_python_offline_tuning.py"], cwd=cwd, dll_path=dll_path)
+
             if args.enable_symbolic_shape_infer_tests:
                 run_subprocess(
                     [sys.executable, "onnxruntime_test_python_symbolic_shape_infer.py"], cwd=cwd, dll_path=dll_path
