@@ -411,6 +411,58 @@ TEST(MatMulPackedPrecisionTest, RoundedBf16ContiguousKCancellation) {
   }
 }
 
+TEST(MatMulPackedPrecisionTest, Q8Bf16VectorRecordWindowsAndStrideFallback) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  constexpr float global_scale = -.333333f;
+  for (const auto& shape : {std::array<int, 2>{17, 192}, {17, 256}, {8193, 256}}) {
+    const auto [n, k] = shape;
+    const int row_bytes = (k / 32) * 34;
+    std::vector<uint8_t> packed(n * row_bytes);
+    std::vector<BFloat16> weights(n * k);
+    for (int col = 0; col < n; ++col) {
+      for (int block = 0; block < k / 32; ++block) {
+        auto* bytes = packed.data() + col * row_bytes + block * 34;
+        const MLFloat16 scale((col + block) % 2 ? -.019f : .027f);
+        bytes[0] = static_cast<uint8_t>(scale.val);
+        bytes[1] = static_cast<uint8_t>(scale.val >> 8);
+        for (int j = 0; j < 32; ++j) {
+          const int code = (col * 17 + block * 13 + j * 29) % 256 - 128;
+          bytes[j + 2] = static_cast<uint8_t>(code);
+          weights[col * k + block * 32 + j] = BFloat16(scale.ToFloat() * static_cast<float>(code));
+        }
+      }
+    }
+    for (int rows : {1, 3, 8}) {
+      SCOPED_TRACE(testing::Message() << "N=" << n << " K=" << k << " rows=" << rows);
+      std::vector<BFloat16> a(rows * k, BFloat16(0.f)), expected(rows * n);
+      for (int row = 0; row < rows; ++row) {
+        // Sparse dyadic activations make these small FP32 sums exact irrespective
+        // of MMA's internal summation order, while sampling both record halves.
+        for (int block = 0; block < k / 32; ++block) {
+          a[row * k + block * 32 + (block * 5 + row * 17) % 32] = BFloat16(.125f);
+        }
+        for (int col = 0; col < n; ++col) {
+          float sum = 0.f;
+          for (int block = 0; block < k / 32; ++block) {
+            sum += .125f * weights[col * k + block * 32 + (block * 5 + row * 17) % 32].ToFloat();
+          }
+          expected[row * n + col] = BFloat16(sum * global_scale);
+        }
+      }
+      OpTester test("MatMulPacked", 1, kMSDomain);
+      test.AddAttribute("K", static_cast<int64_t>(k));
+      test.AddAttribute("N", static_cast<int64_t>(n));
+      test.AddAttribute("packed_type", int64_t{8});
+      test.AddAttribute("dequantize_to_activation_dtype", int64_t{1});
+      test.AddInput<BFloat16>("A", {rows, k}, a);
+      test.AddInput<uint8_t>("B", {n, row_bytes}, packed);
+      test.AddInput<float>("global_scale", {}, {global_scale});
+      test.AddOutput<BFloat16>("Y", {rows, n}, expected);
+      RunPackedCuda(test);
+    }
+  }
+}
+
 }  // namespace
 }  // namespace onnxruntime::test
 #endif
