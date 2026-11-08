@@ -635,6 +635,67 @@ __device__ __forceinline__ void DecodeGgufSubBlock16Impl(
   }
 }
 
+// FP4 magnitudes encoded as BF16(value * 2^-126), in the low/high 16-bit fields.
+__device__ __forceinline__ uint32_t Nvfp4ScaledBf16PairBits(uint32_t codes) {
+  const uint32_t magnitude = codes & 0x00070007u;
+  const uint32_t nonzero_mask = ((magnitude + 0x00070007u) & 0x00080008u) * 0x1fffu;
+  // The GGUF value table maps code 8 to positive zero, not negative zero.
+  return (magnitude << 6) | (((codes & 0x00080008u) << 12) & nonzero_mask);
+}
+
+template <bool kAlignedRows>
+__device__ __forceinline__ void DecodeNvfp4SubBlock16Bf16(
+    const uint8_t* row_ptr, int sb32_idx, int half16, uint4& low, uint4& high) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
+  const uint8_t* blk = row_ptr + static_cast<int64_t>(sb32_idx >> 1) * 36;
+  const int group = 2 * (sb32_idx & 1) + half16;
+  const uint8_t scale_byte = __ldg(blk + group);
+  const float d = scale_byte == 127
+                      ? 0.0f
+                      : __half2float(__half(__nv_cvt_fp8_to_halfraw(
+                            static_cast<__nv_fp8_storage_t>(scale_byte), __NV_E4M3)));
+  const uint8_t* codes = blk + 4 + group * 8;
+  uint32_t q0, q1;
+  if constexpr (kAlignedRows) {
+    q0 = __ldg(reinterpret_cast<const uint32_t*>(codes));
+    q1 = __ldg(reinterpret_cast<const uint32_t*>(codes + 4));
+  } else {
+    q0 = ReadU32Dev(codes);
+    q1 = ReadU32Dev(codes + 4);
+  }
+  const __nv_bfloat162 scale = __bfloat162bfloat162(__float2bfloat16_rn(d * 0x1p110f));
+  const __nv_bfloat162 restore = __floats2bfloat162_rn(0x1p16f, 0x1p16f);
+  auto* lo = reinterpret_cast<uint32_t*>(&low);
+  auto* hi = reinterpret_cast<uint32_t*>(&high);
+#pragma unroll
+  for (int s = 0; s < 4; ++s) {
+    const uint32_t pair = __byte_perm(q0, q1, 0x4400u + 0x1111u * s);
+    const uint32_t l = Nvfp4ScaledBf16PairBits(pair);
+    const uint32_t h = Nvfp4ScaledBf16PairBits(pair >> 4);
+    // FP8*2^110 and each finite scaled product are exact BF16 values.
+    // Restore before MMA: its operands and reduction must not be rescaled.
+    const auto pl = __hmul2(__hmul2(*reinterpret_cast<const __nv_bfloat162*>(&l), scale), restore);
+    const auto ph = __hmul2(__hmul2(*reinterpret_cast<const __nv_bfloat162*>(&h), scale), restore);
+    lo[s] = *reinterpret_cast<const uint32_t*>(&pl);
+    hi[s] = *reinterpret_cast<const uint32_t*>(&ph);
+  }
+#else
+  // Keep the established FP32 decoder on architectures not qualified for this
+  // subnormal BF16 input encoding.
+  float weights[16], l[8], h[8];
+  DecodeGgufSubBlock16Impl<kGgmlTypeNVFP4>(row_ptr, sb32_idx, half16, weights);
+#pragma unroll
+  for (int s = 0; s < 4; ++s) {
+    l[2 * s] = weights[s];
+    l[2 * s + 1] = weights[s + 4];
+    h[2 * s] = weights[s + 8];
+    h[2 * s + 1] = weights[s + 12];
+  }
+  low = PackFloat8ToBf16x2(l);
+  high = PackFloat8ToBf16x2(h);
+#endif
+}
+
 // Decodes 16 contiguous elements [sb32_idx * 32 + half16 * 16 .. + 15] of a GGUF weight row.
 __device__ __forceinline__ void DecodeGgufSubBlock32(
     const uint8_t* row_ptr, int ggml_type, int sb32_idx, int half16, float (&out)[16]) {
