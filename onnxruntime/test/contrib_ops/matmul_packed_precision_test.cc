@@ -142,6 +142,74 @@ TEST(MatMulPackedPrecisionTest, Nvfp4UnsignedScaleKnownAnswers) {
   }
 }
 
+TEST(MatMulPackedPrecisionTest, Nvfp4Bf16ProductionProjectionShapes) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  constexpr std::array<float, 16> values{
+      0.f, .5f, 1.f, 1.5f, 2.f, 3.f, 4.f, 6.f,
+      0.f, -.5f, -1.f, -1.5f, -2.f, -3.f, -4.f, -6.f};
+  constexpr std::array<int, 8> active{0, 17, 63, 128, 255, 512, 1535, 2047};
+  constexpr float global_scale = -.333333f;
+  for (const auto& shape : {std::array<int, 2>{18560, 4096}, {4096, 8192}, {35, 192}}) {
+    const int n = shape[0], k = shape[1];
+    const int row_bytes = (k / 64) * 36;
+    std::vector<uint8_t> packed(n * row_bytes);
+    for (int col = 0; col < n; ++col) {
+      for (int block = 0; block < k / 64; ++block) {
+        auto* bytes = packed.data() + col * row_bytes + block * 36;
+        for (int group = 0; group < 4; ++group) {
+          // Signed, non-power-of-two scales plus zero and the 0x7f sentinel.
+          bytes[group] = static_cast<uint8_t>((col + block * 7 + group * 19) % 255);
+          for (int j = 0; j < 8; ++j) {
+            bytes[4 + group * 8 + j] = static_cast<uint8_t>(col * 17 + block * 13 + group * 11 + j * 29);
+          }
+        }
+      }
+    }
+    for (int rows : {1, 7, 8}) {
+      SCOPED_TRACE(testing::Message() << "n=" << n << " k=" << k << " rows=" << rows);
+      std::vector<BFloat16> a(rows * k, BFloat16(0.f)), expected(rows * n);
+      for (int row = 0; row < rows; ++row) {
+        for (int index : active) {
+          if (index < k) a[row * k + index] = BFloat16(static_cast<float>((index + row) % 9 - 4) / 8.f);
+        }
+        for (int col = 0; col < n; ++col) {
+          float sum = 0.f;
+          for (int index : active) {
+            if (index >= k) continue;
+            const auto* bytes = packed.data() + col * row_bytes + (index / 64) * 36;
+            const int group = (index % 64) / 16;
+            const uint8_t scale = bytes[group];
+            const int exponent = (scale >> 3) & 15, fraction = scale & 7;
+            float d = exponent == 0
+                          ? std::ldexp(static_cast<float>(fraction), -9)
+                          : std::ldexp(1.f + static_cast<float>(fraction) / 8.f, exponent - 7);
+            if (scale & 128) d = -d;
+            if (scale == 127) d = 0.f;
+            const int position = index % 16;
+            const int code = (bytes[4 + group * 8 + position % 8] >> (4 * (position / 8))) & 15;
+            const float operand = BFloat16(d * values[code]).ToFloat();
+            sum += a[row * k + index].ToFloat() * operand;
+          }
+          // Sparse dyadic products are exactly representable in FP32, so this
+          // independent reference is insensitive to the MMA reduction order.
+          expected[row * n + col] = BFloat16(sum * global_scale);
+        }
+      }
+      for (bool initializer : {false, true}) {
+        OpTester test("MatMulPacked", 1, kMSDomain);
+        test.AddAttribute("K", static_cast<int64_t>(k));
+        test.AddAttribute("N", static_cast<int64_t>(n));
+        test.AddAttribute("packed_type", int64_t{40});
+        test.AddInput<BFloat16>("A", {rows, k}, a);
+        test.AddInput<uint8_t>("B", {n, row_bytes}, packed, initializer);
+        test.AddInput<float>("global_scale", {}, {global_scale}, initializer);
+        test.AddOutput<BFloat16>("Y", {rows, n}, expected);
+        RunPackedCuda(test);
+      }
+    }
+  }
+}
+
 template <typename T>
 void TestCompleteOperandRounding() {
   constexpr int k = 256;
