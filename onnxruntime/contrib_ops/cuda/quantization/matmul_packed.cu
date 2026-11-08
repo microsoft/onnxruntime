@@ -188,6 +188,15 @@ __global__ __launch_bounds__(KW * 32) void MatMulPackedBf16TcWarpKSplitKernel(
               gguf_cuda::DecodeNvfp4SubBlock16Bf16<kAlignedNvfp4Rows>(
                   row_ptrs_hi[m], offset / 32, (offset / 16) & 1, o_lo, o_hi);
             }
+          } else if constexpr (kCompileType == gguf_quant::kGgmlTypeIQ2_XXS) {
+            if (valid_lo[m]) {
+              gguf_cuda::DecodeIq2SubBlock16Bf16(
+                  row_ptrs_lo[m], offset / 32, (offset / 16) & 1, e_lo, e_hi);
+            }
+            if (valid_hi[m]) {
+              gguf_cuda::DecodeIq2SubBlock16Bf16(
+                  row_ptrs_hi[m], offset / 32, (offset / 16) & 1, o_lo, o_hi);
+            }
           } else {
             float w_lo[16] = {};
             float w_hi[16] = {};
