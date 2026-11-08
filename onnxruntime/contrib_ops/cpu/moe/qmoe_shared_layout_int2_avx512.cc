@@ -65,7 +65,7 @@ template <int RT, int BlockSize, bool WeightsPrepacked, bool ScalesBlockMajor, b
 void Int2Group8Avx512(const uint8_t* w_base, const uint8_t* next_w_base, const uint16_t* scales,
                       int64_t n_total, int64_t n0, int64_t k,
                       const float* a_reordered, float (&result)[8][RT]) {
-  static_assert(RT == 1 || RT == 2, "Int2Group8Avx512 is specialized for RT=1,2");
+  static_assert(RT >= 1 && RT <= 4, "Int2Group8Avx512 is specialized for RT=1..4");
   static_assert(BlockSize == 32 || BlockSize == 64 || BlockSize == 128,
                 "Int2Group8Avx512 requires BlockSize 32, 64, or 128");
   constexpr int64_t kTileK = 64;
@@ -74,14 +74,12 @@ void Int2Group8Avx512(const uint8_t* w_base, const uint8_t* next_w_base, const u
   const int64_t raw_w_stride = k / 4;
   const __m128i mask = _mm_set1_epi8(0x03);
   const __m128i two8 = _mm_set1_epi8(2);
-  __m512 acc0_0 = _mm512_setzero_ps(), acc0_1 = _mm512_setzero_ps();
-  __m512 acc1_0 = _mm512_setzero_ps(), acc1_1 = _mm512_setzero_ps();
-  __m512 acc2_0 = _mm512_setzero_ps(), acc2_1 = _mm512_setzero_ps();
-  __m512 acc3_0 = _mm512_setzero_ps(), acc3_1 = _mm512_setzero_ps();
-  __m512 acc4_0 = _mm512_setzero_ps(), acc4_1 = _mm512_setzero_ps();
-  __m512 acc5_0 = _mm512_setzero_ps(), acc5_1 = _mm512_setzero_ps();
-  __m512 acc6_0 = _mm512_setzero_ps(), acc6_1 = _mm512_setzero_ps();
-  __m512 acc7_0 = _mm512_setzero_ps(), acc7_1 = _mm512_setzero_ps();
+  __m512 acc[8][RT];
+  for (int c = 0; c < 8; ++c) {
+    for (int r = 0; r < RT; ++r) {
+      acc[c][r] = _mm512_setzero_ps();
+    }
+  }
 
   auto read_scale = [&](int c, int64_t sb) QMOE_LAMBDA_INLINE -> float {
     const uint16_t s_bits =
@@ -97,18 +95,14 @@ void Int2Group8Avx512(const uint8_t* w_base, const uint8_t* next_w_base, const u
         _mm_prefetch(reinterpret_cast<const char*>(next_w_base + kb64 * 128 + 64), _MM_HINT_T0);
       }
     }
-    const __m512 a0_0 = _mm512_loadu_ps(a_reordered + 0 * k + kb64 * kTileK + 0);
-    const __m512 a1_0 = _mm512_loadu_ps(a_reordered + 0 * k + kb64 * kTileK + 16);
-    const __m512 a2_0 = _mm512_loadu_ps(a_reordered + 0 * k + kb64 * kTileK + 32);
-    const __m512 a3_0 = _mm512_loadu_ps(a_reordered + 0 * k + kb64 * kTileK + 48);
-    __m512 a0_1, a1_1, a2_1, a3_1;
-    if constexpr (RT >= 2) {
-      a0_1 = _mm512_loadu_ps(a_reordered + 1 * k + kb64 * kTileK + 0);
-      a1_1 = _mm512_loadu_ps(a_reordered + 1 * k + kb64 * kTileK + 16);
-      a2_1 = _mm512_loadu_ps(a_reordered + 1 * k + kb64 * kTileK + 32);
-      a3_1 = _mm512_loadu_ps(a_reordered + 1 * k + kb64 * kTileK + 48);
+    __m512 a0[RT], a1[RT], a2[RT], a3[RT];
+    for (int r = 0; r < RT; ++r) {
+      a0[r] = _mm512_loadu_ps(a_reordered + r * k + kb64 * kTileK + 0);
+      a1[r] = _mm512_loadu_ps(a_reordered + r * k + kb64 * kTileK + 16);
+      a2[r] = _mm512_loadu_ps(a_reordered + r * k + kb64 * kTileK + 32);
+      a3[r] = _mm512_loadu_ps(a_reordered + r * k + kb64 * kTileK + 48);
     }
-    auto step_col = [&](int c, const uint8_t* byte_ptr, __m512& acc_r0, __m512& acc_r1) QMOE_LAMBDA_INLINE {
+    auto step_col = [&](int c, const uint8_t* byte_ptr) QMOE_LAMBDA_INLINE {
       const __m128i x = _mm_loadu_si128(reinterpret_cast<const __m128i*>(byte_ptr));
       const __m128i b0 = _mm_sub_epi8(_mm_and_si128(x, mask), two8);
       const __m128i b1 = _mm_sub_epi8(_mm_and_si128(_mm_srli_epi16(x, 2), mask), two8);
@@ -128,41 +122,26 @@ void Int2Group8Avx512(const uint8_t* w_base, const uint8_t* next_w_base, const u
         const int64_t sb = (BlockSize == 64) ? kb64 : (kb64 >> 1);
         s = _mm512_set1_ps(read_scale(c, sb));
       }
-      // Scale weights before products to avoid overflowing an unscaled dot product.
-      w0 = _mm512_mul_ps(w0, s);
-      w1 = _mm512_mul_ps(w1, s);
-      w2 = _mm512_mul_ps(w2, s);
-      w3 = _mm512_mul_ps(w3, s);
-      const __m512 prod0 =
-          _mm512_fmadd_ps(w0, a0_0, _mm512_fmadd_ps(w1, a1_0, _mm512_fmadd_ps(w2, a2_0, _mm512_mul_ps(w3, a3_0))));
-      acc_r0 = _mm512_add_ps(prod0, acc_r0);
-      if constexpr (RT >= 2) {
-        const __m512 prod1 =
-            _mm512_fmadd_ps(w0, a0_1, _mm512_fmadd_ps(w1, a1_1, _mm512_fmadd_ps(w2, a2_1, _mm512_mul_ps(w3, a3_1))));
-        acc_r1 = _mm512_add_ps(prod1, acc_r1);
+      for (int r = 0; r < RT; ++r) {
+        const __m512 prod =
+            _mm512_fmadd_ps(w0, a0[r], _mm512_fmadd_ps(w1, a1[r], _mm512_fmadd_ps(w2, a2[r], _mm512_mul_ps(w3, a3[r]))));
+        acc[c][r] = _mm512_fmadd_ps(prod, s, acc[c][r]);
       }
     };
-    step_col(0, WeightsPrepacked ? (tile + 0 * 16) : (w_base + 0 * raw_w_stride + kb64 * 16), acc0_0, acc0_1);
-    step_col(1, WeightsPrepacked ? (tile + 1 * 16) : (w_base + 1 * raw_w_stride + kb64 * 16), acc1_0, acc1_1);
-    step_col(2, WeightsPrepacked ? (tile + 2 * 16) : (w_base + 2 * raw_w_stride + kb64 * 16), acc2_0, acc2_1);
-    step_col(3, WeightsPrepacked ? (tile + 3 * 16) : (w_base + 3 * raw_w_stride + kb64 * 16), acc3_0, acc3_1);
-    step_col(4, WeightsPrepacked ? (tile + 4 * 16) : (w_base + 4 * raw_w_stride + kb64 * 16), acc4_0, acc4_1);
-    step_col(5, WeightsPrepacked ? (tile + 5 * 16) : (w_base + 5 * raw_w_stride + kb64 * 16), acc5_0, acc5_1);
-    step_col(6, WeightsPrepacked ? (tile + 6 * 16) : (w_base + 6 * raw_w_stride + kb64 * 16), acc6_0, acc6_1);
-    step_col(7, WeightsPrepacked ? (tile + 7 * 16) : (w_base + 7 * raw_w_stride + kb64 * 16), acc7_0, acc7_1);
+    step_col(0, WeightsPrepacked ? (tile + 0 * 16) : (w_base + 0 * raw_w_stride + kb64 * 16));
+    step_col(1, WeightsPrepacked ? (tile + 1 * 16) : (w_base + 1 * raw_w_stride + kb64 * 16));
+    step_col(2, WeightsPrepacked ? (tile + 2 * 16) : (w_base + 2 * raw_w_stride + kb64 * 16));
+    step_col(3, WeightsPrepacked ? (tile + 3 * 16) : (w_base + 3 * raw_w_stride + kb64 * 16));
+    step_col(4, WeightsPrepacked ? (tile + 4 * 16) : (w_base + 4 * raw_w_stride + kb64 * 16));
+    step_col(5, WeightsPrepacked ? (tile + 5 * 16) : (w_base + 5 * raw_w_stride + kb64 * 16));
+    step_col(6, WeightsPrepacked ? (tile + 6 * 16) : (w_base + 6 * raw_w_stride + kb64 * 16));
+    step_col(7, WeightsPrepacked ? (tile + 7 * 16) : (w_base + 7 * raw_w_stride + kb64 * 16));
   }
-  auto store_col = [&](int c, __m512 a0, __m512 a1) QMOE_LAMBDA_INLINE {
-    result[c][0] = _mm512_reduce_add_ps(a0);
-    if constexpr (RT >= 2) result[c][1] = _mm512_reduce_add_ps(a1);
-  };
-  store_col(0, acc0_0, acc0_1);
-  store_col(1, acc1_0, acc1_1);
-  store_col(2, acc2_0, acc2_1);
-  store_col(3, acc3_0, acc3_1);
-  store_col(4, acc4_0, acc4_1);
-  store_col(5, acc5_0, acc5_1);
-  store_col(6, acc6_0, acc6_1);
-  store_col(7, acc7_0, acc7_1);
+  for (int c = 0; c < 8; ++c) {
+    for (int r = 0; r < RT; ++r) {
+      result[c][r] = _mm512_reduce_add_ps(acc[c][r]);
+    }
+  }
 }
 
 template <int RT, int BlockSize, bool WeightsPrepacked, bool ScalesBlockMajor, bool ScaleIsBf16>
@@ -271,7 +250,7 @@ void Int2RowTileAvx512(const uint8_t* weights, const uint16_t* scales, const uin
     }
     const int64_t group_stride = kInt2ColsInterleaved * (k / 4);
     int64_t n0 = aligned_begin;
-    if constexpr (RT <= 2) {
+    if constexpr (RT <= 4) {
       for (; n0 < aligned_end && (n0 % kInt2ColsInterleaved) != 0; n0 += 4) {
         const uint8_t* group = weights + (n0 / kInt2ColsInterleaved) * group_stride;
         float result[4][RT];

@@ -8710,7 +8710,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
         MEMORYSTATUSEX pf_mem_stat{};
         pf_mem_stat.dwLength = sizeof(pf_mem_stat);
         const bool has_free_phys =
-            GlobalMemoryStatusEx(&pf_mem_stat) && pf_mem_stat.ullAvailPhys >= (2ULL << 30);
+            GlobalMemoryStatusEx(&pf_mem_stat) && pf_mem_stat.ullAvailPhys >= (512ULL << 20);
         if (enable_win_prefetch && has_free_phys) {
           const uint8_t* w1_b = static_cast<const uint8_t*>(nvfp4_fc1_w_->DataRaw());
           const uint8_t* w2_b = static_cast<const uint8_t*>(nvfp4_fc2_w_->DataRaw());
@@ -8719,7 +8719,7 @@ Status QMoEOffload::ComputeShared(OpKernelContext* context) const {
           std::vector<WIN32_MEMORY_RANGE_ENTRY> ranges;
           ranges.reserve(static_cast<size_t>(num_experts_) * 4);
           for (int exp_id = 0; exp_id < num_experts_; ++exp_id) {
-            if (expert_routes[exp_id].empty()) continue;
+            if (!stream_skip.empty() ? (stream_skip[exp_id] == 0) : expert_routes[exp_id].empty()) continue;
             ranges.push_back({const_cast<uint8_t*>(w1_b + static_cast<size_t>(exp_id) * resident_bank_bytes_[0]), resident_bank_bytes_[0]});
             ranges.push_back({const_cast<uint8_t*>(w2_b + static_cast<size_t>(exp_id) * resident_bank_bytes_[1]), resident_bank_bytes_[1]});
             ranges.push_back({const_cast<uint8_t*>(s1_b + static_cast<size_t>(exp_id) * resident_bank_bytes_[2]), resident_bank_bytes_[2]});

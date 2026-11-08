@@ -63,6 +63,12 @@
     list(APPEND onnxruntime_cuda_contrib_ops_cc_srcs
       "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/moe/qmoe_shared_layout.cc")
   endif()
+  if(MSVC)
+    set_source_files_properties(
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/moe_packed.cc"
+      PROPERTIES COMPILE_FLAGS "/arch:AVX2"
+    )
+  endif()
 
   if(onnxruntime_MINIMAL_BUILD)
     list(REMOVE_ITEM onnxruntime_cuda_contrib_ops_cc_srcs

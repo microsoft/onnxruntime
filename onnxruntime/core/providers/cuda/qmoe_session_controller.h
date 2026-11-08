@@ -1235,7 +1235,7 @@ class QMoESessionController {
       }
     }
 
-    if (num_layers >= 24 && total_vram >= (16ULL << 30) && total_full_gpu_bytes >= (8ULL << 30)) {
+    if (num_layers >= 24 && total_vram >= (15ULL << 30) && total_full_gpu_bytes >= (8ULL << 30)) {
       if (!policy.device_working_bytes_explicit && policy.device_working_bytes < (560ULL << 20)) {
         policy.device_working_bytes = 560ULL << 20;
       }
@@ -1270,10 +1270,12 @@ class QMoESessionController {
         const DWORD strict_len = GetEnvironmentVariableA("ORT_QMOE_STRICT_DEVICE_EXPERT_BYTES", strict_buf, sizeof(strict_buf));
         const bool strict_budget = (strict_len > 0 && strict_buf[0] == '1');
         if (!strict_budget) {
-          uint64_t extra_wddm_reserve =
-              (total_vram >= (28ULL << 30)) ? (1792ULL << 20) : (1536ULL << 20);
           const bool is_moe_packed = !nodes.empty() && nodes[0]->GetSourceDescriptor().op_type == "MoEPacked";
-          if (total_vram < (28ULL << 30) && (policy.reserve_device_bytes <= (5700ULL << 20) || is_moe_packed)) {
+          uint64_t extra_wddm_reserve =
+              (total_vram >= (28ULL << 30)) ? (is_moe_packed ? (512ULL << 20) : (1792ULL << 20)) : (1536ULL << 20);
+          if (total_vram < (20ULL << 30)) {
+            extra_wddm_reserve = is_moe_packed ? (256ULL << 20) : (512ULL << 20);
+          } else if (total_vram < (28ULL << 30) && (policy.reserve_device_bytes <= (5700ULL << 20) || is_moe_packed)) {
             extra_wddm_reserve = 256ULL << 20;
           }
           const uint64_t post_session_reserve =
