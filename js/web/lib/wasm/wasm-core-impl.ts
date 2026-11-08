@@ -1130,7 +1130,9 @@ export const run = async (
       }
     }
 
-    if (ioBindingState && !enableGraphCapture) {
+    // Clear the binding after every run, also with graph capture: the GPU buffers registered for this run's tensors are
+    // unregistered in `finally` below, so a binding kept for the next run would reference released buffers.
+    if (ioBindingState) {
       if (wasm._OrtClearBoundOutputs(ioBindingState.handle) !== 0) {
         checkLastError("Can't clear bound outputs.");
       }
