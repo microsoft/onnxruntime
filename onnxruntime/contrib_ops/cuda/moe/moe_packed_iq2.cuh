@@ -303,7 +303,7 @@ static __device__ const MoEPackedIq2Codebook kMoEPackedIq2Grid = MoEPackedIq2Cod
 
 // Reconstruct both eight-element grids from one GGML record. Keep the complete
 // FP32 scale*grid reconstruction before rounding each operand to BF16.
-template <bool kCodesWord = true>
+template <bool kCodesWord = true, bool kSignBits = false>
 __device__ __forceinline__ void MoEPackedIq2Fragment(
     const uint8_t* row, int offset, uint32_t (&low)[4], uint32_t (&high)[4]) {
   const uint8_t* block = row + static_cast<int64_t>(offset / 256) * 66;
@@ -323,10 +323,17 @@ __device__ __forceinline__ void MoEPackedIq2Fragment(
 #pragma unroll
     for (int pair = 0; pair < 4; ++pair) {
       const int j = 2 * pair;
-      const float a = scale * __uint_as_float(words[pair] << 16) *
-                      ((signs & (1u << j)) ? -1.f : 1.f);
-      const float b = scale * __uint_as_float(words[pair] & 0xffff0000u) *
-                      ((signs & (1u << (j + 1))) ? -1.f : 1.f);
+      // Apply signs to the full FP32 product, retaining signed zero and BF16 rounding.
+      const float a = kSignBits
+                          ? __uint_as_float(__float_as_uint(scale * __uint_as_float(words[pair] << 16)) ^
+                                            ((static_cast<uint32_t>(signs) >> j & 1u) << 31))
+                          : scale * __uint_as_float(words[pair] << 16) *
+                                ((signs & (1u << j)) ? -1.f : 1.f);
+      const float b = kSignBits
+                          ? __uint_as_float(__float_as_uint(scale * __uint_as_float(words[pair] & 0xffff0000u)) ^
+                                            ((static_cast<uint32_t>(signs) >> (j + 1) & 1u) << 31))
+                          : scale * __uint_as_float(words[pair] & 0xffff0000u) *
+                                ((signs & (1u << (j + 1))) ? -1.f : 1.f);
       const auto packed = __floats2bfloat162_rn(a, b);
       const uint32_t bits = *reinterpret_cast<const uint32_t*>(&packed);
       if (pair & 1) {
