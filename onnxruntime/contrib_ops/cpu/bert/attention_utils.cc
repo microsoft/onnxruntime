@@ -1,4 +1,7 @@
 #include "attention_utils.h"
+
+#include <cstdint>
+
 #include "core/common/common.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/transpose_helper.h"
@@ -24,6 +27,14 @@ inline Status Reshape_BSD_to_BSNH(Tensor* qkv,
 inline Status Transpose_BSNH_to_BNSH(const Tensor* qkv,
                                      OrtValue& qkv_transposed,
                                      concurrency::ThreadPool* tp) {
+  constexpr int64_t min_mlas_transpose_elements = 4096;
+  const auto& shape = qkv->Shape();
+  // MLAS launches a parallel loop per batch, even for tiny matrices.
+  if (shape[3] <= static_cast<int64_t>(sizeof(uint32_t) / qkv->DataType()->Size()) &&
+      shape.SizeFromDimension(1) < min_mlas_transpose_elements) {
+    tp = nullptr;
+  }
+
   std::vector<size_t> permutations({0, 2, 1, 3});
   gsl::span<const size_t> permutations_span{permutations};
   size_t from = 2, to = 1;

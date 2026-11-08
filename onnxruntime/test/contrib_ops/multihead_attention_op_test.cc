@@ -871,16 +871,12 @@ TEST(MultiHeadAttentionTest, OutputQKWithPaddingMaskAndAttentionBias) {
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-TEST(MultiHeadAttentionTest, CpuAttentionBiasWithThreadedQkvTranspose) {
-  constexpr int batch_size = 2;
-  constexpr int num_heads = 3;
-  constexpr int head_size = 32;
-  constexpr int v_head_size = 5;
-  constexpr int kv_sequence_length = 129;
+static void RunCpuAttentionBiasWithQkvTranspose(int batch_size, int num_heads, int head_size, int v_head_size,
+                                                int kv_sequence_length) {
   constexpr float scale = 0.3f;
   RandomValueGenerator generator{0};
 
-  for (int sequence_length : {1, 3}) {
+  for (int sequence_length : {1, 2, 3}) {
     for (int bias_batch_size : {1, batch_size}) {
       for (int bias_num_heads : {1, num_heads}) {
         SCOPED_TRACE(MakeString(sequence_length, ",", bias_batch_size, ",", bias_num_heads));
@@ -944,6 +940,24 @@ TEST(MultiHeadAttentionTest, CpuAttentionBiasWithThreadedQkvTranspose) {
         tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
       }
     }
+  }
+}
+
+TEST(MultiHeadAttentionTest, CpuAttentionBiasWithThreadedQkvTranspose) {
+  RunCpuAttentionBiasWithQkvTranspose(2, 3, 32, 5, 129);
+}
+
+TEST(MultiHeadAttentionTest, CpuAttentionBiasWithTinyMlasQkvTranspose) {
+  RunCpuAttentionBiasWithQkvTranspose(32, 8, 1, 1, 2);
+}
+
+TEST(MultiHeadAttentionTest, CpuAttentionBiasWithLargeMlasQkvTranspose) {
+  RunCpuAttentionBiasWithQkvTranspose(2, 8, 1, 1, 4096);
+}
+
+TEST(MultiHeadAttentionTest, CpuAttentionBiasWithMlasQkvTransposeThreshold) {
+  for (int kv_sequence_length : {511, 512}) {
+    RunCpuAttentionBiasWithQkvTranspose(2, 8, 1, 1, kv_sequence_length);
   }
 }
 
