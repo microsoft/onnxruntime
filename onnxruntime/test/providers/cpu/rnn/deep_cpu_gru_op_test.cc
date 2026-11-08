@@ -4,15 +4,18 @@
 #include "gtest/gtest.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cctype>
 #include <iterator>
 #include <limits>
+#include <random>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
 #include "core/providers/cpu/rnn/deep_cpu_gru.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 using namespace std;
@@ -1212,6 +1215,194 @@ TEST(GRUTest, GRU_ForwardDefaultActivations_LinearBeforeReset_OpSet22_CUDA) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(cuda_ep));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+
+// ---- Larger GRU cases (WebGPU GEMM path) -------------------------------------------------------------
+// Random weights and inputs checked against a double-precision reference, with every optional input.
+
+namespace {
+
+struct GruCase {
+  std::string direction;
+  int64_t seq_length, batch_size, input_size, hidden_size;
+  int64_t layout;
+  bool linear_before_reset, bias, seq_lens, initial_state;
+  float clip;
+};
+
+void TestGruAgainstReference(const GruCase& c, bool fp16 = false) {
+  SCOPED_TRACE(::testing::Message() << c.direction << " S=" << c.seq_length << " B=" << c.batch_size << " I="
+                                    << c.input_size << " H=" << c.hidden_size << " layout=" << c.layout
+                                    << " lbr=" << c.linear_before_reset << (fp16 ? " fp16" : ""));
+  const int64_t D = c.direction == "bidirectional" ? 2 : 1;
+  const int64_t S = c.seq_length, N = c.batch_size, I = c.input_size, H = c.hidden_size;
+  std::mt19937 rng(static_cast<uint32_t>(S * 1000 + N * 100 + H * 10 + D + c.layout + c.linear_before_reset));
+  std::uniform_real_distribution<float> dist(-0.5f, 0.5f);
+  auto random = [&](int64_t n) {
+    std::vector<float> v(static_cast<size_t>(n));
+    for (auto& e : v) e = fp16 ? MLFloat16(dist(rng)).ToFloat() : dist(rng);
+    return v;
+  };
+  const std::vector<float> X = random(S * N * I), W = random(D * 3 * H * I), R = random(D * 3 * H * H);
+  const std::vector<float> Bv = random(D * 6 * H), h0 = random(D * N * H);
+  std::vector<int> lens(static_cast<size_t>(N), static_cast<int>(S));
+  if (c.seq_lens) {
+    for (int64_t b = 0; b < N; ++b) lens[static_cast<size_t>(b)] = static_cast<int>((b * 3 + 1) % (S + 1));
+  }
+  auto x_at = [&](int64_t t, int64_t b, int64_t k) {
+    return X[static_cast<size_t>((c.layout == 0 ? t * N + b : b * S + t) * I + k)];
+  };
+  auto state_index = [&](int64_t d, int64_t b, int64_t j) {
+    return static_cast<size_t>((c.layout == 0 ? d * N + b : b * D + d) * H + j);
+  };
+  auto y_index = [&](int64_t t, int64_t d, int64_t b, int64_t j) {
+    return static_cast<size_t>((c.layout == 0 ? (t * D + d) * N + b : (b * S + t) * D + d) * H + j);
+  };
+  auto sigmoid = [](double v) { return 1.0 / (1.0 + std::exp(-v)); };
+  auto clip = [&](double v) { return c.clip > 0 ? std::min<double>(c.clip, std::max<double>(-c.clip, v)) : v; };
+
+  std::vector<float> Y(static_cast<size_t>(S * D * N * H), 0.0f), Yh(static_cast<size_t>(D * N * H), 0.0f);
+  for (int64_t d = 0; d < D; ++d) {
+    const bool reverse = c.direction == "reverse" || (c.direction == "bidirectional" && d == 1);
+    const float* w = W.data() + d * 3 * H * I;
+    const float* r = R.data() + d * 3 * H * H;
+    const float* bias = Bv.data() + d * 6 * H;
+    for (int64_t b = 0; b < N; ++b) {
+      std::vector<double> h(static_cast<size_t>(H));
+      for (int64_t j = 0; j < H; ++j) h[j] = c.initial_state ? h0[state_index(d, b, j)] : 0.0;
+      const int64_t len = lens[static_cast<size_t>(b)];
+      for (int64_t step = 0; step < len; ++step) {
+        const int64_t t = reverse ? len - 1 - step : step;
+        // xw[g * H + j] = X_t * W_g^T, rec[g * H + j] = H_prev * R_g^T for gates g = z, r, h.
+        std::vector<double> xw(static_cast<size_t>(3 * H)), rec(static_cast<size_t>(3 * H));
+        for (int64_t q = 0; q < 3 * H; ++q) {
+          double a = 0.0, e = 0.0;
+          for (int64_t k = 0; k < I; ++k) a += double(w[q * I + k]) * x_at(t, b, k);
+          for (int64_t k = 0; k < H; ++k) e += double(r[q * H + k]) * h[k];
+          xw[q] = a + (c.bias ? bias[q] : 0.0);
+          rec[q] = e + (c.bias ? bias[3 * H + q] : 0.0);
+        }
+        std::vector<double> z(static_cast<size_t>(H)), rg(static_cast<size_t>(H));
+        for (int64_t j = 0; j < H; ++j) {
+          z[j] = sigmoid(clip(xw[j] + rec[j]));
+          rg[j] = sigmoid(clip(xw[H + j] + rec[H + j]));
+        }
+        std::vector<double> h_next(static_cast<size_t>(H));
+        for (int64_t j = 0; j < H; ++j) {
+          double pre;
+          if (c.linear_before_reset) {
+            pre = xw[2 * H + j] + rg[j] * rec[2 * H + j];
+          } else {
+            double acc = c.bias ? bias[5 * H + j] : 0.0;
+            for (int64_t k = 0; k < H; ++k) acc += double(r[(2 * H + j) * H + k]) * rg[k] * h[k];
+            pre = xw[2 * H + j] + acc;
+          }
+          const double hh = std::tanh(clip(pre));
+          h_next[j] = (1.0 - z[j]) * hh + z[j] * h[j];
+        }
+        h = h_next;
+        for (int64_t j = 0; j < H; ++j) Y[y_index(t, d, b, j)] = static_cast<float>(h[j]);
+      }
+      for (int64_t j = 0; j < H; ++j) Yh[state_index(d, b, j)] = len == 0 ? 0.0f : static_cast<float>(h[j]);
+    }
+  }
+
+  OpTester test("GRU", 14);
+  test.AddAttribute<std::string>("direction", c.direction);
+  test.AddAttribute<int64_t>("hidden_size", H);
+  test.AddAttribute<int64_t>("layout", c.layout);
+  test.AddAttribute<int64_t>("linear_before_reset", c.linear_before_reset ? 1 : 0);
+  if (c.clip > 0) test.AddAttribute<float>("clip", c.clip);
+  const std::vector<int64_t> x_dims = c.layout == 0 ? std::vector<int64_t>{S, N, I} : std::vector<int64_t>{N, S, I};
+  const std::vector<int64_t> state_dims = c.layout == 0 ? std::vector<int64_t>{D, N, H} : std::vector<int64_t>{N, D, H};
+  const std::vector<int64_t> y_dims = c.layout == 0 ? std::vector<int64_t>{S, D, N, H} : std::vector<int64_t>{N, S, D, H};
+  auto add = [&](const char* name, const std::vector<int64_t>& dims, const std::vector<float>& v, bool init) {
+    if (fp16) {
+      test.AddInput<MLFloat16>(name, dims, ToFloat16(v), init);
+    } else {
+      test.AddInput<float>(name, dims, v, init);
+    }
+  };
+  auto add_optional = [&]() {
+    if (fp16) {
+      test.AddOptionalInputEdge<MLFloat16>();
+    } else {
+      test.AddOptionalInputEdge<float>();
+    }
+  };
+  add("X", x_dims, X, false);
+  add("W", {D, 3 * H, I}, W, true);
+  add("R", {D, 3 * H, H}, R, true);
+  if (c.bias) {
+    add("B", {D, 6 * H}, Bv, false);
+  } else {
+    add_optional();
+  }
+  if (c.seq_lens) {
+    test.AddInput<int>("sequence_lens", {N}, lens);
+  } else {
+    test.AddOptionalInputEdge<int>();
+  }
+  if (c.initial_state) {
+    add("initial_h", state_dims, h0, false);
+  } else {
+    add_optional();
+  }
+  if (fp16) {
+    test.AddOutput<MLFloat16>("Y", y_dims, ToFloat16(Y), false, 1e-2f, 1e-2f);
+    test.AddOutput<MLFloat16>("Y_h", state_dims, ToFloat16(Yh), false, 1e-2f, 1e-2f);
+  } else {
+    test.AddOutput<float>("Y", y_dims, Y, false, 1e-4f, 1e-4f);
+    test.AddOutput<float>("Y_h", state_dims, Yh, false, 1e-4f, 1e-4f);
+  }
+  // The CPU EP supports only layout 0 and float; check the other cases on WebGPU alone.
+  if (fp16 || c.layout != 0) {
+    auto webgpu = DefaultWebGpuExecutionProvider();
+    if (webgpu == nullptr) {
+      GTEST_SKIP() << "Needs the WebGPU execution provider.";
+    }
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(std::move(webgpu));
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  } else {
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  }
+}
+
+}  // namespace
+
+// Batch sizes and hidden sizes leave partial tiles; hidden sizes above 64 take more than one K pass.
+TEST(GRUTest, LargerForwardLinearBeforeReset) {
+  TestGruAgainstReference({"forward", 9, 13, 20, 40, 0, true, true, false, false, 0.0f});
+}
+
+TEST(GRUTest, LargerForwardResetBeforeLinear) {
+  TestGruAgainstReference({"forward", 9, 13, 20, 40, 0, false, true, false, false, 0.0f});
+}
+
+TEST(GRUTest, LargerBidirectionalAllOptions) {
+  for (const bool lbr : {true, false}) {
+    TestGruAgainstReference({"bidirectional", 7, 6, 13, 70, 0, lbr, true, true, true, 0.0f});
+  }
+}
+
+TEST(GRUTest, LargerBidirectionalAllOptionsBatchFirst) {
+  for (const bool lbr : {true, false}) {
+    TestGruAgainstReference({"bidirectional", 7, 6, 13, 70, 1, lbr, true, true, true, 0.0f});
+  }
+}
+
+TEST(GRUTest, LargerReverseClipNoBias) {
+  for (const bool lbr : {true, false}) {
+    TestGruAgainstReference({"reverse", 6, 4, 17, 33, 0, lbr, false, true, true, 0.75f});
+  }
+}
+
+TEST(GRUTest, LargerBidirectionalFloat16) {
+  for (const bool lbr : {true, false}) {
+    TestGruAgainstReference({"bidirectional", 5, 9, 12, 36, 0, lbr, true, false, true, 0.0f}, /*fp16=*/true);
+  }
 }
 
 }  // namespace test
