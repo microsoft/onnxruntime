@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <random>
+
 #include "core/providers/xnnpack/xnnpack_init.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
@@ -2165,6 +2167,144 @@ TEST(ConvTransposeTest, ConvTranspose_OverflowInExplicitOutputShapePath) {
             kCudaExecutionProvider, kCudaNHWCExecutionProvider, kWebGpuExecutionProvider});
 }
 #endif  // !defined(ORT_NO_EXCEPTIONS)
+
+// ---- Wide-channel ConvTranspose (WebGPU GEMM + col2im path) -------------------------------------------
+// The WebGPU EP lowers group-1 1D/2D ConvTranspose with at least 16 input channels to a GEMM followed by
+// col2im; these cases compare it (and every other EP) against a double-precision reference.
+
+namespace {
+
+struct WideConvTransposeCase {
+  int64_t batch, in_channels, out_channels, in_height, in_width;  // in_height 0 selects ConvTranspose1D
+  int64_t kernel_h, kernel_w, stride_h, stride_w, dilation_h, dilation_w;
+  int64_t pad_top, pad_left, pad_bottom, pad_right, output_padding_h, output_padding_w;
+  bool has_bias;
+};
+
+void TestWideConvTranspose(const WideConvTransposeCase& c, bool fp16 = false) {
+  const bool is_1d = c.in_height == 0;
+  const int64_t h = is_1d ? 1 : c.in_height;
+  const int64_t kh = is_1d ? 1 : c.kernel_h;
+  const int64_t sh = is_1d ? 1 : c.stride_h;
+  const int64_t dh = is_1d ? 1 : c.dilation_h;
+  const int64_t pt = is_1d ? 0 : c.pad_top;
+  const int64_t pb = is_1d ? 0 : c.pad_bottom;
+  const int64_t oph = is_1d ? 0 : c.output_padding_h;
+  const int64_t oh = sh * (h - 1) + oph + (kh - 1) * dh + 1 - pt - pb;
+  const int64_t ow = c.stride_w * (c.in_width - 1) + c.output_padding_w + (c.kernel_w - 1) * c.dilation_w + 1 -
+                     c.pad_left - c.pad_right;
+
+  std::mt19937 rng(static_cast<uint32_t>(c.in_channels * 131 + c.kernel_w * 7 + c.out_channels));
+  std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+  auto random = [&](int64_t n) {
+    std::vector<float> v(static_cast<size_t>(n));
+    for (auto& x : v) x = dist(rng);
+    return v;
+  };
+  const std::vector<float> x = random(c.batch * c.in_channels * h * c.in_width);
+  const std::vector<float> w = random(c.in_channels * c.out_channels * kh * c.kernel_w);
+  const std::vector<float> b = random(c.out_channels);
+
+  std::vector<double> y(static_cast<size_t>(c.batch * c.out_channels * oh * ow), 0.0);
+  for (int64_t n = 0; n < c.batch; ++n) {
+    for (int64_t co = 0; co < c.out_channels; ++co) {
+      for (int64_t y_h = 0; y_h < oh; ++y_h) {
+        for (int64_t y_w = 0; y_w < ow; ++y_w) {
+          y[static_cast<size_t>(((n * c.out_channels + co) * oh + y_h) * ow + y_w)] = c.has_bias ? b[co] : 0.0;
+        }
+      }
+    }
+    for (int64_t ci = 0; ci < c.in_channels; ++ci) {
+      for (int64_t ih = 0; ih < h; ++ih) {
+        for (int64_t iw = 0; iw < c.in_width; ++iw) {
+          const double xv = x[static_cast<size_t>(((n * c.in_channels + ci) * h + ih) * c.in_width + iw)];
+          for (int64_t co = 0; co < c.out_channels; ++co) {
+            for (int64_t k_h = 0; k_h < kh; ++k_h) {
+              const int64_t y_h = ih * sh + k_h * dh - pt;
+              if (y_h < 0 || y_h >= oh) continue;
+              for (int64_t k_w = 0; k_w < c.kernel_w; ++k_w) {
+                const int64_t y_w = iw * c.stride_w + k_w * c.dilation_w - c.pad_left;
+                if (y_w < 0 || y_w >= ow) continue;
+                const double wv = w[static_cast<size_t>(((ci * c.out_channels + co) * kh + k_h) * c.kernel_w + k_w)];
+                y[static_cast<size_t>(((n * c.out_channels + co) * oh + y_h) * ow + y_w)] += xv * wv;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  const std::vector<float> expected(y.begin(), y.end());
+
+  ConvTransposeOpAttributes attrs;
+  std::vector<std::vector<int64_t>> shapes;
+  if (is_1d) {
+    attrs = {{c.kernel_w}, {c.output_padding_w}, {}, {c.pad_left, c.pad_right}, {c.stride_w}, {c.dilation_w}, 1, ""};
+    shapes = {{c.batch, c.in_channels, c.in_width}, {c.in_channels, c.out_channels, c.kernel_w}};
+  } else {
+    attrs = {{kh, c.kernel_w},
+             {oph, c.output_padding_w},
+             {},
+             {pt, c.pad_left, pb, c.pad_right},
+             {sh, c.stride_w},
+             {dh, c.dilation_w},
+             1,
+             ""};
+    shapes = {{c.batch, c.in_channels, h, c.in_width}, {c.in_channels, c.out_channels, kh, c.kernel_w}};
+  }
+  std::vector<std::vector<float>> inputs = {x, w};
+  if (c.has_bias) {
+    inputs.push_back(b);
+    shapes.push_back({c.out_channels});
+  }
+  const std::vector<int64_t> output_shape =
+      is_1d ? std::vector<int64_t>{c.batch, c.out_channels, ow} : std::vector<int64_t>{c.batch, c.out_channels, oh, ow};
+  const std::unordered_set<std::string> excluded{kCudaNHWCExecutionProvider, kTensorrtExecutionProvider,
+                                                 kQnnExecutionProvider};
+  if (fp16) {
+    std::vector<std::vector<MLFloat16>> inputs16;
+    for (const auto& input : inputs) inputs16.push_back(ToFloat16(input));
+    TestConvTransposeOp(attrs, inputs16, shapes, ToFloat16(expected), output_shape,
+                        OpTester::ExpectResult::kExpectSuccess, "", excluded, /*rel_error=*/2e-2f,
+                        /*abs_error=*/5e-2f);
+  } else {
+    TestConvTransposeOp(attrs, inputs, shapes, expected, output_shape, OpTester::ExpectResult::kExpectSuccess, "",
+                        excluded, /*rel_error=*/1e-4f, /*abs_error=*/1e-3f);
+  }
+}
+
+}  // namespace
+
+TEST(ConvTransposeTest, WideChannels1D_Strided) {
+  // batch, C_in, C_out, H, W, kH, kW, sH, sW, dH, dW, pads (t, l, b, r), output_padding (h, w), bias
+  TestWideConvTranspose({2, 64, 3, 0, 37, 0, 8, 0, 4, 0, 1, 0, 0, 0, 0, 0, 0, true});
+}
+
+TEST(ConvTransposeTest, WideChannels1D_InverseStftLike) {
+  // C_in not a multiple of 4 and one output channel, like an iSTFT written as ConvTranspose.
+  TestWideConvTranspose({3, 130, 1, 0, 20, 0, 64, 0, 16, 0, 1, 0, 0, 0, 0, 0, 0, false});
+}
+
+TEST(ConvTransposeTest, WideChannels1D_PadsDilationOutputPadding) {
+  TestWideConvTranspose({1, 17, 5, 0, 23, 0, 5, 0, 3, 0, 2, 0, 3, 0, 1, 0, 2, true});
+}
+
+TEST(ConvTransposeTest, WideChannels2D_DecoderLike) {
+  TestWideConvTranspose({1, 32, 7, 9, 13, 8, 1, 4, 1, 1, 1, 0, 0, 0, 0, 0, 0, true});
+}
+
+TEST(ConvTransposeTest, WideChannels2D_PadsDilationOutputPadding) {
+  TestWideConvTranspose({2, 20, 5, 6, 7, 3, 4, 2, 3, 1, 2, 1, 0, 2, 1, 1, 0, true});
+}
+
+TEST(ConvTransposeTest, WideChannels1D_Float16) {
+  TestWideConvTranspose({2, 32, 6, 0, 50, 0, 8, 0, 4, 0, 1, 0, 0, 0, 0, 0, 0, true}, /*fp16=*/true);
+}
+
+TEST(ConvTransposeTest, WideChannels1D_LargeInput) {
+  // Enough rows that the column buffer may be split into several chunks on small binding limits.
+  TestWideConvTranspose({2, 48, 12, 0, 6000, 0, 8, 0, 4, 0, 1, 0, 0, 0, 0, 0, 0, true});
+}
 
 }  // namespace test
 }  // namespace onnxruntime

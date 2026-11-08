@@ -1,0 +1,101 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#pragma once
+
+#include "core/providers/webgpu/compute_context.h"
+#include "core/providers/webgpu/math/matmul_compute_dispatcher.h"
+#include "core/providers/webgpu/program.h"
+
+namespace onnxruntime {
+namespace webgpu {
+
+// ConvTranspose as GEMM + col2im (channels-last, group 1, 1D/2D).
+//
+// With the input viewed as X[M, C_in] (M = N * H * W) and the weights as W[C_in, kH * kW * C_out],
+// cols = X * W holds, for every input pixel, its contribution to each of the kH x kW output pixels it
+// scatters to. col2im then gathers, for every output pixel, the contributions of the input pixels that
+// reach it, and adds the bias. The multiply-accumulates run on the tiled MatMul kernels.
+
+// Whether a filter of this shape takes the GEMM path. Decided from the filter alone so prepacking and
+// compute agree.
+bool UseConvTransposeGemm(const TensorShape& onnx_filter_shape, int64_t group);
+
+// Shape of the packed GEMM weights: [round_up(C_in, 4), round_up(kH * kW * C_out, 4)], zero padded.
+TensorShape ConvTransposeGemmWeightShape(const TensorShape& onnx_filter_shape);
+
+// Packs ONNX weights [C_in, C_out, (kH,) kW] into the GEMM layout.
+Status PackConvTransposeGemmWeight(ComputeContextBase& context, const Tensor& onnx_filter, Tensor& packed);
+
+// Geometry of the (1D-lifted) 2D transposed convolution.
+struct ConvTransposeGemmParams {
+  uint32_t batch, in_height, in_width, in_channels;
+  uint32_t out_height, out_width, out_channels;
+  uint32_t kernel_height, kernel_width;
+  uint32_t stride_h, stride_w, dilation_h, dilation_w;
+  uint32_t pad_top, pad_left;
+};
+
+// `packed_filter` is the GEMM-layout weight tensor, or null to pack `onnx_filter` for this run.
+Status ComputeConvTransposeGemm(ComputeContext& context, MatMulComputeDispatcher& matmul,
+                                const ConvTransposeGemmParams& params, const Tensor& input,
+                                const Tensor* packed_filter, const Tensor& onnx_filter, const Tensor* bias,
+                                Tensor& output);
+
+class ConvTransposeGemmPackWeightProgram final : public Program<ConvTransposeGemmPackWeightProgram> {
+ public:
+  ConvTransposeGemmPackWeightProgram() : Program{"ConvTransposeGemmPackWeight"} {}
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"size", ProgramUniformVariableDataType::Uint32},
+      {"in_channels", ProgramUniformVariableDataType::Uint32},
+      {"out_channels", ProgramUniformVariableDataType::Uint32},
+      {"kernel_height", ProgramUniformVariableDataType::Uint32},
+      {"kernel_width", ProgramUniformVariableDataType::Uint32},
+      {"cols", ProgramUniformVariableDataType::Uint32},
+      {"padded_cols", ProgramUniformVariableDataType::Uint32});
+};
+
+// Copies rows [row_offset, row_offset + rows) of X[M, K] into a [rows, padded_k] matrix, zero padded.
+class ConvTransposeGemmPackInputProgram final : public Program<ConvTransposeGemmPackInputProgram> {
+ public:
+  ConvTransposeGemmPackInputProgram() : Program{"ConvTransposeGemmPackInput"} {}
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"size", ProgramUniformVariableDataType::Uint32},
+      {"k", ProgramUniformVariableDataType::Uint32},
+      {"padded_k", ProgramUniformVariableDataType::Uint32},
+      {"row_offset", ProgramUniformVariableDataType::Uint32});
+};
+
+class ConvTransposeCol2ImProgram final : public Program<ConvTransposeCol2ImProgram> {
+ public:
+  ConvTransposeCol2ImProgram(bool has_bias, bool accumulate)
+      : Program{"ConvTransposeCol2Im"}, has_bias_{has_bias}, accumulate_{accumulate} {}
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"size", ProgramUniformVariableDataType::Uint32},
+      {"out_channels", ProgramUniformVariableDataType::Uint32},
+      {"out_width", ProgramUniformVariableDataType::Uint32},
+      {"out_height", ProgramUniformVariableDataType::Uint32},
+      {"in_width", ProgramUniformVariableDataType::Uint32},
+      {"in_height", ProgramUniformVariableDataType::Uint32},
+      {"kernel_width", ProgramUniformVariableDataType::Uint32},
+      {"kernel_height", ProgramUniformVariableDataType::Uint32},
+      {"stride_w", ProgramUniformVariableDataType::Uint32},
+      {"stride_h", ProgramUniformVariableDataType::Uint32},
+      {"dilation_w", ProgramUniformVariableDataType::Uint32},
+      {"dilation_h", ProgramUniformVariableDataType::Uint32},
+      {"pad_left", ProgramUniformVariableDataType::Uint32},
+      {"pad_top", ProgramUniformVariableDataType::Uint32},
+      {"row_begin", ProgramUniformVariableDataType::Uint32},
+      {"row_end", ProgramUniformVariableDataType::Uint32},
+      {"col_stride", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  bool has_bias_;
+  bool accumulate_;
+};
+
+}  // namespace webgpu
+}  // namespace onnxruntime

@@ -8,6 +8,7 @@
 #include "core/providers/webgpu/webgpu_utils.h"
 #include "core/providers/webgpu/tensor/transpose.h"
 #include "core/providers/webgpu/nn/conv_backprop.h"
+#include "core/providers/webgpu/nn/conv_transpose_gemm.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -21,6 +22,7 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
   TensorShape input_shape = input->Shape();
   const bool is_prepacked = weight_layout_ != WeightLayout::ONNX;
   TensorShape filter_shape = is_prepacked ? original_filter_shape_ : filter->Shape();
+  const TensorShape onnx_filter_shape = filter_shape;
 
   const auto rank = input_shape.NumDimensions();
   if (rank < 3) {
@@ -154,6 +156,37 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
     strides.insert(strides.begin(), 1);
     dilations.insert(dilations.begin(), 1);
   }
+  if constexpr (is_channels_last) {
+    const bool use_gemm = weight_layout_ == WeightLayout::GEMM ||
+                          (weight_layout_ == WeightLayout::ONNX && UseConvTransposeGemm(onnx_filter_shape, group));
+    if (use_gemm) {
+      // Shapes are lifted to 2D here: input [N, H, W, C_in], filter [C_in, C_out, kH, kW], output
+      // [N, OH, OW, C_out], pads [top, left, bottom, right].
+      Tensor* output = context.Output(0, computed_output_shape);
+      if (computed_output_shape.Size() == 0) {
+        return Status::OK();
+      }
+      ConvTransposeGemmParams params{};
+      params.batch = narrow<uint32_t>(input_shape[0]);
+      params.in_height = narrow<uint32_t>(input_shape[1]);
+      params.in_width = narrow<uint32_t>(input_shape[2]);
+      params.in_channels = narrow<uint32_t>(input_shape[3]);
+      params.out_height = narrow<uint32_t>(output_shape_vector[1]);
+      params.out_width = narrow<uint32_t>(output_shape_vector[2]);
+      params.out_channels = narrow<uint32_t>(output_shape_vector[3]);
+      params.kernel_height = narrow<uint32_t>(filter_shape[2]);
+      params.kernel_width = narrow<uint32_t>(filter_shape[3]);
+      params.stride_h = strides[0];
+      params.stride_w = strides[1];
+      params.dilation_h = dilations[0];
+      params.dilation_w = dilations[1];
+      params.pad_top = pads[0];
+      params.pad_left = pads[1];
+      return ComputeConvTransposeGemm(context, matmul_compute_dispatcher_, params, *input,
+                                      weight_layout_ == WeightLayout::GEMM ? filter : nullptr, *filter, bias,
+                                      *output);
+    }
+  }
   Tensor transposed_filter;
   if (!is_prepacked) {
     const InlinedVector<size_t> perm{2, 3, 0, 1};
@@ -192,6 +225,16 @@ Status ConvTranspose<is_channels_last>::PrePackInternal(ComputeContextBase& cont
   // shapes to ComputeInternal so they retain the normal argument validation.
   const auto group = conv_transpose_attrs_.group;
   if (group <= 0 || tensor.Shape()[0] % group != 0) {
+    return Status::OK();
+  }
+
+  if (is_channels_last && UseConvTransposeGemm(tensor.Shape(), group)) {
+    auto packed = std::make_unique<Tensor>(tensor.DataType(), ConvTransposeGemmWeightShape(tensor.Shape()), alloc);
+    ORT_RETURN_IF_ERROR(PackConvTransposeGemmWeight(context, tensor, *packed));
+    original_filter_shape_ = tensor.Shape();
+    prepacked_filter_ = std::move(packed);
+    weight_layout_ = WeightLayout::GEMM;
+    is_packed = true;
     return Status::OK();
   }
 
