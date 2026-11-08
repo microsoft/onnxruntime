@@ -478,6 +478,24 @@ __device__ __forceinline__ void DecodeGgufSubBlock16Impl(
     const uint8_t* p = row_ptr + (static_cast<int64_t>(sb32_idx) * 32 + half16 * 16) * 2;
 #pragma unroll
     for (int j = 0; j < 16; ++j) out[j] = Bf16ToFloatDev(ReadU16Dev(p + j * 2));
+  } else if constexpr (kCompileType == kGgmlTypeNVFP4) {
+    const uint8_t* blk = row_ptr + static_cast<int64_t>(sb32_idx >> 1) * 36;
+    const int group = 2 * (sb32_idx & 1) + half16;
+    const uint8_t scale = __ldg(blk + group);
+    const float d = scale == 127
+                        ? 0.0f
+                        : __half2float(__half(__nv_cvt_fp8_to_halfraw(
+                              static_cast<__nv_fp8_storage_t>(scale), __NV_E4M3)));
+    const uint8_t* codes = blk + 4 + group * 8;
+    const uint32_t words[2] = {ReadU32Dev(codes), ReadU32Dev(codes + 4)};
+    // The low/high nibbles share one FP8 scale and encode two 8-value halves.
+    // Keep FP32 reconstruction before the caller's complete-operand BF16 cast.
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const uint32_t code = words[j / 4] >> (8 * (j & 3));
+      out[j] = d * (0.5f * static_cast<float>(kvalues_fp4[code & 15u]));
+      out[j + 8] = d * (0.5f * static_cast<float>(kvalues_fp4[(code >> 4) & 15u]));
+    }
   } else if constexpr (kCompileType == kGgmlTypeQ8_0) {
     const uint8_t* blk = row_ptr + static_cast<int64_t>(sb32_idx) * 34;
     const float d = Fp16ToFloatDev(ReadU16Dev(blk));
