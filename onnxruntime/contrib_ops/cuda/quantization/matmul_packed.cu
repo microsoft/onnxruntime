@@ -21,7 +21,7 @@ namespace {
 // Warp-K-Split Tensor-Core BF16 GEMV/GEMM kernel for M in 1..8 on large-N projections (e.g. lm_head).
 // KW warps (KW*32 threads) split K across the KW warps with zero __syncthreads() in the K-loop,
 // while computing MT*16 output columns per CTA.
-template <int KW, int MT, int kCompileType, int kChunk = 32>
+template <int KW, int MT, int kCompileType, int kChunk = 32, bool kAlignedNvfp4Rows = false>
 __global__ __launch_bounds__(KW * 32) void MatMulPackedBf16TcWarpKSplitKernel(
     const __nv_bfloat16* __restrict__ a,
     MatMulPackedParams p,
@@ -89,37 +89,49 @@ __global__ __launch_bounds__(KW * 32) void MatMulPackedBf16TcWarpKSplitKernel(
         const uint32_t x_words[8] = {x0.x, x0.y, x0.z, x0.w, x1.x, x1.y, x1.z, x1.w};
 #pragma unroll
         for (int m = 0; m < MT; ++m) {
-          float w_lo[16] = {};
-          float w_hi[16] = {};
-          if (valid_lo[m]) {
-            gguf_cuda::DecodeGgufSubBlock16Impl<kCompileType>(
-                row_ptrs_lo[m], offset / 32, (offset / 16) & 1, w_lo);
-          }
-          if (valid_hi[m]) {
-            gguf_cuda::DecodeGgufSubBlock16Impl<kCompileType>(
-                row_ptrs_hi[m], offset / 32, (offset / 16) & 1, w_hi);
-          }
-          float e0[8], e1[8], o0[8], o1[8];
+          uint4 e_lo = make_uint4(0u, 0u, 0u, 0u), e_hi = e_lo, o_lo = e_lo, o_hi = e_lo;
+          if constexpr (kCompileType == gguf_quant::kGgmlTypeNVFP4) {
+            if (valid_lo[m]) {
+              gguf_cuda::DecodeNvfp4SubBlock16Bf16<kAlignedNvfp4Rows>(
+                  row_ptrs_lo[m], offset / 32, (offset / 16) & 1, e_lo, e_hi);
+            }
+            if (valid_hi[m]) {
+              gguf_cuda::DecodeNvfp4SubBlock16Bf16<kAlignedNvfp4Rows>(
+                  row_ptrs_hi[m], offset / 32, (offset / 16) & 1, o_lo, o_hi);
+            }
+          } else {
+            float w_lo[16] = {};
+            float w_hi[16] = {};
+            if (valid_lo[m]) {
+              gguf_cuda::DecodeGgufSubBlock16Impl<kCompileType>(
+                  row_ptrs_lo[m], offset / 32, (offset / 16) & 1, w_lo);
+            }
+            if (valid_hi[m]) {
+              gguf_cuda::DecodeGgufSubBlock16Impl<kCompileType>(
+                  row_ptrs_hi[m], offset / 32, (offset / 16) & 1, w_hi);
+            }
+            float e0[8], e1[8], o0[8], o1[8];
 #pragma unroll
-          for (int s = 0; s < 4; ++s) {
-            constexpr bool adjacent = kCompileType == gguf_quant::kGgmlTypeIQ2_XXS;
-            const int i0 = adjacent ? 4 * s : s;
-            const int i1 = adjacent ? i0 + 1 : s + 4;
-            const int i2 = adjacent ? i0 + 2 : s + 8;
-            const int i3 = adjacent ? i0 + 3 : s + 12;
-            e0[2 * s] = w_lo[i0];
-            e0[2 * s + 1] = w_lo[i1];
-            e1[2 * s] = w_lo[i2];
-            e1[2 * s + 1] = w_lo[i3];
-            o0[2 * s] = w_hi[i0];
-            o0[2 * s + 1] = w_hi[i1];
-            o1[2 * s] = w_hi[i2];
-            o1[2 * s + 1] = w_hi[i3];
+            for (int s = 0; s < 4; ++s) {
+              constexpr bool adjacent = kCompileType == gguf_quant::kGgmlTypeIQ2_XXS;
+              const int i0 = adjacent ? 4 * s : s;
+              const int i1 = adjacent ? i0 + 1 : s + 4;
+              const int i2 = adjacent ? i0 + 2 : s + 8;
+              const int i3 = adjacent ? i0 + 3 : s + 12;
+              e0[2 * s] = w_lo[i0];
+              e0[2 * s + 1] = w_lo[i1];
+              e1[2 * s] = w_lo[i2];
+              e1[2 * s + 1] = w_lo[i3];
+              o0[2 * s] = w_hi[i0];
+              o0[2 * s + 1] = w_hi[i1];
+              o1[2 * s] = w_hi[i2];
+              o1[2 * s + 1] = w_hi[i3];
+            }
+            e_lo = gguf_cuda::PackFloat8ToBf16x2(e0);
+            e_hi = gguf_cuda::PackFloat8ToBf16x2(e1);
+            o_lo = gguf_cuda::PackFloat8ToBf16x2(o0);
+            o_hi = gguf_cuda::PackFloat8ToBf16x2(o1);
           }
-          const uint4 e_lo = gguf_cuda::PackFloat8ToBf16x2(e0);
-          const uint4 e_hi = gguf_cuda::PackFloat8ToBf16x2(e1);
-          const uint4 o_lo = gguf_cuda::PackFloat8ToBf16x2(o0);
-          const uint4 o_hi = gguf_cuda::PackFloat8ToBf16x2(o1);
           const uint32_t e_low[4] = {e_lo.x, e_lo.y, e_lo.z, e_lo.w};
           const uint32_t e_high[4] = {e_hi.x, e_hi.y, e_hi.z, e_hi.w};
           const uint32_t o_low[4] = {o_lo.x, o_lo.y, o_lo.z, o_lo.w};
@@ -593,6 +605,11 @@ void LaunchMatMulPackedBf16ContiguousK(
           <<<grid, KW * 32, 0, stream>>>(a, params, y, rows);
       return;
     case kGgmlTypeNVFP4:
+      if ((reinterpret_cast<uintptr_t>(params.b_data) & 3u) == 0 && (params.row_bytes & 3) == 0) {
+        MatMulPackedBf16TcWarpKSplitKernel<KW, MT, kGgmlTypeNVFP4, kChunk, true>
+            <<<grid, KW * 32, 0, stream>>>(a, params, y, rows);
+        return;
+      }
       MatMulPackedBf16TcWarpKSplitKernel<KW, MT, kGgmlTypeNVFP4, kChunk>
           <<<grid, KW * 32, 0, stream>>>(a, params, y, rows);
       return;
