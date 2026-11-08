@@ -2961,7 +2961,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>K</tt> : int (required)</dt>
-<dd>Logical embedding dimension.</dd>
+<dd>Logical embedding dimension. Must be a positive multiple of the selected packed format's block size.</dd>
 <dt><tt>output_dtype</tt> : int</dt>
 <dd>ONNX TensorProto DataType for output (default 16 = BFLOAT16).</dd>
 <dt><tt>packed_type</tt> : int (required)</dt>
@@ -2972,9 +2972,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>data</tt> : T1</dt>
-<dd>2D packed weight blob [vocab_size, row_bytes].</dd>
+<dd>2D little-endian packed weight blob [vocab_size, row_bytes].</dd>
 <dt><tt>indices</tt> : Tind</dt>
-<dd>Token indices of arbitrary rank.</dd>
+<dd>Token indices of arbitrary rank. Negative indices and indices >= vocab_size select row 0.</dd>
 </dl>
 
 #### Outputs
@@ -4724,7 +4724,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.MatMulPacked"></a><a name="com.microsoft.matmulpacked">**com.microsoft.MatMulPacked**</a>
 
   Matrix multiplication Y = A @ B^T where B is a 2D block-packed weight tensor.
-  CUDA prefill dequantizes B to the activation type and uses float32 accumulation and reductions.
+  CUDA prefill dequantizes output-dimension tiles of B to the activation type using bounded scratch memory and uses float32 accumulation and reductions.
 
 #### Version
 
@@ -4734,7 +4734,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>K</tt> : int (required)</dt>
-<dd>Reduction dimension.</dd>
+<dd>Reduction dimension. Must be a whole number of packed blocks; CUDA requires a positive multiple of 32.</dd>
 <dt><tt>N</tt> : int (required)</dt>
 <dd>Output dimension.</dd>
 <dt><tt>packed_type</tt> : int (required)</dt>

@@ -18,13 +18,26 @@ namespace gguf_cuda {
 using namespace onnxruntime::contrib::gguf_quant;
 
 __device__ __forceinline__ uint16_t ReadU16Dev(const uint8_t* p) {
-  return __ldg(reinterpret_cast<const uint16_t*>(p));
+  if ((reinterpret_cast<uintptr_t>(p) & 1u) == 0) {
+    return __ldg(reinterpret_cast<const uint16_t*>(p));
+  }
+  return static_cast<uint16_t>(__ldg(p)) | (static_cast<uint16_t>(__ldg(p + 1)) << 8);
 }
 
 __device__ __forceinline__ uint32_t ReadU32Dev(const uint8_t* p) {
-  const uint32_t lo = __ldg(reinterpret_cast<const uint16_t*>(p));
-  const uint32_t hi = __ldg(reinterpret_cast<const uint16_t*>(p + 2));
-  return __byte_perm(lo, hi, 0x5410u);
+  if ((reinterpret_cast<uintptr_t>(p) & 3u) == 0) {
+    return __ldg(reinterpret_cast<const uint32_t*>(p));
+  }
+  return static_cast<uint32_t>(ReadU16Dev(p)) | (static_cast<uint32_t>(ReadU16Dev(p + 2)) << 16);
+}
+
+// Tensor rows may be element-aligned without being aligned for a 128-bit load.
+__device__ __forceinline__ uint4 LoadU4Dev(const void* p) {
+  if ((reinterpret_cast<uintptr_t>(p) & 15u) == 0) {
+    return __ldg(reinterpret_cast<const uint4*>(p));
+  }
+  const auto* bytes = static_cast<const uint8_t*>(p);
+  return make_uint4(ReadU32Dev(bytes), ReadU32Dev(bytes + 4), ReadU32Dev(bytes + 8), ReadU32Dev(bytes + 12));
 }
 
 __device__ __forceinline__ float Fp16ToFloatDev(uint16_t bits) {
@@ -83,17 +96,17 @@ template <int kCompileType>
 __device__ __forceinline__ void DecodeGgufSubBlock8Impl(
     const uint8_t* row_ptr, int sb32_idx, int l, float (&out)[8]) {
   if constexpr (kCompileType == kGgmlTypeF32) {
-    const float* p = reinterpret_cast<const float*>(row_ptr) + sb32_idx * 32 + l * 8;
+    const uint8_t* p = row_ptr + (static_cast<int64_t>(sb32_idx) * 32 + l * 8) * 4;
 #pragma unroll
-    for (int j = 0; j < 8; ++j) out[j] = __ldg(p + j);
+    for (int j = 0; j < 8; ++j) out[j] = __uint_as_float(ReadU32Dev(p + j * 4));
   } else if constexpr (kCompileType == kGgmlTypeF16) {
-    const uint16_t* p = reinterpret_cast<const uint16_t*>(row_ptr) + sb32_idx * 32 + l * 8;
+    const uint8_t* p = row_ptr + (static_cast<int64_t>(sb32_idx) * 32 + l * 8) * 2;
 #pragma unroll
-    for (int j = 0; j < 8; ++j) out[j] = Fp16ToFloatDev(__ldg(p + j));
+    for (int j = 0; j < 8; ++j) out[j] = Fp16ToFloatDev(ReadU16Dev(p + j * 2));
   } else if constexpr (kCompileType == kGgmlTypeBF16) {
-    const uint16_t* p = reinterpret_cast<const uint16_t*>(row_ptr) + sb32_idx * 32 + l * 8;
+    const uint8_t* p = row_ptr + (static_cast<int64_t>(sb32_idx) * 32 + l * 8) * 2;
 #pragma unroll
-    for (int j = 0; j < 8; ++j) out[j] = Bf16ToFloatDev(__ldg(p + j));
+    for (int j = 0; j < 8; ++j) out[j] = Bf16ToFloatDev(ReadU16Dev(p + j * 2));
   } else if constexpr (kCompileType == kGgmlTypeQ8_0) {
     const uint8_t* blk = row_ptr + static_cast<int64_t>(sb32_idx) * 34;
     const float d = Fp16ToFloatDev(ReadU16Dev(blk));
@@ -231,11 +244,11 @@ __device__ __forceinline__ void DecodeGgufSubBlock8Impl(
     const uint32_t aux32 = ReadU32Dev(aux8 + 4);
     const float db = d * (0.5f + static_cast<float>(aux32 >> 28)) * 0.25f;
     const uint64_t g64 = __ldg(iq2xxs_grid + __ldg(aux8 + l));
-    const uint8_t* grid = reinterpret_cast<const uint8_t*>(&g64);
     const uint8_t signs = Iq2xsSignsDev(aux32 >> (7 * l));
 #pragma unroll
     for (int j = 0; j < 8; ++j) {
-      out[j] = db * static_cast<float>(grid[j]) * ((signs & (1u << j)) ? -1.0f : 1.0f);
+      out[j] = db * static_cast<float>(static_cast<uint8_t>(g64 >> (8 * j))) *
+               ((signs & (1u << j)) ? -1.0f : 1.0f);
     }
   } else if constexpr (kCompileType == kGgmlTypeIQ2_XS) {
     const int sb256 = sb32_idx >> 3;
@@ -246,11 +259,11 @@ __device__ __forceinline__ void DecodeGgufSubBlock8Impl(
     const float db = d * (0.5f + static_cast<float>((sc_byte >> (4 * (l >> 1))) & 0xF)) * 0.25f;
     const uint16_t q2 = ReadU16Dev(blk + 2 + (4 * ib + l) * 2);
     const uint64_t g64 = __ldg(iq2xs_grid + (q2 & 511));
-    const uint8_t* grid = reinterpret_cast<const uint8_t*>(&g64);
     const uint8_t signs = Iq2xsSignsDev(q2 >> 9);
 #pragma unroll
     for (int j = 0; j < 8; ++j) {
-      out[j] = db * static_cast<float>(grid[j]) * ((signs & (1u << j)) ? -1.0f : 1.0f);
+      out[j] = db * static_cast<float>(static_cast<uint8_t>(g64 >> (8 * j))) *
+               ((signs & (1u << j)) ? -1.0f : 1.0f);
     }
   } else if constexpr (kCompileType == kGgmlTypeIQ2_S) {
     const int sb256 = sb32_idx >> 3;
@@ -263,11 +276,11 @@ __device__ __forceinline__ void DecodeGgufSubBlock8Impl(
     const int g_idx =
         static_cast<int>(__ldg(blk + 2 + 4 * ib + l)) | ((static_cast<int>(qh_ib) << (8 - 2 * l)) & 0x300);
     const uint64_t g64 = __ldg(iq2s_grid + g_idx);
-    const uint8_t* grid = reinterpret_cast<const uint8_t*>(&g64);
     const uint8_t signs = __ldg(blk + 34 + 4 * ib + l);
 #pragma unroll
     for (int j = 0; j < 8; ++j) {
-      out[j] = db * static_cast<float>(grid[j]) * ((signs & (1u << j)) ? -1.0f : 1.0f);
+      out[j] = db * static_cast<float>(static_cast<uint8_t>(g64 >> (8 * j))) *
+               ((signs & (1u << j)) ? -1.0f : 1.0f);
     }
   } else if constexpr (kCompileType == kGgmlTypeIQ3_XXS) {
     const int sb256 = sb32_idx >> 3;
@@ -280,12 +293,12 @@ __device__ __forceinline__ void DecodeGgufSubBlock8Impl(
     const uint16_t q2 = ReadU16Dev(blk + 2 + 8 * ib + 2 * l);
     const uint32_t g1 = __ldg(iq3xxs_grid + (q2 & 0xFFu));
     const uint32_t g2 = __ldg(iq3xxs_grid + (q2 >> 8));
-    const uint8_t* grid1 = reinterpret_cast<const uint8_t*>(&g1);
-    const uint8_t* grid2 = reinterpret_cast<const uint8_t*>(&g2);
 #pragma unroll
     for (int j = 0; j < 4; ++j) {
-      out[j] = db * static_cast<float>(grid1[j]) * ((signs & (1u << j)) ? -1.0f : 1.0f);
-      out[j + 4] = db * static_cast<float>(grid2[j]) * ((signs & (1u << (j + 4))) ? -1.0f : 1.0f);
+      out[j] = db * static_cast<float>(static_cast<uint8_t>(g1 >> (8 * j))) *
+               ((signs & (1u << j)) ? -1.0f : 1.0f);
+      out[j + 4] = db * static_cast<float>(static_cast<uint8_t>(g2 >> (8 * j))) *
+                   ((signs & (1u << (j + 4))) ? -1.0f : 1.0f);
     }
   } else {
 #pragma unroll
@@ -375,11 +388,10 @@ __device__ __forceinline__ void DecodeGgufSubBlock8SmemLutTpl(
     const uint32_t aux32 = ReadU32Dev(aux8 + 4);
     const float db = d * (0.5f + static_cast<float>(aux32 >> 28)) * 0.25f;
     const uint64_t g64 = static_cast<const uint64_t*>(s_lut)[__ldg(aux8 + l)];
-    const uint8_t* grid = reinterpret_cast<const uint8_t*>(&g64);
     const uint8_t signs = Iq2xsSignsDev(aux32 >> (7 * l));
 #pragma unroll
     for (int j = 0; j < 8; ++j) {
-      out[j] = ((signs & (1u << j)) ? -db : db) * static_cast<float>(grid[j]);
+      out[j] = ((signs & (1u << j)) ? -db : db) * static_cast<float>(static_cast<uint8_t>(g64 >> (8 * j)));
     }
   } else if constexpr (kCompileType == kGgmlTypeIQ2_XS) {
     const int sb256 = sb32_idx >> 3;
@@ -390,11 +402,10 @@ __device__ __forceinline__ void DecodeGgufSubBlock8SmemLutTpl(
     const float db = d * (0.5f + static_cast<float>((sc_byte >> (4 * (l >> 1))) & 0xF)) * 0.25f;
     const uint16_t q2 = ReadU16Dev(blk + 2 + (4 * ib + l) * 2);
     const uint64_t g64 = static_cast<const uint64_t*>(s_lut)[q2 & 511];
-    const uint8_t* grid = reinterpret_cast<const uint8_t*>(&g64);
     const uint8_t signs = Iq2xsSignsDev(q2 >> 9);
 #pragma unroll
     for (int j = 0; j < 8; ++j) {
-      out[j] = ((signs & (1u << j)) ? -db : db) * static_cast<float>(grid[j]);
+      out[j] = ((signs & (1u << j)) ? -db : db) * static_cast<float>(static_cast<uint8_t>(g64 >> (8 * j)));
     }
   } else if constexpr (kCompileType == kGgmlTypeIQ2_S) {
     const int sb256 = sb32_idx >> 3;
@@ -407,11 +418,10 @@ __device__ __forceinline__ void DecodeGgufSubBlock8SmemLutTpl(
     const int g_idx =
         static_cast<int>(__ldg(blk + 2 + 4 * ib + l)) | ((static_cast<int>(qh_ib) << (8 - 2 * l)) & 0x300);
     const uint64_t g64 = static_cast<const uint64_t*>(s_lut)[g_idx];
-    const uint8_t* grid = reinterpret_cast<const uint8_t*>(&g64);
     const uint8_t signs = __ldg(blk + 34 + 4 * ib + l);
 #pragma unroll
     for (int j = 0; j < 8; ++j) {
-      out[j] = ((signs & (1u << j)) ? -db : db) * static_cast<float>(grid[j]);
+      out[j] = ((signs & (1u << j)) ? -db : db) * static_cast<float>(static_cast<uint8_t>(g64 >> (8 * j)));
     }
   } else if constexpr (kCompileType == kGgmlTypeIQ3_XXS) {
     const int sb256 = sb32_idx >> 3;
@@ -424,12 +434,11 @@ __device__ __forceinline__ void DecodeGgufSubBlock8SmemLutTpl(
     const uint16_t q2 = ReadU16Dev(blk + 2 + 8 * ib + 2 * l);
     const uint32_t g1 = static_cast<const uint32_t*>(s_lut)[q2 & 0xFFu];
     const uint32_t g2 = static_cast<const uint32_t*>(s_lut)[q2 >> 8];
-    const uint8_t* grid1 = reinterpret_cast<const uint8_t*>(&g1);
-    const uint8_t* grid2 = reinterpret_cast<const uint8_t*>(&g2);
 #pragma unroll
     for (int j = 0; j < 4; ++j) {
-      out[j] = ((signs & (1u << j)) ? -db : db) * static_cast<float>(grid1[j]);
-      out[j + 4] = ((signs & (1u << (j + 4))) ? -db : db) * static_cast<float>(grid2[j]);
+      out[j] = ((signs & (1u << j)) ? -db : db) * static_cast<float>(static_cast<uint8_t>(g1 >> (8 * j)));
+      out[j + 4] = ((signs & (1u << (j + 4))) ? -db : db) *
+                   static_cast<float>(static_cast<uint8_t>(g2 >> (8 * j)));
     }
   } else {
     DecodeGgufSubBlock8Tpl<kCompileType>(row_ptr, runtime_type, sb32_idx, l, out);
@@ -442,17 +451,17 @@ template <int kCompileType>
 __device__ __forceinline__ void DecodeGgufSubBlock16Impl(
     const uint8_t* row_ptr, int sb32_idx, int half16, float (&out)[16]) {
   if constexpr (kCompileType == kGgmlTypeF32) {
-    const float* p = reinterpret_cast<const float*>(row_ptr) + sb32_idx * 32 + half16 * 16;
+    const uint8_t* p = row_ptr + (static_cast<int64_t>(sb32_idx) * 32 + half16 * 16) * 4;
 #pragma unroll
-    for (int j = 0; j < 16; ++j) out[j] = __ldg(p + j);
+    for (int j = 0; j < 16; ++j) out[j] = __uint_as_float(ReadU32Dev(p + j * 4));
   } else if constexpr (kCompileType == kGgmlTypeF16) {
-    const uint16_t* p = reinterpret_cast<const uint16_t*>(row_ptr) + sb32_idx * 32 + half16 * 16;
+    const uint8_t* p = row_ptr + (static_cast<int64_t>(sb32_idx) * 32 + half16 * 16) * 2;
 #pragma unroll
-    for (int j = 0; j < 16; ++j) out[j] = Fp16ToFloatDev(__ldg(p + j));
+    for (int j = 0; j < 16; ++j) out[j] = Fp16ToFloatDev(ReadU16Dev(p + j * 2));
   } else if constexpr (kCompileType == kGgmlTypeBF16) {
-    const uint16_t* p = reinterpret_cast<const uint16_t*>(row_ptr) + sb32_idx * 32 + half16 * 16;
+    const uint8_t* p = row_ptr + (static_cast<int64_t>(sb32_idx) * 32 + half16 * 16) * 2;
 #pragma unroll
-    for (int j = 0; j < 16; ++j) out[j] = Bf16ToFloatDev(__ldg(p + j));
+    for (int j = 0; j < 16; ++j) out[j] = Bf16ToFloatDev(ReadU16Dev(p + j * 2));
   } else if constexpr (kCompileType == kGgmlTypeQ8_0) {
     const uint8_t* blk = row_ptr + static_cast<int64_t>(sb32_idx) * 34;
     const float d = Fp16ToFloatDev(ReadU16Dev(blk));

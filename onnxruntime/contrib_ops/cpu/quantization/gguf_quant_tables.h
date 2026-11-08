@@ -1,12 +1,37 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// Quantization lookup tables are from ggml (https://github.com/ggml-org/ggml).
+//
+// MIT License
+//
+// Copyright (c) 2023-2026 The ggml authors
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
 #pragma once
 
 #include <cstdint>
 #include <cstring>
 #include <cmath>
 #include "core/common/common.h"
+#include "core/common/endian.h"
 #include "core/common/float16.h"
 
 namespace onnxruntime {
@@ -844,15 +869,12 @@ inline float Bf16BitsToFloatCpu(uint16_t bits) {
 }
 
 inline uint16_t ReadU16Le(const uint8_t* p) {
-  uint16_t v = 0;
-  std::memcpy(&v, p, sizeof(v));
-  return v;
+  return static_cast<uint16_t>(p[0]) | (static_cast<uint16_t>(p[1]) << 8);
 }
 
 inline uint32_t ReadU32Le(const uint8_t* p) {
-  uint32_t v = 0;
-  std::memcpy(&v, p, sizeof(v));
-  return v;
+  return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
+         (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
 inline void GetScaleMinK4Cpu(int j, const uint8_t* q, uint8_t& d, uint8_t& m) {
@@ -868,7 +890,14 @@ inline void GetScaleMinK4Cpu(int j, const uint8_t* q, uint8_t& d, uint8_t& m) {
 inline bool DequantizeGgufRowCpu(const uint8_t* src, int ggml_type, int64_t K, float* dst) {
   switch (ggml_type) {
     case kGgmlTypeF32: {
-      std::memcpy(dst, src, static_cast<size_t>(K) * sizeof(float));
+      if constexpr (endian::native == endian::little) {
+        std::memcpy(dst, src, static_cast<size_t>(K) * sizeof(float));
+      } else {
+        for (int64_t i = 0; i < K; ++i) {
+          const uint32_t bits = ReadU32Le(src + i * sizeof(float));
+          std::memcpy(dst + i, &bits, sizeof(float));
+        }
+      }
       return true;
     }
     case kGgmlTypeF16: {
@@ -1045,10 +1074,11 @@ inline bool DequantizeGgufRowCpu(const uint8_t* src, int ggml_type, int64_t K, f
           const uint32_t aux32 = ReadU32Le(aux8 + 4);
           const float db = d * (0.5f + (aux32 >> 28)) * 0.25f;
           for (int l = 0; l < 4; ++l) {
-            const uint8_t* grid = reinterpret_cast<const uint8_t*>(iq2xxs_grid + aux8[l]);
+            const uint64_t grid = iq2xxs_grid[aux8[l]];
             const uint8_t signs = ksigns_iq2xs[(aux32 >> (7 * l)) & 127];
             for (int j = 0; j < 8; ++j) {
-              y[j] = db * grid[j] * (signs & kmask_iq2xs[j] ? -1.f : 1.f);
+              y[j] = db * static_cast<float>((grid >> (8 * j)) & 0xff) *
+                     (signs & kmask_iq2xs[j] ? -1.f : 1.f);
             }
             y += 8;
           }
@@ -1069,11 +1099,12 @@ inline bool DequantizeGgufRowCpu(const uint8_t* src, int ggml_type, int64_t K, f
           const float db1 = d * (0.5f + (scales[ib32] >> 4)) * 0.25f;
           for (int l = 0; l < 4; ++l) {
             const uint16_t qval = ReadU16Le(qs + (4 * ib32 + l) * 2);
-            const uint8_t* grid = reinterpret_cast<const uint8_t*>(iq2xs_grid + (qval & 511));
+            const uint64_t grid = iq2xs_grid[qval & 511];
             const uint8_t signs = ksigns_iq2xs[qval >> 9];
             const float db = (l < 2) ? db0 : db1;
             for (int j = 0; j < 8; ++j) {
-              y[j] = db * grid[j] * (signs & kmask_iq2xs[j] ? -1.f : 1.f);
+              y[j] = db * static_cast<float>((grid >> (8 * j)) & 0xff) *
+                     (signs & kmask_iq2xs[j] ? -1.f : 1.f);
             }
             y += 8;
           }
@@ -1096,10 +1127,10 @@ inline bool DequantizeGgufRowCpu(const uint8_t* src, int ggml_type, int64_t K, f
           const float db1 = d * (0.5f + (scales[ib32] >> 4)) * 0.25f;
           for (int l = 0; l < 4; ++l) {
             const float dl = (l < 2) ? db0 : db1;
-            const uint8_t* grid =
-                reinterpret_cast<const uint8_t*>(iq2s_grid + (qs[l] | ((qh[ib32] << (8 - 2 * l)) & 0x300)));
+            const uint64_t grid = iq2s_grid[qs[l] | ((qh[ib32] << (8 - 2 * l)) & 0x300)];
             for (int j = 0; j < 8; ++j) {
-              y[j] = dl * grid[j] * (signs[l] & kmask_iq2xs[j] ? -1.f : 1.f);
+              y[j] = dl * static_cast<float>((grid >> (8 * j)) & 0xff) *
+                     (signs[l] & kmask_iq2xs[j] ? -1.f : 1.f);
             }
             y += 8;
           }
@@ -1122,11 +1153,13 @@ inline bool DequantizeGgufRowCpu(const uint8_t* src, int ggml_type, int64_t K, f
           const float db = d * (0.5f + (aux32 >> 28)) * 0.5f;
           for (int l = 0; l < 4; ++l) {
             const uint8_t signs = ksigns_iq2xs[(aux32 >> (7 * l)) & 127];
-            const uint8_t* grid1 = reinterpret_cast<const uint8_t*>(iq3xxs_grid + qs[2 * l + 0]);
-            const uint8_t* grid2 = reinterpret_cast<const uint8_t*>(iq3xxs_grid + qs[2 * l + 1]);
+            const uint32_t grid1 = iq3xxs_grid[qs[2 * l + 0]];
+            const uint32_t grid2 = iq3xxs_grid[qs[2 * l + 1]];
             for (int j = 0; j < 4; ++j) {
-              y[j + 0] = db * grid1[j] * (signs & kmask_iq2xs[j + 0] ? -1.f : 1.f);
-              y[j + 4] = db * grid2[j] * (signs & kmask_iq2xs[j + 4] ? -1.f : 1.f);
+              y[j + 0] = db * static_cast<float>((grid1 >> (8 * j)) & 0xff) *
+                         (signs & kmask_iq2xs[j + 0] ? -1.f : 1.f);
+              y[j + 4] = db * static_cast<float>((grid2 >> (8 * j)) & 0xff) *
+                         (signs & kmask_iq2xs[j + 4] ? -1.f : 1.f);
             }
             y += 8;
           }

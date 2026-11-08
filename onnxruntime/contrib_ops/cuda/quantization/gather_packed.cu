@@ -33,9 +33,9 @@ __global__ __launch_bounds__(256) void GatherPackedKernel(
     for (int col = threadIdx.x; col < k; col += blockDim.x) {
       float value;
       if (ggml_type == gguf_quant::kGgmlTypeF32) {
-        value = __ldg(reinterpret_cast<const float*>(row_ptr) + col);
+        value = __uint_as_float(gguf_cuda::ReadU32Dev(row_ptr + static_cast<int64_t>(col) * 4));
       } else {
-        const uint16_t bits = __ldg(reinterpret_cast<const uint16_t*>(row_ptr) + col);
+        const uint16_t bits = gguf_cuda::ReadU16Dev(row_ptr + static_cast<int64_t>(col) * 2);
         value = ggml_type == gguf_quant::kGgmlTypeF16 ? gguf_cuda::Fp16ToFloatDev(bits)
                                                       : gguf_cuda::Bf16ToFloatDev(bits);
       }
@@ -68,7 +68,11 @@ Status DispatchGatherPackedByIndex(
     int64_t k,
     int64_t row_bytes,
     int ggml_type) {
+  ORT_RETURN_IF_NOT(k > 0 && k <= kGatherPackedMaxK, "GatherPacked requires K in 1..", kGatherPackedMaxK);
+  ORT_RETURN_IF_NOT(num_rows >= 0 && num_rows <= kGatherPackedMaxRows,
+                    "GatherPacked index count exceeds the CUDA grid limit");
   if (num_rows == 0) return Status::OK();
+  ORT_RETURN_IF_NOT(vocab_size > 0 && row_bytes > 0, "GatherPacked requires nonempty packed rows");
   const dim3 grid(static_cast<unsigned int>(num_rows));
   const dim3 block(256);
   if (indices_are_int64) {

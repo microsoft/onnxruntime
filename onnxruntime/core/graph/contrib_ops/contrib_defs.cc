@@ -996,14 +996,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     GatherPacked, 1,
     OpSchema()
         .SetDoc("Gather rows from a 2D block-packed embedding table and dequantize on the fly.")
-        .Attr("K", "Logical embedding dimension.", AttributeProto::INT)
+        .Attr("K",
+              "Logical embedding dimension. Must be a positive multiple of the selected packed format's block size.",
+              AttributeProto::INT)
         .Attr("packed_type",
               "Packed quantization format enum (0..99 map to GGUF ggml_type; >=100 reserved for custom formats).",
               AttributeProto::INT)
         .Attr("output_dtype", "ONNX TensorProto DataType for output (default 16 = BFLOAT16).",
               AttributeProto::INT, static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16))
-        .Input(0, "data", "2D packed weight blob [vocab_size, row_bytes].", "T1")
-        .Input(1, "indices", "Token indices of arbitrary rank.", "Tind")
+        .Input(0, "data", "2D little-endian packed weight blob [vocab_size, row_bytes].", "T1")
+        .Input(1, "indices",
+               "Token indices of arbitrary rank. Negative indices and indices >= vocab_size select row 0.", "Tind")
         .Output(0, "output", "Dequantized gathered embeddings [..., K].", "T2")
         .TypeConstraint("T1", {"tensor(uint8)"}, "Packed byte storage.")
         .TypeConstraint("T2", {"tensor(bfloat16)", "tensor(float16)", "tensor(float)"}, "Output floating-point type.")
@@ -1027,8 +1030,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     MatMulPacked, 1,
     OpSchema()
         .SetDoc("Matrix multiplication Y = A @ B^T where B is a 2D block-packed weight tensor.\n"
-                "CUDA prefill dequantizes B to the activation type and uses float32 accumulation and reductions.")
-        .Attr("K", "Reduction dimension.", AttributeProto::INT)
+                "CUDA prefill dequantizes output-dimension tiles of B to the activation type using bounded scratch "
+                "memory and uses float32 accumulation and reductions.")
+        .Attr("K",
+              "Reduction dimension. Must be a whole number of packed blocks; CUDA requires a positive multiple of 32.",
+              AttributeProto::INT)
         .Attr("N", "Output dimension.", AttributeProto::INT)
         .Attr("packed_type",
               "Packed quantization format enum for B (0..99 map to GGUF ggml_type; >=100 reserved for custom formats).",

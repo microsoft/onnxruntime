@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <cstdint>
+#include <limits>
+
 #include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
@@ -10,6 +13,10 @@ namespace contrib {
 namespace cuda {
 
 using namespace onnxruntime::cuda;
+
+// Leave room for the scalar kernel's final 256-element loop increment.
+inline constexpr int64_t kGatherPackedMaxK = std::numeric_limits<int>::max() - 256;
+inline constexpr int64_t kGatherPackedMaxRows = std::numeric_limits<int>::max();
 
 Status LaunchGatherPackedCuda(
     cudaStream_t stream,

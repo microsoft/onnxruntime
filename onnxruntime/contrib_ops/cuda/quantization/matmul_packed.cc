@@ -3,14 +3,28 @@
 
 #include "contrib_ops/cuda/quantization/matmul_packed.h"
 
+#include <algorithm>
 #include <type_traits>
 
 #include "contrib_ops/cpu/quantization/gguf_quant_tables.h"
+#include "core/common/safeint.h"
+#include "core/framework/allocator.h"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+namespace {
+bool PackedTensorBytesFit(int64_t rows, int64_t columns, size_t element_bytes) {
+  size_t row_bytes = 0;
+  size_t bytes = 0;
+  return rows >= 0 && columns >= 0 &&
+         IAllocator::CalcMemSizeForArray(static_cast<size_t>(columns), element_bytes, &row_bytes) &&
+         IAllocator::CalcMemSizeForArray(static_cast<size_t>(rows), row_bytes, &bytes) &&
+         bytes <= static_cast<size_t>(std::numeric_limits<ptrdiff_t>::max());
+}
+}  // namespace
 
 #define REGISTER_MATMUL_PACKED_CUDA(T)                                   \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
@@ -32,9 +46,18 @@ template <typename T>
 MatMulPacked<T>::MatMulPacked(const OpKernelInfo& info) : CudaKernel(info) {
   ORT_ENFORCE(info.GetAttr<int64_t>("K", &k_).IsOK() && k_ > 0, "MatMulPacked requires K > 0");
   ORT_ENFORCE(info.GetAttr<int64_t>("N", &n_).IsOK() && n_ > 0, "MatMulPacked requires N > 0");
+  ORT_ENFORCE(k_ <= kMatMulPackedMaxDimension && n_ <= kMatMulPackedMaxDimension,
+              "MatMulPacked requires K and N <= ", kMatMulPackedMaxDimension);
+  ORT_ENFORCE(k_ % 32 == 0, "MatMulPacked requires K to be a multiple of 32");
   ORT_ENFORCE(info.GetAttr<int64_t>("packed_type", &ggml_type_).IsOK() && ggml_type_ >= 0,
               "MatMulPacked requires packed_type >= 0");
   ORT_ENFORCE(gguf_quant::IsGgmlTypeSupported(ggml_type_), "MatMulPacked: unsupported packed_type=", ggml_type_);
+  if constexpr (std::is_same_v<T, BFloat16>) {
+    ORT_ENFORCE(GetDeviceProp().major >= 8, "MatMulPacked BF16 requires compute capability 8.0 or higher");
+    if (n_ >= kMatMulPackedBf16TcMinN) {
+      ORT_THROW_IF_ERROR(GetMatMulPackedBf16KernelSupport(bf16_tc_supported_));
+    }
+  }
 }
 
 template <typename T>
@@ -55,26 +78,39 @@ Status MatMulPacked<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(expected_rb > 0 && b_shape[1] == expected_rb,
                     "MatMulPacked weight B row_bytes=", b_shape[1], " != expected=", expected_rb);
 
+  const int64_t m = a_shape.SizeToDimension(last_axis);
+  ORT_RETURN_IF_NOT(m >= 0 && m <= std::numeric_limits<int>::max(),
+                    "MatMulPacked requires M in 0..", std::numeric_limits<int>::max());
+  ORT_RETURN_IF_NOT((n_ + 7) / 8 <= GetDeviceProp().maxGridSize[0],
+                    "MatMulPacked N exceeds the CUDA grid limit");
+  const int64_t scratch_rows = std::min<int64_t>(n_, kMatMulPackedPrefillNTile);
+  ORT_RETURN_IF_NOT(PackedTensorBytesFit(m, k_, sizeof(T)) &&
+                        PackedTensorBytesFit(n_, expected_rb, 1) &&
+                        PackedTensorBytesFit(m, n_, sizeof(T)) &&
+                        (m <= 8 || PackedTensorBytesFit(scratch_rows, k_, sizeof(T))),
+                    "MatMulPacked tensor byte size exceeds the supported address range");
+  constexpr bool is_bf16 = std::is_same_v<T, BFloat16>;
+  ORT_RETURN_IF_NOT(!is_bf16 || m == 0 || m > 8 || n_ < kMatMulPackedBf16TcMinN || bf16_tc_supported_,
+                    "MatMulPacked BF16 Tensor Core decode requires kernels compiled for compute_80 or higher");
+
   MatMulPackedParams params{};
   params.b_data = b->Data<uint8_t>();
   params.k = static_cast<int>(k_);
   params.n = static_cast<int>(n_);
   params.row_bytes = expected_rb;
   params.ggml_type = static_cast<int>(ggml_type_);
+  params.bf16_tc_supported = bf16_tc_supported_;
 
   TensorShapeVector y_dims = a_shape.AsShapeVector();
   y_dims[last_axis] = n_;
   Tensor* y = context->Output(0, TensorShape(y_dims));
 
-  const int64_t m = a_shape.SizeToDimension(last_axis);
   if (m == 0) return Status::OK();
 
-  constexpr bool is_bf16 = std::is_same_v<T, BFloat16>;
-  ORT_RETURN_IF_NOT(!is_bf16 || GetDeviceProp().major >= 8,
-                    "MatMulPacked BF16 requires compute capability 8.0 or higher");
   IAllocatorUniquePtr<T> scratch_w;
   if (m > 8) {
-    scratch_w = GetScratchBuffer<T>(static_cast<size_t>(n_ * k_), GetComputeStream(context));
+    const size_t scratch_count = SafeInt<size_t>(scratch_rows) * k_;
+    scratch_w = GetScratchBuffer<T>(scratch_count, GetComputeStream(context));
   }
 
   return LaunchMatMulPackedCuda(

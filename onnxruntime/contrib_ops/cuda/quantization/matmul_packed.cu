@@ -2,7 +2,12 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/quantization/matmul_packed.h"
+
+#include <algorithm>
+#include <type_traits>
+
 #include "contrib_ops/cuda/quantization/gguf_quant_cuda.cuh"
+#include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
@@ -55,7 +60,7 @@ __global__ __launch_bounds__(KW * 32) void MatMulPackedBf16TcWarpKSplitKernel(
   const int num_sb32 = p.k >> 5;
   for (int sb32_idx = warp; sb32_idx < num_sb32; sb32_idx += KW) {
     const uint4 b_vec = a_valid
-                            ? __ldg(reinterpret_cast<const uint4*>(a_row + sb32_idx * 32 + t * 8))
+                            ? gguf_cuda::LoadU4Dev(a_row + sb32_idx * 32 + t * 8)
                             : make_uint4(0u, 0u, 0u, 0u);
 #pragma unroll
     for (int m = 0; m < MT; ++m) {
@@ -133,7 +138,7 @@ __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
 #pragma unroll
       for (int m = 0; m < M_FIXED; ++m) {
         const CudaT* a_ptr = a + static_cast<int64_t>(m) * p.k + k_offset;
-        const uint4 v0 = __ldg(reinterpret_cast<const uint4*>(a_ptr));
+        const uint4 v0 = gguf_cuda::LoadU4Dev(a_ptr);
         const CudaT* a0 = reinterpret_cast<const CudaT*>(&v0);
 #pragma unroll
         for (int j = 0; j < 8; ++j) {
@@ -143,7 +148,7 @@ __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
     } else {
       for (int m = 0; m < M; ++m) {
         const CudaT* a_ptr = a + static_cast<int64_t>(m) * p.k + k_offset;
-        const uint4 v0 = __ldg(reinterpret_cast<const uint4*>(a_ptr));
+        const uint4 v0 = gguf_cuda::LoadU4Dev(a_ptr);
         const CudaT* a0 = reinterpret_cast<const CudaT*>(&v0);
 #pragma unroll
         for (int j = 0; j < 8; ++j) {
@@ -280,6 +285,10 @@ Status DispatchMatMulPackedCuda(
     CudaT* scratch_w,
     CudaT* y,
     int64_t m) {
+  ORT_RETURN_IF_NOT(params.k > 0 && params.k <= kMatMulPackedMaxDimension &&
+                        params.n > 0 && params.n <= kMatMulPackedMaxDimension &&
+                        m >= 0 && m <= std::numeric_limits<int>::max(),
+                    "MatMulPacked dimensions exceed the supported CUDA index range");
   if (m == 0) return Status::OK();
   ORT_RETURN_IF_NOT((params.k % 32) == 0, "MatMulPacked requires K to be a multiple of 32");
 
@@ -288,7 +297,9 @@ Status DispatchMatMulPackedCuda(
     const int m_int = static_cast<int>(m);
 
     if constexpr (std::is_same<CudaT, __nv_bfloat16>::value) {
-      if (params.n >= 65536) {
+      if (params.n >= kMatMulPackedBf16TcMinN) {
+        ORT_RETURN_IF_NOT(params.bf16_tc_supported,
+                          "MatMulPacked BF16 Tensor Core decode requires kernels compiled for compute_80 or higher");
         LaunchMatMulPackedBf16TcWarpKSplit<4, 2>(stream, a, params, y, m_int);
         return CUDA_CALL(cudaGetLastError());
       }
@@ -317,11 +328,6 @@ Status DispatchMatMulPackedCuda(
   }
 
   ORT_RETURN_IF_NOT(scratch_w != nullptr, "MatMulPacked prefill requires non-null scratch_w");
-  constexpr int kWarpsPerBlock = 8;
-  const dim3 grid(static_cast<unsigned int>((params.n + kWarpsPerBlock - 1) / kWarpsPerBlock));
-  const dim3 block(256);
-  MatMulPackedDequantKernel<CudaT><<<grid, block, 0, stream>>>(params, scratch_w);
-  ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
 
   // FP32 compute alone still permits FP16/BF16 split-K reductions.
   cublasMath_t previous_math_mode = CUBLAS_DEFAULT_MATH;
@@ -335,26 +341,40 @@ Status DispatchMatMulPackedCuda(
   const float alpha = 1.0f;
   const float beta = 0.0f;
   const cudaDataType_t data_type = is_bf16 ? CUDA_R_16BF : CUDA_R_16F;
-  const auto gemm_status = CUBLAS_CALL(cublasGemmEx(
-      cublas,
-      CUBLAS_OP_T,
-      CUBLAS_OP_N,
-      params.n,
-      static_cast<int>(m),
-      params.k,
-      &alpha,
-      scratch_w,
-      data_type,
-      params.k,
-      a,
-      data_type,
-      params.k,
-      &beta,
-      y,
-      data_type,
-      params.n,
-      CUBLAS_COMPUTE_32F,
-      CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+  Status gemm_status = Status::OK();
+  for (int n0 = 0; n0 < params.n;) {
+    MatMulPackedParams tile_params = params;
+    tile_params.n = std::min(kMatMulPackedPrefillNTile, params.n - n0);
+    tile_params.b_data = params.b_data + static_cast<size_t>(SafeInt<size_t>(n0) * params.row_bytes);
+    const dim3 grid(static_cast<unsigned int>((tile_params.n + 7) / 8));
+    MatMulPackedDequantKernel<CudaT><<<grid, 256, 0, stream>>>(tile_params, scratch_w);
+    gemm_status = CUDA_CALL(cudaGetLastError());
+    if (!gemm_status.IsOK()) break;
+
+    // Column-major [N, M] is row-major [M, N]; retain the full N leading dimension for every tile.
+    gemm_status = CUBLAS_CALL(cublasGemmEx(
+        cublas,
+        CUBLAS_OP_T,
+        CUBLAS_OP_N,
+        tile_params.n,
+        static_cast<int>(m),
+        params.k,
+        &alpha,
+        scratch_w,
+        data_type,
+        params.k,
+        a,
+        data_type,
+        params.k,
+        &beta,
+        y + n0,
+        data_type,
+        params.n,
+        CUBLAS_COMPUTE_32F,
+        CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+    if (!gemm_status.IsOK()) break;
+    n0 += tile_params.n;
+  }
   if (math_mode != previous_math_mode) {
     CUBLAS_RETURN_IF_ERROR(cublasSetMathMode(cublas, previous_math_mode));
   }
@@ -362,6 +382,14 @@ Status DispatchMatMulPackedCuda(
 }
 
 }  // namespace
+
+Status GetMatMulPackedBf16KernelSupport(bool& supported) {
+  cudaFuncAttributes attributes{};
+  // All BF16 MMA instantiations in this translation unit use the same virtual architecture.
+  CUDA_RETURN_IF_ERROR(cudaFuncGetAttributes(&attributes, MatMulPackedBf16TcWarpKSplitKernel<4, 2, -1>));
+  supported = attributes.ptxVersion >= 80;
+  return Status::OK();
+}
 
 Status LaunchMatMulPackedCuda(
     cublasHandle_t cublas,

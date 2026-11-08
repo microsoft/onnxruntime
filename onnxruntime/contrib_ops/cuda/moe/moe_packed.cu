@@ -5,9 +5,12 @@
 
 #include <climits>
 #include <cstdint>
+#include <type_traits>
 
 #include "contrib_ops/cuda/moe/qmoe_fused_route.cuh"
 #include "contrib_ops/cuda/quantization/gguf_quant_cuda.cuh"
+#include "core/common/safeint.h"
+#include "core/framework/allocator.h"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
@@ -398,7 +401,7 @@ __global__ __launch_bounds__(KW * 32) void MoEPackedFc1DecodeWarpKSplitKernel(
   const int num_sb32 = p.hidden_size >> 5;
   for (int sb32_idx = warp; sb32_idx < num_sb32; sb32_idx += KW) {
     const uint4 b_vec = x_valid
-                            ? __ldg(reinterpret_cast<const uint4*>(x_row + sb32_idx * 32 + t * 8))
+                            ? gguf_cuda::LoadU4Dev(x_row + sb32_idx * 32 + t * 8)
                             : make_uint4(0u, 0u, 0u, 0u);
 #pragma unroll
     for (int m = 0; m < MT; ++m) {
@@ -553,7 +556,7 @@ __global__ __launch_bounds__((kMaxSubTiles == 1) ? 128 : 256) void MoEPackedFc1S
           const int token_row = s_token_rows[m];
           const __nv_bfloat16* src_ptr =
               input + static_cast<int64_t>(token_row) * p.hidden_size + k_base + (u4_col << 3);
-          val = __ldg(reinterpret_cast<const uint4*>(src_ptr));
+          val = gguf_cuda::LoadU4Dev(src_ptr);
         }
         s_x_u4[m * kRowStrideU4 + u4_col] = val;
       }
@@ -566,7 +569,7 @@ __global__ __launch_bounds__((kMaxSubTiles == 1) ? 128 : 256) void MoEPackedFc1S
           const int token_row = s_token_rows[m];
           const __nv_bfloat16* src_ptr =
               input + static_cast<int64_t>(token_row) * p.hidden_size + k_base + (u4_col << 3);
-          val = __ldg(reinterpret_cast<const uint4*>(src_ptr));
+          val = gguf_cuda::LoadU4Dev(src_ptr);
         }
         s_x_u4[m * kRowStrideU4 + u4_col] = val;
       }
@@ -979,8 +982,11 @@ __global__ __launch_bounds__(256) void MoEPackedFinalizeKernel(
   output[static_cast<int64_t>(row) * hidden_size + col] = gguf_cuda::FloatToCudaType<CudaT>(sum);
 }
 
-size_t AlignUpWorkspace(size_t v) {
-  return (v + 255u) & ~size_t{255u};
+size_t AlignUpWorkspace(size_t count, size_t element_bytes = 1) {
+  size_t bytes = 0;
+  ORT_ENFORCE(IAllocator::CalcMemSizeForArrayWithAlignment(count, element_bytes, 256, &bytes),
+              "MoEPacked workspace byte size overflow");
+  return bytes;
 }
 
 void LaunchMoEPackedFc1DecodeBf16TcDispatch(
@@ -1171,9 +1177,18 @@ Status DispatchMoEPackedCuda(
     const MoEPackedParams& params,
     void* workspace,
     CudaT* output) {
+  ORT_RETURN_IF_NOT(params.num_rows >= 0 && params.num_rows <= kMoEPackedMaxChunkRows &&
+                        params.hidden_size > 0 && params.hidden_size <= kMoEPackedMaxDimension &&
+                        params.inter_size > 0 && params.inter_size <= kMoEPackedMaxDimension &&
+                        params.hidden_size % 32 == 0 && params.inter_size % 32 == 0 &&
+                        params.num_experts > 0 && params.num_experts <= kMoEPackedMaxExperts &&
+                        params.k > 0 && params.k <= kMoEPackedMaxK && params.k <= params.num_experts,
+                    "MoEPacked parameters exceed the supported CUDA index range");
   if (params.num_rows == 0) return Status::OK();
   const int total_routes = params.num_rows * params.k;
   constexpr bool kIsBf16 = std::is_same<CudaT, __nv_bfloat16>::value;
+  ORT_RETURN_IF_NOT(!kIsBf16 || params.bf16_tc_supported,
+                    "MoEPacked BF16 requires Tensor Core kernels compiled for compute_80 or higher");
   const bool use_prefill_tiles = kIsBf16 && (total_routes > 128);
   const int max_tiles = use_prefill_tiles
                             ? ((total_routes + 31) / 32 + params.num_experts)
@@ -1181,22 +1196,22 @@ Status DispatchMoEPackedCuda(
 
   uint8_t* ws_ptr = static_cast<uint8_t*>(workspace);
   float* topk_scales = reinterpret_cast<float*>(ws_ptr);
-  ws_ptr += AlignUpWorkspace(static_cast<size_t>(total_routes) * sizeof(float));
+  ws_ptr += AlignUpWorkspace(total_routes, sizeof(float));
 
   int* topk_indices = reinterpret_cast<int*>(ws_ptr);
-  ws_ptr += AlignUpWorkspace(static_cast<size_t>(total_routes) * sizeof(int));
+  ws_ptr += AlignUpWorkspace(total_routes, sizeof(int));
 
   int* sorted_routes = reinterpret_cast<int*>(ws_ptr);
-  ws_ptr += AlignUpWorkspace(static_cast<size_t>(total_routes) * sizeof(int));
+  ws_ptr += AlignUpWorkspace(total_routes, sizeof(int));
 
   MoEPackedTile* tiles = reinterpret_cast<MoEPackedTile*>(ws_ptr);
-  ws_ptr += AlignUpWorkspace(static_cast<size_t>(max_tiles) * sizeof(MoEPackedTile));
+  ws_ptr += AlignUpWorkspace(max_tiles, sizeof(MoEPackedTile));
 
   int* d_num_tiles = reinterpret_cast<int*>(ws_ptr);
   ws_ptr += AlignUpWorkspace(sizeof(int));
 
   CudaT* fc1_out = reinterpret_cast<CudaT*>(ws_ptr);
-  ws_ptr += AlignUpWorkspace(static_cast<size_t>(total_routes) * params.inter_size * sizeof(CudaT));
+  ws_ptr += AlignUpWorkspace(SafeInt<size_t>(total_routes) * params.inter_size, sizeof(CudaT));
 
   CudaT* fc2_out = reinterpret_cast<CudaT*>(ws_ptr);
 
@@ -1251,7 +1266,7 @@ Status DispatchMoEPackedCuda(
   } else {
     // Keep staging within CUDA's default shared-memory limit; larger shapes read activations directly.
     constexpr size_t kMaxStagingBytes = 48 * 1024;
-    const size_t fc1_smem = static_cast<size_t>(8) * params.hidden_size * sizeof(CudaT);
+    const size_t fc1_smem = SafeInt<size_t>(8) * params.hidden_size * sizeof(CudaT);
     const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 7) / 8), static_cast<unsigned int>(max_tiles));
     if (fc1_smem <= kMaxStagingBytes) {
       MoEPackedFc1SwiGLUSimtKernel<CudaT, true><<<fc1_grid, 256, fc1_smem, stream>>>(
@@ -1262,7 +1277,7 @@ Status DispatchMoEPackedCuda(
     }
     ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
 
-    const size_t fc2_smem = static_cast<size_t>(8) * params.inter_size * sizeof(CudaT);
+    const size_t fc2_smem = SafeInt<size_t>(8) * params.inter_size * sizeof(CudaT);
     const dim3 fc2_grid(static_cast<unsigned int>((params.hidden_size + 7) / 8), static_cast<unsigned int>(max_tiles));
     if (fc2_smem <= kMaxStagingBytes) {
       MoEPackedFc2SimtKernel<CudaT, true><<<fc2_grid, 256, fc2_smem, stream>>>(
@@ -1274,8 +1289,8 @@ Status DispatchMoEPackedCuda(
     ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
   }
 
-  // 5. Finalize (128-bit vectorized when hidden_size % 8 == 0)
-  if ((params.hidden_size & 7) == 0) {
+  // IO-bound output may only be element-aligned.
+  if ((params.hidden_size & 7) == 0 && (reinterpret_cast<uintptr_t>(output) & 15u) == 0) {
     const int vec_cols = params.hidden_size >> 3;
     const dim3 fin_grid(static_cast<unsigned int>((vec_cols + 255) / 256),
                         static_cast<unsigned int>(params.num_rows));
@@ -1292,19 +1307,52 @@ Status DispatchMoEPackedCuda(
 
 }  // namespace
 
-size_t GetMoEPackedWorkspaceBytes(const MoEPackedParams& params, size_t elem_bytes) {
-  const size_t total_routes = static_cast<size_t>(params.num_rows) * params.k;
+Status GetMoEPackedWorkspaceBytes(const MoEPackedParams& params, size_t elem_bytes, size_t& workspace_bytes) {
+  ORT_RETURN_IF_NOT(params.num_rows >= 0 && params.num_rows <= kMoEPackedMaxChunkRows &&
+                        params.k > 0 && params.k <= kMoEPackedMaxK &&
+                        params.num_experts > 0 && params.num_experts <= kMoEPackedMaxExperts &&
+                        params.hidden_size > 0 && params.hidden_size <= kMoEPackedMaxDimension &&
+                        params.inter_size > 0 && params.inter_size <= kMoEPackedMaxDimension &&
+                        elem_bytes == 2,
+                    "MoEPacked workspace parameters exceed the supported range");
+  if (params.num_rows == 0) {
+    workspace_bytes = 0;
+    return Status::OK();
+  }
+  const size_t total_routes = SafeInt<size_t>(params.num_rows) * params.k;
   const size_t max_tiles =
       (total_routes <= 128) ? total_routes : ((total_routes + 7) / 8 + static_cast<size_t>(params.num_experts));
   size_t bytes = 0;
-  bytes += AlignUpWorkspace(total_routes * sizeof(float));
-  bytes += AlignUpWorkspace(total_routes * sizeof(int));
-  bytes += AlignUpWorkspace(total_routes * sizeof(int));
-  bytes += AlignUpWorkspace(max_tiles * sizeof(MoEPackedTile));
-  bytes += AlignUpWorkspace(sizeof(int));
-  bytes += AlignUpWorkspace(total_routes * static_cast<size_t>(params.inter_size) * elem_bytes);
-  bytes += AlignUpWorkspace(total_routes * static_cast<size_t>(params.hidden_size) * elem_bytes);
-  return bytes;
+  const auto add_buffer = [&bytes](size_t count, size_t element_bytes) {
+    size_t buffer_bytes = 0;
+    if (!IAllocator::CalcMemSizeForArrayWithAlignment(count, element_bytes, 256, &buffer_bytes) ||
+        buffer_bytes > static_cast<size_t>(std::numeric_limits<ptrdiff_t>::max()) - bytes) {
+      return false;
+    }
+    bytes += buffer_bytes;
+    return true;
+  };
+  ORT_RETURN_IF_NOT(add_buffer(total_routes, sizeof(float)) &&
+                        add_buffer(total_routes, sizeof(int)) &&
+                        add_buffer(total_routes, sizeof(int)) &&
+                        add_buffer(max_tiles, sizeof(MoEPackedTile)) &&
+                        add_buffer(1, sizeof(int)) &&
+                        add_buffer(SafeInt<size_t>(total_routes) * params.inter_size, elem_bytes) &&
+                        add_buffer(SafeInt<size_t>(total_routes) * params.hidden_size, elem_bytes),
+                    "MoEPacked workspace byte size exceeds the supported address range");
+  workspace_bytes = bytes;
+  return Status::OK();
+}
+
+Status CheckMoEPackedBf16KernelSupport() {
+  cudaFuncAttributes attributes{};
+  // All BF16 MMA instantiations in this translation unit use the same virtual architecture.
+  CUDA_RETURN_IF_ERROR(cudaFuncGetAttributes(&attributes, MoEPackedFc1DecodeWarpKSplitKernel<4, 2, -1>));
+  // binaryVersion can be >= 80 after JIT of compute_75 PTX, whose MMA body is still unsupported.
+  ORT_RETURN_IF_NOT(attributes.ptxVersion >= 80,
+                    "MoEPacked BF16 requires Tensor Core kernels compiled for compute_80 or higher; got compute_",
+                    attributes.ptxVersion);
+  return Status::OK();
 }
 
 Status LaunchMoEPackedCuda(

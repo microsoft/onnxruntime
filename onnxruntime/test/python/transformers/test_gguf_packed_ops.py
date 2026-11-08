@@ -1,6 +1,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import ctypes
+import sys
 import unittest
 
 import numpy as np
@@ -40,6 +42,54 @@ def _round_to_dtype(arr, dtype):
     if dtype == TensorProto.BFLOAT16:
         return _bf16_u16_to_f32(_f32_to_bf16_u16(arr))
     return arr.astype(np.float16).astype(np.float32)
+
+
+def _cuda_bf16_supported():
+    driver = ctypes.WinDLL("nvcuda.dll") if sys.platform == "win32" else ctypes.CDLL("libcuda.so.1")
+
+    def check(status):
+        if status != 0:
+            raise RuntimeError(f"Cannot query CUDA compute capability (CUDA driver error {status})")
+
+    device, major, minor = ctypes.c_int(), ctypes.c_int(), ctypes.c_int()
+    check(driver.cuInit(0))
+    check(driver.cuDeviceGet(ctypes.byref(device), 0))
+    check(driver.cuDeviceComputeCapability(ctypes.byref(major), ctypes.byref(minor), device))
+    return major.value >= 8
+
+
+def _activation_storage(values, dtype):
+    if dtype == TensorProto.BFLOAT16:
+        return _f32_to_bf16_u16(values)
+    return np.ascontiguousarray(values, dtype=np.float16)
+
+
+def _run_cuda_bound(session, inputs, output_shape, output_dtype, output_offset=2):
+    binding = session.io_binding()
+    owners = []
+    for name, (dtype, values, offset) in inputs.items():
+        storage = np.concatenate(
+            (np.zeros(offset, dtype=np.uint8), np.ascontiguousarray(values).view(np.uint8).ravel())
+        )
+        owner = ort.OrtValue.ortvalue_from_numpy(storage, "cuda", 0)
+        owners.append(owner)
+        binding.bind_input(name, "cuda", 0, dtype, values.shape, owner.data_ptr() + offset)
+    item_size = 4 if output_dtype == TensorProto.FLOAT else 2
+    output_storage = ort.OrtValue.ortvalue_from_numpy(
+        np.zeros(output_offset + int(np.prod(output_shape)) * item_size, dtype=np.uint8), "cuda", 0
+    )
+    binding.bind_output("Y", "cuda", 0, output_dtype, output_shape, output_storage.data_ptr() + output_offset)
+    binding.synchronize_inputs()
+    session.run_with_iobinding(binding)
+    binding.synchronize_outputs()
+    raw = output_storage.numpy()[output_offset:]
+    if output_dtype == TensorProto.BFLOAT16:
+        return _bf16_u16_to_f32(raw.view(np.uint16)).reshape(output_shape)
+    return (
+        raw.view(np.float32 if output_dtype == TensorProto.FLOAT else np.float16)
+        .reshape(output_shape)
+        .astype(np.float32)
+    )
 
 
 def _session(model, provider):
@@ -167,7 +217,7 @@ def _moe_reference(x, logits, gate, up, down, top_k, dtype, normalize):
 
 
 def _make_synthetic_gguf_rows(
-    rng: np.random.Generator, rows: int, k: int, gtype: int, bel: int, bbytes: int
+    rng: np.random.Generator, rows: int, k: int, gtype: int, bel: int, bbytes: int, quant_scale: float = 2**-7
 ) -> np.ndarray:
     row_bytes = (k // bel) * bbytes
     if gtype == 0:
@@ -178,18 +228,83 @@ def _make_synthetic_gguf_rows(
         return _f32_to_bf16_u16(rng.standard_normal((rows, k)) * 0.1).view(np.uint8).reshape(rows, row_bytes)
 
     raw = rng.integers(0, 256, size=(rows, row_bytes), dtype=np.uint8)
+    scale_bytes = np.array([quant_scale], dtype="<f2").view(np.uint8)
+    min_bytes = np.array([quant_scale * 0.5], dtype="<f2").view(np.uint8)
     for r in range(rows):
         for b in range(k // bel):
             off = b * bbytes + (208 if gtype == 14 else 0)
-            raw[r, off] = 0x00
-            raw[r, off + 1] = 0x20  # fp16 0.0078125
+            raw[r, off : off + 2] = scale_bytes
             if gtype == 13:
-                raw[r, off + 2] = 0x00
-                raw[r, off + 3] = 0x1C
+                raw[r, off + 2 : off + 4] = min_bytes
     return raw
 
 
+class TestGatherPackedKnownAnswers(unittest.TestCase):
+    def test_little_endian_blocks(self):
+        values = [1.0, -2.0, 0.5, 0.0]
+        iq2_values = [5.375] + [1.0] * 31
+        cases = [
+            (0, bytes.fromhex("0000803f000000c00000003f00000000"), values),
+            (1, bytes.fromhex("003c00c000380000"), values),
+            (30, bytes.fromhex("803f00c0003f0000"), values),
+            (
+                2,
+                bytes.fromhex("0038f0e1d2c3b4a5968778695a4b3c2d1e0f"),
+                [i * 0.5 for i in range(-8, 8)] + [i * 0.5 for i in range(7, -9, -1)],
+            ),
+            (6, bytes.fromhex("003801000080") + bytes(16), [0.0] + [-8.0] * 30 + [0.0]),
+            (
+                8,
+                bytes.fromhex("0038f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f"),
+                [i * 0.5 for i in range(-16, 16)],
+            ),
+            (16, bytes.fromhex("003c") + bytes.fromhex("0100000000000000") * 8, iq2_values * 8),
+            (17, bytes.fromhex("003c") + bytes.fromhex("0100000000000000") * 8 + bytes(8), iq2_values * 8),
+            (22, bytes.fromhex("003c") + bytes.fromhex("01000000") * 8 + bytes(48), iq2_values * 8),
+            (
+                18,
+                bytes.fromhex("003c") + bytes.fromhex("0100000000000000") * 8 + bytes(32),
+                ([5.0] + [1.0] * 31) * 8,
+            ),
+        ]
+        for gtype, block, expected in cases:
+            raw = np.frombuffer(block, dtype=np.uint8).reshape(1, -1)
+            for dtype in (TensorProto.FLOAT, TensorProto.FLOAT16, TensorProto.BFLOAT16):
+                with self.subTest(gtype=gtype, dtype=dtype):
+                    model = _gather_model(1, len(expected), len(block), gtype, dtype)
+                    got = _session(model, "CPUExecutionProvider").run(None, {"W": raw, "I": np.array([0], np.int64)})[0]
+                    np.testing.assert_array_equal(got, np.array([expected], dtype=np.float32))
+
+    def test_invalid_indices_select_first_row(self):
+        raw = np.frombuffer(bytes.fromhex("0000803f0000004000004040"), dtype=np.uint8).reshape(3, 4)
+        for index_type, numpy_type in ((TensorProto.INT32, np.int32), (TensorProto.INT64, np.int64)):
+            with self.subTest(index_type=index_type):
+                model = _gather_model(3, 1, 4, 0, index_type=index_type)
+                got = _session(model, "CPUExecutionProvider").run(
+                    None, {"W": raw, "I": np.array([0, 2, -1, 3, -2], dtype=numpy_type)}
+                )[0]
+                np.testing.assert_array_equal(got[:, 0], np.array([1, 3, 1, 1, 1], dtype=np.float32))
+
+
 class TestGatherPackedValidation(unittest.TestCase):
+    def test_reject_partial_quantization_blocks(self):
+        for provider in ("CPUExecutionProvider", "CUDAExecutionProvider"):
+            if provider not in ort.get_available_providers():
+                continue
+            for gtype, k, row_bytes in ((2, 31, 18), (16, 255, 66), (42, 63, 18)):
+                with self.subTest(provider=provider, gtype=gtype), self.assertRaisesRegex(Exception, "invalid K"):
+                    _session(_gather_model(1, k, row_bytes, gtype), provider)
+
+    @unittest.skipIf("CUDAExecutionProvider" not in ort.get_available_providers(), "CUDAExecutionProvider is required")
+    def test_cuda_k_index_limit(self):
+        max_k = 2147483391
+        session = _session(_gather_model(0, max_k, max_k * 4, 0), "CUDAExecutionProvider")
+        got = session.run(None, {"W": np.empty((0, max_k * 4), np.uint8), "I": np.empty(0, np.int64)})[0]
+        self.assertEqual(got.shape, (0, max_k))
+        for k in (max_k + 1, 1 << 31, (1 << 32) + 32):
+            with self.subTest(k=k), self.assertRaisesRegex(Exception, "requires K <="):
+                _session(_gather_model(0, k, k * 4, 0), "CUDAExecutionProvider")
+
     def test_empty_vocabulary(self):
         for provider in ("CPUExecutionProvider", "CUDAExecutionProvider"):
             if provider not in ort.get_available_providers():
@@ -232,6 +347,12 @@ class TestGatherPackedValidation(unittest.TestCase):
 
 @unittest.skipIf("CUDAExecutionProvider" not in ort.get_available_providers(), "CUDAExecutionProvider is required")
 class TestGgufPackedOps(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.activation_dtypes = (
+            (TensorProto.FLOAT16, TensorProto.BFLOAT16) if _cuda_bf16_supported() else (TensorProto.FLOAT16,)
+        )
+
     def test_gather_packed_cpu_vs_cuda_all_types(self):
         rng = np.random.default_rng(42)
         k = 256
@@ -287,21 +408,22 @@ class TestGgufPackedOps(unittest.TestCase):
         for gtype, bel, bbytes in GGUF_TYPES_INFO:
             raw = _make_synthetic_gguf_rows(rng, n, k, gtype, bel, bbytes)
             weights = _dequantize_weights(raw, k, gtype)
-            session = _session(_matmul_model(k, n, raw.shape[1], gtype), "CUDAExecutionProvider")
-            for m in (1, 7, 8, 32):
-                with self.subTest(gtype=gtype, m=m):
-                    a = _round_to_dtype(rng.standard_normal((m, k), dtype=np.float32) * 0.2, TensorProto.BFLOAT16)
-                    got = session.run(None, {"A_f32": a, "B": raw})[0]
-                    target = weights if m <= 8 else _round_to_dtype(weights, TensorProto.BFLOAT16)
-                    ref = _round_to_dtype(a @ target.T, TensorProto.BFLOAT16)
-                    np.testing.assert_allclose(got, ref, rtol=1e-2, atol=1e-2)
+            for dtype in self.activation_dtypes:
+                session = _session(_matmul_model(k, n, raw.shape[1], gtype, dtype), "CUDAExecutionProvider")
+                for m in (1, 3, 7, 8, 9, 32):
+                    with self.subTest(gtype=gtype, dtype=dtype, m=m):
+                        a = _round_to_dtype(rng.standard_normal((m, k), dtype=np.float32) * 0.2, dtype)
+                        got = session.run(None, {"A_f32": a, "B": raw})[0]
+                        target = weights if m <= 8 else _round_to_dtype(weights, dtype)
+                        ref = _round_to_dtype(a @ target.T, dtype)
+                        np.testing.assert_allclose(got, ref, rtol=1e-2, atol=1e-2)
 
     def test_matmul_packed_prefill_fp32_reduction(self):
         k, n = 4096, 32
         weights = np.ones((n, k), dtype=np.float32)
         weights[:, -1] = 1.125
         raw = weights.view(np.uint8).reshape(n, k * 4)
-        for dtype in (TensorProto.BFLOAT16, TensorProto.FLOAT16):
+        for dtype in self.activation_dtypes:
             session = _session(_matmul_model(k, n, raw.shape[1], 0, dtype), "CUDAExecutionProvider")
             for m in (9, 32):
                 with self.subTest(dtype=dtype, m=m):
@@ -312,18 +434,67 @@ class TestGgufPackedOps(unittest.TestCase):
                     np.testing.assert_array_equal(got, np.full((m, n), -0.125, dtype=np.float32))
 
     def test_matmul_packed_partial_tensor_core_tile(self):
+        if TensorProto.BFLOAT16 not in self.activation_dtypes:
+            self.skipTest("BF16 MatMulPacked requires compute capability 8.0 or higher")
         rng = np.random.default_rng(124)
         k, n = 32, 65537
         # F32 values must be rounded to BF16 before the Tensor Core multiplication.
         raw = _make_synthetic_gguf_rows(rng, n, k, 0, 1, 4)
         weights = _round_to_dtype(raw.view(np.float32).reshape(n, k), TensorProto.BFLOAT16)
         session = _session(_matmul_model(k, n, raw.shape[1], 0), "CUDAExecutionProvider")
-        for m in (1, 7, 8):
+        bound_model = _model(
+            [helper.make_node("MatMulPacked", ["A", "B"], ["Y"], domain="com.microsoft", K=k, N=n, packed_type=0)],
+            [
+                helper.make_tensor_value_info("A", TensorProto.BFLOAT16, ["M", k]),
+                helper.make_tensor_value_info("B", TensorProto.UINT8, [n, raw.shape[1]]),
+            ],
+            [helper.make_tensor_value_info("Y", TensorProto.BFLOAT16, ["M", n])],
+        )
+        bound_session = _session(bound_model, "CUDAExecutionProvider")
+        for m in (1, 7, 8, 9, 32):
             with self.subTest(m=m):
                 a = _round_to_dtype(rng.standard_normal((m, k), dtype=np.float32), TensorProto.BFLOAT16)
                 got = session.run(None, {"A_f32": a, "B": raw})[0]
                 ref = _round_to_dtype(a @ weights.T, TensorProto.BFLOAT16)
                 np.testing.assert_allclose(got, ref, rtol=1e-2, atol=1e-2)
+                unaligned = _run_cuda_bound(
+                    bound_session,
+                    {
+                        "A": (TensorProto.BFLOAT16, _activation_storage(a, TensorProto.BFLOAT16), 2),
+                        "B": (TensorProto.UINT8, raw, 1),
+                    },
+                    (m, n),
+                    TensorProto.BFLOAT16,
+                )
+                np.testing.assert_allclose(unaligned, ref, rtol=1e-2, atol=1e-2)
+
+    def test_matmul_packed_dimension_limits(self):
+        max_dimension = 2147483616
+        _session(_matmul_model(max_dimension, 1, max_dimension * 4, 0, TensorProto.FLOAT16), "CUDAExecutionProvider")
+        _session(_matmul_model(32, max_dimension, 128, 0, TensorProto.FLOAT16), "CUDAExecutionProvider")
+        for dimension in (max_dimension + 1, 1 << 31, (1 << 32) + 32):
+            for k, n in ((dimension, 1), (32, dimension)):
+                with self.subTest(k=k, n=n), self.assertRaisesRegex(Exception, "requires K and N <="):
+                    _session(_matmul_model(k, n, k * 4, 0, TensorProto.FLOAT16), "CUDAExecutionProvider")
+        with self.assertRaisesRegex(Exception, "K to be a multiple of 32"):
+            _session(_matmul_model(31, 1, 124, 0, TensorProto.FLOAT16), "CUDAExecutionProvider")
+
+    def test_moe_packed_dimension_limits(self):
+        for dimension in (2147481600 + 32, 1 << 31, (1 << 32) + 32):
+            for hidden_size, inter_size in ((dimension, 32), (32, dimension)):
+                with self.subTest(hidden=hidden_size, inter=inter_size):
+                    row_bytes = (hidden_size * 2, hidden_size * 2, inter_size * 2)
+                    model = _moe_model(0, hidden_size, inter_size, 1, TensorProto.FLOAT16, (1, 1, 1), row_bytes, True)
+                    session = _session(model, "CUDAExecutionProvider")
+                    inputs = {
+                        "X_f32": np.empty((0, hidden_size), np.float32),
+                        "R_f32": np.empty((0, 0), np.float32),
+                        "G": np.empty((0, inter_size, row_bytes[0]), np.uint8),
+                        "U": np.empty((0, inter_size, row_bytes[1]), np.uint8),
+                        "D": np.empty((0, hidden_size, row_bytes[2]), np.uint8),
+                    }
+                    with self.assertRaisesRegex(Exception, "hidden_size and inter_size in 1"):
+                        session.run(None, inputs)
 
     def test_reject_unsupported_matmul_and_moe_formats(self):
         with self.assertRaisesRegex(Exception, "unsupported packed_type"):
@@ -350,7 +521,9 @@ class TestGgufPackedOps(unittest.TestCase):
         with self.assertRaisesRegex(Exception, "k <= num_experts"):
             session.run(None, inputs)
 
-    def _check_moe(self, num_experts, hidden_size, inter_size, dtype, formats, row_counts, normalize):
+    def _check_moe(
+        self, num_experts, hidden_size, inter_size, dtype, formats, row_counts, normalize, quant_scale=2**-7
+    ):
         rng = np.random.default_rng(999)
         top_k = min(4, num_experts)
         raw_weights = []
@@ -358,7 +531,7 @@ class TestGgufPackedOps(unittest.TestCase):
         for out_size, k, (gtype, bel, bbytes) in zip(
             (inter_size, inter_size, hidden_size), (hidden_size, hidden_size, inter_size), formats, strict=True
         ):
-            raw = _make_synthetic_gguf_rows(rng, num_experts * out_size, k, gtype, bel, bbytes)
+            raw = _make_synthetic_gguf_rows(rng, num_experts * out_size, k, gtype, bel, bbytes, quant_scale)
             raw = raw.reshape(num_experts, out_size, -1)
             raw_weights.append(raw)
             weights.append(_dequantize_weights(raw, k, gtype))
@@ -393,7 +566,7 @@ class TestGgufPackedOps(unittest.TestCase):
 
     def test_moe_packed_cuda_decode_and_prefill(self):
         formats = ((16, 256, 66), (16, 256, 66), (42, 64, 18))
-        for dtype in (TensorProto.FLOAT16, TensorProto.BFLOAT16):
+        for dtype in self.activation_dtypes:
             for num_experts in (16, 512):
                 for normalize in (False, True):
                     self._check_moe(num_experts, 256, 64, dtype, formats, (4, 48), normalize)
@@ -402,6 +575,132 @@ class TestGgufPackedOps(unittest.TestCase):
         formats = ((1, 1, 2),) * 3
         for hidden_size, inter_size in ((4096, 64), (256, 4096)):
             self._check_moe(2, hidden_size, inter_size, TensorProto.FLOAT16, formats, (4, 48), True)
+
+    def test_moe_packed_workspace_reuse_across_chunks(self):
+        for dtype in self.activation_dtypes:
+            self._check_moe(2, 32, 32, dtype, ((1, 1, 2),) * 3, (2049,), True)
+
+    def test_moe_packed_lookup_and_mixed_formats(self):
+        # Bound intermediate-rounding noise in near-zero outputs without relaxing tolerances.
+        cases = [
+            (((17, 256, 74), (17, 256, 74), (8, 32, 34)), 2**-10),
+            (((22, 256, 82), (22, 256, 82), (20, 32, 18)), 2**-10),
+            (((18, 256, 98), (18, 256, 98), (14, 256, 210)), 2**-11),
+            (((16, 256, 66), (17, 256, 74), (13, 256, 176)), 2**-10),
+        ]
+        for dtype in self.activation_dtypes:
+            for formats, quant_scale in cases:
+                with self.subTest(dtype=dtype, formats=formats):
+                    self._check_moe(2, 256, 256, dtype, formats, (4, 48), True, quant_scale=quant_scale)
+
+    def test_gather_packed_unaligned_weights(self):
+        rng = np.random.default_rng(44)
+        for gtype, bel, bbytes in GGUF_TYPES_INFO:
+            for k in (1, 8, 33, 256) if bel == 1 else (256,):
+                with self.subTest(gtype=gtype, k=k):
+                    raw = _make_synthetic_gguf_rows(rng, 3, k, gtype, bel, bbytes)
+                    indices = np.array([2, 0, 1, -1, 3], dtype=np.int64)
+                    model = _gather_model(3, k, raw.shape[1], gtype)
+                    session = _session(model, "CUDAExecutionProvider")
+                    # The float-to-float Cast is removed, exposing the bound GatherPacked output.
+                    got = _run_cuda_bound(
+                        session,
+                        {"W": (TensorProto.UINT8, raw, 1), "I": (TensorProto.INT64, indices, 0)},
+                        (5, k),
+                        TensorProto.FLOAT,
+                        output_offset=4,
+                    )
+                    ref = _session(model, "CPUExecutionProvider").run(None, {"W": raw, "I": indices})[0]
+                    np.testing.assert_array_equal(got, ref)
+
+    def test_matmul_packed_unaligned_buffers(self):
+        rng = np.random.default_rng(125)
+        k = 256
+        for dtype in self.activation_dtypes:
+            for n in (32, 1025):
+                for gtype, bel, bbytes in GGUF_TYPES_INFO:
+                    raw = _make_synthetic_gguf_rows(rng, n, k, gtype, bel, bbytes)
+                    weights = _dequantize_weights(raw, k, gtype)
+                    model = _model(
+                        [
+                            helper.make_node(
+                                "MatMulPacked", ["A", "B"], ["Y"], domain="com.microsoft", K=k, N=n, packed_type=gtype
+                            )
+                        ],
+                        [
+                            helper.make_tensor_value_info("A", dtype, ["M", k]),
+                            helper.make_tensor_value_info("B", TensorProto.UINT8, [n, raw.shape[1]]),
+                        ],
+                        [helper.make_tensor_value_info("Y", dtype, ["M", n])],
+                    )
+                    session = _session(model, "CUDAExecutionProvider")
+                    for m in (1, 3, 8, 9):
+                        with self.subTest(dtype=dtype, n=n, gtype=gtype, m=m):
+                            a = rng.standard_normal((m, k), dtype=np.float32) * 0.2
+                            got = _run_cuda_bound(
+                                session,
+                                {"A": (dtype, _activation_storage(a, dtype), 2), "B": (TensorProto.UINT8, raw, 1)},
+                                (m, n),
+                                dtype,
+                            )
+                            target = _round_to_dtype(weights, dtype) if m > 8 else weights
+                            ref = _round_to_dtype(_round_to_dtype(a, dtype) @ target.T, dtype)
+                            np.testing.assert_allclose(got, ref, rtol=1e-2, atol=1e-2)
+
+    def test_moe_packed_unaligned_buffers(self):
+        rng = np.random.default_rng(1000)
+        num_experts, hidden_size, inter_size = 2, 256, 256
+        for dtype in self.activation_dtypes:
+            for formats in (((1, 1, 2),) * 3, ((17, 256, 74), (17, 256, 74), (8, 32, 34))):
+                raw_weights, weights = [], []
+                for out_size, k, (gtype, bel, bbytes) in zip(
+                    (inter_size, inter_size, hidden_size), (hidden_size, hidden_size, inter_size), formats, strict=True
+                ):
+                    raw = _make_synthetic_gguf_rows(rng, num_experts * out_size, k, gtype, bel, bbytes)
+                    raw = raw.reshape(num_experts, out_size, -1)
+                    raw_weights.append(raw)
+                    weights.append(_dequantize_weights(raw, k, gtype))
+                model = _model(
+                    [
+                        helper.make_node(
+                            "MoEPacked",
+                            ["X", "R", "G", "U", "D"],
+                            ["Y"],
+                            domain="com.microsoft",
+                            k=2,
+                            gate_type=formats[0][0],
+                            up_type=formats[1][0],
+                            down_type=formats[2][0],
+                        )
+                    ],
+                    [
+                        helper.make_tensor_value_info("X", dtype, ["M", hidden_size]),
+                        helper.make_tensor_value_info("R", dtype, ["M", num_experts]),
+                        *[
+                            helper.make_tensor_value_info(name, TensorProto.UINT8, list(raw.shape))
+                            for name, raw in zip(("G", "U", "D"), raw_weights, strict=True)
+                        ],
+                    ],
+                    [helper.make_tensor_value_info("Y", dtype, ["M", hidden_size])],
+                )
+                session = _session(model, "CUDAExecutionProvider")
+                for m in (4, 48):
+                    with self.subTest(dtype=dtype, formats=formats, m=m):
+                        x = rng.standard_normal((m, hidden_size), dtype=np.float32) * 0.2
+                        logits = rng.standard_normal((m, num_experts), dtype=np.float32)
+                        inputs = {
+                            "X": (dtype, _activation_storage(x, dtype), 2),
+                            "R": (dtype, _activation_storage(logits, dtype), 2),
+                        }
+                        inputs.update(
+                            {
+                                name: (TensorProto.UINT8, raw, 1)
+                                for name, raw in zip(("G", "U", "D"), raw_weights, strict=True)
+                            }
+                        )
+                        got = _run_cuda_bound(session, inputs, (m, hidden_size), dtype)
+                        ref = _moe_reference(x, logits, *weights, 2, dtype, True)
+                        np.testing.assert_allclose(got, ref, rtol=2e-2, atol=2e-3)
 
 
 if __name__ == "__main__":

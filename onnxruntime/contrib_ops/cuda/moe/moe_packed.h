@@ -3,7 +3,9 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 
 #include "core/providers/cuda/cuda_kernel.h"
@@ -13,6 +15,10 @@ namespace contrib {
 namespace cuda {
 
 using namespace onnxruntime::cuda;
+
+inline constexpr int kMoEPackedMaxChunkRows = 2048;
+// Covers 512/640-element K-loop increments and rounded 2048-element finalize tiles.
+inline constexpr int64_t kMoEPackedMaxDimension = std::numeric_limits<int>::max() - 2047;
 
 struct alignas(16) MoEPackedTile {
   int expert;
@@ -28,6 +34,7 @@ struct MoEPackedParams {
   int inter_size{0};
   int k{0};
   bool normalize_routing_weights{true};
+  bool bf16_tc_supported{false};
   int gate_type{0};
   int up_type{0};
   int down_type{0};
@@ -36,7 +43,9 @@ struct MoEPackedParams {
   int64_t down_row_bytes{0};
 };
 
-size_t GetMoEPackedWorkspaceBytes(const MoEPackedParams& params, size_t elem_bytes);
+Status GetMoEPackedWorkspaceBytes(const MoEPackedParams& params, size_t elem_bytes, size_t& workspace_bytes);
+
+Status CheckMoEPackedBf16KernelSupport();
 
 Status LaunchMoEPackedCuda(
     cudaStream_t stream,
