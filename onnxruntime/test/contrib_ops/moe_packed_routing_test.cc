@@ -28,12 +28,12 @@ void RunMoeCuda(OpTester& test) {
 
 template <typename T = BFloat16>
 void TestPreselectedReluSquared(int rows, int topk, int malformed = 0, bool sigmoid = false,
-                                const char* activation_type = "relu2") {
+                                int inter_size = 256, const char* activation_type = "relu2") {
   constexpr int experts = 32;
   constexpr int hidden_size = 1024;
-  constexpr int inter_size = 256;
   std::vector<uint8_t> gate(experts * inter_size * 264);
-  std::vector<uint8_t> down(experts * hidden_size * 66);
+  const int down_row_bytes = (inter_size / 256) * 66;
+  std::vector<uint8_t> down(experts * hidden_size * down_row_bytes);
   std::vector<T> input(rows * hidden_size), expected(rows * hidden_size);
   std::vector<int32_t> indices(rows * topk);
   std::vector<float> weights(rows * topk);
@@ -85,7 +85,7 @@ void TestPreselectedReluSquared(int rows, int topk, int malformed = 0, bool sigm
       weights[row * topk + rank] = weight;
       const float fc1 = expert % 5 == 4 ? 0.f : T(4.f * factor * sum8[expert]).ToFloat();
       const float activation = T(fc1 * fc1).ToFloat();
-      const float fc2 = T(32.f * activation * sum8[expert]).ToFloat();
+      const float fc2 = T(static_cast<float>(inter_size / 8) * activation * sum8[expert]).ToFloat();
       mixed = std::fma(weight, fc2, mixed);
       narrowed_mixed = std::fma(T(weight).ToFloat(), fc2, narrowed_mixed);
     }
@@ -99,8 +99,13 @@ void TestPreselectedReluSquared(int rows, int topk, int malformed = 0, bool sigm
     if (malformed == 1) indices[0] = -1;
     if (malformed == 2) indices[1] = indices[0];
     if (malformed == 3) weights[0] = std::numeric_limits<float>::infinity();
-    for (int col = 0; col < hidden_size; ++col) {
-      expected[col] = T(std::numeric_limits<float>::quiet_NaN());
+    if (malformed == 4) std::fill(indices.begin(), indices.end(), -1);
+    if (malformed == 5) indices[0] = experts;
+    if (malformed == 6) weights[0] = std::numeric_limits<float>::quiet_NaN();
+    for (int row = 0; row < (malformed == 4 ? rows : 1); ++row) {
+      for (int col = 0; col < hidden_size; ++col) {
+        expected[row * hidden_size + col] = T(std::numeric_limits<float>::quiet_NaN());
+      }
     }
   }
   OpTester test("MoEPacked", 1, kMSDomain);
@@ -113,7 +118,7 @@ void TestPreselectedReluSquared(int rows, int topk, int malformed = 0, bool sigm
   test.AddOptionalInputEdge<T>();
   test.AddInput<uint8_t>("gate", {experts, inter_size, 264}, gate, true);
   test.AddOptionalInputEdge<uint8_t>();
-  test.AddInput<uint8_t>("down", {experts, hidden_size, 66}, down, true);
+  test.AddInput<uint8_t>("down", {experts, hidden_size, down_row_bytes}, down, true);
   if (sigmoid) {
     constexpr int router_width = 256;
     test.AddAttribute("routing_function", std::string("sigmoid"));
@@ -170,9 +175,19 @@ TEST(MoEPackedRoutingTest, ReluSquaredPreservesPreselectedFp32Routing) {
 
 TEST(MoEPackedRoutingTest, MalformedRoutesPoisonOnlyTheirToken) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
-  for (int malformed : {1, 2, 3}) {
+  for (int malformed : {1, 2, 3, 4, 5, 6}) {
     SCOPED_TRACE(testing::Message() << "malformed=" << malformed);
     TestPreselectedReluSquared(2, 2, malformed);
+  }
+}
+
+TEST(MoEPackedRoutingTest, Iq2ProductionWidthsPreserveOperandRoundingAndReduction) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (int inter_size : {1536, 2048, 2304, 2560}) {
+    for (int rows : {1, 8, 9}) {
+      SCOPED_TRACE(testing::Message() << "inter_size=" << inter_size << " rows=" << rows);
+      TestPreselectedReluSquared(rows, 9, 0, false, inter_size);
+    }
   }
 }
 
@@ -185,7 +200,7 @@ TEST(MoEPackedRoutingTest, ReluSquaredPreservesPreselectedFp16Routing) {
 
 TEST(MoEPackedRoutingTest, ReluSquaredAliasRemainsSupported) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
-  TestPreselectedReluSquared(1, 2, 0, false, "relu_squared");
+  TestPreselectedReluSquared(1, 2, 0, false, 256, "relu_squared");
 }
 
 TEST(MoEPackedRoutingTest, SigmoidCorrectionBiasUsesUnbiasedWeights) {
