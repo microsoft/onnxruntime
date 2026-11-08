@@ -13,6 +13,7 @@
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/attn_lstm_schema_defs.h"
 #include "core/graph/contrib_ops/range_schema_defs.h"
+#include "core/graph/contrib_ops/fused_state_space_defs.h"
 #include "core/graph/op.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/mlas/inc/mlas_q4.h"
@@ -1655,7 +1656,35 @@ static void QMoETypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   const int64_t fc2_bits = getAttribute(ctx, "fc2_expert_weight_bits", root_bits);
   const int64_t fc3_bits = getAttribute(ctx, "fc3_expert_weight_bits", root_bits);
   propagateShapeAndTypeFromFirstInput(ctx);
+  const auto* quant_type_attr = ctx.getAttribute("quant_type");
+  const bool is_iq2_xxs = quant_type_attr && quant_type_attr->s() == "iq2_xxs";
+  const auto has_input = [&](size_t index) {
+    return index < ctx.getNumInputs() && ctx.getInputType(index) != nullptr;
+  };
+  const bool fused_router = has_input(23) || has_input(24) || has_input(25);
+  if (is_iq2_xxs) {
+    if (fused_router) {
+      if (has_input(1) || has_input(21) || has_input(22) ||
+          !has_input(23) || !has_input(24) || !has_input(25)) {
+        fail_shape_inference(
+            "QMoE fused routing requires router_input, router_weight and router_bias, "
+            "without router_probs, expert_indices or expert_weights.");
+      }
+    } else if (has_input(1) || !has_input(21) || !has_input(22)) {
+      fail_shape_inference("QMoE IQ2_XXS requires preselected expert_indices and expert_weights, without router_probs.");
+    }
+    return;
+  }
+  if (fused_router) {
+    fail_shape_inference("QMoE fused routing currently requires quant_type='iq2_xxs'.");
+  }
+  if (has_input(21) || has_input(22)) {
+    fail_shape_inference("QMoE preselected routing currently requires quant_type='iq2_xxs'.");
+  }
   if (fc1_bits != 3 && fc2_bits != 3 && fc3_bits != 3) {
+    if (!has_input(1)) {
+      fail_shape_inference("QMoE router_probs is required without IQ2_XXS preselected routing.");
+    }
     return;
   }
   for (int64_t bits : {root_bits, fc1_bits, fc2_bits, fc3_bits}) {
@@ -1853,6 +1882,18 @@ static OpSchema QMoESchema() {
       "'fp4' uses Float8E8M0 block scales with block_size 32; 'nvfp4' uses Float8E4M3FN block scales "
       "with block_size 16. 'fp8' uses float8e4m3fn weights and, when block_size > 0, "
       "float32, float16, or bfloat16 square-block scales in fc*_scales instead of fc*_global_scale. "
+      "'iq2_xxs' uses nonlinear IQ2_XXS codebooks with 8-byte records per 32 weights, "
+      "containing four grid indices followed by packed signs and a local scale, "
+      "and FP16 super-scales per 256 weights. It requires expert_weight_bits=2, block_size=256, "
+      "weights_prepacked=0, activation_type='relu2', and either preselected expert_indices/expert_weights "
+      "or all three fused router inputs instead of router_probs. "
+      "Fused routing computes sigmoid router scores with FP32 accumulation, selects k experts using "
+      "score + router_bias (ties prefer lower IDs), and mixes using the uncorrected scores normalized "
+      "by their selected sum plus 1e-20, then multiplied by router_scale. "
+      "CUDA currently supports BF16 [R,1024], 1<=R<=8, "
+      "1<=k<=32, R*k<=128, and positive intermediate sizes divisible by 256 on SM80+. "
+      "Biases, FC3, zero points, auxiliary scales, routing normalization, sparse mixer, "
+      "required offloading and expert tracking are not supported for IQ2_XXS. "
       "The INT3 profile requires integer quantization.";
   auto schema = OpSchema()
                     .SetDoc(std::string(qMoE_ver1_doc) + qMoE_int3_doc)
@@ -1864,6 +1905,11 @@ static OpSchema QMoESchema() {
                           "Number of top experts to select from expert pool",
                           AttributeProto::INT,
                           static_cast<int64_t>(1))
+                    .Attr("router_scale",
+                          "Optional finite FP32 multiplier for fused IQ2_XXS router mixing weights (default 1). "
+                          "Must remain 1 when fused router inputs are omitted.",
+                          AttributeProto::FLOAT,
+                          OPTIONAL_VALUE)
                     .Attr("normalize_routing_weights",
                           "Whether to normalize routing weights",
                           AttributeProto::INT,
@@ -1919,7 +1965,7 @@ static OpSchema QMoESchema() {
                           "and NVFP4 ('nvfp4') to block_size 16, even when block_size is omitted. "
                           "For FP8 ('fp8'), a positive value instead specifies square blocks along both N and K, "
                           "with floating-point scales shaped [E, ceil(N/block_size), ceil(K/block_size)]; partial blocks are allowed. "
-                          "Without a positive value, FP8 uses per-expert global scales. "
+                          "Without a positive value, FP8 uses per-expert global scales. IQ2_XXS requires 256. "
                           "For integer quantization ('int'), omitting block_size means there is no blocking "
                           "and a whole column shares one scaling factor. ",
                           AttributeProto::INT,
@@ -1931,7 +1977,8 @@ static OpSchema QMoESchema() {
                           "For quant_type='nvfp4' on CUDA, -1 (default) and 0 select legacy N-packed [E,K,N/2] bytes; "
                           "1 selects K-packed row-major [E,N,K/2] bytes while retaining logical [E,K,N/2] dimensions. "
                           "NVFP4 block scales and global scales retain their original layouts and values. "
-                          "Ignored for other quantization types. Supported values are -1, 0, and 1; defaults to -1.",
+                          "IQ2_XXS requires 0 for raw records. Ignored for other quantization types. "
+                          "Supported values are -1, 0, and 1; defaults to -1.",
                           AttributeProto::INT,
                           static_cast<int64_t>(-1))
                     .Input(0,
@@ -1943,8 +1990,9 @@ static OpSchema QMoESchema() {
                     .Input(1,
                            "router_probs",
                            "2D tensor with shape (total_tokens, num_experts), where total_tokens must match the flattened "
-                           "token count of input",
-                           "T")
+                           "token count of input. Required except for quant_type='iq2_xxs', where it must be omitted.",
+                           "T",
+                           OpSchema::Optional)
                     .Input(2,
                            "fc1_experts_weights",
                            "3D tensor with shape (num_experts, fusion_size * inter_size, "
@@ -1962,7 +2010,8 @@ static OpSchema QMoESchema() {
                            "For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape "
                            "(num_experts, fusion_size * inter_size, hidden_size / 16). "
                            "For quant_type='fp8' and block_size > 0, required float32, float16, or bfloat16 scales with shape "
-                           "(num_experts, ceil(fusion_size * inter_size / block_size), ceil(hidden_size / block_size)).",
+                           "(num_experts, ceil(fusion_size * inter_size / block_size), ceil(hidden_size / block_size)). "
+                           "For 'iq2_xxs', required FP16 super-scales [E,I,hidden_size/256].",
                            "T2",
                            OpSchema::Optional)
                     .Input(4,
@@ -1984,7 +2033,8 @@ static OpSchema QMoESchema() {
                            "For quant_type='nvfp4', this is a float8e4m3fn NVFP4 block-scale tensor with shape "
                            "(num_experts, hidden_size, inter_size / 16). "
                            "For quant_type='fp8' and block_size > 0, required float32, float16, or bfloat16 scales with shape "
-                           "(num_experts, ceil(hidden_size / block_size), ceil(inter_size / block_size)).",
+                           "(num_experts, ceil(hidden_size / block_size), ceil(inter_size / block_size)). "
+                           "For 'iq2_xxs', required FP16 super-scales [E,hidden_size,I/256].",
                            "T2",
                            OpSchema::Optional)
                     .Input(7,
@@ -2079,6 +2129,37 @@ static OpSchema QMoESchema() {
                            "fc2_act_block_scale",
                            "3D optional float8e8m0 MXFP activation block-scale tensor for FC2 FP8 activation modes.",
                            "T2",
+                           OpSchema::Optional)
+                    .Input(21,
+                           "expert_indices",
+                           "Preselected int32 expert IDs [R,k], currently supported only for quant_type='iq2_xxs'. "
+                           "Order is preserved for FP32 weighted accumulation. An out-of-range or duplicate ID "
+                           "makes its whole output row NaN.",
+                           "tensor(int32)",
+                           OpSchema::Optional)
+                    .Input(22,
+                           "expert_weights",
+                           "FP32 mixing weights [R,k] corresponding to expert_indices. Required for "
+                           "IQ2_XXS preselected routing; used as provided without normalization or BF16 rounding.",
+                           "T4",
+                           OpSchema::Optional)
+                    .Input(23,
+                           "router_input",
+                           "BF16 routing activations [R,H], independent of the expert input width. "
+                           "IQ2_XXS fused routing requires H positive, divisible by 256 and fitting int32, "
+                           "all three router inputs, and no preselected routes or router_probs.",
+                           "tensor(bfloat16)",
+                           OpSchema::Optional)
+                    .Input(24,
+                           "router_weight",
+                           "BF16 routing matrix [E,H], with k<=E<=512. Used without prepacking.",
+                           "tensor(bfloat16)",
+                           OpSchema::Optional)
+                    .Input(25,
+                           "router_bias",
+                           "FP32 expert-selection correction [E]. Added only for top-k selection, "
+                           "not to the selected mixing weights. Supported only with IQ2_XXS fused routing.",
+                           "T4",
                            OpSchema::Optional)
                     .Output(0,
                             "output",
@@ -3464,6 +3545,15 @@ The output columns `N` and the contraction dimension `K` are derived from the we
 `N = B.shape[0]` and `K = 2 * B.shape[1]`. `K` must therefore be even.)DOC")
         .Attr("block_size", "Number of consecutive K values that share one E4M3 weight scale. Default 16.",
               AttributeProto::INT, static_cast<int64_t>(16))
+        .Attr("gemv_kernel",
+              "CUDA GEMV arithmetic selection. 'auto' preserves the default dispatch. "
+              "'fixed' uses fixed-order BF16 MMA for 2-8 flattened activation rows, "
+              "or FP16-pair accumulation for one row, with the global scale applied after reduction. "
+              "It requires SM80+, BF16 activations, block_size=16, no bias, N<=INT_MAX-32 "
+              "and positive K divisible by 1024; one row additionally requires K=4096 or K=8192. "
+              "Unsupported nonempty inputs are rejected rather than silently selecting another kernel. "
+              "GEMV environment tuning does not change the fixed arithmetic.",
+              AttributeProto::STRING, std::string("auto"))
         .Input(0, "A", "Row-major FP16/BF16 activation of shape [..., K].", "T")
         .Input(1, "B",
                "Packed NVFP4 weight of shape [N, K/2] stored as uint8 (two E2M1 values per byte, low nibble first).",
@@ -3590,6 +3680,7 @@ static void MatmulWithQuantWeightShapeInference(ONNX_NAMESPACE::InferenceContext
 }
 
 void RegisterContribSchemas() {
+  ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Mamba2Verify, Mamba2VerifySchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
 
@@ -4239,6 +4330,22 @@ Empty packed weights are currently supported by the CPU and WebGPU execution pro
             "2: prepacked in the CUDA SM90 (Hopper) fpA_intB layout, consumed by the native SM90 kernel "
             "(requires a compute capability 9.0 device and block_size in {64, 128}).",
             AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("gemv_kernel",
+            "CUDA arithmetic selection. 'auto' preserves existing affine-quantization dispatch. "
+            "'fixed' uses BF16 operands, FP32 accumulation and one final BF16 output rounding with "
+            "unmodified offset-UINT8 Q8 weights and FP16 or BF16 scales; "
+            "it requires bits=8, block_size=32 and K divisible by 64. "
+            "For BF16 scales and one activation row, FP32 block dot products are scaled before warp reduction "
+            "without intermediate BF16 weight rounding, and K must not exceed 6144. "
+            "'fixed_iq2_xxs' instead decodes nonlinear IQ2_XXS grid/sign/local-multiplier records, "
+            "rounding complete dequantized operands to BF16 before FP32 accumulation and final BF16 rounding. "
+            "This is not affine 2-bit quantization. It requires bits=2, block_size=256 and K divisible by 256. "
+            "Both fixed profiles require SM80+, BF16 activations, accuracy_level=0, weight_prepacked=0, "
+            "omitted scales/zero_points/g_idx/bias, and fixed_scales [N,K/block_size]. "
+            "IQ2_XXS requires literal FP16 fixed_scales; Q8 preserves the supplied FP16 or BF16 scale dtype. "
+            "K must be positive and fit int32; N must be positive and at most INT32_MAX-32. "
+            "Flattened activation rows must be in [1,8]. Unsupported shapes fail rather than changing arithmetic.",
+            AttributeProto::STRING, std::string("auto"))
       .Input(0, "A", "The input tensor, not quantized.", "T1")
       .Input(1, "B",
              "Packed uint8 tensor of shape (N, k_blocks, blob_size), "
@@ -4246,7 +4353,10 @@ Empty packed weights are currently supported by the CPU and WebGPU execution pro
              "With weight_prepacked=0, one or more dimensions may be 0 to omit the projection as described above. "
              "The quantized weights are stored in a bit-packed format along the K dimension, packed within each block_size.",
              "T2")
-      .Input(2, "scales", "Per-block scaling factors for dequantization with shape (N, k_blocks) and same data type as input A.", "T1")
+      .Input(2, "scales",
+             "Per-block scaling factors for dequantization with shape (N, k_blocks) and same data type as input A. "
+             "Required for default dispatch; must be omitted with either fixed gemv_kernel profile.",
+             "T1", OpSchema::Optional)
       .Input(3, "zero_points",
              "Per-block zero point for dequantization. It can be either packed or unpacked: "
              "Packed (uint8) format has shape (N, ceil(k_blocks * bits / 8)), and it uses same bit-packing method as Input B. "
@@ -4255,6 +4365,11 @@ Empty packed weights are currently supported by the CPU and WebGPU execution pro
              "T3", OpSchema::Optional)
       .Input(4, "g_idx", "group_idx. This input is deprecated", "T4", OpSchema::Optional)
       .Input(5, "bias", "Bias to add to result. It should have shape [N].", "T1", OpSchema::Optional)
+      .Input(6, "fixed_scales",
+             "Independent FP16 or BF16 scales [N,K/block_size], required only for fixed gemv_kernel profiles. "
+             "Q8 preserves the supplied scale dtype and its arithmetic; IQ2_XXS requires literal FP16 scales. "
+             "FP16 scales are not rounded early to the BF16 activation dtype.",
+             "S", OpSchema::Optional)
       .Output(0, "Y", "tensor. The output tensor has the same rank as the input. ", "T1")
       .TypeConstraint("T1", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                       "Constrain input and output types to float tensors.")
@@ -4262,7 +4377,32 @@ Empty packed weights are currently supported by the CPU and WebGPU execution pro
       .TypeConstraint("T3", {"tensor(uint8)", "tensor(float16)", "tensor(float)", "tensor(bfloat16)"},
                       "Constrain quantized zero point types to uint8 or float tensors.")
       .TypeConstraint("T4", {"tensor(int32)"}, "the index tensor.")
+      .TypeConstraint("S", {"tensor(float16)", "tensor(bfloat16)"}, "Independent fixed-profile scale precision.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        const auto* kernel_attr = ctx.getAttribute("gemv_kernel");
+        const std::string kernel = kernel_attr ? kernel_attr->s() : "auto";
+        if (kernel != "auto" && kernel != "fixed" && kernel != "fixed_iq2_xxs") {
+          fail_shape_inference("MatMulNBits gemv_kernel must be 'auto', 'fixed' or 'fixed_iq2_xxs'.");
+        }
+        if (kernel != "auto") {
+          const bool iq2 = kernel == "fixed_iq2_xxs";
+          if (ctx.hasInput(2) || !ctx.hasInput(6) || ctx.hasInput(3) || ctx.hasInput(4) || ctx.hasInput(5) ||
+              getAttribute(ctx, "bits", 4) != (iq2 ? 2 : 8) ||
+              getAttribute(ctx, "block_size", 0) != (iq2 ? 256 : 32) ||
+              getAttribute(ctx, "accuracy_level", 0) != 0 || getAttribute(ctx, "weight_prepacked", 0) != 0 ||
+              !ctx.hasInput(0) ||
+              ctx.getInputType(0)->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto::BFLOAT16) {
+            fail_shape_inference(
+                "MatMulNBits ", kernel, " requires BF16, ",
+                iq2 ? "bits=2, block_size=256, accuracy_level=0, " : "bits=8, block_size=32, accuracy_level=0, ",
+                "weight_prepacked=0, fixed_scales and no scales, zero_points, g_idx or bias.");
+          }
+          if (iq2 && ctx.getInputType(6)->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto::FLOAT16) {
+            fail_shape_inference("MatMulNBits fixed_iq2_xxs requires literal FP16 fixed_scales.");
+          }
+        } else if (!ctx.hasInput(2) || ctx.hasInput(6)) {
+          fail_shape_inference("MatMulNBits auto requires scales and does not accept fixed_scales.");
+        }
         // Type inference
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         // Shape inference

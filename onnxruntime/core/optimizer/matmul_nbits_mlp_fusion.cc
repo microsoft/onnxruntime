@@ -79,6 +79,7 @@ bool HasExpectedNormConsumers(const Graph& graph, const Node& node) {
 
 bool IsMatMulNBitsWithoutZeroPointOrGroupIdx(const Node& node) {
   return graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMulNBits", {1}, kMSDomain) &&
+         HasInput(node, 2) && !HasInput(node, 6) &&
          !HasInput(node, 3) && !HasInput(node, 4);
 }
 

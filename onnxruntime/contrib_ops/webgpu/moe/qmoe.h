@@ -37,6 +37,15 @@ class QMoE final : public MoE {
     ORT_ENFORCE(quant_type_ == "int" || is_block_fp8_,
                 "WebGPU QMoE supports quant_type='int' and block-scaled quant_type='fp8' with block_size=128; "
                 "fp4, nvfp4, global-scale fp8, and wfp4afp8 formats are not supported.");
+    for (size_t index = 21; index < static_cast<size_t>(info.GetInputCount()); ++index) {
+#if defined(ORT_USE_EP_API_ADAPTERS)
+      const bool input_exists = info.node().InputExists(index);
+#else
+      const bool input_exists = info.node().InputDefs()[index]->Exists();
+#endif
+      ORT_ENFORCE(!input_exists,
+                  "WebGPU QMoE does not support preselected expert routing.");
+    }
     ORT_ENFORCE(!is_block_fp8_ ||
                     (expert_weight_bits_ == 8 && fc1_expert_weight_bits_ == 8 &&
                      fc2_expert_weight_bits_ == 8 && fc3_expert_weight_bits_ == 8),

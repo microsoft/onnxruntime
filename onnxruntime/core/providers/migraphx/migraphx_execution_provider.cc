@@ -697,6 +697,9 @@ static bool IsNodeSupported(const std::set<std::string>& op_set,
   if (optype == "GroupQueryAttention" && node->InputDefs().size() > 16 && node->InputDefs()[16]->Exists()) {
     return false;
   }
+  if (optype == "MatMulNBits" && node->InputDefs().size() > 6 && node->InputDefs()[6]->Exists()) {
+    return false;
+  }
 
   // check that some modes might not be supported in migraphx for some operators
   if (domain == kOnnxDomain && IsUnsupportedOpMode(graph_viewer, node)) {
