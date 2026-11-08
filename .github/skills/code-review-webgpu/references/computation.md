@@ -130,7 +130,8 @@ with differing specializations, not an unexercised dump.
   indexing. Helpers preserve segmentation above `maxStorageBufferBindingSize`,
   view offsets, and storage/value conversion; extend the API when necessary.
   Helper-internal indexing and workgroup/private arrays are exempt.
-- Never bind one buffer twice when either binding is writable.
+- Do not bind overlapping byte ranges of the same buffer when either binding is
+  writable. Include dynamic offsets; disjoint segmented bindings are allowed.
 
 ### Synchronization
 
