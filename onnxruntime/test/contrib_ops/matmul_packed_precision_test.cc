@@ -414,7 +414,6 @@ TEST(MatMulPackedPrecisionTest, RoundedBf16ContiguousKCancellation) {
 
 TEST(MatMulPackedPrecisionTest, Q8Bf16VectorRecordWindowsAndStrideFallback) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
-  constexpr float global_scale = -.333333f;
   for (const auto& shape : {std::array<int, 2>{17, 192}, {17, 256}, {8193, 256}}) {
     const auto [n, k] = shape;
     const int row_bytes = (k / 32) * 34;
@@ -447,7 +446,7 @@ TEST(MatMulPackedPrecisionTest, Q8Bf16VectorRecordWindowsAndStrideFallback) {
           for (int block = 0; block < k / 32; ++block) {
             sum += .125f * weights[col * k + block * 32 + (block * 5 + row * 17) % 32].ToFloat();
           }
-          expected[row * n + col] = BFloat16(sum * global_scale);
+          expected[row * n + col] = BFloat16(sum);
         }
       }
       OpTester test("MatMulPacked", 1, kMSDomain);
@@ -457,7 +456,6 @@ TEST(MatMulPackedPrecisionTest, Q8Bf16VectorRecordWindowsAndStrideFallback) {
       test.AddAttribute("dequantize_to_activation_dtype", int64_t{1});
       test.AddInput<BFloat16>("A", {rows, k}, a);
       test.AddInput<uint8_t>("B", {n, row_bytes}, packed);
-      test.AddInput<float>("global_scale", {}, {global_scale});
       test.AddOutput<BFloat16>("Y", {rows, n}, expected);
       RunPackedCuda(test);
     }
@@ -469,7 +467,6 @@ TEST(MatMulPackedPrecisionTest, Iq2Bf16ProductionWidthsPreserveCompleteOperands)
   constexpr int k = 4096;
   constexpr int row_bytes = (k / 256) * 66;
   constexpr std::array<int, 8> active{0, 31, 255, 511, 1023, 1535, 2047, 4095};
-  constexpr float global_scale = -.9375f;
   for (int n : {4096, 5376, 5377}) {
     std::vector<uint8_t> packed(n * row_bytes);
     for (int col = 0; col < n; ++col) {
@@ -523,9 +520,9 @@ TEST(MatMulPackedPrecisionTest, Iq2Bf16ProductionWidthsPreserveCompleteOperands)
                                       .ToFloat();
             sum += a[row * k + index].ToFloat() * operand;
           }
-          // Eight dyadic products fit exactly in FP32, independently of the MMA
-          // partition/reduction order; the scale is applied only in the epilogue.
-          expected[row * n + col] = BFloat16(sum * global_scale);
+          // Eight dyadic products fit exactly in FP32 independently of the MMA
+          // partition/reduction order.
+          expected[row * n + col] = BFloat16(sum);
         }
       }
       for (bool initializer : {false, true}) {
@@ -536,7 +533,6 @@ TEST(MatMulPackedPrecisionTest, Iq2Bf16ProductionWidthsPreserveCompleteOperands)
         test.AddAttribute("dequantize_to_activation_dtype", int64_t{1});
         test.AddInput<BFloat16>("A", {rows, k}, a);
         test.AddInput<uint8_t>("B", {n, row_bytes}, packed, initializer);
-        test.AddInput<float>("global_scale", {}, {global_scale}, initializer);
         test.AddOutput<BFloat16>("Y", {rows, n}, expected);
         RunPackedCuda(test);
       }
