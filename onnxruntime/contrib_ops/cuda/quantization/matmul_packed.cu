@@ -21,7 +21,8 @@ namespace {
 // Warp-K-Split Tensor-Core BF16 GEMV/GEMM kernel for M in 1..8 on large-N projections (e.g. lm_head).
 // KW warps (KW*32 threads) split K across the KW warps with zero __syncthreads() in the K-loop,
 // while computing MT*16 output columns per CTA.
-template <int KW, int MT, int kCompileType, int kChunk = 32, bool kAlignedNvfp4Rows = false>
+template <int KW, int MT, int kCompileType, int kChunk = 32, bool kAlignedNvfp4Rows = false,
+          bool kAlignedQ8Rows = false>
 __global__ __launch_bounds__(KW * 32) void MatMulPackedBf16TcWarpKSplitKernel(
     const __nv_bfloat16* __restrict__ a,
     MatMulPackedParams p,
@@ -191,12 +192,22 @@ __global__ __launch_bounds__(KW * 32) void MatMulPackedBf16TcWarpKSplitKernel(
             float w_lo[16] = {};
             float w_hi[16] = {};
             if (valid_lo[m]) {
-              gguf_cuda::DecodeGgufSubBlock16Impl<kCompileType>(
-                  row_ptrs_lo[m], offset / 32, (offset / 16) & 1, w_lo);
+              if constexpr (kCompileType == gguf_quant::kGgmlTypeQ8_0 && kAlignedQ8Rows) {
+                gguf_cuda::DecodeQ8SubBlock16Aligned(
+                    row_ptrs_lo[m], offset / 32, (offset / 16) & 1, w_lo);
+              } else {
+                gguf_cuda::DecodeGgufSubBlock16Impl<kCompileType>(
+                    row_ptrs_lo[m], offset / 32, (offset / 16) & 1, w_lo);
+              }
             }
             if (valid_hi[m]) {
-              gguf_cuda::DecodeGgufSubBlock16Impl<kCompileType>(
-                  row_ptrs_hi[m], offset / 32, (offset / 16) & 1, w_hi);
+              if constexpr (kCompileType == gguf_quant::kGgmlTypeQ8_0 && kAlignedQ8Rows) {
+                gguf_cuda::DecodeQ8SubBlock16Aligned(
+                    row_ptrs_hi[m], offset / 32, (offset / 16) & 1, w_hi);
+              } else {
+                gguf_cuda::DecodeGgufSubBlock16Impl<kCompileType>(
+                    row_ptrs_hi[m], offset / 32, (offset / 16) & 1, w_hi);
+              }
             }
             float e0[8], e1[8], o0[8], o1[8];
 #pragma unroll
@@ -685,6 +696,11 @@ void LaunchMatMulPackedBf16ContiguousK(
   using namespace onnxruntime::contrib::gguf_quant;
   switch (params.ggml_type) {
     case kGgmlTypeQ8_0:
+      if ((reinterpret_cast<uintptr_t>(params.b_data) & 15u) == 0 && (params.row_bytes & 15) == 0) {
+        MatMulPackedBf16TcWarpKSplitKernel<KW, MT, kGgmlTypeQ8_0, kChunk, false, true>
+            <<<grid, KW * 32, 0, stream>>>(a, params, y, rows);
+        return;
+      }
       MatMulPackedBf16TcWarpKSplitKernel<KW, MT, kGgmlTypeQ8_0, kChunk>
           <<<grid, KW * 32, 0, stream>>>(a, params, y, rows);
       return;
