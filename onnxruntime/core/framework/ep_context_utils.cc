@@ -249,9 +249,10 @@ Status SaveModelProtoToLocation(ONNX_NAMESPACE::ModelProto& model_proto,
     auto out_stream_buf = std::make_unique<epctx::OutStreamBuf>(*output_write_func_holder);
     std::ostream out_stream(out_stream_buf.get());
 
-    model_proto.SerializeToOstream(&out_stream);
+    const bool ok = model_proto.SerializeToOstream(&out_stream);
     out_stream.flush();
     ORT_RETURN_IF_ERROR(out_stream_buf->GetStatus());
+    ORT_RETURN_IF(!ok, "Protobuf serialization failed when saving model to output stream");
   } else {
     // Write output model to a file.
     int fd = 0;
