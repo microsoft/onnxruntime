@@ -850,7 +850,14 @@ export const run = async (
       wasm.setValue(outputNamesOffset + i * ptrSize, outputNamesUTF8Encoded[outputIndices[i]], '*');
     }
 
-    if ((!BUILD_DEFS.DISABLE_JSEP || !BUILD_DEFS.DISABLE_WEBGPU) && ioBindingState && !inputOutputBound) {
+    // With graph capture the binding is kept across runs: a replay executes no kernels, so ORT-allocated outputs must
+    // stay bound to keep returning the captured results. External GPU buffers are registered per run (unregistered in
+    // `finally` below), so inputs and pre-allocated outputs are re-bound on every run.
+    if (
+      (!BUILD_DEFS.DISABLE_JSEP || !BUILD_DEFS.DISABLE_WEBGPU) &&
+      ioBindingState &&
+      (!inputOutputBound || enableGraphCapture)
+    ) {
       const { handle, outputPreferredLocations, outputPreferredLocationsEncoded } = ioBindingState;
 
       if (inputNamesUTF8Encoded.length !== inputCount) {
@@ -881,7 +888,7 @@ export const run = async (
           if (errorCode !== 0) {
             checkLastError(`Can't bind pre-allocated output[${i}] for session=${sessionId}.`);
           }
-        } else {
+        } else if (!inputOutputBound) {
           // output is not pre-allocated. reset preferred location.
           const errorCode = wasm._OrtBindOutput(
             handle,
@@ -1130,9 +1137,7 @@ export const run = async (
       }
     }
 
-    // Clear the binding after every run, also with graph capture: the GPU buffers registered for this run's tensors are
-    // unregistered in `finally` below, so a binding kept for the next run would reference released buffers.
-    if (ioBindingState) {
+    if (ioBindingState && !enableGraphCapture) {
       if (wasm._OrtClearBoundOutputs(ioBindingState.handle) !== 0) {
         checkLastError("Can't clear bound outputs.");
       }
