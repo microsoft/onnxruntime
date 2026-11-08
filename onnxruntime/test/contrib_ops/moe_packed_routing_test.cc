@@ -28,7 +28,8 @@ void RunMoeCuda(OpTester& test) {
 
 template <typename T = BFloat16>
 void TestPreselectedReluSquared(int rows, int topk, int malformed = 0, bool sigmoid = false,
-                                int inter_size = 256, const char* activation_type = "relu2") {
+                                int inter_size = 256, int grid_offset = -1,
+                                const char* activation_type = "relu2") {
   constexpr int experts = 32;
   constexpr int hidden_size = 1024;
   std::vector<uint8_t> gate(experts * inter_size * 264);
@@ -48,8 +49,11 @@ void TestPreselectedReluSquared(int rows, int topk, int malformed = 0, bool sigm
   }
   for (int expert = 0; expert < experts; ++expert) {
     const MLFloat16 d(expert & 1 ? .023f : .019f);
-    sum8[expert] = T(d.ToFloat() * .125f * 43.f).ToFloat() +
-                   7.f * T(d.ToFloat()).ToFloat();
+    const int code = grid_offset < 0 ? 1 : expert * 8 + grid_offset;
+    const uint64_t grid = contrib::gguf_quant::iq2xxs_grid[code];
+    for (int j = 0; j < 8; ++j) {
+      sum8[expert] += T(d.ToFloat() * .125f * static_cast<float>((grid >> (8 * j)) & 255u)).ToFloat();
+    }
     for (int stage = 0; stage < 2; ++stage) {
       const int n = stage == 0 ? inter_size : hidden_size;
       const int blocks = stage == 0 ? hidden_size / 256 : inter_size / 256;
@@ -60,8 +64,8 @@ void TestPreselectedReluSquared(int rows, int topk, int malformed = 0, bool sigm
           bytes[0] = static_cast<uint8_t>(d.val);
           bytes[1] = static_cast<uint8_t>(d.val >> 8);
           for (int record = 0; record < 8; ++record) {
-            for (int group = 0; group < 4; ++group) bytes[2 + record * 8 + group] = 1;
-            if (stage == 0 && expert % 5 == 4) {
+            for (int group = 0; group < 4; ++group) bytes[2 + record * 8 + group] = static_cast<uint8_t>(code);
+            if (stage == 0 && grid_offset < 0 && expert % 5 == 4) {
               for (int byte = 0; byte < 4; ++byte) {
                 bytes[2 + record * 8 + 4 + byte] = static_cast<uint8_t>(0x0fffffffu >> (8 * byte));
               }
@@ -83,7 +87,7 @@ void TestPreselectedReluSquared(int rows, int topk, int malformed = 0, bool sigm
       const float weight = sigmoid ? (probability(expert) / (sigmoid_sum + 1e-20f) * sigmoid_scale)
                                    : (rank == 0 ? .3301f : .501f);
       weights[row * topk + rank] = weight;
-      const float fc1 = expert % 5 == 4 ? 0.f : T(4.f * factor * sum8[expert]).ToFloat();
+      const float fc1 = grid_offset < 0 && expert % 5 == 4 ? 0.f : T(4.f * factor * sum8[expert]).ToFloat();
       const float activation = T(fc1 * fc1).ToFloat();
       const float fc2 = T(static_cast<float>(inter_size / 8) * activation * sum8[expert]).ToFloat();
       mixed = std::fma(weight, fc2, mixed);
@@ -200,7 +204,15 @@ TEST(MoEPackedRoutingTest, ReluSquaredPreservesPreselectedFp16Routing) {
 
 TEST(MoEPackedRoutingTest, ReluSquaredAliasRemainsSupported) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
-  TestPreselectedReluSquared(1, 2, 0, false, 256, "relu_squared");
+  TestPreselectedReluSquared(1, 2, 0, false, 256, -1, "relu_squared");
+}
+
+TEST(MoEPackedRoutingTest, Iq2CodebookSweepPreservesFp32ScaleReconstruction) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (int grid_offset = 0; grid_offset < 8; ++grid_offset) {
+    SCOPED_TRACE(testing::Message() << "grid_offset=" << grid_offset);
+    TestPreselectedReluSquared(2, 32, 0, false, 256, grid_offset);
+  }
 }
 
 TEST(MoEPackedRoutingTest, SigmoidCorrectionBiasUsesUnbiasedWeights) {
