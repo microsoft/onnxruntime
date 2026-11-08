@@ -25,6 +25,26 @@ verify that the worker finishes before the debug mutex's lifetime ends. An
 unexpected upload fails immediately through a transport with no network support.
 The observations do not change the production SDK objects.
 
+## SDK static-object lifetime
+
+The four `onnxruntime_telemetry_lifetime_*` tests register an exit owner before
+first accessing the SDK version string or auth-token mutex, on the main thread
+or an application thread. The owner's exit callback then joins a late worker
+that verifies the same string address/value or locks the same mutex. Test-only
+derived types observe actual destruction and fail before any destroyed-object
+access. This makes the unpatched SDK fail deterministically even where
+`std::mutex` has a trivial destructor.
+
+These tests recompile only PAL and the auth-token controller from the patched
+FetchContent tree. They do not create a telemetry provider or upload machinery,
+so no suppression override, cache, registry redirection, or network is needed.
+The same native-desktop exclusions as the other lifecycle tests apply.
+
+```text
+cmake --build . --config RelWithDebInfo --target onnxruntime_telemetry_sdk_lifetime_test
+ctest -C RelWithDebInfo -R "^onnxruntime_telemetry_lifetime_" --output-on-failure
+```
+
 ## Real native transport
 
 The `onnxruntime_telemetry_transport_*` tests use the actual SDK HTTP factory:
