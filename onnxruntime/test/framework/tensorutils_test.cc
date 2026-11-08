@@ -10,7 +10,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "test/util/include/asserts.h"
-#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS) && !defined(__wasm__)
 #include "core/session/inference_session.h"
 #include "test/test_environment.h"
 #endif
@@ -925,6 +925,53 @@ class SharedCachePathTest : public PathValidationTest {
     std::filesystem::create_symlink(target.lexically_relative(link.parent_path()), link);
   }
 
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS) && !defined(__wasm__)
+  void WriteModelAndWeights(const std::filesystem::path& real_model) {
+    ModelProto model;
+    model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    model.add_opset_import()->set_version(14);
+    auto& graph = *model.mutable_graph();
+    graph.set_name("shared-cache");
+    auto* weight = graph.add_initializer();
+    weight->set_name("weight");
+    weight->set_data_type(TensorProto_DataType_FLOAT);
+    weight->add_dims(1);
+    weight->set_data_location(TensorProto_DataLocation_EXTERNAL);
+    auto* location = weight->add_external_data();
+    location->set_key("location");
+    location->set_value("weights.bin");
+    auto* node = graph.add_node();
+    node->set_op_type("Identity");
+    node->add_input("weight");
+    node->add_output("output");
+    auto* output = graph.add_output();
+    output->set_name("output");
+    auto* tensor_type = output->mutable_type()->mutable_tensor_type();
+    tensor_type->set_elem_type(TensorProto_DataType_FLOAT);
+    tensor_type->mutable_shape()->add_dim()->set_dim_value(1);
+    {
+      std::ofstream model_file(real_model, std::ios::binary);
+      ASSERT_TRUE(model.SerializeToOstream(&model_file));
+      std::ofstream data_file(data_blob_, std::ios::binary);
+      const float expected = 42.0f;
+      std::array<unsigned char, sizeof(expected)> bytes{};
+      ASSERT_STATUS_OK(WriteLittleEndian(gsl::make_span(&expected, size_t{1}),
+                                         gsl::make_span(bytes.data(), bytes.size())));
+      data_file.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+      ASSERT_TRUE(data_file.good());
+    }
+  }
+#endif
+
+  std::filesystem::path OutsideModelViaParentTraversal() {
+    std::filesystem::create_directories(outside_dir_ / "child");
+    std::ofstream{outside_dir_ / "real-model.onnx"};
+    Link(outside_dir_ / "real-model.onnx", outside_dir_ / "model.onnx");
+    Link(data_link_, outside_dir_ / "weights.bin");
+    std::filesystem::create_directory_symlink(outside_dir_ / "child", snapshot_ / "redirect");
+    return snapshot_ / "redirect" / ".." / "model.onnx";
+  }
+
   std::filesystem::path hub_, repo_, snapshot_, model_blob_, data_blob_, model_link_, data_link_;
 };
 
@@ -946,6 +993,21 @@ TEST_F(SharedCachePathTest, SharedModelAndRepoLocalWeights) {
   std::filesystem::remove(data_link_);
   std::ofstream{data_link_};
   ASSERT_STATUS_OK(utils::ValidateExternalDataPath(snapshot_ / "model.onnx", "weights.bin"));
+}
+
+TEST_F(SharedCachePathTest, NestedSnapshotsDirectory) {
+  const auto nested = snapshot_ / "snapshots" / "encoder";
+  std::filesystem::create_directories(nested);
+  Link(model_link_, nested / "model.onnx");
+  Link(data_link_, nested / "weights.bin");
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(nested / "model.onnx", "weights.bin"));
+}
+
+TEST_F(SharedCachePathTest, SymlinkParentTraversalCannotSelectDifferentCacheModel) {
+  const auto model = OutsideModelViaParentTraversal();
+  ASSERT_NE(std::filesystem::canonical(model),
+            std::filesystem::canonical(snapshot_ / "model.onnx"));
+  EXPECT_FALSE(utils::ValidateExternalDataPath(model, "weights.bin").IsOK());
 }
 
 TEST_F(SharedCachePathTest, MissingOrInvalidMarker) {
@@ -1016,38 +1078,20 @@ TEST_F(SharedCachePathTest, RedirectedBlobStore) {
   EXPECT_FALSE(utils::ValidateExternalDataPath(snapshot_ / "model.onnx", "weights.bin").IsOK());
 }
 
-#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS) && !defined(__wasm__)
+TEST_F(SharedCachePathTest, OutsideModelCannotLoadSharedWeightsThroughParentTraversal) {
+  const auto model = OutsideModelViaParentTraversal();
+  ASSERT_NO_FATAL_FAILURE(WriteModelAndWeights(outside_dir_ / "real-model.onnx"));
+  SessionOptions options;
+  options.intra_op_param.thread_pool_size = 1;
+  InferenceSession session(options, GetEnvironment());
+  auto status = session.Load(model.native());
+  if (status.IsOK()) status = session.Initialize();
+  EXPECT_FALSE(status.IsOK());
+}
+
 TEST_F(SharedCachePathTest, LoadExternalInitializerThroughTwoSymlinkHops) {
-  ModelProto model;
-  model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-  model.add_opset_import()->set_version(14);
-  auto& graph = *model.mutable_graph();
-  graph.set_name("shared-cache");
-  auto* weight = graph.add_initializer();
-  weight->set_name("weight");
-  weight->set_data_type(TensorProto_DataType_FLOAT);
-  weight->add_dims(1);
-  weight->set_data_location(TensorProto_DataLocation_EXTERNAL);
-  auto* location = weight->add_external_data();
-  location->set_key("location");
-  location->set_value("weights.bin");
-  auto* node = graph.add_node();
-  node->set_op_type("Identity");
-  node->add_input("weight");
-  node->add_output("output");
-  auto* output = graph.add_output();
-  output->set_name("output");
-  auto* tensor_type = output->mutable_type()->mutable_tensor_type();
-  tensor_type->set_elem_type(TensorProto_DataType_FLOAT);
-  tensor_type->mutable_shape()->add_dim()->set_dim_value(1);
-  {
-    std::ofstream model_file(model_blob_, std::ios::binary);
-    ASSERT_TRUE(model.SerializeToOstream(&model_file));
-    std::ofstream data_file(data_blob_, std::ios::binary);
-    const float expected = 42.0f;
-    data_file.write(reinterpret_cast<const char*>(&expected), sizeof(expected));
-    ASSERT_TRUE(data_file.good());
-  }
+  ASSERT_NO_FATAL_FAILURE(WriteModelAndWeights(model_blob_));
   SessionOptions options;
   options.intra_op_param.thread_pool_size = 1;
   InferenceSession session(options, GetEnvironment());

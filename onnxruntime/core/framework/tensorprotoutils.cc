@@ -481,22 +481,25 @@ static bool IsHuggingFaceSharedCachePath(const std::filesystem::path& model_path
   // Locate the snapshot even when the model is in a subdirectory such as onnx/.
   auto snapshot = apparent_model.parent_path();
   while (!snapshot.empty() && snapshot != snapshot.root_path() &&
-         snapshot.parent_path().filename() != "snapshots") {
+         (snapshot.parent_path().filename() != "snapshots" ||
+          snapshot.parent_path().parent_path().filename().string().rfind("models--", 0) != 0)) {
     snapshot = snapshot.parent_path();
   }
   if (snapshot.empty() || snapshot == snapshot.root_path()) return false;
   const auto apparent_repo = snapshot.parent_path().parent_path();
   if (apparent_repo.filename().string().rfind("models--", 0) != 0) return false;
-  const auto hub = fs::canonical(apparent_repo.parent_path(), ec);
-  if (ec) return false;
+  fs::path hub, repo_canonical, original_model_dir, blobs_canonical;
+  if (!WeaklyCanonicalPath(apparent_repo.parent_path(), hub).IsOK()) return false;
   const auto repo = hub / apparent_repo.filename();
-  if (fs::canonical(apparent_repo, ec) != repo || ec) return false;
+  if (!WeaklyCanonicalPath(apparent_repo, repo_canonical).IsOK() || repo_canonical != repo) return false;
 
-  // Directory symlinks must not redirect the logical snapshot outside this repo.
+  // Resolve the ORIGINAL directory before comparing: a symlink followed by ..
+  // can select a different file than lexical normalization of the model path.
+  const auto original_dir = model_path.parent_path().empty() ? fs::path{"."} : model_path.parent_path();
   const auto model_dir = repo / apparent_model.parent_path().lexically_relative(apparent_repo);
-  if (fs::canonical(apparent_model.parent_path(), ec) != model_dir || ec) return false;
+  if (!WeaklyCanonicalPath(original_dir, original_model_dir).IsOK() || original_model_dir != model_dir) return false;
   const auto blobs = hub / "blobs";
-  if (fs::canonical(blobs, ec) != blobs || ec) return false;
+  if (!WeaklyCanonicalPath(blobs, blobs_canonical).IsOK() || blobs_canonical != blobs) return false;
   const auto marker = blobs / ".huggingface-shared-blobs";
   if (!fs::is_regular_file(fs::symlink_status(marker, ec)) || ec) return false;
   // Read a bounded version string; reject unknown versions and oversized markers.
@@ -517,8 +520,8 @@ static bool IsHuggingFaceSharedCachePath(const std::filesystem::path& model_path
     return name.size() == 64 && path.parent_path().parent_path() == blobs &&
            path.parent_path().filename() == name.substr(0, 2);
   };
-  const auto real_model = fs::canonical(apparent_model, ec);
-  if (ec || !is_blob(real_model)) return false;
+  fs::path real_model;
+  if (!WeaklyCanonicalPath(model_path, real_model).IsOK() || !is_blob(real_model)) return false;
   // target is already canonical (or comes from the opened file handle).
   return is_blob(target);
 }
