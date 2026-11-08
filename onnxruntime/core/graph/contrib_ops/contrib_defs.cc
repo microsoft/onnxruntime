@@ -13,6 +13,7 @@
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/attn_lstm_schema_defs.h"
 #include "core/graph/contrib_ops/range_schema_defs.h"
+#include "core/graph/contrib_ops/fused_state_space_defs.h"
 #include "core/graph/op.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/mlas/inc/mlas_q4.h"
@@ -1039,11 +1040,19 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("packed_type",
               "Packed quantization format enum for B (0..99 map to GGUF ggml_type; >=100 reserved for custom formats).",
               AttributeProto::INT)
+        .Attr("dequantize_to_activation_dtype",
+              "Round complete dequantized weights to A's dtype before decode accumulation. Default preserves "
+              "the existing decode path; prefill already dequantizes to A's dtype.",
+              AttributeProto::INT, static_cast<int64_t>(0))
         .Input(0, "A", "Input activations [..., K].", "T1")
         .Input(1, "B", "Packed weight blob [N, row_bytes].", "T2")
+        .Input(2, "global_scale",
+               "Optional scalar FP32 multiplier for NVFP4, applied to FP32 accumulation before the output cast.",
+               "Tscale", OpSchema::Optional)
         .Output(0, "Y", "Output activations [..., N].", "T1")
         .TypeConstraint("T1", {"tensor(bfloat16)", "tensor(float16)"}, "Activation type.")
         .TypeConstraint("T2", {"tensor(uint8)"}, "Packed byte storage.")
+        .TypeConstraint("Tscale", {"tensor(float)"}, "Global scale type.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           const int64_t n = getAttribute(ctx, "N", 0);
@@ -1065,19 +1074,43 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("k", "Number of selected experts per token.", AttributeProto::INT)
         .Attr("normalize_routing_weights", "Whether to normalize top-k routing probabilities.",
               AttributeProto::INT, static_cast<int64_t>(1))
-        .Attr("activation_type", "Expert activation function ('swiglu').",
+        .Attr("activation_type", "Expert activation function ('swiglu' or 'relu_squared').",
               AttributeProto::STRING, std::string("swiglu"))
+        .Attr("routing_function", "Internal routing: softmax logits or projected FP32 sigmoid with selection-only bias.",
+              AttributeProto::STRING, std::string("softmax"))
+        .Attr("router_scale", "Finite post-normalization scale for projected sigmoid routing.",
+              AttributeProto::FLOAT, 1.0f)
         .Attr("gate_type", "Packed quantization format enum of gate_experts_weights.", AttributeProto::INT)
-        .Attr("up_type", "Packed quantization format enum of up_experts_weights.", AttributeProto::INT)
+        .Attr("up_type", "Packed quantization format enum of up_experts_weights; required for swiglu.",
+              AttributeProto::INT, static_cast<int64_t>(-1))
         .Attr("down_type", "Packed quantization format enum of down_experts_weights.", AttributeProto::INT)
         .Input(0, "input", "Input hidden states [..., hidden_size].", "T")
-        .Input(1, "router_probs", "Router logits [num_rows, num_experts].", "T")
+        .Input(1, "router_probs", "Router logits [num_rows, num_experts]; omit when supplying preselected routes.",
+               "T", OpSchema::Optional)
         .Input(2, "gate_experts_weights", "3D packed gate weight blob [num_experts, inter_size, gate_row_bytes].", "T2")
-        .Input(3, "up_experts_weights", "3D packed up weight blob [num_experts, inter_size, up_row_bytes].", "T2")
+        .Input(3, "up_experts_weights",
+               "3D packed up weight blob [num_experts, inter_size, up_row_bytes]; omit for relu_squared.",
+               "T2", OpSchema::Optional)
         .Input(4, "down_experts_weights", "3D packed down weight blob [num_experts, hidden_size, down_row_bytes].", "T2")
+        .Input(5, "expert_indices",
+               "Preselected distinct expert IDs [num_rows, k], k <= 32. Requires expert_weights, no router_probs "
+               "and normalize_routing_weights=0. Invalid IDs poison only their token row.",
+               "Tind", OpSchema::Optional)
+        .Input(6, "expert_weights",
+               "Preselected FP32 weights [num_rows, k], preserved without normalization and mixed in supplied order.",
+               "Tweight", OpSchema::Optional)
+        .Input(7, "router_input",
+               "Projected sigmoid routing input [num_rows, router_width]; omit other routing inputs. "
+               "Requires relu_squared, routing_function='sigmoid' and normalize_routing_weights=1.",
+               "T", OpSchema::Optional)
+        .Input(8, "router_weight", "Sigmoid router weight [num_experts, router_width].", "T", OpSchema::Optional)
+        .Input(9, "router_bias", "FP32 correction bias [num_experts], used only for expert selection.",
+               "Tweight", OpSchema::Optional)
         .Output(0, "output", "Output hidden states [..., hidden_size].", "T")
         .TypeConstraint("T", {"tensor(bfloat16)", "tensor(float16)"}, "Activation type.")
         .TypeConstraint("T2", {"tensor(uint8)"}, "Packed byte storage.")
+        .TypeConstraint("Tind", {"tensor(int32)"}, "Preselected expert index type.")
+        .TypeConstraint("Tweight", {"tensor(float)"}, "Preselected routing weight type.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           if (hasInputShape(ctx, 0)) {
@@ -3683,6 +3716,7 @@ static void MatmulWithQuantWeightShapeInference(ONNX_NAMESPACE::InferenceContext
 }
 
 void RegisterContribSchemas() {
+  ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Mamba2Verify, Mamba2VerifySchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
 

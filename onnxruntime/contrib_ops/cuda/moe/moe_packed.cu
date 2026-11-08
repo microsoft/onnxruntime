@@ -20,7 +20,134 @@ namespace cuda {
 namespace {
 
 constexpr int kMoEPackedMaxExperts = 512;
-constexpr int kMoEPackedMaxK = 16;
+constexpr int kMoEPackedMaxK = 32;
+
+template <typename CudaT>
+__device__ __forceinline__ uint4 MoEPackedLoadRouter8(const CudaT* input) {
+  if ((reinterpret_cast<uintptr_t>(input) & 15u) == 0) {
+    return __ldg(reinterpret_cast<const uint4*>(input));
+  }
+  uint4 result;
+  CudaT* values = reinterpret_cast<CudaT*>(&result);
+#pragma unroll
+  for (int j = 0; j < 8; ++j) values[j] = input[j];
+  return result;
+}
+
+template <typename CudaT>
+__global__ void MoEPackedSigmoidScoresKernel(
+    const CudaT* input, const CudaT* weight, int width, int experts, float* scores) {
+  const int row = blockIdx.x;
+  const int warp = threadIdx.x >> 5;
+  const int lane = threadIdx.x & 31;
+  const int expert = blockIdx.y * 8 + warp;
+  if (expert >= experts) return;
+  const CudaT* x = input + static_cast<int64_t>(row) * width;
+  const CudaT* w = weight + static_cast<int64_t>(expert) * width;
+  float sum = 0.0f;
+  for (int offset = lane * 8; offset < width; offset += 256) {
+    const uint4 xv = MoEPackedLoadRouter8(x + offset);
+    const uint4 wv = MoEPackedLoadRouter8(w + offset);
+    const CudaT* xp = reinterpret_cast<const CudaT*>(&xv);
+    const CudaT* wp = reinterpret_cast<const CudaT*>(&wv);
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      sum += gguf_cuda::CudaTypeToFloat<CudaT>(xp[j]) * gguf_cuda::CudaTypeToFloat<CudaT>(wp[j]);
+    }
+  }
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    sum += __shfl_down_sync(0xffffffffu, sum, offset);
+  }
+  if (lane == 0) scores[static_cast<int64_t>(row) * experts + expert] = 1.0f / (1.0f + expf(-sum));
+}
+
+__device__ __forceinline__ uint32_t MoEPackedSigmoidScoreRank(float value) {
+  const uint32_t bits = __float_as_uint(value);
+  const uint32_t magnitude = bits & 0x7fffffffu;
+  if (magnitude > 0x7f800000u) return 1u;
+  if (magnitude == 0) return 0x80000000u;
+  return (bits & 0x80000000u) ? ~bits : (bits ^ 0x80000000u);
+}
+
+template <typename Rank>
+__device__ __forceinline__ void MoEPackedSelectSigmoidRoutes(
+    Rank (&choices)[16], const float (&scores)[16], int k, float scale, Rank empty,
+    int32_t* indices, float* weights) {
+  const int lane = threadIdx.x;
+  int selected = -1;
+  float selected_score = 0.0f;
+  float sum = 0.0f;
+  for (int rank = 0; rank < k; ++rank) {
+    Rank best = empty;
+    float best_score = 0.0f;
+    int best_expert = -1;
+#pragma unroll
+    for (int slot = 0; slot < 16; ++slot) {
+      if (choices[slot] > best) {
+        best = choices[slot];
+        best_score = scores[slot];
+        best_expert = lane + 32 * slot;
+      }
+    }
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      const Rank other = __shfl_xor_sync(0xffffffffu, best, offset);
+      const int other_expert = __shfl_xor_sync(0xffffffffu, best_expert, offset);
+      if (other > best || (other == best && other_expert >= 0 &&
+                           (best_expert < 0 || other_expert < best_expert))) {
+        best = other;
+        best_expert = other_expert;
+      }
+    }
+    const int winner_lane = best_expert & 31;
+    const int winner_slot = best_expert >> 5;
+    if (best_expert >= 0 && winner_lane == lane) {
+#pragma unroll
+      for (int slot = 0; slot < 16; ++slot) {
+        if (slot == winner_slot) choices[slot] = empty;
+      }
+    }
+    const float score = best_expert >= 0 ? __shfl_sync(0xffffffffu, best_score, winner_lane) : 0.0f;
+    if (lane == rank) {
+      selected = best_expert;
+      selected_score = score;
+    }
+    // Preserve selected-rank FP32 normalization and post-normalization scaling.
+    sum += score;
+  }
+  if (lane < k) {
+    indices[lane] = selected;
+    weights[lane] = selected_score / (sum + 1e-20f) * scale;
+  }
+}
+
+__global__ void MoEPackedSigmoidTopKKernel(
+    const float* probabilities, const float* bias, int experts, int k, float scale,
+    int32_t* indices, float* weights) {
+  const int row = blockIdx.x;
+  const int lane = threadIdx.x;
+  float choices[16];
+  float scores[16];
+  bool finite = true;
+#pragma unroll
+  for (int slot = 0; slot < 16; ++slot) {
+    const int expert = lane + 32 * slot;
+    scores[slot] = expert < experts ? probabilities[static_cast<int64_t>(row) * experts + expert] : 0.0f;
+    choices[slot] = expert < experts ? scores[slot] + bias[expert] : -INFINITY;
+    finite = finite && (expert >= experts || isfinite(choices[slot]));
+  }
+  indices += static_cast<int64_t>(row) * k;
+  weights += static_cast<int64_t>(row) * k;
+  if (__all_sync(0xffffffffu, finite)) {
+    MoEPackedSelectSigmoidRoutes(choices, scores, k, scale, -INFINITY, indices, weights);
+    return;
+  }
+  uint32_t ranks[16];
+#pragma unroll
+  for (int slot = 0; slot < 16; ++slot) {
+    ranks[slot] = lane + 32 * slot < experts ? MoEPackedSigmoidScoreRank(choices[slot]) : 0u;
+  }
+  MoEPackedSelectSigmoidRoutes(ranks, scores, k, scale, 0u, indices, weights);
+}
 
 // Softmax + top-k over 512 experts for arbitrary num_rows (8 warps per CTA, 1 warp per row).
 // Uses the exact same warp reduction and tie-breaking key as FusedSoftmaxTopKMapsKernel.
@@ -407,11 +534,13 @@ __global__ __launch_bounds__(KW * 32) void MoEPackedFc1DecodeWarpKSplitKernel(
     for (int m = 0; m < MT; ++m) {
       if (valid_rows[m]) {
         float g_vals[8];
-        float u_vals[8];
+        float u_vals[8] = {};
         gguf_cuda::DecodeGgufSubBlock8SmemLutTpl<kGateUpType>(
             gate_ptrs[m], p.gate_type, sb32_idx, t, s_lut, g_vals);
-        gguf_cuda::DecodeGgufSubBlock8SmemLutTpl<kGateUpType>(
-            up_ptrs[m], p.up_type, sb32_idx, t, s_lut, u_vals);
+        if (!p.relu_squared) {
+          gguf_cuda::DecodeGgufSubBlock8SmemLutTpl<kGateUpType>(
+              up_ptrs[m], p.up_type, sb32_idx, t, s_lut, u_vals);
+        }
         const uint4 e_vec = gguf_cuda::PackFloat8ToBf16x2(g_vals);
         const uint4 o_vec = gguf_cuda::PackFloat8ToBf16x2(u_vals);
         gguf_cuda::MmaBf16(acc[m], e_vec.x, o_vec.x, e_vec.y, o_vec.y, b_vec.x, b_vec.y);
@@ -445,9 +574,10 @@ __global__ __launch_bounds__(KW * 32) void MoEPackedFc1DecodeWarpKSplitKernel(
       }
       const float g_val = __bfloat162float(__float2bfloat16_rn(g_raw));
       const float u_val = __bfloat162float(__float2bfloat16_rn(u_raw));
-      const float swiglu = u_val * (g_val / (1.0f + expf(-g_val)));
+      const float positive = g_val < 0.f ? 0.f : g_val;
+      const float activation = p.relu_squared ? positive * positive : u_val * (g_val / (1.0f + expf(-g_val)));
       fc1_out[static_cast<int64_t>(s_routes[col]) * p.inter_size + j_out] =
-          __float2bfloat16_rn(swiglu);
+          __float2bfloat16_rn(activation);
     }
   }
 }
@@ -582,9 +712,11 @@ __global__ __launch_bounds__((kMaxSubTiles == 1) ? 128 : 256) void MoEPackedFc1S
       for (int sb_local = 0; sb_local < num_sb32; ++sb_local) {
         const int sb32_idx = sb32_base + sb_local;
         float g_vals[8];
-        float u_vals[8];
+        float u_vals[8] = {};
         gguf_cuda::DecodeGgufSubBlock8SmemLutTpl<kGateUpType>(gate_row_ptr, p.gate_type, sb32_idx, t, s_lut, g_vals);
-        gguf_cuda::DecodeGgufSubBlock8SmemLutTpl<kGateUpType>(up_row_ptr, p.up_type, sb32_idx, t, s_lut, u_vals);
+        if (!p.relu_squared) {
+          gguf_cuda::DecodeGgufSubBlock8SmemLutTpl<kGateUpType>(up_row_ptr, p.up_type, sb32_idx, t, s_lut, u_vals);
+        }
         const uint4 e_vec = gguf_cuda::PackFloat8ToBf16x2(g_vals);
         const uint4 o_vec = gguf_cuda::PackFloat8ToBf16x2(u_vals);
 #pragma unroll
@@ -614,9 +746,10 @@ __global__ __launch_bounds__((kMaxSubTiles == 1) ? 128 : 256) void MoEPackedFc1S
             const float u_raw = (h == 0) ? acc[st][2] : acc[st][3];
             const float g_val = __bfloat162float(__float2bfloat16_rn(g_raw));
             const float u_val = __bfloat162float(__float2bfloat16_rn(u_raw));
-            const float swiglu = u_val * (g_val / (1.0f + expf(-g_val)));
+            const float positive = g_val < 0.f ? 0.f : g_val;
+            const float activation = p.relu_squared ? positive * positive : u_val * (g_val / (1.0f + expf(-g_val)));
             const int route = s_routes[m];
-            fc1_out[static_cast<int64_t>(route) * p.inter_size + j_out] = __float2bfloat16_rn(swiglu);
+            fc1_out[static_cast<int64_t>(route) * p.inter_size + j_out] = __float2bfloat16_rn(activation);
           }
         }
       }
@@ -807,9 +940,17 @@ __global__ __launch_bounds__(256) void MoEPackedFc1SwiGLUSimtKernel(
     const int sb32_idx = h_idx >> 1;
     const int half16 = h_idx & 1;
     float g_vals[16];
-    float u_vals[16];
+    float u_vals[16] = {};
     gguf_cuda::DecodeGgufSubBlock32(gate_row_ptr, p.gate_type, sb32_idx, half16, g_vals);
-    gguf_cuda::DecodeGgufSubBlock32(up_row_ptr, p.up_type, sb32_idx, half16, u_vals);
+    if (!p.relu_squared) {
+      gguf_cuda::DecodeGgufSubBlock32(up_row_ptr, p.up_type, sb32_idx, half16, u_vals);
+    }
+    if (p.relu_squared) {
+#pragma unroll
+      for (int c = 0; c < 16; ++c) {
+        g_vals[c] = gguf_cuda::CudaTypeToFloat(gguf_cuda::FloatToCudaType<CudaT>(g_vals[c]));
+      }
+    }
 
     const int k_offset = h_idx * 16;
     for (int m = 0; m < count; ++m) {
@@ -842,9 +983,10 @@ __global__ __launch_bounds__(256) void MoEPackedFc1SwiGLUSimtKernel(
     for (int m = 0; m < count; ++m) {
       const float g = gguf_cuda::CudaTypeToFloat<CudaT>(gguf_cuda::FloatToCudaType<CudaT>(gate_acc[m]));
       const float u = gguf_cuda::CudaTypeToFloat<CudaT>(gguf_cuda::FloatToCudaType<CudaT>(up_acc[m]));
-      const float swiglu = u * (g / (1.0f + expf(-g)));
+      const float positive = g < 0.f ? 0.f : g;
+      const float activation = p.relu_squared ? positive * positive : u * (g / (1.0f + expf(-g)));
       fc1_out[static_cast<int64_t>(sorted_routes[tile.start_route + m]) * p.inter_size + j_out] =
-          gguf_cuda::FloatToCudaType<CudaT>(swiglu);
+          gguf_cuda::FloatToCudaType<CudaT>(activation);
     }
   }
 }
@@ -895,6 +1037,12 @@ __global__ __launch_bounds__(256) void MoEPackedFc2SimtKernel(
     const int half16 = h_idx & 1;
     float d_vals[16];
     gguf_cuda::DecodeGgufSubBlock32(down_row_ptr, p.down_type, sb32_idx, half16, d_vals);
+    if (p.relu_squared) {
+#pragma unroll
+      for (int c = 0; c < 16; ++c) {
+        d_vals[c] = gguf_cuda::CudaTypeToFloat(gguf_cuda::FloatToCudaType<CudaT>(d_vals[c]));
+      }
+    }
 
     const int k_offset = h_idx * 16;
     for (int m = 0; m < count; ++m) {
@@ -987,6 +1135,21 @@ size_t AlignUpWorkspace(size_t count, size_t element_bytes = 1) {
   ORT_ENFORCE(IAllocator::CalcMemSizeForArrayWithAlignment(count, element_bytes, 256, &bytes),
               "MoEPacked workspace byte size overflow");
   return bytes;
+}
+
+__global__ void MoEPackedPreselectedRoutesKernel(
+    const int32_t* indices, const float* weights, int* output_indices, float* output_weights,
+    int count, int k, int num_experts) {
+  const int route = static_cast<int>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (route >= count) return;
+  const int expert = indices[route];
+  bool invalid = expert < 0 || expert >= num_experts || !isfinite(weights[route]);
+  for (int previous = (route / k) * k; previous < route; ++previous) {
+    invalid = invalid || indices[previous] == expert;
+  }
+  output_indices[route] = invalid ? 0 : expert;
+  // Preserve valid FP32 weights; NaN marks a malformed token without unsafe expert indexing.
+  output_weights[route] = invalid ? __int_as_float(0x7fffffff) : weights[route];
 }
 
 void LaunchMoEPackedFc1DecodeBf16TcDispatch(
@@ -1166,6 +1329,118 @@ void LaunchMoEPackedFc2Bf16TcDispatch(
   }
 }
 
+template <bool kFc1, int KW>
+__global__ __launch_bounds__(KW * 32) void MoEPackedReluIq2ContiguousKKernel(
+    const __nv_bfloat16* input,
+    const uint8_t* weights,
+    const int* sorted_routes,
+    const MoEPackedTile* tiles,
+    const int* d_num_tiles,
+    MoEPackedParams p,
+    __nv_bfloat16* output) {
+  const int tile_index = static_cast<int>(blockIdx.y);
+  if (tile_index >= __ldg(d_num_tiles)) return;
+  const MoEPackedTile tile = tiles[tile_index];
+  const int first = static_cast<int>(blockIdx.z) * 8;
+  const int remaining = tile.count - first;
+  if (remaining <= 0) return;
+  const int count = remaining < 8 ? remaining : 8;
+  constexpr int MT = 2;
+  __shared__ int routes[8];
+  __shared__ float reduction[KW][MT * 16][8];
+  const int tid = static_cast<int>(threadIdx.x);
+  if (tid < 8) {
+    routes[tid] = tid < count ? __ldg(sorted_routes + tile.start_route + first + tid) : 0;
+  }
+  __syncthreads();
+  const int warp = tid >> 5;
+  const int lane = tid & 31;
+  const int g = lane >> 2;
+  const int t = lane & 3;
+  const int n = kFc1 ? p.inter_size : p.hidden_size;
+  const int k = kFc1 ? p.hidden_size : p.inter_size;
+  const int64_t row_bytes = kFc1 ? p.gate_row_bytes : p.down_row_bytes;
+  const int base = static_cast<int>(blockIdx.x) * (MT * 16);
+  const int input_row = kFc1 ? routes[g] / p.k : routes[g];
+  const auto* x_row = input + static_cast<int64_t>(input_row) * k;
+  float acc[MT][4] = {};
+  // IQ2 operands and activation fragments share contiguous 64-K partitions.
+  // FC1 and FC2 retain their four- and eight-warp FP32 reduction boundaries.
+  for (int chunk = warp; chunk < k / 64; chunk += KW) {
+    const int offset = chunk * 64 + t * 16;
+    const uint4 x0 = g < count ? MoEPackedLoadRouter8(x_row + offset) : make_uint4(0, 0, 0, 0);
+    const uint4 x1 = g < count ? MoEPackedLoadRouter8(x_row + offset + 8) : make_uint4(0, 0, 0, 0);
+    const uint32_t x_words[8] = {x0.x, x0.y, x0.z, x0.w, x1.x, x1.y, x1.z, x1.w};
+#pragma unroll
+    for (int m = 0; m < MT; ++m) {
+      const int low_row = base + m * 16 + g;
+      const int high_row = low_row + 8;
+      float low_values[16] = {};
+      float high_values[16] = {};
+      if (low_row < n) {
+        const auto* row = weights + (static_cast<int64_t>(tile.expert) * n + low_row) * row_bytes;
+        gguf_cuda::DecodeGgufSubBlock16Impl<gguf_quant::kGgmlTypeIQ2_XXS>(
+            row, offset / 32, (offset / 16) & 1, low_values);
+      }
+      if (high_row < n) {
+        const auto* row = weights + (static_cast<int64_t>(tile.expert) * n + high_row) * row_bytes;
+        gguf_cuda::DecodeGgufSubBlock16Impl<gguf_quant::kGgmlTypeIQ2_XXS>(
+            row, offset / 32, (offset / 16) & 1, high_values);
+      }
+      float e0[8], e1[8], o0[8], o1[8];
+#pragma unroll
+      for (int s = 0; s < 4; ++s) {
+        e0[2 * s] = low_values[4 * s];
+        e0[2 * s + 1] = low_values[4 * s + 1];
+        e1[2 * s] = low_values[4 * s + 2];
+        e1[2 * s + 1] = low_values[4 * s + 3];
+        o0[2 * s] = high_values[4 * s];
+        o0[2 * s + 1] = high_values[4 * s + 1];
+        o1[2 * s] = high_values[4 * s + 2];
+        o1[2 * s + 1] = high_values[4 * s + 3];
+      }
+      const uint4 e_low = gguf_cuda::PackFloat8ToBf16x2(e0);
+      const uint4 e_high = gguf_cuda::PackFloat8ToBf16x2(e1);
+      const uint4 o_low = gguf_cuda::PackFloat8ToBf16x2(o0);
+      const uint4 o_high = gguf_cuda::PackFloat8ToBf16x2(o1);
+      const uint32_t el[4] = {e_low.x, e_low.y, e_low.z, e_low.w};
+      const uint32_t eh[4] = {e_high.x, e_high.y, e_high.z, e_high.w};
+      const uint32_t ol[4] = {o_low.x, o_low.y, o_low.z, o_low.w};
+      const uint32_t oh[4] = {o_high.x, o_high.y, o_high.z, o_high.w};
+#pragma unroll
+      for (int s = 0; s < 4; ++s) {
+        gguf_cuda::MmaBf16(acc[m], el[s], ol[s], eh[s], oh[s], x_words[2 * s], x_words[2 * s + 1]);
+      }
+    }
+  }
+#pragma unroll
+  for (int m = 0; m < MT; ++m) {
+    reduction[warp][m * 16 + g][2 * t] = acc[m][0];
+    reduction[warp][m * 16 + g][2 * t + 1] = acc[m][1];
+    reduction[warp][m * 16 + g + 8][2 * t] = acc[m][2];
+    reduction[warp][m * 16 + g + 8][2 * t + 1] = acc[m][3];
+  }
+  __syncthreads();
+  for (int index = tid; index < MT * 16 * 8; index += KW * 32) {
+    const int row = index / 8;
+    const int column = index & 7;
+    if (column < count && base + row < n) {
+      float sum = 0.f;
+#pragma unroll
+      for (int w = 0; w < KW; ++w) sum += reduction[w][row][column];
+      const auto rounded = __float2bfloat16_rn(sum);
+      if constexpr (kFc1) {
+        const float value = __bfloat162float(rounded);
+        const float positive = value < 0.f ? 0.f : value;
+        output[static_cast<int64_t>(routes[column]) * n + base + row] =
+            __float2bfloat16_rn(positive * positive);
+      } else {
+        output[static_cast<int64_t>(routes[column]) * n + base + row] = rounded;
+      }
+    }
+  }
+}
+
 template <typename CudaT>
 Status DispatchMoEPackedCuda(
     cudaStream_t stream,
@@ -1182,7 +1457,8 @@ Status DispatchMoEPackedCuda(
                         params.inter_size > 0 && params.inter_size <= kMoEPackedMaxDimension &&
                         params.hidden_size % 32 == 0 && params.inter_size % 32 == 0 &&
                         params.num_experts > 0 && params.num_experts <= kMoEPackedMaxExperts &&
-                        params.k > 0 && params.k <= kMoEPackedMaxK && params.k <= params.num_experts,
+                        params.k > 0 && params.k <= kMoEPackedMaxK && params.k <= params.num_experts &&
+                        (params.expert_indices || params.sigmoid_routing || params.k <= 16),
                     "MoEPacked parameters exceed the supported CUDA index range");
   if (params.num_rows == 0) return Status::OK();
   const int total_routes = params.num_rows * params.k;
@@ -1217,7 +1493,20 @@ Status DispatchMoEPackedCuda(
 
   // 1. Softmax + TopK
   const dim3 route_grid(static_cast<unsigned int>((params.num_rows + 7) / 8));
-  if (params.num_experts == 512) {
+  if (params.sigmoid_routing) {
+    float* scores = reinterpret_cast<float*>(
+        ws_ptr + AlignUpWorkspace(SafeInt<size_t>(total_routes) * params.hidden_size, sizeof(CudaT)));
+    MoEPackedSigmoidScoresKernel<CudaT><<<dim3(params.num_rows, (params.num_experts + 7) / 8), 256, 0, stream>>>(
+        static_cast<const CudaT*>(params.router_input), static_cast<const CudaT*>(params.router_weight),
+        params.router_width, params.num_experts, scores);
+    ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+    MoEPackedSigmoidTopKKernel<<<params.num_rows, 32, 0, stream>>>(
+        scores, params.router_bias, params.num_experts, params.k, params.router_scale, topk_indices, topk_scales);
+  } else if (params.expert_indices) {
+    MoEPackedPreselectedRoutesKernel<<<static_cast<unsigned int>((total_routes + 255) / 256), 256, 0, stream>>>(
+        params.expert_indices, params.expert_weights, topk_indices, topk_scales,
+        total_routes, params.k, params.num_experts);
+  } else if (params.num_experts == 512) {
     MoEPackedSoftmaxTopK512Kernel<CudaT><<<route_grid, 256, 0, stream>>>(
         router_probs, topk_scales, topk_indices, params.num_rows, params.k, params.normalize_routing_weights);
   } else {
@@ -1238,31 +1527,46 @@ Status DispatchMoEPackedCuda(
   ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
 
   if constexpr (kIsBf16) {
-    // 3. Tensor-Core FC1 (64 inter_size channels/CTA in prefill, 16 inter_size channels/CTA Warp-K-Split in decode)
-    if (use_prefill_tiles) {
-      const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 63) / 64),
-                          static_cast<unsigned int>(max_tiles));
-      LaunchMoEPackedFc1Bf16TcDispatch<4>(
-          stream, fc1_grid, input, gate_weights, up_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
+    if (params.relu_squared && params.gate_type == gguf_quant::kGgmlTypeIQ2_XXS &&
+        params.down_type == gguf_quant::kGgmlTypeIQ2_XXS) {
+      const unsigned int subtiles = use_prefill_tiles ? 4u : 1u;
+      const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 31) / 32),
+                          static_cast<unsigned int>(max_tiles), subtiles);
+      MoEPackedReluIq2ContiguousKKernel<true, 4><<<fc1_grid, 128, 0, stream>>>(
+          input, gate_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
+      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+      const dim3 fc2_grid(static_cast<unsigned int>((params.hidden_size + 31) / 32),
+                          static_cast<unsigned int>(max_tiles), subtiles);
+      MoEPackedReluIq2ContiguousKKernel<false, 8><<<fc2_grid, 256, 0, stream>>>(
+          fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
+      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
     } else {
-      const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 15) / 16),
-                          static_cast<unsigned int>(max_tiles));
-      LaunchMoEPackedFc1DecodeBf16TcDispatch(
-          stream, fc1_grid, input, gate_weights, up_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
-    }
-    ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+      // 3. Tensor-Core FC1 (64 inter_size channels/CTA in prefill, 16 inter_size channels/CTA Warp-K-Split in decode)
+      if (use_prefill_tiles) {
+        const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 63) / 64),
+                            static_cast<unsigned int>(max_tiles));
+        LaunchMoEPackedFc1Bf16TcDispatch<4>(
+            stream, fc1_grid, input, gate_weights, up_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
+      } else {
+        const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 15) / 16),
+                            static_cast<unsigned int>(max_tiles));
+        LaunchMoEPackedFc1DecodeBf16TcDispatch(
+            stream, fc1_grid, input, gate_weights, up_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
+      }
+      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
 
-    // 4. Tensor-Core FC2 (128 hidden_size channels per CTA)
-    const dim3 fc2_grid(static_cast<unsigned int>((params.hidden_size + 127) / 128),
-                        static_cast<unsigned int>(max_tiles));
-    if (use_prefill_tiles) {
-      LaunchMoEPackedFc2Bf16TcDispatch<4>(
-          stream, fc2_grid, fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
-    } else {
-      LaunchMoEPackedFc2Bf16TcDispatch<1>(
-          stream, fc2_grid, fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
+      // 4. Tensor-Core FC2 (128 hidden_size channels per CTA)
+      const dim3 fc2_grid(static_cast<unsigned int>((params.hidden_size + 127) / 128),
+                          static_cast<unsigned int>(max_tiles));
+      if (use_prefill_tiles) {
+        LaunchMoEPackedFc2Bf16TcDispatch<4>(
+            stream, fc2_grid, fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
+      } else {
+        LaunchMoEPackedFc2Bf16TcDispatch<1>(
+            stream, fc2_grid, fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
+      }
+      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
     }
-    ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
   } else {
     // Keep staging within CUDA's default shared-memory limit; larger shapes read activations directly.
     constexpr size_t kMaxStagingBytes = 48 * 1024;
@@ -1340,6 +1644,9 @@ Status GetMoEPackedWorkspaceBytes(const MoEPackedParams& params, size_t elem_byt
                         add_buffer(SafeInt<size_t>(total_routes) * params.inter_size, elem_bytes) &&
                         add_buffer(SafeInt<size_t>(total_routes) * params.hidden_size, elem_bytes),
                     "MoEPacked workspace byte size exceeds the supported address range");
+  ORT_RETURN_IF_NOT(!params.sigmoid_routing ||
+                        add_buffer(SafeInt<size_t>(params.num_rows) * params.num_experts, sizeof(float)),
+                    "MoEPacked sigmoid workspace byte size exceeds the supported address range");
   workspace_bytes = bytes;
   return Status::OK();
 }

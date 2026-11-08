@@ -26,15 +26,16 @@ bool PackedTensorBytesFit(int64_t rows, int64_t columns, size_t element_bytes) {
 }
 }  // namespace
 
-#define REGISTER_MATMUL_PACKED_CUDA(T)                                   \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
-      MatMulPacked,                                                      \
-      kMSDomain, 1,                                                      \
-      T,                                                                 \
-      kCudaExecutionProvider,                                            \
-      (*KernelDefBuilder::Create())                                      \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())        \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()), \
+#define REGISTER_MATMUL_PACKED_CUDA(T)                                     \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                           \
+      MatMulPacked,                                                        \
+      kMSDomain, 1,                                                        \
+      T,                                                                   \
+      kCudaExecutionProvider,                                              \
+      (*KernelDefBuilder::Create())                                        \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())          \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())    \
+          .TypeConstraint("Tscale", DataTypeImpl::GetTensorType<float>()), \
       MatMulPacked<T>);
 
 REGISTER_MATMUL_PACKED_CUDA(MLFloat16)
@@ -51,10 +52,14 @@ MatMulPacked<T>::MatMulPacked(const OpKernelInfo& info) : CudaKernel(info) {
   ORT_ENFORCE(k_ % 32 == 0, "MatMulPacked requires K to be a multiple of 32");
   ORT_ENFORCE(info.GetAttr<int64_t>("packed_type", &ggml_type_).IsOK() && ggml_type_ >= 0,
               "MatMulPacked requires packed_type >= 0");
-  ORT_ENFORCE(gguf_quant::IsGgmlTypeSupported(ggml_type_), "MatMulPacked: unsupported packed_type=", ggml_type_);
+  ORT_ENFORCE(gguf_quant::IsGgmlTypeSupported(ggml_type_) || ggml_type_ == gguf_quant::kGgmlTypeNVFP4,
+              "MatMulPacked: unsupported packed_type=", ggml_type_);
+  const int64_t round_weights = info.GetAttrOrDefault<int64_t>("dequantize_to_activation_dtype", 0);
+  ORT_ENFORCE(round_weights == 0 || round_weights == 1, "dequantize_to_activation_dtype must be 0 or 1");
+  dequantize_to_activation_dtype_ = round_weights != 0;
   if constexpr (std::is_same_v<T, BFloat16>) {
     ORT_ENFORCE(GetDeviceProp().major >= 8, "MatMulPacked BF16 requires compute capability 8.0 or higher");
-    if (n_ >= kMatMulPackedBf16TcMinN) {
+    if (n_ >= kMatMulPackedBf16TcMinN || dequantize_to_activation_dtype_) {
       ORT_THROW_IF_ERROR(GetMatMulPackedBf16KernelSupport(bf16_tc_supported_));
     }
   }
@@ -64,7 +69,13 @@ template <typename T>
 Status MatMulPacked<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* a = context->Input<Tensor>(0);
   const Tensor* b = context->Input<Tensor>(1);
+  const Tensor* global_scale = context->InputCount() > 2 ? context->Input<Tensor>(2) : nullptr;
   ORT_RETURN_IF_NOT(a != nullptr && b != nullptr, "MatMulPacked requires inputs A and B");
+  ORT_RETURN_IF_NOT(!global_scale ||
+                        (ggml_type_ == gguf_quant::kGgmlTypeNVFP4 &&
+                         (global_scale->Shape().NumDimensions() == 0 ||
+                          global_scale->Shape() == TensorShape({1}))),
+                    "MatMulPacked global_scale requires NVFP4 and a scalar or [1] shape");
 
   const auto& a_shape = a->Shape();
   ORT_RETURN_IF_NOT(a_shape.NumDimensions() >= 1, "MatMulPacked input A must have rank >= 1");
@@ -87,14 +98,18 @@ Status MatMulPacked<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(PackedTensorBytesFit(m, k_, sizeof(T)) &&
                         PackedTensorBytesFit(n_, expected_rb, 1) &&
                         PackedTensorBytesFit(m, n_, sizeof(T)) &&
-                        (m <= 8 || PackedTensorBytesFit(scratch_rows, k_, sizeof(T))),
+                        (m <= 8 || PackedTensorBytesFit(scratch_rows, k_, sizeof(T))) &&
+                        (m <= 8 || !global_scale || PackedTensorBytesFit(m, n_, sizeof(float))),
                     "MatMulPacked tensor byte size exceeds the supported address range");
   constexpr bool is_bf16 = std::is_same_v<T, BFloat16>;
-  ORT_RETURN_IF_NOT(!is_bf16 || m == 0 || m > 8 || n_ < kMatMulPackedBf16TcMinN || bf16_tc_supported_,
+  ORT_RETURN_IF_NOT(!is_bf16 || m == 0 || m > 8 ||
+                        (n_ < kMatMulPackedBf16TcMinN && !dequantize_to_activation_dtype_) || bf16_tc_supported_,
                     "MatMulPacked BF16 Tensor Core decode requires kernels compiled for compute_80 or higher");
 
   MatMulPackedParams params{};
   params.b_data = b->Data<uint8_t>();
+  params.global_scale = global_scale ? global_scale->Data<float>() : nullptr;
+  params.dequantize_to_activation_dtype = dequantize_to_activation_dtype_;
   params.k = static_cast<int>(k_);
   params.n = static_cast<int>(n_);
   params.row_bytes = expected_rb;
@@ -108,9 +123,13 @@ Status MatMulPacked<T>::ComputeInternal(OpKernelContext* context) const {
   if (m == 0) return Status::OK();
 
   IAllocatorUniquePtr<T> scratch_w;
+  IAllocatorUniquePtr<float> scratch_y;
   if (m > 8) {
     const size_t scratch_count = SafeInt<size_t>(scratch_rows) * k_;
     scratch_w = GetScratchBuffer<T>(scratch_count, GetComputeStream(context));
+    if (global_scale) {
+      scratch_y = GetScratchBuffer<float>(SafeInt<size_t>(m) * n_, GetComputeStream(context));
+    }
   }
 
   return LaunchMatMulPackedCuda(
@@ -120,6 +139,7 @@ Status MatMulPacked<T>::ComputeInternal(OpKernelContext* context) const {
       a->DataRaw(),
       params,
       scratch_w ? scratch_w.get() : nullptr,
+      scratch_y ? scratch_y.get() : nullptr,
       y->MutableDataRaw(),
       m);
 }
