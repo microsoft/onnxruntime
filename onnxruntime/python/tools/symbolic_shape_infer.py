@@ -2028,7 +2028,11 @@ class SymbolicShapeInference:
             elem_type = specified_output_type
 
         vi.type.tensor_type.elem_type = elem_type
-        vi.type.tensor_type.shape.CopyFrom(onnx.TensorShapeProto())
+        if get_attribute(node, "reduction", b"mean") == b"none":
+            # Unreduced loss has one value per label.
+            vi.CopyFrom(helper.make_tensor_value_info(vi.name, elem_type, self._get_shape(node, 1)))
+        else:
+            vi.type.tensor_type.shape.CopyFrom(onnx.TensorShapeProto())
 
         if len(node.output) > 1:
             data_shape = self._get_shape(node, 0)
