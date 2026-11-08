@@ -2560,9 +2560,7 @@ class SymbolicShapeInference:
                 rank = len(x_shape)
                 axis = handle_negative_axis(axis, rank)
                 mean_shape = x_shape[:axis] + [1 for _ in range(rank - axis)]
-                mean_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
-                if mean_dtype == onnx.TensorProto.FLOAT16 or mean_dtype == onnx.TensorProto.BFLOAT16:
-                    mean_dtype = onnx.TensorProto.FLOAT
+                mean_dtype = get_attribute(node, "stash_type", onnx.TensorProto.FLOAT)
                 vi = self.known_vi_[node.output[1]]
                 vi.CopyFrom(helper.make_tensor_value_info(node.output[1], mean_dtype, mean_shape))
                 if len(node.output) > 2:
