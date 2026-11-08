@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "contrib_ops/cpu/quantization/gguf_quant_tables.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 #include "test/common/cuda_op_test_utils.h"
@@ -459,6 +460,86 @@ TEST(MatMulPackedPrecisionTest, Q8Bf16VectorRecordWindowsAndStrideFallback) {
       test.AddInput<float>("global_scale", {}, {global_scale});
       test.AddOutput<BFloat16>("Y", {rows, n}, expected);
       RunPackedCuda(test);
+    }
+  }
+}
+
+TEST(MatMulPackedPrecisionTest, Iq2Bf16ProductionWidthsPreserveCompleteOperands) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  constexpr int k = 4096;
+  constexpr int row_bytes = (k / 256) * 66;
+  constexpr std::array<int, 8> active{0, 31, 255, 511, 1023, 1535, 2047, 4095};
+  constexpr float global_scale = -.9375f;
+  for (int n : {4096, 5376, 5377}) {
+    std::vector<uint8_t> packed(n * row_bytes);
+    for (int col = 0; col < n; ++col) {
+      for (int block = 0; block < k / 256; ++block) {
+        auto* bytes = packed.data() + col * row_bytes + block * 66;
+        const MLFloat16 scale(.019f * (block & 1 ? -1.f : 1.f) + static_cast<float>(col % 17 + 1) / 4096.f);
+        bytes[0] = static_cast<uint8_t>(scale.val);
+        bytes[1] = static_cast<uint8_t>(scale.val >> 8);
+        for (int record = 0; record < 8; ++record) {
+          const uint32_t signs_scale =
+              (static_cast<uint32_t>((col + block + record) & 15) << 28) |
+              ((col + record * 13) & 127u) |
+              (((col + record * 17 + 1) & 127u) << 7) |
+              (((col + record * 23 + 2) & 127u) << 14) |
+              (((col + record * 31 + 3) & 127u) << 21);
+          for (int group = 0; group < 4; ++group) {
+            bytes[2 + record * 8 + group] = static_cast<uint8_t>(col * 17 + block * 13 + record * 11 + group * 29);
+            bytes[6 + record * 8 + group] = static_cast<uint8_t>(signs_scale >> (8 * group));
+          }
+        }
+      }
+    }
+    for (int rows : {1, 3, 8}) {
+      SCOPED_TRACE(testing::Message() << "n=" << n << " rows=" << rows);
+      std::vector<BFloat16> a(rows * k, BFloat16(0.f)), expected(rows * n);
+      for (int row = 0; row < rows; ++row) {
+        for (int index : active) a[row * k + index] = BFloat16(static_cast<float>((index + row) % 3 - 1));
+        for (int col = 0; col < n; ++col) {
+          float sum = 0.f;
+          for (int index : active) {
+            const auto* bytes = packed.data() + col * row_bytes + (index / 256) * 66;
+            const auto scale = MLFloat16::FromBits(
+                static_cast<uint16_t>(bytes[0] | (static_cast<uint16_t>(bytes[1]) << 8)));
+            const int record = (index % 256) / 32;
+            const auto* codes = bytes + 2 + record * 8;
+            const uint32_t signs_scale = static_cast<uint32_t>(codes[4]) |
+                                         (static_cast<uint32_t>(codes[5]) << 8) |
+                                         (static_cast<uint32_t>(codes[6]) << 16) |
+                                         (static_cast<uint32_t>(codes[7]) << 24);
+            const int group = (index % 32) / 8, position = index % 8;
+            const uint32_t seven = (signs_scale >> (7 * group)) & 127u;
+            uint32_t parity = seven;
+            parity ^= parity >> 4;
+            parity ^= parity >> 2;
+            parity ^= parity >> 1;
+            const uint32_t signs = seven | ((parity & 1u) << 7);
+            const uint64_t grid = contrib::gguf_quant::iq2xxs_grid[codes[group]];
+            const float d = scale.ToFloat() * (.5f + static_cast<float>(signs_scale >> 28)) * .25f;
+            const float operand = BFloat16(d * static_cast<float>((grid >> (8 * position)) & 255u) *
+                                           ((signs & (1u << position)) ? -1.f : 1.f))
+                                      .ToFloat();
+            sum += a[row * k + index].ToFloat() * operand;
+          }
+          // Eight dyadic products fit exactly in FP32, independently of the MMA
+          // partition/reduction order; the scale is applied only in the epilogue.
+          expected[row * n + col] = BFloat16(sum * global_scale);
+        }
+      }
+      for (bool initializer : {false, true}) {
+        OpTester test("MatMulPacked", 1, kMSDomain);
+        test.AddAttribute("K", int64_t{k});
+        test.AddAttribute("N", static_cast<int64_t>(n));
+        test.AddAttribute("packed_type", int64_t{16});
+        test.AddAttribute("dequantize_to_activation_dtype", int64_t{1});
+        test.AddInput<BFloat16>("A", {rows, k}, a);
+        test.AddInput<uint8_t>("B", {n, row_bytes}, packed, initializer);
+        test.AddInput<float>("global_scale", {}, {global_scale}, initializer);
+        test.AddOutput<BFloat16>("Y", {rows, n}, expected);
+        RunPackedCuda(test);
+      }
     }
   }
 }
