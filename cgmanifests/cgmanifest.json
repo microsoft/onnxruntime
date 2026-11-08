@@ -45,7 +45,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "5c210da409e7f1e51ddf445134a4376fdbd70d7d",
+          "commitHash": "84d107bf416c6bab9ae68ad285876600d230490d",
           "repositoryUrl": "https://github.com/dmlc/dlpack.git"
         }
       }
@@ -359,7 +359,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "edf33f80035575b82f1fafd5f9bd0dc0d2064e94",
+          "commitHash": "114a2c5469f898f970e85eac6f5d82595a550588",
           "repositoryUrl": "https://github.com/microsoft/cpp_client_telemetry.git"
         },
         "comments": "1DS SDK (cpp_client_telemetry) for cross-platform telemetry on non-Windows platforms (macOS, Linux, Android, iOS)."

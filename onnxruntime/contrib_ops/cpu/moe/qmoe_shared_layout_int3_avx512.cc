@@ -60,8 +60,10 @@ inline float Avx512Int3BFloat16BitsToFloat(uint16_t b) noexcept {
   return result;
 }
 
-inline __m512 Unpack16Int3Avx512(
-    const uint8_t* byte_ptr, const __m512i& shifts, const __m512i& mask7, const __m512i& four) noexcept {
+template <bool DeferredScale>
+inline __m512 UnpackDequant16Int3Avx512(
+    const uint8_t* byte_ptr, const __m512i& shifts, const __m512i& mask7, const __m512i& four,
+    const __m512& table) noexcept {
   uint32_t lo24 = 0;
   uint32_t hi24 = 0;
   std::memcpy(&lo24, byte_ptr, sizeof(uint32_t));
@@ -70,33 +72,35 @@ inline __m512 Unpack16Int3Avx512(
   const __m512i packed = _mm512_inserti64x4(
       _mm512_castsi256_si512(_mm256_set1_epi32(static_cast<int>(lo24))),
       _mm256_set1_epi32(static_cast<int>(hi24)), 1);
-  const __m512i codes = _mm512_sub_epi32(_mm512_and_si512(_mm512_srlv_epi32(packed, shifts), mask7), four);
-  return _mm512_cvtepi32_ps(codes);
+  const __m512i ucodes = _mm512_and_si512(_mm512_srlv_epi32(packed, shifts), mask7);
+  if constexpr (DeferredScale) {
+    return _mm512_cvtepi32_ps(_mm512_sub_epi32(ucodes, four));
+  } else {
+    return _mm512_permutexvar_ps(ucodes, table);
+  }
 }
 
-inline __m512 Int3LookupAvx512(float scale, bool bf16) {
+inline __m512 Int3LookupAvx512(uint16_t s_bits, float scale, bool bf16) noexcept {
   __m256 values = _mm256_mul_ps(_mm256_setr_ps(-4.0f, -3.0f, -2.0f, -1.0f, 0.0f, 1.0f, 2.0f, 3.0f),
                                 _mm256_set1_ps(scale));
   if (bf16) {
     const __m256i bits = _mm256_castps_si256(values);
-    const __m256i exponent = _mm256_and_si256(bits, _mm256_set1_epi32(0x7f800000));
-    const __m256i nonfinite = _mm256_cmpeq_epi32(exponent, _mm256_set1_epi32(0x7f800000));
     const __m256i lsb = _mm256_and_si256(_mm256_srli_epi32(bits, 16), _mm256_set1_epi32(1));
     const __m256i rounded = _mm256_and_si256(_mm256_add_epi32(bits, _mm256_add_epi32(_mm256_set1_epi32(0x7fff), lsb)),
                                              _mm256_set1_epi32(static_cast<int>(0xffff0000u)));
-    const __m256 nan_mask = _mm256_cmp_ps(values, values, _CMP_UNORD_Q);
-    values = _mm256_castsi256_ps(_mm256_blendv_epi8(rounded, bits, nonfinite));
-    values = _mm256_blendv_ps(values, _mm256_castsi256_ps(_mm256_set1_epi32(0x7fc00000)), nan_mask);
+    if ((s_bits & 0x7FFFu) < 0x7E80u) {
+      values = _mm256_castsi256_ps(rounded);
+    } else {
+      const __m256i exponent = _mm256_and_si256(bits, _mm256_set1_epi32(0x7f800000));
+      const __m256i nonfinite = _mm256_cmpeq_epi32(exponent, _mm256_set1_epi32(0x7f800000));
+      const __m256 nan_mask = _mm256_cmp_ps(values, values, _CMP_UNORD_Q);
+      values = _mm256_castsi256_ps(_mm256_blendv_epi8(rounded, bits, nonfinite));
+      values = _mm256_blendv_ps(values, _mm256_castsi256_ps(_mm256_set1_epi32(0x7fc00000)), nan_mask);
+    }
   } else {
     values = _mm256_cvtph_ps(_mm256_cvtps_ph(values, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC));
   }
   return _mm512_broadcast_f32x8(values);
-}
-
-template <bool DeferredScale>
-inline __m512 DequantInt3Avx512(__m512 codes, __m512 table) {
-  if constexpr (DeferredScale) return codes;
-  return _mm512_permutexvar_ps(_mm512_add_epi32(_mm512_cvtps_epi32(codes), _mm512_set1_epi32(4)), table);
 }
 
 template <int RT, int BlockSize, bool ScaleIsBf16, bool DeferredScale>
@@ -147,17 +151,17 @@ void Int3Group8Avx512(const uint8_t* w_base, const uint8_t* next_w_base, const u
       const uint8_t* p = w_base + c * raw_w_stride + byte_off;
       const uint16_t s_bits = scales[(n0 + c) * blocks + kb];
       const float s_val = ScaleIsBf16 ? Avx512Int3BFloat16BitsToFloat(s_bits) : Avx512Int3HalfBitsToFloat(s_bits);
-      const __m512 table = DeferredScale ? _mm512_set1_ps(s_val) : Int3LookupAvx512(s_val, ScaleIsBf16);
-      const __m512 w0 = DequantInt3Avx512<DeferredScale>(Unpack16Int3Avx512(p + 0, shifts, mask7, four), table);
-      const __m512 w1 = DequantInt3Avx512<DeferredScale>(Unpack16Int3Avx512(p + 6, shifts, mask7, four), table);
+      const __m512 table = DeferredScale ? _mm512_set1_ps(s_val) : Int3LookupAvx512(s_bits, s_val, ScaleIsBf16);
+      const __m512 w0 = UnpackDequant16Int3Avx512<DeferredScale>(p + 0, shifts, mask7, four, table);
+      const __m512 w1 = UnpackDequant16Int3Avx512<DeferredScale>(p + 6, shifts, mask7, four, table);
       __m512 prod0 = _mm512_fmadd_ps(w0, a0_0, _mm512_mul_ps(w1, a1_0));
       __m512 prod1;
       if constexpr (RT >= 2) {
         prod1 = _mm512_fmadd_ps(w0, a0_1, _mm512_mul_ps(w1, a1_1));
       }
       if constexpr (BlockSize == 64) {
-        const __m512 w2 = DequantInt3Avx512<DeferredScale>(Unpack16Int3Avx512(p + 12, shifts, mask7, four), table);
-        const __m512 w3 = DequantInt3Avx512<DeferredScale>(Unpack16Int3Avx512(p + 18, shifts, mask7, four), table);
+        const __m512 w2 = UnpackDequant16Int3Avx512<DeferredScale>(p + 12, shifts, mask7, four, table);
+        const __m512 w3 = UnpackDequant16Int3Avx512<DeferredScale>(p + 18, shifts, mask7, four, table);
         prod0 = _mm512_fmadd_ps(w2, a2_0, _mm512_fmadd_ps(w3, a3_0, prod0));
         if constexpr (RT >= 2) {
           prod1 = _mm512_fmadd_ps(w2, a2_1, _mm512_fmadd_ps(w3, a3_1, prod1));
@@ -228,11 +232,11 @@ void Int3Group4Avx512(const uint8_t* w_base, const uint8_t* next_w_base, const u
       const uint8_t* p = w_base + c * raw_w_stride + byte_off;
       const uint16_t s_bits = scales[(n0 + c) * blocks + kb];
       const float s_val = ScaleIsBf16 ? Avx512Int3BFloat16BitsToFloat(s_bits) : Avx512Int3HalfBitsToFloat(s_bits);
-      const __m512 table = DeferredScale ? _mm512_set1_ps(s_val) : Int3LookupAvx512(s_val, ScaleIsBf16);
+      const __m512 table = DeferredScale ? _mm512_set1_ps(s_val) : Int3LookupAvx512(s_bits, s_val, ScaleIsBf16);
       __m512 w0[kChunks32], w1[kChunks32];
       for (int ch = 0; ch < kChunks32; ++ch) {
-        w0[ch] = DequantInt3Avx512<DeferredScale>(Unpack16Int3Avx512(p + ch * 12 + 0, shifts, mask7, four), table);
-        w1[ch] = DequantInt3Avx512<DeferredScale>(Unpack16Int3Avx512(p + ch * 12 + 6, shifts, mask7, four), table);
+        w0[ch] = UnpackDequant16Int3Avx512<DeferredScale>(p + ch * 12 + 0, shifts, mask7, four, table);
+        w1[ch] = UnpackDequant16Int3Avx512<DeferredScale>(p + ch * 12 + 6, shifts, mask7, four, table);
       }
       for (int r = 0; r < RT; ++r) {
         __m512 prod = _mm512_fmadd_ps(w0[0], a0[0][r], _mm512_mul_ps(w1[0], a1[0][r]));

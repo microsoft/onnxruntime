@@ -53,7 +53,17 @@ def main():
     parser.add_argument(
         "--reading-threads",
         type=reading_thread_count,
-        help="Override parallel reads per CUDA pinned staging buffer; 0 disables the loader (runtime default: 4)",
+        help="Override parallel reads per CUDA pinned staging buffer; 0 disables the loader (runtime default: auto)",
+    )
+    parser.add_argument(
+        "--pinned-memory-bytes",
+        type=int,
+        help="Total pinned host staging memory in bytes across the two reusable buffers (default: 33554432)",
+    )
+    parser.add_argument(
+        "--chunk-bytes",
+        type=int,
+        help="Maximum per-transfer chunk size in bytes for parallel external-data reads (default: 2097152)",
     )
     parser.add_argument(
         "--evict-file-cache",
@@ -74,9 +84,21 @@ def main():
     options = onnxruntime.SessionOptions()
     options.intra_op_num_threads = args.threads
     options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+    if args.reading_threads is not None:
+        options.add_session_config_entry("session.external_data_loader.threads", str(args.reading_threads))
+    if args.pinned_memory_bytes is not None:
+        options.add_session_config_entry(
+            "session.external_data_loader.pinned_memory_bytes", str(args.pinned_memory_bytes)
+        )
+    if args.chunk_bytes is not None:
+        options.add_session_config_entry("session.external_data_loader.chunk_bytes", str(args.chunk_bytes))
     cuda_provider_options = {"device_id": args.device_id}
     if args.reading_threads is not None:
         cuda_provider_options["external_data_loader_reading_threads"] = args.reading_threads
+    if args.pinned_memory_bytes is not None:
+        cuda_provider_options["external_data_loader_pinned_memory_bytes"] = args.pinned_memory_bytes
+    if args.chunk_bytes is not None:
+        cuda_provider_options["external_data_loader_chunk_bytes"] = args.chunk_bytes
 
     start = time.perf_counter()
     session = onnxruntime.InferenceSession(
@@ -98,7 +120,7 @@ def main():
                 "device_id": args.device_id,
                 "evict_file_cache": args.evict_file_cache,
                 "model": os.path.abspath(args.model),
-                "reading_threads": args.reading_threads if args.reading_threads is not None else 4,
+                "reading_threads": args.reading_threads if args.reading_threads is not None else "auto",
                 "seconds": elapsed,
                 "threads": args.threads,
             },
