@@ -478,7 +478,8 @@ TEST_F(CudaPluginUserStreamGraphTest, PerThreadUserStreamRejectedOnlyForGraphSes
         Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), so);
         ADD_FAILURE() << "Accepted a thread-local stream for a graph-enabled session";
       } catch (const Ort::Exception& error) {
-        EXPECT_EQ(error.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
+        // Session provider creation wraps the factory status in an ORT_FAIL exception.
+        EXPECT_EQ(error.GetOrtErrorCode(), ORT_FAIL);
         EXPECT_NE(std::string(error.what()).find("cudaStreamPerThread"), std::string::npos);
       }
     } else {
