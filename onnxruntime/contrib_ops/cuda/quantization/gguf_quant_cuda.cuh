@@ -656,26 +656,13 @@ __device__ __forceinline__ uint32_t Nvfp4ScaledBf16PairBits(uint32_t codes) {
   return (magnitude << 6) | (((codes & 0x00080008u) << 12) & nonzero_mask);
 }
 
-template <bool kAlignedRows>
-__device__ __forceinline__ void DecodeNvfp4SubBlock16Bf16(
-    const uint8_t* row_ptr, int sb32_idx, int half16, uint4& low, uint4& high) {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
-  const uint8_t* blk = row_ptr + static_cast<int64_t>(sb32_idx >> 1) * 36;
-  const int group = 2 * (sb32_idx & 1) + half16;
-  const uint8_t scale_byte = __ldg(blk + group);
+__device__ __forceinline__ void DecodeNvfp4WordsBf16(
+    uint2 raw, uint8_t scale_byte, uint4& low, uint4& high) {
+  const uint32_t q0 = raw.x, q1 = raw.y;
   const float d = scale_byte == 127
                       ? 0.0f
                       : __half2float(__half(__nv_cvt_fp8_to_halfraw(
                             static_cast<__nv_fp8_storage_t>(scale_byte), __NV_E4M3)));
-  const uint8_t* codes = blk + 4 + group * 8;
-  uint32_t q0, q1;
-  if constexpr (kAlignedRows) {
-    q0 = __ldg(reinterpret_cast<const uint32_t*>(codes));
-    q1 = __ldg(reinterpret_cast<const uint32_t*>(codes + 4));
-  } else {
-    q0 = ReadU32Dev(codes);
-    q1 = ReadU32Dev(codes + 4);
-  }
   const __nv_bfloat162 scale = __bfloat162bfloat162(__float2bfloat16_rn(d * 0x1p110f));
   const __nv_bfloat162 restore = __floats2bfloat162_rn(0x1p16f, 0x1p16f);
   auto* lo = reinterpret_cast<uint32_t*>(&low);
@@ -692,6 +679,25 @@ __device__ __forceinline__ void DecodeNvfp4SubBlock16Bf16(
     lo[s] = *reinterpret_cast<const uint32_t*>(&pl);
     hi[s] = *reinterpret_cast<const uint32_t*>(&ph);
   }
+}
+
+template <bool kAlignedRows>
+__device__ __forceinline__ void DecodeNvfp4SubBlock16Bf16(
+    const uint8_t* row_ptr, int sb32_idx, int half16, uint4& low, uint4& high) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
+  const uint8_t* blk = row_ptr + static_cast<int64_t>(sb32_idx >> 1) * 36;
+  const int group = 2 * (sb32_idx & 1) + half16;
+  const uint8_t scale_byte = __ldg(blk + group);
+  const uint8_t* codes = blk + 4 + group * 8;
+  uint2 raw;
+  if constexpr (kAlignedRows) {
+    raw.x = __ldg(reinterpret_cast<const uint32_t*>(codes));
+    raw.y = __ldg(reinterpret_cast<const uint32_t*>(codes + 4));
+  } else {
+    raw.x = ReadU32Dev(codes);
+    raw.y = ReadU32Dev(codes + 4);
+  }
+  DecodeNvfp4WordsBf16(raw, scale_byte, low, high);
 #else
   // Keep the established FP32 decoder on architectures not qualified for this
   // subnormal BF16 input encoding.

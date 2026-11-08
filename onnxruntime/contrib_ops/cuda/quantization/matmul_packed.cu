@@ -60,7 +60,95 @@ __global__ __launch_bounds__(KW * 32) void MatMulPackedBf16TcWarpKSplitKernel(
   const bool a_aligned = ((reinterpret_cast<uintptr_t>(a) & 15u) == 0);
   const __nv_bfloat16* a_row = a + static_cast<int64_t>(a_valid ? g : 0) * p.k;
 
-  if constexpr (kChunk != 32) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
+  if constexpr (kCompileType == gguf_quant::kGgmlTypeNVFP4 && KW == 4 && MT == 2 &&
+                kChunk == 128 && kAlignedNvfp4Rows) {
+    // Load one 16-K half ahead without changing the contiguous warp K partition.
+    // Whole-chunk staging raises register pressure enough to lose on large N.
+    struct Stage {
+      uint4 activation[2];
+      uint2 codes[MT][2];
+      uint8_t scales[MT][2];
+    };
+    auto load_stage = [&](int step, Stage& stage) {
+      const int chunk = warp + (step / 2) * KW;
+      const int half = step & 1;
+      const int offset = chunk * kChunk + t * (kChunk / 4) + half * 16;
+      uint4 x0 = make_uint4(0u, 0u, 0u, 0u), x1 = x0;
+      if (a_valid) {
+        const auto* input = a_row + offset;
+        if ((reinterpret_cast<uintptr_t>(input) & 15u) == 0) {
+          x0 = __ldg(reinterpret_cast<const uint4*>(input));
+          x1 = __ldg(reinterpret_cast<const uint4*>(input + 8));
+        } else {
+          const auto* bits = reinterpret_cast<const uint16_t*>(input);
+          auto* low = reinterpret_cast<uint32_t*>(&x0);
+          auto* high = reinterpret_cast<uint32_t*>(&x1);
+#pragma unroll
+          for (int i = 0; i < 4; ++i) {
+            low[i] = __ldg(bits + 2 * i) | (static_cast<uint32_t>(__ldg(bits + 2 * i + 1)) << 16);
+            high[i] = __ldg(bits + 8 + 2 * i) | (static_cast<uint32_t>(__ldg(bits + 9 + 2 * i)) << 16);
+          }
+        }
+      }
+      stage.activation[0] = x0;
+      stage.activation[1] = x1;
+#pragma unroll
+      for (int m = 0; m < MT; ++m) {
+#pragma unroll
+        for (int side = 0; side < 2; ++side) {
+          const bool valid = side ? valid_hi[m] : valid_lo[m];
+          const uint8_t* row = side ? row_ptrs_hi[m] : row_ptrs_lo[m];
+          uint2 raw = make_uint2(0u, 0u);
+          uint8_t scale_byte = 0;
+          if (valid) {
+            const uint8_t* blk = row + static_cast<int64_t>(offset / 64) * 36;
+            const int group = (offset / 16) & 3;
+            scale_byte = __ldg(blk + group);
+            const uint8_t* codes = blk + 4 + group * 8;
+            raw.x = __ldg(reinterpret_cast<const uint32_t*>(codes));
+            raw.y = __ldg(reinterpret_cast<const uint32_t*>(codes + 4));
+          }
+          stage.codes[m][side] = raw;
+          stage.scales[m][side] = scale_byte;
+        }
+      }
+    };
+    Stage cur, next;
+    const int chunks = p.k / kChunk;
+    const int steps = warp < chunks ? ((chunks - 1 - warp) / KW + 1) * 2 : 0;
+    if (steps) load_stage(0, cur);
+    for (int step = 0; step < steps; ++step) {
+      if (step + 1 < steps) load_stage(step + 1, next);
+      const uint4 x0 = cur.activation[0], x1 = cur.activation[1];
+      const uint32_t x_words[8] = {x0.x, x0.y, x0.z, x0.w, x1.x, x1.y, x1.z, x1.w};
+#pragma unroll
+      for (int m = 0; m < MT; ++m) {
+        uint4 e_lo = make_uint4(0u, 0u, 0u, 0u), e_hi = e_lo, o_lo = e_lo, o_hi = e_lo;
+        if (valid_lo[m]) {
+          gguf_cuda::DecodeNvfp4WordsBf16(cur.codes[m][0], cur.scales[m][0], e_lo, e_hi);
+        }
+        if (valid_hi[m]) {
+          gguf_cuda::DecodeNvfp4WordsBf16(cur.codes[m][1], cur.scales[m][1], o_lo, o_hi);
+        }
+        const uint32_t e_low[4] = {e_lo.x, e_lo.y, e_lo.z, e_lo.w};
+        const uint32_t e_high[4] = {e_hi.x, e_hi.y, e_hi.z, e_hi.w};
+        const uint32_t o_low[4] = {o_lo.x, o_lo.y, o_lo.z, o_lo.w};
+        const uint32_t o_high[4] = {o_hi.x, o_hi.y, o_hi.z, o_hi.w};
+#pragma unroll
+        for (int s = 0; s < 4; ++s) {
+          const int word = s / 2;
+          const int selector = (s & 1) ? 0x7632 : 0x5410;
+          const uint32_t b0 = __byte_perm(x_words[word], x_words[word + 2], selector);
+          const uint32_t b1 = __byte_perm(x_words[word + 4], x_words[word + 6], selector);
+          gguf_cuda::MmaBf16(acc[m], e_low[s], o_low[s], e_high[s], o_high[s], b0, b1);
+        }
+      }
+      if (step + 1 < steps) cur = next;
+    }
+  } else
+#endif
+      if constexpr (kChunk != 32) {
     // Keep contiguous 64/128-K partitions and their MMA operand order together;
     // interleaving 32-K partitions changes cancellation before the warp reduction.
     constexpr int kHalves = kChunk / 64;
