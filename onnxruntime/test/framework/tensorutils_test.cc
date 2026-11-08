@@ -10,6 +10,10 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "test/util/include/asserts.h"
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+#include "core/session/inference_session.h"
+#include "test/test_environment.h"
+#endif
 #include "file_util.h"
 
 #include <array>
@@ -886,6 +890,176 @@ TEST_F(PathValidationTest, ValidateExternalDataPathRejectsMemoryTags) {
     ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(wrapper_status, "In-memory external data reference tag");
   }
 }
+
+// HF Hub's shared store uses a second symlink hop and different hash shards.
+class SharedCachePathTest : public PathValidationTest {
+ protected:
+  void SetUp() override {
+    PathValidationTest::SetUp();
+    hub_ = base_dir_ / "hub";
+    repo_ = hub_ / "models--example--model";
+    snapshot_ = repo_ / "snapshots" / "revision" / "onnx";
+    model_blob_ = hub_ / "blobs" / "28" / ("28" + std::string(62, 'a'));
+    data_blob_ = hub_ / "blobs" / "d4" / ("d4" + std::string(62, 'b'));
+    model_link_ = repo_ / "blobs" / std::string(40, 'c');
+    data_link_ = repo_ / "blobs" / std::string(64, 'd');
+    try {
+      std::filesystem::create_directories(snapshot_);
+      std::filesystem::create_directories(model_link_.parent_path());
+      std::filesystem::create_directories(model_blob_.parent_path());
+      std::filesystem::create_directories(data_blob_.parent_path());
+      std::ofstream{model_blob_};
+      std::ofstream{data_blob_};
+      std::ofstream{hub_ / "blobs" / ".huggingface-shared-blobs"} << "1";
+      Link(model_blob_, model_link_);
+      Link(data_blob_, data_link_);
+      Link(model_link_, snapshot_ / "model.onnx");
+      Link(data_link_, snapshot_ / "weights.bin");
+    } catch (const std::filesystem::filesystem_error& e) {
+      GTEST_SKIP() << "Symbolic links unavailable: " << e.what();
+    }
+  }
+
+  static void Link(const std::filesystem::path& target, const std::filesystem::path& link) {
+    // relative() canonicalizes away the intermediate hop; preserve it explicitly.
+    std::filesystem::create_symlink(target.lexically_relative(link.parent_path()), link);
+  }
+
+  std::filesystem::path hub_, repo_, snapshot_, model_blob_, data_blob_, model_link_, data_link_;
+};
+
+TEST_F(SharedCachePathTest, DifferentHashShards) {
+  EXPECT_EQ(std::filesystem::read_symlink(snapshot_ / "model.onnx"),
+            model_link_.lexically_relative(snapshot_));
+  EXPECT_EQ(std::filesystem::read_symlink(model_link_),
+            model_blob_.lexically_relative(model_link_.parent_path()));
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(snapshot_ / "model.onnx", "weights.bin"));
+}
+
+TEST_F(SharedCachePathTest, RepoLocalModelAndSharedWeights) {
+  std::filesystem::remove(model_link_);
+  std::ofstream{model_link_};
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(snapshot_ / "model.onnx", "weights.bin"));
+}
+
+TEST_F(SharedCachePathTest, SharedModelAndRepoLocalWeights) {
+  std::filesystem::remove(data_link_);
+  std::ofstream{data_link_};
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(snapshot_ / "model.onnx", "weights.bin"));
+}
+
+TEST_F(SharedCachePathTest, MissingOrInvalidMarker) {
+  const auto marker = hub_ / "blobs" / ".huggingface-shared-blobs";
+  std::filesystem::remove(marker);
+  EXPECT_FALSE(utils::ValidateExternalDataPath(snapshot_ / "model.onnx", "weights.bin").IsOK());
+  for (const auto* version : {"", "2", "1junk"}) {
+    std::ofstream{marker} << version;
+    EXPECT_FALSE(utils::ValidateExternalDataPath(snapshot_ / "model.onnx", "weights.bin").IsOK());
+  }
+}
+
+TEST_F(SharedCachePathTest, OutsideCacheTarget) {
+  const auto outside = outside_dir_ / ("d4" + std::string(62, 'b'));
+  std::ofstream{outside};
+  std::filesystem::remove(data_link_);
+  Link(outside, data_link_);
+  EXPECT_FALSE(utils::ValidateExternalDataPath(snapshot_ / "model.onnx", "weights.bin").IsOK());
+}
+
+TEST_F(SharedCachePathTest, InvalidShard) {
+  const auto invalid = hub_ / "blobs" / "aa" / data_blob_.filename();
+  std::filesystem::create_directories(invalid.parent_path());
+  std::ofstream{invalid};
+  std::filesystem::remove(data_link_);
+  Link(invalid, data_link_);
+  EXPECT_FALSE(utils::ValidateExternalDataPath(snapshot_ / "model.onnx", "weights.bin").IsOK());
+}
+
+TEST_F(SharedCachePathTest, LogicalDirectoryEscape) {
+  Link(data_link_, snapshot_.parent_path() / "weights.bin");
+  EXPECT_FALSE(utils::ValidateExternalDataPath(snapshot_ / "model.onnx", "../weights.bin").IsOK());
+  EXPECT_FALSE(utils::ValidateExternalDataPath(snapshot_ / "model.onnx", data_blob_).IsOK());
+}
+
+TEST_F(SharedCachePathTest, SymlinkedMarker) {
+  const auto marker = hub_ / "blobs" / ".huggingface-shared-blobs";
+  const auto outside_marker = outside_dir_ / "marker";
+  std::ofstream{outside_marker} << "1";
+  std::filesystem::remove(marker);
+  Link(outside_marker, marker);
+  EXPECT_FALSE(utils::ValidateExternalDataPath(snapshot_ / "model.onnx", "weights.bin").IsOK());
+}
+
+TEST_F(SharedCachePathTest, NonCacheRepository) {
+  const auto other_repo = hub_ / "other";
+  const auto relative_snapshot = snapshot_.lexically_relative(repo_);
+  std::filesystem::rename(repo_, other_repo);
+  EXPECT_FALSE(utils::ValidateExternalDataPath(other_repo / relative_snapshot / "model.onnx", "weights.bin").IsOK());
+}
+
+TEST_F(SharedCachePathTest, MissingWeights) {
+  std::filesystem::remove(data_blob_);
+  EXPECT_FALSE(utils::ValidateExternalDataPath(snapshot_ / "model.onnx", "weights.bin").IsOK());
+}
+
+TEST_F(SharedCachePathTest, InvalidBlobName) {
+  const auto invalid = hub_ / "blobs" / "d4" / "not-a-sha256";
+  std::ofstream{invalid};
+  std::filesystem::remove(data_link_);
+  Link(invalid, data_link_);
+  EXPECT_FALSE(utils::ValidateExternalDataPath(snapshot_ / "model.onnx", "weights.bin").IsOK());
+}
+
+TEST_F(SharedCachePathTest, RedirectedBlobStore) {
+  std::filesystem::rename(hub_ / "blobs", outside_dir_ / "blobs");
+  std::filesystem::create_directory_symlink(outside_dir_ / "blobs", hub_ / "blobs");
+  EXPECT_FALSE(utils::ValidateExternalDataPath(snapshot_ / "model.onnx", "weights.bin").IsOK());
+}
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+TEST_F(SharedCachePathTest, LoadExternalInitializerThroughTwoSymlinkHops) {
+  ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  model.add_opset_import()->set_version(14);
+  auto& graph = *model.mutable_graph();
+  graph.set_name("shared-cache");
+  auto* weight = graph.add_initializer();
+  weight->set_name("weight");
+  weight->set_data_type(TensorProto_DataType_FLOAT);
+  weight->add_dims(1);
+  weight->set_data_location(TensorProto_DataLocation_EXTERNAL);
+  auto* location = weight->add_external_data();
+  location->set_key("location");
+  location->set_value("weights.bin");
+  auto* node = graph.add_node();
+  node->set_op_type("Identity");
+  node->add_input("weight");
+  node->add_output("output");
+  auto* output = graph.add_output();
+  output->set_name("output");
+  auto* tensor_type = output->mutable_type()->mutable_tensor_type();
+  tensor_type->set_elem_type(TensorProto_DataType_FLOAT);
+  tensor_type->mutable_shape()->add_dim()->set_dim_value(1);
+  {
+    std::ofstream model_file(model_blob_, std::ios::binary);
+    ASSERT_TRUE(model.SerializeToOstream(&model_file));
+    std::ofstream data_file(data_blob_, std::ios::binary);
+    const float expected = 42.0f;
+    data_file.write(reinterpret_cast<const char*>(&expected), sizeof(expected));
+    ASSERT_TRUE(data_file.good());
+  }
+  SessionOptions options;
+  options.intra_op_param.thread_pool_size = 1;
+  InferenceSession session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.Load((snapshot_ / "model.onnx").native()));
+  ASSERT_STATUS_OK(session.Initialize());
+  std::vector<OrtValue> outputs;
+  const std::vector<std::string> output_names{"output"};
+  ASSERT_STATUS_OK(session.Run(NameMLValMap{}, output_names, &outputs));
+  ASSERT_EQ(outputs.size(), 1U);
+  EXPECT_FLOAT_EQ(outputs[0].Get<Tensor>().Data<float>()[0], 42.0f);
+}
+#endif
 
 // Test cases for ValidateExternalDataPath.
 TEST_F(PathValidationTest, ValidateExternalDataPath) {
