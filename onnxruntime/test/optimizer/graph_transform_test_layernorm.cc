@@ -1405,20 +1405,27 @@ static void TestGQAFusionPreservesAdditionalInputs(const std::basic_string<ORTCH
 
   NodeArg* empty_input = &graph.GetOrCreateNodeArg("", nullptr);
   NodeArg* optional_input = empty_input;
-  if (!use_empty_placeholders) {
-    ONNX_NAMESPACE::TensorProto attention_bias;
-    attention_bias.set_name("gqa_fusion_test_attention_bias");
-    attention_bias.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-    for (int i = 0; i < 4; ++i) {
-      attention_bias.add_dims(1);
-    }
-    attention_bias.add_float_data(0.0f);
-    graph.AddInitializedTensor(attention_bias);
-    optional_input = &graph.GetOrCreateNodeArg(attention_bias.name(), nullptr);
-  }
 
   for (Node& node : graph.Nodes()) {
     if (node.OpType() == "GroupQueryAttention") {
+      if (!use_empty_placeholders) {
+        const auto bias_type = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+        ASSERT_TRUE(bias_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+                    bias_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+        ONNX_NAMESPACE::TensorProto attention_bias;
+        attention_bias.set_name("gqa_fusion_test_attention_bias");
+        attention_bias.set_data_type(bias_type);
+        for (int i = 0; i < 4; ++i) {
+          attention_bias.add_dims(1);
+        }
+        if (bias_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+          attention_bias.add_int32_data(0);
+        } else {
+          attention_bias.add_float_data(0.0f);
+        }
+        graph.AddInitializedTensor(attention_bias);
+        optional_input = &graph.GetOrCreateNodeArg(attention_bias.name(), nullptr);
+      }
       node.MutableInputDefs().resize(10, empty_input);
       node.MutableInputDefs().push_back(optional_input);
       node.MutableInputArgsCount().assign(11, 1);
