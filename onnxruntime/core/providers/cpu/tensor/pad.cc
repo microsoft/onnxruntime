@@ -562,6 +562,11 @@ static Status PadImpl(OpKernelContext* ctx,
 
   ExtentAxisCounters input_counters(effective_input_extents);
 
+  // Innermost-axis values are loop-invariant: convert (and overflow-check) them once, not per row.
+  const size_t inner_extent = onnxruntime::narrow<size_t>(effective_input_extents[inner_axis]);
+  const size_t inner_pre_pad = SafeInt<size_t>(reshaped_pad[inner_axis]);
+  const size_t inner_post_pad = SafeInt<size_t>(reshaped_pad[inner_axis + new_dims_count]);
+
   switch (mode) {
     case Mode::Constant:
       // Loop over the output tensor, writing out padding between the blocks of copied data
@@ -571,23 +576,18 @@ static Status PadImpl(OpKernelContext* ctx,
         output += align_skip;
         {
           T* axis_start = output;
-          // Compute the actual number of data elements to copy on the innermost axis (after cropping).
-          const size_t inner_extent = onnxruntime::narrow<size_t>(effective_input_extents[inner_axis]);
-
           // Copy innermost block. IMPORTANT: do not rely on the returned 'output' to be end-of-the extent.
           ORT_IGNORE_RETURN_VALUE(input.CopyInnermostAxisSolitaryInnerStep(output));
 
-          const SafeInt<size_t> pre_pad = reshaped_pad[inner_axis];
-          const SafeInt<size_t> post_pad = reshaped_pad[inner_axis + new_dims_count];
-          if (pre_pad > 0) {
+          if (inner_pre_pad > 0) {
             /// Pre-pad(innermost) retro-fill remains valid(write before row_start).
-            PadAxisConstant(sink, axis_start - static_cast<size_t>(pre_pad), value, pre_pad);
+            PadAxisConstant(sink, axis_start - inner_pre_pad, value, inner_pre_pad);
           }
-          if (post_pad > 0) {
-            PadAxisConstant(sink, axis_start + inner_extent, value, post_pad);
+          if (inner_post_pad > 0) {
+            PadAxisConstant(sink, axis_start + inner_extent, value, inner_post_pad);
           }
-          output = axis_start + inner_extent + static_cast<size_t>(post_pad);
-          align_skip = pre_pad;
+          output = axis_start + inner_extent + inner_post_pad;
+          align_skip = inner_pre_pad;
         }
         // Calculate the size of the next block of padding (skipping over the innermost axis since that's already done)
         while (input_counters.Increment()) {
@@ -614,25 +614,22 @@ static Status PadImpl(OpKernelContext* ctx,
       while (input_counters) {
         output += align_skip;
         {
-          const SafeInt<size_t> inner_extent = effective_input_extents[inner_axis];
           T* axis_start = output;
-          T* axis_end = axis_start + onnxruntime::narrow<ptrdiff_t>(inner_extent);
+          T* axis_end = axis_start + inner_extent;
           output = input.CopyInnermostAxisSolitaryInnerStep(output);
 
-          const SafeInt<size_t> pre_pad = reshaped_pad[inner_axis];
-          const SafeInt<size_t> post_pad = reshaped_pad[inner_axis + new_dims_count];
           if (inner_no_pad_size == 1) {
-            if (pre_pad > 0) {
-              PadAxisConstant(sink, axis_start - static_cast<size_t>(pre_pad), *axis_start, pre_pad);
+            if (inner_pre_pad > 0) {
+              PadAxisConstant(sink, axis_start - inner_pre_pad, *axis_start, inner_pre_pad);
             }
-            if (post_pad > 0) {
-              PadAxisConstant(sink, output, *(output - 1), post_pad);
+            if (inner_post_pad > 0) {
+              PadAxisConstant(sink, output, *(output - 1), inner_post_pad);
             }
           } else {
             // When inner_most axis(es) do not need pad, above PadAxisConstant() do not fit for Edge mode.
             // Also general loop below after handling first pad axis with non-pad axis works fine.
             if (pads[inner_axis] > 0) {
-              PadAxis(sink, axis_start - static_cast<size_t>(pre_pad), axis_start, 1, -ptrdiff_t(inner_no_pad_size), inner_no_pad_size,
+              PadAxis(sink, axis_start - inner_pre_pad, axis_start, 1, -ptrdiff_t(inner_no_pad_size), inner_no_pad_size,
                       onnxruntime::narrow<size_t>(pads[inner_axis]));
             }
             if (pads[inner_axis + data_rank] > 0) {
@@ -640,8 +637,8 @@ static Status PadImpl(OpKernelContext* ctx,
                       onnxruntime::narrow<size_t>(pads[inner_axis + data_rank]));
             }
           }
-          output = axis_end + static_cast<size_t>(post_pad);
-          align_skip = pre_pad;
+          output = axis_end + inner_post_pad;
+          align_skip = inner_pre_pad;
         }
         // Calculate the size of the next block of padding (skipping over the innermost axis since that's already done)
         while (input_counters.Increment()) {

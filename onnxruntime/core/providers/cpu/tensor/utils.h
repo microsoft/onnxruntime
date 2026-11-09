@@ -9,6 +9,7 @@
 #include "core/framework/utils.h"
 #endif
 #include "core/common/safeint.h"
+#include "core/util/force_inline.h"
 namespace onnxruntime {
 
 struct TensorPitches : TensorShapeVector {
@@ -109,7 +110,7 @@ struct ExtentAxisCounters {
   }
 
   // Returns true if there was a carry to the next axis
-  bool Increment() {
+  ORT_FORCEINLINE bool Increment() {
     if (axis_-- == 0) {
       running_ = false;
       return false;
@@ -281,7 +282,7 @@ struct SliceIteratorBase {
   }
 
   // Assumes SolitaryInnerStep() == true
-  void* CopyInnermostAxisSolitaryInnerStep(void* output) {
+  ORT_FORCEINLINE void* CopyInnermostAxisSolitaryInnerStep(void* output) {
     byte* out_bytes = reinterpret_cast<byte*>(output);
     auto bytes_to_copy = inner_extent_ * element_size_;
 
