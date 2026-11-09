@@ -25,20 +25,24 @@ struct ConvPlanCacheTestPeer {
     }
     snapshot.conv_plan = state.conv_plan;
     snapshot.cached_plan_count = state.cached_conv_plans.size();
+    snapshot.plan_key_storage = state.conv_plan_key.data();
     snapshot.last_x_dims.assign(state.last_x_dims.GetDims().begin(), state.last_x_dims.GetDims().end());
     snapshot.conv_plan_matches_inputs = state.conv_plan_matches_inputs;
     if (state.conv_plan && state.conv_plan_matches_inputs) {
       snapshot.workspace_bytes = state.workspace_bytes;
       snapshot.plan_workspace_bytes = state.conv_plan->workspace_bytes;
       snapshot.bias_fused = state.conv_plan->bias_fused;
-      snapshot.x_binding = state.variant_pack.at(state.conv_plan->X);
-      snapshot.w_binding = state.variant_pack.at(state.conv_plan->W);
-      snapshot.y_binding = state.variant_pack.at(state.conv_plan->Y);
+      const auto& bindings = state.conv_plan->variant_pack;
+      snapshot.binding_count = bindings.size();
+      snapshot.x_binding_slot = &bindings.at(state.conv_plan->X);
+      snapshot.x_binding = bindings.at(state.conv_plan->X);
+      snapshot.w_binding = bindings.at(state.conv_plan->W);
+      snapshot.y_binding = bindings.at(state.conv_plan->Y);
       if (state.conv_plan->bias_fused && state.b_data) {
-        snapshot.b_binding = state.variant_pack.at(state.conv_plan->B);
+        snapshot.b_binding = bindings.at(state.conv_plan->B);
       }
       if (state.conv_plan->bias_fused && state.conv_plan->Z) {
-        snapshot.z_binding = state.variant_pack.at(state.conv_plan->Z);
+        snapshot.z_binding = bindings.at(state.conv_plan->Z);
       }
     }
     return snapshot;
@@ -82,20 +86,22 @@ ConvPlanCacheSnapshot GetConvPlanCacheForTest(const void* kernel, int32_t elemen
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
 std::optional<contrib::cuda::GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimateConfigForTest(
     const void* node, bool head_sink_is_constant_initializer,
-    int64_t max_total_sequence_length) {
+    int64_t max_total_sequence_length,
+    KernelDispatchPolicy dispatch_policy) {
   return contrib::cuda::GetGroupQueryAttentionWorkspaceEstimateConfig(
       *static_cast<const Node*>(node), head_sink_is_constant_initializer,
-      max_total_sequence_length);
+      max_total_sequence_length, dispatch_policy);
 }
 
 std::optional<contrib::cuda::GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspaceForTest(
     const void* node, gsl::span<const WorkspaceInputShape> input_shapes,
     const cudaDeviceProp& device_prop, const AttentionKernelOptions& kernel_options,
     bool head_sink_is_constant_initializer,
-    int64_t max_total_sequence_length) {
+    int64_t max_total_sequence_length,
+    KernelDispatchPolicy dispatch_policy) {
   return contrib::cuda::EstimateGroupQueryAttentionWorkspace(
       *static_cast<const Node*>(node), input_shapes, device_prop, kernel_options,
-      head_sink_is_constant_initializer, max_total_sequence_length);
+      head_sink_is_constant_initializer, max_total_sequence_length, dispatch_policy);
 }
 
 std::optional<contrib::cuda::PackedAttentionWorkspaceAggregate> EstimatePackedAttentionWorkspaceForTest(
@@ -106,7 +112,7 @@ std::optional<contrib::cuda::PackedAttentionWorkspaceAggregate> EstimatePackedAt
 }
 #endif
 
-#if !defined(DISABLE_CONTRIB_OPS) && defined(USE_FPA_INTB_GEMM) && USE_FPA_INTB_GEMM
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS)
 std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryForTest(
     const void* node, const cudaDeviceProp& device_prop,
     contrib::cuda::MatMulNBitsMemoryEstimateOptions options) {
@@ -132,12 +138,37 @@ std::optional<size_t> EstimateMatMulNBitsWorkspaceForTest(
 #endif
 
 common::Status LoadCudaExternalDataForTest(
+    const void* loader, const RandomAccessFile& file,
+    FileOffsetType offset, SafeInt<size_t> length, void* tensor) {
+#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_CUDA_MINIMAL)
+  return static_cast<const cuda::ExternalDataLoader*>(loader)->LoadTensor(
+      file, offset, length, *static_cast<Tensor*>(tensor));
+#else
+  ORT_UNUSED_PARAMETER(loader);
+  ORT_UNUSED_PARAMETER(file);
+  ORT_UNUSED_PARAMETER(offset);
+  ORT_UNUSED_PARAMETER(length);
+  ORT_UNUSED_PARAMETER(tensor);
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Not supported in minimal builds.");
+#endif
+}
+
+common::Status LoadCudaExternalDataForTest(
     const void* loader, const Env& env, const std::filesystem::path& path,
     FileOffsetType offset, SafeInt<size_t> length, void* tensor) {
+#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_CUDA_MINIMAL)
   std::unique_ptr<RandomAccessFile> file;
   ORT_RETURN_IF_ERROR(env.OpenRandomAccessFile(path.c_str(), file));
-  return static_cast<const cuda::ExternalDataLoader*>(loader)->LoadTensor(
-      *file, offset, length, *static_cast<Tensor*>(tensor));
+  return LoadCudaExternalDataForTest(loader, *file, offset, length, tensor);
+#else
+  ORT_UNUSED_PARAMETER(loader);
+  ORT_UNUSED_PARAMETER(env);
+  ORT_UNUSED_PARAMETER(path);
+  ORT_UNUSED_PARAMETER(offset);
+  ORT_UNUSED_PARAMETER(length);
+  ORT_UNUSED_PARAMETER(tensor);
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Not supported in minimal builds.");
+#endif
 }
 
 }  // namespace onnxruntime::test

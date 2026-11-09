@@ -145,6 +145,8 @@ struct CudnnFeConvPlan {
   std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> Z;
   std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> B;
   std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> Y;
+  // Slots are allocated once when building the plan; execution only rebinds borrowed buffers.
+  std::unordered_map<std::shared_ptr<cudnn_frontend::graph::Tensor_attributes>, void*> variant_pack;
   CudnnTensor b_tensor;
   CudnnTensor y_tensor;
   CudnnTensor z_tensor;
@@ -199,6 +201,7 @@ struct CudnnConvState {
 #if CUDNN_MAJOR >= 9
   std::shared_ptr<CudnnFeConvPlan> conv_plan;
   lru_unordered_map<TensorShapeVector, std::shared_ptr<CudnnFeConvPlan>, tensor_shape_vector_hash> cached_conv_plans{8};
+  TensorShapeVector conv_plan_key;
   TensorShape last_b_dims;
   TensorShape last_z_dims;
   bool last_b_present = false;

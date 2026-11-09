@@ -1364,6 +1364,28 @@ TEST(SparseAttentionIndexerTest, QsaSharedRotaryCache) {
   RunQsaTest<float>(1.0e-5f, MakeQsaProblem(std::move(problem)));
 }
 
+TEST(SparseAttentionIndexerTest, QsaTiledBlockScoringMultiBatchWithMaskHoles) {
+  QsaProblem problem;
+  problem.batch_size = 2;
+  problem.sequence_length = 70;
+  problem.past_sequence_length = 203;
+  problem.num_heads = 4;
+  problem.head_size = 64;
+  problem.rotary_width = 32;
+  problem.compress_ratio = 4;
+  problem.token_budget = 64;
+  problem = MakeQsaProblem(std::move(problem));
+  const int total = problem.TotalSequenceLength();
+  std::fill(problem.mask.begin(), problem.mask.end(), 1);
+  for (int hole : {3, 19, 64, 131, 202, 220, 265}) {
+    problem.mask[hole] = 0;
+  }
+  for (int hole : {0, 14, 77, 155, 204, 250}) {
+    problem.mask[total + hole] = 0;
+  }
+  RunQsaTest<float>(1.0e-5f, std::move(problem));
+}
+
 TEST(SparseAttentionIndexerTest, CsaFloat) { RunCsaTest<float>(MakeCsaProblem(), 1.0e-5f); }
 
 TEST(SparseAttentionIndexerTest, CsaFloat16) { RunCsaTest<MLFloat16>(MakeCsaProblem(), 4.0e-3f); }

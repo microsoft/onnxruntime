@@ -213,6 +213,7 @@ class ConvPlanCacheTest : public testing::Test {
     ASSERT_NE(state_->conv_plan, nullptr);
     EXPECT_TRUE(state_->conv_plan_matches_inputs);
     EXPECT_EQ(state_->workspace_bytes, state_->plan_workspace_bytes);
+    EXPECT_EQ(state_->binding_count, state_->bias_fused && with_bias_ ? 5u : 3u);
     EXPECT_EQ(state_->x_binding, retained_feeds_.back()[0].Get<Tensor>().DataRaw());
     EXPECT_EQ(state_->w_binding, retained_feeds_.back()[1].Get<Tensor>().DataRaw());
     EXPECT_EQ(state_->y_binding, actual.DataRaw());
@@ -235,13 +236,13 @@ class ConvPlanCacheTest : public testing::Test {
     }
   }
 
-  void CaptureAndReplay() {
+  void CaptureAndReplay(bool evict_cached_plan = false) {
     ASSERT_NE(stream_, nullptr);
     ASSERT_NO_FATAL_FAILURE(Run(1));
     if constexpr (std::is_same_v<T, float>) {
       ASSERT_TRUE(state_->bias_fused);
     }
-    const auto first_plan = state_->conv_plan;
+    const std::weak_ptr<void> first_plan = state_->conv_plan;
     auto& outputs = retained_outputs_.back();
     auto& output = *outputs[0].GetMutable<Tensor>();
     std::vector<T> expected(static_cast<size_t>(output.Shape().Size()));
@@ -264,6 +265,13 @@ class ConvPlanCacheTest : public testing::Test {
     const auto instantiate_status = cudaGraphInstantiateWithFlags(&raw_instance, graph.get(), 0);
     std::unique_ptr<CUgraphExec_st, CudaGraphExecDeleter> instance(raw_instance);
     ASSERT_EQ(instantiate_status, cudaSuccess);
+    if (evict_cached_plan) {
+      for (int64_t rows = 2; rows <= 9; ++rows) {
+        ASSERT_NO_FATAL_FAILURE(Run(rows));
+      }
+      ASSERT_TRUE(first_plan.expired());
+      EXPECT_EQ(state_->cached_plan_count, 8u);
+    }
     ASSERT_EQ(cudaGraphLaunch(instance.get(), stream_.get()), cudaSuccess);
     ASSERT_EQ(cudaStreamSynchronize(stream_.get()), cudaSuccess);
     std::vector<T> actual(expected.size());
@@ -272,8 +280,13 @@ class ConvPlanCacheTest : public testing::Test {
       EXPECT_FLOAT_EQ(static_cast<float>(actual[i]), static_cast<float>(expected[i]));
     }
     snapshot_ = GetConvPlanCacheForTest(kernel_, element_type_);
-    EXPECT_EQ(state_->conv_plan, first_plan);
-    EXPECT_EQ(state_->cached_plan_count, 1u);
+    if (evict_cached_plan) {
+      EXPECT_TRUE(first_plan.expired());
+      EXPECT_EQ(state_->cached_plan_count, 8u);
+    } else {
+      EXPECT_EQ(state_->conv_plan, first_plan.lock());
+      EXPECT_EQ(state_->cached_plan_count, 1u);
+    }
   }
 
   bool with_bias_ = false;
@@ -300,6 +313,29 @@ TYPED_TEST(ConvPlanCacheTest, RecurringShapesRefreshPointers) {
   ASSERT_NO_FATAL_FAILURE(this->CheckRecurringShapes());
 }
 
+TYPED_TEST(ConvPlanCacheTest, RecurringShapesReuseBindingStorage) {
+  ASSERT_NO_FATAL_FAILURE(this->Initialize());
+  std::array<const void*, 4> binding_slots{};
+  const void* key_storage = nullptr;
+  for (int64_t rows = 1; rows <= 4; ++rows) {
+    ASSERT_NO_FATAL_FAILURE(this->Run(rows));
+    const auto index = static_cast<size_t>(rows - 1);
+    binding_slots[index] = this->state_->x_binding_slot;
+    ASSERT_NE(binding_slots[index], nullptr);
+    for (size_t previous = 0; previous < index; ++previous) {
+      EXPECT_NE(binding_slots[index], binding_slots[previous]);
+    }
+    if (key_storage == nullptr) key_storage = this->state_->plan_key_storage;
+    EXPECT_EQ(this->state_->plan_key_storage, key_storage);
+  }
+  for (int64_t rows : {1, 4, 2, 3, 1, 2, 4, 3, 3}) {
+    ASSERT_NO_FATAL_FAILURE(this->Run(rows));
+    EXPECT_EQ(this->state_->x_binding_slot, binding_slots[static_cast<size_t>(rows - 1)]);
+    EXPECT_EQ(this->state_->plan_key_storage, key_storage);
+    EXPECT_EQ(this->state_->cached_plan_count, 4u);
+  }
+}
+
 TYPED_TEST(ConvPlanCacheTest, RecurringShapesWithoutBias) {
   ASSERT_NO_FATAL_FAILURE(this->Initialize(false));
   ASSERT_NO_FATAL_FAILURE(this->CheckRecurringShapes());
@@ -324,6 +360,11 @@ TYPED_TEST(ConvPlanCacheTest, RecurringShapesOnNonblockingStream) {
 TYPED_TEST(ConvPlanCacheTest, CapturingCachedPlanOnNonblockingStream) {
   ASSERT_NO_FATAL_FAILURE(this->Initialize(true, !std::is_same_v<TypeParam, BFloat16>, false, true, 1));
   ASSERT_NO_FATAL_FAILURE(this->CaptureAndReplay());
+}
+
+TYPED_TEST(ConvPlanCacheTest, CapturedPlanReplaysAfterEvictionOnNonblockingStream) {
+  ASSERT_NO_FATAL_FAILURE(this->Initialize(true, !std::is_same_v<TypeParam, BFloat16>, false, true, 1));
+  ASSERT_NO_FATAL_FAILURE(this->CaptureAndReplay(true));
 }
 
 TYPED_TEST(ConvPlanCacheTest, EmptyOutputDoesNotReplaceCachedPlan) {
@@ -396,7 +437,7 @@ constexpr int64_t kNhwcKernelWidth = 3;
 
 template <typename T>
 std::string NhwcConvModel(int32_t element_type, bool channels_last, bool constant_weights,
-                          gsl::span<const T> weights) {
+                          gsl::span<const T> weights, bool constant_bias = false) {
   ONNX_NAMESPACE::ModelProto model;
   ORT_ENFORCE(model.ParseFromString(ConvModel(element_type, true, 1)));
   auto* graph = model.mutable_graph();
@@ -436,6 +477,18 @@ std::string NhwcConvModel(int32_t element_type, bool channels_last, bool constan
     initializer->set_raw_data(weights.data(), weights.size_bytes());
     graph->mutable_input()->DeleteSubrange(1, 1);
   }
+  if (constant_bias) {
+    auto* initializer = graph->add_initializer();
+    initializer->set_name("B");
+    initializer->set_data_type(element_type);
+    initializer->add_dims(kChannels);
+    std::array<T, kChannels> bias{};
+    for (size_t i = 0; i < bias.size(); ++i) {
+      bias[i] = T(static_cast<float>(static_cast<int>(i) - 5) / 8.0f);
+    }
+    initializer->set_raw_data(bias.data(), gsl::span<const T>(bias).size_bytes());
+    graph->mutable_input()->RemoveLast();
+  }
   return model.SerializeAsString();
 }
 
@@ -450,8 +503,9 @@ class ConvNhwcPlanCacheTest : public ConvPlanCacheTest<T> {
     return values;
   }
 
-  void InitializeNhwc(bool constant_weights) {
+  void InitializeNhwc(bool constant_weights, bool constant_bias = false) {
     constant_weights_ = constant_weights;
+    constant_bias_ = constant_bias;
     SessionOptions options;
     options.graph_optimization_level = TransformerLevel::Default;
     options.enable_mem_pattern = false;
@@ -465,9 +519,9 @@ class ConvNhwcPlanCacheTest : public ConvPlanCacheTest<T> {
                                                    : ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
     const auto reference_weights = Weights(0);
     const std::vector<T> weights(reference_weights.begin(), reference_weights.end());
-    const auto gpu_model = NhwcConvModel<T>(this->element_type_, true, constant_weights, weights);
+    const auto gpu_model = NhwcConvModel<T>(this->element_type_, true, constant_weights, weights, constant_bias);
     const auto cpu_model = NhwcConvModel<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, false,
-                                                constant_weights, reference_weights);
+                                                constant_weights, reference_weights, constant_bias);
     ASSERT_STATUS_OK(this->gpu_->Load(gpu_model.data(), static_cast<int>(gpu_model.size())));
     ASSERT_STATUS_OK(this->cpu_->Load(cpu_model.data(), static_cast<int>(cpu_model.size())));
     ASSERT_STATUS_OK(this->gpu_->Initialize());
@@ -495,9 +549,11 @@ class ConvNhwcPlanCacheTest : public ConvPlanCacheTest<T> {
       gpu_shapes.emplace_back(TensorShape{kChannels, kChannels, kNhwcKernelHeight, kNhwcKernelWidth});
       cpu_shapes.push_back(gpu_shapes.back());
     }
-    names.emplace_back("B");
-    gpu_shapes.emplace_back(TensorShape{kChannels});
-    cpu_shapes.push_back(gpu_shapes.back());
+    if (!constant_bias_) {
+      names.emplace_back("B");
+      gpu_shapes.emplace_back(TensorShape{kChannels});
+      cpu_shapes.push_back(gpu_shapes.back());
+    }
     std::vector<OrtValue> feeds(names.size());
     std::vector<OrtValue> cpu_feeds(names.size());
     const auto weights = Weights(this->iteration_);
@@ -559,10 +615,15 @@ class ConvNhwcPlanCacheTest : public ConvPlanCacheTest<T> {
     EXPECT_TRUE(state.conv_plan_matches_inputs);
     EXPECT_EQ(state.last_x_dims, (std::vector<int64_t>{1, height, width, kChannels}));
     EXPECT_EQ(state.workspace_bytes, state.plan_workspace_bytes);
+    EXPECT_EQ(state.binding_count, state.bias_fused ? 4u : 3u);
     EXPECT_EQ(state.x_binding, this->retained_feeds_.back()[0].template Get<Tensor>().DataRaw());
     EXPECT_EQ(state.y_binding, actual.DataRaw());
     if (state.bias_fused) {
-      EXPECT_EQ(state.b_binding, this->retained_feeds_.back().back().template Get<Tensor>().DataRaw());
+      if (constant_bias_) {
+        EXPECT_NE(state.b_binding, nullptr);
+      } else {
+        EXPECT_EQ(state.b_binding, this->retained_feeds_.back().back().template Get<Tensor>().DataRaw());
+      }
       EXPECT_EQ(state.z_binding, nullptr);
     }
     EXPECT_EQ(state.weights_in_nhwc, constant_weights_);
@@ -582,7 +643,11 @@ class ConvNhwcPlanCacheTest : public ConvPlanCacheTest<T> {
       EXPECT_NE(state.x_binding, previous.x_binding);
       EXPECT_NE(state.y_binding, previous.y_binding);
       if (state.bias_fused && previous.bias_fused) {
-        EXPECT_NE(state.b_binding, previous.b_binding);
+        if (constant_bias_) {
+          EXPECT_EQ(state.b_binding, previous.b_binding);
+        } else {
+          EXPECT_NE(state.b_binding, previous.b_binding);
+        }
       }
       if (constant_weights_) {
         EXPECT_EQ(state.w_binding, previous.w_binding);
@@ -611,6 +676,7 @@ class ConvNhwcPlanCacheTest : public ConvPlanCacheTest<T> {
   }
 
   bool constant_weights_ = false;
+  bool constant_bias_ = false;
 };
 
 using ConvNhwcPlanCacheTypes = testing::Types<float, MLFloat16>;
@@ -623,6 +689,11 @@ TYPED_TEST(ConvNhwcPlanCacheTest, RecurringShapesWithPrepackedWeightsRefreshBind
 
 TYPED_TEST(ConvNhwcPlanCacheTest, RecurringShapesWithDynamicWeightsRefreshBindings) {
   ASSERT_NO_FATAL_FAILURE(this->InitializeNhwc(false));
+  ASSERT_NO_FATAL_FAILURE(this->CheckNhwcRecurringShapes());
+}
+
+TYPED_TEST(ConvNhwcPlanCacheTest, ConstantBiasDoesNotChangeDynamicWeightLayout) {
+  ASSERT_NO_FATAL_FAILURE(this->InitializeNhwc(false, true));
   ASSERT_NO_FATAL_FAILURE(this->CheckNhwcRecurringShapes());
 }
 

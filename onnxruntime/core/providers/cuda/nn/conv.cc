@@ -96,7 +96,7 @@ Status Conv<T, NHWC>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
       }
       CUDA_CALL_THROW(cudaStreamSynchronize(DefaultCudaStream()));
       is_packed = true;
-    } else {
+    } else if (!is_nhwc_domain_) {
       W_already_nhwc = true;
     }
   } else {
@@ -131,6 +131,11 @@ Status Conv<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::TensorShap
   plan->bias_fused = fuse_bias;
   plan->act_fused = fuse_act;
   plan->graph = std::make_unique<cudnn_frontend::graph::Graph>();
+  // Provide the SM version from the cached device properties. Otherwise check_support() queries it with
+  // cudaGetDeviceProperties() (cudnn_frontend 1.24 - 1.31), which costs ~1 ms on some systems and runs on
+  // every plan rebuild, i.e. for each Conv node whenever its input shape changes.
+  const cudaDeviceProp& device_prop = GetDeviceProp();
+  plan->graph->set_sm_version(device_prop.major * 10 + device_prop.minor);
   cudnn_frontend::DataType_t data_type = CudnnFeTensor::GetDataType<CudaT>();
   plan->graph->set_io_data_type(data_type).set_intermediate_data_type(data_type);
   if (data_type == cudnn_frontend::DataType_t::HALF) {
@@ -262,6 +267,11 @@ Status Conv<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::TensorShap
   }
 
   plan->workspace_bytes = plan->graph->get_workspace_size();
+  plan->variant_pack.emplace(plan->X, nullptr);
+  plan->variant_pack.emplace(plan->W, nullptr);
+  plan->variant_pack.emplace(plan->Y, nullptr);
+  if (plan->B) plan->variant_pack.emplace(plan->B, nullptr);
+  if (plan->Z) plan->variant_pack.emplace(plan->Z, nullptr);
   s_.conv_plan = std::move(plan);
   return Status::OK();
 }
@@ -443,7 +453,8 @@ Status Conv<T, Layout>::UpdateState(OpKernelContext* context, bool bias_expected
     const auto fuse_bias = (this->IsFuseConvBias() || is_fused_node_) && can_fuse_bias;
     const auto fuse_act = is_fused_node_;
 
-    TensorShapeVector plan_key;
+    auto& plan_key = s_.conv_plan_key;
+    plan_key.clear();
     const auto append_dims = [&plan_key](const auto& dims) {
       plan_key.push_back(static_cast<int64_t>(dims.size()));
       plan_key.insert(plan_key.end(), dims.begin(), dims.end());
@@ -472,7 +483,6 @@ Status Conv<T, Layout>::UpdateState(OpKernelContext* context, bool bias_expected
       s_.cached_conv_plans.insert(plan_key, s_.conv_plan);
     }
     s_.workspace_bytes = s_.conv_plan->workspace_bytes;
-    s_.variant_pack.clear();
     s_.last_x_dims = gsl::make_span(x_dims);
     s_.last_w_dims = gsl::make_span(w_dims);
     s_.last_b_dims = b_dims;
@@ -503,27 +513,25 @@ Status Conv<T, Layout>::ComputeInternal(OpKernelContext* context) const {
   const auto alpha = onnxruntime::cuda::Consts<CudaT>::One;
   auto cudnn_handle = GetCudnnHandle(context);
 #if !defined(__CUDACC__)
-  const auto& plan = *s_.conv_plan;
-  s_.variant_pack.insert_or_assign(plan.X, const_cast<void*>(s_.x_data));
-  s_.variant_pack.insert_or_assign(plan.W, const_cast<void*>(s_.w_data));
-  s_.variant_pack.insert_or_assign(plan.Y, s_.y_data);
+  auto& plan = *s_.conv_plan;
+  plan.variant_pack.at(plan.X) = const_cast<void*>(s_.x_data);
+  plan.variant_pack.at(plan.W) = const_cast<void*>(s_.w_data);
+  plan.variant_pack.at(plan.Y) = s_.y_data;
   if (plan.bias_fused && s_.b_data != nullptr) {
-    s_.variant_pack.insert_or_assign(plan.B, const_cast<void*>(s_.b_data));
+    plan.variant_pack.at(plan.B) = const_cast<void*>(s_.b_data);
   }
-  if (plan.Z && s_.z_data == nullptr) {
-    s_.z_data = s_.y_data;
-  }
-  if (plan.bias_fused && s_.z_data != nullptr) {
-    s_.variant_pack.insert_or_assign(plan.Z, const_cast<void*>(s_.z_data));
+  if (plan.Z) {
+    if (s_.z_data == nullptr) s_.z_data = s_.y_data;
+    plan.variant_pack.at(plan.Z) = const_cast<void*>(s_.z_data);
     if (Layout == LAYOUT_NCHW && s_.z_data == s_.y_data) {
-      // memset Z if it's required for a succesful fusion
+      // memset Z if it's required for a successful fusion
       CUDA_RETURN_IF_ERROR(cudaMemsetAsync(s_.y_data, 0, s_.Y->SizeInBytes(), Stream(context)));
     }
   }
   auto ws = GetWorkSpace(GetComputeStream(context));
 
   CUDNN_FE_RETURN_IF_ERROR(plan.graph->execute(cudnn_handle,
-                                               s_.variant_pack,
+                                               plan.variant_pack,
                                                ws.get()));
 
   if (!plan.bias_fused && s_.z_data != nullptr) {

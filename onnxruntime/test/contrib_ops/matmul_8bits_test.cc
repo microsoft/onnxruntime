@@ -3,6 +3,7 @@
 
 #ifndef ORT_MINIMAL_BUILD
 #include <algorithm>
+#include <cmath>
 #include <optional>
 
 #include "gtest/gtest.h"
@@ -57,6 +58,7 @@ struct TestOptions8Bits {
   bool zp_is_typed{false};  // true: zero_points use same type as scales (T); false: uint8
   bool has_g_idx{false};
   bool has_bias{false};
+  bool disable_cpu_ep_fallback{false};
 
   // When set, RunTest8Bits validates cross-session sharing of the pre-packed weights instead of
   // doing a single run. The model is run in two CPU sessions that use the same container.
@@ -77,11 +79,12 @@ struct TestOptions8Bits {
 }
 
 template <typename T1>
-void RunTest8Bits(const TestOptions8Bits& opts) {
+void RunTest8Bits(const TestOptions8Bits& opts,
+                  std::vector<std::unique_ptr<IExecutionProvider>>&& explicit_eps = {}) {
   SCOPED_TRACE(opts);
 
 #ifdef USE_CUDA
-  if (opts.accuracy_level != 0) {
+  if (explicit_eps.empty() && opts.accuracy_level != 0) {
     return;  // CUDA EP does not handle accuracy level, so only test one level to avoid unnecessary tests.
   }
 #endif
@@ -240,6 +243,19 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
     return;
   }
 
+  if (opts.disable_cpu_ep_fallback) {
+    SessionOptions session_options;
+    session_options.use_per_session_threads = false;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    test.Config(session_options);
+  }
+
+  if (!explicit_eps.empty()) {
+    test.ConfigEps(std::move(explicit_eps));
+    test.RunWithConfig();
+    return;
+  }
+
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
@@ -270,8 +286,12 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
 #endif
 }
 
+// The zero-point variants may run a different kernel than the variants without zero points, so they can take their
+// own tolerance (default: the same as the others).
 template <typename AType, int M, int N, int K, int block_size, int accuracy_level = 0>
-void TestMatMul8BitsTyped(float abs_error = 0.1f, float rel_error = 0.02f) {
+void TestMatMul8BitsTyped(float abs_error = 0.1f, float rel_error = 0.02f,
+                          std::optional<float> zp_abs_error = std::nullopt,
+                          std::optional<float> zp_rel_error = std::nullopt) {
   TestOptions8Bits base_opts{};
   base_opts.M = M, base_opts.N = N, base_opts.K = K;
   base_opts.block_size = block_size;
@@ -279,6 +299,10 @@ void TestMatMul8BitsTyped(float abs_error = 0.1f, float rel_error = 0.02f) {
 
   base_opts.output_abs_error = abs_error;
   base_opts.output_rel_error = rel_error;
+
+  TestOptions8Bits zp_base_opts = base_opts;
+  zp_base_opts.output_abs_error = zp_abs_error.value_or(abs_error);
+  zp_base_opts.output_rel_error = zp_rel_error.value_or(rel_error);
 
   {
     TestOptions8Bits opts = base_opts;
@@ -288,7 +312,7 @@ void TestMatMul8BitsTyped(float abs_error = 0.1f, float rel_error = 0.02f) {
   }
 
   {
-    TestOptions8Bits opts = base_opts;
+    TestOptions8Bits opts = zp_base_opts;
     opts.has_zero_point = true;
     opts.has_bias = false;
     RunTest8Bits<AType>(opts);
@@ -304,7 +328,7 @@ void TestMatMul8BitsTyped(float abs_error = 0.1f, float rel_error = 0.02f) {
   }
 
   {
-    TestOptions8Bits opts = base_opts;
+    TestOptions8Bits opts = zp_base_opts;
     opts.has_zero_point = true;
     opts.has_bias = true;
     RunTest8Bits<AType>(opts);
@@ -560,6 +584,48 @@ TEST(MatMulNBits, BFloat16_Int8_Gemm_Cuda) {
   TestMatMul8BitsTyped<BFloat16, 32, 512, 512, 64>(abs_error, rel_error);
   TestMatMul8BitsTyped<BFloat16, 1, 256, 256, 128>(abs_error, rel_error);
   TestMatMul8BitsTyped<BFloat16, 32, 1024, 1024, 128>(abs_error, rel_error);
+}
+
+// M >= ORT_FPA_INTB_DEQUANT_GEMM_MIN_M (the environment fallback of ep.cuda.fpa_intb_dequant_gemm_min_m; no zero
+// points, no bias) runs as one dequantize + cuBLAS GEMM instead of row-chunked CUTLASS launches; the zero-point variants
+// of the same shapes keep the CUTLASS path. The threshold is set explicitly so that the path is also covered on
+// architectures where it is off by default. M = 513 and 1000 are not multiples of any tile.
+TEST(MatMulNBits, Fp16_Int8_LargeM_DequantGemm_Cuda) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "Skipping 8-bit large-M MatMul tests on CUDA < 8.0";
+  }
+
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}, {"ORT_FPA_INTB_DEQUANT_GEMM_MIN_M", "512"}}};
+  constexpr float abs_error = 0.03f;
+  constexpr float rel_error = 0.01f;
+  TestMatMul8BitsTyped<MLFloat16, 512, 256, 512, 32>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 513, 512, 1024, 32>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1000, 128, 256, 32>(abs_error, rel_error);
+  // Group sizes other than 32 are only fpA_intB-eligible in non-compact builds.
+  TestMatMul8BitsTyped<MLFloat16, 600, 256, 512, 64>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 700, 256, 1024, 128>(abs_error, rel_error);
+}
+
+TEST(MatMulNBits, BFloat16_Int8_LargeM_DequantGemm_Cuda) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "Skipping 8-bit large-M MatMul tests on CUDA < 8.0";
+  }
+
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}, {"ORT_FPA_INTB_DEQUANT_GEMM_MIN_M", "512"}}};
+  constexpr float abs_error = 0.055f;
+  constexpr float rel_error = 0.02f;
+  // The zero-point variants run the CUTLASS path, which dequantizes in BF16 and is less accurate at K = 1024 than
+  // dequantize + cuBLAS; they use the tolerance of BFloat16_Int8_Gemm_Cuda.
+  constexpr float zp_abs_error = 0.5f;
+  constexpr float zp_rel_error = 0.05f;
+  TestMatMul8BitsTyped<BFloat16, 512, 256, 512, 32>(abs_error, rel_error, zp_abs_error, zp_rel_error);
+  TestMatMul8BitsTyped<BFloat16, 513, 512, 1024, 32>(abs_error, rel_error, zp_abs_error, zp_rel_error);
+  TestMatMul8BitsTyped<BFloat16, 1000, 128, 256, 32>(abs_error, rel_error, zp_abs_error, zp_rel_error);
+  // Group sizes other than 32 are only fpA_intB-eligible in non-compact builds.
+  TestMatMul8BitsTyped<BFloat16, 600, 256, 512, 64>(abs_error, rel_error, zp_abs_error, zp_rel_error);
+  TestMatMul8BitsTyped<BFloat16, 700, 256, 1024, 128>(abs_error, rel_error, zp_abs_error, zp_rel_error);
 }
 
 TEST(MatMulNBits, InvalidGIdx_OutOfRange_Cuda) {
@@ -1054,6 +1120,34 @@ TEST(MatMulNBits, BFloat16_Int8_SmallMFallback) {
   }
 
   TestInt8SmallMFallback<BFloat16>();
+}
+#endif
+
+#if defined(USE_WEBGPU)
+TEST(MatMulNBits, WebGpu_DP4A_KParallel_Int8) {
+  // Small-M K tails, both sides of the K-parallel threshold, and both output widths.
+  constexpr int64_t shapes[][3] = {
+      {3, 16, 1920}, {4, 32, 1920}, {4, 32, 2048}, {65, 16, 4096}, {65, 32, 4096}};
+  for (const auto& [m, n, k] : shapes) {
+    for (bool has_zero_point : {false, true}) {
+      TestOptions8Bits opts{};
+      opts.M = m;
+      opts.N = n;
+      opts.K = k;
+      opts.accuracy_level = 4;
+      opts.disable_cpu_ep_fallback = true;
+      opts.has_zero_point = has_zero_point;
+      opts.has_bias = true;
+      // Activation-quantization error for these Gaussian inputs grows with sqrt(K).
+      opts.output_abs_error = 0.05f * std::sqrt(static_cast<float>(k) / 256.0f);
+      opts.output_rel_error = 0.02f;
+      auto ep = DefaultWebGpuExecutionProvider();
+      if (!ep) GTEST_SKIP() << "WebGPU unavailable.";
+      std::vector<std::unique_ptr<IExecutionProvider>> eps;
+      eps.push_back(std::move(ep));
+      RunTest8Bits<float>(opts, std::move(eps));
+    }
+  }
 }
 #endif
 
