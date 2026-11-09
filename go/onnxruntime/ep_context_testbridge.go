@@ -151,11 +151,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"runtime/cgo"
 	"unsafe"
 )
 
 func nativeSourceBuffer(o *SessionOptions) (uintptr, []byte, error) {
-	if err := o.lockUsable("inspect native source buffer"); err != nil {
+	if err := o.lockReadable("inspect native source buffer"); err != nil {
 		return 0, nil, err
 	}
 	defer o.unlock()
@@ -363,4 +364,43 @@ func invokeNativeReader(o *SessionOptions, name string, mode, invalid int, threa
 		C.free(data)
 	}
 	return result, nil
+}
+
+// constructPausedSession keeps construction instrumentation in the orttest bridge.
+func constructPausedSession(opts *SessionOptions, fromBytes bool, hook func(string, *SessionOptions) error) (*Session, error) {
+	if fromBytes {
+		model, err := os.ReadFile(testdataPath("add_f32.onnx"))
+		if err != nil {
+			return nil, err
+		}
+		return newSessionFromBytes(model, opts, (*SessionOptions).cloneLocked, hook)
+	}
+	return newSession(testdataPath("add_f32.onnx"), opts, (*SessionOptions).cloneLocked, hook)
+}
+
+func syntheticReader(reader EPContextDataReader) (*epContextReaderRegistration, error) {
+	r := &epContextReaderRegistration{reader: reader, maxBytes: 3}
+	r.handle = cgo.NewHandle(r)
+	if err := checkStatus(C.ort_reader_state(C.uintptr_t(r.handle), &r.state)); err != nil {
+		r.handle.Delete()
+		return nil, err
+	}
+	r.ref = sessionResource{refs: 1, free: func() { r.handle.Delete(); C.free(r.state) }}
+	return r, nil
+}
+
+func invokeSyntheticReader(r *epContextReaderRegistration) error {
+	var allocator *C.OrtAllocator
+	if err := checkStatus(C.ort_GetAllocatorWithDefaultOptions(&allocator)); err != nil {
+		return err
+	}
+	name := C.CString("synthetic")
+	defer C.free(unsafe.Pointer(name))
+	var data unsafe.Pointer
+	var size C.size_t
+	err := checkStatus(C.ort_reader_trampoline(r.state, name, allocator, &data, &size))
+	if data != nil {
+		C.ort_AllocatorFree(allocator, data)
+	}
+	return err
 }

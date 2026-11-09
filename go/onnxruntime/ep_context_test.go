@@ -306,7 +306,7 @@ func TestSessionResourceLifetime(t *testing.T) {
 			})
 			session.handle = nil
 			session.Close()
-			finishSessionCreation(snapshot, nil)
+			finishSessionCreation(opts, snapshot, nil)
 			if result != nil || !errors.Is(err, sentinel) {
 				t.Fatalf("introspection: %v", err)
 			}

@@ -332,7 +332,7 @@ func TestEPRegistryLifetime(t *testing.T) {
 			o.Close()
 			t.Fatal(err)
 		}
-		defer finishSessionCreation(snapshot, nil)
+		defer finishSessionCreation(o, snapshot, nil)
 		// Close and Clone can acquire the source mutex after snapshot capture.
 		done := make(chan error, 1)
 		go func() {
@@ -468,7 +468,7 @@ func TestEPIntrospectionFailure(t *testing.T) {
 		// finalizeSessionWithIO consumed the native session; Close frees the old name cache.
 		session.handle = nil
 		session.Close()
-		finishSessionCreation(snapshot, nil)
+		finishSessionCreation(opts, snapshot, nil)
 		if result != nil || !errors.Is(err, sentinel) {
 			t.Fatalf("introspection error: %v", err)
 		}

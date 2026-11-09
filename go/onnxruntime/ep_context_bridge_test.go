@@ -157,6 +157,14 @@ func TestWeightlessSourceModelBufferNative(t *testing.T) {
 			t.Fatal("restore failure changed reader references")
 		}
 		assertNativeBuffer(t, clone, source, []byte{1, 2, 3, 4})
+		if err := clone.SetIntraOpNumThreads(1); err != nil {
+			t.Fatal(err)
+		}
+		session, err := constructBufferSession(clone, operation == "bytes")
+		if err != nil {
+			t.Fatal(err)
+		}
+		session.Close()
 	}
 	clone.Close()
 	if reader != nil {
@@ -576,7 +584,11 @@ func runReaderReentry(t *testing.T, library string, fromBytes bool, action strin
 		case "close":
 			err = opts.Close()
 		}
-		if err != nil {
+		if action == "buffer" || action == "clear" || action == "replace" {
+			if !errors.Is(err, errSessionOptionsBusy) {
+				return nil, fmt.Errorf("mutation: %v", err)
+			}
+		} else if err != nil {
 			return nil, err
 		}
 		if !bytes.Equal(bufferBytes(source), []byte{1, 2, 3, 4}) {
@@ -604,5 +616,349 @@ func runReaderReentry(t *testing.T, library string, fromBytes bool, action strin
 	}
 	if pp, cc, ss := epCounts(); pp != p || cc != c || ss != s {
 		t.Fatalf("re-entry leaked counts: %d %d %d; want %d %d %d", pp, cc, ss, p, c, s)
+	}
+}
+
+func TestCreationReservationRejectsMutation(t *testing.T) {
+	opts, err := NewSessionOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opts.Close()
+	snapshot, _, err := reserveSessionCreation(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer finishSessionCreation(opts, snapshot, nil)
+	if err := opts.SetIntraOpNumThreads(1); err == nil {
+		t.Fatal("setter succeeded during creation")
+	}
+}
+
+func TestConstructionAccess(t *testing.T) {
+	for _, fromBytes := range []bool{false, true} {
+		for _, closeSource := range []bool{false, true} {
+			t.Run(fmt.Sprintf("bytes=%t/close=%t", fromBytes, closeSource), func(t *testing.T) {
+				p, c, s := epCounts()
+				opts, err := NewSessionOptions()
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer opts.Close()
+				if err := opts.AddConfigEntry("test.key", "value"); err != nil {
+					t.Fatal(err)
+				}
+				freed := 0
+				reader, err := syntheticReader(func(string) ([]byte, error) {
+					check := func() error {
+						if err := opts.SetIntraOpNumThreads(1); !errors.Is(err, errSessionOptionsBusy) {
+							return fmt.Errorf("callback setter: %v", err)
+						}
+						_, err := opts.HasSessionConfigEntry("test.key")
+						return err
+					}
+					if err := check(); err != nil {
+						return nil, err
+					}
+					done := make(chan error, 1)
+					go func() { done <- check() }()
+					if err := <-done; err != nil {
+						return nil, err
+					}
+					return []byte("abc"), nil
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				free := reader.ref.free
+				reader.ref.free = func() {
+					if opts.handle != nil {
+						t.Error("resources released before native options")
+					}
+					freed++
+					free()
+				}
+				opts.resources.reader = reader
+				opts.mu.Lock()
+				mu.Lock()
+				opts.protectLocked()
+				mu.Unlock()
+				opts.mu.Unlock()
+				entered, release := make(chan struct{}), make(chan struct{})
+				var once sync.Once
+				unblock := func() { once.Do(func() { close(release) }) }
+				defer unblock()
+				type result struct {
+					session *Session
+					err     error
+				}
+				done := make(chan result, 1)
+				go func() {
+					session, err := constructPausedSession(opts, fromBytes, func(stage string, _ *SessionOptions) error {
+						if stage == "native" {
+							close(entered)
+							<-release
+						}
+						return nil
+					})
+					done <- result{session, err}
+				}()
+				<-entered
+				if err := opts.SetIntraOpNumThreads(1); !errors.Is(err, errSessionOptionsBusy) {
+					t.Errorf("setter: %v", err)
+				}
+				if _, err := opts.GetSessionConfigEntry("test.key"); err != nil {
+					t.Error(err)
+				}
+				if APIVersion() >= 27 {
+					if _, err := opts.GetExecutionMode(); err != nil {
+						t.Error(err)
+					}
+					if _, err := opts.IsMemPatternEnabled(); err != nil {
+						t.Error(err)
+					}
+				}
+				clone, err := opts.Clone()
+				if err != nil {
+					t.Error(err)
+				} else {
+					clone.Close()
+				}
+				if err := invokeSyntheticReader(reader); err != nil {
+					t.Error(err)
+				}
+				if closeSource {
+					if err := opts.Close(); err != nil {
+						t.Error(err)
+					}
+					if err := opts.Close(); err != nil {
+						t.Error(err)
+					}
+					if _, err := opts.Clone(); err == nil || !strings.Contains(err.Error(), "closed") {
+						t.Errorf("clone after close: %v", err)
+					}
+					if err := opts.SetIntraOpNumThreads(1); err == nil || !strings.Contains(err.Error(), "closed") {
+						t.Errorf("setter after close: %v", err)
+					}
+					if opts.handle == nil || freed != 0 || !opts.protected || resourceRefCount(&reader.ref) != 2 {
+						t.Error("premature release")
+					}
+				}
+				unblock()
+				got := <-done
+				if got.err != nil {
+					t.Fatal(got.err)
+				}
+				if closeSource {
+					if opts.handle != nil || opts.protected || resourceRefCount(&reader.ref) != 1 {
+						t.Error("deferred options release")
+					}
+				} else if err := opts.SetIntraOpNumThreads(1); err != nil {
+					t.Error(err)
+				}
+				got.session.Close()
+				opts.Close()
+				opts.Close()
+				if freed != 1 || resourceRefCount(&reader.ref) != 0 {
+					t.Errorf("resource release: %d", freed)
+				}
+				if pp, cc, ss := epCounts(); pp != p || cc != c || ss != s {
+					t.Errorf("counters: %d/%d/%d", pp, cc, ss)
+				}
+			})
+		}
+	}
+}
+
+func TestConstructionGateAndFailures(t *testing.T) {
+	for _, fromBytes := range []bool{false, true} {
+		for _, failure := range []string{"", "clone", "native", "inspect"} {
+			t.Run(fmt.Sprintf("bytes=%t/failure=%s", fromBytes, failure), func(t *testing.T) {
+				opts, err := NewSessionOptions()
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer opts.Close()
+				p, c, s := epCounts()
+				sentinel := errors.New("injected creation failure")
+				entered, release := make(chan struct{}), make(chan struct{})
+				var once sync.Once
+				unblock := func() { once.Do(func() { close(release) }) }
+				defer unblock()
+				first := make(chan error, 1)
+				go func() {
+					if failure == "clone" {
+						var err error
+						clone := func(*SessionOptions) (*SessionOptions, error) { return nil, sentinel }
+						if fromBytes {
+							_, err = newSessionFromBytes([]byte{1}, opts, clone)
+						} else {
+							_, err = newSession(testdataPath("add_f32.onnx"), opts, clone)
+						}
+						first <- err
+						close(entered)
+						return
+					}
+					session, err := constructPausedSession(opts, fromBytes, func(stage string, _ *SessionOptions) error {
+						if stage == "native" {
+							close(entered)
+							<-release
+						}
+						if stage == failure {
+							return sentinel
+						}
+						return nil
+					})
+					if session != nil {
+						session.Close()
+					}
+					first <- err
+				}()
+				<-entered
+				if failure != "clone" {
+					waiting := make(chan struct{})
+					second := make(chan error, 1)
+					go func() {
+						session, err := constructPausedSession(opts, fromBytes, func(stage string, _ *SessionOptions) error {
+							if stage == "gate" {
+								close(waiting)
+							}
+							return nil
+						})
+						if session != nil {
+							session.Close()
+						}
+						second <- err
+					}()
+					<-waiting
+					if opts.creationMu.TryLock() {
+						opts.creationMu.Unlock()
+						t.Error("construction gate not held")
+					}
+					select {
+					case err := <-second:
+						t.Fatalf("second constructor escaped gate: %v", err)
+					default:
+					}
+					unblock()
+					if err := <-second; err != nil {
+						t.Error(err)
+					}
+				}
+				err = <-first
+				if failure == "" && err != nil {
+					t.Error(err)
+				}
+				if failure != "" && !errors.Is(err, sentinel) {
+					t.Errorf("injected failure: %v", err)
+				}
+				if err := opts.SetIntraOpNumThreads(1); err != nil {
+					t.Error(err)
+				}
+				next, err := NewSession(testdataPath("add_f32.onnx"), opts)
+				if err != nil {
+					t.Fatal(err)
+				}
+				next.Close()
+				if pp, cc, ss := epCounts(); pp != p || cc != c || ss != s {
+					t.Error("unbalanced counters")
+				}
+			})
+		}
+	}
+}
+
+func TestConstructionNilOptions(t *testing.T) {
+	for _, fromBytes := range []bool{false, true} {
+		entered := make(chan *SessionOptions)
+		release := make(chan struct{})
+		done := make(chan error, 1)
+		go func() {
+			session, err := constructPausedSession(nil, fromBytes, func(stage string, o *SessionOptions) error {
+				if stage == "native" {
+					entered <- o
+					<-release
+				}
+				return nil
+			})
+			if session != nil {
+				session.Close()
+			}
+			done <- err
+		}()
+		source := <-entered
+		if err := source.SetIntraOpNumThreads(1); !errors.Is(err, errSessionOptionsBusy) {
+			t.Errorf("nil options reservation: %v", err)
+		}
+		close(release)
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+		if source.handle != nil || source.creating {
+			t.Fatal("default options leaked")
+		}
+	}
+}
+
+func TestConstructionCloseOnFailure(t *testing.T) {
+	for _, fromBytes := range []bool{false, true} {
+		for _, failure := range []string{"native", "inspect"} {
+			t.Run(fmt.Sprintf("bytes=%t/%s", fromBytes, failure), func(t *testing.T) {
+				p, c, s := epCounts()
+				opts, err := NewSessionOptions()
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer opts.Close()
+				freed := 0
+				reader, err := syntheticReader(func(string) ([]byte, error) { return nil, nil })
+				if err != nil {
+					t.Fatal(err)
+				}
+				free := reader.ref.free
+				reader.ref.free = func() {
+					if opts.handle != nil {
+						t.Error("resources released before native options")
+					}
+					freed++
+					free()
+				}
+				opts.resources.reader = reader
+				sentinel := errors.New("injected failure after close")
+				entered, release := make(chan struct{}), make(chan struct{})
+				done := make(chan error, 1)
+				go func() {
+					_, err := constructPausedSession(opts, fromBytes, func(stage string, _ *SessionOptions) error {
+						if stage == "native" {
+							close(entered)
+							<-release
+						}
+						if stage == failure {
+							return sentinel
+						}
+						return nil
+					})
+					done <- err
+				}()
+				<-entered
+				if err := opts.Close(); err != nil {
+					t.Error(err)
+				}
+				if opts.handle == nil || freed != 0 {
+					t.Error("premature release")
+				}
+				close(release)
+				if err := <-done; !errors.Is(err, sentinel) {
+					t.Error(err)
+				}
+				opts.Close()
+				if opts.handle != nil || freed != 1 || resourceRefCount(&reader.ref) != 0 {
+					t.Fatal("failed creation leaked source")
+				}
+				if pp, cc, ss := epCounts(); pp != p || cc != c || ss != s {
+					t.Fatal("failed creation leaked counters")
+				}
+			})
+		}
 	}
 }

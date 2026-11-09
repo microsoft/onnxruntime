@@ -143,11 +143,11 @@ func restoreSourceModelBuffer(o *SessionOptions) error {
 
 // EPContextDataReader reads a logical UTF-8 data name, without filesystem fallback.
 // The reader must bound its own I/O and allocations and support concurrent calls.
-// During construction it may call getters, Clone, setters, Clear or Close on the
-// originating options, directly or through another goroutine. Constructors capture
-// options before calling the reader; later changes affect later constructions.
-// Readers must not construct sessions recursively, call Shutdown, mutate the
-// plugin registry or wait for completion of the current construction.
+// Readers may use independent state/options and originating-options getters or Clone.
+// Originating-options mutations return busy during construction; Close marks them
+// closed and defers release. Readers must not construct sessions recursively, call
+// Shutdown, mutate the plugin registry or wait for current construction, including
+// indirect waits through another goroutine. No options/package lock spans a reader.
 type EPContextDataReader func(name string) ([]byte, error)
 
 type epContextReaderRegistration struct {

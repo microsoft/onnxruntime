@@ -106,3 +106,5 @@ func rejectNUL(value, context string) error {
 
 var errNotInitialized = fmt.Errorf("ort: not initialized; call Init() first")
 var errShutdown = fmt.Errorf("ort: already shut down")
+
+var errSessionOptionsBusy = fmt.Errorf("ort: session options are in use by session creation")
