@@ -65,6 +65,8 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/qdwconv_kernelsize.cpp
   ${MLAS_SRC_DIR}/qnbitgemm.h
   ${MLAS_SRC_DIR}/qnbitgemm.cpp
+  ${MLAS_SRC_DIR}/t8gemm.cpp
+  ${MLAS_SRC_DIR}/t8gemm_kernel.h
   ${MLAS_SRC_DIR}/qlutgemm.h
   ${MLAS_SRC_DIR}/qlutgemm.cpp
   ${MLAS_SRC_DIR}/sqnbitgemm_q8_block.h
@@ -87,6 +89,7 @@ target_sources(onnxruntime_mlas PRIVATE
   ${MLAS_INC_DIR}/mlas_gemm_postprocessor.h
   ${MLAS_INC_DIR}/mlas_q4.h
   ${MLAS_INC_DIR}/mlas_qnbit.h
+  ${MLAS_INC_DIR}/mlas_t8.h
   ${MLAS_INC_DIR}/mlas_qkv_quant.h
   ${MLAS_INC_DIR}/mlas.h
 )
@@ -353,6 +356,7 @@ function(setup_mlas_source_for_windows)
     set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "/arch:AVX2")
 
     set_source_files_properties(${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp PROPERTIES COMPILE_FLAGS "/arch:AVX2")
+    set_source_files_properties(${MLAS_SRC_DIR}/t8gemm_kernel_avx2.cpp PROPERTIES COMPILE_FLAGS "/arch:AVX2")
 
     set(mlas_platform_srcs_avx512
       ${MLAS_SRC_DIR}/intrinsics/avx512/gelu_avx512f.cpp
@@ -360,6 +364,7 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
       ${MLAS_SRC_DIR}/intrinsics/avx512/sconv_nchw_depthwise_multiplier_greater_than_1_avx512f.cpp
       ${MLAS_SRC_DIR}/linear_attention_kernel_avx512f.cpp
+      ${MLAS_SRC_DIR}/t8gemm_kernel_avx512f.cpp
       ${MLAS_SRC_DIR}/intrinsics/avx512/reorder_avx512f.cpp
       ${MLAS_SRC_DIR}/intrinsics/avx512/sconv_depthwise_avx512f.cpp
     )
@@ -371,6 +376,7 @@ function(setup_mlas_source_for_windows)
       ${mlas_platform_srcs_avx}
       ${mlas_platform_srcs_avx2}
       ${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp
+      ${MLAS_SRC_DIR}/t8gemm_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.h
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
@@ -1033,6 +1039,7 @@ else()
           ${MLAS_SRC_DIR}/qkv_quant_common.h
           ${MLAS_SRC_DIR}/qkv_quant_kernel_avx2.cpp
           ${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp
+          ${MLAS_SRC_DIR}/t8gemm_kernel_avx2.cpp
         )
         if(CMAKE_CXX_COMPILER_VERSION GREATER_EQUAL 13.1 AND NOT(APPLE))
           set(mlas_platform_srcs_avx2
@@ -1105,6 +1112,7 @@ else()
           ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
           ${MLAS_SRC_DIR}/intrinsics/avx512/sconv_nchw_depthwise_multiplier_greater_than_1_avx512f.cpp
           ${MLAS_SRC_DIR}/linear_attention_kernel_avx512f.cpp
+          ${MLAS_SRC_DIR}/t8gemm_kernel_avx512f.cpp
           ${MLAS_SRC_DIR}/intrinsics/avx512/reorder_avx512f.cpp
           ${MLAS_SRC_DIR}/intrinsics/avx512/sconv_depthwise_avx512f.cpp
         )
