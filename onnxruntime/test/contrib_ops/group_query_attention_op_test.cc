@@ -847,9 +847,12 @@ static void RunBidirectionalWindowTest(int sequence_length, int left_window, int
             s < valid ? static_cast<float>(s + h) / 100.0f : 999.0f;
       }
     }
-    for (int s = 0; s < valid; ++s) {
+    for (int s = 0; s < sequence_length; ++s) {
       const int first = left_window < 0 ? 0 : std::max(0, s + 1 - left_window);
       const int last = right_window < 0 ? valid : std::min(valid, s + right_window + 1);
+      if (last <= first) {
+        continue;
+      }
       for (int n = 0; n < num_heads; ++n) {
         for (int h = 0; h < head_size; ++h) {
           expected[((b * sequence_length + s) * num_heads + n) * head_size + h] =

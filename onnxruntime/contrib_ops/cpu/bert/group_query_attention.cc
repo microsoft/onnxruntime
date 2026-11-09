@@ -660,8 +660,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
         args.num_heads = num_heads_;
         args.kv_num_heads = kv_num_heads_;
         args.sequence_length = sequence_length;
-        args.valid_query_length = seqlens_k->Data<int32_t>()[b] + 1;
-        args.total_seqlen = args.valid_query_length;
+        args.valid_query_length = sequence_length;
+        args.total_seqlen = seqlens_k->Data<int32_t>()[b] + 1;
         args.head_size = head_size;
         args.past_seqlen = 0;
         args.local_window_size = local_window_size_;
