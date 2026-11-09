@@ -24,6 +24,7 @@ namespace Dml
 
     void ExecutionContext::SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator)
     {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
         m_dmlRecorder.SetAllocator(allocator);
     }
 
@@ -36,6 +37,7 @@ namespace Dml
         D3D12_RESOURCE_STATES srcState,
         uint64_t byteCount)
     {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
         assert(!m_closed);
 
         SetCommandRecorder(&m_dmlRecorder);
@@ -74,6 +76,7 @@ namespace Dml
         ID3D12Resource* dstBuffer,
         gsl::span<const std::byte> pattern /* Data type agnostic value, treated as raw bits */)
     {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
         SetCommandRecorder(&m_dmlRecorder);
         m_dmlRecorder.FillBufferWithPattern(dstBuffer, pattern);
     }
@@ -84,6 +87,7 @@ namespace Dml
         _Out_ uint64_t* completionValue
         )
     {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
         assert(!m_closed);
 
         SetCommandRecorder(&m_dmlRecorder);
@@ -95,6 +99,7 @@ namespace Dml
         const DML_BINDING_DESC& persistentResourceBinding,
         const DML_BINDING_DESC& inputArrayBinding)
     {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
         assert(!m_closed);
         SetCommandRecorder(&m_dmlRecorder);
 
@@ -107,6 +112,7 @@ namespace Dml
         gsl::span<const DML_BINDING_DESC> inputBindings,
         gsl::span<const DML_BINDING_DESC> outputBindings)
     {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
         assert(!m_closed);
         SetCommandRecorder(&m_dmlRecorder);
 
@@ -115,6 +121,7 @@ namespace Dml
 
     void ExecutionContext::AddUAVBarrier()
     {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
         assert(!m_closed);
         SetCommandRecorder(&m_dmlRecorder);
 
@@ -123,6 +130,7 @@ namespace Dml
 
     void ExecutionContext::ResourceBarrier(gsl::span<const D3D12_RESOURCE_BARRIER> barriers)
     {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
         assert(!m_closed);
         SetCommandRecorder(&m_dmlRecorder);
 
@@ -131,6 +139,7 @@ namespace Dml
 
     void ExecutionContext::GetCommandListForRecordingAndInvalidateState(ID3D12GraphicsCommandList** commandList)
     {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
         assert(!m_closed);
         SetCommandRecorder(&m_dmlRecorder);
 
@@ -142,6 +151,7 @@ namespace Dml
 
     void ExecutionContext::SetCommandRecorder(ICommandRecorder* newRecorder)
     {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
         assert(!m_closed);
 
         // If changing which recorder is the current one, we need to flush the old one first. This is to ensure correct
@@ -160,6 +170,7 @@ namespace Dml
 
     void ExecutionContext::Flush()
     {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
         assert(!m_closed);
 
         if (!m_currentRecorder || !m_currentRecorder->HasUnsubmittedWork())
@@ -180,6 +191,7 @@ namespace Dml
 
     void ExecutionContext::QueueReference(IUnknown* object)
     {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
         assert(!m_closed);
         // If something has been recorded into a command list but not submitted yet, it means that the *next* fence
         // value is the one to signal completion.
@@ -189,6 +201,7 @@ namespace Dml
 
     void ExecutionContext::Close()
     {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
         assert(!m_closed);
 
         // Discard unflushed work and clear queued references.  This prevents the circular reference:
@@ -206,6 +219,7 @@ namespace Dml
 
     GpuEvent ExecutionContext::GetCurrentCompletionEvent()
     {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
         assert(!m_closed);
 
         GpuEvent event = m_queue->GetCurrentCompletionEvent();
@@ -223,6 +237,7 @@ namespace Dml
 
     void ExecutionContext::ReleaseCompletedReferences()
     {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
         assert(!m_closed);
         m_queue->ReleaseCompletedReferences();
     }
