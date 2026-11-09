@@ -15,6 +15,7 @@
 
 #include <unsupported/Eigen/SpecialFunctions>
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <optional>
 #include <vector>
@@ -84,6 +85,43 @@ Status RunGqaRotaryEmbedding(ThreadPool* tp, rotary_embedding_helper::RotaryPara
                                               cos_cache, sin_cache, output + offset, interleaved));
   }
   return Status::OK();
+}
+
+void NormalizeGqaInput(OrtValue& input, const Tensor& weight, float epsilon,
+                       const int32_t* query_seqlens, ThreadPool* tp) {
+  Tensor& tensor = *input.GetMutable<Tensor>();
+  const auto& shape = tensor.Shape();
+  const size_t head_size = static_cast<size_t>(shape[3]);
+  const size_t sequence_length = static_cast<size_t>(shape[2]);
+  if (sequence_length == 0) {
+    return;
+  }
+  const size_t batch_rows = SafeInt<size_t>(shape[1]) * sequence_length;
+  float* data = tensor.MutableData<float>();
+  const float* scale = weight.Data<float>();
+  ThreadPool::TryParallelFor(tp, SafeInt<ptrdiff_t>(shape.Size() / head_size),
+                             static_cast<double>(head_size) * 10,
+                             [&](ptrdiff_t begin, ptrdiff_t end) {
+                               for (ptrdiff_t i = begin; i < end; ++i) {
+                                 const size_t row_index = static_cast<size_t>(i);
+                                 if (query_seqlens != nullptr &&
+                                     row_index % sequence_length >= static_cast<size_t>(query_seqlens[row_index / batch_rows])) {
+                                   continue;
+                                 }
+                                 float* row = data + row_index * head_size;
+                                 if (!MlasLayerNormF32(row, scale, nullptr, row, nullptr, nullptr,
+                                                       head_size, epsilon, true)) {
+                                   float sum_sq = 0.0f;
+                                   for (size_t d = 0; d < head_size; ++d) {
+                                     sum_sq += row[d] * row[d];
+                                   }
+                                   const float rms = std::sqrt(sum_sq / static_cast<float>(head_size) + epsilon);
+                                   for (size_t d = 0; d < head_size; ++d) {
+                                     row[d] = row[d] / rms * scale[d];
+                                   }
+                                 }
+                               }
+                             });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -271,6 +309,9 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 template <typename T>
 GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
     : OpKernel(info), GQAAttentionBase(info, true) {
+  qk_norm_epsilon_ = info.GetAttrOrDefault<float>("qk_norm_epsilon", 1e-6f);
+  q_norm_epsilon_ = info.GetAttrOrDefault<float>("q_norm_epsilon", qk_norm_epsilon_);
+  k_norm_epsilon_ = info.GetAttrOrDefault<float>("k_norm_epsilon", qk_norm_epsilon_);
   sliding_window_cache_ = info.GetAttrOrDefault<int64_t>("sliding_window_cache", 0) == 1;
   ORT_ENFORCE(!sliding_window_cache_ || local_window_size_ > 0,
               "GroupQueryAttention (CPU): sliding_window_cache=1 requires local_window_size > 0.");
@@ -312,16 +353,19 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                   "kv_cache_bit_width must be 0 when quantization is disabled, got ", kv_cache_bit_width_);
   }
 
-  // q_norm_weight (input 14) / k_norm_weight (input 15) are populated by the CUDA/WebGPU
-  // GroupQueryAttentionPreNormFusion optimizer pass. The CPU kernel does not implement
-  // the fused per-head Q/K RMS normalization prologue, so reject the node if either input
-  // is present rather than silently dropping the normalization.
-  if ((context->InputCount() > 14 && context->Input<Tensor>(14) != nullptr) ||
-      (context->InputCount() > 15 && context->Input<Tensor>(15) != nullptr)) {
-    return ORT_MAKE_STATUS(
-        ONNXRUNTIME, INVALID_ARGUMENT,
-        "GroupQueryAttention (CPU): q_norm_weight / k_norm_weight inputs are not supported. "
-        "The per-head Q/K RMS normalization prologue is implemented only on the CUDA and WebGPU EPs.");
+  const Tensor* q_norm_weight = context->InputCount() > 14 ? context->Input<Tensor>(14) : nullptr;
+  const Tensor* k_norm_weight = context->InputCount() > 15 ? context->Input<Tensor>(15) : nullptr;
+  ORT_RETURN_IF((q_norm_weight == nullptr) != (k_norm_weight == nullptr),
+                "GroupQueryAttention (CPU): q_norm_weight and k_norm_weight must be provided together.");
+  if (q_norm_weight != nullptr) {
+    ORT_RETURN_IF_NOT((std::is_same_v<T, float>),
+                      "GroupQueryAttention (CPU): Q/K RMS normalization requires float32 inputs.");
+    ORT_RETURN_IF_NOT(std::isfinite(qk_norm_epsilon_) && qk_norm_epsilon_ > 0.0f,
+                      "GroupQueryAttention (CPU): qk_norm_epsilon must be finite and positive.");
+    ORT_RETURN_IF_NOT(std::isfinite(q_norm_epsilon_) && q_norm_epsilon_ > 0.0f,
+                      "GroupQueryAttention (CPU): q_norm_epsilon must be finite and positive.");
+    ORT_RETURN_IF_NOT(std::isfinite(k_norm_epsilon_) && k_norm_epsilon_ > 0.0f,
+                      "GroupQueryAttention (CPU): k_norm_epsilon must be finite and positive.");
   }
 
   const Tensor* query_seqlens = context->InputCount() > 16 ? context->Input<Tensor>(16) : nullptr;
@@ -351,6 +395,18 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                                                                 sliding_window_cache_,
                                                                 local_window_size_,
                                                                 query_seqlens));
+
+  if (q_norm_weight != nullptr) {
+    ORT_RETURN_IF(parameters.is_packed_qkv,
+                  "GroupQueryAttention (CPU): Q/K RMS normalization requires unpacked Q/K/V inputs.");
+    ORT_RETURN_IF_NOT(parameters.head_size > 0 &&
+                          q_norm_weight->Shape().NumDimensions() == 1 &&
+                          q_norm_weight->Shape()[0] == parameters.head_size,
+                      "GroupQueryAttention (CPU): q_norm_weight must have shape [head_size].");
+    ORT_RETURN_IF_NOT(k_norm_weight->Shape().NumDimensions() == 1 &&
+                          k_norm_weight->Shape()[0] == parameters.head_size,
+                      "GroupQueryAttention (CPU): k_norm_weight must have shape [head_size].");
+  }
 
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckCustomAttentionInputs(position_ids,
                                                                                attention_bias,
@@ -490,6 +546,13 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
         allocator, batch_size, kv_num_heads_, kv_sequence_length, head_size, key, K, query_seqlens_data, tp));
     ORT_RETURN_IF_ERROR(TransposeGqaInput<T>(
         allocator, batch_size, kv_num_heads_, kv_sequence_length, head_size, value, V, query_seqlens_data, tp));
+  }
+
+  if constexpr (std::is_same_v<T, float>) {
+    if (q_norm_weight != nullptr) {
+      NormalizeGqaInput(Q, *q_norm_weight, q_norm_epsilon_, query_seqlens_data, tp);
+      NormalizeGqaInput(K, *k_norm_weight, k_norm_epsilon_, query_seqlens_data, tp);
+    }
   }
 
   OrtValue RotaryQKV;

@@ -241,6 +241,13 @@ Status GroupQueryAttentionPreNormFusion::ApplyImpl(Graph& graph,
     if (node.InputDefs().size() < 4 || !HasInput(node, 0) || !HasInput(node, 1) || !HasInput(node, 2)) {
       continue;
     }
+    if (node.GetExecutionProviderType() == kCpuExecutionProvider) {
+      const auto* type = node.InputDefs()[0]->TypeAsProto();
+      if (type == nullptr || !type->has_tensor_type() ||
+          type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+        continue;
+      }
+    }
 
     // The fused decode prologue only applies when rotary embedding is enabled (Qwen3-style
     // configuration). If the GQA node has do_rotary=0 the kernel will reject the rewritten

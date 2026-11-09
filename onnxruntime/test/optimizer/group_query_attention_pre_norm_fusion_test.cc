@@ -74,22 +74,23 @@ struct BuildOptions {
   bool with_query_seqlens = false;
 };
 
+template <typename T = MLFloat16>
 void BuildQwenQkPostNormPattern(ModelTestBuilder& builder, const BuildOptions& opts) {
   const int64_t seq = opts.sequence_length;
 
   // Projection inputs (post linear projection, pre norm).
-  NodeArg* q_proj = builder.MakeInput<MLFloat16>(
-      std::vector<int64_t>{kBatch, seq, kQHidden}, MLFloat16(-opts.projection_scale), MLFloat16(opts.projection_scale));
-  NodeArg* k_proj = builder.MakeInput<MLFloat16>(
-      std::vector<int64_t>{kBatch, seq, kKvHidden}, MLFloat16(-opts.projection_scale), MLFloat16(opts.projection_scale));
-  NodeArg* v_proj = builder.MakeInput<MLFloat16>(
-      std::vector<int64_t>{kBatch, seq, kKvHidden}, MLFloat16(-1.0f), MLFloat16(1.0f));
+  NodeArg* q_proj = builder.MakeInput<T>(
+      std::vector<int64_t>{kBatch, seq, kQHidden}, T(-opts.projection_scale), T(opts.projection_scale));
+  NodeArg* k_proj = builder.MakeInput<T>(
+      std::vector<int64_t>{kBatch, seq, kKvHidden}, T(-opts.projection_scale), T(opts.projection_scale));
+  NodeArg* v_proj = builder.MakeInput<T>(
+      std::vector<int64_t>{kBatch, seq, kKvHidden}, T(-1.0f), T(1.0f));
 
   // GQA cache + control inputs.
-  NodeArg* past_key = builder.MakeInput<MLFloat16>(
-      std::vector<int64_t>{kBatch, kKvNumHeads, kMaxSeq, kHeadSize}, MLFloat16(0.0f), MLFloat16(0.0f));
-  NodeArg* past_value = builder.MakeInput<MLFloat16>(
-      std::vector<int64_t>{kBatch, kKvNumHeads, kMaxSeq, kHeadSize}, MLFloat16(0.0f), MLFloat16(0.0f));
+  NodeArg* past_key = builder.MakeInput<T>(
+      std::vector<int64_t>{kBatch, kKvNumHeads, kMaxSeq, kHeadSize}, T(0.0f), T(0.0f));
+  NodeArg* past_value = builder.MakeInput<T>(
+      std::vector<int64_t>{kBatch, kKvNumHeads, kMaxSeq, kHeadSize}, T(0.0f), T(0.0f));
   // Note: ModelTestBuilder::MakeInput<int>(shape, min, max) calls Uniform(min, max - 1)
   // internally, which asserts on min == max. Use the explicit-data overload instead.
   NodeArg* seqlens_k = builder.MakeInput<int32_t>(std::vector<int64_t>{kBatch}, std::vector<int32_t>{opts.seqlens_k});
@@ -99,11 +100,11 @@ void BuildQwenQkPostNormPattern(ModelTestBuilder& builder, const BuildOptions& o
   // Rotary caches + position ids (slots 7/8/9). Keep these explicitly wired so
   // runtime parity tests execute a valid do_rotary=1 configuration.
   const int64_t half_rotary = kHeadSize / 2;
-  std::vector<MLFloat16> cos_cache_data(static_cast<size_t>(kMaxSeq * half_rotary), MLFloat16(1.0f));
-  std::vector<MLFloat16> sin_cache_data(static_cast<size_t>(kMaxSeq * half_rotary), MLFloat16(0.0f));
-  NodeArg* cos_cache = builder.MakeInput<MLFloat16>(
+  std::vector<T> cos_cache_data(static_cast<size_t>(kMaxSeq * half_rotary), T(1.0f));
+  std::vector<T> sin_cache_data(static_cast<size_t>(kMaxSeq * half_rotary), T(0.0f));
+  NodeArg* cos_cache = builder.MakeInput<T>(
       std::vector<int64_t>{kMaxSeq, half_rotary}, cos_cache_data);
-  NodeArg* sin_cache = builder.MakeInput<MLFloat16>(
+  NodeArg* sin_cache = builder.MakeInput<T>(
       std::vector<int64_t>{kMaxSeq, half_rotary}, sin_cache_data);
 
   std::vector<int64_t> position_ids_data(static_cast<size_t>(kBatch * seq));
@@ -117,8 +118,8 @@ void BuildQwenQkPostNormPattern(ModelTestBuilder& builder, const BuildOptions& o
   // Norm weight initializers: [head_size]. (Or non-1D when forcing a shape mismatch.)
   std::vector<int64_t> q_norm_weight_shape =
       opts.break_q_norm_weight_shape ? std::vector<int64_t>{1, kHeadSize} : std::vector<int64_t>{kHeadSize};
-  NodeArg* q_norm_weight = builder.MakeInitializer<MLFloat16>(q_norm_weight_shape, MLFloat16(1.0f), MLFloat16(1.0f));
-  NodeArg* k_norm_weight = builder.MakeInitializer<MLFloat16>({kHeadSize}, MLFloat16(1.0f), MLFloat16(1.0f));
+  NodeArg* q_norm_weight = builder.MakeInitializer<T>(q_norm_weight_shape, T(1.0f), T(1.0f));
+  NodeArg* k_norm_weight = builder.MakeInitializer<T>({kHeadSize}, T(1.0f), T(1.0f));
 
   // Reshape "shape" initializers.
   NodeArg* reshape_to_per_head_q = builder.MakeInitializer<int64_t>({4}, {kBatch, seq, kNumHeads, kHeadSize});
@@ -129,11 +130,11 @@ void BuildQwenQkPostNormPattern(ModelTestBuilder& builder, const BuildOptions& o
   NodeArg* reshape_to_kv_hidden = builder.MakeInitializer<int64_t>({3}, {kBatch, seq, kKvHidden});
 
   // Q-side chain.
-  NodeArg* q_inner_reshape_out = builder.MakeIntermediate<MLFloat16>(
+  NodeArg* q_inner_reshape_out = builder.MakeIntermediate<T>(
       std::vector<int64_t>{kBatch, seq, kNumHeads, kHeadSize});
-  NodeArg* q_normed = builder.MakeIntermediate<MLFloat16>(
+  NodeArg* q_normed = builder.MakeIntermediate<T>(
       std::vector<int64_t>{kBatch, seq, kNumHeads, kHeadSize});
-  NodeArg* q_outer_reshape_out = builder.MakeIntermediate<MLFloat16>(
+  NodeArg* q_outer_reshape_out = builder.MakeIntermediate<T>(
       std::vector<int64_t>{kBatch, seq, kQHidden});
 
   Node& q_inner_reshape = builder.AddNode("Reshape", {q_proj, reshape_to_per_head_q}, {q_inner_reshape_out});
@@ -143,11 +144,11 @@ void BuildQwenQkPostNormPattern(ModelTestBuilder& builder, const BuildOptions& o
   Node& q_outer_reshape = builder.AddNode("Reshape", {q_normed, reshape_to_q_hidden}, {q_outer_reshape_out});
 
   // K-side chain.
-  NodeArg* k_inner_reshape_out = builder.MakeIntermediate<MLFloat16>(
+  NodeArg* k_inner_reshape_out = builder.MakeIntermediate<T>(
       std::vector<int64_t>{kBatch, seq, kKvNumHeads, k_inner_last_dim});
-  NodeArg* k_normed = builder.MakeIntermediate<MLFloat16>(
+  NodeArg* k_normed = builder.MakeIntermediate<T>(
       std::vector<int64_t>{kBatch, seq, kKvNumHeads, k_inner_last_dim});
-  NodeArg* k_outer_reshape_out = builder.MakeIntermediate<MLFloat16>(
+  NodeArg* k_outer_reshape_out = builder.MakeIntermediate<T>(
       std::vector<int64_t>{kBatch, seq, kKvHidden});
 
   Node& k_inner_reshape = builder.AddNode("Reshape", {k_proj, reshape_to_per_head_k}, {k_inner_reshape_out});
@@ -157,10 +158,10 @@ void BuildQwenQkPostNormPattern(ModelTestBuilder& builder, const BuildOptions& o
   Node& k_outer_reshape = builder.AddNode("Reshape", {k_normed, reshape_to_kv_hidden}, {k_outer_reshape_out});
 
   // GQA outputs.
-  NodeArg* gqa_out = builder.MakeOutput<MLFloat16>(std::vector<int64_t>{kBatch, seq, kQHidden});
-  NodeArg* present_key = builder.MakeOutput<MLFloat16>(
+  NodeArg* gqa_out = builder.MakeOutput<T>(std::vector<int64_t>{kBatch, seq, kQHidden});
+  NodeArg* present_key = builder.MakeOutput<T>(
       std::vector<int64_t>{kBatch, kKvNumHeads, kMaxSeq, kHeadSize});
-  NodeArg* present_value = builder.MakeOutput<MLFloat16>(
+  NodeArg* present_value = builder.MakeOutput<T>(
       std::vector<int64_t>{kBatch, kKvNumHeads, kMaxSeq, kHeadSize});
 
   // Build the GQA input list. The packed_qkv variant drops K (slot 1) and V (slot 2).
@@ -184,7 +185,7 @@ void BuildQwenQkPostNormPattern(ModelTestBuilder& builder, const BuildOptions& o
   if (opts.pre_fused) {
     // Place a real norm weight in slot 14 to emulate an already-fused node.
     NodeArg* preexisting_q_norm =
-        builder.MakeInitializer<MLFloat16>({kHeadSize}, MLFloat16(1.0f), MLFloat16(1.0f));
+        builder.MakeInitializer<T>({kHeadSize}, T(1.0f), T(1.0f));
     gqa_inputs.push_back(preexisting_q_norm);
   }
 
@@ -582,8 +583,7 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionRejectsNon1DNor
 }
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionSkipsCpuEp) {
-  // Build the pattern but assign all nodes to CPU EP. The fusion is gated to CUDA/WebGPU only,
-  // so the graph must remain unfused.
+  // An explicitly GPU-only transformer must not modify CPU-assigned nodes.
   auto build = [](ModelTestBuilder& builder) {
     BuildQwenQkPostNormPattern(builder, BuildOptions{});
     for (auto& node : builder.graph_.Nodes()) {
@@ -592,6 +592,32 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionSkipsCpuEp) {
   };
   ASSERT_STATUS_OK(TestGraphTransformer(
       build, /*opset_version=*/21, *logger_, MakeCudaWebGpuTransformer(),
+      TransformerLevel::Level2, /*steps=*/1, nullptr, CheckUnfusedGraph));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionFusesCpuFloat32) {
+  auto build = [](ModelTestBuilder& builder) {
+    BuildQwenQkPostNormPattern<float>(builder, BuildOptions{});
+    for (auto& node : builder.graph_.Nodes()) {
+      const_cast<Node&>(node).SetExecutionProviderType(kCpuExecutionProvider);
+    }
+  };
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_,
+      std::make_unique<GroupQueryAttentionPreNormFusion>(InlinedHashSet<std::string_view>{kCpuExecutionProvider}),
+      TransformerLevel::Level2, /*steps=*/1, nullptr, CheckFusedGraph));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionSkipsCpuFloat16) {
+  auto build = [](ModelTestBuilder& builder) {
+    BuildQwenQkPostNormPattern(builder, BuildOptions{});
+    for (auto& node : builder.graph_.Nodes()) {
+      const_cast<Node&>(node).SetExecutionProviderType(kCpuExecutionProvider);
+    }
+  };
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_,
+      std::make_unique<GroupQueryAttentionPreNormFusion>(InlinedHashSet<std::string_view>{kCpuExecutionProvider}),
       TransformerLevel::Level2, /*steps=*/1, nullptr, CheckUnfusedGraph));
 }
 

@@ -20,6 +20,9 @@ class GroupQueryAttention final : public OpKernel, public GQAAttentionBase {
   // sliding_window_cache attribute: the past/present KV buffers are window-sized and the kernel
   // works in cache-relative coordinates, evicting from the front. Requires local_window_size_ > 0.
   bool sliding_window_cache_;
+  float qk_norm_epsilon_;
+  float q_norm_epsilon_;
+  float k_norm_epsilon_;
 };
 
 }  // namespace contrib

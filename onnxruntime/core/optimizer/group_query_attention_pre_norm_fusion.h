@@ -27,12 +27,11 @@ on inputs 0 (query) and 1 (key) of an unfused GroupQueryAttention node:
 
 When matched, the six Reshape/SLN nodes are removed and the pre-norm Q and K
 projections feed GQA directly. The kernel is responsible for applying the RMS
-norm internally (currently the CUDA and WebGPU EPs).
+norm internally (the CUDA and WebGPU EPs, and CPU with float32 unpacked Q/K/V).
 
 Only fires for execution providers passed in `compatible_execution_providers`.
-At present this fusion is registered for the CUDA and WebGPU EPs, because those
-kernels implement the in-kernel norm path. CPU and JSEP GroupQueryAttention
-kernels reject q_norm_weight / k_norm_weight inputs.
+This fusion is registered for the CPU, CUDA and WebGPU EPs. CPU fusion is gated
+to float32 inputs. JSEP GroupQueryAttention rejects these norm inputs.
 */
 class GroupQueryAttentionPreNormFusion : public GraphTransformer {
  public:

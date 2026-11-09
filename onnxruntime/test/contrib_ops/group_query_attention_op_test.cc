@@ -1485,9 +1485,15 @@ TEST(GroupQueryAttentionTest, QuerySeqlensNotImplemented_WebGPU) {
 }
 #endif
 
-// CPU GroupQueryAttention does not implement the CUDA/WebGPU fused Q/K RMS-norm prologue
-// inputs (q_norm_weight/k_norm_weight at indices 14/15). Ensure we reject these explicitly.
-TEST(GroupQueryAttentionTest, CpuRejectsQKNormWeightInputs) {
+template <typename T = float>
+static void RunCpuQKNormInputContractTest(
+    OpTester::ExpectResult expect, const std::string& expected_message = "",
+    bool include_q = true, bool include_k = true,
+    int q_size = 8, int k_size = 8,
+    std::optional<float> shared_epsilon = std::nullopt,
+    std::optional<float> q_epsilon = std::nullopt,
+    std::optional<float> k_epsilon = std::nullopt,
+    bool q_rank_two = false, bool packed = false) {
   constexpr int batch_size = 1;
   constexpr int sequence_length = 1;
   constexpr int num_heads = 1;
@@ -1499,42 +1505,90 @@ TEST(GroupQueryAttentionTest, CpuRejectsQKNormWeightInputs) {
   OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
   tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+  if (shared_epsilon) tester.AddAttribute<float>("qk_norm_epsilon", *shared_epsilon);
+  if (q_epsilon) tester.AddAttribute<float>("q_norm_epsilon", *q_epsilon);
+  if (k_epsilon) tester.AddAttribute<float>("k_norm_epsilon", *k_epsilon);
 
-  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size},
-                         std::vector<float>(batch_size * sequence_length * hidden_size, 0.1f));
-  tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size},
-                         std::vector<float>(batch_size * sequence_length * kv_hidden_size, 0.1f));
-  tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size},
-                         std::vector<float>(batch_size * sequence_length * kv_hidden_size, 0.1f));
+  const int query_hidden = packed ? hidden_size + 2 * kv_hidden_size : hidden_size;
+  tester.AddInput<T>("query", {batch_size, sequence_length, query_hidden},
+                     std::vector<T>(batch_size * sequence_length * query_hidden, T(0.1f)));
+  if (packed) {
+    tester.AddOptionalInputEdge<T>();
+    tester.AddOptionalInputEdge<T>();
+  } else {
+    tester.AddInput<T>("key", {batch_size, sequence_length, kv_hidden_size},
+                       std::vector<T>(batch_size * sequence_length * kv_hidden_size, T(0.1f)));
+    tester.AddInput<T>("value", {batch_size, sequence_length, kv_hidden_size},
+                       std::vector<T>(batch_size * sequence_length * kv_hidden_size, T(0.1f)));
+  }
 
-  tester.AddOptionalInputEdge<float>();  // past_key
-  tester.AddOptionalInputEdge<float>();  // past_value
+  tester.AddOptionalInputEdge<T>();  // past_key
+  tester.AddOptionalInputEdge<T>();  // past_value
   tester.AddInput<int32_t>("seqlens_k", {batch_size}, {0});
   tester.AddInput<int32_t>("total_sequence_length", {1}, {1});
 
-  tester.AddOptionalInputEdge<float>();    // cos_cache
-  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<T>();        // cos_cache
+  tester.AddOptionalInputEdge<T>();        // sin_cache
   tester.AddOptionalInputEdge<int64_t>();  // position_ids
-  tester.AddOptionalInputEdge<float>();    // attention_bias
-  tester.AddOptionalInputEdge<float>();    // head_sink
+  tester.AddOptionalInputEdge<T>();        // attention_bias
+  tester.AddOptionalInputEdge<T>();        // head_sink
   tester.AddOptionalInputEdge<float>();    // k_scale
   tester.AddOptionalInputEdge<float>();    // v_scale
 
-  tester.AddInput<float>("q_norm_weight", {head_size}, std::vector<float>(head_size, 1.0f));
-  tester.AddInput<float>("k_norm_weight", {head_size}, std::vector<float>(head_size, 1.0f));
+  if (include_q) {
+    const std::vector<int64_t> shape = q_rank_two ? std::vector<int64_t>{1, q_size} : std::vector<int64_t>{q_size};
+    tester.AddInput<T>("q_norm_weight", shape, std::vector<T>(q_size, T(1.0f)));
+  } else {
+    tester.AddOptionalInputEdge<T>();
+  }
+  if (include_k) {
+    tester.AddInput<T>("k_norm_weight", {k_size}, std::vector<T>(k_size, T(1.0f)));
+  } else {
+    tester.AddOptionalInputEdge<T>();
+  }
 
-  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
-                          std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
-  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, sequence_length, head_size},
-                          std::vector<float>(batch_size * kv_num_heads * sequence_length * head_size, 0.0f));
-  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, sequence_length, head_size},
-                          std::vector<float>(batch_size * kv_num_heads * sequence_length * head_size, 0.0f));
+  tester.AddOutput<T>("output", {batch_size, sequence_length, hidden_size},
+                      std::vector<T>(batch_size * sequence_length * hidden_size, T(0.1f)));
+  tester.AddOutput<T>("present_key", {batch_size, kv_num_heads, sequence_length, head_size},
+                      std::vector<T>(batch_size * kv_num_heads * sequence_length * head_size,
+                                     T(0.1f / std::sqrt(0.01f + 1e-6f))));
+  tester.AddOutput<T>("present_value", {batch_size, kv_num_heads, sequence_length, head_size},
+                      std::vector<T>(batch_size * kv_num_heads * sequence_length * head_size, T(0.1f)));
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectFailure,
-             "q_norm_weight / k_norm_weight inputs are not supported",
-             {}, nullptr, &execution_providers);
+  tester.Run(expect, expected_message, {}, nullptr, &execution_providers);
+}
+
+TEST(GroupQueryAttentionTest, CpuQKNormSingleTokenAndPresentKey) {
+  RunCpuQKNormInputContractTest(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(GroupQueryAttentionTest, CpuQKNormInputContract) {
+  const auto failure = OpTester::ExpectResult::kExpectFailure;
+  RunCpuQKNormInputContractTest(failure, "must be provided together", true, false);
+  RunCpuQKNormInputContractTest(failure, "must be provided together", false, true);
+  RunCpuQKNormInputContractTest(failure, "q_norm_weight must have shape", true, true, 7, 8);
+  RunCpuQKNormInputContractTest(failure, "k_norm_weight must have shape", true, true, 8, 9);
+  RunCpuQKNormInputContractTest(failure, "q_norm_weight must have shape", true, true, 8, 8,
+                                std::nullopt, std::nullopt, std::nullopt, true);
+  RunCpuQKNormInputContractTest(failure, "requires unpacked Q/K/V inputs", true, true, 8, 8,
+                                std::nullopt, std::nullopt, std::nullopt, false, true);
+  RunCpuQKNormInputContractTest<MLFloat16>(failure, "requires float32 inputs");
+}
+
+TEST(GroupQueryAttentionTest, CpuQKNormInvalidEpsilons) {
+  for (float epsilon : {0.0f, -1e-6f, std::numeric_limits<float>::infinity(),
+                        std::numeric_limits<float>::quiet_NaN()}) {
+    SCOPED_TRACE(epsilon);
+    const auto failure = OpTester::ExpectResult::kExpectFailure;
+    RunCpuQKNormInputContractTest(failure, "qk_norm_epsilon must be finite and positive",
+                                  true, true, 8, 8, epsilon);
+    RunCpuQKNormInputContractTest(failure, "q_norm_epsilon must be finite and positive",
+                                  true, true, 8, 8, std::nullopt, epsilon);
+    RunCpuQKNormInputContractTest(failure, "k_norm_epsilon must be finite and positive",
+                                  true, true, 8, 8, std::nullopt, std::nullopt, epsilon);
+  }
 }
 
 static void RunCudaQKNormInputContractTest(
@@ -2156,6 +2210,47 @@ static std::vector<float> RunGQARotaryWithOptionalQKNorm(
   auto fetches = tester.GetFetches();
   const float* out_data = fetches[0].Get<Tensor>().Data<float>();
   return std::vector<float>(out_data, out_data + output_size);
+}
+
+TEST(GroupQueryAttentionTest, CpuQKNormRotaryGroupedPrefillAndDecode) {
+  for (int head_size : {16, 256}) {
+    for (int past_length : {0, 4}) {
+      const int sequence_length = past_length == 0 ? 3 : 1;
+      SCOPED_TRACE(head_size);
+      SCOPED_TRACE(past_length);
+      std::vector<float> query(sequence_length * 2 * head_size);
+      std::vector<float> key(sequence_length * head_size);
+      std::vector<float> value(key.size());
+      std::vector<float> q_weight(head_size);
+      std::vector<float> k_weight(head_size);
+      for (size_t i = 0; i < query.size(); ++i) query[i] = 1e-4f * std::sin(static_cast<float>(i + 1));
+      for (size_t i = 0; i < key.size(); ++i) {
+        key[i] = 1e-4f * std::cos(static_cast<float>(i + 1));
+        value[i] = std::sin(static_cast<float>(i + 1));
+      }
+      for (int d = 0; d < head_size; ++d) {
+        q_weight[d] = 0.5f + static_cast<float>(d) / head_size;
+        k_weight[d] = 1.5f - static_cast<float>(d) / head_size;
+      }
+      const std::vector<float> past_key(past_length * head_size, 0.25f);
+      const std::vector<float> past_value(past_length * head_size, -0.5f);
+      for (bool override_epsilon : {false, true}) {
+        const float q_epsilon = override_epsilon ? 3e-9f : 1e-9f;
+        const float k_epsilon = override_epsilon ? 1.9e-9f : 1e-9f;
+        auto normalized_query = query;
+        auto normalized_key = key;
+        ApplyPerHeadRmsNormBSNH(normalized_query, 1, sequence_length, 2, head_size, q_weight, q_epsilon);
+        ApplyPerHeadRmsNormBSNH(normalized_key, 1, sequence_length, 1, head_size, k_weight, k_epsilon);
+        const auto expected = RunGQARotaryWithOptionalQKNorm(
+            false, normalized_query, normalized_key, value, past_key, past_value, nullptr, nullptr,
+            1, sequence_length, past_length, 2, 1, head_size, 1e-9f);
+        const auto actual = RunGQARotaryWithOptionalQKNorm(
+            false, query, key, value, past_key, past_value, &q_weight, &k_weight,
+            1, sequence_length, past_length, 2, 1, head_size, 1e-9f, q_epsilon, k_epsilon);
+        ExpectOutputsMatch(actual, expected, 3e-6f, "CpuQKNormRotaryGroupedPrefillAndDecode");
+      }
+    }
+  }
 }
 
 TEST(GroupQueryAttentionTest, WebGpuRejectsInvalidQKNormEpsilonOverrides) {

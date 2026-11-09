@@ -448,6 +448,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<MatMulNBitsFusion>(cpu_cuda_eps));
       transformers.emplace_back(std::make_unique<GroupQueryAttentionPreNormFusion>(
           InlinedHashSet<std::string_view>{onnxruntime::kCudaExecutionProvider,
+                                           onnxruntime::kCpuExecutionProvider,
                                            onnxruntime::kWebGpuExecutionProvider}));
       bool has_matmul_nbits_qlora_kernel = false;
       bool has_matmul_nbits_mlp_kernel = false;
