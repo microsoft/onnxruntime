@@ -1,14 +1,21 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <array>
 #include <condition_variable>
 #include <cstdlib>
 #include <exception>
+#include <limits>
 #include <mutex>
 #include <random>
 #include <string>
 #include <thread>
+#include <type_traits>
+#include <variant>
+#include <vector>
+
+#include <gsl/gsl>
 
 #include "core/common/logging/logging.h"
 #include "core/common/span_utils.h"
@@ -16,6 +23,7 @@
 #include "core/graph/constants.h"
 #include "core/graph/graph.h"
 #include "core/providers/xnnpack/xnnpack_execution_provider.h"
+#include "core/providers/xnnpack/xnnpack_init.h"
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -47,6 +55,85 @@ extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace onnxruntime {
 namespace test {
+
+TEST(XnnpackEP, AllocatorReallocate) {
+  class FailingAllocator : public CPUAllocator {
+   public:
+    void* Alloc(size_t size) override { return fail ? nullptr : CPUAllocator::Alloc(size); }
+    bool fail = false;
+  } allocator;
+  auto callbacks = *xnnpack::GetStoredAllocator().second;
+  callbacks.context = &allocator;
+  auto free = [&](void* p) { callbacks.deallocate(callbacks.context, p); };
+  std::unique_ptr<void, decltype(free)> allocation(nullptr, free);
+  auto resize = [&](size_t size) {
+    void* p = callbacks.reallocate(callbacks.context, allocation.get(), size);
+    if (p != nullptr || size == 0) {
+      allocation.release();
+      allocation.reset(p);
+    }
+    return p;
+  };
+  EXPECT_EQ(resize(0), nullptr);
+  allocation.reset(callbacks.allocate(callbacks.context, 37));
+  ASSERT_NE(allocation.get(), nullptr);
+  auto* bytes = static_cast<uint8_t*>(allocation.get());
+  for (size_t i = 0; i < 37; ++i) {
+    bytes[i] = static_cast<uint8_t>(i);
+  }
+  for (size_t size : {size_t{4097}, size_t{13}}) {
+    ASSERT_NE(resize(size), nullptr);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(allocation.get()) % XNN_ALLOCATION_ALIGNMENT, 0U);
+    bytes = static_cast<uint8_t*>(allocation.get());
+    for (size_t i = 0; i < std::min(size, size_t{37}); ++i) {
+      EXPECT_EQ(bytes[i], static_cast<uint8_t>(i));
+    }
+  }
+  void* old = allocation.get();
+  EXPECT_EQ(resize(std::numeric_limits<size_t>::max()), nullptr);
+  ASSERT_EQ(allocation.get(), old);
+  allocator.fail = true;
+  EXPECT_EQ(resize(8192), nullptr);
+  ASSERT_EQ(allocation.get(), old);
+  allocator.fail = false;
+  EXPECT_EQ(static_cast<uint8_t*>(old)[12], 12);
+  EXPECT_EQ(resize(0), nullptr);
+  ASSERT_NE(resize(19), nullptr);
+  callbacks.deallocate(callbacks.context, nullptr);
+  void* aligned = callbacks.aligned_allocate(callbacks.context, XNN_ALLOCATION_ALIGNMENT, 23);
+  ASSERT_NE(aligned, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(aligned) % XNN_ALLOCATION_ALIGNMENT, 0U);
+  callbacks.aligned_deallocate(callbacks.context, aligned);
+}
+
+TEST(XnnpackEP, AllocatorSizeLimit) {
+  class RecordingAllocator : public CPUAllocator {
+   public:
+    void* Alloc(size_t size) override {
+      requested_size = size;
+      return nullptr;
+    }
+    size_t requested_size = 0;
+  } allocator;
+  auto callbacks = *xnnpack::GetStoredAllocator().second;
+  callbacks.context = &allocator;
+  const size_t cap = std::numeric_limits<size_t>::max() / 2;
+  for (size_t size : {cap + 1, std::numeric_limits<size_t>::max() - 128,
+                      std::numeric_limits<size_t>::max()}) {
+    EXPECT_EQ(callbacks.allocate(callbacks.context, size), nullptr);
+    EXPECT_EQ(allocator.requested_size, 0U);
+    EXPECT_EQ(callbacks.aligned_allocate(callbacks.context, XNN_ALLOCATION_ALIGNMENT, size), nullptr);
+    EXPECT_EQ(allocator.requested_size, 0U);
+  }
+  for (size_t size : {cap - 1, cap}) {
+    EXPECT_EQ(callbacks.allocate(callbacks.context, size), nullptr);
+    EXPECT_GT(allocator.requested_size, size);
+    allocator.requested_size = 0;
+    EXPECT_EQ(callbacks.aligned_allocate(callbacks.context, XNN_ALLOCATION_ALIGNMENT, size), nullptr);
+    EXPECT_EQ(allocator.requested_size, size);
+    allocator.requested_size = 0;
+  }
+}
 
 #if GTEST_HAS_DEATH_TEST
 namespace {
@@ -528,6 +615,344 @@ TEST(XnnpackEP, TestQDQSoftMax_axisLast) {  // error: Expected equality of these
                    0 /* output_zp */),
                "xnnpack_qdq_test_graph_softmax",
                {ExpectedEPNodeAssignment::All});
+}
+
+namespace {
+struct DynamicSpatialConvCase {
+  bool transpose = false;
+  bool rank3 = false;
+  bool symbolic_height = false;
+  bool unnamed = false;
+  bool unknown_channels = false;
+  bool bias = true;
+  bool per_channel = false;
+  bool chain = false;
+  int64_t group = 1;
+  int64_t stride = 1;
+  int64_t dilation = 1;
+  int64_t output_padding = 0;
+  std::string auto_pad;
+  bool explicit_output_shape = false;
+  bool asymmetric_pads = false;
+  bool expect_xnnpack = true;
+};
+
+template <typename T = float>
+void RunDynamicSpatialConv(const DynamicSpatialConvCase& c, bool recovery = false, bool zero_batch = false,
+                           int allocation_failure = 0) {
+  Model model("dynamic_spatial_conv", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              {{kOnnxDomain, 17}}, {}, DefaultLoggingManager().DefaultLogger());
+  ModelTestBuilder builder(model.MainGraph());
+  std::vector<std::variant<int64_t, std::string>> symbolic_shape{std::string("N"), int64_t{4}};
+  if (!c.rank3) {
+    symbolic_shape.push_back(c.symbolic_height ? std::variant<int64_t, std::string>{std::string("H")}
+                                               : std::variant<int64_t, std::string>{int64_t{9}});
+  }
+  symbolic_shape.push_back(std::string("W"));
+  auto* input = builder.MakeSymbolicInput<float>(symbolic_shape);
+  if (c.unnamed || c.unknown_channels) {
+    auto type = *input->TypeAsProto();
+    auto* shape = type.mutable_tensor_type()->mutable_shape();
+    if (c.unnamed) {
+      shape->mutable_dim(shape->dim_size() - 1)->clear_dim_param();
+    }
+    if (c.unknown_channels) {
+      shape->mutable_dim(1)->clear_dim_value();
+    }
+    input->SetShape(*shape);
+  }
+  auto add_conv = [&](NodeArg* x, NodeArg* y, bool transpose) {
+    std::vector<int64_t> weight_shape{4, 4 / c.group};
+    weight_shape.insert(weight_shape.end(), c.rank3 ? 1 : 2, 3);
+    std::vector<NodeArg*> inputs;
+    const std::string op_type = transpose ? "ConvTranspose" : "Conv";
+    if constexpr (std::is_same_v<T, float>) {
+      inputs = {x, builder.MakeInitializer<float>(weight_shape, -0.25f, 0.25f)};
+      if (c.bias) {
+        inputs.push_back(builder.MakeInitializer<float>({4}, -0.1f, 0.1f));
+      }
+    } else {
+      auto* quantized_input = builder.MakeIntermediate();
+      auto* dequantized_input = builder.MakeIntermediate();
+      builder.AddQuantizeLinearNode<T>(x, 0.05f, T{0}, quantized_input);
+      builder.AddDequantizeLinearNode<T>(quantized_input, 0.05f, T{0}, dequantized_input);
+      auto* weight = builder.MakeInitializer<T>(weight_shape, T{0}, T{4});
+      auto* dequantized_weight = builder.MakeIntermediate();
+      if (c.per_channel) {
+        auto& dq = builder.AddDequantizeLinearNode<T>(
+            weight, std::vector<float>{0.04f, 0.05f, 0.06f, 0.07f}, std::vector<T>(4, T{0}), dequantized_weight);
+        dq.AddAttribute("axis", int64_t{0});
+      } else {
+        builder.AddDequantizeLinearNode<T>(weight, 0.05f, T{0}, dequantized_weight);
+      }
+      inputs = {dequantized_input, dequantized_weight};
+      if (c.bias) {
+        auto* bias = builder.MakeInitializer<int32_t>({4}, -4, 4);
+        auto* dequantized_bias = builder.MakeIntermediate();
+        builder.AddDequantizeLinearNode<int32_t>(bias, 0.0025f, 0, dequantized_bias);
+        inputs.push_back(dequantized_bias);
+      }
+    }
+    auto* conv_output = y;
+    if constexpr (!std::is_same_v<T, float>) {
+      conv_output = builder.MakeIntermediate();
+      auto* quantized_output = builder.MakeIntermediate();
+      builder.AddQuantizeLinearNode<T>(conv_output, 0.05f, T{0}, quantized_output);
+      builder.AddDequantizeLinearNode<T>(quantized_output, 0.05f, T{0}, y);
+    }
+    auto& node = builder.AddNode(op_type, inputs, {conv_output});
+    const size_t spatial_rank = c.rank3 ? 1 : 2;
+    node.AddAttribute("strides", std::vector<int64_t>(spatial_rank, c.stride));
+    node.AddAttribute("dilations", std::vector<int64_t>(spatial_rank, c.dilation));
+    node.AddAttribute("group", c.group);
+    if (!c.auto_pad.empty()) {
+      node.AddAttribute("auto_pad", c.auto_pad);
+    } else if (c.asymmetric_pads) {
+      node.AddAttribute("pads", c.rank3 ? std::vector<int64_t>{1, 0} : std::vector<int64_t>{1, 0, 0, 2});
+    }
+    if (transpose && c.output_padding != 0) {
+      node.AddAttribute("output_padding", std::vector<int64_t>(spatial_rank, c.output_padding));
+    }
+    if (transpose && c.explicit_output_shape) {
+      node.AddAttribute("output_shape", c.rank3 ? std::vector<int64_t>{19} : std::vector<int64_t>{11, 19});
+    }
+  };
+  auto* output = builder.MakeOutput();
+  if (c.chain) {
+    auto* intermediate = builder.MakeIntermediate();
+    add_conv(input, intermediate, false);
+    add_conv(intermediate, output, true);
+  } else {
+    add_conv(input, output, c.transpose);
+  }
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+  std::string model_data;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
+
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Level1;
+  if (allocation_failure != 0) {
+    options.intra_op_param.thread_pool_size = 1;
+  }
+  InferenceSessionWrapper cpu(options, GetEnvironment());
+  InferenceSessionWrapper xnn(options, GetEnvironment());
+  ASSERT_STATUS_OK(xnn.RegisterExecutionProvider(DefaultXnnpackExecutionProvider()));
+  for (auto* session : {&cpu, &xnn}) {
+    ASSERT_STATUS_OK(session->Load(model_data.data(), static_cast<int>(model_data.size())));
+    ASSERT_STATUS_OK(session->Initialize());
+  }
+  size_t conv_count = 0;
+  for (const auto& node : xnn.GetGraph().Nodes()) {
+    if (node.OpType() == "Conv" || node.OpType() == "ConvTranspose" ||
+        node.OpType() == "QLinearConv" || node.OpType() == "QLinearConvTranspose") {
+      const bool expect_xnnpack = c.expect_xnnpack;
+      EXPECT_EQ(node.GetExecutionProviderType(), expect_xnnpack ? kXnnpackExecutionProvider : kCpuExecutionProvider);
+      if constexpr (!std::is_same_v<T, float>) {
+        if (expect_xnnpack) {
+          EXPECT_EQ(node.OpType(), c.transpose ? "QLinearConvTranspose" : "QLinearConv");
+        }
+      }
+      ++conv_count;
+    }
+  }
+  ASSERT_EQ(conv_count, c.chain ? 2U : 1U);
+  auto run = [&](int64_t width, int64_t batch, bool invalid, bool unusable = false) {
+    std::vector<int64_t> shape{batch, 4};
+    if (!c.rank3) {
+      shape.push_back(c.symbolic_height ? width : 9);
+    }
+    shape.push_back(width);
+    OrtValue value;
+    CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], shape,
+                         builder.rand_gen_.Uniform<float>(shape, 0.f, 1.f), &value);
+    NameMLValMap feeds{{input->Name(), value}};
+    std::vector<OrtValue> expected, actual;
+    RunOptions run_options;
+    const std::vector<std::string> outputs{output->Name()};
+    auto cpu_status = cpu.Run(run_options, feeds, outputs, &expected);
+#if defined(ORT_XNNPACK_TEST_ALLOCATOR)
+    if (allocation_failure != 0 && width == 64) {
+      xnnpack::SetReallocationFailureForTesting(allocation_failure);
+    }
+    auto reset_failure = gsl::finally([] { xnnpack::SetReallocationFailureForTesting(0); });
+#endif
+    auto xnn_status = xnn.Run(run_options, feeds, outputs, &actual);
+    if (unusable) {
+      ASSERT_STATUS_OK(cpu_status);
+      ASSERT_FALSE(xnn_status.IsOK());
+      EXPECT_NE(xnn_status.ErrorMessage().find(
+                    "XNNPACK ConvTranspose is unusable after a failed reshape or setup; recreate the session"),
+                std::string::npos);
+      return;
+    }
+    if (allocation_failure != 0 && width == 64) {
+      ASSERT_STATUS_OK(cpu_status);
+      ASSERT_FALSE(xnn_status.IsOK());
+#if defined(ORT_XNNPACK_TEST_ALLOCATOR)
+      EXPECT_EQ(xnnpack::SetReallocationFailureForTesting(0), 0) << "Failure was not injected";
+#endif
+      return;
+    }
+    if (invalid) {
+      EXPECT_FALSE(cpu_status.IsOK());
+      EXPECT_FALSE(xnn_status.IsOK());
+      return;
+    }
+    ASSERT_STATUS_OK(cpu_status);
+    ASSERT_STATUS_OK(xnn_status);
+    ASSERT_EQ(actual.size(), 1U);
+    ASSERT_EQ(expected.size(), 1U);
+    const auto& a = actual[0].Get<Tensor>();
+    const auto& e = expected[0].Get<Tensor>();
+    ASSERT_EQ(a.Shape(), e.Shape());
+    const auto* a_data = a.Data<float>();
+    const auto* e_data = e.Data<float>();
+    constexpr float tolerance = std::is_same_v<T, float> ? 1e-4f : 0.050001f;
+    for (int64_t i = 0; i < a.Shape().Size(); ++i) {
+      EXPECT_NEAR(a_data[i], e_data[i], tolerance) << "index " << i;
+    }
+  };
+  if (allocation_failure != 0) {
+    run(17, 1, false);
+    run(64, 1, false);
+    run(17, 1, false, true);
+    run(18, 1, false, true);
+    run(17, 0, false, true);
+    return;
+  }
+  size_t run_index = 0;
+  for (int64_t width : {17, 64, 17, 18}) {
+    // The fixed output_shape attribute is only consistent with width 17.
+    if (c.explicit_output_shape && width != 17) {
+      continue;
+    }
+    SCOPED_TRACE(++run_index);
+    SCOPED_TRACE(width);
+    run(width, 1, false);
+  }
+  if (recovery) {
+    run(1, 1, true);
+    run(17, 1, false);
+  }
+  if (zero_batch) {
+    run(17, 0, false);
+    run(17, 1, false);
+  }
+}
+}  // namespace
+
+TEST(XnnpackEP, TestConvDynamicSpatial) {
+  DynamicSpatialConvCase c;
+  RunDynamicSpatialConv(c);
+  c.rank3 = true;
+  c.bias = false;
+  c.asymmetric_pads = true;
+  RunDynamicSpatialConv(c);
+  c = {};
+  c.symbolic_height = true;
+  c.group = 2;
+  c.dilation = 2;
+  c.asymmetric_pads = true;
+  RunDynamicSpatialConv(c);
+  c = {};
+  c.unnamed = true;
+  c.auto_pad = "VALID";
+  RunDynamicSpatialConv(c);
+  c = {};
+  c.auto_pad = "SAME_UPPER";
+  c.stride = 2;
+  RunDynamicSpatialConv(c);
+  c = {};
+  RunDynamicSpatialConv<uint8_t>(c);
+  RunDynamicSpatialConv<int8_t>(c);
+  c.per_channel = true;
+  c.bias = false;
+  RunDynamicSpatialConv<int8_t>(c);
+}
+
+TEST(XnnpackEP, TestConvTransposeDynamicSpatial) {
+  for (bool rank3 : {false, true}) {
+    for (int64_t output_padding : {0, 1}) {
+      SCOPED_TRACE(rank3);
+      SCOPED_TRACE(output_padding);
+      DynamicSpatialConvCase c;
+      c.transpose = true;
+      c.rank3 = rank3;
+      c.stride = 2;
+      c.output_padding = output_padding;
+      c.asymmetric_pads = true;
+      RunDynamicSpatialConv(c);
+      c.bias = false;
+      c.group = 2;
+      c.dilation = 2;
+      RunDynamicSpatialConv(c);
+      c.asymmetric_pads = false;
+      c.symbolic_height = true;
+      c.auto_pad = "VALID";
+      RunDynamicSpatialConv(c);
+    }
+  }
+  DynamicSpatialConvCase c;
+  c.transpose = true;
+  c.unnamed = true;
+  c.auto_pad = "NOTSET";
+  RunDynamicSpatialConv(c);
+  RunDynamicSpatialConv<uint8_t>(c);
+  RunDynamicSpatialConv<int8_t>(c);
+}
+
+#if defined(ORT_XNNPACK_TEST_ALLOCATOR)
+TEST(XnnpackEP, ConvTransposeUnusableAfterFailedReshape) {
+  DynamicSpatialConvCase c;
+  c.transpose = true;
+  c.stride = 2;
+  RunDynamicSpatialConv(c, false, false, 1);
+}
+
+#if !defined(ORT_NO_EXCEPTIONS)
+TEST(XnnpackEP, ConvTransposeUnusableAfterReshapeAllocatorException) {
+  DynamicSpatialConvCase c;
+  c.transpose = true;
+  c.stride = 2;
+  RunDynamicSpatialConv(c, false, false, 2);
+}
+#endif
+#endif
+
+TEST(XnnpackEP, TestDynamicSpatialFallback) {
+  DynamicSpatialConvCase c;
+  c.unknown_channels = true;
+  c.expect_xnnpack = false;
+  RunDynamicSpatialConv(c);
+  c.transpose = true;
+  RunDynamicSpatialConv(c);
+}
+
+TEST(XnnpackEP, TestConvTransposeDynamicSpatialFallback) {
+  DynamicSpatialConvCase c;
+  c.transpose = true;
+  c.expect_xnnpack = false;
+  c.auto_pad = "SAME_UPPER";
+  RunDynamicSpatialConv(c);
+  c.auto_pad = "SAME_LOWER";
+  RunDynamicSpatialConv(c);
+  c.auto_pad.clear();
+  c.explicit_output_shape = true;
+  RunDynamicSpatialConv(c);
+}
+
+TEST(XnnpackEP, TestDynamicSpatialRepeatedRuns) {
+  DynamicSpatialConvCase c;
+  RunDynamicSpatialConv(c, true, true);
+  c.transpose = true;
+  RunDynamicSpatialConv(c, false, true);
+  c.transpose = false;
+  c.expect_xnnpack = true;
+  c.chain = true;
+  c.group = 2;
+  c.dilation = 2;
+  RunDynamicSpatialConv(c, true, true);
 }
 
 TEST(XnnpackEP, TestConvTranspose) {

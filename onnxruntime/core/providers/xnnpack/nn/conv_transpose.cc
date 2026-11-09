@@ -103,6 +103,7 @@ Status ConvTranspose::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
 }
 
 Status ConvTranspose::Compute(OpKernelContext* context) const {
+  ORT_RETURN_IF(unusable_, "XNNPACK ConvTranspose is unusable after a failed reshape or setup; recreate the session");
   const Tensor& X = *context->Input<Tensor>(0);  // this is in NHWC format
   const auto& X_shape = X.Shape();
   const int64_t N = X_shape[0];  // input is NHWC or NWC
@@ -111,8 +112,8 @@ Status ConvTranspose::Compute(OpKernelContext* context) const {
   const int64_t H = is_1D ? 1 : X_shape[1];
   const int64_t W = X_shape[rank - 2];
 
-  TensorShapeVector Y_dims(output_shape_);
-  Y_dims[0] = N;
+  TensorShapeVector Y_dims;
+  ORT_RETURN_IF_ERROR(ComputeOutputShape(X_shape, Y_dims));
 
   Tensor* Y = context->Output(0, TensorShape(Y_dims));
 
@@ -136,6 +137,11 @@ Status ConvTranspose::Compute(OpKernelContext* context) const {
     reshape_fn = xnn_reshape_deconvolution2d_nhwc_f16;
   }
 
+  // XNNPACK can mutate geometry before allocation fails. Clear only after setup succeeds,
+  // so allocator exceptions also prevent reuse of a partially reshaped dynamic operator.
+  if (has_dynamic_spatial_dims_) {
+    unusable_ = true;
+  }
   status = reshape_fn(op0_.get(), N, H, W, output_pad_0, output_pad_1,
                       /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
                       threadpool);
@@ -160,6 +166,9 @@ Status ConvTranspose::Compute(OpKernelContext* context) const {
                            OpTypeToString(conv_type_), " returned ", status);
   }
 
+  if (has_dynamic_spatial_dims_) {
+    unusable_ = false;
+  }
   status = xnn_run_operator(op0_.get(), threadpool);
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_run_operator returned ", status);

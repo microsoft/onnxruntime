@@ -23,6 +23,7 @@ class ConvBase : public XnnpackKernel {
 
  protected:
   Status CreateKernel();
+  Status ComputeOutputShape(const TensorShape& input_shape, TensorShapeVector& output_shape) const;
 
  protected:
   ConvAttributes conv_attrs_;
@@ -32,6 +33,7 @@ class ConvBase : public XnnpackKernel {
 
   TensorShapeVector kernel_shape_;
   TensorShapeVector output_shape_;
+  bool has_dynamic_spatial_dims_ = false;
   int64_t C_;
   int64_t M_;
   Tensor packed_w_;

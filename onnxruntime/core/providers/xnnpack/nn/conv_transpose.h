@@ -20,6 +20,9 @@ class ConvTranspose : public ConvBase {
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  /*out*/ bool& is_packed,
                  /*out*/ PrePackedWeights* prepacked_weights) override;
+
+ private:
+  mutable bool unusable_ = false;
 };
 
 }  // namespace xnnpack
