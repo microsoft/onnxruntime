@@ -20,34 +20,33 @@
 namespace onnxruntime::webgpu {
 namespace {
 
-uint32_t GetDawnWorkerThreadCount() {
-  return std::max(2u, std::thread::hardware_concurrency() / 2u);
-}
-
 class DawnPlatform final : public dawn::platform::Platform {
  public:
   std::unique_ptr<dawn::platform::WorkerTaskPool> CreateWorkerTaskPool() override {
-    return dawn::platform::WorkerTaskPool::CreateDawnDefault(GetDawnWorkerThreadCount());
+    return dawn::platform::WorkerTaskPool::CreateDawnDefault(
+        std::max(2u, std::thread::hardware_concurrency() / 2u));
   }
 };
 
-DawnPlatform& GetDawnPlatform() {
-  // Dawn retains this non-owning pointer; keep it alive through instance teardown.
-  static DawnPlatform* platform = new DawnPlatform();
-  return *platform;
+}  // namespace
+
+void BundledDawnPlatformDeleter::operator()(dawn::platform::Platform* platform) const {
+  delete platform;
 }
 
-}  // namespace
+BundledDawnPlatformPtr CreateBundledDawnPlatform() {
+  return BundledDawnPlatformPtr{new DawnPlatform()};
+}
+
+wgpu::Instance CreateBundledDawnInstance(wgpu::InstanceDescriptor instance_desc, dawn::platform::Platform& platform) {
+  dawn::native::DawnInstanceDescriptor dawn_instance_desc{};
+  dawn_instance_desc.platform = &platform;
+  instance_desc.nextInChain = &dawn_instance_desc;
+  return wgpu::CreateInstance(&instance_desc);
+}
 
 const DawnProcTable& GetBundledDawnProcs() {
   return dawn::native::GetProcs();
-}
-
-wgpu::Instance CreateBundledDawnInstance(wgpu::InstanceDescriptor instance_desc) {
-  dawn::native::DawnInstanceDescriptor dawn_instance_desc{};
-  dawn_instance_desc.platform = &GetDawnPlatform();
-  instance_desc.nextInChain = &dawn_instance_desc;
-  return wgpu::CreateInstance(&instance_desc);
 }
 
 InlinedVector<wgpu::Adapter> EnumerateBundledDawnAdapters(WGPUInstance instance,

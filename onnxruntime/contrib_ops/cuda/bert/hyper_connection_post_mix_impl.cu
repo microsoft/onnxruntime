@@ -52,6 +52,56 @@ __global__ void PostMixKernel(const T* streams, const T* branch_output,
   y[i] = from_float<T>(value);
 }
 
+// 8 contiguous hidden features x all branches per thread: each stream vector is loaded once (the scalar kernel reloads it
+// for every output branch and pays a 64-bit div/mod per element). Same arithmetic order as PostMixKernel.
+constexpr int kVec = 8;
+constexpr int kMaxVecBranches = 4;
+
+template <typename T>
+__global__ void PostMixVecKernel(const T* streams, const T* branch_output, const void* post_mix, const void* stream_mix,
+                                 int mix_type, T* y, int64_t rows, int branches, int hidden, int gate_layout) {
+  const int vecs_per_row = hidden / kVec;
+  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index >= rows * vecs_per_row) return;
+  const int64_t row = index / vecs_per_row;
+  const int h = static_cast<int>(index - row * vecs_per_row) * kVec;
+
+  float branch[kVec];
+  {
+    const uint4 raw = *reinterpret_cast<const uint4*>(branch_output + row * hidden + h);
+    const T* values = reinterpret_cast<const T*>(&raw);
+#pragma unroll
+    for (int j = 0; j < kVec; ++j) branch[j] = to_float<T>(values[j]);
+  }
+  float source[kMaxVecBranches][kVec];
+  for (int c = 0; c < branches; ++c) {
+    const uint4 raw = *reinterpret_cast<const uint4*>(streams + (row * branches + c) * hidden + h);
+    const T* values = reinterpret_cast<const T*>(&raw);
+#pragma unroll
+    for (int j = 0; j < kVec; ++j) source[c][j] = to_float<T>(values[j]);
+  }
+  for (int c = 0; c < branches; ++c) {
+    float value[kVec];
+#pragma unroll
+    for (int j = 0; j < kVec; ++j) value[j] = stream_mix == nullptr ? source[c][j] : 0.0f;
+    if (stream_mix != nullptr) {
+      for (int src = 0; src < branches; ++src) {
+        const float mix = LoadMix(stream_mix, (row * branches + src) * branches + c, mix_type);
+#pragma unroll
+        for (int j = 0; j < kVec; ++j) value[j] += mix * source[src][j];
+      }
+    }
+    uint4 out;
+    T* out_values = reinterpret_cast<T*>(&out);
+#pragma unroll
+    for (int j = 0; j < kVec; ++j) {
+      value[j] += LoadMix(post_mix, GateIndex(gate_layout, row, c, h + j, branches, hidden), mix_type) * branch[j];
+      out_values[j] = from_float<T>(value[j]);
+    }
+    *reinterpret_cast<uint4*>(y + (row * branches + c) * hidden + h) = out;
+  }
+}
+
 }  // namespace
 
 template <typename T>
@@ -60,6 +110,17 @@ Status LaunchHyperConnectionPostMix(
     const void* post_mix, const void* stream_mix, int mix_type, T* y,
     int64_t count, int branches, int hidden, int gate_layout) {
   if (count == 0) return Status::OK();
+  if constexpr (sizeof(T) == 2) {
+    if (hidden % kVec == 0 && branches <= kMaxVecBranches && count % (static_cast<int64_t>(hidden) * branches) == 0) {
+      const int64_t rows = count / (static_cast<int64_t>(hidden) * branches);
+      const int64_t vec_threads = rows * (hidden / kVec);
+      const int64_t vec_blocks = (vec_threads - 1) / kThreads + 1;
+      ORT_RETURN_IF_NOT(vec_blocks <= std::numeric_limits<int>::max(), "CUDA launch requires too many blocks");
+      PostMixVecKernel<T><<<static_cast<int>(vec_blocks), kThreads, 0, stream>>>(
+          streams, branch_output, post_mix, stream_mix, mix_type, y, rows, branches, hidden, gate_layout);
+      return CUDA_CALL(cudaGetLastError());
+    }
+  }
   const int64_t block_count = (count - 1) / kThreads + 1;
   ORT_RETURN_IF_NOT(block_count <= std::numeric_limits<int>::max(), "CUDA launch requires too many blocks");
   PostMixKernel<<<static_cast<int>(block_count), kThreads, 0, stream>>>(

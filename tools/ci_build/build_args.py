@@ -160,7 +160,13 @@ def add_core_build_args(parser: argparse.ArgumentParser) -> None:
         "--build_apple_framework", action="store_true", help="Build a macOS/iOS framework for ONNXRuntime."
     )
     parser.add_argument("--enable_lto", action="store_true", help="Enable Link Time Optimization (LTO).")
-    parser.add_argument("--use_cache", action="store_true", help="Use ccache in CI")
+    parser.add_argument("--use_cache", action="store_true", help="Enable compiler caching in CI")
+    parser.add_argument(
+        "--cache_tool",
+        choices=("ccache", "sccache"),
+        default="ccache",
+        help="Compiler cache to use with --use_cache (default: ccache).",
+    )
     parser.add_argument(
         "--use_binskim_compliant_compile_flags",
         action="store_true",
@@ -676,6 +682,7 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     # --- CPU ---
     cpu_group = parser.add_argument_group("CPU Execution Provider")
     cpu_group.add_argument("--no_sve", action="store_true", help="Disable building with SVE support.")
+    cpu_group.add_argument("--no_kleidiai", action="store_true", help="Disable KleidiAI CPU kernel integration.")
     # The following enables building ORT with NCHWc Neon ARM kernels.
     # At the time of writing, it is turned OFF by default because its performance relative to "regular" NCHW kernels
     # is not good at smaller thread counts. But its speed-up is non-negligible with higher thread counts on supporting
@@ -736,12 +743,6 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     )
     trt_group.add_argument("--use_tensorrt_oss_parser", action="store_true", help="Use TensorRT OSS ONNX parser.")
     trt_group.add_argument("--tensorrt_home", help="Path to TensorRT installation directory.")
-    trt_group.add_argument("--tensorrt_rtx_home", help="Path to TensorRT RTX installation directory.")
-
-    # --- Nv ---
-    nv_group = parser.add_argument_group("Nv Execution Provider")
-    nv_group.add_argument("--use_nv_tensorrt_rtx", action="store_true", help="Enable Nv EP.")
-
     # --- DirectML ---
     dml_group = parser.add_argument_group("DirectML Execution Provider (Windows)")
     dml_group.add_argument("--use_dml", action="store_true", help="Enable DirectML EP (Windows).")
@@ -776,17 +777,6 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     # --- Vitis-AI ---
     vitis_group = parser.add_argument_group("Vitis-AI Execution Provider (Xilinx)")
     vitis_group.add_argument("--use_vitisai", action="store_true", help="Enable Vitis-AI EP.")
-
-    # --- ACL (Arm Compute Library) ---
-    acl_group = parser.add_argument_group("[DEPRECATED] ACL Execution Provider")
-    acl_group.add_argument(
-        "--use_acl",
-        action="store_true",
-        help="Enable ACL EP (ARM architectures). The ACL EP is deprecated and will be removed in a future release.",
-    )
-    acl_group.add_argument("--acl_home", help="Path to ACL home directory.")
-    acl_group.add_argument("--acl_libs", help="Path to ACL libraries directory.")
-    acl_group.add_argument("--no_kleidiai", action="store_true", help="Disable KleidiAI integration (used with ACL).")
 
     # --- Qualcomm QMX Library ---
     qmx_group = parser.add_argument_group("QMX kernel library")
@@ -1084,9 +1074,6 @@ def parse_arguments() -> argparse.Namespace:
     # Handle deprecated args
     if hasattr(args, "enable_cuda_nhwc_ops") and args.enable_cuda_nhwc_ops:
         warnings.warn("The argument '--enable_cuda_nhwc_ops' is deprecated and enabled by default.", FutureWarning)
-
-    if args.use_acl:
-        warnings.warn("The ACL EP is deprecated and will be removed in a future release.", FutureWarning)
 
     # Default behavior (update/build/test) if no action flags are specified
     # Determine if it's a cross-compiled build (approximated by checking common cross-compile flags)

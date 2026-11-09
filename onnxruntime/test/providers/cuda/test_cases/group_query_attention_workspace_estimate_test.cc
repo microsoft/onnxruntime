@@ -320,6 +320,28 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, ParsesPackedAndSeparateLayouts) {
   EXPECT_GT(packed->total_workspace_bytes, separate->total_workspace_bytes);
 }
 
+TEST(GroupQueryAttentionWorkspaceEstimateTest, ExplicitQueryLengthsIncludeMaskedValueScratch) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kMath, true);
+  const auto separate = SeparateShapes();
+  std::array<WorkspaceInputShape, 17> shapes;
+  std::copy(separate.begin(), separate.end(), shapes.begin());
+  shapes[16] = Known({2});
+  const auto estimate = EstimateGroupQueryAttentionWorkspace(Config(), shapes, Device(), options);
+  ASSERT_TRUE(estimate.has_value());
+
+  auto bounds = Bounds();
+  bounds.is_windowed_kv_cache = true;
+  bounds.reachable_backends = GQAReachableBackend::Unfused;
+  const auto without = GetGQAWorkspaceAggregateForBounds(bounds);
+  ASSERT_TRUE(without.status.IsOK()) << without.status.message;
+  bounds.has_query_seqlens = true;
+  const auto with = GetGQAWorkspaceAggregateForBounds(bounds);
+  ASSERT_TRUE(with.status.IsOK()) << with.status.message;
+  EXPECT_GT(with.total_workspace_bytes, without.total_workspace_bytes);
+  EXPECT_GE(estimate->total_workspace_bytes, with.total_workspace_bytes);
+}
+
 // Budget H512-only group ratios with rotary/sink scratch and reject malformed or inactive XQA layouts.
 TEST(GroupQueryAttentionWorkspaceEstimateTest, H512EstimatorDominatesCompleteRuntimeWorkspace) {
   AttentionKernelOptions options;
@@ -391,7 +413,36 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, NodeAdapterParsesAttributesAndTyp
   EXPECT_GT(estimate->total_workspace_bytes, 0u);
 }
 
-TEST(GroupQueryAttentionWorkspaceEstimateTest, ParsedEnvelopeReachesNodeConfigWithoutChangingEstimate) {
+TEST(GroupQueryAttentionWorkspaceEstimateTest, NodeAdapterForwardsDispatchPolicy) {
+  WithGroupQueryAttentionNode([](const Node& node) {
+    const auto default_config = GetGroupQueryAttentionWorkspaceEstimateConfigForTest(&node);
+    ASSERT_TRUE(default_config.has_value());
+    EXPECT_EQ(default_config->dispatch_policy, KernelDispatchPolicy::Auto);
+
+    AttentionKernelOptions options;
+    options.InitializeOnce(kMath, true);
+    const auto baseline = EstimateGroupQueryAttentionWorkspaceForTest(
+        &node, SeparateShapes(), Device(), options);
+    ASSERT_TRUE(baseline.has_value());
+
+    for (const auto policy : {KernelDispatchPolicy::Auto, KernelDispatchPolicy::Latency,
+                              KernelDispatchPolicy::Memory, KernelDispatchPolicy::Safe}) {
+      SCOPED_TRACE(static_cast<int>(policy));
+      const auto config = GetGroupQueryAttentionWorkspaceEstimateConfigForTest(
+          &node, false, 4096, policy);
+      ASSERT_TRUE(config.has_value());
+      EXPECT_EQ(config->max_total_sequence_length, int64_t{4096});
+      EXPECT_EQ(config->dispatch_policy, policy);
+      const auto estimate = EstimateGroupQueryAttentionWorkspaceForTest(
+          &node, SeparateShapes(), Device(), options, false, 4096, policy);
+      ASSERT_TRUE(estimate.has_value());
+      EXPECT_EQ(estimate->total_workspace_bytes, baseline->total_workspace_bytes);
+      EXPECT_EQ(estimate->sized_backends, baseline->sized_backends);
+    }
+  });
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, ParsedEnvelopePreservesWindowedEstimateAndEnablesNonWindowed) {
   WithGroupQueryAttentionNode([](const Node& node) {
     AttentionKernelOptions options;
     options.InitializeOnce(kMath, true);
@@ -690,6 +741,46 @@ TEST(GroupQueryAttentionWorkspaceBoundsTest, PartialAliasPreservationAddsFullPas
       static_cast<size_t>(bounds.head_size_bound) * bounds.cache_element_size;
   EXPECT_EQ(with_copy.total_workspace_bytes,
             without.total_workspace_bytes + expected_copy);
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, DispatchPolicyIsReaderOnlyForBothCacheModes) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kMath, true);
+  for (bool windowed : {false, true}) {
+    SCOPED_TRACE(windowed);
+    auto config = Config();
+    EXPECT_EQ(config.dispatch_policy, KernelDispatchPolicy::Auto);
+    config.sliding_window_cache = windowed;
+    config.local_window_size = windowed ? 256 : -1;
+    config.max_total_sequence_length = windowed ? 0 : 512;
+    const auto baseline = EstimateGroupQueryAttentionWorkspace(
+        config, SeparateShapes(), Device(), options);
+    ASSERT_TRUE(baseline.has_value());
+    for (const auto policy : {KernelDispatchPolicy::Auto, KernelDispatchPolicy::Latency,
+                              KernelDispatchPolicy::Memory, KernelDispatchPolicy::Safe}) {
+      config.dispatch_policy = policy;
+      const auto estimate = EstimateGroupQueryAttentionWorkspace(
+          config, SeparateShapes(), Device(), options);
+      ASSERT_TRUE(estimate.has_value());
+      EXPECT_EQ(estimate->total_workspace_bytes, baseline->total_workspace_bytes);
+      EXPECT_EQ(estimate->sized_backends, baseline->sized_backends);
+    }
+  }
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, DispatchPolicyDoesNotEnableUnspecifiedEnvelope) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kMath, true);
+  auto config = Config();
+  config.sliding_window_cache = false;
+  config.local_window_size = -1;
+  for (const auto policy : {KernelDispatchPolicy::Latency, KernelDispatchPolicy::Memory,
+                            KernelDispatchPolicy::Safe, KernelDispatchPolicy::Auto}) {
+    config.dispatch_policy = policy;
+    EXPECT_FALSE(EstimateGroupQueryAttentionWorkspace(
+                     config, SeparateShapes(), Device(), options)
+                     .has_value());
+  }
 }
 
 TEST(GroupQueryAttentionWorkspaceEstimateTest, RejectsCacheCapacityDifferentFromWindow) {

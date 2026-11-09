@@ -76,6 +76,10 @@ endif()
 
 onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_pybind_srcs})
 
+if(NOT onnxruntime_MINIMAL_BUILD AND TARGET model_package)
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE model_package)
+endif()
+
 message(STATUS "Python_EXECUTABLE: ${Python_EXECUTABLE}")
 
 # Query Py_GIL_DISABLED (PEP 703)
@@ -205,7 +209,6 @@ set(onnxruntime_pybind11_state_static_providers
     ${PROVIDERS_COREML}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
-    ${PROVIDERS_ACL}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_AZURE}
 )
@@ -926,6 +929,9 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_quantization_test_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/quantization/
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${ONNXRUNTIME_ROOT}/test/python/quantization/qmoe_packed_reference
+        $<TARGET_FILE_DIR:${build_output_target}>/quantization/qmoe_packed_reference
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_transformers_test_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/transformers/
@@ -1095,36 +1101,6 @@ if (onnxruntime_USE_TENSORRT)
         $<TARGET_FILE:onnxruntime_providers_shared>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   )
-endif()
-
-if (onnxruntime_USE_NV)
-  if (WIN32 OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
-      file(GLOB NV_LIB_FILES LIST_DIRECTORIES false "${TENSORRT_RTX_ROOT}/lib/tensorrt_*.dll"
-                                             "${TENSORRT_RTX_ROOT}/bin/tensorrt_*.dll"
-                                             "${TENSORRT_RTX_ROOT}/lib/libtensorrt_*.so"
-                                             "${TENSORRT_RTX_ROOT}/bin/libtensorrt_*.so")
-    message(STATUS "NV lib files: " ${NV_LIB_FILES})
-  endif()
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${NV_LIB_FILES}
-        $<TARGET_FILE:onnxruntime_providers_nv_tensorrt_rtx>
-        $<TARGET_FILE:onnxruntime_providers_shared>
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-  )
-  if (EXISTS "${TENSORRT_RTX_ROOT}/doc/LICENSE.txt")
-    add_custom_command(
-      TARGET onnxruntime_pybind11_state POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy "${TENSORRT_RTX_ROOT}/doc/LICENSE.txt" $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/TRT_RTX_LICENSE.txt
-    )
-  endif()
-  if (EXISTS "${TENSORRT_RTX_ROOT}/doc/Acknowledgements.txt")
-    add_custom_command(
-      TARGET onnxruntime_pybind11_state POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy "${TENSORRT_RTX_ROOT}/doc/Acknowledgements.txt" $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/TRT_RTX_Acknowledgements.txt
-    )
-  endif()
 endif()
 
 if (onnxruntime_USE_MIGRAPHX)

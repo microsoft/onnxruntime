@@ -26,12 +26,17 @@ class ExternalDataLoaderManager {
 
   const IExternalDataLoader* GetExternalDataLoader(
       const OrtMemoryInfo& target_memory_info, int32_t tensor_data_type) const;
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ENABLE_D3D12_FILE_LOADING)
+  common::Status BeginLoad() const;
+  common::Status FinalizeLoad(const std::function<bool()>& is_canceled = {}) const;
+  void EndLoad() const noexcept;
+#endif
+
 #if defined(ENABLE_D3D12_FILE_LOADING)
   const IExternalDataLoader* GetTensorCreator(
       const OrtDevice& target_device, int32_t tensor_data_type) const;
-  common::Status BeginLoad() const;
   common::Status CommitLoadCandidates(const std::function<bool()>& is_canceled) const;
-  void EndLoad() const noexcept;
 #endif
 
  private:
