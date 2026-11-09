@@ -671,10 +671,8 @@ MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::getTmaWarpSpecializedCo
   auto config_type_param = static_cast<CutlassGemmConfig::CandidateConfigTypeParam>(weight_only_flag | simt_only_flag | grouped_gemm_flag | enable_blackwell | enable_hopper | fp8_only_flag | fp4_only_flag);
   ORT_ENFORCE(!(enable_blackwell && enable_hopper), "Blackwell and hopper flags are mutually exclusive");
 
-  // When the SM80 FP4 path is enabled, wfp4a16 uses the Ampere fused-dequant grouped GEMM only;
-  // do not offer any TMA WS configs. The WFP4A16 TMA WS kernel uses sm_90a WGMMA, so it can run
-  // only on SM90, and only when it is compiled (MSVC builds omit it). Return no configs instead of
-  // throwing because the runner constructor queries configs before setUseSm80Fp4() is applied.
+  // SM80 fused-dequant and unsupported architectures/builds have no TMA WS
+  // tactics. WFP4A16 TMA WS requires compiled SM90 WGMMA kernels.
   if constexpr (use_wfp4a16) {
     if (moeUseSm80Fp4(sm, use_sm80_fp4) || sm != 90 || !isTmaWarpSpecializedGroupedGemmCompiledForSm(sm)) {
       ORT_LLM_LOG_DEBUG("wfp4a16 TMA WS grouped MoE GEMM is not used for this SM or build");
@@ -1064,8 +1062,7 @@ void MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::moeGemmBiasAct(
       runGemm<cutlass_extensions::EpilogueOpDefaultSilu>(inputs, hopper_inputs);
       break;
     case ActivationType::Relu2:
-      runGemm<cutlass_extensions::EpilogueOpDefaultReLU>(inputs, hopper_inputs);
-      break;
+      ORT_THROW("Relu2 requires a separate squared-ReLU activation kernel.");
     case ActivationType::InvalidType:
       ORT_THROW("Activation type for fpA_intB must be valid.");
       break;

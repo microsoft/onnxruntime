@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
 #include <memory>
 #include <vector>
 #include "gmock/gmock.h"
@@ -15,6 +16,7 @@
 #include "contrib_ops/cpu/transformers/generation_device_helper.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"
 #include "contrib_ops/cpu/transformers/beam_search_parameters.h"
+#include "contrib_ops/cpu/transformers/logits_processor.h"
 #include "contrib_ops/cpu/transformers/subgraph_gpt.h"
 #include "contrib_ops/cpu/transformers/subgraph_whisper_encoder.h"
 
@@ -26,6 +28,38 @@ extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace onnxruntime {
 namespace test {
+
+namespace {
+
+class TestSequences : public contrib::transformers::ISequences {
+ public:
+  explicit TestSequences(std::vector<int32_t> sequence)
+      : sequence_{std::move(sequence)} {}
+
+  gsl::span<const int32_t> GetSequence(int /*beam_index*/) const override {
+    return sequence_;
+  }
+  gsl::span<const int32_t> GetCurrentDeviceSequences() const override { return {}; }
+  gsl::span<int32_t> GetNextDeviceSequences() override { return {}; }
+  int GetSequenceLength() const override { return static_cast<int>(sequence_.size()); }
+  int GetMaxLength() const override { return static_cast<int>(sequence_.size()); }
+
+ private:
+  std::vector<int32_t> sequence_;
+};
+
+contrib::transformers::TimestampLogitsProcessor<float> MakeTimestampProcessor(int eos_token_id) {
+  return {eos_token_id,
+          /*start_of_transcript_token_id=*/1,
+          /*translate_token_id=*/2,
+          /*transcribe_token_id=*/3,
+          /*start_of_lm_token_id=*/4,
+          /*no_timestamps_token_id=*/0,
+          /*beginning_timestamp_token_id=*/5,
+          /*max_initial_timestamp_index=*/2};
+}
+
+}  // namespace
 
 TEST(WhisperEncoderSubgraphTest, ReportsInvalidSecondInputName) {
   NodeArg encoder_input("encoder_input_ids", nullptr);
@@ -70,6 +104,7 @@ TEST(BeamSearchParametersTest, RejectsNegativeWhisperBeginningTimestampTokenId) 
   parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
   parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
   parameters.beginning_timestamp_token_id = -1;
+  parameters.eos_token_id = 127;
 
   EXPECT_THROW(parameters.ValidateWhisperTimestampTokenId(), OnnxRuntimeException);
 }
@@ -80,6 +115,7 @@ TEST(BeamSearchParametersTest, RejectsZeroWhisperBeginningTimestampTokenId) {
   parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
   parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
   parameters.beginning_timestamp_token_id = 0;
+  parameters.eos_token_id = 127;
 
   EXPECT_THROW(parameters.ValidateWhisperTimestampTokenId(), OnnxRuntimeException);
 }
@@ -90,6 +126,7 @@ TEST(BeamSearchParametersTest, RejectsWhisperBeginningTimestampTokenIdEqualToVoc
   parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
   parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
   parameters.beginning_timestamp_token_id = 128;
+  parameters.eos_token_id = 127;
 
   EXPECT_THROW(parameters.ValidateWhisperTimestampTokenId(), OnnxRuntimeException);
 }
@@ -100,8 +137,60 @@ TEST(BeamSearchParametersTest, AcceptsValidWhisperBeginningTimestampTokenId) {
   parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
   parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
   parameters.beginning_timestamp_token_id = 1;
+  parameters.eos_token_id = 127;
 
   EXPECT_NO_THROW(parameters.ValidateWhisperTimestampTokenId());
+}
+
+TEST(BeamSearchParametersTest, ValidatesWhisperEosTokenIdAgainstVocabSize) {
+  contrib::transformers::BeamSearchParameters parameters;
+  parameters.vocab_size = 8;
+  parameters.model_type = contrib::transformers::IGenerationParameters::kModelTypeWhisper;
+  parameters.logits_processor = contrib::transformers::IGenerationParameters::kLogitsProcessorTypeWhisper;
+  parameters.beginning_timestamp_token_id = 5;
+
+  parameters.eos_token_id = 7;
+  EXPECT_NO_THROW(parameters.ValidateWhisperTimestampTokenId());
+  for (int invalid_eos : {8, 9, std::numeric_limits<int>::max()}) {
+    parameters.eos_token_id = invalid_eos;
+    EXPECT_THROW(parameters.ValidateWhisperTimestampTokenId(), OnnxRuntimeException);
+  }
+}
+
+TEST(TimestampLogitsProcessorTest, RejectsInvalidBoundsBeforeMutatingScores) {
+  constexpr int vocab_size = 8;
+  TestSequences valid_sequence({5, 2, 5});
+  for (int invalid_eos : {vocab_size, vocab_size + 1, std::numeric_limits<int>::max()}) {
+    std::vector<float> scores(vocab_size, 1.0f);
+    auto scores_span = gsl::make_span(scores);
+    contrib::transformers::NextTokenScores<float> next_token_scores{scores_span, 1, vocab_size};
+    auto processor = MakeTimestampProcessor(invalid_eos);
+
+    EXPECT_THROW(processor.Process(&valid_sequence, next_token_scores), OnnxRuntimeException);
+    EXPECT_EQ(scores, std::vector<float>(vocab_size, 1.0f));
+  }
+
+  for (int invalid_timestamp : {vocab_size, vocab_size + 1, std::numeric_limits<int>::max()}) {
+    std::vector<float> scores(vocab_size, 1.0f);
+    auto scores_span = gsl::make_span(scores);
+    contrib::transformers::NextTokenScores<float> next_token_scores{scores_span, 1, vocab_size};
+    auto processor = MakeTimestampProcessor(vocab_size - 1);
+    TestSequences sequence({5, 2, invalid_timestamp});
+
+    EXPECT_THROW(processor.Process(&sequence, next_token_scores), OnnxRuntimeException);
+    EXPECT_EQ(scores, std::vector<float>(vocab_size, 1.0f));
+  }
+}
+
+TEST(TimestampLogitsProcessorTest, AcceptsVocabularyBoundaryTokens) {
+  constexpr int vocab_size = 8;
+  std::vector<float> scores(vocab_size, 1.0f);
+  auto scores_span = gsl::make_span(scores);
+  contrib::transformers::NextTokenScores<float> next_token_scores{scores_span, 1, vocab_size};
+  auto processor = MakeTimestampProcessor(vocab_size - 1);
+  TestSequences sequence({5, 2, vocab_size - 1});
+
+  EXPECT_NO_THROW(processor.Process(&sequence, next_token_scores));
 }
 
 TEST(BeamSearchParametersTest, ValidatesWhisperCrossQKPairCountWithoutRequiringUniquePairs) {

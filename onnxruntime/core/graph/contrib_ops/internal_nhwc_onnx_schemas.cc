@@ -109,6 +109,7 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
   REGISTER_NHWC_SCHEMA(fn, DepthToSpace, 1);
   REGISTER_NHWC_SCHEMA(fn, DepthToSpace, 11);
   REGISTER_NHWC_SCHEMA(fn, DepthToSpace, 13);
+  REGISTER_NHWC_SCHEMA(fn, DepthToSpace, 28);
 
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, InstanceNormalization, 6);
 
@@ -144,6 +145,7 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
 
   REGISTER_NHWC_SCHEMA(fn, SpaceToDepth, 1);
   REGISTER_NHWC_SCHEMA(fn, SpaceToDepth, 13);
+  REGISTER_NHWC_SCHEMA(fn, SpaceToDepth, 28);
 
   // The REGISTER_NCHW_SCHEMA_WITH_NHWC_DOMAIN macro uses the default ONNX type/shape inferencing, which assumes
   // data layouts in NCHW. We use the default ONNX type/shape inferencing for NHWC Resize to avoid having to modify

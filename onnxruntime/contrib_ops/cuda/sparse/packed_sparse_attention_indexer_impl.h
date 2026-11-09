@@ -31,6 +31,8 @@ struct PackedSparseAttentionIndexerParams {
   int state_capacity = 0;   // past_key_state.shape[1]
   int buffer_capacity = 0;  // past_kv_buffer.shape[1] == 2 * compress_ratio - 1
   int capacity = 0;         // selected_indices.shape[1]
+  int output_capacity = 0;
+  bool state_only = false;
   float epsilon = 1e-6f;
   float scale = 0.0f;
 
@@ -46,14 +48,20 @@ struct PackedSparseAttentionIndexerParams {
 // Scratch requirements, in float elements.
 size_t GetQsaPackedWorkspaceFloatCount(const PackedSparseAttentionIndexerParams& params);
 size_t GetCsaPackedWorkspaceFloatCount(const PackedSparseAttentionIndexerParams& params);
-// `overflow_flags` is a caller-allocated int32 scratch buffer with at least `batch_size` elements
-// (unused when batch_size == 0). The update kernel writes, per request, whether this call's new
-// blocks/windows would exceed state_capacity; when it does, the whole step is rejected for that
-// request (present_state_lengths / present_key_state / present_kv_buffer / present_gate_buffer for
-// that request are left exactly as their past_* counterparts) and the select kernels force that
-// request's selected_indices/selected_counts to the safe empty result (-1 / 0) rather than
-// selecting against a partially updated state.
-template <typename T>
+Status LaunchValidatePackedIndexerReuse(cudaStream_t stream, const int32_t* cumulative_lengths,
+                                        const int32_t* past_sequence_lengths, const int32_t* past_state_lengths,
+                                        int32_t* indices, int32_t* counts, int32_t* status,
+                                        int batch_size, int capacity, int state_capacity, int compress_ratio,
+                                        bool is_qsa, int32_t* overflow_flags = nullptr);
+// `overflow_flags` is a caller-allocated int32 buffer with at least `batch_size` elements
+// (unused when batch_size == 0); it may be the operator's state_status output. The update kernel
+// writes, per request, a psai::StateStatusCode: 1 for inconsistent device metadata, 2 when this
+// call's new blocks/windows would exceed state_capacity, else 0. When non-zero, the whole step is rejected for that
+// request (present_key_state / present_kv_buffer / present_gate_buffer for that request are left
+// unchanged and present_state_lengths is left as past_state_lengths clamped to valid bounds) and
+// the select kernels force that request's selected_indices/selected_counts to the safe empty
+// result (-1 / 0) rather than selecting against a partially updated state.
+template <typename T, typename TState>
 Status LaunchQsaPackedSparseAttentionIndexer(
     cudaStream_t stream,
     const PackedSparseAttentionIndexerParams& params,
@@ -66,14 +74,14 @@ Status LaunchQsaPackedSparseAttentionIndexer(
     const int32_t* cumulative_sequence_lengths,
     const int32_t* past_sequence_lengths,
     const int64_t* position_ids,
-    const T* past_key_state,
+    const TState* past_key_state,
     const T* past_kv_buffer,
     const int32_t* past_state_lengths,
     const int32_t* state_update_capture_count,
     bool state_update_active,
     int32_t* selected_indices,
     int32_t* selected_counts,
-    T* present_key_state,
+    TState* present_key_state,
     T* present_kv_buffer,
     int32_t* present_state_lengths,
     T* state_update,
