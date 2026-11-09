@@ -1390,14 +1390,8 @@ Status DispatchMoEPackedCuda(
                             static_cast<unsigned int>(launch_tiles), subtiles);
         // Every 64-K fragment stays vector-aligned when the base and row stride are aligned.
         if ((reinterpret_cast<uintptr_t>(input) & 15u) == 0 && params.hidden_size % 8 == 0) {
-          if (params.hidden_size % 512 == 0 && (params.gate_row_bytes & 3) == 0 &&
-              (reinterpret_cast<uintptr_t>(gate_weights) & 3u) == 0) {
-            MoEPackedReluIq2ContiguousKKernel<true, 4, true, true><<<fc1_grid, 128, 0, stream>>>(
-                input, gate_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
-          } else {
-            MoEPackedReluIq2ContiguousKKernel<true, 4, true><<<fc1_grid, 128, 0, stream>>>(
-                input, gate_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
-          }
+          MoEPackedReluIq2ContiguousKKernel<true, 4, true><<<fc1_grid, 128, 0, stream>>>(
+              input, gate_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
         } else {
           MoEPackedReluIq2ContiguousKKernel<true, 4><<<fc1_grid, 128, 0, stream>>>(
               input, gate_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
