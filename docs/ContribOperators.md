@@ -48,6 +48,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.GatedRelativePositionBias">com.microsoft.GatedRelativePositionBias</a>
   * <a href="#com.microsoft.GatherBlockQuantized">com.microsoft.GatherBlockQuantized</a>
   * <a href="#com.microsoft.GatherND">com.microsoft.GatherND</a>
+  * <a href="#com.microsoft.GatherPacked">com.microsoft.GatherPacked</a>
   * <a href="#com.microsoft.Gelu">com.microsoft.Gelu</a>
   * <a href="#com.microsoft.GemmFastGelu">com.microsoft.GemmFastGelu</a>
   * <a href="#com.microsoft.GemmFloat8">com.microsoft.GemmFloat8</a>
@@ -65,6 +66,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.LinearAttentionGate">com.microsoft.LinearAttentionGate</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
   * <a href="#com.microsoft.MRotaryEmbedding">com.microsoft.MRotaryEmbedding</a>
+  * <a href="#com.microsoft.Mamba2Verify">com.microsoft.Mamba2Verify</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp4Weight">com.microsoft.MatMulBlockQuantizedFp4Weight</a>
   * <a href="#com.microsoft.MatMulBlockQuantizedFp8Weight">com.microsoft.MatMulBlockQuantizedFp8Weight</a>
   * <a href="#com.microsoft.MatMulBnb4">com.microsoft.MatMulBnb4</a>
@@ -75,9 +77,11 @@ Do not modify directly.*
   * <a href="#com.microsoft.MatMulNBitsMlp">com.microsoft.MatMulNBitsMlp</a>
   * <a href="#com.microsoft.MatMulNBitsQLoRA">com.microsoft.MatMulNBitsQLoRA</a>
   * <a href="#com.microsoft.MatMulNBitsQkv">com.microsoft.MatMulNBitsQkv</a>
+  * <a href="#com.microsoft.MatMulPacked">com.microsoft.MatMulPacked</a>
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
   * <a href="#com.microsoft.MoE">com.microsoft.MoE</a>
   * <a href="#com.microsoft.MoEGroupRouter">com.microsoft.MoEGroupRouter</a>
+  * <a href="#com.microsoft.MoEPacked">com.microsoft.MoEPacked</a>
   * <a href="#com.microsoft.MulInteger">com.microsoft.MulInteger</a>
   * <a href="#com.microsoft.MultiHeadAttention">com.microsoft.MultiHeadAttention</a>
   * <a href="#com.microsoft.MurmurHash3">com.microsoft.MurmurHash3</a>
@@ -2956,6 +2960,53 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.GatherPacked"></a><a name="com.microsoft.gatherpacked">**com.microsoft.GatherPacked**</a>
+
+  Gather rows from a 2D block-packed embedding table and dequantize on the fly.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>K</tt> : int (required)</dt>
+<dd>Logical embedding dimension. Must be a positive multiple of the selected packed format's block size.</dd>
+<dt><tt>output_dtype</tt> : int</dt>
+<dd>ONNX TensorProto DataType for output (default 16 = BFLOAT16).</dd>
+<dt><tt>packed_type</tt> : int (required)</dt>
+<dd>Packed quantization format enum (0..99 map to GGUF ggml_type; >=100 reserved for custom formats).</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>data</tt> : T1</dt>
+<dd>2D little-endian packed weight blob [vocab_size, row_bytes].</dd>
+<dt><tt>indices</tt> : Tind</dt>
+<dd>Token indices of arbitrary rank. Negative indices and indices >= vocab_size select row 0.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T2</dt>
+<dd>Dequantized gathered embeddings [..., K].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(uint8)</dt>
+<dd>Packed byte storage.</dd>
+<dt><tt>T2</tt> : tensor(bfloat16), tensor(float16), tensor(float)</dt>
+<dd>Output floating-point type.</dd>
+<dt><tt>Tind</tt> : tensor(int32), tensor(int64)</dt>
+<dd>Index type.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.Gelu"></a><a name="com.microsoft.gelu">**com.microsoft.Gelu**</a>
 
   Gaussian Error Linear Unit.
@@ -4007,6 +4058,94 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.Mamba2Verify"></a><a name="com.microsoft.mamba2verify">**com.microsoft.Mamba2Verify**</a>
+
+  Fused causal convolution, selective state-space recurrence and gated grouped RMS normalization.
+  Local provisional contract: head_dim=64, d_state=128, 1<=R<=16.
+  projection[R, 2*di+2*n_groups*d_state+heads] packs [gate, xBC, dt], di=heads*head_dim.
+  state_row is a device int32[1] selecting the starting snapshot (0<=state_row<slots).
+  Convolution has four taps, with BF16 SiLU output. The FP32 recurrence is
+  dt=max(softplus(projection_dt+dt_bias),time_step_min),
+  S=exp(A_negative*dt)*S+(dt*x)*B, readout=D*x+sum(C*S).
+  Readout is gated by FP32 SiLU(gate), normalized per group, scaled by norm_weight and rounded to BF16.
+  Every processed token writes its post-token convolution and SSM snapshot to the corresponding output row.
+  The final/accepted state is chosen by the caller through state_row on the next invocation.
+  Input states may alias their corresponding outputs. Slots R..slots-1 are preserved.
+  No accepted-length truncation, hidden mutable state, host reads or synchronization is performed.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>d_state</tt> : int</dt>
+<dd>Currently 128.</dd>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Grouped RMS epsilon.</dd>
+<dt><tt>head_dim</tt> : int</dt>
+<dd>Currently 64.</dd>
+<dt><tt>heads</tt> : int (required)</dt>
+<dd>Number of heads.</dd>
+<dt><tt>n_groups</tt> : int (required)</dt>
+<dd>Number of B/C and normalization groups, dividing heads.</dd>
+<dt><tt>time_step_min</tt> : float</dt>
+<dd>Lower bound for softplus time step.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>projection</tt> : T</dt>
+<dd>Packed projection [R, width].</dd>
+<dt><tt>conv_state</tt> : T</dt>
+<dd>Snapshots [slots, di+2*n_groups*d_state, 3].</dd>
+<dt><tt>ssm_state</tt> : F</dt>
+<dd>Snapshots [slots, heads, d_state, head_dim].</dd>
+<dt><tt>conv_weight</tt> : T</dt>
+<dd>Depthwise weights [channels,4] or [channels,1,4].</dd>
+<dt><tt>conv_bias</tt> : T</dt>
+<dd>Depthwise convolution bias [channels].</dd>
+<dt><tt>dt_bias</tt> : F</dt>
+<dd>Time-step bias [heads].</dd>
+<dt><tt>A_negative</tt> : F</dt>
+<dd>Negative decay coefficient [heads], not A_log.</dd>
+<dt><tt>D</tt> : F</dt>
+<dd>Skip coefficient [heads].</dd>
+<dt><tt>norm_weight</tt> : F</dt>
+<dd>Normalization weight [di].</dd>
+<dt><tt>state_row</tt> : I</dt>
+<dd>Starting snapshot index int32[1], on device.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Normalized mixer result [R, di].</dd>
+<dt><tt>conv_snapshots</tt> : T</dt>
+<dd>Post-token convolution snapshots, same shape as conv_state.</dd>
+<dt><tt>ssm_snapshots</tt> : F</dt>
+<dd>Post-token recurrence snapshots, same shape as ssm_state.</dd>
+<dt><tt>xbc</tt> : T</dt>
+<dd>BF16 convolution SiLU result [R, channels].</dd>
+<dt><tt>readout</tt> : F</dt>
+<dd>FP32 recurrence readout before gating [R, di].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16)</dt>
+<dd>BF16 activation and convolution parameters.</dd>
+<dt><tt>F</tt> : tensor(float)</dt>
+<dd>FP32 recurrence and normalization.</dd>
+<dt><tt>I</tt> : tensor(int32)</dt>
+<dd>Device snapshot selector.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.MatMulBlockQuantizedFp4Weight"></a><a name="com.microsoft.matmulblockquantizedfp4weight">**com.microsoft.MatMulBlockQuantizedFp4Weight**</a>
 
   Weight-only NVFP4 (E2M1) matrix multiplication.
@@ -4681,6 +4820,58 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.MatMulPacked"></a><a name="com.microsoft.matmulpacked">**com.microsoft.MatMulPacked**</a>
+
+  Matrix multiplication Y = A @ B^T where B is a 2D block-packed weight tensor.
+  CUDA prefill dequantizes output-dimension tiles of B to the activation type using bounded scratch memory and uses float32 accumulation and reductions.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>K</tt> : int (required)</dt>
+<dd>Reduction dimension. Must be a whole number of packed blocks; CUDA requires a positive multiple of 32.</dd>
+<dt><tt>N</tt> : int (required)</dt>
+<dd>Output dimension.</dd>
+<dt><tt>dequantize_to_activation_dtype</tt> : int</dt>
+<dd>Round complete dequantized weights to A's dtype before decode accumulation. Default preserves the existing decode path; prefill already dequantizes to A's dtype.</dd>
+<dt><tt>packed_type</tt> : int (required)</dt>
+<dd>Packed quantization format enum for B (0..99 map to GGUF ggml_type; >=100 reserved for custom formats).</dd>
+</dl>
+
+#### Inputs (2 - 3)
+
+<dl>
+<dt><tt>A</tt> : T1</dt>
+<dd>Input activations [..., K].</dd>
+<dt><tt>B</tt> : T2</dt>
+<dd>Packed weight blob [N, row_bytes].</dd>
+<dt><tt>global_scale</tt> (optional) : Tscale</dt>
+<dd>Optional scalar FP32 multiplier for NVFP4, applied to FP32 accumulation before the output cast.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T1</dt>
+<dd>Output activations [..., N].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(bfloat16), tensor(float16)</dt>
+<dd>Activation type.</dd>
+<dt><tt>T2</tt> : tensor(uint8)</dt>
+<dd>Packed byte storage.</dd>
+<dt><tt>Tscale</tt> : tensor(float)</dt>
+<dd>Global scale type.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.MaxpoolWithMask"></a><a name="com.microsoft.maxpoolwithmask">**com.microsoft.MaxpoolWithMask**</a>
 
   For internal use.
@@ -4867,6 +5058,81 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>TF</tt> : tensor(float)</dt>
 <dd>Constrain expert_bias to float32.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MoEPacked"></a><a name="com.microsoft.moepacked">**com.microsoft.MoEPacked**</a>
+
+  Mixture-of-Experts layer consuming 3D block-packed gate, up, and down expert weight blobs.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>activation_type</tt> : string</dt>
+<dd>Expert activation function ('swiglu' or 'relu_squared').</dd>
+<dt><tt>down_type</tt> : int (required)</dt>
+<dd>Packed quantization format enum of down_experts_weights.</dd>
+<dt><tt>gate_type</tt> : int (required)</dt>
+<dd>Packed quantization format enum of gate_experts_weights.</dd>
+<dt><tt>k</tt> : int (required)</dt>
+<dd>Number of selected experts per token.</dd>
+<dt><tt>normalize_routing_weights</tt> : int</dt>
+<dd>Whether to normalize top-k routing probabilities.</dd>
+<dt><tt>router_scale</tt> : float</dt>
+<dd>Finite post-normalization scale for projected sigmoid routing.</dd>
+<dt><tt>routing_function</tt> : string</dt>
+<dd>Internal routing: softmax logits or projected FP32 sigmoid with selection-only bias.</dd>
+<dt><tt>up_type</tt> : int</dt>
+<dd>Packed quantization format enum of up_experts_weights; required for swiglu.</dd>
+</dl>
+
+#### Inputs (5 - 10)
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>Input hidden states [..., hidden_size].</dd>
+<dt><tt>router_probs</tt> (optional) : T</dt>
+<dd>Router logits [num_rows, num_experts]; omit when supplying preselected routes.</dd>
+<dt><tt>gate_experts_weights</tt> : T2</dt>
+<dd>3D packed gate weight blob [num_experts, inter_size, gate_row_bytes].</dd>
+<dt><tt>up_experts_weights</tt> (optional) : T2</dt>
+<dd>3D packed up weight blob [num_experts, inter_size, up_row_bytes]; omit for relu_squared.</dd>
+<dt><tt>down_experts_weights</tt> : T2</dt>
+<dd>3D packed down weight blob [num_experts, hidden_size, down_row_bytes].</dd>
+<dt><tt>expert_indices</tt> (optional) : Tind</dt>
+<dd>Preselected distinct expert IDs [num_rows, k], k <= 32. Requires expert_weights, no router_probs and normalize_routing_weights=0. Invalid IDs poison only their token row.</dd>
+<dt><tt>expert_weights</tt> (optional) : Tweight</dt>
+<dd>Preselected FP32 weights [num_rows, k], preserved without normalization and mixed in supplied order.</dd>
+<dt><tt>router_input</tt> (optional) : T</dt>
+<dd>Projected sigmoid routing input [num_rows, router_width]; omit other routing inputs. Requires relu_squared, routing_function='sigmoid' and normalize_routing_weights=1.</dd>
+<dt><tt>router_weight</tt> (optional) : T</dt>
+<dd>Sigmoid router weight [num_experts, router_width].</dd>
+<dt><tt>router_bias</tt> (optional) : Tweight</dt>
+<dd>FP32 correction bias [num_experts], used only for expert selection.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Output hidden states [..., hidden_size].</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(bfloat16), tensor(float16)</dt>
+<dd>Activation type.</dd>
+<dt><tt>T2</tt> : tensor(uint8)</dt>
+<dd>Packed byte storage.</dd>
+<dt><tt>Tind</tt> : tensor(int32)</dt>
+<dd>Preselected expert index type.</dd>
+<dt><tt>Tweight</tt> : tensor(float)</dt>
+<dd>Preselected routing weight type.</dd>
 </dl>
 
 
