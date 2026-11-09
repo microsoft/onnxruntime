@@ -1421,7 +1421,7 @@ static void TestGQAFusionPreservesAdditionalInputs(const std::basic_string<ORTCH
     if (node.OpType() == "GroupQueryAttention") {
       node.MutableInputDefs().resize(10, empty_input);
       node.MutableInputDefs().push_back(optional_input);
-      node.MutableInputArgsCount().resize(11, 1);
+      node.MutableInputArgsCount().assign(11, 1);
     }
   }
   ASSERT_STATUS_OK(graph.Resolve());
