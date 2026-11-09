@@ -100,14 +100,14 @@ const std::vector<MLDataType>& SignedNumberTypes() {
 }
 }  // namespace
 
-enum class IntegerUnaryOp { Abs,
-                            Neg,
-                            Relu,
-                            Sign };
+enum class Int64UnaryOp { Abs,
+                          Neg,
+                          Relu,
+                          Sign };
 
 class Int64UnaryProgram final : public Program<Int64UnaryProgram> {
  public:
-  explicit Int64UnaryProgram(IntegerUnaryOp op)
+  explicit Int64UnaryProgram(Int64UnaryOp op)
       : Program{"Int64Unary"}, op_{op} {}
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"size", ProgramUniformVariableDataType::Uint32});
@@ -118,31 +118,41 @@ class Int64UnaryProgram final : public Program<Int64UnaryProgram> {
     auto& body = shader.MainFunctionBody();
     body << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.size");
     body << "let words = " << input.GetByOffset("global_idx", true) << ";\n";
-    if (op_ == IntegerUnaryOp::Abs || op_ == IntegerUnaryOp::Neg) {
-      // Negate both words, including carry; INT64_MIN retains its bit pattern.
+    // words.x holds the low 32 bits; words.y holds the high 32 bits.
+    // Bit 31 of words.y is the int64 sign bit.
+    // WGSL select(a, b, condition) chooses b when condition is true.
+    if (op_ == Int64UnaryOp::Abs || op_ == Int64UnaryOp::Neg) {
+      // Two's-complement negation: invert both words and add one.
+      // If the low-word addition wraps to zero, carry one into the high word.
+      // INT64_MIN retains its bit pattern because +2^63 is not representable.
       body << "let low = ~words.x + 1u;\n"
            << "let negative = vec2<u32>(low, ~words.y + select(0u, 1u, low == 0u));\n";
-      if (op_ == IntegerUnaryOp::Abs) {
+      if (op_ == Int64UnaryOp::Abs) {
+        // Negate negative inputs; preserve zero and positive inputs.
         body << "let result = select(words, negative, vec2<bool>((words.y & 0x80000000u) != 0u));\n";
       } else {
         body << "let result = negative;\n";
       }
-    } else if (op_ == IntegerUnaryOp::Relu) {
+    } else if (op_ == Int64UnaryOp::Relu) {
+      // Replace negative inputs with two zero words; preserve nonnegative inputs.
       body << "let result = select(words, vec2<u32>(0u), vec2<bool>((words.y & 0x80000000u) != 0u));\n";
     } else {
+      // Sign: both words zero means 0; otherwise start with +1.
+      // For negative inputs, replace that result with two all-ones words (-1).
       body << "let positive = select(0u, 1u, (words.x | words.y) != 0u);\n"
            << "let result = select(vec2<u32>(positive, 0u), vec2<u32>(0xffffffffu),\n"
            << "                    vec2<bool>((words.y & 0x80000000u) != 0u));\n";
     }
+    // Write both raw words without truncating the result to int32.
     body << output.SetByOffset("global_idx", "result", true);
     return Status::OK();
   }
 
  private:
-  IntegerUnaryOp op_;
+  Int64UnaryOp op_;
 };
 
-template <IntegerUnaryOp Op>
+template <Int64UnaryOp Op>
 class Int64Unary final : public WebGpuKernel {
  public:
   explicit Int64Unary(const OpKernelInfo& info) : WebGpuKernel{info} {}
@@ -167,10 +177,10 @@ class Int64Unary final : public WebGpuKernel {
   }
 };
 
-using AbsInt64 = Int64Unary<IntegerUnaryOp::Abs>;
-using NegInt64 = Int64Unary<IntegerUnaryOp::Neg>;
-using ReluInt64 = Int64Unary<IntegerUnaryOp::Relu>;
-using SignInt64 = Int64Unary<IntegerUnaryOp::Sign>;
+using AbsInt64 = Int64Unary<Int64UnaryOp::Abs>;
+using NegInt64 = Int64Unary<Int64UnaryOp::Neg>;
+using ReluInt64 = Int64Unary<Int64UnaryOp::Relu>;
+using SignInt64 = Int64Unary<Int64UnaryOp::Sign>;
 
 #define WEBGPU_INT64_UNARY_KERNEL(OP, FROM, TO, SINCE)                                            \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                        \
