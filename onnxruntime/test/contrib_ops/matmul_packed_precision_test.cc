@@ -144,6 +144,45 @@ TEST(MatMulPackedPrecisionTest, CompleteOperandRoundingIsOptIn) {
   }
 }
 
+TEST(MatMulPackedPrecisionTest, RoundedBf16DecodeNonzeroAcrossDispatchPaths) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  const MLFloat16 scale(.019f);
+  const BFloat16 expected(BFloat16(scale.ToFloat() * 43.f).ToFloat() -
+                          43.f * BFloat16(scale.ToFloat()).ToFloat());
+  ASSERT_NE(expected.ToFloat(), 0.f);
+  // Also exercise this with 75-virtual PTX on SM80+: hardware-only MMA dispatch returns zeros.
+  for (int k : {32, 64}) {
+    const int row_bytes = (k / 32) * 34;
+    for (int n : {17, 65536}) {
+      std::vector<uint8_t> packed(n * row_bytes, 0);
+      for (int col = 0; col < n; ++col) {
+        auto* bytes = packed.data() + col * row_bytes;
+        bytes[0] = static_cast<uint8_t>(scale.val);
+        bytes[1] = static_cast<uint8_t>(scale.val >> 8);
+        bytes[2] = 43;
+        bytes[3] = 255;
+      }
+      for (int rows : {1, 7, 8}) {
+        SCOPED_TRACE(testing::Message() << "k=" << k << " n=" << n << " rows=" << rows);
+        std::vector<BFloat16> a(rows * k, BFloat16(0.f));
+        for (int row = 0; row < rows; ++row) {
+          a[row * k] = BFloat16(1.f);
+          a[row * k + 1] = BFloat16(43.f);
+        }
+        OpTester test("MatMulPacked", 1, kMSDomain);
+        test.AddAttribute("K", static_cast<int64_t>(k));
+        test.AddAttribute("N", static_cast<int64_t>(n));
+        test.AddAttribute("packed_type", int64_t{8});
+        test.AddAttribute("dequantize_to_activation_dtype", int64_t{1});
+        test.AddInput<BFloat16>("A", {rows, k}, a);
+        test.AddInput<uint8_t>("B", {n, row_bytes}, packed);
+        test.AddOutput<BFloat16>("Y", {rows, n}, std::vector<BFloat16>(rows * n, expected));
+        RunPackedCuda(test);
+      }
+    }
+  }
+}
+
 TEST(MatMulPackedPrecisionTest, RoundedBf16ContiguousKCancellation) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   constexpr int k = 256;
