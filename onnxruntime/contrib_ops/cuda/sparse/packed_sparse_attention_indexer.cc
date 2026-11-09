@@ -333,8 +333,8 @@ Status PackedSparseAttentionIndexer<T, TState>::ComputeQsa(OpKernelContext* cont
                     key_state_shape.ToString());
   const int64_t state_capacity = key_state_shape[1];
   ORT_RETURN_IF_ERROR(CheckIntDimension("state_capacity", state_capacity, false));
-  ORT_RETURN_IF_NOT(state_capacity == state_capacity_,
-                    "PackedSparseAttentionIndexer: past_key_state capacity must match the state_capacity attribute");
+  ORT_RETURN_IF_NOT(state_capacity > 0,
+                    "PackedSparseAttentionIndexer: past_key_state capacity must be positive");
 
   const int64_t buffer_capacity = psai::GenericBufferCapacity(compress_ratio_);
   ORT_RETURN_IF_ERROR(CheckShape(past_kv_buffer, "past_kv_buffer", {batch_size, buffer_capacity, head_size}));
@@ -514,8 +514,8 @@ Status PackedSparseAttentionIndexer<T, TState>::ComputeCsa(OpKernelContext* cont
                     key_state_shape.ToString());
   const int64_t state_capacity = key_state_shape[1];
   ORT_RETURN_IF_ERROR(CheckIntDimension("state_capacity", state_capacity, false));
-  ORT_RETURN_IF_NOT(state_capacity == state_capacity_,
-                    "PackedSparseAttentionIndexer: past_key_state capacity must match the state_capacity attribute");
+  ORT_RETURN_IF_NOT(state_capacity > 0,
+                    "PackedSparseAttentionIndexer: past_key_state capacity must be positive");
 
   const int64_t buffer_capacity = psai::GenericBufferCapacity(compress_ratio_);
   ORT_RETURN_IF_ERROR(CheckShape(past_kv_buffer, "past_kv_buffer", {batch_size, buffer_capacity, width}));
@@ -661,7 +661,13 @@ Status PackedSparseAttentionIndexer<T, TState>::ComputeReuse(OpKernelContext* co
   ORT_RETURN_IF_ERROR(CheckIntDimension("num_heads", num_heads, false));
   ORT_RETURN_IF_ERROR(CheckShape(context->Input<Tensor>(psai::kKeyNormWeight), "key_norm_weight", {head_size}));
   const int64_t width = is_qsa ? head_size : 2 * head_size;
-  ORT_RETURN_IF_ERROR(CheckShape(context->Input<Tensor>(psai::kPastKeyState), "past_key_state", {batch, state_capacity_, head_size}));
+  const Tensor* past_key_state = context->Input<Tensor>(psai::kPastKeyState);
+  ORT_RETURN_IF(past_key_state == nullptr || past_key_state->Shape().NumDimensions() != 3,
+                "PackedSparseAttentionIndexer: past_key_state must have shape (batch_size, state_capacity, head_size)");
+  // Symbolic-capacity models may run with a cache smaller than the declared state_capacity attribute.
+  const int64_t state_capacity = past_key_state->Shape()[1];
+  ORT_RETURN_IF_ERROR(CheckIntDimension("state_capacity", state_capacity, false));
+  ORT_RETURN_IF_ERROR(CheckShape(past_key_state, "past_key_state", {batch, state_capacity, head_size}));
   ORT_RETURN_IF_ERROR(CheckShape(context->Input<Tensor>(psai::kPastKvBuffer), "past_kv_buffer",
                                  {batch, psai::GenericBufferCapacity(compress_ratio_), width}));
   ORT_RETURN_IF_ERROR(CheckShape(context->Input<Tensor>(psai::kPastStateLengths), "past_state_lengths", {batch, 2}));
@@ -735,7 +741,7 @@ Status PackedSparseAttentionIndexer<T, TState>::ComputeReuse(OpKernelContext* co
                                           context->Output(psai::kSelectedCounts, counts->Shape())->MutableData<int32_t>(),
                                           context->Output(psai::kIndexShareStatus, status->Shape())->MutableData<int32_t>(),
                                           static_cast<int>(batch), static_cast<int>(output_capacity_),
-                                          static_cast<int>(state_capacity_), static_cast<int>(compress_ratio_), is_qsa);
+                                          static_cast<int>(state_capacity), static_cast<int>(compress_ratio_), is_qsa);
 }
 
 template class PackedSparseAttentionIndexer<float, float>;

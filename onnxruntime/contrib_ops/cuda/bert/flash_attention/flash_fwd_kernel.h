@@ -1107,6 +1107,23 @@ inline __device__ void combine_attn_seqk_parallel(const Params& params) {
   const index_t lse_size = params.b * params.h * params.seqlen_q;
 
   const index_t row_offset_lse = bidx * kBlockM;
+  const auto valid_row = [&](index_t idx) {
+    if (idx >= lse_size) return false;
+    return params.seqused_q == nullptr ||
+           idx % params.seqlen_q < params.seqused_q[idx / (params.h * params.seqlen_q)];
+  };
+  if (params.seqused_q != nullptr) {
+    bool has_queries = valid_row(row_offset_lse);
+    const index_t last_row = std::min(row_offset_lse + kBlockM, lse_size) - 1;
+    if (!has_queries && row_offset_lse / params.seqlen_q != last_row / params.seqlen_q) {
+#pragma unroll
+      for (int row = 1; row < kBlockM; ++row) {
+        has_queries |= valid_row(row_offset_lse + row);
+      }
+    }
+    // Uniform across the CTA: no split accumulators exist for these padded rows.
+    if (!has_queries) return;
+  }
   Tensor gLSEaccum = make_tensor(make_gmem_ptr(reinterpret_cast<ElementAccum*>(params.softmax_lseaccum_ptr) + row_offset_lse),
                                  Shape<Int<kMaxSplits>, Int<kBlockM>>{},
                                  make_stride(lse_size, _1{}));
@@ -1133,7 +1150,7 @@ inline __device__ void combine_attn_seqk_parallel(const Params& params) {
   for (int l = 0; l < kNLsePerThread; ++l) {
     const int row = l * kRowsPerLoadLSE + tidx / kBlockM;
     const int col = tidx % kBlockM;
-    ElementAccum lse = (row < params.num_splits && col < lse_size - bidx * kBlockM) ? gLSEaccum(row, col) : -kInfinity;
+    ElementAccum lse = (row < params.num_splits && valid_row(row_offset_lse + col)) ? gLSEaccum(row, col) : -kInfinity;
     if (row < kMaxSplits) {
       sLSE[row][col] = lse;
     }
@@ -1181,11 +1198,13 @@ inline __device__ void combine_attn_seqk_parallel(const Params& params) {
   if (tidx % kRowsPerLoadTranspose == 0 && tidx / kRowsPerLoadTranspose < kBlockM) {
     if (params.unpadded_lse) {
       const index_t lse_offset = row_offset_lse + tidx / kRowsPerLoadTranspose;
-      if (lse_offset < lse_size) {
+      if (valid_row(lse_offset)) {
         gLSE_unpadded(lse_offset) = lse_logsum;
       }
     } else {
-      gLSE(tidx / kRowsPerLoadTranspose) = lse_logsum;
+      if (valid_row(row_offset_lse + tidx / kRowsPerLoadTranspose)) {
+        gLSE(tidx / kRowsPerLoadTranspose) = lse_logsum;
+      }
     }
   }
 // Store the scales exp(lse - lse_logsum) in shared memory.
@@ -1228,11 +1247,27 @@ inline __device__ void combine_attn_seqk_parallel(const Params& params) {
   }
   // Load Oaccum in then scale and accumulate to O
   for (int split = 0; split < params.num_splits; ++split) {
-    FLASH_NAMESPACE::copy</*Is_even_MN=*/false, Is_even_K>(
-        gmem_tiled_copy_Oaccum, tOgOaccum, tOrOaccum, tOcOaccum, tOpOaccum, params.b * params.h * params.seqlen_q - bidx * kBlockM);
+    if (params.seqused_q == nullptr) {
+      FLASH_NAMESPACE::copy</*Is_even_MN=*/false, Is_even_K>(
+          gmem_tiled_copy_Oaccum, tOgOaccum, tOrOaccum, tOcOaccum, tOpOaccum, params.b * params.h * params.seqlen_q - bidx * kBlockM);
+    } else {
+      clear(tOrOaccum);
+#pragma unroll
+      for (int m = 0; m < size<1>(tOrOaccum); ++m) {
+        if (valid_row(row_offset_lse + get<0>(tOcOaccum(0, m, 0)))) {
+#pragma unroll
+          for (int k = 0; k < size<2>(tOrOaccum); ++k) {
+            if (Is_even_K || tOpOaccum(k)) {
+              copy(tOgOaccum(_, m, k), tOrOaccum(_, m, k));
+            }
+          }
+        }
+      }
+    }
 #pragma unroll
     for (int m = 0; m < size<1>(tOrOaccum); ++m) {
       int row = get<0>(tOcOaccum(0, m, 0));
+      if (!valid_row(row_offset_lse + row)) continue;
       ElementAccum lse_scale = sLSE[split][row];
 #pragma unroll
       for (int k = 0; k < size<2>(tOrOaccum); ++k) {
@@ -1252,7 +1287,7 @@ inline __device__ void combine_attn_seqk_parallel(const Params& params) {
 #pragma unroll
   for (int m = 0; m < size<1>(rO); ++m) {
     const int idx = bidx * kBlockM + get<0>(tOcOaccum(0, m, 0));
-    if (idx < params.b * params.h * params.seqlen_q) {
+    if (valid_row(idx)) {
       const int batch_idx = idx / (params.h * params.seqlen_q);
       const int head_idx = (idx - batch_idx * (params.h * params.seqlen_q)) / params.seqlen_q;
       // The index to the rows of Q

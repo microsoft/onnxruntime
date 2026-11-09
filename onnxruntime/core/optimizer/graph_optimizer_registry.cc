@@ -13,9 +13,12 @@ namespace onnxruntime {
 #if !defined(ORT_MINIMAL_BUILD)
 GraphOptimizerRegistry::GraphOptimizerRegistry(const onnxruntime::SessionOptions* sess_options,
                                                const onnxruntime::IExecutionProvider* cpu_ep,
-                                               const logging::Logger* logger) : session_options_(sess_options),
-                                                                                cpu_ep_(cpu_ep),
-                                                                                logger_(logger) {
+                                               const logging::Logger* logger,
+                                               bool capability_optimizations_supported)
+    : session_options_(sess_options),
+      cpu_ep_(cpu_ep),
+      logger_(logger),
+      capability_optimizations_supported_(capability_optimizations_supported) {
   auto status = CreatePredefinedSelectionFuncs();
   ORT_ENFORCE(status.IsOK(), "Could not create pre-defined selection functions. Error Message: ",
               status.ErrorMessage());
@@ -38,9 +41,12 @@ std::optional<SelectionFunc> GraphOptimizerRegistry::GetSelectionFunc(std::strin
 #else
 GraphOptimizerRegistry::GraphOptimizerRegistry(const onnxruntime::SessionOptions* sess_options,
                                                const onnxruntime::IExecutionProvider* cpu_ep,
-                                               const logging::Logger* logger) : session_options_(sess_options),
-                                                                                cpu_ep_(cpu_ep),
-                                                                                logger_(logger) {}
+                                               const logging::Logger* logger,
+                                               bool capability_optimizations_supported)
+    : session_options_(sess_options),
+      cpu_ep_(cpu_ep),
+      logger_(logger),
+      capability_optimizations_supported_(capability_optimizations_supported) {}
 
 std::optional<SelectionFunc> GraphOptimizerRegistry::GetSelectionFunc(std::string& /*name*/) const {
   return std::nullopt;

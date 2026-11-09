@@ -87,6 +87,8 @@ jobs:
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --secret id=PIP_INDEX_URL --secret id=CARGO_CONFIG,src=$HOME/.cargo/config.toml --secret id=SYSTEM_ACCESSTOKEN"
       Repository: onnxruntimecpubuildpython${{ parameters.arch }}
 
+  - template: setup-vcpkg-cache.yml
+
   - task: Bash@3
     displayName: 'Build Python Wheel'
     env:

@@ -29,16 +29,45 @@ is unaffected: it is already the native C++ WebNN EP in both builds (both link `
 selects the `WEBNN` EP either way). Removing JSEP only drops the shared JS init glue (`jsepInit('webnn', …)` →
 `webnnInit(…)`, same `WebNNBackend`), not the WebNN EP itself.
 
-- **Phase 0 (now):** announce the deprecation and freeze JSEP to bug and security fixes, then close the build
+- **Phase 0:** announce the deprecation and freeze JSEP to bug and security fixes, then close the build
   configuration, parity and CI gaps that block the flip.
 - **Phase 1 (a future release):** flip the default (`.`) and `./all` bundles to the native WebGPU EP, add a temporary
   `onnxruntime-web/jsep` escape-hatch export, and ship deprecation warnings + docs.
 - **Phase 2 (a subsequent release after Phase 1):** delete JSEP — both the TypeScript backend and the native JS
   EP — and remove the temporary `/jsep` export and build flags.
 
-Only Phase 0 is scheduled. Phase 1 begins when its release gate is met (§9), not at a target release. Phase 2
-begins when a review of reported parity gaps and JSEP usage concludes that the temporary `/jsep` export can be
-withdrawn (§10) — at minimum one release after Phase 1.
+The Phase 1 default flip requires its release gate to be met (§9), not a target release; preparatory changes can
+land before that gate is met. Phase 2 begins when a review of reported parity gaps and JSEP usage concludes that
+the temporary `/jsep` export can be withdrawn (§10) — at minimum one release after Phase 1.
+
+### 1.1 Implementation status
+
+**Status last reviewed:** 2026-11-03.
+
+Use **Planned**, **In progress**, **Blocked**, or **Done**. On the default branch, **Done** means the changes are
+merged and the required validation is complete. Once the other changes in an implementing PR are approved and
+validation has passed, update its milestone to **Done** in that same PR, clear the remaining work, and retain the
+PR link. This describes the proposed post-merge state and avoids a separate status-only follow-up. If required
+validation can only happen after merge, keep the milestone **In progress** until that validation is complete.
+Update the review date when updating the table. Keep progress updates here; the sections below define requirements
+and decisions.
+
+| Milestone | Status | Remaining work |
+|---|---|---|
+| Phase 0: deprecation announcement and contribution freeze | Done | |
+| Phase 0: blocking native-WebGPU baseline CI | Done | |
+| Phase 0: native-WebGPU IO-binding and proxy CI ([#33842](https://github.com/microsoft/onnxruntime/pull/33842)) | In progress | Merge the validated CI coverage changes. |
+| Phase 0: build configuration parity (§7) | Planned | Measure builds A/B/C and choose the operator/type coverage policy. |
+| Phase 0: GPU IO-binding parity (§8.2) | Planned | Establish zero-copy handoff and lifetime guarantees beyond correctness-suite coverage. |
+| Phase 0: WebNN initialization coverage (§8.3) | Planned | Add and validate blocking coverage in a WebNN-capable browser environment. |
+| Phase 0: global WebGPU settings (§8.4) | Planned | Wire power preference with a behavior-preserving default and document unsupported settings. |
+| Phase 0: JSPI browser coverage (§8.6) | Planned | Exercise the native JSPI path in a compatible browser. |
+| Phase 1: compatibility export, warnings, and migration preparation (§9) | Planned | Rename the build flag, add `/jsep` and warnings, retarget operator docs, open the tracking issue, and prepare migration guidance and the usage baseline. |
+| Phase 1: default flip (§9) | Blocked | Meet the release gate and land an isolated default change. |
+| Phase 2: native profiling (§10.1) | Planned | Expose native profiling through the JavaScript API. |
+| Phase 2: WebNN relocation (§10.1) | Planned | Move shared WebNN code out of the JSEP directory and update importers. |
+| Phase 2: Windows/ADO native-WebGPU WASM builds (§8.6) | Planned | Provide GPU-capable replacement artifacts before removing JSEP build legs. |
+| Phase 2: JSEP removal (§10) | Blocked | Ship Phase 1, retain the escape hatch for at least one release, complete prerequisites, and review parity reports and usage before removal. |
 
 ---
 
@@ -170,24 +199,25 @@ Phase 0 is the pre-work, in three parts:
 
 - **Announce.** Publish [docs/JSEP_Deprecation.md](../JSEP_Deprecation.md) and the in-tree README pointers in
   `onnxruntime/core/providers/js/` and `js/web/lib/wasm/jsep/`, so JSEP contributions can be redirected
-  immediately. This is deliberately first: it costs nothing, changes no behavior, and stops new JSEP work
-  accumulating while the rest of the plan is executed.
+  immediately. The maintenance policy must precede implementation work so new JSEP features do not accumulate
+  during the migration.
 - **Resolve the build-configuration question** (§7), which gates the flip.
-- **Close the parity and coverage gaps below.** Items 1–3 need a real browser + GPU/WebNN run; items 4–6 are known
-  wiring and coverage gaps to fix.
+- **Meet the parity and coverage requirements below.** Browser coverage must run in a real GPU/WebNN-capable
+  environment; operator tests alone do not establish initialization, IO-binding or compatibility guarantees.
 
-1. **Proxy-worker (`wasm.proxy = true`).** `./webgpu` already ships this exact path (native WebGPU EP + Asyncify + proxy
-   over the EP-agnostic `proxy-wrapper.ts`), so this is a coverage check, not new wiring. CI today runs `--wasm.proxy`
-   only with `-b=wasm` (CPU) on the JSEP build — never `-b=webgpu`, and the `--webgpu-ep` leg runs no proxy. Confirm a
-   real proxy-mode run on a GPU: native WebGPU EP device init and threading inside a Worker.
-2. **IO-binding.** The `'gpu-buffer'` / `'ml-tensor'` paths in `wasm-core-impl.ts` have symmetric native/JSEP
-   hooks. CI today runs the `--io-binding=gpu-tensor` / `gpu-location` legs on the JSEP build only; the `--webgpu-ep`
-   leg passes no `--io-binding`. Confirm the native path delivers true zero-copy handoff and matching dispose/lifetime
-   semantics on a GPU.
+1. **Proxy-worker (`wasm.proxy = true`).** Blocking Release browser coverage must exercise the native WebGPU EP
+   with Asyncify and proxy mode over the EP-agnostic `proxy-wrapper.ts`, including device initialization and
+   threading inside a Worker. Use CPU-resident IO: proxy mode does not support GPU-resident inputs or
+   preallocated outputs.
+2. **IO-binding.** Blocking native-WebGPU browser coverage must exercise both `--io-binding=gpu-tensor` and
+   `--io-binding=gpu-location`, including uploads, preallocated or ORT-allocated GPU outputs, readback and disposal.
+   The native path must preserve zero-copy handoff and dispose/lifetime semantics. Passing correctness suites
+   alone does not establish true zero-copy handoff or all lifetime guarantees.
 3. **WebNN.** WebNN is already the native C++ WebNN EP in both builds (`session-options.ts` selects `WEBNN`
    either way); the flip only swaps the JS init bridge (`jsepInit('webnn', …)` → `webnnInit(…)`, same
-   `WebNNBackend`). Confirm the native `webnnInit` path behaves the same in a `navigator.ml`-capable environment.
-4. **Global `env.webgpu.*` settings (wiring gap).** `wasm-core-impl.ts` requests a `GPUAdapter` on the JS side and
+   `WebNNBackend`). Blocking browser coverage must establish equivalent native `webnnInit` behavior, including
+   session creation and inference, in a `navigator.ml`-capable environment.
+4. **Global `env.webgpu.*` settings.** `wasm-core-impl.ts` requests a `GPUAdapter` on the JS side and
    then calls `webgpuInit()` without forwarding it, so `adapter`, `powerPreference` and `forceFallbackAdapter` are
    silently dropped on the native path. Resolution:
    - **`powerPreference`** — forward it to the existing `kPowerPreference` EP option
@@ -208,7 +238,7 @@ Phase 0 is the pre-work, in three parts:
    receiving `kernelId` / `kernelType` / `kernelName` / `programName`, timestamps and input/output tensor metadata
    (`WebGpuProfilingDataV1` in `js/common/lib/env.ts`), falling back to `console.log` when unset. The native
    WebGPU EP has no equivalent hook. It has a richer ORT-framework profiler (`webgpu_profiler.{h,cc}`, gated on
-   the session's `enableProfiling`), but its JSON trace is unreachable from JavaScript today:
+   the session's `enableProfiling`), but its JSON trace is unreachable from JavaScript:
    `session-handler-inference.ts` leaves `startProfiling()` as a TODO on **both** paths, and `endProfiling()` in
    `wasm-core-impl.ts` frees the filename returned by `_OrtEndProfiling` without surfacing it.
 
@@ -216,17 +246,18 @@ Phase 0 is the pre-work, in three parts:
    deprecated `profilingMode`) onto the session's `enableProfiling`, implementing `startProfiling()`, and
    surfacing the JSON trace are a **Phase 2 prerequisite** (§10.1), not a flip gate — the `/jsep` escape hatch
    preserves today's behavior for the whole deprecation window.
-6. **CI coverage gaps.** Beyond items 1–3, the pipelines themselves need work:
-   - `tools/ci_build/github/azure-pipelines/templates/win-wasm-ci.yml` builds only the JSEP variants
-     (`wasm_simd_jsep`, `wasm_simd_threads_jsep`) and has no `BuildWebGPU` parameter, so once JSEP is gone the
-     Windows/ADO side produces no GPU-capable WASM at all.
-   - No CI leg passes `--jspi`, so the `/jspi` bundle is built but never exercised.
-   - GitHub Actions leg 07 runs `suite1` while the ADO leg 07 runs the default `suite0` — two nominally identical
-     legs testing different things.
-   - `--webgpu-ep` rebuilds `dist/ort.all[.min].js` in place and `karma.conf.js` always loads that path, so
-     consecutive legs overwrite each other's bundle.
+6. **CI configuration requirements.**
+   - Before removing JSEP build legs, Windows/ADO WASM builds must provide native-WebGPU-capable replacement
+     artifacts through `tools/ci_build/github/azure-pipelines/templates/win-wasm-ci.yml`.
+   - Browser coverage must exercise the native JSPI path using `--jspi` on a JSPI-capable browser; building the
+     `/jspi` bundle alone is insufficient.
+   - Use consistent, explicit suite selection across GitHub Actions and ADO.
+   - Each test invocation must select its intended WebGPU implementation. Because `--webgpu-ep` rebuilds
+     `dist/ort.all[.min].js` in place and `karma.conf.js` loads that path, test ordering and rebuilds must not
+     cause a test to exercise the wrong implementation. Package-consumption tests must use an independently
+     packed production bundle, not a development bundle overwritten by a test run.
 
-Per-session typed options are already a superset of JSEP's, confirmed by source audit.
+Per-session typed options cover JSEP's option surface.
 
 ---
 
@@ -250,9 +281,20 @@ Per-session typed options are already a superset of JSEP's, confirmed by source 
    covering the `.jsep.wasm` → `.asyncify.wasm` filename change, `/jsep` pinning, and the int64 `extra` opt-in.
    This is the first user-facing announcement; capture the JSEP usage baseline (§11) before it ships.
 
-**Release gate.** Before switching the default to the native WebGPU EP, resolve the §8 gaps and add blocking CI
-coverage for proxy mode, GPU IO-binding, and WebNN initialization. Passing the existing operator tests alone is
-insufficient.
+**Release gate.** Before switching the default to the native WebGPU EP:
+
+- Resolve the operator/type coverage policy using the build measurements in §7.
+- Establish blocking browser coverage for proxy mode, both GPU IO-binding modes, and WebNN initialization, and
+  validate the zero-copy and dispose/lifetime parity requirements (§8.1–3). Passing operator tests alone is
+  insufficient.
+- Resolve global WebGPU settings compatibility, including a behavior-preserving default for power preference
+  and guidance for unsupported settings (§8.4).
+- Exercise the native JSPI path and meet the suite-selection and bundle-isolation requirements (§8.6).
+- Complete the compatibility export, warnings, build-flag rename, operator-doc retargeting, tracking issue, and
+  migration guidance described above. Capture the JSEP usage baseline before the user-facing announcement ships.
+
+Native profiling, WebNN code relocation, and Windows/ADO replacement WASM builds are removal prerequisites, not
+default-flip gates (§10.1, §8.6). They must be complete before the affected JSEP code or build legs are removed.
 
 ---
 
@@ -321,17 +363,20 @@ the deletion commit.
 | Undiscovered native-WebGPU-EP parity gap vs. JSEP | Medium | `/jsep` escape hatch + warn-once funnel; differential tests |
 | Default bundle silently narrows its operator/type surface (reduced-size build args) | High if unaddressed | Measure builds A/B/C and resolve before the flip (§7) |
 | int64 behavior change vs. JSEP | Low | None by default (native-off matches JSEP); `enableInt64 = 1` is an opt-in tradeoff |
-| Proxy / IO-binding / WebNN unexercised in the native-WebGPU build in CI | Unknown | Validate before flip (§8) |
+| Proxy / IO-binding / WebNN regressions in the native-WebGPU build | Medium | Require blocking browser coverage and targeted parity validation before the flip (§8) |
 | Global `env.webgpu.*` settings dropped on native | Medium | `powerPreference` wired with a behavior-preserving default when unset; `adapter` / `forceFallbackAdapter` documented as no-ops, custom devices directed to the per-session `device` option — release gate (§8.4, §9) |
 | `env.webgpu.profiling.ondata` has no native equivalent | Low | Documented as JSEP-only; native profiling wiring is a Phase 2 prerequisite (§8.5, §10.1) |
-| Windows/ADO produces no WebGPU-EP WASM build | Medium | Add a `BuildWebGPU` leg to `win-wasm-ci.yml` before Phase 2 (§8.6) |
+| Windows/ADO produces no WebGPU-EP WASM build | Medium | Provide native-WebGPU WASM artifacts through `win-wasm-ci.yml` before removing JSEP build legs (§8.6) |
 | `post-webnn.js` linkage changes for WebNN once JSEP is removed | Medium | WebNN smoke test on the Phase 2 build, not just a compile check (§10.3) |
 | WASM filename change breaks `wasmPaths` | Medium | Document `.jsep.wasm` → `.asyncify.wasm` |
 | No telemetry on JSEP adoption | Medium | Per-file CDN statistics for `.jsep.wasm` vs `.asyncify.wasm` / `.jspi.wasm` (baseline captured before the user-facing announcement), plus the warn-once funnel and the escape hatch |
 
 ---
 
-## 12. Migration guide
+## 12. Planned Phase 1 migration guidance
+
+This guidance applies when Phase 1 ships, not to the current default bundle. In particular, the temporary
+`onnxruntime-web/jsep` export is a planned Phase 1 addition and is not yet available.
 
 - **Default import (`onnxruntime-web`) and `onnxruntime-web/all`:** no source change if you use default,
   package-managed asset resolution; the `webgpu` backend keeps working and converges to the native WebGPU EP.

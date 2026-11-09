@@ -60,9 +60,11 @@ class IAllocatorImplWrappingOrtAllocator final : public IAllocator {
   bool IsStreamAware() const override;
   void* AllocOnStream(size_t size, Stream* stream) override;
 
-  const OrtAllocator* GetWrappedOrtAllocator() const {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  const OrtAllocator* GetWrappedOrtAllocator() const override {
     return ort_allocator_.get();
   }
+#endif
 
   void GetStats(AllocatorStats* stats) override;
 
@@ -93,9 +95,11 @@ class IArenaImplWrappingOrtAllocator final : public IArena {
   // ReleaseStreamBuffers is intentionally not overridden — the default IArena no-op is correct.
   // Plugin EPs handle stream buffer cleanup internally via OnSessionRunEnd.
 
-  const OrtAllocator* GetWrappedOrtAllocator() const {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  const OrtAllocator* GetWrappedOrtAllocator() const override {
     return ort_allocator_.get();
   }
+#endif
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(IArenaImplWrappingOrtAllocator);
 

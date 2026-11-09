@@ -1548,15 +1548,19 @@ constexpr const char* MoE_ver1_doc = R"DOC(
       When swiglu_fusion=0, two GEMMs are not fused, and they are FC1 and FC3 in the inputs.
       When swiglu_fusion=1, two GEMMs are fused so that g and l are computed in a single GEMM (FC1), and g and l are interleaved on each row of size 2 * inter_size.
       When swiglu_fusion=2, two GEMMs are fused, and g and l are concatenated on each row.
+      CUDA also supports GEGLU: geglu = GELU(g, approximate='tanh') * l.
+      GEGLU requires fused FC1 projections: swiglu_fusion=1 stores [g0,l0,g1,l1,...],
+      and swiglu_fusion=2 stores [g | l]. Separate FC3 inputs are not supported.
+      activation_alpha, activation_beta and swiglu_limit do not affect GEGLU.
       )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
     MoE, 1,
     OpSchema()
         .SetDoc(MoE_ver1_doc)
-        .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu", AttributeProto::STRING, std::string("relu"))
-        .Attr("swiglu_fusion", "0: not fused, 1: fused and interleaved. 2: fused and not interleaved.", AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr("swiglu_limit", "The limit used to clamp in SwiGLU. No clamp when limit is not provided.", AttributeProto::FLOAT, OPTIONAL_VALUE)
+        .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU) and geglu (GELU-tanh(gate) * up). GEGLU requires fused FC1 gate/up weights, swiglu_fusion=1 or 2, and no FC3 inputs. Default is relu", AttributeProto::STRING, std::string("relu"))
+        .Attr("swiglu_fusion", "Gate/up layout for swiglu or geglu. 0: not fused (swiglu only), 1: fused and interleaved, 2: fused and not interleaved ([gate | up] for geglu).", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("swiglu_limit", "The limit used to clamp in SwiGLU. No clamp when limit is not provided. Does not affect GEGLU.", AttributeProto::FLOAT, OPTIONAL_VALUE)
         .Attr("activation_alpha", "Alpha parameter used in activation function.", AttributeProto::FLOAT, 1.0f)
         .Attr("activation_beta", "Beta parameter used in activation function.", AttributeProto::FLOAT, 0.0f)
         .Attr("k", "Number of top experts to select from expert pool", AttributeProto::INT, static_cast<int64_t>(1))
@@ -1571,7 +1575,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "2D input tensor with shape (total_tokens, num_experts), where total_tokens "
                "must match the flattened token count of input",
                "T")
-        .Input(2, "fc1_experts_weights", "3D input tensor with shape (num_experts, fusion_size * inter_size, hidden_size), where fusion_size is 2 for fused swiglu, and 1 otherwise", "T")
+        .Input(2, "fc1_experts_weights", "3D input tensor with shape (num_experts, fusion_size * inter_size, hidden_size), where fusion_size is 2 for fused swiglu or geglu, and 1 otherwise", "T")
         .Input(3, "fc1_experts_bias", "2D optional input tensor with shape (num_experts, fusion_size * inter_size)", "T", OpSchema::Optional)
         .Input(4, "fc2_experts_weights", "3D input tensor with shape (num_experts, hidden_size, inter_size)", "T")
         .Input(5, "fc2_experts_bias", "2D optional input tensor with shape (num_experts, hidden_size)", "T", OpSchema::Optional)
@@ -1610,8 +1614,11 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
       Partial edge blocks are allowed. No zero points or activation scales are accepted.
       Without a positive block_size, FP8 uses the legacy per-expert fc*_global_scale inputs instead.
       Block-scaled FP8 does not use global scales. Activations retain the input type (weight-only quantization).
-      On CUDA SM80-or-newer GPUs, SiLU/SwiGLU block-scaled FP8 uses fused weight-only GEMV/GEMM by default.
-      These kernels decode and scale FP8 tiles on chip without materializing full FP16/BF16 weight buffers.
+      On CUDA SM80-or-newer GPUs, SiLU/SwiGLU block-scaled FP8 uses fused weight-only GEMV/GEMM for decode-sized
+      batches of at most 8 rows by default. These kernels decode and scale FP8 tiles on chip without materializing
+      full FP16/BF16 weight buffers. Larger batches dequantize the selected experts and use the CUTLASS grouped GEMM.
+      Set ORT_QMOE_FP8_FUSED_MAX_ROWS before session creation to change the row cutoff, or set ORT_ENABLE_FP8_FUSED=1
+      to keep the scratch-free fused kernels for every supported row count.
       Set ORT_ENABLE_FP8_FUSED=0 before session creation to select the compact dense-dequant fallback.
       Other activation types and unsupported routing sizes retain the fallback.
       The WebGPU block-FP8 kernel supports block_size=128 with float32 scales and rejects projections
@@ -1635,6 +1642,10 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
       When swiglu_fusion=0, two GEMMs are not fused, and they are FC1 and FC3 in the inputs.
       When swiglu_fusion=1, two GEMMs are fused so that g and l are computed in a single GEMM (FC1), and g and l are interleaved on each row of size 2 * inter_size.
       When swiglu_fusion=2, two GEMMs are fused, and g and l are concatenated on each row.
+      CUDA also supports GEGLU with quant_type='int': geglu = GELU(g, approximate='tanh') * l.
+      GEGLU requires fused FC1 projections: swiglu_fusion=1 stores [g0,l0,g1,l1,...],
+      and swiglu_fusion=2 stores [g | l]. Separate FC3 weights are not supported.
+      activation_alpha, activation_beta and swiglu_limit do not affect GEGLU.
       )DOC";
 
 static void QMoETypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -1846,7 +1857,7 @@ static OpSchema QMoESchema() {
   auto schema = OpSchema()
                     .SetDoc(std::string(qMoE_ver1_doc) + qMoE_int3_doc)
                     .Attr("activation_type",
-                          "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU). Default is relu",
+                          "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU) and geglu (GELU-tanh(gate) * up). GEGLU requires quant_type='int', fused FC1 gate/up weights, swiglu_fusion=1 or 2, and no separate FC3 weights. Default is relu",
                           AttributeProto::STRING,
                           std::string("relu"))
                     .Attr("k",
@@ -1879,11 +1890,12 @@ static OpSchema QMoESchema() {
                           AttributeProto::INT,
                           OPTIONAL_VALUE)
                     .Attr("swiglu_fusion",
-                          "0: not fused, 1: fused and interleaved. 2: fused and not interleaved.",
+                          "Gate/up layout for swiglu or geglu. 0: not fused (swiglu only), "
+                          "1: fused and interleaved, 2: fused and not interleaved ([gate | up] for geglu).",
                           AttributeProto::INT,
                           static_cast<int64_t>(0))
                     .Attr("swiglu_limit",
-                          "The limit used to clamp inputs in SwiGLU. It is infinite when limit is not provided.",
+                          "The limit used to clamp inputs in SwiGLU. It is infinite when limit is not provided. Does not affect GEGLU.",
                           AttributeProto::FLOAT,
                           OPTIONAL_VALUE)
                     .Attr("activation_alpha",
@@ -1937,7 +1949,7 @@ static OpSchema QMoESchema() {
                            "fc1_experts_weights",
                            "3D tensor with shape (num_experts, fusion_size * inter_size, "
                            "hidden_size * effective_fc1_bits / 8). The last dimension must be byte-aligned. "
-                           "The fusion_size is 2 for fused swiglu, or 1 otherwise. effective_fc1_bits is "
+                           "The fusion_size is 2 for fused swiglu or geglu, or 1 otherwise. effective_fc1_bits is "
                            "fc1_expert_weight_bits when provided, otherwise expert_weight_bits.",
                            "T1")
                     .Input(3,
@@ -4269,6 +4281,107 @@ Empty packed weights are currently supported by the CPU and WebGPU execution pro
               !bias_shape.dim(0).has_dim_value() ||
               bias_shape.dim(0).dim_value() != out_features) {
             fail_shape_inference("bias shape must be [N] where N = ", out_features);
+          }
+        }
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBitsQLoRA)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "Computes MatMulNBits(X,W,scales) + MatMulNBits(MatMulNBits(X,lora_A,lora_A_scales),lora_B,lora_B_scales). "
+          "Each projection follows MatMulNBits block quantization and bit packing, with implicit zero points "
+          "2^(bits-1) for the base and 2^(lora_bits-1) for the adapters. No bias or explicit zero points are applied. "
+          "The adapter rank R may be any positive integer and need not be a multiple of lora_block_size. "
+          "Partial final blocks are padded; only the logical K or R elements participate in each projection. "
+          "An empty lora_B returns the base projection. An empty lora_A produces a zero down projection; "
+          "a nonempty lora_B is still evaluated, including its NaN/Inf behavior. "
+          "Intermediate projections and block scales use the activation type before the final addition. "
+          "Adapters remain replaceable. Execution providers may support a subset of the defined types, "
+          "quantization settings, and ranks.")
+      .Attr("K", "Positive input feature dimension of the base and down-projection weight matrices.",
+            AttributeProto::INT)
+      .Attr("N", "Positive output feature dimension of the base and up-projection weight matrices.",
+            AttributeProto::INT)
+      .Attr("bits", "Base weight bit width, following MatMulNBits (2, 4, or 8).", AttributeProto::INT, int64_t{4})
+      .Attr("block_size", "Base quantization block size along K, following MatMulNBits: a power of two, at least 16.",
+            AttributeProto::INT, int64_t{32})
+      .Attr("accuracy_level",
+            "Accuracy policy following MatMulNBits: 0 (unset), 1 (fp32), 2 (fp16), 3 (bf16), or 4 (int8). "
+            "Applies to the base and eligible adapter down projections; the up projection uses level 0.",
+            AttributeProto::INT, int64_t{0})
+      .Attr("lora_bits", "Adapter weight bit width, following MatMulNBits (2, 4, or 8).",
+            AttributeProto::INT, int64_t{8})
+      .Attr("lora_block_size",
+            "Adapter quantization block size along K for lora_A and R for lora_B: a power of two, at least 16.",
+            AttributeProto::INT, int64_t{32})
+      .Input(0, "X", "Input of rank at least one, with last dimension K, following MatMulNBits.", "T")
+      .Input(1, "W", "Packed base weights [N,ceil(K/block_size),block_size*bits/8].", "TQ")
+      .Input(2, "scales", "Base block scales [N,ceil(K/block_size)]; may be flattened.", "T")
+      .Input(3, "lora_A",
+             "Packed down weights [R_A,ceil(K/lora_block_size),lora_block_size*lora_bits/8], R_A=R or 0.", "TQ")
+      .Input(4, "lora_A_scales",
+             "Down block scales [R,ceil(K/lora_block_size)]; retained when the adapter is empty.", "T")
+      .Input(5, "lora_B",
+             "Packed up weights [N,R_blocks,lora_block_size*lora_bits/8], R_blocks=ceil(R/lora_block_size) or 0.", "TQ")
+      .Input(6, "lora_B_scales",
+             "Up block scales [N,ceil(R/lora_block_size)]; retained when the adapter is empty.", "T")
+      .Output(0, "Y", "Input shape with the last dimension replaced by N.", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)"},
+                      "Activations and block scales share the same floating-point type (FP16 or FP32).")
+      .TypeConstraint("TQ", {"tensor(uint8)"}, "Packed quantized weights.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        const auto k = getAttribute(ctx, "K", -1);
+        const auto n = getAttribute(ctx, "N", -1);
+        const auto lora_bits = getAttribute(ctx, "lora_bits", 8);
+        const auto lora_block_size = getAttribute(ctx, "lora_block_size", 32);
+        const auto valid_quantization = [](int64_t bits, int64_t block_size) {
+          return (bits == 2 || bits == 4 || bits == 8) && block_size >= 16 &&
+                 (block_size & (block_size - 1)) == 0;
+        };
+        if (k <= 0 || n <= 0 ||
+            !valid_quantization(getAttribute(ctx, "bits", 4), getAttribute(ctx, "block_size", 32)) ||
+            !valid_quantization(lora_bits, lora_block_size)) {
+          fail_shape_inference(
+              "MatMulNBitsQLoRA requires positive K and N, bit widths 2, 4, or 8, "
+              "and power-of-two block sizes of at least 16.");
+        }
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        MatmulWithQuantWeightShapeInference(ctx, k, n, true);
+        int64_t rank = -1;
+        for (size_t index : {size_t{3}, size_t{4}, size_t{5}, size_t{6}}) {
+          if (!hasInputShape(ctx, index)) continue;
+          const auto& shape = getInputShape(ctx, index);
+          const bool packed = index == 3 || index == 5;
+          if (shape.dim_size() != (packed ? 3 : 2)) fail_shape_inference("Invalid quantized adapter rank.");
+          if ((index == 3 || index == 4) && shape.dim(0).has_dim_value()) {
+            const auto value = shape.dim(0).dim_value();
+            if (index == 3 && value == 0) continue;  // Empty packed defaults retain the scale tensor's rank.
+            if (value <= 0 || (rank > 0 && value != rank)) {
+              fail_shape_inference("Inconsistent adapter rank between lora_A and lora_A_scales.");
+            }
+            rank = value;
+          }
+        }
+        const auto k_blocks = k / lora_block_size + (k % lora_block_size != 0);
+        const auto r_blocks = rank < 0 ? -1 : rank / lora_block_size + (rank % lora_block_size != 0);
+        const auto blob_size = (lora_block_size / 8) * lora_bits;
+        const int64_t dims[4][3] = {
+            {rank, k_blocks, blob_size},
+            {rank, k_blocks, 0},
+            {n, r_blocks, blob_size},
+            {n, r_blocks, 0},
+        };
+        for (size_t index : {size_t{3}, size_t{4}, size_t{5}, size_t{6}}) {
+          if (!hasInputShape(ctx, index)) continue;
+          const auto& shape = getInputShape(ctx, index);
+          for (int axis = 0; axis < shape.dim_size(); ++axis) {
+            const auto& dim = shape.dim(axis);
+            const bool empty_axis = (index == 3 && axis == 0) || (index == 5 && axis == 1);
+            if (dim.has_dim_value() && dims[index - 3][axis] >= 0 && dim.dim_value() != dims[index - 3][axis] &&
+                !(empty_axis && dim.dim_value() == 0)) {
+              fail_shape_inference("Invalid quantized adapter dimensions.");
+            }
           }
         }
       });
