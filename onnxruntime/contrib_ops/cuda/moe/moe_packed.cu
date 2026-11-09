@@ -1208,7 +1208,7 @@ __device__ __forceinline__ uint4 MoEPackedLoadContiguousIq2Input(const __nv_bflo
   return LoadPacked8(input);
 }
 
-template <bool kFc1, int KW, bool kAlignedInput = false, bool kAlignedRecordWindow = false>
+template <bool kFc1, int KW, bool kAlignedInput = false, bool kAlignedRecordWindow = false, int MT = 2>
 __global__ __launch_bounds__(KW * 32) void MoEPackedReluIq2ContiguousKKernel(
     const __nv_bfloat16* input,
     const uint8_t* weights,
@@ -1224,7 +1224,6 @@ __global__ __launch_bounds__(KW * 32) void MoEPackedReluIq2ContiguousKKernel(
   const int remaining = tile.count - first;
   if (remaining <= 0) return;
   const int count = remaining < 8 ? remaining : 8;
-  constexpr int MT = 2;
   __shared__ int routes[8];
   __shared__ float reduction[KW][MT * 16][8];
   const int tid = static_cast<int>(threadIdx.x);
@@ -1386,10 +1385,17 @@ Status DispatchMoEPackedCuda(
       if (params.relu_squared && params.gate_type == gguf_quant::kGgmlTypeIQ2_XXS &&
           params.down_type == gguf_quant::kGgmlTypeIQ2_XXS) {
         const unsigned int subtiles = use_prefill_tiles ? 4u : 1u;
-        const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 31) / 32),
+        const bool aligned_input = (reinterpret_cast<uintptr_t>(input) & 15u) == 0 && params.hidden_size % 8 == 0;
+        // Narrow R8 FC1 tiles reduce live accumulators without changing the four K partitions.
+        const bool narrow_fc1 = params.num_rows == 8 && aligned_input;
+        const int fc1_columns = narrow_fc1 ? 16 : 32;
+        const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + fc1_columns - 1) / fc1_columns),
                             static_cast<unsigned int>(launch_tiles), subtiles);
         // Every 64-K fragment stays vector-aligned when the base and row stride are aligned.
-        if ((reinterpret_cast<uintptr_t>(input) & 15u) == 0 && params.hidden_size % 8 == 0) {
+        if (narrow_fc1) {
+          MoEPackedReluIq2ContiguousKKernel<true, 4, true, false, 1><<<fc1_grid, 128, 0, stream>>>(
+              input, gate_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
+        } else if (aligned_input) {
           MoEPackedReluIq2ContiguousKKernel<true, 4, true><<<fc1_grid, 128, 0, stream>>>(
               input, gate_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
         } else {

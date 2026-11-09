@@ -28,11 +28,11 @@ void RunMoeCuda(OpTester& test) {
 
 template <typename T = BFloat16>
 void TestPreselectedReluSquared(int rows, int topk, int malformed = 0, bool sigmoid = false,
-                                int inter_size = 256, int grid_offset = -1,
+                                int inter_size = 256, int grid_offset = -1, int hidden_size = 1024,
                                 const char* activation_type = "relu2") {
   constexpr int experts = 32;
-  constexpr int hidden_size = 1024;
-  std::vector<uint8_t> gate(experts * inter_size * 264);
+  const int gate_row_bytes = (hidden_size / 256) * 66;
+  std::vector<uint8_t> gate(experts * inter_size * gate_row_bytes);
   const int down_row_bytes = (inter_size / 256) * 66;
   std::vector<uint8_t> down(experts * hidden_size * down_row_bytes);
   std::vector<T> input(rows * hidden_size), expected(rows * hidden_size);
@@ -88,7 +88,9 @@ void TestPreselectedReluSquared(int rows, int topk, int malformed = 0, bool sigm
       const float weight = sigmoid ? (probability(expert) / (sigmoid_sum + 1e-20f) * sigmoid_scale)
                                    : (rank == 0 ? .3116f : .5098f);
       weights[row * topk + rank] = weight;
-      const float fc1 = grid_offset < 0 && expert % 5 == 4 ? 0.f : T(4.f * factor * sum8[expert]).ToFloat();
+      const float fc1 = grid_offset < 0 && expert % 5 == 4
+                            ? 0.f
+                            : T(static_cast<float>(hidden_size / 256) * factor * sum8[expert]).ToFloat();
       const float activation = T(fc1 * fc1).ToFloat();
       const float fc2 = T(static_cast<float>(inter_size / 8) * activation * sum8[expert]).ToFloat();
       mixed = std::fma(weight, fc2, mixed);
@@ -121,7 +123,7 @@ void TestPreselectedReluSquared(int rows, int topk, int malformed = 0, bool sigm
   test.AddAttribute("down_type", int64_t{16});
   test.AddInput<T>("input", {1, rows, hidden_size}, input);
   test.AddOptionalInputEdge<T>();
-  test.AddInput<uint8_t>("gate", {experts, inter_size, 264}, gate, true);
+  test.AddInput<uint8_t>("gate", {experts, inter_size, gate_row_bytes}, gate, true);
   test.AddOptionalInputEdge<uint8_t>();
   test.AddInput<uint8_t>("down", {experts, hidden_size, down_row_bytes}, down, true);
   if (sigmoid) {
@@ -196,6 +198,18 @@ TEST(MoEPackedRoutingTest, Iq2ProductionWidthsPreserveOperandRoundingAndReductio
   }
 }
 
+TEST(MoEPackedRoutingTest, Iq2EightRowFc1TilesPreserveWidthAndRoutingBoundaries) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (int hidden_size : {1024, 4096}) {
+    for (int rows : {7, 8, 9}) {
+      for (int topk : {9, 17}) {
+        SCOPED_TRACE(testing::Message() << "hidden_size=" << hidden_size << " rows=" << rows << " k=" << topk);
+        TestPreselectedReluSquared(rows, topk, 0, false, 1536, -1, hidden_size);
+      }
+    }
+  }
+}
+
 TEST(MoEPackedRoutingTest, ReluSquaredPreservesPreselectedFp16Routing) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   for (int rows : {1, 9}) {
@@ -205,7 +219,7 @@ TEST(MoEPackedRoutingTest, ReluSquaredPreservesPreselectedFp16Routing) {
 
 TEST(MoEPackedRoutingTest, ReluSquaredAliasRemainsSupported) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
-  TestPreselectedReluSquared(1, 2, 0, false, 256, -1, "relu_squared");
+  TestPreselectedReluSquared(1, 2, 0, false, 256, -1, 1024, "relu_squared");
 }
 
 TEST(MoEPackedRoutingTest, Iq2CodebookSweepPreservesFp32ScaleReconstruction) {
