@@ -1209,7 +1209,7 @@ __device__ __forceinline__ uint4 MoEPackedLoadContiguousIq2Input(const __nv_bflo
 }
 
 template <bool kFc1, int KW, bool kAlignedInput = false, bool kAlignedRecordWindow = false, int MT = 2>
-__global__ __launch_bounds__(KW * 32) void MoEPackedReluIq2ContiguousKKernel(
+__global__ __launch_bounds__(KW * 32, (kAlignedRecordWindow ? 4 : 0)) void MoEPackedReluIq2ContiguousKKernel(
     const __nv_bfloat16* input,
     const uint8_t* weights,
     const int* sorted_routes,
@@ -1386,8 +1386,8 @@ Status DispatchMoEPackedCuda(
           params.down_type == gguf_quant::kGgmlTypeIQ2_XXS) {
         const unsigned int subtiles = use_prefill_tiles ? 4u : 1u;
         const bool aligned_input = (reinterpret_cast<uintptr_t>(input) & 15u) == 0 && params.hidden_size % 8 == 0;
-        // Narrow R8 FC1 tiles reduce live accumulators without changing the four K partitions.
-        const bool narrow_fc1 = params.num_rows == 8 && aligned_input;
+        // Target R8 decode tiles; four-subtile prefill retains the wider FC1 tile.
+        const bool narrow_fc1 = params.num_rows == 8 && aligned_input && !use_prefill_tiles;
         const int fc1_columns = narrow_fc1 ? 16 : 32;
         const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + fc1_columns - 1) / fc1_columns),
                             static_cast<unsigned int>(launch_tiles), subtiles);
@@ -1405,9 +1405,9 @@ Status DispatchMoEPackedCuda(
         ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
         const dim3 fc2_grid(static_cast<unsigned int>((params.hidden_size + 31) / 32),
                             static_cast<unsigned int>(launch_tiles), subtiles);
-        if (params.inter_size % 512 == 0 && (params.down_row_bytes & 3) == 0 &&
-            (reinterpret_cast<uintptr_t>(down_weights) & 3u) == 0 &&
-            (reinterpret_cast<uintptr_t>(fc1_out) & 15u) == 0) {
+        // Four-byte row alignment implies an even block count, keeping the
+        // record loader's two-byte lookahead within the row.
+        if ((params.down_row_bytes & 3) == 0 && (reinterpret_cast<uintptr_t>(down_weights) & 3u) == 0) {
           MoEPackedReluIq2ContiguousKKernel<false, 8, false, true><<<fc2_grid, 256, 0, stream>>>(
               fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
         } else {
