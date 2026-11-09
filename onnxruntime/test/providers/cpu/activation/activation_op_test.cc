@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
 #include <limits>
 #include <type_traits>
 
@@ -683,7 +684,8 @@ TEST_F(ActivationOpTest, PRelu_MultiChannel4D_SpecialValues) {
 
   const std::vector<int64_t> x_dims{1, 2, 5, 5};
   const std::vector<int64_t> slope_dims{2, 1, 1};
-  const std::vector<float> slopes{0.5f, 2.0f};
+  // A negative slope makes a wrong multiply of a zero lane flip its sign.
+  const std::vector<float> slopes{0.5f, -2.0f};
 
   std::vector<float> inputs;
   std::vector<float> outputs;
@@ -699,6 +701,29 @@ TEST_F(ActivationOpTest, PRelu_MultiChannel4D_SpecialValues) {
   test.AddInput<float>("X", x_dims, inputs);
   test.AddInput<float>("slope", slope_dims, slopes);
   test.AddOutput<float>("Y", x_dims, outputs);
+  // The default float checker treats +0 and -0 as equal. A custom verifier replaces it, so compare all
+  // values here and also check the sign of zero outputs (CPU only; other EPs are not covered by this check).
+  test.SetCustomOutputVerifier([&outputs, &x_dims](const std::vector<OrtValue>& fetches,
+                                                   const std::string& provider_type) {
+    ASSERT_EQ(fetches.size(), 1u);
+    const auto& y_tensor = fetches[0].Get<Tensor>();
+    ASSERT_EQ(y_tensor.Shape(), TensorShape(x_dims));
+    const auto y = y_tensor.DataAsSpan<float>();
+    ASSERT_EQ(y.size(), outputs.size());
+    for (size_t i = 0; i < y.size(); ++i) {
+      if (std::isnan(outputs[i])) {
+        EXPECT_TRUE(std::isnan(y[i])) << "index " << i;
+      } else if (std::isinf(outputs[i])) {
+        // EXPECT_FLOAT_EQ would accept FLT_MAX for inf (they are 1 ULP apart).
+        EXPECT_EQ(y[i], outputs[i]) << "index " << i;
+      } else {
+        EXPECT_FLOAT_EQ(y[i], outputs[i]) << "index " << i;
+      }
+      if (outputs[i] == 0.0f && provider_type == kCpuExecutionProvider) {
+        EXPECT_EQ(std::signbit(y[i]), std::signbit(outputs[i])) << "index " << i;
+      }
+    }
+  });
   // QNN has some issue with the broadcast support
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
