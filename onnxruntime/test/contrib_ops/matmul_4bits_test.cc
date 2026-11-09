@@ -486,6 +486,24 @@ TEST(MatMulNBits, Float32_4b_Accuracy1) {
   TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 1>();
 }
 
+TEST(MatMulNBits, Float32_4b_LargeMDecodedBReuse) {
+  for (int64_t rows : {257, 1025}) {
+    for (bool zero_points : {false, true}) {
+      TestOptions options;
+      options.M = rows;
+      options.N = 1024;
+      options.K = 65;
+      options.batch_count = 2;
+      options.accuracy_level = 1;
+      options.has_bias = true;
+      options.has_zero_point = zero_points;
+      std::vector<std::unique_ptr<IExecutionProvider>> providers;
+      providers.push_back(DefaultCpuExecutionProvider());
+      RunTest<float>(options, std::move(providers));
+    }
+  }
+}
+
 TEST(MatMulNBits, Float32_4b_Accuracy4) {
   TestMatMulNBitsTyped<float, 1, 1, 16, 16, 4>();
   TestMatMulNBitsTyped<float, 1, 2, 16, 16, 4>();

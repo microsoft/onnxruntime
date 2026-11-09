@@ -1640,7 +1640,11 @@ MlasQNBitGemmBatch(
 
     ptrdiff_t TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_QGEMM_THREAD_COMPLEXITY)) + 1;
 
-    ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool) * 8;
+    const ptrdiff_t PoolThreadCount = MlasGetMaximumThreadCount(ThreadPool);
+    // Parallelize large FP32 Q4 GEMMs over N so a decoded B strip is reused for all M rows.
+    const bool ReuseDecodedB = Variant == SQ4BitGemmVariant_CompFp32 && BlkLen == 32 &&
+                              M >= 1024 && N >= static_cast<size_t>(PoolThreadCount) * 32;
+    ptrdiff_t MaximumThreadCount = PoolThreadCount * (ReuseDecodedB ? 1 : 8);
 
     if (TargetThreadCount >= MaximumThreadCount) {
         TargetThreadCount = MaximumThreadCount;
@@ -1651,9 +1655,9 @@ MlasQNBitGemmBatch(
         ThreadsPerGemm = 1;
     }
 
-    constexpr size_t StrideM = kQNBitGemmComputeStrideM;
+    const size_t StrideM = ReuseDecodedB ? M : kQNBitGemmComputeStrideM;
 
-    constexpr size_t StrideNThreadAlign = MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
+    const size_t StrideNThreadAlign = ReuseDecodedB ? 32 : MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
 
     size_t nc = N;
     if (ThreadsPerGemm > 1) {
