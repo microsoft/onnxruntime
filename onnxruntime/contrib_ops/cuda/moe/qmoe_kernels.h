@@ -12,12 +12,19 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+// Largest decode tile (rows) that tail expert substitution handles; covers speculative verify steps.
+constexpr int kQMoETailSubstitutionMaxRows = 16;
+
 struct QMoEOffloadTelemetry {
   uint64_t layer_calls;
   uint64_t zero_cold_short_circuits;
   uint64_t cold_routes;
+  uint64_t substituted_routes_count[kQMoETailSubstitutionMaxRows];
+  uint64_t zero_cold_conversions_count[kQMoETailSubstitutionMaxRows];
   int last_route_count;
   int last_cold_count;
+  int last_indices[256];
+  float last_weights[256];
 };
 
 void LaunchSoftmaxTopK(
@@ -118,8 +125,16 @@ cudaError_t LaunchQMoEOffloadClassify(
     bool skip_zero_cold = false, volatile uint64_t* doorbell_done_host = nullptr,
     QMoEOffloadTelemetry* telemetry = nullptr,
     float* topk_scales_for_cold_prune = nullptr, float min_cold_expert_weight = 0.0f,
-    int top_k_for_cold_prune = 0);
+    int top_k_for_cold_prune = 0, const float* topk_scales_for_telemetry = nullptr);
 
+cudaError_t LaunchQMoETailSubstitution(
+    const half* logits, float* topk_scales, int* topk_indices, const int* expert_slot,
+    int num_rows, int num_experts, int k, int min_rank, float threshold,
+    bool normalize_scales, cudaStream_t stream, QMoEOffloadTelemetry* telemetry = nullptr);
+cudaError_t LaunchQMoETailSubstitution(
+    const __nv_bfloat16* logits, float* topk_scales, int* topk_indices, const int* expert_slot,
+    int num_rows, int num_experts, int k, int min_rank, float threshold,
+    bool normalize_scales, cudaStream_t stream, QMoEOffloadTelemetry* telemetry = nullptr);
 cudaError_t LaunchQMoEOffloadMerge(
     const half* wave_output, const half* cpu_rows, const int* hit_flag, half* contributions,
     int route_count, int hidden_size, int tile_rows, int k, cudaStream_t stream,

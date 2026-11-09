@@ -58,7 +58,14 @@ From `js/react_native`, run `npm run test:cpp` for the native option-policy test
 `npm run bootstrap-no-pods` runs both checks before the Android and iOS Detox tests in CI.
 
 The device checks exercise in-flight aborts, pre-dispatch aborts, and isolated Env-listener teardown.
+They verify native worker completion hooks run before success or failure settlement is dispatched
+to JavaScript. Detox navigation targets the buttons' accessibility labels, not their child text views.
 The `__testEpContextDataReadCallback` native hook and its `__testWorker` handles are internal test APIs.
+
+The [macOS CI workflow](../../.github/workflows/react_native.yml) resets only the simulator
+selected by the iOS 18.6 Detox configuration and waits for boot and app-service readiness before
+starting the device tests. Detox still uninstalls and reinstalls the app, and its 240-second
+setup deadline and device assertions remain unchanged.
 
 ### License
 

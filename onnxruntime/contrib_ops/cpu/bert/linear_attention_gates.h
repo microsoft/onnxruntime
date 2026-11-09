@@ -32,5 +32,19 @@ class GatedRMSNorm final : public OpKernel {
   float epsilon_;
 };
 
+template <typename T>
+class MoEGroupRouter final : public OpKernel {
+ public:
+  explicit MoEGroupRouter(const OpKernelInfo& info);
+  Status Compute(OpKernelContext* context) const override;
+
+ private:
+  int64_t top_k_;
+  int64_t n_group_;
+  int64_t topk_group_;
+  int64_t group_topk_;
+  float router_sentinel_;
+};
+
 }  // namespace contrib
 }  // namespace onnxruntime

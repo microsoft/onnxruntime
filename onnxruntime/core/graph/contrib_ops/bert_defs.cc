@@ -5508,13 +5508,14 @@ capacity is the original capsule capture/layout capacity. kept_count only select
 transitions to replay; kept_count must NOT be substituted for capacity when deriving the
 decay/key/delta section offsets.
 
-State rows have layout [Hv, Dv, Dk]. The capsule contains decay [capacity, Hv],
-key [capacity, Hk, Dk], and delta [capacity, Hv, Dv] starting at their respective offsets.
+State rows have layout [Hv, Dv, Dk]. The capsule contains decay [capacity, Hv] (or
+[capacity, Hv, Dk] when key_offset - decay_offset == capacity * Hv * Dk), key [capacity, Hk, Dk],
+and delta [capacity, Hv, Dv] starting at their respective offsets.
 For every state element (h,v,i):
   hk = floor(h * Hk / Hv)
   s = source[h,v,i]
   for t = 0 .. kept_count-1:
-    s *= decay[t,h]
+    s *= decay[t,h] (or decay[t,h,i] for per-key-dimension decay)
     s += key[t,hk,i] * delta[t,h,v]
   destination[h,v,i] = s
 Unused capsule tail entries are not read. All other destination elements are preserved.
@@ -5611,8 +5612,8 @@ are preserved. One descriptor is supported per invocation; graph capture is not 
 
 constexpr const char* GatedDeltaNet_ver1_doc = R"DOC(
 Packed (token-major) gated delta network / linear attention with an explicit recurrent state.
-Implemented by CUDA and native WebGPU execution providers. WebGPU supports float and float16
-with scalar decay, `head_size_qk <= 256`, and compact state updates.
+Implemented by CPU, CUDA, and native WebGPU execution providers. WebGPU supports float and float16
+with `head_size_qk <= 256` and compact state updates.
 
 Layout. Query, key and value are token-major, so head counts are derived from the shapes
 rather than from attributes:
@@ -5649,13 +5650,14 @@ implementation reads the whole incoming state before writing any of it.
 Compact state updates. When `state_update_capacity` C is greater than zero, `capture_count`
 is required with shape `[batch_size]`. For request b, the first `capture_count[b]` local token
 transitions (clamped on device to `[0, min(C, sequence_length)]`) are emitted in one `state_update`
-float tensor `[batch_size, C * (num_heads_v + num_heads_k * head_size_qk + num_heads_v * head_size_v)]`.
-Each row is struct-of-arrays: all decay values, then all keys, then all deltas. Entries at positions
-greater than or equal to `min(capture_count[b], C, sequence_length)` are unspecified; consumers must
-read only the captured prefix. The key retains its shared `num_heads_k` representation. For scalar
-decay the decoded factors replay one transition as `S *= decay; S += outer(key, delta)`.
-Per-key-dimension decay is not supported when compact updates are enabled. `capture_count` is
-forbidden when C is zero.
+float tensor `[batch_size, C * (decay_width + num_heads_k * head_size_qk + num_heads_v * head_size_v)]`,
+where `decay_width` is `num_heads_v` for scalar decay and `num_heads_v * head_size_qk` for
+per-key-dimension decay. Each row is struct-of-arrays: all decay values, then all keys, then all
+deltas. Entries at positions greater than or equal to `min(capture_count[b], C, sequence_length)`
+are unspecified; consumers must read only the captured prefix. The key retains its shared
+`num_heads_k` representation. For scalar decay the decoded factors replay one transition as
+`S *= decay; S += outer(key, delta)`, and for per-key-dimension decay as
+`S = diag(decay) * S + outer(key, delta)`. `capture_count` is forbidden when C is zero.
 
 The optional CPU input `state_update_active` has shape `[1]`. When zero, transition capture is
 disabled, `capture_count` is ignored, `state_update` is zero-filled, and the planner may use an
@@ -5680,12 +5682,17 @@ raw projection carried by `decay`:
 
   g = -exp(a_log) * Softplus(decay + dt_bias)
 
+`gate_activation='sigmoid'` (alias `'kda'`) computes the bounded Kimi Delta Attention decay in
+float32:
+
+  g = gate_lower_bound * Sigmoid(exp(a_log) * (decay + dt_bias))
+
 `beta_activation='sigmoid'` applies a sigmoid to `beta`, and `qk_l2_norm=1` L2-normalizes each
 query and key head vector. Folding these in avoids materializing the intermediates and keeps
 the gate arithmetic in float32 independent of the input type.
-Decay and beta may be float or the query element type (both use the same type). CUDA widens
-FP16/BF16 gate inputs to float before any gate arithmetic, avoiding standalone lossless casts.
-State, a_log, and dt_bias remain float. WebGPU currently accepts float decay and beta only.
+Decay and beta may be float or the query element type (both use the same type). CUDA, CPU, and
+WebGPU widen FP16/BF16 gate inputs to float before any gate arithmetic, avoiding standalone
+lossless casts. State, a_log, and dt_bias remain float.
 
 )DOC";
 
@@ -5701,9 +5708,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::FLOAT, 0.0f)
         .Attr("gate_activation",
               "'none' (default) treats `decay` as the effective log-space decay. 'softplus' computes "
-              "-exp(a_log) * Softplus(decay + dt_bias) in float32. 'qwen' is accepted as a legacy "
-              "alias of 'softplus' with identical behavior.",
+              "-exp(a_log) * Softplus(decay + dt_bias) in float32 ('qwen' is accepted as a legacy "
+              "alias). 'sigmoid' (or 'kda') computes gate_lower_bound * Sigmoid(exp(a_log) * "
+              "(decay + dt_bias)) in float32.",
               AttributeProto::STRING, std::string("none"))
+        .Attr("gate_lower_bound",
+              "Negative lower bound applied when gate_activation is 'sigmoid' or 'kda'. Default -5.0.",
+              AttributeProto::FLOAT, -5.0f)
         .Attr("beta_activation",
               "'none' (default) treats `beta` as the effective update rate. 'sigmoid' applies a "
               "sigmoid.",
@@ -5743,11 +5754,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "V-major. Required for packed QKV. May alias final_state.",
                "TS", OpSchema::Optional)
         .Input(7, "a_log",
-               "Per-head A_log, shape (num_heads_v). Requires gate_activation=softplus.",
+               "Per-head A_log, shape (num_heads_v). Used when gate_activation is 'softplus' or 'sigmoid'/'kda'.",
                "TS", OpSchema::Optional)
         .Input(8, "dt_bias",
-               "Per-head gate bias, shape (num_heads_v). "
-               "Requires gate_activation=softplus.",
+               "Gate bias, shape (num_heads_v) or (num_heads_v, head_size_qk) / (num_heads_v * head_size_qk). "
+               "Used when gate_activation is 'softplus' or 'sigmoid'/'kda'.",
                "TS", OpSchema::Optional)
         .Input(9, "capture_count",
                "Number of leading local token transitions to capture for each request, shape "
@@ -5766,8 +5777,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "TS", OpSchema::Optional)
         .Output(2, "state_update",
                 "Struct-of-arrays compact transition factors, shape "
-                "(batch_size, state_update_capacity * (num_heads_v + num_heads_k * "
-                "head_size_qk + num_heads_v * head_size_v)).",
+                "(batch_size, state_update_capacity * (decay_width + num_heads_k * "
+                "head_size_qk + num_heads_v * head_size_v)), where decay_width is "
+                "num_heads_v for scalar decay and num_heads_v * head_size_qk for "
+                "per-key-dimension decay.",
                 "TS", OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain query/key/value/output types.")
@@ -5926,15 +5939,27 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 
               constexpr int64_t max_dimension = std::numeric_limits<int64_t>::max();
               if (num_heads_k > max_dimension / head_size_qk ||
-                  num_heads_v > max_dimension / head_size_v) {
+                  num_heads_v > max_dimension / head_size_v ||
+                  num_heads_v > max_dimension / head_size_qk) {
                 fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
               }
+              const std::string update_rule =
+                  getAttribute(ctx, "update_rule", std::string("gated_delta"));
+              const bool rule_uses_decay =
+                  update_rule == "gated" || update_rule == "gated_delta";
+              const bool has_decay_input =
+                  rule_uses_decay && ctx.getNumInputs() > 4 && ctx.getInputType(4) != nullptr;
+              const bool decay_rank_known = !has_decay_input || hasInputShape(ctx, 4);
+              const bool decay_per_key_dim =
+                  has_decay_input && hasInputShape(ctx, 4) &&
+                  getInputShape(ctx, 4).dim_size() == token_dims + 2;
+              const int64_t decay_width = decay_per_key_dim ? num_heads_v * head_size_qk : num_heads_v;
               const int64_t key_width = num_heads_k * head_size_qk;
               const int64_t value_width = num_heads_v * head_size_v;
-              if (num_heads_v > max_dimension - key_width) {
+              if (decay_width > max_dimension - key_width) {
                 fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
               }
-              const int64_t width_without_capacity = num_heads_v + key_width;
+              const int64_t width_without_capacity = decay_width + key_width;
               if (value_width > max_dimension - width_without_capacity) {
                 fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
               }
@@ -5943,7 +5968,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                   per_token_width > max_dimension / state_update_capacity) {
                 fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
               }
-              width->set_dim_value(state_update_capacity * per_token_width);
+              if (state_update_capacity == 0 || decay_rank_known) {
+                width->set_dim_value(state_update_capacity * per_token_width);
+              }
             }
             updateOutputShape(ctx, 2, capsule_shape);
           }
@@ -6078,6 +6105,63 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           propagateShapeFromInputToOutput(ctx, 0, 0);
+        }));
+
+constexpr const char* MoEGroupRouter_ver1_doc = R"DOC(
+Fused group-limited sigmoid MoE router (noaux_tc) as used by BailingMoeV3 / DeepSeek-V3.
+Computes s = sigmoid(logits), selects topk_group groups by the sum of top group_topk values of
+(s + expert_bias) per group, selects top_k experts from those groups by (s + expert_bias), and
+writes log(max(s, 1e-20)) at the selected experts and router_sentinel elsewhere into a 2D
+(total_tokens, num_experts) output tensor ready for MoE / QMoE.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    MoEGroupRouter, 1,
+    OpSchema()
+        .SetDoc(MoEGroupRouter_ver1_doc)
+        .Attr("top_k", "Positive number of experts selected per token.", AttributeProto::INT)
+        .Attr("n_group", "Positive number of expert groups.", AttributeProto::INT, static_cast<int64_t>(1))
+        .Attr("topk_group", "Positive number of active expert groups selected per token.", AttributeProto::INT,
+              static_cast<int64_t>(1))
+        .Attr("group_topk", "Positive number of top experts summed within each group, clamped to the group size.",
+              AttributeProto::INT, static_cast<int64_t>(2))
+        .Attr("router_sentinel", "Value written to non-selected expert positions.",
+              AttributeProto::FLOAT, -10000.0f)
+        .Input(0, "logits", "Router logits tensor of shape (..., num_experts).", "T")
+        .Input(1, "expert_bias", "1D float32 expert bias tensor of shape (num_experts).", "TF")
+        .Output(0, "router_probs", "2D routed log-scores tensor of shape (total_tokens, num_experts).", "T")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeConstraint("TF", {"tensor(float)"}, "Constrain expert_bias to float32.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (!hasInputShape(ctx, 0)) {
+            return;
+          }
+          const auto& in_shape = getInputShape(ctx, 0);
+          if (in_shape.dim_size() < 2) {
+            fail_shape_inference("MoEGroupRouter logits must have rank >= 2.");
+          }
+          ONNX_NAMESPACE::TensorShapeProto out_shape;
+          auto* row_dim = out_shape.add_dim();
+          if (in_shape.dim_size() == 2) {
+            *row_dim = in_shape.dim(0);
+          } else {
+            int64_t prod = 1;
+            bool all_known = true;
+            for (int i = 0; i < in_shape.dim_size() - 1; ++i) {
+              if (in_shape.dim(i).has_dim_value()) {
+                prod *= in_shape.dim(i).dim_value();
+              } else {
+                all_known = false;
+              }
+            }
+            if (all_known) {
+              row_dim->set_dim_value(prod);
+            }
+          }
+          *out_shape.add_dim() = in_shape.dim(in_shape.dim_size() - 1);
+          updateOutputShape(ctx, 0, out_shape);
         }));
 
 constexpr const char* BranchwiseRMSNorm_ver1_doc = R"DOC(

@@ -60,6 +60,11 @@ Keep code comments concise. Add a comment only when it explains rationale, an in
 that is not clear from the immediate context. Do not narrate obvious code or document the sequence of approaches taken
 to reach the current implementation; that history belongs in the pull request or commit message when relevant.
 
+### Checksum Literals
+
+Keep checksum literals on a single line so they are easy to copy and paste. Do not split them with concatenation or
+line continuations, even when they exceed the usual line-length limit.
+
 ## C++ Conventions
 
 **Style**: Google C++ Style with modifications. Max line length 120 (aim for 80). See `docs/Coding_Conventions_and_Standards.md` for full details.

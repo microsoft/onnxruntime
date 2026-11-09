@@ -6,6 +6,8 @@ if(NOT onnxruntime_USE_1DS_TELEMETRY OR CMAKE_CROSSCOMPILING OR ANDROID OR IOS
   return()
 endif()
 
+include(${CMAKE_CURRENT_LIST_DIR}/onnxruntime_telemetry_sdk_lifetime_tests.cmake)
+
 # Recompile only the SDK's debug source and worker with test-only observers. Explicit
 # objects resolve these symbols before libmat's originals; production targets are unchanged.
 # The mutex observer makes libc++'s nontrivial mutex lifetime visible on GCC/MSVC too.
