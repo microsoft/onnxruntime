@@ -1056,8 +1056,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Stable packed-format ID for B from the packed-weight format contract. Only listed IDs are supported.",
               AttributeProto::INT)
         .Attr("dequantize_to_activation_dtype",
-              "Round complete dequantized weights to A's dtype before decode accumulation. Default preserves "
-              "the existing decode path; prefill already dequantizes to A's dtype.",
+              "Round complete dequantized weights to A's dtype before accumulation. Default preserves "
+              "the existing decode and prefill paths.",
               AttributeProto::INT, static_cast<int64_t>(0))
         .Input(0, "A", "Input activations [..., K].", "T1")
         .Input(1, "B", "Packed weight blob [N, row_bytes].", "T2")
