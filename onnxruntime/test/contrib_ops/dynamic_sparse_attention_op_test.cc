@@ -613,6 +613,11 @@ TEST(DynamicSparseAttentionTest, GroupedDecodeRatio12ReferenceParity_CUDA) {
       RunDynamicSparseAttentionCase<MLFloat16, int8_t>(int8_case, std::move(cuda_ep));
       cuda_ep = DefaultCudaExecutionProvider();
       RunDynamicSparseAttentionCase<BFloat16, int8_t>(int8_case, std::move(cuda_ep));
+      if (!auxiliary) {
+        RunDynamicSparseAttentionCase<BFloat16, int8_t, MLFloat16>(int8_case, DefaultCudaExecutionProvider());
+        RunDynamicSparseAttentionCase<BFloat16, int8_t, MLFloat16, MLFloat16>(
+            int8_case, DefaultCudaExecutionProvider());
+      }
     }
   }
 }

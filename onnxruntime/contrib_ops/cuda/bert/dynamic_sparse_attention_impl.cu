@@ -565,10 +565,14 @@ __global__ void AppendKvKernel(const T* query,
         h;
     if (quantized_cache) {
       const int channel = kv_head * head_size + h;
+      const float k_f32 = (rotary_dim == 0) ? key_value : ToFloat(result);
+      const float v_f32 = v_is_fp16
+                              ? ToFloat(reinterpret_cast<const half*>(is_packed ? query : value)[value_offset])
+                              : ToFloat((is_packed ? query : value)[value_offset]);
       reinterpret_cast<int8_t*>(present_key)[cache_offset] =
-          QuantizeCacheValue(ToFloat(result), key_scale[channel]);
+          QuantizeCacheValue(k_f32, key_scale[channel]);
       reinterpret_cast<int8_t*>(present_value)[cache_offset] =
-          QuantizeCacheValue(ToFloat((is_packed ? query : value)[value_offset]), value_scale[channel]);
+          QuantizeCacheValue(v_f32, value_scale[channel]);
     } else {
       present_key[cache_offset] = result;
       present_value[cache_offset] = (is_packed ? query : value)[value_offset];

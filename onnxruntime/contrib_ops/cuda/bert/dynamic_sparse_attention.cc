@@ -165,10 +165,10 @@ Status DynamicSparseAttention<T>::ComputeInternal(OpKernelContext* context) cons
                                                    : fp16_cache    ? past_value->IsDataType<MLFloat16>()
                                                                    : past_value->IsDataType<T>())),
                     "DynamicSparseAttention: cache types must match activations or both be FP16 or INT8.");
-  ORT_RETURN_IF_NOT((query->IsDataType<T>() || (fp16_cache && query_fp16)) &&
-                        (key == nullptr || key->IsDataType<T>() || (fp16_cache && key_fp16)) &&
-                        (value == nullptr || value->IsDataType<T>() || (fp16_cache && value_fp16)),
-                    "DynamicSparseAttention: query, key, and value types must match T or FP16 cache.");
+  ORT_RETURN_IF_NOT((query->IsDataType<T>() || ((fp16_cache || quantized_cache) && query_fp16)) &&
+                        (key == nullptr || key->IsDataType<T>() || ((fp16_cache || quantized_cache) && key_fp16)) &&
+                        (value == nullptr || value->IsDataType<T>() || ((fp16_cache || quantized_cache) && value_fp16)),
+                    "DynamicSparseAttention: query, key, and value types must match T or FP16/INT8 cache.");
 
   DynamicSparseAttentionParameters parameters;
   ORT_RETURN_IF_ERROR(dynamic_sparse_attention_helper::CheckInputs(
