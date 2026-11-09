@@ -59,6 +59,145 @@ Targeted validation:
 python -m pytest tools/python/test_generate_matmul_nbits_cases.py
 ```
 
+## run_matmul_nbits_experiments.py
+
+Run CPU capture/report validation against cases from `generate_matmul_nbits_cases.py`. Use a Python environment
+with NumPy, ONNX and an ORT wheel built from the branch containing CPU route-aware `expected_flops` reporting.
+An older logical-only estimator or a published wheel without the feature must not pass these checks.
+
+```bash
+python tools/python/run_matmul_nbits_experiments.py \
+  --manifest /tmp/matmul-nbits-pilot/manifest.json \
+  --output /tmp/matmul-nbits-results \
+  --runtime-label "local branch CPU Release wheel"
+```
+
+The runner requests CPU only, disables graph optimizations, uses sequential execution and defaults to one
+intra-op thread (`--threads` changes this). Each case runs once in a reporting-disabled session and once in a
+separate reporting-enabled session. It checks finite output shapes/dtypes and exact reporting-on/off equality.
+Explicit `--rtol` and `--atol` allow nonnegative finite tolerances, recorded in the results. This is an
+instrumentation-equivalence check, not comparison against independent numerical reference outputs.
+
+Reports must appear after Run, not initialization, and must contain exactly one successfully captured invocation
+without drops/reuse rejection. Shape, dtype, bias, bit width, block size, provider, route/mode consistency and
+backend geometry are checked. Logical core and bias counts are recomputed from settings, checked against the
+manifest, and compared exactly against both per-invocation counts and report subtotals.
+
+The separate expected-FLOP components/model/availability are retained. The runner checks count encoding,
+subtotal/availability consistency and independently known bias, but deliberately does not duplicate route-aware
+core/dequantization formulas or claim measured executed-FLOP accuracy. `pass` means capture/logical-count/output
+checks passed, not that the floating-point estimate matches actual execution. Requested accuracy level is not
+assumed to equal actual effective compute mode.
+
+Outputs:
+
+- `results.json`: runtime/import/build information, user-supplied runtime label, execution settings, per-case statuses,
+  captured estimates, and status/route totals. `executed_fp_accuracy` remains `not_validated`. The file is updated
+  after each case; `complete: false` identifies an interrupted/incomplete batch.
+- `summary.csv`: compact case/status/route/mode/expected-FLOP table with diagnostic messages and report paths.
+- Per-case directories: raw uniquely named estimator report and `outputs.npz` containing reporting-disabled/enabled
+  outputs when execution succeeds.
+
+The runtime label is user-supplied provenance, not proof of the installed wheel's source revision. Verify the
+recorded import path/build information and retain the actual wheel/build provenance. Run from outside the source
+tree with an absolute script path if source-package shadowing prevents importing the installed wheel.
+
+Every non-pass case is printed with a diagnostic and retained in the results; execution proceeds to other cases.
+Statuses distinguish `input_failure`, `execution_failure`, `output_mismatch`, `report_missing`, `report_invalid`,
+`incomplete_capture`, `metadata_mismatch`, `count_mismatch`, `estimator_unavailable` and `estimate_unavailable`.
+Unsupported route estimates are not assigned zero or counted as passes. Exit codes: 0 if all cases pass,
+1 if any case does not pass, 2 for setup/output/import errors. Existing results directories are never overwritten.
+Manifest validation occurs before output creation. Fatal output errors may leave partial results.
+
+This initial runner has no CUDA, timing, warm-up, hardware profiling, route-forcing or whole-op FP-count validation.
+It only exercises the routes naturally selected by the installed CPU runtime. Independent route audits/profiling
+are the next step for assessing estimated versus actual FP work.
+
+```bash
+python -m pytest tools/python/test_generate_matmul_nbits_cases.py tools/python/test_run_matmul_nbits_experiments.py
+```
+
+## Repeatable MatMulNBits matrix and hardware profiling
+
+`generate_matmul_nbits_matrix.py` preserves the 84-case matrix used in the November 2026 CPU experiment:
+FP32 inputs at accuracy levels 0-4 and FP16 at levels 0/4, crossed with M=1/8/32/128 and
+(K,N)=(64,32)/(128,64)/(1024,1024). All cases use INT4, block size 32, no bias and implicit midpoint zero points.
+It reuses the case generator and also saves the explicit configuration. Requested accuracy is not observed mode.
+
+`profile_matmul_nbits.py` replaces the inline perf collection/report commands. It requires Linux `perf`, usable
+`fp_ret_sse_avx_ops.all:u` hardware counters, `lscpu`, NumPy, ONNX and the same ORT build used by the estimator runner.
+Counter names/semantics are architecture-specific; this event was exercised on AMD EPYC 7V12. Validate PMU access
+and arithmetic-event semantics before using another host. No privileges or system security settings are changed.
+
+From an activated environment containing the branch wheel, use absolute paths to avoid source-package shadowing:
+
+```bash
+REPO=/absolute/path/to/onnxruntime
+EXP=$(mktemp -d /tmp/matmul-matrix-XXXXXX)
+cd /tmp
+
+python "$REPO/tools/python/generate_matmul_nbits_matrix.py" --output "$EXP/cases"
+python "$REPO/tools/python/run_matmul_nbits_experiments.py" \
+  --manifest "$EXP/cases/manifest.json" --output "$EXP/estimates"
+python "$REPO/tools/python/profile_matmul_nbits.py" collect \
+  --manifest "$EXP/cases/manifest.json" --results "$EXP/estimates/results.json" \
+  --output "$EXP/three-trials" --trials 3 --repeats 1000 --warmup 100
+```
+
+Only continue when estimator checks pass. Collection requires all cases to pass, matching manifest/result settings,
+and matching installed ORT version/build info. Build-info equality does not prove binary identity; retain wheel
+hashes separately when freezing a baseline. Actual route/mode labels come from the preceding estimator run,
+not independent instrumentation of each perf subprocess.
+
+Collection automatically launches the workload under perf; no second terminal or PID entry is needed. It preserves
+the runner's thread count, sequential CPU execution and disabled graph optimizations. Each process initializes a
+session, warms up, then executes R or 2R times with reporting disabled. With 84 cases, three pairs produce 504
+process measurements. More repetitions may be needed for noisy cases; this is FP counting, not inference timing.
+
+The new output directory contains:
+
+- `metadata.json`, `manifest.json`, `estimates.json`: method, build/platform information and estimator snapshots.
+- `index.json` and `hardware/`: exact commands, raw semicolon-delimited counters and subprocess logs.
+- `trial-results.json`, `trials.csv`: `(count_2R - count_R) / R` per trial.
+- `summary.csv`, `report.md`: per-case mean, sample standard deviation, min/max and signed differences;
+  the report includes the accuracy-level key and measurement-scope limitations.
+
+The script rejects failed commands, missing/duplicate counters, nonpositive differential counts and counters
+reporting less than 100% running time. Errors stop explicitly with `complete: false` in collection metadata.
+Only a fully validated matrix produces a completed report. Output directories are never overwritten.
+Zero sample standard deviation means identical derived counts; for one trial it is unavailable, not zero.
+Percentage difference is unavailable when the estimate is zero.
+
+Regenerate documentation without rerunning hardware collection:
+
+```bash
+python "$REPO/tools/python/profile_matmul_nbits.py" report \
+  --collection "$EXP/three-trials" --output "$EXP/report-regenerated"
+```
+
+For the earlier inline three-trial collection, supply its successful estimator results explicitly:
+
+```bash
+python "$REPO/tools/python/profile_matmul_nbits.py" report \
+  --collection /path/to/matmul-three-trials-directory \
+  --results /path/to/baseline/estimates-v2/results.json \
+  --output /path/to/new-report-directory
+```
+
+Historical indexes with absolute counter paths are accepted only while those paths remain inside the collection.
+If moving a collection, update a copy of the index to use relative paths. Reports are recomputed from raw counters,
+not copied from previously calculated summaries. Existing November 9 results are historical inline-command results;
+these scripts preserve the method but are not claimed to be the exact original executed driver.
+
+Measured recurring process FP work and modeled operator components have different scopes. Process subtraction
+does not guarantee startup cancellation, and recurring runtime work remains included. INT8 activation quantization,
+reductions and tile repetition may not be modeled. Differences are not isolated operator accuracy percentages.
+
+```bash
+python -m pytest tools/python/test_profile_matmul_nbits.py \
+  tools/python/test_generate_matmul_nbits_cases.py tools/python/test_run_matmul_nbits_experiments.py
+```
+
 ## Authentication method for Azure DevOps
 
 Generally speaking Azure DevOps services has three ways of doing authentication:
