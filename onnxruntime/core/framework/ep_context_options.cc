@@ -23,10 +23,10 @@ Status ParseWeightlessMode(const std::string& value, OrtWeightlessSupport& mode)
   } else if (value == "2") {
     mode = OrtWeightlessSupport_ALL;
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid value '", value, "' for ",
-                           kOrtSessionOptionEpEnableWeightlessMode, ". Valid values are: ",
-                           "\"0\" (OrtWeightlessSupport_NONE), \"1\" (OrtWeightlessSupport_EXTERNAL_ONLY), and ",
-                           "\"2\" (OrtWeightlessSupport_ALL).");
+    // A single literal after the value keeps the message cheap in minimal builds, which also validate the option.
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid value '", value,
+                           "' for ep.enable_weightless_mode. Valid values are: \"0\" (OrtWeightlessSupport_NONE), "
+                           "\"1\" (OrtWeightlessSupport_EXTERNAL_ONLY), and \"2\" (OrtWeightlessSupport_ALL).");
   }
 
   return Status::OK();
