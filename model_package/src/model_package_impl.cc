@@ -34,6 +34,14 @@ const char* OptStr(const std::optional<std::string>& s) {
   return s.has_value() ? s->c_str() : nullptr;
 }
 
+}  // namespace
+
+// ─────────────────────────────────────────────────────────────────────────────
+// View cache materialization
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace model_package {
+
 bool IsAncestorOrEqual(const fs::path& ancestor, const fs::path& candidate) {
   const fs::path normalized_ancestor = ancestor.lexically_normal();
   const fs::path normalized_candidate = candidate.lexically_normal();
@@ -46,14 +54,6 @@ bool IsAncestorOrEqual(const fs::path& ancestor, const fs::path& candidate) {
   }
   return true;
 }
-
-}  // namespace
-
-// ─────────────────────────────────────────────────────────────────────────────
-// View cache materialization
-// ─────────────────────────────────────────────────────────────────────────────
-
-namespace model_package {
 
 bool IsLinkLike(const fs::file_status& status) noexcept {
   if (fs::is_symlink(status)) return true;
@@ -80,7 +80,6 @@ ModelPackageStatus* NormalizePathForLinkInspection(const fs::path& path,
                           "' absolute: " + ec.message());
   }
 
-  result = result.lexically_normal();
   while (result != result.root_path() &&
          (result.filename().empty() || result.filename() == ".")) {
     result = result.parent_path();

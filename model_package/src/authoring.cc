@@ -469,10 +469,7 @@ ModelPackageStatus* ModelPackage_AddSharedAsset(ModelPackage* pkg,
   if (auto* s = PostMutate(pkg)) {
     pkg->manifest = original_manifest;
     pkg->pending_shared_asset_copies = original_pending_shared_asset_copies;
-    if (auto* rollback_status = PostMutate(pkg)) {
-      ModelPackageStatus_Release(s);
-      return rollback_status;
-    }
+    mp::DropViewCache(pkg);
     return s;
   }
 

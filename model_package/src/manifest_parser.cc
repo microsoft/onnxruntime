@@ -597,9 +597,15 @@ ModelPackageStatus* RefreshPackageMetadata(ModelPackage* pkg) {
 }
 
 ModelPackageStatus* RefreshSharedAssets(ModelPackage* pkg, const PathResolverOptions& opts) {
-  pkg->shared_assets.clear();
-  pkg->shared_asset_index_by_uri.clear();
-  return LoadSharedAssets(pkg, opts);
+  ModelPackage refreshed;
+  refreshed.package_root = pkg->package_root;
+  refreshed.manifest = pkg->manifest;
+  refreshed.layout = pkg->layout;
+  refreshed.pending_shared_asset_copies = pkg->pending_shared_asset_copies;
+  if (auto* s = LoadSharedAssets(&refreshed, opts)) return s;
+  pkg->shared_assets.swap(refreshed.shared_assets);
+  pkg->shared_asset_index_by_uri.swap(refreshed.shared_asset_index_by_uri);
+  return nullptr;
 }
 
 namespace {

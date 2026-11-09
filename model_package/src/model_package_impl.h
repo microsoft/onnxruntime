@@ -148,11 +148,17 @@ const InfoViewCache& BuildOrGetViewCache(const ModelPackage* pkg);
 /// Returns true iff `p` is `package_root` or lives under it (lexically).
 bool IsInsidePackageRoot(const ModelPackage* pkg, const std::filesystem::path& p);
 
+/// Returns true iff `candidate` equals `ancestor` or is lexically beneath it.
+bool IsAncestorOrEqual(const std::filesystem::path& ancestor,
+                       const std::filesystem::path& candidate);
+
 /// Return true for symbolic links and platform-specific directory links.
 bool IsLinkLike(const std::filesystem::file_status& status) noexcept;
 
-/// Convert a path to an absolute lexical form suitable for inspecting the
-/// final path component without following a trailing separator or ".".
+/// Convert a path to an absolute form suitable for inspecting the final path
+/// component without following a trailing separator or ".". Interior
+/// components are preserved because `..` after a linked ancestor is
+/// filesystem-significant.
 ModelPackageStatus* NormalizePathForLinkInspection(const std::filesystem::path& path,
                                                    const std::string& where,
                                                    std::filesystem::path* normalized);

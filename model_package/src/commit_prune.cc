@@ -569,15 +569,6 @@ bool IsOldEnough(const fs::path& p) {
   return (now - last) >= kPruneGrace;
 }
 
-bool IsAncestorOrEqual(const fs::path& ancestor, const fs::path& descendant) {
-  // ancestor == descendant, or descendant lives under ancestor (boundary aware).
-  auto a = ancestor.lexically_normal().generic_u8string();
-  auto d = descendant.lexically_normal().generic_u8string();
-  if (d.size() < a.size()) return false;
-  if (d.compare(0, a.size(), a) != 0) return false;
-  return d.size() == a.size() || d[a.size()] == '/';
-}
-
 std::vector<fs::path> CollectLiveDirs(const ModelPackage* pkg) {
   std::vector<fs::path> out;
   for (const auto& c : pkg->components) {
@@ -608,7 +599,7 @@ void SweepOrphanDirs(ModelPackage* pkg,
                    if (!fs::exists(p, ec)) return true;
                    // Skip if any live dir IS p or lives under it; deleting would damage live state.
                    for (const auto& live : live_dirs) {
-                     if (IsAncestorOrEqual(p, live)) return false;
+                     if (mp::IsAncestorOrEqual(p, live)) return false;
                    }
                    fs::remove_all(p, ec);
                    return true;
