@@ -16,10 +16,8 @@ CapabilityPlanningQueryResult::~CapabilityPlanningQueryResult() = default;
 CapabilityPlanningQueryResult::CapabilityPlanningQueryResult(CapabilityPlanningQueryResult&&) noexcept = default;
 CapabilityPlanningQueryResult& CapabilityPlanningQueryResult::operator=(CapabilityPlanningQueryResult&&) noexcept = default;
 
-namespace {
-
 // Planning diagnostics belong to the caller, not Run-error telemetry.
-Status ValidateQuery(const std::shared_ptr<const CapabilityPlanningQuery>& query) {
+Status ValidateCapabilityPlanningQuery(const std::shared_ptr<const CapabilityPlanningQuery>& query) {
   if (!query || query->mode != CapabilityQueryMode::Planning || query->query_id == 0 ||
       query->graph_id.empty() || query->source_view_id.empty() || query->ep_instance_id.empty() ||
       !query->execution_device.has_value()) {
@@ -47,6 +45,16 @@ Status ValidateQuery(const std::shared_ptr<const CapabilityPlanningQuery>& query
         (constraint.required_ep_instance_id.has_value() && constraint.required_ep_instance_id->empty())) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid or duplicate normalized node constraint.");
     }
+    if (constraint.permitted_policies.has_value()) {
+      InlinedHashSet<KernelDispatchPolicy> policies;
+      for (const auto policy : *constraint.permitted_policies) {
+        if ((policy != KernelDispatchPolicy::Auto && policy != KernelDispatchPolicy::Latency &&
+             policy != KernelDispatchPolicy::Memory && policy != KernelDispatchPolicy::Safe) ||
+            !policies.insert(policy).second) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid or duplicate normalized policy intent.");
+        }
+      }
+    }
   }
 
   InlinedHashSet<size_t> assigned_nodes;
@@ -59,6 +67,8 @@ Status ValidateQuery(const std::shared_ptr<const CapabilityPlanningQuery>& query
 
   return Status::OK();
 }
+
+namespace {
 
 Status ValidateResourceReference(const CapabilityResourceReference& reference) {
   if (reference.resource_id.empty() ||
@@ -183,7 +193,7 @@ Status ValidateCapability(
 Status ValidateCapabilityPlanningResult(
     const std::shared_ptr<const CapabilityPlanningQuery>& query,
     const CapabilityPlanningQueryResult& result) {
-  if (auto status = ValidateQuery(query); !status.IsOK()) {
+  if (auto status = ValidateCapabilityPlanningQuery(query); !status.IsOK()) {
     return status;
   }
   if (result.support != CapabilityPlanningSupport::PlanningSafe) {
@@ -215,7 +225,7 @@ Status CreateCapabilityPlanningBinding(
     const ComputeCapability& capability,
     const CapabilityPlanningSelection& selection,
     std::shared_ptr<const CapabilityPlanningBinding>& binding) {
-  if (auto status = ValidateQuery(query); !status.IsOK()) {
+  if (auto status = ValidateCapabilityPlanningQuery(query); !status.IsOK()) {
     return status;
   }
   if (auto status = ValidateCapability(query, capability); !status.IsOK()) {
@@ -295,7 +305,7 @@ Status ValidateCapabilityPlanningBindingIdentity(
     const std::shared_ptr<const CapabilityPlanningQuery>& query,
     uint64_t plan_generation,
     const CapabilityPlanningBinding& binding) {
-  if (auto status = ValidateQuery(query); !status.IsOK()) {
+  if (auto status = ValidateCapabilityPlanningQuery(query); !status.IsOK()) {
     return status;
   }
   if (binding.query != query || plan_generation == 0 || binding.plan_generation != plan_generation) {

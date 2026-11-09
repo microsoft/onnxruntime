@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "core/common/inlined_containers.h"
 #include "core/common/status.h"
@@ -218,6 +219,27 @@ struct CapabilityPlanningInfo {
   InlinedVector<CapabilityExecutionContract, 1> contracts;
 };
 
+// Kernel support alone establishes neither a resolved policy nor bounded allocations.
+inline std::shared_ptr<const CapabilityPlanningInfo> MakeUnresolvedKernelPlanningInfo(
+    const std::shared_ptr<const CapabilityPlanningQuery>& query,
+    size_t node_index,
+    std::string implementation_id) {
+  auto planning = std::make_shared<CapabilityPlanningInfo>();
+  planning->query = query;
+  planning->candidate_id = "kernel_" + std::to_string(node_index);
+  planning->implementation_id = std::move(implementation_id);
+  planning->alternative_view_ids = {query->source_view_id};
+  planning->recipe.recipe_id = planning->candidate_id + "_registered";
+  planning->recipe.kind = CapabilityRecipeKind::Standalone;
+  planning->recipe.graph_effects.kind = CapabilityGraphEffectsKind::Unchanged;
+  CapabilityExecutionContract contract;
+  contract.contract_id = "unresolved";
+  contract.eligibility_reason = "Registered kernel found; execution policy and workload coverage are unresolved.";
+  contract.unresolved_terms = {"Implementation allocation requirements and retained policy state are unavailable."};
+  planning->contracts.push_back(std::move(contract));
+  return planning;
+}
+
 enum class CapabilityPlanningSupport {
   Unsupported,
   PlanningSafe,
@@ -257,6 +279,8 @@ struct CapabilityPlanningBinding {
   CapabilityImplementationRecipe recipe;
   CapabilityExecutionContract contract;
 };
+
+Status ValidateCapabilityPlanningQuery(const std::shared_ptr<const CapabilityPlanningQuery>& query);
 
 Status ValidateCapabilityPlanningResult(
     const std::shared_ptr<const CapabilityPlanningQuery>& query,

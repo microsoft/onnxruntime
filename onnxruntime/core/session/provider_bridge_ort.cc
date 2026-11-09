@@ -883,6 +883,7 @@ struct ProviderHostImpl : ProviderHost {
   std::unique_ptr<IndexedSubGraph>& ComputeCapability__SubGraph(ComputeCapability* p) override { return p->sub_graph; }
   void ComputeCapability__copy_optimization_func(ComputeCapability* p, ComputeCapability* selection_cc) override { p->optimization_func = selection_cc->optimization_func; }
   void ComputeCapability__add_nodes_to_optimize(ComputeCapability* p, std::unique_ptr<ComputeCapability> optimization_cc) override { p->nodes_to_optimize.push_back(std::move(optimization_cc)); }
+  void ComputeCapability__SetPlanning(ComputeCapability* p, std::shared_ptr<const CapabilityPlanningInfo> planning) override { p->planning = std::move(planning); }
 
   // DataTransferManager (wrapped)
   Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst) override { return p->CopyTensor(src, dst); }

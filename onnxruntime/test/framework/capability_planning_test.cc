@@ -2,14 +2,23 @@
 // Licensed under the MIT License.
 
 #include "core/framework/capability_planning.h"
+#include "core/framework/capability_planning_discovery.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/op_kernel.h"
+#include "core/graph/model.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
 
 #include <array>
+#include <functional>
 #include <memory>
 #include <utility>
 
 #include "gtest/gtest.h"
+#include "test/test_environment.h"
 #include "test/util/include/asserts.h"
+#ifdef USE_CUDA
+#include "test/util/include/default_providers.h"
+#endif
 
 namespace onnxruntime {
 namespace test {
@@ -374,6 +383,296 @@ TEST(CapabilityPlanningTest, FusionBindingPreservesSourceEffectsAndPreparedState
   EXPECT_EQ(binding->compatibility.boundary_constraints.front().layout_id,
             capability->planning->compatibility.boundary_constraints.front().layout_id);
 }
+
+namespace {
+
+using PlanningOffers = std::vector<std::unique_ptr<ComputeCapability>>;
+
+std::unique_ptr<ComputeCapability> MakeKernelOffer(
+    const std::shared_ptr<const CapabilityPlanningQuery>& query, NodeIndex index = 0) {
+  auto capability = MakeCapability(*MakeUnresolvedKernelPlanningInfo(query, index, "test_registered_kernel"));
+  capability->sub_graph->nodes = {index};
+  return capability;
+}
+
+class DiscoveryKernelLookup : public IExecutionProvider::IKernelLookup {
+ public:
+  const KernelCreateInfo* LookUpKernel(const Node& node) const override {
+    if (node.OpType() == "Identity") {
+      return &identity_;
+    }
+    return node.OpType() == "Cast" ? &cast_ : nullptr;
+  }
+
+ private:
+  KernelCreateInfo identity_{KernelDefBuilder().SetName("Identity").SinceVersion(1).Build(), nullptr};
+  KernelCreateInfo cast_{KernelDefBuilder().SetName("Cast").SinceVersion(1).Build(), nullptr};
+};
+
+class LegacyDiscoveryEp : public IExecutionProvider {
+ public:
+  LegacyDiscoveryEp() : IExecutionProvider("PlanningTest", CudaDevice()) {}
+  using IExecutionProvider::GetCapability;
+  PlanningOffers GetCapability(const GraphViewer&, const IKernelLookup&, const GraphOptimizerRegistry&,
+                               IResourceAccountant*) const override {
+    ++legacy_calls;
+    return {};
+  }
+  mutable int legacy_calls = 0;
+};
+
+class PlanningDiscoveryEp : public LegacyDiscoveryEp {
+ public:
+  using LegacyDiscoveryEp::GetCapability;
+  using Handler = std::function<PlanningOffers(const std::shared_ptr<const CapabilityPlanningQuery>&)>;
+  Handler handler = [](const auto& query) {
+    PlanningOffers offers;
+    offers.push_back(MakeKernelOffer(query));
+    return offers;
+  };
+  PlanningOffers GetCapability(
+      const GraphViewer&, const IKernelLookup&, const GraphOptimizerRegistry&,
+      const std::shared_ptr<const CapabilityPlanningQuery>& query) const override {
+    ++planning_calls;
+    return handler(query);
+  }
+  mutable int planning_calls = 0;
+};
+
+class CapabilityPlanningDiscoveryTest : public ::testing::Test {
+ protected:
+  CapabilityPlanningDiscoveryTest()
+      : model_("planning_discovery", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+               {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger()),
+        registry_(nullptr, nullptr, &DefaultLoggingManager().DefaultLogger()) {}
+
+  void SetUp() override {
+    auto& graph = model_.MainGraph();
+    ONNX_NAMESPACE::TypeProto type;
+    type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(4);
+    auto& input = graph.GetOrCreateNodeArg("X", &type);
+    auto& intermediate = graph.GetOrCreateNodeArg("T", &type);
+    auto& output = graph.GetOrCreateNodeArg("Y", &type);
+    graph.AddNode("first", "Identity", "", {&input}, {&intermediate});
+    graph.AddNode("second", "Identity", "", {&intermediate}, {&output});
+    graph.SetOutputs({&output});
+    ASSERT_STATUS_OK(graph.Resolve());
+  }
+
+  CapabilityPlanningQuery Request() const {
+    auto request = MakeQuery();
+    request.node_constraints.clear();
+    return request;
+  }
+
+  Model model_;
+  GraphOptimizerRegistry registry_;
+  DiscoveryKernelLookup lookup_;
+};
+
+}  // namespace
+
+TEST_F(CapabilityPlanningDiscoveryTest, NormalizationIntersectsConstraintsAndOwnsSnapshot) {
+  const GraphViewer graph(model_.MainGraph());
+  auto request = Request();
+  request.node_constraints = {
+      {1, std::nullopt, std::nullopt},
+      {0, "CUDA:0", InlinedVector<KernelDispatchPolicy>{KernelDispatchPolicy::Memory, KernelDispatchPolicy::Latency}},
+      {0, std::nullopt, InlinedVector<KernelDispatchPolicy>{KernelDispatchPolicy::Latency, KernelDispatchPolicy::Latency}}};
+  request.tentative_assignments = {{1, "CPU:0"}, {1, "CPU:0"}};
+  std::shared_ptr<const CapabilityPlanningQuery> query;
+  ASSERT_STATUS_OK(NormalizeCapabilityPlanningQuery(graph, request, query));
+  ASSERT_EQ(query->node_constraints.size(), 2u);
+  EXPECT_EQ(query->node_constraints.front().node_index, 0u);
+  EXPECT_EQ(query->node_constraints.front().required_ep_instance_id, "CUDA:0");
+  EXPECT_EQ(query->node_constraints.front().permitted_policies,
+            (InlinedVector<KernelDispatchPolicy>{KernelDispatchPolicy::Latency}));
+  EXPECT_FALSE(query->node_constraints.back().permitted_policies.has_value());
+  ASSERT_EQ(query->tentative_assignments.size(), 1u);
+  request.ep_configuration["flash_enabled"] = "false";
+  EXPECT_EQ(query->ep_configuration.at("flash_enabled"), "true");
+
+  request.node_constraints = {
+      {0, std::nullopt, InlinedVector<KernelDispatchPolicy>{KernelDispatchPolicy::Memory}},
+      {0, std::nullopt, InlinedVector<KernelDispatchPolicy>{KernelDispatchPolicy::Safe}}};
+  ASSERT_STATUS_OK(NormalizeCapabilityPlanningQuery(graph, std::move(request), query));
+  ASSERT_TRUE(query->node_constraints.front().permitted_policies.has_value());
+  EXPECT_TRUE(query->node_constraints.front().permitted_policies->empty());
+}
+
+TEST_F(CapabilityPlanningDiscoveryTest, NormalizationRejectsConflictsWithoutReplacingSnapshot) {
+  const GraphViewer graph(model_.MainGraph());
+  std::shared_ptr<const CapabilityPlanningQuery> query;
+  ASSERT_STATUS_OK(NormalizeCapabilityPlanningQuery(graph, Request(), query));
+  const auto original = query;
+  auto request = Request();
+  request.node_constraints = {{0, "CPU:0", std::nullopt}, {0, "CUDA:0", std::nullopt}};
+  EXPECT_EQ(NormalizeCapabilityPlanningQuery(graph, request, query).Code(), common::INVALID_ARGUMENT);
+  EXPECT_EQ(query, original);
+  request.node_constraints = {{999, std::nullopt, std::nullopt}};
+  EXPECT_EQ(NormalizeCapabilityPlanningQuery(graph, request, query).Code(), common::INVALID_ARGUMENT);
+  EXPECT_EQ(query, original);
+  request.node_constraints.clear();
+  request.tentative_assignments = {{0, "CPU:0"}, {0, "CUDA:0"}};
+  EXPECT_EQ(NormalizeCapabilityPlanningQuery(graph, request, query).Code(), common::INVALID_ARGUMENT);
+  EXPECT_EQ(query, original);
+}
+
+TEST_F(CapabilityPlanningDiscoveryTest, DispatcherValidatesBeforeEntryAndNeverAdaptsLegacy) {
+  const GraphViewer graph(model_.MainGraph());
+  PlanningDiscoveryEp ep;
+  CapabilityPlanningQueryResult result;
+  std::shared_ptr<const CapabilityPlanningQuery> query;
+  ASSERT_STATUS_OK(NormalizeCapabilityPlanningQuery(graph, Request(), query));
+  ASSERT_STATUS_OK(QueryCapabilityPlanning(ep, graph, lookup_, registry_, query, result));
+  ASSERT_EQ(result.capabilities.size(), 1u);
+  EXPECT_EQ(result.capabilities.front()->planning->query, query);
+  EXPECT_EQ(ep.planning_calls, 1);
+  EXPECT_EQ(ep.legacy_calls, 0);
+
+  auto invalid = *query;
+  invalid.query_id = 0;
+  EXPECT_EQ(QueryCapabilityPlanning(ep, graph, lookup_, registry_,
+                                    std::make_shared<const CapabilityPlanningQuery>(invalid), result)
+                .Code(),
+            common::INVALID_ARGUMENT);
+  EXPECT_TRUE(result.capabilities.empty());
+  EXPECT_EQ(ep.planning_calls, 1);
+  invalid = *query;
+  invalid.execution_device = OrtDevice();
+  EXPECT_EQ(QueryCapabilityPlanning(ep, graph, lookup_, registry_,
+                                    std::make_shared<const CapabilityPlanningQuery>(invalid), result)
+                .Code(),
+            common::INVALID_ARGUMENT);
+  EXPECT_EQ(ep.planning_calls, 1);
+
+  invalid = *query;
+  invalid.node_constraints = {
+      {0, std::nullopt, InlinedVector<KernelDispatchPolicy>{static_cast<KernelDispatchPolicy>(99)}}};
+  EXPECT_EQ(QueryCapabilityPlanning(ep, graph, lookup_, registry_,
+                                    std::make_shared<const CapabilityPlanningQuery>(invalid), result)
+                .Code(),
+            common::INVALID_ARGUMENT);
+  EXPECT_EQ(ep.planning_calls, 1);
+
+  IndexedSubGraph filter;
+  filter.nodes = {0};
+  const GraphViewer filtered(model_.MainGraph(), filter);
+  EXPECT_EQ(QueryCapabilityPlanning(ep, filtered, lookup_, registry_, query, result).Code(), common::INVALID_ARGUMENT);
+  EXPECT_EQ(ep.planning_calls, 1);
+
+  LegacyDiscoveryEp legacy;
+  EXPECT_EQ(QueryCapabilityPlanning(legacy, graph, lookup_, registry_, query, result).Code(), common::NOT_IMPLEMENTED);
+  EXPECT_EQ(legacy.legacy_calls, 0);
+  EXPECT_EQ(result.support, CapabilityPlanningSupport::Unsupported);
+}
+
+TEST_F(CapabilityPlanningDiscoveryTest, DispatcherRejectsTheEntireMalformedOfferSet) {
+  const GraphViewer graph(model_.MainGraph());
+  PlanningDiscoveryEp ep;
+  std::shared_ptr<const CapabilityPlanningQuery> query;
+  ASSERT_STATUS_OK(NormalizeCapabilityPlanningQuery(graph, Request(), query));
+  using Mutator = void (*)(PlanningOffers&, const std::shared_ptr<const CapabilityPlanningQuery>&);
+  const std::array<Mutator, 4> malformed = {
+      [](PlanningOffers& offers, const auto&) { offers.push_back(nullptr); },
+      [](PlanningOffers& offers, const auto& q) { offers.push_back(MakeKernelOffer(q)); },
+      [](PlanningOffers& offers, const auto& q) { offers.push_back(MakeKernelOffer(q, 999)); },
+      [](PlanningOffers& offers, const auto& q) {
+        offers.push_back(MakeKernelOffer(std::make_shared<const CapabilityPlanningQuery>(*q), 1));
+      }};
+  for (const auto mutate : malformed) {
+    ep.handler = [mutate](const auto& q) {
+      PlanningOffers offers;
+      offers.push_back(MakeKernelOffer(q));
+      mutate(offers, q);
+      return offers;
+    };
+    CapabilityPlanningQueryResult result;
+    result.support = CapabilityPlanningSupport::PlanningSafe;
+    result.capabilities.push_back(MakeKernelOffer(query));
+    EXPECT_EQ(QueryCapabilityPlanning(ep, graph, lookup_, registry_, query, result).Code(), common::INVALID_ARGUMENT);
+    EXPECT_TRUE(result.capabilities.empty());
+    EXPECT_EQ(result.support, CapabilityPlanningSupport::Unsupported);
+  }
+}
+
+#ifndef ORT_NO_EXCEPTIONS
+TEST_F(CapabilityPlanningDiscoveryTest, DispatcherPreservesEpExceptionDiagnostics) {
+  const GraphViewer graph(model_.MainGraph());
+  PlanningDiscoveryEp ep;
+  ep.handler = [](const auto&) -> PlanningOffers { ORT_THROW("planning test failure"); };
+  CapabilityPlanningQueryResult result;
+  std::shared_ptr<const CapabilityPlanningQuery> query;
+  ASSERT_STATUS_OK(NormalizeCapabilityPlanningQuery(graph, Request(), query));
+  const auto status = QueryCapabilityPlanning(ep, graph, lookup_, registry_, query, result);
+  EXPECT_EQ(status.Code(), common::FAIL);
+  EXPECT_NE(status.ErrorMessage().find("planning test failure"), std::string::npos);
+  EXPECT_TRUE(result.capabilities.empty());
+}
+#endif
+
+TEST_F(CapabilityPlanningDiscoveryTest, CpuDiscoveryIgnoresAssignmentsWithoutClaimingZeroRequirements) {
+  auto& source = model_.MainGraph();
+  for (auto& node : source.Nodes()) {
+    node.SetExecutionProviderType(kCudaExecutionProvider);
+  }
+  const GraphViewer graph(source);
+  CPUExecutionProvider ep(CPUExecutionProviderInfo(false));
+  auto request = Request();
+  request.execution_device = ep.GetDevice();
+  request.ep_instance_id = "CPU:0";
+  request.tentative_assignments = {{0, "CUDA:0"}, {1, "CUDA:0"}};
+  std::shared_ptr<const CapabilityPlanningQuery> query;
+  ASSERT_STATUS_OK(NormalizeCapabilityPlanningQuery(graph, std::move(request), query));
+  CapabilityPlanningQueryResult result;
+  ASSERT_STATUS_OK(QueryCapabilityPlanning(ep, graph, lookup_, registry_, query, result));
+  ASSERT_EQ(result.capabilities.size(), 2u);
+  for (const auto& capability : result.capabilities) {
+    EXPECT_EQ(capability->planning->query, query);
+    const auto& contract = capability->planning->contracts.front();
+    EXPECT_EQ(contract.bound_status, CapabilityRequirementBoundStatus::Unresolved);
+    EXPECT_FALSE(contract.allocation_requirements.has_value());
+    EXPECT_FALSE(contract.unresolved_terms.empty());
+    EXPECT_EQ(source.GetNode(capability->sub_graph->nodes.front())->GetExecutionProviderType(), kCudaExecutionProvider);
+  }
+  const auto legacy = ep.GetCapability(graph, lookup_, registry_);
+  ASSERT_EQ(legacy.size(), 2u);
+  EXPECT_EQ(legacy.front()->planning, nullptr);
+}
+
+#ifdef USE_CUDA
+TEST_F(CapabilityPlanningDiscoveryTest, CudaDiscoveryIgnoresAssignmentsButPreservesSupportChecks) {
+  auto ep = DefaultCudaExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "CUDA EP is unavailable.";
+  }
+  ep->SetLogger(&DefaultLoggingManager().DefaultLogger());
+  auto& source = model_.MainGraph();
+  auto& output = source.GetOrCreateNodeArg("strings", nullptr);
+  auto& cast = source.AddNode("cast_strings", "Cast", "", {source.GetNodeArg("Y")}, {&output});
+  cast.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_STRING));
+  source.SetOutputs({&output});
+  ASSERT_STATUS_OK(source.Resolve());
+  for (auto& node : source.Nodes()) {
+    node.SetExecutionProviderType(kCpuExecutionProvider);
+  }
+  const GraphViewer graph(source);
+  auto request = Request();
+  request.execution_device = ep->GetDevice();
+  std::shared_ptr<const CapabilityPlanningQuery> query;
+  ASSERT_STATUS_OK(NormalizeCapabilityPlanningQuery(graph, std::move(request), query));
+  CapabilityPlanningQueryResult result;
+  ASSERT_STATUS_OK(QueryCapabilityPlanning(*ep, graph, lookup_, registry_, query, result));
+  ASSERT_EQ(result.capabilities.size(), 2u);
+  for (const auto& capability : result.capabilities) {
+    EXPECT_NE(capability->sub_graph->nodes.front(), cast.Index());
+    EXPECT_EQ(source.GetNode(capability->sub_graph->nodes.front())->GetExecutionProviderType(), kCpuExecutionProvider);
+    EXPECT_FALSE(capability->planning->contracts.front().allocation_requirements.has_value());
+  }
+  EXPECT_TRUE(ep->GetCapability(graph, lookup_, registry_, nullptr).empty());
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -80,6 +80,15 @@ class CUDAExecutionProvider : public IExecutionProvider {
       const GraphOptimizerRegistry& /* graph_optimizer_registry */,
       IResourceAccountant* resource_accountant) const override;
 
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN)
+  using IExecutionProvider::GetCapability;
+  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
+      const GraphViewer& graph,
+      const IKernelLookup& kernel_lookup,
+      const GraphOptimizerRegistry& graph_optimizer_registry,
+      const std::shared_ptr<const CapabilityPlanningQuery>& query_context) const override;
+#endif
+
   int GetDeviceId() const override { return info_.device_id; }
   const cudaDeviceProp& GetDeviceProp() const { return device_prop_; };
   int GetCudnnConvAlgo() const { return info_.cudnn_conv_algo_search; }

@@ -5,10 +5,12 @@
 #include "core/providers/kernel_registration_validation.h"
 
 #include "core/framework/allocator_utils.h"
+#include "core/framework/capability_planning.h"
 #include "core/framework/memcpy.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/int4.h"
+#include "core/graph/graph_viewer.h"
 #include "core/mlas/inc/mlas.h"
 
 #ifndef DISABLE_CONTRIB_OPS
@@ -62,6 +64,28 @@ ONNX_OPERATOR_KERNEL_EX(
 
 CPUExecutionProvider::CPUExecutionProvider(const CPUExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kCpuExecutionProvider}, info_{info} {}
+
+std::vector<std::unique_ptr<ComputeCapability>> CPUExecutionProvider::GetCapability(
+    const GraphViewer& graph,
+    const IKernelLookup& kernel_lookup,
+    const GraphOptimizerRegistry&,
+    const std::shared_ptr<const CapabilityPlanningQuery>& query_context) const {
+  ORT_ENFORCE(query_context, "Planning discovery requires a query snapshot.");
+  std::vector<std::unique_ptr<ComputeCapability>> result;
+  for (const auto& node : graph.Nodes()) {
+    if (kernel_lookup.LookUpKernel(node) == nullptr) {
+      continue;
+    }
+    auto sub_graph = std::make_unique<IndexedSubGraph>();
+    sub_graph->nodes.push_back(node.Index());
+    auto capability = std::make_unique<ComputeCapability>(std::move(sub_graph));
+    capability->planning = MakeUnresolvedKernelPlanningInfo(
+        query_context, node.Index(),
+        MakeString(Type(), ":", node.Domain(), ":", node.OpType(), ":", node.SinceVersion(), ":", node.Index()));
+    result.push_back(std::move(capability));
+  }
+  return result;
+}
 
 std::vector<AllocatorPtr> CPUExecutionProvider::CreatePreferredAllocators() {
   const bool create_arena = DoesCpuAllocatorSupportArenaUsage() ? info_.create_arena : false;

@@ -44,6 +44,7 @@ struct OrtRunOptions;
 namespace onnxruntime {
 
 class IResourceAccountant;
+struct CapabilityPlanningQuery;
 
 /**
    Logical device representation.
@@ -496,6 +497,13 @@ class IExecutionProvider {
   virtual uint32_t GetEpContextDataCallbackRequirements(const GraphViewer&) const {
     return OrtEpContextDataCallbackSupportFlags_NONE;
   }
+
+  // Read-only planning discovery. The default does not adapt legacy discovery.
+  virtual std::vector<std::unique_ptr<ComputeCapability>>
+  GetCapability(const GraphViewer& graph_viewer,
+                const IKernelLookup& kernel_lookup,
+                const GraphOptimizerRegistry& graph_optimizer_registry,
+                const std::shared_ptr<const CapabilityPlanningQuery>& query_context) const;
 
  private:
   const std::string type_;

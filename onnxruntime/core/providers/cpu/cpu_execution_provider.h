@@ -28,6 +28,13 @@ class CPUExecutionProvider : public IExecutionProvider {
   // associated with the same device
   explicit CPUExecutionProvider(const CPUExecutionProviderInfo& info);
 
+  using IExecutionProvider::GetCapability;
+  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
+      const GraphViewer& graph,
+      const IKernelLookup& kernel_lookup,
+      const GraphOptimizerRegistry& graph_optimizer_registry,
+      const std::shared_ptr<const CapabilityPlanningQuery>& query_context) const override;
+
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
