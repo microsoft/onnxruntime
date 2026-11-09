@@ -8,7 +8,8 @@ torch==2.10.0
 torchvision==0.25.0
 transformers==5.10.1
 parameterized>=0.8.1
-sentencepiece
+# SentencePiece 0.2.3 requires protobuf 7.x, but CI uses protobuf 6.x.
+sentencepiece==0.2.2
 psutil
 einops
 onnxscript==0.6.2
