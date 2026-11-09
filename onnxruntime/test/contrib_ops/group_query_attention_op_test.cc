@@ -831,7 +831,8 @@ TEST(GroupQueryAttentionTest, BidirectionalLeftWindow_CPU) {
 
 static void RunBidirectionalWindowTest(int sequence_length, int left_window, int right_window,
                                        OpTester::ExpectResult expect = OpTester::ExpectResult::kExpectSuccess,
-                                       const std::string& message = "", int head_size = 8) {
+                                       const std::string& message = "", int head_size = 8,
+                                       int total_sequence_length = -1) {
   constexpr int batch_size = 2;
   constexpr int num_heads = 3;
   const int second_length = std::min(sequence_length, 7);
@@ -873,7 +874,8 @@ static void RunBidirectionalWindowTest(int sequence_length, int left_window, int
   tester.AddOptionalInputEdge<float>();
   tester.AddOptionalInputEdge<float>();
   tester.AddInput<int32_t>("seqlens_k", {batch_size}, {sequence_length - 1, second_length - 1});
-  tester.AddInput<int32_t>("total_sequence_length", {1}, {sequence_length});
+  tester.AddInput<int32_t>("total_sequence_length", {1},
+                           {total_sequence_length < 0 ? sequence_length : total_sequence_length});
   tester.AddOutput<float>("output", {batch_size, sequence_length, num_heads * head_size}, expected);
   tester.SetOutputTolerance(1e-4f);
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
@@ -901,6 +903,11 @@ TEST(GroupQueryAttentionTest, BidirectionalWindowRejectsDisabledFlash_CPU) {
   ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_GQA_DISABLE_FLASH_ATTENTION", "1"}}};
   RunBidirectionalWindowTest(33, 2, 2, OpTester::ExpectResult::kExpectFailure,
                              "bidirectional windows require flash attention to be enabled");
+}
+
+TEST(GroupQueryAttentionTest, BidirectionalWindowRejectsNonPrefill_CPU) {
+  RunBidirectionalWindowTest(1, 1, 0, OpTester::ExpectResult::kExpectFailure,
+                             "require first prefill with total_sequence_length == sequence_length", 8, 17);
 }
 
 TEST(GroupQueryAttentionTest, BidirectionalWindowRightOnly_CPU) {

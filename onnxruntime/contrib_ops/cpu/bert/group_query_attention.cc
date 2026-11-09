@@ -614,6 +614,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   if (!is_unidirectional_ && (local_window_size_ >= 0 || local_window_size_right_ >= 0)) {
     ORT_RETURN_IF(disable_gqa_flash_,
                   "GroupQueryAttention (CPU): bidirectional windows require flash attention to be enabled.");
+    ORT_RETURN_IF(parameters.total_sequence_length != sequence_length,
+                  "GroupQueryAttention (CPU): bidirectional windows require first prefill with total_sequence_length == sequence_length.");
     ORT_RETURN_IF(head_size <= 0 || sequence_length <= 0,
                   "GroupQueryAttention (CPU): bidirectional windows require nonempty query heads.");
     ORT_RETURN_IF(past_key != nullptr || kv_quant_enabled_ || softcap_ != 0.0f ||
