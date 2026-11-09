@@ -33,7 +33,7 @@ struct RouterShapeCase {
 };
 
 Status ResolveRouter(const RouterShapeCase& spec, bool verify_outputs = true) {
-  Model model("router_shape_inference", false, ModelMetaData(), PathString(),
+  Model model("group_router_projection_shape_inference", false, ModelMetaData(), PathString(),
               IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 17}, {kMSDomain, 1}}, {},
               DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
@@ -55,10 +55,12 @@ Status ResolveRouter(const RouterShapeCase& spec, bool verify_outputs = true) {
     }
     inputs.push_back(&graph.GetOrCreateNodeArg("input_" + std::to_string(i), &type));
   }
+  auto& empty = graph.GetOrCreateNodeArg("", nullptr);
   auto& indices = graph.GetOrCreateNodeArg("indices", nullptr);
   auto& weights = graph.GetOrCreateNodeArg("weights", nullptr);
-  auto& node = graph.AddNode("router", "MoERouterPacked", "", inputs, {&indices, &weights}, nullptr, kMSDomain);
-  if (spec.k) node.AddAttribute("k", *spec.k);
+  auto& node = graph.AddNode("router", "MoEGroupRouter", "",
+                             {inputs[0], inputs[2], inputs[1]}, {&empty, &indices, &weights}, nullptr, kMSDomain);
+  if (spec.k) node.AddAttribute("top_k", *spec.k);
   node.AddAttribute("router_scale", spec.scale);
   graph.SetOutputs({&indices, &weights});
   const auto status = graph.Resolve();
@@ -84,7 +86,7 @@ Status ResolveRouter(const RouterShapeCase& spec, bool verify_outputs = true) {
   return status;
 }
 
-TEST(MoERouterPackedShapeInferenceTest, StaticSymbolicAndUnknownShapes) {
+TEST(MoEGroupRouterProjectionShapeInferenceTest, StaticSymbolicAndUnknownShapes) {
   for (int dtype : {ONNX_NAMESPACE::TensorProto::FLOAT16, ONNX_NAMESPACE::TensorProto::BFLOAT16}) {
     RouterShapeCase spec;
     spec.dtype = dtype;
@@ -106,12 +108,12 @@ TEST(MoERouterPackedShapeInferenceTest, StaticSymbolicAndUnknownShapes) {
 }
 
 #ifndef ORT_NO_EXCEPTIONS
-TEST(MoERouterPackedShapeInferenceTest, RejectsBadAttributesRanksAndKnownDimensions) {
+TEST(MoEGroupRouterProjectionShapeInferenceTest, RejectsBadAttributesRanksAndKnownDimensions) {
   using Mutate = std::function<void(RouterShapeCase&)>;
   const std::vector<std::pair<Mutate, std::string>> cases{
       {[](auto& s) { s.k = std::nullopt; }, "k"},
-      {[](auto& s) { s.k = 0; }, "k must be in 1..32, got 0"},
-      {[](auto& s) { s.k = 33; }, "k must be in 1..32, got 33"},
+      {[](auto& s) { s.k = 0; }, "top_k must be in 1..32, got 0"},
+      {[](auto& s) { s.k = 33; }, "top_k must be in 1..32, got 33"},
       {[](auto& s) { s.scale = std::numeric_limits<float>::infinity(); }, "finite router_scale"},
       {[](auto& s) { s.scale = std::numeric_limits<float>::quiet_NaN(); }, "finite router_scale"},
       {[](auto& s) { s.shapes[0] = std::vector<int64_t>{}; }, "input must be rank 2, got 0"},
@@ -122,7 +124,8 @@ TEST(MoERouterPackedShapeInferenceTest, RejectsBadAttributesRanksAndKnownDimensi
       {[](auto& s) { s.shapes[1] = std::vector<int64_t>{1, 9, 256}; }, "weight must be rank 2, got 3"},
       {[](auto& s) { s.shapes[2] = std::vector<int64_t>{}; }, "bias must be rank 1, got 0"},
       {[](auto& s) { s.shapes[2] = std::vector<int64_t>{1, 9}; }, "bias must be rank 1, got 2"},
-      {[](auto& s) { s.shapes[0] = std::vector<int64_t>{2049, 256}; }, "rows must be in [0, 2048], got 2049"},
+      {[](auto& s) { s.shapes[0] = std::vector<int64_t>{int64_t{1} << 31, 256}; },
+       "rows must be in [0, INT_MAX], got 2147483648"},
       {[](auto& s) { s.shapes[0] = std::vector<int64_t>{3, 0}; }, "input width must be a positive multiple of 256"},
       {[](auto& s) { s.shapes[0] = std::vector<int64_t>{3, 255}; }, "got 255"},
       {[](auto& s) { s.shapes[0] = std::vector<int64_t>{3, int64_t{1} << 31}; }, "got 2147483648"},
@@ -205,12 +208,13 @@ template <typename T>
 void CheckReferenceRouter(int rows, int width, int experts, int k, float scale,
                           const std::vector<T>& input, const std::vector<T>& weight,
                           const std::vector<float>& bias, const RouterReference& reference) {
-  OpTester test("MoERouterPacked", 1, kMSDomain);
-  test.AddAttribute("k", static_cast<int64_t>(k));
+  OpTester test("MoEGroupRouter", 1, kMSDomain);
+  test.AddAttribute("top_k", static_cast<int64_t>(k));
   test.AddAttribute("router_scale", scale);
   test.AddInput<T>("input", {rows, width}, input);
-  test.AddInput<T>("weight", {experts, width}, weight, true);
   test.AddInput<float>("bias", {experts}, bias, true);
+  test.AddInput<T>("weight", {experts, width}, weight, true);
+  test.AddOptionalOutputEdge<T>();
   test.AddOutput<int32_t>("indices", {rows, k}, reference.indices);
   test.AddOutput<float>("weights", {rows, k}, reference.weights);
   test.SetOutputTolerance(1e-5f, 1e-5f);
@@ -260,17 +264,18 @@ void CheckRoutes(int rows, bool tied) {
   constexpr int width = 256;
   constexpr int experts = 4;
   constexpr int k = 2;
-  OpTester test("MoERouterPacked", 1, kMSDomain);
-  test.AddAttribute("k", int64_t{k});
+  OpTester test("MoEGroupRouter", 1, kMSDomain);
+  test.AddAttribute("top_k", int64_t{k});
   test.AddAttribute("router_scale", 2.5f);
   test.AddInput<T>("input", {rows, width}, std::vector<T>(rows * width, T(0.f)));
-  test.AddInput<T>("weight", {experts, width}, std::vector<T>(experts * width, T(0.f)), true);
   test.AddInput<float>("bias", {experts}, tied ? std::vector<float>(experts, 0.f) : std::vector<float>{0.f, 3.f, 2.f, 1.f}, true);
+  test.AddInput<T>("weight", {experts, width}, std::vector<T>(experts * width, T(0.f)), true);
   std::vector<int32_t> indices;
   for (int row = 0; row < rows; ++row) {
     indices.push_back(tied ? 0 : 1);
     indices.push_back(tied ? 1 : 2);
   }
+  test.AddOptionalOutputEdge<T>();
   test.AddOutput<int32_t>("indices", {rows, k}, indices);
   test.AddOutput<float>("weights", {rows, k}, std::vector<float>(rows * k, 1.25f));
   test.SetOutputTolerance(0, 0);
@@ -288,12 +293,13 @@ void CheckProjection() {
   for (int expert = 0; expert < experts; ++expert) weight[expert * width] = T(float(expert - 1));
   const float first = 1.f / (1.f + std::exp(1.f));
   const float sum = first + 0.5f;
-  OpTester test("MoERouterPacked", 1, kMSDomain);
-  test.AddAttribute("k", int64_t{2});
+  OpTester test("MoEGroupRouter", 1, kMSDomain);
+  test.AddAttribute("top_k", int64_t{2});
   test.AddAttribute("router_scale", 2.5f);
   test.AddInput<T>("input", {1, width}, input);
-  test.AddInput<T>("weight", {experts, width}, weight, true);
   test.AddInput<float>("bias", {experts}, {4.f, 3.f, 0.f, 0.f}, true);
+  test.AddInput<T>("weight", {experts, width}, weight, true);
+  test.AddOptionalOutputEdge<T>();
   test.AddOutput<int32_t>("indices", {1, 2}, {0, 1});
   test.AddOutput<float>("weights", {1, 2}, {first / sum * 2.5f, 0.5f / sum * 2.5f});
   test.SetOutputTolerance(1e-6f, 1e-6f);
@@ -307,14 +313,15 @@ void CheckMaximumK() {
   constexpr int width = 256;
   constexpr int experts = 512;
   constexpr int k = 32;
-  OpTester test("MoERouterPacked", 1, kMSDomain);
-  test.AddAttribute("k", int64_t{k});
+  OpTester test("MoEGroupRouter", 1, kMSDomain);
+  test.AddAttribute("top_k", int64_t{k});
   test.AddAttribute("router_scale", 2.5f);
   test.AddInput<T>("input", {1, width}, std::vector<T>(width, T(0.f)));
-  test.AddInput<T>("weight", {experts, width}, std::vector<T>(experts * width, T(0.f)), true);
   test.AddInput<float>("bias", {experts}, std::vector<float>(experts, 0.f), true);
+  test.AddInput<T>("weight", {experts, width}, std::vector<T>(experts * width, T(0.f)), true);
   std::vector<int32_t> indices(k);
   std::iota(indices.begin(), indices.end(), 0);
+  test.AddOptionalOutputEdge<T>();
   test.AddOutput<int32_t>("indices", {1, k}, indices);
   test.AddOutput<float>("weights", {1, k}, std::vector<float>(k, 2.5f / k));
   test.SetOutputTolerance(0, 0);
@@ -323,7 +330,7 @@ void CheckMaximumK() {
   test.Run(SessionOptions{}, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
-TEST(MoERouterPackedTest, SelectionBiasDoesNotChangeMixtureWeights) {
+TEST(MoEGroupRouterProjectionTest, SelectionBiasDoesNotChangeMixtureWeights) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   for (int rows : {0, 1, 8, 16}) {
     CheckRoutes<BFloat16>(rows, false);
@@ -331,25 +338,25 @@ TEST(MoERouterPackedTest, SelectionBiasDoesNotChangeMixtureWeights) {
   }
 }
 
-TEST(MoERouterPackedTest, TiesSelectLowerExpertIndices) {
+TEST(MoEGroupRouterProjectionTest, TiesSelectLowerExpertIndices) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   CheckRoutes<BFloat16>(8, true);
   CheckRoutes<MLFloat16>(8, true);
 }
 
-TEST(MoERouterPackedTest, ProjectionUsesUnbiasedAffinities) {
+TEST(MoEGroupRouterProjectionTest, ProjectionUsesUnbiasedAffinities) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   CheckProjection<BFloat16>();
   CheckProjection<MLFloat16>();
 }
 
-TEST(MoERouterPackedTest, MaximumExpertsAndK) {
+TEST(MoEGroupRouterProjectionTest, MaximumExpertsAndK) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   CheckMaximumK<BFloat16>();
   CheckMaximumK<MLFloat16>();
 }
 
-TEST(MoERouterPackedTest, DistinctRandomRowsMatchIndependentReference) {
+TEST(MoEGroupRouterProjectionTest, DistinctRandomRowsMatchIndependentReference) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   for (int width : {256, 512, 2048}) {
     for (int experts : {9, 33, 257, 512}) {
@@ -363,7 +370,7 @@ TEST(MoERouterPackedTest, DistinctRandomRowsMatchIndependentReference) {
   }
 }
 
-TEST(MoERouterPackedTest, TiesWithinLaneSlotsMatchIndependentReference) {
+TEST(MoEGroupRouterProjectionTest, TiesWithinLaneSlotsMatchIndependentReference) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   CheckRandomProjection<MLFloat16>(512, 257, 2, true);
   CheckRandomProjection<BFloat16>(2048, 512, 2, true);
@@ -386,13 +393,13 @@ void CheckNonfiniteActivations() {
   CheckReferenceRouter(rows, width, experts, k, 1.f, input, weight, bias, reference);
 }
 
-TEST(MoERouterPackedTest, NonfiniteActivationsAreNotSanitized) {
+TEST(MoEGroupRouterProjectionTest, NonfiniteActivationsAreNotSanitized) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   CheckNonfiniteActivations<MLFloat16>();
   CheckNonfiniteActivations<BFloat16>();
 }
 
-TEST(MoERouterPackedTest, ZeroAffinitiesUseNormalizationEpsilon) {
+TEST(MoEGroupRouterProjectionTest, ZeroAffinitiesUseNormalizationEpsilon) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   const std::vector<MLFloat16> input(256, MLFloat16(1.f)), weight(9 * 256, MLFloat16(-1.f));
   const std::vector<float> bias(9, 0.f);
@@ -401,15 +408,16 @@ TEST(MoERouterPackedTest, ZeroAffinitiesUseNormalizationEpsilon) {
   CheckReferenceRouter(1, 256, 9, 2, 1.f, input, weight, bias, reference);
 }
 
-TEST(MoERouterPackedTest, NonfiniteBiasPreservesDeterministicRanking) {
+TEST(MoEGroupRouterProjectionTest, NonfiniteBiasPreservesDeterministicRanking) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   constexpr int width = 256;
   const float inf = std::numeric_limits<float>::infinity();
-  OpTester test("MoERouterPacked", 1, kMSDomain);
-  test.AddAttribute("k", int64_t{4});
+  OpTester test("MoEGroupRouter", 1, kMSDomain);
+  test.AddAttribute("top_k", int64_t{4});
   test.AddInput<BFloat16>("input", {1, width}, std::vector<BFloat16>(width, BFloat16(0.f)));
-  test.AddInput<BFloat16>("weight", {4, width}, std::vector<BFloat16>(4 * width, BFloat16(0.f)), true);
   test.AddInput<float>("bias", {4}, {-inf, inf, 0.f, std::numeric_limits<float>::quiet_NaN()}, true);
+  test.AddInput<BFloat16>("weight", {4, width}, std::vector<BFloat16>(4 * width, BFloat16(0.f)), true);
+  test.AddOptionalOutputEdge<BFloat16>();
   test.AddOutput<int32_t>("indices", {1, 4}, {1, 2, 0, 3});
   test.AddOutput<float>("weights", {1, 4}, {0.25f, 0.25f, 0.25f, 0.25f});
   test.SetOutputTolerance(0, 0);
@@ -428,9 +436,9 @@ class ChainedRouterTester final : public OpTester {
     auto& empty = graph.GetOrCreateNodeArg("", nullptr);
     auto& indices = graph.GetOrCreateNodeArg("selected_indices", nullptr);
     auto& weights = graph.GetOrCreateNodeArg("selected_weights", nullptr);
-    auto& router = graph.AddNode("standalone_router", "MoERouterPacked", "",
-                                 {inputs[1], inputs[2], inputs[3]}, {&indices, &weights}, nullptr, kMSDomain);
-    router.AddAttribute("k", int64_t{3});
+    auto& router = graph.AddNode("group_router", "MoEGroupRouter", "",
+                                 {inputs[1], inputs[3], inputs[2]}, {&empty, &indices, &weights}, nullptr, kMSDomain);
+    router.AddAttribute("top_k", int64_t{3});
     router.AddAttribute("router_scale", 2.5f);
     auto& chained = graph.AddNode("chained_moe", "MoEPacked", "",
                                   {inputs[0], &empty, inputs[4], &empty, inputs[5], &indices, &weights},
@@ -544,7 +552,7 @@ void CheckChainedRouter(int rows) {
   test.Run(SessionOptions{}, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
-TEST(MoERouterPackedTest, ChainedPreselectedMoeMatchesIntegratedSigmoidAndHostReference) {
+TEST(MoEGroupRouterProjectionTest, ChainedPreselectedMoeMatchesIntegratedSigmoidAndHostReference) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   for (int rows : {3, 9}) {
     SCOPED_TRACE(testing::Message() << "rows=" << rows);
@@ -554,7 +562,7 @@ TEST(MoERouterPackedTest, ChainedPreselectedMoeMatchesIntegratedSigmoidAndHostRe
 }
 
 #ifndef ORT_NO_EXCEPTIONS
-TEST(MoERouterPackedTest, RejectsInvalidRuntimeGeometryWithObservedValues) {
+TEST(MoEGroupRouterProjectionTest, RejectsInvalidRuntimeGeometryWithObservedValues) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   struct InvalidCase {
     std::vector<int64_t> input, weight, bias;
@@ -574,16 +582,17 @@ TEST(MoERouterPackedTest, RejectsInvalidRuntimeGeometryWithObservedValues) {
       {{1, 256}, {256}, {9}, 1, "weight must be rank 2, got {256}"}};
   for (const auto& spec : cases) {
     SCOPED_TRACE(spec.message);
-    OpTester test("MoERouterPacked", 1, kMSDomain);
+    OpTester test("MoEGroupRouter", 1, kMSDomain);
     // Hide static geometry so these cases reach host-kernel validation.
     test.AddShapeToTensorData(false);
-    test.AddAttribute("k", spec.k);
+    test.AddAttribute("top_k", spec.k);
     const auto count = [](const auto& shape) {
       return std::accumulate(shape.begin(), shape.end(), int64_t{1}, std::multiplies<int64_t>());
     };
     test.AddInput<MLFloat16>("input", spec.input, std::vector<MLFloat16>(count(spec.input), MLFloat16(0.f)));
     test.AddInput<MLFloat16>("weight", spec.weight, std::vector<MLFloat16>(count(spec.weight), MLFloat16(0.f)));
     test.AddInput<float>("bias", spec.bias, std::vector<float>(count(spec.bias), 0.f));
+    test.AddOptionalOutputEdge<T>();
     test.AddOutput<int32_t>("indices", {1, spec.k}, std::vector<int32_t>(spec.k, 0));
     test.AddOutput<float>("weights", {1, spec.k}, std::vector<float>(spec.k, 1.f));
     std::vector<std::unique_ptr<IExecutionProvider>> providers;

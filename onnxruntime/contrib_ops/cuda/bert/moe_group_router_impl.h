@@ -23,7 +23,13 @@ __device__ __forceinline__ uint4 LoadPacked8(const CudaT* input) {
 }
 #endif
 
-Status LaunchMoERouterPackedCuda(
+template <typename T>
+Status LaunchCompactMoEGroupRouter(
+    cudaStream_t stream, int rows, int width, int experts, int k, float scale,
+    const T* input, const T* projection_weight, const float* bias,
+    float* scores, int32_t* indices, float* weights, T* log_scores, float sentinel);
+
+Status LaunchProjectedSigmoidRouting(
     cudaStream_t stream, bool is_bf16, int rows, int width, int experts, int k, float scale,
     const void* input, const void* weight, const float* bias,
     float* scores, int32_t* indices, float* weights);

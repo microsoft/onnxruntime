@@ -82,7 +82,6 @@ Do not modify directly.*
   * <a href="#com.microsoft.MoE">com.microsoft.MoE</a>
   * <a href="#com.microsoft.MoEGroupRouter">com.microsoft.MoEGroupRouter</a>
   * <a href="#com.microsoft.MoEPacked">com.microsoft.MoEPacked</a>
-  * <a href="#com.microsoft.MoERouterPacked">com.microsoft.MoERouterPacked</a>
   * <a href="#com.microsoft.MulInteger">com.microsoft.MulInteger</a>
   * <a href="#com.microsoft.MultiHeadAttention">com.microsoft.MultiHeadAttention</a>
   * <a href="#com.microsoft.MurmurHash3">com.microsoft.MurmurHash3</a>
@@ -5025,6 +5024,19 @@ This version of the operator has been available since version 1 of the 'com.micr
   writes log(max(s, 1e-20)) at the selected experts and router_sentinel elsewhere into a 2D
   (total_tokens, num_experts) output tensor ready for MoE / QMoE.
 
+  Optional expert_indices (int32) and expert_weights (float32) outputs must be requested together.
+  They preserve biased selection order (lower expert ID wins ties), and contain unbiased sigmoid
+  scores normalized in selected-rank FP32 order with denominator sum + 1e-20, then multiplied by
+  router_scale. Compact routing currently requires n_group=topk_group=1, top_k<=32 and num_experts<=512.
+  NaN selection scores rank below -infinity. The dense router_probs output may be omitted.
+  Compact routing uses sigmoid(x)=1/(1+exp(-x)); legacy dense-only routing is unchanged.
+
+  With compact outputs, optional projection_weight is an ordinary dense, unquantized T tensor
+  (num_experts, width). In this case logits is a rank-two activation tensor (total_tokens, width),
+  width is positive and divisible by 256, and the projection accumulates in FP32 before sigmoid.
+  The projected CUDA kernel preserves per-lane accumulation and warp-tree reduction without an
+  intermediate T rounding boundary. Projection requires compact outputs and rows<=INT_MAX.
+
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
@@ -5036,6 +5048,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Positive number of top experts summed within each group, clamped to the group size.</dd>
 <dt><tt>n_group</tt> : int</dt>
 <dd>Positive number of expert groups.</dd>
+<dt><tt>router_scale</tt> : float</dt>
+<dd>Finite post-normalization scale for compact expert_weights only.</dd>
 <dt><tt>router_sentinel</tt> : float</dt>
 <dd>Value written to non-selected expert positions.</dd>
 <dt><tt>top_k</tt> : int (required)</dt>
@@ -5044,20 +5058,26 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Positive number of active expert groups selected per token.</dd>
 </dl>
 
-#### Inputs
+#### Inputs (2 - 3)
 
 <dl>
 <dt><tt>logits</tt> : T</dt>
-<dd>Router logits tensor of shape (..., num_experts).</dd>
+<dd>Router logits (..., num_experts), or activations (total_tokens, width) when projection_weight is provided.</dd>
 <dt><tt>expert_bias</tt> : TF</dt>
 <dd>1D float32 expert bias tensor of shape (num_experts).</dd>
+<dt><tt>projection_weight</tt> (optional) : T</dt>
+<dd>Optional dense projection weights (num_experts, width).</dd>
 </dl>
 
-#### Outputs
+#### Outputs (0 - 3)
 
 <dl>
-<dt><tt>router_probs</tt> : T</dt>
+<dt><tt>router_probs</tt> (optional) : T</dt>
 <dd>2D routed log-scores tensor of shape (total_tokens, num_experts).</dd>
+<dt><tt>expert_indices</tt> (optional) : Tind</dt>
+<dd>Selected expert IDs (total_tokens, top_k), in biased rank order.</dd>
+<dt><tt>expert_weights</tt> (optional) : TF</dt>
+<dd>FP32 normalized/scaled unbiased weights (total_tokens, top_k).</dd>
 </dl>
 
 #### Type Constraints
@@ -5067,6 +5087,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>TF</tt> : tensor(float)</dt>
 <dd>Constrain expert_bias to float32.</dd>
+<dt><tt>Tind</tt> : tensor(int32)</dt>
+<dd>Compact expert indices are int32.</dd>
 </dl>
 
 
@@ -5133,63 +5155,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Preselected expert index type.</dd>
 <dt><tt>Tweight</tt> : tensor(float)</dt>
 <dd>Preselected mixture coefficient type.</dd>
-</dl>
-
-
-### <a name="com.microsoft.MoERouterPacked"></a><a name="com.microsoft.moerouterpacked">**com.microsoft.MoERouterPacked**</a>
-
-  Projected sigmoid routing for MoEPacked.
-  FP16/BF16 activations and dense router weights are accumulated in FP32.
-  Correction bias changes expert selection only; mixture weights use unbiased sigmoid affinities s_i.
-  Weights are w_i = s_i / (sum_selected + 1e-20) * router_scale, with sequential FP32 summation in selected-rank order.
-  Selection ranks score plus bias as +inf > finite > -inf > NaN; ties select lower expert IDs.
-  Nonfinite activations are not sanitized; NaN affinities propagate to mixture weights.
-  Outputs feed MoEPacked's preselected inputs with normalize_routing_weights=0.
-  Supports 0..2048 rows, positive width divisible by 256, and 1<=k<=32 with k<=experts<=512.
-  This is not the log-domain router_probs/weight_scale contract used by expert-parallel QMoE.
-
-#### Version
-
-This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
-
-#### Attributes
-
-<dl>
-<dt><tt>k</tt> : int (required)</dt>
-<dd>Number of selected experts.</dd>
-<dt><tt>router_scale</tt> : float</dt>
-<dd>Finite post-normalization routing scale. Default: 1.</dd>
-</dl>
-
-#### Inputs
-
-<dl>
-<dt><tt>input</tt> : T</dt>
-<dd>Router activations [rows,width].</dd>
-<dt><tt>weight</tt> : T</dt>
-<dd>Dense router weights [experts,width].</dd>
-<dt><tt>bias</tt> : Tweight</dt>
-<dd>FP32 expert-selection-only correction bias [experts].</dd>
-</dl>
-
-#### Outputs
-
-<dl>
-<dt><tt>indices</tt> : Tind</dt>
-<dd>Selected expert IDs [rows,k].</dd>
-<dt><tt>weights</tt> : Tweight</dt>
-<dd>Unbiased normalized/scaled FP32 mixture weights [rows,k].</dd>
-</dl>
-
-#### Type Constraints
-
-<dl>
-<dt><tt>T</tt> : tensor(bfloat16), tensor(float16)</dt>
-<dd>Activation and router-weight type.</dd>
-<dt><tt>Tind</tt> : tensor(int32)</dt>
-<dd>Selected expert index type.</dd>
-<dt><tt>Tweight</tt> : tensor(float)</dt>
-<dd>Correction-bias and mixture-weight precision.</dd>
 </dl>
 
 
