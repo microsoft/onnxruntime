@@ -25,7 +25,7 @@ The reference layouts are the ggml implementation included in
 - [gguf-py/gguf/quants.py](https://github.com/ggml-org/llama.cpp/blob/970b51ce7c9ba5fff0726c5e9994f1c2f0e4eedc/gguf-py/gguf/quants.py)
   provides the independent decoder used to verify ORT's fixed known-answer tests.
 
-Only the IDs in this table are supported by these three operators. All other values, including unlisted
+Only the IDs in this table are supported, subject to the per-operator restriction for NVFP4 below. All other values, including unlisted
 IDs in the range `0..99`, negative IDs, and IDs `>=100`, are unsupported and rejected. A known upstream
 enum value does not imply ORT support.
 
@@ -49,7 +49,17 @@ stated width. Arrays are in stored field order, without padding.
 | 22 | IQ2_S | 256 | 82 | `d: f16`, `qs: u8[64]` (32 index bytes followed by 32 sign bytes), `qh: u8[8]`, `scales: u8[8]` |
 | 23 | IQ4_XS | 256 | 136 | `d: f16`, `scales_h: u16`, `scales_l: u8[4]`, `qs: u8[128]` |
 | 30 | BF16 | 1 | 2 | One `bf16` value |
+| 40 | NVFP4 | 64 | 36 | `d: u8[4]` (UE4M3 scale per 16 elements), `qs: u8[32]` (E2M1 codes; each group's elements 0-7 use low nibbles, 8-15 high nibbles) |
 | 42 | Q2_0 | 64 | 18 | `d: f16`, `qs: u8[16]`; consecutive two-bit codes `0,1,2,3` decode to `d * (-1,0,1,2)` |
+
+NVFP4 is supported by CUDA MatMulPacked only; GatherPacked and MoEPacked reject ID 40.
+Its `K` must be a positive multiple of 64. Scale bytes must have bit 7 clear (values
+`0x00..0x7f`); bytes with bit 7 set are outside this contract. For scale byte `s`,
+`0x00` and `0x7f` decode to zero. Otherwise, with `e = s >> 3` and `m = s & 7`,
+the scale is `m * 2^-9` when `e == 0`, and `(1 + m/8) * 2^(e-7)` otherwise.
+Thus `0x01` is `2^-9` and `0x7e` is 448. The code nibble indexes the doubled E2M1
+table `[0,1,2,3,4,6,8,12,0,-1,-2,-3,-4,-6,-8,-12]`; the decoded weight is
+`table[code] * 0.5 * scale`. Blocks concatenate four 16-element groups.
 
 ## Byte order and tensor layout
 
@@ -84,6 +94,8 @@ The packed layout is independent of the activation dtype and dispatch path. The 
 dequantize and round weights as follows, where `M` is the product of the activation tensor's leading
 dimensions (one for a vector):
 
+With `dequantize_to_activation_dtype=0` (the default):
+
 | Activation dtype | Dispatch | Weights used in multiplication |
 |---|---|---|
 | FP16 | Decode, `M <= 8` | FP32-decoded weights |
@@ -91,6 +103,13 @@ dimensions (one for a vector):
 | BF16 | Decode, `M <= 8` and `N < 65536` | FP32-decoded weights |
 | BF16 | Decode, `M <= 8` and `N >= 65536` | BF16-rounded decoded weights, including the SIMT fallback |
 | BF16 | Prefill, `M > 8` | BF16-rounded decoded weights |
+
+With `dequantize_to_activation_dtype=1`, every complete decoded weight is rounded
+to the activation dtype before multiplication, for both decode and prefill.
+Scale factors are combined in FP32 before that rounding, not rounded separately.
+For NVFP4 only, the optional scalar FP32 `global_scale` multiplies the FP32
+accumulated result before the final activation-dtype cast, on every dispatch path;
+it is not folded into the per-weight rounding. Omitting it is equivalent to 1.
 
 All paths accumulate and reduce in FP32 and return the activation dtype. Thus changing `M` or `N`
 across a dispatch boundary can change a BF16 result even when each activation row is identical.

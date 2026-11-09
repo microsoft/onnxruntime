@@ -122,6 +122,7 @@ __device__ __forceinline__ void DecodeGgufSubBlock8Impl(
     const uint8_t* blk = row_ptr + static_cast<int64_t>(sb32_idx >> 1) * 36;
     const int group = 2 * (sb32_idx & 1) + (l >> 1);
     const uint8_t scale = __ldg(blk + group);
+    // The packed-format contract requires bit 7 clear; 0x7f is the zero sentinel.
     const float d = scale == 127 ? 0.0f : __half2float(__half(__nv_cvt_fp8_to_halfraw(static_cast<__nv_fp8_storage_t>(scale), __NV_E4M3)));
     const uint8_t* codes = blk + 4 + group * 8;
 #pragma unroll

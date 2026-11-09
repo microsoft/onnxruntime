@@ -29,6 +29,7 @@ void TestNvfp4GlobalScale(int n = 17) {
       0.f, -.5f, -1.f, -1.5f, -2.f, -3.f, -4.f, -6.f};
   constexpr float global_scale = .333333f;
   for (int rows : {1, 7, 8, 9, 17, 129}) {
+    if (n >= 65536 && rows > 8) continue;
     SCOPED_TRACE(testing::Message() << "rows=" << rows);
     std::vector<T> a(rows * k), expected(rows * n);
     std::vector<uint8_t> packed(n * (k / 64) * 36);
@@ -66,16 +67,18 @@ void TestNvfp4GlobalScale(int n = 17) {
       }
     }
     for (bool initializer : {false, true}) {
-      OpTester test("MatMulPacked", 1, kMSDomain);
-      test.AddAttribute("K", int64_t{k});
-      test.AddAttribute("N", int64_t{n});
-      test.AddAttribute("packed_type", int64_t{40});
-      test.AddAttribute("dequantize_to_activation_dtype", int64_t{1});
-      test.AddInput<T>("A", {1, rows, k}, a);
-      test.AddInput<uint8_t>("B", {n, (k / 64) * 36}, packed, initializer);
-      test.AddInput<float>("global_scale", {}, {global_scale}, initializer);
-      test.AddOutput<T>("Y", {1, rows, n}, expected);
-      RunPackedCuda(test);
+      for (bool round_weights : {false, true}) {
+        OpTester test("MatMulPacked", 1, kMSDomain);
+        test.AddAttribute("K", int64_t{k});
+        test.AddAttribute("N", int64_t{n});
+        test.AddAttribute("packed_type", int64_t{40});
+        if (round_weights) test.AddAttribute("dequantize_to_activation_dtype", int64_t{1});
+        test.AddInput<T>("A", {1, rows, k}, a);
+        test.AddInput<uint8_t>("B", {n, (k / 64) * 36}, packed, initializer);
+        test.AddInput<float>("global_scale", {}, {global_scale}, initializer);
+        test.AddOutput<T>("Y", {1, rows, n}, expected);
+        RunPackedCuda(test);
+      }
     }
   }
 }
@@ -94,6 +97,42 @@ TEST(MatMulPackedPrecisionTest, Nvfp4GlobalScaleAcrossPrefillTiles) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   TestNvfp4GlobalScale<BFloat16>(4099);
   TestNvfp4GlobalScale<MLFloat16>(4099);
+}
+
+TEST(MatMulPackedPrecisionTest, Nvfp4GlobalScaleLargeNDefaultDecode) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  TestNvfp4GlobalScale<BFloat16>(65536);
+}
+
+TEST(MatMulPackedPrecisionTest, Nvfp4UnsignedScaleKnownAnswers) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  constexpr int k = 64;
+  constexpr int n = 17;
+  for (int rows : {1, 8, 9}) {
+    std::vector<BFloat16> a(rows * k, BFloat16(0.f)), expected(rows * n);
+    std::vector<uint8_t> packed(n * 36, 0x11);
+    for (int col = 0; col < n; ++col) {
+      const std::array<uint8_t, 4> scales{0x00, 0x01, 0x7e, 0x7f};
+      for (int group = 0; group < 4; ++group) packed[col * 36 + group] = scales[group];
+    }
+    for (int row = 0; row < rows; ++row) {
+      const int group = row % 4;
+      a[row * k + group * 16] = BFloat16(1.f);
+      const std::array<float, 4> values{0.f, 0x1p-10f, 224.f, 0.f};
+      for (int col = 0; col < n; ++col) expected[row * n + col] = BFloat16(values[group]);
+    }
+    for (bool round_weights : {false, true}) {
+      OpTester test("MatMulPacked", 1, kMSDomain);
+      test.AddAttribute("K", int64_t{k});
+      test.AddAttribute("N", int64_t{n});
+      test.AddAttribute("packed_type", int64_t{40});
+      if (round_weights) test.AddAttribute("dequantize_to_activation_dtype", int64_t{1});
+      test.AddInput<BFloat16>("A", {rows, k}, a);
+      test.AddInput<uint8_t>("B", {n, 36}, packed);
+      test.AddOutput<BFloat16>("Y", {rows, n}, expected);
+      RunPackedCuda(test);
+    }
+  }
 }
 
 TEST(MatMulPackedPrecisionTest, CompleteOperandRoundingIsOptIn) {
@@ -201,12 +240,12 @@ TEST(MatMulPackedPrecisionTest, RoundedBf16ContiguousKCancellation) {
   for (int rows : {1, 7, 8}) {
     std::vector<BFloat16> a(rows * k, BFloat16(0.f));
     for (int row = 0; row < rows; ++row) {
-      // Keep unit terms out of large-magnitude MMA partials: their internal
-      // accumulation order differs between Ampere and Hopper.
+      // Separate large-value MMA partials from unit terms. Lanes 20/28 also
+      // combine the units before the large values in the SIMT reduction.
       a[row * k] = BFloat16(0x1p25f);
       a[row * k + 64] = BFloat16(-0x1p25f);
-      a[row * k + 128] = BFloat16(1.f);
       a[row * k + 160] = BFloat16(1.f);
+      a[row * k + 224] = BFloat16(1.f);
     }
     OpTester test("MatMulPacked", 1, kMSDomain);
     test.AddAttribute("K", int64_t{k});
