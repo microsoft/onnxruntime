@@ -33,6 +33,20 @@ class GatedRMSNorm final : public onnxruntime::cuda::CudaKernel {
   float epsilon_;
 };
 
+template <typename T>
+class MoEGroupRouter final : public onnxruntime::cuda::CudaKernel {
+ public:
+  explicit MoEGroupRouter(const OpKernelInfo& info);
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  int64_t top_k_;
+  int64_t n_group_;
+  int64_t topk_group_;
+  int64_t group_topk_;
+  float router_sentinel_;
+};
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

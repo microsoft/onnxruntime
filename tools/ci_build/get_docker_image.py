@@ -4,12 +4,12 @@
 
 import argparse
 import os
-import shlex
 import shutil
 import sys
 from pathlib import Path
 
 from logger import get_logger
+from resolve_docker_base_image import resolve_build_args
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
@@ -31,6 +31,7 @@ def parse_args():
     parser.add_argument(
         "--docker-build-args", default="", help="Arguments that will be passed to the 'docker build' command."
     )
+    parser.add_argument("--base-image-family", default="", help="Base-image family from base-images.json.")
 
     parser.add_argument(
         "--container-registry",
@@ -55,6 +56,7 @@ def parse_args():
 
 def main():
     args = parse_args()
+    docker_build_args = resolve_build_args(args.dockerfile, args.docker_build_args, args.base_image_family)
 
     log.debug(f"Dockerfile: {args.dockerfile}, context: {args.context}, docker build args: '{args.docker_build_args}'")
 
@@ -107,13 +109,14 @@ def main():
             "error",
             "buildx",
             "build",
+            "--pull",
             "--load",
             "--tag",
             full_image_name,
             "--cache-from=type=registry,ref=" + full_image_name,
             "--build-arg",
             "BUILDKIT_INLINE_CACHE=1",
-            *shlex.split(args.docker_build_args),
+            *docker_build_args,
             "-f",
             args.dockerfile,
             args.context,
@@ -129,7 +132,7 @@ def main():
             args.docker_path,
             "build",
             "--pull",
-            *shlex.split(args.docker_build_args),
+            *docker_build_args,
             "--tag",
             full_image_name,
             "--file",

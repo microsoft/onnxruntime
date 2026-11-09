@@ -29,7 +29,7 @@ jobs:
       dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_webgpu
       docker_image_repo: onnxruntimecpubuildpythonx64
       extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --use_webgpu --build_java --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON'
-      python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
+      python_path_prefix: 'PATH=/opt/python/cp311-cp311/bin:$PATH'
       run_tests: false
       upload_build_output: true
       execution_providers: 'webgpu'
@@ -51,7 +51,7 @@ jobs:
       dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_webgpu
       docker_image_repo: onnxruntimecpubuildpythonx64
       extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --use_webgpu static_plugin --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON'
-      python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
+      python_path_prefix: 'PATH=/opt/python/cp311-cp311/bin:$PATH'
       run_tests: false
       upload_build_output: false
       execution_providers: 'webgpu'
@@ -121,4 +121,4 @@ jobs:
   #         mode: 'test' # Set mode to test
   #         execution_providers: 'webgpu'
   #         extra_build_flags: '--use_binskim_compliant_compile_flags --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON'
-  #         python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
+  #         python_path_prefix: 'PATH=/opt/python/cp311-cp311/bin:$PATH'

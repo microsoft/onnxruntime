@@ -52,13 +52,25 @@ __device__ __forceinline__ void SequenceRange(const int32_t* cu_seqlens, int b, 
 
 // Effective per-token decay and beta, after the optional fused activations.
 __device__ __forceinline__ float EffectiveDecay(float raw, const float* a_log, const float* dt_bias,
-                                                int h, GateActivation act) {
+                                                int h, int k, int dk, bool dt_bias_per_key_dim,
+                                                float gate_lower_bound, GateActivation act) {
   if (act == GateActivation::kSoftplusDecay) {
-    const float bias = dt_bias != nullptr ? dt_bias[h] : 0.0f;
+    const float bias = dt_bias != nullptr ? dt_bias[dt_bias_per_key_dim ? (h * dk + k) : h] : 0.0f;
     const float scale = a_log != nullptr ? -__expf(a_log[h]) : -1.0f;
     return scale * SoftPlus(raw + bias);
   }
+  if (act == GateActivation::kSigmoidDecay) {
+    const float bias = dt_bias != nullptr ? dt_bias[dt_bias_per_key_dim ? (h * dk + k) : h] : 0.0f;
+    const float scale = a_log != nullptr ? __expf(a_log[h]) : 1.0f;
+    return gate_lower_bound * Sigmoid(scale * (raw + bias));
+  }
   return raw;
+}
+
+__device__ __forceinline__ float EffectiveDecay(float raw, const float* a_log, const float* dt_bias,
+                                                int h, GateActivation act,
+                                                float gate_lower_bound) {
+  return EffectiveDecay(raw, a_log, dt_bias, h, 0, 1, false, gate_lower_bound, act);
 }
 
 __device__ __forceinline__ float EffectiveBeta(float raw, BetaActivation act) {
@@ -73,12 +85,14 @@ struct KernelParams {
   int num_heads_k;
   int num_heads_v;
   float scale;
+  float gate_lower_bound;
   GateActivation gate_activation;
   BetaActivation beta_activation;
   UpdateRule update_rule;
   bool qk_l2_norm;
   int state_update_capacity;
   int decay_per_key_dim_flag;
+  int dt_bias_per_key_dim_flag;
   Bf16Precision bf16_precision;
   // Hybrid dispatch. The chunked and recurrent launches use complementary predicates, so
   // every row is computed exactly once.
@@ -335,6 +349,9 @@ __device__ __forceinline__ void SmemGemm(CT* C, int ldc, const T* A, int lda,
 // tensor-core m16n8k16 path. Columns containing tiny (< 2^-110), near-FLT_MAX (>= 2^127), or
 // non-finite values set their bit in `extreme_col_mask`, stage zero into `s_h` so MMA never sees
 // Inf, and evaluate their exact FP32 dot product in the epilogue.
+// For fp16, a staged element with |x| > 65504 (or non-finite) would saturate to Inf, so the block
+// votes on it with the barrier that already follows staging and, if any thread saw one, replaces the
+// whole product with the exact FP32 dot product in the epilogue.
 template <int M, int N, int K, bool Accumulate, int kWarps = kChunkedWarps, typename T = __half,
           bool TA = false>
 __device__ __forceinline__ void SmemGemmFp32State(float* C, int ldc, const T* A, int lda,
@@ -367,6 +384,9 @@ __device__ __forceinline__ void SmemGemmFp32State(float* C, int ldc, const T* A,
     acc[i][0] = acc[i][1] = acc[i][2] = acc[i][3] = 0.0f;
   }
 
+  bool fp16_overflow = false;
+  bool any_fp16_overflow = false;
+
   auto slice_elem = [&](float sf, int c, int slice) -> T {
     if constexpr (kIsBf16) {
       const int abits = __float_as_int(fabsf(sf));
@@ -393,14 +413,16 @@ __device__ __forceinline__ void SmemGemmFp32State(float* C, int ldc, const T* A,
     } else {
       (void)c;
       (void)slice;
+      fp16_overflow = fp16_overflow || __float_as_int(fabsf(sf)) > 0x477fe000;
       return FloatToElem<T>(sf);
     }
   };
 
+  constexpr int kThreads = kWarps * 32;
 #pragma unroll
   for (int slice = 0; slice < kSlices; ++slice) {
     if constexpr ((N % 2) == 0) {
-      for (int pair_idx = tid; pair_idx < (K * N) / 2; pair_idx += kChunkedThreads) {
+      for (int pair_idx = tid; pair_idx < (K * N) / 2; pair_idx += kThreads) {
         const int r = pair_idx / (N / 2);
         const int c = (pair_idx % (N / 2)) * 2;
         const float2 sf2 = *reinterpret_cast<const float2*>(S + r * lds_f + c);
@@ -409,12 +431,16 @@ __device__ __forceinline__ void SmemGemmFp32State(float* C, int ldc, const T* A,
         *reinterpret_cast<uint32_t*>(s_h + r * lds_h + c) = PackHalf2(v0, v1);
       }
     } else {
-      for (int idx = tid; idx < K * N; idx += kChunkedThreads) {
+      for (int idx = tid; idx < K * N; idx += kThreads) {
         const int r = idx / N, c = idx % N;
         s_h[r * lds_h + c] = slice_elem(S[r * lds_f + c], c, slice);
       }
     }
-    __syncthreads();
+    if constexpr (kIsBf16) {
+      __syncthreads();
+    } else {
+      any_fp16_overflow = __syncthreads_or(fp16_overflow ? 1 : 0) != 0;
+    }
 
     if (m_group < kMTiles) {
       for (int k0 = 0; k0 < K; k0 += 16) {
@@ -442,11 +468,12 @@ __device__ __forceinline__ void SmemGemmFp32State(float* C, int ldc, const T* A,
     if constexpr (kIsBf16) {
       return ((extreme_col_mask[c >> 5] >> (c & 31)) & 1u) != 0u;
     } else {
-      return false;
+      (void)c;
+      return any_fp16_overflow;
     }
   };
 
-  bool any_extreme = false;
+  bool any_extreme = any_fp16_overflow;
   if constexpr (kIsBf16) {
 #pragma unroll
     for (int w = 0; w < kMaskWords; ++w) {
@@ -493,18 +520,16 @@ __device__ __forceinline__ void SmemGemmFp32State(float* C, int ldc, const T* A,
     }
   }
 
-  if constexpr (kIsBf16) {
-    if (any_extreme) {
-      for (int idx = tid; idx < M * N; idx += kChunkedThreads) {
-        const int m = idx / N, c = idx % N;
-        if (is_extreme_col(c)) {
-          float sum = 0.0f;
-          for (int k = 0; k < K; ++k) {
-            const float a_val = ElemToFloat(TA ? A[k * lda + m] : A[m * lda + k]);
-            sum += a_val * S[k * lds_f + c];
-          }
-          StoreC(C + m * ldc + c, (Accumulate ? LoadC(C + m * ldc + c) : 0.0f) + sum);
+  if (any_extreme) {
+    for (int idx = tid; idx < M * N; idx += kThreads) {
+      const int m = idx / N, c = idx % N;
+      if (is_extreme_col(c)) {
+        float sum = 0.0f;
+        for (int k = 0; k < K; ++k) {
+          const float a_val = ElemToFloat(TA ? A[k * lda + m] : A[m * lda + k]);
+          sum += a_val * S[k * lds_f + c];
         }
+        StoreC(C + m * ldc + c, (Accumulate ? LoadC(C + m * ldc + c) : 0.0f) + sum);
       }
     }
   }

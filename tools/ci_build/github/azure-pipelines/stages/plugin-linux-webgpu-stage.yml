@@ -32,10 +32,10 @@ stages:
       os: linux
   variables:
     ${{ if eq(parameters.arch, 'aarch64') }}:
-      DockerBaseImage: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_aarch64_almalinux8_gcc14:20251017.1
+      DockerBaseImageFamily: cpu_aarch64_almalinux8_gcc14
       DockerRepository: onnxruntimewebgpupluginaarch64
     ${{ else }}:
-      DockerBaseImage: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14:20251017.1
+      DockerBaseImageFamily: cpu_x64_almalinux8_gcc14
       DockerRepository: onnxruntimewebgpuplugin
   jobs:
   - job: Linux_plugin_webgpu_${{ parameters.arch }}_Build
@@ -67,7 +67,8 @@ stages:
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/inference/shared/python/webgpu/Dockerfile
           Context: tools/ci_build/github/linux/docker/inference/shared/python/webgpu
-          DockerBuildArgs: "--build-arg BASEIMAGE=$(DockerBaseImage) --build-arg BUILD_UID=$( id -u )"
+          BaseImageFamily: $(DockerBaseImageFamily)
+          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
           Repository: $(DockerRepository)
 
       - template: ../templates/setup-vcpkg-cache.yml
@@ -126,7 +127,8 @@ stages:
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/inference/shared/python/webgpu/Dockerfile
         Context: tools/ci_build/github/linux/docker/inference/shared/python/webgpu
-        DockerBuildArgs: "--build-arg BASEIMAGE=$(DockerBaseImage) --build-arg BUILD_UID=$( id -u )"
+        BaseImageFamily: $(DockerBaseImageFamily)
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
         Repository: $(DockerRepository)
 
     - task: DownloadPipelineArtifact@2
