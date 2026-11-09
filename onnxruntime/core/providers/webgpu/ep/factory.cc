@@ -267,12 +267,28 @@ OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
   *allocator = new onnxruntime::ep::adapter::Allocator(
       memory_info,
       [](const OrtMemoryInfo&) -> AllocatorPtr {
-        auto context = std::shared_ptr<WebGpuContext>(
-            &WebGpuContextFactory::DefaultContext(),
-            [](WebGpuContext*) { WebGpuContextFactory::ReleaseContext(0); });
+        // Shared allocators can be registered before session provider options arrive.
+        // Defer context acquisition until allocation so registration does not create
+        // a device with default properties before the requested configuration that
+        // may override those properties becomes available. Retain the acquired
+        // context for the allocator's lifetime.
+        struct DeferredContextHolder {
+          std::once_flag init_flag;
+          std::shared_ptr<WebGpuContext> context;
+
+          const BufferManager& GetBufferManager() {
+            std::call_once(init_flag, [this]() {
+              context = std::shared_ptr<WebGpuContext>(
+                  &WebGpuContextFactory::DefaultContext(),
+                  [](WebGpuContext*) { WebGpuContextFactory::ReleaseContext(0); });
+            });
+            return context->BufferManager();
+          }
+        };
+        auto context_holder = std::make_shared<DeferredContextHolder>();
         return std::make_shared<GpuBufferAllocator>(
             0,
-            [context = std::move(context)]() -> const BufferManager& { return context->BufferManager(); },
+            [context_holder = std::move(context_holder)]() -> const BufferManager& { return context_holder->GetBufferManager(); },
             std::function<CommandRecordingState&()>{},
             false);
       });

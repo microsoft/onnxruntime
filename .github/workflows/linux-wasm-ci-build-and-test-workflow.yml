@@ -83,9 +83,10 @@ jobs:
         run: python -m pip install flatbuffers
 
       - name: Setup CCache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: ccache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          # Fully qualify by workflow. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
+          # Fully qualify by workflow. `actions/cache/restore` does not isolate by workflow, unlike ADO cache actions.
           key: ccache | web.yml | ${{ inputs.job_name }}
           path: ~/.cache/ccache
 
@@ -231,3 +232,10 @@ jobs:
         with:
           name: test-results
           path: ${{ github.workspace }}/build/**/*.results.xml
+
+      - name: Save CCache
+        if: ${{ success() && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+          path: ~/.cache/ccache

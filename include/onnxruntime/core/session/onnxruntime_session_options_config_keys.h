@@ -423,10 +423,14 @@ static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersMin
 static const char* const kOrtSessionOptionsModelExternalInitializersFileFolderPath =
     "session.model_external_initializers_file_folder_path";
 
-// Use buffers supplied through AddExternalInitializersFromFilesInMemory directly for eligible main-graph initializers.
-// The application must keep each buffer unchanged and alive until all sessions created from the options are released.
-// "0": Copy initializer data during session creation. [DEFAULT]
-// "1": Borrow naturally aligned, native-endian initializer slices and copy other slices.
+// Use CPU buffers supplied through AddExternalInitializers or AddExternalInitializersFromFilesInMemory directly for
+// eligible main-graph initializers.
+// "0": Copy caller-owned CPU buffers during session creation. [DEFAULT]
+// "1": Borrow naturally aligned CPU buffers larger than 127 bytes on little-endian hosts and copy other buffers.
+// The application must keep borrowed buffers unchanged and alive until all sessions using them are released.
+// AddExternalInitializers accepts only non-owning, contiguous tensors containing native-endian values;
+// files contain serialized little-endian values.
+// Device tensors are always copied to owned CPU staging memory before optimization and shape inference.
 static const char* const kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly =
     "session.use_external_initializer_file_buffers_directly";
 
@@ -567,6 +571,19 @@ static const char* const kOrtSessionOptionsCudaEnableGemmAutoTune = "ep.cuda.ena
 /// Overrides the ORT_GDN_BF16_PRECISION environment variable.
 static const char* const kOrtSessionOptionsCudaGatedDeltaNetBf16Precision =
     "ep.cuda.gated_delta_net_bf16_precision";
+
+/// Range guard of the CUDA GatedDeltaNet per-key-decay (KDA) chunked prefill for float16 input/output. The scan keeps its
+/// recurrent state in FP32 and rounds it to float16 for the tensor-core products. "1" (default) checks every tile for a
+/// state element beyond the float16 range (|x| > 65504) and computes the products of such a tile in exact FP32, so the
+/// result stays finite. "0" skips the check, which makes the KDA prefill up to about 10% faster for a single sequence
+/// (the gain shrinks as the batch grows), but a state element beyond the float16 range then becomes inf and the output
+/// and the final state become NaN/inf. Choose "0" only when the state is known to stay within the float16 range. It has
+/// no effect on BFloat16 input (see ep.cuda.gated_delta_net_bf16_precision). Resolved once when the kernel is created,
+/// so a change needs a new session.
+/// Accepts only "0" and "1"; any other value, including an empty string, fails session initialization.
+/// Overrides the ORT_GDN_FP16_STATE_GUARD environment variable.
+static const char* const kOrtSessionOptionsCudaGatedDeltaNetFp16StateGuard =
+    "ep.cuda.gated_delta_net_fp16_state_guard";
 
 /// CUDA tensor-core kernel switches of MatMulNBits and QMoE. Each is resolved once when the
 /// kernel is created, so a change needs a new session, and overrides the environment variable named below. The
@@ -1043,6 +1060,16 @@ static const char* const kOrtSessionOptionsMoeOffloadCpuThreads = "session.moe.o
 static const char* const kOrtSessionOptionsMoeOffloadAsyncMaxTokens = "session.moe.offload.async_max_tokens";
 static const char* const kOrtSessionOptionsMoeOffloadPrefillWaveExperts = "session.moe.offload.prefill_wave_experts";
 static const char* const kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell = "session.moe.offload.skip_zero_cold_doorbell";
+static const char* const kOrtSessionOptionsMoeOffloadMinExpertWeight = "session.moe.offload.min_expert_weight";
+// Controls whether tail-expert pruning (`session.moe.offload.min_expert_weight > 0`) during decode skips only CPU-cold
+// experts or all routed tail experts:
+// - "1" (default): retain GPU-resident (`slot >= 0`) tail experts during decode at zero wall-time cost and prune only
+//   CPU-cold (`slot < 0`) tail experts whose routing probability is below `min_expert_weight`.
+// - "0": prune both GPU-resident and CPU-cold tail experts whose routing probability is below `min_expert_weight`.
+// Overrides ORT_QMOE_SKIP_TAIL_COLD_ONLY.
+static const char* const kOrtSessionOptionsMoeOffloadSkipTailColdOnly = "session.moe.offload.skip_tail_cold_only";
+static const char* const kOrtSessionOptionsMoeOffloadTailSubstitutionThreshold = "session.moe.offload.tail_substitution_threshold";
+static const char* const kOrtSessionOptionsMoeOffloadTailSubstitutionMinRank = "session.moe.offload.tail_substitution_min_rank";
 static const char* const kOrtSessionOptionsMoeOffloadPopularityFile = "session.moe.offload.popularity_file";
 static const char* const kOrtSessionOptionsMoeOffloadNodeOverrides = "session.moe.offload.node_overrides";
 static const char* const kOrtSessionOptionsMoeOffloadSourceRoot = "session.moe.offload.source_root";

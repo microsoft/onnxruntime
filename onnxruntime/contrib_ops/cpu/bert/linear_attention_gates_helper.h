@@ -37,6 +37,15 @@ inline GatedRMSNormActivation ParseGatedRMSNormActivationOrThrow(std::string_vie
   return parsed_activation;
 }
 
+inline Status ValidateMoEGroupRouterAttributes(int64_t top_k, int64_t n_group,
+                                               int64_t topk_group, int64_t group_topk) {
+  ORT_RETURN_IF_NOT(top_k > 0, "top_k must be positive");
+  ORT_RETURN_IF_NOT(n_group > 0, "n_group must be positive");
+  ORT_RETURN_IF_NOT(topk_group > 0, "topk_group must be positive");
+  ORT_RETURN_IF_NOT(group_topk > 0, "group_topk must be positive");
+  return Status::OK();
+}
+
 }  // namespace linear_attention_gates_helper
 }  // namespace contrib
 }  // namespace onnxruntime
