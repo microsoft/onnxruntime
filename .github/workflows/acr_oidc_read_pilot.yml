@@ -17,20 +17,22 @@ jobs:
     permissions:
       id-token: write
     env:
-      AZURE_CONFIG_DIR: ${{ runner.temp }}/acr-oidc-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}/azure
-      DOCKER_CONFIG: ${{ runner.temp }}/acr-oidc-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}/docker
       AZURE_CORE_OUTPUT: none
       ACR_SUBSCRIPTION_ID: 00c06639-6ee4-454e-8058-8d8b1703bd87
       ACR_IMAGE: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20261105.1
       EXPECTED_CLIENT_ID: ${{ vars.ACR_READ_CLIENT_ID }}
     steps:
       - name: Prepare isolated authentication directories
+        id: prepare
         shell: bash
         run: |
           set -euo pipefail
           test -n "$EXPECTED_CLIENT_ID"
-          mkdir -p "$AZURE_CONFIG_DIR" "$DOCKER_CONFIG"
-          chmod 700 "$AZURE_CONFIG_DIR" "$DOCKER_CONFIG"
+          auth_root="$(mktemp -d "$RUNNER_TEMP/acr-oidc.XXXXXX")"
+          mkdir -m 700 "$auth_root/azure" "$auth_root/docker"
+          echo "AZURE_CONFIG_DIR=$auth_root/azure" >> "$GITHUB_ENV"
+          echo "DOCKER_CONFIG=$auth_root/docker" >> "$GITHUB_ENV"
+          echo "ACR_AUTH_ROOT=$auth_root" >> "$GITHUB_ENV"
 
       - name: Authenticate to Azure using GitHub OIDC
         uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
@@ -64,10 +66,10 @@ jobs:
           docker image inspect "$ACR_IMAGE" --format '{{json .RepoDigests}}'
 
       - name: Clear isolated authentication state
-        if: always()
+        if: always() && steps.prepare.outcome == 'success'
         shell: bash
         run: |
           set -euo pipefail
-          trap 'rm -rf -- "$AZURE_CONFIG_DIR" "$DOCKER_CONFIG"' EXIT
+          trap 'rm -rf -- "$ACR_AUTH_ROOT"' EXIT
           docker logout onnxruntimebuildcache.azurecr.io
           az account clear
