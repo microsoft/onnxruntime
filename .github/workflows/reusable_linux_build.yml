@@ -92,14 +92,15 @@ jobs:
           python-version: ${{ inputs.python_version }}
 
       - name: Build Docker Image (${{ inputs.architecture }} / ${{ inputs.build_config }})
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        uses: ./.github/actions/build-docker-image
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/${{ inputs.dockerfile_path }}
           image-name: ghcr.io/microsoft/onnxruntime/${{ inputs.docker_image_repo }}
           build-args: ${{ inputs.docker_build_args }}
           push: true
-          azure-container-registry-name: onnxruntimebuildcache
+          azure-client-id: ${{ vars.ACR_READ_CLIENT_ID }}
+          azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 

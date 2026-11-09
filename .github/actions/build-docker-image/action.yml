@@ -1,0 +1,105 @@
+name: Build Docker image with OIDC ACR read access
+description: Authenticate to ACR through GitHub OIDC, build or restore the image, and clear isolated credentials. Requires id-token write permission.
+
+inputs:
+  azure-client-id:
+    description: Client ID of the federated ACR reader identity.
+    required: true
+  azure-tenant-id:
+    description: Tenant ID of the federated ACR reader identity.
+    required: true
+  dockerfile:
+    description: Path to the Dockerfile.
+    required: true
+  image-name:
+    description: Destination image repository, including the registry hostname.
+    required: true
+  build-args:
+    description: Additional Docker build arguments.
+    default: ''
+  push:
+    description: Allow image publication under the upstream action's trusted-branch restrictions.
+    default: 'false'
+  pull:
+    description: Attempt to restore the cached image.
+    default: 'true'
+
+outputs:
+  cache-hit:
+    description: Whether the cached image was restored.
+    value: ${{ steps.build.outputs.cache-hit }}
+  image-tag:
+    description: Calculated checksum tag.
+    value: ${{ steps.build.outputs.image-tag }}
+  full-image-name:
+    description: Fully qualified image name and calculated tag.
+    value: ${{ steps.build.outputs.full-image-name }}
+
+runs:
+  using: composite
+  steps:
+    - name: Prepare isolated authentication directories
+      id: auth
+      shell: bash
+      env:
+        CLIENT_ID: ${{ inputs.azure-client-id }}
+        TENANT_ID: ${{ inputs.azure-tenant-id }}
+      run: |
+        set -euo pipefail
+        if [[ -z "$CLIENT_ID" || -z "$TENANT_ID" ]]; then
+          echo "::error::ACR_READ_CLIENT_ID and AZURE_TENANT_ID repository variables must be configured."
+          exit 1
+        fi
+        auth_root="$(mktemp -d "$RUNNER_TEMP/acr-oidc.XXXXXX")"
+        mkdir -m 700 "$auth_root/azure" "$auth_root/docker"
+        echo "root=$auth_root" >> "$GITHUB_OUTPUT"
+
+    - name: Authenticate to Azure using GitHub OIDC
+      uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
+      with:
+        client-id: ${{ inputs.azure-client-id }}
+        tenant-id: ${{ inputs.azure-tenant-id }}
+        subscription-id: 00c06639-6ee4-454e-8058-8d8b1703bd87
+        audience: api://AzureADTokenExchange
+      env:
+        AZURE_CONFIG_DIR: ${{ steps.auth.outputs.root }}/azure
+        AZURE_CORE_OUTPUT: none
+        AZURE_LOGIN_POST_CLEANUP: 'false'
+
+    - name: Authenticate Docker to ACR
+      shell: bash
+      env:
+        AZURE_CONFIG_DIR: ${{ steps.auth.outputs.root }}/azure
+        DOCKER_CONFIG: ${{ steps.auth.outputs.root }}/docker
+        EXPECTED_CLIENT_ID: ${{ inputs.azure-client-id }}
+      run: |
+        set -euo pipefail
+        test "$(az account show --query user.name --output tsv)" = "$EXPECTED_CLIENT_ID"
+        test "$(az account show --query user.type --output tsv)" = servicePrincipal
+        az acr login --name onnxruntimebuildcache --subscription 00c06639-6ee4-454e-8058-8d8b1703bd87 --output none
+
+    - name: Build or restore Docker image
+      id: build
+      uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+      with:
+        dockerfile: ${{ inputs.dockerfile }}
+        image-name: ${{ inputs.image-name }}
+        build-args: ${{ inputs.build-args }}
+        push: ${{ inputs.push }}
+        pull: ${{ inputs.pull }}
+      env:
+        AZURE_CONFIG_DIR: ${{ steps.auth.outputs.root }}/azure
+        DOCKER_CONFIG: ${{ steps.auth.outputs.root }}/docker
+
+    - name: Clear isolated authentication state
+      if: always() && steps.auth.outputs.root != ''
+      shell: bash
+      env:
+        AUTH_ROOT: ${{ steps.auth.outputs.root }}
+        AZURE_CONFIG_DIR: ${{ steps.auth.outputs.root }}/azure
+        DOCKER_CONFIG: ${{ steps.auth.outputs.root }}/docker
+      run: |
+        set -euo pipefail
+        trap 'rm -rf -- "$AUTH_ROOT"' EXIT
+        docker logout onnxruntimebuildcache.azurecr.io
+        az account clear
