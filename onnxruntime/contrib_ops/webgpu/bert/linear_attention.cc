@@ -108,8 +108,10 @@ LinearAttention::LinearAttention(const OpKernelInfo& info)
   std::string update_rule_str = info.GetAttr<std::string>("update_rule");
   update_rule_ = ParseUpdateRule(update_rule_str);
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
-  q_num_heads_ = static_cast<int>(info.GetAttr<int64_t>("q_num_heads"));
-  kv_num_heads_ = static_cast<int>(info.GetAttr<int64_t>("kv_num_heads"));
+  q_num_heads_ = onnxruntime::narrow<int>(info.GetAttr<int64_t>("q_num_heads"));
+  kv_num_heads_ = onnxruntime::narrow<int>(info.GetAttr<int64_t>("kv_num_heads"));
+  ORT_ENFORCE(q_num_heads_ > 0, "q_num_heads must be positive");
+  ORT_ENFORCE(kv_num_heads_ > 0, "kv_num_heads must be positive");
   ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("state_window", 0) == 0,
               "WebGPU LinearAttention does not support state_window > 0 (CUDA EP only)");
 }
@@ -151,17 +153,20 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
                 "value batch/sequence dimensions must match query");
 
   const int64_t q_packed_dim = q_shape[2];
-  ORT_RETURN_IF(q_num_heads_ <= 0 || q_packed_dim % q_num_heads_ != 0,
+  ORT_RETURN_IF(q_packed_dim <= 0, "query packed dim must be positive");
+  ORT_RETURN_IF(q_packed_dim % q_num_heads_ != 0,
                 "query packed dim must be divisible by q_num_heads");
   const int64_t head_dim_k = q_packed_dim / q_num_heads_;
   const int64_t k_packed_dim = k_shape[2];
+  ORT_RETURN_IF(k_packed_dim <= 0, "key packed dim must be positive");
   ORT_RETURN_IF(k_packed_dim % head_dim_k != 0,
                 "key packed dim must be divisible by query head dimension");
   const int64_t n_k_heads = k_packed_dim / head_dim_k;
   const int64_t v_packed_dim = v_shape[2];
-  const int64_t head_dim_v = v_packed_dim / kv_num_heads_;
-  ORT_RETURN_IF(v_packed_dim != head_dim_v * kv_num_heads_,
+  ORT_RETURN_IF(v_packed_dim <= 0, "value packed dim must be positive");
+  ORT_RETURN_IF(v_packed_dim % kv_num_heads_ != 0,
                 "value packed dim must be divisible by kv_num_heads");
+  const int64_t head_dim_v = v_packed_dim / kv_num_heads_;
 
   // ==== GQA head mapping ====
   // Standard GQA: q_num_heads >= kv_num_heads, multiple Q heads per KV group.

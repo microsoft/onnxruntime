@@ -6,9 +6,25 @@
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 namespace onnxruntime {
 namespace webgpu {
+
+Status GatherRowsProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& data = shader.AddInput("data", ShaderUsage::UseValueTypeAlias);
+  const auto& indices = shader.AddInput("indices", ShaderUsage::UseValueTypeAlias);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias);
+
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
+                            << "let row = global_idx / uniforms.row_size;\n"
+                            << "let col = global_idx % uniforms.row_size;\n"
+                            << "var index = " << indices.GetByOffset("row") << ";\n"
+                            << "if (index < 0) { index += indices_value_t(uniforms.axis_dim); }\n"
+                            << "let offset = u32(index) * uniforms.row_size + col;\n"
+                            << output.SetByOffset("global_idx", data.GetByOffset("offset"));
+  return Status::OK();
+}
 
 Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& data = shader.AddInput("data", ShaderUsage::UseIndicesTypeAlias);
@@ -19,18 +35,22 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& output_indices = shader.AddIndices("output_indices", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   bool is_bool = Inputs()[0].var_type == ProgramVariableDataType::Boolx4;
   bool is_uint8 = Inputs()[0].var_type == ProgramVariableDataType::Uint8x4;
-  bool pack_as_bytes = is_bool || is_uint8;
+  bool is_int8 = Inputs()[0].var_type == ProgramVariableDataType::Int8x4;
+  bool is_byte = is_uint8 || is_int8;
+  bool pack_as_bytes = is_bool || is_byte;
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.data_size");
   if (pack_as_bytes) {
-    // bool and uint8 both pack four 1-byte elements per thread into one u32 storage word.
+    // bool, uint8 and int8 all pack four 1-byte elements per thread into one u32 storage word.
     // The accumulator holds one element per lane and is handed to SetByOffset unpacked, because
-    // SetByOffset performs the byte packing for Uint8x4 (and Boolx4) itself. Do not pre-pack
+    // SetByOffset performs the byte packing for Uint8x4/Int8x4 (and Boolx4) itself. Do not pre-pack
     // into a u32 here: SetByOffset would splat that scalar across all four lanes, mask each to
     // its low byte and re-pack, so every output word would be element 0's byte repeated four
-    // times. uint8 needs an explicit vec4<u32> because output_value_t for Uint8x4 is the packed
+    // times. uint8 and int8 need an explicit vec4<u32> because their output_value_t is the packed
     // u32 storage type, unlike Boolx4's vec4<bool>.
-    shader.MainFunctionBody() << (is_uint8 ? "  var value : vec4<u32> = vec4<u32>(0u);\n"
-                                           : "  var value : output_value_t;\n");
+    // int8 is copied as raw bytes like uint8: unpack4xU8 zero-extends each byte and the Int8x4
+    // SetByOffset keeps each lane's low byte, so the two's-complement bit pattern (and sign) is kept.
+    shader.MainFunctionBody() << (is_byte ? "  var value : vec4<u32> = vec4<u32>(0u);\n"
+                                          : "  var value : output_value_t;\n");
     for (int comp = 0; comp < 4; comp++) {
       shader.MainFunctionBody() << "  if (" << comp << "u + 4u * global_idx < uniforms.output_size) {\n"
                                 << "    var output_indices : output_indices_indices_t;\n"
@@ -114,8 +134,28 @@ Status Gather::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
+  const auto& input_shape = p.input_tensor->Shape();
+  const bool supports_row_copy = p.input_tensor->IsDataType<float>() || p.input_tensor->IsDataType<MLFloat16>() ||
+                                 p.input_tensor->IsDataType<int32_t>() || p.input_tensor->IsDataType<uint32_t>();
+  if (p.axis == 0 && supports_row_copy && input_shape.Size() > 0) {
+    // Choose a vector width that divides each row, so copies never cross row
+    // boundaries. Flatten row/vector pairs so narrow rows share workgroups.
+    const int64_t row_width = input_shape.SizeFromDimension(1);
+    const int components = GetMaxComponents(row_width);
+    const uint32_t output_size = data_size / components;
+    const uint32_t row_size = onnxruntime::narrow<uint32_t>(row_width / components);
+    GatherRowsProgram program;
+    program.AddInputs({{p.input_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, components},
+                       {p.indices_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten}})
+        .AddOutput({p.output_tensor, ProgramTensorMetadataDependency::Type, ProgramOutput::Flatten, components})
+        .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+        .AddUniformVariables({{output_size}, {row_size}, {onnxruntime::narrow<uint32_t>(input_shape[0])}});
+    return context.RunProgram(program);
+  }
+
   bool pack_as_bytes = p.input_tensor->DataType() == DataTypeImpl::GetType<bool>() ||
-                       p.input_tensor->DataType() == DataTypeImpl::GetType<uint8_t>();
+                       p.input_tensor->DataType() == DataTypeImpl::GetType<uint8_t>() ||
+                       p.input_tensor->DataType() == DataTypeImpl::GetType<int8_t>();
   uint32_t output_size = data_size;
   if (pack_as_bytes) {
     // Shader packs four 1-byte elements into one u32 (4 components per thread).
@@ -140,10 +180,11 @@ Status Gather::ComputeInternal(ComputeContext& context) const {
 // Gather is a pure data-movement op: elements are copied, never interpreted in shader arithmetic,
 // so enabling int64 is safe. int64 (stored as vec2<u32>) is copied losslessly via the raw
 // storage-word path in GenerateShaderCode, preserving the full 64-bit value instead of the
-// truncating i32 value type used by arithmetic kernels. The base type set already includes bool and
-// uint8 (packed 4-per-u32), which int64 support leaves untouched.
+// truncating i32 value type used by arithmetic kernels. bool, uint8 and int8 are packed 4-per-u32
+// and copied byte-wise; int8 is always supported because the raw byte copy preserves its sign.
 static std::vector<MLDataType> GetGatherTypeConstraints(bool enable_int64) {
   std::vector<MLDataType> type_constraints = WebGpuSupportedNumberBoolAndUint8Types();
+  type_constraints.push_back(DataTypeImpl::GetTensorType<int8_t>());
   if (enable_int64) {
     type_constraints.push_back(DataTypeImpl::GetTensorType<int64_t>());
   }

@@ -6,9 +6,11 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 class CudaContribSourcesTest(unittest.TestCase):
+    TRAINING_SOURCE_BOUNDARY = "\n  if (onnxruntime_ENABLE_TRAINING_OPS)\n"
     CPU_DEPENDENT_KERNELS = (
         "attention.cc",
         "decoder_masked_self_attention.cc",
@@ -23,7 +25,9 @@ class CudaContribSourcesTest(unittest.TestCase):
         cmake_dir = repo_root / "cmake"
         provider = (cmake_dir / "onnxruntime_providers_cuda.cmake").read_text(encoding="utf-8")
         # Execute the production source selection without requiring a CUDA toolchain.
-        source_selection = provider[: provider.index("  if (onnxruntime_ENABLE_TRAINING_OPS)")]
+        boundary = provider.find(self.TRAINING_SOURCE_BOUNDARY)
+        self.assertNotEqual(boundary, -1, "CUDA provider source-selection boundary is missing or re-indented")
+        source_selection = provider[:boundary]
         with tempfile.TemporaryDirectory(prefix="ort cuda contrib sources ") as directory:
             source = Path(directory)
             for module in ("onnxruntime_cuda_source_filters.cmake", "onnxruntime_cuda_cccl.cmake"):
@@ -90,6 +94,17 @@ file(WRITE "${{CMAKE_BINARY_DIR}}/sources.txt" "${{sources}}")
                 sources = self._get_sources(disable_contrib_ops=disable_contrib_ops, cuda_minimal=True)
                 self.assertFalse(any(path.startswith("contrib_ops/") for path in sources))
                 self.assertNotIn("core/providers/cuda/llm/attention.cc", sources)
+
+    def test_source_selection_boundary_requires_exact_indentation(self):
+        provider_path = Path(__file__).resolve().parents[2] / "cmake/onnxruntime_providers_cuda.cmake"
+        provider = provider_path.read_text(encoding="utf-8").replace(
+            self.TRAINING_SOURCE_BOUNDARY, "\n    if (onnxruntime_ENABLE_TRAINING_OPS)\n", 1
+        )
+        with (
+            patch.object(Path, "read_text", return_value=provider),
+            self.assertRaisesRegex(AssertionError, "source-selection boundary is missing or re-indented"),
+        ):
+            self._get_sources(disable_contrib_ops=True)
 
 
 if __name__ == "__main__":

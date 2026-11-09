@@ -36,19 +36,7 @@ const IExternalDataLoader* ExternalDataLoaderManager::GetExternalDataLoader(
   return nullptr;
 }
 
-#if defined(ENABLE_D3D12_FILE_LOADING)
-const IExternalDataLoader* ExternalDataLoaderManager::GetTensorCreator(
-    const OrtDevice& target_device, int32_t tensor_data_type) const {
-  for (const auto& external_data_loader : external_data_loaders_) {
-    if (external_data_loader->SupportsDataType(tensor_data_type) &&
-        external_data_loader->CreatesTensorForDevice(target_device)) {
-      return external_data_loader.get();
-    }
-  }
-
-  return nullptr;
-}
-
+#if !defined(ORT_MINIMAL_BUILD) || defined(ENABLE_D3D12_FILE_LOADING)
 Status ExternalDataLoaderManager::BeginLoad() const {
   for (const auto& external_data_loader : external_data_loaders_) {
     auto status = external_data_loader->BeginLoad();
@@ -61,9 +49,9 @@ Status ExternalDataLoaderManager::BeginLoad() const {
   return Status::OK();
 }
 
-Status ExternalDataLoaderManager::CommitLoadCandidates(const std::function<bool()>& is_canceled) const {
+Status ExternalDataLoaderManager::FinalizeLoad(const std::function<bool()>& is_canceled) const {
   for (const auto& external_data_loader : external_data_loaders_) {
-    auto status = external_data_loader->CommitLoadCandidates(is_canceled);
+    auto status = external_data_loader->FinalizeLoad(is_canceled);
     if (!status.IsOK()) {
       EndLoad();
       return status;
@@ -77,6 +65,32 @@ void ExternalDataLoaderManager::EndLoad() const noexcept {
   for (const auto& external_data_loader : external_data_loaders_) {
     external_data_loader->EndLoad();
   }
+}
+#endif
+
+#if defined(ENABLE_D3D12_FILE_LOADING)
+const IExternalDataLoader* ExternalDataLoaderManager::GetTensorCreator(
+    const OrtDevice& target_device, int32_t tensor_data_type) const {
+  for (const auto& external_data_loader : external_data_loaders_) {
+    if (external_data_loader->SupportsDataType(tensor_data_type) &&
+        external_data_loader->CreatesTensorForDevice(target_device)) {
+      return external_data_loader.get();
+    }
+  }
+
+  return nullptr;
+}
+
+Status ExternalDataLoaderManager::CommitLoadCandidates(const std::function<bool()>& is_canceled) const {
+  for (const auto& external_data_loader : external_data_loaders_) {
+    auto status = external_data_loader->CommitLoadCandidates(is_canceled);
+    if (!status.IsOK()) {
+      EndLoad();
+      return status;
+    }
+  }
+
+  return Status::OK();
 }
 #endif
 
