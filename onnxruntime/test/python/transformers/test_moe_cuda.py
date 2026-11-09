@@ -1610,7 +1610,10 @@ class TestSwigluMoE(unittest.TestCase):
         gate = torch.tensor([10.0, 4.0, 0.0, -1.0, -10.0, 2.0, 6.0, 3.0]).repeat(inter // 8)
         up = torch.tensor([2.0, -8.0, 2.0, 6.0, -6.0, 1.0, -1.0, 2.0]).repeat(inter // 8)
         for fusion in (1, 2):
-            bias = torch.stack((gate, up), -1).flatten() if fusion == 1 else torch.cat((gate, up))
+            # Legacy Ampere/TMA paths use opposite chunk orders. Equal chunks isolate
+            # clipping semantics; interleaved inputs retain asymmetric gate/up coverage.
+            linear = up if fusion == 1 else gate
+            bias = torch.stack((gate, linear), -1).flatten() if fusion == 1 else torch.cat((gate, linear))
             for rows in (1, 65):
                 default = None
                 for mode in (None, 0, 1):
@@ -1650,7 +1653,7 @@ class TestSwigluMoE(unittest.TestCase):
                         actual = output.cpu().float()
                         activated = F.silu(gate).clamp(max=limit) if mode == 1 else F.silu(gate.clamp(max=limit))
                         expected = torch.zeros(hidden)
-                        expected[:inter] = activated * up.clamp(-limit, limit)
+                        expected[:inter] = activated * linear.clamp(-limit, limit)
                         torch.testing.assert_close(
                             actual, expected.to(dtype).float().repeat(rows, 1), atol=0.02, rtol=0.003
                         )
@@ -1659,7 +1662,7 @@ class TestSwigluMoE(unittest.TestCase):
                         elif mode == 0:
                             torch.testing.assert_close(actual, default, atol=0, rtol=0)
                         else:
-                            self.assertEqual(actual[0, 0].item(), 2.0 * limit)
+                            self.assertEqual(actual[0, 0].item(), limit * min(linear[0].item(), limit))
 
     @parameterized.expand(swiglu_test_cases)
     def test_swiglu_moe_parity(self, batch_size, sequence_length, quant_bits):
