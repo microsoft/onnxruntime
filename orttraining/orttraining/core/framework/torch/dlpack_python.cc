@@ -23,10 +23,10 @@ PyObject* ToDlpack(OrtValue ort_value) {
   return PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
 }
 
-OrtValue FromDlpack(PyObject* dlpack_tensor, const bool is_bool_tensor) {
+OrtValue FromDlpack(PyObject* dlpack_tensor) {
   // Extract DLPack tensor pointer from the capsule carrier.
   DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(dlpack_tensor, "dltensor");
-  OrtValue ort_value = dlpack::DlpackToOrtValue(dlmanaged_tensor, is_bool_tensor);
+  OrtValue ort_value = dlpack::DlpackToOrtValue(dlmanaged_tensor);
   // Make sure this capsule will never be used again.
   PyCapsule_SetName(dlpack_tensor, "used_dltensor");
   return ort_value;

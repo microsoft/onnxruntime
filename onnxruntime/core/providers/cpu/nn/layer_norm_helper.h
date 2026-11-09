@@ -215,31 +215,53 @@ class LayerNormHelper {
                                    int64_t axis) {
     // Note that when size of scale and bias is norm_size, it won't enter this function (see CheckInputs).
 
+    const size_t x_rank = x_shape.NumDimensions();
+
+    // Right-align scale/bias dims to X's rank, prepending 1s (NumPy-style
+    // broadcasting). This lets a rank-reduced scale such as (S, ...) for an
+    // (B, S, ...) input map onto the (1, S, ...) fast-path encoded in
+    // broadcast_param, instead of falling back to the generic broadcasting
+    // path. The fast-path is the only broadcasting mechanism the CUDA
+    // LayerNorm/RMSNorm kernels support, so without this alignment such a
+    // scale would be silently mishandled on CUDA.
+    auto right_align = [x_rank](const TensorShape& s) {
+      InlinedVector<int64_t, 8> dims(x_rank, 1);
+      const size_t sr = s.NumDimensions();
+      const size_t count = std::min(sr, x_rank);
+      for (size_t i = 0; i < count; ++i) {
+        dims[x_rank - 1 - i] = s.GetDims()[sr - 1 - i];
+      }
+      return dims;
+    };
+
     // X shape is (B, S, ...)
-    if (axis == 2 &&
-        x_shape.NumDimensions() >= 3 &&
-        x_shape.NumDimensions() == scale_shape.NumDimensions() &&
-        (bias_shape == nullptr || *bias_shape == scale_shape)) {
-      for (size_t i = 2; i < x_shape.NumDimensions(); ++i) {
-        if (x_shape.GetDims()[i] != scale_shape.GetDims()[i]) {
+    if (axis == 2 && x_rank >= 3) {
+      const InlinedVector<int64_t, 8> scale_dims = right_align(scale_shape);
+      if (bias_shape != nullptr && right_align(*bias_shape) != scale_dims) {
+        // scale and bias must share the same (right-aligned) broadcast layout.
+        return kLayerNormInvalidInput;
+      }
+
+      for (size_t i = 2; i < x_rank; ++i) {
+        if (x_shape.GetDims()[i] != scale_dims[i]) {
           // scale cannot be broadcasted to X. It is invalid input.
           return kLayerNormInvalidInput;
         }
       }
 
-      if (x_shape.GetDims()[0] == scale_shape.GetDims()[0]) {
+      if (x_shape.GetDims()[0] == scale_dims[0]) {
         // scale and bias shape is (B, S, ...).
-        if (x_shape.GetDims()[1] == scale_shape.GetDims()[1]) {
+        if (x_shape.GetDims()[1] == scale_dims[1]) {
           return 1;
         }
 
         // scale and bias shape is (B, 1, ...), returns S
-        if (scale_shape.GetDims()[1] == 1) {
+        if (scale_dims[1] == 1) {
           return x_shape.GetDims()[1];
         }
-      } else if (scale_shape.GetDims()[0] == 1) {
+      } else if (scale_dims[0] == 1) {
         // scale and bias shape is (1, S, ...), returns -S
-        if (x_shape.GetDims()[1] == scale_shape.GetDims()[1]) {
+        if (x_shape.GetDims()[1] == scale_dims[1]) {
           return -(x_shape.GetDims()[1]);
         }
       }

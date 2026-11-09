@@ -41,6 +41,7 @@ constexpr size_t kKScale = 12;
 constexpr size_t kVScale = 13;
 constexpr size_t kQNorm = 14;
 constexpr size_t kKNorm = 15;
+constexpr size_t kQuerySeqlens = 16;
 
 bool Present(gsl::span<const WorkspaceInputShape> shapes, size_t index) {
   return GetWorkspaceInputShape(shapes, index).GetState() != WorkspaceInputShapeState::Missing;
@@ -312,6 +313,7 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
   bounds.do_rotary = config.do_rotary;
   bounds.is_packed_qkv = packed;
   bounds.use_qk_norm = Present(shapes, kQNorm);
+  bounds.has_query_seqlens = Present(shapes, kQuerySeqlens);
   bounds.prompt_reachable = true;
   bounds.decode_reachable = true;
   bounds.device_major = device_prop.major;
@@ -410,7 +412,8 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
 std::optional<GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimateConfig(
     const Node& node,
     bool head_sink_is_constant_initializer,
-    int64_t max_total_sequence_length) {
+    int64_t max_total_sequence_length,
+    KernelDispatchPolicy dispatch_policy) {
   if (node.OpType() != "GroupQueryAttention") return std::nullopt;
   GQAWorkspaceEstimateConfig config;
   bool found_heads = false;
@@ -481,6 +484,7 @@ std::optional<GQAWorkspaceEstimateConfig> GetGroupQueryAttentionWorkspaceEstimat
       ParseEnvironmentVariableWithDefault<bool>("ORT_DISABLE_FLASH_DECODE", false);
   config.head_sink_may_be_prepacked = head_sink_is_constant_initializer;
   config.max_total_sequence_length = max_total_sequence_length;
+  config.dispatch_policy = dispatch_policy;
   return config;
 }
 
@@ -503,9 +507,11 @@ std::optional<GQAWorkspaceAggregate> EstimateGroupQueryAttentionWorkspace(
     const cudaDeviceProp& device_prop,
     const AttentionKernelOptions& kernel_options,
     bool head_sink_is_constant_initializer,
-    int64_t max_total_sequence_length) {
-  const auto config = GetGroupQueryAttentionWorkspaceEstimateConfig(
-      node, head_sink_is_constant_initializer, max_total_sequence_length);
+    int64_t max_total_sequence_length,
+    KernelDispatchPolicy dispatch_policy) {
+  auto config = GetGroupQueryAttentionWorkspaceEstimateConfig(
+      node, head_sink_is_constant_initializer, max_total_sequence_length,
+      dispatch_policy);
   if (!config.has_value()) return std::nullopt;
   return EstimateGroupQueryAttentionWorkspace(
       *config, input_shapes, device_prop, kernel_options);

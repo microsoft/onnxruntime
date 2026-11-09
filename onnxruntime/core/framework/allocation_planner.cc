@@ -2,15 +2,22 @@
 // Licensed under the MIT License.
 
 #include "core/framework/allocation_planner.h"
-#include <charconv>
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/framework/allocation_planner_reuse_index.h"
+#else
 #include <list>
+#endif
+#include <charconv>
+#include <vector>
 #include <algorithm>
 #include <deque>
 #include <sstream>
 #include <ctime>
 #include <iomanip>
 #include <iterator>
+#include <optional>
 #include "core/common/exceptions.h"
+#include "core/common/hash_combine.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/safeint.h"
 #include "core/platform/env.h"
@@ -208,6 +215,9 @@ class PlannerImpl {
     // Removing initializers is a temporary measure needed to limit the number of copies of
     // tensors in GPU memory.
     OrtValueIndex reused_buffer_index = -1;  // index of original buffer to reuse
+#if !defined(ORT_MINIMAL_BUILD)
+    OrtValueIndex next_free_buffer = -1;
+#endif
     bool is_inplace_reuse = false;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     OrtValueIndex inplace_reused_buffer_index = -1;  // index of original buffer to reuse inplace
@@ -217,6 +227,11 @@ class PlannerImpl {
   // ort_value_info_ is indexed by an OrtValueIndex
   std::vector<OrtValueInfo> ort_value_info_;
 
+  // Full builds use the reuse index. All minimal variants retain the baseline LIFO linear
+  // algorithm and do not receive the indexed planner's startup-time improvement.
+#if !defined(ORT_MINIMAL_BUILD)
+  allocation_planner_internal::FreeBufferIndex freelists_;
+#else
   // FreeBufferInfo is used to track information about ml-values whose buffers are
   // free to be reused.
   struct FreeBufferInfo {
@@ -231,6 +246,7 @@ class PlannerImpl {
   // freelist_ : a list of ml-values whose buffers are free to be reused, sorted by when
   // they became free (more recently freed earlier in the list).
   std::list<FreeBufferInfo> freelist_;
+#endif
 
   OrtValueIndex Index(const OrtValueName& name) {
     OrtValueIndex result;
@@ -499,33 +515,28 @@ class PlannerImpl {
 
   /*! \brief Given a tensor-type, return the primitive element type of the tensor.
    */
-  static MLDataType GetPrimitiveElementType(const DataType& tensor_type) {
+  static MLDataType GetPrimitiveElementType(DataType tensor_type) {
     MLDataType ml_data_type = DataTypeImpl::GetDataType(*tensor_type);
     const TensorTypeBase* tensor_type_base = ml_data_type->AsTensorType();
     ORT_ENFORCE(nullptr != tensor_type_base);
     return tensor_type_base->GetElementType();
   }
 
-  /*! \brief Given a tensor-type, return the size in bytes of the C++ carrier used for an element.
-   */
-  static size_t GetElementSize(const DataType& tensor_type) {
-    return GetPrimitiveElementType(tensor_type)->Size();
-  }
+  struct ElementStorage {
+    size_t element_size;
+    int32_t sub_element_count;
+  };
 
-  /*! \brief Given a tensor-type, return how many logical (sub-byte) elements are packed into one
-   *  carrier element. Returns 1 for regular types and >1 for packed sub-byte types (e.g. 2 for int4/uint4).
-   */
-  static int32_t GetSubElemCount(const DataType& tensor_type) {
-    const auto* prim_type = GetPrimitiveElementType(tensor_type)->AsPrimitiveDataType();
-    return prim_type != nullptr ? prim_type->GetNumSubElems() : 1;
+  // Share physical storage metadata between the reuse key and the final compatibility check.
+  static ElementStorage GetElementStorage(MLDataType element_type) {
+    const auto* prim_type = element_type->AsPrimitiveDataType();
+    return {element_type->Size(), prim_type != nullptr ? prim_type->GetNumSubElems() : 1};
   }
 
   static bool SameSize(const TensorShapeProto& shape1, const onnxruntime::NodeArg& arg1,
                        const TensorShapeProto& shape2, const onnxruntime::NodeArg& arg2) {
-    const auto& ptype1 = arg1.Type();
-    const auto& ptype2 = arg2.Type();
-    auto type1_size = GetElementSize(ptype1);
-    auto type2_size = GetElementSize(ptype2);
+    const auto storage1 = GetElementStorage(GetPrimitiveElementType(arg1.Type()));
+    const auto storage2 = GetElementStorage(GetPrimitiveElementType(arg2.Type()));
     bool is_type1_string = arg1.TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING;
     bool is_type2_string = arg2.TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING;
 
@@ -535,7 +546,7 @@ class PlannerImpl {
     // (e.g. uint4[1024] needs 512 bytes while uint8[1024] needs 1024 bytes). Reusing the smaller buffer for the
     // larger tensor produces a heap buffer overflow when the tensor is later written. Only treat the tensors as
     // the same size when the sub-element packing density also matches, which guarantees identical storage bytes.
-    if (GetSubElemCount(ptype1) != GetSubElemCount(ptype2)) {
+    if (storage1.sub_element_count != storage2.sub_element_count) {
       return false;
     }
 
@@ -544,7 +555,7 @@ class PlannerImpl {
     // If either of the tensors is a string, don't treat them the same. Moreover, reusing a string tensor for a string
     // tensor without releasing the previous memory can cause memory leaks; hence we don't allow reuse across string
     // tensors as well.
-    return !(is_type1_string || is_type2_string) && (type1_size == type2_size) && SameShape(shape1, shape2);
+    return !(is_type1_string || is_type2_string) && (storage1.element_size == storage2.element_size) && SameShape(shape1, shape2);
 
     /* TODO: we can improve this if the concrete shapes are known for both as below.
        Unclear whether this is worthwhile though.
@@ -578,17 +589,71 @@ class PlannerImpl {
     return SameSize(*p_shape1, arg1, *p_shape2, arg2);
   }
 
-  // Find if freelist contains a buffer of the same size as output_arg
+#if !defined(ORT_MINIMAL_BUILD)
+  std::optional<size_t> GetReuseKey(const NodeArg& arg, const TensorShapeProto& shape) {
+    if (shape.dim_size() == 0) return std::nullopt;
+    const auto* element_type = GetPrimitiveElementType(arg.Type());
+    if (element_type == DataTypeImpl::GetType<std::string>()) return std::nullopt;
+
+    size_t key = AllocPlan(arg.Name()).location.Hash();
+    const auto storage = GetElementStorage(element_type);
+    HashCombine(storage.element_size, key);
+    HashCombine(storage.sub_element_count, key);
+    HashCombine(shape.dim_size(), key);
+    for (const auto& dim : shape.dim()) {
+      if (utils::HasDimValue(dim)) {
+        HashCombine(false, key);
+        HashCombine(dim.dim_value(), key);
+      } else if (utils::HasDimParam(dim) && !dim.dim_param().empty()) {
+        HashCombine(true, key);
+        HashCombine(dim.dim_param(), key);
+      } else {
+        // SameShape cannot match an anonymous or empty symbolic dimension.
+        return std::nullopt;
+      }
+    }
+    return key;
+  }
+
+  void AddFreeBuffer(OrtValueIndex value) {
+    if (!context_->GetEnableMemoryReuse()) return;
+    const auto* arg = ort_value_info_[value].p_def_site;
+    if (!arg || IsNonTensor(*arg)) return;
+    const auto* shape = context_->GetShape(*arg);
+    if (!shape) return;
+    if (auto key = GetReuseKey(*arg, *shape)) {
+      auto& head = freelists_.GetOrCreate(*key);
+      ort_value_info_[value].next_free_buffer =
+          head ? static_cast<OrtValueIndex>(*head) : -1;
+      head = static_cast<size_t>(value);
+    }
+  }
+#endif
+
+  // Find a compatible buffer; full builds restrict the candidates with the reuse index.
   bool FindReusableTensor(const onnxruntime::NodeArg& output_arg, OrtValueIndex* reusable_tensor) {
     if (!context_->GetEnableMemoryReuse()) {
       return false;
     }
     auto p_required_buffer_shape = context_->GetShape(output_arg);
     if (nullptr == p_required_buffer_shape || p_required_buffer_shape->dim_size() == 0) return false;
+#if !defined(ORT_MINIMAL_BUILD)
+    auto key = GetReuseKey(output_arg, *p_required_buffer_shape);
+    if (!key) return false;
+    auto* head = freelists_.Find(*key);
+    if (head == nullptr || !*head) return false;
+#endif
     auto& required_memory_info = AllocPlan(output_arg.Name()).location;
 
+#if !defined(ORT_MINIMAL_BUILD)
+    OrtValueIndex previous = -1;
+    for (auto value = static_cast<OrtValueIndex>(**head); value != -1;
+         previous = value, value = ort_value_info_[value].next_free_buffer) {
+      size_t reusable = static_cast<size_t>(value);
+#else
     for (auto it = freelist_.begin(); it != freelist_.end(); ++it) {
       size_t reusable = static_cast<size_t>(it->ml_value);
+#endif
       const onnxruntime::NodeArg* p_node_arg = ort_value_info_.at(reusable).p_def_site;
       if (!p_node_arg) {
         // TODO this should be an error case, needs more investigation
@@ -610,8 +675,20 @@ class PlannerImpl {
       if (nullptr != p_available_buffer_shape) {
         if (SameSize(*p_available_buffer_shape, *p_node_arg,
                      *p_required_buffer_shape, output_arg)) {
+#if !defined(ORT_MINIMAL_BUILD)
+          *reusable_tensor = value;
+          auto next = ort_value_info_[reusable].next_free_buffer;
+          if (previous != -1) {
+            ort_value_info_[previous].next_free_buffer = next;
+          } else if (next != -1) {
+            *head = static_cast<size_t>(next);
+          } else {
+            head->reset();
+          }
+#else
           *reusable_tensor = it->ml_value;
           freelist_.erase(it);
+#endif
           return true;
         }
       }
@@ -1540,7 +1617,11 @@ class PlannerImpl {
 #endif
       ORT_RETURN_IF_ERROR(ComputeSingleStreamReusePlan(i));
       ClearUseCount();
+#if !defined(ORT_MINIMAL_BUILD)
+      freelists_.clear();  // DONOT share free buffers across streams
+#else
       freelist_.clear();  // DONOT share freelist across streams
+#endif
     }
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     CalculateLifetime(ort_value_usecount);
@@ -1674,7 +1755,11 @@ class PlannerImpl {
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
           if ((original != -1) && (0 == DecrementUseCount(original))) {
+#if !defined(ORT_MINIMAL_BUILD)
+            AddFreeBuffer(original);
+#else
             freelist_.push_front(FreeBufferInfo(original, program_counter));
+#endif
           }
         }
       }
@@ -1694,7 +1779,11 @@ class PlannerImpl {
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
           // See comments in the OrtValueInfo definition.
           if ((original != -1) && (0 == DecrementUseCount(original))) {
+#if !defined(ORT_MINIMAL_BUILD)
+            AddFreeBuffer(original);
+#else
             freelist_.push_front(FreeBufferInfo(original, program_counter));
+#endif
           }
         }
       }
@@ -1708,7 +1797,11 @@ class PlannerImpl {
             // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
             // See comments in the OrtValueInfo definition.
             if (0 == DecrementUseCount(original)) {
+#if !defined(ORT_MINIMAL_BUILD)
+              AddFreeBuffer(original);
+#else
               freelist_.push_front(FreeBufferInfo(original, program_counter));
+#endif
             }
           }
         }
@@ -1961,7 +2054,7 @@ class PlannerImpl {
     if (graph_viewer_.NumberOfNodes() > 0) {
       stream_nodes_.push_back({});
       plan_.node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
-      for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder()) {
+      for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder())) {
         stream_nodes_[0].push_back(node_index);
         plan_.node_stream_map_[node_index] = 0;
       }
@@ -2427,7 +2520,7 @@ Status PlannerImpl::CreatePlan(
   ORT_RETURN_IF_ERROR(ComputeAllocationOrder());
 #endif
 
-  // convert information in the freelist_ into a deallocation plan in required format
+  // convert buffer lifetime information into a deallocation plan in required format
   ORT_RETURN_IF_ERROR(GenerateDeallocationPlan());
 
   // generate program counter

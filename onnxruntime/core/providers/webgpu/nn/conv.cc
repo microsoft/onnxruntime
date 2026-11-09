@@ -1,9 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
 #include "core/providers/webgpu/nn/conv.h"
 #include "core/providers/webgpu/nn/conv2d_mm.h"
 #include "core/providers/webgpu/nn/conv3d_naive.h"
 #include "core/providers/webgpu/nn/im2col_matmul.h"
+#include "core/providers/webgpu/nn/subgroup_matrix_conv.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/tensor/transpose.h"
@@ -26,8 +28,73 @@ Status TransposeKernel(ComputeContext& context, const Tensor* kernel, const Tens
   return Transpose::DoTranspose(context, perm, reshaped_kernel, *transposed_kernel);
 }
 
+Status ComputeConvGeometry(const ConvAttributes& conv_attrs, const TensorShape& input_shape,
+                           const TensorShape& kernel_shape, bool is_channels_last,
+                           std::vector<uint32_t>& pads, std::vector<uint32_t>& strides,
+                           std::vector<uint32_t>& dilations, TensorShape& output_shape) {
+  ConvAttributes::ConvPadVector local_pads(conv_attrs.pads.begin(), conv_attrs.pads.end());
+  TensorShapeVector local_dilations(conv_attrs.dilations.begin(), conv_attrs.dilations.end());
+  TensorShapeVector local_strides(conv_attrs.strides.begin(), conv_attrs.strides.end());
+  TensorShapeVector kernel_spacial_shape_vector;
+  ORT_RETURN_IF_ERROR(conv_attrs.ComputeKernelShape(kernel_shape, kernel_spacial_shape_vector, false));
+  if (local_pads.empty()) {
+    local_pads.resize(kernel_spacial_shape_vector.size() * 2, 0);
+  }
+  if (local_dilations.empty()) {
+    local_dilations.resize(kernel_spacial_shape_vector.size(), 1);
+  }
+  if (local_strides.empty()) {
+    local_strides.resize(kernel_spacial_shape_vector.size(), 1);
+  }
+  TensorShapeVector input_shape_vector = input_shape.AsShapeVector();
+  auto batch = input_shape[0];
+  TensorShapeVector output_shape_vector = {batch};
+  TensorShape input_spacial_shape = is_channels_last
+                                        ? TensorShape(TensorShapeVector(std::next(input_shape_vector.begin()), std::prev(input_shape_vector.end())))
+                                        : input_shape.Slice(2);
+  ORT_RETURN_IF_ERROR(conv_attrs.InferPadsAndOutputShape(input_spacial_shape, kernel_spacial_shape_vector,
+                                                         local_strides, local_dilations, local_pads,
+                                                         output_shape_vector));
+  auto output_channels = kernel_shape[0];
+  if (is_channels_last) {
+    output_shape_vector.push_back(output_channels);
+  } else {
+    output_shape_vector.insert(output_shape_vector.begin() + 1, output_channels);
+  }
+  output_shape = TensorShape(output_shape_vector);
+
+  auto transform_dim = [](int64_t dim) { return static_cast<int32_t>(dim); };
+  pads.clear();
+  strides.clear();
+  dilations.clear();
+  std::transform(local_pads.begin(), local_pads.end(), std::back_inserter(pads), transform_dim);
+  std::transform(local_strides.begin(), local_strides.end(), std::back_inserter(strides), transform_dim);
+  std::transform(local_dilations.begin(), local_dilations.end(), std::back_inserter(dilations), transform_dim);
+  return Status::OK();
+}
+
+template <bool is_channels_last, bool is_fused>
+typename Conv<is_channels_last, is_fused>::ConvOptImpl*
+Conv<is_channels_last, is_fused>::ConvOptImplCache::GetOrCreate(
+    const Conv<is_channels_last, is_fused>& parent, const ComputeContextBase& context) {
+  std::call_once(init_flag_, [&]() {
+    impl_ = CreateSubgroupMatrixConvImpl(parent, context);
+  });
+  return impl_.get();
+}
+
 template <bool is_channels_last, bool is_fused>
 Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context) const {
+  // Preferred fast path on devices with a vendor subgroup-matrix tiling policy;
+  // declines (handled=false) when the kernel/attrs don't qualify.
+  if (ConvOptImpl* opt_impl = opt_impl_cache_.GetOrCreate(*this, context); opt_impl != nullptr) {
+    bool handled = false;
+    ORT_RETURN_IF_ERROR(opt_impl->Compute(context, handled));
+    if (handled) {
+      return Status::OK();
+    }
+  }
+
   bool has_bias = context.InputCount() > 2;
   const auto* input = context.Input<Tensor>(0);
   const Tensor* kernel = prepacked_kernel_ ? prepacked_kernel_.get() : context.Input<Tensor>(1);
@@ -46,40 +113,16 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
       kernel_shape = TensorShape(TensorShapeVector{kernel_shape[0], kernel_shape[3], kernel_shape[1], kernel_shape[2]});
       break;
   }
-  ConvAttributes::ConvPadVector local_pads(conv_attrs_.pads.begin(), conv_attrs_.pads.end());
-  TensorShapeVector local_dilations(conv_attrs_.dilations.begin(), conv_attrs_.dilations.end());
-  TensorShapeVector local_strides(conv_attrs_.strides.begin(), conv_attrs_.strides.end());
-  TensorShapeVector kernel_spacial_shape_vector;
-  ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(kernel_shape, kernel_spacial_shape_vector, false));
-  if (local_pads.empty()) {
-    local_pads.resize(kernel_spacial_shape_vector.size() * 2, 0);
-  }
-  if (local_dilations.empty()) {
-    local_dilations.resize(kernel_spacial_shape_vector.size(), 1);
-  }
-  if (local_strides.empty()) {
-    local_strides.resize(kernel_spacial_shape_vector.size(), 1);
-  }
-  TensorShapeVector input_shape_vector = input_shape.AsShapeVector();
-  auto batch = input_shape[0];
-  TensorShapeVector output_shape_vector = {batch};
-  TensorShape input_spacial_shape = is_channels_last ? TensorShape(TensorShapeVector(std::next(input_shape_vector.begin()), std::prev(input_shape_vector.end()))) : input_shape.Slice(2);
-  ORT_RETURN_IF_ERROR(conv_attrs_.InferPadsAndOutputShape(input_spacial_shape, kernel_spacial_shape_vector, local_strides, local_dilations, local_pads, output_shape_vector));
-  auto output_channels = kernel_shape[0];
-  if (is_channels_last) {
-    output_shape_vector.push_back(output_channels);
-  } else {
-    output_shape_vector.insert(output_shape_vector.begin() + 1, output_channels);
-  }
-  auto output_shape = TensorShape(output_shape_vector);
-  auto* output = context.Output(0, output_shape);
-  std::vector<uint32_t> strides;
   std::vector<uint32_t> pads;
+  std::vector<uint32_t> strides;
   std::vector<uint32_t> dilations;
-  auto transform_dim = [](int64_t dim) { return static_cast<int32_t>(dim); };
-  std::transform(local_pads.begin(), local_pads.end(), std::back_inserter(pads), transform_dim);
-  std::transform(local_strides.begin(), local_strides.end(), std::back_inserter(strides), transform_dim);
-  std::transform(local_dilations.begin(), local_dilations.end(), std::back_inserter(dilations), transform_dim);
+  TensorShape output_shape;
+  ORT_RETURN_IF_ERROR(ComputeConvGeometry(conv_attrs_, input_shape, kernel_shape, is_channels_last,
+                                          pads, strides, dilations, output_shape));
+  auto* output = context.Output(0, output_shape);
+  auto batch = input_shape[0];
+  auto output_channels = kernel_shape[0];
+  TensorShapeVector output_shape_vector = output_shape.AsShapeVector();
   auto rank = input_shape.NumDimensions();
   const InlinedVector<size_t> perm = {2, 3, 1, 0};
   if (rank > 5) {
@@ -125,6 +168,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   } else if (rank == 3) {
     // Conv1D
     TensorShapeVector kernel_shape_vector = kernel_shape.AsShapeVector();
+    TensorShapeVector input_shape_vector = input_shape.AsShapeVector();
     input_shape_vector.insert(input_shape_vector.begin() + (is_channels_last ? 1 : 2), 1, 1);
     output_shape_vector.insert(output_shape_vector.begin() + (is_channels_last ? 1 : 2), 1, 1);
     kernel_shape_vector.insert(kernel_shape_vector.begin() + 2, 1);
@@ -323,6 +367,7 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
   }
 
   // Im2ColMatMul path: transpose OIHW -> OHWI once here instead of on every inference.
+  // Subgroup-matrix Conv (tried first in ComputeInternal) shares this same prepack.
   //
   // Placed before the auto_pad check below on purpose:
   //   - Safe: CanApplyIm2ColMatMulProgram() only looks at the adapter, dtype, layout,
@@ -332,10 +377,10 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
   //   - Necessary: otherwise every auto_pad != NOTSET model would bail out below and
   //     keep paying for the transpose on every inference.
   //
-  // This call and the one in ComputeInternal must stay in agreement: only the im2col
-  // path can read the OHWI layout, so a decision made here that ComputeInternal later
-  // reverses would corrupt the weights. If CanApplyIm2ColMatMulProgram() ever gains a
-  // condition that is not known at prepack time (pads, strides, input shape), this
+  // This call and the one in ComputeInternal must stay in agreement: only im2col and
+  // subgroup-matrix Conv can read OHWI, so a decision made here that ComputeInternal
+  // later reverses would corrupt the weights. If CanApplyIm2ColMatMulProgram() ever
+  // gains a condition not known at prepack time (pads, strides, input shape), this
   // shortcut must go away. ComputeInternal ORT_ENFORCEs the invariant.
   if (CanApplyIm2ColMatMulProgram(context, is_channels_last, activation_,
                                   kernel_shape, onnxruntime::narrow<uint32_t>(conv_attrs_.group),
@@ -367,6 +412,8 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
 
   // Analyze execution paths in ComputeInternal to determine if kernel transpose is needed:
   //
+  // 0. Subgroup-matrix Conv path: no dedicated branch -- reads whatever layout falls
+  //    out below (OIHW, OHWI from Im2ColMatMul, or HWIO from the general transpose).
   // 1. Im2ColMatMul path: handled above (prepacked as OHWI)
   // 2. Grouped conv (group > 1): handled above (skip if !is_channels_last)
   // 3. MatMul optimization (same_size || is_1x1_conv):

@@ -1,13 +1,23 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+#include <sstream>
+#include <type_traits>
+
 #include "core/common/narrow.h"
+#include "core/graph/model.h"
 #include "core/platform/env_var_utils.h"
+#include "core/providers/cuda/cuda_provider_options.h"
+#include "core/session/IOBinding.h"
+#include "core/session/inference_session.h"
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/scoped_env_vars.h"
+#include "test/util/include/test_environment.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "test/contrib_ops/attention_op_test_helper.h"
 
@@ -593,6 +603,204 @@ TEST(PackedAttentionTest, PackedBatchWithQKV) {
       number_of_heads,
       4,
       qkv_sizes);
+}
+
+TEST(PackedAttentionTest, InvalidTokenOffset_Unfused_CUDA) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "PackedAttention token offset validation requires a CUDA device.";
+  }
+
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"}}};
+
+  constexpr int kTokenCount = 1;
+  constexpr int kBatchSize = 1;
+  constexpr int kSequenceLength = 2;
+  constexpr int kHiddenSize = 8;
+
+  for (const std::vector<int32_t>& token_offset : {
+           std::vector<int32_t>{-1, 1},
+           std::vector<int32_t>{0, kBatchSize * kSequenceLength}}) {
+    SCOPED_TRACE(token_offset[0]);
+    SCOPED_TRACE(token_offset[1]);
+
+    OpTester tester("PackedAttention", 1, onnxruntime::kMSDomain);
+    tester.AddAttribute<int64_t>("num_heads", 1);
+    tester.AddInput<float>("input", {kTokenCount, kHiddenSize},
+                           std::vector<float>(kTokenCount * kHiddenSize));
+    tester.AddInput<float>("weight", {kHiddenSize, 3 * kHiddenSize},
+                           std::vector<float>(3 * kHiddenSize * kHiddenSize));
+    tester.AddInput<float>("bias", {3 * kHiddenSize},
+                           std::vector<float>(3 * kHiddenSize));
+    tester.AddInput<int32_t>("token_offset", {kBatchSize, kSequenceLength}, token_offset);
+    tester.AddInput<int32_t>("cumulative_sequence_length", {kBatchSize + 1}, {0, kTokenCount});
+    tester.AddOutput<float>("output", {kTokenCount, kHiddenSize},
+                            std::vector<float>(kTokenCount * kHiddenSize));
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    tester.Run(
+        OpTester::ExpectResult::kExpectFailure,
+        "PackedAttention token_offset values must be in [0, B * S).",
+        {}, nullptr, &execution_providers);
+  }
+}
+
+TEST(PackedAttentionTest, InvalidTokenOffset_UnfusedCudaGraphReplay) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "PackedAttention CUDA graph test requires a CUDA device.";
+  }
+
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"}}};
+
+  constexpr int64_t kTokenCount = 2;
+  constexpr int64_t kBatchSize = 1;
+  constexpr int64_t kSequenceLength = 2;
+  constexpr int64_t kHiddenSize = 8;
+
+  auto make_tensor_type = [](int32_t element_type, std::initializer_list<int64_t> shape) {
+    ONNX_NAMESPACE::TypeProto type;
+    auto* tensor_type = type.mutable_tensor_type();
+    tensor_type->set_elem_type(element_type);
+    for (int64_t dimension : shape) {
+      tensor_type->mutable_shape()->add_dim()->set_dim_value(dimension);
+    }
+    return type;
+  };
+
+  auto input_type = make_tensor_type(
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {kTokenCount, kHiddenSize});
+  auto weights_type = make_tensor_type(
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {kHiddenSize, 3 * kHiddenSize});
+  auto bias_type = make_tensor_type(
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {3 * kHiddenSize});
+  auto token_offset_type = make_tensor_type(
+      ONNX_NAMESPACE::TensorProto_DataType_INT32, {kBatchSize, kSequenceLength});
+  auto cumulative_sequence_length_type = make_tensor_type(
+      ONNX_NAMESPACE::TensorProto_DataType_INT32, {kBatchSize + 1});
+  auto output_type = make_tensor_type(
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {kTokenCount, kHiddenSize});
+
+  Model model("packed_attention_cuda_graph", true, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 17}, {kMSDomain, 1}},
+              {}, DefaultLoggingManager().DefaultLogger(), ModelOptions(true, true));
+  auto& graph = model.MainGraph();
+  std::vector<NodeArg*> inputs{
+      &graph.GetOrCreateNodeArg("input", &input_type),
+      &graph.GetOrCreateNodeArg("weights", &weights_type),
+      &graph.GetOrCreateNodeArg("bias", &bias_type),
+      &graph.GetOrCreateNodeArg("token_offset", &token_offset_type),
+      &graph.GetOrCreateNodeArg("cumulative_sequence_length", &cumulative_sequence_length_type)};
+  std::vector<NodeArg*> outputs{
+      &graph.GetOrCreateNodeArg("output", &output_type)};
+  auto& node = graph.AddNode(
+      "packed_attention", "PackedAttention", "", inputs, outputs, nullptr, kMSDomain);
+  node.AddAttribute("num_heads", int64_t{1});
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string model_data;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
+
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.do_copy_in_default_stream = true;
+  provider_options.enable_cuda_graph = true;
+  auto cuda_ep = CudaExecutionProviderWithOptions(&provider_options);
+  ASSERT_NE(cuda_ep, nullptr);
+  IExecutionProvider* cuda_ep_ptr = cuda_ep.get();
+
+  SessionOptions session_options;
+  InferenceSession session(session_options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda_ep)));
+  std::istringstream model_stream(model_data);
+  ASSERT_STATUS_OK(session.Load(model_stream));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  auto gpu_allocators = cuda_ep_ptr->CreatePreferredAllocators();
+  auto gpu_allocator = std::find_if(gpu_allocators.begin(), gpu_allocators.end(), [](const auto& allocator) {
+    return allocator->Info().device.Type() == OrtDevice::GPU &&
+           allocator->Info().alloc_type != OrtAllocatorType::OrtReadOnlyAllocator &&
+           allocator->Info().mem_type == OrtMemTypeDefault;
+  });
+  ASSERT_NE(gpu_allocator, gpu_allocators.end());
+  auto allocator = session.GetAllocator((*gpu_allocator)->Info());
+  ASSERT_NE(allocator, nullptr);
+  auto cpu_allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+
+  auto make_gpu_value = [&](const auto& values, const TensorShape& shape) {
+    using Element = typename std::decay_t<decltype(values)>::value_type;
+    Tensor cpu_tensor(
+        DataTypeImpl::GetType<Element>(), shape,
+        const_cast<Element*>(values.data()), cpu_allocator->Info());
+    Tensor gpu_tensor(DataTypeImpl::GetType<Element>(), shape, allocator);
+    ORT_THROW_IF_ERROR(cuda_ep_ptr->GetDataTransfer()->CopyTensor(cpu_tensor, gpu_tensor));
+    OrtValue result;
+    Tensor::InitOrtValue(std::move(gpu_tensor), result);
+    return result;
+  };
+
+  auto input = make_gpu_value(
+      std::vector<float>(kTokenCount * kHiddenSize),
+      TensorShape{kTokenCount, kHiddenSize});
+  auto weights = make_gpu_value(
+      std::vector<float>(kHiddenSize * 3 * kHiddenSize),
+      TensorShape{kHiddenSize, 3 * kHiddenSize});
+  std::vector<float> bias_data(3 * kHiddenSize);
+  std::fill(bias_data.begin() + 2 * kHiddenSize, bias_data.end(), 1.0f);
+  auto bias = make_gpu_value(bias_data, TensorShape{3 * kHiddenSize});
+  auto token_offset = make_gpu_value(
+      std::vector<int32_t>{0, 1}, TensorShape{kBatchSize, kSequenceLength});
+  auto cumulative_sequence_length = make_gpu_value(
+      std::vector<int32_t>{0, 2}, TensorShape{kBatchSize + 1});
+  Tensor output_tensor(
+      DataTypeImpl::GetType<float>(),
+      TensorShape{kTokenCount, kHiddenSize}, allocator);
+  OrtValue output;
+  Tensor::InitOrtValue(std::move(output_tensor), output);
+
+  std::unique_ptr<IOBinding> binding;
+  ASSERT_STATUS_OK(session.NewIOBinding(&binding));
+  ASSERT_STATUS_OK(binding->BindInput("input", input));
+  ASSERT_STATUS_OK(binding->BindInput("weights", weights));
+  ASSERT_STATUS_OK(binding->BindInput("bias", bias));
+  ASSERT_STATUS_OK(binding->BindInput("token_offset", token_offset));
+  ASSERT_STATUS_OK(binding->BindInput("cumulative_sequence_length", cumulative_sequence_length));
+  ASSERT_STATUS_OK(binding->BindOutput("output", output));
+  ASSERT_STATUS_OK(binding->SynchronizeInputs());
+
+  RunOptions run_options;
+  ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry("gpu_graph_id", "1"));
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_STATUS_OK(session.Run(run_options, *binding));
+  }
+  ASSERT_TRUE(cuda_ep_ptr->IsGraphCaptured(1));
+
+  const std::vector<int32_t> invalid_offsets{-1, kBatchSize * kSequenceLength};
+  Tensor invalid_offsets_tensor(
+      DataTypeImpl::GetType<int32_t>(), TensorShape{kBatchSize, kSequenceLength},
+      const_cast<int32_t*>(invalid_offsets.data()), cpu_allocator->Info());
+  ASSERT_STATUS_OK(cuda_ep_ptr->GetDataTransfer()->CopyTensor(
+      invalid_offsets_tensor, *token_offset.GetMutable<Tensor>()));
+  ASSERT_STATUS_OK(binding->SynchronizeInputs());
+  ASSERT_STATUS_OK(session.Run(run_options, *binding));
+  ASSERT_STATUS_OK(binding->SynchronizeOutputs());
+
+  Tensor cpu_output(
+      DataTypeImpl::GetType<float>(),
+      TensorShape{kTokenCount, kHiddenSize}, cpu_allocator);
+  ASSERT_STATUS_OK(cuda_ep_ptr->GetDataTransfer()->CopyTensor(
+      output.Get<Tensor>(), cpu_output));
+  for (float value : cpu_output.DataAsSpan<float>()) {
+    EXPECT_EQ(value, 0.0f);
+  }
 }
 
 static void RunModelWithRandomInput(

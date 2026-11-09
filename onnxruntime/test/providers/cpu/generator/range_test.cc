@@ -2,9 +2,11 @@
 // Licensed under the MIT License.
 
 #include <cstring>
+#include <limits>
 
 #include "core/graph/constants.h"
 #include "core/session/inference_session.h"
+#include "core/util/range_helper.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
@@ -45,6 +47,129 @@ static void RunTest(
 
 #endif
 }  // namespace test
+
+namespace {
+template <typename T>
+void RunCpuIntegerRange(T start, T limit, T delta, const std::vector<T>& expected,
+                        int opset = 11, const char* domain = kOnnxDomain, bool initializers = false,
+                        bool omit_delta = false) {
+  for (auto level : {TransformerLevel::Default, TransformerLevel::Level3}) {
+    SCOPED_TRACE(::testing::Message() << "start=" << start << " limit=" << limit << " delta=" << delta
+                                      << " opset=" << opset << " domain=" << domain
+                                      << " initializers=" << initializers << " optimization=" << static_cast<int>(level));
+    OpTester test("Range", opset, domain);
+    test.AddInput<T>("start", {}, {start}, initializers);
+    test.AddInput<T>("limit", {}, {limit}, initializers);
+    if (!omit_delta) {
+      test.AddInput<T>("delta", {}, {delta}, initializers);
+    }
+    test.AddOutput<T>("output", {static_cast<int64_t>(expected.size())}, expected);
+    SessionOptions options;
+    options.use_per_session_threads = false;
+    options.graph_optimization_level = level;
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+}  // namespace
+
+TEST(RangeTest, IntegerCountBoundaries) {
+  constexpr int64_t max = std::numeric_limits<int64_t>::max();
+  constexpr int64_t min = std::numeric_limits<int64_t>::min();
+  EXPECT_EQ(ComputeIntegerRangeCount(min + 1, max, int64_t{2}), static_cast<uint64_t>(max));
+  EXPECT_EQ(ComputeIntegerRangeCount(max, min + 1, int64_t{-2}), static_cast<uint64_t>(max));
+  EXPECT_EQ(ComputeIntegerRangeCount(min, max, int64_t{2}), uint64_t{1} << 63);
+  EXPECT_EQ(ComputeIntegerRangeCount(max, min, int64_t{-2}), uint64_t{1} << 63);
+  EXPECT_EQ(ComputeIntegerRangeCount(min, max, int64_t{1}), std::numeric_limits<uint64_t>::max());
+  EXPECT_EQ(ComputeIntegerRangeCount(max, min, int64_t{-1}), std::numeric_limits<uint64_t>::max());
+}
+
+TEST(RangeTest, CpuInt64BoundaryPrecision) {
+  constexpr int64_t max = std::numeric_limits<int64_t>::max();
+  constexpr int64_t min = std::numeric_limits<int64_t>::min();
+  for (int opset : {11, 18}) {
+    for (bool initializers : {false, true}) {
+      RunCpuIntegerRange<int64_t>(max - 7, max, 2, {max - 7, max - 5, max - 3, max - 1},
+                                  opset, kOnnxDomain, initializers);
+      RunCpuIntegerRange<int64_t>(min + 8, min + 1, -2, {min + 8, min + 6, min + 4, min + 2},
+                                  opset, kOnnxDomain, initializers);
+      RunCpuIntegerRange<int64_t>(9007199254740992LL, 9007199254740993LL, 1,
+                                  {9007199254740992LL}, opset, kOnnxDomain, initializers);
+    }
+  }
+}
+
+TEST(RangeTest, CpuInt64ExtremeSteps) {
+  constexpr int64_t max = std::numeric_limits<int64_t>::max();
+  constexpr int64_t min = std::numeric_limits<int64_t>::min();
+  // Runtime inputs avoid the separate ONNX constant shape-inference arithmetic.
+  RunCpuIntegerRange<int64_t>(min, max, max, {min, -1, max - 1});
+  RunCpuIntegerRange<int64_t>(max, min, min, {max, -1});
+  RunCpuIntegerRange<int64_t>(0, min, min, {0});
+  RunCpuIntegerRange<int64_t>(min, max, min, {});
+  RunCpuIntegerRange<int64_t>(max, min, max, {});
+  RunCpuIntegerRange<int64_t>(max, max, min, {});
+}
+
+TEST(RangeTest, CpuIntegerFinalIncrement) {
+  constexpr int64_t max = std::numeric_limits<int64_t>::max();
+  constexpr int64_t min = std::numeric_limits<int64_t>::min();
+  RunCpuIntegerRange<int64_t>(max - 1, max, 2, {max - 1});
+  RunCpuIntegerRange<int64_t>(min + 1, min, -2, {min + 1});
+  RunCpuIntegerRange<int16_t>(std::numeric_limits<int16_t>::min() + 1,
+                              std::numeric_limits<int16_t>::min(), -2,
+                              {std::numeric_limits<int16_t>::min() + 1});
+}
+
+TEST(RangeTest, CpuInt32FinalIncrement) {
+  RunCpuIntegerRange<int32_t>(std::numeric_limits<int32_t>::max() - 1,
+                              std::numeric_limits<int32_t>::max(), 2,
+                              {std::numeric_limits<int32_t>::max() - 1});
+}
+
+TEST(RangeTest, CpuInt64CountOverflow) {
+  for (int64_t delta : {int64_t{1}, int64_t{2}}) {
+    OpTester test("Range", 11);
+    test.AddInput<int64_t>("start", {}, {std::numeric_limits<int64_t>::min()});
+    test.AddInput<int64_t>("limit", {}, {std::numeric_limits<int64_t>::max()});
+    test.AddInput<int64_t>("delta", {}, {delta});
+    test.AddOutput<int64_t>("output", {0}, {});
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectFailure,
+             "Range: the computed number of elements exceeds the supported range.", {}, nullptr,
+             &execution_providers);
+  }
+}
+
+TEST(RangeTest, CpuInt64ZeroDelta) {
+  OpTester test("Range", 11);
+  test.AddInput<int64_t>("start", {}, {0});
+  test.AddInput<int64_t>("limit", {}, {0});
+  test.AddInput<int64_t>("delta", {}, {0});
+  test.AddOutput<int64_t>("output", {0}, {});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "delta in Range operator can not be zero!",
+           {}, nullptr, &execution_providers);
+}
+
+#ifndef DISABLE_CONTRIB_OPS
+TEST(RangeTest, ContribOp_Int64BoundaryPrecision) {
+  constexpr int64_t max = std::numeric_limits<int64_t>::max();
+  constexpr int64_t min = std::numeric_limits<int64_t>::min();
+  for (bool initializers : {false, true}) {
+    RunCpuIntegerRange<int64_t>(max - 7, max, 2, {max - 7, max - 5, max - 3, max - 1},
+                                1, kMSDomain, initializers);
+    RunCpuIntegerRange<int64_t>(min + 8, min + 1, -2, {min + 8, min + 6, min + 4, min + 2},
+                                1, kMSDomain, initializers);
+    RunCpuIntegerRange<int64_t>(max - 1, max, 1, {max - 1}, 1, kMSDomain, initializers, true);
+    RunCpuIntegerRange<int64_t>(min, max, max, {min, -1, max - 1}, 1, kMSDomain, initializers);
+    RunCpuIntegerRange<int64_t>(max, min, min, {max, -1}, 1, kMSDomain, initializers);
+  }
+}
+#endif
 
 TEST(RangeTest, Int32_DeltaDefault) {
   RunTest<int32_t>(0, 5, 1, {5}, {0, 1, 2, 3, 4});
@@ -291,6 +416,29 @@ TEST(RangeTest, ContribOp_Kernel_NonFiniteCount_FailsAtRuntime) {
 // reports the error by throwing an inference error. They are excluded from no-exception
 // builds where such a throw would abort rather than yield a failure Status.
 #if !defined(ORT_NO_EXCEPTIONS)
+
+TEST(RangeTest, ContribOp_Int64CountOverflow) {
+  for (int64_t delta : {int64_t{1}, int64_t{2}}) {
+    SessionOptions so;
+    InferenceSession session_object{so, GetEnvironment()};
+    const auto status = BuildAndInitializeContribRangeModel(
+        ONNX_NAMESPACE::TensorProto_DataType_INT64,
+        ScalarInput(std::numeric_limits<int64_t>::min()), ScalarInput(std::numeric_limits<int64_t>::max()),
+        ScalarInput(delta), session_object);
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_NE(status.ErrorMessage().find("computed number of elements exceeds the supported range"), std::string::npos);
+  }
+}
+
+TEST(RangeTest, ContribOp_Int64ZeroDelta) {
+  SessionOptions so;
+  InferenceSession session_object{so, GetEnvironment()};
+  const auto status = BuildAndInitializeContribRangeModel(
+      ONNX_NAMESPACE::TensorProto_DataType_INT64, ScalarInput<int64_t>(0), ScalarInput<int64_t>(0),
+      ScalarInput<int64_t>(0), session_object);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("delta in Range operator can not be zero"), std::string::npos);
+}
 
 // Verifies that Range shape inference rejects an initializer whose raw_data holds fewer bytes
 // than its declared data type requires (here: a zero-element initializer with empty raw_data,

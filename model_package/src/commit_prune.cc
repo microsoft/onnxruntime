@@ -116,22 +116,24 @@ ModelPackageStatus* CopyTreeNoFollow(const fs::path& src, const fs::path& dst) {
   fs::create_directories(dst, ec);
   if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO,
                             "mkdir '" + dst.u8string() + "': " + ec.message());
-  for (fs::recursive_directory_iterator it(src, fs::directory_options::none, ec), end;
-       it != end; it.increment(ec)) {
-    if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                              "iterate '" + src.u8string() + "': " + ec.message());
+  std::error_code iter_ec;
+  for (fs::recursive_directory_iterator it(src, fs::directory_options::none, iter_ec), end;
+       !iter_ec && it != end; it.increment(iter_ec)) {
     const auto& entry = *it;
     fs::path rel = fs::relative(entry.path(), src, ec);
     fs::path target = dst / rel;
-    if (entry.is_symlink()) {
+    fs::file_status st = entry.symlink_status(ec);
+    if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO,
+                              "stat '" + entry.path().u8string() + "': " + ec.message());
+    if (fs::is_symlink(st)) {
       return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
                         "shared asset source contains a symlink: '" + entry.path().u8string() + "'.");
     }
-    if (entry.is_directory()) {
+    if (fs::is_directory(st)) {
       fs::create_directories(target, ec);
       if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO,
                                 "mkdir '" + target.u8string() + "': " + ec.message());
-    } else if (entry.is_regular_file()) {
+    } else if (fs::is_regular_file(st)) {
       fs::create_directories(target.parent_path(), ec);
       fs::copy_file(entry.path(), target, fs::copy_options::overwrite_existing, ec);
       if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO,
@@ -144,6 +146,8 @@ ModelPackageStatus* CopyTreeNoFollow(const fs::path& src, const fs::path& dst) {
                             entry.path().u8string() + "'.");
     }
   }
+  if (iter_ec) return MakeStatus(MODEL_PACKAGE_ERR_IO,
+                                 "iterate '" + src.u8string() + "': " + iter_ec.message());
   if (auto* s = FsyncPath(dst, /*is_dir=*/true)) return s;
   return nullptr;
 }
@@ -609,17 +613,16 @@ extern "C" {
 
 ModelPackageStatus* ModelPackage_Commit(ModelPackage* pkg,
                                         const char* dest_root_or_null,
-                                        ModelPackageWriteMode mode) try {
+                                        ModelPackageWriteMode mode) MODEL_PACKAGE_TRY {
   if (!pkg) return NullArg("pkg");
   if (dest_root_or_null) {
     return CommitToDestRoot(pkg, fs::u8path(dest_root_or_null), mode);
   }
   return CommitInPlace(pkg, mode);
-} catch (const std::system_error& error) {
-  return MakeStatus(MODEL_PACKAGE_ERR_IO, error.what());
 }
+MODEL_PACKAGE_CATCH
 
-ModelPackageStatus* ModelPackage_Prune(ModelPackage* pkg) try {
+ModelPackageStatus* ModelPackage_Prune(ModelPackage* pkg) MODEL_PACKAGE_TRY {
   if (!pkg) return NullArg("pkg");
   if (pkg->package_root.empty()) return nullptr;
 
@@ -636,13 +639,19 @@ ModelPackageStatus* ModelPackage_Prune(ModelPackage* pkg) try {
   std::error_code ec;
   fs::path assets_root = pkg->package_root / "shared_assets";
   if (fs::is_directory(assets_root, ec)) {
-    for (const auto& entry : fs::directory_iterator(assets_root, ec)) {
-      if (ec) break;
-      if (!entry.is_directory()) continue;
+    std::error_code open_ec, iter_ec;
+    for (fs::directory_iterator it(assets_root, open_ec), end; !iter_ec && it != end; it.increment(iter_ec)) {
+      const auto& entry = *it;
+      fs::file_status st = entry.status(ec);
+      if (st.type() == fs::file_type::none) {
+        return MakeStatus(MODEL_PACKAGE_ERR_IO, "stat '" + entry.path().u8string() + "': " + ec.message());
+      }
+      if (!fs::is_directory(st)) continue;
       if (!IsTmpName(entry.path())) continue;
       if (!IsOldEnough(entry.path())) continue;
       fs::remove_all(entry.path(), ec);
     }
+    if (iter_ec) return MakeStatus(MODEL_PACKAGE_ERR_IO, "iterate '" + assets_root.u8string() + "': " + iter_ec.message());
   }
 
   // Tracked-orphan sweep: components before variants so a component_dir
@@ -652,8 +661,7 @@ ModelPackageStatus* ModelPackage_Prune(ModelPackage* pkg) try {
   SweepOrphanDirs(pkg, &pkg->pending_orphan_variant_dirs, live_dirs);
 
   return nullptr;
-} catch (const std::system_error& error) {
-  return MakeStatus(MODEL_PACKAGE_ERR_IO, error.what());
 }
+MODEL_PACKAGE_CATCH
 
 }  // extern "C"

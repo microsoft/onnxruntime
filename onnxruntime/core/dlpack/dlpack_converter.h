@@ -17,9 +17,8 @@ namespace dlpack {
 // it implies no new ownership.
 DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value);
 
-// DLPack uses same config for both bool and unit8. Parameter is_bool_tensor is to
-// tell ORT the data type when creating OrtValue.
-OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor = false);
+// Imports a contiguous tensor, preserving its DLPack dtype (including kDLBool).
+OrtValue DlpackToOrtValue(DLManagedTensor* dlpack);
 
 // Return the device of an OrtValue.
 DLDevice GetDlpackDevice(const OrtValue& ort_value, const int64_t& device_id);
