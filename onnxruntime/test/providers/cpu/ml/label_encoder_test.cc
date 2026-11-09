@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "core/framework/endian_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/file_util.h"
@@ -820,6 +821,13 @@ static ONNX_NAMESPACE::TensorProto MakeInMemoryExternalTensorProto(const std::st
 // Valid external data in tensor attributes should be loaded and inlined during session initialization.
 TEST(LabelEncoder, ExternalDataInKeysTensorOpset4) {
   std::vector<int64_t> key_data{1, 2};
+
+  // external data has to be little endian, even on big endian systems.
+  // byteswap it if needed.
+  if constexpr (onnxruntime::endian::native == onnxruntime::endian::big) {
+    onnxruntime::utils::SwapByteOrderInplace(sizeof(int64_t), gsl::make_span(reinterpret_cast<std::byte*>(key_data.data()), key_data.size() * sizeof(int64_t)));
+  }
+
   auto [ext_path, ext_deleter] = CreateExternalDataFile(key_data.data(), key_data.size() * sizeof(int64_t));
 
   OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);

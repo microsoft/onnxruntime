@@ -172,13 +172,14 @@ void DumpTensorToFile(const Tensor& tensor, const std::string& tensor_name, cons
   const PathString file_path_str = file_path.native();
   int output_fd;
   ORT_THROW_IF_ERROR(Env::Default().FileOpenWr(file_path_str, output_fd));
-  try {
+  ORT_TRY {
     ORT_ENFORCE(
         tensor_proto.SerializeToFileDescriptor(output_fd),
         "Failed to write tensor to file - tensor: ", tensor_name, ", file: ", ToUTF8String(file_path_str));
-  } catch (...) {
+  }
+  ORT_CATCH(...) {
     ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(output_fd));
-    throw;
+    ORT_RETHROW;
   }
   ORT_THROW_IF_ERROR(Env::Default().FileClose(output_fd));
 }

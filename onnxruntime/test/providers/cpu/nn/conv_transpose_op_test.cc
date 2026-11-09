@@ -1161,7 +1161,7 @@ TEST(ConvTransposeTest, DimWithZero) {
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
                       OpTester::ExpectResult::kExpectSuccess, "",
                       {kCudaNHWCExecutionProvider, kTensorrtExecutionProvider,
-                       kAclExecutionProvider, kQnnExecutionProvider, kWebGpuExecutionProvider});
+                       kQnnExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_3D) {
