@@ -1054,6 +1054,7 @@ MoEPacked<T>::MoEPacked(const OpKernelInfo& info) : CudaKernel(info) {
               "MoEPacked requires k in 1..32; internally routed mode requires k <= 16");
   normalize_routing_weights_ = info.GetAttrOrDefault<int64_t>("normalize_routing_weights", 1);
   activation_type_ = info.GetAttrOrDefault<std::string>("activation_type", "swiglu");
+  if (activation_type_ == "relu_squared") activation_type_ = "relu2";
   routing_function_ = info.GetAttrOrDefault<std::string>("routing_function", "softmax");
   router_scale_ = info.GetAttrOrDefault<float>("router_scale", 1.0f);
   ORT_ENFORCE(routing_function_ == "softmax" || routing_function_ == "sigmoid",
@@ -1061,8 +1062,11 @@ MoEPacked<T>::MoEPacked(const OpKernelInfo& info) : CudaKernel(info) {
   ORT_ENFORCE(std::isfinite(router_scale_) &&
                   (routing_function_ == "sigmoid" || router_scale_ == 1.0f),
               "MoEPacked router_scale must be finite and non-default scaling requires sigmoid routing");
-  ORT_ENFORCE(activation_type_ == "swiglu" || activation_type_ == "relu_squared",
-              "MoEPacked supports activation_type='swiglu' or 'relu_squared'");
+  ORT_ENFORCE(activation_type_ == "swiglu" || activation_type_ == "relu2",
+              "MoEPacked supports activation_type='swiglu' or 'relu2' ('relu_squared' alias)");
+  ORT_ENFORCE(routing_function_ != "sigmoid" ||
+                  (activation_type_ == "relu2" && normalize_routing_weights_ == 1),
+              "MoEPacked sigmoid routing requires relu2 and normalize_routing_weights=1");
   ORT_ENFORCE(info.GetAttr<int64_t>("gate_type", &gate_type_).IsOK(), "MoEPacked requires gate_type");
   up_type_ = info.GetAttrOrDefault<int64_t>("up_type", -1);
   ORT_ENFORCE(activation_type_ != "swiglu" || up_type_ >= 0, "MoEPacked swiglu requires up_type");
@@ -1071,13 +1075,13 @@ MoEPacked<T>::MoEPacked(const OpKernelInfo& info) : CudaKernel(info) {
   ORT_ENFORCE(activation_type_ != "swiglu" || gguf_quant::IsGgmlTypeSupported(up_type_),
               "MoEPacked: unsupported up_type=", up_type_);
   ORT_ENFORCE(gguf_quant::IsGgmlTypeSupported(down_type_), "MoEPacked: unsupported down_type=", down_type_);
+  ORT_ENFORCE(activation_type_ != "relu2" ||
+                  (gate_type_ == gguf_quant::kGgmlTypeIQ2_XXS && down_type_ == gguf_quant::kGgmlTypeIQ2_XXS),
+              "MoEPacked relu2 currently requires IQ2_XXS gate and down weights");
   if constexpr (std::is_same_v<T, BFloat16>) {
     ORT_ENFORCE(GetDeviceProp().major >= 8, "MoEPacked BF16 requires compute capability 8.0 or higher");
     ORT_THROW_IF_ERROR(GetMoEPackedBf16KernelSupport(GetDeviceId(), bf16_tc_supported_));
   }
-  ORT_ENFORCE(activation_type_ != "relu_squared" ||
-                  (gate_type_ == gguf_quant::kGgmlTypeIQ2_XXS && down_type_ == gguf_quant::kGgmlTypeIQ2_XXS),
-              "MoEPacked relu_squared currently requires IQ2_XXS gate and down weights");
 
   // Check if inputs 2..4 were placed on CPU by PlaceMoeOffloadInitializersOnCpu for hybrid offload.
   const Tensor* gate_w = nullptr;
@@ -1417,21 +1421,20 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* router_bias = context->InputCount() > 9 ? context->Input<Tensor>(9) : nullptr;
   const bool sigmoid_routing = routing_function_ == "sigmoid";
   const bool preselected = indices || weights;
-  const bool relu_squared = activation_type_ == "relu_squared";
+  const bool relu_squared = activation_type_ == "relu2";
   ORT_RETURN_IF_NOT(input && gate_w && down_w, "MoEPacked requires input, gate and down weights");
   ORT_RETURN_IF_NOT(sigmoid_routing
-                        ? (router_input && router_weight && router_bias && !router_probs && !preselected &&
-                           normalize_routing_weights_ == 1 && relu_squared)
+                        ? (router_input && router_weight && router_bias && !router_probs && !preselected)
                         : (!router_input && !router_weight && !router_bias),
                     "MoEPacked sigmoid routing requires router_input, router_weight, router_bias, "
-                    "relu_squared and normalize_routing_weights=1, with no other routing inputs");
+                    "with no other routing inputs");
   ORT_RETURN_IF_NOT(sigmoid_routing ||
                         (preselected ? (indices && weights && !router_probs && normalize_routing_weights_ == 0)
                                      : (router_probs && k_ <= 16)),
                     "MoEPacked preselected routing requires both indices and weights, no router_probs and "
                     "normalize_routing_weights=0; internal routing requires router_probs and k <= 16");
   ORT_RETURN_IF_NOT(relu_squared ? !up_w : up_w != nullptr,
-                    "MoEPacked swiglu requires up weights; relu_squared requires omitted up weights");
+                    "MoEPacked swiglu requires up weights; relu2 requires omitted up weights");
 
   const auto& in_shape = input->Shape();
   const auto& gw_shape = gate_w->Shape();

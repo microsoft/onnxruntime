@@ -538,13 +538,11 @@ __global__ __launch_bounds__(KW * 32) void MoEPackedFc1DecodeWarpKSplitKernel(
     for (int m = 0; m < MT; ++m) {
       if (valid_rows[m]) {
         float g_vals[8];
-        float u_vals[8] = {};
+        float u_vals[8];
         gguf_cuda::DecodeGgufSubBlock8SmemLutTpl<kGateUpType>(
             gate_ptrs[m], p.gate_type, sb32_idx, t, s_lut, g_vals);
-        if (!p.relu_squared) {
-          gguf_cuda::DecodeGgufSubBlock8SmemLutTpl<kGateUpType>(
-              up_ptrs[m], p.up_type, sb32_idx, t, s_lut, u_vals);
-        }
+        gguf_cuda::DecodeGgufSubBlock8SmemLutTpl<kGateUpType>(
+            up_ptrs[m], p.up_type, sb32_idx, t, s_lut, u_vals);
         const uint4 e_vec = gguf_cuda::PackFloat8ToBf16x2(g_vals);
         const uint4 o_vec = gguf_cuda::PackFloat8ToBf16x2(u_vals);
         gguf_cuda::MmaBf16(acc[m], e_vec.x, o_vec.x, e_vec.y, o_vec.y, b_vec.x, b_vec.y);
@@ -578,8 +576,7 @@ __global__ __launch_bounds__(KW * 32) void MoEPackedFc1DecodeWarpKSplitKernel(
       }
       const float g_val = __bfloat162float(__float2bfloat16_rn(g_raw));
       const float u_val = __bfloat162float(__float2bfloat16_rn(u_raw));
-      const float positive = g_val < 0.f ? 0.f : g_val;
-      const float activation = p.relu_squared ? positive * positive : u_val * (g_val / (1.0f + expf(-g_val)));
+      const float activation = u_val * (g_val / (1.0f + expf(-g_val)));
       fc1_out[static_cast<int64_t>(s_routes[col]) * p.inter_size + j_out] =
           __float2bfloat16_rn(activation);
     }
@@ -716,11 +713,9 @@ __global__ __launch_bounds__((kMaxSubTiles == 1) ? 128 : 256) void MoEPackedFc1S
       for (int sb_local = 0; sb_local < num_sb32; ++sb_local) {
         const int sb32_idx = sb32_base + sb_local;
         float g_vals[8];
-        float u_vals[8] = {};
+        float u_vals[8];
         gguf_cuda::DecodeGgufSubBlock8SmemLutTpl<kGateUpType>(gate_row_ptr, p.gate_type, sb32_idx, t, s_lut, g_vals);
-        if (!p.relu_squared) {
-          gguf_cuda::DecodeGgufSubBlock8SmemLutTpl<kGateUpType>(up_row_ptr, p.up_type, sb32_idx, t, s_lut, u_vals);
-        }
+        gguf_cuda::DecodeGgufSubBlock8SmemLutTpl<kGateUpType>(up_row_ptr, p.up_type, sb32_idx, t, s_lut, u_vals);
         const uint4 e_vec = gguf_cuda::PackFloat8ToBf16x2(g_vals);
         const uint4 o_vec = gguf_cuda::PackFloat8ToBf16x2(u_vals);
 #pragma unroll
@@ -750,8 +745,7 @@ __global__ __launch_bounds__((kMaxSubTiles == 1) ? 128 : 256) void MoEPackedFc1S
             const float u_raw = (h == 0) ? acc[st][2] : acc[st][3];
             const float g_val = __bfloat162float(__float2bfloat16_rn(g_raw));
             const float u_val = __bfloat162float(__float2bfloat16_rn(u_raw));
-            const float positive = g_val < 0.f ? 0.f : g_val;
-            const float activation = p.relu_squared ? positive * positive : u_val * (g_val / (1.0f + expf(-g_val)));
+            const float activation = u_val * (g_val / (1.0f + expf(-g_val)));
             const int route = s_routes[m];
             fc1_out[static_cast<int64_t>(route) * p.inter_size + j_out] = __float2bfloat16_rn(activation);
           }
