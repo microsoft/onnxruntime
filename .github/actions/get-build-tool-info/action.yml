@@ -1,0 +1,75 @@
+name: 'Get build tool info'
+description: 'Reads common build tool versions and SHA-512 digests.'
+
+inputs:
+  cmake:
+    description: 'Return CMake tool info.'
+    required: false
+    default: 'false'
+  vcpkg:
+    description: 'Return vcpkg tool info.'
+    required: false
+    default: 'false'
+  ccache:
+    description: 'Return ccache tool info.'
+    required: false
+    default: 'false'
+
+outputs:
+  cmake-version:
+    description: 'The CMake version, if requested.'
+    value: ${{ steps.tool-info.outputs.cmake-version }}
+  cmake-sha512:
+    description: 'The SHA-512 of the host CMake archive, if requested.'
+    value: ${{ steps.tool-info.outputs.cmake-sha512 }}
+  vcpkg-version:
+    description: 'The vcpkg release tag, if requested.'
+    value: ${{ steps.tool-info.outputs.vcpkg-version }}
+  vcpkg-sha512:
+    description: 'The SHA-512 of the vcpkg release archive, if requested.'
+    value: ${{ steps.tool-info.outputs.vcpkg-sha512 }}
+  ccache-version:
+    description: 'The ccache version, if requested.'
+    value: ${{ steps.tool-info.outputs.ccache-version }}
+  ccache-sha512:
+    description: 'The SHA-512 of the host ccache archive, if requested.'
+    value: ${{ steps.tool-info.outputs.ccache-sha512 }}
+
+runs:
+  using: 'composite'
+  steps:
+  - name: Read build tool info
+    id: tool-info
+    shell: 'python3 {0}'
+    env:
+      GET_CMAKE: ${{ inputs.cmake }}
+      GET_VCPKG: ${{ inputs.vcpkg }}
+      GET_CCACHE: ${{ inputs.ccache }}
+    run: |
+      import os
+      import sys
+      from pathlib import Path
+
+      sys.path.insert(0, str(Path(os.environ["GITHUB_ACTION_PATH"]).parents[2] / "tools" / "ci_build"))
+      from build_tool_info import get_tool_info
+
+      tool_names = []
+      for tool in ("cmake", "vcpkg", "ccache"):
+          flag = os.environ[f"GET_{tool.upper()}"]
+          if flag not in ("true", "false"):
+              sys.exit("::error::Tool selection inputs must be 'true' or 'false'.")
+          if flag == "true":
+              tool_names.append(tool)
+
+      if not tool_names:
+          sys.exit("::error::At least one tool must be requested.")
+
+      lines = []
+      for tool in tool_names:
+          info = get_tool_info(tool)
+          lines.extend((f"{tool}-version={info.version}", f"{tool}-sha512={info.sha512}"))
+      text = "\n".join(lines) + "\n"
+
+      print(text, end="")
+      with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+          output.write(text)
