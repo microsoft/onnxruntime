@@ -1575,7 +1575,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Future-token radius for bidirectional attention. A key is excluded when its position is "
               "greater than query_position + local_window_size_right. -1 means unbounded. Requires causal=0. "
               "Currently implemented only for CPU float32 prefill without past cache, softcap, smooth softmax, "
-              "head sink or QK output. Default value is -1. For a symmetric radius R, set "
+              "head sink or QK output. Requires flash attention to be enabled. Default value is -1. For a symmetric radius R, set "
               "local_window_size=R+1 and local_window_size_right=R.",
               AttributeProto::INT,
               static_cast<int64_t>(-1))

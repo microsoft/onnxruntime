@@ -831,10 +831,9 @@ TEST(GroupQueryAttentionTest, BidirectionalLeftWindow_CPU) {
 
 static void RunBidirectionalWindowTest(int sequence_length, int left_window, int right_window,
                                        OpTester::ExpectResult expect = OpTester::ExpectResult::kExpectSuccess,
-                                       const std::string& message = "") {
+                                       const std::string& message = "", int head_size = 8) {
   constexpr int batch_size = 2;
   constexpr int num_heads = 3;
-  constexpr int head_size = 8;
   const int second_length = std::min(sequence_length, 7);
   std::vector<float> query(batch_size * sequence_length * num_heads * head_size, 0.0f);
   std::vector<float> key(batch_size * sequence_length * head_size, 0.0f);
@@ -889,6 +888,16 @@ TEST(GroupQueryAttentionTest, BidirectionalWindowAsymmetric_CPU) {
 
 TEST(GroupQueryAttentionTest, BidirectionalWindowSelfOnly_CPU) {
   RunBidirectionalWindowTest(33, 1, 0);
+}
+
+TEST(GroupQueryAttentionTest, BidirectionalWindowSelfOnlyLargeHead_CPU) {
+  RunBidirectionalWindowTest(513, 1, 0, OpTester::ExpectResult::kExpectSuccess, "", 256);
+}
+
+TEST(GroupQueryAttentionTest, BidirectionalWindowRejectsDisabledFlash_CPU) {
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_GQA_DISABLE_FLASH_ATTENTION", "1"}}};
+  RunBidirectionalWindowTest(33, 2, 2, OpTester::ExpectResult::kExpectFailure,
+                             "bidirectional windows require flash attention to be enabled");
 }
 
 TEST(GroupQueryAttentionTest, BidirectionalWindowRightOnly_CPU) {
