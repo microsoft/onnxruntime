@@ -7797,8 +7797,9 @@ struct OrtApi {
    */
   ORT_CLASS_RELEASE(GraphSerializationOptions);
 
-  /** \brief Set how graph serialization handles file-backed initializers, recursively including subgraphs.
+  /** \brief Set how graph serialization handles file-backed tensors in initializers and tensor attributes.
    *
+   * Applies recursively to subgraphs and local functions. FAIL_IF_PRESENT rejects file references before callbacks.
    * Sparse tensor components follow this policy but never invoke the dense initializer location callback.
    * String initializers are embedded when read and never invoke the callback.
    * \param[in,out] options Options to update.
@@ -7812,8 +7813,9 @@ struct OrtApi {
 
   /** \brief Set the inclusive minimum data size for invoking the initializer location callback.
    *
-   * Applies to eligible non-string dense initializers embedded in the model or supplied in memory, and file data
-   * read under REPACKAGE_VIA_CALLBACK. Smaller initializers are embedded. The default is zero.
+   * Applies to eligible non-string dense initializers and tensor attributes embedded in the model, trusted
+   * in-memory initializers, and file data read under REPACKAGE_VIA_CALLBACK. Smaller tensors are embedded.
+   * The default is zero.
    * \param[in,out] options Options to update.
    * \param[in] min_bytes Minimum initializer size in bytes.
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -7856,7 +7858,9 @@ struct OrtApi {
    * Exports only the supplied view, without optimization or compilation. Nodes retain Graph_GetNodes() order.
    * Training information is not serialized.
    * Captured nonconstant values in standalone subgraphs become inputs; captured constants are copied.
-   * External initializer policies apply recursively. ORT performs no filesystem writes.
+   * External initializer policies also cover tensor attributes recursively, including local functions.
+   * ORT in-memory address markers in local functions or node tensor attributes return ORT_INVALID_ARGUMENT
+   * before callbacks. Trusted graph-owned in-memory initializers are supported. ORT performs no filesystem writes.
    * Bytes are deterministic for the same graph, options and ORT build, unchanged initializer contents and
    * deterministic callbacks. Relative external paths retain their meaning relative to the source model.
    * Model construction uses memory proportional to model size; protobuf size limits apply.
