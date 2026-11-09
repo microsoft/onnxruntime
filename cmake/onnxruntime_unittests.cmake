@@ -1414,7 +1414,9 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
       "${TEST_SRC_DIR}/shared_lib/optional_provider_probe_test_library.cc")
     target_include_directories(${probe_fixture} PRIVATE
       $<TARGET_PROPERTY:onnxruntime_session,INCLUDE_DIRECTORIES>)
-    target_link_libraries(${probe_fixture} PRIVATE onnxruntime_common onnx)
+    if(fixture STREQUAL "valid")
+      target_link_libraries(${probe_fixture} PRIVATE onnxruntime_common onnx)
+    endif()
     target_compile_definitions(${probe_fixture} PRIVATE ORT_TEST_OPTIONAL_PROVIDER_${fixture})
     set_target_properties(${probe_fixture} PROPERTIES FOLDER "ONNXRuntimeTest")
   endforeach()
