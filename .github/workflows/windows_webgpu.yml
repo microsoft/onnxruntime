@@ -44,7 +44,7 @@ jobs:
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           architecture: x64
@@ -67,12 +67,12 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24.x"
 
       - name: Setup Java
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: "temurin"
           java-version: "17"
@@ -149,7 +149,7 @@ jobs:
           Remove-Item -Path $outputDir -Include "*.lib" -Recurse
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: webgpu-build-${{ matrix.vcpkg_option }}
           path: |
@@ -161,7 +161,6 @@ jobs:
         run: python tools\ValidateNativeDelegateAttributes.py
         shell: cmd
         working-directory: ${{ github.workspace }}\csharp
-        continue-on-error: true
 
   webgpu_test_x64_RelWithDebInfo:
     name: webgpu_test_x64_RelWithDebInfo (${{ matrix.vcpkg_option }})
@@ -184,7 +183,7 @@ jobs:
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           architecture: x64
@@ -200,12 +199,12 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24.x"
 
       - name: Setup Java
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: "temurin"
           java-version: "17"
@@ -298,7 +297,7 @@ jobs:
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           architecture: x64
@@ -353,14 +352,14 @@ jobs:
           Remove-Item -Path $outputDir -Include "*.lib" -Recurse
 
       - name: Upload test artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: webgpu-plugin-test-artifacts
           path: ${{ github.workspace }}/RelWithDebInfo
           if-no-files-found: error
 
       - name: Publish artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: webgpu-plugin-binaries
           path: |
@@ -386,7 +385,7 @@ jobs:
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           architecture: x64
@@ -450,7 +449,7 @@ jobs:
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           architecture: x64
@@ -466,7 +465,7 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "20.x"
 
@@ -508,7 +507,7 @@ jobs:
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           architecture: x64
@@ -570,7 +569,7 @@ jobs:
           }
 
       - name: Upload Dawn package and host
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: external-dawn-inputs
           path: ${{ github.workspace }}\external-dawn-inputs
@@ -588,7 +587,7 @@ jobs:
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           architecture: x64
@@ -709,7 +708,7 @@ jobs:
           submodules: none
 
       - name: Setup Python 3.12
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           architecture: x64
@@ -725,12 +724,12 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24.x"
 
       - name: Setup Java
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: "temurin"
           java-version: "17"

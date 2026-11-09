@@ -367,6 +367,10 @@ struct MlasFlashAttentionQuantizedKVArgs {
     //   [m_partial, l_partial, output_partial[head_size]] for each chunk.
     float* flash_decoding_partials = nullptr;  // nullptr to disable flash decoding
     int kv_chunk_count = 0;                    // number of KV chunks = ceil(total_seqlen / kv_block_size)
+
+    // Valid rows per batch for this invocation; sequence_length remains the physical
+    // Q-head/output/bias stride. Negative means all sequence_length rows are valid.
+    int valid_query_length = -1;
 };
 
 /**

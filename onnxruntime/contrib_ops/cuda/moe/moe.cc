@@ -72,9 +72,13 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
     LogSwigluFusionRemapOnce();
   }
 
-  bool is_fused_swiglu = (activation_type_ == ActivationType::Swiglu) &&
-                         (swiglu_fusion != 0) &&
-                         (fc3_experts_weights_optional == nullptr);
+  ORT_RETURN_IF(activation_type_ == ActivationType::Geglu &&
+                    (fc3_experts_weights_optional != nullptr || fc3_experts_bias_optional != nullptr),
+                "GEGLU requires gate/up projections fused into FC1, without FC3 inputs.");
+  bool is_fused_gated = (activation_type_ == ActivationType::Swiglu ||
+                         activation_type_ == ActivationType::Geglu) &&
+                        (swiglu_fusion != 0) &&
+                        (fc3_experts_weights_optional == nullptr);
 
   MoEParameters moe_params;
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::moe_helper::CheckInputs<Tensor>(
@@ -83,7 +87,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
       fc2_experts_weights, fc2_experts_bias_optional, nullptr, nullptr,
       fc3_experts_weights_optional, fc3_experts_bias_optional, nullptr, nullptr,
       1,  //  no quantization so pack size is 1
-      is_fused_swiglu,
+      is_fused_gated,
       0));  // no block-wise quantization for regular MoE
   ORT_RETURN_IF_NOT(k_ > 0 && k_ <= moe_params.num_experts,
                     "MoE requires 0 < k <= num_experts, got k=", k_,

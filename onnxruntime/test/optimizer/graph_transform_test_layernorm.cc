@@ -1237,7 +1237,8 @@ static void BuildRotaryEmbeddingGQAFusionGraph(ModelTestBuilder& builder,
                                                int64_t q_interleaved = 0,
                                                int64_t k_interleaved = 0,
                                                int64_t rotary_embedding_dim = 0,
-                                               int64_t gqa_num_heads = 2) {
+                                               int64_t gqa_num_heads = 2,
+                                               bool include_query_seqlens = false) {
   constexpr int64_t batch_size = 1;
   constexpr int64_t sequence_length = 2;
   constexpr int64_t input_hidden_size = 8;
@@ -1317,11 +1318,13 @@ static void BuildRotaryEmbeddingGQAFusionGraph(ModelTestBuilder& builder,
   NodeArg* gqa_output =
       builder.MakeOutput<MLFloat16>(std::vector<int64_t>{batch_size, sequence_length, q_hidden_size});
 
-  Node& gqa = builder.AddNode("GroupQueryAttention",
-                              {q_rotary_out, k_rotary_out, v_matmul_out, past_key, past_value,
-                               seqlens_k, total_sequence_length},
-                              {gqa_output},
-                              kMSDomain);
+  std::vector<NodeArg*> gqa_inputs{q_rotary_out, k_rotary_out, v_matmul_out, past_key, past_value,
+                                   seqlens_k, total_sequence_length};
+  if (include_query_seqlens) {
+    gqa_inputs.resize(16, builder.MakeEmptyInput());
+    gqa_inputs.push_back(builder.MakeInput<int32_t>({{batch_size}}));
+  }
+  Node& gqa = builder.AddNode("GroupQueryAttention", gqa_inputs, {gqa_output}, kMSDomain);
   gqa.AddAttribute("num_heads", gqa_num_heads);
   gqa.AddAttribute("kv_num_heads", kv_num_heads);
 }
@@ -1715,6 +1718,42 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionFusionMsRotaryEmbeddingForwa
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
                                         std::make_unique<GroupQueryAttentionFusion>(),
                                         TransformerLevel::Level2, 3, nullptr,
+                                        check_fused_graph));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionPreservesQuerySeqlensTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildRotaryEmbeddingGQAFusionGraph(builder, RotaryEmbeddingDomain::kMS, true, 0, 0, 0, 2, true);
+  };
+  std::string query_seqlens_name;
+  auto check_original_graph = [&query_seqlens_name](Graph& graph) {
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() == "GroupQueryAttention") {
+        query_seqlens_name = node.InputDefs()[16]->Name();
+      }
+    }
+    TEST_RETURN_IF_NOT(!query_seqlens_name.empty());
+    return Status::OK();
+  };
+  auto check_fused_graph = [&query_seqlens_name](Graph& graph) {
+    const auto counts = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(OpCount(counts, "com.microsoft.RotaryEmbedding") == 0);
+    TEST_RETURN_IF_NOT(OpCount(counts, "MatMul") == 1);
+    TEST_RETURN_IF_NOT(OpCount(counts, "com.microsoft.GroupQueryAttention") == 1);
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() == "GroupQueryAttention") {
+        TEST_RETURN_IF_NOT(node.InputDefs().size() == 17);
+        TEST_RETURN_IF_NOT(node.InputDefs()[16]->Name() == query_seqlens_name);
+        TEST_RETURN_IF_NOT(node.InputDefs()[7]->Exists() && node.InputDefs()[8]->Exists());
+        TEST_RETURN_IF_NOT(node.InputDefs()[9]->Exists());
+        TEST_RETURN_IF_NOT(node.InputArgCount().size() == node.InputDefs().size());
+      }
+    }
+    return Status::OK();
+  };
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
+                                        std::make_unique<GroupQueryAttentionFusion>(),
+                                        TransformerLevel::Level2, 3, check_original_graph,
                                         check_fused_graph));
 }
 

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #param has_zero_points
+#param has_qlora_up
 #param has_bias
 #param has_weight_idx
 #param has_weight_idx_indirect
@@ -113,7 +114,12 @@ fn load_scale(row : u32, block_idx : u32) -> output_element_t {
 fn write_output(batch : u32, row : u32, col : u32, value : output_element_t) {
   if (batch < uniforms.Batch && row < uniforms.M && col < uniforms.N) {
     let offset = batch * uniforms.M * uniforms.N + row * uniforms.N + col;
+#if has_qlora_up
+    let delta = qlora_delta(batch * uniforms.M + row, col);
+    output.setByOffset(offset, value + delta);
+#else
     output.setByOffset(offset, value);
+#endif
   }
 }
 
