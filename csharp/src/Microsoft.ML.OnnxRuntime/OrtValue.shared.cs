@@ -856,17 +856,13 @@ namespace Microsoft.ML.OnnxRuntime
         [Experimental("SYSLIB5001")]
         public static OrtValue CreateTensorValueFromSystemNumericsTensorObject<T>(SystemNumericsTensors.Tensor<T> tensor) where T : unmanaged
         {
-            if (!IsContiguousAndDense(tensor))
+            if (!tensor.IsDense)
             {
-                var newTensor = SystemNumericsTensors.Tensor.Create<T>(tensor.Lengths);
-                tensor.CopyTo(newTensor);
-                tensor = newTensor;
+                tensor = tensor.ToDenseTensor();
             }
             unsafe
             {
-                var backingData = (T[])tensor.GetType().GetField("_values", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(tensor);
-                GCHandle handle = GCHandle.Alloc(backingData, GCHandleType.Pinned);
-                var memHandle = new MemoryHandle(Unsafe.AsPointer(ref tensor.GetPinnableReference()), handle);
+                var memHandle = tensor.GetPinnedHandle();
 
                 try
                 {
@@ -899,22 +895,6 @@ namespace Microsoft.ML.OnnxRuntime
                     throw;
                 }
             }
-        }
-
-        [Experimental("SYSLIB5001")]
-        private static bool IsContiguousAndDense<T>(SystemNumericsTensors.Tensor<T> tensor) where T : unmanaged 
-        {
-            // Right most dimension must be 1 for a dense tensor.
-            if (tensor.Strides[^1] != 1)
-                return false;
-
-            // For other dimensions, the stride must be equal to the product of the dimensions to the right.
-            for (int i = tensor.Rank - 2; i >= 0; i--)
-            {
-                if (tensor.Strides[i] != TensorPrimitives.Product(tensor.Lengths.Slice(i + 1, tensor.Lengths.Length - i - 1)))
-                    return false;
-            }
-            return true;
         }
 #endif
 
