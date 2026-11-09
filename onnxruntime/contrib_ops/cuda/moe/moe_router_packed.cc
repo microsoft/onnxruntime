@@ -27,10 +27,10 @@ REGISTER_MOE_ROUTER_PACKED_CUDA(BFloat16)
 
 template <typename T>
 MoERouterPacked<T>::MoERouterPacked(const OpKernelInfo& info) : CudaKernel(info) {
-  ORT_ENFORCE(info.GetAttr<int64_t>("k", &k_).IsOK() && k_ > 0 && k_ <= 32,
-              "MoERouterPacked requires k in 1..32");
+  ORT_ENFORCE(info.GetAttr<int64_t>("k", &k_).IsOK(), "MoERouterPacked requires k");
+  ORT_ENFORCE(k_ > 0 && k_ <= 32, "MoERouterPacked k must be in 1..32, got ", k_);
   router_scale_ = info.GetAttrOrDefault<float>("router_scale", 1.0f);
-  ORT_ENFORCE(std::isfinite(router_scale_), "MoERouterPacked requires finite router_scale");
+  ORT_ENFORCE(std::isfinite(router_scale_), "MoERouterPacked requires finite router_scale, got ", router_scale_);
 }
 
 template <typename T>
@@ -39,17 +39,23 @@ Status MoERouterPacked<T>::ComputeInternal(OpKernelContext* context) const {
   const auto* weight = context->Input<Tensor>(1);
   const auto* bias = context->Input<Tensor>(2);
   ORT_RETURN_IF_NOT(input && weight && bias, "MoERouterPacked requires input, weight and bias");
-  ORT_RETURN_IF_NOT(input->Shape().NumDimensions() == 2 &&
-                        weight->Shape().NumDimensions() == 2,
-                    "MoERouterPacked input and weight must be rank two");
+  ORT_RETURN_IF_NOT(input->Shape().NumDimensions() == 2,
+                    "MoERouterPacked input must be rank 2, got ", input->Shape());
+  ORT_RETURN_IF_NOT(weight->Shape().NumDimensions() == 2,
+                    "MoERouterPacked weight must be rank 2, got ", weight->Shape());
   const int64_t rows = input->Shape()[0];
   const int64_t width = input->Shape()[1];
   const int64_t experts = weight->Shape()[0];
-  ORT_RETURN_IF_NOT(rows >= 0 && rows <= 2048 && width > 0 &&
-                        width <= std::numeric_limits<int>::max() && width % 256 == 0 &&
-                        experts >= k_ && experts <= 512 && weight->Shape()[1] == width &&
-                        bias->Shape() == TensorShape({experts}),
-                    "MoERouterPacked requires rows<=2048, width divisible by 256 and k<=experts<=512");
+  ORT_RETURN_IF_NOT(rows >= 0 && rows <= 2048,
+                    "MoERouterPacked rows must be in [0, 2048], got ", rows);
+  ORT_RETURN_IF_NOT(width > 0 && width <= std::numeric_limits<int>::max() && width % 256 == 0,
+                    "MoERouterPacked width must be a positive multiple of 256 and <= INT_MAX, got ", width);
+  ORT_RETURN_IF_NOT(experts >= k_ && experts <= 512,
+                    "MoERouterPacked requires k <= experts <= 512, got k=", k_, " experts=", experts);
+  ORT_RETURN_IF_NOT(weight->Shape()[1] == width,
+                    "MoERouterPacked weight must be [experts, ", width, "], got ", weight->Shape());
+  ORT_RETURN_IF_NOT(bias->Shape() == TensorShape({experts}),
+                    "MoERouterPacked bias must be [", experts, "], got ", bias->Shape());
   constexpr bool is_bf16 = std::is_same_v<T, BFloat16>;
   ORT_RETURN_IF_NOT(!is_bf16 || GetDeviceProp().major >= 8,
                     "MoERouterPacked BF16 requires SM80+");

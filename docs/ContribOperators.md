@@ -5146,12 +5146,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.MoERouterPacked"></a><a name="com.microsoft.moerouterpacked">**com.microsoft.MoERouterPacked**</a>
 
-  Projected sigmoid routing for MoEPacked. FP16/BF16 activations and dense router
-  weights are accumulated in FP32. Correction bias changes expert selection only;
-  mixture weights use unbiased sigmoid affinities, normalized in selected-rank order
-  and multiplied by router_scale. Ties select lower expert IDs. Outputs feed
-  MoEPacked's preselected inputs with normalize_routing_weights=0.
-  Supports 0..2048 rows, width divisible by 256, and 1<=k<=32 with k<=experts<=512.
+  Projected sigmoid routing for MoEPacked.
+  FP16/BF16 activations and dense router weights are accumulated in FP32.
+  Correction bias changes expert selection only; mixture weights use unbiased sigmoid affinities s_i.
+  Weights are w_i = s_i / (sum_selected + 1e-20) * router_scale, with sequential FP32 summation in selected-rank order.
+  Selection ranks score plus bias as +inf > finite > -inf > NaN; ties select lower expert IDs.
+  Nonfinite activations are not sanitized; NaN affinities propagate to mixture weights.
+  Outputs feed MoEPacked's preselected inputs with normalize_routing_weights=0.
+  Supports 0..2048 rows, positive width divisible by 256, and 1<=k<=32 with k<=experts<=512.
   This is not the log-domain router_probs/weight_scale contract used by expert-parallel QMoE.
 
 #### Version
