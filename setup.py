@@ -77,8 +77,6 @@ elif parse_arg_remove_boolean(sys.argv, "--use_tvm"):
     package_name = "onnxruntime-tvm"
 elif parse_arg_remove_boolean(sys.argv, "--use_vitisai"):
     package_name = "onnxruntime-vitisai"
-elif parse_arg_remove_boolean(sys.argv, "--use_acl"):
-    package_name = "onnxruntime-acl"
 elif parse_arg_remove_boolean(sys.argv, "--use_cann"):
     package_name = "onnxruntime-cann"
 elif parse_arg_remove_boolean(sys.argv, "--use_azure"):

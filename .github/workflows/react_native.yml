@@ -38,8 +38,6 @@ jobs:
 
       - name: Setup Android NDK
         uses: ./.github/actions/setup-android-ndk
-        with:
-          ndk-version: 28.0.13004108
 
       - name: Get vcpkg tool info
         id: vcpkg-tool-info
@@ -69,7 +67,7 @@ jobs:
           cp -r ${{ runner.temp }}/aar_out/Release/com ${{ runner.temp }}/artifacts
 
       - name: Upload Android AAR Artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: onnxruntime-android-full-aar
           path: ${{ runner.temp }}/artifacts
@@ -93,7 +91,7 @@ jobs:
           architecture: "x64"
 
       - name: Use Java 17 (Temurin)
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -142,8 +140,6 @@ jobs:
 
       - name: Setup Android Emulator
         uses: ./.github/actions/setup-android-ndk
-        with:
-          ndk-version: 28.0.13004108
 
       - name: Run React Native Detox Android e2e Tests
         run: |
@@ -171,7 +167,7 @@ jobs:
 
       - name: Upload Android Test Results
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-test-results
           path: |
@@ -219,7 +215,7 @@ jobs:
             --build-settings-file ${{ github.workspace }}/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings_arm64.json
 
       - name: Upload iOS Pod Artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ios_pod
           path: ${{ runner.temp }}/ios_pod
@@ -288,13 +284,26 @@ jobs:
         run: npm run detox -- build --configuration ios.sim_18_6.release
         working-directory: ${{ github.workspace }}/js/react_native/e2e
 
-      - name: Reset iOS Simulators before Detox
+      - name: Prepare Detox iOS Simulator
+        timeout-minutes: 10
         run: |
-          set -e -x
-          xcrun simctl shutdown all || true
-          xcrun simctl erase all || true
-          killall Simulator || true
-          killall com.apple.CoreSimulator.CoreSimulatorService || true
+          set -euo pipefail
+          simulator_type=$(node -p "require('./.detoxrc.js').devices.simulator_ios_18_6.device.type")
+          simulator_os=$(node -p "require('./.detoxrc.js').devices.simulator_ios_18_6.device.os")
+          device=$(applesimutils --list --byType "$simulator_type" --byOS "$simulator_os" |
+            jq -e 'if length == 1 then .[0] else error("Expected exactly one simulator matching the Detox configuration") end')
+          device_id=$(jq -er '.udid' <<< "$device")
+          device_state=$(jq -er '.state' <<< "$device")
+          case "$device_state" in
+            Booted) xcrun simctl shutdown "$device_id" ;;
+            Shutdown) ;;
+            *) echo "Unexpected state for simulator $device_id: $device_state" >&2; exit 1 ;;
+          esac
+          xcrun simctl erase "$device_id"
+          xcrun simctl boot "$device_id"
+          xcrun simctl bootstatus "$device_id" -b
+          xcrun simctl listapps "$device_id" > /dev/null
+        working-directory: ${{ github.workspace }}/js/react_native/e2e
 
       - name: Run Detox iOS e2e Tests
         run: |
@@ -308,7 +317,7 @@ jobs:
 
       - name: Upload iOS Test Results
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ios-test-results
           path: |

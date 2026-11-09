@@ -199,6 +199,7 @@ struct AttentionKernel {
     int32_t* seqstart_k_ptr = nullptr;
 
     int32_t* seqlen_k_ptr = nullptr;
+    const int32_t* seqlen_q_ptr = nullptr;
     // Signed: CausalFromBottomRight sets this to (num_keys - num_queries), which is NEGATIVE in the
     // external-KV-cache regime where nonpad_kv_seqlen < q_sequence_length (onnx#8068 / ORT #28904).
     // A uint32_t here wraps the negative value to ~4.29e9 and breaks the causal-mask guard below
