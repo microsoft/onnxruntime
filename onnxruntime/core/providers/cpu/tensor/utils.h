@@ -424,7 +424,7 @@ struct SliceIterator : public SliceIteratorBase {
   }
 
   // Assumes SolitaryInnerStep() == true
-  T* CopyInnermostAxisSolitaryInnerStep(T* output) {
+  ORT_FORCEINLINE T* CopyInnermostAxisSolitaryInnerStep(T* output) {
     void* new_output = SliceIteratorBase::CopyInnermostAxisSolitaryInnerStep(output);
     return static_cast<T*>(new_output);
   }

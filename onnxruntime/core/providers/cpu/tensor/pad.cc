@@ -567,13 +567,20 @@ static Status PadImpl(OpKernelContext* ctx,
   const size_t inner_pre_pad = SafeInt<size_t>(reshaped_pad[inner_axis]);
   const size_t inner_post_pad = SafeInt<size_t>(reshaped_pad[inner_axis + new_dims_count]);
 
+  // align_skip is accumulated with SafeInt. It is prepad_elems before the first row, and before each later
+  // row it is the innermost pre-pad plus the pitch-weighted pre-pads of the axes that just wrapped, a subset
+  // of the terms of prepad_elems, so it never exceeds prepad_elems. The Constant and Edge row loops therefore
+  // advance the pointer with the plain value instead of SafeInt's checked pointer add (an out-of-line call
+  // per row); the byte-size check that operator did is done here once, for the largest possible skip.
+  ORT_IGNORE_RETURN_VALUE(SafeInt<std::ptrdiff_t>(prepad_elems) * sizeof(T));
+
   switch (mode) {
     case Mode::Constant:
       // Loop over the output tensor, writing out padding between the blocks of copied data
       // On loop entry, 'pad' is already set to the first continuous block of padding, and
       // after every pass through the inner loop it gets set to the next continuous pad size.
       while (input_counters) {
-        output += align_skip;
+        output += static_cast<size_t>(align_skip);
         {
           T* axis_start = output;
           // Copy innermost block. IMPORTANT: do not rely on the returned 'output' to be end-of-the extent.
@@ -612,18 +619,21 @@ static Status PadImpl(OpKernelContext* ctx,
       // On loop entry, 'pad' is already set to the first continuous block of padding, and
       // after every pass through the inner loop it gets set to the next continuous pad size.
       while (input_counters) {
-        output += align_skip;
+        output += static_cast<size_t>(align_skip);
         {
           T* axis_start = output;
           T* axis_end = axis_start + inner_extent;
+          // The row is contiguous (solitary inner step) and non-empty: read the edge values from the input
+          // instead of reloading them from the output just written by the copy.
+          const T* input_row = &*input;
           output = input.CopyInnermostAxisSolitaryInnerStep(output);
 
           if (inner_no_pad_size == 1) {
             if (inner_pre_pad > 0) {
-              PadAxisConstant(sink, axis_start - inner_pre_pad, *axis_start, inner_pre_pad);
+              PadAxisConstant(sink, axis_start - inner_pre_pad, input_row[0], inner_pre_pad);
             }
             if (inner_post_pad > 0) {
-              PadAxisConstant(sink, output, *(output - 1), inner_post_pad);
+              PadAxisConstant(sink, output, input_row[inner_extent - 1], inner_post_pad);
             }
           } else {
             // When inner_most axis(es) do not need pad, above PadAxisConstant() do not fit for Edge mode.
