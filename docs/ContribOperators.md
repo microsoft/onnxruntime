@@ -3389,7 +3389,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>kv_num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for k and v</dd>
 <dt><tt>local_window_size</tt> : int</dt>
-<dd>left_window_size for causal local attention (like Mistral). Must be -1 when causal is 0. Default value is -1 meaning unused.</dd>
+<dd>Left window size including the query position: key positions less than query_position + 1 - local_window_size are excluded. CPU float32 prefill also supports this bound when causal is 0; other execution providers require -1 when causal is 0. Default value is -1 meaning unused.</dd>
+<dt><tt>local_window_size_right</tt> : int</dt>
+<dd>Future-token radius for bidirectional attention. A key is excluded when its position is greater than query_position + local_window_size_right. -1 means unbounded. Requires causal=0. Currently implemented only for CPU float32 prefill without past cache, softcap, smooth softmax, head sink or QK output. Default value is -1. For a symmetric radius R, set local_window_size=R+1 and local_window_size_right=R.</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for q</dd>
 <dt><tt>q_norm_epsilon</tt> : float</dt>

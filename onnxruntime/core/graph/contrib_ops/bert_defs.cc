@@ -1565,8 +1565,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
         .Attr("local_window_size",
-              "left_window_size for causal local attention (like Mistral). Must be -1 when causal is 0. "
+              "Left window size including the query position: key positions less than "
+              "query_position + 1 - local_window_size are excluded. CPU float32 prefill also supports "
+              "this bound when causal is 0; other execution providers require -1 when causal is 0. "
               "Default value is -1 meaning unused.",
+              AttributeProto::INT,
+              static_cast<int64_t>(-1))
+        .Attr("local_window_size_right",
+              "Future-token radius for bidirectional attention. A key is excluded when its position is "
+              "greater than query_position + local_window_size_right. -1 means unbounded. Requires causal=0. "
+              "Currently implemented only for CPU float32 prefill without past cache, softcap, smooth softmax, "
+              "head sink or QK output. Default value is -1. For a symmetric radius R, set "
+              "local_window_size=R+1 and local_window_size_right=R.",
               AttributeProto::INT,
               static_cast<int64_t>(-1))
         .Attr("sliding_window_cache",

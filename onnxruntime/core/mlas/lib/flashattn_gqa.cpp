@@ -202,15 +202,21 @@ MlasFlashAttentionGQAThreaded(
         // (past_seqlen + q_idx + row_size_q) is fully causally masked for every row in
         // the block, so it contributes nothing and can be skipped. This avoids the
         // wasted QK/SV GEMMs over the causal upper triangle during prefill.
-        const ptrdiff_t kv_causal_limit =
-            past_seqlen + q_idx + static_cast<ptrdiff_t>(row_size_q);
+        const ptrdiff_t q_end = past_seqlen + q_idx + static_cast<ptrdiff_t>(row_size_q);
+        const ptrdiff_t kv_limit = args->is_causal
+                                       ? std::min(total_seqlen, q_end)
+                                       : (args->local_window_size_right < 0
+                                              ? total_seqlen
+                                              : static_cast<ptrdiff_t>(std::min<int64_t>(
+                                                    total_seqlen, static_cast<int64_t>(q_end) + args->local_window_size_right
+                                                )));
+        const ptrdiff_t kv_start = !args->is_causal && local_window_size >= 0
+                                       ? std::max(ptrdiff_t{0}, past_seqlen + q_idx + 1 - local_window_size)
+                                       : 0;
 
         // Iterate over KV blocks
-        for (ptrdiff_t ir = 0; ir < total_seqlen; ir += kv_block_size) {
-            if (ir >= kv_causal_limit) {
-                break;
-            }
-            const size_t row_size_kv = static_cast<size_t>(std::min(kv_block_size, total_seqlen - ir));
+        for (ptrdiff_t ir = kv_start; ir < kv_limit; ir += kv_block_size) {
+            const size_t row_size_kv = static_cast<size_t>(std::min(kv_block_size, kv_limit - ir));
 
             // Step 1: QK^T GEMM with FP32 K block
             const float* k_block = k_cache_head + static_cast<size_t>(ir) * static_cast<size_t>(head_size);
@@ -268,7 +274,10 @@ MlasFlashAttentionGQAThreaded(
                 // Apply causal masking
                 for (ptrdiff_t jcol = 0; jcol < static_cast<ptrdiff_t>(row_size_kv); ++jcol) {
                     ptrdiff_t kv_pos = ir + jcol;
-                    if (kv_pos >= causal_limit) {
+                    if ((args->is_causal && kv_pos >= causal_limit) ||
+                        (!args->is_causal && args->local_window_size_right >= 0 &&
+                         static_cast<int64_t>(kv_pos) >
+                             static_cast<int64_t>(global_q_pos) + args->local_window_size_right)) {
                         p[jcol] = std::numeric_limits<float>::lowest();
                     }
                 }
@@ -312,7 +321,7 @@ MlasFlashAttentionGQAThreaded(
 #endif
 
                 // Rescale previous state
-                if (ir != 0) {
+                if (ir != kv_start) {
                     float exp_diff = std::exp(m_diff);
                     l[irow] = exp_diff * l[irow] + rowsum;
 
@@ -331,17 +340,17 @@ MlasFlashAttentionGQAThreaded(
             MlasSgemmOperation(
                 CblasNoTrans,
                 CblasNoTrans,
-                row_size_q,                         // M
-                static_cast<size_t>(head_size),     // N
-                row_size_kv,                        // K
-                1.0f,                               // alpha
-                scores,                             // A (exp softmax scores)
-                row_size_kv,                        // lda
-                v_block,                            // B (FP32 V block)
-                static_cast<size_t>(head_size),     // ldb
-                ir == 0 ? 0.0f : 1.0f,              // beta (accumulate after first block)
-                temp_output,                        // C (accumulated output)
-                static_cast<size_t>(head_size)      // ldc
+                row_size_q,                      // M
+                static_cast<size_t>(head_size),  // N
+                row_size_kv,                     // K
+                1.0f,                            // alpha
+                scores,                          // A (exp softmax scores)
+                row_size_kv,                     // lda
+                v_block,                         // B (FP32 V block)
+                static_cast<size_t>(head_size),  // ldb
+                ir == kv_start ? 0.0f : 1.0f,    // beta (accumulate after first block)
+                temp_output,                     // C (accumulated output)
+                static_cast<size_t>(head_size)   // ldc
             );
         }
 
@@ -798,7 +807,7 @@ MlasFlashAttentionGQA(
     if (args->valid_query_length == 0) {
         return;
     }
-    if (args->sequence_length == 1) {
+    if (args->sequence_length == 1 && args->is_causal) {
         // Decode: M = 1, use the GEMV kernels (no SGEMM packing overhead).
         if (args->flash_decoding_partials != nullptr) {
             // Flash decoding: two-phase approach when KV is partitioned across threads.

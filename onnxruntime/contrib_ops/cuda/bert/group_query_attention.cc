@@ -109,6 +109,8 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   const int64_t causal = info.GetAttrOrDefault<int64_t>("causal", 1);
   ORT_ENFORCE(causal == 0 || causal == 1, "causal must be 0 or 1.");
   is_unidirectional_ = causal == 1;
+  ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("local_window_size_right", -1) == -1,
+              "GroupQueryAttention (CUDA): local_window_size_right is not implemented.");
   const int64_t local_window_size_attr = info.GetAttrOrDefault<int64_t>("local_window_size", -1);
   // Validate before narrowing to int so an out-of-range attribute cannot wrap to a valid-looking
   // small window (e.g. 2^32 + 128) and silently run a different window than the model specifies.

@@ -822,11 +822,87 @@ TEST(GroupQueryAttentionTest, BidirectionalMask_CUDA) {
   RunGQACausalMaskTest<MLFloat16>(GqaTargetEp::kCuda, 0, std::vector<float>(16, 2.5f));
 }
 
-TEST(GroupQueryAttentionTest, BidirectionalLocalWindowRejected_CPU) {
+TEST(GroupQueryAttentionTest, BidirectionalLeftWindow_CPU) {
+  std::vector<float> expected(16, 2.5f);
+  std::fill(expected.begin() + 8, expected.end(), 3.0f);
   RunGQACausalMaskTest<float>(
-      GqaTargetEp::kCpu, 0, std::vector<float>(16, 0.0f),
-      OpTester::ExpectResult::kExpectFailure,
-      "GroupQueryAttention (CPU): local_window_size must be -1 when causal is 0.", 1);
+      GqaTargetEp::kCpu, 0, expected, OpTester::ExpectResult::kExpectSuccess, "", 1);
+}
+
+static void RunBidirectionalWindowTest(int sequence_length, int left_window, int right_window,
+                                       OpTester::ExpectResult expect = OpTester::ExpectResult::kExpectSuccess,
+                                       const std::string& message = "") {
+  constexpr int batch_size = 2;
+  constexpr int num_heads = 3;
+  constexpr int head_size = 8;
+  const int second_length = std::min(sequence_length, 7);
+  std::vector<float> query(batch_size * sequence_length * num_heads * head_size, 0.0f);
+  std::vector<float> key(batch_size * sequence_length * head_size, 0.0f);
+  std::vector<float> value(batch_size * sequence_length * head_size);
+  std::vector<float> expected(query.size(), 0.0f);
+  for (int b = 0; b < batch_size; ++b) {
+    const int valid = b == 0 ? sequence_length : second_length;
+    for (int s = 0; s < sequence_length; ++s) {
+      for (int h = 0; h < head_size; ++h) {
+        value[(b * sequence_length + s) * head_size + h] =
+            s < valid ? static_cast<float>(s + h) / 100.0f : 999.0f;
+      }
+    }
+    for (int s = 0; s < valid; ++s) {
+      const int first = left_window < 0 ? 0 : std::max(0, s + 1 - left_window);
+      const int last = right_window < 0 ? valid : std::min(valid, s + right_window + 1);
+      for (int n = 0; n < num_heads; ++n) {
+        for (int h = 0; h < head_size; ++h) {
+          expected[((b * sequence_length + s) * num_heads + n) * head_size + h] =
+              static_cast<float>(first + last - 1 + 2 * h) / 200.0f;
+        }
+      }
+    }
+  }
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", 1);
+  tester.AddAttribute<int64_t>("causal", 0);
+  tester.AddAttribute<int64_t>("local_window_size", left_window);
+  tester.AddAttribute<int64_t>("local_window_size_right", right_window);
+  tester.AddInput<float>("query", {batch_size, sequence_length, num_heads * head_size}, query);
+  tester.AddInput<float>("key", {batch_size, sequence_length, head_size}, key);
+  tester.AddInput<float>("value", {batch_size, sequence_length, head_size}, value);
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {sequence_length - 1, second_length - 1});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {sequence_length});
+  tester.AddOutput<float>("output", {batch_size, sequence_length, num_heads * head_size}, expected);
+  tester.SetOutputTolerance(1e-4f);
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(expect, message, {}, nullptr, &providers);
+}
+
+TEST(GroupQueryAttentionTest, BidirectionalWindowGroupedHeadsAndPadding_CPU) {
+  RunBidirectionalWindowTest(513, 257, 256);
+}
+
+TEST(GroupQueryAttentionTest, BidirectionalWindowAsymmetric_CPU) {
+  RunBidirectionalWindowTest(33, 2, 4);
+}
+
+TEST(GroupQueryAttentionTest, BidirectionalWindowSelfOnly_CPU) {
+  RunBidirectionalWindowTest(33, 1, 0);
+}
+
+TEST(GroupQueryAttentionTest, BidirectionalWindowRightOnly_CPU) {
+  RunBidirectionalWindowTest(33, -1, 2);
+}
+
+TEST(GroupQueryAttentionTest, BidirectionalWindowSingleToken_CPU) {
+  RunBidirectionalWindowTest(1, 1, 0);
+}
+
+TEST(GroupQueryAttentionTest, BidirectionalWindowInvalidRightBound_CPU) {
+  RunBidirectionalWindowTest(
+      2, 1, -2, OpTester::ExpectResult::kExpectFailure,
+      "local_window_size_right must be -1 or nonnegative");
 }
 
 TEST(GroupQueryAttentionTest, BidirectionalLocalWindowRejected_CUDA) {
