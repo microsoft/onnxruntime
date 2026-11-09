@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <array>
 #include <gsl/span>
 
 #include "../plugin_ep_utils.h"
@@ -66,6 +67,10 @@ class ExampleEp : public OrtEp, public ApiPtrs {
     bool embed_ep_context_in_model = false;
     bool enable_weightless_ep_context_nodes = false;
     bool advertise_ep_context_data_support = true;
+    bool advertise_ep_cache_data_support = true;
+    OrtReadNamedBufferFunc cache_read_func = nullptr;
+    OrtWriteNamedBufferFunc cache_write_func = nullptr;
+    void* cache_state = nullptr;
     bool use_default_cpu_allocator = false;
     bool test_read_ep_context_during_compile = false;
     // External-only float32 Mul fixture: writes a versioned marker and restores a kernel only for that marker.
@@ -93,6 +98,9 @@ class ExampleEp : public OrtEp, public ApiPtrs {
                                                           OrtWeightlessSupport* support) noexcept;
   static OrtStatus* ORT_API_CALL GetEpContextDataCallbackSupportImpl(const OrtEp* this_ptr,
                                                                      uint32_t* supported_flags) noexcept;
+
+  static OrtStatus* ORT_API_CALL GetEpCacheDataCallbackSupportImpl(const OrtEp* this_ptr,
+                                                                   uint32_t* supported_flags) noexcept;
 
   static OrtStatus* ORT_API_CALL CreateAllocatorImpl(_In_ OrtEp* this_ptr,
                                                      _In_ const OrtMemoryInfo* memory_info,
@@ -128,6 +136,9 @@ class ExampleEp : public OrtEp, public ApiPtrs {
 
   // Returns true if the EP should save constant initializers so that they are available during inference.
   bool CopiesConstantInitializers() const;
+
+  std::array<std::string, 2> GetMulPlan(const std::vector<Ort::ConstValueInfo>& inputs);
+  bool cache_write_warning_logged_ = false;
 
   // If the given `OrtValueInfo` represents a constant initializer, this function saves a copy of the initializer data
   // within this EP instance so that it is available during inference.

@@ -81,6 +81,14 @@ void Utils::LoadExampleEpHooks(const ExamplePluginInfo& ep_info,
   HMODULE lib = LoadLibraryW(ep_info.library_path.wstring().c_str());
   ASSERT_NE(lib, nullptr);
 
+  hooks.get_ep_cache_outstanding_buffer_count = reinterpret_cast<ExampleEpHooks::GetSyncCountFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_GetEpCacheOutstandingBufferCount"));
+  hooks.reset_ep_cache_counts = reinterpret_cast<ExampleEpHooks::ResetSyncCountFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_ResetEpCacheCounts"));
+  hooks.get_ep_cache_plan_created_count = reinterpret_cast<ExampleEpHooks::GetSyncCountFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_GetEpCachePlanCreatedCount"));
+  hooks.get_ep_cache_plan_reused_count = reinterpret_cast<ExampleEpHooks::GetSyncCountFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_GetEpCachePlanReusedCount"));
   hooks.reset_sync_count = reinterpret_cast<ExampleEpHooks::ResetSyncCountFn>(
       GetProcAddress(lib, "ExampleEpTestHooks_ResetSyncCount"));
   hooks.get_sync_count = reinterpret_cast<ExampleEpHooks::GetSyncCountFn>(
@@ -98,6 +106,14 @@ void Utils::LoadExampleEpHooks(const ExamplePluginInfo& ep_info,
   void* lib = dlopen(ep_info.library_path.c_str(), RTLD_LAZY | RTLD_LOCAL);
   ASSERT_NE(lib, nullptr);
 
+  hooks.get_ep_cache_outstanding_buffer_count = reinterpret_cast<ExampleEpHooks::GetSyncCountFn>(
+      dlsym(lib, "ExampleEpTestHooks_GetEpCacheOutstandingBufferCount"));
+  hooks.reset_ep_cache_counts = reinterpret_cast<ExampleEpHooks::ResetSyncCountFn>(
+      dlsym(lib, "ExampleEpTestHooks_ResetEpCacheCounts"));
+  hooks.get_ep_cache_plan_created_count = reinterpret_cast<ExampleEpHooks::GetSyncCountFn>(
+      dlsym(lib, "ExampleEpTestHooks_GetEpCachePlanCreatedCount"));
+  hooks.get_ep_cache_plan_reused_count = reinterpret_cast<ExampleEpHooks::GetSyncCountFn>(
+      dlsym(lib, "ExampleEpTestHooks_GetEpCachePlanReusedCount"));
   hooks.reset_sync_count = reinterpret_cast<Utils::ExampleEpHooks::ResetSyncCountFn>(
       dlsym(lib, "ExampleEpTestHooks_ResetSyncCount"));
   hooks.get_sync_count = reinterpret_cast<Utils::ExampleEpHooks::GetSyncCountFn>(

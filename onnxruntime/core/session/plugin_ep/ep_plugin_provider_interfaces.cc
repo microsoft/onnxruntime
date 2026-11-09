@@ -832,6 +832,20 @@ const InlinedVector<const Node*> PluginExecutionProvider::GetEpContextNodes() co
   return result;
 }
 
+Status PluginExecutionProvider::GetEpCacheDataCallbackSupport(uint32_t& supported_flags) const {
+  if (ort_ep_->ort_version_supported < 32 || ort_ep_->GetEpCacheDataCallbackSupport == nullptr) {
+    supported_flags = ORT_EP_CACHE_DATA_CALLBACK_SUPPORT_NONE;
+    return Status::OK();
+  }
+
+  uint32_t flags = ORT_EP_CACHE_DATA_CALLBACK_SUPPORT_NONE;
+  ORT_RETURN_IF_ERROR(ToStatusAndRelease(ort_ep_->GetEpCacheDataCallbackSupport(ort_ep_.get(), &flags)));
+  constexpr uint32_t known_flags = ORT_EP_CACHE_DATA_CALLBACK_SUPPORT_READ | ORT_EP_CACHE_DATA_CALLBACK_SUPPORT_WRITE;
+  ORT_RETURN_IF(flags & ~known_flags, "OrtEp for ", Type(), " returned unknown EP cache support flags: ", flags, ".");
+  supported_flags = flags;
+  return Status::OK();
+}
+
 Status PluginExecutionProvider::GetEpContextDataCallbackSupport(uint32_t& supported_flags) const {
   supported_flags = OrtEpContextDataCallbackSupportFlags_NONE;
   if (ort_ep_->ort_version_supported < 31 || ort_ep_->GetEpContextDataCallbackSupport == nullptr) {

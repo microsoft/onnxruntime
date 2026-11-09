@@ -22,6 +22,10 @@ inline constexpr const char* kExampleEpTestEpContextDataSupport =
 inline constexpr const char* kExampleEpTestOrtVersion = "ep.example_ep.test_ort_version";
 
 extern "C" {
+EXPORT_SYMBOL uint64_t ExampleEpTestHooks_GetEpCacheOutstandingBufferCount();
+EXPORT_SYMBOL void ExampleEpTestHooks_ResetEpCacheCounts();
+EXPORT_SYMBOL uint64_t ExampleEpTestHooks_GetEpCachePlanCreatedCount();
+EXPORT_SYMBOL uint64_t ExampleEpTestHooks_GetEpCachePlanReusedCount();
 EXPORT_SYMBOL void ExampleEpTestHooks_ResetSyncCount();
 EXPORT_SYMBOL uint64_t ExampleEpTestHooks_GetSyncCount();
 EXPORT_SYMBOL void ExampleEpTestHooks_ResetPreallocatedOutputQuery();
@@ -34,3 +38,8 @@ EXPORT_SYMBOL void ExampleEpTestHooks_SetCreateDataTransferFailure(int enabled);
 void RecordPreallocatedOutputQueryResult(int has_preallocated_output);
 void RecordPreallocatedOutputBadIndexRejected(int rejected);
 bool ShouldFailCreateDataTransfer();
+
+void RecordEpCachePlanCreated();
+void RecordEpCachePlanReused();
+void RecordEpCacheBufferAllocated();
+void RecordEpCacheBufferFreed();

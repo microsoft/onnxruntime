@@ -45,6 +45,10 @@ struct Utils {
     using GetPreallocatedOutputBadIndexRejectedFn = int (*)();
     using SetCreateDataTransferFailureFn = void (*)(int enabled);
 
+    GetSyncCountFn get_ep_cache_outstanding_buffer_count{};
+    ResetSyncCountFn reset_ep_cache_counts{};
+    GetSyncCountFn get_ep_cache_plan_created_count{};
+    GetSyncCountFn get_ep_cache_plan_reused_count{};
     ResetSyncCountFn reset_sync_count{};
     GetSyncCountFn get_sync_count{};
     ResetPreallocatedOutputQueryFn reset_preallocated_output_query{};

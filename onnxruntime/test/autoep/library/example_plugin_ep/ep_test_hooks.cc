@@ -34,3 +34,28 @@ void RecordPreallocatedOutputBadIndexRejected(int rejected) {
 bool ShouldFailCreateDataTransfer() {
   return g_create_data_transfer_should_fail.load();
 }
+
+namespace {
+std::atomic<uint64_t> ep_cache_outstanding_buffer_count{0};
+std::atomic<uint64_t> ep_cache_plan_created_count{0};
+std::atomic<uint64_t> ep_cache_plan_reused_count{0};
+}  // namespace
+
+extern "C" void ExampleEpTestHooks_ResetEpCacheCounts() {
+  ep_cache_plan_created_count.store(0);
+  ep_cache_plan_reused_count.store(0);
+}
+extern "C" uint64_t ExampleEpTestHooks_GetEpCachePlanCreatedCount() {
+  return ep_cache_plan_created_count.load();
+}
+extern "C" uint64_t ExampleEpTestHooks_GetEpCachePlanReusedCount() {
+  return ep_cache_plan_reused_count.load();
+}
+void RecordEpCachePlanCreated() { ep_cache_plan_created_count.fetch_add(1); }
+void RecordEpCachePlanReused() { ep_cache_plan_reused_count.fetch_add(1); }
+
+extern "C" uint64_t ExampleEpTestHooks_GetEpCacheOutstandingBufferCount() {
+  return ep_cache_outstanding_buffer_count.load();
+}
+void RecordEpCacheBufferAllocated() { ep_cache_outstanding_buffer_count.fetch_add(1); }
+void RecordEpCacheBufferFreed() { ep_cache_outstanding_buffer_count.fetch_sub(1); }

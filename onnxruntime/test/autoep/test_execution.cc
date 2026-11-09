@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <future>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -34,6 +36,83 @@ namespace onnxruntime {
 namespace test {
 
 namespace {
+
+enum class CacheReadMode { Normal,
+                           Error,
+                           PartialError,
+                           Empty,
+                           Oversized,
+                           WrongSize };
+
+struct EpCacheState {
+  std::mutex mutex;
+  std::unordered_map<std::string, std::vector<char>> entries;
+  CacheReadMode mode = CacheReadMode::Normal;
+  bool fail_write = false;
+  bool oversized_rejected = false;
+  size_t reads = 0;
+  size_t writes = 0;
+};
+
+OrtStatus* ORT_API_CALL ReadEpCache(void* state, const char* key, OrtAllocator* allocator,
+                                    void** buffer, size_t* size) {
+  *buffer = nullptr;
+  *size = 0;
+  try {
+    auto& cache = *static_cast<EpCacheState*>(state);
+    std::lock_guard<std::mutex> lock(cache.mutex);
+    ++cache.reads;
+    if (cache.mode == CacheReadMode::Error) {
+      return Ort::GetApi().CreateStatus(ORT_FAIL, "cache read failed");
+    }
+    if (cache.mode == CacheReadMode::PartialError) {
+      OrtStatus* status = Ort::GetApi().AllocatorAlloc(allocator, 8, buffer);
+      if (status) return status;
+      *size = 8;
+      return Ort::GetApi().CreateStatus(ORT_FAIL, "cache read failed after allocation");
+    }
+    if (cache.mode == CacheReadMode::Oversized) {
+      OrtStatus* status = Ort::GetApi().AllocatorAlloc(allocator, 4097, buffer);
+      cache.oversized_rejected = status != nullptr || *buffer == nullptr;
+      *size = 4097;
+      return status;
+    }
+    auto entry = cache.entries.find(key);
+    if (cache.mode == CacheReadMode::Empty || entry == cache.entries.end()) return nullptr;
+    *size = entry->second.size();
+    OrtStatus* status = Ort::GetApi().AllocatorAlloc(allocator, *size, buffer);
+    if (status) return status;
+    if (!*buffer) return Ort::GetApi().CreateStatus(ORT_FAIL, "cache allocation rejected");
+    std::copy(entry->second.begin(), entry->second.end(), static_cast<char*>(*buffer));
+    if (cache.mode == CacheReadMode::WrongSize) ++*size;
+    return nullptr;
+  } catch (...) {
+    return Ort::GetApi().CreateStatus(ORT_FAIL, "cache read exception");
+  }
+}
+
+OrtStatus* ORT_API_CALL WriteEpCache(void* state, const char* key, const void* buffer, size_t size) {
+  try {
+    auto& cache = *static_cast<EpCacheState*>(state);
+    std::lock_guard<std::mutex> lock(cache.mutex);
+    ++cache.writes;
+    if (cache.fail_write) return Ort::GetApi().CreateStatus(ORT_FAIL, "cache write failed");
+    const char* begin = static_cast<const char*>(buffer);
+    cache.entries[key] = std::vector<char>(begin, begin + size);
+    return nullptr;
+  } catch (...) {
+    return Ort::GetApi().CreateStatus(ORT_FAIL, "cache write exception");
+  }
+}
+
+Ort::SessionOptions CacheOptions(Ort::ConstEpDevice device, EpCacheState* state,
+                                 OrtReadNamedBufferFunc read = ReadEpCache,
+                                 OrtWriteNamedBufferFunc write = WriteEpCache) {
+  Ort::SessionOptions options;
+  options.SetEpCacheDataFuncs(read, write, state);
+  options.AppendExecutionProvider_V2(*ort_env, {device}, std::unordered_map<std::string, std::string>{});
+  return options;
+}
 
 void SetEpContextDataReadFunc(Ort::SessionOptions& session_options, OrtReadNamedBufferFunc read_func, void* state) {
   ASSERT_NO_THROW(session_options.SetEpContextDataReadFunc(read_func, state));
@@ -938,6 +1017,210 @@ TEST(OrtEpLibrary, PluginEp_GenAndLoadEpContextModel_ExternalDataUsesFileFallbac
 
     Ort::Session session(*ort_env, output_model_file, session_options);
   }
+}
+
+TEST(OrtEpLibrary, EpCacheOptions) {
+  const auto& api = Ort::GetApi();
+  const auto& ep_api = Ort::GetEpApi();
+  EpCacheState first, second;
+  Ort::SessionOptions options;
+  options.SetEpCacheDataFuncs(ReadEpCache, WriteEpCache, &first);
+  auto clone = options.Clone();
+  options.SetEpCacheDataFuncs(nullptr, WriteEpCache, &second);
+  OrtReadNamedBufferFunc read = nullptr;
+  OrtWriteNamedBufferFunc write = nullptr;
+  void* state = nullptr;
+  ASSERT_NO_THROW(clone.GetEpCacheDataFuncs(read, write, state));
+  EXPECT_EQ(read, ReadEpCache);
+  EXPECT_EQ(write, WriteEpCache);
+  EXPECT_EQ(state, &first);
+  ASSERT_ORTSTATUS_OK(ep_api.SessionOptionsGetEpCacheDataFuncs(options, &read, &write, &state));
+  EXPECT_EQ(read, nullptr);
+  EXPECT_EQ(write, WriteEpCache);
+  EXPECT_EQ(state, &second);
+  options.SetEpCacheDataFuncs(ReadEpCache, nullptr, &first);
+  ASSERT_ORTSTATUS_OK(ep_api.SessionOptionsGetEpCacheDataFuncs(options, &read, &write, &state));
+  EXPECT_EQ(read, ReadEpCache);
+  EXPECT_EQ(write, nullptr);
+  options.SetEpCacheDataFuncs(nullptr, nullptr, &second);
+  ASSERT_ORTSTATUS_OK(ep_api.SessionOptionsGetEpCacheDataFuncs(options, &read, &write, &state));
+  EXPECT_EQ(read, nullptr);
+  EXPECT_EQ(write, nullptr);
+  EXPECT_EQ(state, nullptr);
+  Ort::Status invalid_set{api.SessionOptionsSetEpCacheDataFuncs(nullptr, ReadEpCache, WriteEpCache, &first)};
+  EXPECT_FALSE(invalid_set.IsOK());
+  for (int invalid = 0; invalid != 4; ++invalid) {
+    read = ReadEpCache;
+    write = WriteEpCache;
+    state = &first;
+    Ort::Status status{ep_api.SessionOptionsGetEpCacheDataFuncs(
+        invalid == 0 ? nullptr : static_cast<const OrtSessionOptions*>(options),
+        invalid == 1 ? nullptr : &read, invalid == 2 ? nullptr : &write, invalid == 3 ? nullptr : &state)};
+    EXPECT_FALSE(status.IsOK());
+    EXPECT_EQ(read, ReadEpCache);
+    EXPECT_EQ(write, WriteEpCache);
+    EXPECT_EQ(state, &first);
+  }
+}
+
+TEST(OrtEpLibrary, EpCacheRoundTrip) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Utils::LoadExampleEpHooksPtr hooks;
+  ASSERT_NO_FATAL_FAILURE(Utils::LoadExampleEpHooks(Utils::example_ep_info, hooks));
+  hooks->reset_ep_cache_counts();
+  Ort::ConstEpDevice device(example_ep.get());
+  EpCacheState cache;
+  auto options = CacheOptions(device, &cache);
+  ASSERT_NO_FATAL_FAILURE(RunMulModelWithPluginEp(options));
+  ASSERT_EQ(cache.entries.size(), 1u);
+  EXPECT_EQ(cache.reads, 1u);
+  EXPECT_EQ(cache.writes, 1u);
+  EXPECT_EQ(hooks->get_ep_cache_plan_created_count(), 1u);
+  EXPECT_EQ(hooks->get_ep_cache_plan_reused_count(), 0u);
+  const auto cold_entries = cache.entries;
+  for (char character : cache.entries.begin()->first) {
+    EXPECT_TRUE((character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') ||
+                (character >= '0' && character <= '9') || character == '-' || character == '_');
+  }
+  ASSERT_NO_FATAL_FAILURE(RunMulModelWithPluginEp(options));
+  EXPECT_EQ(hooks->get_ep_cache_plan_created_count(), 1u);
+  EXPECT_EQ(hooks->get_ep_cache_plan_reused_count(), 1u);
+  EXPECT_EQ(cache.entries, cold_entries);
+  {
+    Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), options);
+    EXPECT_EQ(session.GetEpCacheDataCallbackSupport(Utils::example_ep_info.ep_name.c_str()),
+              static_cast<uint32_t>(ORT_EP_CACHE_DATA_CALLBACK_SUPPORT_READ | ORT_EP_CACHE_DATA_CALLBACK_SUPPORT_WRITE));
+    uint32_t flags = 123;
+    Ort::Status unknown{Ort::GetApi().SessionGetEpCacheDataCallbackSupport(session, "missing_ep", &flags)};
+    EXPECT_FALSE(unknown.IsOK());
+    EXPECT_EQ(flags, 123u);
+    for (int invalid = 0; invalid != 3; ++invalid) {
+      Ort::Status status{Ort::GetApi().SessionGetEpCacheDataCallbackSupport(
+          invalid == 0 ? nullptr : static_cast<const OrtSession*>(session),
+          invalid == 1 ? nullptr : Utils::example_ep_info.ep_name.c_str(), invalid == 2 ? nullptr : &flags)};
+      EXPECT_FALSE(status.IsOK());
+      EXPECT_EQ(flags, 123u);
+    }
+  }
+
+  EpCacheState compilation_cache;
+  auto compile_session_options = CacheOptions(device, &compilation_cache);
+  Ort::ModelCompilationOptions compilation(*ort_env, compile_session_options);
+  compile_session_options.SetEpCacheDataFuncs(nullptr, nullptr, nullptr);
+  compilation.SetInputModelPath(ORT_TSTR("testdata/mul_1.onnx"));
+  compilation.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+  compilation.SetEpContextEmbedMode(true);
+  Ort::AllocatorWithDefaultOptions allocator;
+  void* model = nullptr;
+  size_t model_size = 0;
+  auto cleanup = gsl::finally([&]() { allocator.Free(model); });
+  compilation.SetOutputModelBuffer(allocator, &model, &model_size);
+  ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compilation));
+  EXPECT_EQ(compilation_cache.reads, 1u);
+  EXPECT_EQ(compilation_cache.writes, 1u);
+  EXPECT_GT(model_size, 0u);
+}
+
+TEST(OrtEpLibrary, EpCacheFailures) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Utils::LoadExampleEpHooksPtr hooks;
+  ASSERT_NO_FATAL_FAILURE(Utils::LoadExampleEpHooks(Utils::example_ep_info, hooks));
+  Ort::ConstEpDevice device(example_ep.get());
+  EpCacheState cache;
+  auto options = CacheOptions(device, &cache);
+  ASSERT_NO_FATAL_FAILURE(RunMulModelWithPluginEp(options));
+  const auto valid = cache.entries;
+  for (CacheReadMode mode : {CacheReadMode::Error, CacheReadMode::PartialError, CacheReadMode::Empty,
+                             CacheReadMode::Oversized, CacheReadMode::WrongSize}) {
+    SCOPED_TRACE(static_cast<int>(mode));
+    hooks->reset_ep_cache_counts();
+    cache.mode = mode;
+    cache.entries = valid;
+    ASSERT_NO_FATAL_FAILURE(RunMulModelWithPluginEp(options));
+    EXPECT_EQ(hooks->get_ep_cache_plan_created_count(), 1u);
+    EXPECT_EQ(hooks->get_ep_cache_plan_reused_count(), 0u);
+    EXPECT_EQ(hooks->get_ep_cache_outstanding_buffer_count(), 0u);
+  }
+  EXPECT_TRUE(cache.oversized_rejected);
+  cache.mode = CacheReadMode::Normal;
+  cache.entries = valid;
+  cache.entries.begin()->second[0] ^= 1;
+  hooks->reset_ep_cache_counts();
+  ASSERT_NO_FATAL_FAILURE(RunMulModelWithPluginEp(options));
+  EXPECT_EQ(hooks->get_ep_cache_plan_created_count(), 1u);
+  EXPECT_EQ(hooks->get_ep_cache_plan_reused_count(), 0u);
+  cache.entries.clear();
+  cache.fail_write = true;
+  ASSERT_NO_FATAL_FAILURE(RunMulModelWithPluginEp(options));
+  EXPECT_TRUE(cache.entries.empty());
+
+  EpCacheState write_only;
+  auto write_options = CacheOptions(device, &write_only, nullptr, WriteEpCache);
+  ASSERT_NO_FATAL_FAILURE(RunMulModelWithPluginEp(write_options));
+  ASSERT_NO_FATAL_FAILURE(RunMulModelWithPluginEp(write_options));
+  EXPECT_EQ(write_only.reads, 0u);
+  EXPECT_EQ(write_only.writes, 2u);
+  EpCacheState read_only;
+  auto read_options = CacheOptions(device, &read_only, ReadEpCache, nullptr);
+  hooks->reset_ep_cache_counts();
+  ASSERT_NO_FATAL_FAILURE(RunMulModelWithPluginEp(read_options));
+  ASSERT_NO_FATAL_FAILURE(RunMulModelWithPluginEp(read_options));
+  EXPECT_EQ(read_only.reads, 2u);
+  EXPECT_EQ(read_only.writes, 0u);
+  EXPECT_TRUE(read_only.entries.empty());
+  EXPECT_EQ(hooks->get_ep_cache_plan_created_count(), 2u);
+  EXPECT_EQ(hooks->get_ep_cache_plan_reused_count(), 0u);
+  read_only.entries = valid;
+  ASSERT_NO_FATAL_FAILURE(RunMulModelWithPluginEp(read_options));
+  EXPECT_EQ(hooks->get_ep_cache_plan_reused_count(), 1u);
+}
+
+TEST(OrtEpLibrary, EpCacheCompatibility) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice device(example_ep.get());
+  for (const char* version : {"current", "30", "31"}) {
+    SCOPED_TRACE(version);
+    EpCacheState cache;
+    auto options = CacheOptions(device, &cache);
+    options.AddConfigEntry(kExampleEpTestOrtVersion, version);
+    if (std::string_view{version} == "current") {
+      options.AddConfigEntry("ep.example_ep.test_ep_cache_data_support", "0");
+    }
+    Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), options);
+    EXPECT_EQ(session.GetEpCacheDataCallbackSupport(Utils::example_ep_info.ep_name.c_str()),
+              static_cast<uint32_t>(ORT_EP_CACHE_DATA_CALLBACK_SUPPORT_NONE));
+    EXPECT_EQ(cache.reads, 0u);
+    EXPECT_EQ(cache.writes, 0u);
+  }
+  {
+    auto absent = CacheOptions(device, nullptr, nullptr, nullptr);
+    ASSERT_NO_FATAL_FAILURE(RunMulModelWithPluginEp(absent));
+  }
+  EpCacheState shared, separate;
+  auto first = CacheOptions(device, &shared);
+  auto second = CacheOptions(device, &separate);
+  ASSERT_NO_FATAL_FAILURE(RunMulModelWithPluginEp(first));
+  auto one = std::async(std::launch::async, [&]() { RunMulModelWithPluginEp(first); });
+  auto two = std::async(std::launch::async, [&]() { RunMulModelWithPluginEp(first); });
+  auto three = std::async(std::launch::async, [&]() { RunMulModelWithPluginEp(second); });
+  ASSERT_NO_THROW(one.get());
+  ASSERT_NO_THROW(two.get());
+  ASSERT_NO_THROW(three.get());
+  EXPECT_EQ(shared.reads, 3u);
+  EXPECT_EQ(separate.reads, 1u);
+  EXPECT_EQ(separate.writes, 1u);
+  EXPECT_EQ(shared.entries, separate.entries);
+  EpCacheState cpu_cache;
+  Ort::SessionOptions cpu_options;
+  cpu_options.SetEpCacheDataFuncs(ReadEpCache, WriteEpCache, &cpu_cache);
+  Ort::Session cpu_session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), cpu_options);
+  EXPECT_EQ(cpu_session.GetEpCacheDataCallbackSupport("CPUExecutionProvider"),
+            static_cast<uint32_t>(ORT_EP_CACHE_DATA_CALLBACK_SUPPORT_NONE));
+  EXPECT_EQ(cpu_cache.reads, 0u);
+  EXPECT_EQ(cpu_cache.writes, 0u);
 }
 
 TEST(OrtEpLibrary, PluginEp_GenEpContextModel_ExternalDataUsesWriteCallback) {

@@ -368,9 +368,9 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
                                                 config.advertise_ep_context_data_support));
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kExampleEpTestOrtVersion, "current",
                                                  test_ort_version));
-  if (test_ort_version != "current" && test_ort_version != "30") {
+  if (test_ort_version != "current" && test_ort_version != "30" && test_ort_version != "31") {
     return factory->ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
-                                         "Example EP test ORT version must be 'current' or '30'.");
+                                         "Example EP test ORT version must be 'current', '30', or '31'.");
   }
   RETURN_IF_ERROR(GetSessionConfigBoolOrDefault(*session_options, "ep.example.use_default_cpu_allocator",
                                                 false, config.use_default_cpu_allocator));
@@ -379,14 +379,21 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   RETURN_IF_ERROR(GetSessionConfigBoolOrDefault(*session_options, "ep.example.test_execute_ep_context",
                                                 false, config.test_execute_ep_context));
 
+  RETURN_IF_ERROR(GetSessionConfigBoolOrDefault(*session_options, "ep.example_ep.test_ep_cache_data_support",
+                                                true, config.advertise_ep_cache_data_support));
+  if (config.advertise_ep_cache_data_support && test_ort_version == "current") {
+    RETURN_IF_ERROR(factory->ep_api.SessionOptionsGetEpCacheDataFuncs(
+        session_options, &config.cache_read_func, &config.cache_write_func, &config.cache_state));
+  }
+
   // The EpContextConfig wrapper captures a stable snapshot of the EPContext callbacks from the session options and
   // owns the snapshot handle. EXCEPTION_TO_RETURNED_STATUS_END converts extraction failures into an OrtStatus.
   auto dummy_ep = std::make_unique<ExampleEp>(
       *factory, factory->ep_name_, config, *logger,
       Ort::EpContextConfig{Ort::ConstSessionOptions{session_options}});
-  if (test_ort_version == "30") {
-    // Keep the support callback populated to verify that ORT ignores it for older EP versions.
-    dummy_ep->ort_version_supported = 30;
+  if (test_ort_version != "current") {
+    // Keep support callbacks populated to verify that ORT ignores members newer than this version.
+    dummy_ep->ort_version_supported = test_ort_version == "30" ? 30 : 31;
   }
   *ep = dummy_ep.release();
   return nullptr;

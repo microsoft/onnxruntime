@@ -1690,6 +1690,19 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddConfigEntry(const char* 
 }
 
 template <typename T>
+inline void ConstSessionOptionsImpl<T>::GetEpCacheDataFuncs(
+    OrtReadNamedBufferFunc& read_func, OrtWriteNamedBufferFunc& write_func, void*& state) const {
+  ThrowOnError(GetEpApi().SessionOptionsGetEpCacheDataFuncs(this->p_, &read_func, &write_func, &state));
+}
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetEpCacheDataFuncs(
+    OrtReadNamedBufferFunc read_func, OrtWriteNamedBufferFunc write_func, void* state) {
+  ThrowOnError(GetApi().SessionOptionsSetEpCacheDataFuncs(this->p_, read_func, write_func, state));
+  return *this;
+}
+
+template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetEpContextDataReadFunc(
     OrtReadNamedBufferFunc read_func, void* state) {
   ThrowOnError(GetApi().SessionOptionsSetEpContextDataReadFunc(this->p_, read_func, state));
@@ -2113,6 +2126,13 @@ inline AllocatedStringPtr ConstSessionImpl<T>::GetOverridableInitializerNameAllo
   char* out;
   ThrowOnError(GetApi().SessionGetOverridableInitializerName(this->p_, index, allocator, &out));
   return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
+}
+
+template <typename T>
+inline uint32_t ConstSessionImpl<T>::GetEpCacheDataCallbackSupport(const char* ep_name) const {
+  uint32_t flags;
+  ThrowOnError(GetApi().SessionGetEpCacheDataCallbackSupport(this->p_, ep_name, &flags));
+  return flags;
 }
 
 template <typename T>

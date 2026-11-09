@@ -25,7 +25,87 @@ extern std::atomic<uint64_t> g_sync_count;
 
 namespace {
 constexpr std::string_view kTestMulPayload = "ort-test-mul-float32-v1";
+constexpr size_t kMaxMulPlanBytes = 4096;
+constexpr std::string_view kMulPlanMagic = "example-ep-mul-plan-v1";
+
+// Limit allocations before invoking untrusted storage, and retain ownership even on partial-error results.
+struct CacheReadAllocator : OrtAllocator {
+  explicit CacheReadAllocator(OrtAllocator* backing_allocator) : OrtAllocator{}, backing(backing_allocator) {
+    version = ORT_API_VERSION;
+    Alloc = AllocImpl;
+    Free = FreeImpl;
+    Info = InfoImpl;
+    Reserve = AllocImpl;
+  }
+  static void* ORT_API_CALL AllocImpl(OrtAllocator* allocator, size_t size) {
+    auto& self = *static_cast<CacheReadAllocator*>(allocator);
+    if (size == 0 || size > kMaxMulPlanBytes || self.buffer != nullptr) {
+      return nullptr;
+    }
+    self.buffer = self.backing->Alloc(self.backing, size);
+    self.size = self.buffer != nullptr ? size : 0;
+    if (self.buffer != nullptr) {
+      RecordEpCacheBufferAllocated();
+    }
+    return self.buffer;
+  }
+  static void ORT_API_CALL FreeImpl(OrtAllocator* allocator, void* buffer) {
+    auto& self = *static_cast<CacheReadAllocator*>(allocator);
+    if (buffer != nullptr && buffer == self.buffer) {
+      self.backing->Free(self.backing, buffer);
+      self.buffer = nullptr;
+      self.size = 0;
+      RecordEpCacheBufferFreed();
+    }
+  }
+  static const OrtMemoryInfo* ORT_API_CALL InfoImpl(const OrtAllocator* allocator) {
+    auto& self = *static_cast<const CacheReadAllocator*>(allocator);
+    return self.backing->Info(self.backing);
+  }
+  ~CacheReadAllocator() { Free(this, buffer); }
+  OrtAllocator* backing;
+  void* buffer = nullptr;
+  size_t size = 0;
+};
+
+void AppendPlanString(std::string& plan, std::string_view value) {
+  const auto size = static_cast<uint32_t>(value.size());
+  for (unsigned shift = 0; shift < 32; shift += 8) {
+    plan.push_back(static_cast<char>(size >> shift));
+  }
+  plan.append(value);
 }
+
+bool ReadPlanString(std::string_view& plan, std::string& value) {
+  if (plan.size() < 4) {
+    return false;
+  }
+  uint32_t size = 0;
+  for (unsigned i = 0; i < 4; ++i) {
+    size |= static_cast<uint32_t>(static_cast<uint8_t>(plan[i])) << (i * 8);
+  }
+  plan.remove_prefix(4);
+  if (size > plan.size()) {
+    return false;
+  }
+  value.assign(plan.substr(0, size));
+  plan.remove_prefix(size);
+  return true;
+}
+
+std::string PlanDigest(std::string_view descriptor) {
+  uint64_t hash = UINT64_C(14695981039346656037);
+  for (unsigned char byte : descriptor) {
+    hash ^= byte;
+    hash *= UINT64_C(1099511628211);
+  }
+  std::string digest(16, '0');
+  for (size_t i = 0; i < digest.size(); ++i) {
+    digest[digest.size() - i - 1] = "0123456789abcdef"[(hash >> (i * 4)) & 15];
+  }
+  return digest;
+}
+}  // namespace
 
 const FloatInitializer* MulKernel::TryGetSavedInitializer(const std::string& name) const {
   auto iter = float_initializers.find(name);
@@ -234,6 +314,9 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const C
   GetDefaultMemoryDevice = GetDefaultMemoryDeviceImpl;                        // optional. can be nullptr
   GetWeightlessSupport = GetWeightlessSupportImpl;                            // weightless support
   GetEpContextDataCallbackSupport = GetEpContextDataCallbackSupportImpl;      // EPContext callback support
+  if (config_.advertise_ep_cache_data_support) {
+    GetEpCacheDataCallbackSupport = GetEpCacheDataCallbackSupportImpl;
+  }
 
   IGNORE_ORTSTATUS(ort_api.Logger_LogMessage(&logger_,
                                              OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
@@ -262,6 +345,81 @@ OrtStatus* ORT_API_CALL ExampleEp::GetEpContextDataCallbackSupportImpl(const Ort
                          ? OrtEpContextDataCallbackSupportFlags_READ | OrtEpContextDataCallbackSupportFlags_WRITE
                          : OrtEpContextDataCallbackSupportFlags_NONE;
   return nullptr;
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL ExampleEp::GetEpCacheDataCallbackSupportImpl(const OrtEp* /*this_ptr*/,
+                                                                     uint32_t* supported_flags) noexcept {
+  *supported_flags = ORT_EP_CACHE_DATA_CALLBACK_SUPPORT_READ | ORT_EP_CACHE_DATA_CALLBACK_SUPPORT_WRITE;
+  return nullptr;
+}
+
+std::array<std::string, 2> ExampleEp::GetMulPlan(const std::vector<Ort::ConstValueInfo>& inputs) {
+  const std::array<std::string, 2> expected_names{inputs[0].GetName(), inputs[1].GetName()};
+  if (config_.cache_read_func == nullptr && config_.cache_write_func == nullptr) {
+    RecordEpCachePlanCreated();
+    return expected_names;
+  }
+  std::string descriptor;
+  AppendPlanString(descriptor, name_);
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    AppendPlanString(descriptor, expected_names[i]);
+    const auto shape = GetTensorShape(inputs[i]);
+    AppendPlanString(descriptor, inputs[i].IsConstantInitializer() ? "constant" : "runtime");
+    if (shape) {
+      for (int64_t dim : *shape) AppendPlanString(descriptor, std::to_string(dim));
+    }
+    AppendPlanString(descriptor, "end-shape");
+  }
+  const std::string digest = PlanDigest(descriptor);
+  const std::string key = "example-ep-v1-cpu-f32-" + digest;
+
+  if (config_.cache_read_func != nullptr) {
+    OrtAllocator* backing = nullptr;
+    Ort::Status allocator_status{ort_api.GetAllocatorWithDefaultOptions(&backing)};
+    if (allocator_status.IsOK()) {
+      CacheReadAllocator allocator{backing};
+      void* buffer = nullptr;
+      size_t size = 0;
+      Ort::Status read_status{config_.cache_read_func(config_.cache_state, key.c_str(), &allocator, &buffer, &size)};
+      if (read_status.IsOK() && buffer != nullptr && buffer == allocator.buffer &&
+          size != 0 && size <= allocator.size && size <= kMaxMulPlanBytes) {
+        std::string_view data{static_cast<const char*>(buffer), size};
+        if (data.size() >= kMulPlanMagic.size() + digest.size() &&
+            data.substr(0, kMulPlanMagic.size()) == kMulPlanMagic &&
+            data.substr(kMulPlanMagic.size(), digest.size()) == digest) {
+          data.remove_prefix(kMulPlanMagic.size() + digest.size());
+          std::array<std::string, 2> restored_names;
+          if (ReadPlanString(data, restored_names[0]) && ReadPlanString(data, restored_names[1]) &&
+              data.empty() && restored_names == expected_names) {
+            RecordEpCachePlanReused();
+            return restored_names;
+          }
+        }
+      }
+    }
+  }
+
+  // The sample's execution plan is the ordered binding of the Mul kernel's operands.
+  RecordEpCachePlanCreated();
+  std::array<std::string, 2> plan{inputs[0].GetName(), inputs[1].GetName()};
+  if (config_.cache_write_func != nullptr) {
+    std::string serialized{kMulPlanMagic};
+    serialized.append(digest);
+    AppendPlanString(serialized, plan[0]);
+    AppendPlanString(serialized, plan[1]);
+    if (serialized.size() <= kMaxMulPlanBytes) {
+      Ort::Status write_status{
+          config_.cache_write_func(config_.cache_state, key.c_str(), serialized.data(), serialized.size())};
+      if (!write_status.IsOK() && !cache_write_warning_logged_) {
+        cache_write_warning_logged_ = true;
+        IGNORE_ORTSTATUS(ort_api.Logger_LogMessage(&logger_, ORT_LOGGING_LEVEL_WARNING,
+                                                   "Example EP cache write failed; continuing without persistence.",
+                                                   ORT_FILE, __LINE__, __FUNCTION__));
+      }
+    }
+  }
+  return plan;
 }
 
 bool ExampleEp::CopiesConstantInitializers() const {
@@ -538,11 +696,11 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
                                                  gsl::span<OrtNode*>(ep_context_nodes, count)));
       }
 
+      auto plan = ep->GetMulPlan(node_inputs);
       ep->mul_kernels_.emplace(fused_node_name,
                                std::make_unique<MulKernel>(ep->ort_api, ep->logger_,
                                                            ep->float_initializers_,
-                                                           node_inputs[0].GetName(),
-                                                           node_inputs[1].GetName()));
+                                                           std::move(plan[0]), std::move(plan[1])));
       auto node_compute_info = std::make_unique<ExampleNodeComputeInfo>(*ep);
       node_compute_infos[0] = node_compute_info.release();
     }

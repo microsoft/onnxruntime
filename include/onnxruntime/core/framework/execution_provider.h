@@ -478,6 +478,12 @@ class IExecutionProvider {
     return nullptr;
   }
 
+  /** Returns support for application-managed optional EP caches. */
+  virtual Status GetEpCacheDataCallbackSupport(uint32_t& supported_flags) const {
+    supported_flags = ORT_EP_CACHE_DATA_CALLBACK_SUPPORT_NONE;
+    return Status::OK();
+  }
+
   /** Returns support for application-managed external EPContext data. */
   virtual Status GetEpContextDataCallbackSupport(uint32_t& supported_flags) const {
     supported_flags = OrtEpContextDataCallbackSupportFlags_NONE;

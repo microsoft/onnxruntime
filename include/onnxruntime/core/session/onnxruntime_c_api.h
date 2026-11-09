@@ -655,6 +655,15 @@ typedef enum OrtEpContextDataCallbackSupportFlags {
   OrtEpContextDataCallbackSupportFlags_WRITE = 1 << 1,
 } OrtEpContextDataCallbackSupportFlags;
 
+/** \brief Flags describing support for application-managed, optional EP caches.
+ * \since Version 1.32.
+ */
+typedef enum OrtEpCacheDataCallbackSupport {
+  ORT_EP_CACHE_DATA_CALLBACK_SUPPORT_NONE = 0,       /**< No cache callback support. */
+  ORT_EP_CACHE_DATA_CALLBACK_SUPPORT_READ = 1 << 0,  /**< Supports cache reads. */
+  ORT_EP_CACHE_DATA_CALLBACK_SUPPORT_WRITE = 1 << 1, /**< Supports cache writes. */
+} OrtEpCacheDataCallbackSupport;
+
 /** \brief Function called by ORT to allow user to specify how an initializer should be saved, that is, either
  * written to an external file or stored within the model. ORT calls this function for every initializer when
  * generating a model.
@@ -7768,6 +7777,55 @@ struct OrtApi {
   ORT_API2_STATUS(EpDevice_GetMemoryCapacity, _In_ const OrtEpDevice* ep_device,
                   _In_ OrtDeviceMemoryType memory_type,
                   _Out_opt_ uint64_t* total_memory_bytes, _Out_opt_ uint64_t* available_memory_bytes);
+
+  /** \brief Replace the callbacks for optional, performance-only EP caches.
+   *
+   * Each call replaces both callbacks and their shared state. NULL clears that direction; when both are NULL,
+   * state is discarded. Cloned session options and model compilation options copy this tuple. Configure these
+   * callbacks before creating model compilation options. This API does not change EPContext callbacks.
+   *
+   * Participating EPs that advertise support use callback-only storage for every enabled provider-owned persistent
+   * cache when either callback is set. A missing read callback means a miss; a missing write callback discards data.
+   * They must never fall back to a filesystem cache. Uncontrollable backend/driver storage is excluded. Unsupported
+   * EPs retain their existing behavior; this API does not guarantee sandbox-safe session creation. Query support
+   * after session creation with SessionGetEpCacheDataCallbackSupport.
+   *
+   * EPs treat read errors, empty, oversized, or invalid data as misses and write errors as bounded warnings, never
+   * as inference failures. EPs release returned statuses and buffers (including partial results on errors) with
+   * ReleaseStatus and the supplied allocator. EPs must enforce allocation bounds before allocation and validate
+   * format, version, and EP/device/driver fingerprints before consumption. Keys are EP-owned, stable, filesystem-safe
+   * identifiers of the form `<ep>-<schema>-<fingerprint>-<digest>`, containing no raw user data.
+   *
+   * Callbacks may block and run concurrently across sessions, during initialization, Run, and session/EP release.
+   * They must not throw exceptions or reenter the same session. The application synchronizes and owns state, which
+   * must outlive all sessions, compilation operations, and EP teardown derived from these options. Each state may
+   * represent a host-defined storage partition. Buffers follow OrtReadNamedBufferFunc/OrtWriteNamedBufferFunc ownership.
+   *
+   * \param[in,out] options Session options to update. Must not be NULL.
+   * \param[in] read_func Cache read callback, or NULL for misses.
+   * \param[in] write_func Cache write callback, or NULL to discard writes.
+   * \param[in] state Application-owned shared callback state, or NULL.
+   * \return NULL on success; ORT_INVALID_ARGUMENT if options is NULL. Options are unchanged on failure.
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(SessionOptionsSetEpCacheDataFuncs, _Inout_ OrtSessionOptions* options,
+                  _In_opt_ OrtReadNamedBufferFunc read_func, _In_opt_ OrtWriteNamedBufferFunc write_func,
+                  _In_opt_ void* state);
+
+  /** \brief Query an initialized session's EP cache callback support.
+   *
+   * Returns a bitwise combination of OrtEpCacheDataCallbackSupport values. Support covers all enabled provider-owned
+   * persistent caches, excluding uncontrollable driver storage. This query does not invoke cache callbacks and does
+   * not provide a preflight guarantee for session creation. Providers without support return NONE.
+   *
+   * \param[in] session Session to query. Must not be NULL.
+   * \param[in] ep_name Null-terminated EP name as registered in the session. Must not be NULL.
+   * \param[out] supported_flags Support flags. Must not be NULL. Unchanged on failure.
+   * \return NULL on success; ORT_INVALID_ARGUMENT for NULL arguments or an unknown EP name, or the EP query error.
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(SessionGetEpCacheDataCallbackSupport, _In_ const OrtSession* session, _In_ const char* ep_name,
+                  _Out_ uint32_t* supported_flags);
 };
 
 /*

@@ -2164,6 +2164,24 @@ struct OrtEpApi {
    */
   ORT_API2_STATUS(EpContextConfigGetEpContextDataWriteFunc, _In_ const OrtEpContextConfig* config,
                   _Out_ OrtWriteNamedBufferFunc* write_func, _Out_ void** state);
+
+  /** \brief Copy optional EP cache callbacks from session options.
+   *
+   * Call during OrtEpFactory::CreateEp and retain the copied pointers as needed. No configuration handle is allocated.
+   * The state remains application-owned, subject to the lifetime, threading, ownership, validation, key, and
+   * best-effort requirements of OrtApi::SessionOptionsSetEpCacheDataFuncs. Either callback selects callback-only
+   * storage for a participating EP; missing read means miss and missing write means discard, with no file fallback.
+   *
+   * \param[in] session_options Options supplied to CreateEp. Must not be NULL.
+   * \param[out] read_func Configured read callback, or NULL. Must not be NULL.
+   * \param[out] write_func Configured write callback, or NULL. Must not be NULL.
+   * \param[out] state Shared application state, or NULL when both callbacks are NULL. Must not be NULL.
+   * \return NULL on success; ORT_INVALID_ARGUMENT for NULL arguments. All outputs are unchanged on failure.
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(SessionOptionsGetEpCacheDataFuncs, _In_ const OrtSessionOptions* session_options,
+                  _Out_ OrtReadNamedBufferFunc* read_func, _Out_ OrtWriteNamedBufferFunc* write_func,
+                  _Out_ void** state);
 };
 
 /**
@@ -2811,6 +2829,22 @@ struct OrtEp {
    * \since Version 1.31.
    */
   ORT_API2_STATUS(GetEpContextDataCallbackSupport, _In_ const OrtEp* this_ptr, _Out_ uint32_t* supported_flags);
+
+  /** \brief Report optional, performance-only EP cache callback support.
+   *
+   * Optional: NULL means NONE. ORT accesses this member only for ort_version_supported >= 32.
+   * Report a bitwise combination of OrtEpCacheDataCallbackSupport values for every enabled provider-owned persistent
+   * cache, excluding uncontrollable driver storage. Either configured callback selects callback-only storage:
+   * missing read means miss; missing write means discard. Never fall back to files. Follow all best-effort, validation,
+   * allocation-bound, ownership, key, threading, and lifetime rules in OrtApi::SessionOptionsSetEpCacheDataFuncs.
+   * This query must not invoke callbacks or modify cache state. On failure, leave the output unchanged.
+   *
+   * \param[in] this_ptr EP instance.
+   * \param[out] supported_flags Supported flags. Must not be NULL.
+   * \return NULL on success, or an OrtStatus describing the query failure. ORT releases the returned status.
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(GetEpCacheDataCallbackSupport, _In_ const OrtEp* this_ptr, _Out_ uint32_t* supported_flags);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
