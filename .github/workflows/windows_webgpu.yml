@@ -473,7 +473,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "20.x"
+          node-version: "24.x"
 
       # onnxruntime_BUILD_DAWN_SHARED_LIBRARY is deliberately not enabled here. It is incompatible with
       # onnxruntime_USE_EP_API_ADAPTERS, which --use_webgpu static_plugin turns on.
@@ -556,7 +556,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "20.x"
+          node-version: "24.x"
 
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: onnx-node-tests-cache
