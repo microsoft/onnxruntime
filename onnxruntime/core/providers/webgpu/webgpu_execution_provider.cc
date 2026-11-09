@@ -135,12 +135,8 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     // unary - math
     KERNEL_CREATE_INFO_VERSIONED(6, 12, Abs),
     KERNEL_CREATE_INFO(13, Abs),
-    KERNEL_CREATE_INFO_VERSIONED_TYPED(6, 12, int64_t, Abs),
-    KERNEL_CREATE_INFO_TYPED(13, int64_t, Abs),
     KERNEL_CREATE_INFO_VERSIONED(6, 12, Neg),
     KERNEL_CREATE_INFO(13, Neg),
-    KERNEL_CREATE_INFO_VERSIONED_TYPED(6, 12, int64_t, Neg),
-    KERNEL_CREATE_INFO_TYPED(13, int64_t, Neg),
     KERNEL_CREATE_INFO_VERSIONED(6, 12, Floor),
     KERNEL_CREATE_INFO(13, Floor),
     KERNEL_CREATE_INFO_VERSIONED(6, 12, Ceil),
@@ -153,8 +149,6 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO(22, Round),
     KERNEL_CREATE_INFO_VERSIONED(9, 12, Sign),
     KERNEL_CREATE_INFO(13, Sign),
-    KERNEL_CREATE_INFO_VERSIONED_TYPED(9, 12, int64_t, Sign),
-    KERNEL_CREATE_INFO_TYPED(13, int64_t, Sign),
     KERNEL_CREATE_INFO_VERSIONED(6, 12, Exp),
     KERNEL_CREATE_INFO(13, Exp),
     KERNEL_CREATE_INFO_VERSIONED(9, 12, Erf),
@@ -202,8 +196,6 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO_VERSIONED(6, 12, Relu),
     KERNEL_CREATE_INFO_VERSIONED(13, 13, Relu),
     KERNEL_CREATE_INFO(14, Relu),
-    KERNEL_CREATE_INFO_VERSIONED_TYPED(14, 20, int64_t, Relu),
-    KERNEL_CREATE_INFO_TYPED(21, int64_t, Relu),
     KERNEL_CREATE_INFO_VERSIONED(6, 15, LeakyRelu),
     KERNEL_CREATE_INFO(16, LeakyRelu),
     KERNEL_CREATE_INFO(10, ThresholdedRelu),
@@ -525,6 +517,8 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
 
   // Register int64 Clip kernels with conditional int64 support
   RegisterClipInt64Kernels(*kernel_registry, enable_int64);
+
+  RegisterInt64UnaryKernels(*kernel_registry, enable_int64);
 
   // Register Range kernels with conditional int64 support
   RegisterRangeKernels(*kernel_registry, enable_int64);

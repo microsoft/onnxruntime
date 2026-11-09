@@ -3,6 +3,8 @@
 
 #include <cstdint>
 #include <limits>
+#include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -19,7 +21,8 @@ namespace {
 
 template <typename T>
 void RunUnary(const char* op, int first_version, int latest_version,
-              const std::vector<T>& input, const std::vector<T>& expected) {
+              const std::vector<T>& input, const std::vector<T>& expected,
+              bool enable_int64 = true) {
   for (int version : {first_version, latest_version}) {
     for (bool initializer : {false, true}) {
       for (const auto& shape : {std::vector<int64_t>{9}, std::vector<int64_t>{1, 3, 3},
@@ -41,9 +44,14 @@ void RunUnary(const char* op, int first_version, int latest_version,
         options.graph_optimization_level = TransformerLevel::Default;
         ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
         ConfigOptions provider_options;
-        ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+        ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kEnableInt64, enable_int64 ? "1" : "0"));
         auto provider = WebGpuExecutionProviderWithOptions(provider_options);
         ASSERT_NE(provider, nullptr);
+        if (!enable_int64 && std::is_same_v<T, int64_t>) {
+          // CPU has no int64 Relu kernel, so its rejection names the operator rather than CPU fallback.
+          test.Config(OpTester::ExpectResult::kExpectFailure,
+                      std::string_view(op) == "Relu" ? "Relu" : "fallback to CPU EP has been explicitly disabled");
+        }
         test.Config(options).ConfigEp(std::move(provider)).RunWithConfig();
       }
     }
@@ -91,6 +99,20 @@ TEST(WebGpuIntegerUnaryTest, ReluInt64) {
 
 TEST(WebGpuIntegerUnaryTest, SignInt64) {
   RunUnary<int64_t>("Sign", 9, 13, kInt64Input, {-1, -1, -1, -1, 0, 1, 1, 1, 1});
+}
+
+TEST(WebGpuIntegerUnaryTest, Int64Disabled) {
+  RunUnary<int64_t>("Abs", 7, 13, kInt64Input, kInt64Input, false);
+  RunUnary<int64_t>("Neg", 7, 13, kInt64Input, kInt64Input, false);
+  RunUnary<int64_t>("Relu", 14, 21, kInt64Input, kInt64Input, false);
+  RunUnary<int64_t>("Sign", 9, 13, kInt64Input, kInt64Input, false);
+}
+
+TEST(WebGpuIntegerUnaryTest, Int8WithInt64Disabled) {
+  RunUnary<int8_t>("Abs", 7, 13, kInt8Input, {-128, 127, 17, 1, 0, 1, 17, 127, 64}, false);
+  RunUnary<int8_t>("Neg", 7, 13, kInt8Input, {-128, 127, 17, 1, 0, -1, -17, -127, 64}, false);
+  RunUnary<int8_t>("Relu", 14, 21, kInt8Input, {0, 0, 0, 0, 0, 1, 17, 127, 0}, false);
+  RunUnary<int8_t>("Sign", 9, 13, kInt8Input, {-1, -1, -1, -1, 0, 1, 1, 1, -1}, false);
 }
 
 template <typename T>

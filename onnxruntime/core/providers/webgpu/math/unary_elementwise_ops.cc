@@ -711,6 +711,27 @@ WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Relu, 13, 13, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Relu, 14, SignedNumberTypes())
 WEBGPU_INT64_UNARY_KERNEL(Relu, 14, 20, 21)
 
+void RegisterInt64UnaryKernels(KernelRegistry& kernel_registry, bool enable_int64) {
+  if (enable_int64) {
+    ORT_THROW_IF_ERROR(kernel_registry.Register(
+        BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 6, 12, int64_t, Abs)>()));
+    ORT_THROW_IF_ERROR(kernel_registry.Register(
+        BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, int64_t, Abs)>()));
+    ORT_THROW_IF_ERROR(kernel_registry.Register(
+        BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 6, 12, int64_t, Neg)>()));
+    ORT_THROW_IF_ERROR(kernel_registry.Register(
+        BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, int64_t, Neg)>()));
+    ORT_THROW_IF_ERROR(kernel_registry.Register(
+        BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 9, 12, int64_t, Sign)>()));
+    ORT_THROW_IF_ERROR(kernel_registry.Register(
+        BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, int64_t, Sign)>()));
+    ORT_THROW_IF_ERROR(kernel_registry.Register(
+        BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 14, 20, int64_t, Relu)>()));
+    ORT_THROW_IF_ERROR(kernel_registry.Register(
+        BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 21, int64_t, Relu)>()));
+  }
+}
+
 WEBGPU_LU_IMPL(LeakyRelu, "select(x_element_t(uniforms.attr) * a, a, a >= vec4<x_element_t>(0))", "", 0.01f)
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(LeakyRelu, 6, 15, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(LeakyRelu, 16, WebGpuSupportedFloatTypes())
