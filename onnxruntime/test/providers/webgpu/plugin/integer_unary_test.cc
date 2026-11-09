@@ -18,8 +18,8 @@ namespace onnxruntime::test {
 namespace {
 
 template <typename T>
-void RunIntegerUnary(const char* op, int first_version, int latest_version,
-                     const std::vector<T>& input, const std::vector<T>& expected) {
+void RunUnary(const char* op, int first_version, int latest_version,
+              const std::vector<T>& input, const std::vector<T>& expected) {
   for (int version : {first_version, latest_version}) {
     for (bool initializer : {false, true}) {
       for (const auto& shape : {std::vector<int64_t>{9}, std::vector<int64_t>{1, 3, 3},
@@ -59,38 +59,62 @@ const std::vector<int64_t> kInt64Input{kMin, -kLarge, -kLarge - 17, -1, 0, 1,
 
 TEST(WebGpuIntegerUnaryTest, AbsInt8) {
   // The layout transformer requires model opset 7; this exercises the 6-12 kernel.
-  RunIntegerUnary<int8_t>("Abs", 7, 13, kInt8Input, {-128, 127, 17, 1, 0, 1, 17, 127, 64});
+  RunUnary<int8_t>("Abs", 7, 13, kInt8Input, {-128, 127, 17, 1, 0, 1, 17, 127, 64});
 }
 
 TEST(WebGpuIntegerUnaryTest, NegInt8) {
-  RunIntegerUnary<int8_t>("Neg", 7, 13, kInt8Input, {-128, 127, 17, 1, 0, -1, -17, -127, 64});
+  RunUnary<int8_t>("Neg", 7, 13, kInt8Input, {-128, 127, 17, 1, 0, -1, -17, -127, 64});
 }
 
 TEST(WebGpuIntegerUnaryTest, ReluInt8) {
-  RunIntegerUnary<int8_t>("Relu", 14, 21, kInt8Input, {0, 0, 0, 0, 0, 1, 17, 127, 0});
+  RunUnary<int8_t>("Relu", 14, 21, kInt8Input, {0, 0, 0, 0, 0, 1, 17, 127, 0});
 }
 
 TEST(WebGpuIntegerUnaryTest, SignInt8) {
-  RunIntegerUnary<int8_t>("Sign", 9, 13, kInt8Input, {-1, -1, -1, -1, 0, 1, 1, 1, -1});
+  RunUnary<int8_t>("Sign", 9, 13, kInt8Input, {-1, -1, -1, -1, 0, 1, 1, 1, -1});
 }
 
 TEST(WebGpuIntegerUnaryTest, AbsInt64) {
-  RunIntegerUnary<int64_t>("Abs", 7, 13, kInt64Input,
-                           {kMin, kLarge, kLarge + 17, 1, 0, 1, kLarge + 17, kMax, int64_t{1} << 32});
+  RunUnary<int64_t>("Abs", 7, 13, kInt64Input,
+                    {kMin, kLarge, kLarge + 17, 1, 0, 1, kLarge + 17, kMax, int64_t{1} << 32});
 }
 
 TEST(WebGpuIntegerUnaryTest, NegInt64) {
-  RunIntegerUnary<int64_t>("Neg", 7, 13, kInt64Input,
-                           {kMin, kLarge, kLarge + 17, 1, 0, -1, -kLarge - 17, -kMax, -(int64_t{1} << 32)});
+  RunUnary<int64_t>("Neg", 7, 13, kInt64Input,
+                    {kMin, kLarge, kLarge + 17, 1, 0, -1, -kLarge - 17, -kMax, -(int64_t{1} << 32)});
 }
 
 TEST(WebGpuIntegerUnaryTest, ReluInt64) {
-  RunIntegerUnary<int64_t>("Relu", 14, 21, kInt64Input,
-                           {0, 0, 0, 0, 0, 1, kLarge + 17, kMax, int64_t{1} << 32});
+  RunUnary<int64_t>("Relu", 14, 21, kInt64Input,
+                    {0, 0, 0, 0, 0, 1, kLarge + 17, kMax, int64_t{1} << 32});
 }
 
 TEST(WebGpuIntegerUnaryTest, SignInt64) {
-  RunIntegerUnary<int64_t>("Sign", 9, 13, kInt64Input, {-1, -1, -1, -1, 0, 1, 1, 1, 1});
+  RunUnary<int64_t>("Sign", 9, 13, kInt64Input, {-1, -1, -1, -1, 0, 1, 1, 1, 1});
+}
+
+template <typename T>
+void RunUnaryCompatibility() {
+  const auto convert = [](const std::vector<float>& values) {
+    std::vector<T> result;
+    for (float value : values) {
+      result.emplace_back(static_cast<T>(value));
+    }
+    return result;
+  };
+  const auto input = convert({-128, -127, -17, -1, 0, 1, 17, 127, -64});
+  RunUnary<T>("Abs", 7, 13, input, convert({128, 127, 17, 1, 0, 1, 17, 127, 64}));
+  RunUnary<T>("Neg", 7, 13, input, convert({128, 127, 17, 1, 0, -1, -17, -127, 64}));
+  RunUnary<T>("Relu", 14, 21, input, convert({0, 0, 0, 0, 0, 1, 17, 127, 0}));
+  RunUnary<T>("Sign", 9, 13, input, convert({-1, -1, -1, -1, 0, 1, 1, 1, -1}));
+}
+
+TEST(WebGpuUnaryCompatibilityTest, Float32) {
+  RunUnaryCompatibility<float>();
+}
+
+TEST(WebGpuUnaryCompatibilityTest, Int32) {
+  RunUnaryCompatibility<int32_t>();
 }
 
 }  // namespace
