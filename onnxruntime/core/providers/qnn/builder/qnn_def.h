@@ -77,11 +77,19 @@ enum class HtpPerformanceMode : uint8_t {
   kHtpExtremePowerSaver,
 };
 
+enum class DcvsState_t {
+  DCVS_DEFAULT = 0,
+  DCVS_DISABLE = 1,
+  DCVS_ENABLE = 2,
+  DCVS_NUM_STATES
+};
+
 typedef struct PerThreadHtpPowerConfigs {
   std::optional<HtpPerformanceMode> pre_run_perf_mode;
   std::optional<HtpPerformanceMode> post_run_perf_mode;
   std::optional<uint32_t> rpc_control_latency;
   std::optional<uint32_t> rpc_polling_time;
+  std::optional<HtpPerformanceMode> default_perf_mode;
 
   uint32_t power_config_id = 0;
 } PerThreadHtpPowerConfigs_t;
@@ -121,11 +129,13 @@ bool IsGpuBackend(QnnBackendType backend_type);
 
 bool IsQpuBackend(QnnBackendType backend_type);
 
-// constexpr config values
+// latency values are in microseconds
 constexpr const int kSleepMinLatency = 40;
 constexpr const int kSleepLowLatency = 100;
 constexpr const int kSleepMediumLatency = 1000;
 constexpr const int kSleepHighLatency = 2000;
+constexpr const int kSleepHigherLatency = 65535;
+// constexpr config values
 constexpr const int kDcvsDisable = 0;
 constexpr const int kDcvsEnable = 1;
 constexpr const uint32_t kDisableRpcPolling = 0;
