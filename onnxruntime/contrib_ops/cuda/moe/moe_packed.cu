@@ -5,6 +5,7 @@
 
 #include <gsl/util>
 
+#include <algorithm>
 #include <climits>
 #include <cstdint>
 #include <type_traits>
@@ -1207,6 +1208,8 @@ Status DispatchMoEPackedCuda(
   const int max_tiles = use_prefill_tiles
                             ? ((total_routes + 31) / 32 + params.num_experts)
                             : ((total_routes <= 128) ? total_routes : ((total_routes + 7) / 8 + params.num_experts));
+  // Compact tile descriptors each contain at least one route. Keep workspace offsets unchanged.
+  const int launch_tiles = std::min(max_tiles, total_routes);
 
   uint8_t* ws_ptr = static_cast<uint8_t*>(workspace);
   float* topk_scales = reinterpret_cast<float*>(ws_ptr);
@@ -1256,12 +1259,12 @@ Status DispatchMoEPackedCuda(
       // 3. Tensor-Core FC1 (64 inter_size channels/CTA in prefill, 16 inter_size channels/CTA Warp-K-Split in decode)
       if (use_prefill_tiles) {
         const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 63) / 64),
-                            static_cast<unsigned int>(max_tiles));
+                            static_cast<unsigned int>(launch_tiles));
         LaunchMoEPackedFc1Bf16TcDispatch<4>(
             stream, fc1_grid, input, gate_weights, up_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
       } else {
         const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 15) / 16),
-                            static_cast<unsigned int>(max_tiles));
+                            static_cast<unsigned int>(launch_tiles));
         LaunchMoEPackedFc1DecodeBf16TcDispatch(
             stream, fc1_grid, input, gate_weights, up_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
       }
@@ -1269,7 +1272,7 @@ Status DispatchMoEPackedCuda(
 
       // 4. Tensor-Core FC2 (128 hidden_size channels per CTA)
       const dim3 fc2_grid(static_cast<unsigned int>((params.hidden_size + 127) / 128),
-                          static_cast<unsigned int>(max_tiles));
+                          static_cast<unsigned int>(launch_tiles));
       if (use_prefill_tiles) {
         LaunchMoEPackedFc2Bf16TcDispatch<4>(
             stream, fc2_grid, fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
@@ -1283,7 +1286,7 @@ Status DispatchMoEPackedCuda(
     // Keep staging within CUDA's default shared-memory limit; larger shapes read activations directly.
     constexpr size_t kMaxStagingBytes = 48 * 1024;
     const size_t fc1_smem = SafeInt<size_t>(8) * params.hidden_size * sizeof(CudaT);
-    const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 7) / 8), static_cast<unsigned int>(max_tiles));
+    const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 7) / 8), static_cast<unsigned int>(launch_tiles));
     if (fc1_smem <= kMaxStagingBytes) {
       MoEPackedFc1SwiGLUSimtKernel<CudaT, true><<<fc1_grid, 256, fc1_smem, stream>>>(
           input, gate_weights, up_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
@@ -1294,7 +1297,7 @@ Status DispatchMoEPackedCuda(
     ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
 
     const size_t fc2_smem = SafeInt<size_t>(8) * params.inter_size * sizeof(CudaT);
-    const dim3 fc2_grid(static_cast<unsigned int>((params.hidden_size + 7) / 8), static_cast<unsigned int>(max_tiles));
+    const dim3 fc2_grid(static_cast<unsigned int>((params.hidden_size + 7) / 8), static_cast<unsigned int>(launch_tiles));
     if (fc2_smem <= kMaxStagingBytes) {
       MoEPackedFc2SimtKernel<CudaT, true><<<fc2_grid, 256, fc2_smem, stream>>>(
           fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);

@@ -995,12 +995,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 ONNX_MS_OPERATOR_SET_SCHEMA(
     GatherPacked, 1,
     OpSchema()
-        .SetDoc("Gather rows from a 2D block-packed embedding table and dequantize on the fly.")
+        .SetDoc("Gather rows from a 2D block-packed embedding table and dequantize on the fly.\n"
+                "Supported format IDs and their stable byte layouts are defined in the "
+                "[packed-weight format contract]"
+                "(https://github.com/microsoft/onnxruntime/blob/main/docs/PackedWeightFormats.md).")
         .Attr("K",
               "Logical embedding dimension. Must be a positive multiple of the selected packed format's block size.",
               AttributeProto::INT)
         .Attr("packed_type",
-              "Packed quantization format enum (0..99 map to GGUF ggml_type; >=100 reserved for custom formats).",
+              "Stable packed-format ID from the packed-weight format contract. Only listed IDs are supported.",
               AttributeProto::INT)
         .Attr("output_dtype", "ONNX TensorProto DataType for output (default 16 = BFLOAT16).",
               AttributeProto::INT, static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16))
@@ -1035,15 +1038,22 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     MatMulPacked, 1,
     OpSchema()
         .SetDoc("Matrix multiplication Y = A @ B^T where B is a 2D block-packed weight tensor.\n"
-                "CUDA prefill uses bounded scratch memory and float32 accumulation and reductions. "
-                "BF16 activations use BF16-rounded decoded weights; FP16 activations use float32 decoded weights "
-                "unless the packed format is F16. CUDA execution requires weights in device memory.")
+                "CUDA uses float32 accumulation and reductions. M is the product of A's leading dimensions. "
+                "Decode (M <= 8) uses float32-decoded weights for FP16 and for BF16 with N < 65536. "
+                "BF16 decode with N >= 65536 rounds decoded weights to BF16, including the SIMT fallback. "
+                "Prefill (M > 8) uses bounded scratch memory and BF16-rounded decoded weights for BF16; "
+                "FP16 prefill uses float32-decoded weights unless the packed format is F16. "
+                "Consequently, BF16 results may differ across the M and N dispatch boundaries. "
+                "CUDA execution requires weights in device memory.\n"
+                "Supported format IDs and their stable byte layouts are defined in the "
+                "[packed-weight format contract]"
+                "(https://github.com/microsoft/onnxruntime/blob/main/docs/PackedWeightFormats.md).")
         .Attr("K",
               "Reduction dimension. Must be a whole number of packed blocks; CUDA requires a positive multiple of 32.",
               AttributeProto::INT)
         .Attr("N", "Output dimension.", AttributeProto::INT)
         .Attr("packed_type",
-              "Packed quantization format enum for B (0..99 map to GGUF ggml_type; >=100 reserved for custom formats).",
+              "Stable packed-format ID for B from the packed-weight format contract. Only listed IDs are supported.",
               AttributeProto::INT)
         .Input(0, "A", "Input activations [..., K].", "T1")
         .Input(1, "B", "Packed weight blob [N, row_bytes].", "T2")
@@ -1069,15 +1079,21 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc("Mixture-of-Experts layer consuming 3D block-packed gate, up, and down expert weight blobs. "
                 "CUDA execution requires weights in device memory; host-backed external initializers are copied "
-                "to the device without changing their packed layout.")
+                "to the device without changing their packed layout.\n"
+                "Supported format IDs and their stable byte layouts are defined in the "
+                "[packed-weight format contract]"
+                "(https://github.com/microsoft/onnxruntime/blob/main/docs/PackedWeightFormats.md).")
         .Attr("k", "Number of selected experts per token.", AttributeProto::INT)
         .Attr("normalize_routing_weights", "Whether to normalize top-k routing probabilities.",
               AttributeProto::INT, static_cast<int64_t>(1))
         .Attr("activation_type", "Expert activation function ('swiglu').",
               AttributeProto::STRING, std::string("swiglu"))
-        .Attr("gate_type", "Packed quantization format enum of gate_experts_weights.", AttributeProto::INT)
-        .Attr("up_type", "Packed quantization format enum of up_experts_weights.", AttributeProto::INT)
-        .Attr("down_type", "Packed quantization format enum of down_experts_weights.", AttributeProto::INT)
+        .Attr("gate_type", "Stable packed-format ID of gate_experts_weights. Only contract-listed IDs are supported.",
+              AttributeProto::INT)
+        .Attr("up_type", "Stable packed-format ID of up_experts_weights. Only contract-listed IDs are supported.",
+              AttributeProto::INT)
+        .Attr("down_type", "Stable packed-format ID of down_experts_weights. Only contract-listed IDs are supported.",
+              AttributeProto::INT)
         .Input(0, "input", "Input hidden states [..., hidden_size].", "T")
         .Input(1, "router_probs", "Router logits [num_rows, num_experts].", "T")
         .Input(2, "gate_experts_weights", "3D packed gate weight blob [num_experts, inter_size, gate_row_bytes].", "T2")

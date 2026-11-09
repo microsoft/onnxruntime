@@ -240,6 +240,180 @@ def _make_synthetic_gguf_rows(
 
 
 class TestGatherPackedKnownAnswers(unittest.TestCase):
+    def test_iq_high_codebook_indices_signs_and_scales(self):
+        # Independent gguf-py answers from llama.cpp 970b51ce7c9ba5fff0726c5e9994f1c2f0e4eedc.
+        cases = [
+            (
+                16,
+                bytes.fromhex("0038") + bytes.fromhex("fffec08055d53f90") * 8,
+                [
+                    -9.5,
+                    29.6875,
+                    -9.5,
+                    9.5,
+                    -29.6875,
+                    51.0625,
+                    -51.0625,
+                    51.0625,
+                    9.5,
+                    -9.5,
+                    29.6875,
+                    -29.6875,
+                    9.5,
+                    -51.0625,
+                    51.0625,
+                    -51.0625,
+                    -29.6875,
+                    -51.0625,
+                    -29.6875,
+                    -9.5,
+                    -9.5,
+                    -51.0625,
+                    -29.6875,
+                    -29.6875,
+                    -9.5,
+                    51.0625,
+                    9.5,
+                    9.5,
+                    9.5,
+                    51.0625,
+                    51.0625,
+                    -9.5,
+                ],
+            ),
+            (
+                17,
+                bytes.fromhex("0038") + bytes.fromhex("ffabfe5580ff0003") * 8 + bytes([0xB6]) * 8,
+                [
+                    -34.9375,
+                    34.9375,
+                    -34.9375,
+                    34.9375,
+                    -34.9375,
+                    34.9375,
+                    -34.9375,
+                    34.9375,
+                    20.3125,
+                    -6.5,
+                    20.3125,
+                    -34.9375,
+                    34.9375,
+                    -34.9375,
+                    34.9375,
+                    -34.9375,
+                    -11.5,
+                    -11.5,
+                    -11.5,
+                    -11.5,
+                    -35.9375,
+                    -11.5,
+                    -61.8125,
+                    -35.9375,
+                    -61.8125,
+                    35.9375,
+                    11.5,
+                    11.5,
+                    11.5,
+                    11.5,
+                    11.5,
+                    -35.9375,
+                ],
+            ),
+            (
+                22,
+                bytes.fromhex("0038")
+                + bytes.fromhex("fffe0000") * 8
+                + bytes.fromhex("a55aff81") * 8
+                + bytes([0xBF]) * 8
+                + bytes([0xB6]) * 8,
+                [
+                    -34.9375,
+                    34.9375,
+                    -34.9375,
+                    34.9375,
+                    34.9375,
+                    -34.9375,
+                    34.9375,
+                    -34.9375,
+                    6.5,
+                    -34.9375,
+                    6.5,
+                    -34.9375,
+                    -34.9375,
+                    34.9375,
+                    -34.9375,
+                    34.9375,
+                    -11.5,
+                    -61.8125,
+                    -11.5,
+                    -35.9375,
+                    -11.5,
+                    -11.5,
+                    -61.8125,
+                    -35.9375,
+                    -35.9375,
+                    35.9375,
+                    61.8125,
+                    11.5,
+                    35.9375,
+                    11.5,
+                    11.5,
+                    -35.9375,
+                ],
+            ),
+            (
+                18,
+                bytes.fromhex("0038") + bytes.fromhex("fffec080fdbf817f") * 8 + bytes.fromhex("55d53fb0") * 8,
+                [
+                    -11.5,
+                    80.5,
+                    -149.5,
+                    178.25,
+                    -103.5,
+                    57.5,
+                    -126.5,
+                    178.25,
+                    80.5,
+                    -103.5,
+                    126.5,
+                    -103.5,
+                    11.5,
+                    -178.25,
+                    80.5,
+                    -57.5,
+                    -57.5,
+                    -11.5,
+                    -126.5,
+                    -178.25,
+                    -126.5,
+                    -57.5,
+                    -126.5,
+                    -103.5,
+                    -103.5,
+                    178.25,
+                    80.5,
+                    57.5,
+                    103.5,
+                    34.5,
+                    80.5,
+                    -57.5,
+                ],
+            ),
+        ]
+        providers = ["CPUExecutionProvider"]
+        if "CUDAExecutionProvider" in ort.get_available_providers():
+            providers.append("CUDAExecutionProvider")
+        for gtype, block, values in cases:
+            raw = np.frombuffer(block, dtype=np.uint8).reshape(1, -1)
+            expected = np.tile(np.array(values, dtype=np.float32), 8).reshape(1, -1)
+            for provider in providers:
+                for dtype in (TensorProto.FLOAT, TensorProto.FLOAT16, TensorProto.BFLOAT16):
+                    with self.subTest(gtype=gtype, provider=provider, dtype=dtype):
+                        model = _gather_model(1, expected.shape[1], len(block), gtype, dtype)
+                        got = _session(model, provider).run(None, {"W": raw, "I": np.array([0], np.int64)})[0]
+                        ref = expected if dtype == TensorProto.FLOAT else _round_to_dtype(expected, dtype)
+                        np.testing.assert_array_equal(got, ref)
+
     def test_ggml_known_answer_blocks(self):
         # Verified with gguf-py from llama.cpp commit 970b51ce7c9b, independently of the ORT decoder.
         nibbles = bytes.fromhex("f0e1d2c3b4a5968778695a4b3c2d1e0f")
@@ -481,6 +655,21 @@ class TestGgufPackedOps(unittest.TestCase):
                         ref = _round_to_dtype(a @ target.T, dtype)
                         np.testing.assert_allclose(got, ref, rtol=1e-2, atol=1e-2)
 
+    def test_matmul_packed_weight_rounding_across_dispatch(self):
+        k = 32
+        for dtype in self.activation_dtypes:
+            for n in (1, 65535, 65536, 65537):
+                weights = np.zeros((n, k), dtype=np.float32)
+                weights[:, :2] = [1.00390625, -1.0]
+                raw = weights.view(np.uint8).reshape(n, k * 4)
+                session = _session(_matmul_model(k, n, raw.shape[1], 0, dtype), "CUDAExecutionProvider")
+                for m in (1, 8, 9):
+                    with self.subTest(dtype=dtype, n=n, m=m):
+                        got = session.run(None, {"A_f32": np.ones((m, k), dtype=np.float32), "B": raw})[0]
+                        bf16_weights = dtype == TensorProto.BFLOAT16 and (m > 8 or n >= 65536)
+                        expected = 0.0 if bf16_weights else 0.00390625
+                        np.testing.assert_array_equal(got, np.full((m, n), expected, dtype=np.float32))
+
     def test_matmul_packed_prefill_fp32_reduction(self):
         k, n = 4096, 32
         weights = np.ones((n, k), dtype=np.float32)
@@ -632,10 +821,10 @@ class TestGgufPackedOps(unittest.TestCase):
             session.run(None, inputs)
 
     def _check_moe(
-        self, num_experts, hidden_size, inter_size, dtype, formats, row_counts, normalize, quant_scale=2**-7
+        self, num_experts, hidden_size, inter_size, dtype, formats, row_counts, normalize, quant_scale=2**-7, top_k=4
     ):
         rng = np.random.default_rng(999)
-        top_k = min(4, num_experts)
+        top_k = min(top_k, num_experts)
         raw_weights = []
         weights = []
         for out_size, k, (gtype, bel, bbytes) in zip(
@@ -662,8 +851,8 @@ class TestGgufPackedOps(unittest.TestCase):
             ):
                 x = rng.standard_normal((m, hidden_size), dtype=np.float32) * 0.2
                 logits = rng.standard_normal((m, num_experts), dtype=np.float32)
-                # Concentrate routes so BF16 prefill fills multiple eight-route subtiles.
-                logits[:, :8] += 4.0
+                # High expert IDs check compact tile indexing and fill BF16 prefill subtiles.
+                logits[:, -8:] += 4.0
                 logits[0] = 0.0  # Exercise tie-breaking in both routing kernels.
                 got = session.run(
                     None, {"X_f32": x, "R_f32": logits, "G": raw_weights[0], "U": raw_weights[1], "D": raw_weights[2]}
@@ -680,6 +869,10 @@ class TestGgufPackedOps(unittest.TestCase):
             for num_experts in (16, 512):
                 for normalize in (False, True):
                     self._check_moe(num_experts, 256, 64, dtype, formats, (4, 48), normalize)
+
+    def test_moe_packed_sparse_experts_at_prefill_boundary(self):
+        for dtype in self.activation_dtypes:
+            self._check_moe(512, 64, 64, dtype, ((1, 1, 2),) * 3, (16, 17, 48), True, top_k=8)
 
     def test_moe_packed_fp16_large_activations(self):
         formats = ((1, 1, 2),) * 3
