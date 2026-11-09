@@ -144,6 +144,9 @@
     <EmbeddedResource Include="$(OnnxRuntimeRoot)\onnxruntime\test\testdata\if_mul.onnx">
       <Link>TestData\if_mul.onnx</Link>
     </EmbeddedResource>
+    <EmbeddedResource Include="$(OnnxRuntimeRoot)\onnxruntime\test\testdata\encrypted_ep_context_mul.onnx">
+      <Link>TestData\encrypted_ep_context_mul.onnx</Link>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>
