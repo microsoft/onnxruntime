@@ -1884,6 +1884,25 @@ TEST(DynamicSparseAttentionTest, SelectedOnlyNoPastPrefill_CUDA) {
   c.past_key.clear();
   c.past_value.clear();
   RunDynamicSparseAttentionCase(c, std::move(cuda_ep));
+
+  RunDynamicSparseAttentionCase<BFloat16>(c, DefaultCudaExecutionProvider());
+
+  // FP16 Q/K infer FP16 present caches even when the attention output is BF16.
+  c.output_abs_tolerance = 0.0f;
+  c.output_rel_tolerance = 0.0f;
+  c.key.assign(8, 1.0009765625f);
+  c.expected_present_key = c.key;
+  RunDynamicSparseAttentionCase<BFloat16, MLFloat16, MLFloat16>(c, DefaultCudaExecutionProvider());
+
+  c.value.assign(8, 6.00390625f);
+  c.expected_present_value = c.value;
+  c.expected_output = c.value;
+  RunDynamicSparseAttentionCase<BFloat16, MLFloat16, MLFloat16, MLFloat16>(c, DefaultCudaExecutionProvider());
+
+  c.packed_qkv = true;
+  c.query.insert(c.query.end(), c.key.begin(), c.key.end());
+  c.query.insert(c.query.end(), c.value.begin(), c.value.end());
+  RunDynamicSparseAttentionCase<BFloat16, MLFloat16, MLFloat16, MLFloat16>(c, DefaultCudaExecutionProvider());
 }
 
 TEST(DynamicSparseAttentionTest, SelectedOnlyEmptySetProducesZeroAndAppendsCache_CUDA) {

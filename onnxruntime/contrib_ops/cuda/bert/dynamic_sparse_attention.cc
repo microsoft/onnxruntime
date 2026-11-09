@@ -148,8 +148,9 @@ Status DynamicSparseAttention<T>::ComputeInternal(OpKernelContext* context) cons
   const Tensor* key_scale = context->InputCount() > 18 ? context->Input<Tensor>(18) : nullptr;
   const Tensor* value_scale = context->InputCount() > 19 ? context->Input<Tensor>(19) : nullptr;
   const bool quantized_cache = past_key != nullptr && past_key->IsDataType<int8_t>();
+  // Without past inputs, the schema infers the present cache type from query.
   const bool fp16_cache = !std::is_same_v<T, MLFloat16> &&
-                          past_key != nullptr && past_key->IsDataType<MLFloat16>();
+                          (past_key != nullptr ? past_key->IsDataType<MLFloat16>() : query->IsDataType<MLFloat16>());
   const bool query_fp16 = !std::is_same_v<T, MLFloat16> &&
                           query != nullptr && query->IsDataType<MLFloat16>();
   const bool key_fp16 = !std::is_same_v<T, MLFloat16> &&
