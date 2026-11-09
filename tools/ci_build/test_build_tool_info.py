@@ -10,7 +10,6 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import build_tool_info
-from build_tool_info import get_tool_info
 
 HOST_SHA512_CASES = (
     ("cmake", "linux", "x86_64", "linux", "x64"),
@@ -35,13 +34,13 @@ class TestBuildToolInfo(unittest.TestCase):
     def test_select_host_sha512(self):
         for tool, host_os, host_arch, os_key, arch_key in HOST_SHA512_CASES:
             with self.subTest(tool=tool, host_os=host_os, host_arch=host_arch):
-                info = get_tool_info(tool, host_os=host_os, host_arch=host_arch)
+                info = build_tool_info.get_tool_info(tool, host_os=host_os, host_arch=host_arch)
                 self.assertEqual(info.sha512, build_tool_info._BUILD_TOOL_INFO[tool]["sha512"][os_key][arch_key])
 
         # vcpkg tool info is host-independent, including for build.py's fallback clone.
         self.assertEqual(
-            get_tool_info("vcpkg", host_os="freebsd", host_arch="mips"),
-            get_tool_info("vcpkg"),
+            build_tool_info.get_tool_info("vcpkg", host_os="freebsd", host_arch="mips"),
+            build_tool_info.get_tool_info("vcpkg"),
         )
 
     def test_reject_unsupported_hosts(self):
@@ -50,7 +49,7 @@ class TestBuildToolInfo(unittest.TestCase):
                 self.subTest(tool=tool, host_os=host_os, host_arch=host_arch),
                 self.assertRaisesRegex(ValueError, f"No {tool} SHA-512 configured"),
             ):
-                get_tool_info(tool, host_os=host_os, host_arch=host_arch)
+                build_tool_info.get_tool_info(tool, host_os=host_os, host_arch=host_arch)
 
     def test_reject_missing_or_invalid_metadata(self):
         metadata = copy.deepcopy(build_tool_info._BUILD_TOOL_INFO)
@@ -59,7 +58,7 @@ class TestBuildToolInfo(unittest.TestCase):
             patch.object(build_tool_info, "_BUILD_TOOL_INFO", metadata),
             self.assertRaisesRegex(ValueError, "No cmake SHA-512 configured"),
         ):
-            get_tool_info("cmake", host_os="win32", host_arch="arm64")
+            build_tool_info.get_tool_info("cmake", host_os="win32", host_arch="arm64")
 
         for field, value in (("sha512", "invalid"), ("version", "invalid\nversion"), ("version", "invalid\n")):
             with self.subTest(field=field):
@@ -69,10 +68,10 @@ class TestBuildToolInfo(unittest.TestCase):
                     patch.object(build_tool_info, "_BUILD_TOOL_INFO", metadata),
                     self.assertRaisesRegex(ValueError, "Invalid vcpkg"),
                 ):
-                    get_tool_info("vcpkg")
+                    build_tool_info.get_tool_info("vcpkg")
 
         with self.assertRaises(KeyError):
-            get_tool_info("unknown")
+            build_tool_info.get_tool_info("unknown")
 
 
 if __name__ == "__main__":
