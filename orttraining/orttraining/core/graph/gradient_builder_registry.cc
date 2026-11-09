@@ -128,6 +128,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Atan", GetAtanGradient);
   REGISTER_GRADIENT_BUILDER("GlobalMaxPool", GetGlobalMaxPoolGradient);
   REGISTER_GRADIENT_BUILDER("ReduceMax", GetReduceMaxGradient);
+  REGISTER_GRADIENT_BUILDER("Sum", GetSumGradient);
 
   REGISTER_GRADIENT_BUILDER("ExternalGradient", GetExternalGradient);
 };
