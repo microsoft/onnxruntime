@@ -220,19 +220,14 @@ __global__ __launch_bounds__(KW * 32) void MatMulPackedBf16TcWarpKSplitKernel(
             float e0[8], e1[8], o0[8], o1[8];
 #pragma unroll
             for (int s = 0; s < 4; ++s) {
-              constexpr bool adjacent = kCompileType == gguf_quant::kGgmlTypeIQ2_XXS;
-              const int i0 = adjacent ? 4 * s : s;
-              const int i1 = adjacent ? i0 + 1 : s + 4;
-              const int i2 = adjacent ? i0 + 2 : s + 8;
-              const int i3 = adjacent ? i0 + 3 : s + 12;
-              e0[2 * s] = w_lo[i0];
-              e0[2 * s + 1] = w_lo[i1];
-              e1[2 * s] = w_lo[i2];
-              e1[2 * s + 1] = w_lo[i3];
-              o0[2 * s] = w_hi[i0];
-              o0[2 * s + 1] = w_hi[i1];
-              o1[2 * s] = w_hi[i2];
-              o1[2 * s + 1] = w_hi[i3];
+              e0[2 * s] = w_lo[s];
+              e0[2 * s + 1] = w_lo[s + 4];
+              e1[2 * s] = w_lo[s + 8];
+              e1[2 * s + 1] = w_lo[s + 12];
+              o0[2 * s] = w_hi[s];
+              o0[2 * s + 1] = w_hi[s + 4];
+              o1[2 * s] = w_hi[s + 8];
+              o1[2 * s + 1] = w_hi[s + 12];
             }
             e_lo = gguf_cuda::PackFloat8ToBf16x2(e0);
             e_hi = gguf_cuda::PackFloat8ToBf16x2(e1);
