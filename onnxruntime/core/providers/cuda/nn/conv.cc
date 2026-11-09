@@ -454,7 +454,8 @@ Status Conv<T, Layout>::UpdateState(OpKernelContext* context, bool bias_expected
     const auto fuse_act = is_fused_node_;
 
     auto& plan_key = s_.conv_plan_key;
-    plan_key.clear();
+    // TensorShapeVector::clear() frees heap storage; erase retains it across lookups.
+    plan_key.erase(plan_key.begin(), plan_key.end());
     const auto append_dims = [&plan_key](const auto& dims) {
       plan_key.push_back(static_cast<int64_t>(dims.size()));
       plan_key.insert(plan_key.end(), dims.begin(), dims.end());
