@@ -5,7 +5,7 @@ Options:
         -I [inference_mode]: Use inference mode. Save the inference result and skip the output value comparison.
         -n [test_case_name]: Specifies a single test case to run.
         -p [PLANNER_TYPE]: PLANNER_TYPE could be 'seq' or 'simple'. Default: 'simple'.
-        -e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt' or 'acl'. Default: 'cpu'.
+        -e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl' or 'tensorrt'. Default: 'cpu'.
         -h: help
 
 The debug version of this program depends on dbghelp.dll. Please make sure it's in your PATH.

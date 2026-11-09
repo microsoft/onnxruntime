@@ -1,0 +1,11 @@
+name: 'Setup .NET for Windows CI'
+description: 'Installs the shared x64 .NET SDK version used by Windows CI.'
+runs:
+  using: 'composite'
+  steps:
+    - name: Install .NET SDK
+      uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      env:
+        PROCESSOR_ARCHITECTURE: x64
+      with:
+        dotnet-version: '8.x'

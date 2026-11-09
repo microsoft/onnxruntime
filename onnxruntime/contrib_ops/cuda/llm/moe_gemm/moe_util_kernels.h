@@ -60,13 +60,17 @@ void expandInputRowsKernelLauncher(const InputActivationsType* unpermuted_input,
                                    int64_t* expert_first_token_offset, TmaWarpSpecializedGroupedGemmInput::ElementSF* fc1_act_sf_flat,
                                    const TmaWarpSpecializedGroupedGemmInput::ElementSF* input_sf, const void* prequant_scales, cudaStream_t stream);
 
+// early_routing_loads: launch with the PDL attribute and read the routing metadata (written by kernels that completed
+// before the producer of `expanded_permuted_rows` started) before waiting for that producer, which only the expanded
+// rows depend on. Only valid for the staged-routing kernel (experts_per_token <= 256).
 template <class OutputType, class GemmOutputType, class ScaleBiasType>
 void finalizeMoeRoutingKernelLauncher(const GemmOutputType* expanded_permuted_rows,
                                       OutputType* reduced_unpermuted_output, const ScaleBiasType* bias, const float* final_scales,
                                       const int* unpermuted_row_to_permuted_row, const int* permuted_row_to_unpermuted_row,
                                       const int* token_selected_experts, const int64_t* expert_first_token_offset, const int64_t num_rows,
                                       const int64_t cols, const int64_t experts_per_token, const int64_t num_experts_per_node,
-                                      MOEParallelismConfig parallelism_config, const bool enable_alltoall, cudaStream_t stream);
+                                      MOEParallelismConfig parallelism_config, const bool enable_alltoall, cudaStream_t stream,
+                                      const bool early_routing_loads = false);
 
 }  // namespace cutlass_kernels
 }  // namespace onnxruntime::llm::kernels

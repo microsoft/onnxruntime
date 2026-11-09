@@ -29,7 +29,12 @@ public enum OrtProvider {
   DIRECT_ML("DmlExecutionProvider"),
   /** The AMD MIGraphX execution provider. */
   MI_GRAPH_X("MIGraphXExecutionProvider"),
-  /** The ARM Compute Library execution provider. */
+  /**
+   * The removed ARM Compute Library execution provider.
+   *
+   * @deprecated The ACL execution provider has been removed. Retained for compatibility only.
+   */
+  @Deprecated
   ACL("ACLExecutionProvider"),
   /** The AMD ROCm execution provider. */
   ROCM("ROCMExecutionProvider"),

@@ -66,8 +66,8 @@ struct Fused_Moe_Kernel_sm80 {
                                        : BaseKernelTraits::kSmemSize;
   static constexpr int kThreadCount = BaseKernelTraits::kThreadCount;
 
-  static constexpr bool can_implement(int const avaliable_smem_size) {
-    return BaseKernelTraits::can_implement(avaliable_smem_size);
+  static constexpr bool can_implement(int const available_smem_size) {
+    return BaseKernelTraits::can_implement(available_smem_size);
   }
 
   static Params to_underlying_arguments(Arguments const& args) {

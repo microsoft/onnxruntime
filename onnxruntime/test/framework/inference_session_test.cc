@@ -9,6 +9,7 @@
 #include <atomic>
 #include <cfloat>
 #include <chrono>
+#include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <functional>
@@ -19,6 +20,7 @@
 #include <set>
 #include <thread>
 #include <tuple>
+#include <utility>
 
 #include "nlohmann/json.hpp"
 #include "onnxruntime_cxx_api.h"
@@ -30,6 +32,7 @@
 #include "core/common/profiler.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/data_transfer_manager.h"
+#include "core/framework/endian_utils.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/kernel_pilot_moe_expert_state.h"
@@ -354,11 +357,22 @@ enum class GraphCaptureOperation {
 // Use CPU kernels for capture runs and simulate replay without an EP-internal lock.
 class GraphCaptureTestExecutionProvider : public CPUExecutionProvider {
  public:
-  explicit GraphCaptureTestExecutionProvider(bool concurrent_run_supported)
-      : CPUExecutionProvider{CPUExecutionProviderInfo{}}, concurrent_run_supported_{concurrent_run_supported} {}
+  explicit GraphCaptureTestExecutionProvider(bool concurrent_run_supported, bool create_device_streams = false)
+      : CPUExecutionProvider{CPUExecutionProviderInfo{}},
+        concurrent_run_supported_{concurrent_run_supported},
+        create_device_streams_{create_device_streams} {}
 
   bool ConcurrentRunSupported() const override { return concurrent_run_supported_; }
   bool IsGraphCaptureEnabled() const override { return true; }
+
+  // A session only validates the stream override of a run when some provider creates device streams.
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap&) const override {
+    if (create_device_streams_) {
+      stream_handle_registry.RegisterCreateStreamFn(OrtDevice::CPU, [](const OrtDevice& device) {
+        return std::make_unique<Stream>(nullptr, device);
+      });
+    }
+  }
 
   bool IsGraphCaptured(int graph_annotation_id) const override {
     Notify(GraphCaptureOperation::Check);
@@ -372,6 +386,12 @@ class GraphCaptureTestExecutionProvider : public CPUExecutionProvider {
   }
 
   Status OnRunEnd(bool, const RunOptions& run_options) override {
+    // The session marks runs that did not complete successfully; this is the only signal a provider gets for them.
+    if (run_options.config_options.GetConfigOrDefault("__ort.run_outcome", "ok") == "ok") {
+      ++ok_run_end_count;
+    } else {
+      ++failed_run_end_count;
+    }
     if (run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigCudaGraphAnnotation, "0") != "-1" &&
         ++capture_run_count_ == 2) {
       captured_ = true;
@@ -395,6 +415,8 @@ class GraphCaptureTestExecutionProvider : public CPUExecutionProvider {
   std::function<void(GraphCaptureOperation)> on_operation;
   std::atomic<int> run_count{0};
   std::atomic<int> replay_count{0};
+  std::atomic<int> ok_run_end_count{0};
+  std::atomic<int> failed_run_end_count{0};
   bool fail_replay = false;
 
  private:
@@ -407,19 +429,20 @@ class GraphCaptureTestExecutionProvider : public CPUExecutionProvider {
   }
 
   const bool concurrent_run_supported_;
+  const bool create_device_streams_;
   std::atomic<bool> captured_{false};
   std::atomic<int> capture_run_count_{0};
 };
 
 class GraphCaptureSessionTest : public ::testing::Test {
  protected:
-  void CreateSession(bool concurrent_run_supported = false) {
+  void CreateSession(bool concurrent_run_supported = false, bool create_device_streams = false) {
     SessionOptions options;
     options.intra_op_param.thread_pool_size = 1;
     options.inter_op_param.thread_pool_size = 1;
     ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsConfigForceSpinningStop, "1"));
     session_ = std::make_unique<InferenceSession>(options, GetEnvironment());
-    auto ep = std::make_unique<GraphCaptureTestExecutionProvider>(concurrent_run_supported);
+    auto ep = std::make_unique<GraphCaptureTestExecutionProvider>(concurrent_run_supported, create_device_streams);
     ep_ = ep.get();
     ASSERT_STATUS_OK(session_->RegisterExecutionProvider(std::move(ep)));
     ASSERT_STATUS_OK(session_->Load(MODEL_URI));
@@ -467,6 +490,43 @@ TEST_F(GraphCaptureSessionTest, ReplayFailureReleasesRunLock) {
   ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Replay));
   EXPECT_EQ(ep_->run_count.load(), 4);
 }
+
+TEST_F(GraphCaptureSessionTest, TerminatedRunIsReportedToProvidersAsFailed) {
+  ASSERT_NO_FATAL_FAILURE(CreateSession());
+  RunOptions terminated;
+  terminated.terminate = true;
+  EXPECT_THAT(RunModelWithValues(*session_, terminated, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f}).ErrorMessage(),
+              testing::HasSubstr("terminate flag"));
+  EXPECT_EQ(ep_->run_count.load(), 1);
+  EXPECT_EQ(ep_->failed_run_end_count.load(), 1);
+  EXPECT_EQ(ep_->ok_run_end_count.load(), 0);
+
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Run));
+  EXPECT_EQ(ep_->failed_run_end_count.load(), 1);
+  EXPECT_EQ(ep_->ok_run_end_count.load(), 1);
+}
+
+#ifdef ORT_ENABLE_STREAM
+// The stream override is validated after the providers started the run but before any node executes, so this early
+// return must still tell the providers that the run failed. Otherwise a provider capturing the run would keep it.
+TEST_F(GraphCaptureSessionTest, RunRejectedBeforeExecutionIsReportedToProvidersAsFailed) {
+  ASSERT_NO_FATAL_FAILURE(CreateSession(/*concurrent_run_supported*/ false, /*create_device_streams*/ true));
+  // OrtSyncStream is the C API's opaque alias for Stream. The session only has a CPU stream, so none matches this one.
+  const OrtDevice absent_device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0);
+  Stream absent_stream(nullptr, absent_device);
+  RunOptions rejected;
+  rejected.sync_stream = reinterpret_cast<OrtSyncStream*>(&absent_stream);
+  EXPECT_THAT(RunModelWithValues(*session_, rejected, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f}).ErrorMessage(),
+              testing::HasSubstr("No matching stream found"));
+  EXPECT_EQ(ep_->run_count.load(), 1);
+  EXPECT_EQ(ep_->failed_run_end_count.load(), 1);
+  EXPECT_EQ(ep_->ok_run_end_count.load(), 0);
+
+  ASSERT_STATUS_OK(Execute(GraphCaptureOperation::Run));
+  EXPECT_EQ(ep_->failed_run_end_count.load(), 1);
+  EXPECT_EQ(ep_->ok_run_end_count.load(), 1);
+}
+#endif  // ORT_ENABLE_STREAM
 
 class GraphCaptureRunSerializationTest
     : public GraphCaptureSessionTest,
@@ -524,6 +584,107 @@ INSTANTIATE_TEST_SUITE_P(
         std::make_tuple(GraphCaptureOperation::Release, GraphCaptureOperation::Replay, false),
         std::make_tuple(GraphCaptureOperation::Check, GraphCaptureOperation::Release, false),
         std::make_tuple(GraphCaptureOperation::Replay, GraphCaptureOperation::Replay, true)));
+
+namespace {
+// Keeps per-run state like the QMoE controller: it refuses to start a run while its previous run was never ended.
+class RunLifecycleTestExecutionProvider : public CPUExecutionProvider {
+ public:
+  RunLifecycleTestExecutionProvider() : CPUExecutionProvider{CPUExecutionProviderInfo{}} {}
+
+  Status OnRunStart(const RunOptions&) override {
+    ORT_RETURN_IF(run_active, "The previous run of this provider was never ended.");
+    run_active = true;
+    return Status::OK();
+  }
+
+  Status OnRunEnd(bool, const RunOptions& run_options) override {
+    run_active = false;
+    if (run_options.config_options.GetConfigOrDefault("__ort.run_outcome", "ok") == "ok") {
+      ++ok_run_end_count;
+    } else {
+      ++failed_run_end_count;
+    }
+    return Status::OK();
+  }
+
+  bool run_active = false;
+  int ok_run_end_count = 0;
+  int failed_run_end_count = 0;
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RunLifecycleTestExecutionProvider);
+};
+
+// Registered after RunLifecycleTestExecutionProvider, so the session starts the run on that provider first.
+class FailingRunStartTestExecutionProvider : public IExecutionProvider {
+ public:
+  explicit FailingRunStartTestExecutionProvider(bool throw_exception)
+      : IExecutionProvider{"FailingRunStartTestExecutionProvider"}, throw_exception_{throw_exception} {}
+
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override { return std::make_shared<KernelRegistry>(); }
+
+  Status OnRunStart(const RunOptions&) override {
+    if (fail_run_start) {
+      if (throw_exception_) {
+        ORT_THROW("OnRunStart failed for testing");
+      }
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "OnRunStart failed for testing");
+    }
+    return Status::OK();
+  }
+
+  Status OnRunEnd(bool, const RunOptions&) override {
+    ++run_end_count;
+    return Status::OK();
+  }
+
+  bool fail_run_start = true;
+  int run_end_count = 0;
+
+ private:
+  const bool throw_exception_;
+};
+}  // namespace
+
+class RunStartFailureTest : public ::testing::TestWithParam<bool> {};
+
+// A provider that started the run must be ended as failed even when a provider that starts later throws or fails.
+// Otherwise it stays in the middle of a run and rejects every later run of the session.
+TEST_P(RunStartFailureTest, ProvidersThatStartedTheRunAreEndedAsFailedAndTheSessionRunsAgain) {
+  SessionOptions options;
+  options.intra_op_param.thread_pool_size = 1;
+  options.inter_op_param.thread_pool_size = 1;
+  InferenceSession session{options, GetEnvironment()};
+  auto first = std::make_unique<RunLifecycleTestExecutionProvider>();
+  auto* first_ep = first.get();
+  auto second = std::make_unique<FailingRunStartTestExecutionProvider>(/*throw_exception*/ GetParam());
+  auto* second_ep = second.get();
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(first)));
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(second)));
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const std::vector<float> values{1.f, 2.f, 3.f, 4.f, 5.f, 6.f};
+  EXPECT_THAT(RunModelWithValues(session, RunOptions{}, values).ErrorMessage(),
+              testing::HasSubstr("OnRunStart failed for testing"));
+  EXPECT_FALSE(first_ep->run_active);
+  EXPECT_EQ(first_ep->failed_run_end_count, 1);
+  EXPECT_EQ(first_ep->ok_run_end_count, 0);
+  // The provider that failed to start the run never owned it.
+  EXPECT_EQ(second_ep->run_end_count, 0);
+
+  second_ep->fail_run_start = false;
+  ASSERT_STATUS_OK(RunModelWithValues(session, RunOptions{}, values));
+  EXPECT_FALSE(first_ep->run_active);
+  EXPECT_EQ(first_ep->failed_run_end_count, 1);
+  EXPECT_EQ(first_ep->ok_run_end_count, 1);
+  EXPECT_EQ(second_ep->run_end_count, 1);
+}
+
+INSTANTIATE_TEST_SUITE_P(InferenceSession, RunStartFailureTest, ::testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return info.param ? "LaterProviderThrows" : "LaterProviderReturnsError";
+                         });
 
 class ProfileEventCapturingSink final : public logging::ISink {
  public:
@@ -1121,6 +1282,32 @@ TEST(InferenceSessionTests, LoadModelTwiceReturnsError) {
   ASSERT_EQ(status.Code(), common::StatusCode::MODEL_LOADED);
   ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("already contains a loaded model"));
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
+// session.moe.offload.gpu_device_mem_limit is read by the CUDA EPs when they are created, but every session validates the
+// session.moe.offload.* keys when it is initialized (unknown keys are rejected), so a session without a CUDA EP must
+// still accept a well-formed value.
+TEST(InferenceSessionTests, MoeOffloadGpuDeviceMemLimitIsAcceptedWithoutCudaEp) {
+  for (const char* limit : {"0", "1073741824"}) {
+    SCOPED_TRACE(limit);
+    SessionOptions so;
+    so.session_logid = "InferenceSessionTests.MoeOffloadGpuDeviceMemLimitIsAcceptedWithoutCudaEp";
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit, limit));
+    InferenceSession session_object{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+    ASSERT_STATUS_OK(session_object.Initialize());
+  }
+}
+
+TEST(InferenceSessionTests, MoeOffloadGpuDeviceMemLimitRejectsMalformedValue) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.MoeOffloadGpuDeviceMemLimitRejectsMalformedValue";
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit, "1 GiB"));
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session_object.Initialize(), kOrtSessionOptionsMoeOffloadGpuDeviceMemLimit);
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 TEST(InferenceSessionTests, FailedLoadAndInitializeRecordProfilingEvents) {
   SessionOptions so;
@@ -5102,11 +5289,482 @@ TEST(InferenceSessionTests, CompileApiWritesAndReloadsExternalInitializersBuffer
     }
     run_and_verify(session);
   }
+
+  {
+    // Verify AddExternalInitializers (external_initializers map) honors
+    // kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly for non-owning OrtValues.
+    const OrtMemoryInfo cpu_mem_info(CPU, OrtAllocatorType::OrtDeviceAllocator);
+    InlinedHashMap<std::string, OrtValue> ext_inits;
+    std::array<const void*, 2> expected_ptrs{};
+    std::array<std::array<float, 64>, 2> native_data{};
+    for (int i = 0; i < 2; ++i) {
+      const auto& init_proto = model_proto.graph().initializer(i);
+      void* slice_ptr = static_cast<char*>(external_buffer) + external_infos[i]->GetOffset();
+      if constexpr (endian::native != endian::little) {
+        ASSERT_STATUS_OK(utils::ReadLittleEndian<float>(
+            gsl::make_span(static_cast<const unsigned char*>(slice_ptr), external_infos[i]->GetLength()),
+            gsl::make_span(native_data[i])));
+        slice_ptr = native_data[i].data();
+      }
+      expected_ptrs[i] = slice_ptr;
+      OrtValue ov;
+      Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape{64}, slice_ptr, cpu_mem_info, ov);
+      ext_inits.emplace(init_proto.name(), std::move(ov));
+    }
+
+    // Without direct-buffer config, non-owning external_initializers are copied.
+    {
+      SessionOptions copy_ext_options;
+      copy_ext_options.graph_optimization_level = TransformerLevel::Default;
+      copy_ext_options.external_initializers = ext_inits;
+      InferenceSessionWrapper session{copy_ext_options, GetEnvironment()};
+      ASSERT_STATUS_OK(session.Load(model_buffer, static_cast<int>(model_size)));
+      ASSERT_STATUS_OK(session.Initialize());
+      for (int i = 0; i < 2; ++i) {
+        int index;
+        ASSERT_STATUS_OK(session.GetSessionState().GetOrtValueNameIdxMap().GetIdx(
+            model_proto.graph().initializer(i).name(), index));
+        const auto* actual = session.GetSessionState().GetInitializedTensors().at(index).Get<Tensor>().DataRaw();
+        EXPECT_NE(actual, expected_ptrs[i]);
+      }
+      run_and_verify(session);
+    }
+
+    // With direct-buffer config enabled, naturally-aligned non-owning external_initializers are borrowed in place.
+    {
+      SessionOptions direct_ext_options;
+      direct_ext_options.graph_optimization_level = TransformerLevel::Default;
+      direct_ext_options.external_initializers = ext_inits;
+      ASSERT_STATUS_OK(direct_ext_options.config_options.AddConfigEntry(
+          kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, "1"));
+      InferenceSessionWrapper session{direct_ext_options, GetEnvironment()};
+      ASSERT_STATUS_OK(session.Load(model_buffer, static_cast<int>(model_size)));
+      ASSERT_STATUS_OK(session.Initialize());
+      for (int i = 0; i < 2; ++i) {
+        int index;
+        ASSERT_STATUS_OK(session.GetSessionState().GetOrtValueNameIdxMap().GetIdx(
+            model_proto.graph().initializer(i).name(), index));
+        const auto* actual = session.GetSessionState().GetInitializedTensors().at(index).Get<Tensor>().DataRaw();
+        if constexpr (endian::native == endian::little) {
+          EXPECT_EQ(actual, expected_ptrs[i]);
+        } else {
+          EXPECT_NE(actual, expected_ptrs[i]);
+        }
+      }
+      run_and_verify(session);
+    }
+  }
 #endif
 
   allocator.Free(external_buffer);
   allocator.Free(model_buffer);
 }
+
+#if defined(USE_CUDA) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+TEST(InferenceSessionTests, ExternalDeviceInitializersCopyBeforeOptimization) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is not available";
+  }
+  InferenceSession allocator_session{SessionOptions{}, GetEnvironment()};
+  ASSERT_STATUS_OK(allocator_session.RegisterExecutionProvider(std::move(cuda_ep)));
+  ASSERT_STATUS_OK(allocator_session.Load(MODEL_URI));
+  ASSERT_STATUS_OK(allocator_session.Initialize());
+  const OrtMemoryInfo cuda_memory_info(
+      CUDA, OrtArenaAllocator,
+      OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0));
+  const auto cuda_allocator = allocator_session.GetAllocator(cuda_memory_info);
+  ASSERT_NE(cuda_allocator, nullptr);
+  const OrtMemoryInfo cpu_memory_info(CPU, OrtDeviceAllocator);
+
+  for (const auto& bias_shape : {TensorShape{}, TensorShape{1, 1}, TensorShape{64, 1}}) {
+    const bool scalar_add = bias_shape.NumDimensions() == 0;
+    const int64_t channels = scalar_add ? 64 : bias_shape[0];
+    ModelProto model_proto;
+    model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    model_proto.add_opset_import()->set_version(13);
+    auto& graph = *model_proto.mutable_graph();
+    graph.set_name("external_device_bias");
+    auto set_value_info = [](ValueInfoProto& value_info, const char* name, int64_t channel_count) {
+      value_info.set_name(name);
+      auto& type = *value_info.mutable_type()->mutable_tensor_type();
+      type.set_elem_type(TensorProto_DataType_FLOAT);
+      for (int64_t dim : {int64_t{1}, channel_count, int64_t{1}}) {
+        type.mutable_shape()->add_dim()->set_dim_value(dim);
+      }
+    };
+    set_value_info(*graph.add_input(), "X", scalar_add ? channels : 1);
+    set_value_info(*graph.add_output(), "Y", channels);
+    if (!scalar_add) {
+      auto& weights = *graph.add_initializer();
+      weights.set_name("W");
+      weights.set_data_type(TensorProto_DataType_FLOAT);
+      for (int64_t dim : {channels, int64_t{1}, int64_t{1}}) {
+        weights.add_dims(dim);
+      }
+      for (int64_t i = 0; i < channels; ++i) {
+        weights.add_float_data(1.0f);
+      }
+      auto& conv = *graph.add_node();
+      conv.set_op_type("Conv");
+      conv.add_input("X");
+      conv.add_input("W");
+      conv.add_output("C");
+    }
+    auto& bias = *graph.add_initializer();
+    bias.set_name("B");
+    bias.set_data_type(TensorProto_DataType_FLOAT);
+    for (int64_t dim : bias_shape.GetDims()) {
+      bias.add_dims(dim);
+    }
+    ExternalDataInfo::SetExternalLocationToProto(ORT_TSTR("unused.bin"), 0, bias_shape.Size() * sizeof(float), bias);
+    auto& add = *graph.add_node();
+    add.set_op_type("Add");
+    add.add_input(scalar_add ? "X" : "C");
+    add.add_input("B");
+    add.add_output("Y");
+    const std::string model_data = model_proto.SerializeAsString();
+
+    for (const char* direct : {"0", "1"}) {
+      for (auto level : {TransformerLevel::Default, TransformerLevel::Level1}) {
+        SCOPED_TRACE(channels);
+        SCOPED_TRACE(bias_shape.NumDimensions());
+        SCOPED_TRACE(direct);
+        SCOPED_TRACE(static_cast<int>(level));
+        std::vector<float> bias_data(static_cast<size_t>(bias_shape.Size()), 2.0f);
+        Tensor cpu_bias(DataTypeImpl::GetType<float>(), bias_shape,
+                        bias_data.data(), cpu_memory_info);
+        OrtValue device_storage;
+        Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), cpu_bias.Shape(), cuda_allocator, device_storage);
+        ASSERT_STATUS_OK(allocator_session.GetDataTransferManager().CopyTensor(
+            cpu_bias, *device_storage.GetMutable<Tensor>()));
+        OrtValue device_view;
+        Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), cpu_bias.Shape(),
+                             device_storage.GetMutable<Tensor>()->MutableDataRaw(), cuda_allocator->Info(), device_view);
+        SessionOptions options;
+        options.graph_optimization_level = level;
+        options.external_initializers.emplace("B", device_view);
+        ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+            kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, direct));
+        ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+        InferenceSessionWrapper session{options, GetEnvironment()};
+        ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+        ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+        ASSERT_STATUS_OK(session.Initialize());
+        if (level == TransformerLevel::Default) {
+          int index;
+          ASSERT_STATUS_OK(session.GetSessionState().GetOrtValueNameIdxMap().GetIdx("B", index));
+          const auto& initializer = session.GetSessionState().GetInitializedTensors().at(index).Get<Tensor>();
+          EXPECT_EQ(initializer.Location().device, cuda_memory_info.device);
+          ASSERT_NE(initializer.DataRaw(), device_view.Get<Tensor>().DataRaw());
+        }
+        int add_count = 0;
+        int conv_count = 0;
+        for (const auto& node : session.GetGraph().Nodes()) {
+          if (node.OpType() == "Add") {
+            ++add_count;
+            EXPECT_EQ(node.GetExecutionProviderType(), kCudaExecutionProvider);
+          }
+          if (node.OpType() == "Conv") {
+            ++conv_count;
+            EXPECT_EQ(node.GetExecutionProviderType(), kCudaExecutionProvider);
+          }
+        }
+        EXPECT_EQ(conv_count, scalar_add ? 0 : 1);
+        EXPECT_EQ(add_count, !scalar_add && level == TransformerLevel::Level1 ? 0 : 1);
+
+        // The session must not depend on the caller's device allocation after initialization.
+        std::fill(bias_data.begin(), bias_data.end(), -100.0f);
+        ASSERT_STATUS_OK(allocator_session.GetDataTransferManager().CopyTensor(
+            cpu_bias, *device_storage.GetMutable<Tensor>()));
+        device_storage = OrtValue{};
+        std::vector<float> input_data(static_cast<size_t>(scalar_add ? channels : 1), 1.0f);
+        OrtValue input;
+        Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape{1, scalar_add ? channels : 1, 1},
+                             input_data.data(), cpu_memory_info, input);
+        std::vector<OrtValue> outputs;
+        const std::array<std::string, 1> output_names{"Y"};
+        ASSERT_STATUS_OK(session.Run(RunOptions{}, NameMLValMap{{"X", input}}, output_names, &outputs));
+        ASSERT_EQ(outputs.size(), 1u);
+        const auto& output = outputs[0].Get<Tensor>();
+        EXPECT_EQ(output.Shape(), (TensorShape{1, channels, 1}));
+        for (float value : output.DataAsSpan<float>()) {
+          EXPECT_EQ(value, 3.0f);
+        }
+      }
+    }
+  }
+}
+
+TEST(InferenceSessionTests, ExternalDeviceInitializersCopyBeforeShapeInference) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is not available";
+  }
+  InferenceSession allocator_session{SessionOptions{}, GetEnvironment()};
+  ASSERT_STATUS_OK(allocator_session.RegisterExecutionProvider(std::move(cuda_ep)));
+  ASSERT_STATUS_OK(allocator_session.Load(MODEL_URI));
+  ASSERT_STATUS_OK(allocator_session.Initialize());
+  const OrtMemoryInfo cuda_memory_info(
+      CUDA, OrtArenaAllocator,
+      OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0));
+  const auto cuda_allocator = allocator_session.GetAllocator(cuda_memory_info);
+  ASSERT_NE(cuda_allocator, nullptr);
+  const OrtMemoryInfo cpu_memory_info(CPU, OrtDeviceAllocator);
+  std::array<int64_t, 2> shape_data{8, 8};
+  Tensor cpu_shape(DataTypeImpl::GetType<int64_t>(), TensorShape{2}, shape_data.data(), cpu_memory_info);
+  OrtValue device_storage;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int64_t>(), cpu_shape.Shape(), cuda_allocator, device_storage);
+  ASSERT_STATUS_OK(allocator_session.GetDataTransferManager().CopyTensor(
+      cpu_shape, *device_storage.GetMutable<Tensor>()));
+  OrtValue device_view;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int64_t>(), cpu_shape.Shape(),
+                       device_storage.GetMutable<Tensor>()->MutableDataRaw(), cuda_allocator->Info(), device_view);
+
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  model_proto.add_opset_import()->set_version(13);
+  auto& graph = *model_proto.mutable_graph();
+  graph.set_name("external_device_shape");
+  auto& input_info = *graph.add_input();
+  input_info.set_name("X");
+  auto& input_type = *input_info.mutable_type()->mutable_tensor_type();
+  input_type.set_elem_type(TensorProto_DataType_FLOAT);
+  input_type.mutable_shape()->add_dim()->set_dim_value(64);
+  auto& output_info = *graph.add_output();
+  output_info.set_name("Y");
+  output_info.mutable_type()->mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  auto& shape = *graph.add_initializer();
+  shape.set_name("shape");
+  shape.set_data_type(TensorProto_DataType_INT64);
+  shape.add_dims(2);
+  shape.add_int64_data(8);
+  shape.add_int64_data(8);
+  TensorProto external_shape = shape;
+  external_shape.clear_int64_data();
+  ExternalDataInfo::SetExternalLocationToProto(ORT_TSTR("unused.bin"), 0, sizeof(shape_data), external_shape);
+  auto& reshape = *graph.add_node();
+  reshape.set_op_type("Reshape");
+  reshape.add_input("X");
+  reshape.add_input("shape");
+  reshape.add_output("Y");
+  const std::string model_data = model_proto.SerializeAsString();
+
+  for (const char* direct : {"0", "1"}) {
+    SessionOptions options;
+    options.graph_optimization_level = TransformerLevel::Level1;
+    options.external_initializers.emplace("shape", device_view);
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, direct));
+    InferenceSessionWrapper session{options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+    ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+    // Load-time ONNX inference requires inline shape data; externalize it before session initialization.
+    ASSERT_STATUS_OK(session.GetMutableGraph().ReplaceInitializedTensor(external_shape, OrtValue{}));
+    session.GetMutableGraph().SetGraphResolveNeeded();
+    ASSERT_STATUS_OK(session.Initialize());
+    int shape_index;
+    ASSERT_STATUS_OK(session.GetSessionState().GetOrtValueNameIdxMap().GetIdx("shape", shape_index));
+    const auto& shape_initializer = session.GetSessionState().GetInitializedTensors().at(shape_index).Get<Tensor>();
+    EXPECT_EQ(shape_initializer.Location().device.Type(), OrtDevice::CPU);
+    EXPECT_NE(shape_initializer.DataRaw(), device_view.Get<Tensor>().DataRaw());
+    EXPECT_EQ(shape_initializer.Data<int64_t>()[0], 8);
+    EXPECT_EQ(shape_initializer.Data<int64_t>()[1], 8);
+    const auto* inferred_shape = session.GetGraph().GetOutputs()[0]->Shape();
+    ASSERT_NE(inferred_shape, nullptr);
+    ASSERT_EQ(inferred_shape->dim_size(), 2);
+    EXPECT_EQ(inferred_shape->dim(0).dim_value(), 8);
+    EXPECT_EQ(inferred_shape->dim(1).dim_value(), 8);
+    std::array<float, 64> input_data{};
+    OrtValue input;
+    Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape{64},
+                         input_data.data(), cpu_memory_info, input);
+    std::vector<OrtValue> outputs;
+    const std::array<std::string, 1> output_names{"Y"};
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, NameMLValMap{{"X", input}}, output_names, &outputs));
+    ASSERT_EQ(outputs.size(), 1u);
+    EXPECT_EQ(outputs[0].Get<Tensor>().Shape(), (TensorShape{8, 8}));
+  }
+}
+#endif
+
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
+#ifdef ENABLE_STRIDED_TENSORS
+TEST(InferenceSessionTests, ExternalNonContiguousInitializersAreRejected) {
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  model_proto.add_opset_import()->set_version(13);
+  auto& graph = *model_proto.mutable_graph();
+  graph.set_name("external_strided_initializer");
+  auto& weights = *graph.add_initializer();
+  weights.set_name("weights");
+  weights.set_data_type(TensorProto_DataType_FLOAT);
+  weights.add_dims(64);
+  ExternalDataInfo::SetExternalLocationToProto(ORT_TSTR("unused.bin"), 0, 64 * sizeof(float), weights);
+  auto& output_info = *graph.add_output();
+  output_info.set_name("Y");
+  auto& output_type = *output_info.mutable_type()->mutable_tensor_type();
+  output_type.set_elem_type(TensorProto_DataType_FLOAT);
+  output_type.mutable_shape()->add_dim()->set_dim_value(64);
+  auto& identity = *graph.add_node();
+  identity.set_op_type("Identity");
+  identity.add_input("weights");
+  identity.add_output("Y");
+  const std::string model_data = model_proto.SerializeAsString();
+
+  std::array<float, 127> storage{};
+  const std::array<int64_t, 1> strides{2};
+  const OrtMemoryInfo cpu_memory_info(CPU, OrtDeviceAllocator);
+  const OrtMemoryInfo device_memory_info(
+      "Cuda", OrtDeviceAllocator,
+      OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0));
+  for (const auto& memory_info : {cpu_memory_info, device_memory_info}) {
+    for (const char* direct : {"0", "1"}) {
+      SCOPED_TRACE(memory_info.name);
+      SCOPED_TRACE(direct);
+      OrtValue strided_view;
+      Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape{64},
+                           storage.data(), memory_info, strided_view, 0, strides);
+      ASSERT_FALSE(strided_view.Get<Tensor>().IsContiguous());
+      ASSERT_EQ(strided_view.Get<Tensor>().SizeInBytes(), sizeof(storage));
+      SessionOptions options;
+      const std::array<std::string, 1> names{"weights"};
+      const std::array<OrtValue, 1> values{strided_view};
+      ASSERT_STATUS_OK(options.AddExternalInitializers(names, values));
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+          kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, direct));
+      InferenceSession session{options, GetEnvironment()};
+      ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+      const auto status = session.Initialize();
+      ASSERT_FALSE(status.IsOK());
+      EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("External initializer weights must be contiguous"));
+    }
+  }
+}
+#endif
+
+#if !defined(DISABLE_CONTRIB_OPS)
+TEST(InferenceSessionTests, ExternalUnalignedQuantizedInitializersWithGroupIndex) {
+  constexpr int64_t k = 64;
+  constexpr int64_t n = 8;
+  constexpr int64_t block_size = 16;
+  constexpr size_t weight_bytes = n * k / 2;
+  alignas(uint32_t) std::array<uint8_t, weight_bytes + 1> storage{};
+  storage.fill(0x99);
+  uint8_t* weight_data = storage.data() + 1;
+  ASSERT_NE(reinterpret_cast<uintptr_t>(weight_data) % alignof(uint32_t), 0u);
+  ASSERT_GT(weight_bytes, utils::kSmallTensorExternalDataThreshold);
+
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  model_proto.add_opset_import()->set_version(13);
+  auto& contrib_opset = *model_proto.add_opset_import();
+  contrib_opset.set_domain(kMSDomain);
+  contrib_opset.set_version(1);
+  auto& graph = *model_proto.mutable_graph();
+  graph.set_name("external_unaligned_quantized_initializer");
+  auto set_value_info = [](ValueInfoProto& value_info, const char* name, int64_t columns) {
+    value_info.set_name(name);
+    auto& type = *value_info.mutable_type()->mutable_tensor_type();
+    type.set_elem_type(TensorProto_DataType_FLOAT);
+    type.mutable_shape()->add_dim()->set_dim_value(1);
+    type.mutable_shape()->add_dim()->set_dim_value(columns);
+  };
+  set_value_info(*graph.add_input(), "A", k);
+  set_value_info(*graph.add_output(), "Y", n);
+  auto& weights = *graph.add_initializer();
+  weights.set_name("B");
+  weights.set_data_type(TensorProto_DataType_UINT8);
+  for (int64_t dim : {n, k / block_size, block_size / 2}) weights.add_dims(dim);
+  ExternalDataInfo::SetExternalLocationToProto(ORT_TSTR("weights.bin"), 0, weight_bytes, weights);
+  auto& scales = *graph.add_initializer();
+  scales.set_name("scales");
+  scales.set_data_type(TensorProto_DataType_FLOAT);
+  scales.add_dims(n);
+  scales.add_dims(k / block_size);
+  for (int64_t i = 0; i < n * k / block_size; ++i) scales.add_float_data(1.0f);
+  auto& group_index = *graph.add_initializer();
+  group_index.set_name("g_idx");
+  group_index.set_data_type(TensorProto_DataType_INT32);
+  group_index.add_dims(k);
+  for (int64_t i = 0; i < k; ++i) group_index.add_int32_data(static_cast<int32_t>(i / block_size));
+  auto& matmul = *graph.add_node();
+  matmul.set_op_type("MatMulNBits");
+  matmul.set_domain(kMSDomain);
+  for (const char* input : {"A", "B", "scales", "", "g_idx"}) matmul.add_input(input);
+  matmul.add_output("Y");
+  for (const auto& [name, value] : {std::pair{"K", k}, {"N", n}, {"bits", int64_t{4}}, {"block_size", block_size}}) {
+    auto& attribute = *matmul.add_attribute();
+    attribute.set_name(name);
+    attribute.set_type(AttributeProto_AttributeType_INT);
+    attribute.set_i(value);
+  }
+  const std::string model_data = model_proto.SerializeAsString();
+  const OrtMemoryInfo memory_info(CPU, OrtDeviceAllocator);
+  OrtValue weight_view;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<uint8_t>(), TensorShape{n, k / block_size, block_size / 2},
+                       weight_data, memory_info, weight_view);
+  std::array<float, k> input_data{};
+  input_data.fill(1.0f);
+  OrtValue input;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape{1, k}, input_data.data(), memory_info, input);
+
+  for (bool use_file_buffer : {false, true}) {
+    for (const char* direct : {"0", "1"}) {
+      SCOPED_TRACE(use_file_buffer);
+      SCOPED_TRACE(direct);
+      SessionOptions options;
+      options.graph_optimization_level = TransformerLevel::Default;
+      if (use_file_buffer) {
+        options.external_initializer_files_mmap.emplace(
+            ORT_TSTR("weights.bin"), std::make_pair(reinterpret_cast<char*>(weight_data), weight_bytes));
+      } else {
+        const std::array<std::string, 1> names{"B"};
+        const std::array<OrtValue, 1> values{weight_view};
+        ASSERT_STATUS_OK(options.AddExternalInitializers(names, values));
+      }
+      ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+          kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, direct));
+      InferenceSessionWrapper session{options, GetEnvironment()};
+      ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+      ASSERT_STATUS_OK(session.Initialize());
+      int weight_index;
+      ASSERT_STATUS_OK(session.GetSessionState().GetOrtValueNameIdxMap().GetIdx("B", weight_index));
+      const auto& initialized_weight = session.GetSessionState().GetInitializedTensors().at(weight_index).Get<Tensor>();
+      if (*direct == '1' && endian::native == endian::little) {
+        EXPECT_EQ(initialized_weight.DataRaw(), weight_data);
+      } else {
+        EXPECT_NE(initialized_weight.DataRaw(), weight_data);
+      }
+      const std::array<std::string, 1> output_names{"Y"};
+      std::vector<OrtValue> outputs;
+      ASSERT_STATUS_OK(session.Run(RunOptions{}, NameMLValMap{{"A", input}}, output_names, &outputs));
+      ASSERT_EQ(outputs.size(), 1u);
+      const auto& output = outputs[0].Get<Tensor>();
+      ASSERT_EQ(output.Shape(), (TensorShape{1, n}));
+      for (int64_t i = 0; i < n; ++i) EXPECT_EQ(output.Data<float>()[i], static_cast<float>(k));
+    }
+  }
+}
+#endif
+
+TEST(InferenceSessionTests, ExternalDeviceInitializersRequireDataTransfer) {
+  std::array<int64_t, 4> pads{0, 0, 1, 1};
+  const OrtMemoryInfo device_memory_info(
+      "Cuda", OrtDeviceAllocator,
+      OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0));
+  OrtValue device_view;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int64_t>(), TensorShape{4},
+                       pads.data(), device_memory_info, device_view);
+  SessionOptions options;
+  options.external_initializers.emplace("Pads_not_on_disk", device_view);
+  InferenceSession session{options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load("testdata/model_with_external_initializer_come_from_user.onnx"));
+  const auto status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("no data transfer registered"));
+}
+#endif
 
 TEST(InferenceSessionTests, CompileApiWritesModelFileAndExternalInitializersBuffer) {
   const std::basic_string<ORTCHAR_T> input_path = ORT_TSTR("compile_api_external_buffer_file_input.onnx");
