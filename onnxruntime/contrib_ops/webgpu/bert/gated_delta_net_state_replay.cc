@@ -33,7 +33,8 @@ constexpr uint64_t kMaxIndex = std::numeric_limits<uint32_t>::max();
 
 class GatedDeltaNetStateReplayProgram final : public Program<GatedDeltaNetStateReplayProgram> {
  public:
-  GatedDeltaNetStateReplayProgram() : Program{"GatedDeltaNetStateReplay"} {}
+  explicit GatedDeltaNetStateReplayProgram(bool decay_per_key_dim)
+      : Program{"GatedDeltaNetStateReplay"}, decay_per_key_dim_(decay_per_key_dim) {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
     const auto& source = shader.AddInput("source", ShaderUsage::UseUniform);
@@ -42,6 +43,7 @@ class GatedDeltaNetStateReplayProgram final : public Program<GatedDeltaNetStateR
     const auto& delta = shader.AddInput("delta", ShaderUsage::UseUniform);
     const auto& destination = shader.AddOutput("destination", ShaderUsage::UseUniform);
     return WGSL_TEMPLATE_APPLY(shader, "bert/gated_delta_net_state_replay.wgsl.template",
+                               WGSL_TEMPLATE_PARAMETER(decay_per_key_dim, decay_per_key_dim_),
                                WGSL_TEMPLATE_VARIABLE(decay, decay),
                                WGSL_TEMPLATE_VARIABLE(delta, delta),
                                WGSL_TEMPLATE_VARIABLE(destination, destination),
@@ -56,15 +58,18 @@ class GatedDeltaNetStateReplayProgram final : public Program<GatedDeltaNetStateR
       {"head_size_k", ProgramUniformVariableDataType::Uint32},
       {"num_heads_k", ProgramUniformVariableDataType::Uint32},
       {"kept_count", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  bool decay_per_key_dim_;
 };
 
 // Enqueue only. The operator's completion boundary is deliberately separate from the dispatch.
 Status EnqueueReplay(onnxruntime::webgpu::ComputeContext& context, const Tensor& source, const Tensor& capsule,
                      Tensor& destination, const std::array<uint32_t, 11>& desc,
-                     uint32_t state_elements, uint32_t decay_elements,
+                     bool decay_per_key_dim, uint32_t state_elements, uint32_t decay_elements,
                      uint32_t key_elements, uint32_t delta_elements,
                      uint32_t dispatch_x, uint32_t dispatch_y) {
-  GatedDeltaNetStateReplayProgram program;
+  GatedDeltaNetStateReplayProgram program{decay_per_key_dim};
   program
       .AddInputs({ProgramInput::BufferView(&source, ProgramTensorMetadataDependency::Type,
                                            TensorShape{state_elements}, desc[0]),
@@ -78,6 +83,7 @@ Status EnqueueReplay(onnxruntime::webgpu::ComputeContext& context, const Tensor&
                                            TensorShape{state_elements}, desc[1]))
       .SetDispatchGroupSize(dispatch_x, dispatch_y)
       .SetWorkgroupSize(kWorkgroupSize)
+      .CacheHint(decay_per_key_dim)
       .AddUniformVariables({{state_elements}, {desc[5]}, {desc[6]}, {desc[7]}, {desc[8]}, {desc[10]}});
   const auto& limits = context.DeviceLimits();
   const auto segment_count = [&limits](const Tensor& backing) {
@@ -136,11 +142,15 @@ Status GatedDeltaNetStateReplay::ComputeInternal(onnxruntime::webgpu::ComputeCon
   ORT_RETURN_IF_NOT(hv * dv <= kMaxIndex && hk * dk <= kMaxIndex && (hv - 1) * hk <= kMaxIndex,
                     "GatedDeltaNetStateReplay head geometry exceeds the uint32 indexing range.");
   const uint64_t state_elements = hv * dv * dk;
-  const uint64_t decay_elements = capacity * hv;
+  ORT_RETURN_IF_NOT(state_elements <= kMaxIndex,
+                    "GatedDeltaNetStateReplay tensor geometry exceeds the uint32 indexing range.");
+  const bool decay_per_key_dim =
+      dk > 1 && desc[3] >= desc[2] &&
+      static_cast<uint64_t>(desc[3] - desc[2]) == capacity * (hv * dk);
+  const uint64_t decay_elements = decay_per_key_dim ? capacity * (hv * dk) : capacity * hv;
   const uint64_t key_elements = capacity * (hk * dk);
   const uint64_t delta_elements = capacity * (hv * dv);
-  ORT_RETURN_IF_NOT(state_elements <= kMaxIndex &&
-                        decay_elements <= kMaxIndex && key_elements <= kMaxIndex && delta_elements <= kMaxIndex,
+  ORT_RETURN_IF_NOT(decay_elements <= kMaxIndex && key_elements <= kMaxIndex && delta_elements <= kMaxIndex,
                     "GatedDeltaNetStateReplay tensor geometry exceeds the uint32 indexing range.");
   const auto check_view = [](const Tensor& backing, uint32_t offset, uint64_t length) -> Status {
     ORT_RETURN_IF_NOT(static_cast<uint64_t>(offset) + length <= static_cast<uint64_t>(backing.Shape().Size()),
@@ -169,7 +179,7 @@ Status GatedDeltaNetStateReplay::ComputeInternal(onnxruntime::webgpu::ComputeCon
                     "GatedDeltaNetStateReplay output must be prebound to destination_backing.");
   // Do not bind destination_backing as a read-only shader input alongside its writable output.
   return context.RunAndWaitChecked([&]() {
-    return EnqueueReplay(context, *source, *capsule, *output, desc,
+    return EnqueueReplay(context, *source, *capsule, *output, desc, decay_per_key_dim,
                          static_cast<uint32_t>(state_elements), static_cast<uint32_t>(decay_elements),
                          static_cast<uint32_t>(key_elements), static_cast<uint32_t>(delta_elements),
                          static_cast<uint32_t>(dispatch_x), static_cast<uint32_t>(dispatch_y));

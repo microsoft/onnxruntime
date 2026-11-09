@@ -164,9 +164,9 @@ jobs:
     displayName: 'Check active Chrome processes (before test)'
     condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
-      mkdir $(Agent.TempDirectory)\web\test\01
-      dir $(Agent.TempDirectory)\web\test\01
-      npm test -- -e=chrome -b=webgl,wasm --user-data-dir=$(Agent.TempDirectory)\web\test\01 --chromium-flags=--enable-logging --chromium-flags=--v=1
+      mkdir $(Agent.TempDirectory)\web\test\wasm-webgl
+      dir $(Agent.TempDirectory)\web\test\wasm-webgl
+      npm test -- -e=chrome -b=webgl,wasm --user-data-dir=$(Agent.TempDirectory)\web\test\wasm-webgl --chromium-flags=--enable-logging --chromium-flags=--v=1
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (wasm,webgl backend)'
     condition: and(succeeded(), eq('${{ parameters.RunWebGpuTests }}', 'false'))
@@ -175,9 +175,9 @@ jobs:
     displayName: 'Check active Chrome processes (before test)'
     condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
-      mkdir $(Agent.TempDirectory)\web\test\02
-      dir $(Agent.TempDirectory)\web\test\02
-      npm test -- -e=chrome -b=webgl,wasm,webgpu $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\02 --chromium-flags=--enable-logging --chromium-flags=--v=1
+      mkdir $(Agent.TempDirectory)\web\test\all-backends
+      dir $(Agent.TempDirectory)\web\test\all-backends
+      npm test -- -e=chrome -b=webgl,wasm,webgpu $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\all-backends --chromium-flags=--enable-logging --chromium-flags=--v=1
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (ALL backends)'
     condition: and(succeeded(), eq('${{ parameters.RunWebGpuTests }}', 'true'))
@@ -186,9 +186,9 @@ jobs:
     displayName: 'Check active Chrome processes (before test)'
     condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
-      mkdir $(Agent.TempDirectory)\web\test\03
-      dir $(Agent.TempDirectory)\web\test\03
-      npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-tensor $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\03 --chromium-flags=--enable-logging --chromium-flags=--v=1
+      mkdir $(Agent.TempDirectory)\web\test\jsep-gpu-tensor
+      dir $(Agent.TempDirectory)\web\test\jsep-gpu-tensor
+      npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-tensor $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\jsep-gpu-tensor --chromium-flags=--enable-logging --chromium-flags=--v=1
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (Suite1, webgpu, IO-binding=gpu-tensor)'
     condition: and(succeeded(), eq('${{ parameters.RunWebGpuTests }}', 'true'))
@@ -197,9 +197,9 @@ jobs:
     displayName: 'Check active Chrome processes (before test)'
     condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
-      mkdir $(Agent.TempDirectory)\web\test\04
-      dir $(Agent.TempDirectory)\web\test\04
-      npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-location $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\04 --chromium-flags=--enable-logging --chromium-flags=--v=1
+      mkdir $(Agent.TempDirectory)\web\test\jsep-gpu-location
+      dir $(Agent.TempDirectory)\web\test\jsep-gpu-location
+      npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-location $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\jsep-gpu-location --chromium-flags=--enable-logging --chromium-flags=--v=1
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests (Suite1, webgpu, IO-binding=gpu-location)'
     condition: and(succeeded(), eq('${{ parameters.RunWebGpuTests }}', 'true'))
@@ -208,9 +208,9 @@ jobs:
     displayName: 'Check active Chrome processes (before test)'
     condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
-      mkdir $(Agent.TempDirectory)\web\test\05
-      dir $(Agent.TempDirectory)\web\test\05
-      npm test -- --webgl.pack -b=webgl -e=chrome --user-data-dir=$(Agent.TempDirectory)\web\test\05 --chromium-flags=--enable-logging --chromium-flags=--v=1
+      mkdir $(Agent.TempDirectory)\web\test\webgl-packed
+      dir $(Agent.TempDirectory)\web\test\webgl-packed
+      npm test -- --webgl.pack -b=webgl -e=chrome --user-data-dir=$(Agent.TempDirectory)\web\test\webgl-packed --chromium-flags=--enable-logging --chromium-flags=--v=1
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebGL: packed mode'
   - script: |
@@ -218,14 +218,14 @@ jobs:
     displayName: 'Check active Chrome processes (before test)'
     condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
-      mkdir $(Agent.TempDirectory)\web\test\06
-      dir $(Agent.TempDirectory)\web\test\06
-      npm test -- --wasm.proxy -b=wasm -e=chrome --user-data-dir=$(Agent.TempDirectory)\web\test\06 --chromium-flags=--enable-logging --chromium-flags=--v=1
+      mkdir $(Agent.TempDirectory)\web\test\wasm-proxy
+      dir $(Agent.TempDirectory)\web\test\wasm-proxy
+      npm test -- --wasm.proxy -b=wasm -e=chrome --user-data-dir=$(Agent.TempDirectory)\web\test\wasm-proxy --chromium-flags=--enable-logging --chromium-flags=--v=1
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebAssembly: proxy'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
 
-  # === Start of experimental WebGPU EP tests ===
+  # WebGPU EP tests
 
   - ${{ if eq(parameters.RunWebGpuTests, true) }}:
     - script: |
@@ -233,13 +233,33 @@ jobs:
       displayName: 'Check active Chrome processes (before test)'
       condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
     - script: |
-        mkdir $(Agent.TempDirectory)\web\test\07
-        dir $(Agent.TempDirectory)\web\test\07
-        npm test --webgpu-ep -- -b=webgpu -e=chrome $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\07 --chromium-flags=--enable-logging --chromium-flags=--v=1
+        mkdir $(Agent.TempDirectory)\web\test\webgpu-ep
+        dir $(Agent.TempDirectory)\web\test\webgpu-ep
+        npm test --webgpu-ep -- suite1 -b=webgpu -e=chrome $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\webgpu-ep --chromium-flags=--enable-logging --chromium-flags=--v=1
       workingDirectory: '$(Build.SourcesDirectory)\js\web'
       displayName: 'Run ort-web tests - WebGPU EP'
 
-  # === End of experimental WebGPU EP tests ===
+    - script: |
+        mkdir $(Agent.TempDirectory)\web\test\webgpu-ep-gpu-tensor
+        dir $(Agent.TempDirectory)\web\test\webgpu-ep-gpu-tensor
+        npm test --webgpu-ep -- suite1 -b=webgpu --io-binding=gpu-tensor -e=chrome $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\webgpu-ep-gpu-tensor --chromium-flags=--enable-logging --chromium-flags=--v=1
+      workingDirectory: '$(Build.SourcesDirectory)\js\web'
+      displayName: 'Run ort-web tests - WebGPU EP IO-binding=gpu-tensor'
+
+    - script: |
+        mkdir $(Agent.TempDirectory)\web\test\webgpu-ep-gpu-location
+        dir $(Agent.TempDirectory)\web\test\webgpu-ep-gpu-location
+        npm test --webgpu-ep -- suite1 -b=webgpu --io-binding=gpu-location -e=chrome $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\webgpu-ep-gpu-location --chromium-flags=--enable-logging --chromium-flags=--v=1
+      workingDirectory: '$(Build.SourcesDirectory)\js\web'
+      displayName: 'Run ort-web tests - WebGPU EP IO-binding=gpu-location'
+
+    - script: |
+        mkdir $(Agent.TempDirectory)\web\test\webgpu-ep-proxy
+        dir $(Agent.TempDirectory)\web\test\webgpu-ep-proxy
+        npm test --webgpu-ep -- suite1 -b=webgpu --wasm.proxy -e=chrome $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\webgpu-ep-proxy --chromium-flags=--enable-logging --chromium-flags=--v=1
+      workingDirectory: '$(Build.SourcesDirectory)\js\web'
+      displayName: 'Run ort-web tests - WebGPU EP proxy'
+      condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
 
   - script: |
       npm run test:e2e -- --browser=Chrome_default
@@ -276,11 +296,11 @@ jobs:
       displayName: 'Publish Pipeline Artifact'
       condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
   - script: |
-      for %%i in (01 02 03 04 05 06 07) do (
-        if exist %%i (
-          echo ------------------- BEGIN %%i -------------------
-          type %%i\chrome_debug.log
-          echo ------------------- END %%i -------------------
+      for /d %%i in ("$(Agent.TempDirectory)\web\test\*") do (
+        if exist "%%i\chrome_debug.log" (
+          echo ------------------- BEGIN %%~nxi -------------------
+          type "%%i\chrome_debug.log"
+          echo ------------------- END %%~nxi -------------------
         )
       )
     displayName: 'Log Chrome processes (after test)'

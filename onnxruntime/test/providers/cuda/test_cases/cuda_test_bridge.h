@@ -50,6 +50,10 @@ std::optional<size_t> EstimateMatMulNBitsWorkspaceForTest(
 #endif
 
 common::Status LoadCudaExternalDataForTest(
+    const void* loader, const RandomAccessFile& file,
+    FileOffsetType offset, SafeInt<size_t> length, void* tensor);
+
+common::Status LoadCudaExternalDataForTest(
     const void* loader, const Env& env, const std::filesystem::path& path,
     FileOffsetType offset, SafeInt<size_t> length, void* tensor);
 

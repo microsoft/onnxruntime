@@ -397,6 +397,11 @@ Status ComputeSharedQMoE(OpKernelContext* context, const SharedQMoEAttributes& a
         view.bias_is_bf16 = (bias1_type == ElementType::kBFloat16);
         view.scale_is_fp32 = (scale_type == ElementType::kFloat32);
         view.bias_is_fp32 = (bias1_type == ElementType::kFloat32);
+        const auto read_fc2_bias = [&view](int64_t n) {
+          if (view.bias_is_fp32) return reinterpret_cast<const float*>(view.fc2_bias)[n];
+          return view.bias_is_bf16 ? qmoe_shared::BFloat16ToFloat(view.fc2_bias[n])
+                                   : qmoe_shared::HalfToFloat(view.fc2_bias[n]);
+        };
         for (size_t start = 0; start < routes.size(); start += kRowsPerTile) {
           const int64_t count = narrow<int64_t>(std::min(routes.size() - start, narrow<size_t>(kRowsPerTile)));
           for (int64_t r = 0; r < count; ++r) {
@@ -408,11 +413,16 @@ Status ComputeSharedQMoE(OpKernelContext* context, const SharedQMoEAttributes& a
           qmoe_shared::Int2Fc1SwiGluRange(hidden, intermediate, view, reordered, count, swiglu,
                                           activated, 0, fc1_n, /*force_scalar=*/false,
                                           bf16_boundaries, fp16_boundaries);
+          // Match the packed CUDA paths: round the FC2 projection to the boundary type, then add the bias in FP32.
           qmoe_shared::Int2Fc2Range(hidden, intermediate, view, activated, count, fc2,
-                                    0, hidden, /*force_scalar=*/false, /*apply_bias=*/true);
+                                    0, hidden, /*force_scalar=*/false, /*apply_bias=*/false);
           for (int64_t r = 0; r < count; ++r) {
             float* destination = route_outputs.get() + routes[start + narrow<size_t>(r)] * narrow<size_t>(hidden);
-            for (int64_t n = 0; n < hidden; ++n) destination[n] = RoundElement(fc2[r * hidden + n], boundary_type);
+            for (int64_t n = 0; n < hidden; ++n) {
+              float value = RoundElement(fc2[r * hidden + n], boundary_type);
+              if (view.fc2_bias) value += read_fc2_bias(n);
+              destination[n] = value;
+            }
           }
         }
         continue;

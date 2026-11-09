@@ -38,11 +38,11 @@ parameters:
 
 variables:
   - template: templates/common-variables.yml
-  - name: docker_base_image
+  - name: docker_base_image_family
     ${{ if eq(parameters.CudaVersion, '13.0') }}:
-      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1
+      value: cuda13_x64_almalinux8_gcc14
     ${{ if eq(parameters.CudaVersion, '12.8') }}:
-      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1
+      value: cuda12_x64_almalinux8_gcc14
   - name: linux_trt_version
     ${{ if eq(parameters.CudaVersion, '13.0') }}:
       value: ${{ variables.linux_trt_version_cuda13 }}
@@ -73,9 +73,9 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
       Context: tools/ci_build/github/linux/docker
+      BaseImageFamily: ${{ variables.docker_base_image_family }}
       DockerBuildArgs: "
       --network=host
-      --build-arg BASEIMAGE=${{ variables.docker_base_image }}
       --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
       --build-arg BUILD_UID=$( id -u )
       "

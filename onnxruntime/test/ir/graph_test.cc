@@ -2,7 +2,10 @@
 // Licensed under the MIT License.
 
 #include <iostream>
+#include <array>
 #include <chrono>
+#include <cstdint>
+#include <cstring>
 #include <fstream>
 #include "core/common/inlined_containers.h"
 #include "core/common/span_utils.h"
@@ -2135,6 +2138,44 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
     // Fail the test because with_data shouldn't be nullptr.
     // This if-else is added for suppressing warning C6011: dereferencing NULL pointer.
     ASSERT_TRUE(false);
+  }
+}
+
+TEST_F(GraphTest, InjectExternalInitializedTensorsDirectMisalignedBufferIsCopied) {
+  std::array<int32_t, 64> tensor_data{};
+  for (size_t i = 0; i < tensor_data.size(); ++i) {
+    tensor_data[i] = static_cast<int32_t>(i);
+  }
+  ASSERT_GT(sizeof(tensor_data), utils::kSmallTensorExternalDataThreshold);
+  alignas(int32_t) std::array<unsigned char, sizeof(tensor_data) + 1> backing_storage{};
+  void* misaligned_buffer = backing_storage.data() + 1;
+  std::memcpy(misaligned_buffer, tensor_data.data(), sizeof(tensor_data));
+  ASSERT_NE(reinterpret_cast<uintptr_t>(misaligned_buffer) % alignof(int32_t), 0u);
+
+  const std::string name = "misaligned_initializer";
+  OrtValue replacement;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), TensorShape{64}, misaligned_buffer,
+                       OrtMemoryInfo(CPU, OrtDeviceAllocator), replacement);
+  TensorProto tensor_proto;
+  tensor_proto.set_name(name);
+  tensor_proto.set_data_type(TensorProto_DataType_INT32);
+  tensor_proto.add_dims(64);
+  tensor_proto.set_data_location(TensorProto_DataLocation_EXTERNAL);
+  SetTensorProtoExternalData("location", "unused.bin", tensor_proto);
+  SetTensorProtoExternalData("length", std::to_string(sizeof(tensor_data)), tensor_proto);
+  Model model{"misaligned_external_initializer", false, *logger_};
+  auto& graph = model.MainGraph();
+  graph.AddInitializedTensor(tensor_proto);
+  ASSERT_STATUS_OK(graph.InjectExternalInitializedTensors({{name, replacement}}, true));
+
+  OrtValue copied;
+  ASSERT_TRUE(graph.GetOrtValueInitializer(name, copied, false));
+  const auto& tensor = copied.Get<Tensor>();
+  EXPECT_NE(tensor.DataRaw(), misaligned_buffer);
+  EXPECT_TRUE(tensor.OwnsBuffer());
+  ASSERT_EQ(tensor.Shape().Size(), tensor_data.size());
+  for (size_t i = 0; i < tensor_data.size(); ++i) {
+    EXPECT_EQ(tensor.Data<int32_t>()[i], tensor_data[i]);
   }
 }
 #endif

@@ -5,7 +5,6 @@
 # The workflow consists of parallel jobs targeting different combinations:
 #   - build-linux-x64-debug: Builds/tests Debug config on Linux x64 (AMD CPU pool), enables AddressSanitizer.
 #   - build-linux-x64-release: Builds/tests Release config on Linux x64 (AMD CPU pool), includes wheel/nuget/benchmark flags.
-#   - orttraining-linux-ci-pipeline: Builds/tests Release config with Training enabled (--enable_training) on Linux x64 (AMD CPU pool).
 #   - build-linux-x64-no-exceptions: Builds MinSizeRel config with exceptions disabled (--disable_exceptions), without unit tests, on Linux x64 (AMD CPU pool).
 #   - build-linux-arm64-debug: Builds/tests Debug config on Linux arm64 (ARM CPU pool); ASan is disabled due to excessive runtime. Includes wheel build.
 #   - build-linux-arm64-release: Builds/tests Release config on Linux arm64 (ARM CPU pool), includes wheel/benchmark flags.
@@ -16,7 +15,7 @@
 #   - runner pool name
 #   - path to the appropriate Dockerfile
 #   - Docker image name for caching/use
-#   - configuration-specific build flags (e.g., --enable_address_sanitizer, --enable_training, --build_wheel)
+#   - configuration-specific build flags (e.g., --enable_address_sanitizer, --build_wheel)
 
 name: Linux CI
 
@@ -86,21 +85,6 @@ jobs:
       extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --build_nuget --enable_transformers_tool_test --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON --cmake_extra_defines onnxruntime_MATERIALIZE_ONNX_NODE_TESTS=ON'
       python_path_prefix: 'PATH=/opt/python/cp314-cp314/bin:$PATH' # $ needs escaping in single quotes
       job_identifier: build-linux-x64-release-py314
-    secrets:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  orttraining-linux-ci-pipeline:
-    name: Build Linux x64 Release with training
-    uses: ./.github/workflows/reusable_linux_build.yml
-    with:
-      pool_name: "ort-github-linux-16-amd-wcus-ss"
-      build_config: Release
-      architecture: x64
-      dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
-      docker_image_repo: onnxruntimecpubuildpythonx64 # Shares image with standard x64 release
-      extra_build_flags: '--enable_training --use_binskim_compliant_compile_flags --build_wheel --build_nuget --enable_transformers_tool_test --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON'
-      python_path_prefix: 'PATH=/opt/python/cp311-cp311/bin:$PATH' # $ needs escaping in single quotes
-      job_identifier: orttraining-linux-ci-pipeline
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
