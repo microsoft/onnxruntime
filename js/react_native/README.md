@@ -58,7 +58,8 @@ From `js/react_native`, run `npm run test:cpp` for the native option-policy test
 `npm run bootstrap-no-pods` runs both checks before the Android and iOS Detox tests in CI.
 
 The device checks exercise in-flight aborts, pre-dispatch aborts, and isolated Env-listener teardown.
-Detox navigation targets the buttons' accessibility labels, not their child text views.
+EPContext Detox navigation targets the button's unique `testID`, avoiding child text
+views and accessibility labels duplicated across native wrappers on iOS.
 The `__testEpContextDataReadCallback` native hook and its `__testWorker` handles are internal test APIs.
 
 ### License
