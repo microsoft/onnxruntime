@@ -854,7 +854,7 @@ The **OpSet Version** column uses the following notation:
 |||[1, 16]|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)<br/> **U** = tensor(double), tensor(float)<br/> **V** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)|
 |LeakyRelu|*in* X:**T**<br> *out* Y:**T**|16+|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[6, 15]|**T** = tensor(double), tensor(float), tensor(float16)|
-|Less|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T1**|13+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)<br/> **T1** = tensor(bool)|
+|Less|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T1**|13+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)<br/> **T1** = tensor(bool)|
 |||[9, 12]|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
 |||[7, 8]|**T** = tensor(double), tensor(float), tensor(float16)|
 |LessOrEqual|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T1**|16+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)<br/> **T1** = tensor(bool)|
