@@ -22,10 +22,6 @@ permissions:
   attestations: write
   id-token: write
 
-env:
-  ACR_READ_CLIENT_ID: ${{ vars.ACR_READ_CLIENT_ID }}
-  AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
-
 jobs:
   AndroidBinarySizeCheckJob_MinimalBaseline:
     runs-on: [ort-github-linux-16-amd-wcus-ss]
@@ -53,6 +49,8 @@ jobs:
         dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
         image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
         push: true
+        azure-client-id: ${{ vars.ACR_READ_CLIENT_ID }}
+        azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

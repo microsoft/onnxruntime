@@ -1,7 +1,13 @@
 name: Build Docker image with OIDC ACR read access
-description: Resolve shared base-image pins and authenticate through GitHub OIDC with isolated credential cleanup. Requires id-token write permission and ACR_READ_CLIENT_ID and AZURE_TENANT_ID environment variables.
+description: Resolve shared base-image pins and authenticate through GitHub OIDC with isolated credential cleanup. Requires id-token write permission.
 
 inputs:
+  azure-client-id:
+    description: Client ID of the federated ACR reader identity.
+    required: true
+  azure-tenant-id:
+    description: Tenant ID of the federated ACR reader identity.
+    required: true
   azure-container-registry-name:
     description: ACR registry name used for base-image read authentication.
     default: onnxruntimebuildcache
@@ -60,12 +66,12 @@ runs:
       id: auth
       shell: bash
       env:
-        CLIENT_ID: ${{ env.ACR_READ_CLIENT_ID }}
-        TENANT_ID: ${{ env.AZURE_TENANT_ID }}
+        CLIENT_ID: ${{ inputs.azure-client-id }}
+        TENANT_ID: ${{ inputs.azure-tenant-id }}
       run: |
         set -euo pipefail
         if [[ -z "$CLIENT_ID" || -z "$TENANT_ID" ]]; then
-          echo "::error::Set ACR_READ_CLIENT_ID and AZURE_TENANT_ID in the calling workflow's env from repository variables."
+          echo "::error::azure-client-id and azure-tenant-id action inputs must be configured."
           exit 1
         fi
         auth_root="$(mktemp -d "$RUNNER_TEMP/acr-oidc.XXXXXX")"
@@ -75,8 +81,8 @@ runs:
     - name: Authenticate to Azure using GitHub OIDC
       uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
       with:
-        client-id: ${{ env.ACR_READ_CLIENT_ID }}
-        tenant-id: ${{ env.AZURE_TENANT_ID }}
+        client-id: ${{ inputs.azure-client-id }}
+        tenant-id: ${{ inputs.azure-tenant-id }}
         subscription-id: ${{ inputs.azure-subscription-id }}
         audience: api://AzureADTokenExchange
       env:
@@ -89,7 +95,7 @@ runs:
       env:
         AZURE_CONFIG_DIR: ${{ steps.auth.outputs.root }}/azure
         DOCKER_CONFIG: ${{ steps.auth.outputs.root }}/docker
-        EXPECTED_CLIENT_ID: ${{ env.ACR_READ_CLIENT_ID }}
+        EXPECTED_CLIENT_ID: ${{ inputs.azure-client-id }}
         ACR_NAME: ${{ inputs.azure-container-registry-name }}
         AZURE_SUBSCRIPTION_ID: ${{ inputs.azure-subscription-id }}
       run: |

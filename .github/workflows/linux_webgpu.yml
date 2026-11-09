@@ -81,6 +81,8 @@ jobs:
   #         dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_webgpu
   #         image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
   #         push: true
+  #         azure-client-id: ${{ vars.ACR_READ_CLIENT_ID }}
+  #         azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
   #       env:
   #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Pass token to action
 
