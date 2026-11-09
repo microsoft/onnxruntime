@@ -88,11 +88,12 @@ bool HasRankAtMost(const NodeArg& arg, int rank) {
   return shape != nullptr && shape->dim_size() <= rank;
 }
 
-// Walks up from a head-split Reshape through an optional bias Add and a MatMul to the tensor the projection reads.
-// Only projections that keep the leading dims of that tensor are followed: a 2D constant weight and a bias of rank 1
-// or less, since higher-rank constants could broadcast new leading dims. Gemm projections are not followed: the
-// MatMulAddFusion that produces them requires static shapes, whose batch dims are compared directly.
-const NodeArg* GetProjectionSource(const Graph& graph, const Node& head_split_reshape) {
+// Walks up from a head-split Reshape through an optional bias Add and a MatMul to the tensor the projection reads, and
+// returns the projection's output width. Only projections whose output shape is fixed by that tensor and the width are
+// followed: a 2D constant weight with a static output dim and a bias of rank 1 or less, since higher-rank constants
+// could broadcast new leading dims. Gemm projections are not followed: the MatMulAddFusion that produces them requires
+// static shapes, whose batch dims are compared directly.
+const NodeArg* GetProjectionSource(const Graph& graph, const Node& head_split_reshape, int64_t& width) {
   const Node* node = graph_utils::GetInputNode(head_split_reshape, 0);
   if (node != nullptr && node->OpType() == "Add" && node->InputDefs().size() == 2) {
     const int data_index = graph_utils::IsConstantInitializer(graph, node->InputDefs()[1]->Name(), true) ? 0 : 1;
@@ -106,16 +107,19 @@ const NodeArg* GetProjectionSource(const Graph& graph, const Node& head_split_re
     return nullptr;
   }
   const NodeArg& weight = *node->InputDefs()[1];
-  if (!graph_utils::IsConstantInitializer(graph, weight.Name(), true) || !weight.Shape() ||
-      weight.Shape()->dim_size() != 2) {
+  const auto* weight_shape = weight.Shape();
+  if (!graph_utils::IsConstantInitializer(graph, weight.Name(), true) || weight_shape == nullptr ||
+      weight_shape->dim_size() != 2 || !utils::HasDimValue(weight_shape->dim(1))) {
     return nullptr;
   }
+  width = weight_shape->dim(1).dim_value();
   return node->InputDefs()[0];
 }
 
 // Whether two head-split Reshapes produce the same batch dim. Statically comparable inferred dims decide it. When
-// they are unknown (dynamic axes), it still holds if both project the same tensor through leading-dim-preserving
-// projections and keep the same leading reshape dims, as in self-attention.
+// they are unknown (dynamic axes), it still holds if both Reshapes provably see the same input shape and use the same
+// shape: they project the same tensor to the same width through shape-preserving projections, as in self-attention.
+// That covers a -1 in the shape too, which otherwise absorbs a projection width that can differ between Q, K and V.
 bool HaveSameBatchDim(const Graph& graph, const Node& a, const Node& b) {
   const auto* a_shape = a.OutputDefs()[0]->Shape();
   const auto* b_shape = b.OutputDefs()[0]->Shape();
@@ -130,10 +134,14 @@ bool HaveSameBatchDim(const Graph& graph, const Node& a, const Node& b) {
     }
   }
 
+  int64_t a_width = 0;
+  int64_t b_width = 0;
+  const NodeArg* a_source = GetProjectionSource(graph, a, a_width);
+  if (a_source == nullptr || a_source != GetProjectionSource(graph, b, b_width) || a_width != b_width) {
+    return false;
+  }
   InlinedVector<int64_t> a_dims, b_dims;
-  const NodeArg* a_source = GetProjectionSource(graph, a);
-  return a_source != nullptr && a_source == GetProjectionSource(graph, b) && GetConstantShape(graph, a, a_dims) &&
-         GetConstantShape(graph, b, b_dims) && a_dims[0] == b_dims[0] && a_dims[1] == b_dims[1];
+  return GetConstantShape(graph, a, a_dims) && GetConstantShape(graph, b, b_dims) && a_dims == b_dims;
 }
 
 bool TryFuse(Graph& graph, Node& softmax, const InlinedHashSet<std::string_view>& compatible_eps,

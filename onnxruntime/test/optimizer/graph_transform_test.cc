@@ -9750,6 +9750,11 @@ struct VitAttentionTestConfig {
   int64_t q_weight_batch = 0;
   // Adds bias Adds after the projections: Q uses this shape, K/V use their 1D hidden size.
   std::vector<int64_t> q_bias_shape;
+  // Leading two dims of every head-split Reshape shape, ahead of [N, H].
+  std::vector<int64_t> split_heads_leading_dims = {0, 0};
+  // Output width of the K/V projections; 0 means kv_num_heads * head_size. A different width only reshapes into
+  // [*, *, N, H] when a -1 leading dim absorbs it.
+  int64_t kv_projection_width = 0;
   // Shape of the Reshape that merges the heads back; empty means {0, 0, hidden_size}.
   std::vector<int64_t> merge_heads_shape;
   bool fp16 = false;
@@ -9797,10 +9802,11 @@ static void BuildVitAttentionTestCase(ModelTestBuilder& builder, const VitAttent
   NodeArg* merge_heads_shape = builder.Make1DInitializer<int64_t>(
       config.merge_heads_shape.empty() ? std::vector<int64_t>{0, 0, hidden_size} : config.merge_heads_shape);
 
-  auto add_head_split = [&](NodeArg* x, int64_t heads, const std::vector<int64_t>& perm, int64_t weight_batch,
-                            const std::vector<int64_t>& bias_shape) {
-    auto* weight = make_weight(heads * head_size, weight_batch);
-    auto* split_heads_shape = builder.Make1DInitializer<int64_t>({0, 0, heads, head_size});
+  auto add_head_split = [&](NodeArg* x, int64_t heads, int64_t width, const std::vector<int64_t>& perm,
+                            int64_t weight_batch, const std::vector<int64_t>& bias_shape) {
+    auto* weight = make_weight(width, weight_batch);
+    auto* split_heads_shape = builder.Make1DInitializer<int64_t>(
+        {config.split_heads_leading_dims[0], config.split_heads_leading_dims[1], heads, head_size});
     auto* projected = builder.MakeIntermediate();
     auto* bsnh = builder.MakeIntermediate();
     auto* transposed = builder.MakeIntermediate();
@@ -9815,10 +9821,11 @@ static void BuildVitAttentionTestCase(ModelTestBuilder& builder, const VitAttent
     builder.AddNode("Transpose", {bsnh}, {transposed}).AddAttribute("perm", perm);
     return transposed;
   };
-  const std::vector<int64_t> kv_bias_shape{kv_num_heads * head_size};
-  auto* q = add_head_split(q_input, num_heads, {0, 2, 1, 3}, config.q_weight_batch, config.q_bias_shape);
-  auto* k = add_head_split(kv_input, kv_num_heads, config.k_perm, 0, kv_bias_shape);
-  auto* v = add_head_split(kv_input, kv_num_heads, {0, 2, 1, 3}, 0, kv_bias_shape);
+  const int64_t kv_width = config.kv_projection_width == 0 ? kv_num_heads * head_size : config.kv_projection_width;
+  const std::vector<int64_t> kv_bias_shape{kv_width};
+  auto* q = add_head_split(q_input, num_heads, hidden_size, {0, 2, 1, 3}, config.q_weight_batch, config.q_bias_shape);
+  auto* k = add_head_split(kv_input, kv_num_heads, kv_width, config.k_perm, 0, kv_bias_shape);
+  auto* v = add_head_split(kv_input, kv_num_heads, kv_width, {0, 2, 1, 3}, 0, kv_bias_shape);
 
   auto* qk = builder.MakeIntermediate();
   auto* scaled = builder.MakeIntermediate();
@@ -10025,6 +10032,32 @@ TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitDynamicDimsWithBiasF
   VitAttentionTestConfig config;
   config.dynamic_input_dims = true;
   config.q_bias_shape = {64};
+  ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionFused, *logger_));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitDynamicDimsInferredBatchNotFused) {
+  // [B, S, D] projected to D for Q and 2 * D for K/V, then split with [-1, S, N, H]: the -1 absorbs the width, giving
+  // batches B and 2 * B although both share the source and the reshape shape.
+  VitAttentionTestConfig config;
+  config.dynamic_input_dims = true;
+  config.split_heads_leading_dims = {-1, config.seq_len};
+  config.kv_projection_width = 2 * config.num_heads * config.head_size;
+  ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionUnfused, *logger_));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitDynamicDimsInferredBatchSameWidthFused) {
+  // The same [-1, S, N, H] split as above, but with equal projection widths every Reshape sees the same input shape.
+  VitAttentionTestConfig config;
+  config.dynamic_input_dims = true;
+  config.split_heads_leading_dims = {-1, config.seq_len};
+  ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionFused, *logger_));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitDynamicDimsCopiedBatchInferredSequence) {
+  // A 0 copies the batch dim from the shared source, so a -1 in the sequence dim is fine.
+  VitAttentionTestConfig config;
+  config.dynamic_input_dims = true;
+  config.split_heads_leading_dims = {0, -1};
   ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionFused, *logger_));
 }
 
