@@ -200,6 +200,13 @@ class Xor final : public BinaryElementwise<ShouldBroadcast> {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
+template <typename T>
+class BitwiseXor final : public BinaryElementwise<ShouldBroadcast> {
+ public:
+  BitwiseXor(const OpKernelInfo& info) : BinaryElementwise(info) {}
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
 // PRelu is activation function, but it's closer to binary elementwise ops in implementation
 template <typename T>
 class PRelu final : public BinaryElementwise<ShouldBroadcast> {
@@ -226,6 +233,7 @@ class Mod final : public BinaryElementwise<ShouldBroadcast> {
   // True if the divisor is an integer constant initializer that was verified to contain no zeros
   // during kernel construction, so no per-run (synchronizing) zero check is needed.
   bool divisor_is_validated_constant_{false};
+  bool supports_float_floor_mod_{false};
 };
 
 template <typename T, typename CudaT>

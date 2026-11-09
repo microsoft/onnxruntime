@@ -295,6 +295,35 @@ BINARY_OP_REGISTER_VERSIONED_CLASS_HFD(Pow, Pow_7, 7, 11)
 BINARY_LOGICALOP_TYPED(And, 7, bool)
 BINARY_LOGICALOP_TYPED(Or, 7, bool)
 BINARY_LOGICALOP_TYPED(Xor, 7, bool)
+
+#define BINARY_BITWISE_OP_TYPED(name, class_name, T)                  \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED_V(name, class_name, 18, T) \
+  BINARY_ELEMENTWISE_COMPUTE(class_name, T)
+
+#define BINARY_BITWISE_OP(name, class_name)           \
+  BINARY_BITWISE_OP_TYPED(name, class_name, uint8_t)  \
+  BINARY_BITWISE_OP_TYPED(name, class_name, uint16_t) \
+  BINARY_BITWISE_OP_TYPED(name, class_name, uint32_t) \
+  BINARY_BITWISE_OP_TYPED(name, class_name, uint64_t) \
+  BINARY_BITWISE_OP_TYPED(name, class_name, int8_t)   \
+  BINARY_BITWISE_OP_TYPED(name, class_name, int16_t)  \
+  BINARY_BITWISE_OP_TYPED(name, class_name, int32_t)  \
+  BINARY_BITWISE_OP_TYPED(name, class_name, int64_t)
+
+BINARY_BITWISE_OP(BitwiseAnd, And)
+BINARY_BITWISE_OP(BitwiseOr, Or)
+
+#undef BINARY_BITWISE_OP
+#undef BINARY_BITWISE_OP_TYPED
+
+BINARY_OP_TYPED(BitwiseXor, 18, uint8_t)
+BINARY_OP_TYPED(BitwiseXor, 18, uint16_t)
+BINARY_OP_TYPED(BitwiseXor, 18, uint32_t)
+BINARY_OP_TYPED(BitwiseXor, 18, uint64_t)
+BINARY_OP_TYPED(BitwiseXor, 18, int8_t)
+BINARY_OP_TYPED(BitwiseXor, 18, int16_t)
+BINARY_OP_TYPED(BitwiseXor, 18, int32_t)
+BINARY_OP_TYPED(BitwiseXor, 18, int64_t)
 BINARY_OP_VERSIONED_HFD(PRelu, 7, 8)
 BINARY_OP_VERSIONED_HFD(PRelu, 9, 15)
 // Opset-16 adds BFloat16 to allowed types for the PRelu operator
@@ -513,6 +542,7 @@ Status ConstantDivisorHasZero(const Tensor& divisor, bool& has_zero) {
 Mod::Mod(const OpKernelInfo& info) : BinaryElementwise(info) {
   int64_t fmod = info.GetAttrOrDefault<int64_t>("fmod", 0LL);
   fmod_ = fmod != 0;
+  supports_float_floor_mod_ = info.node().SinceVersion() >= 28;
 
   // If the divisor is a constant integer initializer, validate it once here instead of synchronizing
   // the stream on every Compute call (which would also break CUDA graph capture).
@@ -551,6 +581,10 @@ Status Mod::ComputeInternal(OpKernelContext* context) const {
   BinaryElementwisePreparation prepare;
   ORT_RETURN_IF_ERROR(Prepare(context, &prepare));
   auto element_type = prepare.lhs_tensor->GetElementType();
+  ORT_ENFORCE(fmod_ || supports_float_floor_mod_ || element_type == on::TensorProto_DataType_INT32 ||
+                  element_type == on::TensorProto_DataType_INT64 || element_type == on::TensorProto_DataType_UINT32 ||
+                  element_type == on::TensorProto_DataType_UINT64,
+              "Non-fmod Mod supports floating-point types only starting in opset 28 (set fmod=1 for older opsets).");
   if (element_type == on::TensorProto_DataType_INT32 || element_type == on::TensorProto_DataType_INT64 ||
       element_type == on::TensorProto_DataType_UINT32 || element_type == on::TensorProto_DataType_UINT64) {
     const size_t divisor_count = prepare.rhs_tensor->Shape().Size();

@@ -1,21 +1,16 @@
-# Installs the Android NDK and sets environment variables ANDROID_NDK_HOME and ANDROID_NDK_ROOT to refer to it.
+# Selects the Android NDK and sets ANDROID_NDK_HOME and ANDROID_NDK_ROOT to refer to it.
 
   parameters:
   - name: AndroidNdkVersion
     type: string
-    default: "28.0.13004108"  # LTS version
+    default: "28"
 
   steps:
   - bash: |
       set -e
 
-      "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --install "ndk;${{ parameters.AndroidNdkVersion }}"
-
-      NDK_PATH="${ANDROID_SDK_ROOT}/ndk/${{ parameters.AndroidNdkVersion }}"
-      if [[ ! -d "${NDK_PATH}" ]]; then
-        echo "NDK directory is not in expected location: ${NDK_PATH}"
-        exit 1
-      fi
+      NDK_PATH=$(python3 tools/ci_build/resolve_android_ndk.py \
+        --android-sdk-root "${ANDROID_SDK_ROOT}" --ndk-version "${NDK_VERSION}")
 
       # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
       set +x
@@ -31,3 +26,5 @@
       set_var "ANDROID_NDK_ROOT" "${NDK_PATH}"
 
     displayName: Use Android NDK ${{ parameters.AndroidNdkVersion }}
+    env:
+      NDK_VERSION: ${{ parameters.AndroidNdkVersion }}

@@ -5,6 +5,7 @@
 #include "onnxruntime_pybind_module_functions.h"
 #include <pybind11/stl.h>
 #include "core/providers/get_execution_providers.h"
+#include "onnxruntime_build_info.h"
 #include "onnxruntime_config.h"
 #include "core/common/common.h"
 #include "core/session/environment.h"

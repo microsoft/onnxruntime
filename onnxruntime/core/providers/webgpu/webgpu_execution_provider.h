@@ -47,8 +47,7 @@ class GpuBufferAllocator;
 class D3D12ImportedBufferRegistry;
 #endif
 
-// Forward declare CapturedCommandInfo which is now defined in webgpu_context.h
-struct CapturedCommandInfo;
+struct CapturedCommand;
 
 // The actual implementation of kernel registration.
 std::shared_ptr<KernelRegistry> GetKernelRegistry(bool enable_graph_capture, bool enable_int64);
@@ -71,6 +70,7 @@ struct WebGpuExecutionProviderConfig {
   // This is the single line that decides the shipped default for the
   // "enableMatmulFp32Accumulation" provider option.
   bool enable_matmul_fp32_accumulation{false};
+  webgpu::WebGpuFeatureRequests feature_requests{};
   std::optional<webgpu::MatMulAlgorithm> forced_matmul_algorithm;
   std::vector<std::string> force_cpu_node_names{};
 };
@@ -138,6 +138,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   uint32_t KvCacheQuantizationBits() const { return kv_cache_quantization_bits_; }
   bool KvCacheQuantizationEnabled() const { return kv_cache_quantization_bits_ != 0; }
   bool EnableMatmulFp32Accumulation() const { return enable_matmul_fp32_accumulation_; }
+  bool DeviceHasFeature(wgpu::FeatureName feature) const;
   std::optional<webgpu::MatMulAlgorithm> ForcedMatMulAlgorithm() const { return forced_matmul_algorithm_; }
 
 #if defined(ORT_USE_EP_API_ADAPTERS)
@@ -161,6 +162,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   uint32_t multi_rotary_cache_concat_offset_ = 0;
   uint32_t kv_cache_quantization_bits_ = 0;
   bool enable_matmul_fp32_accumulation_ = false;
+  const webgpu::WebGpuFeatureRequests feature_requests_;
   std::optional<webgpu::MatMulAlgorithm> forced_matmul_algorithm_;
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
   webgpu::WeightLoadAccelerationMode weight_load_acceleration_mode_{
@@ -191,7 +193,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   std::unique_ptr<webgpu::SessionBufferPool> session_buffer_pool_;
 
   // Store captured commands per graph annotation ID
-  std::unordered_map<int, std::vector<webgpu::CapturedCommandInfo>> captured_graphs_;
+  std::unordered_map<int, std::vector<webgpu::CapturedCommand>> captured_graphs_;
   // Track which graph annotation IDs have completed capture
   std::unordered_set<int> captured_graph_ids_;
 
