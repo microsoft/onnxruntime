@@ -424,7 +424,7 @@ static __device__ const Iq2Codebook kIq2xxsGridBf16 = Iq2CodebookBuild();
 
 // Adjacent BF16 pairs match the chunk64 IQ2 MMA layout. Reconstruct the complete
 // signed operand in FP32 before its only BF16 rounding boundary.
-template <bool kCodesWord = false, bool kSignBits = false>
+template <bool kCodesWord = false, bool kSignBits = false, bool kAlignedRecordWindow = false>
 __device__ __forceinline__ void DecodeIq2SubBlock16Bf16(
     const uint8_t* row, int sb32_idx, int half16, uint4& low, uint4& high) {
   const int offset = sb32_idx * 32 + half16 * 16;
@@ -432,15 +432,34 @@ __device__ __forceinline__ void DecodeIq2SubBlock16Bf16(
   auto* high_words = reinterpret_cast<uint32_t*>(&high);
   const uint8_t* block = row + static_cast<int64_t>(offset / 256) * 66;
   const uint8_t* record = block + 2 + ((offset / 32) & 7) * 8;
-  const uint32_t codes = kCodesWord ? ReadU32Dev(record) : 0u;
-  const uint32_t signs_scale = ReadU32Dev(record + 4);
+  uint32_t codes, signs_scale;
+  if constexpr (kAlignedRecordWindow) {
+    // Aligned rows with an even number of 66-byte blocks end on an aligned
+    // record. The two-byte lookahead below therefore stays inside the row.
+    if ((reinterpret_cast<uintptr_t>(record) & 3u) == 0) {
+      codes = __ldg(reinterpret_cast<const uint32_t*>(record));
+      signs_scale = __ldg(reinterpret_cast<const uint32_t*>(record + 4));
+    } else {
+      const auto* aligned = reinterpret_cast<const uint32_t*>(record - 2);
+      const uint32_t a = __ldg(aligned);
+      const uint32_t b = __ldg(aligned + 1);
+      const uint32_t c = __ldg(aligned + 2);
+      codes = __byte_perm(a, b, 0x5432);
+      signs_scale = __byte_perm(b, c, 0x5432);
+    }
+  } else {
+    codes = kCodesWord ? ReadU32Dev(record) : 0u;
+    signs_scale = ReadU32Dev(record + 4);
+  }
   const float scale = Fp16ToFloatDev(ReadU16Dev(block)) *
                       (0.5f + static_cast<float>(signs_scale >> 28)) * 0.25f;
   const int half = (offset / 16) & 1;
 #pragma unroll
   for (int group = 0; group < 2; ++group) {
     const int grid_index = 2 * half + group;
-    const uint32_t code = kCodesWord ? ((codes >> (8 * grid_index)) & 255u) : __ldg(record + grid_index);
+    const uint32_t code = (kCodesWord || kAlignedRecordWindow)
+                              ? ((codes >> (8 * grid_index)) & 255u)
+                              : __ldg(record + grid_index);
     const uint4 grid = __ldg(kIq2xxsGridBf16.values + code);
     const uint32_t words[4] = {grid.x, grid.y, grid.z, grid.w};
     const uint8_t signs = Iq2xsSignsDev(signs_scale >> (7 * grid_index));
