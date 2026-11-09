@@ -22,6 +22,7 @@ using json = nlohmann::json;
 #include "core/framework/compute_capability.h"
 #include "test/framework/model_builder_utils.h"
 #include "core/framework/allocation_planner.h"
+#include "core/framework/allocator_utils.h"
 #include "core/session/inference_session.h"
 #include "core/graph/model.h"
 #include "core/graph/graph_utils.h"
@@ -750,7 +751,10 @@ TEST_P(AliasedCpuBufferRuntimeTest, AcrossStreamsPreservesLiveHostBuffer) {
   }
   const auto allocator = state.GetAllocator(plan.allocation_plan[root_index].location);
   ASSERT_NE(allocator, nullptr);
-  EXPECT_EQ(allocator->Info().alloc_type, GetParam() ? OrtArenaAllocator : OrtDeviceAllocator);
+  const auto expected_allocator_type = GetParam() && DoesCpuAllocatorSupportArenaUsage()
+                                           ? OrtArenaAllocator
+                                           : OrtDeviceAllocator;
+  EXPECT_EQ(allocator->Info().alloc_type, expected_allocator_type);
 
   size_t release_count = 0;
   for (const auto& node : state.GetGraphViewer().Nodes()) {
