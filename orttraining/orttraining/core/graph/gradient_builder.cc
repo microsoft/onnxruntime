@@ -76,6 +76,15 @@ IMPLEMENT_GRADIENT_BUILDER(GetCastGradient) {
               {MakeAttribute("to", int64_t(IElemType(0)))})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetCastLikeGradient) {
+  std::vector<NodeDef> result;
+  result.push_back(
+      NodeDef("Cast",
+              {GO(0)}, {GI(0)},
+              {MakeAttribute("to", int64_t(IElemType(0)))}));
+  return result;
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetSinGradient) {
   std::vector<NodeDef> result;
   result.push_back(NodeDef("Cos", {I(0)}, {IA("Cos_O0")}));
