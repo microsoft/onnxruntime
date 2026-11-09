@@ -13,16 +13,22 @@ inline ONNX_NAMESPACE::OpSchema Mamba2VerifySchema(ONNX_NAMESPACE::OpSchema sche
   using namespace ONNX_NAMESPACE;
   return schema.SetDomain(kMSDomain).SinceVersion(1).SetDoc(R"DOC(
 Fused causal convolution, selective state-space recurrence and gated grouped RMS normalization.
-Local provisional contract: head_dim=64, d_state=128, 1<=R<=16.
+Currently requires head_dim=64, d_state=128, 1<=R<=16.
 projection[R, 2*di+2*n_groups*d_state+heads] packs [gate, xBC, dt], di=heads*head_dim.
 state_row is a device int32[1] selecting the starting snapshot (0<=state_row<slots).
+conv_state and ssm_state must have the same slots dimension, with slots>=R.
 Convolution has four taps, with BF16 SiLU output. The FP32 recurrence is
 dt=max(softplus(projection_dt+dt_bias),time_step_min),
 S=exp(A_negative*dt)*S+(dt*x)*B, readout=D*x+sum(C*S).
+The time-step clamp propagates NaN. Softplus uses raw directly when raw>20.
+Readout sums four ordered FP32 partitions of d_state, except when R=1 and slots=1,
+which uses two partitions. Single-row replay with slots>1 retains the multi-row readout order.
 Readout is gated by FP32 SiLU(gate), normalized per group, scaled by norm_weight and rounded to BF16.
 Every processed token writes its post-token convolution and SSM snapshot to the corresponding output row.
 The final/accepted state is chosen by the caller through state_row on the next invocation.
 Input states may alias their corresponding outputs. Slots R..slots-1 are preserved.
+If state_row is outside [0,slots), rows 0..R-1 of conv_snapshots and ssm_snapshots
+and all of Y, xbc and readout are NaN; no error is raised.
 No accepted-length truncation, hidden mutable state, host reads or synchronization is performed.
 )DOC")
       .Attr("heads", "Number of heads.", AttributeProto::INT)
@@ -61,11 +67,54 @@ No accepted-length truncation, hidden mutable state, host reads or synchronizati
         for (size_t input = 0; input < ctx.getNumInputs(); ++input) {
           if (!hasInputShape(ctx, input)) continue;
           const auto& shape = getInputShape(ctx, input);
-          if (input == 3 && (shape.dim_size() == 2 || shape.dim_size() == 3)) continue;
-          const int rank = input == 0 ? 2 : input == 1 ? 3
-                                        : input == 2   ? 4
-                                                       : 1;
-          if (shape.dim_size() != rank) fail_shape_inference("Invalid input rank at ", input);
+          const int rank = shape.dim_size();
+          const bool valid = input == 0 ? rank == 2 : input == 1 ? rank == 3
+                                                  : input == 2   ? rank == 4
+                                                  : input == 3   ? (rank == 2 || rank == 3)
+                                                                 : rank == 1;
+          if (!valid) fail_shape_inference("Invalid input rank at ", input);
+        }
+        const int64_t di = heads * 64, channels = di + 2 * groups * 128;
+        const auto check_dim = [&ctx](size_t input, int axis, int64_t expected) {
+          if (!hasInputShape(ctx, input)) return;
+          const auto& dim = getInputShape(ctx, input).dim(axis);
+          if (dim.has_dim_value() && dim.dim_value() != expected) {
+            fail_shape_inference("Invalid input dimension at ", input, " axis ", axis, ": expected ", expected);
+          }
+        };
+        check_dim(0, 1, di + channels + heads);
+        check_dim(1, 1, channels);
+        check_dim(1, 2, 3);
+        check_dim(2, 1, heads);
+        check_dim(2, 2, 128);
+        check_dim(2, 3, 64);
+        if (hasInputShape(ctx, 3)) {
+          const int rank = getInputShape(ctx, 3).dim_size();
+          check_dim(3, 0, channels);
+          if (rank == 3) check_dim(3, 1, 1);
+          check_dim(3, rank - 1, 4);
+        }
+        check_dim(4, 0, channels);
+        for (size_t input : {size_t{5}, size_t{6}, size_t{7}}) check_dim(input, 0, heads);
+        check_dim(8, 0, di);
+        check_dim(9, 0, 1);
+        for (size_t input : {size_t{1}, size_t{2}}) {
+          if (!hasInputShape(ctx, input)) continue;
+          const auto& slots = getInputShape(ctx, input).dim(0);
+          if (!slots.has_dim_value()) continue;
+          if (slots.dim_value() < 1 ||
+              (hasInputShape(ctx, 0) && getInputShape(ctx, 0).dim(0).has_dim_value() &&
+               slots.dim_value() < getInputShape(ctx, 0).dim(0).dim_value())) {
+            fail_shape_inference("Snapshot slots must be >= R");
+          }
+        }
+        if (hasInputShape(ctx, 1) && hasInputShape(ctx, 2)) {
+          const auto& conv_slots = getInputShape(ctx, 1).dim(0);
+          const auto& ssm_slots = getInputShape(ctx, 2).dim(0);
+          if (conv_slots.has_dim_value() && ssm_slots.has_dim_value() &&
+              conv_slots.dim_value() != ssm_slots.dim_value()) {
+            fail_shape_inference("Snapshot slot dimensions must match");
+          }
         }
         if (hasInputShape(ctx, 0)) {
           const auto& shape = getInputShape(ctx, 0);

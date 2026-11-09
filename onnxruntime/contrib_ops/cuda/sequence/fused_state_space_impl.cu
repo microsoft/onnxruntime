@@ -11,7 +11,7 @@ constexpr int kMaxRows = 16;
 __device__ __forceinline__ float B2F(bf16 v) { return __bfloat162float(v); }
 __device__ __forceinline__ float Silu(float v) { return v / (1.0f + expf(-v)); }
 
-// Preserve the frozen fused path's FP32 ordering and BF16 convolution boundary.
+// FP32 convolution accumulation with one BF16 rounding after SiLU.
 template <int R_FIXED = 0>
 __global__ void MambaConvKernel(const bf16* proj, int R_rt, int proj_stride, int di, int conv_dim,
                                 const bf16* conv_state_in, const bf16* conv_w, const bf16* conv_b, bf16* conv_state_out,
@@ -87,7 +87,7 @@ __global__ void MambaSsmKernel(const bf16* proj, int R_rt, int proj_stride, int 
   if (tid < R) {
     const float raw = B2F(proj[static_cast<int64_t>(tid) * proj_stride + di + conv_dim + h]) + dt_bias[h];
     float dt = raw > 20.0f ? raw : log1pf(expf(raw));
-    sDt[tid] = fmaxf(dt, tmin);
+    sDt[tid] = dt < tmin ? tmin : dt;
   }
   __syncthreads();
   float st[NH];
@@ -214,7 +214,8 @@ cudaError_t LaunchMamba2Verify(cudaStream_t stream, int rows, int64_t slots, int
   } else {
     MambaConvKernel<<<(channels + 127) / 128, 128, 0, stream>>>(proj, rows, stride, di, channels, conv_in, cw, cb,
                                                                 conv_out, act, state_row, slots);
-    if (rows > 1) {
+    // Single-token replay of a multi-row snapshot cache must retain its readout reduction order.
+    if (rows > 1 || slots > 1) {
       MambaSsmKernel<4><<<heads, 256, 0, stream>>>(proj, rows, stride, di, channels, heads, heads / groups, act,
                                                    ssm_state, dt_bias, a_negative, d_skip, time_step_min, ssm_snapshots,
                                                    readout, state_row, slots);
