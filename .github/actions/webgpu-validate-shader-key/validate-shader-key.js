@@ -7,16 +7,14 @@ const { EOL } = require("os");
 const readline = require("readline");
 
 // This script is used to parse the raw log data and check if there are inconsistent shader.
-// When the shader key is the same, the shader code should be the same.
+// Within the same device configuration, the same shader key must produce the same code.
 
 const shaderMap = new Map();
 
-const regexStartingProgram =
-  /onnxruntime::webgpu::WebGpuContext::Run.+Starting program \"(?<key>.+)\"/;
 const regexShaderStart =
-  /^===\ WebGPU\ Shader\ code\ \[.+?(Key=\"(?<key>.+)\")?]\ Start\ ===$/;
+  /^===\ WebGPU\ Shader\ code\ \[.+?, Configuration="(?<configuration>[^"]+)", Key="(?<key>.+)"]\ Start\ ===$/;
 const regexShaderEnd =
-  /^===\ WebGPU\ Shader\ code\ \[.+?(Key=\"(?<key>.+)\")?]\ End\ ===$/;
+  /^===\ WebGPU\ Shader\ code\ \[.+?, Configuration="(?<configuration>[^"]+)", Key="(?<key>.+)"]\ End\ ===$/;
 
 async function processVerboseLog() {
   const rl = readline.createInterface({
@@ -24,20 +22,14 @@ async function processVerboseLog() {
     crlfDelay: Infinity,
   });
 
-  let lastProgramKey = null;
   let currentShaderKey = null;
+  let currentShaderConfiguration = null;
   let currentShaderCode = null;
   let currentShaderStartLineNumber = null;
   let lineNumber = 0;
 
   for await (const line of rl) {
     lineNumber++;
-    const startingProgram = regexStartingProgram.exec(line);
-    if (startingProgram) {
-      lastProgramKey = startingProgram.groups.key;
-      continue;
-    }
-
     const resultStart = regexShaderStart.exec(line);
     if (resultStart) {
       if (currentShaderKey) {
@@ -46,18 +38,8 @@ async function processVerboseLog() {
         );
       }
 
-      const key = resultStart.groups.key ?? lastProgramKey;
-      if (!key) {
-        throw new Error(
-          `Line ${lineNumber}: No shader key is found in the log. Please use debug build or enable verbose logging in session options in release build.`
-        );
-      }
-      if (lastProgramKey && key !== lastProgramKey) {
-        throw new Error(
-          `Line ${lineNumber}: Found incorrect shader key from log. Expected "${lastProgramKey}", but got "${key}".`
-        );
-      }
-      currentShaderKey = key;
+      currentShaderKey = resultStart.groups.key;
+      currentShaderConfiguration = resultStart.groups.configuration;
       currentShaderCode = "";
       currentShaderStartLineNumber = lineNumber;
       continue;
@@ -71,23 +53,24 @@ async function processVerboseLog() {
         );
       }
 
-      const key = resultEnd.groups.key ?? lastProgramKey;
-      if (!key) {
+      if (
+        resultEnd.groups.key !== currentShaderKey ||
+        resultEnd.groups.configuration !== currentShaderConfiguration
+      ) {
         throw new Error(
-          `Line ${lineNumber}: No shader key is found in the log. Please use debug build or enable verbose logging in session options in release build.`
-        );
-      }
-      if (lastProgramKey && key !== lastProgramKey) {
-        throw new Error(
-          `Line ${lineNumber}: Found incorrect shader key from log. Expected "${lastProgramKey}", but got "${key}".`
+          `Line ${lineNumber}: Shader end key or configuration does not match its start at line ${currentShaderStartLineNumber}.`
         );
       }
 
-      if (shaderMap.has(currentShaderKey)) {
-        if (shaderMap.get(currentShaderKey) !== currentShaderCode) {
-          throw new Error(`Line ${lineNumber}: Found inconsistent shader code for key "${currentShaderKey}" (shader started at line ${currentShaderStartLineNumber}).
+      const comparisonKey = JSON.stringify([
+        currentShaderConfiguration,
+        currentShaderKey,
+      ]);
+      if (shaderMap.has(comparisonKey)) {
+        if (shaderMap.get(comparisonKey) !== currentShaderCode) {
+          throw new Error(`Line ${lineNumber}: Found inconsistent shader code for key "${currentShaderKey}" (configuration ${JSON.stringify(currentShaderConfiguration)}, shader started at line ${currentShaderStartLineNumber}).
 === Previous Shader Start ===
-${shaderMap.get(currentShaderKey)}
+${shaderMap.get(comparisonKey)}
 === Previous Shader End ===
 
 === Current Shader Start ===
@@ -95,13 +78,20 @@ ${currentShaderCode}
 === Current Shader End ===`);
         }
       } else {
-        shaderMap.set(currentShaderKey, currentShaderCode);
+        shaderMap.set(comparisonKey, currentShaderCode);
       }
 
       currentShaderKey = null;
+      currentShaderConfiguration = null;
       currentShaderCode = null;
       currentShaderStartLineNumber = null;
       continue;
+    }
+
+    if (line.startsWith("=== WebGPU Shader code [")) {
+      throw new Error(
+        `Line ${lineNumber}: Shader header must include nonempty Configuration and Key fields.`
+      );
     }
 
     if (currentShaderKey) {

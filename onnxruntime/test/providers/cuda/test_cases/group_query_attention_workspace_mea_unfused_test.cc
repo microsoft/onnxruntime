@@ -157,6 +157,29 @@ TEST(GroupQueryAttentionUnfusedWorkspaceTest, MatchesExistingWorkspaceHelperAcro
   }
 }
 
+TEST(GroupQueryAttentionUnfusedWorkspaceTest, ExplicitQueryLengthsReserveMaskedValueScratch) {
+  auto problem = Problem();
+  problem.has_query_seqlens = true;
+  const auto result = GetGQAUnfusedWorkspaceRecipe(problem, 5);
+  ASSERT_TRUE(result.status.IsOK()) << result.status.message;
+  const auto& recipe = result.recipe;
+  EXPECT_EQ(recipe.v_scratch_offset_bytes, 7168U);
+  // sizeof(T)*B*Nk*C*H = 2*2*2*5*64 = 2560.
+  EXPECT_EQ(recipe.v_scratch_bytes, 2560U);
+  EXPECT_EQ(recipe.total_backend_bytes, 9728U);
+  EXPECT_TRUE(ValidateGQAUnfusedWorkspaceRecipe(recipe).IsOK());
+
+  auto invalid = recipe;
+  ++invalid.v_scratch_offset_bytes;
+  EXPECT_FALSE(ValidateGQAUnfusedWorkspaceRecipe(invalid).IsOK());
+  invalid = recipe;
+  invalid.v_scratch_offset_bytes = recipe.softmax_offset_bytes;
+  EXPECT_FALSE(ValidateGQAUnfusedWorkspaceRecipe(invalid).IsOK());
+  invalid = recipe;
+  --invalid.v_scratch_bytes;
+  EXPECT_FALSE(ValidateGQAUnfusedWorkspaceRecipe(invalid).IsOK());
+}
+
 TEST(GroupQueryAttentionUnfusedWorkspaceTest, CompleteRootAlignsAndDoesNotOverlapPreparation) {
   auto problem = Problem();
   problem.do_rotary = true;
