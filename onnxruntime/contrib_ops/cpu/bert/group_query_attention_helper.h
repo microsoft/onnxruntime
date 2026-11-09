@@ -244,11 +244,6 @@ Status CheckQuerySeqlens(const T* query_seqlens,
                            "Got sequence_length=",
                            sequence_length, ", kv_sequence_length=", kv_sequence_length, ".");
   }
-  if (sequence_length > 1 && batch_size != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "batch_size must be 1 when query_seqlens is given and sequence_length > 1. Got batch_size=",
-                           batch_size, ".");
-  }
   // A cache that is not windowed holds the whole padded chunk after the valid past tokens.
   if (!sliding_window_cache && sequence_length > cache_capacity) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -271,10 +266,10 @@ Status CheckQuerySeqlens(const T* query_seqlens,
                              "seqlens_k[", b, "] = ", seqlens_k_data[b], " must not be negative when query_seqlens is given.");
     }
     const int64_t max_valid = std::min<int64_t>(sequence_length, total);
-    if (valid < 1 || valid > max_valid) {
+    if (valid < 0 || valid > max_valid) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "query_seqlens[", b, "] = ", valid, " must be in [1, min(sequence_length, seqlens_k[", b,
-                             "] + 1)] = [1, ", max_valid, "].");
+                             "query_seqlens[", b, "] = ", valid, " must be in [0, min(sequence_length, seqlens_k[", b,
+                             "] + 1)] = [0, ", max_valid, "].");
     }
     if (is_total_seqlen_on_cpu && total > total_sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -416,8 +411,9 @@ Status CheckInputs(const T* query,
                            "total_sequence_length tensor must be of one element.");
   }
 
-  // When graph capture is enabled, total_seqlen is on GPU and cannot be read. Skip validation.
-  const bool is_total_seqlen_on_cpu = (total_seqlen->Location().device.Type() == OrtDevice::CPU);
+  // A value on the device itself cannot be read here (WebGPU under graph capture), so validation is skipped. One
+  // copied from a device node sits in host-accessible memory, and the planner waits for that copy before this kernel.
+  const bool is_total_seqlen_on_cpu = total_seqlen->Location().device.UsesCpuMemory();
   int total_sequence_length = is_total_seqlen_on_cpu ? *((*total_seqlen).template Data<int32_t>()) : 0;
   if (is_total_seqlen_on_cpu && total_sequence_length <= 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -524,7 +520,7 @@ Status CheckInputs(const T* query,
                                           total_sequence_length));
   }
 
-  if (query_seqlens != nullptr && sequence_length > 1) {
+  if (query_seqlens != nullptr) {
     // The explicit lengths define the past length of every entry, so total_sequence_length (an upper
     // bound here) must not be used to tell a first prompt from a later chunk.
     is_subsequent_prompt = true;

@@ -1665,10 +1665,12 @@ __global__ void finalizeMoeRoutingKernel(const GemmOutputType* expanded_permuted
       int64_t const k_offset = original_row * experts_per_token + k_idx;
       int const expert_id = token_selected_experts[k_offset] - start_expert_id;
       bool const is_local_expert = expert_id >= 0 && expert_id < num_experts_per_node;
+      const float row_scale = (SCALE_MODE == ScaleMode::NO_SCALE) ? 1.f : scales[k_offset];
       s_expert_id[k_idx] = expert_id;
-      // -1 marks a slot routed to an expert owned by another rank, which is skipped below.
-      s_permuted_row[k_idx] = is_local_expert ? unpermuted_row_to_permuted_row[original_row + k_idx * num_rows] : -1;
-      s_row_scale[k_idx] = (SCALE_MODE == ScaleMode::NO_SCALE) ? 1.f : scales[k_offset];
+      // -1 marks a slot routed to an expert owned by another rank or pruned by min_expert_weight, which is skipped below.
+      s_permuted_row[k_idx] =
+          (is_local_expert && row_scale != 0.f) ? unpermuted_row_to_permuted_row[original_row + k_idx * num_rows] : -1;
+      s_row_scale[k_idx] = row_scale;
     }
     __syncthreads();
   }
@@ -1721,6 +1723,9 @@ __global__ void finalizeMoeRoutingKernel(const GemmOutputType* expanded_permuted
         }
         const int64_t expanded_permuted_row = unpermuted_row_to_permuted_row[original_row + k_idx * num_rows];
         const float row_scale = (SCALE_MODE == ScaleMode::NO_SCALE) ? 1.f : scales[k_offset];
+        if (row_scale == 0.f) {
+          continue;
+        }
 
         const auto* expanded_permuted_rows_row_ptr = expanded_permuted_rows_v + expanded_permuted_row * num_elems_in_col;
 
@@ -1761,10 +1766,13 @@ __global__ void finalizeMoeRoutingOneRowKernel(const GemmOutputType* expanded_pe
   const int tid = threadIdx.x;
   if (tid < ExpertsPerToken) {
     const int expert_id = token_selected_experts[tid] - start_expert_id;
+    const float row_scale = (SCALE_MODE == ScaleMode::NO_SCALE) ? 1.f : scales[tid];
     expert_ids_for_topk[tid] = expert_id;
     expanded_permuted_rows_for_topk[tid] =
-        (expert_id >= 0 && expert_id < num_experts_per_node) ? unpermuted_row_to_permuted_row[tid] : -1;
-    row_scales_for_topk[tid] = (SCALE_MODE == ScaleMode::NO_SCALE) ? 1.f : scales[tid];
+        (expert_id >= 0 && expert_id < num_experts_per_node && row_scale != 0.f)
+            ? unpermuted_row_to_permuted_row[tid]
+            : -1;
+    row_scales_for_topk[tid] = row_scale;
   }
   __syncthreads();
 

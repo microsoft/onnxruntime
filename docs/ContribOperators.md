@@ -77,6 +77,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.MatMulNBitsQkv">com.microsoft.MatMulNBitsQkv</a>
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
   * <a href="#com.microsoft.MoE">com.microsoft.MoE</a>
+  * <a href="#com.microsoft.MoEGroupRouter">com.microsoft.MoEGroupRouter</a>
   * <a href="#com.microsoft.MulInteger">com.microsoft.MulInteger</a>
   * <a href="#com.microsoft.MultiHeadAttention">com.microsoft.MultiHeadAttention</a>
   * <a href="#com.microsoft.MurmurHash3">com.microsoft.MurmurHash3</a>
@@ -2486,8 +2487,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.GatedDeltaNet"></a><a name="com.microsoft.gateddeltanet">**com.microsoft.GatedDeltaNet**</a>
 
   Packed (token-major) gated delta network / linear attention with an explicit recurrent state.
-  Implemented by CUDA and native WebGPU execution providers. WebGPU supports float and float16
-  with scalar decay, `head_size_qk <= 256`, and compact state updates.
+  Implemented by CPU, CUDA, and native WebGPU execution providers. WebGPU supports float and float16
+  with `head_size_qk <= 256` and compact state updates.
   
   Layout. Query, key and value are token-major, so head counts are derived from the shapes
   rather than from attributes:
@@ -2524,13 +2525,14 @@ This version of the operator has been available since version 1 of the 'com.micr
   Compact state updates. When `state_update_capacity` C is greater than zero, `capture_count`
   is required with shape `[batch_size]`. For request b, the first `capture_count[b]` local token
   transitions (clamped on device to `[0, min(C, sequence_length)]`) are emitted in one `state_update`
-  float tensor `[batch_size, C * (num_heads_v + num_heads_k * head_size_qk + num_heads_v * head_size_v)]`.
-  Each row is struct-of-arrays: all decay values, then all keys, then all deltas. Entries at positions
-  greater than or equal to `min(capture_count[b], C, sequence_length)` are unspecified; consumers must
-  read only the captured prefix. The key retains its shared `num_heads_k` representation. For scalar
-  decay the decoded factors replay one transition as `S *= decay; S += outer(key, delta)`.
-  Per-key-dimension decay is not supported when compact updates are enabled. `capture_count` is
-  forbidden when C is zero.
+  float tensor `[batch_size, C * (decay_width + num_heads_k * head_size_qk + num_heads_v * head_size_v)]`,
+  where `decay_width` is `num_heads_v` for scalar decay and `num_heads_v * head_size_qk` for
+  per-key-dimension decay. Each row is struct-of-arrays: all decay values, then all keys, then all
+  deltas. Entries at positions greater than or equal to `min(capture_count[b], C, sequence_length)`
+  are unspecified; consumers must read only the captured prefix. The key retains its shared
+  `num_heads_k` representation. For scalar decay the decoded factors replay one transition as
+  `S *= decay; S += outer(key, delta)`, and for per-key-dimension decay as
+  `S = diag(decay) * S + outer(key, delta)`. `capture_count` is forbidden when C is zero.
   
   The optional CPU input `state_update_active` has shape `[1]`. When zero, transition capture is
   disabled, `capture_count` is ignored, `state_update` is zero-filled, and the planner may use an
@@ -2555,12 +2557,17 @@ This version of the operator has been available since version 1 of the 'com.micr
   
     g = -exp(a_log) * Softplus(decay + dt_bias)
   
+  `gate_activation='sigmoid'` (alias `'kda'`) computes the bounded Kimi Delta Attention decay in
+  float32:
+  
+    g = gate_lower_bound * Sigmoid(exp(a_log) * (decay + dt_bias))
+  
   `beta_activation='sigmoid'` applies a sigmoid to `beta`, and `qk_l2_norm=1` L2-normalizes each
   query and key head vector. Folding these in avoids materializing the intermediates and keeps
   the gate arithmetic in float32 independent of the input type.
-  Decay and beta may be float or the query element type (both use the same type). CUDA widens
-  FP16/BF16 gate inputs to float before any gate arithmetic, avoiding standalone lossless casts.
-  State, a_log, and dt_bias remain float. WebGPU currently accepts float decay and beta only.
+  Decay and beta may be float or the query element type (both use the same type). CUDA, CPU, and
+  WebGPU widen FP16/BF16 gate inputs to float before any gate arithmetic, avoiding standalone
+  lossless casts. State, a_log, and dt_bias remain float.
   
 
 #### Version
@@ -2575,7 +2582,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>chunk_size</tt> : int</dt>
 <dd>Tuning hint for the chunk-parallel prefill algorithm. On CUDA, 32 pins the narrow chunk and any other value lets the implementation select the widest chunk the device can hold. On WebGPU, 16 opts into the chunkwise prefill route on supported Apple silicon; default 64 retains recurrent execution. Default 64.</dd>
 <dt><tt>gate_activation</tt> : string</dt>
-<dd>'none' (default) treats `decay` as the effective log-space decay. 'softplus' computes -exp(a_log) * Softplus(decay + dt_bias) in float32. 'qwen' is accepted as a legacy alias of 'softplus' with identical behavior.</dd>
+<dd>'none' (default) treats `decay` as the effective log-space decay. 'softplus' computes -exp(a_log) * Softplus(decay + dt_bias) in float32 ('qwen' is accepted as a legacy alias). 'sigmoid' (or 'kda') computes gate_lower_bound * Sigmoid(exp(a_log) * (decay + dt_bias)) in float32.</dd>
+<dt><tt>gate_lower_bound</tt> : float</dt>
+<dd>Negative lower bound applied when gate_activation is 'sigmoid' or 'kda'. Default -5.0.</dd>
 <dt><tt>qk_l2_norm</tt> : int</dt>
 <dd>When 1, L2-normalize each query and key head vector before the recurrence. Default 0.</dd>
 <dt><tt>scale</tt> : float</dt>
@@ -2604,9 +2613,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>initial_state</tt> (optional) : TS</dt>
 <dd>Recurrent state, shape (batch_size, num_heads_v, head_size_v, head_size_qk), V-major. Required for packed QKV. May alias final_state.</dd>
 <dt><tt>a_log</tt> (optional) : TS</dt>
-<dd>Per-head A_log, shape (num_heads_v). Requires gate_activation=softplus.</dd>
+<dd>Per-head A_log, shape (num_heads_v). Used when gate_activation is 'softplus' or 'sigmoid'/'kda'.</dd>
 <dt><tt>dt_bias</tt> (optional) : TS</dt>
-<dd>Per-head gate bias, shape (num_heads_v). Requires gate_activation=softplus.</dd>
+<dd>Gate bias, shape (num_heads_v) or (num_heads_v, head_size_qk) / (num_heads_v * head_size_qk). Used when gate_activation is 'softplus' or 'sigmoid'/'kda'.</dd>
 <dt><tt>capture_count</tt> (optional) : TI</dt>
 <dd>Number of leading local token transitions to capture for each request, shape (batch_size). Clamped on device to [0, min(state_update_capacity, sequence_length)]. Required exactly when state_update_capacity is positive.</dd>
 <dt><tt>state_update_active</tt> (optional) : TI</dt>
@@ -2621,7 +2630,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>final_state</tt> (optional) : TS</dt>
 <dd>State after the last token of each request, shape (batch_size, num_heads_v, head_size_v, head_size_qk)</dd>
 <dt><tt>state_update</tt> (optional) : TS</dt>
-<dd>Struct-of-arrays compact transition factors, shape (batch_size, state_update_capacity * (num_heads_v + num_heads_k * head_size_qk + num_heads_v * head_size_v)).</dd>
+<dd>Struct-of-arrays compact transition factors, shape (batch_size, state_update_capacity * (decay_width + num_heads_k * head_size_qk + num_heads_v * head_size_v)), where decay_width is num_heads_v for scalar decay and num_heads_v * head_size_qk for per-key-dimension decay.</dd>
 </dl>
 
 #### Type Constraints
@@ -2659,13 +2668,14 @@ This version of the operator has been available since version 1 of the 'com.micr
   transitions to replay; kept_count must NOT be substituted for capacity when deriving the
   decay/key/delta section offsets.
   
-  State rows have layout [Hv, Dv, Dk]. The capsule contains decay [capacity, Hv],
-  key [capacity, Hk, Dk], and delta [capacity, Hv, Dv] starting at their respective offsets.
+  State rows have layout [Hv, Dv, Dk]. The capsule contains decay [capacity, Hv] (or
+  [capacity, Hv, Dk] when key_offset - decay_offset == capacity * Hv * Dk), key [capacity, Hk, Dk],
+  and delta [capacity, Hv, Dv] starting at their respective offsets.
   For every state element (h,v,i):
     hk = floor(h * Hk / Hv)
     s = source[h,v,i]
     for t = 0 .. kept_count-1:
-      s *= decay[t,h]
+      s *= decay[t,h] (or decay[t,h,i] for per-key-dimension decay)
       s += key[t,hk,i] * delta[t,h,v]
     destination[h,v,i] = s
   Unused capsule tail entries are not read. All other destination elements are preserved.
@@ -3333,9 +3343,9 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   Only the valid rows are appended to the cache, at positions `[P, T)`. Query row `s` is at absolute position `P + s`: causal attention, `local_window_size` and rotary embedding (when `position_ids` is not given) use that position. Output rows `[Q, S)` are unspecified, and so are cache rows at or beyond `T`. For every valid row the result equals that of the same call with an unpadded chunk of `Q` tokens retaining `query_seqlens` and the same `total_sequence_length`, so a caller can run every chunk of a prompt with one fixed `S`. With a quantized CUDA cache and `P = 0, Q > 1`, attention reads the original floating-point new K/V; omitting `query_seqlens` while retaining a capacity-valued bound can instead select legacy quantized-cache reads. For `P = 0, Q = 1`, both padded and unpadded calls read floating-point new K/V only when `total_sequence_length = 1`; a larger bound preserves quantized-cache reads.
   
-  The scalar `total_sequence_length` is only an upper bound of `T` in this case (for example the cache capacity). It is not used to tell a first prompt from a later chunk and it does not determine `P`.
+  The scalar `total_sequence_length` is only an upper bound of the absolute `T` in this case. It is not used to tell a first prompt from a later chunk and it does not determine `P`. A windowed cache may have a capacity smaller than `T`, so its capacity is not necessarily a valid upper bound.
   
-  Requirements: `causal=1`; new key/value with `kv_sequence_length == sequence_length`; `past_key` and `past_value` present; `1 <= Q <= min(S, T)` and `T <= total_sequence_length` for every batch entry (the existing rule that `total_sequence_length >= sequence_length` for a cache that is not windowed still applies, but a growing cache is not required to have `total_sequence_length == past_sequence_length + sequence_length`); `sequence_length > 1` requires `batch_size == 1`; and `Q == 1` when `sequence_length == 1`. A cache that is not windowed must also hold the `P` cached tokens in `past_key` (`P` is at most the sequence dimension of `past_key`) and have room for the whole padded chunk, `P + S <= C`, where `C` is the sequence dimension of `present_key`. A windowed cache has no such requirement because it is staged internally. An execution provider that can read the values reports a violation with `INVALID_ARGUMENT`; the CUDA execution provider reads them on the device, clamps `Q` into `[1, min(S, T)]` and leaves the result unspecified. When `query_seqlens` is omitted, `Q = min(S, T)` and the behavior is unchanged.
+  Requirements: `causal=1`; new key/value with `kv_sequence_length == sequence_length`; `past_key` and `past_value` present; `T >= 1`, `0 <= Q <= min(S, T)` and `T <= total_sequence_length` for every batch entry (the existing rule that `total_sequence_length >= sequence_length` for a cache that is not windowed still applies, but a growing cache is not required to have `total_sequence_length == past_sequence_length + sequence_length`). Batched multi-token chunks are supported. `Q = 0` marks an idle entry with an already-populated cache: keep its `seqlens_k` unchanged and ignore all its output rows. The input is honored also when `sequence_length == 1`, where `Q` is 0 or 1. A cache that is not windowed must also hold the `P` cached tokens in `past_key` (`P` is at most the sequence dimension of `past_key`) and have room for the whole padded chunk, `P + S <= C`, where `C` is the sequence dimension of `present_key`. A windowed cache has no such requirement because it is staged internally. An execution provider that can read the values reports a violation with `INVALID_ARGUMENT`; the CUDA execution provider reads them on the device, clamps `Q` into `[0, min(S, T)]` and leaves the result unspecified. When `query_seqlens` is omitted, `Q = min(S, T)` and the behavior is unchanged.
   
   **Windowed KV Cache (`sliding_window_cache` attribute):**
   When `sliding_window_cache` is 1, the past/present buffers are window-sized instead of full-length and the operator evicts internally. Let `C` be the cache capacity (dimension 2 of `past_key`, which is also the sequence dimension of `present_key`), `W` be `local_window_size`, and `T` be the absolute number of tokens processed so far by this batch entry, i.e. `seqlens_k[b] + 1`. The scalar `total_sequence_length` input is only the batch maximum of `T` (or only an upper bound of `T` when `query_seqlens` is given); the layout below is per batch entry, so a ragged batch gets a different resident range per entry. `C` must be at least `W`.
@@ -3350,7 +3360,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   Hence `min(T, W) <= L(T) <= min(T, C)`: the whole window stays resident, and eviction reclaims `G` positions at once rather than one position per step, so consumers must not assume that the cache is kept full at `min(T, C)`.
   
-    Because `L` depends only on `T`, the resulting layout is independent of how the tokens were split into steps: a multi-token step of `S` tokens (speculative decoding, chunked prefill) leaves exactly the layout that the same tokens would produce one at a time. A right-padded chunk (`query_seqlens`) leaves the layout of its `Q` valid tokens only, because padding rows never enter the cache. Any `S >= 1` is accepted, including `S > C`; a step that would evict positions it still has to read is staged internally, so the capacity does not have to cover the step. When past context is present, the existing operator restriction still applies: `sequence_length > 1` requires `batch_size == 1`.
+    Because `L` depends only on `T`, the resulting layout is independent of how the tokens were split into steps: a multi-token step of `S` tokens (speculative decoding, chunked prefill) leaves exactly the layout that the same tokens would produce one at a time. A right-padded chunk (`query_seqlens`) leaves the layout of its `Q` valid tokens only, because padding rows never enter the cache. Any `S >= 1` is accepted, including `S > C`; a step that would evict positions it still has to read is staged internally, so the capacity does not have to cover the step. Without `query_seqlens`, the existing restriction with past context still applies: `sequence_length > 1` requires `batch_size == 1`.
   
     An execution provider may accept only part of the `C >= W` range. A configuration with `C < W` (equivalently, `W > C`) is invalid and is rejected with `INVALID_ARGUMENT`. The CUDA implementation requires `C == W`, so there `G` is 1 and `L(T)` is `min(T, C)`; a larger capacity is rejected. The CPU implementation accepts any `C >= W`, and slack above the window amortizes compaction over `G` steps.
   
@@ -3403,7 +3413,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>scale</tt> : float</dt>
 <dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 <dt><tt>sliding_window_cache</tt> : int</dt>
-<dd>Set to 1 when the past/present KV buffers are window-sized instead of holding the whole sequence. The op then evicts internally and indexes the buffers in cache-relative coordinates, keeping the most recent positions contiguously at rows [0, L) with min(T, local_window_size) <= L <= min(T, capacity), where T is seqlens_k[b] + 1 for that batch entry. Requires local_window_size > 0 and a cache capacity of at least local_window_size; a smaller capacity (W > C) is rejected with INVALID_ARGUMENT. The CUDA implementation additionally requires the capacity to equal local_window_size. Multi-token steps of any length are supported and produce the same layout as single-token steps, so the capacity need not cover the entire step. When past context is present, sequence_length > 1 requires batch_size == 1. See the Windowed KV Cache section of the operator description for the exact resident-range, eviction and rollback contract. Default value is 0 (full-length cache).</dd>
+<dd>Set to 1 when the past/present KV buffers are window-sized instead of holding the whole sequence. The op then evicts internally and indexes the buffers in cache-relative coordinates, keeping the most recent positions contiguously at rows [0, L) with min(T, local_window_size) <= L <= min(T, capacity), where T is seqlens_k[b] + 1 for that batch entry. Requires local_window_size > 0 and a cache capacity of at least local_window_size; a smaller capacity (W > C) is rejected with INVALID_ARGUMENT. The CUDA implementation additionally requires the capacity to equal local_window_size. Multi-token steps of any length are supported and produce the same layout as single-token steps, so the capacity need not cover the entire step. Without query_seqlens, when past context is present, sequence_length > 1 requires batch_size == 1. See the Windowed KV Cache section of the operator description for the exact resident-range, eviction and rollback contract. Default value is 0 (full-length cache).</dd>
 <dt><tt>smooth_softmax</tt> : int</dt>
 <dd>Use a smooth factor in softmax.</dd>
 <dt><tt>softcap</tt> : float</dt>
@@ -3448,7 +3458,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>k_norm_weight</tt> (optional) : T</dt>
 <dd>Optional 1D tensor of shape (head_size). See q_norm_weight. Must be provided together with q_norm_weight.</dd>
 <dt><tt>query_seqlens</tt> (optional) : M</dt>
-<dd>Optional 1D tensor of shape (batch_size) with the number of valid, non-padded tokens in the query/key/value chunk of each batch entry. The chunk is right-padded: rows [0, query_seqlens[b]) are valid and rows [query_seqlens[b], sequence_length) are padding. Unlike seqlens_k this is a count, not a count minus one. After the step the cache holds seqlens_k[b] + 1 tokens, so entry b had seqlens_k[b] + 1 - query_seqlens[b] tokens before it. Requires 1 <= query_seqlens[b] <= min(sequence_length, seqlens_k[b] + 1). When omitted, query_seqlens[b] = min(sequence_length, seqlens_k[b] + 1), which is the behavior without this input. See the Right-padded query chunks section of the operator description for the full contract. Currently honored by the CPU and CUDA execution providers; other EPs must reject the node when this input is set.</dd>
+<dd>Optional 1D tensor of shape (batch_size) with the number of valid, non-padded tokens in the query/key/value chunk of each batch entry. The chunk is right-padded: rows [0, query_seqlens[b]) are valid and rows [query_seqlens[b], sequence_length) are padding. Unlike seqlens_k this is a count, not a count minus one. After the step the cache holds seqlens_k[b] + 1 tokens, so entry b had seqlens_k[b] + 1 - query_seqlens[b] tokens before it. Requires seqlens_k[b] >= 0 and 0 <= query_seqlens[b] <= min(sequence_length, seqlens_k[b] + 1). Zero marks an idle entry whose cache is unchanged, also when sequence_length is 1. Batched chunks are supported. When omitted, query_seqlens[b] = min(sequence_length, seqlens_k[b] + 1), which is the behavior without this input. See the Right-padded query chunks section of the operator description for the full contract. Currently honored by the CPU and CUDA execution providers; other EPs must reject the node when this input is set.</dd>
 </dl>
 
 #### Outputs (1 - 4)
@@ -4804,6 +4814,59 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MoEGroupRouter"></a><a name="com.microsoft.moegrouprouter">**com.microsoft.MoEGroupRouter**</a>
+
+  Fused group-limited sigmoid MoE router (noaux_tc) as used by BailingMoeV3 / DeepSeek-V3.
+  Computes s = sigmoid(logits), selects topk_group groups by the sum of top group_topk values of
+  (s + expert_bias) per group, selects top_k experts from those groups by (s + expert_bias), and
+  writes log(max(s, 1e-20)) at the selected experts and router_sentinel elsewhere into a 2D
+  (total_tokens, num_experts) output tensor ready for MoE / QMoE.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>group_topk</tt> : int</dt>
+<dd>Positive number of top experts summed within each group, clamped to the group size.</dd>
+<dt><tt>n_group</tt> : int</dt>
+<dd>Positive number of expert groups.</dd>
+<dt><tt>router_sentinel</tt> : float</dt>
+<dd>Value written to non-selected expert positions.</dd>
+<dt><tt>top_k</tt> : int (required)</dt>
+<dd>Positive number of experts selected per token.</dd>
+<dt><tt>topk_group</tt> : int</dt>
+<dd>Positive number of active expert groups selected per token.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>logits</tt> : T</dt>
+<dd>Router logits tensor of shape (..., num_experts).</dd>
+<dt><tt>expert_bias</tt> : TF</dt>
+<dd>1D float32 expert bias tensor of shape (num_experts).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>router_probs</tt> : T</dt>
+<dd>2D routed log-scores tensor of shape (total_tokens, num_experts).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>TF</tt> : tensor(float)</dt>
+<dd>Constrain expert_bias to float32.</dd>
 </dl>
 
 
@@ -6576,8 +6639,11 @@ This version of the operator has been available since version 1 of the 'com.micr
         Partial edge blocks are allowed. No zero points or activation scales are accepted.
         Without a positive block_size, FP8 uses the legacy per-expert fc*_global_scale inputs instead.
         Block-scaled FP8 does not use global scales. Activations retain the input type (weight-only quantization).
-        On CUDA SM80-or-newer GPUs, SiLU/SwiGLU block-scaled FP8 uses fused weight-only GEMV/GEMM by default.
-        These kernels decode and scale FP8 tiles on chip without materializing full FP16/BF16 weight buffers.
+        On CUDA SM80-or-newer GPUs, SiLU/SwiGLU block-scaled FP8 uses fused weight-only GEMV/GEMM for decode-sized
+        batches of at most 8 rows by default. These kernels decode and scale FP8 tiles on chip without materializing
+        full FP16/BF16 weight buffers. Larger batches dequantize the selected experts and use the CUTLASS grouped GEMM.
+        Set ORT_QMOE_FP8_FUSED_MAX_ROWS before session creation to change the row cutoff, or set ORT_ENABLE_FP8_FUSED=1
+        to keep the scratch-free fused kernels for every supported row count.
         Set ORT_ENABLE_FP8_FUSED=0 before session creation to select the compact dense-dequant fallback.
         Other activation types and unsupported routing sizes retain the fallback.
         The WebGPU block-FP8 kernel supports block_size=128 with float32 scales and rejects projections

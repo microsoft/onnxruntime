@@ -41,11 +41,9 @@ jobs:
 
     - name: Setup Android NDK
       uses: ./.github/actions/setup-android-ndk
-      with:
-        ndk-version: 28.0.13004108
 
     - name: Get Docker Image using Action
-      uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+      uses: ./.github/actions/build-docker-image
       id: build_docker_image_step
       with:
         dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -133,7 +131,7 @@ jobs:
           python-version: "3.12"
 
       - name: Use jdk 17
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -156,8 +154,6 @@ jobs:
 
       - name: Setup Android NDK
         uses: ./.github/actions/setup-android-ndk
-        with:
-          ndk-version: 28.0.13004108
 
       - name: Test static telemetry package dependencies on Linux and Android
         shell: bash
@@ -166,9 +162,10 @@ jobs:
           python3 tools/ci_build/test_telemetry_package.py -v
 
       - name: Setup CCache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: ccache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          # Fully qualify by workflow. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
+          # Fully qualify by workflow. `actions/cache/restore` does not isolate by workflow, unlike ADO cache actions.
           key: ccache | android.yml | android_nnapi_ep
           path: ~/.cache/ccache
 
@@ -234,6 +231,13 @@ jobs:
           fi
         shell: bash
 
+      - name: Save CCache
+        if: ${{ success() && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+          path: ~/.cache/ccache
+
   android_cpu_ep:
     name: Android CI Pipeline
     runs-on: [ort-github-linux-16-amd-wcus-ss]
@@ -249,7 +253,7 @@ jobs:
           python-version: "3.12"
 
       - name: Use jdk 17
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -272,13 +276,12 @@ jobs:
 
       - name: Setup Android NDK
         uses: ./.github/actions/setup-android-ndk
-        with:
-          ndk-version: 28.0.13004108
 
       - name: Setup CCache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: ccache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          # Fully qualify by workflow. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
+          # Fully qualify by workflow. `actions/cache/restore` does not isolate by workflow, unlike ADO cache actions.
           key: ccache | android.yml | android_cpu_ep
           path: ~/.cache/ccache
 
@@ -334,3 +337,10 @@ jobs:
            echo "Emulator PID file was expected to exist but does not."
           fi
         shell: bash
+
+      - name: Save CCache
+        if: ${{ success() && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+          path: ~/.cache/ccache
