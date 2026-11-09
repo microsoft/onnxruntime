@@ -6,6 +6,9 @@
 
 #if defined(__linux__) && defined(MLAS_TARGET_AMD64) && defined(MLAS_ENABLE_TEST_HOOKS)
 
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
 #include <pthread.h>
 #include <sched.h>
 #include <thread>
@@ -56,6 +59,44 @@ void TestProbeResult(bool preserve_data, unsigned long bitmask = kTilePermission
   EXPECT_TRUE(CPU_EQUAL(&before, &after));
 }
 
+struct CancellationProbeContext {
+  explicit CancellationProbeContext(int type) : Type(type) {}
+
+  int Type;
+  std::mutex Mutex;
+  std::condition_variable Condition;
+  bool Started = false;
+  bool Release = false;
+  bool Finished = false;
+  bool CleanupAfterProbe = false;
+};
+
+bool TestBlockingProbe(int, void* arg) {
+  auto& context = *static_cast<CancellationProbeContext*>(arg);
+  std::unique_lock<std::mutex> lock(context.Mutex);
+  context.Started = true;
+  context.Condition.notify_one();
+  context.Condition.wait(lock, [&context] { return context.Release; });
+  context.Finished = true;
+  return true;
+}
+
+void TestCancellationCleanup(void* arg) {
+  auto& context = *static_cast<CancellationProbeContext*>(arg);
+  std::lock_guard<std::mutex> lock(context.Mutex);
+  context.CleanupAfterProbe = context.Finished;
+}
+
+void* TestCancellationCaller(void* arg) {
+  auto& context = *static_cast<CancellationProbeContext*>(arg);
+  EXPECT_EQ(pthread_setcanceltype(context.Type, nullptr), 0);
+  pthread_cleanup_push(TestCancellationCleanup, arg);
+  MlasAMXCheckOSSupportForTesting(kTilePermissionMask, TestBlockingProbe, arg);
+  pthread_testcancel();
+  pthread_cleanup_pop(1);
+  return nullptr;
+}
+
 }  // namespace
 
 TEST(AmxPlatform, PreservedTileData) {
@@ -91,6 +132,45 @@ TEST(AmxPlatform, CancellationStateUnchanged) {
       ASSERT_EQ(pthread_setcancelstate(original, nullptr), 0);
     });
     worker.join();
+  }
+}
+
+TEST(AmxPlatform, CancellationJoinsProbeThread) {
+  cpu_set_t allowed;
+  if (sched_getaffinity(0, sizeof(allowed), &allowed) != 0 || CPU_COUNT(&allowed) < 2 ||
+      sched_setaffinity(0, sizeof(allowed), &allowed) != 0) {
+    GTEST_SKIP() << "Migration probe requires two CPUs and affinity changes";
+  }
+  for (int type : {PTHREAD_CANCEL_DEFERRED, PTHREAD_CANCEL_ASYNCHRONOUS}) {
+    CancellationProbeContext context{type};
+    pthread_attr_t attributes;
+    ASSERT_EQ(pthread_attr_init(&attributes), 0);
+    pthread_t caller;
+    const int rc = pthread_create(&caller, &attributes, TestCancellationCaller, &context);
+    EXPECT_EQ(pthread_attr_destroy(&attributes), 0);
+    ASSERT_EQ(rc, 0);
+    bool started;
+    {
+      std::unique_lock<std::mutex> lock(context.Mutex);
+      started = context.Condition.wait_for(lock, std::chrono::seconds(10), [&context] { return context.Started; });
+    }
+    EXPECT_TRUE(started);
+    if (started) {
+      EXPECT_EQ(pthread_cancel(caller), 0);
+    }
+    {
+      std::lock_guard<std::mutex> lock(context.Mutex);
+      context.Release = true;
+    }
+    context.Condition.notify_one();
+    void* result = nullptr;
+    ASSERT_EQ(pthread_join(caller, &result), 0);
+    if (started) {
+      EXPECT_EQ(result, PTHREAD_CANCELED);
+    }
+    std::lock_guard<std::mutex> lock(context.Mutex);
+    EXPECT_TRUE(context.Finished);
+    EXPECT_TRUE(context.CleanupAfterProbe);
   }
 }
 
@@ -144,6 +224,15 @@ TEST(AmxPlatform, UnverifiableMigrationDisablesAmx) {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
+TEST(AmxPlatform, UnsupportedTilePermission) {
+  unsigned int eax, ebx, ecx, edx;
+  __cpuid_count(7, 0, eax, ebx, ecx, edx);
+  if ((edx & (1u << 24)) != 0) {
+    GTEST_SKIP() << "This test requires a CPU without AMX-TILE";
+  }
+  EXPECT_FALSE(MlasInitAMX());
+}
+
 TEST(AmxPlatform, DispatchRequiresPreservedTileData) {
   unsigned int eax, ebx, ecx, edx;
   __cpuid_count(7, 0, eax, ebx, ecx, edx);
