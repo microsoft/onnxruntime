@@ -3,6 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 # isort: skip_file
+import importlib.util
+
 from onnxruntime.capi._pybind_state import (
     PropagateCastOpsStrategy,
     TrainingParameters,
@@ -10,7 +12,7 @@ from onnxruntime.capi._pybind_state import (
 )
 
 # Options need to be imported before `ORTTrainer`.
-from . import amp, artifacts, optim
+from . import amp, artifacts
 
 __all__ = [
     "PropagateCastOpsStrategy",
@@ -18,8 +20,12 @@ __all__ = [
     "amp",
     "artifacts",
     "is_ortmodule_available",
-    "optim",
 ]
+
+if importlib.util.find_spec("torch") is not None:
+    from . import optim
+
+    __all__ += ["optim"]
 
 try:
     if is_ortmodule_available():
