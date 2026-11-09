@@ -168,6 +168,129 @@ TEST_F(FusedStateSpaceKernelTest, MambaOffsetConvolutionWeights) {
   }
 }
 
+TEST_F(FusedStateSpaceKernelTest, MambaSingleRowReplayPreservesMultiRowReadout) {
+  constexpr int rows = 8, heads = 4, groups = 2, width = heads * 64;
+  constexpr int channels = width + groups * 256, stride = width + channels + heads;
+  constexpr size_t state_row_size = heads * 128 * 64;
+  std::vector<uint16_t> projection(rows * stride), conv(rows * channels * 3);
+  std::vector<uint16_t> weight(channels * 4), bias(channels);
+  std::vector<float> ssm(rows * state_row_size), params(heads * 3 + width, 1.f);
+  for (size_t i = 0; i < projection.size(); ++i)
+    projection[i] = ToBf16((static_cast<int>(i % 23) - 11) / 64.f);
+  for (size_t i = 0; i < conv.size(); ++i)
+    conv[i] = ToBf16((static_cast<int>(i % 17) - 8) / 128.f);
+  for (size_t i = 0; i < weight.size(); ++i)
+    weight[i] = ToBf16((static_cast<int>(i % 7) - 3) / 16.f);
+  for (size_t i = 0; i < ssm.size(); ++i)
+    ssm[i] = (static_cast<int>(i % 19) - 9) / 1024.f;
+  std::fill_n(params.begin() + heads, heads, -0.125f);
+  auto dp = Allocate(projection.size() * 2), dc = Allocate(conv.size() * 2);
+  auto ds = Allocate(ssm.size() * 4), dw = Allocate(weight.size() * 2);
+  auto db = Allocate(bias.size() * 2), parameters = Allocate(params.size() * 4);
+  auto selector = Allocate(sizeof(int32_t));
+  auto y = Allocate(rows * width * 2), co = Allocate(conv.size() * 2);
+  auto so = Allocate(ssm.size() * 4), xbc = Allocate(rows * channels * 2);
+  auto readout = Allocate(rows * width * 4);
+  for (const auto* ptr : {dp.get(), dc.get(), ds.get(), dw.get(), db.get(), parameters.get(),
+                          selector.get(), y.get(), co.get(), so.get(), xbc.get(), readout.get()})
+    ASSERT_NE(ptr, nullptr);
+  for (const auto& entry : {std::pair{dp.get(), std::pair{projection.data(), projection.size() * 2}},
+                            std::pair{dc.get(), std::pair{conv.data(), conv.size() * 2}},
+                            std::pair{dw.get(), std::pair{weight.data(), weight.size() * 2}},
+                            std::pair{db.get(), std::pair{bias.data(), bias.size() * 2}}})
+    ASSERT_EQ(cudaMemcpy(entry.first, entry.second.first, entry.second.second, cudaMemcpyHostToDevice), cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(ds.get(), ssm.data(), ssm.size() * 4, cudaMemcpyHostToDevice), cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(parameters.get(), params.data(), params.size() * 4, cudaMemcpyHostToDevice), cudaSuccess);
+  ASSERT_EQ(cudaMemset(selector.get(), 0, sizeof(int32_t)), cudaSuccess);
+  const auto* p = static_cast<const float*>(parameters.get());
+  const auto launch = [&](int count, const void* input, void* conv_output, float* ssm_output) {
+    return contrib::cuda::LaunchMamba2Verify(
+        nullptr, count, rows, heads, groups, 1e-5f, 0.001f, input, dc.get(),
+        static_cast<const float*>(ds.get()), dw.get(), db.get(), p, p + heads, p + heads * 2,
+        p + heads * 3, static_cast<const int32_t*>(selector.get()), y.get(), conv_output,
+        ssm_output, xbc.get(), static_cast<float*>(readout.get()));
+  };
+  ASSERT_EQ(launch(rows, dp.get(), co.get(), static_cast<float*>(so.get())), cudaSuccess);
+  std::vector<uint16_t> expected_y(rows * width), expected_conv(conv.size());
+  std::vector<float> expected_readout(rows * width), expected_ssm(ssm.size());
+  ASSERT_EQ(cudaMemcpy(expected_y.data(), y.get(), expected_y.size() * 2, cudaMemcpyDeviceToHost), cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(expected_conv.data(), co.get(), expected_conv.size() * 2, cudaMemcpyDeviceToHost), cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(expected_readout.data(), readout.get(), expected_readout.size() * 4,
+                       cudaMemcpyDeviceToHost),
+            cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(expected_ssm.data(), so.get(), expected_ssm.size() * 4, cudaMemcpyDeviceToHost), cudaSuccess);
+  for (int row = 0; row < rows; ++row) {
+    const auto* input = static_cast<const uint16_t*>(dp.get()) + row * stride;
+    ASSERT_EQ(launch(1, input, dc.get(), static_cast<float*>(ds.get())), cudaSuccess);
+    std::vector<uint16_t> actual_y(width), actual_conv(channels * 3);
+    std::vector<float> actual_readout(width), actual_ssm(state_row_size);
+    ASSERT_EQ(cudaMemcpy(actual_y.data(), y.get(), actual_y.size() * 2, cudaMemcpyDeviceToHost), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(actual_conv.data(), dc.get(), actual_conv.size() * 2, cudaMemcpyDeviceToHost), cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(actual_readout.data(), readout.get(), actual_readout.size() * 4,
+                         cudaMemcpyDeviceToHost),
+              cudaSuccess);
+    ASSERT_EQ(cudaMemcpy(actual_ssm.data(), ds.get(), actual_ssm.size() * 4, cudaMemcpyDeviceToHost), cudaSuccess);
+    EXPECT_EQ(std::memcmp(actual_y.data(), expected_y.data() + row * width, width * 2), 0) << row;
+    EXPECT_EQ(std::memcmp(actual_conv.data(), expected_conv.data() + row * channels * 3,
+                          actual_conv.size() * 2),
+              0)
+        << row;
+    EXPECT_EQ(std::memcmp(actual_readout.data(), expected_readout.data() + row * width, width * 4), 0) << row;
+    EXPECT_EQ(std::memcmp(actual_ssm.data(), expected_ssm.data() + row * state_row_size,
+                          state_row_size * 4),
+              0)
+        << row;
+  }
+}
+
+TEST_F(FusedStateSpaceKernelTest, MambaSingleSlotRetainsTwoPartitionReadout) {
+  constexpr int heads = 1, groups = 1, width = 64, channels = width + 256;
+  constexpr int stride = width + channels + heads;
+  std::vector<uint16_t> projection(stride), conv(channels * 3), weight(channels * 4), bias(channels);
+  // x=B=0, C=BF16(SiLU(1)); raw dt=32 and A=0 keep the state bitwise unchanged.
+  std::fill(bias.begin() + width + 128, bias.end(), ToBf16(1.f));
+  projection.back() = ToBf16(32.f);
+  std::vector<float> ssm(128 * width);
+  for (int col = 0; col < width; ++col) {
+    ssm[col] = 0x1p25f;
+    ssm[32 * width + col] = 1.f;
+    ssm[64 * width + col] = -0x1p25f;
+    ssm[96 * width + col] = 1.f;
+  }
+  std::vector<float> params(heads * 3 + width, 0.f);
+  std::fill(params.begin() + heads * 3, params.end(), 1.f);
+  auto dp = Allocate(projection.size() * 2), dc = Allocate(conv.size() * 2);
+  auto ds = Allocate(ssm.size() * 4), dw = Allocate(weight.size() * 2), db = Allocate(bias.size() * 2);
+  auto parameters = Allocate(params.size() * 4), selector = Allocate(sizeof(int32_t));
+  auto y = Allocate(width * 2), co = Allocate(conv.size() * 2), so = Allocate(ssm.size() * 4);
+  auto xbc = Allocate(channels * 2), readout = Allocate(width * 4);
+  for (const auto* ptr : {dp.get(), dc.get(), ds.get(), dw.get(), db.get(), parameters.get(),
+                          selector.get(), y.get(), co.get(), so.get(), xbc.get(), readout.get()})
+    ASSERT_NE(ptr, nullptr);
+  for (const auto& entry : {std::pair{dp.get(), std::pair{projection.data(), projection.size() * 2}},
+                            std::pair{dc.get(), std::pair{conv.data(), conv.size() * 2}},
+                            std::pair{dw.get(), std::pair{weight.data(), weight.size() * 2}},
+                            std::pair{db.get(), std::pair{bias.data(), bias.size() * 2}}})
+    ASSERT_EQ(cudaMemcpy(entry.first, entry.second.first, entry.second.second, cudaMemcpyHostToDevice), cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(ds.get(), ssm.data(), ssm.size() * 4, cudaMemcpyHostToDevice), cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(parameters.get(), params.data(), params.size() * 4, cudaMemcpyHostToDevice), cudaSuccess);
+  ASSERT_EQ(cudaMemset(selector.get(), 0, sizeof(int32_t)), cudaSuccess);
+  const auto* p = static_cast<const float*>(parameters.get());
+  ASSERT_EQ(contrib::cuda::LaunchMamba2Verify(
+                nullptr, 1, 1, heads, groups, 1e-5f, 0.001f, dp.get(), dc.get(),
+                static_cast<const float*>(ds.get()), dw.get(), db.get(), p, p + heads, p + heads * 2,
+                p + heads * 3, static_cast<const int32_t*>(selector.get()), y.get(), co.get(),
+                static_cast<float*>(so.get()), xbc.get(), static_cast<float*>(readout.get())),
+            cudaSuccess);
+  std::vector<float> actual_readout(width), actual_ssm(ssm.size());
+  ASSERT_EQ(cudaMemcpy(actual_readout.data(), readout.get(), width * 4, cudaMemcpyDeviceToHost), cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(actual_ssm.data(), so.get(), ssm.size() * 4, cudaMemcpyDeviceToHost), cudaSuccess);
+  // Two partitions lose both small addends before cancellation; four retain the last C.
+  const std::vector<float> expected_readout(width, 0.f);
+  EXPECT_EQ(std::memcmp(actual_readout.data(), expected_readout.data(), width * 4), 0);
+  EXPECT_EQ(std::memcmp(actual_ssm.data(), ssm.data(), ssm.size() * 4), 0);
+}
+
 }  // namespace
 }  // namespace onnxruntime::test
 #endif

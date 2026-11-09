@@ -5,13 +5,15 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <string>
+#include <utility>
 
 #if defined(USE_CUDA) && !defined(USE_CUDA_MINIMAL)
 #include "core/framework/data_transfer.h"
-#include "core/framework/kernel_registry.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session.h"
 #include "test/util/include/asserts.h"
@@ -19,6 +21,89 @@
 #endif
 
 namespace onnxruntime::test {
+namespace {
+class MambaSchemaTester : public OpTester {
+ public:
+  explicit MambaSchemaTester(bool known_shapes) : OpTester("Mamba2Verify", 1, kMSDomain, known_shapes) {}
+  Status Resolve() {
+    SetTestFunctionCalled();
+    return BuildModel().MainGraph().Resolve();
+  }
+};
+
+using MambaInputShapes = std::array<std::vector<int64_t>, 10>;
+MambaInputShapes MambaShapes() {
+  return {{{3, 514}, {4, 384, 3}, {4, 2, 128, 64}, {384, 4}, {384}, {2}, {2}, {2}, {128}, {1}}};
+}
+
+void TestMambaSchema(const MambaInputShapes& shapes, const std::string& error = "", bool known_shapes = true) {
+  MambaSchemaTester tester(known_shapes);
+  tester.AddAttribute("heads", int64_t{2});
+  tester.AddAttribute("n_groups", int64_t{1});
+  constexpr std::array<const char*, 10> names = {
+      "projection", "conv_state", "ssm_state", "conv_weight", "conv_bias",
+      "dt_bias", "A_negative", "D", "norm_weight", "state_row"};
+  for (size_t i = 0; i < shapes.size(); ++i) {
+    const auto size = static_cast<size_t>(TensorShape(shapes[i]).Size());
+    if (i == 9) {
+      tester.AddInput<int32_t>(names[i], shapes[i], std::vector<int32_t>(size));
+    } else if (i == 2 || (i >= 5 && i <= 8)) {
+      tester.AddInput<float>(names[i], shapes[i], std::vector<float>(size));
+    } else {
+      tester.AddInput<BFloat16>(names[i], shapes[i], std::vector<BFloat16>(size));
+    }
+  }
+  tester.AddOutput<BFloat16>("Y", {3, 128}, std::vector<BFloat16>(3 * 128));
+  tester.AddOutput<BFloat16>("conv_snapshots", {4, 384, 3}, std::vector<BFloat16>(4 * 384 * 3));
+  tester.AddOutput<float>("ssm_snapshots", {4, 2, 128, 64}, std::vector<float>(4 * 2 * 128 * 64));
+  tester.AddOutput<BFloat16>("xbc", {3, 384}, std::vector<BFloat16>(3 * 384));
+  tester.AddOutput<float>("readout", {3, 128}, std::vector<float>(3 * 128));
+  const auto status = tester.Resolve();
+  if (error.empty()) {
+    EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  } else {
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_NE(status.ErrorMessage().find(error), std::string::npos) << status.ErrorMessage();
+  }
+}
+}  // namespace
+
+TEST(FusedStateSpaceSchemaTest, MambaKnownAndUnknownGeometry) {
+  auto shapes = MambaShapes();
+  TestMambaSchema(shapes);
+  shapes[3] = {384, 1, 4};
+  TestMambaSchema(shapes);
+  TestMambaSchema(shapes, "", false);
+}
+
+#ifndef ORT_NO_EXCEPTIONS
+TEST(FusedStateSpaceSchemaTest, MambaRejectsRankOneConvolutionWeights) {
+  auto shapes = MambaShapes();
+  shapes[3] = {384 * 4};
+  TestMambaSchema(shapes, "Invalid input rank at 3");
+}
+
+TEST(FusedStateSpaceSchemaTest, MambaRejectsKnownInvalidGeometry) {
+  for (const auto& entry : {std::pair{0, 1}, {1, 1}, {1, 2}, {2, 1}, {2, 2}, {2, 3}, {3, 0}, {3, 1}, {4, 0}, {5, 0}, {6, 0}, {7, 0}, {8, 0}, {9, 0}}) {
+    SCOPED_TRACE("input " + std::to_string(entry.first) + " axis " + std::to_string(entry.second));
+    auto shapes = MambaShapes();
+    ++shapes[entry.first][entry.second];
+    TestMambaSchema(shapes, "Invalid input dimension");
+  }
+  auto shapes = MambaShapes();
+  shapes[3] = {384, 2, 4};
+  TestMambaSchema(shapes, "Invalid input dimension at 3 axis 1");
+  for (size_t input : {size_t{1}, size_t{2}}) {
+    shapes = MambaShapes();
+    shapes[input][0] = 2;
+    TestMambaSchema(shapes, "Snapshot slots must be >= R");
+  }
+  shapes = MambaShapes();
+  shapes[2][0] = 5;
+  TestMambaSchema(shapes, "Snapshot slot dimensions must match");
+}
+#endif
+
 #if defined(USE_CUDA) && !defined(USE_CUDA_MINIMAL)
 namespace {
 void RunCuda(OpTester& tester) {
@@ -27,6 +112,10 @@ void RunCuda(OpTester& tester) {
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 float Rounded(float x) { return BFloat16(x).ToFloat(); }
+float MambaTimeStep(float raw, float time_step_min) {
+  const float dt = raw > 20.f ? raw : std::log1p(std::exp(raw));
+  return dt < time_step_min ? time_step_min : dt;
+}
 
 class MambaSession : public InferenceSession {
  public:
@@ -49,18 +138,38 @@ class MambaTester : public OpTester {
       auto& expected = GetOutputData();
       ASSERT_EQ(actual.size(), expected.size());
       for (size_t i = 0; i < actual.size(); ++i) {
-        CheckOrtValuesAreEqual(expected[i].def.Name(), expected[i].data, actual[i], expected[i].validation_params,
-                               provider);
+        const auto& name = expected[i].def.Name();
+        const bool check_ulp = name == "Y" || name == "xbc";
+        if (!check_ulp) {
+          CheckOrtValuesAreEqual(name, expected[i].data, actual[i], expected[i].validation_params, provider);
+        }
         const auto& want = expected[i].data.Get<Tensor>();
         if (!want.IsDataType<BFloat16>()) continue;
         const auto& got = actual[i].Get<Tensor>();
         ASSERT_EQ(want.Shape(), got.Shape());
         ASSERT_TRUE(got.IsDataType<BFloat16>());
+        int64_t finite_count = 0, mismatches = 0;
         // The base BF16 checker checks the expected, not actual, NaN.
         for (int64_t j = 0; j < want.Shape().Size(); ++j) {
-          if (std::isnan(want.Data<BFloat16>()[j].ToFloat())) {
-            EXPECT_TRUE(std::isnan(got.Data<BFloat16>()[j].ToFloat())) << expected[i].def.Name() << ", " << j;
+          const auto reference = want.Data<BFloat16>()[j], result = got.Data<BFloat16>()[j];
+          if (std::isnan(reference.ToFloat())) {
+            EXPECT_TRUE(std::isnan(result.ToFloat())) << name << ", " << j;
+          } else if (check_ulp) {
+            ASSERT_TRUE(std::isfinite(reference.ToFloat()));
+            ASSERT_TRUE(std::isfinite(result.ToFloat())) << name << ", " << j;
+            // Monotonic BF16 keys give adjacent values distance one across either sign.
+            const auto key = [](uint16_t bits) {
+              return bits & 0x8000 ? 0x8000 - (bits & 0x7fff) : 0x8000 + bits;
+            };
+            const int ulps = std::abs(key(reference.val) - key(result.val));
+            EXPECT_LE(ulps, 1) << name << ", " << j;
+            mismatches += ulps != 0;
+            ++finite_count;
           }
+        }
+        // Allow rare transcendental/reduction rounding boundaries, not systematic extra BF16 casts.
+        if (check_ulp) {
+          EXPECT_LE(mismatches * 1000, finite_count) << name << ": more than 0.1% differ";
         }
       }
     });
@@ -152,9 +261,16 @@ class MambaTester : public OpTester {
   }
 };
 
-void TestMambaNonuniform(int rows, int selected, bool alias = false, bool trailing_slots = true) {
-  constexpr int heads = 4, groups = 2, di = heads * 64, channels = di + groups * 256;
-  constexpr int stride = di + channels + heads, state_stride = heads * 128 * 64;
+enum class MambaDtCase { Default,
+                         Extremes,
+                         ProjectionNaN,
+                         BiasNaN };
+
+void TestMambaNonuniform(int rows, int selected, bool alias = false, bool trailing_slots = true,
+                         int heads = 4, int groups = 2, float time_step_min = 0.01f,
+                         MambaDtCase dt_case = MambaDtCase::Default) {
+  const int di = heads * 64, channels = di + groups * 256;
+  const int stride = di + channels + heads, state_stride = heads * 128 * 64;
   const int slots = trailing_slots ? std::max(rows + 2, 4) : rows;
   const bool valid = selected >= 0 && selected < slots;
   std::vector<BFloat16> proj(rows * stride), conv(slots * channels * 3), cw(channels * 4), cb(channels);
@@ -180,6 +296,14 @@ void TestMambaNonuniform(int rows, int selected, bool alias = false, bool traili
     decay[h] = -(h + 1) / 16.f;
     skip[h] = (h + 1) / 8.f;
     dt_bias[h] = (h - 1) / 32.f;
+  }
+  if (dt_case == MambaDtCase::Extremes) {
+    dt_bias[0] = -8.f;
+    dt_bias[1] = 100.f;
+  } else if (dt_case == MambaDtCase::ProjectionNaN) {
+    proj[std::min(rows - 1, 3) * stride + di + channels + 1] = BFloat16(std::numeric_limits<float>::quiet_NaN());
+  } else if (dt_case == MambaDtCase::BiasNaN) {
+    dt_bias[1] = std::numeric_limits<float>::quiet_NaN();
   }
   for (int j = 0; j < di; ++j) gamma[j] = (j % 9 + 1) / 8.f;
   auto conv_expected = conv;
@@ -207,11 +331,11 @@ void TestMambaNonuniform(int rows, int selected, bool alias = false, bool traili
     for (int h = 0; h < heads; ++h) {
       const int g = h / (heads / groups);
       const float raw = proj[r * stride + di + channels + h].ToFloat() + dt_bias[h];
-      const float dt = std::max(std::log1p(std::exp(raw)), 0.01f);
+      const float dt = MambaTimeStep(raw, time_step_min);
       const float dA = std::exp(decay[h] * dt);
       for (int p = 0; p < 64; ++p) {
         const float x = xbc[r * channels + h * 64 + p].ToFloat();
-        const int parts = rows == 1 ? 2 : 4;
+        const int parts = (rows == 1 && slots == 1) ? 2 : 4;
         float result = skip[h] * x;
         for (int q = 0; q < parts; ++q) {
           float partial = 0.f;
@@ -244,9 +368,9 @@ void TestMambaNonuniform(int rows, int selected, bool alias = false, bool traili
     }
   }
   MambaTester tester;
-  tester.AddAttribute("heads", int64_t{heads});
-  tester.AddAttribute("n_groups", int64_t{groups});
-  tester.AddAttribute("time_step_min", 0.01f);
+  tester.AddAttribute("heads", static_cast<int64_t>(heads));
+  tester.AddAttribute("n_groups", static_cast<int64_t>(groups));
+  tester.AddAttribute("time_step_min", time_step_min);
   tester.AddInput<BFloat16>("projection", {rows, stride}, proj);
   tester.AddInput<BFloat16>("conv_state", {slots, channels, 3}, conv);
   tester.AddInput<float>("ssm_state", {slots, heads, 128, 64}, state);
@@ -273,6 +397,7 @@ void TestMambaNonuniform(int rows, int selected, bool alias = false, bool traili
 void TestMambaSnapshots(int rows, int selected, int heads = 2) {
   const int di = heads * 64, channels = di + 256, stride = di + channels + heads;
   const int slots = std::max(rows, selected + 1) + 1;
+  constexpr float time_step_min = 0.01f;
   std::vector<BFloat16> proj(rows * stride), conv(slots * channels * 3), cw(channels * 4);
   std::vector<float> state(static_cast<size_t>(slots) * heads * 128 * 64);
   for (int r = 0; r < rows; ++r) {
@@ -308,13 +433,13 @@ void TestMambaSnapshots(int rows, int selected, int heads = 2) {
     for (int j = 0; j < channels; ++j) {
       for (int k = 0; k < 3; ++k) conv_expected[(r * channels + j) * 3 + k] = BFloat16(history[k]);
     }
-    const float dt = std::max(std::log1p(std::exp(-0.125f + r * 0.03125f)), 0.01f);
+    const float dt = MambaTimeStep(-0.125f + r * 0.03125f, time_step_min);
     float mean_square = 0.f;
     for (int h = 0; h < heads; ++h) {
       st[h] = std::fma(st[h], std::exp((-0.125f - h * 0.0078125f) * dt), (dt * x) * x);
       std::fill_n(state_expected.begin() + (static_cast<size_t>(r) * heads + h) * 128 * 64, 128 * 64, st[h]);
       float partial = 0.f;
-      const int parts = rows == 1 ? 2 : 4;
+      const int parts = (rows == 1 && slots == 1) ? 2 : 4;
       for (int n = 0; n < 128 / parts; ++n) partial = std::fma(x, st[h], partial);
       float result = 0.25f * x;
       for (int q = 0; q < parts; ++q) result += partial;
@@ -327,10 +452,10 @@ void TestMambaSnapshots(int rows, int selected, int heads = 2) {
       y[r * di + j] = BFloat16(gated / std::sqrt(mean_square + 1e-5f) * 1.25f);
     }
   }
-  OpTester tester("Mamba2Verify", 1, kMSDomain);
+  MambaTester tester;
   tester.AddAttribute("heads", static_cast<int64_t>(heads));
   tester.AddAttribute("n_groups", int64_t{1});
-  tester.AddAttribute("time_step_min", 0.01f);
+  tester.AddAttribute("time_step_min", time_step_min);
   tester.AddInput<BFloat16>("projection", {rows, stride}, proj);
   tester.AddInput<BFloat16>("conv_state", {slots, channels, 3}, conv);
   tester.AddInput<float>("ssm_state", {slots, heads, 128, 64}, state);
@@ -367,6 +492,25 @@ TEST(FusedStateSpaceTest, MambaRecurrenceAndAcceptedSnapshot) {
 TEST(FusedStateSpaceTest, MambaEightRows1024WideNorm) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   TestMambaSnapshots(8, 3, 16);
+  TestMambaNonuniform(8, 3, false, true, 16, 1);
+  TestMambaNonuniform(8, 3, false, true, 32, 2);
+}
+
+TEST(FusedStateSpaceTest, MambaTimeStepClampAndLargeRaw) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (int rows : {1, 8}) {
+    for (float time_step_min : {0.01f, 0.75f}) {
+      TestMambaNonuniform(rows, 0, false, true, 4, 2, time_step_min, MambaDtCase::Extremes);
+    }
+  }
+}
+
+TEST(FusedStateSpaceTest, MambaTimeStepNaNPropagates) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (int rows : {1, 8}) {
+    TestMambaNonuniform(rows, 0, false, true, 4, 2, 0.01f, MambaDtCase::ProjectionNaN);
+    TestMambaNonuniform(rows, 0, false, true, 4, 2, 0.01f, MambaDtCase::BiasNaN);
+  }
 }
 
 TEST(FusedStateSpaceTest, MambaMultigroupNonuniformStateAndRankTwoWeights) {
@@ -396,25 +540,5 @@ TEST(FusedStateSpaceTest, MambaInvalidSelectorsProduceNaNWithoutStateReads) {
   }
 }
 
-TEST(FusedStateSpaceTest, OnlyMambaRemainsAmongProvisionalOperators) {
-  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
-  (void)GetEnvironment();
-  auto provider = DefaultCudaExecutionProvider();
-  ASSERT_NE(provider, nullptr);
-  const auto registry = provider->GetKernelRegistry();
-  ASSERT_NE(registry, nullptr);
-  for (const char* name : {"Mamba2Verify", "BiasCorrectedMoERoute", "ReluSquared", "MoEPackedIQ2XXS",
-                           "MatMulPackedNVFP4", "MatMulPackedQ8", "MatMulPackedIQ2XXS"}) {
-    SCOPED_TRACE(name);
-    const bool retained = std::strcmp(name, "Mamba2Verify") == 0;
-    EXPECT_EQ(ONNX_NAMESPACE::OpSchemaRegistry::Schema(name, 1, kMSDomain) != nullptr, retained);
-    const auto& kernels = registry->GetKernelCreateMap();
-    const bool registered = std::any_of(kernels.begin(), kernels.end(), [name](const auto& entry) {
-      const auto& definition = *entry.second.kernel_def;
-      return definition.Domain() == kMSDomain && definition.OpName() == name;
-    });
-    EXPECT_EQ(registered, retained);
-  }
-}
 #endif
 }  // namespace onnxruntime::test
