@@ -261,7 +261,7 @@ void ConvQDQRules(SelectorActionRegistry& qdq_selector_action_registry, bool is_
 
 #if !defined(ORT_MINIMAL_BUILD)
   // TODO: Enable 16-bit types in selector when QLinearConv supports 16-bit.
-  std::vector<const char*> providers = {kCpuExecutionProvider, kDmlExecutionProvider, kAclExecutionProvider};
+  std::vector<const char*> providers = {kCpuExecutionProvider, kDmlExecutionProvider};
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::ConvSelector>(is_int8_allowed,
                                                                                false,
                                                                                false,
@@ -441,11 +441,11 @@ QDQSelectorActionTransformer::QDQSelectorActionTransformer(
                                        intra_op_thread_pool,
                                        qdq_matmulnbits_block_size),
           apply_context,
-          // this transformer is compatible with CPU, DML, ACL and CUDA EP.
+          // this transformer is compatible with CPU, DML and CUDA EP.
           // There is further EP control on the rule level.
           // Also accept nodes with empty EP (unassigned) so that individual selectors
           // that include "" in their compatible providers can match unassigned nodes.
-          {kCpuExecutionProvider, kDmlExecutionProvider, kAclExecutionProvider, kCudaExecutionProvider, ""}} {
+          {kCpuExecutionProvider, kDmlExecutionProvider, kCudaExecutionProvider, ""}} {
 }
 
 }  // namespace onnxruntime

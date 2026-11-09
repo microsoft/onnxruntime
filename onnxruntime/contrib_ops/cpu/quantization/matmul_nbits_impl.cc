@@ -6,6 +6,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <type_traits>
 
 #include "core/common/common.h"
@@ -39,7 +40,8 @@ void Dequantize4BitsKernelReOrder(
     return;
   }
   T* output_i = output + out_y * out_cols + out_x;
-  uint32_t quant_value = *(reinterpret_cast<const uint32_t*>(quant_data + element_offset / 2));
+  uint32_t quant_value;
+  std::memcpy(&quant_value, quant_data + element_offset / 2, sizeof(quant_value));
   if constexpr (onnxruntime::endian::native == onnxruntime::endian::big) {
     const uint8_t* c = reinterpret_cast<const uint8_t*>(&quant_value);
     quant_value = static_cast<uint32_t>(c[0]) |
