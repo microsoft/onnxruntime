@@ -160,7 +160,7 @@ TEST(MoEPackedRoutingTest, MalformedRoutesPoisonOnlyTheirToken) {
 
 TEST(MoEPackedRoutingTest, Iq2ProductionWidthsPreserveOperandRoundingAndReduction) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
-  for (int inter_size : {1536, 2048, 2304, 2560}) {
+  for (int inter_size : {512, 1536, 2048, 2304, 2560}) {
     for (int rows : {1, 8, 9}) {
       SCOPED_TRACE(testing::Message() << "inter_size=" << inter_size << " rows=" << rows);
       TestPreselectedReluSquared(rows, 9, 0, inter_size);

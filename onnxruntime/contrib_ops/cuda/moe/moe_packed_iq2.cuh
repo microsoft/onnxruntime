@@ -9,11 +9,11 @@ namespace onnxruntime::contrib::cuda {
 
 // FC1 and FC2 retain their code-load/sign specializations while sharing the
 // dense projection's canonical grid and complete-operand BF16 reconstruction.
-template <bool kCodesWord = true, bool kSignBits = false>
+template <bool kCodesWord = true, bool kSignBits = false, bool kAlignedRecordWindow = false>
 __device__ __forceinline__ void MoEPackedIq2Fragment(
     const uint8_t* row, int offset, uint32_t (&low)[4], uint32_t (&high)[4]) {
   uint4 lo, hi;
-  gguf_cuda::DecodeIq2SubBlock16Bf16<kCodesWord, kSignBits>(
+  gguf_cuda::DecodeIq2SubBlock16Bf16<kCodesWord, kSignBits, kAlignedRecordWindow>(
       row, offset / 32, (offset / 16) & 1, lo, hi);
   low[0] = lo.x;
   low[1] = lo.y;
