@@ -1,4 +1,7 @@
+import argparse
+import hashlib
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -20,11 +23,16 @@ from util import run  # noqa: E402
 
 
 def main() -> None:
-    if len(sys.argv) < 2:
-        print("::error::Action version argument was not provided.")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="Download, verify, and run the setup-build-tools GitHub action.")
+    parser.add_argument("action_version", help="Action release tag.")
+    parser.add_argument("action_sha512", help="Expected SHA-512 of the action source ZIP.")
+    args = parser.parse_args()
 
-    action_version = sys.argv[1]
+    if not re.fullmatch(r"[0-9a-fA-F]{128}", args.action_sha512):
+        parser.error("Action SHA-512 must contain exactly 128 hexadecimal characters.")
+
+    action_version = args.action_version
+    expected_sha512 = args.action_sha512.lower()
 
     cmake = get_tool_info("cmake")
     vcpkg = get_tool_info("vcpkg")
@@ -61,10 +69,17 @@ def main() -> None:
     # --- Locate, Run, and Cleanup the Action Script ---
     try:
         print(f"Downloading action source from: {zip_url}")
-        response = requests.get(zip_url, stream=True)
-        response.raise_for_status()
-        with open(zip_path, "wb") as f:
-            shutil.copyfileobj(response.raw, f)
+        digest = hashlib.sha512()
+        with requests.get(zip_url, stream=True) as response:
+            response.raise_for_status()
+            with open(zip_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=65536):
+                    f.write(chunk)
+                    digest.update(chunk)
+
+        actual_sha512 = digest.hexdigest()
+        if actual_sha512 != expected_sha512:
+            raise ValueError(f"Action archive SHA-512 mismatch: expected {expected_sha512}, got {actual_sha512}.")
 
         print(f"Extracting {zip_path} to {extract_dir}")
         if extract_dir.exists():
