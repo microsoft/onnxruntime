@@ -802,6 +802,73 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionSharedCastPowExponent)
   }
 }
 
+// On CPU, a leading Cast is absorbed only when it converts exactly. A narrowing Cast(fp16) between FP32 input and
+// an FP16 subgraph must stay, otherwise the fused FP32 kernel would drop the FP16 rounding of the input.
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionCpuLeadingCast) {
+  for (const bool narrowing : {false, true}) {
+    auto build_test_case = [narrowing](ModelTestBuilder& builder) {
+      // narrowing: fp32 x -> Cast(fp16) -> fp16 subgraph -> Cast(fp32) -> Mul(fp32 scale)
+      // widening:  fp16 x -> Cast(fp32) -> fp32 subgraph -> Cast(fp16) -> Mul(fp16 scale)
+      const auto inner_type = narrowing ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
+                                        : ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+      const auto outer_type = narrowing ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT
+                                        : ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+      NodeArg* input = narrowing ? builder.MakeInput<float>({{2, 4}}) : builder.MakeInput<MLFloat16>({{2, 4}});
+      NodeArg* exponent = narrowing ? builder.MakeScalarInitializer<MLFloat16>(MLFloat16(2.0f))
+                                    : builder.MakeScalarInitializer<float>(2.0f);
+      NodeArg* epsilon = narrowing ? builder.MakeScalarInitializer<MLFloat16>(MLFloat16(1e-3f))
+                                   : builder.MakeScalarInitializer<float>(1e-3f);
+      NodeArg* scale = narrowing ? builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f})
+                                 : builder.MakeInitializer<MLFloat16>({4}, std::vector<MLFloat16>(4, MLFloat16(1.0f)));
+
+      auto* cast_in = builder.MakeIntermediate();
+      auto* pow_out = builder.MakeIntermediate();
+      auto* reduce_mean_out = builder.MakeIntermediate();
+      auto* add_out = builder.MakeIntermediate();
+      auto* sqrt_out = builder.MakeIntermediate();
+      auto* div_out = builder.MakeIntermediate();
+      auto* cast_out = builder.MakeIntermediate();
+      auto* output = builder.MakeOutput();
+
+      builder.AddNode("Cast", {input}, {cast_in}).AddAttribute("to", static_cast<int64_t>(inner_type));
+      builder.AddNode("Pow", {cast_in, exponent}, {pow_out});
+      builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out}).AddAttribute("axes", std::vector<int64_t>{-1});
+      builder.AddNode("Add", {reduce_mean_out, epsilon}, {add_out});
+      builder.AddNode("Sqrt", {add_out}, {sqrt_out});
+      builder.AddNode("Div", {cast_in, sqrt_out}, {div_out});
+      builder.AddNode("Cast", {div_out}, {cast_out}).AddAttribute("to", static_cast<int64_t>(outer_type));
+      builder.AddNode("Mul", {cast_out, scale}, {output});
+    };
+
+    auto pre_graph_checker = [](Graph& graph) {
+      for (Node& node : graph.Nodes()) {
+        node.SetExecutionProviderType(kCpuExecutionProvider);
+      }
+      return Status::OK();
+    };
+
+    auto post_graph_checker = [narrowing](Graph& graph) {
+      const auto op_to_count = CountOpsInGraph(graph);
+      if (narrowing) {
+        TEST_RETURN_IF_NOT(OpCount(op_to_count, "SimplifiedLayerNormalization") == 0);
+        TEST_RETURN_IF_NOT(OpCount(op_to_count, "Cast") == 2);
+        TEST_RETURN_IF_NOT(OpCount(op_to_count, "Pow") == 1);
+      } else {
+        TEST_RETURN_IF_NOT(OpCount(op_to_count, "SimplifiedLayerNormalization") == 1);
+        TEST_RETURN_IF_NOT(OpCount(op_to_count, "Cast") == 0);
+        TEST_RETURN_IF_NOT(OpCount(op_to_count, "Pow") == 0);
+      }
+      return Status::OK();
+    };
+
+    const InlinedHashSet<std::string_view> compatible_eps;
+    ASSERT_STATUS_OK(TestGraphTransformer(
+        build_test_case, 17, *logger_,
+        std::make_unique<SimplifiedLayerNormFusion>(compatible_eps),
+        TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
+  }
+}
+
 TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionAddEpsilonInput0) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     auto* input = builder.MakeInput<float>({{2, 4}});

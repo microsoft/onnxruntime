@@ -1,12 +1,22 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+#include <sstream>
 #include <unordered_set>
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/dnnl_op_test_utils.h"
+#include "core/graph/model.h"
+#include "core/graph/node_attr_utils.h"
+#include "core/graph/onnx_protobuf.h"
+#include "core/session/inference_session.h"
+#include "core/session/IOBinding.h"
+#include "test/unittest_util/framework_test_utils.h"
+#include "test/util/include/default_providers.h"
+#include "test/util/include/test_environment.h"
 
 namespace onnxruntime {
 namespace test {
@@ -416,6 +426,86 @@ TEST(FusedMatMulOpTest, BFloat16_NoTranspose) {
   }
 }
 #endif  //  USE_CUDA USE_RCOM USE_DNNL
+
+// alpha = 65536 is not representable in fp16, but alpha * A * B is.
+TEST(FusedMatMulOpTest, Float16_AlphaNotRepresentableInFp16) {
+  OpTester test("FusedMatMul", 1, onnxruntime::kMSDomain);
+  const MLFloat16 x(1.0f / 256.0f);
+  test.AddInput<MLFloat16>("A", {2, 4}, std::vector<MLFloat16>(8, x));
+  test.AddInput<MLFloat16>("B", {4, 3}, std::vector<MLFloat16>(12, x));
+  test.AddAttribute("alpha", 65536.0f);
+  test.AddOutput<MLFloat16>("Y", {2, 3}, std::vector<MLFloat16>(6, MLFloat16(4.0f)));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// The fp16 HGEMM kernels can read C even with beta == 0, so a reused output
+// buffer holding NaN must not leak into the result.
+TEST(FusedMatMulOpTest, Float16_AlphaWithNaNFilledOutput) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[onnxruntime::kOnnxDomain] = 13;
+  domain_to_version[onnxruntime::kMSDomain] = 1;
+  std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
+  auto p_model = std::make_unique<Model>(
+      "fused_matmul_fp16_nan_output", true, ModelMetaData(), PathString(),
+      IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+      model_specific_functions, DefaultLoggingManager().DefaultLogger(),
+      ModelOptions(true, true));
+  onnxruntime::Graph& graph = p_model->MainGraph();
+
+  ONNX_NAMESPACE::TypeProto tensor_fp16;
+  tensor_fp16.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  auto& a_arg = graph.GetOrCreateNodeArg("A", &tensor_fp16);
+  auto& b_arg = graph.GetOrCreateNodeArg("B", &tensor_fp16);
+  auto& y_arg = graph.GetOrCreateNodeArg("Y", &tensor_fp16);
+  NodeAttributes attrs = {{"alpha", utils::MakeAttribute("alpha", 2.0f)}};
+  auto& node = graph.AddNode("fused_matmul", "FusedMatMul", "", {&a_arg, &b_arg}, {&y_arg}, &attrs,
+                             onnxruntime::kMSDomain);
+  node.SetExecutionProviderType(kCpuExecutionProvider);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string model_str;
+  p_model->ToProto().SerializeToString(&model_str);
+  std::stringstream sstr(model_str);
+  SessionOptions so;
+  so.session_logid = "FusedMatMulFp16NaNOutput";
+  InferenceSession session(so, GetEnvironment());
+  ASSERT_STATUS_OK(session.Load(sstr));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  constexpr int64_t M = 2, K = 16, N = 32;
+  std::vector<MLFloat16> a_data(M * K), b_data(K * N);
+  for (size_t i = 0; i < a_data.size(); ++i) a_data[i] = MLFloat16(static_cast<float>(i % 3) - 1.0f);
+  for (size_t i = 0; i < b_data.size(); ++i) b_data[i] = MLFloat16(static_cast<float>(i % 5) - 2.0f);
+  std::vector<MLFloat16> y_data(M * N, MLFloat16(std::numeric_limits<float>::quiet_NaN()));
+
+  auto cpu_alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  OrtValue a_val, b_val, y_val;
+  CreateMLValue<MLFloat16>(cpu_alloc, {M, K}, a_data, &a_val);
+  CreateMLValue<MLFloat16>(cpu_alloc, {K, N}, b_data, &b_val);
+  CreateMLValue<MLFloat16>(std::vector<int64_t>{M, N}, y_data.data(), cpu_alloc->Info(), &y_val);
+
+  std::unique_ptr<IOBinding> io_binding;
+  ASSERT_STATUS_OK(session.NewIOBinding(&io_binding));
+  ASSERT_STATUS_OK(io_binding->BindInput("A", a_val));
+  ASSERT_STATUS_OK(io_binding->BindInput("B", b_val));
+  ASSERT_STATUS_OK(io_binding->BindOutput("Y", y_val));
+  RunOptions run_options;
+  ASSERT_STATUS_OK(session.Run(run_options, *io_binding));
+
+  auto y = io_binding->GetOutputs()[0].Get<Tensor>().DataAsSpan<MLFloat16>();
+  ASSERT_EQ(static_cast<int64_t>(y.size()), M * N);
+  for (int64_t m = 0; m < M; ++m) {
+    for (int64_t n = 0; n < N; ++n) {
+      float expected = 0.0f;
+      for (int64_t k = 0; k < K; ++k) {
+        expected += a_data[m * K + k].ToFloat() * b_data[k * N + n].ToFloat();
+      }
+      EXPECT_EQ(y[m * N + n].ToFloat(), 2.0f * expected) << "m=" << m << " n=" << n;
+    }
+  }
+}
 
 // Validation tests: verify that invalid inputs are properly rejected
 TEST(FusedMatMulOpTest, DoubleTypeDimensionMismatch) {

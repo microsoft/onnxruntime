@@ -9,6 +9,7 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/dnnl_op_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -77,6 +78,18 @@ TEST(SoftmaxOperator, Simple_fp16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 #endif
+
+// The row sum of 65536 ones overflows fp16, the result 1/65536 does not.
+TEST(SoftmaxOperator, WideRow_fp16) {
+  constexpr int64_t D = 65536;
+  OpTester test("Softmax", 13);
+  test.AddInput<MLFloat16>("X", {1, D}, std::vector<MLFloat16>(D, MLFloat16(0.0f)));
+  test.AddOutput<MLFloat16>("Y", {1, D}, std::vector<MLFloat16>(D, MLFloat16(1.0f / D)));
+  test.SetOutputTolerance(0.0f, 0.01f);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
 
 #if defined(USE_CUDA) || defined(USE_DNNL)
 TEST(SoftmaxOperator, Simple_bfloat16) {

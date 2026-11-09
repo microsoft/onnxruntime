@@ -106,4 +106,27 @@ common::Status SoftmaxCPU<float>(size_t N,
   return Status::OK();
 }
 
+template <>
+common::Status SoftmaxCPU<MLFloat16>(size_t N,
+                                     size_t D,
+                                     const MLFloat16* Xdata,
+                                     MLFloat16* Ydata,
+                                     bool logarithmic,
+                                     onnxruntime::concurrency::ThreadPool* thread_pool,
+                                     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
+  ORT_UNUSED_PARAMETER(mlas_backend_kernel_selector_config);
+  // MLAS accumulates the fp16 row sum in fp16, which loses precision and can overflow on wide rows.
+  constexpr size_t kMaxFp16SoftmaxRow = 2048;
+  if (D <= kMaxFp16SoftmaxRow && MlasFp16AccelerationSupported()) {
+    MlasComputeSoftmax(Xdata, Ydata, N, D, logarithmic, false, 0.0f, thread_pool);
+    return Status::OK();
+  }
+
+  std::vector<float> buffer(N * D);
+  MlasConvertHalfToFloatBuffer(Xdata, buffer.data(), N * D);
+  MlasComputeSoftmax(buffer.data(), buffer.data(), N, D, logarithmic, false, 0.0f, thread_pool);
+  MlasConvertFloatToHalfBuffer(buffer.data(), Ydata, N * D);
+  return Status::OK();
+}
+
 }  // namespace onnxruntime

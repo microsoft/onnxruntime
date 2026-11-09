@@ -177,6 +177,21 @@ static bool IsPowExponentTwo(const Graph& graph, const Node& pow_node) {
          exponent_value == 2.0;
 }
 
+// True if the Cast converts every input value exactly: fp16 -> float/double or float -> double.
+static bool IsExactFloatCast(const Node& cast_node) {
+  const auto* from_type = cast_node.InputDefs()[0]->TypeAsProto();
+  const auto* to_type = cast_node.OutputDefs()[0]->TypeAsProto();
+  if (from_type == nullptr || to_type == nullptr) {
+    return false;
+  }
+
+  const auto from = from_type->tensor_type().elem_type();
+  const auto to = to_type->tensor_type().elem_type();
+  return (from == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
+          (to == ONNX_NAMESPACE::TensorProto_DataType_FLOAT || to == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE)) ||
+         (from == ONNX_NAMESPACE::TensorProto_DataType_FLOAT && to == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE);
+}
+
 static const NodeArg* GetOtherAddInput(const Node& add_node, const NodeArg& known_input) {
   const auto& add_inputs = add_node.InputDefs();
   if (add_inputs.size() < 2) {
@@ -589,9 +604,10 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     NodeArg* x_input = has_leading_cast ? graph.GetNode(p_reduce_mean_input_node->Index())->MutableInputDefs()[0]
                                         : reduce_mean_node.MutableInputDefs()[0];
 
-    // CPU doesn't support fp16
+    // CPU kernels need X, scale and bias to be the same type.
     if (reduce_mean_node.GetExecutionProviderType() == kCpuExecutionProvider &&
-        x_input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+        (x_input->TypeAsProto()->tensor_type().elem_type() != scale->TypeAsProto()->tensor_type().elem_type() ||
+         x_input->TypeAsProto()->tensor_type().elem_type() != bias->TypeAsProto()->tensor_type().elem_type())) {
       continue;
     }
 
@@ -756,22 +772,22 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // 3. x->Cast(to:fp16)->y : SimplifiedLayerNorm(T:float,V:fp16)
     // 4. x->y : SimplifiedLayerNorm(T:float,V:float)
     // They all work for GPU EP.
-    // For CPU EP, we have only SimplifiedlayerNorm(T:float,V:float) implementation, so only #4 works. We made an
-    // exception here, since pre-training optimization happens without device assignment. skip_device_check_ is the
-    // flag to disable device check intent only for pre-training optimization.
-    // For #1 and #2, if we treat the entry Cast as a normal node, meaning has_leading_cast is false, then for #2,
-    // we can still fuse it to "Cast(to:float)->SimplifiedlayerNorm(T:float,V:float)" (same as applying #4 to the x->y
-    // after Cast), so the condition for CPU EP to fuse or not is always setting has_leading_cast to false and checking
-    // if there is a Cast between x and y. Having Cast between means cannot fuse.
+    // For CPU EP, SimplifiedLayerNorm is only registered with T == V (float, double, MLFloat16), so #1 and #4
+    // work and the mixed-type cases are skipped further down. skip_device_check_ is the flag to disable device
+    // check intent only for pre-training optimization.
     const Node* p_pow_input_node = graph_utils::GetInputNode(pow_node, 0);
     bool has_leading_cast = false;
     bool is_gpu_ep = pow_node.GetExecutionProviderType() == kCudaExecutionProvider || skip_device_check_;
-    if (is_gpu_ep && p_pow_input_node) {
+    const bool is_cpu_ep = pow_node.GetExecutionProviderType() == kCpuExecutionProvider;
+    if ((is_gpu_ep || is_cpu_ep) && p_pow_input_node) {
       Node& pow_input_node = *graph.GetNode(p_pow_input_node->Index());
-      // If input to Pow is a Cast, and the Cast has 2 consumers only (Pow, Div)
+      // If input to Pow is a Cast, and the Cast has 2 consumers only (Pow, Div).
+      // On CPU, only absorb a Cast that converts exactly (widening float cast); absorbing a narrowing Cast
+      // would drop the rounding the subgraph applies to x.
       if (graph_utils::IsSupportedOptypeVersionAndDomain(pow_input_node, "Cast", {9, 13, 19, 21, 23, 24, 25, 28}) &&
           pow_input_node.GetExecutionProviderType() == pow_node.GetExecutionProviderType() &&
-          optimizer_utils::CheckOutputEdges(graph, pow_input_node, 2)) {
+          optimizer_utils::CheckOutputEdges(graph, pow_input_node, 2) &&
+          (!is_cpu_ep || IsExactFloatCast(pow_input_node))) {
         nodes_to_remove.insert(nodes_to_remove.begin(), pow_input_node);
         has_leading_cast = true;
       }
@@ -781,7 +797,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     Node* next_node = graph.GetNode(div_node.OutputNodesBegin()->Index());
     if (graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Cast", {9, 13, 19, 21, 23, 24, 25, 28}) &&
         optimizer_utils::CheckOutputEdges(graph, *next_node, 1)) {
-      if (!is_gpu_ep) continue;
+      if (!is_gpu_ep && !is_cpu_ep) continue;
       nodes_to_remove.push_back(*next_node);
       next_node = graph.GetNode(next_node->OutputNodesBegin()->Index());
     }
@@ -842,9 +858,17 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     NodeArg* x_input = has_leading_cast ? graph.GetNode(p_pow_input_node->Index())->MutableInputDefs()[0]
                                         : pow_node.MutableInputDefs()[0];
 
-    // CPU doesn't support fp16
-    if (reduce_mean_node.GetExecutionProviderType() == kCpuExecutionProvider &&
-        x_input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    // CPU only has T == V kernels. If absorbing the leading Cast would mix types, fuse the post-Cast
+    // subgraph instead and leave the Cast in place.
+    const auto scale_type = scale->TypeAsProto()->tensor_type().elem_type();
+    if (is_cpu_ep && has_leading_cast && x_input->TypeAsProto()->tensor_type().elem_type() != scale_type &&
+        pow_node.MutableInputDefs()[0]->TypeAsProto()->tensor_type().elem_type() == scale_type) {
+      nodes_to_remove.erase(nodes_to_remove.begin());
+      has_leading_cast = false;
+      x_input = pow_node.MutableInputDefs()[0];
+    }
+    if (is_cpu_ep &&
+        x_input->TypeAsProto()->tensor_type().elem_type() != scale->TypeAsProto()->tensor_type().elem_type()) {
       continue;
     }
 
