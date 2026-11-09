@@ -1595,48 +1595,48 @@ Status DispatchMoEPackedCuda(
 
   if (use_tensor_cores) {
     if constexpr (kIsBf16) {
-    if (params.relu_squared && params.gate_type == gguf_quant::kGgmlTypeIQ2_XXS &&
-        params.down_type == gguf_quant::kGgmlTypeIQ2_XXS) {
-      const unsigned int subtiles = use_prefill_tiles ? 4u : 1u;
-      const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 31) / 32),
-                          static_cast<unsigned int>(launch_tiles), subtiles);
-      MoEPackedReluIq2ContiguousKKernel<true, 4><<<fc1_grid, 128, 0, stream>>>(
-          input, gate_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
-      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
-      const dim3 fc2_grid(static_cast<unsigned int>((params.hidden_size + 31) / 32),
-                          static_cast<unsigned int>(launch_tiles), subtiles);
-      MoEPackedReluIq2ContiguousKKernel<false, 8><<<fc2_grid, 256, 0, stream>>>(
-          fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
-      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
-    } else {
-      // 3. Tensor-Core FC1 (64 inter_size channels/CTA in prefill, 16 inter_size channels/CTA Warp-K-Split in decode)
-      if (use_prefill_tiles) {
-        const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 63) / 64),
-                            static_cast<unsigned int>(launch_tiles));
-        LaunchMoEPackedFc1Bf16TcDispatch<4>(
-            stream, fc1_grid, input, gate_weights, up_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
+      if (params.relu_squared && params.gate_type == gguf_quant::kGgmlTypeIQ2_XXS &&
+          params.down_type == gguf_quant::kGgmlTypeIQ2_XXS) {
+        const unsigned int subtiles = use_prefill_tiles ? 4u : 1u;
+        const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 31) / 32),
+                            static_cast<unsigned int>(launch_tiles), subtiles);
+        MoEPackedReluIq2ContiguousKKernel<true, 4><<<fc1_grid, 128, 0, stream>>>(
+            input, gate_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
+        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+        const dim3 fc2_grid(static_cast<unsigned int>((params.hidden_size + 31) / 32),
+                            static_cast<unsigned int>(launch_tiles), subtiles);
+        MoEPackedReluIq2ContiguousKKernel<false, 8><<<fc2_grid, 256, 0, stream>>>(
+            fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
+        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
       } else {
-        const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 15) / 16),
-                            static_cast<unsigned int>(launch_tiles));
-        LaunchMoEPackedFc1DecodeBf16TcDispatch(
-            stream, fc1_grid, input, gate_weights, up_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
-      }
-      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+        // 3. Tensor-Core FC1 (64 inter_size channels/CTA in prefill, 16 inter_size channels/CTA Warp-K-Split in decode)
+        if (use_prefill_tiles) {
+          const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 63) / 64),
+                              static_cast<unsigned int>(launch_tiles));
+          LaunchMoEPackedFc1Bf16TcDispatch<4>(
+              stream, fc1_grid, input, gate_weights, up_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
+        } else {
+          const dim3 fc1_grid(static_cast<unsigned int>((params.inter_size + 15) / 16),
+                              static_cast<unsigned int>(launch_tiles));
+          LaunchMoEPackedFc1DecodeBf16TcDispatch(
+              stream, fc1_grid, input, gate_weights, up_weights, sorted_routes, tiles, d_num_tiles, params, fc1_out);
+        }
+        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
 
-      // 4. Tensor-Core FC2 (128 hidden_size channels/CTA in prefill, 64 hidden_size channels/CTA in decode)
-      if (use_prefill_tiles) {
-        const dim3 fc2_grid(static_cast<unsigned int>((params.hidden_size + 127) / 128),
-                            static_cast<unsigned int>(launch_tiles));
-        LaunchMoEPackedFc2Bf16TcDispatch<4>(
-            stream, fc2_grid, fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
-      } else {
-        const dim3 fc2_grid(static_cast<unsigned int>((params.hidden_size + 63) / 64),
-                            static_cast<unsigned int>(launch_tiles));
-        LaunchMoEPackedFc2Bf16TcDispatch<1>(
-            stream, fc2_grid, fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
+        // 4. Tensor-Core FC2 (128 hidden_size channels/CTA in prefill, 64 hidden_size channels/CTA in decode)
+        if (use_prefill_tiles) {
+          const dim3 fc2_grid(static_cast<unsigned int>((params.hidden_size + 127) / 128),
+                              static_cast<unsigned int>(launch_tiles));
+          LaunchMoEPackedFc2Bf16TcDispatch<4>(
+              stream, fc2_grid, fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
+        } else {
+          const dim3 fc2_grid(static_cast<unsigned int>((params.hidden_size + 63) / 64),
+                              static_cast<unsigned int>(launch_tiles));
+          LaunchMoEPackedFc2Bf16TcDispatch<1>(
+              stream, fc2_grid, fc1_out, down_weights, sorted_routes, tiles, d_num_tiles, params, fc2_out);
+        }
+        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
       }
-      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
-    }
     }
   } else {
     // Keep staging within CUDA's default shared-memory limit; larger shapes read activations directly.
