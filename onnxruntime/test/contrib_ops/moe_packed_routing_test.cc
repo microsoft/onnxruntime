@@ -299,6 +299,18 @@ TEST(MoEPackedRoutingTest, Iq2ProductionWidthsPreserveOperandRoundingAndReductio
   }
 }
 
+TEST(MoEPackedRoutingTest, Iq2EightRowFc1TilesPreserveWidthAndRoutingBoundaries) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (int hidden_size : {1024, 4096}) {
+    for (int rows : {7, 8, 9}) {
+      for (int topk : {9, 17}) {
+        SCOPED_TRACE(testing::Message() << "hidden_size=" << hidden_size << " rows=" << rows << " k=" << topk);
+        TestFullScoreReluSquared(rows, topk, 0, hidden_size, "relu2", false, 0, 32, 1536);
+      }
+    }
+  }
+}
+
 TEST(MoEPackedRoutingTest, ReluSquaredFullScoresPreserveFp16Experts) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   for (int rows : {1, 9}) {
