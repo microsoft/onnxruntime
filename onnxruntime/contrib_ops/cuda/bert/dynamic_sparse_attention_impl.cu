@@ -1911,8 +1911,11 @@ size_t GetGroupedAttentionSharedBytes(const DynamicSparseAttentionParameters& pa
 
 bool SupportsGroupedAttention(const DynamicSparseAttentionParameters& parameters,
                               size_t element_size,
-                              size_t max_shared_memory_per_block) {
+                              size_t max_shared_memory_per_block,
+                              bool fp16_cache) {
+  // FP16 staging would narrow the floating-point auxiliary cache.
   return element_size == sizeof(half) &&
+         (!fp16_cache || parameters.selected_kv_source != DynamicSparseAttentionKvSource::kAuxiliary) &&
          parameters.head_size == 256 &&
          parameters.num_heads > parameters.kv_num_heads &&
          parameters.num_heads % parameters.kv_num_heads == 0 &&
@@ -1921,20 +1924,22 @@ bool SupportsGroupedAttention(const DynamicSparseAttentionParameters& parameters
 
 bool UseGroupedPrefillAttention(const DynamicSparseAttentionParameters& parameters,
                                 size_t element_size,
-                                size_t max_shared_memory_per_block) {
+                                size_t max_shared_memory_per_block,
+                                bool fp16_cache = false) {
   return parameters.sequence_length > 1 &&
-         SupportsGroupedAttention(parameters, element_size, max_shared_memory_per_block);
+         SupportsGroupedAttention(parameters, element_size, max_shared_memory_per_block, fp16_cache);
 }
 
 bool UseGroupedDecodeAttention(const DynamicSparseAttentionParameters& parameters,
                                size_t element_size,
                                size_t max_shared_memory_per_block,
-                               bool quantized_cache = false) {
+                               bool quantized_cache = false,
+                               bool fp16_cache = false) {
   return parameters.sequence_length >= 1 &&
          parameters.sequence_length <= 8 &&
          parameters.num_heads / parameters.kv_num_heads >= 4 &&
          GetCandidateCapacity(parameters) > kSplitCandidateSize &&
-         SupportsGroupedAttention(parameters, element_size, max_shared_memory_per_block) &&
+         SupportsGroupedAttention(parameters, element_size, max_shared_memory_per_block, fp16_cache) &&
          (!quantized_cache ||
           GetGroupedAttentionSharedBytes(parameters, sizeof(float)) < max_shared_memory_per_block);
 }
@@ -2024,7 +2029,8 @@ size_t GetDynamicSparseAttentionWorkspaceSize(
     const DynamicSparseAttentionParameters& parameters,
     size_t element_size,
     size_t max_shared_memory_per_block,
-    bool quantized_cache) {
+    bool quantized_cache,
+    bool fp16_cache) {
   if (quantized_cache) {
     if (GetCandidateCapacity(parameters) <= kSplitCandidateSize) return 0;
     const size_t query_blocks =
@@ -2037,9 +2043,9 @@ size_t GetDynamicSparseAttentionWorkspaceSize(
            (static_cast<size_t>(parameters.head_size) + 2);
   }
   const bool grouped_decode =
-      UseGroupedDecodeAttention(parameters, element_size, max_shared_memory_per_block);
+      UseGroupedDecodeAttention(parameters, element_size, max_shared_memory_per_block, false, fp16_cache);
   if (!grouped_decode) {
-    if (UseGroupedPrefillAttention(parameters, element_size, max_shared_memory_per_block)) {
+    if (UseGroupedPrefillAttention(parameters, element_size, max_shared_memory_per_block, fp16_cache)) {
       return 0;
     }
     if (UseFusedAttention(parameters, element_size, max_shared_memory_per_block)) {
@@ -2259,7 +2265,7 @@ Status LaunchDynamicSparseAttention(
   const bool grouped_prefill_threads_supported = kGroupedPrefillThreads <= max_threads_per_block;
   const bool use_grouped_decode =
       grouped_decode_threads_supported &&
-      UseGroupedDecodeAttention(parameters, sizeof(T), max_shared_memory_per_block, data.quantized_cache);
+      UseGroupedDecodeAttention(parameters, sizeof(T), max_shared_memory_per_block, data.quantized_cache, data.fp16_cache);
   bool use_prefill_kernel = false;
   bool use_int8_tc_prefill = false;
   bool use_int8_tc_prefill_two_buffer = false;
@@ -2604,7 +2610,7 @@ Status LaunchDynamicSparseAttention(
       }
     }
   } else if (!data.quantized_cache && grouped_prefill_threads_supported &&
-             UseGroupedPrefillAttention(parameters, sizeof(T), max_shared_memory_per_block)) {
+             UseGroupedPrefillAttention(parameters, sizeof(T), max_shared_memory_per_block, data.fp16_cache)) {
     const int64_t grouped_blocks =
         static_cast<int64_t>(parameters.batch_size) * parameters.sequence_length *
         parameters.kv_num_heads * GetGroupedHeadTiles(parameters, kGroupedPrefillQueryHeadsPerBlock);

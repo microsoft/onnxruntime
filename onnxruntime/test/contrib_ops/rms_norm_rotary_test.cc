@@ -312,6 +312,23 @@ TEST(RMSNormRotaryTest, RMSNormRotaryFp32CosAndFp16OutputParity) {
   }
 }
 
+TEST(RMSNormRotaryTest, RMSNormRotaryFp16InputDefaultsToBFloat16) {
+  auto providers = CudaProvider();
+  if (providers.empty()) GTEST_SKIP();
+
+  OpTester test("RMSNormRotary", 1, kMSDomain);
+  test.AddAttribute<int64_t>("rotary_embedding_dim", 2);
+  test.AddAttribute<float>("epsilon", 0.0f);
+  test.AddInput<MLFloat16>("X", {1, 1, 1, 8}, std::vector<MLFloat16>(8, MLFloat16(1.0f)));
+  test.AddInput<float>("scale", {8}, std::vector<float>(8, 1.0f));
+  test.AddInput<int64_t>("position", {1}, {0});
+  test.AddInput<BFloat16>("cos", {1, 1}, {BFloat16(1.0f)});
+  test.AddInput<BFloat16>("sin", {1, 1}, {BFloat16(0.0f)});
+  test.AddOutput<BFloat16>("Y", {1, 1, 8}, std::vector<BFloat16>(8, BFloat16(1.0f)));
+  test.SetOutputTolerance(0.0f, 0.0f);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
 TEST(RMSNormRotaryTest, RMSNormRotaryRejectsInvalidContracts) {
   for (int mode = 0; mode < 8; ++mode) {
     SCOPED_TRACE(mode);

@@ -70,7 +70,8 @@ size_t GetDynamicSparseAttentionWorkspaceSize(
     const DynamicSparseAttentionParameters& parameters,
     size_t element_size,
     size_t max_shared_memory_per_block,
-    bool quantized_cache = false);
+    bool quantized_cache = false,
+    bool fp16_cache = false);
 
 Status ValidateDynamicSparseAttentionOnDevice(
     cudaStream_t stream,

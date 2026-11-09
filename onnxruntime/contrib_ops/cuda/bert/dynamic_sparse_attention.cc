@@ -6,6 +6,7 @@
 #include <cmath>
 #include <limits>
 #include <string>
+#include <type_traits>
 
 #include "contrib_ops/cuda/bert/dynamic_sparse_attention_impl.h"
 #include "core/common/safeint.h"
@@ -19,22 +20,23 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-#define REGISTER_KERNEL_TYPED(T, ...)                                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                             \
-      DynamicSparseAttention,                                                \
-      kMSDomain,                                                             \
-      1,                                                                     \
-      T,                                                                     \
-      kCudaExecutionProvider,                                                \
-      (*KernelDefBuilder::Create())                                          \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())             \
-          .TypeConstraint("TQuery", BuildKernelDefConstraints<__VA_ARGS__>())\
-          .TypeConstraint("TCache", BuildKernelDefConstraints<__VA_ARGS__>())\
-          .TypeConstraint("S", DataTypeImpl::GetTensorType<float>())         \
-          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>())       \
-          .MayInplace(3, 1)                                                  \
-          .MayInplace(4, 2)                                                  \
-          .InputMemoryType(OrtMemTypeCPUInput, 10),                          \
+#define REGISTER_KERNEL_TYPED(T, ...)                                          \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                               \
+      DynamicSparseAttention,                                                  \
+      kMSDomain,                                                               \
+      1,                                                                       \
+      T,                                                                       \
+      kCudaExecutionProvider,                                                  \
+      (*KernelDefBuilder::Create())                                            \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())               \
+          .TypeConstraint("TQuery", BuildKernelDefConstraints<T, MLFloat16>()) \
+          .TypeConstraint("TValue", BuildKernelDefConstraints<T, MLFloat16>()) \
+          .TypeConstraint("TCache", BuildKernelDefConstraints<__VA_ARGS__>())  \
+          .TypeConstraint("S", DataTypeImpl::GetTensorType<float>())           \
+          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>())         \
+          .MayInplace(3, 1)                                                    \
+          .MayInplace(4, 2)                                                    \
+          .InputMemoryType(OrtMemTypeCPUInput, 10),                            \
       DynamicSparseAttention<T>);
 
 REGISTER_KERNEL_TYPED(float, float, MLFloat16, int8_t)
@@ -302,7 +304,7 @@ Status DynamicSparseAttention<T>::ComputeInternal(OpKernelContext* context) cons
 
   const size_t attention_workspace_elements =
       GetDynamicSparseAttentionWorkspaceSize(
-          parameters, sizeof(CudaT), GetDeviceProp().sharedMemPerBlock, quantized_cache);
+          parameters, sizeof(CudaT), GetDeviceProp().sharedMemPerBlock, quantized_cache, fp16_cache);
   auto attention_workspace =
       GetScratchBuffer<float>(attention_workspace_elements, GetComputeStream(context));
   data.attention_workspace = attention_workspace.get();
