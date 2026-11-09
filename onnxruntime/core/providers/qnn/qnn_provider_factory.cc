@@ -13,9 +13,11 @@ static const std::unordered_map<OrtHardwareDeviceType, std::string> kDefaultBack
 #if defined(_WIN32)
     {OrtHardwareDeviceType_NPU, "QnnHtp.dll"},
     {OrtHardwareDeviceType_GPU, "QnnGpu.dll"},
+    {OrtHardwareDeviceType_CPU, "QnnCpu.dll"},
 #else
     {OrtHardwareDeviceType_NPU, "libQnnHtp.so"},
     {OrtHardwareDeviceType_GPU, "libQnnGpu.so"},
+    {OrtHardwareDeviceType_CPU, "libQnnCpu.so"},
 #endif
 };
 
@@ -140,6 +142,7 @@ struct QNN_Provider : Provider {
       } else {
         const auto is_npu = [](const OrtHardwareDevice* device) { return device->type == OrtHardwareDeviceType_NPU; };
         const auto is_gpu = [](const OrtHardwareDevice* device) { return device->type == OrtHardwareDeviceType_GPU; };
+        const auto is_cpu = [](const OrtHardwareDevice* device) { return device->type == OrtHardwareDeviceType_CPU; };
 
         auto device_it = std::find_if(devices, devices + num_devices, is_npu);
         if (device_it != devices + num_devices) {
@@ -152,8 +155,16 @@ struct QNN_Provider : Provider {
                 << "QNN EP only supports one device. An NPU device was not provided, so only the GPU device will be used.";
             device_to_use = *device_it;
           } else {
-            return Status(common::ONNXRUNTIME, ORT_EP_FAIL,
-                          "Multiple devices were provided to QNN EP, but neither an NPU nor a GPU was included.");
+            device_it = std::find_if(devices, devices + num_devices, is_cpu);
+            if (device_it != devices + num_devices) {
+              LOGS_DEFAULT(WARNING)
+                  << "QNN EP only supports one device. Neither an NPU nor a GPU device was provided, "
+                     "so only the CPU device will be used.";
+              device_to_use = *device_it;
+            } else {
+              return Status(common::ONNXRUNTIME, ORT_EP_FAIL,
+                            "Multiple devices were provided to QNN EP, but neither an NPU, GPU, nor CPU was included.");
+            }
           }
         }
       }
