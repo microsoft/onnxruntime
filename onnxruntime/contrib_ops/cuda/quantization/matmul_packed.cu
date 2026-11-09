@@ -460,6 +460,8 @@ void LaunchMatMulPackedBf16ContiguousK(
       MatMulPackedBf16TcWarpKSplitKernel<KW, MT, kGgmlTypeNVFP4, kChunk>
           <<<grid, KW * 32, 0, stream>>>(a, params, y, rows);
       return;
+    default:
+      ORT_THROW("MatMulPacked contiguous-K kernel does not support packed_type=", params.ggml_type);
   }
 }
 
