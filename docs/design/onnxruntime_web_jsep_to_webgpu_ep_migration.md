@@ -42,7 +42,7 @@ the temporary `/jsep` export can be withdrawn (§10) — at minimum one release 
 
 ### 1.1 Implementation status
 
-**Status last reviewed:** 2026-11-05.
+**Status last reviewed:** 2026-11-09.
 
 Use **Planned**, **In progress**, **Blocked**, or **Done**. On the default branch, **Done** means the changes are
 merged and the required validation is complete. Once the other changes in an implementing PR are approved and
@@ -60,7 +60,7 @@ and decisions.
 | Phase 0: build configuration parity (§7) | Planned | Measure builds A/B/C and choose the operator/type coverage policy. |
 | Phase 0: GPU IO-binding parity (§8.2) | Planned | Establish zero-copy handoff and lifetime guarantees beyond correctness-suite coverage. |
 | Phase 0: WebNN initialization coverage (§8.3) | Planned | Add and validate blocking coverage in a WebNN-capable browser environment. |
-| Phase 0: global WebGPU settings (§8.4) | In progress | Validate and merge preference forwarding, session overrides, and custom-device coverage; resolve unset-default compatibility before the default flip. |
+| Phase 0: deprecated WebGPU settings (§8.4) | In progress | Validate and merge initialization cleanup, custom-device coverage, and JSEP-only settings guidance. |
 | Phase 0: JSPI browser coverage (§8.6) | Planned | Exercise the native JSPI path in a compatible browser. |
 | Phase 1: compatibility export, warnings, and migration preparation (§9) | Planned | Rename the build flag, add `/jsep` and warnings, retarget operator docs, open the tracking issue, and prepare migration guidance and the usage baseline. |
 | Phase 1: default flip (§9) | Blocked | Meet the release gate and land an isolated default change. |
@@ -217,20 +217,17 @@ Phase 0 is the pre-work, in three parts:
    either way); the flip only swaps the JS init bridge (`jsepInit('webnn', …)` → `webnnInit(…)`, same
    `WebNNBackend`). Blocking browser coverage must establish equivalent native `webnnInit` behavior, including
    session creation and inference, in a `navigator.ml`-capable environment.
-4. **Global `env.webgpu.*` settings.** Preserve supported adapter-selection behavior without requesting an
-   adapter that the native path does not consume:
-   - **`powerPreference`** — forward it to the existing `kPowerPreference` EP option
-     (`ep.webgpuexecutionprovider.powerPreference` in `webgpu_provider_options.h`), set in `session-options.ts`
-     alongside the other `webgpu` options, for both string and object EP configurations. An explicit session
-     `extra` entry overrides the global preference, including in minimal builds that create the provider during
-     EP registration. When neither setting is supplied, the native WebGPU EP retains its existing
-     `WGPUPowerPreference_HighPerformance` default in both WASM and non-WASM builds. JSEP leaves the preference
-     unspecified. Alignment for the
-     default-package migration requires a separately reviewed compatibility decision before the default flip;
-     do not silently change the selection policy for existing native-WebGPU users.
-   - **`adapter` / `forceFallbackAdapter`** — both are deprecated and must be documented as no-ops on the native
-     path. `env.webgpu.device` is output-only; setting it does not select a device. Custom devices go through the
-     per-session option instead,
+4. **Global `env.webgpu.*` settings.** Do not extend deprecated adapter-selection settings to the native EP:
+   - **`powerPreference` / `adapter` / `forceFallbackAdapter`** — these deprecated globals remain supported by
+     JSEP but are ignored by the native path. They must be documented as JSEP-only, including in migration
+     guidance before the default flip. The global power preference never selected the native EP's actual
+     inference device; adding native support would prolong use of the deprecated API.
+   - The native EP retains its existing `WGPUPowerPreference_HighPerformance` default in both WASM and
+     non-WASM builds. JSEP leaves its power preference unspecified when unset. This difference is an explicit
+     migration compatibility exception, not a change to the native EP's default.
+   - **`device`** — `env.webgpu.device` is output-only; setting it does not select a device. Applications that
+     need specific adapter-selection options must create their own adapter/device and supply the device through
+     the per-session option,
      `executionProviders: [{ name: 'webgpu', device }]`, which `session-options.ts` already registers via
      `webgpuRegisterDevice`.
    - Native initialization must retain availability checks but leave adapter/device creation to the EP.
@@ -288,8 +285,9 @@ Per-session typed options cover JSEP's option surface.
 - Establish blocking browser coverage for proxy mode, both GPU IO-binding modes, and WebNN initialization, and
   validate the zero-copy and dispose/lifetime parity requirements (§8.1–3). Passing operator tests alone is
   insufficient.
-- Resolve global WebGPU settings compatibility, including a behavior-preserving default for power preference
-  and guidance for unsupported settings (§8.4).
+- Document deprecated WebGPU adapter-selection globals as JSEP-only and provide custom-device migration
+  guidance; validate that native initialization ignores these globals and does not request an extra adapter
+  for a supplied device (§8.4).
 - Exercise the native JSPI path and meet the suite-selection and bundle-isolation requirements (§8.6).
 - Complete the compatibility export, warnings, build-flag rename, operator-doc retargeting, tracking issue, and
   migration guidance described above. Capture the JSEP usage baseline before the user-facing announcement ships.
@@ -365,7 +363,7 @@ the deletion commit.
 | Default bundle silently narrows its operator/type surface (reduced-size build args) | High if unaddressed | Measure builds A/B/C and resolve before the flip (§7) |
 | int64 behavior change vs. JSEP | Low | None by default (native-off matches JSEP); `enableInt64 = 1` is an opt-in tradeoff |
 | Proxy / IO-binding / WebNN regressions in the native-WebGPU build | Medium | Require blocking browser coverage and targeted parity validation before the flip (§8) |
-| Global `env.webgpu.*` settings dropped on native | Medium | `powerPreference` wired with a behavior-preserving default when unset; `adapter` / `forceFallbackAdapter` documented as no-ops, custom devices directed to the per-session `device` option — release gate (§8.4, §9) |
+| Adapter selection changes after the default flip | Medium | Document deprecated adapter-selection globals as JSEP-only and the native high-performance default; direct applications needing a specific adapter to the per-session `device` option — release gate (§8.4, §9) |
 | `env.webgpu.profiling.ondata` has no native equivalent | Low | Documented as JSEP-only; native profiling wiring is a Phase 2 prerequisite (§8.5, §10.1) |
 | Windows/ADO produces no WebGPU-EP WASM build | Medium | Provide native-WebGPU WASM artifacts through `win-wasm-ci.yml` before removing JSEP build legs (§8.6) |
 | `post-webnn.js` linkage changes for WebNN once JSEP is removed | Medium | WebNN smoke test on the Phase 2 build, not just a compile check (§10.3) |
@@ -379,13 +377,18 @@ the deletion commit.
 This guidance applies when Phase 1 ships, not to the current default bundle. In particular, the temporary
 `onnxruntime-web/jsep` export is a planned Phase 1 addition and is not yet available.
 
-- **Default import (`onnxruntime-web`) and `onnxruntime-web/all`:** no source change if you use default,
+- **Default import (`onnxruntime-web`) and `onnxruntime-web/all`:** no source change for basic inference using
   package-managed asset resolution; the `webgpu` backend keeps working and converges to the native WebGPU EP.
   Consumers that pin WASM artifacts must still update the path (see `wasmPaths` below).
 - **Lower-overhead build (`onnxruntime-web/jspi`):** on JSPI-capable browsers, prefer `./jspi` — the same native
   WebGPU EP with a smaller WASM binary and lower per-call overhead than Asyncify (the universal fallback).
 - **Need JSEP for now:** import `onnxruntime-web/jsep` (temporary, deprecated). File an issue if the
   native WebGPU EP does not work for your model — those reports are what set the removal timeline.
+- **Deprecated adapter-selection globals:** `env.webgpu.powerPreference`, `env.webgpu.adapter`, and
+  `env.webgpu.forceFallbackAdapter` are JSEP-only and ignored by the native EP. Create an adapter with the desired
+  options, create a device from it, and pass that device through `executionProviders: [{ name: 'webgpu', device }]`.
+  When ORT creates the device, the native EP defaults to high performance; JSEP leaves the preference unspecified
+  when unset.
 - **WebGPU profiling:** `env.webgpu.profiling.ondata` is JSEP-only and has no native equivalent. Code that
   registers an `ondata` callback keeps working on `/jsep` but silently receives nothing on the default bundle
   (§8.5).

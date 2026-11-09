@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import { env, InferenceSession } from 'onnxruntime-common';
+import type { InferenceSession } from 'onnxruntime-common';
 
 import { getInstance } from './wasm-factory';
 import { allocWasmString, checkLastError, iterateExtraOptions } from './wasm-utils';
@@ -146,29 +146,6 @@ const setExecutionProviders = async (
         break;
       case 'webgpu':
         if (!BUILD_DEFS.DISABLE_WEBGPU) {
-          let powerPreference: string | undefined = env.webgpu.powerPreference;
-          if (
-            powerPreference !== undefined &&
-            powerPreference !== 'low-power' &&
-            powerPreference !== 'high-performance'
-          ) {
-            throw new Error(`Invalid powerPreference setting: "${powerPreference}"`);
-          }
-          // Resolve session overrides before minimal builds create the provider during EP registration.
-          if (sessionOptions.extra !== undefined) {
-            iterateExtraOptions(sessionOptions.extra, '', new WeakSet<Record<string, unknown>>(), (key, value) => {
-              if (key === 'ep.webgpuexecutionprovider.powerPreference') {
-                if (value !== 'low-power' && value !== 'high-performance') {
-                  throw new Error(`Invalid powerPreference setting: "${value}"`);
-                }
-                powerPreference = value;
-              }
-            });
-          }
-          if (powerPreference !== undefined) {
-            appendEpOption(epOptions, 'powerPreference', powerPreference, allocs);
-          }
-
           epName = 'WebGPU';
           const epDevicesByEpName = getEpDevicesByEpName();
           if (epDevicesByEpName !== undefined) {

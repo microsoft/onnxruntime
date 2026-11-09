@@ -73,50 +73,6 @@ const BROWSER_TEST_CASES = [
   [true, true, './browser-test-webgpu-external-data-blob.js', 'ort.jspi.min.js'], // external data as Blob (on-demand)
 ];
 
-for (const bundle of ['ort.webgpu.min.js', 'ort.jspi.min.js']) {
-  for (const epForm of ['string', 'object']) {
-    for (const preference of ['unset', 'low-power', 'high-performance', 'invalid']) {
-      BROWSER_TEST_CASES.push([
-        true,
-        true,
-        './browser-test-webgpu-power-preference.js',
-        bundle,
-        [`power_preference=${preference}`, `ep_form=${epForm}`],
-      ]);
-    }
-    for (const nestedExtra of [false, true]) {
-      BROWSER_TEST_CASES.push([
-        true,
-        true,
-        './browser-test-webgpu-power-preference.js',
-        bundle,
-        [
-          'power_preference=low-power',
-          `ep_form=${epForm}`,
-          'override=high-performance',
-          ...(nestedExtra ? ['nested_extra=1'] : []),
-        ],
-      ]);
-    }
-  }
-  BROWSER_TEST_CASES.push(
-    [
-      true,
-      true,
-      './browser-test-webgpu-power-preference.js',
-      bundle,
-      ['power_preference=unset', 'ep_form=string', 'ignored_adapter_settings=1'],
-    ],
-    [
-      true,
-      true,
-      './browser-test-webgpu-power-preference.js',
-      bundle,
-      ['power_preference=unset', 'ep_form=string', 'override=invalid'],
-    ],
-  );
-}
-
 // [bundle_path, format]
 const BUNDLER_TEST_CASES = [
   ['./dist/webpack_esm_js/ort-test-e2e.bundle.mjs', 'esm'],

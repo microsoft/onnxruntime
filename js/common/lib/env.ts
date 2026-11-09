@@ -183,9 +183,8 @@ export declare namespace Env {
      * Set or get the power preference.
      *
      * Setting this property only has effect before the first WebGPU inference session is created. The value will be
-     * used as options for `navigator.gpu.requestAdapter()` when the runtime creates a device. If unset, JSEP leaves
-     * the preference unspecified, while the native WebGPU backend defaults to high performance. A native WebGPU session's
-     * `extra['ep.webgpuexecutionprovider.powerPreference']` setting overrides this global preference.
+     * used as options for `navigator.gpu.requestAdapter()` by JSEP. If unset, JSEP leaves the preference unspecified.
+     * The native WebGPU backend ignores this property.
      *
      * See {@link https://gpuweb.github.io/gpuweb/#dictdef-gpurequestadapteroptions} for more details.
      *
