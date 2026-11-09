@@ -31,16 +31,16 @@ std::string initial_version;
 
 void AccessSdkObject() {
   if (test_version) {
-    const auto& version = pal::getSdkVersion();
+    const std::string_view version = pal::getSdkVersion();
     if (!late_access) {
-      initial_address = &version;
+      initial_address = version.data();
       initial_version = version;
       const std::string_view suffix = "-" BUILD_VERSION_STR;
       if (version.size() < suffix.size() ||
           std::string_view(version).substr(version.size() - suffix.size()) != suffix) {
         Fail("SDK version did not contain the configured build version");
       }
-    } else if (&version != initial_address || version != initial_version) {
+    } else if (version.data() != initial_address || version != initial_version) {
       Fail("late SDK-version access did not preserve its address and value");
     }
   } else {

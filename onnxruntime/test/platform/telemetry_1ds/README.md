@@ -30,9 +30,12 @@ The observations do not change the production SDK objects.
 The four `onnxruntime_telemetry_lifetime_*` tests register an exit owner before
 first accessing the SDK version string or auth-token mutex, on the main thread
 or an application thread. The owner's exit callback then joins a late worker
-that verifies the same string address/value or locks the same mutex. Test-only
-derived types observe actual destruction and fail before any destroyed-object
-access. This makes the unpatched SDK fail deterministically even where
+that verifies the same version-data address/value or locks the same mutex. The
+patched internal version accessor returns an allocation-free string literal, so
+it has no destruction-order hazard or heap allocation to lose on library unload.
+Test-only derived types observe destruction of the original version string and
+the auth mutex and fail before any destroyed-object access. This makes the
+unpatched SDK fail deterministically even where
 `std::mutex` has a trivial destructor.
 
 These tests recompile only PAL and the auth-token controller from the patched
@@ -99,6 +102,8 @@ After draining its provider, the isolated reload fixture also releases curl's
 global state before unloading its private image. Production SDK code must not do
 that: unlike this test host, it cannot know whether other curl users remain.
 Leak detection stays enabled for the reload test.
+The version accessor also returns literal storage rather than an immortal
+`std::string` whose heap buffer would be leaked each time its image unloads.
 
 The parent bounds each child, and CTest adds an outer timeout. Missing requests,
 missing teardown verification, wrong Windows/Linux transport selection, and

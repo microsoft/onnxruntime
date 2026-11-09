@@ -43,16 +43,33 @@ diff --git a/lib/api/AuthTokensController.cpp b/lib/api/AuthTokensController.cpp
 diff --git a/lib/pal/PAL.cpp b/lib/pal/PAL.cpp
 --- a/lib/pal/PAL.cpp
 +++ b/lib/pal/PAL.cpp
-@@ -632,5 +632,10 @@
-     const std::string& PlatformAbstractionLayer::getSdkVersion() const
+@@ -632,5 +632,5 @@
+-    const std::string& PlatformAbstractionLayer::getSdkVersion() const
++    const char* PlatformAbstractionLayer::getSdkVersion() const
      {
 -        static const std::string sdkVersion(EVTSDK_VERSION_PREFIX "-" OS_NAME "-C++-" ECS_SUPP "-" BUILD_VERSION_STR);
 -        return sdkVersion;
-+        // Like GetPAL(), this immutable value must survive late upload workers.
-+        // Telemetry can first be enabled after its exit owner was registered.
-+        using SdkVersion = std::string;
-+        alignas(SdkVersion) static unsigned char storage[sizeof(SdkVersion)];
-+        static const SdkVersion* sdkVersion = ::new (storage)
-+            SdkVersion(EVTSDK_VERSION_PREFIX "-" OS_NAME "-C++-" ECS_SUPP "-" BUILD_VERSION_STR);
-+        return *sdkVersion;
++        // A literal survives late workers without leaking a string allocation on library unload.
++        return EVTSDK_VERSION_PREFIX "-" OS_NAME "-C++-" ECS_SUPP "-" BUILD_VERSION_STR;
+     }
+diff --git a/lib/pal/PAL.hpp b/lib/pal/PAL.hpp
+--- a/lib/pal/PAL.hpp
++++ b/lib/pal/PAL.hpp
+@@ -78,7 +78,7 @@
+     public:
+         void sleep(unsigned delayMs) const noexcept;
+
+-        const std::string& getSdkVersion() const;
++        const char* getSdkVersion() const;
+
+         std::string generateUuidString() const;
+
+@@ -136,7 +136,7 @@
+     /**
+      * Return SDK version in format "<Prefix>-<Platform>-<SKU>-<Projection>-<BuildVersion>".
+      */
+-    inline const std::string& getSdkVersion()
++    inline const char* getSdkVersion()
+     {
+         return GetPAL().getSdkVersion();
      }
