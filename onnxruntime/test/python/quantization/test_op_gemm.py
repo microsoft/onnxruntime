@@ -34,33 +34,51 @@ from onnxruntime.quantization.onnx_model import ONNXModel
 
 class TestOpGemm(unittest.TestCase):
     def test_quantize_gemm_float16_bias_scale_underflow(self):
-        for per_channel, weight_type, symmetric in itertools.product(
-            (False, True), (QuantType.QInt8, QuantType.QUInt8), (False, True)
-        ):
-            for magnitude, bias_value, input_max in (
+        self._check_gemm_bias_quantization(
+            1.0,
+            (
                 (2**-11, 0, 1),
                 (2**-11, 1, 1),
                 (0.005, 1, 1),
                 (2**-17, 1.25, 2),
                 (2**-11, 150, 0.255),
-            ):
+            ),
+        )
+
+    def test_quantize_gemm_float16_beta_zero(self):
+        self._check_gemm_bias_quantization(0.0, ((0.005, 1, 1), (0.005, 150, 1)))
+
+    def test_quantize_gemm_float32_beta_zero(self):
+        self._check_gemm_bias_quantization(0.0, ((0.005, 1, 1), (0.005, 150, 1)), np.float32)
+
+    def _check_gemm_bias_quantization(self, beta, bias_cases, model_dtype=np.float16):
+        tensor_type = TensorProto.FLOAT16 if model_dtype == np.float16 else TensorProto.FLOAT
+        for per_channel, weight_type, symmetric in itertools.product(
+            (False, True), (QuantType.QInt8, QuantType.QUInt8), (False, True)
+        ):
+            for magnitude, bias_value, input_max in bias_cases:
                 with (
                     self.subTest(
-                        per_channel=per_channel, weight_type=weight_type, symmetric=symmetric, magnitude=magnitude
+                        per_channel=per_channel,
+                        weight_type=weight_type,
+                        symmetric=symmetric,
+                        magnitude=magnitude,
+                        beta=beta,
+                        model_dtype=model_dtype,
                     ),
                     tempfile.TemporaryDirectory() as directory,
                 ):
                     weights = np.array(
-                        [[-magnitude * 0.75, -magnitude / 2], [magnitude, magnitude / 2]], dtype=np.float16
+                        [[-magnitude * 0.75, -magnitude / 2], [magnitude, magnitude / 2]], dtype=model_dtype
                     )
-                    bias = np.full(2, bias_value, dtype=np.float16)
-                    inputs = {"input": np.eye(2, dtype=np.float16) * input_max}
+                    bias = np.full(2, bias_value, dtype=model_dtype)
+                    inputs = {"input": np.eye(2, dtype=model_dtype) * input_max}
                     model = helper.make_model(
                         helper.make_graph(
-                            [helper.make_node("Gemm", ["input", "weight", "bias"], ["output"])],
+                            [helper.make_node("Gemm", ["input", "weight", "bias"], ["output"], beta=beta)],
                             "float16_bias_scale_underflow",
-                            [helper.make_tensor_value_info("input", TensorProto.FLOAT16, [2, 2])],
-                            [helper.make_tensor_value_info("output", TensorProto.FLOAT16, [2, 2])],
+                            [helper.make_tensor_value_info("input", tensor_type, [2, 2])],
+                            [helper.make_tensor_value_info("output", tensor_type, [2, 2])],
                             [
                                 onnx.numpy_helper.from_array(weights, "weight"),
                                 onnx.numpy_helper.from_array(bias, "bias"),
@@ -90,20 +108,22 @@ class TestOpGemm(unittest.TestCase):
                     onnx.checker.check_model(quantized)
                     initializers = {t.name: onnx.numpy_helper.to_array(t) for t in quantized.graph.initializer}
                     scales = initializers["bias_quantized_scale"]
-                    self.assertEqual(scales.dtype, np.float16 if magnitude == 0.005 else np.float32)
+                    use_fp16_bias_scale = model_dtype == np.float16 and magnitude == 0.005 and beta != 0
+                    self.assertEqual(scales.dtype, np.float16 if use_fp16_bias_scale else np.float32)
                     cast_nodes = [n for n in quantized.graph.node if n.op_type == "Cast" and n.output == ["bias"]]
-                    self.assertEqual(len(cast_nodes), 0 if magnitude == 0.005 else 1)
+                    self.assertEqual(len(cast_nodes), 0 if model_dtype == np.float32 or use_fp16_bias_scale else 1)
                     self.assertTrue((scales > 0).all())
                     dequantized = initializers["bias_quantized"].astype(np.float32) * scales
-                    np.testing.assert_allclose(dequantized, bias, rtol=1e-5)
+                    expected_bias = bias.astype(np.float32) * beta
+                    np.testing.assert_allclose(dequantized, expected_bias, rtol=1e-5)
                     self.assertTrue((initializers["weight_scale"] < 0.001).all())
                     self.assertTrue((initializers["weight_quantized"] != initializers["weight_zero_point"]).all())
                     effective_bias_scale = initializers["input_scale"].astype(np.float64) * initializers[
                         "weight_scale"
                     ].astype(np.float64)
                     if weight_type == QuantType.QInt8 and symmetric:
-                        self.assertTrue((effective_bias_scale * np.iinfo(np.int32).max >= bias).all())
-                    self.assertTrue((scales.astype(np.float64) * np.iinfo(np.int32).max >= bias).all())
+                        self.assertTrue((effective_bias_scale * np.iinfo(np.int32).max >= expected_bias).all())
+                    self.assertTrue((scales.astype(np.float64) * np.iinfo(np.int32).max >= expected_bias).all())
                     for level in (GraphOptimizationLevel.ORT_DISABLE_ALL, GraphOptimizationLevel.ORT_ENABLE_ALL):
                         options = SessionOptions()
                         options.graph_optimization_level = level
@@ -112,7 +132,7 @@ class TestOpGemm(unittest.TestCase):
                             None, inputs
                         )[0]
                         np.testing.assert_allclose(
-                            result.astype(np.float32), weights.astype(np.float32) * input_max + bias, rtol=0.02
+                            result.astype(np.float32), weights.astype(np.float32) * input_max + expected_bias, rtol=0.02
                         )
 
     def input_feeds(self, n, name2shape):

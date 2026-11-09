@@ -197,6 +197,9 @@ class BaseQuantizer:
         # get bias
         bias_initializer = find_by_name(bias_name, self.model.initializer())
         bias_data = tensor_proto_to_array(bias_initializer)
+        if beta == 0:
+            bias_data = np.zeros_like(bias_data)
+            beta = 1.0
         quantized_bias_name = bias_name + TENSOR_NAME_QUANT_SUFFIX
 
         # quantize bias
