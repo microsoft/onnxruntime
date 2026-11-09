@@ -6162,6 +6162,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
           *out_shape.add_dim() = in_shape.dim(in_shape.dim_size() - 1);
           updateOutputShape(ctx, 0, out_shape);
+        })
+        .FillUsing([](OpSchema& schema) {
+          // The outer schema macro assigns the key after evaluating this builder.
+          schema.SetName("MoEGroupRouter").SetDomain(kMSDomain).SinceVersion(1);
+          schema.Finalize();
+          ORT_THROW_IF_ERROR(RecordSourcePolicy(
+              schema, {NonExecutableState::PendingTodo,
+                       "MoEGroupRouter group-limited sigmoid routing source pattern/numerical "
+                       "qualification not yet provided.",
+                       std::nullopt}));
         }));
 
 constexpr const char* BranchwiseRMSNorm_ver1_doc = R"DOC(

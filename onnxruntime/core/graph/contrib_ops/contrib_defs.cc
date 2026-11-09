@@ -1032,6 +1032,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             *out_shape->add_dim() = indices_shape.dim(i);
           }
           out_shape->add_dim()->set_dim_value(k);
+        })
+        .FillUsing([](OpSchema& schema) {
+          // The outer schema macro assigns the key after evaluating this builder.
+          schema.SetName("GatherPacked").SetDomain(kMSDomain).SinceVersion(1);
+          schema.Finalize();
+          ORT_THROW_IF_ERROR(RecordSourcePolicy(
+              schema, {NonExecutableState::PendingTodo,
+                       "GatherPacked packed embedding dequantization source pattern/numerical "
+                       "qualification not yet provided.",
+                       std::nullopt}));
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -1072,6 +1082,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             *y_shape->add_dim() = a_shape.dim(i);
           }
           y_shape->add_dim()->set_dim_value(n);
+        })
+        .FillUsing([](OpSchema& schema) {
+          schema.SetName("MatMulPacked").SetDomain(kMSDomain).SinceVersion(1);
+          schema.Finalize();
+          ORT_THROW_IF_ERROR(RecordSourcePolicy(
+              schema, {NonExecutableState::PendingTodo,
+                       "MatMulPacked packed-weight matrix multiplication source pattern/numerical "
+                       "qualification not yet provided.",
+                       std::nullopt}));
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -1107,6 +1126,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (hasInputShape(ctx, 0)) {
             *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape() = getInputShape(ctx, 0);
           }
+        })
+        .FillUsing([](OpSchema& schema) {
+          schema.SetName("MoEPacked").SetDomain(kMSDomain).SinceVersion(1);
+          schema.Finalize();
+          ORT_THROW_IF_ERROR(RecordSourcePolicy(
+              schema, {NonExecutableState::PendingTodo,
+                       "MoEPacked packed expert layer source pattern/numerical "
+                       "qualification not yet provided.",
+                       std::nullopt}));
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(BiasDropout, 1,

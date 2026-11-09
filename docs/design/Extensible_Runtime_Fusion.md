@@ -106,9 +106,11 @@ Call `RegisterSourcePolicyExample()` from `contrib::RegisterContribSchemas()` in
 `core/graph/contrib_ops/contrib_defs.cc`. For a
 deliberately non-fusible operator, replace that policy with, for example,
 `SourcePolicy{NonExecutableState::Special, "This control operator has no source replacement semantics.", std::nullopt}`.
-Neither state is a silent default. v0 currently authors no real production
-PendingTodo/Special records: existing keys use frozen baselines and the two
-qualified CUDA declarations derive Available.
+Neither state is a silent default. Existing migration keys retain their frozen
+baselines. The version-1 `com.microsoft` schemas for MoEGroupRouter, GatherPacked,
+MatMulPacked, and MoEPacked author owner-local PendingTodo records; the two
+qualified CUDA declarations derive Available only for their declared EP and
+source variants.
 
 `ContribSourceReplacementPolicyTest.FullRegisteredInventory` enforces complete
 configured schema/declaration coverage in full-contrib host builds, including

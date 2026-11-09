@@ -145,6 +145,41 @@ TEST(ContribSourceReplacementPolicyTest, RegistrationCollectsFinalizedDefaultVer
   EXPECT_TRUE(std::all_of(schemas.begin(), schemas.end(), [](const auto& key) { return key.since_version > 0; }));
 }
 
+TEST(ContribSourceReplacementPolicyTest, NewUpstreamSchemasHaveExactOwnedPendingPolicies) {
+  const auto schemas = GetContribSchemaKeys();
+  const auto policies = GetSourcePolicies();
+  const auto sources = Executables();
+  const auto legacy = LegacySourcePolicyKeys();
+  for (const auto* name : {"MoEGroupRouter", "GatherPacked", "MatMulPacked", "MoEPacked"}) {
+    SCOPED_TRACE(name);
+    const OpKey key{kMS, name, 1};
+    const auto* registered = ONNX_NAMESPACE::OpSchemaRegistry::Schema(name, 1, kMS);
+    ASSERT_NE(registered, nullptr);
+    EXPECT_EQ(SourceOpKey(*registered), key);
+    EXPECT_NE(std::find(schemas.begin(), schemas.end(), key), schemas.end());
+    EXPECT_EQ(std::find(legacy.begin(), legacy.end(), key), legacy.end());
+    const auto policy = std::find_if(policies.begin(), policies.end(),
+                                     [&](const auto& record) { return record.key == key; });
+    EXPECT_NE(policy, policies.end());
+    if (policy == policies.end()) continue;
+    EXPECT_EQ(policy->policy.state, NonExecutableState::PendingTodo);
+    EXPECT_NE(policy->policy.reason.find("source pattern/numerical qualification not yet provided"), std::string::npos);
+    for (const auto* ep : {kCpuExecutionProvider, kCudaExecutionProvider}) {
+      for (const auto* variant : {"", "unqualified-variant"}) {
+        EXPECT_EQ(ResolveSourceStatus(key, ep, variant, policies, sources, legacy), SourceStatus::PendingTodo);
+        EXPECT_EQ(ResolveSourceStatus({kMS, name, 2}, ep, variant, policies, sources, legacy), SourceStatus::Missing);
+      }
+    }
+    auto without_owner = policies;
+    without_owner.erase(std::remove_if(without_owner.begin(), without_owner.end(),
+                                       [&](const auto& record) { return record.key == key; }),
+                        without_owner.end());
+    EXPECT_FALSE(ValidateSourceDeclarations(schemas, without_owner, sources, legacy).IsOK());
+    EXPECT_EQ(ResolveSourceStatus(key, kCudaExecutionProvider, "", without_owner, sources, legacy),
+              SourceStatus::Missing);
+  }
+}
+
 TEST(ContribSourceReplacementPolicyTest, RejectsInvalidPoliciesConflictsAndOrphans) {
   const std::array schemas{kNew};
   for (const auto& reason : {"", " \t\n"}) {
@@ -210,10 +245,11 @@ TEST(ContribSourceReplacementPolicyTest, RecordsOwnedSchemaKeysAndIdempotentPoli
 TEST(ContribSourceReplacementPolicyTest, AvailableIsEPAndVariantScopedAndCanCoexistWithPending) {
   const auto sources = Executables();
   const auto schemas = GetContribSchemaKeys();
-  ASSERT_STATUS_OK(ValidateSourceDeclarations(schemas, {}, sources, LegacySourcePolicyKeys()));
+  auto pending = GetSourcePolicies();
+  ASSERT_STATUS_OK(ValidateSourceDeclarations(schemas, pending, sources, LegacySourcePolicyKeys()));
   const auto swish_sources = ScaledSiLUSources();
   const auto& swish = swish_sources.front();
-  const std::array pending{SourcePolicyRecord{swish.target, {NonExecutableState::PendingTodo, "Future variants", {}}}};
+  pending.push_back({swish.target, {NonExecutableState::PendingTodo, "Future variants", {}}});
   ASSERT_STATUS_OK(ValidateSourceDeclarations(schemas, pending, sources, LegacySourcePolicyKeys()));
   EXPECT_EQ(ResolveSourceStatus(swish.target, kCudaExecutionProvider, swish.rule_id, pending, sources, {}),
             SourceStatus::Available);
@@ -229,9 +265,11 @@ TEST(ContribSourceReplacementPolicyTest, AvailableIsEPAndVariantScopedAndCanCoex
 
 TEST(ContribSourceReplacementPolicyTest, LegacyCannotExemptMalformedExecutableMetadata) {
   const auto schemas = GetContribSchemaKeys();
+  const auto policies = GetSourcePolicies();
+  ASSERT_STATUS_OK(ValidateCudaSourceReplacements(CudaSourceReplacements(), schemas, policies, LegacySourcePolicyKeys()));
   auto check_invalid = [&](SourceReplacement source) {
     const std::array<const SourceReplacement*, 1> sources{&source};
-    EXPECT_FALSE(ValidateCudaSourceReplacements(sources, schemas, {}, LegacySourcePolicyKeys()).IsOK());
+    EXPECT_FALSE(ValidateCudaSourceReplacements(sources, schemas, policies, LegacySourcePolicyKeys()).IsOK());
   };
   const auto swish_sources = ScaledSiLUSources();
   const auto& original = swish_sources.front();
@@ -255,7 +293,7 @@ TEST(ContribSourceReplacementPolicyTest, LegacyCannotExemptMalformedExecutableMe
     return rewrite::Replacement("(x)=>com.microsoft.ScaledSiLU(x,alpha=1.0)");
   };
   const std::array callback_metadata{source.Metadata()};
-  ASSERT_STATUS_OK(ValidateSourceDeclarations(schemas, {}, callback_metadata, LegacySourcePolicyKeys()));
+  ASSERT_STATUS_OK(ValidateSourceDeclarations(schemas, policies, callback_metadata, LegacySourcePolicyKeys()));
   check_invalid(source);  // Common callback bodies are valid; this CUDA adapter cannot consume them.
   source = original;
   source.body.rule.opsets.clear();
@@ -282,9 +320,9 @@ TEST(ContribSourceReplacementPolicyTest, LegacyCannotExemptMalformedExecutableMe
   source.body.transformation_description.clear();
   check_invalid(source);
   const std::array<const SourceReplacement*, 2> duplicate{&original, &original};
-  EXPECT_FALSE(ValidateCudaSourceReplacements(duplicate, schemas, {}, LegacySourcePolicyKeys()).IsOK());
+  EXPECT_FALSE(ValidateCudaSourceReplacements(duplicate, schemas, policies, LegacySourcePolicyKeys()).IsOK());
   const std::array<const SourceReplacement*, 1> missing{nullptr};
-  EXPECT_FALSE(ValidateCudaSourceReplacements(missing, schemas, {}, LegacySourcePolicyKeys()).IsOK());
+  EXPECT_FALSE(ValidateCudaSourceReplacements(missing, schemas, policies, LegacySourcePolicyKeys()).IsOK());
   const std::array orphan{original.Metadata()};
   EXPECT_FALSE(ValidateSourceDeclarations({}, {}, orphan, LegacySourcePolicyKeys()).IsOK());
 }
