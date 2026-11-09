@@ -2,6 +2,12 @@ name: Build Docker image with OIDC ACR read access
 description: Authenticate to ACR through GitHub OIDC, clear Azure credentials before building, and clear Docker credentials afterward. Requires id-token write permission and ACR_READ_CLIENT_ID and AZURE_TENANT_ID repository variables.
 
 inputs:
+  azure-container-registry-name:
+    description: ACR registry name used for base-image read authentication.
+    default: onnxruntimebuildcache
+  azure-subscription-id:
+    description: Azure subscription containing the ACR registry.
+    default: 00c06639-6ee4-454e-8058-8d8b1703bd87
   dockerfile:
     description: Path to the Dockerfile.
     required: true
@@ -46,8 +52,6 @@ runs:
         fi
         auth_root="$(mktemp -d "$RUNNER_TEMP/acr-oidc.XXXXXX")"
         echo "root=$auth_root" >> "$GITHUB_OUTPUT"
-        echo "registry=onnxruntimebuildcache" >> "$GITHUB_OUTPUT"
-        echo "subscription=00c06639-6ee4-454e-8058-8d8b1703bd87" >> "$GITHUB_OUTPUT"
         mkdir -m 700 "$auth_root/azure" "$auth_root/docker"
 
     - name: Authenticate to Azure using GitHub OIDC
@@ -55,7 +59,7 @@ runs:
       with:
         client-id: ${{ vars.ACR_READ_CLIENT_ID }}
         tenant-id: ${{ vars.AZURE_TENANT_ID }}
-        subscription-id: ${{ steps.auth.outputs.subscription }}
+        subscription-id: ${{ inputs.azure-subscription-id }}
         audience: api://AzureADTokenExchange
       env:
         AZURE_CONFIG_DIR: ${{ steps.auth.outputs.root }}/azure
@@ -68,8 +72,8 @@ runs:
         AZURE_CONFIG_DIR: ${{ steps.auth.outputs.root }}/azure
         DOCKER_CONFIG: ${{ steps.auth.outputs.root }}/docker
         EXPECTED_CLIENT_ID: ${{ vars.ACR_READ_CLIENT_ID }}
-        ACR_NAME: ${{ steps.auth.outputs.registry }}
-        AZURE_SUBSCRIPTION_ID: ${{ steps.auth.outputs.subscription }}
+        ACR_NAME: ${{ inputs.azure-container-registry-name }}
+        AZURE_SUBSCRIPTION_ID: ${{ inputs.azure-subscription-id }}
       run: |
         set -euo pipefail
         actual_client_id="$(az account show --query user.name --output tsv)"
@@ -112,7 +116,7 @@ runs:
       env:
         AUTH_ROOT: ${{ steps.auth.outputs.root }}
         DOCKER_CONFIG: ${{ steps.auth.outputs.root }}/docker
-        ACR_NAME: ${{ steps.auth.outputs.registry }}
+        ACR_NAME: ${{ inputs.azure-container-registry-name }}
       run: |
         set -euo pipefail
         trap 'rm -rf -- "$AUTH_ROOT"' EXIT
