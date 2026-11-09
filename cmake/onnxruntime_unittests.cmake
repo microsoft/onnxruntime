@@ -9,6 +9,8 @@ set(TEST_INC_DIR ${ONNXRUNTIME_ROOT})
 if(NOT CMAKE_CROSSCOMPILING)
   add_test(NAME onnxruntime_public_exports_test
     COMMAND "${Python_EXECUTABLE}" "${REPO_ROOT}/tools/ci_build/test_gen_def.py")
+  add_test(NAME onnxruntime_cuda_contrib_sources_test
+    COMMAND "${Python_EXECUTABLE}" "${REPO_ROOT}/tools/ci_build/test_cuda_contrib_sources.py")
 endif()
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND TEST_INC_DIR ${ORTTRAINING_ROOT})
