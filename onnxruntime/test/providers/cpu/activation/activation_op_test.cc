@@ -675,6 +675,34 @@ TEST_F(ActivationOpTest, PRelu_MultiChannel4D) {
   test(false, 3, 1, 1, 1);
 }
 
+// Per-channel slope with spans longer than a SIMD packet and non-finite values in the discarded branch.
+TEST_F(ActivationOpTest, PRelu_MultiChannel4D_SpecialValues) {
+  const float pos_inf = std::numeric_limits<float>::infinity();
+  const float neg_inf = -std::numeric_limits<float>::infinity();
+  const float nan_val = std::numeric_limits<float>::quiet_NaN();
+
+  const std::vector<int64_t> x_dims{1, 2, 5, 5};
+  const std::vector<int64_t> slope_dims{2, 1, 1};
+  const std::vector<float> slopes{0.5f, 2.0f};
+
+  std::vector<float> inputs;
+  std::vector<float> outputs;
+  const float specials[] = {pos_inf, neg_inf, nan_val, 0.0f, -0.0f, 3.0f, -3.0f};
+  for (int i = 0; i < 50; ++i) {
+    const float x = (i % 3 == 0) ? specials[(i / 3) % 7] : static_cast<float>(i) - 25.0f;
+    inputs.push_back(x);
+    // NaN compares false, so it takes the multiply branch and stays NaN.
+    outputs.push_back(x >= 0.0f ? x : x * slopes[i / 25]);
+  }
+
+  OpTester test("PRelu");
+  test.AddInput<float>("X", x_dims, inputs);
+  test.AddInput<float>("slope", slope_dims, slopes);
+  test.AddOutput<float>("Y", x_dims, outputs);
+  // QNN has some issue with the broadcast support
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
+}
+
 // Edge case: PRelu with +inf and -inf inputs should not produce NaN
 TEST_F(ActivationOpTest, PRelu_InfiniteInputs) {
   float pos_inf = std::numeric_limits<float>::infinity();

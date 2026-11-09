@@ -1958,22 +1958,16 @@ Status PRelu<float>::Compute(OpKernelContext* context) const {
           per_iter_bh.OutputEigen<float>() = input0 * per_iter_bh.EigenInput1<float>().array();
       },
       [](BroadcastHelper& per_iter_bh) {
-        const float* input0 = per_iter_bh.EigenInput0<float>().data();
+        // select() picks one operand per lane (it never adds them), so an inf/NaN in the discarded
+        // branch cannot leak into the result, and it vectorizes unlike a scalar ternary loop.
+        auto input0 = per_iter_bh.EigenInput0<float>().array();
         const float input1 = per_iter_bh.ScalarInput1<float>();
-        float* output = per_iter_bh.OutputEigen<float>().data();
-        size_t size = per_iter_bh.OutputEigen<float>().size();
-        for (size_t i = 0; i < size; i++) {
-          output[i] = (input0[i] >= 0) ? input0[i] : input0[i] * input1;
-        }
+        per_iter_bh.OutputEigen<float>().array() = (input0 >= 0.0f).select(input0, input0 * input1);
       },
       [](BroadcastHelper& per_iter_bh) {
-        const float* input0 = per_iter_bh.EigenInput0<float>().data();
-        const float* input1 = per_iter_bh.EigenInput1<float>().data();
-        float* output = per_iter_bh.OutputEigen<float>().data();
-        size_t size = per_iter_bh.OutputEigen<float>().size();
-        for (size_t i = 0; i < size; i++) {
-          output[i] = (input0[i] >= 0) ? input0[i] : input0[i] * input1[i];
-        }
+        auto input0 = per_iter_bh.EigenInput0<float>().array();
+        auto input1 = per_iter_bh.EigenInput1<float>().array();
+        per_iter_bh.OutputEigen<float>().array() = (input0 >= 0.0f).select(input0, input0 * input1);
       }};
 
   UntypedBroadcastTwo(*context, funcs, 1.0);
