@@ -615,7 +615,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
       !is_unidirectional_ && (local_window_size_ >= 0 || local_window_size_right_ >= 0);
   const bool bidirectional_prefill =
       !is_unidirectional_ && !disable_gqa_flash_ && std::is_same_v<T, float> &&
-      past_key == nullptr && !kv_quant_enabled_ && softcap_ == 0.0f &&
+      past_key == nullptr && parameters.is_first_prompt && !kv_quant_enabled_ && softcap_ == 0.0f &&
       !use_smooth_softmax_ && head_sink == nullptr && output_qk == nullptr;
   if (bidirectional_window || bidirectional_prefill) {
     ORT_RETURN_IF(disable_gqa_flash_,

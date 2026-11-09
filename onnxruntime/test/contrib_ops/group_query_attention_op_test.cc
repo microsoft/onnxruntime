@@ -888,7 +888,15 @@ TEST(GroupQueryAttentionTest, BidirectionalWindowGroupedHeadsAndPadding_CPU) {
 }
 
 TEST(GroupQueryAttentionTest, BidirectionalGlobalGroupedHeadsAndPadding_CPU) {
-  RunBidirectionalWindowTest(513, -1, -1);
+  for (const char* disable_flash : {"0", "1"}) {
+    ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash}}};
+    RunBidirectionalWindowTest(513, -1, -1);
+  }
+}
+
+TEST(GroupQueryAttentionTest, BidirectionalGlobalRejectsInconsistentGeometry_CPU) {
+  RunBidirectionalWindowTest(1, -1, -1, OpTester::ExpectResult::kExpectFailure,
+                             "total_sequence_length must equal past_sequence_length + kv_sequence_length", 8, 17);
 }
 
 TEST(GroupQueryAttentionTest, BidirectionalWindowAsymmetric_CPU) {
