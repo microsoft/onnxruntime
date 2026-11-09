@@ -458,6 +458,7 @@ __global__ void AppendKvKernel(const T* query,
                                bool fp16_cache,
                                bool query_fp16,
                                bool key_fp16,
+                               bool value_fp16,
                                const float* key_scale,
                                const float* value_scale) {
   const int block = static_cast<int>(blockIdx.x);
@@ -489,6 +490,7 @@ __global__ void AppendKvKernel(const T* query,
                                (is_packed ? query_hidden_size + kv_hidden_size : 0) +
                                static_cast<int64_t>(kv_head) * head_size + h;
   const bool k_is_fp16 = is_packed ? query_fp16 : key_fp16;
+  const bool v_is_fp16 = is_packed ? query_fp16 : value_fp16;
   float key_value = 0.0f;
   if (h < head_size) {
     key_value = k_is_fp16
@@ -534,7 +536,9 @@ __global__ void AppendKvKernel(const T* query,
           h;
       reinterpret_cast<half*>(present_key)[cache_offset] = __float2half_rn(result_f32);
       reinterpret_cast<half*>(present_value)[cache_offset] =
-          __float2half_rn(ToFloat((is_packed ? query : value)[value_offset]));
+          v_is_fp16
+              ? reinterpret_cast<const half*>(is_packed ? query : value)[value_offset]
+              : __float2half_rn(ToFloat((is_packed ? query : value)[value_offset]));
     }
     return;
   }
@@ -2232,7 +2236,7 @@ Status LaunchDynamicSparseAttention(
       parameters.rotary_dim, parameters.rotary_max_position, parameters.rotary_offset,
       parameters.rotary_interleaved, parameters.is_packed_qkv,
       parameters.qk_norm_epsilon, data.quantized_cache, data.fp16_cache,
-      data.query_fp16, data.key_fp16, data.key_scale, data.value_scale);
+      data.query_fp16, data.key_fp16, data.value_fp16, data.key_scale, data.value_scale);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   ORT_RETURN_IF_ERROR(CheckBlockCount(query_blocks, "attention"));

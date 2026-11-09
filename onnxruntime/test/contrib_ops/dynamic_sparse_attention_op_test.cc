@@ -123,7 +123,7 @@ std::vector<T> ToTensorData(const std::vector<float>& values) {
   }
 }
 
-template <typename T = MLFloat16, typename CacheT = T, typename QueryT = T>
+template <typename T = MLFloat16, typename CacheT = T, typename QueryT = T, typename ValueT = T>
 void RunDynamicSparseAttentionCase(
     const DynamicSparseAttentionCase& c,
     std::unique_ptr<IExecutionProvider> execution_provider,
@@ -166,17 +166,20 @@ void RunDynamicSparseAttentionCase(
   tester.AddAttribute<float>("qk_norm_epsilon", c.qk_norm_epsilon);
   tester.AddAttribute<int64_t>("smooth_softmax", c.smooth_softmax);
   tester.AddAttribute<int64_t>("auxiliary_kv_shared", c.auxiliary_kv_shared);
+  if constexpr (std::is_same_v<T, BFloat16> && !std::is_same_v<ValueT, BFloat16>) {
+    tester.AddAttribute<int64_t>("output_bf16", 1);
+  }
 
   tester.AddInput<QueryT>("query", {c.batch_size, c.sequence_length, query_input_size},
                           ToTensorData<QueryT>(c.query));
   if (c.packed_qkv) {
     tester.AddOptionalInputEdge<QueryT>();
-    tester.AddOptionalInputEdge<T>();
+    tester.AddOptionalInputEdge<ValueT>();
   } else {
     tester.AddInput<QueryT>("key", {c.batch_size, c.sequence_length, kv_hidden_size},
                             ToTensorData<QueryT>(c.key));
-    tester.AddInput<T>("value", {c.batch_size, c.sequence_length, kv_hidden_size},
-                       ToTensorData<T>(c.value));
+    tester.AddInput<ValueT>("value", {c.batch_size, c.sequence_length, kv_hidden_size},
+                            ToTensorData<ValueT>(c.value));
   }
   if (c.has_past) {
     tester.AddInput<CacheT>("past_key",
@@ -2286,10 +2289,12 @@ TEST(DynamicSparseAttentionTest, SelectedOnlyFp16CacheBFloat16_CUDA) {
     GTEST_SKIP() << "CUDA device does not support BFloat16.";
   }
 
-  // Test both BFloat16 query/key and MLFloat16 query/key with MLFloat16 KV cache.
+  // Test BFloat16 query/key/value, MLFloat16 query/key, and MLFloat16 query/key/value with MLFloat16 KV cache.
   RunDynamicSparseAttentionCase<BFloat16, MLFloat16>(
       MakeSingleTokenSelectedValueCase(), std::move(cuda_ep));
   RunDynamicSparseAttentionCase<BFloat16, MLFloat16, MLFloat16>(
+      MakeSingleTokenSelectedValueCase(), DefaultCudaExecutionProvider());
+  RunDynamicSparseAttentionCase<BFloat16, MLFloat16, MLFloat16, MLFloat16>(
       MakeSingleTokenSelectedValueCase(), DefaultCudaExecutionProvider());
 }
 

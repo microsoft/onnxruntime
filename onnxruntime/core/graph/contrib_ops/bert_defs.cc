@@ -549,8 +549,13 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
 
 void DynamicSparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   if (ctx.getNumOutputs() > 0 && ctx.hasOutput(0)) {
-    const size_t out0_type_input = (ctx.getNumInputs() > 2 && ctx.getInputType(2) != nullptr) ? 2 : 0;
-    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, out0_type_input, 0);
+    const int64_t output_bf16 = getAttribute(ctx, "output_bf16", 0);
+    if (output_bf16 == 1) {
+      ONNX_NAMESPACE::updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16);
+    } else {
+      const size_t out0_type_input = (ctx.getNumInputs() > 2 && ctx.getInputType(2) != nullptr) ? 2 : 0;
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, out0_type_input, 0);
+    }
   }
   const int64_t num_heads = getAttribute(ctx, "num_heads", 0);
   const int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", 0);
@@ -698,13 +703,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("auxiliary_kv_shared", "Use auxiliary_key as both key and value when auxiliary_value is omitted.",
               AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("output_bf16", "Output in bfloat16 (1) when query, key, and value are float16.",
+              AttributeProto::INT, static_cast<int64_t>(0))
         .Input(0, "query",
                "Query [batch, sequence, num_heads * head_size]. When key and value are omitted, each row contains "
                "Q, K, then V concatenated with total width (num_heads + 2 * kv_num_heads) * head_size.",
                "TQuery")
         .Input(1, "key", "Current main key [batch, sequence, kv_num_heads * head_size].", "TQuery",
                OpSchema::Optional)
-        .Input(2, "value", "Current main value [batch, sequence, kv_num_heads * head_size].", "T",
+        .Input(2, "value", "Current main value [batch, sequence, kv_num_heads * head_size].", "TQuery",
                OpSchema::Optional)
         .Input(3, "past_key", "Main key cache in BNSH layout, same type as query, FP16, or INT8.", "TCache", OpSchema::Optional)
         .Input(4, "past_value", "Main value cache in BNSH layout, same type as past_key.", "TCache", OpSchema::Optional)
@@ -6423,7 +6430,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "Optional BF16-rounded normalized values widened to FP32, before rotation, "
                 "[B,S,heads,width].",
                 "F", OpSchema::Optional)
-        .TypeConstraint("T", {"tensor(bfloat16)"}, "BF16 data.")
+        .TypeConstraint("T", {"tensor(bfloat16)", "tensor(float16)"}, "BF16 or FP16 data.")
         .TypeConstraint("TCos", {"tensor(bfloat16)", "tensor(float)"}, "BF16 or FP32 rotary cache.")
         .TypeConstraint("TOut", {"tensor(bfloat16)", "tensor(float16)"}, "BF16 or FP16 output.")
         .TypeConstraint("F", {"tensor(float)"}, "FP32 scale and optional normalized output.")

@@ -152,6 +152,8 @@ Status DynamicSparseAttention<T>::ComputeInternal(OpKernelContext* context) cons
                           query != nullptr && query->IsDataType<MLFloat16>();
   const bool key_fp16 = !std::is_same_v<T, MLFloat16> &&
                         key != nullptr && key->IsDataType<MLFloat16>();
+  const bool value_fp16 = !std::is_same_v<T, MLFloat16> &&
+                          value != nullptr && value->IsDataType<MLFloat16>();
   ORT_RETURN_IF_NOT((key_scale != nullptr) == (value_scale != nullptr),
                     "DynamicSparseAttention: key_scale and value_scale must be provided together.");
   ORT_RETURN_IF_NOT(quantized_cache == (key_scale != nullptr),
@@ -162,8 +164,9 @@ Status DynamicSparseAttention<T>::ComputeInternal(OpKernelContext* context) cons
                                                                    : past_value->IsDataType<T>())),
                     "DynamicSparseAttention: cache types must match activations or both be FP16 or INT8.");
   ORT_RETURN_IF_NOT((query->IsDataType<T>() || (fp16_cache && query_fp16)) &&
-                        (key == nullptr || key->IsDataType<T>() || (fp16_cache && key_fp16)),
-                    "DynamicSparseAttention: query and key types must match T or FP16 cache.");
+                        (key == nullptr || key->IsDataType<T>() || (fp16_cache && key_fp16)) &&
+                        (value == nullptr || value->IsDataType<T>() || (fp16_cache && value_fp16)),
+                    "DynamicSparseAttention: query, key, and value types must match T or FP16 cache.");
 
   DynamicSparseAttentionParameters parameters;
   ORT_RETURN_IF_ERROR(dynamic_sparse_attention_helper::CheckInputs(
@@ -231,13 +234,14 @@ Status DynamicSparseAttention<T>::ComputeInternal(OpKernelContext* context) cons
   data.decode_int8_tc_tiles_per_split = decode_int8_tc_tiles_per_split_;
   data.query = reinterpret_cast<const CudaT*>(query->DataRaw());
   data.key = key == nullptr ? nullptr : reinterpret_cast<const CudaT*>(key->DataRaw());
-  data.value = value == nullptr ? nullptr : reinterpret_cast<const CudaT*>(value->Data<T>());
+  data.value = value == nullptr ? nullptr : reinterpret_cast<const CudaT*>(value->DataRaw());
   data.past_key = past_key == nullptr ? nullptr : reinterpret_cast<const CudaT*>(past_key->DataRaw());
   data.past_value = past_value == nullptr ? nullptr : reinterpret_cast<const CudaT*>(past_value->DataRaw());
   data.quantized_cache = quantized_cache;
   data.fp16_cache = fp16_cache;
   data.query_fp16 = query_fp16;
   data.key_fp16 = key_fp16;
+  data.value_fp16 = value_fp16;
   data.key_scale = key_scale == nullptr ? nullptr : key_scale->Data<float>();
   data.value_scale = value_scale == nullptr ? nullptr : value_scale->Data<float>();
   data.auxiliary_key =

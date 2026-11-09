@@ -9,7 +9,7 @@ Status LaunchRMSNormRotary(cudaStream_t stream, const uint16_t* input, const flo
                            void* output, float* normalized, int groups, int heads, int sequence,
                            int input_stride, int width, int rotary_dim, int cache_rows, bool scalar_position,
                            float epsilon, bool dense_prefill, bool fp32_rotary,
-                           bool fp32_cos = false, bool output_fp16 = false);
+                           bool fp32_cos = false, bool output_fp16 = false, bool input_fp16 = false);
 
 class RMSNormRotary final : public onnxruntime::cuda::CudaKernel {
  public:

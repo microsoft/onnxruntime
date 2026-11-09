@@ -11,7 +11,7 @@ namespace onnxruntime::contrib::cuda {
 ONNX_OPERATOR_KERNEL_EX(
     RMSNormRotary, kMSDomain, 1, kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<BFloat16>())
+        .TypeConstraint("T", BuildKernelDefConstraints<BFloat16, MLFloat16>())
         .TypeConstraint("TCos", BuildKernelDefConstraints<BFloat16, float>())
         .TypeConstraint("TOut", BuildKernelDefConstraints<BFloat16, MLFloat16>())
         .TypeConstraint("F", DataTypeImpl::GetTensorType<float>())
@@ -79,14 +79,15 @@ Status RMSNormRotary::ComputeInternal(OpKernelContext* context) const {
   auto* output = context->Output(0, TensorShape({output_batch, output_sequence, SafeInt<int64_t>(shape[2]) * width}));
   auto* normalized = context->OutputCount() > 1 ? context->Output(1, norm_shape) : nullptr;
   if (groups == 0) return Status::OK();
-  const auto* x = reinterpret_cast<const uint16_t*>(input->Data<BFloat16>()) + input_start_;
+  const bool input_fp16 = input->IsDataType<MLFloat16>();
+  const auto* x = reinterpret_cast<const uint16_t*>(input->DataRaw()) + input_start_;
   return LaunchRMSNormRotary(
       Stream(context), x, scale->Data<float>(), positions->Data<int64_t>(),
       cosine->DataRaw(), sine->DataRaw(),
       output->MutableDataRaw(),
       normalized ? normalized->MutableData<float>() : nullptr,
       groups, heads, sequence, stride, dim, rotary, cache_rows, scalar, epsilon_, dense, fp32_rotary_,
-      fp32_cos, output_fp16_);
+      fp32_cos, output_fp16_, input_fp16);
 }
 
 }  // namespace onnxruntime::contrib::cuda
