@@ -1098,8 +1098,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::FLOAT, 1.0f)
         .Attr("gate_type", "Stable packed-format ID of gate_experts_weights. Only contract-listed IDs are supported.",
               AttributeProto::INT)
-        .Attr("up_type", "Stable packed-format ID of up_experts_weights; required for swiglu. "
-                        "Only contract-listed IDs are supported.",
+        .Attr("up_type",
+              "Stable packed-format ID of up_experts_weights; required for swiglu. "
+              "Only contract-listed IDs are supported.",
               AttributeProto::INT, static_cast<int64_t>(-1))
         .Attr("down_type", "Stable packed-format ID of down_experts_weights. Only contract-listed IDs are supported.",
               AttributeProto::INT)
