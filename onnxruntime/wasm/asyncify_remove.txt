@@ -1,0 +1,17 @@
+# Functions excluded from Asyncify instrumentation (-sASYNCIFY_REMOVE). Lines starting with '#' are ignored;
+# don't add blank lines, Emscripten would read them as entries.
+#
+# Asyncify instruments every function that makes an indirect call, because it can't tell whether the call
+# reaches an async import. The code below never does: graph construction, ONNX schema and shape inference, and
+# protobuf parsing don't reach the async imports (JSEP/WebGPU readback, WebGPU adapter/device/pipeline
+# creation, WebNN graph build and readback).
+#
+# An entry is wrong if its function can be on the stack while an async import suspends. Debug builds
+# (-sASSERTIONS=1 turns on Binaryen's asyncify-asserts) then trap with "unreachable"; Release builds silently
+# run the function again from the start when the stack is rewound. Remove the entry if that becomes possible.
+# Example: Graph reaches LoadWebAssemblyExternalData through utils::TensorProtoToOrtValue, and that loader is
+# async only in JSPI builds today. If it is made async for Asyncify builds, onnxruntime::Graph::* must go.
+onnxruntime::Graph::*
+onnxruntime::GraphViewer::*
+onnx::*
+google::protobuf::*

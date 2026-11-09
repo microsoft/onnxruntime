@@ -1,7 +1,11 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "core/framework/execution_provider.h"
 #include "core/providers/shared_library/provider_host_api.h"
 
 #include <cstdlib>
+#include <cstdio>
 #include <memory>
 #include <string>
 
@@ -34,6 +38,7 @@ extern "C" ORT_TEST_EXPORT int GetInitializationCount() {
 #elif defined(ORT_TEST_OPTIONAL_PROVIDER_plugin) || defined(ORT_TEST_OPTIONAL_PROVIDER_plugin_missing_export)
 namespace {
 // Store events outside the DLL so an unload/reload cannot reset the observed history.
+// The fixture must unload synchronously: do not add GNU-unique symbols, TLS destructors, or RTLD_NODELETE.
 struct PluginLifetimeTracker {
   PluginLifetimeTracker() { Record('L'); }
   ~PluginLifetimeTracker() { Record('U'); }
@@ -41,13 +46,23 @@ struct PluginLifetimeTracker {
   static void Record(char event) {
     constexpr const char* name = "ORT_TEST_PLUGIN_LIFETIME_EVENTS";
 #if defined(_WIN32)
-    char events[64]{};
-    const DWORD length = GetEnvironmentVariableA(name, events, sizeof(events));
-    if (length == 0 || length >= sizeof(events) - 1) {
+    const DWORD required_size = GetEnvironmentVariableA(name, nullptr, 0);
+    if (required_size == 0) {
       return;
     }
-    events[length] = event;
-    SetEnvironmentVariableA(name, events);
+    std::string events(required_size, '\0');
+    SetLastError(ERROR_SUCCESS);
+    const DWORD length = GetEnvironmentVariableA(name, events.data(), required_size);
+    if (length >= required_size || (length == 0 && GetLastError() != ERROR_SUCCESS)) {
+      std::fputs("Failed to read optional-provider load history.\n", stderr);
+      std::abort();
+    }
+    events.resize(length);
+    events.push_back(event);
+    if (!SetEnvironmentVariableA(name, events.c_str())) {
+      std::fputs("Failed to update optional-provider load history.\n", stderr);
+      std::abort();
+    }
 #else
     if (const char* events = std::getenv(name)) {
       const std::string updated = std::string{events} + event;

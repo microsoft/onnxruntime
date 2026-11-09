@@ -14,6 +14,8 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND TEST_INC_DIR ${ORTTRAINING_ROOT})
 endif()
 
+include(onnxruntime_telemetry_tests.cmake)
+
 # Exclude files based on CMake options.
 function(filter_test_srcs test_srcs_var)
   set(excluded_path_prefixes)
@@ -62,7 +64,7 @@ function(onnxruntime_disable_gtest_character_conversion_as_error target_name)
 endfunction()
 
 function(AddTest)
-  cmake_parse_arguments(_UT "DYN" "TARGET;TEST_NAME" "LIBS;SOURCES;DEPENDS;TEST_ARGS" ${ARGN})
+  cmake_parse_arguments(_UT "DYN;NO_GTEST_REPORT" "TARGET;TEST_NAME" "LIBS;SOURCES;DEPENDS;TEST_ARGS" ${ARGN})
   if (NOT _UT_TEST_NAME)
     set(_UT_TEST_NAME ${_UT_TARGET})
   endif()
@@ -183,7 +185,7 @@ function(AddTest)
   endif()
 
   set(TEST_ARGS ${_UT_TEST_ARGS})
-  if (onnxruntime_GENERATE_TEST_REPORTS)
+  if (onnxruntime_GENERATE_TEST_REPORTS AND NOT _UT_NO_GTEST_REPORT)
     # generate a report file next to the test program
     if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       # WebAssembly use a memory file system, so we do not use full path
@@ -716,10 +718,6 @@ if(onnxruntime_USE_COREML)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_coreml coreml_proto)
 endif()
 
-if(onnxruntime_USE_ACL)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_acl)
-endif()
-
 set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
     # CUDA, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime.
     # QNN EP can be built as either a dynamic and static libs.
@@ -729,7 +727,6 @@ set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
     ${PROVIDERS_SNPE}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
-    ${PROVIDERS_ACL}
     ${PROVIDERS_COREML}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_AZURE}
@@ -1082,6 +1079,8 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_P
     NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
   set(onnxruntime_test_providers_cuda_plugin_internal_test_src
     "${TEST_SRC_DIR}/providers/cuda/test_cases/allocator_cuda_test.cc"
+    "${TEST_SRC_DIR}/providers/cuda/test_cases/cuda_budget_group_test.cc"
+    "${TEST_SRC_DIR}/providers/cuda/test_cases/cuda_ep_account_binding_test.cc"
     "${TEST_SRC_DIR}/providers/cuda/test_cases/cuda_utils_test.cc"
     "${TEST_SRC_DIR}/providers/cuda/test_cases/group_query_attention_workspace_header_test.cc"
     "${TEST_SRC_DIR}/providers/cuda/test_cases/packed_attention_workspace_header_test.cc"
@@ -1347,6 +1346,13 @@ AddTest(
   TEST_ARGS ${test_all_args}
 )
 target_include_directories(onnxruntime_test_all PRIVATE ${ONNXRUNTIME_ROOT}/core/flatbuffers/schema) # ort.fbs.h
+if(onnxruntime_ENABLE_DLPACK)
+  target_link_libraries(onnxruntime_test_all PRIVATE dlpack::dlpack)
+endif()
+
+if(onnxruntime_USE_CUDA AND NOT onnxruntime_MINIMAL_BUILD)
+  target_link_libraries(onnxruntime_test_all PRIVATE CUDA::cuda_driver)
+endif()
 
 onnxruntime_apply_test_target_workarounds(onnxruntime_test_all)
 
@@ -1485,10 +1491,12 @@ if (MSVC)
   target_compile_options(onnxruntime_test_all PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd4244>"
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4244>")
 
-  # Avoid this compile error in graph_transform_test.cc and qdq_transformer_test.cc:
+  # Avoid this compile error in large test translation units:
   # fatal error C1128: number of sections exceeded object file format limit: compile with /bigobj
-  set_property(SOURCE "${TEST_SRC_DIR}/optimizer/graph_transform_test.cc"
+  set_property(SOURCE "${TEST_SRC_DIR}/framework/inference_session_test.cc"
+                      "${TEST_SRC_DIR}/optimizer/graph_transform_test.cc"
                       "${TEST_SRC_DIR}/optimizer/qdq_transformer_test.cc"
+                      "${TEST_SRC_DIR}/optimizer/pattern_rewriter_test.cc"
                APPEND PROPERTY COMPILE_OPTIONS "/bigobj")
 else()
   target_compile_options(onnxruntime_test_all PRIVATE "-Wno-parentheses")
@@ -2551,7 +2559,7 @@ endif()
     target_link_libraries(compare_two_sessions PRIVATE ${GETOPT_LIB_WIDE} tdh Advapi32)
   endif()
 
-  if(NOT onnxruntime_target_platform STREQUAL "ARM64EC")
+  if(NOT onnxruntime_target_platform STREQUAL "ARM64EC" AND NOT onnxruntime_target_platform STREQUAL "S390X")
     file(GLOB onnxruntime_mlas_test_src CONFIGURE_DEPENDS
       "${TEST_SRC_DIR}/mlas/unittest/*.h"
       "${TEST_SRC_DIR}/mlas/unittest/*.cpp"
@@ -3106,20 +3114,37 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_USE_OPENVINO AND
                ${ONNXRUNTIME_CUSTOM_OP_OPENVINO_WRAPPER_LIB_LINK_FLAG})
 endif()
 
-if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EXTERNAL_DAWN AND TARGET dawn::dawn_native)
+if (onnxruntime_USE_WEBGPU AND NOT onnxruntime_BUILD_DAWN_SHARED_LIBRARY AND TARGET dawn::dawn_native)
+  set(webgpu_dawn_test_args)
+  if (onnxruntime_WEBGPU_STATIC_PLUGIN)
+    list(APPEND webgpu_dawn_test_args --static_plugin)
+  elseif (onnxruntime_USE_EP_API_ADAPTERS)
+    list(APPEND webgpu_dawn_test_args --plugin $<TARGET_FILE:onnxruntime_providers_webgpu>)
+  endif()
   if (onnxruntime_BUILD_SHARED_LIB)
-    AddTest(DYN TARGET onnxruntime_webgpu_external_dawn_test
+    AddTest(DYN NO_GTEST_REPORT TARGET onnxruntime_webgpu_external_dawn_test
             SOURCES ${onnxruntime_webgpu_external_dawn_test_SRC}
             LIBS dawn::dawn_native dawn::dawn_proc
+            TEST_ARGS ${webgpu_dawn_test_args}
             DEPENDS ${all_dependencies})
   else()
-    AddTest(TARGET onnxruntime_webgpu_external_dawn_test
+    AddTest(NO_GTEST_REPORT TARGET onnxruntime_webgpu_external_dawn_test
             SOURCES ${onnxruntime_webgpu_external_dawn_test_SRC}
             LIBS dawn::dawn_native dawn::dawn_proc ${onnxruntime_test_providers_libs}
+            TEST_ARGS ${webgpu_dawn_test_args}
             DEPENDS ${all_dependencies})
   endif()
   onnxruntime_add_include_to_target(onnxruntime_webgpu_external_dawn_test dawn::dawncpp_headers dawn::dawn_headers)
+  # Dawn's generated C++ wrappers use type-punning casts that trigger GCC strict-aliasing warnings.
+  target_include_directories(onnxruntime_webgpu_external_dawn_test SYSTEM PRIVATE
+    $<TARGET_PROPERTY:dawn::dawncpp_headers,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:dawn::dawn_headers,INTERFACE_INCLUDE_DIRECTORIES>)
   target_compile_features(onnxruntime_webgpu_external_dawn_test PRIVATE cxx_std_20)
+  if (onnxruntime_USE_EP_API_ADAPTERS AND NOT onnxruntime_WEBGPU_STATIC_PLUGIN)
+    add_dependencies(onnxruntime_webgpu_external_dawn_test onnxruntime_providers_webgpu)
+  endif()
+  add_test(NAME onnxruntime_webgpu_owned_cache_test
+           COMMAND onnxruntime_webgpu_external_dawn_test --ort_owned_cache ${webgpu_dawn_test_args})
 endif()
 
 if (onnxruntime_USE_WEBGPU AND WIN32 AND onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)
@@ -3164,9 +3189,34 @@ endif()
 if(WIN32 AND onnxruntime_USE_1DS_TELEMETRY)
   if(NOT GDK_PLATFORM AND NOT CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
     set(telemetry_lifecycle_test_dir "${TEST_SRC_DIR}/platform/windows_telemetry/lifecycle")
+    # Inject the mock and observe cleanup only in the fixture's provider copy.
+    # Keep the production class private and its destructor/lock ordering intact.
+    set(telemetry_lifecycle_provider "${ONNXRUNTIME_ROOT}/core/platform/telemetry_1ds.cc")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${telemetry_lifecycle_provider}")
+    file(READ "${telemetry_lifecycle_provider}" lifecycle_provider)
+    foreach(hook "      Initialize();" "      Shutdown();")
+      string(FIND "${lifecycle_provider}" "${hook}" hook_position)
+      string(FIND "${lifecycle_provider}" "${hook}" last_hook_position REVERSE)
+      if(hook_position EQUAL -1 OR NOT hook_position EQUAL last_hook_position)
+        message(FATAL_ERROR "Update the telemetry lifecycle fixture's provider instrumentation")
+      endif()
+    endforeach()
+    string(REPLACE "      Initialize();"
+      "      Initialize();\n      OrtTelemetryLifecycleInstall(global_register_count_, log_manager_, config_);"
+      lifecycle_provider "${lifecycle_provider}")
+    string(REPLACE "      Shutdown();"
+      "      Shutdown();\n      OrtTelemetryLifecycleClean(global_register_count_, log_manager_, config_.get());"
+      lifecycle_provider "${lifecycle_provider}")
+    string(PREPEND lifecycle_provider
+      "#include <ILogConfiguration.hpp>\n#include <ILogManager.hpp>\n#include <cstdint>\n#include <memory>\nnamespace onnxruntime {\nvoid OrtTelemetryLifecycleInstall(uint32_t, Microsoft::Applications::Events::ILogManager*&, std::unique_ptr<Microsoft::Applications::Events::ILogConfiguration>&);\nvoid OrtTelemetryLifecycleClean(uint32_t, Microsoft::Applications::Events::ILogManager*, const Microsoft::Applications::Events::ILogConfiguration*);\n}\n")
+    set(telemetry_lifecycle_provider "${CMAKE_CURRENT_BINARY_DIR}/telemetry_lifecycle_provider.cc")
+    file(WRITE "${telemetry_lifecycle_provider}" "${lifecycle_provider}")
     onnxruntime_add_shared_library(onnxruntime_telemetry_shutdown_test_library
+      "${telemetry_lifecycle_provider}"
       "${telemetry_lifecycle_test_dir}/telemetry_shutdown_test_library.cc"
       "${telemetry_lifecycle_test_dir}/telemetry_shutdown_test_library.def")
+    target_include_directories(onnxruntime_telemetry_shutdown_test_library PRIVATE
+      $<TARGET_PROPERTY:onnxruntime_common,INCLUDE_DIRECTORIES>)
     target_link_libraries(onnxruntime_telemetry_shutdown_test_library PRIVATE onnxruntime_common mat)
     onnxruntime_add_executable(onnxruntime_telemetry_shutdown_test
       "${telemetry_lifecycle_test_dir}/telemetry_shutdown_test.cc")

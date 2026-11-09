@@ -75,13 +75,78 @@ Selected inputs (see the schema for the full list and shapes):
 | 1, 2 | `key`, `value` | Optional when QKV is packed into `query`. |
 | 3, 4 | `past_key`, `past_value` | BNSH cache. Shares the buffer with `present_*` when in-place. |
 | 5 | `seqlens_k` | `total_sequence_lengths - 1` per batch entry. |
-| 6 | `total_sequence_length` | Scalar used to distinguish prompt vs. decode. |
+| 6 | `total_sequence_length` | Scalar used to distinguish prompt vs. decode. With `query_seqlens` it is only an upper bound of `seqlens_k + 1`. |
 | 7, 8 | `cos_cache`, `sin_cache` | RoPE caches. |
 | 11 | `head_sink` | `(num_heads,)` per-head attention sink (see §5). |
 | 12, 13 | `k_scale`, `v_scale` | FP32 dequant scales for the quantized KV cache. |
 | 14, 15 | `q_norm_weight`, `k_norm_weight` | `(head_size,)` per-head Q/K RMSNorm weights (QK-Norm, see §3). Both must be present together. |
+| 16 | `query_seqlens` | `(batch,)` int32 count of valid rows in a right-padded query chunk (see below). Optional. |
 
 Outputs are `output`, `present_key`, `present_value`, and optional `output_qk`.
+
+### Right-padded prefill chunks
+
+`query_seqlens` lets a caller run every chunk of a prompt with one fixed query shape `S`. For batch
+entry `b`, let `T = seqlens_k[b] + 1` be the number of tokens in the cache after the step,
+`Q = query_seqlens[b]` the number of valid rows in the chunk (rows `[Q, S)` are right padding), and
+`P = T - Q` the number of tokens that were cached before it.
+
+| Chunk (prompt of 300, `S=128`, capacity 512) | `S` | `P` | `Q` | `seqlens_k` | `query_seqlens` | `total_sequence_length` |
+|---|---|---|---|---|---|---|
+| 0 | 128 | 0 | 128 | 127 | 128 | 512 |
+| 1 | 128 | 128 | 128 | 255 | 128 | 512 |
+| 2 (last, padded) | 128 | 256 | 44 | 299 | 44 | 512 |
+| decode | 1 | 300 | 1 | 300 | omitted | 512 |
+
+- Only the `Q` valid rows are appended to the cache, at positions `[P, T)`. Query row `s` is at
+  absolute position `P + s`, which is the position that causal masking, `local_window_size`, and
+  implicit RoPE use. Output rows `[Q, S)` are unspecified and must be ignored, and so are the
+  contents of cache rows at or beyond `T`.
+- `total_sequence_length` is only an upper bound of the absolute `T`; it no longer
+  has to equal `P + S`, and it is not used to tell a first chunk from a later one. The existing rule
+  that a full-length cache needs `total_sequence_length >= sequence_length` still applies. A
+  windowed cache can be shorter than `T`, so its capacity is not necessarily a valid upper bound.
+- Tested with full-length and windowed caches, int8 quantized KV, packed QKV, rotary, `position_ids`,
+  softcap, `local_window_size`, `head_sink`, and `attention_bias` (full-length cache only; its last
+  dimension must equal `total_sequence_length`). The restrictions of those features without
+  `query_seqlens` still apply. The input requires `causal=1`, new K/V with
+  `kv_sequence_length == sequence_length`, and `past_key`/`past_value`. Batched chunks with
+  different valid lengths are supported.
+- A full-length cache needs room for the padded chunk, `P + S <= C`, where `C` is the sequence
+  dimension of `present_key` (the cache capacity). The `P` cached tokens must come from `past_key`
+  (`P` is at most its sequence dimension), so a cache that grows between steps may bind a shorter
+  `past_key` than `present_key`.
+- Values are read on the device, so the CUDA kernel validates only the shape and structure on the
+  host. It clamps `Q` into `[0, min(S, T)]` and keeps every offset inside the cache; a value outside
+  that range gives an unspecified (but memory-safe) result. The CPU implementation reports
+  `INVALID_ARGUMENT` instead.
+- `T >= 1` is required. `Q == 0` marks an idle, already-populated entry: keep its `seqlens_k`
+  unchanged and ignore all its output rows. This also applies to `S == 1`, where `Q` is 0 or 1.
+- With explicit lengths, chunks run on FlashAttention, MemoryEfficientAttention, or the unfused
+  backend. XQA, fast Flash decode and cuDNN SDPA are disabled because their decode/prompt contracts
+  do not represent idle query entries. Without the input their selection is unchanged.
+
+Preprocessing skips padded rows before Q/K/V loads, QK-Norm, RoPE, quantization or cache writes.
+Idle entries do not seed or copy back the aliased windowed cache. FlashAttention and MEA skip
+fully padded query tiles and bound valid-row accesses; partially filled tiles still do
+tile-granular work. Physical tensor strides continue to use `S`. The unfused backend skips padded
+softmax and output rows, but its cuBLAS QK and SV GEMMs remain dense in `S`; removing those GEMM
+rows would require a different device-driven GEMM path. No host synchronization is introduced
+to read query lengths. These optimizations do not skip upstream Q/K/V projection nodes.
+
+For prompts `[513, 1025]` with `S = 512` and `C = W = 512`, the valid lengths are `[512, 512]`,
+`[1, 512]`, then `[0, 1]`. The corresponding absolute totals are `[512, 512]`, `[513, 1024]`,
+and `[513, 1025]`; pass a scalar upper bound that covers each of these totals, not just 512.
+The final caches contain absolute positions `[1, 512]` and `[513, 1024]`. The first entry stays
+idle in the last chunk, while staging retains the 511 preceding tokens needed by the second entry.
+- Without `query_seqlens`, `Q = min(S, T)` and the behavior is unchanged: callers that pass the cache
+  capacity as `total_sequence_length` keep deriving the past offset from `seqlens_k + 1 - sequence_length`.
+- The unpadded reference retains `query_seqlens` and the same `total_sequence_length` bound. For a
+  quantized first chunk (`P == 0, Q > 1`), attention uses the original float new K/V; omitting input 16
+  while keeping a capacity-valued bound can select legacy quantized-cache reads instead. A singleton
+  (`P == 0, Q == 1`) matches the legacy single-token call: it uses float new K/V only for a tight
+  `total_sequence_length == 1`, otherwise it reads the quantized cache. A windowed cache permits the
+  tight bound even when the padded shape has `S > 1`.
 
 ## 3. Input Formats
 

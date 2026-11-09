@@ -251,14 +251,16 @@ class MlasLinearAttentionTest : public MlasTestBase {
         << " init_state=" << nonzero_initial_state;
     const std::string context = tag.str();
 
+    // Fused SIMD kernels use FP32 reductions and reassociate the recurrence relative to the double-precision oracle.
+    constexpr float kTolerance = 2e-4f;
     for (size_t i = 0; i < o_elems; ++i) {
-      const float tol = 1e-4f * std::max(1.0f, std::abs(output_ref[i]));
+      const float tol = kTolerance * std::max(1.0f, std::abs(output_ref[i]));
       ASSERT_NEAR(output[i], output_ref[i], tol) << "output[" << i << "] " << context;
     }
     // The state is an operator output too: a bad update can be invisible in
     // `output` at short sequence lengths.
     for (size_t i = 0; i < s_elems; ++i) {
-      const float tol = 1e-4f * std::max(1.0f, std::abs(state_ref[i]));
+      const float tol = kTolerance * std::max(1.0f, std::abs(state_ref[i]));
       ASSERT_NEAR(state[i], state_ref[i], tol) << "state[" << i << "] " << context;
     }
   }

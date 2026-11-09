@@ -25,7 +25,7 @@ Status BiasGeluProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& bias = shader.AddInput("bias", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride);
   const auto& y = shader.AddOutput("y", ShaderUsage::UseUniform);
 
-  shader.AdditionalImplementation() << onnxruntime::webgpu::ErfImpl;
+  shader.AdditionalImplementation() << onnxruntime::webgpu::ErfImpl(x.NumComponents());
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size")
                             << "  var a = " << x.GetByOffset("global_idx") << ";\n";
 

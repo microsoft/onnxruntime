@@ -1,4 +1,8 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include <filesystem>
+#include <string>
 #include <system_error>
 #include <utility>
 
@@ -109,21 +113,25 @@ TEST_F(OptionalProviderProbeTest, SuccessfulProbeInitializesOnceAndCanReload) {
 TEST_F(OptionalProviderProbeTest, PluginRegistrationInitializesOnceAndUnregisterUnloads) {
   ASSERT_NO_FATAL_FAILURE(Install(ORT_OPTIONAL_PROBE_shared_LIBRARY, shared_path_));
   ASSERT_NO_FATAL_FAILURE(Install(ORT_OPTIONAL_PROBE_plugin_LIBRARY, provider_path_));
-  const ScopedEnvironmentVariables events{EnvVarMap{{"ORT_TEST_PLUGIN_LIFETIME_EVENTS", "_"}}};
-  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "plugin_lifetime_test"};
+  for (const size_t initial_size : {1U, 128U}) {
+    SCOPED_TRACE(initial_size);
+    const std::string initial_history(initial_size, '_');
+    const ScopedEnvironmentVariables events{EnvVarMap{{"ORT_TEST_PLUGIN_LIFETIME_EVENTS", initial_history}}};
+    Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "plugin_lifetime_test"};
 
-  for (const char* expected : {"_L", "_LUL"}) {
-    Ort::Status registered{Ort::GetApi().RegisterExecutionProviderLibrary(
-        env, "plugin_lifetime_test", provider_path_.c_str())};
-    ASSERT_TRUE(registered.IsOK()) << registered.GetErrorMessage();
-    auto unregister = gsl::finally([&]() {
-      Ort::Status status{Ort::GetApi().UnregisterExecutionProviderLibrary(env, "plugin_lifetime_test")};
-      EXPECT_TRUE(status.IsOK()) << status.GetErrorMessage();
-    });
-    EXPECT_EQ(Env::Default().GetEnvironmentVar("ORT_TEST_PLUGIN_LIFETIME_EVENTS"), expected);
+    for (const std::string& expected : {initial_history + "L", initial_history + "LUL"}) {
+      Ort::Status registered{Ort::GetApi().RegisterExecutionProviderLibrary(
+          env, "plugin_lifetime_test", provider_path_.c_str())};
+      ASSERT_TRUE(registered.IsOK()) << registered.GetErrorMessage();
+      auto unregister = gsl::finally([&]() {
+        Ort::Status status{Ort::GetApi().UnregisterExecutionProviderLibrary(env, "plugin_lifetime_test")};
+        EXPECT_TRUE(status.IsOK()) << status.GetErrorMessage();
+      });
+      EXPECT_EQ(Env::Default().GetEnvironmentVar("ORT_TEST_PLUGIN_LIFETIME_EVENTS"), expected);
+    }
+
+    EXPECT_EQ(Env::Default().GetEnvironmentVar("ORT_TEST_PLUGIN_LIFETIME_EVENTS"), initial_history + "LULU");
   }
-
-  EXPECT_EQ(Env::Default().GetEnvironmentVar("ORT_TEST_PLUGIN_LIFETIME_EVENTS"), "_LULU");
 }
 
 TEST_F(OptionalProviderProbeTest, FailedPluginLoadUnloadsRetainedProbe) {

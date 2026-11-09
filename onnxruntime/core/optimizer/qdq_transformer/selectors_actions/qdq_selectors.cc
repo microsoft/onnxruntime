@@ -7,8 +7,10 @@
 
 #include <cmath>
 
+#include "core/graph/constants.h"
 #include "core/graph/graph.h"
 #include "core/graph/graph_utils.h"
+#include "core/mlas/inc/mlas_q4.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
@@ -42,6 +44,42 @@ constexpr bool Is8BitIntType(int32_t data_type) {
 // suitable for MatMulNBits fusion (2, 4, or 8 bit).
 constexpr bool IsNBitsIntType(int32_t data_type) {
   return Is2BitIntType(data_type) || Is4BitIntType(data_type) || Is8BitIntType(data_type);
+}
+
+constexpr bool IsFloatQuantType(int32_t data_type) {
+  return (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FN) ||
+         (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FNUZ) ||
+         (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E5M2) ||
+         (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E5M2FNUZ) ||
+         (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E8M0) ||
+         (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT4E2M1);
+}
+
+// The QLinear*/QGemm replacement ops only accept integer quantized types, and dropping the Q/DQ nodes feeds the
+// quantized tensor to the target op directly, which most ops do not accept for float8/float4. Either rewrite would
+// produce an invalid graph, so node groups with float quantized types are left unchanged.
+bool HasFloatQuantType(const GraphViewer& graph_viewer, const NodeGroup& node_group) {
+  const auto is_float_quant_arg = [](const NodeArg* arg) {
+    const auto* type_proto = arg != nullptr ? arg->TypeAsProto() : nullptr;
+    return type_proto != nullptr && type_proto->has_tensor_type() &&
+           IsFloatQuantType(type_proto->tensor_type().elem_type());
+  };
+
+  for (NodeIndex dq_idx : node_group.dq_nodes) {
+    const Node* dq_node = graph_viewer.GetNode(dq_idx);
+    if (dq_node != nullptr && is_float_quant_arg(dq_node->InputDefs()[0])) {
+      return true;
+    }
+  }
+
+  for (NodeIndex q_idx : node_group.q_nodes) {
+    const Node* q_node = graph_viewer.GetNode(q_idx);
+    if (q_node != nullptr && is_float_quant_arg(q_node->OutputDefs()[0])) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 // adjust for an optional input/output that has an entry but does not exist
@@ -183,6 +221,10 @@ std::optional<NodesToOptimizeIndices> BaseSelector::Select(const GraphViewer& gr
 
   const auto qdq_group = node_group_selector_->GetQDQSelection(graph_viewer, node);
   if (!qdq_group.has_value()) {
+    return std::nullopt;
+  }
+
+  if (HasFloatQuantType(graph_viewer, *qdq_group)) {
     return std::nullopt;
   }
 
@@ -329,6 +371,18 @@ bool UnaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
 
   if (!allow_4bit_ && Is4BitIntType(dt_input)) {
     return false;
+  }
+
+  if (!allow_nonpositive_scale_) {
+    auto get_const_initializer = [&graph_viewer](const std::string& initializer_name) {
+      return graph_viewer.GetConstantInitializer(initializer_name, true);
+    };
+
+    const Node& dq_node = *dq_nodes.front();
+    if (!IsQOrDQScalePositiveConstantScalar(graph_viewer.GetGraph(), dq_node, get_const_initializer,
+                                            graph_viewer.ModelPath())) {
+      return false;
+    }
   }
 
   return true;
@@ -797,18 +851,30 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node&
     return dt_input == dt_output;
   } else {
     // can be converted to MatMulIntegerToFloat if EP supports that.
-    return matmulintegertofloat_allowed_;
+    if (!matmulintegertofloat_allowed_ || !Is8BitIntType(dt_input) || !Is8BitIntType(dt_weight)) {
+      return false;
+    }
+
+    // Scales and output share one floating type; the CPU kernel only supports FLOAT.
+    const int32_t dt_scale_a = dq_nodes[0]->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
+    const int32_t dt_scale_b = dq_nodes[1]->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
+    const int32_t dt_output = node.OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    return dt_scale_a == dt_output && dt_scale_b == dt_output &&
+           (dt_output == ONNX_NAMESPACE::TensorProto::FLOAT ||
+            (dt_output == ONNX_NAMESPACE::TensorProto::FLOAT16 &&
+             node.GetExecutionProviderType() != kCpuExecutionProvider));
   }
 }
 
 // Validate that a DQ node has the correct structure for MatMulNBits fusion.
 // Supports three quantization granularities:
-// - Blockwise: axis=0, block_size is a power-of-two in [16, 256], scale/zp rank 2
+// - Blockwise: axis=0, block_size is a power-of-two in [16, 256], scale/zp rank 2. When
+//   allow_cpu_large_block is set, larger power-of-two blocks are also accepted for 4/8-bit weights.
 // - Per-tensor: scale is scalar (rank 0), no block_size attribute
 // - Per-channel (axis=1): scale is 1D with shape [N], weight is 2D [K,N], no block_size attribute
 // In all cases: weight type is 2/4/8-bit int, scale type is float or float16,
 // weight/scale/zp are constant initializers.
-static bool ValidateDQForMatMulNBits(const Graph& graph, const Node& dq_node) {
+static bool ValidateDQForMatMulNBits(const Graph& graph, const Node& dq_node, bool allow_cpu_large_block) {
   const auto* weight_arg = dq_node.InputDefs()[0];
   const auto* scale_arg = dq_node.InputDefs()[1];
   const auto* zero_point_arg = dq_node.InputDefs().size() == 3 ? dq_node.InputDefs()[2] : nullptr;
@@ -854,7 +920,12 @@ static bool ValidateDQForMatMulNBits(const Graph& graph, const Node& dq_node) {
 
     const auto block_size = block_size_iter->second.i();
     if (!IsValidMatMulNBitsBlockSize(block_size)) {
-      return false;
+      const int64_t bits = Is8BitIntType(dt_weight) ? 8 : (Is4BitIntType(dt_weight) ? 4 : 2);
+      if (!allow_cpu_large_block || !IsValidCpuLargeMatMulNBitsBlockSize(block_size, bits) ||
+          !MlasQDQBlockwiseShapeIsValid(weight_tensor_proto->dims()[0], weight_tensor_proto->dims()[1], block_size,
+                                        bits, true, true)) {
+        return false;
+      }
     }
 
     if (scale_tensor_proto->dims_size() != 2 ||
@@ -900,9 +971,11 @@ static bool ValidateDQForMatMulNBits(const Graph& graph, const Node& dq_node) {
 // Validate Gemm attributes for DQ->MatMulNBits fusion.
 // Gemm must be equivalent to MatMul: alpha=1, transA=0, transB=0.
 // If bias exists, beta must be 1 and bias shape must be [N].
+// alpha and beta must be exactly 1: MatMulNBits drops them, so any other value, including NaN or a value
+// within rounding distance of 1, would change the result.
 static bool ValidateGemmForDQMatMulNBits(const Graph& graph, const Node& gemm_node, const Node& weight_dq_node) {
   if (const auto* alpha_attr = graph_utils::GetNodeAttribute(gemm_node, "alpha");
-      alpha_attr && std::abs(alpha_attr->f() - 1.0f) > 1e-6f)
+      alpha_attr && !(alpha_attr->f() == 1.0f))
     return false;
   if (const auto* trans_a = graph_utils::GetNodeAttribute(gemm_node, "transA");
       trans_a && trans_a->i() != 0)
@@ -913,9 +986,9 @@ static bool ValidateGemmForDQMatMulNBits(const Graph& graph, const Node& gemm_no
 
   const auto& inputs = gemm_node.InputDefs();
   if (inputs.size() > 2 && inputs[2] && inputs[2]->Exists()) {
-    // Bias exists — beta must be 1.0
+    // Bias exists — beta must be exactly 1.0
     if (const auto* beta_attr = graph_utils::GetNodeAttribute(gemm_node, "beta");
-        beta_attr && std::abs(beta_attr->f() - 1.0f) > 1e-6f)
+        beta_attr && !(beta_attr->f() == 1.0f))
       return false;
 
     // Bias shape must be [N] where N = weight dim 1. Prefer reading N and
@@ -967,37 +1040,63 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Nod
     return false;
   }
 
-  // Should not have any Q nodes
-  if (!q_nodes.empty()) {
+  const auto& graph = graph_viewer.GetGraph();
+  const bool is_gemm = node.OpType() == "Gemm";
+  const auto& input_defs = node.InputDefs();
+  if (input_defs.size() < 2) {
     return false;
   }
 
-  const auto& graph = graph_viewer.GetGraph();
-  const bool is_gemm = node.OpType() == "Gemm";
+  // Assign DQ roles by the target input they feed, not by their position in dq_nodes.
+  const Node* activation_dq = nullptr;
+  const Node* weight_dq = nullptr;
+  const Node* bias_dq = nullptr;
+  for (const auto* dq : dq_nodes) {
+    const NodeArg* dq_output = dq->OutputDefs()[0];
+    if (dq_output == input_defs[0] && activation_dq == nullptr) {
+      activation_dq = dq;
+    } else if (dq_output == input_defs[1] && weight_dq == nullptr) {
+      weight_dq = dq;
+    } else if (is_gemm && input_defs.size() > 2 && dq_output == input_defs[2] && bias_dq == nullptr) {
+      bias_dq = dq;
+    } else {
+      return false;
+    }
+  }
 
-  if (is_gemm) {
-    // Gemm: accept 1 DQ (weight only) or 2 DQs (weight + bias).
-    if (dq_nodes.size() < 1 || dq_nodes.size() > 2) {
+  if (!weight_dq || activation_dq == weight_dq) {
+    return false;
+  }
+
+  if (!allow_16bit_activation_boundaries_) {
+    // Float activations only: no activation DQ and no output Q.
+    if (activation_dq != nullptr || !q_nodes.empty()) {
       return false;
     }
   } else {
-    // MatMul: exactly 1 DQ input
-    if (dq_nodes.size() != 1) {
+    // Only INT16/UINT16 activation boundaries are accepted here. They are kept in the graph as-is.
+    if (activation_dq == nullptr && q_nodes.empty()) {
       return false;
     }
-  }
 
-  // Find the weight DQ node — the one feeding input 1 (B)
-  const Node* weight_dq = nullptr;
-  for (const auto* dq : dq_nodes) {
-    if (node.InputDefs()[1] == dq->OutputDefs()[0]) {
-      weight_dq = dq;
-      break;
+    if (activation_dq != nullptr &&
+        !Is16BitIntType(activation_dq->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type())) {
+      return false;
     }
-  }
 
-  if (!weight_dq) {
-    return false;
+    if (!q_nodes.empty()) {
+      // Every consumer of the target output must be a 16-bit Q, and the output must not be a graph output.
+      if (q_nodes.size() != node.GetOutputEdgesCount() || graph_viewer.NodeProducesGraphOutput(node)) {
+        return false;
+      }
+
+      for (const auto* q : q_nodes) {
+        if (q->InputDefs()[0] != node.OutputDefs()[0] ||
+            !Is16BitIntType(q->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type())) {
+          return false;
+        }
+      }
+    }
   }
 
   // Weight DQ must have exactly 1 output edge and not be a graph output
@@ -1021,22 +1120,14 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Nod
   }
 
   if (is_gemm) {
-    // If there's a second DQ node (for bias), it must feed input 2
-    if (dq_nodes.size() == 2) {
-      const Node* bias_dq = (dq_nodes[0] == weight_dq) ? dq_nodes[1] : dq_nodes[0];
-      if (node.InputDefs().size() <= 2 || !node.InputDefs()[2] ||
-          node.InputDefs()[2] != bias_dq->OutputDefs()[0]) {
-        return false;
-      }
-    }
-
     // Validate Gemm attributes (alpha=1, transA=0, transB=0, beta=1 if bias)
     if (!ValidateGemmForDQMatMulNBits(graph, node, *weight_dq)) {
       return false;
     }
   }
 
-  return ValidateDQForMatMulNBits(graph, *weight_dq);
+  return ValidateDQForMatMulNBits(graph, *weight_dq,
+                                  node.GetExecutionProviderType() == kCpuExecutionProvider);
 }
 
 // Check if a QDQ node's scale/zero_point shape is scalar or 1D with a compatible size.
@@ -1193,11 +1284,32 @@ void GemmSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
   builder.input_nodes.resize(3, NodesToOptimizeIndices::kEmptyNodeIndex);
 }
 
-void DQMatMulToMatMulNBitsSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
-  // Keep only the weight DQ (first entry). If a Gemm has a bias DQ, it will be in
-  // position 1 — trim it so RemoveNodes does not delete it. The bias DQ's output
-  // is wired to MatMulNBits input 5 in ProcessNewNode.
-  builder.input_nodes.resize(1);
+std::optional<NodesToOptimizeIndices> DQMatMulToMatMulNBitsSelector::Select(const GraphViewer& graph_viewer,
+                                                                            const Node& node) const {
+  const auto selection = BaseSelector::Select(graph_viewer, node);
+  if (!selection.has_value()) {
+    return std::nullopt;
+  }
+
+  const NodeArg* weight_def = node.InputDefs()[1];
+  NodeIndex weight_dq_index = NodesToOptimizeIndices::kEmptyNodeIndex;
+  for (int i = 0; i < selection->num_inputs; ++i) {
+    const NodeIndex index = selection->nodes[i];
+    const Node* dq = index == NodesToOptimizeIndices::kEmptyNodeIndex ? nullptr : graph_viewer.GetNode(index);
+    if (dq != nullptr && dq->OutputDefs()[0] == weight_def) {
+      weight_dq_index = dq->Index();
+      break;
+    }
+  }
+
+  if (weight_dq_index == NodesToOptimizeIndices::kEmptyNodeIndex) {
+    return std::nullopt;
+  }
+
+  NodesToOptimizeIndicesBuilder builder;
+  builder.input_nodes.push_back(weight_dq_index);
+  builder.target_node = node.Index();
+  return builder.Build();
 }
 
 bool WhereNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
