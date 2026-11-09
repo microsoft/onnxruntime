@@ -40,10 +40,6 @@
 #include "core/providers/cuda/cuda_nhwc_kernels.h"
 #endif
 
-#ifdef ENABLE_TRAINING_OPS
-#include "orttraining/training_ops/cuda/cuda_training_kernels.h"
-#endif
-
 #ifdef USE_TRITON_KERNEL
 #include "core/providers/cuda/triton_kernel.h"
 #endif
@@ -439,7 +435,7 @@ std::optional<bool> CUDAExecutionProvider::ShouldConvertDataLayoutForOp([[maybe_
 
   return cuda::IsNhwcEligible(node_domain, node_op_type);
 
-#else  // defined(ENABLE_CUDA_NHWC_OPS)
+#else
   ORT_UNUSED_PARAMETER(node_domain);
   ORT_UNUSED_PARAMETER(node_op_type);
   ORT_UNUSED_PARAMETER(target_data_layout);
@@ -3588,9 +3584,6 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
   ORT_RETURN_IF_ERROR(::onnxruntime::cuda::RegisterCudaNhwcKernels(kernel_registry));
 #endif
 
-#ifdef ENABLE_TRAINING_OPS
-  ORT_RETURN_IF_ERROR(::onnxruntime::cuda::RegisterCudaTrainingKernels(kernel_registry));
-#endif
 #endif
 
   return Status::OK();

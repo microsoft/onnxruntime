@@ -47,9 +47,6 @@
 #endif
 
 #include "core/framework/stream_handles.h"
-#ifdef ENABLE_TRAINING
-#include "core/framework/program_region.h"
-#endif
 
 namespace onnxruntime {
 
@@ -188,27 +185,6 @@ class SessionState {
   bool IsSparseInitializer(int ort_value_index) const;
 #endif
 
-#ifdef ENABLE_TRAINING
-  // This is referenced in training::TrainingSession. Should be removed when this class is removed.
-  /**
-    Get some initialized tensors (weights).
-    @param interested_weights The names of the weights to retrieve.
-    @param allow_missing_weights Whether to allow names in interested_weights
-           with no corresponding weight.
-    @param[out] retrieved_weights The retrieved weights.
-    @return The status of the operation.
-    */
-  Status GetInitializedTensors(
-      const std::unordered_set<std::string>& interested_weights,
-      bool allow_missing_weights, NameMLValMap& retrieved_weights) const;
-
-  /**
-    Get some initialized tensors (weights).
-    Any names in interested_weights with no corresponding weight are ignored.
-    */
-  NameMLValMap GetInitializedTensors(const std::unordered_set<std::string>& interested_weights) const;
-#endif
-
   // execution plan. nullptr until FinalizeSessionState is called
   const SequentialExecutionPlan* GetExecutionPlan() const;
 
@@ -237,16 +213,8 @@ class SessionState {
   /**
   Get cached memory pattern based on input shapes
   Must be called only when all values contain tensors
-  In training scenarios, the cache may be updated so
-  the callers would receive a copy of inferred shapes
-  made under mutex being held. In inference scenarios,
-  it is not mutable, we do not obtain a lock and simply get a pointer
-  w/o copying a hashtable
   */
-  const MemoryPatternGroup* GetMemoryPatternGroup(
-      gsl::span<const OrtValue> tensor_inputs,
-      gsl::span<const int> feed_mlvalue_idxs,
-      const InlinedHashMap<int, TensorShape>*& inferred_shapes) const;
+  const MemoryPatternGroup* GetMemoryPatternGroup(gsl::span<const OrtValue> tensor_inputs) const;
 
   /**
   Set generated memory pattern with a given input shapes.
@@ -323,10 +291,6 @@ class SessionState {
   InlinedVector<BufferUniquePtr>& GetMutableWeightsBuffers() noexcept { return weights_buffers_; }
 
   const NodeIndexInfo& GetNodeIndexInfo() const;
-#ifdef ENABLE_TRAINING
-  void UpdateToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs);
-  const InlinedHashSet<NodeIndex>* GetToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs) const;
-#endif
 
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                               const KernelRegistryManager& kernel_registry_manager,
@@ -471,14 +435,6 @@ class SessionState {
                                   const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map = {},
                                   bool graph_info_already_created = false);
 
-#ifdef ENABLE_TRAINING
-  Status GeneratePatternGroupCache(
-      gsl::span<const OrtValue> inputs,
-      gsl::span<const int> feed_mlvalue_idxs,
-      MemoryPatternGroup& output,
-      InlinedHashMap<int, TensorShape>& inferred_shapes) const;
-#endif
-
   // KernelCreateInfo for each node so we do kernel lookup once
   KernelCreateInfoMap kernel_create_info_map_;
 
@@ -584,14 +540,6 @@ class SessionState {
   // cache for the generated mem_patterns. key is calculated based on input shapes.
   // must be a node based container as a pointer is cached.
   mutable NodeHashMap<int64_t, MemoryPatternGroup> mem_patterns_;
-  // This is mutable under mutex in training scenarios so execution frame would make a copy
-  // of the value when created.
-#ifdef ENABLE_TRAINING
-  mutable NodeHashMap<int64_t, InlinedHashMap<int, TensorShape>> shape_patterns_;
-#else
-  NodeHashMap<int64_t, InlinedHashMap<int, TensorShape>> shape_patterns_;
-#endif
-
   NameNodeInfoMapType input_names_to_nodeinfo_mapping_;
   NameNodeInfoMapType output_names_to_nodeinfo_mapping_;
 
@@ -614,15 +562,6 @@ class SessionState {
   // the cache is valid until any session reliant on it is still in scope.
   // prepacked_weights_container_ can be nullptr if no caching is required for prepacked weights
   PrepackedWeightsContainer* const prepacked_weights_container_{};
-
-#ifdef ENABLE_TRAINING
-// Needed for ORTTrainer. Should be removed along with ORTTrainer code
-#ifndef DISABLE_ABSEIL
-  InlinedHashMap<InlinedVector<int>, InlinedHashSet<NodeIndex>> to_be_executed_nodes_;
-#else
-  std::map<InlinedVector<int>, InlinedHashSet<NodeIndex>> to_be_executed_nodes_;
-#endif
-#endif
 
   SessionState* parent_ = nullptr;
   // Assign each graph in each session an unique id.

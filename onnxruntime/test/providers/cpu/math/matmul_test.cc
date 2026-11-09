@@ -750,7 +750,6 @@ TEST(MathOpTest, MatMul_bfloat16) {
 }
 #endif
 
-#ifndef ENABLE_TRAINING
 // Prepacking is disabled in full training build so no need to test the feature in a training build.
 TEST(MathOpTest, MatMulSharedPrepackedWeights) {
   OpTester test("MatMul");
@@ -884,8 +883,6 @@ TEST(MathOpTest, MatMulBatchedSplitK) {
       .Config(run_with_tunable_op)
       .RunWithConfig();
 }
-
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -333,19 +333,6 @@ class PlannerImpl {
 #endif
 
     *is_strided_tensor = false;
-#ifdef ENABLE_TRAINING
-    // Inputs of Yields are essentially the outputs for FW partial subgraph
-    // These tensors will be passed back to pytorch, thus cannot share the buffer with other tensors
-
-    // Unhandled corner case:
-    // If FW output tensor is consumed by BW graph, and pytorch performs an inplace operation on th returned tensor,
-    // we will run into a buffer corruption problem.
-    // One potential fix is returning a copy of output tensor, if it has downstream dependency
-    auto p_next_node = node.OutputNodesBegin();
-    if (p_next_node != node.OutputNodesEnd() && p_next_node->OpType() == "YieldOp") {
-      return false;
-    }
-#endif  // ENABLE_TRAINING
 
     auto p_output_arg = node.OutputDefs()[output_arg_num];
     const KernelCreateInfo& ci = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
@@ -1055,28 +1042,6 @@ class PlannerImpl {
 
   std::vector<std::pair<int, int>> GetAliasMap(const Node& node, const KernelCreateInfo& kernel_create_info) {
     ORT_ENFORCE(kernel_create_info.kernel_def != nullptr, "KernelDef is null for node: ", node.Name());
-#ifdef ENABLE_TRAINING_TORCH_INTEROP
-    if ((node.OpType().compare("PythonOp") == 0 || node.OpType().compare("PythonOpGrad") == 0) &&
-        node.Domain() == kMSDomain) {
-      const auto& attrs = node.GetAttributes();
-      auto attr_it = attrs.find("tensor_reuse_map");
-      if (attr_it != attrs.end()) {
-        const auto& inplace_map = attr_it->second.ints();
-        std::vector<std::pair<int, int>> alias_map;
-        alias_map.reserve(inplace_map.size());
-        for (int i = 0; i < inplace_map.size(); ++i) {
-          int output_index = i;
-          int input_index = inplace_map[i];
-          if (input_index == -1) {
-            // skip because no reuse for this output
-            continue;
-          }
-          alias_map.emplace_back(std::make_pair(input_index, output_index));
-        }
-        return alias_map;
-      }
-    }
-#endif
 
     return kernel_create_info.kernel_def->Alias();
   }
@@ -1716,7 +1681,7 @@ class PlannerImpl {
 #ifdef ENABLE_STRIDED_TENSORS
           if (is_strided_tensor) AllocPlan(current).is_strided_tensor = true;
 #else
-          ORT_ENFORCE(!is_strided_tensor, "Strided tensor is not supported in non-training build for now.");
+          ORT_ENFORCE(!is_strided_tensor, "Strided tensor support requires ENABLE_STRIDED_TENSORS.");
 #endif  // ENABLE_STRIDED_TENSORS
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
           InplaceReuse(reused, current);
@@ -1810,55 +1775,6 @@ class PlannerImpl {
     return Status::OK();
   }
 
-#ifdef ENABLE_TRAINING
-  Status CalculateProgramCounter() {
-    ClearUseCount();
-    ORT_RETURN_IF_ERROR(ComputeReuseCount());
-    auto& execution_plan = plan_.node_execution_order_in_training;
-    for (size_t program_counter = 0; program_counter < execution_plan.size(); ++program_counter) {
-      auto node_index = execution_plan[program_counter];
-      // the node (aka operator) which carries the considered program (aka computation).
-      const auto* pnode = graph_viewer_.GetNode(node_index);
-      // node outputs.
-      const auto& output_defs = pnode->OutputDefs();
-      for (size_t output_arg_def_index = 0, end = output_defs.size(); output_arg_def_index < end; ++output_arg_def_index) {
-        const auto& node_output = output_defs[output_arg_def_index];
-        if (!node_output->Exists()) continue;
-        // OrtValue index of the considered output NodeArg.
-        const auto current = Index(node_output->Name());
-        if (AllocPlan(current).alloc_kind == AllocKind::kAllocate ||
-            AllocPlan(current).alloc_kind == AllocKind::kAllocatedExternally) {
-          AllocPlan(current).program_counter.AddStart(program_counter);
-        }
-      }
-
-      auto& node_release_action = plan_.node_release_list[node_index];
-      for (auto& action_idx : node_release_action) {
-        if (plan_.release_actions[action_idx].ref_count == 1) {
-          int value_idx = static_cast<OrtValueIndex>(plan_.release_actions[action_idx].value_index);
-          AllocPlan(value_idx).program_counter.AddEnd(program_counter);
-        } else {
-          // if the releaase action depends on multiple nodes,
-          // we can't have a fixed lifetime for it.
-          // leave it empty and we will assign it to the lifetime of the whole program at line 1698
-        }
-      }
-    }
-
-    // there are some corner case that an node's output is not graph output but has no consumer
-    // currently we didn't generate deallocation plan for those values.
-    // so manually fix the PC here.
-    // TODO: fix the deallocation plan
-    for (auto& alloc_plan : plan_.allocation_plan) {
-      if ((alloc_plan.program_counter.Starts().size() - alloc_plan.program_counter.Ends().size()) == 1) {
-        alloc_plan.program_counter.AddEnd(execution_plan.size());
-      }
-    }
-
-    return Status::OK();
-  }
-#endif
-
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   void CalculateLifetime(std::vector<int>& ort_value_usecount) {
     auto& execution_plan = graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder());
@@ -1917,68 +1833,6 @@ class PlannerImpl {
     }
   }
 #endif
-
-#ifdef ENABLE_TRAINING_CORE
-  bool AllocateInputsContiguously(const Node& node) const {
-    const KernelCreateInfo& ci = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
-    if (ci.kernel_def == nullptr) {
-      return false;
-    }
-
-    return ci.kernel_def->AllocateInputsContiguously();
-  }
-
-  // Compute allocation order for tensors that are required to be allocated contiguously.
-  Status ComputeAllocationOrder() {
-    for (auto& stream : stream_nodes_) {
-      std::vector<OrtValueIndex>& initializer_allocation_order(plan_.initializer_allocation_order);
-      std::vector<OrtValueIndex>& activation_allocation_order(plan_.activation_allocation_order);
-      for (auto& step : stream) {
-        const auto* pnode = graph_viewer_.GetNode(step);
-        if (pnode == nullptr) return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cannot find the node ", step);
-        if (!AllocateInputsContiguously(*pnode)) continue;
-        // This node has requested inputs be allocated contiguously.
-        const auto& input_defs = pnode->InputDefs();
-        onnxruntime::AllocKind input_kind = AllocKind::kAllocateStatically;
-        bool set_input_kind = true;
-        for (const auto& node_input : input_defs) {
-          if (!node_input->Exists()) continue;
-          const auto current_idx = Index(node_input->Name());
-          const auto& current_plan = AllocPlan(current_idx);
-          const auto actual_idx = current_plan.alloc_kind == AllocKind::kReuse ? current_plan.reused_buffer : current_idx;
-          const auto& actual_plan = AllocPlan(actual_idx);
-          if (set_input_kind) {
-            input_kind = actual_plan.alloc_kind;
-            set_input_kind = false;
-          }
-
-          if ((actual_plan.alloc_kind == AllocKind::kAllocateStatically) && (input_kind != AllocKind::kAllocateStatically))
-            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "AllocateInputsContiguously() requires all inputs to be initializers, or all inputs to be non-initializers.");
-
-          if (actual_plan.alloc_kind == AllocKind::kAllocateStatically) {
-            if (std::find(initializer_allocation_order.begin(), initializer_allocation_order.end(), actual_idx) == initializer_allocation_order.end())
-              initializer_allocation_order.push_back(actual_idx);
-          } else {
-            if (std::find(activation_allocation_order.begin(), activation_allocation_order.end(), actual_idx) == activation_allocation_order.end())
-              activation_allocation_order.push_back(actual_idx);
-          }
-        }
-      }
-    }
-    return Status::OK();
-  }
-#endif
-
-  void VerifyMemoryTimeSchedule() {
-    size_t idx = 0;
-    for (const auto& entry : plan_.allocation_plan) {
-      if (entry.alloc_kind == AllocKind::kAllocate) {
-        ORT_ENFORCE(entry.program_counter.HasValidEntries(), "Invalid program_counter entries at index ", idx);
-      }
-
-      ++idx;
-    }
-  }
 
   // Convert information in execution plan and memory reuse plan into release plan
   Status GenerateDeallocationPlan() {
@@ -2133,31 +1987,6 @@ class PlannerImpl {
     // 2. Determining following things:
     //    a. which node needs to generate the notification
     //    b. which node needs to trigger downstream
-#ifdef ENABLE_TRAINING
-    // We will leverage the topological order for the training scenario.
-    // The nodes before yieldOp in topo-order will be executed in RunForward() and nodes after will be executed in RunBackward()
-    // This partition may not be exactly the same as forward model/gradient model, for example, some nodes in gradient model are
-    // before yieldOp thus will be executed in RunForward()
-    // But the final result is still correct, as long as all the nodes will be executed in either RunForward() or RunBackward()
-    // and no dependency conflict during the execution.
-    const std::vector<NodeIndex>& topo_sort = graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder());
-    plan_.node_index_2_toposort_index.reserve(topo_sort.size());
-    size_t yieldOp_index_in_toposort = topo_sort.size();
-    for (size_t i = 0; i < topo_sort.size(); i++) {
-      plan_.node_index_2_toposort_index[topo_sort[i]] = i;
-      const Node* node = graph_viewer_.GetNode(topo_sort[i]);
-      if (node->OpType() == "YieldOp") {
-        ORT_ENFORCE(yieldOp_index_in_toposort == topo_sort.size(), "Two YieldOp in the graph");
-        yieldOp_index_in_toposort = i;
-      }
-    }
-
-    auto AreNodesSeparatedByYield = [&](NodeIndex producer, NodeIndex consumer) {
-      size_t producer_topoindex = plan_.node_index_2_toposort_index[producer];
-      size_t consumer_topoindex = plan_.node_index_2_toposort_index[consumer];
-      return producer_topoindex < yieldOp_index_in_toposort && yieldOp_index_in_toposort < consumer_topoindex;
-    };
-#endif
 
     size_t num_trigger_points = 0;
     InlinedHashMap<NodeIndex, size_t> node_to_trigger_points;
@@ -2173,13 +2002,7 @@ class PlannerImpl {
         auto* node = graph_viewer_.GetNode(node_index);
         for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
           // if the output node is not in the same stream, generate a trigger point
-          if (plan_.node_stream_map_[it->Index()] != i
-#ifdef ENABLE_TRAINING
-              // Do not insert Barrier/TriggerDownStream step if the producer and consumer are in different sides of yieldOp
-              // As in this case producer will surely be ready before the consumer is running.
-              && !AreNodesSeparatedByYield(node_index, it->Index())
-#endif
-          ) {
+          if (plan_.node_stream_map_[it->Index()] != i) {
             node_to_trigger_points[node_index] = num_trigger_points++;
             break;
           }
@@ -2280,11 +2103,7 @@ class PlannerImpl {
           visited.insert(it->Index());
 
           // add barrier if input node is not in this logic stream
-          if (std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), it->Index()) == stream_nodes_[i].end()
-#ifdef ENABLE_TRAINING
-              && !AreNodesSeparatedByYield(it->Index(), node_index)
-#endif
-          ) {
+          if (std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), it->Index()) == stream_nodes_[i].end()) {
             // find the trigger_point_id
             auto trigger_point_it = node_to_trigger_points.find(it->Index());
             ORT_ENFORCE(trigger_point_it != node_to_trigger_points.end());
@@ -2347,97 +2166,6 @@ class PlannerImpl {
         value_node_map_[output_idx_global] = node_index;
       }
     }
-#ifdef ENABLE_TRAINING
-    // 5. build the node_execution_order_in_training
-    //  the training memory optimization rely on a stable order how kernel get launched to calculate memory pattern
-    //  so we limit training scenario to run with single stream and single thread mode
-    //  the code below will simulate the execution and get the stable execution order
-    InlinedVector<int> execution_offsets(num_logic_streams_, -1);
-    InlinedHashSet<OrtValueIndex> produced_values;
-
-    for (auto graph_input : graph_viewer_.GetInputs()) {
-      OrtValueIndex index = Index(graph_input->Name());
-      produced_values.insert(index);
-    }
-
-    for (auto out_scope_arg : graph_viewer_.GetOuterScopeNodeArgNames()) {
-      OrtValueIndex index = Index(out_scope_arg);
-      produced_values.insert(index);
-    }
-
-    for (const auto& pair : graph_viewer_.GetAllInitializedTensors()) {
-      const auto& initializer_name = pair.first;
-      OrtValueIndex index = Index(initializer_name);
-      produced_values.insert(index);
-    }
-
-    InlinedHashSet<OrtValueIndex> producable_values;
-    for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder())) {
-      auto* node = graph_viewer_.GetNode(node_index);
-      // add the output to produce nodes list
-      for (auto* output_def : node->OutputDefs()) {
-        if (!output_def->Exists())
-          continue;
-        OrtValueIndex index = Index(output_def->Name());
-        producable_values.insert(index);
-      }
-    }
-
-    std::function<void(size_t, int)> process_stream;
-    process_stream = [&](size_t i, int node_offset) {
-      if (node_offset > execution_offsets[i])
-        return;
-      while (execution_offsets[i] < static_cast<int>(stream_nodes_[i].size())) {
-        if (execution_offsets[i] == -1) {
-          execution_offsets[i]++;
-          continue;
-        }
-        NodeIndex node_index = stream_nodes_[i][execution_offsets[i]];
-        auto* node = graph_viewer_.GetNode(node_index);
-        // check whether the node is ready:
-        bool input_ready = true;
-        for (auto* input_def : node->InputDefs()) {
-          if (!input_def->Exists())
-            continue;
-          OrtValueIndex index = Index(input_def->Name());
-          if (produced_values.find(index) == produced_values.end() &&
-              producable_values.find(index) != producable_values.end()) {
-            input_ready = false;
-            break;
-          }
-        }
-        if (!input_ready)
-          break;
-        // trace the execution of this node
-        plan_.node_execution_order_in_training.push_back(node_index);
-        // add the output to produce nodes list
-        for (auto* output_def : node->OutputDefs()) {
-          if (!output_def->Exists())
-            continue;
-          OrtValueIndex index = Index(output_def->Name());
-          produced_values.insert(index);
-        }
-        // trigger downstream
-        for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
-          auto stream_idx = plan_.node_stream_map_[it->Index()];
-          if (stream_idx != i) {
-            auto node_it = std::find(stream_nodes_[stream_idx].begin(), stream_nodes_[stream_idx].end(), it->Index());
-            int offset = static_cast<int>(std::distance(stream_nodes_[stream_idx].begin(), node_it));
-            process_stream(stream_idx, offset);
-          }
-        }
-        // move_to_next
-        execution_offsets[i]++;
-      }
-    };
-
-    auto num_of_nodes = graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder()).size();
-    plan_.node_execution_order_in_training.reserve(num_of_nodes);
-    for (size_t i = 0; i < stream_nodes_.size(); ++i) {
-      process_stream(i, -1);
-    }
-    ORT_ENFORCE(plan_.node_execution_order_in_training.size() == num_of_nodes);
-#endif
 
     return Status::OK();
   }
@@ -2515,23 +2243,8 @@ Status PlannerImpl::CreatePlan(
   AdjustInplaceLifeIntervals();
 #endif
 
-#ifdef ENABLE_TRAINING_CORE
-  // Determine allocation order for weights and activations. This needs to be done after ComputeReusePlan.
-  ORT_RETURN_IF_ERROR(ComputeAllocationOrder());
-#endif
-
   // convert buffer lifetime information into a deallocation plan in required format
   ORT_RETURN_IF_ERROR(GenerateDeallocationPlan());
-
-  // generate program counter
-#ifdef ENABLE_TRAINING
-  ORT_RETURN_IF_ERROR(CalculateProgramCounter());
-#endif
-
-  // Ensure Memory-Time schedule is valid. This should be called at the end because memory start/end timestamps
-  // are updated until GenerateDeallocationPlan is finished.
-  // TODO: enable verification
-  // VerifyMemoryTimeSchedule();
 
   return Status::OK();
 }

@@ -207,7 +207,7 @@ typedef NSData* _Nullable (^ORTEpContextDataReadBlock)(NSString* name, NSError**
  *
  * Available since 1.31.
  *
- * The block is copied and retained by these options. Each `ORTSession` or `ORTTrainingSession` created from the options
+ * The block is copied and retained by these options. Each `ORTSession` created from the options
  * takes its own strong registration snapshot for the session lifetime, so replacing or clearing the block only affects
  * future sessions.
  * ONNX Runtime may invoke the block concurrently from arbitrary threads; the block and any captured state must be
@@ -236,7 +236,7 @@ typedef NSData* _Nullable (^ORTEpContextDataReadBlock)(NSString* name, NSError**
  *
  * Available since 1.31.
  *
- * `ORTSession` and `ORTTrainingSession` instances already created from these options retain their registration snapshot
+ * `ORTSession` instances already created from these options retain their registration snapshot
  * for the session lifetime.
  *
  * @param error Optional error information set if clearing fails.

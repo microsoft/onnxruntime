@@ -149,13 +149,7 @@ void DnnlLayerNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   }
 
   // X = LayerNornm(X)
-  // Check if we are training and need the extra outputs for backprop
-  dnnl::prop_kind prop_kind;
-#if 0  // defined(ENABLE_TRAINING)
-  prop_kind = dnnl::prop_kind::forward_training;
-#else
-  prop_kind = dnnl::prop_kind::forward_inference;
-#endif  // ENABLE_TRAINING
+  const auto prop_kind = dnnl::prop_kind::forward_inference;
 
   // If beta is available use shift, else only scale
   dnnl::normalization_flags op_flags = dnnl::normalization_flags::use_scale;
@@ -212,24 +206,6 @@ void DnnlLayerNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
       lnorm_args.insert({DNNL_ARG_SHIFT, beta_mem});
     }
   }
-
-// Check outputs used for training
-#if 0   // defined(ENABLE_TRAINING)
-  // If Mean exists
-  if (node.OutputCount() > 1) {
-    if (node.Output(OUT_MEAN).Exists()) {
-      auto mean_mem = dnnl::memory(lnorm_pd.mean_desc(), dnnl_engine);
-      lnorm_args.insert({DNNL_ARG_MEAN, mean_mem});
-      sp.SetMemory(node.Output(OUT_MEAN), mean_mem);
-    }
-    // If Variance exists
-    if (node.Output(OUT_INV_STD_VAR).Exists()) {
-      auto variance_mem = dnnl::memory(lnorm_pd.variance_desc(), dnnl_engine);
-      lnorm_args.insert({DNNL_ARG_VARIANCE, variance_mem});
-      sp.SetMemory(node.Output(OUT_INV_STD_VAR), variance_mem);
-    }
-  }
-#endif  // ENABLE_TRAINING
 
   sp.AddPrimitive(lnorm_prim, lnorm_args);
 

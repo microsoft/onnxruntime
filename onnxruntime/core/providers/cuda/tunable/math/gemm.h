@@ -32,9 +32,6 @@ struct GemmParams : OpParams {
   int bn_;
   const Gemm<T>* gemm_kernel_;
   OpKernelContext* ctx_;
-#ifdef ENABLE_TRITON
-  bool has_triton_support_ = false;
-#endif
 };
 
 template <typename T>

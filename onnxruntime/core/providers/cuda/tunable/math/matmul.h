@@ -27,9 +27,6 @@ struct MatMulParams : OpParams {
   MatMulComputeHelper& helper_;
   const MatMul<T>* matmul_kernel_;
   OpKernelContext* ctx_;
-#ifdef ENABLE_TRITON
-  bool has_triton_support_ = false;
-#endif
 };
 
 template <typename T>

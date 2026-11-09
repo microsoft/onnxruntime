@@ -10,9 +10,6 @@
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
-#ifdef ENABLE_TRAINING
-#include "contrib_ops/cpu/aten_ops/aten_op.h"
-#endif
 
 using namespace onnxruntime::common;
 namespace onnxruntime {
@@ -803,20 +800,6 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
                                          cudaMemcpyDeviceToDevice, Stream(ctx)));
     return Status::OK();
   }
-
-#ifdef ENABLE_TRAINING
-  // Use ATen for ReduceSum if possible.
-  const TensorShape& input_shape = X->Shape();
-  if (contrib::IsATenOperatorExecutorInitialized() && cudnn_reduce_op == CUDNN_REDUCE_TENSOR_ADD && !calculate_log_ &&
-      !calculate_sqt_ && !log_sum_exp_ && input_shape.Size() > 0) {
-    if (axes.empty()) {
-      axes.resize(input_shape.NumDimensions());
-      std::iota(axes.begin(), axes.end(), 0);
-    }
-    ORT_RETURN_IF_ERROR(contrib::ExecuteReduceSumATen(ctx, axes, keepdims_));
-    return Status::OK();
-  }
-#endif
 
   PrepareReduceMetadata prepare_reduce_metadata;
   ORT_RETURN_IF_ERROR(PrepareForReduce(X, keepdims_, axes, prepare_reduce_metadata));

@@ -356,67 +356,6 @@ cudnnStatus_t CUDNNWINAPI cudnnGetConvolutionForwardWorkspaceSize(
                            sizeInBytes);
 }
 
-// The entry points below are only referenced by the training kernels in orttraining/orttraining/training_ops/cuda/nn/
-// (onnxruntime_ENABLE_TRAINING=ON), but they must still go through the loader, or the provider gets a direct cuDNN
-// dependency again.
-cudnnStatus_t CUDNNWINAPI cudnnGetConvolutionBackwardDataAlgorithm_v7(
-    cudnnHandle_t handle, const cudnnFilterDescriptor_t filterDesc, const cudnnTensorDescriptor_t diffDesc,
-    const cudnnConvolutionDescriptor_t convDesc, const cudnnTensorDescriptor_t gradDesc, const int requestedAlgoCount,
-    int* returnedAlgoCount, cudnnConvolutionBwdDataAlgoPerf_t* perfResults) {
-  ORT_CUDNN_FORWARD_STATUS(cudnnGetConvolutionBackwardDataAlgorithm_v7, handle, filterDesc, diffDesc, convDesc,
-                           gradDesc, requestedAlgoCount, returnedAlgoCount, perfResults);
-}
-
-cudnnStatus_t CUDNNWINAPI cudnnGetConvolutionBackwardDataWorkspaceSize(
-    cudnnHandle_t handle, const cudnnFilterDescriptor_t wDesc, const cudnnTensorDescriptor_t dyDesc,
-    const cudnnConvolutionDescriptor_t convDesc, const cudnnTensorDescriptor_t dxDesc,
-    cudnnConvolutionBwdDataAlgo_t algo, size_t* sizeInBytes) {
-  ORT_CUDNN_FORWARD_STATUS(cudnnGetConvolutionBackwardDataWorkspaceSize, handle, wDesc, dyDesc, convDesc, dxDesc, algo,
-                           sizeInBytes);
-}
-
-cudnnStatus_t CUDNNWINAPI cudnnConvolutionBackwardFilter(
-    cudnnHandle_t handle, const void* alpha, const cudnnTensorDescriptor_t xDesc, const void* x,
-    const cudnnTensorDescriptor_t dyDesc, const void* dy, const cudnnConvolutionDescriptor_t convDesc,
-    cudnnConvolutionBwdFilterAlgo_t algo, void* workSpace, size_t workSpaceSizeInBytes, const void* beta,
-    const cudnnFilterDescriptor_t dwDesc, void* dw) {
-  ORT_CUDNN_FORWARD_STATUS(cudnnConvolutionBackwardFilter, handle, alpha, xDesc, x, dyDesc, dy, convDesc, algo,
-                           workSpace, workSpaceSizeInBytes, beta, dwDesc, dw);
-}
-
-cudnnStatus_t CUDNNWINAPI cudnnFindConvolutionBackwardFilterAlgorithmEx(
-    cudnnHandle_t handle, const cudnnTensorDescriptor_t xDesc, const void* x, const cudnnTensorDescriptor_t dyDesc,
-    const void* y, const cudnnConvolutionDescriptor_t convDesc, const cudnnFilterDescriptor_t dwDesc, void* dw,
-    const int requestedAlgoCount, int* returnedAlgoCount, cudnnConvolutionBwdFilterAlgoPerf_t* perfResults,
-    void* workSpace, size_t workSpaceSizeInBytes) {
-  ORT_CUDNN_FORWARD_STATUS(cudnnFindConvolutionBackwardFilterAlgorithmEx, handle, xDesc, x, dyDesc, y, convDesc,
-                           dwDesc, dw, requestedAlgoCount, returnedAlgoCount, perfResults, workSpace,
-                           workSpaceSizeInBytes);
-}
-
-cudnnStatus_t CUDNNWINAPI cudnnGetConvolutionBackwardFilterAlgorithm_v7(
-    cudnnHandle_t handle, const cudnnTensorDescriptor_t srcDesc, const cudnnTensorDescriptor_t diffDesc,
-    const cudnnConvolutionDescriptor_t convDesc, const cudnnFilterDescriptor_t gradDesc, const int requestedAlgoCount,
-    int* returnedAlgoCount, cudnnConvolutionBwdFilterAlgoPerf_t* perfResults) {
-  ORT_CUDNN_FORWARD_STATUS(cudnnGetConvolutionBackwardFilterAlgorithm_v7, handle, srcDesc, diffDesc, convDesc,
-                           gradDesc, requestedAlgoCount, returnedAlgoCount, perfResults);
-}
-
-cudnnStatus_t CUDNNWINAPI cudnnGetConvolutionBackwardFilterWorkspaceSize(
-    cudnnHandle_t handle, const cudnnTensorDescriptor_t xDesc, const cudnnTensorDescriptor_t dyDesc,
-    const cudnnConvolutionDescriptor_t convDesc, const cudnnFilterDescriptor_t gradDesc,
-    cudnnConvolutionBwdFilterAlgo_t algo, size_t* sizeInBytes) {
-  ORT_CUDNN_FORWARD_STATUS(cudnnGetConvolutionBackwardFilterWorkspaceSize, handle, xDesc, dyDesc, convDesc, gradDesc,
-                           algo, sizeInBytes);
-}
-
-cudnnStatus_t CUDNNWINAPI cudnnConvolutionBackwardBias(cudnnHandle_t handle, const void* alpha,
-                                                       const cudnnTensorDescriptor_t dyDesc, const void* dy,
-                                                       const void* beta, const cudnnTensorDescriptor_t dbDesc,
-                                                       void* db) {
-  ORT_CUDNN_FORWARD_STATUS(cudnnConvolutionBackwardBias, handle, alpha, dyDesc, dy, beta, dbDesc, db);
-}
-
 cudnnStatus_t CUDNNWINAPI cudnnGetReductionIndicesSize(cudnnHandle_t handle,
                                                        const cudnnReduceTensorDescriptor_t reduceTensorDesc,
                                                        const cudnnTensorDescriptor_t aDesc,

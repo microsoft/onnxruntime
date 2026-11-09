@@ -29,16 +29,5 @@ void GatherNDImpl(
     const size_t slice_size,
     const int64_t* input_slice_offsets_data);
 
-#ifdef ENABLE_TRAINING_OPS
-template <typename T>
-void GatherNDGradImpl(
-    cudaStream_t stream,
-    const size_t num_slices,
-    const void* update_data,
-    void* output_data,
-    const size_t slice_size,
-    const int64_t* input_slice_offsets_data);
-#endif
-
 }  // namespace cuda
 }  // namespace onnxruntime

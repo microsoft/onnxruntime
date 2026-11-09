@@ -1061,7 +1061,6 @@ def quantize(
             extra_options=quant_config.extra_options,
         )
     else:
-        # training package doesn't has quantize_matmul_4bits, avoid global import
         from .matmul_nbits_quantizer import MatMulNBitsQuantizer, WeightOnlyQuantConfig  # noqa: PLC0415
 
         if isinstance(quant_config, WeightOnlyQuantConfig):

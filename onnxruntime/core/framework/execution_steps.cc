@@ -67,14 +67,6 @@ Status LaunchKernelStep::Execute(StreamExecutionContext& ctx,
                                  SessionScope& session_scope,
                                  const bool& terminate_flag,
                                  bool& continue_flag) {
-#ifdef ENABLE_TRAINING
-  // legacy code required by ORTTrainer. Should be removed when ORTTrainer is removed
-  auto* node_to_execute = ctx.GetNodeToExecute();
-  if (node_to_execute && node_to_execute->count(node_index_) == 0) {
-    continue_flag = true;
-    return Status::OK();
-  }
-#endif
   Status status = ExecuteKernel(ctx, node_index_, stream_idx, terminate_flag, session_scope);
   continue_flag = status.IsOK();
   return status;

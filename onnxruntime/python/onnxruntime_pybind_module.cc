@@ -113,7 +113,6 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   auto st = CreateInferencePybindStateModule(m);
   if (!st.IsOK())
     throw pybind11::import_error(st.ErrorMessage());
-  // move it out of shared method since training build has a little different behavior.
   m.def(
       "get_available_providers", []() -> std::vector<std::string> {
         auto available = GetAvailableExecutionProviderNames();

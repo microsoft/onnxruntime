@@ -144,7 +144,7 @@ There is no original-versus-fused speed tournament, online benchmark, or optimal
 Pattern selection requires explicit enablement and optimization level at least L2. Absent, disabled,
 and Basic-only configurations preserve ordinary behavior. Required-pattern policy at Basic fails
 configuration validation. Initial scope is ordinary ONNX inference initialization; ORT-format
-loading, compile-only sessions, training, online repartition, and optimized-cache replay need
+loading, compile-only sessions, online repartition, and optimized-cache replay need
 separate support. Optional use on those paths is diagnosed as not applicable; required use fails.
 
 `GetCapability` can be called again as graphs/providers/layouts change. Discovery must therefore be

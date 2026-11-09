@@ -65,13 +65,6 @@ DnnlOpManager::DnnlOpManager() {
   dnnl_ops_map_.emplace(std::make_pair("Tanh", std::unique_ptr<DnnlNodeCapability>(new DnnlElementwiseCapability())));
   dnnl_ops_map_.emplace(std::make_pair("Transpose", std::unique_ptr<DnnlNodeCapability>(new DnnlDefaultNodeCapability({type_float32, type_bfloat16}))));
   dnnl_ops_map_.emplace(std::make_pair("Unsqueeze", std::unique_ptr<DnnlNodeCapability>(new DnnlSqueezeNodeCapability())));
-#if defined(ENABLE_TRAINING)
-  dnnl_ops_map_.emplace(std::make_pair("AveragePoolGrad", std::unique_ptr<DnnlNodeCapability>(new DnnlPoolNodeCapability())));
-  dnnl_ops_map_.emplace(std::make_pair("ConvGrad", std::unique_ptr<DnnlNodeCapability>(new DnnlDefaultNodeCapability())));
-  dnnl_ops_map_.emplace(std::make_pair("MaxPoolGrad", std::unique_ptr<DnnlNodeCapability>(new DnnlPoolNodeCapability())));
-  dnnl_ops_map_.emplace(std::make_pair("ReluGrad", std::unique_ptr<DnnlNodeCapability>(new DnnlDefaultNodeCapability())));
-  dnnl_ops_map_.emplace(std::make_pair("SoftmaxGrad", std::unique_ptr<DnnlNodeCapability>(new DnnlSoftmaxNodeCapability())));
-#endif  // ENABLE_TRAINING
 }
 
 bool DnnlOpManager::IsNodeSupported(const Node* node, const GraphViewer& graph_viewer) const {

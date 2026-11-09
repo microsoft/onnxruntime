@@ -43,30 +43,6 @@
 #endif
 #endif
 
-#ifdef ENABLE_TRAINING_OPS
-#include "orttraining/training_ops/cpu/controlflow/group.h"
-#include "orttraining/training_ops/cpu/optimizer/adamw/adamwbase.h"
-#include "orttraining/training_ops/cpu/optimizer/sgd/sgdbase.h"
-
-// Should remove the include from ENABLE_TRAINING_OPS once 1). compute optimizer is enabled for inference or
-// 2). this is needed by inference for other purpose.
-#include "contrib_ops/cpu/tensor/shrunken_gather.h"
-#endif
-
-#ifdef ENABLE_TRAINING
-#include "orttraining/training_ops/cpu/controlflow/yield.h"
-
-#ifdef ENABLE_TRAINING_TORCH_INTEROP
-#include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
-#include "orttraining/core/framework/torch/refcount_tracker.h"
-#endif
-
-#endif
-
-#ifdef ENABLE_TRITON
-#include "orttraining/training_ops/cpu/triton/triton_op.h"
-#endif
-
 #ifndef _Ret_notnull_
 #define _Ret_notnull_
 #endif
@@ -748,67 +724,6 @@ template <>
 Status Scan<9>::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host_cpu.Scan__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
 
 void* AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) { return g_host->Allocator__AllocateBufferWithOptions(allocator, size, use_reserve, stream, wait_fn); }
-
-#ifdef ENABLE_TRAINING_OPS
-namespace contrib {
-Status Group::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__Group__Compute(this, context); }
-Status PassThrough::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__PassThrough__Compute(this, context); }
-Status AdamWOptimizerBase::PrepareForCompute(OpKernelContext* ctx, AdamWOptimizerBase::Prepare& prepare) const {
-  return g_host_cpu.contrib__AdamWOptimizerBase__PrepareForCompute(this, ctx, reinterpret_cast<contrib__AdamWOptimizerBase__Prepare&>(prepare));
-}
-Status SGDOptimizerV2Base::PrepareForCompute(OpKernelContext* ctx, SGDOptimizerV2Base::Prepare& prepare) const {
-  return g_host_cpu.contrib__SGDOptimizerV2Base__PrepareForCompute(this, ctx, reinterpret_cast<contrib__SGDOptimizerV2Base__Prepare&>(prepare));
-}
-void ShrunkenGatherCommon::CheckInput(const Tensor* input_tensor, const Tensor* indices_tensor, int64_t axis_in) const {
-  return g_host_cpu.contrib__ShrunkenGatherCommon__CheckInput(this, input_tensor, indices_tensor, axis_in);
-}
-}  // namespace contrib
-#endif
-
-#ifdef ENABLE_TRAINING
-namespace contrib {
-Status YieldOp::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__YieldOp__Compute(this, context); }
-}  // namespace contrib
-
-#ifdef ENABLE_TRAINING_TORCH_INTEROP
-namespace contrib {
-void PythonOpBase::Init(const OpKernelInfo& info) { return g_host->contrib__PythonOpBase__Init(this, info); }
-void PythonOpBase::Clear() { return g_host->contrib__PythonOpBase__Clear(this); }
-void PythonOpBase::RunForward(OpKernelContext* context, void** diff_ctx, std::vector<OrtValue>& returned_ortvalues) const {
-  return g_host->contrib__PythonOpBase__RunForward(this, context, diff_ctx, returned_ortvalues);
-}
-void PythonOpBase::SetOutputs(OpKernelContext* context, void* diff_ctx, std::vector<OrtValue>& returned_args) const {
-  return g_host->contrib__PythonOpBase__SetOutputs(this, context, diff_ctx, returned_args);
-}
-
-void PythonOpGradBase::Init(const OpKernelInfo& info) { return g_host->contrib__PythonOpGradBase__Init(this, info); }
-void PythonOpGradBase::RunBackward(OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) const {
-  return g_host->contrib__PythonOpGradBase__RunBackward(this, context, returned_ortvalues);
-}
-void PythonOpGradBase::SetOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_args) const {
-  return g_host->contrib__PythonOpGradBase__SetOutputs(this, context, returned_args);
-}
-}  // namespace contrib
-
-namespace language_interop_ops {
-namespace torch {
-void RefCountTracker::DumpDetails(const std::string& phase_name) const {
-  return g_host->RefCountTracker__DumpDetails(this, phase_name);
-}
-
-}  // namespace torch
-}  // namespace language_interop_ops
-#endif
-
-#endif
-
-#ifdef ENABLE_TRITON
-namespace contrib {
-Status TritonOp::Compute(OpKernelContext* context) const {
-  return g_host_cpu.contrib__TritonOp__Compute(this, context);
-}
-}  // namespace contrib
-#endif
 
 #endif
 

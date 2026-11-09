@@ -435,6 +435,26 @@ void TestGetTensorSizeInBytes(Ort::ConstMemoryInfo cpu_meminfo) {
   ASSERT_EQ(expected_size_in_bytes, value.GetTensorSizeInBytes());
 }
 
+TEST(CApiTest, RetiredTrainingApiPreservesInferenceAbi) {
+  EXPECT_EQ(offsetof(OrtApi, GetTrainingApi) / sizeof(void*), 219U);
+  EXPECT_EQ(offsetof(OrtApi, SessionOptionsAppendExecutionProvider_CANN) / sizeof(void*), 220U);
+  EXPECT_EQ(offsetof(OrtApi, GetBuildInfoString) / sizeof(void*), 254U);
+
+  const auto* api_base = OrtGetApiBase();
+  for (uint32_t api_version : {13U, static_cast<uint32_t>(ORT_API_VERSION)}) {
+    const auto* api = api_base->GetApi(api_version);
+    ASSERT_NE(api, nullptr);
+    for (uint32_t training_version : {0U, 12U, 13U, static_cast<uint32_t>(ORT_API_VERSION),
+                                      static_cast<uint32_t>(ORT_API_VERSION + 1)}) {
+      EXPECT_EQ(api->GetTrainingApi(training_version), nullptr);
+    }
+  }
+
+  const auto& api = Ort::GetApi();
+  ASSERT_NE(api.GetBuildInfoString(), nullptr);
+  EXPECT_NE(api.GetBuildInfoString()[0], '\0');
+}
+
 TEST(CApiTest, TestGetTensorSizeInBytes) {
   Ort::MemoryInfo cpu_meminfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
   TestGetTensorSizeInBytes<float, 1>(cpu_meminfo.GetConst());

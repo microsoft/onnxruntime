@@ -12,23 +12,11 @@ DnnlPool::DnnlPool() {}
 
 void DnnlPool::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto dnnl_engine = sp.GetEngine();
-#ifdef ENABLE_TRAINING
-  // When using training the memory needs to be in a format known to pool_forward and the
-  // pool_backward primitives. Since we don't currently have a way to pass the memory format
-  // from pool_forward to pool_backward; we are choosing to use Onnxruntime's memory format
-  // as the common memory format to be used by both forward and the backward primitives.
-  auto pool_src_mem = sp.GetMemoryInOrtFormat(node.Input(IN_X), dnnl_engine);
-#else
   auto pool_src_mem = sp.GetMemory(node.Input(IN_X));
-#endif  // ENABLE_TRAINING
   auto src_md = pool_src_mem.get_desc();
   auto src_dims = pool_src_mem.get_desc().get_dims();
 
-#ifdef ENABLE_TRAINING
-  auto prop_kind = dnnl::prop_kind::forward;
-#else
   auto prop_kind = dnnl::prop_kind::forward_inference;
-#endif  // ENABLE_TRAINING
 
   dnnl::algorithm algo = dnnl::algorithm::pooling_max;
   if (node.OpType() == "AveragePool" || node.OpType() == "GlobalAveragePool") {
@@ -54,30 +42,15 @@ void DnnlPool::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto pool_pd = dnnl::pooling_forward::primitive_desc(dnnl_engine, prop_kind, algo, src_md, dst_md, strides,
                                                        kernel_shape, dilation, padding_left, padding_right);
 
-#ifndef ENABLE_TRAINING
   // If using GPU this will move the memory from the CPU to the GPU.
   pool_src_mem = sp.GetMemoryAndReshape(node.Input(IN_X), pool_pd.src_desc(), dnnl_engine);
-#endif
   dnnl::memory pool_dst_mem = dnnl::memory(pool_pd.dst_desc(), dnnl_engine);
 
   auto pool_op = dnnl::pooling_forward(pool_pd);
-#ifdef ENABLE_TRAINING
-  auto pool_workspace_mem = dnnl::memory(pool_pd.workspace_desc(), dnnl_engine);
-
-  sp.AddPrimitive(pool_op, {{DNNL_ARG_SRC, pool_src_mem},
-                            {DNNL_ARG_WORKSPACE, pool_workspace_mem},
-                            {DNNL_ARG_DST, pool_dst_mem}});
-#else
   sp.AddPrimitive(pool_op, {{DNNL_ARG_SRC, pool_src_mem},
                             {DNNL_ARG_DST, pool_dst_mem}});
-#endif  // ENABLE_TRAINING
 
   sp.SetMemory(node.Output(OUT_Y), pool_dst_mem);
-#ifdef ENABLE_TRAINING
-  if (node.OutputCount() == 2) {
-    sp.SetMemory(node.Output(OUT_INDICES), pool_workspace_mem);
-  }
-#endif  // ENABLE_TRAINING
 }
 
 AutoPadType DnnlPool::GetAutoPad(DnnlNode& node) {

@@ -5,9 +5,6 @@
 
 #include "core/providers/cuda/tensor/gather_elements_impl.h"
 #include "core/providers/cuda/tensor/scatter_elements_impl.h"
-#ifdef ENABLE_TRAINING_OPS
-#include "orttraining/training_ops/cuda/tensor/gather_elements_grad_impl.h"
-#endif
 
 #include "core/providers/cuda/atomic/common.cuh"
 #include "core/providers/cuda/cu_inc/common.cuh"
@@ -333,51 +330,6 @@ SCATTER_ELEMENTS_SPECIALIZED_IMPL(bool)
 #undef GATHER_SCATTER_ELEMENTS_SPECIALIZED_IMPL
 #undef SCATTER_ELEMENTS_SPECIALIZED_TINDEX_IMPL
 #undef GATHER_ELEMENTS_SPECIALIZED_TINDEX_IMPL
-
-#ifdef ENABLE_TRAINING_OPS
-
-template <class T>
-struct FuncAtomicAdd {
-  FuncAtomicAdd(const size_t numel) : numel_(numel) {}
-  __device__ __inline__ void operator()(T* start_addr, size_t index, T value) const {
-    AtomicAdd(start_addr, index, numel_, value);
-  }
-
-  const size_t numel_;
-};
-
-template <typename T, typename TIndex>
-Status GatherElementsGradNonDeterministicImpl(cudaStream_t stream, const TIndex* indices_data, const T* updates_data,
-                                              T* output_data,
-                                              const GatherScatterElementsArgs& args) {
-  // Be noted: usage of AtomicAdd is not deterministic if there are duplicated indices to update.
-  // That's the reason we name this function as non-deterministic.
-
-  // Give output_data as the input_data parameter by intention,
-  // to skip input_data copy, which is not applicable for GatherElementsGrad.
-  // output_data's numel is same as input_data's numel.
-  return ScatterElementsImplInternal(stream, output_data, indices_data, updates_data, output_data, args,
-                                     FuncAtomicAdd<T>(static_cast<size_t>(args.input_size)));
-}
-
-#define GATHER_ELEMENTS_GRAD_SPECIALIZED_TINDEX_IMPL(T, TIndex)                                                      \
-  template Status GatherElementsGradNonDeterministicImpl<T, TIndex>(cudaStream_t stream, const TIndex* indices_data, \
-                                                                    const T* updates_data, T* output_data,           \
-                                                                    const GatherScatterElementsArgs& args);
-
-#define GATHER_ELEMENTS_GRAD_SPECIALIZED_SCATTER_ADD_IMPL(T) \
-  GATHER_ELEMENTS_GRAD_SPECIALIZED_TINDEX_IMPL(T, int32_t)   \
-  GATHER_ELEMENTS_GRAD_SPECIALIZED_TINDEX_IMPL(T, int64_t)
-
-GATHER_ELEMENTS_GRAD_SPECIALIZED_SCATTER_ADD_IMPL(BFloat16);
-GATHER_ELEMENTS_GRAD_SPECIALIZED_SCATTER_ADD_IMPL(half)
-GATHER_ELEMENTS_GRAD_SPECIALIZED_SCATTER_ADD_IMPL(float)
-GATHER_ELEMENTS_GRAD_SPECIALIZED_SCATTER_ADD_IMPL(double)
-
-#undef GATHER_ELEMENTS_GRAD_SPECIALIZED_SCATTER_ADD_IMPL
-#undef GATHER_ELEMENTS_GRAD_SPECIALIZED_TINDEX_IMPL
-
-#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

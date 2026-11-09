@@ -127,13 +127,8 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest) {
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
-#ifdef ENABLE_TRAINING_CORE
-  ASSERT_TRUE(op_to_count["Cast"] == 0);
-  ASSERT_TRUE(op_to_count["LayerNormalization"] == 1);
-#else
   ASSERT_TRUE(op_to_count["Cast"] == 1);
   ASSERT_TRUE(op_to_count["LayerNormalization"] == 0);
-#endif
 }
 
 TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_2) {
@@ -407,11 +402,7 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_7) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildLayerNorm(builder, {-2, -1}, {-1, -2});
   };
-#ifdef ENABLE_TRAINING_CORE
-  int num_of_layer_norm = 1;
-#else
   int num_of_layer_norm = 0;
-#endif
   auto post_graph_checker = [&](Graph& graph) {
     TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["ReduceMean"] == 2 - 2 * num_of_layer_norm);
     TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Sub"] == 1 - num_of_layer_norm);
@@ -469,11 +460,7 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_9) {
     BuildLayerNorm(builder, {2, -1}, {-1, -2});
   };
 
-#ifdef ENABLE_TRAINING_CORE
-  int num_of_layer_norm = 1;
-#else
   int num_of_layer_norm = 0;
-#endif
   auto post_graph_checker = [&](Graph& graph) {
     TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["ReduceMean"] == 2 - 2 * num_of_layer_norm);
     TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Sub"] == 1 - num_of_layer_norm);
@@ -1817,11 +1804,7 @@ static void TestSkipLayerNormFusionInputOutputCheck(const std::basic_string<ORTC
 
       // check outputs
       std::vector<NodeArg*>& output_defs = node.MutableOutputDefs();
-#ifdef ENABLE_TRAINING_CORE
-      EXPECT_EQ(node.OutputDefs().size(), 3u) << "SkipLayerNormalization number of outputs does not equal to 3. Got:" << node.OutputDefs().size();
-#else
       EXPECT_EQ(node.OutputDefs().size(), 1u) << "SkipLayerNormalization number of outputs does not equal to 1. Got:" << node.OutputDefs().size();
-#endif
       EXPECT_EQ(output_defs[0]->Name(), "19");
     } else if (node.OpType() == "Cast") {
       EXPECT_TRUE(with_cast) << "Unexpected node: " << node.OpType() << "," << node.Name();

@@ -1448,7 +1448,6 @@ TEST(LSTMTest, MismatchedWeightShapeIsRejected) {
            {kTensorrtExecutionProvider, kDmlExecutionProvider, kQnnExecutionProvider});
 }
 
-#ifndef ENABLE_TRAINING
 // Prepacking is disabled in full training build so no need to test the feature in a training build.
 TEST(LSTMTest, ONNXRuntime_TestLSTMForward_OpSet22_CUDA) {
   auto cuda_ep = DefaultCudaExecutionProvider();
@@ -1647,7 +1646,6 @@ TEST(LSTMTest, SharedPrepackedWeights) {
               static_cast<size_t>(number_of_shared_pre_packed_weights_counter));
   }
 }
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime

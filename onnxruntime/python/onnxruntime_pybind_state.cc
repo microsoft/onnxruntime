@@ -1449,7 +1449,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
 }
 
 /**
- * Create an IExecutionProvider instance of the specified type. Note: this is called by orttraining code.
+ * Create an IExecutionProvider instance of the specified type.
  * @param session_options The session options.
  * @param type The execution provider type (e.g., CUDAExecutionProvider).
  * @param provider_options_map A map of provider options.
@@ -2808,10 +2808,6 @@ Applies to a particular Run() invocation. Default is 0.)pbdoc")
       .def_readwrite("terminate", &RunOptions::terminate,
                      R"pbdoc(Set to True to terminate any currently executing calls that are using this
 RunOptions instance. The individual calls will exit gracefully and return an error status.)pbdoc")
-#ifdef ENABLE_TRAINING
-      .def_readwrite("training_mode", &RunOptions::training_mode,
-                     R"pbdoc(Choose to run in training or inferencing mode)pbdoc")
-#endif
       .def_readwrite("only_execute_path_to_fetches", &RunOptions::only_execute_path_to_fetches,
                      R"pbdoc(Only execute the nodes needed by fetch list)pbdoc")
       .def(

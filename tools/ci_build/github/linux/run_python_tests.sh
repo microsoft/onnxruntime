@@ -27,7 +27,8 @@ echo "Package name:$PYTHON_PACKAGE_NAME"
 BUILD_ARGS="--build_dir /build --config $BUILD_CONFIG --test --skip_submodule_sync --parallel --enable_lto --build_wheel "
 
 if [[ "$PYTHON_PACKAGE_NAME" == *"training"* ]]; then
-  BUILD_ARGS="$BUILD_ARGS --enable_training"
+  echo "ORT training has been retired; training wheels are no longer supported." >&2
+  exit 1
 fi
 
 ARCH=$(uname -m)

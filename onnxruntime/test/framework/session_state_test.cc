@@ -85,7 +85,6 @@ TEST(PrePackedWeightsTest, EquivalenceRequiresMatchingLayoutAndContents) {
   EXPECT_FALSE(expected.IsEquivalentTo(kernel_owned));
 }
 
-#ifndef ENABLE_TRAINING_CORE
 #ifndef __wasm__
 static void TestSavedPrepacks(const Model& model) {
   auto inspect = [](const Graph& graph) {
@@ -171,7 +170,6 @@ static void TestLoadedSharedNoUserSupplied(const Model& model) {
 }
 
 #endif  // __wasm__
-#endif  // ENABLE_TRAINING_CORE
 
 class TestOpKernel : public OpKernel {
  public:
@@ -959,7 +957,6 @@ TEST(SessionStateTest, TestLayeringPartitioning) {
 
 INSTANTIATE_TEST_SUITE_P(SessionStateTests, SessionStateTestP, testing::ValuesIn(param_list));
 
-#ifndef ENABLE_TRAINING_CORE
 class PrePackingTestOpKernel : public OpKernel {
  public:
   PrePackingTestOpKernel(const OpKernelInfo& info) : OpKernel(info) {}
@@ -2536,6 +2533,5 @@ INSTANTIATE_TEST_SUITE_P(SessionStateTests,
                                          PrepackingTestParam{false, true},
                                          PrepackingTestParam{true, false},
                                          PrepackingTestParam{true, true}));
-#endif
 }  // namespace test
 }  // namespace onnxruntime

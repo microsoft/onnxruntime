@@ -7,26 +7,10 @@ file(GLOB_RECURSE onnxruntime_graph_src CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/graph/*.cc"
   )
 
-# start with empty training srcs list
-set(orttraining_graph_src)
 
-if (onnxruntime_ENABLE_TRAINING_OPS AND NOT onnxruntime_ENABLE_TRAINING)
-  set(orttraining_graph_src
-      "${ORTTRAINING_SOURCE_DIR}/core/graph/training_op_defs.cc"
-      "${ORTTRAINING_SOURCE_DIR}/core/graph/training_op_defs.h"
-      )
-endif()
-
-if (onnxruntime_ENABLE_TRAINING)
-  file(GLOB_RECURSE orttraining_graph_src CONFIGURE_DEPENDS
-      "${ORTTRAINING_SOURCE_DIR}/core/graph/*.h"
-      "${ORTTRAINING_SOURCE_DIR}/core/graph/*.cc"
-      )
-endif()
 
 # create empty lists for any excludes
 set(onnxruntime_graph_src_exclude_patterns)
-set(orttraining_graph_src_exclude_patterns)
 
 if (onnxruntime_MINIMAL_BUILD)
   # remove schema registration support
@@ -45,11 +29,6 @@ if (onnxruntime_MINIMAL_BUILD)
     "${ONNXRUNTIME_ROOT}/core/graph/function_template.h"
     "${ONNXRUNTIME_ROOT}/core/graph/function_utils.h"
     "${ONNXRUNTIME_ROOT}/core/graph/function_utils.cc"
-  )
-
-  list(APPEND orttraining_graph_src_exclude_patterns
-    "${ORTTRAINING_SOURCE_DIR}/core/graph/training_op_defs.h"
-    "${ORTTRAINING_SOURCE_DIR}/core/graph/training_op_defs.cc"
   )
 
   # no Function support initially
@@ -89,12 +68,8 @@ endif()
 file(GLOB onnxruntime_graph_src_exclude ${onnxruntime_graph_src_exclude_patterns})
 list(REMOVE_ITEM onnxruntime_graph_src ${onnxruntime_graph_src_exclude})
 
-if (onnxruntime_ENABLE_TRAINING_OPS)
-  file(GLOB orttraining_graph_src_exclude ${orttraining_graph_src_exclude_patterns})
-  list(REMOVE_ITEM orttraining_graph_src ${orttraining_graph_src_exclude})
-endif()
 
-onnxruntime_add_static_library(onnxruntime_graph ${onnxruntime_graph_src} ${orttraining_graph_src})
+onnxruntime_add_static_library(onnxruntime_graph ${onnxruntime_graph_src})
 add_dependencies(onnxruntime_graph onnx_proto flatbuffers::flatbuffers)
 onnxruntime_add_include_to_target(onnxruntime_graph onnxruntime_common ${WIL_TARGET} onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers safeint_interface Boost::mp11)
 
@@ -109,28 +84,13 @@ endif()
 if(NOT MSVC)
   target_compile_options(onnxruntime_graph PRIVATE "-Wno-parentheses" "-Wno-deprecated-declarations")
 endif()
-if (onnxruntime_ENABLE_TRAINING)
-  #TODO: the graph library should focus on ONNX IR, it shouldn't depend on math libraries like MKLML/OpenBlas
-  target_include_directories(onnxruntime_graph PRIVATE ${MKLML_INCLUDE_DIR})
-  target_link_libraries(onnxruntime_graph PRIVATE nlohmann_json::nlohmann_json)
-endif()
 
 target_include_directories(onnxruntime_graph PRIVATE ${ONNXRUNTIME_ROOT})
 
-if (onnxruntime_ENABLE_TRAINING_OPS)
-    target_include_directories(onnxruntime_graph PRIVATE ${ORTTRAINING_ROOT})
-
-    if (onnxruntime_USE_NCCL)
-        target_include_directories(onnxruntime_graph PRIVATE ${NCCL_INCLUDE_DIRS})
-    endif()
-endif()
 
 set_target_properties(onnxruntime_graph PROPERTIES FOLDER "ONNXRuntime")
 set_target_properties(onnxruntime_graph PROPERTIES LINKER_LANGUAGE CXX)
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_graph_src})
-if (onnxruntime_ENABLE_TRAINING_OPS)
-    source_group(TREE ${ORTTRAINING_ROOT} FILES ${orttraining_graph_src})
-endif()
 
 if (onnxruntime_BUILD_MS_EXPERIMENTAL_OPS)
   target_compile_definitions(onnxruntime_graph PRIVATE BUILD_MS_EXPERIMENTAL_OPS=1)

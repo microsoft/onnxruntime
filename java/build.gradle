@@ -17,20 +17,18 @@ project.group = "com.microsoft.onnxruntime"
 def cmakeBuildDir = System.properties['cmakeBuildDir']
 def useCUDA = System.properties['USE_CUDA']
 
-boolean enableTrainingApis = (System.properties['ENABLE_TRAINING_APIS'] ?: "0") == "1"
+if (["1", "on", "true", "yes", "y"].contains((System.properties['ENABLE_TRAINING_APIS'] ?: "0").toLowerCase(Locale.ROOT))) {
+	throw new GradleException("ORT training has been retired. ENABLE_TRAINING_APIS is no longer supported.")
+}
 def cmakeJavaDir = "${cmakeBuildDir}/java"
 def cmakeNativeLibDir = "${cmakeJavaDir}/native-lib"
 def cmakeNativeJniDir = "${cmakeJavaDir}/native-jni"
 def cmakeNativeTestDir = "${cmakeJavaDir}/native-test"
 def cmakeBuildOutputDir = "${cmakeJavaDir}/build"
 
-def tmpArtifactId = enableTrainingApis ? project.name + "-training" : project.name
-def mavenArtifactId = (useCUDA == null) ? tmpArtifactId : tmpArtifactId + "_gpu"
+def mavenArtifactId = (useCUDA == null) ? project.name : project.name + "_gpu"
 
 def defaultDescription = 'ONNX Runtime is a performance-focused inference engine for ONNX (Open Neural Network Exchange) models.'
-def trainingDescription = 'ONNX Runtime Training is a training and inference package for ONNX ' +
-	'(Open Neural Network Exchange) models. This package is targeted for Learning on The Edge aka On-Device Training ' +
-	'See https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training for more details.'
 
 
 java {
@@ -109,7 +107,6 @@ sourceSets.test {
 	resources.srcDirs += [
 		"${rootProject.projectDir}/../csharp/testdata",
 		"${rootProject.projectDir}/../onnxruntime/test/testdata",
-		"${rootProject.projectDir}/../onnxruntime/test/testdata/training_api",
 		"${rootProject.projectDir}/../java/testdata"
 	]
 	if (cmakeBuildDir != null) {
@@ -184,7 +181,6 @@ test {
 		workingDir cmakeBuildDir
 	}
 	systemProperties System.getProperties().subMap([
-		'ENABLE_TRAINING_APIS',
 		'JAVA_FULL_TEST',
 		'USE_AZURE',
 		'USE_CANN',
@@ -230,8 +226,8 @@ publishing {
 
 			version = project.version
 			pom {
-				name = enableTrainingApis ? 'onnxruntime-training' : 'onnx-runtime'
-				description = enableTrainingApis ? trainingDescription : defaultDescription
+				name = 'onnx-runtime'
+				description = defaultDescription
 				url = 'https://microsoft.github.io/onnxruntime/'
 				licenses {
 					license {

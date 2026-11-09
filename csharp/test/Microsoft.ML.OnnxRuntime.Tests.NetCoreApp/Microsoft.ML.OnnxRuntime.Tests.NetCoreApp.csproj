@@ -21,15 +21,6 @@
     <Configurations>Debug;Release;RelWithDebInfo</Configurations>
     <!-- end -->
 
-    <!-- Training build property.
-    Should be set to true when training is enabled in onnxruntime native binary
-    Note: This property should be set when building the csharp solution independently.
-    When building using the build.py script, setting the necessary properties is handled by the script. -->
-    <TrainingEnabledNativeBuild Condition="'$(TrainingEnabledNativeBuild)' == ''">false</TrainingEnabledNativeBuild>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="'$(TrainingEnabledNativeBuild)'=='true'">
-    <ExtraDefineConstants>$(ExtraDefineConstants);__TRAINING_ENABLED_NATIVE_BUILD__</ExtraDefineConstants>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -125,13 +116,6 @@
   <ItemGroup>
     <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\**\*Test.cs" />
     <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\**\*Tests.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Include="$(OnnxRuntimeRoot)\onnxruntime\test\testdata\training_api\**\*.*">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Visible>false</Visible>
-    </None>
   </ItemGroup>
 
   <ItemGroup>

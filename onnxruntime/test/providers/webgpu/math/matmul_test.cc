@@ -20,7 +20,6 @@
 namespace onnxruntime {
 namespace test {
 
-#ifndef ENABLE_TRAINING
 #ifdef USE_WEBGPU
 namespace {
 
@@ -462,7 +461,6 @@ TEST_F(WebGpuMatMulGemvTest, ForcedGemvRejectsTooManyRows) {
       .RunWithConfig();
 }
 #endif  // defined(USE_WEBGPU)
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime

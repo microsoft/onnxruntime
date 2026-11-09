@@ -1209,10 +1209,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
       std::function<void(const Graph&, gsl::span<const NodeIndex>, NodeIndex)>;
   using NodeRemovalCallback =
       std::function<void(const Graph&, gsl::span<const NodeIndex>)>;
-#ifdef ENABLE_TRAINING
-  using NodeCloneCallback =
-      std::function<void(const Graph&, NodeIndex, NodeIndex)>;
-#endif
 
   void SetNodeReplacementCallback(NodeReplacementCallback callback);
   void NotifyNodeReplacement(
@@ -1220,10 +1216,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
       NodeIndex destination_node_index) const;
   void SetNodeRemovalCallback(NodeRemovalCallback callback);
   void NotifyNodesRemoved(gsl::span<const NodeIndex> node_indices) const;
-#ifdef ENABLE_TRAINING
-  void SetNodeCloneCallback(NodeCloneCallback callback);
-  void NotifyNodeCloned(NodeIndex source_node_index, NodeIndex cloned_node_index) const;
-#endif
 
   /** Add an edge between two Nodes.
   @param src_node_index NodeIndex of source Node that is providing output to the destination Node.
@@ -1320,19 +1312,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   void KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
                             const std::function<bool(const Node*, const Node*)>& comp) const;
 
-#endif
-
-#ifdef ENABLE_TRAINING
-  /**
-   * @brief Performs topological sort with customized Kahn's algorithm on the graph/s.
-   *  This is a specialized version for training where need memory efficient topological sort.
-   * @param yield_op The YieldOp used in ORTModule training.
-   * @param shape_size_parents The shape size parents nodes.
-   * @param node_orders The output node orders.
-   */
-  void MemoryEfficientTopologicalSort(const Node* yield_op,
-                                      const InlinedHashMap<NodeIndex, InlinedVector<NodeIndex>>& shape_size_parents,
-                                      std::vector<NodeIndex>& node_orders) const;
 #endif
 
   /** Gets the map of operator domains to their opset versions. */
@@ -1599,7 +1578,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     d. Graph is acyclic and sort nodes in topological order.
   2. Check & Setup inner nodes' dependency.
   3. Cleanup function definition lists.
-  Note: the weights for training can't be cleaned during resolve.
   @returns common::Status with success or error information.
   */
   common::Status Resolve(const ResolveOptions& options);
@@ -2190,9 +2168,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   NodeReplacementCallback node_replacement_callback_;
   NodeRemovalCallback node_removal_callback_;
-#ifdef ENABLE_TRAINING
-  NodeCloneCallback node_clone_callback_;
-#endif
 #endif
 
   // NodeArgs that come from outer scope. Used when building a graph so that

@@ -19,7 +19,6 @@ it statically computes parts of the graph that rely only on constant initializer
 class ConstantFolding : public GraphTransformer {
  public:
   /*! Constant folding will not be applied to nodes that have one of initializers from excluded_initializers as input.
-      For pre-training, the trainable weights are those initializers to be excluded.
       \param execution_provider Execution provider instance to execute constant folding.
   */
   ConstantFolding(const IExecutionProvider& execution_provider,

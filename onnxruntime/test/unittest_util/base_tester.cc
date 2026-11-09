@@ -21,10 +21,6 @@
 #include "test/util/include/test_environment.h"
 #include "test/util/include/test_utils.h"
 
-#ifdef ENABLE_TRAINING
-#include "orttraining/core/session/training_session.h"
-#endif
-
 using namespace ::onnxruntime::logging;
 
 namespace onnxruntime {
@@ -987,17 +983,6 @@ void BaseTester::AddReferenceOutputs(const std::string& model_path, float abs_er
     }
   }
 }
-
-#ifdef ENABLE_TRAINING
-// Deprecated code. Remove this when training::TrainingSession is removed.
-template void BaseTester::ExecuteModel<training::TrainingSession>(
-    Model& model, training::TrainingSession& session,
-    ExpectResult expect_result, const std::string& expected_failure_string,
-    const RunOptions* run_options,
-    const std::unordered_map<std::string, OrtValue>& feeds,
-    const std::vector<std::string>& output_names, const std::string& provider_type,
-    bool allow_released_onnx_opset_only);
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime

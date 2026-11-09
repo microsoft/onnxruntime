@@ -181,11 +181,6 @@ def _build_aar(args):
         "-DpublishDir=" + aar_publish_dir,
         "-DminSdkVer=" + str(build_settings["android_min_sdk_version"]),
         "-DtargetSdkVer=" + str(build_settings["android_target_sdk_version"]),
-        (
-            "-DENABLE_TRAINING_APIS=1"
-            if "--enable_training_apis" in build_settings["build_params"]
-            else "-DENABLE_TRAINING_APIS=0"
-        ),
         "-DreleaseVersionSuffix=" + os.getenv("RELEASE_VERSION_SUFFIX", ""),
     ]
 

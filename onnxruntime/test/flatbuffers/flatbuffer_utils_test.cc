@@ -175,38 +175,6 @@ std::vector<ONNX_NAMESPACE::TensorProto> CreateInitializers() {
   return initializers;
 }
 
-#ifdef ENABLE_TRAINING_APIS
-std::vector<ONNX_NAMESPACE::TensorProto> CreateInitializersNoString() {
-  std::vector<ONNX_NAMESPACE::TensorProto> initializers;
-  // create data of various sizes. order is chosen to require padding between most but not all
-  // assuming our writer aligns to 4 bytes unless it's 64-bit data (which is aligned to 8 bytes)
-  // buffer: <16-bit><pad 2><32-bit><8-bit><pad 7><64-bit>
-  // need 128 bytes to write to external data
-
-  // 16-bit. 81 elements so we're 2 bytes past 4 byte alignment
-  initializers.emplace_back(
-      CreateInitializer<int16_t>("tensor_16", ONNX_NAMESPACE::TensorProto_DataType_INT16, {9, 9}));
-
-  // 32-bit, 64 elements
-  initializers.emplace_back(
-      CreateInitializer<float>("tensor_f32", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {8, 8}));
-
-  // 8-bit. 129 elements so we're 1 byte past 4 or 8 byte alignment
-  initializers.emplace_back(
-      CreateInitializer<uint8_t>("tensor_8", ONNX_NAMESPACE::TensorProto_DataType_UINT8, {3, 43}));
-
-  // 64-bit, 36 elements
-  initializers.emplace_back(
-      CreateInitializer<int64_t>("tensor_64", ONNX_NAMESPACE::TensorProto_DataType_INT64, {6, 6}));
-
-  // small (should not use external)
-  initializers.emplace_back(
-      CreateInitializer<int32_t>("tensor_32_small", ONNX_NAMESPACE::TensorProto_DataType_INT32, {2, 2}));
-
-  return initializers;
-}
-#endif  // ENABLE_TRAINING_APIS
-
 #define ASSERT_EQ_TENSORPROTO_VECTORFIELD(EXPECTED, ACTUAL, FIELD) \
   ASSERT_EQ((EXPECTED).FIELD.size(), (ACTUAL).FIELD.size());       \
   for (int j = 0; j < (EXPECTED).FIELD.size(); ++j) {              \
@@ -502,88 +470,6 @@ TEST(FlatbufferUtilsTest, LoadInitializerRejectsExternalTensorWithDimTooLargeFor
                                       "does not fit in size_t");
 }
 
-#ifdef ENABLE_TRAINING_APIS
-// tests method that loads to OrtTensor (used when loading a checkpoint into a checkpoint state)
-TEST(FlatbufferUtilsTest, ExternalWriteReadWithLoadOrtTensor) {
-  // create data
-  auto initializers = CreateInitializersNoString();
-
-  flatbuffers::FlatBufferBuilder builder(1024);
-
-  // write
-  std::ofstream output_stream;
-  ExternalDataWriter writer;
-  CreateWriter("ExternalWriteReadBasicTest.bin", output_stream, writer);
-
-  std::vector<flatbuffers::Offset<fbs::Tensor>> fbs_tensors;
-  for (const auto& initializer : initializers) {
-    flatbuffers::Offset<fbs::Tensor> fbs_tensor;
-    ASSERT_STATUS_OK(SaveInitializerOrtFormat(builder, initializer, std::filesystem::path(), fbs_tensor, writer));
-    fbs_tensors.push_back(fbs_tensor);
-  }
-
-  ASSERT_EQ(output_stream.tellp(), 840) << "Data written to the external file is incorrect.";
-  output_stream.close();
-  ASSERT_TRUE(output_stream.good()) << "Failed to close data file.";
-
-  auto fbs_tensors_offset = builder.CreateVector(fbs_tensors);
-  fbs::test::TestDataBuilder tdb(builder);
-  tdb.add_initializers(fbs_tensors_offset);
-  builder.Finish(tdb.Finish());
-  auto fb_data = builder.GetBufferSpan();
-
-  auto test_data = fbs::test::GetTestData(fb_data.data());
-  auto fbs_tensors2 = test_data->initializers();
-
-  // read
-  std::ifstream input_stream;
-  ExternalDataReader reader;
-  CreateReader("ExternalWriteReadBasicTest.bin", input_stream, reader);
-  static onnxruntime::CPUExecutionProviderInfo info;
-  static onnxruntime::CPUExecutionProvider cpu_provider(info);
-  AllocatorPtr cpu_allocator = cpu_provider.CreatePreferredAllocators()[0];
-
-  std::vector<Tensor> loaded_tensors;
-
-  for (const auto* fbs_tensor : *fbs_tensors2) {
-    Tensor ort_tensor;
-    std::string fbs_tensor_name = fbs_tensor->name()->str();
-    ASSERT_STATUS_OK(LoadOrtTensorOrtFormat(*fbs_tensor, cpu_allocator, fbs_tensor_name, ort_tensor, reader));
-    loaded_tensors.push_back(std::move(ort_tensor));
-  }
-
-  ASSERT_EQ(initializers.size(), loaded_tensors.size());
-
-  // convert expected initializers (TensorProtos) to Tensors for easier comparison
-  std::vector<Tensor> expected_tensors;
-  const Env& env = Env::Default();
-  const auto* placeholder_model_path = ORT_TSTR("placeholder_model_path");
-
-  for (int i = 0; i < narrow<int>(initializers.size()); i++) {
-    auto expected_proto = initializers[i];
-    TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(expected_proto);
-    const auto* type = DataTypeImpl::TensorTypeFromONNXEnum(expected_proto.data_type())->GetElementType();
-    Tensor expected_tensor(type, tensor_shape, cpu_allocator);
-    ASSERT_STATUS_OK(utils::TensorProtoToTensor(env, placeholder_model_path, initializers[i], expected_tensor));
-    expected_tensors.push_back(std::move(expected_tensor));
-  }
-
-  // validate data
-  for (int i = 0; i < narrow<int>(expected_tensors.size()); i++) {
-    auto& expected_tensor = expected_tensors[i];
-    auto& loaded_tensor = loaded_tensors[i];
-    ASSERT_EQ(expected_tensor.DataType(), loaded_tensor.DataType());
-    ASSERT_EQ(expected_tensor.Shape(), loaded_tensor.Shape());
-    ASSERT_EQ(expected_tensor.SizeInBytes(), loaded_tensor.SizeInBytes());
-    gsl::span<const uint8_t> expected_data(static_cast<const uint8_t*>(expected_tensor.DataRaw()),
-                                           expected_tensor.SizeInBytes());
-    gsl::span<const uint8_t> loaded_data(static_cast<const uint8_t*>(loaded_tensor.DataRaw()),
-                                         loaded_tensor.SizeInBytes());
-
-    ASSERT_EQ(expected_data, loaded_data);
-  }
-}
-#endif  // ENABLE_TRAINING_APIS
 }  // namespace test
 }  // namespace onnxruntime
 

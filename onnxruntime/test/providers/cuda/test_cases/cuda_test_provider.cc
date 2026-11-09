@@ -23,12 +23,6 @@
 
 using namespace onnxruntime;
 
-#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P) && defined(ENABLE_TRAINING)
-namespace cuda {
-cuda::INcclService& GetINcclService();
-}
-#endif
-
 namespace onnxruntime {
 
 void InitializeRegistry();
@@ -83,12 +77,6 @@ struct ProviderInfo_CUDA_TestImpl : ProviderInfo_CUDA {
   int cudaGetDeviceCount() override { return 0; }
 
   void CUDAExecutionProviderInfo__FromProviderOptions(const ProviderOptions&, CUDAExecutionProviderInfo&) override {}
-
-#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P) && defined(ENABLE_TRAINING)
-  cuda::INcclService& GetINcclService() override {
-    return cuda::GetINcclService();
-  }
-#endif
 
 #ifdef ENABLE_NVTX_PROFILE
   void NvtxRangeCreator__BeginImpl(profile::NvtxRangeCreator* p) override { p->BeginImpl(); }

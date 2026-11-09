@@ -38,10 +38,6 @@
 #include "core/framework/kernel_pilot_moe_expert_state.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/op_kernel_context_internal.h"
-#ifdef ENABLE_TRAINING
-#include "core/framework/feeds_fetches_manager.h"
-#include "core/framework/partial_graph_execution_state.h"
-#endif
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/bfc_arena.h"
@@ -1574,32 +1570,6 @@ TEST(InferenceSessionTests, MoeExpertStatisticsDoesNotRequireSessionProfiling) {
   ASSERT_STATUS_OK(session.Load(MODEL_URI));
   ASSERT_STATUS_OK(session.Initialize());
 }
-
-#ifdef ENABLE_TRAINING
-TEST(InferenceSessionTests, MoeExpertStatisticsRejectsDeprecatedPartialRun) {
-  SessionOptions session_options;
-  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
-      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
-
-  InferenceSession session{session_options, GetEnvironment()};
-  ASSERT_STATUS_OK(session.Load(MODEL_URI));
-  ASSERT_STATUS_OK(session.Initialize());
-  ASSERT_NE(session.GetSessionState().GetMoeExpertState(), nullptr);
-
-  RunOptions run_options;
-  std::vector<OrtValue> feeds;
-  std::vector<OrtValue> fetches;
-  PartialGraphExecutionState state;
-  FeedsFetchesManager feeds_fetches_manager{FeedsFetchesInfo{}};
-  const Status status = session.PartialRun(
-      run_options, feeds, fetches, state, feeds_fetches_manager, nullptr, 0);
-
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr(
-                                         "MoE expert counting and statistics are not supported by the deprecated "
-                                         "PartialRun path."));
-}
-#endif
 
 class CudaPluginTestExecutionProvider final : public IExecutionProvider {
  public:
@@ -3541,11 +3511,6 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
   arena_cfg.arena_extend_strategy = 1;  // kSameAsRequested
 
   SessionOptions so;
-#ifdef ENABLE_TRAINING
-  // Disable weight prepacking
-  // Without this assert for alloc_stats.num_arena_extensions will fail.
-  so.config_options.configurations["session.disable_prepacking"] = "1";
-#endif
   InferenceSession session_object{so, GetEnvironment()};
   OrtCUDAProviderOptions provider_options{};
   provider_options.default_memory_arena_cfg = &arena_cfg;
@@ -3563,14 +3528,8 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
 
   AllocatorStats alloc_stats;
   cuda_alloc->GetStats(&alloc_stats);
-#ifdef ENABLE_TRAINING
-  // In training builds, initializers are allocated using the Reserve() call which
-  // will not cause an arena extension
-  ASSERT_EQ(alloc_stats.num_arena_extensions, 0);
-#else
   // The arena would have made an extension to accommodate the sole initializer on CUDA
   ASSERT_EQ(alloc_stats.num_arena_extensions, 1);
-#endif
 
   // no shrinkages should have occurred during this time (sanity check)
   ASSERT_EQ(alloc_stats.num_arena_shrinkages, 0);
@@ -3587,13 +3546,8 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
     // The arena would have made 2 more extensions as part of servicing memory requests within Run()
     // 1) - To take the solitary feed to cuda memory
     // 2) - Allocate output of the solitary node
-#ifdef ENABLE_TRAINING
-    // In training - that is a total of 2 extensions
-    ASSERT_EQ(alloc_stats.num_arena_extensions, 2);
-#else
     // In inferencing - that is a total of 3 extensions
     ASSERT_EQ(alloc_stats.num_arena_extensions, 3);
-#endif
 
     // Assert that there have been no shrinkages after this Run()
     ASSERT_EQ(alloc_stats.num_arena_shrinkages, 0);
@@ -3611,13 +3565,8 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
     // The arena would have made no extensions in this Run() as the freed memory after the first Run()
     // will be re-used
 
-#ifdef ENABLE_TRAINING
-    // In training - that is a total of 2 extensions
-    ASSERT_EQ(alloc_stats.num_arena_extensions, 0);
-#else
     // In inferencing - that is a total of 3 extensions
     ASSERT_EQ(alloc_stats.num_arena_extensions, 1);
-#endif
 
     // The arena would have shrunk both extensions it made as part of Run() - because these allocations
     // would have been left unused after this Run()

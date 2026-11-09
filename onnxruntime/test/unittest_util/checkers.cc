@@ -42,11 +42,7 @@ struct DefaultTolerance<double> {
 
 template <>
 struct DefaultTolerance<float> {
-#if defined(ENABLE_TRAINING)
-  static constexpr float absolute = 1e-3f;
-#else
   static constexpr float absolute = 1e-5f;
-#endif
 
   static constexpr float relative = 1e-4f;
 
@@ -65,16 +61,12 @@ struct DefaultTolerance<float> {
 
 template <>
 struct DefaultTolerance<MLFloat16> {
-#if defined(ENABLE_TRAINING)
-  static constexpr float absolute = 0.005f;
-#else
   // The thresholds for inference are estimated with PyTorch script like the following:
   //    x = torch.rand(1000, 1000)
   //    absolute = ((x + 1e-6).to(torch.float16) - x).abs().max() * 10
   //    x[abs(x) < absolute] = absolute
   //    relative = ((x - x.to(torch.float16)) / x).abs().max() * 2
   static constexpr float absolute = 0.0025f;
-#endif
 
   static constexpr float relative = 0.001f;
 

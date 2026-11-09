@@ -189,40 +189,8 @@ bool DnnlPoolNodeCapability::IsDimensionSupported(const Node* node) const {
 // We can only claim MaxPools with Indices going to the MaxPoolGrad op. If the indices
 // go to any other node we can not support the MaxPool node.
 bool DnnlPoolNodeCapability::IsMaxPoolIndicesSupported(const Node* node) const {
-#ifdef ENABLE_TRAINING
-  if (node->OpType() == "MaxPool") {
-    if (node->OutputDefs().size() > 2)
-      return false;
-    if (node->OutputDefs().size() > 1) {
-      bool edge_to_maxpoolgrad_found = false;
-      for (auto it = node->OutputEdgesBegin(); it != node->OutputEdgesEnd(); ++it) {
-        // if the MaxPool indice output `GetSrcArgIndex() == 1` goes to an OpType other than
-        // "MaxPoolGrad" the DNNL Execution providers implementation of MaxPool should not be used.
-        if (it->GetSrcArgIndex() == 1 && it->GetNode().OpType() != "MaxPoolGrad") {
-          return false;
-        }
-        // if the MaxPool indice output is going to the MaxPoolGrad indice output then it is possible we can
-        // use our implementation of MaxPool for training.
-        if (it->GetSrcArgIndex() == 1 && it->GetDstArgIndex() == 1 && it->GetNode().OpType() == "MaxPoolGrad") {
-          edge_to_maxpoolgrad_found = true;
-        }
-      }
-      return edge_to_maxpoolgrad_found;
-    }
-  }
-  // Check that the input from MaxPool is from a supported node
-  if (node->OpType() == "MaxPoolGrad") {
-    for (auto it = node->InputNodesBegin(); it != node->InputNodesEnd(); ++it) {
-      if (it->OpType() == "MaxPool") {
-        // the code `&(*it)` will convert the `NodeConstIterator` to a `const Node*`
-        return (IsMaxPoolIndicesSupported(&(*it)));
-      }
-    }
-  }
-#else
   if (node->OutputDefs().size() > 1)
     return false;
-#endif  // ENABLE_TRAINING
   return true;
 }
 

@@ -4923,95 +4923,10 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
                       "Allow inputs and outputs to be any kind of tensor.");
 #endif
 
-#ifdef ENABLE_TRAINING_OPS
-  // Should remove the shrunken_gather include from ENABLE_TRAINING_OPS once 1). compute optimizer is enabled for inference or
-  // 2). this is needed by inference for other purpose.
-
-  static const char* ShrunkenGather_ver1_doc = R"DOC(
-    This op is a specialised case of Gather-13, adding additional constraint including: indices being 1D,
-and indices count < input element count on the specified axis.
-
-Having this op allows runtime to do operator re-ordering to reduce compute FLOPs.
-)DOC";
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ShrunkenGather)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc(ShrunkenGather_ver1_doc)
-      .AllowUncheckedAttributes()
-      .Attr(
-          "axis",
-          "Which axis to gather on. Negative value means "
-          "counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(data).",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
-      .Input(0, "data", "Tensor of rank r >= 1.", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
-      .Input(
-          1,
-          "indices",
-          "Tensor of int64 indices, with rank = 1. All index values are expected to be within bounds [-s, s-1] "
-          "along axis of size s. It is an error if any of the index values are out of bounds."
-          "The number of elements in indices must be less than the number of elements in the input tensor,"
-          "which is the reason why this op is called ShrunkenGather.",
-          "Tind",
-          OpSchema::Single,
-          true,
-          1,
-          OpSchema::NonDifferentiable)
-      .Output(0, "output", "Tensor of rank r.", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
-      .TypeConstraint(
-          "T",
-          OpSchema::all_tensor_types_ir4(),
-          "Constrain input and output types to any tensor type.")
-      .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types")
-      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-
-        if (!hasNInputShapes(ctx, 2)) {
-          return;
-        }
-
-        const TensorShapeProto& data_shape = ctx.getInputType(0)->tensor_type().shape();
-        const TensorShapeProto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
-        int r = data_shape.dim_size();
-        if (r < 1) {
-          fail_shape_inference("data tensor must have rank >= 1");
-        }
-        int q = indices_shape.dim_size();
-        int axis = static_cast<int>(getAttribute(ctx, "axis", 0));
-        if (axis < -r || axis >= r) {
-          fail_shape_inference("axis must be in [-r, r-1]");
-        }
-        if (axis < 0) {
-          axis += r;
-        }
-
-        int out_rank = q + r - 1;
-        auto final_output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
-
-        int i = 0;
-        for (; i < axis; ++i) {
-          *final_output_shape->add_dim() = data_shape.dim(i);
-        }
-
-        for (; i < axis + q; ++i) {
-          *final_output_shape->add_dim() = indices_shape.dim(i - axis);
-        }
-
-        for (; i < out_rank; ++i) {
-          *final_output_shape->add_dim() = data_shape.dim(i - q + 1);
-        }
-      });
-
-#endif
-
-#ifndef _OPSCHEMA_LIB_
   // Register the NCHWc schemas if supported by the platform.
   if (MlasNchwcGetBlockSize() > 1) {
     RegisterNchwcSchemas();
   }
-#endif
 
 #ifdef ORT_USE_NCCL
   RegisterCollectiveOps();

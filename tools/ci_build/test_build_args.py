@@ -121,6 +121,40 @@ class BuildArgsTest(unittest.TestCase):
         args = self._parse("--use_cache", platform_name="linux")
         self.assertEqual(args.cache_tool, "ccache")
 
+    def test_retired_training_options_are_rejected(self):
+        for option in (
+            "--enable_training",
+            "--enable_training_apis",
+            "--enable_training_ops",
+            "--enable_lazy_tensor",
+            "--enable_external_custom_op_schemas",
+        ):
+            for platform_name in ("linux", "windows", "macos"):
+                with (
+                    self.subTest(option=option, platform_name=platform_name),
+                    mock.patch("sys.stderr") as stderr,
+                    self.assertRaises(SystemExit) as error,
+                ):
+                    self._parse(option, platform_name=platform_name)
+                self.assertEqual(error.exception.code, 2)
+                message = "".join(call.args[0] for call in stderr.write.call_args_list)
+                self.assertIn(f"ORT training has been retired. {option} is no longer supported.", message)
+
+    def test_retired_training_option_in_argument_file_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            arguments = Path(directory) / "arguments.txt"
+            arguments.write_text("--enable_training_apis\n", encoding="utf-8")
+            with mock.patch("sys.stderr"), self.assertRaises(SystemExit):
+                self._parse(f"@{arguments}", platform_name="windows")
+
+    def test_inference_collective_options_remain_supported(self):
+        args = self._parse("--enable_nccl", "--nccl_home", "/opt/nccl", platform_name="linux")
+        self.assertTrue(args.enable_nccl)
+        self.assertEqual(args.nccl_home, "/opt/nccl")
+        self.assertFalse(args.enable_training)
+        self.assertFalse(args.enable_training_apis)
+        self.assertFalse(args.enable_training_ops)
+
     def test_unknown_compiler_cache_is_rejected(self):
         with mock.patch("sys.stderr"), self.assertRaises(SystemExit):
             self._parse("--use_cache", "--cache_tool", "unknown", platform_name="linux")

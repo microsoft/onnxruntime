@@ -25,7 +25,6 @@ python3 tools/ci_build${BUILD_DIR}.py \
     --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags \
     --build_wheel \
     --skip_tests \
-    --enable_training_ops \
     --use_nnapi \
     --use_coreml
 

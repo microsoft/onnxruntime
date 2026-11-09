@@ -67,10 +67,6 @@
     target_compile_options(onnxruntime_providers_openvino PRIVATE /wd4099 /wd4275 /wd4100 /wd4005)
   endif()
 
-  # Needed for the provider interface, as it includes training headers when training is enabled
-  if (onnxruntime_ENABLE_TRAINING_OPS)
-    target_include_directories(onnxruntime_providers_openvino PRIVATE ${ORTTRAINING_ROOT})
-  endif()
 
   if(APPLE)
     set_property(TARGET onnxruntime_providers_openvino APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/core/providers/openvino/exported_symbols.lst")

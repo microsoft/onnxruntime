@@ -355,13 +355,6 @@ class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float4E2M1x2, BFloat16, int64_t, Gath
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kPytorchAtenDomain, 1, ATen);
 #endif
 
-#ifdef ENABLE_TRAINING_OPS
-// Should remove the shrunken_gather include from ENABLE_TRAINING_OPS once
-// 1). compute optimizer is enabled for inference or
-// 2). this is needed by inference for other purpose.
-class CUDA_MS_OP_CLASS_NAME(1, ShrunkenGather);
-#endif
-
 #if defined(ORT_USE_NCCL)
 class CUDA_MS_OP_CLASS_NAME(1, AllReduce);
 class CUDA_MS_OP_CLASS_NAME(1, AllGather);
@@ -734,13 +727,6 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
 
 #ifdef ENABLE_ATEN
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kPytorchAtenDomain, 1, ATen)>,
-#endif
-
-#ifdef ENABLE_TRAINING_OPS
-      // Should remove the shrunken_gather include from ENABLE_TRAINING_OPS once
-      // 1). compute optimizer is enabled for inference or
-      // 2). this is needed by inference for other purpose.
-      BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, ShrunkenGather)>,
 #endif
 
 #if defined(ORT_USE_NCCL)

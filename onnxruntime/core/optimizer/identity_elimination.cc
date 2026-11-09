@@ -78,10 +78,6 @@ bool EliminateIdentity::SatisfyCondition(const Graph& graph, const Node& node, c
   if (p_input_node == nullptr) {
     return false;
   }
-  if (p_input_node->OpType() == "YieldOp" && node_output_is_graph_output) {
-    return false;
-  }
-
   // skip if the src arg is also a graph output
   int src_arg_index = graph_utils::GetNodeOutputIndexFromOutputName(*p_input_node, node.InputDefs()[0]->Name());
   if (graph.IsOutput(p_input_node->OutputDefs()[src_arg_index]))

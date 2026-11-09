@@ -89,11 +89,7 @@ void DnnlConv::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto dst_mem_dims = InferOutputShape(node, src_dims, weight_dims_original, kernel_shape, strides, dilations, padding);
   dnnl::memory::desc dst_md = dnnl::memory::desc({dst_mem_dims}, node.Input(IN_X).Type(), dnnl::memory::format_tag::any);
 
-#ifdef ENABLE_TRAINING
-  auto prop_kind = dnnl::prop_kind::forward_training;
-#else
   auto prop_kind = dnnl::prop_kind::forward_inference;
-#endif  // ENABLE_TRAINING
 
   dnnl::primitive_attr attr;
   if (has_relu) {

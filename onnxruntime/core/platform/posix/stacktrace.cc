@@ -5,7 +5,7 @@
 
 #include "core/common/common.h"
 
-#if !defined(NDEBUG) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_OPSCHEMA_LIB_) && !defined(_AIX)
+#if !defined(NDEBUG) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <spawn.h>
@@ -282,14 +282,14 @@ std::unordered_map<void*, std::string> ResolveWithAddr2Line(
 }
 
 }  // namespace
-#endif  // !defined(NDEBUG) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_OPSCHEMA_LIB_) && !defined(_AIX)
+#endif  // !defined(NDEBUG) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
 
 namespace onnxruntime {
 
 std::vector<std::string> GetStackTrace() {
   std::vector<std::string> stack;
 
-#if !defined(NDEBUG) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_OPSCHEMA_LIB_) && !defined(_AIX)
+#if !defined(NDEBUG) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
   constexpr int kCallstackLimit = 64;
   void* addresses[kCallstackLimit];
 
@@ -323,7 +323,7 @@ std::vector<std::string> GetStackTrace() {
     }
     stack.push_back(oss.str());
   }
-#endif  // !defined(NDEBUG) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_OPSCHEMA_LIB_) && !defined(_AIX)
+#endif  // !defined(NDEBUG) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
 
   return stack;
 }

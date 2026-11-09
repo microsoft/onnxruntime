@@ -30,12 +30,8 @@ class ConstantSharing : public GraphTransformer {
   }
 
   bool ShouldOnlyApplyOnce() const override {
-#if defined(ENABLE_TRAINING)
-    return false;
-#else
     // Reduce model processing time by applying this optimization only once for inference.
     return true;
-#endif
   }
 
   static constexpr int64_t TENSOR_ELEM_COUNT_THRESHOLD = 8;

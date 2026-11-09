@@ -18,7 +18,7 @@ from collections.abc import Callable
 import numpy as np
 import onnx
 from onnx import helper, numpy_helper
-from onnx.onnx_ml_pb2 import GraphProto, ModelProto, NodeProto
+from onnx.onnx_ml_pb2 import GraphProto, ModelProto
 from tensorboard.compat.proto.attr_value_pb2 import AttrValue
 from tensorboard.compat.proto.graph_pb2 import GraphDef
 from tensorboard.compat.proto.node_def_pb2 import NodeDef
@@ -48,17 +48,6 @@ _DTYPE_ONNX_TO_TF = {
 
 def dtype_onnx_to_tf(onnx_dtype: int) -> int:
     return _DTYPE_ONNX_TO_TF.get(onnx_dtype, 0)
-
-
-def get_node_by_input(graph: GraphProto, input_name: str) -> NodeProto:
-    """Get the first node in the graph node list that consumes the input_name as the first input.
-    Return None if no such node is found.
-    """
-
-    for node in graph.node:
-        if len(node.input) >= 1 and node.input[0] == input_name:
-            return node
-    return None
 
 
 def get_prefix(name: str) -> str:
@@ -256,21 +245,6 @@ class ReplaceNameTransformer(TransformerBase):
         self._apply_to_all_names(graph, self._transform_name)
 
 
-class SplitSqueezeTransformer(ReplaceNameTransformer):
-    """Handle the edge names without hierarchical information that are introduced by GatherToSplitFusion."""
-
-    def _generate_new_names(self, graph: GraphProto) -> None:
-        for node in graph.node:
-            if node.doc_string == "Split for Fused Gather nodes":
-                squeeze_node = get_node_by_input(graph, node.output[0])
-                assert squeeze_node is not None
-                prefix = get_prefix(squeeze_node.output[0])
-                if len(prefix) > 0:
-                    for output in node.output:
-                        self.new_names[output] = prefix + output
-                        self.new_names[output + "_grad"] = prefix + output + "_grad"
-
-
 class ExtraOutputsTransformer(ReplaceNameTransformer):
     """Handle the output names without hierarchical information that are introduced by some fusions.
     This kind of fusions add extra outputs to the node, we will try to extract the hierarchical information
@@ -281,7 +255,6 @@ class ExtraOutputsTransformer(ReplaceNameTransformer):
         super().__init__()
         self.supported_ops = [
             "LayerNormalization",
-            "ConcatTraining",
             "BitmaskDropout",
             "BiasSoftmaxDropout",
             "BitmaskBiasDropout",
@@ -295,21 +268,6 @@ class ExtraOutputsTransformer(ReplaceNameTransformer):
                     for output in node.output[1:]:
                         if "/" not in output:
                             self.new_names[output] = prefix + output
-
-
-class YieldOpTransformer(ReplaceNameTransformer):
-    """Handle the output names without hierarchical information that are introduced by YieldOp."""
-
-    def _generate_new_names(self, graph: GraphProto) -> None:
-        for node in graph.node:
-            if node.op_type == "YieldOp":
-                # TODO: the length of input and output can be not equal if attribute non_differentiable_outputs
-                # is not empty. Need to handle this case.
-                assert len(node.input) == len(node.output)
-                for idx, input in enumerate(node.input):
-                    prefix = get_prefix(input)
-                    if len(prefix) > 0:
-                        self.new_names[node.output[idx]] = prefix + node.output[idx]
 
 
 class ListUnpackTransformer(TransformerBase):

@@ -64,38 +64,6 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_contrib_ops_srcs})
 endif()
 
-if (onnxruntime_ENABLE_TRAINING_OPS AND NOT onnxruntime_ENABLE_TRAINING)
-  file(GLOB_RECURSE onnxruntime_cpu_training_ops_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.cc"
-  )
-
-  source_group(TREE ${ORTTRAINING_ROOT}/ FILES ${onnxruntime_cpu_training_ops_srcs})
-  list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_training_ops_srcs})
-
-  file(GLOB_RECURSE onnxruntime_cpu_full_training_only_srcs
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/collective/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/collective/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/communication/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/communication/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/controlflow/record.cc"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/controlflow/record.h"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/controlflow/wait.cc"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/controlflow/wait.h"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/controlflow/yield.cc"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/controlflow/yield.h"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/gist/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/gist/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/torch/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/torch/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/triton/triton_op.cc"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/triton/triton_op.h"
-  )
-
-  list(REMOVE_ITEM onnxruntime_providers_src ${onnxruntime_cpu_full_training_only_srcs})
-endif()
 
 if (onnxruntime_ENABLE_DLPACK)
   file(GLOB_RECURSE onnxruntime_providers_dlpack_srcs CONFIGURE_DEPENDS
@@ -107,29 +75,6 @@ if (onnxruntime_ENABLE_DLPACK)
   list(APPEND onnxruntime_providers_src ${onnxruntime_providers_dlpack_srcs})
 endif()
 
-if (onnxruntime_ENABLE_TRAINING)
-  file(GLOB_RECURSE onnxruntime_cpu_training_ops_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/core/framework/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/core/framework/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/core/framework/adasum/*"
-    "${ORTTRAINING_SOURCE_DIR}/core/framework/communication/*"
-  )
-
-  # This is already built in framework.cmake
-  file(GLOB_RECURSE onnxruntime_training_framework_excude_srcs CONFIGURE_DEPENDS
-      "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.h"
-      "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.cc"
-      "${ORTTRAINING_SOURCE_DIR}/core/framework/triton/*.h"
-      "${ORTTRAINING_SOURCE_DIR}/core/framework/triton/*.cc"
-  )
-
-  list(REMOVE_ITEM onnxruntime_cpu_training_ops_srcs ${onnxruntime_training_framework_excude_srcs})
-
-  source_group(TREE ${ORTTRAINING_ROOT}/ FILES ${onnxruntime_cpu_training_ops_srcs})
-  list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_training_ops_srcs})
-endif()
 
 if (onnxruntime_REDUCED_OPS_BUILD)
   substitute_op_reduction_srcs(onnxruntime_providers_src)
@@ -185,21 +130,10 @@ if(HAS_DEPRECATED_COPY)
   set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cpu/tensor/where_op.cc" PROPERTIES COMPILE_FLAGS -Wno-deprecated-copy)
 endif()
 
-# This is enabled only for Adasum files in training mode.
-# The flags won't be applied globally since some high-precision training and inferencing ops will incur precision loss.
-if (onnxruntime_ENABLE_CPU_FP16_OPS)
-  set_source_files_properties(${ORTTRAINING_SOURCE_DIR}/core/framework/adasum/adasum_mpi.cc PROPERTIES COMPILE_FLAGS " -fassociative-math -ffast-math -ftree-vectorize -funsafe-math-optimizations -mf16c -mavx -mfma ")
-  set_source_files_properties(${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/collective/adasum_kernels.cc PROPERTIES COMPILE_FLAGS " -fassociative-math -ffast-math -ftree-vectorize -funsafe-math-optimizations -mf16c -mavx -mfma ")
-  set_source_files_properties(${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/collective/adasum_kernels.cc PROPERTIES COMPILE_FLAGS " -fassociative-math -ffast-math -ftree-vectorize -funsafe-math-optimizations -mf16c -mavx -mfma ")
-endif()
-
 target_include_directories(${onnxruntime_providers_target} PRIVATE ${ONNXRUNTIME_ROOT})
 onnxruntime_add_include_to_target(${onnxruntime_providers_target} re2::re2 Eigen3::Eigen)
 add_dependencies(${onnxruntime_providers_target} onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
-if (onnxruntime_ENABLE_TRAINING_OPS)
-  target_include_directories(${onnxruntime_providers_target} PRIVATE ${ORTTRAINING_ROOT})
-endif()
 
 if (onnxruntime_ENABLE_ATEN)
   target_compile_definitions(${onnxruntime_providers_target} PRIVATE ENABLE_ATEN)
@@ -211,17 +145,6 @@ if (onnxruntime_ENABLE_DLPACK)
   onnxruntime_add_include_to_target(${onnxruntime_providers_target} dlpack::dlpack)
 endif()
 
-if (onnxruntime_ENABLE_TRAINING)
-  add_dependencies(${onnxruntime_providers_target} tensorboard)
-  onnxruntime_add_include_to_target(${onnxruntime_providers_target} tensorboard)
-  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OR onnxruntime_ENABLE_TRITON)
-    onnxruntime_add_include_to_target(${onnxruntime_providers_target} Python::Module)
-  endif()
-
-  if (onnxruntime_USE_NCCL)
-    target_include_directories(${onnxruntime_providers_target} PUBLIC ${MPI_CXX_INCLUDE_DIRS})
-  endif()
-endif()
 
 install(FILES ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cpu/cpu_provider_factory.h  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/)
 install(FILES ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/resource.h ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/custom_op_context.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
