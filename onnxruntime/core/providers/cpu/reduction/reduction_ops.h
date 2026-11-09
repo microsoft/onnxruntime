@@ -896,7 +896,9 @@ class ReduceAggregatorArgMax : public ReduceAggregatorArgMinMax<T, TVAL> {
     return this->get_value();
   }
   inline void update(const T& v) {
-    if (reduce_isnan(v) || v > this->accumulator_) {
+    // Only take a NaN when the accumulator is not one already, so that the first NaN
+    // keeps the index (select_last_index=0).
+    if ((reduce_isnan(v) && !reduce_isnan(this->accumulator_)) || v > this->accumulator_) {
       this->accumulator_ = v;
       this->arg_ = this->index_;
     }
@@ -932,7 +934,9 @@ class ReduceAggregatorArgMin : public ReduceAggregatorArgMinMax<T, TVAL> {
     return this->get_value();
   }
   inline void update(const T& v) {
-    if (reduce_isnan(v) || v < this->accumulator_) {
+    // Only take a NaN when the accumulator is not one already, so that the first NaN
+    // keeps the index (select_last_index=0).
+    if ((reduce_isnan(v) && !reduce_isnan(this->accumulator_)) || v < this->accumulator_) {
       this->accumulator_ = v;
       this->arg_ = this->index_;
     }
