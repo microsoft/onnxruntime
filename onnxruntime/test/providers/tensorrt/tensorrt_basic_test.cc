@@ -1399,7 +1399,8 @@ TEST(TensorrtExecutionProviderTest, RemoveCycleEdgeCasesTest) {
   }
 
   // Case 3: End-to-end session initialization and execution when a non-TensorRT node in a cycle
-  // has "TRTKernel" in its name.
+  // has "TRTKernel" in its name. The parser natively rejects "Xor" while fusing {"TRTKernel_not", "and"}
+  // into a single supported group spanning both sides of "xor2", triggering remove_cycles=true.
   {
     onnxruntime::Model model("removecycle_trtkernel_name_test", false, DefaultLoggingManager().DefaultLogger());
     auto& graph = model.MainGraph();
@@ -1417,18 +1418,18 @@ TEST(TensorrtExecutionProviderTest, RemoveCycleEdgeCasesTest) {
     inputs = {&input_arg_1, &input_arg_2};
     auto& output_arg_1 = graph.GetOrCreateNodeArg("xor1_out", &bool_tensor);
     outputs = {&output_arg_1};
-    graph.AddNode("xor1", "Xor", "node 1.", inputs, outputs);
+    graph.AddNode("TRTKernel_xor1", "Xor", "node 1.", inputs, outputs);
 
     inputs = {&output_arg_1};
     auto& output_arg_2 = graph.GetOrCreateNodeArg("not_out", &bool_tensor);
     outputs = {&output_arg_2};
-    graph.AddNode("TRTKernel_non_trt_not", "Not", "node 2.", inputs, outputs);
+    graph.AddNode("TRTKernel_not", "Not", "node 2.", inputs, outputs);
 
     auto& input_arg_3 = graph.GetOrCreateNodeArg("Z", &bool_tensor);
     inputs = {&output_arg_2, &input_arg_3};
     auto& output_arg_3 = graph.GetOrCreateNodeArg("xor2_out", &bool_tensor);
     outputs = {&output_arg_3};
-    graph.AddNode("xor2", "Xor", "node 3.", inputs, outputs);
+    graph.AddNode("TRTKernel_xor2", "Xor", "node 3.", inputs, outputs);
 
     inputs = {&output_arg_2, &output_arg_3};
     auto& output_arg_4 = graph.GetOrCreateNodeArg("M", &bool_tensor);
@@ -1464,9 +1465,7 @@ TEST(TensorrtExecutionProviderTest, RemoveCycleEdgeCasesTest) {
     std::vector<OrtValue> fetches;
     std::vector<bool> expected_values_m = {false, false, false, false, false, true};
 
-    OrtTensorRTProviderOptionsV2 params{};
-    params.trt_op_types_to_exclude = "Not";
-    std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+    std::unique_ptr<IExecutionProvider> execution_provider = DefaultTensorrtExecutionProvider();
     ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
 
     ASSERT_STATUS_OK(session_object.Load(model_file_name));
