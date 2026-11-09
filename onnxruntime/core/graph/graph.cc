@@ -5724,7 +5724,7 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
       input_names.insert(input.name());
     }
 
-    std::vector<std::string_view> missing_input_names;
+    InlinedVector<std::string_view> missing_input_names;
     for (const auto& [name, tensor_proto] : name_to_initial_tensor_) {
       if (!input_names.contains(name)) {
         missing_input_names.push_back(name);
