@@ -8,7 +8,6 @@ from helper import get_name
 from onnx import TensorProto, helper, numpy_helper
 
 import onnxruntime as onnxrt
-from onnxruntime.capi.onnxruntime_pybind11_state import Fail
 
 
 class CudaGraphHelper:
@@ -106,7 +105,7 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
         cuda_graph_helper.io_binding.synchronize_inputs()
         # A rejected capture must not subsequently replay a partial graph successfully.
         for _ in range(2):
-            with self.assertRaisesRegex(Fail, "CUDA Mod.*not a constant initializer.*CUDA Graph capture"):
+            with self.assertRaisesRegex(RuntimeError, "CUDA Mod.*not a constant initializer.*CUDA Graph capture"):
                 for _ in range(4):
                     session.run_with_iobinding(cuda_graph_helper.io_binding)
 
