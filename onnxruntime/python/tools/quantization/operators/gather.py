@@ -53,12 +53,12 @@ class QDQGather(QDQOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
-    def quantize(self):
+    def reg2quant(self):
         node = self.node
         assert node.op_type == "Gather" or node.op_type == "GatherElements"
 
         if self.quantizer.is_valid_quantize_weight(node.input[0]) or self.quantizer.force_quantize_no_input_check:
-            self.quantizer.quantize_activation_tensor(node.input[0])
-            self.quantizer.quantize_output_same_as_input(node.output[0], node.input[0], node.name)
-        elif self.quantizer.is_tensor_quantized(node.input[0]):
-            self.quantizer.quantize_output_same_as_input(node.output[0], node.input[0], node.name)
+            self.quantizer.reg2quant_activation_tensor(node.input[0])
+            self.quantizer.reg2quant_output_same_as_input(node.output[0], node.input[0], node.name)
+        elif self.quantizer.is_tensor_reg2quant(node.input[0]):
+            self.quantizer.reg2quant_output_same_as_input(node.output[0], node.input[0], node.name)
