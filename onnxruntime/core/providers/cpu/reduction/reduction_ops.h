@@ -745,13 +745,16 @@ class ReduceAggregatorMax : public ReduceAggregator<T> {
     if constexpr (std::is_same_v<bool, T>) { /* bool specific impl */
       return Eigen::Map<const Eigen::Matrix<bool, Eigen::Dynamic, 1>>(from_data, onnxruntime::narrow<size_t>(size)).cast<int>().maxCoeff();
     } else { /* generic impl */
-      return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, onnxruntime::narrow<size_t>(size)).maxCoeff();
+      return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, onnxruntime::narrow<size_t>(size)).template maxCoeff<Eigen::PropagateNaN>();
     }
   }
   inline T aggall(const T* from_data) {
     return aggall(from_data, this->N_);
   }
-  inline void update(const T& v) { this->accumulator_ = v > this->accumulator_ ? v : this->accumulator_; }
+  // A NaN always wins over a number, and a NaN accumulator is never replaced.
+  inline void update(const T& v) {
+    this->accumulator_ = (v > this->accumulator_) ? v : (reduce_isnan(v) ? v : this->accumulator_);
+  }
 
   // fill_for_empty_set: ReduceMax on empty set is semantically undefined for bool.
   static void fill_for_empty_set(Tensor& output) {
@@ -786,10 +789,10 @@ class ReduceAggregatorMax : public ReduceAggregator<T> {
                                                                   .maxCoeff()
                                                                   .cast<bool>();
           } else {
-            EigenVectorMap<T>(out + first, last - first) = ConstEigenMatrixMap<T>(
-                                                               data + first * stridei, onnxruntime::narrow<size_t>(stridei), last - first)
-                                                               .colwise()
-                                                               .maxCoeff();
+            auto block = ConstEigenMatrixMap<T>(data + first * stridei, onnxruntime::narrow<size_t>(stridei), last - first);
+            for (ptrdiff_t j = first; j < last; ++j) {
+              out[j] = block.col(j - first).template maxCoeff<Eigen::PropagateNaN>();
+            }
           }
         });
   }
@@ -812,8 +815,7 @@ class ReduceAggregatorMax : public ReduceAggregator<T> {
               if constexpr (std::is_same_v<bool, T>) { /* bool specific impl */
                 out[j] = out[j] || p[j];
               } else {
-                if (out[j] < p[j])
-                  out[j] = p[j];
+                out[j] = (p[j] > out[j]) ? p[j] : (reduce_isnan(p[j]) ? p[j] : out[j]);
               }
             }
           }
@@ -839,11 +841,13 @@ class ReduceAggregatorMax : public ReduceAggregator<T> {
                       .maxCoeff()
                       .cast<bool>();
             } else {
-              EigenVectorMap<T>(out + j * strideo, onnxruntime::narrow<size_t>(strideo)) =
-                  ConstEigenMatrixMap<T>(
-                      data + j * stridei, onnxruntime::narrow<size_t>(fast_shape[2]), onnxruntime::narrow<size_t>(fast_shape[1]))
-                      .rowwise()
-                      .maxCoeff();
+              const T* base = data + j * stridei;
+              EigenVectorMap<T> out_vec(out + j * strideo, onnxruntime::narrow<size_t>(strideo));
+              out_vec = Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>>(base, onnxruntime::narrow<Eigen::Index>(strideo));
+              for (int64_t k = 1; k < fast_shape[1]; ++k) {
+                out_vec = out_vec.array().template max<Eigen::PropagateNaN>(
+                    Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>>(base + k * strideo, onnxruntime::narrow<Eigen::Index>(strideo)));
+              }
             }
           }
         });
@@ -859,7 +863,7 @@ class ReduceAggregatorMax : public ReduceAggregator<T> {
           if constexpr (std::is_same_v<bool, T>) { /* bool specific impl */
             value = value || v;
           } else {
-            if (v > value)
+            if (reduce_isnan(v) || v > value)
               value = v;
           }
         });
@@ -888,11 +892,11 @@ class ReduceAggregatorArgMax : public ReduceAggregatorArgMinMax<T, TVAL> {
  public:
   inline ReduceAggregatorArgMax(int64_t N, const T& init) : ReduceAggregatorArgMinMax<T, TVAL>(N, init) {}
   inline TVAL aggall(const T* from_data) {
-    Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, onnxruntime::narrow<size_t>(this->N_)).maxCoeff(&this->arg_);
+    Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, onnxruntime::narrow<size_t>(this->N_)).template maxCoeff<Eigen::PropagateNaN>(&this->arg_);
     return this->get_value();
   }
   inline void update(const T& v) {
-    if (v > this->accumulator_) {
+    if (reduce_isnan(v) || v > this->accumulator_) {
       this->accumulator_ = v;
       this->arg_ = this->index_;
     }
@@ -911,7 +915,7 @@ class ReduceAggregatorArgMaxLastIndex : public ReduceAggregatorArgMax<T, TVAL> {
     return this->get_value();
   }
   inline void update(const T& v) {
-    if (v >= this->accumulator_) {
+    if (reduce_isnan(v) || v >= this->accumulator_) {
       this->accumulator_ = v;
       this->arg_ = this->index_;
     }
@@ -924,11 +928,11 @@ class ReduceAggregatorArgMin : public ReduceAggregatorArgMinMax<T, TVAL> {
  public:
   inline ReduceAggregatorArgMin(int64_t N, const T& init) : ReduceAggregatorArgMinMax<T, TVAL>(N, init) {}
   inline TVAL aggall(const T* from_data) {
-    Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, onnxruntime::narrow<size_t>(this->N_)).minCoeff(&this->arg_);
+    Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, onnxruntime::narrow<size_t>(this->N_)).template minCoeff<Eigen::PropagateNaN>(&this->arg_);
     return this->get_value();
   }
   inline void update(const T& v) {
-    if (v < this->accumulator_) {
+    if (reduce_isnan(v) || v < this->accumulator_) {
       this->accumulator_ = v;
       this->arg_ = this->index_;
     }
@@ -947,7 +951,7 @@ class ReduceAggregatorArgMinLastIndex : public ReduceAggregatorArgMin<T, TVAL> {
     return this->get_value();
   }
   inline void update(const T& v) {
-    if (v <= this->accumulator_) {
+    if (reduce_isnan(v) || v <= this->accumulator_) {
       this->accumulator_ = v;
       this->arg_ = this->index_;
     }
@@ -960,12 +964,15 @@ class ReduceAggregatorMin : public ReduceAggregator<T, T> {
  public:
   inline ReduceAggregatorMin(int64_t N, const T& init) : ReduceAggregator<T, T>(N, init) {}
   static T aggall(const T* from_data, int64_t size) {
-    return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, onnxruntime::narrow<size_t>(size)).minCoeff();
+    return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, onnxruntime::narrow<size_t>(size)).template minCoeff<Eigen::PropagateNaN>();
   }
   inline T aggall(const T* from_data) {
     return aggall(from_data, this->N_);
   }
-  inline void update(const T& v) { this->accumulator_ = v < this->accumulator_ ? v : this->accumulator_; }
+  // A NaN always wins over a number, and a NaN accumulator is never replaced.
+  inline void update(const T& v) {
+    this->accumulator_ = (v < this->accumulator_) ? v : (reduce_isnan(v) ? v : this->accumulator_);
+  }
 
   // fill_for_empty_set: ReduceMin on empty set is semantically undefined for bool.
   static void fill_for_empty_set(Tensor& output) {
@@ -1000,10 +1007,10 @@ class ReduceAggregatorMin : public ReduceAggregator<T, T> {
                                                                   .minCoeff()
                                                                   .cast<bool>();
           } else {
-            EigenVectorMap<T>(out + first, last - first) = ConstEigenMatrixMap<T>(
-                                                               data + first * stridei, onnxruntime::narrow<size_t>(stridei), last - first)
-                                                               .colwise()
-                                                               .minCoeff();
+            auto block = ConstEigenMatrixMap<T>(data + first * stridei, onnxruntime::narrow<size_t>(stridei), last - first);
+            for (ptrdiff_t j = first; j < last; ++j) {
+              out[j] = block.col(j - first).template minCoeff<Eigen::PropagateNaN>();
+            }
           }
         });
   }
@@ -1026,8 +1033,7 @@ class ReduceAggregatorMin : public ReduceAggregator<T, T> {
               if constexpr (std::is_same_v<bool, T>) { /* bool specific impl */
                 out[j] = out[j] && p[j];
               } else {
-                if (out[j] > p[j])
-                  out[j] = p[j];
+                out[j] = (p[j] < out[j]) ? p[j] : (reduce_isnan(p[j]) ? p[j] : out[j]);
               }
             }
           }
@@ -1053,11 +1059,13 @@ class ReduceAggregatorMin : public ReduceAggregator<T, T> {
                       .minCoeff()
                       .cast<bool>();
             } else {
-              EigenVectorMap<T>(out + j * strideo, onnxruntime::narrow<size_t>(strideo)) =
-                  ConstEigenMatrixMap<T>(
-                      data + j * stridei, onnxruntime::narrow<size_t>(fast_shape[2]), onnxruntime::narrow<size_t>(fast_shape[1]))
-                      .rowwise()
-                      .minCoeff();
+              const T* base = data + j * stridei;
+              EigenVectorMap<T> out_vec(out + j * strideo, onnxruntime::narrow<size_t>(strideo));
+              out_vec = Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>>(base, onnxruntime::narrow<Eigen::Index>(strideo));
+              for (int64_t k = 1; k < fast_shape[1]; ++k) {
+                out_vec = out_vec.array().template min<Eigen::PropagateNaN>(
+                    Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>>(base + k * strideo, onnxruntime::narrow<Eigen::Index>(strideo)));
+              }
             }
           }
         });
@@ -1073,7 +1081,7 @@ class ReduceAggregatorMin : public ReduceAggregator<T, T> {
           if constexpr (std::is_same_v<bool, T>) { /* bool specific impl */
             value = value && v;
           } else {
-            if (v < value)
+            if (reduce_isnan(v) || v < value)
               value = v;
           }
         });
