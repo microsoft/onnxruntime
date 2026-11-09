@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/moe/moe_packed.h"
-#include "contrib_ops/cuda/moe/moe_router_packed_impl.h"
+#include "contrib_ops/cuda/bert/moe_group_router_impl.h"
 
 #include <gsl/util>
 
@@ -1369,7 +1369,7 @@ Status DispatchMoEPackedCuda(
   if (params.sigmoid_routing) {
     float* scores = reinterpret_cast<float*>(
         ws_ptr + AlignUpWorkspace(static_cast<size_t>(total_routes) * params.hidden_size * sizeof(CudaT)));
-    ORT_RETURN_IF_ERROR(LaunchMoERouterPackedCuda(
+    ORT_RETURN_IF_ERROR(LaunchProjectedSigmoidRouting(
         stream, kIsBf16, params.num_rows, params.router_width, params.num_experts, params.k,
         params.router_scale, params.router_input, params.router_weight, params.router_bias,
         scores, topk_indices, topk_scales));
