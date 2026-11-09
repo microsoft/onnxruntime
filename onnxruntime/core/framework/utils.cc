@@ -630,6 +630,23 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
   return BatchOrCopyMLValue(session_state, copy_info, orig_mlvalue, new_mlvalue, device_stream);
 }
 
+common::Status NormalizePreallocatedOutputShape(const TensorShape& source_shape, Tensor& destination) {
+  const auto& destination_shape = destination.Shape();
+  if (destination_shape == source_shape) {
+    return Status::OK();
+  }
+
+  if (destination_shape.Size() == 1 && source_shape.Size() == 1 &&
+      (destination_shape.NumDimensions() == 0 || source_shape.NumDimensions() == 0)) {
+    destination.Reshape(source_shape);
+    return Status::OK();
+  }
+
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                         "The pre-allocated output shape ", destination_shape,
+                         " does not match the computed output shape ", source_shape);
+}
+
 static common::Status CopyOutputsAcrossDevices(const SessionState& session_state,
                                                gsl::span<const OrtValue> fetches,
                                                std::vector<OrtValue>& user_fetches,
@@ -644,6 +661,10 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
 #endif
 
   for (size_t idx = 0; idx < num_outputs; ++idx) {
+    if (fetches[idx].IsTensor() && user_fetches[idx].IsTensor()) {
+      ORT_RETURN_IF_ERROR(NormalizePreallocatedOutputShape(fetches[idx].Get<Tensor>().Shape(),
+                                                           *user_fetches[idx].GetMutable<Tensor>()));
+    }
 #if !defined(DISABLE_SPARSE_TENSORS)
     ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], fetches[idx], user_fetches[idx], fetch_streams[idx],
                                            &batched_data_transfers, &batched_sparse_data_transfers));

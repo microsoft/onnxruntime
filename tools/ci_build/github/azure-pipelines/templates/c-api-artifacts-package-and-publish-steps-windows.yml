@@ -207,7 +207,7 @@ steps:
           copy "$(Build.SourcesDirectory)\include\onnxruntime\core\framework\provider_options.h" "%ARTIFACT%\include"
 
           REM Optional- CUDA provider - copy extra headers
-          if exist "%INSTALLED%\bin\onnxruntime_providers_cuda.dll" (
+          if exist "%INSTALLED%\lib\onnxruntime_providers_cuda.dll" (
             echo "CUDA provider present"
             if not exist "%ARTIFACT%\include\core\providers\cuda" (
               mkdir "%ARTIFACT%\include\core\providers\cuda"

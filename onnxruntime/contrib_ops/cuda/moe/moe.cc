@@ -128,7 +128,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   if (activation_type_ == ActivationType::Silu && fc3_experts_weights_optional != nullptr) {
     // Mixtral case: SiLU activation with separate FC3.
     // Kernel supports SwiGLU which is Linear * SiLU(Gate).
-    // We map Mixtral to SwiGLU by packing weights as [FC3, FC1] (Linear, Gate).
+    // Map separate FC1 gate and FC3 value weights to SwiGLU.
     kernel_activation_type = ActivationType::Swiglu;
   }
   const bool separate_geglu = activation_type_ == ActivationType::Gelu && fc3_experts_weights_optional != nullptr;
@@ -372,7 +372,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
       fc1_bias_buffer = GetScratchBuffer<void>(bias_bytes, stream_obj);
       CUDA_RETURN_IF_ERROR(cudaMemsetAsync(fc1_bias_buffer.get(), 0, bias_bytes, stream));
       auto* packed_bias = static_cast<CudaT*>(fc1_bias_buffer.get());
-      for (int e = 0; e < E; ++e) {
+      for (int64_t e = 0; e < E; ++e) {
         if (fc1_bias_ptr != nullptr) {
           CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(packed_bias + e * 2 * moe_params.inter_size,
                                                fc1_bias_ptr + e * moe_params.inter_size,

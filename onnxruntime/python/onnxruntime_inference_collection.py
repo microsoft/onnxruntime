@@ -252,6 +252,8 @@ class Session:
         # self._sess is managed by the derived class and relies on bindings from C.InferenceSession
         self._sess = None
         self._enable_fallback = enable_fallback
+        # Sessions created from a model package cannot be re-created from a model path or bytes.
+        self._from_model_package = False
         # Captured graphs retain buffer signatures without extending the IOBinding lifetime.
         self._captured_graph_bindings: dict[int, tuple[weakref.ref, tuple]] = {}
 
@@ -323,6 +325,7 @@ class Session:
         means execute a node using CUDAExecutionProvider if capable,
         otherwise execute using CPUExecutionProvider.
         """
+        self._check_session_can_be_recreated("set_providers")
         # recreate the underlying C.InferenceSession
         self._reset_session(providers, provider_options)
 
@@ -339,7 +342,15 @@ class Session:
         If GPU is enabled, fall back to CUDAExecutionProvider.
         otherwise fall back to CPUExecutionProvider.
         """
+        self._check_session_can_be_recreated("enable_fallback")
         self._enable_fallback = True
+
+    def _check_session_can_be_recreated(self, method_name: str) -> None:
+        if self._from_model_package:
+            raise NotImplementedError(
+                f"{method_name}() is not supported for sessions created from a model package. "
+                "Create a new session with ModelPackageComponentContext.create_session() instead."
+            )
 
     def _validate_input(self, feed_input_names):
         missing_input_names = []
@@ -752,6 +763,9 @@ class InferenceSession(Session):
         # initialize the C++ InferenceSession
         sess.initialize_session(providers, provider_options, disabled_optimizers)
 
+        self._bind_session(sess)
+
+    def _bind_session(self, sess):
         self._sess = sess
         self._sess_options = self._sess.session_options
         self._inputs_meta = self._sess.inputs_meta
@@ -764,6 +778,20 @@ class InferenceSession(Session):
         self._providers = self._sess.get_providers()
         self._provider_options = self._sess.get_provider_options()
         self._profiling_start_time_ns = self._sess.get_profiling_start_time_ns
+
+    @classmethod
+    def _from_initialized_c_session(cls, sess: C.InferenceSession) -> InferenceSession:
+        obj = cls.__new__(cls)
+        Session.__init__(obj, enable_fallback=False)
+        obj._from_model_package = True
+        # The session cannot be re-created, so there is no model path/bytes or initial options to keep.
+        obj._model_path = None
+        obj._model_bytes = None
+        obj._sess_options_initial = None
+        obj._read_config_from_model = False
+        obj._fallback_providers = []
+        obj._bind_session(sess)
+        return obj
 
     def _release_captured_graphs(self) -> None:
         """Release every graph captured by the current session handle and unpin its IOBinding.
@@ -811,6 +839,18 @@ class InferenceSession(Session):
                 and providers[i][0] == "TensorrtExecutionProvider"
             ):
                 C.register_tensorrt_plugins_as_custom_ops(session_options, providers[i][1])
+
+
+if hasattr(C, "ModelPackageComponentContext"):
+
+    def _model_package_component_create_session(self, sess_options=None) -> InferenceSession:
+        """Create an initialized :class:`onnxruntime.InferenceSession` for the selected component variant.
+
+        ``None`` applies the package's session/provider options; explicit options override them.
+        """
+        return InferenceSession._from_initialized_c_session(self._create_session(sess_options))
+
+    C.ModelPackageComponentContext.create_session = _model_package_component_create_session
 
 
 def make_get_initializer_location_func_wrapper(
@@ -999,6 +1039,18 @@ class ModelCompiler:
     def clear_ep_context_data_write_func(self) -> None:
         """Clears a previously registered external EPContext data write callback."""
         self._model_compiler.clear_ep_context_data_write_func()
+
+    def set_ep_context_binary_information(self, output_directory: str | os.PathLike, model_name: str) -> None:
+        """
+        Sets the directory and model name that execution providers use to place their EPContext binary files.
+
+        Raises an 'InvalidArgument' exception if either argument is empty or the directory is not valid.
+
+        :param output_directory: Directory for the EP's binary files. A path without a trailing separator and
+            without an extension is rejected as not being a directory.
+        :param model_name: Model name used by the EP when naming its binary files.
+        """
+        self._model_compiler.set_ep_context_binary_information(os.fspath(output_directory), model_name)
 
     def compile_to_bytes(self) -> bytes:
         """
@@ -1513,12 +1565,11 @@ class OrtValue:
           (e.g. a PyTorch tensor, JAX array, or numpy array).
         * A raw DLPack PyCapsule (legacy path).
 
-        Boolean tensors are automatically detected when the source object
-        exposes a ``dtype`` attribute (numpy, PyTorch, etc.) or is an
-        ``OrtValue``. For raw DLPack capsules where the original dtype cannot
-        be inspected, bool tensors encoded as uint8 by older DLPack versions
-        are not distinguishable from true uint8 tensors and will be imported
-        as uint8.
+        Dtypes are determined solely by the DLPack metadata. Boolean tensors
+        must use ``kDLBool``; legacy bool-as-uint8 tensors are imported as uint8.
+        All implemented ORT numeric and boolean tensor types are supported,
+        including float8, packed float4, int4/uint4, and int2/uint2. String,
+        complex, and float6 tensors are not supported.
 
         No data is copied; the new OrtValue shares memory with the source.
 
@@ -1527,26 +1578,13 @@ class OrtValue:
         :return: An OrtValue wrapping the tensor data.
         :raises TypeError: If the object does not provide a valid DLPack capsule.
         """
-        # Detect boolean dtype from the source object before consuming it,
-        # because DLPack encodes bool as uint8 and the capsule alone cannot
-        # distinguish between the two.
-        is_bool = False
-        if isinstance(data, OrtValue):
-            is_bool = data.data_type() == "tensor(bool)"
-        elif hasattr(data, "dtype"):
-            dtype_obj = data.dtype
-            # Use .name when available (numpy, cupy, tensorflow all expose it).
-            # Fall back to str() for frameworks that don't (e.g. PyTorch).
-            dtype_name = getattr(dtype_obj, "name", str(dtype_obj))
-            is_bool = dtype_name in ("bool", "bool_", "torch.bool")
-
         # If the input supports the __dlpack__ protocol, call it to get the capsule.
         if hasattr(data, "__dlpack__"):
             capsule = data.__dlpack__()
         else:
             capsule = data
 
-        return cls(C.OrtValue.from_dlpack(capsule, is_bool))
+        return cls(C.OrtValue.from_dlpack(capsule))
 
     def update_inplace(self, data) -> None:
         """

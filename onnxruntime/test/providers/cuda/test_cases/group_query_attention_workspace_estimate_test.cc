@@ -320,6 +320,28 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, ParsesPackedAndSeparateLayouts) {
   EXPECT_GT(packed->total_workspace_bytes, separate->total_workspace_bytes);
 }
 
+TEST(GroupQueryAttentionWorkspaceEstimateTest, ExplicitQueryLengthsIncludeMaskedValueScratch) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kMath, true);
+  const auto separate = SeparateShapes();
+  std::array<WorkspaceInputShape, 17> shapes;
+  std::copy(separate.begin(), separate.end(), shapes.begin());
+  shapes[16] = Known({2});
+  const auto estimate = EstimateGroupQueryAttentionWorkspace(Config(), shapes, Device(), options);
+  ASSERT_TRUE(estimate.has_value());
+
+  auto bounds = Bounds();
+  bounds.is_windowed_kv_cache = true;
+  bounds.reachable_backends = GQAReachableBackend::Unfused;
+  const auto without = GetGQAWorkspaceAggregateForBounds(bounds);
+  ASSERT_TRUE(without.status.IsOK()) << without.status.message;
+  bounds.has_query_seqlens = true;
+  const auto with = GetGQAWorkspaceAggregateForBounds(bounds);
+  ASSERT_TRUE(with.status.IsOK()) << with.status.message;
+  EXPECT_GT(with.total_workspace_bytes, without.total_workspace_bytes);
+  EXPECT_GE(estimate->total_workspace_bytes, with.total_workspace_bytes);
+}
+
 // Budget H512-only group ratios with rotary/sink scratch and reject malformed or inactive XQA layouts.
 TEST(GroupQueryAttentionWorkspaceEstimateTest, H512EstimatorDominatesCompleteRuntimeWorkspace) {
   AttentionKernelOptions options;
