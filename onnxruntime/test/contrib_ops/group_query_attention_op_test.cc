@@ -887,6 +887,10 @@ TEST(GroupQueryAttentionTest, BidirectionalWindowGroupedHeadsAndPadding_CPU) {
   RunBidirectionalWindowTest(513, 257, 256);
 }
 
+TEST(GroupQueryAttentionTest, BidirectionalGlobalGroupedHeadsAndPadding_CPU) {
+  RunBidirectionalWindowTest(513, -1, -1);
+}
+
 TEST(GroupQueryAttentionTest, BidirectionalWindowAsymmetric_CPU) {
   RunBidirectionalWindowTest(33, 2, 4);
 }
