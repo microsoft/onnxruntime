@@ -3,8 +3,9 @@
 
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv.h"
 
-#include <cuda_fp16.h>
 #include <cstdio>
+#include <cuda_fp16.h>
+#include <math_constants.h>
 #include <type_traits>
 
 #include "core/common/common.h"
@@ -234,7 +235,7 @@ __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, Type
       }
     }
   }
-  epilogue<Details, CtaM, CtaN, Threads, EnableBias, false, AccT>(out, n, tile_acc, bias, 1.0f);
+  epilogue<Details, CtaM, CtaN, Threads, EnableBias, false, AccT, true>(out, n, tile_acc, bias, 1.0f);
 #endif
 }
 
@@ -283,6 +284,10 @@ __device__ __forceinline__ void fused_finalize_accumulate(float* out_acc, void* 
 #pragma unroll
     for (int jj = 0; jj < WarpNum; ++jj) {
       val += shmem[jj * CtaN * Interleave + ii];
+    }
+    if constexpr (Details::TypeDetailsW::kElemBits == 2) {
+      // Match the INT2 grouped-prefill boundary: round the projection to the activation type before adding bias.
+      val = static_cast<float>(static_cast<Type>(val));
     }
     out_acc[ii] += row_scale * (val + v_bias);
   }
@@ -480,6 +485,11 @@ __device__ __forceinline__ void swiglu_epilogue(void* out, void* tile_acc, void*
       gate += shmem[warp * RawCols + gate_idx];
       linear += shmem[warp * RawCols + linear_idx];
     }
+    if constexpr (Details::TypeDetailsW::kElemBits == 2) {
+      // Match the INT2 grouped-prefill projection boundary before bias.
+      gate = static_cast<float>(static_cast<TypeA>(gate));
+      linear = static_cast<float>(static_cast<TypeA>(linear));
+    }
     if constexpr (EnableBias) {
       gate += static_cast<float>(reinterpret_cast<TypeA*>(bias)[gate_idx]);
       linear += static_cast<float>(reinterpret_cast<TypeA*>(bias)[linear_idx]);
@@ -490,7 +500,10 @@ __device__ __forceinline__ void swiglu_epilogue(void* out, void* tile_acc, void*
     }
     linear += activation_params.beta;
     const float sigmoid = 1.0f / (1.0f + expf(-activation_params.alpha * gate));
-    reinterpret_cast<TypeA*>(out)[pair] = static_cast<TypeA>(gate * sigmoid * linear);
+    // SiLU's limit is zero where exp(-alpha * gate) overflows.
+    const bool silu_limit_is_zero = (activation_params.alpha > 0.0f && gate == -CUDART_INF_F) ||
+                                    (activation_params.alpha < 0.0f && gate == CUDART_INF_F);
+    reinterpret_cast<TypeA*>(out)[pair] = static_cast<TypeA>((silu_limit_is_zero ? 0.0f : gate * sigmoid) * linear);
   }
 }
 
@@ -684,6 +697,10 @@ __global__ void moe_gemv_splitk_reduce_swiglu_kernel(
     linear += partials[base + linear_idx];
   }
 
+  if constexpr (Details::TypeDetailsW::kElemBits == 2) {
+    gate = static_cast<float>(static_cast<TypeA>(gate));
+    linear = static_cast<float>(static_cast<TypeA>(linear));
+  }
   if constexpr (EnableBias) {
     bias += static_cast<int64_t>(expert) * n;
     gate += static_cast<float>(bias[gate_idx]);
@@ -695,7 +712,9 @@ __global__ void moe_gemv_splitk_reduce_swiglu_kernel(
   }
   linear += act_beta;
   const float sigmoid = 1.0f / (1.0f + expf(-act_alpha * gate));
-  out[static_cast<int64_t>(row) * inter_size + col] = static_cast<TypeA>(gate * sigmoid * linear);
+  const bool silu_limit_is_zero = (act_alpha > 0.0f && gate == -CUDART_INF_F) ||
+                                  (act_alpha < 0.0f && gate == CUDART_INF_F);
+  out[static_cast<int64_t>(row) * inter_size + col] = static_cast<TypeA>((silu_limit_is_zero ? 0.0f : gate * sigmoid) * linear);
 #endif
 }
 

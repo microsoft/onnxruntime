@@ -72,6 +72,7 @@
 #include <intrin.h>
 #elif defined(__GNUC__)
 #include <cpuid.h>
+#include <emmintrin.h>
 #endif
 #else
 #define QMOE_SHARED_ARCH_X86_64 0
@@ -369,11 +370,20 @@ void ScalarInt2GemmRange(const uint8_t* weights, const uint16_t* scales, const u
   const int64_t raw_w_stride = k / 4;
   const float* scales_f32 = reinterpret_cast<const float*>(scales);
   const float* bias_f32 = reinterpret_cast<const float*>(bias);
-  auto read_scale = [&](int64_t n, int64_t sb) -> float {
+  // Scales at or above 2^127 are halved (exact) and the block sum is doubled afterwards, so `code * scale` with code -2
+  // stays finite for every finite BF16/FP32 scale. Smaller scales are used as-is, which avoids underflowing subnormal
+  // FP32 scales.
+  struct ScaleTerm {
+    float scale;
+    float rescale;
+  };
+  auto read_scale_term = [&](int64_t n, int64_t sb) -> ScaleTerm {
     const size_t s_idx = static_cast<size_t>(scales_are_block_major ? (sb * n_total + n) : (n * scale_blocks + sb));
-    return scale_is_fp32   ? scales_f32[s_idx]
-           : scale_is_bf16 ? BoundaryBFloat16::FromBits(scales[s_idx])
-                           : HalfToFloat(scales[s_idx]);
+    const float scale = scale_is_fp32   ? scales_f32[s_idx]
+                        : scale_is_bf16 ? BoundaryBFloat16::FromBits(scales[s_idx])
+                                        : HalfToFloat(scales[s_idx]);
+    constexpr float kHalveThreshold = 0x1p127f;
+    return std::fabs(scale) >= kHalveThreshold ? ScaleTerm{0.5f * scale, 2.0f} : ScaleTerm{scale, 1.0f};
   };
   for (int64_t n = n_begin; n < n_end; ++n) {
     const uint8_t* group = weights_are_prepacked
@@ -394,8 +404,10 @@ void ScalarInt2GemmRange(const uint8_t* weights, const uint16_t* scales, const u
                                    : (raw_w_row + kb64 * 16);
         const float* ar = a_reordered + r * k + kb64 * kTileK;
         if (eff_block == 32) {
-          const float s0 = read_scale(n, 2 * kb64);
-          const float s1 = read_scale(n, 2 * kb64 + 1);
+          const ScaleTerm t0 = read_scale_term(n, 2 * kb64);
+          const ScaleTerm t1 = read_scale_term(n, 2 * kb64 + 1);
+          const float s0 = t0.scale;
+          const float s1 = t1.scale;
           float sum0 = 0.0f;
           float sum1 = 0.0f;
           for (int s = 0; s < 4; ++s) {
@@ -404,25 +416,26 @@ void ScalarInt2GemmRange(const uint8_t* weights, const uint16_t* scales, const u
               const float w = static_cast<float>(static_cast<int>((bytes[b] >> (2 * s)) & 0x3u) - 2);
               const bool second_half = weights_are_prepacked ? ((b & 1) != 0) : (b >= 8);
               if (second_half) {
-                sum1 += w * as[b];
+                sum1 += (w * s1) * as[b];
               } else {
-                sum0 += w * as[b];
+                sum0 += (w * s0) * as[b];
               }
             }
           }
-          acc += sum0 * s0 + sum1 * s1;
+          acc += sum0 * t0.rescale + sum1 * t1.rescale;
         } else {
           const int64_t sb = (eff_block == 64) ? kb64 : (kb64 >> 1);
-          const float s_val = read_scale(n, sb);
+          const ScaleTerm term = read_scale_term(n, sb);
+          const float s_val = term.scale;
           float sum = 0.0f;
           for (int s = 0; s < 4; ++s) {
             const float* as = ar + s * 16;
             for (int b = 0; b < 16; ++b) {
               const float w = static_cast<float>(static_cast<int>((bytes[b] >> (2 * s)) & 0x3u) - 2);
-              sum += w * as[b];
+              sum += (w * s_val) * as[b];
             }
           }
-          acc += sum * s_val;
+          acc += sum * term.rescale;
         }
       }
       out[r * out_stride + (n - n_begin)] = acc + b_val;
@@ -600,7 +613,17 @@ void ScalarMxfp4GemmRange(const uint8_t* weights, const uint8_t* block_scales, f
 }
 #endif
 
+std::atomic<bool> g_disable_avx512_for_testing{false};
+
 }  // namespace
+
+void SetDisableAvx512ForTesting(bool disable) noexcept {
+  g_disable_avx512_for_testing.store(disable, std::memory_order_relaxed);
+}
+
+bool IsAvx512DisabledForTesting() noexcept {
+  return g_disable_avx512_for_testing.load(std::memory_order_relaxed);
+}
 
 bool CompilerHasAvx512() noexcept {
 #if QMOE_COMPILER_SUPPORTS_AVX512
@@ -613,13 +636,20 @@ bool CompilerHasAvx512() noexcept {
 bool CpuHasAvx512() {
 #if QMOE_COMPILER_SUPPORTS_AVX512 && QMOE_SHARED_ARCH_X86_64
   static const bool has = []() {
+    // Setting ORT_QMOE_CPU_DISABLE_AVX512=1 disables AVX-512 dispatch so INT4/INT3 cold-expert
+    // GEMMs and FP16/BF16 row conversions fall back to AVX2+FMA+F16C (when available), while
+    // NVFP4/MXFP4 cold-expert GEMMs fall back to scalar.
+    const char* env = std::getenv("ORT_QMOE_CPU_DISABLE_AVX512");
+    if (env != nullptr && env[0] == '1' && env[1] == '\0') {
+      return false;
+    }
 #if defined(QMOE_SHARED_USE_MLAS)
     return MlasPlatformAvx512Supported();
 #else
     return DetectRuntimeAvx512CpuSupport();
 #endif
   }();
-  return has;
+  return has && !g_disable_avx512_for_testing.load(std::memory_order_relaxed);
 #else
   return false;
 #endif
@@ -1276,6 +1306,14 @@ bool FileExpertStore::InitializeStorage(const char* file_path, uint64_t file_off
     } else if (length <= (4ULL << 20) && read_opt_enabled) {
       bank->resident.assign(static_cast<const uint8_t*>(source.data),
                             static_cast<const uint8_t*>(source.data) + length);
+    } else if (source.data != nullptr) {
+      MEMORY_BASIC_INFORMATION mbi{};
+      if (VirtualQuery(source.data, &mbi, sizeof(mbi)) == 0 || mbi.State != MEM_COMMIT ||
+          (mbi.Type != MEM_MAPPED && !read_opt_enabled)) {
+        return false;
+      }
+      bank->mapped_ptr = static_cast<const uint8_t*>(source.data);
+      bank->is_file_backed = (mbi.Type == MEM_MAPPED);
     } else {
       return false;
     }
@@ -2788,14 +2826,65 @@ bool Int3ExpertForward(int64_t hidden, int64_t inter, const Int3ExpertView& view
   return true;
 }
 
+#if QMOE_SHARED_ARCH_X86_64 && (QMOE_COMPILER_SUPPORTS_AVX512 || QMOE_COMPILER_SUPPORTS_AVX2)
+namespace {
+
+// True when any of `count` BF16 scales has exponent field >= 0xFE (|scale| >= 2^127, including Inf/NaN).
+// Only such scales can overflow when multiplied by the INT2 code -2.
+bool HasExtremeBf16Scale(const uint16_t* scales, int64_t count) noexcept {
+  constexpr uint16_t kMagnitudeMask = 0x7FFF;
+  constexpr uint16_t kExtremeMagnitude = 0x7F00;
+  const __m128i mask = _mm_set1_epi16(static_cast<short>(kMagnitudeMask));
+  __m128i max0 = _mm_setzero_si128();
+  __m128i max1 = _mm_setzero_si128();
+  int64_t i = 0;
+  for (; i + 16 <= count; i += 16) {
+    max0 = _mm_max_epi16(max0, _mm_and_si128(_mm_loadu_si128(reinterpret_cast<const __m128i*>(scales + i)), mask));
+    max1 = _mm_max_epi16(max1, _mm_and_si128(_mm_loadu_si128(reinterpret_cast<const __m128i*>(scales + i + 8)), mask));
+  }
+  // Masked magnitudes fit in a positive int16, so the signed compare is exact.
+  const __m128i over = _mm_cmpgt_epi16(_mm_max_epi16(max0, max1),
+                                       _mm_set1_epi16(static_cast<short>(kExtremeMagnitude - 1)));
+  if (_mm_movemask_epi8(over) != 0) return true;
+  for (; i < count; ++i) {
+    if ((scales[i] & kMagnitudeMask) >= kExtremeMagnitude) return true;
+  }
+  return false;
+}
+
+// Scans the scales read by Int2GemmRange for columns [n_begin, n_end).
+bool Int2RangeHasExtremeBf16Scale(const uint16_t* scales, bool scales_are_block_major, int64_t n_total,
+                                  int64_t blocks, int64_t n_begin, int64_t n_end) noexcept {
+  const int64_t width = n_end - n_begin;
+  if (width <= 0 || blocks <= 0) return false;
+  if (!scales_are_block_major) return HasExtremeBf16Scale(scales + n_begin * blocks, width * blocks);
+  for (int64_t b = 0; b < blocks; ++b) {
+    if (HasExtremeBf16Scale(scales + b * n_total + n_begin, width)) return true;
+  }
+  return false;
+}
+
+}  // namespace
+#endif
+
 void Int2GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias,
                    int64_t block_size, bool scales_are_block_major, bool weights_are_prepacked,
                    bool scale_is_bf16, bool bias_is_bf16,
                    int64_t n_total, int64_t k, const float* a_reordered, int64_t m,
                    float* out, int64_t out_stride, int64_t n_begin, int64_t n_end,
-                   bool force_scalar) {
+                   bool force_scalar, Int2GemmBackend backend) {
+#if QMOE_SHARED_ARCH_X86_64 && (QMOE_COMPILER_SUPPORTS_AVX512 || QMOE_COMPILER_SUPPORTS_AVX2)
+  // The vector kernels scale weights before the dot product, so code -2 times a BF16 scale >= 2^127 overflows even
+  // when the activation is tiny. The scalar kernel halves the scale first and stays finite for every finite scale.
+  if (!force_scalar && scale_is_bf16 && (block_size == 32 || block_size == 64 || block_size == 128) &&
+      (CpuHasAvx512() || CpuHasAvx2FmaF16c()) &&
+      Int2RangeHasExtremeBf16Scale(scales, scales_are_block_major, n_total, k / block_size, n_begin, n_end)) {
+    force_scalar = true;
+  }
+#endif
 #if QMOE_COMPILER_SUPPORTS_AVX512
-  if (!force_scalar && CpuHasAvx512() && (block_size == 32 || block_size == 64 || block_size == 128)) {
+  if (!force_scalar && backend == Int2GemmBackend::Auto && CpuHasAvx512() &&
+      (block_size == 32 || block_size == 64 || block_size == 128)) {
     detail::Avx512Int2GemmRange(weights, scales, bias, block_size, scales_are_block_major, weights_are_prepacked,
                                 scale_is_bf16, bias_is_bf16, n_total, k, a_reordered, m,
                                 out, out_stride, n_begin, n_end);
@@ -2811,15 +2900,20 @@ void Int2GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_
   }
 #endif
   (void)force_scalar;
+  (void)backend;
   ScalarInt2GemmRange(weights, scales, bias, block_size, scales_are_block_major, weights_are_prepacked,
                       scale_is_bf16, bias_is_bf16, n_total, k, a_reordered, m,
                       out, out_stride, n_begin, n_end);
 }
 
-void Int2Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int2ExpertView& view,
+bool Int2Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int2ExpertView& view,
                         const float* x_reordered, int64_t m, const SwiGluParams& swiglu,
                         float* inter_reordered, int64_t n_begin, int64_t n_end,
                         bool force_scalar, bool bf16_boundaries, bool fp16_boundaries) {
+  if (n_begin < 0 || n_end < n_begin || n_end > 2 * inter ||
+      (n_begin & 1) != 0 || (n_end & 1) != 0 || m < 0 || m > kMaxRowsPerCall) {
+    return false;
+  }
   constexpr int64_t kChunk = 128;
   float tmp[kMaxRowsPerCall * kChunk];
   const int64_t n_total = 2 * inter;
@@ -2833,12 +2927,12 @@ void Int2Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int2ExpertView& vie
   for (int64_t nb = n_begin; nb < n_end; nb += kChunk) {
     const int64_t ne = std::min(nb + kChunk, n_end);
     if (use_fast_gemm) {
-      Int2GemmRange(view.fc1_weights, view.fc1_scales, view.fc1_bias,
+      Int2GemmRange(view.fc1_weights, view.fc1_scales, nullptr,
                     view.block_size, view.scales_are_block_major, view.weights_are_prepacked,
                     view.scale_is_bf16, view.bias_is_bf16,
                     n_total, hidden, x_reordered, m, tmp, kChunk, nb, ne, force_scalar);
     } else {
-      ScalarInt2GemmRange(view.fc1_weights, view.fc1_scales, view.fc1_bias,
+      ScalarInt2GemmRange(view.fc1_weights, view.fc1_scales, nullptr,
                           view.block_size, view.scales_are_block_major, view.weights_are_prepacked,
                           view.scale_is_bf16, view.bias_is_bf16,
                           n_total, hidden, x_reordered, m, tmp, kChunk, nb, ne,
@@ -2851,15 +2945,28 @@ void Int2Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int2ExpertView& vie
         const int64_t j = n / 2;
         const int pos = view.weights_are_prepacked ? Int2ReorderedPosition(static_cast<int>(j & 63))
                                                    : RawInt2ReorderedPosition(static_cast<int>(j & 63));
-        const float gate_projection = row_tmp[n - nb];
-        const float up_projection = row_tmp[(n - nb) + 1];
-        float gate = gate_projection;
-        float value = up_projection;
+        // Match the packed CUDA prefill boundary: round GEMM results before adding bias in FP32.
+        auto round_projection = [&](float v) {
+          return bf16_boundaries ? RoundBf16Fast(v) : fp16_boundaries ? BoundaryFloat16::Round(v)
+                                                                      : v;
+        };
+        auto read_bias = [&](int64_t c) {
+          if (!view.fc1_bias) return 0.0f;
+          return view.bias_is_fp32   ? reinterpret_cast<const float*>(view.fc1_bias)[c]
+                 : view.bias_is_bf16 ? BoundaryBFloat16::FromBits(view.fc1_bias[c])
+                                     : HalfToFloat(view.fc1_bias[c]);
+        };
+        float gate = round_projection(row_tmp[n - nb]) + read_bias(n);
+        float value = round_projection(row_tmp[(n - nb) + 1]) + read_bias(n + 1);
         if (has_limit) {
           gate = std::min(gate, swiglu.limit);
           value = std::clamp(value, -swiglu.limit, swiglu.limit);
         }
-        const float act = gate / (1.0f + std::exp(-swiglu.alpha * gate)) * (value + swiglu.beta);
+        // SiLU's limit is zero when the gate is infinite on the side where exp(-alpha * gate) overflows.
+        const bool silu_limit_is_zero = (swiglu.alpha > 0.0f && gate == -std::numeric_limits<float>::infinity()) ||
+                                        (swiglu.alpha < 0.0f && gate == std::numeric_limits<float>::infinity());
+        const float silu = silu_limit_is_zero ? 0.0f : gate / (1.0f + std::exp(-swiglu.alpha * gate));
+        const float act = silu * (value + swiglu.beta);
 #if QMOE_COMPILER_SUPPORTS_AVX2
         const float rounded_act = bf16_boundaries   ? RoundBf16Fast(act)
                                   : use_f16c        ? detail::Avx2RoundFp16Scalar(act)
@@ -2874,6 +2981,7 @@ void Int2Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int2ExpertView& vie
       }
     }
   }
+  return true;
 }
 
 void Int2Fc2Range(int64_t hidden, int64_t inter, const Int2ExpertView& view,
@@ -3092,6 +3200,7 @@ int64_t qmoe_shared_block_bytes(int64_t hidden, int64_t inter) {
 
 int qmoe_shared_cpu_has_avx512(void) { return CpuHasAvx512() ? 1 : 0; }
 int qmoe_shared_cpu_has_avx2(void) { return CpuHasAvx2FmaF16c() ? 1 : 0; }
+void qmoe_shared_set_disable_avx512_for_testing(int disable) { SetDisableAvx512ForTesting(disable != 0); }
 
 int qmoe_shared_accepts_prepack_contract(int64_t weights_prepacked, int64_t block_size) {
   return IsAcceptedPrepackContract(weights_prepacked, block_size) ? 1 : 0;
@@ -3287,11 +3396,13 @@ int qmoe_file_store_test_heap_eviction_safety(void) {
 
 #if !defined(QMOE_SHARED_SEPARATE_AVX2_TU) && QMOE_COMPILER_SUPPORTS_AVX2
 #include "contrib_ops/cpu/moe/qmoe_shared_layout_int4_avx2.cc"
+#include "contrib_ops/cpu/moe/qmoe_shared_layout_int2_avx2.cc"
 #include "contrib_ops/cpu/moe/qmoe_shared_layout_int3_avx2.cc"
 #endif
 
 #if !defined(QMOE_SHARED_SEPARATE_AVX512_TU) && QMOE_COMPILER_SUPPORTS_AVX512
 #include "contrib_ops/cpu/moe/qmoe_shared_layout_int4_avx512.cc"
+#include "contrib_ops/cpu/moe/qmoe_shared_layout_int2_avx512.cc"
 #include "contrib_ops/cpu/moe/qmoe_shared_layout_int3_avx512.cc"
 #include "contrib_ops/cpu/moe/qmoe_shared_layout_fp4_avx512.cc"
 #endif
