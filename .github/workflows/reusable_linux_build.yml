@@ -77,6 +77,10 @@ on:
         description: 'GitHub token for accessing actions/packages'
         required: true
 
+env:
+  ACR_READ_CLIENT_ID: ${{ vars.ACR_READ_CLIENT_ID }}
+  AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+
 jobs:
   build_test_pipeline:
     runs-on: ["${{ inputs.pool_name }}"]

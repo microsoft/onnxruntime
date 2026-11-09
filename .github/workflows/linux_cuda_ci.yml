@@ -17,6 +17,10 @@ permissions:
   attestations: write
   id-token: write
 
+env:
+  ACR_READ_CLIENT_ID: ${{ vars.ACR_READ_CLIENT_ID }}
+  AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+
 jobs:
   build-linux-cuda-x64-release:
     name: Build Linux CUDA x64 Release

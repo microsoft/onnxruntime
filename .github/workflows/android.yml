@@ -22,6 +22,10 @@ permissions:
   attestations: write
   id-token: write
 
+env:
+  ACR_READ_CLIENT_ID: ${{ vars.ACR_READ_CLIENT_ID }}
+  AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+
 jobs:
   AndroidBinarySizeCheckJob_MinimalBaseline:
     runs-on: [ort-github-linux-16-amd-wcus-ss]

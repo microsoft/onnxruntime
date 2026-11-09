@@ -17,6 +17,8 @@ concurrency:
 
 env:
   BUILD_SOURCES_DIRECTORY: ${{ github.workspace }}
+  ACR_READ_CLIENT_ID: ${{ vars.ACR_READ_CLIENT_ID }}
+  AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
 
 jobs:
   # Job 1: Build full onnxruntime and generate ORT format test files
