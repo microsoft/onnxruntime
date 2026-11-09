@@ -177,6 +177,21 @@ static bool IsPowExponentTwo(const Graph& graph, const Node& pow_node) {
          exponent_value == 2.0;
 }
 
+// True if the Cast converts every input value exactly: fp16 -> float/double or float -> double.
+static bool IsExactFloatCast(const Node& cast_node) {
+  const auto* from_type = cast_node.InputDefs()[0]->TypeAsProto();
+  const auto* to_type = cast_node.OutputDefs()[0]->TypeAsProto();
+  if (from_type == nullptr || to_type == nullptr) {
+    return false;
+  }
+
+  const auto from = from_type->tensor_type().elem_type();
+  const auto to = to_type->tensor_type().elem_type();
+  return (from == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
+          (to == ONNX_NAMESPACE::TensorProto_DataType_FLOAT || to == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE)) ||
+         (from == ONNX_NAMESPACE::TensorProto_DataType_FLOAT && to == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE);
+}
+
 static const NodeArg* GetOtherAddInput(const Node& add_node, const NodeArg& known_input) {
   const auto& add_inputs = add_node.InputDefs();
   if (add_inputs.size() < 2) {
@@ -766,10 +781,13 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     const bool is_cpu_ep = pow_node.GetExecutionProviderType() == kCpuExecutionProvider;
     if ((is_gpu_ep || is_cpu_ep) && p_pow_input_node) {
       Node& pow_input_node = *graph.GetNode(p_pow_input_node->Index());
-      // If input to Pow is a Cast, and the Cast has 2 consumers only (Pow, Div)
+      // If input to Pow is a Cast, and the Cast has 2 consumers only (Pow, Div).
+      // On CPU, only absorb a Cast that converts exactly (widening float cast); absorbing a narrowing Cast
+      // would drop the rounding the subgraph applies to x.
       if (graph_utils::IsSupportedOptypeVersionAndDomain(pow_input_node, "Cast", {9, 13, 19, 21, 23, 24, 25, 28}) &&
           pow_input_node.GetExecutionProviderType() == pow_node.GetExecutionProviderType() &&
-          optimizer_utils::CheckOutputEdges(graph, pow_input_node, 2)) {
+          optimizer_utils::CheckOutputEdges(graph, pow_input_node, 2) &&
+          (!is_cpu_ep || IsExactFloatCast(pow_input_node))) {
         nodes_to_remove.insert(nodes_to_remove.begin(), pow_input_node);
         has_leading_cast = true;
       }
