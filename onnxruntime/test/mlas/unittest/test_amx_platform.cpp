@@ -6,12 +6,15 @@
 
 #if defined(__linux__) && defined(MLAS_TARGET_AMD64) && defined(MLAS_ENABLE_TEST_HOOKS)
 
-#include <chrono>
-#include <condition_variable>
-#include <mutex>
 #include <pthread.h>
 #include <sched.h>
 #include <thread>
+
+#if !defined(__ANDROID__)
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
+#endif
 
 namespace {
 
@@ -59,6 +62,7 @@ void TestProbeResult(bool preserve_data, unsigned long bitmask = kTilePermission
   EXPECT_TRUE(CPU_EQUAL(&before, &after));
 }
 
+#if !defined(__ANDROID__)
 struct CancellationProbeContext {
   explicit CancellationProbeContext(int type) : Type(type) {}
 
@@ -96,6 +100,7 @@ void* TestCancellationCaller(void* arg) {
   pthread_cleanup_pop(1);
   return nullptr;
 }
+#endif  // !defined(__ANDROID__)
 
 }  // namespace
 
@@ -119,6 +124,7 @@ TEST(AmxPlatform, OlderKernelTileDataPermission) {
   TestProbeResult(true, 1ul << 18);
 }
 
+#if !defined(__ANDROID__)
 TEST(AmxPlatform, CancellationStateUnchanged) {
   for (int state : {PTHREAD_CANCEL_ENABLE, PTHREAD_CANCEL_DISABLE}) {
     std::thread worker([state] {
@@ -173,6 +179,7 @@ TEST(AmxPlatform, CancellationJoinsProbeThread) {
     EXPECT_TRUE(context.CleanupAfterProbe);
   }
 }
+#endif  // !defined(__ANDROID__)
 
 #if defined(__GLIBC__)
 #if __GLIBC_PREREQ(2, 18)

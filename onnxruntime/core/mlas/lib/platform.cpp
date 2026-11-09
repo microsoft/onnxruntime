@@ -309,17 +309,20 @@ MlasAMXCheckOSSupport(unsigned long bitmask, bool (*probe)(int, void*), void* co
     }
     // Only change affinity in a temporary thread, never in the caller.
     MlasAMXProbeContext probe_context{probe, context};
+    // Keep the worker joinable even if process defaults were changed.
     pthread_attr_t attributes;
     if (pthread_attr_init(&attributes) != 0) {
         return false;
     }
-    // Keep the worker joinable even if process defaults were changed, and
-    // disable cancellation until it finishes using the stack-owned context.
+    // Bionic has no pthread cancellation. Other Linux libcs must defer it
+    // until the worker finishes using the stack-owned context.
+#if !defined(__ANDROID__)
     int cancel_state;
     if (pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &cancel_state) != 0) {
         pthread_attr_destroy(&attributes);
         return false;
     }
+#endif
     pthread_t thread;
     const int rc = pthread_create(&thread, &attributes, MlasAMXProbeThread, &probe_context);
     pthread_attr_destroy(&attributes);
@@ -327,7 +330,9 @@ MlasAMXCheckOSSupport(unsigned long bitmask, bool (*probe)(int, void*), void* co
         pthread_join(thread, nullptr);
     }
     const bool supported = rc == 0 && probe_context.Result;
+#if !defined(__ANDROID__)
     pthread_setcancelstate(cancel_state, nullptr);
+#endif
     return supported;
 }
 
