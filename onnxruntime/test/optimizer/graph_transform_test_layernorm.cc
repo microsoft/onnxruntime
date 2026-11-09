@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <numeric>
 #include <type_traits>
 
 #include "gtest/gtest.h"
@@ -1395,25 +1396,32 @@ static Status CheckMsRotaryEmbeddingGQAFused(Graph& graph, int64_t expected_inte
   return Status::OK();
 }
 
-// Verifies the fusion is skipped when the GQA node has input slots beyond sin_cache (e.g. position_ids),
-// including empty placeholders that would leave stale input-argument counts if dropped.
-static void TestGQAFusionNotApplied(const std::basic_string<ORTCHAR_T>& file_path,
-                                    bool use_empty_placeholders,
-                                    logging::Logger* logger) {
+static void TestGQAFusionPreservesAdditionalInputs(const std::basic_string<ORTCHAR_T>& file_path,
+                                                   bool use_empty_placeholders,
+                                                   logging::Logger* logger) {
   std::shared_ptr<Model> p_model;
   ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, *logger).IsOK());
   Graph& graph = p_model->MainGraph();
 
   NodeArg* empty_input = &graph.GetOrCreateNodeArg("", nullptr);
-  NodeArg* optional_input = use_empty_placeholders
-                                ? empty_input
-                                : graph.GetNodeArg("position_ids");
-  ASSERT_NE(optional_input, nullptr);
+  NodeArg* optional_input = empty_input;
+  if (!use_empty_placeholders) {
+    ONNX_NAMESPACE::TensorProto attention_bias;
+    attention_bias.set_name("gqa_fusion_test_attention_bias");
+    attention_bias.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    for (int i = 0; i < 4; ++i) {
+      attention_bias.add_dims(1);
+    }
+    attention_bias.add_float_data(0.0f);
+    graph.AddInitializedTensor(attention_bias);
+    optional_input = &graph.GetOrCreateNodeArg(attention_bias.name(), nullptr);
+  }
+
   for (Node& node : graph.Nodes()) {
     if (node.OpType() == "GroupQueryAttention") {
-      node.MutableInputDefs().resize(9, empty_input);
+      node.MutableInputDefs().resize(10, empty_input);
       node.MutableInputDefs().push_back(optional_input);
-      node.MutableInputArgsCount().resize(10, 1);
+      node.MutableInputArgsCount().resize(11, 1);
     }
   }
   ASSERT_STATUS_OK(graph.Resolve());
@@ -1423,12 +1431,18 @@ static void TestGQAFusionNotApplied(const std::basic_string<ORTCHAR_T>& file_pat
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger));
 
-  // Fusion must not fire: RotaryEmbedding nodes are preserved and the graph remains valid.
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["com.microsoft.RotaryEmbedding"] == 2);
+  ASSERT_TRUE(op_to_count["com.microsoft.RotaryEmbedding"] == 0);
   ASSERT_TRUE(op_to_count["com.microsoft.GroupQueryAttention"] == 1);
 
-  // The GQA node must still be resolvable (its input defs and arg counts remain consistent).
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "GroupQueryAttention") {
+      ASSERT_EQ(node.InputDefs().size(), 11);
+      EXPECT_EQ(node.InputDefs()[10], optional_input);
+      const auto& counts = node.InputArgCount();
+      EXPECT_EQ(std::accumulate(counts.begin(), counts.end(), size_t{0}), node.InputDefs().size());
+    }
+  }
   ASSERT_STATUS_OK(graph.Resolve());
 }
 
@@ -1688,9 +1702,8 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionFusionTest) {
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_different_head_sizes.onnx", 0, 1, logger_.get());
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_quantized_different_head_sizes.onnx", 1, 0, logger_.get());
 
-  // GQA nodes with input slots beyond sin_cache must not be fused.
-  TestGQAFusionNotApplied(MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx", false, logger_.get());
-  TestGQAFusionNotApplied(MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx", true, logger_.get());
+  TestGQAFusionPreservesAdditionalInputs(MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx", false, logger_.get());
+  TestGQAFusionPreservesAdditionalInputs(MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx", true, logger_.get());
 }
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsOnnxRotaryEmbeddingTest) {
