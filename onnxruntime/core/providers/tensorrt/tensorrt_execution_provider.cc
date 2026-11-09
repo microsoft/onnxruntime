@@ -2571,14 +2571,7 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
 
     // Remove TensorRT subgraph from the supported node list if it's part of the cycle
     if (has_cycle && remove_cycles) {
-      for (size_t i = 0; i < cycles.size(); ++i) {
-        auto loc = trt_id_to_subgraph_index.find(cycles[i]);
-        if (loc != trt_id_to_subgraph_index.end() && loc->second < supported_nodes_vector.size()) {
-          supported_nodes_vector.erase(supported_nodes_vector.begin() + loc->second);
-          trt_cycle = true;
-          break;
-        }
-      }
+      trt_cycle = EraseCyclicTensorRTSubgraph(supported_nodes_vector, cycles, trt_id_to_subgraph_index);
     }
   }
   return cycle_detected;
