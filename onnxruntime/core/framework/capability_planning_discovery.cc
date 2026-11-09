@@ -15,17 +15,21 @@
 namespace onnxruntime {
 namespace {
 
+bool SourceViewContainsNode(const GraphViewer& graph, size_t node_index) {
+  return node_index < static_cast<size_t>(graph.MaxNodeIndex()) && graph.GetNode(node_index) != nullptr;
+}
+
 Status ValidateSourceView(const GraphViewer& graph, const CapabilityPlanningQuery& query) {
   if (graph.GetFilterInfo() != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Planning requires the unfiltered source graph view.");
   }
   for (const auto& constraint : query.node_constraints) {
-    if (graph.GetNode(constraint.node_index) == nullptr) {
+    if (!SourceViewContainsNode(graph, constraint.node_index)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Constraint refers to a node outside the source view.");
     }
   }
   for (const auto& assignment : query.tentative_assignments) {
-    if (graph.GetNode(assignment.node_index) == nullptr) {
+    if (!SourceViewContainsNode(graph, assignment.node_index)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Tentative assignment refers to a node outside the source view.");
     }
   }
@@ -157,7 +161,7 @@ Status QueryCapabilityPlanning(
   }
   for (const auto& capability : discovered.capabilities) {
     for (const auto node_index : capability->sub_graph->nodes) {
-      if (graph_viewer.GetNode(node_index) == nullptr) {
+      if (!SourceViewContainsNode(graph_viewer, node_index)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Planning offer contains a node outside the source view.");
       }
     }

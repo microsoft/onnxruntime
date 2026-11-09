@@ -510,10 +510,13 @@ TEST_F(CapabilityPlanningDiscoveryTest, NormalizationRejectsConflictsWithoutRepl
   request.node_constraints = {{0, "CPU:0", std::nullopt}, {0, "CUDA:0", std::nullopt}};
   EXPECT_EQ(NormalizeCapabilityPlanningQuery(graph, request, query).Code(), common::INVALID_ARGUMENT);
   EXPECT_EQ(query, original);
-  request.node_constraints = {{999, std::nullopt, std::nullopt}};
+  request.node_constraints = {{static_cast<size_t>(graph.MaxNodeIndex()), std::nullopt, std::nullopt}};
   EXPECT_EQ(NormalizeCapabilityPlanningQuery(graph, request, query).Code(), common::INVALID_ARGUMENT);
   EXPECT_EQ(query, original);
   request.node_constraints.clear();
+  request.tentative_assignments = {{static_cast<size_t>(graph.MaxNodeIndex()), "CPU:0"}};
+  EXPECT_EQ(NormalizeCapabilityPlanningQuery(graph, request, query).Code(), common::INVALID_ARGUMENT);
+  EXPECT_EQ(query, original);
   request.tentative_assignments = {{0, "CPU:0"}, {0, "CUDA:0"}};
   EXPECT_EQ(NormalizeCapabilityPlanningQuery(graph, request, query).Code(), common::INVALID_ARGUMENT);
   EXPECT_EQ(query, original);
@@ -558,6 +561,13 @@ TEST_F(CapabilityPlanningDiscoveryTest, DispatcherValidatesBeforeEntryAndNeverAd
 
   IndexedSubGraph filter;
   filter.nodes = {0};
+  auto meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
+  meta_def->name = "filtered_identity";
+  meta_def->domain = kMSDomain;
+  meta_def->since_version = 1;
+  meta_def->inputs = {"X"};
+  meta_def->outputs = {"T"};
+  filter.SetMetaDef(std::move(meta_def));
   const GraphViewer filtered(model_.MainGraph(), filter);
   EXPECT_EQ(QueryCapabilityPlanning(ep, filtered, lookup_, registry_, query, result).Code(), common::INVALID_ARGUMENT);
   EXPECT_EQ(ep.planning_calls, 1);
@@ -646,6 +656,9 @@ TEST_F(CapabilityPlanningDiscoveryTest, CudaDiscoveryIgnoresAssignmentsButPreser
   auto ep = DefaultCudaExecutionProvider();
   if (!ep) {
     GTEST_SKIP() << "CUDA EP is unavailable.";
+  }
+  if (ep->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "Planning transport for plugin EPs is not implemented.";
   }
   ep->SetLogger(&DefaultLoggingManager().DefaultLogger());
   auto& source = model_.MainGraph();
