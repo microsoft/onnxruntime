@@ -1,8 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+#include <deque>
+
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
+#include "core/common/safeint.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -11,6 +15,16 @@ namespace {
 
 constexpr size_t NormalizeBufferSize(size_t size) {
   return (size + 15) / 16 * 16;
+}
+
+size_t CalculateBucketBufferSize(size_t request_size) {
+  // Four intervals per doubling limit padding while preserving reuse as tensor sizes grow.
+  request_size = std::max(size_t{64}, request_size);
+  size_t alignment = 16;
+  while ((request_size - 1) / 8 >= alignment) {
+    alignment *= 2;
+  }
+  return (SafeInt<size_t>(request_size) + alignment - 1) / alignment * alignment;
 }
 
 // WebGPU requires that the copy size in CopyBufferToBuffer must be a multiple of 4 bytes.
@@ -136,147 +150,231 @@ class SimpleCacheManager : public IBufferCacheManager {
   std::vector<WGPUBuffer> pending_buffers_;
 };
 
-// TODO: maybe use different bucket size for storage and uniform buffers?
-constexpr std::initializer_list<std::pair<const size_t, size_t>> BUCKET_DEFAULT_LIMIT_TABLE = {
-    {64, 250},
-    {128, 200},
-    {256, 200},
-    {512, 200},
-    {2048, 230},
-    {4096, 200},
-    {8192, 50},
-    {16384, 50},
-    {32768, 50},
-    {65536, 50},
-    {131072, 50},
-    {262144, 50},
-    {524288, 50},
-    {1048576, 50},
-    {2097152, 30},
-    {4194304, 20},
-    {8388608, 10},
-    {12582912, 10},
-    {16777216, 10},
-    {26214400, 15},
-    {33554432, 22},
-    {44236800, 2},
-    {58982400, 6},
-    // we don't want to cache the bucket sizes below but not caching them
-    // results in some major performance hits for models like sd-turbo.
-    {67108864, 6},
-    {134217728, 6},
-    {167772160, 6},
-};
-
 class BucketCacheManager : public IBufferCacheManager {
- public:
-  BucketCacheManager() : buckets_limit_{BUCKET_DEFAULT_LIMIT_TABLE} {
-    Initialize();
-  }
-  BucketCacheManager(std::unordered_map<size_t, size_t>&& buckets_limit) : buckets_limit_{buckets_limit} {
-    Initialize();
-  }
+  // One shared window ends after 16 successful runs across this context's sessions.
+  // Spares have no session owner: demand follows the current borrower, regardless
+  // of which recording eventually returns the buffer. Partial flushes do not count.
+  static constexpr size_t kRunWindow = 16;
+  struct Demand {
+    size_t unavailable = 0;
+    size_t peak = 0;
+    size_t window_peak = 0;
+    size_t retained_peak = 0;
 
-  size_t CalculateBufferSize(size_t request_size) override {
-    // binary serch size
-    auto it = std::lower_bound(buckets_keys_.begin(), buckets_keys_.end(), request_size);
-    if (it == buckets_keys_.end()) {
-      return NormalizeBufferSize(request_size);
-    } else {
-      return *it;
+    size_t RecentPeak(bool active) const {
+      return std::max({retained_peak, window_peak, active ? peak : size_t{0}});
     }
+
+    void AdvanceWindow() {
+      retained_peak = window_peak;
+      window_peak = 0;
+    }
+  };
+  struct Session {
+    bool active = false;
+    bool completed_in_window = false;
+    bool window_update_pending = false;
+    bool trim_late_returns = false;
+    InlinedHashMap<size_t, Demand> demand;
+  };
+  struct BorrowedBuffer {
+    std::shared_ptr<Session> session;
+    size_t capacity;
+  };
+  using BufferQueue = std::deque<wgpu::Buffer>;
+
+ public:
+  size_t CalculateBufferSize(size_t request_size) override {
+    return CalculateBucketBufferSize(request_size);
   }
 
   WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size) override {
     auto it = buckets_.find(buffer_size);
     if (it != buckets_.end() && !it->second.empty()) {
-      auto buffer = it->second.back();
+      auto buffer = it->second.back().MoveToCHandle();
       it->second.pop_back();
       return buffer;
     }
     return nullptr;
   }
 
-  void RegisterBuffer(WGPUBuffer /*buffer*/, size_t /*request_size*/) override {
-    // no-op
+  void RegisterBuffer(WGPUBuffer /*buffer*/, size_t /*request_size*/) override {}
+
+  void OnAcquire(WGPUBuffer buffer, const CommandRecordingState& recording) override {
+    auto it = sessions_.find(&recording);
+    if (it == sessions_.end()) {
+      return;
+    }
+    auto& session = it->second;
+    const auto capacity = static_cast<size_t>(wgpuBufferGetSize(buffer));
+    borrowed_.emplace(buffer, BorrowedBuffer{session, capacity});
+    auto& demand = session->demand[capacity];
+    ++demand.unavailable;
+    if (session->active) {
+      demand.peak = std::max(demand.peak, demand.unavailable);
+    }
+  }
+
+  void OnDiscard(WGPUBuffer buffer) override {
+    Retire(buffer);
   }
 
   void ReleaseBuffer(WGPUBuffer buffer) override {
-    auto buffer_size = static_cast<size_t>(wgpuBufferGetSize(buffer));
+    auto owned_buffer = wgpu::Buffer::Acquire(buffer);
+    const auto capacity = static_cast<size_t>(owned_buffer.GetSize());
+    auto borrower = Retire(buffer);
+    auto& buffers = buckets_[capacity];
+    buffers.push_back(std::move(owned_buffer));
+    if (borrower && !borrower->active && borrower->trim_late_returns) {
+      size_t keep = 0;
+      for (const auto& [recording, session] : sessions_) {
+        if (auto it = session->demand.find(capacity); it != session->demand.end()) {
+          const auto& demand = it->second;
+          const auto peak = demand.RecentPeak(session->active);
+          if (peak > demand.unavailable) {
+            keep += peak - demand.unavailable;
+          }
+        }
+      }
+      TrimBucket(buffers, keep);
+    }
+  }
 
-    auto it = buckets_.find(buffer_size);
-    if (it != buckets_.end() && it->second.size() < buckets_limit_[buffer_size]) {
-      it->second.emplace_back(buffer);
+  void OnRunStart(const CommandRecordingState& recording) override {
+    auto& session = sessions_[&recording];
+    if (!session) {
+      session = std::make_shared<Session>();
+    }
+    session->active = true;
+    session->trim_late_returns = false;
+    for (auto& [capacity, demand] : session->demand) {
+      // Include carried-over live inputs, not just allocations made in this run.
+      demand.peak = demand.unavailable;
+    }
+  }
+
+  void OnRunEnd(const CommandRecordingState& recording, bool completed) override {
+    auto it = sessions_.find(&recording);
+    if (it == sessions_.end()) {
+      return;
+    }
+    auto& session = *it->second;
+    // A run crossing a shared boundary completes that session's deferred window.
+    // Updating here prevents continuous overlap from retaining an old peak forever,
+    // without adding a pool scan between the ordinary 16-run cleanup batches.
+    const bool update = completed && session.window_update_pending;
+    for (auto& [capacity, demand] : session.demand) {
+      demand.window_peak = std::max(demand.window_peak, demand.peak);
+      if (update) {
+        demand.AdvanceWindow();
+      } else if (!completed) {
+        // Failure is not evidence that this session's previous demand decreased.
+        demand.retained_peak = std::max(demand.retained_peak, demand.peak);
+      }
+    }
+    session.active = false;
+    if (!completed) {
+      Trim();
     } else {
-      pending_buffers_.emplace_back(buffer, buffer_size);
+      session.completed_in_window = !update;
+      session.window_update_pending = false;
+      if (++runs_since_cleanup_ == kRunWindow) {
+        runs_since_cleanup_ = 0;
+        Trim(true);
+      }
     }
   }
 
-  void OnRefresh(GraphCaptureState /*graph_capture_state*/) override {
-    for (auto& [buffer, buffer_size] : pending_buffers_) {
-      auto it = buckets_.find(buffer_size);
-      if (it != buckets_.end() && it->second.size() < buckets_limit_[buffer_size]) {
-        it->second.emplace_back(buffer);
+  void OnSessionRelease(const CommandRecordingState& recording) override {
+    // Outstanding allocations retain their old attribution, but teardown drops
+    // this session's spare demand even if a new session reuses its address.
+    if (auto it = sessions_.find(&recording); it != sessions_.end()) {
+      it->second->active = false;
+      it->second->trim_late_returns = true;
+      sessions_.erase(it);
+    }
+    Trim();
+  }
+
+  void OnRefresh(GraphCaptureState /*graph_capture_state*/) override {}
+
+ private:
+  std::shared_ptr<Session> Retire(WGPUBuffer buffer) {
+    auto it = borrowed_.find(buffer);
+    if (it == borrowed_.end()) {
+      return nullptr;
+    }
+    auto session = std::move(it->second.session);
+    --session->demand.at(it->second.capacity).unavailable;
+    borrowed_.erase(it);
+    return session;
+  }
+
+  void Trim(bool advance_window = false) {
+    InlinedHashMap<size_t, size_t> spare_demand;
+    for (const auto& [recording, session] : sessions_) {
+      // A fast session's boundary preserves paused sessions and defers active
+      // sessions until their complete run ends. Slow runs can need more spares
+      // later, including buffers returned by other sessions. Previously completed
+      // peaks are carried into the deferred window; unavailable buffers stay live.
+      const bool update = advance_window && session->completed_in_window && !session->active;
+      if (advance_window && session->active) {
+        session->window_update_pending = true;
+      }
+      for (auto it = session->demand.begin(); it != session->demand.end();) {
+        auto& demand = it->second;
+        if (update) {
+          demand.AdvanceWindow();
+        }
+        // Per capacity, sum remaining observed demand over all sessions. Live
+        // and pending buffers are unavailable; free buffers can serve any borrower.
+        const auto peak = demand.RecentPeak(session->active);
+        if (peak > demand.unavailable) {
+          spare_demand[it->first] += peak - demand.unavailable;
+        }
+        if (demand.unavailable == 0 && peak == 0) {
+          session->demand.erase(it++);
+        } else {
+          ++it;
+        }
+      }
+      if (update) {
+        session->completed_in_window = false;
+        session->window_update_pending = false;
+      }
+      // Returns associated with this maintenance opportunity check only their
+      // size class. A subsequent run starts a new allocation/reuse opportunity.
+      session->trim_late_returns = true;
+    }
+    for (auto it = buckets_.begin(); it != buckets_.end();) {
+      auto& buffers = it->second;
+      TrimBucket(buffers, spare_demand[it->first]);
+      if (buffers.empty()) {
+        buckets_.erase(it++);
       } else {
-        wgpuBufferRelease(buffer);
+        ++it;
       }
     }
-    pending_buffers_.clear();
   }
 
-  ~BucketCacheManager() {
-    for (auto& pair : buckets_) {
-      for (auto& buffer : pair.second) {
-        wgpuBufferRelease(buffer);
-      }
-    }
-    for (auto& buffer_info : pending_buffers_) {
-      wgpuBufferRelease(buffer_info.first);
+  void TrimBucket(BufferQueue& buffers, size_t keep) {
+    // Keep MRU spares for observed demand; release only surplus. Outside-run
+    // allocations share the pool without reserving additional spare demand.
+    while (buffers.size() > keep) {
+      buffers.pop_front();
     }
   }
 
- protected:
-  void Initialize() {
-    buckets_keys_.reserve(buckets_limit_.size());
-    buckets_.reserve(buckets_limit_.size());
-    for (const auto& pair : buckets_limit_) {
-      buckets_keys_.push_back(pair.first);
-      buckets_.emplace(pair.first, std::vector<WGPUBuffer>());
-    }
-    std::sort(buckets_keys_.begin(), buckets_keys_.end());
-
-#ifndef NDEBUG  // if debug build
-    ORT_ENFORCE(std::all_of(buckets_keys_.begin(), buckets_keys_.end(), [](size_t size) { return size % 16 == 0; }),
-                "Bucket sizes must be multiples of 16.");
-
-    for (size_t i = 1; i < buckets_keys_.size(); ++i) {
-      ORT_ENFORCE(buckets_keys_[i] > buckets_keys_[i - 1], "Bucket sizes must be in increasing order.");
-    }
-#endif
-  }
-  std::unordered_map<size_t, size_t> buckets_limit_;
-  std::unordered_map<size_t, std::vector<WGPUBuffer>> buckets_;
-  std::vector<std::pair<WGPUBuffer, size_t>> pending_buffers_;
-  std::vector<size_t> buckets_keys_;
+  size_t runs_since_cleanup_ = 0;
+  InlinedHashMap<size_t, BufferQueue> buckets_;
+  InlinedHashMap<const CommandRecordingState*, std::shared_ptr<Session>> sessions_;
+  InlinedHashMap<WGPUBuffer, BorrowedBuffer> borrowed_;
 };
 
 class GraphCacheManager : public IBufferCacheManager {
  public:
-  GraphCacheManager() : buckets_limit_{BUCKET_DEFAULT_LIMIT_TABLE} {
-    Initialize();
-  }
-  GraphCacheManager(std::unordered_map<size_t, size_t>&& buckets_limit) : buckets_limit_{buckets_limit} {
-    Initialize();
-  }
-
   size_t CalculateBufferSize(size_t request_size) override {
-    // binary serch size
-    auto it = std::lower_bound(buckets_keys_.begin(), buckets_keys_.end(), request_size);
-    if (it == buckets_keys_.end()) {
-      return NormalizeBufferSize(request_size);
-    } else {
-      return *it;
-    }
+    return CalculateBucketBufferSize(request_size);
   }
 
   WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size) override {
@@ -295,17 +393,11 @@ class GraphCacheManager : public IBufferCacheManager {
 
   void ReleaseBuffer(WGPUBuffer buffer) override {
     auto buffer_size = static_cast<size_t>(wgpuBufferGetSize(buffer));
-    auto it = buckets_.find(buffer_size);
-    if (it != buckets_.end()) {
-      it->second.emplace_back(buffer);
-    } else {
-      // Insert a new bucket for non-standard buffer sizes
-      buckets_[buffer_size] = std::vector<WGPUBuffer>{buffer};
-    }
+    buckets_[buffer_size].emplace_back(buffer);
   }
 
   void OnRefresh(GraphCaptureState /*graph_capture_state*/) override {
-    // no-op - buffers are already in buckets_
+    // Captured addresses must remain valid until the graph is released.
   }
 
   std::vector<std::pair<size_t, WGPUBuffer>> ExtractCachedBuffers() override {
@@ -314,8 +406,8 @@ class GraphCacheManager : public IBufferCacheManager {
       for (auto& buffer : pair.second) {
         result.emplace_back(pair.first, buffer);
       }
-      pair.second.clear();
     }
+    buckets_.clear();
     return result;
   }
 
@@ -335,28 +427,8 @@ class GraphCacheManager : public IBufferCacheManager {
     }
   }
 
- protected:
-  void Initialize() {
-    buckets_keys_.reserve(buckets_limit_.size());
-    buckets_.reserve(buckets_limit_.size());
-    for (const auto& pair : buckets_limit_) {
-      buckets_keys_.push_back(pair.first);
-      buckets_.emplace(pair.first, std::vector<WGPUBuffer>());
-    }
-    std::sort(buckets_keys_.begin(), buckets_keys_.end());
-
-#ifndef NDEBUG  // if debug build
-    ORT_ENFORCE(std::all_of(buckets_keys_.begin(), buckets_keys_.end(), [](size_t size) { return size % 16 == 0; }),
-                "Bucket sizes must be multiples of 16.");
-
-    for (size_t i = 1; i < buckets_keys_.size(); ++i) {
-      ORT_ENFORCE(buckets_keys_[i] > buckets_keys_[i - 1], "Bucket sizes must be in increasing order.");
-    }
-#endif
-  }
-  std::unordered_map<size_t, size_t> buckets_limit_;
-  std::unordered_map<size_t, std::vector<WGPUBuffer>> buckets_;
-  std::vector<size_t> buckets_keys_;
+ private:
+  InlinedHashMap<size_t, std::vector<WGPUBuffer>> buckets_;
 };
 
 class GraphSimpleCacheManager : public IBufferCacheManager {
@@ -630,20 +702,35 @@ WGPUBuffer BufferManager::Create(CommandRecordingState& recording, size_t size, 
     std::lock_guard<std::mutex> lock{mutex_};
     auto& cache = GetCacheManager(usage);
     buffer_size = cache.CalculateBufferSize(size);
+    // Rounding must not make an otherwise valid allocation exceed the device limit.
+    if (buffer_size > context_.DeviceLimits().maxBufferSize && size <= context_.DeviceLimits().maxBufferSize) {
+      // Preserve padding when possible, including when the limit is not 16-byte aligned.
+      buffer_size = std::min(NormalizeBufferSize(size), static_cast<size_t>(context_.DeviceLimits().maxBufferSize));
+    }
     buffer = cache.TryAcquireCachedBuffer(buffer_size);
+    if (buffer) {
+      cache.OnAcquire(buffer, recording);
+    }
   }
   if (buffer) {
     if (initialize_to_zero) {
-      // Modern plugin plain allocations pass call-local recording and submit only their own clear.
-      // AllocOnStream defers the clear on the Session timeline. Built-in allocations use the
-      // Session recording and retain their caller-supplied submission policy.
+      // Streamless allocations outside Run submit their own call-local clear. AllocOnStream
+      // and built-in allocations during Run defer the clear on the Session timeline.
       auto buffer_guard = wgpu::Buffer::Acquire(buffer);
+      bool initialized = false;
+      auto discard_on_error = gsl::finally([&] {
+        if (!initialized) {
+          std::lock_guard<std::mutex> lock{mutex_};
+          GetCacheManager(usage).OnDiscard(buffer);
+        }
+      });
       ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches(recording));
       context_.EndComputePass(recording);
       context_.GetCommandEncoder(recording).ClearBuffer(buffer, 0, buffer_size);
       if (submit_zero_initialize) {
         ORT_THROW_IF_ERROR(context_.Flush(*this, recording));
       }
+      initialized = true;
       return buffer_guard.MoveToCHandle();
     }
     return buffer;
@@ -662,7 +749,9 @@ WGPUBuffer BufferManager::Create(CommandRecordingState& recording, size_t size, 
 
   {
     std::lock_guard<std::mutex> lock{mutex_};
-    GetCacheManager(usage).RegisterBuffer(buffer, size);
+    auto& cache = GetCacheManager(usage);
+    cache.RegisterBuffer(buffer, size);
+    cache.OnAcquire(buffer, recording);
   }
   return buffer;
 }
@@ -767,7 +856,33 @@ void BufferManager::RefreshPendingBuffers(CommandRecordingState& recording, Grap
 void BufferManager::DiscardPendingBuffers(CommandRecordingState& recording) const {
   std::lock_guard<std::mutex> lock{mutex_};
   recording.has_unsubmitted_work.store(false, std::memory_order_relaxed);
-  pending_buffers_.erase(&recording);
+  if (auto it = pending_buffers_.find(&recording); it != pending_buffers_.end()) {
+    for (auto& buffer : it->second) {
+      GetCacheManager(buffer.Get()).OnDiscard(buffer.Get());
+    }
+    pending_buffers_.erase(it);
+  }
+}
+
+void BufferManager::OnRunStart(const CommandRecordingState& recording) const {
+  std::lock_guard<std::mutex> lock{mutex_};
+  for (auto* cache : {storage_cache_.get(), uniform_cache_.get(), query_resolve_cache_.get(), default_cache_.get()}) {
+    cache->OnRunStart(recording);
+  }
+}
+
+void BufferManager::OnRunEnd(const CommandRecordingState& recording, bool completed) const {
+  std::lock_guard<std::mutex> lock{mutex_};
+  for (auto* cache : {storage_cache_.get(), uniform_cache_.get(), query_resolve_cache_.get(), default_cache_.get()}) {
+    cache->OnRunEnd(recording, completed);
+  }
+}
+
+void BufferManager::OnSessionRelease(const CommandRecordingState& recording) const {
+  std::lock_guard<std::mutex> lock{mutex_};
+  for (auto* cache : {storage_cache_.get(), uniform_cache_.get(), query_resolve_cache_.get(), default_cache_.get()}) {
+    cache->OnSessionRelease(recording);
+  }
 }
 
 std::vector<std::pair<size_t, WGPUBuffer>> BufferManager::ExtractCachedBuffers(wgpu::BufferUsage usage) {
