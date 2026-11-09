@@ -22,14 +22,13 @@ void RunPackedCuda(OpTester& test) {
 }
 
 template <typename T>
-void TestNvfp4GlobalScale() {
+void TestNvfp4GlobalScale(int n = 17) {
   constexpr int k = 128;
-  constexpr int n = 17;
   constexpr std::array<float, 16> values{
       0.f, .5f, 1.f, 1.5f, 2.f, 3.f, 4.f, 6.f,
       0.f, -.5f, -1.f, -1.5f, -2.f, -3.f, -4.f, -6.f};
   constexpr float global_scale = .333333f;
-  for (int rows : {1, 7, 8, 9, 17}) {
+  for (int rows : {1, 7, 8, 9, 17, 129}) {
     SCOPED_TRACE(testing::Message() << "rows=" << rows);
     std::vector<T> a(rows * k), expected(rows * n);
     std::vector<uint8_t> packed(n * (k / 64) * 36);
@@ -89,6 +88,12 @@ TEST(MatMulPackedPrecisionTest, Nvfp4Bf16GlobalScaleBeforeCast) {
 TEST(MatMulPackedPrecisionTest, Nvfp4Fp16GlobalScaleBeforeCast) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   TestNvfp4GlobalScale<MLFloat16>();
+}
+
+TEST(MatMulPackedPrecisionTest, Nvfp4GlobalScaleAcrossPrefillTiles) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  TestNvfp4GlobalScale<BFloat16>(4099);
+  TestNvfp4GlobalScale<MLFloat16>(4099);
 }
 
 TEST(MatMulPackedPrecisionTest, CompleteOperandRoundingIsOptIn) {

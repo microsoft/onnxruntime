@@ -4750,7 +4750,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>N</tt> : int (required)</dt>
 <dd>Output dimension.</dd>
 <dt><tt>dequantize_to_activation_dtype</tt> : int</dt>
-<dd>Round complete dequantized weights to A's dtype before decode accumulation. Default preserves the existing decode path; prefill already dequantizes to A's dtype.</dd>
+<dd>Round complete dequantized weights to A's dtype before accumulation. Default preserves the existing decode and prefill paths.</dd>
 <dt><tt>packed_type</tt> : int (required)</dt>
 <dd>Stable packed-format ID for B from the packed-weight format contract. Only listed IDs are supported.</dd>
 </dl>
