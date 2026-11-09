@@ -142,10 +142,16 @@ void TestPreselectedReluSquared(int rows, int topk, int malformed = 0, bool sigm
       ASSERT_EQ(fetches.size(), 1u);
       const auto actual = fetches[0].Get<Tensor>().DataAsSpan<T>();
       ASSERT_EQ(actual.size(), expected.size());
-      for (int col = 0; col < hidden_size; ++col) {
-        EXPECT_TRUE(std::isnan(actual[col].ToFloat())) << "token 0 col " << col;
-        EXPECT_EQ(actual[hidden_size + col].ToFloat(), expected[hidden_size + col].ToFloat())
-            << "token 1 col " << col;
+      for (size_t i = 0; i < expected.size(); ++i) {
+        SCOPED_TRACE(testing::Message() << "token " << i / hidden_size << " col " << i % hidden_size);
+        const float actual_value = actual[i].ToFloat();
+        const float expected_value = expected[i].ToFloat();
+        if (std::isnan(expected_value)) {
+          EXPECT_TRUE(std::isnan(actual_value));
+        } else {
+          EXPECT_TRUE(std::isfinite(actual_value));
+          EXPECT_EQ(actual_value, expected_value);
+        }
       }
     });
   }
