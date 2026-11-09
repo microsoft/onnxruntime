@@ -9,17 +9,63 @@ namespace py = pybind11;
 
 void ThrowIfPyErrOccured() {
   if (PyErr_Occurred()) {
+    // Enhanced Python 3.14+ compatible exception handling
     PyObject *ptype, *pvalue, *ptraceback;
     PyErr_Fetch(&ptype, &pvalue, &ptraceback);
+    
+    // Normalize the exception (important for Python 3.14+ compatibility)
+    PyErr_NormalizeException(&ptype, &pvalue, &ptraceback);
 
-    PyObject* pStr = PyObject_Str(ptype);
-    std::string sType = py::reinterpret_borrow<py::str>(pStr);
-    Py_XDECREF(pStr);
-    pStr = PyObject_Str(pvalue);
-    sType += ": ";
-    sType += py::reinterpret_borrow<py::str>(pStr);
-    Py_XDECREF(pStr);
-    throw Fail(sType);
+    std::string error_message;
+    
+    try {
+      // Safe string extraction with proper error handling
+      if (ptype != nullptr) {
+        PyObject* ptype_str = PyObject_Str(ptype);
+        if (ptype_str != nullptr) {
+          try {
+            error_message += py::reinterpret_borrow<py::str>(ptype_str);
+          } catch (const py::error_already_set&) {
+            error_message += "<type conversion failed>";
+          }
+          Py_DECREF(ptype_str);
+        } else {
+          error_message += "<unknown type>";
+        }
+      }
+
+      error_message += ": ";
+
+      if (pvalue != nullptr) {
+        PyObject* pvalue_str = PyObject_Str(pvalue);
+        if (pvalue_str != nullptr) {
+          try {
+            error_message += py::reinterpret_borrow<py::str>(pvalue_str);
+          } catch (const py::error_already_set&) {
+            error_message += "<value conversion failed>";
+          }
+          Py_DECREF(pvalue_str);
+        } else {
+          error_message += "<unknown value>";
+        }
+      } else {
+        error_message += "<no error message>";
+      }
+
+    } catch (...) {
+      // Fallback for any unexpected errors during string conversion
+      error_message = "Python exception occurred but details could not be extracted";
+    }
+
+    // Clean up references safely
+    Py_XDECREF(ptype);
+    Py_XDECREF(pvalue);
+    Py_XDECREF(ptraceback);
+
+    // Clear any remaining error state
+    PyErr_Clear();
+    
+    throw Fail(std::move(error_message));
   }
 }
 
