@@ -2478,12 +2478,13 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
   while (trt_cycle) {
     trt_cycle = false;
     std::unordered_map<std::string, size_t> node_to_index_map;
-    std::unordered_map<size_t, std::string> index_to_node_map;
+    std::unordered_map<size_t, size_t> trt_id_to_subgraph_index;
     std::unordered_map<std::string, std::unordered_set<std::string>> input_to_nodes_map, node_to_outputs_map;
     std::unordered_set<size_t> non_trt_node_index(node_index.begin(), node_index.end());
     size_t id = 0;
     int subgraph_index = 0;
-    for (const auto& group : supported_nodes_vector) {
+    for (size_t group_index = 0; group_index < supported_nodes_vector.size(); ++group_index) {
+      const auto& group = supported_nodes_vector[group_index];
       if (!group.first.empty()) {
         // Construct subgraph from node list
         std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph, model_hash, subgraph_index);
@@ -2492,7 +2493,7 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
         const auto& meta_def = sub_graph->GetMetaDef();
         const std::string node_name = meta_def->name();
         if (node_to_index_map.find(node_name) == node_to_index_map.end()) {
-          index_to_node_map[id] = node_name;
+          trt_id_to_subgraph_index[id] = group_index;
           node_to_index_map[node_name] = id++;
         }
 
@@ -2518,7 +2519,6 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
       const auto& node = graph.GetNode(index);
       const std::string node_name = node->Name();
       if (node_to_index_map.find(node_name) == node_to_index_map.end()) {
-        index_to_node_map[id] = node_name;
         node_to_index_map[node_name] = id++;
       }
 
@@ -2572,9 +2572,9 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
     // Remove TensorRT subgraph from the supported node list if it's part of the cycle
     if (has_cycle && remove_cycles) {
       for (size_t i = 0; i < cycles.size(); ++i) {
-        auto loc = index_to_node_map.find(cycles[i]);
-        if (loc != index_to_node_map.end() && loc->second.find("TRTKernel") != std::string::npos) {
-          supported_nodes_vector.erase(supported_nodes_vector.begin() + cycles[i]);
+        auto loc = trt_id_to_subgraph_index.find(cycles[i]);
+        if (loc != trt_id_to_subgraph_index.end() && loc->second < supported_nodes_vector.size()) {
+          supported_nodes_vector.erase(supported_nodes_vector.begin() + loc->second);
           trt_cycle = true;
           break;
         }
