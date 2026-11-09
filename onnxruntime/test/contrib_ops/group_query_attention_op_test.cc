@@ -13,6 +13,7 @@
 #include <string>
 #include <type_traits>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -1040,12 +1041,12 @@ static void RunGQAQuerySeqlensGoldenTest(GqaTargetEp target_ep) {
     }
   }
 
-  // Single-token decode ignores query_seqlens; each entry's past length comes from seqlens_k alone.
+  // Single-token decode honors explicit lengths, including an idle batch entry.
   GqaQuerySeqlensCase decode;
   decode.batch_size = 2;
   decode.sequence_length = 1;
   decode.seqlens_k = {19, 7};
-  decode.query_seqlens = {1, 1};
+  decode.query_seqlens = {0, 1};
   RunGQAQuerySeqlensTest<T>(target_ep, decode);
 
   // A cache that grows between steps: past_key/past_value hold only the `past_rows` cached tokens, while the
@@ -1094,14 +1095,28 @@ TEST(GroupQueryAttentionTest, QuerySeqlensRightPaddedChunk_CUDA) {
   }
 }
 
-TEST(GroupQueryAttentionTest, QuerySeqlensBatchedChunkRejected_CUDA) {
-  GqaQuerySeqlensCase test_case;
-  test_case.batch_size = 2;
-  test_case.seqlens_k = {7, 7};
-  test_case.query_seqlens = {8, 8};
-  RunGQAQuerySeqlensTest<MLFloat16>(
-      GqaTargetEp::kCuda, test_case, OpTester::ExpectResult::kExpectFailure,
-      "batch_size must be 1 when query_seqlens is given and sequence_length > 1.");
+TEST(GroupQueryAttentionTest, QuerySeqlensBatchedChunks_CUDA) {
+  for (const auto& [disable_flash, disable_memory_efficient] :
+       std::vector<std::pair<const char*, const char*>>{{"0", "0"}, {"1", "0"}, {"1", "1"}}) {
+    ScopedEnvironmentVariables scoped_env_vars{{
+        {"ORT_DISABLE_FLASH_ATTENTION", disable_flash},
+        {"ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", disable_memory_efficient},
+        {"ORT_ENABLE_CUDNN_FLASH_ATTENTION", "0"},
+        {"ORT_ENABLE_XQA", "0"},
+    }};
+    for (const auto& valid : std::vector<std::vector<int32_t>>{{1, 8}, {0, 3}, {0, 0}}) {
+      GqaQuerySeqlensCase test_case;
+      test_case.batch_size = 2;
+      test_case.seqlens_k = {15, 15};
+      test_case.query_seqlens = valid;
+      RunGQAQuerySeqlensTest<MLFloat16>(GqaTargetEp::kCuda, test_case);
+    }
+    GqaQuerySeqlensCase mixed;
+    mixed.batch_size = 2;
+    mixed.seqlens_k = {7, 15};
+    mixed.query_seqlens = {8, 8};
+    RunGQAQuerySeqlensTest<MLFloat16>(GqaTargetEp::kCuda, mixed);
+  }
 }
 
 TEST(GroupQueryAttentionTest, QuerySeqlensWrongShapeRejected_CUDA) {
@@ -1299,9 +1314,10 @@ TEST(GroupQueryAttentionTest, QuerySeqlensOutOfRangeRejected_CPU) {
     const char* expected_message;
   };
   const std::vector<InvalidCase> cases = {
-      {15, 0, 32, "query_seqlens[0] = 0 must be in [1, min(sequence_length, seqlens_k[0] + 1)] = [1, 8]."},
-      {15, 9, 32, "query_seqlens[0] = 9 must be in [1, min(sequence_length, seqlens_k[0] + 1)] = [1, 8]."},
-      {2, 5, 32, "query_seqlens[0] = 5 must be in [1, min(sequence_length, seqlens_k[0] + 1)] = [1, 3]."},
+      {15, -1, 32, "query_seqlens[0] = -1 must be in [0, min(sequence_length, seqlens_k[0] + 1)] = [0, 8]."},
+      {15, 9, 32, "query_seqlens[0] = 9 must be in [0, min(sequence_length, seqlens_k[0] + 1)] = [0, 8]."},
+      {2, 5, 32, "query_seqlens[0] = 5 must be in [0, min(sequence_length, seqlens_k[0] + 1)] = [0, 3]."},
+      {-1, 0, 32, "seqlens_k[0] = -1 must not be negative when query_seqlens is given."},
       {15, 8, 8, "seqlens_k[0] + 1 = 16 exceeds total_sequence_length (8) when query_seqlens is given."},
       // P = 25 cached tokens plus the padded chunk of 8 rows needs 33 rows on a 32-row cache.
       {27, 3, 32, "does not fit in the KV cache capacity (32)."},
@@ -1318,14 +1334,24 @@ TEST(GroupQueryAttentionTest, QuerySeqlensOutOfRangeRejected_CPU) {
   }
 }
 
-TEST(GroupQueryAttentionTest, QuerySeqlensBatchedChunkRejected_CPU) {
-  GqaQuerySeqlensCase test_case;
-  test_case.batch_size = 2;
-  test_case.seqlens_k = {7, 7};
-  test_case.query_seqlens = {8, 8};
-  RunGQAQuerySeqlensTest<float>(
-      GqaTargetEp::kCpu, test_case, OpTester::ExpectResult::kExpectFailure,
-      "batch_size must be 1 when query_seqlens is given and sequence_length > 1.");
+TEST(GroupQueryAttentionTest, QuerySeqlensBatchedChunks_CPU) {
+  for (const char* disable_flash : {"0", "1"}) {
+    ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash}}};
+    for (const auto& valid : std::vector<std::vector<int32_t>>{{1, 8}, {0, 3}, {0, 0}}) {
+      GqaQuerySeqlensCase test_case;
+      test_case.batch_size = 2;
+      test_case.seqlens_k = {15, 15};
+      test_case.query_seqlens = valid;
+      RunGQAQuerySeqlensTest<float>(GqaTargetEp::kCpu, test_case);
+      RunGQAQuerySeqlensTest<MLFloat16>(GqaTargetEp::kCpu, test_case);
+    }
+    GqaQuerySeqlensCase mixed;
+    mixed.batch_size = 2;
+    mixed.seqlens_k = {7, 15};
+    mixed.query_seqlens = {8, 8};
+    RunGQAQuerySeqlensTest<float>(GqaTargetEp::kCpu, mixed);
+    RunGQAQuerySeqlensTest<MLFloat16>(GqaTargetEp::kCpu, mixed);
+  }
 }
 
 TEST(GroupQueryAttentionTest, QuerySeqlensWrongShapeRejected_CPU) {
@@ -1361,7 +1387,7 @@ TEST(GroupQueryAttentionTest, QuerySeqlensWithoutPresentOutputsRejected_CPU) {
       "query_seqlens requires the present_key and present_value outputs.");
 }
 
-// A single-token step ignores query_seqlens, but the requirement on the outputs does not depend on the chunk length.
+// The requirement on the outputs does not depend on the chunk length.
 TEST(GroupQueryAttentionTest, QuerySeqlensSingleTokenWithoutPresentOutputsRejected_CPU) {
   GqaQuerySeqlensCase test_case;
   test_case.sequence_length = 1;
@@ -5073,6 +5099,157 @@ static void RunGQACudaPackedPreparationTest(bool use_flash, int windowed_sequenc
   ASSERT_FALSE(separate_output.empty());
   ASSERT_FALSE(packed_output.empty());
   ExpectOutputsMatch(packed_output, separate_output, 0.002f, "packed preparation matches separate inputs");
+}
+
+// total_sequence_length computed by a CUDA node reaches GQA through MemcpyToHost, so it is in host-accessible memory
+// rather than on OrtDevice::CPU. GQA must still read it. Q and K are zero, so each output token is the running mean
+// of V.
+static void RunGQATotalSequenceLengthFromCudaNodeTest(bool with_bias, bool static_cache) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+  constexpr int batch_size = 2;
+  constexpr int sequence_length = 8;
+  constexpr int cache_capacity = 16;
+  constexpr int num_heads = 4;
+  constexpr int kv_num_heads = 2;
+  constexpr int head_size = 128;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+
+  Model model("gqa_total_from_cuda_node", true, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 17}, {kMSDomain, 1}},
+              {}, DefaultLoggingManager().DefaultLogger(), ModelOptions(true, true));
+  auto& graph = model.MainGraph();
+  ONNX_NAMESPACE::TypeProto fp16_type, float_type, int32_type;
+  fp16_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  float_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  int32_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+
+  auto& ones = graph.GetOrCreateNodeArg("ones", &float_type);
+  auto& count = graph.GetOrCreateNodeArg("count", &float_type);
+  auto& total = graph.GetOrCreateNodeArg("total", &int32_type);
+  graph.AddNode("sum", "ReduceSum", "", {&ones}, {&count}).AddAttribute("keepdims", int64_t{0});
+  graph.AddNode("cast", "Cast", "", {&count}, {&total})
+      .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_INT32));
+
+  auto& absent = graph.GetOrCreateNodeArg("", nullptr);
+  std::vector<NodeArg*> inputs{&graph.GetOrCreateNodeArg("query", &fp16_type),
+                               &graph.GetOrCreateNodeArg("key", &fp16_type),
+                               &graph.GetOrCreateNodeArg("value", &fp16_type)};
+  inputs.push_back(static_cache ? &graph.GetOrCreateNodeArg("past_key", &fp16_type) : &absent);
+  inputs.push_back(static_cache ? &graph.GetOrCreateNodeArg("past_value", &fp16_type) : &absent);
+  inputs.push_back(&graph.GetOrCreateNodeArg("seqlens_k", &int32_type));
+  inputs.push_back(&total);
+  inputs.insert(inputs.end(), 3, &absent);  // cos_cache, sin_cache, position_ids
+  inputs.push_back(with_bias ? &graph.GetOrCreateNodeArg("attention_bias", &fp16_type) : &absent);
+  std::vector<NodeArg*> outputs;
+  for (const char* name : {"output", "present_key", "present_value"}) {
+    outputs.push_back(&graph.GetOrCreateNodeArg(name, &fp16_type));
+  }
+  auto& node = graph.AddNode("gqa", "GroupQueryAttention", "", inputs, outputs, nullptr, kMSDomain);
+  node.AddAttribute("num_heads", static_cast<int64_t>(num_heads));
+  node.AddAttribute("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+  ASSERT_STATUS_OK(graph.Resolve());
+  std::string model_data;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
+
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  InferenceSession session(options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda_ep)));
+  std::istringstream model_stream(model_data);
+  ASSERT_STATUS_OK(session.Load(model_stream));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  std::vector<MLFloat16> query(batch_size * sequence_length * hidden_size, MLFloat16(0.0f));
+  std::vector<MLFloat16> key(batch_size * sequence_length * kv_hidden_size, MLFloat16(0.0f));
+  std::vector<MLFloat16> value(batch_size * sequence_length * kv_hidden_size);
+  for (int b = 0; b < batch_size; ++b) {
+    for (int token = 0; token < sequence_length; ++token) {
+      for (int head = 0; head < kv_num_heads; ++head) {
+        const MLFloat16 v(static_cast<float>(token + 1) / sequence_length + static_cast<float>(head) / 4.0f);
+        std::fill_n(value.begin() + (b * sequence_length + token) * kv_hidden_size + head * head_size, head_size, v);
+      }
+    }
+  }
+  std::vector<MLFloat16> past(batch_size * cache_capacity * kv_hidden_size, MLFloat16(0.0f));
+  std::vector<MLFloat16> bias(batch_size * sequence_length * sequence_length, MLFloat16(0.0f));
+  std::vector<int32_t> seqlens_k(batch_size, sequence_length - 1);
+  std::vector<float> ones_data(sequence_length, 1.0f);
+
+  auto cpu_allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  auto make_value = [&](auto& values, const TensorShape& shape) {
+    using Element = typename std::decay_t<decltype(values)>::value_type;
+    OrtValue result;
+    Tensor::InitOrtValue(DataTypeImpl::GetType<Element>(), shape, values.data(), cpu_allocator->Info(), result);
+    return result;
+  };
+  NameMLValMap feeds{{"query", make_value(query, {batch_size, sequence_length, hidden_size})},
+                     {"key", make_value(key, {batch_size, sequence_length, kv_hidden_size})},
+                     {"value", make_value(value, {batch_size, sequence_length, kv_hidden_size})},
+                     {"seqlens_k", make_value(seqlens_k, {batch_size})},
+                     {"ones", make_value(ones_data, {sequence_length})}};
+  if (static_cache) {
+    const TensorShape past_shape{batch_size, kv_num_heads, cache_capacity, head_size};
+    feeds.emplace("past_key", make_value(past, past_shape));
+    feeds.emplace("past_value", make_value(past, past_shape));
+  }
+  if (with_bias) {
+    feeds.emplace("attention_bias", make_value(bias, {batch_size, 1, sequence_length, sequence_length}));
+  }
+
+  const std::vector<std::string> output_names{"output", "present_key", "present_value"};
+  std::vector<OrtValue> fetches;
+  ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+  ASSERT_EQ(fetches.size(), 3u);
+
+  const TensorShape expected_present_shape{batch_size, kv_num_heads, static_cache ? cache_capacity : sequence_length,
+                                           head_size};
+  EXPECT_EQ(fetches[1].Get<Tensor>().Shape(), expected_present_shape);
+  EXPECT_EQ(fetches[2].Get<Tensor>().Shape(), expected_present_shape);
+
+  const Tensor& output = fetches[0].Get<Tensor>();
+  ASSERT_EQ(output.Shape(), TensorShape({batch_size, sequence_length, hidden_size}));
+  const auto actual = output.DataAsSpan<MLFloat16>();
+  int mismatches = 0;
+  for (int b = 0; b < batch_size; ++b) {
+    for (int token = 0; token < sequence_length; ++token) {
+      for (int head = 0; head < num_heads; ++head) {
+        const int kv_head = head / (num_heads / kv_num_heads);
+        const float expected =
+            static_cast<float>(token + 2) / (2 * sequence_length) + static_cast<float>(kv_head) / 4.0f;
+        const size_t row = static_cast<size_t>((b * sequence_length + token) * hidden_size + head * head_size);
+        for (int d = 0; d < head_size; ++d) {
+          const float got = actual[row + d].ToFloat();
+          if ((!std::isfinite(got) || std::abs(got - expected) > 0.005f) && mismatches++ == 0) {
+            ADD_FAILURE() << "batch " << b << " token " << token << " head " << head << " dim " << d << ": got " << got
+                          << ", expected " << expected;
+          }
+        }
+      }
+    }
+  }
+  EXPECT_EQ(mismatches, 0);
+}
+
+TEST(GroupQueryAttentionTest, CudaTotalSequenceLengthFromCudaNodeWithBias) {
+  RunGQATotalSequenceLengthFromCudaNodeTest(/*with_bias=*/true, /*static_cache=*/false);
+}
+
+TEST(GroupQueryAttentionTest, CudaTotalSequenceLengthFromCudaNodeWithBiasStaticCache) {
+  RunGQATotalSequenceLengthFromCudaNodeTest(/*with_bias=*/true, /*static_cache=*/true);
+}
+
+TEST(GroupQueryAttentionTest, CudaTotalSequenceLengthFromCudaNodeNoBias) {
+  RunGQATotalSequenceLengthFromCudaNodeTest(/*with_bias=*/false, /*static_cache=*/false);
+}
+
+// With cuDNN SDPA this case raises no error: a total read as 0 returned an all-zero output.
+TEST(GroupQueryAttentionTest, CudaTotalSequenceLengthFromCudaNodeNoBiasStaticCache) {
+  RunGQATotalSequenceLengthFromCudaNodeTest(/*with_bias=*/false, /*static_cache=*/true);
 }
 
 TEST(GroupQueryAttentionTest, CudaCacheAliasingUnfused) {

@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/providers/webgpu/webgpu_provider_factory.h"
 
 #include "dawn/dawn_proc.h"
 #include "dawn/native/DawnNative.h"
@@ -44,7 +45,10 @@ struct HostCache {
       if (found == blobs.end()) {
         return 0;
       }
-      if (value.size() >= found->second.size() && !value.empty()) {
+      if (!value.empty()) {
+        if (value.size() != found->second.size()) {
+          return 0;
+        }
         std::memcpy(value.data(), found->second.data(), found->second.size());
         ++hit_count;
       }
@@ -68,6 +72,27 @@ struct HostCache {
       callback_failed.store(true);
     }
   }
+
+  void ValidatePass(size_t pass, size_t hits_before, size_t stores_before) {
+    if (callback_failed.load()) {
+      throw std::runtime_error("A host shader-cache callback failed before completing its operation.");
+    }
+    std::lock_guard<std::mutex> cache_lock(mutex);
+    if (load_count == 0 || store_count == 0 || blobs.empty()) {
+      throw std::runtime_error("Host shader-cache callbacks were not exercised by GPU inference.");
+    }
+    if (pass == 0 && (hit_count != hits_before || store_count <= stores_before)) {
+      throw std::runtime_error("A cold device did not populate the empty shader cache.");
+    }
+    if (pass == 1 && hit_count <= hits_before) {
+      throw std::runtime_error("A second device did not reuse the populated shader cache.");
+    }
+    if (pass == 2 && (hit_count != hits_before || store_count <= stores_before)) {
+      throw std::runtime_error("A different isolation key did not produce an isolated shader-cache miss.");
+    }
+    std::cout << "Shader-cache pass " << pass << " passed: loads=" << load_count
+              << ", hits=" << hit_count << ", stores=" << store_count << std::endl;
+  }
 };
 }  // namespace
 
@@ -78,11 +103,24 @@ int main(int argc, char* argv[]) {
 #endif
   bool no_proc_table = false;
   bool host_device_mode = false;
+  bool ort_owned_cache_mode = false;
+  bool static_plugin_mode = false;
   bool no_implicit_sync = false;
   bool cache_callback_failure = false;
   std::basic_string<ORTCHAR_T> plugin_path;
   int retval = 0;
   HostCache host_cache;
+  OrtDawnCacheInterface cache_interface{};
+  cache_interface.version = ORT_DAWN_CACHE_INTERFACE_VERSION;
+  cache_interface.userdata = &host_cache;
+  cache_interface.load = [](const void* key, size_t key_size, void* value, size_t value_size, void* userdata) noexcept {
+    return static_cast<HostCache*>(userdata)->Load(
+        {static_cast<const std::byte*>(key), key_size}, {static_cast<std::byte*>(value), value_size});
+  };
+  cache_interface.store = [](const void* key, size_t key_size, const void* value, size_t value_size, void* userdata) noexcept {
+    static_cast<HostCache*>(userdata)->Store(
+        {static_cast<const std::byte*>(key), key_size}, {static_cast<const std::byte*>(value), value_size});
+  };
   std::unique_ptr<dawn::native::Instance> host_instance;
   wgpu::Device host_device;
   Ort::Env env{nullptr};
@@ -93,6 +131,10 @@ int main(int argc, char* argv[]) {
         no_proc_table = true;
       } else if (argument == ORT_TSTR("--host_device")) {
         host_device_mode = true;
+      } else if (argument == ORT_TSTR("--ort_owned_cache")) {
+        ort_owned_cache_mode = true;
+      } else if (argument == ORT_TSTR("--static_plugin")) {
+        static_plugin_mode = true;
       } else if (argument == ORT_TSTR("--no_implicit_sync")) {
         no_implicit_sync = true;
       } else if (argument == ORT_TSTR("--cache_callback_failure")) {
@@ -105,7 +147,10 @@ int main(int argc, char* argv[]) {
         throw std::runtime_error("Invalid external Dawn test argument.");
       }
     }
-    for (size_t cache_pass = 0; cache_pass < (host_device_mode ? 3u : 1u); ++cache_pass) {
+    if (ort_owned_cache_mode && (host_device_mode || no_proc_table || no_implicit_sync)) {
+      throw std::runtime_error("ORT-owned cache validation requires an ORT-owned device and a proc table.");
+    }
+    for (size_t cache_pass = 0; cache_pass < (host_device_mode || ort_owned_cache_mode ? 3u : 1u); ++cache_pass) {
       size_t hits_before = 0;
       size_t stores_before = 0;
       {
@@ -180,9 +225,16 @@ int main(int argc, char* argv[]) {
         provider_options["webgpuDevice"] = std::to_string(reinterpret_cast<uintptr_t>(host_device.Get()));
         provider_options["preserveDevice"] = "1";
       }
+      if (ort_owned_cache_mode) {
+        cache_interface.isolation_key = cache_pass == 2 ? "ort-owned-isolated-cache" : "ort-owned-cache";
+        provider_options[ORT_WEBGPU_DAWN_CACHE_INTERFACE_OPTION] =
+            std::to_string(reinterpret_cast<uintptr_t>(&cache_interface));
+      }
       Ort::ConstEpDevice webgpu_device{nullptr};
       if (!plugin_path.empty()) {
         env.RegisterExecutionProviderLibrary("external_dawn_webgpu", plugin_path);
+      }
+      if (!plugin_path.empty() || static_plugin_mode) {
         for (const auto& ep_device : env.GetEpDevices()) {
           if (std::string(ep_device.EpName()) == "WebGpuExecutionProvider") {
             webgpu_device = ep_device;
@@ -195,10 +247,10 @@ int main(int argc, char* argv[]) {
       }
       auto append_provider = [&](Ort::SessionOptions& options,
                                  const std::unordered_map<std::string, std::string>& settings) {
-        if (plugin_path.empty()) {
-          options.AppendExecutionProvider("WebGPU", settings);
-        } else {
+        if (webgpu_device) {
           options.AppendExecutionProvider_V2(env, {webgpu_device}, settings);
+        } else {
+          options.AppendExecutionProvider("WebGPU", settings);
         }
       };
       append_provider(session_options, provider_options);
@@ -283,6 +335,12 @@ int main(int argc, char* argv[]) {
           }
           std::cout << "Concurrent default and host-owned WebGPU context allocation and copies passed." << std::endl;
         }
+        if (ort_owned_cache_mode) {
+          session = Ort::Session{nullptr};
+          session_options = Ort::SessionOptions{nullptr};
+          env = Ort::Env{nullptr};
+          host_cache.ValidatePass(cache_pass, hits_before, stores_before);
+        }
         if (host_device_mode) {
           session = Ort::Session{nullptr};
           session_options = Ort::SessionOptions{nullptr};
@@ -305,21 +363,7 @@ int main(int argc, char* argv[]) {
             throw std::runtime_error("Host device was not usable after ORT session and environment teardown.");
           }
           std::cout << "Host-created WebGPU device remained usable after ORT teardown." << std::endl;
-          if (host_cache.callback_failed.load()) {
-            throw std::runtime_error("A host shader-cache callback failed before completing its operation.");
-          }
-          std::lock_guard<std::mutex> cache_lock(host_cache.mutex);
-          if (host_cache.load_count == 0 || host_cache.store_count == 0 || host_cache.blobs.empty()) {
-            throw std::runtime_error("Host shader-cache callbacks were not exercised by GPU inference.");
-          }
-          if (cache_pass == 1 && host_cache.hit_count <= hits_before) {
-            throw std::runtime_error("A second host device did not reuse the populated shader cache.");
-          }
-          if (cache_pass == 2 && (host_cache.hit_count != hits_before || host_cache.store_count <= stores_before)) {
-            throw std::runtime_error("A different isolation key did not produce an isolated shader-cache miss.");
-          }
-          std::cout << "Host shader-cache callbacks passed: loads=" << host_cache.load_count
-                    << ", hits=" << host_cache.hit_count << ", stores=" << host_cache.store_count << std::endl;
+          host_cache.ValidatePass(cache_pass, hits_before, stores_before);
         }
         retval = 0;
       }
