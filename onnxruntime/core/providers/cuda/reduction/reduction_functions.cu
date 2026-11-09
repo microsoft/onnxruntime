@@ -777,6 +777,12 @@ struct ArgReductionIdentity<half> {
   __device__ __forceinline__ static half Highest() { return __ushort_as_half(static_cast<unsigned short>(0x7C00U)); }
 };
 
+template <>
+struct ArgReductionIdentity<BFloat16> {
+  __device__ __forceinline__ static BFloat16 Lowest() { return BFloat16::FromBits(static_cast<uint16_t>(0xFF80U)); }
+  __device__ __forceinline__ static BFloat16 Highest() { return BFloat16::FromBits(static_cast<uint16_t>(0x7F80U)); }
+};
+
 template <typename T, bool IsArgMax>
 __device__ __forceinline__ T arg_reduction_identity() {
   return IsArgMax ? ArgReductionIdentity<T>::Lowest() : ArgReductionIdentity<T>::Highest();
@@ -1163,6 +1169,7 @@ Status arg_min_max_last_axis(cudaStream_t stream, const TIn* input, int64_t* out
                                                   int64_t* output, int m, int n, void* buffer, \
                                                   size_t buffer_size)
 INSTANTIATE_ARG_MIN_MAX_LAST_AXIS(half);
+INSTANTIATE_ARG_MIN_MAX_LAST_AXIS(BFloat16);
 INSTANTIATE_ARG_MIN_MAX_LAST_AXIS(float);
 INSTANTIATE_ARG_MIN_MAX_LAST_AXIS(double);
 #undef INSTANTIATE_ARG_MIN_MAX_LAST_AXIS

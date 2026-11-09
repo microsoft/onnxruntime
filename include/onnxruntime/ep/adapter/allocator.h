@@ -19,12 +19,47 @@ namespace onnxruntime {
 namespace ep {
 namespace adapter {
 
+// OrtMemoryInfo is opaque at the C API boundary. Its layout (e.g. std::string) can differ between ORT and a plugin
+// EP built with different STL/CRT settings, so an instance must not be copied or have its fields read by the side
+// that did not create it. These helpers convert between instances created by ORT and by the EP using only the C API.
+
+/// <summary>
+/// Copies an OrtMemoryInfo created by ORT into one created by the EP.
+/// The C API does not expose the device alignment, so it is left at the default of 0.
+/// </summary>
+inline OrtMemoryInfo CreateMemoryInfoFromApi(const OrtMemoryInfo* api_memory_info) {
+  ORT_ENFORCE(api_memory_info != nullptr, "OrtMemoryInfo must be non-null.");
+  Ort::ConstMemoryInfo memory_info{api_memory_info};
+  return OrtMemoryInfo{memory_info.GetAllocatorName(),
+                       memory_info.GetAllocatorType(),
+                       OrtDevice{static_cast<OrtDevice::DeviceType>(memory_info.GetDeviceType()),
+                                 static_cast<OrtDevice::MemoryType>(memory_info.GetDeviceMemoryType()),
+                                 static_cast<OrtDevice::VendorId>(memory_info.GetVendorId()),
+                                 static_cast<OrtDevice::DeviceId>(memory_info.GetDeviceId())},
+                       memory_info.GetMemoryType()};
+}
+
+/// <summary>
+/// Copies an OrtMemoryInfo created by the EP into one created by ORT, for example to return from OrtAllocator::Info
+/// or to pass to an ORT API. As with CreateMemoryInfo_V2, the OrtMemType is derived from the device memory type.
+/// </summary>
+inline Ort::MemoryInfo CreateApiMemoryInfo(const OrtMemoryInfo& memory_info) {
+  const OrtDevice& device = memory_info.device;
+  return Ort::MemoryInfo{memory_info.name.c_str(),
+                         static_cast<OrtMemoryInfoDeviceType>(device.Type()),
+                         device.Vendor(),
+                         static_cast<uint32_t>(device.Id()),
+                         static_cast<OrtDeviceMemoryType>(device.MemType()),
+                         device.GetAlignment(),
+                         memory_info.alloc_type};
+}
+
 // Wraps an OrtAllocator* exposed by the C API as an IAllocator.
 // Takes ownership of the wrapped Ort::Allocator and releases it on destruction.
 class IAllocatorWrappingOrtAllocator final : public IAllocator {
  public:
   explicit IAllocatorWrappingOrtAllocator(Ort::Allocator ort_allocator)
-      : IAllocator(*(EnsureOrtAllocatorHasValue(ort_allocator).GetInfo())),
+      : IAllocator(CreateMemoryInfoFromApi(EnsureOrtAllocatorHasValue(ort_allocator).GetInfo())),
         owned_ort_allocator_(std::move(ort_allocator)),
         ort_allocator_(owned_ort_allocator_) {
   }
@@ -34,7 +69,7 @@ class IAllocatorWrappingOrtAllocator final : public IAllocator {
   // provided and owned by the ORT framework/caller for the duration of the PrePack call (this
   // wrapper must not release them).
   explicit IAllocatorWrappingOrtAllocator(OrtAllocator* ort_allocator)
-      : IAllocator(*EnsureOrtAllocatorHasValue(ort_allocator)->Info(ort_allocator)),
+      : IAllocator(CreateMemoryInfoFromApi(EnsureOrtAllocatorHasValue(ort_allocator)->Info(ort_allocator))),
         owned_ort_allocator_(nullptr),
         ort_allocator_(ort_allocator) {
   }

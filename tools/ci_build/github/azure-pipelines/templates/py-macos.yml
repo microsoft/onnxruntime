@@ -48,6 +48,8 @@ jobs:
       host_cpu_arch: ${{ parameters.arch }}
       python_version: ${{ parameters.python_version }}
 
+  - template: setup-vcpkg-cache.yml
+
   - script: |
       set -e -x
       export _PYTHON_HOST_PLATFORM=macosx-${{variables.MACOSX_DEPLOYMENT_TARGET}}-${{ parameters.arch }}

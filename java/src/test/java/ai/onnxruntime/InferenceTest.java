@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -655,6 +656,20 @@ public class InferenceTest {
     // provider
     providers.add(OrtProvider.DNNL);
     assertEquals(providersSize, OrtEnvironment.getAvailableProviders().size());
+  }
+
+  @SuppressWarnings("deprecation")
+  @Test
+  public void testRemovedACLProvider() throws OrtException {
+    assertFalse(OrtEnvironment.getAvailableProviders().contains(OrtProvider.ACL));
+    try (SessionOptions options = new SessionOptions()) {
+      for (boolean enableFastMath : new boolean[] {false, true}) {
+        OrtException exception =
+            assertThrows(OrtException.class, () -> options.addACL(enableFastMath));
+        assertEquals(OrtErrorCode.ORT_INVALID_ARGUMENT, exception.getCode());
+        assertTrue(exception.getMessage().contains("ACL execution provider has been removed"));
+      }
+    }
   }
 
   @Test
@@ -2120,9 +2135,6 @@ public class InferenceTest {
           options.setMemoryPatternOptimization(false);
           options.setExecutionMode(ExecutionMode.SEQUENTIAL);
           options.addDirectML(0);
-          break;
-        case ACL:
-          options.addACL(false);
           break;
         case CORE_ML:
           options.addCoreML();

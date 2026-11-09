@@ -121,6 +121,12 @@ struct ConvAttributes {
                              " W: ", weight_shape.ToString().c_str());
     }
 
+    if (input_shape.NumDimensions() < 3) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "X num_dims must be >= 3. X: ", input_shape.ToString().c_str(),
+                             " W: ", weight_shape.ToString().c_str());
+    }
+
     const int64_t M = weight_shape[0];
     const int64_t C = input_channels_last ? input_shape.GetDims().back() : input_shape[1];
     const int64_t weight_channels = weight_channels_last ? weight_shape.GetDims().back() : weight_shape[1];

@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdio>
 #include <filesystem>
 #include <memory>
@@ -30,6 +31,8 @@
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/file_util.h"
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_CUDA_MINIMAL)
 
 namespace onnxruntime {
 namespace test {
@@ -217,6 +220,34 @@ TEST(CudaExternalDataLoaderTest, RejectsTooManyReadingThreadsFromStructOptions) 
   EXPECT_EQ(CudaExecutionProviderWithOptions(&provider_options), nullptr);
 }
 
+TEST(CudaExternalDataLoaderTest, ValidatesPinnedMemoryAndChunkBytesFromStructOptions) {
+  {
+    OrtCUDAProviderOptionsV2 provider_options{};
+    provider_options.external_data_loader_pinned_memory_bytes =
+        OrtCUDAProviderOptionsV2::kMinExternalDataLoaderPinnedMemoryBytes;
+    provider_options.external_data_loader_chunk_bytes =
+        OrtCUDAProviderOptionsV2::kMinExternalDataLoaderChunkBytes;
+    Ort::SessionOptions valid_session_options;
+    EXPECT_NO_THROW(valid_session_options.AppendExecutionProvider_CUDA_V2(provider_options));
+  }
+
+  {
+    OrtCUDAProviderOptionsV2 provider_options{};
+    provider_options.external_data_loader_pinned_memory_bytes = 4096;  // below 1 MiB minimum
+    Ort::SessionOptions invalid_session_options;
+    EXPECT_THROW(invalid_session_options.AppendExecutionProvider_CUDA_V2(provider_options), Ort::Exception);
+    EXPECT_EQ(CudaExecutionProviderWithOptions(&provider_options), nullptr);
+  }
+
+  {
+    OrtCUDAProviderOptionsV2 provider_options{};
+    provider_options.external_data_loader_chunk_bytes = 2048;  // below 4 KiB minimum
+    Ort::SessionOptions invalid_session_options;
+    EXPECT_THROW(invalid_session_options.AppendExecutionProvider_CUDA_V2(provider_options), Ort::Exception);
+    EXPECT_EQ(CudaExecutionProviderWithOptions(&provider_options), nullptr);
+  }
+}
+
 TEST(CudaExternalDataLoaderTest, ReusesAlternatingBuffersAcrossRepeatedLoads) {
   VerifyLoad(2 * cuda::kExternalDataLoaderBufferSize + 1, 2);
 }
@@ -267,6 +298,81 @@ TEST(CudaExternalDataLoaderTest, NormalizesBoolWithPinnedAndPageableFallback) {
                                output.data(), tensor.DataRaw(), output.size(), cudaMemcpyDeviceToHost));
     EXPECT_EQ(output, expected);
   }
+}
+
+std::atomic<int> g_pinned_allocation_count{0};
+
+cudaError_t CountingPinnedBufferAllocation(void** buffer, size_t size) {
+  ++g_pinned_allocation_count;
+  return cudaMallocHost(buffer, size);
+}
+
+// Many small tensors flushed in several batches must be gated on the total external bytes, not on each batch.
+void VerifyManyFlushedTensors(bool report_expected_total) {
+  constexpr size_t kTensorBytes = 128 * 1024;
+  constexpr size_t kTensorCount = 128;
+  constexpr size_t kFlushEvery = 64;
+  constexpr size_t kTotalBytes = kTensorBytes * kTensorCount;  // Equals the default 16 MiB minimum.
+  static_assert(kTotalBytes >= ExternalDataLoaderOptions::kDefaultMinSizeBytes);
+  static_assert(kTensorBytes * kFlushEvery < ExternalDataLoaderOptions::kDefaultMinSizeBytes);
+
+  PathString path;
+  CreateExternalDataFile(kTotalBytes, path);
+  ScopedFileDeleter file_deleter{path};
+  std::unique_ptr<RandomAccessFile> file;
+  ASSERT_STATUS_OK(Env::Default().OpenRandomAccessFile(path.c_str(), file));
+
+  auto execution_provider = DefaultCudaExecutionProvider();
+  ASSERT_NE(execution_provider, nullptr);
+  auto allocators = execution_provider->CreatePreferredAllocators();
+  const auto allocator = std::find_if(allocators.begin(), allocators.end(), [](const AllocatorPtr& candidate) {
+    return candidate->Info().device.Type() == OrtDevice::GPU &&
+           candidate->Info().mem_type == OrtMemTypeDefault;
+  });
+  ASSERT_NE(allocator, allocators.end());
+
+  g_pinned_allocation_count = 0;
+  cuda::ExternalDataLoader loader(
+      0, 4, ExternalDataLoaderOptions::kDefaultPinnedMemoryBytes, ExternalDataLoaderOptions::kDefaultChunkBytes,
+      false, false, false, ExternalDataLoaderOptions::kDefaultMinSizeBytes, false, CountingPinnedBufferAllocation);
+
+  std::vector<Tensor> tensors;
+  tensors.reserve(kTensorCount);
+  ASSERT_STATUS_OK(loader.BeginLoad());
+  if (report_expected_total) {
+    loader.SetExpectedLoadBytes(kTotalBytes);
+  }
+  for (size_t i = 0; i < kTensorCount; ++i) {
+    tensors.emplace_back(DataTypeImpl::GetType<uint8_t>(), TensorShape({static_cast<int64_t>(kTensorBytes)}),
+                         *allocator);
+    ASSERT_STATUS_OK(LoadCudaExternalDataForTest(
+        &loader, *file, kFilePrefixSize + i * kTensorBytes, kTensorBytes, &tensors.back()));
+    if ((i + 1) % kFlushEvery == 0) {
+      ASSERT_STATUS_OK(loader.FinalizeLoad());
+      if (i + 1 == kFlushEvery) {
+        // The first partial batch is pinned only when the full total is known up front.
+        EXPECT_EQ(g_pinned_allocation_count.load(), report_expected_total ? 2 : 0);
+      }
+    }
+  }
+  EXPECT_EQ(g_pinned_allocation_count.load(), 2);
+  loader.EndLoad();
+
+  std::vector<uint8_t> output(kTensorBytes);
+  for (size_t i = 0; i < kTensorCount; ++i) {
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(output.data(), tensors[i].DataRaw(), kTensorBytes, cudaMemcpyDeviceToHost));
+    for (size_t j = 0; j < kTensorBytes; ++j) {
+      ASSERT_EQ(TestValue(i * kTensorBytes + j), output[j]) << "tensor " << i << " byte " << j;
+    }
+  }
+}
+
+TEST(CudaExternalDataLoaderTest, SizeGateUsesCumulativeBytesAcrossFlushes) {
+  VerifyManyFlushedTensors(/*report_expected_total=*/false);
+}
+
+TEST(CudaExternalDataLoaderTest, SizeGateUsesExpectedTotalBytesOnFirstFlush) {
+  VerifyManyFlushedTensors(/*report_expected_total=*/true);
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -425,3 +531,5 @@ TEST(CudaExternalDataLoaderTest, RestoresCurrentDevice) {
 }
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD) && !defined(USE_CUDA_MINIMAL)

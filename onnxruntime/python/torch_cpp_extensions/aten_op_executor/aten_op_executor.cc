@@ -83,7 +83,7 @@ struct ATenOperator {
           i_value =
               is_list ? ToListIValue<int64_t, bool>(dlpack, is_optional) : ToIValue<int64_t, bool>(dlpack, is_optional);
         } else {
-          TORCH_INTERNAL_ASSERT(dlpack->dl_tensor.dtype.code == DLDataTypeCode::kDLUInt &&
+          TORCH_INTERNAL_ASSERT(dlpack->dl_tensor.dtype.code == DLDataTypeCode::kDLBool &&
                                 dlpack->dl_tensor.dtype.bits == 8);
           i_value = is_list ? ToListIValue<bool, bool>(dlpack, is_optional) : ToIValue<bool, bool>(dlpack, is_optional);
         }

@@ -11,6 +11,7 @@
 #include "test/util/include/default_providers.h"
 
 #ifdef USE_WEBGPU
+#include "core/framework/int4.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #endif
@@ -53,6 +54,49 @@ TEST(TensorOpTest, Reshape_uint8_webgpu) {
   test.Config(options)
       .ConfigEp(std::move(provider))
       .RunWithConfig();
+}
+
+// Chromium's WebNN backend reshapes int4/uint4 (De)QuantizeLinear zero points, and the CPU Reshape kernel has
+// no 4-bit types to constant fold them with. Odd element counts leave the last byte half used.
+template <typename T>
+void TestReshape4BitWebGpu(const std::vector<typename T::UnpackedType>& values, bool data_is_initializer) {
+  auto pack = [](const std::vector<typename T::UnpackedType>& unpacked) {
+    std::vector<T> packed(T::CalcNumInt4Pairs(unpacked.size()));
+    for (size_t i = 0; i < unpacked.size(); ++i) {
+      packed[i / 2].SetElem(i % 2, unpacked[i]);
+    }
+    return packed;
+  };
+  SessionOptions options;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  {
+    auto provider = WebGpuExecutionProviderWithOptions(ConfigOptions{});
+    if (provider == nullptr) {
+      GTEST_SKIP() << "WebGPU EP is not available";
+    }
+    OpTester test("Reshape", 21);
+    const int64_t size = static_cast<int64_t>(values.size());
+    test.AddInput<T>("data", {1, size}, pack(values), data_is_initializer);
+    test.AddInput<int64_t>("shape", {1}, {size}, true);
+    test.AddOutput<T>("reshaped", {size}, pack(values));
+    test.Config(options).ConfigEp(std::move(provider)).RunWithConfig();
+  }
+  {
+    // To a scalar, as for a per-tensor zero point.
+    OpTester test("Reshape", 21);
+    test.AddInput<T>("data", {1}, pack({values[0]}), data_is_initializer);
+    test.AddInput<int64_t>("shape", {0}, {}, true);
+    test.AddOutput<T>("reshaped", {}, pack({values[0]}));
+    test.Config(options).ConfigEp(WebGpuExecutionProviderWithOptions(ConfigOptions{})).RunWithConfig();
+  }
+}
+
+TEST(TensorOpTest, Reshape_int4_webgpu) {
+  for (bool data_is_initializer : {false, true}) {
+    SCOPED_TRACE(data_is_initializer);
+    TestReshape4BitWebGpu<Int4x2>({-3, 7, -8, 0, 5}, data_is_initializer);
+    TestReshape4BitWebGpu<UInt4x2>({13, 0, 15, 8, 2}, data_is_initializer);
+  }
 }
 #endif
 

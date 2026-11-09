@@ -34,6 +34,29 @@ constexpr int64_t GetUint8ZeroPointBlobSize(int64_t k_blocks, int64_t bits) {
   return (k_blocks * bits + 7) / 8;
 }
 
+// Empty packed weights represent an omitted projection, not a change to logical K/N.
+// Keep this separate from CheckInputs: EPs must implement the zero/bias fast path
+// before accepting empty weights, and must not dequantize unused parameters.
+inline Status CheckEmptyInputs(const Tensor& quantized_weight, const Tensor* bias,
+                               int64_t n, int64_t k, int64_t block_size, int64_t bits,
+                               int64_t weight_prepacked) {
+  ORT_RETURN_IF_NOT(weight_prepacked == 0, "MatMulNBits: empty B requires weight_prepacked=0");
+  ORT_RETURN_IF_NOT(bits == 2 || bits == 4 || bits == 8, "MatMulNBits: unsupported bits: ", bits);
+  ORT_RETURN_IF_NOT(block_size >= 16 && (block_size & (block_size - 1)) == 0 &&
+                        (bits != 2 || block_size <= 256),
+                    "MatMulNBits: unsupported block_size: ", block_size);
+  const auto& shape = quantized_weight.Shape();
+  ORT_RETURN_IF_NOT(shape.NumDimensions() == 3 && shape.Size() == 0,
+                    "MatMulNBits: empty B must have rank 3");
+  const int64_t expected[] = {n, GetKBlocks(k, block_size), GetBlobSize(block_size, bits)};
+  for (size_t i = 0; i < 3; ++i) {
+    ORT_RETURN_IF_NOT(shape[i] == 0 || shape[i] == expected[i],
+                      "MatMulNBits: empty B dimension ", i, " must be 0 or ", expected[i], ", got ", shape[i]);
+  }
+  ASSERT_TENSOR_SHAPE(bias, make_shape(n));
+  return Status::OK();
+}
+
 template <typename T = Tensor>
 Status CheckInputs(const T* /*activation*/,
                    const T* quantized_weight,
