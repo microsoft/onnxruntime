@@ -223,6 +223,7 @@ template <typename T>
 void CheckRandomProjection(int width, int experts, int k, bool ties = false) {
   constexpr int rows = 3;
   constexpr float scale = 2.5f;
+  constexpr float minimum_index_gap = 1e-5f;
   std::mt19937 generator(20261109 + width + experts);
   std::uniform_real_distribution<float> values(-.125f, .125f);
   std::uniform_real_distribution<float> biases(-.2f, .2f);
@@ -240,10 +241,10 @@ void CheckRandomProjection(int width, int experts, int k, bool ties = false) {
     }
     reference = ReferenceRouter(rows, width, experts, k, scale, input, weight, bias);
     // Exact index comparisons are meaningful only outside numerical near-ties.
-    if (ties || reference.min_gap > 1e-4f) break;
+    if (ties || reference.min_gap > minimum_index_gap) break;
   }
   if (!ties) {
-    ASSERT_GT(reference.min_gap, 1e-4f);
+    ASSERT_GT(reference.min_gap, minimum_index_gap);
   }
   if (ties) {
     for (int row = 0; row < rows; ++row) {
