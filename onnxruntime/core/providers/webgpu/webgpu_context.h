@@ -183,6 +183,7 @@ struct WebGpuContextConfig {
   const void* dawn_proc_table{nullptr};
 #if !defined(__wasm__)
   const OrtDawnCacheInterface* dawn_cache_interface{nullptr};
+  bool dawn_cache_interface_explicitly_set{false};
 #endif
   ValidationMode validation_mode{
 #ifndef NDEBUG
