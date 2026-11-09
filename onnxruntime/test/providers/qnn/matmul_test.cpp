@@ -296,8 +296,8 @@ TEST_F(QnnHTPBackendTests, MatMulOp_QDQ) {
 }
 
 // Tests MatMul with two uint16 (quantized) inputs that are both dynamic.
-// This exercises a workaround in QNN EP that inserts a QNN Convert op before input[1] (converts from uint16 to uint8).
-// This workaround prevents a validation error for this specific MatMul configuration.
+// If the QNN backend rejects a uint16 x uint16 MatMul, QNN EP inserts a QNN Convert op before input[1] (converts from
+// uint16 to uint8) to prevent a validation error for this specific MatMul configuration.
 // Got specific shapes and input ranges (quant params) from customer model.
 TEST_F(QnnHTPBackendTests, MatMulOp_QDQ_Regression_uint16_dynamic_inputs) {
   ProviderOptions provider_options;
@@ -345,6 +345,26 @@ TEST_F(QnnHTPBackendTests, MatMulOp_QDQ_Regression_uint16_dynamic_inputs) {
         BuildMatMulOpQDQTestCase<uint16_t, uint16_t, uint16_t>(input0_def, input1_def, false),
         provider_options, 21, ExpectedEPNodeAssignment::All, QDQTolerance());
   }
+}
+
+// Tests that a MatMul with two dynamic uint16 inputs keeps input[1] at 16 bits when the QNN backend supports a
+// uint16 x uint16 MatMul (HTP v73 and later). If input[1] were converted to uint8, some outputs would differ from
+// the CPU EP's by more than 0.3% of the output range, which fails the tolerance below.
+TEST_F(QnnHTPBackendTests, MatMulOp_QDQ_uint16_dynamic_inputs_16x16) {
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+  provider_options["htp_arch"] = "73";
+
+  const std::vector<int64_t> shape = {1, 2, 32, 32};
+  const size_t num_elems = static_cast<size_t>(TensorShape(shape).Size());
+  TestInputDef<float> input0_def(shape, false, GetFloatDataInRange(-5.0f, 5.0f, num_elems));
+  TestInputDef<float> input1_def(shape, false, GetFloatDataInRange(-1.0f, 1.0f, num_elems));
+
+  TestQDQModelAccuracy(
+      BuildMatMulOpTestCase(input0_def, input1_def),
+      BuildMatMulOpQDQTestCase<uint16_t, uint16_t, uint16_t>(input0_def, input1_def, false),
+      provider_options, 21, ExpectedEPNodeAssignment::All, QDQTolerance(0.001f));
 }
 
 #ifndef __linux__
