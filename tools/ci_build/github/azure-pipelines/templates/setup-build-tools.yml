@@ -43,5 +43,5 @@ steps:
     # Update the action version and SHA-512 together.
     $actionVersion = 'v0.0.9'
     $actionSha512 = '8908433e40233090887bf2eff16f73cfc29b40d5a5f95c8868ba7f30784850409e3fe1566bdf02ee8b565d8fa52c53efa8848c1e7e77b6d43488e305a8eb3f12'
-    python tools/ci_build/run_gh_action.py $actionVersion $actionSha512
-  displayName: Run GitHub Action via Python Wrapper
+    python tools/ci_build/run_setup_build_tools_gh_action.py $actionVersion $actionSha512
+  displayName: Run setup-build-tools GitHub Action via Python Wrapper
