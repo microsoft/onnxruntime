@@ -22,7 +22,7 @@ namespace {
 // KW warps (KW*32 threads) split K across the KW warps with zero __syncthreads() in the K-loop,
 // while computing MT*16 output columns per CTA.
 template <int KW, int MT, int kCompileType, int kChunk = 32, bool kAlignedNvfp4Rows = false,
-          bool kAlignedQ8Rows = false>
+          bool kAlignedQ8Rows = false, bool kFullNvfp4Tile = false>
 __global__ __launch_bounds__(KW * 32) void MatMulPackedBf16TcWarpKSplitKernel(
     const __nv_bfloat16* __restrict__ a,
     MatMulPackedParams p,
@@ -47,8 +47,8 @@ __global__ __launch_bounds__(KW * 32) void MatMulPackedBf16TcWarpKSplitKernel(
   for (int m = 0; m < MT; ++m) {
     const int r_lo = n_out_base + m * 16 + g;
     const int r_hi = r_lo + 8;
-    valid_lo[m] = (r_lo < p.n);
-    valid_hi[m] = (r_hi < p.n);
+    valid_lo[m] = kFullNvfp4Tile || (r_lo < p.n);
+    valid_hi[m] = kFullNvfp4Tile || (r_hi < p.n);
     row_ptrs_lo[m] = p.b_data + static_cast<int64_t>(valid_lo[m] ? r_lo : 0) * p.row_bytes;
     row_ptrs_hi[m] = p.b_data + static_cast<int64_t>(valid_hi[m] ? r_hi : 0) * p.row_bytes;
 #pragma unroll
@@ -57,7 +57,7 @@ __global__ __launch_bounds__(KW * 32) void MatMulPackedBf16TcWarpKSplitKernel(
     }
   }
 
-  const bool a_valid = (g < m_rt);
+  const bool a_valid = kFullNvfp4Tile || (g < m_rt);
   const bool a_aligned = ((reinterpret_cast<uintptr_t>(a) & 15u) == 0);
   const __nv_bfloat16* a_row = a + static_cast<int64_t>(a_valid ? g : 0) * p.k;
 
@@ -78,7 +78,7 @@ __global__ __launch_bounds__(KW * 32) void MatMulPackedBf16TcWarpKSplitKernel(
       uint4 x0 = make_uint4(0u, 0u, 0u, 0u), x1 = x0;
       if (a_valid) {
         const auto* input = a_row + offset;
-        if ((reinterpret_cast<uintptr_t>(input) & 15u) == 0) {
+        if (kFullNvfp4Tile || (reinterpret_cast<uintptr_t>(input) & 15u) == 0) {
           x0 = __ldg(reinterpret_cast<const uint4*>(input));
           x1 = __ldg(reinterpret_cast<const uint4*>(input + 8));
         } else {
@@ -161,7 +161,7 @@ __global__ __launch_bounds__(KW * 32) void MatMulPackedBf16TcWarpKSplitKernel(
         uint4 x1 = x0;
         if (a_valid) {
           const auto* input = a_row + offset;
-          if ((reinterpret_cast<uintptr_t>(input) & 15u) == 0) {
+          if (kFullNvfp4Tile || (reinterpret_cast<uintptr_t>(input) & 15u) == 0) {
             x0 = __ldg(reinterpret_cast<const uint4*>(input));
             x1 = __ldg(reinterpret_cast<const uint4*>(input + 8));
           } else {
@@ -714,6 +714,12 @@ void LaunchMatMulPackedBf16ContiguousK(
       return;
     case kGgmlTypeNVFP4:
       if ((reinterpret_cast<uintptr_t>(params.b_data) & 3u) == 0 && (params.row_bytes & 3) == 0) {
+        if (rows == 8 && params.n % (MT * 16) == 0 &&
+            (reinterpret_cast<uintptr_t>(a) & 15u) == 0 && params.k % 8 == 0) {
+          MatMulPackedBf16TcWarpKSplitKernel<KW, MT, kGgmlTypeNVFP4, kChunk, true, false, true>
+              <<<grid, KW * 32, 0, stream>>>(a, params, y, rows);
+          return;
+        }
         MatMulPackedBf16TcWarpKSplitKernel<KW, MT, kGgmlTypeNVFP4, kChunk, true>
             <<<grid, KW * 32, 0, stream>>>(a, params, y, rows);
         return;
