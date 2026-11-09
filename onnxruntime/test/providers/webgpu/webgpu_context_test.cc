@@ -304,6 +304,12 @@ TEST(WebGpuContextTest, DawnCacheInterfaceSharedContextIdentity) {
     ASSERT_NE(first, nullptr);
     auto second = WebGpuProviderFactoryCreator::Create(options);
     ASSERT_NE(second, nullptr);
+    auto* configured_context = &webgpu::WebGpuContextFactory::GetContext(0);
+    ConfigOptions omitted_options;
+    ASSERT_STATUS_OK(omitted_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+    auto omitted = WebGpuProviderFactoryCreator::Create(omitted_options);
+    ASSERT_NE(omitted, nullptr);
+    EXPECT_EQ(&webgpu::WebGpuContextFactory::GetContext(0), configured_context);
     auto& shared = webgpu::WebGpuContextFactory::DefaultContext();
     EXPECT_EQ(&shared, &webgpu::WebGpuContextFactory::GetContext(0));
     webgpu::WebGpuContextFactory::ReleaseContext(0);
@@ -326,6 +332,61 @@ TEST(WebGpuContextTest, DawnCacheInterfaceRejectsConflictingConfiguration) {
     auto other_cache = cache;
     const auto other_address = std::to_string(reinterpret_cast<uintptr_t>(&other_cache));
     ASSERT_STATUS_OK(options.AddConfigEntry(kDawnCacheInterface, other_address.c_str()));
+    WebGpuProviderFactoryCreator::Create(options);
+  },
+                                      "different dawnCacheInterface");
+}
+
+TEST(WebGpuContextTest, DawnCacheInterfaceRejectsExplicitDisableOnCachedContext) {
+  ExpectDawnCacheConfigurationFailure([]() {
+    OrtDawnCacheInterface cache{};
+    cache.version = ORT_DAWN_CACHE_INTERFACE_VERSION;
+    cache.load = [](const void*, size_t, void*, size_t, void*) -> size_t { return 0; };
+    cache.store = [](const void*, size_t, const void*, size_t, void*) {};
+    ConfigOptions options;
+    ASSERT_STATUS_OK(options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+    ASSERT_STATUS_OK(options.AddConfigEntry(
+        kDawnCacheInterface, std::to_string(reinterpret_cast<uintptr_t>(&cache)).c_str()));
+    auto first = WebGpuProviderFactoryCreator::Create(options);
+    ASSERT_NE(first, nullptr);
+    ASSERT_STATUS_OK(options.AddConfigEntry(kDawnCacheInterface, "0"));
+    WebGpuProviderFactoryCreator::Create(options);
+  },
+                                      "different dawnCacheInterface");
+}
+
+TEST(WebGpuContextTest, DawnCacheInterfaceOmittedAndExplicitDisableShareUncachedContext) {
+  RunWithFreshDefaultContext([]() {
+    ConfigOptions options;
+    ASSERT_STATUS_OK(options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+    auto first = WebGpuProviderFactoryCreator::Create(options);
+    ASSERT_NE(first, nullptr);
+    auto* uncached_context = &webgpu::WebGpuContextFactory::GetContext(0);
+    ASSERT_STATUS_OK(options.AddConfigEntry(kDawnCacheInterface, "0"));
+    auto disabled = WebGpuProviderFactoryCreator::Create(options);
+    ASSERT_NE(disabled, nullptr);
+    EXPECT_EQ(&webgpu::WebGpuContextFactory::GetContext(0), uncached_context);
+    ConfigOptions omitted_options;
+    ASSERT_STATUS_OK(omitted_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+    auto omitted = WebGpuProviderFactoryCreator::Create(omitted_options);
+    ASSERT_NE(omitted, nullptr);
+    EXPECT_EQ(&webgpu::WebGpuContextFactory::GetContext(0), uncached_context);
+  },
+                             true);
+}
+
+TEST(WebGpuContextTest, DawnCacheInterfaceRejectsLateConfigurationOnUncachedContext) {
+  ExpectDawnCacheConfigurationFailure([]() {
+    OrtDawnCacheInterface cache{};
+    cache.version = ORT_DAWN_CACHE_INTERFACE_VERSION;
+    cache.load = [](const void*, size_t, void*, size_t, void*) -> size_t { return 0; };
+    cache.store = [](const void*, size_t, const void*, size_t, void*) {};
+    ConfigOptions options;
+    ASSERT_STATUS_OK(options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+    auto first = WebGpuProviderFactoryCreator::Create(options);
+    ASSERT_NE(first, nullptr);
+    ASSERT_STATUS_OK(options.AddConfigEntry(
+        kDawnCacheInterface, std::to_string(reinterpret_cast<uintptr_t>(&cache)).c_str()));
     WebGpuProviderFactoryCreator::Create(options);
   },
                                       "different dawnCacheInterface");
