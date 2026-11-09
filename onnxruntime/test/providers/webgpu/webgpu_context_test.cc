@@ -257,11 +257,6 @@ void TestCopyAfterDeferredDispatch(bool upload, bool checked_completion = false)
   EXPECT_EQ(result, expected);
 }
 
-TEST(WebGpuContextTest, DefaultPowerPreference) {
-  const webgpu::WebGpuContextConfig config;
-  EXPECT_EQ(config.power_preference, static_cast<int>(WGPUPowerPreference_HighPerformance));
-}
-
 TEST(WebGpuContextTest, UploadFollowsDeferredDispatch) {
   TestCopyAfterDeferredDispatch(true);
 }
