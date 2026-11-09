@@ -198,7 +198,10 @@ describe('#UnitTest# - JSEP Split runtime shapes', () => {
 
   it('allows zero-sized outputs for an empty input', () => {
     expect(runSplit([0], attributes).map((output) => output.dims)).to.deep.equal([[0], [0]]);
-    expect(runSplit([0, 4], attributes).map((output) => output.dims)).to.deep.equal([[0, 4], [0, 4]]);
+    expect(runSplit([0, 4], attributes).map((output) => output.dims)).to.deep.equal([
+      [0, 4],
+      [0, 4],
+    ]);
   });
 
   it('preserves output positions when explicit split sizes include empty outputs', () => {
