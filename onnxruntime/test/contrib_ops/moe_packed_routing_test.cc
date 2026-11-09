@@ -84,8 +84,9 @@ void TestPreselectedReluSquared(int rows, int topk, int malformed = 0, bool sigm
     for (int rank = 0; rank < topk; ++rank) {
       const int expert = sigmoid || (row & 1) ? (experts - 1 - rank) : rank;
       indices[row * topk + rank] = expert;
+      // These non-BF16 weights distinguish route narrowing for every grid/width fixture.
       const float weight = sigmoid ? (probability(expert) / (sigmoid_sum + 1e-20f) * sigmoid_scale)
-                                   : (rank == 0 ? .3301f : .501f);
+                                   : (rank == 0 ? .3116f : .5098f);
       weights[row * topk + rank] = weight;
       const float fc1 = grid_offset < 0 && expert % 5 == 4 ? 0.f : T(4.f * factor * sum8[expert]).ToFloat();
       const float activation = T(fc1 * fc1).ToFloat();
@@ -623,6 +624,119 @@ TEST(MoEPackedRoutingTest, RejectsInvalidRoutingContracts) {
     std::vector<std::unique_ptr<IExecutionProvider>> providers;
     providers.push_back(DefaultCudaExecutionProvider());
     test.Run(SessionOptions{}, OpTester::ExpectResult::kExpectFailure, message, {}, nullptr, &providers);
+  }
+}
+
+float DecodeNonuniformMoeIq2Operand(const uint8_t* row, int index) {
+  const auto* block = row + (index / 256) * 66;
+  const auto* record = block + 2 + ((index % 256) / 32) * 8;
+  const float d = MLFloat16::FromBits(
+                      static_cast<uint16_t>(block[0] | (static_cast<uint16_t>(block[1]) << 8)))
+                      .ToFloat();
+  uint32_t signs_scale = 0;
+  for (int byte = 0; byte < 4; ++byte) signs_scale |= static_cast<uint32_t>(record[4 + byte]) << (8 * byte);
+  const int group = (index % 32) / 8, position = index % 8;
+  const uint32_t seven = (signs_scale >> (7 * group)) & 127u;
+  int sign = position == 7 ? 0 : (seven >> position) & 1u;
+  if (position == 7) {
+    for (int bit = 0; bit < 7; ++bit) sign ^= (seven >> bit) & 1u;
+  }
+  const uint64_t grid = contrib::gguf_quant::iq2xxs_grid[record[group]];
+  const float magnitude = static_cast<float>((grid >> (8 * position)) & 255u);
+  return BFloat16(d * (.5f + static_cast<float>(signs_scale >> 28)) * .25f *
+                  magnitude * (sign ? -1.f : 1.f))
+      .ToFloat();
+}
+
+std::vector<uint8_t> MakeNonuniformMoeIq2Bank(int outputs, int k, int active_channel, uint32_t seed) {
+  constexpr int experts = 2;
+  const int blocks = k / 256;
+  std::mt19937 rng(seed);
+  std::vector<uint8_t> bank(experts * outputs * blocks * 66);
+  for (int expert = 0; expert < experts; ++expert) {
+    for (int col = 0; col < outputs; ++col) {
+      for (int block = 0; block < blocks; ++block) {
+        auto* bytes = bank.data() + ((expert * outputs + col) * blocks + block) * 66;
+        // Codes, seven-bit sign fields and four-bit scales vary independently
+        // for every output/record/block/expert, including sign parity at lane 7.
+        for (int byte = 2; byte < 66; ++byte) bytes[byte] = static_cast<uint8_t>(rng());
+        const float d = std::ldexp(rng() & 1u ? -1.f : 1.f, -static_cast<int>(3 + rng() % 3));
+        const MLFloat16 scale(active_channel < 0 || col == active_channel ? d : 0.f);
+        bytes[0] = static_cast<uint8_t>(scale.val);
+        bytes[1] = static_cast<uint8_t>(scale.val >> 8);
+      }
+    }
+  }
+  return bank;
+}
+
+TEST(MoEPackedRoutingTest, Iq2NonuniformSingleProductOracleAndEightNineRowEquivalence) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  constexpr int experts = 2, hidden = 1024, intermediate = 512;
+  constexpr int gate_row_bytes = (hidden / 256) * 66, down_row_bytes = (intermediate / 256) * 66;
+  // Cover every pair in both grid halves, all eight records, and both blocks.
+  for (int channel : {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+                      16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+                      32, 65, 98, 131, 164, 197, 230, 255, 256, 511}) {
+    SCOPED_TRACE(testing::Message() << "channel=" << channel);
+    const auto gate = MakeNonuniformMoeIq2Bank(intermediate, hidden, channel, 34002 + channel);
+    const auto down = MakeNonuniformMoeIq2Bank(hidden, intermediate, -1, 134002 + channel);
+    std::vector<BFloat16> decode_output;
+    for (int rows : {8, 9}) {
+      std::vector<BFloat16> input(rows * hidden, BFloat16(0.f)), expected(rows * hidden);
+      std::vector<int32_t> indices(rows * experts);
+      std::vector<float> weights(rows * experts);
+      for (int row = 0; row < rows; ++row) {
+        const int position = (channel * 37 + row * 53) % hidden;
+        const float x = static_cast<float>(row % 3 + 1);
+        input[row * hidden + position] = BFloat16(x);
+        float activation[experts];
+        for (int expert = 0; expert < experts; ++expert) {
+          indices[row * experts + expert] = expert;
+          weights[row * experts + expert] = expert ? .5f : .25f;
+          const auto* gate_row = gate.data() + (expert * intermediate + channel) * gate_row_bytes;
+          const float fc1 = BFloat16(x * DecodeNonuniformMoeIq2Operand(gate_row, position)).ToFloat();
+          const float relu = std::max(fc1, 0.f);
+          activation[expert] = BFloat16(relu * relu).ToFloat();
+        }
+        for (int col = 0; col < hidden; ++col) {
+          float mixed = 0.f;
+          for (int expert = 0; expert < experts; ++expert) {
+            const auto* down_row = down.data() + (expert * hidden + col) * down_row_bytes;
+            // Only one FC1 channel survives. Both projections therefore have
+            // one exact product, independently of the MMA accumulation order.
+            const float fc2 =
+                BFloat16(activation[expert] * DecodeNonuniformMoeIq2Operand(down_row, channel)).ToFloat();
+            mixed = std::fma(weights[row * experts + expert], fc2, mixed);
+          }
+          expected[row * hidden + col] = BFloat16(mixed);
+        }
+      }
+      ASSERT_TRUE(std::any_of(expected.begin(), expected.end(), [](BFloat16 value) { return value.ToFloat() != 0.f; }));
+      OpTester test("MoEPacked", 1, kMSDomain);
+      test.AddAttribute("k", int64_t{experts});
+      test.AddAttribute("normalize_routing_weights", int64_t{0});
+      test.AddAttribute("activation_type", std::string("relu_squared"));
+      test.AddAttribute("gate_type", int64_t{16});
+      test.AddAttribute("down_type", int64_t{16});
+      test.AddInput<BFloat16>("input", {rows, hidden}, input);
+      test.AddOptionalInputEdge<BFloat16>();
+      test.AddInput<uint8_t>("gate", {experts, intermediate, gate_row_bytes}, gate, true);
+      test.AddOptionalInputEdge<uint8_t>();
+      test.AddInput<uint8_t>("down", {experts, hidden, down_row_bytes}, down, true);
+      test.AddInput<int32_t>("indices", {rows, experts}, indices);
+      test.AddInput<float>("weights", {rows, experts}, weights);
+      test.AddOutput<BFloat16>("output", {rows, hidden}, expected);
+      RunMoeCuda(test);
+      const auto* output = test.GetFetches()[0].Get<Tensor>().Data<BFloat16>();
+      if (rows == 8) {
+        decode_output.assign(output, output + rows * hidden);
+      } else {
+        for (size_t index = 0; index < decode_output.size(); ++index) {
+          ASSERT_EQ(output[index].val, decode_output[index].val) << "index=" << index;
+        }
+      }
+    }
   }
 }
 

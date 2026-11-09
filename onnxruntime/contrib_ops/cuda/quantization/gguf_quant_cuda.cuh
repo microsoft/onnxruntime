@@ -424,6 +424,7 @@ static __device__ const Iq2Codebook kIq2xxsGridBf16 = Iq2CodebookBuild();
 
 // Adjacent BF16 pairs match the chunk64 IQ2 MMA layout. Reconstruct the complete
 // signed operand in FP32 before its only BF16 rounding boundary.
+template <bool kCodesWord = false, bool kSignBits = false>
 __device__ __forceinline__ void DecodeIq2SubBlock16Bf16(
     const uint8_t* row, int sb32_idx, int half16, uint4& low, uint4& high) {
   const int offset = sb32_idx * 32 + half16 * 16;
@@ -431,6 +432,7 @@ __device__ __forceinline__ void DecodeIq2SubBlock16Bf16(
   auto* high_words = reinterpret_cast<uint32_t*>(&high);
   const uint8_t* block = row + static_cast<int64_t>(offset / 256) * 66;
   const uint8_t* record = block + 2 + ((offset / 32) & 7) * 8;
+  const uint32_t codes = kCodesWord ? ReadU32Dev(record) : 0u;
   const uint32_t signs_scale = ReadU32Dev(record + 4);
   const float scale = Fp16ToFloatDev(ReadU16Dev(block)) *
                       (0.5f + static_cast<float>(signs_scale >> 28)) * 0.25f;
@@ -438,17 +440,23 @@ __device__ __forceinline__ void DecodeIq2SubBlock16Bf16(
 #pragma unroll
   for (int group = 0; group < 2; ++group) {
     const int grid_index = 2 * half + group;
-    const uint32_t code = __ldg(record + grid_index);
+    const uint32_t code = kCodesWord ? ((codes >> (8 * grid_index)) & 255u) : __ldg(record + grid_index);
     const uint4 grid = __ldg(kIq2xxsGridBf16.values + code);
     const uint32_t words[4] = {grid.x, grid.y, grid.z, grid.w};
     const uint8_t signs = Iq2xsSignsDev(signs_scale >> (7 * grid_index));
 #pragma unroll
     for (int pair = 0; pair < 4; ++pair) {
       const int j = 2 * pair;
-      const float a = scale * __uint_as_float(words[pair] << 16) *
-                      ((signs & (1u << j)) ? -1.f : 1.f);
-      const float b = scale * __uint_as_float(words[pair] & 0xffff0000u) *
-                      ((signs & (1u << (j + 1))) ? -1.f : 1.f);
+      const float a = kSignBits
+                          ? __uint_as_float(__float_as_uint(scale * __uint_as_float(words[pair] << 16)) ^
+                                            ((static_cast<uint32_t>(signs) >> j & 1u) << 31))
+                          : scale * __uint_as_float(words[pair] << 16) *
+                                ((signs & (1u << j)) ? -1.f : 1.f);
+      const float b = kSignBits
+                          ? __uint_as_float(__float_as_uint(scale * __uint_as_float(words[pair] & 0xffff0000u)) ^
+                                            ((static_cast<uint32_t>(signs) >> (j + 1) & 1u) << 31))
+                          : scale * __uint_as_float(words[pair] & 0xffff0000u) *
+                                ((signs & (1u << (j + 1))) ? -1.f : 1.f);
       const auto packed = __floats2bfloat162_rn(a, b);
       const uint32_t bits = *reinterpret_cast<const uint32_t*>(&packed);
       if (pair & 1) {

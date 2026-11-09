@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <memory>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -212,7 +213,7 @@ TEST(MatMulPackedPrecisionTest, Nvfp4Bf16ProductionProjectionShapes) {
 }
 
 TEST(MatMulPackedPrecisionTest, Nvfp4Bf16PackedOperandExtremes) {
-  if (!HasCudaEnvironment(900)) GTEST_SKIP() << "Requires CUDA SM90+";
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   constexpr int k = 128, n = 35, row_bytes = 72;
   constexpr std::array<float, 16> values{
       0.f, .5f, 1.f, 1.5f, 2.f, 3.f, 4.f, 6.f,
@@ -231,29 +232,34 @@ TEST(MatMulPackedPrecisionTest, Nvfp4Bf16PackedOperandExtremes) {
       }
     }
   }
-  for (int rows : {1, 7, 8}) {
-    std::vector<BFloat16> a(rows * k, BFloat16(0.f)), expected(rows * n);
-    for (int row = 0; row < rows; ++row) {
-      const int index = row * 17;
-      a[row * k + index] = BFloat16(1.f);
-      for (int col = 0; col < n; ++col) {
-        const auto* bytes = packed.data() + col * row_bytes + (index / 64) * 36;
-        const int group = (index % 64) / 16, position = index % 16;
-        const int code = (bytes[4 + group * 8 + position % 8] >> (4 * (position / 8))) & 15;
-        float sum = 0.f;
-        sum += BFloat16(decoded[col % decoded.size()] * values[code]).ToFloat();
-        expected[row * n + col] = BFloat16(sum);
+  // The second sweep observes all eight high-nibble lanes, without introducing
+  // multi-product sums whose FP32 order might differ between GPU architectures.
+  for (int first : {0, 8}) {
+    for (int rows : {1, 7, 8}) {
+      SCOPED_TRACE(testing::Message() << "first=" << first << " rows=" << rows);
+      std::vector<BFloat16> a(rows * k, BFloat16(0.f)), expected(rows * n);
+      for (int row = 0; row < rows; ++row) {
+        const int index = row * 17 + first;
+        a[row * k + index] = BFloat16(1.f);
+        for (int col = 0; col < n; ++col) {
+          const auto* bytes = packed.data() + col * row_bytes + (index / 64) * 36;
+          const int group = (index % 64) / 16, position = index % 16;
+          const int code = (bytes[4 + group * 8 + position % 8] >> (4 * (position / 8))) & 15;
+          float sum = 0.f;
+          sum += BFloat16(decoded[col % decoded.size()] * values[code]).ToFloat();
+          expected[row * n + col] = BFloat16(sum);
+        }
       }
-    }
-    for (bool initializer : {false, true}) {
-      OpTester test("MatMulPacked", 1, kMSDomain);
-      test.AddAttribute("K", int64_t{k});
-      test.AddAttribute("N", int64_t{n});
-      test.AddAttribute("packed_type", int64_t{40});
-      test.AddInput<BFloat16>("A", {rows, k}, a);
-      test.AddInput<uint8_t>("B", {n, row_bytes}, packed, initializer);
-      test.AddOutput<BFloat16>("Y", {rows, n}, expected);
-      RunPackedCuda(test);
+      for (bool initializer : {false, true}) {
+        OpTester test("MatMulPacked", 1, kMSDomain);
+        test.AddAttribute("K", int64_t{k});
+        test.AddAttribute("N", int64_t{n});
+        test.AddAttribute("packed_type", int64_t{40});
+        test.AddInput<BFloat16>("A", {rows, k}, a);
+        test.AddInput<uint8_t>("B", {n, row_bytes}, packed, initializer);
+        test.AddOutput<BFloat16>("Y", {rows, n}, expected);
+        RunPackedCuda(test);
+      }
     }
   }
 }
@@ -453,7 +459,6 @@ TEST(MatMulPackedPrecisionTest, Q8Bf16VectorRecordWindowsAndStrideFallback) {
       test.AddAttribute("K", static_cast<int64_t>(k));
       test.AddAttribute("N", static_cast<int64_t>(n));
       test.AddAttribute("packed_type", int64_t{8});
-      test.AddAttribute("dequantize_to_activation_dtype", int64_t{1});
       test.AddInput<BFloat16>("A", {rows, k}, a);
       test.AddInput<uint8_t>("B", {n, row_bytes}, packed);
       test.AddOutput<BFloat16>("Y", {rows, n}, expected);
@@ -530,13 +535,61 @@ TEST(MatMulPackedPrecisionTest, Iq2Bf16ProductionWidthsPreserveCompleteOperands)
         test.AddAttribute("K", int64_t{k});
         test.AddAttribute("N", static_cast<int64_t>(n));
         test.AddAttribute("packed_type", int64_t{16});
-        test.AddAttribute("dequantize_to_activation_dtype", int64_t{1});
         test.AddInput<BFloat16>("A", {rows, k}, a);
         test.AddInput<uint8_t>("B", {n, row_bytes}, packed, initializer);
         test.AddOutput<BFloat16>("Y", {rows, n}, expected);
         RunPackedCuda(test);
       }
     }
+  }
+}
+
+TEST(MatMulPackedPrecisionTest, Iq2Bf16OneHotSweepsEveryBlockPosition) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  constexpr int k = 256, n = 35, rows = 8, row_bytes = 66;
+  std::mt19937 rng(34002);
+  std::vector<uint8_t> packed(n * row_bytes);
+  for (int col = 0; col < n; ++col) {
+    auto* bytes = packed.data() + col * row_bytes;
+    for (int byte = 2; byte < row_bytes; ++byte) bytes[byte] = static_cast<uint8_t>(rng());
+    const MLFloat16 scale(.019f + static_cast<float>(col % 17) / 4096.f);
+    bytes[0] = static_cast<uint8_t>(scale.val);
+    bytes[1] = static_cast<uint8_t>(scale.val >> 8);
+  }
+  for (int base = 0; base < k; base += rows) {
+    SCOPED_TRACE(testing::Message() << "position_base=" << base);
+    std::vector<BFloat16> a(rows * k, BFloat16(0.f)), expected(rows * n);
+    for (int row = 0; row < rows; ++row) {
+      const int index = base + row;
+      a[row * k + index] = BFloat16(1.f);
+      for (int col = 0; col < n; ++col) {
+        const auto* bytes = packed.data() + col * row_bytes;
+        const float scale = MLFloat16::FromBits(
+                                static_cast<uint16_t>(bytes[0] | (static_cast<uint16_t>(bytes[1]) << 8)))
+                                .ToFloat();
+        const auto* record = bytes + 2 + (index / 32) * 8;
+        uint32_t signs_scale = 0;
+        for (int byte = 0; byte < 4; ++byte) signs_scale |= static_cast<uint32_t>(record[4 + byte]) << (8 * byte);
+        const int group = (index % 32) / 8, position = index % 8;
+        const uint32_t seven = (signs_scale >> (7 * group)) & 127u;
+        int sign = position == 7 ? 0 : (seven >> position) & 1u;
+        if (position == 7) {
+          for (int bit = 0; bit < 7; ++bit) sign ^= (seven >> bit) & 1u;
+        }
+        const uint64_t grid = contrib::gguf_quant::iq2xxs_grid[record[group]];
+        const float d = scale * (.5f + static_cast<float>(signs_scale >> 28)) * .25f;
+        expected[row * n + col] =
+            BFloat16(d * static_cast<float>((grid >> (8 * position)) & 255u) * (sign ? -1.f : 1.f));
+      }
+    }
+    OpTester test("MatMulPacked", 1, kMSDomain);
+    test.AddAttribute("K", int64_t{k});
+    test.AddAttribute("N", int64_t{n});
+    test.AddAttribute("packed_type", int64_t{16});
+    test.AddInput<BFloat16>("A", {rows, k}, a);
+    test.AddInput<uint8_t>("B", {n, row_bytes}, packed);
+    test.AddOutput<BFloat16>("Y", {rows, n}, expected);
+    RunPackedCuda(test);
   }
 }
 
