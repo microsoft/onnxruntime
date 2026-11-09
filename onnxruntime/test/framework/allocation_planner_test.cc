@@ -629,6 +629,78 @@ TEST_F(PlannerTest, AliasedCpuBufferAcrossStreams) {
 }
 #endif
 
+class AliasedBufferReleasePlannerTest : public PlannerTest, public ::testing::WithParamInterface<AllocKind> {};
+
+TEST_P(AliasedBufferReleasePlannerTest, SingleStreamReleasePreservesOwnership) {
+  const auto root_kind = GetParam();
+  std::string input = "input", root = "root", alias1 = "alias1", alias2 = "alias2", output = "output";
+  if (root_kind == AllocKind::kAllocateStatically) {
+    TensorProto tensor;
+    tensor.set_name(root);
+    tensor.set_data_type(TensorProto_DataType_FLOAT);
+    tensor.add_dims(1);
+    tensor.add_float_data(1.0f);
+    GetGraph().AddInitializedTensor(tensor);
+  } else if (root_kind == AllocKind::kAllocatedExternally) {
+    AddExternalOutputsNode(input, root);
+  } else if (root_kind != AllocKind::kPreExisting) {
+    AddNormalNode(input, root);
+  }
+
+  auto alias_kernel = KernelDefBuilder()
+                          .SetName("Identity")
+                          .Provider(kCpuExecutionProvider)
+                          .SinceVersion(1, 10)
+                          .Alias(0, 0)
+                          .Build();
+  AddNode(*alias_kernel, root, alias1);
+  AddNode(*alias_kernel, alias1, alias2);
+  auto* last_consumer = AddNormalNode(alias2, output);
+  if (root_kind == AllocKind::kAllocateOutput) {
+    GetGraph().SetOutputs({Arg(root), Arg(output)});
+  }
+  Shape shape{1};
+  SetShape({{root, &shape.value}, {alias1, &shape.value}, {alias2, &shape.value}, {output, &shape.value}});
+
+  CreatePlan();
+
+  CheckAllocKind(root, root_kind);
+  CheckAllocKind(alias1, AllocKind::kReuse);
+  CheckAllocKind(alias2, AllocKind::kReuse);
+  CheckReusedBuffer(alias1, root);
+  CheckReusedBuffer(alias2, root);
+  const auto& plan = GetPlan();
+  ASSERT_EQ(plan.execution_plan.size(), 1u);
+
+  if (root_kind != AllocKind::kAllocate && root_kind != AllocKind::kAllocatedExternally) {
+    EXPECT_TRUE(plan.release_actions.empty());
+    for (const auto& actions : plan.node_release_list) {
+      EXPECT_TRUE(actions.empty());
+    }
+    return;
+  }
+
+  OrtValueIndex root_index{};
+  ASSERT_STATUS_OK(GetState().GetOrtValueNameIdxMap().GetIdx(root, root_index));
+  ASSERT_EQ(plan.release_actions.size(), 1u);
+  EXPECT_EQ(plan.release_actions.front().value_index, static_cast<size_t>(root_index));
+  EXPECT_EQ(plan.release_actions.front().ref_count, 1u);
+  for (size_t node_index = 0; node_index < plan.node_release_list.size(); ++node_index) {
+    const auto& actions = plan.node_release_list[node_index];
+    if (node_index == last_consumer->Index()) {
+      ASSERT_EQ(actions.size(), 1u);
+      EXPECT_EQ(actions.front(), 0u);
+    } else {
+      EXPECT_TRUE(actions.empty());
+    }
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(AllocationKinds, AliasedBufferReleasePlannerTest,
+                         ::testing::Values(AllocKind::kAllocate, AllocKind::kAllocatedExternally,
+                                           AllocKind::kPreExisting, AllocKind::kAllocateOutput,
+                                           AllocKind::kAllocateStatically));
+
 TEST_F(PlannerTest, ExternalOutputsTest) {
   // tensor variables:
   std::string X1("X1"), X2("X2"), X3("X3"), X4("X4");
