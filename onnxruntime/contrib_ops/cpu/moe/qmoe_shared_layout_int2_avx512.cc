@@ -122,10 +122,15 @@ void Int2Group8Avx512(const uint8_t* w_base, const uint8_t* next_w_base, const u
         const int64_t sb = (BlockSize == 64) ? kb64 : (kb64 >> 1);
         s = _mm512_set1_ps(read_scale(c, sb));
       }
+      // Scale weights before products to avoid overflowing an unscaled dot product.
+      w0 = _mm512_mul_ps(w0, s);
+      w1 = _mm512_mul_ps(w1, s);
+      w2 = _mm512_mul_ps(w2, s);
+      w3 = _mm512_mul_ps(w3, s);
       for (int r = 0; r < RT; ++r) {
         const __m512 prod =
             _mm512_fmadd_ps(w0, a0[r], _mm512_fmadd_ps(w1, a1[r], _mm512_fmadd_ps(w2, a2[r], _mm512_mul_ps(w3, a3[r]))));
-        acc[c][r] = _mm512_fmadd_ps(prod, s, acc[c][r]);
+        acc[c][r] = _mm512_add_ps(prod, acc[c][r]);
       }
     };
     step_col(0, WeightsPrepacked ? (tile + 0 * 16) : (w_base + 0 * raw_w_stride + kb64 * 16));
