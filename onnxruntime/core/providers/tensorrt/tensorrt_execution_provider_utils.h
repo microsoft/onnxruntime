@@ -762,16 +762,19 @@ std::string GetCacheSuffix(const std::string& fused_node_name, const std::string
   return "";
 }
 
-template <typename SubGraphCollectionT, typename CycleContainerT>
+template <typename SubGraphCollectionT, typename CycleContainerT, typename SubgraphIndexContainerT>
 inline bool EraseCyclicTensorRTSubgraph(
     SubGraphCollectionT& supported_nodes_vector,
     const CycleContainerT& cycles,
-    const std::unordered_map<size_t, size_t>& trt_id_to_subgraph_index) {
+    const SubgraphIndexContainerT& trt_id_to_subgraph_index) {
   for (size_t i = 0; i < cycles.size(); ++i) {
-    auto loc = trt_id_to_subgraph_index.find(cycles[i]);
-    if (loc != trt_id_to_subgraph_index.end() && loc->second < supported_nodes_vector.size()) {
-      supported_nodes_vector.erase(supported_nodes_vector.begin() + loc->second);
-      return true;
+    const size_t cycle_id = cycles[i];
+    if (cycle_id < trt_id_to_subgraph_index.size()) {
+      const size_t subgraph_index = trt_id_to_subgraph_index[cycle_id];
+      if (subgraph_index < supported_nodes_vector.size()) {
+        supported_nodes_vector.erase(supported_nodes_vector.begin() + subgraph_index);
+        return true;
+      }
     }
   }
   return false;

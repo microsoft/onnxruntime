@@ -1374,10 +1374,7 @@ TEST(TensorrtExecutionProviderTest, RemoveCycleEdgeCasesTest) {
         {{0, 2}, true},
         {{4}, true},
     };
-    const std::unordered_map<size_t, size_t> trt_id_to_subgraph_index = {
-        {0, 1},
-        {1, 2},
-    };
+    const std::vector<size_t> trt_id_to_subgraph_index = {1, 2};
     const std::vector<size_t> cycles = {0, 3};
 
     ASSERT_TRUE(EraseCyclicTensorRTSubgraph(supported_nodes_vector, cycles, trt_id_to_subgraph_index));
@@ -1392,10 +1389,7 @@ TEST(TensorrtExecutionProviderTest, RemoveCycleEdgeCasesTest) {
         {{0, 2, 3}, true},
         {{5}, true},
     };
-    const std::unordered_map<size_t, size_t> trt_id_to_subgraph_index = {
-        {0, 0},
-        {1, 1},
-    };
+    const std::vector<size_t> trt_id_to_subgraph_index = {0, 1};
     // Vertex 2 is a non-TensorRT node visited before TensorRT vertex 0 in the cycle traversal.
     const std::vector<size_t> cycles = {2, 0};
 

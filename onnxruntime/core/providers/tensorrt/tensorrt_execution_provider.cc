@@ -2478,7 +2478,8 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
   while (trt_cycle) {
     trt_cycle = false;
     std::unordered_map<std::string, size_t> node_to_index_map;
-    std::unordered_map<size_t, size_t> trt_id_to_subgraph_index;
+    InlinedVector<size_t> trt_id_to_subgraph_index;
+    trt_id_to_subgraph_index.reserve(supported_nodes_vector.size());
     std::unordered_map<std::string, std::unordered_set<std::string>> input_to_nodes_map, node_to_outputs_map;
     std::unordered_set<size_t> non_trt_node_index(node_index.begin(), node_index.end());
     size_t id = 0;
@@ -2493,7 +2494,7 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
         const auto& meta_def = sub_graph->GetMetaDef();
         const std::string node_name = meta_def->name();
         if (node_to_index_map.find(node_name) == node_to_index_map.end()) {
-          trt_id_to_subgraph_index[id] = group_index;
+          trt_id_to_subgraph_index.push_back(group_index);
           node_to_index_map[node_name] = id++;
         }
 
