@@ -12,12 +12,19 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+// Largest decode tile (rows) that tail expert substitution handles; covers speculative verify steps.
+constexpr int kQMoETailSubstitutionMaxRows = 16;
+
 struct QMoEOffloadTelemetry {
   uint64_t layer_calls;
   uint64_t zero_cold_short_circuits;
   uint64_t cold_routes;
+  uint64_t substituted_routes_count[kQMoETailSubstitutionMaxRows];
+  uint64_t zero_cold_conversions_count[kQMoETailSubstitutionMaxRows];
   int last_route_count;
   int last_cold_count;
+  int last_indices[256];
+  float last_weights[256];
 };
 
 void LaunchSoftmaxTopK(
@@ -28,7 +35,9 @@ void LaunchSoftmaxTopK(
     int num_experts,
     int k,
     bool normalize_scales,
-    cudaStream_t stream);
+    cudaStream_t stream,
+    float min_expert_weight = 0.0f,
+    bool renormalize_after_prune = false);
 
 void LaunchSoftmaxTopK(
     const half* logits,
@@ -38,7 +47,9 @@ void LaunchSoftmaxTopK(
     int num_experts,
     int k,
     bool normalize_scales,
-    cudaStream_t stream);
+    cudaStream_t stream,
+    float min_expert_weight = 0.0f,
+    bool renormalize_after_prune = false);
 
 void LaunchSoftmaxTopK(
     const __nv_bfloat16* logits,
@@ -48,7 +59,9 @@ void LaunchSoftmaxTopK(
     int num_experts,
     int k,
     bool normalize_scales,
-    cudaStream_t stream);
+    cudaStream_t stream,
+    float min_expert_weight = 0.0f,
+    bool renormalize_after_prune = false);
 
 // Decode-only fused routing: softmax + top-k (bit-identical to LaunchSoftmaxTopK) and the (expert, token)-sorted expert
 // maps of fusedBuildExpertMapsSortFirstToken in one single-CTA launch. Returns false (nothing launched) outside its
@@ -102,7 +115,7 @@ cudaError_t LaunchQMoEOffloadScatterBias(
 // `expert_slot` has `num_experts` entries. A routed index outside [0, num_experts) is classified as a miss (never
 // reads `expert_slot`) and is forwarded unchanged through `host_indices_out` so the host can reject the invocation.
 cudaError_t LaunchQMoEOffloadClassify(
-    const int* topk_indices, const int* expert_slot, int num_experts, int route_count, int row_count,
+    int* topk_indices, const int* expert_slot, int num_experts, int route_count, int row_count,
     int* hit_ids, int* hit_compact, int* hit_flag, cudaStream_t stream,
     int dummy_slot = 0, float* unit_scales = nullptr, int* identity_permutation = nullptr,
     int k_for_source_rows = 0, int* host_indices_out = nullptr,
@@ -110,8 +123,18 @@ cudaError_t LaunchQMoEOffloadClassify(
     uint64_t* doorbell_seq_dev = nullptr, volatile uint64_t* doorbell_req_host = nullptr,
     volatile int32_t* doorbell_tile_rows_host = nullptr, int tile_rows = 0,
     bool skip_zero_cold = false, volatile uint64_t* doorbell_done_host = nullptr,
-    QMoEOffloadTelemetry* telemetry = nullptr);
+    QMoEOffloadTelemetry* telemetry = nullptr,
+    float* topk_scales_for_cold_prune = nullptr, float min_cold_expert_weight = 0.0f,
+    int top_k_for_cold_prune = 0, const float* topk_scales_for_telemetry = nullptr);
 
+cudaError_t LaunchQMoETailSubstitution(
+    const half* logits, float* topk_scales, int* topk_indices, const int* expert_slot,
+    int num_rows, int num_experts, int k, int min_rank, float threshold,
+    bool normalize_scales, cudaStream_t stream, QMoEOffloadTelemetry* telemetry = nullptr);
+cudaError_t LaunchQMoETailSubstitution(
+    const __nv_bfloat16* logits, float* topk_scales, int* topk_indices, const int* expert_slot,
+    int num_rows, int num_experts, int k, int min_rank, float threshold,
+    bool normalize_scales, cudaStream_t stream, QMoEOffloadTelemetry* telemetry = nullptr);
 cudaError_t LaunchQMoEOffloadMerge(
     const half* wave_output, const half* cpu_rows, const int* hit_flag, half* contributions,
     int route_count, int hidden_size, int tile_rows, int k, cudaStream_t stream,

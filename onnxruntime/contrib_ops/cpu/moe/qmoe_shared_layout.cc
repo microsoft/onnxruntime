@@ -1306,6 +1306,14 @@ bool FileExpertStore::InitializeStorage(const char* file_path, uint64_t file_off
     } else if (length <= (4ULL << 20) && read_opt_enabled) {
       bank->resident.assign(static_cast<const uint8_t*>(source.data),
                             static_cast<const uint8_t*>(source.data) + length);
+    } else if (source.data != nullptr) {
+      MEMORY_BASIC_INFORMATION mbi{};
+      if (VirtualQuery(source.data, &mbi, sizeof(mbi)) == 0 || mbi.State != MEM_COMMIT ||
+          (mbi.Type != MEM_MAPPED && !read_opt_enabled)) {
+        return false;
+      }
+      bank->mapped_ptr = static_cast<const uint8_t*>(source.data);
+      bank->is_file_backed = (mbi.Type == MEM_MAPPED);
     } else {
       return false;
     }

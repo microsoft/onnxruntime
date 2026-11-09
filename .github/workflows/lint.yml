@@ -7,8 +7,6 @@ on:
       - rel-*
   pull_request:
   workflow_dispatch:
-  schedule:
-    - cron: '23 6 * * *'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
@@ -29,8 +27,7 @@ jobs:
         uses: suzuki-shunsuke/pinact-action@896d595f299e71d65b9d28349d6956abe144390a # v3.0.0
         with:
           fix: "false"
-          no_api: ${{ github.event_name != 'schedule' }}
-          verify: ${{ github.event_name == 'schedule' }}
+          no_api: "true"
 
   optional-lint:
     name: Optional Lint
