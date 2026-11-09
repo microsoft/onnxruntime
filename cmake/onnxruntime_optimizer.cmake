@@ -98,6 +98,16 @@ endif()
 
 file(GLOB onnxruntime_optimizer_srcs CONFIGURE_DEPENDS ${onnxruntime_optimizer_src_patterns})
 
+# These CUDA op companions contain host discovery/rewrite code. Compile them in
+# full contrib builds even without CUDA, so host inventory tests use the same declarations.
+if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
+  list(APPEND onnxruntime_optimizer_srcs
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/fusion/cuda_source_replacements.h"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/fusion/scaled_silu_sources.cc"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/fusion/causal_conv_with_state_sources.cc"
+  )
+endif()
+
 if (NOT onnxruntime_ENABLE_GQA_VALUE_LAYOUT)
   list(REMOVE_ITEM onnxruntime_optimizer_srcs
     "${ONNXRUNTIME_ROOT}/core/optimizer/gqa_value_layout_boundaries.h"

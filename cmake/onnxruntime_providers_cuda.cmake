@@ -59,6 +59,8 @@
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.h"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cc"
   )
+  # Host-only source declarations belong to onnxruntime_optimizer, not the shared provider.
+  list(FILTER onnxruntime_cuda_contrib_ops_cc_srcs EXCLUDE REGEX "/contrib_ops/cuda/fusion/")
   if(NOT onnxruntime_ENABLE_MLAS_QMOE_OFFLOAD)
     list(APPEND onnxruntime_cuda_contrib_ops_cc_srcs
       "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/moe/qmoe_shared_layout.cc")

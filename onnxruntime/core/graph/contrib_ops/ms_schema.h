@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/graph/onnx_protobuf.h"
+#include "core/graph/contrib_ops/source_replacement_policy.h"
 
 namespace onnxruntime {
 namespace contrib {

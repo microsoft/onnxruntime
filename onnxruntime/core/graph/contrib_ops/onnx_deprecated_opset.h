@@ -36,6 +36,9 @@ class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Onnx, 10, ScaledTanh);
 class OpSet_ONNX_Deprecated {
  public:
   static void ForEachSchema(std::function<void(ONNX_NAMESPACE::OpSchema&&)> fn) {
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+    fn = CollectContribSchemas(std::move(fn));
+#endif
     fn(GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Onnx, 1, Affine)>());
     fn(GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Onnx, 1, ParametricSoftplus)>());
     fn(GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Onnx, 1, ImageScaler)>());
