@@ -1461,7 +1461,8 @@ Status DispatchMoEPackedCuda(
                         params.inter_size > 0 && params.inter_size <= kMoEPackedMaxDimension &&
                         params.hidden_size % 32 == 0 && params.inter_size % 32 == 0 &&
                         params.num_experts > 0 && params.num_experts <= kMoEPackedMaxExperts &&
-                        params.k > 0 && params.k <= kMoEPackedMaxK && params.k <= params.num_experts,
+                        params.k > 0 && params.k <= 32 && params.k <= params.num_experts &&
+                        (params.expert_indices || params.sigmoid_routing || params.k <= kMoEPackedMaxK),
                     "MoEPacked parameters exceed the supported CUDA index range");
   if (params.num_rows == 0) return Status::OK();
   const int total_routes = params.num_rows * params.k;
@@ -1619,7 +1620,7 @@ Status DispatchMoEPackedCuda(
 
 Status GetMoEPackedWorkspaceBytes(const MoEPackedParams& params, size_t elem_bytes, size_t& workspace_bytes) {
   ORT_RETURN_IF_NOT(params.num_rows >= 0 && params.num_rows <= kMoEPackedMaxChunkRows &&
-                        params.k > 0 && params.k <= kMoEPackedMaxK &&
+                        params.k > 0 && params.k <= 32 &&
                         params.num_experts > 0 && params.num_experts <= kMoEPackedMaxExperts &&
                         params.hidden_size > 0 && params.hidden_size <= kMoEPackedMaxDimension &&
                         params.inter_size > 0 && params.inter_size <= kMoEPackedMaxDimension &&
