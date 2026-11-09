@@ -115,7 +115,10 @@ class DxCoreThunks {
   }
 
   bool IsAvailable() const {
-    return query_adapter_info != nullptr && (enum_adapters3 != nullptr || enum_adapters2 != nullptr);
+    // Close is required: EnumAdapters* opens a handle per adapter, and cleanup is skipped when
+    // this thunk is null. Prefer falling back to sysfs/PCI over leaking those handles.
+    return close_adapter != nullptr && query_adapter_info != nullptr &&
+           (enum_adapters3 != nullptr || enum_adapters2 != nullptr);
   }
 
   NTSTATUS (*enum_adapters2)(void* args) = nullptr;
@@ -142,8 +145,8 @@ class DxCoreThunks {
       return;
     }
 
-    // A missing symbol leaves the thunk null; IsAvailable() and the EnumAdapters3
-    // fallback decide what is still usable.
+    // A missing symbol leaves the thunk null; IsAvailable() decides whether the set is
+    // usable, and EnumerateAdapters picks EnumAdapters3 over EnumAdapters2.
     const auto load = [&env, library](const char* name) {
       void* symbol = nullptr;
       if (!env.GetSymbolFromLibrary(library, name, &symbol).IsOK()) {
@@ -238,11 +241,10 @@ Status GetGpuDevices(std::vector<WslGpuInfo>& gpu_devices_out) {
 
     const NTSTATUS status = thunks.query_adapter_info(&query);
 
-    if (thunks.close_adapter != nullptr) {
-      D3DKMT_CLOSEADAPTER close_args{};
-      close_args.hAdapter = adapter.hAdapter;
-      thunks.close_adapter(&close_args);
-    }
+    // IsAvailable() requires close_adapter, so this is always safe to call.
+    D3DKMT_CLOSEADAPTER close_args{};
+    close_args.hAdapter = adapter.hAdapter;
+    thunks.close_adapter(&close_args);
 
     if (status != kStatusSuccess) {
       LOGS_DEFAULT(WARNING) << "D3DKMTQueryAdapterInfo failed for WSL adapter " << adapter.hAdapter
