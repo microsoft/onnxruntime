@@ -3,6 +3,66 @@
 These EP-owned optimizations use ORT's existing capability optimization callbacks
 and the generic `Pattern` / `PatternRewriter` APIs for matching and graph rewriting.
 
+## Op-owned source declarations v0
+
+The internal companions `contrib_ops/cuda/fusion/scaled_silu_sources.cc` and
+`causal_conv_with_state_sources.cc` own the immutable executable definitions.
+`CudaSourceReplacements()` is collected once from those factories and is only
+a derived index used by `Select` and declaration coverage tests. The source
+body's Rule supplies the actual pattern, guard, opsets, and Replacement used
+by discovery and acceptance. Offered snapshot predicates overlay the original
+guards. Kernel lookup remains CUDA-local, and the common body adds no public
+API, bridge, function-expansion behavior, or compiled-EP registration.
+
+The typed profiles distinguish standalone Swish non-NaN bit identity/NaN
+classification from complete causal finite-input analytical budgets and exact
+state. The causal companion explicitly records its owned flattened bias copy.
+Neither executable metadata nor registered kernels alone prove unconditional
+source equality. The single-target CUDA adapter declines multi-target
+Replacement DAGs before mutation or lookup; four causal input ports, two
+output ports, one target node, and GPU launch count remain separate concepts.
+
+`ContribSourceReplacementPolicyTest.*` checks exact schema inventory coverage,
+PendingTodo/Special explanations, conflicts/orphans, malformed executable
+metadata, version exemptions, EP/variant-scoped Available, and multi-target
+decline. Run it in a full contrib configuration, alongside the host and actual
+CUDA numerical/routing tests below. Reduced inventories, skipped device tests,
+or stale provider libraries do not establish full qualification. Logs and build/
+provider provenance belong in validation artifacts, not inferred from this text.
+
+### Adding a CUDA source declaration
+
+The catalog is a metadata projection of **explicitly collected factories**,
+not automatic enumeration of companion files. A new author must:
+
+1. Add the op-associated companion factory and its declaration in
+   `cuda_source_replacements.h`. Own the actual Rule consumed by discovery and
+   acceptance, its exact target key, named/scoped numerical profile, and any
+   typed initializer transformation. In v0 the variant identifier is the rule
+   name; CUDA Available requires a parsed Replacement DAG, not a callback-only
+   replacement.
+2. Add the host companion TU to `onnxruntime_optimizer.cmake`. Keep it excluded
+   from both normal and plugin CUDA-provider recursive source lists.
+3. Add one explicit factory collection to `CudaSourceReplacements()`. Do not
+   add a parallel support list or infer support from filenames/kernel coverage.
+4. Integrate the rule ID with the explicit ordered rule loop in
+   `CUDAExecutionProvider::GetCapability`
+   (`core/providers/cuda/cuda_execution_provider.cc`), which calls
+   `g_host->SelectCudaRuntimeFusion`. The host policy hook is
+   `cuda_runtime_fusion::Select` (`core/optimizer/cuda_runtime_fusion.cc`),
+   using the factory-owned config entry. A new ID needs explicit opt-in there;
+   collecting metadata alone
+   does not cause production `GetCapability` to select it. v0 does not change
+   that production hook for future rules.
+5. Add structural coverage and host discovery/acceptance tests, plus fresh
+   CUDA routing and numerical qualification for the declared scope. Run
+   `ContribSourceReplacementPolicyTest.FullRegisteredInventory` in a full-contrib
+   configuration; reduced/minimal inventory is not complete coverage.
+
+The immutable bodies are parsed on first catalog access, including default-off
+selection. v0 retains that bounded startup cost rather than duplicating rule/
+configuration authority to introduce a separate lazy registry.
+
 ## Unit-Swish kernel replacement
 
 The internal session entry `ep.cuda.runtime_fusion.unit_swish` enables the
@@ -20,7 +80,7 @@ kernel changes are introduced.
 ### Discovery and acceptance
 
 `cuda_runtime_fusion::Select` validates configuration and common admission gates,
-then delegates to `detail::SwishFusion::Discover`. Discovery finds candidates;
+then delegates to the ScaledSiLU companion's discovery callback. Discovery finds candidates;
 the case-local `OfferSwish` constructs each capability and its deferred
 optimization callback. Constructing an offer does not modify the source graph.
 ORT invokes the callback only after checking that the selected region is

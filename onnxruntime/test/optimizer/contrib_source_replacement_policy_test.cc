@@ -1,0 +1,359 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+
+#include <algorithm>
+#include <array>
+#include <tuple>
+
+#include "gtest/gtest.h"
+#include "contrib_ops/cuda/fusion/cuda_source_replacements.h"
+#include "core/framework/op_kernel.h"
+#include "core/graph/contrib_ops/source_replacement_legacy.h"
+#include "core/graph/graph_viewer.h"
+#include "core/graph/model.h"
+#include "core/optimizer/cuda_runtime_fusion_internal.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
+#include "test/util/include/asserts.h"
+#include "test/util/include/test_environment.h"
+
+namespace onnxruntime::test {
+namespace {
+using namespace contrib;
+using namespace contrib::cuda::fusion;
+
+constexpr char kMS[] = "com.microsoft";
+const OpKey kNew{kMS, "NewSourcePolicyTestOp", 1};
+
+InlinedVector<ExecutableSource> Executables() {
+  InlinedVector<ExecutableSource> sources;
+  for (const auto* source : CudaSourceReplacements()) sources.push_back(source->Metadata());
+  return sources;
+}
+
+TEST(ContribSourceReplacementPolicyTest, FullRegisteredInventory) {
+  const auto inference_legacy = LegacyInferenceSourcePolicyKeys();
+  const auto training_legacy = LegacyTrainingSourcePolicyKeys();
+  const auto legacy = LegacySourcePolicyKeys();
+  ASSERT_EQ(inference_legacy.size(), 194u);
+  ASSERT_EQ(training_legacy.size(), 101u);
+  ASSERT_EQ(legacy.size(), 295u);  // Currently disjoint; domain/version are part of each key.
+  for (const auto keys : {inference_legacy, training_legacy, legacy}) {
+    for (size_t i = 1; i < keys.size(); ++i) {
+      EXPECT_LT(std::tie(keys[i - 1].domain, keys[i - 1].name, keys[i - 1].since_version),
+                std::tie(keys[i].domain, keys[i].name, keys[i].since_version));
+    }
+  }
+  const auto schemas = GetContribSchemaKeys();
+  const auto policies = GetSourcePolicies();
+  const auto sources = CudaSourceReplacements();
+  ASSERT_GT(schemas.size(), 100u);  // A full inference build, not a reduced inventory claim.
+  ASSERT_EQ(sources.size(), 2u);
+  // Verify that collected keys correspond to exact, real registrations.
+  const auto registered = ONNX_NAMESPACE::OpSchemaRegistry::get_all_schemas_with_history();
+  for (const auto& key : schemas) {
+    EXPECT_TRUE(std::any_of(registered.begin(), registered.end(),
+                            [&](const auto& schema) { return SourceOpKey(schema) == key; }))
+        << key.domain << "." << key.name << "-" << key.since_version;
+  }
+  // Catch schemas that bypass the normal workflow, without interpreting docstrings.
+  for (const auto& schema : registered) {
+    if (schema.file().find("/test/") != std::string::npos) continue;
+    if (schema.domain() == kMSDomain || schema.domain() == kMSNchwcDomain) {
+      const auto key = SourceOpKey(schema);
+      EXPECT_NE(std::find(schemas.begin(), schemas.end(), key), schemas.end()) << key.name;
+    }
+  }
+  ASSERT_STATUS_OK(ValidateCudaSourceReplacements(sources, schemas, policies, LegacySourcePolicyKeys()));
+}
+
+TEST(ContribSourceReplacementPolicyTest, NewKeyNeedsExplicitPolicyAndExactVersion) {
+  const std::array schemas{kNew};
+  EXPECT_FALSE(ValidateSourceDeclarations(schemas, {}, {}, LegacySourcePolicyKeys()).IsOK());
+  const std::array pending{SourcePolicyRecord{kNew, {NonExecutableState::PendingTodo, "Needs qualification", {}}}};
+  ASSERT_STATUS_OK(ValidateSourceDeclarations(schemas, pending, {}, LegacySourcePolicyKeys()));
+  EXPECT_EQ(ResolveSourceStatus(kNew, kCudaExecutionProvider, "new", pending, {}, {}),
+            SourceStatus::PendingTodo);
+  const std::array special{SourcePolicyRecord{kNew, {NonExecutableState::Special, "Not a source fusion", "issue"}}};
+  ASSERT_STATUS_OK(ValidateSourceDeclarations(schemas, special, {}, {}));
+  EXPECT_EQ(ResolveSourceStatus(kNew, kCpuExecutionProvider, "new", special, {}, {}), SourceStatus::Special);
+  const OpKey next{kMS, "ScaledSiLU", 2};
+  const std::array versions{next};
+  EXPECT_FALSE(ValidateSourceDeclarations(versions, {}, {}, LegacySourcePolicyKeys()).IsOK());
+  EXPECT_EQ(ResolveSourceStatus(next, kCudaExecutionProvider, "", {}, {}, LegacySourcePolicyKeys()),
+            SourceStatus::Missing);
+  EXPECT_EQ(ResolveSourceStatus({kMS, "ScaledSiLU", 1}, kCpuExecutionProvider, "", {}, {},
+                                LegacySourcePolicyKeys()),
+            SourceStatus::LegacyPending);
+  EXPECT_EQ(ResolveSourceStatus({kMS, "ReluGrad", 1}, kCudaExecutionProvider, "", {}, {},
+                                LegacySourcePolicyKeys()),
+            SourceStatus::LegacyPending);
+  const std::array training_versions{OpKey{kMS, "ReluGrad", 2}};
+  EXPECT_FALSE(ValidateSourceDeclarations(training_versions, {}, {}, LegacySourcePolicyKeys()).IsOK());
+}
+
+TEST(ContribSourceReplacementPolicyTest, RegistrationCollectsFinalizedDefaultVersion) {
+  const auto* schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema("AttnLSTM", 1, kMSDomain);
+  ASSERT_NE(schema, nullptr);
+  ASSERT_EQ(schema->SinceVersion(), 1);
+  const auto schemas = GetContribSchemaKeys();
+  EXPECT_NE(std::find(schemas.begin(), schemas.end(), SourceOpKey(*schema)), schemas.end());
+  EXPECT_TRUE(std::all_of(schemas.begin(), schemas.end(), [](const auto& key) { return key.since_version > 0; }));
+}
+
+TEST(ContribSourceReplacementPolicyTest, RejectsInvalidPoliciesConflictsAndOrphans) {
+  const std::array schemas{kNew};
+  for (const auto& reason : {"", " \t\n"}) {
+    const std::array policies{SourcePolicyRecord{kNew, {NonExecutableState::PendingTodo, reason, {}}}};
+    EXPECT_FALSE(ValidateSourceDeclarations(schemas, policies, {}, {}).IsOK());
+  }
+  const SourcePolicyRecord pending{kNew, {NonExecutableState::PendingTodo, "Pending", {}}};
+  const std::array identical{pending, pending};
+  ASSERT_STATUS_OK(ValidateSourceDeclarations(schemas, identical, {}, {}));
+  auto changed = pending;
+  changed.policy.state = NonExecutableState::Special;
+  const std::array conflicts{pending, changed};
+  EXPECT_FALSE(ValidateSourceDeclarations(schemas, conflicts, {}, {}).IsOK());
+  const std::array orphan{pending};
+  EXPECT_FALSE(ValidateSourceDeclarations({}, orphan, {}, {}).IsOK());
+  changed.policy.state = static_cast<NonExecutableState>(99);
+  const std::array invalid_state{changed};
+  EXPECT_FALSE(ValidateSourceDeclarations(schemas, invalid_state, {}, {}).IsOK());
+  changed.policy = {NonExecutableState::PendingTodo, "Pending", ""};
+  const std::array empty_issue{changed};
+  EXPECT_FALSE(ValidateSourceDeclarations(schemas, empty_issue, {}, {}).IsOK());
+  const std::array invalid_key{OpKey{kMS, "", 1}};
+  EXPECT_FALSE(ValidateSourceDeclarations(invalid_key, {}, {}, invalid_key).IsOK());
+  const std::array duplicate_key{kNew, kNew};
+  EXPECT_FALSE(ValidateSourceDeclarations(duplicate_key, {}, {}, duplicate_key).IsOK());
+}
+
+TEST(ContribSourceReplacementPolicyTest, RecordsOwnedSchemaKeysAndIdempotentPolicies) {
+  const auto global_before = GetSourcePolicies();
+  InlinedVector<SourcePolicyRecord> records;
+  const auto* registered = ONNX_NAMESPACE::OpSchemaRegistry::Schema("ScaledSiLU", 1, kMS);
+  ASSERT_NE(registered, nullptr);
+  auto schema = *registered;
+  SourcePolicy policy{NonExecutableState::PendingTodo, "Future source variants require qualification", "test-issue"};
+  ASSERT_STATUS_OK(RecordSourcePolicy(records, schema, policy));
+  auto invalid = policy;
+  invalid.reason = " \t";
+  EXPECT_FALSE(RecordSourcePolicy(records, schema, invalid).IsOK());
+  ASSERT_STATUS_OK(RecordSourcePolicy(records, schema, policy));
+  auto conflict = policy;
+  conflict.reason = "Conflicting reason";
+  EXPECT_FALSE(RecordSourcePolicy(records, schema, conflict).IsOK());
+  policy.reason.clear();
+  schema.SetDomain("changed-test-domain");
+  const auto found = std::find_if(records.begin(), records.end(), [&](const auto& record) {
+    return record.key == SourceOpKey(*registered);
+  });
+  ASSERT_NE(found, records.end());
+  EXPECT_EQ(found->policy.reason, "Future source variants require qualification");
+  EXPECT_EQ(found->policy.issue, "test-issue");
+  EXPECT_EQ(std::count_if(records.begin(), records.end(), [&](const auto& record) {
+              return record.key == SourceOpKey(*registered);
+            }),
+            1);
+  const auto global_after = GetSourcePolicies();
+  ASSERT_EQ(global_after.size(), global_before.size());
+  for (size_t i = 0; i < global_before.size(); ++i) {
+    EXPECT_EQ(global_after[i].key, global_before[i].key);
+    EXPECT_EQ(global_after[i].policy, global_before[i].policy);
+  }
+}
+
+TEST(ContribSourceReplacementPolicyTest, AvailableIsEPAndVariantScopedAndCanCoexistWithPending) {
+  const auto sources = Executables();
+  const auto schemas = GetContribSchemaKeys();
+  ASSERT_STATUS_OK(ValidateSourceDeclarations(schemas, {}, sources, LegacySourcePolicyKeys()));
+  const auto swish_sources = ScaledSiLUSources();
+  const auto& swish = swish_sources.front();
+  const std::array pending{SourcePolicyRecord{swish.target, {NonExecutableState::PendingTodo, "Future variants", {}}}};
+  ASSERT_STATUS_OK(ValidateSourceDeclarations(schemas, pending, sources, LegacySourcePolicyKeys()));
+  EXPECT_EQ(ResolveSourceStatus(swish.target, kCudaExecutionProvider, swish.rule_id, pending, sources, {}),
+            SourceStatus::Available);
+  EXPECT_EQ(ResolveSourceStatus(swish.target, kCpuExecutionProvider, swish.rule_id, pending, sources, {}),
+            SourceStatus::PendingTodo);
+  EXPECT_EQ(ResolveSourceStatus(swish.target, kCudaExecutionProvider, "unqualified-variant", {}, sources, {}),
+            SourceStatus::Missing);
+  EXPECT_NE(swish.body.numerical.guarantee, CausalConvWithStateSources().front().body.numerical.guarantee);
+  EXPECT_EQ(swish.body.initializer_transformation, InitializerTransformation::None);
+  EXPECT_EQ(CausalConvWithStateSources().front().body.initializer_transformation,
+            InitializerTransformation::OwnedFlattenedBiasCopy);
+}
+
+TEST(ContribSourceReplacementPolicyTest, LegacyCannotExemptMalformedExecutableMetadata) {
+  const auto schemas = GetContribSchemaKeys();
+  auto check_invalid = [&](SourceReplacement source) {
+    const std::array<const SourceReplacement*, 1> sources{&source};
+    EXPECT_FALSE(ValidateCudaSourceReplacements(sources, schemas, {}, LegacySourcePolicyKeys()).IsOK());
+  };
+  const auto swish_sources = ScaledSiLUSources();
+  const auto& original = swish_sources.front();
+  auto source = original;
+  source.body.numerical.name.clear();
+  check_invalid(source);
+  source = original;
+  source.body.numerical.scope.clear();
+  check_invalid(source);
+  source = original;
+  source.body.numerical.guarantee = static_cast<NumericalGuarantee>(99);
+  check_invalid(source);
+  source = original;
+  source.body.rule.check_and_bind = {};
+  check_invalid(source);
+  source = original;
+  source.body.rule.replacement = nullptr;
+  check_invalid(source);
+  source = original;
+  source.body.rule.replacement = [](const Graph&, const rewrite::Match&) {
+    return rewrite::Replacement("(x)=>com.microsoft.ScaledSiLU(x,alpha=1.0)");
+  };
+  const std::array callback_metadata{source.Metadata()};
+  ASSERT_STATUS_OK(ValidateSourceDeclarations(schemas, {}, callback_metadata, LegacySourcePolicyKeys()));
+  check_invalid(source);  // Common callback bodies are valid; this CUDA adapter cannot consume them.
+  source = original;
+  source.body.rule.opsets.clear();
+  check_invalid(source);
+  source = original;
+  source.body.rule.opsets.back().max_version = 2;
+  check_invalid(source);
+  source = original;
+  source.body.rule.replacement = rewrite::Replacement("(x)=>com.microsoft.Gelu(x)");
+  check_invalid(source);
+  source = original;
+  source.rule_id = "different-id";
+  check_invalid(source);
+  source = original;
+  source.config.clear();
+  check_invalid(source);
+  source = original;
+  source.discover = nullptr;
+  check_invalid(source);
+  source = original;
+  source.target = kNew;
+  check_invalid(source);
+  source = CausalConvWithStateSources().front();
+  source.body.transformation_description.clear();
+  check_invalid(source);
+  const std::array<const SourceReplacement*, 2> duplicate{&original, &original};
+  EXPECT_FALSE(ValidateCudaSourceReplacements(duplicate, schemas, {}, LegacySourcePolicyKeys()).IsOK());
+  const std::array<const SourceReplacement*, 1> missing{nullptr};
+  EXPECT_FALSE(ValidateCudaSourceReplacements(missing, schemas, {}, LegacySourcePolicyKeys()).IsOK());
+  const std::array orphan{original.Metadata()};
+  EXPECT_FALSE(ValidateSourceDeclarations({}, {}, orphan, LegacySourcePolicyKeys()).IsOK());
+}
+
+class NoProbeLookup final : public IExecutionProvider::IKernelLookup {
+ public:
+  mutable size_t calls = 0;
+  const KernelCreateInfo* LookUpKernel(const Node&) const override {
+    ++calls;
+    return nullptr;
+  }
+};
+
+std::unique_ptr<Model> UnitSwishModel() {
+  auto model = std::make_unique<Model>("declaration-body", false, ModelMetaData(), PathString(),
+                                       IOnnxRuntimeOpSchemaRegistryList(),
+                                       std::unordered_map<std::string, int>{{kOnnxDomain, 24}, {kMSDomain, 1}},
+                                       std::vector<ONNX_NAMESPACE::FunctionProto>{},
+                                       DefaultLoggingManager().DefaultLogger());
+  ONNX_NAMESPACE::TypeProto type;
+  type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(17);
+  auto& graph = model->MainGraph();
+  auto& x = graph.GetOrCreateNodeArg("x", &type);
+  auto& y = graph.GetOrCreateNodeArg("y", &type);
+  graph.AddNode("swish", "Swish", "", {&x}, {&y});
+  graph.SetInputs({&x});
+  graph.SetOutputs({&y});
+  ORT_THROW_IF_ERROR(graph.Resolve());
+  return model;
+}
+
+class PresentTargetLookup final : public IExecutionProvider::IKernelLookup {
+ public:
+  mutable size_t calls = 0;
+  KernelCreateInfo kernel;
+  const KernelCreateInfo* LookUpKernel(const Node&) const override {
+    ++calls;
+    return &kernel;
+  }
+};
+
+TEST(ContribSourceReplacementPolicyTest, DeclaredGuardDrivesDiscoveryAndOwnedAcceptance) {
+  auto model = UnitSwishModel();
+  auto& graph = model->MainGraph();
+  const auto before = graph.ToGraphProto().SerializeAsString();
+  auto source = ScaledSiLUSources().front();
+  PresentTargetLookup lookup;
+  std::vector<std::unique_ptr<ComputeCapability>> offers;
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+  source.body.rule.check_and_bind = [](const Graph&, rewrite::Match&) { return false; };
+  ASSERT_STATUS_OK(source.discover(source, GraphViewer(graph), lookup, logger, offers));
+  EXPECT_TRUE(offers.empty());
+  EXPECT_EQ(lookup.calls, 0u);
+  EXPECT_EQ(graph.ToGraphProto().SerializeAsString(), before);
+  size_t guard_calls = 0;
+  const auto original_guard = ScaledSiLUSources().front().body.rule.check_and_bind;
+  source.body.rule.check_and_bind = [original_guard, &guard_calls](const Graph& live, rewrite::Match& match) {
+    ++guard_calls;
+    return original_guard(live, match);
+  };
+  ASSERT_STATUS_OK(source.discover(source, GraphViewer(graph), lookup, logger, offers));
+  ASSERT_EQ(offers.size(), 1u);
+  EXPECT_GT(guard_calls, 0u);
+  EXPECT_EQ(lookup.calls, 1u);
+  EXPECT_EQ(graph.ToGraphProto().SerializeAsString(), before);
+  const auto discovery_calls = guard_calls;
+  // An offer owns its rule and snapshot; changing this test's declaration copy cannot replace it.
+  source.body.rule.check_and_bind = [](const Graph&, rewrite::Match&) { return false; };
+  SessionOptions options;
+  CPUExecutionProvider cpu{CPUExecutionProviderInfo{}};
+  GraphOptimizerRegistry registry(&options, &cpu, &logger);
+  auto& selected = *offers.front()->nodes_to_optimize.front();
+  ASSERT_STATUS_OK(selected.optimization_func(graph, selected, *offers.front(), registry));
+  EXPECT_GT(guard_calls, discovery_calls);
+  ASSERT_EQ(graph.NumberOfNodes(), 1);
+  EXPECT_EQ(graph.GetProducerNode("y")->OpType(), "ScaledSiLU");
+}
+
+TEST(ContribSourceReplacementPolicyTest, MultiTargetDAGDeclinesBeforeMutationOrKernelLookup) {
+  rewrite::Replacement recipe("(x)=>{a=Identity(x); y=com.microsoft.ScaledSiLU(a); return y}");
+  EXPECT_EQ(recipe.Plan()->size(), 2u);
+  EXPECT_FALSE(SupportsCudaReplacement(recipe, 1));
+  EXPECT_TRUE(SupportsCudaReplacement(*CausalConvWithStateSources().front().body.rule.replacement.Parsed(), 2));
+  EXPECT_FALSE(SupportsCudaReplacement(*ScaledSiLUSources().front().body.rule.replacement.Parsed(), 2));
+  Model model("multi-target-probe", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              {{kOnnxDomain, 24}, {kMSDomain, 1}}, {}, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  NoProbeLookup lookup;
+  bool available = true;
+  ASSERT_STATUS_OK(cuda_runtime_fusion::detail::ProbeTarget(graph, recipe, {}, {}, 1, lookup, available));
+  EXPECT_FALSE(available);
+  EXPECT_EQ(graph.NumberOfNodes(), 0);
+  EXPECT_TRUE(graph.GetInputs().empty());
+  EXPECT_TRUE(graph.GetOutputs().empty());
+  EXPECT_EQ(lookup.calls, 0u);
+  // The common declaration still accepts a valid general DAG; CUDA admission is separate.
+  auto source = ScaledSiLUSources().front();
+  source.body.rule.replacement = recipe;
+  const std::array sources{source.Metadata()};
+  const std::array schemas{source.target};
+  ASSERT_STATUS_OK(ValidateSourceDeclarations(schemas, {}, sources, {}));
+  auto swish = UnitSwishModel();
+  const auto before = swish->MainGraph().ToGraphProto().SerializeAsString();
+  std::vector<std::unique_ptr<ComputeCapability>> offers;
+  ASSERT_STATUS_OK(source.discover(source, GraphViewer(swish->MainGraph()), lookup,
+                                   DefaultLoggingManager().DefaultLogger(), offers));
+  EXPECT_TRUE(offers.empty());
+  EXPECT_EQ(lookup.calls, 0u);
+  EXPECT_EQ(swish->MainGraph().ToGraphProto().SerializeAsString(), before);
+}
+
+}  // namespace
+}  // namespace onnxruntime::test
+#endif

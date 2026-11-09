@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/optimizer/cuda_runtime_fusion_internal.h"
+#include "contrib_ops/cuda/fusion/cuda_source_replacements.h"
 
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
 
@@ -19,9 +20,14 @@
 #include "core/graph/model.h"
 #include "core/optimizer/initializer.h"
 
-namespace onnxruntime::cuda_runtime_fusion::detail {
+namespace onnxruntime::contrib::cuda::fusion {
 namespace {
 using namespace onnxruntime::rewrite;
+using cuda_runtime_fusion::kCausalConvConfig;
+using cuda_runtime_fusion::kMobiusBf16Rule;
+using cuda_runtime_fusion::detail::MakeCapability;
+using cuda_runtime_fusion::detail::OptimizationFunction;
+using cuda_runtime_fusion::detail::ProbeTarget;
 constexpr int kInt64 = ONNX_NAMESPACE::TensorProto_DataType_INT64;
 
 enum class BiasAlternative { Unfolded,
@@ -383,13 +389,16 @@ Status AddFlatBiasCopy(Graph& graph, const NodeArg& source, const Contract& cont
 }
 
 std::unique_ptr<ComputeCapability> OfferCausalConv(const Match& match, NodeIndex anchor, Contract contract,
-                                                   const Pattern& pattern, const Replacement& recipe) {
+                                                   const SourceBody& body) {
   Options options;
   options.compatible_execution_providers.clear();
   Rules rules;
-  rules.emplace_back(kMobiusBf16Rule, pattern, recipe, [contract](const Graph& graph, Match& candidate) {
-                       Contract actual;
-                       return Semantics(graph, candidate, &actual) && actual == contract; }, InlinedVector<OpsetRequirement, 1>{{kOnnxDomain, 24, 24}, {kMSDomain, 1, 1}});
+  auto offered_rule = body.rule;
+  offered_rule.check_and_bind = [guard = body.rule.check_and_bind, contract](const Graph& graph, Match& candidate) {
+    Contract actual;
+    return guard(graph, candidate) && Semantics(graph, candidate, &actual) && actual == contract;
+  };
+  rules.push_back(std::move(offered_rule));
   auto rewriter = std::make_shared<const PatternRewriter>(std::move(rules), std::move(options));
   InlinedVector<NodeIndex> source_ids;
   for (const auto* node : match.nodes) source_ids.push_back(node->Index());
@@ -441,19 +450,20 @@ std::unique_ptr<ComputeCapability> OfferCausalConv(const Match& match, NodeIndex
   return MakeCapability(source_ids, std::move(optimization_func));
 }
 
-}  // namespace
-
-Status CausalConvFusion::Discover(const GraphViewer& viewer, const IExecutionProvider::IKernelLookup& kernel_lookup,
-                                  const logging::Logger& logger,
-                                  std::vector<std::unique_ptr<ComputeCapability>>& capabilities) {
+Status DiscoverCausalConv(const SourceReplacement& source, const GraphViewer& viewer,
+                          const IExecutionProvider::IKernelLookup& kernel_lookup,
+                          const logging::Logger& logger,
+                          std::vector<std::unique_ptr<ComputeCapability>>& capabilities) {
   using namespace onnxruntime::rewrite;
   const auto& graph = viewer.GetGraph();
   const auto& imports = graph.DomainToVersionMap();
   if (!imports.count(kOnnxDomain) || imports.at(kOnnxDomain) != 24 ||
       !imports.count(kMSDomain) || imports.at(kMSDomain) != 1) return Status::OK();
   ORT_RETURN_IF(graph.GraphResolveNeeded(), "CUDA runtime fusion requires a resolved graph.");
-  const Replacement recipe(kReplacement);
-  const Pattern pattern = PatternLibrary(kPattern).GetPattern("Mobius");
+  const auto& pattern = source.body.rule.pattern;
+  const auto* parsed = source.body.rule.replacement.Parsed();
+  if (!parsed || !SupportsCudaReplacement(*parsed, 2)) return Status::OK();
+  const auto& recipe = *parsed;
   std::vector<std::unique_ptr<ComputeCapability>> pending;
   InlinedHashSet<NodeIndex> offered;
   for (auto anchor : viewer.GetNodesInTopologicalOrder()) {
@@ -466,12 +476,12 @@ Status CausalConvFusion::Discover(const GraphViewer& viewer, const IExecutionPro
         if (!node->GetExecutionProviderType().empty() || offered.count(node->Index())) return true;
       }
       Contract contract;
-      if (!Semantics(graph, match, &contract)) return true;
+      if (!source.body.rule.check_and_bind(graph, match) || !Semantics(graph, match, &contract)) return true;
       bool available = false;
       probe_status = TargetAvailable(match, contract, recipe, kernel_lookup, logger, available);
       if (!probe_status.IsOK()) return false;
       if (!available) return true;
-      pending.push_back(OfferCausalConv(match, anchor, std::move(contract), pattern, recipe));
+      pending.push_back(OfferCausalConv(match, anchor, std::move(contract), source.body));
       for (const auto* node : match.nodes) offered.insert(node->Index());
       return true;
     }));
@@ -480,6 +490,29 @@ Status CausalConvFusion::Discover(const GraphViewer& viewer, const IExecutionPro
   capabilities = std::move(pending);
   return Status::OK();
 }
-}  // namespace onnxruntime::cuda_runtime_fusion::detail
+}  // namespace
+
+gsl::span<const SourceReplacement> CausalConvWithStateSources() {
+  static const SourceReplacement source = [] {
+    const auto pattern = PatternLibrary(kPattern).GetPattern("Mobius");
+    const Replacement replacement(kReplacement);
+    Rule rule(kMobiusBf16Rule, pattern, replacement,
+              [](const Graph& graph, Match& match) { return Semantics(graph, match); },
+              {{kOnnxDomain, 24, 24}, {kMSDomain, 1, 1}});
+    NumericalProfile numerical{
+        "cuda_causal_conv_finite_analytical_exact_state_v1",
+        "CUDA FLOAT/FLOAT16/BFLOAT16 finite-input Conv+bias+SiLU with dtype/TF32-aware analytical budgets; "
+        "history exact. Source materialization rounding/overflow and NaN/Inf behavior are not guaranteed.",
+        NumericalGuarantee::FiniteInputAnalyticalBudgetAndExactState};
+    SourceBody body{
+        std::move(rule), std::move(numerical), InitializerTransformation::OwnedFlattenedBiasCopy,
+        "Acceptance stages the original rank-3 bias, then Initializer's owned bitwise copy is flattened via "
+        "ToProtoWithOrtValue and owned Tensor reshape; shared source storage is never reshaped."};
+    const OpKey target{kMSDomain, "CausalConvWithState", 1};
+    return SourceReplacement{target, kMobiusBf16Rule, kCausalConvConfig, std::move(body), DiscoverCausalConv};
+  }();
+  return {&source, 1};
+}
+}  // namespace onnxruntime::contrib::cuda::fusion
 
 #endif
