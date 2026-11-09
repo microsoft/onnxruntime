@@ -6550,3 +6550,18 @@ This tracking-only follow-up records completed publication. Final synchronized
 head/base, preserved PR template/body and clean-worktree verification are retained
 in session `contributor-overview-final-pr.json`. No PR was merged and no deferred
 binding milestone was changed.
+
+**Example-documentation follow-up (2026-11-09):**
+
+- [x] Replace repository/revision-only source descriptions with direct Hugging Face
+  ONNX file links for both Phi-3 variants and all four required SD1.5 components.
+- [x] Copy the supplied illustrative manifest exactly to
+  `docs/phi3-sample-manifest.json` and link it from the Phi-3 description.
+  Distinguish placeholder models/one-layer caches from the runnable generated
+  Phi-3 package.
+- [x] Validate exact copy/JSON, six model-file links,26relative links,
+  three Bash recipe blocks and whitespace. Documentation-only; no runtime
+  rebuild, model download or new coverage claim.
+
+This follow-up updates the existing overview PR#31 without changing runtime,
+asset acquisition pins, model files or deferred binding scope.

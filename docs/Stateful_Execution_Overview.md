@@ -234,10 +234,20 @@ the retained prefill logits, then feeds each pending token back into the model.
 EOS/token limits are explicit. Both stages reuse one model/weight file per
 variant; no weight duplication or Python autoregressive loop is required.
 
-Pinned source: `microsoft/Phi-3-mini-4k-instruct-onnx`,
-revision `5f5f794c1c23c9d5ee142af85df02a6cc52d6945`.
-The qualified CPU variant is INT4 with FP32 logits/cache; CUDA uses FP16.
+ONNX files on Hugging Face:
+
+- [Phi-3 CPU INT4](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-onnx/blob/5f5f794c1c23c9d5ee142af85df02a6cc52d6945/cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4/phi3-mini-4k-instruct-cpu-int4-rtn-block-32-acc-level-4.onnx),
+  with FP32 logits/cache.
+- [Phi-3 CUDA FP16](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-onnx/blob/5f5f794c1c23c9d5ee142af85df02a6cc52d6945/cuda/cuda-fp16/phi3-mini-4k-instruct-cuda-fp16.onnx).
+
+The acquisition command below also fetches the required external weights and metadata.
 Local tokenization/chat formatting and rendering stay application-owned.
+
+The [sample Phi-3-style decoder-chain manifest](phi3-sample-manifest.json) shows
+sampler-free prefill and decode with explicit exits. It uses placeholder
+`model1.onnx`/`model2.onnx` filenames and one layer's key/value caches, not the
+real Phi-3 signatures. Use the build command below to generate the runnable
+Phi-3 package with its actual model paths, 64 caches and generation metadata.
 
 Choose `TARGET=cpu` with the local CPU wheel, or `TARGET=cuda` with the local
 plugin wheel, then run:
@@ -278,8 +288,13 @@ prompt. Batched guidance takes 20 UNet calls / 25 total model invocations;
 sequential guidance takes 40 / 45. Latents/scheduler state are not KV caches.
 Python only provides application boundaries and validation/image tooling.
 
-Pinned source: `tlwu/stable-diffusion-v1-5-onnxruntime`,
-revision `f22c0e90205a7a2c08bf3e8927b39dc84e4064c2`.
+ONNX files on Hugging Face:
+
+- [Text encoder](https://huggingface.co/tlwu/stable-diffusion-v1-5-onnxruntime/blob/f22c0e90205a7a2c08bf3e8927b39dc84e4064c2/text_encoder/model.onnx)
+- [UNet denoiser](https://huggingface.co/tlwu/stable-diffusion-v1-5-onnxruntime/blob/f22c0e90205a7a2c08bf3e8927b39dc84e4064c2/unet/model.onnx)
+- [VAE decoder](https://huggingface.co/tlwu/stable-diffusion-v1-5-onnxruntime/blob/f22c0e90205a7a2c08bf3e8927b39dc84e4064c2/vae_decoder/model.onnx)
+- [Safety checker](https://huggingface.co/tlwu/stable-diffusion-v1-5-onnxruntime/blob/f22c0e90205a7a2c08bf3e8927b39dc84e4064c2/safety_checker/model.onnx)
+
 These optimized graphs are **CUDA-only**; CPU EP tests use deterministic
 fixtures. Explicit FP32/FP16 boundaries preserve original initializers, apply
 VAE scaling once and retain mandatory safety. The selected native policy is

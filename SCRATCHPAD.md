@@ -4,6 +4,12 @@ Compressed project memory. This is not the execution plan.
 
 ## Workflow checkpoint
 
+- 2026-11-09: OverviewPR31follow-up: replacePhi/SDsource-onlyparagraphs
+  with6directHFONNXfilelinks(2Phi+4SD,qualifiedrevisionURLs). Copyattached
+  m10-candidate-manifest.json EXACTbytes to docs/phi3-sample-manifest.json;
+  linkedandlabeledillustrative(model1/model2,one-layerKV), notrunnablePhi64.
+  JSON/exactbytes/26relativelinks/3bashrecipes/whitespacePASS; all6HFpages
+  resolvewithoutmodeldownloads. No runtime/pin/behavior/dependencychanges.
 - 2026-11-04 CURRENT: Userrequestscontributor-facingoverviewofall20PRs(#11-#30)
   as21stPR. Doc-onlybranchstate/contributor-overview fromM24#30 at
   84237bbf6b9d059e4f96904b9c181402d6e11da6. All20actualPRsOPEN/non-draft,
