@@ -801,12 +801,20 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /** Check if a given name is an initializer tensor's name in this graph. */
   bool IsInitializedTensor(const std::string& name) const;
 
+  const auto& GetMetadataForSerialization() const { return graph_proto_->metadata_props(); }
+
 #if !defined(DISABLE_SPARSE_TENSORS)
   /** Check if a given name is a sparse initializer's name in the model
    * we currently convert sparse_initializer field in the model into dense Tensor instances.
    * However, we sometimes want to check if this initializer was stored as sparse in the model.
    */
   bool IsSparseInitializer(const std::string& name) const;
+
+  // Retains sparse component file references when exporting a graph view.
+  const ONNX_NAMESPACE::SparseTensorProto* GetSparseInitializerProto(const std::string& name) const {
+    auto it = source_sparse_initializers_.find(name);
+    return it == source_sparse_initializers_.end() ? nullptr : &it->second;
+  }
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -2063,6 +2071,11 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
   // GraphProto that provides storage for the ONNX proto types deserialized from a flexbuffer/flatbuffer
   ONNX_NAMESPACE::GraphProto deserialized_proto_data_;
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+  // Preserve component references discarded when sparse initializers are densified on load.
+  InlinedHashMap<std::string, ONNX_NAMESPACE::SparseTensorProto> source_sparse_initializers_;
+#endif
 
   InitializedTensorSet name_to_initial_tensor_;
 

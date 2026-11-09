@@ -328,6 +328,18 @@ ORT_RUNTIME_CLASS(LoraAdapter);
 ORT_RUNTIME_CLASS(ValueInfo);
 ORT_RUNTIME_CLASS(Node);
 ORT_RUNTIME_CLASS(Graph);
+ORT_RUNTIME_CLASS(GraphSerializationOptions);
+
+/** \brief Policy for initializers backed by external files during graph serialization.
+ * In-memory initializers remain eligible for the location callback under every policy.
+ * \since Version 1.32.
+ */
+typedef enum OrtGraphExternalInitializerPolicy {
+  ORT_GRAPH_EXTERNAL_INITIALIZER_PRESERVE_REFERENCES = 0,     ///< Copy file references without reading their data.
+  ORT_GRAPH_EXTERNAL_INITIALIZER_EMBED = 1,                   ///< Read and embed file data.
+  ORT_GRAPH_EXTERNAL_INITIALIZER_REPACKAGE_VIA_CALLBACK = 2,  ///< Read file data; requires a location callback.
+  ORT_GRAPH_EXTERNAL_INITIALIZER_FAIL_IF_PRESENT = 3,         ///< Reject file references before invoking callbacks.
+} OrtGraphExternalInitializerPolicy;
 ORT_RUNTIME_CLASS(Model);
 ORT_RUNTIME_CLASS(ModelCompilationOptions);
 ORT_RUNTIME_CLASS(EpContextConfig);
@@ -7768,6 +7780,117 @@ struct OrtApi {
   ORT_API2_STATUS(EpDevice_GetMemoryCapacity, _In_ const OrtEpDevice* ep_device,
                   _In_ OrtDeviceMemoryType memory_type,
                   _Out_opt_ uint64_t* total_memory_bytes, _Out_opt_ uint64_t* available_memory_bytes);
+
+  /** \brief Create graph serialization options with default settings.
+   *
+   * \param[out] out Receives owned options. Release with ReleaseGraphSerializationOptions().
+   * Defaults preserve external file references, use a zero initializer threshold, have no location callback,
+   * and deliver streaming output in chunks of at most 64 KiB. On failure, `out` is unchanged.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(CreateGraphSerializationOptions, _Outptr_ OrtGraphSerializationOptions** out);
+
+  /** \brief Release graph serialization options. Accepts NULL.
+   * \param[in] input Options to release. Callback state remains caller-owned.
+   * \since Version 1.32.
+   */
+  ORT_CLASS_RELEASE(GraphSerializationOptions);
+
+  /** \brief Set how graph serialization handles file-backed initializers, recursively including subgraphs.
+   *
+   * Sparse tensor components follow this policy but never invoke the dense initializer location callback.
+   * String initializers are embedded when read and never invoke the callback.
+   * \param[in,out] options Options to update.
+   * \param[in] policy External initializer policy. Invalid enum values return ORT_INVALID_ARGUMENT.
+   * REPACKAGE_VIA_CALLBACK requires a location callback at serialization time.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(GraphSerializationOptions_SetExternalInitializerPolicy,
+                  _Inout_ OrtGraphSerializationOptions* options, OrtGraphExternalInitializerPolicy policy);
+
+  /** \brief Set the inclusive minimum data size for invoking the initializer location callback.
+   *
+   * Applies to eligible non-string dense initializers embedded in the model or supplied in memory, and file data
+   * read under REPACKAGE_VIA_CALLBACK. Smaller initializers are embedded. The default is zero.
+   * \param[in,out] options Options to update.
+   * \param[in] min_bytes Minimum initializer size in bytes.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(GraphSerializationOptions_SetMinimumExternalInitializerSize,
+                  _Inout_ OrtGraphSerializationOptions* options, size_t min_bytes);
+
+  /** \brief Set the callback that chooses embedded or external storage for eligible initializers.
+   *
+   * The callback and state are borrowed and must remain valid for every serialization using these options.
+   * Calls are synchronous. Each eligible initializer invokes the callback once per serialization. Ownership of
+   * callback outputs follows OrtGetInitializerLocationFunc, including cleanup when the callback returns an error.
+   * The callback arguments initializer_name, initializer_value (including its data), and external_info are
+   * borrowed only for the duration of the callback. The callback must not release or retain these pointers.
+   * ORT performs no filesystem writes; the callback is responsible for any external data writes.
+   * \param[in,out] options Options to update.
+   * \param[in] get_initializer_location_func Callback, or NULL to clear the callback and state.
+   * \param[in] state Caller-owned callback state.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(GraphSerializationOptions_SetInitializerLocationFunc,
+                  _Inout_ OrtGraphSerializationOptions* options,
+                  _In_opt_ OrtGetInitializerLocationFunc get_initializer_location_func, _In_opt_ void* state);
+
+  /** \brief Set the maximum streaming chunk size. Zero restores the 64 KiB default.
+   *
+   * Changes chunk boundaries only, not serialized bytes. Ignored by Graph_SerializeToOnnxModel().
+   * \param[in,out] options Options to update.
+   * \param[in] max_chunk_bytes Maximum bytes passed to each write callback.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(GraphSerializationOptions_SetMaximumWriteChunkSize,
+                  _Inout_ OrtGraphSerializationOptions* options, size_t max_chunk_bytes);
+
+  /** \brief Serialize an EP graph view to ONNX ModelProto bytes through a synchronous write callback.
+   *
+   * Exports only the supplied view, without optimization or compilation. Nodes retain Graph_GetNodes() order.
+   * Training information is not serialized.
+   * Captured nonconstant values in standalone subgraphs become inputs; captured constants are copied.
+   * External initializer policies apply recursively. ORT performs no filesystem writes.
+   * Bytes are deterministic for the same graph, options and ORT build, unchanged initializer contents and
+   * deterministic callbacks. Relative external paths retain their meaning relative to the source model.
+   * Model construction uses memory proportional to model size; protobuf size limits apply.
+   * Model-editor graphs return ORT_INVALID_ARGUMENT. Minimal builds return ORT_NOT_IMPLEMENTED.
+   * Callback errors are returned immediately. A failure may leave a delivered prefix and callback side effects.
+   * \param[in] graph Borrowed EP graph, valid throughout this call.
+   * \param[in] options Borrowed options, or NULL for defaults; valid throughout this call.
+   * \param[in] write_func Required callback receiving bounded consecutive chunks. Buffers are borrowed only
+   * for the callback duration. It must return NULL on success or an owned OrtStatus on failure.
+   * \param[in] write_state Caller-owned state, valid throughout this call.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(Graph_SerializeToOnnxModelWithWriteFunc,
+                  _In_ const OrtGraph* graph, _In_opt_ const OrtGraphSerializationOptions* options,
+                  _In_ OrtWriteBufferFunc write_func, _In_opt_ void* write_state);
+
+  /** \brief Serialize an EP graph view into one caller-allocator-owned buffer.
+   *
+   * Graph selection, initializer handling, determinism and errors follow Graph_SerializeToOnnxModelWithWriteFunc().
+   * On success exactly one allocation is made through `allocator`, for the exact serialized size. Free the buffer
+   * with the same allocator, which must remain valid until the buffer is freed. On failure both outputs are
+   * unchanged and any allocated buffer is freed. Callback side effects cannot be rolled back.
+   * \param[in] graph Borrowed EP graph, valid throughout this call.
+   * \param[in] options Borrowed options, or NULL for defaults; valid throughout this call.
+   * \param[in,out] allocator Allocator for the output buffer. Allocation failure returns an error.
+   * \param[out] model_bytes Receives the owned serialized buffer.
+   * \param[out] model_bytes_len Receives the exact buffer size in bytes.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(Graph_SerializeToOnnxModel,
+                  _In_ const OrtGraph* graph, _In_opt_ const OrtGraphSerializationOptions* options,
+                  _Inout_ OrtAllocator* allocator, _Outptr_ void** model_bytes, _Out_ size_t* model_bytes_len);
 };
 
 /*

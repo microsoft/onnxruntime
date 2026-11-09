@@ -646,6 +646,7 @@ ORT_DEFINE_RELEASE(DeviceEpIncompatibilityDetails);
 ORT_DEFINE_RELEASE(Env);
 ORT_DEFINE_RELEASE(ExternalInitializerInfo);
 ORT_DEFINE_RELEASE(Graph);
+ORT_DEFINE_RELEASE(GraphSerializationOptions);
 ORT_DEFINE_RELEASE(IoBinding);
 ORT_DEFINE_RELEASE(KernelInfo);
 ORT_DEFINE_RELEASE(KeyValuePairs);
@@ -3628,11 +3629,37 @@ struct OperatorSet {
   int64_t version;
 };
 
+/** \brief Owned graph serialization options. Wraps OrtGraphSerializationOptions. */
+struct GraphSerializationOptions : detail::Base<OrtGraphSerializationOptions> {
+  explicit GraphSerializationOptions(std::nullptr_t) noexcept {}  ///< Create an empty wrapper.
+  explicit GraphSerializationOptions(OrtGraphSerializationOptions* options) noexcept : Base{options} {}
+  GraphSerializationOptions();
+  GraphSerializationOptions& SetExternalInitializerPolicy(OrtGraphExternalInitializerPolicy policy);
+  GraphSerializationOptions& SetMinimumExternalInitializerSize(size_t min_bytes);
+  GraphSerializationOptions& SetInitializerLocationFunc(OrtGetInitializerLocationFunc callback, void* state = nullptr);
+  GraphSerializationOptions& SetMaximumWriteChunkSize(size_t max_chunk_bytes);
+};
+
+/** \brief Allocator-owned serialized ONNX model. The allocator must outlive this object. */
+struct SerializedModel {
+  std::unique_ptr<void, detail::AllocatedFree> bytes;
+  size_t size;
+};
+
 namespace detail {
 template <typename T>
 struct ConstGraphImpl : Base<T> {
   using B = Base<T>;
   using B::B;
+
+  /// Serialize to an allocator-owned buffer. The allocator must outlive the returned SerializedModel.
+  /// Wraps OrtApi::Graph_SerializeToOnnxModel. NULL options use defaults.
+  SerializedModel SerializeToOnnxModel(OrtAllocator* allocator,
+                                       const OrtGraphSerializationOptions* options = nullptr) const;
+  /// Synchronously stream ONNX bytes. Callback state must remain valid until this call returns.
+  /// Wraps OrtApi::Graph_SerializeToOnnxModelWithWriteFunc. NULL options use defaults.
+  void SerializeToOnnxModelWithWriteFunc(OrtWriteBufferFunc write_func, void* write_state = nullptr,
+                                         const OrtGraphSerializationOptions* options = nullptr) const;
 
   // <Wraps OrtApi::Graph_GetName
   std::string GetName() const;

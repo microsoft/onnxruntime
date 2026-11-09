@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <array>
 #include <filesystem>
 #include <fstream>
@@ -8,7 +9,6 @@
 #include <gsl/gsl>
 #include <memory>
 #include <vector>
-#include <fstream>
 
 #include "core/common/common.h"
 #include "core/framework/tensorprotoutils.h"
@@ -17,6 +17,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/graph/ep_api_types.h"
 #include "core/graph/graph_proto_serializer.h"
+#include "core/graph/graph_utils.h"
 
 #define ORT_EP_UTILS_ORT_GRAPH_TO_PROTO_IMPL
 #include "core/providers/utils/ort_graph_to_proto.h"
@@ -25,6 +26,7 @@
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/test_environment.h"
+#include "test/util/include/temp_dir.h"
 
 // defined in unittest_main/test_main.cc
 extern std::unique_ptr<Ort::Env> ort_env;
@@ -42,6 +44,911 @@ static void CheckGraphWithDFSTraversal(const GraphViewer& graph_viewer);
 //
 //  Tests
 //
+
+namespace {
+
+ONNX_NAMESPACE::ModelProto SerializationFixture() {
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(10);
+  model.set_producer_name("graph serialization test");
+  auto* opset = model.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(21);
+  auto* graph = model.mutable_graph();
+  graph->set_name("serialization");
+  auto add_value = [](auto* value, const char* name) {
+    value->set_name(name);
+    auto* type = value->mutable_type()->mutable_tensor_type();
+    type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    type->mutable_shape()->add_dim()->set_dim_value(2);
+  };
+  add_value(graph->add_input(), "x");
+  add_value(graph->add_output(), "y");
+  auto* bias = graph->add_initializer();
+  bias->set_name("bias");
+  bias->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  bias->add_dims(2);
+  bias->add_float_data(1.0f);
+  bias->add_float_data(-2.0f);
+  auto* add = graph->add_node();
+  add->set_name("add");
+  add->set_op_type("Add");
+  add->add_input("x");
+  add->add_input("bias");
+  add->add_output("hidden");
+  auto* relu = graph->add_node();
+  relu->set_name("relu");
+  relu->set_op_type("Relu");
+  relu->add_input("hidden");
+  relu->add_output("y");
+  return model;
+}
+
+std::unique_ptr<TestGraph> SerializationGraph(const ONNX_NAMESPACE::ModelProto& proto) {
+  auto model = std::make_shared<Model>(proto, nullptr, DefaultLoggingManager().DefaultLogger());
+  ORT_THROW_IF_ERROR(model->MainGraph().Resolve());
+  return std::make_unique<TestGraph>(std::move(model));
+}
+
+struct SerializationWriter {
+  std::string bytes;
+  std::vector<size_t> chunks;
+  size_t fail_on_call = 0;
+
+  static OrtStatus* ORT_API_CALL Write(void* state, const void* data, size_t size) {
+    auto& writer = *static_cast<SerializationWriter*>(state);
+    writer.chunks.push_back(size);
+    if (writer.chunks.size() == writer.fail_on_call) {
+      return Ort::GetApi().CreateStatus(ORT_FAIL, "write callback failure");
+    }
+    writer.bytes.append(static_cast<const char*>(data), size);
+    return nullptr;
+  }
+};
+
+std::string SerializeGraph(const OrtGraph& graph, const OrtGraphSerializationOptions* options = nullptr) {
+  SerializationWriter writer;
+  Ort::ThrowOnError(Ort::GetApi().Graph_SerializeToOnnxModelWithWriteFunc(
+      &graph, options, SerializationWriter::Write, &writer));
+  return std::move(writer.bytes);
+}
+
+ONNX_NAMESPACE::ModelProto ParseSerializedGraph(const OrtGraph& graph,
+                                                const OrtGraphSerializationOptions* options = nullptr) {
+  ONNX_NAMESPACE::ModelProto proto;
+  ORT_ENFORCE(proto.ParseFromString(SerializeGraph(graph, options)));
+  return proto;
+}
+
+struct SerializationAllocator : OrtAllocator {
+  Ort::AllocatorWithDefaultOptions backing;
+  size_t allocations = 0;
+  size_t frees = 0;
+  size_t requested_size = 0;
+  bool fail = false;
+
+  SerializationAllocator() : OrtAllocator{} {
+    version = ORT_API_VERSION;
+    Alloc = [](OrtAllocator* allocator, size_t size) -> void* {
+      auto& self = *static_cast<SerializationAllocator*>(allocator);
+      ++self.allocations;
+      self.requested_size = size;
+      return self.fail ? nullptr : self.backing.Alloc(size);
+    };
+    Free = [](OrtAllocator* allocator, void* data) {
+      auto& self = *static_cast<SerializationAllocator*>(allocator);
+      ++self.frees;
+      self.backing.Free(data);
+    };
+    Info = [](const OrtAllocator* allocator) -> const OrtMemoryInfo* {
+      return static_cast<const SerializationAllocator*>(allocator)->backing.GetInfo();
+    };
+  }
+};
+
+struct SerializationInitializerCallback {
+  std::vector<std::string> names;
+  size_t external_count = 0;
+  bool externalize = false;
+  bool fail = false;
+
+  static OrtStatus* ORT_API_CALL Locate(void* state, const char* name, const OrtValue* value,
+                                        const OrtExternalInitializerInfo* old_location,
+                                        OrtExternalInitializerInfo** new_location) {
+    auto& self = *static_cast<SerializationInitializerCallback*>(state);
+    self.names.emplace_back(name);
+    self.external_count += old_location != nullptr;
+    EXPECT_NE(value, nullptr);
+    *new_location = nullptr;
+    if (self.externalize || self.fail) {
+      OrtStatus* status = Ort::GetApi().CreateExternalInitializerInfo(
+          ORT_TSTR("callback-owned.bin"), 0, 8, new_location);
+      if (status) return status;
+    }
+    return self.fail ? Ort::GetApi().CreateStatus(ORT_FAIL, "initializer callback failure") : nullptr;
+  }
+};
+
+}  // namespace
+
+TEST(EpGraphTest, SerializeOnnx_OutputsAndFailures) {
+  auto graph = SerializationGraph(SerializationFixture());
+  const auto& api = Ort::GetApi();
+  OrtGraphSerializationOptions* options = nullptr;
+  ASSERT_ORTSTATUS_OK(api.CreateGraphSerializationOptions(&options));
+  DeferOrtRelease<OrtGraphSerializationOptions> release(&options, api.ReleaseGraphSerializationOptions);
+  const auto expected = SerializeGraph(graph->GetOrtGraph());
+  ASSERT_FALSE(expected.empty());
+  for (size_t chunk_size : {size_t{1}, size_t{7}, size_t{65536}, size_t{0}}) {
+    ASSERT_ORTSTATUS_OK(api.GraphSerializationOptions_SetMaximumWriteChunkSize(options, chunk_size));
+    SerializationWriter writer;
+    ASSERT_ORTSTATUS_OK(api.Graph_SerializeToOnnxModelWithWriteFunc(
+        &graph->GetOrtGraph(), options, SerializationWriter::Write, &writer));
+    EXPECT_EQ(writer.bytes, expected);
+    ASSERT_FALSE(writer.chunks.empty());
+    for (size_t size : writer.chunks) {
+      EXPECT_GT(size, 0u);
+      EXPECT_LE(size, chunk_size == 0 ? 65536 : chunk_size);
+    }
+  }
+  Ort::GraphSerializationOptions cpp_options;
+  cpp_options.SetMaximumWriteChunkSize(7)
+      .SetMinimumExternalInitializerSize(0)
+      .SetExternalInitializerPolicy(ORT_GRAPH_EXTERNAL_INITIALIZER_PRESERVE_REFERENCES)
+      .SetInitializerLocationFunc(nullptr);
+  Ort::ConstGraph cpp_graph(&graph->GetOrtGraph());
+  SerializationAllocator allocator;
+  {
+    auto owned = cpp_graph.SerializeToOnnxModel(&allocator, cpp_options);
+    EXPECT_EQ(std::string(static_cast<const char*>(owned.bytes.get()), owned.size), expected);
+  }
+  EXPECT_EQ(allocator.frees, 1u);
+  allocator.allocations = allocator.frees = 0;
+  SerializationWriter cpp_writer;
+  cpp_graph.SerializeToOnnxModelWithWriteFunc(SerializationWriter::Write, &cpp_writer, cpp_options);
+  EXPECT_EQ(cpp_writer.bytes, expected);
+  void* bytes = nullptr;
+  size_t length = 0;
+  ASSERT_ORTSTATUS_OK(api.Graph_SerializeToOnnxModel(&graph->GetOrtGraph(), nullptr,
+                                                     &allocator, &bytes, &length));
+  EXPECT_EQ(allocator.allocations, 1u);
+  EXPECT_EQ(allocator.requested_size, expected.size());
+  EXPECT_EQ(std::string(static_cast<const char*>(bytes), length), expected);
+  allocator.Free(&allocator, bytes);
+  EXPECT_EQ(allocator.frees, 1u);
+  allocator.fail = true;
+  bytes = &allocator;
+  length = 123;
+  Ort::Status status(api.Graph_SerializeToOnnxModel(&graph->GetOrtGraph(), nullptr,
+                                                    &allocator, &bytes, &length));
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_EQ(bytes, &allocator);
+  EXPECT_EQ(length, 123u);
+  ASSERT_ORTSTATUS_OK(api.GraphSerializationOptions_SetMaximumWriteChunkSize(options, 1));
+  SerializationWriter failing_writer;
+  failing_writer.fail_on_call = 2;
+  Ort::Status write_status(api.Graph_SerializeToOnnxModelWithWriteFunc(
+      &graph->GetOrtGraph(), options, SerializationWriter::Write, &failing_writer));
+  EXPECT_EQ(write_status.GetErrorCode(), ORT_FAIL);
+  EXPECT_EQ(failing_writer.chunks.size(), 2u);
+  EXPECT_EQ(failing_writer.bytes, expected.substr(0, 1));
+  Ort::Status null_writer(api.Graph_SerializeToOnnxModelWithWriteFunc(
+      &graph->GetOrtGraph(), nullptr, nullptr, nullptr));
+  EXPECT_EQ(null_writer.GetErrorCode(), ORT_INVALID_ARGUMENT);
+  Ort::Graph editor_graph;
+  SerializationWriter editor_writer;
+  Ort::Status editor_status(api.Graph_SerializeToOnnxModelWithWriteFunc(
+      editor_graph, nullptr, SerializationWriter::Write, &editor_writer));
+  EXPECT_EQ(editor_status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+  EXPECT_TRUE(editor_writer.chunks.empty());
+}
+
+TEST(EpGraphTest, SerializeOnnx_OmitsTrainingInfo) {
+  auto proto = SerializationFixture();
+  auto* training = proto.add_training_info();
+  for (auto* graph : {training->mutable_initialization(), training->mutable_algorithm()}) {
+    *graph = SerializationFixture().graph();
+    auto* tensor = graph->mutable_initializer(0);
+    tensor->clear_float_data();
+    ExternalDataInfo::SetExternalLocationToProto("missing-training-data.bin", 0, 8, *tensor);
+  }
+  auto* binding = training->add_initialization_binding();
+  binding->set_key("bias");
+  binding->set_value("y");
+  *training->add_update_binding() = *binding;
+  auto graph = SerializationGraph(proto);
+  auto nodes = Ort::ConstGraph(&graph->GetOrtGraph()).GetNodes();
+  const OrtNode* selected = nodes[1];
+  OrtGraph* filtered = nullptr;
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().Graph_GetGraphView(&graph->GetOrtGraph(), &selected, 1, &filtered));
+  DeferOrtRelease<OrtGraph> release(&filtered, Ort::GetApi().ReleaseGraph);
+  for (auto policy : {ORT_GRAPH_EXTERNAL_INITIALIZER_PRESERVE_REFERENCES, ORT_GRAPH_EXTERNAL_INITIALIZER_EMBED,
+                      ORT_GRAPH_EXTERNAL_INITIALIZER_FAIL_IF_PRESENT,
+                      ORT_GRAPH_EXTERNAL_INITIALIZER_REPACKAGE_VIA_CALLBACK}) {
+    for (const OrtGraph* view : std::array<const OrtGraph*, 2>{&graph->GetOrtGraph(), filtered}) {
+      SerializationInitializerCallback callback;
+      Ort::GraphSerializationOptions options;
+      options.SetExternalInitializerPolicy(policy);
+      options.SetInitializerLocationFunc(SerializationInitializerCallback::Locate, &callback);
+      auto result = ParseSerializedGraph(*view, options);
+      EXPECT_EQ(result.training_info_size(), 0);
+      EXPECT_EQ(callback.external_count, 0u);
+      EXPECT_EQ(callback.names, view == filtered ? std::vector<std::string>{}
+                                                 : std::vector<std::string>{"bias"});
+    }
+  }
+}
+
+TEST(EpGraphTest, SerializeOnnx_InitializerPolicies) {
+  const auto& api = Ort::GetApi();
+  OrtGraphSerializationOptions* options = nullptr;
+  ASSERT_ORTSTATUS_OK(api.CreateGraphSerializationOptions(&options));
+  DeferOrtRelease<OrtGraphSerializationOptions> release(&options, api.ReleaseGraphSerializationOptions);
+  auto graph = SerializationGraph(SerializationFixture());
+  SerializationInitializerCallback callback;
+  ASSERT_ORTSTATUS_OK(api.GraphSerializationOptions_SetInitializerLocationFunc(
+      options, SerializationInitializerCallback::Locate, &callback));
+  for (size_t minimum : {size_t{9}, size_t{8}, size_t{0}}) {
+    callback.names.clear();
+    ASSERT_ORTSTATUS_OK(api.GraphSerializationOptions_SetMinimumExternalInitializerSize(options, minimum));
+    auto proto = ParseSerializedGraph(graph->GetOrtGraph(), options);
+    ASSERT_EQ(proto.graph().initializer_size(), 1);
+    EXPECT_EQ(callback.names.size(), minimum > 8 ? 0u : 1u);
+  }
+  callback.externalize = true;
+  auto externalized = ParseSerializedGraph(graph->GetOrtGraph(), options);
+  EXPECT_EQ(externalized.graph().initializer(0).data_location(), ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  callback.fail = true;
+  SerializationAllocator allocator;
+  void* bytes = &allocator;
+  size_t length = 123;
+  Ort::Status failure(api.Graph_SerializeToOnnxModel(&graph->GetOrtGraph(), options,
+                                                     &allocator, &bytes, &length));
+  EXPECT_EQ(failure.GetErrorCode(), ORT_FAIL);
+  EXPECT_EQ(bytes, &allocator);
+  EXPECT_EQ(length, 123u);
+  EXPECT_EQ(allocator.allocations, 0u);
+  callback.fail = callback.externalize = false;
+
+  auto memory_model = std::make_shared<Model>("memory_initializer", false,
+                                              DefaultLoggingManager().DefaultLogger());
+  OrtValue memory_value;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({256}),
+                       CPUAllocator::DefaultInstance(), memory_value);
+  std::fill_n(memory_value.GetMutable<Tensor>()->MutableData<float>(), 256, 3.0f);
+  auto memory_proto = utils::TensorToTensorProto(memory_value.Get<Tensor>(), "memory", true);
+  ASSERT_TRUE(utils::HasExternalDataInMemory(memory_proto));
+  auto& memory_graph = memory_model->MainGraph();
+  ASSERT_STATUS_OK(memory_graph.AddInitializedOrtValue(memory_proto, memory_value));
+  ONNX_NAMESPACE::TypeProto memory_type;
+  memory_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  memory_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(256);
+  auto& memory_output = memory_graph.GetOrCreateNodeArg("memory", &memory_type);
+  memory_graph.SetOutputs({&memory_output});
+  ASSERT_STATUS_OK(memory_graph.Resolve());
+  TestGraph memory_test_graph(memory_model);
+  ASSERT_ORTSTATUS_OK(api.GraphSerializationOptions_SetExternalInitializerPolicy(
+      options, ORT_GRAPH_EXTERNAL_INITIALIZER_FAIL_IF_PRESENT));
+  ASSERT_ORTSTATUS_OK(api.GraphSerializationOptions_SetMinimumExternalInitializerSize(options, 1024));
+  callback.names.clear();
+  auto memory_result = ParseSerializedGraph(memory_test_graph.GetOrtGraph(), options);
+  EXPECT_EQ(callback.names, std::vector<std::string>({"memory"}));
+  ASSERT_EQ(memory_result.graph().initializer_size(), 1);
+  EXPECT_NE(memory_result.graph().initializer(0).data_location(), ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  ASSERT_ORTSTATUS_OK(api.GraphSerializationOptions_SetExternalInitializerPolicy(
+      options, ORT_GRAPH_EXTERNAL_INITIALIZER_PRESERVE_REFERENCES));
+  ASSERT_ORTSTATUS_OK(api.GraphSerializationOptions_SetMinimumExternalInitializerSize(options, 0));
+
+  auto mixed = SerializationFixture();
+  auto* words = mixed.mutable_graph()->add_initializer();
+  words->set_name("words");
+  words->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  words->add_dims(2);
+  words->add_string_data("first");
+  words->add_string_data("second");
+  auto* words_output = mixed.mutable_graph()->add_output();
+  words_output->set_name("words");
+  words_output->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  words_output->mutable_type()->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+  auto* sparse = mixed.mutable_graph()->add_sparse_initializer();
+  sparse->add_dims(2);
+  sparse->mutable_values()->set_name("sparse");
+  sparse->mutable_values()->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  sparse->mutable_values()->add_dims(1);
+  sparse->mutable_values()->add_float_data(3.0f);
+  sparse->mutable_indices()->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  sparse->mutable_indices()->add_dims(1);
+  sparse->mutable_indices()->add_int64_data(1);
+  auto* sparse_output = mixed.mutable_graph()->add_output();
+  sparse_output->CopyFrom(mixed.graph().output(0));
+  sparse_output->set_name("sparse");
+  auto mixed_model = std::make_shared<Model>(mixed, nullptr, DefaultLoggingManager().DefaultLogger());
+  ASSERT_STATUS_OK(mixed_model->MainGraph().Resolve());
+  auto mixed_graph = std::make_unique<TestGraph>(mixed_model);
+  callback.names.clear();
+  auto mixed_result = ParseSerializedGraph(mixed_graph->GetOrtGraph(), options);
+  EXPECT_EQ(callback.names, std::vector<std::string>({"bias"}));
+  ASSERT_EQ(mixed_result.graph().sparse_initializer_size(), 1);
+  EXPECT_EQ(mixed_result.graph().sparse_initializer(0).values().name(), "sparse");
+  bool found_string = false;
+  for (const auto& initializer : mixed_result.graph().initializer()) {
+    if (initializer.name() == "words") {
+      EXPECT_EQ(initializer.string_data_size(), 2);
+      EXPECT_EQ(initializer.string_data(1), "second");
+      found_string = true;
+    }
+  }
+  EXPECT_TRUE(found_string);
+  ONNX_NAMESPACE::TensorProto replacement;
+  replacement.set_name("sparse");
+  replacement.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  replacement.add_dims(2);
+  replacement.add_float_data(0.0f);
+  replacement.add_float_data(7.0f);
+  ASSERT_STATUS_OK(mixed_model->MainGraph().ReplaceInitializedTensor(replacement, OrtValue{}));
+  auto replaced = ParseSerializedGraph(mixed_graph->GetOrtGraph(), options);
+  ASSERT_EQ(replaced.graph().sparse_initializer_size(), 1);
+  OrtValue replaced_values;
+  ASSERT_STATUS_OK(utils::TensorProtoToOrtValue(Env::Default(), {},
+                                                replaced.graph().sparse_initializer(0).values(),
+                                                CPUAllocator::DefaultInstance(), replaced_values));
+  EXPECT_FLOAT_EQ(replaced_values.Get<Tensor>().Data<float>()[0], 7.0f);
+
+  auto external_graph = TestGraph::Load(ORT_TSTR("testdata/conv_qdq_external_ini.onnx"));
+  ASSERT_NE(external_graph, nullptr);
+  auto preserved = ParseSerializedGraph(external_graph->GetOrtGraph());
+  size_t external_count = 0;
+  for (const auto& initializer : preserved.graph().initializer()) {
+    external_count += initializer.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL;
+  }
+  ASSERT_GT(external_count, 0u);
+  callback.external_count = 0;
+  auto preserved_with_callback = ParseSerializedGraph(external_graph->GetOrtGraph(), options);
+  EXPECT_EQ(callback.external_count, 0u);
+  for (const auto& initializer : preserved.graph().initializer()) {
+    if (initializer.data_location() != ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) continue;
+    auto found = std::find_if(preserved_with_callback.graph().initializer().begin(),
+                              preserved_with_callback.graph().initializer().end(),
+                              [&](const auto& other) { return other.name() == initializer.name(); });
+    ASSERT_NE(found, preserved_with_callback.graph().initializer().end());
+    EXPECT_EQ(found->SerializeAsString(), initializer.SerializeAsString());
+  }
+  ASSERT_ORTSTATUS_OK(api.GraphSerializationOptions_SetExternalInitializerPolicy(
+      options, ORT_GRAPH_EXTERNAL_INITIALIZER_FAIL_IF_PRESENT));
+  callback.names.clear();
+  SerializationWriter writer;
+  Ort::Status rejected(api.Graph_SerializeToOnnxModelWithWriteFunc(
+      &external_graph->GetOrtGraph(), options, SerializationWriter::Write, &writer));
+  EXPECT_FALSE(rejected.IsOK());
+  EXPECT_TRUE(callback.names.empty());
+  EXPECT_TRUE(writer.bytes.empty());
+  ASSERT_ORTSTATUS_OK(api.GraphSerializationOptions_SetExternalInitializerPolicy(
+      options, ORT_GRAPH_EXTERNAL_INITIALIZER_EMBED));
+  auto embedded = ParseSerializedGraph(external_graph->GetOrtGraph(), options);
+  for (const auto& initializer : embedded.graph().initializer()) {
+    EXPECT_NE(initializer.data_location(), ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  }
+  ASSERT_ORTSTATUS_OK(api.GraphSerializationOptions_SetExternalInitializerPolicy(
+      options, ORT_GRAPH_EXTERNAL_INITIALIZER_REPACKAGE_VIA_CALLBACK));
+  callback.external_count = 0;
+  ParseSerializedGraph(external_graph->GetOrtGraph(), options);
+  EXPECT_EQ(callback.external_count, external_count);
+  ASSERT_ORTSTATUS_OK(api.GraphSerializationOptions_SetInitializerLocationFunc(options, nullptr, nullptr));
+  Ort::Status missing_callback(api.Graph_SerializeToOnnxModelWithWriteFunc(
+      &external_graph->GetOrtGraph(), options, SerializationWriter::Write, &writer));
+  EXPECT_FALSE(missing_callback.IsOK());
+}
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+namespace {
+void CheckSparseConstantReferences(bool inline_function) {
+  TemporaryDirectory directory(ORT_TSTR("serialization_sparse_constant"));
+  {
+    std::ofstream stream(std::filesystem::path(directory.Path()) / "data.bin", std::ios::binary);
+    const float value = 3.0f;
+    const int64_t index = 1;
+    stream.write(reinterpret_cast<const char*>(&value), sizeof(value));
+    stream.write(reinterpret_cast<const char*>(&index), sizeof(index));
+  }
+  for (int external_component : {0, 1, 2}) {
+    SCOPED_TRACE(external_component);
+    auto proto = SerializationFixture();
+    proto.mutable_graph()->clear_initializer();
+    ONNX_NAMESPACE::NodeProto constant;
+    constant.set_op_type("Constant");
+    constant.add_output("bias");
+    auto* attr = constant.add_attribute();
+    attr->set_name("sparse_value");
+    attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_SPARSE_TENSOR);
+    auto* sparse = attr->mutable_sparse_tensor();
+    sparse->add_dims(2);
+    auto* values = sparse->mutable_values();
+    values->set_name("original_name");
+    values->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    values->add_dims(1);
+    values->add_float_data(3.0f);
+    auto* indices = sparse->mutable_indices();
+    indices->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    indices->add_dims(1);
+    indices->add_int64_data(1);
+    if (external_component == 1) {
+      values->clear_float_data();
+      ExternalDataInfo::SetExternalLocationToProto("data.bin", 0, 4, *values);
+    } else if (external_component == 2) {
+      indices->clear_int64_data();
+      ExternalDataInfo::SetExternalLocationToProto("data.bin", 4, 8, *indices);
+    }
+    if (!inline_function) {
+      *proto.mutable_graph()->add_node() = constant;
+    }
+    auto model = std::make_shared<Model>(
+        proto, (std::filesystem::path(directory.Path()) / "model.onnx").native(),
+        nullptr, DefaultLoggingManager().DefaultLogger());
+    auto& loaded = model->MainGraph();
+    if (inline_function) {
+      ONNX_NAMESPACE::FunctionProto function;
+      function.set_name("SparseConstant");
+      function.add_output("bias");
+      *function.add_opset_import() = proto.opset_import(0);
+      *function.add_node() = constant;
+      ASSERT_STATUS_OK(loaded.InlineFunctionProto(function, ""));
+    }
+    ASSERT_TRUE(loaded.IsSparseInitializer("bias"));
+    ASSERT_STATUS_OK(loaded.Resolve());
+    ASSERT_TRUE(loaded.IsSparseInitializer("bias"));
+    EXPECT_EQ(loaded.GetSparseInitializerProto("bias") != nullptr, external_component != 0);
+    TestGraph graph(model);
+    SerializationInitializerCallback callback;
+    Ort::GraphSerializationOptions options;
+    options.SetInitializerLocationFunc(SerializationInitializerCallback::Locate, &callback);
+    auto preserved = ParseSerializedGraph(graph.GetOrtGraph(), options);
+    ASSERT_EQ(preserved.graph().sparse_initializer_size(), 1);
+    const auto& actual = preserved.graph().sparse_initializer(0);
+    EXPECT_EQ(actual.values().name(), "bias");
+    if (external_component != 0) {
+      auto expected = *sparse;
+      expected.mutable_values()->set_name("bias");
+      for (auto* component : {expected.mutable_values(), expected.mutable_indices()}) {
+        auto* entries = component->mutable_external_data();
+        std::sort(entries->begin(), entries->end(),
+                  [](const auto& a, const auto& b) { return a.key() < b.key(); });
+      }
+      EXPECT_EQ(actual.SerializeAsString(), expected.SerializeAsString());
+    }
+    callback.names.clear();
+    options.SetExternalInitializerPolicy(ORT_GRAPH_EXTERNAL_INITIALIZER_FAIL_IF_PRESENT);
+    SerializationWriter writer;
+    Ort::Status status(Ort::GetApi().Graph_SerializeToOnnxModelWithWriteFunc(
+        &graph.GetOrtGraph(), options, SerializationWriter::Write, &writer));
+    EXPECT_EQ(status.IsOK(), external_component == 0);
+    if (external_component != 0) {
+      EXPECT_TRUE(callback.names.empty());
+      EXPECT_TRUE(writer.chunks.empty());
+    }
+  }
+}
+}  // namespace
+
+TEST(EpGraphTest, SerializeOnnx_SparseConstantConstructorReferences) {
+  CheckSparseConstantReferences(false);
+}
+
+TEST(EpGraphTest, SerializeOnnx_SparseConstantFunctionInliningReferences) {
+  CheckSparseConstantReferences(true);
+}
+
+TEST(EpGraphTest, SerializeOnnx_SparseCacheCleanup) {
+  TemporaryDirectory directory(ORT_TSTR("serialization_sparse_cleanup"));
+  const auto path = std::filesystem::path(directory.Path()) / "data.bin";
+  {
+    std::ofstream stream(path, std::ios::binary);
+    const float value = 3.0f;
+    const int64_t index = 1;
+    stream.write(reinterpret_cast<const char*>(&value), sizeof(value));
+    stream.write(reinterpret_cast<const char*>(&index), sizeof(index));
+  }
+  for (int external_component : {0, 1, 2}) {
+    auto proto = SerializationFixture();
+    auto* graph = proto.mutable_graph();
+    graph->clear_initializer();
+    auto* sparse = graph->add_sparse_initializer();
+    sparse->add_dims(2);
+    auto* values = sparse->mutable_values();
+    values->set_name("bias");
+    values->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    values->add_dims(1);
+    values->add_float_data(3.0f);
+    auto* indices = sparse->mutable_indices();
+    indices->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    indices->add_dims(1);
+    indices->add_int64_data(1);
+    if (external_component == 1) {
+      values->clear_float_data();
+      ExternalDataInfo::SetExternalLocationToProto("data.bin", 0, 4, *values);
+    } else if (external_component == 2) {
+      indices->clear_int64_data();
+      ExternalDataInfo::SetExternalLocationToProto("data.bin", 4, 8, *indices);
+    }
+    Model model(proto, (std::filesystem::path(directory.Path()) / "model.onnx").native(),
+                nullptr, DefaultLoggingManager().DefaultLogger());
+    auto& loaded = model.MainGraph();
+    ASSERT_STATUS_OK(loaded.Resolve());
+    EXPECT_EQ(loaded.GetSparseInitializerProto("bias") != nullptr, external_component != 0);
+    loaded.CleanAllInitializedTensors();
+    EXPECT_EQ(loaded.GetSparseInitializerProto("bias"), nullptr);
+    EXPECT_TRUE(loaded.GetAllInitializedTensors().empty());
+  }
+}
+
+TEST(EpGraphTest, SerializeOnnx_PreserveSparseReferencesAfterIfInlining) {
+  TemporaryDirectory directory(ORT_TSTR("serialization_sparse_inline"));
+  {
+    std::ofstream stream(std::filesystem::path(directory.Path()) / "values.bin", std::ios::binary);
+    const float value = 3.0f;
+    stream.write(reinterpret_cast<const char*>(&value), sizeof(value));
+  }
+  // Exercise both renaming paths: a branch output and an internal initializer.
+  for (bool direct_output : {false, true}) {
+    auto proto = SerializationFixture();
+    auto* graph = proto.mutable_graph();
+    graph->clear_node();
+    graph->clear_initializer();
+    graph->clear_input();
+    auto* cond = graph->add_input();
+    cond->set_name("cond");
+    cond->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+    cond->mutable_type()->mutable_tensor_type()->mutable_shape();
+    auto* node = graph->add_node();
+    node->set_op_type("If");
+    node->add_input("cond");
+    node->add_output("y");
+    for (const char* name : {"then_branch", "else_branch"}) {
+      auto* attr = node->add_attribute();
+      attr->set_name(name);
+      attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+      auto* branch = attr->mutable_g();
+      branch->set_name(name);
+      auto* sparse = branch->add_sparse_initializer();
+      sparse->add_dims(2);
+      auto* values = sparse->mutable_values();
+      values->set_name("weight");
+      values->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      values->add_dims(1);
+      ExternalDataInfo::SetExternalLocationToProto("values.bin", 0, 4, *values);
+      auto* indices = sparse->mutable_indices();
+      indices->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+      indices->add_dims(1);
+      indices->add_int64_data(1);
+      *branch->add_output() = graph->output(0);
+      branch->mutable_output(0)->set_name(direct_output ? "weight" : "result");
+      if (!direct_output) {
+        auto* identity = branch->add_node();
+        identity->set_op_type("Identity");
+        identity->add_input("weight");
+        identity->add_output("result");
+      }
+    }
+    auto model = std::make_shared<Model>(
+        proto, (std::filesystem::path(directory.Path()) / "model.onnx").native(),
+        nullptr, DefaultLoggingManager().DefaultLogger());
+    auto& loaded = model->MainGraph();
+    ASSERT_STATUS_OK(loaded.Resolve());
+    auto before = ParseSerializedGraph(TestGraph(model).GetOrtGraph());
+    const auto& original = before.graph().node(0).attribute(0).g().sparse_initializer(0);
+    ASSERT_TRUE(utils::HasExternalDataInFile(original.values()));
+    auto* if_node = loaded.GetNode(0);
+    ASSERT_NE(if_node, nullptr);
+    auto* source = if_node->GetMutableGraphAttribute("then_branch");
+    ASSERT_NE(source, nullptr);
+    ASSERT_STATUS_OK(loaded.InlineIfSubgraph(true, *if_node, DefaultLoggingManager().DefaultLogger()));
+    EXPECT_EQ(source->GetSparseInitializerProto("weight"), nullptr);
+    graph_utils::RemoveNodeOutputEdges(loaded, *if_node);
+    loaded.RemoveNode(if_node->Index());
+    ASSERT_STATUS_OK(loaded.Resolve());
+    auto after = ParseSerializedGraph(TestGraph(model).GetOrtGraph());
+    ASSERT_EQ(after.graph().sparse_initializer_size(), 1);
+    auto expected = original;
+    expected.mutable_values()->set_name(after.graph().sparse_initializer(0).values().name());
+    EXPECT_EQ(after.graph().sparse_initializer(0).SerializeAsString(), expected.SerializeAsString());
+    EXPECT_NE(loaded.GetSparseInitializerProto(expected.values().name()), nullptr);
+  }
+}
+#endif
+
+TEST(EpGraphTest, SerializeOnnx_LocalFunctionInitializerPolicies) {
+  TemporaryDirectory directory(ORT_TSTR("serialization_function"));
+  {
+    std::ofstream stream(std::filesystem::path(directory.Path()) / "data.bin", std::ios::binary);
+    const std::array<float, 2> values{1.0f, -2.0f};
+    stream.write(reinterpret_cast<const char*>(values.data()), sizeof(values));
+  }
+  for (bool attribute_default : {false, true}) {
+    auto proto = SerializationFixture();
+    auto* opset = proto.add_opset_import();
+    opset->set_domain("serialization.test");
+    opset->set_version(1);
+    auto* function = proto.add_functions();
+    function->set_name("LocalIf");
+    function->set_domain("serialization.test");
+    function->add_input("cond");
+    function->add_output("y");
+    *function->add_opset_import() = proto.opset_import(0);
+    auto* node = function->add_node();
+    node->set_op_type("If");
+    node->add_input("cond");
+    node->add_output("y");
+    for (const char* name : {"then_branch", "else_branch"}) {
+      auto* attr = node->add_attribute();
+      attr->set_name(name);
+      attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+      if (attribute_default) {
+        attr->set_ref_attr_name(name);
+        attr = function->add_attribute_proto();
+        attr->set_name(name);
+        attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+      }
+      auto* branch = attr->mutable_g();
+      *branch = SerializationFixture().graph();
+      branch->clear_input();
+      branch->clear_node();
+      auto* identity = branch->add_node();
+      identity->set_op_type("Identity");
+      identity->add_input("bias");
+      identity->add_output("y");
+      auto* tensor = branch->mutable_initializer(0);
+      tensor->clear_float_data();
+      ExternalDataInfo::SetExternalLocationToProto("data.bin", 0, 8, *tensor);
+    }
+    auto model = std::make_shared<Model>(
+        proto, (std::filesystem::path(directory.Path()) / "model.onnx").native(),
+        nullptr, DefaultLoggingManager().DefaultLogger());
+    ASSERT_STATUS_OK(model->MainGraph().Resolve());
+    TestGraph graph(model);
+    SerializationInitializerCallback callback;
+    Ort::GraphSerializationOptions options;
+    options.SetInitializerLocationFunc(SerializationInitializerCallback::Locate, &callback);
+    options.SetExternalInitializerPolicy(ORT_GRAPH_EXTERNAL_INITIALIZER_FAIL_IF_PRESENT);
+    SerializationWriter writer;
+    Ort::Status rejected(Ort::GetApi().Graph_SerializeToOnnxModelWithWriteFunc(
+        &graph.GetOrtGraph(), options, SerializationWriter::Write, &writer));
+    EXPECT_FALSE(rejected.IsOK());
+    EXPECT_TRUE(callback.names.empty());
+    EXPECT_TRUE(writer.bytes.empty());
+    options.SetExternalInitializerPolicy(ORT_GRAPH_EXTERNAL_INITIALIZER_EMBED);
+    auto embedded = ParseSerializedGraph(graph.GetOrtGraph(), options);
+    const auto& function_result = embedded.functions(0);
+    const auto& attrs = attribute_default ? function_result.attribute_proto() : function_result.node(0).attribute();
+    ASSERT_EQ(attrs.size(), 2);
+    for (const auto& attr : attrs) {
+      const auto& tensor = attr.g().initializer(0);
+      EXPECT_FALSE(utils::HasExternalData(tensor));
+      OrtValue value;
+      ASSERT_STATUS_OK(utils::TensorProtoToOrtValue(Env::Default(), {}, tensor,
+                                                    CPUAllocator::DefaultInstance(), value));
+      EXPECT_FLOAT_EQ(value.Get<Tensor>().Data<float>()[0], 1.0f);
+      EXPECT_FLOAT_EQ(value.Get<Tensor>().Data<float>()[1], -2.0f);
+    }
+    callback.names.clear();
+    callback.externalize = true;
+    options.SetExternalInitializerPolicy(ORT_GRAPH_EXTERNAL_INITIALIZER_REPACKAGE_VIA_CALLBACK);
+    auto repackaged = ParseSerializedGraph(graph.GetOrtGraph(), options);
+    EXPECT_EQ(callback.external_count, 2u);
+    EXPECT_EQ(callback.names.size(), 3u);  // Main graph plus both function branches.
+    const auto& repackaged_function = repackaged.functions(0);
+    const auto& repackaged_attrs = attribute_default ? repackaged_function.attribute_proto()
+                                                     : repackaged_function.node(0).attribute();
+    for (const auto& attr : repackaged_attrs) {
+      std::unique_ptr<ExternalDataInfo> info;
+      ASSERT_STATUS_OK(ExternalDataInfo::Create(attr.g().initializer(0).external_data(), info));
+      EXPECT_EQ(info->GetRelPath(), ORT_TSTR("callback-owned.bin"));
+    }
+  }
+}
+
+TEST(EpGraphTest, SerializeOnnx_FilteredAndNested) {
+  auto graph = SerializationGraph(SerializationFixture());
+  Ort::ConstGraph view(&graph->GetOrtGraph());
+  auto nodes = view.GetNodes();
+  ASSERT_EQ(nodes.size(), 2u);
+  const OrtNode* selected = nodes[1];
+  OrtGraph* filtered = nullptr;
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().Graph_GetGraphView(&graph->GetOrtGraph(), &selected, 1, &filtered));
+  DeferOrtRelease<OrtGraph> release(&filtered, Ort::GetApi().ReleaseGraph);
+  auto proto = ParseSerializedGraph(*filtered);
+  ASSERT_EQ(proto.graph().node_size(), 1);
+  EXPECT_EQ(proto.graph().node(0).name(), "relu");
+  ASSERT_EQ(proto.graph().input_size(), 1);
+  EXPECT_EQ(proto.graph().input(0).name(), "hidden");
+  EXPECT_EQ(proto.graph().initializer_size(), 0);
+
+  auto nested_proto = SerializationFixture();
+  auto* condition = nested_proto.mutable_graph()->add_input();
+  condition->set_name("condition");
+  condition->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  condition->mutable_type()->mutable_tensor_type()->mutable_shape();
+  auto* if_node = nested_proto.mutable_graph()->mutable_node(1);
+  if_node->set_op_type("If");
+  if_node->clear_input();
+  if_node->add_input("condition");
+  ONNX_NAMESPACE::GraphProto leaf;
+  leaf.set_name("leaf");
+  auto* leaf_output = leaf.add_output();
+  leaf_output->CopyFrom(nested_proto.graph().output(0));
+  leaf_output->set_name("branch_result");
+  auto* leaf_add = leaf.add_node();
+  leaf_add->set_op_type("Add");
+  leaf_add->add_input("hidden");
+  leaf_add->add_input("bias");
+  leaf_add->add_output("branch_result");
+  ONNX_NAMESPACE::GraphProto branch;
+  branch.set_name("branch");
+  branch.add_output()->CopyFrom(*leaf_output);
+  auto* inner_if = branch.add_node();
+  inner_if->set_op_type("If");
+  inner_if->add_input("condition");
+  inner_if->add_output("branch_result");
+  for (const auto* name : {"then_branch", "else_branch"}) {
+    auto* attr = inner_if->add_attribute();
+    attr->set_name(name);
+    attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+    attr->mutable_g()->CopyFrom(leaf);
+    auto* outer_attr = if_node->add_attribute();
+    outer_attr->set_name(name);
+    outer_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+    outer_attr->mutable_g()->CopyFrom(branch);
+  }
+  // Copy the completed branch after both inner If attributes have been added.
+  for (auto& attr : *if_node->mutable_attribute()) attr.mutable_g()->CopyFrom(branch);
+  auto nested_fixture = SerializationGraph(nested_proto);
+  auto nested_fixture_nodes = Ort::ConstGraph(&nested_fixture->GetOrtGraph()).GetNodes();
+  auto subgraphs = nested_fixture_nodes[1].GetSubgraphs();
+  ASSERT_EQ(subgraphs.size(), 2u);
+  auto standalone = ParseSerializedGraph(*subgraphs[0].sub_graph);
+  std::vector<std::string> captured_inputs;
+  for (const auto& input : standalone.graph().input()) captured_inputs.push_back(input.name());
+  EXPECT_NE(std::find(captured_inputs.begin(), captured_inputs.end(), "condition"), captured_inputs.end());
+  EXPECT_NE(std::find(captured_inputs.begin(), captured_inputs.end(), "hidden"), captured_inputs.end());
+  ASSERT_EQ(standalone.graph().initializer_size(), 1);
+  EXPECT_EQ(standalone.graph().initializer(0).name(), "bias");
+  EXPECT_NE(SerializationGraph(standalone), nullptr);
+
+  for (const auto* path : {ORT_TSTR("testdata/three_layer_nested_subgraph.onnx"),
+                           ORT_TSTR("testdata/three_layer_nested_subgraph_v2.onnx")}) {
+    auto nested = TestGraph::Load(path);
+    ASSERT_NE(nested, nullptr);
+    auto nested_nodes = Ort::ConstGraph(&nested->GetOrtGraph()).GetNodes();
+    bool found = false;
+    for (const auto& node : nested_nodes) {
+      for (const auto& subgraph : node.GetSubgraphs()) {
+        auto standalone = ParseSerializedGraph(*subgraph.sub_graph);
+        auto reloaded = SerializationGraph(standalone);
+        ASSERT_NE(reloaded, nullptr);
+        EXPECT_GT(standalone.graph().node_size(), 0);
+        found = true;
+      }
+    }
+    EXPECT_TRUE(found);
+  }
+}
+
+TEST(EpGraphTest, SerializeOnnx_DeterminismAndRoundTrip) {
+  auto original = SerializationFixture();
+  auto graph = SerializationGraph(original);
+  auto bytes = SerializeGraph(graph->GetOrtGraph());
+  EXPECT_EQ(bytes, SerializeGraph(graph->GetOrtGraph()));
+  ONNX_NAMESPACE::ModelProto proto;
+  ASSERT_TRUE(proto.ParseFromString(bytes));
+  auto nodes = Ort::ConstGraph(&graph->GetOrtGraph()).GetNodes();
+  ASSERT_EQ(proto.graph().node_size(), static_cast<int>(nodes.size()));
+  for (size_t i = 0; i < nodes.size(); ++i) {
+    EXPECT_EQ(proto.graph().node(static_cast<int>(i)).name(), nodes[i].GetName());
+  }
+  auto metadata_first = SerializationFixture();
+  for (const auto* key : {"z", "a"}) {
+    auto* property = metadata_first.add_metadata_props();
+    property->set_key(key);
+    property->set_value(key);
+  }
+  auto metadata_second = metadata_first;
+  metadata_second.mutable_metadata_props()->SwapElements(0, 1);
+  auto first_graph = SerializationGraph(metadata_first);
+  auto second_graph = SerializationGraph(metadata_second);
+  EXPECT_EQ(SerializeGraph(first_graph->GetOrtGraph()), SerializeGraph(second_graph->GetOrtGraph()));
+
+  auto with_function = SerializationFixture();
+  auto* local_opset = with_function.add_opset_import();
+  local_opset->set_domain("serialization.test");
+  local_opset->set_version(1);
+  auto* function = with_function.add_functions();
+  function->set_name("LocalIdentity");
+  function->set_domain("serialization.test");
+  function->add_input("X");
+  function->add_output("Y");
+  function->add_opset_import()->CopyFrom(with_function.opset_import(0));
+  auto* function_node = function->add_node();
+  function_node->set_op_type("Identity");
+  function_node->add_input("X");
+  function_node->add_output("Y");
+  with_function.mutable_graph()->mutable_node(1)->set_op_type("LocalIdentity");
+  with_function.mutable_graph()->mutable_node(1)->set_domain("serialization.test");
+  auto function_graph = SerializationGraph(with_function);
+  auto function_result = ParseSerializedGraph(function_graph->GetOrtGraph());
+  ASSERT_EQ(function_result.functions_size(), 1);
+  EXPECT_EQ(function_result.functions(0).name(), "LocalIdentity");
+  EXPECT_NE(SerializationGraph(function_result), nullptr);
+
+  Ort::SessionOptions options;
+  options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+  auto original_bytes = original.SerializeAsString();
+  Ort::Session original_session(*ort_env, original_bytes.data(), original_bytes.size(), options);
+  Ort::Session serialized_session(*ort_env, bytes.data(), bytes.size(), options);
+  std::array<float, 2> input{-3.0f, 5.0f};
+  std::array<int64_t, 1> shape{2};
+  auto memory = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  auto value = Ort::Value::CreateTensor<float>(memory, input.data(), input.size(), shape.data(), shape.size());
+  const char* input_name = "x";
+  const char* output_name = "y";
+  auto expected = original_session.Run(Ort::RunOptions{nullptr}, &input_name, &value, 1, &output_name, 1);
+  auto actual = serialized_session.Run(Ort::RunOptions{nullptr}, &input_name, &value, 1, &output_name, 1);
+  ASSERT_EQ(actual.size(), 1u);
+  EXPECT_EQ(actual[0].GetTensorTypeAndShapeInfo().GetShape(), std::vector<int64_t>({2}));
+  for (size_t i = 0; i < input.size(); ++i) {
+    EXPECT_EQ(actual[0].GetTensorData<float>()[i], expected[0].GetTensorData<float>()[i]);
+  }
+}
+
+TEST(EpGraphTest, SerializeOnnx_RepackageExternalDataRoundTrip) {
+  TemporaryDirectory directory(ORT_TSTR("serialization_repackage_roundtrip"));
+  struct FileCallback {
+    std::filesystem::path directory;
+    size_t calls = 0;
+
+    static OrtStatus* ORT_API_CALL Locate(void* state, const char*, const OrtValue* value,
+                                          const OrtExternalInitializerInfo*, OrtExternalInitializerInfo** location) {
+      auto& self = *static_cast<FileCallback*>(state);
+      ++self.calls;
+      Ort::ConstValue tensor(value);
+      const auto size = tensor.GetTensorTypeAndShapeInfo().GetElementCount() * sizeof(float);
+      std::ofstream stream(self.directory / "weights.bin", std::ios::binary);
+      stream.write(static_cast<const char*>(tensor.GetTensorRawData()), size);
+      stream.close();
+      if (!stream) return Ort::GetApi().CreateStatus(ORT_FAIL, "Failed to write external initializer");
+      return Ort::GetApi().CreateExternalInitializerInfo(ORT_TSTR("weights.bin"), 0, size, location);
+    }
+  } callback{std::filesystem::path(directory.Path())};
+  auto original = SerializationFixture();
+  auto graph = SerializationGraph(original);
+  Ort::GraphSerializationOptions serialization_options;
+  serialization_options.SetExternalInitializerPolicy(ORT_GRAPH_EXTERNAL_INITIALIZER_REPACKAGE_VIA_CALLBACK);
+  serialization_options.SetInitializerLocationFunc(FileCallback::Locate, &callback);
+  auto exported = ParseSerializedGraph(graph->GetOrtGraph(), serialization_options);
+  ASSERT_EQ(callback.calls, 1u);
+  ASSERT_EQ(exported.graph().initializer_size(), 1);
+  EXPECT_TRUE(utils::HasExternalDataInFile(exported.graph().initializer(0)));
+  auto model_path = callback.directory / "model.onnx";
+  {
+    std::ofstream stream(model_path, std::ios::binary);
+    ASSERT_TRUE(exported.SerializeToOstream(&stream));
+  }
+  Ort::SessionOptions options;
+  options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+  auto original_bytes = original.SerializeAsString();
+  Ort::Session original_session(*ort_env, original_bytes.data(), original_bytes.size(), options);
+  Ort::Session reloaded_session(*ort_env, model_path.c_str(), options);
+  std::array<float, 2> input{-3.0f, 5.0f};
+  std::array<int64_t, 1> shape{2};
+  auto memory = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  auto value = Ort::Value::CreateTensor<float>(memory, input.data(), input.size(), shape.data(), shape.size());
+  const char* input_name = "x";
+  const char* output_name = "y";
+  auto expected = original_session.Run(Ort::RunOptions{nullptr}, &input_name, &value, 1, &output_name, 1);
+  auto actual = reloaded_session.Run(Ort::RunOptions{nullptr}, &input_name, &value, 1, &output_name, 1);
+  ASSERT_EQ(actual.size(), 1u);
+  EXPECT_EQ(actual[0].GetTensorTypeAndShapeInfo().GetShape(), expected[0].GetTensorTypeAndShapeInfo().GetShape());
+  for (size_t i = 0; i < input.size(); ++i) {
+    EXPECT_EQ(actual[0].GetTensorData<float>()[i], expected[0].GetTensorData<float>()[i]);
+  }
+}
 
 // Checks that an OrtGraph is initialized correctly and tests basic usage of the C API
 // by traversing the OrtGraph and checking validity of nodes and value infos.

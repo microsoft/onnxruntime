@@ -54,6 +54,32 @@ inline void ThrowOnError(const Status& st) {
   }
 }
 
+inline GraphSerializationOptions::GraphSerializationOptions() {
+  ThrowOnError(GetApi().CreateGraphSerializationOptions(&this->p_));
+}
+
+inline GraphSerializationOptions& GraphSerializationOptions::SetExternalInitializerPolicy(
+    OrtGraphExternalInitializerPolicy policy) {
+  ThrowOnError(GetApi().GraphSerializationOptions_SetExternalInitializerPolicy(this->p_, policy));
+  return *this;
+}
+
+inline GraphSerializationOptions& GraphSerializationOptions::SetMinimumExternalInitializerSize(size_t min_bytes) {
+  ThrowOnError(GetApi().GraphSerializationOptions_SetMinimumExternalInitializerSize(this->p_, min_bytes));
+  return *this;
+}
+
+inline GraphSerializationOptions& GraphSerializationOptions::SetInitializerLocationFunc(
+    OrtGetInitializerLocationFunc callback, void* state) {
+  ThrowOnError(GetApi().GraphSerializationOptions_SetInitializerLocationFunc(this->p_, callback, state));
+  return *this;
+}
+
+inline GraphSerializationOptions& GraphSerializationOptions::SetMaximumWriteChunkSize(size_t max_chunk_bytes) {
+  ThrowOnError(GetApi().GraphSerializationOptions_SetMaximumWriteChunkSize(this->p_, max_chunk_bytes));
+  return *this;
+}
+
 inline Status::Status(OrtStatus* status) noexcept : detail::Base<OrtStatus>{status} {
 }
 
@@ -3981,6 +4007,21 @@ inline bool ConstValueInfoImpl<T>::IsFromOuterScope() const {
   bool out = false;
   ThrowOnError(GetApi().ValueInfo_IsFromOuterScope(this->p_, &out));
   return out;
+}
+
+template <typename T>
+inline SerializedModel ConstGraphImpl<T>::SerializeToOnnxModel(
+    OrtAllocator* allocator, const OrtGraphSerializationOptions* options) const {
+  void* bytes = nullptr;
+  size_t size = 0;
+  ThrowOnError(GetApi().Graph_SerializeToOnnxModel(this->p_, options, allocator, &bytes, &size));
+  return {std::unique_ptr<void, AllocatedFree>{bytes, AllocatedFree{allocator}}, size};
+}
+
+template <typename T>
+inline void ConstGraphImpl<T>::SerializeToOnnxModelWithWriteFunc(
+    OrtWriteBufferFunc write_func, void* write_state, const OrtGraphSerializationOptions* options) const {
+  ThrowOnError(GetApi().Graph_SerializeToOnnxModelWithWriteFunc(this->p_, options, write_func, write_state));
 }
 
 template <typename T>

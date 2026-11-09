@@ -4987,6 +4987,14 @@ static constexpr OrtApi ort_api_1_to_29 = {
     &OrtApis::SessionOptionsSetEpContextDataReadFunc,
     &OrtApis::GetModelPackageApi,
     &OrtApis::EpDevice_GetMemoryCapacity,
+    &OrtApis::CreateGraphSerializationOptions,
+    &OrtApis::ReleaseGraphSerializationOptions,
+    &OrtApis::GraphSerializationOptions_SetExternalInitializerPolicy,
+    &OrtApis::GraphSerializationOptions_SetMinimumExternalInitializerSize,
+    &OrtApis::GraphSerializationOptions_SetInitializerLocationFunc,
+    &OrtApis::GraphSerializationOptions_SetMaximumWriteChunkSize,
+    &OrtApis::Graph_SerializeToOnnxModelWithWriteFunc,
+    &OrtApis::Graph_SerializeToOnnxModel,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

@@ -1367,6 +1367,12 @@ Graph::Graph(const Model& owning_model,
       auto p = sparse_tensor_names_.emplace(tensor->name());
       ORT_ENFORCE(p.second, "Duplicate constant node sparse initializer name: '", tensor->name(),
                   "' Model is invalid.");
+      const auto& sparse = node.attribute(0).sparse_tensor();
+      if (utils::HasExternalDataInFile(sparse.values()) || utils::HasExternalDataInFile(sparse.indices())) {
+        auto& source = source_sparse_initializers_[tensor->name()];
+        source = sparse;
+        source.mutable_values()->set_name(tensor->name());
+      }
     }
 #endif
   }
@@ -1401,6 +1407,10 @@ Graph::Graph(const Model& owning_model,
         ORT_ENFORCE(!utils::HasExternalDataInMemory(*sub),
                     "Sparse initializer '", sparse_tensor.values().name(),
                     "' references an ORT in-memory address marker, which is not allowed in a model protobuf.");
+      }
+      if (utils::HasExternalDataInFile(sparse_tensor.values()) ||
+          utils::HasExternalDataInFile(sparse_tensor.indices())) {
+        source_sparse_initializers_.emplace(sparse_tensor.values().name(), sparse_tensor);
       }
       const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
       auto status = utils::SparseTensorProtoToDenseTensorProto(sparse_tensor, model_path, *tensor);
@@ -4312,6 +4322,7 @@ void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
     name_to_initial_tensor_.erase(iter);
 #if !defined(DISABLE_SPARSE_TENSORS)
     sparse_tensor_names_.erase(tensor_name);
+    source_sparse_initializers_.erase(tensor_name);
 #endif
 
     // doesn't matter if it existed or not
@@ -4401,6 +4412,9 @@ Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initi
     ORT_IGNORE_RETURN_VALUE(ortvalue_initializers_.erase(initializer_name));
   }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
+  source_sparse_initializers_.erase(initializer_name);
+#endif
   **existing_entry = std::move(new_initializer);
   if (is_sparse) {
     sparse_tensor_names_.insert((**existing_entry).name());
@@ -4647,6 +4661,7 @@ void Graph::CleanAllInitializedTensors() noexcept {
   name_to_initial_tensor_.clear();
 #if !defined(DISABLE_SPARSE_TENSORS)
   sparse_tensor_names_.clear();
+  source_sparse_initializers_.clear();
 #endif
   // Clearing RepeatedPtrFields does not free objects' memory. The memory is retained
   // and can be reused. Need to explicitly release the cleared objects and free the
@@ -6311,7 +6326,15 @@ Status Graph::AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& nod
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   if (node_proto.attribute(0).type() == AttributeProto_AttributeType_SPARSE_TENSOR) {
-    ORT_IGNORE_RETURN_VALUE(sparse_tensor_names_.emplace(tensor_proto.name()));
+    // sparse_tensor_names_ stores references, so use the graph-owned name.
+    const auto& initializer_name = name_to_initial_tensor_.at(tensor_proto.name())->name();
+    ORT_IGNORE_RETURN_VALUE(sparse_tensor_names_.emplace(initializer_name));
+    const auto& sparse = node_proto.attribute(0).sparse_tensor();
+    if (utils::HasExternalDataInFile(sparse.values()) || utils::HasExternalDataInFile(sparse.indices())) {
+      auto& source = source_sparse_initializers_[initializer_name];
+      source = sparse;
+      source.mutable_values()->set_name(initializer_name);
+    }
   }
 #endif
 
@@ -6456,6 +6479,12 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
 #if !defined(DISABLE_SPARSE_TENSORS)
     if (has_sparse_origin) {
       ORT_IGNORE_RETURN_VALUE(sparse_tensor_names_.emplace(tensor->name()));
+    }
+    auto source = graph_to_inline.source_sparse_initializers_.find(src_name);
+    if (source != graph_to_inline.source_sparse_initializers_.end()) {
+      source->second.mutable_values()->set_name(tensor->name());
+      source_sparse_initializers_.insert_or_assign(tensor->name(), std::move(source->second));
+      graph_to_inline.source_sparse_initializers_.erase(source);
     }
 #endif
   }

@@ -204,6 +204,9 @@ class Model {
   // Get model's serialization proto data.
   ONNX_NAMESPACE::ModelProto ToProto() const;
 
+  // Copies current model fields without serializing the main graph.
+  ONNX_NAMESPACE::ModelProto ToProtoWithoutGraph() const;
+
   // Get model's serialization proto data.
   // Save initializer larger than the given threshold (in bytes) into an external binary file
   // with the given name. This function is useful to avoid hitting the size limit of protobuf files.
