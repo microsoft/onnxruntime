@@ -4,11 +4,15 @@
 #include "contrib_ops/cpu/bert/linear_attention_gates.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <limits>
+#include <numeric>
 #include <utility>
 #include <vector>
 
 #include "core/framework/tensor.h"
+#include "core/common/inlined_containers.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 
@@ -32,11 +36,21 @@ using namespace onnxruntime::contrib::linear_attention_gates_helper;
 REGISTER_KERNEL_TYPED(LinearAttentionGate, float)
 REGISTER_KERNEL_TYPED(LinearAttentionGate, MLFloat16)
 REGISTER_KERNEL_TYPED(LinearAttentionGate, BFloat16)
-REGISTER_KERNEL_TYPED(MoEGroupRouter, float)
-REGISTER_KERNEL_TYPED(MoEGroupRouter, MLFloat16)
-REGISTER_KERNEL_TYPED(MoEGroupRouter, BFloat16)
-
 #undef REGISTER_KERNEL_TYPED
+
+#define REGISTER_ROUTER_TYPED(T)                                           \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                           \
+      MoEGroupRouter, kMSDomain, 1, T, kCpuExecutionProvider,              \
+      KernelDefBuilder()                                                   \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())           \
+          .TypeConstraint("TF", DataTypeImpl::GetTensorType<float>())      \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int32_t>()), \
+      MoEGroupRouter<T>);
+
+REGISTER_ROUTER_TYPED(float)
+REGISTER_ROUTER_TYPED(MLFloat16)
+REGISTER_ROUTER_TYPED(BFloat16)
+#undef REGISTER_ROUTER_TYPED
 
 #define REGISTER_KERNEL_TYPED(Op, T)                              \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
@@ -202,6 +216,8 @@ MoEGroupRouter<T>::MoEGroupRouter(const OpKernelInfo& info) : OpKernel(info) {
   topk_group_ = info.GetAttrOrDefault<int64_t>("topk_group", 1);
   group_topk_ = info.GetAttrOrDefault<int64_t>("group_topk", 2);
   router_sentinel_ = info.GetAttrOrDefault<float>("router_sentinel", -10000.0f);
+  router_scale_ = info.GetAttrOrDefault<float>("router_scale", 1.0f);
+  ORT_ENFORCE(std::isfinite(router_scale_), "router_scale must be finite");
   ORT_THROW_IF_ERROR(ValidateMoEGroupRouterAttributes(top_k_, n_group_, topk_group_, group_topk_));
 }
 
@@ -209,18 +225,93 @@ template <typename T>
 Status MoEGroupRouter<T>::Compute(OpKernelContext* context) const {
   const Tensor* logits = context->Input<Tensor>(0);
   const Tensor* expert_bias = context->Input<Tensor>(1);
+  const Tensor* projection = context->Input<Tensor>(2);
   const auto& in_shape = logits->Shape();
   ORT_RETURN_IF_NOT(in_shape.NumDimensions() >= 2, "logits must have rank >= 2");
-  const int64_t num_experts = in_shape[in_shape.NumDimensions() - 1];
+  const int64_t width = in_shape[in_shape.NumDimensions() - 1];
+  ORT_RETURN_IF_NOT(width > 0, "logits last dimension must be positive");
+  if (projection) {
+    ORT_RETURN_IF_NOT(in_shape.NumDimensions() == 2 && projection->Shape().NumDimensions() == 2 &&
+                          projection->Shape()[1] == width && width % 256 == 0 &&
+                          width <= std::numeric_limits<int>::max(),
+                      "projection_weight requires rank-two inputs with matching width divisible by 256");
+  }
+  const int64_t num_experts = projection ? projection->Shape()[0] : width;
   ORT_RETURN_IF_NOT(num_experts > 0 && expert_bias->Shape().Size() == num_experts,
                     "expert_bias length must match num_experts");
   ORT_RETURN_IF_NOT(n_group_ > 0 && num_experts % n_group_ == 0 && topk_group_ > 0 &&
                         topk_group_ <= n_group_ && top_k_ <= num_experts,
                     "Invalid MoEGroupRouter group/top_k parameters");
 
-  const int64_t num_rows = in_shape.Size() / num_experts;
+  const int64_t num_rows = in_shape.Size() / width;
   TensorShape out_shape({num_rows, num_experts});
   Tensor* output = context->Output(0, out_shape);
+  Tensor* indices = context->Output(1, TensorShape({num_rows, top_k_}));
+  Tensor* weights = context->Output(2, TensorShape({num_rows, top_k_}));
+  ORT_RETURN_IF_NOT((indices != nullptr) == (weights != nullptr),
+                    "expert_indices and expert_weights must be requested together");
+  ORT_RETURN_IF_NOT(output || indices, "at least one router output must be requested");
+  ORT_RETURN_IF_NOT(!projection || indices, "projection_weight requires compact outputs");
+  ORT_RETURN_IF_NOT(indices || router_scale_ == 1.0f, "router_scale requires compact outputs");
+  if (indices) {
+    ORT_RETURN_IF_NOT(n_group_ == 1 && topk_group_ == 1 && top_k_ <= 32 && num_experts <= 512 &&
+                          num_rows <= std::numeric_limits<int>::max(),
+                      "compact routing requires one group, top_k<=32, experts<=512 and rows<=INT_MAX");
+    const T* input_data = logits->Data<T>();
+    const T* projection_data = projection ? projection->Data<T>() : nullptr;
+    const float* bias_data = expert_bias->Data<float>();
+    int32_t* indices_data = indices->MutableData<int32_t>();
+    float* weights_data = weights->MutableData<float>();
+    T* output_data = output ? output->MutableData<T>() : nullptr;
+    concurrency::ThreadPool::TryBatchParallelFor(
+        context->GetOperatorThreadPool(), onnxruntime::narrow<ptrdiff_t>(num_rows),
+        [&](ptrdiff_t row) {
+          InlinedVector<float> scores(static_cast<size_t>(num_experts));
+          InlinedVector<int32_t> order(static_cast<size_t>(num_experts));
+          std::iota(order.begin(), order.end(), 0);
+          for (int64_t e = 0; e < num_experts; ++e) {
+            float value = 0.f;
+            if (projection_data) {
+              // Preserve the projected CUDA path's per-lane accumulation and reduction tree.
+              std::array<float, 32> partial{};
+              for (int lane = 0; lane < 32; ++lane) {
+                for (int64_t offset = lane * 8; offset < width; offset += 256) {
+                  for (int j = 0; j < 8; ++j) {
+                    partial[lane] = std::fma(static_cast<float>(input_data[row * width + offset + j]),
+                                             static_cast<float>(projection_data[e * width + offset + j]),
+                                             partial[lane]);
+                  }
+                }
+              }
+              for (int offset = 16; offset > 0; offset >>= 1) {
+                for (int lane = 0; lane < offset; ++lane) partial[lane] += partial[lane + offset];
+              }
+              value = partial[0];
+            } else {
+              value = static_cast<float>(input_data[row * width + e]);
+            }
+            scores[static_cast<size_t>(e)] = 1.f / (1.f + std::exp(-value));
+            if (output_data) output_data[row * num_experts + e] = static_cast<T>(router_sentinel_);
+          }
+          std::partial_sort(order.begin(), order.begin() + top_k_, order.end(), [&](int32_t a, int32_t b) {
+            const float sa = scores[a] + bias_data[a], sb = scores[b] + bias_data[b];
+            if (std::isnan(sa) != std::isnan(sb)) return !std::isnan(sa);
+            return sa != sb && !std::isnan(sa) ? sa > sb : a < b;
+          });
+          float sum = 0.f;
+          for (int64_t rank = 0; rank < top_k_; ++rank) sum += scores[order[rank]];
+          for (int64_t rank = 0; rank < top_k_; ++rank) {
+            const int32_t expert = order[rank];
+            indices_data[row * top_k_ + rank] = expert;
+            weights_data[row * top_k_ + rank] = scores[expert] / (sum + 1e-20f) * router_scale_;
+            if (output_data) {
+              output_data[row * num_experts + expert] = static_cast<T>(std::log(std::max(scores[expert], 1e-20f)));
+            }
+          }
+        },
+        0);
+    return Status::OK();
+  }
   if (in_shape.Size() == 0) {
     return Status::OK();
   }
