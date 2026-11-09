@@ -82,6 +82,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Softmax", GetSoftmaxGradient);
   REGISTER_GRADIENT_BUILDER("LogSoftmax", GetLogSoftmaxGradient);
   REGISTER_GRADIENT_BUILDER("SoftmaxCrossEntropy", GetSoftmaxCrossEntropyGradient);
+  REGISTER_GRADIENT_BUILDER("BinaryCrossEntropy", GetBinaryCrossEntropyGradient);
   REGISTER_GRADIENT_BUILDER("SparseSoftmaxCrossEntropy", GetSparseSoftmaxCrossEntropyGradient);
   REGISTER_GRADIENT_BUILDER("SoftmaxCrossEntropyLoss", GetSoftmaxCrossEntropyLossGradient);
   REGISTER_GRADIENT_BUILDER("SoftmaxCrossEntropyLossInternal", GetSoftmaxCrossEntropyLossInternalGradient);
