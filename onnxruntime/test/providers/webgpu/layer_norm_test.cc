@@ -29,8 +29,9 @@ namespace {
 
 #if defined(USE_WEBGPU) && !defined(ORT_MINIMAL_BUILD) && !defined(ENABLE_TRAINING_CORE)
 template <typename T>
-void RunSimplifiedLayerNormFusionTest(bool rank_one = false, bool scale_first = false) {
-  SCOPED_TRACE(::onnxruntime::MakeString("rank_one=", rank_one, ", scale_first=", scale_first));
+void RunSimplifiedLayerNormFusionTest(bool rank_one = false, bool scale_first = false, bool promoted_fp16 = false) {
+  SCOPED_TRACE(::onnxruntime::MakeString("rank_one=", rank_one, ", scale_first=", scale_first,
+                                         ", promoted_fp16=", promoted_fp16));
   auto ep = DefaultWebGpuExecutionProvider();
   if (!ep) {
     GTEST_SKIP() << "WebGPU execution provider is not available.";
@@ -43,21 +44,36 @@ void RunSimplifiedLayerNormFusionTest(bool rank_one = false, bool scale_first = 
   std::vector<T> values{T(-2.0f), T(-0.5f), T(0.25f), T(3.0f),
                         T(0.125f), T(1.0f), T(-1.5f), T(2.5f)};
   if (rank_one) values.resize(4);
+  if (promoted_fp16) values.assign(8, T(1e-6f));
   auto* input = builder.MakeInput<T>(rank_one ? std::vector<int64_t>{4} : std::vector<int64_t>{2, 4}, values);
-  auto* scale = builder.MakeInitializer<T>({4}, {T(0.5f), T(1.0f), T(1.5f), T(2.0f)});
-  auto* exponent = builder.MakeScalarInitializer<T>(T(2.0f));
-  auto* epsilon = builder.MakeScalarInitializer<T>(T(0.125f));
+  auto* scale = builder.MakeInitializer<T>(
+      {4}, promoted_fp16 ? std::vector<T>(4, T(1.0f)) : std::vector<T>{T(0.5f), T(1.0f), T(1.5f), T(2.0f)});
+  NodeArg* base = input;
+  if (promoted_fp16) {
+    base = builder.MakeIntermediate();
+    builder.AddNode("Cast", {input}, {base}).AddAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType_FLOAT});
+  }
+  NodeArg* exponent = promoted_fp16 ? builder.MakeScalarInitializer<float>(2.0f)
+                                    : builder.MakeScalarInitializer<T>(T(2.0f));
+  NodeArg* epsilon = promoted_fp16 ? builder.MakeScalarInitializer<float>(1e-10f)
+                                   : builder.MakeScalarInitializer<T>(T(0.125f));
   auto* squared = builder.MakeIntermediate();
   auto* mean = builder.MakeIntermediate();
   auto* variance = builder.MakeIntermediate();
   auto* stddev = builder.MakeIntermediate();
   auto* normalized = builder.MakeIntermediate();
   auto* output = builder.MakeOutput();
-  builder.AddNode("Pow", {input, exponent}, {squared});
+  builder.AddNode("Pow", {base, exponent}, {squared});
   builder.AddNode("ReduceMean", {squared}, {mean}).AddAttribute("axes", std::vector<int64_t>{-1});
   builder.AddNode("Add", {mean, epsilon}, {variance});
   builder.AddNode("Sqrt", {variance}, {stddev});
-  builder.AddNode("Div", {input, stddev}, {normalized});
+  builder.AddNode("Div", {base, stddev}, {normalized});
+  if (promoted_fp16) {
+    auto* cast_output = builder.MakeIntermediate();
+    builder.AddNode("Cast", {normalized}, {cast_output})
+        .AddAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType_FLOAT16});
+    normalized = cast_output;
+  }
   builder.AddNode("Mul", scale_first ? std::vector<NodeArg*>{scale, normalized} : std::vector<NodeArg*>{normalized, scale},
                   {output});
   builder.SetGraphOutputs();
@@ -65,21 +81,31 @@ void RunSimplifiedLayerNormFusionTest(bool rank_one = false, bool scale_first = 
   std::string data;
   ASSERT_TRUE(model.ToProto().SerializeToString(&data));
   const gsl::span<const std::byte> bytes{reinterpret_cast<const std::byte*>(data.data()), data.size()};
-  const std::function<void(const Graph&)> check_fusion = [scale_name = scale->Name()](const Graph& optimized) {
-    ASSERT_EQ(optimized.NumberOfNodes(), 1);
-    const auto& node = *optimized.Nodes().begin();
-    EXPECT_EQ(node.OpType(), "SimplifiedLayerNormalization");
-    EXPECT_EQ(node.GetExecutionProviderType(), kWebGpuExecutionProvider);
-    ASSERT_EQ(node.InputDefs().size(), 2u);
-    EXPECT_EQ(node.InputDefs()[1]->Name(), scale_name);
-    ASSERT_EQ(node.OutputDefs().size(), 1u);
-    EXPECT_EQ(node.OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type(),
-              utils::ToTensorProtoElementType<T>());
-  };
+  const std::function<void(const Graph&)> check_fusion =
+      [scale_name = scale->Name(), promoted_fp16](const Graph& optimized) {
+        if (promoted_fp16) {
+          int casts = 0;
+          for (const auto& node : optimized.Nodes()) {
+            EXPECT_NE(node.OpType(), "SimplifiedLayerNormalization");
+            if (node.OpType() == "Cast") ++casts;
+          }
+          EXPECT_EQ(casts, 2);
+          return;
+        }
+        ASSERT_EQ(optimized.NumberOfNodes(), 1);
+        const auto& node = *optimized.Nodes().begin();
+        EXPECT_EQ(node.OpType(), "SimplifiedLayerNormalization");
+        EXPECT_EQ(node.GetExecutionProviderType(), kWebGpuExecutionProvider);
+        ASSERT_EQ(node.InputDefs().size(), 2u);
+        EXPECT_EQ(node.InputDefs()[1]->Name(), scale_name);
+        ASSERT_EQ(node.OutputDefs().size(), 1u);
+        EXPECT_EQ(node.OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type(),
+                  utils::ToTensorProtoElementType<T>());
+      };
   EPVerificationParams params;
   params.ep_node_assignment = ExpectedEPNodeAssignment::All;
   // FP16 CPU fallback rounds intermediate results; the fused shader accumulates in FP32.
-  params.fp32_abs_err = std::is_same_v<T, MLFloat16> ? 0.005f : 1e-5f;
+  params.fp32_abs_err = promoted_fp16 ? 1e-4f : (std::is_same_v<T, MLFloat16> ? 0.005f : 1e-5f);
   params.graph_verifier = &check_fusion;
   RunAndVerifyOutputsWithEP(bytes, "SimplifiedLayerNormFusionWebGpu", std::move(ep), builder.feeds_, params);
 }
@@ -92,6 +118,10 @@ TEST(WebGpuLayerNormTest, SimplifiedLayerNormFusionRankOneFloat32) {
   for (bool scale_first : {false, true}) {
     RunSimplifiedLayerNormFusionTest<float>(true, scale_first);
   }
+}
+
+TEST(WebGpuLayerNormTest, SimplifiedLayerNormFusionRejectsPromotedFp16) {
+  RunSimplifiedLayerNormFusionTest<MLFloat16>(false, false, true);
 }
 
 TEST(WebGpuLayerNormTest, SimplifiedLayerNormFusionFloat16) {

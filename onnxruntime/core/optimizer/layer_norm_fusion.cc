@@ -698,6 +698,10 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
         reduce_mean_node.GetInputEdgesCount() == 0) {
       continue;
     }
+    const auto* keepdims = graph_utils::GetNodeAttribute(reduce_mean_node, "keepdims");
+    if (keepdims != nullptr && keepdims->i() != 1) {
+      continue;
+    }
     nodes_to_remove.push_back(reduce_mean_node);
 
     const Node* p_add = graph_utils::FirstChildByType(reduce_mean_node, "Add");
@@ -764,6 +768,12 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // after Cast), so the condition for CPU EP to fuse or not is always setting has_leading_cast to false and checking
     // if there is a Cast between x and y. Having Cast between means cannot fuse.
     const Node* p_pow_input_node = graph_utils::GetInputNode(pow_node, 0);
+    // WebGPU's f16 kernel narrows inv_std_dev; removing a narrowing leading Cast also loses input rounding.
+    if (pow_node.GetExecutionProviderType() == kWebGpuExecutionProvider &&
+        ((p_pow_input_node && p_pow_input_node->OpType() == "Cast") ||
+         div_node.OutputNodesBegin()->OpType() == "Cast")) {
+      continue;
+    }
     bool has_leading_cast = false;
     bool is_gpu_ep = pow_node.GetExecutionProviderType() == kCudaExecutionProvider ||
                      pow_node.GetExecutionProviderType() == kWebGpuExecutionProvider || skip_device_check_;
