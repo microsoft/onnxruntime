@@ -475,12 +475,6 @@ jobs:
         with:
           node-version: "20.x"
 
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        id: onnx-node-tests-cache
-        with:
-          path: ${{ github.workspace }}/js/test/
-          key: onnxnodetests-${{ hashFiles('js/scripts/prepare-onnx-node-tests.ts') }}
-
       # onnxruntime_BUILD_DAWN_SHARED_LIBRARY is deliberately not enabled here. It is incompatible with
       # onnxruntime_USE_EP_API_ADAPTERS, which --use_webgpu static_plugin turns on.
       - name: Build
