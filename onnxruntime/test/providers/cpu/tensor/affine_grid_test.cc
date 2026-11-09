@@ -4,6 +4,7 @@
 #include "core/util/math.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 #include "test/unittest_util/op_tester.h"  // Provides OpTester used in these tests
 
 namespace onnxruntime {
@@ -238,6 +239,35 @@ TEST(AffineGridTest, invalid_2d_theta_wrong_dim2) {
   test.AddInput<int64_t>("size", {4}, {1, 1, 2, 3});
   test.AddOutput<float>("grid", {1, 2, 3, 2}, std::vector<float>(12, 0.0f));
   test.Run(OpTester::ExpectResult::kExpectFailure, "theta shape must be [N, 2, 3] for 2D");
+}
+
+// A rank-0 'size' makes TensorShape::GetDims() an empty span. Before the rank
+// check this test aborted the process through the GSL bounds contract rather
+// than failing, so it does not pass on the unpatched kernel.
+TEST(AffineGridTest, size_input_is_rank_0) {
+  OpTester test("AffineGrid", 20);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("align_corners", (int64_t)0);
+  test.AddInput<float>("theta", {1, 2, 3}, {1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f});
+  test.AddInput<int64_t>("size", {}, {4});
+  test.AddOutput<float>("grid", {1, 1, 1, 2}, {0.0f, 0.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "input 'size' must be a 1-D tensor", {}, nullptr, &eps);
+}
+
+TEST(AffineGridTest, size_input_rank_2_trailing_zero_rejected) {
+  OpTester test("AffineGrid", 20);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("align_corners", (int64_t)0);
+  test.AddInput<float>("theta", {1, 2, 3}, {1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f});
+  test.AddInput<int64_t>("size", {4, 0}, {});
+  test.AddOutput<float>("grid", {1, 1, 1, 2}, {0.0f, 0.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "input 'size' must be a 1-D tensor", {}, nullptr, &eps);
 }
 
 // Test: 3D - batch dimension mismatch between theta and size

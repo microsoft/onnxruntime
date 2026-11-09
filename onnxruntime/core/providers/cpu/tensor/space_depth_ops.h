@@ -26,13 +26,12 @@ template <typename KernelInfoType>
 inline bool ReadIsDCR(const KernelInfoType& info) {
   bool is_dcr = true;
   std::string mode;
-  // If mode doesn't exist, then it is the default "DCR" mode
-  // (or) it is an opset < 11 model for which the only mode is "DCR" mode.
+  // A missing mode is the default DCR mode, including pre-mode schemas.
   if (info.GetAttr("mode", &mode).IsOK()) {
     if (mode == "CRD") {
       is_dcr = false;
     } else if (mode != "DCR") {
-      ORT_THROW("DepthToSpace op: only 'DCR' and 'CRD' modes are supported");
+      ORT_THROW("SpaceDepth op: only 'DCR' and 'CRD' modes are supported");
     }
   }
 
@@ -130,10 +129,13 @@ class SpaceDepthBase {
 
 class SpaceToDepth final : public OpKernel, SpaceDepthBase {
  public:
-  explicit SpaceToDepth(const OpKernelInfo& info) : OpKernel(info), SpaceDepthBase(info) {
-  }
+  explicit SpaceToDepth(const OpKernelInfo& info)
+      : OpKernel(info), SpaceDepthBase(info), is_dcr_(space_depth_internal::ReadIsDCR(info)) {}
 
   Status Compute(OpKernelContext* context) const override;
+
+ private:
+  bool is_dcr_ = true;
 };
 
 class DepthToSpace final : public OpKernel, SpaceDepthBase {
