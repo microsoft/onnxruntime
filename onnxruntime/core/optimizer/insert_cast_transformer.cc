@@ -386,14 +386,11 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
   }
 
  private:
-  static bool UnsafeCast(DataType src_type, DataType dst_type, const Node& node) {
+  static bool UnsafeCast(DataType src_type, DataType dst_type, bool allow_precision_loss = false) {
     // This is not a complete cast optimisation pass, and is more conservative than it could be.
     // For instance, certain integral -> floating point casts could be optimized but
     // this is left to an explicit cast optimisation pass.
 
-    // The comparison with "InsertedPrecisionFreeCast_" reflects cast nodes that are inserted by InsertCastTransformer.
-    // Such casts should not be considered as loss of precision - the inserted upcasts (f16 -> f32) and
-    // downcasts (f32 -> f16) are inserted to support kernels when on a CPU EP without F16 support.
     auto src_type_group = GetTypeGroup(src_type);
     auto dst_type_group = GetTypeGroup(dst_type);
     if (Unknown == src_type_group || Unknown == dst_type_group) {
@@ -428,7 +425,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
       return true;
     }
 
-    return src_bit_length > dst_bit_length && (node.Name().compare(0, 26, "InsertedPrecisionFreeCast_"));
+    return src_bit_length > dst_bit_length && !allow_precision_loss;
   }
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override {
@@ -466,7 +463,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
         auto src_type = node.InputDefs()[0]->Type();
         auto dst_type = node.OutputDefs()[0]->Type();
 
-        bool loss_precision_cast = UnsafeCast(src_type, dst_type, node);
+        const bool loss_precision_cast = UnsafeCast(src_type, dst_type);
         size_t num_children = node.GetOutputEdgesCount();
 
         bool inconsistent_casts = false;
@@ -475,7 +472,10 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
           if (output_node.OpType() == "Cast") {
             auto src_type1 = output_node.InputDefs()[0]->Type();
             auto dst_type1 = output_node.OutputDefs()[0]->Type();
-            if (loss_precision_cast && UnsafeCast(dst_type1, src_type1, output_node)) {
+            // Only inserted consumer Casts may bypass rounding to keep adjacent CPU fallback nodes in fp32.
+            // Original fp16-to-fp32 Casts must observe rounding from an inserted downcast.
+            const bool allow_precision_loss = output_node.Name().compare(0, 26, "InsertedPrecisionFreeCast_") == 0;
+            if (loss_precision_cast && UnsafeCast(dst_type1, src_type1, allow_precision_loss)) {
               inconsistent_casts = true;
               break;
             }
