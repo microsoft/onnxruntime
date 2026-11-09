@@ -188,7 +188,15 @@ using SignInt64 = Int64Unary<Int64UnaryOp::Sign>;
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()), OP##Int64); \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                  \
       OP, kOnnxDomain, SINCE, int64_t, kWebGpuExecutionProvider,                                  \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()), OP##Int64);
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()), OP##Int64); \
+  static void Register##OP##Int64Kernels(KernelRegistry& kernel_registry) {                       \
+    ORT_THROW_IF_ERROR(kernel_registry.Register(                                                  \
+        BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(                    \
+            kWebGpuExecutionProvider, kOnnxDomain, FROM, TO, int64_t, OP)>()));                   \
+    ORT_THROW_IF_ERROR(kernel_registry.Register(                                                  \
+        BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(                              \
+            kWebGpuExecutionProvider, kOnnxDomain, SINCE, int64_t, OP)>()));                      \
+  }
 
 WEBGPU_ELEMENTWISE_IMPL(Abs, "abs(a)")
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Abs, 6, 12, NumberTypesWithInt8())
@@ -713,22 +721,10 @@ WEBGPU_INT64_UNARY_KERNEL(Relu, 14, 20, 21)
 
 void RegisterInt64UnaryKernels(KernelRegistry& kernel_registry, bool enable_int64) {
   if (enable_int64) {
-    ORT_THROW_IF_ERROR(kernel_registry.Register(
-        BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 6, 12, int64_t, Abs)>()));
-    ORT_THROW_IF_ERROR(kernel_registry.Register(
-        BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, int64_t, Abs)>()));
-    ORT_THROW_IF_ERROR(kernel_registry.Register(
-        BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 6, 12, int64_t, Neg)>()));
-    ORT_THROW_IF_ERROR(kernel_registry.Register(
-        BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, int64_t, Neg)>()));
-    ORT_THROW_IF_ERROR(kernel_registry.Register(
-        BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 9, 12, int64_t, Sign)>()));
-    ORT_THROW_IF_ERROR(kernel_registry.Register(
-        BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, int64_t, Sign)>()));
-    ORT_THROW_IF_ERROR(kernel_registry.Register(
-        BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 14, 20, int64_t, Relu)>()));
-    ORT_THROW_IF_ERROR(kernel_registry.Register(
-        BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 21, int64_t, Relu)>()));
+    RegisterAbsInt64Kernels(kernel_registry);
+    RegisterNegInt64Kernels(kernel_registry);
+    RegisterSignInt64Kernels(kernel_registry);
+    RegisterReluInt64Kernels(kernel_registry);
   }
 }
 

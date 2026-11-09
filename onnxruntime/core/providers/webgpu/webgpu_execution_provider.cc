@@ -122,10 +122,6 @@ ONNX_OPERATOR_KERNEL_EX(
   BuildKernelCreateInfo<                          \
       class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, Start, type, Op)>
 
-#define KERNEL_CREATE_INFO_VERSIONED_TYPED(Start, End, type, Op) \
-  BuildKernelCreateInfo<                                         \
-      class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, Start, End, type, Op)>
-
 static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] = {
     BuildKernelCreateInfo<void>,  // default entry to avoid the list becoming empty after ops-reducing
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,

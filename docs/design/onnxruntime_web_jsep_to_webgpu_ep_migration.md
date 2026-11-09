@@ -141,7 +141,7 @@ default `false`. It is reachable on `/webgpu` today via the untyped `extra` map
 With int64 **off** (the default), the native WebGPU EP matches JSEP exactly: int64 arithmetic runs on CPU/WASM with full
 `int64_t` precision, while int64 indices (`Gather` / `GatherElements` / `MaxPool`) run on the GPU with i32
 truncation. `enableInt64 = 1` is an opt-in that additionally runs int64 arithmetic on the GPU. Kernels using
-i32-truncated arithmetic are lossy for genuine `> 2³¹` values. The int64 `Abs`, `Neg`, `Relu`, and `Sign` kernels
+i32-truncated arithmetic are lossy for values outside `[-2^31, 2^31 - 1]`. The int64 `Abs`, `Neg`, `Relu`, and `Sign` kernels
 preserve all 64 bits, but still require this opt-in. `transformers.js` already runs the native WebGPU EP
 with int64 off at scale.
 
