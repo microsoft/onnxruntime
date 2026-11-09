@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <tuple>
+#include <utility>
 
 #include "gtest/gtest.h"
 #include "contrib_ops/cuda/fusion/cuda_source_replacements.h"
@@ -30,6 +31,21 @@ InlinedVector<ExecutableSource> Executables() {
   InlinedVector<ExecutableSource> sources;
   for (const auto* source : CudaSourceReplacements()) sources.push_back(source->Metadata());
   return sources;
+}
+
+InlinedVector<OpKey> SchemasMissingFromInventory(gsl::span<const ONNX_NAMESPACE::OpSchema> registered,
+                                                 gsl::span<const OpKey> schemas) {
+  InlinedVector<OpKey> missing;
+  for (const auto& schema : registered) {
+    auto file = schema.file();
+    std::replace(file.begin(), file.end(), '\\', '/');
+    if (file.find("/test/") != std::string::npos) continue;
+    if (schema.domain() == kMSDomain || schema.domain() == kMSNchwcDomain) {
+      const auto key = SourceOpKey(schema);
+      if (std::find(schemas.begin(), schemas.end(), key) == schemas.end()) missing.push_back(key);
+    }
+  }
+  return missing;
 }
 
 TEST(ContribSourceReplacementPolicyTest, FullRegisteredInventory) {
@@ -58,14 +74,41 @@ TEST(ContribSourceReplacementPolicyTest, FullRegisteredInventory) {
         << key.domain << "." << key.name << "-" << key.since_version;
   }
   // Catch schemas that bypass the normal workflow, without interpreting docstrings.
-  for (const auto& schema : registered) {
-    if (schema.file().find("/test/") != std::string::npos) continue;
-    if (schema.domain() == kMSDomain || schema.domain() == kMSNchwcDomain) {
-      const auto key = SourceOpKey(schema);
-      EXPECT_NE(std::find(schemas.begin(), schemas.end(), key), schemas.end()) << key.name;
-    }
+  for (const auto& key : SchemasMissingFromInventory(registered, schemas)) {
+    ADD_FAILURE() << key.domain << "." << key.name << "-" << key.since_version;
   }
   ASSERT_STATUS_OK(ValidateCudaSourceReplacements(sources, schemas, policies, LegacySourcePolicyKeys()));
+}
+
+TEST(ContribSourceReplacementPolicyTest, InventoryUsesPortableSchemaFileMetadata) {
+  const std::pair<const char*, bool> paths[]{
+      {"/src/onnxruntime/test/ir/graph_test.cc", true},
+      {R"(C:\src\onnxruntime\test\ir\graph_test.cc)", true},
+      {R"(C:\src\onnxruntime/test\ir/graph_test.cc)", true},
+      {"/src/onnxruntime/core/graph/contrib_ops.cc", false},
+      {R"(C:\src\onnxruntime\core\graph\contrib_ops.cc)", false},
+      {"/src/onnxruntime/testdata/contrib_ops.cc", false},
+      {R"(C:\src\onnxruntime\testdata\contrib_ops.cc)", false},
+      {"", false},
+  };
+  for (const auto* domain : {kMSDomain, kMSNchwcDomain}) {
+    for (const auto& [file, is_test] : paths) {
+      SCOPED_TRACE(MakeString(domain, ": ", file));
+      const std::array registered{
+          ONNX_NAMESPACE::OpSchema("Fake_FunctionOp", file, 1).SetDomain(domain).SinceVersion(1),
+          ONNX_NAMESPACE::OpSchema("Fake_Sub", file, 2).SetDomain(domain).SinceVersion(1)};
+      const std::array keys{SourceOpKey(registered[0]), SourceOpKey(registered[1])};
+      const auto missing = SchemasMissingFromInventory(registered, {});
+      if (is_test) {
+        EXPECT_TRUE(missing.empty());
+      } else {
+        ASSERT_EQ(missing.size(), keys.size());
+        EXPECT_EQ(missing[0], keys[0]);
+        EXPECT_EQ(missing[1], keys[1]);
+      }
+      EXPECT_TRUE(SchemasMissingFromInventory(registered, keys).empty());
+    }
+  }
 }
 
 TEST(ContribSourceReplacementPolicyTest, NewKeyNeedsExplicitPolicyAndExactVersion) {
