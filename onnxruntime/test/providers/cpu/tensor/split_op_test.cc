@@ -855,6 +855,13 @@ TEST(SplitOperatorTest, Split18_NumOutputs_ZeroFinalOutput) {
 
   RunTest<float>(0, {}, input, outputs, excluded_providers, false, true, 6);
   RunTest<float>(0, {}, input, outputs, excluded_providers, false, true, 6, true, {}, false);
+
+  const ShapeAndFloatData outer_axis_input =
+      {{10, 2}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 10.f, 11.f, 12.f, 13.f, 14.f, 15.f, 16.f, 17.f, 18.f, 19.f, 20.f}};
+  const std::vector<ShapeAndFloatData> outer_axis_outputs = {
+      {{2, 2}, {1.f, 2.f, 3.f, 4.f}}, {{2, 2}, {5.f, 6.f, 7.f, 8.f}}, {{2, 2}, {9.f, 10.f, 11.f, 12.f}}, {{2, 2}, {13.f, 14.f, 15.f, 16.f}}, {{2, 2}, {17.f, 18.f, 19.f, 20.f}}, {{0, 2}, {}}};
+  RunTest<float>(0, {}, outer_axis_input, outer_axis_outputs, excluded_providers, false, true, 6);
+  RunTest<float>(0, {}, outer_axis_input, outer_axis_outputs, excluded_providers, false, true, 6, true, {}, false);
 }
 
 TEST(SplitOperatorTest, Split18_NumOutputs_OneElement) {

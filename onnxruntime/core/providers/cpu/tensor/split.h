@@ -45,19 +45,7 @@ class SplitBase {
                                      : onnxruntime::narrow<int>(input_shape.SizeFromDimension(SafeInt<size_t>(axis) + 1));
 
     if (num_outputs_ != -1) {
-      if (num_outputs_ != num_outputs) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Number of outputs (", num_outputs,
-                               ") does not match num_outputs (", num_outputs_, ").");
-      }
-      const int64_t split_size = split_dim_size / num_outputs + (split_dim_size % num_outputs != 0);
-      const int64_t last_split_size =
-          SafeInt<int64_t>(split_dim_size) - SafeInt<int64_t>(split_size) * (num_outputs - 1);
-      if (last_split_size < 0) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid num_outputs value of ", num_outputs_,
-                               ". Split sizes would produce a negative final split.");
-      }
-      split_sizes.assign(static_cast<size_t>(num_outputs), split_size);
-      split_sizes.back() = last_split_size;
+      ORT_RETURN_IF_ERROR(PrepareSplitSizesForNumOutputs(split_dim_size, num_outputs, split_sizes));
     }
 
     if (split_sizes.empty()) {
@@ -96,6 +84,27 @@ class SplitBase {
 #endif  // SHARED_PROVIDER
 
  protected:
+  Status PrepareSplitSizesForNumOutputs(int64_t split_dim_size, int num_outputs,
+                                        std::vector<int64_t>& split_sizes) const {
+    if (num_outputs <= 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Number of outputs must be positive.");
+    }
+    if (num_outputs_ != num_outputs) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Number of outputs (", num_outputs,
+                             ") does not match num_outputs (", num_outputs_, ").");
+    }
+    const int64_t split_size = split_dim_size / num_outputs + (split_dim_size % num_outputs != 0);
+    const int64_t last_split_size =
+        SafeInt<int64_t>(split_dim_size) - SafeInt<int64_t>(split_size) * (num_outputs - 1);
+    if (last_split_size < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid num_outputs value of ", num_outputs_,
+                             ". Split sizes would produce a negative final split.");
+    }
+    split_sizes.assign(static_cast<size_t>(num_outputs), split_size);
+    split_sizes.back() = last_split_size;
+    return Status::OK();
+  }
+
   template <typename KernelInfoType>
   SplitBase(const KernelInfoType& info, uint32_t opset) : opset_{opset} {
     axis_ = info.template GetAttrOrDefault<int64_t>("axis", 0);
