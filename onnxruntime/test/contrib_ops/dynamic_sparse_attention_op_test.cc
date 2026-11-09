@@ -123,7 +123,7 @@ std::vector<T> ToTensorData(const std::vector<float>& values) {
   }
 }
 
-template <typename T = MLFloat16, typename CacheT = T>
+template <typename T = MLFloat16, typename CacheT = T, typename QueryT = T>
 void RunDynamicSparseAttentionCase(
     const DynamicSparseAttentionCase& c,
     std::unique_ptr<IExecutionProvider> execution_provider,
@@ -167,14 +167,14 @@ void RunDynamicSparseAttentionCase(
   tester.AddAttribute<int64_t>("smooth_softmax", c.smooth_softmax);
   tester.AddAttribute<int64_t>("auxiliary_kv_shared", c.auxiliary_kv_shared);
 
-  tester.AddInput<T>("query", {c.batch_size, c.sequence_length, query_input_size},
-                     ToTensorData<T>(c.query));
+  tester.AddInput<QueryT>("query", {c.batch_size, c.sequence_length, query_input_size},
+                          ToTensorData<QueryT>(c.query));
   if (c.packed_qkv) {
-    tester.AddOptionalInputEdge<T>();
+    tester.AddOptionalInputEdge<QueryT>();
     tester.AddOptionalInputEdge<T>();
   } else {
-    tester.AddInput<T>("key", {c.batch_size, c.sequence_length, kv_hidden_size},
-                       ToTensorData<T>(c.key));
+    tester.AddInput<QueryT>("key", {c.batch_size, c.sequence_length, kv_hidden_size},
+                            ToTensorData<QueryT>(c.key));
     tester.AddInput<T>("value", {c.batch_size, c.sequence_length, kv_hidden_size},
                        ToTensorData<T>(c.value));
   }
@@ -581,6 +581,10 @@ TEST(DynamicSparseAttentionTest, FloatingCacheGroupedReferenceParity_CUDA) {
         // Ten heads per KV head exercise partial groups of both six (prefill) and eight (decode).
         if (bf16) {
           RunDynamicSparseAttentionCase<BFloat16>(c, std::move(cuda_ep));
+          if (!auxiliary) {
+            RunDynamicSparseAttentionCase<BFloat16, MLFloat16>(c, DefaultCudaExecutionProvider());
+            RunDynamicSparseAttentionCase<BFloat16, MLFloat16, MLFloat16>(c, DefaultCudaExecutionProvider());
+          }
         } else {
           RunDynamicSparseAttentionCase<MLFloat16>(c, std::move(cuda_ep));
         }
@@ -600,6 +604,10 @@ TEST(DynamicSparseAttentionTest, GroupedDecodeRatio12ReferenceParity_CUDA) {
       RunDynamicSparseAttentionCase<MLFloat16>(floating_case, std::move(cuda_ep));
       cuda_ep = DefaultCudaExecutionProvider();
       RunDynamicSparseAttentionCase<BFloat16>(floating_case, std::move(cuda_ep));
+      if (!auxiliary) {
+        RunDynamicSparseAttentionCase<BFloat16, MLFloat16>(floating_case, DefaultCudaExecutionProvider());
+        RunDynamicSparseAttentionCase<BFloat16, MLFloat16, MLFloat16>(floating_case, DefaultCudaExecutionProvider());
+      }
 
       const auto int8_case = MakeGroupedCacheCase(sequence_length, auxiliary, false, 2, 24, 2, true);
       cuda_ep = DefaultCudaExecutionProvider();
@@ -2269,6 +2277,22 @@ TEST(DynamicSparseAttentionTest, SelectedOnlyBFloat16_CUDA) {
       MakeSingleTokenSelectedValueCase(), std::move(cuda_ep));
 }
 
+TEST(DynamicSparseAttentionTest, SelectedOnlyFp16CacheBFloat16_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (!CudaHasBF16Support()) {
+    GTEST_SKIP() << "CUDA device does not support BFloat16.";
+  }
+
+  // Test both BFloat16 query/key and MLFloat16 query/key with MLFloat16 KV cache.
+  RunDynamicSparseAttentionCase<BFloat16, MLFloat16>(
+      MakeSingleTokenSelectedValueCase(), std::move(cuda_ep));
+  RunDynamicSparseAttentionCase<BFloat16, MLFloat16, MLFloat16>(
+      MakeSingleTokenSelectedValueCase(), DefaultCudaExecutionProvider());
+}
+
 TEST(DynamicSparseAttentionTest, SelectedOnlyPrefillBFloat16_CUDA) {
   auto cuda_ep_check = DefaultCudaExecutionProvider();
   if (!cuda_ep_check) {
@@ -2391,6 +2415,8 @@ TEST(DynamicSparseAttentionTest, SelectedOnlyPrefillBFloat16_CUDA) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{{"ORT_DSA_PREFILL_KERNEL", prefill_env}}};
     RunDynamicSparseAttentionCase<BFloat16>(c, DefaultCudaExecutionProvider());
+    RunDynamicSparseAttentionCase<BFloat16, MLFloat16>(c, DefaultCudaExecutionProvider());
+    RunDynamicSparseAttentionCase<BFloat16, MLFloat16, MLFloat16>(c, DefaultCudaExecutionProvider());
   }
 }
 
