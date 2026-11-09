@@ -1069,7 +1069,7 @@ class TestGgufPackedOps(unittest.TestCase):
                 model.SerializeToString(), sess_options=so, providers=["CUDAExecutionProvider"]
             )
 
-            for m in (1, 4, 32):
+            for m in (0, 1, 4, 32, 2049):
                 x = rng.standard_normal((m, hidden_size), dtype=np.float32) * 0.2
                 logits = rng.standard_normal((m, num_experts), dtype=np.float32)
                 got = sess_offload.run(None, {"X_f32": x, "R_f32": logits})[0]

@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstring>
 #include <mutex>
+#include <new>
 #include <thread>
 #include <type_traits>
 #include <vector>
@@ -899,6 +900,8 @@ class MoEPackedParallelPool {
   qmoe::SpinPoolRegistry registry_;
 };
 
+}  // namespace
+
 // Shared prefill double-buffered wave staging across MoEPacked layers on a device.
 struct MoEPackedSharedPrefillWaveStaging {
   static constexpr int kWaveExperts = 32;
@@ -1039,8 +1042,6 @@ struct MoEPackedSharedPrefillWaveStaging {
     return inst;
   }
 };
-
-}  // namespace
 
 struct MoEPackedOffloadState {
   int32_t layer_index{-1};
@@ -1939,7 +1940,7 @@ Status MoEPacked<T>::InitializeAdmittedPlan(const onnxruntime::moe_offload::MoeO
 
   ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(
       reinterpret_cast<void**>(&st->h_decode_pinned), sizeof(MoEPackedDecodePinned), cudaHostAllocMapped)));
-  std::memset(st->h_decode_pinned, 0, sizeof(MoEPackedDecodePinned));
+  new (st->h_decode_pinned) MoEPackedDecodePinned{};
   ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostGetDevicePointer(
       reinterpret_cast<void**>(&st->d_decode_pinned), st->h_decode_pinned, 0)));
 
@@ -2006,6 +2007,8 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
 
   // Hybrid CPU/GPU Offload path when weights were admitted on CPU by QMoESessionController
   if (offload_state_ != nullptr) {
+    Tensor* output = context->Output(0, in_shape);
+    if (num_rows == 0) return Status::OK();
     MoEPackedOffloadState& st = *offload_state_;
     if (st.InWarmup()) {
       st.live_session_started.store(false, std::memory_order_release);
@@ -2034,6 +2037,7 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
       p.inter_size = static_cast<int>(inter_size);
       p.k = static_cast<int>(k_);
       p.normalize_routing_weights = (normalize_routing_weights_ != 0);
+      p.bf16_tc_supported = bf16_tc_supported_;
       p.gate_type = static_cast<int>(gate_type_);
       p.up_type = static_cast<int>(up_type_);
       p.down_type = static_cast<int>(down_type_);
@@ -2063,7 +2067,7 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
 
     // 2. Prefill path (num_rows > 16): resident Tensor-Core launch + double-buffered 32-expert wave streaming
     // Use single-tile 8192-row prefill chunks so an 8K prefill streams cold experts once per layer instead of 4 times.
-    constexpr int64_t kMaxPrefillChunkRows = 8192;
+    constexpr int64_t kMaxPrefillChunkRows = kMoEPackedMaxOffloadChunkRows;
     const int64_t max_chunk = std::min<int64_t>(num_rows, kMaxPrefillChunkRows);
     MoEPackedParams max_params{};
     max_params.num_rows = static_cast<int>(max_chunk);
@@ -2072,6 +2076,7 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
     max_params.inter_size = static_cast<int>(inter_size);
     max_params.k = static_cast<int>(k_);
     max_params.normalize_routing_weights = (normalize_routing_weights_ != 0);
+    max_params.bf16_tc_supported = bf16_tc_supported_;
     max_params.gate_type = static_cast<int>(gate_type_);
     max_params.up_type = static_cast<int>(up_type_);
     max_params.down_type = static_cast<int>(down_type_);
@@ -2079,7 +2084,8 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
     max_params.up_row_bytes = exp_up_rb;
     max_params.down_row_bytes = exp_down_rb;
 
-    const size_t ws_bytes = GetMoEPackedWorkspaceBytes(max_params, sizeof(T));
+    size_t ws_bytes = 0;
+    ORT_RETURN_IF_ERROR(GetMoEPackedWorkspaceBytes(max_params, sizeof(T), ws_bytes));
     auto workspace = GetScratchBuffer<uint8_t>(ws_bytes, GetComputeStream(context));
 
     auto& wave_staging = MoEPackedSharedPrefillWaveStaging::Instance();

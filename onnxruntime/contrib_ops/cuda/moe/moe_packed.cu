@@ -1677,7 +1677,7 @@ Status DispatchMoEPackedOffloadDecodeCuda(
 }  // namespace
 
 Status GetMoEPackedWorkspaceBytes(const MoEPackedParams& params, size_t elem_bytes, size_t& workspace_bytes) {
-  ORT_RETURN_IF_NOT(params.num_rows >= 0 && params.num_rows <= kMoEPackedMaxChunkRows &&
+  ORT_RETURN_IF_NOT(params.num_rows >= 0 && params.num_rows <= kMoEPackedMaxOffloadChunkRows &&
                         params.k > 0 && params.k <= kMoEPackedMaxK &&
                         params.num_experts > 0 && params.num_experts <= kMoEPackedMaxExperts &&
                         params.hidden_size > 0 && params.hidden_size <= kMoEPackedMaxDimension &&

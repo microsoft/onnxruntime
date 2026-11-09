@@ -32,6 +32,11 @@ if(MSVC)
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/moe_packed.cc"
     PROPERTIES COMPILE_FLAGS "/arch:AVX2"
   )
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
+  set_source_files_properties(
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/moe_packed.cc"
+    PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c"
+  )
 endif()
 
 file(GLOB_RECURSE CUDA_CONTRIB_OPS_CU_SRCS CONFIGURE_DEPENDS
