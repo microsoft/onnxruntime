@@ -2,11 +2,39 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
+
+#ifdef USE_CUDA
+TEST(MathOpTest, Clip_BFloat16_FunctionExpansion_CUDA) {
+  if (!CudaHasBF16Support()) {
+    GTEST_SKIP() << "CUDA BF16 requires SM80 or newer.";
+  }
+
+  for (float bound : {5.0f, 7.0f}) {
+    for (bool max_only : {true, false}) {
+      SCOPED_TRACE(testing::Message() << "bound=" << bound << ", max_only=" << max_only);
+      // BF16 Clip has no native CUDA kernel and expands into Less/Where.
+      OpTester test("Clip", 22);
+      test.AddInput<BFloat16>("X", {9}, MakeBFloat16({-8.0f, -7.0f, -5.0f, -1.0f, 0.0f, 1.0f, 5.0f, 7.0f, 8.0f}));
+      if (max_only) {
+        test.AddOptionalInputEdge<BFloat16>();
+      } else {
+        test.AddInput<BFloat16>("min", {}, MakeBFloat16({-bound}), true);
+      }
+      test.AddInput<BFloat16>("max", {}, MakeBFloat16({bound}), true);
+      test.AddOutput<BFloat16>("Y", {9},
+                               MakeBFloat16({max_only ? -8.0f : -bound, max_only ? -7.0f : -bound,
+                                             -5.0f, -1.0f, 0.0f, 1.0f, 5.0f, bound, bound}));
+      test.ConfigEp(DefaultCudaExecutionProvider()).RunWithConfig();
+    }
+  }
+}
+#endif
 
 TEST(MathOpTest, Clip_6) {
   OpTester test("Clip", 6);

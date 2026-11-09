@@ -2931,6 +2931,34 @@ TEST(MathOpTest, Less) {
   test.Run();
 }
 
+#ifdef USE_CUDA
+TEST(MathOpTest, Less_BFloat16_CUDA) {
+  if (!CudaHasBF16Support()) {
+    GTEST_SKIP() << "CUDA BF16 requires SM80 or newer.";
+  }
+
+  const auto run = [](const std::vector<int64_t>& lhs_shape, const std::vector<BFloat16>& lhs,
+                      const std::vector<int64_t>& rhs_shape, const std::vector<BFloat16>& rhs,
+                      const std::vector<int64_t>& output_shape, std::initializer_list<bool> expected) {
+    OpTester test("Less", 13);
+    test.AddInput<BFloat16>("A", lhs_shape, lhs);
+    test.AddInput<BFloat16>("B", rhs_shape, rhs);
+    test.AddOutput<bool>("C", output_shape, expected);
+    test.ConfigEp(DefaultCudaExecutionProvider()).RunWithConfig();
+  };
+
+  run({4}, MakeBFloat16({-1.0f, 0.0f, 1.0f, 2.0f}),
+      {4}, MakeBFloat16({0.0f, 0.0f, 2.0f, 1.0f}),
+      {4}, {true, false, true, false});
+  run({}, MakeBFloat16({1.0f}), {4}, MakeBFloat16({-1.0f, 1.0f, 2.0f, 0.0f}),
+      {4}, {false, false, true, false});
+  run({4}, MakeBFloat16({-1.0f, 1.0f, 2.0f, 0.0f}), {}, MakeBFloat16({1.0f}),
+      {4}, {true, false, false, true});
+  run({2, 1}, MakeBFloat16({-1.0f, 1.0f}), {1, 2}, MakeBFloat16({0.0f, 1.0f}),
+      {2, 2}, {true, true, false, false});
+}
+#endif
+
 #if defined(USE_DNNL)
 TEST(MathOpTest, Less_bfloat16) {
 #ifdef USE_DNNL
