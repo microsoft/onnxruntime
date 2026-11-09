@@ -25,8 +25,7 @@ class UnaryElementwiseProgram final : public Program<UnaryElementwiseProgram> {
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"vec_size", ProgramUniformVariableDataType::Uint32},  // output size
-      {"attr", ProgramUniformVariableDataType::Float32},     // float type attribute(s)
-      {"size", ProgramUniformVariableDataType::Uint32});     // logical size for packed-byte tails
+      {"attr", ProgramUniformVariableDataType::Float32});    // float type attribute(s)
                                                              // TODO: add u32/i32 attribute(s) if needed
 
  private:

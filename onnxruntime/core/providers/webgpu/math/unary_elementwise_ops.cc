@@ -20,10 +20,7 @@ Status UnaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const {
     body << "let word = " << input.GetByOffset("global_idx", true) << ";\n"
          << "let raw = (vec4<u32>(word) >> vec4<u32>(0u, 8u, 16u, 24u)) & vec4<u32>(255u);\n"
          << "let a = bitcast<vec4<i32>>(raw << vec4<u32>(24u)) >> vec4<u32>(24u);\n"
-         << "let result = " << expression_ << ";\n"
-         << "let lanes = select(vec4<i32>(0), result,\n"
-         << "    global_idx * 4u + vec4<u32>(0u, 1u, 2u, 3u) < vec4<u32>(uniforms.size));\n"
-         << output.SetByOffset("global_idx", "lanes");
+         << output.SetByOffset("global_idx", expression_);
   } else {
     body << "let a = " << input.GetByOffset("global_idx") << ";\n"
          << output.SetByOffset("global_idx", expression_);
@@ -36,9 +33,6 @@ Status UnaryElementwise::ComputeInternal(ComputeContext& context) const {
   const auto* input_tensor = context.Input(0);
   auto* output_tensor = context.Output(0, input_tensor->Shape());
   int64_t size = input_tensor->Shape().Size();
-  const bool is_int8 = input_tensor->DataType() == DataTypeImpl::GetType<int8_t>();
-  ORT_RETURN_IF_NOT(!is_int8 || size <= std::numeric_limits<uint32_t>::max(),
-                    "Integer unary input exceeds WebGPU index range.");
   if (size == 0) {
     return Status::OK();
   }
@@ -55,7 +49,6 @@ Status UnaryElementwise::ComputeInternal(ComputeContext& context) const {
     program.CacheHint(cache_hint);
   }
   ORT_RETURN_IF_ERROR(ConfigureProgram(context, program));
-  program.AddUniformVariables({is_int8 ? static_cast<uint32_t>(size) : 0u});
   return context.RunProgram(program);
 }
 
