@@ -907,7 +907,7 @@ TEST(GroupQueryAttentionTest, BidirectionalWindowRejectsDisabledFlash_CPU) {
 
 TEST(GroupQueryAttentionTest, BidirectionalWindowRejectsNonPrefill_CPU) {
   RunBidirectionalWindowTest(1, 1, 0, OpTester::ExpectResult::kExpectFailure,
-                             "require first prefill with total_sequence_length == sequence_length", 8, 17);
+                             "total_sequence_length must equal past_sequence_length + kv_sequence_length", 8, 17);
 }
 
 TEST(GroupQueryAttentionTest, BidirectionalWindowRightOnly_CPU) {
