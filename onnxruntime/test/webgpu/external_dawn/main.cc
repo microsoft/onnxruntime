@@ -282,6 +282,32 @@ int main(int argc, char* argv[]) {
           }
         }
         std::cout << "WebGPU Abs inference passed with CPU fallback disabled." << std::endl;
+        if (ort_owned_cache_mode) {
+          Ort::SessionOptions auxiliary_options;
+          auxiliary_options.DisableMemPattern();
+          auxiliary_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1");
+          auto auxiliary_provider_options = provider_options;
+          auxiliary_provider_options.erase(ORT_WEBGPU_DAWN_CACHE_INTERFACE_OPTION);
+          auxiliary_provider_options["enableGraphCapture"] = "0";
+          append_provider(auxiliary_options, auxiliary_provider_options);
+          Ort::Session auxiliary{env, MODEL_DATA, sizeof(MODEL_DATA), auxiliary_options};
+          session = Ort::Session{nullptr};
+          session_options = Ort::SessionOptions{nullptr};
+          auto auxiliary_outputs = auxiliary.Run(
+              Ort::RunOptions{nullptr}, input_names, &input, 1, output_names, 1);
+          if (auxiliary_outputs.size() != 1 ||
+              auxiliary_outputs[0].GetTensorTypeAndShapeInfo().GetElementCount() != input_data.size()) {
+            throw std::runtime_error("Unexpected auxiliary Abs output shape.");
+          }
+          const float* auxiliary_data = auxiliary_outputs[0].GetTensorData<float>();
+          for (size_t index = 0; index < input_data.size(); ++index) {
+            if (auxiliary_data[index] != std::abs(input_data[index])) {
+              throw std::runtime_error("Unexpected auxiliary Abs output value.");
+            }
+          }
+          std::cout << "Auxiliary WebGPU session inherited the cache after the configuring session was released."
+                    << std::endl;
+        }
         if (!plugin_path.empty()) {
           std::cout << "WebGPU plugin EP was registered and selected explicitly." << std::endl;
         }
