@@ -33,8 +33,7 @@ function createModel(): Uint8Array {
       output: [valueInfo('y'), valueInfo('z')],
     },
   });
-  // Proxy mode transfers this buffer; keep protobufjs's shared allocation pool attached.
-  return onnx.ModelProto.encode(model).finish().slice();
+  return onnx.ModelProto.encode(model).finish();
 }
 
 describe('WebGPU graph capture IO binding', function () {
@@ -50,7 +49,8 @@ describe('WebGPU graph capture IO binding', function () {
   const buffers: GPUBuffer[] = [];
 
   before(async function (this: Mocha.Context) {
-    if (!(await navigator.gpu?.requestAdapter())) {
+    // The proxy worker rejects preferredOutputLocation and GPU-buffer tensors.
+    if (env.wasm.proxy || !(await navigator.gpu?.requestAdapter())) {
       this.skip();
     }
   });
@@ -75,6 +75,7 @@ describe('WebGPU graph capture IO binding', function () {
     return buffer;
   };
   const gpuTensor = (buffer: GPUBuffer, n: number) => Tensor.fromGpuBuffer(buffer, { dataType: 'float32', dims: [n] });
+  const runOptions = (graphId: string) => ({ extra: { gpu_graph_id: graphId } }) as InferenceSession.RunOptions;
   const read = async (buffer: GPUBuffer, n: number) => {
     // eslint-disable-next-line no-bitwise
     const staging = device().createBuffer({ size: n * 4, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
@@ -87,28 +88,45 @@ describe('WebGPU graph capture IO binding', function () {
     return values;
   };
   const inputValues = (run: number, n: number) => Array.from({ length: n }, (_, i) => i + 1 + 10 * run);
+  const writeInput = (x: GPUBuffer, run: number, n: number) => {
+    const values = inputValues(run, n);
+    device().queue.writeBuffer(x, 0, new Float32Array(values));
+    return values;
+  };
   const expectOutputs = (x: number[], y: ArrayLike<number>, z: ArrayLike<number>) => {
     expect(Array.from(y)).to.deep.equal(x.map((v) => 2 * v + 1));
     expect(Array.from(z)).to.deep.equal(x.map((v) => v * v));
   };
+  /** Checks ORT-allocated outputs, then releases them. */
+  const expectAndDispose = async (x: number[], outputs: InferenceSession.OnnxValueMapType) => {
+    try {
+      expectOutputs(x, (await outputs.y.getData()) as Float32Array, (await outputs.z.getData()) as Float32Array);
+    } finally {
+      outputs.y.dispose();
+      outputs.z.dispose();
+    }
+  };
   /** Runs with pre-allocated input/output buffers and checks the outputs. */
   async function runPreallocated(run: number, graphId: string, x: GPUBuffer, y: GPUBuffer, z: GPUBuffer, n: number) {
-    const values = inputValues(run, n);
-    device().queue.writeBuffer(x, 0, new Float32Array(values));
-    await session!.run({ x: gpuTensor(x, n) }, { y: gpuTensor(y, n), z: gpuTensor(z, n) }, {
-      extra: { gpu_graph_id: graphId },
-    } as InferenceSession.RunOptions);
+    const values = writeInput(x, run, n);
+    await session!.run({ x: gpuTensor(x, n) }, { y: gpuTensor(y, n), z: gpuTensor(z, n) }, runOptions(graphId));
     expectOutputs(values, await read(y, n), await read(z, n));
   }
+  const rejection = async (promise: Promise<unknown>) => {
+    try {
+      await promise;
+    } catch (e) {
+      return (e as Error).message;
+    }
+    throw new Error('expected the run to be rejected');
+  };
 
   it('replays with ORT-allocated outputs', async () => {
     await createSession();
     const x = createBuffer(4);
     for (let run = 0; run < 4; run++) {
-      const values = inputValues(run, 4);
-      device().queue.writeBuffer(x, 0, new Float32Array(values));
-      const outputs = await session!.run({ x: gpuTensor(x, 4) });
-      expectOutputs(values, (await outputs.y.getData()) as Float32Array, (await outputs.z.getData()) as Float32Array);
+      const values = writeInput(x, run, 4);
+      await expectAndDispose(values, await session!.run({ x: gpuTensor(x, 4) }));
     }
   });
 
@@ -142,5 +160,34 @@ describe('WebGPU graph capture IO binding', function () {
     await runPreallocated(1, '2', x8, y8, z8, 8);
     await runPreallocated(2, '1', x4, y4, z4, 4);
     await runPreallocated(3, '2', x8, y8, z8, 8);
+  });
+
+  it('rejects a run that requests different outputs, and keeps the binding', async () => {
+    await createSession();
+    const [x, z] = [createBuffer(4), createBuffer(4)];
+    const fetchY = async (run: number) => {
+      const values = writeInput(x, run, 4);
+      const { y } = await session!.run({ x: gpuTensor(x, 4) }, ['y'], runOptions('-1'));
+      try {
+        expect(Array.from((await y.getData()) as Float32Array)).to.deep.equal(values.map((v) => 2 * v + 1));
+      } finally {
+        y.dispose();
+      }
+    };
+    await fetchY(0);
+    const message = await rejection(session!.run({ x: gpuTensor(x, 4) }, { z: gpuTensor(z, 4) }, runOptions('-1')));
+    expect(message).to.contain('every run must request the same outputs').and.contain('(y); got z (pre-allocated)');
+    await fetchY(1);
+  });
+
+  it('rejects switching between pre-allocated and ORT-allocated outputs, and keeps a captured graph', async () => {
+    await createSession();
+    const [x, y, z] = [createBuffer(4), createBuffer(4), createBuffer(4)];
+    const values = writeInput(x, 0, 4);
+    await expectAndDispose(values, await session!.run({ x: gpuTensor(x, 4) }, runOptions('1'))); // capture
+    const message = await rejection(runPreallocated(1, '-1', x, y, z, 4));
+    expect(message).to.contain('(y, z); got y (pre-allocated), z (pre-allocated)');
+    const replayed = writeInput(x, 2, 4);
+    await expectAndDispose(replayed, await session!.run({ x: gpuTensor(x, 4) }, runOptions('1'))); // replay
   });
 });

@@ -221,6 +221,13 @@ type IOBindingState = {
    * enum value of the preferred location for each output tensor.
    */
   readonly outputPreferredLocationsEncoded: readonly number[];
+
+  /**
+   * with graph capture: the outputs bound by the first run, mapped to whether each was pre-allocated. The binding is
+   * kept across runs (a captured graph's ORT-allocated outputs live only in it), so every later run must request the
+   * same outputs in the same allocation mode.
+   */
+  graphCaptureOutputs?: ReadonlyMap<number, boolean>;
 };
 
 /**
@@ -852,7 +859,9 @@ export const run = async (
 
     // With graph capture the binding is kept across runs: a replay executes no kernels, so ORT-allocated outputs must
     // stay bound to keep returning the captured results. External GPU buffers are registered per run (unregistered in
-    // `finally` below), so inputs and pre-allocated outputs are re-bound on every run.
+    // `finally` below), so inputs and pre-allocated outputs are re-bound on every run. Rebinding a different output set
+    // or allocation mode would drop a captured graph's outputs, so the first run's output configuration is required
+    // for every later run.
     if (
       (!BUILD_DEFS.DISABLE_JSEP || !BUILD_DEFS.DISABLE_WEBGPU) &&
       ioBindingState &&
@@ -863,6 +872,30 @@ export const run = async (
       if (inputNamesUTF8Encoded.length !== inputCount) {
         throw new Error(
           `input count from feeds (${inputCount}) is expected to be always equal to model's input count (${inputNamesUTF8Encoded.length}).`,
+        );
+      }
+
+      const requestedOutputs = enableGraphCapture
+        ? new Map(outputIndices.map((index, i) => [index, Boolean(outputTensors[i]?.[3])]))
+        : undefined;
+      const boundOutputs = ioBindingState.graphCaptureOutputs;
+      if (
+        requestedOutputs &&
+        boundOutputs &&
+        (requestedOutputs.size !== boundOutputs.size ||
+          [...requestedOutputs].some(([index, preAllocated]) => boundOutputs.get(index) !== preAllocated))
+      ) {
+        const describe = (outputs: ReadonlyMap<number, boolean>) =>
+          [...outputs]
+            .map(([index, preAllocated]) => {
+              const name = wasm.UTF8ToString(outputNamesUTF8Encoded[index]);
+              return preAllocated ? `${name} (pre-allocated)` : name;
+            })
+            .join(', ');
+        throw new Error(
+          `With graph capture enabled, every run must request the same outputs, each pre-allocated or not as in the ` +
+            `first run (${describe(boundOutputs)}); got ${describe(requestedOutputs)}. Use a separate session for a ` +
+            'different output configuration.',
         );
       }
 
@@ -902,6 +935,9 @@ export const run = async (
         }
       }
       TRACE_EVENT_END('wasm bindInputsOutputs');
+      if (requestedOutputs) {
+        ioBindingState.graphCaptureOutputs ??= requestedOutputs;
+      }
       activeSessions.set(sessionId, [
         sessionHandle,
         inputNamesUTF8Encoded,
