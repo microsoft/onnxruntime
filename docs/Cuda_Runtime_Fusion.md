@@ -7,8 +7,10 @@ and the generic `Pattern` / `PatternRewriter` APIs for matching and graph rewrit
 
 The internal companions `contrib_ops/cuda/fusion/scaled_silu_sources.cc`,
 `causal_conv_with_state_sources.cc`, and `moe_sources.cc` own the three immutable executable definitions.
-`CudaSourceReplacements()` is collected once from those factories and is only
-a derived index used by `Select` and declaration coverage tests. The source
+`Select` uses the lightweight `CudaSourceReplacementFactories()` collection,
+materializing only the selected declaration after configuration, capability-consumer,
+optimization-level, and graph-admission gates. `CudaSourceReplacements()` is a
+derived eager catalog used for explicit inventory and declaration coverage checks. The source
 body's Rule supplies the actual pattern, guard, opsets, and Replacement used
 by discovery and acceptance. Offered snapshot predicates overlay the original
 guards. Kernel lookup remains CUDA-local, and the common body adds no public
@@ -44,7 +46,7 @@ not automatic enumeration of companion files. A new author must:
    replacement.
 2. Add the host companion TU to `onnxruntime_optimizer.cmake`. Keep it excluded
    from both normal and plugin CUDA-provider recursive source lists.
-3. Add one explicit factory collection to `CudaSourceReplacements()`. Do not
+3. Add the factory to `CudaSourceReplacementFactories()`. Do not
    add a parallel support list or infer support from filenames/kernel coverage.
 4. Integrate the rule ID with the explicit ordered rule loop in
    `CUDAExecutionProvider::GetCapability`
@@ -60,9 +62,10 @@ not automatic enumeration of companion files. A new author must:
    `ContribSourceReplacementPolicyTest.FullRegisteredInventory` in a full-contrib
    configuration; reduced/minimal inventory is not complete coverage.
 
-The immutable bodies are parsed on first catalog access, including default-off
-selection. v0 retains that bounded startup cost rather than duplicating rule/
-configuration authority to introduce a separate lazy registry.
+The immutable bodies are parsed lazily on first admitted selection of their
+factory. Default-off selection does not materialize declarations or parse their
+bodies. Explicit access to `CudaSourceReplacements()` materializes all declarations
+from the same factory collection for inventory checks, without a separate registry.
 
 ## Unit-Swish kernel replacement
 
@@ -247,7 +250,8 @@ It selects raw-logit TopK, applies Softmax only over the selected logits,
 uses chunked gate/up SwiGLU, and accumulates expert contributions in
 increasing-expert, left-associated order. That source order is a matching
 restriction, **not target bitwise parity**. E is 2 through 64, k is 1 through E,
-N is positive, H and I are positive multiples of 16, and native integer
+N is positive and at most `65535 * 1024` (the existing routing fallback's
+grid-Y bound), H and I are positive multiples of 16, and native integer
 index bounds must hold. A single PatternLibrary declaration has 63 expert-count
 alternatives and a guarded immutable INT64 `[1]` route-k input; it does not
 construct every (E,k) declaration.
@@ -266,7 +270,9 @@ the schema/source mathematical semantics. It claims neither bitwise/stepwise
 parity, a universal numerical error bound, nor exceptional-value parity.
 Initializer transformation is `None`.
 
-Discovery batches eligible Add roots in one read-only existing-matcher scan,
+Discovery first requires an unassigned ONNX Add whose right input is produced
+by an ONNX Mul, a necessary topology check, not a second matcher.
+It batches eligible roots in one read-only existing-matcher scan,
 preparing concrete plans and the producer index once; no prepared graph state
 survives the call. Matches/offers retain only the selected alternative, not siblings.
 Discovery probes the exact typed replacement through CUDA
@@ -290,6 +296,29 @@ and independently checks fused output against the directly authored MoE target,
 including ties, signed gates, cancellation, decode/prefill and E2/8/16/64.
 They disable ConstantFolding and TransposeOptimizer to retain this precise source topology through
 GetCapability; prior optimizations that erase it are not matched.
+Applications that need to preserve the immutable-bank Gather/Squeeze/Transpose
+topology must likewise disable those optimizers before session initialization.
+The MoE flag alone under ordinary Level2 optimizations cannot guarantee that this
+topology survives until GetCapability. For example, with the Python session API:
+
+```python
+import onnxruntime
+
+options = onnxruntime.SessionOptions()
+options.add_session_config_entry("ep.cuda.runtime_fusion.moe", "1")
+options.add_session_config_entry(
+    "optimization.disable_specified_optimizers", "ConstantFolding;TransposeOptimizer"
+)
+session = onnxruntime.InferenceSession(
+    model_path, sess_options=options, providers=["CUDAExecutionProvider"]
+)
+```
+
+`optimization.disable_specified_optimizers` is the existing session configuration
+key (`kOrtSessionOptionsDisableSpecifiedOptimizers` in C++), with optimizer names
+separated by semicolons as parsed by `InferenceSession`; no production
+optimizer behavior is changed by the MoE flag.
+
 Source/fused fixture bounds are TF32-off atol=1e-5, rtol=2e-4 and
 TF32-on atol=1e-3, rtol=1e-2 to allow different GEMM rounding paths.
 Fused/direct consistency retains atol=1e-5, rtol=2e-4 in both modes.

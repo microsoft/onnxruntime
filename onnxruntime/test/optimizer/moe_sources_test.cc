@@ -112,13 +112,17 @@ TEST(MoEPatternLimitsTest, EnlargedMultiSinkRejectedAtParseAndDirectEntry) {
 
 // Independently builds ONNX nodes, not a graph instantiated from the Rule's DSL.
 struct MoEGraph {
-  explicit MoEGraph(int experts, int k, std::string_view miss = {}, int64_t hidden = 16, int distractors = 0)
+  explicit MoEGraph(int experts, int k, std::string_view miss = {}, int64_t hidden = 16, int distractors = 0,
+                    int64_t tokens = 2)
       : model("moe-structural", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
               {{kOnnxDomain, 18}, {kMSDomain, 1}}, {}, DefaultLoggingManager().DefaultLogger()),
         graph(model.MainGraph()),
         builder(graph) {
-    x = builder.MakeInput<float>({2, hidden}, 0.0f, 1.0f);
-    logits = builder.MakeInput<float>({2, experts}, 0.0f, 1.0f);
+    // Large token-count admission tests need metadata, never tensor allocations.
+    x = tokens == 2 ? builder.MakeInput<float>({2, hidden}, 0.0f, 1.0f)
+                    : builder.MakeInput<float>(std::vector<int64_t>{tokens, hidden});
+    logits = tokens == 2 ? builder.MakeInput<float>({2, experts}, 0.0f, 1.0f)
+                         : builder.MakeInput<float>(std::vector<int64_t>{tokens, experts});
     w1 = builder.MakeInitializer<float>({experts, 32, hidden}, 0.1f, 0.2f);
     w2 = builder.MakeInitializer<float>({experts, hidden, 16}, 0.1f, 0.2f);
     if (miss == "mutable") {
@@ -380,6 +384,31 @@ TEST_F(MoEHostTest, DefaultOffAndExplicitZeroDoNotLookup) {
   EXPECT_EQ(f.graph.ToGraphProto().SerializeAsString(), before);
 }
 
+TEST_F(MoEHostTest, RoutingGridTokenBoundaryUsesMetadataOnly) {
+  Enable();
+  constexpr int64_t max_tokens = int64_t{65535} * 1024;
+  MoEStructuralCandidate candidate(2, 1);
+  for (int64_t tokens : {max_tokens, max_tokens + 1}) {
+    SCOPED_TRACE(tokens);
+    MoEGraph f(2, 1, {}, 16, 0, tokens);
+    ASSERT_STATUS_OK(f.graph.Resolve());
+    const auto before = f.graph.ToGraphProto().SerializeAsString();
+    std::optional<Match> match;
+    ASSERT_STATUS_OK(candidate.Rule().pattern.MatchAt(f.graph, f.anchor, match));
+    ASSERT_TRUE(match);
+    const bool eligible = tokens == max_tokens;
+    EXPECT_EQ(candidate.Rule().check_and_bind(f.graph, *match), eligible);
+    if (!eligible)
+      EXPECT_NE(match->RejectionReason().find("grid-Y"), std::string::npos);
+    std::vector<std::unique_ptr<ComputeCapability>> offers;
+    const auto previous_lookups = lookup.calls;
+    ASSERT_STATUS_OK(Select(GraphViewer(f.graph), offers));
+    EXPECT_EQ(offers.size(), eligible ? 1u : 0u);
+    EXPECT_EQ(lookup.calls - previous_lookups, eligible ? 1u : 0u);
+    EXPECT_EQ(f.graph.ToGraphProto().SerializeAsString(), before);
+  }
+}
+
 size_t moe_factory_calls = 0;
 gsl::span<const contrib::cuda::fusion::SourceReplacement> CountMoEFactory() {
   ++moe_factory_calls;
@@ -442,11 +471,10 @@ TEST_F(MoEHostTest, BatchedRootsPrepareOnceForAddHeavyGraph) {
     f.graph.SetOutputs({f.y, tail});
     ASSERT_STATUS_OK(f.graph.Resolve());
     const auto before = f.graph.ToGraphProto().SerializeAsString();
-    InlinedVector<NodeIndex> roots;
     const GraphViewer viewer(f.graph);
-    for (auto id : viewer.GetNodesInTopologicalOrder())
-      if (f.graph.GetNode(id)->OpType() == "Add") roots.push_back(id);
-    ASSERT_GT(roots.size(), 128u);
+    const auto roots = contrib::cuda::fusion::internal::CollectMoERoots(viewer);
+    ASSERT_EQ(roots.size(), 1u);
+    EXPECT_EQ(roots[0], f.anchor);
     MatchScanStatistics statistics;
     size_t matches = 0;
     const auto& pattern = contrib::cuda::fusion::MoESources()[0].body.rule.pattern;
@@ -458,8 +486,50 @@ TEST_F(MoEHostTest, BatchedRootsPrepareOnceForAddHeavyGraph) {
     EXPECT_EQ(statistics.compiled_plans, 63u);
     EXPECT_EQ(statistics.producer_index_builds, 1u);
     EXPECT_EQ(statistics.indexed_nodes, f.graph.NumberOfNodes());
+    Enable();
+    std::vector<std::unique_ptr<ComputeCapability>> offers;
+    const auto previous_lookups = lookup.calls;
+    ASSERT_STATUS_OK(Select(viewer, offers));
+    EXPECT_EQ(offers.size(), matches);
+    EXPECT_EQ(lookup.calls - previous_lookups, matches);
     EXPECT_EQ(f.graph.ToGraphProto().SerializeAsString(), before);
   }
+}
+
+TEST_F(MoEHostTest, UnrelatedAddsSkipMatcherPreparation) {
+  Model model("unrelated-adds", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              {{kOnnxDomain, 18}, {kMSDomain, 1}}, {}, logger);
+  auto& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+  auto* x = builder.MakeInput<float>(std::vector<int64_t>{2, 16});
+  auto* tail = x;
+  for (int i = 0; i < 10000; ++i) {
+    auto* next = builder.MakeIntermediate();
+    builder.AddNode("Add", i % 2 ? std::vector<NodeArg*>{x, tail} : std::vector<NodeArg*>{tail, x}, {next});
+    tail = next;
+  }
+  graph.SetOutputs({tail});
+  ASSERT_STATUS_OK(graph.Resolve());
+  const auto before = graph.ToGraphProto().SerializeAsString();
+  const GraphViewer viewer(graph);
+  const auto roots = contrib::cuda::fusion::internal::CollectMoERoots(viewer);
+  EXPECT_TRUE(roots.empty());  // Right inputs have either no producer or an Add producer.
+  MatchScanStatistics statistics;
+  size_t visits = 0;
+  const auto& pattern = contrib::cuda::fusion::MoESources()[0].body.rule.pattern;
+  ASSERT_STATUS_OK(pattern.VisitMatches(graph, roots, [&](NodeIndex, Match&) {
+    ++visits;
+    return true; }, &statistics));
+  EXPECT_EQ(visits, 0u);
+  EXPECT_EQ(statistics.compiled_plans, 0u);
+  EXPECT_EQ(statistics.producer_index_builds, 0u);
+  EXPECT_EQ(statistics.indexed_nodes, 0u);
+  Enable();
+  std::vector<std::unique_ptr<ComputeCapability>> offers;
+  ASSERT_STATUS_OK(Select(viewer, offers));
+  EXPECT_TRUE(offers.empty());
+  EXPECT_EQ(lookup.calls, 0u);
+  EXPECT_EQ(graph.ToGraphProto().SerializeAsString(), before);
 }
 
 TEST_F(MoEHostTest, E2MatchOwnsOnlyConcretePlanAndAcceptsExactRegion) {

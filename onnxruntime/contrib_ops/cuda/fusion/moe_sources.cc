@@ -70,6 +70,11 @@ bool Semantics(const Graph& graph, Match& match, int experts, int k) {
   const int64_t n = x->Shape()->dim(0).dim_value();
   const int64_t h = x->Shape()->dim(1).dim_value();
   const int64_t i = w2->Shape()->dim(2).dim_value();
+  // The sort-first routing fallback launches blockExpertPrefixSum with
+  // grid.y = ceil(N / 1024), bounded by CUDA's grid-Y limit.
+  constexpr int64_t max_routing_tokens = int64_t{65535} * 1024;
+  if (n > max_routing_tokens)
+    return match.Reject("MoE token count exceeds the CUDA routing grid-Y bound.");
   constexpr int64_t bound = std::numeric_limits<int>::max();
   if (n <= 0 || h < 16 || i < 16 || h % 16 || i % 16 || h > bound || i > bound / 2 ||
       n > bound / h || n > bound / (2 * i) || n > bound / experts ||
@@ -148,6 +153,24 @@ rewrite::Rule MakeRule(int experts, int k) {
 }  // namespace
 
 MoEStructuralCandidate::MoEStructuralCandidate(int experts, int k) : rule_(MakeRule(experts, k)) {}
+
+InlinedVector<NodeIndex> CollectMoERoots(const GraphViewer& viewer) {
+  InlinedVector<NodeIndex> roots;
+  const auto& graph = viewer.GetGraph();
+  for (auto index : viewer.GetNodesInTopologicalOrder()) {
+    const auto* node = graph.GetNode(index);
+    if (!node || node->Domain() != kOnnxDomain || node->OpType() != "Add" ||
+        !node->GetExecutionProviderType().empty()) continue;
+    const auto& inputs = node->InputDefs();
+    if (inputs.size() != 2 || !inputs[1] || !inputs[1]->Exists()) continue;
+    // Every declared alternative ends with Add(accumulated, weighted_expert).
+    // This necessary check avoids full matcher state for unrelated Add roots.
+    const auto* right = graph.GetProducerNode(inputs[1]->Name());
+    if (right && right->Domain() == kOnnxDomain && right->OpType() == "Mul")
+      roots.push_back(index);
+  }
+  return roots;
+}
 }  // namespace onnxruntime::contrib::cuda::fusion::internal
 
 namespace onnxruntime::contrib::cuda::fusion {
@@ -377,13 +400,7 @@ Status DiscoverMoE(const SourceReplacement& source, const GraphViewer& viewer,
   if (!recipe || !SupportsCudaReplacement(*recipe, 1)) return Status::OK();
   std::vector<std::unique_ptr<ComputeCapability>> pending;
   InlinedHashSet<NodeIndex> offered;
-  InlinedVector<NodeIndex> anchors;
-  for (auto anchor : viewer.GetNodesInTopologicalOrder()) {
-    const auto* node = graph.GetNode(anchor);
-    if (!node || node->Domain() != kOnnxDomain || node->OpType() != "Add" ||
-        !node->GetExecutionProviderType().empty()) continue;
-    anchors.push_back(anchor);
-  }
+  const auto anchors = internal::CollectMoERoots(viewer);
   Status status;
   ORT_RETURN_IF_ERROR(source.body.rule.pattern.VisitMatches(graph, anchors, [&](NodeIndex anchor, Match& match) {
     for (const auto* member : match.nodes)

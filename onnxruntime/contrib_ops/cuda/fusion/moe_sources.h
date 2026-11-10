@@ -5,7 +5,14 @@
 #include "core/optimizer/pattern_rewriter.h"
 
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+namespace onnxruntime {
+class GraphViewer;
+}
+
 namespace onnxruntime::contrib::cuda::fusion::internal {
+
+// Necessary topology filter only; the existing matcher remains authoritative.
+InlinedVector<NodeIndex> CollectMoERoots(const GraphViewer& viewer);
 
 // Fixed-(E,k) structural regression helper. The production declaration shares its
 // topology and semantic checks, but captures route_k and selects E by alternative.
