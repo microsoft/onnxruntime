@@ -4,16 +4,19 @@
 
 Implementation in progress.
 
-The API-30 implementation now includes the fixed operator descriptor, the optional
+The API-32 implementation now includes the fixed operator descriptor, the optional
 factory callback, canonical per-schema digest computation, negotiation during plugin
 EP creation, effective kernel-registry filtering, post-`GetCapability()` validation,
-the API-30 `com.microsoft` freeze-point manifest, CUDA manifest publication, and
-central current/last-released contrib opset constants. A synthetic v1/v2 matrix now
-exercises model loading, negotiation, and kernel filtering. The two GQA transformers
-are the first optimizer gates: they query the session's effective kernel registry
-before changing an assigned GQA node. Converting the remaining EP-specific contrib
-optimizers, automatic manifest generation, true historical-binary matrix coverage,
-and strict handling of plugins without the callback remain follow-up work.
+the API-32 `com.microsoft` freeze-point manifest and its test-driven generator, CUDA
+manifest publication, opt-in strict handling of plugins without the callback
+(`ORT_PLUGIN_EP_REQUIRE_SCHEMA_COMPATIBILITY=1`), and central current/last-released
+contrib opset constants. A synthetic v1/v2 matrix now exercises model loading,
+negotiation, and kernel filtering. The two GQA transformers query the session's
+effective kernel registry before changing an assigned GQA node, and every other
+EP-specific contrib fusion filters its EP allowlist against that registry when the
+transformers are created. Per-match target-kernel queries for those other fusions,
+true historical-binary matrix coverage, and default-strict handling of plugins without
+the callback remain follow-up work.
 
 This document describes how ONNX Runtime (ORT) core and a separately built plugin
 Execution Provider (EP) negotiate operator-schema compatibility. The immediate
@@ -30,7 +33,7 @@ against a different schema.
 
 The proposed solution has four parts:
 
-1. Version `com.microsoft` schemas. API 30 establishes the current opset-1 contracts
+1. Version `com.microsoft` schemas. API 32 establishes the current opset-1 contracts
    as the first immutable baseline. The first contract change after that release
    opens opset 2; later changes in the same release train share that open opset.
 2. Add a factory-level plugin ABI callback that returns **per-operator** schema
@@ -121,7 +124,7 @@ The implementation must maintain these invariants:
 4. A graph rewrite that introduces or upgrades an EP-specific operator is allowed
    only when the assigned EP has the exact target schema and kernel support.
 5. Once strict enforcement is enabled, unknown compatibility is treated as
-   unsupported, not as compatible. During the API-30 transition, a plugin that
+   unsupported, not as compatible. During the API-32 transition, a plugin that
    predates the callback remains enabled with a warning as described below.
 6. The plugin independently validates the actual node in `GetCapability()`; core's
    negotiation is an additional guard, not a substitute for validation.
@@ -183,15 +186,15 @@ domain.
 
 An operator that has not changed does not need a schema in the open opset. As with
 ONNX opsets, its latest schema with `since_version <=` the model's import remains
-active. An operator whose contract changes after the API-30 baseline keeps its
+active. An operator whose contract changes after the API-32 baseline keeps its
 historical schema and adds a schema in the open opset, for example:
 
 ```cpp
-ONNX_MS_OPERATOR_SET_SCHEMA(GroupQueryAttention, 1, FrozenApi30GqaSchema());
+ONNX_MS_OPERATOR_SET_SCHEMA(GroupQueryAttention, 1, FrozenApi32GqaSchema());
 ONNX_MS_OPERATOR_SET_SCHEMA(GroupQueryAttention, 2, GqaWithNextContractChange());
 ```
 
-Q/K normalization, `causal`, and sliding-cache support are already part of the API-30
+Q/K normalization, `causal`, and sliding-cache support are already part of the API-32
 GQA v1 freeze-point contract. They are not retroactively moved to v2.
 
 The following changes require a new schema version:
@@ -308,7 +311,7 @@ following the header's existing doxygen conventions:
   /** \brief Get the operator schema contracts this factory was built against.
    *
    * ...
-   * \since Version 1.30.
+   * \since Version 1.32.
    */
   ORT_API2_STATUS(GetOperatorCompatibilityInfo, _In_ OrtEpFactory* this_ptr,
                   _Outptr_ const OrtEpOperatorCompatibilityInfo** entries,
@@ -322,8 +325,11 @@ Duplicate `(domain, op_type, since_version)` entries are a plugin bug; ORT treat
 operator as incompatible and logs once.
 
 ORT calls the appended field only when `ort_version_supported` reaches the ABI version
-that introduced it and the function pointer is non-null, matching the existing
-plugin-EP struct-extension rules used elsewhere in `OrtEpFactory` and `OrtEp`.
+that introduced it (32 for `GetOperatorCompatibilityInfo`) and the function pointer is
+non-null, matching the existing plugin-EP struct-extension rules used elsewhere in
+`OrtEpFactory` and `OrtEp`. A factory built against older headers has a shorter
+structure, so the field must not be read for it even though the pointer would be
+addressable.
 
 This callback belongs on `OrtEpFactory`, rather than `OrtEp`, because the schema set
 is a build property and ORT needs it before constructing the optimizer set.
@@ -639,6 +645,15 @@ candidate before querying. The current GQA transforms retain the existing GQA sc
 and types, so they query the assigned GQA node immediately before mutating it. If the
 lookup fails, ORT preserves the original unfused subgraph.
 
+The remaining EP-specific contrib fusions do not yet have a per-match query. As a
+construction-time gate, `GenerateTransformers` filters each such fusion's EP allowlist
+against the session's effective kernel registry: a registered EP is removed from the
+allowlist when none of its registries has a kernel for the `com.microsoft` operator the
+fusion produces at schema version 1. A plugin EP whose kernel was quarantined by
+negotiation is therefore never targeted by those fusions. EPs that are not registered
+in the session, or that expose no registry, keep their entry so standalone transformer
+use is unchanged.
+
 ### Compile-based plugin EPs
 
 A compile-based EP without a kernel registry cannot safely authorize a destructive
@@ -652,13 +667,13 @@ This is separate from the operator digest negotiation proposed here.
 
 ## `GroupQueryAttention` example
 
-The q/k normalization inputs and `qk_norm_epsilon` are already part of the API-30
+The q/k normalization inputs and `qk_norm_epsilon` are already part of the API-32
 freeze point, so they remain in `GroupQueryAttention-1`. The current
 `GroupQueryAttentionPreNormFusion` still produces version 1 and is safe only when the
 assigned EP's GQA-1 kernel survived negotiation.
 
 Assume instead that a future breaking GQA contract change is the first change after
-the API-30 release:
+the API-32 release:
 
 - `GroupQueryAttention-1`, including q/k normalization, remains frozen.
 - `GroupQueryAttention-2` contains only that future contract change.
@@ -758,7 +773,7 @@ release from the day they are introduced.
    maximum safely when the first post-release contract change opens a new opset, add
    the load-time error for an unsupported import, and update first-party producers to
    write the contrib opset explicitly.
-5. **First version bump:** when the first post-API-30 contrib contract change lands,
+5. **First version bump:** when the first post-API-32 contrib contract change lands,
    add its new schema in opset 2 and migrate its kernels and transformers across every
    EP that registers it.
 6. **Fusion hardening:** convert all EP-specific contrib fusions from provider-name
@@ -874,7 +889,7 @@ contracts:
 - OP2: a second required input, a second output, a required `axis` attribute, and
   `tensor(int32)` added to the type constraint.
 
-CUDA0 has no API-30 callback and an open-ended v1 kernel registration. CUDA1 publishes
+CUDA0 has no API-32 callback and an open-ended v1 kernel registration. CUDA1 publishes
 the OP1 digest and also has an open-ended exact-v1 kernel. CUDA2 publishes both OP1 and OP2
 digests and retains bounded `[1,1]` and `[2,2]` kernels. "Fallback" below means the
 CUDA plugin does not have an eligible kernel; another EP may execute the node if it
@@ -889,10 +904,11 @@ has an implementation.
 | ORT2 + OP1 | CUDA v1 | CUDA v1 | CUDA v1 |
 | ORT2 + OP2 | fallback | fallback | CUDA v2 |
 
-The ORT0 rows emulate a pre-API-30 core by making the appended callback invisible;
-they verify the ABI behavior after a plugin has loaded. They do not override the CUDA
-package compatibility floor. The current CUDA plugin has
-`MIN_ONNXRUNTIME_VERSION=1.30.0`, so an actual CUDA1 or CUDA2 package rejects ORT0 at
+The ORT0 rows emulate a core that predates negotiation (API 31 or earlier) by making
+the appended callback invisible; they verify the ABI behavior after a plugin has
+loaded. They do not override the CUDA package compatibility floor. The current CUDA
+plugin has `MIN_ONNXRUNTIME_VERSION=1.32.0`, so an actual CUDA1 or CUDA2 package
+rejects ORT0 at
 plugin initialization before reaching the behavior shown in those rows. This is the
 intended deployment result described in [New plugin on an old core](#new-plugin-on-an-old-core).
 
@@ -910,10 +926,10 @@ The experiment establishes the following:
    registration as an exact v1 match once a v2 node is resolved.
 
 A companion control, `SameVersionContractChangeIsQuarantined`, labels the changed
-contract as v1 instead. API-30 negotiation detects the different digest and removes
+contract as v1 instead. API-32 negotiation detects the different digest and removes
 the v1 plugin kernel. The callback-free CUDA0 path cannot detect that mistake and
 leaves the kernel enabled under the temporary legacy policy. This confirms both why
-the API-30 digest is necessary and why every post-freeze breaking change must use a
+the API-32 digest is necessary and why every post-freeze breaking change must use a
 new schema version; the permissive policy is not a general defense for arbitrary
 pre-freeze or privately patched binaries.
 

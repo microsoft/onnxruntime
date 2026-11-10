@@ -30,9 +30,13 @@
 namespace onnxruntime::test {
 namespace {
 
+// First ORT_API_VERSION whose OrtEpFactory contains GetOperatorCompatibilityInfo.
+constexpr uint32_t kSchemaCompatibilityApiVersion = 32;
+constexpr uint32_t kPreSchemaCompatibilityApiVersion = kSchemaCompatibilityApiVersion - 1;
+
 struct TestFactory {
   TestFactory() {
-    api.ort_version_supported = 30;
+    api.ort_version_supported = kSchemaCompatibilityApiVersion;
     api.GetName = GetName;
     api.GetOperatorCompatibilityInfo = GetCompatibilityInfo;
   }
@@ -44,6 +48,7 @@ struct TestFactory {
       const OrtEpOperatorCompatibilityInfo** entries,
       size_t* num_entries) noexcept {
     auto& factory = *reinterpret_cast<TestFactory*>(this_ptr);
+    ++factory.callback_calls;
     *entries = factory.entries.empty() ? nullptr : factory.entries.data();
     *num_entries = factory.entries.size();
     return nullptr;
@@ -52,11 +57,12 @@ struct TestFactory {
   // Keep OrtEpFactory first so the callback can recover the enclosing test object.
   OrtEpFactory api{};
   std::vector<OrtEpOperatorCompatibilityInfo> entries;
+  int callback_calls = 0;
 };
 
 struct TestEp : OrtEp {
   explicit TestEp(const KernelRegistry& kernel_registry) : OrtEp{}, kernel_registry_{kernel_registry} {
-    ort_version_supported = 30;
+    ort_version_supported = kSchemaCompatibilityApiVersion;
     GetKernelRegistry = GetKernelRegistryImpl;
   }
 
@@ -292,6 +298,21 @@ TEST(PluginEpSchemaCompatibilityTest, MissingCallbackIsPermissiveDuringTransitio
   }
 }
 
+TEST(PluginEpSchemaCompatibilityTest, CallbackIsNotInvokedForFactoriesBuiltBeforeItsApiVersion) {
+  // A factory built against older headers has a shorter OrtEpFactory, so the bytes where the callback would
+  // live are not part of its struct. The non-null pointer here models whatever those bytes happen to hold.
+  TestFactory factory;
+  factory.api.ort_version_supported = kPreSchemaCompatibilityApiVersion;
+
+  std::shared_ptr<const PluginEpSchemaCompatibility> compatibility;
+  ASSERT_STATUS_OK(PluginEpSchemaCompatibility::Create(
+      factory.api, DefaultLoggingManager().DefaultLogger(), compatibility));
+
+  EXPECT_EQ(factory.callback_calls, 0);
+  EXPECT_FALSE(compatibility->IsNegotiated());
+  EXPECT_TRUE(compatibility->IsCompatible(kMSDomain, "GroupQueryAttention", 1));
+}
+
 #if !defined(DISABLE_CONTRIB_OPS)
 TEST(PluginEpSchemaCompatibilityTest, AcceptsMatchingEntryAndQuarantinesMismatch) {
   TestFactory factory;
@@ -439,9 +460,9 @@ TEST(PluginEpSchemaCompatibilityTest, VersionedContribSchemaCompatibilityMatrix)
     uint32_t api_version;
     int max_ms_opset;
   };
-  const std::array<CoreVariant, 3> cores = {{{"ORT0", 29, 1},
-                                             {"ORT1", 30, 1},
-                                             {"ORT2", 30, 2}}};
+  const std::array<CoreVariant, 3> cores = {{{"ORT0", kPreSchemaCompatibilityApiVersion, 1},
+                                             {"ORT1", kSchemaCompatibilityApiVersion, 1},
+                                             {"ORT2", kSchemaCompatibilityApiVersion, 2}}};
 
   struct PluginVariant {
     std::string_view name;
@@ -451,12 +472,12 @@ TEST(PluginEpSchemaCompatibilityTest, VersionedContribSchemaCompatibilityMatrix)
     bool open_ended_v1_kernel;
   };
   const std::array<PluginVariant, 3> plugins = {{
-      {"CUDA0", 29, {}, {1}, true},
+      {"CUDA0", kPreSchemaCompatibilityApiVersion, {}, {1}, true},
       // Existing contrib registrations use the open-ended form, which the
       // kernel registry treats as an exact match for the start version.
-      {"CUDA1", 30, {1}, {1}, true},
+      {"CUDA1", kSchemaCompatibilityApiVersion, {1}, {1}, true},
       // A v2 plugin retains its v1 contract and kernel for old models and cores.
-      {"CUDA2", 30, {1, 2}, {1, 2}, false},
+      {"CUDA2", kSchemaCompatibilityApiVersion, {1, 2}, {1, 2}, false},
   }};
 
   enum class Outcome {
@@ -465,11 +486,11 @@ TEST(PluginEpSchemaCompatibilityTest, VersionedContribSchemaCompatibilityMatrix)
     kFallback,
   };
   const Outcome expected[3][3][2] = {
-      {// ORT0: the pre-API-30 core ignores schema metadata and cannot load OP2.
+      {// ORT0: a core that predates negotiation ignores schema metadata and cannot load OP2.
        {Outcome::kCudaKernel, Outcome::kModelRejected},
        {Outcome::kCudaKernel, Outcome::kModelRejected},
        {Outcome::kCudaKernel, Outcome::kModelRejected}},
-      {// ORT1: API-30 negotiation is active, but the core still cannot load OP2.
+      {// ORT1: negotiation is active, but the core still cannot load OP2.
        {Outcome::kCudaKernel, Outcome::kModelRejected},
        {Outcome::kCudaKernel, Outcome::kModelRejected},
        {Outcome::kCudaKernel, Outcome::kModelRejected}},
@@ -501,19 +522,20 @@ TEST(PluginEpSchemaCompatibilityTest, VersionedContribSchemaCompatibilityMatrix)
         factory.entries.push_back(MakeSchemaExperimentEntry(version));
       }
 
-      if (core.api_version < 30) {
-        // Exercise the behavior of a pre-API-30 core: it has no appended callback
+      if (core.api_version < kSchemaCompatibilityApiVersion) {
+        // Exercise the behavior of a core that predates negotiation: it has no appended callback
         // field to invoke, even if a newer plugin binary contains that field.
         factory.api.ort_version_supported = core.api_version;
         factory.api.GetOperatorCompatibilityInfo = nullptr;
-      } else if (plugin.api_version < 30) {
+      } else if (plugin.api_version < kSchemaCompatibilityApiVersion) {
         factory.api.GetOperatorCompatibilityInfo = nullptr;
       }
 
       std::shared_ptr<const PluginEpSchemaCompatibility> compatibility;
       ASSERT_STATUS_OK(PluginEpSchemaCompatibility::Create(
           factory.api, DefaultLoggingManager().DefaultLogger(), compatibility));
-      const bool expect_negotiated = core.api_version >= 30 && plugin.api_version >= 30;
+      const bool expect_negotiated = core.api_version >= kSchemaCompatibilityApiVersion &&
+                                     plugin.api_version >= kSchemaCompatibilityApiVersion;
       EXPECT_EQ(compatibility->IsNegotiated(), expect_negotiated);
 
       KernelRegistry source_registry = MakeSchemaExperimentKernelRegistry(
@@ -582,8 +604,8 @@ TEST(PluginEpSchemaCompatibilityTest, SameVersionContractChangeIsQuarantined) {
 
   // The temporary legacy policy cannot detect this historical same-version
   // mismatch. This is why published v1 schemas must remain frozen and every
-  // post-API-30 contract change must get a new schema version.
-  factory.api.ort_version_supported = 29;
+  // post-negotiation contract change must get a new schema version.
+  factory.api.ort_version_supported = kPreSchemaCompatibilityApiVersion;
   factory.api.GetOperatorCompatibilityInfo = nullptr;
   ASSERT_STATUS_OK(PluginEpSchemaCompatibility::Create(
       factory.api, DefaultLoggingManager().DefaultLogger(), compatibility));

@@ -24,10 +24,12 @@ Status PluginEpSchemaCompatibility::Create(
 
   // Missing metadata remains permissive during the transition unless strict mode is
   // explicitly enabled via ORT_PLUGIN_EP_REQUIRE_SCHEMA_COMPATIBILITY=1. Shipping
-  // in-tree plugin EPs (e.g. CUDA) enforce MIN_ONNXRUNTIME_VERSION >= 1.30.0 and
+  // in-tree plugin EPs (e.g. CUDA) enforce MIN_ONNXRUNTIME_VERSION >= 1.32.0 and
   // publish GetOperatorCompatibilityInfo, while SchemaAbiDigestTest freezes v1
-  // com.microsoft schemas so post-API-30 changes require a new since_version.
-  if (factory.ort_version_supported < 30 || factory.GetOperatorCompatibilityInfo == nullptr) {
+  // com.microsoft schemas so post-API-32 changes require a new since_version.
+  // The callback was appended in API 32; factories built against older headers do not
+  // contain the field, so it must not be read for them.
+  if (factory.ort_version_supported < 32 || factory.GetOperatorCompatibilityInfo == nullptr) {
     const bool require_compatibility =
         ParseEnvironmentVariableWithDefault<bool>("ORT_PLUGIN_EP_REQUIRE_SCHEMA_COMPATIBILITY", false);
     if (require_compatibility) {
