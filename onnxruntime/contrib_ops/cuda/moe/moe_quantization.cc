@@ -4213,6 +4213,18 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_QMOE_INT3_GROUPED_PREFILL", 0) != 0;
   if (grouped_prefill) {
     params.tensor_core_min_routes = 0;
+    if (onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_QMOE_INT3_TC_COMPATIBILITY", 0) != 0) {
+      params.tensor_core_min_routes = int3_tc_min_routes_;
+      const float error_units = std::clamp(
+          onnxruntime::ParseEnvironmentVariableWithDefault<float>("ORT_QMOE_INT3_TC_COMPATIBILITY_ULPS", 64.0f), 1.0f, 65536.0f);
+      params.tensor_core_compatibility_error = error_units * 0x1p-24f;
+      const float fc2_error_units = std::clamp(
+          onnxruntime::ParseEnvironmentVariableWithDefault<float>("ORT_QMOE_INT3_TC_COMPATIBILITY_FC2_ULPS", error_units), 1.0f, 65536.0f);
+      params.tensor_core_compatibility_fc2_error = fc2_error_units * 0x1p-24f;
+      params.tensor_core_compatibility_verify =
+          onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_INT3_TC_COMPATIBILITY_VERIFY", 0) != 0;
+      params.grouped_rows = 8;
+    }
   }
   const bool can_use_tc_prefill =
       !grouped_prefill && !disable_int3_tc_prefill_ && rows >= int3_prefill_min_rows &&
@@ -4316,10 +4328,13 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
   }
 
   const size_t routing_words = grouped_prefill ? 10 : 5;
+  const bool tc_compatibility = params.tensor_core_compatibility_error > 0.0f;
+  const size_t compatibility_columns = tc_compatibility ? std::max(hidden, intermediate) : 0;
   const size_t per_row_bytes =
-      SafeInt<size_t>(k_) * (SafeInt<size_t>(intermediate + hidden) * element_size + routing_words * sizeof(int));
+      SafeInt<size_t>(k_) * (SafeInt<size_t>(intermediate + hidden) * element_size +
+                             SafeInt<size_t>(compatibility_columns + routing_words) * sizeof(int));
   const size_t budget = std::min<size_t>(int_dequant_max_scratch_bytes_, size_t{64} << 20);
-  const size_t grouped_header_bytes = grouped_prefill ? 4 * sizeof(int) : 0;
+  const size_t grouped_header_bytes = (grouped_prefill ? 4 * sizeof(int) : 0) + (tc_compatibility ? 4 * sizeof(int) : 0);
   ORT_RETURN_IF_NOT(budget > grouped_header_bytes && per_row_bytes <= budget - grouped_header_bytes,
                     "INT3 QMoE scratch budget cannot accommodate one token.");
   size_t tile_rows = std::min<size_t>(rows, (budget - grouped_header_bytes) / per_row_bytes);
@@ -4342,6 +4357,14 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
   params.experts = selected.get();
   params.routing_scales = scales.get();
   IAllocatorUniquePtr<int> grouped_workspace;
+  IAllocatorUniquePtr<int> compatibility_workspace;
+  size_t compatibility_workspace_bytes = 0;
+  if (tc_compatibility) {
+    const size_t words = SafeInt<size_t>(routes) * compatibility_columns + 4;
+    compatibility_workspace = GetScratchBuffer<int>(words, GetComputeStream(context));
+    params.tensor_core_compatibility_workspace = compatibility_workspace.get();
+    compatibility_workspace_bytes = SafeInt<size_t>(words) * sizeof(int);
+  }
   size_t grouped_workspace_bytes = 0;
   if (grouped_prefill) {
     const size_t max_tiles = routes / params.grouped_rows + std::min<size_t>(routes, params.num_experts);
@@ -4429,7 +4452,8 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
                                        enable_kernel_debug_info_ ? &used_tensor_core : nullptr));
     if (enable_kernel_debug_info_) {
       const size_t total_scratch_bytes = SafeInt<size_t>(act_bytes) + fc2_part_bytes +
-                                         SafeInt<size_t>(routes) * 5 * sizeof(int) + grouped_workspace_bytes;
+                                         SafeInt<size_t>(routes) * 5 * sizeof(int) + grouped_workspace_bytes +
+                                         compatibility_workspace_bytes;
       PrintQMoEKernelDebugInfo(used_grouped ? "int3_grouped_prefill" : (used_tensor_core ? "int3_tensor_core" : "int3_fallback"),
                                rows, tile_rows, params.rows, cur_routes, cur_routes,
                                grouped_workspace_bytes, total_scratch_bytes);

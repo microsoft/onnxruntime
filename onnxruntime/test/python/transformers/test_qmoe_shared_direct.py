@@ -393,7 +393,13 @@ class TestQMoESharedDirect(unittest.TestCase):
     def test_cuda_int3_grouped_prefill_large_hidden(self):
         self._check_cuda_int3_grouped_prefill_shape(3584)
 
-    def _check_cuda_int3_grouped_prefill_shape(self, hidden):
+    def test_cuda_int3_tensor_core_compatibility_rc14_shape(self):
+        self._check_cuda_int3_grouped_prefill_shape(1536, tc_compatibility=True)
+
+    def test_cuda_int3_tensor_core_compatibility_shadow(self):
+        self._check_cuda_int3_grouped_prefill_shape(1536, tc_compatibility=True, verify=True)
+
+    def _check_cuda_int3_grouped_prefill_shape(self, hidden, tc_compatibility=False, verify=False):
         if "CUDAExecutionProvider" not in ort.get_available_providers():
             if os.getenv("ORT_QMOE_REQUIRE_CUDA") == "1":
                 self.fail("CUDAExecutionProvider is required")
@@ -415,6 +421,10 @@ class TestQMoESharedDirect(unittest.TestCase):
                         os.environ,
                         {
                             "ORT_ENABLE_QMOE_INT3_GROUPED_PREFILL": "1" if enabled else "0",
+                            "ORT_ENABLE_QMOE_INT3_TC_COMPATIBILITY": "1" if tc_compatibility else "0",
+                            "ORT_QMOE_INT3_TC_COMPATIBILITY_VERIFY": "1" if verify else "0",
+                            "ORT_QMOE_INT3_TC_COMPATIBILITY_ULPS": "1",
+                            "ORT_QMOE_INT3_TC_COMPATIBILITY_FC2_ULPS": "4",
                             "ORT_DISABLE_INT3_TENSORCORE_PREFILL": "1",
                             "ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO": "1",
                         },
@@ -441,7 +451,10 @@ class TestQMoESharedDirect(unittest.TestCase):
                             debug_output = captured.read().decode()
                     if enabled and rows >= 32:
                         self.assertIn("Route=int3_grouped_prefill", debug_output)
-                        self.assertIn("TensorCore=0", debug_output)
+                        self.assertIn("TensorCore=1" if tc_compatibility else "TensorCore=0", debug_output)
+                        if verify:
+                            self.assertIn("missed=0", debug_output)
+                            self.assertNotRegex(debug_output, r"missed=[1-9]")
                     else:
                         self.assertNotIn("Route=int3_grouped_prefill", debug_output)
                     relative_error = np.linalg.norm(outputs[-1] - expected) / max(np.linalg.norm(expected), 1e-6)

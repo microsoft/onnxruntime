@@ -683,6 +683,10 @@ struct Int3ExpertTileDesc {
 
 struct Int3MoeParams {
   int tensor_core_min_routes = 33;  // 0 disables the tensor-core decode path.
+  float tensor_core_compatibility_error = 0.0f;
+  float tensor_core_compatibility_fc2_error = 0.0f;
+  int* tensor_core_compatibility_workspace = nullptr;
+  bool tensor_core_compatibility_verify = false;
   const void* input = nullptr;
   void* output = nullptr;
   void* activation = nullptr;
