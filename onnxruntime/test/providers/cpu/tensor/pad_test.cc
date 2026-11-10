@@ -276,7 +276,42 @@ TYPED_TEST(PadOpTest, Pad_Edge_1D) {
                                   "edge");
 }
 
+TEST(PadOpTest, Pad_Constant_CpuOnly_BFloat16_SupportedOpsets) {
+  const std::vector<int> supported_opsets{21, 22, 23, 24, 25};
+  for (int opset : supported_opsets) {
+    SCOPED_TRACE(MakeString("opset: ", opset));
+    OpTester test("Pad", opset);
+    test.AddInput<BFloat16>("data", {2, 2},
+                            {BFloat16(1.0f), BFloat16(2.0f), BFloat16(3.0f), BFloat16(4.0f)});
+    test.AddInput<int64_t>("pads", {4}, {0, 0, 1, 0}, true);
+    test.AddInput<BFloat16>("value", {}, {BFloat16(0.5f)}, true);
+    test.AddOutput<BFloat16>("output", {3, 2},
+                             {BFloat16(1.0f), BFloat16(2.0f), BFloat16(3.0f), BFloat16(4.0f),
+                              BFloat16(0.5f), BFloat16(0.5f)});
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.emplace_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
 #ifdef USE_CUDA
+TEST(PadOpTest, Pad_Constant_CudaOnly_BFloat16_SupportedOpsets) {
+  const std::vector<int> supported_opsets{21, 22, 23, 24, 25};
+  for (int opset : supported_opsets) {
+    SCOPED_TRACE(MakeString("opset: ", opset));
+    RunCudaOnlyOnnxOpsetPadTest<BFloat16>(
+        opset,
+        {2, 2},
+        {BFloat16(1.0f), BFloat16(2.0f), BFloat16(3.0f), BFloat16(4.0f)},
+        {0, 0, 1, 0},
+        BFloat16(0.5f),
+        {3, 2},
+        {BFloat16(1.0f), BFloat16(2.0f), BFloat16(3.0f), BFloat16(4.0f),
+         BFloat16(0.5f), BFloat16(0.5f)});
+  }
+}
+
 TEST(PadOpTest, Pad_Edge_CudaOnly_MLFloat16_SupportedOpsets) {
   const std::vector<int> supported_opsets{18, 19, 20, 21, 22, 23, 24, 25};
   for (int opset : supported_opsets) {
