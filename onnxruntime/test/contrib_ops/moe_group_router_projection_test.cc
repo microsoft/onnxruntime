@@ -446,6 +446,7 @@ class ChainedRouterTester final : public OpTester {
     chained.AddAttribute("gate_type", int64_t{16});
     chained.AddAttribute("down_type", int64_t{16});
     chained.AddAttribute("normalize_routing_weights", int64_t{0});
+    graph.SetOutputs({outputs[0], outputs[1], outputs[2]});
   }
 };
 
