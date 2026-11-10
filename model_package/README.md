@@ -32,6 +32,12 @@ named-chain execution are documented in
 Python authoring/export wrappers are not included; use this standalone library
 for those operations.
 
+Complete local native-chain examples are documented in the
+[Phi-3 text-generation demo](../docs/Stateful_Phi3_Demo.md) and
+[SD1.5 image-generation demo](../docs/Stateful_SD15_Demo.md). Their manifests
+declare components and dataflow; execution state remains an ORT implementation
+detail, not a package-authored state machine.
+
 ---
 
 ## On-disk layout

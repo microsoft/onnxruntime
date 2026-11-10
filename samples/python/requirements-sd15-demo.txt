@@ -1,0 +1,6 @@
+numpy
+onnx==1.23.2
+transformers==4.57.6
+pillow==13.0.0
+diffusers==0.35.1
+torch==2.8.0

@@ -11,3 +11,7 @@ sampler-free prefill/decode bootstrap and deterministic DDIM. See
 For real local CPU INT4/CUDA FP16 text generation, see the
 [Phi-3 stateful demo](../docs/Stateful_Phi3_Demo.md) and its
 [CLI/helpers](python/phi3_demo.py). Model acquisition is explicit and outside Git.
+
+For CUDA-only local SD1.5 text-to-image with native DDIM and mandatory safety
+checking, see the [SD1.5 stateful demo](../docs/Stateful_SD15_Demo.md) and its
+[CLI/helpers](python/sd15_demo.py). CPU EP fixtures remain available offline.

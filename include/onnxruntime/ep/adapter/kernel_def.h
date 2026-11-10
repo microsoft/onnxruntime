@@ -21,7 +21,7 @@ class KernelDef {
   explicit KernelDef(const OrtKernelInfo* kernel_info) : kernel_info_{kernel_info} {}
 
   const std::string OpName() const {
-    return kernel_info_.GetNodeName();
+    return kernel_info_.GetOperatorType();
   }
 
   const std::string Domain() const {

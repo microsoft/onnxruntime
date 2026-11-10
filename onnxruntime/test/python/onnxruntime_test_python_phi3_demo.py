@@ -29,7 +29,8 @@ _SPEC = importlib.util.spec_from_file_location("phi3_demo", _PATH)
 assert _SPEC is not None and _SPEC.loader is not None
 demo = importlib.util.module_from_spec(_SPEC)
 sys.modules[_SPEC.name] = demo
-_SPEC.loader.exec_module(demo)
+with mock.patch.object(sys, "path", [str(_PATH.parent), *sys.path]):
+    _SPEC.loader.exec_module(demo)
 
 
 class FakeAdapter:
@@ -154,11 +155,19 @@ class TestPhi3Assets(unittest.TestCase):
         class ReachedOfflineTestsError(Exception):
             pass
 
+        reached = []
+
         def capture(command, **_kwargs):
             if command[-1].endswith("onnxruntime_test_python_phi3_demo.py"):
                 self.assertEqual(
                     command[-1], str(root / "onnxruntime/test/python/onnxruntime_test_python_phi3_demo.py")
                 )
+                reached.append("phi3")
+            elif command[-1].endswith("onnxruntime_test_python_sd15_demo.py"):
+                self.assertEqual(
+                    command[-1], str(root / "onnxruntime/test/python/onnxruntime_test_python_sd15_demo.py")
+                )
+                self.assertEqual(reached, ["phi3"])
                 raise ReachedOfflineTestsError
 
         args = SimpleNamespace(
@@ -181,7 +190,7 @@ class TestPhi3Assets(unittest.TestCase):
 
     def test_explicit_download_and_verified_cache(self):
         with toy_assets() as (root, directory, profile):
-            with mock.patch.object(demo, "urlopen") as download:
+            with mock.patch.object(demo.asset_io, "urlopen") as download:
                 hashes = demo.acquire_assets(root, "cpu")
                 download.assert_not_called()
             self.assertEqual(len(hashes), len(profile.assets))
@@ -189,7 +198,7 @@ class TestPhi3Assets(unittest.TestCase):
             (directory / "LICENSE").unlink()
             response = mock.MagicMock()
             response.__enter__.return_value = io.BytesIO(expected)
-            with mock.patch.object(demo, "urlopen", return_value=response) as download:
+            with mock.patch.object(demo.asset_io, "urlopen", return_value=response) as download:
                 demo.acquire_assets(root, "cpu")
             self.assertEqual((directory / "LICENSE").read_bytes(), expected)
             self.assertIn(demo.REVISION, download.call_args.args[0])
@@ -204,7 +213,7 @@ class TestPhi3Assets(unittest.TestCase):
                 response.__enter__.return_value = io.BytesIO(
                     expected[:-1] if mode == "short" else expected + b"x" if mode == "long" else expected
                 )
-                with mock.patch.object(demo, "urlopen", return_value=response) as download:
+                with mock.patch.object(demo.asset_io, "urlopen", return_value=response) as download:
                     if mode == "network":
                         download.side_effect = URLError("offline")
                     patch = (
@@ -218,7 +227,7 @@ class TestPhi3Assets(unittest.TestCase):
                 self.assertFalse(any(directory.glob(".download-*")))
         with toy_assets() as (root, directory, _):
             (directory / "LICENSE").write_bytes(b"invalid")
-            with mock.patch.object(demo, "urlopen") as download, self.assertRaises(ValueError):
+            with mock.patch.object(demo.asset_io, "urlopen") as download, self.assertRaises(ValueError):
                 demo.acquire_assets(root, "cpu")
             download.assert_not_called()
             self.assertEqual((directory / "LICENSE").read_bytes(), b"invalid")
