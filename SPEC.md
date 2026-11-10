@@ -18,11 +18,18 @@ Appendix L was approved by the user for detailed plan preparation.
 The detailed M12 plan was separately approved on 2026-10-30 and implementation
 and CPU/CUDA qualification are verified on 2026-10-31. M12 is published for review
 in [#34055](https://github.com/microsoft/onnxruntime/pull/34055), stacked on M11.
-M14 and later implementation milestones are not started.
+M15 and later implementation milestones are not started.
 **M13 refinement:** The requirements interview completed on 2026-11-02.
 Appendix M was approved for detailed plan preparation. The requested stack
 parent is verified M12. The detailed plan was separately approved on 2026-11-02;
-implementation is starting.
+implementation and qualification are complete, published as ready-for-review
+[#34056](https://github.com/microsoft/onnxruntime/pull/34056).
+**M14 refinement:** The requirements interview completed on 2026-11-02.
+The user explicitly confirmed no additional requirements and approved Appendix N
+on 2026-11-02 for detailed execution-plan preparation. The detailed plan was
+separately approved on 2026-11-02. Implementation and CPU/CUDA qualification are
+verified; M14 is published for review as
+[#34057](https://github.com/microsoft/onnxruntime/pull/34057), stacked on M13.
 
 ## 1. Purpose
 
@@ -327,7 +334,8 @@ schema, without changing these semantic requirements.
   signatures; do not assume all repository variants support both CPU and CUDA.
 - **LLM-2:** Provide package-authoring instructions/tooling to produce
   `manifest.json`, component metadata, and references to model files/external
-  weights. Do not commit large model binaries or automatically download them.
+  weights. Do not commit large model binaries. Downloads require explicit
+  user-approved setup; normal package loading and inference remain local-only.
 - **LLM-3:** Run prefill as one SessionLoop and decode as another, connected in
   a SessionChain and sharing the execution's KV cache.
 - **LLM-4:** Accept a text prompt and return generated text, using
@@ -3369,3 +3377,188 @@ intended vocabulary, not a requirement to mirror C resource allocation:
 - Review and approve this appendix first; then prepare and separately review
   the detailed M13 execution plan. The request to move to M13 is not a waiver
   of either approval gate.
+
+## Appendix N. M14 Phi-3 package and text demo (approved)
+
+**Interview completed:** 2026-11-02. The user explicitly confirmed no additional
+requirements after selecting the model variants, local asset directory,
+Python interface, tokenizer adapter, prompt handling and reference approach.
+**Specification approved:** 2026-11-02. The user authorized detailed M14 plan
+preparation, then separately approved the detailed execution plan on 2026-11-02.
+Implementation and the explicitly scoped local asset acquisition are authorized.
+**Qualification:** CPU INT4 and CUDA FP16 real runs, per-variant stateless
+reference/checkpoint/replay and typed/package parity pass for budgets0/1/16.
+New executable production Python reaches377/377 with zero exclusions; actual
+CUDA memory/lifetime/race/sync and transfer gates pass. Exact results and known
+parent limitations are recorded in [M14 qualification](TASKS.md#final-m14-qualification-2026-11-03).
+**Stack:** M14 [#34057](https://github.com/microsoft/onnxruntime/pull/34057), OPEN/ready on M13
+`42ab052f08c8dc44a76a8012e3e70a053fe64b1a` /
+[#34056](https://github.com/microsoft/onnxruntime/pull/34056).
+The local planning branch is `stateful-M18-phi3-demo`.
+
+### N.1 Confirmed assets and explicit acquisition
+
+- Use the user's supplied
+  [Microsoft Phi-3-mini-4k-instruct ONNX repository](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-onnx),
+  pinned to revision `5f5f794c1c23c9d5ee142af85df02a6cc52d6945`.
+  Metadata and tokenizer configuration at that revision were inspected without
+  downloading model graphs or external weights.
+- The user explicitly authorizes downloading the following two variants and
+  their tokenizer/configuration/license assets after both approval gates:
+
+  | Target | Repository variant | External weight size |
+  | --- | --- | --- |
+  | CPU EP | `cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4` | 2,722,861,056 bytes |
+  | CUDA EP | `cuda/cuda-fp16` | 7,642,945,536 bytes |
+
+  The graphs, weights and tokenizer metadata total approximately 10.4GB.
+  Additional CUDA INT4, DirectML and alternate CPU variants are not included.
+- Store assets under the user-selected directory
+  `/home/devpatel/onnxruntime-stateful/phi3-mini-4k-instruct`, outside Git.
+  Do not put large models in the repository, root filesystem build trees,
+  commits or PR attachments. Avoid unnecessary duplicate weight copies.
+- Acquisition must be an explicit setup operation, not a side effect of normal
+  package loading, tokenization or inference. Normal runs use local assets only.
+  Pin every fetch to the approved revision; do not silently update to `main`.
+- Download only allowlisted model/data, tokenizer/configuration and license
+  files. Do not fetch or execute the repository's Python model/configuration
+  implementations. Verify expected sizes and published LFS SHA-256 values for
+  graph/weight files; record local hashes/provenance for supporting assets.
+  Incomplete, corrupt or missing downloads must fail explicitly.
+- Respect the repository's MIT license and retain its attribution/license with
+  generated packages. Acquisition failures, insufficient space, authentication
+  requirements or unavailable files must be reported, not silently substituted.
+
+### N.2 Package and Python demo surface
+
+- Deliver a Python command-line interface plus reusable Python helpers for
+  explicit asset preparation, package construction and local text generation.
+  Keep the demo/tooling outside the runtime's production dependencies.
+- Produce runnable CPU and CUDA Model Packages with declarative manifests,
+  model/external-data references, tokenizer assets and provenance. Prefer one
+  portable package per selected EP under the asset directory so each package
+  can declare its actual cache element types and policies without pretending
+  CPU INT4 weights and CUDA FP16 weights imply identical tensor signatures.
+- Validate generated manifests through the existing native Model Package
+  parser/factories. Reuse existing schema/authoring helpers where applicable;
+  do not implement a competing package parser or execution engine.
+  Public Python package authoring/export bindings remain deferred.
+- Each package declares a sampler-free full-prompt prefill SessionLoop followed
+  by a decode SessionLoop in a SessionChain. Both stages share the execution's
+  managed KV caches. The same selected ONNX file may serve both stages when
+  inspection confirms it supports both, without duplicating its external weights.
+- Main demo execution must use the M13 public `onnxruntime.stateful` bindings
+  and existing native policies. Python may handle CLI arguments, tokenization,
+  construction, reporting and detokenization, but must not replace the native
+  generation loop, cache manager or greedy sampler.
+- Accept a text prompt and an explicit package/EP selection; return generated
+  text and expose token IDs plus termination/invocation information to reusable
+  callers. Keep generated continuation distinguishable from the original prompt.
+  Record preprocessing and measured timings without adding performance gates.
+- A declared generation budget defaults to 16 new tokens for the demonstration.
+  Budget/EOS policy belongs to the constructed loop/package definition, not an
+  undocumented per-execution override.
+
+### N.3 Tokenizer, chat formatting and generation semantics
+
+- Preserve a caller-provided encode/decode adapter interface. Provide a
+  demo-only Hugging Face adapter using the downloaded local tokenizer files;
+  tokenizer libraries are optional demo/test dependencies, not ORT runtime
+  requirements. Do not depend on a separate ONNX Runtime GenAI engine.
+- Use local-only loading with remote Python code execution disabled. Apply the
+  pinned tokenizer's chat template by default with an assistant generation
+  prompt; provide an explicit raw-prompt mode. Avoid double insertion of BOS,
+  EOS or other special tokens after template application.
+- Derive and validate special-token configuration from the pinned assets.
+  The inspected generation metadata declares EOS IDs 32000,32001 and32007;
+  tokenizer metadata alone names 32000 as EOS. Reconcile this explicitly and
+  declare all intended termination IDs rather than assuming a single ID.
+- Use batch1, full-prompt prefill and greedy decode. Reject empty encoded
+  prompts and unsupported inputs explicitly; do not silently truncate prompts,
+  change precision, select another model or ignore the 4096-token context bound.
+  Validate the prompt/generation context budget before execution.
+- Prefill exits on explicit EndOfInputs and does not sample. Decode's first
+  step samples the prefill logits without a decode-model invocation. Every
+  generated token, including an observed EOS, is counted exactly once.
+  EOS and the declared generated-token limit are explicit OR-composed exits.
+- Preserve native zero-budget behavior: the declared prefill may run, while
+  decode emits no tokens or decode invocations. A first generated EOS terminates
+  immediately. Expose EOS in token-level results while omitting special tokens
+  from rendered text as configured by the adapter.
+- Preserve close/context-manager, retained-input/value, cancellation and
+  Reset-required-on-failure contracts. Reset/replay must start from the same
+  captured prompt and produce the same deterministic result for that variant.
+  No streaming iterator, async API or multi-turn chat-session abstraction is added.
+
+### N.4 Actual model compatibility and execution placement
+
+- Inspect downloaded ONNX graphs, external-data references, opsets, ports,
+  ranks, dtypes, cache dimensions and aliasing behavior before package authoring.
+  Quantized weight precision is not sufficient evidence for cache/logit dtype.
+- Pinned metadata advertises `input_ids`, `attention_mask`,
+  `past_key_values.%d.key/value`, `present.%d.key/value` and `logits`, with
+  32 layers,32 attention/KV heads, head size 96 and vocabulary 32064.
+  Treat these as inspection expectations, not substitutes for actual graph checks.
+- Explicitly inspect past/present buffer sharing and attention-mask/sequence
+  length conventions. Do not blindly enable the upstream GenAI application's
+  `past_present_share_buffer` optimization or weaken immutable snapshot/input
+  ownership rules to accommodate a model.
+- CPU qualification uses the selected INT4 model with CPU EP and native CPU
+  cache/greedy. CUDA qualification uses the selected FP16 model with CUDA EP,
+  native CUDA-plugin cache/greedy and an explicitly requested device.
+  Require the requested cache/sampler implementations rather than silently
+  falling back to CPU.
+- Prove CUDA compute placement and native cache/sampler dispatch independently.
+  Any intentional CPU shape/control work must be identified, not mistaken for
+  whole-model CPU fallback. Do not claim that a CUDA-enabled wheel or matching
+  generated prose proves GPU execution.
+- Keep GPU cache/logit tensors resident across normal decode steps. Collect
+  dedicated transfer evidence distinguishing compact token/status readback
+  from requested validation readbacks; normal decoding must not require copying
+  full GPU logits/cache payloads to Python.
+- Build an ordinary stateless InferenceSession reference for each selected
+  variant using the same tokenized prompt, weights, exits and greedy policy.
+  Compare the stateful path against that variant's reference. CPU INT4 and CUDA
+  FP16 are different numerical models; identical cross-provider prose is not
+  required. Document appropriate logit/cache tolerances and near-tie behavior.
+- If an actual graph exposes an unsupported signature, unsafe aliasing or a
+  missing native capability, report the concrete mismatch and seek an explicit
+  amendment before expanding scope. No silent model rewriting, replacement,
+  unsupported fallback or new runtime concept is authorized by this draft.
+
+### N.5 Validation and completion criteria
+
+- Unit tests use small deterministic ONNX fixtures and fake text adapters to
+  cover every new executable production line, including acquisition validation,
+  builder/CLI/helper errors, tokenization/template failures and cleanup.
+  Retain the standing measured100% Python/native line-coverage requirement for
+  any new production glue; do not substitute tests-only or stale-profile reports.
+- Run real text-in/text-out on both approved local variants with the proposed
+  short-prompt16-token case, zero/one-token budgets, EOS/boundary accounting,
+  context-bound validation and Reset/replay. Use deterministic fixtures for
+  boundary cases that cannot be forced naturally in the real model.
+- Compare against each ordinary-Session reference at prefill/decode logit and
+  cache checkpoints, including final token/termination/invocation results.
+  Document numerical tolerances based on actual precision and measured evidence.
+- Verify programmatic/package construction parity, offline execution,
+  explicit missing-asset/adapter/EP errors, and correct paths/hashes without
+  committing model binaries or depending on untrusted downloaded code.
+- Re-run directly related native/public/Python/package regressions and applicable
+  CUDA memory/lifetime/race/synchronization checks. Preserve M13 proof and its
+  documented sanitizer backtrace workaround and pre-existing stateless plugin
+  negative-device test limitation; do not silently hide new failures.
+- Record exact commands/results, actual loaded extension/source identities,
+  nonzero test/coverage counts, selected model revision/hashes, GPU dispatch,
+  transfer evidence and reproducible demo commands in documentation.
+
+### N.6 Scope and approval boundaries
+
+- No model fine-tuning, model re-export/rewrite, automatic asset substitution,
+  additional model families/variants, chunked prefill, batching, stochastic
+  sampling, serving, new CUDA kernels or Stable Diffusion/M15 work is planned.
+- Maintain shared SCRATCHPAD notes and current TASKS status. Publish one
+  independently documented/tested, ready-for-review PR stacked on M13 after
+  qualification. Do not merge any milestone automatically.
+- First review/approve this specification. Then prepare the detailed M14
+  execution plan with outcomes, dependencies and CPU/CUDA test gates in TASKS,
+  and obtain separate plan approval before implementation or weight downloads.

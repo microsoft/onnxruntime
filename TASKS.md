@@ -125,8 +125,8 @@ M01-M12 are **complete**; M13 is **in progress**; M14-M24 are **pending**.
 | [x] | M10 | Standalone package schema and authoring / `package-schema` | M01, M03 |
 | [x] | M11 | ORT package-to-chain loading / `package-runtime` | M06, M07, M08, M09, M10 |
 | [x] | M12 | DDIM scheduler and denoising state / `ddim-policy` | M03, M06, M08 |
-| [ ] | M13 | Python API and package parity / `python-api` | M06, M11, M12 |
-| [ ] | M14 | Local Phi-3 package and text demo / `phi3-demo` | M05, M08, M09, M11, M13 |
+| [x] | M13 | Python API and package parity / `python-api` | M06, M11, M12 |
+| [x] | M14 | Local Phi-3 package and text demo / `phi3-demo` | M05, M08, M09, M11, M13 |
 | [ ] | M15 | Local Stable Diffusion package and image demo / `sd15-demo` | M11, M12, M13 |
 | [ ] | M16 | C# binding / `csharp-api` | M06, M11, M12 |
 | [ ] | M17 | Java/JNI binding / `java-api` | M06, M11, M12 |
@@ -4279,23 +4279,422 @@ not claimed. Package Python authoring/export remains deferred.
 
 ### M14 - Phi-3 local package and text-to-text demo
 
-**Outcome:** User-local Phi-3 models execute through the new runtime abstractions.
+**Status:** [Appendix N](SPEC.md#appendix-n-m14-phi-3-package-and-text-demo-approved)
+and the detailed plan below were separately approved on 2026-11-02.
+Implementation, CPU/CUDA qualification and publication are complete.
+**PR:** [#34057](https://github.com/microsoft/onnxruntime/pull/34057), OPEN/ready on M13#27.
+**Planning branch/base:** `stateful-M18-phi3-demo` on M13
+`42ab052f08c8dc44a76a8012e3e70a053fe64b1a` /
+[#34056](https://github.com/microsoft/onnxruntime/pull/34056).
 
-- [ ] Inspect supplied model signatures, external weights, precision, cache
-  layout, and CPU/CUDA variant compatibility before authoring a package.
-- [ ] Add tested package-building and demo tooling with caller-provided tokenizer/
-  detokenizer adapters, explicit exits, full-prompt prefill, and greedy decode.
-- [ ] Document model files/variants, execution commands, expected behavior,
-  reference implementation, EOS handling, and stage-boundary token accounting.
+**Outcome:** Explicitly acquired, revision-pinned Phi-3 CPU INT4 and CUDA FP16
+packages execute text-in/text-out through native sampler-free prefill and decode
+SessionLoops, shared KV management and greedy sampling. Python supplies the CLI,
+local tokenizer adapter, package construction and reports, not a second engine.
 
-**CPU test plan:** Unit-test new builder/demo lines with deterministic models and
-fake text adapters, including missing assets and adapter errors. Then run real
-local Phi-3 text-in/text-out, reset/replay, and compare against the reference.
-**CUDA test plan:** Repeat the real demo using compatible local CUDA models and
-native KV/sampling; compare appropriate logits/cache checkpoints with documented
-tolerances, not mandatory cross-provider identical generated prose.
-**Completion gate:** Both real runs, fixture coverage, construction parity, and
-shared rules pass; no weights/downloads are committed or silently substituted.
+#### Approval and confirmed inputs
+
+- [x] Interview and explicitly confirm no additional requirements.
+- [x] Review and approve Appendix N before preparing this plan.
+- [x] Prepare the detailed outcomes, prerequisites and CPU/CUDA test gates below.
+- [x] Review/approve this plan before acquisition, dependency changes or implementation.
+
+Asset root: `/home/devpatel/onnxruntime-stateful/phi3-mini-4k-instruct`.
+HF repository: `microsoft/Phi-3-mini-4k-instruct-onnx`, revision
+`5f5f794c1c23c9d5ee142af85df02a6cc52d6945`.
+Selected variants: `cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4` and
+`cuda/cuda-fp16`; approximately10.4GB graphs/weights/tokenizer metadata.
+Normal runs are offline. No downloaded Python source, model binaries or external
+weights enter Git. The local tokenizer adapter is optional demo tooling with
+remote code execution disabled; chat-template default and explicit raw mode.
+
+#### Scope and implementation surfaces
+
+- Prefer one focused `samples/python/phi3_demo.py` CLI/helper module, targeted
+  unittest-based Python suites, optional demo-only dependency declaration if
+  needed, and `docs/Stateful_Phi3_Demo.md`. Keep the core ORT dependency manifests
+  and deferred public Python authoring/export surface unchanged.
+- Existing M13 package fixtures and CUDA policy/bootstrap manifests demonstrate
+  the required schema. The standalone package library has no authoring CLI or
+  public Python authoring wrapper to reuse; a small declarative manifest builder
+  may emit existing-schema JSON and must validate/load through native factories.
+  Do not add a generic parser, authoring API or C++ CLI solely for this demo.
+- Inspect tokenization prior art without copying its engine or unsafe
+  `trust_remote_code=True` settings. Use a local-only, remote-code-disabled adapter.
+- Reuse existing Python test staging/runner conventions. Keep offline fixture
+  tests discoverable/runnable without model downloads. Real asset/GPU qualification
+  is explicit opt-in with a supplied asset/package path and checked nonzero counts.
+- No runtime/native/kernel changes are planned. An actual unsupported signature,
+  unsafe aliasing or missing native feature is a stop-and-amend gate, not permission
+  to silently rewrite models, relax ownership or implement a Python fallback.
+
+#### Tasks, dependencies, outcomes and tests
+
+| Task | Actual prerequisites | Intended outcome |
+| --- | --- | --- |
+| P0 | Plan approval | Verified M13 base/proof, isolated environment, storage/device preflight and focused baselines. |
+| P1 | P0 | Tested explicit acquisition, verified local assets and actual graph compatibility report. |
+| P2 | P1 | Portable EP-specific packages with native-validated cache/bootstrap/exit declarations. |
+| P3 | P1 | Local tokenizer/chat-template/raw adapter and caller-adapter contract. |
+| P4 | P2, P3 | Python CLI/helpers driving native execution and correct text/token/result lifecycle. |
+| P5 | P4 | Ordinary-Session reference and real CPU INT4 numerical/boundary/replay qualification. |
+| P6 | P5 | Real CUDA FP16 native cache/greedy qualification, resident-data and sanitizer evidence. |
+| P7 | P5, P6 | 100% new executable production lines, regressions and isolated-wheel/offline checks. |
+| P8 | P7 | Reproducible user documentation/evidence and one ready stacked PR on M13. |
+
+- [x] **P0 - Preserve the parent and establish bounded baselines.**
+  **Outcome:** Reverify local/remote M13 head/base, planning-only modifications,
+  actual CPU/plugin/legacy extension identities and the M13 proof manifest.
+  Verify parent source hashes against the parent commit where planning documents
+  now differ intentionally. Preserve matching parent binaries/profiles before
+  any rebuild; reuse valid build caches and existing isolated `.venv`.
+  Recheck space under the selected asset root and available GPU memory before
+  reserving approximately10.4GB plus bounded working space. Do not clean shared
+  directories, alter GPU state or install global tooling.
+  **Tests:** Existing M13 CPU27/GPU29 Python-suite counts, actual module paths,
+  plugin-device enumeration and native capability queries. Use known CPU85/153,
+  plugin157/216 and selected legacy145/76 native/public parent results as expected
+  counts, never as new results without executing the commands. Record the known
+  stateless negative-device failure separately rather than hiding or fixing it.
+
+- [x] **P1 - Implement and test explicit acquisition and graph inspection.**
+  **Outcome:** Add allowlisted, revision-pinned setup acquisition into the approved
+  asset root, with bounded streaming, explicit errors, expected size/LFS SHA-256
+  checks, local provenance and license retention. Reuse verified existing assets;
+  never treat a partial/corrupt file as success. Keep normal commands offline.
+  Download only the two approved variants and required data/tokenizer/config/license
+  assets; exclude remote Python implementations. Inspect ONNX without loading
+  all external weights into an inspection process.
+  **CPU tests:** Tiny/fake assets and mocked bounded HTTP cover successful and
+  already-verified downloads, network/HTTP/partial/write/hash/size errors,
+  malformed metadata, unknown assets and cleanup. Inspect tiny external-data
+  graphs and reject missing/escaping references, unsupported ports/ranks/types,
+  inconsistent layer pairs and ambiguous cache layouts.
+  **Real CPU/CUDA gate:** Verify every selected graph/weight hash and inspect all
+  actual ports,64 expected key/value bindings, element types, sequence axes,
+  masks, opsets and past/present aliasing assumptions. Compare with upstream
+  metadata without assuming it is authoritative. Record compatibility separately
+  for CPU INT4 and CUDA FP16. Stop for an amendment if native support is missing.
+
+- [x] **P2 - Construct native-validated CPU and CUDA packages.**
+  **Outcome:** Build portable EP-specific manifests under the asset root without
+  duplicating each variant's weights for its two stages. Reuse one decoder
+  component/file for both stages if P1 confirms compatibility. Generate explicit
+  input/finite-sequence bindings, cache specifications and sampler-free prefill
+  EndOfInputs, then decode initial-logits bootstrap, attention-mask conventions,
+  EOS IDs32000/32001/32007 and declared generated-token budget.
+  CPU selects native CPU cache/greedy; CUDA requires native CUDA-plugin cache/
+  greedy on an explicit ordinal. The standard demo budget is16 and belongs to
+  the constructed definition, not an execution override.
+  **CPU tests:** Tiny model packages validate through `sf.ModelPackage`, select
+  components, create named chains and match equivalent typed programmatic
+  definitions. Cover wrong paths, incompatible/missing layers/types, invalid
+  budgets/context bounds, missing assets and native-parser rejection. Check
+  generated portable references, provenance and lack of unintended weight copies.
+  **CUDA tests:** Tiny matching device fixtures prove required provider policy,
+  correct FP16 cache declarations and no CPU sampler/cache substitution.
+  Construct real packages only after each graph passes P1; do not infer cache
+  dtype from quantized weight precision.
+
+- [x] **P3 - Add the local tokenizer boundary.**
+  **Outcome:** Preserve callable encode/decode adapters and provide an optional
+  local Hugging Face adapter, with no network or remote-code execution during
+  loading. Apply the pinned chat template plus assistant prefix by default;
+  raw mode bypasses formatting. Avoid duplicate special-token insertion.
+  Reconcile the generation metadata's EOS set with tokenizer EOS32000.
+  **CPU tests:** Fake adapters cover template/raw behavior, exact input tokens,
+  empty/non-integer/invalid token output, missing local files, incompatible
+  metadata, tokenizer exceptions and special-token text rendering. Verify loading
+  arguments prohibit network/remote code and preserve caller adapter errors.
+  **Real CPU/CUDA tests:** Use downloaded local tokenizer files; verify exact
+  prompt-token identity for both EP packages and the reference. Tokenization is
+  CPU application work, not a CUDA kernel requirement.
+
+- [x] **P4 - Wire the CLI/helpers to native execution.**
+  **Outcome:** Provide explicit setup, offline package-building and run/validation
+  entry points with clear help/errors. Exact flag spelling may follow existing
+  conventions; separate declared-budget construction from normal offline Run.
+  Native ModelPackage -> SessionChain -> StatefulExecution handles all iteration,
+  cache and sampling. Helpers expose token IDs, continuation text, termination/
+  invocation/dispatch information and deterministic resource ownership.
+  **CPU tests:** Tiny fixtures/fake adapters cover CLI and helper success/errors,
+  prompt/context bounds, budget0/1/N, first-EOS, full-prompt EndOfInputs,
+  sample-only first decode step, no missing/duplicate tokens, close/GC/input
+  retention, cancellation and reset-required failures/replay. Verify ordinary
+  result text does not duplicate the original prompt or expose special tokens
+  while token-level outputs retain observed EOS.
+  **CUDA tests:** Tiny device fixtures check identical API behavior with native
+  required cache/greedy, ordinary access without `.numpy()` GPU readback, and
+  explicit failure for unsupported legacy native-feature requests.
+
+- [x] **P5 - Establish the per-variant reference and qualify real CPU INT4.**
+  **Outcome:** Add an ordinary InferenceSession/IOBinding reference using explicit
+  test-side state, matching tokenized prompts, weights, masks, exits and greedy
+  semantics. It must not call the stateful engine or another GenAI engine.
+  Compare the real CPU package to that reference at prefill/decode logit/cache
+  checkpoints, final tokens and termination/invocation counts.
+  **Tests:** Short prompt with16-token limit, zero/one-token cases, EOS behavior,
+  context-bound validation and reset/replay. Exercise first-EOS and other hard-to-
+  force boundaries with deterministic fixtures rather than claiming real-model
+  coverage that did not occur. Budget variations use explicitly constructed
+  definitions/test package metadata, never mutate an active context's policy.
+  Reuse verified weight files safely for tests without extra full copies.
+  Record precision-aware tolerances before final qualification; investigate
+  nonfinite values/outliers and near ties instead of widening bounds to pass.
+  Compare subsequent checkpoints only on matching token histories.
+  **CUDA preparation:** Reuse the reference design, not CPU model outputs as
+  the CUDA FP16 oracle. Different CPU INT4/CUDA FP16 prose is not a failure.
+
+- [x] **P6 - Qualify real CUDA FP16, residency and lifetime.**
+  **Outcome:** Repeat the real text/reference/boundary/replay checks on CUDA
+  with actual requested ordinal, attention/large-compute placement and native
+  cache/greedy dispatch assertions. Document intentional CPU shape/control work.
+  Verify cache/logit dtype/device/length and retained snapshots; explicit reference
+  readbacks are validation work and excluded from normal-decode transfer claims.
+  **Tests:** Native bootstrap first-token accounting and budgets0/1/16; a short
+  sanitizer case must include prefill, sample-only bootstrap and at least one
+  actual decode-model invocation (budget1 alone is insufficient). Use bounded
+  direct workers, not an uninstrumented child hidden behind pytest.
+  Run full memcheck/leak, racecheck and synccheck with M13's documented
+  `--show-backtrace no`, keeping memory/leak/API/exit checks enabled.
+  Dedicated CUPTI traces separate setup/warmup, normal prefill/decode, explicit
+  copies and reference checkpoints. Assert compact greedy token/status readbacks
+  and no full GPU logits/cache payload readback in normal decoding; classify
+  allowed small control transfers from actual records.
+  **CPU checks:** Retain per-variant differential/parity tests and report CPU
+  preprocessing/timing separately. No speedup or absolute performance gate.
+
+- [x] **P7 - Close coverage, offline/wheel validation and regressions.**
+  **Outcome:** Measure100% of all new executable production Python lines,
+  including acquisition, inspection, CLI/error/adapter/builder/helper code.
+  Use fixture/mocked-error tests for deterministic coverage, actual model runs
+  for real qualification, and exact file identities when combining CPU/GPU data.
+  No new exclusions or rounded-to100 claims.
+  **Tests:** Scoped coverage.py file filters, pyright, lintrunner and whitespace.
+  Re-run new fixtures plus M13 CPU27/GPU29 Python suites and directly related
+  native/public/package tests; qualify legacy's unsupported-native-feature boundary
+  without pretending it supplies native GPU cache/greedy. Run offline demos from
+  the existing installed local CPU/plugin wheels outside source/build shadowing.
+  This does not claim that repository demo tools ship inside the ORT wheel.
+  Preserve unchanged M13 native/cumulative maps only with identity checks.
+  If a separately approved amendment adds native production lines, rebuild and
+  measure those lines100% too; a0/0 native delta is not a new native coverage claim.
+
+- [x] **P8 - Document and publish one stacked M14 PR.**
+  **Outcome:** Explain pinned assets/licenses, explicit download/setup, package
+  paths, tokenizer/raw mode, example prompts, declared exits/budgets, masks/cache
+  layout, reference method/tolerances, token accounting and offline/error behavior.
+  Publish actual timing, CPU/CUDA/dispatch/sanitizer/transfer/coverage evidence,
+  exact commands/results and source/object/profile/model hashes.
+  **Tests:** Execute documented commands using isolated installed CPU/plugin
+  wheels and approved local assets. Confirm no weights/downloaded Python code/
+  credentials enter Git. Preserve the PR template; create one OPEN/non-draft PR
+  with base `stateful-M17-python-api`, synchronize its head and keep this checklist
+  and SCRATCHPAD current. No automatic merge or M15 execution.
+
+#### Command and evidence conventions
+
+The following are planned validation shapes, not results or implemented CLI
+promises. Resolve exact names/paths after approval and record every actual
+command, nonzero count and skip.
+
+```bash
+source .venv/bin/activate
+ROOT="$(git rev-parse --show-toplevel)"
+PYTHON="$ROOT/.venv/bin/python"
+ASSETS="/home/devpatel/onnxruntime-stateful/phi3-mini-4k-instruct"
+# Work from the matching built/installed package environment outside ROOT.
+"$PYTHON" -m coverage run --include="$ROOT/samples/python/phi3_demo.py" \
+  -m pytest -q "$ROOT/onnxruntime/test/python/onnxruntime_test_python_phi3_demo.py"
+# Run actual asset/CUDA workers explicitly; their final selectors will be recorded.
+# Full leak checking remains enabled:
+compute-sanitizer --tool memcheck --leak-check full --show-backtrace no \
+  --error-exitcode 99 "$PYTHON" <actual-direct-CUDA-worker> <approved-local-package>
+compute-sanitizer --tool racecheck --show-backtrace no --error-exitcode 99 \
+  "$PYTHON" <actual-direct-CUDA-worker> <approved-local-package>
+compute-sanitizer --tool synccheck --show-backtrace no --error-exitcode 99 \
+  "$PYTHON" <actual-direct-CUDA-worker> <approved-local-package>
+pyright samples/python/phi3_demo.py
+git diff --check
+```
+
+Use the existing CUDA13.0/cuDNN loader paths and actual bundled plugin filename
+`libonnxruntime_providers_cuda.so`. Use absolute coverage `--include` filters, not
+the side-effecting dotted M13 `--source` probe. Install optional demo dependencies
+only in the existing isolated environment after a declared dependency change or
+a genuinely missing-dependency validation failure. Rebuild ORT only when necessary,
+following the build skill and inherited noncached warning policy.
+
+#### Completion gates
+
+- [x] Requirements interview and Appendix N specification approval.
+- [x] Separate execution-plan approval.
+- [x] Approved assets downloaded/verified locally; actual graph/aliasing compatibility established.
+- [x] CPU/CUDA packages load through native factories and match programmatic construction.
+- [x] Local-only tokenizer/chat/raw behavior and caller-adapter/error contracts pass.
+- [x] Real CPU INT4 and CUDA FP16 text/reference/checkpoint/boundary/replay runs pass.
+- [x] Actual CUDA cache/greedy/compute, resident-data and focused sanitizer checks pass.
+- [x] New executable production lines reach measured100%; regressions/type/style/offline examples pass.
+- [x] Exact reproducible documentation/evidence and one correct-base OPEN/ready PR are synchronized.
+
+**Implementation authorization (2026-11-02):** The user explicitly approved this
+plan and authorized starting M14. P0 passes: all62 parent source/artifact hashes
+verify, focused CPU27/84 and isolated installed-plugin29/84 tests pass, actual
+CPU/plugin/legacy extension identities are recorded and eight A10080GB devices
+have sufficient free memory. No parent rebuild occurred.
+
+P1 is in progress. Both small ONNX graphs and external weight files are now
+downloaded outside Git at the approved paths; sizes and published LFS SHA-256
+values verify. Actual graphs are IR7/opset14, have INT64 token/mask inputs and
+64 rank4 cache tensors, FP32 CPU versus FP16 CUDA, and32 GroupQueryAttention
+nodes each. This is structural inspection, not yet a real-runtime compatibility
+or generation claim. Metadata/tokenizer acquisition and setup/inspection/builder
+tooling/tests are being implemented; no M14 PR or complete coverage is claimed.
+
+**Latest verified checkpoint:** P1-P3 and the real CPU reference gate P5 pass.
+All approved graph/data/tokenizer/config/license assets are verified outside Git.
+Both portable packages construct two native owned Sessions before atomic manifest
+publication. Local-only tokenizer loading initially failed for missing
+`transformers`; the optional demo requirements were declared and installed into
+the existing `.venv` only (Transformers4.57.6, tokenizers0.22.2, Hub0.36.2).
+No core dependency manifest, native runtime or CUDA source was changed.
+
+Real CPU INT4 and CUDA FP16 text runs both produce16 tokens with16 model
+invocations and the declared token-limit exit. CPU uses native CPU greedy;
+CUDA records16 provider calls and zero CPU sampling. An initial eight-thread
+CPU configuration exceeded its300-second diagnostic bound; a timed single-thread
+probe completed, showing the sample-only first decode step and15 actual decode
+calls. The demo now uses one intra-op thread for reproducible low-contention runs.
+The failed diagnostic is retained, not counted as passing qualification.
+
+Actual per-variant stateless-reference reports show **zero maximum absolute
+logit/cache checkpoint error**, all64 caches, final cache length29 for the14-token
+prompt plus15 executed decode calls, unchanged retained prefill snapshots and
+successful reset/replay. CPU placement is all CPU; CUDA has all32 GQA and161
+MatMul nodes on CUDA, with only one mask-shape Gather/Cast pair on CPU.
+
+Explicit real-asset tests also pass budgets0/1/16 and typed programmatic/package
+construction parity: CPU1test/3subtests in281.43s and CUDA1test/3subtests in88.66s.
+No tests in those selectors were skipped. The first setup/execution slice reached
+278/278 statements under unit coverage; the newly added reference/placement/error
+checks still require fresh coverage closure. Current full offline fixtures pass
+10tests/49subtests. CUDA real memcheck has already returned zero errors/leaks;
+remaining sanitizer tools, transfer traces, final regressions/docs and publication
+are still in progress. Do not treat this checkpoint as complete M14 qualification.
+
+#### Final M14 qualification (2026-11-03)
+
+All implementation/qualification/publication gates P0-P8 pass. PR
+[#34057](https://github.com/microsoft/onnxruntime/pull/34057) is OPEN/ready with base
+`stateful-M17-python-api` (#34056). Implementation commit
+`111ae8c28fb0014316206a000631a51fe7e6c372` contains the qualified code; the
+publication bookkeeping commit changes tracking only.
+The [user guide](docs/Stateful_Phi3_Demo.md) documents the actual
+[CLI/helpers](samples/python/phi3_demo.py) and optional demo dependencies.
+No native runtime or CUDA kernel source was changed.
+
+| Surface | Actual final result |
+|---|---|
+| Offline M14 fixture/verifier/CLI/runner suite | 15 tests/63 subtests passed |
+| Combined installed CPU-wheel M13/M14 suites | 42 tests/147 subtests passed |
+| Combined installed GPU-wheel M13/M14 suites | 44 tests/147 subtests passed, including actual M13 CUDA workers |
+| Combined legacy M13/M14 offline suites | 42 tests/147 subtests passed; native GPU-feature request explicitly rejected |
+| Real CPU INT4 | 1 test/3 subtests for budgets0/1/16, stateless checkpoints, replay and typed/package parity |
+| Real CUDA FP16 | 1 test/3 subtests with the same gates; actual raw-prompt bootstrap also passed |
+| CPU native/public, unfiltered | 85/85 and153/153 passed |
+| Plugin native/public, unfiltered | 157/157 and216/216 passed |
+| Legacy native/selected public | 145/145 and76/76 passed with the inherited explicit selector |
+| Standalone shared/static package | Each5/5 CTests passed |
+| Existing CPU Session/OrtValue and callbacks | 8 and2 passed respectively |
+| Existing plugin Session/OrtValue | 7 passed; known stateless negative-device failure separately reproduced |
+| Type/style/whitespace | pyright0 errors/warnings; lintrunner and whitespace checks passed |
+
+New executable production Python coverage is **377/377**:
+`samples/python/phi3_demo.py` **376/376** and the existing full Python test-runner
+integration **1/1 changed statement**. The offline unit suite now runs from the
+standard full-build Python runner without model assets or downloads; reduced/
+minimal builds retain their existing skip guard. Its orchestration call is
+itself exercised with a mocked subprocess runner.
+
+The report explicitly clears coverage.py's default exclusions so the Protocol
+declarations are not silently omitted: **zero excluded lines**. Current source
+SHA and exact changed-line analysis are saved in
+`m14-production-coverage-final.{txt,json}` using `measure_m14_coverage.py`.
+There is no new native delta or new device-coverage claim; M13's exact-source/
+artifact proof was preserved and all62 parent hashes verified.
+
+Direct actual-model sanitizer workers execute prefill, sample-only bootstrap
+and two real decode calls, then access a retained GPU cache after context close:
+full memcheck/leak **0 errors/0 bytes**, racecheck **0 hazards/errors/warnings**,
+synccheck **0 errors**. The inherited `--show-backtrace no` diagnostic workaround
+keeps full memory/leak/API/exit checks enabled.
+
+Dedicated normal-run CUPTI records are exactly:
+
+- HtoD: two8B token feeds; two112B prompt token/mask feeds; one120B and one128B
+  decode attention mask.
+- DtoH: **three16B compact token/status records =48B**. No full cache/logit
+  readbacks occur in normal decoding.
+- DtoD:64each of86,016B and92,160B cache-prefix copies. These are allowed device-
+  resident copies, not a zero-copy claim.
+- Separate explicit-copy capture: one98,304B DtoD clone and one98,304B DtoH copy.
+- The normal capture contains1,722 GPU kernels on ordinal0, including three
+  `GreedyPartialsHalf` and three `GreedyFinish` launches.
+
+The exact DMA record lists and kernel counts were asserted against exported
+SQLite, not inferred from host payload counters. Warmup/setup, reference
+checkpoint readbacks and post-capture lifecycle copies are separate.
+
+Final command/results, using the existing isolated Python and matching actual
+build/installed wheel with source/test paths and loader configured:
+
+```bash
+# CPU42/147; plugin44/147 adds the stateful_cuda.py module; legacy42/147:
+"$PYTHON" -m pytest -q \
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_stateful.py" \
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_stateful_package.py" \
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_stateful_threads.py" \
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_phi3_demo.py"
+# Each actual asset selector passed1test/3subtests, with no skips:
+ORT_STATEFUL_PHI3_ASSETS="$ASSETS" "$PYTHON" -m pytest -q \
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_phi3_demo_assets.py" -k test_cpu_real
+ORT_STATEFUL_PHI3_ASSETS="$ASSETS" "$PYTHON" -m pytest -q \
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_phi3_demo_assets.py" -k test_cuda_real
+# Each passed with the actual direct worker, not a parent-only pytest process:
+compute-sanitizer --tool memcheck --leak-check full --show-backtrace no \
+  --error-exitcode 99 "$PYTHON" \
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_phi3_demo_assets.py" --cuda-sanitizer-worker
+compute-sanitizer --tool racecheck --show-backtrace no --error-exitcode 99 "$PYTHON" \
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_phi3_demo_assets.py" --cuda-sanitizer-worker
+compute-sanitizer --tool synccheck --show-backtrace no --error-exitcode 99 "$PYTHON" \
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_phi3_demo_assets.py" --cuda-sanitizer-worker
+# Passed377/377, zero exclusions:
+"$PYTHON" "$EVIDENCE/measure_m14_coverage.py"
+# Normal/copy worker captures and SQLite exports passed; exact records asserted:
+nsys profile --trace=cuda --sample=none --cpuctxsw=none \
+  --capture-range=cudaProfilerApi --capture-range-end=stop --force-overwrite=true \
+  -o "$EVIDENCE/m14-real-trace" "$PYTHON" \
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_phi3_demo_assets.py" --cuda-trace-worker
+nsys profile --trace=cuda --sample=none --cpuctxsw=none \
+  --capture-range=cudaProfilerApi --capture-range-end=stop --force-overwrite=true \
+  -o "$EVIDENCE/m14-real-copy" "$PYTHON" \
+  "$ROOT/onnxruntime/test/python/onnxruntime_test_python_phi3_demo_assets.py" --cuda-copy-worker
+```
+
+`$ASSETS` is the approved external root; `$EVIDENCE` is the session's persistent
+files directory. Exact source/object/profile/model hashes, numerical/placement
+reports, raw failure diagnostics and logs are retained under `m14-*`.
+Documented acquire/inspect/build/run/validate commands were executed offline
+where specified against isolated local CPU/plugin wheels; final manifests
+contain per-asset provenance and the original graphs/weights remain hash-identical.
+
+Known limitations remain explicit: the unchanged stateless plugin
+`test_set_providers_with_options` still fails its negative-device RuntimeError
+expectation and was separately re-run (1failed), not hidden or fixed here.
+Direct-CMake legacy imports retain the pre-existing missing wheel metadata
+warning. Other GPU architectures, free-threaded Python, additional models,
+stochastic sampling and M15 are not claimed. No weights or downloaded Python
+code enter the PR, and no milestone is automatically merged.
 
 ### M15 - Stable Diffusion local package and image demo
 
@@ -4608,7 +5007,7 @@ negative/error tests. Supporting milestones do not replace final qualification.
 | Concrete API/schema contracts | Semantic requirements approved; exact contracts not yet implemented | M01 documents within approved scope; material choices return to user. |
 | CPU/compiler/language coverage readiness | Not probed by running builds/tools during planning | Establish in M01; verify 100% per affected PR. |
 | CUDA device-line coverage | M08 copy-primitive approach approved; M09 still requires device instrumentation | Actual GPU dispatch remains mandatory. M08 may report zero/N/A only with no new device functions; any device code added in M08/M09 needs measured 100% coverage. |
-| Local Phi-3/SD files and adapters | Paths/integrations not supplied | Request concrete paths before M14/M15; synthetic fixtures do not replace real demos. |
+| Local Phi-3/SD files and adapters | M14 Phi-3 revision/variants/tokenizer source and local directory confirmed; acquisition awaits approvals. SD assets not supplied. | Inspect actual Phi-3 graphs after approved acquisition; request SD assets before M15. Synthetic fixtures do not replace real demos. |
 | CPU/CUDA model variants | Actual signatures/precision not inspected | Verify compatible local variants; no silent model substitution/download. |
 | Objective-C/iOS validation | Linux is the initial platform; Apple access not provided | M22/M23 need supplemental runner/coverage or remain blocked; no implicit scope reduction. |
 | Browser/mobile package resources | Runtime file APIs differ from native filesystem APIs | M01/M19/M23 define adapters preserving package confinement and execution parity. |
