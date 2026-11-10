@@ -25,6 +25,13 @@ per configuration (504 measurements) on an AMD EPYC 7V12 VM. The requests resolv
 `sqnbit_int8` cases, all `packed_qnbit`. These are implementation families, not verified ISA microkernel symbols.
 Derived counts repeated exactly across trials. This establishes repeatability, not counter accuracy.
 
+The [November 10 follow-up](cpu_epyc_7v12_2026_11_09/report.md#follow-up-audit-fp32-single-row-avx2-kernel-november-10)
+identified the AVX2 single-row specialization for FP32 M=1, K=N=1024. Its source-derived `3NK + 7N` count is
+3,152,896, versus measured recurring process work of 3,152,898 and the existing estimate of 4,194,304.
+Integer midpoint subtraction explains why this case needs one FP scaling operation per weight, rather than the
+nominal two-FP-operation reconstruction scenario. This result is bounded; compiled branch accounting, the residual,
+other specializations and held-out validation remain open. No production formula has been changed.
+
 FP32 measured process counts were about 22-25% below estimates for M=1 and much closer at M=128. INT8 process FP
 counts exceeded the modeled subtotal by about 145-292%. These are signed differences between different scopes,
 not isolated operator errors. Activation quantization, vector scaling, reductions, reconstruction reuse and
@@ -61,6 +68,171 @@ CPU hardware gates:
    and corrections. Confirm ISA specialization before assigning lane-count coefficients.
 3. Add independently derived component references, fix demonstrated gaps and validate held-out shapes.
 4. Preserve logical baselines and explicit whole-op exclusions while expanding optional route models.
+
+## Repeatable FP32 M=1 kernel audit
+
+This is the sequence used to select and trace the November 10 case. It requires the saved baseline bundle,
+the same installed native runtime, Linux perf sampling access, `jq`, `rg`, and disassembly support. Sampling
+permissions may differ from counting permissions. Do not change host security settings automatically.
+Keep the baseline and installed wheel untouched; debug symbols must match that binary. Source line numbers may
+move, so search symbols rather than relying solely on fixed line ranges.
+
+### Select and preserve the case
+
+Run the following blocks in the same Bash terminal. Replace the repository/baseline roots if moved.
+
+```bash
+conda activate ort-flops
+cd /tmp
+export REPO=/datadisks/disk10/tommasoadani/repos/onnxruntime
+export BASE=/datadisks/disk10/tommasoadani/tmp/matmul-baseline-2026-11-09
+export AUDIT=$(mktemp -d /datadisks/disk10/tommasoadani/tmp/matmul-m1-audit-XXXXXX)
+echo "Audit directory: $AUDIT"
+
+# Use a standalone assignment so a failed jq selection is visible.
+CASE_ID=$(jq -er '
+  [.cases[] | select(
+    .settings.a_shape == [1,1024] and .settings.n == 1024 and
+    .settings.dtype == "float32" and .settings.accuracy_level == 0 and
+    .settings.bias == false and .settings.zero_points == false and
+    .compute_mode == "sqnbit_fp32"
+  )] |
+  if length == 1 then .[0].case_id else error("Expected exactly one case") end
+' "$BASE/estimates-v2/results.json")
+```
+
+Stop if selection fails; do not continue with an empty case ID.
+
+```bash
+export CASE_ID
+export CASE_DIR="$BASE/cases/$CASE_ID"
+test -f "$CASE_DIR/model.onnx" && test -f "$CASE_DIR/inputs.npz"
+jq --arg id "$CASE_ID" '.cases[] | select(.case_id == $id)' \
+  "$BASE/estimates-v2/results.json" > "$AUDIT/case-estimates.json"
+cat "$AUDIT/case-estimates.json"
+```
+
+### Verify binary provenance
+
+This checks native library hashes, not just version/build strings. Stop on any mismatch.
+The saved baseline must contain `baseline.json` with the native library hashes recorded at save time.
+
+```bash
+python - <<'PY'
+import hashlib
+import json
+import os
+from pathlib import Path
+import onnxruntime as ort
+
+baseline = json.loads((Path(os.environ["BASE"]) / "baseline.json").read_text())
+libraries = baseline["provenance_captured_at_save"][
+    "installed_native_libraries_match_saved_wheel_at_save_time"
+]
+if not libraries:
+    raise RuntimeError("Baseline has no native library hashes")
+root = Path(ort.__file__).parent.parent
+for library in libraries:
+    path = root / library["path"]
+    with path.open("rb") as stream:
+        actual = hashlib.file_digest(stream, "sha256").hexdigest()
+    if actual != library["sha256"]:
+        raise RuntimeError(f"Native library differs from baseline: {path}")
+info = {
+    "runtime_file": ort.__file__,
+    "build": ort.get_build_info(),
+    "native_libraries_match_baseline": True,
+}
+(Path(os.environ["AUDIT"]) / "runtime.json").write_text(json.dumps(info, indent=2))
+print(json.dumps(info, indent=2))
+PY
+```
+
+### Sample and identify symbols
+
+```bash
+perf --version > "$AUDIT/perf-version.txt"
+lscpu > "$AUDIT/cpu-info.txt"
+perf record --output="$AUDIT/cycles.data" --event=cycles:u --freq=499 \
+  --call-graph=dwarf,8192 -- \
+  python "$REPO/tools/python/profile_matmul_nbits.py" workload \
+    --model "$CASE_DIR/model.onnx" --inputs "$CASE_DIR/inputs.npz" \
+    --repeats 10000 --warmup 100 --threads 1
+```
+
+Require a successful command and nonzero samples before proceeding. The workload disables reporting, uses CPU,
+sequential execution, disabled graph optimizations and one intra-op thread. Sampling includes startup/warmup;
+cycle percentages identify hot code, not FLOP counts or isolated inference duration.
+
+```bash
+perf --no-pager report --input="$AUDIT/cycles.data" --stdio --no-children \
+  --sort=dso,symbol --percent-limit=0.5 > "$AUDIT/hot-symbols.txt"
+perf --no-pager report --input="$AUDIT/cycles.data" --stdio --children \
+  --percent-limit=1 > "$AUDIT/call-tree.txt"
+grep -Ei 'mlas|sq4|sqnbit|qnbit|gemm|avx' "$AUDIT/hot-symbols.txt"
+```
+
+The historical hot symbol was `SQ4BitGemmM1Kernel_BlkLen32Plus_CompFp32_avx2<false>` with compiler suffix
+`[clone .isra.0]`. Confirm the symbol actually observed on each run; do not infer AVX2 from the CPU alone.
+If samples show unknown addresses, preserve the capture and obtain matching symbols before assigning a kernel.
+
+### Trace dispatch and annotate the sampled binary
+
+```bash
+rg -n -C 12 'RangeCountM == 1|SQ4BitGemmM1Kernel_CompFp32' \
+  "$REPO/onnxruntime/core/mlas/lib/qnbitgemm.cpp"
+rg -n 'SQ4BitGemmM1Kernel_CompFp32' "$REPO/onnxruntime/core/mlas/lib" \
+  > "$AUDIT/m1-dispatch-references.txt"
+cat "$AUDIT/m1-dispatch-references.txt"
+
+rg -n -A 175 '^ComputeDotProducts_BlkLen32Plus_CompFp32_avx2\(' \
+  "$REPO/onnxruntime/core/mlas/lib/sqnbitgemm_kernel_avx2.cpp" \
+  > "$AUDIT/source-dot-products.txt"
+rg -n -A 36 '^FoldAccumulators\(const __m256&' \
+  "$REPO/onnxruntime/core/mlas/lib/sqnbitgemm_kernel_avx_common.h" \
+  > "$AUDIT/source-reduction.txt"
+cat "$AUDIT/source-dot-products.txt" "$AUDIT/source-reduction.txt"
+
+read -r -p "Paste the exact demangled hot symbol from the report: " KERNEL_SYMBOL
+perf --no-pager annotate --input="$AUDIT/cycles.data" --stdio \
+  --symbol="$KERNEL_SYMBOL" > "$AUDIT/kernel-assembly.txt"
+head -160 "$AUDIT/kernel-assembly.txt"
+```
+
+Paste only the symbol, not its percentage/DSO columns. Require nonempty disassembly. The first 160 lines are only a
+preview: this function contains block-size and tail branches. Follow the actual block-32/no-explicit-zero-point,
+four-column branch before counting instructions. Debug source lines are optional; matching disassembly is required
+for a compiled instruction claim.
+
+Check integer midpoint subtraction, FP conversion/scaling, FP multiply-adds and final reduction. In AVX2 assembly,
+the integer adjustment may be an integer add of -8 rather than a subtraction mnemonic. Do not count conversions,
+shuffles or integer instructions as FP arithmetic; count eight-lane FP multiply-add as 16 FLOPs. Sample percentages
+are not execution multiplicities. Derive loop counts from the selected geometry and control flow.
+
+For M=1, aligned K, N divisible by four, block size 32 and no bias, the observed source specialization has
+`NK` FP scaling, `2NK` accumulation and `7N` reduction. Cross-check independently:
+
+```bash
+python - <<'PY'
+import json
+import os
+from pathlib import Path
+
+case = json.loads((Path(os.environ["AUDIT"]) / "case-estimates.json").read_text())
+k = case["settings"]["a_shape"][-1]
+n = case["settings"]["n"]
+print("FP weight scaling:", n * k)
+print("FP dot accumulation:", 2 * n * k)
+print("FP final reductions:", 7 * n)
+print("Source-derived bounded kernel total:", 3 * n * k + 7 * n)
+print("Existing modeled subtotal:", case["expected_flops"]["expected_flops"])
+PY
+```
+
+For the audited case this gives 3,152,896 versus measured recurring process work of 3,152,898. Leave the residual
+unattributed. Save the symbol, source/assembly excerpts, runtime hashes and assumptions with the audit.
+Repeat for the other aligned M=1 geometries and new held-out shapes before refining a route model. The helper
+count is not a general formula for all CPU packed-QNBit implementations.
 
 ## CUDA preparation
 

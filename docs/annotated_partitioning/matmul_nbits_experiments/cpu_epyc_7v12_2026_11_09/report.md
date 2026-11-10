@@ -40,6 +40,60 @@ The **Mode** column records the effective compute mode observed during the estim
 In this CPU/build matrix, requests 0-3 selected `sqnbit_fp32`, including FP16 inputs at request 0.
 Request 4 selected `sqnbit_int8` for both FP32 and FP16 inputs. Native FP16/BF16 compute modes were not observed.
 
+## Follow-up audit: FP32 single-row AVX2 kernel (November 10)
+
+For FP32 input `[1,1024]`, N=1024, accuracy request 0, INT4/block size 32, no bias and implicit midpoint zero points,
+cycle sampling identified the actual single-row implementation:
+
+```text
+SQ4BitGemmM1Kernel_BlkLen32Plus_CompFp32_avx2<false> [clone .isra.0]
+```
+
+The template argument means no explicit zero-point input; the implicit midpoint is still subtracted.
+The clone suffix denotes compiler specialization. This establishes AVX2 kernel identity for the audited case,
+not every case labeled `packed_qnbit` / `sqnbit_fp32`. The installed native libraries matched the saved baseline.
+The cycle profile collected 4,833 samples; the kernel had 21.57% self cycle attribution. That percentage is
+neither an FP-operation fraction nor a steady-state-only timing measurement.
+
+The [single-row kernel](../../../../onnxruntime/core/mlas/lib/sqnbitgemm_kernel_avx2.cpp) selects
+`ComputeDotProducts_BlkLen32Plus_CompFp32_avx2<4, false, false>` for this aligned four-column/block-32 case.
+Its midpoint subtraction uses integer `_mm256_sub_epi8`, followed by integer-to-float conversion, one FP scale
+multiplication per weight and FP multiply-add accumulation. Integer subtraction and pure conversion are not
+counted as FLOPs in this ledger.
+
+The [FoldAccumulators helper](../../../../onnxruntime/core/mlas/lib/sqnbitgemm_kernel_avx_common.h)
+uses three eight-lane FP additions and one four-lane addition: 28 FLOPs per four output columns, or 7N.
+For this full-block, N-divisible-by-four, no-bias specialization:
+
+| Component | Independent source-derived FP count |
+|---|---:|
+| Integer midpoint subtraction / pure conversion | 0 |
+| Weight scaling, NK | 1,048,576 |
+| Dot-product accumulation, 2NK | 2,097,152 |
+| Final reductions, 7N | 7,168 |
+| Kernel total, 3NK + 7N | **3,152,896** |
+| Previously measured recurring process count | **3,152,898** |
+| Process count minus source-derived kernel total | **+2** |
+| Existing estimator subtotal, 4NK | **4,194,304** |
+
+This explains the dominant discrepancy: the nominal estimator charges two FP reconstruction operations per weight,
+but this specialization performs the zero-point subtraction as integer work, leaving one FP scale multiplication.
+It also performs reductions excluded from the current three-component model. The two-operation residual is
+unattributed; do not assume it is a particular runtime instruction without further evidence.
+
+The sampled binary was annotated successfully, but the shared excerpt showed only the beginning of a function
+containing multiple block-size branches. Full compiled block-32 control-flow/instruction accounting and SIMD/FMA
+counter qualification remain follow-up checks. The close source-derived/process-count match is strong corroboration,
+not a blanket instruction-exact or whole-op accuracy claim.
+
+No estimator formula was changed by this audit. Do not generalize `3NK + 7N` to larger M, column/K tails, other
+ISAs, explicit-zero-point variants or INT8 routes without validating their actual implementation.
+Next compare the other aligned M=1 geometries, confirm the compiled block-32 path, and test held-out shapes.
+The raw local audit is at `/datadisks/disk10/tommasoadani/tmp/matmul-m1-audit-NecOJP/`
+(`cycles.data`, `hot-symbols.txt`, `kernel-assembly.txt`, `runtime.json`, `case-estimates.json`).
+These local paths are provenance references, not portable repository assets.
+See the [repeatable audit sequence](../testing_strategy.md#repeatable-fp32-m1-kernel-audit).
+
 ## Results
 
 | Mode | Input dtype | Accuracy request | M | K | N | Estimated FP ops | Measured mean | Sample stddev | Min | Max | Difference |
