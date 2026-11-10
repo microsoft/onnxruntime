@@ -668,7 +668,12 @@ ModelPackageStatus* ModelPackage_Prune(ModelPackage* pkg) MODEL_PACKAGE_TRY {
   }
   if (fs::is_directory(assets_root, ec)) {
     std::error_code open_ec, iter_ec;
-    for (fs::directory_iterator it(assets_root, open_ec), end; !iter_ec && it != end; it.increment(iter_ec)) {
+    fs::directory_iterator it(assets_root, open_ec), end;
+    if (open_ec) {
+      return MakeStatus(MODEL_PACKAGE_ERR_IO,
+                        "iterate '" + assets_root.u8string() + "': " + open_ec.message());
+    }
+    for (; !iter_ec && it != end; it.increment(iter_ec)) {
       const auto& entry = *it;
       fs::file_status link_status = entry.symlink_status(ec);
       if (link_status.type() == fs::file_type::none) {
