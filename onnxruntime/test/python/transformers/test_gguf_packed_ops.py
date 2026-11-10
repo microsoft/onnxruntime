@@ -968,6 +968,46 @@ class TestGgufPackedOps(unittest.TestCase):
                             ref = _round_to_dtype(_round_to_dtype(a, dtype) @ target.T, dtype)
                             np.testing.assert_allclose(got, ref, rtol=1e-2, atol=1e-2)
 
+    def test_matmul_packed_gemv_multirow_k_split(self):
+        rng = np.random.default_rng(126)
+        k, n = 2816, 513
+        for gtype, bel, bbytes in ((8, 32, 34), (14, 256, 210)):
+            raw = _make_synthetic_gguf_rows(rng, n, k, gtype, bel, bbytes, quant_scale=2**-10)
+            weights = _dequantize_weights(raw, k, gtype)
+            for dtype in self.activation_dtypes:
+                model = _model(
+                    [
+                        helper.make_node(
+                            "MatMulPacked", ["A", "B"], ["Y"], domain="com.microsoft", K=k, N=n, packed_type=gtype
+                        )
+                    ],
+                    [
+                        helper.make_tensor_value_info("A", dtype, ["M", k]),
+                        helper.make_tensor_value_info("B", TensorProto.UINT8, [n, raw.shape[1]]),
+                    ],
+                    [helper.make_tensor_value_info("Y", dtype, ["M", n])],
+                )
+                so = ort.SessionOptions()
+                so.add_session_config_entry("ep.cuda.matmul_packed_allow_unrounded_gemv", "1")
+                session = ort.InferenceSession(
+                    model.SerializeToString(), sess_options=so, providers=["CUDAExecutionProvider"]
+                )
+                for a_offset, b_offset in ((0, 0), (2, 1)):
+                    for m in (2, 3, 4, 8):
+                        with self.subTest(gtype=gtype, dtype=dtype, a_offset=a_offset, m=m):
+                            a = _round_to_dtype(rng.standard_normal((m, k), dtype=np.float32) * 0.2, dtype)
+                            got = _run_cuda_bound(
+                                session,
+                                {
+                                    "A": (dtype, _activation_storage(a, dtype), a_offset),
+                                    "B": (TensorProto.UINT8, raw, b_offset),
+                                },
+                                (m, n),
+                                dtype,
+                            )
+                            ref = _round_to_dtype(a @ weights.T, dtype)
+                            np.testing.assert_allclose(got, ref, rtol=1e-2, atol=1e-2)
+
     def test_moe_packed_unaligned_buffers(self):
         rng = np.random.default_rng(1000)
         num_experts, hidden_size, inter_size = 2, 256, 256
