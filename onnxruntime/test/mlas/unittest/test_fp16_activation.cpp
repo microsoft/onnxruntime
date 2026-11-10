@@ -149,7 +149,10 @@ class MlasFp16ActivationTest : public MlasTestBase {
   }
 };
 
-static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
+static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) -> size_t {
+  if (!MlasFp16AccelerationSupported()) {
+    return 0;
+  }
   return is_short_execute ? MlasDirectShortExecuteTests<MlasFp16ActivationTest>::RegisterShortExecute() : 0;
 });
 

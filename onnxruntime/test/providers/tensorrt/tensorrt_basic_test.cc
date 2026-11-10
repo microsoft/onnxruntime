@@ -1364,6 +1364,117 @@ TEST(TensorrtExecutionProviderTest, RemoveCycleTest) {
   VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
 }
 
+TEST(TensorrtExecutionProviderTest, RemoveCycleEdgeCasesTest) {
+  using SubGraphCollection = std::vector<std::pair<std::vector<size_t>, bool>>;
+
+  // Case 1: Leading empty entry before the cyclic TensorRT subgraph.
+  {
+    SubGraphCollection supported_nodes_vector = {
+        {{}, false},
+        {{0, 2}, true},
+        {{4}, true},
+    };
+    const std::vector<size_t> trt_id_to_subgraph_index = {1, 2};
+    const std::vector<size_t> cycles = {0, 3};
+
+    ASSERT_TRUE(EraseCyclicTensorRTSubgraph(supported_nodes_vector, cycles, trt_id_to_subgraph_index));
+    ASSERT_EQ(supported_nodes_vector.size(), 2u);
+    EXPECT_TRUE(supported_nodes_vector[0].first.empty());
+    EXPECT_EQ(supported_nodes_vector[1].first, std::vector<size_t>({4}));
+  }
+
+  // Case 2: Non-TensorRT cycle vertex (e.g. named "TRTKernel_custom") precedes the TensorRT vertex in cycles.
+  {
+    SubGraphCollection supported_nodes_vector = {
+        {{0, 2, 3}, true},
+        {{5}, true},
+    };
+    const std::vector<size_t> trt_id_to_subgraph_index = {0, 1};
+    // Vertex 2 is a non-TensorRT node visited before TensorRT vertex 0 in the cycle traversal.
+    const std::vector<size_t> cycles = {2, 0};
+
+    ASSERT_TRUE(EraseCyclicTensorRTSubgraph(supported_nodes_vector, cycles, trt_id_to_subgraph_index));
+    ASSERT_EQ(supported_nodes_vector.size(), 1u);
+    EXPECT_EQ(supported_nodes_vector[0].first, std::vector<size_t>({5}));
+  }
+
+  // Case 3: End-to-end session initialization and execution when a non-TensorRT node in a cycle
+  // has "TRTKernel" in its name. The parser natively rejects "Xor" while fusing {"TRTKernel_not", "and"}
+  // into a single supported group spanning both sides of "xor2", triggering remove_cycles=true.
+  {
+    onnxruntime::Model model("removecycle_trtkernel_name_test", false, DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+    std::vector<onnxruntime::NodeArg*> inputs;
+    std::vector<onnxruntime::NodeArg*> outputs;
+
+    ONNX_NAMESPACE::TypeProto bool_tensor;
+    bool_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+    bool_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+    bool_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+    bool_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+
+    auto& input_arg_1 = graph.GetOrCreateNodeArg("X", &bool_tensor);
+    auto& input_arg_2 = graph.GetOrCreateNodeArg("Y", &bool_tensor);
+    inputs = {&input_arg_1, &input_arg_2};
+    auto& output_arg_1 = graph.GetOrCreateNodeArg("xor1_out", &bool_tensor);
+    outputs = {&output_arg_1};
+    graph.AddNode("TRTKernel_xor1", "Xor", "node 1.", inputs, outputs);
+
+    inputs = {&output_arg_1};
+    auto& output_arg_2 = graph.GetOrCreateNodeArg("not_out", &bool_tensor);
+    outputs = {&output_arg_2};
+    graph.AddNode("TRTKernel_not", "Not", "node 2.", inputs, outputs);
+
+    auto& input_arg_3 = graph.GetOrCreateNodeArg("Z", &bool_tensor);
+    inputs = {&output_arg_2, &input_arg_3};
+    auto& output_arg_3 = graph.GetOrCreateNodeArg("xor2_out", &bool_tensor);
+    outputs = {&output_arg_3};
+    graph.AddNode("TRTKernel_xor2", "Xor", "node 3.", inputs, outputs);
+
+    inputs = {&output_arg_2, &output_arg_3};
+    auto& output_arg_4 = graph.GetOrCreateNodeArg("M", &bool_tensor);
+    outputs = {&output_arg_4};
+    graph.AddNode("and", "And", "node 4.", inputs, outputs);
+
+    ASSERT_STATUS_OK(graph.Resolve());
+    PathString model_file_name = ORT_TSTR("trt_execution_provider_removecycle_trtkernel_name_test.onnx");
+    ASSERT_STATUS_OK(onnxruntime::Model::Save(model, model_file_name));
+
+    std::vector<int64_t> dims = {1, 3, 2};
+    std::vector<bool> values_x = {true, false, true, false, true, false};
+    std::vector<bool> values_y = {true, true, false, true, false, false};
+
+    SessionOptions so;
+    so.session_logid = "TensorrtExecutionProviderTest.RemoveCycleEdgeCasesTest";
+    RunOptions run_options;
+    run_options.run_tag = so.session_logid;
+    InferenceSession session_object{so, GetEnvironment()};
+
+    auto cuda_provider = DefaultCudaExecutionProvider();
+    auto cpu_allocator = cuda_provider->CreatePreferredAllocators()[1];
+
+    OrtValue ml_value_x;
+    CreateMLValue<bool>(cpu_allocator, dims, values_x, &ml_value_x);
+    OrtValue ml_value_y;
+    CreateMLValue<bool>(cpu_allocator, dims, values_y, &ml_value_y);
+    OrtValue ml_value_z;
+    CreateMLValue<bool>(cpu_allocator, dims, values_y, &ml_value_z);
+    NameMLValMap feeds = {{"X", ml_value_x}, {"Y", ml_value_y}, {"Z", ml_value_z}};
+
+    std::vector<std::string> output_names = {"M"};
+    std::vector<OrtValue> fetches;
+    std::vector<bool> expected_values_m = {false, false, false, false, false, true};
+
+    std::unique_ptr<IExecutionProvider> execution_provider = DefaultTensorrtExecutionProvider();
+    ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
+
+    ASSERT_STATUS_OK(session_object.Load(model_file_name));
+    ASSERT_STATUS_OK(session_object.Initialize());
+    ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
+    VerifyOutputs(fetches, dims, expected_values_m);
+  }
+}
+
 TEST(TensorrtExecutionProviderTest, TestSessionOutputs) {
   /*
    * Model #1:

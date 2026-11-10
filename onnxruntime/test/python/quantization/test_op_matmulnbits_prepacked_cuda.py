@@ -12,6 +12,7 @@ import subprocess
 import sys
 import unittest
 from contextlib import contextmanager
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 from onnx import ModelProto, TensorProto, helper, numpy_helper
@@ -140,7 +141,7 @@ class TestMatMulNBitsPrepackedCuda(unittest.TestCase):
                 prepacked_output = self._run_model(prepacked_model, a)
             except Exception as exc:
                 outside_compact_contract = block_size != 32 or has_bias or weight_prepacked != 1
-                if outside_compact_contract and "compact fpA_intB build supports prepacked weights only" in str(exc):
+                if outside_compact_contract and "compact fpA_intB build supports prepacked weights for" in str(exc):
                     self.skipTest("case is outside the compact fpA_intB build contract")
                 raise
 
@@ -191,6 +192,30 @@ class TestMatMulNBitsPrepackedCuda(unittest.TestCase):
         self._check_sm90_parity(bits=8, block_size=128, m=32)
 
 
+class TestMatMulNBitsCompactContract(unittest.TestCase):
+    def test_skips_only_unsupported_compact_prepacked_cases(self):
+        message = "This compact fpA_intB build supports prepacked weights for FP16/BF16 activations"
+        cases = (
+            (64, message, unittest.SkipTest),
+            (32, message, RuntimeError),
+            (64, "Unexpected execution failure", RuntimeError),
+        )
+        for block_size, error, expected_exception in cases:
+            with self.subTest(block_size=block_size, error=error):
+                case = TestMatMulNBitsPrepackedCuda()
+                weights = np.zeros((512, 256 // block_size, block_size // 2), dtype=np.uint8)
+                scales = np.ones(weights.shape[:2], dtype=np.float16)
+                packer = MagicMock()
+                packer.pack_weights_for_cuda_mixed_gemm.return_value = weights.reshape(-1).view(np.int8)
+                with (
+                    patch.object(sys.modules[__name__], "_cuda_quant", packer),
+                    patch.object(case, "_quantize_weight", return_value=(weights, scales)),
+                    patch.object(case, "_run_model", side_effect=[np.zeros((1, 512)), RuntimeError(error)]),
+                    self.assertRaises(expected_exception),
+                ):
+                    case._check_prepacked_parity(bits=4, block_size=block_size, m=1)
+
+
 @unittest.skipIf("CUDAExecutionProvider" not in ort.get_available_providers(), "CUDA is not available")
 @unittest.skipUnless(_cuda_quant is not None, "standalone CUDA weight packer (parity oracle) is unavailable")
 class TestCudaQuantizerTorchPackerParity(unittest.TestCase):
@@ -223,6 +248,16 @@ class TestCudaQuantizerTorchPackerParity(unittest.TestCase):
                 for n, k in shapes:
                     with self.subTest(bits=bits, force_arch=force_arch, n=n, k=k):
                         self._check(bits, force_arch, n, k)
+
+    def test_explicit_sm90_layout_does_not_fall_back_to_sm80(self):
+        # Layout selection must not depend on whether SM90 compute kernels were compiled.
+        n = k = 128
+        for bits in (4, 8):
+            with self.subTest(bits=bits):
+                q = np.random.default_rng(42).integers(0, 256, size=(n, k // (8 // bits)), dtype=np.uint8)
+                sm80 = np.asarray(_cuda_quant.pack_weights_for_cuda_mixed_gemm(q, n, k, bits, 80))
+                sm90 = np.asarray(_cuda_quant.pack_weights_for_cuda_mixed_gemm(q, n, k, bits, 90))
+                self.assertFalse(np.array_equal(sm80, sm90), "force_arch=90 must preserve the SM90 weight layout")
 
 
 @unittest.skipIf("CUDAExecutionProvider" not in ort.get_available_providers(), "CUDA is not available")

@@ -9,8 +9,10 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "core/providers/webgpu/webgpu_external_header.h"
@@ -30,12 +32,17 @@
 #include <wrl/client.h>
 #endif
 
+#if !defined(__wasm__)
+struct OrtDawnCacheInterface;
+#endif
+
 namespace onnxruntime {
 class Tensor;
 
 namespace webgpu {
 
 class WebGpuContext;
+class WebGpuInstanceWrapper;
 class ComputeContextBase;
 class ComputeContext;
 class ProgramBase;
@@ -104,7 +111,7 @@ struct PendingPipelineBuild {
 //
 // A command with both fields empty is therefore valid only in state 3 before deferred pipeline
 // resolution. DispatchCommand() requires compute_pipeline to be set.
-struct CapturedCommandInfo {
+struct DispatchCommandInfo {
   std::string program_key;
   std::optional<PendingPipelineBuild> pending_build;
   std::optional<wgpu::ComputePipeline> compute_pipeline;
@@ -116,13 +123,31 @@ struct CapturedCommandInfo {
   std::optional<PendingKernelInfo> pending_kernel_info;
 };
 
-// A command recording timeline has one caller at a time. ORT serializes Run on a Session;
-// plugin streamless operations use independent encoders. BufferManager synchronizes buffer
-// releases from concurrent allocator callers separately from command recording.
+struct CapturedBufferCopy {
+  wgpu::Buffer source;
+  wgpu::Buffer destination;
+  uint64_t size;
+};
+
+struct CapturedBufferClear {
+  wgpu::Buffer buffer;
+  uint64_t size;
+};
+
+// Copies and clears retain their buffers and share dispatch ordering, but do not consume timestamp query slots.
+struct CapturedCommand {
+  std::variant<DispatchCommandInfo, CapturedBufferCopy, CapturedBufferClear> operation;
+};
+
+// ORT serializes Run, but Session-stream copies/allocations (e.g., CPU BindInput) can overlap it.
+// Guard shared recording operations, not the Run lifetime: OnRunEnd can be skipped on host errors.
+// Reentrancy is needed for kernels that allocate or copy, and OnRunEnd calling ReplayGraph.
+// Streamless plugin operations use independent recordings; buffer releases synchronize separately.
 struct CommandRecordingState {
   CommandRecordingState() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CommandRecordingState);
 
+  std::recursive_mutex mutex;
   wgpu::CommandEncoder command_encoder;
   wgpu::ComputePassEncoder compute_pass_encoder;
   uint32_t num_pending_dispatches = 0;
@@ -133,10 +158,10 @@ struct CommandRecordingState {
   std::mutex pending_release_callbacks_mutex;
   std::vector<std::function<void()>> pending_release_callbacks;
 #endif
-  std::vector<CapturedCommandInfo> deferred_dispatches;
+  std::vector<DispatchCommandInfo> deferred_dispatches;
   std::vector<PendingKernelInfo> pending_kernels;
   GraphCaptureState graph_capture_state{GraphCaptureState::Default};
-  std::vector<CapturedCommandInfo>* external_captured_commands = nullptr;
+  std::vector<CapturedCommand>* external_captured_commands = nullptr;
 };
 
 struct WebGpuBufferCacheConfig {
@@ -158,6 +183,10 @@ struct WebGpuContextConfig {
   WGPUInstance instance{nullptr};
   WGPUDevice device{nullptr};
   const void* dawn_proc_table{nullptr};
+#if !defined(__wasm__)
+  const OrtDawnCacheInterface* dawn_cache_interface{nullptr};
+  bool dawn_cache_interface_explicitly_set{false};
+#endif
   ValidationMode validation_mode{
 #ifndef NDEBUG
       webgpu::ValidationMode::Full  // for debug build, enable full validation by default
@@ -209,6 +238,9 @@ class WebGpuContextFactory {
   struct WebGpuContextInfo {
     std::unique_ptr<WebGpuContext> context;
     int ref_count;
+#if !defined(__wasm__)
+    const OrtDawnCacheInterface* dawn_cache_interface{nullptr};
+#endif
   };
 
   /// <summary>
@@ -241,6 +273,8 @@ class WebGpuContextFactory {
  private:
   WebGpuContextFactory() {}
 
+  static WebGpuContext& CreateContextImpl(const WebGpuContextConfig& config, bool retain_existing);
+
   static std::mutex mutex_;
   static std::once_flag init_default_flag_;
 
@@ -252,7 +286,7 @@ class WebGpuContextFactory {
   // it is reached from OrtEnv::~OrtEnv via CleanupWebGpuContexts().
   // On abnormal/process termination they simply leak, which is safe.
   static std::unordered_map<int32_t, WebGpuContextInfo>* contexts_;
-  static WGPUInstance default_instance_;
+  static WebGpuInstanceWrapper* default_instance_;
 };
 
 // Class WebGpuContext includes all necessary resources for the context.
@@ -311,14 +345,16 @@ class WebGpuContext final {
       recording.compute_pass_encoder = nullptr;
     }
   }
-  void CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands,
+  void CopyBuffer(WGPUBuffer source, WGPUBuffer destination, uint64_t size, CommandRecordingState& recording);
+  void ClearBuffer(WGPUBuffer buffer, uint64_t size, CommandRecordingState& recording);
+  void CaptureBegin(std::vector<webgpu::CapturedCommand>* captured_commands,
                     const webgpu::BufferManager& buffer_manager,
                     CommandRecordingState& recording);
   void CaptureEnd(CommandRecordingState& recording);
-  void Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands,
+  void Replay(const std::vector<webgpu::CapturedCommand>& captured_commands,
               const webgpu::BufferManager& buffer_manager,
               CommandRecordingState& recording);
-  void ReleaseGraphResources(std::vector<webgpu::CapturedCommandInfo>& captured_commands);
+  void ReleaseGraphResources(std::vector<webgpu::CapturedCommand>& captured_commands);
 
   Status Flush(const webgpu::BufferManager& buffer_mgr, CommandRecordingState& recording);
 
@@ -326,9 +362,17 @@ class WebGpuContext final {
   // Serialize with other operations on this recording. Scopes cover flushing, not earlier encoding.
   Status FlushAndWaitChecked(const webgpu::BufferManager& buffer_mgr, CommandRecordingState& recording);
 
+  // Scopes cover enqueue (which may run multiple programs), flushing and completion.
+  // Drain and resolve all scopes even if enqueue fails or throws. Do not switch threads in enqueue.
+  Status RunAndWaitChecked(const webgpu::BufferManager& buffer_mgr, CommandRecordingState& recording,
+                           const std::function<Status()>& enqueue);
+
   // Context-level managers are shared by sessions and synchronize their buffer caches internally.
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }
   webgpu::BufferManager& InitializerBufferManager() const { return *initializer_buffer_mgr_; }
+
+  CommandRecordingState* ActiveSerializedRecording() const { return serialized_active_recording_; }
+  void SetActiveSerializedRecording(CommandRecordingState* recording) { serialized_active_recording_ = recording; }
 
   inline webgpu::ValidationMode ValidationMode() const {
     return validation_mode_;
@@ -435,7 +479,7 @@ class WebGpuContext final {
                                   const std::vector<uint32_t>& bind_buffers_segments,
                                   const wgpu::BindGroupLayout& bind_group_layout,
                                   std::string_view label) const;
-  void DispatchCommand(const webgpu::CapturedCommandInfo& command, CommandRecordingState& recording);
+  void DispatchCommand(const webgpu::DispatchCommandInfo& command, CommandRecordingState& recording);
   Status EncodeDeferredDispatches(CommandRecordingState& recording);
 
   std::vector<const char*> GetEnabledAdapterToggles() const;
@@ -493,6 +537,11 @@ class WebGpuContext final {
   std::unique_ptr<webgpu::BufferManager> initializer_buffer_mgr_;
   std::unique_ptr<ProgramManager> program_mgr_;
 
+  // Old plugin hosts cannot reliably associate framework copies with a Session.
+  // The active recording is borrowed from the running Session, never owned by the context.
+  // All operations on this device must be serialized in compatibility mode, including across Sessions.
+  CommandRecordingState* serialized_active_recording_ = nullptr;
+
   uint32_t max_num_pending_dispatches_ = 16;
 
   std::unique_ptr<SplitKConfig> split_k_config_;
@@ -528,7 +577,7 @@ class WebGpuContext final {
   GraphCaptureState graph_capture_state_{GraphCaptureState::Default};
 
   // External vector to store captured commands, owned by EP
-  std::vector<webgpu::CapturedCommandInfo>* external_captured_commands_ = nullptr;
+  std::vector<webgpu::CapturedCommand>* external_captured_commands_ = nullptr;
 };
 
 #if !defined(__wasm__)

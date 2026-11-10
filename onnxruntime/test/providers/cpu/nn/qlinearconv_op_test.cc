@@ -1914,6 +1914,24 @@ TEST(QLinearConvTest, SharedPrepackedWeights) {
 }
 #endif
 
+TEST(QLinearConvTest, Rank0InputRejected) {
+  OpTester test("QLinearConv", 10);
+  test.AddShapeToTensorData(false);  // must precede AddInput/AddOutput so runtime rank reaches the kernel
+  test.AddInput<uint8_t>("x", {}, {1});
+  test.AddInput<float>("x_scale", {}, {1.0f});
+  test.AddInput<uint8_t>("x_zero_point", {}, {0});
+  test.AddInput<uint8_t>("w", {1, 1, 1, 1}, {1});
+  test.AddInput<float>("w_scale", {}, {1.0f});
+  test.AddInput<uint8_t>("w_zero_point", {}, {0});
+  test.AddInput<float>("y_scale", {}, {1.0f});
+  test.AddInput<uint8_t>("y_zero_point", {}, {0});
+  test.AddOutput<uint8_t>("y", {1}, {0});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "X num_dims does not match W num_dims", {}, nullptr, &eps);
+}
+
 }  // namespace
 }  // namespace test
 }  // namespace onnxruntime

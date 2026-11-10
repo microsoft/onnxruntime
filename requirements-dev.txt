@@ -4,7 +4,7 @@ flatbuffers
 jinja2
 markupsafe
 numpy
-onnx
+onnx>=1.21.0
 onnxmltools
 packaging
 pandas
@@ -17,4 +17,4 @@ scikit-learn
 scipy
 sympy
 wheel
-setuptools>=61.0.0
+setuptools>=84.2.1

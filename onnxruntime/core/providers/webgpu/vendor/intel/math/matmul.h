@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <cstdint>
+#include <optional>
+
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/program.h"
@@ -12,6 +15,8 @@ namespace onnxruntime {
 namespace webgpu {
 namespace intel {
 
+// TODO: Move this common subgroup implementation out of vendor/intel. Keep only
+// Intel-specific automatic-selection thresholds and tuning under the vendor directory.
 class MatMulSubgroupProgram final : public Program<MatMulSubgroupProgram> {
  public:
   MatMulSubgroupProgram(const Activation& activation,
@@ -52,13 +57,14 @@ class MatMulSubgroupProgram final : public Program<MatMulSubgroupProgram> {
   const InlinedVector<int64_t> elements_per_thread_;
 };
 
-bool CanApplyMatMulIntel(const ComputeContext& context, int64_t M, int64_t N, int64_t K);
+std::optional<uint32_t> SelectMatMulSubgroupSize(const ComputeContext& context);
 
-Status ApplyMatMulIntel(ComputeContext& context,
-                        const Activation& activation,
-                        const std::vector<const Tensor*>& inputs,
-                        Tensor* output,
-                        bool is_channels_last);
+Status ApplyMatMulSubgroup(ComputeContext& context,
+                           const Activation& activation,
+                           const std::vector<const Tensor*>& inputs,
+                           Tensor* output,
+                           bool is_channels_last,
+                           uint32_t subgroup_size);
 
 }  // namespace intel
 }  // namespace webgpu
