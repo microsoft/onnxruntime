@@ -67,15 +67,18 @@ TEST(WebGpuPluginTelemetryTest, EnvironmentValueParsing) {
   EXPECT_TRUE(IsNonFalseEnvironmentValue("2"));
 }
 
-TEST(WebGpuPluginTelemetryTest, OpTypeKeyBucketsCustomDomains) {
-  EXPECT_EQ(OpTypeTelemetryKey("", "NonZero"), "ai.onnx:NonZero");
-  EXPECT_EQ(OpTypeTelemetryKey("ai.onnx", "NonZero"), "ai.onnx:NonZero");
-  EXPECT_EQ(OpTypeTelemetryKey("ai.onnx.ml", "TreeEnsemble"), "ai.onnx.ml:TreeEnsemble");
-  EXPECT_EQ(OpTypeTelemetryKey("com.microsoft", "GroupQueryAttention"), "com.microsoft:GroupQueryAttention");
-  EXPECT_EQ(OpTypeTelemetryKey("com.ms.internal.nhwc", "Conv"), "com.ms.internal.nhwc:Conv");
+TEST(WebGpuPluginTelemetryTest, OpTypeKeyBucketsCustomOperators) {
+  EXPECT_EQ(OpTypeTelemetryKey("", "NonZero", true), "ai.onnx:NonZero");
+  EXPECT_EQ(OpTypeTelemetryKey("ai.onnx", "NonZero", true), "ai.onnx:NonZero");
+  EXPECT_EQ(OpTypeTelemetryKey("ai.onnx.ml", "TreeEnsemble", true), "ai.onnx.ml:TreeEnsemble");
+  EXPECT_EQ(OpTypeTelemetryKey("com.microsoft", "GroupQueryAttention", true), "com.microsoft:GroupQueryAttention");
+  EXPECT_EQ(OpTypeTelemetryKey("com.ms.internal.nhwc", "Conv", true), "com.ms.internal.nhwc:Conv");
   // Operator names from other domains are model-defined and must not be reported.
-  EXPECT_EQ(OpTypeTelemetryKey("com.contoso.secret", "ProjectX"), "custom");
-  EXPECT_EQ(OpTypeTelemetryKey("ai.onnx.contrib", "Tokenizer"), "custom");
+  EXPECT_EQ(OpTypeTelemetryKey("com.contoso.secret", "ProjectX", true), "custom");
+  EXPECT_EQ(OpTypeTelemetryKey("ai.onnx.contrib", "Tokenizer", true), "custom");
+  // Custom operators can be registered in well-known domains; without a registered schema they are bucketed.
+  EXPECT_EQ(OpTypeTelemetryKey("", "ContosoSecretFeatureExtractor", false), "custom");
+  EXPECT_EQ(OpTypeTelemetryKey("com.microsoft", "ContosoOp", false), "custom");
 }
 
 TEST(WebGpuPluginTelemetryTest, OpTypeCounterOrdersByCountThenName) {
@@ -83,14 +86,14 @@ TEST(WebGpuPluginTelemetryTest, OpTypeCounterOrdersByCountThenName) {
   EXPECT_TRUE(counter.Empty());
   EXPECT_EQ(counter.ToString(10), "");
 
-  counter.Add("", "NonZero");
-  counter.Add("com.microsoft", "Foo");
-  counter.Add("", "NonZero");
-  counter.Add("", "Unique");
-  counter.Add("com.microsoft", "Foo");
-  counter.Add("", "NonZero");
-  counter.Add("my.domain", "A");
-  counter.Add("my.domain", "B");
+  counter.Add("", "NonZero", true);
+  counter.Add("com.microsoft", "Foo", true);
+  counter.Add("", "NonZero", true);
+  counter.Add("", "Unique", true);
+  counter.Add("com.microsoft", "Foo", true);
+  counter.Add("", "NonZero", true);
+  counter.Add("my.domain", "A", true);
+  counter.Add("", "Secret", false);
 
   EXPECT_EQ(counter.DistinctCount(), 4u);
   EXPECT_EQ(counter.ToString(10), "ai.onnx:NonZero=3,com.microsoft:Foo=2,custom=2,ai.onnx:Unique=1");
@@ -102,7 +105,7 @@ TEST(WebGpuPluginTelemetryTest, OpTypeCounterBoundsDistinctKeys) {
   OpTypeCounter counter;
   const size_t total = OpTypeCounter::kMaxDistinctKeys + 10;
   for (size_t i = 0; i < total; ++i) {
-    counter.Add("", "Op" + std::to_string(i));
+    counter.Add("", "Op" + std::to_string(i), true);
   }
 
   // The overflow bucket is the last distinct key; it collects every operator that did not fit.

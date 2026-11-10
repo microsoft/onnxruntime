@@ -73,6 +73,12 @@
 #include "core/providers/webgpu/ep/telemetry_privacy.h"
 #include "core/providers/webgpu/webgpu_external_header.h"
 
+#if defined(ORT_PLUGIN_EP_STATICALLY_LINKED)
+// The statically linked variant is part of the ONNX Runtime binary, so this is not a cross-repository dependency.
+#include "core/platform/env.h"
+#include "core/platform/telemetry.h"
+#endif
+
 namespace onnxruntime {
 namespace webgpu {
 namespace ep {
@@ -160,6 +166,13 @@ class ProviderRegistration {
 
 bool ShouldLog() noexcept {
   try {
+#if defined(ORT_PLUGIN_EP_STATICALLY_LINKED)
+    // Linked into the ONNX Runtime binary, the plugin can and must honor the host's telemetry state, including
+    // OrtApi::DisableTelemetryEvents(). A separately loaded plugin cannot observe that state.
+    if (!onnxruntime::Env::Default().GetTelemetryProvider().IsEnabled()) {
+      return false;
+    }
+#endif
     return ProviderRegistration::Instance().IsRegistered() &&
            TraceLoggingProviderEnabled(webgpu_ep_telemetry_provider_handle, 0, MICROSOFT_KEYWORD_MEASURES);
   } catch (...) {

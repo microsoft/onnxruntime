@@ -32,8 +32,11 @@ inline bool IsWellKnownOpDomain(std::string_view domain) {
          domain == "com.ms.internal.nhwc";
 }
 
-inline std::string OpTypeTelemetryKey(std::string_view domain, std::string_view op_type) {
-  if (!IsWellKnownOpDomain(domain)) {
+// Applications can register custom operators in well-known domains, including the default ONNX domain, so the domain
+// alone does not make an operator name safe to report. `has_registered_schema` must be true only when the operator
+// has a schema in ONNX Runtime's global registry, which holds ONNX and ONNX Runtime operators but not custom ones.
+inline std::string OpTypeTelemetryKey(std::string_view domain, std::string_view op_type, bool has_registered_schema) {
+  if (!has_registered_schema || !IsWellKnownOpDomain(domain)) {
     return "custom";
   }
   std::string key{domain.empty() ? std::string_view{"ai.onnx"} : domain};
@@ -48,8 +51,8 @@ class OpTypeCounter {
   static constexpr size_t kMaxDistinctKeys = 128;
   static constexpr std::string_view kOverflowKey = "other";
 
-  void Add(std::string_view domain, std::string_view op_type) {
-    std::string key = OpTypeTelemetryKey(domain, op_type);
+  void Add(std::string_view domain, std::string_view op_type, bool has_registered_schema) {
+    std::string key = OpTypeTelemetryKey(domain, op_type, has_registered_schema);
     auto it = counts_.find(key);
     if (it == counts_.end()) {
       if (counts_.size() >= kMaxDistinctKeys) {

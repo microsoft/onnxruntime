@@ -3,6 +3,8 @@
 
 #include "ep.h"
 
+#include <limits>
+
 #include "allocator.h"
 #include "factory.h"
 #include "sync_stream.h"
@@ -25,6 +27,28 @@ namespace ep {
 using onnxruntime::ep::Api;
 
 namespace {
+
+// OrtEpApi::GetOpSchema was added in ORT 1.25.
+constexpr uint32_t kGetOpSchemaMinOrtApiVersion = 25;
+
+// True if the operator has a schema in the host's global registry (ONNX and ONNX Runtime operators, not custom ops).
+// Returns false when the host cannot answer, so the operator name is not reported.
+bool HasRegisteredOpSchema(const Ort::ConstNode& node) {
+  if (onnxruntime::ep::CurrentOrtApiVersion() < kGetOpSchemaMinOrtApiVersion) {
+    return false;
+  }
+  const std::string op_type = node.GetOperatorType();
+  const std::string domain = node.GetDomain();
+  OrtOpSchema* schema = nullptr;
+  OrtStatus* status = Api().ep.GetOpSchema(op_type.c_str(), std::numeric_limits<int>::max(), domain.c_str(), &schema);
+  if (status != nullptr) {
+    Api().ort.ReleaseStatus(status);
+    return false;
+  }
+  const bool found = schema != nullptr;
+  Api().ep.ReleaseOpSchema(schema);
+  return found;
+}
 
 // Sets `supported` to false for nodes whose WebGPU kernel exists but does not support the node's configuration.
 OrtStatus* CheckNodeConfigSupported(const Ort::ConstNode& node, bool& supported) {
@@ -198,7 +222,7 @@ OrtStatus* ORT_API_CALL Ep::GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* g
                                    << node.GetOperatorType() << " node name: " << node.GetName();
       ++partition_info.no_kernel_nodes;
       if (collect_telemetry) {
-        no_kernel_op_types.Add(node.GetDomain(), node.GetOperatorType());
+        no_kernel_op_types.Add(node.GetDomain(), node.GetOperatorType(), HasRegisteredOpSchema(node));
       }
       continue;
     }
@@ -218,7 +242,7 @@ OrtStatus* ORT_API_CALL Ep::GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* g
     if (!config_supported) {
       ++partition_info.unsupported_config_nodes;
       if (collect_telemetry) {
-        unsupported_config_op_types.Add(node.GetDomain(), node.GetOperatorType());
+        unsupported_config_op_types.Add(node.GetDomain(), node.GetOperatorType(), HasRegisteredOpSchema(node));
       }
       continue;
     }

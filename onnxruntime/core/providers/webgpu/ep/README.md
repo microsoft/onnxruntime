@@ -378,10 +378,12 @@ visible to local ETW sessions only. Other platforms compile no-op implementation
 | `WebGpuDeviceError` | First uncaptured error and any unexpected loss of each internally created device |
 | `WebGpuRunSummary` | `OnRunEnd`/`ReplayGraph` on a 2 second to 10 minute doubling interval, and at EP release |
 
-Events correlate through `epInstanceId`. Error messages are scrubbed of file paths, and operator types from
-domains other than ONNX and ONNX Runtime are reported as `custom`. No model names, paths, metadata, or tensor
-data are collected. Telemetry is not registered in ORT unit-test processes or when `ORT_DISABLE_TELEMETRY` is
-truthy. The host's `OrtApi::DisableTelemetryEvents()` state is not visible to plugins.
+Events correlate through `epInstanceId`. Error messages are scrubbed of file paths. An operator type is reported
+only when the host's global schema registry knows it (ONNX and ONNX Runtime operators, ORT 1.25 and later); custom
+operators, including those registered in well-known domains, are reported as `custom`. No model names, paths,
+metadata, or tensor data are collected. Telemetry is not registered in ORT unit-test processes or when
+`ORT_DISABLE_TELEMETRY` is truthy. When statically linked into ONNX Runtime, the plugin also honors the host's
+telemetry state, including `OrtApi::DisableTelemetryEvents()`. A separately loaded plugin cannot observe that state.
 
 The telemetry code does not depend on ONNX Runtime's internal `core/platform` telemetry helpers, so it can move
 with the plugin to a separate repository. `telemetry_privacy.h` holds the plugin's copy of the string bounding and
