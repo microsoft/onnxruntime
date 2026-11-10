@@ -130,8 +130,7 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionPrefillKern
     int max_selected,
     float scale,
     const float* __restrict__ key_scale = nullptr,
-    const float* __restrict__ value_scale = nullptr,
-    bool query_fp16 = false) {
+    const float* __restrict__ value_scale = nullptr) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
   using MmaT = std::conditional_t<kFp16Cache, __half, __nv_bfloat16>;
   extern __shared__ __align__(16) unsigned char smem_raw[];
@@ -185,22 +184,6 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionPrefillKern
     uint4 v = make_uint4(0, 0, 0, 0);
     if (r < group) {
       v = *reinterpret_cast<const uint4*>(query_group + static_cast<int64_t>(r) * kHeadDim + c);
-      if constexpr (!kFp16Cache) {
-        if (query_fp16) {
-          const float2 q01 = __half22float2(*reinterpret_cast<const __half2*>(&v.x));
-          const float2 q23 = __half22float2(*reinterpret_cast<const __half2*>(&v.y));
-          const float2 q45 = __half22float2(*reinterpret_cast<const __half2*>(&v.z));
-          const float2 q67 = __half22float2(*reinterpret_cast<const __half2*>(&v.w));
-          const __nv_bfloat162 b01 = __floats2bfloat162_rn(q01.x, q01.y);
-          const __nv_bfloat162 b23 = __floats2bfloat162_rn(q23.x, q23.y);
-          const __nv_bfloat162 b45 = __floats2bfloat162_rn(q45.x, q45.y);
-          const __nv_bfloat162 b67 = __floats2bfloat162_rn(q67.x, q67.y);
-          v.x = *reinterpret_cast<const uint32_t*>(&b01);
-          v.y = *reinterpret_cast<const uint32_t*>(&b23);
-          v.z = *reinterpret_cast<const uint32_t*>(&b45);
-          v.w = *reinterpret_cast<const uint32_t*>(&b67);
-        }
-      }
     }
     *reinterpret_cast<uint4*>(sQ + r * kRowStride + c) = v;
   }

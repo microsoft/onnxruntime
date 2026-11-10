@@ -1026,6 +1026,54 @@ void RunTwoCandidateInt8CaseOverTiles(TwoCandidateInt8Spec spec, float expected,
   RunTwoCandidateInt8Case(spec, expected, run);
 }
 
+TEST(DynamicSparseAttentionTest, Fp16QueryInt8CachePrefillPrecision_CUDA) {
+  if (!DefaultCudaExecutionProvider() || !CudaHasBF16Support()) {
+    GTEST_SKIP() << "CUDA device does not support BFloat16.";
+  }
+
+  TwoCandidateInt8Spec spec{};
+  spec.query = 1025.0f;
+  spec.key_scale = 1.0f;
+  spec.value_scale = 1.0f;
+  spec.key_codes[0] = 8.0f;
+  spec.value_codes[0] = 1.0f;
+  spec.customize = [](DynamicSparseAttentionCase& c, int) {
+    SetInt8KeyCode(c, 0, 1, 8.0f);
+    for (size_t i = 0; i < c.query.size(); i += c.head_size) c.query[i + 1] = -1024.0f;
+  };
+  for (const int max_selected : {2, 512}) {
+    // The larger scale rejects INT8 tensor cores even when explicitly enabled.
+    for (const float scale : {0.125f, 2.0f}) {
+      spec.scale = scale;
+      auto c = MakeTwoCandidateInt8Case(spec, 2, 9);
+      c.max_selected = max_selected;
+      c.selected_indices.assign(c.selected_counts.size() * max_selected, -1);
+      // Native FP16 gives logits [8 * scale, 0]; rounding Q to BF16 makes them equal.
+      const float expected = 1.0f / (1.0f + std::exp(-8.0f * scale));
+      for (size_t row = 0; row < c.selected_counts.size(); ++row) {
+        if (c.selected_counts[row] > 0) {
+          c.selected_indices[row * max_selected] = 0;
+          c.selected_indices[row * max_selected + 1] = 1;
+        }
+        std::fill_n(c.expected_output.begin() + row * c.num_heads * c.head_size,
+                    c.num_heads * c.head_size, row == 0 ? 0.0f : expected);
+      }
+      c.output_abs_tolerance = 0.0f;
+      c.output_rel_tolerance = 0x1p-7f;
+      for (const char* prefill : {"0", "1"}) {
+        for (const char* int8_tc : {"0", "1"}) {
+          SCOPED_TRACE("max_selected=" + std::to_string(max_selected) + ", scale=" + std::to_string(scale) +
+                       ", prefill=" + prefill + ", int8_tc=" + int8_tc);
+          RunDynamicSparseAttentionCase<BFloat16, int8_t, MLFloat16, MLFloat16>(
+              c, DefaultCudaExecutionProvider(), OpTester::ExpectResult::kExpectSuccess, "",
+              PrefillKernelConfigs(prefill, int8_tc));
+          if (::testing::Test::HasFailure()) return;
+        }
+      }
+    }
+  }
+}
+
 // The tensor-core INT8 kernels round Q * key_scale to fp16, which flushes products below 2^-25 to zero; a softmax scale
 // above 1 would amplify that error, so those calls use the BF16-dequantizing prefill and CUDA-core decode kernels.
 // Every product here is 2^-30 (zero in fp16) and the scale of 2^30 turns it into scores of +-1, so the output is
@@ -2698,6 +2746,85 @@ TEST(DynamicSparseAttentionTest, Fp16CacheQkRmsNormRotaryReferenceParity_CUDA) {
               c, DefaultCudaExecutionProvider());
         } else {
           RunDynamicSparseAttentionCase<BFloat16, MLFloat16>(c, DefaultCudaExecutionProvider());
+        }
+      }
+    }
+  }
+}
+
+TEST(DynamicSparseAttentionTest, Fp16Int8CacheRotaryKeyPrecision_CUDA) {
+  if (!DefaultCudaExecutionProvider() || !CudaHasBF16Support()) {
+    GTEST_SKIP() << "CUDA device does not support BFloat16.";
+  }
+
+  for (const bool packed : {false, true}) {
+    for (const bool normalize : {false, true}) {
+      for (const bool interleaved : {false, true}) {
+        // Compare disabled, identity, and partial nonidentity RoPE, including unrotated channels.
+        for (const int rotary_mode : {0, 1, 2}) {
+          SCOPED_TRACE("packed=" + std::to_string(packed) + ", normalize=" + std::to_string(normalize) +
+                       ", interleaved=" + std::to_string(interleaved) +
+                       ", rotary_mode=" + std::to_string(rotary_mode));
+          DynamicSparseAttentionCase c;
+          c.head_size = 16;
+          c.query.assign(16, 0.0f);
+          c.key.resize(16);
+          for (int d = 0; d < 16; ++d) c.key[d] = 0.25f * static_cast<float>(d % 3 - 1);
+          c.key[0] = c.key[8] = 1.498046875f;
+          c.key[9] = c.key[12] = 0.0f;
+          c.value.assign(16, 1.498046875f);
+          c.past_key.assign(16, 0.0f);
+          c.past_value.assign(16, 0.0f);
+          c.key_scale.assign(16, 1.0f);
+          c.value_scale.assign(16, 1.0f);
+          c.selected_indices = {0};
+          c.selected_counts = {1};
+          c.seqlens_k = {0};
+          auto normalized = c.key;
+          if (normalize) {
+            c.q_norm_weight.assign(16, 1.0f);
+            c.k_norm_weight.resize(16);
+            float sum_squares = 0.0f;
+            for (const float value : c.key) sum_squares += value * value;
+            const float inverse_rms = 1.0f / std::sqrt(sum_squares / 16.0f + c.qk_norm_epsilon);
+            for (int d = 0; d < 16; ++d) {
+              c.k_norm_weight[d] = 0.5f + 0.125f * static_cast<float>(d % 5);
+              normalized[d] *= inverse_rms * c.k_norm_weight[d];
+            }
+          }
+          auto rotated = normalized;
+          if (rotary_mode > 0) {
+            c.do_rotary = 1;
+            c.rotary_interleaved = interleaved;
+            c.rotary_offset = 8;
+            c.rotary_cache_length = 1;
+            c.rotary_half_dim = 4;
+            c.cos_cache.assign(4, rotary_mode == 1 ? 1.0f : 0.5f);
+            c.sin_cache.assign(4, rotary_mode == 1 ? 0.0f : 0.5f);
+            if (rotary_mode == 2) std::fill(c.key_scale.begin() + 8, c.key_scale.end(), 0.5f);
+            for (int d = 0; d < 4; ++d) {
+              const int first = 8 + (interleaved ? 2 * d : d);
+              const int second = interleaved ? first + 1 : first + 4;
+              rotated[first] = normalized[first] * c.cos_cache[d] - normalized[second] * c.sin_cache[d];
+              rotated[second] = normalized[second] * c.cos_cache[d] + normalized[first] * c.sin_cache[d];
+            }
+          }
+          c.expected_present_key.resize(16);
+          for (int d = 0; d < 16; ++d) {
+            c.expected_present_key[d] = std::nearbyint(rotated[d] / c.key_scale[d]);
+          }
+          c.expected_present_value.assign(16, 1.0f);
+          c.expected_output.assign(16, 1.0f);
+          c.output_abs_tolerance = 0.0f;
+          c.output_rel_tolerance = 0.0f;
+          if (packed) {
+            c.packed_qkv = true;
+            c.query.insert(c.query.end(), c.key.begin(), c.key.end());
+            c.query.insert(c.query.end(), c.value.begin(), c.value.end());
+          }
+          RunDynamicSparseAttentionCase<BFloat16, int8_t, MLFloat16, MLFloat16>(
+              c, DefaultCudaExecutionProvider());
+          if (::testing::Test::HasFailure()) return;
         }
       }
     }

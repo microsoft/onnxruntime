@@ -512,7 +512,8 @@ __global__ void AppendKvKernel(const T* query,
                    ToFloat(norm_weight[h]);
     }
   }
-  if (fp16_cache) {
+  // Keep native FP16 key precision until the cache conversion.
+  if (fp16_cache || (quantized_cache && k_is_fp16)) {
     __syncthreads();
     if (h < head_size) {
       reduction[h] = key_value;
@@ -534,11 +535,20 @@ __global__ void AppendKvKernel(const T* query,
            destination_sequence) *
               head_size +
           h;
-      reinterpret_cast<half*>(present_key)[cache_offset] = __float2half_rn(result_f32);
-      reinterpret_cast<half*>(present_value)[cache_offset] =
-          v_is_fp16
-              ? reinterpret_cast<const half*>(is_packed ? query : value)[value_offset]
-              : __float2half_rn(ToFloat((is_packed ? query : value)[value_offset]));
+      if (quantized_cache) {
+        const int channel = kv_head * head_size + h;
+        const float value_f32 = v_is_fp16
+                                    ? ToFloat(reinterpret_cast<const half*>(is_packed ? query : value)[value_offset])
+                                    : ToFloat((is_packed ? query : value)[value_offset]);
+        reinterpret_cast<int8_t*>(present_key)[cache_offset] = QuantizeCacheValue(result_f32, key_scale[channel]);
+        reinterpret_cast<int8_t*>(present_value)[cache_offset] = QuantizeCacheValue(value_f32, value_scale[channel]);
+      } else {
+        reinterpret_cast<half*>(present_key)[cache_offset] = __float2half_rn(result_f32);
+        reinterpret_cast<half*>(present_value)[cache_offset] =
+            v_is_fp16
+                ? reinterpret_cast<const half*>(is_packed ? query : value)[value_offset]
+                : __float2half_rn(ToFloat((is_packed ? query : value)[value_offset]));
+      }
     }
     return;
   }
@@ -2347,6 +2357,10 @@ Status LaunchDynamicSparseAttention(
         CUDA_RETURN_IF_ERROR(cudaFuncGetAttributes(&attributes, tc_kernel));
         use_int8_tc_prefill = attributes.ptxVersion >= 80;
       }
+      // The BF16-dequantizing prefill kernel cannot preserve FP16 query precision.
+      if (data.quantized_cache && query_for_attn_fp16 && !use_int8_tc_prefill) {
+        use_prefill_kernel = false;
+      }
     }
   }
   // Decode (sequence_length <= 8) over the INT8 cache: the same tensor-core pipeline split over the candidate tiles of
@@ -2604,8 +2618,7 @@ Status LaunchDynamicSparseAttention(
             <<<grid, dsa_prefill::kThreads, dsa_prefill::kSharedBytes, stream>>>(
                 query_for_attn, data.present_key, data.present_value, data.selected_indices, data.selected_counts,
                 data.seqlens_k, data.output, parameters.sequence_length, parameters.num_heads, parameters.kv_num_heads,
-                parameters.cache_capacity, parameters.max_selected, parameters.scale, data.key_scale, data.value_scale,
-                query_for_attn_fp16);
+                parameters.cache_capacity, parameters.max_selected, parameters.scale, data.key_scale, data.value_scale);
       } else if (data.fp16_cache) {
         CUDA_RETURN_IF_ERROR(cudaFuncSetAttribute(
             dsa_prefill::DynamicSparseAttentionPrefillKernel<false, true>, cudaFuncAttributeMaxDynamicSharedMemorySize,
