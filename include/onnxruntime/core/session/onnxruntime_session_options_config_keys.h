@@ -552,6 +552,13 @@ static const char* const kOrtSessionOptionsKernelDispatchPolicy = "session.kerne
 /// "0" or unset (default) disables chunking. Overrides ORT_MATMULNBITS_M_CHUNK_SIZE.
 static const char* const kOrtSessionOptionsCudaMatMulNBitsMChunkSize = "ep.cuda.matmul_nbits_m_chunk_size";
 
+/// CUDA MatMulPacked rounds decoded weights to the activation dtype by default ("0").
+/// "1" permits eligible GEMV kernels to skip that rounding; kernels may still use rounded weights.
+/// GEMM/prefill always rounds weights, including when its scratch buffers use FP32.
+/// Resolved once when the kernel is created. Accepts only "0" and "1"; other values fail session initialization.
+static const char* const kOrtSessionOptionsCudaMatMulPackedAllowUnroundedGemv =
+    "ep.cuda.matmul_packed_allow_unrounded_gemv";
+
 /// Enables per-shape GEMM kernel auto-tuning for CUDA fp16/bf16 MatMul: "1" enables, "0" (default) disables.
 /// When enabled, the first run of each eligible shape times the available kernels (cuBLAS, a small-N
 /// GEMV, and on SM 9.0+ the TMA-based tinygemm2) on the current device and caches the fastest for the

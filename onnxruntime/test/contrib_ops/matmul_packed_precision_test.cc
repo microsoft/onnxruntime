@@ -4,8 +4,10 @@
 #include <array>
 #include <cmath>
 #include <memory>
+#include <string>
 #include <vector>
 
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -14,11 +16,18 @@
 namespace onnxruntime::test {
 namespace {
 
-void RunPackedCuda(OpTester& test) {
+constexpr std::array<const char*, 3> kPrecisionPolicies{nullptr, "0", "1"};
+
+void RunPackedCuda(OpTester& test, const char* policy = nullptr) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(DefaultCudaExecutionProvider());
+  SessionOptions options;
+  if (policy != nullptr) {
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+        kOrtSessionOptionsCudaMatMulPackedAllowUnroundedGemv, policy));
+  }
   test.SetOutputTolerance(0, 0);
-  test.Run(SessionOptions{}, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
 template <typename T>
@@ -67,17 +76,16 @@ void TestNvfp4GlobalScale(int n = 17) {
       }
     }
     for (bool initializer : {false, true}) {
-      for (bool round_weights : {false, true}) {
+      for (const char* policy : kPrecisionPolicies) {
         OpTester test("MatMulPacked", 1, kMSDomain);
         test.AddAttribute("K", int64_t{k});
         test.AddAttribute("N", int64_t{n});
         test.AddAttribute("packed_type", int64_t{40});
-        if (round_weights) test.AddAttribute("dequantize_to_activation_dtype", int64_t{1});
         test.AddInput<T>("A", {1, rows, k}, a);
         test.AddInput<uint8_t>("B", {n, (k / 64) * 36}, packed, initializer);
         test.AddInput<float>("global_scale", {}, {global_scale}, initializer);
         test.AddOutput<T>("Y", {1, rows, n}, expected);
-        RunPackedCuda(test);
+        RunPackedCuda(test, policy);
       }
     }
   }
@@ -121,22 +129,21 @@ TEST(MatMulPackedPrecisionTest, Nvfp4UnsignedScaleKnownAnswers) {
       const std::array<float, 4> values{0.f, 0x1p-10f, 224.f, 0.f};
       for (int col = 0; col < n; ++col) expected[row * n + col] = BFloat16(values[group]);
     }
-    for (bool round_weights : {false, true}) {
+    for (const char* policy : kPrecisionPolicies) {
       OpTester test("MatMulPacked", 1, kMSDomain);
       test.AddAttribute("K", int64_t{k});
       test.AddAttribute("N", int64_t{n});
       test.AddAttribute("packed_type", int64_t{40});
-      if (round_weights) test.AddAttribute("dequantize_to_activation_dtype", int64_t{1});
       test.AddInput<BFloat16>("A", {rows, k}, a);
       test.AddInput<uint8_t>("B", {n, 36}, packed);
       test.AddOutput<BFloat16>("Y", {rows, n}, expected);
-      RunPackedCuda(test);
+      RunPackedCuda(test, policy);
     }
   }
 }
 
-TEST(MatMulPackedPrecisionTest, CompleteOperandRoundingIsOptIn) {
-  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+template <typename T>
+void TestCompleteOperandRounding() {
   constexpr int k = 256;
   constexpr int n = 17;
   const MLFloat16 source_scale(.019f);
@@ -157,29 +164,61 @@ TEST(MatMulPackedPrecisionTest, CompleteOperandRoundingIsOptIn) {
     const float w1 = packed_type == 8 ? -d : d * 8.f;
     const float a0 = packed_type == 8 ? 1.f : 8.f;
     const float a1 = packed_type == 8 ? 43.f : -43.f;
-    const BFloat16 rounded(a0 * BFloat16(w0).ToFloat() + a1 * BFloat16(w1).ToFloat());
+    const T rounded(a0 * T(w0).ToFloat() + a1 * T(w1).ToFloat());
     ASSERT_NE(rounded.ToFloat(), 0.f);
     for (int rows : {1, 7, 8, 9, 17}) {
-      for (int round_weights : {0, 1}) {
+      for (const char* policy : kPrecisionPolicies) {
         SCOPED_TRACE(testing::Message() << "type=" << packed_type << " rows=" << rows
-                                        << " round=" << round_weights);
-        std::vector<BFloat16> a(rows * k, BFloat16(0.f));
+                                        << " policy=" << (policy != nullptr ? policy : "default"));
+        std::vector<T> a(rows * k, T(0.f));
         for (int row = 0; row < rows; ++row) {
-          a[row * k] = BFloat16(a0);
-          a[row * k + 1] = BFloat16(a1);
+          a[row * k] = T(a0);
+          a[row * k + 1] = T(a1);
         }
-        const BFloat16 result = round_weights || rows > 8 ? rounded : BFloat16(0.f);
+        const bool unrounded_gemv = policy != nullptr && policy[0] == '1' && rows <= 8;
+        const T result = unrounded_gemv ? T(0.f) : rounded;
         OpTester test("MatMulPacked", 1, kMSDomain);
         test.AddAttribute("K", int64_t{k});
         test.AddAttribute("N", int64_t{n});
         test.AddAttribute("packed_type", static_cast<int64_t>(packed_type));
-        if (round_weights) test.AddAttribute("dequantize_to_activation_dtype", int64_t{1});
-        test.AddInput<BFloat16>("A", {rows, k}, a);
+        test.AddInput<T>("A", {rows, k}, a);
         test.AddInput<uint8_t>("B", {n, row_bytes}, packed);
-        test.AddOutput<BFloat16>("Y", {rows, n}, std::vector<BFloat16>(rows * n, result));
-        RunPackedCuda(test);
+        test.AddOutput<T>("Y", {rows, n}, std::vector<T>(rows * n, result));
+        RunPackedCuda(test, policy);
       }
     }
+  }
+}
+
+TEST(MatMulPackedPrecisionTest, CompleteBf16OperandRoundingIsDefaultWithGemvOptOut) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  TestCompleteOperandRounding<BFloat16>();
+}
+
+TEST(MatMulPackedPrecisionTest, CompleteFp16OperandRoundingIsDefaultWithGemvOptOut) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  TestCompleteOperandRounding<MLFloat16>();
+}
+
+TEST(MatMulPackedPrecisionTest, InvalidGemvPrecisionPolicyFailsInitialization) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  for (const char* policy : {"", "2", "true"}) {
+    SCOPED_TRACE(testing::Message() << "policy=" << policy);
+    OpTester test("MatMulPacked", 1, kMSDomain);
+    test.AddAttribute("K", int64_t{32});
+    test.AddAttribute("N", int64_t{1});
+    test.AddAttribute("packed_type", int64_t{1});
+    test.AddInput<MLFloat16>("A", {1, 32}, std::vector<MLFloat16>(32, MLFloat16(0.f)));
+    test.AddInput<uint8_t>("B", {1, 64}, std::vector<uint8_t>(64, 0));
+    test.AddOutput<MLFloat16>("Y", {1, 1}, {MLFloat16(0.f)});
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(
+        kOrtSessionOptionsCudaMatMulPackedAllowUnroundedGemv, policy));
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(options, OpTester::ExpectResult::kExpectFailure,
+             std::string(kOrtSessionOptionsCudaMatMulPackedAllowUnroundedGemv) + " must be 0 or 1",
+             {}, nullptr, &providers);
   }
 }
 
@@ -212,7 +251,6 @@ TEST(MatMulPackedPrecisionTest, RoundedBf16DecodeNonzeroAcrossDispatchPaths) {
         test.AddAttribute("K", static_cast<int64_t>(k));
         test.AddAttribute("N", static_cast<int64_t>(n));
         test.AddAttribute("packed_type", int64_t{8});
-        test.AddAttribute("dequantize_to_activation_dtype", int64_t{1});
         test.AddInput<BFloat16>("A", {rows, k}, a);
         test.AddInput<uint8_t>("B", {n, row_bytes}, packed);
         test.AddOutput<BFloat16>("Y", {rows, n}, std::vector<BFloat16>(rows * n, expected));
@@ -251,7 +289,6 @@ TEST(MatMulPackedPrecisionTest, RoundedBf16ContiguousKCancellation) {
     test.AddAttribute("K", int64_t{k});
     test.AddAttribute("N", int64_t{n});
     test.AddAttribute("packed_type", int64_t{8});
-    test.AddAttribute("dequantize_to_activation_dtype", int64_t{1});
     test.AddInput<BFloat16>("A", {rows, k}, a);
     test.AddInput<uint8_t>("B", {n, row_bytes}, packed);
     test.AddOutput<BFloat16>("Y", {rows, n}, std::vector<BFloat16>(rows * n, BFloat16(2.f)));

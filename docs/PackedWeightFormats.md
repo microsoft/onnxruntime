@@ -90,29 +90,27 @@ requires device-resident packed weights; host-backed external initializers are c
 
 ## CUDA MatMulPacked weight rounding
 
-The packed layout is independent of the activation dtype and dispatch path. The current CUDA paths
-dequantize and round weights as follows, where `M` is the product of the activation tensor's leading
-dimensions (one for a vector):
+The packed layout is independent of the activation dtype and dispatch path. By default, every
+complete decoded weight is rounded to the activation dtype before multiplication, for both decode
+and prefill. Scale factors are combined in FP32 before that rounding, not rounded separately.
+This also applies to FP16 prefill when its scratch buffers store the rounded weights in FP32.
 
-With `dequantize_to_activation_dtype=0` (the default):
+The CUDA session option `ep.cuda.matmul_packed_allow_unrounded_gemv` controls an optional GEMV
+precision relaxation. It accepts only the strings `"0"` and `"1"` and is resolved when the kernel
+is created. Here, `M` is the product of the activation tensor's leading dimensions (one for a vector).
 
-| Activation dtype | Dispatch | Weights used in multiplication |
+| Session option | Decode/GEMV, `M <= 8` | Prefill/GEMM, `M > 8` |
 |---|---|---|
-| FP16 | Decode, `M <= 8` | FP32-decoded weights |
-| FP16 | Prefill, `M > 8` | FP32-decoded weights, except F16-packed weights remain FP16 |
-| BF16 | Decode, `M <= 8` and `N < 65536` | FP32-decoded weights |
-| BF16 | Decode, `M <= 8` and `N >= 65536` | BF16-rounded decoded weights, including the SIMT fallback |
-| BF16 | Prefill, `M > 8` | BF16-rounded decoded weights |
+| Unset or `"0"` (default) | Activation-dtype-rounded weights | Activation-dtype-rounded weights |
+| `"1"` | Eligible kernels may use unrounded FP32-decoded weights | Activation-dtype-rounded weights |
 
-With `dequantize_to_activation_dtype=1`, every complete decoded weight is rounded
-to the activation dtype before multiplication, for both decode and prefill.
-Scale factors are combined in FP32 before that rounding, not rounded separately.
+Setting `"1"` permits skipping rounding; it does not force a particular kernel or guarantee
+unrounded weights. Tensor-core paths may still use activation-dtype-rounded weights.
+
 For NVFP4 only, the optional scalar FP32 `global_scale` multiplies the FP32
 accumulated result before the final activation-dtype cast, on every dispatch path;
 it is not folded into the per-weight rounding. Omitting it is equivalent to 1.
 
-All paths accumulate and reduce in FP32 and return the activation dtype. Thus changing `M` or `N`
-across a dispatch boundary can change a BF16 result even when each activation row is identical.
-For example, with `K = 32`, activations of ones, and F32-packed weights
-`[1.00390625, -1, 0, ...]`, small-`N` BF16 decode returns `0.00390625`, while BF16 prefill and
-large-`N` BF16 decode return `0`. This is intentional weight rounding, not a different packed format.
+All paths accumulate and reduce in FP32 and return the activation dtype. Consistent operand rounding
+does not imply bitwise-identical results across kernels: their accumulation and reduction orders
+can still differ.
