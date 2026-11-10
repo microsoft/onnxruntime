@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <array>
 #include <functional>
 #include <future>
@@ -1179,6 +1180,598 @@ TEST_P(SessionChainTest, InvalidManagedOutputRequiresResetWithoutCommittingCache
   ASSERT_STATUS_OK(execution->Run(result));
   ASSERT_STATUS_OK(execution->Cache()->Get("key", view));
   EXPECT_EQ(view.length, 3);
+}
+
+class SamplerTest : public KVCacheManagerTest {};
+
+TEST_F(SamplerTest, GreedyShapesPositionsAndVocabularyBoundaries) {
+  int64_t token = -1;
+  ASSERT_STATUS_OK(Sampler::Greedy(Value<float>({1, 4}, {-2.f, 7.f, 3.f, 7.f}), std::nullopt, token));
+  EXPECT_EQ(token, 1);
+  auto sequence = Value<float>({1, 2, 4}, {1.f, 2.f, 3.f, 8.f, 9.f, 2.f, 1.f, 0.f});
+  ASSERT_STATUS_OK(Sampler::Greedy(sequence, std::nullopt, token));
+  EXPECT_EQ(token, 0);
+  ASSERT_STATUS_OK(Sampler::Greedy(sequence, 0, token));
+  EXPECT_EQ(token, 3);
+  ASSERT_STATUS_OK(Sampler::Greedy(sequence, 1, token));
+  EXPECT_EQ(token, 0);
+  ASSERT_STATUS_OK(Sampler::Greedy(Value<float>({1, 1}, {-4.f}), 0, token));
+  EXPECT_EQ(token, 0);
+  std::vector<float> scores(257, -1.f);
+  scores.back() = 2.f;
+  OrtValue wide;
+  CreateMLValue<float>(allocator_, std::vector<int64_t>{1, 257}, scores, &wide);
+  ASSERT_STATUS_OK(Sampler::Greedy(wide, std::nullopt, token));
+  EXPECT_EQ(token, 256);
+}
+
+TEST_F(SamplerTest, Float16TiesInfinitiesAndStrictNaNPolicy) {
+  const float infinity = std::numeric_limits<float>::infinity();
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  int64_t token = -1;
+  auto half = Value<MLFloat16>({1, 4}, {MLFloat16(-3.f), MLFloat16(-1.f), MLFloat16(-1.f), MLFloat16(-2.f)});
+  ASSERT_STATUS_OK(Sampler::Greedy(half, std::nullopt, token));
+  EXPECT_EQ(token, 1);
+  for (auto values : {std::array<float, 4>{-infinity, -infinity, -infinity, -infinity},
+                      std::array<float, 4>{-infinity, 1.f, infinity, infinity}}) {
+    OrtValue float_logits, half_logits;
+    std::vector<float> floats(values.begin(), values.end());
+    std::vector<MLFloat16> halves;
+    for (float value : values) {
+      halves.emplace_back(value);
+    }
+    CreateMLValue<float>(allocator_, std::vector<int64_t>{1, 4}, floats, &float_logits);
+    CreateMLValue<MLFloat16>(allocator_, std::vector<int64_t>{1, 4}, halves, &half_logits);
+    ASSERT_STATUS_OK(Sampler::Greedy(float_logits, std::nullopt, token));
+    EXPECT_EQ(token, values[1] == -infinity ? 0 : 2);
+    ASSERT_STATUS_OK(Sampler::Greedy(half_logits, std::nullopt, token));
+    EXPECT_EQ(token, values[1] == -infinity ? 0 : 2);
+  }
+  token = 77;
+  EXPECT_FALSE(Sampler::Greedy(Value<float>({1, 2}, {1.f, nan}), std::nullopt, token).IsOK());
+  EXPECT_EQ(token, 77);
+  EXPECT_FALSE(Sampler::Greedy(Value<MLFloat16>({1, 2}, {MLFloat16(nan), MLFloat16(1.f)}),
+                               std::nullopt, token)
+                   .IsOK());
+  EXPECT_EQ(token, 77);
+  EXPECT_FALSE(Sampler::Greedy(Value<float>({1, 2, 2}, {nan, 1.f, 3.f, 4.f}), 1, token).IsOK());
+}
+
+TEST_F(SamplerTest, RejectsMalformedTypesShapesDevicesAndPositions) {
+  int64_t token = 77;
+  EXPECT_FALSE(Sampler::Greedy({}, std::nullopt, token).IsOK());
+  for (auto value : {Value<float>({}, {1.f}), Value<float>({1}, {1.f}),
+                     Value<float>({1, 1, 1, 1}, {1.f}), Value<float>({2, 1}, {1.f, 2.f}),
+                     Value<float>({1, 0}, {}), Value<float>({1, 0, 2}, {}),
+                     Value<int64_t>({1, 1}, {1}), Value<double>({1, 1}, {1.0}),
+                     Value<BFloat16>({1, 1}, {BFloat16(1.f)})}) {
+    EXPECT_FALSE(Sampler::Greedy(value, std::nullopt, token).IsOK());
+  }
+  auto valid = Value<float>({1, 2}, {1.f, 2.f});
+  EXPECT_FALSE(Sampler::Greedy(valid, -1, token).IsOK());
+  EXPECT_FALSE(Sampler::Greedy(valid, 1, token).IsOK());
+  float raw = 1.f;
+  OrtValue device, null_buffer, oversized;
+  OrtMemoryInfo gpu("Cuda", OrtDeviceAllocator,
+                    OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0));
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape{1, 1}, &raw, gpu, device);
+  EXPECT_FALSE(Sampler::Greedy(device, std::nullopt, token).IsOK());
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape{1, 1}, nullptr, allocator_->Info(), null_buffer);
+  EXPECT_FALSE(Sampler::Greedy(null_buffer, std::nullopt, token).IsOK());
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape{1, std::numeric_limits<int64_t>::max()},
+                       &raw, allocator_->Info(), oversized);
+  EXPECT_ANY_THROW(ORT_THROW_IF_ERROR(Sampler::Greedy(oversized, std::nullopt, token)));
+  EXPECT_EQ(token, 77);
+}
+
+ONNX_NAMESPACE::ModelProto GenerationModel(bool auxiliary = true, bool half_logits = false) {
+  auto model = stateful::MakeModel("token_generation_reference");
+  auto& graph = *model.mutable_graph();
+  stateful::SetTensorType(*graph.add_input(), "input_ids", ONNX_NAMESPACE::TensorProto_DataType_INT64, {1, -1});
+  stateful::SetTensorType(*graph.add_input(), "past_key", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, 1, -1, 1});
+  stateful::SetTensorType(*graph.add_output(), "logits",
+                          half_logits ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
+                                      : ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                          {1, -1, 4});
+  stateful::SetTensorType(*graph.add_output(), "present_key",
+                          ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, 1, -1, 1});
+  auto* scores = graph.add_initializer();
+  scores->set_name("scores");
+  scores->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  scores->add_dims(4);
+  scores->add_dims(4);
+  for (float value : {0.f, 4.f, 1.f, -2.f, 0.f, 1.f, 5.f, -2.f,
+                      -1.f, 1.f, 2.f, 6.f, 6.f, 2.f, 1.f, 0.f}) {
+    scores->add_float_data(value);
+  }
+  stateful::AddNode(graph, "Gather", {"scores", "input_ids"}, half_logits ? "float_logits" : "logits");
+  if (half_logits) {
+    auto& cast = stateful::AddNode(graph, "Cast", {"float_logits"}, "logits");
+    auto* to = cast.add_attribute();
+    to->set_name("to");
+    to->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    to->set_i(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  }
+  auto& cast = stateful::AddNode(graph, "Cast", {"input_ids"}, "float_ids");
+  auto* to = cast.add_attribute();
+  to->set_name("to");
+  to->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  to->set_i(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* shape = graph.add_initializer();
+  shape->set_name("cache_shape");
+  shape->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  shape->add_dims(4);
+  for (int64_t value : {1, 1, -1, 1}) {
+    shape->add_int64_data(value);
+  }
+  stateful::AddNode(graph, "Reshape", {"float_ids", "cache_shape"}, "new_key");
+  auto& concat = stateful::AddNode(graph, "Concat", {"past_key", "new_key"}, "present_key");
+  auto* axis = concat.add_attribute();
+  axis->set_name("axis");
+  axis->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  axis->set_i(2);
+  if (auxiliary) {
+    for (const auto& names : {std::pair{"attention_mask", "mask_seen"}, std::pair{"position_ids", "positions_seen"}}) {
+      stateful::SetTensorType(*graph.add_input(), names.first, ONNX_NAMESPACE::TensorProto_DataType_INT64, {1, -1});
+      stateful::SetTensorType(*graph.add_output(), names.second, ONNX_NAMESPACE::TensorProto_DataType_INT64, {1, -1});
+      stateful::AddNode(graph, "Identity", {names.first}, names.second);
+    }
+  }
+  return model;
+}
+
+SessionLoopOptions GenerationOptions(TokenGenerationPhase phase, std::optional<int64_t> budget = 3,
+                                     bool auxiliary = true) {
+  SessionLoopOptions options;
+  options.output_names = {"logits", "present_key"};
+  options.kv_caches = {KeyBinding()};
+  options.generation = TokenGenerationOptions{
+      phase, "input_ids", "logits", auxiliary ? "attention_mask" : "", auxiliary ? "position_ids" : "", std::nullopt};
+  if (phase == TokenGenerationPhase::Prefill) {
+    options.finite_input_names = {"input_ids"};
+    options.exit_conditions.push_back({LoopExitKind::EndOfInputs});
+  }
+  if (budget) {
+    options.exit_conditions.push_back({LoopExitKind::MaxGeneratedTokens, *budget});
+  }
+  return options;
+}
+
+SessionChainOptions GenerationChain(InferenceSession& prefill, InferenceSession& decode,
+                                    SessionLoopOptions prefill_options, SessionLoopOptions decode_options) {
+  std::shared_ptr<const SessionLoop> p, d;
+  ORT_THROW_IF_ERROR(SessionLoop::Create(prefill, std::move(prefill_options), p));
+  ORT_THROW_IF_ERROR(SessionLoop::Create(decode, std::move(decode_options), d));
+  return {
+      {
+          {"prefill", p, {{"input_ids", External("prompt")}}, {}, {}},
+          {"decode", d, {}, {}, {}},
+      },
+      {{"tokens", 0, "", ChainOutputKind::GeneratedTokenIds}}};
+}
+
+TEST_P(SessionChainTest, GreedyGenerationMatchesDirectSessionsAndFeedPolicies) {
+  auto prefill = Session(GenerationModel());
+  auto decode = Session(GenerationModel());
+  auto reference = Session(GenerationModel());
+  auto options = GenerationChain(*prefill, *decode, GenerationOptions(TokenGenerationPhase::Prefill),
+                                 GenerationOptions(TokenGenerationPhase::Decode));
+  auto execution = Execution(options, {{{"prompt", Value<int64_t>({1, 2}, {0, 1})}}});
+  auto independent = Execution(options, {{{"prompt", Value<int64_t>({1, 1}, {0})}}});
+  EXPECT_NE(execution->Generation(), independent->Generation());
+  SessionChainStepResult result;
+  InlinedVector<int64_t> sampled;
+  auto ids = Value<int64_t>({1, 2}, {0, 1});
+  auto cache = Value<float>({1, 1, 0, 1}, {});
+  int64_t processed = 0;
+  const std::vector<std::string> names{"logits", "present_key", "mask_seen", "positions_seen"};
+  for (int64_t iteration = 0; iteration < 3; ++iteration) {
+    const int64_t count = ids.Get<Tensor>().Shape()[1];
+    std::vector<int64_t> ones(static_cast<size_t>(processed + count), 1);
+    std::vector<int64_t> positions;
+    for (int64_t i = 0; i < count; ++i) {
+      positions.push_back(processed + i);
+    }
+    OrtValue mask, position_ids;
+    CreateMLValue<int64_t>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                           std::vector<int64_t>{1, processed + count}, ones, &mask);
+    CreateMLValue<int64_t>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                           std::vector<int64_t>{1, count}, positions, &position_ids);
+    NameMLValMap feeds{
+        {"input_ids", ids},
+        {"past_key", cache},
+        {"attention_mask", mask},
+        {"position_ids", position_ids},
+    };
+    std::vector<OrtValue> reference_outputs;
+    ASSERT_STATUS_OK(reference->InferenceSession::Run(RunOptions{}, feeds, names, &reference_outputs));
+    ASSERT_STATUS_OK(execution->Step(result));
+    ASSERT_TRUE(result.component_result.generated_token.has_value());
+    const float* scores = reference_outputs[0].Get<Tensor>().Data<float>() + (count - 1) * 4;
+    const int64_t expected = std::max_element(scores, scores + 4) - scores;
+    EXPECT_EQ(*result.component_result.generated_token, expected);
+    sampled.push_back(expected);
+    EXPECT_EQ(result.generated_tokens, iteration + 1);
+    EXPECT_EQ(result.component_outputs.at("present_key").Get<Tensor>().Shape(),
+              reference_outputs[1].Get<Tensor>().Shape());
+    const auto* keys = result.component_outputs.at("present_key").Get<Tensor>().Data<float>();
+    for (int64_t i = 0; i < processed + count; ++i) {
+      EXPECT_EQ(keys[i], reference_outputs[1].Get<Tensor>().Data<float>()[i]);
+      EXPECT_EQ(result.component_outputs.at("mask_seen").Get<Tensor>().Data<int64_t>()[i], 1);
+    }
+    for (int64_t i = 0; i < count; ++i) {
+      EXPECT_EQ(result.component_outputs.at("positions_seen").Get<Tensor>().Data<int64_t>()[i], processed + i);
+    }
+    cache = reference_outputs[1];
+    ids = Value<int64_t>({1, 1}, {expected});
+    processed += count;
+  }
+  EXPECT_TRUE(result.completed);
+  EXPECT_EQ(sampled, (InlinedVector<int64_t>{2, 3, 0}));
+  EXPECT_EQ(prefill->calls, 1u);
+  EXPECT_EQ(decode->calls, 2u);
+  ASSERT_NE(execution->Generation(), nullptr);
+  EXPECT_EQ(execution->Generation()->processed_tokens, 4);
+  EXPECT_EQ(execution->Generation()->token_ids, sampled);
+  EXPECT_TRUE(independent->Generation()->token_ids.empty());
+  auto retained = result.outputs.at("tokens");
+  const auto calls = prefill->calls + decode->calls;
+  ASSERT_STATUS_OK(execution->Step(result));
+  EXPECT_FALSE(result.executed);
+  EXPECT_FALSE(result.component_result.generated_token.has_value());
+  EXPECT_TRUE(result.outputs.empty());
+  EXPECT_EQ(prefill->calls + decode->calls, calls);
+  execution->Reset();
+  EXPECT_TRUE(execution->Generation()->token_ids.empty());
+  EXPECT_EQ(execution->Generation()->processed_tokens, 0);
+  ASSERT_STATUS_OK(execution->Run(result));
+  ASSERT_EQ(result.outputs.at("tokens").Get<Tensor>().Shape().Size(), 3);
+  for (size_t i = 0; i < sampled.size(); ++i) {
+    EXPECT_EQ(result.outputs.at("tokens").Get<Tensor>().Data<int64_t>()[i], sampled[i]);
+    EXPECT_EQ(retained.Get<Tensor>().Data<int64_t>()[i], sampled[i]);
+  }
+  ASSERT_STATUS_OK(independent->Run(result));
+  EXPECT_EQ(independent->Generation()->token_ids, (InlinedVector<int64_t>{1, 2, 3}));
+  EXPECT_EQ(execution->Generation()->token_ids, sampled);
+}
+
+TEST_P(SessionChainTest, ZeroAndSingleTokenBudgetsAvoidExtraDecodeInvocations) {
+  for (int64_t budget : {0, 1}) {
+    auto prefill = Session(GenerationModel(false));
+    auto decode = Session(GenerationModel(false));
+    auto options = GenerationChain(*prefill, *decode, GenerationOptions(TokenGenerationPhase::Prefill, budget, false),
+                                   GenerationOptions(TokenGenerationPhase::Decode, budget, false));
+    auto execution = Execution(options, {{{"prompt", Value<int64_t>({1, 1}, {0})}}});
+    SessionChainStepResult result;
+    ASSERT_STATUS_OK(execution->Run(result));
+    EXPECT_EQ(result.generated_tokens, budget);
+    EXPECT_EQ(result.outputs.at("tokens").Get<Tensor>().Shape(), TensorShape{budget});
+    EXPECT_EQ(prefill->calls, static_cast<size_t>(budget));
+    EXPECT_EQ(decode->calls, 0u);
+    EXPECT_EQ(result.component_name, "decode");
+    EXPECT_FALSE(result.component_result.executed);
+    EXPECT_FALSE(result.component_result.generated_token.has_value());
+    EXPECT_EQ(result.component_result.exit_reasons, (InlinedVector<LoopExitKind>{LoopExitKind::MaxGeneratedTokens}));
+    if (budget == 1) {
+      EXPECT_EQ(*result.outputs.at("tokens").Get<Tensor>().Data<int64_t>(), 1);
+    }
+  }
+}
+
+TEST_P(SessionChainTest, PrefillAndDecodeEosUseOneSharedCounterAndEmitOnce) {
+  for (int64_t first_token : {0, 2}) {
+    auto prefill = Session(GenerationModel(false));
+    auto decode = Session(GenerationModel(false));
+    const std::optional<int64_t> budget = first_token == 2 ? std::nullopt : std::optional<int64_t>{3};
+    auto p = GenerationOptions(TokenGenerationPhase::Prefill, budget, false);
+    auto d = GenerationOptions(TokenGenerationPhase::Decode, budget, false);
+    d.exit_conditions.push_back({LoopExitKind::Eos, 0, "", {3}});
+    auto execution = Execution(GenerationChain(*prefill, *decode, p, d),
+                               {{{"prompt", Value<int64_t>({1, 1}, {first_token})}}});
+    SessionChainStepResult result;
+    ASSERT_STATUS_OK(execution->Run(result));
+    const int64_t expected_count = first_token == 2 ? 1 : 3;
+    EXPECT_EQ(result.generated_tokens, expected_count);
+    EXPECT_EQ(result.outputs.at("tokens").Get<Tensor>().Shape().Size(), expected_count);
+    EXPECT_EQ(result.outputs.at("tokens").Get<Tensor>().Data<int64_t>()[expected_count - 1], 3);
+    EXPECT_EQ(decode->calls, static_cast<size_t>(expected_count - 1));
+    EXPECT_EQ(result.component_result.exit_reasons,
+              first_token == 2
+                  ? InlinedVector<LoopExitKind>{LoopExitKind::Eos}
+                  : (InlinedVector<LoopExitKind>{LoopExitKind::MaxGeneratedTokens, LoopExitKind::Eos}));
+    EXPECT_EQ(execution->Generation()->token_ids.size(), static_cast<size_t>(expected_count));
+  }
+}
+
+TEST_P(SessionChainTest, StandalonePrefillFloat16AndExplicitLogitsPosition) {
+  for (bool half : {false, true}) {
+    auto session = Session(GenerationModel(false, half));
+    auto options = GenerationOptions(TokenGenerationPhase::Prefill, 4, false);
+    options.generation->logits_position = 0;
+    auto loop = Loop(*session, options);
+    std::unique_ptr<SessionLoopExecution> execution;
+    ASSERT_STATUS_OK(loop->CreateExecution({{}, {{{"input_ids", Value<int64_t>({1, 2}, {0, 2})}}}}, execution));
+    SessionLoopStepResult result;
+    ASSERT_STATUS_OK(execution->Run(result));
+    EXPECT_EQ(result.generated_token, 1);
+    EXPECT_EQ(result.generated_tokens, 1);
+    ASSERT_NE(execution->Generation(), nullptr);
+    EXPECT_EQ(execution->Generation()->processed_tokens, 2);
+    execution->Reset();
+    EXPECT_TRUE(execution->Generation()->token_ids.empty());
+    ASSERT_STATUS_OK(execution->Step(result));
+    EXPECT_EQ(result.generated_token, 1);
+    auto chain = GenerationChain(*session, *session, GenerationOptions(TokenGenerationPhase::Prefill, 2, false),
+                                 GenerationOptions(TokenGenerationPhase::Decode, 2, false));
+    auto chain_execution = Execution(chain, {{{"prompt", Value<int64_t>({1, 1}, {0})}}});
+    SessionChainStepResult chain_result;
+    ASSERT_STATUS_OK(chain_execution->Run(chain_result));
+    EXPECT_EQ(chain_execution->Generation()->token_ids, (InlinedVector<int64_t>{1, 2}));
+    options = GenerationOptions(TokenGenerationPhase::Decode, 4, false);
+    loop = Loop(*session, options);
+    EXPECT_FALSE(loop->CreateExecution({}, execution).IsOK());
+  }
+}
+
+TEST_P(SessionChainTest, InvalidGenerationDefinitionsBudgetsAndOutputPorts) {
+  auto prefill = Session(GenerationModel());
+  auto decode = Session(GenerationModel());
+  const auto p = GenerationOptions(TokenGenerationPhase::Prefill);
+  const auto d = GenerationOptions(TokenGenerationPhase::Decode);
+  std::shared_ptr<const SessionLoop> loop;
+  auto reject_loop = [&](SessionLoopOptions options) {
+    EXPECT_FALSE(SessionLoop::Create(*prefill, std::move(options), loop).IsOK());
+  };
+  auto options = p;
+  options.generation->phase = static_cast<TokenGenerationPhase>(99);
+  reject_loop(options);
+  options = p;
+  options.generation->input_ids.clear();
+  reject_loop(options);
+  options = p;
+  options.generation->logits_output = "missing";
+  reject_loop(options);
+  options = p;
+  options.generation->attention_mask = "input_ids";
+  reject_loop(options);
+  options = p;
+  options.generation->position_ids = "missing";
+  reject_loop(options);
+  options = p;
+  options.generation->logits_position = -1;
+  reject_loop(options);
+  options = p;
+  options.generated_token_output = "logits";
+  reject_loop(options);
+  options = p;
+  options.finite_input_names.clear();
+  reject_loop(options);
+  options = p;
+  options.exit_conditions = {{LoopExitKind::MaxGeneratedTokens, 3}};
+  reject_loop(options);
+  options = d;
+  options.finite_input_names = {"input_ids"};
+  reject_loop(options);
+  options = p;
+  options.feedback = {{"position_ids", "positions_seen"}};
+  reject_loop(options);
+  options = p;
+  options.exit_conditions.push_back({LoopExitKind::Eos, 0, "", {4}});
+  reject_loop(options);
+
+  std::shared_ptr<const SessionChain> chain;
+  auto valid = GenerationChain(*prefill, *decode, p, d);
+  auto reject_chain = [&](SessionChainOptions config) {
+    EXPECT_FALSE(SessionChain::Create(std::move(config), chain).IsOK());
+  };
+  auto config = valid;
+  std::swap(config.components[0], config.components[1]);
+  reject_chain(config);
+  config = valid;
+  auto duplicate = config.components[0];
+  duplicate.name = "prefill_again";
+  config.components.push_back(duplicate);
+  reject_chain(config);
+  config = valid;
+  duplicate = config.components[1];
+  duplicate.name = "decode_again";
+  config.components.push_back(duplicate);
+  reject_chain(config);
+  reject_chain(GenerationChain(*prefill, *decode, p, GenerationOptions(TokenGenerationPhase::Decode, 2)));
+  auto no_limit_decode = GenerationOptions(TokenGenerationPhase::Decode, std::nullopt);
+  no_limit_decode.exit_conditions = {{LoopExitKind::Eos, 0, "", {3}}};
+  reject_chain(GenerationChain(*prefill, *decode, p, no_limit_decode));
+  auto different_cache = d;
+  different_cache.kv_caches[0].cache.name = "other";
+  reject_chain(GenerationChain(*prefill, *decode, p, different_cache));
+  different_cache.kv_caches.clear();
+  reject_chain(GenerationChain(*prefill, *decode, p, different_cache));
+  config = valid;
+  config.outputs[0].output_name = "logits";
+  reject_chain(config);
+  config = valid;
+  config.outputs[0].kind = static_cast<ChainOutputKind>(99);
+  reject_chain(config);
+  auto plain = Session(stateful::MakeRenamedStageModel());
+  config = Single(*plain);
+  config.outputs = {{"tokens", 0, "", ChainOutputKind::GeneratedTokenIds}};
+  reject_chain(config);
+}
+
+TEST_P(SessionChainTest, InvalidPromptsFailBeforePrefillEvenAtZeroBudget) {
+  auto session = Session(GenerationModel(false));
+  auto options = GenerationOptions(TokenGenerationPhase::Prefill, 0, false);
+  auto loop = Loop(*session, options);
+  std::unique_ptr<SessionLoopExecution> execution;
+  EXPECT_FALSE(loop->CreateExecution({}, execution).IsOK());
+  EXPECT_FALSE(loop->CreateExecution({{}, {{{"input_ids", Value<int64_t>({1, 0}, {})}}}}, execution).IsOK());
+  EXPECT_FALSE(loop->CreateExecution({{}, {{{"input_ids", Value<int64_t>({1, 1}, {-1})}}}}, execution).IsOK());
+  SessionLoopInputs multiple_batches{
+      {}, {{{"input_ids", Value<int64_t>({1, 1}, {0})}}, {{"input_ids", Value<int64_t>({1, 1}, {1})}}}};
+  EXPECT_FALSE(loop->CreateExecution(std::move(multiple_batches), execution).IsOK());
+  auto chain_options = GenerationChain(*session, *session, options,
+                                       GenerationOptions(TokenGenerationPhase::Decode, 0, false));
+  std::shared_ptr<const SessionChain> chain;
+  ASSERT_STATUS_OK(SessionChain::Create(chain_options, chain));
+  std::unique_ptr<SessionChainExecution> chain_execution;
+  EXPECT_FALSE(chain->CreateExecution({{{"prompt", Value<int64_t>({1, 0}, {})}}}, chain_execution).IsOK());
+  EXPECT_FALSE(chain->CreateExecution({{{"prompt", Value<int64_t>({1, 1}, {-1})}}}, chain_execution).IsOK());
+  chain_options.components[0].inputs[0].source = Sequence("prompts");
+  ASSERT_STATUS_OK(SessionChain::Create(chain_options, chain));
+  EXPECT_FALSE(chain->CreateExecution({{}, {{"prompts", {}}}}, chain_execution).IsOK());
+  ASSERT_STATUS_OK(chain->CreateExecution({{}, {{"prompts", {Value<int64_t>({1, 1}, {0})}}}}, chain_execution));
+  SessionChainStepResult result;
+  ASSERT_STATUS_OK(chain_execution->Run(result));
+  EXPECT_EQ(result.generated_tokens, 0);
+  EXPECT_EQ(session->calls, 0u);
+}
+
+TEST_P(SessionChainTest, GenerationFailuresRequireResetAndKeepCommittedState) {
+  auto prefill = Session(GenerationModel(false));
+  auto decode = Session(GenerationModel(false));
+  auto p = GenerationOptions(TokenGenerationPhase::Prefill, 3, false);
+  auto d = GenerationOptions(TokenGenerationPhase::Decode, 3, false);
+  auto execution = Execution(GenerationChain(*prefill, *decode, p, d),
+                             {{{"prompt", Value<int64_t>({1, 1}, {0})}}});
+  SessionChainStepResult result;
+  ASSERT_STATUS_OK(execution->Step(result));
+  decode->after_run = [&](IOBinding& binding) {
+    binding.GetOutputs()[0] = Value<float>({1, 1, 4},
+                                           {0.f, std::numeric_limits<float>::quiet_NaN(), 1.f, 2.f});
+    return Status::OK();
+  };
+  EXPECT_FALSE(execution->Step(result).IsOK());
+  EXPECT_TRUE(execution->RequiresReset());
+  EXPECT_EQ(execution->Generation()->token_ids.size(), 1u);
+  EXPECT_EQ(execution->Generation()->processed_tokens, 1);
+  EXPECT_EQ(result.generated_tokens, 1);
+  decode->after_run = {};
+  execution->Reset();
+  ASSERT_STATUS_OK(execution->Run(result));
+  EXPECT_EQ(result.generated_tokens, 3);
+
+  prefill->after_run = [&](IOBinding& binding) {
+    binding.GetOutputs()[1] = Value<float>({1, 1, 0, 1}, {});
+    return Status::OK();
+  };
+  execution->Reset();
+  EXPECT_FALSE(execution->Step(result).IsOK());
+  EXPECT_TRUE(execution->RequiresReset());
+  EXPECT_TRUE(execution->Generation()->token_ids.empty());
+  prefill->after_run = {};
+  p.exit_conditions.push_back({LoopExitKind::MaxIterations, 0});
+  execution = Execution(GenerationChain(*prefill, *decode, p, d),
+                        {{{"prompt", Value<int64_t>({1, 1}, {0})}}});
+  EXPECT_FALSE(execution->Run(result).IsOK());
+  EXPECT_TRUE(execution->RequiresReset());
+}
+
+TEST_P(SessionChainTest, GenerationRejectsMismatchedCacheAtStageEntry) {
+  auto warmup = Session(GenerationModel(false));
+  auto prefill = Session(GenerationModel(false));
+  auto decode = Session(GenerationModel(false));
+  auto options = GenerationChain(*prefill, *decode, GenerationOptions(TokenGenerationPhase::Prefill, 3, false),
+                                 GenerationOptions(TokenGenerationPhase::Decode, 3, false));
+  options.components.insert(options.components.begin(),
+                            {"warmup", warmup.get(), {{"input_ids", External("prompt")}}, {}, {KeyBinding()}});
+  auto execution = Execution(options, {{{"prompt", Value<int64_t>({1, 1}, {0})}}});
+  SessionChainStepResult result;
+  const auto status = execution->Run(result);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("prefill"), std::string::npos);
+  EXPECT_TRUE(execution->RequiresReset());
+  EXPECT_EQ(warmup->calls, 1u);
+  EXPECT_EQ(prefill->calls, 0u);
+}
+
+TEST_F(SamplerTest, GenerationBindingValidationAndAllocationErrors) {
+  LoopFeeds prepared;
+  auto allocator = std::make_shared<CacheTestAllocator>();
+  const auto prompt = Value<int64_t>({1, 1}, {0});
+  auto options = *GenerationOptions(TokenGenerationPhase::Prefill).generation;
+  TokenGenerationState state;
+  int64_t count = -1;
+  auto unspecified = options;
+  unspecified.phase = TokenGenerationPhase::Unspecified;
+  EXPECT_FALSE(TokenGeneration::PrepareInputs(unspecified, state, &prompt, allocator, prepared, count).IsOK());
+  EXPECT_FALSE(TokenGeneration::PrepareInputs(options, state, nullptr, allocator, prepared, count).IsOK());
+  EXPECT_FALSE(TokenGeneration::ValidatePrompt({}).IsOK());
+  state.prefill_complete = true;
+  EXPECT_FALSE(TokenGeneration::PrepareInputs(options, state, &prompt, allocator, prepared, count).IsOK());
+  options.phase = TokenGenerationPhase::Decode;
+  state.Reset();
+  EXPECT_FALSE(TokenGeneration::PrepareInputs(options, state, nullptr, allocator, prepared, count).IsOK());
+  state.prefill_complete = true;
+  state.token_ids = {-1};
+  EXPECT_FALSE(TokenGeneration::PrepareInputs(options, state, nullptr, allocator, prepared, count).IsOK());
+  state.token_ids = {1};
+  state.processed_tokens = -1;
+  EXPECT_FALSE(TokenGeneration::PrepareInputs(options, state, nullptr, allocator, prepared, count).IsOK());
+  state.processed_tokens = 1;
+  EXPECT_FALSE(TokenGeneration::PrepareInputs(options, state, nullptr, nullptr, prepared, count).IsOK());
+  EXPECT_FALSE(TokenGeneration::PrepareInputs(options, state, nullptr,
+                                              std::make_shared<CacheTestAllocator>(true), prepared, count)
+                   .IsOK());
+  allocator->fail = true;
+  EXPECT_FALSE(TokenGeneration::PrepareInputs(options, state, nullptr, allocator, prepared, count).IsOK());
+  allocator->fail = false;
+  state.processed_tokens = std::numeric_limits<int64_t>::max();
+  EXPECT_ANY_THROW(ORT_THROW_IF_ERROR(
+      TokenGeneration::PrepareInputs(options, state, nullptr, allocator, prepared, count)));
+  EXPECT_EQ(count, -1);
+}
+
+TEST_F(SamplerTest, GenerationMetadataValidatesDtypeRankBatchAndSequence) {
+  const auto model = GenerationModel(false);
+  auto options = *GenerationOptions(TokenGenerationPhase::Prefill, 3, false).generation;
+  const auto input_type = model.graph().input(0).type();
+  const auto output_type = model.graph().output(0).type();
+  auto validate = [&](const ONNX_NAMESPACE::TypeProto& input, const ONNX_NAMESPACE::TypeProto& output) {
+    NodeArg ids("input_ids", &input), logits("logits", &output);
+    InlinedVector<const NodeArg*> inputs{&ids}, outputs{&logits};
+    return TokenGeneration::Validate(options, inputs, outputs);
+  };
+  ASSERT_STATUS_OK(validate(input_type, output_type));
+  auto invalid = input_type;
+  invalid.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  EXPECT_FALSE(validate(invalid, output_type).IsOK());
+  invalid = input_type;
+  invalid.mutable_tensor_type()->mutable_shape()->clear_dim();
+  invalid.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  EXPECT_FALSE(validate(invalid, output_type).IsOK());
+  invalid = input_type;
+  invalid.mutable_tensor_type()->mutable_shape()->mutable_dim(0)->set_dim_value(2);
+  EXPECT_FALSE(validate(invalid, output_type).IsOK());
+  invalid = input_type;
+  invalid.mutable_tensor_type()->mutable_shape()->mutable_dim(1)->set_dim_value(0);
+  EXPECT_FALSE(validate(invalid, output_type).IsOK());
+  options.phase = TokenGenerationPhase::Decode;
+  invalid.mutable_tensor_type()->mutable_shape()->mutable_dim(1)->set_dim_value(2);
+  EXPECT_FALSE(validate(invalid, output_type).IsOK());
+  options.phase = TokenGenerationPhase::Prefill;
+  invalid = output_type;
+  invalid.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  EXPECT_FALSE(validate(input_type, invalid).IsOK());
+  invalid = output_type;
+  invalid.mutable_tensor_type()->mutable_shape()->clear_dim();
+  invalid.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(4);
+  EXPECT_FALSE(validate(input_type, invalid).IsOK());
+  invalid = output_type;
+  invalid.mutable_tensor_type()->mutable_shape()->mutable_dim(0)->set_dim_value(2);
+  EXPECT_FALSE(validate(input_type, invalid).IsOK());
+  invalid = output_type;
+  invalid.mutable_tensor_type()->mutable_shape()->mutable_dim(2)->set_dim_value(0);
+  EXPECT_FALSE(validate(input_type, invalid).IsOK());
+  invalid = output_type;
+  invalid.mutable_tensor_type()->mutable_shape()->mutable_dim(1)->set_dim_value(2);
+  options.logits_position = 2;
+  EXPECT_FALSE(validate(input_type, invalid).IsOK());
+  options.logits_position = 1;
+  ASSERT_STATUS_OK(validate(input_type, invalid));
+  options.logits_position.reset();
+  invalid = input_type;
+  invalid.mutable_tensor_type()->clear_shape();
+  ASSERT_STATUS_OK(validate(invalid, output_type));
 }
 
 INSTANTIATE_TEST_SUITE_P(Cpu, SessionChainTest, testing::Values(false));

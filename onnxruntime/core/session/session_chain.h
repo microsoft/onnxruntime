@@ -40,10 +40,14 @@ struct SessionChainComponent {
   InlinedVector<LoopKVCacheBinding, 1> kv_caches;
 };
 
+enum class ChainOutputKind { ModelOutput,
+                             GeneratedTokenIds };
+
 struct ChainOutputBinding {
   std::string name;
   size_t component_index;
   std::string output_name;
+  ChainOutputKind kind = ChainOutputKind::ModelOutput;
 };
 
 struct SessionChainOptions {
@@ -61,6 +65,7 @@ struct SessionChainStepResult {
   bool executed = false;
   bool completed = false;
   int64_t invocations = 0;
+  int64_t generated_tokens = 0;
   size_t components_completed = 0;
   std::string component_name;
   SessionLoopStepResult component_result;
@@ -89,6 +94,7 @@ class SessionChain : public std::enable_shared_from_this<SessionChain> {
   InlinedHashSet<std::string> sequence_names_;
   InlinedHashSet<std::string> initial_state_names_;
   InlinedVector<KVCacheSpec> cache_specs_;
+  bool has_generation_ = false;
 };
 
 // Step/Run/Reset are sequential. Only Cancel may be called concurrently.
@@ -101,12 +107,13 @@ class SessionChainExecution {
   bool RequiresReset() const { return requires_reset_; }
   const LoopFeeds& State() const { return state_; }
   const KVCacheManager* Cache() const { return cache_.get(); }
+  const TokenGenerationState* Generation() const { return generation_.get(); }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionChainExecution);
 
  private:
   friend class SessionChain;
   SessionChainExecution(std::shared_ptr<const SessionChain> chain, SessionChainInputs inputs,
-                        std::shared_ptr<KVCacheManager> cache);
+                        std::shared_ptr<KVCacheManager> cache, std::shared_ptr<TokenGenerationState> generation);
   Status Resolve(const ChainValueSource& source, const OrtValue*& out) const;
   Status PrepareComponentInputs(SessionLoopInputs& inputs) const;
   Status StepComponent(SessionChainStepResult& result);
@@ -114,6 +121,7 @@ class SessionChainExecution {
   const std::shared_ptr<const SessionChain> chain_;
   const SessionChainInputs initial_inputs_;
   const std::shared_ptr<KVCacheManager> cache_;
+  const std::shared_ptr<TokenGenerationState> generation_;
   InlinedVector<LoopFeeds> component_outputs_;
   LoopFeeds state_;
   std::unique_ptr<SessionLoopExecution> active_;
