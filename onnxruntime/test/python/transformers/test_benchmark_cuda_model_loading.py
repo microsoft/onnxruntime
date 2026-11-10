@@ -144,6 +144,35 @@ unrelated bytes=999 path=pageable
         self.assertEqual(parsed.external_data, args.external_data)
         self.assertTrue(parsed.evict_file_cache)
 
+    def test_worker_command_forwards_optional_staging_sizes(self):
+        base = ["--model", "a model.onnx", "--inputs", "inputs.npz", "--expected-outputs", "outputs.npz"]
+        defaults = benchmark.create_parser().parse_args(base)
+        self.assertIsNone(defaults.pinned_memory_bytes)
+        self.assertIsNone(defaults.chunk_bytes)
+        defaults.external_data = []
+        defaults.evict_file_cache = False
+        command = benchmark.worker_command(defaults, "pinned")
+        self.assertNotIn("--pinned-memory-bytes", command)
+        self.assertNotIn("--chunk-bytes", command)
+        for path in benchmark.PATHS:
+            options = benchmark.provider_options(path, 0, 4, "linux")
+            self.assertNotIn("external_data_loader_pinned_memory_bytes", options)
+            self.assertNotIn("external_data_loader_chunk_bytes", options)
+
+        args = benchmark.create_parser().parse_args(
+            [*base, "--pinned-memory-bytes", "67108864", "--chunk-bytes", "4194304"]
+        )
+        args.external_data = []
+        args.evict_file_cache = False
+        parsed = benchmark.create_parser().parse_args(benchmark.worker_command(args, "pinned")[2:])
+        self.assertEqual(parsed.pinned_memory_bytes, 67108864)
+        self.assertEqual(parsed.chunk_bytes, 4194304)
+        options = benchmark.provider_options(
+            "pinned", 0, 4, "linux", pinned_memory_bytes=parsed.pinned_memory_bytes, chunk_bytes=parsed.chunk_bytes
+        )
+        self.assertEqual(options["external_data_loader_pinned_memory_bytes"], 67108864)
+        self.assertEqual(options["external_data_loader_chunk_bytes"], 4194304)
+
     def test_directstorage_summary_does_not_claim_zero_host_copy(self):
         sample = {
             "requested_path": "direct",

@@ -5,10 +5,16 @@ ONNX Runtime provides two independent loading optimizations for models with larg
 | Target | Mechanism | Configuration | Default |
 |---|---|---|---|
 | CPU prepacking | Run eligible CPU kernel `PrePack()` calls concurrently | `session.prepack.enable_parallel` | Disabled (`"0"`) |
-| CUDA external initializers | Read external data with GPUDirect Storage, Microsoft DirectStorage, or reusable pinned buffers | CUDA EP options `external_data_loader_use_gds`, `external_data_loader_use_directstorage`, and `external_data_loader_reading_threads` | Direct storage disabled; 4 readers |
+| CUDA external initializers | Read external data directly into CUDA memory with GPUDirect Storage (Linux) or Microsoft DirectStorage (Windows) | CUDA EP options `external_data_loader_use_gds` / `external_data_loader_use_directstorage` | Disabled (`"0"`) |
+| CUDA external initializers | Read external data through reusable pinned buffers while copying to the GPU | `session.external_data_loader.threads` / CUDA EP `external_data_loader_reading_threads` | Auto from CPU cores (`2`..`8`) |
+| CUDA external initializers | Total pinned host staging memory across the two reusable buffers | `session.external_data_loader.pinned_memory_bytes` / CUDA EP `external_data_loader_pinned_memory_bytes` | 32 MiB (`"33554432"`) |
+| CUDA external initializers | Maximum per-transfer chunk size for parallel reads and async H2D copies | `session.external_data_loader.chunk_bytes` / CUDA EP `external_data_loader_chunk_bytes` | 2 MiB (`"2097152"`) |
+| CUDA external initializers | Minimum total external initializer bytes on the device before allocating pinned buffers/streams | `session.external_data_loader.min_size_bytes` | 16 MiB (`"16777216"`) |
 
-The CPU option is a session configuration entry. The CUDA options are execution provider options passed when the CUDA
-EP is appended to `SessionOptions`.
+The `session.*` options are session configuration entries. The CUDA external-data loader options can also be passed as
+execution provider options when the CUDA EP (built-in or plugin) is appended to `SessionOptions`. GPUDirect Storage and
+Microsoft DirectStorage are execution provider options of the built-in CUDA EP only; there is no session configuration
+entry for them and the CUDA plugin EP does not support them.
 
 ## Parallel CPU weight prepacking
 
@@ -96,8 +102,9 @@ enabling GDS in those builds logs a warning and uses the configured host-memory 
 
 The built-in CUDA execution provider also supports Microsoft's DirectStorage API through D3D12/CUDA
 interoperability. Build with `--cmake_extra_defines onnxruntime_USE_CUDA_DIRECTSTORAGE=ON` in addition to the
-usual CUDA build options. This option is not supported with `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON`;
-CMake rejects that combination rather than silently compiling an unavailable backend.
+usual CUDA build options. This option is not supported with the CUDA plugin EP
+(`onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON`) or minimal builds (`onnxruntime_MINIMAL_BUILD`, `onnxruntime_CUDA_MINIMAL`);
+CMake rejects those combinations rather than silently compiling an unavailable backend.
 This opt-in build downloads the pinned DirectStorage SDK headers; it does not
 introduce a link-time dependency on `dstorage.dll`. Deploy the SDK's matching x64 `dstorage.dll` and
 `dstoragecore.dll` beside the application executable, following Microsoft's
@@ -135,35 +142,62 @@ If both direct-storage options are enabled, DirectStorage is tried first, follow
 normally enable only the option appropriate for the operating system. Unsupported builds/platforms report
 unavailability and use the fallback instead of silently claiming DirectStorage support.
 
+### Selecting the direct-storage paths
+
+The following CUDA execution provider options enable the direct-storage paths:
+
+| Option | Values | Default | Purpose |
+|---|---|---:|---|
+| `external_data_loader_use_gds` | `0` or `1` | `0` | Try GDS before the host-memory loading paths |
+| `external_data_loader_use_directstorage` | `0` or `1` | `0` | Try Microsoft DirectStorage through D3D12/CUDA on Windows |
+
+Initializers that a direct-storage path cannot load use the pinned-buffer or pageable host-memory path described below.
+Keep `external_data_loader_reading_threads` greater than zero when enabling either option to retain the pinned-buffer
+backup.
+
 ### Pinned-buffer host loading
 
-The CUDA execution provider can load external initializers through two reusable 64 MiB pinned host buffers:
+For models whose total external initializer size on the target CUDA device is at least 16 MiB
+(`session.external_data_loader.min_size_bytes`), the CUDA execution provider can load external initializers through two
+reusable 16 MiB pinned host buffers (32 MiB total pinned memory by default):
 
 ```text
 external-data file -> pinned buffer 0/1 -> CUDA initializer allocation
                          CPU read       cudaMemcpyAsync
 ```
 
-The buffers alternate so that reading the next block can overlap the host-to-device transfer of the current block.
-Each buffer is synchronized before reuse. Initializers are loaded one at a time through the shared staging resources,
-which bounds pinned host memory use at 128 MiB per loader.
+The buffers are sliced across reader workers, each owning a pair of non-blocking CUDA streams and alternating pinned
+staging slices so that multi-threaded file reads overlap host-to-device DMA transfers across chunks and initializers.
+Each stream is synchronized before its slice is reused, and all in-flight transfers are finalized before session
+initialization completes, bounding pinned host memory use at 32 MiB per loader by default. Both the built-in CUDA EP
+and the CUDA plugin EP use this loader (not compiled in minimal builds).
 
-The following CUDA execution provider options control the primary and fallback paths:
+The `session.external_data_loader.threads` session configuration entry (or `external_data_loader_reading_threads` CUDA
+provider option) controls how each block is filled:
 
-| Option | Values | Default | Purpose |
-|---|---|---:|---|
-| `external_data_loader_use_gds` | `0` or `1` | `0` | Try GDS before another external-data loading path |
-| `external_data_loader_use_directstorage` | `0` or `1` | `0` | Try Microsoft DirectStorage through D3D12/CUDA on Windows |
-| `external_data_loader_reading_threads` | `0` to `64` | `4` | Configure the pinned-buffer fallback; `0` disables it |
+| Value | Behavior |
+|---:|---|
+| `0` | Disable the CUDA external-data loader and use the framework's pageable-memory path. With GDS or DirectStorage enabled, the loader is kept for direct reads and everything else uses pageable host buffers instead of pinned buffers |
+| `1` | Use pinned buffers with synchronous reads on the calling thread |
+| `2` to `64` | Use that many independent CPU read tasks |
 
-Keep `external_data_loader_reading_threads` greater than zero when enabling either direct-storage option to retain
-the pinned-buffer backup.
-`1` uses synchronous reads into pinned memory. Values from `2` through `64` use that many parallel read tasks per
-64 MiB pinned buffer. The default is `4`, so the pinned-buffer loader is enabled without additional configuration.
-Parallel reads are used for external tensors of at least 16 MiB; smaller tensors use one read. The optimal reader count
-depends on the storage device and filesystem. If pinned buffers or CUDA streams cannot be created, loading falls back
-to a pageable buffer. If the value is `0`, the pageable path is used when direct storage is disabled or unavailable. Models with
-weights embedded in the ONNX file do not use this external-data path.
+When left unset, the default thread count is computed from the host physical CPU core count (`clamp(cores / 2, 2, 8)`).
+Explicitly setting `session.external_data_loader.threads` or `external_data_loader_reading_threads` uses the exact
+specified thread count.
+
+Additional session configuration entries (and matching CUDA provider options) tune staging memory, transfer
+granularity, and the minimum model-size threshold:
+
+| Session Config Key | CUDA Provider Option | Valid Range | Default |
+|---|---|---|---|
+| `session.external_data_loader.threads` | `external_data_loader_reading_threads` | `0` to `64` | Auto from CPU cores (`2`..`8`) |
+| `session.external_data_loader.pinned_memory_bytes` | `external_data_loader_pinned_memory_bytes` | `1048576` (1 MiB) to `1073741824` (1 GiB), multiple of `8192` | `33554432` (32 MiB total, two 16 MiB buffers) |
+| `session.external_data_loader.chunk_bytes` | `external_data_loader_chunk_bytes` | `4096` (4 KiB) to `67108864` (64 MiB), multiple of `4096` | `2097152` (2 MiB) |
+| `session.external_data_loader.min_size_bytes` | N/A | `0` to `4294967296` (4 GiB) | `16777216` (16 MiB) |
+
+If the model's total external weights on the target device are smaller than `session.external_data_loader.min_size_bytes`,
+or if pinned buffers or CUDA streams cannot be created, loading uses a pageable buffer without allocating pinned
+memory or extra CUDA streams. Models with weights embedded in the ONNX file do not use this external-data path.
 
 ### Opened-file path validation requirements
 
@@ -182,7 +216,7 @@ reading or mapping it. This prevents a pathname or symlink from being swapped be
 ONNX Runtime intentionally does not fall back to resolving and comparing a mutable pathname because that would
 reintroduce a time-of-check/time-of-use race.
 
-Configure the CUDA EP in Python:
+Configure the external-data loader in Python via `SessionOptions` or CUDA EP provider options:
 
 ```python
 import sys
@@ -190,13 +224,16 @@ import sys
 import onnxruntime as ort
 
 session_options = ort.SessionOptions()
+session_options.add_session_config_entry("session.external_data_loader.threads", "8")
+session_options.add_session_config_entry("session.external_data_loader.pinned_memory_bytes", str(128 * 1024 * 1024))
+session_options.add_session_config_entry("session.external_data_loader.chunk_bytes", str(4 * 1024 * 1024))
+
 providers = [
     (
         "CUDAExecutionProvider",
         {
             "external_data_loader_use_gds": "0" if sys.platform == "win32" else "1",
             "external_data_loader_use_directstorage": "1" if sys.platform == "win32" else "0",
-            "external_data_loader_reading_threads": "4",
         },
     ),
     "CPUExecutionProvider",
@@ -215,6 +252,9 @@ For C++, both optimizations are configured through `Ort::SessionOptions`:
 Ort::SessionOptions session_options;
 session_options.SetIntraOpNumThreads(8);
 session_options.AddConfigEntry("session.prepack.enable_parallel", "1");
+session_options.AddConfigEntry("session.external_data_loader.threads", "8");
+session_options.AddConfigEntry("session.external_data_loader.pinned_memory_bytes", "134217728");
+session_options.AddConfigEntry("session.external_data_loader.chunk_bytes", "4194304");
 
 Ort::CUDAProviderOptions cuda_options;
 cuda_options.Update({
@@ -223,7 +263,6 @@ cuda_options.Update({
 #else
     {"external_data_loader_use_gds", "1"},
 #endif
-    {"external_data_loader_reading_threads", "4"},
 });
 session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
 
@@ -311,3 +350,32 @@ matched independent references. DirectStorage rows used the DirectStorage API, n
 On this machine and workload, pinned buffers outperform both pageable loading and the current uncompressed
 DirectStorage implementation. These are complete session-initialization measurements, not isolated I/O timings,
 and are not evidence of cold-cache disk bandwidth or Linux GDS performance.
+
+## Zero-copy external initializer buffers (`session.use_external_initializer_file_buffers_directly`)
+
+When an application supplies external initializer weights from memory-mapped files (for example `.onnx.data` or `.gguf`
+weight files mapped via `mmap`) using `AddExternalInitializers` or `AddExternalInitializersFromFilesInMemory`,
+ONNX Runtime by default copies non-owning CPU tensor buffers into a newly allocated internal CPU buffer during
+`InferenceSession::Initialize()`.
+
+Setting `session.use_external_initializer_file_buffers_directly` to `"1"` instructs ONNX Runtime to borrow naturally
+aligned CPU buffers larger than 127 bytes on little-endian hosts instead of allocating and copying a duplicate CPU
+buffer. Other buffers are copied. Tensors passed to `AddExternalInitializers` must be contiguous, non-owning views of
+user-owned buffers and contain native-endian values; allocator-owned tensors are rejected.
+Files passed to `AddExternalInitializersFromFilesInMemory` contain serialized little-endian values.
+
+```cpp
+Ort::SessionOptions session_options;
+session_options.AddConfigEntry("session.use_external_initializer_file_buffers_directly", "1");
+session_options.AddExternalInitializers(initializer_names, initializer_values);
+```
+
+Borrowing is opt-in because it changes the lifetime contract: the application must keep each borrowed CPU buffer
+unchanged and alive until all sessions using it have been released. With the default setting, non-owning buffers can
+be released after session creation.
+
+Device tensors passed to `AddExternalInitializers` are always copied to owned CPU staging memory using the registered
+execution provider's data-transfer implementation before graph optimization or shape inference. They are subsequently
+copied to the device selected by the execution plan. This option does not enable borrowing device buffers, so caller
+device buffers can be released after session creation regardless of the setting. Session creation fails if no suitable
+data-transfer implementation is registered.

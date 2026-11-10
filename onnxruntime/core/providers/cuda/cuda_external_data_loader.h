@@ -3,76 +3,79 @@
 
 #pragma once
 
+#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_CUDA_MINIMAL)
+
 #include <array>
+#include <functional>
 #include <memory>
 #include <mutex>
+#include <vector>
 
+#include "core/common/inlined_containers.h"
 #include "core/framework/external_data_loader.h"
-#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_CUDA_MINIMAL)
-#include "core/providers/cuda/cuda_external_data_loader_gds.h"
+#include "core/framework/external_data_loader_thread_pool.h"
 #include "core/providers/cuda/cuda_external_data_loader_directstorage.h"
-#endif
+#include "core/providers/cuda/cuda_external_data_loader_gds.h"
 #include "cuda_pch.h"
 
 namespace onnxruntime {
 namespace cuda {
 
-inline constexpr size_t kExternalDataLoaderBufferSize = 64 * 1024 * 1024;
-inline constexpr size_t kExternalDataLoaderParallelReadThreshold = 16 * 1024 * 1024;
-
-class ExternalDataLoaderThreadPool;
+inline constexpr size_t kExternalDataLoaderBufferSize =
+    ExternalDataLoaderOptions::kDefaultPinnedMemoryBytes / 2;
+using ::onnxruntime::kExternalDataLoaderParallelReadThreshold;
+inline constexpr size_t kExternalDataLoaderMaxChunkSize = ExternalDataLoaderOptions::kDefaultChunkBytes;
 
 /**
  * Loads large external initializers into CUDA memory through two reusable pinned host buffers.
  *
- * Data path:
+ * When reading_thread_count > 1, each worker thread owns a dedicated 4 KiB-aligned slice in both
+ * pinned buffers and a pair of non-blocking CUDA streams, pulling chunks from a lock-free work
+ * queue to overlap multi-threaded file reads with asynchronous H2D DMA transfers across tensors.
  *
- *                           External-data file on local NVMe
- *                                        |
- *                                        | NVMe DMA / block I/O
- *                                        v
- *                           Linux kernel page-cache pages
- *                                        |
- *                                        | CPU copies performed by read()
- *                                        | Parallel reads fill each block
- *                                        |
- *                      +-----------------+-----------------+
- *                      |                                   |
- *                      v                                   v
- *           +-----------------------+           +-----------------------+
- *           | pinned buffer 0, 64M  |           | pinned buffer 1, 64M  |
- *           | CPU fills block N     |           | CPU fills block N + 1 |
- *           +-----------------------+           +-----------------------+
- *                      |                                   |
- *                      | cudaMemcpyAsync                   | cudaMemcpyAsync
- *                      |                                   |
- *                      +-----------------+-----------------+
- *                                        |
- *                                        v
- *                        CUDA BFC Arena initializer buffer
- *                                        |
- *                                        | optional CUDA prepack,
- *                                        | transpose and unpack kernels
- *                                        v
- *                            Final prepared CUDA weights
- *
- * Timeline:
- *
- *   CPU reads block N + 1 into buffer 1
- *          || concurrently with
- *   PCIe DMA transfers block N from buffer 0
- *
- *   CPU reads block N + 2 into buffer 0
- *          || concurrently with
- *   PCIe DMA transfers block N + 1 from buffer 1
+ * When GPUDirect Storage (Linux) or Microsoft DirectStorage (Windows) is enabled, eligible tensors are read
+ * straight into CUDA memory without host staging. Other tensors, and every tensor after a direct-path failure,
+ * use the pinned or pageable host-memory path.
  */
 class ExternalDataLoader final : public IExternalDataLoader {
  public:
-  ExternalDataLoader(int device_id, size_t reading_thread_count, bool use_gds = false,
+  using AllocatePinnedBufferFn = cudaError_t (*)(void**, size_t);
+  using CreateStreamFn = cudaError_t (*)(cudaStream_t*, unsigned int);
+
+  ExternalDataLoader(int device_id, size_t reading_thread_count,
+                     AllocatePinnedBufferFn allocate_pinned_buffer = cudaMallocHost,
+                     CreateStreamFn create_stream = cudaStreamCreateWithFlags);
+
+  // The direct-load flags come last: a function pointer passed in their position would silently convert to bool.
+  ExternalDataLoader(int device_id,
+                     size_t reading_thread_count,
+                     size_t pinned_memory_bytes,
+                     size_t chunk_bytes,
+                     bool reading_threads_explicit = false,
+                     bool pinned_memory_bytes_explicit = false,
+                     bool chunk_bytes_explicit = false,
+                     size_t min_size_bytes = ExternalDataLoaderOptions::kDefaultMinSizeBytes,
+                     bool min_size_bytes_explicit = false,
+                     AllocatePinnedBufferFn allocate_pinned_buffer = cudaMallocHost,
+                     CreateStreamFn create_stream = cudaStreamCreateWithFlags,
+                     bool use_gds = false,
                      bool use_directstorage = false);
+
   ~ExternalDataLoader() override;
 
   bool CanLoad(const OrtMemoryInfo& target_memory_info) const override;
+
+  bool IsEnabled() const noexcept override;
+
+  common::Status Configure(const ExternalDataLoaderOptions& options) const override;
+
+  common::Status BeginLoad() const override;
+
+  void SetExpectedLoadBytes(size_t total_bytes) const override;
+
+  common::Status FinalizeLoad(const std::function<bool()>& is_canceled = {}) const override;
+
+  void EndLoad() const noexcept override;
 
   common::Status LoadTensor(const RandomAccessFile& file,
                             FileOffsetType data_offset,
@@ -82,22 +85,46 @@ class ExternalDataLoader final : public IExternalDataLoader {
  private:
   common::Status EnsureResources() const;
   void ReleaseResources() const noexcept;
+  common::Status TryLoadDirectly(const RandomAccessFile& file,
+                                 FileOffsetType data_offset,
+                                 size_t length,
+                                 Tensor& tensor,
+                                 bool& loaded) const;
+  common::Status ExecuteTasks(gsl::span<const ExternalDataLoadTask> tasks,
+                              bool allow_small_parallel,
+                              const std::function<bool()>& is_canceled) const;
 
   int device_id_;
   mutable std::mutex mutex_;
   mutable std::array<void*, 2> buffers_{};
-  mutable std::array<cudaStream_t, 2> streams_{};
-  const size_t reading_thread_count_;
-#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_CUDA_MINIMAL)
+  mutable InlinedVector<cudaStream_t> streams_;
+  mutable size_t reading_thread_count_;
+  mutable size_t batch_reading_thread_count_;
+  mutable size_t pinned_memory_bytes_;
+  mutable size_t chunk_bytes_;
+  mutable size_t min_size_bytes_;
+  mutable bool reading_threads_explicit_{false};
+  mutable bool pinned_memory_bytes_explicit_{false};
+  mutable bool chunk_bytes_explicit_{false};
+  mutable bool min_size_bytes_explicit_{false};
+  const AllocatePinnedBufferFn allocate_pinned_buffer_;
+  const CreateStreamFn create_stream_;
   const bool use_gds_;
   mutable bool gds_disabled_{false};
   mutable std::unique_ptr<GdsLoader> gds_loader_;
   const bool use_directstorage_;
   mutable bool directstorage_disabled_{false};
   mutable std::unique_ptr<DirectStorageLoader> directstorage_loader_;
-#endif
   mutable std::unique_ptr<ExternalDataLoaderThreadPool> reader_pool_;
+  mutable bool in_batch_load_{false};
+  mutable std::vector<ExternalDataLoadTask> pending_tasks_;
+  mutable size_t pending_bytes_{0};
+  // Bytes already flushed by earlier FinalizeLoad() calls and the total reported by the framework.
+  mutable size_t flushed_bytes_{0};
+  mutable size_t expected_total_bytes_{0};
 };
 
 }  // namespace cuda
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD) && !defined(USE_CUDA_MINIMAL)

@@ -1999,6 +1999,13 @@ class PlannerImpl {
             int value_idx;
             ORT_RETURN_IF_ERROR(ort_value_name_idx_map_.GetIdx(name, value_idx));
             auto origin = AllocPlan(value_idx).reused_buffer;
+            // Per-stream plans can leave reuse chains crossing stream boundaries.
+            // Every alias consumer must keep the owning allocation alive.
+            for (size_t reuse_depth = 0; AllocPlan(origin).alloc_kind == AllocKind::kReuse; ++reuse_depth) {
+              ORT_RETURN_IF_NOT(reuse_depth < plan_.allocation_plan.size(),
+                                "Cycle in buffer reuse chain for value: ", name);
+              origin = AllocPlan(origin).reused_buffer;
+            }
             if (AllocPlan(origin).alloc_kind == AllocKind::kAllocate ||
                 AllocPlan(origin).alloc_kind == AllocKind::kAllocatedExternally) {
               // add current node as consumer for origin buffer

@@ -141,6 +141,10 @@
       "version": "23.5.26"
     },
     {
+      "name": "gtest",
+      "version": "1.17.0#2"
+    },
+    {
       "name": "mimalloc",
       "version": "2.1.1"
     }

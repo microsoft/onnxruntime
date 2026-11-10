@@ -112,7 +112,6 @@ body:
         - OpenVINO
         - TensorRT
         - NNAPI
-        - ACL
         - MIGraphX
         - Rockchip NPU
         - SNPE

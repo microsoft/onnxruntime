@@ -1036,6 +1036,25 @@ TEST(DynamicSparseAttentionTest, Int8TensorCoreTinyProbabilityLargeValueScale_CU
   }
 }
 
+// Candidate 0 (first tile) scores 0 with value code 1 and candidate 1 (last tile, or the same tile in the first layout)
+// scores 88 with value code 0, so the running maximum rises by 88 nats after the first tile. ex2.approx.ftz flushes the
+// accumulator rescale e^-88 (below 2^-126) to zero, which a value scale of 2^120 would turn from
+// 2^120 * e^-88 / (1 + e^-88) ~= 8.0e-3 into 0; a CTA with a large value scale evaluates the row/split in fp32 instead.
+TEST(DynamicSparseAttentionTest, Int8TensorCoreIncreasingMaximumLargeValueScale_CUDA) {
+  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA EP not available.";
+  if (!CudaHasBF16Support()) GTEST_SKIP() << "CUDA device does not support BFloat16.";
+  TwoCandidateInt8Spec spec{};
+  spec.query = 1408.0f;
+  spec.key_scale = 1.0f;
+  spec.value_scale = 0x1p120f;
+  spec.scale = 0.0625f;
+  spec.key_codes[1] = 1.0f;
+  spec.value_codes[0] = 1.0f;
+  spec.exact = true;
+  const double tail = std::exp(-88.0);
+  RunTwoCandidateInt8CaseOverTiles(spec, static_cast<float>(0x1p120 * tail / (1.0 + tail)));
+}
+
 // The cases below fix the outputs of the tensor-core INT8 kernels on numerical corners with exact arithmetic: the output
 // follows from a few numbers, is checked to one bfloat16 ulp, and is also produced with the candidates in the first and
 // the last of three 64-candidate tiles, which the decode kernel spreads over up to three splits (two of them active).

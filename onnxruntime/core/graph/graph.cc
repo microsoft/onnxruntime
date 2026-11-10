@@ -4415,9 +4415,15 @@ common::Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto
 }
 
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS)
-Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string, OrtValue>& external_initializers) {
+Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string, OrtValue>& external_initializers,
+                                               bool use_buffers_directly) {
   for (const auto& [name, value] : external_initializers) {
     const auto& user_tensor = value.Get<Tensor>();
+    ORT_RETURN_IF_NOT(user_tensor.Location().device.Type() == OrtDevice::CPU,
+                      "External initializer ", name, " must be copied to CPU before graph injection.");
+#ifdef ENABLE_STRIDED_TENSORS
+    ORT_RETURN_IF_NOT(user_tensor.IsContiguous(), "External initializer ", name, " must be contiguous.");
+#endif
 
     OrtValue ort_value;
     TensorProto tensor_proto;
@@ -4426,8 +4432,12 @@ Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string,
     // contains std::string objects (with internal pointers), not serializable content.
     if (!user_tensor.IsDataTypeString() &&
         user_tensor.SizeInBytes() > utils::kSmallTensorExternalDataThreshold) {
-      if (user_tensor.OwnsBuffer()) {
-        // If the user tensor has its own memory, we avoid copying
+      const size_t element_size = std::max<size_t>(user_tensor.DataType()->Size(), 1);
+      const bool is_naturally_aligned =
+          reinterpret_cast<uintptr_t>(user_tensor.DataRaw()) % element_size == 0;
+      if (user_tensor.OwnsBuffer() ||
+          (endian::native == endian::little && use_buffers_directly && is_naturally_aligned)) {
+        // Keep ownership when available; borrowing caller-owned storage requires explicit opt-in.
         tensor_proto = utils::TensorToTensorProto(user_tensor, name, use_tensor_buffer_true);
         ORT_ENFORCE(utils::HasExternalDataInMemory(tensor_proto), "Expecting this tensor_proto to have a pointer");
         ort_value = value;

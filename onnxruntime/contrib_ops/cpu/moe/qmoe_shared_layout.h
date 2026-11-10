@@ -3,9 +3,15 @@
 // This header is intentionally independent of ORT internal headers so it can be unit-tested standalone.
 #pragma once
 
+#include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+
+#if defined(_MSC_VER) && (defined(_M_AMD64) || defined(_M_IX86))
+#include <intrin.h>
+#endif
 
 namespace onnxruntime {
 namespace contrib {
@@ -292,6 +298,120 @@ class ScopedExpertLease {
   void* barrier_context_ = nullptr;
 };
 
+// Stable ready-first slot permutation: places initially ready slots (slot_ready[s] >= ready_done_val)
+// before demand-loading slots (slot_ready[s] < ready_done_val), preserving relative slot order within each partition.
+// Returns true iff at least one ready slot appeared after a demand-loading slot (so the order changed).
+template <typename PaddedAtomicIntT>
+inline bool BuildReadyFirstSlotOrder(int group_size, const PaddedAtomicIntT* slot_ready,
+                                     int ready_done_val, int* out_slot_order,
+                                     int* out_ready_count = nullptr) noexcept {
+  int write_idx = 0;
+  bool seen_miss = false;
+  bool reordered = false;
+  for (int s = 0; s < group_size; ++s) {
+    if (slot_ready[s].value.load(std::memory_order_relaxed) >= ready_done_val) {
+      out_slot_order[write_idx++] = s;
+      reordered |= seen_miss;
+    } else {
+      seen_miss = true;
+    }
+  }
+  if (out_ready_count) *out_ready_count = write_idx;
+  for (int s = 0; s < group_size; ++s) {
+    if (slot_ready[s].value.load(std::memory_order_relaxed) < ready_done_val) {
+      out_slot_order[write_idx++] = s;
+    }
+  }
+  return reordered;
+}
+
+template <size_t MaxGroupSlots, typename PaddedAtomicIntT, typename OnSlotLeaseReadyFn,
+          typename Fc1SlotTileFn, typename Fc2SlotTileFn, typename ParallelRunner>
+inline bool RunReadyFirstFusedColdExpertGroup(
+    FileExpertStore& store, int group_size, const int32_t* group_expert_ids,
+    const int* miss_load_slots, size_t miss_load_count, uint8_t* const* slot_load_dst,
+    ExpertBlockLease* group_ssd_leases, uint8_t* lease_held, int fc1_tasks, int fc2_tasks,
+    PaddedAtomicIntT* slot_ready, PaddedAtomicIntT* fc1_done,
+    OnSlotLeaseReadyFn&& on_slot_lease_ready,
+    Fc1SlotTileFn&& fc1_task_for_slot, Fc2SlotTileFn&& fc2_task_for_slot,
+    ParallelRunner&& run_parallel) {
+  constexpr int kReadyDoneVal = FileExpertStore::kLoadChunksPerExpert + 1;
+  const ptrdiff_t total_load =
+      static_cast<ptrdiff_t>(miss_load_count) * FileExpertStore::kLoadChunksPerExpert;
+  const ptrdiff_t total_fc1 = static_cast<ptrdiff_t>(group_size) * fc1_tasks;
+  const ptrdiff_t total_fc2 = static_cast<ptrdiff_t>(group_size) * fc2_tasks;
+  std::array<int, MaxGroupSlots> compute_slot_order;
+  const bool reorder_slots =
+      miss_load_count > 0 && group_size > 1 && static_cast<size_t>(group_size) <= MaxGroupSlots &&
+      BuildReadyFirstSlotOrder(group_size, slot_ready, kReadyDoneVal, compute_slot_order.data());
+  std::atomic<bool> load_failed{false};
+  auto fused_task = [&](ptrdiff_t task) {
+    if (task < total_load) {
+      const int m_idx = static_cast<int>(task) / FileExpertStore::kLoadChunksPerExpert;
+      const int chunk_idx = static_cast<int>(task) % FileExpertStore::kLoadChunksPerExpert;
+      const int slot = miss_load_slots[m_idx];
+      const int32_t exp_id = group_expert_ids[slot];
+      if (!store.LoadExpertChunk(exp_id, slot_load_dst[slot], chunk_idx)) {
+        load_failed.store(true, std::memory_order_release);
+      }
+      if (slot_ready[slot].value.fetch_add(1, std::memory_order_acq_rel) + 1 ==
+          FileExpertStore::kLoadChunksPerExpert) {
+        const bool ok = !load_failed.load(std::memory_order_acquire) &&
+                        store.FinishLoadExpert(exp_id, true, &group_ssd_leases[slot]);
+        if (!ok) {
+          static_cast<void>(store.FinishLoadExpert(exp_id, false, nullptr));
+          lease_held[slot] = 0;
+          load_failed.store(true, std::memory_order_release);
+        }
+        for (int s = slot; s < group_size; ++s) {
+          if (group_expert_ids[s] == exp_id) {
+            if (s != slot) {
+              group_ssd_leases[s] = group_ssd_leases[slot];
+            }
+            if (ok) {
+              on_slot_lease_ready(s, group_ssd_leases[slot]);
+            }
+            slot_ready[s].value.store(kReadyDoneVal, std::memory_order_release);
+          }
+        }
+      }
+    } else if (task < total_load + total_fc1) {
+      const ptrdiff_t fc1_idx = task - total_load;
+      const int ord = static_cast<int>(fc1_idx) / fc1_tasks;
+      const int col_tile = static_cast<int>(fc1_idx) % fc1_tasks;
+      const int slot = reorder_slots ? compute_slot_order[static_cast<size_t>(ord)] : ord;
+      while (slot_ready[slot].value.load(std::memory_order_acquire) < kReadyDoneVal) {
+#if defined(_MSC_VER) && (defined(_M_AMD64) || defined(_M_IX86))
+        _mm_pause();
+#elif defined(__x86_64__) || defined(__i386__)
+        __builtin_ia32_pause();
+#endif
+      }
+      if (!load_failed.load(std::memory_order_acquire)) {
+        fc1_task_for_slot(slot, col_tile);
+      }
+      fc1_done[slot].value.fetch_add(1, std::memory_order_acq_rel);
+    } else {
+      const ptrdiff_t fc2_idx = task - total_load - total_fc1;
+      const int ord = static_cast<int>(fc2_idx) / fc2_tasks;
+      const int col_tile = static_cast<int>(fc2_idx) % fc2_tasks;
+      const int slot = reorder_slots ? compute_slot_order[static_cast<size_t>(ord)] : ord;
+      while (fc1_done[slot].value.load(std::memory_order_acquire) < fc1_tasks) {
+#if defined(_MSC_VER) && (defined(_M_AMD64) || defined(_M_IX86))
+        _mm_pause();
+#elif defined(__x86_64__) || defined(__i386__)
+        __builtin_ia32_pause();
+#endif
+      }
+      if (!load_failed.load(std::memory_order_acquire)) {
+        fc2_task_for_slot(slot, col_tile);
+      }
+    }
+  };
+  run_parallel(total_load + total_fc1 + total_fc2, fused_task);
+  return !load_failed.load(std::memory_order_acquire);
+}
+
 // Byte offsets of the six banks inside one SharedExpertBlockV1 expert block.
 // FC1 is the fused interleaved gate/up projection [2I,H]; FC2 is [H,I].
 // Scales are FP16 block-major [K/32,N]; biases are FP16 [N].
@@ -326,6 +446,25 @@ struct Nvfp4ExpertBlockLayout {
 bool MakeNvfp4ExpertBlockLayout(int64_t hidden, int64_t inter, Nvfp4ExpertBlockLayout* layout);
 bool MakeMxfp4ExpertBlockLayout(int64_t hidden, int64_t inter, Nvfp4ExpertBlockLayout* layout);
 bool MakeInt3ExpertBlockLayout(int64_t hidden, int64_t inter, int64_t block_size, Nvfp4ExpertBlockLayout* layout);
+bool MakeInt2ExpertBlockLayout(int64_t hidden, int64_t inter, int64_t block_size, Nvfp4ExpertBlockLayout* layout);
+
+// Zero-copy view of one INT2 expert (SM80 prepacked weights_prepacked == 1 or raw weights_prepacked == 0,
+// block_size in {32, 64, 128}).
+struct Int2ExpertView {
+  const uint8_t* fc1_weights = nullptr;  // [2*inter, hidden/4] (SM80 prepacked [K, N/4] or raw row-major [N, K/4])
+  const uint16_t* fc1_scales = nullptr;  // [2*inter, hidden/block_size] row-major or [hidden/block_size, 2*inter] block-major
+  const uint16_t* fc1_bias = nullptr;    // optional [2*inter] in FP16, BF16, or FP32
+  const uint8_t* fc2_weights = nullptr;  // [hidden, inter/4] (SM80 prepacked [K, N/4] or raw row-major [N, K/4])
+  const uint16_t* fc2_scales = nullptr;  // [hidden, inter/block_size] row-major or [inter/block_size, hidden] block-major
+  const uint16_t* fc2_bias = nullptr;    // optional [hidden] in FP16, BF16, or FP32
+  int64_t block_size = 64;               // 32, 64, or 128
+  bool scales_are_block_major = false;   // false = canonical QMoE [N, K/block_size]; true = [K/block_size, N]
+  bool weights_are_prepacked = true;     // true = SM80 ColumnMajorTileInterleave<64,8>; false = raw ONNX [N, K/4]
+  bool scale_is_bf16 = true;
+  bool bias_is_bf16 = true;
+  bool scale_is_fp32 = false;
+  bool bias_is_fp32 = false;
+};
 
 // Zero-copy view of one raw INT3 expert (weights_prepacked == 0, block_size in {32, 64, 128}).
 struct Int3ExpertView {
@@ -400,6 +539,22 @@ inline int RawInt4ReorderedPosition(int k_offset_in_block) {
 
 // Reorders one activation row (length k, multiple of 32) into the raw ONNX INT4 [even16 | odd16] decode order.
 void ReorderRawInt4ActivationRow(const float* src, float* dst, int64_t k);
+
+// Natural-order index (0..63) -> index in the SM80 prepacked INT2 64-element tile decode order.
+inline int Int2ReorderedPosition(int k_offset_in_64) {
+  return ((k_offset_in_64 & 31) << 1) | ((k_offset_in_64 >> 5) & 1);
+}
+
+// Natural-order index (0..63) -> index in the raw ONNX INT2 64-element tile decode order.
+inline int RawInt2ReorderedPosition(int k_offset_in_64) {
+  return ((k_offset_in_64 & 3) << 4) | ((k_offset_in_64 >> 2) & 15);
+}
+
+// Reorders one activation row (length k, multiple of 64) into the SM80 prepacked INT2 decode order.
+void ReorderInt2ActivationRow(const float* src, float* dst, int64_t k);
+
+// Reorders one activation row (length k, multiple of 64) into the raw ONNX INT2 decode order.
+void ReorderRawInt2ActivationRow(const float* src, float* dst, int64_t k);
 
 // Converts between raw ONNX row-major INT4 [n_total, k_total/2] and SM80 ColumnMajorTileInterleave<64,4> INT4.
 void PackSm80Int4Weights(const uint8_t* raw_weights, uint8_t* sm80_weights, int64_t n_total, int64_t k_total);
@@ -506,6 +661,35 @@ bool Int3ExpertForward(int64_t hidden, int64_t inter, const Int3ExpertView& view
                        bool force_scalar = false, bool apply_fc2_bias = false,
                        bool bf16_boundaries = false, bool fp16_boundaries = false);
 
+// INT2 QMoE CPU kernels (supports both SM80 prepacked and raw [N, K/4] INT2 weights, block_size in {32, 64, 128},
+// both row-major and block-major scales, and both FP16 and BF16 scales/biases/boundaries).
+enum class Int2GemmBackend { Auto,
+                             Avx2 };
+
+void Int2GemmRange(const uint8_t* weights, const uint16_t* scales, const uint16_t* bias,
+                   int64_t block_size, bool scales_are_block_major, bool weights_are_prepacked,
+                   bool scale_is_bf16, bool bias_is_bf16,
+                   int64_t n_total, int64_t k, const float* a_reordered, int64_t m,
+                   float* out, int64_t out_stride, int64_t n_begin, int64_t n_end,
+                   bool force_scalar = false, Int2GemmBackend backend = Int2GemmBackend::Auto);
+
+// Bounds must contain complete gate/up pairs. Returns false without writing output for invalid ranges or row counts.
+bool Int2Fc1SwiGluRange(int64_t hidden, int64_t inter, const Int2ExpertView& view,
+                        const float* x_reordered, int64_t m, const SwiGluParams& swiglu,
+                        float* inter_reordered, int64_t n_begin, int64_t n_end,
+                        bool force_scalar = false, bool bf16_boundaries = false,
+                        bool fp16_boundaries = false);
+
+void Int2Fc2Range(int64_t hidden, int64_t inter, const Int2ExpertView& view,
+                  const float* inter_reordered, int64_t m, float* out,
+                  int64_t n_begin, int64_t n_end, bool force_scalar = false,
+                  bool apply_bias = false);
+
+bool Int2ExpertForward(int64_t hidden, int64_t inter, const Int2ExpertView& view,
+                       const float* x, int64_t m, const SwiGluParams& swiglu, float* out,
+                       bool force_scalar = false, bool apply_fc2_bias = false,
+                       bool bf16_boundaries = false, bool fp16_boundaries = false);
+
 // NVFP4 and MXFP4 row-major CPU kernels (supports both BF16 and FP16 scale/boundary rounding).
 void Nvfp4GemmRange(const uint8_t* weights, const uint8_t* block_scales, float global_scale,
                     const uint16_t* bias, bool bias_is_bf16, int64_t n_total, int64_t k,
@@ -538,6 +722,25 @@ bool Nvfp4ExpertForward(int64_t hidden, int64_t inter, const Nvfp4ExpertView& vi
 
 bool CompilerHasAvx512() noexcept;
 bool CpuHasAvx512();
+// Test-only toggle exposed alongside SetFp4Group8MaskForTesting so onnxruntime_test_all and the
+// ctypes-loaded test_qmoe_shared_layout.py suite can control AVX-512 in-process.
+void SetDisableAvx512ForTesting(bool disable) noexcept;
+bool IsAvx512DisabledForTesting() noexcept;
+
+struct ScopedDisableAvx512ForTesting {
+  ScopedDisableAvx512ForTesting() noexcept : previous_(IsAvx512DisabledForTesting()) {
+    SetDisableAvx512ForTesting(true);
+  }
+  ~ScopedDisableAvx512ForTesting() noexcept {
+    SetDisableAvx512ForTesting(previous_);
+  }
+  ScopedDisableAvx512ForTesting(const ScopedDisableAvx512ForTesting&) = delete;
+  ScopedDisableAvx512ForTesting& operator=(const ScopedDisableAvx512ForTesting&) = delete;
+
+ private:
+  bool previous_;
+};
+
 bool CompilerHasAvx2() noexcept;
 bool CpuHasAvx2FmaF16c();
 void SetFp4Group8MaskForTesting(int mask) noexcept;
@@ -559,6 +762,8 @@ int qmoe_shared_expert_contribution_fp16(const uint8_t* block, int64_t hidden, i
 int64_t qmoe_shared_block_bytes(int64_t hidden, int64_t inter);
 int qmoe_shared_cpu_has_avx512(void);
 int qmoe_shared_cpu_has_avx2(void);
+// C entry point for the test-only AVX-512 toggle shared by the C++ and ctypes-loaded Python suites.
+void qmoe_shared_set_disable_avx512_for_testing(int disable);
 int qmoe_shared_accepts_prepack_contract(int64_t weights_prepacked, int64_t block_size);
 int qmoe_shared_weight_code_at(const uint8_t* weights, int64_t n_total, int64_t k_total, int64_t n,
                                int64_t k);

@@ -4477,8 +4477,7 @@ TEST_F(GraphTransformationTests, FuseNhwcConvErfForWebGpuEp) {
 
 TEST_F(GraphTransformationTests, NoFuseNhwcConvWithExistingActivation) {
   // Graph-only coverage does not require the assigned EP to be available in this build.
-  for (const std::string ep : {"", kCpuExecutionProvider, kAclExecutionProvider,
-                               kJsExecutionProvider, kWebGpuExecutionProvider}) {
+  for (const std::string ep : {"", kCpuExecutionProvider, kJsExecutionProvider, kWebGpuExecutionProvider}) {
     SCOPED_TRACE(ep.empty() ? "unassigned" : ep);
     // The empty activation is a positive control: each EP must allow ordinary Conv + Tanh fusion.
     for (const std::string activation : {"", "Relu", "Tanh", "LeakyRelu"}) {
@@ -13630,6 +13629,40 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShouldNotShareForGraphOutput) {
     ASSERT_TRUE(op_count.size() == 1U);
     ASSERT_TRUE(op_count["Add"] == 1);
   }
+}
+
+// Initializers are shared exactly when their shapes and values are equal.
+TEST_F(GraphTransformationTests, ConstantSharing_ShareOnlyEqualValuesAndShapes) {
+  using Constant = std::pair<std::vector<int64_t>, std::vector<float>>;  // shape, values
+  const std::vector<Constant> constants{
+      {{}, {1.0f}}, {{}, {2.0f}}, {{}, {1.0f}}, {{2}, {1.0f, 2.0f}}, {{1, 2}, {1.0f, 2.0f}}, {{2}, {1.0f, 2.0f}}};
+
+  std::map<std::string, size_t> output_to_constant;  // Mul output name -> index into `constants`
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{1, 2}});
+    for (size_t i = 0; i < constants.size(); ++i) {
+      auto* output = builder.MakeOutput();
+      builder.AddNode("Mul", {input, builder.MakeInitializer(constants[i].first, constants[i].second)}, {output});
+      output_to_constant[output->Name()] = i;
+    }
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    std::map<size_t, const NodeArg*> initializers;  // index into `constants` -> initializer after sharing
+    for (const auto& node : graph.Nodes()) {
+      initializers[output_to_constant.at(node.OutputDefs()[0]->Name())] = node.InputDefs()[1];
+    }
+    for (size_t i = 0; i < constants.size(); ++i) {
+      for (size_t j = 0; j < constants.size(); ++j) {
+        TEST_RETURN_IF_NOT((initializers[i] == initializers[j]) == (constants[i] == constants[j]));
+      }
+    }
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 13, *logger_, std::make_unique<ConstantSharing>(), TransformerLevel::Level1, 1,
+      [](Graph&) { return Status::OK(); }, post_graph_checker));
 }
 
 TEST_F(GraphTransformationTests, GatherSliceToSplitFusion_AllGather) {

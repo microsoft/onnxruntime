@@ -4161,12 +4161,19 @@ struct OrtApi {
    * replace them with the provided tensors. The API verifies that the TensorProto being replaced
    * has an external data reference and has the same name, dimensions and data type as its replacement. The replacement
    * does not apply to initializers in subgraphs and will occur before any of the optimizations take place.
-   * The data will be copied into the graph
-   * since TensorProto can't refer to the user provided buffers.
+   * Only non-owning tensors backed by user-owned buffers are accepted; allocator-owned tensors are rejected.
+   * By default, CPU tensor buffers are copied during session creation. Device tensors are copied to owned CPU staging memory
+   * before graph optimization and shape inference, using a registered execution provider's data-transfer implementation.
+   * Session creation fails if no suitable data-transfer implementation is registered.
    *
-   * Once the model has been loaded, the OrtValue(s) added to SessionOptions instance will be removed
-   * from the internal SessionOptions copy to save memory, the user provided buffers can then be deallocated
-   * and the SessionOptions instance that refers to them can be destroyed.
+   * Setting "session.use_external_initializer_file_buffers_directly" to "1" enables borrowing naturally aligned CPU
+   * buffers larger than 127 bytes on little-endian hosts. Borrowed buffers must remain unchanged and alive until all
+   * sessions using them are released. Other buffers are copied. This option does not enable borrowing device buffers.
+   * Tensors supplied by this API must be contiguous and contain native-endian values.
+   *
+   * After session creation completes, non-owning buffers that were copied can be deallocated. The supplied OrtValue(s)
+   * and SessionOptions instance can be destroyed even when buffers are borrowed; the underlying borrowed buffers must
+   * still satisfy the lifetime requirement above.
    *
    * \param[in] options
    * \param[in] initializer_names Array of null terminated UTF-8 encoded strings of the initializers names.

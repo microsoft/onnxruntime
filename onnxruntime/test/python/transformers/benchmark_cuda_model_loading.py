@@ -95,7 +95,7 @@ def direct_path(platform_name):
     return None
 
 
-def provider_options(path, device_id, reading_threads, platform_name):
+def provider_options(path, device_id, reading_threads, platform_name, pinned_memory_bytes=None, chunk_bytes=None):
     options = {
         "device_id": device_id,
         "external_data_loader_reading_threads": 0 if path == "pageable" else reading_threads,
@@ -103,6 +103,10 @@ def provider_options(path, device_id, reading_threads, platform_name):
         "external_data_loader_use_directstorage": 0,
         "use_tf32": 0,
     }
+    if pinned_memory_bytes is not None:
+        options["external_data_loader_pinned_memory_bytes"] = pinned_memory_bytes
+    if chunk_bytes is not None:
+        options["external_data_loader_chunk_bytes"] = chunk_bytes
     if path == "direct":
         api_path = direct_path(platform_name)
         if api_path is None:
@@ -315,7 +319,14 @@ def run_worker(args):
     options.add_session_config_entry("session.disable_prepacking", "1")
     # Avoid folding/prepacking weights into a different graph or representation.
     options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
-    cuda_options = provider_options(args.path, args.device_id, args.reading_threads, sys.platform)
+    cuda_options = provider_options(
+        args.path,
+        args.device_id,
+        args.reading_threads,
+        sys.platform,
+        pinned_memory_bytes=args.pinned_memory_bytes,
+        chunk_bytes=args.chunk_bytes,
+    )
     start = time.perf_counter()
     session = ort.InferenceSession(
         args.model, sess_options=options, providers=[("CUDAExecutionProvider", cuda_options)]
@@ -349,6 +360,9 @@ def worker_command(args, path):
     command = [sys.executable, str(Path(__file__).resolve()), "--worker", "--path", path]
     for name in ("model", "inputs", "expected_outputs", "device_id", "threads", "reading_threads", "rtol", "atol"):
         command.extend([f"--{name.replace('_', '-')}", str(getattr(args, name))])
+    for name in ("pinned_memory_bytes", "chunk_bytes"):
+        if getattr(args, name) is not None:
+            command.extend([f"--{name.replace('_', '-')}", str(getattr(args, name))])
     for file in args.external_data:
         command.extend(["--external-data", file])
     if args.evict_file_cache:
@@ -410,6 +424,16 @@ def create_parser():
     parser.add_argument(
         "--reading-threads", type=reading_thread_count, default=4, help="Pinned/direct reading threads, 1-64"
     )
+    parser.add_argument(
+        "--pinned-memory-bytes",
+        type=positive_int,
+        help="Total pinned host staging memory in bytes across the two reusable buffers (runtime default: 33554432)",
+    )
+    parser.add_argument(
+        "--chunk-bytes",
+        type=positive_int,
+        help="Maximum per-transfer chunk size in bytes for parallel external-data reads (runtime default: 2097152)",
+    )
     parser.add_argument("--repetitions", type=positive_int, default=5, help="Measured fresh processes per path")
     parser.add_argument("--warmup", type=nonnegative_int, default=1, help="Unmeasured fresh processes per path")
     parser.add_argument("--rtol", type=float, default=1e-5)
@@ -464,6 +488,8 @@ def main():
             "executable": sys.executable,
             "threads": args.threads,
             "reading_threads": args.reading_threads,
+            "pinned_memory_bytes": args.pinned_memory_bytes,
+            "chunk_bytes": args.chunk_bytes,
             "seed": args.seed,
             "warmup_per_path": args.warmup,
             "repetitions_per_path": args.repetitions,
