@@ -65,7 +65,7 @@ TEST(ContribSourceReplacementPolicyTest, FullRegisteredInventory) {
   const auto policies = GetSourcePolicies();
   const auto sources = CudaSourceReplacements();
   ASSERT_GT(schemas.size(), 100u);  // A full inference build, not a reduced inventory claim.
-  ASSERT_EQ(sources.size(), 2u);
+  ASSERT_EQ(sources.size(), 3u);
   // Verify that collected keys correspond to exact, real registrations.
   const auto registered = ONNX_NAMESPACE::OpSchemaRegistry::get_all_schemas_with_history();
   for (const auto& key : schemas) {
@@ -261,6 +261,49 @@ TEST(ContribSourceReplacementPolicyTest, AvailableIsEPAndVariantScopedAndCanCoex
   EXPECT_EQ(swish.body.initializer_transformation, InitializerTransformation::None);
   EXPECT_EQ(CausalConvWithStateSources().front().body.initializer_transformation,
             InitializerTransformation::OwnedFlattenedBiasCopy);
+}
+
+TEST(ContribSourceReplacementPolicyTest, MoEExactEPVariantVersionAndNumericalContract) {
+  const auto sources = Executables();
+  const auto policies = GetSourcePolicies();
+  const auto legacy = LegacySourcePolicyKeys();
+  const OpKey moe{kMS, "MoE", 1};
+  constexpr const char* variant = "moe_fp32_dense_swiglu_v1";
+  EXPECT_EQ(ResolveSourceStatus(moe, kCudaExecutionProvider, variant, policies, sources, legacy),
+            SourceStatus::Available);
+  EXPECT_EQ(ResolveSourceStatus(moe, kCpuExecutionProvider, variant, policies, sources, legacy),
+            SourceStatus::LegacyPending);
+  EXPECT_EQ(ResolveSourceStatus(moe, kCudaExecutionProvider, "other", policies, sources, legacy),
+            SourceStatus::LegacyPending);
+  EXPECT_EQ(ResolveSourceStatus({kMS, "MoE", 2}, kCudaExecutionProvider, variant, policies, sources, legacy),
+            SourceStatus::Missing);
+  const auto catalog = CudaSourceReplacements();
+  const auto found = std::find_if(catalog.begin(), catalog.end(),
+                                  [&](const auto* source) { return source->target == moe; });
+  ASSERT_NE(found, catalog.end());
+  const auto& body = (*found)->body;
+  EXPECT_EQ(body.numerical.name, "cuda_moe_fp32_mathematical_v1");
+  EXPECT_EQ(body.numerical.guarantee, NumericalGuarantee::MathematicalSemanticsWithTolerance);
+  EXPECT_EQ(body.initializer_transformation, InitializerTransformation::None);
+  EXPECT_EQ(ScaledSiLUSources().front().body.numerical.guarantee,
+            NumericalGuarantee::NonNaNBitsAndNaNClassification);
+  EXPECT_EQ(CausalConvWithStateSources().front().body.numerical.guarantee,
+            NumericalGuarantee::FiniteInputAnalyticalBudgetAndExactState);
+  EXPECT_NE(body.numerical.guarantee, ScaledSiLUSources().front().body.numerical.guarantee);
+  EXPECT_NE(body.numerical.guarantee, CausalConvWithStateSources().front().body.numerical.guarantee);
+  ASSERT_STATUS_OK(ValidateCudaSourceReplacements(catalog, GetContribSchemaKeys(), policies, legacy));
+  for (const char* blank : {"", " \t\n"}) {
+    for (bool name : {false, true}) {
+      auto invalid = **found;
+      (name ? invalid.body.numerical.name : invalid.body.numerical.scope) = blank;
+      const std::array<const SourceReplacement*, 1> single{&invalid};
+      EXPECT_FALSE(ValidateCudaSourceReplacements(single, GetContribSchemaKeys(), policies, legacy).IsOK());
+    }
+  }
+  auto invalid = **found;
+  invalid.body.numerical.guarantee = static_cast<NumericalGuarantee>(99);
+  const std::array<const SourceReplacement*, 1> single{&invalid};
+  EXPECT_FALSE(ValidateCudaSourceReplacements(single, GetContribSchemaKeys(), policies, legacy).IsOK());
 }
 
 TEST(ContribSourceReplacementPolicyTest, LegacyCannotExemptMalformedExecutableMetadata) {

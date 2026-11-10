@@ -12,6 +12,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <numeric>
 #include <optional>
 #include <random>
 #include <string>
@@ -692,6 +693,289 @@ TEST(CudaRuntimeFusionTest, UnitSwishOrtLoadFileAndAutodetectedBufferCompatibili
                 0);
     }
   }
+}
+
+// These fixture bounds are selected before execution, not a universal MoE error contract.
+struct MoENumericalFixture {
+  int experts;
+  int k;
+  int tokens;
+  static constexpr int hidden = 32;
+  static constexpr int intermediate = 48;
+  std::vector<float> x, logits, w1, w2;
+
+  MoENumericalFixture(int e, int selected, int n, bool scaled, bool ties)
+      : experts(e), k(selected), tokens(n), x(n * hidden), logits(n * e), w1(e * 2 * intermediate * hidden), w2(e * hidden * intermediate) {
+    // Signed gate projections and opposing down rows exercise negative SiLU and cancellation.
+    for (size_t j = 0; j < x.size(); ++j) x[j] = static_cast<float>(static_cast<int>(j % 29) - 14) / 17;
+    for (size_t j = 0; j < logits.size(); ++j)
+      logits[j] = ties ? 0.25f : static_cast<float>(static_cast<int>((j * 7) % 31) - 15) / 9;
+    const float scale = scaled ? 0.075f : 0.025f;
+    for (size_t j = 0; j < w1.size(); ++j)
+      w1[j] = scale * static_cast<float>(static_cast<int>((j * 11 + j / hidden) % 23) - 11);
+    for (size_t j = 0; j < w2.size(); ++j)
+      w2[j] = 0.02f * static_cast<float>(static_cast<int>((j * 13 + j / intermediate) % 19) - 9);
+  }
+
+  ONNX_NAMESPACE::ModelProto Model(bool target) const {
+    ONNX_NAMESPACE::ModelProto model;
+    model.set_ir_version(11);
+    for (const auto& [domain, version] : std::array<std::pair<const char*, int>, 2>{{{"", 18}, {kMSDomain, 1}}}) {
+      auto* import = model.add_opset_import();
+      import->set_domain(domain);
+      import->set_version(version);
+    }
+    auto& graph = *model.mutable_graph();
+    graph.set_name("bounded_dense_moe");
+    const int fp32 = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+    AddTensorInfo(*graph.add_input(), "x", {tokens, hidden}, fp32);
+    AddTensorInfo(*graph.add_input(), "logits", {tokens, experts}, fp32);
+    AddTensorInfo(*graph.add_output(), "y", {tokens, hidden}, fp32);
+    auto bank = [&](const char* name, std::initializer_list<int64_t> shape, const std::vector<float>& data) {
+      auto* tensor = graph.add_initializer();
+      tensor->set_name(name);
+      tensor->set_data_type(fp32);
+      for (auto dim : shape) tensor->add_dims(dim);
+      tensor->set_raw_data(data.data(), data.size() * sizeof(float));
+    };
+    bank("w1", {experts, 2 * intermediate, hidden}, w1);
+    bank("w2", {experts, hidden, intermediate}, w2);
+    if (target) {
+      auto& node = AddOp(graph, "MoE", {"x", "logits", "w1", "", "w2"}, {"y"});
+      node.set_domain(kMSDomain);
+      IntAttribute(node, "k", k);
+      IntAttribute(node, "swiglu_fusion", 2);
+      IntAttribute(node, "normalize_routing_weights", 1);
+      IntAttribute(node, "use_sparse_mixer", 0);
+      auto* activation = node.add_attribute();
+      activation->set_name("activation_type");
+      activation->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
+      activation->set_s("swiglu");
+      for (const auto& [name, value] : {std::pair{"activation_alpha", 1.0f}, {"activation_beta", 0.0f}}) {
+        auto* attr = node.add_attribute();
+        attr->set_name(name);
+        attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT);
+        attr->set_f(value);
+      }
+      return model;
+    }
+    // Independent ONNX builder, not an instantiation of the production pattern.
+    auto control = [&](const std::string& name, std::initializer_list<int64_t> dims, int64_t value) {
+      auto* tensor = graph.add_initializer();
+      tensor->set_name(name);
+      tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+      for (auto dim : dims) tensor->add_dims(dim);
+      tensor->add_int64_data(value);
+      return name;
+    };
+    auto op = [&](const char* type, const std::vector<std::string>& inputs, const std::vector<std::string>& outputs)
+        -> ONNX_NAMESPACE::NodeProto& {
+      auto* node = graph.add_node();
+      node->set_op_type(type);
+      node->set_name(MakeString(type, graph.node_size()));
+      for (const auto& input : inputs) node->add_input(input);
+      for (const auto& output : outputs) node->add_output(output);
+      return *node;
+    };
+    control("route_k", {1}, k);
+    control("axis0", {1}, 0);
+    control("axis1", {1}, 1);
+    auto& top = op("TopK", {"logits", "route_k"}, {"selected", "indices"});
+    IntAttribute(top, "axis", 1);
+    IntAttribute(top, "largest", 1);
+    IntAttribute(top, "sorted", 1);
+    IntAttribute(op("Softmax", {"selected"}, {"prob"}), "axis", 1);
+    for (int e = 0; e < experts; ++e) {
+      const auto s = std::to_string(e);
+      control("expert" + s, {1}, e);
+      control("id" + s, {}, e);
+      auto projection = [&](const std::string& bank_name) {
+        const auto prefix = bank_name + s;
+        IntAttribute(op("Gather", {bank_name, "expert" + s}, {prefix + "g"}), "axis", 0);
+        op("Squeeze", {prefix + "g", "axis0"}, {prefix + "s"});
+        auto& transpose = op("Transpose", {prefix + "s"}, {prefix + "t"});
+        auto* perm = transpose.add_attribute();
+        perm->set_name("perm");
+        perm->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INTS);
+        perm->add_ints(1);
+        perm->add_ints(0);
+        return prefix + "t";
+      };
+      op("MatMul", {"x", projection("w1")}, {"fc" + s});
+      auto& split = op("Split", {"fc" + s}, {"gate" + s, "up" + s});
+      IntAttribute(split, "axis", 1);
+      IntAttribute(split, "num_outputs", 2);
+      op("Sigmoid", {"gate" + s}, {"sig" + s});
+      op("Mul", {"gate" + s, "sig" + s}, {"swish" + s});
+      op("Mul", {"swish" + s, "up" + s}, {"act" + s});
+      op("MatMul", {"act" + s, projection("w2")}, {"down" + s});
+      op("Equal", {"indices", "id" + s}, {"eq" + s});
+      op("CastLike", {"eq" + s, "prob"}, {"mask" + s});
+      op("Mul", {"prob", "mask" + s}, {"weighted" + s});
+      IntAttribute(op("ReduceSum", {"weighted" + s, "axis1"}, {"weight" + s}), "keepdims", 1);
+      op("Mul", {"down" + s, "weight" + s}, {"out" + s});
+      if (e)
+        op("Add", {e == 1 ? "out0" : "sum" + std::to_string(e - 1), "out" + s},
+           {e == experts - 1 ? "y" : "sum" + s});
+    }
+    return model;
+  }
+
+  std::vector<double> Reference() const {
+    std::vector<double> result(tokens * hidden, 0.0);
+    for (int n = 0; n < tokens; ++n) {
+      std::vector<int> order(experts);
+      std::iota(order.begin(), order.end(), 0);
+      std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
+        return logits[n * experts + a] > logits[n * experts + b];
+      });  // Stable original order implements lower-index tie breaking.
+      double denominator = 0;
+      for (int rank = 0; rank < k; ++rank)
+        denominator += std::exp(double(logits[n * experts + order[rank]]) - logits[n * experts + order[0]]);
+      for (int rank = 0; rank < k; ++rank) {
+        const int e = order[rank];
+        const double probability =
+            std::exp(double(logits[n * experts + e]) - logits[n * experts + order[0]]) / denominator;
+        std::vector<double> activated(intermediate);
+        for (int i = 0; i < intermediate; ++i) {
+          double gate = 0, up = 0;
+          for (int h = 0; h < hidden; ++h) {
+            gate += double(x[n * hidden + h]) * w1[(e * 2 * intermediate + i) * hidden + h];
+            up += double(x[n * hidden + h]) * w1[(e * 2 * intermediate + intermediate + i) * hidden + h];
+          }
+          activated[i] = gate / (1.0 + std::exp(-gate)) * up;
+        }
+        for (int h = 0; h < hidden; ++h) {
+          double down = 0;
+          for (int i = 0; i < intermediate; ++i)
+            down += activated[i] * w2[(e * hidden + h) * intermediate + i];
+          result[n * hidden + h] += probability * down;
+        }
+      }
+    }
+    return result;
+  }
+};
+
+TEST(CudaRuntimeFusionTest, MoEMathematicalSourceFusedDirectTF32OffAndOn) {
+  cudaDeviceProp properties{};
+  ASSERT_EQ(cudaGetDeviceProperties(&properties, 0), cudaSuccess);
+  if (properties.major < 8) GTEST_SKIP() << "FP32 MoE direct target requires actual SM80 or newer.";
+  for (bool tf32 : {false, true}) {
+    const double atol = tf32 ? 2e-4 : 1e-5;
+    const double rtol = tf32 ? 2e-3 : 2e-4;
+    for (int experts : {2, 8, 16, 64}) {
+      for (int k : {1, std::max(2, experts / 2), experts}) {
+        for (int tokens : {1, 7}) {
+          for (bool scaled : {false, true}) {
+            SCOPED_TRACE(MakeString("TF32=", tf32, " E=", experts, " k=", k, " N=", tokens, " scaled=", scaled));
+            const MoENumericalFixture fixture(experts, k, tokens, scaled, !scaled);
+            const auto reference = fixture.Reference();
+            auto allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+            NameMLValMap feeds;
+            CreateMLValue<float>(allocator, {tokens, fixture.hidden}, fixture.x, &feeds["x"]);
+            CreateMLValue<float>(allocator, {tokens, experts}, fixture.logits, &feeds["logits"]);
+            for (int mode : {0, 1, 2}) {  // Actual disabled source, enabled source, direct target.
+              SessionOptions options;
+              options.graph_optimization_level = TransformerLevel::Level2;
+              ASSERT_STATUS_OK(options.config_options.AddConfigEntry(cuda_runtime_fusion::kMoEConfig,
+                                                                     mode == 1 ? "1" : "0"));
+              InferenceSessionWrapper session(options, GetEnvironment());
+              // Keep immutable Gather/Squeeze/Transpose banks visible at GetCapability.
+              ASSERT_STATUS_OK(session.FilterEnabledOptimizers({"ConstantFolding", "TransposeOptimizer"}));
+              OrtCUDAProviderOptionsV2 provider{};
+              provider.do_copy_in_default_stream = true;
+              provider.use_tf32 = tf32;
+              provider.arena_extend_strategy = ArenaExtendStrategy::kSameAsRequested;
+              ASSERT_STATUS_OK(session.RegisterExecutionProvider(CudaExecutionProviderWithOptions(&provider)));
+              const auto bytes = fixture.Model(mode == 2).SerializeAsString();
+              ASSERT_STATUS_OK(session.Load(bytes.data(), static_cast<int>(bytes.size())));
+              ASSERT_STATUS_OK(session.Initialize());
+              size_t targets = 0;
+              size_t source_matmuls = 0;
+              for (const auto& node : session.GetGraph().Nodes()) {
+                if (mode == 0 && (node.OpType() == "MatMul" || node.OpType() == "FusedMatMul" ||
+                                  node.OpType() == "Gemm" || node.OpType() == "FusedGemm")) {
+                  ++source_matmuls;
+                  ASSERT_TRUE(HasCudaKernel(session, node));
+                }
+                if (mode == 0 && (node.OpType() == "TopK" || node.OpType() == "Softmax" ||
+                                  node.OpType() == "Sigmoid")) {
+                  ASSERT_TRUE(HasCudaKernel(session, node));
+                }
+                if (node.OpType() != "MoE") continue;
+                ++targets;
+                ASSERT_TRUE(HasCudaKernel(session, node));
+                ASSERT_EQ(node.InputDefs().size(), 5u);
+                EXPECT_FALSE(node.InputDefs()[3]->Exists());
+                const auto& attrs = node.GetAttributes();
+                ASSERT_EQ(attrs.size(), 7u);
+                EXPECT_EQ(attrs.count("swiglu_limit"), 0u);
+                EXPECT_EQ(attrs.at("k").i(), k);
+                EXPECT_EQ(attrs.at("activation_type").s(), "swiglu");
+                EXPECT_EQ(attrs.at("swiglu_fusion").i(), 2);
+                EXPECT_EQ(attrs.at("activation_alpha").f(), 1.0f);
+                EXPECT_EQ(attrs.at("activation_beta").f(), 0.0f);
+                EXPECT_EQ(attrs.at("normalize_routing_weights").i(), 1);
+                EXPECT_EQ(attrs.at("use_sparse_mixer").i(), 0);
+              }
+              ASSERT_EQ(targets, mode == 0 ? 0u : 1u);
+              if (mode == 0) {
+                ASSERT_EQ(source_matmuls, static_cast<size_t>(2 * experts));
+              }
+              std::vector<OrtValue> outputs;
+              const std::vector<std::string> output_names{"y"};
+              ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &outputs));
+              ASSERT_EQ(outputs.size(), 1u);
+              const auto& tensor = outputs[0].Get<Tensor>();
+              ASSERT_EQ(tensor.Shape(), (TensorShape{tokens, fixture.hidden}));
+              const auto* actual = tensor.Data<float>();
+              for (size_t j = 0; j < reference.size(); ++j) {
+                ASSERT_TRUE(std::isfinite(actual[j]));
+                EXPECT_LE(std::abs(double(actual[j]) - reference[j]), atol + rtol * std::abs(reference[j]))
+                    << "mode=" << mode << " element=" << j;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST(CudaRuntimeFusionTest, MoEActualPreSM80DeclinesBeforeTargetLookup) {
+  cudaDeviceProp properties{};
+  ASSERT_EQ(cudaGetDeviceProperties(&properties, 0), cudaSuccess);
+  if (properties.major >= 8) GTEST_SKIP() << "Requires an actual pre-SM80 device; no architecture override.";
+  SessionOptions options;
+  options.graph_optimization_level = TransformerLevel::Level2;
+  ASSERT_STATUS_OK(options.config_options.AddConfigEntry(cuda_runtime_fusion::kMoEConfig, "1"));
+  InferenceSessionWrapper session(options, GetEnvironment());
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.device_id = 0;  // Same actual device as the properties above.
+  provider_options.do_copy_in_default_stream = true;
+  auto cuda = CudaExecutionProviderWithOptions(&provider_options);
+  auto* provider = cuda.get();
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda)));
+  const auto bytes = MoENumericalFixture(2, 1, 1, false, false).Model(false).SerializeAsString();
+  ASSERT_STATUS_OK(session.Load(bytes.data(), static_cast<int>(bytes.size())));
+  struct Lookup final : IExecutionProvider::IKernelLookup {
+    mutable size_t target_calls = 0;
+    KernelCreateInfo kernel;
+    const KernelCreateInfo* LookUpKernel(const Node& node) const override {
+      if (node.Domain() == kMSDomain && node.OpType() == "MoE") {
+        ++target_calls;
+        return &kernel;  // Registration alone must not admit unsupported actual hardware.
+      }
+      return nullptr;
+    }
+  } lookup;
+  GraphOptimizerRegistry registry(&options, TestCPUExecutionProvider(), &DefaultLoggingManager().DefaultLogger());
+  const auto offers = provider->GetCapability(GraphViewer(session.GetGraph()), lookup, registry, nullptr);
+  EXPECT_TRUE(offers.empty());
+  EXPECT_EQ(lookup.target_calls, 0u);
+  for (const auto& node : session.GetGraph().Nodes()) EXPECT_NE(node.OpType(), "MoE");
+  // Do not construct or execute an unsupported direct-target kernel on this device.
 }
 
 #ifdef ENABLE_CUDA_NHWC_OPS

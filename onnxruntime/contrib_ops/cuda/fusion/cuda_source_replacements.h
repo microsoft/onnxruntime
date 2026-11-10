@@ -5,6 +5,8 @@
 #include "core/optimizer/cuda_runtime_fusion.h"
 
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+#include <string_view>
+
 #include "core/graph/contrib_ops/source_replacement.h"
 
 namespace onnxruntime::contrib::cuda::fusion {
@@ -27,8 +29,21 @@ struct SourceReplacement {
 
 gsl::span<const SourceReplacement> ScaledSiLUSources();
 gsl::span<const SourceReplacement> CausalConvWithStateSources();
+gsl::span<const SourceReplacement> MoESources();
 
-// Derived only from the explicitly collected op companions; shared by selection and coverage.
+// Op-owned metadata is cheap to collect; executable patterns are built only on demand.
+struct SourceReplacementFactory {
+  std::string_view rule_id;
+  std::string_view config;
+  gsl::span<const SourceReplacement> (*materialize)();
+};
+
+const SourceReplacementFactory& ScaledSiLUFactory();
+const SourceReplacementFactory& CausalConvWithStateFactory();
+const SourceReplacementFactory& MoEFactory();
+
+// The single canonical collection supplies both selection and explicit full inventory.
+gsl::span<const SourceReplacementFactory* const> CudaSourceReplacementFactories();
 gsl::span<const SourceReplacement* const> CudaSourceReplacements();
 Status ValidateCudaSourceReplacements(gsl::span<const SourceReplacement* const> sources,
                                       gsl::span<const OpKey> schemas,

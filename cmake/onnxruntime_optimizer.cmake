@@ -105,6 +105,8 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/fusion/cuda_source_replacements.h"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/fusion/scaled_silu_sources.cc"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/fusion/causal_conv_with_state_sources.cc"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/fusion/moe_sources.h"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/fusion/moe_sources.cc"
   )
 endif()
 

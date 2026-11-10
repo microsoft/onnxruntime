@@ -15,6 +15,8 @@ inline constexpr char kCausalConvConfig[] = "ep.cuda.runtime_fusion.causal_conv_
 inline constexpr char kMobiusBf16Rule[] = "causal_conv_with_state_mobius_bf16_v1";
 inline constexpr char kUnitSwishConfig[] = "ep.cuda.runtime_fusion.unit_swish";
 inline constexpr char kUnitSwishRule[] = "unit_swish_scaled_silu_v1";
+inline constexpr char kMoEConfig[] = "ep.cuda.runtime_fusion.moe";
+inline constexpr char kMoERule[] = "moe_fp32_dense_swiglu_v1";
 
 // Read-only discovery. Requires empty output; publishes capabilities only on success.
 Status Select(const GraphViewer& graph, const IExecutionProvider::IKernelLookup& kernel_lookup,

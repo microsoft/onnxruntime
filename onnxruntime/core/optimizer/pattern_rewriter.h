@@ -78,11 +78,27 @@ struct OpsetRequirement {
   int max_version;  // Inclusive model/function import range, not schema since-versions.
 };
 
+// Opt-in parser capacity (ceilings: 2048 nodes, 4096 values), not a search/recursion budget.
+// Enlarged patterns must be producer-rooted. Other DSL safeguards
+// (ports, expression nesting, alternatives and expansion calls) remain unchanged.
+struct PatternLimits {
+  size_t max_nodes = 64;
+  size_t max_values = 256;
+};
+
+// Preparation work for one read-only scan; no wall-clock measurement.
+struct MatchScanStatistics {
+  size_t compiled_plans = 0;
+  size_t producer_index_builds = 0;
+  size_t indexed_nodes = 0;
+};
+
 // A straight-line definition describes a DAG, not necessarily a chain.
 // Reusing a Value requires exactly the same NodeArg, including for input variables.
 class Pattern {
  public:
   explicit Pattern(std::string_view text);
+  Pattern(std::string_view text, PatternLimits limits);
   Value NamedValue(std::string_view name) const;
   struct NodePattern {
     Operator op;
@@ -107,6 +123,12 @@ class Pattern {
   // true continues; false stops all enumeration.
   // Requires a resolved graph. The visitor must not mutate it. Does not filter opsets or providers.
   Status VisitMatches(const Graph& graph, NodeIndex root, const std::function<bool(Match&)>& visitor) const;
+  // Batched roots in caller order. false stops the entire scan. Prepared state is
+  // local to this call; graph and pattern must remain unchanged throughout it.
+  // As in the single-root API, malformed literal storage can throw from decoding.
+  Status VisitMatches(const Graph& graph, gsl::span<const NodeIndex> roots,
+                      const std::function<bool(NodeIndex, Match&)>& visitor,
+                      MatchScanStatistics* statistics = nullptr) const;
 
  private:
   friend class detail::PatternParser;
@@ -126,6 +148,7 @@ class Pattern {
   InlinedVector<Value> MultiOp(Operator op, gsl::span<const Value> inputs, size_t output_count);
 
   size_t value_count_ = 0;
+  PatternLimits limits_;
   size_t expanded_calls_ = 0;
   InlinedVector<NodePattern, 1> nodes_;
   InlinedVector<Value> values_;
@@ -156,6 +179,7 @@ class Pattern {
 class PatternLibrary {
  public:
   explicit PatternLibrary(std::string_view text);
+  PatternLibrary(std::string_view text, PatternLimits limits);
   Pattern GetPattern(std::string_view name) const;
 
  private:

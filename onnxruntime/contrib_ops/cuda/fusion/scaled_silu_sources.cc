@@ -266,6 +266,11 @@ gsl::span<const SourceReplacement> ScaledSiLUSources() {
   }();
   return {&source, 1};
 }
+
+const SourceReplacementFactory& ScaledSiLUFactory() {
+  static const SourceReplacementFactory factory{kUnitSwishRule, kUnitSwishConfig, ScaledSiLUSources};
+  return factory;
+}
 }  // namespace onnxruntime::contrib::cuda::fusion
 
 #endif

@@ -2,7 +2,7 @@
 
 Status: **broader engineering design for review; planner and independent delivery remain proposals**
 (original proposal revised October 28, 2026; bounded v0 scope/policy updated
-November 7, 2026). The bounded contrib declaration v0 is described separately below.
+November 9, 2026). The bounded contrib declaration v0 is described separately below.
 Tracks [#33403](https://github.com/microsoft/onnxruntime/issues/33403).
 No native build, dependency installation, GPU allocation, model execution, or runtime probe was
 performed for the original October 28 proposal. Its test names, commands, numerical gates, and
@@ -14,15 +14,23 @@ and acceptance of those broader proposals are still required.
 
 The later, internal declaration v0 is a bounded implementation of op-associated
 source ownership, not implementation or validation of the complete planner and
-independent-delivery proposal below. Its two cases are CUDA Unit Swish to
-ScaledSiLU and the existing stateful causal convolution to CausalConvWithState.
-Their default-off flags, identifiers, eligibility, kernels, numerical profiles,
-and causal-before-contained-Swish priority are unchanged.
+independent-delivery proposal below. Its three cases are CUDA Unit Swish to
+ScaledSiLU, stateful causal convolution to CausalConvWithState, and the bounded
+FP32 dense chunked-SwiGLU source to MoE. The two pilot flags, eligibility,
+kernels and numerical claims remain unchanged. MoE adds the independent
+default-off `ep.cuda.runtime_fusion.moe` entry and `moe_fp32_dense_swiglu_v1`
+variant, appended after causal-before-contained-Swish selection.
+Its `cuda_moe_fp32_mathematical_v1` profile preserves mathematical semantics
+with tolerance, not stepwise/bitwise parity, a universal error bound or
+exceptional-value parity. No initializer transformation is performed.
 
 Ownership follows **EP → contrib-op implementation → source-replacement
 declarations**. The CUDA companions under `contrib_ops/cuda/fusion/` own the
 executable definitions; their catalog is only a derived index consumed by
-selection and coverage tests, not an independent support registry. Common schema
+selection and coverage tests, not an independent support registry. One canonical
+collection contains lightweight op-owned rule/config/factory metadata. Selection
+materializes only its admitted enabled rule; explicit full inventory derives all
+executable declarations from that collection. Common schema
 semantics remain shared. This does not force every EP to implement the same
 source variants.
 
@@ -109,7 +117,7 @@ deliberately non-fusible operator, replace that policy with, for example,
 Neither state is a silent default. Existing migration keys retain their frozen
 baselines. The version-1 `com.microsoft` schemas for MoEGroupRouter, GatherPacked,
 MatMulPacked, and MoEPacked author owner-local PendingTodo records; the two
-qualified CUDA declarations derive Available only for their declared EP and
+pilot CUDA declarations and the bounded MoE declaration derive Available only for their declared EP and
 source variants.
 
 `ContribSourceReplacementPolicyTest.FullRegisteredInventory` enforces complete
@@ -153,6 +161,17 @@ kernel lookup. Target-node counts, tensor-port counts, and GPU-launch counts are
 different: the causal target has four inputs and two preserved outputs, and
 one op can launch several GPU kernels. v0 adds no second port/mapping format,
 public API/ABI, provider bridge, planner, resource mode, or external package API.
+MoE retains five input slots (absent FC1 bias) and one output, with 63
+PatternLibrary alternatives for E2..64 and guarded immutable route k in 1..E.
+Its source ordering and aligned FP32 shape restrictions are matching limits,
+not target evaluation-order promises. MoE requires exactly ONNX18/MS1 imports
+(other versions decline) and actual SM80-or-newer CUDA hardware. Its CUDA EP
+gate precedes host discovery; registration alone does not establish device usability.
+The existing matcher batches Add roots with scan-local plans/producer indexing,
+and matches own only their concrete alternative. Learned banks are not read/copied;
+small controls are decoded and snapshotted. Host integration tests and exact
+kernel availability are separate from fresh CUDA numerical/routing qualification;
+runs without complete resource/placement evidence are not proof.
 See [CUDA runtime fusion](../Cuda_Runtime_Fusion.md) and
 [PatternRewriter](../Pattern_Rewriter.md) for implementation and test entrypoints.
 
