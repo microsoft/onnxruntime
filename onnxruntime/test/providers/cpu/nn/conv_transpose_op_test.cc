@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <random>
 
 #include "core/providers/xnnpack/xnnpack_init.h"
@@ -2267,7 +2268,8 @@ void TestWideConvTranspose(const WideConvTransposeCase& c, bool fp16 = false, ui
       }
     }
   }
-  const std::vector<float> expected(y.begin(), y.end());
+  std::vector<float> expected(y.size());
+  std::transform(y.begin(), y.end(), expected.begin(), [](double v) { return static_cast<float>(v); });
 
   ConvTransposeOpAttributes attrs;
   std::vector<std::vector<int64_t>> shapes;
@@ -2311,8 +2313,9 @@ void TestWideConvTranspose(const WideConvTransposeCase& c, bool fp16 = false, ui
                         OpTester::ExpectResult::kExpectSuccess, "", excluded, /*rel_error=*/2e-2f,
                         /*abs_error=*/5e-2f);
   } else {
+    // The CUDA EP may run these wide convolutions in TF32, which drifts by a few 1e-3.
     TestConvTransposeOp(attrs, inputs, shapes, expected, output_shape, OpTester::ExpectResult::kExpectSuccess, "",
-                        excluded, /*rel_error=*/1e-4f, /*abs_error=*/1e-3f);
+                        excluded, /*rel_error=*/1e-4f, /*abs_error=*/1e-2f);
   }
 }
 

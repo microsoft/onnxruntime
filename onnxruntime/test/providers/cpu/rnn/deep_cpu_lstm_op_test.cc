@@ -1670,6 +1670,15 @@ struct LstmCase {
 void TestLstmAgainstReference(const LstmCase& c) {
   SCOPED_TRACE(::testing::Message() << c.direction << " S=" << c.seq_length << " B=" << c.batch_size
                                     << " I=" << c.input_size << " H=" << c.hidden_size << " layout=" << c.layout);
+  // The CPU EP rejects batch-first (layout 1) recurrences, so those run on WebGPU alone. Skip before
+  // building the OpTester: a debug-build OpTester that never runs traps in its destructor.
+  std::unique_ptr<IExecutionProvider> webgpu;
+  if (c.layout != 0) {
+    webgpu = DefaultWebGpuExecutionProvider();
+    if (webgpu == nullptr) {
+      GTEST_SKIP() << "Batch-first LSTM needs the WebGPU execution provider.";
+    }
+  }
   const int64_t D = c.direction == "bidirectional" ? 2 : 1;
   const int64_t S = c.seq_length, N = c.batch_size, I = c.input_size, H = c.hidden_size;
   std::mt19937 rng(static_cast<uint32_t>(S * 1000 + N * 100 + H * 10 + D + c.layout));
@@ -1780,14 +1789,9 @@ void TestLstmAgainstReference(const LstmCase& c) {
   test.AddOutput<float>("Y", y_dims, Y, false, 1e-4f, 1e-4f);
   test.AddOutput<float>("Y_h", state_dims, Yh, false, 1e-4f, 1e-4f);
   test.AddOutput<float>("Y_c", state_dims, Yc, false, 1e-4f, 1e-4f);
-  if (c.layout == 0) {
+  if (webgpu == nullptr) {
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
     return;
-  }
-  // The CPU EP rejects batch-first (layout 1) recurrences, so check the WebGPU EP alone.
-  auto webgpu = DefaultWebGpuExecutionProvider();
-  if (webgpu == nullptr) {
-    GTEST_SKIP() << "Batch-first LSTM needs the WebGPU execution provider.";
   }
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(webgpu));

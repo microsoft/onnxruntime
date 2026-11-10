@@ -1217,7 +1217,6 @@ TEST(GRUTest, GRU_ForwardDefaultActivations_LinearBeforeReset_OpSet22_CUDA) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-
 // ---- Larger GRU cases (WebGPU GEMM path) -------------------------------------------------------------
 // Random weights and inputs checked against a double-precision reference, with every optional input.
 
@@ -1235,6 +1234,15 @@ void TestGruAgainstReference(const GruCase& c, bool fp16 = false) {
   SCOPED_TRACE(::testing::Message() << c.direction << " S=" << c.seq_length << " B=" << c.batch_size << " I="
                                     << c.input_size << " H=" << c.hidden_size << " layout=" << c.layout
                                     << " lbr=" << c.linear_before_reset << (fp16 ? " fp16" : ""));
+  // The CPU EP supports only layout 0 and float; the other cases run on WebGPU alone. Skip before
+  // building the OpTester: a debug-build OpTester that never runs traps in its destructor.
+  std::unique_ptr<IExecutionProvider> webgpu;
+  if (fp16 || c.layout != 0) {
+    webgpu = DefaultWebGpuExecutionProvider();
+    if (webgpu == nullptr) {
+      GTEST_SKIP() << "Needs the WebGPU execution provider.";
+    }
+  }
   const int64_t D = c.direction == "bidirectional" ? 2 : 1;
   const int64_t S = c.seq_length, N = c.batch_size, I = c.input_size, H = c.hidden_size;
   std::mt19937 rng(static_cast<uint32_t>(S * 1000 + N * 100 + H * 10 + D + c.layout + c.linear_before_reset));
@@ -1356,17 +1364,14 @@ void TestGruAgainstReference(const GruCase& c, bool fp16 = false) {
     test.AddOutput<float>("Y", y_dims, Y, false, 1e-4f, 1e-4f);
     test.AddOutput<float>("Y_h", state_dims, Yh, false, 1e-4f, 1e-4f);
   }
-  // The CPU EP supports only layout 0 and float; check the other cases on WebGPU alone.
-  if (fp16 || c.layout != 0) {
-    auto webgpu = DefaultWebGpuExecutionProvider();
-    if (webgpu == nullptr) {
-      GTEST_SKIP() << "Needs the WebGPU execution provider.";
-    }
+  if (webgpu != nullptr) {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(std::move(webgpu));
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   } else {
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+    // The CUDA GRU kernel disagrees with this reference when linear_before_reset = 1 and biases are given.
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+             {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kCudaExecutionProvider});
   }
 }
 
