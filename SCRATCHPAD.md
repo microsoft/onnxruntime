@@ -11,8 +11,8 @@ Compressed project memory. This is not the execution plan.
   and authorized preparing `TASKS.md` for separate review.
 - 2026-10-15: User approved `TASKS.md` without changes and authorized beginning
   M01. `SPEC.md` and the execution plan are approved.
-- M01 is complete and published as ready-for-review PR #11:
-  https://github.com/onnxruntime/ort-state/pull/11
+- M01 is complete and published as ready-for-review PR #34040:
+  https://github.com/microsoft/onnxruntime/pull/34040
 - No agents launched. M01-M03 are complete; M04-M24 remain pending.
   Runtime production code starts with M02.
 - Future tracking: keep `TASKS.md` checklist current and record compressed
@@ -48,12 +48,12 @@ Compressed project memory. This is not the execution plan.
 - Measured 100% new executable-line unit-test coverage; not branch coverage.
 - Record performance measurements, no numerical performance gates.
 - Exact deterministic fixtures; documented numerical tolerances for real models.
-- Tested/documented stacked ready-for-review PRs in onnxruntime/ort-state.
+- Tested/documented stacked ready-for-review PRs in microsoft/onnxruntime.
 
 ## Repository facts
 
-- Initial branch: `ort-state`; initial worktree clean.
-- Origin: `https://github.com/onnxruntime/ort-state.git`.
+- Initial branch: `state/stateful-base-1988019b`; initial worktree clean.
+- Origin: `https://github.com/microsoft/onnxruntime.git`.
 - Root planning documents did not exist before this draft.
 - Read `AGENTS.md` and all four `.github/instructions/*.instructions.md` scopes.
   C API instructions apply to anticipated public-header work. Do not expand
@@ -119,7 +119,7 @@ Compressed project memory. This is not the execution plan.
 
 ## M01 active work
 
-- Branch `state/m01-contracts-fixtures` created; isolated `.venv` uses Python 3.12.9.
+- Branch `stateful-M01-contracts-fixtures` created; isolated `.venv` uses Python 3.12.9.
 - No existing workspace builds were found. CPU baseline build launched with
   Clang 18, LLVM instrumentation (`-fprofile-instr-generate -fcoverage-mapping`),
   RelWithDebInfo, shared library, eight jobs, target `onnxruntime_autoep_test`,
@@ -172,18 +172,18 @@ Compressed project memory. This is not the execution plan.
   26/26 tests passed: five CPU, five native-CUDA, 16 existing package API cases.
   Zero failures/errors/skips; all CUDA nodes assigned as expected, fallback off.
 - Final C++ format/120-column/whitespace and document/93-requirement mapping
-  checks passed. M01 commit `64aa026b94` and ready-for-review PR #11 published.
+  checks passed. M01 commit `64aa026b94` and ready-for-review PR #34040 published.
 - Available language tools: .NET SDK 8.0.422, Java 17, Node 24, Go 1.26.4,
   Cargo 1.96.1. Apple/mobile runners and real-model assets still unprovided.
-- Remote default is `main`; published the unchanged `ort-state` baseline at
-  `1988019b6e` and `state/m01-contracts-fixtures`. PR #11 targets `ort-state`.
+- Remote default is `main`; published the unchanged `state/stateful-base-1988019b` baseline at
+  `1988019b6e` and `stateful-M01-contracts-fixtures`. PR #34040 targets `state/stateful-base-1988019b`.
 - Throwaway CUDA probe source/binary were removed; feasibility log retained.
 - Next: M02 (context/SessionLoop); no M02 implementation has started.
 
 ## M02
 
 - 2026-10-16: User approved moving forward. Created
-  `state/m02-context-loop` from M01; M02 in progress.
+  `stateful-M02-context-loop` from M01; M02 in progress.
 - Keep implementation internal; no public ABI or sampler/cache-manager work.
 - Use native InferenceSession/IOBinding; generic feedback and finite inputs,
   explicit typed exits, CPU-owned stable result snapshots.
@@ -216,16 +216,16 @@ Compressed project memory. This is not the execution plan.
 - CUDA stateless/package regressions: 26/26 passed, zero skips.
 - Compute Sanitizer memcheck: two representative native-CUDA lifetime/reset and
   in-flight cancellation tests passed, zero errors.
-- M02 validated and published in ready-for-review PR #12:
-  https://github.com/onnxruntime/ort-state/pull/12
-  Base branch `state/m01-contracts-fixtures`, head `state/m02-context-loop`.
+- M02 validated and published in ready-for-review PR #34041:
+  https://github.com/microsoft/onnxruntime/pull/34041
+  Base branch `stateful-M01-contracts-fixtures`, head `stateful-M02-context-loop`.
   No new device production code, so
   measured host 315/315 coverage is the applicable new-code gate.
 - Next pending milestone is M03 (SessionChain and bindings); not started.
 
 ## M03
 
-- 2026-10-16: User authorized M03. Created `state/m03-chain-bindings` stacked
+- 2026-10-16: User authorized M03. Created `stateful-M03-chain-bindings` stacked
   on M02. No work on the read-only attached planning snapshot.
 - Reuse SessionLoop execution for both loops and plain one-invocation Sessions,
   including snapshots, input validation, errors and cancellation boundaries.
@@ -262,6 +262,6 @@ Compressed project memory. This is not the execution plan.
 - Compute Sanitizer memcheck: four chain state/reset/cancellation/host-staging/
   dynamic-cache tests passed, zero errors.
 - Final clang-format and 120-column checks passed. M03 complete in ready-for-review
-  PR #13: https://github.com/onnxruntime/ort-state/pull/13
-  Base `state/m02-context-loop`, head `state/m03-chain-bindings`.
+  PR #34042: https://github.com/microsoft/onnxruntime/pull/34042
+  Base `stateful-M02-context-loop`, head `stateful-M03-chain-bindings`.
   No new device code or public API. M04 (CPU KVCacheManager) is next, not started.
