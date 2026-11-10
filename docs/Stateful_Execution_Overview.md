@@ -2,7 +2,7 @@
 
 ## What this series delivers
 
-Across **20 stacked PRs, #11 through #30**, this work adds a native stateful
+Across **20 stacked PRs, #34040 through #34059**, this work adds a native stateful
 execution layer **above ONNX Runtime's unchanged stateless Session API**.
 Applications can define repeated inference, connect stages, retain execution
 state, manage KV caches and sample tokens without writing their own generation
@@ -190,7 +190,7 @@ not the standalone C library's authoring/export API.
 
 ### Prerequisites shared by both examples
 
-Use the complete stack through #30 (or the overview branch based on it), not an
+Use the complete stack through #34059 (or the overview branch based on it), not an
 unmodified upstream checkout or an older published wheel. Build/install the
 matching local CPU wheel for CPU qualification or **CUDA-plugin** wheel for
 native GPU cache/sampling. See the
@@ -385,32 +385,32 @@ features or all-language parity have already been delivered.
 
 ## The 20-PR roadmap
 
-All links below refer to `onnxruntime/ort-state`; each PR is independently
+All links below refer to `microsoft/onnxruntime`; each PR is independently
 documented/tested on its predecessor. Split milestones account for the difference
 between milestone numbers and PR count.
 
 | PR | Milestone | Main contribution |
 |---|---|---|
-| [#11](https://github.com/onnxruntime/ort-state/pull/11) | M01 | Contracts, deterministic CPU/CUDA references and coverage readiness |
-| [#12](https://github.com/onnxruntime/ort-state/pull/12) | M02 | Per-execution state and explicit SessionLoop |
-| [#13](https://github.com/onnxruntime/ort-state/pull/13) | M03 | SessionChain and named tensor/state bindings |
-| [#14](https://github.com/onnxruntime/ort-state/pull/14) | M04 | CPU KVCacheManager and loop/chain integration |
-| [#15](https://github.com/onnxruntime/ort-state/pull/15) | M05 | CPU greedy sampling and prefill/decode generation |
-| [#16](https://github.com/onnxruntime/ort-state/pull/16) | M06a | Public C stateful API |
-| [#17](https://github.com/onnxruntime/ort-state/pull/17) | M06b | Lifetime-safe C++ wrappers |
-| [#18](https://github.com/onnxruntime/ort-state/pull/18) | M07a | Built-in EP capabilities and stateful dispatch |
-| [#19](https://github.com/onnxruntime/ort-state/pull/19) | M07b | Plugin registration and retained resource/library lifetimes |
-| [#20](https://github.com/onnxruntime/ort-state/pull/20) | M08a | Standalone CUDA-plugin KV cache backend |
-| [#21](https://github.com/onnxruntime/ort-state/pull/21) | M08b | GPU-resident managed caches in loops/chains |
-| [#22](https://github.com/onnxruntime/ort-state/pull/22) | M09a | Standalone native CUDA greedy sampling |
-| [#23](https://github.com/onnxruntime/ort-state/pull/23) | M09b | GPU logits/sampling integrated into loops/chains |
-| [#24](https://github.com/onnxruntime/ort-state/pull/24) | M10 | Package chain schema, authoring and self-contained export |
-| [#25](https://github.com/onnxruntime/ort-state/pull/25) | M11 | Owned package-chain loading and initial-logits bootstrap |
-| [#26](https://github.com/onnxruntime/ort-state/pull/26) | M12 | Native DDIM loops, state and package policy |
-| [#27](https://github.com/onnxruntime/ort-state/pull/27) | M13 | Typed Python/native/package API parity |
-| [#28](https://github.com/onnxruntime/ort-state/pull/28) | M14 | Real Phi-3 CPU/CUDA package and text demo |
-| [#29](https://github.com/onnxruntime/ort-state/pull/29) | M15 | Real safety-checked CUDA SD1.5 package and image demo |
-| [#30](https://github.com/onnxruntime/ort-state/pull/30) | M24 | Integrated qualification, native baselines and cumulative evidence |
+| [#34040](https://github.com/microsoft/onnxruntime/pull/34040) | M01 | Contracts, deterministic CPU/CUDA references and coverage readiness |
+| [#34041](https://github.com/microsoft/onnxruntime/pull/34041) | M02 | Per-execution state and explicit SessionLoop |
+| [#34042](https://github.com/microsoft/onnxruntime/pull/34042) | M03 | SessionChain and named tensor/state bindings |
+| [#34043](https://github.com/microsoft/onnxruntime/pull/34043) | M04 | CPU KVCacheManager and loop/chain integration |
+| [#34044](https://github.com/microsoft/onnxruntime/pull/34044) | M05 | CPU greedy sampling and prefill/decode generation |
+| [#34045](https://github.com/microsoft/onnxruntime/pull/34045) | M06a | Public C stateful API |
+| [#34046](https://github.com/microsoft/onnxruntime/pull/34046) | M06b | Lifetime-safe C++ wrappers |
+| [#34047](https://github.com/microsoft/onnxruntime/pull/34047) | M07a | Built-in EP capabilities and stateful dispatch |
+| [#34048](https://github.com/microsoft/onnxruntime/pull/34048) | M07b | Plugin registration and retained resource/library lifetimes |
+| [#34049](https://github.com/microsoft/onnxruntime/pull/34049) | M08a | Standalone CUDA-plugin KV cache backend |
+| [#34050](https://github.com/microsoft/onnxruntime/pull/34050) | M08b | GPU-resident managed caches in loops/chains |
+| [#34051](https://github.com/microsoft/onnxruntime/pull/34051) | M09a | Standalone native CUDA greedy sampling |
+| [#34052](https://github.com/microsoft/onnxruntime/pull/34052) | M09b | GPU logits/sampling integrated into loops/chains |
+| [#34053](https://github.com/microsoft/onnxruntime/pull/34053) | M10 | Package chain schema, authoring and self-contained export |
+| [#34054](https://github.com/microsoft/onnxruntime/pull/34054) | M11 | Owned package-chain loading and initial-logits bootstrap |
+| [#34055](https://github.com/microsoft/onnxruntime/pull/34055) | M12 | Native DDIM loops, state and package policy |
+| [#34056](https://github.com/microsoft/onnxruntime/pull/34056) | M13 | Typed Python/native/package API parity |
+| [#34057](https://github.com/microsoft/onnxruntime/pull/34057) | M14 | Real Phi-3 CPU/CUDA package and text demo |
+| [#34058](https://github.com/microsoft/onnxruntime/pull/34058) | M15 | Real safety-checked CUDA SD1.5 package and image demo |
+| [#34059](https://github.com/microsoft/onnxruntime/pull/34059) | M24 | Integrated qualification, native baselines and cumulative evidence |
 
 For contracts and detailed execution history, see [SPEC](../SPEC.md) and
 [TASKS](../TASKS.md). For implementation, start with the
