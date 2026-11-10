@@ -257,7 +257,11 @@ TEST(MoESourcesTest, RealRulesMatchRewriteAndScale) {
       EXPECT_EQ(target->InputDefs()[4], source.w2);
       EXPECT_EQ(target->OutputDefs()[0], source.y);
       const auto& attrs = target->GetAttributes();
-      ASSERT_EQ(attrs.size(), 7u);
+      ASSERT_EQ(attrs.size(), 7u + attrs.count("swiglu_limit_after_activation"));
+      if (const auto limit = attrs.find("swiglu_limit_after_activation"); limit != attrs.end()) {
+        EXPECT_EQ(limit->second.type(), ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+        EXPECT_EQ(limit->second.i(), 0);
+      }
       EXPECT_EQ(attrs.at("k").i(), k);
       EXPECT_EQ(attrs.at("activation_type").s(), "swiglu");
       EXPECT_EQ(attrs.at("swiglu_fusion").i(), 2);
@@ -337,7 +341,12 @@ class MoELookup final : public IExecutionProvider::IKernelLookup {
     }
     EXPECT_EQ(node.OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type(),
               ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-    EXPECT_EQ(node.GetAttributes().size(), 7u);
+    const auto& attrs = node.GetAttributes();
+    EXPECT_EQ(attrs.size(), 7u + attrs.count("swiglu_limit_after_activation"));
+    if (const auto limit = attrs.find("swiglu_limit_after_activation"); limit != attrs.end()) {
+      EXPECT_EQ(limit->second.type(), ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+      EXPECT_EQ(limit->second.i(), 0);
+    }
     EXPECT_EQ(node.GetAttributes().count("swiglu_limit"), 0u);
     EXPECT_EQ(node.GetAttributes().at("activation_type").s(), "swiglu");
     EXPECT_EQ(node.GetAttributes().at("swiglu_fusion").i(), 2);

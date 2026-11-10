@@ -870,7 +870,11 @@ TEST(CudaRuntimeFusionTest, MoESourceFusedDirectTF32OffAndOn) {
                 ASSERT_EQ(node.InputDefs().size(), 5u);
                 EXPECT_FALSE(node.InputDefs()[3]->Exists());
                 const auto& attrs = node.GetAttributes();
-                ASSERT_EQ(attrs.size(), 7u);
+                ASSERT_EQ(attrs.size(), 7u + attrs.count("swiglu_limit_after_activation"));
+                if (const auto limit = attrs.find("swiglu_limit_after_activation"); limit != attrs.end()) {
+                  EXPECT_EQ(limit->second.type(), ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+                  EXPECT_EQ(limit->second.i(), 0);
+                }
                 EXPECT_EQ(attrs.count("swiglu_limit"), 0u);
                 EXPECT_EQ(attrs.at("k").i(), k);
                 EXPECT_EQ(attrs.at("activation_type").s(), "swiglu");
