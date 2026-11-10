@@ -1341,3 +1341,288 @@ Compressed project memory. This is not the execution plan.
   ae416c8708513316be6e59ae74faade73a105fd4 pushedto stateful-M16-ddim-policy.
   Correctbase/implementationHEAD/cleanworktreeverifiedbeforepublicationdocs.
   D0-D9/allcompletiongates checked. Finaldoccommitfollows; no merge/M13.
+
+## M13 - requirements/specification (2026-11-02)
+
+- User requested M13 stacked on M12. Verified clean local branch
+  stateful-M16-ddim-policy HEAD09d169b3de6001f9ac5a2a5e52747bf1cadfa003;
+  PR34055 OPEN/notdraft/samehead. No M13 branch/implementation yet.
+- User choices: typed config/enums, namespace onnxruntime.stateful; NumPy/
+  OrtValue inputs, read-only OrtValue-backed results with explicit copying
+  mutable conversions; retain inputs/no hidden copies/caller no-mutation;
+  auto-GC +close/contextmanagers; package loading/inspection only (defer
+  authoring/export); release GIL for native work, reject concurrent mutable
+  operations/close except Cancel; explicitstep/run/reset/cancel only (noiterator/
+  async). Explicitly confirmed NO additional requirements before drafting.
+- Appendix M draftedforreview inSPEC, not approved. Includes complete core
+  capability parity (loops/chains/cache/sampler/providers/bootstrap/DDIM),
+  native engine reuse, no reflection/setattr, typed logicalexecution feeds,
+  readonlyresultvalues with numpyCPUcopy/to_ortvalueSameDeviceCopy/
+  copy_to_cpuExplicit, capturedactualPyInferenceSession lifetime,
+  packageSessionOptions callbackregistration ownership and nativeerrors.
+- Code inspection: Python has NO modelpackage/stateful API yet.
+  Existing highlevel InferenceSession.set_providers replaces._sess; MUSTpin
+  exact old lowlevel PyInferenceSession (notjustPythonwrapper) forstatefuldefs.
+  PySessionOptionsSnapshot retains epselection/contextread registrations.
+  PublicOrtValue hasupdate_inplace/dlpack/rawpointer so cannotexposealias
+  ofimmutable result; native readonlyowner wrapperrequired.
+- semantic_search timedout once; used scoped glob/rg/view. No delegation/
+  build/install/test/branch/commit/PR forM13. Only SPEC/SCRATCHPAD changed.
+  TASKS detailedplan notprepared; await SPEC reviewthen separateplanapproval.
+- User explicitly APPROVED AppendixM2026-11-02 for planpreparation ONLY.
+  SPEC approvalstatusupdated, TASKS P0-P9 detailedplan draftedforreview.
+  Includes typedrecords, ownership/readonlycopybridge, nativeexecution,
+  standalonecache/sampler, readonlypackage, CPU/GIL/GC/wheel, CUDAcopy/trace,
+  Python+native100%coverage, onePR onM12. No implementation authorized yet.
+- ReadonlyprereqsCPU/plugin/legacy have onnxruntime_ENABLE_PYTHON=OFF.
+  NeedenablepybindactualextensionbeforePythonclaims. Currentrootfree16GB/
+  home75GB,8A100idle,CUDA13.0.48. PreserveexistingM12archives/hashes, reuse
+  validcaches, exact--compile-no-warning-as-errorCLI (noncached).
+- Plan targetpublicrootmoduleonnxruntime/stateful.py withCMakecopylike
+  __init__; no newdistribution/deps/nativeengine. Explicitwheelimportsmokes
+  required. Pybindregistration sharedmodulefunction toincludeinference/
+  training entrypatterns; exactnativeSessionadoption+metadatahelperneeded.
+- Currentownershipconstraintsfromcode: PythonEnvCopyTensors supportsdevice
+  copybutallocator/transferlifetimeafterunregisterMUSTverified; no rawalias
+  fromStatefulValue. Pycallbackrefs kept/GILdestructionexplicit.
+- Await separate TASKS approval. OnlySPEC/TASKS/SCRATCHPAD changed; no
+  M13branch/build/install/runtimecode/commit/PR. No agents.
+- User explicitly APPROVED detailed P0-P9plan and authorized M13 implementation
+  2026-11-02. Both approvals satisfied; P0starting. NeedbranchonM12verifyproof/
+  enableactualpybindandfreshbaselines. No runtimecode/results yet.
+- M13IMPLEMENTATIONcheckpoint2026-11-02: branchstateful-M17-python-api onM12.
+  Verifiedallm12-measured-artifact-hashesbeforeconfig. PythonenabledvalidCPU/
+  plugin/legacycaches withisolatedPython andexact--compile-no-warning-as-error.
+- CPUbaselinecomplete:actualbuiltimportpathsverified, native85/public153PASS,
+  focusedexistingPython6PASS(no newfeatureclaim). ExistingdirectCMakeimport
+  warnsbuild_and_package_infomissing; wheelmetadataP6pending.
+- Activeboundedbuilds m13-plugin-python-baseline /m13-legacy-python-baseline
+  (sameIDsforread_bashaftercompletion). Logsm13-{plugin,legacy}-baseline-build.log.
+  BothsourcePythonflagsenabletriggeredbroadrecompilation; rootfree13GB/home75GB
+  lastcheck. DoNOTstartduplicatebuildsamecache orchangeglobalflags/old13.1.
+- Authored publiconnxruntime/stateful.py immutabletypedconfig+enums only,
+  NOresource/runtimebindingsyet. CMakepostbuildrootcopy+configure_fileCOPYONLY
+  trackPythonsourcechanges. Tests newonnxruntime_test_python_stateful.py.
+  Actualbuiltconfig4tests+28subtestPASS;297/297Pythonstatementcoverage,
+  scopedpyright0errors/warnings;lintclean. SHA05be9df910fad9c1cb98e57e247e68fcd61d7b233dd7d3d9fed8855cf49a36f1
+  ofsource/stagednamespaceequalatmeasurement. Keepmeasurementupdatedforchanges.
+- OnlyafterACTUALmissingfailures restoredpytest9.2,coverage7.17,pyright1.1.414
+  inexistingvenv;noGPUpackages/modeldownloads/globalchanges.
+  coverage--source=onnxruntime.stateful sideeffectprobe importsparent/restores
+  modules ->NumPycannotloadtwice; use--include=ABSBUILD/onnxruntime/stateful.py,
+  sameactualtests+297denominator,noexclusions. JSONm13-config-python-coverage.json.
+- Primitiveenumgotcha:NativeOrtMemoryInfoDeviceType CPU0GPU1FPGA2NPU3
+  (NOT NPU2). Fixedbeforemeasuredconfig;testcompareexistingpyenum.
+  ConfigChainComponent.execution currentlyobject/Noneacceptedforrecords;
+  finalresourceconstructionmustvalidatetypedInferenceSession/SessionLoop,
+  andupdateannotationonceclassesexist. P1notcompletefullsurfaceyet.
+- Next: finishbothCUDApybindbaselines/retrieveoutputs, P0existingPythonCUDA
+  testselection; then addnativeownership/readonlyvaluebridge+resourcewrappers.
+  DoNOTmarkM13complete orpublishready. NoM13commit/push/PR yet, allfilesours
+  uncommitted. No agents/M14. NeedfinishP2-P9,fullPython+native100%coverage.
+- Architecturalprepforbridge: Preferthin nativeenginebindingsand highlevel
+  strongowner tuplescapturedfromexactlowlevelSession/OrtValues/arrays,
+  closeonlydropspublichandle,childrenownindependentcapturednativeholders.
+  GILrelease mustscopeafterPythonconversion;noPyrefcleanupunderrelease.
+  readonlyNativeValuecanholdOrtValueprivately (noexposedrawmutablealias);
+  same-devicecloneallocator+DTMcanbequeriedfromretainedInferenceSession via
+  GetAllocator(memory_info)/GetDataTransferManager().GetDataTransfer(...).
+  EnvregistrationaloneisNOTsufficientafterunregister;resultleasesmustretain
+  Session/provider/allocator resources. PackagefactoryownedSessionsneed
+  safeadoptionandcallbacksnapshotretention, notrawpointer/reload.
+- CURRENTM13checkpoint: codeunderonnxruntime/stateful.py +new
+  python/onnxruntime_pybind_stateful.cc. Nativebridge usescoreSessionLoop/
+  SessionChain/KVCacheManager/Sampler directly, standardOrtPybindThrowIfError.
+  Sharedregistrationhook inaddOrtValueMethods AFTEROrtValueregistration
+  (bothinference+trainingentrypoints useit) +module_functions.hdeclaration.
+  OrtValue.ccdiffONLY2lines;noordinaryprovider/sourcechanges.
+- NativeLoop/Chain/Execution/Result/readonlyValue doneandCPUtested; standalone
+  Cache/View/Sampler/capabilities addedandCPUtested. NO packagebindingsyet.
+  Frozenconfigs+allfour timesteps/bothDDIMguidance, actualtokenbootstrap
+  budgets0/1/3+firstEOS, sourcekinds/state/plaincomponents, copiedresults/GC/
+  close/reset/wrappingMemoryError tests. NativeplusPythonoperationguards use
+  PythonLock withGILfree C++native calls; REALthreadbarriertestsnotdoneyet.
+- OwnershipIMPORTANT: _Resource.__del__/close nativeBEFOREowners, _Lease
+  recursivelyretainsnativeparent+itsdependencies andexplicitlydestroysnative
+  BEFOREtupleowners (doNOTrelyontuple/dictcleanuporder). _CopiedOrtValue
+  destructor drops_ortvalueBEFORE_stateful_owners. Cancel capturesaLease
+  understatelock theninvokesnativeatomic outside. Testobserveschild,parent,
+  dependencydestructionorder; realCUDApostunregcopiespass.
+- RootCore.ShareREJECTSborrowedNumPy storage (kv_cache_manager.cc184); tests
+  correctedtouseexplicitallocator-ownedOrtValuefrom_shape_and_type+update.
+  DoNOTsilentlycopy SHAREinputs! Cache.update pre-pinsinputownersbeforecall,
+  keepsconservativeownerrefs throughReset/storage reuseuntilclose; views
+  capturesnapshotownersindependently, doNOTretainmutablemanageritself.
+- LatestCPU17tests+64subtestsPASS andlegacy17+64PASS; baselinesCPU85/153,
+  plugin157/216unfiltered,legacy145/76selectedPASS. ExactM13newfeaturefull
+  completionNOTclaimed. NewCurrentPythonCPU688/689 (GPU.numpyreject1missing).
+  P2/P3earlierslice593/593CPU+GPUsource-mappedwasverifiedbutP4addedcode,
+  DO NOT reuseoldmaps/profilesforsourcechangedCpp/Python! NeedfreshP8.
+- GPUreadonly/valueproof1case coversF32+F16, actualGPUGatherassignment,
+  requirednativegreedyprovider1/cpu0/delegate0, mutabledeviceclone isolated
+  fromsource, explicitCPUcopyafterResult/Execution/Loop/Sessionrelease+factory
+  unregistration. Worker subprocess90s timeout, actualcoverageparallelworker
+  combinedwith--append--keep, exactbuiltPYTHONPATH. No nativeGILthread/
+  sanitizer/trace/fullcache/packageGPUqualificationyet.
+- ActiveboundedknownID m13-plugin-standalone-qualification (rebuildnewP4CPP,
+  combinedCPU+GPUtests); retrieveaftercompletion withread_bash. LegacyP4
+  m13-legacy-standalone-qualification COMPLETED17+64PASS. No duplicatebuilds.
+  CurrentCPU.CppmoduleP4built; pluginmodulemaystillP2untilactivejobfinishes.
+- M13CPU/Pluginprofiles MOVEDONLYnewM13dirs tosessionfiles/m13-cpu-profiles,
+  m13-plugin-profiles; originalbuild/.../coverage/m13 symlinktopaths. Relieved
+  root4.2->5.9GBfree;home73GBfree. No oldM11/M12proofdeletion or globalchanges.
+- Baselinelimit: selectedoldpluginPythonprovider-options testcase5pass1fail:
+  negativeCUDAdeviceidexpectedRuntimeError butoldFindRegisteredPluginEpDevice
+  ignoresnegative->firstdevice. pybind_state.cc/inference_collection.py still
+  EXACTM12(emptydiff). Preserveasbaselinefailure, no unrelatedfix/falsepass.
+- Factorycyclefixturebug: firstGPUtestunregisteredbundled+registerednewname
+  BEFORESession ->GatherCUDAinvalidarg. Diagnosticsnormalbundle regularRun/
+  IOBinding/loopCPU/loopGPU ALLPASS currentdevice0; factorycycledordinaryRun
+  stalled>120s, stoppedEXACThelper m13-cuda-factory-cycle-diagnostic. No
+  productionworkaround: lifetimeworkerusesfreshnormalbundledfactory, produces
+  valuesTHENunregisters, post-unregcopies/clonesPASS. Doesnotclaimarbitrary
+  preregistrationfactorycyclingworks. Scripts/logsm13_cuda_probe.py/m13-cuda-*.
+- Otherresolvedsetups: pluginfirstpybindimportundefinedaddStatefulMethods
+  becauseinflightoldCMakefilelistmissednewCPP. Explicitregen/rebuildfixed.
+  Cppbindfull/sourcehashesverified. Pythonfileeditmidbuildstaledstagingcaused
+  7newstructuralnegative-testfailures; configure_file refresh fixed, no waiver.
+- Need keepnativeCpp sourceversionseparate: currentP4nativeCPP differsfrom
+  oldresourcesphase; oldresources395lines/partialcoverageisHISTORICALONLY.
+  NewphaseCPUprofiles coverage/m13/standalone (samecppsourceatcompile).
+  Nativeprofile includeactualonnxruntime/capi/onnxruntime_pybind11_state.so,
+  notjustlibonnxruntime. Python--include absoluteactualstagedmodule avoids
+  coverage7.17dotted--sourceprobeNumPyreimportfailure. SourceSHAcheckmandatory.
+- NEXT P5 readonlyModelPackage+selectedcomponent+ownedchain factories:
+  useexistingOrtModelPackageApi/C++wrappers/nativeparser, NOPythonengine.
+  ExistingPyInferenceSessionuniqueptradoptctorPROTECTEDlacksoptions/callbacks.
+  NeedproperadoptingctorwithPySessionOptionsSnapshot+shared retainedresource
+  ownerdeclaredBEFOREsess_ (nativeSessiondestroysfirst), retainall selected/
+  overriddenoptionregistrations. Matchactualnative callbackstate toretained
+  registrations forGetSessionOptions clones; keeprawcallbacklifetimes.
+- P5ordinarypublicInferenceSession mustadopt initializednativeSession without
+  reloading. Extractexistingmetadataassignmentcluster into helper reusedby
+  normalconstructorandprivate_from_native_session, initializebaseSession flags/
+  capturedgraphbookkeeping. PackageSessions shouldnotimplicitlyfallback/
+  reselectvariant; explicitset_providers canreloadsamecapturedmodelpath.
+  InferenceSession currentlyNOpublicmodel_location getter; Model.GetModelPath
+  may beexternaldataanchor notactualfile. AddsmallinternalModelLocation()
+  getterifneededfromprivate model_location_ forcorrectreload, testit.
+- P5ownedpackagechain factory returnsOrtSessionChain definedexisting
+  core/session/abi_stateful_impl.h {shared_ptr<constSessionChain> value}.
+  CanreuseC APIthenretainvaluenative. NeedsmallinternalSessionChain.Sessions()
+  borrowedspanaccessor forNativeChain.sessions allocator/DTMcopyorigins;
+  retainedchainownerkeepsactualSessions alive. No newpublicC API/ABIneeded.
+- NativepackageAPIerrorsCxxwrappers throwOrt::Exception: centralSPECIFIC
+  catch translatingtoexistingOrtPybindThrowIfError/statuscode, NOTbroadcatch
+  orsuccessfallback. GILrelease scopeinner so snapshots/Pycallbackowners
+  destructAFTERreacquire. Optionsarrays reserveBEFOREpointercreation;
+  perstep complete replacements copiedwith stdshared callback snapshots.
+- ALLM13code/docs UNCOMMITTEDonstateful-M17-python-api, baseM12HEAD09d169b3de.
+  No M13commit/push/PR/M14. NeedfinishP5-P9 (andfullP4GPU/negative,
+  deterministicthreadtests/wheels/native+Python100%,sanitizers/traces).
+- LATESTP4: pluginstandalonequalificationCOMPLETED18tests+64subtestsPASS
+  (CPU17+isolatedGPUvalue1); legacy17+64PASS; CPU17+64PASS. NativeCache/View/
+  Sampler/querycapabilities authoredsameCPPbridge andpublicmodule. NativeCache
+  rejectswrongSAMPLE_GREEDYdispatchoperation; borrowedNPShare rejectionverified.
+  GreedyF32/F16ties/rows/NaN/retry-as-newcallandcounters, cacheShare/Copy/
+  Append/Reserve/Reset/oldviewclose allverifiedCPU. Devicecache/sampler standalone
+  matrices stillP7pending. CurrentsourceCPU689statements/1GPUrejectmiss; final
+  wholeM13coverageNOTclaimed (morepackagecodeupcoming).
+- P5PREPARATION nowedited:
+  core/session/inference_session.h addsModelLocation() internalconstgetter.
+  core/session/session_chain.h addsSessions() internalborrowedspan.
+  python/onnxruntime_pybind_state_common.h addsadoptinguniqueSession+
+  PySessionOptionsSnapshot+shared_ptr<constvoid> retained_resourcesctor;
+  retained_resources_ declaredFIRST so sess_destroysBEFOREdependencies.
+  Normalctors/protectedtrainingadoptunchanged.
+  python/onnxruntime_inference_collection.py extracts15lines helper:
+  _initialize_session_metadata(sess) reusednormalconstructor;
+  private_from_native_session setsbaseSession, path/bytes/options/model-read/
+  fallback flags andmetadata WITHOUTload/init. PackageordinarySessionsdefault
+  noautomaticfallback; explicitset_providers canreloadsameactualmodelpath.
+- Atbaselineprovider-optionsfailurediscoverybothpybind_state.cc and
+  inference_collection.py wereunchanged. NOWlatterhasonlymetadata/adoptchanges;
+  provider-selection/negative-devicecode STILLunchanged (pybind_state.ccemptydiff).
+- ACTIVEBOUNDCPUbuildID m13-package-adoption-foundation-build: headerchanges
+  recompilepybind/native/runtime, thenCPU17+existing6+native85/public153
+  regressions. Mustreadcompletionthen CONTINUEP5factoryimplementation.
+  DO NOTclaimpackageAPIexists: noModelPackage/ComponentPython/nativewrappersyet.
+  Nootheractivebuild/service known; oldhungfactorydiagwasstoppedspecifically.
+- NeednativeP5Package/Component usingexistingOrtModelPackageApi, oneopenedctx,
+  copiedschemaMajor/component/variant/providerinspection, optionssnapshots,
+  ownedchain viaOrtSessionChain.value (abi_stateful_impl.h) andSessions() span.
+  AdoptsessionrawhandleusingRAIIbeforetransfer, ModelLocation actualfile not
+  Model.ModelPath externaldataanchor. Preservematchingcallbackregistrations
+  foractualnativeSessionOptions.state pointers; retainselected+overrideSnapshots/
+  packagecontext usingnewretained_resources_ forlowlevelSessionlifetime.
+  CentralSPECIFICOrt::Exception->standardpybindstatus translation required if
+  C++APIwrappersused; doNOTcatchbroad/fallback. GILreacquirebeforePyrefdestruction.
+- CurrentallM13sourceoursuncommitted; parentproofhashesverified. NeedupdateTASKS
+  perphase, finishP5thenP6/P7(wheels/threads/copytraces/sanitizers)P8fullcoverage,
+  P9ONEreadyPRon#26. NoM14. Preserveoldproof/profiles,root~5.9GBfree/home73GB.
+- M13LATEST: P5packageAPI IMPLEMENTED+CPU5tests/8subtestsPASS. Exact native
+  options snapshots capturedBEFOREGILrelease, supportedcopyCTOR notassignment;
+  preserveprovided/selectedcallbackstateidentity. Actualmodelfilegetter used
+  foradoptedSessionexplicitset_providers. Normalmetadatahelperunchangedbehavior.
+- CPUcurrent24tests/77subtestsPASS incl2native-barrierthreads/5subtests.
+  Legacycore+package22/72PASS; pluginexpandedCUDA2workersPASS with24configs
+  (FP32/16 xCPU/GPUcache xCPU/GPUsampler xbudgets0/1/3), bothDDIMmodes,
+  standaloneGPUcache/sampler, nondefaultstream. CPUownwheelinstalledisolated
+  --no-deps22/72PASS. GPUwheelbuilt butinstalledsmokepending.
+- CoveragefreshCPUpublic755/756; GPUrejectlinecoveredactualworker; needhashsafe
+  union. Native24mappedmisses inclprogrammaticCaches/ChainCancel/contextread
+  callback/GPUclone. Minimalactualbranch, changedheaders/helper,cumulative
+  closurestillP8OPEN. No100%M13claim.
+- SANITIZERROOTCAUSE VERIFIED: ComputeSanitizer2025.3.0 defaulthostbacktraces
+  RETAIN PythonInferenceSession.__init__frames (gc.get_referrers identifies
+  constructorframeholdinghighlevelSession), includingPLAINCUDAordinarybaseline
+  withNOstatefulimports/calls. Defaultbaseline19,180,048bytes/14allocs exactly
+  reproducesnewlifetimeworkerreport. BothordinarySessions weakrefRELEASED
+  withoutsanitizer; weakrefALIVE withdefaultsanitizer evenexplicitdel.
+- Supported --show-backtrace no removesdiagnosticretention; SAMEordinary
+  baselineweakrefsRELEASED +0errors/0leaks. FULL --tool memcheck --leak-check full
+  --show-backtrace no --error-exitcode99 ACTUAL lifetime ANDpipeline workers
+  eachEXIT0/0errors/0bytes/0allocations. No checksdisabled/errorsuppressed,
+  no cudaDeviceReset/globaldriverchange/productionworkaround.
+  Evidence m13-plain-python-cuda-{memcheck,referrers,no-backtrace}.log and
+  m13-gpu-{lifetime,pipeline}-memcheck-final.log. Originalfailinglogspreserved.
+- NeedP7race/sync/transfertraces/GPUwheel, P8remainingcoverage/regressions,
+  P9publicdocs/examples/ONEPRon#26. AllM13uncommitted, noM14.
+- M13FINALQUALIFICATION: CPU+legacyPython27/84PASS inclprogrammaticmanaged
+  caches, chainCancel viaactualnativebarrier, readcallbackselected-vsprovided
+  optionprecedence/cloneGC. InstalledCPU27/84PASS; installedGPU29/84PASS
+  including24nativepolicy/budgetconfigs andGPU0RequiredCPU/GPU1logitrejections
+  forF32/F16withzerooperationcalls. Publiccodehashesidenticalinstalled/staged.
+- FINALnative/public CPU85/153,plugin157/216unfiltered,legacy145/76selectedALLPASS.
+  LegacyCUDApublictinyfeedback/bootstrap/bothDDIMexamplesPASS. CPU/plugin
+  installedexamplesPASS, sample63/63statements. Standalonecurrentpreserved
+  shared5/5 andstatic5/5PASS. CPUexistingSession/OrtValue8PASS,callbacks2PASS
+  inclactualEPContextdataread/write. Plugin7PASS andknownnegative-device
+  stateless testSEPARATELYrerunFAIL1sameRuntimeError-not-raisedasbaseline.
+- EXACTM13COVERAGE: newnative660/660 (bridge652,register1,ctor5,getters2);
+  newPython769/769 (public756,oldhelpernew13); sample63/63.
+  Cumulative5412/5412mappednative. ActualORT_MINIMAL_BUILD sourcecompiled+
+  executed availabilityFalse. SHAcheckedstaged+installed wrappersbeforeline
+  normalization. All882nativeprofilediagnostics ZEROHASHdormantmaps, ZERO
+  nonzeroFuncHashmismatch. ExistingTYPE_CHECKING20-22unchangedexcluded,
+  NONEofnewlinesexcluded. measure_m13_coverage.py +--cumulative retained.
+- Actualworkerfinalmemcheck0errors/0bytes/0allocs;race0hazards/errors/warnings;
+  sync0errors BOTHworkers, finalpipelinewithnegativecasesrerunall3PASS.
+- FiveCUPTItraces verifiedexact m13_verify_transfers.py:
+  normalGPUgreedyRun+metadata 16HtoD+16DtoHcompact NO32768logitreadback;
+  clone32768DtoDonly; explicitCPUcopy32768DtoH;
+  DDIM S3/N2C2H3W5 batched3x480DtoH=1440,
+  sequential6x240DtoH=1440 (intentionalCPUguidance). HtoDinputsassertedtoo.
+  cudaProfilerStart/Stop excludeswarmup/setup, --trace=cuda noNVTXdependency.
+- Userdocs docs/Stateful_Python.md +standalonesamples/python/stateful_execution.py
+  addedandlinkedmodel_package/README.md +samples/readme.md. pyright0/0;
+  allscopedlintrunner+whitespacePASS. P0-P8done; P9publicationonlypending.
+  Needproofhashmanifest, ONEcommit/push/readyPRstateful-M17-python-api base
+  stateful-M16-ddim-policy (#34055 stillOPEN/ready09d169b3de verified), thenrecordPR
+  bookkeepingwithoutamend, verifysynchead/base. NoM14/merge.
+- M13PUBLISHED: PR34056 https://github.com/microsoft/onnxruntime/pull/34056 OPEN/READY,
+  headstateful-M17-python-api, basestateful-M16-ddim-policy (#34055), implementation
+  commitdc054a42b20fade26e6a65f5a4b587fefdb6b278. AllP0-P9gateschecked.
+  PublicationbookkeepingchangesONLYSPEC/TASKS/SCRATCH, notqualifiedruntime.
+  Finalproofhashmanifest/reports retainedsessionfiles/m13-final-*;
+  finalremotehead/base/cleanworktreeverificationfollowspush. NoM14/merge.

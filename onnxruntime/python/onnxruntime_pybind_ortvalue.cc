@@ -688,6 +688,8 @@ for every transferred tensor.
       ".. note::\n"
       "    Boolean tensors are also uint8 tensor once converted with DLPack protocol.");
 #endif
+  // Both inference and training module entry points register value-dependent APIs here.
+  addStatefulMethods(m);
 }
 
 }  // namespace python

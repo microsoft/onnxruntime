@@ -26,6 +26,12 @@ It deliberately does **not** know about ONNX, execution providers, sessions,
 or the JSON payload that lives under any `executor_info["<consumer>"]` slot.
 Each consumer owns its own slot and parses it itself.
 
+ONNX Runtime's read-only Python package inspection, component selection and
+named-chain execution are documented in
+[Stateful Python execution](../docs/Stateful_Python.md#read-only-model-packages).
+Python authoring/export wrappers are not included; use this standalone library
+for those operations.
+
 ---
 
 ## On-disk layout
