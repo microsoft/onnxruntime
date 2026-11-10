@@ -9,7 +9,7 @@ import warnings
 
 def find_cudart_versions(build_env=False, build_cuda_version=None):
     # ctypes.CDLL and ctypes.util.find_library load the latest installed library.
-    # it may not the the library that would be loaded by onnxruntime.
+    # it may not be the library that would be loaded by onnxruntime.
     # for example, in an environment with Cuda 11.1 and subsequently
     # conda cudatoolkit 10.2.89 installed. ctypes will find cudart 10.2. however,
     # onnxruntime built with Cuda 11.1 will find and load cudart for Cuda 11.1.
