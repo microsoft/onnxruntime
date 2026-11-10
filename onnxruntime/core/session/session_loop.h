@@ -66,7 +66,7 @@ struct SessionLoopStepResult {
   int64_t iterations = 0;
   int64_t generated_tokens = 0;
   InlinedVector<LoopExitKind> exit_reasons;
-  // Owned CPU snapshots, in the definition's output_names order.
+  // Stable outputs in definition order; explicitly selected device caches remain on device.
   InlinedVector<OrtValue> outputs;
   std::optional<int64_t> generated_token;
 };
@@ -87,6 +87,11 @@ class SessionLoop : public std::enable_shared_from_this<SessionLoop> {
   SessionLoop(InferenceSession& session, SessionLoopOptions options,
               StatefulProviderBinding cache_provider, StatefulProviderBinding sampler_provider);
   Status ValidateInputs(const SessionLoopInputs& inputs) const;
+  Status ConfigureDeviceCache(const StatefulProviderBinding& provider,
+                              InlinedHashSet<std::string> inputs, InlinedHashSet<std::string> outputs);
+  Status WithDeviceCachePorts(const StatefulProviderBinding& provider,
+                              InlinedHashSet<std::string> inputs, InlinedHashSet<std::string> outputs,
+                              std::shared_ptr<const SessionLoop>& out) const;
   Status CreateExecutionWithCache(SessionLoopInputs inputs, std::shared_ptr<KVCacheManager> cache,
                                   std::shared_ptr<TokenGenerationState> generation,
                                   std::shared_ptr<StatefulDispatch> sampler,
@@ -97,6 +102,10 @@ class SessionLoop : public std::enable_shared_from_this<SessionLoop> {
   InlinedVector<std::string> fetch_names_;
   const StatefulProviderBinding cache_provider_;
   const StatefulProviderBinding sampler_provider_;
+  std::optional<StatefulProviderBinding> device_cache_provider_;
+  AllocatorPtr device_cache_allocator_;
+  InlinedHashSet<std::string> device_cache_inputs_;
+  InlinedHashSet<std::string> device_cache_outputs_;
 };
 
 // Only Cancel may run concurrently with Step/Run. Reset and execution are sequential.

@@ -1,6 +1,6 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M07 complete; M08 specification approved, plan under review.
+**Status:** Approved; M01-M08 complete and published for review; M09-M24 pending.
 M05: [PR #34044](https://github.com/microsoft/onnxruntime/pull/34044).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
@@ -17,7 +17,7 @@ M05's requested generation-folder layout follow-up is complete in the same PR.
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M07 are complete; M08 is in progress and M09-M24 are pending. Check tasks when their
+M01-M08 are complete and M09-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -97,7 +97,7 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01-M07 are **complete**; M08 is **in progress** and M09-M24 are **pending**.
+M01-M08 are **complete**; M09-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -108,7 +108,7 @@ M01-M07 are **complete**; M08 is **in progress** and M09-M24 are **pending**.
 | [x] | M05 | CPU greedy sampling and decode iteration / `cpu-greedy` | M04 |
 | [x] | M06 | Public C API and C++ wrappers / `public-api` | M02, M03, M04, M05 |
 | [x] | M07 | Built-in/plugin EP capability contracts / `ep-stateful-hooks` | M04, M05, M06 |
-| [ ] | M08 | Native CUDA KV management / `cuda-kv-cache` | M07 |
+| [x] | M08 | Native CUDA KV management / `cuda-kv-cache` | M07 |
 | [ ] | M09 | Native CUDA greedy sampling / `cuda-greedy` | M07 |
 | [ ] | M10 | Standalone package schema and authoring / `package-schema` | M01, M03 |
 | [ ] | M11 | ORT package-to-chain loading / `package-runtime` | M06, M07, M08, M09, M10 |
@@ -1402,13 +1402,13 @@ from this exact stored exclusion list, never from arbitrary unrelated failures.
 **Outcome:** Device-resident cache lifecycle and prefill/decode handoff.
 **Status:** SPEC Appendix H approved 2026-10-18 without changes. User scoped M08
 to CUDA plugin EP only, copy primitives/GPU cache views and an M08a/M08b split.
-The user approved the detailed plan without changes and authorized M08a only.
-Implementation uses `stateful-M10-cuda-plugin-kv-cache`, based on M07b
-`03d7476859`. Pause for authorization before implementing M08b.
+The user approved the detailed plan without changes, initially authorized M08a,
+and separately authorized M08b on 2026-10-19. Both are complete and published
+as independently verified ready-for-review PRs #34049 and #34050. No PR has been merged.
 
 - [x] Implement CUDA allocation/retention/update/growth/reset using ORT allocator,
   device, and stream abstractions; advertise only supported features.
-- [ ] Wire stage sharing and required movement without illegal aliasing.
+- [x] Wire stage sharing and required movement without illegal aliasing.
 - [x] Expose dispatch/copy/allocation evidence for tests and later measurement.
 
 **CPU test plan:** Rerun CPU cache and EP-contract regressions.
@@ -1494,7 +1494,7 @@ Publish ready for review; loop/chain GPU-cache integration is not yet claimed.
 
 **M08a complete:** Implementation `e6ce58508e`, published ready for human review
 as [PR #34049](https://github.com/microsoft/onnxruntime/pull/34049), stacked on M07b
-PR #34048. No PR has been merged. M08b remains unauthorized.
+PR #34048. No PR has been merged. The user authorized M08b on 2026-10-19.
 
 - Six cache operations execute in the real CUDA plugin with float32/float16/
   bfloat16 support and no greedy capability or CPU-reference delegation.
@@ -1609,9 +1609,12 @@ zero-hash dormant maps, with no new-function mismatch; final dumps are checked
 again against the passing profiles. Exact logs/report are retained as
 `m08a-*-complete-*`, `m08a-plugin-sanitizer-*`, `m08a-cpu-verified-*`,
 `m08a-legacy-stateful-tests.log` and `m08a-host-coverage-final.txt` in session files.
-M08b remains unimplemented and requires user authorization.
+M08b was subsequently authorized and completed in PR #34050, as recorded below.
 
 #### M08b - Device-resident loop/chain integration
+
+**Status:** Authorized 2026-10-19. Implementation branch
+`stateful-M11-cuda-plugin-cache-integration`, based on M08a `6959554e55`.
 
 **Intended outcome:** Programmatic loops/chains use the selected GPU cache
 without cache host round-trips, while stable ordinary outputs and CPU greedy
@@ -1619,28 +1622,28 @@ sampling retain their existing behavior. Prefill/decode share one GPU backend
 across compatible CUDA-plugin Sessions, including distinct streams.
 **Dependency:** M08a. Separate branch/PR stacked on its verified/published head.
 
-- [ ] B1: Resolve the selected GPU allocator/device from initialized Session
+- [x] B1: Resolve the selected GPU allocator/device from initialized Session
   resources without hard-coded allocator names or hidden CPU substitution.
   Remove only the implemented CUDA-plugin cache integration rejection; keep
   device sampling and legacy/shared native-cache requests unsupported.
-- [ ] B2: Bind managed cache outputs to GPU memory and feed device-resident
+- [x] B2: Bind managed cache outputs to GPU memory and feed device-resident
   retained cache values back to Sessions. Process cache callback results without
   converting their state through CPU snapshots.
-- [ ] B3: Wire selected/component/state/downstream cache tensor surfaces
+- [x] B3: Wire selected/component/state/downstream cache tensor surfaces
   consistently: managed cache values remain GPU-resident under explicit GPU
   selection, ordinary non-cache outputs stay stable CPU values, and CPU logits/
   token sampling remain explicitly observable until M09.
-- [ ] B4: Preserve compatible prefill/decode sharing across Sessions and
+- [x] B4: Preserve compatible prefill/decode sharing across Sessions and
   nondefault streams on the same GPU. Validate shared backend/layout/device and
   cache-port compatibility; reject unsupported heterogeneous/cross-device paths.
-- [ ] B5: Preserve retained GPU views/results across update/reset/release and
+- [x] B5: Preserve retained GPU views/results across update/reset/release and
   unregistration; propagate callback, model, cancellation and reset failures
   through the existing invalidation/C/C++ error rules. Respect caller-owned
   streams/allocators/OrtEnv obligations.
-- [ ] B6: Add end-to-end native/public C/C++ parity, device/copy/dispatch/staging
+- [x] B6: Add end-to-end native/public C/C++ parity, device/copy/dispatch/staging
   evidence and stream/lifetime tests. Exercise relevant named-state/component
   handoff paths, not just one preferred cache binding.
-- [ ] B7: Measure every introduced core/plugin host path and any device code,
+- [x] B7: Measure every introduced core/plugin host path and any device code,
   rerun baselines/sanitizer/examples, document exact limits/evidence, and publish
   the ready-for-review stacked PR. Only then complete macro M08.
 
@@ -1679,6 +1682,119 @@ handoff are proved through native and C/C++, not just standalone callbacks.
 All new core/plugin host lines and any new device lines meet their measured
 coverage gates. CPU/CUDA-plugin correctness, memory/order/lifetime, documentation
 and publication pass; mark M08 complete only after both sub-PRs.
+
+**M08b complete:** Implementation `249f60acf8`, published ready for human review
+as [PR #34050](https://github.com/microsoft/onnxruntime/pull/34050), stacked on M08a
+PR #34049. This completes macro M08. No PR has been merged; M09 is not started.
+
+- Resolve actual Session GPU allocators and validate the declared cache ports'
+  planned device. Managed and declared cache-alias outputs are bound directly to
+  GPU and retain local allocator/provider leases rather than CPU snapshots.
+  Chains use the first cache-managing Session's allocator, not an assumed first
+  component allocator. A leading CPU-only component is explicitly covered.
+- Track declared internal component/named-state cache edges, including a plain
+  Session state writer with no managed cache pair, finite inputs and feedback.
+  Arbitrary external/initial-state chain feeds remain host-only. Reject
+  cross-device/incompatible providers and host cache consumers before invocation.
+- Preserve CPU logits/greedy, ordinary output snapshots and separate staging
+  counters. Shared GPU updates have zero CPU reference delegation. Native tests
+  inspect actual bound GPU inputs/outputs and Share pointer identity versus
+  Copy/Append fresh storage; public tests cover all four Session/Loop chain forms,
+  prefill/decode budgets 0/1/3, EOS, reset, independent contexts and retained results.
+- Synchronous Run finishes the actual execution streams before result
+  publication. Device-cache execution avoids IOBinding's additional provider-wide
+  Sync. The normal unrelated-stream test uses warmed same-thread execution,
+  ready device inputs and prepared distinct outputs to isolate cache work from
+  synchronous host transfers/allocator effects; **10 consecutive repetitions
+  passed** before releasing the unrelated blocked stream.
+- Final CPU: **63/63 native +139/139 unfiltered AutoEP** passed.
+- Final CUDA plugin: **116/116 native +179/179 unfiltered AutoEP** passed,
+  **zero skips/exclusions**, with CUDA devices 0 and 1 visible. The new cases
+  are five native and five public GPU integration tests; parameter loops cover
+  phase/budget/EOS/chain/alias variations. XML confirms the cross-device
+  rejection test actually ran on two GPUs.
+- Final legacy/shared CUDA: **110/110 native +43/43 selected public/stateful**
+  cases passed. Native cache capabilities remain absent; no legacy hook is added.
+- Final new runtime executable-line coverage: **130/130**, comprising loop
+  integration **88/88** and chain integration **42/42**. The shared dynamic
+  decoder fixture helper is separately **12/12**. Fresh matching GPU profiles
+  use `coverage/m08b/complete`; the 398 LLVM map warnings are exclusively
+  dormant zero-hash maps, with no new-function mismatch.
+- New device functions/lines: **0/0, N/A**, not a 100% device-coverage claim.
+  M08b adds no CUDA kernel or backend device code.
+- Compute Sanitizer memcheck/leak-check: **4/4 native memory cases +22/22 public
+  integration/standalone cache cases** passed with **zero errors and zero leaked
+  bytes/allocations**. The genuine C11 loop consumer retains a GPU result through
+  reset, execution/definition/Session release and library unregistration.
+- **Sanitizer timing limitation:** The fifth native case's wall-clock assertion
+  times out inside instrumented model Run while the unrelated host callback is
+  blocked. It remains in every full normal suite and the coverage denominator,
+  and passed ten repeated normal runs. It is excluded **only** from the explicit
+  native memcheck memory selector below; it is not claimed to pass memcheck.
+  Same-thread warmup/device-only feeds/prepared outputs did not change that
+  instrumented result. A separate CUDA-only memset calibration passed normally
+  and under memcheck, so no universal sanitizer-serialization claim is made.
+  No memory error is suppressed, and no runtime correctness test is excluded.
+- Public C11 syntax checks, documented C++17 CPU example with normal and
+  no-exceptions client flags, strict changed-source type checks, formatting/
+  120-column limits, whitespace and 93-requirement/24-milestone traceability
+  passed. The CPU shared library has no CUDA runtime dependency.
+
+Passing commands (test commands run from their corresponding output directories):
+
+```bash
+source .venv/bin/activate
+cmake --compile-no-warning-as-error -S cmake \
+  -B build/state-cuda-plugin-13.1/RelWithDebInfo
+cmake --build build/state-cuda-plugin-13.1/RelWithDebInfo --parallel 16 \
+  --target onnxruntime_session_loop_test onnxruntime_autoep_test
+cd build/state-cuda-plugin-13.1/RelWithDebInfo
+export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_HOME=/datadisks/disk4/bmeswani/cuda/cuda13.1
+export LD_LIBRARY_PATH="$PWD:$CUDA_HOME/lib64:$CUDA_HOME/targets/x86_64-linux/lib"
+mkdir -p coverage/m08b/complete
+LLVM_PROFILE_FILE="$PWD/coverage/m08b/complete/%m-%p.profraw" \
+  ./onnxruntime_session_loop_test --gtest_output=xml:coverage/m08b/complete/native-tests.xml
+# Passed: 116/116, zero skips.
+LLVM_PROFILE_FILE="$PWD/coverage/m08b/complete/%m-%p.profraw" \
+  ./onnxruntime_autoep_test --gtest_output=xml:coverage/m08b/complete/autoep-tests.xml
+# Passed: 179/179, zero skips.
+llvm-profdata merge -sparse coverage/m08b/complete/*.profraw \
+  -o coverage/m08b/complete/m08b.profdata
+# Passed: LLVM changed-source line exports against M08a6959554e55:
+# runtime130/130; helper12/12. No device functions added.
+export LLVM_PROFILE_FILE=/dev/null
+./onnxruntime_session_loop_test \
+  --gtest_filter='CudaCacheIntegrationTest.SynchronousTaskStreamWithoutGlobalDeviceWait' \
+  --gtest_repeat=10 --gtest_break_on_failure
+# Passed: all ten normal repetitions.
+"$CUDA_HOME/bin/compute-sanitizer" --tool memcheck --leak-check full --error-exitcode 99 \
+  ./onnxruntime_session_loop_test \
+  --gtest_filter='CudaCacheIntegrationTest.*-CudaCacheIntegrationTest.SynchronousTaskStreamWithoutGlobalDeviceWait'
+# Passed: 4/4, zero errors/leaks. Timing-only instrumentation limitation above.
+"$CUDA_HOME/bin/compute-sanitizer" --tool memcheck --leak-check full --error-exitcode 99 \
+  ./onnxruntime_autoep_test --gtest_filter='CudaCacheApiIntegrationTest.*:*CudaStateful*'
+# Passed: 22/22, zero errors/leaks.
+cd ../../state-cpu/RelWithDebInfo
+./onnxruntime_session_loop_test --gtest_output=xml:coverage/m08b/final/native-tests.xml
+./onnxruntime_autoep_test --gtest_output=xml:coverage/m08b/final/autoep-tests.xml
+# Passed: 63/63 native and 139/139 unfiltered AutoEP.
+cd ../../state-cuda-baseline-13.1/RelWithDebInfo
+export LD_LIBRARY_PATH="$PWD:$CUDA_HOME/lib64:$CUDA_HOME/targets/x86_64-linux/lib"
+./onnxruntime_session_loop_test --gtest_output=xml:coverage/m08b/final/native-tests.xml
+./onnxruntime_autoep_test --gtest_filter='AutoEpSelection.CudaEP:*Stateful*' \
+  --gtest_output=xml:coverage/m08b/final/stateful-tests.xml
+# Passed: 110/110 native and 43/43 selected public/stateful cases.
+```
+
+Compiler/CUDA/build configuration matches M08a: Clang18 host coverage,
+NVCC13.1/GCC13, SM80, matching CUDA13.1/cuDNN. Regeneration retains the supported
+nonfatal-warning build configuration for pre-existing mixed-compiler diagnostics.
+No dependency or unrelated backend source changes were needed. Exact evidence:
+`m08b-gpu-complete-*`, `m08b-cpu-*-tests.log`, `m08b-legacy-*-tests.log`,
+`m08b-sanitizer-native-memory.log`, `m08b-sanitizer-public.log`,
+`m08b-stream-repeated.log` and `m08b-host-coverage-final.txt` in session files.
+M09 GPU sampling is not started or claimed.
 
 **Validation and execution procedure:**
 

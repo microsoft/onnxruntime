@@ -195,13 +195,77 @@ Status SessionLoop::Create(InferenceSession& session, SessionLoopOptions options
     ORT_RETURN_IF_ERROR(
         sampler_dispatch.Select(ORT_STATEFUL_SAMPLE_GREEDY, element_type, true, provider_selected));
   }
-  if (options.cache_provider.device_type != OrtMemoryInfoDeviceType_CPU ||
-      options.sampler_provider.device_type != OrtMemoryInfoDeviceType_CPU) {
+  if (options.sampler_provider.device_type != OrtMemoryInfoDeviceType_CPU) {
     return ORT_MAKE_STATUS(
-        ONNXRUNTIME, NOT_IMPLEMENTED, "Device-native cache/logits Session integration is unavailable");
+        ONNXRUNTIME, NOT_IMPLEMENTED, "Device-native logits Session integration is unavailable");
   }
-  out = std::shared_ptr<const SessionLoop>(
+  auto loop = std::shared_ptr<SessionLoop>(
       new SessionLoop(session, std::move(options), std::move(cache_provider), std::move(sampler_provider)));
+  if (loop->cache_provider_.Selection().device_type != OrtMemoryInfoDeviceType_CPU) {
+    InlinedHashSet<std::string> device_inputs, device_outputs;
+    for (const auto& item : loop->options_.kv_caches) {
+      device_inputs.insert(item.input_name);
+      device_outputs.insert(item.output_name);
+    }
+    ORT_RETURN_IF_ERROR(loop->ConfigureDeviceCache(
+        loop->cache_provider_, std::move(device_inputs), std::move(device_outputs)));
+  }
+  out = std::move(loop);
+  return Status::OK();
+}
+
+Status SessionLoop::ConfigureDeviceCache(const StatefulProviderBinding& provider,
+                                         InlinedHashSet<std::string> inputs,
+                                         InlinedHashSet<std::string> outputs) {
+  const auto& selection = provider.Selection();
+  ORT_RETURN_IF_NOT(selection.device_type == OrtMemoryInfoDeviceType_GPU &&
+                        selection.provider_name == kCudaExecutionProvider,
+                    "Device-cache Session integration requires the CUDA plugin");
+  StatefulProviderBinding local;
+  ORT_RETURN_IF_ERROR(StatefulProviderBinding::Resolve(&session_, selection, local));
+  ORT_RETURN_IF_NOT(provider.CacheCompatible(local), "Incompatible device-cache Session provider");
+  ORT_RETURN_IF(options_.generation && outputs.contains(options_.generation->logits_output),
+                "Device cache output cannot also supply CPU sampler logits");
+  const auto& state = session_.GetSessionState();
+  for (const auto& [device, allocator] : state.GetAllocators()) {
+    if (device.Type() == OrtDevice::GPU && device.Id() == selection.device_id &&
+        device.MemType() == OrtDevice::MemType::DEFAULT) {
+      device_cache_allocator_ = allocator;
+      break;
+    }
+  }
+  ORT_RETURN_IF_NOT(device_cache_allocator_, "Selected device-cache Session allocator is unavailable");
+  const auto& device = device_cache_allocator_->Info().device;
+  for (const auto& feedback : options_.feedback) {
+    if (outputs.contains(feedback.output_name)) inputs.insert(feedback.input_name);
+  }
+  auto check_ports = [&](const auto& names, bool is_input) -> Status {
+    for (const auto& name : names) {
+      InlinedVector<SessionState::NodeInfo> nodes;
+      ORT_RETURN_IF_ERROR(is_input ? state.GetInputNodeInfo(name, nodes) : state.GetOutputNodeInfo(name, nodes));
+      ORT_RETURN_IF(nodes.empty() ||
+                        std::any_of(nodes.begin(), nodes.end(), [&](const auto& node) {
+                          return !node.device || *node.device != device;
+                        }),
+                    "Device-cache port requires the selected GPU without staging: ", name);
+    }
+    return Status::OK();
+  };
+  ORT_RETURN_IF_ERROR(check_ports(inputs, true));
+  ORT_RETURN_IF_ERROR(check_ports(outputs, false));
+  device_cache_provider_ = std::move(local);
+  device_cache_inputs_ = std::move(inputs);
+  device_cache_outputs_ = std::move(outputs);
+  return Status::OK();
+}
+
+Status SessionLoop::WithDeviceCachePorts(const StatefulProviderBinding& provider,
+                                         InlinedHashSet<std::string> inputs,
+                                         InlinedHashSet<std::string> outputs,
+                                         std::shared_ptr<const SessionLoop>& out) const {
+  auto loop = std::shared_ptr<SessionLoop>(new SessionLoop(session_, options_, cache_provider_, sampler_provider_));
+  ORT_RETURN_IF_ERROR(loop->ConfigureDeviceCache(provider, std::move(inputs), std::move(outputs)));
+  out = std::move(loop);
   return Status::OK();
 }
 
@@ -221,6 +285,10 @@ Status SessionLoop::ValidateInputs(const SessionLoopInputs& inputs) const {
                               [&](const auto& item) { return item.input_name == name; }),
                   "Managed KV cache inputs cannot also be supplied as invariant feeds");
     ORT_RETURN_IF_ERROR(CheckInput(*argument, value));
+    if (device_cache_inputs_.contains(name)) {
+      ORT_RETURN_IF(value.Get<Tensor>().Location().device != device_cache_allocator_->Info().device,
+                    "Device-cache input requires matching GPU storage: ", name);
+    }
   }
   ORT_RETURN_IF(finite.empty() && !inputs.batches.empty(), "Batches require finite input names");
   ORT_RETURN_IF(!options_.nonempty_input.empty() && inputs.batches.empty(), "Prefill input must not be empty");
@@ -229,6 +297,10 @@ Status SessionLoop::ValidateInputs(const SessionLoopInputs& inputs) const {
     for (const auto& [name, value] : batch) {
       ORT_RETURN_IF_NOT(finite.contains(name), "Unknown finite input: ", name);
       ORT_RETURN_IF_ERROR(CheckInput(*FindArgument(arguments, name), value));
+      if (device_cache_inputs_.contains(name)) {
+        ORT_RETURN_IF(value.Get<Tensor>().Location().device != device_cache_allocator_->Info().device,
+                      "Device-cache finite input requires matching GPU storage: ", name);
+      }
       ORT_RETURN_IF(name == options_.nonempty_input && value.Get<Tensor>().Shape().Size() == 0,
                     "Prefill input tensor must not be empty");
     }
@@ -253,7 +325,8 @@ Status SessionLoop::CreateExecution(SessionLoopInputs inputs, std::unique_ptr<Se
     std::unique_ptr<IOBinding> binding;
     ORT_RETURN_IF_ERROR(session_.NewIOBinding(&binding));
     std::unique_ptr<KVCacheManager> manager;
-    auto allocator = binding->GetCPUAllocator(kCpuExecutionProvider);
+    auto allocator =
+        device_cache_allocator_ ? device_cache_allocator_ : binding->GetCPUAllocator(kCpuExecutionProvider);
     ORT_RETURN_IF_ERROR(KVCacheManager::Create(std::move(specs), std::move(allocator), manager, cache_provider_));
     cache = std::move(manager);
   }
@@ -390,12 +463,19 @@ Status SessionLoopExecution::Step(SessionLoopStepResult& out) {
     }
   }
   for (const auto& name : loop_->fetch_names_) {
-    ORT_RETURN_IF_ERROR(binding->BindOutput(name));
+    ORT_RETURN_IF_ERROR(binding->BindOutput(
+        name, loop_->device_cache_outputs_.contains(name)
+                  ? loop_->device_cache_allocator_->Info().device
+                  : OrtDevice{}));
   }
-  ORT_RETURN_IF_ERROR(binding->SynchronizeInputs());
+  if (!loop_->device_cache_provider_) {
+    ORT_RETURN_IF_ERROR(binding->SynchronizeInputs());
+  }
   RunOptions run_options;
   ORT_RETURN_IF_ERROR(loop_->session_.Run(run_options, *binding));
-  ORT_RETURN_IF_ERROR(binding->SynchronizeOutputs());
+  if (!loop_->device_cache_provider_) {
+    ORT_RETURN_IF_ERROR(binding->SynchronizeOutputs());
+  }
   ORT_RETURN_IF(cancelled_.load(), "SessionLoop execution cancelled during a step; call Reset before reuse");
 
   InlinedVector<OrtValue> snapshots;
@@ -404,6 +484,13 @@ Status SessionLoopExecution::Step(SessionLoopStepResult& out) {
   CPUDataTransfer transfer;
   for (const auto& value : binding->GetOutputs()) {
     const Tensor& source = value.Get<Tensor>();
+    if (!source.Location().device.UsesCpuMemory()) {
+      ORT_RETURN_IF_NOT(loop_->device_cache_provider_ &&
+                            source.Location().device == loop_->device_cache_allocator_->Info().device,
+                        "Unexpected device output in stateful execution");
+      snapshots.push_back(loop_->device_cache_provider_->RetainValue(value, loop_->device_cache_allocator_));
+      continue;
+    }
     if (source.Location().device.UsesCpuMemory()) {
       staging_.cpu_output_bytes = SafeInt<size_t>(staging_.cpu_output_bytes) + source.SizeInBytes();
     }

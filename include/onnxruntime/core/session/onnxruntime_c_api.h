@@ -9345,6 +9345,11 @@ typedef struct OrtStatefulGenerationConfig {
  * Pointer/count pairs permit NULL only with count zero. Nested array-record
  * layouts are fixed; future extensions use appended top-level fields/new records.
  * A loop requires explicit outputs and at least one exit condition.
+ * With an explicit CUDA-plugin GPU-cache policy, managed cache outputs and
+ * cache values routed through chain state/components remain on GPU. Ordinary
+ * outputs/logits remain stable CPU values; CPU inspection of device values
+ * requires an explicit caller copy. Device-cache ports must already execute
+ * on the selected GPU; implicit cache staging is rejected.
  * \since Version 1.32.
  */
 typedef struct OrtStatefulLoopConfig {
@@ -9873,7 +9878,7 @@ struct OrtStatefulApi {
   /** \brief Share/copy a full cache or append a delta.
    * \param[in,out] manager CPU manager.
    * \param[in] name Cache name.
-   * \param[in] value CPU tensor; shared allocator-owned data must remain immutable.
+   * \param[in] value Selected CPU/provider-device tensor; shared owned data must remain immutable.
    * \param[in] kind Explicit update policy.
    * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
    */
