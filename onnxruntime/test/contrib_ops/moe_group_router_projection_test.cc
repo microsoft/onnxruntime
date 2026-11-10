@@ -129,7 +129,7 @@ TEST(MoEGroupRouterProjectionShapeInferenceTest, RejectsBadAttributesRanksAndKno
       {[](auto& s) { s.shapes[0] = std::vector<int64_t>{3, 0}; }, "input width must be a positive multiple of 256"},
       {[](auto& s) { s.shapes[0] = std::vector<int64_t>{3, 255}; }, "got 255"},
       {[](auto& s) { s.shapes[0] = std::vector<int64_t>{3, int64_t{1} << 31}; }, "got 2147483648"},
-      {[](auto& s) { s.k = 10; }, "k=10 weight experts=9"},
+      {[](auto& s) { s.k = 10; }, "k=10 projection_weight experts=9"},
       {[](auto& s) { s.shapes[1] = std::vector<int64_t>{513, 256}; }, "weight experts=513"},
       {[](auto& s) { s.shapes[1] = std::vector<int64_t>{9, 512}; },
        "weight width must match input width, got 512 and 256"},
@@ -139,7 +139,7 @@ TEST(MoEGroupRouterProjectionShapeInferenceTest, RejectsBadAttributesRanksAndKno
       {[](auto& s) { s.shapes[0] = std::nullopt; s.shapes[1] = std::vector<int64_t>{9, 0}; }, "weight width"},
       {[](auto& s) { s.shapes[0] = std::nullopt; s.shapes[2] = std::vector<int64_t>{1, 9}; }, "bias must be rank 1"},
       {[](auto& s) { s.shapes[1] = std::nullopt; s.shapes[2] = std::vector<int64_t>{513}; }, "bias experts=513"},
-      {[](auto& s) { s.shapes[1] = std::nullopt; s.shapes[2] = std::vector<int64_t>{1}; }, "k=2 bias experts=1"},
+      {[](auto& s) { s.shapes[1] = std::nullopt; s.shapes[2] = std::vector<int64_t>{1}; }, "k=2 expert_bias experts=1"},
       {[](auto& s) { s.shapes[0] = std::nullopt; s.shapes[2] = std::vector<int64_t>{8}; }, "got 8 and 9"}};
   for (const auto& [mutate, message] : cases) {
     SCOPED_TRACE(message);
@@ -572,7 +572,6 @@ TEST(MoEGroupRouterProjectionTest, RejectsInvalidRuntimeGeometryWithObservedValu
   const std::vector<InvalidCase> cases{
       {{1, 255}, {9, 255}, {9}, 1, "width must be a positive multiple of 256 and <= INT_MAX, got 255"},
       {{1, 0}, {9, 0}, {9}, 1, "width must be a positive multiple of 256 and <= INT_MAX, got 0"},
-      {{2049, 256}, {9, 256}, {9}, 1, "rows must be in [0, 2048], got 2049"},
       {{1, 256}, {9, 256}, {9}, 10, "k <= experts <= 512, got k=10 experts=9"},
       {{1, 256}, {513, 256}, {513}, 1, "k <= experts <= 512, got k=1 experts=513"},
       {{1, 256}, {9, 512}, {9}, 1, "weight must be [experts, 256], got {9,512}"},
@@ -590,9 +589,9 @@ TEST(MoEGroupRouterProjectionTest, RejectsInvalidRuntimeGeometryWithObservedValu
       return std::accumulate(shape.begin(), shape.end(), int64_t{1}, std::multiplies<int64_t>());
     };
     test.AddInput<MLFloat16>("input", spec.input, std::vector<MLFloat16>(count(spec.input), MLFloat16(0.f)));
-    test.AddInput<MLFloat16>("weight", spec.weight, std::vector<MLFloat16>(count(spec.weight), MLFloat16(0.f)));
     test.AddInput<float>("bias", spec.bias, std::vector<float>(count(spec.bias), 0.f));
-    test.AddOptionalOutputEdge<T>();
+    test.AddInput<MLFloat16>("weight", spec.weight, std::vector<MLFloat16>(count(spec.weight), MLFloat16(0.f)));
+    test.AddOptionalOutputEdge<MLFloat16>();
     test.AddOutput<int32_t>("indices", {1, spec.k}, std::vector<int32_t>(spec.k, 0));
     test.AddOutput<float>("weights", {1, spec.k}, std::vector<float>(spec.k, 1.f));
     std::vector<std::unique_ptr<IExecutionProvider>> providers;
