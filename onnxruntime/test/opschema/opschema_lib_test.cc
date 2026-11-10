@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #include <iostream>
 
+#include "core/graph/constants.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
 
 int main() {
