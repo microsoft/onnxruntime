@@ -64,7 +64,7 @@ ignore = [
     "PERF401", # List comprehensions are not always readable
     "PYI041", # May create confusion
     "PYI024", # May create confusion
-    "SIM102", # We don't perfer always combining if branches
+    "SIM102", # We don't prefer always combining if branches
     "SIM103", # Do not collapse if-else
     "SIM108", # We don't encourage ternary operators
     "SIM114", # Don't combine if branches for debugability
