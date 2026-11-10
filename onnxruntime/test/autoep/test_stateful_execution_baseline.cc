@@ -12,6 +12,7 @@
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "test/autoep/test_autoep_utils.h"
 #include "test/util/include/stateful_execution_test_utils.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
@@ -30,7 +31,7 @@ Ort::Session CreateReferenceSession(const ONNX_NAMESPACE::ModelProto& model, boo
   options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
   options.AddConfigEntry(kOrtSessionOptionsRecordEpGraphAssignmentInfo, "1");
   if (use_cuda) {
-    options.AppendExecutionProvider_CUDA(OrtCUDAProviderOptions{});
+    Utils::AppendCudaExecutionProvider(*ort_env, options);
     options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
   }
   Ort::Session session(*ort_env, bytes.data(), bytes.size(), options);

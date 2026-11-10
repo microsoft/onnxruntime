@@ -1480,10 +1480,15 @@ if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
   # the dynamic plugin EP infrastructure. onnxruntime_test_utils (which compiles default_providers.cc)
   # already routes DefaultCudaExecutionProvider() through the plugin infrastructure in plugin builds;
   # without initializing it here, that routing returns a null EP and tests crash.
-  target_compile_definitions(onnxruntime_test_all PRIVATE
-    ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE
-    ORT_UNIT_TEST_CUDA_PLUGIN_EP_LIBRARY_PATH="$<TARGET_FILE_NAME:onnxruntime_providers_cuda_plugin>"
-    ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
+  foreach(target IN ITEMS onnxruntime_test_all onnxruntime_session_loop_test)
+    if(TARGET ${target})
+      target_compile_definitions(${target} PRIVATE
+        ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE
+        ORT_UNIT_TEST_CUDA_PLUGIN_EP_LIBRARY_PATH="$<TARGET_FILE_NAME:onnxruntime_providers_cuda_plugin>"
+        ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
+      add_dependencies(${target} onnxruntime_providers_cuda_plugin)
+    endif()
+  endforeach()
 endif()
 
 if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS)
@@ -3041,6 +3046,13 @@ if (onnxruntime_BUILD_SHARED_LIB AND
           LIBS ${onnxruntime_autoep_test_LIBS}
           DEPENDS ${all_dependencies} example_plugin_ep example_plugin_ep_virt_gpu example_plugin_ep_kernel_registry
   )
+  if(onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+    target_compile_definitions(onnxruntime_autoep_test PRIVATE
+      ORT_UNIT_TEST_CUDA_PLUGIN_EP_PUBLIC_API_ONLY
+      ORT_UNIT_TEST_CUDA_PLUGIN_EP_LIBRARY_PATH="$<TARGET_FILE_NAME:onnxruntime_providers_cuda_plugin>"
+      ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
+    add_dependencies(onnxruntime_autoep_test onnxruntime_providers_cuda_plugin)
+  endif()
 endif()
 
 if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)

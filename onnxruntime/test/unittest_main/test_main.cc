@@ -9,6 +9,9 @@
 #include <optional>
 #include <string>
 #include <vector>
+#if defined(ORT_UNIT_TEST_CUDA_PLUGIN_EP_PUBLIC_API_ONLY)
+#include <filesystem>
+#endif
 #ifdef _WIN32
 #include <locale>
 #endif
@@ -107,6 +110,11 @@ extern "C" void ortenv_setup() {
     ort_env.reset(new Ort::Env(&env_creation_options));
 #else
     ort_env.reset(new Ort::Env(&tpo, log_level, "Default"));
+#endif
+
+#if defined(ORT_UNIT_TEST_CUDA_PLUGIN_EP_PUBLIC_API_ONLY)
+    ort_env->RegisterExecutionProviderLibrary(
+        "CUDAExecutionProvider", std::filesystem::path(ORT_UNIT_TEST_CUDA_PLUGIN_EP_LIBRARY_PATH).native());
 #endif
 
 #if defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)

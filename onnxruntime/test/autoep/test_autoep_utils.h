@@ -32,6 +32,8 @@ struct Utils {
   // get the OrtEpDevice for an arbitrary EP from the environment
   static void GetEp(Ort::Env& env, const std::string& ep_name, const OrtEpDevice*& ep_device);
 
+  static void AppendCudaExecutionProvider(Ort::Env& env, Ort::SessionOptions& options);
+
   // Register the example EP library, get the OrtEpDevice for it, and return a unique pointer that will
   // automatically unregister the EP library.
   static void RegisterAndGetExampleEp(Ort::Env& env, const ExamplePluginInfo& ep_info,

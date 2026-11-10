@@ -114,4 +114,44 @@ cleanup:
   return code;
 }
 
+int StatefulApiCDeviceConsumerTest(OrtSession* session, OrtAllocator* allocator,
+                                   const OrtValue* delta, const OrtValue* full,
+                                   OrtKVCacheView** retained_out) {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  const OrtStatefulApi* stateful = api->GetStatefulApi();
+  OrtStatus* status = NULL;
+  OrtKVCacheOptions* options = NULL;
+  OrtKVCacheManager* cache = NULL;
+  OrtKVCacheView* view = NULL;
+  const OrtValue* value = NULL;
+  int64_t length = -1, capacity = -1;
+  int code = 0;
+  const int64_t shape[] = {2, 0, 2};
+  const OrtStatefulKVCacheSpec spec = {"key", ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, shape, 3, 1, 0};
+  const OrtStatefulKVCacheConfig config = {sizeof(config), &spec, 1};
+  const OrtStatefulProviderSelection selection = {
+      sizeof(selection), ORT_STATEFUL_PROVIDER_REQUIRE, "CUDAExecutionProvider", OrtMemoryInfoDeviceType_GPU, 0};
+  CHECK(stateful->CreateKVCacheOptions(&config, &options));
+  CHECK(stateful->KVCacheOptionsSetProvider(options, session, &selection));
+  CHECK(stateful->CreateKVCacheManager(options, allocator, &cache));
+  CHECK(stateful->KVCacheManagerUpdate(cache, "key", delta, ORT_KV_CACHE_COPY));
+  CHECK(stateful->KVCacheManagerUpdate(cache, "key", delta, ORT_KV_CACHE_APPEND));
+  CHECK(stateful->KVCacheManagerReserve(cache, "key", 5));
+  CHECK(stateful->KVCacheManagerUpdate(cache, "key", full, ORT_KV_CACHE_SHARE));
+  CHECK(stateful->KVCacheManagerGetView(cache, "key", &view));
+  CHECK(stateful->KVCacheManagerReset(cache));
+  CHECK(stateful->KVCacheViewGetInfo(view, &value, &length, &capacity));
+  if (length != 2 || capacity != 2) {
+    code = 8;
+    goto cleanup;
+  }
+  *retained_out = view;
+  view = NULL;
+cleanup:
+  stateful->ReleaseKVCacheView(view);
+  stateful->ReleaseKVCacheManager(cache);
+  stateful->ReleaseKVCacheOptions(options);
+  return code;
+}
+
 #undef CHECK

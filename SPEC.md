@@ -1407,3 +1407,228 @@ Its genuine frozen 1.23 OrtEp prefix ends at the original
 GetCompiledModelCompatibilityInfo slot. An inaccessible page immediately after
 that allocation detects later-field reads; this is not a current-sized struct
 with only its version number changed.
+
+## Appendix H. M08 CUDA plugin KV cache contract
+
+**Status:** Approved by the user on 2026-10-18 without changes. Scope is CUDA
+plugin EP only, CUDA copy primitives where sufficient, GPU-resident cache
+views/results, and an M08a/M08b split, with no additional specification input.
+The detailed execution plan is approved without changes. M08a implementation is
+authorized; M08b requires separate authorization after M08a is complete.
+
+### H.1 Scope and preserved behavior
+
+- Implement real device-resident KV management for the CUDA plugin EP only,
+  through M07's existing optional registration and per-operation dispatch.
+- Legacy/shared CUDA is explicitly outside this milestone's implementation
+  scope. It must not advertise native KV capabilities merely because the plugin
+  implementation exists. Required unsupported choices continue to fail clearly.
+- Preserve the explicit CPU default and independent cache/sampler selection.
+  CUDA greedy sampling remains M09; M08 does not advertise that capability.
+- Preserve float32, float16 and bfloat16 cache support, contiguous tensor-backed
+  storage, explicit sequence axes and compact logical packing. One selected CUDA
+  device is used per execution/shared cache; arbitrary multi-device migration,
+  cross-request sharing, paged/opaque layouts and dtype conversion remain out
+  of scope.
+
+### H.2 Device cache operations
+
+- Advertise only CUDA-plugin operations actually implemented and tested:
+  initialize/allocation, allocator-owned full-output sharing, full copy, delta
+  append, reserve/growth and logical reset.
+- Allocate GPU storage through the compatible ORT/plugin allocator, retaining
+  its device metadata/callback resources. Logical sequence length and allocation
+  capacity remain distinct; initially empty storage does not expose uninitialized
+  capacity bytes as logical data.
+- Share retains the owned GPU model output at its actual extent without an
+  unnecessary data copy. Do not infer model input/output aliasing or introduce
+  in-place execution that its kernel/graph contract does not permit.
+- Copy/append/reserve preserve required contents and fixed dimensions. Append
+  supports the existing explicit sequence-axis layout rather than assuming the
+  sequence dimension is last. Use checked shape, offset, pitch and byte arithmetic.
+- Copy/growth/update must not overwrite storage visible through retained views.
+  Reset clears logical length and may retain valid capacity; existing snapshots
+  remain unchanged across update/reserve/reset/release.
+- Preserve explicit errors for invalid shape/dtype/device, shrinkage, overflow,
+  allocation failures, CUDA failures and invalidated state. Never retry a failed
+  CUDA callback on CPU or return a successful empty cache.
+
+### H.3 CUDA primitives and execution ordering
+
+- Prefer existing CUDA allocation/copy facilities, including async/2D device
+  copy primitives where appropriate, over unnecessary custom device kernels.
+  Validate supported copy geometry and handle relevant API limits explicitly.
+- Respect ORT/plugin allocator and stream abstractions. Device work must be
+  ordered after its producer and before subsequent model consumption,
+  observation or release, including nondefault streams and distinct Sessions
+  sharing a cache on the same GPU.
+- Preserve the synchronous callback/Step/Run contract: async copies may be
+  enqueued internally, but published results are ready when the corresponding
+  synchronous API returns. Do not introduce a serving/async-streaming API.
+- Use appropriate stream/event completion rather than masking ordering defects
+  with unrequested global device-wide synchronization. Restore caller device
+  state when a scoped device change is required.
+- Caller-owned external streams and allocator/logging state retain their
+  documented lifetime obligations; internally owned resources remain retained
+  until dependent work and values no longer need them.
+
+### H.4 Loop/chain and output integration
+
+- Remove M07's device-cache integration rejection only for the implemented,
+  explicitly selected CUDA plugin cache path. Device sampling remains explicitly
+  unavailable until M09.
+- Resolve a compatible GPU allocator and bind managed past/present cache ports
+  to the selected GPU. Keep cache state and prefill/decode handoff device-resident,
+  rather than staging every cache output through CPU to invoke the manager.
+- Preserve one compatible cache backend/device contract across the chain,
+  including different initialized CUDA plugin Sessions on that GPU. Reject
+  conflicting or unsupported device/cache-port configurations instead of silently
+  introducing an arbitrary heterogeneous pipeline.
+- Under explicit GPU-cache selection, managed cache values, retained cache
+  views and cache tensors exposed in step/component results stay on GPU.
+  Their device placement is observable, and CPU inspection requires an explicit
+  caller copy; a raw tensor-data getter does not perform a hidden readback.
+- Ordinary non-cache selected outputs retain their stable CPU behavior.
+  In particular, CPU logits/token sampling remains supported and observable
+  while cache management is GPU-native. CPU-default execution is unchanged.
+- Unselected cache outputs retained for downstream components must not trigger
+  hidden cache readback merely because chain bookkeeping retains model outputs.
+
+### H.5 Lifetime, failure and cancellation
+
+- Retain GPU allocations, callback contexts, allocator adapters, provider/
+  factory/library and required stream/logger resources for dependent values.
+  M07's ownership and delayed-unregistration guarantees continue to apply.
+- The size-tagged cache request gains a trailing `retain_value` callback for
+  retaining borrowed input/storage handles without data copies or native core
+  types. Plugins check the request size before accessing the extension; existing
+  request fields and the public API table/version remain unchanged.
+- Retained GPU cache snapshots remain usable after manager/context reset and
+  release, and after the originating Session is released, subject to ordinary
+  caller-owned OrtEnv/resource lifetime rules.
+- Operations complete before resources needed by queued work can be released.
+  Failure after possible mutation keeps the relevant manager/execution invalid
+  until successful reset; failed reset cannot mark it healthy.
+- Cancellation remains a boundary request. Ensure partially completed model/
+  device work is safely ordered/cleaned up; no kernel-preemption guarantee is added.
+
+### H.6 Observable proof and coverage
+
+- Query and assert actual CUDA plugin cache capabilities and invocation, GPU
+  placement/device id, logical length/capacity, shared-buffer identity where
+  applicable, and device-copy/allocation evidence. CUDA model registration alone
+  is not proof of native cache dispatch.
+- Native GPU cache operations have no undisclosed CPU fallback/reference
+  delegation. Existing CPU logits/ordinary-output staging is recorded separately
+  and is not reported as native GPU sampling or cache movement.
+- Compare GPU contents with the CPU reference across supported dtypes, sequence
+  axes, zero/growing lengths and retained snapshots using explicit test readback.
+- Test CPU regressions, real CUDA-plugin standalone and loop/chain execution,
+  default/nondefault and cross-Session stream ordering, device mismatch,
+  controlled allocation/provider errors, cancellation, release ordering and
+  sanitizer correctness. Do not exhaust a shared GPU merely to provoke OOM.
+- Measure 100% new executable host/glue lines in the actual exercised CUDA
+  plugin/core paths using matching instrumented artifacts and fresh profiles.
+  The plugin build is separate from the legacy/shared CUDA build; one is not
+  validation evidence for the other.
+- If standard CUDA APIs suffice and no device functions are added, the new
+  device-line denominator is zero/not applicable, not a claimed 100% device
+  coverage result. Any new device code actually introduced must satisfy the
+  measured 100% device-line gate; lack of that evidence blocks completion.
+
+### H.7 Reviewable delivery boundaries
+
+- M08a adds the CUDA plugin cache backend, registration, standalone conformance,
+  resource/stream correctness and measured new-line validation.
+- M08b adds GPU cache allocator/port/result wiring through loops/chains,
+  prefill/decode sharing, C/C++ parity and end-to-end lifecycle/ordering evidence,
+  stacked on independently verified M08a.
+- Each sub-PR is independently documented/tested and ready for review. Macro
+  M08 remains incomplete until both pass their CPU/CUDA-plugin/coverage gates.
+  Prepare the detailed execution plan after this appendix is approved, and
+  review that plan before implementation.
+
+### H.8 Standalone CUDA-plugin SDK example (M08a)
+
+M08a enables standalone caches, not device-cache loop/chain integration (M08b).
+The plugin uses checked, compact per-row CUDA copies, avoiding 2D-copy pitch
+limits without new device functions. Operations finish on the default or
+caller-configured stream before returning; external inputs must already be
+ready. No CPU reference delegation or GPU sampler is advertised.
+Capacity bytes and nonempty allocation pointers are validated before copying.
+CUDA errors are reported and consumed at the callback boundary rather than
+silently poisoning subsequent inference after an explicit cache failure.
+
+This C++17 example takes the CUDA plugin library and an ONNX model (for example
+`onnxruntime/test/testdata/mul_1.onnx`). Only public SDK/CUDA headers are needed.
+The allocator and environment outlive every retained value. A separate
+allocator Session stays alive because the existing public Session-allocator API
+requires it; only the Session used to select the cache backend is released.
+The explicit readback follows manager/backend-Session release and library
+unregistration. This example does not claim final DLL unload while the
+caller-owned allocator Session still needs the library.
+
+```cpp
+#include <array>
+#include <filesystem>
+#include <stdexcept>
+#include <string_view>
+#include <cuda_runtime_api.h>
+#include "onnxruntime_cxx_api.h"
+
+static void CheckCuda(cudaError_t status) {
+  if (status != cudaSuccess) throw std::runtime_error(cudaGetErrorString(status));
+}
+
+int main(int argc, char** argv) {
+  if (argc != 3) return 2;
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "cuda-cache-example");
+  env.RegisterExecutionProviderLibrary("stateful-cuda", std::filesystem::path(argv[1]).native());
+  Ort::ConstEpDevice device(nullptr);
+  for (auto candidate : env.GetEpDevices()) {
+    if (std::string_view(candidate.EpName()) == "CUDAExecutionProvider" &&
+        candidate.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT).GetDeviceId() == 0) {
+      device = candidate;
+      break;
+    }
+  }
+  if (!device) throw std::runtime_error("CUDA plugin device 0 unavailable");
+  Ort::SessionOptions session_options;
+  session_options.SetIntraOpNumThreads(1);
+  session_options.AppendExecutionProvider_V2(env, {device}, Ort::KeyValuePairs{});
+  Ort::Session allocator_session(env, std::filesystem::path(argv[2]).native().c_str(), session_options);
+  Ort::Allocator allocator(allocator_session, device.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+  Ort::Session session(env, std::filesystem::path(argv[2]).native().c_str(), session_options);
+  const int64_t empty_shape[]{2, 0, 2};
+  const OrtStatefulKVCacheSpec spec{
+      "key", ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, empty_shape, 3, 1, 0};
+  const OrtStatefulKVCacheConfig config{sizeof(config), &spec, 1};
+  const OrtStatefulProviderSelection selection{
+      sizeof(selection), ORT_STATEFUL_PROVIDER_REQUIRE, "CUDAExecutionProvider",
+      OrtMemoryInfoDeviceType_GPU, 0};
+  Ort::KVCacheOptions options(config);
+  options.SetProvider(selection, session);
+  Ort::KVCacheManager cache(options, allocator);
+  const int64_t delta_shape[]{2, 1, 2};
+  auto delta = Ort::Value::CreateTensor<float>(allocator, delta_shape, 3);
+  const std::array<float, 4> input{1, 2, 3, 4};
+  CheckCuda(cudaMemcpy(delta.GetTensorMutableData<float>(), input.data(),
+                       sizeof(input), cudaMemcpyHostToDevice));
+  cache.Update("key", delta, ORT_KV_CACHE_COPY);
+  cache.Update("key", delta, ORT_KV_CACHE_APPEND);
+  auto retained = cache.GetView("key").GetInfo();
+  const auto dispatch = cache.GetDispatchInfo(ORT_STATEFUL_CACHE_APPEND);
+  if (dispatch.provider_calls != 1 || dispatch.cpu_calls || dispatch.cpu_delegations) return 3;
+  cache.Reset();
+  cache = Ort::KVCacheManager(nullptr);
+  options = Ort::KVCacheOptions(nullptr);
+  delta = Ort::Value(nullptr);
+  session = Ort::Session(nullptr);
+  env.UnregisterExecutionProviderLibrary("stateful-cuda");
+  std::array<float, 8> output{};
+  CheckCuda(cudaMemcpy(output.data(), retained.value.GetTensorRawData(),
+                       sizeof(output), cudaMemcpyDeviceToHost));
+  const std::array<float, 8> expected{1, 2, 1, 2, 3, 4, 3, 4};
+  return retained.length == 2 && output == expected ? 0 : 4;
+}
+```

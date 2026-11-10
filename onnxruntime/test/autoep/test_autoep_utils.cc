@@ -39,6 +39,21 @@ const Utils::ExamplePluginInfo Utils::example_ep_kernel_registry_info(
     "example_plugin_ep_kernel_registry",
     "ExampleKernelEp");
 
+void Utils::AppendCudaExecutionProvider(Ort::Env& env, Ort::SessionOptions& options) {
+#if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+  for (auto device : env.GetEpDevices()) {
+    if (std::string_view(device.EpName()) == "CUDAExecutionProvider") {
+      options.AppendExecutionProvider_V2(env, {device}, Ort::KeyValuePairs{});
+      return;
+    }
+  }
+  ORT_CXX_API_THROW("CUDA plugin test device is unavailable", ORT_FAIL);
+#else
+  ORT_UNUSED_PARAMETER(env);
+  options.AppendExecutionProvider_CUDA(OrtCUDAProviderOptions{});
+#endif
+}
+
 void Utils::GetEp(Ort::Env& env, const std::string& ep_name, const OrtEpDevice*& ep_device) {
   const OrtApi& c_api = Ort::GetApi();
   const OrtEpDevice* const* ep_devices = nullptr;

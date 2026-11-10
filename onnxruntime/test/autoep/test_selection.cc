@@ -54,6 +54,9 @@ void DefaultDeviceSelection(const std::string& ep_name, std::vector<const OrtEpD
 }
 
 bool IsRegistered(const std::string& ep_name) {
+  for (auto device : ort_env->GetEpDevices()) {
+    if (device.EpName() == ep_name) return true;
+  }
   static std::unordered_set<std::string> registered_eps;
   if (registered_eps.count(ep_name) == 0) {
     registered_eps.insert(ep_name);
@@ -159,7 +162,14 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
       session_options.SetEpSelectionPolicy(*policy);
     } else {
       // manually specify EP to select
-      session_options.AddConfigEntry("test.ep_to_select", ep_to_select.c_str());
+#if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+      if (ep_to_select == kCudaExecutionProvider) {
+        session_options.SetEpSelectionPolicy(SelectFirstEpByName, const_cast<char*>(ep_to_select.c_str()));
+      } else
+#endif
+      {
+        session_options.AddConfigEntry("test.ep_to_select", ep_to_select.c_str());
+      }
 
       // add the provider options to the session options with the required prefix
       const std::string option_prefix = OrtSessionOptions::GetProviderOptionPrefix(ep_to_select.c_str());
@@ -252,10 +262,15 @@ TEST(AutoEpSelection, CpuEP) {
 #if defined(USE_CUDA)
 TEST(AutoEpSelection, CudaEP) {
   Ort::KeyValuePairs provider_options;
+#ifdef ENABLE_CUDA_NHWC_OPS
   provider_options.Add("prefer_nhwc", "1");
+#else
+  provider_options.Add("use_tf32", "0");
+#endif
   const auto cuda_ep_lib_path =
       std::filesystem::path{GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_cuda"))};
-  RunBasicTest(kCudaExecutionProvider, cuda_ep_lib_path, provider_options);
+  RunBasicTest(kCudaExecutionProvider, cuda_ep_lib_path, provider_options,
+               /*select_devices*/ nullptr, /*test_auto_select*/ true, /*disable_cpu_ep_fallback*/ true);
 }
 #endif
 

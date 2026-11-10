@@ -3056,7 +3056,7 @@ struct StatefulExecution : detail::Base<OrtStatefulExecution> {
   OrtStatefulStagingInfo GetStagingInfo(size_t component = 0) const;  ///< CPU payloads, not inferred DMA bytes.
 };
 
-/** \brief Move-only CPU cache layouts; SetConfig atomically replaces copied records.
+/** \brief Move-only cache layouts; SetConfig atomically replaces copied records.
  * \since Version 1.32.
  */
 struct KVCacheOptions : detail::Base<OrtKVCacheOptions> {
@@ -3094,8 +3094,10 @@ struct KVCacheView {
   friend struct KVCacheManager;
 };
 
-/** \brief Move-only CPU cache manager; allocator must outlive retained views/values.
- * Unsupported device allocators/updates throw. \since Version 1.32.
+/** \brief Move-only cache manager; allocator must outlive retained views/values.
+ * CPU is the default. Explicit provider selection enables compatible device
+ * storage; device values require an explicit caller copy for CPU inspection.
+ * \since Version 1.32.
  */
 struct KVCacheManager : detail::Base<OrtKVCacheManager> {
   using Base = detail::Base<OrtKVCacheManager>;

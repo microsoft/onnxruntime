@@ -30,6 +30,15 @@ size_t StorageBytes(const KVCacheSpec& spec, int64_t length) {
   return SafeInt<size_t>(static_cast<int64_t>(elements)) * ElementType(spec)->Size();
 }
 
+OrtStatus* ORT_API_CALL RetainCacheValue(const OrtValue* value, OrtValue** out) noexcept {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(!value || !out, ORT_INVALID_ARGUMENT, "Cache value/output must be non-NULL");
+  auto retained = std::make_unique<OrtValue>(*value);
+  *out = retained.release();
+  return nullptr;
+  API_IMPL_END
+}
+
 }  // namespace
 
 Status KVCacheManager::ValidateSpecs(gsl::span<const KVCacheSpec> specs) {
@@ -333,7 +342,7 @@ Status KVCacheManager::Apply(OrtStatefulProviderOperation operation, Entry& entr
         sizeof(request), OrtGetApiBase()->GetApi(ORT_API_VERSION), operation, &spec,
         entry.storage.IsTensor() ? &entry.storage : nullptr,
         entry.view.value.IsTensor() ? &entry.view.value : nullptr, value,
-        entry.view.length, entry.view.capacity, capacity, allocator.get(), &work, &CpuReference};
+        entry.view.length, entry.view.capacity, capacity, allocator.get(), &work, &CpuReference, &RetainCacheValue};
     OrtStatefulCacheOperationResult result{};
     result.struct_size = sizeof(result);
     const auto& descriptor = dispatch_.Binding().Descriptor();
@@ -374,7 +383,8 @@ Status KVCacheManager::Apply(OrtStatefulProviderOperation operation, Entry& entr
         Entry next{entry.spec, {}, {{}, result.length, result.capacity}};
         const bool existing = entry.storage.IsTensor() &&
                               storage->GetMutable<Tensor>() == entry.storage.GetMutable<Tensor>();
-        next.storage = existing ? std::move(*storage)
+        // Equal Tensor pointers can have different owners; preserve the existing lease.
+        next.storage = existing ? entry.storage
                                 : dispatch_.Binding().RetainValue(std::move(*storage), allocator);
         next.view.value = MakeView(next, result.length);
         work.next = std::move(next);

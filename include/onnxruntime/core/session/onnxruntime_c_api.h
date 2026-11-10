@@ -9304,7 +9304,7 @@ typedef struct OrtStatefulFeedbackBinding {
   const char* output_name;
 } OrtStatefulFeedbackBinding;
 
-/** \brief Contiguous CPU cache layout. Fixed dimensions are positive; sequence is initially zero.
+/** \brief Contiguous cache layout. Fixed dimensions are positive; sequence is initially zero.
  * \since Version 1.32.
  */
 typedef struct OrtStatefulKVCacheSpec {
@@ -9453,7 +9453,7 @@ typedef struct OrtStatefulInputs {
   size_t num_initial_state;
 } OrtStatefulInputs;
 
-/** \brief CPU cache options description. \since Version 1.32. */
+/** \brief Cache options description; CPU is the default backend. \since Version 1.32. */
 typedef struct OrtStatefulKVCacheConfig {
   size_t struct_size;  ///< Initialize to sizeof(OrtStatefulKVCacheConfig).
   const OrtStatefulKVCacheSpec* caches;
@@ -9594,6 +9594,12 @@ typedef struct OrtStatefulCacheOperationRequest {
   OrtAllocator* allocator;
   void* cpu_context;
   ORT_API2_STATUS(cpu_reference, void* context, OrtStatefulCacheOperationResult* out);
+  /** \brief Return an owned reference to a borrowed request tensor without copying data.
+   * Use for Share or to retain existing storage during Reset. The returned handle
+   * must be released with ReleaseValue or transferred in the operation result.
+   * Check struct_size before accessing this trailing member. \since Version 1.32.
+   */
+  ORT_API2_STATUS(retain_value, _In_ const OrtValue* value, _Outptr_ OrtValue** out);
 } OrtStatefulCacheOperationRequest;
 
 /** \brief Borrowed synchronous greedy request; no CPU/device copies are inferred.
@@ -9815,7 +9821,7 @@ struct OrtStatefulApi {
   ORT_API2_STATUS(StatefulStepResultGetOutputs, _In_ const OrtStatefulStepResult* result, OrtStatefulOutputGroup group,
                   _Outptr_result_buffer_maybenull_(*count) const OrtStatefulNamedValue** values, _Out_ size_t* count);
   /** \brief Copy cache layouts into options.
-   * \param[in] config Sized CPU cache configuration.
+   * \param[in] config Sized cache configuration.
    * \param[out] out Owned options; release with ReleaseKVCacheOptions.
    * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
    */
@@ -9831,9 +9837,9 @@ struct OrtStatefulApi {
    * \param[in] input Options or NULL. \since Version 1.32.
    */
   ORT_CLASS_RELEASE(KVCacheOptions);
-  /** \brief Initialize empty CPU caches.
+  /** \brief Initialize empty caches on the selected CPU/provider device.
    * \param[in] options Captured layouts.
-   * \param[in] allocator CPU allocator; must outlive manager and every retained value/view using its callbacks.
+   * \param[in] allocator Compatible selected-device allocator; must outlive manager and retained values/views.
    * \param[out] out Owned manager; release with ReleaseKVCacheManager.
    * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
    */
