@@ -213,11 +213,12 @@ Status ApplyFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& cont
 class FlashAttentionPagedPrefillSubgroupMatrixProgram final
     : public Program<FlashAttentionPagedPrefillSubgroupMatrixProgram> {
  public:
-  FlashAttentionPagedPrefillSubgroupMatrixProgram(int head_size, int num_heads, bool causal)
+  FlashAttentionPagedPrefillSubgroupMatrixProgram(int head_size, int num_heads, bool causal, uint32_t matrix_m)
       : Program{"FlashAttentionPagedPrefillSubgroupMatrix"},
         head_size_(head_size),
         num_heads_(num_heads),
-        causal_(causal) {}
+        causal_(causal),
+        matrix_m_(matrix_m) {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override;
 
@@ -232,20 +233,22 @@ class FlashAttentionPagedPrefillSubgroupMatrixProgram final
   int head_size_;
   int num_heads_;
   bool causal_;
+  uint32_t matrix_m_;
 };
 
 class FlashAttentionPrefillSubgroupMatrixProgram final
     : public Program<FlashAttentionPrefillSubgroupMatrixProgram> {
  public:
   FlashAttentionPrefillSubgroupMatrixProgram(int head_size, int num_heads, bool causal,
-                                             bool q_bnsh, bool use_seqlen_k, bool use_seqlens_q)
+                                             bool q_bnsh, bool use_seqlen_k, bool use_seqlens_q, uint32_t matrix_m)
       : Program{"FlashAttentionPrefillSubgroupMatrix"},
         head_size_(head_size),
         num_heads_(num_heads),
         causal_(causal),
         q_bnsh_(q_bnsh),
         use_seqlen_k_(use_seqlen_k),
-        use_seqlens_q_(use_seqlens_q) {}
+        use_seqlens_q_(use_seqlens_q),
+        matrix_m_(matrix_m) {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override;
 
@@ -263,6 +266,7 @@ class FlashAttentionPrefillSubgroupMatrixProgram final
   bool q_bnsh_;
   bool use_seqlen_k_;
   bool use_seqlens_q_;
+  uint32_t matrix_m_;
 };
 
 class FlashAttentionPrefillProgram final : public Program<FlashAttentionPrefillProgram> {

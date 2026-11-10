@@ -199,7 +199,8 @@ $MAIN {
     loadk(k_start, batch_head_idx, local_idx, kv_step, total_sequence_length);
     workgroupBarrier();
 
-    var qk : array<vec4<qk_precision>, num_qk_vec>;
+    // Explicit initialization keeps the reset inside the KV loop in SPIR-V.
+    var qk : array<vec4<qk_precision>, num_qk_vec> = array<vec4<qk_precision>, num_qk_vec>();
 
     // 1. QK^T. Each 4-element dot runs in the native element type (f16 for fp16) and is widened to f32 only
     //    when accumulated into the score.

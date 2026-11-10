@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #param head_size_param
+#param matrix_m_param
 #param num_heads_param
 #param is_unidirectional
 #param is_paged
@@ -14,8 +15,10 @@
 const head_size: u32 = head_size_param;
 const num_heads: u32 = num_heads_param;
 // Uniform single-sequence chunks use direct cooperative loads. Four
-// subgroups share a 32-query x 64-key tile, retaining their outputs in registers.
-const q_rows: u32 = 32u;
+// subgroups share a (2 * matrix_m)-query x 64-key tile, retaining their outputs in registers.
+const matrix_m: u32 = matrix_m_param;
+const matrix_subgroup_size: u32 = 2u * matrix_m;
+const q_rows: u32 = 2u * matrix_m;
 const kv_rows: u32 = 64u;
 var<workgroup> scores: array<f32, q_rows * kv_rows>;
 var<workgroup> probabilities: array<f16, q_rows * kv_rows>;
@@ -44,15 +47,15 @@ $MAIN {
   let total_length = uniforms.total_sequence_length;
 #endif
   let past_length = total_length - min(total_length, q_length);
-  let sg = local_idx / 32u;
-  let lane = local_idx % 32u;
+  let sg = local_idx / matrix_subgroup_size;
+  let lane = local_idx % matrix_subgroup_size;
   let q_block = sg / 2u;
   let n_block = sg % 2u;
 #if q_bnsh
-  let q_offset = (head * uniforms.new_sequence_length + q_start + q_block * 16u) * head_size;
+  let q_offset = (head * uniforms.new_sequence_length + q_start + q_block * matrix_m) * head_size;
   let q_stride = head_size;
 #else
-  let q_offset = ((q_start + q_block * 16u) * num_heads + head) * head_size;
+  let q_offset = ((q_start + q_block * matrix_m) * num_heads + head) * head_size;
   let q_stride = num_heads * head_size;
 #endif
 #if is_paged
@@ -78,10 +81,10 @@ $MAIN {
 #else
     let cache_base = ((head / uniforms.n_reps) * uniforms.present_sequence_length + k_start) * head_size;
 #endif
-    var qk0 = subgroup_matrix_result<f32, 16, 16>(0.0f);
-    var qk1 = subgroup_matrix_result<f32, 16, 16>(0.0f);
+    var qk0 = subgroup_matrix_result<f32, 16, matrix_m>(0.0f);
+    var qk1 = subgroup_matrix_result<f32, 16, matrix_m>(0.0f);
     for (var d = 0u; d < head_size; d += 16u) {
-      let a = subgroupMatrixLoad<subgroup_matrix_left<f16, 16, 16>, row_major>(&q, q_offset + d, q_stride);
+      let a = subgroupMatrixLoad<subgroup_matrix_left<f16, 16, matrix_m>, row_major>(&q, q_offset + d, q_stride);
       let b0 = subgroupMatrixLoad<subgroup_matrix_right<f16, 16, 16>, col_major>(
           &key_cache, cache_base + n_block * 32u * kv_stride + d, kv_stride);
       let b1 = subgroupMatrixLoad<subgroup_matrix_right<f16, 16, 16>, col_major>(
@@ -89,8 +92,8 @@ $MAIN {
       qk0 = subgroupMatrixMultiplyAccumulate(a, b0, qk0);
       qk1 = subgroupMatrixMultiplyAccumulate(a, b1, qk1);
     }
-    subgroupMatrixStore<row_major>(&scores, q_block * 16u * kv_rows + n_block * 32u, qk0, kv_rows);
-    subgroupMatrixStore<row_major>(&scores, q_block * 16u * kv_rows + n_block * 32u + 16u, qk1, kv_rows);
+    subgroupMatrixStore<row_major>(&scores, q_block * matrix_m * kv_rows + n_block * 32u, qk0, kv_rows);
+    subgroupMatrixStore<row_major>(&scores, q_block * matrix_m * kv_rows + n_block * 32u + 16u, qk1, kv_rows);
     workgroupBarrier();
     let softmax_row = local_idx / 4u;
     let softmax_lane = local_idx % 4u;
@@ -125,13 +128,13 @@ $MAIN {
       row_scale[softmax_row] = rescale;
     }
     workgroupBarrier();
-    let output_row = q_block * 16u + lane / 2u;
+    let output_row = q_block * matrix_m + lane / 2u;
     for (var d_index = 0u; d_index < head_size / 32u; d_index++) {
       let d = d_index * 32u + n_block * 16u;
-      var pv = subgroup_matrix_result<f32, 16, 16>(0.0f);
+      var pv = subgroup_matrix_result<f32, 16, matrix_m>(0.0f);
       for (var k = 0u; k < kv_rows; k += 16u) {
-        let a = subgroupMatrixLoad<subgroup_matrix_left<f16, 16, 16>, row_major>(
-            &probabilities, q_block * 16u * kv_rows + k, kv_rows);
+        let a = subgroupMatrixLoad<subgroup_matrix_left<f16, 16, matrix_m>, row_major>(
+            &probabilities, q_block * matrix_m * kv_rows + k, kv_rows);
         if (k_start + k + 16u <= total_length) {
           let b = subgroupMatrixLoad<subgroup_matrix_right<f16, 16, 16>, row_major>(
               &value_cache, cache_base + k * kv_stride + d, kv_stride);
@@ -140,7 +143,7 @@ $MAIN {
           // Metadata can overestimate the real length. Do not multiply zero
           // probabilities by uninitialized (possibly NaN) values beyond it.
           workgroupBarrier();
-          for (var i = lane; i < 256u; i += 32u) {
+          for (var i = lane; i < 256u; i += matrix_subgroup_size) {
             var value = f16(0);
             if (k_start + k + i / 16u < total_length) {
               value = value_cache[cache_base + (k + i / 16u) * kv_stride + d + i % 16u];
@@ -155,17 +158,17 @@ $MAIN {
         }
       }
       // Scores are dead after softmax; reuse their first four tiles for PV.
-      subgroupMatrixStore<row_major>(&scores, sg * 256u, pv, 16u);
+      subgroupMatrixStore<row_major>(&scores, sg * matrix_m * 16u, pv, 16u);
       workgroupBarrier();
       for (var i = 0u; i < 8u; i++) {
         let index = d_index * 8u + i;
         output_values[index] = output_values[index] * row_scale[output_row] +
-                               scores[sg * 256u + (lane / 2u) * 16u + (lane % 2u) * 8u + i];
+                               scores[sg * matrix_m * 16u + (lane / 2u) * 16u + (lane % 2u) * 8u + i];
       }
       workgroupBarrier();
     }
   }
-  let output_row = q_block * 16u + lane / 2u;
+  let output_row = q_block * matrix_m + lane / 2u;
   if (q_start + output_row < q_tile_start) {
     return;
   }
