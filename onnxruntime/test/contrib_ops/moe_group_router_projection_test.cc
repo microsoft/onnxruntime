@@ -434,28 +434,18 @@ class ChainedRouterTester final : public OpTester {
   void AddNodes(Graph& graph, std::vector<NodeArg*>& inputs, std::vector<NodeArg*>& outputs,
                 std::vector<std::function<void(Node&)>>&) override {
     auto& empty = graph.GetOrCreateNodeArg("", nullptr);
-    auto& indices = graph.GetOrCreateNodeArg("selected_indices", nullptr);
-    auto& weights = graph.GetOrCreateNodeArg("selected_weights", nullptr);
     auto& router = graph.AddNode("group_router", "MoEGroupRouter", "",
-                                 {inputs[1], inputs[3], inputs[2]}, {&empty, &indices, &weights}, nullptr, kMSDomain);
+                                 {inputs[1], inputs[3], inputs[2]}, {&empty, outputs[1], outputs[2]}, nullptr, kMSDomain);
     router.AddAttribute("top_k", int64_t{3});
     router.AddAttribute("router_scale", 2.5f);
     auto& chained = graph.AddNode("chained_moe", "MoEPacked", "",
-                                  {inputs[0], &empty, inputs[4], &empty, inputs[5], &indices, &weights},
+                                  {inputs[0], &empty, inputs[4], &empty, inputs[5], outputs[1], outputs[2]},
                                   {outputs[0]}, nullptr, kMSDomain);
-    auto& integrated = graph.AddNode("integrated_moe", "MoEPacked", "",
-                                     {inputs[0], &empty, inputs[4], &empty, inputs[5], &empty, &empty,
-                                      inputs[1], inputs[2], inputs[3]},
-                                     {outputs[1]}, nullptr, kMSDomain);
-    for (auto* node : {&chained, &integrated}) {
-      node->AddAttribute("k", int64_t{3});
-      node->AddAttribute("activation_type", std::string("relu_squared"));
-      node->AddAttribute("gate_type", int64_t{16});
-      node->AddAttribute("down_type", int64_t{16});
-    }
+    chained.AddAttribute("k", int64_t{3});
+    chained.AddAttribute("activation_type", std::string("relu_squared"));
+    chained.AddAttribute("gate_type", int64_t{16});
+    chained.AddAttribute("down_type", int64_t{16});
     chained.AddAttribute("normalize_routing_weights", int64_t{0});
-    integrated.AddAttribute("routing_function", std::string("sigmoid"));
-    integrated.AddAttribute("router_scale", 2.5f);
   }
 };
 
@@ -534,17 +524,25 @@ void CheckChainedRouter(int rows) {
   test.AddInput<uint8_t>("gate", {experts, intermediate, 66}, bank(intermediate, gate_scale), true);
   test.AddInput<uint8_t>("down", {experts, hidden, 66}, bank(hidden, down_scale), true);
   test.AddOutput<T>("chained", {rows, hidden}, expected);
-  test.AddOutput<T>("integrated", {rows, hidden}, expected);
+  test.AddOutput<int32_t>("selected_indices", {rows, k}, routes.indices);
+  test.AddOutput<float>("selected_weights", {rows, k}, routes.weights);
   test.SetCustomOutputVerifier([&](const std::vector<OrtValue>& fetches, const std::string& provider) {
     ASSERT_EQ(provider, kCudaExecutionProvider);
-    ASSERT_EQ(fetches.size(), 2u);
-    const auto* chained = fetches[0].Get<Tensor>().Data<T>();
-    const auto* integrated = fetches[1].Get<Tensor>().Data<T>();
+    ASSERT_EQ(fetches.size(), 3u);
+    const auto chained = fetches[0].Get<Tensor>().DataAsSpan<T>();
+    const auto indices = fetches[1].Get<Tensor>().DataAsSpan<int32_t>();
+    const auto weights = fetches[2].Get<Tensor>().DataAsSpan<float>();
+    ASSERT_EQ(chained.size(), expected.size());
+    ASSERT_EQ(indices.size(), routes.indices.size());
+    ASSERT_EQ(weights.size(), routes.weights.size());
     for (size_t i = 0; i < expected.size(); ++i) {
-      EXPECT_EQ(chained[i].val, integrated[i].val) << "element " << i;
       const float ref = expected[i].ToFloat();
       const float tolerance = std::is_same_v<T, BFloat16> ? .01f : .002f;
       EXPECT_NEAR(chained[i].ToFloat(), ref, 1e-6f + tolerance * std::abs(ref)) << "element " << i;
+    }
+    for (size_t i = 0; i < routes.indices.size(); ++i) {
+      EXPECT_EQ(indices[i], routes.indices[i]) << "route " << i;
+      EXPECT_NEAR(weights[i], routes.weights[i], 1e-5f) << "route " << i;
     }
   });
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
@@ -552,7 +550,7 @@ void CheckChainedRouter(int rows) {
   test.Run(SessionOptions{}, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
-TEST(MoEGroupRouterProjectionTest, ChainedPreselectedMoeMatchesIntegratedSigmoidAndHostReference) {
+TEST(MoEGroupRouterProjectionTest, ChainedPreselectedMoeMatchesHostReference) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
   for (int rows : {3, 9}) {
     SCOPED_TRACE(testing::Message() << "rows=" << rows);
