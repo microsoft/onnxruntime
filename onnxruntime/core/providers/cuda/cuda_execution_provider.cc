@@ -4143,7 +4143,7 @@ std::vector<std::unique_ptr<ComputeCapability>> CUDAExecutionProvider::GetCapabi
   ORT_ENFORCE(query_context, "Planning discovery requires a query snapshot.");
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (const auto& node : graph.Nodes()) {
-    if (kernel_lookup.LookUpKernel(node) == nullptr ||
+    if (kernel_lookup.LookUpKernelForPlanning(node) == nullptr ||
         CudaKernelNeedsFallbackToCPU(node, graph, *GetLogger(), IsNHWCPreferred())) {
       continue;
     }

@@ -73,7 +73,7 @@ std::vector<std::unique_ptr<ComputeCapability>> CPUExecutionProvider::GetCapabil
   ORT_ENFORCE(query_context, "Planning discovery requires a query snapshot.");
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (const auto& node : graph.Nodes()) {
-    if (kernel_lookup.LookUpKernel(node) == nullptr) {
+    if (kernel_lookup.LookUpKernelForPlanning(node) == nullptr) {
       continue;
     }
     auto sub_graph = std::make_unique<IndexedSubGraph>();

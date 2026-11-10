@@ -145,6 +145,12 @@ class IExecutionProvider {
      */
     virtual const KernelCreateInfo* LookUpKernel(const Node& node) const = 0;
 
+    /**
+     * Find a matching kernel for this EP, ignoring the node's committed EP assignment.
+     * Unsupported lookups return nullptr without adapting legacy lookup.
+     */
+    virtual const KernelCreateInfo* LookUpKernelForPlanning(const Node&) const { return nullptr; }
+
    protected:
     ~IKernelLookup() = default;
   };

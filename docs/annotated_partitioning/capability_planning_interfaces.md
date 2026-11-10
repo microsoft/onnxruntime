@@ -60,6 +60,10 @@ providers; `ComputeCapability` is incomplete in `execution_provider.h`.
 CPU and CUDA explicitly override planning discovery. CPU reports matching registered kernels. CUDA also applies
 the same read-only support exclusions as legacy discovery, but does not apply prior EP assignments, CPU-preference
 placement heuristics, additive acceptance, accountant limits, model-path updates, or device-memory queries.
+Both adapters use `IKernelLookup::LookUpKernelForPlanning`, not legacy lookup. Core `KernelLookup` searches
+registries for the explicitly requested provider while retaining kernel version/type checks and registry priority;
+it never consults or changes committed node assignments. Custom lookups must opt in explicitly: the planning
+lookup default returns `nullptr` without adapting legacy lookup.
 Neither adapter invokes optimization hooks. Each offer has a standalone, unchanged-graph recipe and an unresolved
 contract: `Auto` is only a placeholder here, not a resolved policy or authorization to widen runtime routes.
 These offers cannot be bound until later adapters supply eligibility, policy state, coverage, and bounded requirements.
@@ -409,6 +413,7 @@ The added overload shifts the legacy `GetCapability` and later slots even when d
 declaration order. This MSVC analysis comes from Clang's ABI implementation, not an MSVC layout test.
 
 This choice relies on **rebuilding core and shared providers together**, not mixed-version compatibility.
+Matching rebuilds also cover the appended `IKernelLookup::LookUpKernelForPlanning` virtual.
 `IExecutionProvider` does not have a strictly append-only history (`SupportsMoeOffload`, #33575), and
 `ProviderLibrary::Load` has no version handshake. `ProviderHost` entries and published C API tables retain their
 append-only constraints.

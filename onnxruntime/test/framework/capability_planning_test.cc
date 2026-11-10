@@ -4,6 +4,7 @@
 #include "core/framework/capability_planning.h"
 #include "core/framework/capability_planning_discovery.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/kernel_lookup.h"
 #include "core/framework/op_kernel.h"
 #include "core/graph/model.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -398,11 +399,14 @@ std::unique_ptr<ComputeCapability> MakeKernelOffer(
 class DiscoveryKernelLookup : public IExecutionProvider::IKernelLookup {
  public:
   const KernelCreateInfo* LookUpKernel(const Node& node) const override {
+    ++legacy_calls;
     if (node.OpType() == "Identity") {
       return &identity_;
     }
     return node.OpType() == "Cast" ? &cast_ : nullptr;
   }
+
+  mutable int legacy_calls = 0;
 
  private:
   KernelCreateInfo identity_{KernelDefBuilder().SetName("Identity").SinceVersion(1).Build(), nullptr};
@@ -468,6 +472,7 @@ class CapabilityPlanningDiscoveryTest : public ::testing::Test {
 
   Model model_;
   GraphOptimizerRegistry registry_;
+  OpSchemaKernelTypeStrResolver kernel_type_str_resolver_;
   DiscoveryKernelLookup lookup_;
 };
 
@@ -622,6 +627,66 @@ TEST_F(CapabilityPlanningDiscoveryTest, DispatcherPreservesEpExceptionDiagnostic
 }
 #endif
 
+TEST_F(CapabilityPlanningDiscoveryTest, PlanningDoesNotAdaptLegacyKernelLookup) {
+  const GraphViewer graph(model_.MainGraph());
+  CPUExecutionProvider ep(CPUExecutionProviderInfo(false));
+  auto request = Request();
+  request.execution_device = ep.GetDevice();
+  request.ep_instance_id = "CPU:0";
+  std::shared_ptr<const CapabilityPlanningQuery> query;
+  ASSERT_STATUS_OK(NormalizeCapabilityPlanningQuery(graph, std::move(request), query));
+  CapabilityPlanningQueryResult result;
+  EXPECT_EQ(QueryCapabilityPlanning(ep, graph, lookup_, registry_, query, result).Code(), common::NOT_IMPLEMENTED);
+  EXPECT_TRUE(result.capabilities.empty());
+  EXPECT_EQ(lookup_.legacy_calls, 0);
+}
+
+TEST_F(CapabilityPlanningDiscoveryTest, PlanningLookupIgnoresAssignmentsAndPreservesKernelMatching) {
+  // Synthetic CUDA registrations exercise provider selection without requiring a GPU.
+  KernelRegistry wrong_type;
+  KernelRegistry wrong_version;
+  KernelRegistry supported;
+  auto& node = *model_.MainGraph().GetNode(0);
+  const int node_version = node.SinceVersion();
+  const std::array<std::pair<std::string, std::string>, 2> placements{{
+      {kCpuExecutionProvider, kCudaExecutionProvider},
+      {kCudaExecutionProvider, kCpuExecutionProvider},
+  }};
+  const auto register_identity = [](KernelRegistry& registry, ProviderType provider, int version, MLDataType type) {
+    KernelDefBuilder builder;
+    builder.SetName("Identity").SetDomain(kOnnxDomain).SinceVersion(version).Provider(provider).TypeConstraint("T", type);
+    return registry.Register(builder, nullptr);
+  };
+  for (const auto& placement : placements) {
+    ASSERT_STATUS_OK(register_identity(wrong_type, placement.first, node_version,
+                                       DataTypeImpl::GetTensorType<int64_t>()));
+    ASSERT_STATUS_OK(register_identity(wrong_version, placement.first, node_version + 1,
+                                       DataTypeImpl::GetTensorType<float>()));
+    ASSERT_STATUS_OK(register_identity(supported, placement.first, node_version,
+                                       DataTypeImpl::GetTensorType<float>()));
+  }
+  const std::array<gsl::not_null<const KernelRegistry*>, 3> kernel_registries{
+      &wrong_type, &wrong_version, &supported};
+  for (const auto& [queried_provider, assigned_provider] : placements) {
+    node.SetExecutionProviderType(assigned_provider);
+    const KernelLookup kernel_lookup(queried_provider, kernel_registries, kernel_type_str_resolver_,
+                                     DefaultLoggingManager().DefaultLogger());
+    const auto* planning = kernel_lookup.LookUpKernelForPlanning(node);
+    ASSERT_NE(planning, nullptr);
+    EXPECT_EQ(planning->kernel_def->Provider(), queried_provider);
+    EXPECT_EQ(planning->kernel_def->SinceVersion().first, node_version);
+    EXPECT_EQ(planning->kernel_def->TypeConstraints().at("T").front(), DataTypeImpl::GetTensorType<float>());
+    const auto* legacy = kernel_lookup.LookUpKernel(node);
+    ASSERT_NE(legacy, nullptr);
+    EXPECT_EQ(legacy->kernel_def->Provider(), assigned_provider);
+    EXPECT_EQ(node.GetExecutionProviderType(), assigned_provider);
+  }
+  const std::array<gsl::not_null<const KernelRegistry*>, 2> incompatible_registries{&wrong_type, &wrong_version};
+  const KernelLookup incompatible_lookup(placements.front().first, incompatible_registries, kernel_type_str_resolver_,
+                                         DefaultLoggingManager().DefaultLogger());
+  EXPECT_EQ(incompatible_lookup.LookUpKernelForPlanning(node), nullptr);
+}
+
 TEST_F(CapabilityPlanningDiscoveryTest, CpuDiscoveryIgnoresAssignmentsWithoutClaimingZeroRequirements) {
   auto& source = model_.MainGraph();
   for (auto& node : source.Nodes()) {
@@ -629,6 +694,11 @@ TEST_F(CapabilityPlanningDiscoveryTest, CpuDiscoveryIgnoresAssignmentsWithoutCla
   }
   const GraphViewer graph(source);
   CPUExecutionProvider ep(CPUExecutionProviderInfo(false));
+  const auto kernel_registry = ep.GetKernelRegistry();
+  ASSERT_NE(kernel_registry, nullptr);
+  const std::array<gsl::not_null<const KernelRegistry*>, 1> kernel_registries{kernel_registry.get()};
+  const KernelLookup kernel_lookup(ep.Type(), kernel_registries, kernel_type_str_resolver_,
+                                   DefaultLoggingManager().DefaultLogger());
   auto request = Request();
   request.execution_device = ep.GetDevice();
   request.ep_instance_id = "CPU:0";
@@ -636,7 +706,7 @@ TEST_F(CapabilityPlanningDiscoveryTest, CpuDiscoveryIgnoresAssignmentsWithoutCla
   std::shared_ptr<const CapabilityPlanningQuery> query;
   ASSERT_STATUS_OK(NormalizeCapabilityPlanningQuery(graph, std::move(request), query));
   CapabilityPlanningQueryResult result;
-  ASSERT_STATUS_OK(QueryCapabilityPlanning(ep, graph, lookup_, registry_, query, result));
+  ASSERT_STATUS_OK(QueryCapabilityPlanning(ep, graph, kernel_lookup, registry_, query, result));
   ASSERT_EQ(result.capabilities.size(), 2u);
   for (const auto& capability : result.capabilities) {
     EXPECT_EQ(capability->planning->query, query);
@@ -646,9 +716,7 @@ TEST_F(CapabilityPlanningDiscoveryTest, CpuDiscoveryIgnoresAssignmentsWithoutCla
     EXPECT_FALSE(contract.unresolved_terms.empty());
     EXPECT_EQ(source.GetNode(capability->sub_graph->nodes.front())->GetExecutionProviderType(), kCudaExecutionProvider);
   }
-  const auto legacy = ep.GetCapability(graph, lookup_, registry_);
-  ASSERT_EQ(legacy.size(), 2u);
-  EXPECT_EQ(legacy.front()->planning, nullptr);
+  EXPECT_TRUE(ep.GetCapability(graph, kernel_lookup, registry_).empty());
 }
 
 #ifdef USE_CUDA
@@ -671,19 +739,24 @@ TEST_F(CapabilityPlanningDiscoveryTest, CudaDiscoveryIgnoresAssignmentsButPreser
     node.SetExecutionProviderType(kCpuExecutionProvider);
   }
   const GraphViewer graph(source);
+  const auto kernel_registry = ep->GetKernelRegistry();
+  ASSERT_NE(kernel_registry, nullptr);
+  const std::array<gsl::not_null<const KernelRegistry*>, 1> kernel_registries{kernel_registry.get()};
+  const KernelLookup kernel_lookup(ep->Type(), kernel_registries, kernel_type_str_resolver_,
+                                   DefaultLoggingManager().DefaultLogger());
   auto request = Request();
   request.execution_device = ep->GetDevice();
   std::shared_ptr<const CapabilityPlanningQuery> query;
   ASSERT_STATUS_OK(NormalizeCapabilityPlanningQuery(graph, std::move(request), query));
   CapabilityPlanningQueryResult result;
-  ASSERT_STATUS_OK(QueryCapabilityPlanning(*ep, graph, lookup_, registry_, query, result));
+  ASSERT_STATUS_OK(QueryCapabilityPlanning(*ep, graph, kernel_lookup, registry_, query, result));
   ASSERT_EQ(result.capabilities.size(), 2u);
   for (const auto& capability : result.capabilities) {
     EXPECT_NE(capability->sub_graph->nodes.front(), cast.Index());
     EXPECT_EQ(source.GetNode(capability->sub_graph->nodes.front())->GetExecutionProviderType(), kCpuExecutionProvider);
     EXPECT_FALSE(capability->planning->contracts.front().allocation_requirements.has_value());
   }
-  EXPECT_TRUE(ep->GetCapability(graph, lookup_, registry_, nullptr).empty());
+  EXPECT_TRUE(ep->GetCapability(graph, kernel_lookup, registry_, nullptr).empty());
 }
 #endif
 

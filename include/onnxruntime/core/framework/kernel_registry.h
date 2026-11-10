@@ -39,6 +39,13 @@ class KernelRegistry {
                        const logging::Logger& logger,
                        const KernelCreateInfo** out) const;
 
+  // Match the specified provider without consulting the node's committed EP assignment.
+  // Kernel version and type constraints are still checked against the node.
+  Status TryFindKernelForPlanning(const Node& node, ProviderType exec_provider,
+                                  const IKernelTypeStrResolver& kernel_type_str_resolver,
+                                  const logging::Logger& logger,
+                                  const KernelCreateInfo** out) const;
+
   // map of type constraint name to required type
   using TypeConstraintMap = InlinedHashMap<std::string, MLDataType>;
 
@@ -88,6 +95,7 @@ class KernelRegistry {
  private:
   // TryFindKernel implementation. Either kernel_type_str_resolver or type_constraints is provided.
   Status TryFindKernelImpl(const Node& node, ProviderType exec_provider,
+                           bool ignore_node_assignment,
                            const IKernelTypeStrResolver* kernel_type_str_resolver,
                            const TypeConstraintMap* type_constraints,
                            const logging::Logger& logger,
