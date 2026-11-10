@@ -227,15 +227,13 @@ Status MoEGroupRouter<T>::Compute(OpKernelContext* context) const {
   const Tensor* expert_bias = context->Input<Tensor>(1);
   const Tensor* projection = context->Input<Tensor>(2);
   const auto& in_shape = logits->Shape();
+  if (projection) {
+    ORT_RETURN_IF_ERROR(ValidateMoEGroupRouterProjection(
+        in_shape, projection->Shape(), expert_bias->Shape(), top_k_));
+  }
   ORT_RETURN_IF_NOT(in_shape.NumDimensions() >= 2, "logits must have rank >= 2");
   const int64_t width = in_shape[in_shape.NumDimensions() - 1];
   ORT_RETURN_IF_NOT(width > 0, "logits last dimension must be positive");
-  if (projection) {
-    ORT_RETURN_IF_NOT(in_shape.NumDimensions() == 2 && projection->Shape().NumDimensions() == 2 &&
-                          projection->Shape()[1] == width && width % 256 == 0 &&
-                          width <= std::numeric_limits<int>::max(),
-                      "projection_weight requires rank-two inputs with matching width divisible by 256");
-  }
   const int64_t num_experts = projection ? projection->Shape()[0] : width;
   ORT_RETURN_IF_NOT(num_experts > 0 && expert_bias->Shape().Size() == num_experts,
                     "expert_bias length must match num_experts");
