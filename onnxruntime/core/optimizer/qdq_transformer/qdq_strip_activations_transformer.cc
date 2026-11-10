@@ -3,6 +3,7 @@
 
 #include "core/optimizer/qdq_transformer/qdq_strip_activations_transformer.h"
 
+#include <string>
 #include <vector>
 
 #include "core/graph/constants.h"
@@ -21,7 +22,8 @@ namespace {
 
 // Remove a Q->DQ pair by bypassing both nodes and connecting Q's input source directly to DQ's downstream
 // consumers. Handles graph outputs. Returns true if the pair was removed.
-// This handles Q -> multiple DQ (each DQ with single consumer), following the pattern in qdq_final_cleanup.cc.
+// Q may feed multiple DQ nodes, following the pattern in qdq_final_cleanup.cc. Each DQ must either have exactly one
+// consumer, or have no consumers and produce a graph output.
 bool RemoveQDQPair(Graph& graph, Node& q_node, const logging::Logger& logger) {
   if (!QDQ::MatchQNode(q_node) || q_node.GetOutputEdgesCount() < 1 ||
       graph.NodeProducesGraphOutput(q_node)) {
@@ -207,9 +209,9 @@ Status QDQStripActivationsTransformer::ApplyImpl(Graph& graph, bool& modified, i
 
       auto selection = dq_matmul_selector.Select(updated_viewer, *node_ptr);
       if (selection.has_value()) {
-        NodesToOptimize nto(graph, *selection);
-        if (nto.IsValid()) {
-          ORT_RETURN_IF_ERROR(dq_matmul_action.Run(graph, nto));
+        NodesToOptimize nodes_to_optimize(graph, *selection);
+        if (nodes_to_optimize.IsValid()) {
+          ORT_RETURN_IF_ERROR(dq_matmul_action.Run(graph, nodes_to_optimize));
           modified = true;
         }
       }

@@ -104,6 +104,8 @@ static const char* const kOrtSessionOptionsDisableDoubleQDQRemover = "session.di
 // Q/DQ removal, and constant-folds remaining weight DQ nodes into float initializers unless
 // session.disable_qdq_constant_folding is enabled. Pairs feeding implicit subgraph inputs are preserved.
 // Removing quantization can change model accuracy; validate the result for the target workload.
+// Not intended for models where most activations should stay quantized end-to-end; keep the default QDQ handling
+// (optionally with session.enable_quant_qdq_cleanup) for those.
 // This is only supported in a full build. It has no effect in a minimal build.
 // The default value is "0"
 static const char* const kOrtSessionOptionsQDQStripActivations = "session.qdq_strip_activations";

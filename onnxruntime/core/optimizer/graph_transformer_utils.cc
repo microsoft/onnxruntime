@@ -333,9 +333,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       const bool enable_quant_qdq_cleanup =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQCleanup, "0") == "1";
+#if !defined(DISABLE_CONTRIB_OPS)
       const bool qdq_strip_activations =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQStripActivations, "0") == "1";
-#if !defined(DISABLE_CONTRIB_OPS)
       const bool qdq_is_int8_allowed =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQIsInt8Allowed,
                                                             QDQIsInt8Allowed() ? "1" : "0") == "1";

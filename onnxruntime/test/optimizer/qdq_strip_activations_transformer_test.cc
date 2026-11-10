@@ -63,10 +63,8 @@ static void CheckTransformedGraphOnly(
 
   SessionOptions session_options;
   session_options.graph_optimization_level = TransformerLevel::Level2;
-  if (enable_strip_activations) {
-    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
-        kOrtSessionOptionsQDQStripActivations, "1"));
-  }
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsQDQStripActivations, enable_strip_activations ? "1" : "0"));
   InferenceSessionWrapper session{session_options, GetEnvironment()};
   ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
   ASSERT_STATUS_OK(session.Initialize());
@@ -236,7 +234,7 @@ TEST(QDQStripActivationsTransformerTests, OptionDisabledNoRemoval) {
   auto check_graph = [](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
     EXPECT_EQ(op_to_count["Relu"], 1);
-    // Without kOrtSessionOptionsQDQStripActivations, our transformer doesn't run.
+    // With kOrtSessionOptionsQDQStripActivations set to "0", our transformer doesn't run.
     // With enable_quant_qdq_cleanup defaulting to "0", Q->DQ nodes should remain.
     EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
     EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
@@ -266,6 +264,46 @@ TEST(QDQStripActivationsTransformerTests, RemoveQDQPairWithGraphOutput) {
 
   CheckTransformedGraphOnly(build_test_case, check_graph, 21 /*opset_version*/,
                             true /*enable_strip_activations*/);
+}
+
+// Test: DQ producing a graph output while the Q source value has other consumers (or is itself a graph output).
+// The source output must keep its name for those users, so the graph output is produced by an Identity instead.
+// Graph: Input -> Relu -> Q -> DQ -> (graph output)
+//                      -> Sigmoid -> (graph output), or Relu output is a graph output itself
+TEST(QDQStripActivationsTransformerTests, RemoveQDQPairWithGraphOutputAndOtherSourceConsumers) {
+  for (bool source_is_graph_output : {false, true}) {
+    SCOPED_TRACE(source_is_graph_output);
+    auto build_test_case = [source_is_graph_output](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>({1, 4, 8}, -1.f, 1.f);
+      auto* relu_output = source_is_graph_output ? builder.MakeOutput() : builder.MakeIntermediate();
+      builder.AddNode("Relu", {input_arg}, {relu_output});
+
+      auto* q_output = builder.MakeIntermediate();
+      auto* dq_output = builder.MakeOutput();
+      builder.AddQuantizeLinearNode<uint8_t>(relu_output, kTestScale, kTestZp, q_output);
+      builder.AddDequantizeLinearNode<uint8_t>(q_output, kTestScale, kTestZp, dq_output);
+
+      if (!source_is_graph_output) {
+        builder.AddNode("Sigmoid", {relu_output}, {builder.MakeOutput()});
+      }
+    };
+
+    auto check_graph = [source_is_graph_output](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+      EXPECT_EQ(op_to_count["Relu"], 1);
+      EXPECT_EQ(op_to_count["Sigmoid"], source_is_graph_output ? 0 : 1);
+      EXPECT_EQ(op_to_count["Identity"], 1);
+    };
+
+    auto add_session_options = [](SessionOptions& so) {
+      ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsQDQStripActivations, "1"));
+    };
+    TransformerTester(build_test_case, check_graph,
+                      TransformerLevel::Level1, TransformerLevel::Level2,
+                      21, kTestTolerance, 0.0f, nullptr, add_session_options);
+  }
 }
 
 // Test: Q producing a graph output must not be removed, even if it also feeds a DQ.
@@ -359,6 +397,8 @@ TEST(QDQStripActivationsTransformerTests, RemoveInt8QDQPair) {
 // Graph: Input -> Q -> DQ -> Reshape -> Q -> DQ -> Relu -> Output
 // With our option: DropQDQNodesRules skipped, Q->DQ pairs around Reshape stay adjacent,
 //   and our transformer removes them.
+// With the option disabled: DropQDQNodesRules still runs and drops the DQ/Q around Reshape, leaving
+//   Input -> Q -> Reshape -> DQ -> Relu -> Output.
 TEST(QDQStripActivationsTransformerTests, SkipDataMovementRules) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<float>({1, 3, 2, 2}, -1.f, 1.f);
@@ -381,16 +421,19 @@ TEST(QDQStripActivationsTransformerTests, SkipDataMovementRules) {
     builder.AddNode("Relu", {dq2}, {output_arg});
   };
 
-  auto check_graph = [](InferenceSessionWrapper& session) {
-    auto op_to_count = CountOpsInGraph(session.GetGraph());
-    EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
-    EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
-    EXPECT_EQ(op_to_count["Reshape"], 1);
-    EXPECT_EQ(op_to_count["Relu"], 1);
-  };
+  for (bool enable_strip_activations : {true, false}) {
+    SCOPED_TRACE(enable_strip_activations);
+    auto check_graph = [enable_strip_activations](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["QuantizeLinear"], enable_strip_activations ? 0 : 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], enable_strip_activations ? 0 : 1);
+      EXPECT_EQ(op_to_count["Reshape"], 1);
+      EXPECT_EQ(op_to_count["Relu"], 1);
+    };
 
-  CheckTransformedGraphOnly(build_test_case, check_graph, 21 /*opset_version*/,
-                            true /*enable_strip_activations*/);
+    CheckTransformedGraphOnly(build_test_case, check_graph, 21 /*opset_version*/,
+                              enable_strip_activations);
+  }
 }
 
 // Test: Conv with QDQ is fused into QLinearConv by QDQSelectorActionTransformer, while surrounding
@@ -536,6 +579,77 @@ TEST(QDQStripActivationsTransformerTests, MatMulNBitsWithActivationRemoval) {
                     5.0f /*per_sample_tolerance - output Q->DQ rounding error up to scale/2=4*/,
                     5.0f /*relative_per_sample_tolerance*/,
                     nullptr, add_session_options);
+}
+
+// Test: The sub-passes also run inside subgraphs (the transformer recurses into If/Loop/Scan bodies): in each If
+// branch the activation Q->DQ pair is removed and DQ(blockwise)->MatMul is fused to MatMulNBits.
+// Graph: Input -> Relu -> If(then: Q -> DQ -> MatMul(DQ_blockwise(int4 weight)), else: same), capturing the Relu output
+TEST(QDQStripActivationsTransformerTests, MatMulNBitsInSubgraphWithActivationRemoval) {
+  constexpr int64_t K = 64;
+  constexpr int64_t N = 32;
+  constexpr int64_t block_size = 32;
+  constexpr int64_t num_blocks = K / block_size;
+
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, K}, -1.f, 1.f);
+    auto* condition = builder.MakeInput<bool>({1}, {true});
+    auto* output_arg = builder.MakeOutput();
+
+    // The branches capture the output of a main graph node.
+    auto* captured_arg = builder.MakeIntermediate();
+    builder.AddNode("Relu", {input_arg}, {captured_arg});
+
+    auto create_branch = [&](const char* output_name) {
+      Model model("branch", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                  builder.DomainToVersionMap(), {}, DefaultLoggingManager().DefaultLogger());
+      Graph& graph = model.MainGraph();
+      ModelTestBuilder branch_builder(graph);
+
+      ONNX_NAMESPACE::TypeProto type_proto;
+      type_proto.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      auto& captured = graph.GetOrCreateNodeArg(captured_arg->Name(), &type_proto);
+      graph.AddOuterScopeNodeArg(captured.Name());
+
+      // Explicit names, as generated ones could shadow names in the main graph.
+      auto& q_output = graph.GetOrCreateNodeArg("branch_q_output", nullptr);
+      auto& dq_act_output = graph.GetOrCreateNodeArg("branch_dq_act_output", nullptr);
+      auto& dq_weight_output = graph.GetOrCreateNodeArg("branch_dq_weight_output", nullptr);
+      branch_builder.AddQuantizeLinearNode<uint8_t>(&captured, kTestScale, kTestZp, &q_output);
+      branch_builder.AddDequantizeLinearNode<uint8_t>(&q_output, kTestScale, kTestZp, &dq_act_output);
+
+      auto* weight_arg = branch_builder.MakeInitializer<Int4x2>({K, N}, Int4x2(Int4x2::min_val, 0),
+                                                                Int4x2(Int4x2::max_val, 0));
+      auto* scale_arg = branch_builder.MakeInitializer<float>({num_blocks, N}, 0.5f, 2.0f);
+      auto* zp_arg = branch_builder.MakeInitializer<Int4x2>({num_blocks, N}, Int4x2(0, 0), Int4x2(2, 0));
+      NodeAttributes dq_attrs;
+      utils::SetNodeAttribute(utils::MakeAttribute("axis", static_cast<int64_t>(0)), dq_attrs);
+      utils::SetNodeAttribute(utils::MakeAttribute("block_size", block_size), dq_attrs);
+      branch_builder.AddNode("DequantizeLinear", {weight_arg, scale_arg, zp_arg}, {&dq_weight_output}, "",
+                             &dq_attrs);
+
+      auto& output = graph.GetOrCreateNodeArg(output_name, &type_proto);
+      branch_builder.AddNode("MatMul", {&dq_act_output, &dq_weight_output}, {&output});
+      graph.SetOutputs({&output});
+      ORT_THROW_IF_ERROR(graph.Resolve());
+      return graph.ToGraphProto();
+    };
+
+    auto& if_node = builder.AddNode("If", {condition}, {output_arg});
+    if_node.AddAttribute("then_branch", create_branch("then_output"));
+    if_node.AddAttribute("else_branch", create_branch("else_output"));
+  };
+
+  auto check_graph = [](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["If"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.MatMulNBits"], 2);
+    EXPECT_EQ(op_to_count["MatMul"], 0);
+    EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
+    EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+  };
+
+  CheckTransformedGraphOnly(build_test_case, check_graph, 21 /*opset_version*/,
+                            true /*enable_strip_activations*/);
 }
 
 // Test: Weight DQ on constant initializer is constant-folded (Sub-pass C)
