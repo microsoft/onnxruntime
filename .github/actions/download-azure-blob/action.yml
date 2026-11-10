@@ -1,0 +1,91 @@
+name: Download Azure Blob with OIDC
+description: Download an SDK using an isolated Azure CLI login, without VM managed identity.
+inputs:
+  client-id:
+    description: Client ID of the federated Blob reader identity
+    required: true
+  tenant-id:
+    description: Azure tenant ID
+    required: true
+  source:
+    description: Blob URL to copy recursively
+    required: true
+  destination:
+    description: Local destination directory
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Validate configuration and prepare isolated state
+      id: state
+      shell: pwsh
+      env:
+        BLOB_CLIENT_ID: ${{ inputs.client-id }}
+        BLOB_TENANT_ID: ${{ inputs.tenant-id }}
+        BLOB_SOURCE: ${{ inputs.source }}
+        BLOB_DESTINATION: ${{ inputs.destination }}
+      run: |
+        foreach ($name in 'BLOB_CLIENT_ID', 'BLOB_TENANT_ID', 'BLOB_SOURCE', 'BLOB_DESTINATION') {
+          if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+            throw "Missing $name. Pass the Blob reader client ID, Azure tenant ID, source, and destination explicitly."
+          }
+        }
+        Get-Command az -ErrorAction Stop | Out-Null
+        Get-Command azcopy.exe -ErrorAction Stop | Out-Null
+
+        $state = Join-Path $env:RUNNER_TEMP ("blob-download-" + [guid]::NewGuid().ToString('N'))
+        "directory=$state" >> $env:GITHUB_OUTPUT
+        New-Item -ItemType Directory -Path "$state\azure", "$state\logs", "$state\plans" -ErrorAction Stop | Out-Null
+        $env:AZURE_CONFIG_DIR = "$state\azure"
+        $env:AZCOPY_LOG_LOCATION = "$state\logs"
+        $env:AZCOPY_JOB_PLAN_LOCATION = "$state\plans"
+        $env:AZCOPY_DISABLE_SYSLOG = 'true'
+        $version = az version --output json
+        if ($LASTEXITCODE -ne 0) { throw "Unable to determine Azure CLI version." }
+        if ([version](($version | ConvertFrom-Json).'azure-cli') -lt [version]'2.30.0') {
+          throw "Azure CLI 2.30.0 or newer is required for OIDC. Update the Windows runner image."
+        }
+        $azcopyEnvironment = azcopy.exe env
+        if ($LASTEXITCODE -ne 0 -or ($azcopyEnvironment -join "`n") -notmatch '(?i)\bAZCLI\b') {
+          throw "AzCopy must support AZCOPY_AUTO_LOGIN_TYPE=AZCLI. Update the Windows runner image."
+        }
+
+    - name: Log in with GitHub OIDC
+      uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1
+      env:
+        AZURE_CONFIG_DIR: ${{ steps.state.outputs.directory }}\azure
+        AZURE_CORE_OUTPUT: none
+        AZURE_LOGIN_PRE_CLEANUP: 'false'
+        # Cleanup below runs immediately, rather than at job end against a different CLI configuration.
+        AZURE_LOGIN_POST_CLEANUP: 'false'
+      with:
+        client-id: ${{ inputs.client-id }}
+        tenant-id: ${{ inputs.tenant-id }}
+        allow-no-subscriptions: true
+        auth-type: SERVICE_PRINCIPAL
+
+    - name: Download Blob
+      shell: pwsh
+      env:
+        AZURE_CONFIG_DIR: ${{ steps.state.outputs.directory }}\azure
+        AZURE_CORE_OUTPUT: none
+        AZCOPY_AUTO_LOGIN_TYPE: AZCLI
+        AZCOPY_TENANT_ID: ${{ inputs.tenant-id }}
+        AZCOPY_LOG_LOCATION: ${{ steps.state.outputs.directory }}\logs
+        AZCOPY_JOB_PLAN_LOCATION: ${{ steps.state.outputs.directory }}\plans
+        AZCOPY_DISABLE_SYSLOG: 'true'
+        BLOB_SOURCE: ${{ inputs.source }}
+        BLOB_DESTINATION: ${{ inputs.destination }}
+      run: |
+        azcopy.exe cp --recursive $env:BLOB_SOURCE $env:BLOB_DESTINATION
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    - name: Remove isolated Azure and AzCopy state
+      if: always() && steps.state.outputs.directory != ''
+      shell: pwsh
+      env:
+        BLOB_STATE_DIRECTORY: ${{ steps.state.outputs.directory }}
+      run: |
+        if (Test-Path -LiteralPath $env:BLOB_STATE_DIRECTORY) {
+          Remove-Item -LiteralPath $env:BLOB_STATE_DIRECTORY -Recurse -Force -ErrorAction Stop
+        }
