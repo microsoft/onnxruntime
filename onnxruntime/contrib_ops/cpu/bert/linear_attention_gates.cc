@@ -297,9 +297,9 @@ Status MoEGroupRouter<T>::Compute(OpKernelContext* context) const {
             return sa != sb && !std::isnan(sa) ? sa > sb : a < b;
           });
           float sum = 0.f;
-          for (int64_t rank = 0; rank < top_k_; ++rank) sum += scores[order[rank]];
+          for (int64_t rank = 0; rank < top_k_; ++rank) sum += scores[order[static_cast<size_t>(rank)]];
           for (int64_t rank = 0; rank < top_k_; ++rank) {
-            const int32_t expert = order[rank];
+            const int32_t expert = order[static_cast<size_t>(rank)];
             indices_data[row * top_k_ + rank] = expert;
             weights_data[row * top_k_ + rank] = scores[expert] / (sum + 1e-20f) * router_scale_;
             if (output_data) {
