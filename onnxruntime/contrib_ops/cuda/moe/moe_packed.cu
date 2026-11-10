@@ -26,6 +26,18 @@ namespace {
 constexpr int kMoEPackedMaxExperts = 512;
 constexpr int kMoEPackedMaxK = 16;
 
+template <typename CudaT>
+__device__ __forceinline__ uint4 MoEPackedLoadRouter8(const CudaT* input) {
+  if ((reinterpret_cast<uintptr_t>(input) & 15u) == 0) {
+    return __ldg(reinterpret_cast<const uint4*>(input));
+  }
+  uint4 result;
+  CudaT* values = reinterpret_cast<CudaT*>(&result);
+#pragma unroll
+  for (int j = 0; j < 8; ++j) values[j] = input[j];
+  return result;
+}
+
 // Softmax + top-k over 512 experts for arbitrary num_rows (8 warps per CTA, 1 warp per row).
 // Uses the exact same warp reduction and tie-breaking key as FusedSoftmaxTopKMapsKernel.
 template <typename CudaT>
