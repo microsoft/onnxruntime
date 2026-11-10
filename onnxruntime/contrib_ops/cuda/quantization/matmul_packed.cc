@@ -4,12 +4,14 @@
 #include "contrib_ops/cuda/quantization/matmul_packed.h"
 
 #include <algorithm>
+#include <string>
 #include <type_traits>
 
 #include "contrib_ops/cpu/quantization/gguf_quant_tables.h"
 #include "core/common/safeint.h"
 #include "core/framework/allocator.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -60,9 +62,11 @@ MatMulPacked<T>::MatMulPacked(const OpKernelInfo& info) : CudaKernel(info) {
     ORT_ENFORCE(GetDeviceProp().major >= 8, "MatMulPacked BF16 requires compute capability 8.0 or higher");
     ORT_THROW_IF_ERROR(GetMatMulPackedBf16KernelSupport(GetDeviceId(), bf16_tc_supported_));
   }
-  const int64_t round_weights = info.GetAttrOrDefault<int64_t>("dequantize_to_activation_dtype", 0);
-  ORT_ENFORCE(round_weights == 0 || round_weights == 1, "dequantize_to_activation_dtype must be 0 or 1");
-  dequantize_to_activation_dtype_ = round_weights != 0;
+  const std::string policy = info.GetConfigOptions().GetConfigOrDefault(
+      kOrtSessionOptionsCudaMatMulPackedAllowUnroundedGemv, "0");
+  ORT_ENFORCE(policy == "0" || policy == "1",
+              kOrtSessionOptionsCudaMatMulPackedAllowUnroundedGemv, " must be 0 or 1");
+  allow_unrounded_gemv_ = policy == "1";
 }
 
 template <typename T>
@@ -105,7 +109,7 @@ Status MatMulPacked<T>::ComputeInternal(OpKernelContext* context) const {
   MatMulPackedParams params{};
   params.b_data = b->Data<uint8_t>();
   params.global_scale = global_scale ? global_scale->Data<float>() : nullptr;
-  params.dequantize_to_activation_dtype = dequantize_to_activation_dtype_;
+  params.allow_unrounded_gemv = allow_unrounded_gemv_;
   params.k = static_cast<int>(k_);
   params.n = static_cast<int>(n_);
   params.row_bytes = expected_rb;

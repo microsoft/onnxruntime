@@ -218,7 +218,7 @@ __global__ __launch_bounds__(256) void MatMulPackedGemvKernel(
     const int l = q_idx & 3;
     float w_vals[8];
     gguf_cuda::DecodeGgufSubBlock8Tpl<kCompileType>(row_ptr, p.ggml_type, sb32_idx, l, w_vals);
-    if (p.dequantize_to_activation_dtype ||
+    if (!p.allow_unrounded_gemv ||
         (std::is_same_v<CudaT, __nv_bfloat16> && p.n >= kMatMulPackedBf16TcMinN)) {
 #pragma unroll
       for (int j = 0; j < 8; ++j) {
@@ -295,18 +295,13 @@ __global__ __launch_bounds__(256) void MatMulPackedDequantKernel(
     const int l = q_idx & 3;
     float w_vals[8];
     gguf_cuda::DecodeGgufSubBlock8(row_ptr, p.ggml_type, sb32_idx, l, w_vals);
-    if (p.dequantize_to_activation_dtype) {
-#pragma unroll
-      for (int j = 0; j < 8; ++j) {
-        w_vals[j] = gguf_cuda::CudaTypeToFloat(
-            gguf_cuda::FloatToCudaType<ActivationT>(w_vals[j]));
-      }
-    }
     CudaT* dst8 = dst_row + sb32_idx * 32 + l * 8;
     if constexpr (std::is_same_v<CudaT, float>) {
 #pragma unroll
       for (int j = 0; j < 8; ++j) {
-        dst8[j] = w_vals[j];
+        // FP32 scratch preserves the activation-dtype operand rounding used by GEMM.
+        dst8[j] = gguf_cuda::CudaTypeToFloat(
+            gguf_cuda::FloatToCudaType<ActivationT>(w_vals[j]));
       }
     } else if constexpr (std::is_same<CudaT, __nv_bfloat16>::value) {
       *reinterpret_cast<uint4*>(dst8) = gguf_cuda::PackFloat8ToBf16x2(w_vals);
@@ -487,7 +482,7 @@ Status DispatchMatMulPackedCuda(
     const int m_int = static_cast<int>(m);
 
     if constexpr (std::is_same<CudaT, __nv_bfloat16>::value) {
-      if (params.bf16_tc_supported && params.dequantize_to_activation_dtype && params.k % 64 == 0 &&
+      if (params.bf16_tc_supported && !params.allow_unrounded_gemv && params.k % 64 == 0 &&
           (params.ggml_type == kGgmlTypeQ8_0 || params.ggml_type == kGgmlTypeIQ2_XXS ||
            params.ggml_type == kGgmlTypeNVFP4)) {
         const bool wide = params.ggml_type == kGgmlTypeNVFP4 && params.k % 128 == 0;
@@ -504,7 +499,7 @@ Status DispatchMatMulPackedCuda(
         }
         return CUDA_CALL(cudaGetLastError());
       }
-      if ((params.n >= kMatMulPackedBf16TcMinN || params.dequantize_to_activation_dtype) &&
+      if ((params.n >= kMatMulPackedBf16TcMinN || !params.allow_unrounded_gemv) &&
           params.bf16_tc_supported) {
         LaunchMatMulPackedBf16TcWarpKSplit<4, 2>(stream, a, params, y, m_int);
         return CUDA_CALL(cudaGetLastError());
