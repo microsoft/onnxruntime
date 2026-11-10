@@ -566,7 +566,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const auto is_supported_quant_type = [](KVQuantizationType t) {
     return t == KVQuantizationType::PER_TENSOR || t == KVQuantizationType::PER_CHANNEL;
   };
-  // A PER_CHANNEL K scale reaches XQA by being folded into the fp16 query, which only the
+  // A PER_CHANNEL K scale reaches XQA by being folded into the fp16/bf16 query, which only the
   // enable_per_channel_xqa_ switch turns on; everything else keeps the portable FP32 kernel.
   const bool per_channel_k = k_quant_type_ == KVQuantizationType::PER_CHANNEL;
   const bool per_channel_k_on_xqa = !per_channel_k || enable_per_channel_xqa_;
@@ -574,8 +574,9 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // INT4 XQA reads the packed cache at unit scale, so it exists only for folded PER_CHANNEL scales.
   const bool int4_xqa_eligible =
       enable_xqa_ && enable_per_channel_xqa_ && std::is_same_v<TCACHE, uint8_t> &&
-      std::is_same_v<T, MLFloat16> &&
-      device_prop.major >= 8 && parameters.softcap == 0.0f && parameters.head_size == 256 && group_size == 6 &&
+      ((std::is_same_v<T, MLFloat16> && parameters.head_size == 256) ||
+       (std::is_same_v<T, BFloat16> && parameters.head_size == 128)) &&
+      device_prop.major >= 8 && parameters.softcap == 0.0f && group_size == 6 &&
       (parameters.block_size % kXqaTokensPerPage) == 0 &&
       k_quant_type_ == KVQuantizationType::PER_CHANNEL && v_quant_type_ == KVQuantizationType::PER_CHANNEL;
 #else
@@ -590,7 +591,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
                             is_supported_quant_type(k_quant_type_) && is_supported_quant_type(v_quant_type_) &&
                             (!is_fp8_cache || device_prop.major >= 9 || (device_prop.major == 8 && device_prop.minor == 9)));
   // Speculative verification steps (2..8 new tokens per sequence) run on a compiled paged XQA
-  // specialization (H256, plus causal FP16-query/INT8-cache H128) with a packed mask built by
+  // specialization (H256, plus causal H128 INT8 and BF16/INT4) with a packed mask built by
   // PagedXqaSpecDecMaskKernel. The gate is the
   // metadata query bound, not the aggregate token count: a zero-heavy ragged step can have
   // token_count <= batch_size while still carrying a multi-token sequence. Local windows and
@@ -598,15 +599,18 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // so it derives the window from each row's own query position and the sink from its own head.
   const bool bf16_int8_spec_xqa_eligible =
       quantized_xqa_eligible && std::is_same<T, BFloat16>::value && kIsInt8Cache &&
-      parameters.head_size == 256 && (group_size == 6 || group_size == 16);
+      ((parameters.head_size == 256 && (group_size == 6 || group_size == 16)) ||
+       (parameters.head_size == 128 && group_size == 6));
+  const bool bf16_int4_spec_xqa_eligible =
+      int4_xqa_eligible && std::is_same_v<T, BFloat16> && parameters.head_size == 128;
   const bool xqa_spec_dec_candidate =
       decode_eligible && has_metadata_bounds && per_channel_k_on_xqa &&
       ((quantized_xqa_eligible && std::is_same<T, MLFloat16>::value && group_size == 6) ||
-       bf16_int8_spec_xqa_eligible ||
+       bf16_int8_spec_xqa_eligible || bf16_int4_spec_xqa_eligible ||
        (native_spec_xqa_eligible && group_size == 6)) &&
       ((parameters.head_size == 256) ||
        (parameters.head_size == 128 && parameters.is_causal &&
-        kIsInt8Cache && std::is_same<T, MLFloat16>::value)) &&
+        (kIsInt8Cache || bf16_int4_spec_xqa_eligible))) &&
       max_query_len_bound > 1 && max_query_len_bound <= 8;
   const bool portable_spec_dec_candidate =
       has_metadata_bounds && max_query_len_bound > 1 && max_query_len_bound <= 8 &&

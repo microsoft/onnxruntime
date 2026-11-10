@@ -84,15 +84,19 @@ def static_scale(quant_type, kv_heads, width):
     return np.linspace(0.05, 0.25, kv_heads * width, dtype=np.float32).reshape(kv_heads, 1, width)
 
 
-def quantize(values, scale):
-    """Signed INT4 codes in [-8, 7] stored biased by +8, two per byte, even channel in the low nibble."""
+def quantize(values, scale, cache_dtype=np.uint8):
+    """Quantize to signed INT8 or biased, low-nibble-first packed INT4."""
     values = values.astype(np.float32)
     scaled = np.divide(values, scale, out=np.zeros_like(values), where=scale != 0)
+    if cache_dtype == np.int8:
+        return np.clip(np.rint(scaled), -128, 127).astype(np.int8)
     biased = (np.clip(np.rint(scaled), -8, 7).astype(np.int8) + 8).astype(np.uint8)
     return biased[..., ::2] | (biased[..., 1::2] << 4)
 
 
 def unpack(packed, scale):
+    if packed.dtype == np.int8:
+        return packed.astype(np.float32) * scale
     values = np.empty((*packed.shape[:-1], packed.shape[-1] * 2), dtype=np.float32)
     values[..., ::2] = (packed & 15).astype(np.float32) - 8
     values[..., 1::2] = (packed >> 4).astype(np.float32) - 8
@@ -114,6 +118,7 @@ def make_case(
     heads=4,
     kv_heads=2,
     block_size=16,
+    cache_dtype=np.uint8,
 ):
     rng = np.random.default_rng(1234)
     batch = len(lengths)
@@ -147,7 +152,7 @@ def make_case(
             scale = static_scale(quant_type, kv_heads, width)
             broadcast = scale.reshape(kv_heads, width) if quant_type == "PER_CHANNEL" else scale
             cache_inputs[f"{prefix}_scale"] = scale
-            cache = quantize(dense, broadcast)
+            cache = quantize(dense, broadcast, cache_dtype)
         else:
             cache = dense.astype(np.float16)
         cache_inputs[f"{name}_cache"] = cache.copy()
@@ -156,7 +161,7 @@ def make_case(
                 continue
             page, offset = divmod(int(slot), block_size)
             if int4:
-                cache[page, offset] = quantize(current[token], broadcast)
+                cache[page, offset] = quantize(current[token], broadcast, cache_dtype)
             else:
                 cache[page, offset] = current[token].astype(np.float16)
         expected_cache[f"{name}_cache_out"] = cache
@@ -174,7 +179,7 @@ def make_case(
         "attention_metadata": np.array([max(lengths), max(np.array(past) + lengths), 1], dtype=np.int32),
     }
     if sink:
-        feeds["head_sink"] = np.linspace(-0.5, 0.5, heads).astype(np.float16)
+        feeds["head_sink"] = np.linspace(-0.5, 0.5, heads).astype(activation_dtype)
     if packed:
         feeds["query"] = np.concatenate([feeds["query"], feeds.pop("key"), feeds.pop("value")], axis=1)
     inputs = [
@@ -203,8 +208,8 @@ def make_case(
     attributes = {
         "num_heads": heads,
         "kv_num_heads": kv_heads,
-        "k_cache_dtype": "int4" if int4 else "",
-        "v_cache_dtype": "int4" if int4 else "",
+        "k_cache_dtype": ("int8" if cache_dtype == np.int8 else "int4") if int4 else "",
+        "v_cache_dtype": ("int8" if cache_dtype == np.int8 else "int4") if int4 else "",
         "k_quant_type": quant_type if int4 else "NONE",
         "v_quant_type": quant_type if int4 else "NONE",
         "softcap": softcap,
@@ -518,6 +523,181 @@ class TestPagedAttentionInt4(unittest.TestCase):
                             window=window,
                             sink=True,
                         )
+
+    @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
+    def test_bf16_quantized_rc14_xqa_dispatch(self):
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
+            for cache_dtype in (np.uint8, np.int8):
+                for query_length in range(1, 9):
+                    with self.subTest(cache_dtype=cache_dtype, query_length=query_length):
+                        self.check_case(
+                            expected_kernel="XQA",
+                            width=128,
+                            heads=48,
+                            kv_heads=8,
+                            lengths=(query_length,),
+                            past=(513,),
+                            block_size=256,
+                            activation_dtype=ml_dtypes.bfloat16,
+                            cache_dtype=cache_dtype,
+                        )
+
+    @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
+    def test_bf16_quantized_rc14_xqa_ragged_local(self):
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
+            for cache_dtype in (np.uint8, np.int8):
+                for lengths in ((2, 1), (8, 3), (0, 8)):
+                    for window in (-1, 512):
+                        with self.subTest(cache_dtype=cache_dtype, lengths=lengths, window=window):
+                            self.check_case(
+                                expected_kernel="XQA",
+                                width=128,
+                                heads=48,
+                                kv_heads=8,
+                                lengths=lengths,
+                                past=(513, 138),
+                                block_size=256,
+                                window=window,
+                                sink=True,
+                                activation_dtype=ml_dtypes.bfloat16,
+                                cache_dtype=cache_dtype,
+                            )
+
+    @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
+    def test_bf16_quantized_rc14_xqa_context_lengths(self):
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
+            for cache_dtype in (np.uint8, np.int8):
+                for context in (8192, 32768, 131072):
+                    with self.subTest(cache_dtype=cache_dtype, context=context):
+                        self.check_case(
+                            expected_kernel="XQA",
+                            width=128,
+                            heads=48,
+                            kv_heads=8,
+                            lengths=(8,),
+                            past=(context - 8,),
+                            block_size=256,
+                            activation_dtype=ml_dtypes.bfloat16,
+                            cache_dtype=cache_dtype,
+                        )
+
+    @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
+    def test_bf16_quantized_rc14_xqa_scale_modes(self):
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
+            for cache_dtype in (np.uint8, np.int8):
+                for quant_type in ("PER_TENSOR", "PER_CHANNEL"):
+                    with self.subTest(cache_dtype=cache_dtype, quant_type=quant_type):
+                        expected_kernel = (
+                            "DECODER_ATTENTION" if cache_dtype == np.uint8 and quant_type == "PER_TENSOR" else "XQA"
+                        )
+                        self.check_case(
+                            expected_kernel=expected_kernel,
+                            width=128,
+                            heads=48,
+                            kv_heads=8,
+                            lengths=(8,),
+                            past=(513,),
+                            block_size=256,
+                            quant_type=quant_type,
+                            activation_dtype=ml_dtypes.bfloat16,
+                            cache_dtype=cache_dtype,
+                        )
+
+    @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
+    def test_bf16_quantized_rc14_xqa_opt_out(self):
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "0"}):
+            for cache_dtype in (np.uint8, np.int8):
+                with self.subTest(cache_dtype=cache_dtype):
+                    self.check_case(
+                        expected_kernel="DECODER_ATTENTION",
+                        width=128,
+                        heads=48,
+                        kv_heads=8,
+                        lengths=(8,),
+                        past=(513,),
+                        block_size=256,
+                        activation_dtype=ml_dtypes.bfloat16,
+                        cache_dtype=cache_dtype,
+                    )
+
+    @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
+    def test_bf16_quantized_rc14_xqa_query_bound_fallback(self):
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
+            for cache_dtype in (np.uint8, np.int8):
+                with self.subTest(cache_dtype=cache_dtype):
+                    self.check_case(
+                        expected_kernel="FLASH_ATTENTION",
+                        width=128,
+                        heads=48,
+                        kv_heads=8,
+                        lengths=(9,),
+                        past=(513,),
+                        block_size=256,
+                        activation_dtype=ml_dtypes.bfloat16,
+                        cache_dtype=cache_dtype,
+                    )
+
+    @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
+    def test_bf16_quantized_rc14_xqa_non_causal_fallback(self):
+        for cache_dtype in (np.uint8, np.int8):
+            with self.subTest(cache_dtype=cache_dtype):
+                model, feeds, _ = make_case(
+                    width=128,
+                    heads=48,
+                    kv_heads=8,
+                    lengths=(8, 3),
+                    past=(513, 138),
+                    block_size=256,
+                    activation_dtype=ml_dtypes.bfloat16,
+                    cache_dtype=cache_dtype,
+                )
+                set_attribute(model, "is_causal", 0)
+                fallback = "DECODER_ATTENTION" if cache_dtype == np.uint8 else "FLASH_ATTENTION"
+                with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
+                    actual = run_with_kernel(model, feeds, fallback)[0]
+                with patch.dict(os.environ, {"ORT_ENABLE_XQA": "0"}):
+                    reference = run_with_kernel(model, feeds, "DECODER_ATTENTION")[0]
+                for name in reference:
+                    if name == "output":
+                        np.testing.assert_allclose(
+                            actual[name].astype(np.float32), reference[name].astype(np.float32), atol=6e-3, rtol=5e-3
+                        )
+                    else:
+                        np.testing.assert_array_equal(actual[name], reference[name])
+
+    @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
+    def test_bf16_quantized_rc14_xqa_graph_replay(self):
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
+            for cache_dtype in (np.uint8, np.int8):
+                with self.subTest(cache_dtype=cache_dtype):
+                    model, feeds, _ = make_case(
+                        width=128,
+                        heads=48,
+                        kv_heads=8,
+                        lengths=(8, 3),
+                        past=(513, 138),
+                        block_size=256,
+                        activation_dtype=ml_dtypes.bfloat16,
+                        cache_dtype=cache_dtype,
+                    )
+                    changed = {
+                        "key": (feeds["key"].astype(np.float32) * 3).astype(ml_dtypes.bfloat16),
+                        "value": (feeds["value"].astype(np.float32) * 0.25).astype(ml_dtypes.bfloat16),
+                    }
+                    actual = run_with_kernel(model, feeds, "XQA", steps=3, updates={1: changed}, cuda_graph=True)
+                    reference = run_with_kernel(model, {**feeds, **changed}, "XQA")[0]
+                    self.assertFalse(np.array_equal(actual[0]["value_cache_out"], actual[1]["value_cache_out"]))
+                    for name in reference:
+                        np.testing.assert_array_equal(actual[1][name], actual[2][name])
+                        if name == "output":
+                            np.testing.assert_allclose(
+                                actual[1][name].astype(np.float32),
+                                reference[name].astype(np.float32),
+                                atol=6e-3,
+                                rtol=5e-3,
+                            )
+                        else:
+                            np.testing.assert_array_equal(actual[1][name], reference[name])
 
     @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
     def test_int4_xqa_cuda_graph_replay(self):

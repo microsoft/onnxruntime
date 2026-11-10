@@ -810,10 +810,10 @@ when reusing a directory configured with the feature disabled. INT8 kernels are 
 >   directly: H256 supports causal and non-causal attention at `group_size = 6` with matching native
 >   FP16/BF16 query and cache types, FP16 query/output with an INT8/FP8 cache, or FP16 query/output
 >   with a `PER_CHANNEL` INT4 cache, plus BF16 query/output with an INT8 cache at
->   `group_size ∈ {6, 16}`; causal H128 supports FP16 query/output with an INT8 cache at
->   `group_size = 6`.
+>   `group_size ∈ {6, 16}`; causal H128 supports FP16/BF16 query/output with an INT8 cache and
+>   BF16 query/output with a `PER_CHANNEL` INT4 cache at `group_size = 6`.
 >   Quantized `PER_CHANNEL` K scales reach XQA when scale folding is enabled. INT4 with `PER_TENSOR`
->   scales, BF16-query INT4, and disabled per-channel folding use portable paged decode for
+>   scales, unsupported BF16-query INT4 head sizes, and disabled per-channel folding use portable paged decode for
 >   metadata-bounded speculative steps. Non-causal H128 multi-token steps use a portable or gathered
 >   backend. Single-token decode reads and
 >   dequantizes the cache in place through XQA when eligible or `PagedDecodeSplitKV` otherwise.
@@ -821,9 +821,10 @@ when reusing a directory configured with the feature disabled. INT8 kernels are 
 >   constraint of §18.1 does not apply to it; Flash eligibility skips that check when the cache is
 >   quantized. Any power-of-two `block_size >= 16` works with a quantized cache on either backend.
 > - **INT4 extension:** `uint8` packed caches are read in place by the portable decode/gather paths
->   and, with `PER_CHANNEL` scales at `head_size = 256` and `group_size = 6`, by dedicated FP16 INT4
->   XQA decode and speculative-decode kernels. `PER_TENSOR` scales and BF16 activations use the
->   portable paths. No per-token scales are stored or passed.
+>   and, with `PER_CHANNEL` K/V scales and `group_size = 6`, by dedicated XQA decode and
+>   speculative-decode kernels for FP16 H256 and BF16 H128 query/output. `PER_TENSOR` scales
+>   and unsupported dtype/head combinations use the portable paths. No per-token scales are
+>   consumed by these XQA specializations.
 > - **No architecture gate for portable FP8 decode.** `Float8E4M3FN`'s converting constructor uses
 >   `__nv_cvt_float_to_fp8`, which is available on every architecture ORT builds for from CUDA 11.8
 >   onward. FP8 remains gated at *build* time by `onnxruntime_USE_FP8_KV_CACHE`.
@@ -838,8 +839,9 @@ when reusing a directory configured with the feature disabled. INT8 kernels are 
 > types, FP16 query/output with an INT8/FP8 cache, FP16 query/output with a `PER_CHANNEL` INT4
 > cache when scale folding is enabled (all at `head_size = 256, group_size = 6`), and BF16
 > query/output with an INT8 cache at `head_size = 256, group_size ∈ {6, 16}` when
-> `attention_metadata` bounds the longest query to 2–8 tokens. An additional H128 specialization
-> covers FP16 query/output with an INT8 cache at `group_size = 6` for causal attention. These kernels
+> `attention_metadata` bounds the longest query to 2–8 tokens. Additional causal H128 specializations
+> cover FP16/BF16 query/output with an INT8 cache and BF16 query/output with a `PER_CHANNEL` INT4
+> cache at `group_size = 6`. BF16 H128 INT4 also has a single-token decode specialization. These kernels
 > write packed token-major output and support ragged batches. A
 > native FP16-cache specialization additionally covers `head_size = 256, group_size = 6`, the
 > Qwen3.8 full-attention geometry, when `attention_metadata` proves one-token-per-sequence decode
@@ -900,7 +902,7 @@ when reusing a directory configured with the feature disabled. INT8 kernels are 
 >   full prefill) and a wrong heuristic only costs speed. That is what removes the D→H sync.
 > - **Multi-token XQA gating.** The speculative H256 XQA specializations (`group_size = 6`, plus
 >   `group_size ∈ {6, 16}` for BF16-query/INT8-cache), as well as the causal
->   FP16-query/INT8-cache H128/group-6 specialization, are gated on the `attention_metadata` query
+>   FP16/BF16-query INT8-cache and BF16-query INT4-cache H128/group-6 specializations, are gated on the `attention_metadata` query
 >   bound being in `[2, 8]`, *not* on `token_count <= batch_size`: a zero-heavy ragged step can
 >   satisfy the aggregate test while still carrying a multi-token
 >   sequence, and a step with more tokens than sequences is equally valid. Nothing about the gate is
@@ -935,6 +937,21 @@ FP8 regression cases and extreme scale saturation are also covered. GPU operator
 INT4 CUDA kernels are not built; XQA-specific tests additionally require an SM80-or-newer GPU and
 a compatible XQA image with sufficient shared memory. CPU-only helper tests verify telemetry
 capture and rejection of silent fallback independently of CUDA availability.
+
+BF16 H128/GQA6 coverage matches the two rc14 engines (`num_heads=48`, `kv_num_heads=8`). It checks
+INT8 and packed INT4 cache parity and exact cache writes for 1-8 query tokens, ragged and inactive
+requests, 512-token local windows, attention sinks, 8K/32K/128K contexts, and CUDA-graph replay.
+Dispatch assertions require `SdpaKernel=XQA`; explicit tests retain the opt-out, unsupported scale,
+query-bound-above-eight, and non-causal H128 fallbacks. INT4 XQA requires static `PER_CHANNEL`
+scales for both K and V; INT8 supports `PER_TENSOR` and `PER_CHANNEL` scales. Per-token scale-cache
+schemes do not select these static-scale XQA specializations.
+
+Enabling this kernel support does not quantize an existing model package. A quantized target must
+be exported with the corresponding cache type, attributes, and calibrated static scales; its
+floating-point activations and DFlash2 drafter cache can remain BF16. The RC target has H128/GQA6,
+while non-causal H128 drafter requests retain their existing fallback. Quantized-cache application
+quality and speculative acceptance must be validated separately from operator parity; lossy KV
+quantization does not guarantee identical tokens to a BF16-cache baseline.
 
 ## 9. Feature: Sliding Window Attention
 
@@ -1412,7 +1429,7 @@ as GQA does, so that `ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO=1` works uniformly 
 > specialization is eligible (`group_size = 6` for matching native FP16/BF16 query and cache types
 > or FP16 query with an INT8/FP8 cache or a `PER_CHANNEL` INT4 cache; `group_size ∈ {6, 16}` for
 > BF16 query with an INT8 cache), or when the H128/group-6
-> causal FP16-query/INT8-cache specialization is eligible, including batches with inactive zero-query
+> causal FP16/BF16-query INT8-cache or BF16-query INT4-cache specialization is eligible, including batches with inactive zero-query
 > requests. Native-cache XQA requires
 > metadata and otherwise remains on Flash when eligible or uses the portable paged decoder. The
 > single-token native specialization remains FP16-only. `ORT_DISABLE_DECODER_ATTENTION=1` disables
