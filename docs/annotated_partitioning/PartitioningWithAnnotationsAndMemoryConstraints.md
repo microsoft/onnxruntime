@@ -216,6 +216,35 @@ session = ort.InferenceSession("model.onnx", opts,
 
 **No subgraph inheritance:** Unlike annotation-based matching (where unannotated subgraph nodes inherit their parent's device assignment), name-based matching treats every node independently. Since node names are dense (virtually every node has a name encoding its structural position), inheritance is unnecessary — each node matches on its own name.
 
+## Read-only Graph Region Discovery (R1)
+
+The internal host helper in `onnxruntime/core/framework/region_discovery.h` implements the R1
+component of the automatic region-aware placement roadmap in #33372. It does not enable automatic
+placement or change any of the session options above.
+
+`DiscoverGraphRegionsFromAnnotations` groups exact, nonempty `layer_ann` values. For example,
+`block.1` and `block.10` remain different identities; no prefix, substring, or numeric-name inference
+is used. `DiscoverGraphRegions` instead accepts explicit `GraphRegion{id, nodes}` membership.
+IDs are preserved, and member indices are normalized into the source graph's topological order.
+
+Both entry points require one resolved, unfiltered `GraphViewer`. Each node belongs to at most one
+region. Nodes outside the supplied groups are returned in `ungrouped_nodes`, including embeddings,
+output heads, and shared work; they are not silently assigned to an adjacent region or device.
+Contracting the regions retains those ungrouped nodes and their dependencies, so residual paths and
+cycles through ungrouped work participate in validation.
+
+The result orders regions by dependencies, not by their names or input-list position. Duplicate or
+empty IDs, empty groups, duplicate/overlapping membership, missing nodes, grouping-induced cycles,
+and ambiguous region order return an error without replacing a previous result. Independent
+ungrouped work does not itself make region order ambiguous. A branch with incomparable regions
+requires an explicit future ordering policy rather than an arbitrary topological tie-break.
+
+Discovery only describes the current graph. It does not mutate annotations, rewrite/fuse nodes,
+assign devices, query EP capabilities, generate CPU/GPU cuts, or admit memory. Region IDs are scoped
+to that graph; after a rewrite, rediscover membership using preserved annotations or updated explicit
+membership. Nested graph bodies require their own discovery call. Candidate indivisibility, no-cut
+constraints, transfer frontiers, and session integration belong to subsequent workstreams.
+
 ## Capacity-Aware Partitioning (implemented for CUDA)
 
 When running models on a CUDA GPU with limited memory, you can set a memory budget so ONNX Runtime stops assigning nodes to the CUDA EP once the estimated memory consumption reaches the limit. Nodes are considered in topological order and assignment halts at the first node that would exceed the budget — ONNX Runtime does not search ahead for smaller nodes that might still fit. Remaining nodes are then eligible for assignment by the subsequent EPs in the session's provider list (often CPU, but not necessarily).
