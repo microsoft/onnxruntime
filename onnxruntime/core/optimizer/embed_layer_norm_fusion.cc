@@ -583,7 +583,8 @@ static bool FuseSubGraph(Graph& graph,
   }
   Node& add_node = *graph.GetNode(edges[0]->GetNode().Index());
   Node& word_gather_node = *graph.GetNode(edges[1]->GetNode().Index());
-  if (!optimizer_utils::CheckOutputEdges(graph, add_node, 1) ||
+  if (!optimizer_utils::CheckOutputEdges(graph, layer_norm_add_node, 1) ||
+      !optimizer_utils::CheckOutputEdges(graph, add_node, 1) ||
       !optimizer_utils::CheckOutputEdges(graph, word_gather_node, 1)) {
     return false;
   }
@@ -752,6 +753,9 @@ static bool FuseSubGraphDistilBert(Graph& graph,
   int64_t hidden_size = wg_shape->dim()[1].dim_value();
 
   Node& add_node = layer_norm_add_node;
+  if (!optimizer_utils::CheckOutputEdges(graph, add_node, 1)) {
+    return false;
+  }
 
   NodeArg* input_ids = word_gather_node.MutableInputDefs()[1];
   NodeArg* position_embedding = nullptr;
@@ -846,8 +850,10 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     Node& layer_norm_node = *p_layer_norm;
     ORT_RETURN_IF_ERROR(Recurse(layer_norm_node, modified, graph_level, logger));
+    const auto* axis = graph_utils::GetNodeAttribute(layer_norm_node, "axis");
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(layer_norm_node, "LayerNormalization", {1, 17}, kOnnxDomain) ||
-        !graph_utils::IsSupportedProvider(layer_norm_node, GetCompatibleExecutionProviders())) {
+        !graph_utils::IsSupportedProvider(layer_norm_node, GetCompatibleExecutionProviders()) ||
+        (axis != nullptr && axis->i() != -1)) {
       continue;
     }
 
