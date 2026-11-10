@@ -6,8 +6,10 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
+#include "core/util/range_helper.h"
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <type_traits>
 
 namespace onnxruntime {
@@ -83,30 +85,36 @@ template <typename T>
 static int64_t CalcRangeDim(const TensorProto* startShapeInitializer,
                             const TensorProto* limitShapeInitializer,
                             const TensorProto* deltaShapeInitializer) {
-  auto start = static_cast<double>(GetFirstElement<T>(startShapeInitializer));
-  auto limit = static_cast<double>(GetFirstElement<T>(limitShapeInitializer));
-  auto delta = static_cast<double>(GetFirstElement<T>(deltaShapeInitializer));
+  auto start = GetFirstElement<T>(startShapeInitializer);
+  auto limit = GetFirstElement<T>(limitShapeInitializer);
+  auto delta = GetFirstElement<T>(deltaShapeInitializer);
   if (delta == 0) {
     fail_shape_inference("delta in Range operator can not be zero!");
   }
-  // Mirror the CPU kernel (core/providers/cpu/generator/range.cc ComputeRange) exactly so the
-  // two paths stay byte-consistent: clamp empty or backward ranges to 0 and promote the
-  // operands to double before the subtraction. Keep this expression identical to the kernel.
-  double count = ceil((static_cast<double>(limit) - static_cast<double>(start)) / static_cast<double>(delta));
-  if (!std::isfinite(count)) {
-    fail_shape_inference("Range: the computed number of elements is not a finite value.");
+  if constexpr (std::is_integral_v<T>) {
+    const uint64_t count = ComputeIntegerRangeCount(start, limit, delta);
+    if (count > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
+      fail_shape_inference("Range: the computed number of elements exceeds the supported range.");
+    }
+    return static_cast<int64_t>(count);
+  } else {
+    // Floating-point inputs retain the same count calculation and guards as the CPU kernel.
+    double count = ceil((static_cast<double>(limit) - static_cast<double>(start)) / static_cast<double>(delta));
+    if (!std::isfinite(count)) {
+      fail_shape_inference("Range: the computed number of elements is not a finite value.");
+    }
+    // Empty or backward ranges clamp to 0; handle the non-positive case before the cast so a
+    // large-magnitude negative count can never reach (and overflow) the int64 conversion below.
+    if (count <= 0) {
+      return 0;
+    }
+    // static_cast<double>(INT64_MAX) rounds up to 2^63 (9223372036854775808.0), which is not
+    // representable as int64_t, so reject any count at or above that boundary before the cast.
+    if (count >= 9223372036854775808.0) {
+      fail_shape_inference("Range: the computed number of elements exceeds the supported range.");
+    }
+    return static_cast<int64_t>(count);
   }
-  // Empty or backward ranges clamp to 0; handle the non-positive case before the cast so a
-  // large-magnitude negative count can never reach (and overflow) the int64 conversion below.
-  if (count <= 0) {
-    return 0;
-  }
-  // static_cast<double>(INT64_MAX) rounds up to 2^63 (9223372036854775808.0), which is not
-  // representable as int64_t, so reject any count at or above that boundary before the cast.
-  if (count >= 9223372036854775808.0) {
-    fail_shape_inference("Range: the computed number of elements exceeds the supported range.");
-  }
-  return static_cast<int64_t>(count);
 }
 
 static int64_t CalcResultDim(const TensorProto* startShapeInitializer,

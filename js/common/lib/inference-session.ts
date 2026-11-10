@@ -301,6 +301,22 @@ export declare namespace InferenceSession {
     validationMode?: 'disabled' | 'wgpuOnly' | 'basic' | 'full';
 
     /**
+     * Permit named ORT features when supported by the device; unsupported features use existing fallbacks.
+     * Supported feature: 'subgroupMatrix' (enabled by default). Options apply independently to each session,
+     * including sessions sharing a device. Omitted features use their defaults.
+     * Unknown names, duplicates, and names present in both lists are rejected.
+     */
+    enableFeatures?: readonly string[];
+
+    /**
+     * Prevent ORT from using named features, including with a custom GPU device.
+     * 'subgroupMatrix' uses existing fallback kernels when disabled. Options apply only to this session;
+     * other sessions sharing the device retain their own settings. This does not change the device's features.
+     * See enableFeatures for supported names and validation rules.
+     */
+    disableFeatures?: readonly string[];
+
+    /**
      * Enable robust buffer access for an ORT-created Dawn device. This is a global, first-device-wins option. Later
      * conflicting values and values supplied with an external device are ignored with a warning.
      *

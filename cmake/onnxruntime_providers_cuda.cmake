@@ -59,6 +59,10 @@
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.h"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cc"
   )
+  if(NOT onnxruntime_ENABLE_MLAS_QMOE_OFFLOAD)
+    list(APPEND onnxruntime_cuda_contrib_ops_cc_srcs
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/moe/qmoe_shared_layout.cc")
+  endif()
 
   if(onnxruntime_MINIMAL_BUILD)
     list(REMOVE_ITEM onnxruntime_cuda_contrib_ops_cc_srcs
@@ -144,6 +148,15 @@
     # even when contrib ops are disabled so that the ONNX Attention kernel can compile and link.
     set(onnxruntime_cuda_bert_cc_srcs ${onnxruntime_cuda_contrib_ops_cc_srcs})
     list(FILTER onnxruntime_cuda_bert_cc_srcs INCLUDE REGEX ".*/contrib_ops/cuda/bert/.*")
+    # CPU helper forwarders in core/providers/shared_library/provider_bridge_provider.cc are
+    # guarded by #ifndef DISABLE_CONTRIB_OPS; exclude the kernels that call them.
+    list(REMOVE_ITEM onnxruntime_cuda_bert_cc_srcs
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/attention.cc"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/decoder_masked_self_attention.cc"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/embed_layer_norm.cc"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/fast_gelu.cc"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/bert/longformer_attention.cc"
+    )
     set(onnxruntime_cuda_bert_cu_srcs ${onnxruntime_cuda_contrib_ops_cu_srcs})
     list(FILTER onnxruntime_cuda_bert_cu_srcs INCLUDE REGEX ".*/contrib_ops/cuda/bert/.*")
     source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_bert_cc_srcs} ${onnxruntime_cuda_bert_cu_srcs})
@@ -385,7 +398,7 @@
     add_dependencies(${target} onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
     if(onnxruntime_CUDA_MINIMAL)
       target_compile_definitions(${target} PRIVATE USE_CUDA_MINIMAL)
-      target_link_libraries(${target} PRIVATE ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface CUDA::cudart)
+      target_link_libraries(${target} PRIVATE ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface CUDA::cudart CUDA::cuda_driver)
     else()
       include(cudnn_frontend) # also defines CUDNN::*
       if (onnxruntime_USE_CUDA_NHWC_OPS)
@@ -400,7 +413,7 @@
       # cuDNN and cuFFT are loaded dynamically at runtime (see cudnn_stub.cc / cufft_stub.cc), so they are
       # intentionally not linked here to avoid a hard runtime dependency when the related ops are not used.
       target_link_libraries(${target} PRIVATE CUDA::cublasLt CUDA::cublas cudnn_frontend CUDA::curand CUDA::cudart CUDA::cuda_driver
-              ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
+              ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} onnxruntime_mlas Boost::mp11 safeint_interface)
     endif()
 
     include(cutlass)

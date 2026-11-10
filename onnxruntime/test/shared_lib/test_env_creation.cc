@@ -1,8 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cstdlib>
+
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
+#if defined(GTEST_HAS_ABSL) && !defined(GTEST_NO_ABSL_FLAGS)
+#include "absl/flags/reflection.h"
+#endif
 
 #include "core/graph/constants.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -187,3 +192,60 @@ TEST(EnvCreation, SetPerSessionThreadPoolCallbacks) {
   ortenv_setup();
 }
 #endif  // ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+
+#if GTEST_HAS_DEATH_TEST && !defined(__wasm__)
+namespace {
+struct EarlierRegisteredEnvCleanup {
+  Ort::Env env{nullptr};
+
+  EarlierRegisteredEnvCleanup() {}
+
+  ~EarlierRegisteredEnvCleanup() {
+    if (static_cast<OrtEnv*>(env) != nullptr) {
+      env = Ort::Env{nullptr};
+      std::_Exit(EXIT_SUCCESS);
+    }
+  }
+};
+
+// Constructed during dynamic initialization before main() / ortenv_setup() creates the first OrtEnv.
+// Any function-local static with a normal destructor initialized inside main() is destroyed before
+// ~EarlierRegisteredEnvCleanup() runs during std::exit().
+EarlierRegisteredEnvCleanup g_earlier_registered_env_cleanup;
+}  // namespace
+
+TEST(EnvCreation, ReleaseEnvFromEarlierRegisteredCleanupAtShutdown) {
+#if defined(GTEST_HAS_ABSL) && !defined(GTEST_NO_ABSL_FLAGS)
+  auto* death_test_style_flag = absl::FindCommandLineFlag("gtest_death_test_style");
+  ASSERT_NE(death_test_style_flag, nullptr);
+  const std::string previous_style = death_test_style_flag->CurrentValue();
+  std::string flag_error;
+  ASSERT_TRUE(death_test_style_flag->ParseFrom("threadsafe", &flag_error)) << flag_error;
+#else
+  const auto previous_style = GTEST_FLAG_GET(death_test_style);
+  GTEST_FLAG_SET(death_test_style, "threadsafe");
+#endif
+
+  EXPECT_EXIT(
+      {
+        ortenv_teardown();
+        // Keep one reference unreleased across std::exit() (matching process-shutdown leak semantics on
+        // POSIX where g_is_shutting_down is not set by DllMain) so ~EarlierRegisteredEnvCleanup() tests
+        // locking OrtEnv::Mutex() in OrtEnv::Release() without running ~LoggingManager() after its own
+        // function-local statics have been destroyed.
+        Ort::Env retained_env(ORT_LOGGING_LEVEL_WARNING, "ReleaseEnvFromEarlierRegisteredCleanupAtShutdown");
+        g_earlier_registered_env_cleanup.env =
+            Ort::Env(ORT_LOGGING_LEVEL_WARNING, "ReleaseEnvFromEarlierRegisteredCleanupAtShutdown");
+        (void)retained_env.release();
+        std::exit(EXIT_FAILURE);
+      },
+      ::testing::ExitedWithCode(EXIT_SUCCESS), "");
+
+#if defined(GTEST_HAS_ABSL) && !defined(GTEST_NO_ABSL_FLAGS)
+  flag_error.clear();
+  EXPECT_TRUE(death_test_style_flag->ParseFrom(previous_style, &flag_error)) << flag_error;
+#else
+  GTEST_FLAG_SET(death_test_style, previous_style);
+#endif
+}
+#endif  // GTEST_HAS_DEATH_TEST && !defined(__wasm__)

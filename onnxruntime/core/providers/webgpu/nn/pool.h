@@ -13,10 +13,12 @@ namespace webgpu {
 
 class PoolProgram final : public Program<PoolProgram> {
  public:
-  PoolProgram(bool is_max_pool, bool is_nhwc, const TensorShapeVector& kernel_shape, bool is_float16,
-              bool count_include_pad, bool use_parallel_reduction)
+  // `lp_p` is the LpPool p-norm order; it is ignored for MaxPool and AveragePool.
+  PoolProgram(onnxruntime::PoolType pool_type, int64_t lp_p, bool is_nhwc, const TensorShapeVector& kernel_shape,
+              bool is_float16, bool count_include_pad, bool use_parallel_reduction)
       : Program{"Pool"},
-        is_max_pool_{is_max_pool},
+        pool_type_{pool_type},
+        lp_p_{lp_p},
         is_nhwc_{is_nhwc},
         kernel_shape_{kernel_shape},
         is_float16_{is_float16},
@@ -33,8 +35,8 @@ class PoolProgram final : public Program<PoolProgram> {
                                           {"dilations", ProgramUniformVariableDataType::Uint32});
 
  private:
-  // Whether it is max pool or average pool.
-  const bool is_max_pool_;
+  const onnxruntime::PoolType pool_type_;
+  const int64_t lp_p_;
 
   const bool is_nhwc_;
   const TensorShapeVector kernel_shape_;
@@ -46,9 +48,17 @@ class PoolProgram final : public Program<PoolProgram> {
 template <typename PoolType, bool is_nhwc>
 class Pool : public WebGpuKernel, public PoolBase {
  public:
-  explicit Pool(const OpKernelInfo& info) : WebGpuKernel(info), PoolBase(info) {}
+  explicit Pool(const OpKernelInfo& info) : WebGpuKernel(info), PoolBase(info) {
+    if constexpr (PoolType::type == onnxruntime::PoolType::kLpPool) {
+      lp_p_ = info.GetAttrOrDefault<int64_t>("p", 2);
+      ORT_ENFORCE(lp_p_ > 0, "LpPool: 'p' must be positive.");
+    }
+  }
 
   Status ComputeInternal(ComputeContext& context) const override;
+
+ private:
+  int64_t lp_p_ = 0;
 };
 
 }  // namespace webgpu

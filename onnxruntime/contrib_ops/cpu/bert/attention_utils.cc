@@ -1,4 +1,7 @@
 #include "attention_utils.h"
+
+#include <cstdint>
+
 #include "core/common/common.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/transpose_helper.h"
@@ -24,6 +27,14 @@ inline Status Reshape_BSD_to_BSNH(Tensor* qkv,
 inline Status Transpose_BSNH_to_BNSH(const Tensor* qkv,
                                      OrtValue& qkv_transposed,
                                      concurrency::ThreadPool* tp) {
+  constexpr int64_t min_mlas_transpose_elements = 4096;
+  const auto& shape = qkv->Shape();
+  // MLAS launches a parallel loop per batch, even for tiny matrices.
+  if (shape[3] <= static_cast<int64_t>(sizeof(uint32_t) / qkv->DataType()->Size()) &&
+      shape.SizeFromDimension(1) < min_mlas_transpose_elements) {
+    tp = nullptr;
+  }
+
   std::vector<size_t> permutations({0, 2, 1, 3});
   gsl::span<const size_t> permutations_span{permutations};
   size_t from = 2, to = 1;
@@ -206,7 +217,8 @@ Status MaybeTransposeToBNSHAndAddBias(OpKernelContext* context, AllocatorPtr all
       reshaped = std::make_unique<Tensor>(in->DataType(), in->Shape(), const_cast<void*>(in->DataRaw()), in->Location());
       ORT_RETURN_IF_ERROR(Reshape_BSD_to_BSNH(reshaped.get(), batch_size, sequence_length, num_heads, head_size));
     }
-    ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH((reshaped == nullptr) ? in : reshaped.get(), out));
+    ORT_RETURN_IF_ERROR(Transpose_BSNH_to_BNSH((reshaped == nullptr) ? in : reshaped.get(), out,
+                                               context->GetOperatorThreadPool()));
   } else {
     const auto* qkv_bias = bias->Data<T>();
     if (sequence_length == 1) {

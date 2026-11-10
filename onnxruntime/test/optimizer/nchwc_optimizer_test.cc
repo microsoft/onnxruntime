@@ -259,27 +259,39 @@ TEST(NchwcOptimizerTests, ConvWithZeroOutputChannelsIsNotTransformed) {
 }
 
 TEST(NchwcOptimizerTests, ConvWithZeroInputChannelsIsNotTransformed) {
+  if (MlasNchwcGetBlockSize() <= 1) {
+    GTEST_SKIP() << "NCHWc is not supported on this platform.";
+  }
+
   for (bool no_bias : {false, true}) {
     SCOPED_TRACE(no_bias ? "without bias" : "with bias");
-    auto build_test_case = [&](NchwcTestHelper& helper) {
-      auto* input_arg = helper.MakeInput<float>({1, 0, 5, 5});
-      auto* weights_arg = helper.MakeInitializer<float>({8, 0, 1, 1}, {});
-      std::vector<NodeArg*> input_args{input_arg, weights_arg};
-      if (!no_bias) {
-        input_args.push_back(helper.Make1DInitializer<float>({1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f}));
-      }
-      helper.AddNode("Conv", input_args, {helper.MakeOutput()});
-    };
+    std::unordered_map<std::string, int> domain_to_version{
+        {kOnnxDomain, 18}, {kMSDomain, 1}, {kMSNchwcDomain, 1}};
+    Model model("nchwc_zero_input_channels", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
+    Graph& graph = model.MainGraph();
+    NchwcTestHelper helper(graph);
 
-    auto check_nchwc_graph = [](InferenceSessionWrapper& session) {
-      auto op_to_count = CountOpsInGraph(session.GetGraph());
-      EXPECT_EQ(op_to_count["Conv"], 1);
-      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 0);
-      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 0);
-      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 0);
-    };
+    auto* input_arg = helper.MakeInput<float>({1, 0, 5, 5});
+    auto* weights_arg = helper.MakeInitializer<float>({8, 0, 1, 1}, {});
+    std::vector<NodeArg*> input_args{input_arg, weights_arg};
+    if (!no_bias) {
+      input_args.push_back(helper.Make1DInitializer<float>({1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f}));
+    }
+    Node& conv = helper.AddNode("Conv", input_args, {helper.MakeOutput()});
+    ASSERT_STATUS_OK(graph.Resolve());
+    conv.SetExecutionProviderType(kCpuExecutionProvider);
 
-    NchwcOptimizerTester(build_test_case, check_nchwc_graph, 18);
+    NchwcTransformer transformer;
+    bool modified = false;
+    ASSERT_STATUS_OK(transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger()));
+    EXPECT_FALSE(modified);
+
+    auto op_to_count = CountOpsInGraph(graph);
+    EXPECT_EQ(op_to_count["Conv"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 0);
   }
 }
 
@@ -1020,6 +1032,73 @@ TEST(NchwcOptimizerTests, ConvBinaryBroadcast) {
   for (auto& op_type : op_types) {
     test_case(op_type);
   }
+}
+
+TEST(NchwcOptimizerTests, ConvBinaryZeroBatch) {
+  auto test_case = [&](const std::string& op_type) {
+    auto build_test_case = [&](NchwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput<float>({0, 32, 23, 23});
+      auto* conv1_output_arg = helper.MakeIntermediate();
+      auto* conv2_output_arg = helper.MakeIntermediate();
+      auto* output_arg = helper.MakeOutput();
+
+      helper.AddConvNode(input_arg, conv1_output_arg, {32, 32, 3, 3});
+      helper.AddConvNode(input_arg, conv2_output_arg, {32, 32, 3, 3});
+      helper.AddNode(op_type, {conv1_output_arg, conv2_output_arg}, {output_arg});
+    };
+
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+      EXPECT_EQ(op_to_count["Reshape"], 3);
+      EXPECT_EQ(op_to_count[op_type], 1);
+    };
+
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+  };
+
+  // A zero dimension is not treated as a proven match, so the inputs of the binary
+  // operator are reshaped. The reshape must not infer the channel count from an
+  // empty tensor.
+  std::vector<std::string> op_types{"Add", "Sum"};
+  for (auto& op_type : op_types) {
+    test_case(op_type);
+  }
+}
+
+TEST(NchwcOptimizerTests, ConvBinarySymbolicBatchZeroAtRuntime) {
+  auto build_test_case = [&](NchwcTestHelper& helper) {
+    auto make_input = [&](const std::string& batch_param) {
+      ONNX_NAMESPACE::TypeProto type_proto;
+      type_proto.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param(batch_param);
+      for (int64_t dim : {32, 23, 23}) {
+        type_proto.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
+      }
+      return helper.MakeInput<float>({0, 32, 23, 23}, type_proto);
+    };
+
+    auto* input1_arg = make_input("batch1");
+    auto* input2_arg = make_input("batch2");
+    auto* conv1_output_arg = helper.MakeIntermediate();
+    auto* conv2_output_arg = helper.MakeIntermediate();
+    auto* output_arg = helper.MakeOutput();
+
+    helper.AddConvNode(input1_arg, conv1_output_arg, {32, 32, 3, 3});
+    helper.AddConvNode(input2_arg, conv2_output_arg, {32, 32, 3, 3});
+    helper.AddNode("Add", {conv1_output_arg, conv2_output_arg}, {output_arg});
+  };
+
+  auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+    EXPECT_EQ(op_to_count["Reshape"], 3);
+    EXPECT_EQ(op_to_count["Add"], 1);
+  };
+
+  // The batch dimensions are different symbols, so the inputs of the Add are
+  // reshaped, and both batches are zero when the model is run.
+  NchwcOptimizerTester(build_test_case, check_nchwc_graph);
 }
 
 TEST(NchwcOptimizerTests, ConvMulChannelScale) {
