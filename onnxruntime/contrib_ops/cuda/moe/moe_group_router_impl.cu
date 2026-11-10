@@ -154,7 +154,8 @@ Status LaunchCompactMoEGroupRouter(
     SigmoidScoresKernel<T><<<grid, 256, 0, stream>>>(input, projection_weight, width, experts, scores);
   } else {
     const int64_t count = static_cast<int64_t>(rows) * experts;
-    SigmoidLogitsKernel<T><<<(count + 255) / 256, 256, 0, stream>>>(input, count, scores);
+    const auto blocks = static_cast<unsigned int>((count + 255) / 256);
+    SigmoidLogitsKernel<T><<<blocks, 256, 0, stream>>>(input, count, scores);
   }
   ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
   SigmoidTopKKernel<T><<<rows, 32, 0, stream>>>(scores, bias, experts, k, scale, indices, weights, log_scores, sentinel);
