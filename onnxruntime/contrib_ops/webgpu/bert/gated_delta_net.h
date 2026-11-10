@@ -72,6 +72,7 @@ class GatedDeltaNetProgram final : public Program<GatedDeltaNetProgram> {
  public:
   GatedDeltaNetProgram(GatedDeltaNetUpdateRule update_rule, bool has_cu_seqlens, bool has_initial_state,
                        bool initial_state_in_final_state, bool output_final_state, bool qwen_gate,
+                       bool kda_gate, bool decay_per_key_dim, bool dt_bias_per_key_dim,
                        bool sigmoid_beta, bool qk_l2_norm, bool use_packed_params, bool capture_state_updates,
                        bool vectorized_value_io)
       : Program{"GatedDeltaNet"},
@@ -81,6 +82,9 @@ class GatedDeltaNetProgram final : public Program<GatedDeltaNetProgram> {
         initial_state_in_final_state_(initial_state_in_final_state),
         output_final_state_(output_final_state),
         qwen_gate_(qwen_gate),
+        kda_gate_(kda_gate),
+        decay_per_key_dim_(decay_per_key_dim),
+        dt_bias_per_key_dim_(dt_bias_per_key_dim),
         sigmoid_beta_(sigmoid_beta),
         qk_l2_norm_(qk_l2_norm),
         use_packed_params_(use_packed_params),
@@ -97,7 +101,8 @@ class GatedDeltaNetProgram final : public Program<GatedDeltaNetProgram> {
       {"head_size_qk", ProgramUniformVariableDataType::Uint32},
       {"head_size_v", ProgramUniformVariableDataType::Uint32},
       {"state_update_capacity", ProgramUniformVariableDataType::Uint32},
-      {"scale", ProgramUniformVariableDataType::Float32});
+      {"scale", ProgramUniformVariableDataType::Float32},
+      {"gate_lower_bound", ProgramUniformVariableDataType::Float32});
 
  private:
   GatedDeltaNetUpdateRule update_rule_;
@@ -106,6 +111,9 @@ class GatedDeltaNetProgram final : public Program<GatedDeltaNetProgram> {
   bool initial_state_in_final_state_;
   bool output_final_state_;
   bool qwen_gate_;
+  bool kda_gate_;
+  bool decay_per_key_dim_;
+  bool dt_bias_per_key_dim_;
   bool sigmoid_beta_;
   bool qk_l2_norm_;
   bool use_packed_params_;
@@ -186,23 +194,32 @@ class GatedDeltaNetPrefillOutputProgram final : public Program<GatedDeltaNetPref
 
 class GatedDeltaNetParamsProgram final : public Program<GatedDeltaNetParamsProgram> {
  public:
-  GatedDeltaNetParamsProgram(bool has_decay, bool has_beta, bool qwen_gate, bool sigmoid_beta)
+  GatedDeltaNetParamsProgram(bool has_decay, bool has_beta, bool qwen_gate, bool kda_gate,
+                             bool decay_per_key_dim, bool dt_bias_per_key_dim, bool sigmoid_beta)
       : Program{"GatedDeltaNetParams"},
         has_decay_(has_decay),
         has_beta_(has_beta),
         qwen_gate_(qwen_gate),
+        kda_gate_(kda_gate),
+        decay_per_key_dim_(decay_per_key_dim),
+        dt_bias_per_key_dim_(dt_bias_per_key_dim),
         sigmoid_beta_(sigmoid_beta) {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"total_tokens", ProgramUniformVariableDataType::Uint32},
-      {"num_heads_v", ProgramUniformVariableDataType::Uint32});
+      {"num_heads_v", ProgramUniformVariableDataType::Uint32},
+      {"head_size_qk", ProgramUniformVariableDataType::Uint32},
+      {"gate_lower_bound", ProgramUniformVariableDataType::Float32});
 
  private:
   bool has_decay_;
   bool has_beta_;
   bool qwen_gate_;
+  bool kda_gate_;
+  bool decay_per_key_dim_;
+  bool dt_bias_per_key_dim_;
   bool sigmoid_beta_;
 };
 
@@ -289,8 +306,10 @@ class GatedDeltaNet final : public WebGpuKernel {
  private:
   GatedDeltaNetUpdateRule update_rule_;
   float scale_;
+  float gate_lower_bound_;
   int state_update_capacity_;
   bool qwen_gate_;
+  bool kda_gate_;
   bool sigmoid_beta_;
   bool qk_l2_norm_;
   bool chunkwise_prefill_;

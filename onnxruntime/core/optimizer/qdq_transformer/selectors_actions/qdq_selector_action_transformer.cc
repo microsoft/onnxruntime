@@ -147,8 +147,10 @@ void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   // Replace with internal QLinear version of operator. Delete all original nodes.
   const std::string action_name{"1DQ"};
   const std::string cpu_action_name{"1DQ_CPU"};
+  const std::string cpu_softmax_action_name{"1DQ_CPU_Softmax"};
   std::unique_ptr<Action> action = std::make_unique<QDQ::UnaryReplaceWithQLinear>(kMSDomain);
   std::unique_ptr<Action> cpu_action = std::make_unique<QDQ::UnaryReplaceWithQLinear>(kMSDomain);
+  std::unique_ptr<Action> cpu_softmax_action = std::make_unique<QDQ::UnaryReplaceWithQLinear>(kMSDomain);
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Operators with DML QLinear kernel support (QLinearAveragePool, QLinearGlobalAveragePool, QLinearSigmoid)
@@ -167,13 +169,21 @@ void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   std::vector<const char*> cpu_only_provider = {kCpuExecutionProvider};
   std::unique_ptr<NodeSelector> cpu_selector = std::make_unique<QDQ::UnarySelector>(cpu_only_provider);
   qdq_selector_action_registry.RegisterSelectorAndAction(cpu_action_name,
-                                                         {{"LeakyRelu", {}},
-                                                          {"Softmax", {}}},
+                                                         {{"LeakyRelu", {}}},
                                                          std::move(cpu_selector),
                                                          std::move(cpu_action));
+
+  // QLinearSoftmax requires a positive input scale (same policy as MaxPool/ReduceMax/ReduceMin).
+  std::unique_ptr<NodeSelector> softmax_selector = std::make_unique<QDQ::UnarySelector>(
+      cpu_only_provider, /*allow_16bit=*/false, /*allow_4bit=*/false, /*allow_nonpositive_scale=*/false);
+  qdq_selector_action_registry.RegisterSelectorAndAction(cpu_softmax_action_name,
+                                                         {{"Softmax", {}}},
+                                                         std::move(softmax_selector),
+                                                         std::move(cpu_softmax_action));
 #else
   qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
   qdq_selector_action_registry.RegisterAction(cpu_action_name, std::move(cpu_action));
+  qdq_selector_action_registry.RegisterAction(cpu_softmax_action_name, std::move(cpu_softmax_action));
 #endif
 }
 
@@ -251,7 +261,7 @@ void ConvQDQRules(SelectorActionRegistry& qdq_selector_action_registry, bool is_
 
 #if !defined(ORT_MINIMAL_BUILD)
   // TODO: Enable 16-bit types in selector when QLinearConv supports 16-bit.
-  std::vector<const char*> providers = {kCpuExecutionProvider, kDmlExecutionProvider, kAclExecutionProvider};
+  std::vector<const char*> providers = {kCpuExecutionProvider, kDmlExecutionProvider};
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::ConvSelector>(is_int8_allowed,
                                                                                false,
                                                                                false,
@@ -326,6 +336,27 @@ void DQMatMulToMatMulNBitsRules(SelectorActionRegistry& qdq_selector_action_regi
 
 #else
   qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
+#endif
+
+  // CPU EP only: fuse the constant weight DQ when the activation input and/or output are INT16/UINT16
+  // quantized. The activation DQ and output Q nodes are left in place, so the activation quantization
+  // semantics are unchanged. INT8/UINT8 activation boundaries are handled by the MatMul/Gemm QDQ rules.
+  const std::string a16_action_name{"DQMatMulToMatMulNBits_A16"};
+  std::unique_ptr<Action> a16_action =
+      std::make_unique<QDQ::DQMatMulToMatMulNBitsAction>(qdq_matmulnbits_accuracy_level,
+                                                         intra_op_thread_pool,
+                                                         qdq_matmulnbits_block_size);
+#if !defined(ORT_MINIMAL_BUILD)
+  std::vector<const char*> cpu_ep = {kCpuExecutionProvider};
+  std::unique_ptr<NodeSelector> a16_selector =
+      std::make_unique<QDQ::DQMatMulToMatMulNBitsSelector>(cpu_ep, /*allow_16bit_activation_boundaries*/ true);
+  qdq_selector_action_registry.RegisterSelectorAndAction(a16_action_name,
+                                                         {{"MatMul", {}},
+                                                          {"Gemm", {}}},
+                                                         std::move(a16_selector),
+                                                         std::move(a16_action));
+#else
+  qdq_selector_action_registry.RegisterAction(a16_action_name, std::move(a16_action));
 #endif
 }
 
@@ -418,11 +449,11 @@ QDQSelectorActionTransformer::QDQSelectorActionTransformer(
                                        qdq_matmulnbits_block_size,
                                        skip_data_movement_qdq_rules),
           apply_context,
-          // this transformer is compatible with CPU, DML, ACL and CUDA EP.
+          // this transformer is compatible with CPU, DML and CUDA EP.
           // There is further EP control on the rule level.
           // Also accept nodes with empty EP (unassigned) so that individual selectors
           // that include "" in their compatible providers can match unassigned nodes.
-          {kCpuExecutionProvider, kDmlExecutionProvider, kAclExecutionProvider, kCudaExecutionProvider, ""}} {
+          {kCpuExecutionProvider, kDmlExecutionProvider, kCudaExecutionProvider, ""}} {
 }
 
 }  // namespace onnxruntime

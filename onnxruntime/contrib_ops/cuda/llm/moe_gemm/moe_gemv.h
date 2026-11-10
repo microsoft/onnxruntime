@@ -18,7 +18,7 @@ namespace onnxruntime::llm {
 namespace kernels {
 namespace moe_gemv {
 
-inline constexpr int64_t kMaxProfiledExpandedRows = 8;
+inline constexpr int64_t kMaxProfiledExpandedRows = 80;
 inline constexpr int64_t kMaxProfiledExpandedRowsForSmallProblemDim = 4;
 inline constexpr int64_t kMinProfiledProblemDim = 512;
 // Lowered from 704 to 512 so block-wise decode shapes (e.g. Qwen top_k=8,
@@ -46,11 +46,12 @@ bool is_moe_gemv_fused_finalize_supported(int sm, int64_t num_rows, int64_t expe
 // Launches symmetric INT MoE GEMV. group_size <= 0 means per-channel scales;
 // group_size 32/64/128 means block-wise scales laid out as [num_experts, k_blocks, n].
 // T is half or __nv_bfloat16. WeightType is cutlass::uint2b_t, cutlass::uint4b_t, or uint8_t.
+// Returns true when the Tensor Core kernel handled the launch and false when the fallback GEMV path ran.
 template <typename T, typename WeightType>
-void launch_moe_gemv_int_symmetric(
+bool launch_moe_gemv_int_symmetric(
     const T* act, const WeightType* weight, const T* scales, const T* bias, T* out,
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts, int64_t expanded_num_rows,
-    int64_t n, int64_t k, int group_size, int sm, cudaStream_t stream);
+    int64_t n, int64_t k, int group_size, int sm, cudaStream_t stream, int tensor_core_min_rows = 33);
 
 // Launches the FC2 symmetric INT MoE GEMV with the MoE finalize reduction fused into the epilogue,
 // writing the reduced [num_rows, n] output directly and making a separate finalizeMoeRouting launch
@@ -79,14 +80,15 @@ void launch_moe_gemv_int_symmetric_fused_finalize(
 // the *unexpanded* activation buffer of shape [num_rows, k]; the kernel then reads row
 // `permuted_row_to_source_row[permuted_row] % num_rows`, which lets the caller skip the expansion
 // kernel entirely.
+// Returns true when the Tensor Core kernel handled the launch and false when the fallback GEMV path ran.
 template <typename T, typename WeightType>
-void launch_moe_gemv_int_symmetric_interleaved_swiglu(
+bool launch_moe_gemv_int_symmetric_interleaved_swiglu(
     const T* act, const WeightType* weight, const T* scales, const T* bias, T* out,
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts, int64_t expanded_num_rows,
     int64_t inter_size, int64_t k, int group_size, int sm, cutlass_kernels::ActivationParams activation_params,
     const int* permuted_row_to_source_row, int64_t num_rows,
     float* splitk_partials,
-    cudaStream_t stream);
+    cudaStream_t stream, int tensor_core_min_rows = 33);
 
 // Launches the int4 per-channel MoE GEMV.
 //   act:      [expanded_num_rows, k]  permuted activations (row-major)

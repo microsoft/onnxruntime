@@ -111,6 +111,7 @@ struct GQAWorkspaceProblem {
   bool do_rotary = false;
   bool is_packed_qkv = false;
   bool use_qk_norm = false;
+  bool has_query_seqlens = false;
   bool requires_separate_past_buffer = false;
 };
 
@@ -127,11 +128,27 @@ struct GQAPreparationRoute {
   bool use_flash_attention_fast_decode = false;
 };
 
+// Unaligned byte counts needed before backend selection. The runtime keeps these
+// as separate allocations; the preparation recipe composes them into a layout.
+struct GQACachePreparationSizes {
+  int64_t effective_kv_cache_capacity = 0;
+  size_t cache_row_bytes = 0;
+  size_t separate_past_bytes = 0;
+  size_t staged_cache_bytes = 0;
+  size_t compaction_cache_bytes = 0;
+  size_t compaction_bytes = 0;
+};
+
+struct GQACachePreparationResult {
+  GQAWorkspaceStatus status;
+  GQACachePreparationSizes sizes;
+};
+
 // This recipe covers only simultaneously-live preparation/cross-cutting transients.
 // Outputs, present KV tensors, constructor zeros_, prepacked xqa_head_sink_, and
 // backend-internal scratch are deliberately excluded. In particular, XQA backend-internal
 // and extra scratch is composed later; this recipe includes only the current
-// GQABufferRequirements QKV preprocess term for an already-selected XQA route. Staged
+// QKV preprocess term for an already-selected XQA route. Staged
 // caches remain included because they are transient operator-owned preparation storage
 // despite their KV shape.
 //
@@ -301,7 +318,7 @@ struct GQAMemoryEfficientWorkspaceResult {
 };
 
 // The unfused backend owns one combined runtime allocation. Q, Y, FP32 QK, and
-// the upper-bound softmax view are all represented explicitly.
+// the upper-bound softmax view, and optional masked V scratch are represented explicitly.
 struct GQAUnfusedWorkspaceRecipe {
   size_t q_bnsh_offset_bytes = 0;
   size_t q_bnsh_bytes = 0;
@@ -311,6 +328,8 @@ struct GQAUnfusedWorkspaceRecipe {
   size_t qk_bytes = 0;
   size_t softmax_offset_bytes = 0;
   size_t softmax_bytes = 0;
+  size_t v_scratch_offset_bytes = 0;
+  size_t v_scratch_bytes = 0;
   size_t total_backend_bytes = 0;
 };
 
@@ -369,6 +388,29 @@ GQAWorkspaceStatus CheckedGQAWorkspaceAdd(size_t left, size_t right, size_t& res
 GQAWorkspaceStatus CheckedGQAWorkspaceMultiply(size_t left, size_t right, size_t& result) noexcept;
 
 GQAWorkspaceStatus CheckedGQAWorkspaceAlign(size_t value, size_t alignment, size_t& result) noexcept;
+
+// These sizing helpers validate only the dimensions and storage used by their
+// arithmetic. Backend eligibility and full-recipe validation stay with callers.
+GQAWorkspaceStatus GetGQACacheRowBytes(
+    const GQAWorkspaceProblem& problem,
+    size_t& bytes) noexcept;
+
+// Row bytes describe the actual storage being sized, which may already be packed.
+GQACachePreparationResult GetGQACachePreparationSizes(
+    const GQAWorkspaceProblem& problem,
+    size_t cache_row_bytes) noexcept;
+
+GQAWorkspaceStatus GetGQASequenceLengthsSize(
+    const GQAWorkspaceProblem& problem,
+    bool use_flash_attention_fast_decode,
+    size_t& vector_count,
+    size_t& bytes) noexcept;
+
+GQAWorkspaceStatus GetGQAQkvPreprocessBytes(
+    const GQAWorkspaceProblem& problem,
+    const GQAPreparationRoute& route,
+    int64_t effective_kv_cache_capacity,
+    size_t& bytes) noexcept;
 
 GQAPreparationResult GetGQAPreparationRecipe(
     const GQAWorkspaceProblem& problem,

@@ -112,6 +112,7 @@ export default class App extends React.PureComponent<{}, State> {
                 title="EPContext Data Read Test"
                 onPress={() => this.navigateTo('ep-context-data-read')}
                 accessibilityLabel="ep-context-data-read-test-button"
+                testID="ep-context-data-read-test-button"
               />
             </View>
             <Text style={styles.description}>Test the epContextDataRead session option and its lifetime</Text>
