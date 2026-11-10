@@ -214,40 +214,42 @@ TEST(MatMulPackedPrecisionTest, Nvfp4Bf16ProductionProjectionShapes) {
 
 TEST(MatMulPackedPrecisionTest, Nvfp4Bf16PackedOperandExtremes) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
-  constexpr int k = 128, n = 35, row_bytes = 72;
+  constexpr int k = 128, row_bytes = 72;
   constexpr std::array<float, 16> values{
       0.f, .5f, 1.f, 1.5f, 2.f, 3.f, 4.f, 6.f,
       0.f, -.5f, -1.f, -1.5f, -2.f, -3.f, -4.f, -6.f};
   constexpr std::array<uint8_t, 8> scales{0, 1, 126, 128, 129, 254, 127, 255};
   const std::array<float, 8> decoded{0.f, 0x1p-9f, 448.f, -0.f, -0x1p-9f, -448.f, 0.f, std::nanf("")};
-  std::vector<uint8_t> packed(n * row_bytes);
-  for (int col = 0; col < n; ++col) {
-    for (int block = 0; block < k / 64; ++block) {
-      auto* bytes = packed.data() + col * row_bytes + block * 36;
-      for (int group = 0; group < 4; ++group) {
-        bytes[group] = scales[col % scales.size()];
-        for (int j = 0; j < 8; ++j) {
-          bytes[4 + group * 8 + j] = static_cast<uint8_t>(col * 17 + block * 13 + group * 11 + j * 29);
+  for (int n : {35, 8192}) {
+    std::vector<uint8_t> packed(n * row_bytes);
+    for (int col = 0; col < n; ++col) {
+      for (int block = 0; block < k / 64; ++block) {
+        auto* bytes = packed.data() + col * row_bytes + block * 36;
+        for (int group = 0; group < 4; ++group) {
+          bytes[group] = scales[col % scales.size()];
+          for (int j = 0; j < 8; ++j) {
+            bytes[4 + group * 8 + j] = static_cast<uint8_t>(col * 17 + block * 13 + group * 11 + j * 29);
+          }
         }
       }
     }
-  }
-  // The second sweep observes all eight high-nibble lanes, without introducing
-  // multi-product sums whose FP32 order might differ between GPU architectures.
-  for (int first : {0, 8}) {
-    for (int rows : {1, 7, 8}) {
-      SCOPED_TRACE(testing::Message() << "first=" << first << " rows=" << rows);
-      std::vector<BFloat16> a(rows * k, BFloat16(0.f)), expected(rows * n);
-      for (int row = 0; row < rows; ++row) {
-        const int index = row * 17 + first;
-        a[row * k + index] = BFloat16(1.f);
-        for (int col = 0; col < n; ++col) {
-          const auto* bytes = packed.data() + col * row_bytes + (index / 64) * 36;
-          const int group = (index % 64) / 16, position = index % 16;
-          const int code = (bytes[4 + group * 8 + position % 8] >> (4 * (position / 8))) & 15;
-          float sum = 0.f;
-          sum += BFloat16(decoded[col % decoded.size()] * values[code]).ToFloat();
-          expected[row * n + col] = BFloat16(sum);
+    // The second sweep observes all eight high-nibble lanes, without introducing
+    // multi-product sums whose FP32 order might differ between GPU architectures.
+    for (int first : {0, 8}) {
+      for (int rows : {1, 7, 8}) {
+        SCOPED_TRACE(testing::Message() << "n=" << n << " first=" << first << " rows=" << rows);
+        std::vector<BFloat16> a(rows * k, BFloat16(0.f)), expected(rows * n);
+        for (int row = 0; row < rows; ++row) {
+          const int index = row * 17 + first;
+          a[row * k + index] = BFloat16(1.f);
+          for (int col = 0; col < n; ++col) {
+            const auto* bytes = packed.data() + col * row_bytes + (index / 64) * 36;
+            const int group = (index % 64) / 16, position = index % 16;
+            const int code = (bytes[4 + group * 8 + position % 8] >> (4 * (position / 8))) & 15;
+            float sum = 0.f;
+            sum += BFloat16(decoded[col % decoded.size()] * values[code]).ToFloat();
+            expected[row * n + col] = BFloat16(sum);
+          }
         }
       }
       for (bool initializer : {false, true}) {
