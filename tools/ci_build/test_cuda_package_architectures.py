@@ -215,6 +215,28 @@ message(STATUS "RESULT SM12X=${ORT_HAS_SM12X}")
         # Kernels for SM80/SM86/SM89 are compiled for the SM87 and later entries, so nothing is excluded.
         self.assertEqual([d for d in definitions if d.startswith("EXCLUDE_SM_")], [])
 
+    def test_family_specific_architectures_report_the_required_cmake_version(self):
+        # CMake rejects the "f" suffix in CMAKE_CUDA_ARCHITECTURES before 3.31.8 and 4.0.2, when CUDA is enabled.
+        # setup_cuda_architectures() reports that up front; pretend to be another CMake version to check it.
+        cases = (
+            ("3.31.7", "90-real;120f-real", False),
+            ("3.31.7", "120f", False),
+            ("3.31.7", "90-real;121f-virtual", False),
+            ("4.0.1", "100f-real", False),
+            ("3.31.7", "90-real;120a-real", True),
+            ("3.31.8", "120f-real", True),
+            ("4.0.2", "100f-real;120f-real", True),
+        )
+        for version, architectures, supported in cases:
+            with self.subTest(version=version, architectures=architectures):
+                result = self._run_cmake(architectures, "", before_setup=f"set(CMAKE_VERSION {version})")
+                output = " ".join((result.stdout + result.stderr).split())
+                if supported:
+                    self.assertEqual(result.returncode, 0, output)
+                else:
+                    self.assertNotEqual(result.returncode, 0, output)
+                    self.assertIn("requires CMake 3.31.8 or later (4.0.2 or later in the 4.0 series)", output)
+
     def test_linux_aarch64_cuda13_architectures_are_in_sync(self):
         pipelines = GITHUB_DIR / "azure-pipelines"
         found = {}

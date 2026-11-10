@@ -163,7 +163,8 @@ macro(setup_cuda_architectures)
   #  * `-real` suffix is automatically added for other cases.
   #  * Always use accelerated (`-a` suffix) target for supported real architectures.
   #  * An explicit `a` or `f` suffix is kept. Family-specific (`f`) entries are kept as given:
-  #    `<cc>f` generates SASS and PTX, `<cc>f-real` SASS only.
+  #    `<cc>f` generates SASS and PTX, `<cc>f-real` SASS only. They need CMake 3.31.8 or later
+  #    (4.0.2 or later in the 4.0 series).
   # cmake-format: on
 
   # Allow override via CUDAARCHS environment variable (standard CMake variable)
@@ -304,6 +305,18 @@ macro(setup_cuda_architectures)
   endif()
 
   list(REMOVE_DUPLICATES CMAKE_CUDA_ARCHITECTURES_NORMALIZED)
+
+  # CMake validates CMAKE_CUDA_ARCHITECTURES when the CUDA language is enabled and accepts the family-specific
+  # "f" suffix only since 3.31.8 (4.0.2 in the 4.0 series). Report that here instead of a generic CMake error.
+  if(CMAKE_VERSION VERSION_LESS 3.31.8 OR
+     (CMAKE_VERSION VERSION_GREATER_EQUAL 4.0 AND CMAKE_VERSION VERSION_LESS 4.0.2))
+    foreach(CUDA_ARCH IN LISTS CMAKE_CUDA_ARCHITECTURES_NORMALIZED)
+      if(CUDA_ARCH MATCHES "^[0-9]+f(-real|-virtual)?$")
+        message(FATAL_ERROR "The family-specific CUDA architecture ${CUDA_ARCH} requires CMake 3.31.8 or later "
+                            "(4.0.2 or later in the 4.0 series), but this is CMake ${CMAKE_VERSION}.")
+      endif()
+    endforeach()
+  endif()
 
   set(CMAKE_CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES_NORMALIZED})
 

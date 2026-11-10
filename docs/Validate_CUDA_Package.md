@@ -70,12 +70,13 @@ for `87-real;89-real;90-real;100f-real;110-real;120f-real`:
 
 A family-specific target (`f` suffix) runs on every GPU with the same major compute
 capability and an equal or higher minor version, so one `100f` cubin replaces the
-former `100a` + `103a` pair, and one `120f` cubin replaces `120a` + `121a`. Each
-architecture costs 34-80 MB of the wheel (`sm_90a` is the largest), which must stay
-under the PyPI size limit, so do not add an entry that is already covered. Ampere
-(8.0, 8.6) GPUs are not covered by the aarch64 wheel.
-`tools/ci_build/test_cuda_package_architectures.py` checks that the lists are in
-sync and cover these GPUs without redundant entries.
+former `100a` + `103a` pair, and one `120f` cubin replaces `120a` + `121a`. Building
+family-specific targets requires CMake 3.31.8 or later (4.0.2 or later in the 4.0
+series); older versions reject the `f` suffix. Each architecture costs 34-80 MB of
+the wheel (`sm_90a` is the largest), which must stay under the PyPI size limit, so
+do not add an entry that is already covered. Ampere (8.0, 8.6) GPUs are not covered
+by the aarch64 wheel. `tools/ci_build/test_cuda_package_architectures.py` checks
+that the lists are in sync and cover these GPUs without redundant entries.
 
 When the architecture list has SM80 SASS, FlashAttention is compiled for SM80 but not
 for SM86 and SM89 (`onnxruntime_FLASH_ATTENTION_REUSE_SM80`, ON by default): SM86 and
