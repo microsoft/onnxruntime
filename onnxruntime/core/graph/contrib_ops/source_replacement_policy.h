@@ -45,6 +45,13 @@ Status ValidateSourcePolicy(const SourcePolicy& policy);
 // Copies authored metadata. Identical duplicates are idempotent; conflicts are errors.
 // Call during schema registration, not through a static/linker registration mechanism.
 Status RecordSourcePolicy(const ONNX_NAMESPACE::OpSchema& schema, SourcePolicy policy);
+#if defined(_OPSCHEMA_LIB_)
+static inline void RecordPendingSourcePolicy(ONNX_NAMESPACE::OpSchema&, const char*, int, std::string_view) {}
+#else
+// Schema builders run before the enclosing macro supplies the finalized schema key.
+void RecordPendingSourcePolicy(ONNX_NAMESPACE::OpSchema& schema, const char* name, int since_version,
+                               std::string_view reason);
+#endif
 // The same recorder over an explicitly owned collection; no process-global test state.
 Status RecordSourcePolicy(InlinedVector<SourcePolicyRecord>& records,
                           const ONNX_NAMESPACE::OpSchema& schema, SourcePolicy policy);
