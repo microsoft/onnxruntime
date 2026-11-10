@@ -73,11 +73,13 @@ not authorize execution of unknown ORT policies.
 | Chain ORT payload | Optional named `kv_caches` specifications; required nonempty `outputs` map. |
 | Session step ORT payload | `kind: "session"`, optional `inputs`, `state_outputs`, `kv_caches`, `cache_provider`. |
 | Loop step ORT payload | `kind: "session_loop"`, optional `inputs`/`state_outputs`, required `loop`. |
-| Loop configuration | `finite_input_names`, `nonempty_input`, `feedback`, explicit `exit_conditions`, `generated_token_output`, `generation`, `sampler`, `cache_provider`, `kv_caches`. |
+| Loop configuration | `finite_input_names`, `nonempty_input`, `feedback`, explicit `exit_conditions`, `generated_token_output`, `generation`, `sampler`, `cache_provider`, `kv_caches`, `ddim`. |
 
 Input sources are `external_input`/`external_sequence`/`state` with `name`, or
 `model_output` with an earlier `step` and `output`. `state_outputs` maps state
-names to model-output names; feedback entries contain `input` and `output`.
+names to component-output names; feedback entries contain `input` and `output`.
+Configured native-policy logical inputs/outputs participate in the same bindings;
+they are not additional ports in the underlying ONNX model.
 Final output sources are `model_output`, or `generated_token_ids` with a
 generation `step`.
 
@@ -142,6 +144,105 @@ there is no hidden full-logits migration/host argmax. Native GPU cache/greedy
 implementations remain CUDA-plugin-only. Construction failures preserve output
 parameters and release partial Sessions. Stepping failures/cancellation after
 possible advancement require Reset, as with programmatic chains.
+
+### Deterministic DDIM denoising
+
+`loop.ddim` selects the fixed FP32 `sd15_ddim_v1` policy. Its numerical reference
+is Diffusers v0.35.1 DDIMScheduler, commit
+`0f252be0ed42006c125ef4429156cb13ae6c1d60`, with 1000 scaled-linear training
+betas0.00085..0.012, epsilon prediction, leading timestep spacing/offset1,
+final alpha A0, eta0 and no clipping/thresholding/SNR rescaling. This is DDIM,
+not the public SD1.5 package's PNDM scheduler. No Python dependency is required
+by the runtime.
+
+The policy fixes positive `[N,C,H,W]` latent dimensions, inference steps and
+finite nonnegative guidance scale. Supported step counts are1..999:1000 would
+produce an invalid leading timestep with this profile's offset. Require exactly
+one explicit `max_iterations` exit matching the inference-step count. Do not mix
+DDIM with token generation, sampler/KV policies, finite inputs, generic feedback
+or other exits.
+
+The following is the ORT step payload for the tiny denoiser used by the SDK
+qualification fixtures, not a complete real Stable Diffusion package:
+
+```json
+{
+  "kind": "session_loop",
+  "inputs": {
+    "init": {"kind": "external_input", "name": "init"},
+    "positive": {"kind": "external_input", "name": "positive"},
+    "negative": {"kind": "external_input", "name": "negative"}
+  },
+  "loop": {
+    "ddim": {
+      "profile": "sd15_ddim_v1",
+      "latent_shape": [1, 1, 1, 3],
+      "num_inference_steps": 2,
+      "guidance_scale": 7.5,
+      "guidance_mode": "batched",
+      "timestep_format": "float32_scalar",
+      "latent_input": "sample",
+      "timestep_input": "time",
+      "conditioning_input": "conditioning",
+      "prediction_output": "epsilon",
+      "initialization_input": "init",
+      "positive_conditioning_input": "positive",
+      "negative_conditioning_input": "negative",
+      "latent_output": "latents"
+    },
+    "exit_conditions": [{"kind": "max_iterations", "limit": 2}]
+  }
+}
+```
+
+Port names and timestep encoding must match the model; supported timestep
+formats are `int64_scalar`, `int64_vector`, `float32_scalar` and `float32_vector`.
+Vector means exactly one element, not a per-batch schedule.
+
+Logical `init` is either a CPUuint64 scalar seed or CPUFP32 latents matching the
+configured shape. Positive/negative conditioning are equal-shaped nonempty
+CPUFP32 tensors with leading dimension N. They may also come from earlier
+component outputs or named state. Additional model inputs use ordinary invariant
+bindings; the policy does not synthesize or duplicate them.
+
+Seeded initialization uses a private MT19937_64 and defined Box-Muller transform,
+not a global RNG or PyTorch's random generator. Supplied latents are copied,
+not modified or interpreted as clean images. Reset replays original inputs;
+cross-platform/PyTorch RNG bit identity is not promised.
+
+- `batched` concatenates unconditional then conditional latent/conditioning
+  batches and invokes the model once at batch2N.
+- `sequential` invokes the same Session twice at batch N and the same timestep/
+  unchanged latents: unconditional first, conditional second.
+- Both compute `epsilon = unconditional + scale * (conditional - unconditional)`.
+  Both branches execute even at scale0/1.
+- One Step completes one DDIM update, reports one iteration and one/two actual
+  model invocations. Generated-token counts remain zero. Cancel is observed at
+  complete-update boundaries, not between sequential guidance calls.
+- `latent_output` is an immutable CPU policy result, not raw model epsilon.
+  Bind it to selected chain outputs or downstream model/state inputs explicitly.
+  NaN/Inf, invalid shapes/devices, model failures and unsupported policies report
+  errors; failed/possibly advanced executions require Reset.
+
+Programmatic construction uses the same native implementation via
+`OrtStatefulDdimConfig` and the append-only
+`OrtStatefulApi::SessionLoopOptionsSetDdim`; C++ offers `SetDdim`/`ClearDdim`.
+The setter copies names/dimensions. Complete `SetConfig` clears the attached DDIM
+policy; existing definitions are unchanged. Only initialization/conditioning/
+invariant feeds vary per execution, not step count or guidance configuration.
+
+All scheduler, initialization and guidance work is CPUFP32, even with a CUDA
+denoiser. Latents/conditioning/timesteps are staged as needed and full predictions
+are read back. Existing staging counters describe CPU payload/copy work, not
+measured DMA; actual transfers require tracing. This policy adds no CUDA-native
+scheduler, cache/sampler override or device-only pipeline claim. VAE scaling,
+tokenization, image processing and the complete SD1.5 demo remain separate work.
+
+For the isolated three-step `[2,2,3,5]` test fixture, actual CUPTI traces observe
+three480-byte prediction readbacks in batched mode and six240-byte readbacks in
+sequential mode (1440 bytes each). Including the two scalar weight setup copies,
+HtoD totals are11 copies/1508 bytes and20 copies/1520 bytes respectively.
+These are fixture-specific measurements, not general model transfer budgets.
 
 ---
 

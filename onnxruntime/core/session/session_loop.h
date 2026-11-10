@@ -4,13 +4,17 @@
 #pragma once
 
 #include <atomic>
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
 #include "core/framework/ort_value.h"
+#include "core/diffusion/ddim.h"
+#include "core/graph/node_arg.h"
 #include "core/session/kv_cache_manager.h"
 #include "core/generate/token_generation.h"
 
@@ -48,6 +52,7 @@ struct SessionLoopOptions {
   std::string nonempty_input;
   InlinedVector<LoopKVCacheBinding, 1> kv_caches;
   std::optional<TokenGenerationOptions> generation;
+  std::optional<DdimOptions> ddim;
   StatefulProviderSelection cache_provider;
   StatefulProviderSelection sampler_provider;
 };
@@ -69,6 +74,7 @@ struct SessionLoopStepResult {
   // Stable outputs in definition order; explicitly selected GPU caches/logits remain on device.
   InlinedVector<OrtValue> outputs;
   std::optional<int64_t> generated_token;
+  int64_t invocations = 0;
 };
 
 // The caller-owned, initialized Session must outlive the definition and executions.
@@ -87,6 +93,11 @@ class SessionLoop : public std::enable_shared_from_this<SessionLoop> {
   SessionLoop(InferenceSession& session, SessionLoopOptions options,
               StatefulProviderBinding cache_provider, StatefulProviderBinding sampler_provider);
   Status ValidateInputs(const SessionLoopInputs& inputs) const;
+  const NodeArg* InputArgument(std::string_view name) const;
+  const NodeArg* OutputArgument(std::string_view name) const;
+  Status CheckValue(std::string_view name, const OrtValue& value) const;
+  Status CheckSource(std::string_view name, const NodeArg& source) const;
+  Status ConfigureDdim();
   Status ConfigureDeviceValues(const StatefulProviderBinding& provider,
                                InlinedHashSet<std::string> inputs, InlinedHashSet<std::string> outputs);
   Status WithDevicePorts(const StatefulProviderBinding& provider,
@@ -106,6 +117,9 @@ class SessionLoop : public std::enable_shared_from_this<SessionLoop> {
   AllocatorPtr device_allocator_;
   InlinedHashSet<std::string> device_inputs_;
   InlinedHashSet<std::string> device_outputs_;
+  std::shared_ptr<const DdimScheduler> ddim_;
+  std::array<std::unique_ptr<NodeArg>, 3> ddim_inputs_;
+  std::unique_ptr<NodeArg> ddim_output_;
 };
 
 // Only Cancel may run concurrently with Step/Run. Reset and execution are sequential.
@@ -136,6 +150,8 @@ class SessionLoopExecution {
   Status Sample(const OrtValue& logits, std::optional<int64_t> position, int64_t& token);
   Status Bootstrap(const OrtValue& logits, const OrtValue& prompt, std::optional<int64_t> position,
                    SessionLoopStepResult& out);
+  Status InitializeDdim();
+  Status StepDdim(SessionLoopStepResult& out);
 
   const std::shared_ptr<const SessionLoop> loop_;
   const SessionLoopInputs initial_inputs_;
@@ -148,6 +164,8 @@ class SessionLoopExecution {
   std::atomic<bool> cancelled_{false};
   bool requires_reset_ = false;
   OrtStatefulStagingInfo staging_{sizeof(OrtStatefulStagingInfo), 0, 0, 0};
+  OrtValue ddim_initial_;
+  OrtValue ddim_latents_;
 };
 
 }  // namespace onnxruntime

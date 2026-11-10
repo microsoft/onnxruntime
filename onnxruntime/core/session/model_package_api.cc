@@ -470,7 +470,11 @@ ORT_API_STATUS_IMPL(CreateSessionChain, const OrtEnv* env, const OrtModelPackage
         auto& loop_options = *definition.loops[i];
         const auto [status, outputs] = sessions.back()->GetModelOutputs();
         ORT_API_RETURN_IF_STATUS_NOT_OK(status);
-        for (const auto* output : *outputs) loop_options.output_names.push_back(output->Name());
+        if (loop_options.ddim) {
+          loop_options.output_names.push_back(loop_options.ddim->latent_output);
+        } else {
+          for (const auto* output : *outputs) loop_options.output_names.push_back(output->Name());
+        }
         std::shared_ptr<const SessionLoop> loop;
         ORT_API_RETURN_IF_STATUS_NOT_OK(SessionLoop::Create(*sessions.back(), std::move(loop_options), loop));
         component.execution = std::move(loop);

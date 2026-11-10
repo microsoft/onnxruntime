@@ -2,8 +2,11 @@
 // Licensed under the MIT License.
 
 #include <future>
+#include <array>
+#include <cmath>
 #include <functional>
 #include <memory>
+#include <limits>
 
 #include "gtest/gtest.h"
 #include "core/framework/tensor.h"
@@ -11,6 +14,7 @@
 #include "core/session/inference_session.h"
 #include "core/session/IOBinding.h"
 #include "core/session/session_loop.h"
+#include "core/session/session_chain.h"
 #include "test/test_environment.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
@@ -132,6 +136,387 @@ TEST_P(SessionLoopTest, RetentionResetCompletionAndRunParity) {
   EXPECT_EQ(*retained[0].outputs[0].Get<Tensor>().Data<float>(), 2.f);
   EXPECT_EQ(*retained[1].outputs[0].Get<Tensor>().Data<float>(), 5.f);
   EXPECT_EQ(*retained[2].outputs[0].Get<Tensor>().Data<float>(), 9.f);
+}
+
+TEST_P(SessionLoopTest, DdimGuidanceReferenceSnapshotsCompletionAndReset) {
+  for (const auto mode : {DdimGuidanceMode::Batched, DdimGuidanceMode::Sequential}) {
+    for (const int64_t batch : {1, 2}) {
+      auto policy = stateful::MakeDdimOptions(2);
+      policy.guidance_mode = mode;
+      policy.latent_shape[0] = batch;
+      auto session = Session(stateful::MakeDdimDenoiserModel(policy));
+      SessionLoopOptions options;
+      options.ddim = policy;
+      options.output_names = {policy.latent_output};
+      options.exit_conditions = {{LoopExitKind::MaxIterations, 2}};
+      auto initial = batch == 1 ? Value<float>({1, 1, 1, 3}, {0.125f, -0.25f, 1.f})
+                                : Value<float>({2, 1, 1, 3}, {0.125f, -0.25f, 1.f, 0.125f, -0.25f, 1.f});
+      auto positive = batch == 1 ? Value<float>({1, 1, 1, 1}, {0.25f})
+                                 : Value<float>({2, 1, 1, 1}, {0.25f, 0.25f});
+      auto negative = batch == 1 ? Value<float>({1, 1, 1, 1}, {-0.5f})
+                                 : Value<float>({2, 1, 1, 1}, {-0.5f, -0.5f});
+      SessionLoopInputs inputs{{{"init", initial}, {"positive", positive}, {"negative", negative}}, {}};
+      auto execution = Execution(*session, options, inputs);
+      initial.GetMutable<Tensor>()->MutableData<float>()[0] = 99.f;
+      SessionLoopStepResult first, final;
+      ASSERT_STATUS_OK(execution->Step(first));
+      EXPECT_TRUE(first.executed);
+      EXPECT_FALSE(first.completed);
+      ASSERT_EQ(first.outputs.size(), 1u);
+      const auto retained = first.outputs[0];
+      const auto first_value = retained.Get<Tensor>().Data<float>()[0];
+      ASSERT_STATUS_OK(execution->Step(final));
+      EXPECT_TRUE(final.completed);
+      EXPECT_EQ(final.iterations, 2);
+      EXPECT_EQ(final.invocations, mode == DdimGuidanceMode::Batched ? 2 : 4);
+      EXPECT_EQ(session->calls, static_cast<size_t>(final.invocations));
+      EXPECT_EQ(final.generated_tokens, 0);
+      for (int64_t n = 0; n < batch; ++n) {
+        const auto* data = final.outputs[0].Get<Tensor>().Data<float>() + n * 3;
+        const std::array<float, 3> expected{-8.022068f, -8.661748f, -6.5294814f};
+        for (size_t i = 0; i < expected.size(); ++i) {
+          EXPECT_NEAR(data[i], expected[i], 1e-4f + 1e-4f * std::abs(expected[i]));
+        }
+      }
+      ASSERT_STATUS_OK(execution->Step(final));
+      EXPECT_FALSE(final.executed);
+      EXPECT_EQ(session->calls, static_cast<size_t>(final.invocations));
+      ASSERT_EQ(final.outputs.size(), 1u);
+      ASSERT_STATUS_OK(execution->Reset());
+      LoopFeeds state;
+      ASSERT_STATUS_OK(execution->GetState(state));
+      EXPECT_EQ(state.at(policy.latent_output).Get<Tensor>().Data<float>()[0], 0.125f);
+      ASSERT_STATUS_OK(execution->Run(final));
+      EXPECT_EQ(retained.Get<Tensor>().Data<float>()[0], first_value);
+    }
+  }
+}
+
+TEST_P(SessionLoopTest, DdimCancellationFinishesGuidanceBoundaryAndRequiresReset) {
+  auto policy = stateful::MakeDdimOptions(3);
+  policy.guidance_mode = DdimGuidanceMode::Sequential;
+  auto session = Session(stateful::MakeDdimDenoiserModel(policy));
+  SessionLoopOptions options;
+  options.ddim = policy;
+  options.output_names = {policy.latent_output};
+  options.exit_conditions = {{LoopExitKind::MaxIterations, 3}};
+  SessionLoopInputs inputs{{{"init", Value<uint64_t>({}, {0})},
+                            {"positive", Value<float>({1, 1, 1, 1}, {0.25f})},
+                            {"negative", Value<float>({1, 1, 1, 1}, {-0.5f})}},
+                           {}};
+  auto execution = Execution(*session, options, inputs);
+  SessionLoopStepResult result;
+  ASSERT_STATUS_OK(execution->Step(result));
+  const auto retained = result.outputs[0];
+  const float before = retained.Get<Tensor>().Data<float>()[0];
+  session->before_run = [&] {
+    execution->Cancel();
+    return Status::OK();
+  };
+  EXPECT_FALSE(execution->Step(result).IsOK());
+  EXPECT_EQ(session->calls, 4u);
+  EXPECT_TRUE(execution->RequiresReset());
+  EXPECT_EQ(result.iterations, 1);
+  EXPECT_EQ(retained.Get<Tensor>().Data<float>()[0], before);
+  EXPECT_FALSE(execution->Step(result).IsOK());
+  EXPECT_EQ(session->calls, 4u);
+  session->before_run = {};
+  ASSERT_STATUS_OK(execution->Reset());
+  ASSERT_STATUS_OK(execution->Run(result));
+  EXPECT_EQ(result.invocations, 6);
+  EXPECT_EQ(retained.Get<Tensor>().Data<float>()[0], before);
+}
+
+TEST_P(SessionLoopTest, DdimEitherInvocationFailureDoesNotPublishAndResetReplays) {
+  for (const size_t fail_call : {1u, 2u}) {
+    auto policy = stateful::MakeDdimOptions(2);
+    policy.guidance_mode = DdimGuidanceMode::Sequential;
+    auto session = Session(stateful::MakeDdimDenoiserModel(policy));
+    SessionLoopOptions options;
+    options.ddim = policy;
+    options.output_names = {policy.latent_output};
+    options.exit_conditions = {{LoopExitKind::MaxIterations, 2}};
+    auto execution = Execution(*session, options, {{{"init", Value<uint64_t>({}, {123})}, {"positive", Value<float>({1, 1, 1, 1}, {0.25f})}, {"negative", Value<float>({1, 1, 1, 1}, {-0.5f})}}, {}});
+    session->before_run = [&] {
+      return session->calls == fail_call ? ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "controlled DDIM failure")
+                                         : Status::OK();
+    };
+    SessionLoopStepResult result;
+    EXPECT_FALSE(execution->Step(result).IsOK());
+    EXPECT_TRUE(result.outputs.empty());
+    EXPECT_TRUE(execution->RequiresReset());
+    EXPECT_EQ(session->calls, fail_call);
+    session->before_run = {};
+    ASSERT_STATUS_OK(execution->Reset());
+    ASSERT_STATUS_OK(execution->Run(result));
+    const auto retained = result.outputs[0];
+    ASSERT_STATUS_OK(execution->Reset());
+    ASSERT_STATUS_OK(execution->Run(result));
+    EXPECT_EQ(result.outputs[0].Get<Tensor>().Data<float>()[0], retained.Get<Tensor>().Data<float>()[0]);
+  }
+}
+
+TEST_P(SessionLoopTest, DdimRejectsConflictingPoliciesMetadataAndLogicalInputs) {
+  const auto policy = stateful::MakeDdimOptions(2);
+  auto session = Session(stateful::MakeDdimDenoiserModel(policy));
+  SessionLoopOptions valid;
+  valid.ddim = policy;
+  valid.output_names = {policy.latent_output};
+  valid.exit_conditions = {{LoopExitKind::MaxIterations, 2}};
+  std::shared_ptr<const SessionLoop> loop;
+  ASSERT_STATUS_OK(SessionLoop::Create(*session, valid, loop));
+  auto reject = [&](SessionLoopOptions options) {
+    auto output = loop;
+    EXPECT_FALSE(SessionLoop::Create(*session, std::move(options), output).IsOK());
+    EXPECT_EQ(output, loop);
+  };
+  auto options = valid;
+  options.exit_conditions[0].limit = 0;
+  reject(options);
+  options = valid;
+  options.output_names = {policy.prediction_output};
+  reject(options);
+  options = valid;
+  options.feedback = {{policy.latent_input, policy.prediction_output}};
+  reject(options);
+  options = valid;
+  options.ddim->latent_input = "missing";
+  reject(options);
+  options = valid;
+  options.ddim->timestep_format = DdimTimestepFormat::Int64Vector;
+  reject(options);
+  options = valid;
+  options.ddim->guidance_mode = DdimGuidanceMode::Sequential;
+  reject(options);
+  SessionLoopInputs inputs{{{"init", Value<int64_t>({}, {0})},
+                            {"positive", Value<float>({1, 1, 1, 1}, {0.25f})},
+                            {"negative", Value<float>({1, 1, 1, 1}, {-0.5f})}},
+                           {}};
+  std::unique_ptr<SessionLoopExecution> execution;
+  EXPECT_FALSE(loop->CreateExecution(inputs, execution).IsOK());
+  EXPECT_EQ(execution, nullptr);
+  EXPECT_EQ(session->calls, 0u);
+}
+
+TEST_P(SessionLoopTest, DdimInvalidPredictionStopsAtTheFailingGuidanceInvocation) {
+  for (const bool first_invalid : {false, true}) {
+    auto policy = stateful::MakeDdimOptions(2);
+    policy.guidance_mode = DdimGuidanceMode::Sequential;
+    auto model = stateful::MakeDdimDenoiserModel(policy);
+    auto& graph = *model.mutable_graph();
+    graph.mutable_node(graph.node_size() - 1)->set_op_type("Div");
+    auto session = Session(std::move(model));
+    SessionLoopOptions options;
+    options.ddim = policy;
+    options.output_names = {policy.latent_output};
+    options.exit_conditions = {{LoopExitKind::MaxIterations, 2}};
+    auto execution = Execution(*session, options,
+                               {{{"init", Value<float>({1, 1, 1, 3}, {0.125f, -0.25f, 1.f})},
+                                 {"positive", Value<float>({1, 1, 1, 1}, {first_invalid ? 0.25f : 0.f})},
+                                 {"negative", Value<float>({1, 1, 1, 1}, {first_invalid ? 0.f : -0.5f})}},
+                                {}});
+    LoopFeeds initial;
+    ASSERT_STATUS_OK(execution->GetState(initial));
+    const auto retained = initial.at(policy.latent_output);
+    SessionLoopStepResult result;
+    EXPECT_FALSE(execution->Step(result).IsOK());
+    EXPECT_TRUE(result.outputs.empty());
+    EXPECT_EQ(session->calls, first_invalid ? 1u : 2u);
+    EXPECT_TRUE(execution->RequiresReset());
+    EXPECT_EQ(retained.Get<Tensor>().Data<float>()[0], 0.125f);
+    EXPECT_FALSE(execution->GetState(initial).IsOK());
+    ASSERT_STATUS_OK(execution->Reset());
+    EXPECT_EQ(retained.Get<Tensor>().Data<float>()[0], 0.125f);
+  }
+}
+
+TEST_P(SessionLoopTest, DdimSingleAndFiftyStepReferenceTrajectories) {
+  const std::array<int64_t, 2> counts{1, 50};
+  const std::array<std::array<float, 3>, 2> references{{{0.0626358911f, -0.3119553328f, 0.9366819859f},
+                                                        {-50.66628265f, -53.9910202f, -42.90844727f}}};
+  for (const auto mode : {DdimGuidanceMode::Batched, DdimGuidanceMode::Sequential}) {
+    for (size_t case_index = 0; case_index < counts.size(); ++case_index) {
+      auto policy = stateful::MakeDdimOptions(counts[case_index]);
+      policy.guidance_mode = mode;
+      auto session = Session(stateful::MakeDdimDenoiserModel(policy));
+      SessionLoopOptions options;
+      options.ddim = policy;
+      options.output_names = {policy.latent_output};
+      options.exit_conditions = {{LoopExitKind::MaxIterations, counts[case_index]}};
+      auto execution = Execution(*session, options,
+                                 {{{"init", Value<float>({1, 1, 1, 3}, {0.125f, -0.25f, 1.f})},
+                                   {"positive", Value<float>({1, 1, 1, 1}, {0.25f})},
+                                   {"negative", Value<float>({1, 1, 1, 1}, {-0.5f})}},
+                                  {}});
+      SessionLoopStepResult result;
+      ASSERT_STATUS_OK(execution->Run(result));
+      EXPECT_EQ(result.iterations, counts[case_index]);
+      EXPECT_EQ(result.invocations, counts[case_index] * (mode == DdimGuidanceMode::Batched ? 1 : 2));
+      EXPECT_EQ(session->calls, static_cast<size_t>(result.invocations));
+      for (size_t i = 0; i < 3; ++i) {
+        const float expected = references[case_index][i];
+        EXPECT_NEAR(result.outputs[0].Get<Tensor>().Data<float>()[i], expected,
+                    1e-4f + 1e-4f * std::abs(expected));
+      }
+    }
+  }
+}
+
+TEST_P(SessionLoopTest, DdimAdditionalInvariantAndManagedPortValidation) {
+  for (const auto mode : {DdimGuidanceMode::Batched, DdimGuidanceMode::Sequential}) {
+    auto policy = stateful::MakeDdimOptions(2);
+    policy.guidance_mode = mode;
+    auto model = stateful::MakeDdimDenoiserModel(policy);
+    auto& graph = *model.mutable_graph();
+    stateful::SetTensorType(*graph.add_input(), "offset", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {});
+    graph.mutable_node(graph.node_size() - 1)->set_output(0, "without_offset");
+    stateful::AddNode(graph, "Add", {"without_offset", "offset"}, policy.prediction_output.c_str());
+    auto session = Session(std::move(model));
+    SessionLoopOptions options;
+    options.ddim = policy;
+    options.output_names = {policy.latent_output};
+    options.exit_conditions = {{LoopExitKind::MaxIterations, 2}};
+    std::shared_ptr<const SessionLoop> loop;
+    ASSERT_STATUS_OK(SessionLoop::Create(*session, options, loop));
+    SessionLoopInputs inputs{{{"init", Value<float>({1, 1, 1, 3}, {0.125f, -0.25f, 1.f})},
+                              {"positive", Value<float>({1, 1, 1, 1}, {0.25f})},
+                              {"negative", Value<float>({1, 1, 1, 1}, {-0.5f})},
+                              {"offset", Scalar(0.125f)}},
+                             {}};
+    std::unique_ptr<SessionLoopExecution> execution;
+    ASSERT_STATUS_OK(loop->CreateExecution(inputs, execution));
+    auto invalid = inputs;
+    invalid.inputs.erase("offset");
+    invalid.inputs.emplace(policy.latent_input, Scalar(0.f));
+    const auto* original = execution.get();
+    EXPECT_FALSE(loop->CreateExecution(invalid, execution).IsOK());
+    EXPECT_EQ(execution.get(), original);
+    SessionLoopStepResult result;
+    ASSERT_STATUS_OK(execution->Run(result));
+    const std::array<float, 3> expected{-8.22100067f, -8.86068058f, -6.72841311f};
+    for (size_t i = 0; i < expected.size(); ++i) {
+      EXPECT_NEAR(result.outputs[0].Get<Tensor>().Data<float>()[i], expected[i],
+                  1e-4f + 1e-4f * std::abs(expected[i]));
+    }
+  }
+}
+
+TEST_P(SessionLoopTest, DdimChainLogicalPortsStateHandoffAndActualInvocations) {
+  for (const auto mode : {DdimGuidanceMode::Batched, DdimGuidanceMode::Sequential}) {
+    for (const bool state_handoff : {false, true}) {
+      auto policy = stateful::MakeDdimOptions(2);
+      policy.guidance_mode = mode;
+      auto denoiser = Session(stateful::MakeDdimDenoiserModel(policy));
+      auto producer_model = stateful::MakeModel("ddim_conditioning_producer");
+      auto& producer_graph = *producer_model.mutable_graph();
+      stateful::SetTensorType(*producer_graph.add_input(), "prompt", ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                              {1, 1, 1, 1});
+      stateful::SetTensorType(*producer_graph.add_output(), "embedding", ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                              {1, 1, 1, 1});
+      stateful::AddNode(producer_graph, "Add", {"prompt", "prompt"}, "embedding");
+      auto producer = Session(std::move(producer_model));
+      auto consumer_model = stateful::MakeModel("ddim_latent_consumer");
+      auto& consumer_graph = *consumer_model.mutable_graph();
+      stateful::SetTensorType(*consumer_graph.add_input(), "incoming", ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                              {1, 1, 1, 3});
+      stateful::SetTensorType(*consumer_graph.add_output(), "result", ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                              {1, 1, 1, 3});
+      stateful::AddNode(consumer_graph, "Add", {"incoming", "incoming"}, "result");
+      auto consumer = Session(std::move(consumer_model));
+      SessionLoopOptions options;
+      options.ddim = policy;
+      options.output_names = {policy.latent_output};
+      options.exit_conditions = {{LoopExitKind::MaxIterations, 2}};
+      std::shared_ptr<const SessionLoop> loop;
+      ASSERT_STATUS_OK(SessionLoop::Create(*denoiser, options, loop));
+      SessionChainOptions chain_options;
+      SessionChainComponent conditioning;
+      conditioning.name = "conditioning";
+      conditioning.execution = producer.get();
+      conditioning.inputs = {{"prompt", {ChainSourceKind::ExternalInput, "prompt"}}};
+      chain_options.components.push_back(std::move(conditioning));
+      SessionChainComponent diffusion;
+      diffusion.name = "denoise";
+      diffusion.execution = loop;
+      diffusion.inputs = {{"init", {ChainSourceKind::ExternalInput, "init"}},
+                          {"positive", {ChainSourceKind::ComponentOutput, "embedding", 0}},
+                          {"negative", {ChainSourceKind::ExternalInput, "negative"}}};
+      if (state_handoff) diffusion.state_outputs = {{"diffusion_latents", policy.latent_output}};
+      chain_options.components.push_back(std::move(diffusion));
+      SessionChainComponent output;
+      output.name = "consume";
+      output.execution = consumer.get();
+      output.inputs = {{"incoming", state_handoff
+                                        ? ChainValueSource{ChainSourceKind::State, "diffusion_latents"}
+                                        : ChainValueSource{ChainSourceKind::ComponentOutput, policy.latent_output, 1}}};
+      chain_options.components.push_back(std::move(output));
+      chain_options.outputs = {{"final", 2, "result"}};
+      std::shared_ptr<const SessionChain> chain;
+      ASSERT_STATUS_OK(SessionChain::Create(chain_options, chain));
+      SessionChainInputs inputs;
+      inputs.inputs = {{"prompt", Value<float>({1, 1, 1, 1}, {0.125f})},
+                       {"init", Value<float>({1, 1, 1, 3}, {0.125f, -0.25f, 1.f})},
+                       {"negative", Value<float>({1, 1, 1, 1}, {-0.5f})}};
+      std::unique_ptr<SessionChainExecution> execution;
+      ASSERT_STATUS_OK(chain->CreateExecution(inputs, execution));
+      SessionChainStepResult result;
+      ASSERT_STATUS_OK(execution->Run(result));
+      EXPECT_TRUE(result.completed);
+      EXPECT_EQ(result.components_completed, 3u);
+      EXPECT_EQ(result.invocations, mode == DdimGuidanceMode::Batched ? 4 : 6);
+      EXPECT_EQ(static_cast<size_t>(result.invocations), producer->calls + denoiser->calls + consumer->calls);
+      EXPECT_NEAR(result.outputs.at("final").Get<Tensor>().Data<float>()[0], -16.044136f,
+                  1e-4f + 1e-4f * 16.044136f);
+      const auto retained = result.outputs.at("final");
+      if (state_handoff) {
+        EXPECT_TRUE(execution->State().contains("diffusion_latents"));
+      }
+      ASSERT_STATUS_OK(execution->Reset());
+      ASSERT_STATUS_OK(execution->Run(result));
+      EXPECT_EQ(retained.Get<Tensor>().Data<float>()[0], result.outputs.at("final").Get<Tensor>().Data<float>()[0]);
+    }
+  }
+}
+
+TEST_P(SessionLoopTest, DdimChainInitializationUnionAndRawPredictionRejection) {
+  const auto policy = stateful::MakeDdimOptions(2);
+  auto denoiser = Session(stateful::MakeDdimDenoiserModel(policy));
+  SessionLoopOptions options;
+  options.ddim = policy;
+  options.output_names = {policy.latent_output};
+  options.exit_conditions = {{LoopExitKind::MaxIterations, 2}};
+  std::shared_ptr<const SessionLoop> loop;
+  ASSERT_STATUS_OK(SessionLoop::Create(*denoiser, options, loop));
+  SessionChainOptions chain_options;
+  SessionChainComponent component;
+  component.name = "denoise";
+  component.execution = loop;
+  component.inputs = {{"init", {ChainSourceKind::State, "initialization"}},
+                      {"positive", {ChainSourceKind::ExternalInput, "positive"}},
+                      {"negative", {ChainSourceKind::ExternalInput, "negative"}}};
+  chain_options.components.push_back(std::move(component));
+  chain_options.outputs = {{"final", 0, policy.latent_output}};
+  std::shared_ptr<const SessionChain> chain;
+  ASSERT_STATUS_OK(SessionChain::Create(chain_options, chain));
+  for (const auto& initial : {Value<uint64_t>({}, {std::numeric_limits<uint64_t>::max()}),
+                              Value<float>({1, 1, 1, 3}, {0.125f, -0.25f, 1.f})}) {
+    SessionChainInputs inputs;
+    inputs.inputs = {{"positive", Value<float>({1, 1, 1, 1}, {0.25f})},
+                     {"negative", Value<float>({1, 1, 1, 1}, {-0.5f})}};
+    inputs.initial_state = {{"initialization", initial}};
+    std::unique_ptr<SessionChainExecution> execution;
+    ASSERT_STATUS_OK(chain->CreateExecution(inputs, execution));
+    SessionChainStepResult result;
+    ASSERT_STATUS_OK(execution->Run(result));
+    const auto retained = result.outputs.at("final");
+    ASSERT_STATUS_OK(execution->Reset());
+    ASSERT_STATUS_OK(execution->Run(result));
+    EXPECT_EQ(result.outputs.at("final").Get<Tensor>().Data<float>()[0], retained.Get<Tensor>().Data<float>()[0]);
+  }
+  chain_options.outputs[0].output_name = policy.prediction_output;
+  auto unchanged = chain;
+  EXPECT_FALSE(SessionChain::Create(chain_options, unchanged).IsOK());
+  EXPECT_EQ(unchanged, chain);
 }
 
 TEST_P(SessionLoopTest, ExplicitExitsAndZeroIteration) {

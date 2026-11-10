@@ -1159,3 +1159,185 @@ Compressed project memory. This is not the execution plan.
   base stateful-M14-package-chain-schema. Qualifiedcommit3e1124c6eb91e0325d58084d742b482d37275248
   pushed, PRcorrectbase/notdraft verified. H0-H9/allcompletiongates checked;
   SPEC/TASKS current. No merge/M12. Finalpublicationdocs commit follows.
+
+## M12 - requirements interview (2026-10-30)
+
+- User authorized starting M12; interview/spec-review/plan-review gates still
+  apply. No implementation authorized before separate approvals.
+- Clean baseline: M11 branch stateful-M15-package-chain-loading,
+  HEAD0586ee3acfc1456d1d48bdd060e4789eb0b99c98. No M12 branch created yet.
+- First interview answers: pinned Diffusers DDIMScheduler SD1.5 numerical
+  convention; deterministic eta=0 only; both native seeded Gaussian and
+  caller-supplied initial latents; BOTH concatenated-CFG and separate-call CFG;
+  CPU scheduler/guidance with CUDA denoiser and explicit measured full-tensor
+  transfers. No GPU-native DDIM/guidance kernels required.
+- Reference candidate: Diffusers v0.35.1 DDIMScheduler. Public SD1.5 scheduler
+  config is PNDM, not DDIM; reuse only explicitly documented shared parameters
+  (scaled_linear betas0.00085..0.012,1000trainsteps,offset1,alpha_to_one=false,
+  clip=false). Do not carry PNDM-only skip_prk_steps into a DDIM contract.
+- Second interview complete: FP32 only; anypositiveN rank4latents; one Step =
+  completeDDIMupdate with1/2actualmodelcalls and CPUlatentsnapshot; rejectzeroS;
+  seed/latents executiondata, steps/guidance fixedpolicy; user explicitly
+  confirmed NO additional requirements before drafting.
+- SPEC AppendixL drafted for REVIEW, not approved. Details proposed:
+  sd15_ddim_v1 pinnedDiffusers0f252be0ed42006c125ef4429156cb13ae6c1d60;
+  leadingoffset1 means validS1..999 (reject1000 indexoverflow), epsilon/eta0/
+  no clipping. Exactmatching explicitMaxIterations=S exit, no token/KVmix.
+  CFGbatched2Nsinglecall orsequential2callsN; no g0/1branchskips.
+- Draft initialization uses one logical feed: typedCPUuint64scalarseed OR
+  CPUFP32NCHWlatents. Avoids optionalchainbindings/newCreateExecutionAPI.
+  CPUpositive/negativeconditioning logicalfeeds, explicitmodelportnames,
+  int64/FP32 scalar/[1] timestepformat. PrivateMT19937_64+BoxMuller defined;
+  noTorchRNG/crossplatformbitidentitypromise. Tolerances1e-5step/1e-4trajectory.
+- Proposed nativecore/diffusion math, SessionLooporchestration; append-only
+  size-taggedCconfig + optionsSetDdim/C++SetClear; strictloop.ddim packageconfig.
+  Updatedlatents distinctlogicaloutput/state, notrawmodelnoise/KVstate.
+- Detailed TASKS NOT prepared and implementation NOT authorized. Await SPEC
+  reviewapproval; then detailedplan and separateapproval. No build/install/
+  runtimecode/branch/commit/PR forM12. Only SPEC/SCRATCHPAD modified.
+- User explicitly APPROVED AppendixL on2026-10-30 for planpreparation only.
+  SPEC status updated without semantic changes; TASKS M12 D0-D9 detailedplan
+  now drafted forreview, NOTapproved. No implementation/build/test/branch/PR.
+- Plan inspection found coupled assumptions: loop logicalports/selectedoutputs,
+  chain+packagefactory replaceoutputs withallgraphoutputs, chain metadata uses
+  NodeArgs, chain adds1invocation/Step and publicloopinvocations=iterations.
+  Must fix these exact surfaces forpolicyoutput/typedinitunion/2callguidance
+  without weakening genericmetadata or M11sample-onlycounts.
+- Readonlycurrentprereqs: M11PR25open/ready/head0586ee3acfc1456d1d48bdd060e4789eb0b99c98;
+  CUDA13.0.48 +matchingcudnn/prooftools present;8A100idle. Rootfree~21GB,
+  /homefree~122GB. D0 preserveboundedM11matchingartifacts/profiles before
+  incrementallyreusing validCPU/plugin/legacytrees; old13.1untouched.
+- Proposedtransferfixture S3/N2C2H3W5 L60 FP32: batched3*480DtoHbytes,
+  sequential6*240DtoHbytes =>1440predictionbytes; actualCUPTI proofrequired,
+  classifyanyextra/setup/HtoDseparately. No hostpayloadcounterasDMAproof.
+- Await separate TASKS approval. OnlySPEC/TASKS/SCRATCHPAD edited. No new
+  dependencies installed, runtimefiles changed or claimedtestsresults.
+- User explicitly APPROVED detailed TASKS and authorized M12 implementation
+  on2026-10-30. D0 starting: branch/preserveM11matchingproof/freshbaselines,
+  then numerical core; both approvalgates satisfied. No runtime results yet.
+- D0DONE: actualfreshCPU69/148,plugin132/204,legacy120/69 allpass/no skips.
+  MatchingM11artifactsarchived sessionfiles/m11-measured-artifacts +hashes.
+  Selectedreferenceimportgenuinelyfailedmissingdiffusers thenmissingtorch;
+  installedpinnedDiffusers0.35.1+CPUonlyTorch2.8.0 inexistingvenv; actual
+  referencepasses. NoGPUtooling installed/global changes/modeldownloads.
+- D1INPROGRESS: core/diffusion/ddim.h/.cc added CPUoptions,coefs/schedule,
+  MT19937_64+BoxMuller,typedinit,PrepareCFG/time,UpdateFP32. CMake sessionsource
+  globregistered. Newtest/framework/ddim_test.cc has6tests pendingregistration.
+  Pinrefsource sessionfiles/m12_ddim_reference.py ->m12-ddim-reference.json.
+  CurrentboundedCPUbuild m12-core-build compilingtargetonnxruntime_session.
+  Do not concurrently rebuildsamecache; need retrieve completion, register
+  ddim_test.cc in native testtarget, compile/runbeforeintegration.
+- M12CPUphaseVERIFIED2026-10-31: finalnative85/85/public153/153unfiltered,
+  no skips. Focused16native/5public includes9DDimnativecases+7math,3package/
+  2CxxProviderCPU cases. ActualC11consumer executedinsideCppcase bothmodes.
+- Core initial187/187 became197mathlines aftersharedinit/pred validation.
+  CompleteM12CPUdiffcoverage537/537 fromsource-safe combinedprofiles.
+  Initial13missesclosedbyrealOptionscopycheck,invariantforwarding/managedport
+  rejection,typedseedproducerdirect+retainedstate. Need FINALmapaudit; first
+  m12-final-cpu-map-audit shell failedQUOTINGbeforeanycommand; rerun correctly.
+- Native: logical3portsreplace model3ports; ownedNodeArg metadata notgraph
+  mutation. session_loop_ddim.cc handlesinit/IO/atomic1or2calls/immutableCPU
+  latents. SharedcoreCheckInitialization/Prediction failfast beforesecondcall.
+  realcumulativeinvocationsinnativeStepResult; chainusesdeltas; CAPIloopinfofixed.
+- AppendedC DdimConfig/enums/SetDdim; C++Set/Clear; V1prefix frozen tolastfield.
+  Strictloop.ddimparser/factorychoosevirtualoutput, no separateJSONengine.
+  SetConfig clearsDdim; logicalinputinitCPUuint64scalar ORFP32NCHWtensor.
+- PublicSDKsource m12_sdk_consumer.cc +m12_make_sdk_package.py (checkedONNX,
+  nomodeldownloads). CPUC++17/noexceptions4/4PASS. Frozenheadersarchivedexact
+  M11commit0586ee3; existingC11/C++17LLMclientsPASS. Standalonepkg5/5+5/5.
+  Newm12minimalhelperusesm12-minimal-build (actualproductionfactory source);
+  unsupported/outunchangedPASS; NEVERoverwrite measuredm11-minimal-build.
+- ActiveboundedGPUbuilds m12-plugin-full-build andm12-legacy-full-build.
+  Plugin75% at00:10Z, recompiles unchangedMOEkernels duepublicheader changes,
+  sameM11flags/noquickbuild/old13.1untouched. No GPUDDim resultsyet.
+  PublicCUDAfixture5tests includes12configmatrix, nondefaultstream, DLLunreg/
+  CPUretention, GPUlogicalinitreject and TransferBatched/Sequential (S3,N2C2H3W5).
+- Currentactualtestexpectedcount targets: plugin native157/public216, legacy
+  native145/selectedpublic76; verifydiscovery/execution, NOTresults. CPU85/153.
+  Testsource changed whileGPUstillcompilingdependencies; finalbuild+discovery
+  mustinclude latestDdimSingleAndFiftyStep/InvalidPrediction/Invariant and
+  DdimIndependentConcurrent cases; forcefreshspecifictestobject if any doubt.
+- D1-D6done, D7-D9pending. No M12commit/push/PR yet. Allruntime/test/docs
+  edits belongnewstateful-M16-ddim-policy branch onM11. Need CPUmismatchaudit,
+  finalhostmeasurement +cumulativehostbaseline1988019b6e23ac4def4628cddd603c1bfb504fe8,
+  GPUbuilds/tests/sanitizers/transfers/SDK, then finaldocs/style/onePR. NoM13.
+- FinalCPUMAPaudit rerunPASS:366dormanthash0maps/no nonzeromismatch.
+  FinalCPUprofiles coverage/m12/final ->537/537 againstM11 frommatching
+  native/public/sharedlibrary objects; reportm12-host-coverage-final-cpu.txt.
+  FinalCPUfull85/153PASS; actualminimalsourceprobePASS; noexceptions/C++SDK/
+  frozenM11C/C++/standaloneallPASS. Sourceimplementationhasnotchanged after
+  thesechecks, only docs/testsource/proof scripts.
+- UTC00:10Oct31rootfree19GB/home116GB. PluginCUDArebuild83% (stillunchanged
+  contribkernels afterpublicheader dependency), legacy55%; noGPUresultsyet.
+  Need sourcecheckpoint withoutreadyPR; CPUimplementationverified but whole
+  M12stillblockedonD7-D9. Publication onlyafterallgates.
+- PluginfirstfullbuildFAILED83% pre-existing-Wbraced-scalar-init inunchanged
+  GQAregistration. RootcauseourplaincmakeregenomittedM11CLIflag
+  --compile-no-warning-as-error (noncached), enabled-Werrorandnvccallwarnings.
+  Verifiedunchangedsources/compiler18.1.8; restoredEXACTbaselinewarningpolicy,
+  activecommandm12-plugin-baseline-policy-build. No unrelatedcodechanges or
+  dispatchflags. Legacyoriginalbuildstillactive. NoGPUtestsran yet.
+- Standaloneinstrumentedcoveragebuild m12-package-coverage (sameunchangedsource,
+  Clang/currentlib/test5exes, separateprofiles) all5pass. ActualCHECKmacros
+  independentofNDEBUG verified, nofalsegreen. SafemappedCPU+standalone+actual
+  minimal cumulativehost4449/4561;112remaininglocationsinoldGPUloop/chain/
+  providerpaths pendingGPUtests, plusCUDA-onlyhostobjectsnotyetmapped. Thisis
+  partialCPUonlycumulative, notfinalclaim. NewM12onlyremains537/537.
+- Baselinestack1988019b6e23ac4def4628cddd603c1bfb504fe8 fromPR11baseort-state.
+  measure_m12_coverage.py supports--final/--gpu/--cumulative, batchedsourcefilter
+  verifiedsame537/537 asindependentperfilemethod, mapstandalone/min separately
+  ratherthanblindmerge. NeedfinalGPUprofiles/libproviderobjectandmapaudit.
+- FINALCPUsourcecorrection: chaincount usesSafeInt(total)+(current-previous),
+  deltaFIRSTtoavoidunnecessaryintermediateoverflow. CPUrebuild/fulltests
+  85/153PASS; final-2 profiles537/537,366hash0/no nonzero mismatches reaudited.
+  CorrectcurrentCPUprofilepath coverage/m12/final-2/merged.profdata.
+  helper--cpu-profile supportsit; doNOTreuseoldfinalforlaterproductionchanges.
+- LegacyfirstbuildFAILED at nativeobjects:twoNEWGtestmacro single-lineifs
+  dangling-else +oldM11budgetif warning now-Werror. Fixed ONLYtwoNEWtestsites
+  withbraces; oldtestuntouched. RestoredlegacyM11CLIwarningpolicy too.
+- CURRENTactiveboundedbuilds:
+  m12-plugin-baseline-policy-build ->m12-plugin-baseline-policy-build.log
+  m12-legacy-baseline-policy-build ->m12-legacy-baseline-policy-build.log
+  Bothmustfinish; retrievewithread_bashaftercompletion. Needrerunincremental
+  targets oncetorecompilelatestcounter.c/testbracesifbuildstartedbeforeedits;
+  no CMake regen unless needed (CLI--compile-no-warning-as-error ifregenerating).
+  NEVERstartparallelbuildagainstsamecache. No newCUDAkernels/driverchanges.
+- Allsource/API/native/package/CPUworkdone, Corelinecoverage537/537CPU.
+  StillNO CUDA DDimtestresult, Nsys/sanitizer/SDK-GPU, finalcumulativecoverage,
+  M12commit/push/PR. NeedfinishallD7-D9; noM13. UncommittedM12branch worktree
+  containsallapprovedcode/docs. Do notmarkmilestonecompleteorpublishready yet.
+- GPUFINALQUALIFIED2026-10-31: plugin157native/216publicunfilteredPASS;
+  legacy145native/76selectedpublicPASS,no skips. Focusedplugin25/12,legacy25/7.
+  Pluginmemcheckall25native/12public+legacyGPU9native/2public zeroerrors/leaks.
+  PublicGPU C++17/noexceptions4/4 andsequentialSDKmemcheckPASS.
+  Racecheck/synccheckboth2caseszeroerrors/hazards/warnings.
+- ActualCUPTItraces/proof m12-transfer-proof.txt:
+  S3,N2C2H3W5 batched3DtoH*480=1440, HtoD11copies1508;
+  seq6DtoH*240=1440,HtoD20copies1520. NoextraDtoH.
+  HtoD2weights*4 upfront, latentscalls*480/240,conditionscalls*16/8,
+  timestepscalls*4. Allsetupincluded; noGPUresident/performanceclaim.
+- FinalHOST537/537; currenttreecumulativeHOST4752/4752 vs1988019b.
+  MapseparatelyCPUfinal3/pluginfinal/standalone/minimal withverifiedsource.
+  CPU366/plugin1008/standalone9/minimal17 hash0mapsONLY; no nonzeromismatch.
+  NoCUDA/CUHsourceedits; greedySHA92837bc...unchanged,parentdeviceproofretained.
+  No0/0CPPsourcegap:onnxruntime_c_api.ccdiffonlyfunctionptrtableinitializer.
+- D0-D8DONE. D9inprogressfinaldocs/commit/push/ONEreadyPRon#25
+  stateful-M15-package-chain-loading head0586ee3. PR25openunchangedverified,
+  noM12PRexistsyet. Templateinspectedagain. Allcodeuncommittedonm12branch.
+  Needhash/preservefinalmeasuredartifacts, cleanupunmeasuredfixtures/SDK
+  binariesafterhashes, finalstyle/docscheck, commit/publishthenupdatechecklist.
+  NoM13/no merge. ActualSDK/numerical/traceproofsources+logsremaininsessionfiles.
+- FinalmatchedCPU/pluginbinary+profilearchive m12-measured-artifacts/ retained;
+  m12-measured-artifact-hashes.txt andm12-final-source-proof-hashes.txt include
+  source,SDK,trace,standalone/minimal identities. RemovedexactinspectedSDK
+  generatedpackages and7hashedunmeasuredclientbinaries; keptsources/generators,
+  frozenheaders, allmeasuredartifacts/profiles/reports. No workspaceartifacts.
+- Finalpinnedstyle/strictC11/whitespace anddocumentJSON/approvalgatecheckPASS.
+  m12-pr-body.md preservesrepositorytemplate withexactcommands/results,
+  configuration+CPUhostpolicy+transfer+scopecaveats. Readycommit/push/PR.
+- M12COMPLETE/PUBLISHED2026-10-31: oneOPEN/notdraftPR#26
+  https://github.com/microsoft/onnxruntime/pull/34055
+  base stateful-M15-package-chain-loading (#34054); qualifiedsourcecommit
+  ae416c8708513316be6e59ae74faade73a105fd4 pushedto stateful-M16-ddim-policy.
+  Correctbase/implementationHEAD/cleanworktreeverifiedbeforepublicationdocs.
+  D0-D9/allcompletiongates checked. Finaldoccommitfollows; no merge/M13.

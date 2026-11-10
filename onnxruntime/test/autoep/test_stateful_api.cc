@@ -3,7 +3,9 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <functional>
+#include <future>
 #include <limits>
 #include <memory>
 #include <string_view>
@@ -13,9 +15,12 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/autoep/test_autoep_utils.h"
 #include "test/util/include/stateful_execution_test_utils.h"
+#include "test/util/include/ddim_test_utils.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
 extern "C" int StatefulApiCConsumerTest(void);
+extern "C" int StatefulApiCDdimConsumer(OrtSession*, int, const OrtValue*, const OrtValue*, const OrtValue*,
+                                        OrtStatefulStepResult**);
 
 namespace onnxruntime::test {
 namespace {
@@ -759,6 +764,7 @@ TEST_F(StatefulApiTest, EveryStatusEntryValidatesRequiredPointers) {
   Error(api.CreateSessionLoopOptions(nullptr, &options));
   EXPECT_EQ(options, nullptr);
   Error(api.SessionLoopOptionsSetConfig(nullptr, nullptr));
+  Error(api.SessionLoopOptionsSetDdim(nullptr, nullptr));
   Error(api.CreateSessionLoop(nullptr, nullptr, nullptr));
   Error(api.CreateSessionChainOptions(nullptr, nullptr));
   Error(api.SessionChainOptionsSetConfig(nullptr, nullptr));
@@ -1313,6 +1319,128 @@ TEST_P(StatefulCxxApiProviderTest, BootstrapTypedConfigurationAndSampleOnlyProgr
     EXPECT_EQ(CxxOutput(execution.Run(), "tokens").GetTensorTypeAndShapeInfo().GetElementCount(),
               static_cast<size_t>(budget));
     EXPECT_EQ(tokens.GetTensorTypeAndShapeInfo().GetShape(), std::vector<int64_t>{budget});
+  }
+}
+
+TEST_P(StatefulCxxApiProviderTest, DdimTypedConfigurationCountsRetainedResultsAndPureC) {
+  EXPECT_EQ(offsetof(OrtStatefulApi, SessionLoopOptionsSetDdim),
+            offsetof(OrtStatefulApi, SessionChainOptionsSetGenerationBootstrap) + sizeof(void*));
+  constexpr float reference = -8.022068f;
+  const float tolerance = 1e-4f + 1e-4f * std::abs(reference);
+  for (const auto mode : {DdimGuidanceMode::Batched, DdimGuidanceMode::Sequential}) {
+    auto policy = stateful::MakeDdimOptions(2);
+    policy.guidance_mode = mode;
+    auto session = Session(stateful::MakeDdimDenoiserModel(policy), GetParam());
+    const char* outputs[]{"latents"};
+    const OrtStatefulExitCondition exit{ORT_STATEFUL_MAX_ITERATIONS, 2, nullptr, nullptr, 0};
+    OrtStatefulLoopConfig config{};
+    config.struct_size = sizeof(config);
+    config.output_names = outputs;
+    config.num_outputs = 1;
+    config.exit_conditions = &exit;
+    config.num_exit_conditions = 1;
+    auto ddim = stateful::PublicDdimConfig(policy);
+    Ort::SessionLoopOptions options(config);
+    options.SetDdim(ddim);
+    Ort::SessionLoop loop(session, options);
+    options.ClearDdim();
+    EXPECT_THROW((Ort::SessionLoop{session, options}), Ort::Exception);
+    options.SetDdim(ddim);
+    options.SetConfig(config);
+    EXPECT_THROW((Ort::SessionLoop{session, options}), Ort::Exception);
+    options.SetDdim(ddim);
+    for (int kind = 0; kind < 10; ++kind) {
+      auto invalid = ddim;
+      if (kind == 0) invalid.struct_size = 0;
+      if (kind == 1) invalid.profile = static_cast<OrtStatefulDdimProfile>(-1);
+      if (kind == 2) invalid.guidance_mode = static_cast<OrtStatefulDdimGuidanceMode>(9);
+      if (kind == 3) invalid.timestep_format = static_cast<OrtStatefulDdimTimestepFormat>(9);
+      if (kind == 4) invalid.num_dimensions = 3;
+      if (kind == 5) invalid.latent_shape = nullptr;
+      if (kind == 6) invalid.latent_input = nullptr;
+      if (kind == 7) invalid.guidance_scale = -1.f;
+      if (kind == 8) invalid.num_inference_steps = 0;
+      if (kind == 9) invalid.positive_conditioning_input = invalid.negative_conditioning_input;
+      Error(Api().SessionLoopOptionsSetDdim(options, &invalid));
+    }
+    Ort::SessionLoop unchanged(session, options);
+    auto init = Tensor<float>({1, 1, 1, 3}, {0.125f, -0.25f, 1.f});
+    auto positive = Tensor<float>({1, 1, 1, 1}, {0.25f});
+    auto negative = Tensor<float>({1, 1, 1, 1}, {-0.5f});
+    const OrtStatefulNamedValue named[]{{"init", init}, {"positive", positive}, {"negative", negative}};
+    OrtStatefulInputs inputs{};
+    inputs.struct_size = sizeof(inputs);
+    inputs.inputs = named;
+    inputs.num_inputs = 3;
+    auto execution = loop.CreateExecution(inputs);
+    auto first = execution.Step();
+    EXPECT_TRUE(first.GetInfo().executed);
+    EXPECT_EQ(first.GetInfo().iterations, 1);
+    EXPECT_EQ(first.GetInfo().invocations, mode == DdimGuidanceMode::Batched ? 1 : 2);
+    auto final = execution.Run();
+    EXPECT_EQ(final.GetInfo().invocations, mode == DdimGuidanceMode::Batched ? 2 : 4);
+    EXPECT_EQ(final.GetInfo().generated_tokens, 0);
+    auto latent = CxxOutput(final, "latents");
+    EXPECT_EQ(latent.GetTensorMemoryInfo().GetDeviceType(), OrtMemoryInfoDeviceType_CPU);
+    EXPECT_NEAR(latent.GetTensorData<float>()[0], reference, tolerance);
+    const float prior = CxxOutput(first, "latents").GetTensorData<float>()[0];
+    execution.Reset();
+    EXPECT_EQ(CxxOutput(execution.GetState(), "latents", ORT_STATEFUL_STATE_VALUES).GetTensorData<float>()[0], 0.125f);
+    EXPECT_NEAR(CxxOutput(execution.Run(), "latents").GetTensorData<float>()[0], reference, tolerance);
+    EXPECT_EQ(CxxOutput(first, "latents").GetTensorData<float>()[0], prior);
+    OrtStatefulStepResult* raw = nullptr;
+    ASSERT_EQ(StatefulApiCDdimConsumer(session, mode == DdimGuidanceMode::Sequential,
+                                       init, positive, negative, &raw),
+              0);
+    ASSERT_NE(raw, nullptr);
+    auto pure_c = Own(raw, Api().ReleaseStatefulStepResult);
+    EXPECT_EQ(Info(pure_c.get()).invocations, mode == DdimGuidanceMode::Batched ? 2 : 4);
+    EXPECT_NEAR(Float(Output(pure_c.get(), "latents")), reference, tolerance);
+    execution = Ort::StatefulExecution(nullptr);
+    loop = Ort::SessionLoop(nullptr);
+    unchanged = Ort::SessionLoop(nullptr);
+    session = Ort::Session(nullptr);
+    EXPECT_NEAR(latent.GetTensorData<float>()[0], reference, tolerance);
+    EXPECT_NEAR(Float(Output(pure_c.get(), "latents")), reference, tolerance);
+  }
+}
+
+TEST_P(StatefulCxxApiProviderTest, DdimIndependentConcurrentExecutionsOwnTheirState) {
+  for (const auto mode : {DdimGuidanceMode::Batched, DdimGuidanceMode::Sequential}) {
+    auto policy = stateful::MakeDdimOptions(3);
+    policy.guidance_mode = mode;
+    auto session = Session(stateful::MakeDdimDenoiserModel(policy), GetParam());
+    const char* names[]{"latents"};
+    const OrtStatefulExitCondition exit{ORT_STATEFUL_MAX_ITERATIONS, 3, nullptr, nullptr, 0};
+    OrtStatefulLoopConfig config{};
+    config.struct_size = sizeof(config);
+    config.output_names = names;
+    config.num_outputs = 1;
+    config.exit_conditions = &exit;
+    config.num_exit_conditions = 1;
+    Ort::SessionLoopOptions options(config);
+    options.SetDdim(stateful::PublicDdimConfig(policy));
+    Ort::SessionLoop loop(session, options);
+    auto seed = Tensor<uint64_t>({}, {0});
+    auto positive = Tensor<float>({1, 1, 1, 1}, {0.25f});
+    auto negative = Tensor<float>({1, 1, 1, 1}, {-0.5f});
+    const OrtStatefulNamedValue named[]{{"init", seed}, {"positive", positive}, {"negative", negative}};
+    OrtStatefulInputs inputs{};
+    inputs.struct_size = sizeof(inputs);
+    inputs.inputs = named;
+    inputs.num_inputs = 3;
+    auto first = loop.CreateExecution(inputs);
+    auto second = loop.CreateExecution(inputs);
+    auto pending = std::async(std::launch::async, [&] { return first.Run(); });
+    const auto second_result = second.Run();
+    const auto first_result = pending.get();
+    EXPECT_EQ(first_result.GetInfo().invocations, mode == DdimGuidanceMode::Batched ? 3 : 6);
+    EXPECT_EQ(first_result.GetInfo().invocations, second_result.GetInfo().invocations);
+    const auto a = CxxOutput(first_result, "latents");
+    const auto b = CxxOutput(second_result, "latents");
+    for (size_t i = 0; i < 3; ++i) EXPECT_EQ(a.GetTensorData<float>()[i], b.GetTensorData<float>()[i]);
+    first.Reset();
+    EXPECT_EQ(CxxOutput(first.Run(), "latents").GetTensorData<float>()[0], b.GetTensorData<float>()[0]);
   }
 }
 

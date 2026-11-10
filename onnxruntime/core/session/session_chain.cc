@@ -78,8 +78,12 @@ Status SessionChain::Initialize() {
     const auto [status, outputs] = session->GetModelOutputs();
     ORT_RETURN_IF_ERROR(status);
     options.output_names.clear();
-    for (const auto* output : *outputs) {
-      options.output_names.push_back(output->Name());
+    if (options.ddim) {
+      options.output_names.push_back(options.ddim->latent_output);
+    } else {
+      for (const auto* output : *outputs) {
+        options.output_names.push_back(output->Name());
+      }
     }
     std::shared_ptr<const SessionLoop> loop;
     ORT_RETURN_IF_ERROR(SessionLoop::Create(*session, std::move(options), loop));
@@ -258,7 +262,7 @@ Status SessionChain::Initialize() {
                   "Component input binding count mismatch: ", component.name);
     InlinedHashSet<std::string> destinations;
     for (const auto& binding : component.inputs) {
-      const auto* target = FindArgument(arguments, binding.input_name);
+      const auto* target = loops_[index]->InputArgument(binding.input_name);
       ORT_RETURN_IF_NOT(target && destinations.insert(binding.input_name).second,
                         "Unknown or duplicate component input: ", component.name, ".", binding.input_name);
       ORT_RETURN_IF(std::find(managed.begin(), managed.end(), binding.input_name) != managed.end(),
@@ -281,7 +285,7 @@ Status SessionChain::Initialize() {
         case ChainSourceKind::ComponentOutput:
           ORT_RETURN_IF(source.component_index >= index,
                         "Binding must reference an earlier component: ", component.name);
-          source_type = FindArgument(*sessions_[source.component_index]->GetModelOutputs().second, source.name);
+          source_type = loops_[source.component_index]->OutputArgument(source.name);
           ORT_RETURN_IF_NOT(source_type, "Unknown upstream output: ", source.name);
           break;
         case ChainSourceKind::State: {
@@ -289,6 +293,16 @@ Status SessionChain::Initialize() {
                                     [&](const auto& spec) { return spec.name == source.name; });
           if (cache != cache_specs_.end()) {
             ORT_RETURN_IF_ERROR(KVCacheManager::CheckBinding(*cache, *target, true));
+            break;
+          }
+          if (loops_[index]->Options().ddim &&
+              binding.input_name == loops_[index]->Options().ddim->initialization_input) {
+            const auto found = state_types.find(source.name);
+            if (found == state_types.end()) {
+              initial_state_names_.insert(source.name);
+            } else {
+              source_type = found->second;
+            }
             break;
           }
           auto [it, inserted] = state_types.emplace(source.name, target);
@@ -302,7 +316,7 @@ Status SessionChain::Initialize() {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unknown SessionChain source kind");
       }
       if (source_type) {
-        ORT_RETURN_IF_ERROR(CheckCompatibleTypes(*source_type, *target));
+        ORT_RETURN_IF_ERROR(loops_[index]->CheckSource(binding.input_name, *source_type));
       }
     }
     if (component.generation_bootstrap) {
@@ -348,7 +362,7 @@ Status SessionChain::Initialize() {
     }
     InlinedHashSet<std::string> state_destinations;
     for (const auto& binding : component.state_outputs) {
-      const auto* output = FindArgument(*sessions_[index]->GetModelOutputs().second, binding.output_name);
+      const auto* output = loops_[index]->OutputArgument(binding.output_name);
       ORT_RETURN_IF_NOT(output && !binding.state_name.empty() && state_destinations.insert(binding.state_name).second,
                         "Invalid or duplicate state output: ", component.name, ".", binding.state_name);
       auto cache = std::find_if(cache_specs_.begin(), cache_specs_.end(),
@@ -378,7 +392,7 @@ Status SessionChain::Initialize() {
     }
     ORT_RETURN_IF(binding.kind != ChainOutputKind::ModelOutput || binding.component_index >= sessions_.size(),
                   "Invalid chain output kind or component index");
-    ORT_RETURN_IF_NOT(FindArgument(*sessions_[binding.component_index]->GetModelOutputs().second, binding.output_name),
+    ORT_RETURN_IF_NOT(loops_[binding.component_index]->OutputArgument(binding.output_name),
                       "Unknown chain output: ", binding.output_name);
   }
   return Status::OK();
@@ -396,7 +410,7 @@ Status SessionChain::ValidateInputs(const SessionChainInputs& inputs) const {
     std::optional<size_t> batch_count;
     for (const auto& binding : options_.components[index].inputs) {
       const auto& source = binding.source;
-      const auto& target = *FindArgument(*sessions_[index]->GetModelInputs().second, binding.input_name);
+      const auto& target = *loops_[index]->InputArgument(binding.input_name);
       const OrtValue* value = nullptr;
       size_t count = 1;
       if (source.kind == ChainSourceKind::ExternalSequence) {
@@ -425,7 +439,9 @@ Status SessionChain::ValidateInputs(const SessionChainInputs& inputs) const {
         value = &it->second;
       }
       if (value) {
-        ORT_RETURN_IF_ERROR(CheckHostInput(target, *value));
+        ORT_RETURN_IF_ERROR(loops_[index]->CheckValue(binding.input_name, *value));
+        ORT_RETURN_IF_NOT(value->Get<Tensor>().Location().device.UsesCpuMemory(),
+                          "SessionChain requires host-accessible external inputs: ", binding.input_name);
         if (loops_[index]->Options().generation &&
             binding.input_name == loops_[index]->Options().generation->input_ids) {
           ORT_RETURN_IF_ERROR(TokenGeneration::ValidatePrompt(*value));
@@ -576,6 +592,7 @@ Status SessionChainExecution::StepComponent(SessionChainStepResult& result) {
       bootstrapped = true;
     }
   }
+  const int64_t previous_invocations = active_->progress_.invocations;
   const auto status = bootstrapped ? Status::OK() : active_->Step(result.component_result);
   staging_[component_index_] = active_->StagingInfo();
   ORT_RETURN_IF_ERROR(status);
@@ -601,7 +618,7 @@ Status SessionChainExecution::StepComponent(SessionChainStepResult& result) {
       ORT_RETURN_IF_ERROR(cache_->Get(item.cache.name, view));
       state_.insert_or_assign(item.cache.name, view.value);
     }
-    invocations_ = SafeInt<int64_t>(invocations_) + 1;
+    invocations_ = SafeInt<int64_t>(invocations_) + (result.component_result.invocations - previous_invocations);
   }
   if (result.component_result.completed) {
     active_.reset();

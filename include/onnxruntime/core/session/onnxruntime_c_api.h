@@ -9432,13 +9432,13 @@ typedef struct OrtStatefulGenerationBootstrapConfig {
   int64_t logits_position;
 } OrtStatefulGenerationBootstrapConfig;
 
-/** \brief Maps one source to one model input. \since Version 1.32. */
+/** \brief Maps one source to one model or configured native-policy input. \since Version 1.32. */
 typedef struct OrtStatefulInputBinding {
   const char* input_name;
   OrtStatefulValueSource source;
 } OrtStatefulInputBinding;
 
-/** \brief Writes a model output into a named retained-state slot. \since Version 1.32. */
+/** \brief Writes a component output into a named retained-state slot. \since Version 1.32. */
 typedef struct OrtStatefulStateBinding {
   const char* state_name;
   const char* output_name;
@@ -9739,6 +9739,63 @@ typedef struct OrtStatefulStagingInfo {
   size_t cpu_output_bytes;
   size_t cpu_snapshot_copy_bytes;
 } OrtStatefulStagingInfo;
+
+/** \brief Fixed deterministic FP32 DDIM numerical profile. \since Version 1.32. */
+typedef enum OrtStatefulDdimProfile {
+  ORT_STATEFUL_DDIM_SD15_V1 = 0
+} OrtStatefulDdimProfile;
+
+/** \brief Guidance convention; one or two calls per complete update. \since Version 1.32. */
+typedef enum OrtStatefulDdimGuidanceMode {
+  ORT_STATEFUL_DDIM_GUIDANCE_BATCHED = 0,
+  ORT_STATEFUL_DDIM_GUIDANCE_SEQUENTIAL = 1
+} OrtStatefulDdimGuidanceMode;
+
+/** \brief Explicit model timestep tensor encoding. \since Version 1.32. */
+typedef enum OrtStatefulDdimTimestepFormat {
+  ORT_STATEFUL_DDIM_TIMESTEP_INT64_SCALAR = 0,
+  ORT_STATEFUL_DDIM_TIMESTEP_INT64_VECTOR = 1,
+  ORT_STATEFUL_DDIM_TIMESTEP_FLOAT32_SCALAR = 2,
+  ORT_STATEFUL_DDIM_TIMESTEP_FLOAT32_VECTOR = 3
+} OrtStatefulDdimTimestepFormat;
+
+/** \brief Copied deterministic DDIM policy; initialize struct_size.
+ *
+ * SD15_V1 uses 1000 scaled-linear training betas (0.00085..0.012), leading
+ * timesteps with offset1, epsilon prediction, eta0, final alpha A0 and no clipping.
+ * The loop must explicitly select latent_output and MaxIterations matching
+ * num_inference_steps (1..999). No token/cache/feedback/finite-input policy may
+ * be combined with DDIM. guidance_scale must be finite and nonnegative.
+ *
+ * Model ports are explicit. Logical initialization_input accepts either a CPU
+ * uint64 scalar seed or CPU FP32 initial latents of latent_shape [N,C,H,W].
+ * Positive/negative conditioning logical inputs are equal-shaped CPU FP32
+ * tensors with leading dimension N. Batched guidance concatenates unconditional
+ * then conditional batches (2N); sequential guidance runs the Session twice.
+ * Scheduler/guidance/initialization and immutable latent_output stay on CPU,
+ * including for CUDA Sessions; full prediction/latent transfers are expected.
+ * Names, dimensions and configuration are copied by SessionLoopOptionsSetDdim.
+ * Caller tensor buffers retain ordinary execution-input lifetime obligations.
+ * \since Version 1.32.
+ */
+typedef struct OrtStatefulDdimConfig {
+  size_t struct_size;
+  OrtStatefulDdimProfile profile;
+  const int64_t* latent_shape;  ///< Exactly four positive dimensions.
+  size_t num_dimensions;
+  int64_t num_inference_steps;
+  float guidance_scale;
+  OrtStatefulDdimGuidanceMode guidance_mode;
+  OrtStatefulDdimTimestepFormat timestep_format;
+  const char* latent_input;
+  const char* timestep_input;
+  const char* conditioning_input;
+  const char* prediction_output;
+  const char* initialization_input;
+  const char* positive_conditioning_input;
+  const char* negative_conditioning_input;
+  const char* latent_output;
+} OrtStatefulDdimConfig;
 
 /** \brief Append-only API for stateful execution.
  *
@@ -10089,6 +10146,17 @@ struct OrtStatefulApi {
    */
   ORT_API2_STATUS(SessionChainOptionsSetGenerationBootstrap, _Inout_ OrtSessionChainOptions* options, size_t component,
                   _In_opt_ const OrtStatefulGenerationBootstrapConfig* bootstrap_or_null);
+  /** \brief Atomically attach a copied DDIM policy, or clear it with NULL.
+   * SetConfig clears this policy; existing definitions are unaffected.
+   * One Step is one complete DDIM update; iterations count updates and invocations
+   * count actual model calls. Reset replays the original initialization.
+   * \param[in,out] options Mutable loop options.
+   * \param[in] config Copied policy, or NULL to clear it.
+   * \return NULL on success, otherwise an owned OrtStatus; options are unchanged on failure.
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(SessionLoopOptionsSetDdim, _Inout_ OrtSessionLoopOptions* options,
+                  _In_opt_ const OrtStatefulDdimConfig* config);
 };
 
 /*
