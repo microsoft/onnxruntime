@@ -671,7 +671,6 @@ jobs:
           name: external-dawn-inputs
           path: ${{ github.workspace }}\external-dawn-inputs
           if-no-files-found: error
-          retention-days: 1
 
   webgpu_external_dawn_test_x64_RelWithDebInfo:
     # The host embeds its model; DLLs are relative to the executable, so no CTest paths need relocation.
@@ -768,14 +767,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          python.exe tools\ci_build\build.py --config RelWithDebInfo --build_dir dawn-package-build --skip_submodule_sync --update --build --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu --use_external_dawn --build_shared_lib --skip_tests --target onnxruntime --cmake_extra_defines "onnxruntime_DAWN_PREBUILT_DIR=${{ github.workspace }}\external-dawn-inputs\dawn-api"
+          python.exe tools\ci_build\build.py --config RelWithDebInfo --build_dir dawn-package-builtin-build --skip_submodule_sync --update --build --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu --use_external_dawn --build_shared_lib --skip_tests --target onnxruntime --cmake_extra_defines "onnxruntime_DAWN_PREBUILT_DIR=${{ github.workspace }}\external-dawn-inputs\dawn-api"
           if ($LASTEXITCODE -ne 0) { throw "Package-backed ORT build failed" }
-          if (Test-Path dawn-package-build\RelWithDebInfo\_deps\dawn-src) { throw "Package mode configured native Dawn" }
-          Copy-Item dawn-package-build\RelWithDebInfo\RelWithDebInfo\onnxruntime.dll external-dawn-inputs\host
-          # Snapshot before reconfiguring the same build tree for the plugin ABI.
+          if (Test-Path dawn-package-builtin-build\RelWithDebInfo\_deps\dawn-src) { throw "Package mode configured native Dawn" }
+          Copy-Item dawn-package-builtin-build\RelWithDebInfo\RelWithDebInfo\onnxruntime.dll external-dawn-inputs\host
           $null = New-Item -ItemType Directory -Path dawn-package-test-artifacts -Force
           Copy-Item external-dawn-inputs\host dawn-package-test-artifacts\builtin -Recurse
-          $runtimeDir = Join-Path $PWD "dawn-package-build\RelWithDebInfo\RelWithDebInfo"
+          $runtimeDir = Join-Path $PWD "dawn-package-builtin-build\RelWithDebInfo\RelWithDebInfo"
           Get-ChildItem -LiteralPath $runtimeDir -Filter "*.dll" -File -Recurse | ForEach-Object {
             $destination = Join-Path "$PWD\dawn-package-test-artifacts\builtin" ([IO.Path]::GetRelativePath($runtimeDir, $_.FullName))
             $null = New-Item -ItemType Directory -Path (Split-Path $destination) -Force
@@ -786,6 +784,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          # Keep expected configure failures out of both valid build trees.
+          python.exe tools\ci_build\build.py --config RelWithDebInfo --build_dir dawn-package-validation --skip_submodule_sync --update --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu --use_external_dawn --build_shared_lib --skip_tests --cmake_extra_defines "onnxruntime_DAWN_PREBUILT_DIR=${{ github.workspace }}\external-dawn-inputs\dawn-api"
+          if ($LASTEXITCODE -ne 0) { throw "Dawn package validation configure failed" }
           $package = "${{ github.workspace }}\external-dawn-inputs\dawn-api"
           $incomplete = "${{ runner.temp }}\incomplete-dawn-api"
           $null = New-Item -ItemType Directory -Path $incomplete -Force
@@ -802,7 +803,7 @@ jobs:
             $cases += @{ Path = $missingHeaderPackage; External = "ON"; Expected = "include/dawn/$header" }
           }
           foreach ($case in $cases) {
-            $output = & cmake -S cmake -B dawn-package-build\RelWithDebInfo "-Donnxruntime_DAWN_PREBUILT_DIR=$($case.Path)" "-Donnxruntime_USE_EXTERNAL_DAWN=$($case.External)" 2>&1
+            $output = & cmake -S cmake -B dawn-package-validation\RelWithDebInfo "-Donnxruntime_DAWN_PREBUILT_DIR=$($case.Path)" "-Donnxruntime_USE_EXTERNAL_DAWN=$($case.External)" 2>&1
             $diagnostic = ($output -join " ") -replace '\s+', ' '
             if ($LASTEXITCODE -eq 0 -or !$diagnostic.Contains($case.Expected)) {
               throw "Expected rejection '$($case.Expected)', received: $diagnostic"
@@ -814,15 +815,15 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          python.exe tools\ci_build\build.py --config RelWithDebInfo --build_dir dawn-package-build --skip_submodule_sync --update --build --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu shared_lib --use_external_dawn --build_shared_lib --skip_tests --target onnxruntime --cmake_extra_defines "onnxruntime_DAWN_PREBUILT_DIR=${{ github.workspace }}\external-dawn-inputs\dawn-api"
+          python.exe tools\ci_build\build.py --config RelWithDebInfo --build_dir dawn-package-plugin-build --skip_submodule_sync --update --build --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu shared_lib --use_external_dawn --build_shared_lib --skip_tests --target onnxruntime --cmake_extra_defines "onnxruntime_DAWN_PREBUILT_DIR=${{ github.workspace }}\external-dawn-inputs\dawn-api"
           if ($LASTEXITCODE -ne 0) { throw "Plugin-mode ORT build failed" }
-          cmake --build dawn-package-build\RelWithDebInfo --config RelWithDebInfo --target onnxruntime_providers_webgpu --parallel
+          cmake --build dawn-package-plugin-build\RelWithDebInfo --config RelWithDebInfo --target onnxruntime_providers_webgpu --parallel
           if ($LASTEXITCODE -ne 0) { throw "Package-backed WebGPU plugin build failed" }
-          if (Test-Path dawn-package-build\RelWithDebInfo\_deps\dawn-src) { throw "Plugin package mode configured native Dawn" }
-          Copy-Item dawn-package-build\RelWithDebInfo\RelWithDebInfo\onnxruntime.dll external-dawn-inputs\host
-          Copy-Item dawn-package-build\RelWithDebInfo\RelWithDebInfo\onnxruntime_providers_webgpu.dll external-dawn-inputs\host
+          if (Test-Path dawn-package-plugin-build\RelWithDebInfo\_deps\dawn-src) { throw "Plugin package mode configured native Dawn" }
+          Copy-Item dawn-package-plugin-build\RelWithDebInfo\RelWithDebInfo\onnxruntime.dll external-dawn-inputs\host
+          Copy-Item dawn-package-plugin-build\RelWithDebInfo\RelWithDebInfo\onnxruntime_providers_webgpu.dll external-dawn-inputs\host
           Copy-Item external-dawn-inputs\host dawn-package-test-artifacts\plugin -Recurse
-          $runtimeDir = Join-Path $PWD "dawn-package-build\RelWithDebInfo\RelWithDebInfo"
+          $runtimeDir = Join-Path $PWD "dawn-package-plugin-build\RelWithDebInfo\RelWithDebInfo"
           Get-ChildItem -LiteralPath $runtimeDir -Filter "*.dll" -File -Recurse | ForEach-Object {
             $destination = Join-Path "$PWD\dawn-package-test-artifacts\plugin" ([IO.Path]::GetRelativePath($runtimeDir, $_.FullName))
             $null = New-Item -ItemType Directory -Path (Split-Path $destination) -Force
@@ -835,7 +836,6 @@ jobs:
           name: dawn-package-test-artifacts
           path: ${{ github.workspace }}\dawn-package-test-artifacts
           if-no-files-found: error
-          retention-days: 1
 
   webgpu_dawn_package_test_x64_RelWithDebInfo:
     needs: webgpu_dawn_package_compile_x64_RelWithDebInfo
