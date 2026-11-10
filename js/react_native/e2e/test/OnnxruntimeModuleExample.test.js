@@ -59,13 +59,17 @@ describe('OnnxruntimeModuleExample', () => {
   });
 
   it('EPContext data read test should run successfully', async () => {
-    // Target the accessible button because iOS can clip its inner text view.
-    await element(by.label('ep-context-data-read-test-button')).tap();
+    // Tap EPContext data read test button
+    await element(by.id('ep-context-data-read-test-button')).tap();
 
     await delay(500);
 
     // Run the tests
-    await element(by.label('run-tests-button')).tap();
+    if (platform === 'android') {
+      await element(by.label('run-tests-button')).tap();
+    } else {
+      await element(by.text('Run All Tests')).tap();
+    }
     // The aggregate stays visible above the results list, so lower off-screen rows cannot make this
     // assertion pass accidentally. It reaches this exact text only after every check succeeds.
     await waitFor(element(by.label('ep-context-data-read-summary')))

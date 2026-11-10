@@ -157,6 +157,11 @@ std::ostream& ExternalDataInfo::WritePrepackedToFileAndAddToProto(
           return os;
         }
       }
+      // MLAS QNBitGemm derives aligned sub-region offsets from the buffer's absolute address.
+      // Preserve kAllocAlignment for every blob, even below the optional page-alignment threshold.
+      if (!AlignAndPad(os, kAllocAlignment, external_offset)) {
+        return os;
+      }
       if (prepack_count++ > 0) {
         prepacked_entry << "|";
       }

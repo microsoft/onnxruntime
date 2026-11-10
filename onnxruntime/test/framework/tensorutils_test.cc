@@ -10,6 +10,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/temp_dir.h"
 #include "file_util.h"
 
 #include <array>
@@ -233,7 +234,7 @@ TEST(TensorProtoUtilsTest, SetExternalDataInformation) {
   InlinedHashSet<std::string> blob_keys{blobs_for_weight->begin(), blobs_for_weight->end()};
   ASSERT_TRUE(ExternalDataInfo::WritePrepackedToFileAndAddToProto(prepacked_for_graph,
                                                                   blob_keys,
-                                                                  true, 1024 * 1024, 0,
+                                                                  false, 1024 * 1024, 0,
                                                                   ss, external_offset,
                                                                   tensor_proto));
 
@@ -247,7 +248,9 @@ TEST(TensorProtoUtilsTest, SetExternalDataInformation) {
   ASSERT_TRUE(prepacked_infos.count(blob_key) > 0);
 
   int64_t final_offset = starting_offset;
+  constexpr int64_t alignment = kAllocAlignment;
   for (const auto& blob_info : prepacked_infos[blob_key]) {
+    final_offset = (final_offset + alignment - 1) / alignment * alignment;
     int64_t offset = std::get<0>(blob_info);
     ASSERT_EQ(offset, final_offset);
     size_t length = std::get<1>(blob_info);
@@ -272,8 +275,8 @@ TEST(TensorProtoUtilsTest, PrepackedExternalDataHasDeterministicAlignedLayout) {
   }
 
   const std::string expected_bytes =
-      std::string(3, '\0') + data[0] + std::string(2, '\0') + data[1] + std::string(7, '\0') + data[2];
-  const std::array<std::string, 3> expected_entries{"a|3;3;0", "b|8;9;0", "c|24;5;0"};
+      std::string(256, '\0') + data[0] + std::string(765, '\0') + data[1] + std::string(1015, '\0') + data[2];
+  const std::array<std::string, 3> expected_entries{"a|256;3;0", "b|1024;9;0", "c|2048;5;0"};
   for (bool reverse : {false, true}) {
     for (size_t capacity : {3u, 32u}) {
       SCOPED_TRACE(reverse);
@@ -288,8 +291,8 @@ TEST(TensorProtoUtilsTest, PrepackedExternalDataHasDeterministicAlignedLayout) {
       int64_t offset = 3;
       TensorProto tensor_proto;
       ASSERT_TRUE(ExternalDataInfo::WritePrepackedToFileAndAddToProto(
-          prepacked_for_graph, blob_keys, true, 4, 8, stream, offset, tensor_proto));
-      EXPECT_EQ(offset, 29);
+          prepacked_for_graph, blob_keys, true, 4, 1024, stream, offset, tensor_proto));
+      EXPECT_EQ(offset, 2053);
       EXPECT_EQ(stream.str(), expected_bytes);
       ASSERT_EQ(tensor_proto.external_data_size(), 3);
       for (size_t i = 0; i < keys.size(); ++i) {
@@ -299,6 +302,42 @@ TEST(TensorProtoUtilsTest, PrepackedExternalDataHasDeterministicAlignedLayout) {
     }
   }
 }
+
+#if !defined(__wasm__)
+TEST(TensorProtoUtilsTest, LoadPrepackedWeightsPreservesAlignment) {
+  const TemporaryDirectory temp_dir{ORT_TSTR("prepacked_weights_alignment")};
+  const std::filesystem::path model_path = std::filesystem::path(temp_dir.Path()) / "model.onnx";
+  const std::filesystem::path data_path = model_path.parent_path() / "weights.bin";
+  const std::string payload = "prepacked weight bytes";
+  for (size_t offset : {size_t{1}, kAllocAlignment}) {
+    SCOPED_TRACE(offset);
+    {
+      std::ofstream file{data_path, std::ios::binary};
+      ASSERT_TRUE(file);
+      file << std::string(offset, '\0') << payload;
+      ASSERT_TRUE(file);
+    }
+
+    TensorProto tensor_proto;
+    tensor_proto.set_data_type(TensorProto_DataType_UINT8);
+    tensor_proto.add_dims(1);
+    ExternalDataInfo::SetExternalLocationToProto("weights.bin", 0, 1, tensor_proto);
+    auto* entry = tensor_proto.add_external_data();
+    entry->set_key("prepacked_0");
+    entry->set_value(MakeString("test_key|", offset, ";", payload.size(), ";0"));
+    PrepackedKeyToBlobMap key_to_blob;
+    PrepackedWeightsForGraph prepacked{key_to_blob, false};
+    ASSERT_STATUS_OK(utils::LoadPrepackedWeightsFromExternalData(
+        Env::Default(), model_path, tensor_proto, prepacked));
+    const auto* weights = prepacked.GetPrepackedWeights("test_key");
+    ASSERT_NE(weights, nullptr);
+    ASSERT_EQ(weights->buffers_.size(), size_t{1});
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(weights->buffers_[0].get()) % kAllocAlignment, size_t{0});
+    ASSERT_EQ(weights->buffer_sizes_[0], payload.size());
+    EXPECT_EQ(std::string(static_cast<const char*>(weights->buffers_[0].get()), payload.size()), payload);
+  }
+}
+#endif
 
 TEST(PrepackedWeightsForGraphTest, DiscardReferencesProvidedWeightWhenSaving) {
   constexpr const char* weight_name = "weight";
