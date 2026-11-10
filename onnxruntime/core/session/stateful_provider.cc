@@ -156,6 +156,10 @@ Status StatefulProviderBinding::Resolve(InferenceSession* session, const Statefu
   return Status::OK();
 }
 
+AllocatorPtr StatefulProviderBinding::GetAllocator() const {
+  return lease_ ? lease_->allocator : nullptr;
+}
+
 Status StatefulProviderBinding::InvokeGreedy(OrtStatefulGreedyRequest request, int64_t& token) const {
   std::optional<OrtAllocatorImplWrappingIAllocator> allocator;
   if (lease_ && lease_->allocator) allocator.emplace(AllocatorPtr{lease_->allocator});

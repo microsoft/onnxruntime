@@ -6,6 +6,7 @@
 #include <chrono>
 #include <functional>
 #include <future>
+#include <limits>
 
 #include <cuda_runtime_api.h>
 #include "gtest/gtest.h"
@@ -88,6 +89,40 @@ class CudaCacheIntegrationTest : public testing::Test {
       options.cache_provider = {ORT_STATEFUL_PROVIDER_REQUIRE, kCudaExecutionProvider, OrtMemoryInfoDeviceType_GPU, 0};
     }
     return options;
+  }
+
+  SessionLoopOptions GenerationOptions(bool cache_gpu, bool sampler_gpu, bool decode = false,
+                                       int64_t budget = 3) {
+    auto options = Options(cache_gpu);
+    options.generation = TokenGenerationOptions{
+        decode ? TokenGenerationPhase::Decode : TokenGenerationPhase::Prefill,
+        "token", "logits", "", "", std::nullopt};
+    options.exit_conditions = {{LoopExitKind::MaxGeneratedTokens, budget}};
+    if (decode) {
+      options.finite_input_names.clear();
+    } else {
+      options.exit_conditions.push_back({LoopExitKind::EndOfInputs});
+    }
+    if (sampler_gpu) {
+      options.sampler_provider = {
+          ORT_STATEFUL_PROVIDER_PREFER, kCudaExecutionProvider, OrtMemoryInfoDeviceType_GPU, 0};
+    }
+    return options;
+  }
+
+  std::unique_ptr<SessionChainExecution> Generation(InferenceSession& prefill, InferenceSession& decode,
+                                                    bool cache_gpu = true) {
+    auto first = Loop(prefill, GenerationOptions(cache_gpu, true));
+    auto second = Loop(decode, GenerationOptions(cache_gpu, true, true));
+    SessionChainOptions options{
+        {{"prefill", first, {{"token", {ChainSourceKind::ExternalInput, "prompt"}}}, {}, {}},
+         {"decode", second, {}, {}, {}}},
+        {{"tokens", 0, "", ChainOutputKind::GeneratedTokenIds}}};
+    std::shared_ptr<const SessionChain> chain;
+    ORT_THROW_IF_ERROR(SessionChain::Create(std::move(options), chain));
+    std::unique_ptr<SessionChainExecution> execution;
+    ORT_THROW_IF_ERROR(chain->CreateExecution({{{"prompt", Tokens()}}, {}, {}}, execution));
+    return execution;
   }
 
   std::shared_ptr<const SessionLoop> Loop(InferenceSession& session, SessionLoopOptions options) {
@@ -311,6 +346,176 @@ TEST_F(CudaCacheIntegrationTest, SynchronousTaskStreamWithoutGlobalDeviceWait) {
   }
   EXPECT_EQ(cudaStreamDestroy(unrelated), cudaSuccess);
   EXPECT_EQ(cudaStreamDestroy(compute), cudaSuccess);
+}
+
+class CudaSamplingIntegrationTest : public CudaCacheIntegrationTest {};
+
+TEST_F(CudaSamplingIntegrationTest, IndependentCacheAllocationAndGpuLogitsAreBoundAndRetained) {
+  for (const bool cache_gpu : {false, true}) {
+    auto prefill = Session(), decode = Session();
+    auto check_outputs = [&](IOBinding& io) {
+      for (size_t i = 0; i < io.GetOutputNames().size(); ++i) {
+        const auto& name = io.GetOutputNames()[i];
+        EXPECT_EQ(io.GetOutputs()[i].Get<Tensor>().Location().device.Type(),
+                  name == "logits" || cache_gpu ? OrtDevice::GPU : OrtDevice::CPU);
+      }
+      return Status::OK();
+    };
+    prefill->after = check_outputs;
+    decode->after = check_outputs;
+    auto execution = Generation(*prefill, *decode, cache_gpu);
+    SessionChainStepResult result;
+    ASSERT_STATUS_OK(execution->Run(result));
+    EXPECT_EQ(execution->Generation()->token_ids, (InlinedVector<int64_t>{2, 3, 0}));
+    EXPECT_EQ(execution->Generation()->processed_tokens, 4);
+    const auto logits = result.component_outputs.at("logits");
+    const auto saved = Read(logits);
+    KVCacheView view;
+    ASSERT_STATUS_OK(execution->Cache()->Get("key", view));
+    EXPECT_EQ(view.value.Get<Tensor>().Location().device.Type(), cache_gpu ? OrtDevice::GPU : OrtDevice::CPU);
+    EXPECT_EQ(Read(view.value), (InlinedVector<float>{0, 1, 2, 3}));
+    OrtStatefulStagingInfo staging{};
+    ASSERT_STATUS_OK(execution->GetStagingInfo(0, staging));
+    EXPECT_EQ(staging.cpu_output_bytes, cache_gpu ? 0u : 8u);
+    ASSERT_STATUS_OK(execution->GetStagingInfo(1, staging));
+    EXPECT_EQ(staging.cpu_output_bytes, cache_gpu ? 0u : 28u);
+    for (size_t stage = 0; stage < 2; ++stage) {
+      OrtStatefulDispatchInfo info{};
+      ASSERT_STATUS_OK(execution->GetDispatchInfo(
+          ORT_STATEFUL_FEATURE_SAMPLER, stage, ORT_STATEFUL_SAMPLE_GREEDY, info));
+      EXPECT_EQ(info.policy, ORT_STATEFUL_PROVIDER_PREFER);
+      EXPECT_EQ(info.provider_calls, stage == 0 ? 1u : 2u);
+      EXPECT_EQ(info.cpu_calls, 0u);
+      EXPECT_EQ(info.cpu_delegations, 0u);
+    }
+    ASSERT_STATUS_OK(execution->Reset());
+    execution.reset();
+    prefill.reset();
+    decode.reset();
+    EXPECT_EQ(Read(logits), saved);
+  }
+}
+
+TEST_F(CudaSamplingIntegrationTest, GpuSamplerWithoutCacheAndUnselectedLogitsDoesNotReadBackLogits) {
+  auto model = stateful::MakeDynamicDecoderModel();
+  auto& graph = *model.mutable_graph();
+  graph.mutable_input()->DeleteSubrange(1, 1);
+  graph.mutable_output()->DeleteSubrange(1, 1);
+  graph.mutable_node()->DeleteSubrange(1, graph.node_size() - 1);
+  graph.mutable_initializer()->DeleteSubrange(1, graph.initializer_size() - 1);
+  auto session = Session(true, nullptr, model);
+  auto options = GenerationOptions(false, true, false, 1);
+  options.kv_caches.clear();
+  options.output_names = {"logits"};
+  auto execution = Execution(*session, options);
+  SessionLoopStepResult result;
+  ASSERT_STATUS_OK(execution->Run(result));
+  EXPECT_EQ(execution->Cache(), nullptr);
+  EXPECT_EQ(result.generated_token, 2);
+  EXPECT_EQ(result.outputs[0].Get<Tensor>().Location().device.Type(), OrtDevice::GPU);
+  EXPECT_EQ(execution->StagingInfo().cpu_output_bytes, 0u);
+  auto cached = Session();
+  auto hidden = GenerationOptions(true, true, false, 1);
+  hidden.output_names = {"present_key"};
+  cached->after = [](IOBinding& io) {
+    EXPECT_NE(std::find(io.GetOutputNames().begin(), io.GetOutputNames().end(), "logits"), io.GetOutputNames().end());
+    return Status::OK();
+  };
+  auto unselected = Execution(*cached, hidden);
+  ASSERT_STATUS_OK(unselected->Run(result));
+  ASSERT_EQ(result.outputs.size(), 1u);
+  EXPECT_EQ(result.generated_token, 2);
+  EXPECT_EQ(unselected->StagingInfo().cpu_output_bytes, 0u);
+}
+
+TEST_F(CudaSamplingIntegrationTest, GpuSamplingFailureCancellationAndResetSuppressDownstream) {
+  auto prefill = Session(), decode = Session();
+  auto execution = Generation(*prefill, *decode);
+  SessionChainStepResult result;
+  ASSERT_STATUS_OK(execution->Run(result));
+  const auto retained = result.component_outputs.at("logits");
+  const auto bytes = Read(retained);
+  ASSERT_STATUS_OK(execution->Reset());
+  prefill->after = [](IOBinding& io) {
+    const auto found = std::find(io.GetOutputNames().begin(), io.GetOutputNames().end(), "logits");
+    ORT_RETURN_IF(found == io.GetOutputNames().end(), "Missing controlled model logits output");
+    const size_t index = static_cast<size_t>(found - io.GetOutputNames().begin());
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    ORT_RETURN_IF(cudaMemcpy(io.GetOutputs()[index].GetMutable<Tensor>()->MutableDataRaw(),
+                             &nan, sizeof(nan), cudaMemcpyHostToDevice) != cudaSuccess,
+                  "Failed to inject controlled model NaN");
+    return Status::OK();
+  };
+  const auto downstream = decode->calls;
+  EXPECT_FALSE(execution->Run(result).IsOK());
+  EXPECT_TRUE(execution->RequiresReset());
+  EXPECT_EQ(decode->calls, downstream);
+  EXPECT_FALSE(execution->Step(result).IsOK());
+  ASSERT_STATUS_OK(execution->Reset());
+  prefill->after = [](IOBinding&) { return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "controlled model error"); };
+  EXPECT_FALSE(execution->Run(result).IsOK());
+  EXPECT_TRUE(execution->RequiresReset());
+  EXPECT_EQ(decode->calls, downstream);
+  ASSERT_STATUS_OK(execution->Reset());
+  prefill->after = [&](IOBinding&) {
+    execution->Cancel();
+    return Status::OK();
+  };
+  EXPECT_FALSE(execution->Run(result).IsOK());
+  EXPECT_TRUE(execution->RequiresReset());
+  EXPECT_EQ(decode->calls, downstream);
+  ASSERT_STATUS_OK(execution->Reset());
+  prefill->after = {};
+  ASSERT_STATUS_OK(execution->Run(result));
+  EXPECT_EQ(Read(retained), bytes);
+  EXPECT_EQ(execution->Generation()->token_ids, (InlinedVector<int64_t>{2, 3, 0}));
+}
+
+TEST_F(CudaSamplingIntegrationTest, RolesPlacementAndUnexpectedOutputStorageRejectBeforeSampling) {
+  EXPECT_EQ(StatefulProviderBinding{}.GetAllocator(), nullptr);
+  auto session = Session();
+  auto options = GenerationOptions(false, true, false, 1);
+  const OrtDevice cpu;
+  auto& outputs = const_cast<SessionState::NameNodeInfoMapType&>(session->GetSessionState().GetOutputNodeInfoMap());
+  const auto* saved = outputs.at("logits").front().device;
+  outputs.at("logits").front().device = &cpu;
+  std::shared_ptr<const SessionLoop> loop;
+  EXPECT_FALSE(SessionLoop::Create(*session, options, loop).IsOK());
+  outputs.at("logits").front().device = saved;
+  auto execution = Execution(*session, options);
+  session->after = [](IOBinding& io) {
+    const auto allocator = io.GetCPUAllocator(kCpuExecutionProvider);
+    const auto shape = io.GetOutputs()[0].Get<Tensor>().Shape();
+    OrtValue host;
+    Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), shape, allocator, host);
+    io.GetOutputs()[0] = std::move(host);
+    return Status::OK();
+  };
+  SessionLoopStepResult result;
+  EXPECT_FALSE(execution->Run(result).IsOK());
+  EXPECT_TRUE(execution->RequiresReset());
+  OrtStatefulDispatchInfo info{};
+  ASSERT_STATUS_OK(execution->GetDispatchInfo(
+      ORT_STATEFUL_FEATURE_SAMPLER, 0, ORT_STATEFUL_SAMPLE_GREEDY, info));
+  EXPECT_EQ(info.provider_calls, 0u);
+  session->after = {};
+  ASSERT_STATUS_OK(execution->Reset());
+  ASSERT_STATUS_OK(execution->Run(result));
+  auto model = stateful::MakeDynamicDecoderModel();
+  auto& graph = *model.mutable_graph();
+  stateful::SetTensorType(*graph.add_input(), "past_logits", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, -1, 4});
+  stateful::SetTensorType(*graph.add_output(), "seen", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, -1, 4});
+  stateful::AddNode(graph, "Identity", {"past_logits"}, "seen");
+  auto aliased = Session(true, nullptr, model);
+  options = GenerationOptions(false, true);
+  options.kv_caches.push_back({{"scores", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, 0, 4}, 1, 0},
+                               "past_logits",
+                               "logits",
+                               KVCacheUpdateKind::Share});
+  EXPECT_FALSE(SessionLoop::Create(*aliased, options, loop).IsOK());
+  options.cache_provider = {
+      ORT_STATEFUL_PROVIDER_REQUIRE, kCudaExecutionProvider, OrtMemoryInfoDeviceType_GPU, 0};
+  ASSERT_STATUS_OK(SessionLoop::Create(*aliased, options, loop));
 }
 
 }  // namespace

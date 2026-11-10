@@ -125,40 +125,63 @@ Status SessionChain::Initialize() {
     sessions_.push_back(session);
   }
 
-  if (cache_provider_ && cache_provider_->Selection().device_type != OrtMemoryInfoDeviceType_CPU) {
-    InlinedVector<InlinedHashSet<std::string>> device_outputs;
-    for (size_t i = 0; i < loops_.size(); ++i) {
-      auto outputs = loops_[i]->device_cache_outputs_;
-      for (const auto& binding : options_.components[i].state_outputs) {
-        if (std::any_of(cache_specs_.begin(), cache_specs_.end(),
-                        [&](const auto& spec) { return spec.name == binding.state_name; })) {
+  const bool gpu_cache = cache_provider_ &&
+                         cache_provider_->Selection().device_type != OrtMemoryInfoDeviceType_CPU;
+  InlinedHashMap<std::string, StatefulProviderBinding> device_state;
+  if (gpu_cache) {
+    for (const auto& spec : cache_specs_) device_state.emplace(spec.name, *cache_provider_);
+  }
+  for (size_t i = 0; i < loops_.size(); ++i) {
+    auto provider = loops_[i]->device_provider_;
+    auto inputs = loops_[i]->device_inputs_;
+    auto outputs = loops_[i]->device_outputs_;
+    auto add_provider = [&](const StatefulProviderBinding& candidate) -> Status {
+      if (provider) {
+        const auto& a = provider->Selection();
+        const auto& b = candidate.Selection();
+        const bool mismatch = a.provider_name != b.provider_name || a.device_type != b.device_type;
+        ORT_RETURN_IF(mismatch || a.device_id != b.device_id,
+                      "Conflicting device-value sources in component: ", options_.components[i].name);
+      } else {
+        provider = candidate;
+      }
+      return Status::OK();
+    };
+    for (const auto& binding : options_.components[i].state_outputs) {
+      if (std::any_of(cache_specs_.begin(), cache_specs_.end(),
+                      [&](const auto& spec) { return spec.name == binding.state_name; })) {
+        ORT_RETURN_IF(!gpu_cache && outputs.contains(binding.output_name),
+                      "CPU cache state writer cannot use a GPU logits output");
+        if (gpu_cache) {
+          ORT_RETURN_IF_ERROR(add_provider(*cache_provider_));
           outputs.insert(binding.output_name);
         }
       }
-      device_outputs.push_back(std::move(outputs));
     }
-    InlinedHashSet<std::string> device_state;
-    for (const auto& spec : cache_specs_) device_state.insert(spec.name);
-    for (size_t i = 0; i < loops_.size(); ++i) {
-      auto inputs = loops_[i]->device_cache_inputs_;
-      for (const auto& binding : options_.components[i].inputs) {
-        const auto& source = binding.source;
-        if ((source.kind == ChainSourceKind::State && device_state.contains(source.name)) ||
-            (source.kind == ChainSourceKind::ComponentOutput && source.component_index < i &&
-             device_outputs[source.component_index].contains(source.name))) {
-          inputs.insert(binding.input_name);
-        }
+    for (const auto& binding : options_.components[i].inputs) {
+      const auto& source = binding.source;
+      const StatefulProviderBinding* origin = nullptr;
+      if (source.kind == ChainSourceKind::State) {
+        auto found = device_state.find(source.name);
+        if (found != device_state.end()) origin = &found->second;
+      } else if (source.kind == ChainSourceKind::ComponentOutput && source.component_index < i &&
+                 loops_[source.component_index]->device_outputs_.contains(source.name)) {
+        origin = &*loops_[source.component_index]->device_provider_;
       }
-      for (const auto& binding : options_.components[i].state_outputs) {
-        if (device_outputs[i].contains(binding.output_name)) {
-          device_state.insert(binding.state_name);
-        } else {
-          device_state.erase(binding.state_name);
-        }
+      if (origin) {
+        ORT_RETURN_IF_ERROR(add_provider(*origin));
+        inputs.insert(binding.input_name);
       }
-      if (!inputs.empty() || !device_outputs[i].empty()) {
-        ORT_RETURN_IF_ERROR(loops_[i]->WithDeviceCachePorts(
-            *cache_provider_, std::move(inputs), device_outputs[i], loops_[i]));
+    }
+    if (provider) {
+      ORT_RETURN_IF_ERROR(loops_[i]->WithDevicePorts(
+          *provider, std::move(inputs), std::move(outputs), loops_[i]));
+    }
+    for (const auto& binding : options_.components[i].state_outputs) {
+      if (loops_[i]->device_outputs_.contains(binding.output_name)) {
+        device_state.insert_or_assign(binding.state_name, *loops_[i]->device_provider_);
+      } else {
+        device_state.erase(binding.state_name);
       }
     }
   }
@@ -329,8 +352,9 @@ Status SessionChain::CreateExecution(SessionChainInputs inputs, std::unique_ptr<
     std::unique_ptr<KVCacheManager> manager;
     const auto cache_loop = std::find_if(loops_.begin(), loops_.end(),
                                          [](const auto& loop) { return !loop->Options().kv_caches.empty(); });
-    auto allocator = (*cache_loop)->device_cache_allocator_;
-    if (!allocator) allocator = binding->GetCPUAllocator(kCpuExecutionProvider);
+    auto allocator = cache_provider_->Selection().device_type == OrtMemoryInfoDeviceType_CPU
+                         ? binding->GetCPUAllocator(kCpuExecutionProvider)
+                         : (*cache_loop)->device_allocator_;
     ORT_RETURN_IF_ERROR(KVCacheManager::Create(cache_specs_, std::move(allocator), manager, *cache_provider_));
     cache = std::move(manager);
   }
