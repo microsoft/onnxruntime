@@ -700,6 +700,12 @@ The operator supports three fusion modes via the `swiglu_fusion` attribute:
 | 1 (interleaved) | `fc1`, `fc2` | `[Gate_0, Value_0, Gate_1, Value_1, …]` — `[E, 2×inter, hidden]` | GPT-OSS layout. |
 | 2 (block) | `fc1`, `fc2` | `[Gate_0…Gate_N | Value_0…Value_N]` — `[E, 2×inter, hidden]` | Concatenated halves; Llama/Gemma layout. |
 
+For separate constant FC1/FC3 weights with `activation_type="silu"`, CUDA MoE
+packs each expert once at initialization as `[FC1 gate | FC3 value]`. Inference
+uses the packed buffer after the original initializers are released. Dynamic
+weights and sessions with prepacking disabled use the same chunk order, including
+on the TMA warp-specialized path.
+
 > **Backward-compatibility remap (`swiglu_fusion=0` + SwiGLU)**: The published gpt-oss-20b
 > model before June 2025 uses **interleaved** SwiGLU layout but `swiglu_fusion` attribute to `0`.
 > To keep those models working, when `activation_type="swiglu"` and `swiglu_fusion=0`,

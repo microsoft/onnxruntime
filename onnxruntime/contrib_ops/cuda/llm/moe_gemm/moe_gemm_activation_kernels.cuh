@@ -241,10 +241,6 @@ __global__ void doActivationKernel(T* output, const GemmOutputType* gemm_result,
     const int64_t num_elems_in_col = inter_size / ACTIVATION_ELEM_PER_THREAD;
     assert(gated_off % ACTIVATION_ELEM_PER_THREAD == 0);
     const int64_t gated_off_vec = gated_off / ACTIVATION_ELEM_PER_THREAD;
-    // Chunked GEGLU is [gate | up]; preserve the legacy SwiGLU chunk order.
-    const int64_t gate_offset =
-        gated && activation_params.activation_type == ActivationType::Geglu ? 0 : gated_off_vec;
-    const int64_t linear_offset = gated_off_vec - gate_offset;
 
     ActFn<ComputeElem> fn{};
     constexpr bool IsSiLu = std::is_same_v<ActFn<float>, cutlass::epilogue::thread::SiLu<float>>;
@@ -263,9 +259,10 @@ __global__ void doActivationKernel(T* output, const GemmOutputType* gemm_result,
           linear_part[i] = static_cast<float>(scalar_gemm[2 * global_elem + 1]);
         }
       } else {
-        gate_part = arrayConvert<GemmResultElem, ComputeElem>(gemm_result_vec[elem_index + gate_offset]);
+        // Chunked gated weights are [FC1 gate | FC3 value], matching doGatedActivationKernel.
+        gate_part = arrayConvert<GemmResultElem, ComputeElem>(gemm_result_vec[elem_index]);
         if (gated) {
-          linear_part = arrayConvert<GemmResultElem, ComputeElem>(gemm_result_vec[elem_index + linear_offset]);
+          linear_part = arrayConvert<GemmResultElem, ComputeElem>(gemm_result_vec[elem_index + gated_off_vec]);
         }
       }
 
@@ -278,9 +275,9 @@ __global__ void doActivationKernel(T* output, const GemmOutputType* gemm_result,
             linear_part[i] += static_cast<float>(scalar_bias[2 * global_elem + 1]);
           }
         } else {
-          gate_part = gate_part + arrayConvert<BiasElem, ComputeElem>(bias_ptr_vec[elem_index + gate_offset]);
+          gate_part = gate_part + arrayConvert<BiasElem, ComputeElem>(bias_ptr_vec[elem_index]);
           if (gated) {
-            linear_part = linear_part + arrayConvert<BiasElem, ComputeElem>(bias_ptr_vec[elem_index + linear_offset]);
+            linear_part = linear_part + arrayConvert<BiasElem, ComputeElem>(bias_ptr_vec[elem_index + gated_off_vec]);
           }
         }
       }

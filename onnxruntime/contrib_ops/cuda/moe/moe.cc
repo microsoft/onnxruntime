@@ -45,18 +45,68 @@ REGISTER_KERNEL_TYPED(BFloat16)
 
 template <typename T>
 MoE<T>::MoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoEBase(op_kernel_info, GetDeviceProp()) {
+  using onnxruntime::llm::kernels::cutlass_kernels::ActivationType;
+  const Tensor* fc1 = nullptr;
+  const Tensor* fc3 = nullptr;
+  if (activation_type_ == ActivationType::Silu &&
+      op_kernel_info.TryGetConstantInput(2, &fc1) && fc1 != nullptr &&
+      op_kernel_info.TryGetConstantInput(6, &fc3) && fc3 != nullptr &&
+      fc1->IsDataType<T>() && fc3->IsDataType<T>() &&
+      fc1->Shape().NumDimensions() == 3 && fc1->Shape() == fc3->Shape() &&
+      fc1->Shape()[0] > 0 && fc1->Shape()[1] > 0 && fc1->Shape()[2] > 0) {
+    pack_fc1_fc3_ = true;
+    fc1_fc3_shape_ = fc1->Shape();
+  }
+}
+
+template <typename T>
+Status MoE<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                       bool& is_packed, PrePackedWeights* prepacked_weights) {
+  ORT_UNUSED_PARAMETER(prepacked_weights);
+  is_packed = false;
+  if (!pack_fc1_fc3_ || (input_idx != 2 && input_idx != 6)) {
+    return Status::OK();
+  }
+
+  const size_t expert_bytes = SafeInt<size_t>(fc1_fc3_shape_[1]) * fc1_fc3_shape_[2] * sizeof(T);
+  const size_t expert_stride = SafeInt<size_t>(expert_bytes) * 2;
+  const size_t num_experts = static_cast<size_t>(fc1_fc3_shape_[0]);
+  if (!packed_fc1_fc3_) {
+    packed_fc1_fc3_ = IAllocator::MakeUniquePtr<void>(alloc, SafeInt<size_t>(expert_stride) * num_experts, true);
+  }
+
+  // Match the chunked [FC1 gate | FC3 value] layout used by the dynamic-weight path.
+  auto* dst = static_cast<uint8_t*>(packed_fc1_fc3_.get()) + (input_idx == 6 ? expert_bytes : 0);
+  const auto* src = static_cast<const uint8_t*>(tensor.DataRaw());
+  const auto copy_kind = tensor.Location().device.UsesCpuMemory() ? cudaMemcpyHostToDevice : cudaMemcpyDeviceToDevice;
+  for (size_t e = 0; e < num_experts; ++e) {
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst + e * expert_stride, src + e * expert_bytes,
+                                         expert_bytes, copy_kind, cudaStreamLegacy));
+  }
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cudaStreamLegacy));
+  is_packed = true;
+  return Status::OK();
 }
 
 template <typename T>
 Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
-  const Tensor* fc1_experts_weights = context->Input<Tensor>(2);
+  const Tensor* fc1_experts_weights = packed_fc1_fc3_ ? nullptr : context->Input<Tensor>(2);
   const Tensor* fc1_experts_bias_optional = context->Input<Tensor>(3);
   const Tensor* fc2_experts_weights = context->Input<Tensor>(4);
   const Tensor* fc2_experts_bias_optional = context->Input<Tensor>(5);
-  const Tensor* fc3_experts_weights_optional = context->Input<Tensor>(6);
+  const Tensor* fc3_experts_weights_optional = packed_fc1_fc3_ ? nullptr : context->Input<Tensor>(6);
   const Tensor* fc3_experts_bias_optional = context->Input<Tensor>(7);
+
+  const TensorShape* fc1_shape = fc1_experts_weights ? &fc1_experts_weights->Shape() : nullptr;
+  const TensorShape* fc2_shape = fc2_experts_weights ? &fc2_experts_weights->Shape() : nullptr;
+  const TensorShape* fc3_shape = fc3_experts_weights_optional ? &fc3_experts_weights_optional->Shape() : nullptr;
+  if (packed_fc1_fc3_) {
+    fc1_shape = &fc1_fc3_shape_;
+    fc3_shape = &fc1_fc3_shape_;
+  }
+  const bool has_fc3 = fc3_shape != nullptr;
 
   using onnxruntime::llm::kernels::cutlass_kernels::ActivationType;
 
@@ -67,25 +117,25 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   // (interleaved layout). Treat this as swiglu_fusion == 1 so those legacy models keep working.
   int swiglu_fusion = swiglu_fusion_;
   if (activation_type_ == ActivationType::Swiglu && swiglu_fusion == 0 &&
-      fc3_experts_weights_optional == nullptr) {
+      !has_fc3) {
     swiglu_fusion = 1;
     LogSwigluFusionRemapOnce();
   }
 
   ORT_RETURN_IF(activation_type_ == ActivationType::Geglu &&
-                    (fc3_experts_weights_optional != nullptr || fc3_experts_bias_optional != nullptr),
+                    (has_fc3 || fc3_experts_bias_optional != nullptr),
                 "GEGLU requires gate/up projections fused into FC1, without FC3 inputs.");
   bool is_fused_gated = (activation_type_ == ActivationType::Swiglu ||
                          activation_type_ == ActivationType::Geglu) &&
                         (swiglu_fusion != 0) &&
-                        (fc3_experts_weights_optional == nullptr);
+                        !has_fc3;
 
   MoEParameters moe_params;
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::moe_helper::CheckInputs<Tensor>(
       moe_params, input, router_probs,
-      fc1_experts_weights, fc1_experts_bias_optional, nullptr, nullptr,
-      fc2_experts_weights, fc2_experts_bias_optional, nullptr, nullptr,
-      fc3_experts_weights_optional, fc3_experts_bias_optional, nullptr, nullptr,
+      fc1_shape, fc1_experts_bias_optional, nullptr, nullptr,
+      fc2_shape, fc2_experts_bias_optional, nullptr, nullptr,
+      fc3_shape, fc3_experts_bias_optional, nullptr, nullptr,
       1,  //  no quantization so pack size is 1
       is_fused_gated,
       0));  // no block-wise quantization for regular MoE
@@ -125,10 +175,10 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 
   using onnxruntime::llm::kernels::cutlass_kernels::ActivationType;
   ActivationType kernel_activation_type = activation_type_;
-  if (activation_type_ == ActivationType::Silu && fc3_experts_weights_optional != nullptr) {
+  if (activation_type_ == ActivationType::Silu && has_fc3) {
     // Mixtral case: SiLU activation with separate FC3.
     // Kernel supports SwiGLU which is Linear * SiLU(Gate).
-    // Map separate FC1 gate and FC3 value weights to SwiGLU.
+    // Map separate FC1 gate and FC3 value weights to SwiGLU using the chunked [FC1 gate | FC3 value] layout.
     kernel_activation_type = ActivationType::Swiglu;
   }
   const bool separate_geglu = activation_type_ == ActivationType::Gelu && fc3_experts_weights_optional != nullptr;
@@ -332,8 +382,9 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   int E = static_cast<int>(moe_params.num_experts);
 
   // FC1 Handling
-  const CudaT* fc1_input_ptr = reinterpret_cast<const CudaT*>(fc1_experts_weights->DataRaw());
-  const CudaT* fc1_processed_ptr = fc1_input_ptr;
+  const CudaT* fc1_input_ptr =
+      fc1_experts_weights == nullptr ? nullptr : reinterpret_cast<const CudaT*>(fc1_experts_weights->DataRaw());
+  const CudaT* fc1_processed_ptr = packed_fc1_fc3_ ? reinterpret_cast<const CudaT*>(packed_fc1_fc3_.get()) : fc1_input_ptr;
   IAllocatorUniquePtr<void> fc1_processed_buffer;
   const CudaT* fc1_bias_ptr = fc1_experts_bias_optional == nullptr
                                   ? nullptr
@@ -344,7 +395,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   // When fused, FC1 has shape [E, 2*I, H] instead of [E, I, H] and FC3 is not provided
   // Must also check activation_type is Swiglu to avoid false positives for other activations
 
-  if (fc3_experts_weights_optional != nullptr) {
+  if (!packed_fc1_fc3_ && fc3_experts_weights_optional != nullptr) {
     // Gated activation with separate FC1 and FC3 weights (e.g., Mixtral's silu + FC3)
     // Kernel expects weights in shape [E, 2*I, H] for gated activation GEMM.
     // Each expert should have FC1_weights and FC3_weights horizontally stacked:
@@ -357,7 +408,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
     fc1_processed_ptr = fc1_fc3_processed_ptr;
 
     for (int e = 0; e < E; ++e) {
-      // Preserve [FC1 | FC3] per expert; GEGLU treats FC1 as the gate.
+      // Preserve [FC1 gate | FC3 value] per expert; SwiGLU and GEGLU both treat FC1 as the gate.
       CudaT* dest_fc1 = fc1_fc3_processed_ptr + e * 2 * fc1_block_size;                   // First half of expert e (Gate/FC1)
       CudaT* dest_fc3 = fc1_fc3_processed_ptr + e * 2 * fc1_block_size + fc1_block_size;  // Second half of expert e (Linear/FC3)
 

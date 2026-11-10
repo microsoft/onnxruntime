@@ -20,9 +20,14 @@ template <typename T>
 class MoE final : public CudaKernel, public MoEBase {
  public:
   explicit MoE(const OpKernelInfo& op_kernel_info);
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 bool& is_packed, PrePackedWeights* prepacked_weights) override;
   Status ComputeInternal(OpKernelContext* ctx) const override;
 
  private:
+  bool pack_fc1_fc3_{false};
+  TensorShape fc1_fc3_shape_;
+  IAllocatorUniquePtr<void> packed_fc1_fc3_;
   mutable onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler mGemmProfiler;
   mutable std::mutex mGemmProfilerMutex;
 };
