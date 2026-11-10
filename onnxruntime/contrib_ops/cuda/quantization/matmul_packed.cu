@@ -18,6 +18,33 @@ namespace cuda {
 
 namespace {
 
+__device__ __forceinline__ uint32_t Nvfp4MmaPairBits(uint32_t codes) {
+  const uint32_t magnitude = codes & 0x00070007u;
+  // GGUF code 8 denotes positive zero, so retain signs only for nonzero magnitudes.
+  const uint32_t sign = (codes & (magnitude + 0x00070007u) & 0x00080008u) << 12;
+  return (magnitude << 6) | sign;
+}
+
+__device__ __forceinline__ __nv_bfloat162 Nvfp4MmaScale(uint8_t scale_byte) {
+  const float d = scale_byte == 127
+                      ? 0.0f
+                      : __half2float(__half(__nv_cvt_fp8_to_halfraw(
+                            static_cast<__nv_fp8_storage_t>(scale_byte), __NV_E4M3)));
+  return __bfloat162bfloat162(__float2bfloat16_rn(d * 0x1p110f));
+}
+
+__device__ __forceinline__ void DecodeNvfp4MmaPair(
+    uint2 raw, __nv_bfloat162 scale, int s, uint32_t& low, uint32_t& high) {
+  const uint32_t pair = __byte_perm(raw.x, raw.y, 0x4400u + 0x1111u * s);
+  const uint32_t l = Nvfp4MmaPairBits(pair);
+  const uint32_t h = Nvfp4MmaPairBits(pair >> 4);
+  const auto restore = __floats2bfloat162_rn(0x1p16f, 0x1p16f);
+  const auto pl = __hmul2(__hmul2(*reinterpret_cast<const __nv_bfloat162*>(&l), scale), restore);
+  const auto ph = __hmul2(__hmul2(*reinterpret_cast<const __nv_bfloat162*>(&h), scale), restore);
+  low = *reinterpret_cast<const uint32_t*>(&pl);
+  high = *reinterpret_cast<const uint32_t*>(&ph);
+}
+
 // Warp-K-Split Tensor-Core BF16 GEMV/GEMM kernel for M in 1..8 on large-N projections (e.g. lm_head).
 // KW warps (KW*32 threads) split K across the KW warps with zero __syncthreads() in the K-loop,
 // while computing MT*16 output columns per CTA.
@@ -124,24 +151,41 @@ __global__ __launch_bounds__(KW * 32) void MatMulPackedBf16TcWarpKSplitKernel(
       const uint32_t x_words[8] = {x0.x, x0.y, x0.z, x0.w, x1.x, x1.y, x1.z, x1.w};
 #pragma unroll
       for (int m = 0; m < MT; ++m) {
-        uint4 e_lo = make_uint4(0u, 0u, 0u, 0u), e_hi = e_lo, o_lo = e_lo, o_hi = e_lo;
-        if (valid_lo[m]) {
-          gguf_cuda::DecodeNvfp4WordsBf16(cur.codes[m][0], cur.scales[m][0], e_lo, e_hi);
-        }
-        if (valid_hi[m]) {
-          gguf_cuda::DecodeNvfp4WordsBf16(cur.codes[m][1], cur.scales[m][1], o_lo, o_hi);
-        }
-        const uint32_t e_low[4] = {e_lo.x, e_lo.y, e_lo.z, e_lo.w};
-        const uint32_t e_high[4] = {e_hi.x, e_hi.y, e_hi.z, e_hi.w};
-        const uint32_t o_low[4] = {o_lo.x, o_lo.y, o_lo.z, o_lo.w};
-        const uint32_t o_high[4] = {o_hi.x, o_hi.y, o_hi.z, o_hi.w};
+        if constexpr (kFullNvfp4Tile) {
+          const auto e_scale = Nvfp4MmaScale(cur.scales[m][0]);
+          const auto o_scale = Nvfp4MmaScale(cur.scales[m][1]);
+          // Consume restored operand pairs immediately, retaining the original MMA order.
 #pragma unroll
-        for (int s = 0; s < 4; ++s) {
-          const int word = s / 2;
-          const int selector = (s & 1) ? 0x7632 : 0x5410;
-          const uint32_t b0 = __byte_perm(x_words[word], x_words[word + 2], selector);
-          const uint32_t b1 = __byte_perm(x_words[word + 4], x_words[word + 6], selector);
-          gguf_cuda::MmaBf16(acc[m], e_low[s], o_low[s], e_high[s], o_high[s], b0, b1);
+          for (int s = 0; s < 4; ++s) {
+            uint32_t el, eh, ol, oh;
+            DecodeNvfp4MmaPair(cur.codes[m][0], e_scale, s, el, eh);
+            DecodeNvfp4MmaPair(cur.codes[m][1], o_scale, s, ol, oh);
+            const int word = s / 2;
+            const int selector = (s & 1) ? 0x7632 : 0x5410;
+            const uint32_t b0 = __byte_perm(x_words[word], x_words[word + 2], selector);
+            const uint32_t b1 = __byte_perm(x_words[word + 4], x_words[word + 6], selector);
+            gguf_cuda::MmaBf16(acc[m], el, ol, eh, oh, b0, b1);
+          }
+        } else {
+          uint4 e_lo = make_uint4(0u, 0u, 0u, 0u), e_hi = e_lo, o_lo = e_lo, o_hi = e_lo;
+          if (valid_lo[m]) {
+            gguf_cuda::DecodeNvfp4WordsBf16(cur.codes[m][0], cur.scales[m][0], e_lo, e_hi);
+          }
+          if (valid_hi[m]) {
+            gguf_cuda::DecodeNvfp4WordsBf16(cur.codes[m][1], cur.scales[m][1], o_lo, o_hi);
+          }
+          const uint32_t e_low[4] = {e_lo.x, e_lo.y, e_lo.z, e_lo.w};
+          const uint32_t e_high[4] = {e_hi.x, e_hi.y, e_hi.z, e_hi.w};
+          const uint32_t o_low[4] = {o_lo.x, o_lo.y, o_lo.z, o_lo.w};
+          const uint32_t o_high[4] = {o_hi.x, o_hi.y, o_hi.z, o_hi.w};
+#pragma unroll
+          for (int s = 0; s < 4; ++s) {
+            const int word = s / 2;
+            const int selector = (s & 1) ? 0x7632 : 0x5410;
+            const uint32_t b0 = __byte_perm(x_words[word], x_words[word + 2], selector);
+            const uint32_t b1 = __byte_perm(x_words[word + 4], x_words[word + 6], selector);
+            gguf_cuda::MmaBf16(acc[m], e_low[s], o_low[s], e_high[s], o_high[s], b0, b1);
+          }
         }
       }
       if (step + 1 < steps) cur = next;
