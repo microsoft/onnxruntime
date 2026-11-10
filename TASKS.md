@@ -6515,3 +6515,53 @@ negative/error tests. Supporting milestones do not replace final qualification.
 Approval record: on 2026-10-15, the user approved this plan without changes and
 explicitly authorized beginning M01. Changes to scope or mandatory gates still
 require user review.
+
+## 9. Contributor-facing overview (documentation-only)
+
+**Requested:** 2026-11-04, following the20published implementation/qualification
+PRs(#34040-#34059). This is documentation of delivered work, not a new runtime milestone
+or authorization to implement deferred bindings.
+**Branch/base:** `stateful-M21-contributor-overview` on M24/#34059 at
+`84237bbf6b9d059e4f96904b9c181402d6e11da6`.
+
+- [x] Verify all20PR titles/statuses/stack bases and the delivered source contracts.
+- [x] Write `docs/Stateful_Execution_Overview.md` covering constructs/idioms,
+  built-in/plugin EP hooks, Model Package changes, capabilities/limits,
+  reproducible Phi-3/SD examples and contributor impact.
+- [x] Link the overview from the existing Python guide.
+- [x] Validate relative links,20PR references, example CLI shapes and documentation whitespace.
+- [x] Publish the21st documentation-only PR on M24/#34059 and verify remote head/base/clean tree.
+
+**Validation:** Documentation-only: no new production lines or runtime behavior,
+so no CPU/CUDA rebuild, model run or unit-coverage claim is required. Existing
+M24 measurements/coverage are explicitly attributed to that qualified baseline,
+not recollected or relabeled as new evidence.
+Executed documentation checks pass:25relative targets exist; the roadmap
+contains exactly20unique PRs(#34040-#34059); all3Bash examples pass `bash -n`;
+documented CLI commands/options match the existing argparse definitions;
+the public source-build link resolves; `git diff --check` passes.
+No runtime tests, downloads, model runs or dependency installation were performed.
+
+**Published:** [#34060](https://github.com/microsoft/onnxruntime/pull/34060), OPEN/ready,
+head `stateful-M21-contributor-overview`, exact base `stateful-M20-qualification` at
+`84237bbf6b9d059e4f96904b9c181402d6e11da6`. Overview commit:
+`8965109858c9087d428e86919ec3716c91413b43`.
+This tracking-only follow-up records completed publication. Final synchronized
+head/base, preserved PR template/body and clean-worktree verification are retained
+in session `contributor-overview-final-pr.json`. No PR was merged and no deferred
+binding milestone was changed.
+
+**Example-documentation follow-up (2026-11-09):**
+
+- [x] Replace repository/revision-only source descriptions with direct Hugging Face
+  ONNX file links for both Phi-3 variants and all four required SD1.5 components.
+- [x] Copy the supplied illustrative manifest exactly to
+  `docs/phi3-sample-manifest.json` and link it from the Phi-3 description.
+  Distinguish placeholder models/one-layer caches from the runnable generated
+  Phi-3 package.
+- [x] Validate exact copy/JSON, six model-file links,26relative links,
+  three Bash recipe blocks and whitespace. Documentation-only; no runtime
+  rebuild, model download or new coverage claim.
+
+This follow-up updates the existing overview PR#31 without changing runtime,
+asset acquisition pins, model files or deferred binding scope.

@@ -1,0 +1,109 @@
+{
+  "schema_version": "1.1",
+  "package_name": "session-and-loop-example",
+  "layout": "portable",
+  "components": {
+    "decoder_prefill": {
+      "variants": {
+        "cpu": {
+          "variant_directory": "decoder_prefill/cpu",
+          "ep": "CPUExecutionProvider",
+          "device": "cpu",
+          "executor_info": {
+            "ort": { "model_file": "model1.onnx" }
+          }
+        }
+      }
+    },
+    "decoder_decode": {
+      "variants": {
+        "cpu": {
+          "variant_directory": "decoder_decode/cpu",
+          "ep": "CPUExecutionProvider",
+          "device": "cpu",
+          "executor_info": {
+            "ort": { "model_file": "model2.onnx" }
+          }
+        }
+      }
+    }
+  },
+  "chains": {
+    "generate": {
+      "steps": [
+        {
+          "id": "prefill",
+          "component": "decoder_prefill",
+          "executor_info": {
+            "ort": {
+              "kind": "session_loop",
+              "inputs": {
+                "input_ids": { "kind": "external_sequence", "name": "prompt_batches" }
+              },
+              "loop": {
+                "finite_input_names": ["input_ids"],
+                "nonempty_input": "input_ids",
+                "exit_conditions": [
+                  { "kind": "end_of_inputs" }
+                ],
+                "cache_provider": { "mode": "cpu" },
+                "kv_caches": [
+                  { "cache": "layer0.key", "input": "past_key", "output": "present_key", "update": "share" },
+                  { "cache": "layer0.value", "input": "past_value", "output": "present_value", "update": "share" }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": "decode",
+          "component": "decoder_decode",
+          "executor_info": {
+            "ort": {
+              "kind": "session_loop",
+              "loop": {
+                "exit_conditions": [
+                  { "kind": "max_generated_tokens", "limit": 128 },
+                  { "kind": "eos", "token_ids": [2] }
+                ],
+                "generation": {
+                  "phase": "decode",
+                  "input_ids": "input_ids",
+                  "logits_output": "logits",
+                  "initial_logits": { "kind": "model_output", "step": "prefill", "output": "logits" }
+                },
+                "sampler": { "algorithm": "greedy", "provider": { "mode": "cpu" } },
+                "cache_provider": { "mode": "cpu" },
+                "kv_caches": [
+                  { "cache": "layer0.key", "input": "past_key", "output": "present_key", "update": "share" },
+                  { "cache": "layer0.value", "input": "past_value", "output": "present_value", "update": "share" }
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "executor_info": {
+        "ort": {
+          "kv_caches": {
+            "layer0.key": {
+              "element_type": "float32",
+              "shape": [1, 2, 0, 64],
+              "sequence_axis": 2,
+              "initial_capacity": 128
+            },
+            "layer0.value": {
+              "element_type": "float32",
+              "shape": [1, 2, 0, 64],
+              "sequence_axis": 2,
+              "initial_capacity": 128
+            }
+          },
+          "outputs": {
+            "token_ids": { "kind": "generated_token_ids", "step": "decode" }
+          }
+        }
+      }
+    }
+  }
+}

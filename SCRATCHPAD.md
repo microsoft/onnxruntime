@@ -4,6 +4,27 @@ Compressed project memory. This is not the execution plan.
 
 ## Workflow checkpoint
 
+- 2026-11-09: OverviewPR31follow-up: replacePhi/SDsource-onlyparagraphs
+  with6directHFONNXfilelinks(2Phi+4SD,qualifiedrevisionURLs). Copyattached
+  m10-candidate-manifest.json EXACTbytes to docs/phi3-sample-manifest.json;
+  linkedandlabeledillustrative(model1/model2,one-layerKV), notrunnablePhi64.
+  JSON/exactbytes/26relativelinks/3bashrecipes/whitespacePASS; all6HFpages
+  resolvewithoutmodeldownloads. No runtime/pin/behavior/dependencychanges.
+- 2026-11-04 CURRENT: Userrequestscontributor-facingoverviewofall20PRs(#34040-#34059)
+  as21stPR. Doc-onlybranchstateful-M21-contributor-overview fromM24#30 at
+  84237bbf6b9d059e4f96904b9c181402d6e11da6. All20actualPRsOPEN/non-draft,
+  titles/basechainverified. docs/Stateful_Execution_Overview.md covers
+  constructs/idioms,EPcallbacks/capabilities/selection/lifetimes,
+  schema1.1namedchains/ownedloader/save-as, reproduciblePhi/SD,
+  qualificationboundaries/deferrals and20rowPRroadmap/contributorimpact.
+  LinkedStateful_Python; TASKSsection9tracksdocgates. No native/Python/code/
+  dependencies/models/profileschanged; no runtime validationrequired.
+  ValidationPASS25relativelinks,exact20PRroadmap,3bashblocksparse,existing
+  argparsecommands/flags,source-buildURLfetch,gitdiffcheck; docs-only4files.
+  Published21stPR#31OPEN/ready on#30. Feature8965109858c9087d428e86919ec3716c91413b43.
+  Tracking-onlyfollowuprecordscompletion; finalremotehead/base/body/cleantree
+  evidencecontributor-overview-final-pr.json. No runtime tests/downloads/
+  dependencyinstalls/nativechanges; noPRmerged/deferredbindingwork.
 - 2026-11-04 CURRENT: UserDEFERSM16-M23(otherlanguagebindings), jumptoM24.
   InterviewCONFIRMEDM01-M15deliveredC/C++/Pythonfoundationqualification,
   NATIVEperformanceBASELINESONLY(noordinarySessionperformancecomparison),
