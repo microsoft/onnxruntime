@@ -412,8 +412,8 @@ Model licenses and external-weight references must be respected.
 - **DELIVERY-5:** Each milestone is an independently documented, tested,
   human-reviewable PR. Later PRs may depend on preceding PRs, but their incremental
   diff, prerequisites, outcome, and validation must be clear.
-- **DELIVERY-6:** Target `onnxruntime/ort-state`. Base the first milestone branch
-  on the current `ort-state` branch and stack later branches on their predecessor,
+- **DELIVERY-6:** Target `microsoft/onnxruntime`. Base the first milestone branch
+  on the current `state/stateful-base-1988019b` branch and stack later branches on their predecessor,
   using descriptive branch names.
 - **DELIVERY-7:** Open PRs ready-for-review when their required evidence is ready.
   Honor the repository PR template and include exact validation commands/results.
@@ -1414,7 +1414,7 @@ with only its version number changed.
 plugin EP only, CUDA copy primitives where sufficient, GPU-resident cache
 views/results, and an M08a/M08b split, with no additional specification input.
 The detailed execution plan is approved without changes. M08a is complete in
-PR #20. M08b, separately authorized on 2026-10-19, is complete in PR #21.
+PR #34049. M08b, separately authorized on 2026-10-19, is complete in PR #34050.
 Both CUDA-plugin-only sub-milestones are independently verified and ready for review.
 
 ### H.1 Scope and preserved behavior
@@ -1669,7 +1669,7 @@ The user chose CUDA plugin EP only, GPU-resident exposed logits under explicit
 GPU sampling, token/status-only readback, and an M09a/M09b delivery split.
 Additional specification inputs: None. The user approved the detailed plan
 without changes and authorized M09a only. M09a is verified and published ready
-for review in PR #22; pause before M09b for authorization.
+for review in PR #34051; pause before M09b for authorization.
 
 ### I.1 Scope and preserved behavior
 
@@ -1791,7 +1791,7 @@ for review in PR #22; pause before M09b for authorization.
   correctness and coverage; do not silently turn failures into skips.
 - M09a supplies the CUDA plugin sampler backend, standalone C/C++ conformance,
   resource/stream correctness and measured host/device coverage, stacked on
-  independently verified M08b PR #21. It does not claim loop/chain GPU sampling.
+  independently verified M08b PR #34050. It does not claim loop/chain GPU sampling.
 - M09b supplies GPU logits binding/retention, loop/chain generation integration,
   public/native parity and end-to-end evidence, stacked on verified M09a.
   Each sub-PR is independently documented, tested and ready for human review.
