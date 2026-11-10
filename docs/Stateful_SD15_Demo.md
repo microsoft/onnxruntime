@@ -1,7 +1,7 @@
 # Local SD1.5 stateful image generation
 
-Published for review in [M15/#29](https://github.com/onnxruntime/ort-state/pull/29),
-stacked on M14/#28.
+Published for review in [M15/#34058](https://github.com/microsoft/onnxruntime/pull/34058),
+stacked on M14/#34057.
 
 The [CLI and helpers](../samples/python/sd15_demo.py) construct one native
 [SessionChain](Stateful_Python.md):

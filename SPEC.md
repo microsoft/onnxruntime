@@ -2,13 +2,13 @@
 
 **Status:** Specification and separate execution plan approved by the user.
 M01-M15 are published for review; M15 is
-[#29](https://github.com/onnxruntime/ort-state/pull/29), stacked on M14/#28.
+[#34058](https://github.com/microsoft/onnxruntime/pull/34058), stacked on M14/#34057.
 Later milestones require their own
 approved refinements.
 M16-M23 are deferred at the user's direction. M24's delivered-foundation scope
 is approved in Appendix P. Its detailed execution plan was separately approved
 on2026-11-04; qualification and publication are complete in
-[#30](https://github.com/onnxruntime/ort-state/pull/30), stacked on M15/#29.
+[#34059](https://github.com/microsoft/onnxruntime/pull/34059), stacked on M15/#34058.
 This does not complete the deferred all-language binding goal.
 **Requirements captured:** 2026-10-15.
 
@@ -19,26 +19,26 @@ separately approved on 2026-10-19.
 **M11 refinement:** Appendix K was approved on 2026-10-20 for detailed plan
 preparation. The CPU-first `TASKS.md` plan was separately approved on 2026-10-20;
 GPU qualification was resumed and verified on 2026-10-21 with compatible tooling.
-M11 is published for review in [#25](https://github.com/onnxruntime/ort-state/pull/25),
+M11 is published for review in [#34054](https://github.com/microsoft/onnxruntime/pull/34054),
 stacked on M10.
 **M12 refinement:** The requirements interview completed on 2026-10-30.
 Appendix L was approved by the user for detailed plan preparation.
 The detailed M12 plan was separately approved on 2026-10-30 and implementation
 and CPU/CUDA qualification are verified on 2026-10-31. M12 is published for review
-in [#26](https://github.com/onnxruntime/ort-state/pull/26), stacked on M11.
+in [#34055](https://github.com/microsoft/onnxruntime/pull/34055), stacked on M11.
 M16-M23 are deferred, not completed. M24's requirements interview is complete;
 its specification and detailed execution plan were separately approved.
 **M13 refinement:** The requirements interview completed on 2026-11-02.
 Appendix M was approved for detailed plan preparation. The requested stack
 parent is verified M12. The detailed plan was separately approved on 2026-11-02;
 implementation and qualification are complete, published as ready-for-review
-[#27](https://github.com/onnxruntime/ort-state/pull/27).
+[#34056](https://github.com/microsoft/onnxruntime/pull/34056).
 **M14 refinement:** The requirements interview completed on 2026-11-02.
 The user explicitly confirmed no additional requirements and approved Appendix N
 on 2026-11-02 for detailed execution-plan preparation. The detailed plan was
 separately approved on 2026-11-02. Implementation and CPU/CUDA qualification are
 verified; M14 is published for review as
-[#28](https://github.com/onnxruntime/ort-state/pull/28), stacked on M13.
+[#34057](https://github.com/microsoft/onnxruntime/pull/34057), stacked on M13.
 **M15 refinement:** The requirements interview completed on 2026-11-03.
 The user explicitly confirmed no additional requirements and selected CUDA-only
 real inference with CPU EP fixture tests retained. Appendix O was approved on
@@ -456,8 +456,8 @@ Model licenses and external-weight references must be respected.
 - **DELIVERY-5:** Each milestone is an independently documented, tested,
   human-reviewable PR. Later PRs may depend on preceding PRs, but their incremental
   diff, prerequisites, outcome, and validation must be clear.
-- **DELIVERY-6:** Target `onnxruntime/ort-state`. Base the first milestone branch
-  on the current `ort-state` branch and stack later branches on their predecessor,
+- **DELIVERY-6:** Target `microsoft/onnxruntime`. Base the first milestone branch
+  on the current `state/stateful-base-1988019b` branch and stack later branches on their predecessor,
   using descriptive branch names.
 - **DELIVERY-7:** Open PRs ready-for-review when their required evidence is ready.
   Honor the repository PR template and include exact validation commands/results.
@@ -1458,7 +1458,7 @@ with only its version number changed.
 plugin EP only, CUDA copy primitives where sufficient, GPU-resident cache
 views/results, and an M08a/M08b split, with no additional specification input.
 The detailed execution plan is approved without changes. M08a is complete in
-PR #20. M08b, separately authorized on 2026-10-19, is complete in PR #21.
+PR #34049. M08b, separately authorized on 2026-10-19, is complete in PR #34050.
 Both CUDA-plugin-only sub-milestones are independently verified and ready for review.
 
 ### H.1 Scope and preserved behavior
@@ -1713,8 +1713,8 @@ The user chose CUDA plugin EP only, GPU-resident exposed logits under explicit
 GPU sampling, token/status-only readback, and an M09a/M09b delivery split.
 Additional specification inputs: None. The user approved the detailed plan
 without changes and initially authorized M09a only. M09a is verified and published
-ready for review in PR #22. M09b, separately authorized on 2026-10-19, is verified
-and published ready for review in PR #23. Both parts of macro M09 are complete.
+ready for review in PR #34051. M09b, separately authorized on 2026-10-19, is verified
+and published ready for review in PR #34052. Both parts of macro M09 are complete.
 
 ### I.1 Scope and preserved behavior
 
@@ -1836,7 +1836,7 @@ and published ready for review in PR #23. Both parts of macro M09 are complete.
   correctness and coverage; do not silently turn failures into skips.
 - M09a supplies the CUDA plugin sampler backend, standalone C/C++ conformance,
   resource/stream correctness and measured host/device coverage, stacked on
-  independently verified M08b PR #21. It does not claim loop/chain GPU sampling.
+  independently verified M08b PR #34050. It does not claim loop/chain GPU sampling.
 - M09b supplies GPU logits binding/retention, loop/chain generation integration,
   public/native parity and end-to-end evidence, stacked on verified M09a.
   Each sub-PR is independently documented, tested and ready for human review.
@@ -3130,9 +3130,9 @@ additional requirements before drafting. This appendix refines API-1/API-2,
 API-5/API-6 and M13's Python/native/package parity.
 **Specification approved:** 2026-11-02, for detailed execution-plan preparation.
 The detailed M13 execution plan was separately approved on 2026-11-02.
-**Stack:** M13 [#27](https://github.com/onnxruntime/ort-state/pull/27), OPEN/ready on M12
+**Stack:** M13 [#34056](https://github.com/microsoft/onnxruntime/pull/34056), OPEN/ready on M12
 `09d169b3de6001f9ac5a2a5e52747bf1cadfa003` /
-[#26](https://github.com/onnxruntime/ort-state/pull/26).
+[#34055](https://github.com/microsoft/onnxruntime/pull/34055).
 **Implementation qualification/publication:** Completed 2026-11-02.
 New native binding/glue coverage is660/660 mapped lines, new Python binding/
 helper coverage769/769 statements, and executable examples63/63 statements.
@@ -3407,10 +3407,10 @@ reference/checkpoint/replay and typed/package parity pass for budgets0/1/16.
 New executable production Python reaches377/377 with zero exclusions; actual
 CUDA memory/lifetime/race/sync and transfer gates pass. Exact results and known
 parent limitations are recorded in [M14 qualification](TASKS.md#final-m14-qualification-2026-11-03).
-**Stack:** M14 [#28](https://github.com/onnxruntime/ort-state/pull/28), OPEN/ready on M13
+**Stack:** M14 [#34057](https://github.com/microsoft/onnxruntime/pull/34057), OPEN/ready on M13
 `42ab052f08c8dc44a76a8012e3e70a053fe64b1a` /
-[#27](https://github.com/onnxruntime/ort-state/pull/27).
-The local planning branch is `state/m14-phi3-demo`.
+[#34056](https://github.com/microsoft/onnxruntime/pull/34056).
+The local planning branch is `stateful-M18-phi3-demo`.
 
 ### N.1 Confirmed assets and explicit acquisition
 
@@ -3588,10 +3588,10 @@ boundary wrappers and the required safety checker.
 preparation, then separately approved the detailed execution plan on 2026-11-03.
 Implementation and the explicitly scoped local asset acquisition are authorized.
 **Stack:** Published OPEN/ready as
-[#29](https://github.com/onnxruntime/ort-state/pull/29), on M14
+[#34058](https://github.com/microsoft/onnxruntime/pull/34058), on M14
 `44e512c7719c1e7ebc2e231c47281535c2c52a90` /
-[#28](https://github.com/onnxruntime/ort-state/pull/28).
-The published head branch is `state/m15-sd15-demo`. Implementation, measured
+[#34057](https://github.com/microsoft/onnxruntime/pull/34057).
+The published head branch is `stateful-M19-sd15-demo`. Implementation, measured
 CPU/CUDA qualification, approved bounded race scope and publication are complete.
 
 ### O.1 Confirmed model source and acquisition
@@ -3958,9 +3958,9 @@ explicitly approved Appendix P without changes, then separately approved
 `TASKS.md` F0-F8 without changes and authorized starting M24.
 
 **Published stack:** OPEN/ready
-[#30](https://github.com/onnxruntime/ort-state/pull/30) on M15/#29,
-`state/m15-sd15-demo` at `4fcf16f7d25d6ce8c693839fdf5686c7d3c4c1d8`.
-Published branch: `state/m24-qualification`. No merge or deferred-binding work.
+[#34059](https://github.com/microsoft/onnxruntime/pull/34059) on M15/#34058,
+`stateful-M19-sd15-demo` at `4fcf16f7d25d6ce8c693839fdf5686c7d3c4c1d8`.
+Published branch: `stateful-M20-qualification`. No merge or deferred-binding work.
 
 ### P.1 Acceptance scope and explicit deferrals
 
@@ -4097,7 +4097,7 @@ previous environment-specific launch window.
 - Updated `TASKS.md` checklists and `SCRATCHPAD.md` decisions/evidence pointers,
   with compact reports in Git and large profiles/traces/models/images outside
   Git in named, checked storage. Preserve parent proof and original assets.
-- One tested ready-for-review M24 PR stacked on M15/#29. No automatic merge and
+- One tested ready-for-review M24 PR stacked on M15/#34058. No automatic merge and
   no implementation or completion claim for M16-M23.
 
 Qualification tooling, missing tests and tightly coupled defects within existing
@@ -4116,6 +4116,6 @@ blocked statuses persist; and its synchronized ready PR exists.
 M16-M23 deferral is not a failure of this explicitly scoped qualification and
 is not evidence that the full original binding goal has been completed.
 
-**Completed:** 2026-11-04. M24/#30 records exact cumulative7369/7369production
+**Completed:** 2026-11-04. M24/#34059 records exact cumulative7369/7369production
 locations,257/257M24delta, all eight native-only baseline rows and the approved
 CPU/CUDA/device/resource scope. Deferred binding requirements remain outstanding.
