@@ -341,7 +341,7 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
     this.updateTestResult(index, { status: 'running' });
     try {
       const expectedName = 'context/data.bin';
-      const result = await getOrtApi().__testEpContextDataReadCallback(
+      const pendingRead = getOrtApi().__testEpContextDataReadCallback(
         (name) => {
           if (name !== expectedName) {
             throw new Error(`Unexpected callback name: ${name}`);
@@ -351,6 +351,10 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
         3,
         expectedName,
       );
+      const result = await pendingRead;
+      if (!pendingRead.__testWorker.isFinished) {
+        throw new Error('Callback worker resolved before its native completion hook');
+      }
       if (result.length !== 3 || result[0] !== 1 || result[1] !== 2 || result[2] !== 3) {
         throw new Error(`Unexpected callback bytes: ${Array.from(result).join(',')}`);
       }
@@ -377,14 +381,18 @@ export default class EPContextDataReadTest extends React.PureComponent<{}, State
           throw new Error('test callback failure');
         },
       ]) {
+        const pendingRead = getOrtApi().__testEpContextDataReadCallback(callback, 1, 'failure.bin');
         let rejected = false;
         try {
-          await getOrtApi().__testEpContextDataReadCallback(callback, 1, 'failure.bin');
+          await pendingRead;
         } catch {
           rejected = true;
         }
         if (!rejected) {
           throw new Error('Invalid callback result unexpectedly succeeded');
+        }
+        if (!pendingRead.__testWorker.isFinished) {
+          throw new Error('Callback worker rejected before its native completion hook');
         }
       }
       const empty = await getOrtApi().__testEpContextDataReadCallback(() => new Uint8Array(0), 1, 'empty.bin');

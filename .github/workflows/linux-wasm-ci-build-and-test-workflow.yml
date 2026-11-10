@@ -83,9 +83,10 @@ jobs:
         run: python -m pip install flatbuffers
 
       - name: Setup CCache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: ccache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          # Fully qualify by workflow. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
+          # Fully qualify by workflow. `actions/cache/restore` does not isolate by workflow, unlike ADO cache actions.
           key: ccache | web.yml | ${{ inputs.job_name }}
           path: ~/.cache/ccache
 
@@ -94,20 +95,9 @@ jobs:
         with:
           key: web-${{ inputs.job_name }}
 
-      - name: Get vcpkg tool info
-        id: vcpkg-tool-info
-        uses: ./.github/actions/get-vcpkg-tool-info
-
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+      - uses: ./.github/actions/setup-build-tools
         with:
-          ccache-version: 4.13.1
-          ccache-hash: 626407a9b81dd86f8ec9867bff396b32dd1f00344f5b323526579a64f6d4104927f83e8d7a05ad9806fd78f4491e0adb4cff73388000a62050cb1b00766214ee
-          vcpkg-version: ${{ steps.vcpkg-tool-info.outputs.release_tag }}
-          vcpkg-hash: ${{ steps.vcpkg-tool-info.outputs.sha512 }}
-          cmake-version: '3.31.6'
-          cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
-          add-cmake-to-path: 'true'
-          disable-terrapin: 'true'
+          install-ccache: 'true'
 
       - name: Build (simd + threads)
         run: |
@@ -198,7 +188,7 @@ jobs:
 
       - name: Upload WASM artifacts
         if: ${{ inputs.skip_publish != true }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.build_config }}_wasm
           path: ${{ github.workspace }}/artifacts/wasm
@@ -227,7 +217,14 @@ jobs:
 
       - name: Publish test results
         if: ${{ always() && inputs.build_config == 'Debug' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-results
           path: ${{ github.workspace }}/build/**/*.results.xml
+
+      - name: Save CCache
+        if: ${{ success() && github.ref == 'refs/heads/main' && steps.ccache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+          path: ~/.cache/ccache

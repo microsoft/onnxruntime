@@ -992,6 +992,127 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
         }));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    GatherPacked, 1,
+    OpSchema()
+        .SetDoc("Gather rows from a 2D block-packed embedding table and dequantize on the fly.\n"
+                "Supported format IDs and their stable byte layouts are defined in the "
+                "[packed-weight format contract]"
+                "(https://github.com/microsoft/onnxruntime/blob/main/docs/PackedWeightFormats.md).")
+        .Attr("K",
+              "Logical embedding dimension. Must be a positive multiple of the selected packed format's block size.",
+              AttributeProto::INT)
+        .Attr("packed_type",
+              "Stable packed-format ID from the packed-weight format contract. Only listed IDs are supported.",
+              AttributeProto::INT)
+        .Attr("output_dtype", "ONNX TensorProto DataType for output (default 16 = BFLOAT16).",
+              AttributeProto::INT, static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16))
+        .Input(0, "data", "2D little-endian packed weight blob [vocab_size, row_bytes].", "T1")
+        .Input(1, "indices",
+               "Token indices of arbitrary rank. Negative indices and indices >= vocab_size select row 0.", "Tind")
+        .Output(0, "output", "Dequantized gathered embeddings [..., K].", "T2")
+        .TypeConstraint("T1", {"tensor(uint8)"}, "Packed byte storage.")
+        .TypeConstraint("T2", {"tensor(bfloat16)", "tensor(float16)", "tensor(float)"}, "Output floating-point type.")
+        .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Index type.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          const int64_t k = getAttribute(ctx, "K", 0);
+          if (k <= 0) fail_shape_inference("GatherPacked K must be positive.");
+          const int64_t out_dt = getAttribute(
+              ctx, "output_dtype", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16));
+          if (out_dt != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+              out_dt != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
+              out_dt != ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
+            fail_type_inference("GatherPacked output_dtype must be FLOAT, FLOAT16, or BFLOAT16; got ", out_dt);
+          }
+          ctx.getOutputType(0)->mutable_tensor_type()->set_elem_type(static_cast<int32_t>(out_dt));
+          if (!hasInputShape(ctx, 1)) return;
+          const auto& indices_shape = getInputShape(ctx, 1);
+          auto* out_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+          for (int i = 0; i < indices_shape.dim_size(); ++i) {
+            *out_shape->add_dim() = indices_shape.dim(i);
+          }
+          out_shape->add_dim()->set_dim_value(k);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    MatMulPacked, 1,
+    OpSchema()
+        .SetDoc("Matrix multiplication Y = A @ B^T where B is a 2D block-packed weight tensor.\n"
+                "Complete dequantized weights are rounded to A's dtype before multiplication by default. "
+                "CUDA uses float32 accumulation and reductions. M is the product of A's leading dimensions. "
+                "The CUDA session option ep.cuda.matmul_packed_allow_unrounded_gemv=1 permits eligible "
+                "decode/GEMV kernels (M <= 8) to skip weight rounding; its default is 0. "
+                "Prefill (M > 8) uses bounded scratch memory and always rounds weights to A's dtype, "
+                "including when using float32 scratch buffers. Kernel reduction orders can still differ. "
+                "CUDA execution requires weights in device memory.\n"
+                "Supported format IDs and their stable byte layouts are defined in the "
+                "[packed-weight format contract]"
+                "(https://github.com/microsoft/onnxruntime/blob/main/docs/PackedWeightFormats.md).")
+        .Attr("K",
+              "Reduction dimension. Must be a whole number of packed blocks; CUDA requires a positive multiple of 32.",
+              AttributeProto::INT)
+        .Attr("N", "Output dimension.", AttributeProto::INT)
+        .Attr("packed_type",
+              "Stable packed-format ID for B from the packed-weight format contract. Only listed IDs are supported.",
+              AttributeProto::INT)
+        .Input(0, "A", "Input activations [..., K].", "T1")
+        .Input(1, "B", "Packed weight blob [N, row_bytes].", "T2")
+        .Input(2, "global_scale",
+               "Optional scalar FP32 multiplier for NVFP4, applied to FP32 accumulation before the output cast.",
+               "Tscale", OpSchema::Optional)
+        .Output(0, "Y", "Output activations [..., N].", "T1")
+        .TypeConstraint("T1", {"tensor(bfloat16)", "tensor(float16)"}, "Activation type.")
+        .TypeConstraint("T2", {"tensor(uint8)"}, "Packed byte storage.")
+        .TypeConstraint("Tscale", {"tensor(float)"}, "Global scale type.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          const int64_t n = getAttribute(ctx, "N", 0);
+          if (n <= 0) fail_shape_inference("MatMulPacked N must be positive.");
+          if (!hasInputShape(ctx, 0)) return;
+          const auto& a_shape = getInputShape(ctx, 0);
+          if (a_shape.dim_size() < 1) fail_shape_inference("MatMulPacked A must have rank >= 1.");
+          auto* y_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+          for (int i = 0; i + 1 < a_shape.dim_size(); ++i) {
+            *y_shape->add_dim() = a_shape.dim(i);
+          }
+          y_shape->add_dim()->set_dim_value(n);
+        }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    MoEPacked, 1,
+    OpSchema()
+        .SetDoc("Mixture-of-Experts layer consuming 3D block-packed gate, up, and down expert weight blobs. "
+                "CUDA execution requires weights in device memory; host-backed external initializers are copied "
+                "to the device without changing their packed layout.\n"
+                "Supported format IDs and their stable byte layouts are defined in the "
+                "[packed-weight format contract]"
+                "(https://github.com/microsoft/onnxruntime/blob/main/docs/PackedWeightFormats.md).")
+        .Attr("k", "Number of selected experts per token.", AttributeProto::INT)
+        .Attr("normalize_routing_weights", "Whether to normalize top-k routing probabilities.",
+              AttributeProto::INT, static_cast<int64_t>(1))
+        .Attr("activation_type", "Expert activation function ('swiglu').",
+              AttributeProto::STRING, std::string("swiglu"))
+        .Attr("gate_type", "Stable packed-format ID of gate_experts_weights. Only contract-listed IDs are supported.",
+              AttributeProto::INT)
+        .Attr("up_type", "Stable packed-format ID of up_experts_weights. Only contract-listed IDs are supported.",
+              AttributeProto::INT)
+        .Attr("down_type", "Stable packed-format ID of down_experts_weights. Only contract-listed IDs are supported.",
+              AttributeProto::INT)
+        .Input(0, "input", "Input hidden states [..., hidden_size].", "T")
+        .Input(1, "router_probs", "Router logits [num_rows, num_experts].", "T")
+        .Input(2, "gate_experts_weights", "3D packed gate weight blob [num_experts, inter_size, gate_row_bytes].", "T2")
+        .Input(3, "up_experts_weights", "3D packed up weight blob [num_experts, inter_size, up_row_bytes].", "T2")
+        .Input(4, "down_experts_weights", "3D packed down weight blob [num_experts, hidden_size, down_row_bytes].", "T2")
+        .Output(0, "output", "Output hidden states [..., hidden_size].", "T")
+        .TypeConstraint("T", {"tensor(bfloat16)", "tensor(float16)"}, "Activation type.")
+        .TypeConstraint("T2", {"tensor(uint8)"}, "Packed byte storage.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (hasInputShape(ctx, 0)) {
+            *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape() = getInputShape(ctx, 0);
+          }
+        }));
+
 ONNX_MS_OPERATOR_SET_SCHEMA(BiasDropout, 1,
                             OpSchema()
                                 .SetDoc(
@@ -1561,6 +1682,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. CUDA also supports relu2 (squared ReLU) and geglu (GELU-tanh(gate) * up). GEGLU requires fused FC1 gate/up weights, swiglu_fusion=1 or 2, and no FC3 inputs. Default is relu", AttributeProto::STRING, std::string("relu"))
         .Attr("swiglu_fusion", "Gate/up layout for swiglu or geglu. 0: not fused (swiglu only), 1: fused and interleaved, 2: fused and not interleaved ([gate | up] for geglu).", AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("swiglu_limit", "The limit used to clamp in SwiGLU. No clamp when limit is not provided. Does not affect GEGLU.", AttributeProto::FLOAT, OPTIONAL_VALUE)
+        .Attr("swiglu_limit_after_activation",
+              "When 1, clamp the activated gate instead of the gate input: "
+              "min(gate * sigmoid(activation_alpha * gate), swiglu_limit) * "
+              "(clamp(up, -swiglu_limit, swiglu_limit) + activation_beta). "
+              "Requires activation_type='swiglu' and CUDA. The default 0 preserves input clipping.",
+              AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("activation_alpha", "Alpha parameter used in activation function.", AttributeProto::FLOAT, 1.0f)
         .Attr("activation_beta", "Beta parameter used in activation function.", AttributeProto::FLOAT, 0.0f)
         .Attr("k", "Number of top experts to select from expert pool", AttributeProto::INT, static_cast<int64_t>(1))
@@ -1614,8 +1741,11 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
       Partial edge blocks are allowed. No zero points or activation scales are accepted.
       Without a positive block_size, FP8 uses the legacy per-expert fc*_global_scale inputs instead.
       Block-scaled FP8 does not use global scales. Activations retain the input type (weight-only quantization).
-      On CUDA SM80-or-newer GPUs, SiLU/SwiGLU block-scaled FP8 uses fused weight-only GEMV/GEMM by default.
-      These kernels decode and scale FP8 tiles on chip without materializing full FP16/BF16 weight buffers.
+      On CUDA SM80-or-newer GPUs, SiLU/SwiGLU block-scaled FP8 uses fused weight-only GEMV/GEMM for decode-sized
+      batches of at most 8 rows by default. These kernels decode and scale FP8 tiles on chip without materializing
+      full FP16/BF16 weight buffers. Larger batches dequantize the selected experts and use the CUTLASS grouped GEMM.
+      Set ORT_QMOE_FP8_FUSED_MAX_ROWS before session creation to change the row cutoff, or set ORT_ENABLE_FP8_FUSED=1
+      to keep the scratch-free fused kernels for every supported row count.
       Set ORT_ENABLE_FP8_FUSED=0 before session creation to select the compact dense-dequant fallback.
       Other activation types and unsupported routing sizes retain the fallback.
       The WebGPU block-FP8 kernel supports block_size=128 with float32 scales and rejects projections
@@ -1895,6 +2025,13 @@ static OpSchema QMoESchema() {
                           "The limit used to clamp inputs in SwiGLU. It is infinite when limit is not provided. Does not affect GEGLU.",
                           AttributeProto::FLOAT,
                           OPTIONAL_VALUE)
+                    .Attr("swiglu_limit_after_activation",
+                          "When 1, clamp the activated gate instead of the gate input: "
+                          "min(gate * sigmoid(activation_alpha * gate), swiglu_limit) * "
+                          "(clamp(up, -swiglu_limit, swiglu_limit) + activation_beta). "
+                          "Requires activation_type='swiglu' and CUDA with INT4/INT8 or block-FP8 weights. "
+                          "Offload is unsupported. The default 0 preserves input clipping.",
+                          AttributeProto::INT, static_cast<int64_t>(0))
                     .Attr("activation_alpha",
                           "Alpha parameter used in activation function.",
                           AttributeProto::FLOAT, 1.0f)

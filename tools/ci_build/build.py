@@ -31,6 +31,7 @@ REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
 sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
 import util.android as android  # noqa: E402
 from build_args import parse_arguments  # noqa: E402
+from build_tool_info import get_tool_info  # noqa: E402
 from util import (  # noqa: E402
     generate_android_triplets,
     generate_linux_triplets,
@@ -44,7 +45,6 @@ from util import (  # noqa: E402
     parse_qnn_version_from_sdk_yaml,
     run,
 )
-from vcpkg_tool_info import get_vcpkg_release_tag  # noqa: E402
 
 log = get_logger("build")
 
@@ -191,8 +191,6 @@ def setup_test_data(source_onnx_model_dir, dest_model_dir_name, build_dir, confi
 def use_dev_mode(args):
     if args.compile_no_warning_as_error:
         return False
-    if args.use_acl:
-        return False
     if is_macOS() and (args.ios or args.visionos or args.tvos):
         return False
     if args.use_qnn:
@@ -238,8 +236,6 @@ def number_of_flash_nvcc_threads(args):
 def generate_vcpkg_install_options(build_dir, args):
     # NOTE: each option string should not contain any whitespace.
     vcpkg_install_options = ["--x-feature=tests"]
-    if args.use_acl:
-        vcpkg_install_options.append("--x-feature=acl-ep")
     if args.use_azure:
         vcpkg_install_options.append("--x-feature=azure-ep")
     if args.use_cann:
@@ -463,8 +459,6 @@ def generate_build_tree(
     nccl_home,
     tensorrt_home,
     migraphx_home,
-    acl_home,
-    acl_libs,
     qnn_home,
     snpe_root,
     cann_home,
@@ -598,7 +592,6 @@ def generate_build_tree(
         + ("ON" if args.enable_session_threadpool_callbacks else "OFF"),
         "-Donnxruntime_BUILD_MS_EXPERIMENTAL_OPS=" + ("ON" if args.ms_experimental else "OFF"),
         "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
-        "-Donnxruntime_USE_ACL=" + ("ON" if args.use_acl else "OFF"),
         "-Donnxruntime_USE_JSEP=" + ("ON" if args.use_jsep else "OFF"),
         "-Donnxruntime_USE_WEBGPU=" + ("ON" if args.use_webgpu else "OFF"),
         # The WebGPU EP library kind selects these. Emit them unconditionally, including the OFF case, so that
@@ -692,7 +685,7 @@ def generate_build_tree(
                         "git",
                         "clone",
                         "-b",
-                        get_vcpkg_release_tag(),
+                        get_tool_info("vcpkg").version,
                         "https://github.com/microsoft/vcpkg.git",
                         "--recursive",
                     ],
@@ -898,12 +891,6 @@ def generate_build_tree(
                 add_default_definition(cmake_extra_defines, "protobuf_MSVC_STATIC_RUNTIME", "OFF")
                 add_default_definition(cmake_extra_defines, "ABSL_MSVC_STATIC_RUNTIME", "OFF")
                 add_default_definition(cmake_extra_defines, "gtest_force_shared_crt", "ON")
-
-    if acl_home and os.path.exists(acl_home):
-        cmake_args += ["-Donnxruntime_ACL_HOME=" + acl_home]
-
-    if acl_libs and os.path.exists(acl_libs):
-        cmake_args += ["-Donnxruntime_ACL_LIBS=" + acl_libs]
 
     if nccl_home and os.path.exists(nccl_home):
         cmake_args += ["-Donnxruntime_NCCL_HOME=" + nccl_home]
@@ -1991,6 +1978,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             log.info("Testing AutoEP feature")
             run_subprocess([sys.executable, "onnxruntime_test_python_autoep.py"], cwd=cwd, dll_path=dll_path)
 
+            log.info("Testing Python Model Package API")
+            run_subprocess([sys.executable, "onnxruntime_test_python_model_package.py"], cwd=cwd, dll_path=dll_path)
+
             if not args.disable_contrib_ops:
                 run_subprocess([sys.executable, "onnxruntime_test_python_sparse_matmul.py"], cwd=cwd, dll_path=dll_path)
 
@@ -2191,7 +2181,6 @@ def build_python_wheel(
     use_tensorrt,
     use_openvino,
     use_vitisai,
-    use_acl,
     use_dml,
     use_webgpu,
     use_cann,
@@ -2239,8 +2228,6 @@ def build_python_wheel(
             args.append("--use_dnnl")
         elif use_vitisai:
             args.append("--use_vitisai")
-        elif use_acl:
-            args.append("--use_acl")
         elif use_dml:
             args.append("--wheel_name_suffix=directml")
         elif use_webgpu:
@@ -2682,9 +2669,6 @@ def main():
 
     snpe_root = args.snpe_root
 
-    acl_home = args.acl_home
-    acl_libs = args.acl_libs
-
     qnn_home = ""
     if args.use_qnn:
         qnn_home = args.qnn_home
@@ -2828,8 +2812,6 @@ def main():
             nccl_home,
             tensorrt_home,
             migraphx_home,
-            acl_home,
-            acl_libs,
             qnn_home,
             snpe_root,
             cann_home,
@@ -2890,7 +2872,6 @@ def main():
                 args.use_tensorrt,
                 args.use_openvino,
                 args.use_vitisai,
-                args.use_acl,
                 args.use_dml,
                 args.use_webgpu,
                 args.use_cann,

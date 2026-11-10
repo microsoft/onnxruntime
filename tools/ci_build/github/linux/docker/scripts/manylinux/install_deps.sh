@@ -12,7 +12,6 @@ else
 fi
 
 # Install dotnet
-LOCAL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
 PARENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." &> /dev/null && pwd)"
 # ShellCheck is unable to follow dynamic paths, such as source "$somedir/file".
 # shellcheck disable=SC1091
@@ -25,10 +24,6 @@ else
 fi
 
 mkdir -p /tmp/src
-
-cd /tmp/src
-# shellcheck disable=SC1091
-source "$LOCAL_DIR/install_shared_deps.sh"
 
 cd /tmp/src
 

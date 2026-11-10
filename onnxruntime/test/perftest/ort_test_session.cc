@@ -568,34 +568,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("DML is not supported in this build\n");
 #endif
-  } else if (provider_name_ == onnxruntime::kAclExecutionProvider) {
-#ifdef USE_ACL
-#if defined(_MSC_VER)
-    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
-#else
-    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
-#endif  // defined(_MSC_VER)
-    bool enable_fast_math = false;
-    ParseSessionConfigs(ov_string, provider_options, {"enable_fast_math"});
-    for (const auto& provider_option : provider_options) {
-      const std::string& key = provider_option.first;
-      const std::string& value = provider_option.second;
-      if (key == "enable_fast_math") {
-        std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
-        if (ov_supported_values.find(value) != ov_supported_values.end()) {
-          enable_fast_math = (value == "true") || (value == "True");
-        } else {
-          ORT_THROW(
-              "[ERROR] [ACL] You have selcted an invalid value for the key 'enable_fast_math'. "
-              "Select from 'true' or 'false' \n");
-        }
-      }
-    }
-    Ort::ThrowOnError(
-        OrtSessionOptionsAppendExecutionProvider_ACL(session_options, enable_fast_math));
-#else
-    ORT_THROW("Acl is not supported in this build\n");
-#endif
   } else if (provider_name_ == onnxruntime::kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(session_options, 0));

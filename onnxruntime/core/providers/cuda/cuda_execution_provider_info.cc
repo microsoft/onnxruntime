@@ -40,6 +40,8 @@ constexpr const char* kUseTF32 = "use_tf32";
 constexpr const char* kFuseConvBias = "fuse_conv_bias";
 constexpr const char* kSdpaKernel = "sdpa_kernel";
 constexpr const char* kExternalDataLoaderReadingThreads = "external_data_loader_reading_threads";
+constexpr const char* kExternalDataLoaderPinnedMemoryBytes = "external_data_loader_pinned_memory_bytes";
+constexpr const char* kExternalDataLoaderChunkBytes = "external_data_loader_chunk_bytes";
 
 }  // namespace provider_option_names
 }  // namespace cuda
@@ -155,6 +157,51 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
                     cuda::provider_option_names::kExternalDataLoaderReadingThreads,
                     " must be between 0 and ",
                     OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderReadingThreadCount, ".");
+                info.external_data_loader_reading_threads_explicit = true;
+                return Status::OK();
+              })
+          .AddValueParser(
+              cuda::provider_option_names::kExternalDataLoaderPinnedMemoryBytes,
+              [&info](const std::string& value_str) -> Status {
+                ORT_RETURN_IF_ERROR(
+                    ParseStringWithClassicLocale(value_str, info.external_data_loader_pinned_memory_bytes));
+                ORT_RETURN_IF_NOT(
+                    info.external_data_loader_pinned_memory_bytes >=
+                            OrtCUDAProviderOptionsV2::kMinExternalDataLoaderPinnedMemoryBytes &&
+                        info.external_data_loader_pinned_memory_bytes <=
+                            OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderPinnedMemoryBytes &&
+                        (info.external_data_loader_pinned_memory_bytes %
+                         OrtCUDAProviderOptionsV2::kExternalDataLoaderPinnedMemoryAlignment) == 0,
+                    cuda::provider_option_names::kExternalDataLoaderPinnedMemoryBytes,
+                    " must be between ",
+                    OrtCUDAProviderOptionsV2::kMinExternalDataLoaderPinnedMemoryBytes,
+                    " and ",
+                    OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderPinnedMemoryBytes,
+                    " bytes and a multiple of ",
+                    OrtCUDAProviderOptionsV2::kExternalDataLoaderPinnedMemoryAlignment, ".");
+                info.external_data_loader_pinned_memory_bytes_explicit = true;
+                return Status::OK();
+              })
+          .AddValueParser(
+              cuda::provider_option_names::kExternalDataLoaderChunkBytes,
+              [&info](const std::string& value_str) -> Status {
+                ORT_RETURN_IF_ERROR(
+                    ParseStringWithClassicLocale(value_str, info.external_data_loader_chunk_bytes));
+                ORT_RETURN_IF_NOT(
+                    info.external_data_loader_chunk_bytes >=
+                            OrtCUDAProviderOptionsV2::kMinExternalDataLoaderChunkBytes &&
+                        info.external_data_loader_chunk_bytes <=
+                            OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderChunkBytes &&
+                        (info.external_data_loader_chunk_bytes %
+                         OrtCUDAProviderOptionsV2::kExternalDataLoaderChunkAlignment) == 0,
+                    cuda::provider_option_names::kExternalDataLoaderChunkBytes,
+                    " must be between ",
+                    OrtCUDAProviderOptionsV2::kMinExternalDataLoaderChunkBytes,
+                    " and ",
+                    OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderChunkBytes,
+                    " bytes and a multiple of ",
+                    OrtCUDAProviderOptionsV2::kExternalDataLoaderChunkAlignment, ".");
+                info.external_data_loader_chunk_bytes_explicit = true;
                 return Status::OK();
               })
           .AddValueParser(
@@ -216,6 +263,10 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const CUDAExecution
       {cuda::provider_option_names::kFuseConvBias, MakeStringWithClassicLocale(info.fuse_conv_bias)},
       {cuda::provider_option_names::kExternalDataLoaderReadingThreads,
        MakeStringWithClassicLocale(info.external_data_loader_reading_threads)},
+      {cuda::provider_option_names::kExternalDataLoaderPinnedMemoryBytes,
+       MakeStringWithClassicLocale(info.external_data_loader_pinned_memory_bytes)},
+      {cuda::provider_option_names::kExternalDataLoaderChunkBytes,
+       MakeStringWithClassicLocale(info.external_data_loader_chunk_bytes)},
   };
 
   return options;
@@ -245,6 +296,10 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const OrtCUDAProvid
       {cuda::provider_option_names::kSdpaKernel, MakeStringWithClassicLocale(info.sdpa_kernel)},
       {cuda::provider_option_names::kExternalDataLoaderReadingThreads,
        MakeStringWithClassicLocale(info.external_data_loader_reading_threads)},
+      {cuda::provider_option_names::kExternalDataLoaderPinnedMemoryBytes,
+       MakeStringWithClassicLocale(info.external_data_loader_pinned_memory_bytes)},
+      {cuda::provider_option_names::kExternalDataLoaderChunkBytes,
+       MakeStringWithClassicLocale(info.external_data_loader_chunk_bytes)},
   };
 
   return options;

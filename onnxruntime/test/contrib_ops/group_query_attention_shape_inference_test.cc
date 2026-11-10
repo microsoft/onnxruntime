@@ -150,6 +150,82 @@ TEST(GroupQueryAttentionShapeInferenceTest, UnshapedValueInputIsNotPacked) {
   ASSERT_STATUS_OK(status);
 }
 
+TEST(GroupQueryAttentionShapeInferenceTest, Int32TotalSequenceLengthFromStaticShape) {
+  for (bool from_shape : {false, true}) {
+    for (bool scalar : {true, false}) {
+      for (int64_t past_length : {int64_t{-1}, int64_t{3}, int64_t{9}}) {
+        SCOPED_TRACE(testing::Message() << "from_shape=" << from_shape << ", scalar=" << scalar
+                                        << ", past_length=" << past_length);
+        const std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 20}, {kMSDomain, 1}};
+        Model model("gqa_static_total_sequence_length", false, ModelMetaData(), PathString(),
+                    IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                    DefaultLoggingManager().DefaultLogger());
+        Graph& graph = model.MainGraph();
+        ModelTestBuilder builder(graph);
+        NodeArg* empty = builder.MakeEmptyInput();
+        NodeArg* query = builder.MakeInput<float>(std::vector<int64_t>{1, 7, 64});
+        NodeArg* key = builder.MakeInput<float>(std::vector<int64_t>{1, 7, 32});
+        NodeArg* value = builder.MakeInput<float>(std::vector<int64_t>{1, 7, 32});
+        NodeArg* past_key = empty;
+        NodeArg* past_value = empty;
+        if (past_length >= 0) {
+          past_key = builder.MakeInput<float>(std::vector<int64_t>{1, 2, past_length, 16});
+          past_value = builder.MakeInput<float>(std::vector<int64_t>{1, 2, past_length, 16});
+        }
+
+        NodeArg* total_sequence_length;
+        if (from_shape) {
+          NodeArg* length64 = builder.MakeIntermediate();
+          Node& shape = builder.AddNode("Shape", {query}, {length64});
+          shape.AddAttribute("start", int64_t{1});
+          shape.AddAttribute("end", int64_t{2});
+          NodeArg* length32 = builder.MakeIntermediate();
+          Node& cast = builder.AddNode("Cast", {length64}, {length32});
+          cast.AddAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType_INT32});
+          total_sequence_length = length32;
+          if (scalar) {
+            total_sequence_length = builder.MakeIntermediate();
+            builder.AddNode("Squeeze", {length32}, {total_sequence_length});
+          }
+        } else {
+          total_sequence_length = builder.MakeInitializer<int32_t>(
+              scalar ? std::vector<int64_t>{} : std::vector<int64_t>{1}, {7});
+        }
+
+        NodeArg* seqlens_k = builder.MakeInput<int32_t>({1}, {6});
+        NodeArg* output = builder.MakeOutput();
+        NodeArg* present_key = builder.MakeOutput();
+        NodeArg* present_value = builder.MakeOutput();
+        Node& gqa = builder.AddNode(
+            "GroupQueryAttention", {query, key, value, past_key, past_value, seqlens_k, total_sequence_length},
+            {output, present_key, present_value}, kMSDomain);
+        gqa.AddAttribute("num_heads", int64_t{4});
+        gqa.AddAttribute("kv_num_heads", int64_t{2});
+        builder.SetGraphOutputs();
+
+        ASSERT_STATUS_OK(graph.Resolve());
+        EXPECT_EQ(total_sequence_length->TypeAsProto()->tensor_type().elem_type(),
+                  ONNX_NAMESPACE::TensorProto_DataType_INT32);
+        const auto* output_shape = output->Shape();
+        ASSERT_NE(output_shape, nullptr);
+        ASSERT_EQ(output_shape->dim_size(), 3);
+        EXPECT_EQ(output_shape->dim(0).dim_value(), 1);
+        EXPECT_EQ(output_shape->dim(1).dim_value(), 7);
+        EXPECT_EQ(output_shape->dim(2).dim_value(), 64);
+        for (const NodeArg* present : {present_key, present_value}) {
+          const auto* present_shape = present->Shape();
+          ASSERT_NE(present_shape, nullptr);
+          ASSERT_EQ(present_shape->dim_size(), 4);
+          EXPECT_EQ(present_shape->dim(0).dim_value(), 1);
+          EXPECT_EQ(present_shape->dim(1).dim_value(), 2);
+          EXPECT_EQ(present_shape->dim(2).dim_value(), past_length > 7 ? past_length : 7);
+          EXPECT_EQ(present_shape->dim(3).dim_value(), 16);
+        }
+      }
+    }
+  }
+}
+
 }  // namespace
 }  // namespace test
 }  // namespace onnxruntime

@@ -423,10 +423,14 @@ static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersMin
 static const char* const kOrtSessionOptionsModelExternalInitializersFileFolderPath =
     "session.model_external_initializers_file_folder_path";
 
-// Use buffers supplied through AddExternalInitializersFromFilesInMemory directly for eligible main-graph initializers.
-// The application must keep each buffer unchanged and alive until all sessions created from the options are released.
-// "0": Copy initializer data during session creation. [DEFAULT]
-// "1": Borrow naturally aligned, native-endian initializer slices and copy other slices.
+// Use CPU buffers supplied through AddExternalInitializers or AddExternalInitializersFromFilesInMemory directly for
+// eligible main-graph initializers.
+// "0": Copy caller-owned CPU buffers during session creation. [DEFAULT]
+// "1": Borrow naturally aligned CPU buffers larger than 127 bytes on little-endian hosts and copy other buffers.
+// The application must keep borrowed buffers unchanged and alive until all sessions using them are released.
+// AddExternalInitializers accepts only non-owning, contiguous tensors containing native-endian values;
+// files contain serialized little-endian values.
+// Device tensors are always copied to owned CPU staging memory before optimization and shape inference.
 static const char* const kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly =
     "session.use_external_initializer_file_buffers_directly";
 
@@ -514,15 +518,16 @@ static const char* const kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLengt
 /// session, and overrides the environment variable named below. The 0/1 switches accept only "0" and "1", and the
 /// thresholds a non-negative decimal integer; any other value, including an empty string, fails session initialization.
 /// "1" makes the INT8-cache BF16 prefill run FP16 tensor-core MMA on the gathered K/V tiles instead of dequantizing them
-/// to BF16 (opt-in; the tensor-core kernel has different numerics). Default "0". Overrides ORT_DSA_PREFILL_INT8_TC.
+/// to BF16 (the tensor-core kernel has different numerics; "0" restores the BF16-dequantizing kernel, or the generic
+/// kernels for FP16 queries). Default "1". Overrides ORT_DSA_PREFILL_INT8_TC.
 static const char* const kOrtSessionOptionsCudaDsaPrefillInt8Tc = "ep.cuda.dsa_prefill_int8_tc";
 
 /// "0" routes the BF16 prefill through the generic kernels. Default "1". Overrides ORT_DSA_PREFILL_KERNEL.
 static const char* const kOrtSessionOptionsCudaDsaPrefillKernel = "ep.cuda.dsa_prefill_kernel";
 
 /// "1" makes the INT8-cache BF16 decode (up to 8 query rows) use the split-K tensor-core kernel instead of the
-/// CUDA-core grouped kernel (opt-in; the tensor-core kernel accumulates in a different order and does not reproduce
-/// the CUDA-core results bit for bit). Default "0". Overrides ORT_DSA_DECODE_INT8_TC.
+/// CUDA-core grouped kernel (the tensor-core kernel accumulates in a different order and does not reproduce the
+/// CUDA-core results bit for bit; "0" restores the CUDA-core kernel). Default "1". Overrides ORT_DSA_DECODE_INT8_TC.
 static const char* const kOrtSessionOptionsCudaDsaDecodeInt8Tc = "ep.cuda.dsa_decode_int8_tc";
 
 /// Requested number of 64-candidate tiles each CTA of the split-K tensor-core decode kernel consumes. "0" derives it from
@@ -548,6 +553,13 @@ static const char* const kOrtSessionOptionsKernelDispatchPolicy = "session.kerne
 /// "0" or unset (default) disables chunking. Overrides ORT_MATMULNBITS_M_CHUNK_SIZE.
 static const char* const kOrtSessionOptionsCudaMatMulNBitsMChunkSize = "ep.cuda.matmul_nbits_m_chunk_size";
 
+/// CUDA MatMulPacked rounds decoded weights to the activation dtype by default ("0").
+/// "1" permits eligible GEMV kernels to skip that rounding; kernels may still use rounded weights.
+/// GEMM/prefill always rounds weights, including when its scratch buffers use FP32.
+/// Resolved once when the kernel is created. Accepts only "0" and "1"; other values fail session initialization.
+static const char* const kOrtSessionOptionsCudaMatMulPackedAllowUnroundedGemv =
+    "ep.cuda.matmul_packed_allow_unrounded_gemv";
+
 /// Enables per-shape GEMM kernel auto-tuning for CUDA fp16/bf16 MatMul: "1" enables, "0" (default) disables.
 /// When enabled, the first run of each eligible shape times the available kernels (cuBLAS, a small-N
 /// GEMV, and on SM 9.0+ the TMA-based tinygemm2) on the current device and caches the fastest for the
@@ -567,6 +579,19 @@ static const char* const kOrtSessionOptionsCudaEnableGemmAutoTune = "ep.cuda.ena
 /// Overrides the ORT_GDN_BF16_PRECISION environment variable.
 static const char* const kOrtSessionOptionsCudaGatedDeltaNetBf16Precision =
     "ep.cuda.gated_delta_net_bf16_precision";
+
+/// Range guard of the CUDA GatedDeltaNet per-key-decay (KDA) chunked prefill for float16 input/output. The scan keeps its
+/// recurrent state in FP32 and rounds it to float16 for the tensor-core products. "1" (default) checks every tile for a
+/// state element beyond the float16 range (|x| > 65504) and computes the products of such a tile in exact FP32, so the
+/// result stays finite. "0" skips the check, which makes the KDA prefill up to about 10% faster for a single sequence
+/// (the gain shrinks as the batch grows), but a state element beyond the float16 range then becomes inf and the output
+/// and the final state become NaN/inf. Choose "0" only when the state is known to stay within the float16 range. It has
+/// no effect on BFloat16 input (see ep.cuda.gated_delta_net_bf16_precision). Resolved once when the kernel is created,
+/// so a change needs a new session.
+/// Accepts only "0" and "1"; any other value, including an empty string, fails session initialization.
+/// Overrides the ORT_GDN_FP16_STATE_GUARD environment variable.
+static const char* const kOrtSessionOptionsCudaGatedDeltaNetFp16StateGuard =
+    "ep.cuda.gated_delta_net_fp16_state_guard";
 
 /// CUDA tensor-core kernel switches of MatMulNBits and QMoE. Each is resolved once when the
 /// kernel is created, so a change needs a new session, and overrides the environment variable named below. The
@@ -837,8 +862,10 @@ static const char* const kOrtSessionOptionsRecordEpGraphAssignmentInfo = "sessio
 // - "0": disable. (default)
 // - "1": enable.
 //
-// \deprecated Since version 1.29. Use "ep.enable_weightless" instead, which covers all initializers
-// (internal and external) and works in both JIT and AOT flows.
+// \deprecated Since version 1.29. Use "ep.enable_weightless_mode" instead, which selects the scope of the
+// initializers (external only, or internal and external) and works in both JIT and AOT flows. If
+// "ep.enable_weightless_mode" is set to OrtWeightlessSupport_NONE ("0"), ORT overrides this option to "0" before
+// creating the EP.
 static const char* const kOrtSessionOptionEpEnableWeightlessEpContextNodes = "ep.enable_weightless_ep_context_nodes";
 
 // Layout of the Value KV-cache tensors that the application binds to the past_value input and
@@ -921,19 +948,81 @@ static const char* const kOrtSessionOptionsGqaValueLayout = "session.gqa_value_l
 // - "0": disable. (default)
 // - "1": enable.
 //
+// \deprecated Since version 1.32. Use "ep.enable_weightless_mode" instead, which selects a specific
+// OrtWeightlessSupport mode. If "ep.enable_weightless_mode" is set, ORT overrides this option to match it
+// ("0" for OrtWeightlessSupport_NONE, "1" otherwise) before creating the EP.
+//
 // \since Version 1.29.
 static const char* const kOrtSessionOptionEpEnableWeightless = "ep.enable_weightless";
+
+// Selects the weightless mode to use.
+//
+// When a mode other than OrtWeightlessSupport_NONE is selected, ONNX Runtime requests that the execution provider
+// operate without embedding or copying the constant initializers covered by that mode.
+//
+// Applications can inspect the "weightless_supported_modes" EP metadata entry
+// (kOrtEpDevice_EpMetadataKey_WeightlessSupportedModes), or "weightless_support" if it is not present, of each
+// OrtEpDevice to discover the modes supported by an EP and choose the one that best fits the use case (or none at all).
+//
+// This option works in both JIT (non-cached) and AOT (EPContext model) flows. The EP either keeps the
+// initializers as inputs of the compiled/fused node (drop_constant_initializers = false in OrtNodeFusionOptions)
+// and accesses them at Compute() time via KernelContext_GetInput(), or drops them and loads the initializer data
+// itself. In the AOT flow, when creating a session from the compiled model:
+// - The external initializers file of the compiled model (see "ep.context_model_external_initializers_file_name")
+//   or of the source model must be available, next to the model or in the folder given by
+//   "session.model_external_initializers_file_folder_path".
+// - With OrtWeightlessSupport_ALL, an EP that loads the initializer data itself also needs the source model, e.g. via
+//   the "ep.context_source_model_path" session option. An EP that lets ORT provide the initializers doesn't. Since
+//   the application can't generally tell which approach an EP uses, it should make the source model available.
+//
+// Before creating the EP, ORT:
+// - returns an INVALID_ARGUMENT error if the value is not one of the values below,
+// - returns an error if the selected mode is not supported according to the EP metadata entries above, and
+// - sets the deprecated "ep.enable_weightless" option to "0" for OrtWeightlessSupport_NONE and to "1" otherwise,
+//   and for OrtWeightlessSupport_NONE also sets the deprecated "ep.enable_weightless_ep_context_nodes" option to
+//   "0" if it is set, for EPs built for earlier versions, which only know those options.
+// When compiling, ORT also checks that the EP supports the selected mode by calling OrtEp::GetWeightlessSupport(),
+// and returns an error if it does not.
+//
+// If this option is not set, the deprecated "ep.enable_weightless" option keeps its previous behavior.
+//
+// With OrtWeightlessSupport_ALL, an EP that lets ORT provide the initializers (drop_constant_initializers = false)
+// gets the initializers stored inside the source model copied into the generated EPContext model, unless
+// ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc is used to store them elsewhere (e.g., in a weights
+// file shared by several model variants). ORT logs a warning in that case, since these initializers can't be shared.
+//
+// ORT records the selected mode in the metadata of generated EPContext models under the "weightless_mode" key
+// (kOrtModelMetadata_WeightlessMode), and the external data the models need at runtime under the
+// "external_dependencies" key (kOrtModelMetadata_ExternalDependencies). The option does not need to be set again
+// when creating a session from the compiled model.
+//
+// Equivalent to OrtCompileApi::ModelCompilationOptions_SetWeightlessMode.
+//
+// Option values (exactly one of these strings; other spellings such as "0x2" or an empty value are invalid):
+// - "0": disable (OrtWeightlessSupport_NONE). (default)
+// - "1": weightless mode for external initializers only (OrtWeightlessSupport_EXTERNAL_ONLY).
+// - "2": weightless mode for all initializers, internal and external (OrtWeightlessSupport_ALL).
+//
+// \since Version 1.32.
+static const char* const kOrtSessionOptionEpEnableWeightlessMode = "ep.enable_weightless_mode";
 
 // Specifies the file path to the original (source) ONNX model when creating a session with a weightless
 // EPContext model.
 //
-// When an EPContext model is generated with weightless mode ("ep.enable_weightless" = "1"), the compiled
-// model may not contain the original initializer data. When creating a session from the compiled model,
-// the EP needs to load the initializer data from the source model. This session option provides the
-// runtime location of the source model, which may differ from the path used at compile time (stored in
-// the EPContext node's "onnx_model_filename" attribute).
+// This option is only used when "ep.enable_weightless_mode" is set to OrtWeightlessSupport_ALL ("2"), by EPs that
+// load the initializer data themselves. In that mode the EP binary does not contain the original initializer data,
+// so when creating a session from the compiled model such an EP loads the initializer data from the source model.
+// This session option provides the runtime location of the source model, which may differ from the path used at
+// compile time (stored in the EPContext node's "onnx_model_filename" attribute).
 //
-// If not set, the EP falls back to the "onnx_model_filename" attribute in the EPContext node.
+// If not set, the EP falls back to the "onnx_model_filename" attribute in the EPContext node. A relative
+// "onnx_model_filename" is resolved against the directory of the compiled model: the directory of the model path,
+// or of "ep.context_file_path" (kOrtSessionOptionEpContextFilePath) when the compiled model is loaded from memory.
+//
+// ORT logs a warning when creating a session from a model whose "external_dependencies" metadata
+// (kOrtModelMetadata_ExternalDependencies) includes "source_model" if neither this option nor a source model buffer is
+// set. For models without that metadata, ORT does so if the model was compiled with OrtWeightlessSupport_ALL, since the
+// EP may need the source model.
 //
 // If the source model is available as a byte buffer rather than a file path, use
 // OrtApi::SessionOptionsSetWeightlessSourceModelBuffer() instead.
@@ -1043,7 +1132,55 @@ static const char* const kOrtSessionOptionsMoeOffloadCpuThreads = "session.moe.o
 static const char* const kOrtSessionOptionsMoeOffloadAsyncMaxTokens = "session.moe.offload.async_max_tokens";
 static const char* const kOrtSessionOptionsMoeOffloadPrefillWaveExperts = "session.moe.offload.prefill_wave_experts";
 static const char* const kOrtSessionOptionsMoeOffloadSkipZeroColdDoorbell = "session.moe.offload.skip_zero_cold_doorbell";
+static const char* const kOrtSessionOptionsMoeOffloadMinExpertWeight = "session.moe.offload.min_expert_weight";
+// Controls whether tail-expert pruning (`session.moe.offload.min_expert_weight > 0`) during decode skips only CPU-cold
+// experts or all routed tail experts:
+// - "1" (default): retain GPU-resident (`slot >= 0`) tail experts during decode at zero wall-time cost and prune only
+//   CPU-cold (`slot < 0`) tail experts whose routing probability is below `min_expert_weight`.
+// - "0": prune both GPU-resident and CPU-cold tail experts whose routing probability is below `min_expert_weight`.
+// Overrides ORT_QMOE_SKIP_TAIL_COLD_ONLY.
+static const char* const kOrtSessionOptionsMoeOffloadSkipTailColdOnly = "session.moe.offload.skip_tail_cold_only";
+static const char* const kOrtSessionOptionsMoeOffloadTailSubstitutionThreshold = "session.moe.offload.tail_substitution_threshold";
+static const char* const kOrtSessionOptionsMoeOffloadTailSubstitutionMinRank = "session.moe.offload.tail_substitution_min_rank";
 static const char* const kOrtSessionOptionsMoeOffloadPopularityFile = "session.moe.offload.popularity_file";
 static const char* const kOrtSessionOptionsMoeOffloadNodeOverrides = "session.moe.offload.node_overrides";
 static const char* const kOrtSessionOptionsMoeOffloadSourceRoot = "session.moe.offload.source_root";
 static const char* const kOrtSessionOptionsMoeOffloadDerivedCacheDir = "session.moe.offload.derived_cache_dir";
+
+// ---------------------------------------------------------------------------
+// External Data Loader Session Configuration Keys
+// ---------------------------------------------------------------------------
+// Number of CPU reader threads used by the external-data loader when staging external initializers
+// into pinned host memory for device transfer.
+// - "0": Disable the pinned-buffer external-data loader and use the pageable-memory path.
+// - "1": Use pinned staging buffers with synchronous single-threaded reads.
+// - "2".."64": Use that many parallel reader threads.
+// When unset, the default thread count is computed from the host CPU core count (clamped to [2, 8]).
+// Not supported in minimal builds. Honored by both the built-in CUDA EP and plugin EPs (such as the CUDA plugin EP).
+static const char* const kOrtSessionOptionsExternalDataLoaderThreads =
+    "session.external_data_loader.threads";
+
+// Total pinned host staging memory, in bytes, allocated across the two reusable double-buffered
+// staging buffers of the external-data loader (each buffer receives half of this byte count).
+// Must be a decimal integer in [1048576, 4294967296] (1 MiB to 4 GiB) that is a multiple of 8192 (8 KiB).
+// Default is "33554432" (32 MiB total, i.e. two 16 MiB buffers).
+// Not supported in minimal builds. Honored by both the built-in CUDA EP and plugin EPs (such as the CUDA plugin EP).
+static const char* const kOrtSessionOptionsExternalDataLoaderPinnedMemoryBytes =
+    "session.external_data_loader.pinned_memory_bytes";
+
+// Maximum per-transfer chunk size, in bytes, used by parallel reader workers when reading external
+// initializer slices into pinned host memory and issuing asynchronous host-to-device copies.
+// Must be a decimal integer in [4096, 67108864] (4 KiB to 64 MiB) that is a multiple of 4096 (4 KiB).
+// Default is "2097152" (2 MiB).
+// Not supported in minimal builds. Honored by both the built-in CUDA EP and plugin EPs (such as the CUDA plugin EP).
+static const char* const kOrtSessionOptionsExternalDataLoaderChunkBytes =
+    "session.external_data_loader.chunk_bytes";
+
+// Minimum total external initializer bytes on the target device required before session initialization
+// allocates pinned host staging buffers, non-blocking copy streams, and reader threads. Models whose
+// total external initializer size on the device is below this threshold use the pageable-memory path.
+// Must be a non-negative decimal integer in [0, 4294967296].
+// Default is "16777216" (16 MiB).
+// Not supported in minimal builds. Honored by both the built-in CUDA EP and plugin EPs (such as the CUDA plugin EP).
+static const char* const kOrtSessionOptionsExternalDataLoaderMinSizeBytes =
+    "session.external_data_loader.min_size_bytes";

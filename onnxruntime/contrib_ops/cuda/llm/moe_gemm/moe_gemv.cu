@@ -3,7 +3,9 @@
 
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv.h"
 
+#include <cstdio>
 #include <cuda_fp16.h>
+#include <math_constants.h>
 #include <type_traits>
 
 #include "core/common/common.h"
@@ -233,7 +235,7 @@ __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, Type
       }
     }
   }
-  epilogue<Details, CtaM, CtaN, Threads, EnableBias, false, AccT>(out, n, tile_acc, bias, 1.0f);
+  epilogue<Details, CtaM, CtaN, Threads, EnableBias, false, AccT, true>(out, n, tile_acc, bias, 1.0f);
 #endif
 }
 
@@ -282,6 +284,10 @@ __device__ __forceinline__ void fused_finalize_accumulate(float* out_acc, void* 
 #pragma unroll
     for (int jj = 0; jj < WarpNum; ++jj) {
       val += shmem[jj * CtaN * Interleave + ii];
+    }
+    if constexpr (Details::TypeDetailsW::kElemBits == 2) {
+      // Match the INT2 grouped-prefill boundary: round the projection to the activation type before adding bias.
+      val = static_cast<float>(static_cast<Type>(val));
     }
     out_acc[ii] += row_scale * (val + v_bias);
   }
@@ -479,17 +485,31 @@ __device__ __forceinline__ void swiglu_epilogue(void* out, void* tile_acc, void*
       gate += shmem[warp * RawCols + gate_idx];
       linear += shmem[warp * RawCols + linear_idx];
     }
+    if constexpr (Details::TypeDetailsW::kElemBits == 2) {
+      // Match the INT2 grouped-prefill projection boundary before bias.
+      gate = static_cast<float>(static_cast<TypeA>(gate));
+      linear = static_cast<float>(static_cast<TypeA>(linear));
+    }
     if constexpr (EnableBias) {
       gate += static_cast<float>(reinterpret_cast<TypeA*>(bias)[gate_idx]);
       linear += static_cast<float>(reinterpret_cast<TypeA*>(bias)[linear_idx]);
     }
     if (isfinite(activation_params.limit)) {
-      gate = fminf(gate, activation_params.limit);
+      if (!activation_params.swiglu_limit_after_activation) {
+        gate = fminf(gate, activation_params.limit);
+      }
       linear = fminf(fmaxf(linear, -activation_params.limit), activation_params.limit);
     }
     linear += activation_params.beta;
     const float sigmoid = 1.0f / (1.0f + expf(-activation_params.alpha * gate));
-    reinterpret_cast<TypeA*>(out)[pair] = static_cast<TypeA>(gate * sigmoid * linear);
+    // SiLU's limit is zero where exp(-alpha * gate) overflows.
+    const bool silu_limit_is_zero = (activation_params.alpha > 0.0f && gate == -CUDART_INF_F) ||
+                                    (activation_params.alpha < 0.0f && gate == CUDART_INF_F);
+    float activated = silu_limit_is_zero ? 0.0f : gate * sigmoid;
+    if (activation_params.swiglu_limit_after_activation) {
+      activated = fminf(activated, activation_params.limit);
+    }
+    reinterpret_cast<TypeA*>(out)[pair] = static_cast<TypeA>(activated * linear);
   }
 }
 
@@ -683,18 +703,30 @@ __global__ void moe_gemv_splitk_reduce_swiglu_kernel(
     linear += partials[base + linear_idx];
   }
 
+  if constexpr (Details::TypeDetailsW::kElemBits == 2) {
+    gate = static_cast<float>(static_cast<TypeA>(gate));
+    linear = static_cast<float>(static_cast<TypeA>(linear));
+  }
   if constexpr (EnableBias) {
     bias += static_cast<int64_t>(expert) * n;
     gate += static_cast<float>(bias[gate_idx]);
     linear += static_cast<float>(bias[linear_idx]);
   }
   if (isfinite(act_limit)) {
-    gate = fminf(gate, act_limit);
+    if (!activation_params.swiglu_limit_after_activation) {
+      gate = fminf(gate, act_limit);
+    }
     linear = fminf(fmaxf(linear, -act_limit), act_limit);
   }
   linear += act_beta;
   const float sigmoid = 1.0f / (1.0f + expf(-act_alpha * gate));
-  out[static_cast<int64_t>(row) * inter_size + col] = static_cast<TypeA>(gate * sigmoid * linear);
+  const bool silu_limit_is_zero = (act_alpha > 0.0f && gate == -CUDART_INF_F) ||
+                                  (act_alpha < 0.0f && gate == CUDART_INF_F);
+  float activated = silu_limit_is_zero ? 0.0f : gate * sigmoid;
+  if (activation_params.swiglu_limit_after_activation) {
+    activated = fminf(activated, act_limit);
+  }
+  out[static_cast<int64_t>(row) * inter_size + col] = static_cast<TypeA>(activated * linear);
 #endif
 }
 
@@ -1094,6 +1126,17 @@ inline bool MoeGemvUseFp32Accum() {
 }
 
 namespace {
+#ifdef ENABLE_BF16
+void LogInt2TensorCoreLaunch(bool swiglu, int64_t rows, int min_rows) {
+  static const bool enabled =
+      ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_SHARED_RESIDENT_LOG", 0) == 1;
+  if (enabled) {
+    std::fprintf(stderr, "QMoE INT2 TensorCore swiglu=%d routes=%lld min_rows=%d\n",
+                 static_cast<int>(swiglu), static_cast<long long>(rows), min_rows);
+  }
+}
+#endif
+
 // Shared shape checks for every MoE GEMV variant. cta_n is the launching variant's CtaN, which sets
 // the n-tiling requirement: the plain GEMVs use kCtaN, the fused-finalize kernel uses the smaller
 // kFusedFinalizeCtaN and therefore accepts n values the plain kernels reject.
@@ -1257,6 +1300,7 @@ bool launch_moe_gemv_int_symmetric(const T* act, const WeightType* weight, const
             /*swiglu=*/false, act, reinterpret_cast<const uint8_t*>(weight), scales, bias, out,
             expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, n, k, group_size,
             nullptr, nullptr, nullptr, 1.f, 0.f, 0.f, nullptr, 0, stream, tensor_core_min_rows)) {
+      LogInt2TensorCoreLaunch(false, expanded_num_rows, tensor_core_min_rows);
       return true;
     }
   }
@@ -1330,7 +1374,8 @@ bool launch_moe_gemv_int_symmetric_interleaved_swiglu(
             expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, inter_size * 2, k,
             group_size, activation_params.swiglu_alpha, activation_params.swiglu_beta,
             activation_params.swiglu_limit, activation_params.alpha, activation_params.beta,
-            activation_params.limit, permuted_row_to_source_row, num_rows, stream, tensor_core_min_rows)) {
+            activation_params.limit, permuted_row_to_source_row, num_rows, stream, tensor_core_min_rows,
+            activation_params.swiglu_limit_after_activation)) {
       return true;
     }
   }
@@ -1341,6 +1386,7 @@ bool launch_moe_gemv_int_symmetric_interleaved_swiglu(
             group_size, activation_params.swiglu_alpha, activation_params.swiglu_beta,
             activation_params.swiglu_limit, activation_params.alpha, activation_params.beta,
             activation_params.limit, permuted_row_to_source_row, num_rows, stream, tensor_core_min_rows)) {
+      LogInt2TensorCoreLaunch(true, expanded_num_rows, tensor_core_min_rows);
       return true;
     }
   }

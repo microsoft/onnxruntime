@@ -225,7 +225,8 @@ __device__ __forceinline__ T warp_reduce_sum(T& val) {
 }
 
 template <typename Details, int CtaM, int CtaN, int Threads, bool EnableBias, bool ApplyAlphaInAdvance,
-          typename AccT = typename MathWrapper<typename Details::TypeDetailsA>::Type>
+          typename AccT = typename MathWrapper<typename Details::TypeDetailsA>::Type,
+          bool RoundInt2ProjectionBeforeBias = false>
 __device__ __forceinline__ void epilogue(void* out, int stride, void* tile_acc, void* bias, float alpha) {
   using Type = typename MathWrapper<typename Details::TypeDetailsA>::Type;
   static constexpr int Interleave = Details::kInterleave;
@@ -258,6 +259,10 @@ __device__ __forceinline__ void epilogue(void* out, int stride, void* tile_acc, 
 #pragma unroll
     for (int jj = 0; jj < WarpNum; ++jj) {
       val += shmem[jj * CtaM * CtaN * Interleave + ii];
+    }
+    if constexpr (RoundInt2ProjectionBeforeBias && Details::TypeDetailsW::kElemBits == 2) {
+      // Match the INT2 grouped-prefill boundary: round the projection to the activation type before adding bias.
+      val = static_cast<float>(static_cast<Type>(val));
     }
     if constexpr (ApplyAlphaInAdvance) {
       reinterpret_cast<Type*>(out)[m * stride + n] = static_cast<Type>(val + v_bias);
@@ -499,7 +504,7 @@ void exec_kernel_paired(Params& params, cudaStream_t s) {
 // activations and the weights, handles 1..8 rows, and needs whole 16-column tiles and whole 64-wide K tiles. Its
 // epilogue has no alpha multiplier (the scalar epilogue computes alpha * acc + bias), so only alpha == 1 may use it.
 inline bool CanUseInt8TensorCore(const Params& params, int group_size) {
-  return params.tensor_core && params.alpha == 1.f && params.device_sm == 90 && params.device_sm_count > 0 &&
+  return params.tensor_core && params.alpha == 1.f && params.device_sm >= 89 && params.device_sm_count > 0 &&
          params.m >= 1 && params.m <= dense_tc::kMaxRows && params.n % dense_tc::kMmaColumns == 0 &&
          params.k % dense_tc::kTileK == 0 && params.k % group_size == 0 &&
          reinterpret_cast<uintptr_t>(params.act) % 16 == 0 && reinterpret_cast<uintptr_t>(params.weight) % 16 == 0;

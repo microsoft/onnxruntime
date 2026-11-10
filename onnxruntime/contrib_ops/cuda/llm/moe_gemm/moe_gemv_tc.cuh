@@ -32,6 +32,7 @@
 
 #include <cuda_bf16.h>
 #include <cuda_runtime.h>
+#include <math_constants.h>
 
 #include <cstdint>
 #include <type_traits>
@@ -60,6 +61,7 @@ struct Params {
   float alpha;
   float beta;
   float limit;
+  bool swiglu_limit_after_activation = false;
   int64_t weight_expert_stride;  // bytes
   int64_t scale_expert_stride;   // elements
   int num_experts;
@@ -179,7 +181,7 @@ constexpr int MinCtasPerSm(int m_blocks) {
 // When kCompact80 is true (80 expanded rows and num_rows <= kMaxRoutes, so each expert run has <= 8 rows),
 // each warp discovers the active expert run leaders in registers via warp-ballot + fns.b32 and the grid is
 // launched as (n_tiles, expanded_num_rows) so all real leader CTAs pack contiguously into the first wave.
-template <bool kSwiglu, int kWarpsK, int kM, bool kCompact80 = false>
+template <bool kSwiglu, int kWarpsK, int kM, bool kCompact80 = false, int kRouteChunks = 8>
 __global__ void __launch_bounds__(kThreads, MinCtasPerSm(kM)) MoeGemvTcInt4Kernel(const Params p) {
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
   static_assert(kWarps % kWarpsK == 0, "warps must split evenly over K");
@@ -267,19 +269,15 @@ __global__ void __launch_bounds__(kThreads, MinCtasPerSm(kM)) MoeGemvTcInt4Kerne
       routes = (last - row0) < kMaxRoutes ? static_cast<int>(last - row0) : kMaxRoutes;
     } else {
       const int total = p.expanded_num_rows;
-      int ev[8];
-#pragma unroll
-      for (int i = 0; i < 8; ++i) {
-        const int idx = i * 32 + lane;
-        ev[i] = idx < total ? __ldg(p.permuted_row_to_expert + idx) : -1;
-      }
       const int c0 = row0 >> 5;
       const int b0 = row0 & 31;
-      uint32_t match[8];
+      uint32_t match[kRouteChunks];
       int rank = 0;
 #pragma unroll
-      for (int i = 0; i < 8; ++i) {
-        match[i] = __ballot_sync(0xffffffffu, ev[i] == expert);
+      for (int i = 0; i < kRouteChunks; ++i) {
+        const int idx = i * 32 + lane;
+        const int ev_i = idx < total ? __ldg(p.permuted_row_to_expert + idx) : -1;
+        match[i] = __ballot_sync(0xffffffffu, ev_i == expert);
         const uint32_t below = i < c0 ? 0xffffffffu : (i == c0 ? ((1u << b0) - 1u) : 0u);
         rank += __popc(match[i] & below);
       }
@@ -288,7 +286,7 @@ __global__ void __launch_bounds__(kThreads, MinCtasPerSm(kM)) MoeGemvTcInt4Kerne
         return;
       }
 #pragma unroll
-      for (int i = 0; i < 8; ++i) {
+      for (int i = 0; i < kRouteChunks; ++i) {
         uint32_t bits = match[i] & (i < c0 ? 0u : (i == c0 ? (0xffffffffu << b0) : 0xffffffffu));
         while (bits != 0u && routes < kMaxRoutes) {
           const int pos = (i << 5) + (__ffs(bits) - 1);
@@ -451,13 +449,22 @@ __global__ void __launch_bounds__(kThreads, MinCtasPerSm(kM)) MoeGemvTcInt4Kerne
         float gate = even;
         float linear = odd;
         if (isfinite(limit)) {
-          gate = fminf(gate, limit);
+          if (!p.swiglu_limit_after_activation) {
+            gate = fminf(gate, limit);
+          }
           linear = fminf(fmaxf(linear, -limit), limit);
         }
         linear += beta;
         const float sigmoid = 1.0f / (1.0f + expf(-alpha * gate));
+        float activated = gate * sigmoid;
+        if (p.swiglu_limit_after_activation) {
+          if ((alpha > 0.0f && gate == -CUDART_INF_F) || (alpha < 0.0f && gate == CUDART_INF_F)) {
+            activated = 0.0f;
+          }
+          activated = fminf(activated, limit);
+        }
         p.out[static_cast<int64_t>(out_row) * (n / 2) + col / 2] =
-            __float2bfloat16_rn(gate * sigmoid * linear);
+            __float2bfloat16_rn(activated * linear);
       } else {
         *reinterpret_cast<__nv_bfloat162*>(p.out + static_cast<int64_t>(out_row) * n + col) =
             __floats2bfloat162_rn(even, odd);
@@ -518,7 +525,7 @@ template <bool kSwiglu, int kWarpsK, int kM>
 inline void Launch(const Params& p, int64_t expanded_num_rows, cudaStream_t stream) {
   constexpr int kTileN = (kWarps / kWarpsK) * kM * kMmaM;
   const unsigned n_tiles = static_cast<unsigned>(p.n / kTileN);
-  if constexpr (!kSwiglu && kM == 2) {
+  if constexpr (!kSwiglu && kM == 2 && kWarpsK == 1) {
     if (UsesCompact80(p, expanded_num_rows)) {
       const dim3 grid(n_tiles, static_cast<unsigned>(expanded_num_rows));
       MoeGemvTcInt4Kernel<kSwiglu, kWarpsK, kM, true><<<grid, kThreads, 0, stream>>>(p);
@@ -526,7 +533,11 @@ inline void Launch(const Params& p, int64_t expanded_num_rows, cudaStream_t stre
     }
   }
   const dim3 grid(static_cast<unsigned>(expanded_num_rows), n_tiles);
-  MoeGemvTcInt4Kernel<kSwiglu, kWarpsK, kM, false><<<grid, kThreads, 0, stream>>>(p);
+  if (p.expert_first_token_offset == nullptr && expanded_num_rows <= 96) {
+    MoeGemvTcInt4Kernel<kSwiglu, kWarpsK, kM, false, 3><<<grid, kThreads, 0, stream>>>(p);
+  } else {
+    MoeGemvTcInt4Kernel<kSwiglu, kWarpsK, kM, false, 8><<<grid, kThreads, 0, stream>>>(p);
+  }
 }
 
 // Returns true when the tensor-core kernel handled the launch; false leaves the work to the scalar
@@ -537,7 +548,8 @@ inline bool TryLaunchInt4Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
                               int num_experts, int64_t expanded_num_rows, int64_t n, int64_t k, int group_size,
                               const float* swiglu_alpha, const float* swiglu_beta, const float* swiglu_limit,
                               float alpha, float beta, float limit, const int* permuted_row_to_source_row,
-                              int64_t num_rows, cudaStream_t stream, int tensor_core_min_rows) {
+                              int64_t num_rows, cudaStream_t stream, int tensor_core_min_rows,
+                              bool swiglu_limit_after_activation = false) {
   if (group_size != 32 || permuted_row_to_expert == nullptr ||
       (expert_first_token_offset == nullptr && expanded_num_rows > 256) ||
       expanded_num_rows < tensor_core_min_rows || tensor_core_min_rows == 0 || !DeviceSupportsBf16Mma()) {
@@ -570,6 +582,7 @@ inline bool TryLaunchInt4Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
   p.alpha = alpha;
   p.beta = beta;
   p.limit = limit;
+  p.swiglu_limit_after_activation = swiglu_limit_after_activation;
   p.weight_expert_stride = n * k / 2;
   p.scale_expert_stride = (k / group_size) * n;
   p.num_experts = num_experts;
@@ -582,9 +595,15 @@ inline bool TryLaunchInt4Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
   // (expanded_num_rows == 80), each warp owns two 16-column m-blocks (n_tiles = 20, 80 registers, 6 CTAs/SM = 792
   // CTAs/wave) so all active CTAs fit in Wave 1; otherwise each warp owns one 16-column m-block.
   if (swiglu) {
-    Launch<true, 4, 4>(p, expanded_num_rows, stream);
+    if (expert_first_token_offset == nullptr && (n % 32 == 0)) {
+      Launch<true, 4, 2>(p, expanded_num_rows, stream);
+    } else {
+      Launch<true, 4, 4>(p, expanded_num_rows, stream);
+    }
   } else if (UsesCompact80(p, expanded_num_rows)) {
     Launch<false, 1, 2>(p, expanded_num_rows, stream);
+  } else if (expert_first_token_offset == nullptr && ((k / kStepK) % 2 == 0) && (n % 64 == 0)) {
+    Launch<false, 2, 2>(p, expanded_num_rows, stream);
   } else {
     Launch<false, 1, 1>(p, expanded_num_rows, stream);
   }
@@ -601,6 +620,7 @@ inline bool TryLaunchInt4Bf16(bool swiglu, const __nv_bfloat16* act, const uint8
 // all of which fit inside BF16's 7-bit mantissa (0x007F007F). Each centered code in {-2, -1, 0, +1} is scaled by
 // 0.5 into {-1.0, -0.5, 0.0, +0.5} before multiplying by `scale2` so that even `scale = 2^127` with code -2 stays
 // finite in BF16; `finalize` restores the factor of 2 in FP32.
+// This is not full-range BF16 support: code +1 at scale 2^-133 rounds to zero before MMA, losing its contribution.
 template <int MaskIdx>
 __device__ __forceinline__ uint32_t DequantPairInt2Masked(uint32_t x, uint32_t scale2) {
   static_assert(MaskIdx >= 0 && MaskIdx < 3);
@@ -898,8 +918,9 @@ __global__ void __launch_bounds__(kThreads, Int2MinCtasPerSm(kM)) MoeGemvTcInt2K
       const int out_row = contiguous_routes
                               ? (row0 + route)
                               : static_cast<int>((members >> (8 * route)) & 0xffu);
-      float even = (h == 0 ? d.x : d.y) * 2.0f;
-      float odd = (h == 0 ? d.z : d.w) * 2.0f;
+      // Match the INT2 SIMT and CPU projection boundary before adding bias in FP32.
+      float even = __bfloat162float(__float2bfloat16_rn((h == 0 ? d.x : d.y) * 2.0f));
+      float odd = __bfloat162float(__float2bfloat16_rn((h == 0 ? d.z : d.w) * 2.0f));
       if (bias != nullptr) {
         even += __bfloat162float(bias[col]);
         odd += __bfloat162float(bias[col + 1]);
@@ -913,8 +934,10 @@ __global__ void __launch_bounds__(kThreads, Int2MinCtasPerSm(kM)) MoeGemvTcInt2K
         }
         linear += beta;
         const float sigmoid = 1.0f / (1.0f + expf(-alpha * gate));
+        const bool silu_limit_is_zero = (alpha > 0.0f && gate == -CUDART_INF_F) ||
+                                        (alpha < 0.0f && gate == CUDART_INF_F);
         p.out[static_cast<int64_t>(out_row) * (n / 2) + col / 2] =
-            __float2bfloat16_rn(gate * sigmoid * linear);
+            __float2bfloat16_rn((silu_limit_is_zero ? 0.0f : gate * sigmoid) * linear);
       } else {
         *reinterpret_cast<__nv_bfloat162*>(p.out + static_cast<int64_t>(out_row) * n + col) =
             __floats2bfloat162_rn(even, odd);
