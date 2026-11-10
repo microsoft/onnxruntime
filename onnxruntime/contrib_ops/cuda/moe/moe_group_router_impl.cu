@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/cuda/bert/moe_group_router_impl.h"
+#include "contrib_ops/cuda/moe/moe_group_router_impl.h"
 
 #include "contrib_ops/cuda/quantization/gguf_quant_cuda.cuh"
 

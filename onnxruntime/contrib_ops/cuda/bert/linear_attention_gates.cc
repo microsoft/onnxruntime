@@ -3,7 +3,7 @@
 
 #include "contrib_ops/cuda/bert/linear_attention_gates.h"
 #include "contrib_ops/cuda/bert/linear_attention_gates_impl.h"
-#include "contrib_ops/cuda/bert/moe_group_router_impl.h"
+#include "contrib_ops/cuda/moe/moe_group_router_impl.h"
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
