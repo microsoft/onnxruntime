@@ -109,39 +109,21 @@ ModelPackageStatus* WriteFileAtomic(const fs::path& final_path, const std::strin
 }
 
 ModelPackageStatus* CopyTreeNoFollow(const fs::path& src, const fs::path& dst) {
-  // Recursively copy `src` into `dst`. Refuses to follow symlinks (consistent
-  // with the directory hash semantics) so the on-disk bytes match the URI we
-  // already computed.
-  std::error_code ec;
-  fs::create_directories(dst, ec);
-  if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                            "mkdir '" + dst.u8string() + "': " + ec.message());
-  for (fs::recursive_directory_iterator it(src, fs::directory_options::none, ec), end;
-       it != end; it.increment(ec)) {
-    if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                              "iterate '" + src.u8string() + "': " + ec.message());
-    const auto& entry = *it;
-    fs::path rel = fs::relative(entry.path(), src, ec);
-    fs::path target = dst / rel;
-    if (entry.is_symlink()) {
-      return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
-                        "shared asset source contains a symlink: '" + entry.path().u8string() + "'.");
+  fs::create_directories(dst);
+  for (const auto& entry : fs::recursive_directory_iterator(src)) {
+    const auto status = entry.symlink_status();
+    const fs::path target = dst / entry.path().lexically_relative(src);
+    if (fs::is_symlink(status)) {
+      return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA, "copy source contains a symlink: '" + entry.path().u8string() + "'.");
     }
-    if (entry.is_directory()) {
-      fs::create_directories(target, ec);
-      if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                                "mkdir '" + target.u8string() + "': " + ec.message());
-    } else if (entry.is_regular_file()) {
-      fs::create_directories(target.parent_path(), ec);
-      fs::copy_file(entry.path(), target, fs::copy_options::overwrite_existing, ec);
-      if (ec) return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                                "copy '" + entry.path().u8string() + "' -> '" +
-                                    target.u8string() + "': " + ec.message());
+    if (fs::is_directory(status)) {
+      fs::create_directories(target);
+    } else if (fs::is_regular_file(status)) {
+      fs::copy_file(entry.path(), target);
       if (auto* s = FsyncPath(target, /*is_dir=*/false)) return s;
     } else {
       return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
-                        "unsupported file kind in shared asset source: '" +
-                            entry.path().u8string() + "'.");
+                        "unsupported file kind in copy source: '" + entry.path().u8string() + "'.");
     }
   }
   if (auto* s = FsyncPath(dst, /*is_dir=*/true)) return s;
@@ -305,6 +287,15 @@ ModelPackageStatus* CommitInPlace(ModelPackage* pkg, ModelPackageWriteMode mode)
     if (auto* s = CheckDenseConstraints(pkg)) return s;
     for (auto& comp : pkg->components) {
       if (comp->storage == mp::ComponentStorage::kExternal) {
+        for (auto& variant : comp->variants) {
+          if (variant->resolved_directory) {
+            const auto relative = variant->resolved_directory->lexically_relative(pkg->package_root);
+            variant->body["variant_directory"] = !relative.empty() && *relative.begin() != ".."
+                                                     ? relative.generic_u8string()
+                                                     : variant->resolved_directory->generic_u8string();
+            comp->body["variants"][variant->name] = variant->body;
+          }
+        }
         pkg->manifest["components"][comp->name] = comp->body;
         // After commit, this becomes inline.
         comp->storage = mp::ComponentStorage::kInline;
@@ -336,9 +327,112 @@ ModelPackageStatus* CommitInPlace(ModelPackage* pkg, ModelPackageWriteMode mode)
 // dest_root commit ("save as"): write to dest_root, then re-parse & swap.
 // ─────────────────────────────────────────────────────────────────────────────
 
-ModelPackageStatus* CommitToDestRoot(ModelPackage* pkg,
-                                     const fs::path& dest_root,
-                                     ModelPackageWriteMode mode) {
+bool IsWithin(const fs::path& candidate, const fs::path& root) {
+  const auto relative = candidate.lexically_relative(root);
+  return !relative.empty() && *relative.begin() != "..";
+}
+
+ModelPackageStatus* CheckExportOverlap(const fs::path& source, const fs::path& destination) {
+  const auto canonical_source = fs::weakly_canonical(fs::absolute(source));
+  if (IsWithin(destination, canonical_source) || IsWithin(canonical_source, destination)) {
+    return MakeStatus(
+        MODEL_PACKAGE_ERR_PATH_CONFINEMENT,
+        "Commit: source '" + source.u8string() + "' overlaps destination '" + destination.u8string() + "'.");
+  }
+  return nullptr;
+}
+
+ModelPackageStatus* ExportComponents(const ModelPackage* pkg, const fs::path& destination, ModelPackageWriteMode mode,
+                                     ordered_json& manifest) {
+  struct VariantCopy {
+    std::optional<fs::path> source;
+    fs::path destination;
+  };
+  std::vector<VariantCopy> copies;
+  std::vector<std::pair<fs::path, std::string>> metadata;
+  for (size_t ci = 0; ci < pkg->components.size(); ++ci) {
+    const auto& component = *pkg->components[ci];
+    const fs::path component_path = fs::path("components") / ("component_" + std::to_string(ci));
+    const bool external = mode == MODEL_PACKAGE_WRITE_PRESERVE && component.storage == mp::ComponentStorage::kExternal;
+    auto body = component.body;
+    for (size_t vi = 0; vi < component.variants.size(); ++vi) {
+      const auto& variant = *component.variants[vi];
+      const fs::path variant_path = component_path / ("variant_" + std::to_string(vi));
+      auto variant_body = variant.body;
+      variant_body["variant_directory"] = (external ? variant_path.filename() : variant_path).generic_u8string();
+      if (variant.resolved_directory) {
+        const auto declared =
+            component.component_dir / fs::u8path(variant.body.value("variant_directory", variant.name));
+        if (fs::is_symlink(declared)) {
+          return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA, "Commit: variant directory is a symlink.");
+        }
+        if (!fs::is_directory(*variant.resolved_directory)) {
+          return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
+                            "Commit: missing variant directory '" + variant.resolved_directory->u8string() + "'.");
+        }
+      }
+      copies.push_back({variant.resolved_directory, destination / variant_path});
+      size_t index = 0;
+      for (const auto& [ns, json] : variant.executor_info_resolved) {
+        auto& entry = variant_body["executor_info"][ns];
+        if (!entry.is_string()) continue;
+        if (json.empty()) {
+          return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND, "Commit: missing external executor_info '" + ns + "'.");
+        }
+        const auto original = fs::u8path(entry.get_ref<const std::string&>());
+        const bool local =
+            !original.is_absolute() && !original.has_root_name() &&
+            std::none_of(original.begin(), original.end(), [](const auto& part) { return part == ".."; });
+        const fs::path filename =
+            local ? original : fs::path(".model_package_executor_info_" + std::to_string(index++) + ".json");
+        if (!local && variant.resolved_directory && fs::exists(*variant.resolved_directory / filename)) {
+          return MakeStatus(MODEL_PACKAGE_ERR_STATE, "Commit: executor_info output collides with variant content.");
+        }
+        metadata.emplace_back(destination / variant_path / filename, json);
+        entry = filename.generic_u8string();
+      }
+      body["variants"][variant.name] = std::move(variant_body);
+    }
+    if (external) {
+      const auto path = component_path / "component.json";
+      metadata.emplace_back(destination / path, body.dump(2) + "\n");
+      manifest["components"][component.name] = path.generic_u8string();
+    } else {
+      manifest["components"][component.name] = std::move(body);
+    }
+  }
+  for (const auto& copy : copies) {
+    if (copy.source) {
+      if (auto* s = CopyTreeNoFollow(*copy.source, copy.destination)) return s;
+    } else {
+      fs::create_directories(copy.destination);
+    }
+  }
+  for (const auto& [path, bytes] : metadata) {
+    fs::create_directories(path.parent_path());
+    if (auto* s = WriteFileAtomic(path, bytes)) return s;
+  }
+  return nullptr;
+}
+
+ModelPackageStatus* CommitToDestRoot(ModelPackage* pkg, const fs::path& requested_dest, ModelPackageWriteMode mode) {
+  const auto dest_root = fs::weakly_canonical(fs::absolute(requested_dest));
+  if (!pkg->package_root.empty()) {
+    if (auto* s = CheckExportOverlap(pkg->package_root, dest_root)) return s;
+  }
+  for (const auto& component : pkg->components) {
+    for (const auto& variant : component->variants) {
+      if (variant->resolved_directory) {
+        if (auto* s = CheckExportOverlap(*variant->resolved_directory, dest_root)) return s;
+      }
+    }
+  }
+  for (const auto& asset : pkg->shared_assets) {
+    if (auto* s = CheckExportOverlap(asset->resolved_path, dest_root)) return s;
+  }
+  if (mode == MODEL_PACKAGE_WRITE_DENSE) {
+    if (auto* s = CheckDenseConstraints(pkg)) return s;
+  }
   std::error_code ec;
   if (fs::exists(dest_root, ec)) {
     if (!fs::is_directory(dest_root, ec)) {
@@ -360,15 +454,7 @@ ModelPackageStatus* CommitToDestRoot(ModelPackage* pkg,
   // Build a snapshot manifest mirroring `pkg->manifest`, then handle assets.
   ordered_json manifest = pkg->manifest;
 
-  // Dense mode constraints up-front.
-  if (mode == MODEL_PACKAGE_WRITE_DENSE) {
-    if (auto* s = CheckDenseConstraints(pkg)) return s;
-    for (const auto& comp : pkg->components) {
-      if (comp->storage == mp::ComponentStorage::kExternal) {
-        manifest["components"][comp->name] = comp->body;
-      }
-    }
-  }
+  if (auto* s = ExportComponents(pkg, dest_root, mode, manifest)) return s;
 
   // Copy all shared assets into dest_root. Any manifest override entries are
   // re-mapped to the default convention path under dest_root.
@@ -430,50 +516,6 @@ ModelPackageStatus* CommitToDestRoot(ModelPackage* pkg,
   }
   // All assets now live at the default convention path; drop overrides.
   manifest.erase("shared_assets");
-
-  // External components (PRESERVE mode): re-emit under dest_root using the same
-  // path string from the manifest. We treat the manifest string as relative to
-  // dest_root for portable mode; absolute paths are kept as-is iff the layout
-  // is installed.
-  if (mode == MODEL_PACKAGE_WRITE_PRESERVE) {
-    auto comps_it = manifest.find("components");
-    if (comps_it != manifest.end() && comps_it->is_object()) {
-      for (auto e = comps_it->begin(); e != comps_it->end(); ++e) {
-        if (!e->is_string()) continue;
-        fs::path p = fs::u8path(e->get<std::string>());
-        fs::path target;
-        if (p.is_absolute()) {
-          if (pkg->layout == "portable") {
-            return MakeStatus(MODEL_PACKAGE_ERR_PATH_CONFINEMENT,
-                              "dest_root commit (portable): component '" + e.key() +
-                                  "' has absolute path '" + p.u8string() + "'.");
-          }
-          target = p;
-        } else {
-          target = dest_root / p;
-          std::error_code ec2;
-          fs::path normalized = target.lexically_normal();
-          if (normalized.native().find(dest_root.lexically_normal().native()) != 0) {
-            return MakeStatus(MODEL_PACKAGE_ERR_PATH_CONFINEMENT,
-                              "dest_root commit (portable): component '" + e.key() +
-                                  "' relative path '" + p.u8string() + "' escapes dest_root.");
-          }
-          target = normalized;
-        }
-        // Find the corresponding component body to write.
-        std::string ext_body;
-        for (const auto& comp : pkg->components) {
-          if (comp->name == e.key()) {
-            ext_body = comp->body.dump(2) + "\n";
-            break;
-          }
-        }
-        std::error_code ec_md;
-        fs::create_directories(target.parent_path(), ec_md);
-        if (auto* s = WriteFileAtomic(target, ext_body)) return s;
-      }
-    }
-  }
 
   fs::path manifest_path = dest_root / "manifest.json";
   if (auto* s = WriteFileAtomic(manifest_path, manifest.dump(2) + "\n")) return s;

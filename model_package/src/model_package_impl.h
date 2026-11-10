@@ -134,6 +134,8 @@ struct ModelPackage {
 
   /// Lazily built; dropped on any mutation.
   mutable std::optional<model_package::InfoViewCache> info_cache;
+  mutable std::optional<std::string> chains_json_cache;
+  mutable std::map<std::string, std::string> chain_json_cache;
 };
 
 namespace model_package {

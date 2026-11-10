@@ -12,10 +12,18 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <random>
 #include <sstream>
 #include <string>
 #include <thread>
+#include <vector>
+
+#include <nlohmann/json.hpp>
+
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
 
 namespace fs = std::filesystem;
 
@@ -432,12 +440,291 @@ bool test_commit_unicode_paths_and_assets() {
   return true;
 }
 
+bool test_chain_commit_modes_and_reference_failures() {
+  using Json = nlohmann::ordered_json;
+  for (const char* layout : {"portable", "installed"}) {
+    for (const auto mode : {MODEL_PACKAGE_WRITE_PRESERVE, MODEL_PACKAGE_WRITE_DENSE}) {
+      Sandbox s;
+      Json manifest = Json::parse(R"({
+        "schema_version":"1.2",
+        "components":{
+          "decoder_prefill":"prefill",
+          "decoder_decode":{"variants":{"cpu":{"variant_directory":"decode/cpu","executor_info":{
+            "ort":{"model_file":"model2.onnx"}
+          }}}}
+        },
+        "future_manifest":{"keep":true},
+        "chains":{"generate":{
+          "future_chain":1,
+          "steps":[
+            {"id":"prefill","component":"decoder_prefill","executor_info":{"ort":{
+              "kind":"session_loop","loop":{"exit_conditions":[{"kind":"end_of_inputs"}]}
+            }}},
+            {"id":"decode","component":"decoder_decode","future_step":2,"executor_info":{"ort":{
+              "kind":"session_loop","loop":{"generation":{"initial_logits":{
+                "kind":"model_output","step":"prefill","output":"logits"
+              }},"sampler":{"algorithm":"greedy"}}
+            }}}
+          ],
+          "executor_info":{"foreign":{"keep":[true,null,42]}}
+        }}
+      })");
+      manifest["layout"] = layout;
+      const Json component = {
+          {"variants",
+           {{"cpu",
+             {{"variant_directory", "cpu"},
+              {"executor_info",
+               {{"ort",
+                 mode == MODEL_PACKAGE_WRITE_PRESERVE ? Json("ort.json") : Json{{"model_file", "model1.onnx"}}}}}}}}}};
+      s.Write("source/manifest.json", manifest.dump());
+      s.Write("source/prefill/component.json", component.dump());
+      s.Write("source/prefill/cpu/model1.onnx", "prefill model fixture");
+      s.Write("source/prefill/cpu/ort.json", R"({"model_file":"model1.onnx"})");
+      s.Write("source/prefill/cpu/nested/weights.bin", std::string("a\0b", 3));
+      fs::create_directories(s.path("source/prefill/cpu/empty"));
+      s.Write("source/decode/cpu/model2.onnx", "decode model fixture");
+      ModelPackage* raw = nullptr;
+      CHECK_OK(ModelPackage_Open(s.path("source").u8string().c_str(), nullptr, &raw));
+      PkgHandle p(raw);
+      const std::string destination = s.path("destination").u8string();
+      CHECK_OK(ModelPackage_Commit(raw, destination.c_str(), mode));
+      fs::rename(s.path("source"), s.path("unavailable"));
+      CHECK_OK(ModelPackage_SetMetadata(raw, "updated", nullptr, nullptr));
+      CHECK_OK(ModelPackage_Commit(raw, nullptr, mode));
+      ModelPackage* reopened = nullptr;
+      CHECK_OK(ModelPackage_Open(destination.c_str(), nullptr, &reopened));
+      PkgHandle other(reopened);
+      const char* json = nullptr;
+      CHECK_OK(ModelPackage_GetChainsJson(reopened, &json));
+      CHECK(Json::parse(json) == manifest["chains"]);
+      CHECK(ModelPackage_Info(reopened)->schema_version_minor == 2);
+      CHECK_ERR(ModelPackage_RemoveComponent(reopened, "decoder_prefill"), MODEL_PACKAGE_ERR_SCHEMA);
+      CHECK_OK(ModelPackage_Prune(reopened));
+      const auto* info = ModelPackage_Info(reopened);
+      const auto* prefill = ModelComponentInfo_FindVariant(ModelPackage_FindComponent(info, "decoder_prefill"), "cpu");
+      const auto* decode = ModelComponentInfo_FindVariant(ModelPackage_FindComponent(info, "decoder_decode"), "cpu");
+      CHECK(fs::exists(fs::u8path(prefill->variant_directory) / "model1.onnx"));
+      CHECK(fs::exists(fs::u8path(decode->variant_directory) / "model2.onnx"));
+      CHECK(fs::is_directory(fs::u8path(prefill->variant_directory) / "empty"));
+      std::ifstream weights(fs::u8path(prefill->variant_directory) / "nested/weights.bin", std::ios::binary);
+      CHECK(std::string(std::istreambuf_iterator<char>(weights), {}) == std::string("a\0b", 3));
+      std::ifstream committed(s.path("destination/manifest.json"));
+      Json saved;
+      committed >> saved;
+      CHECK(saved["future_manifest"] == manifest["future_manifest"]);
+      CHECK_OK(ModelPackage_RemoveChain(reopened, "generate"));
+      CHECK_OK(ModelPackage_Commit(reopened, nullptr, mode));
+      std::ifstream removed(s.path("destination/manifest.json"));
+      removed >> saved;
+      CHECK(!saved.contains("chains"));
+      CHECK(saved["schema_version"] == "1.2");
+    }
+  }
+  return true;
+}
+
+bool test_export_installed_external_files_and_reexport() {
+  using Json = nlohmann::ordered_json;
+  Sandbox s;
+  const Json payload = {{"model_file", "nested/model.onnx"}, {"foreign", {1, true, nullptr}}};
+  s.Write("external/models/nested/model.onnx", std::string("model\0bytes", 11));
+  s.Write("external/models/nested/weights.data", "external tensor bytes");
+  fs::create_directories(s.path("external/models/empty"));
+  s.Write("external/config.json", payload.dump());
+  const Json component = {{"variants",
+                           {{"cpu",
+                             {{"variant_directory", s.path("external/models").u8string()},
+                              {"executor_info",
+                               {{"remove_first", s.path("external/config.json").u8string()},
+                                {"ort", s.path("external/config.json").u8string()}}}}}}}};
+  s.Write("external/component.json", component.dump());
+  const Json manifest = {{"schema_version", "1.0"},
+                         {"layout", "installed"},
+                         {"components", {{"decoder", s.path("external/component.json").u8string()}}}};
+  s.Write("source/manifest.json", manifest.dump());
+  ModelPackage* raw = nullptr;
+  CHECK_OK(ModelPackage_Open(s.path("source").u8string().c_str(), nullptr, &raw));
+  PkgHandle p(raw);
+  CHECK_OK(ModelPackage_Commit(raw, s.path("first").u8string().c_str(), MODEL_PACKAGE_WRITE_PRESERVE));
+  CHECK_OK(ModelPackage_RemoveVariantExecutorInfo(raw, "decoder", "cpu", "remove_first"));
+  CHECK_OK(ModelPackage_Commit(raw, s.path("second").u8string().c_str(), MODEL_PACKAGE_WRITE_PRESERVE));
+  fs::rename(s.path("source"), s.path("source_unavailable"));
+  fs::rename(s.path("external"), s.path("external_unavailable"));
+  fs::rename(s.path("first"), s.path("first_unavailable"));
+  ModelPackage* reopened = nullptr;
+  CHECK_OK(ModelPackage_Open(s.path("second").u8string().c_str(), nullptr, &reopened));
+  PkgHandle other(reopened);
+  const auto* info = ModelPackage_Info(reopened);
+  CHECK(info->schema_version_minor == 0);
+  const auto* variant = ModelComponentInfo_FindVariant(ModelPackage_FindComponent(info, "decoder"), "cpu");
+  const auto* entry = ModelVariantInfo_FindExecutorInfo(variant, "ort");
+  CHECK(entry != nullptr);
+  CHECK(Json::parse(entry->json) == payload);
+  const fs::path directory = fs::u8path(variant->variant_directory);
+  CHECK(fs::is_directory(directory / "empty"));
+  std::ifstream model(directory / "nested/model.onnx", std::ios::binary);
+  CHECK(std::string(std::istreambuf_iterator<char>(model), {}) == std::string("model\0bytes", 11));
+  std::ifstream data(directory / "nested/weights.data");
+  CHECK(std::string(std::istreambuf_iterator<char>(data), {}) == "external tensor bytes");
+  CHECK_OK(ModelPackage_Commit(reopened, nullptr, MODEL_PACKAGE_WRITE_PRESERVE));
+  return true;
+}
+
+bool test_dense_inplace_keeps_variant_anchor() {
+  using Json = nlohmann::ordered_json;
+  for (const char* layout : {"portable", "installed"}) {
+    Sandbox s;
+    const bool installed = std::string(layout) == "installed";
+    s.Write(installed ? "external/model.onnx" : "source/decoder/cpu/model.onnx", "model bytes");
+    const Json component = {{"variants",
+                             {{"cpu",
+                               {{"variant_directory", installed ? s.path("external").u8string() : "cpu"},
+                                {"executor_info", {{"ort", {{"model_file", "model.onnx"}}}}}}}}}};
+    s.Write("source/decoder/component.json", component.dump());
+    const Json manifest = {{"schema_version", "1.0"}, {"layout", layout}, {"components", {{"decoder", "decoder"}}}};
+    s.Write("source/manifest.json", manifest.dump());
+    ModelPackage* raw = nullptr;
+    CHECK_OK(ModelPackage_Open(s.path("source").u8string().c_str(), nullptr, &raw));
+    PkgHandle p(raw);
+    CHECK_OK(ModelPackage_Commit(raw, nullptr, MODEL_PACKAGE_WRITE_DENSE));
+    ModelPackage* reopened = nullptr;
+    CHECK_OK(ModelPackage_Open(s.path("source").u8string().c_str(), nullptr, &reopened));
+    PkgHandle other(reopened);
+    const auto* variant =
+        ModelComponentInfo_FindVariant(ModelPackage_FindComponent(ModelPackage_Info(reopened), "decoder"), "cpu");
+    CHECK(fs::exists(fs::u8path(variant->variant_directory) / "model.onnx"));
+    CHECK_OK(ModelPackage_Commit(raw, nullptr, MODEL_PACKAGE_WRITE_DENSE));
+  }
+  return true;
+}
+
+bool test_export_rejects_external_source_overlap() {
+  using Json = nlohmann::ordered_json;
+  Sandbox s;
+  s.Write("external/model.onnx", "model bytes");
+  const Json manifest = {
+      {"schema_version", "1.0"},
+      {"layout", "installed"},
+      {"components", {{"decoder", {{"variants", {{"cpu", {{"variant_directory", s.path("external").u8string()}}}}}}}}}};
+  s.Write("source/manifest.json", manifest.dump());
+  ModelPackage* raw = nullptr;
+  CHECK_OK(ModelPackage_Open(s.path("source").u8string().c_str(), nullptr, &raw));
+  PkgHandle p(raw);
+  CHECK_ERR(ModelPackage_Commit(raw, s.path("external/destination").u8string().c_str(), MODEL_PACKAGE_WRITE_PRESERVE),
+            MODEL_PACKAGE_ERR_PATH_CONFINEMENT);
+  CHECK(!fs::exists(s.path("external/destination")));
+  ModelPackage* authored = nullptr;
+  CHECK_OK(ModelPackage_New(&authored));
+  PkgHandle other(authored);
+  const char* uri = nullptr;
+  CHECK_OK(ModelPackage_AddSharedAsset(authored, s.path("external").u8string().c_str(), nullptr, true, &uri));
+  CHECK_ERR(
+      ModelPackage_Commit(authored, s.path("external/destination").u8string().c_str(), MODEL_PACKAGE_WRITE_PRESERVE),
+      MODEL_PACKAGE_ERR_PATH_CONFINEMENT);
+  CHECK(!fs::exists(s.path("external/destination")));
+  return true;
+}
+
+bool test_export_failures_preserve_live_state() {
+  using Json = nlohmann::ordered_json;
+  const std::vector<std::string> cases = {
+      "missing",
+      "not_directory",
+      "metadata_missing",
+      "metadata_collision",
+      "overlap",
+      "io",
+#ifndef _WIN32
+      "symlink",
+      "root_symlink",
+      "fifo",
+#endif
+  };
+  for (const auto& name : cases) {
+    Sandbox s;
+    s.Write("source/cpu/model.onnx", "source bytes");
+    s.Write("source/cpu/ort.json", R"({"model_file":"model.onnx"})");
+    s.Write("source/manifest.json", R"({
+      "schema_version":"1.1",
+      "components":{"decoder":{"variants":{"cpu":{
+        "variant_directory":"cpu","executor_info":{"ort":"ort.json"}
+      }}}},
+      "chains":{"generate":{"steps":[{"id":"run","component":"decoder"}]}}
+    })");
+#ifndef _WIN32
+    if (name == "root_symlink") {
+      fs::rename(s.path("source/cpu"), s.path("source/original_cpu"));
+      fs::create_directory_symlink(s.path("source/original_cpu"), s.path("source/cpu"));
+    }
+#endif
+    ModelPackage* raw = nullptr;
+    CHECK_OK(ModelPackage_Open(s.path("source").u8string().c_str(), nullptr, &raw));
+    PkgHandle p(raw);
+    auto destination = s.path("destination");
+    auto code = MODEL_PACKAGE_ERR_SCHEMA;
+    if (name == "missing" || name == "not_directory") {
+      fs::rename(s.path("source/cpu"), s.path("removed_cpu"));
+      if (name == "not_directory") s.Write("source/cpu", "not a directory");
+      code = MODEL_PACKAGE_ERR_NOT_FOUND;
+    } else if (name == "metadata_missing") {
+      CHECK_OK(ModelPackage_SetVariantExecutorInfoExternal(raw, "decoder", "cpu", "ort", "missing.json"));
+      code = MODEL_PACKAGE_ERR_NOT_FOUND;
+    } else if (name == "metadata_collision") {
+      s.Write("source/cpu/.model_package_executor_info_0.json", "do not overwrite");
+      s.Write("external_info.json", "{}");
+      CHECK_OK(ModelPackage_SetLayout(raw, "installed"));
+      CHECK_OK(ModelPackage_SetVariantExecutorInfoExternal(raw, "decoder", "cpu", "ort",
+                                                           s.path("external_info.json").u8string().c_str()));
+      code = MODEL_PACKAGE_ERR_STATE;
+    } else if (name == "overlap") {
+      destination = s.path("source/nested_destination");
+      code = MODEL_PACKAGE_ERR_PATH_CONFINEMENT;
+    } else if (name == "io") {
+      s.Write("blocker", "not a directory");
+      destination = s.path("blocker/destination");
+      code = MODEL_PACKAGE_ERR_IO;
+    }
+#ifndef _WIN32
+    else if (name == "symlink") {
+      fs::create_symlink(s.path("source/cpu/model.onnx"), s.path("source/cpu/link"));
+    } else if (name == "fifo") {
+      CHECK(::mkfifo(s.path("source/cpu/pipe").c_str(), 0600) == 0);
+    }
+#endif
+    const auto* info = ModelPackage_Info(raw);
+    const char* json = nullptr;
+    CHECK_OK(ModelPackage_GetChainsJson(raw, &json));
+    const std::string snapshot(json);
+    std::ifstream before_manifest(s.path("source/manifest.json"), std::ios::binary);
+    const std::string source_manifest(std::istreambuf_iterator<char>(before_manifest), {});
+    CHECK_ERR(ModelPackage_Commit(raw, destination.u8string().c_str(), MODEL_PACKAGE_WRITE_PRESERVE), code);
+    std::ifstream after_manifest(s.path("source/manifest.json"), std::ios::binary);
+    CHECK(std::string(std::istreambuf_iterator<char>(after_manifest), {}) == source_manifest);
+    CHECK(ModelPackage_Info(raw) == info);
+    const char* after = nullptr;
+    CHECK_OK(ModelPackage_GetChainsJson(raw, &after));
+    CHECK(after == json);
+    CHECK(snapshot == after);
+    const char* path = nullptr;
+    CHECK_OK(ModelPackage_ResolveStringRef(raw, nullptr, "manifest.json", true, &path));
+    CHECK(fs::u8path(path) == s.path("source/manifest.json"));
+    if (name == "overlap") CHECK(!fs::exists(destination));
+  }
+  return true;
+}
+
 struct Test {
   const char* name;
   bool (*fn)();
 };
 
 const Test kTests[] = {
+    {"export_rejects_external_source_overlap", test_export_rejects_external_source_overlap},
+    {"export_installed_external_files_and_reexport", test_export_installed_external_files_and_reexport},
+    {"dense_inplace_keeps_variant_anchor", test_dense_inplace_keeps_variant_anchor},
+    {"export_failures_preserve_live_state", test_export_failures_preserve_live_state},
+    {"chain_commit_modes_and_reference_failures", test_chain_commit_modes_and_reference_failures},
     {"commit_inplace_basic_roundtrip", test_commit_inplace_basic_roundtrip},
     {"commit_requires_package_root", test_commit_requires_package_root},
     {"commit_external_component_writes_file", test_commit_external_component_writes_file},

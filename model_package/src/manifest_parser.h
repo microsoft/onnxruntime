@@ -18,6 +18,9 @@ ModelPackageStatus* ParsePackage(const std::filesystem::path& package_root,
                                  const ModelPackageOpenOptions& opts,
                                  ModelPackage* pkg);
 
+/// Validate common chain structure/references without interpreting consumer payloads.
+ModelPackageStatus* ValidateChains(const ModelPackage* pkg, const ordered_json& chains);
+
 /// Parse a single variant body into `out`. Used by authoring.
 ModelPackageStatus* ParseVariantBody(const std::filesystem::path& component_dir,
                                      const std::filesystem::path& package_root,

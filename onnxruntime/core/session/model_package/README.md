@@ -19,6 +19,12 @@ adds three things on top**:
 ORT links the `model_package` library as a static archive; the library
 itself never links against ORT.
 
+Schema 1.1 adds JSON-only named chain metadata to the standalone library.
+This consumer still creates individual Sessions; it does not yet load or execute
+chains or interpret chain/step `executor_info.ort`. In particular, the candidate
+sampling-free prefill and decode initial-logits handoff are not implemented by
+this schema milestone. Existing per-component Session creation remains supported.
+
 ---
 
 ## Files

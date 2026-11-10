@@ -4,6 +4,11 @@
 Implementation requires separate approval of `TASKS.md`.
 **Requirements captured:** 2026-10-15.
 
+**M10 refinement:** Appendix J was approved by the user on 2026-10-19.
+The detailed `TASKS.md` plan was separately approved on 2026-10-19.
+The save-as scope amendment in J.9 and its revised implementation plan were
+separately approved on 2026-10-19.
+
 ## 1. Purpose
 
 Introduce a production-oriented foundation for stateful model execution above
@@ -1996,3 +2001,402 @@ int main(int argc, char** argv) {
   return logits[0] > logits[1] ? 0 : 7;
 }
 ```
+
+## Appendix J. M10 standalone package chains (approved)
+
+**Interview completed:** 2026-10-19. The user approved the revised candidate
+manifest and confirmed there were no additional requirements before this draft.
+**Specification approved:** 2026-10-19, for detailed execution-plan preparation.
+This appendix refines PKG-1 through PKG-7; it does not authorize implementation.
+Earlier approved runtime/API contracts remain unchanged by M10.
+
+### J.1 Scope and consumer boundary
+
+- Add optional named, ordered linear chains to the standalone Model Package
+  format. Reuse existing components, variants, model references and shared assets.
+- Expose chain inspection and authoring as JSON only. Do not add typed chain/step
+  info structs, ORT handles, ONNX dependencies or execution-provider dependencies
+  to the standalone library.
+- Common structure consists of chain names, ordered steps, step IDs and component
+  references. All execution configuration and tensor/state wiring belong inside
+  consumer namespaces under `executor_info`, including `executor_info.ort`.
+- M10 validates common structure and component references. It preserves consumer
+  payloads without interpreting execution kinds, tensor names, upstream-output
+  references, exits, sampling, cache policies or provider selection.
+- M11 validates and interprets the ORT payload and constructs executable chains.
+  Package-driven execution always requires an explicit chain name, even when
+  only one chain exists. There is no implicit/default chain.
+- Chains are declarative ordered component lists, not executable state machines.
+  No common transition language, jumps, embedded scripts or custom predicates
+  are introduced. M11 must reject unsupported executable ORT configurations;
+  standalone preservation of an opaque payload is not execution approval.
+
+### J.2 Schema version and compatibility
+
+- The new optional `chains` field is introduced in schema `"1.1"`. Update the
+  parser's highest known minor and the version stamped by `ModelPackage_New`
+  together. The supported major remains 1.
+- Existing 1.0 packages remain readable with unchanged component/variant/path
+  semantics. A 1.0 package without chains does not gain a chain or get upgraded
+  merely by opening it, inspecting it, or committing unrelated existing data.
+- A manifest that declares `chains` must declare minor 1 or newer. Reject
+  `chains` under 1.0 as a schema error, including in permissive parsing mode;
+  this prevents a known feature from contradicting its declared schema version.
+- Successful chain-setting mutations on a 1.0 package upgrade it to `"1.1"`.
+  Never downgrade a package with a newer minor. Removing chains does not
+  automatically downgrade the schema.
+- Preserve existing unsupported-major errors and acceptance of future minors.
+  A minor newer than this build knows relaxes unknown-field strictness as today;
+  known fields must still have valid types and references.
+- For known minors, honor the existing strict-unknown-field option in the common
+  manifest, chain and step envelopes. With strictness disabled, preserve unknown
+  fields through JSON inspection, unrelated mutation and commit.
+- Consumer payload contents and `additional_metadata` remain opaque in strict
+  and permissive modes. Their private fields are not common-schema unknown keys.
+- An older 1.0 reader can already accept a 1.1 package by its future-minor rule
+  and preserve unrecognized chain data. Do not claim it understands chains or
+  will execute them, or that all old strict readers reject 1.1.
+
+### J.3 Common JSON structure
+
+`manifest.chains`, when present, is an object mapping nonempty UTF-8 names to
+inline chain objects. An absent map or an empty map declares no chains.
+`null`, arrays, strings and scalar values are not alternate forms.
+
+| Scope | Field | Requirement |
+| --- | --- | --- |
+| Chain | `steps` | Required nonempty array; its order is execution order. |
+| Chain | `executor_info` | Optional object mapping consumer namespaces to inline JSON objects. |
+| Chain | `additional_metadata` | Optional opaque JSON value. |
+| Step | `id` | Required nonempty UTF-8 string; unique within its chain. |
+| Step | `component` | Required nonempty UTF-8 string naming an existing package component. |
+| Step | `executor_info` | Optional object mapping consumer namespaces to inline JSON objects. |
+| Step | `additional_metadata` | Optional opaque JSON value. |
+
+Chain names, step IDs, component references and consumer namespace keys cannot
+contain embedded NUL characters. Namespace keys must be nonempty. Identifiers
+are not paths and do not cause filesystem access.
+
+- The same component may appear in multiple steps or chains. Step IDs need only
+  be unique within their own chain.
+- A component reference targets the component map key, not its descriptive
+  `component_name`. Existing placeholder components with empty variants remain
+  supported; executable variant availability is checked by the consumer.
+- An absent consumer namespace means no configuration for that consumer. It does
+  not imply Session execution, a default sampler or default loop exits.
+- New chain/step bodies and their namespace payloads are inline only in M10.
+  External chain files and string-valued chain/step namespace payloads are not
+  introduced. Existing external components and variant executor-info files keep
+  their existing support and resolution rules.
+- Unknown fields inside an accepted common envelope must survive round trips
+  when permissive parsing applies. Array order must survive all round trips.
+  Whitespace and object-key order are not execution semantics.
+
+### J.4 Reviewed decoder-only example and ORT semantics
+
+The reviewed example contains `decoder_prefill` and `decoder_decode`, whose CPU
+variants reference `model1.onnx` and `model2.onnx`, respectively. The model files
+resolve relative to their variant directories using existing ORT package rules.
+There is no encoder component or encoder chain.
+
+This self-contained example fixes the candidate field spelling. Its model
+signatures, dimensions, token IDs and capacity are illustrative, not a claim
+that unspecified model files form a runnable package.
+
+```json
+{
+  "schema_version": "1.1",
+  "package_name": "session-and-loop-example",
+  "layout": "portable",
+  "components": {
+    "decoder_prefill": {
+      "variants": {
+        "cpu": {
+          "variant_directory": "decoder_prefill/cpu",
+          "ep": "CPUExecutionProvider",
+          "device": "cpu",
+          "executor_info": {
+            "ort": { "model_file": "model1.onnx" }
+          }
+        }
+      }
+    },
+    "decoder_decode": {
+      "variants": {
+        "cpu": {
+          "variant_directory": "decoder_decode/cpu",
+          "ep": "CPUExecutionProvider",
+          "device": "cpu",
+          "executor_info": {
+            "ort": { "model_file": "model2.onnx" }
+          }
+        }
+      }
+    }
+  },
+  "chains": {
+    "generate": {
+      "steps": [
+        {
+          "id": "prefill",
+          "component": "decoder_prefill",
+          "executor_info": {
+            "ort": {
+              "kind": "session_loop",
+              "inputs": {
+                "input_ids": { "kind": "external_sequence", "name": "prompt_batches" }
+              },
+              "loop": {
+                "finite_input_names": ["input_ids"],
+                "nonempty_input": "input_ids",
+                "exit_conditions": [
+                  { "kind": "end_of_inputs" }
+                ],
+                "cache_provider": { "mode": "cpu" },
+                "kv_caches": [
+                  { "cache": "layer0.key", "input": "past_key", "output": "present_key", "update": "share" },
+                  { "cache": "layer0.value", "input": "past_value", "output": "present_value", "update": "share" }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": "decode",
+          "component": "decoder_decode",
+          "executor_info": {
+            "ort": {
+              "kind": "session_loop",
+              "loop": {
+                "exit_conditions": [
+                  { "kind": "max_generated_tokens", "limit": 128 },
+                  { "kind": "eos", "token_ids": [2] }
+                ],
+                "generation": {
+                  "phase": "decode",
+                  "input_ids": "input_ids",
+                  "logits_output": "logits",
+                  "initial_logits": { "kind": "model_output", "step": "prefill", "output": "logits" }
+                },
+                "sampler": { "algorithm": "greedy", "provider": { "mode": "cpu" } },
+                "cache_provider": { "mode": "cpu" },
+                "kv_caches": [
+                  { "cache": "layer0.key", "input": "past_key", "output": "present_key", "update": "share" },
+                  { "cache": "layer0.value", "input": "past_value", "output": "present_value", "update": "share" }
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "executor_info": {
+        "ort": {
+          "kv_caches": {
+            "layer0.key": {
+              "element_type": "float32",
+              "shape": [1, 2, 0, 64],
+              "sequence_axis": 2,
+              "initial_capacity": 128
+            },
+            "layer0.value": {
+              "element_type": "float32",
+              "shape": [1, 2, 0, 64],
+              "sequence_axis": 2,
+              "initial_capacity": 128
+            }
+          },
+          "outputs": {
+            "token_ids": { "kind": "generated_token_ids", "step": "decode" }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+Execution-specific interpretation belongs to M11:
+
+- Prefill consumes the finite prompt input, updates shared KV caches and exits
+  on EndOfInputs. It has no sampler, generation policy, EOS condition or
+  generated-token budget.
+- Decode owns greedy sampling. `generation.initial_logits` explicitly names the
+  final prefill logits used to sample the first generated token before the first
+  decode-model invocation. That token counts once toward decode's generated
+  history and token budget; it is not sampled or emitted again at the boundary.
+- Subsequent decode invocations consume the pending generated token and sample
+  their own logits. Decode owns EOS and generated-token-limit termination.
+- The sampler's provider policy also governs the initial-logits sample. M11 must
+  validate producer placement, dtype, shape, compatible providers and retained
+  value lifetimes without silently copying full GPU logits to the host.
+- `kind: "session"` remains available for ordinary steps without introducing a
+  mandatory encoder example.
+
+This sampling-free prefill handoff is a newly requested runtime capability, not
+an already implemented native contract. M10 only preserves its JSON. Before M11
+implementation, refine and test zero/one-token budgets, EOS on the first sample,
+Step/iteration accounting, cancellation, reset and CPU/CUDA parity. Do not
+silently reinterpret existing programmatic prefill-sampling APIs.
+
+### J.5 JSON-only standalone C API
+
+Add the following entry points to the existing source-distributed C library,
+using its export macro, error/status convention and UTF-8 string rules:
+
+```c
+ModelPackageStatus* ModelPackage_GetChainsJson(
+    const ModelPackage* pkg, const char** out_json);
+ModelPackageStatus* ModelPackage_GetChainJson(
+    const ModelPackage* pkg, const char* chain_name, const char** out_json);
+ModelPackageStatus* ModelPackage_SetChainsJson(
+    ModelPackage* pkg, const char* chains_json);
+ModelPackageStatus* ModelPackage_SetChainJson(
+    ModelPackage* pkg, const char* chain_name, const char* chain_json);
+ModelPackageStatus* ModelPackage_RemoveChain(
+    ModelPackage* pkg, const char* chain_name);
+```
+
+- `GetChainsJson` returns the complete chain map, or `"{}"` when absent.
+  `GetChainJson` returns the selected chain object, or
+  `MODEL_PACKAGE_ERR_NOT_FOUND` for an unknown name.
+- Returned strings are package-owned NUL-terminated JSON, not caller-freed
+  buffers. They remain valid across read-only inspections until a successful
+  package mutation, commit that mutates package state, or Close. Document this
+  conservative lifetime rather than requiring consumers to infer cache details.
+- A failing status call leaves all output parameters unchanged. Null required
+  pointers and empty name arguments return `MODEL_PACKAGE_ERR_INVALID_ARG`.
+  Invalid JSON, shape, version/feature mismatch or common references return
+  `MODEL_PACKAGE_ERR_SCHEMA`; unsupported majors retain their existing version
+  error. Diagnostics identify the chain/step and offending field where possible.
+- `SetChainsJson` replaces the complete map; it requires an object, including
+  `"{}"` to declare an empty map. `SetChainJson` inserts or replaces one chain;
+  it requires an object and does not replace other chains.
+- `RemoveChain` is idempotent for an unknown name, following component removal's
+  existing convention. Removing the final chain removes the optional `chains`
+  member. A no-op removal does not upgrade the schema or invalidate views.
+- Do not add fields to `ModelPackageInfo` or introduce typed chain records for
+  this milestone. Existing component/variant inspection remains unchanged.
+
+### J.6 Immediate reference validation and mutation safety
+
+- Validate each proposed chain/map completely before changing package state.
+  Components must exist before authoring a chain that references them. A failed
+  chain mutation leaves the manifest, schema version, info/JSON views, component
+  records and commit/prune bookkeeping unchanged.
+- Removing a component referenced by any chain fails before mutation with a
+  schema diagnostic identifying a referring chain/step. No automatic cascade,
+  silent chain removal or dangling-reference draft is allowed.
+- Authors can first replace/remove referring chains, then remove the component.
+  Whole-map replacement provides an atomic way to replace multiple chains.
+- Component replacement under the same map key preserves common references.
+  Variant changes/removal retain their existing authoring behavior; M10 does not
+  infer executable validity from opaque consumer payloads.
+- The immediate-reference guarantee covers only common component references.
+  It does not validate `initial_logits.step`, tensor/state wiring or other
+  consumer-private references. ORT rejects invalid private references in M11
+  before constructing a runnable execution.
+- Reuse existing status handling and authoring/cache helpers where appropriate.
+  Do not broaden unrelated pre-existing mutation semantics to implement chains.
+
+### J.7 Commit, paths and round-trip preservation
+
+- Preserve chains, step order, opaque namespaces, metadata and tolerated unknown
+  fields through in-memory inspection, chain mutation, portable/in-place commit,
+  installed commit and reopen. Preserve unrelated components and variants when
+  updating one chain; whole-map replacement intentionally replaces the map.
+- New chain metadata does not introduce model-path overrides, path anchors,
+  external execution files or package-supplied Session-option escape hatches.
+  Model files and external variant executor-info continue to resolve through
+  the selected component/variant's existing machinery.
+- Existing portable confinement, installed external paths, shared-asset
+  resolution, hashing, staging and orphan/prune behavior remain intact. Do not
+  infer that a shared asset is unused by inspecting only known chain payloads;
+  consumer-private references remain opaque.
+- An ORT-like field inside an opaque payload is not permission to bypass path
+  confinement or restricted Session options. These remain consumer validation
+  obligations in M11, not standalone execution support.
+
+### J.8 M10 verification and completion requirements
+
+- Independently configure/build/test the standalone library without ORT linkage.
+  Exercise inspection, authoring, all existing commit modes and asset tests,
+  plus a real C consumer of the new JSON-only functions.
+- Cover absent/empty chains, one/multiple chains, reused components, ordered
+  steps, duplicate IDs, malformed types, missing/unknown component references,
+  UTF-8 names, invalid arguments and unchanged output parameters on errors.
+- Cover 1.0 compatibility, automatic authoring upgrades, 1.1 strict/permissive
+  fields, future-minor preservation, unsupported majors, wrong-version chains,
+  opaque consumer fields and atomic failures without lost views/bookkeeping.
+- Cover reference-safe component removal/replacement, selected/whole-map
+  authoring, idempotent removals, unknown-field preservation and commit/reopen
+  parity with inline/external components and existing variant payload forms.
+- Rerun existing CPU ORT Model Package API regressions to ensure ordinary
+  single-component Session creation and package confinement remain unchanged.
+- Measure 100% of new executable production parser/authoring/API/helper lines
+  using the actual standalone test artifacts. Do not replace this with a test
+  count, successful build or an unmeasured coverage assertion.
+- CUDA device execution is not applicable to this standalone metadata milestone.
+  Provider-independent payload preservation is not a GPU execution result.
+  M11 owns CPU/CUDA executable package/programmatic parity and the new handoff.
+- Update directly related package documentation and deliver a separately
+  documented/tested M10 PR stacked on verified M09b. Do not merge automatically.
+  Prepare and review the detailed execution plan only after this appendix is
+  approved; implementation requires that separate plan approval.
+
+### J.9 Save-as model materialization (approved scope amendment)
+
+**Approved:** 2026-10-19, for revised execution-plan preparation.
+
+During M10 persistence qualification, the unchanged M09b parent reproduced a
+pre-existing defect: save-as writes metadata/shared assets but does not copy
+variant directories. Reopening the destination fails when an explicit variant
+directory is missing. The user requested expanding M10 to repair this defect
+rather than documenting it as an exclusion.
+
+- A successful save-as must materialize every resolved variant directory,
+  including its model files, external tensor data, nested files and empty
+  subdirectories, into the destination package. Reuse existing copy/confinement
+  infrastructure; do not parse ONNX models or consumer payloads.
+- Rebase structural component/variant paths as needed so the destination opens
+  and uses the copied files without depending on the original package root.
+  This includes installed-layout variant directories outside the original root.
+  Retain inline versus external component and namespace shapes in PRESERVE
+  mode. DENSE mode retains its existing external-namespace restriction.
+- External components referenced by directory must still produce
+  `component.json` at the correct location. DENSE flattening must preserve the
+  effective variant-directory anchor, including subsequent in-place commits.
+- External variant executor-info JSON must be materialized with its external
+  shape and resolve within the copied variant directory in PRESERVE mode,
+  including when its original installed path was external. Use package-local,
+  collision-safe paths; never overwrite a copied model/data file with metadata.
+- Consumer-private JSON remains opaque and byte/value-preserved as appropriate
+  for its existing serialization contract. Only known structural paths may be
+  rewritten. Files referenced by absolute or out-of-directory strings inside
+  opaque payloads are not discoverable by this library; callers must place
+  required package-local files within variant directories or shared assets.
+- Do not copy the entire source package indiscriminately or modify any source
+  file/external directory. Reject symlinks and unsupported filesystem objects
+  while copying rather than following them into unrelated locations.
+- Validate destination confinement and source/destination overlap before copy;
+  reject self-copy/recursive destinations and output-path collisions explicitly.
+  Preserve the existing empty/nonexistent-destination requirement.
+- A failed save-as must not replace the live package state/root or invalidate
+  its borrowed views. Partial destination files may remain on failure, as with
+  existing commit behavior; this amendment does not promise atomic directory
+  replacement or authorize recursive cleanup of caller-owned directories.
+- Apply the repair to existing 1.0 packages as well as 1.1 chains. It requires no
+  new schema field or public API. Preserve ordinary in-place commits, shared
+  assets, path confinement and existing unsupported-operation errors.
+- Qualify source-independent reopen and exact copied-file bytes after the
+  original package becomes unavailable, across PRESERVE/DENSE and
+  portable/installed layouts. Include external component file/directory forms,
+  installed external variants/metadata, nested model data, empty directories,
+  path collisions, symlinks, failed-copy state preservation and chain round trips.
+  A CPU ORT Session created from an exported tiny real-model package must infer
+  correctly without the source package. CUDA remains N/A for this file-copy fix.
+- Include every new executable copy/rebase/helper/error line in the measured
+  100% M10 unit-test coverage gate. Update commit documentation to state the
+  structural rebasing and opaque-path boundary precisely.
+
+Review this amendment before revising the detailed M10 plan. Implementation of
+the expanded commit repair requires separate approval of that revised plan.

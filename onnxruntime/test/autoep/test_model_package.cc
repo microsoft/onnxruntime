@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <array>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -14,6 +15,7 @@
 
 #include "gtest/gtest.h"
 #include "nlohmann/json.hpp"
+#include "model_package.h"
 
 #include "core/common/path_string.h"
 #include "core/framework/compute_capability.h"
@@ -292,6 +294,31 @@ TEST(ModelPackageApiTest, CpuSelectionAndRepeatedSessionCreation) {
     EXPECT_EQ(std::filesystem::path(folder), expected);
   }
   std::filesystem::remove_all(root);
+}
+
+TEST(ModelPackageApiTest, ExportedModelsRunWithoutSourcePackage) {
+  for (const auto mode : {MODEL_PACKAGE_WRITE_PRESERVE, MODEL_PACKAGE_WRITE_DENSE}) {
+    const auto root = std::filesystem::temp_directory_path() /
+                      ("ort_mp_export_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto source = BuildPackage(root / "source", "model",
+                                     {{"cpu", "CPUExecutionProvider", "cpu", "", "testdata/mul_1.onnx", {}, {}}});
+    ::ModelPackage* raw_package = nullptr;
+    std::unique_ptr<ModelPackageStatus, decltype(&ModelPackageStatus_Release)> status(
+        ModelPackage_Open(ToUTF8String(source.native()).c_str(), nullptr, &raw_package), ModelPackageStatus_Release);
+    ASSERT_EQ(status.get(), nullptr) << ModelPackageStatus_Message(status.get());
+    std::unique_ptr<::ModelPackage, decltype(&ModelPackage_Close)> package(raw_package, ModelPackage_Close);
+    const auto destination = root / "exported";
+    status.reset(ModelPackage_Commit(package.get(), ToUTF8String(destination.native()).c_str(), mode));
+    ASSERT_EQ(status.get(), nullptr) << ModelPackageStatus_Message(status.get());
+    std::filesystem::rename(source, root / "unavailable");
+    Ort::SessionOptions options;
+    PackageHandles handles(destination, "model", options);
+    OrtSession* raw_session = nullptr;
+    ASSERT_ORTSTATUS_OK(GetModelPackageFns().CreateSession(*ort_env, handles.component.get(), nullptr, &raw_session));
+    Ort::Session session(raw_session);
+    CheckSquareModel(session);
+    std::filesystem::remove_all(root);
+  }
 }
 
 TEST(ModelPackageApiTest, LegacyProviderFactoryIsRetained) {

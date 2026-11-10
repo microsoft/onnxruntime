@@ -1,10 +1,12 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M09 complete and published for review; M10-M24 pending.
+**Status:** Approved; M01-M10 complete and published for review; M11-M24 pending.
 M05: [PR #34044](https://github.com/microsoft/onnxruntime/pull/34044).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
 **Working memory:** [Shared scratchpad](SCRATCHPAD.md).
+**M10 refinement:** SPEC Appendix J and the detailed M10 implementation plan
+were separately approved on 2026-10-19.
 
 ## 1. Approval and tracking
 
@@ -17,7 +19,7 @@ M05's requested generation-folder layout follow-up is complete in the same PR.
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M09 are complete and M10-M24 are pending. Check tasks when their
+M01-M10 are complete and M11-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -97,7 +99,7 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01-M09 are **complete**; M10-M24 are **pending**.
+M01-M10 are **complete**; M11-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -110,7 +112,7 @@ M01-M09 are **complete**; M10-M24 are **pending**.
 | [x] | M07 | Built-in/plugin EP capability contracts / `ep-stateful-hooks` | M04, M05, M06 |
 | [x] | M08 | Native CUDA KV management / `cuda-kv-cache` | M07 |
 | [x] | M09 | Native CUDA greedy sampling / `cuda-greedy` | M07, M08 |
-| [ ] | M10 | Standalone package schema and authoring / `package-schema` | M01, M03 |
+| [x] | M10 | Standalone package schema and authoring / `package-schema` | M01, M03 |
 | [ ] | M11 | ORT package-to-chain loading / `package-runtime` | M06, M07, M08, M09, M10 |
 | [ ] | M12 | DDIM scheduler and denoising state / `ddim-policy` | M03, M06, M08 |
 | [ ] | M13 | Python API and package parity / `python-api` | M06, M11, M12 |
@@ -2352,22 +2354,346 @@ started and no PR has been merged.
 
 ### M10 - Standalone Model Package schema and authoring
 
-**Outcome:** Portable declarative chain metadata without an ORT dependency.
+**Status:** Complete; [PR #34053](https://github.com/microsoft/onnxruntime/pull/34053)
+is open/ready for human review, stacked on #34052. The user approved SPEC J.9's
+expanded save-as requirements and separately approved the detailed plan
+amendment on 2026-10-19.
+**Branch/base:** `stateful-M14-package-chain-schema`, stacked on verified M09b
+`a7a1173cd1c64d318857fa2987caf26658048509` / PR #34052.
+**Outcome:** Read, inspect, author and commit schema-1.1 named linear chains
+through the independent Model Package library, with JSON-only APIs and immediate
+common-reference integrity. No executable ORT chain construction in this PR.
+**Contract:** [SPEC Appendix J](SPEC.md#appendix-j-m10-standalone-package-chains-approved).
 
-- [ ] Implement the agreed additive schema/version contract, chain ordering,
-  component execution kinds, bindings, and explicit policy/condition metadata.
-- [ ] Extend C inspection/authoring/commit/round-trip surfaces and fixtures.
-- [ ] Preserve old packages, strict parsing, paths, shared assets, and opaque
-  consumer payloads; keep execution interpretation outside this library.
+#### Approval gates
 
-**CPU test plan:** Standalone inspection/authoring/commit/asset tests; old/new
-schema fixtures; absent optional fields; unknown fields; malformed chains,
-versions, and references; portable confinement; installed/shared-asset paths;
-round-trip preservation. Rerun existing CPU ORT Model Package API tests.
-**CUDA test plan:** No device logic in this standalone library; schema tests are
-provider-independent. CUDA chain execution is validated in M11.
-**Completion gate:** Standalone build proves no new ORT linkage; package docs and
-100% new parser/authoring/API-line coverage satisfy shared rules.
+- [x] Review the decoder-only candidate and its model references with the user.
+- [x] Confirm sampling-free prefill and decode's initial-logits handoff.
+- [x] Confirm no additional requirements before drafting the specification.
+- [x] Draft and obtain approval of SPEC Appendix J.
+- [x] Prepare the detailed M10 execution plan.
+- [x] Review this plan with the user and obtain implementation authorization.
+- [x] Complete all implementation, test, coverage and publication gates below.
+
+#### Implementation tasks and dependencies
+
+These are internal tasks for one independently reviewable M10 PR, not separately
+authorized milestones. Stop and review a split before expanding beyond a
+coherent standalone package change.
+
+| Task | Actual prerequisites | Intended result |
+| --- | --- | --- |
+| C1 | Plan approval | Contract fixtures and baseline evidence for the existing library. |
+| C2 | C1 | Versioned common-schema validation and JSON inspection. |
+| C3 | C2 | Transactional chain authoring and reference-safe component removal. |
+| C4 | C3, amendment approval | Self-contained save-as repair and persistence/compatibility qualification. |
+| C5 | C3 | Real C11 consumption and standalone shared/static independence. |
+| C6 | C4, C5 | Fresh-artifact coverage and existing CPU ORT package regressions. |
+| C7 | C6 | Reviewed documentation, evidence and a ready stacked PR. |
+
+- [x] **C1 - Establish fixtures and baseline.** Reuse the standalone tests'
+  deterministic temporary-package helpers and existing assertions. Add compact
+  fixtures for 1.0, 1.1 and a future minor; one/multiple chains; ordinary Session
+  and SessionLoop consumer payloads; inline/external components; opaque foreign
+  namespaces; and the approved decoder-only metadata. No real model download or
+  execution is needed for standalone fixtures. Record existing inspection,
+  authoring, commit and hashing test results before production changes.
+- [x] **C2 - Parse and inspect common chain structure.** Add the optional map,
+  nonempty ordered steps, unique IDs, nonempty/NUL-free identifiers, existing
+  component references and inline namespace-object validation. Keep consumer
+  payload internals opaque. Coordinate parser known-minor and New-package
+  version at 1.1. Add `GetChainsJson` and `GetChainJson`, stable package-owned
+  JSON caches, unchanged-output-on-error behavior and correct absent/not-found
+  results. Preserve old/future-minor strictness and unknown-field behavior.
+- [x] **C3 - Author chains without dangling drafts.** Add `SetChainsJson`,
+  `SetChainJson` and `RemoveChain`. Validate and prepare replacement data before
+  publishing changes; do not introduce post-mutation filesystem/cache-refresh
+  failures that would violate the new atomicity contract. Upgrade 1.0 only on
+  successful chain-setting mutations and never downgrade a future minor.
+  Protect `RemoveComponent` before orphan bookkeeping or record mutation.
+  Preserve idempotent removal and same-key component replacement. Reuse common
+  validation across parsing and mutation instead of duplicating schema logic.
+- [x] **C4 - Repair and qualify persistence and compatibility.** Apply approved
+  SPEC J.9 through D1-D4 below, then verify all existing commit
+  modes serialize/reopen the same map, order, opaque namespaces and tolerated
+  unknown fields. Exercise single-chain replacement versus whole-map replacement,
+  last-chain removal and successful recovery after rejected mutations. Preserve
+  external variant executor-info, shared assets, installed paths, portable
+  confinement and prune behavior. Verify a frozen M09b/1.0 reader can preserve
+  additive 1.1 chain data through its existing future-minor behavior.
+- [x] **C5 - Prove the standalone C surface.** Add a small reusable C11 test
+  consumer using all five APIs and explicit pass/fail checks that remain active
+  under `NDEBUG`. Enable C only in the standalone test configuration as needed;
+  do not introduce a runtime C dependency merely for a test. Run shared and
+  static standalone builds using cached nlohmann/json headers, with no ORT
+  targets available. Inspect shared-library dependencies and static consumer
+  linkage to prove no ORT/ONNX/CUDA runtime dependency was introduced.
+- [x] **C6 - Measure and regress.** Run the smallest affected CTest selection
+  during development, then the complete standalone suite with nonzero internal
+  case counts. Rebuild the existing CPU ORT package-test target and run its
+  verified package API selector from the output directory. Measure every new
+  executable production line against the M09b base with fresh LLVM profiles,
+  including validation/error paths, getters, authoring and the component-removal
+  guard. Add targeted unit cases until covered/total is exactly 100%; missing
+  instrumentation or unexecuted new code blocks completion.
+- [x] **C7 - Document and publish.** Update standalone schema/API/authoring
+  documentation and only the necessary ORT consumer-boundary guidance. Keep
+  SPEC/TASKS/SCRATCHPAD current. Record commands/results, case counts, source/
+  object identities, coverage counts, CPU configuration and CUDA N/A rationale.
+  Inspect the repository PR template, create the documented/tested M10 PR on
+  #34052 and mark ready for human review only after every gate passes. Include the
+  required commit co-author trailer. Do not merge or begin M11 automatically.
+
+#### Test matrix
+
+| Area | Required cases and observable result |
+| --- | --- |
+| Structure | Missing/empty map; one/multiple chains; ordered steps; reused components; duplicate IDs; empty steps; wrong types; missing fields; invalid/NUL identifiers; unknown components. |
+| Versioning | Unchanged 1.0 reads/unrelated commits; chains under 1.0 rejected; new authoring at 1.1; atomic automatic upgrades; no future-minor downgrade; unsupported majors. |
+| Opaque boundary | Session/loop kinds and bindings preserved without interpretation; foreign namespaces and arbitrary payload fields preserved; inline-only new namespace envelopes; variant external-file support unchanged. |
+| Inspection | Whole-map and named JSON getters; absent map gives `{}`; unknown chain errors; null/empty arguments; unchanged out-parameters; borrowed strings survive read-only calls. |
+| Authoring | Whole-map/single-chain replacement; version upgrade; no-op/last-chain removal; rejected mutations leave JSON/version/views intact; referenced-component removal rejects before mutation; removal succeeds after references are removed. |
+| Persistence | In-place/portable/installed PRESERVE/DENSE commit and source-independent reopen; exact model/external-data bytes and empty directories; unknown-field preservation; old-reader round trip; external file/directory components and namespace JSON; installed external variants; symlink/overlap/collision/failure state; shared-asset integrity and portable confinement. |
+| C consumer/linkage | Genuine C11 compilation, every new API called, explicit nonzero check counts, shared/static linkage without ORT/ONNX/CUDA. |
+| CPU EP regression | Existing `ModelPackageApiTest.*` plus a tiny-model export inference test exercise source-independent copied-model execution, ordinary selection, repeated Session creation, values/lifetimes, paths and errors using the rebuilt CPU artifact. |
+| Coverage | All new executable production lines execute under unit tests; exact covered/total counts and zero uncovered new lines, not merely a green CTest summary. |
+
+**CPU test plan:** Standalone metadata tests run on the host without any EP;
+actual CPU EP compatibility is separately established by the existing ORT package
+API tests. The distinction must remain explicit in evidence.
+**CUDA test plan:** Device execution is N/A: no kernels, provider hooks or runtime
+generation code change in M10. CPU/CUDA payload round trips are metadata tests,
+not proof of GPU execution. M11 owns native execution and parity.
+
+#### Proposed validation commands (not yet run for M10)
+
+Use the repository's documented standalone CMake/CTest entry points. Existing
+Clang/LLVM 18.1.8 and cached JSON headers are available. No dependency install is
+authorized merely to prepare this plan. After approval, create isolated build/
+profile directories; retain exact resolved commands and actual results here.
+
+```bash
+# From the repository root; shared standalone build with unit coverage.
+ROOT="$PWD"
+BUILD="$ROOT/build/state-package-m10"
+JSON_DIR="$ROOT/build/state-cpu/RelWithDebInfo/_deps/nlohmann_json-src"
+cmake -S model_package -B "$BUILD" \
+  -DMODEL_PACKAGE_BUILD_TESTS=ON -DMODEL_PACKAGE_BUILD_SHARED=ON \
+  -DNLOHMANN_JSON_DIR="$JSON_DIR" \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 \
+  -DCMAKE_C_FLAGS="-fprofile-instr-generate -fcoverage-mapping" \
+  -DCMAKE_CXX_FLAGS="-fprofile-instr-generate -fcoverage-mapping" \
+  -DCMAKE_EXE_LINKER_FLAGS="-fprofile-instr-generate" \
+  -DCMAKE_SHARED_LINKER_FLAGS="-fprofile-instr-generate"
+cmake --build "$BUILD" --parallel 8
+mkdir -p "$BUILD/coverage/targeted" "$BUILD/coverage/final"
+LLVM_PROFILE_FILE="$BUILD/coverage/targeted/%m-%p.profraw" \
+  ctest --test-dir "$BUILD" --output-on-failure \
+    -R '^(inspection|authoring|chains_c)$'
+LLVM_PROFILE_FILE="$BUILD/coverage/final/%m-%p.profraw" \
+  ctest --test-dir "$BUILD" --output-on-failure
+
+# After the final rebuild, use only profiles from those matching artifacts.
+llvm-profdata merge -sparse "$BUILD"/coverage/final/*.profraw \
+  -o "$BUILD/coverage/final/merged.profdata"
+llvm-cov export "$BUILD/test_inspection" \
+  -object "$BUILD/test_authoring" -object "$BUILD/test_commit" \
+  -object "$BUILD/test_asset_hashing" -object "$BUILD/test_chains_c" \
+  -object "$BUILD/libmodel_package.so" \
+  -instr-profile="$BUILD/coverage/final/merged.profdata" \
+  > "$BUILD/coverage/final/coverage.json"
+ldd "$BUILD/libmodel_package.so"
+
+# Independent static build and the same standalone suite.
+cmake -S model_package -B "$ROOT/build/state-package-m10-static" \
+  -DMODEL_PACKAGE_BUILD_TESTS=ON -DMODEL_PACKAGE_BUILD_SHARED=OFF \
+  -DNLOHMANN_JSON_DIR="$JSON_DIR" \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
+cmake --build "$ROOT/build/state-package-m10-static" --parallel 8
+ctest --test-dir "$ROOT/build/state-package-m10-static" --output-on-failure
+
+# Rebuild existing CPU ORT package regression artifact; run from its directory.
+cmake --build "$ROOT/build/state-cpu/RelWithDebInfo" \
+  --target onnxruntime_autoep_test --parallel 8
+(
+  cd "$ROOT/build/state-cpu/RelWithDebInfo"
+  ./onnxruntime_autoep_test --gtest_filter='ModelPackageApiTest.*'
+)
+```
+
+`chains_c` / `test_chains_c` are planned new test/target names, not existing
+results. Resolve and verify every selector after implementation. Baseline CTest
+currently has inspection, authoring, commit and asset_hashing; retain all four.
+The coverage export must be intersected with added/changed executable production
+lines against `a7a1173cd1c64d318857fa2987caf26658048509`, reporting per-file and total
+covered/total counts plus any uncovered locations. Add all compiled production
+objects if the implementation changes the linkage; no silent denominator
+exclusions or stale-profile merges.
+
+Build/run the frozen-parent compatibility probe in an explicitly scoped session
+subdirectory using the same cached JSON dependency. Record its resolved command
+and outputs when executed; do not introduce a second runtime implementation or
+commit copied parent sources.
+
+#### Completion and authorization boundary
+
+- [x] Shared/static standalone suites and real C11 consumer pass, with nonzero
+  expected case counts and no unintended exclusions.
+- [x] Existing CPU ORT package API tests pass on the rebuilt artifact.
+- [x] Exact new-production executable-line coverage is 100%, including helpers
+  and tightly coupled changes to existing code.
+- [x] Compatibility, reference-safe mutation, round-trip/path/asset and no-ORT
+  dependency evidence are recorded; temporary fixtures/probes are cleaned.
+- [x] Directly related docs are current and the stacked PR is ready for review.
+
+M10 approval authorizes standalone schema/inspection/authoring and, after the
+amendment approval below, the tightly bounded save-as materialization repair.
+It does not authorize package execution or native generation changes. In
+particular, sampling-free prefill and decode's first sample from `initial_logits`
+remain M11 work. Before implementing M11, refine budget/EOS/Step accounting and
+the native/public API behavior, preserving existing prefill-sampling contracts.
+
+**Implementation checkpoint (not final qualification):** The unchanged
+instrumented standalone baseline passed 4/4 CTest entries. New shared-build
+inspection/authoring/C11 tests pass, but the full shared/static suites fail the
+new save-as round-trip case: variant/model directories are not copied. The same
+defect was reproduced with the frozen M09b parent. The genuine older reader
+separately preserved schema-1.1 chains in a metadata-only commit. Existing rebuilt
+CPU `ModelPackageApiTest.*` passed 16/16. No final coverage claim is made.
+The user chose to expand scope; J.9 and a revised detailed plan must be approved
+before implementing the repair. Do not weaken the failed persistence test.
+
+#### Save-as repair plan amendment (approved 2026-10-19)
+
+**Outcome:** A destination package contains its model/variant files and can
+reopen/infer independently of the source package, satisfying SPEC J.9.
+**Scope:** Existing standalone commit/copy/path helpers, directly coupled unit
+tests, one CPU package integration test and related documentation. Remain in the
+M10 PR because working chain persistence is its completion requirement. No new
+schema field, public API, dependency, model parser or GPU code.
+
+- [x] Reproduce missing-directory save-as failure with the frozen parent.
+- [x] Review and obtain approval of SPEC J.9.
+- [x] Review this detailed amendment and obtain implementation authorization.
+- [x] **D1 - Prepare a confined export snapshot.** Before live-state changes,
+  resolve the destination and preflight empty-destination, source/destination
+  overlap and structural output conflicts. Build a deterministic package-local
+  export layout from component/variant indices, not user identifiers as paths.
+  Rebase known structural component/variant paths in the snapshot so installed
+  external paths become local without rewriting opaque consumer payloads.
+  PRESERVE retains inline/external shapes, not necessarily original filenames.
+- [x] **D2 - Materialize and reanchor.** Copy every resolved variant tree using
+  no-follow regular-file/directory semantics, including nested data and empty
+  directories. Reuse the existing copy helper, correcting tightly coupled
+  filesystem error reporting where necessary. Materialize external namespace
+  JSON at confined collision-safe paths within each variant; preserve its
+  parsed payload. Emit external component `component.json` records correctly.
+  In DENSE mode, rebase variant anchors when flattening external components;
+  retain the existing external-namespace rejection rather than silently inlining.
+  Reparse the exported snapshot and swap live state only after success.
+- [x] **D3 - Qualify success and failure paths.** Keep the original failing
+  real-file chain save-as test. Add directory-form external components, installed
+  external directories/JSON, nested model data, empty directories, missing/
+  unresolved draft variants and multiple components/variants. Make the source
+  unavailable before reopening destination and compare bytes and payloads.
+  Test symlinks/unsupported objects, overlapping copies, metadata/model path
+  collisions and injected/controlled filesystem failures; assert unchanged live
+  root, version, JSON/views and source bytes on rejected/failed exports.
+- [x] **D4 - Prove actual consumption and coverage.** Add a CPU ORT package API
+  test exporting an existing tiny local ONNX fixture, make the source package
+  unavailable, create a Session from the export and check its inference result.
+  Repeat shared/static standalone suites and existing CPU package regressions.
+  Include commit/copy/rebase helper/error lines in fresh LLVM new-line coverage,
+  adding focused unit tests until measured 100%. Record the parent negative
+  control separately from repaired behavior and document structural-path rebasing
+  plus the opaque-payload file-discovery boundary.
+
+**Dependencies:** D1 requires amendment approval and C3; D2 requires D1; D3
+requires D2; D4 requires D3. C4 is complete only after D4 and its compatibility
+checks. C6/C7 remain gated on completed C4/C5. Existing proposed shared/static/
+CPU commands apply unchanged; extend the coverage source list to include
+`model_package/src/commit_prune.cc` and any other changed production helper.
+Keep per-file source/object/profile identity and zero uncovered new executable
+lines. GPU execution is N/A for these file operations.
+
+#### Qualification checkpoint
+
+Final shared and static standalone suites both pass **5/5** CTest entries:
+inspection **25**, asset hashing **15**, authoring **26**, commit **20** internal
+cases, plus a genuine C11 consumer with **15** explicit checks across all five
+new APIs. No test is skipped. Variant bytes, nested external data and empty
+directories survive source-independent PRESERVE/DENSE exports in both layouts.
+Installed external component/metadata copying, re-export after namespace removal,
+in-place dense anchors and failed-copy state preservation pass.
+
+Fresh LLVM unit profiles in
+`build/state-package-m10/coverage/final-verified-2/` measure **282/282** new
+executable production lines against M09b `a7a1173cd1`:
+
+| Production source | Covered / new executable lines |
+| --- | --- |
+| `manifest_parser.cc` | 70/70 |
+| `model_package_impl.cc` | 29/29 |
+| `authoring.cc` | 60/60 |
+| `commit_prune.cc` | 123/123 |
+
+The diagnostic dump identifies exactly three dormant hash-zero nlohmann
+input-stream adapter maps. No authored function has mismatched profile data;
+no new production line is excluded. This is executable-line coverage, not a
+branch-coverage claim. `ldd` on the standalone shared library and static C11
+consumer confirms no ORT/ONNX/CUDA dependency.
+
+The frozen original M09b reader also opens/in-place-commits the repaired
+schema-1.1 export, preserving chains and copied bytes. Its earlier negative
+control still reproduces the original missing-model-directory save-as defect.
+The rebuilt CPU package API suite passed **17/17**, including
+`ExportedModelsRunWithoutSourcePackage`, which runs actual square-model inference
+from PRESERVE and DENSE exports after the original source path becomes
+unavailable. No reported test skips. A final incremental rebuild/rerun confirmed
+the tested artifact includes the last source changes.
+
+Executed qualification commands (all **passed**, except the deliberately failing
+frozen-parent negative control described above):
+
+```bash
+cmake --build build/state-package-m10 --parallel 8
+LLVM_PROFILE_FILE="$PWD/build/state-package-m10/coverage/final-verified-2/%m-%p.profraw" \
+  ctest --test-dir build/state-package-m10 --output-on-failure -V
+llvm-profdata merge -sparse \
+  build/state-package-m10/coverage/final-verified-2/*.profraw \
+  -o build/state-package-m10/coverage/final-verified-2/merged.profdata
+llvm-cov export build/state-package-m10/libmodel_package.so \
+  -instr-profile=build/state-package-m10/coverage/final-verified-2/merged.profdata \
+  > build/state-package-m10/coverage/final-verified-2/coverage.json
+cmake --build build/state-package-m10-static --parallel 8
+ctest --test-dir build/state-package-m10-static --output-on-failure -V
+ldd build/state-package-m10/libmodel_package.so
+ldd build/state-package-m10-static/test_chains_c
+cmake --build build/state-cpu/RelWithDebInfo \
+  --target onnxruntime_autoep_test --parallel 8
+# From build/state-cpu/RelWithDebInfo:
+./onnxruntime_autoep_test --gtest_filter='ModelPackageApiTest.*'
+```
+
+Configure options are recorded in the command section above; actual builds used
+cached nlohmann/json headers and Clang/LLVM18. No dependency install was needed.
+The source-distributed library's schema is 1.1; no ORT API version was bumped.
+Changed-range clang-format and `git diff --check` passed. The embedded SPEC JSON
+still exactly matches the reviewed candidate and all 24 macro milestones remain.
+CUDA execution/device coverage are N/A; no new device code or runtime routing.
+
+Exact logs, parent-probe/coverage script sources, profile diagnostics and artifact
+hashes are retained in session files as `m10-final-*.log`,
+`m10-cpu-final-*.log`, `m10-parent-*.log`, `m10-host-coverage-final.txt`,
+`m10-verified-artifact-hashes.txt` and `measure_m10_coverage.py`. Final LLVM
+exports/profiles remain in the standalone build tree. No production line was
+waived for tool availability. Implementation `7f48009fb30054f931624a2068ca7d2bf0518088`
+is published as ready-for-review PR #34053, stacked on verified M09b PR #34052.
+All M10 gates pass. Temporary compatibility build/source copies and probe
+binaries were cleaned; source probes, reports, profiles and hashes remain.
+No PR was merged and M11 has not begun.
 
 ### M11 - ORT package-to-chain loading
 

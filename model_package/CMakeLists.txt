@@ -105,7 +105,13 @@ install(FILES include/model_package_api.h include/model_package.h
 # ─────────────────────────────────────────────────────────────────────────────
 
 if(MODEL_PACKAGE_BUILD_TESTS)
+  enable_language(C)
   enable_testing()
+  add_executable(test_chains_c tests/test_chains_c.c)
+  set_target_properties(test_chains_c PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
+  target_link_libraries(test_chains_c PRIVATE model_package)
+  add_test(NAME chains_c COMMAND test_chains_c)
+
   add_executable(test_inspection tests/test_inspection.cc)
   target_link_libraries(test_inspection PRIVATE model_package nlohmann_json::nlohmann_json)
   target_include_directories(test_inspection PRIVATE
