@@ -34,3 +34,13 @@ target_include_directories(ort_opschema_lib PRIVATE ${ONNXRUNTIME_ROOT} ${ORTTRA
 onnxruntime_add_include_to_target(ort_opschema_lib onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface)
 add_dependencies(ort_opschema_lib ${OPSCHEMA_LIB_DEPENDENCIES})
 
+if (onnxruntime_BUILD_UNIT_TESTS)
+  onnxruntime_add_executable(ort_opschema_lib_test
+    "${ONNXRUNTIME_ROOT}/test/opschema/opschema_lib_test.cc")
+  target_include_directories(ort_opschema_lib_test PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR})
+  onnxruntime_add_include_to_target(ort_opschema_lib_test
+    onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface)
+  target_link_libraries(ort_opschema_lib_test PRIVATE ort_opschema_lib ${OPSCHEMA_LIB_DEPENDENCIES})
+  add_test(NAME ort_opschema_lib_test COMMAND ort_opschema_lib_test)
+endif()
+

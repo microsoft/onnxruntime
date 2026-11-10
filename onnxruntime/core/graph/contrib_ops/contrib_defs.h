@@ -35,7 +35,7 @@ inline bool HasRawData(const ONNX_NAMESPACE::TensorProto& ten_proto) {
   ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ_HELPER(__COUNTER__, name)
 #define ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ_HELPER(Counter, name) \
   ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ(Counter, name)
-#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS) && !defined(_OPSCHEMA_LIB_)
 #define ORT_CONTRIB_SCHEMA_REGISTER_ONCE ::onnxruntime::contrib::ContribSchemaRegisterOnce
 #else
 #define ORT_CONTRIB_SCHEMA_REGISTER_ONCE ONNX_NAMESPACE::OpSchemaRegistry::OpSchemaRegisterOnce

@@ -42,19 +42,28 @@ Status ValidateCudaSourceReplacements(gsl::span<const SourceReplacement* const> 
     ORT_RETURN_IF_NOT(source && source->discover && !source->config.empty() &&
                           !source->rule_id.empty() && source->rule_id == source->body.rule.name,
                       "Malformed CUDA source replacement declaration.");
+    metadata.push_back(source->Metadata());
+  }
+  ORT_RETURN_IF_ERROR(ValidateSourceDeclarations(schemas, policies, metadata, legacy));
+  for (const auto* source : sources) {
     ORT_RETURN_IF_NOT(source->body.rule.replacement.Parsed(),
                       "CUDA v0 source replacement requires a parsed replacement DAG; callback-only bodies "
                       "cannot be declared Available.");
-    metadata.push_back(source->Metadata());
+    ORT_RETURN_IF_NOT(SupportsCudaReplacement(*source->body.rule.replacement.Parsed(),
+                                              source->body.rule.pattern.Outputs().size()),
+                      "CUDA v0 source replacement requires one target with identity output mappings.");
   }
-  return ValidateSourceDeclarations(schemas, policies, metadata, legacy);
+  return Status::OK();
 }
 
 bool SupportsCudaReplacement(const rewrite::Replacement& recipe, size_t output_count) {
   if (!recipe.Plan() || recipe.Plan()->size() != 1 || recipe.Outputs().size() != output_count) return false;
-  return std::all_of(recipe.Outputs().begin(), recipe.Outputs().end(), [&](const auto& output) {
-    return output.node == 0 && output.slot < recipe.Plan()->front().output_count;
-  });
+  if (recipe.Plan()->front().output_count != output_count) return false;
+  for (size_t i = 0; i < output_count; ++i) {
+    const auto& output = recipe.Outputs()[i];
+    if (output.node != 0 || output.slot != i) return false;
+  }
+  return true;
 }
 }  // namespace onnxruntime::contrib::cuda::fusion
 

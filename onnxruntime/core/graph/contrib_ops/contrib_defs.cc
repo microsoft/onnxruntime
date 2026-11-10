@@ -1037,11 +1037,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           // The outer schema macro assigns the key after evaluating this builder.
           schema.SetName("GatherPacked").SetDomain(kMSDomain).SinceVersion(1);
           schema.Finalize();
+#ifndef _OPSCHEMA_LIB_
           ORT_THROW_IF_ERROR(RecordSourcePolicy(
               schema, {NonExecutableState::PendingTodo,
                        "GatherPacked packed embedding dequantization source pattern/numerical "
                        "qualification not yet provided.",
                        std::nullopt}));
+#endif
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -1086,11 +1088,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .FillUsing([](OpSchema& schema) {
           schema.SetName("MatMulPacked").SetDomain(kMSDomain).SinceVersion(1);
           schema.Finalize();
+#ifndef _OPSCHEMA_LIB_
           ORT_THROW_IF_ERROR(RecordSourcePolicy(
               schema, {NonExecutableState::PendingTodo,
                        "MatMulPacked packed-weight matrix multiplication source pattern/numerical "
                        "qualification not yet provided.",
                        std::nullopt}));
+#endif
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -1130,11 +1134,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .FillUsing([](OpSchema& schema) {
           schema.SetName("MoEPacked").SetDomain(kMSDomain).SinceVersion(1);
           schema.Finalize();
+#ifndef _OPSCHEMA_LIB_
           ORT_THROW_IF_ERROR(RecordSourcePolicy(
               schema, {NonExecutableState::PendingTodo,
                        "MoEPacked packed expert layer source pattern/numerical "
                        "qualification not yet provided.",
                        std::nullopt}));
+#endif
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(BiasDropout, 1,

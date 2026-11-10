@@ -391,6 +391,8 @@ class PatternRewriter final : public GraphTransformer {
   explicit PatternRewriter(Rules rules, Options options = {});
   // Checks all source alternatives and any parsed replacement without compiling the rule.
   static Status ValidateOpsets(const Rule& rule);
+  // Also checks parsed tensor and attribute bindings without mutating the rule.
+  static Status ValidateRule(const Rule& rule);
   // Requires an already resolved graph. Resolve again after mutation before general graph use.
   // A later failure does not roll back earlier rewrites; inspect the returned status before Resolve/use.
   Status Run(Graph& graph, Statistics& statistics) const;
