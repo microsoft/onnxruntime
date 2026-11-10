@@ -1205,6 +1205,117 @@ TEST_P(StatefulCxxApiProviderTest, NativeGenerationBudgetsCacheSnapshotsAndOwned
   }
 }
 
+TEST_P(StatefulCxxApiProviderTest, BootstrapTypedConfigurationAndSampleOnlyProgress) {
+  for (int64_t budget : {0, 1, 3}) {
+    auto session = Session(PublicGenerationModel(), GetParam());
+    const int64_t dimensions[]{1, 1, 0, 1};
+    const OrtStatefulKVCacheBinding cache{{"key", ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, dimensions, 4, 2, 0},
+                                          "past_key",
+                                          "present_key",
+                                          ORT_KV_CACHE_SHARE};
+    const char* finite[]{"token"};
+    const char* outputs[]{"logits"};
+    const OrtStatefulExitCondition end{ORT_STATEFUL_END_OF_INPUTS, 0, nullptr, nullptr, 0};
+    const OrtStatefulExitCondition limit{ORT_STATEFUL_MAX_GENERATED_TOKENS, budget, nullptr, nullptr, 0};
+    OrtStatefulLoopConfig config{};
+    config.struct_size = sizeof(config);
+    config.finite_input_names = finite;
+    config.num_finite_inputs = 1;
+    config.output_names = outputs;
+    config.num_outputs = 1;
+    config.exit_conditions = &end;
+    config.num_exit_conditions = 1;
+    config.nonempty_input = "token";
+    config.kv_caches = &cache;
+    config.num_kv_caches = 1;
+    Ort::SessionLoop prefill(session, Ort::SessionLoopOptions(config));
+    const OrtStatefulGenerationConfig generation{
+        sizeof(generation), ORT_STATEFUL_DECODE, "token", "logits", "mask", "positions", 0, 0};
+    config.generation = &generation;
+    config.finite_input_names = nullptr;
+    config.num_finite_inputs = 0;
+    config.nonempty_input = nullptr;
+    config.exit_conditions = &limit;
+    Ort::SessionLoop decode(session, Ort::SessionLoopOptions(config));
+    const OrtStatefulInputBinding bindings[]{{"token", {ORT_STATEFUL_EXTERNAL_INPUT, "prompt", 0}},
+                                             {"mask", {ORT_STATEFUL_EXTERNAL_INPUT, "mask", 0}},
+                                             {"positions", {ORT_STATEFUL_EXTERNAL_INPUT, "positions", 0}}};
+    OrtStatefulChainComponent components[2]{};
+    components[0].name = "prefill";
+    components[0].loop = prefill;
+    components[0].inputs = bindings;
+    components[0].num_inputs = 3;
+    components[1].name = "decode";
+    components[1].loop = decode;
+    const OrtStatefulChainOutput selected{"tokens", 1, nullptr, ORT_STATEFUL_GENERATED_TOKEN_IDS};
+    const OrtStatefulChainConfig description{sizeof(description), components, 2, &selected, 1};
+    Ort::SessionChainOptions options(description);
+    char output_name[]{"logits"};
+    OrtStatefulGenerationBootstrapConfig bootstrap{sizeof(bootstrap),
+                                                   {ORT_STATEFUL_COMPONENT_OUTPUT, output_name, 0},
+                                                   {ORT_STATEFUL_EXTERNAL_INPUT, "prompt", 0},
+                                                   1,
+                                                   1};
+    options.SetGenerationBootstrap(1, bootstrap);
+    output_name[0] = 'x';
+    Ort::SessionChain chain(options);
+    output_name[0] = 'l';
+    for (int error : {0, 1, 2, 3, 4, 5}) {
+      auto invalid = bootstrap;
+      if (error == 0) invalid.struct_size = 0;
+      if (error == 1) invalid.has_logits_position = 2;
+      if (error == 2) invalid.logits.kind = static_cast<OrtStatefulSourceKind>(42);
+      if (error == 3) invalid.prompt.kind = static_cast<OrtStatefulSourceKind>(42);
+      if (error == 4) {
+        invalid.has_logits_position = 1;
+        invalid.logits_position = -1;
+      }
+      if (error == 5) invalid.logits.component_index = 1;
+      Error(Api().SessionChainOptionsSetGenerationBootstrap(options, 1, &invalid));
+    }
+    Error(Api().SessionChainOptionsSetGenerationBootstrap(nullptr, 1, &bootstrap));
+    Error(Api().SessionChainOptionsSetGenerationBootstrap(options, 9, &bootstrap));
+    Error(Api().SessionChainOptionsSetGenerationBootstrap(options, 0, &bootstrap));
+    options.ClearGenerationBootstrap(1);
+    EXPECT_THROW(Ort::SessionChain{options}, Ort::Exception);
+    options.SetGenerationBootstrap(1, bootstrap);
+    options.SetConfig(description);
+    EXPECT_THROW(Ort::SessionChain{options}, Ort::Exception);
+    options.SetGenerationBootstrap(1, bootstrap);
+    auto prompt = Tensor<int64_t>({1, 2}, {0, 1});
+    auto mask = Tensor<int64_t>({1, 2}, {1, 1});
+    auto positions = Tensor<int64_t>({1, 2}, {0, 1});
+    const OrtStatefulNamedValue values[]{{"prompt", prompt}, {"mask", mask}, {"positions", positions}};
+    OrtStatefulInputs inputs{};
+    inputs.struct_size = sizeof(inputs);
+    inputs.inputs = values;
+    inputs.num_inputs = 3;
+    auto execution = chain.CreateExecution(inputs);
+    auto first = execution.Step();
+    EXPECT_TRUE(first.GetInfo().executed);
+    auto initial = execution.Step();
+    EXPECT_FALSE(initial.GetInfo().executed);
+    EXPECT_EQ(initial.GetInfo().iterations, 0);
+    EXPECT_EQ(initial.GetInfo().invocations, 1);
+    EXPECT_EQ(initial.GetInfo().generated_token.has_value(), budget > 0);
+    if (budget > 0) EXPECT_EQ(initial.GetInfo().generated_token, 2);
+    auto result = initial.GetInfo().completed ? initial : execution.Run();
+    auto tokens = CxxOutput(result, "tokens");
+    EXPECT_EQ(tokens.GetTensorTypeAndShapeInfo().GetElementCount(), static_cast<size_t>(budget));
+    EXPECT_EQ(result.GetInfo().invocations, std::max<int64_t>(1, budget));
+    auto keys = CxxOutput(execution.GetState(), "key", ORT_STATEFUL_STATE_VALUES);
+    EXPECT_EQ(keys.GetTensorTypeAndShapeInfo().GetShape()[2], 2 + std::max<int64_t>(0, budget - 1));
+    execution.Reset();
+    execution.Cancel();
+    EXPECT_THROW(execution.Step(), Ort::Exception);
+    EXPECT_TRUE(execution.RequiresReset());
+    execution.Reset();
+    EXPECT_EQ(CxxOutput(execution.Run(), "tokens").GetTensorTypeAndShapeInfo().GetElementCount(),
+              static_cast<size_t>(budget));
+    EXPECT_EQ(tokens.GetTensorTypeAndShapeInfo().GetShape(), std::vector<int64_t>{budget});
+  }
+}
+
 INSTANTIATE_TEST_SUITE_P(Cpu, StatefulCxxApiProviderTest, testing::Values(false));
 INSTANTIATE_TEST_SUITE_P(Cpu, StatefulApiProviderTest, testing::Values(false));
 #ifdef USE_CUDA

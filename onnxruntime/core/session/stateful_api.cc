@@ -14,6 +14,7 @@
 
 #include "core/common/safeint.h"
 #include "core/session/allocator_adapters.h"
+#include "core/session/abi_stateful_impl.h"
 #include "core/session/inference_session.h"
 #include "core/session/session_chain.h"
 
@@ -27,9 +28,6 @@ struct OrtSessionLoop {
 };
 struct OrtSessionChainOptions {
   std::unique_ptr<SessionChainOptions> value;
-};
-struct OrtSessionChain {
-  std::shared_ptr<const SessionChain> value;
 };
 struct OrtStatefulExecution {
   std::variant<std::unique_ptr<SessionLoopExecution>, std::unique_ptr<SessionChainExecution>> value;
@@ -97,6 +95,7 @@ V1_PREFIX(OrtStatefulKVCacheStats, shared_updates)
 V1_PREFIX(OrtStatefulProviderCapabilities, device_id)
 V1_PREFIX(OrtStatefulDispatchInfo, failures)
 V1_PREFIX(OrtStatefulStagingInfo, cpu_snapshot_copy_bytes)
+V1_PREFIX(OrtStatefulGenerationBootstrapConfig, logits_position)
 #undef V1_PREFIX
 
 template <typename T>
@@ -139,6 +138,14 @@ Status Names(const char* const* names, size_t count, InlinedVector<std::string>&
     ORT_RETURN_IF_ERROR(Name(names[i], name));
     out.push_back(std::move(name));
   }
+  return Status::OK();
+}
+
+Status Source(const OrtStatefulValueSource& input, ChainValueSource& out) {
+  ORT_RETURN_IF_ERROR(Enum(input.kind, 3));
+  ORT_RETURN_IF_ERROR(Name(input.name, out.name));
+  out.kind = static_cast<ChainSourceKind>(input.kind);
+  out.component_index = input.component_index;
   return Status::OK();
 }
 
@@ -256,11 +263,7 @@ Status ChainConfig(const OrtStatefulChainConfig* config, SessionChainOptions& ou
     for (size_t j = 0; j < input.num_inputs; ++j) {
       ChainInputBinding binding;
       ORT_RETURN_IF_ERROR(Name(input.inputs[j].input_name, binding.input_name));
-      const auto& source = input.inputs[j].source;
-      ORT_RETURN_IF_ERROR(Enum(source.kind, 3));
-      binding.source.kind = static_cast<ChainSourceKind>(source.kind);
-      ORT_RETURN_IF_ERROR(Name(source.name, binding.source.name));
-      binding.source.component_index = source.component_index;
+      ORT_RETURN_IF_ERROR(Source(input.inputs[j].source, binding.source));
       value.inputs.push_back(std::move(binding));
     }
     ORT_RETURN_IF_ERROR(Range(input.state_outputs, input.num_state_outputs));
@@ -747,6 +750,45 @@ ORT_API_STATUS_IMPL(KVCacheOptionsSetProvider, OrtKVCacheOptions* options, OrtSe
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(SessionChainOptionsSetGenerationBootstrap, OrtSessionChainOptions* options, size_t component,
+                    const OrtStatefulGenerationBootstrapConfig* config) {
+  API_IMPL_BEGIN
+  CHECK_POINTERS(options);
+  ORT_API_RETURN_IF(component >= options->value->components.size(), ORT_INVALID_ARGUMENT, "Invalid component index");
+  std::optional<ChainGenerationBootstrap> parsed;
+  if (config) {
+    ORT_API_RETURN_IF_STATUS_NOT_OK(Sized(config));
+    ORT_API_RETURN_IF_STATUS_NOT_OK(Require(config->has_logits_position == 0 || config->has_logits_position == 1,
+                                            "has_logits_position must be 0 or 1"));
+    ChainGenerationBootstrap value;
+    ORT_API_RETURN_IF_STATUS_NOT_OK(Source(config->logits, value.logits));
+    ORT_API_RETURN_IF_STATUS_NOT_OK(Source(config->prompt, value.prompt));
+    const auto* loop =
+        std::get_if<std::shared_ptr<const SessionLoop>>(&options->value->components[component].execution);
+    ORT_API_RETURN_IF(!loop || !*loop || !(*loop)->Options().generation ||
+                          (*loop)->Options().generation->phase != TokenGenerationPhase::Decode,
+                      ORT_INVALID_ARGUMENT, "Bootstrap target requires a decode loop");
+    ORT_API_RETURN_IF(
+        value.logits.kind != ChainSourceKind::ComponentOutput || value.logits.component_index >= component,
+        ORT_INVALID_ARGUMENT, "Bootstrap logits must name an earlier component output");
+    ORT_API_RETURN_IF(
+        value.prompt.kind == ChainSourceKind::ComponentOutput && value.prompt.component_index >= component,
+        ORT_INVALID_ARGUMENT, "Bootstrap prompt must name an earlier component output");
+    const auto* source = std::get_if<std::shared_ptr<const SessionLoop>>(
+        &options->value->components[value.logits.component_index].execution);
+    ORT_API_RETURN_IF(source && *source && (*source)->Options().generation, ORT_INVALID_ARGUMENT,
+                      "Bootstrap producer must not already sample native generation tokens");
+    if (config->has_logits_position) {
+      ORT_API_RETURN_IF(config->logits_position < 0, ORT_INVALID_ARGUMENT, "Logits position must be nonnegative");
+      value.logits_position = config->logits_position;
+    }
+    parsed = std::move(value);
+  }
+  options->value->components[component].generation_bootstrap = std::move(parsed);
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(SamplerOptionsSetProvider, OrtSamplerOptions* options, OrtSession* session,
                     const OrtStatefulProviderSelection* selection) {
   API_IMPL_BEGIN
@@ -904,6 +946,7 @@ static constexpr OrtStatefulApi stateful_api = {
     &SamplerOptionsGetDispatchInfo,
     &KVCacheManagerRequiresReset,
     &StatefulExecutionGetStagingInfo,
+    &SessionChainOptionsSetGenerationBootstrap,
 };
 
 #undef CHECK_POINTERS

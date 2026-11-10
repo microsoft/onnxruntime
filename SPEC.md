@@ -8,6 +8,11 @@ Implementation requires separate approval of `TASKS.md`.
 The detailed `TASKS.md` plan was separately approved on 2026-10-19.
 The save-as scope amendment in J.9 and its revised implementation plan were
 separately approved on 2026-10-19.
+**M11 refinement:** Appendix K was approved on 2026-10-20 for detailed plan
+preparation. The CPU-first `TASKS.md` plan was separately approved on 2026-10-20;
+GPU qualification was resumed and verified on 2026-10-21 with compatible tooling.
+M11 is published for review in [#34054](https://github.com/microsoft/onnxruntime/pull/34054),
+stacked on M10; later milestones are not started.
 
 ## 1. Purpose
 
@@ -2400,3 +2405,358 @@ rather than documenting it as an exclusion.
 
 Review this amendment before revising the detailed M10 plan. Implementation of
 the expanded commit repair requires separate approval of that revised plan.
+
+## Appendix K. M11 executable package chains (approved)
+
+**Interview completed:** 2026-10-20. The user confirmed there were no additional
+requirements before drafting. This appendix refines PKG-1 through PKG-7 and the
+sampling-free prefill handoff approved in J.4. It does not authorize implementation.
+**Specification approved:** 2026-10-20, for detailed execution-plan preparation.
+M11 will be **one PR**, stacked on verified M10, as explicitly requested.
+
+### K.1 Outcome and boundaries
+
+- Load an explicitly named chain from a schema-1.1 Model Package into an owned,
+  immutable SessionChain through public C/C++ APIs. Execute, Step, inspect,
+  cancel, reset and retain results through the existing stateful interfaces.
+- Support ordinary Session and SessionLoop steps and the existing declarative
+  input/state/output/cache/native-generation features. Reuse existing variant
+  selection, package paths, Session options and Session initialization.
+- Add an explicit programmatic chain binding for initial logits and their
+  originating prompt. Package loading uses the same native implementation;
+  it must not implement a separate JSON-specific generation engine.
+- Prefill supplies logits to the **decode SessionLoop**, not directly to a
+  conventional decoder ONNX model. The loop selects a token and supplies token
+  IDs to that model. Prefill itself has no sampler.
+- Preserve existing programmatic prefill-sampling behavior, ordinary stateless
+  Session APIs, single-component package loading and standalone package-library
+  independence. No existing package silently changes execution mode.
+- Manifest policies are authoritative: no per-execution token-limit/EOS override
+  feature is added. Prompt/feed values still vary between executions.
+- No implicit chain choice, graph/DAG scheduler, custom predicate, executable
+  manifest code, new sampling algorithm, chunked prefill, DDIM implementation or
+  new language binding is introduced. Standalone decode restoration from
+  arbitrary external KV state is not part of this chain-handoff extension.
+
+### K.2 Sampling-free prefill and decode bootstrap
+
+- New mode is opt-in through an explicit bootstrap binding on the decode
+  component. The logits source must be an earlier component output. The
+  producer has no native prefill-sampling policy; legacy and new bootstrap
+  modes cannot initialize the same generation history.
+- A prompt source explicitly identifies the original nonempty CPU int64
+  `[1, sequence]` token tensor. Reuse native prompt validation, including token
+  nonnegativity. An external sequence source must contain exactly one complete
+  prompt batch; chunking remains deferred.
+- Initialize consumed-input position from the actual prompt sequence length,
+  not logits shape, a guessed model-port name or a fixed package constant.
+  This also supports models without managed caches and optional decode
+  attention/position inputs.
+- Managed prefill/decode caches must agree on names, specs and compatible actual
+  provider/device identity. Their logical lengths at handoff must equal the
+  consumed prompt length. Shared-prefix reuse is not implicitly enabled.
+- Initial logits follow existing greedy dtype/shape/position/NaN/tie rules.
+  Validate compatible model metadata, actual tensor placement and known
+  vocabulary dimensions. Validate dynamic values when they become available;
+  do not claim that model-dependent output data was validated before running it.
+- The decode component's sampler/provider policy owns both the initial sample
+  and later samples. Initial-row selection defaults to the last logits row,
+  independently of the row selection for subsequent decoder model outputs.
+- The first sampled token enters generated history and the token budget once.
+  It is the pending input for the next decode-model invocation; it is not
+  sampled or emitted again just to cross the component boundary.
+- Generic sampler-free prefill uses its explicit model input bindings. If its
+  model needs attention masks/positions, bind those feeds explicitly; do not
+  silently attach the legacy sampling generation policy to prepare them.
+
+### K.3 Step, exits, zero budgets and lifecycle
+
+- After prefill completes, the first decode Step is **sample-only**. It emits
+  the first generated token without calling the decode model.
+- Report `executed = false`, `has_generated_token = true`, decode iterations
+  zero, unchanged total model-invocation count, the decode step name and updated
+  generated-token count. Reuse existing result fields; `executed` continues to
+  mean a model invocation, not any observable progress.
+- Chain Step must return on this token event. It must not spin into a decode
+  model call merely because `executed` is false. Run continues through
+  sample-only and model-executing Steps until explicit completion.
+- Subsequent decode Steps perform at most one model invocation, consume the
+  pending token, update caches and sample the next token as today.
+- Evaluate already-satisfied exits before sampling. After the initial sample,
+  evaluate token-limit/EOS exits immediately. Budget one or first-token EOS can
+  finish decode with zero decode-model invocations. Preserve OR semantics and
+  deterministic simultaneous exit reasons.
+- In the **new mode**, a zero decode token budget does not override prefill's
+  explicit EndOfInputs execution. Prefill runs, populating caches/outputs;
+  decode invokes neither the sampler nor its model and returns no generated IDs.
+  Existing legacy generation mode keeps its prior zero-budget behavior.
+- For one prefill invocation and no earlier EOS/other exit, budget N yields:
+
+  | Budget | Prefill model calls | Initial samples | Decode model calls | Generated tokens |
+  | --- | --- | --- | --- | --- |
+  | 0 | 1 | 0 | 0 | 0 |
+  | 1 | 1 | 1 | 0 | 1 |
+  | N > 1 | 1 | 1 | N - 1 | N |
+
+- Sample-only Steps do not republish model outputs or perform cache updates.
+  A completion-only call after completion never repeats the token event.
+  Do not substitute prefill logits for an unproduced decode-model output;
+  retain explicit missing-output errors when a selected port was never produced.
+- Preserve atomic boundary cancellation, not GPU preemption. Cancellation and
+  failures after possible advancement require Reset. Failed Reset stays invalid.
+  Reset clears bootstrap progress/history/cache state and reuses original feeds.
+  Immutable prior results/values remain valid under existing lifetime contracts.
+
+### K.4 Programmatic C/C++ extension
+
+Add a size-tagged bootstrap record after the existing source type definitions:
+
+```c
+typedef struct OrtStatefulGenerationBootstrapConfig {
+  size_t struct_size;
+  OrtStatefulValueSource logits;
+  OrtStatefulValueSource prompt;
+  int has_logits_position;
+  int64_t logits_position;
+} OrtStatefulGenerationBootstrapConfig;
+```
+
+Append this member to `OrtStatefulApi` and its initializer:
+
+```c
+OrtStatus* SessionChainOptionsSetGenerationBootstrap(
+    OrtSessionChainOptions* options,
+    size_t component,
+    const OrtStatefulGenerationBootstrapConfig* bootstrap_or_null);
+```
+
+- `logits` names an earlier COMPONENT_OUTPUT. `prompt` uses an existing tensor
+  source; an EXTERNAL_SEQUENCE source is resolved to its single full-prompt
+  element. Validate source kinds, dependencies and types rather than treating
+  bootstrap data as an ONNX model input port.
+- Copy configuration and strings transactionally. NULL removes this component's
+  bootstrap setting. Unknown component indices, invalid enum/position flags,
+  undersized records and conflicting policies fail without changing options.
+  `SessionChainOptionsSetConfig` clears bootstrap overrides, as with provider
+  overrides. Created definitions remain immutable.
+- Add C++ `SessionChainOptions::SetGenerationBootstrap(component, config)` and
+  `ClearGenerationBootstrap(component)` conveniences. Both use the same C API
+  and existing move-only options/result conventions.
+- Preserve all old record sizes/array strides, prefix endpoints, table members
+  and signatures. Add a frozen minimum-size endpoint for the new record.
+  No `ORT_API_VERSION` bump or release markers; document additions as Version1.32.
+- Keep generation math/input-policy logic under `core/generate`; session/chain
+  code owns execution wiring. Reuse existing validation/dispatch helpers.
+
+### K.5 ORT chain payload
+
+The common M10 structure stays unchanged. Parse only `executor_info.ort` for the
+selected chain and its steps; other namespaces remain opaque. New ORT-private
+fields do not require a common-schema bump beyond 1.1.
+
+| Scope | Supported fields |
+| --- | --- |
+| Chain `executor_info.ort` | `kv_caches`, required nonempty `outputs`. |
+| Step `executor_info.ort` | Required `kind`, optional `inputs`, optional `state_outputs`; SessionLoop steps use required `loop`; ordinary Session steps may use `kv_caches` and `cache_provider`. |
+| `loop` | `finite_input_names`, `nonempty_input`, `feedback`, required nonempty `exit_conditions`, `generated_token_output`, `generation`, `sampler`, `cache_provider`, `kv_caches`. |
+| `generation` | Required `phase`, `input_ids`, `logits_output`; optional `attention_mask`, `position_ids`, `logits_position`, `initial_logits`. |
+
+- `kind` is exactly `"session"` or `"session_loop"`. Do not infer it from
+  component/model names. Reject irrelevant/conflicting kind-specific fields.
+- `inputs` maps model-input names to existing source kinds:
+  `{"kind":"external_input","name":"..."}`,
+  `{"kind":"external_sequence","name":"..."}`,
+  `{"kind":"model_output","step":"...","output":"..."}`, or
+  `{"kind":"state","name":"..."}`.
+  Step references use unique IDs, not array indices; model-output references
+  must name an earlier step. Validate required inputs and native managed-port
+  conflicts using model signatures and the existing chain validator.
+- `state_outputs` maps retained-state names to model-output names. `feedback`
+  is an array of `{"input":"...","output":"..."}` loop bindings.
+- Exit entries map to existing native conditions:
+  `end_of_inputs`; `max_iterations`/`max_generated_tokens` with `limit`;
+  `eos` with `token_ids`; `boolean_output` with `output`.
+  Validate names, integer ranges and scalar types through native contracts.
+  Never supply an absent SessionLoop exit implicitly.
+- Chain `kv_caches` maps names to specs containing `element_type`, `shape`,
+  `sequence_axis`, `initial_capacity`. Element types are `float32`, `float16`
+  or `bfloat16`. Per-step/loop bindings contain `cache`, `input`, `output`,
+  `update`, with supported updates `share`, `copy`, `append`.
+  Specs must exist and agree across references; reuse native cache validation.
+- Native generation phases remain `prefill` and `decode`. A generation policy
+  requires an explicit `sampler` object with `algorithm: "greedy"`; no other
+  algorithm is supported. A sampler without a corresponding generation policy
+  is invalid. Scalar model-token output loops do not imply a runtime sampler.
+- Provider objects use `mode: "cpu"`, `"prefer_provider"` or
+  `"require_provider"`. Non-CPU modes explicitly supply `provider_name`,
+  `device_type` (`cpu`, `gpu`, `npu`) and nonnegative `device_id`.
+  CPU uses no provider name and CPU device0. Omitting a cache provider, or the
+  provider within an explicit greedy sampler, means the existing CPU policy.
+  Model EP/variant selection is separate; these fields never register an EP.
+- `outputs` maps public names to either a model-output source or
+  `{"kind":"generated_token_ids","step":"..."}` for a generation step.
+  Do not return an empty/default chain when an output or binding is invalid.
+
+For new-mode decode, `generation.initial_logits` is:
+
+```json
+{
+  "kind": "model_output",
+  "step": "prefill",
+  "output": "logits"
+}
+```
+
+The source step's explicitly declared `loop.nonempty_input` identifies its
+prompt input binding by default. This keeps the reviewed M10 candidate valid
+without guessing the literal name `"input_ids"` or inferring length from logits.
+An optional `prompt_input` names that upstream model input explicitly when
+needed, including an ordinary Session producer. An optional `position` selects
+the initial logits row. Resolve the prompt input's source into the native
+bootstrap record and validate that it is a full prompt.
+
+This extension is valid only with decode generation. The sampler-free producer
+and explicit prompt source must be consistent; ambiguous/missing prompt sources,
+future-step references, incompatible cache sets and duplicate initialization
+fail. Existing legacy prefill-sampling chains without `initial_logits` continue
+to use their existing matching-budget/handoff contracts.
+
+Reject unknown or malformed fields in the supported ORT execution payload,
+unsupported policies, scripts, transitions and custom predicates. Future-minor
+common-schema tolerance is not permission to execute unknown ORT policy.
+Do not validate unrelated chains' execution payloads when loading one named
+chain or creating a legacy single-component Session.
+
+### K.6 Package construction API and Session options
+
+Use an owned chain returned through the existing `OrtSessionChain` handle.
+Avoid a second executor/step-result API or an unnecessary opaque builder:
+
+```c
+typedef struct OrtModelPackageStepSessionOptions {
+  const char* step_id;
+  const OrtSessionOptions* session_options;
+} OrtModelPackageStepSessionOptions;
+
+typedef struct OrtModelPackageChainConfig {
+  size_t struct_size;
+  const char* chain_name;
+  const OrtSessionOptions* default_session_options;
+  const OrtModelPackageStepSessionOptions* step_session_options;
+  size_t num_step_session_options;
+} OrtModelPackageChainConfig;
+```
+
+Append to `OrtModelPackageApi` and its initializer:
+
+```c
+OrtStatus* CreateSessionChain(
+    const OrtEnv* env,
+    const OrtModelPackageContext* context,
+    const OrtModelPackageChainConfig* config,
+    OrtSessionChain** out);
+```
+
+- The chain name is required/nonempty even when the package has one chain.
+  Absence of chains or an unknown name fails explicitly.
+- Optional per-step SessionOptions replace the shared default **as complete
+  snapshots**, not a field-by-field merge of opaque objects. Callers can clone
+  defaults and modify the clone. Reject duplicate/unknown/empty step IDs and
+  NULL per-step options. Inputs are borrowed only for the synchronous call.
+- Reuse per-component selection and creation precedence. With caller options,
+  retain advanced-path behavior, including missing package path options.
+  With no caller options, use the established default creation path and CPU
+  selection defaults. Apply existing package Session/provider options rules;
+  never silently ignore them or invent new merge precedence.
+- Resolve variants independently per step using the effective options. Repeated
+  references to a component create independently initialized per-step Sessions;
+  model/Session pooling is not introduced. Require intended variants/providers
+  rather than misreport CPU fallback as a successful CUDA chain.
+- Reuse existing model-file/external-data/shared-asset resolution and forbidden
+  output-option checks. No chain field can override model-file anchors or
+  inject package-supplied output file options. M10 exported layouts work without
+  the source package.
+- Build and validate transactionally. Release partially constructed Sessions
+  and definitions on failure; preserve `out` and existing package resources.
+  Preserve nested native error categories while adding chain/step/field context.
+- The new fixed array record has frozen stride. Version extensions use new
+  records or appended top-level fields, not growth of its array element type.
+- Add `Ort::ModelPackageContext::CreateSessionChain(env, config)` returning the
+  existing move-only `Ort::SessionChain`. Reuse existing `CreateExecution`,
+  Step/Run/Reset/Cancel and immutable result/value wrappers.
+
+### K.7 Ownership, validation and regressions
+
+- Package-built definitions/executions retain the owned Sessions and resources
+  they actually use. Releasing package context, caller SessionOptions or the
+  public chain handle after creating an execution must not invalidate it.
+  Ownership must live with the retained native definition, not just its C handle.
+- Caller-owned programmatic Sessions retain their existing outlive-definition/
+  execution contract. Do not silently transfer ownership of caller Sessions.
+- Standard Env, external-buffer/custom-op/allocator/stream obligations remain.
+  Document them explicitly rather than claiming arbitrary caller resources are
+  made independent. Retained results/GPU values preserve their established
+  provider/allocator/library leases after execution/chain release.
+- Validate static schema/wiring/model/provider compatibility before publishing
+  a chain. Validate execution feeds before advancement where available; dynamic
+  output validation occurs before consumption/publication.
+- Preserve sequential mutable operations, independent execution contexts, reset
+  replay, cancellation invalidation and explicit errors. No retry on callback
+  failure or success-shaped fallback. Minimal builds report unsupported APIs
+  without touching output parameters.
+
+### K.8 CUDA behavior and proof
+
+- GPU cache/greedy remain **CUDA plugin EP only**. Legacy/shared CUDA must retain
+  explicit unsupported-capability behavior; no implicit new backend.
+- With GPU sampling, route the initial producer logits directly to the decode
+  sampler on the compatible GPU. Retain the actual producer's allocator/provider
+  origin; do not assume the cache provider or first Session owns all device data.
+- Preserve independent CPU/GPU cache and sampler policies. Compare actual device
+  compatibility, not Require/Prefer enum equality. Reject CPU-only producers,
+  mismatched GPUs, conflicting data roles and undisclosed migrations.
+- Reuse M09 greedy callbacks/kernels and compact token/status observation.
+  No full-logits host readback/host argmax for the initial sample. CPU token feeds
+  and any actual host/device staging remain explicitly measured, not described
+  as device-only generation.
+- Respect actual Session task streams/nondefault-stream ordering without adding
+  a provider-wide/device-wide synchronization as a shortcut.
+- Test zero/one/multiple budgets and EOS on the first sample. Budget zero must
+  record zero sampler invocations while prefill cache/model work is observable.
+  Prove real CUDA variant selection, logits/cache placement and M08/M09 dispatch;
+  value parity or a CUDA-enabled build alone is not enough.
+
+### K.9 Verification and approval gates
+
+- Native/programmatic and package-created C/C++ chains must agree on outputs,
+  complete token history, invocation/iteration counts, exits, sample-only Steps,
+  retained values, reset/cancellation and errors for equivalent configurations.
+- Cover ordinary Session steps, generic non-generation loops, all supported
+  binding/exit kinds, old prefill-sampling mode and the new decoder-only mode.
+  Include invalid JSON/policies/references, missing conditions/feeds/variants,
+  malformed tensor types/shapes, model failures and resource teardown.
+- Cover 0/1/N budgets, first/later EOS, simultaneous exits, no duplicate events,
+  prompt validation/position/mask/cache counts and cache-free handoff. Exercise
+  per-step options on repeated components, default/advanced option precedence,
+  context/options release, construction rollback and multiple executions.
+- Exercise portable/installed packages, external components/metadata/data,
+  shared assets and source-independent M10 exports with actual local tiny models.
+  No automatic real-model download or committed model weights.
+- Run CPU native/public/package regressions and real CUDA-plugin conformance/
+  package parity. Include legacy CUDA unsupported-capability regressions.
+  Validate genuine C11 and C++17 consumers and the existing no-exceptions-client
+  surface; verify baseline single-component and standalone package tests.
+- Measure 100% of new executable production host/parser/loader/native/C/C++
+  wrapper/glue lines, including GPU routing/error paths, with fresh matching
+  artifacts and profiles. Combine evidence only with verified source mappings;
+  do not hide incompatible profile hashes or round partial coverage up.
+- No new CUDA kernel is intended. Verify reused device-code identity and run
+  existing device conformance; if device implementation changes, independently
+  measure every new executable device line. Host coverage and successful
+  launches are not substitutes. Use applicable memory/lifetime/stream checks.
+- Keep one independently documented/tested M11 PR, as requested. Record exact
+  CPU/CUDA selectors, nonzero counts/skips, coverage totals, actual dispatch/
+  transfer evidence and any instrumentation limitation without weakening tests.
+- Review and approve this appendix first. Only then prepare and separately
+  review the detailed TASKS plan. Do not implement, publish or begin M12 merely
+  because the user requested starting this milestone.

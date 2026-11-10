@@ -50,7 +50,9 @@ class TokenGeneration {
   static Status Validate(const TokenGenerationOptions& options,
                          gsl::span<const NodeArg* const> inputs, gsl::span<const NodeArg* const> outputs);
   static InlinedVector<std::string> ManagedInputs(const TokenGenerationOptions& options);
+  static Status ValidatePromptType(const NodeArg& prompt);
   static Status ValidatePrompt(const OrtValue& prompt);
+  static Status InitializeFromPrompt(const OrtValue& prompt, TokenGenerationState& state);
   static Status PrepareInputs(const TokenGenerationOptions& options, const TokenGenerationState& state,
                               const OrtValue* prompt, AllocatorPtr allocator,
                               InlinedHashMap<std::string, OrtValue>& inputs, int64_t& input_count);

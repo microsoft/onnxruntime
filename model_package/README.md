@@ -168,8 +168,8 @@ value; namespace payload contents are opaque even with strict parsing.
 
 Execution kinds, bindings, exits, provider/cache/sampling policies and
 upstream-output references belong inside consumer namespaces. They are not
-validated by this library. The ORT package consumer currently creates individual
-Sessions; executable chain loading is a separate runtime integration milestone.
+validated by this library. The ORT package consumer interprets its own execution
+payloads and builds Sessions/chains; this library does not execute them.
 Consumers must explicitly select a chain by name: no implicit/default chain is
 declared by this format.
 

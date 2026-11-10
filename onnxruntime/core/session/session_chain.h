@@ -22,6 +22,12 @@ struct ChainValueSource {
   size_t component_index = 0;
 };
 
+struct ChainGenerationBootstrap {
+  ChainValueSource logits;
+  ChainValueSource prompt;
+  std::optional<int64_t> logits_position;
+};
+
 struct ChainInputBinding {
   std::string input_name;
   ChainValueSource source;
@@ -40,6 +46,7 @@ struct SessionChainComponent {
   InlinedVector<LoopKVCacheBinding, 1> kv_caches;
   std::optional<StatefulProviderSelection> cache_provider;
   std::optional<StatefulProviderSelection> sampler_provider;
+  std::optional<ChainGenerationBootstrap> generation_bootstrap;
 };
 
 enum class ChainOutputKind { ModelOutput,
@@ -80,6 +87,9 @@ struct SessionChainStepResult {
 class SessionChain : public std::enable_shared_from_this<SessionChain> {
  public:
   static Status Create(SessionChainOptions options, std::shared_ptr<const SessionChain>& out);
+  static Status CreateOwned(SessionChainOptions options, InlinedVector<std::unique_ptr<InferenceSession>> sessions,
+                            std::shared_ptr<const SessionChain>& out);
+  ~SessionChain();
   Status CreateExecution(SessionChainInputs inputs, std::unique_ptr<SessionChainExecution>& out) const;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionChain);
 
@@ -89,6 +99,8 @@ class SessionChain : public std::enable_shared_from_this<SessionChain> {
   Status Initialize();
   Status ValidateInputs(const SessionChainInputs& inputs) const;
 
+  // Declared first so owned Sessions outlive loop/provider teardown.
+  InlinedVector<std::unique_ptr<InferenceSession>> owned_sessions_;
   const SessionChainOptions options_;
   InlinedVector<std::shared_ptr<const SessionLoop>> loops_;
   InlinedVector<InferenceSession*> sessions_;

@@ -136,6 +136,17 @@ Status TokenGeneration::Validate(const TokenGenerationOptions& options,
   return Status::OK();
 }
 
+Status TokenGeneration::ValidatePromptType(const NodeArg& prompt) { return CheckInputPort(&prompt, false); }
+
+Status TokenGeneration::InitializeFromPrompt(const OrtValue& prompt, TokenGenerationState& state) {
+  ORT_RETURN_IF(state.prefill_complete || !state.token_ids.empty() || state.processed_tokens != 0,
+                "Generation bootstrap requires empty generation state");
+  ORT_RETURN_IF_ERROR(ValidatePrompt(prompt));
+  state.processed_tokens = prompt.Get<Tensor>().Shape()[1];
+  state.prefill_complete = true;
+  return Status::OK();
+}
+
 Status TokenGeneration::ValidatePrompt(const OrtValue& prompt) {
   ORT_RETURN_IF_NOT(prompt.IsTensor(), "Prefill prompt must be a tensor");
   const Tensor& tensor = prompt.Get<Tensor>();

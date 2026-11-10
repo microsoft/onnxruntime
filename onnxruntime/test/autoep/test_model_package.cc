@@ -27,8 +27,10 @@
 #include "test/autoep/test_autoep_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/api_asserts.h"
+#include "test/util/include/stateful_execution_test_utils.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
+extern "C" int StatefulApiCPackageChainTest(const OrtEnv* env, const ORTCHAR_T* path);
 
 namespace onnxruntime {
 namespace test {
@@ -200,6 +202,121 @@ struct ProviderObservations {
   std::unordered_map<std::string, std::string> config;
 };
 
+nlohmann::ordered_json BuildGenerationChainPackage(const std::filesystem::path& root, int64_t budget,
+                                                   bool cached = true, bool auxiliary = false, bool half = false) {
+  namespace fs = std::filesystem;
+  using Json = nlohmann::ordered_json;
+  auto model = stateful::MakeDynamicDecoderModel();
+  if (half) {
+    auto& graph = *model.mutable_graph();
+    graph.mutable_output(0)->mutable_type()->mutable_tensor_type()->set_elem_type(
+        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    graph.mutable_node(0)->set_output(0, "float_logits");
+    auto& cast = stateful::AddNode(graph, "Cast", {"float_logits"}, "logits");
+    auto* type = cast.add_attribute();
+    type->set_name("to");
+    type->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    type->set_i(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  }
+  if (auxiliary) {
+    auto& graph = *model.mutable_graph();
+    for (const auto& port : {std::pair{"mask", "mask_seen"}, std::pair{"positions", "positions_seen"}}) {
+      stateful::SetTensorType(*graph.add_input(), port.first, ONNX_NAMESPACE::TensorProto_DataType_INT64, {1, -1});
+      stateful::SetTensorType(*graph.add_output(), port.second, ONNX_NAMESPACE::TensorProto_DataType_INT64, {1, -1});
+      stateful::AddNode(graph, "Identity", {port.first}, port.second);
+    }
+  }
+  if (!cached) {
+    auto& graph = *model.mutable_graph();
+    graph.mutable_input()->DeleteSubrange(1, 1);
+    graph.mutable_output()->DeleteSubrange(1, 1);
+    for (int i = graph.node_size() - 1; i >= 0; --i) {
+      if (graph.node(i).op_type() == "Concat") graph.mutable_node()->DeleteSubrange(i, 1);
+    }
+  }
+  fs::create_directories(root.parent_path() / "models");
+  const auto source = root.parent_path() / "models/model1.onnx";
+  {
+    std::ofstream file(source, std::ios::binary);
+    ORT_ENFORCE(model.SerializeToOstream(&file));
+  }
+  BuildPackage(root, "decoder_prefill", {{"cpu", "CPUExecutionProvider", "cpu", "", source, {}, {}}}, "1.1");
+  Json manifest;
+  std::ifstream(root / "manifest.json") >> manifest;
+  auto decoder = manifest["components"]["decoder_prefill"];
+  decoder["variants"]["cpu"]["variant_directory"] = "decoder_decode/cpu";
+  decoder["variants"]["cpu"]["executor_info"]["ort"]["model_file"] = "model2.onnx";
+  manifest["components"]["decoder_decode"] = std::move(decoder);
+  fs::create_directories(root / "decoder_decode/cpu");
+  fs::copy_file(source, root / "decoder_decode/cpu/model2.onnx");
+  const Json cache =
+      Json::array({{{"cache", "key"}, {"input", "past_key"}, {"output", "present_key"}, {"update", "share"}}});
+  Json prefill = Json::parse(R"({
+    "id":"prefill","component":"decoder_prefill",
+    "executor_info":{"ort":{
+      "kind":"session_loop",
+      "inputs":{"token":{"kind":"external_sequence","name":"prompt_batches"}},
+      "loop":{"finite_input_names":["token"],"nonempty_input":"token",
+              "exit_conditions":[{"kind":"end_of_inputs"}]}
+    }}
+  })");
+  Json decode = Json::parse(R"({
+    "id":"decode","component":"decoder_decode",
+    "executor_info":{"ort":{
+      "kind":"session_loop",
+      "loop":{
+        "exit_conditions":[{"kind":"max_generated_tokens","limit":0}],
+        "generation":{"phase":"decode","input_ids":"token","logits_output":"logits",
+          "initial_logits":{"kind":"model_output","step":"prefill","output":"logits"}},
+        "sampler":{"algorithm":"greedy","provider":{"mode":"cpu"}}
+      }
+    }}
+  })");
+  decode["executor_info"]["ort"]["loop"]["exit_conditions"][0]["limit"] = budget;
+  if (auxiliary) {
+    prefill["executor_info"]["ort"]["inputs"]["mask"] = {{"kind", "external_input"}, {"name", "prompt_mask"}};
+    prefill["executor_info"]["ort"]["inputs"]["positions"] = {{"kind", "external_input"}, {"name", "prompt_positions"}};
+    decode["executor_info"]["ort"]["loop"]["generation"]["attention_mask"] = "mask";
+    decode["executor_info"]["ort"]["loop"]["generation"]["position_ids"] = "positions";
+  }
+  Json configuration = {{"outputs", {{"tokens", {{"kind", "generated_token_ids"}, {"step", "decode"}}}}}};
+  if (cached) {
+    prefill["executor_info"]["ort"]["loop"]["kv_caches"] = cache;
+    decode["executor_info"]["ort"]["loop"]["kv_caches"] = cache;
+    prefill["executor_info"]["ort"]["loop"]["cache_provider"] = {{"mode", "cpu"}};
+    decode["executor_info"]["ort"]["loop"]["cache_provider"] = {{"mode", "cpu"}};
+    configuration["kv_caches"] = {
+        {"key", {{"element_type", "float32"}, {"shape", {1, 1, 0, 1}}, {"sequence_axis", 2}, {"initial_capacity", 8}}}};
+  }
+  manifest["chains"] = {
+      {"generate", {{"steps", Json::array({prefill, decode})}, {"executor_info", {{"ort", configuration}}}}}};
+  std::ofstream(root / "manifest.json") << manifest.dump(2);
+  return manifest;
+}
+
+std::filesystem::path ChainTestRoot() {
+  const auto path = std::filesystem::temp_directory_path() /
+                    ("ort_mp_chain_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+  ORT_ENFORCE(std::filesystem::create_directory(path));
+  return path;
+}
+
+Ort::Value ChainPrompt() {
+  Ort::AllocatorWithDefaultOptions allocator;
+  const std::array<int64_t, 2> shape{1, 2};
+  auto prompt = Ort::Value::CreateTensor<int64_t>(allocator, shape.data(), shape.size());
+  prompt.GetTensorMutableData<int64_t>()[0] = 0;
+  prompt.GetTensorMutableData<int64_t>()[1] = 1;
+  return prompt;
+}
+
+Ort::StatefulValue ChainTokens(const Ort::StatefulStepResult& result) {
+  for (const auto& output : result.GetOutputs()) {
+    if (output.name == "tokens") return output.value;
+  }
+  ORT_THROW("Missing token output");
+}
+
 class RecordingExecutionProvider : public IExecutionProvider {
  public:
   RecordingExecutionProvider(const std::string& name, std::shared_ptr<ProviderObservations> observations)
@@ -317,6 +434,489 @@ TEST(ModelPackageApiTest, ExportedModelsRunWithoutSourcePackage) {
     ASSERT_ORTSTATUS_OK(GetModelPackageFns().CreateSession(*ort_env, handles.component.get(), nullptr, &raw_session));
     Ort::Session session(raw_session);
     CheckSquareModel(session);
+    std::filesystem::remove_all(root);
+  }
+}
+
+TEST(ModelPackageChainTest, BootstrapBudgetsOwnedSessionsAndSourceIndependentExports) {
+  for (bool cached : {false, true}) {
+    for (int64_t budget : {0, 1, 3}) {
+      const auto root = ChainTestRoot();
+      BuildGenerationChainPackage(root / "source", budget, cached);
+      {
+        ::ModelPackage* raw = nullptr;
+        std::unique_ptr<ModelPackageStatus, decltype(&ModelPackageStatus_Release)> status(
+            ModelPackage_Open(ToUTF8String((root / "source").native()).c_str(), nullptr, &raw),
+            ModelPackageStatus_Release);
+        ASSERT_EQ(status.get(), nullptr) << ModelPackageStatus_Message(status.get());
+        std::unique_ptr<::ModelPackage, decltype(&ModelPackage_Close)> package(raw, ModelPackage_Close);
+        status.reset(ModelPackage_Commit(package.get(), ToUTF8String((root / "exported").native()).c_str(),
+                                         MODEL_PACKAGE_WRITE_PRESERVE));
+        ASSERT_EQ(status.get(), nullptr) << ModelPackageStatus_Message(status.get());
+      }
+      std::filesystem::rename(root / "source", root / "unavailable");
+      Ort::ModelPackageContext package((root / "exported").c_str());
+      Ort::SessionOptions options;
+      options.SetIntraOpNumThreads(1).SetInterOpNumThreads(1);
+      OrtModelPackageChainConfig config{};
+      config.struct_size = sizeof(config);
+      config.chain_name = "generate";
+      config.default_session_options = options;
+      auto chain = package.CreateSessionChain(*ort_env, config);
+      auto prompt = ChainPrompt();
+      const OrtValue* batches[]{prompt};
+      const OrtStatefulInputSequence sequence{"prompt_batches", batches, 1};
+      OrtStatefulInputs inputs{};
+      inputs.struct_size = sizeof(inputs);
+      inputs.sequences = &sequence;
+      inputs.num_sequences = 1;
+      auto execution = chain.CreateExecution(inputs);
+      auto independent = chain.CreateExecution(inputs);
+      package = Ort::ModelPackageContext(nullptr);
+      options = Ort::SessionOptions(nullptr);
+      chain = Ort::SessionChain(nullptr);
+      auto first = execution.Step();
+      EXPECT_TRUE(first.GetInfo().executed);
+      EXPECT_EQ(first.GetInfo().generated_tokens, 0);
+      EXPECT_EQ(first.GetInfo().component_name, "prefill");
+      auto sampled = execution.Step();
+      const auto info = sampled.GetInfo();
+      EXPECT_FALSE(info.executed);
+      EXPECT_EQ(info.invocations, 1);
+      EXPECT_EQ(info.iterations, 0);
+      EXPECT_EQ(info.generated_token.has_value(), budget > 0);
+      EXPECT_EQ(info.completed, budget <= 1);
+      auto final = info.completed ? sampled : execution.Run();
+      auto tokens = ChainTokens(final);
+      EXPECT_EQ(tokens.GetTensorTypeAndShapeInfo().GetElementCount(), static_cast<size_t>(budget));
+      for (int64_t i = 0; i < budget; ++i) EXPECT_EQ(tokens.GetTensorData<int64_t>()[i], (i + 2) % 4);
+      EXPECT_EQ(final.GetInfo().invocations, std::max<int64_t>(1, budget));
+      if (cached) {
+        const auto state = execution.GetState();
+        const auto values = state.GetOutputs(ORT_STATEFUL_STATE_VALUES);
+        ASSERT_EQ(values.size(), 1u);
+        EXPECT_EQ(values[0].value.GetTensorTypeAndShapeInfo().GetShape()[2], 2 + std::max<int64_t>(0, budget - 1));
+      }
+      execution.Reset();
+      EXPECT_EQ(ChainTokens(execution.Run()).GetTensorTypeAndShapeInfo().GetElementCount(),
+                static_cast<size_t>(budget));
+      EXPECT_EQ(ChainTokens(independent.Run()).GetTensorTypeAndShapeInfo().GetElementCount(),
+                static_cast<size_t>(budget));
+      execution = Ort::StatefulExecution(nullptr);
+      independent = Ort::StatefulExecution(nullptr);
+      final = Ort::StatefulStepResult(nullptr);
+      sampled = Ort::StatefulStepResult(nullptr);
+      first = Ort::StatefulStepResult(nullptr);
+      EXPECT_EQ(tokens.GetTensorTypeAndShapeInfo().GetShape(), std::vector<int64_t>{budget});
+      std::filesystem::remove_all(root);
+    }
+  }
+}
+
+TEST(ModelPackageChainTest, OrdinarySessionsPerStepOptionsAndUnselectedPolicies) {
+  const auto root = ChainTestRoot();
+  const auto path = BuildPackage(root / "package", "model",
+                                 {{"cpu", "CPUExecutionProvider", "cpu", "", "testdata/mul_1.onnx", {}, {}}}, "1.1");
+  nlohmann::ordered_json manifest;
+  std::ifstream(path / "manifest.json") >> manifest;
+  manifest["chains"] = nlohmann::ordered_json::parse(R"({
+    "multiply_twice":{
+      "steps":[
+        {"id":"first","component":"model","executor_info":{"ort":{
+          "kind":"session","inputs":{"X":{"kind":"external_input","name":"input"}}
+        }}},
+        {"id":"second","component":"model","executor_info":{"ort":{
+          "kind":"session","inputs":{"X":{"kind":"model_output","step":"first","output":"Y"}}
+        }}}
+      ],
+      "executor_info":{"ort":{"outputs":{
+        "result":{"kind":"model_output","step":"second","output":"Y"}
+      }}}
+    }
+  })");
+  manifest["chains"]["unused"] = manifest["chains"]["multiply_twice"];
+  manifest["chains"]["unused"]["steps"][0]["executor_info"]["ort"]["kind"] = "unknown_future_policy";
+  std::ofstream(path / "manifest.json") << manifest.dump(2);
+  Ort::ModelPackageContext package(path.c_str());
+  Ort::SessionOptions defaults;
+  defaults.SetIntraOpNumThreads(1).SetInterOpNumThreads(1);
+  defaults.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+  Ort::SessionOptions replacement;
+  replacement.SetIntraOpNumThreads(1).SetInterOpNumThreads(1);
+  const OrtModelPackageStepSessionOptions overrides[]{{"first", replacement}, {"second", replacement}};
+  OrtModelPackageChainConfig config{sizeof(config), "multiply_twice", defaults, overrides, 2};
+  auto chain = package.CreateSessionChain(*ort_env, config);
+  Ort::AllocatorWithDefaultOptions allocator;
+  const std::array<int64_t, 2> shape{3, 2};
+  auto input = Ort::Value::CreateTensor<float>(allocator, shape.data(), shape.size());
+  for (size_t i = 0; i < 6; ++i) input.GetTensorMutableData<float>()[i] = static_cast<float>(i + 1);
+  const OrtStatefulNamedValue named{"input", input};
+  OrtStatefulInputs feeds{};
+  feeds.struct_size = sizeof(feeds);
+  feeds.inputs = &named;
+  feeds.num_inputs = 1;
+  const auto result = chain.CreateExecution(feeds).Run();
+  const auto outputs = result.GetOutputs();
+  ASSERT_EQ(outputs.size(), 1u);
+  const std::array<float, 6> expected{1.f, 8.f, 27.f, 64.f, 125.f, 216.f};
+  for (size_t i = 0; i < expected.size(); ++i) {
+    EXPECT_EQ(outputs[0].value.GetTensorData<float>()[i], expected[i]);
+  }
+  auto legacy = package.SelectComponent("model", Ort::ModelPackageOptions(*ort_env, replacement));
+  auto legacy_session = legacy.CreateSession(*ort_env, replacement);
+  CheckSquareModel(legacy_session);
+  auto second_session = legacy.CreateSession(*ort_env, replacement);
+  const OrtStatefulInputBinding first_input{"X", {ORT_STATEFUL_EXTERNAL_INPUT, "input", 0}};
+  const OrtStatefulInputBinding next_input{"X", {ORT_STATEFUL_COMPONENT_OUTPUT, "Y", 0}};
+  OrtStatefulChainComponent steps[2]{};
+  steps[0].name = "first";
+  steps[0].session = legacy_session;
+  steps[0].inputs = &first_input;
+  steps[0].num_inputs = 1;
+  steps[1].name = "second";
+  steps[1].session = second_session;
+  steps[1].inputs = &next_input;
+  steps[1].num_inputs = 1;
+  const OrtStatefulChainOutput selected{"result", 1, "Y", ORT_STATEFUL_MODEL_OUTPUT};
+  const OrtStatefulChainConfig definition{sizeof(definition), steps, 2, &selected, 1};
+  Ort::SessionChain programmatic{Ort::SessionChainOptions(definition)};
+  const auto reference = programmatic.CreateExecution(feeds).Run().GetOutputs();
+  ASSERT_EQ(reference.size(), 1u);
+  EXPECT_TRUE(std::equal(expected.begin(), expected.end(), reference[0].value.GetTensorData<float>()));
+  config.chain_name = "unused";
+  EXPECT_THROW(package.CreateSessionChain(*ort_env, config), Ort::Exception);
+  std::filesystem::remove_all(root);
+}
+
+TEST(ModelPackageChainTest, GenuineC11OwnedPackageConsumer) {
+  const auto root = ChainTestRoot();
+  BuildGenerationChainPackage(root / "package", 3);
+  EXPECT_EQ(StatefulApiCPackageChainTest(*ort_env, (root / "package").c_str()), 0);
+  std::filesystem::remove_all(root);
+}
+
+TEST(ModelPackageChainTest, ConstructionGuardsAndLateFailurePreserveOutAndExistingChain) {
+  const auto root = ChainTestRoot();
+  const auto path = root / "package";
+  BuildGenerationChainPackage(path, 1);
+  Ort::ModelPackageContext package(path.c_str());
+  Ort::SessionOptions options;
+  options.SetIntraOpNumThreads(1).SetInterOpNumThreads(1);
+  OrtModelPackageChainConfig config{sizeof(config), "generate", options, nullptr, 0};
+  auto chain = package.CreateSessionChain(*ort_env, config);
+  const auto& api = GetModelPackageFns();
+  auto rejects = [&](const OrtEnv* env, const OrtModelPackageContext* context,
+                     const OrtModelPackageChainConfig* candidate, std::string_view step = {}) {
+    OrtSessionChain* out = chain;
+    auto* error = api.CreateSessionChain(env, context, candidate, &out);
+    EXPECT_NE(error, nullptr);
+    if (error) {
+      if (!step.empty())
+        EXPECT_NE(std::string_view(Ort::GetApi().GetErrorMessage(error)).find(step), std::string_view::npos);
+      Ort::GetApi().ReleaseStatus(error);
+    } else if (out && out != static_cast<OrtSessionChain*>(chain)) {
+      Ort::GetStatefulApi().ReleaseSessionChain(out);
+    }
+    EXPECT_EQ(out, static_cast<OrtSessionChain*>(chain));
+  };
+  rejects(nullptr, package, &config);
+  rejects(*ort_env, nullptr, &config);
+  rejects(*ort_env, package, nullptr);
+  {
+    Ort::Status error(api.CreateSessionChain(*ort_env, package, &config, nullptr));
+    EXPECT_NE(error.GetErrorCode(), ORT_OK);
+  }
+  for (int kind : {0, 1, 2, 3, 4}) {
+    auto invalid = config;
+    if (kind == 0) invalid.struct_size = 0;
+    if (kind == 1) invalid.chain_name = nullptr;
+    if (kind == 2) invalid.chain_name = "";
+    if (kind == 3) invalid.chain_name = "missing";
+    if (kind == 4) invalid.num_step_session_options = 1;
+    rejects(*ort_env, package, &invalid);
+  }
+  OrtModelPackageStepSessionOptions overrides[]{{"prefill", options}, {"decode", options}, {"unused", options}};
+  for (int kind : {0, 1, 2, 3, 4}) {
+    auto invalid = config;
+    invalid.step_session_options = overrides;
+    invalid.num_step_session_options = kind == 0 ? 3 : 2;
+    overrides[0] = {"prefill", options};
+    overrides[1] = {"decode", options};
+    if (kind == 1) overrides[0].step_id = nullptr;
+    if (kind == 2) overrides[0].session_options = nullptr;
+    if (kind == 3) overrides[0].step_id = "unknown";
+    if (kind == 4) overrides[1].step_id = "prefill";
+    rejects(*ort_env, package, &invalid);
+  }
+  {
+    std::ofstream damaged(path / "decoder_decode/cpu/model2.onnx", std::ios::binary | std::ios::trunc);
+    damaged << "not a model";
+  }
+  rejects(*ort_env, package, &config, "decode");
+  std::filesystem::copy_file(root / "models/model1.onnx", path / "decoder_decode/cpu/model2.onnx",
+                             std::filesystem::copy_options::overwrite_existing);
+  auto prompt = ChainPrompt();
+  const OrtValue* values[]{prompt};
+  const OrtStatefulInputSequence sequence{"prompt_batches", values, 1};
+  OrtStatefulInputs inputs{};
+  inputs.struct_size = sizeof(inputs);
+  inputs.sequences = &sequence;
+  inputs.num_sequences = 1;
+  EXPECT_EQ(ChainTokens(chain.CreateExecution(inputs).Run()).GetTensorData<int64_t>()[0], 2);
+  struct Extended {
+    OrtModelPackageChainConfig config;
+    uint64_t future;
+  } extended{config, 123};
+  extended.config.struct_size = sizeof(extended);
+  auto larger = package.CreateSessionChain(*ort_env, extended.config);
+  EXPECT_EQ(extended.future, 123u);
+  EXPECT_EQ(ChainTokens(larger.CreateExecution(inputs).Run()).GetTensorData<int64_t>()[0], 2);
+  config.default_session_options = nullptr;
+  auto defaults = package.CreateSessionChain(*ort_env, config);
+  EXPECT_EQ(ChainTokens(defaults.CreateExecution(inputs).Run()).GetTensorData<int64_t>()[0], 2);
+  const auto legacy_path = BuildPackage(root / "legacy", "model",
+                                        {{"cpu", "CPUExecutionProvider", "cpu", "", "testdata/mul_1.onnx", {}, {}}});
+  Ort::ModelPackageContext legacy(legacy_path.c_str());
+  rejects(*ort_env, legacy, &config);
+  std::filesystem::remove_all(root);
+}
+
+TEST(ModelPackageChainTest, ManagedFeedsFloat16LegacyModeAndInitialEos) {
+  for (bool cached : {false, true}) {
+    for (bool half : {false, true}) {
+      const auto root = ChainTestRoot();
+      const auto path = root / "package";
+      BuildGenerationChainPackage(path, 3, cached, true, half);
+      Ort::ModelPackageContext package(path.c_str());
+      Ort::SessionOptions options;
+      options.SetIntraOpNumThreads(1).SetInterOpNumThreads(1);
+      const OrtModelPackageChainConfig config{sizeof(config), "generate", options, nullptr, 0};
+      auto chain = package.CreateSessionChain(*ort_env, config);
+      auto prompt = ChainPrompt();
+      Ort::AllocatorWithDefaultOptions allocator;
+      const std::array<int64_t, 2> shape{1, 2};
+      auto mask = Ort::Value::CreateTensor<int64_t>(allocator, shape.data(), shape.size());
+      auto positions = Ort::Value::CreateTensor<int64_t>(allocator, shape.data(), shape.size());
+      mask.GetTensorMutableData<int64_t>()[0] = 1;
+      mask.GetTensorMutableData<int64_t>()[1] = 1;
+      positions.GetTensorMutableData<int64_t>()[0] = 0;
+      positions.GetTensorMutableData<int64_t>()[1] = 1;
+      const OrtStatefulNamedValue values[]{{"prompt_mask", mask}, {"prompt_positions", positions}};
+      const OrtValue* batches[]{prompt};
+      const OrtStatefulInputSequence sequence{"prompt_batches", batches, 1};
+      OrtStatefulInputs inputs{};
+      inputs.struct_size = sizeof(inputs);
+      inputs.inputs = values;
+      inputs.num_inputs = 2;
+      inputs.sequences = &sequence;
+      inputs.num_sequences = 1;
+      const auto result = chain.CreateExecution(inputs).Run();
+      const auto tokens = ChainTokens(result);
+      EXPECT_EQ(tokens.GetTensorTypeAndShapeInfo().GetElementCount(), 3u);
+      const auto outputs = result.GetOutputs(ORT_STATEFUL_COMPONENT_OUTPUTS);
+      for (const auto& output : outputs) {
+        if (output.name == "mask_seen") {
+          EXPECT_EQ(output.value.GetTensorTypeAndShapeInfo().GetShape(), (std::vector<int64_t>{1, 4}));
+        }
+        if (output.name == "positions_seen") EXPECT_EQ(output.value.GetTensorData<int64_t>()[0], 3);
+        if (output.name == "logits") {
+          EXPECT_EQ(output.value.GetTensorTypeAndShapeInfo().GetElementType(),
+                    half ? ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16 : ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+        }
+      }
+      std::filesystem::remove_all(root);
+    }
+  }
+  for (int64_t budget : {0, 3}) {
+    const auto root = ChainTestRoot();
+    const auto path = root / "package";
+    auto manifest = BuildGenerationChainPackage(path, budget);
+    auto& prefill = manifest["chains"]["generate"]["steps"][0]["executor_info"]["ort"]["loop"];
+    auto& decode = manifest["chains"]["generate"]["steps"][1]["executor_info"]["ort"]["loop"];
+    prefill["generation"] = decode["generation"];
+    prefill["generation"]["phase"] = "prefill";
+    prefill["generation"].erase("initial_logits");
+    prefill["sampler"] = decode["sampler"];
+    prefill["exit_conditions"].push_back({{"kind", "max_generated_tokens"}, {"limit", budget}});
+    decode["generation"].erase("initial_logits");
+    std::ofstream(path / "manifest.json") << manifest.dump(2);
+    Ort::ModelPackageContext package(path.c_str());
+    Ort::SessionOptions options;
+    options.SetIntraOpNumThreads(1).SetInterOpNumThreads(1);
+    const OrtModelPackageChainConfig config{sizeof(config), "generate", options, nullptr, 0};
+    const auto chain = package.CreateSessionChain(*ort_env, config);
+    auto prompt = ChainPrompt();
+    const OrtValue* batches[]{prompt};
+    const OrtStatefulInputSequence sequence{"prompt_batches", batches, 1};
+    OrtStatefulInputs inputs{};
+    inputs.struct_size = sizeof(inputs);
+    inputs.sequences = &sequence;
+    inputs.num_sequences = 1;
+    const auto result = chain.CreateExecution(inputs).Run();
+    EXPECT_EQ(result.GetInfo().invocations, budget);
+    EXPECT_EQ(ChainTokens(result).GetTensorTypeAndShapeInfo().GetElementCount(), static_cast<size_t>(budget));
+    std::filesystem::remove_all(root);
+  }
+  const auto root = ChainTestRoot();
+  const auto path = root / "package";
+  auto manifest = BuildGenerationChainPackage(path, 3);
+  auto& exits = manifest["chains"]["generate"]["steps"][1]["executor_info"]["ort"]["loop"]["exit_conditions"];
+  exits.push_back({{"kind", "eos"}, {"token_ids", {2}}});
+  std::ofstream(path / "manifest.json") << manifest.dump(2);
+  Ort::ModelPackageContext package(path.c_str());
+  Ort::SessionOptions options;
+  options.SetIntraOpNumThreads(1).SetInterOpNumThreads(1);
+  const OrtModelPackageChainConfig config{sizeof(config), "generate", options, nullptr, 0};
+  auto chain = package.CreateSessionChain(*ort_env, config);
+  auto prompt = ChainPrompt();
+  const OrtValue* batches[]{prompt};
+  const OrtStatefulInputSequence sequence{"prompt_batches", batches, 1};
+  OrtStatefulInputs inputs{};
+  inputs.struct_size = sizeof(inputs);
+  inputs.sequences = &sequence;
+  inputs.num_sequences = 1;
+  auto result = chain.CreateExecution(inputs).Run();
+  EXPECT_EQ(result.GetInfo().generated_tokens, 1);
+  EXPECT_EQ(result.GetInfo().invocations, 1);
+  EXPECT_FALSE(result.GetInfo().executed);
+  EXPECT_EQ(result.GetInfo().generated_token, 2);
+  std::filesystem::remove_all(root);
+}
+
+TEST(ModelPackageChainTest, GenericLoopFeedbackNamedStateAndBooleanExit) {
+  using Json = nlohmann::ordered_json;
+  for (int64_t iterations : {1, 3}) {
+    const auto root = ChainTestRoot();
+    {
+      std::ofstream file(root / "feedback.onnx", std::ios::binary);
+      ORT_ENFORCE(stateful::MakeFeedbackModel().SerializeToOstream(&file));
+    }
+    const auto path = BuildPackage(root / "package", "feedback",
+                                   {{"cpu", "CPUExecutionProvider", "cpu", "", root / "feedback.onnx", {}, {}}}, "1.1");
+    Json manifest;
+    std::ifstream(path / "manifest.json") >> manifest;
+    auto stage = manifest["components"]["feedback"];
+    stage["variants"]["cpu"]["variant_directory"] = "finish/cpu";
+    stage["variants"]["cpu"]["executor_info"]["ort"]["model_file"] = "finish.onnx";
+    manifest["components"]["finish"] = stage;
+    std::filesystem::create_directories(path / "finish/cpu");
+    {
+      std::ofstream file(path / "finish/cpu/finish.onnx", std::ios::binary);
+      ORT_ENFORCE(stateful::MakeRenamedStageModel().SerializeToOstream(&file));
+    }
+    manifest["chains"] = Json::parse(R"({
+      "pipeline":{
+        "steps":[
+          {"id":"accumulate","component":"feedback","executor_info":{"ort":{
+            "kind":"session_loop",
+            "inputs":{"input_value":{"kind":"external_sequence","name":"deltas"},
+                      "past_value":{"kind":"state","name":"total"}},
+            "state_outputs":{"total":"present_value"},
+            "loop":{"finite_input_names":["input_value"],
+              "feedback":[{"input":"past_value","output":"present_value"}],
+              "exit_conditions":[{"kind":"end_of_inputs"},{"kind":"max_iterations","limit":3},
+                                 {"kind":"boolean_output","output":"done"}]}
+          }}},
+          {"id":"finish","component":"finish","executor_info":{"ort":{
+            "kind":"session","inputs":{"upstream":{"kind":"state","name":"total"}}
+          }}}
+        ],
+        "executor_info":{"ort":{"outputs":{
+          "result":{"kind":"model_output","step":"finish","output":"pipeline_result"}
+        }}}
+      }
+    })");
+    manifest["chains"]["pipeline"]["steps"][0]["executor_info"]["ort"]["loop"]["exit_conditions"][1]["limit"] =
+        iterations;
+    std::ofstream(path / "manifest.json") << manifest.dump(2);
+    Ort::ModelPackageContext package(path.c_str());
+    Ort::SessionOptions options;
+    options.SetIntraOpNumThreads(1).SetInterOpNumThreads(1);
+    const OrtModelPackageChainConfig config{sizeof(config), "pipeline", options, nullptr, 0};
+    auto chain = package.CreateSessionChain(*ort_env, config);
+    Ort::AllocatorWithDefaultOptions allocator;
+    auto scalar = [&](float value) {
+      auto tensor = Ort::Value::CreateTensor<float>(allocator, nullptr, 0);
+      *tensor.GetTensorMutableData<float>() = value;
+      return tensor;
+    };
+    auto initial = scalar(1);
+    auto first = scalar(2);
+    auto second = scalar(3);
+    auto third = scalar(4);
+    const OrtValue* values[]{first, second, third};
+    const OrtStatefulInputSequence sequence{"deltas", values, 3};
+    const OrtStatefulNamedValue total{"total", initial};
+    OrtStatefulInputs inputs{};
+    inputs.struct_size = sizeof(inputs);
+    inputs.sequences = &sequence;
+    inputs.num_sequences = 1;
+    inputs.initial_state = &total;
+    inputs.num_initial_state = 1;
+    auto execution = chain.CreateExecution(inputs);
+    auto prefix = execution.Step();
+    if (iterations == 3) prefix = execution.Step();
+    const auto info = prefix.GetInfo();
+    EXPECT_EQ(info.component_name, "accumulate");
+    EXPECT_EQ(info.components_completed, 1u);
+    EXPECT_EQ(info.iterations, iterations == 1 ? 1 : 2);
+    const auto result = execution.Run();
+    const auto outputs = result.GetOutputs();
+    ASSERT_EQ(outputs.size(), 1u);
+    EXPECT_EQ(outputs[0].value.GetTensorData<float>()[0], iterations == 1 ? 6.f : 12.f);
+    const auto state = execution.GetState().GetOutputs(ORT_STATEFUL_STATE_VALUES);
+    ASSERT_EQ(state.size(), 1u);
+    EXPECT_EQ(state[0].value.GetTensorData<float>()[0], iterations == 1 ? 3.f : 6.f);
+    execution.Reset();
+    EXPECT_EQ(execution.GetState().GetOutputs(ORT_STATEFUL_STATE_VALUES)[0].value.GetTensorData<float>()[0], 1.f);
+    std::filesystem::remove_all(root);
+  }
+}
+
+TEST(ModelPackageChainTest, OrdinaryPrefillExplicitPromptAndNativeCachePolicies) {
+  for (const char* update : {"share", "copy", "append"}) {
+    const auto root = ChainTestRoot();
+    const auto path = root / "package";
+    auto manifest = BuildGenerationChainPackage(path, 1);
+    auto& prefill = manifest["chains"]["generate"]["steps"][0]["executor_info"]["ort"];
+    prefill["kind"] = "session";
+    prefill["kv_caches"] = prefill["loop"]["kv_caches"];
+    prefill["kv_caches"][0]["update"] = update;
+    prefill["cache_provider"] = {{"mode", "cpu"}};
+    prefill["inputs"]["token"] = {{"kind", "external_input"}, {"name", "prompt"}};
+    prefill.erase("loop");
+    auto& decode = manifest["chains"]["generate"]["steps"][1]["executor_info"]["ort"]["loop"];
+    decode["generation"]["initial_logits"]["prompt_input"] = "token";
+    if (std::string_view(update) == "copy") {
+      decode["sampler"]["provider"] = {{"mode", "prefer_provider"},
+                                       {"provider_name", "CPUExecutionProvider"},
+                                       {"device_type", "cpu"},
+                                       {"device_id", 0}};
+    }
+    std::ofstream(path / "manifest.json") << manifest.dump(2);
+    Ort::ModelPackageContext package(path.c_str());
+    Ort::SessionOptions options;
+    options.SetIntraOpNumThreads(1).SetInterOpNumThreads(1);
+    const OrtModelPackageChainConfig config{sizeof(config), "generate", options, nullptr, 0};
+    auto chain = package.CreateSessionChain(*ort_env, config);
+    auto prompt = ChainPrompt();
+    const OrtStatefulNamedValue named{"prompt", prompt};
+    OrtStatefulInputs inputs{};
+    inputs.struct_size = sizeof(inputs);
+    inputs.inputs = &named;
+    inputs.num_inputs = 1;
+    auto execution = chain.CreateExecution(inputs);
+    const auto result = execution.Run();
+    EXPECT_EQ(result.GetInfo().invocations, 1);
+    EXPECT_EQ(result.GetInfo().generated_tokens, 1);
+    EXPECT_EQ(ChainTokens(result).GetTensorData<int64_t>()[0], 2);
+    const auto dispatch = execution.GetDispatchInfo(ORT_STATEFUL_FEATURE_SAMPLER, ORT_STATEFUL_SAMPLE_GREEDY, 1);
+    const bool provider = std::string_view(update) == "copy";
+    EXPECT_EQ(dispatch.origin, provider ? ORT_STATEFUL_DISPATCH_PROVIDER : ORT_STATEFUL_DISPATCH_CPU);
+    EXPECT_EQ(dispatch.cpu_calls, provider ? 0u : 1u);
+    EXPECT_EQ(dispatch.provider_calls, provider ? 1u : 0u);
+    EXPECT_THROW(execution.GetDispatchInfo(ORT_STATEFUL_FEATURE_SAMPLER, ORT_STATEFUL_SAMPLE_GREEDY, 0),
+                 Ort::Exception);
     std::filesystem::remove_all(root);
   }
 }

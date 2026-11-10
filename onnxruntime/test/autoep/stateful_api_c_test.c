@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <stdio.h>
+#include <string.h>
 
 #include "core/session/onnxruntime_c_api.h"
 
@@ -15,6 +16,146 @@
       goto cleanup;                                          \
     }                                                        \
   } while (0)
+
+static int StatefulApiCPackageChainTestImpl(const OrtEnv* env, const ORTCHAR_T* path,
+                                            const OrtSessionOptions* prefill_options,
+                                            const OrtSessionOptions* decode_options,
+                                            OrtStatefulStepResult** retained_out) {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  const OrtStatefulApi* stateful = api->GetStatefulApi();
+  const OrtModelPackageApi* package = api->GetModelPackageApi();
+  OrtStatus* status = NULL;
+  OrtModelPackageContext* context = NULL;
+  OrtSessionOptions* options = NULL;
+  OrtSessionChain* chain = NULL;
+  OrtStatefulExecution* execution = NULL;
+  OrtStatefulStepResult* first = NULL;
+  OrtStatefulStepResult* sampled = NULL;
+  OrtStatefulStepResult* result = NULL;
+  OrtValue* prompt = NULL;
+  OrtAllocator* allocator = NULL;
+  OrtTensorTypeAndShapeInfo* shape_info = NULL;
+  OrtStatefulGenerationBootstrapConfig bootstrap = {0};
+  OrtModelPackageChainConfig config = {0};
+  OrtStatefulInputs inputs = {0};
+  OrtStatefulStepInfo info = {0};
+  const OrtValue* values[1] = {NULL};
+  const OrtStatefulInputSequence sequence = {"prompt_batches", values, 1};
+  const OrtStatefulNamedValue* outputs = NULL;
+  const OrtValue* token_output = NULL;
+  OrtStatefulDispatchInfo dispatch = {0};
+  size_t count = 0;
+  void* writable = NULL;
+  const void* data = NULL;
+  const int64_t shape[2] = {1, 2};
+  OrtModelPackageStepSessionOptions overrides[2] = {{0}, {0}};
+  int code = 0;
+  bootstrap.struct_size = sizeof(bootstrap);
+  status = stateful->SessionChainOptionsSetGenerationBootstrap(NULL, 0, &bootstrap);
+  if (status == NULL) {
+    fprintf(stderr, "NULL bootstrap options unexpectedly succeeded\n");
+    code = 30;
+    goto cleanup;
+  }
+  api->ReleaseStatus(status);
+  status = NULL;
+  CHECK(api->CreateSessionOptions(&options));
+  CHECK(api->SetIntraOpNumThreads(options, 1));
+  CHECK(api->SetInterOpNumThreads(options, 1));
+  CHECK(package->CreateModelPackageContext(path, &context));
+  overrides[0].step_id = "prefill";
+  overrides[1].step_id = "decode";
+  overrides[0].session_options = prefill_options ? prefill_options : options;
+  overrides[1].session_options = decode_options ? decode_options : options;
+  config.struct_size = sizeof(config);
+  config.chain_name = "generate";
+  config.step_session_options = overrides;
+  config.num_step_session_options = 2;
+  CHECK(package->CreateSessionChain(env, context, &config, &chain));
+  package->ReleaseModelPackageContext(context);
+  context = NULL;
+  api->ReleaseSessionOptions(options);
+  options = NULL;
+  CHECK(api->GetAllocatorWithDefaultOptions(&allocator));
+  CHECK(api->CreateTensorAsOrtValue(allocator, shape, 2, ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, &prompt));
+  CHECK(api->GetTensorMutableData(prompt, &writable));
+  ((int64_t*)writable)[0] = 0;
+  ((int64_t*)writable)[1] = 1;
+  values[0] = prompt;
+  inputs.struct_size = sizeof(inputs);
+  inputs.sequences = &sequence;
+  inputs.num_sequences = 1;
+  CHECK(stateful->CreateChainExecution(chain, &inputs, &execution));
+  stateful->ReleaseSessionChain(chain);
+  chain = NULL;
+  CHECK(stateful->StatefulExecutionStep(execution, &first));
+  CHECK(stateful->StatefulStepResultGetInfo(first, sizeof(info), &info));
+  if (!info.executed || info.invocations != 1 || info.generated_tokens != 0) {
+    fprintf(stderr, "Unexpected prefill progress in C11 consumer\n");
+    code = 31;
+    goto cleanup;
+  }
+  CHECK(stateful->StatefulExecutionStep(execution, &sampled));
+  CHECK(stateful->StatefulStepResultGetInfo(sampled, sizeof(info), &info));
+  if (info.executed || info.iterations != 0 || info.invocations != 1 || !info.has_generated_token ||
+      info.generated_token != 2) {
+    fprintf(stderr, "Unexpected sample-only progress in C11 consumer\n");
+    code = 32;
+    goto cleanup;
+  }
+  CHECK(stateful->StatefulExecutionRun(execution, &result));
+  CHECK(stateful->StatefulStepResultGetOutputs(result, ORT_STATEFUL_SELECTED_OUTPUTS, &outputs, &count));
+  for (size_t i = 0; i < count; ++i) {
+    if (strcmp(outputs[i].name, "tokens") == 0) token_output = outputs[i].value;
+  }
+  if (token_output == NULL) {
+    fprintf(stderr, "Missing selected token output in C11 consumer\n");
+    code = 33;
+    goto cleanup;
+  }
+  CHECK(api->GetTensorTypeAndShape(token_output, &shape_info));
+  CHECK(api->GetTensorShapeElementCount(shape_info, &count));
+  CHECK(api->GetTensorData(token_output, &data));
+  if (count != 3 || ((const int64_t*)data)[0] != 2 || ((const int64_t*)data)[1] != 3 ||
+      ((const int64_t*)data)[2] != 0) {
+    fprintf(stderr, "Incorrect C11 package token history\n");
+    code = 34;
+    goto cleanup;
+  }
+  if (retained_out) {
+    CHECK(stateful->StatefulExecutionGetDispatchInfo(execution, ORT_STATEFUL_FEATURE_SAMPLER, 1,
+                                                     ORT_STATEFUL_SAMPLE_GREEDY, sizeof(dispatch), &dispatch));
+    if (dispatch.origin != ORT_STATEFUL_DISPATCH_PROVIDER || dispatch.device_type != OrtMemoryInfoDeviceType_GPU ||
+        dispatch.provider_calls != 3 || dispatch.cpu_calls != 0 || dispatch.cpu_delegations != 0) {
+      fprintf(stderr, "C11 package did not execute native GPU greedy\n");
+      code = 35;
+      goto cleanup;
+    }
+    CHECK(stateful->StatefulExecutionReset(execution));
+    *retained_out = result;
+    result = NULL;
+  }
+cleanup:
+  api->ReleaseTensorTypeAndShapeInfo(shape_info);
+  stateful->ReleaseStatefulStepResult(first);
+  stateful->ReleaseStatefulStepResult(sampled);
+  stateful->ReleaseStatefulStepResult(result);
+  stateful->ReleaseStatefulExecution(execution);
+  stateful->ReleaseSessionChain(chain);
+  api->ReleaseValue(prompt);
+  api->ReleaseSessionOptions(options);
+  package->ReleaseModelPackageContext(context);
+  return code;
+}
+
+int StatefulApiCPackageChainTest(const OrtEnv* env, const ORTCHAR_T* path) {
+  return StatefulApiCPackageChainTestImpl(env, path, NULL, NULL, NULL);
+}
+
+int StatefulApiCPackageGpuChainTest(const OrtEnv* env, const ORTCHAR_T* path, const OrtSessionOptions* prefill_options,
+                                    const OrtSessionOptions* decode_options, OrtStatefulStepResult** retained_out) {
+  return StatefulApiCPackageChainTestImpl(env, path, prefill_options, decode_options, retained_out);
+}
 
 int StatefulApiCConsumerTest(void) {
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);

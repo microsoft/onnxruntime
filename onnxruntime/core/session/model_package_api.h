@@ -71,4 +71,7 @@ ORT_API_STATUS_IMPL(CreateSession,
                     _In_opt_ const OrtSessionOptions* session_options,
                     _Outptr_ OrtSession** session);
 
+ORT_API_STATUS_IMPL(CreateSessionChain, _In_ const OrtEnv* env, _In_ const OrtModelPackageContext* context,
+                    _In_ const OrtModelPackageChainConfig* config, _Outptr_ OrtSessionChain** out);
+
 }  // namespace OrtModelPackageAPI

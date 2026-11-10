@@ -31,8 +31,16 @@ bool IsFinite(const SessionLoop& loop, std::string_view input_name) {
 
 SessionChain::SessionChain(SessionChainOptions options) : options_(std::move(options)) {}
 
+SessionChain::~SessionChain() = default;
+
 Status SessionChain::Create(SessionChainOptions options, std::shared_ptr<const SessionChain>& out) {
+  return CreateOwned(std::move(options), {}, out);
+}
+
+Status SessionChain::CreateOwned(SessionChainOptions options, InlinedVector<std::unique_ptr<InferenceSession>> sessions,
+                                 std::shared_ptr<const SessionChain>& out) {
   auto chain = std::shared_ptr<SessionChain>(new SessionChain(std::move(options)));
+  chain->owned_sessions_ = std::move(sessions);
   ORT_RETURN_IF_ERROR(chain->Initialize());
   out = std::move(chain);
   return Status::OK();
@@ -82,6 +90,8 @@ Status SessionChain::Initialize() {
         cache_provider_ = loop->cache_provider_;
       }
     }
+    ORT_RETURN_IF(component.generation_bootstrap && !loop->Options().generation,
+                  "Generation bootstrap requires a native decode policy");
     if (loop->Options().generation) {
       const auto phase = loop->Options().generation->phase;
       std::optional<int64_t> budget;
@@ -90,7 +100,46 @@ Status SessionChain::Initialize() {
           budget = condition.limit;
         }
       }
-      if (phase == TokenGenerationPhase::Prefill) {
+      if (component.generation_bootstrap) {
+        const auto& bootstrap = *component.generation_bootstrap;
+        const auto index = loops_.size();
+        ORT_RETURN_IF(phase != TokenGenerationPhase::Decode || has_generation_ || seen_decode,
+                      "Bootstrap initializes one decode pipeline without legacy prefill sampling");
+        ORT_RETURN_IF(
+            bootstrap.logits.kind != ChainSourceKind::ComponentOutput || bootstrap.logits.component_index >= index,
+            "Bootstrap logits must reference an earlier component output");
+        const auto source_index = bootstrap.logits.component_index;
+        ORT_RETURN_IF(loops_[source_index]->Options().generation,
+                      "Bootstrap producer must not already sample generation tokens");
+        auto initial = *loop->Options().generation;
+        initial.logits_output = bootstrap.logits.name;
+        initial.logits_position = bootstrap.logits_position;
+        ORT_RETURN_IF_ERROR(TokenGeneration::Validate(initial, *session->GetModelInputs().second,
+                                                      *sessions_[source_index]->GetModelOutputs().second));
+        const auto* source = FindArgument(*sessions_[source_index]->GetModelOutputs().second, bootstrap.logits.name);
+        const auto* target =
+            FindArgument(*session->GetModelOutputs().second, loop->Options().generation->logits_output);
+        StatefulDispatch initial_dispatch(loop->sampler_provider_);
+        bool provider_selected = false;
+        ORT_RETURN_IF_ERROR(initial_dispatch.Select(
+            ORT_STATEFUL_SAMPLE_GREEDY, source->TypeAsProto()->tensor_type().elem_type(), true, provider_selected));
+        if (source->Shape() && target->Shape()) {
+          const auto& a = source->Shape()->dim(source->Shape()->dim_size() - 1);
+          const auto& b = target->Shape()->dim(target->Shape()->dim_size() - 1);
+          ORT_RETURN_IF(a.has_dim_value() && b.has_dim_value() && a.dim_value() != b.dim_value(),
+                        "Bootstrap and decode vocabularies differ");
+        }
+        const auto& source_caches = loops_[source_index]->Options().kv_caches;
+        ORT_RETURN_IF(source_caches.size() != loop->Options().kv_caches.size(),
+                      "Bootstrap producer/decode cache sets differ");
+        for (const auto& cache : loop->Options().kv_caches) {
+          ORT_RETURN_IF(std::none_of(source_caches.begin(), source_caches.end(),
+                                     [&](const auto& item) { return item.cache.name == cache.cache.name; }),
+                        "Bootstrap producer/decode cache names differ");
+        }
+        has_generation_ = true;
+        seen_decode = true;
+      } else if (phase == TokenGenerationPhase::Prefill) {
         ORT_RETURN_IF(has_generation_, "A chain initially supports one prefill/decode generation pipeline");
         has_generation_ = true;
         generation_budget = budget;
@@ -123,6 +172,17 @@ Status SessionChain::Initialize() {
     }
     loops_.push_back(std::move(loop));
     sessions_.push_back(session);
+  }
+
+  for (size_t i = 0; i < loops_.size(); ++i) {
+    const auto& bootstrap = options_.components[i].generation_bootstrap;
+    if (bootstrap && loops_[i]->sampler_provider_.Selection().device_type != OrtMemoryInfoDeviceType_CPU) {
+      const auto source = bootstrap->logits.component_index;
+      StatefulProviderBinding producer;
+      ORT_RETURN_IF_ERROR(
+          StatefulProviderBinding::Resolve(sessions_[source], loops_[i]->sampler_provider_.Selection(), producer));
+      ORT_RETURN_IF_ERROR(loops_[source]->WithDevicePorts(producer, {}, {bootstrap->logits.name}, loops_[source]));
+    }
   }
 
   const bool gpu_cache = cache_provider_ &&
@@ -245,6 +305,47 @@ Status SessionChain::Initialize() {
         ORT_RETURN_IF_ERROR(CheckCompatibleTypes(*source_type, *target));
       }
     }
+    if (component.generation_bootstrap) {
+      const auto& bootstrap = *component.generation_bootstrap;
+      const auto& source = bootstrap.prompt;
+      ORT_RETURN_IF(source.name.empty(), "Bootstrap prompt source must be explicit");
+      const NodeArg* type = nullptr;
+      switch (source.kind) {
+        case ChainSourceKind::ExternalInput:
+          external_names_.insert(source.name);
+          break;
+        case ChainSourceKind::ExternalSequence:
+          sequence_names_.insert(source.name);
+          break;
+        case ChainSourceKind::ComponentOutput:
+          ORT_RETURN_IF(source.component_index >= index, "Bootstrap prompt must reference an earlier component");
+          type = FindArgument(*sessions_[source.component_index]->GetModelOutputs().second, source.name);
+          ORT_RETURN_IF_NOT(type, "Unknown bootstrap prompt output");
+          break;
+        case ChainSourceKind::State: {
+          ORT_RETURN_IF(std::any_of(cache_specs_.begin(), cache_specs_.end(),
+                                    [&](const auto& spec) { return spec.name == source.name; }),
+                        "A managed KV cache is not a token prompt");
+          const auto found = state_types.find(source.name);
+          if (found == state_types.end()) {
+            initial_state_names_.insert(source.name);
+          } else {
+            type = found->second;
+          }
+          break;
+        }
+        default:
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unknown bootstrap prompt source kind");
+      }
+      if (type) {
+        ORT_RETURN_IF_ERROR(TokenGeneration::ValidatePromptType(*type));
+      }
+      const bool device_logits =
+          loops_[bootstrap.logits.component_index]->device_outputs_.contains(bootstrap.logits.name);
+      ORT_RETURN_IF(
+          device_logits != (loops_[index]->sampler_provider_.Selection().device_type != OrtMemoryInfoDeviceType_CPU),
+          "Bootstrap logits placement does not match its sampler");
+    }
     InlinedHashSet<std::string> state_destinations;
     for (const auto& binding : component.state_outputs) {
       const auto* output = FindArgument(*sessions_[index]->GetModelOutputs().second, binding.output_name);
@@ -338,6 +439,27 @@ Status SessionChain::ValidateInputs(const SessionChainInputs& inputs) const {
     }
     for (const auto& binding : options_.components[index].state_outputs) {
       produced_state.insert(binding.state_name);
+    }
+    if (options_.components[index].generation_bootstrap) {
+      const auto& source = options_.components[index].generation_bootstrap->prompt;
+      const OrtValue* prompt = nullptr;
+      if (source.kind == ChainSourceKind::ExternalSequence) {
+        const auto found = inputs.sequences.find(source.name);
+        ORT_RETURN_IF(found == inputs.sequences.end() || found->second.size() != 1,
+                      "Bootstrap requires one complete prompt batch");
+        prompt = &found->second[0];
+      } else if (source.kind == ChainSourceKind::ExternalInput) {
+        const auto found = inputs.inputs.find(source.name);
+        ORT_RETURN_IF(found == inputs.inputs.end(), "Missing bootstrap prompt input");
+        prompt = &found->second;
+      } else if (source.kind == ChainSourceKind::State && initial_state_names_.contains(source.name)) {
+        const auto found = inputs.initial_state.find(source.name);
+        ORT_RETURN_IF(found == inputs.initial_state.end(), "Missing bootstrap prompt state");
+        prompt = &found->second;
+      }
+      if (prompt) {
+        ORT_RETURN_IF_ERROR(TokenGeneration::ValidatePrompt(*prompt));
+      }
     }
   }
   return Status::OK();
@@ -434,13 +556,27 @@ Status SessionChainExecution::PrepareComponentInputs(SessionLoopInputs& inputs) 
 Status SessionChainExecution::StepComponent(SessionChainStepResult& result) {
   const auto& component = chain_->options_.components[component_index_];
   const auto& loop = chain_->loops_[component_index_];
+  bool bootstrapped = false;
   if (!active_) {
     SessionLoopInputs inputs;
     ORT_RETURN_IF_ERROR(PrepareComponentInputs(inputs));
     ORT_RETURN_IF_ERROR(loop->CreateExecutionWithCache(std::move(inputs), cache_, generation_,
                                                        samplers_[component_index_], active_));
+    if (component.generation_bootstrap) {
+      const auto& bootstrap = *component.generation_bootstrap;
+      const OrtValue* logits = nullptr;
+      const OrtValue* prompt = nullptr;
+      ORT_RETURN_IF_ERROR(Resolve(bootstrap.logits, logits));
+      if (bootstrap.prompt.kind == ChainSourceKind::ExternalSequence) {
+        prompt = &initial_inputs_.sequences.at(bootstrap.prompt.name)[0];
+      } else {
+        ORT_RETURN_IF_ERROR(Resolve(bootstrap.prompt, prompt));
+      }
+      ORT_RETURN_IF_ERROR(active_->Bootstrap(*logits, *prompt, bootstrap.logits_position, result.component_result));
+      bootstrapped = true;
+    }
   }
-  const auto status = active_->Step(result.component_result);
+  const auto status = bootstrapped ? Status::OK() : active_->Step(result.component_result);
   staging_[component_index_] = active_->StagingInfo();
   ORT_RETURN_IF_ERROR(status);
   ORT_RETURN_IF(cancelled_.load(), "SessionChain cancelled during a component; call Reset before reuse");
@@ -490,7 +626,7 @@ Status SessionChainExecution::Step(SessionChainStepResult& out) {
                     MakeString("SessionChain component '", chain_->options_.components[index].name,
                                "': ", status.ErrorMessage()));
     }
-    if (result.executed) {
+    if (result.executed || result.component_result.generated_token.has_value()) {
       break;
     }
   }

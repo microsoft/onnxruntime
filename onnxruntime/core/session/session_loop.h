@@ -127,11 +127,15 @@ class SessionLoopExecution {
 
  private:
   friend class SessionLoop;
+  friend class SessionChainExecution;
   SessionLoopExecution(std::shared_ptr<const SessionLoop> loop, SessionLoopInputs inputs,
                        std::shared_ptr<KVCacheManager> cache, std::shared_ptr<TokenGenerationState> generation,
                        std::shared_ptr<StatefulDispatch> sampler,
                        bool owns_state);
   void EvaluateExits(const InlinedVector<OrtValue>& values);
+  Status Sample(const OrtValue& logits, std::optional<int64_t> position, int64_t& token);
+  Status Bootstrap(const OrtValue& logits, const OrtValue& prompt, std::optional<int64_t> position,
+                   SessionLoopStepResult& out);
 
   const std::shared_ptr<const SessionLoop> loop_;
   const SessionLoopInputs initial_inputs_;
