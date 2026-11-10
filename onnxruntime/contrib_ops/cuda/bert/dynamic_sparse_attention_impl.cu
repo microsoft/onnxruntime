@@ -608,7 +608,8 @@ __global__ void FusedDynamicSparseAttentionKernel(const T* query,
                                                   bool quantized_cache,
                                                   bool fp16_cache,
                                                   const float* key_scale,
-                                                  const float* value_scale) {
+                                                  const float* value_scale,
+                                                  bool query_fp16 = false) {
   const int block = static_cast<int>(blockIdx.x);
   if (block >= block_count) {
     return;
@@ -646,7 +647,7 @@ __global__ void FusedDynamicSparseAttentionKernel(const T* query,
   float* logits = shared;
   float* reduction = logits + candidate_capacity;
   T* shared_query = reinterpret_cast<T*>(reduction + blockDim.x);
-  if (h < head_size && !fp16_cache) {
+  if (h < head_size && !(fp16_cache || query_fp16)) {
     shared_query[h] = query_head[h];
   }
   __syncthreads();
@@ -696,7 +697,7 @@ __global__ void FusedDynamicSparseAttentionKernel(const T* query,
                                     : (fp16 ? ToFloat(reinterpret_cast<const half*>(main_key)[offset])
                                             : ToFloat(key_head[d]));
         const float q_val =
-            fp16_cache
+            (fp16_cache || query_fp16)
                 ? ToFloat(reinterpret_cast<const half*>(query)[(static_cast<int64_t>(row) * num_heads + head) * head_size + d])
                 : ToFloat(shared_query[d]);
         dot += q_val * key_value;
@@ -1096,7 +1097,8 @@ __global__ void GroupedDecodeDynamicSparseAttentionKernel(
     bool selected_from_auxiliary,
     bool use_smooth_softmax,
     const float* key_scale,
-    const float* value_scale) {
+    const float* value_scale,
+    bool query_fp16 = false) {
   const int block = static_cast<int>(blockIdx.x);
   if (block >= grouped_block_count) {
     return;
@@ -1171,11 +1173,19 @@ __global__ void GroupedDecodeDynamicSparseAttentionKernel(
   } else
 #endif
       if (active_head) {
-    const CacheT* query_head =
-        reinterpret_cast<const CacheT*>(query) + (static_cast<int64_t>(row) * num_heads + head) * head_size;
+    const int64_t head_base = (static_cast<int64_t>(row) * num_heads + head) * head_size;
+    if (kFp16Cache || query_fp16) {
+      const half* query_head = reinterpret_cast<const half*>(query) + head_base;
 #pragma unroll
-    for (int i = 0; i < kValuesPerLane; ++i) {
-      query_values[i] = ToFloat(query_head[lane + i * 32]);
+      for (int i = 0; i < kValuesPerLane; ++i) {
+        query_values[i] = ToFloat(query_head[lane + i * 32]);
+      }
+    } else {
+      const CacheT* query_head = reinterpret_cast<const CacheT*>(query) + head_base;
+#pragma unroll
+      for (int i = 0; i < kValuesPerLane; ++i) {
+        query_values[i] = ToFloat(query_head[lane + i * 32]);
+      }
     }
   }
 
@@ -1453,7 +1463,8 @@ __global__ void SplitDynamicSparseAttentionKernel(const T* query,
                                                   bool quantized_cache,
                                                   bool fp16_cache,
                                                   const float* key_scale,
-                                                  const float* value_scale) {
+                                                  const float* value_scale,
+                                                  bool query_fp16 = false) {
   const int partial_block = static_cast<int>(blockIdx.x);
   if (partial_block >= partial_block_count) {
     return;
@@ -1492,7 +1503,7 @@ __global__ void SplitDynamicSparseAttentionKernel(const T* query,
   float* logits = shared;
   float* reduction = logits + kSplitCandidateSize;
   T* shared_query = reinterpret_cast<T*>(reduction + blockDim.x);
-  if (h < head_size && !fp16_cache) {
+  if (h < head_size && !(fp16_cache || query_fp16)) {
     shared_query[h] = query_head[h];
   }
   __syncthreads();
@@ -1556,7 +1567,7 @@ __global__ void SplitDynamicSparseAttentionKernel(const T* query,
                                       : (fp16 ? ToFloat(reinterpret_cast<const half*>(main_key)[offset])
                                               : ToFloat(key_head[d]));
           const float q_val =
-              fp16_cache
+              (fp16_cache || query_fp16)
                   ? ToFloat(reinterpret_cast<const half*>(query)[(static_cast<int64_t>(row) * num_heads + head) * head_size + d])
                   : ToFloat(shared_query[d]);
           dot += q_val * key_value;
@@ -2220,9 +2231,10 @@ Status LaunchDynamicSparseAttention(
   const int packed_stride =
       parameters.query_hidden_size + 2 * parameters.kv_hidden_size;
 
+  const bool query_for_attn_fp16 = data.fp16_cache || (data.quantized_cache && data.query_fp16);
   const bool need_prepare_query =
       parameters.is_packed_qkv || data.q_norm_weight != nullptr || parameters.rotary_dim > 0 ||
-      (data.fp16_cache != data.query_fp16) || !IsAligned(data.query, 16);
+      (query_for_attn_fp16 != data.query_fp16) || !IsAligned(data.query, 16);
   const T* query_for_attn = need_prepare_query ? data.prepared_query : data.query;
   if (need_prepare_query) {
     PrepareQueryKernel<<<static_cast<int>(query_blocks), threads, prepare_shared_bytes, stream>>>(
@@ -2233,7 +2245,7 @@ Status LaunchDynamicSparseAttention(
         parameters.is_packed_qkv ? packed_stride : parameters.query_hidden_size,
         parameters.rotary_dim, parameters.rotary_max_position, parameters.rotary_offset,
         parameters.rotary_interleaved, parameters.qk_norm_epsilon,
-        data.fp16_cache, data.query_fp16);
+        query_for_attn_fp16, data.query_fp16);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
   }
 
@@ -2438,7 +2450,7 @@ Status LaunchDynamicSparseAttention(
                   reinterpret_cast<const int8_t*>(data.present_value), data.selected_indices, data.selected_counts,
                   data.seqlens_k, nullptr, partial_max, partial_sum, partial_output, split_count,
                   parameters.sequence_length, parameters.num_heads, parameters.kv_num_heads, parameters.cache_capacity,
-                  parameters.max_selected, parameters.scale, data.key_scale, data.value_scale);
+                  parameters.max_selected, parameters.scale, data.key_scale, data.value_scale, query_for_attn_fp16);
         } else {
           dsa_prefill::DynamicSparseAttentionInt8TcKernel<true, false>
               <<<grid, dsa_prefill::kThreads, dsa_prefill::kInt8SplitKSharedBytes, stream>>>(
@@ -2446,7 +2458,7 @@ Status LaunchDynamicSparseAttention(
                   reinterpret_cast<const int8_t*>(data.present_value), data.selected_indices, data.selected_counts,
                   data.seqlens_k, nullptr, partial_max, partial_sum, partial_output, split_count,
                   parameters.sequence_length, parameters.num_heads, parameters.kv_num_heads, parameters.cache_capacity,
-                  parameters.max_selected, parameters.scale, data.key_scale, data.value_scale);
+                  parameters.max_selected, parameters.scale, data.key_scale, data.value_scale, query_for_attn_fp16);
         }
       }
     } else if (data.quantized_cache) {
@@ -2476,7 +2488,7 @@ Status LaunchDynamicSparseAttention(
                 parameters.max_selected, parameters.local_window_size, parameters.scale,
                 local_plus_selected,
                 parameters.selected_kv_source == DynamicSparseAttentionKvSource::kAuxiliary,
-                parameters.use_smooth_softmax, data.key_scale, data.value_scale);
+                parameters.use_smooth_softmax, data.key_scale, data.value_scale, query_for_attn_fp16);
       };
       if (grouped_decode_heads_per_block == 12) {
         if (use_vector_staging) {
@@ -2570,7 +2582,7 @@ Status LaunchDynamicSparseAttention(
                   reinterpret_cast<const int8_t*>(data.present_value), data.selected_indices, data.selected_counts,
                   data.seqlens_k, data.output, nullptr, nullptr, nullptr, 1, parameters.sequence_length,
                   parameters.num_heads, parameters.kv_num_heads, parameters.cache_capacity, parameters.max_selected,
-                  parameters.scale, data.key_scale, data.value_scale);
+                  parameters.scale, data.key_scale, data.value_scale, query_for_attn_fp16);
         } else {
           CUDA_RETURN_IF_ERROR(cudaFuncSetAttribute(
               dsa_prefill::DynamicSparseAttentionInt8TcKernel<false, false>,
@@ -2582,7 +2594,7 @@ Status LaunchDynamicSparseAttention(
                   reinterpret_cast<const int8_t*>(data.present_value), data.selected_indices, data.selected_counts,
                   data.seqlens_k, data.output, nullptr, nullptr, nullptr, 1, parameters.sequence_length,
                   parameters.num_heads, parameters.kv_num_heads, parameters.cache_capacity, parameters.max_selected,
-                  parameters.scale, data.key_scale, data.value_scale);
+                  parameters.scale, data.key_scale, data.value_scale, query_for_attn_fp16);
         }
       } else if (data.quantized_cache) {
         CUDA_RETURN_IF_ERROR(cudaFuncSetAttribute(
@@ -2592,7 +2604,8 @@ Status LaunchDynamicSparseAttention(
             <<<grid, dsa_prefill::kThreads, dsa_prefill::kSharedBytes, stream>>>(
                 query_for_attn, data.present_key, data.present_value, data.selected_indices, data.selected_counts,
                 data.seqlens_k, data.output, parameters.sequence_length, parameters.num_heads, parameters.kv_num_heads,
-                parameters.cache_capacity, parameters.max_selected, parameters.scale, data.key_scale, data.value_scale);
+                parameters.cache_capacity, parameters.max_selected, parameters.scale, data.key_scale, data.value_scale,
+                query_for_attn_fp16);
       } else if (data.fp16_cache) {
         CUDA_RETURN_IF_ERROR(cudaFuncSetAttribute(
             dsa_prefill::DynamicSparseAttentionPrefillKernel<false, true>, cudaFuncAttributeMaxDynamicSharedMemorySize,
@@ -2661,7 +2674,8 @@ Status LaunchDynamicSparseAttention(
         parameters.local_window_size, candidate_capacity, parameters.scale,
         local_plus_selected,
         parameters.selected_kv_source == DynamicSparseAttentionKvSource::kAuxiliary,
-        parameters.use_smooth_softmax, data.quantized_cache, data.fp16_cache, data.key_scale, data.value_scale);
+        parameters.use_smooth_softmax, data.quantized_cache, data.fp16_cache, data.key_scale, data.value_scale,
+        query_for_attn_fp16);
   } else {
     const int split_count = GetAttentionSplitCount(parameters);
     const int64_t partial_blocks = query_blocks * split_count;
@@ -2689,7 +2703,8 @@ Status LaunchDynamicSparseAttention(
         parameters.local_window_size, parameters.scale,
         local_plus_selected,
         parameters.selected_kv_source == DynamicSparseAttentionKvSource::kAuxiliary,
-        parameters.use_smooth_softmax, data.quantized_cache, data.fp16_cache, data.key_scale, data.value_scale);
+        parameters.use_smooth_softmax, data.quantized_cache, data.fp16_cache, data.key_scale, data.value_scale,
+        query_for_attn_fp16);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
     if (split_count > 1) {

@@ -793,6 +793,10 @@ TEST(DynamicSparseAttentionTest, Int8CachePrefillTensorCoreKernel_CUDA) {
           ScopedEnvironmentVariables scoped_env_vars{
               EnvVarMap{{"ORT_DSA_PREFILL_KERNEL", "1"}, {"ORT_DSA_PREFILL_INT8_TC", int8_tc_env}}};
           RunDynamicSparseAttentionCase<BFloat16, int8_t>(c, DefaultCudaExecutionProvider());
+          if (num_heads == 12 && !invalid_entries) {
+            RunDynamicSparseAttentionCase<BFloat16, int8_t, MLFloat16, MLFloat16>(
+                c, DefaultCudaExecutionProvider());
+          }
         }
         if (::testing::Test::HasFailure()) return;
       }
