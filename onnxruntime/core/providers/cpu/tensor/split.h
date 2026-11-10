@@ -20,7 +20,7 @@ namespace onnxruntime {
 class SplitBase {
  public:
   /*
-   * \param num_outputs must >=0
+   * \param num_outputs must >0
    */
 #ifdef SHARED_PROVIDER
   Status PrepareForCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
@@ -30,6 +30,9 @@ class SplitBase {
   inline Status PrepareForCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
                                   int& after_dims_including_split_axis, int& after_dims_excluding_split,
                                   std::vector<int64_t>& split_sizes) const {
+    if (num_outputs <= 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Number of outputs must be positive.");
+    }
     auto input_dims = input_shape.GetDims();
     const auto num_dimensions = gsl::narrow_cast<int64_t>(input_shape.NumDimensions());
     axis = HandleNegativeAxis(axis_, num_dimensions);
@@ -42,16 +45,7 @@ class SplitBase {
                                      : onnxruntime::narrow<int>(input_shape.SizeFromDimension(SafeInt<size_t>(axis) + 1));
 
     if (num_outputs_ != -1) {
-      if (num_outputs_ > split_dim_size) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid num_outputs value of ", num_outputs_,
-                               ". Size of dimension being split is ", split_dim_size);
-      }
-      int32_t size = onnxruntime::narrow<int32_t>(std::ceil(static_cast<float>(split_dim_size) / num_outputs));
-      int32_t remainder = split_dim_size % size;
-      split_sizes = std::vector<int64_t>(num_outputs, size);
-      if (remainder) {
-        split_sizes.back() = remainder;
-      }
+      ORT_RETURN_IF_ERROR(PrepareSplitSizesForNumOutputs(split_dim_size, num_outputs, split_sizes));
     }
 
     if (split_sizes.empty()) {
@@ -90,11 +84,38 @@ class SplitBase {
 #endif  // SHARED_PROVIDER
 
  protected:
+  Status PrepareSplitSizesForNumOutputs(int64_t split_dim_size, int num_outputs,
+                                        std::vector<int64_t>& split_sizes) const {
+    if (num_outputs <= 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Number of outputs must be positive.");
+    }
+    if (num_outputs_ != num_outputs) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Number of outputs (", num_outputs,
+                             ") does not match num_outputs (", num_outputs_, ").");
+    }
+    const int64_t split_size = split_dim_size / num_outputs + (split_dim_size % num_outputs != 0);
+    const int64_t last_split_size =
+        SafeInt<int64_t>(split_dim_size) - SafeInt<int64_t>(split_size) * (num_outputs - 1);
+    if (last_split_size < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid num_outputs value of ", num_outputs_,
+                             ". Split sizes would produce a negative final split.");
+    }
+    split_sizes.assign(static_cast<size_t>(num_outputs), split_size);
+    split_sizes.back() = last_split_size;
+    return Status::OK();
+  }
+
   template <typename KernelInfoType>
   SplitBase(const KernelInfoType& info, uint32_t opset) : opset_{opset} {
     axis_ = info.template GetAttrOrDefault<int64_t>("axis", 0);
 
     size_t num_inputs = info.GetInputCount();
+    if constexpr (requires { info.node().InputExists(size_t{1}); }) {
+      has_split_input_ = info.node().InputExists(1);
+    } else {
+      has_split_input_ = num_inputs > 1 && info.node().InputDefs()[1]->Exists();
+    }
+
     if (num_inputs == 1) {
       // optional
       if (info.GetAttrs("split", split_sizes_).IsOK()) {
@@ -109,7 +130,7 @@ class SplitBase {
       // the ONNX type/shape inferencing handles the check that num_outputs is > 0
       // ORT_ENFORCE(num_outputs_ != 0, "Invalid value in 'num_outputs' attribute of 0.");
 
-      if (num_outputs_ != -1 && info.GetInputCount() == 2) {
+      if (num_outputs_ != -1 && has_split_input_) {
         ORT_THROW("If 'num_outputs' is specified, the 'split' input should not be provided.");
       }
     }
@@ -118,6 +139,7 @@ class SplitBase {
   const uint32_t opset_;
   int64_t axis_;
   std::vector<int64_t> split_sizes_;
+  bool has_split_input_ = false;
   int64_t split_size_sum_ = -1;
   int64_t num_outputs_ = -1;
 };

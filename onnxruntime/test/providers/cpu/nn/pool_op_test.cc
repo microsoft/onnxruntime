@@ -14,7 +14,7 @@ namespace test {
 // Execution providers excluded from the four opset-18 AveragePool ceil_mode +
 // count_include_pad parity tests below. Shared by all four tests to prevent scoping
 // drift. Two rationales:
-//   - Most EPs (kTensorrt, kNvTensorRTRTX, kAcl, kOpenVINO, kDml, kWebGpu, kDnnl,
+//   - Most EPs (kTensorrt, kNvTensorRTRTX, kOpenVINO, kDml, kWebGpu, kDnnl,
 //     kCoreML, kQnn) do not implement the clamped-window divisor (PyTorch #183528),
 //     so they return the pre-fix full-kernel-size average and would fail these tests.
 //   - kCuda / kCudaNHWC DO support the semantics, but these opset-18 cases are
@@ -27,7 +27,7 @@ namespace test {
 // kCuda/kCudaNHWC because there CUDA is the tested target. Pick the one matching your intent.
 static const std::unordered_set<std::string> kPoolingEpsExcludedFromCeilCountIncludePadTests = {
     kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider,
-    kNvTensorRTRTXExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+    kNvTensorRTRTXExecutionProvider, kOpenVINOExecutionProvider,
     kDmlExecutionProvider, kWebGpuExecutionProvider, kDnnlExecutionProvider,
     kCoreMLExecutionProvider, kQnnExecutionProvider};
 
@@ -199,7 +199,7 @@ static void MaxPool_8_WithIndexTest(bool has_index, int64_t storage_order = 0) {
   // TODO: Enable the case for WebGPU once WGSL can support int64.
   // TODO: Re-enable DML when fixed #41968513
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kDnnlExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider,
+           {kDnnlExecutionProvider, kTensorrtExecutionProvider,
             kOpenVINOExecutionProvider, kWebGpuExecutionProvider, kDmlExecutionProvider});
 }
 
@@ -359,7 +359,7 @@ static void MaxPool1D_8_WithIndexTest(int64_t storage_order) {
 
   // TODO: Enable the case for WebGPU once WGSL can support int64.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kWebGpuExecutionProvider});
+           {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool1D_8_With_Index) {
@@ -386,7 +386,7 @@ static void MaxPool1D_12_WithIndexTest_int8(int64_t storage_order) {
   test.AddOutput<int8_t>("Y", expected_dims, expected_vals);
   test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider});
+           {kTensorrtExecutionProvider});
 }
 
 static void MaxPool1D_12_WithIndexTest_uint8(int64_t storage_order) {
@@ -408,7 +408,7 @@ static void MaxPool1D_12_WithIndexTest_uint8(int64_t storage_order) {
   test.AddOutput<uint8_t>("Y", expected_dims, expected_vals);
   test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider});
+           {kTensorrtExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool1D_12_With_Index_8bits) {
@@ -442,7 +442,7 @@ static void MaxPool1D_12_WithIndexTest_int8_LowestValue(int64_t storage_order) {
   test.AddOutput<int8_t>("Y", expected_dims, expected_vals);
   test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider});
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 static void MaxPool1D_12_WithIndexTest_uint8_LowestValue(int64_t storage_order) {
@@ -464,7 +464,7 @@ static void MaxPool1D_12_WithIndexTest_uint8_LowestValue(int64_t storage_order) 
   test.AddOutput<uint8_t>("Y", expected_dims, expected_vals);
   test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider});
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool1D_12_With_Index_8bits_LowestValue) {
@@ -711,7 +711,7 @@ TEST(PoolTest, MaxPool_DilationPadding_1d_Indices) {
   test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kDmlExecutionProvider, kOpenVINOExecutionProvider,
-            kAclExecutionProvider, kWebGpuExecutionProvider});
+            kWebGpuExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_DilationPadding_2d_Indices) {
@@ -744,7 +744,7 @@ TEST(PoolTest, MaxPool_DilationPadding_2d_Indices) {
                            11, 10, 13, 12, 13});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kDmlExecutionProvider, kOpenVINOExecutionProvider,
-            kAclExecutionProvider, kWebGpuExecutionProvider});
+            kWebGpuExecutionProvider});
 }
 
 // Empty-window regression test: with dilation > 1 and begin padding, a window can have no valid
@@ -770,7 +770,7 @@ TEST(PoolTest, MaxPool_DilationPadding_1d_EmptyWindow) {
   test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kDmlExecutionProvider, kOpenVINOExecutionProvider,
-            kAclExecutionProvider, kWebGpuExecutionProvider});
+            kWebGpuExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_10_Dilation_Ceil0_2d) {
@@ -795,7 +795,7 @@ TEST(PoolTest, MaxPool_10_Dilation_Ceil0_2d) {
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   // TODO: Re-enable DML when fixed #41968513
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kDmlExecutionProvider});
+           {kTensorrtExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_12_Dilation_Ceil0_2d_int8) {
@@ -820,7 +820,7 @@ TEST(PoolTest, MaxPool_12_Dilation_Ceil0_2d_int8) {
   test.AddOutput<int8_t>("Y", expected_dims, expected_vals);
   // TODO: Re-enable DML when fixed #41968513
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kDmlExecutionProvider});
+           {kTensorrtExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_10_Dilation_Ceil1_2d) {
@@ -847,7 +847,7 @@ TEST(PoolTest, MaxPool_10_Dilation_Ceil1_2d) {
 
   // TODO: Re-enable DML when fixed #41968513
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kDmlExecutionProvider});
+           {kTensorrtExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_10_DilationPadding_3d) {
@@ -1201,7 +1201,7 @@ TEST(PoolTest, AveragePool_CountIncludePad_AsymmetricPads) {
   // exclusions are EPs whose external libraries (CoreML, etc.) still produce wrong results here.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kCudaNHWCExecutionProvider,
-            kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+            kTensorrtExecutionProvider, kOpenVINOExecutionProvider,
             kDnnlExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
             kDmlExecutionProvider});
 }
@@ -1240,7 +1240,7 @@ TEST(PoolTest, AveragePool3D_CountIncludePad_AsymmetricPads) {
   // etc.) still produce wrong results here.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kCudaNHWCExecutionProvider,
-            kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+            kTensorrtExecutionProvider, kOpenVINOExecutionProvider,
             kDnnlExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
             kDmlExecutionProvider});
 }
@@ -1286,7 +1286,7 @@ TEST(PoolTest, AveragePool_10_ceil1_2d) {
   test.AddOutput<float>("Y", expected_dims, expected_vals);
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider});
+           {kTensorrtExecutionProvider});
 }
 
 TEST(PoolTest, AveragePool_19_dilation_2d) {
@@ -1312,7 +1312,7 @@ TEST(PoolTest, AveragePool_19_dilation_2d) {
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kCudaExecutionProvider, kCudaNHWCExecutionProvider,
-            kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider});
+            kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(PoolTest, AveragePool_19_ceil_count_include_pad_1d) {
@@ -1334,7 +1334,7 @@ TEST(PoolTest, AveragePool_19_ceil_count_include_pad_1d) {
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   // TODO: Re-enable DML when fixed #41968513
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider});
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider});
 }
 
 // ---------------------------------------------------------------------------
@@ -1373,7 +1373,7 @@ TEST(PoolTest, AveragePool_19_ceil_count_include_pad_1d) {
 // ---------------------------------------------------------------------------
 const std::unordered_set<std::string> kPoolingEpsExcludedFromCeilCipTests = {
     kTensorrtExecutionProvider, kNvTensorRTRTXExecutionProvider, kDnnlExecutionProvider,
-    kOpenVINOExecutionProvider, kAclExecutionProvider, kCoreMLExecutionProvider,
+    kOpenVINOExecutionProvider, kCoreMLExecutionProvider,
     kQnnExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider};
 
 TEST(PoolTest, AveragePool_CUDA_asymmetric_tail_pad_1d) {

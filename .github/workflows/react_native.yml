@@ -38,21 +38,8 @@ jobs:
 
       - name: Setup Android NDK
         uses: ./.github/actions/setup-android-ndk
-        with:
-          ndk-version: 28.0.13004108
 
-      - name: Get vcpkg tool info
-        id: vcpkg-tool-info
-        uses: ./.github/actions/get-vcpkg-tool-info
-
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@d19341fb036c43a947a2c0e4a53ad4d15e10bc5c # v0.0.9
-        with:
-          vcpkg-version: ${{ steps.vcpkg-tool-info.outputs.release_tag }}
-          vcpkg-hash: ${{ steps.vcpkg-tool-info.outputs.sha512 }}
-          cmake-version: '3.31.6'
-          cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
-          add-cmake-to-path: 'true'
-          disable-terrapin: 'true'
+      - uses: ./.github/actions/setup-build-tools
 
       - name: Build Android AAR Packages
         run: |
@@ -69,7 +56,7 @@ jobs:
           cp -r ${{ runner.temp }}/aar_out/Release/com ${{ runner.temp }}/artifacts
 
       - name: Upload Android AAR Artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: onnxruntime-android-full-aar
           path: ${{ runner.temp }}/artifacts
@@ -93,7 +80,7 @@ jobs:
           architecture: "x64"
 
       - name: Use Java 17 (Temurin)
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -142,8 +129,6 @@ jobs:
 
       - name: Setup Android Emulator
         uses: ./.github/actions/setup-android-ndk
-        with:
-          ndk-version: 28.0.13004108
 
       - name: Run React Native Detox Android e2e Tests
         run: |
@@ -171,7 +156,7 @@ jobs:
 
       - name: Upload Android Test Results
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-test-results
           path: |
@@ -198,18 +183,7 @@ jobs:
       - name: Install Python requirements
         run: pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
 
-      - name: Get vcpkg tool info
-        id: vcpkg-tool-info
-        uses: ./.github/actions/get-vcpkg-tool-info
-
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@d19341fb036c43a947a2c0e4a53ad4d15e10bc5c # v0.0.9
-        with:
-          vcpkg-version: ${{ steps.vcpkg-tool-info.outputs.release_tag }}
-          vcpkg-hash: ${{ steps.vcpkg-tool-info.outputs.sha512 }}
-          cmake-version: '3.31.8'
-          cmake-hash: 99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8
-          add-cmake-to-path: 'true'
-          disable-terrapin: 'true'
+      - uses: ./.github/actions/setup-build-tools
 
       - name: Build iOS package and assemble pods
         run: |
@@ -219,7 +193,7 @@ jobs:
             --build-settings-file ${{ github.workspace }}/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings_arm64.json
 
       - name: Upload iOS Pod Artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ios_pod
           path: ${{ runner.temp }}/ios_pod
@@ -248,18 +222,7 @@ jobs:
           node-version: '24.x'
           registry-url: 'https://packagefeedproxy.microsoft.io/npm/'
 
-      - name: Get vcpkg tool info
-        id: vcpkg-tool-info
-        uses: ./.github/actions/get-vcpkg-tool-info
-
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@d19341fb036c43a947a2c0e4a53ad4d15e10bc5c # v0.0.9
-        with:
-          vcpkg-version: ${{ steps.vcpkg-tool-info.outputs.release_tag }}
-          vcpkg-hash: ${{ steps.vcpkg-tool-info.outputs.sha512 }}
-          cmake-version: '3.31.8'
-          cmake-hash: 99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8
-          add-cmake-to-path: 'true'
-          disable-terrapin: 'true'
+      - uses: ./.github/actions/setup-build-tools
 
       - name: Install dependencies and bootstrap
         run: |
@@ -288,13 +251,26 @@ jobs:
         run: npm run detox -- build --configuration ios.sim_18_6.release
         working-directory: ${{ github.workspace }}/js/react_native/e2e
 
-      - name: Reset iOS Simulators before Detox
+      - name: Prepare Detox iOS Simulator
+        timeout-minutes: 10
         run: |
-          set -e -x
-          xcrun simctl shutdown all || true
-          xcrun simctl erase all || true
-          killall Simulator || true
-          killall com.apple.CoreSimulator.CoreSimulatorService || true
+          set -euo pipefail
+          simulator_type=$(node -p "require('./.detoxrc.js').devices.simulator_ios_18_6.device.type")
+          simulator_os=$(node -p "require('./.detoxrc.js').devices.simulator_ios_18_6.device.os")
+          device=$(applesimutils --list --byType "$simulator_type" --byOS "$simulator_os" |
+            jq -e 'if length == 1 then .[0] else error("Expected exactly one simulator matching the Detox configuration") end')
+          device_id=$(jq -er '.udid' <<< "$device")
+          device_state=$(jq -er '.state' <<< "$device")
+          case "$device_state" in
+            Booted) xcrun simctl shutdown "$device_id" ;;
+            Shutdown) ;;
+            *) echo "Unexpected state for simulator $device_id: $device_state" >&2; exit 1 ;;
+          esac
+          xcrun simctl erase "$device_id"
+          xcrun simctl boot "$device_id"
+          xcrun simctl bootstatus "$device_id" -b
+          xcrun simctl listapps "$device_id" > /dev/null
+        working-directory: ${{ github.workspace }}/js/react_native/e2e
 
       - name: Run Detox iOS e2e Tests
         run: |
@@ -308,7 +284,7 @@ jobs:
 
       - name: Upload iOS Test Results
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ios-test-results
           path: |

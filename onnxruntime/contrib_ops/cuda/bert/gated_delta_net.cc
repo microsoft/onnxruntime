@@ -10,6 +10,7 @@
 #include <type_traits>
 
 #include "contrib_ops/cuda/bert/gated_delta_net_impl.h"
+#include "contrib_ops/cuda/cuda_session_options.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "core/platform/env_var_utils.h"
@@ -64,9 +65,14 @@ GatedDeltaNet<T>::GatedDeltaNet(const OpKernelInfo& info) : CudaKernel(info) {
     gate_activation_ = gdn::GateActivation::kNone;
   } else if (gate == "softplus" || gate == "qwen") {
     gate_activation_ = gdn::GateActivation::kSoftplusDecay;
+  } else if (gate == "sigmoid" || gate == "kda") {
+    gate_activation_ = gdn::GateActivation::kSigmoidDecay;
   } else {
-    ORT_THROW("gate_activation must be one of: none, softplus (legacy alias: qwen)");
+    ORT_THROW("gate_activation must be one of: none, softplus (alias: qwen), sigmoid (alias: kda)");
   }
+  gate_lower_bound_ = info.GetAttrOrDefault<float>("gate_lower_bound", -5.0f);
+  ORT_ENFORCE(std::isfinite(gate_lower_bound_) && gate_lower_bound_ < 0.0f,
+              "gate_lower_bound must be finite and negative");
 
   const std::string beta = info.GetAttrOrDefault<std::string>("beta_activation", "none");
   if (beta == "none") {
@@ -108,6 +114,8 @@ GatedDeltaNet<T>::GatedDeltaNet(const OpKernelInfo& info) : CudaKernel(info) {
                   " must be one of: fp32, fp16, bf16, got '", env_val, "'");
     }
   }
+  fp16_state_guard_ = ReadCudaSessionSwitch(info, kOrtSessionOptionsCudaGatedDeltaNetFp16StateGuard,
+                                            "ORT_GDN_FP16_STATE_GUARD", true);
 }
 
 template <typename T>
@@ -264,8 +272,6 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   // head_size_qk axis makes the decay per key dimension.
   const bool decay_per_key_dim =
       decay != nullptr && decay->Shape().NumDimensions() == token_dims + 2;
-  ORT_RETURN_IF(state_update_capacity_ > 0 && decay_per_key_dim,
-                "transition capture does not support per-key-dimension decay");
   if (decay != nullptr) {
     const auto& d = decay->Shape();
     ORT_RETURN_IF_NOT(d.NumDimensions() == token_dims + 1 || decay_per_key_dim,
@@ -286,17 +292,28 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
                           b[token_dims] == num_heads_v,
                       "beta must be [...tokens, num_heads_v]");
   }
-  if (gate_activation_ == gdn::GateActivation::kSoftplusDecay) {
+  bool dt_bias_per_key_dim = false;
+  if (gate_activation_ == gdn::GateActivation::kSoftplusDecay ||
+      gate_activation_ == gdn::GateActivation::kSigmoidDecay) {
     ORT_RETURN_IF_NOT(a_log != nullptr && dt_bias != nullptr,
-                      "gate_activation=softplus requires a_log and dt_bias");
+                      "gate_activation=softplus/sigmoid requires a_log and dt_bias");
     ORT_RETURN_IF_NOT(a_log->Shape().NumDimensions() == 1 && a_log->Shape()[0] == num_heads_v,
                       "a_log must be [num_heads_v]");
-    ORT_RETURN_IF_NOT(dt_bias->Shape().NumDimensions() == 1 &&
-                          dt_bias->Shape()[0] == num_heads_v,
-                      "dt_bias must be [num_heads_v]");
+    const auto& dt_shape = dt_bias->Shape();
+    const bool scalar_bias = dt_shape.NumDimensions() == 1 && dt_shape[0] == num_heads_v;
+    const bool key_dim_bias =
+        decay_per_key_dim &&
+        ((dt_shape.NumDimensions() == 1 &&
+          dt_shape[0] == static_cast<int64_t>(num_heads_v) * head_size_qk) ||
+         (dt_shape.NumDimensions() == 2 && dt_shape[0] == num_heads_v &&
+          dt_shape[1] == head_size_qk));
+    ORT_RETURN_IF_NOT(scalar_bias || key_dim_bias,
+                      "dt_bias must be [num_heads_v] or (for per-key-dim decay) "
+                      "[num_heads_v, head_size_qk] / [num_heads_v * head_size_qk]");
+    dt_bias_per_key_dim = key_dim_bias;
   } else {
     ORT_RETURN_IF_NOT(a_log == nullptr && dt_bias == nullptr,
-                      "a_log and dt_bias require gate_activation=softplus");
+                      "a_log and dt_bias require gate_activation=softplus or sigmoid");
   }
 
   if (capture_count != nullptr) {
@@ -319,8 +336,10 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   TensorShape state_shape{batch, num_heads_v, head_size_v, head_size_qk};
   Tensor* final_state = context->Output(1, state_shape);
 
+  const int64_t decay_capture_width =
+      decay_per_key_dim ? static_cast<int64_t>(num_heads_v) * head_size_qk : num_heads_v;
   const int64_t state_update_width = static_cast<int64_t>(state_update_capacity_) *
-                                     (num_heads_v + num_heads_k * head_size_qk +
+                                     (decay_capture_width + num_heads_k * head_size_qk +
                                       num_heads_v * head_size_v);
   Tensor* state_update = context->Output(2, TensorShape{batch, state_update_width});
 
@@ -340,6 +359,7 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   desc.update_rule = update_rule_;
   desc.gate_activation = gate_activation_;
   desc.beta_activation = beta_activation_;
+  desc.gate_lower_bound = gate_lower_bound_;
   if constexpr (std::is_same_v<T, MLFloat16>) {
     desc.io_type = gdn::IoType::kFloat16;
   } else if constexpr (std::is_same_v<T, BFloat16>) {
@@ -349,8 +369,10 @@ Status GatedDeltaNet<T>::ComputeInternal(OpKernelContext* context) const {
   }
   desc.qk_l2_norm = qk_l2_norm_;
   desc.decay_per_key_dim = decay_per_key_dim;
+  desc.dt_bias_per_key_dim = dt_bias_per_key_dim;
   desc.ragged = cu_seqlens != nullptr;
   desc.preferred_engine = forced_engine_;
+  desc.fp16_state_guard = fp16_state_guard_;
   desc.bf16_precision = bf16_precision_;
   if (!has_session_bf16_precision_) {
     const std::string env_val =

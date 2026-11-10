@@ -60,10 +60,23 @@ rewrite is required.
 `Int2Fc1SwiGluRange`, `Int2Fc2Range`, `Nvfp4Fc1SwiGluRange`, `Nvfp4Fc2Range`)
 implemented across `qmoe_shared_layout.cc`,
 `qmoe_shared_layout_int4_avx512.cc`, `qmoe_shared_layout_int4_avx2.cc`,
+`qmoe_shared_layout_int2_avx512.cc`, `qmoe_shared_layout_int2_avx2.cc`,
 `qmoe_shared_layout_int3_avx512.cc`, `qmoe_shared_layout_int3_avx2.cc`, and
 `qmoe_shared_layout_fp4_avx512.cc`.
 It performs no weight/scale conversion during initialization or execution; the
-caller owns activation and output workspace.
+caller owns activation and output workspace. INT2 applies block scales before
+activation products. A BF16 scale of magnitude 2^127 or more would overflow
+that product for code -2 even when a small activation brings it back into range,
+so a vector range that contains such a scale runs on the scalar kernel, which
+halves only scales of that magnitude and doubles the block sum exactly (smaller
+scales, including FP32 subnormals, are used unchanged). INT2 rounds FC1
+projections to the boundary dtype before adding bias and evaluating SwiGLU in
+FP32, and rounds FC2 projections to the boundary dtype before adding the FP32
+bias, matching CUDA SIMT decode, BF16 Tensor Core decode, and packed prefill. This
+projection rounding is specific to QMoE; dense MatMulNBits GEMV retains its FP32
+reduction through bias addition. SiLU evaluates to its zero limit
+for an infinite gate on the side where `exp(-alpha * gate)` overflows. FC1 ranges must contain complete gate/up pairs (even
+bounds); invalid ranges return false without writing output.
 
 Scalar, runtime-dispatched AVX2, and runtime-dispatched AVX-512 implementations
 read the same banks. Code extraction, activation permutation, scale decoding,
@@ -93,15 +106,38 @@ rounding, and SwiGLU projection boundaries are independent of this option.
 Low-level CPU offload callers select the same policy through
 `Int3ExpertView::deferred_scale` or `Int4ExpertView::deferred_scale`.
 
+INT2 shared-layout CPU kernels apply block scales to weights before multiplying
+by activations, independently of `ep.cpu.qmoe_deferred_scale`. This avoids
+overflow in an unscaled code-times-activation product or partial sum when the
+scaled result is finite. For example, centered code `-2`, scale `2^-125`, and
+activation `2^127` produce `-8` in both scalar and SIMD paths. Extreme BF16
+scales use a scalar kernel that halves the scale before dequantization and
+restores the factor in FP32, avoiding overflow for code `-2` and scale `2^127`
+with small activations. These safeguards do not guarantee full-range BF16/FP32
+arithmetic. By contrast, the optional INT3/INT4 deferred-scale policy can
+overflow an unscaled product or partial sum even when the scaled result is finite.
+
 ## Validation
 
 - `qmoe_shared_layout_test.cc` checks independent layout fixtures, scalar, AVX2,
   and AVX-512 results, candidate dimensions, byte extents/strides, and read-only
   guarded buffers. INT4 FP16 boundary tests compare F16C rounding against the
   scalar path for partial ranges, including vector tails and multiple rows.
+- `moe_test.cc` checks prepacked INT2 CPU operator execution against independently
+  packed multi-expert banks and a natural-order reference, including both weight
+  shapes, FP32/FP16/BF16, optional biases, and explicit routing weights used as supplied, independently of normalization settings.
+  The default SwiGLU negative-infinite-gate case forces decode and grouped prefill
+  separately and checks zero outputs with finite up projections.
 - `test_qmoe_shared_direct.py` checks CPU/CUDA operator execution, dynamic banks,
   prepacking on/off, non-square aliases, mixed INT4/INT3 graphs, and 512-expert
   top-10 routing.
+- `test_qmoe_offload_v4.py` checks INT2 projection rounding before bias against
+  independent BF16 expectations for SIMT, Tensor Core, and cold CPU experts, and
+  the zero SiLU limit after a negative FP16 gate projection overflows.
+  Its separate tensor-core dispatch test checks both FC1 and FC2 kernel names,
+  and skips explicitly when SM80+ or CUPTI kernel profiling is unavailable.
+- `matmul_nbits_fpa_intb_layout_test.cc` checks dense INT2 GEMV bias cancellation
+  at the FP16 midpoint and overflow boundaries in non-compact CUDA builds.
 - Set `ORT_QMOE_CANDIDATE_MODEL` to the candidate's `model.onnx` to test exact
   expert slices without loading the entire external-data package.
 - With a CUPTI-enabled build, set `ORT_QMOE_REQUIRE_CUDA_PROFILE=1` and

@@ -1,0 +1,75 @@
+{
+  "producer_builds": {
+    "1527843": {
+      "source_commit": "724f5c7fd56b593319b45a166fbf0f2c99f404a5"
+    }
+  },
+  "images": {
+    "cpu_x64_almalinux8_gcc14": {
+      "repository": "onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14",
+      "tag": "20261105.1",
+      "digest": "sha256:8236780fbb78b2f9d02812042a789c06f92b8e88aa9684cf4a39b566f84c7663",
+      "producer_build": "1527843"
+    },
+    "cpu_aarch64_almalinux8_gcc14": {
+      "repository": "onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_aarch64_almalinux8_gcc14",
+      "tag": "20261105.1",
+      "digest": "sha256:867c65d943c6d889e72b2bb85aa99b03a65998eb5acbd9f8c82cf41414a2df13",
+      "producer_build": "1527843"
+    },
+    "cuda12_x64_almalinux8_gcc14": {
+      "repository": "onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14",
+      "tag": "20261105.1",
+      "digest": "sha256:e0c3756790ac7cf38a2489e930e2e457af3992f5d7aaa7a33c73430b138a6c48",
+      "producer_build": "1527843"
+    },
+    "cuda13_x64_almalinux8_gcc14": {
+      "repository": "onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14",
+      "tag": "20261105.1",
+      "digest": "sha256:4c4a42ee002de0d6fffcd252de858cde1162a43364f80531e337ec64700eb997",
+      "producer_build": "1527843"
+    },
+    "cpu_x64_almalinux8_gcc14_dotnet": {
+      "repository": "onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14_dotnet",
+      "tag": "20261105.1",
+      "digest": "sha256:4433926b32109555d3da0a07ad7743b870b24027684a7028d6db4cfbf6ed5eae",
+      "producer_build": "1527843"
+    },
+    "cpu_aarch64_almalinux8_gcc14_dotnet": {
+      "repository": "onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_aarch64_almalinux8_gcc14_dotnet",
+      "tag": "20261105.1",
+      "digest": "sha256:fb9ac259a1d856c04cc54bbd200b5b21653f66bebb4a373e6ac30b89790f0f39",
+      "producer_build": "1527843"
+    },
+    "cuda12_x64_almalinux8_gcc14_dotnet": {
+      "repository": "onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14_dotnet",
+      "tag": "20261105.1",
+      "digest": "sha256:502024966ec50f4b50d27c0b59053bca698a8c55ee3688363783d0abc7a16d65",
+      "producer_build": "1527843"
+    },
+    "cuda13_x64_almalinux8_gcc14_dotnet": {
+      "repository": "onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14_dotnet",
+      "tag": "20261105.1",
+      "digest": "sha256:a699dc1bf57c45d924ae4d38cb22834db57eecea523debb54c56588947ca8924",
+      "producer_build": "1527843"
+    },
+    "cuda13_aarch64_almalinux9_gcc14": {
+      "repository": "onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_aarch64_almalinux9_gcc14",
+      "tag": "20261105.1",
+      "digest": "sha256:1063f8033c6c99f0908f2c226e53da4aedda12db9a9ebeb71f97000d41253839",
+      "producer_build": "1527843"
+    }
+  },
+  "dockerfile_defaults": {
+    "Dockerfile.manylinux2_28_cpu": "cpu_x64_almalinux8_gcc14",
+    "Dockerfile.manylinux2_28_cuda": "cuda12_x64_almalinux8_gcc14",
+    "Dockerfile.manylinux2_28_webgpu": "cpu_x64_almalinux8_gcc14",
+    "inference/aarch64/default/cpu/Dockerfile": "cpu_aarch64_almalinux8_gcc14_dotnet",
+    "inference/aarch64/python/cpu/Dockerfile": "cpu_aarch64_almalinux8_gcc14",
+    "inference/x86_64/default/cpu/Dockerfile": "cpu_x64_almalinux8_gcc14_dotnet",
+    "inference/x86_64/default/cuda12/Dockerfile": "cuda12_x64_almalinux8_gcc14_dotnet",
+    "inference/x86_64/default/cuda13/Dockerfile": "cuda13_x64_almalinux8_gcc14_dotnet",
+    "inference/x86_64/python/cpu/Dockerfile": "cpu_x64_almalinux8_gcc14",
+    "inference/x86_64/python/openvino/Dockerfile": "cpu_x64_almalinux8_gcc14"
+  }
+}

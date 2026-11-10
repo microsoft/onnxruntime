@@ -2126,6 +2126,18 @@ Status PlaceMoeOffloadInitializersOnCpu(const GraphViewer& graph_viewer,
     }
   }
 
+  if (policy.tail_substitution_threshold > 0.0f) {
+    for (const Node* node : eligible_moe_nodes) {
+      const auto k_attr = node->GetAttributes().find("k");
+      const int64_t top_k = k_attr == node->GetAttributes().end() ? 1 : k_attr->second.i();
+      if (policy.tail_substitution_min_rank >= top_k) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Invalid session.moe.offload.tail_substitution_min_rank for node '",
+                               node->Name(), "': expected 0 <= min_rank < k=", top_k, ".");
+      }
+    }
+  }
+
   InlinedHashSet<std::string_view> initializers_to_place_on_cpu;
   for (const Node* node : eligible_moe_nodes) {
     const auto& input_defs = node->InputDefs();
@@ -2387,8 +2399,15 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // register stream handles from EP instances
 #ifdef ORT_ENABLE_STREAM
   auto& eps = GetExecutionProviders();
+  use_thread_affine_stream_pool_ = false;
   for (auto& ep : eps) {
-    ep->RegisterStreamHandlers(GetStreamHandleRegistryInstance(), *allocators_);
+    auto& stream_handle_registry = GetStreamHandleRegistryInstance();
+    ep->RegisterStreamHandlers(stream_handle_registry, *allocators_);
+    const auto device_type = ep->GetDevice().Type();
+    use_thread_affine_stream_pool_ =
+        use_thread_affine_stream_pool_ || ep->IsGraphCaptureEnabled() ||
+        (stream_handle_registry.GetCreateStreamFn(device_type) &&
+         !stream_handle_registry.GetSetDeviceFn(device_type).has_value());
   }
 #endif
 
@@ -2860,7 +2879,7 @@ static void BindToDeviceStream(const SequentialExecutionPlan& execution_plan,
 
 std::unique_ptr<DeviceStreamCollection> SessionState::AcquireDeviceStreamCollection() const {
   if (has_device_stream_enabled_ep_) {
-    const auto& thread_token = GetDeviceStreamPoolThreadToken();
+    const auto thread_token = use_thread_affine_stream_pool_ ? GetDeviceStreamPoolThreadToken() : nullptr;
     const void* thread_key = thread_token.get();
 
     std::lock_guard<std::mutex> lock(device_stream_pool_mutex_);
@@ -2872,6 +2891,17 @@ std::unique_ptr<DeviceStreamCollection> SessionState::AcquireDeviceStreamCollect
       it->second.device_streams.pop_back();
       if (it->second.device_streams.empty()) {
         device_stream_pools_.erase(it);
+      }
+      // Input copies can allocate before StreamExecutionContext selects the notification device.
+      for (size_t i = 0; i < device_stream->NumStreams(); ++i) {
+        auto* stream = device_stream->GetStream(i);
+        if (stream) {
+          const auto& device = stream->GetDevice();
+          auto set_device_fn = stream_handles_registry_->GetSetDeviceFn(device.Type());
+          if (set_device_fn.has_value()) {
+            set_device_fn.value()(device.Id());
+          }
+        }
       }
       return device_stream;
     }
@@ -2888,7 +2918,7 @@ std::unique_ptr<DeviceStreamCollection> SessionState::AcquireDeviceStreamCollect
 void SessionState::RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCollection> device_stream_collection) const {
   // if no need to reuse the device stream, don't perform the recycle
   if (has_device_stream_enabled_ep_) {
-    const auto& thread_token = GetDeviceStreamPoolThreadToken();
+    const auto thread_token = use_thread_affine_stream_pool_ ? GetDeviceStreamPoolThreadToken() : nullptr;
     const void* thread_key = thread_token.get();
 
     std::lock_guard<std::mutex> lock(device_stream_pool_mutex_);
@@ -2903,7 +2933,7 @@ void SessionState::RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCol
 
 void SessionState::PruneExpiredDeviceStreamPoolsLocked() const {
   for (auto it = device_stream_pools_.begin(); it != device_stream_pools_.end();) {
-    if (it->second.thread_token.expired()) {
+    if (it->first != nullptr && it->second.thread_token.expired()) {
       auto expired_it = it++;
       device_stream_pools_.erase(expired_it);
     } else {

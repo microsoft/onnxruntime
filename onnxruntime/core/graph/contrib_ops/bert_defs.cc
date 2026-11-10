@@ -389,11 +389,16 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
     const auto* total_sequence_length_data =
         total_sequence_length_index >= 0 ? ctx.getInputData(total_sequence_length_index) : nullptr;
     if (total_sequence_length_data != nullptr) {
-      const auto& data = ParseData<int32_t>(total_sequence_length_data);
-      if (data.size() != 1) {
-        fail_shape_inference("total_sequence_length input must contain a single element");
-      }
-      total_sequence_length_value = static_cast<int64_t>(data[0]);
+      const auto read_single_value = [](const auto& data) -> int64_t {
+        if (data.size() != 1) {
+          fail_shape_inference("total_sequence_length input must contain a single element");
+        }
+        return static_cast<int64_t>(data[0]);
+      };
+      // Propagated shape values use int64 even when the input type is int32.
+      total_sequence_length_value = total_sequence_length_data->data_type() == TensorProto_DataType_INT64
+                                        ? read_single_value(ParseData<int64_t>(total_sequence_length_data))
+                                        : read_single_value(ParseData<int32_t>(total_sequence_length_data));
     }
 
     if (past_key_index >= 0 && hasInputShape(ctx, past_key_index)) {
@@ -1509,9 +1514,9 @@ The optional `query_seqlens` input supports chunked prefill with a fixed query s
 
 Only the valid rows are appended to the cache, at positions `[P, T)`. Query row `s` is at absolute position `P + s`: causal attention, `local_window_size` and rotary embedding (when `position_ids` is not given) use that position. Output rows `[Q, S)` are unspecified, and so are cache rows at or beyond `T`. For every valid row the result equals that of the same call with an unpadded chunk of `Q` tokens retaining `query_seqlens` and the same `total_sequence_length`, so a caller can run every chunk of a prompt with one fixed `S`. With a quantized CUDA cache and `P = 0, Q > 1`, attention reads the original floating-point new K/V; omitting `query_seqlens` while retaining a capacity-valued bound can instead select legacy quantized-cache reads. For `P = 0, Q = 1`, both padded and unpadded calls read floating-point new K/V only when `total_sequence_length = 1`; a larger bound preserves quantized-cache reads.
 
-The scalar `total_sequence_length` is only an upper bound of `T` in this case (for example the cache capacity). It is not used to tell a first prompt from a later chunk and it does not determine `P`.
+The scalar `total_sequence_length` is only an upper bound of the absolute `T` in this case. It is not used to tell a first prompt from a later chunk and it does not determine `P`. A windowed cache may have a capacity smaller than `T`, so its capacity is not necessarily a valid upper bound.
 
-Requirements: `causal=1`; new key/value with `kv_sequence_length == sequence_length`; `past_key` and `past_value` present; `1 <= Q <= min(S, T)` and `T <= total_sequence_length` for every batch entry (the existing rule that `total_sequence_length >= sequence_length` for a cache that is not windowed still applies, but a growing cache is not required to have `total_sequence_length == past_sequence_length + sequence_length`); `sequence_length > 1` requires `batch_size == 1`; and `Q == 1` when `sequence_length == 1`. A cache that is not windowed must also hold the `P` cached tokens in `past_key` (`P` is at most the sequence dimension of `past_key`) and have room for the whole padded chunk, `P + S <= C`, where `C` is the sequence dimension of `present_key`. A windowed cache has no such requirement because it is staged internally. An execution provider that can read the values reports a violation with `INVALID_ARGUMENT`; the CUDA execution provider reads them on the device, clamps `Q` into `[1, min(S, T)]` and leaves the result unspecified. When `query_seqlens` is omitted, `Q = min(S, T)` and the behavior is unchanged.
+Requirements: `causal=1`; new key/value with `kv_sequence_length == sequence_length`; `past_key` and `past_value` present; `T >= 1`, `0 <= Q <= min(S, T)` and `T <= total_sequence_length` for every batch entry (the existing rule that `total_sequence_length >= sequence_length` for a cache that is not windowed still applies, but a growing cache is not required to have `total_sequence_length == past_sequence_length + sequence_length`). Batched multi-token chunks are supported. `Q = 0` marks an idle entry with an already-populated cache: keep its `seqlens_k` unchanged and ignore all its output rows. The input is honored also when `sequence_length == 1`, where `Q` is 0 or 1. A cache that is not windowed must also hold the `P` cached tokens in `past_key` (`P` is at most the sequence dimension of `past_key`) and have room for the whole padded chunk, `P + S <= C`, where `C` is the sequence dimension of `present_key`. A windowed cache has no such requirement because it is staged internally. An execution provider that can read the values reports a violation with `INVALID_ARGUMENT`; the CUDA execution provider reads them on the device, clamps `Q` into `[0, min(S, T)]` and leaves the result unspecified. When `query_seqlens` is omitted, `Q = min(S, T)` and the behavior is unchanged.
 
 **Windowed KV Cache (`sliding_window_cache` attribute):**
 When `sliding_window_cache` is 1, the past/present buffers are window-sized instead of full-length and the operator evicts internally. Let `C` be the cache capacity (dimension 2 of `past_key`, which is also the sequence dimension of `present_key`), `W` be `local_window_size`, and `T` be the absolute number of tokens processed so far by this batch entry, i.e. `seqlens_k[b] + 1`. The scalar `total_sequence_length` input is only the batch maximum of `T` (or only an upper bound of `T` when `query_seqlens` is given); the layout below is per batch entry, so a ragged batch gets a different resident range per entry. `C` must be at least `W`.
@@ -1526,7 +1531,7 @@ L(T) = T - G * ceil((T - C) / G)    otherwise
 
 Hence `min(T, W) <= L(T) <= min(T, C)`: the whole window stays resident, and eviction reclaims `G` positions at once rather than one position per step, so consumers must not assume that the cache is kept full at `min(T, C)`.
 
-  Because `L` depends only on `T`, the resulting layout is independent of how the tokens were split into steps: a multi-token step of `S` tokens (speculative decoding, chunked prefill) leaves exactly the layout that the same tokens would produce one at a time. A right-padded chunk (`query_seqlens`) leaves the layout of its `Q` valid tokens only, because padding rows never enter the cache. Any `S >= 1` is accepted, including `S > C`; a step that would evict positions it still has to read is staged internally, so the capacity does not have to cover the step. When past context is present, the existing operator restriction still applies: `sequence_length > 1` requires `batch_size == 1`.
+  Because `L` depends only on `T`, the resulting layout is independent of how the tokens were split into steps: a multi-token step of `S` tokens (speculative decoding, chunked prefill) leaves exactly the layout that the same tokens would produce one at a time. A right-padded chunk (`query_seqlens`) leaves the layout of its `Q` valid tokens only, because padding rows never enter the cache. Any `S >= 1` is accepted, including `S > C`; a step that would evict positions it still has to read is staged internally, so the capacity does not have to cover the step. Without `query_seqlens`, the existing restriction with past context still applies: `sequence_length > 1` requires `batch_size == 1`.
 
   An execution provider may accept only part of the `C >= W` range. A configuration with `C < W` (equivalently, `W > C`) is invalid and is rejected with `INVALID_ARGUMENT`. The CUDA implementation requires `C == W`, so there `G` is 1 and `L(T)` is `min(T, C)`; a larger capacity is rejected. The CPU implementation accepts any `C >= W`, and slack above the window amortizes compaction over `G` steps.
 
@@ -1578,7 +1583,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "local_window_size; a smaller capacity (W > C) is rejected with INVALID_ARGUMENT. The CUDA "
               "implementation additionally requires the capacity to equal local_window_size. Multi-token "
               "steps of any length are supported and produce the same layout as single-token steps, so the "
-              "capacity need not cover the entire step. When past context is present, sequence_length > 1 "
+              "capacity need not cover the entire step. Without query_seqlens, when past context is present, sequence_length > 1 "
               "requires batch_size == 1. See the "
               "Windowed KV Cache section of the operator description for the exact resident-range, "
               "eviction and rollback contract. Default value is 0 (full-length cache).",
@@ -1713,8 +1718,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "query/key/value chunk of each batch entry. The chunk is right-padded: rows [0, query_seqlens[b]) "
                "are valid and rows [query_seqlens[b], sequence_length) are padding. Unlike seqlens_k this is a "
                "count, not a count minus one. After the step the cache holds seqlens_k[b] + 1 tokens, so entry b "
-               "had seqlens_k[b] + 1 - query_seqlens[b] tokens before it. Requires 1 <= query_seqlens[b] <= "
-               "min(sequence_length, seqlens_k[b] + 1). When omitted, query_seqlens[b] = min(sequence_length, "
+               "had seqlens_k[b] + 1 - query_seqlens[b] tokens before it. Requires seqlens_k[b] >= 0 and "
+               "0 <= query_seqlens[b] <= min(sequence_length, seqlens_k[b] + 1). Zero marks an idle entry "
+               "whose cache is unchanged, also when sequence_length is 1. Batched chunks are supported. "
+               "When omitted, query_seqlens[b] = min(sequence_length, "
                "seqlens_k[b] + 1), which is the behavior without this input. See the Right-padded query chunks "
                "section of the operator description for the full contract. Currently honored by the CPU and CUDA "
                "execution providers; other EPs must reject the node when this input is set.",
@@ -5506,13 +5513,14 @@ capacity is the original capsule capture/layout capacity. kept_count only select
 transitions to replay; kept_count must NOT be substituted for capacity when deriving the
 decay/key/delta section offsets.
 
-State rows have layout [Hv, Dv, Dk]. The capsule contains decay [capacity, Hv],
-key [capacity, Hk, Dk], and delta [capacity, Hv, Dv] starting at their respective offsets.
+State rows have layout [Hv, Dv, Dk]. The capsule contains decay [capacity, Hv] (or
+[capacity, Hv, Dk] when key_offset - decay_offset == capacity * Hv * Dk), key [capacity, Hk, Dk],
+and delta [capacity, Hv, Dv] starting at their respective offsets.
 For every state element (h,v,i):
   hk = floor(h * Hk / Hv)
   s = source[h,v,i]
   for t = 0 .. kept_count-1:
-    s *= decay[t,h]
+    s *= decay[t,h] (or decay[t,h,i] for per-key-dimension decay)
     s += key[t,hk,i] * delta[t,h,v]
   destination[h,v,i] = s
 Unused capsule tail entries are not read. All other destination elements are preserved.
@@ -5609,8 +5617,8 @@ are preserved. One descriptor is supported per invocation; graph capture is not 
 
 constexpr const char* GatedDeltaNet_ver1_doc = R"DOC(
 Packed (token-major) gated delta network / linear attention with an explicit recurrent state.
-Implemented by CUDA and native WebGPU execution providers. WebGPU supports float and float16
-with scalar decay, `head_size_qk <= 256`, and compact state updates.
+Implemented by CPU, CUDA, and native WebGPU execution providers. WebGPU supports float and float16
+with `head_size_qk <= 256` and compact state updates.
 
 Layout. Query, key and value are token-major, so head counts are derived from the shapes
 rather than from attributes:
@@ -5647,13 +5655,14 @@ implementation reads the whole incoming state before writing any of it.
 Compact state updates. When `state_update_capacity` C is greater than zero, `capture_count`
 is required with shape `[batch_size]`. For request b, the first `capture_count[b]` local token
 transitions (clamped on device to `[0, min(C, sequence_length)]`) are emitted in one `state_update`
-float tensor `[batch_size, C * (num_heads_v + num_heads_k * head_size_qk + num_heads_v * head_size_v)]`.
-Each row is struct-of-arrays: all decay values, then all keys, then all deltas. Entries at positions
-greater than or equal to `min(capture_count[b], C, sequence_length)` are unspecified; consumers must
-read only the captured prefix. The key retains its shared `num_heads_k` representation. For scalar
-decay the decoded factors replay one transition as `S *= decay; S += outer(key, delta)`.
-Per-key-dimension decay is not supported when compact updates are enabled. `capture_count` is
-forbidden when C is zero.
+float tensor `[batch_size, C * (decay_width + num_heads_k * head_size_qk + num_heads_v * head_size_v)]`,
+where `decay_width` is `num_heads_v` for scalar decay and `num_heads_v * head_size_qk` for
+per-key-dimension decay. Each row is struct-of-arrays: all decay values, then all keys, then all
+deltas. Entries at positions greater than or equal to `min(capture_count[b], C, sequence_length)`
+are unspecified; consumers must read only the captured prefix. The key retains its shared
+`num_heads_k` representation. For scalar decay the decoded factors replay one transition as
+`S *= decay; S += outer(key, delta)`, and for per-key-dimension decay as
+`S = diag(decay) * S + outer(key, delta)`. `capture_count` is forbidden when C is zero.
 
 The optional CPU input `state_update_active` has shape `[1]`. When zero, transition capture is
 disabled, `capture_count` is ignored, `state_update` is zero-filled, and the planner may use an
@@ -5678,12 +5687,17 @@ raw projection carried by `decay`:
 
   g = -exp(a_log) * Softplus(decay + dt_bias)
 
+`gate_activation='sigmoid'` (alias `'kda'`) computes the bounded Kimi Delta Attention decay in
+float32:
+
+  g = gate_lower_bound * Sigmoid(exp(a_log) * (decay + dt_bias))
+
 `beta_activation='sigmoid'` applies a sigmoid to `beta`, and `qk_l2_norm=1` L2-normalizes each
 query and key head vector. Folding these in avoids materializing the intermediates and keeps
 the gate arithmetic in float32 independent of the input type.
-Decay and beta may be float or the query element type (both use the same type). CUDA widens
-FP16/BF16 gate inputs to float before any gate arithmetic, avoiding standalone lossless casts.
-State, a_log, and dt_bias remain float. WebGPU currently accepts float decay and beta only.
+Decay and beta may be float or the query element type (both use the same type). CUDA, CPU, and
+WebGPU widen FP16/BF16 gate inputs to float before any gate arithmetic, avoiding standalone
+lossless casts. State, a_log, and dt_bias remain float.
 
 )DOC";
 
@@ -5699,9 +5713,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::FLOAT, 0.0f)
         .Attr("gate_activation",
               "'none' (default) treats `decay` as the effective log-space decay. 'softplus' computes "
-              "-exp(a_log) * Softplus(decay + dt_bias) in float32. 'qwen' is accepted as a legacy "
-              "alias of 'softplus' with identical behavior.",
+              "-exp(a_log) * Softplus(decay + dt_bias) in float32 ('qwen' is accepted as a legacy "
+              "alias). 'sigmoid' (or 'kda') computes gate_lower_bound * Sigmoid(exp(a_log) * "
+              "(decay + dt_bias)) in float32.",
               AttributeProto::STRING, std::string("none"))
+        .Attr("gate_lower_bound",
+              "Negative lower bound applied when gate_activation is 'sigmoid' or 'kda'. Default -5.0.",
+              AttributeProto::FLOAT, -5.0f)
         .Attr("beta_activation",
               "'none' (default) treats `beta` as the effective update rate. 'sigmoid' applies a "
               "sigmoid.",
@@ -5741,11 +5759,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "V-major. Required for packed QKV. May alias final_state.",
                "TS", OpSchema::Optional)
         .Input(7, "a_log",
-               "Per-head A_log, shape (num_heads_v). Requires gate_activation=softplus.",
+               "Per-head A_log, shape (num_heads_v). Used when gate_activation is 'softplus' or 'sigmoid'/'kda'.",
                "TS", OpSchema::Optional)
         .Input(8, "dt_bias",
-               "Per-head gate bias, shape (num_heads_v). "
-               "Requires gate_activation=softplus.",
+               "Gate bias, shape (num_heads_v) or (num_heads_v, head_size_qk) / (num_heads_v * head_size_qk). "
+               "Used when gate_activation is 'softplus' or 'sigmoid'/'kda'.",
                "TS", OpSchema::Optional)
         .Input(9, "capture_count",
                "Number of leading local token transitions to capture for each request, shape "
@@ -5764,8 +5782,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "TS", OpSchema::Optional)
         .Output(2, "state_update",
                 "Struct-of-arrays compact transition factors, shape "
-                "(batch_size, state_update_capacity * (num_heads_v + num_heads_k * "
-                "head_size_qk + num_heads_v * head_size_v)).",
+                "(batch_size, state_update_capacity * (decay_width + num_heads_k * "
+                "head_size_qk + num_heads_v * head_size_v)), where decay_width is "
+                "num_heads_v for scalar decay and num_heads_v * head_size_qk for "
+                "per-key-dimension decay.",
                 "TS", OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain query/key/value/output types.")
@@ -5924,15 +5944,27 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 
               constexpr int64_t max_dimension = std::numeric_limits<int64_t>::max();
               if (num_heads_k > max_dimension / head_size_qk ||
-                  num_heads_v > max_dimension / head_size_v) {
+                  num_heads_v > max_dimension / head_size_v ||
+                  num_heads_v > max_dimension / head_size_qk) {
                 fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
               }
+              const std::string update_rule =
+                  getAttribute(ctx, "update_rule", std::string("gated_delta"));
+              const bool rule_uses_decay =
+                  update_rule == "gated" || update_rule == "gated_delta";
+              const bool has_decay_input =
+                  rule_uses_decay && ctx.getNumInputs() > 4 && ctx.getInputType(4) != nullptr;
+              const bool decay_rank_known = !has_decay_input || hasInputShape(ctx, 4);
+              const bool decay_per_key_dim =
+                  has_decay_input && hasInputShape(ctx, 4) &&
+                  getInputShape(ctx, 4).dim_size() == token_dims + 2;
+              const int64_t decay_width = decay_per_key_dim ? num_heads_v * head_size_qk : num_heads_v;
               const int64_t key_width = num_heads_k * head_size_qk;
               const int64_t value_width = num_heads_v * head_size_v;
-              if (num_heads_v > max_dimension - key_width) {
+              if (decay_width > max_dimension - key_width) {
                 fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
               }
-              const int64_t width_without_capacity = num_heads_v + key_width;
+              const int64_t width_without_capacity = decay_width + key_width;
               if (value_width > max_dimension - width_without_capacity) {
                 fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
               }
@@ -5941,7 +5973,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                   per_token_width > max_dimension / state_update_capacity) {
                 fail_shape_inference("GatedDeltaNet: state_update width overflows int64");
               }
-              width->set_dim_value(state_update_capacity * per_token_width);
+              if (state_update_capacity == 0 || decay_rank_known) {
+                width->set_dim_value(state_update_capacity * per_token_width);
+              }
             }
             updateOutputShape(ctx, 2, capsule_shape);
           }
@@ -6076,6 +6110,63 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           propagateShapeFromInputToOutput(ctx, 0, 0);
+        }));
+
+constexpr const char* MoEGroupRouter_ver1_doc = R"DOC(
+Fused group-limited sigmoid MoE router (noaux_tc) as used by BailingMoeV3 / DeepSeek-V3.
+Computes s = sigmoid(logits), selects topk_group groups by the sum of top group_topk values of
+(s + expert_bias) per group, selects top_k experts from those groups by (s + expert_bias), and
+writes log(max(s, 1e-20)) at the selected experts and router_sentinel elsewhere into a 2D
+(total_tokens, num_experts) output tensor ready for MoE / QMoE.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    MoEGroupRouter, 1,
+    OpSchema()
+        .SetDoc(MoEGroupRouter_ver1_doc)
+        .Attr("top_k", "Positive number of experts selected per token.", AttributeProto::INT)
+        .Attr("n_group", "Positive number of expert groups.", AttributeProto::INT, static_cast<int64_t>(1))
+        .Attr("topk_group", "Positive number of active expert groups selected per token.", AttributeProto::INT,
+              static_cast<int64_t>(1))
+        .Attr("group_topk", "Positive number of top experts summed within each group, clamped to the group size.",
+              AttributeProto::INT, static_cast<int64_t>(2))
+        .Attr("router_sentinel", "Value written to non-selected expert positions.",
+              AttributeProto::FLOAT, -10000.0f)
+        .Input(0, "logits", "Router logits tensor of shape (..., num_experts).", "T")
+        .Input(1, "expert_bias", "1D float32 expert bias tensor of shape (num_experts).", "TF")
+        .Output(0, "router_probs", "2D routed log-scores tensor of shape (total_tokens, num_experts).", "T")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeConstraint("TF", {"tensor(float)"}, "Constrain expert_bias to float32.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (!hasInputShape(ctx, 0)) {
+            return;
+          }
+          const auto& in_shape = getInputShape(ctx, 0);
+          if (in_shape.dim_size() < 2) {
+            fail_shape_inference("MoEGroupRouter logits must have rank >= 2.");
+          }
+          ONNX_NAMESPACE::TensorShapeProto out_shape;
+          auto* row_dim = out_shape.add_dim();
+          if (in_shape.dim_size() == 2) {
+            *row_dim = in_shape.dim(0);
+          } else {
+            int64_t prod = 1;
+            bool all_known = true;
+            for (int i = 0; i < in_shape.dim_size() - 1; ++i) {
+              if (in_shape.dim(i).has_dim_value()) {
+                prod *= in_shape.dim(i).dim_value();
+              } else {
+                all_known = false;
+              }
+            }
+            if (all_known) {
+              row_dim->set_dim_value(prod);
+            }
+          }
+          *out_shape.add_dim() = in_shape.dim(in_shape.dim_size() - 1);
+          updateOutputShape(ctx, 0, out_shape);
         }));
 
 constexpr const char* BranchwiseRMSNorm_ver1_doc = R"DOC(
