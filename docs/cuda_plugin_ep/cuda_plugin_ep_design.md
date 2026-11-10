@@ -102,10 +102,12 @@ All other symbols have hidden visibility. In particular, the plugin does not exp
 
 ### 2.5 ORT Version Compatibility and API Negotiation
 
-The plugin is built against the ORT headers in this repository (`ORT_API_VERSION`) but is designed to load into an **older** ORT runtime as well, down to the floor declared in [`plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION`](../../plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION) (currently `1.24.4`). The floor is a single source of truth:
+The plugin is built against the ORT headers in this repository (`ORT_API_VERSION`) but is designed to load into an **older** ORT runtime as well, down to the floor declared in [`plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION`](../../plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION) (currently `1.32.0`). The floor is a single source of truth:
 
 - **Build time:** `cmake/onnxruntime_providers_cuda_plugin.cmake` reads the file and bakes it into the DLL as the `ORT_PLUGIN_EP_MIN_ORT_VERSION` preprocessor definition.
 - **Packaging:** the Python wheel (`onnxruntime>=<floor>`, via `plugin-ep-cuda/python/build_wheel.py`) and the NuGet package (`plugin-ep-cuda/csharp/pack_nuget.py`) read the same file.
+
+The floor is `1.32.0` because of operator-schema compatibility, not API usage: the plugin registers contributed (`com.microsoft`) operator kernels, and those are only safe when the core negotiates their schemas with the plugin through `OrtEpFactory::GetOperatorCompatibilityInfo` (`\since 1.32`; see [Plugin EP Operator Schema Compatibility](../plugin_ep/schema_compatibility_design.md)). A core older than `1.32.0` never reads that callback, so it would enable the kernels without checking them. The API audit in section 2.6 shows that the plugin's `OrtApi`/`OrtEpApi` usage alone would allow `1.24.4`.
 
 `CreateEpFactories()` negotiates the API version with the runtime instead of hard-coding it:
 
@@ -116,7 +118,7 @@ The plugin is built against the ORT headers in this repository (`ORT_API_VERSION
 
 ### 2.6 API Version Audit and Defensive Capability Gating
 
-Because the plugin binary may load into an older runtime, every `OrtApi`/`OrtEpApi` function it calls must exist in that runtime. The following audit records the newest `\since` version of each API surface the plugin uses (verified against the `\since` annotations in `onnxruntime_c_api.h` and `onnxruntime_ep_c_api.h`). It is the justification for the `1.24.4` floor and identifies exactly which features depend on APIs newer than the floor.
+Because the plugin binary may load into an older runtime, every `OrtApi`/`OrtEpApi` function it calls must exist in that runtime. The following audit records the newest `\since` version of each API surface the plugin uses (verified against the `\since` annotations in `onnxruntime_c_api.h` and `onnxruntime_ep_c_api.h`). It is the justification for the `1.24.4` API-usage floor (the declared floor is higher; see section 2.5) and identifies exactly which features depend on APIs newer than that floor.
 
 | API surface | Newest `\since` used | Representative functions |
 | --- | --- | --- |
@@ -125,7 +127,7 @@ Because the plugin binary may load into an older runtime, every `OrtApi`/`OrtEpA
 | `OrtEpApi` — direct calls (`ep_api_.*`, `Ort::GetEpApi().*`) | **1.24** | `CreateKernelRegistry`, `KernelRegistry_AddKernel`, `ReleaseKernelRegistry`, `CreateIfKernel`/`CreateLoopKernel`/`CreateScanKernel`, `EpGraphSupportInfo_LookUpKernel` (older: `MemoryDevice_*`, `MemoryInfo_GetMemoryDevice`, `SyncStream_*`, `EpDevice_AddAllocatorInfo`, `EpGraphSupportInfo_AddSingleNode`, `CreateEpDevice`/`ReleaseEpDevice`) |
 | EP profiler API (only when built with `ENABLE_CUDA_PROFILING`) | **1.25** | `CreateProfilingEvent`, `ProfilingEventsContainer_AddEvents`, `ReleaseProfilingEvent` (called from `cuda_profiler_plugin.cc` via the `Ort::ProfilingEvent` / `Ort::UnownedProfilingEventsContainer` wrappers) |
 
-`provider_api_shims.cc` uses only internal helpers (`GetEnvironmentVar`, `MLFloat16` conversions), and the plugin uses no Model Editor, Model Package, or Compile API. **Apart from optional gated capabilities such as EP profiling and stream-tagged scratch allocation, every API the plugin calls is `\since 1.24` or older**, so the true compatibility floor is `1.24.4`.
+`provider_api_shims.cc` uses only internal helpers (`GetEnvironmentVar`, `MLFloat16` conversions), and the plugin uses no Model Editor, Model Package, or Compile API. **Apart from optional gated capabilities such as EP profiling and stream-tagged scratch allocation, every API the plugin calls is `\since 1.24` or older**, so the API-usage compatibility floor is `1.24.4`.
 
 **Defensive capability gating.** Reading a struct field is safe because the field is append-only and ORT only reads fields it knows about. The real hazard is *calling* an `OrtApi`/`OrtEpApi` function that the (possibly older) runtime does not provide. The correct guard for that is the runtime API version, `onnxruntime::ep::CurrentOrtApiVersion()`, not `ort_version_supported`. The `CudaEp` constructor (`cuda_ep.cc`) therefore reads `const uint32_t ort_version = onnxruntime::ep::CurrentOrtApiVersion();` and only installs an `OrtEp` callback when that runtime version is new enough to provide both the callback field and every API its implementation calls:
 
@@ -136,11 +138,11 @@ Because the plugin binary may load into an older runtime, every `OrtApi`/`OrtEpA
 | `IsGraphCaptureEnabled`, `IsGraphCaptured`, `ReplayGraph`, `GetGraphCaptureNodeAssignmentPolicy` | 1.26 | `ort_version >= 26` |
 | `GetAvailableResource` | 1.26 | `ort_version >= 26` |
 
-All other `OrtEp` and `OrtEpFactory` callbacks are `\since 1.24` or older and are installed unconditionally, except `OrtEpFactory::GetDeviceMemoryCapacity` (`\since 1.32`). That callback is also installed unconditionally because older runtimes never read the field and its implementation only calls older runtime APIs (`EpDevice_MemoryInfo`, `\since 1.23`, and `MemoryInfoGetId`). It does not raise the `1.24.4` compatibility floor. Gating `CreateProfiler` is what makes the three `\since 1.25` profiler functions unreachable on an older runtime: when the profiler is never created, ORT never drives the `OrtEpProfilerImpl` callbacks that call them.
+All other `OrtEp` and `OrtEpFactory` callbacks are `\since 1.24` or older and are installed unconditionally, except `OrtEpFactory::GetDeviceMemoryCapacity` (`\since 1.32`) and `OrtEpFactory::GetOperatorCompatibilityInfo` (`\since 1.32`). Those callbacks are also installed unconditionally because older runtimes never read the fields, and their implementations only call older runtime APIs (`EpDevice_MemoryInfo`, `\since 1.23`, and `MemoryInfoGetId`, for the memory capacity callback; none for the schema manifest). They do not raise the `1.24.4` API-usage floor. Gating `CreateProfiler` is what makes the three `\since 1.25` profiler functions unreachable on an older runtime: when the profiler is never created, ORT never drives the `OrtEpProfilerImpl` callbacks that call them.
 
 `KernelContext_GetSyncStream` is guarded at the adapter call site rather than through an `OrtEp` callback field: `OpKernelContext::GetSyncStream()` returns null when `CurrentOrtApiVersion() < 28`, and `CudaEp::IsConcurrentRunSupportedImpl()` only advertises concurrent runs when that API is available. Older runtimes therefore keep the previous serialized-run behavior while still using the same plugin binary.
 
-The gates use **graceful degradation rather than throwing**: the gated callbacks and adapter capabilities are optional features (per-run sync, EP-level GPU profiling, CUDA-graph capture/replay, device-memory budgeting, stream-tagged scratch for concurrent runs), so disabling them on an older runtime still yields a fully functional EP — inference runs, just without that specific feature. This was validated by loading the plugin (built against the latest headers) into both the latest runtime (full test suite passes) and an `onnxruntime==1.24.4` runtime (the EP registers, enumerates devices, and runs inference correctly with the newer callbacks left null).
+The gates use **graceful degradation rather than throwing**: the gated callbacks and adapter capabilities are optional features (per-run sync, EP-level GPU profiling, CUDA-graph capture/replay, device-memory budgeting, stream-tagged scratch for concurrent runs), so disabling them on an older runtime still yields a fully functional EP — inference runs, just without that specific feature. This was validated, while the floor was still `1.24.4`, by loading the plugin (built against the latest headers) into both the latest runtime (full test suite passes) and an `onnxruntime==1.24.4` runtime (the EP registers, enumerates devices, and runs inference correctly with the newer callbacks left null).
 
 ---
 
