@@ -22,7 +22,7 @@ jobs:
       fail-fast: false
       matrix:
         os:
-        - ubuntu-24.04
+        - ubuntu-26.04
         # Use windows-2022 because
         # tools/ci_build/test_gen_test_exports.py::test_windows_targeted_build_and_incremental_exports
         # hardcodes the CMake "Visual Studio 17 2022" generator.
