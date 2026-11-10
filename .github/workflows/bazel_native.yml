@@ -1,4 +1,4 @@
-name: Native Bazel desktop
+name: Native Bazel
 
 on:
   pull_request:
@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  desktop:
+  native:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
@@ -38,23 +38,23 @@ jobs:
           "BAZEL_SH=C:\Program Files\Git\bin\bash.exe" >> $env:GITHUB_ENV
           "MSYS2_ARG_CONV_EXCL=*" >> $env:GITHUB_ENV
           "BAZEL_STARTUP_OPTIONS=--output_base=C:/b/ort" >> $env:GITHUB_ENV
-      - name: Build and test runtime and desktop bindings
+      - name: Build and test runtime and native bindings
         shell: bash
         run: |
           set -o pipefail
           bazelisk ${BAZEL_STARTUP_OPTIONS:-} build //... -c opt --nobuild \
-            --lockfile_mode=error --jobs=3 --build_python_zip=false 2>&1 | tee bazel-desktop.log
+            --lockfile_mode=error --jobs=3 --build_python_zip=false 2>&1 | tee bazel-native.log
           bazelisk ${BAZEL_STARTUP_OPTIONS:-} test -c opt \
             //:runtime_smoke_test //:runtime_shared_smoke_test //:common_test //:cpuinfo_test \
             //:go_test //:java_smoke_test \
             //:python_smoke_test //:node_smoke_test //:csharp_smoke_test \
             --lockfile_mode=error --jobs=3 --local_test_jobs=1 \
-            --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-desktop.log
+            --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-native.log
       - name: Preserve build and test diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bazel-${{ matrix.os }}
           path: |
-            bazel-desktop.log
+            bazel-native.log
             bazel-testlogs/**/test.log
