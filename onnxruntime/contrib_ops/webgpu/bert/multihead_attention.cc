@@ -92,7 +92,8 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
   };
   TensorShape present_shape(present_dims);
   Tensor* present_key = context.Output(1, present_shape);
-  Tensor* present_value = context.Output(2, present_shape);
+  present_dims.back() = parameters.v_head_size_;
+  Tensor* present_value = context.Output(2, TensorShape(present_dims));
 
   std::vector<int64_t> output_qk_dims{
       parameters.batch_size_,
