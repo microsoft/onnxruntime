@@ -59,8 +59,13 @@ No accepted-length truncation, hidden mutable state, host reads or synchronizati
         const auto heads = getAttribute(ctx, "heads", 0);
         const auto groups = getAttribute(ctx, "n_groups", 0);
         if (heads <= 0 || heads > std::numeric_limits<int>::max() / 1024 ||
-            groups <= 0 || heads % groups != 0 ||
-            getAttribute(ctx, "head_dim", 64) != 64 || getAttribute(ctx, "d_state", 128) != 128) {
+            groups <= 0 || heads % groups != 0) {
+          fail_shape_inference(
+              "Mamba2Verify requires heads > 0, n_groups > 0, heads % n_groups == 0 "
+              "and heads <= INT_MAX / 1024, got heads=",
+              heads, ", n_groups=", groups);
+        }
+        if (getAttribute(ctx, "head_dim", 64) != 64 || getAttribute(ctx, "d_state", 128) != 128) {
           fail_shape_inference("Invalid Mamba2Verify attributes");
         }
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
