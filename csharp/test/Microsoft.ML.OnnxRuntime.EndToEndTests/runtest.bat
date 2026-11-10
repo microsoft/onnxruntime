@@ -57,16 +57,28 @@ IF "%PACKAGENAME%"=="Microsoft.ML.OnnxRuntime.Gpu" set gpu_package=T
 IF "%PACKAGENAME%"=="Microsoft.ML.OnnxRuntime.Gpu.Windows" set gpu_package=T
 IF %%gpu_package%%=="T" (
   set TESTONGPU=ON
-  %dn% test -p:DefineConstants=USE_TENSORRT test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore --filter TensorRT
+  %dn% build test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore -p:DefineConstants=USE_TENSORRT
+  dir /s /b test\Microsoft.ML.OnnxRuntime.EndToEndTests\bin\onnxruntime.dll
+  IF %ERRORLEVEL% NEQ 0 (
+    @echo "Error: onnxruntime.dll not found in the output directory after build"
+    EXIT 1
+  )
+  %dn% test -p:DefineConstants=USE_TENSORRT test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore --no-build --filter TensorRT
 
   IF NOT errorlevel 0 (
     @echo "Failed to build or execute the end-to-end test"
     EXIT 1
   )
 
-  %dn% test -p:DefineConstants=USE_CUDA test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore
+  %dn% test -p:DefineConstants=USE_CUDA test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore --no-build
 ) ELSE (
-  %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore
+  %dn% build test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore
+  dir /s /b test\Microsoft.ML.OnnxRuntime.EndToEndTests\bin\onnxruntime.dll
+  IF %ERRORLEVEL% NEQ 0 (
+    @echo "Error: onnxruntime.dll not found in the output directory after build"
+    EXIT 1
+  )
+  %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore --no-build
 )
 
 IF NOT errorlevel 0 (
