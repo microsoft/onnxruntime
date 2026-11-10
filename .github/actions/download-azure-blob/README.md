@@ -25,9 +25,3 @@ Azure CLI >= 2.30.0 and AzCopy supporting `AZCOPY_AUTO_LOGIN_TYPE=AZCLI`.
 Preflight checks tool compatibility without requesting a token. Provision these
 tools on the shared runner images if necessary; no SDK version or storage
 location changes are part of this authentication migration.
-
-Offline regression checks (PowerShell 7 and PyYAML required):
-
-```powershell
-python -m unittest discover -s tools\ci_build -p test_download_azure_blob.py -v
-```
