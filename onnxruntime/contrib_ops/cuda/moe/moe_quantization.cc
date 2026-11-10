@@ -5104,34 +5104,44 @@ void QMoE::PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, Al
 
   // Only the retained GPU raw INT2 inputs provide a stable identity shared across sessions.
   // Weak entries do not extend model/allocator lifetime, and publication follows stream completion.
+  // The map lock is held only for lookups; each key serializes its own packing so that unrelated
+  // initializers and devices can be packed concurrently.
   using CacheKey = std::tuple<int, const void*, int64_t, int64_t, int64_t, int>;
+  struct SharedPacking {
+    std::mutex build_mutex;
+    std::weak_ptr<void> packed;
+  };
   static std::mutex cache_mutex;
-  static std::map<CacheKey, std::weak_ptr<void>> cache;
+  static std::map<CacheKey, std::shared_ptr<SharedPacking>> cache;
   const bool share = expert_weight_bits_ == 2 && weight_bits == 2 &&
                      tensor.Location().device.Type() == OrtDevice::GPU &&
                      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_INT2_SHARE_PACKED", 1) == 1;
-  std::unique_lock<std::mutex> cache_lock(cache_mutex, std::defer_lock);
   int device = -1;
+  std::shared_ptr<SharedPacking> shared_packing;
+  std::unique_lock<std::mutex> build_lock;
   if (share) {
     CUDA_CALL_THROW(cudaGetDevice(&device));
-    cache_lock.lock();
-    for (auto it = cache.begin(); it != cache.end();) {
-      if (it->second.expired()) {
-        it = cache.erase(it);
-      } else {
-        ++it;
+    {
+      std::lock_guard<std::mutex> cache_lock(cache_mutex);
+      for (auto it = cache.begin(); it != cache.end();) {
+        // No live buffer and no session packing it: nothing to share.
+        if (it->second.use_count() == 1 && it->second->packed.expired()) {
+          it = cache.erase(it);
+        } else {
+          ++it;
+        }
       }
+      auto& entry = cache[CacheKey{device, tensor.DataRaw(), num_experts, n, k, bits}];
+      if (!entry) {
+        entry = std::make_shared<SharedPacking>();
+      }
+      shared_packing = entry;
     }
-  }
-  const CacheKey cache_key{device, tensor.DataRaw(), num_experts, n, k, bits};
-  if (share) {
-    auto it = cache.find(cache_key);
-    if (it != cache.end()) {
-      if (auto existing = it->second.lock()) {
-        packed_buf = std::move(existing);
-        is_packed = true;
-        return;
-      }
+    build_lock = std::unique_lock<std::mutex>(shared_packing->build_mutex);
+    if (auto existing = shared_packing->packed.lock()) {
+      packed_buf = std::move(existing);
+      is_packed = true;
+      return;
     }
   }
 
@@ -5246,7 +5256,7 @@ void QMoE::PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, Al
   CUDA_CALL_THROW(cudaStreamSynchronize(stream));
   packed_buf = std::move(allocation);
   if (share) {
-    cache[cache_key] = packed_buf;
+    shared_packing->packed = packed_buf;
   }
   is_packed = true;
 }

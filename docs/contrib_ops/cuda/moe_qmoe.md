@@ -980,7 +980,9 @@ For raw INT2 initializers (`weights_prepacked=0`), the runtime automatically
 shares packed weights between sessions retaining the same immutable GPU
 initializer. `ORT_QMOE_INT2_SHARE_PACKED=0` disables this cache. Keys include CUDA
 device, buffer identity, dimensions and bit width. Publication follows stream
-synchronization; weak entries do not extend ownership. Shared CUDA allocations
+synchronization; weak entries do not extend ownership. Sessions packing the same
+key wait for a single packing, while other keys and devices pack concurrently.
+Shared CUDA allocations
 are independent of session allocators, so the first session may be destroyed
 before surviving users. Callers must preserve the original initializer lifetime
 and immutability required by `AddInitializer`. CPU initializers and other bit
