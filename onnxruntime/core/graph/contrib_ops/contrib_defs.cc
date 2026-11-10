@@ -1088,10 +1088,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "to the device without changing their packed layout.\n"
                 "Supported format IDs and their stable byte layouts are defined in the "
                 "[packed-weight format contract]"
-                "(https://github.com/microsoft/onnxruntime/blob/main/docs/PackedWeightFormats.md).\n"
-                "Projected sigmoid routing is a single-node convenience for existing exported graphs. "
-                "It is equivalent to MoEGroupRouter projection and compact outputs followed by MoEPacked "
-                "preselected inputs with normalize_routing_weights=0; it does not define different routing math.")
+                "(https://github.com/microsoft/onnxruntime/blob/main/docs/PackedWeightFormats.md).")
         .Attr("k",
               "Number of selected experts per token: 1..16 for internal softmax routing, "
               "1..32 for projected sigmoid or preselected routing; at most num_experts.",

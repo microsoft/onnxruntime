@@ -5094,7 +5094,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Mixture-of-Experts layer consuming 3D block-packed gate and down expert weight blobs, plus up expert weights for SwiGLU. CUDA execution requires weights in device memory; host-backed external initializers are copied to the device without changing their packed layout.
   Supported format IDs and their stable byte layouts are defined in the [packed-weight format contract](https://github.com/microsoft/onnxruntime/blob/main/docs/PackedWeightFormats.md).
-  Projected sigmoid routing is a single-node convenience for existing exported graphs. It is equivalent to MoEGroupRouter projection and compact outputs followed by MoEPacked preselected inputs with normalize_routing_weights=0; it does not define different routing math.
 
 #### Version
 
