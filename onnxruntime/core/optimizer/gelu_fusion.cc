@@ -146,33 +146,30 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
       continue;
     }
 
-    bool is_pattern_1 = true;
-    const Node* p_mul2_node = graph_utils::FirstParentByType(mul_node, "Mul");
-    if (p_mul2_node != nullptr) {
-      // Match subgraph pattern 1
-      Node& mul2_node = *graph.GetNode(p_mul2_node->Index());
+    // Match subgraph pattern 1
+    auto is_pattern_1_mul2 = [&](const Node& mul2_node) {
       if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul2_node, "Mul", {7, 13, 14}) ||
           mul2_node.GetExecutionProviderType() != div.GetExecutionProviderType() ||
           !optimizer_utils::CheckOutputEdges(graph, mul2_node, 1) ||
           !IsSupportedDataType(mul2_node)) {
-        continue;
+        return false;
       }
 
       // One input of mul2_node shall be the subgraph input
-      auto root_index = optimizer_utils::IndexOfNodeInput(*p_mul2_node, *div.InputDefs()[0]);
+      auto root_index = optimizer_utils::IndexOfNodeInput(mul2_node, *div.InputDefs()[0]);
       if (root_index < 0)
-        continue;
+        return false;
 
       // Check the other input node is 0.5f.
       int mul_const_input_index = (root_index == 0 ? 1 : 0);
-
       const auto& mul_const_input_arg = mul2_node.InputDefs()[mul_const_input_index];
-      if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *mul_const_input_arg, 0.5f, true)) {
-        continue;
-      }
-    } else {
-      is_pattern_1 = false;
+      return optimizer_utils::IsInitializerWithExpectedValue(graph, *mul_const_input_arg, 0.5f, true);
+    };
 
+    const Node* p_mul2_node = graph_utils::FirstParentByType(mul_node, "Mul");
+    const bool is_pattern_1 = p_mul2_node != nullptr && is_pattern_1_mul2(*p_mul2_node);
+    // A Mul parent that is not the 0.5 Mul of pattern 1 may be the producer of the subgraph input.
+    if (!is_pattern_1) {
       // Match subgraph pattern 2
       if (!optimizer_utils::CheckOutputEdges(graph, mul_node, 1)) {
         continue;
@@ -185,8 +182,8 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
 
       Node& mul2_node = *graph.GetNode(mul_node.OutputNodesBegin()->Index());
       if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul2_node, "Mul", {7, 13, 14}) ||
-          mul_node.GetExecutionProviderType() != div.GetExecutionProviderType() ||
-          !IsSupportedDataType(mul_node)) {
+          mul2_node.GetExecutionProviderType() != div.GetExecutionProviderType() ||
+          !IsSupportedDataType(mul2_node)) {
         continue;
       }
 
