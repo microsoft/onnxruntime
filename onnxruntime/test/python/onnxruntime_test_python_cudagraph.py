@@ -117,6 +117,41 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
         for output_name, expected_output in expected_outputs.items():
             np.testing.assert_array_equal(cuda_graph_helper.get_output(output_name), expected_output)
 
+    def test_gather_nd_constant_indices_cuda_graph_replay(self):
+        if "CUDAExecutionProvider" not in onnxrt.get_available_providers():
+            self.skipTest("CUDAExecutionProvider is not available")
+
+        rows, cols = 8, 128
+        indices = np.stack(np.meshgrid(np.arange(rows), np.arange(cols), indexing="ij"), axis=-1).astype(np.int64)
+        shapes = {"data": [rows, cols], "output": [rows, cols]}
+        graph = helper.make_graph(
+            [
+                helper.make_node("GatherND", ["data", "indices"], ["gathered"]),
+                helper.make_node("Relu", ["gathered"], ["output"]),
+            ],
+            "gather_nd_constant_indices_cuda_graph",
+            [helper.make_tensor_value_info("data", TensorProto.FLOAT, shapes["data"])],
+            [helper.make_tensor_value_info("output", TensorProto.FLOAT, shapes["output"])],
+            [numpy_helper.from_array(indices, "indices")],
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 20)])
+        model.ir_version = 10
+
+        session_options = onnxrt.SessionOptions()
+        session_options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+        providers = [("CUDAExecutionProvider", {"enable_cuda_graph": True})]
+        session = onnxrt.InferenceSession(model.SerializeToString(), session_options, providers=providers)
+        cuda_graph_helper = CudaGraphHelper(session, shapes)
+        rng = np.random.default_rng(0)
+        for _ in range(5):  # Two warmups, capture, then repeated replays with updated inputs.
+            data = rng.standard_normal(shapes["data"]).astype(np.float32)
+            cuda_graph_helper.update_inputs({"data": data})
+            cuda_graph_helper.io_binding.synchronize_inputs()
+            session.run_with_iobinding(cuda_graph_helper.io_binding)
+            cuda_graph_helper.io_binding.synchronize_outputs()
+
+            np.testing.assert_array_equal(cuda_graph_helper.get_output("output"), np.maximum(data, 0))
+
     def test_concat_unequal_sizes_cuda_graph_replay(self):
         if "CUDAExecutionProvider" not in onnxrt.get_available_providers():
             self.skipTest("CUDAExecutionProvider is not available")
