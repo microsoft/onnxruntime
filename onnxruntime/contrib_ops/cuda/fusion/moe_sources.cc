@@ -448,9 +448,10 @@ gsl::span<const SourceReplacement> MoESources() {
         "Bounded FP32 ONNX-18 dense raw-logit TopK/selected Softmax/chunked SwiGLU source subset. "
         "Mathematical semantics with fixture-specific tolerances; ordinary reassociation, normalization, "
         "division and accumulation rounding differences are allowed. No bitwise, universal error-bound "
-        "or exceptional-value parity claim. Fixture-local tolerances: "
+        "or exceptional-value parity claim. Source equivalence is checked with TF32 disabled; "
+        "fused/direct consistency is checked with TF32 both disabled and enabled. Fixture-local tolerances: "
         "onnxruntime/test/providers/cuda/cuda_runtime_fusion_test.cc, "
-        "CudaRuntimeFusionTest.MoEMathematicalSourceFusedDirectTF32OffAndOn; docs/Cuda_Runtime_Fusion.md.",
+        "CudaRuntimeFusionTest.MoESourceFusedDirectTF32OffAndOn; docs/Cuda_Runtime_Fusion.md.",
         NumericalGuarantee::MathematicalSemanticsWithTolerance};
     SourceBody body{std::move(rule), std::move(numerical), InitializerTransformation::None, {}};
     return SourceReplacement{{kMSDomain, "MoE", 1}, cuda_runtime_fusion::kMoERule, cuda_runtime_fusion::kMoEConfig, std::move(body), DiscoverMoE};

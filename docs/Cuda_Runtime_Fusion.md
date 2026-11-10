@@ -289,10 +289,11 @@ exact-region rewrite. Shared banks and original x/logits/w1/w2/y identities
 are preserved. Stale offers fail before mutation.
 
 Host tests cover catalog/admission, typed probing, discovery, stale offers,
-near misses and exact-region acceptance. CUDA tests
+near misses and exact-region acceptance. The CUDA test
 `CudaRuntimeFusionTest.MoESourceFusedDirectTF32OffAndOn` compares the original
-ONNX graph with fusion enabled under identical inputs and CUDA precision settings,
-and independently checks fused output against the directly authored MoE target,
+ONNX graph with fusion enabled under identical inputs and TF32 disabled,
+and independently checks fused output against the directly authored MoE target
+with TF32 both disabled and enabled,
 including ties, signed gates, cancellation, decode/prefill and E2/8/16/64.
 They disable ConstantFolding and TransposeOptimizer to retain this precise source topology through
 GetCapability; prior optimizations that erase it are not matched.
@@ -319,9 +320,13 @@ key (`kOrtSessionOptionsDisableSpecifiedOptimizers` in C++), with optimizer name
 separated by semicolons as parsed by `InferenceSession`; no production
 optimizer behavior is changed by the MoE flag.
 
-Source/fused fixture bounds are TF32-off atol=1e-5, rtol=2e-4 and
-TF32-on atol=1e-3, rtol=1e-2 to allow different GEMM rounding paths.
+Source/fused fixture bounds with TF32 disabled are atol=1e-5, rtol=2e-4.
 Fused/direct consistency retains atol=1e-5, rtol=2e-4 in both modes.
+With TF32 enabled, the original source still executes and retains placement,
+shape and finite-output checks, but source/fused numerical differences are not
+an acceptance gate: source MatMul may use TF32 while the existing FP32 MoE uses
+SIMT. That cross-kernel precision comparison belongs to kernel qualification,
+not rewrite integration.
 These are local graph-equivalence checks, not universal kernel-accuracy contracts.
 An independent high-precision reference is not an acceptance gate for the existing
 source or MoE kernel; kernel-accuracy qualification belongs in operator tests.
