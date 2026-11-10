@@ -75,6 +75,7 @@ class SessionLoop : public std::enable_shared_from_this<SessionLoop> {
 
  private:
   friend class SessionLoopExecution;
+  friend class SessionChain;
   SessionLoop(InferenceSession& session, SessionLoopOptions options);
   Status ValidateInputs(const SessionLoopInputs& inputs) const;
 

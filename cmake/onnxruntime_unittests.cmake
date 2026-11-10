@@ -1356,7 +1356,8 @@ target_include_directories(onnxruntime_test_all PRIVATE ${ONNXRUNTIME_ROOT}/core
 
 if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING)
   AddTest(TARGET onnxruntime_session_loop_test
-    SOURCES "${TEST_SRC_DIR}/framework/session_loop_test.cc" ${onnxruntime_unittest_main_src}
+    SOURCES "${TEST_SRC_DIR}/framework/session_loop_test.cc"
+            "${TEST_SRC_DIR}/framework/session_chain_test.cc" ${onnxruntime_unittest_main_src}
     LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
     DEPENDS ${all_dependencies})
 endif()

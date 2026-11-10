@@ -782,3 +782,55 @@ management, or SessionChain.
   requires Reset; completed successful steps are not rolled back.
 - Status failures preserve the caller's result. Exceptions propagate under the
   usual internal ORT convention while leaving the context requiring Reset.
+
+## Appendix C. M03 internal SessionChain contract
+
+- A chain is an immutable, nonempty, ordered list of named Session or SessionLoop
+  components with explicit input bindings and at least one selected output port.
+  Executions retain their definition; Sessions remain caller-owned.
+- A plain Session component executes once. Internally this reuses a one-iteration
+  SessionLoop rather than adding a second invocation/snapshot implementation.
+  An explicitly supplied SessionLoop retains its configured exits and feedback.
+- Source namespaces distinguish an external tensor, an external finite sequence
+  of tensors, an earlier component output, and a named retained-state slot.
+  Every model input has exactly one binding; names need not match across stages.
+- An external tensor bound to a finite input supplies one finite batch. External
+  sequences may bind only to declared finite inputs, and all finite sources for
+  a component must have equal lengths. There is no implicit sequence broadcast.
+- A state slot first consumed before any producer requires an initial state
+  value. Declared state outputs update slots after each successful invocation;
+  later components see the most recently committed snapshot. State types and
+  known dimensions must remain compatible.
+- Definitions validate names, duplicate destinations, source kinds, output ports,
+  forward/self references, and known type/shape incompatibilities. Execution
+  creation validates external/initial values and finite sequences. Dynamic
+  handoff constraints are validated before invoking the consuming component.
+- Step executes at most one Session invocation or one loop iteration. Completed
+  zero-iteration components may be skipped as bookkeeping before an invocation.
+  Completing one component never invokes the next behind the caller's back.
+- Each result identifies the current component, its loop progress/exit reasons,
+  total successful model invocations, and the number of completed components.
+  Per-invocation component outputs are available immediately. Named chain output
+  ports are emitted when the whole chain completes, without duplicate emission
+  on subsequent calls. Run is repeated Step, not a separate executor.
+- The chain retains all dense component outputs needed for later wiring or
+  observation, including outputs not selected by an original loop definition.
+  A zero-iteration component does not invent model outputs: attempting to consume
+  or return an unproduced value fails explicitly.
+- M03 preserves M02's CPU snapshot boundary. External and initial-state tensors
+  must be host-accessible; unsupported device inputs fail before invocation.
+  CUDA Sessions use their existing IOBinding transfers and compute paths, with
+  CPU-owned handoff/output snapshots. No native KV cache/device-buffer sharing
+  or arbitrary multi-device orchestration is claimed.
+- Retained step results remain stable across later invocations, reset, and
+  execution release. State inspection exposes retained values; original
+  caller-owned input memory follows ordinary ORT lifetime rules.
+- Errors identify the failing component and preserve the underlying Status code/
+  message. A failed or cancelled execution conservatively requires Reset, and
+  downstream components do not execute. Internal exceptions leave the context
+  requiring Reset and propagate normally.
+- Cancel is an atomic request observed at component invocation boundaries, not
+  preemption. Only Cancel may be concurrent. Reset drops active component
+  execution, results/state/progress/cancellation and reinstates the original
+  external inputs/initial state. Independent executions never share mutable
+  progress or implicitly inherit another execution's updated state.
