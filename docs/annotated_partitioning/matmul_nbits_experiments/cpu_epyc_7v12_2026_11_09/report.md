@@ -88,11 +88,60 @@ not a blanket instruction-exact or whole-op accuracy claim.
 
 No estimator formula was changed by this audit. Do not generalize `3NK + 7N` to larger M, column/K tails, other
 ISAs, explicit-zero-point variants or INT8 routes without validating their actual implementation.
-Next compare the other aligned M=1 geometries, confirm the compiled block-32 path, and test held-out shapes.
+The follow-up comparisons and held-out shapes below corroborate the bounded source model.
+Full compiled block-32 instruction accounting remains open.
 The raw local audit is at `/datadisks/disk10/tommasoadani/tmp/matmul-m1-audit-NecOJP/`
 (`cycles.data`, `hot-symbols.txt`, `kernel-assembly.txt`, `runtime.json`, `case-estimates.json`).
 These local paths are provenance references, not portable repository assets.
 See the [repeatable audit sequence](../testing_strategy.md#repeatable-fp32-m1-kernel-audit).
+
+### Additional aligned M=1 comparisons
+
+The same source-derived formula also matches the two smaller geometries from the original matrix:
+
+| K | N | Source-derived kernel FP ops, 3NK + 7N | Measured recurring process FP ops | Residual |
+|---:|---:|---:|---:|---:|
+| 64 | 32 | 6,368 | 6,370 | +2 |
+| 128 | 64 | 25,024 | 25,026 | +2 |
+| 1,024 | 1,024 | 3,152,896 | 3,152,898 | +2 |
+
+Sampling confirmed the same AVX2 specialization for K=128, N=64 and previously K=N=1024.
+The initial filtered sample report did not show the K=64, N=32 kernel; its exact symbol identity is not yet
+established by that capture. Do not infer it solely from the matching count.
+Follow-up evidence is at `/datadisks/disk10/tommasoadani/tmp/matmul-m1-followup-f90Hd9/`.
+
+### Held-out M=1 validation
+
+Three new geometries were generated with cohort `held_out`, preserving FP32 input, accuracy request 0,
+INT4/block size 32, no bias, implicit midpoint zero points and one intra-op thread.
+All three passed estimator capture/reporting checks. Three R/2R pairs per case, with R=1000 and 100 warm-up
+runs per process, completed successfully (18 hardware measurements).
+
+| K | N | Existing estimator FP subtotal | Source-derived kernel FP ops, 3NK + 7N | Measured process mean | Sample stddev | Residual |
+|---:|---:|---:|---:|---:|---:|---:|
+| 256 | 128 | 131,072 | 99,200 | 99,202.000 | 0.018 | +2.000 |
+| 512 | 256 | 524,288 | 395,008 | 395,010.012 | 0.010 | +2.012 |
+| 2,048 | 512 | 4,194,304 | 3,149,312 | 3,149,314.012 | 0.021 | +2.012 |
+
+Cycle sampling with 100,000 workload repetitions confirmed
+`SQ4BitGemmM1Kernel_BlkLen32Plus_CompFp32_avx2<false> [clone .isra.0]` for all three held-out cases.
+Captures contained 4,461, 5,473 and 14,180 samples respectively. Kernel self-cycle attribution was 7.44%, 23.20%
+and 70.98%; these percentages are not arithmetic counts and include the process-level sampling scope.
+
+The approximately two-operation residual is negligible for a ballpark estimate and remains unattributed.
+Fractional means/residuals arise from differential measurements and averaging, not fractional instructions.
+The small nonzero standard deviations here describe the derived three-trial counts; they do not alter the
+zero standard deviations reported for the original matrix.
+
+This is strong held-out corroboration of one FP scaling operation per weight plus final reductions for the
+qualified aligned M=1 AVX2 specialization. It does not qualify every `sqnbit_fp32` implementation or convert
+process counters into isolated operator measurements. A future refinement should preserve core `2NK`, model
+scaling `NK` only when the specialization is reliably identified, and account for reductions separately if
+expanding scope. Do not tune a coefficient to eliminate the negligible residual.
+
+Evidence is at `/datadisks/disk10/tommasoadani/tmp/matmul-m1-heldout-gw52tI/`:
+`heldout-comparison.csv`, `estimates/results.json`, `hardware/metadata.json`, `hardware/summary.csv`,
+raw trial counters and `samples/*/symbols.txt`. No production estimator formula has been changed.
 
 ## Results
 
