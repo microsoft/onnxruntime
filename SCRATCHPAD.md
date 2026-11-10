@@ -11,8 +11,8 @@ Compressed project memory. This is not the execution plan.
   and authorized preparing `TASKS.md` for separate review.
 - 2026-10-15: User approved `TASKS.md` without changes and authorized beginning
   M01. `SPEC.md` and the execution plan are approved.
-- M01 is complete and published as ready-for-review PR #11:
-  https://github.com/onnxruntime/ort-state/pull/11
+- M01 is complete and published as ready-for-review PR #34040:
+  https://github.com/microsoft/onnxruntime/pull/34040
 - No agents launched. M01-M09 are complete; M10-M24 remain pending.
   Runtime production code starts with M02.
 - Future tracking: keep `TASKS.md` checklist current and record compressed
@@ -48,12 +48,12 @@ Compressed project memory. This is not the execution plan.
 - Measured 100% new executable-line unit-test coverage; not branch coverage.
 - Record performance measurements, no numerical performance gates.
 - Exact deterministic fixtures; documented numerical tolerances for real models.
-- Tested/documented stacked ready-for-review PRs in onnxruntime/ort-state.
+- Tested/documented stacked ready-for-review PRs in microsoft/onnxruntime.
 
 ## Repository facts
 
-- Initial branch: `ort-state`; initial worktree clean.
-- Origin: `https://github.com/onnxruntime/ort-state.git`.
+- Initial branch: `state/stateful-base-1988019b`; initial worktree clean.
+- Origin: `https://github.com/microsoft/onnxruntime.git`.
 - Root planning documents did not exist before this draft.
 - Read `AGENTS.md` and all four `.github/instructions/*.instructions.md` scopes.
   C API instructions apply to anticipated public-header work. Do not expand
@@ -119,7 +119,7 @@ Compressed project memory. This is not the execution plan.
 
 ## M01 active work
 
-- Branch `state/m01-contracts-fixtures` created; isolated `.venv` uses Python 3.12.9.
+- Branch `stateful-M01-contracts-fixtures` created; isolated `.venv` uses Python 3.12.9.
 - No existing workspace builds were found. CPU baseline build launched with
   Clang 18, LLVM instrumentation (`-fprofile-instr-generate -fcoverage-mapping`),
   RelWithDebInfo, shared library, eight jobs, target `onnxruntime_autoep_test`,
@@ -172,18 +172,18 @@ Compressed project memory. This is not the execution plan.
   26/26 tests passed: five CPU, five native-CUDA, 16 existing package API cases.
   Zero failures/errors/skips; all CUDA nodes assigned as expected, fallback off.
 - Final C++ format/120-column/whitespace and document/93-requirement mapping
-  checks passed. M01 commit `64aa026b94` and ready-for-review PR #11 published.
+  checks passed. M01 commit `64aa026b94` and ready-for-review PR #34040 published.
 - Available language tools: .NET SDK 8.0.422, Java 17, Node 24, Go 1.26.4,
   Cargo 1.96.1. Apple/mobile runners and real-model assets still unprovided.
-- Remote default is `main`; published the unchanged `ort-state` baseline at
-  `1988019b6e` and `state/m01-contracts-fixtures`. PR #11 targets `ort-state`.
+- Remote default is `main`; published the unchanged `state/stateful-base-1988019b` baseline at
+  `1988019b6e` and `stateful-M01-contracts-fixtures`. PR #34040 targets `state/stateful-base-1988019b`.
 - Throwaway CUDA probe source/binary were removed; feasibility log retained.
 - Next: M02 (context/SessionLoop); no M02 implementation has started.
 
 ## M02
 
 - 2026-10-16: User approved moving forward. Created
-  `state/m02-context-loop` from M01; M02 in progress.
+  `stateful-M02-context-loop` from M01; M02 in progress.
 - Keep implementation internal; no public ABI or sampler/cache-manager work.
 - Use native InferenceSession/IOBinding; generic feedback and finite inputs,
   explicit typed exits, CPU-owned stable result snapshots.
@@ -216,16 +216,16 @@ Compressed project memory. This is not the execution plan.
 - CUDA stateless/package regressions: 26/26 passed, zero skips.
 - Compute Sanitizer memcheck: two representative native-CUDA lifetime/reset and
   in-flight cancellation tests passed, zero errors.
-- M02 validated and published in ready-for-review PR #12:
-  https://github.com/onnxruntime/ort-state/pull/12
-  Base branch `state/m01-contracts-fixtures`, head `state/m02-context-loop`.
+- M02 validated and published in ready-for-review PR #34041:
+  https://github.com/microsoft/onnxruntime/pull/34041
+  Base branch `stateful-M01-contracts-fixtures`, head `stateful-M02-context-loop`.
   No new device production code, so
   measured host 315/315 coverage is the applicable new-code gate.
 - Next pending milestone is M03 (SessionChain and bindings); not started.
 
 ## M03
 
-- 2026-10-16: User authorized M03. Created `state/m03-chain-bindings` stacked
+- 2026-10-16: User authorized M03. Created `stateful-M03-chain-bindings` stacked
   on M02. No work on the read-only attached planning snapshot.
 - Reuse SessionLoop execution for both loops and plain one-invocation Sessions,
   including snapshots, input validation, errors and cancellation boundaries.
@@ -262,13 +262,13 @@ Compressed project memory. This is not the execution plan.
 - Compute Sanitizer memcheck: four chain state/reset/cancellation/host-staging/
   dynamic-cache tests passed, zero errors.
 - Final clang-format and 120-column checks passed. M03 complete in ready-for-review
-  PR #13: https://github.com/onnxruntime/ort-state/pull/13
-  Base `state/m02-context-loop`, head `state/m03-chain-bindings`.
+  PR #34042: https://github.com/microsoft/onnxruntime/pull/34042
+  Base `stateful-M02-context-loop`, head `stateful-M03-chain-bindings`.
   No new device code or public API. M04 (CPU KVCacheManager) is next, not started.
 
 ## M04
 
-- 2026-10-16: User authorized M04; branch `state/m04-cpu-kv-cache` stacks on M03.
+- 2026-10-16: User authorized M04; branch `stateful-M04-cpu-kv-cache` stacks on M03.
 - Internal CPU manager: explicit layouts/dtypes/sequence axis, logical length
   versus allocation capacity, validated full-output adoption/copy, append and
   reserve. Arbitrary sequence axis must use compact logical packing, not
@@ -307,14 +307,14 @@ Compressed project memory. This is not the execution plan.
 - Compute Sanitizer: five CPU-cache/CUDA-Session integration cases passed,
   zero errors. Producer Session release and all three axis positions tested.
 - All ten files pass formatting/whitespace/120-column/document checks.
-  M04 complete in ready-for-review PR #14:
-  https://github.com/onnxruntime/ort-state/pull/14
-  Base `state/m03-chain-bindings`, head `state/m04-cpu-kv-cache`.
+  M04 complete in ready-for-review PR #34043:
+  https://github.com/microsoft/onnxruntime/pull/34043
+  Base `stateful-M03-chain-bindings`, head `stateful-M04-cpu-kv-cache`.
 - M05 (CPU greedy sampling and decode integration) is next, not started.
 
 ## M05
 
-- 2026-10-16: User authorized M05; branch `state/m05-cpu-greedy` from M04.
+- 2026-10-16: User authorized M05; branch `stateful-M05-cpu-greedy` from M04.
 - User explicitly approved four concrete contracts:
   identical explicit MaxGeneratedTokens budgets on prefill/decode if present,
   including zero-budget no-generation-invocation semantics; unpadded [1,S]
@@ -355,9 +355,9 @@ Compressed project memory. This is not the execution plan.
   rejected explicitly. No warning suppression or success-shaped fallbacks.
 - Final XML/profiles/LCOV: CPU `coverage/m05/verified`, CUDA
   `m05-verified-tests.xml` and `m05-verified-regressions.xml` in build output.
-- M05 implementation commit `ddb8260691` published in ready-for-review PR #15:
-  https://github.com/onnxruntime/ort-state/pull/15
-  Base `state/m04-cpu-kv-cache`, head `state/m05-cpu-greedy`.
+- M05 implementation commit `ddb8260691` published in ready-for-review PR #34044:
+  https://github.com/microsoft/onnxruntime/pull/34044
+  Base `stateful-M04-cpu-kv-cache`, head `stateful-M05-cpu-greedy`.
 - All ten files pass style/whitespace/120-column checks. No new device production
   code or public API. M06 (public C API/C++ wrappers) is next, not started.
 
@@ -377,9 +377,9 @@ Compressed project memory. This is not the execution plan.
 - CUDA validation passed: 97/97 focused + 26/26 regressions, no skips. Five
   generation memcheck scenarios passed with zero errors.
 - M05's new-line gate remains 369/369 (same functions, new source paths).
-  Verified that PR #15 has no concurrent body/branch edits before refreshing it.
+  Verified that PR #34044 has no concurrent body/branch edits before refreshing it.
 - Layout refactor complete in commit `417832d919`, pushed to the existing M05
-  branch. PR #15 retains its template and now documents the new layout and
+  branch. PR #34044 retains its template and now documents the new layout and
   post-refactor validation. No behavior, namespace or library-target changes.
 
 ## M06
@@ -397,7 +397,7 @@ Compressed project memory. This is not the execution plan.
   Macro M06 remains incomplete until both pass CPU/CUDA and 100% new-line gates.
 - No runtime/public-header edits, builds, tests, commits or PRs for M06 yet.
 - User approved Appendix F and M06a/M06b split without changes; authorized M06a.
-  Renamed the work branch `state/m06a-stateful-c-api`; M06b remains pending.
+  Renamed the work branch `stateful-M06-stateful-c-api`; M06b remains pending.
 - M06a now implements the append-only accessor and 38-entry C table, owning
   options/definitions/executions/results/cache/sampler handles and typed records.
   All nine initial public C-API CPU tests passed. Final CPU/CUDA rebuilds,
@@ -417,15 +417,15 @@ Compressed project memory. This is not the execution plan.
 - Full CPU/CUDA reconfiguration was necessary for the new test files; source
   globs do not use CONFIGURE_DEPENDS. Final logs use `m06a-*-complete-*` names.
   C++ RAII is deliberately still pending M06b; macro M06 is not complete.
-- Published ready-for-review M06a PR #16:
-  https://github.com/onnxruntime/ort-state/pull/16, stacked on
-  `state/m05-cpu-greedy`. Implementation commit `f0aa2513d7`.
+- Published ready-for-review M06a PR #34045:
+  https://github.com/microsoft/onnxruntime/pull/34045, stacked on
+  `stateful-M05-cpu-greedy`. Implementation commit `f0aa2513d7`.
   M06a is complete; pause for review/authorization before M06b.
 
 ## M06b
 
 - User authorized finishing M06b on 2026-10-17. Branch
-  `state/m06b-stateful-cxx-api` starts at published M06a `b5f1431837`.
+  `stateful-M07-stateful-cxx-api` starts at published M06a `b5f1431837`.
 - Use existing SDK Base for move-only resources. Immutable results/cache views
   retain shared C-handle holders; distinct ConstValueImpl storage retains the
   parent without implicit slicing to unowned ConstValue.
@@ -449,15 +449,15 @@ Compressed project memory. This is not the execution plan.
   Weak-owner test proves lifetime retention; static asserts forbid unowned
   slicing/mutable pointers. All changed-range style/columns/doc checks passed.
 - M06 implementation/testing gates are now satisfied; publication remains.
-- Published M06b ready-for-review PR #17:
-  https://github.com/onnxruntime/ort-state/pull/17, stacked on M06a PR #16.
+- Published M06b ready-for-review PR #34046:
+  https://github.com/microsoft/onnxruntime/pull/34046, stacked on M06a PR #34045.
   Implementation commit `cd63f2f8ba`; all source changes tested before committing.
   M06 is complete; M07-M24 remain pending. No PRs were merged.
 
 ## M07
 
 - User requested M07 on 2026-10-17. Baseline M06b `5bde969b66`; created
-  `state/m07a-ep-stateful-hooks`. No implementation yet.
+  `stateful-M08-ep-stateful-hooks`. No implementation yet.
 - Interview confirmed: explicit CPU default; independent cache/sampler
   CPU/PreferProvider/RequireProvider policies; one compatible cache backend/
   device per chain, per-stage sampling; missing-capability CPU fallback only
@@ -540,11 +540,11 @@ Compressed project memory. This is not the execution plan.
 - GCC pure C11 extended consumer and exact SPEC G.9 SDK example passed; C++ example
   also passed no-exceptions client flags. Source style/columns/traceability pass.
   All M07a gates satisfied except publication; M07b still unimplemented.
-- M07a published ready for review as PR #18:
-  https://github.com/onnxruntime/ort-state/pull/18. Implementation `8fbd403493`;
+- M07a published ready for review as PR #34047:
+  https://github.com/microsoft/onnxruntime/pull/34047. Implementation `8fbd403493`;
   both CPU/CUDA and exact 782/782 new-line gates verified before publication.
   Continue directly to authorized M07b, stacked on the final M07a head.
-- M07b branch `state/m07b-plugin-stateful-hooks` starts at final M07a
+- M07b branch `stateful-M09-plugin-stateful-hooks` starts at final M07a
   `46715fb08a`. No M07b commits/PR yet.
 - Native plugin changes implemented: transactional thread-local CreateEp
   registration (`plugin_ep/stateful_ep_registration.*`), copied/retained
@@ -599,8 +599,8 @@ Compressed project memory. This is not the execution plan.
 - GCC C11 extended consumer and standalone C++17 registration-wrapper error
   consumer compiled/linked/ran. Style/columns/whitespace/93 IDs/24 milestones pass.
   Only publication remains; no further runtime changes after final builds.
-- M07b published ready for review as PR #19:
-  https://github.com/onnxruntime/ort-state/pull/19, stacked on M07a PR #18.
+- M07b published ready for review as PR #34048:
+  https://github.com/microsoft/onnxruntime/pull/34048, stacked on M07a PR #34047.
   Implementation `fd2331ff8a`. Both M07 sub-milestones complete; macro M07 marked
   complete. M08-M24 remain pending; no PRs merged. CUDA EPContext/schema exclusions
   remain explicitly documented, not reported as passing unfiltered tests.
@@ -608,7 +608,7 @@ Compressed project memory. This is not the execution plan.
 ## M08
 
 - User requested M08 on 2026-10-18. Baseline M07b `03d7476859`; created
-  `state/m08a-cuda-plugin-kv-cache`. M08a implementation/validation is active;
+  `stateful-M10-cuda-plugin-kv-cache`. M08a implementation/validation is active;
   M08b was subsequently authorized and completed; see its section below.
 - Interview completed: **CUDA plugin EP ONLY**, not legacy/shared CUDA. Prefer
   CUDA allocation/copy primitives, no custom kernels unless necessary. All new
@@ -703,15 +703,15 @@ Compressed project memory. This is not the execution plan.
   zero leakedbytes/allocations. Separate allocation-failure-then-Mul regression
   also zero errors/leaks. Final logs m08a-*-complete-* / m08a-plugin-sanitizer-*.
 - All implementation/verification gates pass. M08a implementation e6ce58508e is
-  published ready for review as PR #20, stacked on #19:
-  https://github.com/onnxruntime/ort-state/pull/20
-  M08b was subsequently authorized and completed in PR #21. No PRs merged.
+  published ready for review as PR #34049, stacked on #34048:
+  https://github.com/microsoft/onnxruntime/pull/34049
+  M08b was subsequently authorized and completed in PR #34050. No PRs merged.
 
 ## M08b
 
 - User approved M08a and authorized the next milestone on 2026-10-19.
   Existing approved Appendix H/TASKS B1-B7 apply. Created
-  state/m08b-cuda-plugin-cache-integration from M08a6959554e55.
+  stateful-M11-cuda-plugin-cache-integration from M08a6959554e55.
 - Scope remains CUDA plugin only; GPU sampling stays M09. Implement all
   managed/selected/component/named-state cache surfaces, retain GPU results and
   local Session allocators/provider leases. CPU ordinary outputs stay stable.
@@ -752,8 +752,8 @@ Compressed project memory. This is not the execution plan.
   GPU cache-only diagnostic correctly retains unavailable GPU logits wording.
   Full GPU suites and explicit native-memory4/public22 memcheck selectors are
   separate from the documented instrumented timing limitation. No M09 code.
-- M08b implementation249f60acf8 published ready-for-review as PR #21, stacked
-  on M08a #20: https://github.com/onnxruntime/ort-state/pull/21
+- M08b implementation249f60acf8 published ready-for-review as PR #34050, stacked
+  on M08a #34049: https://github.com/microsoft/onnxruntime/pull/34050
   Macro M08 complete; M09 not started. No PRs merged. All reported functional
   suites unfiltered where stated, no skips; exact sanitizer selector limitation
   is explicitly documented in TASKS/PR and must not be omitted from summaries.
@@ -765,7 +765,7 @@ Compressed project memory. This is not the execution plan.
   tokenID/compact validation status may be readback. Host history/exits/generated
   feed behavior staysunchanged. Split M09a backend/standalone proof and M09b
   integration. Additional requirements: None.
-- Created state/m09a-cuda-plugin-greedy from verified M08b2b6388fe5b (#21).
+- Created stateful-M12-cuda-plugin-greedy from verified M08b2b6388fe5b (#34050).
   User approved SPEC Appendix I without changes. Detailed M09a/M09b plan is now
   drafted in TASKS for separate review/execution-scope authorization.
   No runtime implementation or device-coverage probe has been started.
@@ -845,8 +845,8 @@ Compressed project memory. This is not the execution plan.
 - A2-A6 verified; final style/traceability/publication being finished. No new
   dependency installed, no driver settings changed; sudo was used ONLY for
   user-authorized profiling. Pause before M09b after publishing M09a.
-- M09a implementation73066ddcbe published ready-for-review as PR #22 on #21:
-  https://github.com/onnxruntime/ort-state/pull/22
+- M09a implementation73066ddcbe published ready-for-review as PR #34051 on #34050:
+  https://github.com/microsoft/onnxruntime/pull/34051
   All M09a gates complete, no merges. M09b was subsequently authorized and
   completed below. Exact host83/device25 coverage and actual scalar-
   transfer proof are retained in session files/TASKS; no sampling coverage waiver.
@@ -854,7 +854,7 @@ Compressed project memory. This is not the execution plan.
 ## M09b
 
 - User authorized M09b on 2026-10-19. Created
-  state/m09b-cuda-plugin-sampling-integration from M09aff2363e3b8 (#22).
+  stateful-M13-cuda-plugin-sampling-integration from M09aff2363e3b8 (#34051).
   Approved Appendix I / TASKS B1-B7 apply; no new interview/plan gate needed.
 - Generalize M08's private GPU cache port routing to device values, without
   using a GPU sampler allocator for CPU cache storage. Cache/sampler dispatch
@@ -888,10 +888,10 @@ Compressed project memory. This is not the execution plan.
 - SDK model generation first failed missing onnx; only then installed ONNX1.23.2
   and dependencies in existing isolated .venv. No runtime/manifest dependency.
   Generator source m09b_make_sdk_model.py retained for reproducibility.
-- Implementation/validation/publication gates pass; PR #23 is stacked on #22.
+- Implementation/validation/publication gates pass; PR #34052 is stacked on #34051.
   MacroM09 is complete; M10 not started. No agents used.
-- M09b implementation2a684c8ba1 published ready-for-review as PR #23 on #22:
-  https://github.com/onnxruntime/ort-state/pull/23
+- M09b implementation2a684c8ba1 published ready-for-review as PR #34052 on #34051:
+  https://github.com/microsoft/onnxruntime/pull/34052
   MacroM09 COMPLETE. M10 not started; no merges. Exact host116/116, unchanged
   M09a25/25 device proof and measured48-byte total generation readbacks documented.
   Parent M08 timing-only sanitizer limitation unchanged; no new case excluded.
@@ -903,7 +903,7 @@ Compressed project memory. This is not the execution plan.
   User subsequently APPROVED SPEC Appendix J for detailed plan preparation.
   User separately APPROVED detailed M10 TASKS C1-C7 and authorized standalone
   implementation. Baseline/implementation are starting; M11 is not authorized.
-- Branch state/m10-package-chain-schema is stacked on verified M09b a7a1173cd1.
+- Branch stateful-M14-package-chain-schema is stacked on verified M09b a7a1173cd1.
 - Approved direction: optional named linear chains, JSON-only inspection and
   authoring, explicit chain selection/no default, immediate common-reference
   validation. Common schema owns chain/step/component structure; all execution
@@ -922,7 +922,7 @@ Compressed project memory. This is not the execution plan.
   preserve older/future-minor packages, opaque payloads and existing paths/assets.
 - M10 verification: standalone no-ORT build/C consumer, CPU package regressions,
   measured100% new executable production lines; GPU execution N/A until M11.
-- Detailed plan: one PR on #23; schema/inspection then atomic authoring and
+- Detailed plan: one PR on #34052; schema/inspection then atomic authoring and
   reference guard, followed by persistence/compatibility and C11/shared/static
   qualification, LLVM coverage + CPU ModelPackageApiTest.*, docs/publication.
   CMake/CTest commands are PROPOSED, not test results. LLVM18.1.8 and cached
@@ -966,7 +966,7 @@ Compressed project memory. This is not the execution plan.
   C1-C6/D1-D4 verified. C7 publication starting, PR not yet created. No installs,
   agents, CUDA runtime/kernel changes, merge or M11 implementation.
 - PUBLISHED M10 implementation7f48009fb30054f931624a2068ca7d2bf0518088 as
-  ready/open PR #24 https://github.com/onnxruntime/ort-state/pull/24 on #23.
+  ready/open PR #34053 https://github.com/microsoft/onnxruntime/pull/34053 on #34052.
   MacroM10 COMPLETE: shared/static5/5, CPU17/17, unit282/282. Every checklist
   C1-C7/D1-D4 verified. Temp parent copies/builds/fixtures/probe binaries cleaned;
   reports, probe source, coverage exports/profiles and hashes retained.
