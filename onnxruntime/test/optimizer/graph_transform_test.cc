@@ -33,6 +33,7 @@
 #include "core/mlas/inc/mlas_q4.h"
 #include "core/optimizer/attention_fusion.h"
 #include "core/optimizer/multi_head_attention_fusion.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/optimizer/bias_dropout_fusion.h"
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/bias_softmax_fusion.h"
@@ -10199,6 +10200,60 @@ TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitWebGpuNumerics) {
   ASSERT_EQ(fused.size(), 1u);
   auto [result, message] = CompareOrtValue(fused[0], unfused[0], 1e-4, 1e-4, false);
   EXPECT_EQ(result, COMPARE_RESULT::SUCCESS) << message;
+}
+
+// Runs the graph through the default session optimizers on a WebGPU session and checks how many attention blocks
+// were fused. A non-empty `kv_cache_quantization_bits` is set in both the session config and the EP, as the public
+// provider-option API does.
+static void RunVitAttentionOnWebGpu(const VitAttentionTestConfig& config, const std::string& kv_cache_quantization_bits,
+                                    int expected_fused, const logging::Logger& logger) {
+  const std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 11}, {kMSDomain, 1}};
+  Model model("VitAttention", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, {}, logger);
+  ModelTestBuilder builder(model.MainGraph());
+  BuildVitAttentionTestCase(builder, config);
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  SessionOptions session_options;
+  if (!kv_cache_quantization_bits.empty()) {
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(webgpu::options::kKvCacheQuantizationBits,
+                                                                   kv_cache_quantization_bits.c_str()));
+  }
+  InferenceSessionWrapper session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(
+      session.RegisterExecutionProvider(WebGpuExecutionProviderWithOptions(session_options.config_options)));
+  std::istringstream model_istream(model_data);
+  ASSERT_STATUS_OK(session.Load(model_istream));
+  ASSERT_STATUS_OK(session.Initialize());
+  auto op_to_count = CountOpsInGraph(session.GetGraph());
+  EXPECT_EQ(op_to_count["com.microsoft.MultiHeadAttention"], expected_fused);
+  std::vector<OrtValue> fetches;
+  ASSERT_STATUS_OK(session.Run(RunOptions{}, builder.feeds_, builder.output_names_, &fetches));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionWebGpuKvCacheQuantizationNotFused) {
+  if (!DefaultWebGpuExecutionProvider()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  // With KV-cache quantization configured, MultiHeadAttention would quantize K/V and, for Q4, reject head sizes that
+  // are not powers of two such as 24. The unfused graph is unaffected and must keep running.
+  VitAttentionTestConfig config;
+  config.head_size = 24;
+  ASSERT_NO_FATAL_FAILURE(RunVitAttentionOnWebGpu(config, webgpu::options::kKvCacheQuantizationBits_4Bit, 0, *logger_));
+  ASSERT_NO_FATAL_FAILURE(RunVitAttentionOnWebGpu({}, webgpu::options::kKvCacheQuantizationBits_8Bit, 0, *logger_));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionWebGpuKvCacheQuantizationOffFused) {
+  if (!DefaultWebGpuExecutionProvider()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  VitAttentionTestConfig config;
+  config.head_size = 24;
+  ASSERT_NO_FATAL_FAILURE(RunVitAttentionOnWebGpu(config, "", 1, *logger_));
+  ASSERT_NO_FATAL_FAILURE(RunVitAttentionOnWebGpu(config, webgpu::options::kKvCacheQuantizationBits_OFF, 1, *logger_));
 }
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 

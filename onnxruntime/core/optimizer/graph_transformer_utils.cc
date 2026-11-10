@@ -15,6 +15,7 @@
 #include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/platform/threadpool.h"
 
@@ -437,7 +438,14 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_acl_cuda_dml_webgpu_eps, level));
       transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(cpu_cuda_eps));
       transformers.emplace_back(std::make_unique<AttentionFusion>(cpu_acl_cuda_dml_eps));
-      if (WebGpuEpHasContribKernel(execution_providers, "MultiHeadAttention", logger)) {
+      // With KV-cache quantization configured, WebGPU MultiHeadAttention quantizes K/V even without a cache and
+      // rejects some head sizes, so a fused attention would lose precision or fail where the unfused graph runs.
+      const bool webgpu_kv_cache_quantization =
+          session_options.config_options.GetConfigOrDefault(webgpu::options::kKvCacheQuantizationBits,
+                                                            webgpu::options::kKvCacheQuantizationBits_OFF) !=
+          webgpu::options::kKvCacheQuantizationBits_OFF;
+      if (!webgpu_kv_cache_quantization &&
+          WebGpuEpHasContribKernel(execution_providers, "MultiHeadAttention", logger)) {
         transformers.emplace_back(std::make_unique<MultiHeadAttentionFusion>(
             InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
       }
