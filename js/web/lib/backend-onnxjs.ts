@@ -3,13 +3,21 @@
 
 import { Backend, InferenceSession, InferenceSessionHandler } from 'onnxruntime-common';
 
+import { createDeprecationWarning } from './deprecation-warning';
 import { Session } from './onnxjs/session';
 import { OnnxjsSessionHandler } from './onnxjs/session-handler-inference';
 import { validateSessionOptions } from './validate-session-options';
 
+const warnWebGlDeprecation = createDeprecationWarning(
+  'The WebGL execution provider is deprecated and will be removed in a future release. ' +
+    "Please migrate to WebGPU ('webgpu') or WebAssembly ('wasm'). " +
+    'See https://github.com/microsoft/onnxruntime/issues/32241 for details.',
+);
+
 class OnnxjsBackend implements Backend {
-  // eslint-disable-next-line @typescript-eslint/no-empty-function
-  async init(): Promise<void> {}
+  async init(): Promise<void> {
+    warnWebGlDeprecation();
+  }
 
   async createInferenceSessionHandler(
     pathOrBuffer: string | Uint8Array,
