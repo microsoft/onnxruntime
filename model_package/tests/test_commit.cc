@@ -444,17 +444,23 @@ bool test_prune_reports_unreadable_shared_assets_directory() {
 
   const fs::path assets_root = s.path("pkg") / "shared_assets";
   std::error_code ec;
+  fs::create_directories(assets_root, ec);
+  CHECK(!ec);
   fs::permissions(assets_root, fs::perms::none, ec);
   if (ec) {
     std::printf("[SKIP] %s (cannot remove directory permissions)\n", g_current);
     return true;
   }
-  ModelPackageStatus* status = ModelPackage_Prune(p.get());
-  fs::permissions(assets_root, fs::perms::owner_all, ec);
-  if (!status) {
+  std::error_code iter_ec;
+  fs::directory_iterator probe(assets_root, iter_ec);
+  if (!iter_ec) {
+    fs::permissions(assets_root, fs::perms::owner_all, ec);
     std::printf("[SKIP] %s (directory remains readable)\n", g_current);
     return true;
   }
+  ModelPackageStatus* status = ModelPackage_Prune(p.get());
+  fs::permissions(assets_root, fs::perms::owner_all, ec);
+  CHECK(status != nullptr);
   CHECK(ModelPackageStatus_Code(status) == MODEL_PACKAGE_ERR_IO);
   ModelPackageStatus_Release(status);
   return true;
@@ -645,80 +651,6 @@ bool test_linked_source_root_behavior() {
     return true;
   }
 
-  bool test_source_path_preserves_link_ancestor_parent_traversal() {
-    Sandbox s;
-    s.Write("outside/asset/model.onnx", "outside");
-    s.Write("work/asset/model.onnx", "work");
-    fs::create_directories(s.path("outside/subdir"));
-    std::error_code ec;
-    fs::create_directory_symlink(s.path("outside/subdir"), s.path("work/alias"), ec);
-    if (ec) {
-      std::printf("[SKIP] %s (symlink unsupported)\n", g_current);
-      return true;
-    }
-
-    const fs::path source = s.path("work/alias") / ".." / "asset";
-    const char* expected_uri = nullptr;
-    CHECK_OK(ModelPackage_ComputeDirectoryHash(s.path("outside/asset").u8string().c_str(),
-                                               &expected_uri));
-    const std::string expected_uri_copy(expected_uri);
-    const char* wrong_uri = nullptr;
-    CHECK_OK(ModelPackage_ComputeDirectoryHash(s.path("work/asset").u8string().c_str(),
-                                               &wrong_uri));
-    CHECK(expected_uri_copy != wrong_uri);
-
-    const char* source_uri = nullptr;
-    CHECK_OK(ModelPackage_ComputeDirectoryHash(source.u8string().c_str(), &source_uri));
-    CHECK(std::string(source_uri) == expected_uri_copy);
-
-    PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
-    CHECK_OK(ModelPackage_AddSharedAsset(p.get(), source.u8string().c_str(),
-                                         expected_uri_copy.c_str(), true, &source_uri));
-    CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
-                                 MODEL_PACKAGE_WRITE_PRESERVE));
-    const fs::path copied = s.path("pkg") / "shared_assets" /
-                            ("sha256-" + expected_uri_copy.substr(7)) / "model.onnx";
-    std::ifstream copied_file(copied, std::ios::binary);
-    std::string copied_contents;
-    copied_file >> copied_contents;
-    CHECK(copied_contents == "outside");
-    return true;
-  }
-
-  bool test_failed_shared_asset_refresh_preserves_live_records() {
-    Sandbox s;
-    s.Write("source_a/model.onnx", "asset a");
-    s.Write("source_c/model.onnx", "asset c");
-    PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
-    const char* uri_a = nullptr;
-    CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("source_a").u8string().c_str(),
-                                         nullptr, true, &uri_a));
-    const std::string uri_a_copy(uri_a);
-    CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
-                                 MODEL_PACKAGE_WRITE_PRESERVE));
-
-    fs::create_directories(s.path("outside"));
-    const fs::path linked_entry = s.path("pkg") / "shared_assets" /
-                                  ("sha256-" + std::string(64, 'b'));
-    std::error_code ec;
-    fs::create_directory_symlink(s.path("outside"), linked_entry, ec);
-    if (ec) {
-      std::printf("[SKIP] %s (symlink unsupported)\n", g_current);
-      return true;
-    }
-
-    const char* const unchanged = "unchanged";
-    const char* uri_c = unchanged;
-    CHECK_ERR(ModelPackage_AddSharedAsset(p.get(), s.path("source_c").u8string().c_str(),
-                                          nullptr, true, &uri_c),
-              MODEL_PACKAGE_ERR_PATH_CONFINEMENT);
-    CHECK(uri_c == unchanged);
-    const ModelPackageInfo* info = ModelPackage_Info(p.get());
-    CHECK(info->num_shared_assets == 1);
-    CHECK(std::string(info->shared_assets[0].uri) == uri_a_copy);
-    return true;
-  }
-
   const char* uri = nullptr;
   std::string expected_uri;
   for (const char* suffix : {"/", "/."}) {
@@ -758,6 +690,80 @@ bool test_linked_source_root_behavior() {
                                 MODEL_PACKAGE_WRITE_PRESERVE),
             MODEL_PACKAGE_ERR_SCHEMA);
   CHECK(fs::is_regular_file(s.path("outside/marker.txt")));
+  return true;
+}
+
+bool test_source_path_preserves_link_ancestor_parent_traversal() {
+  Sandbox s;
+  s.Write("outside/asset/model.onnx", "outside");
+  s.Write("work/asset/model.onnx", "work");
+  fs::create_directories(s.path("outside/subdir"));
+  std::error_code ec;
+  fs::create_directory_symlink(s.path("outside/subdir"), s.path("work/alias"), ec);
+  if (ec) {
+    std::printf("[SKIP] %s (symlink unsupported)\n", g_current);
+    return true;
+  }
+
+  const fs::path source = s.path("work/alias") / ".." / "asset";
+  const char* expected_uri = nullptr;
+  CHECK_OK(ModelPackage_ComputeDirectoryHash(s.path("outside/asset").u8string().c_str(),
+                                             &expected_uri));
+  const std::string expected_uri_copy(expected_uri);
+  const char* wrong_uri = nullptr;
+  CHECK_OK(ModelPackage_ComputeDirectoryHash(s.path("work/asset").u8string().c_str(),
+                                             &wrong_uri));
+  CHECK(expected_uri_copy != wrong_uri);
+
+  const char* source_uri = nullptr;
+  CHECK_OK(ModelPackage_ComputeDirectoryHash(source.u8string().c_str(), &source_uri));
+  CHECK(std::string(source_uri) == expected_uri_copy);
+
+  PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
+  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), source.u8string().c_str(),
+                                       expected_uri_copy.c_str(), true, &source_uri));
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
+                               MODEL_PACKAGE_WRITE_PRESERVE));
+  const fs::path copied = s.path("pkg") / "shared_assets" /
+                          ("sha256-" + expected_uri_copy.substr(7)) / "model.onnx";
+  std::ifstream copied_file(copied, std::ios::binary);
+  std::string copied_contents;
+  copied_file >> copied_contents;
+  CHECK(copied_contents == "outside");
+  return true;
+}
+
+bool test_failed_shared_asset_refresh_preserves_live_records() {
+  Sandbox s;
+  s.Write("source_a/model.onnx", "asset a");
+  s.Write("source_c/model.onnx", "asset c");
+  PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
+  const char* uri_a = nullptr;
+  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("source_a").u8string().c_str(),
+                                       nullptr, true, &uri_a));
+  const std::string uri_a_copy(uri_a);
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
+                               MODEL_PACKAGE_WRITE_PRESERVE));
+
+  fs::create_directories(s.path("outside"));
+  const fs::path linked_entry = s.path("pkg") / "shared_assets" /
+                                ("sha256-" + std::string(64, 'b'));
+  std::error_code ec;
+  fs::create_directory_symlink(s.path("outside"), linked_entry, ec);
+  if (ec) {
+    std::printf("[SKIP] %s (symlink unsupported)\n", g_current);
+    return true;
+  }
+
+  const char* const unchanged = "unchanged";
+  const char* uri_c = unchanged;
+  CHECK_ERR(ModelPackage_AddSharedAsset(p.get(), s.path("source_c").u8string().c_str(),
+                                        nullptr, true, &uri_c),
+            MODEL_PACKAGE_ERR_PATH_CONFINEMENT);
+  CHECK(uri_c == unchanged);
+  const ModelPackageInfo* info = ModelPackage_Info(p.get());
+  CHECK(info->num_shared_assets == 1);
+  CHECK(std::string(info->shared_assets[0].uri) == uri_a_copy);
   return true;
 }
 
