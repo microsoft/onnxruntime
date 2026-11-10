@@ -1,0 +1,57 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#use .getByOffset .setByOffset
+#param half
+#param has_capture
+
+fn replay_element(index: u32) -> u32 {
+  let position = index % uniforms.history_width;
+  let channel = (index / uniforms.history_width) % uniforms.channels;
+  let batch = index / (uniforms.history_width * uniforms.channels);
+  if (uniforms.kept_count < uniforms.history_width &&
+      position < uniforms.history_width - uniforms.kept_count) {
+    let source_index = index + uniforms.kept_count + uniforms.source_lane;
+#if half
+    return (source.getByOffset(source_index / 2u) >> ((source_index % 2u) * 16u)) & 0xffffu;
+#else
+    return source.getByOffset(source_index);
+#endif
+  }
+#if has_capture
+  var token: u32;
+  if (uniforms.kept_count >= uniforms.history_width) {
+    token = uniforms.kept_count - uniforms.history_width + position;
+  } else {
+    token = position - (uniforms.history_width - uniforms.kept_count);
+  }
+  let capture_index = (batch * uniforms.capacity + token) * uniforms.channels + channel + uniforms.capture_lane;
+#if half
+  return (capture.getByOffset(capture_index / 2u) >> ((capture_index % 2u) * 16u)) & 0xffffu;
+#else
+  return capture.getByOffset(capture_index);
+#endif
+#else
+  return 0u;
+#endif
+}
+
+$MAIN {
+  if (global_idx >= uniforms.output_words) {
+    return;
+  }
+#if half
+  // One invocation owns a physical word, including both halves across logical row boundaries.
+  var bits = destination.getByOffset(global_idx);
+  for (var lane = 0u; lane < 2u; lane++) {
+    let element = global_idx * 2u + lane;
+    if (element >= uniforms.destination_lane && element - uniforms.destination_lane < uniforms.state_elements) {
+      let shift = lane * 16u;
+      bits = (bits & ~(0xffffu << shift)) | (replay_element(element - uniforms.destination_lane) << shift);
+    }
+  }
+  destination.setByOffset(global_idx, bits);
+#else
+  destination.setByOffset(global_idx, replay_element(global_idx));
+#endif
+}

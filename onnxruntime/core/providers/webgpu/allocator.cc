@@ -8,6 +8,10 @@
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
 
+#if defined(ORT_USE_EP_API_ADAPTERS)
+#include "core/providers/webgpu/ep/runtime_compatibility.h"
+#endif
+
 namespace onnxruntime {
 namespace webgpu {
 
@@ -31,11 +35,18 @@ GpuBufferAllocator::GpuBufferAllocator(
 }
 
 // Streamless allocation, e.g., application CreateTensor/Alloc APIs using a Session allocator,
-// or framework allocations without a stream, including during Run. The plugin's writable device
-// allocator submits cached clears before returning: the consumer may use a different recording.
-// Built-in callers can supply a different submission policy.
+// or framework allocations without a stream, including during Run. Serialized-mode Session allocators
+// defer clears during Run, where streamless copies flush the active Session before using another recording.
+// Other plugin allocations submit independent clears. Built-in callers can supply a different policy.
 void* GpuBufferAllocator::Alloc(size_t size) {
+  std::unique_lock<std::recursive_mutex> recording_lock;
+  if (recording_getter_) {
+    recording_lock = std::unique_lock<std::recursive_mutex>{recording_getter_().mutex};
+  }
 #if defined(ORT_USE_EP_API_ADAPTERS)
+  if (ep::UseSerializedExecutionMode() && recording_getter_ && should_submit_zero_initialize_) {
+    return Allocate(size, recording_getter_(), should_submit_zero_initialize_());
+  }
   // Streamless clears are independent of Run and must not read its capture state.
   CommandRecordingState recording;
   return Allocate(size, recording, true);
@@ -45,6 +56,7 @@ void* GpuBufferAllocator::Alloc(size_t size) {
 }
 
 void* GpuBufferAllocator::Allocate(size_t size, CommandRecordingState& recording, bool submit_zero_initialize) {
+  std::lock_guard<std::recursive_mutex> lock{recording.mutex};
   if (size == 0) {
     return nullptr;
   }
@@ -60,6 +72,10 @@ void* GpuBufferAllocator::Allocate(size_t size, CommandRecordingState& recording
 
 void GpuBufferAllocator::Free(void* p) {
   if (p != nullptr) {
+    std::unique_lock<std::recursive_mutex> recording_lock;
+    if (recording_getter_) {
+      recording_lock = std::unique_lock<std::recursive_mutex>{recording_getter_().mutex};
+    }
     buffer_manager_getter_().Release(static_cast<WGPUBuffer>(p),
                                      recording_getter_ ? &recording_getter_() : nullptr);
     num_allocs_.fetch_sub(1, std::memory_order_relaxed);

@@ -4,6 +4,7 @@
 #include "contrib_ops/cuda/bert/group_query_attention_workspace.h"
 
 #include <array>
+#include <initializer_list>
 #include <limits>
 
 #include "core/common/safeint.h"
@@ -14,7 +15,7 @@ namespace cuda {
 
 namespace {
 
-// Mirrors the extra bytes in the runtime GQABufferRequirements quantized Flash decode formula.
+// Preserve the runtime's extra bytes for quantized Flash decode.
 constexpr size_t kGQAQuantizedFlashDecodeSlackBytes = 256;
 
 constexpr GQAWorkspaceStatus Ok() noexcept {
@@ -34,6 +35,15 @@ GQAWorkspaceStatus ValidateDimension(int64_t value, const char* message) noexcep
     return Invalid(message);
   }
 
+  return Ok();
+}
+
+GQAWorkspaceStatus ValidateSizingDimensions(std::initializer_list<int64_t> dimensions) noexcept {
+  for (int64_t dimension : dimensions) {
+    if (dimension < 0 || dimension > std::numeric_limits<int32_t>::max()) {
+      return Invalid("GQA sizing dimensions must be nonnegative and fit int32.");
+    }
+  }
   return Ok();
 }
 
@@ -480,46 +490,55 @@ GQAWorkspaceStatus CheckedGQAWorkspaceAlign(size_t value, size_t alignment, size
   return CheckedGQAWorkspaceMultiply(numerator / alignment, alignment, result);
 }
 
-GQAPreparationResult GetGQAPreparationRecipe(
+GQAWorkspaceStatus GetGQACacheRowBytes(
     const GQAWorkspaceProblem& problem,
-    const GQAPreparationRoute& route) noexcept {
-  GQAPreparationResult result;
-  result.status = ValidateProblem(problem, route);
+    size_t& bytes) noexcept {
+  auto status = ValidateSizingDimensions({problem.head_size});
+  if (!status.IsOK()) {
+    return status;
+  }
+  if ((problem.cache_element_size != 1 && problem.cache_element_size != 2) ||
+      (problem.kv_cache_bit_width != 0 && problem.kv_cache_bit_width != 4 &&
+       problem.kv_cache_bit_width != 8)) {
+    return Invalid("GQA cache sizing requires valid element and packing widths.");
+  }
+  size_t checked_bytes = 0;
+  status = ComputeCacheRowBytes(problem, checked_bytes);
+  if (status.IsOK()) {
+    bytes = checked_bytes;
+  }
+  return status;
+}
+
+GQACachePreparationResult GetGQACachePreparationSizes(
+    const GQAWorkspaceProblem& problem,
+    size_t cache_row_bytes) noexcept {
+  GQACachePreparationResult result;
+  result.status = ValidateSizingDimensions(
+      {problem.batch_size, problem.sequence_length, problem.kv_num_heads,
+       problem.present_kv_cache_capacity,
+       problem.requires_separate_past_buffer ? problem.past_kv_cache_capacity : 0});
   if (!result.status.IsOK()) {
     return result;
   }
-
-  GQAPreparationRecipe recipe;
-  recipe.effective_kv_cache_capacity = problem.present_kv_cache_capacity;
-  result.status = ComputeCacheRowBytes(problem, recipe.cache_row_bytes);
-  if (!result.status.IsOK()) {
+  if (problem.requires_separate_past_buffer && problem.is_windowed_kv_cache) {
+    result.status = Invalid("Windowed GQA requires both past/present K/V pairs to alias.");
     return result;
   }
 
-  if (problem.is_windowed_kv_cache && recipe.cache_row_bytes % 16 != 0) {
-    result.status = Invalid("Windowed GQA KV cache row size must be a multiple of 16 bytes.");
-    return result;
-  }
-
+  GQACachePreparationSizes sizes;
+  sizes.effective_kv_cache_capacity = problem.present_kv_cache_capacity;
+  sizes.cache_row_bytes = cache_row_bytes;
   const size_t batch_size = static_cast<size_t>(problem.batch_size);
   const size_t sequence_length = static_cast<size_t>(problem.sequence_length);
   const size_t kv_num_heads = static_cast<size_t>(problem.kv_num_heads);
   const size_t capacity = static_cast<size_t>(problem.present_kv_cache_capacity);
 
-  size_t cursor = 0;
   if (problem.requires_separate_past_buffer) {
-    recipe.uses_separate_past_buffer = true;
     result.status = CheckedMultiplyMany(
         batch_size, kv_num_heads,
         static_cast<size_t>(problem.past_kv_cache_capacity),
-        recipe.cache_row_bytes,
-        recipe.separate_past_bytes);
-    if (!result.status.IsOK()) {
-      return result;
-    }
-
-    result.status = AppendRegion(
-        recipe.separate_past_bytes, cursor, recipe.separate_past_offset_bytes);
+        sizes.cache_row_bytes, sizes.separate_past_bytes);
     if (!result.status.IsOK()) {
       return result;
     }
@@ -537,22 +556,156 @@ GQAPreparationResult GetGQAPreparationRecipe(
       return result;
     }
 
-    recipe.effective_kv_cache_capacity = static_cast<int64_t>(effective_capacity);
-    recipe.uses_staging = true;
+    sizes.effective_kv_cache_capacity = static_cast<int64_t>(effective_capacity);
     result.status = CheckedMultiplyMany(
-        batch_size, kv_num_heads, effective_capacity, recipe.cache_row_bytes,
-        recipe.staged_key_bytes);
+        batch_size, kv_num_heads, effective_capacity, sizes.cache_row_bytes,
+        sizes.staged_cache_bytes);
     if (!result.status.IsOK()) {
       return result;
     }
-    recipe.staged_value_bytes = recipe.staged_key_bytes;
+  } else if (problem.is_windowed_kv_cache) {
+    result.status = CheckedMultiplyMany(
+        batch_size, kv_num_heads, capacity, sizes.cache_row_bytes,
+        sizes.compaction_cache_bytes);
+    if (!result.status.IsOK()) {
+      return result;
+    }
+    result.status = CheckedGQAWorkspaceMultiply(
+        sizes.compaction_cache_bytes, 2, sizes.compaction_bytes);
+    if (!result.status.IsOK()) {
+      return result;
+    }
+  }
 
+  result.sizes = sizes;
+  return result;
+}
+
+GQAWorkspaceStatus GetGQASequenceLengthsSize(
+    const GQAWorkspaceProblem& problem,
+    bool use_flash_attention_fast_decode,
+    size_t& vector_count,
+    size_t& bytes) noexcept {
+  auto status = ValidateSizingDimensions({problem.batch_size, problem.sequence_length});
+  if (!status.IsOK()) {
+    return status;
+  }
+
+  const bool suppress_sequence_vectors =
+      use_flash_attention_fast_decode && problem.sequence_length == 1;
+  const size_t count = suppress_sequence_vectors ? 0 : (problem.is_windowed_kv_cache ? 6 : 3);
+  size_t sequence_length_count = 0;
+  status = CheckedGQAWorkspaceMultiply(
+      count, static_cast<size_t>(problem.batch_size), sequence_length_count);
+  if (!status.IsOK()) {
+    return status;
+  }
+  size_t checked_bytes = 0;
+  status = CheckedGQAWorkspaceMultiply(
+      sequence_length_count, sizeof(int32_t), checked_bytes);
+  if (!status.IsOK()) {
+    return status;
+  }
+
+  vector_count = count;
+  bytes = checked_bytes;
+  return Ok();
+}
+
+GQAWorkspaceStatus GetGQAQkvPreprocessBytes(
+    const GQAWorkspaceProblem& problem,
+    const GQAPreparationRoute& route,
+    int64_t effective_kv_cache_capacity,
+    size_t& bytes) noexcept {
+  auto status = ValidateSizingDimensions(
+      {problem.batch_size, problem.sequence_length, problem.num_heads,
+       problem.kv_num_heads, problem.head_size});
+  if (!status.IsOK()) {
+    return status;
+  }
+  if (problem.qkv_element_size != 2 ||
+      !IsValidQuantizationType(problem.k_quantization) ||
+      !IsValidQuantizationType(problem.v_quantization)) {
+    return Invalid("GQA QKV sizing requires FP16/BF16 inputs and valid quantization types.");
+  }
+  switch (route.preprocess_mode) {
+    case GQAPreprocessMode::Xqa:
+    case GQAPreprocessMode::Flash:
+    case GQAPreprocessMode::MemoryEfficient:
+    case GQAPreprocessMode::Unfused:
+      break;
+    default:
+      return Invalid("GQA preprocess mode is invalid.");
+  }
+  if (route.use_flash_attention_fast_decode &&
+      route.preprocess_mode != GQAPreprocessMode::Flash) {
+    return Invalid("GQA Flash fast decode requires the Flash preprocess mode.");
+  }
+  if (!route.use_flash_attention_fast_decode &&
+      route.preprocess_mode == GQAPreprocessMode::Flash && !problem.is_first_prompt &&
+      (problem.k_quantization != GQAKvQuantizationType::None ||
+       problem.v_quantization != GQAKvQuantizationType::None)) {
+    status = ValidateSizingDimensions({effective_kv_cache_capacity});
+    if (!status.IsOK()) {
+      return status;
+    }
+  }
+
+  size_t checked_bytes = 0;
+  status = ComputeQkvPreprocessBytes(
+      problem, route, effective_kv_cache_capacity, checked_bytes);
+  if (status.IsOK()) {
+    bytes = checked_bytes;
+  }
+  return status;
+}
+
+GQAPreparationResult GetGQAPreparationRecipe(
+    const GQAWorkspaceProblem& problem,
+    const GQAPreparationRoute& route) noexcept {
+  GQAPreparationResult result;
+  result.status = ValidateProblem(problem, route);
+  if (!result.status.IsOK()) {
+    return result;
+  }
+
+  size_t cache_row_bytes = 0;
+  result.status = GetGQACacheRowBytes(problem, cache_row_bytes);
+  if (!result.status.IsOK()) {
+    return result;
+  }
+  if (problem.is_windowed_kv_cache && cache_row_bytes % 16 != 0) {
+    result.status = Invalid("Windowed GQA KV cache row size must be a multiple of 16 bytes.");
+    return result;
+  }
+  const auto cache = GetGQACachePreparationSizes(problem, cache_row_bytes);
+  result.status = cache.status;
+  if (!result.status.IsOK()) {
+    return result;
+  }
+  const auto& sizes = cache.sizes;
+  GQAPreparationRecipe recipe;
+  recipe.effective_kv_cache_capacity = sizes.effective_kv_cache_capacity;
+  recipe.cache_row_bytes = sizes.cache_row_bytes;
+  size_t cursor = 0;
+  if (problem.requires_separate_past_buffer) {
+    recipe.uses_separate_past_buffer = true;
+    recipe.separate_past_bytes = sizes.separate_past_bytes;
+    result.status = AppendRegion(
+        recipe.separate_past_bytes, cursor, recipe.separate_past_offset_bytes);
+    if (!result.status.IsOK()) {
+      return result;
+    }
+  }
+  if (problem.is_windowed_kv_cache && problem.sequence_length > 1) {
+    recipe.uses_staging = true;
+    recipe.staged_key_bytes = sizes.staged_cache_bytes;
+    recipe.staged_value_bytes = sizes.staged_cache_bytes;
     result.status = AppendRegion(
         recipe.staged_key_bytes, cursor, recipe.staged_key_offset_bytes);
     if (!result.status.IsOK()) {
       return result;
     }
-
     result.status = AppendRegion(
         recipe.staged_value_bytes, cursor, recipe.staged_value_offset_bytes);
     if (!result.status.IsOK()) {
@@ -560,26 +713,14 @@ GQAPreparationResult GetGQAPreparationRecipe(
     }
   } else if (problem.is_windowed_kv_cache) {
     recipe.uses_compaction = true;
-    result.status = CheckedMultiplyMany(
-        batch_size, kv_num_heads, capacity, recipe.cache_row_bytes,
-        recipe.compaction_key_bytes);
-    if (!result.status.IsOK()) {
-      return result;
-    }
-    recipe.compaction_value_bytes = recipe.compaction_key_bytes;
-
-    result.status = CheckedGQAWorkspaceMultiply(
-        recipe.compaction_key_bytes, 2, recipe.compaction_bytes);
-    if (!result.status.IsOK()) {
-      return result;
-    }
-
+    recipe.compaction_key_bytes = sizes.compaction_cache_bytes;
+    recipe.compaction_value_bytes = sizes.compaction_cache_bytes;
+    recipe.compaction_bytes = sizes.compaction_bytes;
     result.status = AppendRegion(
         recipe.compaction_bytes, cursor, recipe.compaction_offset_bytes);
     if (!result.status.IsOK()) {
       return result;
     }
-
     recipe.compaction_key_offset_bytes = recipe.compaction_offset_bytes;
     result.status = CheckedGQAWorkspaceAdd(
         recipe.compaction_key_offset_bytes, recipe.compaction_key_bytes,
@@ -589,31 +730,19 @@ GQAPreparationResult GetGQAPreparationRecipe(
     }
   }
 
-  const bool suppress_sequence_vectors =
-      route.use_flash_attention_fast_decode && problem.sequence_length == 1;
-  if (!suppress_sequence_vectors) {
-    recipe.sequence_length_vector_count = problem.is_windowed_kv_cache ? 6 : 3;
-    size_t sequence_length_count = 0;
-    result.status = CheckedGQAWorkspaceMultiply(
-        recipe.sequence_length_vector_count, batch_size, sequence_length_count);
-    if (!result.status.IsOK()) {
-      return result;
-    }
-
-    result.status = CheckedGQAWorkspaceMultiply(
-        sequence_length_count, sizeof(int32_t), recipe.sequence_lengths_bytes);
-    if (!result.status.IsOK()) {
-      return result;
-    }
-
-    result.status = AppendRegion(
-        recipe.sequence_lengths_bytes, cursor, recipe.sequence_lengths_offset_bytes);
-    if (!result.status.IsOK()) {
-      return result;
-    }
+  result.status = GetGQASequenceLengthsSize(
+      problem, route.use_flash_attention_fast_decode,
+      recipe.sequence_length_vector_count, recipe.sequence_lengths_bytes);
+  if (!result.status.IsOK()) {
+    return result;
+  }
+  result.status = AppendRegion(
+      recipe.sequence_lengths_bytes, cursor, recipe.sequence_lengths_offset_bytes);
+  if (!result.status.IsOK()) {
+    return result;
   }
 
-  result.status = ComputeQkvPreprocessBytes(
+  result.status = GetGQAQkvPreprocessBytes(
       problem, route, recipe.effective_kv_cache_capacity, recipe.qkv_preprocess_bytes);
   if (!result.status.IsOK()) {
     return result;

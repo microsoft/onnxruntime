@@ -125,9 +125,15 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
   softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
   use_smooth_softmax_ = info.GetAttrOrDefault<int64_t>("smooth_softmax", 0) == 1;
-  qk_norm_epsilon_ = info.GetAttrOrDefault<float>("qk_norm_epsilon", 1e-6f);
-  ORT_ENFORCE(std::isfinite(qk_norm_epsilon_) && qk_norm_epsilon_ > 0.0f,
+  const float qk_norm_epsilon = info.GetAttrOrDefault<float>("qk_norm_epsilon", 1e-6f);
+  ORT_ENFORCE(std::isfinite(qk_norm_epsilon) && qk_norm_epsilon > 0.0f,
               "GroupQueryAttention (CUDA): qk_norm_epsilon must be finite and positive.");
+  q_norm_epsilon_ = info.GetAttrOrDefault<float>("q_norm_epsilon", qk_norm_epsilon);
+  k_norm_epsilon_ = info.GetAttrOrDefault<float>("k_norm_epsilon", qk_norm_epsilon);
+  ORT_ENFORCE(std::isfinite(q_norm_epsilon_) && q_norm_epsilon_ > 0.0f,
+              "GroupQueryAttention (CUDA): q_norm_epsilon must be finite and positive.");
+  ORT_ENFORCE(std::isfinite(k_norm_epsilon_) && k_norm_epsilon_ > 0.0f,
+              "GroupQueryAttention (CUDA): k_norm_epsilon must be finite and positive.");
 
   k_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("k_quant_type", "NONE"));
   v_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("v_quant_type", "NONE"));
@@ -304,6 +310,15 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
         "GroupQueryAttention (CUDA): q_norm_weight and k_norm_weight must be provided together.");
   }
 
+  // query_seqlens (input 16) is the number of valid rows in each right-padded query chunk. Its values
+  // stay on the device and are clamped there, so only its shape and the structural requirements are
+  // checked on the host (in CheckInputs).
+  const Tensor* query_seqlens = (context->InputCount() > 16) ? context->Input<Tensor>(16) : nullptr;
+  if (query_seqlens != nullptr && !is_unidirectional_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "GroupQueryAttention (CUDA): query_seqlens requires causal=1.");
+  }
+
   if (k_quant_type_ != KVQuantizationType::NONE) {
     if (k_scale == nullptr) {
       return ORT_MAKE_STATUS(
@@ -374,7 +389,13 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                                 device_prop.maxThreadsPerBlock,
                                                                 /*kv_cache_extra_bits=*/0,
                                                                 sliding_window_cache_,
-                                                                local_window_size_));
+                                                                local_window_size_,
+                                                                query_seqlens));
+
+  // Explicit lengths also distinguish idle (Q=0) from active (Q=1) single-token entries.
+  const int* query_seqlens_data = query_seqlens != nullptr ? query_seqlens->Data<int>() : nullptr;
+  data.has_query_seqlens = query_seqlens_data != nullptr;
+  data.query_seqlens = query_seqlens_data;
 
   // The CUDA kernel evicts the minimum number of positions on every step, so the cache it produces
   // is always full at min(T, C). That equals the resident range the operator specifies only when
@@ -423,7 +444,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     }
     parameters.use_qk_norm = true;
   }
-  parameters.qk_norm_epsilon = qk_norm_epsilon_;
+  parameters.q_norm_epsilon = q_norm_epsilon_;
+  parameters.k_norm_epsilon = k_norm_epsilon_;
 
   parameters.local_window_size = local_window_size_;
   parameters.is_unidirectional = is_unidirectional_;
@@ -513,86 +535,13 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                 "sliding_window_cache=1 requires past_key/present_key and past_value/present_value "
                 "to share the same buffer.");
 
-  IAllocatorUniquePtr<CudaU> separate_past_buffer;
-  if (past_key_shared != past_value_shared) {
-    // Nonshared preprocessing overwrites present KV, so preserve the aliased past cache first.
-    const Tensor* shared_past = past_key_shared ? past_key : past_value;
-    const size_t past_bytes = shared_past->SizeInBytes();
-    separate_past_buffer = GetScratchBuffer<CudaU>(past_bytes / sizeof(CudaU), GetComputeStream(context));
-    if (past_bytes != 0) {
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(separate_past_buffer.get(), shared_past->DataRaw(), past_bytes,
-                                           cudaMemcpyDeviceToDevice, Stream(context)));
-    }
-    if (past_key_shared) {
-      data.past_key = separate_past_buffer.get();
-    } else {
-      data.past_value = separate_past_buffer.get();
-    }
-  }
-
   const int original_present_kv_cache_capacity = parameters.seqlen_present_kv_cache;
-
-  // The capacity C of a windowed cache is only guaranteed to cover the attention window, so a step
-  // that appends S > 1 tokens can transiently need min(P, C) + S entries: the earliest queries of
-  // the step still have to see keys that the last ones have already pushed out. Redirect such a
-  // step to a staging cache of that length, seeded with the resident window, and copy the surviving
-  // tail back afterwards.
-  //
-  // This is deliberately not gated on is_first_prompt. The op cannot tell a first prompt from a
-  // later prefill chunk: total_sequence_length is supplied by the caller and some frameworks
-  // (onnxruntime-genai) pass the allocated buffer length rather than the running total. Staging
-  // every multi-token step is correct for both cases and leaves the single-token decode path, which
-  // never needs more than C entries, on the cheap in-place eviction path.
-  //
-  // Doing this here, rather than inside a dedicated kernel path, keeps the staging independent of
-  // which attention backend is selected and reuses the existing RoPE/QK-Norm/quantization handling.
-  IAllocatorUniquePtr<void> staged_key_buffer;
-  IAllocatorUniquePtr<void> staged_value_buffer;
-  CudaU* windowed_present_key = nullptr;
-  CudaU* windowed_present_value = nullptr;
-  int windowed_cache_capacity = 0;
-  int staged_cache_capacity = 0;
-  if (parameters.is_windowed_kv_cache && parameters.sequence_length > 1) {
-    windowed_present_key = data.present_key;
-    windowed_present_value = data.present_value;
-    windowed_cache_capacity = parameters.seqlen_present_kv_cache;
-    staged_cache_capacity = SafeInt<int>(windowed_cache_capacity) + parameters.sequence_length;
-
-    const size_t staged_bytes = SafeInt<size_t>(parameters.batch_size) * parameters.kv_num_heads *
-                                staged_cache_capacity * dense_head_size * sizeof(U);
-    staged_key_buffer = GetScratchBuffer<void>(staged_bytes, GetComputeStream(context));
-    staged_value_buffer = GetScratchBuffer<void>(staged_bytes, GetComputeStream(context));
-
-    ORT_RETURN_IF_ERROR(LaunchCopyKvCacheWindow(
-        staged_key_buffer.get(), staged_value_buffer.get(),
-        windowed_present_key, windowed_present_value,
-        parameters.batch_size, parameters.kv_num_heads,
-        /*src_capacity=*/windowed_cache_capacity, /*dst_capacity=*/staged_cache_capacity,
-        /*rows=*/windowed_cache_capacity, /*src_offsets=*/nullptr,
-        static_cast<int>(dense_head_size * sizeof(U)), Stream(context)));
-
-    data.past_key = reinterpret_cast<const CudaU*>(staged_key_buffer.get());
-    data.past_value = reinterpret_cast<const CudaU*>(staged_value_buffer.get());
-    data.present_key = reinterpret_cast<CudaU*>(staged_key_buffer.get());
-    data.present_value = reinterpret_cast<CudaU*>(staged_value_buffer.get());
-
-    parameters.kv_cache_capacity = staged_cache_capacity;
-    parameters.seqlen_past_kv_cache = staged_cache_capacity;
-    parameters.seqlen_present_kv_cache = staged_cache_capacity;
-  }
-
-  const int effective_workspace_kv_length = static_cast<int>(GetGQAEffectiveWorkspaceKvLength(
-      parameters.total_sequence_length,
-      parameters.seqlen_present_kv_cache,
-      parameters.is_windowed_kv_cache));
-
   bool is_inputs_quantized = (k_quant_type_ != KVQuantizationType::NONE) || (v_quant_type_ != KVQuantizationType::NONE);
   constexpr bool is_int8 = std::is_same<U, int8_t>::value;
   constexpr bool is_fp8 = std::is_same<U, Float8E4M3FN>::value;
 
-  // Keep the original cache capacity in the shared workspace problem. Flash, MEA, and unfused
-  // recipes receive their effective post-staging extents separately; XQA only handles single-token
-  // steps, which do not stage the cache.
+  // Keep the original cache capacity; backend and QKV sizing receive their
+  // effective post-staging extents separately.
   GQAWorkspaceProblem workspace_problem;
   workspace_problem.qkv_element_size = sizeof(T);
   workspace_problem.cache_element_size = sizeof(U);
@@ -621,7 +570,100 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   workspace_problem.is_windowed_kv_cache = parameters.is_windowed_kv_cache;
   workspace_problem.is_first_prompt = parameters.is_first_prompt;
   workspace_problem.do_rotary = parameters.do_rotary;
+  workspace_problem.is_packed_qkv = parameters.is_packed_qkv;
   workspace_problem.use_qk_norm = parameters.use_qk_norm;
+  workspace_problem.has_query_seqlens = data.has_query_seqlens;
+  workspace_problem.requires_separate_past_buffer = past_key_shared != past_value_shared;
+  const Tensor* shared_past = past_key_shared ? past_key : past_value;
+  workspace_problem.past_kv_cache_capacity =
+      workspace_problem.requires_separate_past_buffer ? shared_past->Shape()[2] : 0;
+
+  // Preservation and staging size physical tensor rows. Compaction uses the
+  // packed-row width from the cache attributes, matching its copy kernel.
+  auto cache_row_problem = workspace_problem;
+  if (workspace_problem.requires_separate_past_buffer) {
+    cache_row_problem.head_size = shared_past->Shape()[3];
+    cache_row_problem.kv_cache_bit_width = 0;
+  } else if (parameters.is_windowed_kv_cache && parameters.sequence_length > 1) {
+    cache_row_problem.head_size = dense_head_size;
+    cache_row_problem.kv_cache_bit_width = 0;
+  }
+  size_t cache_row_bytes = 0;
+  const auto cache_row_status = GetGQACacheRowBytes(cache_row_problem, cache_row_bytes);
+  ORT_RETURN_IF_NOT(cache_row_status.IsOK(),
+                    "GQA cache row sizing failed: ", cache_row_status.message);
+  const auto cache_preparation = GetGQACachePreparationSizes(workspace_problem, cache_row_bytes);
+  ORT_RETURN_IF_NOT(cache_preparation.status.IsOK(),
+                    "GQA cache preparation sizing failed: ", cache_preparation.status.message);
+  const auto& cache_sizes = cache_preparation.sizes;
+
+  IAllocatorUniquePtr<CudaU> separate_past_buffer;
+  if (past_key_shared != past_value_shared) {
+    // Nonshared preprocessing overwrites present KV, so preserve the aliased past cache first.
+    const size_t past_bytes = cache_sizes.separate_past_bytes;
+    separate_past_buffer = GetScratchBuffer<CudaU>(past_bytes / sizeof(CudaU), GetComputeStream(context));
+    if (past_bytes != 0) {
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(separate_past_buffer.get(), shared_past->DataRaw(), past_bytes,
+                                           cudaMemcpyDeviceToDevice, Stream(context)));
+    }
+    if (past_key_shared) {
+      data.past_key = separate_past_buffer.get();
+    } else {
+      data.past_value = separate_past_buffer.get();
+    }
+  }
+
+  // The capacity C of a windowed cache is only guaranteed to cover the attention window, so a step
+  // that appends S > 1 tokens can transiently need min(P, C) + S entries: the earliest queries of
+  // the step still have to see keys that the last ones have already pushed out. Redirect such a
+  // step to a staging cache of that length, seeded with the resident window, and copy the surviving
+  // tail back afterwards.
+  //
+  // This is deliberately not gated on is_first_prompt. The op cannot tell a first prompt from a
+  // later prefill chunk: total_sequence_length is supplied by the caller and some frameworks
+  // (onnxruntime-genai) pass the allocated buffer length rather than the running total. Staging
+  // every multi-token step is correct for both cases and leaves the single-token decode path, which
+  // never needs more than C entries, on the cheap in-place eviction path.
+  //
+  // Doing this here, rather than inside a dedicated kernel path, keeps the staging independent of
+  // which attention backend is selected and reuses the existing RoPE/QK-Norm/quantization handling.
+  IAllocatorUniquePtr<void> staged_key_buffer;
+  IAllocatorUniquePtr<void> staged_value_buffer;
+  CudaU* windowed_present_key = nullptr;
+  CudaU* windowed_present_value = nullptr;
+  int windowed_cache_capacity = 0;
+  int staged_cache_capacity = 0;
+  if (parameters.is_windowed_kv_cache && parameters.sequence_length > 1) {
+    windowed_present_key = data.present_key;
+    windowed_present_value = data.present_value;
+    windowed_cache_capacity = parameters.seqlen_present_kv_cache;
+    staged_cache_capacity = static_cast<int>(cache_sizes.effective_kv_cache_capacity);
+    const size_t staged_bytes = cache_sizes.staged_cache_bytes;
+    staged_key_buffer = GetScratchBuffer<void>(staged_bytes, GetComputeStream(context));
+    staged_value_buffer = GetScratchBuffer<void>(staged_bytes, GetComputeStream(context));
+
+    ORT_RETURN_IF_ERROR(LaunchCopyKvCacheWindow(
+        staged_key_buffer.get(), staged_value_buffer.get(),
+        windowed_present_key, windowed_present_value,
+        parameters.batch_size, parameters.kv_num_heads,
+        /*src_capacity=*/windowed_cache_capacity, /*dst_capacity=*/staged_cache_capacity,
+        /*rows=*/windowed_cache_capacity, /*src_offsets=*/nullptr,
+        static_cast<int>(dense_head_size * sizeof(U)), Stream(context), query_seqlens_data));
+
+    data.past_key = reinterpret_cast<const CudaU*>(staged_key_buffer.get());
+    data.past_value = reinterpret_cast<const CudaU*>(staged_value_buffer.get());
+    data.present_key = reinterpret_cast<CudaU*>(staged_key_buffer.get());
+    data.present_value = reinterpret_cast<CudaU*>(staged_value_buffer.get());
+
+    parameters.kv_cache_capacity = staged_cache_capacity;
+    parameters.seqlen_past_kv_cache = staged_cache_capacity;
+    parameters.seqlen_present_kv_cache = staged_cache_capacity;
+  }
+
+  const int effective_workspace_kv_length = static_cast<int>(GetGQAEffectiveWorkspaceKvLength(
+      parameters.total_sequence_length,
+      parameters.seqlen_present_kv_cache,
+      parameters.is_windowed_kv_cache));
 
   // Allocate XQA scratch if needed (only for Flash Decoding path)
   IAllocatorUniquePtr<void> xqa_scratch_buffer;
@@ -667,7 +709,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   xqa_inputs.v_quant_type = v_quant_type_;
 
   // Phase and actual past/present buffer aliasing are per-Run facts, not partition-time inputs.
-  const bool xqa_phase_ok = !parameters.is_first_prompt &&
+  // XQA assumes one new token per entry and cannot represent an idle query.
+  const bool xqa_phase_ok = query_seqlens_data == nullptr && !parameters.is_first_prompt &&
                             parameters.sequence_length == 1 &&
                             parameters.kv_sequence_length > 0;  // Shared KV (kv_seq=0) has no new K/V to append
   if (xqa_phase_ok && parameters.past_present_share_buffer && IsGQAXqaEligibleSeqFree<U>(xqa_inputs)) {
@@ -753,7 +796,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // and no sliding window. Rotary and packed QKV are handled by PrepareQKV before the kernel runs;
   // cuDNN handles grouped-query attention natively. Keep this path bias-free because an arbitrary
   // attention bias cannot be composed with cuDNN's fused bottom-right causal mask.
-  bool use_cudnn_sdpa = !data.use_xqa &&
+  // cuDNN only receives valid Q lengths for the first prompt, not for right-padded chunks (query_seqlens).
+  bool use_cudnn_sdpa = !data.use_xqa && query_seqlens_data == nullptr &&
                         IsGQACudnnSdpaCoreEligibleSeqFree<T, U>(
                             has_attention_bias,
                             is_inputs_quantized,
@@ -794,7 +838,14 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // LaunchGetSequenceLengths to derive P = T - sequence_length.
   // It is also disabled for a windowed KV cache: the kernel derives both the absolute RoPE position
   // and the cache append offset from a single seqlens_k value, which those two no longer share.
-  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt && parameters.sequence_length == 1 && parameters.kv_sequence_length > 0 && parameters.past_present_share_buffer && !is_inputs_quantized && !parameters.use_qk_norm && !parameters.is_windowed_kv_cache;
+  // Explicit RoPE positions may differ from cache offsets and require position-aware PrepareQKV.
+  // Explicit query lengths need PrepareQKV as well, since an idle entry must not append a token.
+  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt &&
+                                         query_seqlens_data == nullptr &&
+                                         parameters.sequence_length == 1 && parameters.kv_sequence_length > 0 &&
+                                         parameters.past_present_share_buffer && !is_inputs_quantized &&
+                                         !parameters.use_qk_norm && !parameters.is_windowed_kv_cache &&
+                                         (!parameters.do_rotary || data.position_ids == nullptr);
 
   if (use_flash_attention) {
     // Flash-specific buffer sizes (softmax LSE and the optional split accumulators) come from the
@@ -845,8 +896,13 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     // FlashAttention clamps this device input to the cache capacity before deriving offsets.
     data.past_seq_lens = const_cast<int*>(total_seq_lens_minus_one->Data<int>());
   } else {
-    const int seq_lens_vectors = parameters.is_windowed_kv_cache ? 6 : 3;
-    seq_lens_buffer = GetScratchBuffer<int>(seq_lens_vectors * parameters.batch_size, GetComputeStream(context));
+    size_t seq_lens_vectors = 0;
+    size_t seq_lens_bytes = 0;
+    const auto seq_lens_status = GetGQASequenceLengthsSize(
+        workspace_problem, data.use_flash_attention_fast_decode, seq_lens_vectors, seq_lens_bytes);
+    ORT_RETURN_IF_NOT(seq_lens_status.IsOK(),
+                      "GQA sequence-length sizing failed: ", seq_lens_status.message);
+    seq_lens_buffer = GetScratchBuffer<int>(seq_lens_bytes / sizeof(int), GetComputeStream(context));
     data.past_seq_lens = seq_lens_buffer.get();
     data.total_seq_lens = seq_lens_buffer.get() + parameters.batch_size;
     data.padded_seq_lens = data.total_seq_lens + parameters.batch_size;
@@ -868,6 +924,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                  parameters.total_sequence_length,
                                                  parameters.kv_cache_capacity,
                                                  parameters.kv_cache_real_capacity,
+                                                 original_present_kv_cache_capacity,
+                                                 query_seqlens_data,
                                                  cuda_stream,
                                                  device_prop.maxThreadsPerBlock));
     DUMP_TENSOR_INIT();
@@ -881,12 +939,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // CUDA graph replays). K and V shift in the same kernel, so each needs its own half.
   IAllocatorUniquePtr<void> compaction_buffer;
   if (parameters.is_windowed_kv_cache && staged_cache_capacity == 0) {
-    const size_t row_bytes = (parameters.kv_cache_bit_width == 0)
-                                 ? static_cast<size_t>(parameters.head_size) * sizeof(U)
-                                 : static_cast<size_t>(parameters.head_size) * parameters.kv_cache_bit_width / 8;
-    const size_t compaction_bytes = 2 * static_cast<size_t>(parameters.batch_size) * parameters.kv_num_heads *
-                                    parameters.kv_cache_real_capacity * row_bytes;
-    compaction_buffer = GetScratchBuffer<void>(compaction_bytes, GetComputeStream(context));
+    compaction_buffer = GetScratchBuffer<void>(cache_sizes.compaction_bytes, GetComputeStream(context));
     data.compaction_scratch = compaction_buffer.get();
   }
 
@@ -928,18 +981,22 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   }
 #endif
 
-  // -------------
-  // Centralized scratch buffer allocation using GQABufferRequirements
-  // This ensures allocation logic stays in sync with kernel usage
-  auto buffer_req = GQABufferRequirements::Compute<T>(
-      parameters,
-      data.use_xqa,
-      data.use_flash_attention,
-      data.use_flash_attention_fast_decode,
-      data.use_memory_efficient_attention);
+  GQAPreparationRoute preparation_route;
+  preparation_route.preprocess_mode =
+      data.use_xqa ? GQAPreprocessMode::Xqa
+                   : (data.use_flash_attention
+                          ? GQAPreprocessMode::Flash
+                          : (data.use_memory_efficient_attention ? GQAPreprocessMode::MemoryEfficient
+                                                                 : GQAPreprocessMode::Unfused));
+  preparation_route.use_flash_attention_fast_decode = data.use_flash_attention_fast_decode;
+  size_t qkv_preprocess_bytes = 0;
+  const auto qkv_status = GetGQAQkvPreprocessBytes(
+      workspace_problem, preparation_route, parameters.seqlen_present_kv_cache, qkv_preprocess_bytes);
+  ORT_RETURN_IF_NOT(qkv_status.IsOK(),
+                    "GQA QKV preparation sizing failed: ", qkv_status.message);
 
-  if (buffer_req.qkv_buffer_bytes > 0) {
-    unpacked_qkv_buffer = GetScratchBuffer<void>(buffer_req.qkv_buffer_bytes, GetComputeStream(context));
+  if (qkv_preprocess_bytes > 0) {
+    unpacked_qkv_buffer = GetScratchBuffer<void>(qkv_preprocess_bytes, GetComputeStream(context));
     data.qkv_buffer = reinterpret_cast<CudaT*>(unpacked_qkv_buffer.get());
   }
 
@@ -959,8 +1016,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     // Enforce the UnfusedGqaAttention invariant before sizing its Q/Y buffers.
     ORT_RETURN_IF_NOT(parameters.v_head_size == 0 || parameters.v_head_size == parameters.head_size,
                       "UnfusedGqaAttention requires head_size == v_head_size");
-    // The recipe retains the aligned Q/Y and FP32 QK/softmax layout, using the same
-    // resident/staged KV extent passed to the unfused kernel.
+    // The shared recipe retains the aligned Q/Y and FP32 QK/softmax layout, using the
+    // same resident/staged KV extent passed to the unfused kernel.
     const auto unfused = GetGQAUnfusedWorkspaceRecipe(workspace_problem, effective_workspace_kv_length);
     ORT_RETURN_IF_NOT(unfused.status.IsOK(),
                       "GQA unfused attention workspace sizing failed: ", unfused.status.message);
@@ -971,6 +1028,9 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     data.unfused_q_bnsh = reinterpret_cast<CudaT*>(base + recipe.q_bnsh_offset_bytes);
     data.unfused_y_bnsh = reinterpret_cast<CudaT*>(base + recipe.y_bnsh_offset_bytes);
     data.unfused_workspace = reinterpret_cast<void*>(base + recipe.qk_offset_bytes);
+    if (recipe.v_scratch_bytes != 0) {
+      data.v = reinterpret_cast<CudaT*>(base + recipe.v_scratch_offset_bytes);
+    }
   }
 
   if (kernel_options_->AllowDebugInfo()) {
@@ -1008,7 +1068,6 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   if (parameters.use_qk_norm) {
     data.q_norm_weight = reinterpret_cast<const CudaT*>(q_norm_weight->Data<T>());
     data.k_norm_weight = reinterpret_cast<const CudaT*>(k_norm_weight->Data<T>());
-    data.qk_norm_epsilon = qk_norm_epsilon_;
   }
 
 #if DUMP_TENSOR_LEVEL > 0
@@ -1042,7 +1101,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
   if (windowed_present_key != nullptr) {
     // Attention ran against the staging cache; keep only the entries the sliding window can still
-    // reach. evict_counts[b] = max(0, min(P, C) + S - C) is exactly where that tail starts. The rows
+    // reach. evict_counts[b] = max(0, min(P, C) + Q_valid - C) is where that tail starts. The rows
     // are already in their final (possibly quantized) form.
     const int row_bytes = static_cast<int>(dense_head_size * sizeof(U));
     ORT_RETURN_IF_ERROR(LaunchCopyKvCacheWindow(
@@ -1050,7 +1109,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
         parameters.batch_size, parameters.kv_num_heads,
         /*src_capacity=*/staged_cache_capacity, /*dst_capacity=*/windowed_cache_capacity,
         /*rows=*/windowed_cache_capacity, /*src_offsets=*/data.evict_counts,
-        row_bytes, Stream(context)));
+        row_bytes, Stream(context), query_seqlens_data));
   }
   return Status::OK();
 }

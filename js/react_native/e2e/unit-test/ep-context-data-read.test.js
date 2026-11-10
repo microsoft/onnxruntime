@@ -114,3 +114,42 @@ test('cancellation checks distinguish in-flight, queued, and Env-listener teardo
     workers[2].invalidateEnv.mock.invocationCallOrder[0],
   );
 });
+
+test('successful callback checks reject settlement before native worker completion', async () => {
+  const component = createComponent();
+  const pendingRead = Promise.resolve(new Uint8Array([1, 2, 3]));
+  pendingRead.__testWorker = { isFinished: false };
+  globalThis.OrtApi = {
+    __testEpContextDataReadCallback: jest.fn(() => pendingRead),
+  };
+
+  await component.runCallbackBridgeCheck(11);
+
+  expect(component.state.testResults[11]).toEqual(
+    expect.objectContaining({
+      status: 'error',
+      message: 'Callback worker resolved before its native completion hook',
+    }),
+  );
+});
+
+test('failed callback checks reject settlement before native worker completion', async () => {
+  const component = createComponent();
+  globalThis.OrtApi = {
+    __testEpContextDataReadCallback: jest.fn((_callback, _maxDataSize, name) => {
+      const pendingRead =
+        name === 'empty.bin' ? Promise.resolve(new Uint8Array(0)) : Promise.reject(new Error('callback failure'));
+      pendingRead.__testWorker = { isFinished: name === 'empty.bin' };
+      return pendingRead;
+    }),
+  };
+
+  await component.runCallbackBridgeFailureCheck(12);
+
+  expect(component.state.testResults[12]).toEqual(
+    expect.objectContaining({
+      status: 'error',
+      message: 'Callback worker rejected before its native completion hook',
+    }),
+  );
+});

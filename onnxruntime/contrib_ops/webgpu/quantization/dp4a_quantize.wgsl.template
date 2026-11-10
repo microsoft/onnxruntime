@@ -34,6 +34,25 @@ $MAIN {
       // 127 is the max value of signed int8 [-127,127] used by pack4x8snorm for 1.0f.
       scales.setByOffset(workgroup_idx * 2 + local_idx / 32, scale/127);
     }
+  } else if (sg_size > 32) {
+    let local_a = readInput(global_idx);
+    // Reduce components before shuffling; each 32-lane partition is one 128-value block.
+    let abs_a = abs(local_a);
+    var max_val = max(max(abs_a.x, abs_a.y), max(abs_a.z, abs_a.w));
+    max_val = max(max_val, subgroupShuffleXor(max_val, 16u));
+    max_val = max(max_val, subgroupShuffleXor(max_val, 8u));
+    max_val = max(max_val, subgroupShuffleXor(max_val, 4u));
+    max_val = max(max_val, subgroupShuffleXor(max_val, 2u));
+    max_val = max(max_val, subgroupShuffleXor(max_val, 1u));
+    if (global_idx >= uniforms.output_size) {
+      return;
+    }
+    let scale = max_val;
+    let norm_a = local_a / scale;
+    output.setByOffset(global_idx, pack4x8snorm(vec4<f32>(norm_a)));
+    if (local_idx % 32 == 0) {
+      scales.setByOffset(workgroup_idx * 2 + local_idx / 32, scale / 127);
+    }
   } else if (sg_size == 16) {
     let local_a = readInput(global_idx);
     let sub_max_value = subgroupMax(abs(local_a));

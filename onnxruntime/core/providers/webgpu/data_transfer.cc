@@ -14,6 +14,7 @@ common::Status DataTransferImpl::CopyTensor(void const* src_data,
                                             void* dst_data,
                                             bool dst_is_gpu,
                                             size_t bytes) const {
+  std::lock_guard<std::recursive_mutex> lock{recording_.mutex};
   auto& command_state = recording_;
   if (bytes > 0) {
     if (dst_is_gpu) {
@@ -69,6 +70,31 @@ common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
                           dst.MutableDataRaw(),
                           dst.Location().device.Type() == OrtDevice::GPU,
                           src.SizeInBytes());
+}
+
+common::Status DataTransfer::CopyTensors(const std::vector<SrcDstPair>& src_dst_pairs) const {
+  if (src_dst_pairs.size() < 2) {
+    return IDataTransfer::CopyTensors(src_dst_pairs);
+  }
+  InlinedVector<BufferManager::UploadInfo> uploads;
+  uploads.reserve(src_dst_pairs.size());
+  for (const auto& pair : src_dst_pairs) {
+    const auto& src = pair.src.get();
+    auto& dst = pair.dst.get();
+    if (pair.src_stream != nullptr || src.Location().device.Type() != OrtDevice::CPU ||
+        dst.Location().device.Type() != OrtDevice::GPU) {
+      return IDataTransfer::CopyTensors(src_dst_pairs);
+    }
+    const size_t size = src.SizeInBytes();
+    auto target = static_cast<WGPUBuffer>(dst.MutableDataRaw());
+    // Preserve Upload's direct write/unmap path without partially copying the list.
+    if (size != 0 && wgpuBufferGetMapState(target) != WGPUBufferMapState_Unmapped) {
+      return IDataTransfer::CopyTensors(src_dst_pairs);
+    }
+    uploads.push_back({src.DataRaw(), target, size});
+  }
+  buffer_manager_.UploadBatch(recording_, uploads);
+  return Status::OK();
 }
 
 }  // namespace webgpu

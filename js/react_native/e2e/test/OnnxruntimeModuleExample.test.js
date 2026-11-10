@@ -60,11 +60,7 @@ describe('OnnxruntimeModuleExample', () => {
 
   it('EPContext data read test should run successfully', async () => {
     // Tap EPContext data read test button
-    if (platform === 'android') {
-      await element(by.label('ep-context-data-read-test-button')).tap();
-    } else {
-      await element(by.text('EPContext Data Read Test')).tap();
-    }
+    await element(by.id('ep-context-data-read-test-button')).tap();
 
     await delay(500);
 

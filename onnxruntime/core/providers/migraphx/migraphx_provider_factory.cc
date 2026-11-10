@@ -177,7 +177,7 @@ struct MIGraphX_Provider final : Provider {
       std::vector<wchar_t> pathBuf;
       for (;;) {
         pathBuf.resize(pathBuf.size() + MAX_PATH);
-        if (const auto writen = GetModuleFileNameW(module, pathBuf.data(), static_cast<DWORD>(pathBuf.size())); writen < pathBuf.size()) {
+        if (const auto written = GetModuleFileNameW(module, pathBuf.data(), static_cast<DWORD>(pathBuf.size())); written < pathBuf.size()) {
           break;
         }
       }
@@ -204,7 +204,11 @@ struct MigraphXEpFactory : OrtEpFactory {
                     const char* ep_name,
                     OrtHardwareDeviceType hw_type,
                     const OrtLogger& default_logger_in)
-      : ort_api{ort_api_in}, default_logger{default_logger_in}, ep_name{ep_name}, ort_hw_device_type{hw_type} {
+      : OrtEpFactory{},
+        ort_api{ort_api_in},
+        default_logger{default_logger_in},
+        ep_name{ep_name},
+        ort_hw_device_type{hw_type} {
     ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;

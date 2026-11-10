@@ -90,9 +90,6 @@ endif()
     )
     """)
     if not has_exception:
-        # From the ORT CMake logic: onnxruntime_DISABLE_EXCEPTIONS requires onnxruntime_MINIMAL_BUILD.
-        # While we add the flag here based on has_exception, the calling build script
-        # must ensure it only uses a noexception triplet when a minimal build is intended for ORT itself.
         # This triplet setting makes sure the ONNX *dependency* is built correctly if no-exception is requested.
         f.write(
             r"""
@@ -288,7 +285,9 @@ def generate_triplet_for_android(
                 cxxflags.append("-fno-rtti")
 
             if not enable_exception:
-                cxxflags += ["-fno-exceptions", "-fno-unwind-tables", "-fno-asynchronous-unwind-tables"]
+                cxxflags.append("-fno-exceptions")
+                if enable_minimal_build:
+                    cxxflags += ["-fno-unwind-tables", "-fno-asynchronous-unwind-tables"]
 
             if cflags:
                 f.write(f'set(VCPKG_C_FLAGS "{" ".join(cflags)}")\n')
@@ -340,8 +339,6 @@ def generate_android_triplets(
         for enable_rtti in [True, False]:
             for enable_exception in [True, False]:
                 for enable_minimal_build in [True, False]:
-                    if not enable_exception and not enable_minimal_build:
-                        continue
                     for target_abi in target_abis:
                         generate_triplet_for_android(
                             build_dir,
@@ -474,7 +471,9 @@ def generate_triplet_for_posix_platform(
                 cxxflags.append("-fno-rtti")
 
             if not enable_exception:
-                cxxflags += ["-fno-exceptions", "-fno-unwind-tables", "-fno-asynchronous-unwind-tables"]
+                cxxflags.append("-fno-exceptions")
+                if enable_minimal_build:
+                    cxxflags += ["-fno-unwind-tables", "-fno-asynchronous-unwind-tables"]
 
             if cflags:
                 f.write(f'set(VCPKG_C_FLAGS "{" ".join(cflags)}")\n')
@@ -718,9 +717,6 @@ def generate_windows_triplets(build_dir: str, configs: set[str], toolset_version
                             # Address Sanitizer libs do not have a Qspectre version. So they two cannot be both enabled.
                             if enable_asan and enable_binskim:
                                 continue
-                            # ORT Constraint: If exceptions are disabled, minimal build must be enabled
-                            if not enable_exception and not enable_minimal_build:
-                                continue
 
                             for target_abi in target_abis:
                                 folder_name_parts = []
@@ -816,8 +812,6 @@ def generate_linux_triplets(
                     for enable_minimal_build in [True, False]:
                         if enable_asan and enable_binskim:
                             continue
-                        if not enable_exception and not enable_minimal_build:
-                            continue
                         for target_abi in target_abis:
                             generate_triplet_for_posix_platform(
                                 build_dir,
@@ -859,9 +853,6 @@ def generate_macos_triplets(
                 for enable_asan in [True, False]:
                     for enable_minimal_build in [True, False]:
                         if enable_asan and enable_binskim:
-                            continue
-                        # ORT Constraint: If exceptions are disabled, minimal build must be enabled
-                        if not enable_exception and not enable_minimal_build:
                             continue
                         for target_abi in target_abis:
                             generate_triplet_for_posix_platform(

@@ -128,7 +128,6 @@ struct GroupQueryAttentionData {
   // Both are non-null together (validated in the op) and trigger the fused normalization before RoPE.
   const T* q_norm_weight = nullptr;
   const T* k_norm_weight = nullptr;
-  float qk_norm_epsilon = 1e-6f;
 
   const float* k_scale = nullptr;
   const float* v_scale = nullptr;
@@ -138,11 +137,12 @@ struct GroupQueryAttentionData {
 
   // Past sequence length for each batch (i.e., the offset to append new tokens). Shape [batch_size].
   // For first prompt: past_seq_lens[b] = 0
-  // For token generation or subsequent prompt: past_seq_lens[b] = total_seq_lens[b] - sequence_length
+  // Otherwise: total_seq_lens[b] minus the valid query length (query_seqlens[b], when provided).
   int* past_seq_lens = nullptr;
 
   // Padded sequence length for each batch. Shape [batch_size].
-  // Only used for first prompt: padded_seq_lens[b] = sequence_length
+  // Causal key length: P + S for first prompts and right-padded chunks, T for unpadded continuations.
+  // Windowed calls use the bounded cache-relative append offset plus S instead of absolute P.
   int* padded_seq_lens = nullptr;
 
   // Cache-relative sequence lengths, used when parameters.is_windowed_kv_cache is set. Shape [batch_size].
@@ -179,6 +179,11 @@ struct GroupQueryAttentionData {
   T* output = nullptr;
   U* present_key = nullptr;
   U* present_value = nullptr;
+
+  // Explicit query lengths make the first-chunk classification device-only.
+  // See DequantizeFlashAttentionFallback.
+  bool has_query_seqlens = false;
+  const int* query_seqlens = nullptr;  // [batch_size], device lengths; physical query stride remains S.
 
   // Kernel Flags
   bool use_flash_attention = false;
@@ -235,7 +240,9 @@ struct PagedAttentionData {
   bool scale_cache_is_fp16 = true;
   const int* cumulative_seqlens_q = nullptr;
   const int* past_seqlens = nullptr;
+  const int* sequence_validity = nullptr;
   const int* block_table = nullptr;
+  const int* cudnn_block_table = nullptr;
   // Optional explicit write slots, one per query token, into the cache viewed as
   // [num_blocks * block_size, kv_num_heads, head_size]. A value of -1 suppresses the K/V store
   // for that token (prefix cache hit / rejected speculative token). nullptr keeps the legacy

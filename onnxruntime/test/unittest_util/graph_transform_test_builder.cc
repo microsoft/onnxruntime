@@ -9,6 +9,7 @@
 #include <vector>
 #include <memory>
 
+#include "core/common/float8.h"
 #include "core/common/inlined_containers_fwd.h"
 #include "core/common/span_utils.h"
 #include "core/graph/model.h"
@@ -52,6 +53,13 @@ static InlinedVector<std::byte> GetZeroPointBytes(int64_t zero_point, ONNX_NAMES
       auto span = gsl::as_bytes(gsl::make_span(&val, 1));
       return InlinedVector<std::byte>(span.begin(), span.end());
     }
+#if !defined(DISABLE_FLOAT8_TYPES)
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN: {
+      Float8E4M3FN val(static_cast<float>(zero_point));
+      auto span = gsl::as_bytes(gsl::make_span(&val, 1));
+      return InlinedVector<std::byte>(span.begin(), span.end());
+    }
+#endif
     default:
       ORT_THROW("Unhandled zero-point type ", type, ".");
   }
@@ -169,9 +177,7 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
     SessionOptions session_options;
     session_options.graph_optimization_level = transformer ? baseline_level : level;
     // Mirror the model build's shape/type-inference strictness onto the session so that
-    // loading the serialized model applies the same options. (allow_released_opsets_only is
-    // passed explicitly to Load below, since the byte/proto Load overloads don't read it
-    // from the config options.)
+    // loading the serialized model applies the same options.
     ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
         kOrtSessionOptionsConfigStrictShapeTypeInference,
         model_options.strict_shape_type_inference ? "1" : "0"));
@@ -187,8 +193,7 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
       ASSERT_STATUS_OK(session.RegisterExecutionProvider(ep_shared));
     }
 
-    // Load via an istream so the under-development opset flag can be honored: the istream Load
-    // overload takes allow_released_opsets_only explicitly (the byte/proto overloads hardcode it).
+    // Load via an istream so the under-development opset flag can be passed explicitly.
     // This lets models built at an unreleased ONNX opset (e.g. opset 27 in ONNX 1.22) load on
     // strict (ALLOW_RELEASED_ONNX_OPSET_ONLY default) CI legs.
     std::istringstream model_istream(model_data);

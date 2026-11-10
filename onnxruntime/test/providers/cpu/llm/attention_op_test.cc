@@ -2544,6 +2544,70 @@ TEST(AttentionTest, Attention_NonPadKVSeqLen_NegativeValue) {
            {}, nullptr, &execution_providers);
 }
 
+TEST(AttentionTest, Attention_RejectsZeroHeadCounts) {
+  for (int opset : {23, 24}) {
+    {
+      SCOPED_TRACE("3D explicit zero q_num_heads, opset " + std::to_string(opset));
+      OpTester test("Attention", opset, onnxruntime::kOnnxDomain);
+      test.AddAttribute<int64_t>("q_num_heads", 0);
+      test.AddAttribute<int64_t>("kv_num_heads", 1);
+      test.AddInput<float>("Q", {1, 1, 2}, {1.0f, 1.0f});
+      test.AddInput<float>("K", {1, 1, 2}, {1.0f, 1.0f});
+      test.AddInput<float>("V", {1, 1, 2}, {1.0f, 1.0f});
+      test.AddOutput<float>("Y", {1, 1, 2}, {0.0f, 0.0f});
+
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultCpuExecutionProvider());
+      test.Run(OpTester::ExpectResult::kExpectFailure, "q_num_heads",
+               {}, nullptr, &execution_providers);
+    }
+
+    {
+      SCOPED_TRACE("3D explicit zero kv_num_heads, opset " + std::to_string(opset));
+      OpTester test("Attention", opset, onnxruntime::kOnnxDomain);
+      test.AddAttribute<int64_t>("q_num_heads", 1);
+      test.AddAttribute<int64_t>("kv_num_heads", 0);
+      test.AddInput<float>("Q", {1, 1, 2}, {1.0f, 1.0f});
+      test.AddInput<float>("K", {1, 1, 2}, {1.0f, 1.0f});
+      test.AddInput<float>("V", {1, 1, 2}, {1.0f, 1.0f});
+      test.AddOutput<float>("Y", {1, 1, 2}, {0.0f, 0.0f});
+
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultCpuExecutionProvider());
+      test.Run(OpTester::ExpectResult::kExpectFailure, "kv_num_heads",
+               {}, nullptr, &execution_providers);
+    }
+
+    {
+      SCOPED_TRACE("4D shape-derived zero kv_num_heads, opset " + std::to_string(opset));
+      OpTester test("Attention", opset, onnxruntime::kOnnxDomain);
+      test.AddInput<float>("Q", {1, 1, 1, 2}, {1.0f, 1.0f});
+      test.AddInput<float>("K", {1, 0, 1, 2}, std::vector<float>{});
+      test.AddInput<float>("V", {1, 0, 1, 2}, std::vector<float>{});
+      test.AddOutput<float>("Y", {1, 1, 1, 2}, {0.0f, 0.0f});
+
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultCpuExecutionProvider());
+      test.Run(OpTester::ExpectResult::kExpectFailure, "KV number of heads must be greater than 0",
+               {}, nullptr, &execution_providers);
+    }
+
+    {
+      SCOPED_TRACE("4D shape-derived zero q_num_heads, opset " + std::to_string(opset));
+      OpTester test("Attention", opset, onnxruntime::kOnnxDomain);
+      test.AddInput<float>("Q", {1, 0, 1, 2}, std::vector<float>{});
+      test.AddInput<float>("K", {1, 1, 1, 2}, {1.0f, 1.0f});
+      test.AddInput<float>("V", {1, 1, 1, 2}, {1.0f, 1.0f});
+      test.AddOutput<float>("Y", {1, 0, 1, 2}, std::vector<float>{});
+
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultCpuExecutionProvider());
+      test.Run(OpTester::ExpectResult::kExpectFailure, "Q number of heads must be greater than 0",
+               {}, nullptr, &execution_providers);
+    }
+  }
+}
+
 // Validation: nonpad_kv_seqlen exceeding total_sequence_length should be rejected.
 TEST(AttentionTest, Attention_NonPadKVSeqLen_ExceedsTotalSeqLen) {
   OpTester test("Attention", 24, onnxruntime::kOnnxDomain);

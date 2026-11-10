@@ -42,6 +42,20 @@ Status LaunchGatedRMSNormKernel(
     GatedRMSNormActivation activation,
     int max_threads_per_block);
 
+template <typename T>
+Status LaunchMoEGroupRouterKernel(
+    cudaStream_t stream,
+    T* output,
+    const T* logits,
+    const float* expert_bias,
+    int64_t num_rows,
+    int num_experts,
+    int n_group,
+    int topk_group,
+    int group_topk,
+    int top_k,
+    float router_sentinel);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
