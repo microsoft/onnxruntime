@@ -7,6 +7,8 @@
 #include "core/optimizer/utils.h"
 #include "core/common/safeint.h"
 
+#include <algorithm>
+#include <cmath>
 #include <limits>
 #include <type_traits>
 
@@ -17,6 +19,27 @@ namespace onnxruntime {
 namespace {
 
 constexpr float kDefaultBatchNormalizationEpsilon = 1e-5f;
+
+template <typename T>
+bool HasNonFiniteValues(const Initializer& initializer) {
+  const auto values = initializer.DataAsSpan<T>();
+  return std::any_of(values.begin(), values.end(), [](T value) {
+    return !std::isfinite(static_cast<double>(value));
+  });
+}
+
+bool HasNonFiniteScale(const Initializer& scale) {
+  switch (scale.data_type()) {
+    case TensorProto_DataType_FLOAT:
+      return HasNonFiniteValues<float>(scale);
+    case TensorProto_DataType_FLOAT16:
+      return HasNonFiniteValues<MLFloat16>(scale);
+    case TensorProto_DataType_DOUBLE:
+      return HasNonFiniteValues<double>(scale);
+    default:
+      return false;
+  }
+}
 
 int64_t GetGroup(const Node& node) {
   const auto* group_attr = graph_utils::GetNodeAttribute(node, "group");
@@ -170,6 +193,11 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   Initializer bn_mean{graph, *bn_mean_tensor_proto, graph.ModelPath()};
   Initializer bn_var{graph, *bn_var_tensor_proto, graph.ModelPath()};
   Initializer conv_W{graph, *conv_W_tensor_proto, graph.ModelPath()};
+
+  // Folding a non-finite scale into Conv weights changes Inf and NaN propagation.
+  if (HasNonFiniteScale(bn_scale)) {
+    return Status::OK();
+  }
 
   std::optional<Initializer> conv_B;
   const ONNX_NAMESPACE::TensorProto* conv_B_tensor_proto = nullptr;
