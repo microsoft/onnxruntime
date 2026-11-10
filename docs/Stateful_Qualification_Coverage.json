@@ -1,0 +1,510 @@
+{
+  "baseline": "1988019b6e23ac4def4628cddd603c1bfb504fe8",
+  "scope": "current executable production lines introduced by M01-M15 and M24; deferred bindings are not implemented",
+  "covered": 7369,
+  "executable": 7369,
+  "exclusions": [],
+  "m24_delta": {
+    "covered": 257,
+    "executable": 257,
+    "scope": "measurement helper255 plus runner2"
+  },
+  "files": [
+    {
+      "path": "include/onnxruntime/core/framework/execution_provider.h",
+      "kind": "native_host",
+      "covered": 3,
+      "executable": 3,
+      "source_sha256": "3a33f4cdc36d5c5667a780f0957fe9d688df8cf56d1f9986004f7f9972d5ee73"
+    },
+    {
+      "path": "include/onnxruntime/core/framework/stateful_provider.h",
+      "kind": "native_host",
+      "covered": 23,
+      "executable": 23,
+      "source_sha256": "528061c89daaebfcc9acf9aa45ee0d4d4126aa0984f2154af9fe6e0fcc86a086"
+    },
+    {
+      "path": "include/onnxruntime/core/session/environment.h",
+      "kind": "native_host",
+      "covered": 0,
+      "executable": 0,
+      "source_sha256": "670c58144d4ecad2bd3c3f5eff97006ae662036616fa8c66b1e94fae2caf0946"
+    },
+    {
+      "path": "include/onnxruntime/core/session/onnxruntime_c_api.h",
+      "kind": "native_host",
+      "covered": 0,
+      "executable": 0,
+      "source_sha256": "487d37343a0467a8f3c675913ed3a2a6697ba62c91e6b21be2cb44bfe37e4ac5"
+    },
+    {
+      "path": "include/onnxruntime/core/session/onnxruntime_cxx_api.h",
+      "kind": "native_host",
+      "covered": 37,
+      "executable": 37,
+      "source_sha256": "bed11547cbca8b199399f27384d35101a4e44aa07717fba48ca08b8117f8eb2a"
+    },
+    {
+      "path": "include/onnxruntime/core/session/onnxruntime_cxx_inline.h",
+      "kind": "native_host",
+      "covered": 224,
+      "executable": 224,
+      "source_sha256": "0ca70ffdb49e3095f494994e68eca1dabfb2469de473e03e304bf3f169f3d1f8"
+    },
+    {
+      "path": "include/onnxruntime/core/session/onnxruntime_ep_c_api.h",
+      "kind": "native_host",
+      "covered": 0,
+      "executable": 0,
+      "source_sha256": "7a719d6cb77428dbcb7b2d95a679743e66841f4753d7a8ea59dcae43521a3420"
+    },
+    {
+      "path": "include/onnxruntime/ep/adapter/kernel_def.h",
+      "kind": "native_host",
+      "covered": 1,
+      "executable": 1,
+      "source_sha256": "ebebe004113a42916c478c32f289db79055c950d303b823e0e818eb537a416d4"
+    },
+    {
+      "path": "model_package/include/model_package.h",
+      "kind": "native_host",
+      "covered": 0,
+      "executable": 0,
+      "source_sha256": "f53196810080a0e71b758e4ebf6cb5c06b76c09a736c882920374d4a63b4f45e"
+    },
+    {
+      "path": "model_package/src/authoring.cc",
+      "kind": "native_host",
+      "covered": 60,
+      "executable": 60,
+      "source_sha256": "fbb41f7d07d404ce3401e8e20485cb04edd065466bdc57f80bc254c6fdee9cf5"
+    },
+    {
+      "path": "model_package/src/commit_prune.cc",
+      "kind": "native_host",
+      "covered": 123,
+      "executable": 123,
+      "source_sha256": "c3f1adfee7b7d6a3a10f72a91ec02455893c77c2fb4a0ed3eebf16f3a4226704"
+    },
+    {
+      "path": "model_package/src/manifest_parser.cc",
+      "kind": "native_host",
+      "covered": 70,
+      "executable": 70,
+      "source_sha256": "cc8dcfd0ffaec92a0d8d026620ad70de637b96b491e8e71ff653c6774271558b"
+    },
+    {
+      "path": "model_package/src/manifest_parser.h",
+      "kind": "native_host",
+      "covered": 0,
+      "executable": 0,
+      "source_sha256": "0317e33308b281a252262ec9c3600ae98a8626caf90037fca6fa5f04e4218a8b"
+    },
+    {
+      "path": "model_package/src/model_package_impl.cc",
+      "kind": "native_host",
+      "covered": 29,
+      "executable": 29,
+      "source_sha256": "cf3499372ab231e0db24be124220473a0833e0f0880ecfb3fe97f8a4727e0546"
+    },
+    {
+      "path": "model_package/src/model_package_impl.h",
+      "kind": "native_host",
+      "covered": 0,
+      "executable": 0,
+      "source_sha256": "424682c6f165f4c5e5c2646f470c31bf330029ac42314517e9693be423c905d1"
+    },
+    {
+      "path": "onnxruntime/core/diffusion/ddim.cc",
+      "kind": "native_host",
+      "covered": 197,
+      "executable": 197,
+      "source_sha256": "488f79837baf74683c4155beb083cc067db63076c326c4d5415284bc52ccce9f"
+    },
+    {
+      "path": "onnxruntime/core/diffusion/ddim.h",
+      "kind": "native_host",
+      "covered": 2,
+      "executable": 2,
+      "source_sha256": "185d734cca02c08773fd6f7cb1c6ac445c26ca1be09ccb408bca19fbeba758a2"
+    },
+    {
+      "path": "onnxruntime/core/framework/stateful_execution_provider.h",
+      "kind": "native_host",
+      "covered": 2,
+      "executable": 2,
+      "source_sha256": "d4ccee967f255dbbcaac57533857571b4c45f9d69f27b56b308dc63b8615046d"
+    },
+    {
+      "path": "onnxruntime/core/framework/stateful_execution_utils.h",
+      "kind": "native_host",
+      "covered": 52,
+      "executable": 52,
+      "source_sha256": "21ff88b76214c3fd4a4bc69ca02d3b16ac410033b498c73684fcdf2fe4c1a4a0"
+    },
+    {
+      "path": "onnxruntime/core/generate/sampler_provider.cc",
+      "kind": "native_host",
+      "covered": 60,
+      "executable": 60,
+      "source_sha256": "4914e128a514d619500582b3246fe41dc1962489b0827e5089b0f1ab5ff3989e"
+    },
+    {
+      "path": "onnxruntime/core/generate/token_generation.cc",
+      "kind": "native_host",
+      "covered": 184,
+      "executable": 184,
+      "source_sha256": "2b3ff6340a35bc71e985ef86a8fe326ef1ec725e7297a54467caeb80284a264d"
+    },
+    {
+      "path": "onnxruntime/core/generate/token_generation.h",
+      "kind": "native_host",
+      "covered": 5,
+      "executable": 5,
+      "source_sha256": "cbb5c213618c746ee84d5c547302196c46beb2c17b5b7415be196a5ae7ae4ef7"
+    },
+    {
+      "path": "onnxruntime/core/providers/cpu/cpu_execution_provider.h",
+      "kind": "native_host",
+      "covered": 3,
+      "executable": 3,
+      "source_sha256": "a9d5268c88c742932924d75445f35667695082cd51914bc3ac37d261ff46e481"
+    },
+    {
+      "path": "onnxruntime/core/providers/cuda/plugin/cuda_ep_factory.cc",
+      "kind": "native_host",
+      "covered": 4,
+      "executable": 4,
+      "source_sha256": "584bb47084f009267b35d119767f3f945bcae7e39f23b1399a99a7c427357b3d"
+    },
+    {
+      "path": "onnxruntime/core/providers/cuda/plugin/cuda_greedy.h",
+      "kind": "native_host",
+      "covered": 0,
+      "executable": 0,
+      "source_sha256": "279e1db9e5cc6e0a1d797b9c194d904178703d4f75cace8074a27ec145ac7d45"
+    },
+    {
+      "path": "onnxruntime/core/providers/cuda/plugin/cuda_greedy_launch.cc",
+      "kind": "native_host",
+      "covered": 15,
+      "executable": 15,
+      "source_sha256": "87b75c51ac98aca1800abc83647f1d7d91a7558f7cfdb4ba0f8f467e6a3a8358"
+    },
+    {
+      "path": "onnxruntime/core/providers/cuda/plugin/cuda_stateful.cc",
+      "kind": "native_host",
+      "covered": 172,
+      "executable": 172,
+      "source_sha256": "ebe67494379ca83b9c4ca0de2f6ad52447f13f826dc1dbb4aae3af3084a268c5"
+    },
+    {
+      "path": "onnxruntime/core/providers/cuda/plugin/cuda_stateful.h",
+      "kind": "native_host",
+      "covered": 0,
+      "executable": 0,
+      "source_sha256": "c271782e0ceb9b22ae07d77c93cec4efae925423fb5f30b23cf5b5a91ecf4b79"
+    },
+    {
+      "path": "onnxruntime/core/session/abi_devices.h",
+      "kind": "native_host",
+      "covered": 0,
+      "executable": 0,
+      "source_sha256": "14f2916debd55f6878adfb7352c44711210a96e1aedc4ed7b3c2a3563baf1251"
+    },
+    {
+      "path": "onnxruntime/core/session/abi_stateful_impl.h",
+      "kind": "native_host",
+      "covered": 0,
+      "executable": 0,
+      "source_sha256": "644b36db6cd22c7c5f5499c7e5fe7bd386b10a282ca2c88bb23810eae28f4d25"
+    },
+    {
+      "path": "onnxruntime/core/session/environment.cc",
+      "kind": "native_host",
+      "covered": 5,
+      "executable": 5,
+      "source_sha256": "210bb9d2e5958dd195950f27bca2abf7628b1df98f97041af6ee1a1572b400d6"
+    },
+    {
+      "path": "onnxruntime/core/session/inference_session.cc",
+      "kind": "native_host",
+      "covered": 7,
+      "executable": 7,
+      "source_sha256": "e995d840a243573789f808596e8e2d43e0ccb61a1115d131cbddbe4221217db6"
+    },
+    {
+      "path": "onnxruntime/core/session/inference_session.h",
+      "kind": "native_host",
+      "covered": 1,
+      "executable": 1,
+      "source_sha256": "7db5c439f592c4d0500f2c91a81e89fd40151c553100061dbca0d424f0c81011"
+    },
+    {
+      "path": "onnxruntime/core/session/kv_cache_manager.cc",
+      "kind": "native_host",
+      "covered": 361,
+      "executable": 361,
+      "source_sha256": "ff1a657cfe638fb5d70dd280de6a521229f9d29b7cdbfb78c12df7d5fe26041b"
+    },
+    {
+      "path": "onnxruntime/core/session/kv_cache_manager.h",
+      "kind": "native_host",
+      "covered": 3,
+      "executable": 3,
+      "source_sha256": "66f9251935f3ff4a61476ce44b914f6d954b1552476597c697dfa1b3c359f4af"
+    },
+    {
+      "path": "onnxruntime/core/session/model_package/model_package_chain.cc",
+      "kind": "native_host",
+      "covered": 452,
+      "executable": 452,
+      "source_sha256": "9c9bbad2ed3e23d7fe27c2a5a86d99108fbafdc056483993b2429d1bc4373578"
+    },
+    {
+      "path": "onnxruntime/core/session/model_package/model_package_chain.h",
+      "kind": "native_host",
+      "covered": 0,
+      "executable": 0,
+      "source_sha256": "07e4d499be0f22f9ec0994297477bd18e7d4217cd9304e5f454bffd5e66f7d8b"
+    },
+    {
+      "path": "onnxruntime/core/session/model_package/model_package_context.cc",
+      "kind": "native_host",
+      "covered": 14,
+      "executable": 14,
+      "source_sha256": "22f67cb03b87ab10567d19b719bde272cef798ff9ccb67d587f2998eb5c66582"
+    },
+    {
+      "path": "onnxruntime/core/session/model_package/model_package_context.h",
+      "kind": "native_host",
+      "covered": 0,
+      "executable": 0,
+      "source_sha256": "71e6cac6ef1b009628368d6c31b8f1a3f1ec41062ef25e87106aa77c314a9e7d"
+    },
+    {
+      "path": "onnxruntime/core/session/model_package_api.cc",
+      "kind": "native_host",
+      "covered": 94,
+      "executable": 94,
+      "source_sha256": "faac1e4cca17565d067d8fa7f8cd0ba22e024480044a2f900d52d338458b9976"
+    },
+    {
+      "path": "onnxruntime/core/session/model_package_api.h",
+      "kind": "native_host",
+      "covered": 0,
+      "executable": 0,
+      "source_sha256": "444660e3206862314b06ee2aa0f68d5cde71ca8a121e8818223e628a3aa4874b"
+    },
+    {
+      "path": "onnxruntime/core/session/onnxruntime_c_api.cc",
+      "kind": "native_host",
+      "covered": 0,
+      "executable": 0,
+      "source_sha256": "f87ec1abd772e8eba9588e396a116d2926ee07ba83b8b4d90c1d22c71a58d485"
+    },
+    {
+      "path": "onnxruntime/core/session/ort_apis.h",
+      "kind": "native_host",
+      "covered": 0,
+      "executable": 0,
+      "source_sha256": "12b7c09620e0fabe05a10fb93d3bd9c488f7bd4b6ed22dcc26f58a4b9784ad16"
+    },
+    {
+      "path": "onnxruntime/core/session/plugin_ep/ep_api.cc",
+      "kind": "native_host",
+      "covered": 6,
+      "executable": 6,
+      "source_sha256": "6e6afbfc943c6ee491d63760c05bd80e1b670d9218616fc853b44559dc4850c3"
+    },
+    {
+      "path": "onnxruntime/core/session/plugin_ep/ep_api.h",
+      "kind": "native_host",
+      "covered": 0,
+      "executable": 0,
+      "source_sha256": "ad6341109cf32b4d5bed6780d757c13a7e235e7802e66a6ceb679b30fde4476b"
+    },
+    {
+      "path": "onnxruntime/core/session/plugin_ep/ep_plugin_provider_interfaces.cc",
+      "kind": "native_host",
+      "covered": 14,
+      "executable": 14,
+      "source_sha256": "8542c44422dad74386a1b01218917d429091bf3878722ace236ea09ee7154b77"
+    },
+    {
+      "path": "onnxruntime/core/session/plugin_ep/ep_plugin_provider_interfaces.h",
+      "kind": "native_host",
+      "covered": 0,
+      "executable": 0,
+      "source_sha256": "9a899482f88cb8066c0bb441a212d9a293f5e8080015a41423dc7d4096db7ceb"
+    },
+    {
+      "path": "onnxruntime/core/session/plugin_ep/stateful_ep_registration.cc",
+      "kind": "native_host",
+      "covered": 42,
+      "executable": 42,
+      "source_sha256": "5fb55b6a676f85b944f2f69372f3a9d5f6f7c5d09dcdff6bcd2ebc01dca3238b"
+    },
+    {
+      "path": "onnxruntime/core/session/plugin_ep/stateful_ep_registration.h",
+      "kind": "native_host",
+      "covered": 2,
+      "executable": 2,
+      "source_sha256": "fa860a832921b04ffca9d3e45993ebf5c35967a170e1c504724284e6f31cc940"
+    },
+    {
+      "path": "onnxruntime/core/session/session_chain.cc",
+      "kind": "native_host",
+      "covered": 685,
+      "executable": 685,
+      "source_sha256": "ed6f405d8372fcce923e7e488c8b89797b9d9119a18390e485c775b09daa5aa2"
+    },
+    {
+      "path": "onnxruntime/core/session/session_chain.h",
+      "kind": "native_host",
+      "covered": 6,
+      "executable": 6,
+      "source_sha256": "71bf7037aade33e5d35a2362e89831a7a22d0da1ab5f34766c6d1048fcf0369c"
+    },
+    {
+      "path": "onnxruntime/core/session/session_loop.cc",
+      "kind": "native_host",
+      "covered": 649,
+      "executable": 649,
+      "source_sha256": "7c6950bf64f1f13de4559dd1a54342ebdf56af39359c78b83d1d9396390c726a"
+    },
+    {
+      "path": "onnxruntime/core/session/session_loop.h",
+      "kind": "native_host",
+      "covered": 6,
+      "executable": 6,
+      "source_sha256": "2f1fa4885857be7c3f3ecf6bd6af7562c259d765dc3c7ca7352675768099a3e8"
+    },
+    {
+      "path": "onnxruntime/core/session/session_loop_ddim.cc",
+      "kind": "native_host",
+      "covered": 170,
+      "executable": 170,
+      "source_sha256": "694c656f74770d7544a8b0ac0447cf93bef56173274f55242874c88fa93f64f8"
+    },
+    {
+      "path": "onnxruntime/core/session/stateful_api.cc",
+      "kind": "native_host",
+      "covered": 747,
+      "executable": 747,
+      "source_sha256": "6b1b932abcf5f0d13de77ff4eaf80eac8354355fbf4db3d5990605341e04cd01"
+    },
+    {
+      "path": "onnxruntime/core/session/stateful_provider.cc",
+      "kind": "native_host",
+      "covered": 225,
+      "executable": 225,
+      "source_sha256": "e545344345f00bf7bc897a4e187c6223a0fe3229990054080c19258bdb5d7762"
+    },
+    {
+      "path": "onnxruntime/python/onnxruntime_pybind_module_functions.h",
+      "kind": "native_host",
+      "covered": 0,
+      "executable": 0,
+      "source_sha256": "8ba513a3f8101a8a0caea01088cdf39b17915c0eb135e8f093358de8b985e7ec"
+    },
+    {
+      "path": "onnxruntime/python/onnxruntime_pybind_ortvalue.cc",
+      "kind": "native_host",
+      "covered": 1,
+      "executable": 1,
+      "source_sha256": "6fbe0d6526e5efdb6d2d75a6a7c4cfa11e5c4d1e514df6cacc74edffcf684d60"
+    },
+    {
+      "path": "onnxruntime/python/onnxruntime_pybind_state_common.h",
+      "kind": "native_host",
+      "covered": 5,
+      "executable": 5,
+      "source_sha256": "4959388b90ccc09dad158eef6673576ec2a7986337b299e3ef8b74504765d5c6"
+    },
+    {
+      "path": "onnxruntime/python/onnxruntime_pybind_stateful.cc",
+      "kind": "native_host",
+      "covered": 652,
+      "executable": 652,
+      "source_sha256": "aabdd7c94ddbb5ac837332cd21cef09026e996768d458374bfc70d52b209463d"
+    },
+    {
+      "path": "onnxruntime/python/onnxruntime_inference_collection.py",
+      "kind": "python",
+      "covered": 13,
+      "executable": 13,
+      "source_sha256": "e8de65520614d0ad3d2ce312b312db960e4e656d4acecf65531fe304b1e31eaa"
+    },
+    {
+      "path": "onnxruntime/stateful.py",
+      "kind": "python",
+      "covered": 756,
+      "executable": 756,
+      "source_sha256": "31dddafa2e246b19c5cc2c0734abbab1cbaa327bf0d4596764b3fe3ddf14efba"
+    },
+    {
+      "path": "samples/python/phi3_demo.py",
+      "kind": "python",
+      "covered": 344,
+      "executable": 344,
+      "source_sha256": "fed8b3d5092bd1505688e5dc0b89a369d748c2ab0fd5e5c5dcf5e760ed16ecc0"
+    },
+    {
+      "path": "samples/python/sd15_demo.py",
+      "kind": "python",
+      "covered": 347,
+      "executable": 347,
+      "source_sha256": "e660909e08bb68e121f0136487cecde78c0dc5209e335e7304f60af0e91c8e10"
+    },
+    {
+      "path": "samples/python/sd15_models.py",
+      "kind": "python",
+      "covered": 108,
+      "executable": 108,
+      "source_sha256": "fcbb5723a0ce2a5b9466e7e84c16dc4c762a85ec7f3dce33bf66de219b20ad4e"
+    },
+    {
+      "path": "samples/python/stateful_demo_assets.py",
+      "kind": "python",
+      "covered": 41,
+      "executable": 41,
+      "source_sha256": "9bad1c87bf4f05a4ee802ee3a48fa6c68f7193820ee209884264234a87b15b68"
+    },
+    {
+      "path": "samples/python/stateful_execution.py",
+      "kind": "python",
+      "covered": 63,
+      "executable": 63,
+      "source_sha256": "cd66077713c310e25c897d80ae4eb705394c5bd43647a8513e5ba584d2d5296a"
+    },
+    {
+      "path": "samples/python/stateful_qualification.py",
+      "kind": "python",
+      "covered": 255,
+      "executable": 255,
+      "source_sha256": "e034be74302f96938494ff631dd93c2993a7d86bb7f018e243e47e4d587f469f"
+    },
+    {
+      "path": "tools/ci_build/build.py",
+      "kind": "python",
+      "covered": 4,
+      "executable": 4,
+      "source_sha256": "d5af19dc3c1a1e3d31156ac3cd8f2cd751f03ccf1fee01b35912586a2ed64c83"
+    },
+    {
+      "path": "onnxruntime/core/providers/cuda/plugin/cuda_greedy.cu",
+      "kind": "cuda_device",
+      "covered": 25,
+      "executable": 25,
+      "source_sha256": "92837bc204a43c0e2ca0f7da8b5f0a037d5a6200d572a235412d9530e587cbcd"
+    }
+  ],
+  "methods": {
+    "native_host": "LLVM source maps, exact unchanged source/object/profile cohort plus fresh current getter export",
+    "python": "coverage.py main and real CUDA unit subprocess data; all report exclusions cleared; matching installed/source bytes",
+    "cuda_device": "fresh actual Nsight Compute predicated-on CUDA/SASS execution counters; all emitted source locations included"
+  },
+  "raw_evidence": "/datadisks/disk7/dtmp/ort-state-m24-819a29ec/f6-cumulative-coverage.json"
+}

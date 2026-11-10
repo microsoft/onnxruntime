@@ -4,7 +4,126 @@ Compressed project memory. This is not the execution plan.
 
 ## Workflow checkpoint
 
-- 2026-11-04 CURRENT: M01-M15complete; M15PR29 OPEN/ready onM14PR28
+- 2026-11-04 CURRENT: UserDEFERSM16-M23(otherlanguagebindings), jumptoM24.
+  InterviewCONFIRMEDM01-M15deliveredC/C++/Pythonfoundationqualification,
+  NATIVEperformanceBASELINESONLY(noordinarySessionperformancecomparison),
+  existingLinuxCPU/CUDA/A100 +approvedmodel/numerical/sanitizerscopes.
+  ExplicitNOadditionalrequirements. CorrectnessreferencesSTILLrequired.
+  AppendixPSPECAPPROVED2026-11-04/nochanges. TASKSM24F0-F8detailedplan
+  SEPARATELYAPPROVED2026-11-04/nochanges; userauthorizedSTARTM24.
+  Planningbranchstateful-M20-qualification fromM15PR29 head
+  4fcf16f7d25d6ce8c693839fdf5686c7d3c4c1d8; parentproofunchanged.
+  TASKSretainsuncheckedM16-M23, M24prereqsM01-M15. Fulloriginalall-language
+  parityNOTcomplete/notclaimed.
+  F0-F8DONE; PR30OPEN/ready onM15PR29. All8measurements/7369cum/257deltaPASS.
+  NoM24native/API/kernelchanges; featurecommit3bcf4d69190fbe347cde1ea9e42d85c8c5642a0d.
+  PreM01baseline1988019b6e23ac4def4628cddd603c1bfb504fe8(parent64aa026b94).
+  Proposedplan8rowsPhi3CPU/CUDAbudgets0/1/16 +SDbatched/sequential;
+  perrow1cold+2warmup+5measuredcompletednativeRun, no perfthreshold/comparison.
+  Separatememory/trace/lifetimeruns; exactdedupcumulativecurrentproduction
+  coverage100%host/device; archivedproofonlywhenunchangedmappedidentities.
+  No blindreuseofM15environment-specificGroupNormwindow. Proposednewtool+
+  offlineunit(fullrunnerwired), integratedreport/capabilities, PRonM15.
+  F0Q=/datadisks/disk7/dtmp/ort-state-m24-819a29ec(rootmount19GBfree;home51GB).
+  VerifiedM15source18/artifacts112 +M14source11/artifacts53/native5 unchanged.
+  ActualCPU m13-installed-cpu; GPU m15-installed-gpu with8A100ordinal0exists.
+  CurrentpreM01delta126paths:60native+1CUDA+8Pythonprod,41tests,16metadata.
+  93reqIDsPENDINGfreshM24; languageSCOPE2/API1/API2portionsDEFERRED.
+  ArchivecandidatesM13native5412/5412+M15getter1/1+CUDAemitted25/25
+  (m11-greedy-device-source.csv matchescurrentSHA92837bc2...).
+  Needcumulativededup/currentmapping+all8Pythonincludingoldsamples/
+  stateful_execution.py (notreferencedincurrentPythonunits; inspectcoveragegap).
+  ActualPy3.12.16,np2.5.4,pytest9.2.0BUILTINsubtests,coverage7.17.0;
+  no pytest-subtestsdistributionneeded(initialmetadataPROXYcheckcorrected,
+  NOinstallation). ONNX1.23.2,LLVM18.1.8,Transformers/Pillow/Diffusers/
+  TorchCPU unchangedpins; toolsCS/NCU2025.3,NSYS2025.3.2.
+  F1freshCPU60/195native85/public153;plugin64/213native157/public216;
+  legacy60/195(warn)native145/public76; package5/5each; ordinarySession8/8
+  eachCPU/plugin; tinyexamplesCPU+legacyCUDAfeedback/bootstrap/DDIMbothPASS.
+  Separateknownstatelessnegative-devicecaseSTILL1FAILRuntimeErrornotraised,
+  explicitinheritedlimitNOTpass (Q/f1-known-stateless-limit.log).
+  F2new samples/python/stateful_qualification.py(255/255) +buildrunner2/2
+  zeroexclusions; oldsimplestateful_execution.py63/63newunitproof.
+  Newofflinequalificationunit13tests; combinedPhi3+qual28/85PASS;
+  types0/0lintrunnerPASS. NativecompletioncudaDeviceSynchronizechecked;
+  latency1cold+2warm+5steady; resourcesRSS/glibc/NVMLseparate; Stepseparate.
+  PublishreportBUGfixed: rewritinglinkedstage/report.jsonwouldmutateold
+  output; nowuniqueNamedTemporaryFile+flush/exclusivehardlinks/rollback.
+  CheckGPUvisibilityAFTERcompletedwarmup (lazysetupmaynotcreatecontext).
+  TestassethelperssupportORT_STATEFUL_QUALIFICATION_OUTPUT, rejectempty;
+  isolatesame-filesystemhardlinkclonesfromallM14/M15artifacts.
+  NoM24native/API/kernelchanges; onlynewtool/testglue/docs/testfixtures.
+  F3actualPhiCPU1test/3budgetsPASS278.61s, PhiCUDA1/3PASS89.87s;
+  refs/replay/typed/cache64verified budgets0/1/16 invocations1/1/16.
+  SDactual2PASS57.42s bothsafe25/45calls; maxlatent/imageRMSEbatched
+  .0039674358/.0014554913 seq.0043609986/.0015730036 unchangedcriteria.
+  F3homeRoot=/home/devpatel/onnxruntime-stateful/m24-qualification-819a29ec/f3
+  phi3/{cpu,cuda}-{0,1,16}; SDcuda-1793756432396051957 report, seqpackage
+  sequential-1793756458408237268. PhiJSON Q/f3-phi3-reports/{cpu,cuda}-qualification.json.
+  NewF2isolation13unitdirect +combined28/85PASS,types0/0. Addedtest-only
+  assertNoneguardcopyworker. All61native/devicefilebytes==M13 except
+  existingM15KernelDef.OpNamefix (Q/native-source-identity-audit.json).
+  F4S2fixturepreparedbyUNCHANGEDE/prepare_m15_two_update_worker.py with
+  newenvoutput; pathinQ/f4-two-update-package.txt (homef4/sd15-two-update/
+  sequential-1793756789253743350), actuallyBATCHED2 notseq despitefoldername.
+  F4allfreshPASS: primitive7eachmem/race/sync0errors/leaks/hazards;
+  realPhi3memfull0/0, unfilteredraceDEFAULTauto0hazards +sync0errors.
+  First8workerPhi3raceTIMEOUT600INCOMPLETE; defaultsameM14commandcompletes
+  under900budget(scopeunchanged); preservebothlogs. RealS20SDmem0/0,S2sync0.
+  GroupNormfreshderivedcap360sum1602/10240barrier278events, sum25650/
+  466944events,scale302(noSMEM), all0hazards. Q/f4-groupnorm-proof.json.
+  FreshCURRENTdeviceNcu25/25all3greedykernels (authorizedsudo-nprofilerONLY),
+  sourceSHA92837bc2... same; Q/f4-greedy-device-source.csv/.ncu-rep.
+  Q/f4-transfers-proof.json assertsPhi48Bnormal,98304Bexplicitclone/DtoH,
+  SD20both2621440B; exactallcopyrecords. ExplicitcopyNOcomputetableisvalid
+  expectedcopy-onlywindow. Full2SDGPUmemoryevents enumop0alloc/1free,
+  memkind1pinned,2dynamicdevice,5devicestatic—notassumedCUPTIenumvalues.
+  Nativecandidate5413/5413 via6archivedshowoutputs verifiedcurrentlinecontent
+  andM13 sourceunchangedexceptM15getter; modelpkgheaderdeclarations-only,
+  cuda_greedy.hconstexprDATA—notexecutablefunctions/commentskeywordfalsepos.
+  OriginalM13cohort22source/40artifactsverifiedusing5preservedGPUELFs.
+  Pythoncandidate1931/1931(9files),GPUchild .coverage.*coversstateful752;
+  parentonly755/756wasincomplete. Combinedcandidate7369/7369(F6notdoneyet).
+  FullcurrentCPUoffline73tests/217subtestsPASS. Benchmarkfixed-workloads.json
+  Q freezes8packages+sourceSHA; no F5resultscollectedyet, sourcecodefrozen.
+  F5ALL8ROWScollectedserial(noownedconcurrenttests/profilers),1cold2warm5steady,
+  separate resources+steps. Q/f5-collected-results.json +f5-baseline-summary.json.
+  MediansCPUPhi0/1/16=4.015727/4.047851/10.677958s;
+  GPUphi=.008754/.008794/.132899s; SDbatch/seq=.685177/.803387s.
+  RatesCPU1/16=.248120/1.497301tok/s;GPU113.792169/120.330205;
+  SD1.456087/1.248061img/s;0tokenNA. NOcomparison/speedup/perfgates.
+  ExistingRelWithDebInfoinstrumentedELFs LLVM_PROFILE_FILE=/dev/null forperf
+  (instrumentationstillpresent);source+packagehashbefore/afterfixed.
+  CPUprocessRSSpeak6633.81/6634.18/6675.25MiB. ExactGPUdynamicallocation
+  peaksPhi0/1=17189459204B30alloc/free;16=17230506504B36;SDb=7579871508B63,
+  SDs=6502983956B72. ALLfreesmatch,0dynamicend;staticmodulememorySEPARATE,
+  memkindpinnedexcluded. NVML/glibc/RSS/StepTTFT/setup/rawsallinworkerJSON.
+  F4andF5allhelperscomplete; no liveownedprofilerbeforeF6.
+  F6FINALCPU73/217 plugin77/235 legacy73/217warn; native/publicCPU85/153,
+  GPU157/216 legacy145/76; package5/5each; directoffline13OK;types0/0lintPASS.
+  Q/f6-cumulative-coverage.json VERIFIED7369/7369 zeroexclusions:
+  nativehost5413,Python1931,actualfreshdevice25. M24delta257(helper255runner2).
+  FreshGPUchildcoveragedataQ/f6-plugin.coverage.* included; getterfreshunique
+  positivecount/zerodiagnostics from f6-provider.profdata/f6-getter-export.json.
+  NoM24commit/push/PRyet. Newreportdocs/Stateful_Qualification.mdstilldraft
+  needsfinalnumbers/commands/93reqtrace+proof. Parent#29stillbase4fcf16f7d2.
+  F7REPORTNOWCOMPLETE: docs/Stateful_Qualification.md all8rows/raw5samples,
+  cold/setup/native/StepTTFT/decode/denoise/VAE/safety observations,
+  RSS/glibc/NVML/tracedGPUpeaks, commands/93reqtrace/deferred/limits.
+  docs/Stateful_Qualification_Coverage.json generated70fileSHA/countledger.
+  Q/f7-source-artifact-proof.json verifies81sources/598artifacts-assets;
+  f7-requirement-closure.json93IDs(publication4IDsstillpending).
+  NeedrefreshDOCsourcehashesafterpublicationtrackingedits; native/newPython
+  sourcehashesMUSTremainunchangedfromfixed-workloads+F6ledger.
+  PRnotyetcreated; inspecttemplate, commitcoauthor, baseM15#29,
+  feature+publicationtrackingcommits thenfinalhead/base/cleanproofrefresh.
+  M24PUBLISHED https://github.com/microsoft/onnxruntime/pull/34059 OPEN/non-draft,
+  headstateful-M20-qualification, exactbaseM15#29 at4fcf16f7d2. Feature3bcf4d6919.
+  Finaltracking-onlycommitrecordscompletion; refreshQ/f7-source-artifact-proof.json
+  docsources/head/publication +f7-requirement-closure.jsonpublication4IDs.
+  Verifyremotehead/base/templatebody/cleantree. NoM16-M23work/noPRmerged.
+  Fulloriginalall-languagegoalSTILLdeferred; don'tmarkglobalstackcomplete.
+- 2026-11-04 M15 publication checkpoint: M01-M15complete; M15PR29 OPEN/ready onM14PR28
   (parent44e512c771 onM13). Featurecommit6f0a3e09f84621381d5c9174e663e4ba090a58c9.
   M15O/O7/O8/O9 specifications+separateP/R/Q/Nplans APPROVED/implemented.
   RootfixGetOperatorType notGetNodeName; freshinstalledGPUbyteverified.

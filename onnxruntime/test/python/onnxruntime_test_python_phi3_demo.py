@@ -156,6 +156,7 @@ class TestPhi3Assets(unittest.TestCase):
             pass
 
         reached = []
+        linux = True
 
         def capture(command, **_kwargs):
             if command[-1].endswith("onnxruntime_test_python_phi3_demo.py"):
@@ -168,6 +169,17 @@ class TestPhi3Assets(unittest.TestCase):
                     command[-1], str(root / "onnxruntime/test/python/onnxruntime_test_python_sd15_demo.py")
                 )
                 self.assertEqual(reached, ["phi3"])
+                reached.append("sd15")
+            elif command[-1].endswith("onnxruntime_test_python_stateful_qualification.py"):
+                self.assertTrue(linux)
+                self.assertEqual(
+                    command[-1], str(root / "onnxruntime/test/python/onnxruntime_test_python_stateful_qualification.py")
+                )
+                self.assertEqual(reached, ["phi3", "sd15"])
+                raise ReachedOfflineTestsError
+            elif command[-1].endswith("onnxruntime_test_python_fpa_intb_tune.py"):
+                self.assertFalse(linux)
+                self.assertEqual(reached, ["phi3", "sd15"])
                 raise ReachedOfflineTestsError
 
         args = SimpleNamespace(
@@ -183,10 +195,13 @@ class TestPhi3Assets(unittest.TestCase):
         with (
             mock.patch.object(build, "is_macOS", return_value=False),
             mock.patch.object(build, "is_windows", return_value=False),
+            mock.patch.object(build, "is_linux", side_effect=lambda: linux),
             mock.patch.object(build, "run_subprocess", side_effect=capture),
-            self.assertRaises(ReachedOfflineTestsError),
         ):
-            build.run_onnxruntime_tests(args, str(root), None, "/unused-build", ("Release",))
+            for linux in (True, False):
+                reached.clear()
+                with self.subTest(linux=linux), self.assertRaises(ReachedOfflineTestsError):
+                    build.run_onnxruntime_tests(args, str(root), None, "/unused-build", ("Release",))
 
     def test_explicit_download_and_verified_cache(self):
         with toy_assets() as (root, directory, profile):

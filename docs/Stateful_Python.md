@@ -17,6 +17,11 @@ For the real CPU INT4/CUDA FP16 model-package example, see
 For CUDA-only text-to-image with native DDIM, declared CPU preprocessing and a
 mandatory safety checker, see [Local SD1.5 image generation](Stateful_SD15_Demo.md).
 
+The delivered-foundation [qualification report](Stateful_Qualification.md)
+describes the Linux native-only measurement tool and explicit deferred binding
+scope. It distinguishes measured native execution, resource traces and
+independent correctness references.
+
 [stateful_execution.py](../samples/python/stateful_execution.py) generates tiny
 ONNX models and checks feedback accumulation, sampler-free prefill followed by
 sample-only decode bootstrap, and both deterministic DDIM guidance conventions.
