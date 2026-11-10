@@ -123,7 +123,7 @@ std::vector<T> ToTensorData(const std::vector<float>& values) {
   }
 }
 
-template <typename T = MLFloat16, typename CacheT = T>
+template <typename T = MLFloat16, typename CacheT = T, typename QueryT = T, typename ValueT = T>
 void RunDynamicSparseAttentionCase(
     const DynamicSparseAttentionCase& c,
     std::unique_ptr<IExecutionProvider> execution_provider,
@@ -166,17 +166,20 @@ void RunDynamicSparseAttentionCase(
   tester.AddAttribute<float>("qk_norm_epsilon", c.qk_norm_epsilon);
   tester.AddAttribute<int64_t>("smooth_softmax", c.smooth_softmax);
   tester.AddAttribute<int64_t>("auxiliary_kv_shared", c.auxiliary_kv_shared);
+  if constexpr (std::is_same_v<T, BFloat16> && !std::is_same_v<ValueT, BFloat16>) {
+    tester.AddAttribute<int64_t>("output_bf16", 1);
+  }
 
-  tester.AddInput<T>("query", {c.batch_size, c.sequence_length, query_input_size},
-                     ToTensorData<T>(c.query));
+  tester.AddInput<QueryT>("query", {c.batch_size, c.sequence_length, query_input_size},
+                          ToTensorData<QueryT>(c.query));
   if (c.packed_qkv) {
-    tester.AddOptionalInputEdge<T>();
-    tester.AddOptionalInputEdge<T>();
+    tester.AddOptionalInputEdge<QueryT>();
+    tester.AddOptionalInputEdge<ValueT>();
   } else {
-    tester.AddInput<T>("key", {c.batch_size, c.sequence_length, kv_hidden_size},
-                       ToTensorData<T>(c.key));
-    tester.AddInput<T>("value", {c.batch_size, c.sequence_length, kv_hidden_size},
-                       ToTensorData<T>(c.value));
+    tester.AddInput<QueryT>("key", {c.batch_size, c.sequence_length, kv_hidden_size},
+                            ToTensorData<QueryT>(c.key));
+    tester.AddInput<ValueT>("value", {c.batch_size, c.sequence_length, kv_hidden_size},
+                            ToTensorData<ValueT>(c.value));
   }
   if (c.has_past) {
     tester.AddInput<CacheT>("past_key",
@@ -581,6 +584,8 @@ TEST(DynamicSparseAttentionTest, FloatingCacheGroupedReferenceParity_CUDA) {
         // Ten heads per KV head exercise partial groups of both six (prefill) and eight (decode).
         if (bf16) {
           RunDynamicSparseAttentionCase<BFloat16>(c, std::move(cuda_ep));
+          RunDynamicSparseAttentionCase<BFloat16, MLFloat16>(c, DefaultCudaExecutionProvider());
+          RunDynamicSparseAttentionCase<BFloat16, MLFloat16, MLFloat16>(c, DefaultCudaExecutionProvider());
         } else {
           RunDynamicSparseAttentionCase<MLFloat16>(c, std::move(cuda_ep));
         }
@@ -600,12 +605,65 @@ TEST(DynamicSparseAttentionTest, GroupedDecodeRatio12ReferenceParity_CUDA) {
       RunDynamicSparseAttentionCase<MLFloat16>(floating_case, std::move(cuda_ep));
       cuda_ep = DefaultCudaExecutionProvider();
       RunDynamicSparseAttentionCase<BFloat16>(floating_case, std::move(cuda_ep));
+      RunDynamicSparseAttentionCase<BFloat16, MLFloat16>(floating_case, DefaultCudaExecutionProvider());
+      RunDynamicSparseAttentionCase<BFloat16, MLFloat16, MLFloat16>(floating_case, DefaultCudaExecutionProvider());
 
       const auto int8_case = MakeGroupedCacheCase(sequence_length, auxiliary, false, 2, 24, 2, true);
       cuda_ep = DefaultCudaExecutionProvider();
       RunDynamicSparseAttentionCase<MLFloat16, int8_t>(int8_case, std::move(cuda_ep));
       cuda_ep = DefaultCudaExecutionProvider();
       RunDynamicSparseAttentionCase<BFloat16, int8_t>(int8_case, std::move(cuda_ep));
+      if (!auxiliary) {
+        RunDynamicSparseAttentionCase<BFloat16, int8_t, MLFloat16>(int8_case, DefaultCudaExecutionProvider());
+        RunDynamicSparseAttentionCase<BFloat16, int8_t, MLFloat16, MLFloat16>(
+            int8_case, DefaultCudaExecutionProvider());
+      }
+    }
+  }
+}
+
+TEST(DynamicSparseAttentionTest, Fp16CachePreservesBFloat16AuxiliaryRange_CUDA) {
+  if (!DefaultCudaExecutionProvider() || !CudaHasBF16Support()) {
+    GTEST_SKIP() << "CUDA device does not support BFloat16.";
+  }
+
+  for (int sequence_length : {1, 9}) {
+    for (int max_selected : {1, 512}) {
+      for (bool shared_kv : {false, true}) {
+        SCOPED_TRACE("sequence_length=" + std::to_string(sequence_length) +
+                     ", max_selected=" + std::to_string(max_selected) +
+                     ", shared_kv=" + std::to_string(shared_kv));
+        auto c = MakeGroupedCacheCase(sequence_length, true, true, 1, 12, 1);
+        c.max_selected = max_selected;
+        c.local_window_size = 1;
+        c.smooth_softmax = 0;
+        c.head_sink.clear();
+        c.auxiliary_kv_shared = shared_kv;
+        std::fill(c.query.begin(), c.query.end(), 0.0f);
+        std::fill(c.key.begin(), c.key.end(), 0.0f);
+        std::fill(c.value.begin(), c.value.end(), 0.0f);
+        std::fill(c.past_key.begin(), c.past_key.end(), 0.0f);
+        std::fill(c.past_value.begin(), c.past_value.end(), 0.0f);
+        std::fill(c.auxiliary_key.begin(), c.auxiliary_key.end(), 131072.0f);
+        if (shared_kv) {
+          c.auxiliary_value.clear();
+        } else {
+          std::fill(c.auxiliary_value.begin(), c.auxiliary_value.end(), 131072.0f);
+        }
+        c.selected_indices.assign(sequence_length * max_selected, -1);
+        c.selected_counts.assign(sequence_length, 1);
+        for (int row = 0; row < sequence_length; ++row) {
+          c.selected_indices[row * max_selected] = 0;
+        }
+        // Zero logits give equal weight to one zero main value and one finite BF16 auxiliary value.
+        c.expected_output.assign(c.query.size(), 65536.0f);
+        c.expected_present_key = c.past_key;
+        c.expected_present_value = c.past_value;
+        c.output_abs_tolerance = 0.0f;
+        c.output_rel_tolerance = 0.0f;
+        RunDynamicSparseAttentionCase<BFloat16, MLFloat16>(c, DefaultCudaExecutionProvider());
+        RunDynamicSparseAttentionCase<BFloat16, MLFloat16, MLFloat16>(c, DefaultCudaExecutionProvider());
+      }
     }
   }
 }
@@ -735,6 +793,10 @@ TEST(DynamicSparseAttentionTest, Int8CachePrefillTensorCoreKernel_CUDA) {
           ScopedEnvironmentVariables scoped_env_vars{
               EnvVarMap{{"ORT_DSA_PREFILL_KERNEL", "1"}, {"ORT_DSA_PREFILL_INT8_TC", int8_tc_env}}};
           RunDynamicSparseAttentionCase<BFloat16, int8_t>(c, DefaultCudaExecutionProvider());
+          if (num_heads == 12 && !invalid_entries) {
+            RunDynamicSparseAttentionCase<BFloat16, int8_t, MLFloat16, MLFloat16>(
+                c, DefaultCudaExecutionProvider());
+          }
         }
         if (::testing::Test::HasFailure()) return;
       }
@@ -962,6 +1024,54 @@ void RunTwoCandidateInt8CaseOverTiles(TwoCandidateInt8Spec spec, float expected,
   if (spec.second_position >= 0) spec.second_position = 128;
   run.tiles_per_split = {"0", "1", "2", "3"};
   RunTwoCandidateInt8Case(spec, expected, run);
+}
+
+TEST(DynamicSparseAttentionTest, Fp16QueryInt8CachePrefillPrecision_CUDA) {
+  if (!DefaultCudaExecutionProvider() || !CudaHasBF16Support()) {
+    GTEST_SKIP() << "CUDA device does not support BFloat16.";
+  }
+
+  TwoCandidateInt8Spec spec{};
+  spec.query = 1025.0f;
+  spec.key_scale = 1.0f;
+  spec.value_scale = 1.0f;
+  spec.key_codes[0] = 8.0f;
+  spec.value_codes[0] = 1.0f;
+  spec.customize = [](DynamicSparseAttentionCase& c, int) {
+    SetInt8KeyCode(c, 0, 1, 8.0f);
+    for (size_t i = 0; i < c.query.size(); i += c.head_size) c.query[i + 1] = -1024.0f;
+  };
+  for (const int max_selected : {2, 512}) {
+    // The larger scale rejects INT8 tensor cores even when explicitly enabled.
+    for (const float scale : {0.125f, 2.0f}) {
+      spec.scale = scale;
+      auto c = MakeTwoCandidateInt8Case(spec, 2, 9);
+      c.max_selected = max_selected;
+      c.selected_indices.assign(c.selected_counts.size() * max_selected, -1);
+      // Native FP16 gives logits [8 * scale, 0]; rounding Q to BF16 makes them equal.
+      const float expected = 1.0f / (1.0f + std::exp(-8.0f * scale));
+      for (size_t row = 0; row < c.selected_counts.size(); ++row) {
+        if (c.selected_counts[row] > 0) {
+          c.selected_indices[row * max_selected] = 0;
+          c.selected_indices[row * max_selected + 1] = 1;
+        }
+        std::fill_n(c.expected_output.begin() + row * c.num_heads * c.head_size,
+                    c.num_heads * c.head_size, row == 0 ? 0.0f : expected);
+      }
+      c.output_abs_tolerance = 0.0f;
+      c.output_rel_tolerance = 0x1p-7f;
+      for (const char* prefill : {"0", "1"}) {
+        for (const char* int8_tc : {"0", "1"}) {
+          SCOPED_TRACE("max_selected=" + std::to_string(max_selected) + ", scale=" + std::to_string(scale) +
+                       ", prefill=" + prefill + ", int8_tc=" + int8_tc);
+          RunDynamicSparseAttentionCase<BFloat16, int8_t, MLFloat16, MLFloat16>(
+              c, DefaultCudaExecutionProvider(), OpTester::ExpectResult::kExpectSuccess, "",
+              PrefillKernelConfigs(prefill, int8_tc));
+          if (::testing::Test::HasFailure()) return;
+        }
+      }
+    }
+  }
 }
 
 // The tensor-core INT8 kernels round Q * key_scale to fp16, which flushes products below 2^-25 to zero; a softmax scale
@@ -1826,6 +1936,25 @@ TEST(DynamicSparseAttentionTest, SelectedOnlyNoPastPrefill_CUDA) {
   c.past_key.clear();
   c.past_value.clear();
   RunDynamicSparseAttentionCase(c, std::move(cuda_ep));
+
+  RunDynamicSparseAttentionCase<BFloat16>(c, DefaultCudaExecutionProvider());
+
+  // FP16 Q/K infer FP16 present caches even when the attention output is BF16.
+  c.output_abs_tolerance = 0.0f;
+  c.output_rel_tolerance = 0.0f;
+  c.key.assign(8, 1.0009765625f);
+  c.expected_present_key = c.key;
+  RunDynamicSparseAttentionCase<BFloat16, MLFloat16, MLFloat16>(c, DefaultCudaExecutionProvider());
+
+  c.value.assign(8, 6.00390625f);
+  c.expected_present_value = c.value;
+  c.expected_output = c.value;
+  RunDynamicSparseAttentionCase<BFloat16, MLFloat16, MLFloat16, MLFloat16>(c, DefaultCudaExecutionProvider());
+
+  c.packed_qkv = true;
+  c.query.insert(c.query.end(), c.key.begin(), c.key.end());
+  c.query.insert(c.query.end(), c.value.begin(), c.value.end());
+  RunDynamicSparseAttentionCase<BFloat16, MLFloat16, MLFloat16, MLFloat16>(c, DefaultCudaExecutionProvider());
 }
 
 TEST(DynamicSparseAttentionTest, SelectedOnlyEmptySetProducesZeroAndAppendsCache_CUDA) {
@@ -2269,6 +2398,24 @@ TEST(DynamicSparseAttentionTest, SelectedOnlyBFloat16_CUDA) {
       MakeSingleTokenSelectedValueCase(), std::move(cuda_ep));
 }
 
+TEST(DynamicSparseAttentionTest, SelectedOnlyFp16CacheBFloat16_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (!CudaHasBF16Support()) {
+    GTEST_SKIP() << "CUDA device does not support BFloat16.";
+  }
+
+  // Test BFloat16 query/key/value, MLFloat16 query/key, and MLFloat16 query/key/value with MLFloat16 KV cache.
+  RunDynamicSparseAttentionCase<BFloat16, MLFloat16>(
+      MakeSingleTokenSelectedValueCase(), std::move(cuda_ep));
+  RunDynamicSparseAttentionCase<BFloat16, MLFloat16, MLFloat16>(
+      MakeSingleTokenSelectedValueCase(), DefaultCudaExecutionProvider());
+  RunDynamicSparseAttentionCase<BFloat16, MLFloat16, MLFloat16, MLFloat16>(
+      MakeSingleTokenSelectedValueCase(), DefaultCudaExecutionProvider());
+}
+
 TEST(DynamicSparseAttentionTest, SelectedOnlyPrefillBFloat16_CUDA) {
   auto cuda_ep_check = DefaultCudaExecutionProvider();
   if (!cuda_ep_check) {
@@ -2391,6 +2538,8 @@ TEST(DynamicSparseAttentionTest, SelectedOnlyPrefillBFloat16_CUDA) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{{"ORT_DSA_PREFILL_KERNEL", prefill_env}}};
     RunDynamicSparseAttentionCase<BFloat16>(c, DefaultCudaExecutionProvider());
+    RunDynamicSparseAttentionCase<BFloat16, MLFloat16>(c, DefaultCudaExecutionProvider());
+    RunDynamicSparseAttentionCase<BFloat16, MLFloat16, MLFloat16>(c, DefaultCudaExecutionProvider());
   }
 }
 
@@ -2459,6 +2608,376 @@ TEST(DynamicSparseAttentionTest, QkRmsNormPartialInterleavedRotary_CUDA) {
             c.expected_present_value.end(), 3.0f);
 
   RunDynamicSparseAttentionCase(c, std::move(cuda_ep));
+}
+
+TEST(DynamicSparseAttentionTest, Fp16CacheQkRmsNormRotaryReferenceParity_CUDA) {
+  if (!DefaultCudaExecutionProvider() || !CudaHasBF16Support()) {
+    GTEST_SKIP() << "CUDA device does not support BFloat16.";
+  }
+
+  for (bool fp16_query : {false, true}) {
+    for (bool interleaved : {false, true}) {
+      for (bool explicit_positions : {false, true}) {
+        SCOPED_TRACE("fp16_query=" + std::to_string(fp16_query) +
+                     ", interleaved=" + std::to_string(interleaved) +
+                     ", explicit_positions=" + std::to_string(explicit_positions));
+        DynamicSparseAttentionCase c;
+        c.sequence_length = 2;
+        c.num_heads = 2;
+        c.head_size = 16;
+        c.cache_sequence_length = 3;
+        c.max_selected = 3;
+        c.total_sequence_length = 3;
+        c.scale = 0.3f;
+        c.qk_norm_epsilon = 1e-4f;
+        c.do_rotary = 1;
+        c.rotary_interleaved = interleaved;
+        c.rotary_offset = 8;
+        c.rotary_cache_length = 4;
+        c.rotary_half_dim = 4;
+        c.query.resize(64);
+        c.key.resize(32);
+        c.value.resize(32);
+        c.past_key.resize(48);
+        c.past_value.resize(48);
+        c.q_norm_weight.resize(c.head_size);
+        c.k_norm_weight.resize(c.head_size);
+        for (size_t i = 0; i < c.query.size(); ++i) {
+          c.query[i] = static_cast<float>(static_cast<int>(i % 17) - 8) * 0.10317f;
+        }
+        for (size_t i = 0; i < c.key.size(); ++i) {
+          c.key[i] = static_cast<float>(static_cast<int>(i % 11) - 5) * 0.15729f;
+          c.value[i] = static_cast<float>(static_cast<int>(i % 13) - 6) * 0.125f;
+        }
+        for (size_t i = 0; i < c.past_key.size(); ++i) {
+          c.past_key[i] = static_cast<float>(static_cast<int>(i % 7) - 3) * 0.25f;
+          c.past_value[i] = static_cast<float>(static_cast<int>(i % 9) - 4) * 0.125f;
+        }
+        for (int d = 0; d < c.head_size; ++d) {
+          c.q_norm_weight[d] = static_cast<float>(d % 5 + 1) * 0.21875f;
+          c.k_norm_weight[d] = static_cast<float>(d % 7 + 1) * 0.15625f;
+        }
+        for (int p = 0; p < c.rotary_cache_length; ++p) {
+          for (int d = 0; d < c.rotary_half_dim; ++d) {
+            const float angle = 0.13f * static_cast<float>((p + 1) * (d + 1));
+            c.cos_cache.push_back(BFloat16(std::cos(angle)).ToFloat());
+            c.sin_cache.push_back(BFloat16(std::sin(angle)).ToFloat());
+          }
+        }
+        c.selected_indices = {0, 1, -1, 0, 1, 2};
+        c.selected_counts = {2, 3};
+        c.seqlens_k = {2};
+        if (explicit_positions) {
+          c.position_ids = {2, 0};
+        }
+
+        // Normalize and rotate rounded inputs in FP32, then round directly to FP16.
+        const auto prepare_head = [&](const std::vector<float>& input, int offset,
+                                      const std::vector<float>& norm_weight, int position) {
+          std::vector<float> normalized(c.head_size);
+          float sum_squares = 0.0f;
+          for (int d = 0; d < c.head_size; ++d) {
+            normalized[d] = fp16_query ? MLFloat16(input[offset + d]).ToFloat()
+                                       : BFloat16(input[offset + d]).ToFloat();
+            sum_squares += normalized[d] * normalized[d];
+          }
+          const float inverse_rms = 1.0f / std::sqrt(sum_squares / c.head_size + c.qk_norm_epsilon);
+          for (int d = 0; d < c.head_size; ++d) {
+            normalized[d] *= inverse_rms * norm_weight[d];
+          }
+          auto rotated = normalized;
+          for (int d = 0; d < c.rotary_half_dim; ++d) {
+            const int first = static_cast<int>(c.rotary_offset) + (interleaved ? 2 * d : d);
+            const int second = interleaved ? first + 1 : first + static_cast<int>(c.rotary_half_dim);
+            const int cache_index = position * static_cast<int>(c.rotary_half_dim) + d;
+            rotated[first] = normalized[first] * c.cos_cache[cache_index] -
+                             normalized[second] * c.sin_cache[cache_index];
+            rotated[second] = normalized[second] * c.cos_cache[cache_index] +
+                              normalized[first] * c.sin_cache[cache_index];
+          }
+          for (float& value : rotated) {
+            value = MLFloat16(value).ToFloat();
+          }
+          return rotated;
+        };
+        c.expected_present_key = c.past_key;
+        c.expected_present_value = c.past_value;
+        std::vector<float> prepared_query(c.query.size());
+        for (int row = 0; row < c.sequence_length; ++row) {
+          const int position = explicit_positions ? static_cast<int>(c.position_ids[row]) : row + 1;
+          const auto key = prepare_head(c.key, row * 16, c.k_norm_weight, position);
+          std::copy(key.begin(), key.end(), c.expected_present_key.begin() + (row + 1) * 16);
+          std::copy_n(c.value.begin() + row * 16, 16, c.expected_present_value.begin() + (row + 1) * 16);
+          for (int h = 0; h < c.num_heads; ++h) {
+            const int offset = (row * 2 + h) * 16;
+            const auto query = prepare_head(c.query, offset, c.q_norm_weight, position);
+            std::copy(query.begin(), query.end(), prepared_query.begin() + offset);
+          }
+        }
+        c.expected_output.resize(c.query.size());
+        for (int row = 0; row < c.sequence_length; ++row) {
+          for (int h = 0; h < c.num_heads; ++h) {
+            const int offset = (row * 2 + h) * 16;
+            std::vector<double> weights(c.selected_counts[row]);
+            double denominator = 0.0;
+            for (int i = 0; i < c.selected_counts[row]; ++i) {
+              double dot = 0.0;
+              for (int d = 0; d < c.head_size; ++d) {
+                dot += static_cast<double>(prepared_query[offset + d]) *
+                       c.expected_present_key[i * 16 + d];
+              }
+              weights[i] = std::exp(dot * c.scale);
+              denominator += weights[i];
+            }
+            for (int d = 0; d < c.head_size; ++d) {
+              double numerator = 0.0;
+              for (int i = 0; i < c.selected_counts[row]; ++i) {
+                numerator += weights[i] * c.expected_present_value[i * 16 + d];
+              }
+              c.expected_output[offset + d] = static_cast<float>(numerator / denominator);
+            }
+          }
+        }
+        c.output_abs_tolerance = 0.0005f;
+        c.output_rel_tolerance = 0.0f;
+        if (fp16_query) {
+          RunDynamicSparseAttentionCase<BFloat16, MLFloat16, MLFloat16>(c, DefaultCudaExecutionProvider());
+          RunDynamicSparseAttentionCase<BFloat16, MLFloat16, MLFloat16, MLFloat16>(
+              c, DefaultCudaExecutionProvider());
+        } else {
+          RunDynamicSparseAttentionCase<BFloat16, MLFloat16>(c, DefaultCudaExecutionProvider());
+        }
+      }
+    }
+  }
+}
+
+TEST(DynamicSparseAttentionTest, Fp16Int8CacheRotaryKeyPrecision_CUDA) {
+  if (!DefaultCudaExecutionProvider() || !CudaHasBF16Support()) {
+    GTEST_SKIP() << "CUDA device does not support BFloat16.";
+  }
+
+  for (const bool packed : {false, true}) {
+    for (const bool normalize : {false, true}) {
+      for (const bool interleaved : {false, true}) {
+        // Compare disabled, identity, and partial nonidentity RoPE, including unrotated channels.
+        for (const int rotary_mode : {0, 1, 2}) {
+          SCOPED_TRACE("packed=" + std::to_string(packed) + ", normalize=" + std::to_string(normalize) +
+                       ", interleaved=" + std::to_string(interleaved) +
+                       ", rotary_mode=" + std::to_string(rotary_mode));
+          DynamicSparseAttentionCase c;
+          c.head_size = 16;
+          c.query.assign(16, 0.0f);
+          c.key.resize(16);
+          for (int d = 0; d < 16; ++d) c.key[d] = 0.25f * static_cast<float>(d % 3 - 1);
+          c.key[0] = c.key[8] = 1.498046875f;
+          c.key[9] = c.key[12] = 0.0f;
+          c.value.assign(16, 1.498046875f);
+          c.past_key.assign(16, 0.0f);
+          c.past_value.assign(16, 0.0f);
+          c.key_scale.assign(16, 1.0f);
+          c.value_scale.assign(16, 1.0f);
+          c.selected_indices = {0};
+          c.selected_counts = {1};
+          c.seqlens_k = {0};
+          auto normalized = c.key;
+          if (normalize) {
+            c.q_norm_weight.assign(16, 1.0f);
+            c.k_norm_weight.resize(16);
+            float sum_squares = 0.0f;
+            for (const float value : c.key) sum_squares += value * value;
+            const float inverse_rms = 1.0f / std::sqrt(sum_squares / 16.0f + c.qk_norm_epsilon);
+            for (int d = 0; d < 16; ++d) {
+              c.k_norm_weight[d] = 0.5f + 0.125f * static_cast<float>(d % 5);
+              normalized[d] *= inverse_rms * c.k_norm_weight[d];
+            }
+          }
+          auto rotated = normalized;
+          if (rotary_mode > 0) {
+            c.do_rotary = 1;
+            c.rotary_interleaved = interleaved;
+            c.rotary_offset = 8;
+            c.rotary_cache_length = 1;
+            c.rotary_half_dim = 4;
+            c.cos_cache.assign(4, rotary_mode == 1 ? 1.0f : 0.5f);
+            c.sin_cache.assign(4, rotary_mode == 1 ? 0.0f : 0.5f);
+            if (rotary_mode == 2) std::fill(c.key_scale.begin() + 8, c.key_scale.end(), 0.5f);
+            for (int d = 0; d < 4; ++d) {
+              const int first = 8 + (interleaved ? 2 * d : d);
+              const int second = interleaved ? first + 1 : first + 4;
+              rotated[first] = normalized[first] * c.cos_cache[d] - normalized[second] * c.sin_cache[d];
+              rotated[second] = normalized[second] * c.cos_cache[d] + normalized[first] * c.sin_cache[d];
+            }
+          }
+          c.expected_present_key.resize(16);
+          for (int d = 0; d < 16; ++d) {
+            c.expected_present_key[d] = std::nearbyint(rotated[d] / c.key_scale[d]);
+          }
+          c.expected_present_value.assign(16, 1.0f);
+          c.expected_output.assign(16, 1.0f);
+          c.output_abs_tolerance = 0.0f;
+          c.output_rel_tolerance = 0.0f;
+          if (packed) {
+            c.packed_qkv = true;
+            c.query.insert(c.query.end(), c.key.begin(), c.key.end());
+            c.query.insert(c.query.end(), c.value.begin(), c.value.end());
+          }
+          RunDynamicSparseAttentionCase<BFloat16, int8_t, MLFloat16, MLFloat16>(
+              c, DefaultCudaExecutionProvider());
+          if (::testing::Test::HasFailure()) return;
+        }
+      }
+    }
+  }
+}
+
+// With BF16 keys, channels 0 and 8 normalize to 0.75 * rsqrt(0.25 + 1e-6) = 1.499997, whose INT8 code is 1; rounding
+// that to BF16 (1.5) before quantization would give 2. RoPE, identity or not, must not reintroduce that rounding.
+TEST(DynamicSparseAttentionTest, Bf16Int8CacheNormRotaryKeyPrecision_CUDA) {
+  if (!DefaultCudaExecutionProvider() || !CudaHasBF16Support()) {
+    GTEST_SKIP() << "CUDA device does not support BFloat16.";
+  }
+
+  for (const bool packed : {false, true}) {
+    for (const bool interleaved : {false, true}) {
+      // Disabled, identity, and partial nonidentity RoPE.
+      for (const int rotary_mode : {0, 1, 2}) {
+        SCOPED_TRACE("packed=" + std::to_string(packed) + ", interleaved=" + std::to_string(interleaved) +
+                     ", rotary_mode=" + std::to_string(rotary_mode));
+        DynamicSparseAttentionCase c;
+        c.head_size = 16;
+        c.query.assign(16, 0.0f);
+        // Two 0.75, eleven +-0.5, two 0.25 and a zero: the mean square is 0.25.
+        c.key = {0.75f, 0.5f, 0.5f, 0.25f, 0.5f, 0.5f, -0.5f, 0.0f, 0.75f, 0.5f, -0.5f, 0.5f, 0.25f, 0.5f, 0.5f, -0.5f};
+        c.value.assign(16, 1.0f);
+        c.past_key.assign(16, 0.0f);
+        c.past_value.assign(16, 0.0f);
+        c.key_scale.assign(16, 1.0f);
+        c.value_scale.assign(16, 1.0f);
+        c.selected_indices = {0};
+        c.selected_counts = {1};
+        c.seqlens_k = {0};
+        c.q_norm_weight.assign(16, 1.0f);
+        c.k_norm_weight.assign(16, 1.0f);
+        float sum_squares = 0.0f;
+        for (const float value : c.key) sum_squares += value * value;
+        const float inverse_rms = 1.0f / std::sqrt(sum_squares / 16.0f + c.qk_norm_epsilon);
+        std::vector<float> normalized(16);
+        for (int d = 0; d < 16; ++d) normalized[d] = c.key[d] * inverse_rms;
+        ASSERT_EQ(std::nearbyint(normalized[0]), 1.0f);
+        ASSERT_EQ(std::nearbyint(BFloat16(normalized[0]).ToFloat()), 2.0f);
+        auto rotated = normalized;
+        if (rotary_mode > 0) {
+          c.do_rotary = 1;
+          c.rotary_interleaved = interleaved;
+          c.rotary_offset = 8;
+          c.rotary_cache_length = 1;
+          c.rotary_half_dim = 4;
+          c.cos_cache.assign(4, rotary_mode == 1 ? 1.0f : 0.5f);
+          c.sin_cache.assign(4, rotary_mode == 1 ? 0.0f : 0.5f);
+          for (int d = 0; d < 4; ++d) {
+            const int first = 8 + (interleaved ? 2 * d : d);
+            const int second = interleaved ? first + 1 : first + 4;
+            rotated[first] = normalized[first] * c.cos_cache[d] - normalized[second] * c.sin_cache[d];
+            rotated[second] = normalized[second] * c.cos_cache[d] + normalized[first] * c.sin_cache[d];
+          }
+        }
+        c.expected_present_key.resize(16);
+        for (int d = 0; d < 16; ++d) {
+          c.expected_present_key[d] = std::nearbyint(rotated[d] / c.key_scale[d]);
+        }
+        c.expected_present_value.assign(16, 1.0f);
+        c.expected_output.assign(16, 1.0f);
+        c.output_abs_tolerance = 0.0f;
+        c.output_rel_tolerance = 0.0f;
+        if (packed) {
+          c.packed_qkv = true;
+          c.query.insert(c.query.end(), c.key.begin(), c.key.end());
+          c.query.insert(c.query.end(), c.value.begin(), c.value.end());
+        }
+        RunDynamicSparseAttentionCase<BFloat16, int8_t>(c, DefaultCudaExecutionProvider());
+        if (::testing::Test::HasFailure()) return;
+      }
+    }
+  }
+}
+
+// Channel 8 of the query and of the key normalizes to x = (1 - 2^-14) / rms and channel 12 to y = 1 / rms (rms about
+// 1.0005); both round to the same FP16 or BF16 value. The half-angle RoPE (cos = sin = 0.5) turns channel 8 into
+// 0.5 * (x - y), about -2^-15, which rounding x and y first would make 0. Candidate 0 scores 32768 times channel 8 of the
+// query, so that rounding would move the output from sigmoid(-1) to 0.5; channel 8 of the appended FP16/BF16 key would
+// become 0.
+template <typename T, typename CacheT = T>
+void RunQkNormRotaryRoundsOnceCase() {
+  SCOPED_TRACE(std::string("T=") + (std::is_same_v<T, BFloat16> ? "BFloat16" : "MLFloat16") +
+               (std::is_same_v<CacheT, int8_t> ? ", INT8 cache" : ""));
+  constexpr bool kInt8Cache = std::is_same_v<CacheT, int8_t>;
+  const auto round = [](float x) { return T(x).ToFloat(); };
+  DynamicSparseAttentionCase c;
+  c.head_size = 16;
+  c.cache_sequence_length = 3;
+  c.total_sequence_length = 3;
+  c.max_selected = 2;
+  c.do_rotary = 1;
+  c.rotary_offset = 8;
+  c.rotary_cache_length = 3;
+  c.rotary_half_dim = 4;
+  c.cos_cache.assign(12, 0.5f);
+  c.sin_cache.assign(12, 0.5f);
+  c.query.assign(16, 1.0f);
+  c.query[8] = 1.0078125f;
+  c.key = c.query;
+  c.value.assign(16, 0.0f);
+  c.q_norm_weight.assign(16, 1.0f);
+  c.q_norm_weight[8] = 0.9921875f;
+  c.k_norm_weight = c.q_norm_weight;
+  // Candidate 0 (key 32768 on channel 8, value 1) and candidate 1 (zero key and value); the new token is at position 2.
+  c.past_key.assign(48, 0.0f);
+  c.past_value.assign(48, 0.0f);
+  c.past_key[8] = kInt8Cache ? 64.0f : 32768.0f;
+  std::fill_n(c.past_value.begin(), 16, 1.0f);
+  if (kInt8Cache) {
+    c.key_scale.assign(16, 512.0f);
+    c.value_scale.assign(16, 1.0f);
+  }
+  c.selected_indices = {0, 1};
+  c.selected_counts = {2};
+  c.seqlens_k = {2};
+
+  float sum_squares = 0.0f;
+  for (const float value : c.query) sum_squares += value * value;
+  const float inverse_rms = 1.0f / std::sqrt(sum_squares / 16.0f + c.qk_norm_epsilon);
+  std::vector<float> normalized(16);
+  for (int d = 0; d < 16; ++d) normalized[d] = c.query[d] * (inverse_rms * c.q_norm_weight[d]);
+  auto rotated = normalized;
+  for (int d = 0; d < 4; ++d) {
+    rotated[8 + d] = 0.5f * normalized[8 + d] - 0.5f * normalized[12 + d];
+    rotated[12 + d] = 0.5f * normalized[12 + d] + 0.5f * normalized[8 + d];
+  }
+  ASSERT_EQ(round(normalized[8]), round(normalized[12]));
+  ASSERT_LT(round(rotated[8]), 0.0f);
+
+  const float logit = c.scale * round(rotated[8]) * 32768.0f;
+  c.expected_output.assign(16, 1.0f / (1.0f + std::exp(-logit)));
+  c.expected_present_key = c.past_key;
+  for (int d = 0; d < 16; ++d) {
+    c.expected_present_key[32 + d] = kInt8Cache ? std::nearbyint(rotated[d] / c.key_scale[d]) : round(rotated[d]);
+  }
+  c.expected_present_value = c.past_value;
+  // Relative tolerance: tight enough to tell -2^-15 from 0 in the key and sigmoid(-1) from 0.5 in the output.
+  c.output_abs_tolerance = 0.0f;
+  c.output_rel_tolerance = 0x1p-6f;
+  RunDynamicSparseAttentionCase<T, CacheT>(c, DefaultCudaExecutionProvider());
+}
+
+TEST(DynamicSparseAttentionTest, QkNormRotaryRoundsOnce_CUDA) {
+  if (!DefaultCudaExecutionProvider()) GTEST_SKIP() << "CUDA EP not available.";
+  RunQkNormRotaryRoundsOnceCase<MLFloat16>();
+  RunQkNormRotaryRoundsOnceCase<MLFloat16, int8_t>();
+  if (CudaHasBF16Support()) {
+    RunQkNormRotaryRoundsOnceCase<BFloat16>();
+    RunQkNormRotaryRoundsOnceCase<BFloat16, int8_t>();
+  }
 }
 
 TEST(DynamicSparseAttentionTest, PartialHalfSplitRotary_CUDA) {
@@ -3362,6 +3881,20 @@ TEST(DynamicSparseAttentionTest, FloatingCachePrefillMisalignedBuffers_CUDA) {
 #endif  // USE_CUDA
 
 #ifdef USE_WEBGPU
+
+TEST(DynamicSparseAttentionTest, RejectsMixedFloatingPointTypes_WebGPU) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU EP not available.";
+  }
+  const auto c = MakeSingleTokenSelectedValueCase();
+  RunDynamicSparseAttentionCase<float, MLFloat16, MLFloat16>(
+      c, std::move(webgpu_ep), OpTester::ExpectResult::kExpectFailure,
+      "WebGPU floating-point input types must match the query");
+  RunDynamicSparseAttentionCase<MLFloat16, float, float>(
+      c, DefaultWebGpuExecutionProvider(), OpTester::ExpectResult::kExpectFailure,
+      "WebGPU floating-point input types must match the query");
+}
 
 TEST(DynamicSparseAttentionTest, RejectsCudaValidationOptions_WebGPU) {
   for (bool committed : {false, true}) {

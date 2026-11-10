@@ -1810,6 +1810,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   Auxiliary K/V use BNSH layout and are read-only. When `auxiliary_kv_shared=1`, auxiliary_value may be omitted and
   auxiliary_key is used as both K and V. DeepSeek-style post-attention inverse/conjugate RoPE and output projection remain
   the exporter's responsibility.
+  WebGPU requires all floating-point inputs and caches to have the same type as query.
   
   Main caches may instead use INT8 with positive finite float32 key_scale and value_scale vectors, one scale per
   KV-head channel. The cache is symmetric signed int8 without a zero point, like the 8-bit KV cache of GroupQueryAttention
@@ -1840,6 +1841,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Number of causally visible main-cache entries in local_plus_selected mode.</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of query heads.</dd>
+<dt><tt>output_bf16</tt> : int</dt>
+<dd>Output in bfloat16 (1) when query, key, and value are float16.</dd>
 <dt><tt>qk_norm_epsilon</tt> : float</dt>
 <dd>Epsilon for optional per-head Q/K RMS normalization.</dd>
 <dt><tt>rotary_interleaved</tt> : int</dt>
@@ -1857,14 +1860,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Inputs (11 - 20)
 
 <dl>
-<dt><tt>query</tt> : T</dt>
+<dt><tt>query</tt> : TQuery</dt>
 <dd>Query [batch, sequence, num_heads * head_size]. When key and value are omitted, each row contains Q, K, then V concatenated with total width (num_heads + 2 * kv_num_heads) * head_size.</dd>
-<dt><tt>key</tt> (optional) : T</dt>
+<dt><tt>key</tt> (optional) : TQuery</dt>
 <dd>Current main key [batch, sequence, kv_num_heads * head_size].</dd>
-<dt><tt>value</tt> (optional) : T</dt>
+<dt><tt>value</tt> (optional) : TValue</dt>
 <dd>Current main value [batch, sequence, kv_num_heads * head_size].</dd>
 <dt><tt>past_key</tt> (optional) : TCache</dt>
-<dd>Main key cache in BNSH layout, same type as query or INT8.</dd>
+<dd>Main key cache in BNSH layout, same type as query, FP16, or INT8.</dd>
 <dt><tt>past_value</tt> (optional) : TCache</dt>
 <dd>Main value cache in BNSH layout, same type as past_key.</dd>
 <dt><tt>auxiliary_key</tt> (optional) : T</dt>
@@ -1916,9 +1919,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
-<dd>Constrain all floating-point inputs and outputs to one element type.</dd>
+<dd>Constrain auxiliary, rotary, normalization, sink, and output tensors to one element type.</dd>
+<dt><tt>TQuery</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Query and key type must match T or TCache.</dd>
+<dt><tt>TValue</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Value type must match T or TCache.</dd>
 <dt><tt>TCache</tt> : tensor(float), tensor(float16), tensor(bfloat16), tensor(int8)</dt>
-<dd>Cache type must match T unless INT8 per-channel scales are supplied.</dd>
+<dd>Cache type must match T, be FP16, or use INT8 per-channel scales.</dd>
 <dt><tt>S</tt> : tensor(float)</dt>
 <dd>INT8 cache scales use float32.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
@@ -7484,7 +7491,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.RMSNormRotary"></a><a name="com.microsoft.rmsnormrotary">**com.microsoft.RMSNormRotary**</a>
 
-  CUDA BF16 ONNX-arithmetic RMS normalization followed by non-interleaved partial RoPE. Input is [B,S,heads,stride]; a contiguous last-axis slice is normalized with FP32 scale. Normalization rounds to BF16 before rotation. Output is flattened [B,S,heads*width]. Width 256 and more than one row use one kernel for FP32 decode rotary or prefill; other shapes and BF16 decode rotary reuse existing CUDA kernels. Prefill mode uses reciprocal-multiply normalization and BF16 rotary intermediates; decode uses division normalization and the selected rotary arithmetic.
+  CUDA RMS normalization followed by non-interleaved partial RoPE. Input is BF16 or FP16 [B,S,heads,stride]; a contiguous last-axis slice is normalized with FP32 scale. FP16 input/output or FP32 rotary caches use FP32 intermediates without BF16 rounding before rotation. Otherwise normalization rounds to BF16 before rotation: prefill mode uses reciprocal-multiply normalization and BF16 rotary intermediates, while decode uses division normalization and the selected rotary arithmetic. Numerical mode controls do not change the FP32-intermediate path. Output defaults to BF16 and is flattened [B,S,heads*width].
 
 #### Version
 
@@ -7501,6 +7508,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Nonnegative start of normalized last-axis slice.</dd>
 <dt><tt>input_width</tt> : int</dt>
 <dd>Normalized width; zero uses the full last dimension.</dd>
+<dt><tt>output_fp16</tt> : int</dt>
+<dd>Output Y in float16 (1) instead of bfloat16 (0).</dd>
 <dt><tt>rotary_embedding_dim</tt> : int (required)</dt>
 <dd>Positive even rotary width, no larger than normalized width.</dd>
 <dt><tt>use_fp32_arithmetic</tt> : int</dt>
@@ -7511,14 +7520,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>X</tt> : T</dt>
-<dd>BF16 input [B,S,heads,stride].</dd>
+<dd>BF16 or FP16 input [B,S,heads,stride].</dd>
 <dt><tt>scale</tt> : F</dt>
 <dd>FP32 RMS scale [width].</dd>
 <dt><tt>position_ids</tt> : I</dt>
 <dd>One base position or [B,S] positions.</dd>
-<dt><tt>cosine</tt> : T</dt>
-<dd>BF16 cache [cache_rows,rotary_embedding_dim/2].</dd>
-<dt><tt>sine</tt> : T</dt>
+<dt><tt>cosine</tt> : TCos</dt>
+<dd>BF16 or FP32 cache [cache_rows,rotary_embedding_dim/2].</dd>
+<dt><tt>sine</tt> : TCos</dt>
 <dd>Same shape/type as cosine.</dd>
 <dt><tt>prefill_numerics</tt> (optional) : TI</dt>
 <dd>Optional CPU int32 scalar 0/1.</dd>
@@ -7527,17 +7536,21 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Outputs (1 - 2)
 
 <dl>
-<dt><tt>Y</tt> : T</dt>
+<dt><tt>Y</tt> : TOut</dt>
 <dd>Normalized and rotated [B,S,heads*width].</dd>
 <dt><tt>normalized_fp32</tt> (optional) : F</dt>
-<dd>Optional BF16-rounded normalized values widened to FP32, before rotation, [B,S,heads,width].</dd>
+<dd>Optional normalized values before rotation, [B,S,heads,width]. The FP32-intermediate path retains FP32 values; the BF16 path widens BF16-rounded values to FP32.</dd>
 </dl>
 
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(bfloat16)</dt>
-<dd>BF16 data.</dd>
+<dt><tt>T</tt> : tensor(bfloat16), tensor(float16)</dt>
+<dd>BF16 or FP16 data.</dd>
+<dt><tt>TCos</tt> : tensor(bfloat16), tensor(float)</dt>
+<dd>BF16 or FP32 rotary cache.</dd>
+<dt><tt>TOut</tt> : tensor(bfloat16), tensor(float16)</dt>
+<dd>BF16 or FP16 output.</dd>
 <dt><tt>F</tt> : tensor(float)</dt>
 <dd>FP32 scale and optional normalized output.</dd>
 <dt><tt>I</tt> : tensor(int64)</dt>

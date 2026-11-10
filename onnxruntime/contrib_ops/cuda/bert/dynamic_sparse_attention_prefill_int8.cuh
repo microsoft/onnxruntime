@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 //
 // INT8-cache variant of the tensor-core prefill kernel of DynamicSparseAttention (selected_only, main KV source,
-// bfloat16 query / output, head_size 256). One CTA handles one (query row, KV head); the heads of the GQA group form
-// the M dimension of an m16n8k16 MMA (padded to 16).
+// bfloat16 or float16 query, bfloat16 output, head_size 256). One CTA handles one (query row, KV head); the heads of
+// the GQA group form the M dimension of an m16n8k16 MMA (padded to 16).
 //
 // The same body also serves decode (kSplitK = true): the grid gets a third dimension, each CTA consumes a contiguous
 // range of the row's 64-candidate tiles and writes an un-normalized partial result (running maximum in the natural
@@ -83,7 +83,8 @@ constexpr float kInt8TcTailDepth = 20.0f;         // nats; 2^-29 is 20.1
 
 // Largest softmax scale served by the kernel below (the op validates it as finite and non-negative). The error
 // bound on Q * key_scale rounded to fp16 grows linearly with it, so a larger scale would send ordinary data to the
-// fp32 fallback; the dispatcher uses the BF16-dequantizing prefill / CUDA-core decode kernels for it instead.
+// fp32 fallback; the dispatcher uses the BF16-dequantizing prefill (the generic kernels for float16 queries, which it
+// would round) / CUDA-core decode kernels for it instead.
 constexpr float kInt8TcMaxScale = 1.0f;
 
 // Largest bound on the change of a logit caused by rounding Q * key_scale to fp16 that the tensor-core path accepts:
@@ -187,7 +188,8 @@ __device__ __noinline__ void AttendRowFp32(const __nv_bfloat16* __restrict__ que
                                            int query_position, float scale, int group,
                                            __nv_bfloat16* __restrict__ output, float* __restrict__ partial_max,
                                            float* __restrict__ partial_sum, float* __restrict__ partial_output,
-                                           int partial_block, int split_count, int warp, int lane) {
+                                           int partial_block, int split_count, int warp, int lane,
+                                           bool query_fp16 = false) {
   float ks[8];
   float vs[8];
 #pragma unroll
@@ -195,11 +197,13 @@ __device__ __noinline__ void AttendRowFp32(const __nv_bfloat16* __restrict__ que
     ks[j] = key_scale[lane + j * 32];
     vs[j] = value_scale[lane + j * 32];
   }
+  const __half* query_h = reinterpret_cast<const __half*>(query);
   for (int h = warp; h < group; h += kThreads / 32) {
     float q[8];
 #pragma unroll
     for (int j = 0; j < 8; ++j) {
-      q[j] = __bfloat162float(query[static_cast<int64_t>(h) * kHeadDim + lane + j * 32]);
+      const int64_t q_idx = static_cast<int64_t>(h) * kHeadDim + lane + j * 32;
+      q[j] = query_fp16 ? __half2float(query_h[q_idx]) : __bfloat162float(query[q_idx]);
     }
     float numerator[8] = {};
     float maximum = -FLT_MAX;
@@ -285,7 +289,8 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
     int max_selected,
     float scale,
     const float* __restrict__ key_scale,
-    const float* __restrict__ value_scale) {
+    const float* __restrict__ value_scale,
+    bool query_fp16 = false) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
   extern __shared__ __align__(16) unsigned char smem_raw[];
   constexpr int kKVStages = kTwoBufferSmem ? 1 : 2;
@@ -375,10 +380,14 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
       if (r < group) {
         rounding_error = 0.0f;
         const uint4 q = *reinterpret_cast<const uint4*>(query_group + static_cast<int64_t>(r) * kHeadDim + chunk * 8);
-        const float2 q01 = __bfloat1622float2(*reinterpret_cast<const __nv_bfloat162*>(&q.x));
-        const float2 q23 = __bfloat1622float2(*reinterpret_cast<const __nv_bfloat162*>(&q.y));
-        const float2 q45 = __bfloat1622float2(*reinterpret_cast<const __nv_bfloat162*>(&q.z));
-        const float2 q67 = __bfloat1622float2(*reinterpret_cast<const __nv_bfloat162*>(&q.w));
+        const float2 q01 = query_fp16 ? __half22float2(*reinterpret_cast<const __half2*>(&q.x))
+                                      : __bfloat1622float2(*reinterpret_cast<const __nv_bfloat162*>(&q.x));
+        const float2 q23 = query_fp16 ? __half22float2(*reinterpret_cast<const __half2*>(&q.y))
+                                      : __bfloat1622float2(*reinterpret_cast<const __nv_bfloat162*>(&q.y));
+        const float2 q45 = query_fp16 ? __half22float2(*reinterpret_cast<const __half2*>(&q.z))
+                                      : __bfloat1622float2(*reinterpret_cast<const __nv_bfloat162*>(&q.z));
+        const float2 q67 = query_fp16 ? __half22float2(*reinterpret_cast<const __half2*>(&q.w))
+                                      : __bfloat1622float2(*reinterpret_cast<const __nv_bfloat162*>(&q.w));
         const __half2 h01 = to_half2(q01.x * k0.x, q01.y * k0.y);
         const __half2 h23 = to_half2(q23.x * k0.z, q23.y * k0.w);
         const __half2 h45 = to_half2(q45.x * k1.x, q45.y * k1.y);
@@ -407,12 +416,12 @@ __global__ void __launch_bounds__(kThreads, 3) DynamicSparseAttentionInt8TcKerne
       AttendRowFp32<true>(query_group, key_base, value_base, kv_key_scale, kv_value_scale, row_indices,
                           tile_begin * kTile, min(count, (tile_begin + tiles) * kTile), total, query_position, scale,
                           group, nullptr, partial_max, partial_sum, partial_output, partial_block, split_count, warp,
-                          lane);
+                          lane, query_fp16);
     } else {
       AttendRowFp32<false>(query_group, key_base, value_base, kv_key_scale, kv_value_scale, row_indices, 0, count,
                            total, query_position, scale, group,
                            output + (static_cast<int64_t>(row) * num_heads + kv_head * group) * kHeadDim, nullptr,
-                           nullptr, nullptr, 0, 1, warp, lane);
+                           nullptr, nullptr, 0, 1, warp, lane, query_fp16);
     }
   };
   if (__syncthreads_or(needs_fp32)) {
