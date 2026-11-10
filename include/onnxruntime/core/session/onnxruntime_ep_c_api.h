@@ -473,6 +473,8 @@ typedef struct OrtEpProfilerImpl OrtEpProfilerImpl;
  *    - Concurrency notes: each OrtEpProfilerImpl only receives calls for its specific run.
  *      OrtEpProfilerImpl::EndProfiling must only return EP events for its specific run.
  *
+ * Some callbacks are optional. Pointers to unimplemented callbacks must be set to NULL.
+ *
  * \since Version 1.25.
  */
 struct OrtEpProfilerImpl {
@@ -725,6 +727,9 @@ typedef struct OrtKernelImpl OrtKernelImpl;
 
 /**
  * \brief Contains functions that an OrtEp implements to specify the computation for an operator kernel.
+ *
+ * Some callbacks are optional. Pointers to unimplemented callbacks must be set to NULL.
+ *
  * \since Version 1.24.
  */
 struct OrtKernelImpl {
@@ -2215,6 +2220,9 @@ typedef enum OrtWeightlessSupport {
 
 /**
  * \brief The OrtEp struct provides functions to implement for an execution provider.
+ *
+ * Some callbacks are optional. Pointers to unimplemented callbacks must be set to NULL.
+ *
  * \since Version 1.22.
  */
 struct OrtEp {
@@ -2291,6 +2299,12 @@ struct OrtEp {
    * \note Do NOT cache the provided OrtGraph instances in any of the OrtNodeComputeInfo functions because the
    *       graphs are only valid for the duration of the call to Compile. Any graph/node/input/output
    *       names that are needed by the OrtNodeComputeInfo functions must be copied and stored by the OrtEp.
+   *
+   * \note Initializer data in the provided graphs, whether obtained via OrtApi::ValueInfo_GetInitializerValue or
+   *       received as a kernel input at compute time, is read-only. The EP must not modify it, including when passing
+   *       it to an underlying runtime or library without copying. Applications may supply this memory and, if they
+   *       still own it, reuse it after the session is released or compilation fails. Refer to
+   *       OrtModelEditorApi::AddInitializerToGraph.
    *
    * \note As of version 1.24, implementation of this function is optional if the EP does not compile nodes and
    *       uses a kernel registry instead.
@@ -2844,7 +2858,7 @@ typedef OrtStatus* (*ReleaseEpApiFactoryFn)(_In_ OrtEpFactory* factory);
  * This structure has a fixed layout and must not be extended. A future revision must add a new descriptor type and
  * callback so that an older runtime can always determine the array stride safely.
  *
- * \since Version 1.30.
+ * \since Version 1.32.
  */
 typedef struct OrtEpOperatorCompatibilityInfo {
   const char* domain;
@@ -2855,6 +2869,8 @@ typedef struct OrtEpOperatorCompatibilityInfo {
 
 /**
  * \brief The OrtEpFactory provides functions to create and manage execution providers.
+ *
+ * Some callbacks are optional. Pointers to unimplemented callbacks must be set to NULL.
  *
  * Implementations must zero-initialize the entire structure before assigning supported fields. This keeps optional
  * function pointers, including fields appended by newer API versions, null unless the implementation provides them.
@@ -3331,6 +3347,39 @@ struct OrtEpFactory {
                   _In_opt_ const OrtSessionOptions* session_options,
                   _Out_ size_t* selected_index);
 
+  /** \brief Get the current device memory capacity for an OrtEpDevice.
+   *
+   * This function is optional. Implementations must query the device when called because available
+   * memory is dynamic. If the query is unsupported, leave this callback null or return ORT_NOT_IMPLEMENTED.
+   * Either output may be null, but at least one will be non-null. Query only the requested values;
+   * total-only queries should avoid initializing resources needed solely to query available memory.
+   * Report capacity only for the selected memory type, without aggregating memory types. Return
+   * ORT_NOT_IMPLEMENTED for memory types whose capacity cannot be queried by this provider.
+   * Total memory must be the device-global capacity exposed for this device, not a per-process or
+   * per-context allocation budget. For partitioned or virtual devices, report the exposed device's
+   * capacity, not the entire physical board's capacity. Available memory is a current free-memory
+   * estimate, not a reservation or an allocation guarantee; allocator caches and process limits may
+   * further constrain allocations. Implementations must preserve the calling thread's current device
+   * context if they temporarily switch contexts to perform the query. If driver errors prevent full
+   * restoration, implementations must attempt recovery and return an error; see
+   * OrtApi::EpDevice_GetMemoryCapacity for CUDA's recovery limitations.
+   * On failure, output values must not be modified.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[in] ep_device The OrtEpDevice instance to query.
+   * \param[in] memory_type The memory type to query: DEFAULT or HOST_ACCESSIBLE.
+   * \param[out] total_memory_bytes The device-global memory capacity in bytes, or null to omit.
+   * \param[out] available_memory_bytes The current free device memory estimate in bytes, or null to omit.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(GetDeviceMemoryCapacity, _In_ OrtEpFactory* this_ptr,
+                  _In_ const OrtEpDevice* ep_device,
+                  _In_ OrtDeviceMemoryType memory_type,
+                  _Out_opt_ uint64_t* total_memory_bytes, _Out_opt_ uint64_t* available_memory_bytes);
+
   /** \brief Get the operator-schema contracts this factory was built against.
    *
    * The callback reports contracts understood by the plugin, not necessarily operators enabled by a particular
@@ -3341,7 +3390,7 @@ struct OrtEpFactory {
    * Duplicate `(domain, op_type, since_version)` entries are invalid. On success, an implementation with no entries
    * sets `entries` to NULL and `num_entries` to zero.
    *
-   * This function is optional. A runtime uses it only when `ort_version_supported` is at least 30 and the function
+   * This function is optional. A runtime uses it only when `ort_version_supported` is at least 32 and the function
    * pointer is non-null.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
@@ -3350,7 +3399,7 @@ struct OrtEpFactory {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.30.
+   * \since Version 1.32.
    */
   ORT_API2_STATUS(GetOperatorCompatibilityInfo, _In_ OrtEpFactory* this_ptr,
                   _Outptr_ const OrtEpOperatorCompatibilityInfo** entries,

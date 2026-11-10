@@ -41,8 +41,7 @@ std::string TritonOpExecutor::GetConfigJson() {
 }
 
 void TritonOpExecutor::ExecuteByOnnx(int64_t onnx_key, const std::string& onnx_string,
-                                     const InlinedVector<const OrtValue*>& inputs, InlinedVector<OrtValue>& outputs,
-                                     const InlinedHashSet<size_t>& bool_outputs) {
+                                     const InlinedVector<const OrtValue*>& inputs, InlinedVector<OrtValue>& outputs) {
   ORT_ENFORCE(IsInitialized());
   // Python-related calls should happen only if guard is alive.
   GilGuard guard;
@@ -67,16 +66,15 @@ void TritonOpExecutor::ExecuteByOnnx(int64_t onnx_key, const std::string& onnx_s
   ORT_ENFORCE(ret.get() != Py_None);
   if (PyTuple_Check(ret.get())) {
     for (size_t i = 0; i < static_cast<size_t>(PyTuple_Size(ret.get())); ++i) {
-      outputs.emplace_back(torch::FromDlpack(PyTuple_GetItem(ret.get(), static_cast<Py_ssize_t>(i)),
-                                             bool_outputs.find(i) != bool_outputs.end()));
+      outputs.emplace_back(torch::FromDlpack(PyTuple_GetItem(ret.get(), static_cast<Py_ssize_t>(i))));
     }
   } else {
-    outputs.emplace_back(torch::FromDlpack(ret.get(), bool_outputs.find(0) != bool_outputs.end()));
+    outputs.emplace_back(torch::FromDlpack(ret.get()));
   }
 }
 
 void TritonOpExecutor::ExecuteByFuncName(const std::string& func_name, const InlinedVector<const OrtValue*>& inputs,
-                                         InlinedVector<OrtValue>& outputs, const InlinedHashSet<size_t>& bool_outputs,
+                                         InlinedVector<OrtValue>& outputs,
                                          const InlinedHashMap<std::string, std::pair<std::string, int>>& kwargs) {
   ORT_ENFORCE(IsInitialized());
   // Python-related calls should happen only if guard is alive.
@@ -120,11 +118,10 @@ void TritonOpExecutor::ExecuteByFuncName(const std::string& func_name, const Inl
   if (ret.get() == Py_None) return;
   if (PyTuple_Check(ret.get())) {
     for (size_t i = 0; i < static_cast<size_t>(PyTuple_Size(ret.get())); ++i) {
-      outputs.emplace_back(torch::FromDlpack(PyTuple_GetItem(ret.get(), static_cast<Py_ssize_t>(i)),
-                                             bool_outputs.find(i) != bool_outputs.end()));
+      outputs.emplace_back(torch::FromDlpack(PyTuple_GetItem(ret.get(), static_cast<Py_ssize_t>(i))));
     }
   } else {
-    outputs.emplace_back(torch::FromDlpack(ret.get(), bool_outputs.find(0) != bool_outputs.end()));
+    outputs.emplace_back(torch::FromDlpack(ret.get()));
   }
 }
 

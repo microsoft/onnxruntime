@@ -3,6 +3,7 @@
 
 #include "core/optimizer/group_query_attention_pre_norm_fusion.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <string>
@@ -18,7 +19,6 @@ namespace onnxruntime {
 namespace {
 
 constexpr const char* kQkNormEpsilonAttrName = "qk_norm_epsilon";
-constexpr float kEpsilonTolerance = 1e-9f;
 
 bool HasInput(const Node& node, size_t index) {
   return index < node.InputDefs().size() && node.InputDefs()[index] != nullptr &&
@@ -297,10 +297,6 @@ Status GroupQueryAttentionPreNormFusion::ApplyImpl(Graph& graph,
       continue;
     }
 
-    if (std::fabs(q_epsilon - k_epsilon) > kEpsilonTolerance) {
-      continue;
-    }
-
     if (node_kernel_support_checker_ && !node_kernel_support_checker_(node, logger)) {
       LOGS(logger, VERBOSE) << "GroupQueryAttentionPreNormFusion skipped node '" << node.Name()
                             << "' because its assigned EP has no compatible GroupQueryAttention kernel";
@@ -311,14 +307,16 @@ Status GroupQueryAttentionPreNormFusion::ApplyImpl(Graph& graph,
                           << "' q_sln='" << q_sln->Name() << "' k_sln='" << k_sln->Name()
                           << "' head_size=" << head_size
                           << " num_heads=" << num_heads << " kv_num_heads=" << kv_num_heads
-                          << " epsilon=" << q_epsilon;
+                          << " q_epsilon=" << q_epsilon << " k_epsilon=" << k_epsilon;
 
     // Build new GQA inputs: copy existing inputs, replace 0/1 with projection outputs,
-    // pad up to slot 13 with empty NodeArgs, then add q/k norm weights at 14/15.
+    // pad up to slot 13 with empty NodeArgs, then add q/k norm weights at 14/15. Inputs past 15
+    // (for example query_seqlens at 16) are carried over unchanged.
     NodeArg& empty_arg = graph.GetOrCreateNodeArg("", nullptr);
     InlinedVector<NodeArg*> new_inputs;
-    new_inputs.reserve(16);
-    for (size_t i = 0; i < 16; ++i) {
+    const size_t new_input_count = std::max<size_t>(16, node.InputDefs().size());
+    new_inputs.reserve(new_input_count);
+    for (size_t i = 0; i < new_input_count; ++i) {
       if (i == 0) {
         new_inputs.push_back(q_projection_arg);
       } else if (i == 1) {
@@ -342,9 +340,15 @@ Status GroupQueryAttentionPreNormFusion::ApplyImpl(Graph& graph,
       new_outputs.push_back(const_cast<NodeArg*>(out));
     }
 
-    // Copy attributes and add qk_norm_epsilon.
+    // Preserve the shared attribute for equal epsilons and override each side when they differ.
     NodeAttributes new_attrs = node.GetAttributes();
     utils::SetNodeAttribute(utils::MakeAttribute(std::string(kQkNormEpsilonAttrName), q_epsilon), new_attrs);
+    new_attrs.erase("q_norm_epsilon");
+    new_attrs.erase("k_norm_epsilon");
+    if (q_epsilon != k_epsilon) {
+      utils::SetNodeAttribute(utils::MakeAttribute("q_norm_epsilon", q_epsilon), new_attrs);
+      utils::SetNodeAttribute(utils::MakeAttribute("k_norm_epsilon", k_epsilon), new_attrs);
+    }
 
     const std::string original_name = node.Name();
     const std::string original_ep = node.GetExecutionProviderType();

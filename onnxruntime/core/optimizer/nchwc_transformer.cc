@@ -120,7 +120,7 @@ class NchwcTransformerImpl {
                               const NchwcArgument::Shape& input_shape,
                               NchwcArgument::Shape& output_shape,
                               const ONNX_NAMESPACE::TensorProto* filter_shape);
-  Node& InsertReshape(NodeArg* input_arg, NodeArg* output_arg, bool split_channels);
+  Node& InsertReshape(NodeArg* input_arg, NodeArg* output_arg, int64_t channels, bool split_channels);
 
   void TransformConv(Node& node);
   void TransformPool(Node& node);
@@ -163,9 +163,9 @@ class NchwcTransformerImpl {
   InlinedHashMap<NodeArg*, NodeArg*> aligned_biases_;
 
   // Stores the shape initializers for Reshape to split or unsplit the channels
-  // dimension of a tensor.
-  NodeArg* reshape_split_arg_{nullptr};
-  NodeArg* reshape_unsplit_arg_{nullptr};
+  // dimension of a tensor, keyed by the NCHWc channel count.
+  InlinedHashMap<int64_t, NodeArg*> reshape_split_args_;
+  InlinedHashMap<int64_t, NodeArg*> reshape_unsplit_args_;
 
   // Tracks the last Transpose node and output NodeArg that transposed from
   // NHWC to NCHW format.
@@ -620,21 +620,24 @@ void NchwcTransformerImpl::TransformPool(Node& node) {
 
 Node& NchwcTransformerImpl::InsertReshape(NodeArg* input_arg,
                                           NodeArg* output_arg,
+                                          int64_t channels,
                                           bool split_channels) {
-  auto& shape_arg = split_channels ? reshape_split_arg_ : reshape_unsplit_arg_;
+  const int64_t nchwc_block_size = static_cast<int64_t>(MlasNchwcGetBlockSize());
+  const int64_t nchwc_channels = (channels + nchwc_block_size - 1) & ~(nchwc_block_size - 1);
+  auto& shape_arg = (split_channels ? reshape_split_args_ : reshape_unsplit_args_)[nchwc_channels];
   if (shape_arg == nullptr) {
     ONNX_NAMESPACE::TensorProto shape_tensor_proto;
     shape_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
     shape_tensor_proto.set_name(graph_.GenerateNodeArgName("Reshape"));
-    // Passthrough the batch and spatial dimensions. Compute the channel count based
-    // on the remaining tensor size and whether this is a split or unsplit.
+    // Passthrough the batch and spatial dimensions. The channel count is explicit instead
+    // of inferred (-1) because the tensor can be empty, and then it cannot be inferred.
     shape_tensor_proto.add_int64_data(0);
-    shape_tensor_proto.add_int64_data(-1);
+    shape_tensor_proto.add_int64_data(split_channels ? nchwc_channels / nchwc_block_size : nchwc_channels);
     for (int i = 0; i < kNchwcSpatialDims; i++) {
       shape_tensor_proto.add_int64_data(0);
     }
     if (split_channels) {
-      shape_tensor_proto.add_int64_data(static_cast<int64_t>(MlasNchwcGetBlockSize()));
+      shape_tensor_proto.add_int64_data(nchwc_block_size);
     }
     shape_tensor_proto.add_dims(split_channels ? kNchwcDims + 1 : kNchwcDims);
 
@@ -782,7 +785,7 @@ void NchwcTransformerImpl::TransformBinary(Node& node, bool add_node) {
     for (size_t n = 0; n < input_defs_count; n++) {
       std::string reshape_input_def_name = graph_.GenerateNodeArgName("reshape");
       auto* reshape_input_arg = &graph_.GetOrCreateNodeArg(reshape_input_def_name, nullptr);
-      InsertReshape(nchwc_inputs[n]->nchwc_arg_, reshape_input_arg, true);
+      InsertReshape(nchwc_inputs[n]->nchwc_arg_, reshape_input_arg, channels, true);
 
       input_defs[n] = reshape_input_arg;
       nchwc_inputs[n]->remaining_original_uses_--;
@@ -790,7 +793,7 @@ void NchwcTransformerImpl::TransformBinary(Node& node, bool add_node) {
 
     std::string output_reshaped_def_name = graph_.GenerateNodeArgName("reshape");
     auto* output_reshaped_arg = &graph_.GetOrCreateNodeArg(output_reshaped_def_name, nullptr);
-    Node& nchwc_node = InsertReshape(output_reshaped_arg, output_defs[0], false);
+    Node& nchwc_node = InsertReshape(output_reshaped_arg, output_defs[0], channels, false);
 
     NchwcArgument::Shape output_shape(output_defs[0]);
 

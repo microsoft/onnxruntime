@@ -5,6 +5,7 @@
 #include "test/providers/provider_test_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/platform/path_lib.h"
+#include "core/providers/cpu/ml/tree_ensemble_common.h"
 
 namespace onnxruntime {
 namespace test {
@@ -43,6 +44,50 @@ static ONNX_NAMESPACE::TensorProto make_tensor(std::vector<uint8_t> array, std::
   }
 
   return array_as_tensor;
+}
+
+template <typename ThresholdType>
+void TestCategorySetIdValidation() {
+  EXPECT_EQ(ml::detail::ValidateCategorySetId(ThresholdType{0}, 2), 0U);
+  EXPECT_EQ(ml::detail::ValidateCategorySetId(ThresholdType{1}, 2), 1U);
+
+#if !defined(ORT_NO_EXCEPTIONS)
+  for (ThresholdType invalid_id : {
+           ThresholdType{-1},
+           ThresholdType{0.5},
+           ThresholdType{2},
+           std::numeric_limits<ThresholdType>::infinity(),
+           std::numeric_limits<ThresholdType>::quiet_NaN(),
+       }) {
+    EXPECT_THROW(ml::detail::ValidateCategorySetId(invalid_id, 2), OnnxRuntimeException);
+  }
+
+  const ThresholdType size_t_limit =
+      std::ldexp(ThresholdType{1}, std::numeric_limits<size_t>::digits);
+  EXPECT_THROW(
+      ml::detail::ValidateCategorySetId(size_t_limit, std::numeric_limits<size_t>::max()),
+      OnnxRuntimeException);
+#endif
+}
+
+TEST(TreeEnsembleCommonTest, ValidatesFloatCategorySetIds) {
+  TestCategorySetIdValidation<float>();
+}
+
+TEST(TreeEnsembleCommonTest, ValidatesDoubleCategorySetIds) {
+  TestCategorySetIdValidation<double>();
+}
+
+TEST(TreeEnsembleCommonTest, FloatCategorySetCountDoesNotRoundDown) {
+  constexpr size_t category_set_count = 16'777'217;
+  constexpr float last_category_set_id = 16'777'216.0f;
+  EXPECT_EQ(ml::detail::ValidateCategorySetId(last_category_set_id, category_set_count),
+            category_set_count - 1);
+#if !defined(ORT_NO_EXCEPTIONS)
+  EXPECT_THROW(
+      ml::detail::ValidateCategorySetId(last_category_set_id, category_set_count - 1),
+      OnnxRuntimeException);
+#endif
 }
 
 template <typename T>

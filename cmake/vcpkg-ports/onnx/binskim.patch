@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 6f1d56949..7e6331dec 100644
+index 6f1d56949..8a2b78c97 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -53,6 +53,7 @@ option(ONNX_DISABLE_EXCEPTIONS "Disable exception handling." OFF)
@@ -10,7 +10,19 @@ index 6f1d56949..7e6331dec 100644
  option(ONNX_INSTALL "Install ONNX targets, headers, and CMake config files" ON)
  if(WIN32)
    option(ONNX_USE_MSVC_STATIC_RUNTIME "Build with MSVC static runtime. Ignored if CMAKE_MSVC_RUNTIME_LIBRARY is defined." OFF)
-@@ -562,7 +563,23 @@ add_dependencies(onnx_proto onnx_proto_headers)
+@@ -135,7 +136,10 @@ if(ONNX_DISABLE_EXCEPTIONS)
+     string(REGEX REPLACE "/EHsc" "/EHs-c-" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+     add_definitions(-D_HAS_EXCEPTIONS=0)
+   else()
+-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables")
++    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions")
++    if(ONNX_MINIMAL_BUILD)
++      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-unwind-tables -fno-asynchronous-unwind-tables")
++    endif()
+   endif()
+ endif()
+ 
+@@ -562,7 +566,23 @@ add_dependencies(onnx_proto onnx_proto_headers)
  # Core library. Hand-written sources come from target_sources(onnx ...) in the
  # subdirectories; the protobuf objects are pulled in from onnx_proto.
  add_library(onnx $<TARGET_OBJECTS:onnx_proto>)
