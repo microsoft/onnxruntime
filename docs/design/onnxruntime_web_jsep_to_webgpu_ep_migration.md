@@ -24,7 +24,8 @@ implementation plan behind it.
   bundles.
 
 This document proposes removing JSEP and standardizing on the native WebGPU EP. The default bundle keeps the
-`webgpu` backend key and swaps implementation at build time, so the change is transparent for existing code. WebNN
+`webgpu` backend key and public API while swapping implementation at build time; equivalent operator/type coverage
+and model compatibility have not been established. WebNN
 is unaffected: it is already the native C++ WebNN EP in both builds (both link `--use_webnn`; `session-options.ts`
 selects the `WEBNN` EP either way). Removing JSEP only drops the shared JS init glue (`jsepInit('webnn', …)` →
 `webnnInit(…)`, same `WebNNBackend`), not the WebNN EP itself.
@@ -60,7 +61,7 @@ and decisions.
 | Phase 0: deprecation announcement and contribution freeze | Done | |
 | Phase 0: blocking native-WebGPU baseline CI | Done | |
 | Phase 0: native-WebGPU IO-binding and proxy CI | Done ([#33842](https://github.com/microsoft/onnxruntime/pull/33842)) | |
-| Phase 0: build configuration parity (§7) | In progress | A/B/C measurements and focused browser validation are complete. Add full native Asyncify artifacts for the default and `/all`, preserving the reduced `/webgpu` and `/jspi` artifacts; validate build, loader, packaging, and CI selection in a separate PR. |
+| Phase 0: build configuration parity (§7) | In progress | A/B/C binary-size measurements and selected CPU/WASM compatibility checks are complete, not equivalent-coverage validation. Add full native Asyncify artifacts for the default and `/all`, preserving the reduced `/webgpu` and `/jspi` artifacts; validate build, loader, packaging, and CI selection in a separate PR. |
 | Phase 0: GPU IO-binding parity (§8.2) | Planned | Establish zero-copy handoff and lifetime guarantees beyond correctness-suite coverage. |
 | Phase 0: WebNN initialization coverage (§8.3) | Planned | Add and validate blocking coverage in a WebNN-capable browser environment. |
 | Phase 0: deprecated WebGPU settings (§8.4) | In progress | Validate and merge initialization cleanup, custom-device coverage, and JSEP-only settings guidance. |
@@ -185,7 +186,7 @@ flipping the default from `.jsep.wasm` to `.asyncify.wasm` *as currently built* 
 type surface for CPU inference — a much broader change than swapping the WebGPU implementation, and one that fails
 at load time rather than falling back.
 
-Three builds settle it:
+Compare three build configurations:
 
 | Build | Artifact | Reduced-size args |
 |---|---|---|
@@ -193,8 +194,9 @@ Three builds settle it:
 | B | `.asyncify.wasm` | yes — today's `/webgpu` bundle |
 | C | `.asyncify.wasm` | no |
 
-`C − B` is the download cost of restoring full op/type parity; `B − A` and `C − A` are the user-visible size
-change. `C − A` does not isolate coverage restoration: JSEP ships no C++ WebGPU kernels, while the native build
+`C − B` is the download cost of removing the native build's reduced-size restrictions; `B − A` and `C − A` are
+the user-visible size changes. `C − A` does not isolate the cost of removing those restrictions: JSEP ships no C++
+WebGPU kernels, while the native build
 compiles the full WebGPU kernel set plus Dawn.
 
 Report WASM-only and WASM-plus-loader measurements separately. Before drawing conclusions about overall consumer
@@ -202,9 +204,12 @@ download impact, also compare equivalent production JavaScript-plus-WASM totals:
 not represented in the WASM measurements. Use the same entry-point scope, format, minification and compression
 settings, account for actual HTTP response boundaries, and do not double-count embedded loaders.
 
-**Decision (refined 2026-11-10):** preserve today's default operator/type build coverage while retaining the
-existing smaller native options. Add the unreduced native Asyncify configuration (C) for the default and `/all`;
-do not replace the reduced native Asyncify configuration (B) used by `/webgpu`. The planned menu is:
+**Decision (refined 2026-11-10):** use the full/unreduced native Asyncify configuration (C) for the default and
+`/all` to avoid the reduced build's additional operator/type exclusions and bring coverage closer to today's
+JSEP-backed configuration. Retain the reduced native Asyncify configuration (B) used by `/webgpu`.
+Full/unreduced describes the build configuration, not verified coverage equivalence with JSEP or support for every
+operator/type combination. Compatibility gaps will be assessed through prerelease testing and user reports, with
+`/jsep` available during the migration window (§9–10). The planned menu is:
 
 | Export | WebGPU implementation | Async bridge | Operator/type configuration |
 |---|---|---|---|
@@ -240,16 +245,19 @@ original Release `.mjs` loader, and WASM, compressed as separate HTTP responses:
 | B: native, reduced | 30,073,459 | 7,514,495 | 4,630,893 |
 | C: native, unreduced | 35,874,406 | 8,635,091 | 5,234,381 |
 
-Restoring coverage (C minus B) costs 603,488 Brotli bytes (589.3 KiB, +13.03%) or 1,120,596 gzip bytes (+14.91%).
+Removing the reduced-size restrictions (C minus B) costs 603,488 Brotli bytes (589.3 KiB, +13.03%) or 1,120,596
+gzip bytes (+14.91%).
 The overall C-minus-A increase is 857,405 Brotli bytes (+19.59%) or 1,423,969 gzip bytes (+19.75%). Compression used
 gzip level 9 without timestamps/filenames and Brotli 1.2.1, quality 11, generic mode, window 22; all 18 compression
 round-trips passed. These are measurements of this pinned toolchain, not published-package size guarantees.
 
-Chromium 156.0.8078.4 passed all 18 focused browser assertions with the `wasm` backend explicitly selected,
+**Targeted CPU/WASM compatibility tests.** Chromium 156.0.8078.4 passed all 18 focused browser assertions with
+the `wasm` backend explicitly selected,
 graph optimizations disabled, and two-thread initialization verified. A and C supported float32/float64/int16/uint16
 `Add`, `StringConcat`, and `ai.onnx.ml::LinearRegressor`. B supported float32 `Add`; the other five cases failed
-at session creation with the expected missing-kernel/operator errors. This is representative CPU/WASM coverage
-evidence, not exhaustive operator coverage or GPU, WebNN, JSPI, or package-consumption validation.
+at session creation with the expected missing-kernel/operator errors. These checks establish support only for
+the six selected cases; they do not establish equivalent operator/type coverage or general model compatibility
+between JSEP and the full native build. They do not validate GPU, WebNN, JSPI, or package consumption.
 
 ---
 
@@ -348,7 +356,7 @@ Per-session typed options cover JSEP's option surface.
 8. **Prerelease validation.** Publish the changed default and `/all` together with `/jsep` in a prerelease
    package before promoting the switch to stable. Validate the actual packed production package, including
    supported import conditions, embedded/external loader selection, WASM and worker loading, and explicit
-   `wasmPaths`. Verify native GPU execution, CPU fallback and preserved full-build capabilities; verify `/jsep`
+   `wasmPaths`. Verify native GPU execution, CPU fallback, and targeted operator/type cases; verify `/jsep`
    preserves the legacy configuration and `/webgpu` and `/jspi` remain reduced and functional. Confirm `/all` and
    `/jsep` retain WebGL while supported. Invite compatibility reports and resolve blocking regressions before
    stable; existing stable releases remain unchanged during this validation.
@@ -439,7 +447,6 @@ the deletion commit.
 | Risk | Likelihood | Mitigation |
 |---|---|---|
 | Undiscovered native-WebGPU-EP parity gap vs. JSEP | Medium | `/jsep` escape hatch + warn-once funnel; differential tests |
-| Default bundle silently narrows its operator/type surface (reduced-size build args) | High if unaddressed | Use the full native Asyncify configuration and test preserved CPU/WASM capabilities (§7) |
 | int64 behavior change vs. JSEP | Low | None by default (native-off matches JSEP); `enableInt64 = 1` is an opt-in tradeoff |
 | Proxy / IO-binding / WebNN regressions in the native-WebGPU build | Medium | Require blocking browser coverage and targeted parity validation before the flip (§8) |
 | Adapter selection changes after the default flip | Medium | Document deprecated adapter-selection globals as JSEP-only and the native high-performance default; direct applications needing a specific adapter to the per-session `device` option — release gate (§8.4, §9) |
@@ -456,12 +463,12 @@ the deletion commit.
 This guidance applies when Phase 1 ships, not to the current default bundle. In particular, the temporary
 `onnxruntime-web/jsep` export is a planned Phase 1 addition and is not yet available.
 
-- **Default import (`onnxruntime-web`) and `onnxruntime-web/all`:** no source change for basic inference using
-  package-managed asset resolution; the `webgpu` backend keeps working and converges to the native WebGPU EP.
+- **Default import (`onnxruntime-web`) and `onnxruntime-web/all`:** the import paths and `webgpu` backend key
+  remain unchanged; the implementation becomes the native WebGPU EP.
   Consumers that pin WASM artifacts must still update the path (see `wasmPaths` below).
 - **Lower-overhead build (`onnxruntime-web/jspi`):** on JSPI-capable browsers, prefer `./jspi` — the same native
   WebGPU EP with lower per-call overhead than Asyncify. It retains its existing reduced operator/type
-  configuration, not the default bundle's full coverage.
+  configuration, not the default bundle's unreduced configuration.
 - **Smaller Asyncify build (`onnxruntime-web/webgpu`):** retains today's reduced native configuration. Choose it
   when its operator/type coverage is sufficient and a smaller download is preferred; it is not the full default
   artifact.
@@ -476,10 +483,12 @@ This guidance applies when Phase 1 ships, not to the current default bundle. In 
 - **WebGPU profiling:** `env.webgpu.profiling.ondata` is JSEP-only and has no native equivalent. Code that
   registers an `ondata` callback keeps working on `/jsep` but silently receives nothing on the default bundle
   (§8.5).
-- **Operator and type coverage:** the default bundle's native Asyncify artifact will retain today's default
-  operator/type build coverage, including for `wasm` (CPU), using the unreduced configuration (§7). `/all` shares
-  that full artifact; `/webgpu` and `/jspi` remain reduced. CPU fallback cannot restore kernels compiled out of a
-  reduced binary.
+- **Operator and type coverage:** the default and `/all` will use the unreduced native Asyncify artifact to avoid
+  the reduced configuration's additional exclusions, including for `wasm` (CPU), and bring coverage closer to the
+  JSEP-backed build (§7). Equivalent coverage has not been established; the investigation checked only selected
+  CPU/WASM cases. Matching build flags do not guarantee model compatibility; report gaps through the tracking
+  issue and use `/jsep` if needed during the migration window. `/webgpu` and `/jspi` remain reduced, and CPU fallback
+  cannot restore kernels compiled out of a reduced binary.
 - **int64-heavy models:** no change needed — the default matches JSEP. Exceptions that move int64 arithmetic to the
   GPU (lossy for genuine `> 2³¹` values): `extra: { 'ep.webgpuexecutionprovider.enableInt64': '1' }`, and
   `enableGraphCapture = true` (forces int64 on; see §6).
