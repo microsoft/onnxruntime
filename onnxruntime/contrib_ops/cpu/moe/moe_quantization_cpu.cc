@@ -955,6 +955,12 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
     ORT_ENFORCE((block_size_ & (block_size_ - 1)) == 0, "block_size must be a power of 2.");
   }
 
+  // Reject rather than silently dequantize with the default integer center.
+  float zero_point_offset = 0.0f;
+  ORT_ENFORCE(!op_kernel_info.GetAttr<float>("zero_point_offset", &zero_point_offset).IsOK(),
+              "CPU QMoE does not support the 'zero_point_offset' attribute; it is only implemented "
+              "by the CUDA execution provider.");
+
   quant_type_ = op_kernel_info.GetAttrOrDefault<std::string>("quant_type", "int");
   const int64_t prepacked = op_kernel_info.GetAttrOrDefault<int64_t>("weights_prepacked", -1);
   ORT_ENFORCE(prepacked >= -1 && prepacked <= 1, "weights_prepacked must be -1, 0, or 1.");

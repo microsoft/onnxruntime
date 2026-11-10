@@ -15,6 +15,7 @@
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.h"
 
 #include <atomic>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
@@ -147,6 +148,8 @@ class QMoE final : public CudaKernel, public MoEBase, public onnxruntime::moe_of
   // dequantize MXFP4 weights to FP16/BF16 and run the dense A16 MoE runner.
   bool use_wfp4afp8_dequant_fallback_ = false;
   std::string quant_type_;  // "int", "fp4", "nvfp4", "fp8", or "wfp4afp8"
+  // NaN when the attribute is absent; the constructor rejects an explicit non-finite value.
+  float zero_point_offset_ = std::numeric_limits<float>::quiet_NaN();
   bool enable_kernel_debug_info_ = false;
   bool enable_int2_gemv_ = false;
   bool enable_int2_prefill_ = false;

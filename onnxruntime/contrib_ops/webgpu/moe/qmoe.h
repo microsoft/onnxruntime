@@ -45,6 +45,11 @@ class QMoE final : public MoE {
     ORT_ENFORCE(weights_prepacked != 1,
                 "WebGPU QMoE does not support provider-specific prepacked expert weights. "
                 "Use weights_prepacked=0 or omit the attribute.");
+    // Reject rather than silently dequantize with the default integer center.
+    float zero_point_offset = 0.0f;
+    ORT_ENFORCE(!info.GetAttr<float>("zero_point_offset", &zero_point_offset).IsOK(),
+                "WebGPU QMoE does not support the 'zero_point_offset' attribute; it is only "
+                "implemented by the CUDA execution provider.");
   }
 
   Status ComputeInternal(ComputeContext& context) const override;
