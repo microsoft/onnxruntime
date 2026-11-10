@@ -339,6 +339,59 @@ TEST(MoEPackedRoutingTest, ReluIq2PreservesContiguousKCancellation) {
   }
 }
 
+TEST(MoEPackedRoutingTest, ReluIq2Fc2PreservesEightWarpCancellation) {
+  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
+  constexpr int hidden = 1024, intermediate = 1024;
+  constexpr int row_bytes = 4 * 66;
+  std::vector<uint8_t> gate(intermediate * row_bytes, 0), down(hidden * row_bytes, 0);
+  for (int channel = 0; channel < intermediate; ++channel) {
+    const MLFloat16 scale(channel == 0 || channel == 512    ? 4096.f
+                          : channel == 64 || channel == 128 ? 1.f
+                                                            : 0.f);
+    for (int block = 0; block < 4; ++block) {
+      auto* bytes = gate.data() + channel * row_bytes + block * 66;
+      bytes[0] = static_cast<uint8_t>(scale.val);
+      bytes[1] = static_cast<uint8_t>(scale.val >> 8);
+    }
+  }
+  for (int channel = 0; channel < hidden; ++channel) {
+    for (int block = 0; block < 4; ++block) {
+      auto* bytes = down.data() + channel * row_bytes + block * 66;
+      bytes[1] = 0x40;  // FP16 scale 2, IQ2 grid zero reconstructs weight 2.
+      if (block == 2) bytes[6] = 1;
+    }
+  }
+  std::vector<float> decoded(intermediate);
+  ASSERT_TRUE(contrib::gguf_quant::DequantizeGgufRowCpu(down.data(), 16, intermediate, decoded.data()));
+  ASSERT_EQ(decoded[0], 2.f);
+  ASSERT_EQ(decoded[512], -2.f);
+  ASSERT_EQ(decoded[64], 2.f);
+  ASSERT_EQ(decoded[128], 2.f);
+  // Warp 0 cancels +2^25 and -2^25 before the two other warps contribute 2.
+  // Grouping consecutive chunks per warp instead loses the small terms.
+  for (int rows : {1, 8, 17, 129}) {
+    SCOPED_TRACE(testing::Message() << "rows=" << rows);
+    std::vector<BFloat16> input(rows * hidden, BFloat16(0.f));
+    for (int row = 0; row < rows; ++row) input[row * hidden] = BFloat16(1.f);
+    OpTester test("MoEPacked", 1, kMSDomain);
+    test.AddAttribute("k", int64_t{1});
+    test.AddAttribute("activation_type", std::string("relu_squared"));
+    test.AddAttribute("gate_type", int64_t{16});
+    test.AddAttribute("down_type", int64_t{16});
+    test.AddAttribute("normalize_routing_weights", int64_t{0});
+    test.AddInput<BFloat16>("input", {rows, hidden}, input);
+    test.AddOptionalInputEdge<BFloat16>();
+    test.AddInput<uint8_t>("gate", {1, intermediate, row_bytes}, gate, true);
+    test.AddOptionalInputEdge<uint8_t>();
+    test.AddInput<uint8_t>("down", {1, hidden, row_bytes}, down, true);
+    test.AddInput<int32_t>("indices", {rows, 1}, std::vector<int32_t>(rows, 0));
+    test.AddInput<float>("weights", {rows, 1}, std::vector<float>(rows, 1.f));
+    test.AddOutput<BFloat16>("output", {rows, hidden},
+                             std::vector<BFloat16>(rows * hidden, BFloat16(4.f)));
+    RunMoeCuda(test);
+  }
+}
+
 void TestRandomIq2Relu2(int rows, int hidden, int intermediate, int topk) {
   const int experts = topk;
   const int gate_row_bytes = hidden / 256 * 66;
