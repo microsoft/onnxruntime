@@ -143,6 +143,82 @@ Evidence is at `/datadisks/disk10/tommasoadani/tmp/matmul-m1-heldout-gw52tI/`:
 `heldout-comparison.csv`, `estimates/results.json`, `hardware/metadata.json`, `hardware/summary.csv`,
 raw trial counters and `samples/*/symbols.txt`. No production estimator formula has been changed.
 
+## Follow-up audit: aligned INT8 AVX2 block-sum path (November 10)
+
+The original audit case uses FP32 input `[32,128]`, N=64, accuracy request 4, INT4/block size 32,
+no bias, implicit midpoint zero points and one intra-op thread. The installed native libraries matched
+the saved baseline. Sampling identified:
+
+- `QuantizeARow_CompInt8_avx2`: activation quantization and scaled activation block sums.
+- `SQ4BitGemmKernel_BlkSum_CompInt8_avx2`: quantized computation and block-sum correction wrapper.
+- `MlasGemmFloatKernelFma3`: floating-point correction GEMM.
+
+The wrapper selects `MlasQ4Int8GemmKernelBlkLen32Avx2<false>` and its
+`Q4Int8Gemm2x4x2BlkLen32Avx2<false>` helper for this even-row, four-column-aligned case. It processes
+two K blocks at a time. Unlike the M=1 branch, the multi-row wrapper also calls a separate floating-point
+GEMM over the activation/weight block sums.
+
+Let G=K/32. The independent candidate ledger is:
+
+| Component | Bounded candidate formula | Original case FP ops |
+|---|---|---:|
+| Activation quantization/scaled block sums | MK + 3MG | 4,480 |
+| Vector scale combination and FP accumulation | 12MNG | 98,304 |
+| Final quantized-kernel accumulator reductions | 7MN | 14,336 |
+| Block-sum correction GEMM and output epilogue | 2MNG + 2MN | 20,480 |
+| Candidate total | MK + 3MG + 14MNG + 9MN | **137,600** |
+| Measured recurring process FP ops | | **137,602** |
+| Unattributed residual | | **+2** |
+| Existing estimator modeled subtotal | 5MNG | **40,960** |
+
+The [two-block accumulation helper](../../../../onnxruntime/core/mlas/lib/sqnbitgemm_kernel_avx2_int8_blklen32.h)
+performs an eight-lane multiplication and eight-lane FMA per output/two-block pair:
+8 + 16 = 24 FP operations, or 12 per output/block. Integer dot products themselves contribute zero FP operations.
+The [activation quantizer](../../../../onnxruntime/core/mlas/lib/sqnbitgemm_kernel_avx2.cpp) performs activation
+scaling and per-block scale/inverse-scale/scaled-sum arithmetic. The observed correction GEMM assembly includes
+an FMA output epilogue that combines the correction with existing C, even with alpha=1.
+Pure conversions and integer arithmetic are separate from the FP ledger.
+
+This explains why activation quantization alone cannot account for the original discrepancy. The existing
+five-operation nominal scaling/correction allowance is not a lane-level model. Do not add the candidate ledger
+on top of that subtotal: scaling/correction work overlaps. The candidate quantizer count and hardware treatment
+of rounding/max instructions still require compiled-instruction/event-semantics qualification. Matching a total
+does not independently prove the allocation of operations to each phase.
+
+Original audit evidence is at `/datadisks/disk10/tommasoadani/tmp/matmul-int8-audit-RsVHmE/`, including cycle samples,
+symbol reports, source excerpts and kernel/quantizer/correction-GEMM annotations. The cycle capture had 4,735 samples.
+Cycle percentages identify hot functions, not component FP counts.
+
+### Held-out aligned INT8 validation
+
+Three new `held_out` cases preserve FP32/accuracy-4, INT4/block size 32, no bias/explicit zero points and one thread.
+Each has even M, N divisible by four and an even full K-block count, preserving the candidate branch's assumptions.
+All passed estimator capture/reporting checks; three R/2R pairs per case with R=1000 and 100 warm-up runs
+completed successfully (18 hardware measurements).
+
+| M | K | N | G | Existing estimator subtotal | Candidate total | Measured process mean | Sample stddev | Residual |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 2 | 64 | 128 | 2 | 2,560 | 9,612 | 9,614.030 | 0.010 | +2.030 |
+| 16 | 256 | 128 | 8 | 81,920 | 252,288 | 252,289.976 | 0.021 | +1.976 |
+| 64 | 512 | 256 | 16 | 1,310,720 | 3,853,312 | 3,853,313.982 | 0.018 | +1.982 |
+
+Sampling with 100,000 repetitions found the same AVX2 quantizer, block-sum wrapper and FMA3 correction kernel
+in all three cases. Captures contained 4,236, 5,095 and 16,016 samples respectively. Matching wrapper names
+corroborate family identity; internal branch applicability also depends on the validated geometry/source dispatch.
+
+The approximately two-operation residual is negligible for a ballpark model and remains unattributed.
+Fractional means reflect differential measurements/averaging, not fractional instructions.
+These results strongly corroborate the bounded candidate total on held-out shapes, not a universal INT8 formula,
+independently measured phase totals or isolated whole-operator accuracy.
+
+Evidence is at `/datadisks/disk10/tommasoadani/tmp/matmul-int8-heldout-8EbLdy/`:
+`heldout-comparison.csv`, estimator reports, `hardware/metadata.json`, trial counters/summaries and
+`samples/*/symbols.txt`. Raw evidence remains outside the repository.
+
+No estimator refinements were made, as requested. Next qualify M=1 INT8 separately: the wrapper takes a different
+single-row branch and bypasses this separate correction GEMM. Odd block counts, row/column/K tails, other block
+sizes/ISAs, bias and explicit-zero-point variants also require their own accounting.
+
 ## Results
 
 | Mode | Input dtype | Accuracy request | M | K | N | Estimated FP ops | Measured mean | Sample stddev | Min | Max | Difference |

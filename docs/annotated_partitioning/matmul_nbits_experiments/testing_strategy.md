@@ -63,6 +63,13 @@ CPU hardware gates:
 
 ## Immediate audits
 
+The [aligned INT8 follow-up](cpu_epyc_7v12_2026_11_09/report.md#follow-up-audit-aligned-int8-avx2-block-sum-path-november-10)
+now records the AVX2 quantizer/block-sum kernel and FMA3 correction GEMM, with candidate total
+`MK + 3MG + 14MNG + 9MN` (G=K/32). The original case and three new aligned/even-row/even-block held-out cases
+agree with recurring process counts to an approximately +2-operation residual. This corroborates a bounded
+total, not independently measured phase counts. Keep estimator formulas unchanged pending a deliberate refinement.
+Next audit M=1 INT8, which follows a different branch; quantizer/event semantics and tails remain unqualified.
+
 1. FP32 M=1 and M=128, K=N=1024: identify selected symbols and reconstruction/scaling arithmetic.
 2. INT8 M=1 and M=32, K=128, N=64: isolate activation quantization, vector scaled accumulation, horizontal reductions
    and corrections. Confirm ISA specialization before assigning lane-count coefficients.
