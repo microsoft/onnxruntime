@@ -4,7 +4,6 @@
 #include "core/platform/linux/wsl_device_discovery.h"
 
 #include <cstddef>
-#include <filesystem>
 #include <system_error>
 
 #include "core/common/common.h"
@@ -16,73 +15,18 @@ namespace wsl_device_discovery {
 
 namespace {
 
-// Minimal subset of the D3DKMT interface that libdxcore.so exports on WSL2. It is
-// declared here instead of included from the Windows SDK/WDK so that a Linux build
-// needs no Windows headers. Layouts mirror d3dkmthk.h as it expands under LP64, which
-// is also how the LX_DX* ioctl structs in the WSL2 kernel's uapi/misc/d3dkmthk.h are
-// laid out. Nothing here is reachable on a non-LP64 target because WSL2 is 64-bit only
-// and the /dev/dxg check below fails first.
+constexpr int32_t kStatusSuccess = 0;
+
+// Layouts mirror d3dkmthk.h as it expands under LP64, which is also how the LX_DX* ioctl
+// structs in the WSL2 kernel's uapi/misc/d3dkmthk.h are laid out. WSL2 is 64-bit only, and
+// GetGpuDevices returns before these thunks are called when the dxg node is absent.
 //
 // libdxcore.so is not a thin wrapper over those ioctls: it serves most query types by
 // calling into the host GPU driver over VM bus, so a query type absent from the kernel
 // uapi header still works here.
-
-using NTSTATUS = int32_t;
-constexpr NTSTATUS kStatusSuccess = 0;
-
-using D3DKMT_HANDLE = uint32_t;
-
-struct D3DKMT_LUID {
-  uint32_t LowPart;
-  int32_t HighPart;
-};
-
-struct D3DKMT_ADAPTERINFO {
-  D3DKMT_HANDLE hAdapter;
-  D3DKMT_LUID AdapterLuid;
-  uint32_t NumOfSources;
-  int32_t bPrecisePresentRegionsPreferred;
-};
-
-struct D3DKMT_ENUMADAPTERS2 {
-  uint32_t NumAdapters;
-  D3DKMT_ADAPTERINFO* pAdapters;
-};
-
-struct D3DKMT_ENUMADAPTERS3 {
-  uint64_t Filter;
-  uint32_t NumAdapters;
-  D3DKMT_ADAPTERINFO* pAdapters;
-};
-
-struct D3DKMT_QUERYADAPTERINFO {
-  D3DKMT_HANDLE hAdapter;
-  uint32_t Type;
-  void* pPrivateDriverData;
-  uint32_t PrivateDriverDataSize;
-};
-
-struct D3DKMT_DEVICE_IDS {
-  uint32_t VendorID;
-  uint32_t DeviceID;
-  uint32_t SubVendorID;
-  uint32_t SubSystemID;
-  uint32_t RevisionID;
-  uint32_t BusType;
-};
-
-struct D3DKMT_QUERY_DEVICE_IDS {
-  uint32_t PhysicalAdapterIndex;
-  D3DKMT_DEVICE_IDS DeviceIds;
-};
-
-struct D3DKMT_CLOSEADAPTER {
-  D3DKMT_HANDLE hAdapter;
-};
-
-// libdxcore.so marshals these by offset, so pin the layouts against the kernel's
-// uapi/misc/d3dkmthk.h. The implicit padding before each pointer matches the explicit
-// reserved field the kernel header spells out.
+//
+// libdxcore.so marshals these by offset, so the implicit padding before each pointer
+// matches the explicit reserved field the kernel header spells out.
 static_assert(sizeof(D3DKMT_ADAPTERINFO) == 20);
 static_assert(offsetof(D3DKMT_ADAPTERINFO, AdapterLuid) == 4);
 static_assert(offsetof(D3DKMT_ADAPTERINFO, NumOfSources) == 12);
@@ -101,66 +45,40 @@ static_assert(offsetof(D3DKMT_QUERYADAPTERINFO, PrivateDriverDataSize) == 16);
 static_assert(sizeof(D3DKMT_QUERY_DEVICE_IDS) == 28);
 static_assert(offsetof(D3DKMT_QUERY_DEVICE_IDS, DeviceIds) == 4);
 
-// KMTQUERYADAPTERINFOTYPE value.
-constexpr uint32_t kQueryTypePhysicalAdapterDeviceIds = 31;
+DxCoreThunks LoadDxCoreThunks() {
+  DxCoreThunks thunks{};
+  const Env& env = Env::Default();
 
-// D3DKMT_ENUMADAPTERS_FILTER bit. Compute-only adapters are excluded by default.
-constexpr uint64_t kEnumAdaptersFilterIncludeComputeOnly = 1;
-
-class DxCoreThunks {
- public:
-  static const DxCoreThunks& Instance() {
-    static const DxCoreThunks instance{};
-    return instance;
+  // Never unloaded: libdxcore.so registers process-wide state with /dev/dxg that does
+  // not survive an unload, and the thunks are needed for the process lifetime anyway.
+  void* library = nullptr;
+  if (const Status status = env.LoadDynamicLibrary("libdxcore.so", /*global_symbols*/ false, &library);
+      !status.IsOK()) {
+    LOGS_DEFAULT(VERBOSE) << "libdxcore.so could not be loaded: " << status.ErrorMessage();
+    return thunks;
   }
 
-  bool IsAvailable() const {
-    // Close is required: EnumAdapters* opens a handle per adapter, and cleanup is skipped when
-    // this thunk is null. Prefer falling back to sysfs/PCI over leaking those handles.
-    return close_adapter != nullptr && query_adapter_info != nullptr &&
-           (enum_adapters3 != nullptr || enum_adapters2 != nullptr);
-  }
-
-  NTSTATUS (*enum_adapters2)(void* args) = nullptr;
-  NTSTATUS (*enum_adapters3)(void* args) = nullptr;
-  NTSTATUS (*query_adapter_info)(void* args) = nullptr;
-  NTSTATUS (*close_adapter)(void* args) = nullptr;
-
- private:
-  DxCoreThunks() {
-    std::error_code error_code{};
-    if (!std::filesystem::exists("/dev/dxg", error_code)) {
-      return;
+  // A missing symbol leaves the thunk null. IsAvailable() decides whether the set is
+  // usable, and EnumerateAdapters picks EnumAdapters3 over EnumAdapters2.
+  const auto load = [&env, library](const char* name) -> DxCoreThunks::Thunk {
+    void* symbol = nullptr;
+    if (!env.GetSymbolFromLibrary(library, name, &symbol).IsOK()) {
+      return nullptr;
     }
+    return reinterpret_cast<DxCoreThunks::Thunk>(symbol);
+  };
 
-    const Env& env = Env::Default();
+  thunks.enum_adapters2 = load("D3DKMTEnumAdapters2");
+  thunks.enum_adapters3 = load("D3DKMTEnumAdapters3");
+  thunks.query_adapter_info = load("D3DKMTQueryAdapterInfo");
+  thunks.close_adapter = load("D3DKMTCloseAdapter");
+  return thunks;
+}
 
-    // Never unloaded: libdxcore.so registers process-wide state with /dev/dxg that does
-    // not survive an unload, and the thunks are needed for the process lifetime anyway.
-    void* library = nullptr;
-    if (const Status status = env.LoadDynamicLibrary("libdxcore.so", /*global_symbols*/ false, &library);
-        !status.IsOK()) {
-      LOGS_DEFAULT(VERBOSE) << "/dev/dxg is present but libdxcore.so could not be loaded: "
-                            << status.ErrorMessage();
-      return;
-    }
-
-    // A missing symbol leaves the thunk null; IsAvailable() decides whether the set is
-    // usable, and EnumerateAdapters picks EnumAdapters3 over EnumAdapters2.
-    const auto load = [&env, library](const char* name) {
-      void* symbol = nullptr;
-      if (!env.GetSymbolFromLibrary(library, name, &symbol).IsOK()) {
-        return static_cast<NTSTATUS (*)(void*)>(nullptr);
-      }
-      return reinterpret_cast<NTSTATUS (*)(void*)>(symbol);
-    };
-
-    enum_adapters2 = load("D3DKMTEnumAdapters2");
-    enum_adapters3 = load("D3DKMTEnumAdapters3");
-    query_adapter_info = load("D3DKMTQueryAdapterInfo");
-    close_adapter = load("D3DKMTCloseAdapter");
-  }
-};
+const DxCoreThunks& LoadedThunks() {
+  static const DxCoreThunks thunks = LoadDxCoreThunks();
+  return thunks;
+}
 
 // Runs the two-pass enumeration: the first call reports the adapter count, the second
 // fills the caller-provided array.
@@ -212,10 +130,9 @@ bool EnumerateAdapters(const DxCoreThunks& thunks, std::vector<D3DKMT_ADAPTERINF
 
 }  // namespace
 
-Status GetGpuDevices(std::vector<WslGpuInfo>& gpu_devices_out) {
+Status GetGpuDevices(const DxCoreThunks& thunks, std::vector<WslGpuInfo>& gpu_devices_out) {
   gpu_devices_out = {};
 
-  const auto& thunks = DxCoreThunks::Instance();
   if (!thunks.IsAvailable()) {
     return Status::OK();
   }
@@ -239,7 +156,7 @@ Status GetGpuDevices(std::vector<WslGpuInfo>& gpu_devices_out) {
     query.pPrivateDriverData = &device_ids;
     query.PrivateDriverDataSize = sizeof(device_ids);
 
-    const NTSTATUS status = thunks.query_adapter_info(&query);
+    const int32_t status = thunks.query_adapter_info(&query);
 
     // IsAvailable() requires close_adapter, so this is always safe to call.
     D3DKMT_CLOSEADAPTER close_args{};
@@ -262,6 +179,17 @@ Status GetGpuDevices(std::vector<WslGpuInfo>& gpu_devices_out) {
 
   gpu_devices_out = std::move(gpu_devices);
   return Status::OK();
+}
+
+Status GetGpuDevices(std::vector<WslGpuInfo>& gpu_devices_out, const std::filesystem::path& dxg_device) {
+  gpu_devices_out = {};
+
+  std::error_code error_code{};
+  if (!std::filesystem::exists(dxg_device, error_code)) {
+    return Status::OK();
+  }
+
+  return GetGpuDevices(LoadedThunks(), gpu_devices_out);
 }
 
 }  // namespace wsl_device_discovery
