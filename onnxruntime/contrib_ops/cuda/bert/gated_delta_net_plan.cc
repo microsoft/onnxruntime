@@ -3,6 +3,8 @@
 
 #include "contrib_ops/cuda/bert/gated_delta_net_plan.h"
 
+#include <algorithm>
+#include <cctype>
 #include <string>
 
 namespace onnxruntime {
@@ -31,6 +33,35 @@ Engine EngineFromName(const std::string& name) {
   if (name == "recurrent") return Engine::kRecurrent;
   if (name == "cudnn") return Engine::kCudnn;
   return Engine::kAuto;
+}
+
+const char* Bf16PrecisionName(Bf16Precision p) {
+  switch (p) {
+    case Bf16Precision::kFp32:
+      return "fp32";
+    case Bf16Precision::kFp16:
+      return "fp16";
+    case Bf16Precision::kBf16:
+      return "bf16";
+    default:
+      return "fp32";
+  }
+}
+
+bool TryParseBf16Precision(const std::string& name, Bf16Precision* out) {
+  if (name == "fp32") {
+    *out = Bf16Precision::kFp32;
+    return true;
+  }
+  if (name == "fp16") {
+    *out = Bf16Precision::kFp16;
+    return true;
+  }
+  if (name == "bf16") {
+    *out = Bf16Precision::kBf16;
+    return true;
+  }
+  return false;
 }
 
 }  // namespace gated_delta_net

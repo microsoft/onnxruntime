@@ -23,8 +23,10 @@
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_nxk_x16p2vlx2b_x16_x16_sme.h"
 
 namespace {
+#if (defined(MLAS_ENABLE_TEST_HOOKS) && defined(USE_KLEIDIAI)) || KLEIDIAI_KERNEL_LOGGING
 constexpr const char* Sve2p1HalfGemmKernelName =
     "kai_matmul_clamp_f16_f16_f16p16vsx2bf16_6x16vs_sve2p1_dot";
+#endif
 constexpr size_t Sve2p1PackedRhsMetadataSize = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
 static_assert(sizeof(size_t) <= Sve2p1PackedRhsMetadataSize);
 

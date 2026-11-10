@@ -22,6 +22,25 @@ csharp/
 
 - .NET SDK 8.0 or later
 - Pre-built WebGPU plugin EP binaries (from CI or a local build)
+- For Agility-enabled Windows x64 and ARM64 plugins, provide the matching D3D12 Agility SDK DLLs.
+
+### Windows Agility SDK inputs
+
+Windows plugins built without `--use_dawn_agility_sdk` can be packaged without SDK DLLs. For an
+Agility-enabled plugin, provide the following files under `--binary-dir-win-*` or the corresponding
+`--artifacts-dir` directory:
+
+```text
+onnxruntime_providers_webgpu.dll
+dxcompiler.dll
+D3D12/
+  D3D12Core.dll
+  d3d12SDKLayers.dll
+```
+
+Use `--use-dawn-agility-sdk` to include and require both SDK DLLs when packaging an Agility-enabled plugin. Without this
+option, the SDK DLLs are not staged. In a two-phase workflow, pass it to `--build-only`; the resulting staging directory
+is reused by `--pack-only`.
 
 ## Building the NuGet Package
 
@@ -39,6 +58,14 @@ cd plugin-ep-webgpu/csharp
 
 python pack_nuget.py --version 0.1.0-dev `
   --binary-dir-win-x64 <path-to-win-x64-binaries>
+```
+
+For an Agility-enabled input, require the SDK explicitly:
+
+```powershell
+python pack_nuget.py --version 0.1.0-dev `
+  --binary-dir-win-x64 <path-to-win-x64-binaries> `
+  --use-dawn-agility-sdk
 ```
 
 ### Pack multiple platforms

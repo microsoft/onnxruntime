@@ -25,7 +25,8 @@ void* GpuBufferAllocator::AllocOnStream(size_t size, Stream* stream) {
   if (ep::UseSerializedExecutionMode()) {
     return Alloc(size);
   }
-  return Allocate(size, recording_getter_(), false);
+  auto& recording = recording_getter_();
+  return Allocate(size, recording, false);
 }
 
 namespace ep {
@@ -33,8 +34,12 @@ namespace {
 
 // Wraps an existing Session allocator, not another buffer pool or recording.
 // Unlike the Env's adapter::Allocator, this wrapper also forwards AllocOnStream.
+// ORT may copy the OrtMemoryInfo returned by Info, so Info returns a copy created by ORT rather than impl_'s original.
 struct WebGpuSessionAllocator final : OrtAllocator {
-  explicit WebGpuSessionAllocator(AllocatorPtr impl) : OrtAllocator{}, impl_{std::move(impl)} {
+  explicit WebGpuSessionAllocator(AllocatorPtr impl)
+      : OrtAllocator{},
+        impl_{std::move(impl)},
+        memory_info_{onnxruntime::ep::adapter::CreateApiMemoryInfo(impl_->Info())} {
     version = ORT_API_VERSION;
     Alloc = AllocImpl;
     Free = [](OrtAllocator* allocator, void* buffer) noexcept {
@@ -52,7 +57,7 @@ struct WebGpuSessionAllocator final : OrtAllocator {
       }
     };
     Info = [](const OrtAllocator* allocator) noexcept -> const OrtMemoryInfo* {
-      return &static_cast<const WebGpuSessionAllocator*>(allocator)->impl_->Info();
+      return static_cast<const WebGpuSessionAllocator*>(allocator)->memory_info_;
     };
     if (impl_->IsStreamAware()) {
       AllocOnStream = [](OrtAllocator* allocator, size_t size, OrtSyncStream* stream) noexcept -> void* {
@@ -71,6 +76,7 @@ struct WebGpuSessionAllocator final : OrtAllocator {
   }
 
   AllocatorPtr impl_;
+  Ort::MemoryInfo memory_info_;
 };
 
 }  // namespace

@@ -69,5 +69,22 @@ class MatMulNaiveProgram final : public Program<MatMulNaiveProgram> {
   const bool is_zero_k_;
 };
 
+class MatMulGemvProgram final : public Program<MatMulGemvProgram> {
+ public:
+  MatMulGemvProgram() : Program{"MatMulGemv"} {}
+
+  static constexpr uint32_t kWorkgroupSizeX = 1;
+  static constexpr uint32_t kWorkgroupSizeY = 128;
+  static_assert(kWorkgroupSizeY != 0 && (kWorkgroupSizeY & (kWorkgroupSizeY - 1)) == 0,
+                "MatMulGemvProgram requires kWorkgroupSizeY to be a non-zero power of two "
+                "because the WGSL reduction loop halves workgroup_size_y each iteration.");
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"K", ProgramUniformVariableDataType::Uint32},
+                                          {"N", ProgramUniformVariableDataType::Uint32},
+                                          {"M", ProgramUniformVariableDataType::Uint32});
+};
+
 }  // namespace webgpu
 }  // namespace onnxruntime

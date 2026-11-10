@@ -99,7 +99,7 @@ punctuation) that make CSV quoting fragile.
 ```
 # ort_cuda_gemm_tactic_cache	v1
 # table	matmulnbits_fpa_intb
-# tactic_selection_version	4
+# tactic_selection_version	5
 # device_name	NVIDIA A100-SXM4-80GB
 # sm	80
 # multiprocessor_count	108
@@ -108,9 +108,9 @@ punctuation) that make CSV quoting fragile.
 # ort_version	1.23.0
 # ort_git_commit	<git-sha-or-unknown>
 # ort_build_config	Release
-n_16b	k	activation_dtype	weight_type	bits	block_size	has_zero_points	zero_point_dtype	gemv_enabled	has_bias	packing_sm	paired_gemv_mode	wave_aware_gemv	m_bucket	valid_config	sm_version	tile80	tile90	tile100	tile120	split_k_style	split_k	stages	cluster	mainloop	epilogue	tma	enable_cuda_kernel	cuda_kernel_variant
-12288	4096	half	uint4b_t	4	64	1	uint4b_t	1	0	80	0	0	1	1	80	23	0	0	0	1	1	3	0	0	0	0	1	0
-12288	4096	half	uint4b_t	4	64	1	uint4b_t	1	0	80	0	0	64	1	80	17	0	0	0	0	-1	4	0	0	0	0	0	0
+n_16b	k	activation_dtype	weight_type	bits	block_size	has_zero_points	zero_point_dtype	gemv_enabled	has_bias	packing_sm	paired_gemv_mode	wave_aware_gemv	tensor_core_gemv	m_bucket	valid_config	sm_version	tile80	tile90	tile100	tile120	split_k_style	split_k	stages	cluster	mainloop	epilogue	tma	enable_cuda_kernel	cuda_kernel_variant
+12288	4096	half	uint4b_t	4	64	1	uint4b_t	1	0	80	0	0	1	1	1	80	23	0	0	0	1	1	3	0	0	0	0	1	0
+12288	4096	half	uint4b_t	4	64	1	uint4b_t	1	0	80	0	0	1	64	1	80	17	0	0	0	0	-1	4	0	0	0	0	0	0
 ...
 ```
 
@@ -180,7 +180,7 @@ Use op-specific keys rather than a single sparse superset.
 matmulnbits_key = {
   n_16b, k, activation_dtype, weight_type, bits, block_size,
   has_zero_points, zero_point_dtype, gemv_enabled, has_bias, packing_sm,
-  paired_gemv_mode, wave_aware_gemv
+  paired_gemv_mode, wave_aware_gemv, tensor_core_gemv
 }
 
 qmoe_key = {
@@ -195,10 +195,13 @@ collapse to one entry. For `MatMulNBits`, `n_16b` is the value used by the exist
 For QMoE, the key includes the profiler parameters that affect `GemmProfilerBackend::init` so that
 cache reuse remains conservative.
 
-MatMulNBits keys separate paired-K modes (disabled, autotuned, forced) and wave-aware GEMV
-launches. `cuda_kernel_variant` preserves the selected GEMV implementation (0 = default,
+MatMulNBits keys separate paired-K modes (disabled, autotuned, forced), wave-aware GEMV
+launches, and whether the SM 9.0 tensor-core INT8 GEMV is allowed
+(`ep.cuda.disable_fpa_intb_gemv_tc`), so sessions with different settings never share profiled
+selections. `cuda_kernel_variant` preserves the selected GEMV implementation (0 = default,
 1 = paired-K, 2–7 = the six symmetric INT4 M=1 decode geometries). Selection version 4
-rejects older selections made before the streaming-L2 decode profiler and its new candidates.
+rejects older selections made before the streaming-L2 decode profiler and its new candidates;
+version 5 rejects selections made before the `tensor_core_gemv` key column existed.
 Loaded decode variants must still pass the current layout, dtype, quantization, M-bucket, and
 grid-limit checks before they are validated on the device.
 
@@ -258,9 +261,23 @@ unit-testable.
 - Sidecars use the same cache prefix scheme:
   - `"<model_path>.matmulnbits_fpa_intb.tsv"`
   - `"<model_path>.qmoe_gemm.tsv"`
-- Writing is opt-in via session config or env var. Because C++ kernels do not always have a reliable
-  model path (for example, models loaded from bytes), the core implementation should prefer an
-  explicit cache prefix and let the offline Python tool derive `<model_path>.*.tsv` when possible.
+- Writing is opt-in via session config or env var (`ep.cuda.gemm_tactic_cache_to_model` /
+  `ORT_CUDA_GEMM_TACTIC_CACHE_TO_MODEL`). The CUDA EP records the model path it sees in
+  `GetCapability` (`GraphViewer::ModelPath()` for the built-in EP, `Graph_GetModelPath` for the plugin
+  EP), and kernels use it as the cache prefix. Models loaded from bytes have no path, so the explicit
+  prefix/dir settings still apply to them.
+
+### Phase 4b — Load on create, save on close *(depends on 2)*
+- Kernel construction loads matching rows before profiling and re-reads the file first if it changed
+  since this process last read or wrote it (last-write time + size).
+- Every tuned tactic (construction sweep and lazy buckets) is only staged in memory. The single disk
+  write happens when the session closes (CUDA EP teardown), with a last-chance write at process exit
+  for sessions that are never released.
+- `ep.cuda.gemm_tactic_cache_mode` / `ORT_CUDA_GEMM_TACTIC_CACHE_MODE` selects `load_save` (default),
+  `load` (read-only), or `save` (re-tune and overwrite).
+- Session close writes every dirty cache in the process, not only the closing session's caches. The
+  write is dirty-guarded and merges with the file, so writing another live session's rows early is
+  harmless.
 
 ### Phase 5 — Offline tuning tool *(depends on 4)*
 - `onnxruntime/python/tools/fpa_intb_tune.py` (+ CLI): `--model`, `--output-prefix`, `--m-values`,
@@ -289,9 +306,13 @@ unit-testable.
 |---|---|
 | `ORT_CUDA_GEMM_TACTIC_CACHE_DIR` | Directory for persistent cache files. Unset means persistent cache disabled. |
 | `ORT_CUDA_GEMM_TACTIC_CACHE_PREFIX` | Explicit file prefix. Writes `<prefix>.matmulnbits_fpa_intb.tsv`. |
+| `ORT_CUDA_GEMM_TACTIC_CACHE_TO_MODEL` | `1` → store the cache next to the model as `<model_path>.matmulnbits_fpa_intb.tsv` when the model path is known. |
+| `ORT_CUDA_GEMM_TACTIC_CACHE_MODE` | `load_save` (default), `load` (read-only), or `save` (re-tune and overwrite). |
 | `ORT_FPA_INTB_PROFILE_M` | Comma-separated M buckets to profile (overrides the default set for MatMulNBits/fpA_intB). |
 | `ep.cuda.gemm_tactic_cache_dir` | Session-option equivalent of `ORT_CUDA_GEMM_TACTIC_CACHE_DIR`. |
 | `ep.cuda.gemm_tactic_cache_prefix` | Session-option equivalent of `ORT_CUDA_GEMM_TACTIC_CACHE_PREFIX`. |
+| `ep.cuda.gemm_tactic_cache_to_model` | Session-option equivalent of `ORT_CUDA_GEMM_TACTIC_CACHE_TO_MODEL`. |
+| `ep.cuda.gemm_tactic_cache_mode` | Session-option equivalent of `ORT_CUDA_GEMM_TACTIC_CACHE_MODE`. |
 | `ep.cuda.gemm_tactic_cache_tuning_results_prefix` | Optional separate TSV output of this session's selected tactics (including valid cache hits), flushed at EP teardown. The tuning tool uses a fresh temporary prefix to verify that the current model selected successful tactics and that their full settings reached the main cache. No environment-variable fallback. |
 
 ## 10. Original roadmap file inventory (includes future work)

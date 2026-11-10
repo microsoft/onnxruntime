@@ -115,6 +115,8 @@ SPECIALIZED_OneHotImpl(int64_t, int64_t)
         SPECIALIZED_OneHotImpl(int32_t, float)
             SPECIALIZED_OneHotImpl(int64_t, half)
                 SPECIALIZED_OneHotImpl(int32_t, half)
+                    SPECIALIZED_OneHotImpl(int64_t, BFloat16)
+                        SPECIALIZED_OneHotImpl(int32_t, BFloat16)
 
 #define SPECIALIZED_OneHotWithZeroOffValueImpl(in_type, out_type) \
   template void OneHotWithZeroOffValueImpl(                       \
@@ -126,11 +128,13 @@ SPECIALIZED_OneHotImpl(int64_t, int64_t)
       out_type* output_data,                                      \
       size_t count);
 
-                    SPECIALIZED_OneHotWithZeroOffValueImpl(int64_t, int64_t)
-                        SPECIALIZED_OneHotWithZeroOffValueImpl(int64_t, float)
-                            SPECIALIZED_OneHotWithZeroOffValueImpl(int32_t, float)
-                                SPECIALIZED_OneHotWithZeroOffValueImpl(int64_t, half)
-                                    SPECIALIZED_OneHotWithZeroOffValueImpl(int32_t, half)
+                            SPECIALIZED_OneHotWithZeroOffValueImpl(int64_t, int64_t)
+                                SPECIALIZED_OneHotWithZeroOffValueImpl(int64_t, float)
+                                    SPECIALIZED_OneHotWithZeroOffValueImpl(int32_t, float)
+                                        SPECIALIZED_OneHotWithZeroOffValueImpl(int64_t, half)
+                                            SPECIALIZED_OneHotWithZeroOffValueImpl(int32_t, half)
+                                                SPECIALIZED_OneHotWithZeroOffValueImpl(int64_t, BFloat16)
+                                                    SPECIALIZED_OneHotWithZeroOffValueImpl(int32_t, BFloat16)
 
 }  // namespace cuda
 }  // namespace onnxruntime

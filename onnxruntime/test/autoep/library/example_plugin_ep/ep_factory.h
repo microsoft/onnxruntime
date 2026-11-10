@@ -91,6 +91,13 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
       const OrtEpDevice* ep_device,
       OrtExternalResourceImporterImpl** out_importer) noexcept;
 
+  static OrtStatus* ORT_API_CALL InitGraphicsInteropImpl(OrtEpFactory* this_ptr,
+                                                         const OrtEpDevice* ep_device,
+                                                         const OrtGraphicsInteropConfig* config) noexcept;
+
+  static OrtStatus* ORT_API_CALL DeinitGraphicsInteropImpl(OrtEpFactory* this_ptr,
+                                                           const OrtEpDevice* ep_device) noexcept;
+
   static OrtStatus* ORT_API_CALL GetHardwareDeviceIncompatibilityDetailsImpl(
       OrtEpFactory* this_ptr,
       const OrtHardwareDevice* hw,
@@ -118,6 +125,13 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
       const OrtSessionOptions* session_options,
       size_t* selected_index) noexcept;
 
+  static OrtStatus* ORT_API_CALL GetDeviceMemoryCapacityImpl(
+      OrtEpFactory* this_ptr,
+      const OrtEpDevice* ep_device,
+      OrtDeviceMemoryType memory_type,
+      uint64_t* total_memory_bytes,
+      uint64_t* available_memory_bytes) noexcept;
+
   const std::string ep_name_;              // EP name
   const std::string vendor_{"Contoso"};    // EP vendor name
   const uint32_t vendor_id_{0xB357};       // EP vendor ID
@@ -133,7 +147,10 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
   bool arena_allocator_using_default_settings_{true};
   std::unique_ptr<ArenaAllocator> arena_allocator_;  // shared device allocator that uses an arena
   uint32_t num_arena_users_{0};
-  std::mutex mutex_;  // mutex to protect arena_allocator_ and num_arena_users_
+  std::mutex mutex_;  // mutex to protect arena_allocator_, num_arena_users_ and graphics_interop_initialized_
+
+  // The example EP has a single device, so one flag tracks its graphics interop state.
+  bool graphics_interop_initialized_{false};
 
   std::unique_ptr<ExampleDataTransfer> data_transfer_impl_;  // data transfer implementation for this factory
 

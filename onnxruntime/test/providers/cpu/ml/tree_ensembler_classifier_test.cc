@@ -709,6 +709,40 @@ TEST(MLOpTest, TreeEnsembleNegativeFeatureIds) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "nodes_featureids[0]=-2 must be in [0, 2147483647] for non-leaf nodes");
 }
 
+#if !defined(ORT_NO_EXCEPTIONS)
+TEST(MLOpTest, TreeEnsembleClassifierRejectsInvalidCategorySetId) {
+  OpTester test("TreeEnsembleClassifier", 3, onnxruntime::kMLDomain);
+
+  test.AddAttribute("nodes_truenodeids", std::vector<int64_t>{1, 0, 0});
+  test.AddAttribute("nodes_falsenodeids", std::vector<int64_t>{2, 0, 0});
+  test.AddAttribute("nodes_treeids", std::vector<int64_t>{0, 0, 0});
+  test.AddAttribute("nodes_nodeids", std::vector<int64_t>{0, 1, 2});
+  test.AddAttribute("nodes_featureids", std::vector<int64_t>{0, 0, 0});
+  test.AddAttribute("nodes_modes", std::vector<std::string>{"BRANCH_MEMBER_BIGSET", "LEAF", "LEAF"});
+  test.AddAttribute("class_treeids", std::vector<int64_t>{0, 0});
+  test.AddAttribute("class_nodeids", std::vector<int64_t>{1, 2});
+  test.AddAttribute("class_ids", std::vector<int64_t>{0, 1});
+  test.AddAttribute("class_weights", std::vector<float>{1.0f, 2.0f});
+  test.AddAttribute("classlabels_int64s", std::vector<int64_t>{0, 1});
+
+  ONNX_NAMESPACE::TensorProto nodes_values_as_tensor;
+  nodes_values_as_tensor.set_name("nodes_values_as_tensor");
+  nodes_values_as_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_DOUBLE);
+  nodes_values_as_tensor.add_dims(3);
+  nodes_values_as_tensor.add_double_data(0.0);
+  nodes_values_as_tensor.add_double_data(0.0);
+  nodes_values_as_tensor.add_double_data(0.0);
+  test.AddAttribute("nodes_values_as_tensor", nodes_values_as_tensor);
+
+  test.AddInput<double>("X", {1, 1}, {0.0});
+  test.AddOutput<int64_t>("Y", {1}, {0});
+  test.AddOutput<float>("Z", {1, 2}, {0.0f, 0.0f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Tree category set id 0 must be in [0, 0).");
+}
+#endif
+
 // Regression test for PR #27552 which inadvertently broke binary TreeEnsembleClassifier models
 // with all-positive weights and non-LOGISTIC post_transform (e.g., sklearn RandomForestClassifier).
 // When weights are all non-negative (probability-like values in [0,1]), the threshold for the
