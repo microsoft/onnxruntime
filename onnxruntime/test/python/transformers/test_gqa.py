@@ -9,6 +9,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 # -------------------------------------------------------------------------
+import concurrent.futures
 import functools
 import gc
 import math
@@ -3500,19 +3501,19 @@ class TestGQASplitDecode(unittest.TestCase):
             past_t = torch.tensor(past, dtype=torch.int32, device="cuda")
             work.append((runner, q, k, v, past_t, runner.step(q, k, v, past_t)))
 
-        failures = []
-
         def loop(runner, q, k, v, past_t, expected):
+            failures = []
             for _ in range(iterations):
                 out = runner.step(q, k, v, past_t)
                 if not torch.equal(out, expected):
                     failures.append((past_t.tolist(), (out.float() - expected.float()).abs().max().item()))
+            return failures
 
-        pool = [threading.Thread(target=loop, args=w) for w in work]
-        for t in pool:
-            t.start()
-        for t in pool:
-            t.join()
+        # result() re-raises an exception from the worker, so a run that fails with an ORT or CUDA error
+        # fails the test instead of leaving an empty failure list.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(work)) as pool:
+            futures = [pool.submit(loop, *w) for w in work]
+            failures = [f for future in futures for f in future.result()]
         self.assertEqual(failures, [])
 
 

@@ -902,7 +902,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     data.split_decode_counters = reinterpret_cast<unsigned int*>(split_decode_counters_buffer.get());
   }
 
-  if (use_flash_attention) {
+  // Split decode returns before the regular Flash kernels run, so it needs none of their workspace.
+  if (use_flash_attention && !data.use_split_decode) {
     // Flash-specific buffer sizes (softmax LSE and the optional split accumulators) come from the
     // shared Flash workspace recipe. The recipe reproduces get_num_splits_and_buffer_sizes,
     // including the fast-decode correction that sizes the accumulators with num_heads rather than
@@ -930,12 +931,12 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, GetComputeStream(context));
 
     auto cuda_stream = Stream(context);
-    if (softmax_lse_accum_bytes > 0 && !data.use_split_decode) {
+    if (softmax_lse_accum_bytes > 0) {
       // Initialize to 0 is fine because Flash kernel will write -inf to it if needed.
       // However, the standard Flash kernel often doesn't zero it globally.
       CUDA_RETURN_IF_ERROR(cudaMemsetAsync(softmax_lse_accum_buffer.get(), 0, softmax_lse_accum_bytes, cuda_stream));
     }
-    if (out_accum_bytes > 0 && !data.use_split_decode) {
+    if (out_accum_bytes > 0) {
       CUDA_RETURN_IF_ERROR(cudaMemsetAsync(out_accum_buffer.get(), 0, out_accum_bytes, cuda_stream));
     }
 
