@@ -14939,6 +14939,42 @@ TEST_F(GraphTransformationTests, STFTDecomposition_SkipsLargeConvWeight) {
                                         post_graph_checker));
 }
 
+TEST_F(GraphTransformationTests, STFTDecomposition_DmlFp16AboveCpuWeightLimit) {
+  constexpr int64_t batch_size = 1;
+  constexpr int64_t signal_length = 8192;
+  constexpr int64_t dft_size = 4096;
+  constexpr int64_t frame_step = 1024;
+  constexpr int64_t output_num_frames = 5;
+  constexpr int64_t dft_unique_bins = 2049;
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* signal = builder.MakeInput<MLFloat16>(std::vector<int64_t>{batch_size, signal_length});
+    auto* frame_step_arg = builder.MakeScalarInitializer<int64_t>(frame_step);
+    auto* frame_length = builder.MakeScalarInitializer<int64_t>(dft_size);
+    auto* output = builder.MakeOutput<MLFloat16>({{batch_size, output_num_frames, dft_unique_bins, 2}});
+
+    builder.AddNode("STFT", {signal, frame_step_arg, builder.MakeEmptyInput(), frame_length}, {output})
+        .AddAttribute("onesided", static_cast<int64_t>(1));
+  };
+
+  auto post_graph_checker = [](Graph& graph) -> Status {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.count("STFT") == 0);
+    TEST_RETURN_IF_NOT(op_to_count.at("Conv") == 1);
+    return Status::OK();
+  };
+
+  const InlinedHashSet<std::string_view> dml_ep = {kDmlExecutionProvider};
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case,
+                                        17,
+                                        *logger_,
+                                        std::make_unique<STFTDecomposition>(dml_ep),
+                                        TransformerLevel::Level1,
+                                        1,
+                                        nullptr,
+                                        post_graph_checker));
+}
+
 TEST_F(GraphTransformationTests, STFTDecomposition_SkipsDftSizeGreaterThanSignalLength) {
   constexpr int64_t batch_size = 1;
   constexpr int64_t signal_length = 8;

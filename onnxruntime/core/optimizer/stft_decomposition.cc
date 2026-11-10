@@ -314,7 +314,8 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
         LOGS(logger, WARNING) << "STFT decomposition skipped: weight size overflow";
         continue;
       }
-      if (weight_size_in_bytes > kMaxSTFTConvWeightSizeInBytes) {
+      // Keep the DML-only Level1 FP16 compatibility rewrite unrestricted.
+      if (may_run_on_cpu && weight_size_in_bytes > kMaxSTFTConvWeightSizeInBytes) {
         LOGS(logger, VERBOSE) << "STFT decomposition skipped: generated Conv weights would require "
                               << weight_size_in_bytes << " bytes";
         continue;
