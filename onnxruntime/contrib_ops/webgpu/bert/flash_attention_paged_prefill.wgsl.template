@@ -9,6 +9,8 @@
 // present_value tensor. Everything outside loadk() / loadv() — Q load, tiled
 // QK^T, online softmax, PV accumulation, causal masking, and output write —
 // is a direct port of the dense shader's shm_path.
+// Optional split-K workgroups scan independent KV chunks and emit normalized
+// partial outputs plus (max, denominator) metadata for the paged Vx reduction.
 //
 // Simplifications vs. the dense template (v1):
 //   * TurboQuant is not supported (the paged cache is never TQ-packed).
@@ -39,6 +41,7 @@
 #param qkv_num_heads
 #param max_k_step_param
 #param q_varlen
+#param split_k
 
 #use .getByIndices .getByOffset .setByOffset
 
@@ -123,8 +126,11 @@ fn loadv(v_start : u32, batch_idx : u32, head_idx : u32, local_idx : u32, total_
   }
 }
 
-fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32) {
-#if q_varlen
+fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32, split_idx : u32) {
+#if split_k
+  let row = (batch_idx * num_heads + head_idx) * uniforms.new_sequence_length + o_idx_global;
+  let offset = (row * uniforms.num_kv_splits + split_idx) * head_size_vec;
+#elif q_varlen
   // Varlen output: raw packed layout [token_count, num_heads, head_size].
   let q_row = u32(cumulative_seqlens_q[batch_idx]) + o_idx_global;
   let offset = q_row * num_heads * head_size_vec + head_idx * head_size_vec;
@@ -139,7 +145,8 @@ fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32) {
 }
 
 $MAIN {
-  let batch_head_idx = u32(workgroup_idx / uniforms.num_seq_tile);
+  let q_tile_idx = (workgroup_idx / uniforms.num_kv_splits) % uniforms.num_seq_tile;
+  let batch_head_idx = u32(workgroup_idx / (uniforms.num_seq_tile * uniforms.num_kv_splits));
   let head_idx = batch_head_idx % num_heads;
   let batch_idx = batch_head_idx / num_heads;
 
@@ -148,7 +155,7 @@ $MAIN {
   }
 
   // Load Q for this lane's row.
-  let q_idx_global = (workgroup_idx % uniforms.num_seq_tile) * workgroup_size_x + local_idx;
+  let q_idx_global = q_tile_idx * workgroup_size_x + local_idx;
 #if q_varlen
   // Varlen mode: q_idx_global is dispatch-clamped to max_seqlen_q, but the
   // real per-batch Q length may be shorter. Gate on seqlens_q[batch_idx] to
@@ -172,7 +179,7 @@ $MAIN {
   let q_len_b = u32(seqlens_q[batch_idx]);
   let past_sequence_length = total_sequence_length - q_len_b;
   let max_causal_len_for_workgroup = past_sequence_length +
-                                     (workgroup_idx % uniforms.num_seq_tile + 1) * workgroup_size_x;
+                                     (q_tile_idx + 1) * workgroup_size_x;
   let loop_bound = min(total_sequence_length, max_causal_len_for_workgroup);
   let seq_causal_length = past_sequence_length + q_idx_global + 1;
 #else
@@ -180,7 +187,15 @@ $MAIN {
   let seq_causal_length = total_sequence_length;
 #endif
 
-  for (var k_start = 0u; k_start < loop_bound; k_start += max_k_step) {
+#if split_k
+  let split_idx = workgroup_idx % uniforms.num_kv_splits;
+  let split_start = split_idx * uniforms.kv_chunk_size;
+  let split_end = min(loop_bound, split_start + uniforms.kv_chunk_size);
+#else
+  let split_start = 0u;
+  let split_end = loop_bound;
+#endif
+  for (var k_start = split_start; k_start < split_end; k_start += max_k_step) {
     workgroupBarrier();
     loadk(k_start, batch_idx, head_idx, local_idx, total_sequence_length);
     loadv(k_start, batch_idx, head_idx, local_idx, total_sequence_length);
@@ -228,6 +243,10 @@ $MAIN {
   }
 
   if (valid_q) {
-    writeo(batch_idx, q_idx_global, head_idx);
+    writeo(batch_idx, q_idx_global, head_idx, workgroup_idx % uniforms.num_kv_splits);
+#if split_k
+    let row = (batch_idx * num_heads + head_idx) * uniforms.new_sequence_length + q_idx_global;
+    metadata[row * uniforms.num_kv_splits + split_idx] = vec2<f32>(f32(previous_max), f32(previous_denom));
+#endif
   }
 }  // MAIN

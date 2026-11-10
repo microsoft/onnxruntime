@@ -154,13 +154,15 @@ class FlashAttentionPagedPrefillProgram final : public Program<FlashAttentionPag
                                     int qkv_head_size,
                                     int qkv_num_heads,
                                     bool is_unidirectional,
-                                    bool q_varlen)
+                                    bool q_varlen,
+                                    bool split_k)
       : Program{"FlashAttentionPagedPrefill"},
         is_fp16_(is_fp16),
         qkv_head_size_(qkv_head_size),
         qkv_num_heads_(qkv_num_heads),
         is_unidirectional_(is_unidirectional),
-        q_varlen_(q_varlen) {
+        q_varlen_(q_varlen),
+        split_k_(split_k) {
     // The shader is shared-memory only (no subgroup intrinsics). max_k_step
     // falls out of the workgroup shm budget: k_tile + v_tile = 2 *
     // element_size * head_size * max_k_step bytes.
@@ -181,7 +183,9 @@ class FlashAttentionPagedPrefillProgram final : public Program<FlashAttentionPag
                                           {"alpha", ProgramUniformVariableDataType::Float32},
                                           {"num_seq_tile", ProgramUniformVariableDataType::Uint32},
                                           {"block_size", ProgramUniformVariableDataType::Uint32},
-                                          {"kv_num_heads", ProgramUniformVariableDataType::Uint32});
+                                          {"kv_num_heads", ProgramUniformVariableDataType::Uint32},
+                                          {"num_kv_splits", ProgramUniformVariableDataType::Uint32},
+                                          {"kv_chunk_size", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool is_fp16_;
@@ -190,6 +194,7 @@ class FlashAttentionPagedPrefillProgram final : public Program<FlashAttentionPag
   bool is_unidirectional_;
   int max_k_step_;
   bool q_varlen_;
+  bool split_k_;
 };
 
 Status ApplyFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& context,
@@ -204,6 +209,61 @@ Status ApplyFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& cont
                                        uint32_t block_size,
                                        uint32_t max_num_blocks_per_seq,
                                        const Tensor* cumulative_seqlens_q = nullptr);
+
+class FlashAttentionPagedPrefillSubgroupMatrixProgram final
+    : public Program<FlashAttentionPagedPrefillSubgroupMatrixProgram> {
+ public:
+  FlashAttentionPagedPrefillSubgroupMatrixProgram(int head_size, int num_heads, bool causal)
+      : Program{"FlashAttentionPagedPrefillSubgroupMatrix"},
+        head_size_(head_size),
+        num_heads_(num_heads),
+        causal_(causal) {}
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"new_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"n_reps", ProgramUniformVariableDataType::Uint32},
+                                          {"alpha", ProgramUniformVariableDataType::Float32},
+                                          {"num_seq_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"block_size", ProgramUniformVariableDataType::Uint32},
+                                          {"kv_num_heads", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  int head_size_;
+  int num_heads_;
+  bool causal_;
+};
+
+class FlashAttentionPrefillSubgroupMatrixProgram final
+    : public Program<FlashAttentionPrefillSubgroupMatrixProgram> {
+ public:
+  FlashAttentionPrefillSubgroupMatrixProgram(int head_size, int num_heads, bool causal,
+                                             bool q_bnsh, bool use_seqlen_k, bool use_seqlens_q)
+      : Program{"FlashAttentionPrefillSubgroupMatrix"},
+        head_size_(head_size),
+        num_heads_(num_heads),
+        causal_(causal),
+        q_bnsh_(q_bnsh),
+        use_seqlen_k_(use_seqlen_k),
+        use_seqlens_q_(use_seqlens_q) {}
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"new_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"n_reps", ProgramUniformVariableDataType::Uint32},
+                                          {"alpha", ProgramUniformVariableDataType::Float32},
+                                          {"num_seq_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"total_sequence_length", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  int head_size_;
+  int num_heads_;
+  bool causal_;
+  bool q_bnsh_;
+  bool use_seqlen_k_;
+  bool use_seqlens_q_;
+};
 
 class FlashAttentionPrefillProgram final : public Program<FlashAttentionPrefillProgram> {
  public:

@@ -48,6 +48,87 @@
 namespace onnxruntime {
 namespace test {
 
+#ifdef USE_WEBGPU
+TEST(GroupQueryAttentionTest, WebGpu_MatrixPrefill_QueryAndKvTailsWithPast) {
+  for (const int head_size : {128, 256}) {
+    constexpr bool causal = true;
+    SCOPED_TRACE(head_size);
+    SCOPED_TRACE(causal);
+    constexpr int sequence = 257, past = 31, capacity = 320, heads = 2;
+    constexpr int total = past + sequence;
+    auto ep = DefaultWebGpuExecutionProvider();
+    if (!ep) {
+      GTEST_SKIP() << "WebGPU is not available";
+    }
+    std::mt19937 rng(42);
+    std::uniform_real_distribution<float> distribution(-0.5f, 0.5f);
+    auto random_data = [&](size_t size) {
+      std::vector<MLFloat16> data(size);
+      for (auto& value : data) value = MLFloat16(distribution(rng));
+      return data;
+    };
+    auto q = random_data(sequence * heads * head_size);
+    auto k = random_data(sequence * head_size);
+    auto v = random_data(sequence * head_size);
+    auto pk = random_data(capacity * head_size);
+    auto pv = random_data(capacity * head_size);
+    std::fill(pk.begin() + total * head_size, pk.end(), MLFloat16(0.0f));
+    std::fill(pv.begin() + total * head_size, pv.end(), MLFloat16(0.0f));
+    auto expected_k = pk, expected_v = pv;
+    std::copy(k.begin(), k.end(), expected_k.begin() + past * head_size);
+    std::copy(v.begin(), v.end(), expected_v.begin() + past * head_size);
+    std::vector<MLFloat16> expected(q.size());
+    std::vector<float> scores(total);
+    const float scale = 1.0f / std::sqrt(static_cast<float>(head_size));
+    for (int row = 0; row < sequence; ++row) {
+      const int visible = causal ? past + row + 1 : total;
+      for (int head = 0; head < heads; ++head) {
+        const int offset = (row * heads + head) * head_size;
+        float maximum = std::numeric_limits<float>::lowest();
+        for (int pos = 0; pos < visible; ++pos) {
+          float score = 0;
+          for (int d = 0; d < head_size; ++d) {
+            score += q[offset + d].ToFloat() * expected_k[pos * head_size + d].ToFloat();
+          }
+          scores[pos] = score * scale;
+          maximum = std::max(maximum, scores[pos]);
+        }
+        float denominator = 0;
+        for (int pos = 0; pos < visible; ++pos) {
+          scores[pos] = std::exp(scores[pos] - maximum);
+          denominator += scores[pos];
+        }
+        for (int d = 0; d < head_size; ++d) {
+          float value = 0;
+          for (int pos = 0; pos < visible; ++pos) {
+            value += scores[pos] * expected_v[pos * head_size + d].ToFloat();
+          }
+          expected[offset + d] = MLFloat16(value / denominator);
+        }
+      }
+    }
+    OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+    tester.AddAttribute<int64_t>("num_heads", heads);
+    tester.AddAttribute<int64_t>("kv_num_heads", 1);
+    tester.AddAttribute<int64_t>("causal", causal);
+    tester.AddInput<MLFloat16>("query", {1, sequence, heads * head_size}, q);
+    tester.AddInput<MLFloat16>("key", {1, sequence, head_size}, k);
+    tester.AddInput<MLFloat16>("value", {1, sequence, head_size}, v);
+    tester.AddInput<MLFloat16>("past_key", {1, 1, capacity, head_size}, pk);
+    tester.AddInput<MLFloat16>("past_value", {1, 1, capacity, head_size}, pv);
+    tester.AddInput<int32_t>("seqlens_k", {1}, {total - 1});
+    tester.AddInput<int32_t>("total_sequence_length", {1}, {total}, true);
+    tester.AddOutput<MLFloat16>("output", {1, sequence, heads * head_size}, expected);
+    tester.AddOutput<MLFloat16>("present_key", {1, 1, capacity, head_size}, expected_k);
+    tester.AddOutput<MLFloat16>("present_value", {1, 1, capacity, head_size}, expected_v);
+    tester.SetOutputTolerance(0.001f);
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(std::move(ep));
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  }
+}
+#endif
+
 #ifdef USE_CUDA
 // Restrict native H512 GQA to supported GPUs and compatible, unquantized grouped-head caches.
 TEST(GroupQueryAttentionTest, NativeH512FallbackEligibility) {
