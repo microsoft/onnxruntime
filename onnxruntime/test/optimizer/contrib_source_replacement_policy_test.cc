@@ -316,7 +316,7 @@ TEST(ContribSourceReplacementPolicyTest, RejectsInvalidReplacementBindingsBefore
   for (const auto* replacement : {
            "(missing)=>com.microsoft.ScaledSiLU(missing)",
            "(a)=>com.microsoft.ScaledSiLU(a)",
-           "(input,x)=>com.microsoft.ScaledSiLU(input,alpha=x)"}) {
+           "(x)=>com.microsoft.ScaledSiLU(x,alpha=x)"}) {
     SCOPED_TRACE(replacement);
     auto source = ScaledSiLUSources().front();
     source.body.rule.pattern = rewrite::Pattern("(x)=>{a=Swish(x);return a}");
