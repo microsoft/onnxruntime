@@ -39,6 +39,9 @@ SessionLoop::SessionLoop(InferenceSession& session, SessionLoopOptions options)
   for (const auto& binding : options_.feedback) {
     add_output(binding.output_name);
   }
+  for (const auto& binding : options_.kv_caches) {
+    add_output(binding.output_name);
+  }
   if (!options_.generated_token_output.empty()) {
     add_output(options_.generated_token_output);
   }
@@ -75,6 +78,22 @@ Status SessionLoop::Create(InferenceSession& session, SessionLoopOptions options
     ORT_RETURN_IF_NOT(input && output && destinations.insert(binding.input_name).second,
                       "Invalid or conflicting feedback binding: ", binding.input_name);
     ORT_RETURN_IF_ERROR(CheckCompatibleTypes(*output, *input));
+  }
+  InlinedVector<KVCacheSpec> cache_specs;
+  for (const auto& item : options.kv_caches) {
+    cache_specs.push_back(item.cache);
+  }
+  ORT_RETURN_IF_ERROR(KVCacheManager::ValidateSpecs(cache_specs));
+  for (const auto& item : options.kv_caches) {
+    const auto* input = FindArgument(inputs, item.input_name);
+    const auto* output = FindArgument(outputs, item.output_name);
+    ORT_RETURN_IF_NOT(input && output && destinations.insert(item.input_name).second,
+                      "Invalid or conflicting KV cache binding: ", item.cache.name);
+    ORT_RETURN_IF(item.update_kind != KVCacheUpdateKind::Share && item.update_kind != KVCacheUpdateKind::Copy &&
+                      item.update_kind != KVCacheUpdateKind::Append,
+                  "Unknown KV cache binding update kind");
+    ORT_RETURN_IF_ERROR(KVCacheManager::CheckBinding(item.cache, *input, true));
+    ORT_RETURN_IF_ERROR(KVCacheManager::CheckBinding(item.cache, *output, false));
   }
   InlinedHashSet<std::string> selected;
   for (const auto& name : options.output_names) {
@@ -127,10 +146,14 @@ Status SessionLoop::Create(InferenceSession& session, SessionLoopOptions options
 Status SessionLoop::ValidateInputs(const SessionLoopInputs& inputs) const {
   const auto& arguments = *session_.GetModelInputs().second;
   InlinedHashSet<std::string> finite(options_.finite_input_names.begin(), options_.finite_input_names.end());
-  ORT_RETURN_IF(inputs.inputs.size() + finite.size() != arguments.size(), "SessionLoop input count mismatch");
+  ORT_RETURN_IF(inputs.inputs.size() + finite.size() + options_.kv_caches.size() != arguments.size(),
+                "SessionLoop input count mismatch");
   for (const auto& [name, value] : inputs.inputs) {
     const auto* argument = FindArgument(arguments, name);
     ORT_RETURN_IF_NOT(argument && !finite.contains(name), "Unknown or conflicting invariant input: ", name);
+    ORT_RETURN_IF(std::any_of(options_.kv_caches.begin(), options_.kv_caches.end(),
+                              [&](const auto& item) { return item.input_name == name; }),
+                  "Managed KV cache inputs cannot also be supplied as invariant feeds");
     ORT_RETURN_IF_ERROR(CheckInput(*argument, value));
   }
   ORT_RETURN_IF(finite.empty() && !inputs.batches.empty(), "Batches require finite input names");
@@ -149,12 +172,35 @@ Status SessionLoop::ValidateInputs(const SessionLoopInputs& inputs) const {
 
 Status SessionLoop::CreateExecution(SessionLoopInputs inputs, std::unique_ptr<SessionLoopExecution>& out) const {
   ORT_RETURN_IF_ERROR(ValidateInputs(inputs));
-  out = std::unique_ptr<SessionLoopExecution>(new SessionLoopExecution(shared_from_this(), std::move(inputs)));
+  std::shared_ptr<KVCacheManager> cache;
+  if (!options_.kv_caches.empty()) {
+    InlinedVector<KVCacheSpec> specs;
+    for (const auto& item : options_.kv_caches) {
+      specs.push_back(item.cache);
+    }
+    std::unique_ptr<IOBinding> binding;
+    ORT_RETURN_IF_ERROR(session_.NewIOBinding(&binding));
+    std::unique_ptr<KVCacheManager> manager;
+    ORT_RETURN_IF_ERROR(
+        KVCacheManager::Create(std::move(specs), binding->GetCPUAllocator(kCpuExecutionProvider), manager));
+    cache = std::move(manager);
+  }
+  out = std::unique_ptr<SessionLoopExecution>(
+      new SessionLoopExecution(shared_from_this(), std::move(inputs), std::move(cache), true));
   return Status::OK();
 }
 
-SessionLoopExecution::SessionLoopExecution(std::shared_ptr<const SessionLoop> loop, SessionLoopInputs inputs)
-    : loop_(std::move(loop)), initial_inputs_(std::move(inputs)) {}
+Status SessionLoop::CreateExecutionWithCache(SessionLoopInputs inputs, std::shared_ptr<KVCacheManager> cache,
+                                             std::unique_ptr<SessionLoopExecution>& out) const {
+  ORT_RETURN_IF_ERROR(ValidateInputs(inputs));
+  out = std::unique_ptr<SessionLoopExecution>(
+      new SessionLoopExecution(shared_from_this(), std::move(inputs), std::move(cache), false));
+  return Status::OK();
+}
+
+SessionLoopExecution::SessionLoopExecution(std::shared_ptr<const SessionLoop> loop, SessionLoopInputs inputs,
+                                           std::shared_ptr<KVCacheManager> cache, bool owns_cache)
+    : loop_(std::move(loop)), initial_inputs_(std::move(inputs)), cache_(std::move(cache)), owns_cache_(owns_cache) {}
 
 void SessionLoopExecution::EvaluateExits(const InlinedVector<OrtValue>& values) {
   progress_.exit_reasons.clear();
@@ -225,6 +271,11 @@ Status SessionLoopExecution::Step(SessionLoopStepResult& out) {
   for (size_t i = 0; i < feedback_.size(); ++i) {
     ORT_RETURN_IF_ERROR(binding->BindInput(loop_->options_.feedback[i].input_name, feedback_[i]));
   }
+  for (const auto& item : loop_->options_.kv_caches) {
+    KVCacheView view;
+    ORT_RETURN_IF_ERROR(cache_->Get(item.cache.name, view));
+    ORT_RETURN_IF_ERROR(binding->BindInput(item.input_name, view.value));
+  }
   for (const auto& name : loop_->fetch_names_) {
     ORT_RETURN_IF_ERROR(binding->BindOutput(name));
   }
@@ -263,6 +314,10 @@ Status SessionLoopExecution::Step(SessionLoopStepResult& out) {
                   "Generated-token output must be a nonnegative scalar");
     progress_.generated_tokens = SafeInt<int64_t>(progress_.generated_tokens) + 1;
   }
+  for (const auto& item : loop_->options_.kv_caches) {
+    ORT_RETURN_IF_ERROR(cache_->Update(item.cache.name, snapshots[FindOutput(loop_->fetch_names_, item.output_name)],
+                                       item.update_kind));
+  }
   progress_.iterations = SafeInt<int64_t>(progress_.iterations) + 1;
   EvaluateExits(snapshots);
   feedback_.clear();
@@ -289,6 +344,9 @@ Status SessionLoopExecution::Run(SessionLoopStepResult& out) {
 }
 
 void SessionLoopExecution::Reset() {
+  if (owns_cache_ && cache_) {
+    cache_->Reset();
+  }
   feedback_.clear();
   progress_ = {};
   cancelled_.store(false);

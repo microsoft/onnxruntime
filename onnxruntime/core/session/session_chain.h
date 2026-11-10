@@ -37,6 +37,7 @@ struct SessionChainComponent {
   std::variant<InferenceSession*, std::shared_ptr<const SessionLoop>> execution;
   InlinedVector<ChainInputBinding> inputs;
   InlinedVector<ChainStateBinding> state_outputs;
+  InlinedVector<LoopKVCacheBinding, 1> kv_caches;
 };
 
 struct ChainOutputBinding {
@@ -46,7 +47,7 @@ struct ChainOutputBinding {
 };
 
 struct SessionChainOptions {
-  InlinedVector<SessionChainComponent> components;
+  InlinedVector<SessionChainComponent, 1> components;
   InlinedVector<ChainOutputBinding> outputs;
 };
 
@@ -87,6 +88,7 @@ class SessionChain : public std::enable_shared_from_this<SessionChain> {
   InlinedHashSet<std::string> external_names_;
   InlinedHashSet<std::string> sequence_names_;
   InlinedHashSet<std::string> initial_state_names_;
+  InlinedVector<KVCacheSpec> cache_specs_;
 };
 
 // Step/Run/Reset are sequential. Only Cancel may be called concurrently.
@@ -98,17 +100,20 @@ class SessionChainExecution {
   void Reset();
   bool RequiresReset() const { return requires_reset_; }
   const LoopFeeds& State() const { return state_; }
+  const KVCacheManager* Cache() const { return cache_.get(); }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionChainExecution);
 
  private:
   friend class SessionChain;
-  SessionChainExecution(std::shared_ptr<const SessionChain> chain, SessionChainInputs inputs);
+  SessionChainExecution(std::shared_ptr<const SessionChain> chain, SessionChainInputs inputs,
+                        std::shared_ptr<KVCacheManager> cache);
   Status Resolve(const ChainValueSource& source, const OrtValue*& out) const;
   Status PrepareComponentInputs(SessionLoopInputs& inputs) const;
   Status StepComponent(SessionChainStepResult& result);
 
   const std::shared_ptr<const SessionChain> chain_;
   const SessionChainInputs initial_inputs_;
+  const std::shared_ptr<KVCacheManager> cache_;
   InlinedVector<LoopFeeds> component_outputs_;
   LoopFeeds state_;
   std::unique_ptr<SessionLoopExecution> active_;

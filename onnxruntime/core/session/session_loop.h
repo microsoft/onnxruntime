@@ -11,6 +11,7 @@
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
 #include "core/framework/ort_value.h"
+#include "core/session/kv_cache_manager.h"
 
 namespace onnxruntime {
 
@@ -44,6 +45,7 @@ struct SessionLoopOptions {
   std::string generated_token_output;
   // Reject an empty finite source or empty tensor for this input (e.g. a prompt).
   std::string nonempty_input;
+  InlinedVector<LoopKVCacheBinding, 1> kv_caches;
 };
 
 using LoopFeeds = InlinedHashMap<std::string, OrtValue>;
@@ -76,8 +78,11 @@ class SessionLoop : public std::enable_shared_from_this<SessionLoop> {
  private:
   friend class SessionLoopExecution;
   friend class SessionChain;
+  friend class SessionChainExecution;
   SessionLoop(InferenceSession& session, SessionLoopOptions options);
   Status ValidateInputs(const SessionLoopInputs& inputs) const;
+  Status CreateExecutionWithCache(SessionLoopInputs inputs, std::shared_ptr<KVCacheManager> cache,
+                                  std::unique_ptr<SessionLoopExecution>& out) const;
 
   InferenceSession& session_;
   const SessionLoopOptions options_;
@@ -92,15 +97,19 @@ class SessionLoopExecution {
   void Cancel() noexcept { cancelled_.store(true); }
   void Reset();
   bool RequiresReset() const { return requires_reset_; }
+  const KVCacheManager* Cache() const { return cache_.get(); }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionLoopExecution);
 
  private:
   friend class SessionLoop;
-  SessionLoopExecution(std::shared_ptr<const SessionLoop> loop, SessionLoopInputs inputs);
+  SessionLoopExecution(std::shared_ptr<const SessionLoop> loop, SessionLoopInputs inputs,
+                       std::shared_ptr<KVCacheManager> cache, bool owns_cache);
   void EvaluateExits(const InlinedVector<OrtValue>& values);
 
   const std::shared_ptr<const SessionLoop> loop_;
   const SessionLoopInputs initial_inputs_;
+  const std::shared_ptr<KVCacheManager> cache_;
+  const bool owns_cache_;
   InlinedVector<OrtValue> feedback_;
   SessionLoopStepResult progress_;
   std::atomic<bool> cancelled_{false};

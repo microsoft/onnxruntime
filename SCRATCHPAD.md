@@ -13,7 +13,7 @@ Compressed project memory. This is not the execution plan.
   M01. `SPEC.md` and the execution plan are approved.
 - M01 is complete and published as ready-for-review PR #34040:
   https://github.com/microsoft/onnxruntime/pull/34040
-- No agents launched. M01-M03 are complete; M04-M24 remain pending.
+- No agents launched. M01-M04 are complete; M05-M24 remain pending.
   Runtime production code starts with M02.
 - Future tracking: keep `TASKS.md` checklist current and record compressed
   discoveries/agent learnings here.
@@ -87,7 +87,7 @@ Compressed project memory. This is not the execution plan.
   standalone package; ORT loading; DDIM; Python; Phi-3 demo; diffusion demo;
   C#; Java; common JS/Node; Web/WASM; Go; Rust; Objective-C; React Native;
   integrated qualification/measurements.
-- M01-M03 complete after explicit approval; M04-M24 remain pending.
+- M01-M04 complete after explicit approval; M05-M24 remain pending.
 - Each milestone includes intended outcome, tasks, CPU/CUDA test plan and gate.
   Actual prerequisites are listed separately from mechanical stack ordering.
 - M01 verifies concrete contracts, small fixtures and coverage readiness.
@@ -265,3 +265,49 @@ Compressed project memory. This is not the execution plan.
   PR #34042: https://github.com/microsoft/onnxruntime/pull/34042
   Base `stateful-M02-context-loop`, head `stateful-M03-chain-bindings`.
   No new device code or public API. M04 (CPU KVCacheManager) is next, not started.
+
+## M04
+
+- 2026-10-16: User authorized M04; branch `stateful-M04-cpu-kv-cache` stacks on M03.
+- Internal CPU manager: explicit layouts/dtypes/sequence axis, logical length
+  versus allocation capacity, validated full-output adoption/copy, append and
+  reserve. Arbitrary sequence axis must use compact logical packing, not
+  incorrectly reinterpret per-head capacity-strided buffers as dense tensors.
+- Preserve immutable snapshots by allocating fresh buffers on mutation; retain
+  compatible allocator-owned model outputs without extra copies. No model
+  input/output aliasing is inferred or enabled.
+- Managed loop cache bindings feed the manager and commit model outputs; chains
+  share one manager across their components, while independent executions do not.
+- Keep native CUDA management deferred. CPU/device rejection and host-staged
+  CUDA Sessions will be tested without claiming CUDA-backed cache support.
+- Implemented `kv_cache_manager.h/.cc`; wired explicit managed input/output
+  bindings into loops and chains. Added standalone/integration tests to existing
+  `session_chain_test.cc`, keeping milestone to ten files.
+- CPU first validation: 42/42 focused tests + 21/21 regressions passed, no skips.
+  LLVM reports 100% affected inference-runtime coverage; final denominator
+  verification after the last test/lifetime-only edits is pending.
+- Compile fixes: Tensor::IsContiguous exists only under ENABLE_STRIDED_TENSORS
+  (training); guard it. Convert SafeInt row offsets to size_t before pointer
+  arithmetic. ORT InlinedVector does not support N=0; explicitly use N=1 for
+  enlarged cache-binding/component structures. Typed array fixes enum/int test.
+- CPU inference configuration does not compile the training-only strided guard.
+  Do not claim training coverage. No new device code.
+- Manager share adopts allocator-owned outputs at their actual capacity;
+  copied/appended views retain compact logical packing and use fresh buffers.
+  Lifetime counters count manager data-buffer operations, not Session snapshots.
+- Additional final tests release producing Sessions and exercise last-axis
+  packing. Need final CPU rebuild/profiles and CUDA rebuild/test pass.
+- M04 implementation committed as `fffa292875`; no agents used.
+- Final validation passed: CPU 42/42 focused + 21/21 regressions; CUDA build
+  76/76 focused + 26/26 regressions, no skips. Six new native-CUDA Session
+  integration cases still use the explicitly CPU-resident cache manager.
+- Final line gate: 335/335 new unique executable locations; 943/943 cumulative
+  unique locations. LLVM aggregate mapping 957/957. Eighteen unrelated
+  profile-map warnings, none affecting new or coupled runtime functions.
+- Compute Sanitizer: five CPU-cache/CUDA-Session integration cases passed,
+  zero errors. Producer Session release and all three axis positions tested.
+- All ten files pass formatting/whitespace/120-column/document checks.
+  M04 complete in ready-for-review PR #34043:
+  https://github.com/microsoft/onnxruntime/pull/34043
+  Base `stateful-M03-chain-bindings`, head `stateful-M04-cpu-kv-cache`.
+- M05 (CPU greedy sampling and decode integration) is next, not started.
