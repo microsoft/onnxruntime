@@ -251,16 +251,16 @@ TEST(MatMulPackedPrecisionTest, Nvfp4Bf16PackedOperandExtremes) {
             expected[row * n + col] = BFloat16(sum);
           }
         }
-      }
-      for (bool initializer : {false, true}) {
-        OpTester test("MatMulPacked", 1, kMSDomain);
-        test.AddAttribute("K", int64_t{k});
-        test.AddAttribute("N", int64_t{n});
-        test.AddAttribute("packed_type", int64_t{40});
-        test.AddInput<BFloat16>("A", {rows, k}, a);
-        test.AddInput<uint8_t>("B", {n, row_bytes}, packed, initializer);
-        test.AddOutput<BFloat16>("Y", {rows, n}, expected);
-        RunPackedCuda(test);
+        for (bool initializer : {false, true}) {
+          OpTester test("MatMulPacked", 1, kMSDomain);
+          test.AddAttribute("K", int64_t{k});
+          test.AddAttribute("N", int64_t{n});
+          test.AddAttribute("packed_type", int64_t{40});
+          test.AddInput<BFloat16>("A", {rows, k}, a);
+          test.AddInput<uint8_t>("B", {n, row_bytes}, packed, initializer);
+          test.AddOutput<BFloat16>("Y", {rows, n}, expected);
+          RunPackedCuda(test);
+        }
       }
     }
   }
