@@ -92,11 +92,13 @@ def _run_cuda_bound(session, inputs, output_shape, output_dtype, output_offset=2
     )
 
 
-def _session(model, provider):
+def _session(model, provider, allow_unrounded_gemv=None):
     options = ort.SessionOptions()
     options.intra_op_num_threads = 1
     if provider == "CUDAExecutionProvider":
         options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+    if allow_unrounded_gemv is not None:
+        options.add_session_config_entry("ep.cuda.matmul_packed_allow_unrounded_gemv", allow_unrounded_gemv)
     session = ort.InferenceSession(model.SerializeToString(), sess_options=options, providers=[provider])
     session.disable_fallback()
     if provider not in session.get_providers():
@@ -651,7 +653,7 @@ class TestGgufPackedOps(unittest.TestCase):
                     with self.subTest(gtype=gtype, dtype=dtype, m=m):
                         a = _round_to_dtype(rng.standard_normal((m, k), dtype=np.float32) * 0.2, dtype)
                         got = session.run(None, {"A_f32": a, "B": raw})[0]
-                        target = weights if m <= 8 or dtype == TensorProto.FLOAT16 else _round_to_dtype(weights, dtype)
+                        target = _round_to_dtype(weights, dtype)
                         ref = _round_to_dtype(a @ target.T, dtype)
                         np.testing.assert_allclose(got, ref, rtol=1e-2, atol=1e-2)
 
@@ -662,13 +664,14 @@ class TestGgufPackedOps(unittest.TestCase):
                 weights = np.zeros((n, k), dtype=np.float32)
                 weights[:, :2] = [1.00390625, -1.0]
                 raw = weights.view(np.uint8).reshape(n, k * 4)
-                session = _session(_matmul_model(k, n, raw.shape[1], 0, dtype), "CUDAExecutionProvider")
-                for m in (1, 8, 9):
-                    with self.subTest(dtype=dtype, n=n, m=m):
-                        got = session.run(None, {"A_f32": np.ones((m, k), dtype=np.float32), "B": raw})[0]
-                        bf16_weights = dtype == TensorProto.BFLOAT16 and (m > 8 or n >= 65536)
-                        expected = 0.0 if bf16_weights else 0.00390625
-                        np.testing.assert_array_equal(got, np.full((m, n), expected, dtype=np.float32))
+                for policy in (None, "0", "1"):
+                    session = _session(_matmul_model(k, n, raw.shape[1], 0, dtype), "CUDAExecutionProvider", policy)
+                    for m in (1, 8, 9):
+                        with self.subTest(dtype=dtype, n=n, m=m, policy=policy):
+                            got = session.run(None, {"A_f32": np.ones((m, k), dtype=np.float32), "B": raw})[0]
+                            bf16_weights = dtype == TensorProto.BFLOAT16 and (policy != "1" or m > 8 or n >= 65536)
+                            expected = 0.0 if bf16_weights else 0.00390625
+                            np.testing.assert_array_equal(got, np.full((m, n), expected, dtype=np.float32))
 
     def test_matmul_packed_prefill_fp32_reduction(self):
         k, n = 4096, 32
@@ -698,14 +701,20 @@ class TestGgufPackedOps(unittest.TestCase):
             raw = np.tile(np.frombuffer(block, np.uint8), (n, 1))
             weights = _dequantize_weights(raw, k, gtype)
             self.assertGreater(np.max(np.abs(weights)), np.finfo(np.float16).max)
-            session = _session(_matmul_model(k, n, raw.shape[1], gtype, TensorProto.FLOAT16), "CUDAExecutionProvider")
-            for m in (1, 8, 9, 129):
-                with self.subTest(gtype=gtype, m=m):
-                    a = _round_to_dtype(np.full((m, k), 1e-5, np.float32), TensorProto.FLOAT16)
-                    got = session.run(None, {"A_f32": a, "B": raw})[0]
-                    ref = _round_to_dtype(a @ weights.T, TensorProto.FLOAT16)
-                    self.assertTrue(np.all(np.isfinite(got)))
-                    np.testing.assert_array_equal(got, ref)
+            for policy in (None, "1"):
+                session = _session(
+                    _matmul_model(k, n, raw.shape[1], gtype, TensorProto.FLOAT16), "CUDAExecutionProvider", policy
+                )
+                for m in (1, 8, 9, 129):
+                    with self.subTest(gtype=gtype, m=m, policy=policy):
+                        a = _round_to_dtype(np.full((m, k), 1e-5, np.float32), TensorProto.FLOAT16)
+                        got = session.run(None, {"A_f32": a, "B": raw})[0]
+                        unrounded_gemv = policy == "1" and m <= 8
+                        with np.errstate(over="ignore", invalid="ignore"):
+                            target = weights if unrounded_gemv else _round_to_dtype(weights, TensorProto.FLOAT16)
+                            ref = _round_to_dtype(a @ target.T, TensorProto.FLOAT16)
+                        self.assertEqual(np.all(np.isfinite(got)), unrounded_gemv)
+                        np.testing.assert_array_equal(got, ref)
 
     def test_matmul_packed_reject_partial_blocks_at_session_creation(self):
         for gtype, bel, bbytes in GGUF_TYPES_INFO:
@@ -952,9 +961,7 @@ class TestGgufPackedOps(unittest.TestCase):
                                 (m, n),
                                 dtype,
                             )
-                            target = (
-                                _round_to_dtype(weights, dtype) if m > 8 and dtype == TensorProto.BFLOAT16 else weights
-                            )
+                            target = _round_to_dtype(weights, dtype)
                             ref = _round_to_dtype(_round_to_dtype(a, dtype) @ target.T, dtype)
                             np.testing.assert_allclose(got, ref, rtol=1e-2, atol=1e-2)
 

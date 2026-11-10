@@ -4735,7 +4735,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.MatMulPacked"></a><a name="com.microsoft.matmulpacked">**com.microsoft.MatMulPacked**</a>
 
   Matrix multiplication Y = A @ B^T where B is a 2D block-packed weight tensor.
-  CUDA uses float32 accumulation and reductions. M is the product of A's leading dimensions. Decode (M <= 8) uses float32-decoded weights for FP16 and for BF16 with N < 65536. BF16 decode with N >= 65536 rounds decoded weights to BF16, including the SIMT fallback. Prefill (M > 8) uses bounded scratch memory and BF16-rounded decoded weights for BF16; FP16 prefill uses float32-decoded weights unless the packed format is F16. Consequently, BF16 results may differ across the M and N dispatch boundaries. CUDA execution requires weights in device memory.
+  Complete dequantized weights are rounded to A's dtype before multiplication by default. CUDA uses float32 accumulation and reductions. M is the product of A's leading dimensions. The CUDA session option ep.cuda.matmul_packed_allow_unrounded_gemv=1 permits eligible decode/GEMV kernels (M <= 8) to skip weight rounding; its default is 0. Prefill (M > 8) uses bounded scratch memory and always rounds weights to A's dtype, including when using float32 scratch buffers. Kernel reduction orders can still differ. CUDA execution requires weights in device memory.
   Supported format IDs and their stable byte layouts are defined in the [packed-weight format contract](https://github.com/microsoft/onnxruntime/blob/main/docs/PackedWeightFormats.md).
 
 #### Version
@@ -4753,13 +4753,15 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Stable packed-format ID for B from the packed-weight format contract. Only listed IDs are supported.</dd>
 </dl>
 
-#### Inputs
+#### Inputs (2 - 3)
 
 <dl>
 <dt><tt>A</tt> : T1</dt>
 <dd>Input activations [..., K].</dd>
 <dt><tt>B</tt> : T2</dt>
 <dd>Packed weight blob [N, row_bytes].</dd>
+<dt><tt>global_scale</tt> (optional) : Tscale</dt>
+<dd>Optional scalar FP32 multiplier for NVFP4, applied to FP32 accumulation before the output cast.</dd>
 </dl>
 
 #### Outputs
@@ -4776,6 +4778,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Activation type.</dd>
 <dt><tt>T2</tt> : tensor(uint8)</dt>
 <dd>Packed byte storage.</dd>
+<dt><tt>Tscale</tt> : tensor(float)</dt>
+<dd>Global scale type.</dd>
 </dl>
 
 
@@ -9554,3 +9558,5 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
+
+

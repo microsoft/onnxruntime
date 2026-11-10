@@ -1038,12 +1038,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     MatMulPacked, 1,
     OpSchema()
         .SetDoc("Matrix multiplication Y = A @ B^T where B is a 2D block-packed weight tensor.\n"
+                "Complete dequantized weights are rounded to A's dtype before multiplication by default. "
                 "CUDA uses float32 accumulation and reductions. M is the product of A's leading dimensions. "
-                "Decode (M <= 8) uses float32-decoded weights for FP16 and for BF16 with N < 65536. "
-                "BF16 decode with N >= 65536 rounds decoded weights to BF16, including the SIMT fallback. "
-                "Prefill (M > 8) uses bounded scratch memory and BF16-rounded decoded weights for BF16; "
-                "FP16 prefill uses float32-decoded weights unless the packed format is F16. "
-                "Consequently, BF16 results may differ across the M and N dispatch boundaries. "
+                "The CUDA session option ep.cuda.matmul_packed_allow_unrounded_gemv=1 permits eligible "
+                "decode/GEMV kernels (M <= 8) to skip weight rounding; its default is 0. "
+                "Prefill (M > 8) uses bounded scratch memory and always rounds weights to A's dtype, "
+                "including when using float32 scratch buffers. Kernel reduction orders can still differ. "
                 "CUDA execution requires weights in device memory.\n"
                 "Supported format IDs and their stable byte layouts are defined in the "
                 "[packed-weight format contract]"
@@ -1057,9 +1057,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT)
         .Input(0, "A", "Input activations [..., K].", "T1")
         .Input(1, "B", "Packed weight blob [N, row_bytes].", "T2")
+        .Input(2, "global_scale",
+               "Optional scalar FP32 multiplier for NVFP4, applied to FP32 accumulation before the output cast.",
+               "Tscale", OpSchema::Optional)
         .Output(0, "Y", "Output activations [..., N].", "T1")
         .TypeConstraint("T1", {"tensor(bfloat16)", "tensor(float16)"}, "Activation type.")
         .TypeConstraint("T2", {"tensor(uint8)"}, "Packed byte storage.")
+        .TypeConstraint("Tscale", {"tensor(float)"}, "Global scale type.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           const int64_t n = getAttribute(ctx, "N", 0);
