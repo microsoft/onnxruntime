@@ -1061,6 +1061,11 @@ provenance, normalized constraints, candidate/recipe/contract identity, allocati
 status, and state validity/ownership/release rules. Keep the same discovery interface and preserve the
 legacy path; finalized plugin ABI layouts and implementation of every optional feature are not prerequisites.
 
+Each ID is a group letter plus an item number: **S** shared protocol, **C** capability and contract,
+**R** region and assignment boundary, **M** memory evaluation, **P** prototype, **F** fusion, and
+**I** integration. The number identifies the item within its group; the Depends on column gives the
+actual prerequisites.
+
 | ID | Workstream | Deliverable | Depends on | Done when | Issue/PR |
 |:---|:-----------|:------------|:-----------|:----------|:---------|
 | **S0** | Shared protocol | Internal query, planning reply, and selected-binding model. | None | The GQA example and an illustrative fused candidate have unambiguous requirements, selection identity, state lifetime, and failure semantics. | - |
