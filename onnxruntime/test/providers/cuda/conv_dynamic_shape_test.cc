@@ -85,9 +85,11 @@ TEST_P(CudaConvDynamicShapeTest, RebuildExecutionPlan) {
   }
 }
 
+// ConvTranspose is not paired with fuse_conv_bias: cuDNN frontend rejects its fused dgrad + bias graph.
 INSTANTIATE_TEST_SUITE_P(
     CUDA, CudaConvDynamicShapeTest,
-    ::testing::Combine(::testing::Values("Conv", "ConvTranspose"), ::testing::Bool()));
+    ::testing::Values(std::make_tuple(std::string("Conv"), false), std::make_tuple(std::string("Conv"), true),
+                      std::make_tuple(std::string("ConvTranspose"), false)));
 
 }  // namespace test
 }  // namespace onnxruntime
