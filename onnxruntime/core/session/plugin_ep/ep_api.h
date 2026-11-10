@@ -24,6 +24,8 @@ ORT_API_STATUS_IMPL(EpContextConfigGetEpContextDataReadFunc, _In_ const OrtEpCon
                     _Out_ OrtReadNamedBufferFunc* read_func, _Out_ void** state);
 ORT_API_STATUS_IMPL(EpContextConfigGetEpContextDataWriteFunc, _In_ const OrtEpContextConfig* config,
                     _Out_ OrtWriteNamedBufferFunc* write_func, _Out_ void** state);
+ORT_API_STATUS_IMPL(RegisterStatefulProvider, _In_ OrtEp* ep,
+                    _In_ const OrtStatefulProviderDescriptor* descriptor);
 
 ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddNodesToFuse, _In_ OrtEpGraphSupportInfo* graph_support_info,
                     _In_reads_(num_nodes) const OrtNode* const* nodes, _In_ size_t num_nodes,

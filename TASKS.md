@@ -1,6 +1,6 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved; M01-M06 and M07a complete; M07b in progress.
+**Status:** Approved; M01-M07 complete; M08-M24 pending.
 M05: [PR #34044](https://github.com/microsoft/onnxruntime/pull/34044).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
@@ -17,7 +17,7 @@ M05's requested generation-folder layout follow-up is complete in the same PR.
 - [x] Review this plan with the user and obtain approval before implementation.
 - [ ] Complete the milestone stack and its validation gates.
 
-M01-M06 are complete; M07-M24 are pending. Check tasks when their
+M01-M07 are complete; M08-M24 are pending. Check tasks when their
 outcome is verified, not when code has merely been written. Record blockers, exact validation commands,
 results, evidence locations, and PR links in the affected milestone as work
 proceeds. Update this checklist and `SCRATCHPAD.md` at each meaningful checkpoint.
@@ -97,7 +97,7 @@ their functional milestone still requires the CPU/CUDA evidence below.
 
 Stack order is the row order. The dependency column records actual semantic
 prerequisites; the previous branch is also the mechanical Git base.
-M01-M06 are **complete**; M07-M24 are **pending**.
+M01-M07 are **complete**; M08-M24 are **pending**.
 
 | Done | ID | Intended PR / branch suffix | Semantic prerequisites |
 | --- | --- | --- | --- |
@@ -107,7 +107,7 @@ M01-M06 are **complete**; M07-M24 are **pending**.
 | [x] | M04 | CPU KV cache management / `cpu-kv-cache` | M03 |
 | [x] | M05 | CPU greedy sampling and decode iteration / `cpu-greedy` | M04 |
 | [x] | M06 | Public C API and C++ wrappers / `public-api` | M02, M03, M04, M05 |
-| [ ] | M07 | Built-in/plugin EP capability contracts / `ep-stateful-hooks` | M04, M05, M06 |
+| [x] | M07 | Built-in/plugin EP capability contracts / `ep-stateful-hooks` | M04, M05, M06 |
 | [ ] | M08 | Native CUDA KV management / `cuda-kv-cache` | M07 |
 | [ ] | M09 | Native CUDA greedy sampling / `cuda-greedy` | M07 |
 | [ ] | M10 | Standalone package schema and authoring / `package-schema` | M01, M03 |
@@ -1002,12 +1002,14 @@ All CUDA commands above passed, with the nonzero counts/zero errors stated above
 2026-10-17 without changes. Both sub-PRs are authorized sequentially.
 M07a is complete: [PR #34047](https://github.com/microsoft/onnxruntime/pull/34047),
 `stateful-M08-ep-stateful-hooks`, based on M06b `5bde969b66`.
-M07b follows the verified/published M07a head; macro M07 remains incomplete.
+M07b is complete: [PR #34048](https://github.com/microsoft/onnxruntime/pull/34048),
+`stateful-M09-plugin-stateful-hooks`, based on M07a `46715fb08a`.
+Both independently verified sub-PRs are published ready for review; macro M07 is complete.
 
-- [ ] Add capability-based in-tree hooks and boundary-safe plugin C contracts.
+- [x] Add capability-based in-tree hooks and boundary-safe plugin C contracts.
 - [x] Route CPU implementations through the selection contract; specify allowed
   transfers/fallback and make implementation selection observable.
-- [ ] Extend a test plugin to demonstrate partial/full support, lifetimes,
+- [x] Extend a test plugin to demonstrate partial/full support, lifetimes,
   unsupported features, errors, and compatibility with older plugin contracts.
 
 **CPU test plan:** Execute real CPU/cache/sampler overrides and test-plugin calls;
@@ -1196,24 +1198,24 @@ independent/partial stateful capabilities safely through the public C boundary,
 without breaking older OrtEp allocations or unloading live callback resources.
 **Dependency:** M07a. Use a separate branch/PR stacked on the verified M07a head.
 
-- [ ] B1: Append optional OrtEpApi registration/discovery entry points for copied,
+- [x] B1: Append optional OrtEpApi registration/discovery entry points for copied,
   versioned, size-tagged descriptors. Do not add mandatory fields to OrtEp or
   read beyond an old allocation. Validate registration atomically; clean up
   retained resources if registration or subsequent EP creation fails.
-- [ ] B2: Adapt registered callbacks to the native dispatcher. Retain callback
+- [x] B2: Adapt registered callbacks to the native dispatcher. Retain callback
   contexts, factory/library, allocator and any callback-used resources for the
   needed lifetime, including values surviving Session/context release. Make
   unregistration safe while live objects still depend on callback code.
-- [ ] B3: Extend the real example/test plugin for no overrides, sampler-only,
+- [x] B3: Extend the real example/test plugin for no overrides, sampler-only,
   partial KV, full supported CPU capabilities and injected failures. Preserve
   numerical/retained-view contracts; assert actual callback results and counts.
-- [ ] B4: Add a genuine frozen legacy/shorter OrtEp fixture and version/size/ABI
+- [x] B4: Add a genuine frozen legacy/shorter OrtEp fixture and version/size/ABI
   checks. A current-size instance with registration disabled is insufficient.
   Verify existing no-registration plugins continue to load/run.
-- [ ] B5: Exercise provider/context/deleter retention, failed creation/registration
+- [x] B5: Exercise provider/context/deleter retention, failed creation/registration
   cleanup, exactly-once release and safe lifetime across unregistration. Cover
   reset errors/no-retry fallback with plugin callbacks, not only native mocks.
-- [ ] B6: Run C/C++ plugin conformance and CPU/CUDA builds/regressions, include
+- [x] B6: Run C/C++ plugin conformance and CPU/CUDA builds/regressions, include
   plugin adapter/registration host glue in fresh coverage, document implementer
   usage and limitations, and publish a ready-for-review stacked PR.
 
@@ -1248,6 +1250,133 @@ proved. All new registration/adapter/host glue has measured 100% executable-line
 coverage with matching fresh executable/library profiles. CPU/CUDA, pure-C ABI,
 C++ wrapper/example, style/document and ready-for-review PR gates pass.
 Only then mark macro M07 complete.
+
+Current validation: real CPU plugin cases **4/4**, CUDA-build plugin cases
+**8/8**, native CPU **62/62**, native CUDA **108/108**, all passed without skips.
+Broader CPU AutoEP suite **139/139** passed after staging nine existing fixture
+files that the targeted build had not copied.
+The CUDA build's supported AutoEP selection passed **137/137**, with 20 existing
+EPContext/schema cases explicitly excluded because
+`onnxruntime_DISABLE_CONTRIB_OPS=ON`; those cases passed in the full CPU suite.
+Final new production/glue line coverage is **80/80**. Style-final rebuilt
+profiles, sanitizer confirmation and publication passed. Implementation commit
+`fd2331ff8a` is published in ready-for-review PR #34048, stacked on PR #34047.
+
+**M07b verified evidence:**
+
+- Appended OrtEpApi::RegisterStatefulProvider and its C++ wrapper. The copied,
+  version-1 descriptor is registered transactionally on the synchronous CreateEp
+  thread, never by reading added OrtEp fields. Nested scopes, duplicate/wrong
+  registration, malformed/extended descriptors and failed creation are tested.
+- Shared environment library records plus weak private device ownership retain
+  factories/DLLs through plugin factory/adapter and backend leases without a
+  cycle. Unregistration removes discovery immediately but cannot unload live
+  callback-bearing owners. Native logger/custom logging-manager ownership also
+  survives Session release for delayed context/provider teardown.
+- A real example-plugin context logs through the retained custom Session logger
+  after Session release. Host lifetime observers prove that context/factory
+  destruction occurs exactly once and only after the last retained cache value.
+  Reads from unchanged freed memory are not used as the only lifetime evidence.
+- The legacy fixture is a frozen 1.23 prefix, not current OrtEp inheritance:
+  exactly offsetof(OrtEp, GetKernelRegistry) bytes against an inaccessible guard
+  page, with only original callbacks. CPU/CUDA tests load it and run Sessions
+  without descriptor registration or later-field access.
+- Full CPU AutoEP **139/139** and native **62/62** passed; supported CUDA AutoEP
+  **137/137** and native **108/108** passed, zero skips. All eight CPU/CUDA plugin
+  cases are included. New CUDA fixtures assert model-node assignment and disable
+  CPU fallback; callbacks remain explicitly CPU implementations.
+- The exploratory full CUDA AutoEP run contained 20 existing EPContext-dependent
+  cases that cannot pass with this build's existing
+  `onnxruntime_DISABLE_CONTRIB_OPS=ON` schema configuration. They are explicitly
+  excluded only from the supported CUDA broad selector below, not presented as
+  passing/skipped native feature tests. All passed in the full CPU suite.
+- Initial broad CPU failures were missing pre-existing fixture copies, not
+  source defects. Staged add_mul_add, squeeze_mul_relu, if_mul, loop_sub_one,
+  scan_mul, custom_mul, conv_qdq_external_ini.onnx/.bin and sub_mul_sub in both
+  build testdata directories; no source fixtures/dependencies changed.
+- Final measured new production/glue coverage: **80/80 unique executable
+  locations**, including registration, native factory/adapter/library ownership,
+  logging-resource retention and the SDK wrapper. Fresh profiles combine all
+  CPU AutoEP/native tests; SDK mapping uses the exercising plugin DLL.
+  Inspected 132/351 zero-hash unused-map entries in SDK/native exports respectively,
+  none affects the measured new functions. Earlier M07a's **782/782** gate remains
+  independently documented/verified. These are executable-line, not branch or
+  whole-example-fixture coverage percentages.
+- Final CUDA Compute Sanitizer: **12/12 plugin/public API cases** plus **4/4
+  native provider cases**, zero errors. GCC C11 consumer and C++17 registration
+  wrapper compile/link/run passed against the final shared library.
+- Formatting, 120 columns, whitespace, all 93 requirement IDs and all 24 macro
+  milestones passed. CPU/GPU kernels, EPContext schemas, Model Package support,
+  minimal/training and platform qualification were not expanded by this PR.
+
+Passing final CPU commands:
+
+```bash
+source .venv/bin/activate
+LLVM_PROFILE_FILE=/dev/null cmake --build build/state-cpu/RelWithDebInfo \
+  --parallel 8 --target onnxruntime_autoep_test onnxruntime_session_loop_test
+cd build/state-cpu/RelWithDebInfo
+mkdir -p coverage/m07b/final
+LLVM_PROFILE_FILE="$PWD/coverage/m07b/final/%m-%p.profraw" \
+  ./onnxruntime_autoep_test --gtest_output=xml:coverage/m07b/final/all-autoep-tests.xml
+LLVM_PROFILE_FILE="$PWD/coverage/m07b/final/%m-%p.profraw" \
+  ./onnxruntime_session_loop_test --gtest_output=xml:coverage/m07b/final/native-tests.xml
+llvm-profdata merge -sparse coverage/m07b/final/*.profraw \
+  -o coverage/m07b/final/m07b.profdata
+```
+
+Export the new SDK wrapper from libexample_plugin_ep.so; export changed native
+sources from onnxruntime_autoep_test with libonnxruntime.so and
+onnxruntime_session_loop_test added as objects. Deduplicate DA locations and
+intersect added lines against M07a `46715fb08a`; every one of 80 executed.
+New untracked registration sources are wholly new for the initial export.
+
+Passing final CUDA build/native/sanitizer commands use the established matching
+CUDA 13.1 environment, from the CUDA output directory after building both targets:
+
+```bash
+./onnxruntime_session_loop_test --gtest_output=xml:coverage/m07b/final/native-tests.xml
+"$CUDA_HOME/bin/compute-sanitizer" --tool memcheck --error-exitcode 99 \
+  ./onnxruntime_autoep_test \
+  --gtest_filter='Cuda/StatefulPluginTest.*:Cuda/StatefulApiProviderTest.*:Cuda/StatefulCxxApiProviderTest.*'
+"$CUDA_HOME/bin/compute-sanitizer" --tool memcheck --error-exitcode 99 \
+  ./onnxruntime_session_loop_test --gtest_filter='Cuda/StatefulProviderTest.*'
+```
+
+The supported CUDA broad run excludes exactly these existing schema-dependent
+cases (139 CPU cases all passed, including these where present):
+
+```bash
+unsupported=(
+  OrtEpLibrary.PluginEp_GenEpContextModel
+  OrtEpLibrary.PluginEp_ExternalInitializerBufferIsPublishedOnlyAfterCompileSucceeds
+  OrtEpLibrary.PluginEp_GenEpContextModel_EmbedModeDoesNotUseCallbacks
+  OrtEpLibrary.PluginEp_GenAndLoadEpContextModel_ExternalDataUsesFileFallback
+  OrtEpLibrary.PluginEp_GenEpContextModel_ExternalDataUsesWriteCallback
+  OrtEpLibrary.PluginEp_LoadEpContextModel_ExternalDataUsesReadCallback
+  OrtEpLibrary.PluginEp_CompileAndLoadWithoutFilesystem_ExternalInitializersAndEpContextData
+  OrtEpLibrary.PluginEp_ExternalEpContextCallbacksRequireAdvertisedSupport
+  OrtEpLibrary.PluginEp_GenWeightlessEpContextModel
+  OrtEpLibrary.PluginEp_WeightlessAllInitializers_CompileApi
+  OrtEpLibrary.PluginEp_ErrorWhenLoadEPContextModel_WithoutRequiredEp
+  OrtEpLibrary.PluginEp_VirtGpu_GenEpContextModel
+  OrtEpLibrary.PluginEp_CompatibilityInfo_WrittenToMetadata
+  OrtEpLibrary.PluginEp_CompatibilityInfo_ValidatedOnLoad
+  OrtEpLibrary.PluginEp_Error_LoadCompiledModelWithEpContextEnabled
+  OrtEpLibrary.PluginEp_EpContextInference_NotImplemented
+  OrtEpLibrary.PluginEp_GenEpContextModel_ErrorOutputModelExists_AutoGenOutputModelName
+  OrtEpLibrary.PluginEp_GenEpContextModel_UnicodePath
+  OrtEpLibrary.PluginEp_GenEpContextModel_ZeroInputModel
+  ModelPackageTest.CheckCompiledModelCompatibilityInfo
+)
+filter="-$(IFS=:; echo "${unsupported[*]}")"
+./onnxruntime_autoep_test --gtest_filter="$filter" \
+  --gtest_output=xml:coverage/m07b/final/supported-autoep-tests.xml
+```
+
+Result: **137/137 passed**, zero skips; this is not a claim that the original
+unfiltered CUDA suite passed. The equivalent final selector was constructed
+from this exact stored exclusion list, never from arbitrary unrelated failures.
 
 **Execution/validation procedure for both sub-PRs:**
 

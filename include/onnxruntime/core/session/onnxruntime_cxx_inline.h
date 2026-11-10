@@ -1513,6 +1513,10 @@ inline OrtStatefulProviderCapabilities QueryStatefulProviderCapabilities(const S
   return out;
 }
 
+inline void RegisterStatefulProvider(OrtEp* ep, const OrtStatefulProviderDescriptor& descriptor) {
+  ThrowOnError(GetEpApi().RegisterStatefulProvider(ep, &descriptor));
+}
+
 inline SessionLoopOptions& SessionLoopOptions::SetProvider(
     OrtStatefulProviderFeature feature, const OrtStatefulProviderSelection& selection) {
   ThrowOnError(GetStatefulApi().SessionLoopOptionsSetProvider(p_, feature, &selection));

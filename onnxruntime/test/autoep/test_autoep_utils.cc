@@ -94,6 +94,16 @@ void Utils::LoadExampleEpHooks(const ExamplePluginInfo& ep_info,
           GetProcAddress(lib, "ExampleEpTestHooks_GetPreallocatedOutputBadIndexRejected"));
   hooks.set_create_data_transfer_failure = reinterpret_cast<ExampleEpHooks::SetCreateDataTransferFailureFn>(
       GetProcAddress(lib, "ExampleEpTestHooks_SetCreateDataTransferFailure"));
+  hooks.reset_stateful = reinterpret_cast<ExampleEpHooks::ResetStatefulFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_ResetStateful"));
+  hooks.get_stateful_calls = reinterpret_cast<ExampleEpHooks::GetStatefulCallsFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_GetStatefulCalls"));
+  hooks.set_stateful_failure = reinterpret_cast<ExampleEpHooks::SetStatefulFailureFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_SetStatefulFailure"));
+  hooks.set_stateful_observer = reinterpret_cast<ExampleEpHooks::SetStatefulObserverFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_SetStatefulObserver"));
+  hooks.get_legacy_size = reinterpret_cast<ExampleEpHooks::GetSyncCountFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_GetLegacySize"));
 #else
   void* lib = dlopen(ep_info.library_path.c_str(), RTLD_LAZY | RTLD_LOCAL);
   ASSERT_NE(lib, nullptr);
@@ -112,6 +122,16 @@ void Utils::LoadExampleEpHooks(const ExamplePluginInfo& ep_info,
           dlsym(lib, "ExampleEpTestHooks_GetPreallocatedOutputBadIndexRejected"));
   hooks.set_create_data_transfer_failure = reinterpret_cast<Utils::ExampleEpHooks::SetCreateDataTransferFailureFn>(
       dlsym(lib, "ExampleEpTestHooks_SetCreateDataTransferFailure"));
+  hooks.reset_stateful = reinterpret_cast<ExampleEpHooks::ResetStatefulFn>(
+      dlsym(lib, "ExampleEpTestHooks_ResetStateful"));
+  hooks.get_stateful_calls = reinterpret_cast<ExampleEpHooks::GetStatefulCallsFn>(
+      dlsym(lib, "ExampleEpTestHooks_GetStatefulCalls"));
+  hooks.set_stateful_failure = reinterpret_cast<ExampleEpHooks::SetStatefulFailureFn>(
+      dlsym(lib, "ExampleEpTestHooks_SetStatefulFailure"));
+  hooks.set_stateful_observer = reinterpret_cast<ExampleEpHooks::SetStatefulObserverFn>(
+      dlsym(lib, "ExampleEpTestHooks_SetStatefulObserver"));
+  hooks.get_legacy_size = reinterpret_cast<ExampleEpHooks::GetSyncCountFn>(
+      dlsym(lib, "ExampleEpTestHooks_GetLegacySize"));
 #endif
 
   example_ep_hooks = LoadExampleEpHooksPtr(

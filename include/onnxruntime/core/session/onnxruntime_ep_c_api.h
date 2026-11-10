@@ -2159,6 +2159,25 @@ struct OrtEpApi {
    */
   ORT_API2_STATUS(EpContextConfigGetEpContextDataWriteFunc, _In_ const OrtEpContextConfig* config,
                   _Out_ OrtWriteNamedBufferFunc* write_func, _Out_ void** state);
+
+  /** \brief Register optional stateful capabilities during synchronous OrtEpFactory::CreateEp.
+   *
+   * Registration copies/validates the versioned descriptor and retains its context.
+   * Register at most once for the OrtEp returned by that CreateEp call, on the
+   * calling thread. Failed EP creation/registration rolls back pending resources.
+   * No new OrtEp fields are read; legacy plugins need not call this function.
+   * Callback-bearing provider, factory/library, logger and allocator resources
+   * remain alive while retained stateful objects need them. The standard OrtEnv
+   * and caller-owned callback-state lifetime requirements still apply.
+   *
+   * \param[in] ep Non-NULL EP being constructed; not dereferenced by registration.
+   * \param[in] descriptor Copied capabilities and callback/context ownership contract.
+   * \return NULL on success, otherwise an owned OrtStatus; registration outside
+   *         CreateEp or an inconsistent descriptor fails explicitly.
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(RegisterStatefulProvider, _In_ OrtEp* ep,
+                  _In_ const OrtStatefulProviderDescriptor* descriptor);
 };
 
 /**

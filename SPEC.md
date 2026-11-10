@@ -1378,3 +1378,32 @@ int main() {
              : 1;
 }
 ```
+
+### G.10 M07b plugin registration and retained resource owners
+
+Plugin authors call OrtEpApi::RegisterStatefulProvider (or the C++ free wrapper)
+once for the EP being returned, on the calling thread during synchronous
+OrtEpFactory::CreateEp. Registration validates/copies the versioned descriptor
+and retains its context. It never reads a new OrtEp field. Nested creation has
+an independent transaction; failed, duplicate or mismatched creation cannot
+publish stale registrations or leak retained contexts. No registration is
+required for a legacy/no-override EP.
+
+The native plugin adapter owns the committed registration. Provider resource
+leases keep it and the EP alive, while strong factory/library owners defer
+unloading after unregistration. Private device records use weak owners to avoid
+cycles. Removing a library from discovery does not destroy callback-bearing
+factories while live stateful values still depend on them.
+
+Retained backend leases also keep the original Session logger and any custom
+logging manager alive, so delayed provider/context teardown does not call a
+dead logger. The ordinary OrtEnv and caller-owned callback-state lifetime
+requirements remain in effect. Contexts must own independent callback/deleter
+resources rather than borrowing a released model graph or request pointer.
+
+The example plugin demonstrates no overrides, sampler-only, append-only and
+full supported CPU capabilities, descriptor compatibility and injected errors.
+Its genuine frozen 1.23 OrtEp prefix ends at the original
+GetCompiledModelCompatibilityInfo slot. An inaccessible page immediately after
+that allocation detects later-field reads; this is not a current-sized struct
+with only its version number changed.

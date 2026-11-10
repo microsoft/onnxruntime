@@ -13,6 +13,7 @@
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/plugin_ep/stateful_ep_registration.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
@@ -681,6 +682,37 @@ TEST(StatefulProviderApiTest, ValidatesNewRequiredPointersAndSelectionFields) {
     FAIL() << "CPU dispatch must not copy device logits";
   } catch (const Ort::Exception& ex) {
     EXPECT_EQ(ex.GetOrtErrorCode(), ORT_NOT_IMPLEMENTED);
+  }
+}
+
+TEST(StatefulProviderRegistrationTest, NestedTransactionsAndStatelessDescriptorOwnership) {
+  const auto descriptor = *GetCpuStatefulProviderDescriptor();
+  OrtEp first{}, second{};
+  EXPECT_FALSE(StatefulEpCreationScope::Register(&first, &descriptor).IsOK());
+  {
+    StatefulEpCreationScope outer;
+    ASSERT_STATUS_OK(StatefulEpCreationScope::Register(&first, &descriptor));
+    EXPECT_FALSE(StatefulEpCreationScope::Register(&first, &descriptor).IsOK());
+    {
+      StatefulEpCreationScope inner;
+      ASSERT_STATUS_OK(StatefulEpCreationScope::Register(&second, &descriptor));
+      std::shared_ptr<RegisteredStatefulProvider> registered;
+      ASSERT_STATUS_OK(inner.Take(&second, registered));
+      ASSERT_NE(registered, nullptr);
+      EXPECT_EQ(registered->Descriptor().capabilities.operations, kAll);
+    }
+    std::shared_ptr<RegisteredStatefulProvider> registered;
+    ASSERT_STATUS_OK(outer.Take(&first, registered));
+    ASSERT_NE(registered, nullptr);
+  }
+  {
+    StatefulEpCreationScope scope;
+    ASSERT_STATUS_OK(StatefulEpCreationScope::Register(&first, &descriptor));
+    EXPECT_FALSE(StatefulEpCreationScope::Register(&second, nullptr).IsOK());
+    ASSERT_STATUS_OK(StatefulEpCreationScope::Register(&second, &descriptor));
+    std::shared_ptr<RegisteredStatefulProvider> result;
+    EXPECT_FALSE(scope.Take(&first, result).IsOK());
+    EXPECT_EQ(result, nullptr);
   }
 }
 

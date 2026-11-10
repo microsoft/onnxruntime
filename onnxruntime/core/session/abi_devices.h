@@ -4,6 +4,7 @@
 #pragma once
 
 #include <sstream>
+#include <memory>
 #include <string>
 #include <unordered_map>
 
@@ -109,6 +110,7 @@ struct OrtEpDevice {
 
   // used internally by ORT for initializers only. optional.
   const OrtMemoryInfo* read_only_device_memory_info{nullptr};
+  std::weak_ptr<void> library_owner{};
 
   // the user provides const OrtEpDevice instances, but the OrtEpFactory API takes non-const instances for all
   // get/create methods to be as flexible as possible. this helper converts to a non-const factory instance.

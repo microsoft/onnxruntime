@@ -290,7 +290,7 @@ class Environment {
     // For each factory, gets the OrtEpDevice instances and adds to `out.execution_devices`.
     // Provide `internal_factories` if this is an internal EP.
     // If successful, `out` is set to the created instance.
-    static Status Create(std::unique_ptr<EpLibrary> library_in, std::unique_ptr<EpInfo>& out,
+    static Status Create(std::unique_ptr<EpLibrary> library_in, std::shared_ptr<EpInfo>& out,
                          const std::vector<EpFactoryInternal*>& internal_factories = {});
 
     // removes entries for this library from execution_devices
@@ -308,7 +308,7 @@ class Environment {
   };
 
   // registration name to EpInfo for library
-  std::unordered_map<std::string, std::unique_ptr<EpInfo>> ep_libraries_;
+  std::unordered_map<std::string, std::shared_ptr<EpInfo>> ep_libraries_;
 
   // combined set of OrtEpDevices for all registered OrtEpFactory instances
   // std::vector so we can use directly in GetEpDevices.
