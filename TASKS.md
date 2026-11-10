@@ -1,7 +1,7 @@
 # Stateful Session Execution: Execution Plan
 
 **Status:** Approved; M01-M12 complete and published for review; M13-M24 pending.
-M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
+M05: [PR #34044](https://github.com/microsoft/onnxruntime/pull/34044).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
 **Working memory:** [Shared scratchpad](SCRATCHPAD.md).
@@ -143,8 +143,8 @@ all binding, provider, coverage, and qualification gates remain part of delivery
 
 **Outcome:** Concrete interface decisions and a reproducible validation baseline,
 without prematurely publishing an ABI or starting a different product scope.
-**Status:** Complete; [PR #11](https://github.com/onnxruntime/ort-state/pull/11)
-is ready for review, targeting `ort-state`.
+**Status:** Complete; [PR #34040](https://github.com/microsoft/onnxruntime/pull/34040)
+is ready for review, targeting `state/stateful-base-1988019b`.
 
 - [x] Inventory existing Session/I/O binding, allocator, cancellation, provider,
   sampling, scheduler, package, and binding helpers before adding alternatives.
@@ -173,7 +173,7 @@ milestones; they need not prevent unrelated CPU development.
 
 **Execution evidence:**
 
-- First milestone branch created: `state/m01-contracts-fixtures`.
+- First milestone branch created: `stateful-M01-contracts-fixtures`.
 - Isolated `.venv` created with Python 3.12.9.
 - Clang/LLVM coverage tools 18.1.8, GCC 13.2.0, and CMake 4.1.2 are present.
 - Eight A100 GPUs and CUDA 13.0 are visible. Nsight Compute and Compute Sanitizer
@@ -280,17 +280,17 @@ CUDA_VISIBLE_DEVICES=0 \
   --gtest_output=xml:m01-tests.xml
 ```
 
-Published the unchanged `ort-state` baseline branch and
-`state/m01-contracts-fixtures`; the first PR targets the agreed `ort-state` base,
+Published the unchanged `state/stateful-base-1988019b` baseline branch and
+`stateful-M01-contracts-fixtures`; the first PR targets the agreed `state/stateful-base-1988019b` base,
 not `main`. Implementation commit: `64aa026b94`. The PR contains no stateful
 runtime production implementation; M02 is the next pending milestone.
 
 ### M02 - Execution context and SessionLoop
 
 **Outcome:** Internal sequential stateful execution with explicit control.
-**Status:** Complete; [PR #12](https://github.com/onnxruntime/ort-state/pull/12)
-is ready for review. Branch `state/m02-context-loop` stacks on
-`state/m01-contracts-fixtures`. Implementation commit: `a21ae23201`.
+**Status:** Complete; [PR #34041](https://github.com/microsoft/onnxruntime/pull/34041)
+is ready for review. Branch `stateful-M02-context-loop` stacks on
+`stateful-M01-contracts-fixtures`. Implementation commit: `a21ae23201`.
 
 - [x] Implement reusable loop definition plus isolated retained execution state.
 - [x] Implement Step/Next and Run-until-exit on the same stepping path.
@@ -388,9 +388,9 @@ not a claim of device-line coverage for unchanged kernels.
 ### M03 - SessionChain and tensor/state bindings
 
 **Outcome:** Internal linear composition without a manifest state machine.
-**Status:** Complete; [PR #13](https://github.com/onnxruntime/ort-state/pull/13)
-is ready for review. Branch `state/m03-chain-bindings` stacks on
-`state/m02-context-loop`. Implementation commit: `c4ad4d5389`.
+**Status:** Complete; [PR #34042](https://github.com/microsoft/onnxruntime/pull/34042)
+is ready for review. Branch `stateful-M03-chain-bindings` stacks on
+`stateful-M02-context-loop`. Implementation commit: `c4ad4d5389`.
 
 - [x] Implement ordered Session/SessionLoop composition and external/result ports.
 - [x] Implement renamed tensor mapping, iteration feedback, retained-state slots,
@@ -492,9 +492,9 @@ management, real-model qualification, or branch-complete coverage is made.
 ### M04 - CPU KVCacheManager
 
 **Outcome:** Safe contiguous caches shared across stages of one execution.
-**Status:** Complete; [PR #14](https://github.com/onnxruntime/ort-state/pull/14)
-is ready for review. Branch `state/m04-cpu-kv-cache` stacks on
-`state/m03-chain-bindings`. Implementation commit: `fffa292875`.
+**Status:** Complete; [PR #34043](https://github.com/microsoft/onnxruntime/pull/34043)
+is ready for review. Branch `stateful-M04-cpu-kv-cache` stacks on
+`stateful-M03-chain-bindings`. Implementation commit: `fffa292875`.
 
 - [x] Implement CPU cache initialization, model-declared layout/type/shape
   validation, logical length/capacity, append/update, retention, and reset.
@@ -600,9 +600,9 @@ introduced; the measured new-line gate is for Linux CPU inference code.
 ### M05 - CPU greedy sampling and decode integration
 
 **Outcome:** CPU token selection and a complete tiny prefill/decode chain.
-**Status:** Complete; [PR #15](https://github.com/onnxruntime/ort-state/pull/15)
-is ready for review. Branch `state/m05-cpu-greedy` stacks on
-`state/m04-cpu-kv-cache`. Implementation commit: `ddb8260691`.
+**Status:** Complete; [PR #34044](https://github.com/microsoft/onnxruntime/pull/34044)
+is ready for review. Branch `stateful-M05-cpu-greedy` stacks on
+`stateful-M04-cpu-kv-cache`. Implementation commit: `ddb8260691`.
 
 - [x] Implement documented greedy selection using existing suitable helpers.
 - [x] Validate supported logits shapes/dtypes/position, ties, non-finite behavior,
@@ -725,10 +725,10 @@ explicit CPU logits sampling, not a native CUDA greedy implementation.
 
 **Outcome:** Complete programmatic access to the implemented core primitives.
 **Status:** Appendix F and the M06a/M06b split approved 2026-10-16.
-M06a is complete: [PR #16](https://github.com/onnxruntime/ort-state/pull/16),
-`state/m06a-stateful-c-api`, based on M05 `17e432b025`.
-M06b is complete: [PR #17](https://github.com/onnxruntime/ort-state/pull/17),
-`state/m06b-stateful-cxx-api`, based on M06a `b5f1431837`.
+M06a is complete: [PR #34045](https://github.com/microsoft/onnxruntime/pull/34045),
+`stateful-M06-stateful-c-api`, based on M05 `17e432b025`.
+M06b is complete: [PR #34046](https://github.com/microsoft/onnxruntime/pull/34046),
+`stateful-M07-stateful-cxx-api`, based on M06a `b5f1431837`.
 Both sub-PRs are verified and published ready for review; M06 is complete.
 
 - [x] Add append-only public API entries and opaque resources consistent with
@@ -772,7 +772,7 @@ The user approved the split and contracts without changes before implementation.
 - [x] Measure 100% new executable API/native-glue lines.
 - [x] Validate CUDA execution/provider assignment and memory safety.
 - [x] Record final evidence, complete style checks and publish the stacked PR.
-  Ready-for-review PR #16 is stacked on M05; implementation commit `f0aa2513d7`.
+  Ready-for-review PR #34045 is stacked on M05; implementation commit `f0aa2513d7`.
 
 **M06b validation checklist:**
 
@@ -782,7 +782,7 @@ The user approved the split and contracts without changes before implementation.
 - [x] Measure 100% new wrapper lines and cumulative C/native coverage.
 - [x] Validate standalone C++ consumption, CUDA memcheck, examples and style.
 - [x] Record final evidence and publish the ready-for-review PR stacked on M06a.
-  PR #17 is stacked on PR #16; implementation commit `cd63f2f8ba`.
+  PR #34046 is stacked on PR #34045; implementation commit `cd63f2f8ba`.
 
 Initial focused C++ tests passed **5/5 on CPU** and **8/8 in the CUDA build**,
 zero skips. Initial measured new-wrapper coverage is **187/187 executable
@@ -1008,10 +1008,10 @@ All CUDA commands above passed, with the nonzero counts/zero errors stated above
 **Outcome:** Providers can implement cache features and/or sampling independently.
 **Status:** SPEC Appendix G and the detailed M07a/M07b plan were approved
 2026-10-17 without changes. Both sub-PRs are authorized sequentially.
-M07a is complete: [PR #18](https://github.com/onnxruntime/ort-state/pull/18),
-`state/m07a-ep-stateful-hooks`, based on M06b `5bde969b66`.
-M07b is complete: [PR #19](https://github.com/onnxruntime/ort-state/pull/19),
-`state/m07b-plugin-stateful-hooks`, based on M07a `46715fb08a`.
+M07a is complete: [PR #34047](https://github.com/microsoft/onnxruntime/pull/34047),
+`stateful-M08-ep-stateful-hooks`, based on M06b `5bde969b66`.
+M07b is complete: [PR #34048](https://github.com/microsoft/onnxruntime/pull/34048),
+`stateful-M09-plugin-stateful-hooks`, based on M07a `46715fb08a`.
 Both independently verified sub-PRs are published ready for review; macro M07 is complete.
 
 - [x] Add capability-based in-tree hooks and boundary-safe plugin C contracts.
@@ -1034,7 +1034,7 @@ documentation and 100% new host/glue-line coverage satisfy shared rules.
 preserving CPU defaults and all M02-M06 behavior. Native and C/C++ callers can
 select/query implementations and observe supported fallback without relying on
 plugin registration or new CUDA kernels.
-**Dependencies:** M04, M05, M06. Stack this PR on M06b PR #17.
+**Dependencies:** M04, M05, M06. Stack this PR on M06b PR #34046.
 
 - [x] A1: Define boundary-safe capability, selection, device/layout and provider-
   resource contracts. Support individual KV operations and greedy independently;
@@ -1111,7 +1111,7 @@ remains incomplete while M07b is outstanding.
 
 **Current validation:** Initial focused CPU provider tests passed **6/6**.
 Final regressions, CUDA verification, measured coverage and publication passed.
-Implementation commit `8fbd403493` is published in ready-for-review PR #18.
+Implementation commit `8fbd403493` is published in ready-for-review PR #34047.
 The native optional hook is appended after existing virtual
 members, preserving old slot positions, and matching full builds were verified.
 
@@ -1268,7 +1268,7 @@ EPContext/schema cases explicitly excluded because
 `onnxruntime_DISABLE_CONTRIB_OPS=ON`; those cases passed in the full CPU suite.
 Final new production/glue line coverage is **80/80**. Style-final rebuilt
 profiles, sanitizer confirmation and publication passed. Implementation commit
-`fd2331ff8a` is published in ready-for-review PR #19, stacked on PR #18.
+`fd2331ff8a` is published in ready-for-review PR #34048, stacked on PR #34047.
 
 **M07b verified evidence:**
 
@@ -1412,7 +1412,7 @@ from this exact stored exclusion list, never from arbitrary unrelated failures.
 to CUDA plugin EP only, copy primitives/GPU cache views and an M08a/M08b split.
 The user approved the detailed plan without changes, initially authorized M08a,
 and separately authorized M08b on 2026-10-19. Both are complete and published
-as independently verified ready-for-review PRs #20 and #21. No PR has been merged.
+as independently verified ready-for-review PRs #34049 and #34050. No PR has been merged.
 
 - [x] Implement CUDA allocation/retention/update/growth/reset using ORT allocator,
   device, and stream abstractions; advertise only supported features.
@@ -1434,7 +1434,7 @@ of device code actually added still blocks completion.
 **Intended outcome:** The CUDA plugin advertises and executes the six supported
 KV operations on real GPU storage, using ORT allocators and correct synchronous
 stream/resource boundaries. CPU remains the default; CUDA sampling stays absent.
-**Dependencies:** M04, M06, M07. Stack this PR on M07b PR #19.
+**Dependencies:** M04, M06, M07. Stack this PR on M07b PR #34048.
 
 - [x] A1: Establish a separate CUDA-plugin-enabled build/test configuration using
   matching CUDA 13.1/cuDNN and the available A100 hardware. Wire the focused test
@@ -1501,8 +1501,8 @@ Record device coverage as zero/N/A only if no device functions were added.
 Publish ready for review; loop/chain GPU-cache integration is not yet claimed.
 
 **M08a complete:** Implementation `e6ce58508e`, published ready for human review
-as [PR #20](https://github.com/onnxruntime/ort-state/pull/20), stacked on M07b
-PR #19. No PR has been merged. The user authorized M08b on 2026-10-19.
+as [PR #34049](https://github.com/microsoft/onnxruntime/pull/34049), stacked on M07b
+PR #34048. No PR has been merged. The user authorized M08b on 2026-10-19.
 
 - Six cache operations execute in the real CUDA plugin with float32/float16/
   bfloat16 support and no greedy capability or CPU-reference delegation.
@@ -1617,12 +1617,12 @@ zero-hash dormant maps, with no new-function mismatch; final dumps are checked
 again against the passing profiles. Exact logs/report are retained as
 `m08a-*-complete-*`, `m08a-plugin-sanitizer-*`, `m08a-cpu-verified-*`,
 `m08a-legacy-stateful-tests.log` and `m08a-host-coverage-final.txt` in session files.
-M08b was subsequently authorized and completed in PR #21, as recorded below.
+M08b was subsequently authorized and completed in PR #34050, as recorded below.
 
 #### M08b - Device-resident loop/chain integration
 
 **Status:** Authorized 2026-10-19. Implementation branch
-`state/m08b-cuda-plugin-cache-integration`, based on M08a `6959554e55`.
+`stateful-M11-cuda-plugin-cache-integration`, based on M08a `6959554e55`.
 
 **Intended outcome:** Programmatic loops/chains use the selected GPU cache
 without cache host round-trips, while stable ordinary outputs and CPU greedy
@@ -1692,8 +1692,8 @@ coverage gates. CPU/CUDA-plugin correctness, memory/order/lifetime, documentatio
 and publication pass; mark M08 complete only after both sub-PRs.
 
 **M08b complete:** Implementation `249f60acf8`, published ready for human review
-as [PR #21](https://github.com/onnxruntime/ort-state/pull/21), stacked on M08a
-PR #20. This completes macro M08. No PR has been merged; M09 is not started.
+as [PR #34050](https://github.com/microsoft/onnxruntime/pull/34050), stacked on M08a
+PR #34049. This completes macro M08. No PR has been merged; M09 is not started.
 
 - Resolve actual Session GPU allocators and validate the declared cache ports'
   planned device. Managed and declared cache-alias outputs are bound directly to
@@ -1835,9 +1835,9 @@ M09 GPU sampling is not started or claimed.
 M09a only. Pause before M09b.
 The user chose CUDA plugin only, GPU-resident exposed logits, token/status-only
 readback and an M09a/M09b split, with no additional requirements. Branch
-`state/m09a-cuda-plugin-greedy` is based on M08b `2b6388fe5b`. The standalone
-backend is verified and published ready for review in PR #22.
-M09b was separately authorized on 2026-10-19 and is complete in PR #23.
+`stateful-M12-cuda-plugin-greedy` is based on M08b `2b6388fe5b`. The standalone
+backend is verified and published ready for review in PR #34051.
+M09b was separately authorized on 2026-10-19 and is complete in PR #34052.
 
 - [x] Implement CUDA greedy reduction/selection with CPU-equivalent documented
   tie/non-finite semantics and supported dtype/layout handling.
@@ -1859,7 +1859,7 @@ GPU greedy for supported logits, including whole-tensor NaN rejection. Only
 token/status information is read back. CPU defaults and cache capabilities stay
 unchanged; loop/chain GPU sampling remains explicitly unsupported until M09b.
 **Dependencies:** M05 CPU semantics, M06 C/C++, M07 dispatch/plugin ABI and the
-verified M08 resource/device baseline. Stack on M08b PR #21 (`2b6388fe5b`).
+verified M08 resource/device baseline. Stack on M08b PR #34050 (`2b6388fe5b`).
 
 - [x] A1: Establish device-line measurement before implementing the production
   sampler. Use CUDA13.1/NVCC, source line information and available Nsight Compute
@@ -1987,8 +1987,8 @@ CUDA_VISIBLE_DEVICES=0 "$CUDA_HOME/bin/ncu" --section SourceCounters \
 ```
 
 **M09a complete:** Implementation `73066ddcbe`, published ready for human review
-as [PR #22](https://github.com/onnxruntime/ort-state/pull/22), stacked on M08b
-PR #21. Macro M09 remains incomplete until M09b is separately authorized and
+as [PR #34051](https://github.com/microsoft/onnxruntime/pull/34051), stacked on M08b
+PR #34050. Macro M09 remains incomplete until M09b is separately authorized and
 verified. No PR has been merged.
 
 - Implemented a two-stage CUDA reduction with CUB BlockReduce: a grid-stride
@@ -2135,13 +2135,13 @@ Exact evidence/source/counter exports remain in session files as
 `m09a-host-coverage-final.txt`, `m09a-device-coverage-final.txt`,
 `m09a-greedy-device-coverage.ncu-rep`, `m09a-greedy-device-source.csv`,
 `m09a-transfer-proof.txt`, `m09a-greedy-transfer.sqlite`, `m09a-*-tests.log`
-and sanitizer logs. M09b was subsequently authorized and completed in PR #23.
+and sanitizer logs. M09b was subsequently authorized and completed in PR #34052.
 
 #### M09b - GPU logits and loop/chain sampling integration
 
 **Status:** Authorized 2026-10-19. Branch
-`state/m09b-cuda-plugin-sampling-integration` is based on M09a `ff2363e3b8`,
-stacked on PR #22. GPU kernels are unchanged; this milestone wires host execution.
+`stateful-M13-cuda-plugin-sampling-integration` is based on M09a `ff2363e3b8`,
+stacked on PR #34051. GPU kernels are unchanged; this milestone wires host execution.
 
 **Intended outcome:** Explicit CUDA-plugin sampling runs end-to-end with
 GPU-resident logits and compatible M08 caches. Exposed logits stay GPU; ordinary
@@ -2218,8 +2218,8 @@ legacy regressions and applicable sanitizer checks pass, and exact limitations/
 measurements are documented in the published stacked PR.
 
 **M09b complete:** Implementation `2a684c8ba1`, published ready for human review
-as [PR #23](https://github.com/onnxruntime/ort-state/pull/23), stacked on M09a
-PR #22. This completes macro M09. No PR has been merged; M10 is not started.
+as [PR #34052](https://github.com/microsoft/onnxruntime/pull/34052), stacked on M09a
+PR #34051. This completes macro M09. No PR has been merged; M10 is not started.
 
 - Generalized private GPU cache port routing to declared device values, using
   the retained initialized-Session allocator already owned by the native provider
@@ -2360,12 +2360,12 @@ started and no PR has been merged.
 
 ### M10 - Standalone Model Package schema and authoring
 
-**Status:** Complete; [PR #24](https://github.com/onnxruntime/ort-state/pull/24)
-is open/ready for human review, stacked on #23. The user approved SPEC J.9's
+**Status:** Complete; [PR #34053](https://github.com/microsoft/onnxruntime/pull/34053)
+is open/ready for human review, stacked on #34052. The user approved SPEC J.9's
 expanded save-as requirements and separately approved the detailed plan
 amendment on 2026-10-19.
-**Branch/base:** `state/m10-package-chain-schema`, stacked on verified M09b
-`a7a1173cd1c64d318857fa2987caf26658048509` / PR #23.
+**Branch/base:** `stateful-M14-package-chain-schema`, stacked on verified M09b
+`a7a1173cd1c64d318857fa2987caf26658048509` / PR #34052.
 **Outcome:** Read, inspect, author and commit schema-1.1 named linear chains
 through the independent Model Package library, with JSON-only APIs and immediate
 common-reference integrity. No executable ORT chain construction in this PR.
@@ -2447,7 +2447,7 @@ coherent standalone package change.
   SPEC/TASKS/SCRATCHPAD current. Record commands/results, case counts, source/
   object identities, coverage counts, CPU configuration and CUDA N/A rationale.
   Inspect the repository PR template, create the documented/tested M10 PR on
-  #23 and mark ready for human review only after every gate passes. Include the
+  #34052 and mark ready for human review only after every gate passes. Include the
   required commit co-author trailer. Do not merge or begin M11 automatically.
 
 #### Test matrix
@@ -2696,7 +2696,7 @@ hashes are retained in session files as `m10-final-*.log`,
 `m10-verified-artifact-hashes.txt` and `measure_m10_coverage.py`. Final LLVM
 exports/profiles remain in the standalone build tree. No production line was
 waived for tool availability. Implementation `7f48009fb30054f931624a2068ca7d2bf0518088`
-is published as ready-for-review PR #24, stacked on verified M09b PR #23.
+is published as ready-for-review PR #34053, stacked on verified M09b PR #34052.
 All M10 gates pass. Temporary compatibility build/source copies and probe
 binaries were cleaned; source probes, reports, profiles and hashes remain.
 No PR was merged and M11 has not begun.
@@ -2705,12 +2705,12 @@ No PR was merged and M11 has not begun.
 
 **Status:** Complete; CPU/GPU qualified and published for review on 2026-10-21.
 **Specification:** [Approved Appendix K](SPEC.md#appendix-k-m11-executable-package-chains-approved).
-**Branch/base:** `state/m11-package-chain-loading` on verified M10
-`b03b4c2f72955e869401be4d8eaa277728dc6fa8` / PR #24.
+**Branch/base:** `stateful-M15-package-chain-loading` on verified M10
+`b03b4c2f72955e869401be4d8eaa277728dc6fa8` / PR #34053.
 **Delivery:** ONE independently documented/tested PR, explicitly requested by the
 user. Internal tasks are not an M11a/M11b PR split.
-**PR:** [#25](https://github.com/onnxruntime/ort-state/pull/25), OPEN and ready for
-review, stacked on #24. GPU qualification commit `3e1124c6eb91e0325d58084d742b482d37275248`.
+**PR:** [#34054](https://github.com/microsoft/onnxruntime/pull/34054), OPEN and ready for
+review, stacked on #34053. GPU qualification commit `3e1124c6eb91e0325d58084d742b482d37275248`.
 **Outcome:** Package-built and equivalent programmatic chains share the native
 runtime and C/C++ execution/result surface, including sampling-free prefill and
 an observable sample-only first decode Step.
@@ -2861,7 +2861,7 @@ closure are recorded below.
   documentation, ORT package grammar/loading examples, SPEC/TASKS/SCRATCHPAD and
   the exact local build/test/coverage/dispatch/transfer evidence. Preserve the
   repository PR template and required commit co-author trailer. Publish one
-  independently verified M11 PR stacked on #24 only after H8 passes. Do not
+  independently verified M11 PR stacked on #34053 only after H8 passes. Do not
   merge automatically or begin M12.
 
 #### Required test observations
@@ -3083,7 +3083,7 @@ No toolchain dependency was installed and no GPU test was claimed. Preserve
 this tested CPU checkpoint on the M11 branch, but do not mark M11 complete or
 publish a ready PR until compatible CUDA tooling and all remaining gates pass.
 CPU checkpoint `2f3e6c0237` is committed and pushed on
-`state/m11-package-chain-loading`, stacked on #24. At that checkpoint no M11 PR existed;
+`stateful-M15-package-chain-loading`, stacked on #34053. At that checkpoint no M11 PR existed;
 the requested single-PR delivery remained gated on GPU/tooling and737/743 coverage
 closure. Non-measured SDK binaries, generated fixture and frozen header copies
 were cleaned; reproducible sources/logs and measured CPU/minimal artifacts remain.
@@ -3189,9 +3189,9 @@ session files. The actual CUDA plugin filename is
 `_plugin` suffix and was corrected before successful runs.
 
 All validation gates pass. H9 is complete:
-[#25](https://github.com/onnxruntime/ort-state/pull/25) is OPEN, not draft,
+[#34054](https://github.com/microsoft/onnxruntime/pull/34054) is OPEN, not draft,
 and uses the repository template with exact validation commands/results.
-The base is `state/m10-package-chain-schema` / #24; no extra milestone PR was
+The base is `stateful-M14-package-chain-schema` / #34053; no extra milestone PR was
 created. No M12 work or automatic merge is authorized.
 Pinned lintrunner/clang-format20.1.8 checks and `git diff --check` pass.
 The initially missing lint adapters were restored from the repository's pinned
@@ -3204,11 +3204,11 @@ remain.
 
 **Status:** Complete; CPU/CUDA qualified and published for review on 2026-10-31.
 **Specification:** [Approved Appendix L](SPEC.md#appendix-l-m12-ddim-denoising-policy-approved).
-**Proposed branch/base:** `state/m12-ddim-policy` on verified M11
+**Proposed branch/base:** `stateful-M16-ddim-policy` on verified M11
 `0586ee3acfc1456d1d48bdd060e4789eb0b99c98` /
-[#25](https://github.com/onnxruntime/ort-state/pull/25).
+[#34054](https://github.com/microsoft/onnxruntime/pull/34054).
 **Delivery:** One intended, independently documented/tested stacked PR; no merge.
-**PR:** [#26](https://github.com/onnxruntime/ort-state/pull/26), OPEN and ready for
+**PR:** [#34055](https://github.com/microsoft/onnxruntime/pull/34055), OPEN and ready for
 review on the M11 base. Qualified implementation commit
 `ae416c8708513316be6e59ae74faade73a105fd4`.
 **Outcome:** Stateful deterministic DDIM iteration through the existing native
@@ -3525,7 +3525,7 @@ this plan preparation only; wait for its separate review/approval before coding,
 building or publishing M12. No M13 work or automatic merge is authorized.
 
 **Implementation authorization:** The user approved this detailed plan on
-2026-10-30. Branch `state/m12-ddim-policy` was created on the verified M11 head.
+2026-10-30. Branch `stateful-M16-ddim-policy` was created on the verified M11 head.
 Fresh CPU69/148, CUDA-plugin132/204 and legacy120/69 baseline suites pass with
 no reported skips. Matching M11 CPU/plugin binaries/libraries/profiles/device
 object were archived with hashes before rebuilding. Genuine reference imports
@@ -3679,8 +3679,8 @@ scripts are retained in session files under `m12-*`. The actual CUDA plugin is
 clang-format and whitespace checks pass. No dependency/toolchain installation
 occurred beyond the genuinely missing pinned CPU reference packages.
 
-[#26](https://github.com/onnxruntime/ort-state/pull/26) is OPEN, not draft, on
-`state/m11-package-chain-loading` / #25. Its body preserves the repository
+[#34055](https://github.com/microsoft/onnxruntime/pull/34055) is OPEN, not draft, on
+`stateful-M15-package-chain-loading` / #34054. Its body preserves the repository
 template and records exact validation commands/results and limitations. The
 qualified source, matching measured binaries/profiles, traces, verification
 scripts and hashes are retained. Only inspected generated fixtures and hashed
@@ -4007,12 +4007,12 @@ negative/error tests. Supporting milestones do not replace final qualification.
 
 ## 7. Stacked PR and checkpoint workflow
 
-- First branch: `state/m01-contracts-fixtures`, based on the current `ort-state`
+- First branch: `stateful-M01-contracts-fixtures`, based on the current `state/stateful-base-1988019b`
   branch at implementation start. Record the actual base commit then.
-- Subsequent branches: `state/m02-context-loop`, and so on using the table
+- Subsequent branches: `stateful-M02-context-loop`, and so on using the table
   suffixes, each based on the preceding milestone branch.
-- Target repository: `onnxruntime/ort-state`. Each PR's base is the previous
-  milestone branch; the first PR targets `ort-state`.
+- Target repository: `microsoft/onnxruntime`. Each PR's base is the previous
+  milestone branch; the first PR targets `state/stateful-base-1988019b`.
 - Each PR documents incremental outcome, prerequisites/stack position, directly
   related usage, exact build/test results, measured coverage, and known limits.
   Preserve the repository template's headings/comments/checklists/order.

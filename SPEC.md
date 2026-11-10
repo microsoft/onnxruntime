@@ -11,13 +11,13 @@ separately approved on 2026-10-19.
 **M11 refinement:** Appendix K was approved on 2026-10-20 for detailed plan
 preparation. The CPU-first `TASKS.md` plan was separately approved on 2026-10-20;
 GPU qualification was resumed and verified on 2026-10-21 with compatible tooling.
-M11 is published for review in [#25](https://github.com/onnxruntime/ort-state/pull/25),
+M11 is published for review in [#34054](https://github.com/microsoft/onnxruntime/pull/34054),
 stacked on M10.
 **M12 refinement:** The requirements interview completed on 2026-10-30.
 Appendix L was approved by the user for detailed plan preparation.
 The detailed M12 plan was separately approved on 2026-10-30 and implementation
 and CPU/CUDA qualification are verified on 2026-10-31. M12 is published for review
-in [#26](https://github.com/onnxruntime/ort-state/pull/26), stacked on M11.
+in [#34055](https://github.com/microsoft/onnxruntime/pull/34055), stacked on M11.
 M13 and later implementation milestones are not started.
 
 ## 1. Purpose
@@ -428,8 +428,8 @@ Model licenses and external-weight references must be respected.
 - **DELIVERY-5:** Each milestone is an independently documented, tested,
   human-reviewable PR. Later PRs may depend on preceding PRs, but their incremental
   diff, prerequisites, outcome, and validation must be clear.
-- **DELIVERY-6:** Target `onnxruntime/ort-state`. Base the first milestone branch
-  on the current `ort-state` branch and stack later branches on their predecessor,
+- **DELIVERY-6:** Target `microsoft/onnxruntime`. Base the first milestone branch
+  on the current `state/stateful-base-1988019b` branch and stack later branches on their predecessor,
   using descriptive branch names.
 - **DELIVERY-7:** Open PRs ready-for-review when their required evidence is ready.
   Honor the repository PR template and include exact validation commands/results.
@@ -1430,7 +1430,7 @@ with only its version number changed.
 plugin EP only, CUDA copy primitives where sufficient, GPU-resident cache
 views/results, and an M08a/M08b split, with no additional specification input.
 The detailed execution plan is approved without changes. M08a is complete in
-PR #20. M08b, separately authorized on 2026-10-19, is complete in PR #21.
+PR #34049. M08b, separately authorized on 2026-10-19, is complete in PR #34050.
 Both CUDA-plugin-only sub-milestones are independently verified and ready for review.
 
 ### H.1 Scope and preserved behavior
@@ -1685,8 +1685,8 @@ The user chose CUDA plugin EP only, GPU-resident exposed logits under explicit
 GPU sampling, token/status-only readback, and an M09a/M09b delivery split.
 Additional specification inputs: None. The user approved the detailed plan
 without changes and initially authorized M09a only. M09a is verified and published
-ready for review in PR #22. M09b, separately authorized on 2026-10-19, is verified
-and published ready for review in PR #23. Both parts of macro M09 are complete.
+ready for review in PR #34051. M09b, separately authorized on 2026-10-19, is verified
+and published ready for review in PR #34052. Both parts of macro M09 are complete.
 
 ### I.1 Scope and preserved behavior
 
@@ -1808,7 +1808,7 @@ and published ready for review in PR #23. Both parts of macro M09 are complete.
   correctness and coverage; do not silently turn failures into skips.
 - M09a supplies the CUDA plugin sampler backend, standalone C/C++ conformance,
   resource/stream correctness and measured host/device coverage, stacked on
-  independently verified M08b PR #21. It does not claim loop/chain GPU sampling.
+  independently verified M08b PR #34050. It does not claim loop/chain GPU sampling.
 - M09b supplies GPU logits binding/retention, loop/chain generation integration,
   public/native parity and end-to-end evidence, stacked on verified M09a.
   Each sub-PR is independently documented, tested and ready for human review.
