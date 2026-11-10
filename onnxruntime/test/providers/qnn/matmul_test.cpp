@@ -348,8 +348,8 @@ TEST_F(QnnHTPBackendTests, MatMulOp_QDQ_Regression_uint16_dynamic_inputs) {
 }
 
 // Tests that a MatMul with two dynamic uint16 inputs keeps input[1] at 16 bits when the QNN backend supports a
-// uint16 x uint16 MatMul (HTP v73 and later). If input[1] were converted to uint8, some outputs would differ from
-// the CPU EP's by more than 0.3% of the output range, which fails the tolerance below.
+// uint16 x uint16 MatMul (HTP v73 and later). The tolerance below is 0.1% of the output range. With input[1]
+// converted to uint8, some outputs differ from the CPU EP's by 0.13% to 0.38% of the output range, so the test fails.
 TEST_F(QnnHTPBackendTests, MatMulOp_QDQ_uint16_dynamic_inputs_16x16) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
