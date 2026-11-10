@@ -223,6 +223,11 @@ chosen by sweeping it on Qwen3.8-27B at an 8K prompt:
 
 Shapes small enough to fit the cap take a single tile and are unaffected.
 
+Dense-prefill numerics (`prefill_numerics = 1`) are the exception to tiling: one dense GEMM needs the
+whole contiguous `[K, N]` dequantized weight. That weight must fit the same cap, so the kernel returns an
+error when `N * K * sizeof(T)` exceeds `ORT_FP8_DEQUANT_SCRATCH_MIB` instead of allocating past it. Raise the
+limit (the 248320 x 5120 LM head above needs 2425 MiB) or keep `prefill_numerics = 0` for such projections.
+
 ---
 
 ## 6. Optional W8A8 Activation Path
@@ -379,6 +384,6 @@ and a reference for the BF16 activation and epilogue, including dense-prefill
 and generic fallbacks.
 
 
-Optional CPU input 5 selects dense-prefill numerics. Optional inputs 6-8 and `prefill_weight_offsets` preserve the original projection weights/layout when a packed decode projection differs. They are mutually exclusive with shared-expert mode.
+Optional CPU input 5 selects dense-prefill numerics, which dequantize the whole weight at once and therefore must fit `ORT_FP8_DEQUANT_SCRATCH_MIB` (see 5.1). Optional inputs 6-8 and `prefill_weight_offsets` preserve the original projection weights/layout when a packed decode projection differs. They are mutually exclusive with shared-expert mode.
 
 Shared-expert preparation is self-contained and requires no companion operator PR.

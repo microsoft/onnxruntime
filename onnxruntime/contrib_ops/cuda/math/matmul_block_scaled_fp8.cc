@@ -331,7 +331,13 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
   // is tiled over N because a full [N, K] buffer is 2.37 GiB for a 248320 x 5120 LM head.
   const int64_t rows_per_scratch =
       static_cast<int64_t>(max_dequant_scratch_bytes_ / (static_cast<size_t>(k) * sizeof(CudaT)));
-  // Dense MatMul consumes a contiguous KN weight, not a transposed NK operand or N tiles.
+  // Dense MatMul consumes a contiguous KN weight, not a transposed NK operand or N tiles, so the whole
+  // weight must fit the scratch budget; fail instead of allocating past it.
+  const size_t dense_scratch_bytes = SafeInt<size_t>(n) * SafeInt<size_t>(k) * sizeof(CudaT);
+  ORT_RETURN_IF(dense_prefill && dense_scratch_bytes > max_dequant_scratch_bytes_,
+                "prefill_numerics=1 dequantizes the whole weight at once (N=", n, ", K=", k, ", ",
+                dense_scratch_bytes, " bytes), which exceeds the ORT_FP8_DEQUANT_SCRATCH_MIB limit of ",
+                max_dequant_scratch_bytes_, " bytes. Increase ORT_FP8_DEQUANT_SCRATCH_MIB or use prefill_numerics=0.");
   const int64_t tile_rows = dense_prefill ? n : std::clamp<int64_t>(rows_per_scratch, 1, n);
 
   IAllocatorUniquePtr<CudaT> b_dequant =

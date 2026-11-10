@@ -1404,6 +1404,69 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, WeightDequantScratchTilingFp16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+// prefill_numerics=1 dequantizes the whole [K, N] weight for one dense GEMM, so that weight must fit
+// ORT_FP8_DEQUANT_SCRATCH_MIB instead of bypassing it. With a 1 MiB cap and K = 1024, exactly 512 FP16
+// rows fit: N = 512 runs and N = 513 is rejected. The default numerics still tile N = 513 under the cap.
+TEST(MatMulBlockQuantizedFp8WeightOpTest, DensePrefillRespectsDequantScratchLimit) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp8Weight.";
+  }
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FP8_DEQUANT_SCRATCH_MIB", "1"}}};
+
+  constexpr int64_t m = 65;  // past the chunked GEMV limit, so the dequant + cuBLAS path runs
+  constexpr int64_t k = 1024;
+  constexpr int64_t block_size = 128;
+  constexpr int64_t k_blocks = k / block_size;
+  constexpr int64_t max_dense_rows = 1024 * 1024 / (k * sizeof(MLFloat16));
+  static_assert(max_dense_rows == 512);
+
+  for (const int64_t n : {max_dense_rows, max_dense_rows + 1}) {
+    for (const int32_t prefill_numerics : {0, 1}) {
+      SCOPED_TRACE(MakeString("n=", n, " prefill_numerics=", prefill_numerics));
+      const bool expect_success = prefill_numerics == 0 || n <= max_dense_rows;
+
+      std::vector<float> row_weights(static_cast<size_t>(n));
+      std::vector<float> b_scale(static_cast<size_t>(n) * static_cast<size_t>(k_blocks));
+      for (int64_t row = 0; row < n; ++row) {
+        row_weights[static_cast<size_t>(row)] = row % 3 == 0 ? 2.0f : 1.0f;
+        for (int64_t blk = 0; blk < k_blocks; ++blk) {
+          b_scale[static_cast<size_t>(row * k_blocks + blk)] = static_cast<float>(row + 1) / 256.0f;
+        }
+      }
+      std::vector<float> a(static_cast<size_t>(m) * static_cast<size_t>(k), 1.0f);
+      std::vector<float> expected(static_cast<size_t>(m) * static_cast<size_t>(n));
+      for (int64_t row = 0; row < m; ++row) {
+        for (int64_t col = 0; col < n; ++col) {
+          expected[static_cast<size_t>(row * n + col)] =
+              expect_success ? static_cast<float>(k) * row_weights[static_cast<size_t>(col)] *
+                                   static_cast<float>(col + 1) / 256.0f
+                             : 0.0f;
+        }
+      }
+
+      OpTester test("MatMulBlockQuantizedFp8Weight", 1, onnxruntime::kMSDomain);
+      test.AddAttribute<int64_t>("block_size", block_size);
+      test.AddInput<MLFloat16>("A", {m, k}, FloatsToMLFloat16s(a));
+      test.AddInput<Float8E4M3FN>("B", {n, k}, MakeConstRowWeight(row_weights, k));
+      test.AddInput<float>("b_scale", {n, k_blocks}, b_scale);
+      test.AddOptionalInputEdge<float>();
+      test.AddOptionalInputEdge<MLFloat16>();
+      test.AddInput<int32_t>("prefill_numerics", {1}, {prefill_numerics});
+      test.AddOutput<MLFloat16>("Y", {m, n}, FloatsToMLFloat16s(expected));
+      test.SetOutputTolerance(0.5f);
+
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultCudaExecutionProvider());
+      if (expect_success) {
+        test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+      } else {
+        test.Run(OpTester::ExpectResult::kExpectFailure, "ORT_FP8_DEQUANT_SCRATCH_MIB limit of 1048576 bytes",
+                 {}, nullptr, &execution_providers);
+      }
+    }
+  }
+}
+
 TEST(MatMulBlockQuantizedFp8WeightOpTest, ZeroKWithBiasFp16) {
   if (!HasCudaEnvironment(800)) {
     GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp8Weight.";
