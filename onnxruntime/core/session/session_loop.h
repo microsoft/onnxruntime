@@ -1,0 +1,109 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#pragma once
+
+#include <atomic>
+#include <cstdint>
+#include <memory>
+#include <string>
+
+#include "core/common/common.h"
+#include "core/common/inlined_containers.h"
+#include "core/framework/ort_value.h"
+
+namespace onnxruntime {
+
+class InferenceSession;
+class SessionLoopExecution;
+
+enum class LoopExitKind { EndOfInputs,
+                          MaxIterations,
+                          MaxGeneratedTokens,
+                          Eos,
+                          BooleanOutput };
+
+struct LoopExitCondition {
+  LoopExitKind kind;
+  int64_t limit = 0;
+  std::string output_name;
+  InlinedVector<int64_t> eos_token_ids;
+};
+
+struct LoopFeedbackBinding {
+  std::string input_name;
+  std::string output_name;
+};
+
+struct SessionLoopOptions {
+  InlinedVector<std::string> finite_input_names;
+  InlinedVector<LoopFeedbackBinding> feedback;
+  InlinedVector<std::string> output_names;
+  InlinedVector<LoopExitCondition> exit_conditions;
+  // A scalar int64 model output represents one generated token per iteration.
+  std::string generated_token_output;
+  // Reject an empty finite source or empty tensor for this input (e.g. a prompt).
+  std::string nonempty_input;
+};
+
+using LoopFeeds = InlinedHashMap<std::string, OrtValue>;
+
+struct SessionLoopInputs {
+  // Initial feedback values and invariant inputs; finite inputs belong in batches.
+  LoopFeeds inputs;
+  InlinedVector<LoopFeeds> batches;
+};
+
+struct SessionLoopStepResult {
+  bool executed = false;
+  bool completed = false;
+  int64_t iterations = 0;
+  int64_t generated_tokens = 0;
+  InlinedVector<LoopExitKind> exit_reasons;
+  // Owned CPU snapshots, in the definition's output_names order.
+  InlinedVector<OrtValue> outputs;
+};
+
+// The caller-owned, initialized Session must outlive the definition and executions.
+class SessionLoop : public std::enable_shared_from_this<SessionLoop> {
+ public:
+  static Status Create(InferenceSession& session, SessionLoopOptions options,
+                       std::shared_ptr<const SessionLoop>& out);
+  Status CreateExecution(SessionLoopInputs inputs, std::unique_ptr<SessionLoopExecution>& out) const;
+  const SessionLoopOptions& Options() const { return options_; }
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionLoop);
+
+ private:
+  friend class SessionLoopExecution;
+  SessionLoop(InferenceSession& session, SessionLoopOptions options);
+  Status ValidateInputs(const SessionLoopInputs& inputs) const;
+
+  InferenceSession& session_;
+  const SessionLoopOptions options_;
+  InlinedVector<std::string> fetch_names_;
+};
+
+// Only Cancel may run concurrently with Step/Run. Reset and execution are sequential.
+class SessionLoopExecution {
+ public:
+  Status Step(SessionLoopStepResult& out);
+  Status Run(SessionLoopStepResult& out);
+  void Cancel() noexcept { cancelled_.store(true); }
+  void Reset();
+  bool RequiresReset() const { return requires_reset_; }
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionLoopExecution);
+
+ private:
+  friend class SessionLoop;
+  SessionLoopExecution(std::shared_ptr<const SessionLoop> loop, SessionLoopInputs inputs);
+  void EvaluateExits(const InlinedVector<OrtValue>& values);
+
+  const std::shared_ptr<const SessionLoop> loop_;
+  const SessionLoopInputs initial_inputs_;
+  InlinedVector<OrtValue> feedback_;
+  SessionLoopStepResult progress_;
+  std::atomic<bool> cancelled_{false};
+  bool requires_reset_ = false;
+};
+
+}  // namespace onnxruntime
