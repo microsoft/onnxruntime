@@ -459,7 +459,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
           filter_eps_for_contrib_op(cpu_cuda_dml_eps, "EmbedLayerNormalization")));
       transformers.emplace_back(std::make_unique<GatherSliceToSplitFusion>(cpu_cuda_eps));
       transformers.emplace_back(std::make_unique<GatherToSliceFusion>(cpu_cuda_eps));
-      transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cpu_cuda_dml_eps));
+      transformers.emplace_back(
+          std::make_unique<MatmulTransposeFusion>(filter_eps_for_contrib_op(cpu_cuda_dml_eps, "FusedMatMul")));
       transformers.emplace_back(
           std::make_unique<BiasGeluFusion>(filter_eps_for_contrib_op(cpu_cuda_dml_webgpu_eps, "BiasGelu")));
       transformers.emplace_back(
