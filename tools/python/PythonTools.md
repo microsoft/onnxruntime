@@ -119,6 +119,11 @@ python -m pytest tools/python/test_generate_matmul_nbits_cases.py tools/python/t
 
 ## Repeatable MatMulNBits matrix and hardware profiling
 
+For the CPU/CUDA qualification roadmap, evidence boundaries and CUDA commands, see the
+[testing strategy](../../docs/annotated_partitioning/matmul_nbits_experiments/testing_strategy.md).
+`profile_matmul_nbits_cuda.py` is a separate single-case capture/NVTX driver; it does not use CPU perf counters
+or claim automatic instruction-derived GPU FLOP counts.
+
 `generate_matmul_nbits_matrix.py` preserves the 84-case matrix used in the November 2026 CPU experiment:
 FP32 inputs at accuracy levels 0-4 and FP16 at levels 0/4, crossed with M=1/8/32/128 and
 (K,N)=(64,32)/(128,64)/(1024,1024). All cases use INT4, block size 32, no bias and implicit midpoint zero points.

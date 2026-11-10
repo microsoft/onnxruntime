@@ -135,8 +135,11 @@ def check_summaries(values, components: dict):
         require(decimal_count(summary.get("known_operation_count")) == expected, f"{name}: subtotal mismatch")
 
 
-def validate_report(report: dict, case: Case):
+def validate_report(report: dict, case: Case, provider: str = "CPUExecutionProvider"):
     """Validate capture and logical counts; do not reimplement route-aware FLOP formulas."""
+    if provider not in ("CPUExecutionProvider", "CUDAExecutionProvider"):
+        raise ValueError(f"Unsupported report provider: {provider}")
+    cuda = provider == "CUDAExecutionProvider"
     require(isinstance(report, dict), "report must be an object")
     require(type(report.get("schema_version")) is int and report["schema_version"] == 3, "expected schema version 3")
     require(report.get("report_kind") == "runtime_workload", "expected runtime_workload report")
@@ -165,10 +168,10 @@ def validate_report(report: dict, case: Case):
         "estimator_unavailable",
     )
     expected_metadata = {
-        "provider": "CPUExecutionProvider",
+        "provider": provider,
         "domain": "com.microsoft",
         "op_type": "MatMulNBits",
-        "execution_basis": "successful_kernel_execution",
+        "execution_basis": "successful_host_submission" if cuda else "successful_kernel_execution",
         "input_shape": list(case.a_shape),
         "output_shape": [*case.a_shape[:-1], case.n],
         "bias_present": case.bias,
@@ -192,11 +195,16 @@ def validate_report(report: dict, case: Case):
         "packed_qnbit": ("sqnbit_fp32", "hqnbit_fp16", "sqnbit_int8", "hqnbit_int8", "bhqnbit_bf16"),
         "packed_lut": ("lut",),
     }
+    if cuda:
+        modes = dict.fromkeys(
+            ("cuda_fused", "cuda_fpa_intb_gemv", "cuda_fpa_intb_gemm", "cuda_mixed_fpa_intb", "cuda_dequantize_gemm"),
+            ("cuda_floating_point",),
+        )
     require(
         isinstance(invocation.get("route"), str)
         and invocation["route"] in modes
         and invocation.get("compute_mode") in modes[invocation["route"]],
-        "missing or inconsistent CPU route/compute_mode",
+        "missing or inconsistent route/compute_mode",
         "metadata_mismatch",
     )
     logical = components_by_name(invocation.get("components"), ("matmul_core", "bias"))
@@ -225,7 +233,7 @@ def validate_report(report: dict, case: Case):
     for name, component in components.items():
         require(
             component.get("metric") == "floating_point_ops"
-            and component.get("convention_version") == "cpu_expected_flops_v1",
+            and component.get("convention_version") == ("cuda_expected_flops_v1" if cuda else "cpu_expected_flops_v1"),
             f"{name}: expected-FLOP convention mismatch",
         )
         if component.get("availability") == "available":

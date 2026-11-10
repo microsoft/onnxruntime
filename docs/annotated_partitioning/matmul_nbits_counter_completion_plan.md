@@ -2,6 +2,9 @@
 
 ## 1. Objective and definition of done
 
+For repeatable CPU experiments, current evidence and CUDA capture/profiling commands, see the
+[testing strategy for future agents](matmul_nbits_experiments/testing_strategy.md).
+
 Finish a developer-facing diagnostic that reports useful, auditable MatMulNBits workload counts and measured
 throughput without changing inference results, dispatch, or memory policy.
 
