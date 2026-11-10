@@ -50,6 +50,7 @@ struct ActivationParams {
   float beta = 0.0f;
   float limit = std::numeric_limits<float>::infinity();
   int swiglu_fusion = 0;  // 0 = default, 1 = interleaved layout
+  bool swiglu_limit_after_activation = false;
 
   ActivationParams() = default;
 

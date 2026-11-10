@@ -2688,6 +2688,7 @@ QMoEOffload::QMoEOffload(const OpKernelInfo& info,
       v4_planned_mode_(true),
       v4_policy_(policy),
       v4_plan_(plan) {
+  ORT_ENFORCE(!swiglu_limit_after_activation_, "QMoE offload does not support post-activation SwiGLU clipping.");
   for (size_t b = 0; b < 6; ++b) {
     if (desc.banks[b].has_value() && !desc.banks[b]->external_file_path.empty()) {
       v4_bank_paths_[b] = desc.banks[b]->external_file_path.string();
@@ -2773,6 +2774,7 @@ QMoEOffload::QMoEOffload(const OpKernelInfo& info,
 
 QMoEOffload::QMoEOffload(const OpKernelInfo& info)
     : CudaKernel(info), MoEBase(info, GetDeviceProp()) {
+  ORT_ENFORCE(!swiglu_limit_after_activation_, "QMoE offload does not support post-activation SwiGLU clipping.");
   ::onnxruntime::cuda::SetQMoEDeviceArenasShrunkHook(&OnQMoEDeviceArenasShrunk);
   staging_optimization_ = ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_OFFLOAD_STAGING_OPT", 0);
   ORT_ENFORCE(staging_optimization_ >= 0 && staging_optimization_ <= 3,
