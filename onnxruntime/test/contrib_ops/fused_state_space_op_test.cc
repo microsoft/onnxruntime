@@ -36,10 +36,11 @@ MambaInputShapes MambaShapes() {
   return {{{3, 514}, {4, 384, 3}, {4, 2, 128, 64}, {384, 4}, {384}, {2}, {2}, {2}, {128}, {1}}};
 }
 
-void TestMambaSchema(const MambaInputShapes& shapes, const std::string& error = "", bool known_shapes = true) {
+void TestMambaSchema(const MambaInputShapes& shapes, const std::string& error = "", bool known_shapes = true,
+                     int64_t heads = 2, int64_t groups = 1) {
   MambaSchemaTester tester(known_shapes);
-  tester.AddAttribute("heads", int64_t{2});
-  tester.AddAttribute("n_groups", int64_t{1});
+  tester.AddAttribute("heads", heads);
+  tester.AddAttribute("n_groups", groups);
   constexpr std::array<const char*, 10> names = {
       "projection", "conv_state", "ssm_state", "conv_weight", "conv_bias",
       "dt_bias", "A_negative", "D", "norm_weight", "state_row"};
@@ -77,6 +78,14 @@ TEST(FusedStateSpaceSchemaTest, MambaKnownAndUnknownGeometry) {
 }
 
 #ifndef ORT_NO_EXCEPTIONS
+TEST(FusedStateSpaceSchemaTest, MambaInvalidHeadGroupDiagnostic) {
+  for (const auto& attributes : {std::pair{0, 1}, {2, 0}, {3, 2}, {std::numeric_limits<int>::max() / 1024 + 1, 1}}) {
+    const auto [heads, groups] = attributes;
+    TestMambaSchema(MambaShapes(), "got heads=" + std::to_string(heads) + ", n_groups=" + std::to_string(groups),
+                    true, heads, groups);
+  }
+}
+
 TEST(FusedStateSpaceSchemaTest, MambaRejectsRankOneConvolutionWeights) {
   auto shapes = MambaShapes();
   shapes[3] = {384 * 4};
