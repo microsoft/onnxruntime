@@ -1,6 +1,6 @@
 # Stateful Session Execution: Execution Plan
 
-**Status:** Approved by the user on 2026-10-15; M01 complete in [PR #11](https://github.com/onnxruntime/ort-state/pull/11).
+**Status:** Approved by the user on 2026-10-15; M01 complete in [PR #34040](https://github.com/microsoft/onnxruntime/pull/34040).
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
 **Working memory:** [Shared scratchpad](SCRATCHPAD.md).
 
@@ -130,8 +130,8 @@ all binding, provider, coverage, and qualification gates remain part of delivery
 
 **Outcome:** Concrete interface decisions and a reproducible validation baseline,
 without prematurely publishing an ABI or starting a different product scope.
-**Status:** Complete; [PR #11](https://github.com/onnxruntime/ort-state/pull/11)
-is ready for review, targeting `ort-state`.
+**Status:** Complete; [PR #34040](https://github.com/microsoft/onnxruntime/pull/34040)
+is ready for review, targeting `state/stateful-base-1988019b`.
 
 - [x] Inventory existing Session/I/O binding, allocator, cancellation, provider,
   sampling, scheduler, package, and binding helpers before adding alternatives.
@@ -160,7 +160,7 @@ milestones; they need not prevent unrelated CPU development.
 
 **Execution evidence:**
 
-- First milestone branch created: `state/m01-contracts-fixtures`.
+- First milestone branch created: `stateful-M01-contracts-fixtures`.
 - Isolated `.venv` created with Python 3.12.9.
 - Clang/LLVM coverage tools 18.1.8, GCC 13.2.0, and CMake 4.1.2 are present.
 - Eight A100 GPUs and CUDA 13.0 are visible. Nsight Compute and Compute Sanitizer
@@ -267,8 +267,8 @@ CUDA_VISIBLE_DEVICES=0 \
   --gtest_output=xml:m01-tests.xml
 ```
 
-Published the unchanged `ort-state` baseline branch and
-`state/m01-contracts-fixtures`; the first PR targets the agreed `ort-state` base,
+Published the unchanged `state/stateful-base-1988019b` baseline branch and
+`stateful-M01-contracts-fixtures`; the first PR targets the agreed `state/stateful-base-1988019b` base,
 not `main`. Implementation commit: `64aa026b94`. The PR contains no stateful
 runtime production implementation; M02 is the next pending milestone.
 
@@ -799,12 +799,12 @@ negative/error tests. Supporting milestones do not replace final qualification.
 
 ## 7. Stacked PR and checkpoint workflow
 
-- First branch: `state/m01-contracts-fixtures`, based on the current `ort-state`
+- First branch: `stateful-M01-contracts-fixtures`, based on the current `state/stateful-base-1988019b`
   branch at implementation start. Record the actual base commit then.
-- Subsequent branches: `state/m02-context-loop`, and so on using the table
+- Subsequent branches: `stateful-M02-context-loop`, and so on using the table
   suffixes, each based on the preceding milestone branch.
-- Target repository: `onnxruntime/ort-state`. Each PR's base is the previous
-  milestone branch; the first PR targets `ort-state`.
+- Target repository: `microsoft/onnxruntime`. Each PR's base is the previous
+  milestone branch; the first PR targets `state/stateful-base-1988019b`.
 - Each PR documents incremental outcome, prerequisites/stack position, directly
   related usage, exact build/test results, measured coverage, and known limits.
   Preserve the repository template's headings/comments/checklists/order.
