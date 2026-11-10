@@ -178,12 +178,13 @@ bool TryFuse(Graph& graph, Node& softmax, const InlinedHashSet<std::string_view>
       scalar_index = 0;
       value = GetScalarConstant(graph, *scale_node->InputDefs()[0]);
     }
-    if (!value.has_value() || *value == 0.0f) {
+    if (!value.has_value() || *value == 0.0f || !std::isfinite(*value)) {
       return false;
     }
     scale = is_div ? 1.0f / *value : *value;
-    // Also catches a tiny divisor whose reciprocal overflows.
-    if (!std::isfinite(scale)) {
+    // A tiny divisor's reciprocal can overflow. A zero scale can only come from an infinite divisor, which is already
+    // rejected, but it must never be emitted: MultiHeadAttention reads scale 0 as the default 1/sqrt(head_size).
+    if (!std::isfinite(scale) || scale == 0.0f) {
       return false;
     }
     qk_matmul = graph_utils::GetInputNode(*scale_node, 1 - scalar_index);

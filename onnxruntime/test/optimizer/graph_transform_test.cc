@@ -8,6 +8,7 @@
 #include <cmath>
 #include <functional>
 #include <fstream>
+#include <limits>
 #include <optional>
 #include <random>
 #include <sstream>
@@ -9974,6 +9975,20 @@ TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitOverflowingScaleNotF
   // The reciprocal of a denormal divisor overflows to inf, so there is no finite scale attribute to emit.
   VitAttentionTestConfig config;
   config.scale_value = 1e-40f;
+  ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionUnfused, *logger_));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitPositiveInfiniteDivisorNotFused) {
+  // Dividing by +inf zeroes the logits and makes attention uniform, but its reciprocal is a zero scale, which
+  // MultiHeadAttention reads as the default 1/sqrt(head_size).
+  VitAttentionTestConfig config;
+  config.scale_value = std::numeric_limits<float>::infinity();
+  ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionUnfused, *logger_));
+}
+
+TEST_F(GraphTransformationTests, MultiHeadAttentionFusionVitNegativeInfiniteDivisorNotFused) {
+  VitAttentionTestConfig config;
+  config.scale_value = -std::numeric_limits<float>::infinity();
   ASSERT_STATUS_OK(TestVitAttentionFusion(config, 11, CheckVitAttentionUnfused, *logger_));
 }
 
