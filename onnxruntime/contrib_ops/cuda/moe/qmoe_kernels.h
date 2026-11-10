@@ -712,6 +712,8 @@ struct Int3MoeParams {
   bool input_is_gathered = false;
   int total_routes_override = 0;
   int* grouped_workspace = nullptr;
+  size_t grouped_shared_memory_limit = 48 * 1024;
+  int grouped_rows = 8;
 };
 
 // Kernel family LaunchInt3Moe dispatches for `params`. Only the vectorized GEMV kernels read

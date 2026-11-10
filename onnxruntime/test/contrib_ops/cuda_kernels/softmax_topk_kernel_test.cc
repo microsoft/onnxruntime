@@ -589,6 +589,16 @@ TEST(CUDA_EP_Unittest, FusedInt3RouteGroups_DecodeKernelSelection) {
   };
   const Case cases[] = {
       {"vectorized shape", [](Int3MoeParams&) {}, Int3DecodeKernel::kFastVectorized},
+      {"BF16 block32 decode stays vectorized without grouped workspace",
+       [](Int3MoeParams& params) {
+         params.is_bfloat16 = true;
+         params.block_size = 32;
+         params.hidden = 1536;
+         params.intermediate = 2688;
+         params.rows = 8;
+         params.top_k = 8;
+       },
+       Int3DecodeKernel::kFastVectorized},
       {"route groups and router weights are ignored",
        [](Int3MoeParams& p) {
          p.route_groups = reinterpret_cast<const int2*>(uintptr_t{0x70000});
@@ -626,6 +636,35 @@ TEST(CUDA_EP_Unittest, FusedInt3RouteGroups_DecodeKernelSelection) {
          p.rows = 16;
          p.num_experts = 16;
          p.grouped_workspace = reinterpret_cast<int*>(uintptr_t{0xa0000});
+       },
+       Int3DecodeKernel::kGrouped},
+      {"large grouped prefill requires shared memory opt-in",
+       [](Int3MoeParams& params) {
+         params.rows = 32;
+         params.hidden = 3584;
+         params.intermediate = 2688;
+         params.num_experts = 16;
+         params.grouped_workspace = reinterpret_cast<int*>(uintptr_t{0xa0000});
+       },
+       Int3DecodeKernel::kFastVectorized},
+      {"RC14 four-row grouped prefill fits default shared memory",
+       [](Int3MoeParams& params) {
+         params.rows = 256;
+         params.hidden = 1536;
+         params.intermediate = 2688;
+         params.num_experts = 512;
+         params.grouped_rows = 4;
+         params.grouped_workspace = reinterpret_cast<int*>(uintptr_t{0xa0000});
+       },
+       Int3DecodeKernel::kGrouped},
+      {"large grouped prefill fits device opt-in shared memory",
+       [](Int3MoeParams& params) {
+         params.rows = 32;
+         params.hidden = 3584;
+         params.intermediate = 2688;
+         params.num_experts = 16;
+         params.grouped_workspace = reinterpret_cast<int*>(uintptr_t{0xa0000});
+         params.grouped_shared_memory_limit = 96 * 1024;
        },
        Int3DecodeKernel::kGrouped},
       {"unaligned grouped input falls back within the grid limit",
@@ -678,7 +717,7 @@ TEST(CUDA_EP_Unittest, FusedInt3RouteGroups_DecodeKernelSelection) {
       {"grouped FC2 static shared memory exceeds the limit",
        [](Int3MoeParams& p) {
          p.rows = 40000;
-         p.intermediate = 1536;
+         p.intermediate = 3072;
          p.num_experts = 16;
          p.grouped_workspace = reinterpret_cast<int*>(uintptr_t{0xa0000});
        },

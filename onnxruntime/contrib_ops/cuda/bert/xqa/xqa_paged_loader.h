@@ -63,8 +63,8 @@ Status LaunchXQAPagedKernel(
 // existing native and quantized cache variants at group size 6, plus BF16 query/output with an
 // INT8 paged KV cache at group size 6 or 16; its INT4 variant requires FP16 query/output and
 // PER_CHANNEL K/V scales at group size 6. The caller folds the K scale into the query and applies
-// the V scale to the output. H128 supports FP16 query/output with an INT8 paged KV cache at group
-// size 6 and is currently dispatched only with a causal mask. The launcher consumes the
+// the V scale to the output. H128 supports native BF16 or FP16 query/output with an INT8 paged KV
+// cache at group size 6 and is currently dispatched only with a causal mask. The launcher consumes the
 // caller-provided mask and does not validate causality itself.
 Status LaunchXQAPagedSpecDecKernel(
     const cudaDeviceProp& device_prop,
