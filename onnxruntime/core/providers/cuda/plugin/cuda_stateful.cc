@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "cuda_stateful.h"
+#include "cuda_greedy.h"
 
 #include <atomic>
 #include <memory>
@@ -135,6 +136,56 @@ OrtStatus* ORT_API_CALL Cache(void* pointer, const OrtStatefulCacheOperationRequ
   EXCEPTION_TO_STATUS_END
 }
 
+OrtStatus* GreedyWork(const Context& context, const OrtStatefulGreedyRequest& request,
+                      Ort::Value& scratch, GpuGreedyResult& result) noexcept {
+  EXCEPTION_TO_STATUS_BEGIN
+  ORT_ENFORCE(request.struct_size >= offsetof(OrtStatefulGreedyRequest, allocator) + sizeof(request.allocator) &&
+                  request.allocator,
+              "CUDA greedy requires the selected Session scratch allocator extension");
+  const Ort::ConstValue logits(request.logits);
+  const auto metadata = logits.GetTensorTypeAndShapeInfo();
+  const auto shape = metadata.GetShape();
+  const size_t width = SafeInt<size_t>(shape.back());
+  const int64_t row = request.has_position ? request.position : shape.size() == 3 ? shape[1] - 1
+                                                                                  : 0;
+  const size_t begin = SafeInt<size_t>(row) * width;
+  const size_t end = SafeInt<size_t>(begin) + width;
+  const int64_t scratch_shape[]{kGreedyWorkspaceBytes};
+  scratch = Ort::Value::CreateTensor<uint8_t>(request.allocator, scratch_shape, 1);
+  void* workspace = scratch.GetTensorMutableData<void>();
+  ORT_ENFORCE(workspace, "CUDA greedy scratch allocation failed");
+  const GpuGreedyResult* device_result = nullptr;
+  PL_CUDA_RETURN_IF_ERROR(LaunchGreedy(context.stream, logits.GetTensorRawData(),
+                                       metadata.GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16,
+                                       metadata.GetElementCount(), begin, end, workspace, device_result));
+  PL_CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(&result, device_result, sizeof(result),
+                                          cudaMemcpyDeviceToHost, context.stream));
+  return nullptr;
+  EXCEPTION_TO_STATUS_END
+}
+
+OrtStatus* ORT_API_CALL Greedy(void* pointer, const OrtStatefulGreedyRequest* request, int64_t* out) noexcept {
+  EXCEPTION_TO_STATUS_BEGIN
+  auto& context = *static_cast<Context*>(pointer);
+  int previous = 0;
+  PL_CUDA_CALL_THROW(cudaGetDevice(&previous));
+  PL_CUDA_CALL_THROW(cudaSetDevice(context.device_id));
+  Ort::Value scratch(nullptr);
+  GpuGreedyResult result{};
+  Ort::Status status(GreedyWork(context, *request, scratch, result));
+  Ort::Status completion = StatusFromCudaError(cudaStreamSynchronize(context.stream));
+  Ort::Status restore = StatusFromCudaError(cudaSetDevice(previous));
+  Ort::Status pending = StatusFromCudaError(cudaGetLastError());
+  Ort::ThrowOnError(std::move(status));
+  Ort::ThrowOnError(std::move(completion));
+  Ort::ThrowOnError(std::move(restore));
+  Ort::ThrowOnError(std::move(pending));
+  ORT_ENFORCE(!result.has_nan, "Greedy sampling does not accept NaN logits");
+  *out = result.token;
+  return nullptr;
+  EXCEPTION_TO_STATUS_END
+}
+
 }  // namespace
 
 OrtStatus* RegisterCudaStatefulProvider(OrtEp* ep, int device_id, cudaStream_t stream) noexcept {
@@ -142,14 +193,16 @@ OrtStatus* RegisterCudaStatefulProvider(OrtEp* ep, int device_id, cudaStream_t s
   std::unique_ptr<Context, decltype(&Release)> context(new Context(device_id, stream), &Release);
   const OrtStatefulProviderDescriptor descriptor{
       sizeof(descriptor),
-      {sizeof(OrtStatefulProviderCapabilities), 1, (uint64_t{1} << ORT_STATEFUL_SAMPLE_GREEDY) - 1,
+      {sizeof(OrtStatefulProviderCapabilities), 1, (uint64_t{1} << (ORT_STATEFUL_SAMPLE_GREEDY + 1)) - 1,
        (uint64_t{1} << ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) |
            (uint64_t{1} << ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) |
            (uint64_t{1} << ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16),
-       0, uint32_t{1} << OrtMemoryInfoDeviceType_GPU, device_id},
+       (uint64_t{1} << ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) |
+           (uint64_t{1} << ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16),
+       uint32_t{1} << OrtMemoryInfoDeviceType_GPU, device_id},
       context.get(),
       &Cache,
-      nullptr,
+      &Greedy,
       &Retain,
       &Release};
   return Ort::GetEpApi().RegisterStatefulProvider(ep, &descriptor);

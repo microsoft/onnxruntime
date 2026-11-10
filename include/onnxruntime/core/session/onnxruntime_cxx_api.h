@@ -3113,8 +3113,10 @@ struct KVCacheManager : detail::Base<OrtKVCacheManager> {
   StatefulDispatchInfo GetDispatchInfo(OrtStatefulProviderOperation operation) const;
 };
 
-/** \brief Move-only CPU greedy sampler; device logits/NaNs reject, ties choose the lowest ID.
- * Float32/float16 [1,V] or [1,S,V] logits; SetConfig is atomic. \since Version 1.32.
+/** \brief Move-only greedy sampler; CPU is the default, with explicit compatible provider-device selection.
+ * Float32/float16 [1,V] or [1,S,V] logits; NaNs reject and ties choose the lowest ID.
+ * SetConfig is atomic. Device sampling reads back only token/status information.
+ * \since Version 1.32.
  */
 struct SamplerOptions : detail::Base<OrtSamplerOptions> {
   using Base = detail::Base<OrtSamplerOptions>;

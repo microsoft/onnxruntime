@@ -5,10 +5,14 @@
 
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstring>
+#include <functional>
 #include <future>
 #include <limits>
 #include <memory>
+#include <numeric>
+#include <optional>
 #include <tuple>
 #include <type_traits>
 #include <vector>
@@ -22,6 +26,7 @@
 extern std::unique_ptr<Ort::Env> ort_env;
 extern "C" int StatefulApiCDeviceConsumerTest(OrtSession*, OrtAllocator*, const OrtValue*, const OrtValue*,
                                               OrtKVCacheView**);
+extern "C" int StatefulApiCGreedyDeviceConsumerTest(OrtSession*, const OrtValue*, int64_t*);
 
 namespace onnxruntime::test {
 namespace {
@@ -106,6 +111,52 @@ class CudaStatefulTest : public testing::Test {
     return bytes;
   }
 
+  Ort::Value Scores(const std::vector<int64_t>& shape, const std::vector<float>& scores,
+                    ONNXTensorElementDataType type, bool gpu) {
+    Ort::AllocatorWithDefaultOptions cpu;
+    auto host = Ort::Value::CreateTensor(cpu, shape.data(), shape.size(), type);
+    if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
+      std::copy(scores.begin(), scores.end(), host.GetTensorMutableData<float>());
+    } else {
+      std::transform(scores.begin(), scores.end(), host.GetTensorMutableData<Ort::Float16_t>(),
+                     [](float value) { return Ort::Float16_t(value); });
+    }
+    if (!gpu) return host;
+    auto value = Ort::Value::CreateTensor(allocator_, shape.data(), shape.size(), type);
+    if (!scores.empty()) {
+      Cuda(cudaMemcpy(value.GetTensorMutableData<void>(), host.GetTensorRawData(),
+                      host.GetTensorSizeInBytes(), cudaMemcpyHostToDevice));
+    }
+    return value;
+  }
+
+  void CheckGreedy(const std::vector<int64_t>& shape, const std::vector<float>& scores,
+                   ONNXTensorElementDataType type, std::optional<int64_t> position = std::nullopt) {
+    const OrtStatefulSamplerConfig config{sizeof(config), ORT_STATEFUL_GREEDY,
+                                          position.has_value(), position.value_or(0)};
+    Ort::SamplerOptions gpu(config), cpu(config);
+    gpu.SetProvider(Selection(), session_);
+    auto input = Scores(shape, scores, type, true), reference = Scores(shape, scores, type, false);
+    if (std::any_of(scores.begin(), scores.end(), [](float value) { return std::isnan(value); })) {
+      const auto& api = Ort::GetStatefulApi();
+      int64_t untouched = 912;
+      Ort::Status status(api.SamplerSample(gpu, input, &untouched));
+      EXPECT_FALSE(status.IsOK());
+      EXPECT_EQ(untouched, 912);
+      EXPECT_THROW(cpu.Sample(reference), Ort::Exception);
+      EXPECT_EQ(gpu.GetDispatchInfo().failures, 1u);
+    } else {
+      EXPECT_EQ(gpu.Sample(input), cpu.Sample(reference));
+    }
+    std::vector<uint8_t> unchanged(input.GetTensorSizeInBytes());
+    Cuda(cudaMemcpy(unchanged.data(), input.GetTensorRawData(), unchanged.size(), cudaMemcpyDeviceToHost));
+    EXPECT_EQ(std::memcmp(unchanged.data(), reference.GetTensorRawData(), unchanged.size()), 0);
+    const auto info = gpu.GetDispatchInfo();
+    EXPECT_EQ(info.provider_calls, 1u);
+    EXPECT_EQ(info.cpu_calls, 0u);
+    EXPECT_EQ(info.cpu_delegations, 0u);
+  }
+
   static void Check(const Ort::KVCacheManager& gpu, const Ort::KVCacheManager& cpu,
                     cudaStream_t stream = nullptr) {
     // Check completion before any readback can implicitly synchronize.
@@ -152,8 +203,8 @@ TEST_P(CudaStatefulLayoutTest, CompactOperationsAndImmutableSnapshots) {
   Ort::KVCacheManager gpu(options, allocator_);
   Check(gpu, cpu);
   const auto caps = Ort::QueryStatefulProviderCapabilities(session_, "CUDAExecutionProvider");
-  EXPECT_EQ(caps.operations, 63u);
-  EXPECT_EQ(caps.sampler_element_types, 0u);
+  EXPECT_EQ(caps.operations, 127u);
+  EXPECT_EQ(caps.sampler_element_types, (uint64_t{1} << 1) | (uint64_t{1} << 10));
   EXPECT_EQ(caps.cache_element_types, (uint64_t{1} << 1) | (uint64_t{1} << 10) | (uint64_t{1} << 16));
   EXPECT_EQ(caps.memory_types, uint32_t{1} << OrtMemoryInfoDeviceType_GPU);
   EXPECT_EQ(caps.device_id, 0);
@@ -314,7 +365,8 @@ TEST_F(CudaStatefulTest, ExplicitPoliciesErrorsFailureRecoveryAndDeviceRestorati
   manager.Reset();
   const OrtStatefulSamplerConfig config{sizeof(config), ORT_STATEFUL_GREEDY, 0, 0};
   Ort::SamplerOptions sampler(config);
-  EXPECT_THROW(sampler.SetProvider(Selection(), session_), Ort::Exception);
+  sampler.SetProvider(Selection(), session_);
+  EXPECT_THROW(sampler.Sample(host), Ort::Exception);
   auto fallback = Selection(ORT_STATEFUL_PROVIDER_PREFER);
   fallback.device_type = OrtMemoryInfoDeviceType_CPU;
   sampler.SetProvider(fallback, session_);
@@ -438,11 +490,185 @@ TEST_F(CudaStatefulTest, EachSelectedDeviceUsesItsOwnAllocatorAndRestoresCallerD
     std::array<float, 4> output{};
     Cuda(cudaMemcpy(output.data(), value.GetTensorRawData(), sizeof(output), cudaMemcpyDeviceToHost));
     EXPECT_EQ(output, input);
+    const int64_t logits_shape[]{1, 3};
+    auto logits = Ort::Value::CreateTensor<float>(allocator, logits_shape, 2);
+    const std::array<float, 3> scores{1, 2, 9};
+    Cuda(cudaMemcpy(logits.GetTensorMutableData<float>(), scores.data(), sizeof(scores), cudaMemcpyHostToDevice));
     Cuda(cudaSetDevice(0));
+    const OrtStatefulSamplerConfig sampler_config{sizeof(sampler_config), ORT_STATEFUL_GREEDY, 0, 0};
+    Ort::SamplerOptions sampler(sampler_config);
+    sampler.SetProvider(choice, session);
+    EXPECT_EQ(sampler.Sample(logits), 2);
+    Cuda(cudaGetDevice(&current));
+    EXPECT_EQ(current, 0);
     ++tested;
   }
   EXPECT_GT(tested, 0);
   RecordProperty("tested_cache_devices", tested);
+}
+
+TEST_F(CudaStatefulTest, GreedyMatchesCpuAcrossShapesDtypesAndReductionBoundaries) {
+  for (const auto type : {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16}) {
+    for (const int64_t width : {1, 31, 32, 33, 255, 256, 257, 1023, 1024, 1025, 65535, 65536, 65537, 131073}) {
+      std::vector<float> scores(static_cast<size_t>(3 * width));
+      for (size_t i = 0; i < scores.size(); ++i) scores[i] = static_cast<float>(i % 19) - 10.f;
+      for (int64_t row = 0; row < 3; ++row) {
+        const int64_t peak = row == 0 ? 0 : row == 1 ? width / 2
+                                                     : width - 1;
+        scores[static_cast<size_t>(row * width + peak)] = 64.f + static_cast<float>(row);
+        scores[static_cast<size_t>((row + 1) * width - 1)] = 64.f + static_cast<float>(row);
+      }
+      CheckGreedy({1, 3, width}, scores, type);
+      CheckGreedy({1, 3, width}, scores, type, 0);
+      CheckGreedy({1, 3, width}, scores, type, 1);
+      scores.resize(static_cast<size_t>(width));
+      CheckGreedy({1, width}, scores, type);
+    }
+    for (const float value : {-std::numeric_limits<float>::infinity(),
+                              std::numeric_limits<float>::infinity(), -0.f, 0.f}) {
+      CheckGreedy({1, 1025}, std::vector<float>(1025, value), type);
+    }
+    const float tiny = type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT
+                           ? std::numeric_limits<float>::denorm_min()
+                           : std::ldexp(1.f, -24);
+    CheckGreedy({1, 4}, {0.f, tiny, -tiny, tiny}, type);
+    CheckGreedy({1, 4}, {-0.f, 0.f, -0.f, 0.f}, type);
+    CheckGreedy({1, 3}, {std::numeric_limits<float>::lowest(), -1.f, std::numeric_limits<float>::max()}, type);
+    std::vector<float> scores(1025, -std::numeric_limits<float>::infinity());
+    scores[256] = scores[1024] = std::numeric_limits<float>::infinity();
+    CheckGreedy({1, 1025}, scores, type);
+    for (const size_t index : {size_t{0}, size_t{256}, size_t{1024}, size_t{2049}, size_t{3074}}) {
+      scores.assign(3075, 1.f);
+      scores[index] = std::numeric_limits<float>::quiet_NaN();
+      CheckGreedy({1, 3, 1025}, scores, type, 1);
+    }
+  }
+}
+
+TEST_F(CudaStatefulTest, GreedyDeviceCoverage) {
+  for (const auto type : {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16}) {
+    for (const int64_t width : {1, 257, 65537}) {
+      std::vector<float> scores(static_cast<size_t>(width), -1.f);
+      scores.back() = 4.f;
+      CheckGreedy({1, width}, scores, type);
+      std::fill(scores.begin(), scores.end(), -std::numeric_limits<float>::infinity());
+      CheckGreedy({1, width}, scores, type);
+      scores[0] = std::numeric_limits<float>::quiet_NaN();
+      CheckGreedy({1, width}, scores, type);
+    }
+    std::vector<float> scores(771, 1.f);
+    scores[260] = 7.f;
+    CheckGreedy({1, 3, 257}, scores, type, 1);
+    scores[0] = std::numeric_limits<float>::quiet_NaN();
+    CheckGreedy({1, 3, 257}, scores, type, 1);
+  }
+}
+
+TEST_F(CudaStatefulTest, GreedyCConsumerMetadataErrorsAndRetainedSessionResources) {
+  const OrtStatefulSamplerConfig config{sizeof(config), ORT_STATEFUL_GREEDY, 0, 0};
+  Ort::SamplerOptions sampler(config);
+  sampler.SetProvider(Selection(), session_);
+  auto scores = Scores({1, 3}, {-1.f, 4.f, 7.f}, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, true);
+  int64_t token = -1;
+  ASSERT_EQ(StatefulApiCGreedyDeviceConsumerTest(session_, scores, &token), 0);
+  EXPECT_EQ(token, 2);
+  auto host = Scores({1, 3}, {-1.f, 4.f, 7.f}, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, false);
+  EXPECT_THROW(sampler.Sample(host), Ort::Exception);
+  auto unsupported = Value({1, 3}, ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16, true);
+  EXPECT_THROW(sampler.Sample(unsupported), Ort::Exception);
+  const int64_t dimensions[]{1, 3}, huge[]{1, std::numeric_limits<int64_t>::max()};
+  Ort::MemoryInfo other("Cuda", OrtDeviceAllocator, 1, OrtMemTypeDefault);
+  auto mismatched = Ort::Value::CreateTensor(
+      other, scores.GetTensorMutableData<void>(), scores.GetTensorSizeInBytes(), dimensions, 2,
+      ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+  EXPECT_THROW(sampler.Sample(mismatched), Ort::Exception);
+  EXPECT_THROW(Ort::Value::CreateTensor(
+                   scores.GetTensorMemoryInfo(), scores.GetTensorMutableData<void>(), scores.GetTensorSizeInBytes(),
+                   huge, 2, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT),
+               Ort::Exception);
+  for (const auto& shape : {std::vector<int64_t>{3}, std::vector<int64_t>{2, 3},
+                            std::vector<int64_t>{1, 0}, std::vector<int64_t>{1, 0, 3}}) {
+    const size_t count = std::accumulate(shape.begin(), shape.end(), size_t{1}, std::multiplies<size_t>{});
+    auto value = Scores(shape, std::vector<float>(count, 1.f), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, true);
+    EXPECT_THROW(sampler.Sample(value), Ort::Exception);
+  }
+  for (const int64_t position : {-1, 1}) {
+    auto invalid = config;
+    invalid.has_logits_position = 1;
+    invalid.logits_position = position;
+    if (position < 0) {
+      EXPECT_THROW(Ort::SamplerOptions{invalid}, Ort::Exception);
+    } else {
+      Ort::SamplerOptions selected(invalid);
+      selected.SetProvider(Selection(), session_);
+      EXPECT_THROW(selected.Sample(scores), Ort::Exception);
+    }
+  }
+  int device_count = 0;
+  Cuda(cudaGetDeviceCount(&device_count));
+  const int restored_device = device_count > 1 ? 1 : 0;
+  Cuda(cudaSetDevice(restored_device));
+  EXPECT_EQ(sampler.Sample(scores), 2);
+  int device = -1;
+  Cuda(cudaGetDevice(&device));
+  EXPECT_EQ(device, restored_device);
+  Cuda(cudaSetDevice(0));
+  session_ = Ort::Session(nullptr);
+  EXPECT_EQ(sampler.Sample(scores), 2);
+  EXPECT_EQ(sampler.GetDispatchInfo().cpu_calls, 0u);
+}
+
+TEST_F(CudaStatefulTest, GreedyNondefaultStreamCompletionAndFailureRecovery) {
+  cudaStream_t stream = nullptr;
+  Cuda(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+  auto release = [](cudaStream_t value) { Cuda(cudaStreamDestroy(value)); };
+  std::unique_ptr<std::remove_pointer_t<cudaStream_t>, decltype(release)> owner(stream, release);
+  auto session = Session(stream);
+  const OrtStatefulSamplerConfig config{sizeof(config), ORT_STATEFUL_GREEDY, 0, 0};
+  Ort::SamplerOptions sampler(config);
+  sampler.SetProvider(Selection(), session);
+  auto valid = Scores({1, 3}, {-1.f, 4.f, 7.f}, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, true);
+  auto invalid = Scores({1, 3}, {1.f, std::numeric_limits<float>::quiet_NaN(), 7.f},
+                        ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, true);
+  EXPECT_THROW(sampler.Sample(invalid), Ort::Exception);
+  EXPECT_EQ(sampler.Sample(valid), 2);
+  std::promise<void> entered, unblock;
+  auto unblocked = unblock.get_future();
+  std::pair<std::promise<void>*, std::future<void>*> gate{&entered, &unblocked};
+  Cuda(cudaLaunchHostFunc(stream, [](void* value) {
+    auto& gate = *static_cast<std::pair<std::promise<void>*, std::future<void>*>*>(value);
+    gate.first->set_value();
+    gate.second->wait(); }, &gate));
+  entered.get_future().wait();
+  auto result = std::async(std::launch::async, [&] { return sampler.Sample(valid); });
+  EXPECT_EQ(result.wait_for(std::chrono::milliseconds(50)), std::future_status::timeout);
+  unblock.set_value();
+  EXPECT_EQ(result.get(), 2);
+  Cuda(cudaStreamQuery(stream));
+}
+
+TEST_F(CudaStatefulTest, GreedyTransferAndLatency) {
+  const OrtStatefulSamplerConfig config{sizeof(config), ORT_STATEFUL_GREEDY, 0, 0};
+  Ort::SamplerOptions sampler(config);
+  sampler.SetProvider(Selection(), session_);
+  std::vector<float> values(50257, -1.f);
+  values[50255] = 8.f;
+  auto logits = Scores({1, 50257}, values, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, true);
+  EXPECT_EQ(sampler.Sample(logits), 50255);
+  const auto start = std::chrono::steady_clock::now();
+  for (int i = 0; i < 32; ++i) EXPECT_EQ(sampler.Sample(logits), 50255);
+  const auto elapsed = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count();
+  RecordProperty("greedy_mean_microseconds", elapsed / 32);
+  RecordProperty("gpu_sample_calls", sampler.GetDispatchInfo().provider_calls);
+  RecordProperty("result_copy_bytes_per_call", 16);
+  EXPECT_EQ(sampler.GetDispatchInfo().provider_calls, 33u);
+  Ort::SamplerOptions cpu(config);
+  auto host = Scores({1, 50257}, values, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, false);
+  const auto cpu_start = std::chrono::steady_clock::now();
+  for (int i = 0; i < 32; ++i) EXPECT_EQ(cpu.Sample(host), 50255);
+  const auto cpu_elapsed =
+      std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - cpu_start).count();
+  RecordProperty("cpu_greedy_mean_microseconds", cpu_elapsed / 32);
 }
 
 #else

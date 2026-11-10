@@ -9465,7 +9465,7 @@ typedef struct OrtStatefulKVCacheConfig {
   size_t num_caches;
 } OrtStatefulKVCacheConfig;
 
-/** \brief CPU greedy options; unsupported algorithms reject.
+/** \brief Greedy options; CPU is the default and unsupported algorithms reject.
  * \since Version 1.32.
  */
 typedef struct OrtStatefulSamplerConfig {
@@ -9618,6 +9618,13 @@ typedef struct OrtStatefulGreedyRequest {
   int64_t position;
   void* cpu_context;
   ORT_API2_STATUS(cpu_reference, void* context, int64_t* out);
+  /** \brief Optional selected-device scratch allocator, borrowed for this callback.
+   * Check struct_size before accessing this extension. Scratch/work must be
+   * completed and released before return; this allocator adapter is not retained
+   * beyond the callback. NULL means no compatible Session allocator is available.
+   * \since Version 1.32.
+   */
+  OrtAllocator* allocator;
 } OrtStatefulGreedyRequest;
 
 /** \brief Versioned provider descriptor, copied/retained by ORT.
@@ -9904,7 +9911,7 @@ struct OrtStatefulApi {
    */
   ORT_API2_STATUS(KVCacheManagerGetStats, _In_ const OrtKVCacheManager* manager, size_t stats_size,
                   _Out_ OrtStatefulKVCacheStats* out);
-  /** \brief Copy CPU greedy sampler options.
+  /** \brief Copy greedy sampler options; CPU is the default backend.
    * \param[in] config Sized typed configuration.
    * \param[out] out Owned options; release with ReleaseSamplerOptions.
    * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
@@ -9921,9 +9928,9 @@ struct OrtStatefulApi {
    * \param[in] input Options or NULL. \since Version 1.32.
    */
   ORT_CLASS_RELEASE(SamplerOptions);
-  /** \brief Greedy argmax on CPU logits; NaNs/device logits reject, ties choose lowest ID.
+  /** \brief Greedy argmax on selected CPU/provider-device logits; NaNs reject and ties choose the lowest ID.
    * \param[in] options Greedy configuration.
-   * \param[in] logits Float32/float16 [1,V] or [1,S,V] CPU tensor.
+   * \param[in] logits Contiguous float32/float16 [1,V] or [1,S,V] tensor on the explicitly selected device.
    * \param[out] token Nonnegative int64 token ID.
    * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
    */

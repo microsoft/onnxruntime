@@ -207,4 +207,24 @@ cleanup:
   return code;
 }
 
+int StatefulApiCGreedyDeviceConsumerTest(OrtSession* session, const OrtValue* logits, int64_t* token) {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  const OrtStatefulApi* stateful = api->GetStatefulApi();
+  OrtStatus* status = NULL;
+  OrtSamplerOptions* sampler = NULL;
+  int code = 0;
+  const OrtStatefulSamplerConfig config = {sizeof(config), ORT_STATEFUL_GREEDY, 0, 0};
+  const OrtStatefulProviderSelection choice = {
+      sizeof(choice), ORT_STATEFUL_PROVIDER_REQUIRE, "CUDAExecutionProvider", OrtMemoryInfoDeviceType_GPU, 0};
+  OrtStatefulDispatchInfo info = {0};
+  CHECK(stateful->CreateSamplerOptions(&config, &sampler));
+  CHECK(stateful->SamplerOptionsSetProvider(sampler, session, &choice));
+  CHECK(stateful->SamplerSample(sampler, logits, token));
+  CHECK(stateful->SamplerOptionsGetDispatchInfo(sampler, sizeof(info), &info));
+  if (info.provider_calls != 1 || info.cpu_calls != 0 || info.cpu_delegations != 0) code = 9;
+cleanup:
+  stateful->ReleaseSamplerOptions(sampler);
+  return code;
+}
+
 #undef CHECK

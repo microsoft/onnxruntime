@@ -66,9 +66,8 @@ Status Sampler::Sample(const OrtValue& logits, std::optional<int64_t> position,
     GreedyWork work{logits, position, dispatch};
     const OrtStatefulGreedyRequest request{
         sizeof(request), OrtGetApiBase()->GetApi(ORT_API_VERSION), &logits,
-        position.has_value(), position.value_or(0), &work, &CpuGreedy};
-    const auto& descriptor = dispatch.Binding().Descriptor();
-    status = ToStatusAndRelease(descriptor.Greedy(descriptor.context, &request, &sampled));
+        position.has_value(), position.value_or(0), &work, &CpuGreedy, nullptr};
+    status = dispatch.Binding().InvokeGreedy(request, sampled);
   } else {
     status = Greedy(logits, position, sampled);
   }

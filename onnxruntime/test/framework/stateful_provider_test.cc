@@ -4,6 +4,9 @@
 #include <atomic>
 #include <cmath>
 #include <limits>
+#if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
+#include <cuda_runtime_api.h>
+#endif
 
 #include "gtest/gtest.h"
 #include "core/framework/error_code_helper.h"
@@ -292,6 +295,46 @@ TEST(StatefulCudaProviderBoundaryTest, RequiresSizeTaggedRetainingRequest) {
     EXPECT_NE(status.GetErrorMessage().find("retaining cache-request extension"), std::string::npos);
     EXPECT_EQ(result.storage, &sentinel);
     EXPECT_EQ(result.length, 2);
+  }
+}
+
+TEST(StatefulCudaProviderBoundaryTest, GreedyScratchExtensionRejectsMissingAndFailedAllocators) {
+  auto provider = DefaultCudaExecutionProvider();
+  ASSERT_NE(provider, nullptr);
+  const auto* descriptor = provider->GetStatefulProvider();
+  ASSERT_NE(descriptor, nullptr);
+  ASSERT_NE(descriptor->Greedy, nullptr);
+  Ort::MemoryInfo memory("Cuda", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  float data[]{1.f, 2.f, 3.f};
+  const int64_t shape[]{1, 3};
+  // Allocation must fail before this metadata-only input could be accessed on device.
+  auto logits = Ort::Value::CreateTensor<float>(memory, data, 3, shape, 2);
+  struct NullAllocator : OrtAllocator {
+    const OrtMemoryInfo* memory;
+    explicit NullAllocator(const OrtMemoryInfo* value) : OrtAllocator{}, memory(value) {
+      version = ORT_API_VERSION;
+      Alloc = [](OrtAllocator*, size_t) -> void* { return nullptr; };
+      Free = [](OrtAllocator*, void*) {};
+      Info = [](const OrtAllocator* allocator) { return static_cast<const NullAllocator*>(allocator)->memory; };
+    }
+  } allocator(memory);
+  OrtStatefulGreedyRequest request{};
+  request.api = &Ort::GetApi();
+  request.logits = logits;
+  EXPECT_EQ(offsetof(OrtStatefulGreedyRequest, allocator),
+            offsetof(OrtStatefulGreedyRequest, cpu_reference) + sizeof(request.cpu_reference));
+  for (int mode = 0; mode < 3; ++mode) {
+    request.struct_size = mode == 0 ? offsetof(OrtStatefulGreedyRequest, allocator) : sizeof(request);
+    request.allocator = mode == 2 ? &allocator : nullptr;
+    int64_t token = 71;
+    Ort::Status status(descriptor->Greedy(descriptor->context, &request, &token));
+    EXPECT_FALSE(status.IsOK());
+    if (!status.IsOK()) {
+      EXPECT_NE(status.GetErrorMessage().find(mode == 2 ? "scratch allocation failed" : "scratch allocator extension"),
+                std::string::npos);
+    }
+    EXPECT_EQ(token, 71);
+    EXPECT_EQ(cudaPeekAtLastError(), cudaSuccess);
   }
 }
 #endif
@@ -627,7 +670,7 @@ TEST_P(StatefulProviderTest, FeedbackStagingAndArgumentValidation) {
   EXPECT_THROW(sampler.SetProvider(bad), Ort::Exception);
   if (GetParam()) {
 #if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
-    EXPECT_EQ(Ort::QueryStatefulProviderCapabilities(session, kCudaExecutionProvider).operations, 63u);
+    EXPECT_EQ(Ort::QueryStatefulProviderCapabilities(session, kCudaExecutionProvider).operations, 127u);
 #else
     EXPECT_EQ(Ort::QueryStatefulProviderCapabilities(session, kCudaExecutionProvider).operations, 0u);
 #endif

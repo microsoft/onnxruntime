@@ -9,6 +9,7 @@ message(STATUS "Building CUDA EP as plugin shared library")
 
 
 set(CUDA_PLUGIN_EP_DIR "${ONNXRUNTIME_ROOT}/core/providers/cuda/plugin")
+set_source_files_properties("${CUDA_PLUGIN_EP_DIR}/cuda_greedy.cu" PROPERTIES COMPILE_OPTIONS "-lineinfo")
 
 # --- Collect standard CUDA EP sources ---
 file(GLOB_RECURSE CUDA_EP_CC_SRCS CONFIGURE_DEPENDS

@@ -37,6 +37,7 @@ class StatefulProviderBinding {
   const char* Name() const;
   bool CacheCompatible(const StatefulProviderBinding& other) const;
   OrtValue RetainValue(OrtValue value, std::shared_ptr<const void> resource = {}) const;
+  Status InvokeGreedy(OrtStatefulGreedyRequest request, int64_t& token) const;
 
  private:
   struct Lease;
