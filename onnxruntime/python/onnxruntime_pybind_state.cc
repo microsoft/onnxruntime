@@ -302,8 +302,14 @@ class PythonCallbackSink : public onnxruntime::logging::ISink {
     const auto has_callback = [](PyObject* callback) {
       return callback != nullptr && callback != Py_None;
     };
+    // Threads unknown to Python (ORT pool workers, EP-internal threads) must not wait for the GIL. The thread
+    // holding it can be joining them (destroying an InferenceSession), and CPython terminates threads still
+    // waiting for it during finalization, which aborts the process while unwinding through the logging code.
+    const auto can_call_python = []() {
+      return Py_IsInitialized() && PyGILState_GetThisThreadState() != nullptr;
+    };
     // The atomic presence check does not dereference the object or touch refcounts.
-    if (in_callback || !has_callback(callback_.load(std::memory_order_relaxed)) || !Py_IsInitialized()) {
+    if (in_callback || !has_callback(callback_.load(std::memory_order_relaxed)) || !can_call_python()) {
       platform_sink_->Send(timestamp, logger_id, message);
       return;
     }
@@ -1876,11 +1882,14 @@ Args:
         Ignored when callback is ``None`` (but must still be in the range 0-4).
 
 Note:
-    The callback may be invoked from a non-Python thread; the GIL is
+    The callback runs on the thread that emits the message, and the GIL is
     acquired automatically before each call. Callbacks should return promptly
     and must not wait for work that depends on the thread emitting the log.
-    Recursive messages and messages whose callback raises use the platform sink;
-    Python exceptions are reported through ``sys.unraisablehook``.
+    Messages from threads unknown to Python, such as ORT's internal worker
+    threads, use the platform sink instead of the callback because waiting
+    for the GIL on them can deadlock or abort the process. Recursive messages
+    and messages whose callback raises also use the platform sink. Python
+    exceptions are reported through ``sys.unraisablehook``.
     Registration requires an ORT environment created by the Python module.
 )pbdoc");
   m.def(

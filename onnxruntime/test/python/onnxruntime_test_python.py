@@ -13,6 +13,7 @@ import queue
 import subprocess
 import sys
 import tempfile
+import textwrap
 import threading
 import time
 import unittest
@@ -459,6 +460,45 @@ class TestInferenceSession(unittest.TestCase):
             self.assertFalse(worker.is_alive(), "logging callback deadlocked")
         self.assertEqual(errors, [])
         self.assertGreater(len(messages), 0)
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "ORT pool threads log their affinity setup on Linux")
+    def test_logging_callback_does_not_block_ort_threads(self):
+        # ORT pool threads are unknown to Python. If they wait for the GIL, destroying an InferenceSession deadlocks
+        # because the thread holding the GIL joins the pool; the slow callback on non-main threads makes that
+        # deterministic. A subprocess turns a regression into a timeout failure instead of a hung test runner.
+        script = textwrap.dedent(
+            """
+            import sys
+            import threading
+            import time
+
+            import onnxruntime as onnxrt
+
+
+            def callback(*record):
+                if threading.current_thread() is not threading.main_thread():
+                    time.sleep(0.5)
+
+
+            onnxrt.set_default_logger_callback(callback, severity=0)
+            options = onnxrt.SessionOptions()
+            options.intra_op_num_threads = 3
+            options.add_session_config_entry("session.intra_op_thread_affinities", "1;2")
+            sess = onnxrt.InferenceSession(sys.argv[1], options, providers=["CPUExecutionProvider"])
+            del sess
+            """
+        )
+        package_root = str(pathlib.Path(onnxrt.__file__).resolve().parent.parent)
+        env = dict(os.environ, PYTHONPATH=os.pathsep.join(filter(None, [package_root, os.environ.get("PYTHONPATH")])))
+        result = subprocess.run(
+            [sys.executable, "-c", script, os.path.abspath(get_name("mul_1.onnx"))],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr[-2000:])
 
     def test_deserialization_from_path_object(self):
         # path object is allowed
