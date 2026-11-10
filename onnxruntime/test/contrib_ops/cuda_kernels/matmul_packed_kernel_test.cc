@@ -7,11 +7,15 @@
 #include <cuda_runtime.h>
 #include <gtest/gtest.h>
 
+#include <array>
+#include <cmath>
 #include <vector>
 
 #include "contrib_ops/cuda/quantization/matmul_packed.h"
 
 namespace onnxruntime::test {
+cudaError_t LaunchNvfp4DecoderOracle(uint16_t* output);
+
 namespace {
 
 class PackedProjectionBuffer {
@@ -29,6 +33,37 @@ class PackedProjectionBuffer {
  private:
   void* data_{nullptr};
 };
+
+TEST(CUDA_EP_Unittest, Nvfp4DecoderExhaustiveUnsignedScales) {
+  int device = 0;
+  ASSERT_EQ(cudaGetDevice(&device), cudaSuccess);
+  cudaDeviceProp properties{};
+  ASSERT_EQ(cudaGetDeviceProperties(&properties, device), cudaSuccess);
+  if (properties.major < 8) GTEST_SKIP() << "Requires CUDA SM80+";
+  std::vector<uint16_t> output(128 * 16 * 16);
+  PackedProjectionBuffer decoded(output.size() * sizeof(uint16_t));
+  ASSERT_EQ(LaunchNvfp4DecoderOracle(static_cast<uint16_t*>(decoded.Data())), cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(output.data(), decoded.Data(), output.size() * sizeof(uint16_t),
+                       cudaMemcpyDeviceToHost),
+            cudaSuccess);
+  constexpr std::array<float, 16> values{
+      0.f, .5f, 1.f, 1.5f, 2.f, 3.f, 4.f, 6.f,
+      0.f, -.5f, -1.f, -1.5f, -2.f, -3.f, -4.f, -6.f};
+  for (int scale = 0; scale < 128; ++scale) {
+    const int exponent = scale >> 3, fraction = scale & 7;
+    const float d = scale == 127    ? 0.f
+                    : exponent == 0 ? std::ldexp(static_cast<float>(fraction), -9)
+                                    : std::ldexp(1.f + static_cast<float>(fraction) / 8.f, exponent - 7);
+    for (int first_code = 0; first_code < 16; ++first_code) {
+      for (int position = 0; position < 16; ++position) {
+        const int code = (first_code + position) % 16;
+        const __nv_bfloat16_raw expected = __float2bfloat16_rn(d * values[code]);
+        ASSERT_EQ(output[(scale * 16 + first_code) * 16 + position], expected.x)
+            << "scale=" << scale << " code=" << code << " position=" << position;
+      }
+    }
+  }
+}
 
 TEST(CUDA_EP_Unittest, MatMulPackedNvfp4WideContiguous128KCancellation) {
   int device = 0;

@@ -159,8 +159,8 @@ TEST(MatMulPackedPrecisionTest, Nvfp4Bf16ProductionProjectionShapes) {
       for (int block = 0; block < k / 64; ++block) {
         auto* bytes = packed.data() + col * row_bytes + block * 36;
         for (int group = 0; group < 4; ++group) {
-          // Signed, non-power-of-two scales plus zero and the 0x7f sentinel.
-          bytes[group] = static_cast<uint8_t>((col + block * 7 + group * 19) % 255);
+          // Unsigned contract scales, including zero and the 0x7f sentinel.
+          bytes[group] = static_cast<uint8_t>((col + block * 7 + group * 19) % 128);
           for (int j = 0; j < 8; ++j) {
             bytes[4 + group * 8 + j] = static_cast<uint8_t>(col * 17 + block * 13 + group * 11 + j * 29);
           }
@@ -185,7 +185,6 @@ TEST(MatMulPackedPrecisionTest, Nvfp4Bf16ProductionProjectionShapes) {
             float d = exponent == 0
                           ? std::ldexp(static_cast<float>(fraction), -9)
                           : std::ldexp(1.f + static_cast<float>(fraction) / 8.f, exponent - 7);
-            if (scale & 128) d = -d;
             if (scale == 127) d = 0.f;
             const int position = index % 16;
             const int code = (bytes[4 + group * 8 + position % 8] >> (4 * (position / 8))) & 15;
@@ -218,8 +217,8 @@ TEST(MatMulPackedPrecisionTest, Nvfp4Bf16PackedOperandExtremes) {
   constexpr std::array<float, 16> values{
       0.f, .5f, 1.f, 1.5f, 2.f, 3.f, 4.f, 6.f,
       0.f, -.5f, -1.f, -1.5f, -2.f, -3.f, -4.f, -6.f};
-  constexpr std::array<uint8_t, 8> scales{0, 1, 126, 128, 129, 254, 127, 255};
-  const std::array<float, 8> decoded{0.f, 0x1p-9f, 448.f, -0.f, -0x1p-9f, -448.f, 0.f, std::nanf("")};
+  constexpr std::array<uint8_t, 8> scales{0, 1, 7, 8, 56, 125, 126, 127};
+  constexpr std::array<float, 8> decoded{0.f, 0x1p-9f, 7.f * 0x1p-9f, 0x1p-6f, 1.f, 416.f, 448.f, 0.f};
   std::vector<uint8_t> packed(n * row_bytes);
   for (int col = 0; col < n; ++col) {
     for (int block = 0; block < k / 64; ++block) {

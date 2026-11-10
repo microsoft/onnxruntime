@@ -60,7 +60,7 @@ __global__ __launch_bounds__(KW * 32) void MatMulPackedBf16TcWarpKSplitKernel(
   const bool a_valid = (g < m_rt);
   const __nv_bfloat16* a_row = a + static_cast<int64_t>(a_valid ? g : 0) * p.k;
 
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900 && __CUDA_ARCH__ < 1000
   if constexpr (kCompileType == gguf_quant::kGgmlTypeNVFP4 && KW == 4 && MT == 2 &&
                 kChunk == 128 && kAlignedNvfp4Rows) {
     // Load one 16-K half ahead without changing the contiguous warp K partition.

@@ -632,6 +632,7 @@ TEST(MoEPackedRoutingTest, Iq2NonuniformSingleProductOracleAndEightNineRowEquiva
       test.AddInput<float>("weights", {rows, experts}, weights);
       test.AddOutput<BFloat16>("output", {rows, hidden}, expected);
       RunMoeCuda(test);
+      ASSERT_EQ(test.GetFetches().size(), 1u);
       const auto* output = test.GetFetches()[0].Get<Tensor>().Data<BFloat16>();
       if (rows == 8) {
         decode_output.assign(output, output + rows * hidden);
