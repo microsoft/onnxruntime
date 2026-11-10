@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/moe/moe_packed.h"
-#include "contrib_ops/cuda/bert/moe_group_router_impl.h"
+#include "contrib_ops/cuda/moe/moe_group_router_impl.h"
 
 #include <gsl/util>
 
