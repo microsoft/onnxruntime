@@ -1546,6 +1546,113 @@ TEST_F(GraphTransformationTests, LayerNormFusionZeroNormalizedDimension) {
   }
 }
 
+// For a rank-1 input, ReduceMean axes [0] and [-1] both select the last dimension, so both must fuse.
+// A non-negative axis that is not the last dimension (axes [0] on a rank-2 input) must still be rejected.
+TEST_F(GraphTransformationTests, LayerNormFusionRankOneAxisZero) {
+  for (int opset : {17, 18}) {
+    for (const std::vector<int64_t>& shape : {std::vector<int64_t>{64}, {2, 4}}) {
+      for (int64_t axis : {0, -1}) {
+        SCOPED_TRACE(MakeString("opset=", opset, " rank=", shape.size(), " axis=", axis));
+        const bool should_fuse = shape.size() == 1 || axis == -1;
+        auto build_test_case = [&](ModelTestBuilder& builder) {
+          auto* input = builder.MakeInput<float>(shape, -1.0f, 1.0f);
+          const int64_t hidden_size = shape.back();
+          auto* scale = builder.MakeInitializer<float>({hidden_size}, 0.5f, 1.5f);
+          auto* bias = builder.MakeInitializer<float>({hidden_size}, -0.1f, 0.1f);
+          auto* two = builder.MakeInitializer<float>({}, {2.0f});
+          auto* epsilon = builder.MakeInitializer<float>({}, {1e-5f});
+          auto* mean = builder.MakeIntermediate();
+          auto* centered = builder.MakeIntermediate();
+          auto* squared = builder.MakeIntermediate();
+          auto* variance = builder.MakeIntermediate();
+          auto* variance_epsilon = builder.MakeIntermediate();
+          auto* stddev = builder.MakeIntermediate();
+          auto* normalized = builder.MakeIntermediate();
+          auto* scaled = builder.MakeIntermediate();
+          auto* output = builder.MakeOutput();
+          auto add_reduce_mean = [&](NodeArg* in, NodeArg* out) {
+            if (opset >= 18) {
+              auto* axes = builder.MakeInitializer<int64_t>({1}, {axis});
+              builder.AddNode("ReduceMean", {in, axes}, {out});
+            } else {
+              builder.AddNode("ReduceMean", {in}, {out}).AddAttribute("axes", std::vector<int64_t>{axis});
+            }
+          };
+          add_reduce_mean(input, mean);
+          builder.AddNode("Sub", {input, mean}, {centered});
+          builder.AddNode("Pow", {centered, two}, {squared});
+          add_reduce_mean(squared, variance);
+          builder.AddNode("Add", {variance, epsilon}, {variance_epsilon});
+          builder.AddNode("Sqrt", {variance_epsilon}, {stddev});
+          builder.AddNode("Div", {centered, stddev}, {normalized});
+          builder.AddNode("Mul", {normalized, scale}, {scaled});
+          builder.AddNode("Add", {scaled, bias}, {output});
+        };
+        auto check_session = [&](InferenceSessionWrapper& session) {
+          const Graph& graph = session.GetGraph();
+          auto counts = CountOpsInGraph(graph);
+          ASSERT_EQ(counts["LayerNormalization"], should_fuse ? 1 : 0);
+          ASSERT_EQ(counts["ReduceMean"], should_fuse ? 0 : 2);
+          for (const Node& node : graph.Nodes()) {
+            if (node.OpType() == "LayerNormalization") {
+              ASSERT_EQ(node.GetAttributes().at("axis").i(), -1);
+            }
+          }
+        };
+        const InlinedHashSet<std::string_view> compatible_eps = {};
+        TransformerTester(build_test_case, check_session, TransformerLevel::Default, TransformerLevel::Level1, opset,
+                          1e-5, 1e-5, std::make_unique<LayerNormFusion>(compatible_eps, TransformerLevel::Level1));
+      }
+    }
+  }
+}
+
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionRankOneAxisZero) {
+  for (int opset : {17, 18}) {
+    for (int64_t axis : {0, -1}) {
+      SCOPED_TRACE(MakeString("opset=", opset, " axis=", axis));
+      auto build_test_case = [&](ModelTestBuilder& builder) {
+        constexpr int64_t hidden_size = 64;
+        auto* input = builder.MakeInput<float>({hidden_size}, -1.0f, 1.0f);
+        auto* pow_exponent = builder.MakeInitializer<float>({}, {2.0f});
+        auto* epsilon = builder.MakeInitializer<float>({}, {1e-5f});
+        auto* scale = builder.MakeInitializer<float>({hidden_size}, 0.5f, 1.5f);
+        auto* pow_out = builder.MakeIntermediate();
+        auto* reduce_mean_out = builder.MakeIntermediate();
+        auto* add_out = builder.MakeIntermediate();
+        auto* sqrt_out = builder.MakeIntermediate();
+        auto* div_out = builder.MakeIntermediate();
+        auto* output = builder.MakeOutput();
+        builder.AddNode("Pow", {input, pow_exponent}, {pow_out});
+        if (opset >= 18) {
+          auto* axes = builder.MakeInitializer<int64_t>({1}, {axis});
+          builder.AddNode("ReduceMean", {pow_out, axes}, {reduce_mean_out});
+        } else {
+          builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out})
+              .AddAttribute("axes", std::vector<int64_t>{axis});
+        }
+        builder.AddNode("Add", {reduce_mean_out, epsilon}, {add_out});
+        builder.AddNode("Sqrt", {add_out}, {sqrt_out});
+        builder.AddNode("Div", {input, sqrt_out}, {div_out});
+        builder.AddNode("Mul", {div_out, scale}, {output});
+      };
+      auto check_session = [&](InferenceSessionWrapper& session) {
+        const Graph& graph = session.GetGraph();
+        auto counts = CountOpsInGraph(graph);
+        ASSERT_EQ(counts["SimplifiedLayerNormalization"], 1);
+        ASSERT_EQ(counts["ReduceMean"], 0);
+        for (const Node& node : graph.Nodes()) {
+          if (node.OpType() == "SimplifiedLayerNormalization") {
+            ASSERT_EQ(node.GetAttributes().at("axis").i(), -1);
+          }
+        }
+      };
+      TransformerTester(build_test_case, check_session, TransformerLevel::Default, TransformerLevel::Level2, opset,
+                        1e-5, 1e-5, std::make_unique<SimplifiedLayerNormFusion>());
+    }
+  }
+}
+
 // Current-opset regression tests for LayerNorm and SkipLayerNorm fusions.
 // These construct minimal graphs at the current ONNX opset and verify the optimizer fires.
 

@@ -34,9 +34,10 @@ static bool IsSupportedDataType(const Node& node, int first_n_inputs = -1) {
 static bool CheckAxesOnReduceMean(std::vector<int64_t>& axes_values, int64_t rank) {
   // axes has be to be consecutive and constains the last dim.
   std::sort(axes_values.begin(), axes_values.end());
-  if (axes_values.back() > 0) {
+  if (axes_values.back() >= 0) {
     // if reduce_mean node has input shape [N, C1, C2, C3] and  axes_values = [1, 2], it's invalid.
     // handle axes_values with both positive and negative values.
+    // A largest axis of 0 must be normalized too: for a rank-1 input, axes [0] is the last dim.
     if (rank == -1) {
       return false;
     }
