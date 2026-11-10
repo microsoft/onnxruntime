@@ -241,14 +241,16 @@ TEST(CUDA_EP_Unittest, QMoENvfp4KPackedGateUpPartialTiles) {
 }
 
 template <typename T>
-void TestNvfp4FusedFinalize(int num_rows, int topk, int k, bool use_bias) {
+void TestNvfp4FusedFinalize(int num_rows, int topk, int k, bool use_bias, int n = 50) {
   if (!SupportsSm80OrLater()) {
     GTEST_SKIP() << "NVFP4 fused finalization requires SM80 or newer";
   }
-  constexpr int n = 50, experts = 3;
+  constexpr int experts = 3;
   const int expanded = num_rows * topk;
+  const size_t weight_count = static_cast<size_t>(experts) * n * k / 2;
+  const size_t scale_count = static_cast<size_t>(experts) * n * k / 16;
   std::vector<T> activations(expanded * k), biases(experts * n);
-  std::vector<uint8_t> weights(experts * n * k / 2), scales(experts * n * k / 16, 0x30);
+  std::vector<uint8_t> weights(weight_count), scales(scale_count, 0x30);
   std::vector<float> globals{0.3f, 0.17f, 0.51f}, routing(expanded);
   std::vector<int> mapping(expanded), expert_ids(expanded);
   for (size_t i = 0; i < activations.size(); ++i) activations[i] = T(float(int(i % 11) - 5) / 64.0f);
@@ -352,6 +354,29 @@ TEST(CUDA_EP_Unittest, QMoENvfp4FusedFinalizePreservesRoutingAndRounding) {
   for (int col = 0; col < n; ++col) {
     EXPECT_EQ(static_cast<float>(ref_host[col]), 0.0f);
     EXPECT_EQ(static_cast<float>(out_host[col]), static_cast<float>(ref_host[col]));
+  }
+}
+
+// Each fused-finalize block covers eight output columns and CUDA limits gridDim.y to 65535, so the widest
+// supported FC2 output is 65535 * 8 columns. Wider outputs must be declined before launching so the caller
+// keeps the unfused path instead of failing with an invalid launch configuration.
+TEST(CUDA_EP_Unittest, QMoENvfp4FusedFinalizeGridYBoundary) {
+  if (!SupportsSm80OrLater()) {
+    GTEST_SKIP() << "NVFP4 fused finalization requires SM80 or newer";
+  }
+  constexpr int max_columns = 65535 * 8;
+  for (bool use_bias : {false, true}) {
+    SCOPED_TRACE(::testing::Message() << "bias=" << use_bias);
+    TestNvfp4FusedFinalize<half>(1, 1, 256, use_bias, max_columns);
+    TestNvfp4FusedFinalize<__nv_bfloat16>(2, 2, 256, use_bias, max_columns);
+  }
+  for (int n : {max_columns + 2, 524288}) {
+    SCOPED_TRACE(::testing::Message() << "n=" << n);
+    EXPECT_FALSE(gemv::try_launch_moe_gemv_nvfp4_fused_finalize<half>(
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 3, 1, 1, n, 256, nullptr));
+    EXPECT_FALSE(gemv::try_launch_moe_gemv_nvfp4_fused_finalize<__nv_bfloat16>(
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 3, 2, 2, n, 256, nullptr));
+    EXPECT_EQ(cudaGetLastError(), cudaSuccess);
   }
 }
 #endif

@@ -377,6 +377,10 @@ __global__ void MoeGemvFp4RawNPackedKernel(
 #endif
 }
 
+// The fused NVFP4 FC2 finalizer maps eight output columns to each grid-Y block; CUDA caps gridDim.y at 65535.
+static constexpr int kFusedFinalizeColumnsPerBlock = 8;
+static constexpr int64_t kMaxGridDimY = 65535;
+
 template <typename T, bool FusedSwiGlu, bool EnableBias, int KLanes = 8,
           bool ReuseExpertRows = false, bool NativeScale = false, bool IsMxfp4 = false, bool FusedFinalize = false>
 __global__ void MoeGemvFp4RawKPackedKernel(
@@ -391,7 +395,7 @@ __global__ void MoeGemvFp4RawKPackedKernel(
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
   constexpr int kKLanes = KLanes;
   constexpr int kBlockSize = 16;
-  constexpr int kColsPerBlock = FusedFinalize ? 8 : 128 / kKLanes;
+  constexpr int kColsPerBlock = FusedFinalize ? kFusedFinalizeColumnsPerBlock : 128 / kKLanes;
   constexpr int kReductionUnroll = FusedSwiGlu ? 4 : 1;
   static_assert(kKLanes == 4 || kKLanes == 8);
   constexpr unsigned kFullMask = 0xffffffffu;
@@ -970,12 +974,18 @@ bool try_launch_moe_gemv_nvfp4_fused_finalize(
       n <= 0 || n % 2 != 0 || k <= 0 || k % 16 != 0) {
     return false;
   }
-  const dim3 grid(static_cast<unsigned>(num_rows), static_cast<unsigned>((n + 7) / 8));
+  // Compute the block count in 64 bits and fall back to the unfused path when it exceeds CUDA's grid-Y limit.
+  const int64_t column_blocks = (static_cast<int64_t>(n) + kFusedFinalizeColumnsPerBlock - 1) /
+                                kFusedFinalizeColumnsPerBlock;
+  if (column_blocks > kMaxGridDimY) {
+    return false;
+  }
+  const dim3 grid(static_cast<unsigned>(num_rows), static_cast<unsigned>(column_blocks));
   const int64_t weight_stride = static_cast<int64_t>(n) * k / 2;
   const int64_t scale_stride = static_cast<int64_t>(n) * (k / 16);
   const cutlass_kernels::ActivationParams activation;
   const auto launch = [&]<int KLanes, bool EnableBias>() {
-    const dim3 block(8 * KLanes, static_cast<unsigned>(experts_per_token));
+    const dim3 block(kFusedFinalizeColumnsPerBlock * KLanes, static_cast<unsigned>(experts_per_token));
     MoeGemvFp4RawKPackedKernel<T, false, EnableBias, KLanes, false, false, false, true><<<grid, block, 0, stream>>>(
         act, weight, block_scales, global_scales, bias, out, nullptr, permuted_row_to_expert,
         num_experts, weight_stride, scale_stride, n, k, activation, nullptr, num_rows,

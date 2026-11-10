@@ -129,7 +129,8 @@ void launch_moe_gemv_fp4_symmetric(
 // must directly follow the fused-SwiGLU launch below on the same stream and may only read that kernel's output after
 // its own griddepcontrol.wait (see MoeGemvFp4DecodeKernel).
 
-// Native K-packed NVFP4 FC2 with top-k reduction; false leaves unsupported shapes to the caller.
+// Native K-packed NVFP4 FC2 with top-k reduction; false leaves unsupported shapes to the caller, including output
+// widths that need more than 65535 grid-Y blocks (n > 524280).
 // The caller must use single-EP/single-TP routing. Each expert result is rounded to T before reduction.
 template <typename T>
 bool try_launch_moe_gemv_nvfp4_fused_finalize(

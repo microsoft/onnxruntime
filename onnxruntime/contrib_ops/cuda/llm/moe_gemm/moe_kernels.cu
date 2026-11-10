@@ -2031,9 +2031,12 @@ void finalizeMoeRoutingKernelLauncher(const GemmOutputType* expanded_permuted_ro
           std::max<int64_t>(FINALIZE_THREADS_PER_BLOCK / 2, (column_vectors + 31) / 32 * 32));
       if (num_rows <= 2) {
         const int decode_threads = std::min(32, caps.max_threads_per_block);
+        // gridDim.y is limited to 65535 blocks; the kernel's column grid-stride loop covers any remaining columns.
+        constexpr int64_t kMaxGridDimY = 65535;
+        const int64_t column_tiles = std::clamp<int64_t>(
+            (column_vectors + decode_threads - 1) / decode_threads, 1, kMaxGridDimY);
         config.blockDim = dim3(decode_threads);
-        config.gridDim = dim3(static_cast<unsigned>(num_rows),
-                              static_cast<unsigned>((column_vectors + decode_threads - 1) / decode_threads));
+        config.gridDim = dim3(static_cast<unsigned>(num_rows), static_cast<unsigned>(column_tiles));
       }
       const bool use_early_routing_loads = early_routing_loads && caps.sm90_pdl_available;
       if (use_early_routing_loads) {
