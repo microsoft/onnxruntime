@@ -459,7 +459,7 @@ bool QMoEFp8GemvKernelUsesNativeDecode(const void* kernel);
 template <typename T, typename InputT = T>
 void LaunchQMoEFp8Activation(const InputT* input, const T* bias, T* output,
                              const int* experts, int rows, int inter_size, int fusion,
-                             float alpha, float beta, float limit, cudaStream_t stream);
+                             float alpha, float beta, float limit, bool limit_after_activation, cudaStream_t stream);
 
 void LaunchQMoEDequantizeFp8Weights(
     const uint8_t* weights,
