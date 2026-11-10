@@ -193,10 +193,13 @@ def _moe_model(num_experts, hidden_size, inter_size, top_k, dtype, types, row_by
     )
 
 
-def _moe_reference(x, logits, gate, up, down, top_k, dtype, normalize):
+def _moe_reference(x, logits, gate, up, down, top_k, dtype, normalize, round_weights=None):
+    # BF16 CUDA kernels round dequantized weights to BF16 for the MMA; the CPU cold-expert kernels keep them in FP32.
+    if round_weights is None:
+        round_weights = dtype == TensorProto.BFLOAT16
     x = _round_to_dtype(x, dtype)
     logits = _round_to_dtype(logits, dtype)
-    if dtype == TensorProto.BFLOAT16:
+    if round_weights:
         gate, up, down = (_round_to_dtype(w, dtype) for w in (gate, up, down))
     probabilities = np.exp(logits - logits.max(axis=1, keepdims=True))
     probabilities /= probabilities.sum(axis=1, keepdims=True)
@@ -1227,6 +1230,85 @@ class TestGgufPackedOps(unittest.TestCase):
             got = y_value.numpy().astype(np.float32)
             ref = _moe_reference(x, logits, *weights, top_k, dtype, True)
             np.testing.assert_allclose(got, ref, rtol=2e-2, atol=2e-3)
+
+    # Formats that route decode work through every CPU cold-expert kernel family: dual-row and two-channel gate/up
+    # kernels, four-column and single-row FC2 kernels, mixed gate/up types, and the scalar fallback.
+    _CPU_COLD_EXPERT_FORMATS = (
+        ((22, 256, 82), (22, 256, 82), (20, 32, 18)),  # IQ2_S / IQ4_NL
+        ((16, 256, 66), (16, 256, 66), (42, 64, 18)),  # IQ2_XXS / Q2_0
+        ((18, 256, 98), (18, 256, 98), (6, 32, 22)),  # IQ3_XXS / Q5_0
+        ((17, 256, 74), (17, 256, 74), (23, 256, 136)),  # IQ2_XS / IQ4_XS
+        ((23, 256, 136), (23, 256, 136), (22, 256, 82)),  # IQ4_XS / IQ2_S
+        ((20, 32, 18), (42, 64, 18), (16, 256, 66)),  # IQ4_NL + Q2_0 / IQ2_XXS
+        ((6, 32, 22), (18, 256, 98), (17, 256, 74)),  # Q5_0 + IQ3_XXS / IQ2_XS
+        ((8, 32, 34), (2, 32, 18), (18, 256, 98)),  # Q8_0 + Q4_0 (scalar) / IQ3_XXS
+    )
+
+    def _assert_rounding_parity(self, got, expected, dtype):
+        # With identical rounding points only rare one-ulp flips from summation order remain, while a missing or extra
+        # rounding to the activation type changes a large fraction of the outputs.
+        ulp = 2.0**-7 if dtype == TensorProto.BFLOAT16 else 2.0**-10
+        row_scale = np.abs(expected).max(axis=-1, keepdims=True)
+        self.assertGreater(float(row_scale.min()), 0.0)
+        self.assertLessEqual(float(np.max(np.abs(got - expected) / (ulp * row_scale))), 2.0)
+        self.assertLessEqual(float(np.mean(got != expected)), 0.05)
+
+    def _run_offload_decode_rows(self, session, x, logits, dtype, offset=0):
+        inputs = {
+            "X": (dtype, _activation_storage(x, dtype), offset),
+            "R": (dtype, _activation_storage(logits, dtype), offset),
+        }
+        return _run_cuda_bound(session, inputs, x.shape, dtype, output_offset=offset)
+
+    def test_moe_packed_cuda_offload_cpu_kernels_match_reference(self):
+        self._require_moe_offload()
+        # No resident experts runs every decode route on the CPU, whose kernels keep the dequantized weights in FP32 and
+        # round to the activation type where the CUDA kernels store it.
+        num_experts, hidden_size, inter_size, top_k = 8, 256, 256, 4
+        rng = np.random.default_rng(2027)
+        for formats in self._CPU_COLD_EXPERT_FORMATS:
+            raw_weights, weights, _ = self._offload_moe_weights(rng, num_experts, hidden_size, inter_size, formats)
+            for dtype in self.activation_dtypes:
+                model = self._offload_moe_model(num_experts, hidden_size, top_k, dtype, formats, raw_weights)
+                session = self._offload_session(model, 4096)
+                got, ref = [], []
+                # One, three, and sixteen rows cover single-row, paired-row, and odd-row kernel tails.
+                for m in (1, 3, 16):
+                    x = rng.standard_normal((m, hidden_size), dtype=np.float32) * 0.2
+                    logits = rng.standard_normal((m, num_experts), dtype=np.float32)
+                    got.append(self._run_offload_decode_rows(session, x, logits, dtype))
+                    # Large negative IQ4_XS gate sums overflow exp(-g); SwiGLU is then zero, as in the kernels.
+                    with np.errstate(over="ignore"):
+                        ref.append(_moe_reference(x, logits, *weights, top_k, dtype, True, round_weights=False))
+                with self.subTest(formats=formats, dtype=dtype):
+                    self._assert_rounding_parity(np.concatenate(got), np.concatenate(ref), dtype)
+
+    def test_moe_packed_cuda_offload_mixed_placement_matches_gpu(self):
+        self._require_moe_offload()
+        # With half of the experts resident, most tokens combine GPU and CPU routes. FP16 CUDA and CPU kernels use the
+        # same weights and rounding points, so the hybrid output must match the GPU-only output, which rounds the
+        # combined routes once. Offset buffers select the element-wise input copy and finalize kernels.
+        num_experts, hidden_size, inter_size, top_k = 8, 256, 256, 4
+        dtype = TensorProto.FLOAT16
+        rng = np.random.default_rng(2028)
+        for formats in self._CPU_COLD_EXPERT_FORMATS[:2]:
+            raw_weights, _, slot_bytes = self._offload_moe_weights(rng, num_experts, hidden_size, inter_size, formats)
+            model = self._offload_moe_model(num_experts, hidden_size, top_k, dtype, formats, raw_weights)
+            gpu_options = ort.SessionOptions()
+            gpu_options.add_session_config_entry("session.moe.offload.mode", "disabled")
+            gpu_session = ort.InferenceSession(
+                model.SerializeToString(), sess_options=gpu_options, providers=["CUDAExecutionProvider"]
+            )
+            hybrid_session = self._offload_session(model, (num_experts // 2) * slot_bytes + 4096)
+            for offset in (0, 2):
+                got, expected = [], []
+                for m in (1, 3, 16):
+                    x = rng.standard_normal((m, hidden_size), dtype=np.float32) * 0.2
+                    logits = rng.standard_normal((m, num_experts), dtype=np.float32)
+                    got.append(self._run_offload_decode_rows(hybrid_session, x, logits, dtype, offset))
+                    expected.append(self._run_offload_decode_rows(gpu_session, x, logits, dtype, offset))
+                with self.subTest(formats=formats, offset=offset):
+                    self._assert_rounding_parity(np.concatenate(got), np.concatenate(expected), dtype)
 
 
 if __name__ == "__main__":

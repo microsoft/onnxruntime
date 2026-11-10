@@ -68,6 +68,12 @@ inline float RoundBf16Scalar(float x) {
   return out;
 }
 
+// Rounds to the activation type with round-to-nearest-even at the points where the CUDA kernels store T: gate/up
+// dot products, the SwiGLU output, and each route's FC2 output. Both BF16 and FP16 overflow to infinity as on the GPU.
+inline float RoundToActivationType(float x, bool is_bf16) {
+  return is_bf16 ? RoundBf16Scalar(x) : MLFloat16(x).ToFloat();
+}
+
 #if ORT_MOE_PACKED_CPU_X86_64
 bool UseAvx2CpuKernels() {
   static const bool use_avx2 = qmoe_shared::CpuHasAvx2FmaF16c();
@@ -162,7 +168,9 @@ class MoEPackedParallelPool {
     return pool;
   }
 
-  int DefaultThreads() const noexcept {
+  // Resolve once per node, like QMoE, rather than per ParallelFor: std::thread::hardware_concurrency() reads sysfs on
+  // Linux, and the decode path that the GPU waits for runs two ParallelFor calls per layer.
+  static int ResolveThreads() {
     const unsigned int hw = std::thread::hardware_concurrency();
     const int def_t = static_cast<int>(std::clamp<unsigned int>(hw > 0 ? (hw * 3) / 4 : 16, 4u, 24u));
     const std::string env_s = GetEnvironmentVar("ORT_QMOE_SHARED_CPU_THREADS");
@@ -173,19 +181,19 @@ class MoEPackedParallelPool {
     return std::clamp(t, 1, 64);
   }
 
-  int CpuForWorker(int worker_idx) {
-    return Pool().CpuForWorker(worker_idx);
+  int CpuForWorker(int threads, int worker_idx) {
+    return Pool(threads).CpuForWorker(worker_idx);
   }
 
   template <typename Fn>
-  void ParallelFor(int num_tasks, Fn&& fn) {
+  void ParallelFor(int threads, int num_tasks, Fn&& fn) {
     if (num_tasks <= 0) return;
     if (num_tasks == 1) {
       fn(0);
       return;
     }
     auto task_fn = [&](ptrdiff_t idx) { fn(static_cast<int>(idx)); };
-    Pool().ParallelFor(static_cast<ptrdiff_t>(num_tasks), task_fn, 1);
+    Pool(threads).ParallelFor(static_cast<ptrdiff_t>(num_tasks), task_fn, 1);
   }
 
   void Shutdown() noexcept {
@@ -196,8 +204,7 @@ class MoEPackedParallelPool {
   MoEPackedParallelPool() = default;
   ~MoEPackedParallelPool() = default;
 
-  qmoe::SpinPool& Pool() {
-    const int threads = DefaultThreads();
+  qmoe::SpinPool& Pool(int threads) {
     return registry_.GetOrCreate(threads, [](int n) {
       return std::make_unique<qmoe::SpinPool>(n, 2000);
     });
@@ -450,6 +457,7 @@ struct MoEPackedOffloadState {
   int32_t resident_slots{0};
   bool is_adaptive{false};
   bool cpu_execution_enabled{true};
+  int cpu_threads{1};
   std::shared_ptr<onnxruntime::cuda::QMoESessionController> session_controller;
   std::vector<int32_t> host_expert_to_slot;
   std::vector<int32_t> slot_to_expert;
@@ -545,7 +553,7 @@ class MoEPackedDoorbellService {
   void Loop() {
     qmoe::NameCurrentThread("moepacked-db");
 #if defined(_WIN32)
-    const int cpu0 = MoEPackedParallelPool::Instance().CpuForWorker(0);
+    const int cpu0 = MoEPackedParallelPool::Instance().CpuForWorker(MoEPackedParallelPool::ResolveThreads(), 0);
     if (cpu0 >= 0 && cpu0 < static_cast<int>(sizeof(DWORD_PTR) * 8)) {
       static_cast<void>(SetThreadAffinityMask(GetCurrentThread(), DWORD_PTR{1} << cpu0));
     }
@@ -655,7 +663,7 @@ void MoEPackedOffloadState::RunColdDecodeStep() {
   // Query the run controls here instead of latching state in ComputeInternal, which CUDA graph replay never calls.
   if (InWarmup()) {
     if (nrows > 0 && ccount > 0) {
-      std::memset(h_decode_pinned->host_cold_output, 0, static_cast<size_t>(nrows * hidden_size) * sizeof(uint16_t));
+      std::memset(h_decode_pinned->host_cold_output, 0, static_cast<size_t>(nrows * hidden_size) * sizeof(float));
     }
     return;
   }
@@ -701,7 +709,7 @@ void MoEPackedOffloadState::RunColdDecodeStep() {
   }
   decode_cold_experts.fetch_add(static_cast<uint64_t>(num_groups), std::memory_order_relaxed);
   if (num_groups <= 0) {
-    std::memset(h_decode_pinned->host_cold_output, 0, static_cast<size_t>(nrows * hidden_size) * sizeof(uint16_t));
+    std::memset(h_decode_pinned->host_cold_output, 0, static_cast<size_t>(nrows * hidden_size) * sizeof(float));
     return;
   }
 
@@ -736,7 +744,7 @@ void MoEPackedOffloadState::RunColdDecodeStep() {
   constexpr int kFc1TileCh = 32;
   const int fc1_tiles_per_group = (inter_size + kFc1TileCh - 1) / kFc1TileCh;
   const int total_fc1_tasks = num_groups * fc1_tiles_per_group;
-  MoEPackedParallelPool::Instance().ParallelFor(total_fc1_tasks, [&](int task_idx) {
+  MoEPackedParallelPool::Instance().ParallelFor(cpu_threads, total_fc1_tasks, [&](int task_idx) {
     const int g = task_idx / fc1_tiles_per_group;
     const int tile_idx = task_idx - g * fc1_tiles_per_group;
     const int ch_start = tile_idx * kFc1TileCh;
@@ -762,15 +770,15 @@ void MoEPackedOffloadState::RunColdDecodeStep() {
       GgufDualDot2ChCpu(g_row0, u_row0, g_row1, u_row1, gate_type, up_type, hidden_size, x_ptrs, R,
                         g_dots0, u_dots0, g_dots1, u_dots1);
       for (int r = 0; r < R; ++r) {
-        const float gv0 = is_bf16 ? RoundBf16Scalar(g_dots0[r]) : g_dots0[r];
-        const float uv0 = is_bf16 ? RoundBf16Scalar(u_dots0[r]) : u_dots0[r];
+        const float gv0 = RoundToActivationType(g_dots0[r], is_bf16);
+        const float uv0 = RoundToActivationType(u_dots0[r], is_bf16);
         const float sw0 = uv0 * (gv0 / (1.0f + std::exp(-gv0)));
-        group_inter[static_cast<size_t>(r) * inter_size + j + 0] = is_bf16 ? RoundBf16Scalar(sw0) : sw0;
+        group_inter[static_cast<size_t>(r) * inter_size + j + 0] = RoundToActivationType(sw0, is_bf16);
 
-        const float gv1 = is_bf16 ? RoundBf16Scalar(g_dots1[r]) : g_dots1[r];
-        const float uv1 = is_bf16 ? RoundBf16Scalar(u_dots1[r]) : u_dots1[r];
+        const float gv1 = RoundToActivationType(g_dots1[r], is_bf16);
+        const float uv1 = RoundToActivationType(u_dots1[r], is_bf16);
         const float sw1 = uv1 * (gv1 / (1.0f + std::exp(-gv1)));
-        group_inter[static_cast<size_t>(r) * inter_size + j + 1] = is_bf16 ? RoundBf16Scalar(sw1) : sw1;
+        group_inter[static_cast<size_t>(r) * inter_size + j + 1] = RoundToActivationType(sw1, is_bf16);
       }
     }
     for (; j < ch_end; ++j) {
@@ -781,10 +789,10 @@ void MoEPackedOffloadState::RunColdDecodeStep() {
       float u_dots[kMoEPackedMaxDecodeRows];
       GgufDualDotRowCpu(g_row, u_row, gate_type, up_type, hidden_size, x_ptrs, R, g_dots, u_dots);
       for (int r = 0; r < R; ++r) {
-        const float gv = is_bf16 ? RoundBf16Scalar(g_dots[r]) : g_dots[r];
-        const float uv = is_bf16 ? RoundBf16Scalar(u_dots[r]) : u_dots[r];
+        const float gv = RoundToActivationType(g_dots[r], is_bf16);
+        const float uv = RoundToActivationType(u_dots[r], is_bf16);
         const float swiglu = uv * (gv / (1.0f + std::exp(-gv)));
-        group_inter[static_cast<size_t>(r) * inter_size + j] = is_bf16 ? RoundBf16Scalar(swiglu) : swiglu;
+        group_inter[static_cast<size_t>(r) * inter_size + j] = RoundToActivationType(swiglu, is_bf16);
       }
     }
   });
@@ -796,7 +804,7 @@ void MoEPackedOffloadState::RunColdDecodeStep() {
 #if ORT_MOE_PACKED_CPU_X86_64
   const bool use_avx2 = UseAvx2CpuKernels();
 #endif
-  MoEPackedParallelPool::Instance().ParallelFor(total_fc2_tasks, [&](int task_idx) {
+  MoEPackedParallelPool::Instance().ParallelFor(cpu_threads, total_fc2_tasks, [&](int task_idx) {
     const int col_start = task_idx * kFc2TileCols;
     const int col_end = std::min(hidden_size, col_start + kFc2TileCols);
     const int col_cnt = col_end - col_start;
@@ -825,8 +833,7 @@ void MoEPackedOffloadState::RunColdDecodeStep() {
           const int trow = groups[g].token_rows[r];
           const float sc = groups[g].scales[r];
           for (int j = 0; j < c; ++j) {
-            const float dv = avx2_dots[r][j];
-            acc_out[trow][j] += sc * (is_bf16 ? RoundBf16Scalar(dv) : dv);
+            acc_out[trow][j] += sc * RoundToActivationType(avx2_dots[r][j], is_bf16);
           }
         }
       }
@@ -837,22 +844,14 @@ void MoEPackedOffloadState::RunColdDecodeStep() {
         float d_dots[kMoEPackedMaxDecodeRows];
         GgufDotRowCpu(d_row, down_type, inter_size, inter_ptrs, R, d_dots);
         for (int r = 0; r < R; ++r) {
-          const float dv = is_bf16 ? RoundBf16Scalar(d_dots[r]) : d_dots[r];
+          const float dv = RoundToActivationType(d_dots[r], is_bf16);
           acc_out[groups[g].token_rows[r]][c] += groups[g].scales[r] * dv;
         }
       }
     }
     for (int r = 0; r < nrows; ++r) {
-      uint16_t* dst = h_decode_pinned->host_cold_output + static_cast<size_t>(r) * hidden_size + col_start;
-      if (is_bf16) {
-        for (int c = 0; c < col_cnt; ++c) {
-          dst[c] = FloatToBf16Bits(acc_out[r][c]);
-        }
-      } else {
-        for (int c = 0; c < col_cnt; ++c) {
-          dst[c] = MLFloat16(acc_out[r][c]).val;
-        }
-      }
+      float* dst = h_decode_pinned->host_cold_output + static_cast<size_t>(r) * hidden_size + col_start;
+      std::memcpy(dst, acc_out[r], static_cast<size_t>(col_cnt) * sizeof(float));
     }
   });
   const auto t_fc2 = std::chrono::steady_clock::now();
@@ -1067,6 +1066,7 @@ Status MoEPacked<T>::InitializeAdmittedPlan(const onnxruntime::moe_offload::MoeO
   const bool det_replay = !det_env.empty() && det_env != "0";
   st->is_adaptive = !det_replay && (policy.placement == onnxruntime::moe_offload::PlacementPolicy::kAdaptive);
   st->cpu_execution_enabled = (policy.cpu_execution != onnxruntime::moe_offload::CpuExecutionMode::kDisabled);
+  st->cpu_threads = MoEPackedParallelPool::ResolveThreads();
   st->session_controller = GetQMoESessionController();
   st->x_f32_buf.resize(static_cast<size_t>(kMoEPackedMaxDecodeRows) * kMoEPackedMaxHiddenSize, 0.0f);
   st->inter_buf.resize(static_cast<size_t>(kMoEPackedMaxDecodeRoutes) * st->inter_size, 0.0f);
@@ -1504,7 +1504,7 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
         uint8_t* p_up = p_gate + w_gate_bytes;
         uint8_t* p_down = p_up + w_up_bytes;
 
-        MoEPackedParallelPool::Instance().ParallelFor(w_cnt, [&](int local_s) {
+        MoEPackedParallelPool::Instance().ParallelFor(st.cpu_threads, w_cnt, [&](int local_s) {
           const int exp = cold_experts[static_cast<size_t>(e_begin + local_s)];
           std::memcpy(p_gate + static_cast<size_t>(local_s) * st.gate_exp_bytes,
                       st.host_gate_w + static_cast<size_t>(exp) * st.gate_exp_bytes, st.gate_exp_bytes);

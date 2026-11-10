@@ -1524,6 +1524,10 @@ __global__ void MoEPackedDoorbellWaitKernel(
   __threadfence_system();
 }
 
+// The vectorized finalize reads 8 FP32 cold partial sums at a time; hidden_size % 8 == 0 keeps rows 32-byte aligned.
+static_assert(offsetof(MoEPackedDecodePinned, host_cold_output) % 16 == 0,
+              "MoEPacked cold partial sums must be 16-byte aligned for float4 loads");
+
 template <typename CudaT>
 __global__ __launch_bounds__(256) void MoEPackedOffloadFinalizeVec8Kernel(
     const CudaT* __restrict__ fc2_out,
@@ -1553,14 +1557,17 @@ __global__ __launch_bounds__(256) void MoEPackedOffloadFinalizeVec8Kernel(
     }
   }
   if (*d_cold_count > 0) {
-    const CudaT* cold_row =
-        reinterpret_cast<const CudaT*>(pinned->host_cold_output) + static_cast<int64_t>(row) * hidden_size + col8;
-    const uint4 c_u4 = *reinterpret_cast<const uint4*>(cold_row);
-    const CudaT* c_vals = reinterpret_cast<const CudaT*>(&c_u4);
-#pragma unroll
-    for (int j = 0; j < 8; ++j) {
-      sum[j] += gguf_cuda::CudaTypeToFloat<CudaT>(c_vals[j]);
-    }
+    const float* cold_row = pinned->host_cold_output + static_cast<int64_t>(row) * hidden_size + col8;
+    const float4 c_lo = *reinterpret_cast<const float4*>(cold_row);
+    const float4 c_hi = *reinterpret_cast<const float4*>(cold_row + 4);
+    sum[0] += c_lo.x;
+    sum[1] += c_lo.y;
+    sum[2] += c_lo.z;
+    sum[3] += c_lo.w;
+    sum[4] += c_hi.x;
+    sum[5] += c_hi.y;
+    sum[6] += c_hi.z;
+    sum[7] += c_hi.w;
   }
   uint4 out_u4;
   CudaT* out_vals = reinterpret_cast<CudaT*>(&out_u4);
@@ -1595,8 +1602,7 @@ __global__ __launch_bounds__(256) void MoEPackedOffloadFinalizeKernel(
     }
   }
   if (*d_cold_count > 0) {
-    const CudaT* cold = reinterpret_cast<const CudaT*>(pinned->host_cold_output);
-    sum += gguf_cuda::CudaTypeToFloat<CudaT>(cold[static_cast<int64_t>(row) * hidden_size + col]);
+    sum += pinned->host_cold_output[static_cast<int64_t>(row) * hidden_size + col];
   }
   output[static_cast<int64_t>(row) * hidden_size + col] = gguf_cuda::FloatToCudaType<CudaT>(sum);
 }

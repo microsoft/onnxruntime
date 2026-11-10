@@ -45,7 +45,9 @@ struct alignas(64) MoEPackedDecodePinned {
   int32_t cold_experts[kMoEPackedMaxDecodeRoutes];
   float cold_scales[kMoEPackedMaxDecodeRoutes];
   uint16_t host_input[kMoEPackedMaxDecodeRows * kMoEPackedMaxHiddenSize];
-  uint16_t host_cold_output[kMoEPackedMaxDecodeRows * kMoEPackedMaxHiddenSize];
+  // FP32 sum of the scaled cold-route outputs per token. The finalize kernel adds it to the FP32 resident sum and
+  // rounds to T once, as the GPU-only path does; rounding this partial sum to T first would round the output twice.
+  float host_cold_output[kMoEPackedMaxDecodeRows * kMoEPackedMaxHiddenSize];
 };
 
 struct MoEPackedParams {
