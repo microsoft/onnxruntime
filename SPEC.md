@@ -412,8 +412,8 @@ Model licenses and external-weight references must be respected.
 - **DELIVERY-5:** Each milestone is an independently documented, tested,
   human-reviewable PR. Later PRs may depend on preceding PRs, but their incremental
   diff, prerequisites, outcome, and validation must be clear.
-- **DELIVERY-6:** Target `onnxruntime/ort-state`. Base the first milestone branch
-  on the current `ort-state` branch and stack later branches on their predecessor,
+- **DELIVERY-6:** Target `microsoft/onnxruntime`. Base the first milestone branch
+  on the current `state/stateful-base-1988019b` branch and stack later branches on their predecessor,
   using descriptive branch names.
 - **DELIVERY-7:** Open PRs ready-for-review when their required evidence is ready.
   Honor the repository PR template and include exact validation commands/results.
