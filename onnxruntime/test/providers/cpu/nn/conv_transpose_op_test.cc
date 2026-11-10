@@ -15,6 +15,7 @@
 #include "core/providers/cpu/nn/conv_transpose_internal.h"
 #include "core/session/inference_session.h"
 #include "test/unittest_util/framework_test_utils.h"
+#include "test/unittest_util/test_dynamic_plugin_ep.h"
 #include "test/util/include/test_environment.h"
 
 namespace onnxruntime {
@@ -2294,8 +2295,19 @@ void TestWideConvTranspose(const WideConvTransposeCase& c, bool fp16 = false, ui
   }
   const std::vector<int64_t> output_shape =
       is_1d ? std::vector<int64_t>{c.batch, c.out_channels, ow} : std::vector<int64_t>{c.batch, c.out_channels, oh, ow};
-  const std::unordered_set<std::string> excluded{kCudaNHWCExecutionProvider, kTensorrtExecutionProvider,
-                                                 kQnnExecutionProvider};
+  std::unordered_set<std::string> excluded{kCudaNHWCExecutionProvider, kTensorrtExecutionProvider,
+                                           kQnnExecutionProvider};
+  if (fp16) {
+    // The XNNPACK float16 deconvolution misses the bias on these shapes.
+    excluded.insert(kXnnpackExecutionProvider);
+  }
+  const bool has_pads_dilation_output_padding = c.pad_left != 0 || c.pad_right != 0 || c.pad_top != 0 ||
+                                                c.pad_bottom != 0 || c.dilation_w != 1 || c.dilation_h > 1 ||
+                                                c.output_padding_w != 0 || c.output_padding_h != 0;
+  if (has_pads_dilation_output_padding && dynamic_plugin_ep_infra::GetEpName().has_value()) {
+    // The CUDA plugin EP on Windows gets these padded, dilated cases wrong; the built-in CUDA EP passes.
+    excluded.insert(kCudaExecutionProvider);
+  }
   if (webgpu_binding_limit != 0) {
     if (fp16) {
       std::vector<std::vector<MLFloat16>> inputs16;

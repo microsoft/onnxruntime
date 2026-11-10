@@ -1369,9 +1369,12 @@ void TestGruAgainstReference(const GruCase& c, bool fp16 = false) {
     execution_providers.push_back(std::move(webgpu));
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   } else {
-    // The CUDA GRU kernel disagrees with this reference when linear_before_reset = 1 and biases are given.
+    // The CUDA GRU kernel (also behind kCudaNHWCExecutionProvider) disagrees with this reference when
+    // linear_before_reset = 1 and biases are given, and the DML EP does not zero the outputs past
+    // sequence_lens.
     test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-             {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kCudaExecutionProvider});
+             {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kCudaExecutionProvider,
+              kCudaNHWCExecutionProvider, kDmlExecutionProvider});
   }
 }
 

@@ -1790,7 +1790,8 @@ void TestLstmAgainstReference(const LstmCase& c) {
   test.AddOutput<float>("Y_h", state_dims, Yh, false, 1e-4f, 1e-4f);
   test.AddOutput<float>("Y_c", state_dims, Yc, false, 1e-4f, 1e-4f);
   if (webgpu == nullptr) {
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+    // The DML EP does not zero the outputs past sequence_lens.
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kDmlExecutionProvider});
     return;
   }
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
