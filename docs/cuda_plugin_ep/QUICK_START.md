@@ -31,7 +31,7 @@ The test mode sets `ORT_TEST_CUDA_PLUGIN_EP=1` and `ORT_TEST_CUDA_PLUGIN_NO_CUDN
 
 ## Minimum ONNX Runtime Version
 
-The plugin is compiled against the ONNX Runtime headers in this repository, but it is designed to load into an **older** ONNX Runtime runtime as well. The minimum compatible version is declared in [`plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION`](../../plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION) (currently **1.24.4**) and is the single source of truth:
+The plugin is compiled against the ONNX Runtime headers in this repository, but it is designed to load into an **older** ONNX Runtime runtime as well. The minimum compatible version is declared in [`plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION`](../../plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION) (currently **1.32.0**, the first release that negotiates contributed-operator schemas with plugins) and is the single source of truth:
 
 - It is baked into the plugin library at build time (`ORT_PLUGIN_EP_MIN_ORT_VERSION`) and enforced at load time.
 - It is documented as the minimum core ONNX Runtime version in the `onnxruntime-ep-cuda12`/`onnxruntime-ep-cuda13` Python wheel and NuGet package READMEs. The plugin packages do **not** declare a hard dependency on the core `onnxruntime` package, so you install a compatible `onnxruntime` (version `>=<min>`) separately.

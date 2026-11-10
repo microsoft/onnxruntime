@@ -2849,10 +2849,31 @@ typedef OrtStatus* (*CreateEpApiFactoriesFn)(_In_ const char* registered_name, _
  */
 typedef OrtStatus* (*ReleaseEpApiFactoryFn)(_In_ OrtEpFactory* factory);
 
+/** \brief One operator-schema contract understood by a plugin execution provider.
+ *
+ * The strings and descriptor array returned by OrtEpFactory::GetOperatorCompatibilityInfo are owned by the
+ * factory and remain valid until ReleaseEpFactory() is called. `schema_abi_digest` is the SHA-256 digest of the
+ * canonical schema ABI representation defined by ONNX Runtime.
+ *
+ * This structure has a fixed layout and must not be extended. A future revision must add a new descriptor type and
+ * callback so that an older runtime can always determine the array stride safely.
+ *
+ * \since Version 1.32.
+ */
+typedef struct OrtEpOperatorCompatibilityInfo {
+  const char* domain;
+  const char* op_type;
+  int32_t since_version;
+  uint8_t schema_abi_digest[32];
+} OrtEpOperatorCompatibilityInfo;
+
 /**
  * \brief The OrtEpFactory provides functions to create and manage execution providers.
  *
  * Some callbacks are optional. Pointers to unimplemented callbacks must be set to NULL.
+ *
+ * Implementations must zero-initialize the entire structure before assigning supported fields. This keeps optional
+ * function pointers, including fields appended by newer API versions, null unless the implementation provides them.
  *
  * \since Version 1.22.
  */
@@ -3358,6 +3379,31 @@ struct OrtEpFactory {
                   _In_ const OrtEpDevice* ep_device,
                   _In_ OrtDeviceMemoryType memory_type,
                   _Out_opt_ uint64_t* total_memory_bytes, _Out_opt_ uint64_t* available_memory_bytes);
+
+  /** \brief Get the operator-schema contracts this factory was built against.
+   *
+   * The callback reports contracts understood by the plugin, not necessarily operators enabled by a particular
+   * device or session configuration. ORT independently checks kernel or compilation support after schema
+   * compatibility is established.
+   *
+   * The returned array and its strings are owned by the factory and must remain valid until ReleaseEpFactory().
+   * Duplicate `(domain, op_type, since_version)` entries are invalid. On success, an implementation with no entries
+   * sets `entries` to NULL and `num_entries` to zero.
+   *
+   * This function is optional. A runtime uses it only when `ort_version_supported` is at least 32 and the function
+   * pointer is non-null.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[out] entries The factory-owned operator compatibility descriptor array.
+   * \param[out] num_entries Number of descriptors in `entries`.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(GetOperatorCompatibilityInfo, _In_ OrtEpFactory* this_ptr,
+                  _Outptr_ const OrtEpOperatorCompatibilityInfo** entries,
+                  _Out_ size_t* num_entries);
 };
 
 #ifdef __cplusplus

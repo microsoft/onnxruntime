@@ -6,6 +6,7 @@
 #include "cuda_ep.h"
 #include "cuda_ep_account_binding.h"
 #include "cuda_plugin_kernels.h"
+#include "core/graph/contrib_ops/ms_schema_abi_manifest.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits_tactic_cache.h"
 #include "contrib_ops/cuda/moe/qmoe_background_services.h"
 #include "core/common/string_utils.h"
@@ -62,6 +63,7 @@ CudaEpFactory::CudaEpFactory(const OrtApi& ort_api, const OrtEpApi& ep_api,
   IsStreamAware = IsStreamAwareImpl;
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
   GetDeviceMemoryCapacity = GetDeviceMemoryCapacityImpl;
+  GetOperatorCompatibilityInfo = GetOperatorCompatibilityInfoImpl;
 }
 
 CudaEpFactory::~CudaEpFactory() {
@@ -164,6 +166,17 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetDeviceMemoryCapacityImpl(
                                           cuda::FormatMemoryCapacityError(driver, error, message));
   }
 
+  return nullptr;
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL CudaEpFactory::GetOperatorCompatibilityInfoImpl(
+    OrtEpFactory* /*this_ptr*/,
+    const OrtEpOperatorCompatibilityInfo** entries,
+    size_t* num_entries) noexcept {
+  *entries = contrib::kMSDomainSchemaAbiManifest;
+  *num_entries = sizeof(contrib::kMSDomainSchemaAbiManifest) /
+                 sizeof(contrib::kMSDomainSchemaAbiManifest[0]);
   return nullptr;
 }
 
