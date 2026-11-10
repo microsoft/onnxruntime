@@ -961,9 +961,7 @@ class TestGgufPackedOps(unittest.TestCase):
                                 (m, n),
                                 dtype,
                             )
-                            target = (
-                                _round_to_dtype(weights, dtype) if m > 8 and dtype == TensorProto.BFLOAT16 else weights
-                            )
+                            target = _round_to_dtype(weights, dtype)
                             ref = _round_to_dtype(_round_to_dtype(a, dtype) @ target.T, dtype)
                             np.testing.assert_allclose(got, ref, rtol=1e-2, atol=1e-2)
 
