@@ -459,6 +459,7 @@ struct MoEPackedOffloadState {
   bool cpu_execution_enabled{true};
   int cpu_threads{1};
   std::shared_ptr<onnxruntime::cuda::QMoESessionController> session_controller;
+  std::shared_ptr<onnxruntime::cuda::QMoEInvocationRecord> invocation;
   std::vector<int32_t> host_expert_to_slot;
   std::vector<int32_t> slot_to_expert;
   std::vector<float> expert_ema;
@@ -499,6 +500,14 @@ struct MoEPackedOffloadState {
 
   bool InWarmup() const noexcept {
     return session_controller != nullptr && session_controller->RunControls().InWarmup();
+  }
+
+  void RegisterInvocation(cudaStream_t stream) {
+    if (session_controller) {
+      invocation->main_stream = stream;
+      invocation->has_main_stream = true;
+      session_controller->RegisterInvocation(invocation);
+    }
   }
 
   ~MoEPackedOffloadState();
@@ -1152,6 +1161,16 @@ Status MoEPacked<T>::InitializeAdmittedPlan(const onnxruntime::moe_offload::MoeO
       reinterpret_cast<void**>(&st->d_decode_pinned), st->h_decode_pinned, 0)));
 
   if (st->session_controller) {
+    st->invocation = std::make_shared<onnxruntime::cuda::QMoEInvocationRecord>();
+    st->invocation->layer_index = plan.layer_index;
+    st->invocation->node_name = Info().node().Name();
+    // Keep run controls and the session's overlap guard alive until the doorbell and GPU work finish. Graph replay
+    // skips ComputeInternal, so register its stream through the controller hook as well.
+    st->session_controller->RegisterGraphReplayHook(
+        this, [weak_state = std::weak_ptr<MoEPackedOffloadState>(st)](cudaStream_t stream) {
+          if (auto state = weak_state.lock()) state->RegisterInvocation(stream);
+          return Status::OK();
+        });
     st->session_controller->RegisterOffloadNode();
   }
   MoEPackedDoorbellService::Instance().Register(st.get());
@@ -1217,6 +1236,7 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
     Tensor* output = context->Output(0, in_shape);
     if (num_rows == 0) return Status::OK();
     MoEPackedOffloadState& st = *offload_state_;
+    st.RegisterInvocation(Stream(context));
     // The session policy already resolved the ORT_QMOE_* environment fallbacks with config precedence and validation.
     const float min_expert_weight = st.min_expert_weight;
 
