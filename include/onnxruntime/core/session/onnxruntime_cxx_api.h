@@ -1659,6 +1659,9 @@ struct ConstSessionOptionsImpl : Base<T> {
   bool HasConfigEntry(const char* config_key) const;         ///< Wraps OrtApi::HasSessionConfigEntry
   std::string GetConfigEntryOrDefault(const char* config_key, const std::string& def) const;
 
+  /// Copy the cache callbacks and application-owned state. Wraps OrtEpApi::SessionOptionsGetEpCacheDataFuncs.
+  void GetEpCacheDataFuncs(OrtReadNamedBufferFunc& read_func, OrtWriteNamedBufferFunc& write_func, void*& state) const;
+
   bool GetMemPatternEnabled() const;       ///< Wraps OrtApi::GetMemPatternEnabled
   ExecutionMode GetExecutionMode() const;  ///< Wraps OrtApi::GetSessionExecutionMode
 };
@@ -1701,6 +1704,9 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
 
   /// Register or clear the external EPContext read callback. Wraps OrtApi::SessionOptionsSetEpContextDataReadFunc.
   SessionOptionsImpl& SetEpContextDataReadFunc(OrtReadNamedBufferFunc read_func, void* state);
+  /// Replace optional cache callbacks. Wraps OrtApi::SessionOptionsSetEpCacheDataFuncs.
+  SessionOptionsImpl& SetEpCacheDataFuncs(OrtReadNamedBufferFunc read_func, OrtWriteNamedBufferFunc write_func,
+                                          void* state = nullptr);
   /// Clear the external EPContext read callback. Wraps OrtApi::SessionOptionsSetEpContextDataReadFunc.
   SessionOptionsImpl& ClearEpContextDataReadFunc();
 
@@ -1983,6 +1989,9 @@ template <typename T>
 struct ConstSessionImpl : Base<T> {
   using B = Base<T>;
   using B::B;
+
+  /// Return cache callback support flags for a registered EP. Wraps OrtApi::SessionGetEpCacheDataCallbackSupport.
+  uint32_t GetEpCacheDataCallbackSupport(const char* ep_name) const;
 
   size_t GetInputCount() const;                   ///< Returns the number of model inputs
   size_t GetOutputCount() const;                  ///< Returns the number of model outputs

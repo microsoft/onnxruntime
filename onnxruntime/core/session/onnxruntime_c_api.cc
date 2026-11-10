@@ -4258,6 +4258,21 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetEpDeviceForOutputs, _In_ const OrtSession
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+ORT_API_STATUS_IMPL(OrtApis::SessionGetEpCacheDataCallbackSupport, _In_ const OrtSession* session,
+                    _In_ const char* ep_name, _Out_ uint32_t* supported_flags) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(session == nullptr || ep_name == nullptr || supported_flags == nullptr,
+                    ORT_INVALID_ARGUMENT, "Session, EP name, and supported_flags must not be NULL");
+  const auto* inference_session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(session);
+  const auto* ep = inference_session->GetExecutionProviders().Get(ep_name);
+  ORT_API_RETURN_IF(ep == nullptr, ORT_INVALID_ARGUMENT, "Execution provider is not registered in this session");
+  uint32_t flags = ORT_EP_CACHE_DATA_CALLBACK_SUPPORT_NONE;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(ep->GetEpCacheDataCallbackSupport(flags));
+  *supported_flags = flags;
+  return nullptr;
+  API_IMPL_END
+}
+
 // OrtEpDevice accessors
 ORT_API(OrtHardwareDeviceType, OrtApis::HardwareDevice_Type, _In_ const OrtHardwareDevice* device) {
   return OrtHardwareDeviceType(device->type);
@@ -4987,6 +5002,8 @@ static constexpr OrtApi ort_api_1_to_29 = {
     &OrtApis::SessionOptionsSetEpContextDataReadFunc,
     &OrtApis::GetModelPackageApi,
     &OrtApis::EpDevice_GetMemoryCapacity,
+    &OrtApis::SessionOptionsSetEpCacheDataFuncs,
+    &OrtApis::SessionGetEpCacheDataCallbackSupport,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

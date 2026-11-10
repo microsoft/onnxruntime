@@ -130,6 +130,7 @@ class PluginExecutionProvider : public IExecutionProvider {
   const InlinedVector<const Node*> GetEpContextNodes() const override;
 
   Status GetEpContextDataCallbackSupport(uint32_t& supported_flags) const override;
+  Status GetEpCacheDataCallbackSupport(uint32_t& supported_flags) const override;
 
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
 

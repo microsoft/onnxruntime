@@ -84,6 +84,19 @@ ORT_API(void, ReleaseEpDevice, _Frees_ptr_opt_ OrtEpDevice* device) {
   delete device;
 }
 
+ORT_API_STATUS_IMPL(SessionOptionsGetEpCacheDataFuncs, _In_ const OrtSessionOptions* session_options,
+                    _Out_ OrtReadNamedBufferFunc* read_func, _Out_ OrtWriteNamedBufferFunc* write_func,
+                    _Out_ void** state) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(session_options == nullptr || read_func == nullptr || write_func == nullptr || state == nullptr,
+                    ORT_INVALID_ARGUMENT, "Session options and all cache callback outputs must not be NULL");
+  *read_func = session_options->value.ep_cache_data_read_func;
+  *write_func = session_options->value.ep_cache_data_write_func;
+  *state = session_options->value.ep_cache_data_state;
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(SessionOptionsGetEpContextConfig, _In_ const OrtSessionOptions* session_options,
                     _Outptr_ OrtEpContextConfig** config) {
   API_IMPL_BEGIN
@@ -1354,6 +1367,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::ReleaseEpContextConfig,
     &OrtExecutionProviderApi::EpContextConfigGetEpContextDataReadFunc,
     &OrtExecutionProviderApi::EpContextConfigGetEpContextDataWriteFunc,
+    &OrtExecutionProviderApi::SessionOptionsGetEpCacheDataFuncs,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

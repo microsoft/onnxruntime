@@ -229,6 +229,10 @@ struct SessionOptions {
 
   OrtReadNamedBufferFunc ep_context_data_read_func = nullptr;
   void* ep_context_data_read_state = nullptr;
+
+  OrtReadNamedBufferFunc ep_cache_data_read_func = nullptr;
+  OrtWriteNamedBufferFunc ep_cache_data_write_func = nullptr;
+  void* ep_cache_data_state = nullptr;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_options) {
