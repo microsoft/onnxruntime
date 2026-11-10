@@ -173,10 +173,11 @@ extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 }  // namespace onnxruntime
 #endif
 
-#ifdef USE_MIGRAPHX
+#if defined(USE_MIGRAPHX) || defined(USE_MIGRAPHX_PROVIDER_INTERFACE)
 namespace onnxruntime {
 ProviderInfo_MIGraphX* TryGetProviderInfo_MIGraphX();
 ProviderInfo_MIGraphX& GetProviderInfo_MIGraphX();
+#ifdef USE_MIGRAPHX
 namespace python::migraphx::external {
 extern void* alloc_fn;
 extern void* free_fn;
@@ -185,6 +186,7 @@ inline bool UseExternalAllocator() {
   return alloc_fn != nullptr && free_fn != nullptr;
 }
 }  // namespace python::migraphx::external
+#endif
 }  // namespace onnxruntime
 
 #endif
@@ -530,16 +532,18 @@ bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
                    const std::string& name,
                    /*out*/ ONNX_NAMESPACE::TypeProto& type_proto);
 
+// Transfer an owned reference without waiting for the GIL or the main Python thread.
+void ReleasePythonObjectOnCleanupThread(PyObject* object) noexcept;
+void ReleasePythonObject(PyObject* object) noexcept;
+
 #if defined(ENABLE_DLPACK)
 
-// Allocate a new Capsule object, which takes the ownership of OrtValue.
-// Caller is responsible for releasing.
-// This function calls OrtValueToDlpack(...).
-PyObject* ToDlpack(OrtValue ort_value);
+// Allocate a capsule retaining an OrtValue reference via OrtValueToDlpack.
+// Caller is responsible for releasing the capsule.
+PyObject* ToDlpack(OrtValue& ort_value, pybind11::object stream = pybind11::none());
 
-// Consume a Capsule object and claims the ownership of its underlying tensor to
-// create a OrtValue. This function calls DlpackToOrtValue(...) to do the conversion.
-OrtValue FromDlpack(PyObject* dlpack_tensor);
+// Import a DLPack protocol object or legacy capsule, transferring tensor ownership.
+OrtValue FromDlpack(pybind11::object data, bool synchronize = true);
 
 // Destructor for Capsule object holding a DLPack structure.
 void DlpackCapsuleDestructor(PyObject* data);

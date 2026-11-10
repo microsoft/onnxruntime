@@ -78,8 +78,9 @@ class TrainingManager(GraphExecutionManager):
                 forward_inputs.push_back(C.aten_ort_tensor_to_ort_value(input))
             else:
                 valid_ort_tensor = _utils._torch_tensor_to_dlpack(input)
-                forward_inputs.push_back(valid_ort_tensor)
+                forward_inputs.push_back(valid_ort_tensor, synchronize=False)
 
+        _utils._synchronize_torch_stream(device)
         forward_outputs = C.OrtValueVector()
         # Run and return module outputs.
         execution_session.run_forward(forward_inputs, forward_outputs, state, gradient_accumulation_manager.cache)
@@ -186,9 +187,10 @@ class TrainingManager(GraphExecutionManager):
                     if grad_output.device.type == "ort":
                         backward_inputs.push_back(C.aten_ort_tensor_to_ort_value(grad_output))
                     else:
-                        backward_inputs.push_back(_utils._torch_tensor_to_dlpack(grad_output))
+                        backward_inputs.push_back(_utils._torch_tensor_to_dlpack(grad_output), synchronize=False)
                 backward_inputs.shrink_to_fit()
 
+                _utils._synchronize_torch_stream(self._device)
                 # Run and get results
                 backward_outputs = C.OrtValueVector()
                 try:

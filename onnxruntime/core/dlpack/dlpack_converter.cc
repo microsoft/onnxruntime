@@ -90,7 +90,7 @@ const char* GetOrtDeviceName(const OrtDevice& device) {
     case OrtDevice::CPU:
       return CPU;
     case OrtDevice::GPU:
-      return CUDA;
+      return device.Vendor() == OrtDevice::VendorIds::AMD ? HIP : CUDA;
     default:
       ORT_THROW("Unknown device type: ", device.Type());
   }
@@ -136,7 +136,15 @@ DLDevice GetDlpackDevice(const OrtValue& ort_value, const int64_t& device_id) {
       device.device_type = DLDeviceType::kDLCPU;
       break;
     case OrtDevice::GPU:
-      device.device_type = DLDeviceType::kDLCUDA;
+      if (location.device.Vendor() == OrtDevice::VendorIds::NVIDIA) {
+        device.device_type = DLDeviceType::kDLCUDA;
+      } else if (location.device.Vendor() == OrtDevice::VendorIds::AMD) {
+        device.device_type = DLDeviceType::kDLROCM;
+      } else {
+        ORT_THROW(
+            "DLPack GPU export supports only NVIDIA CUDA and AMD ROCm tensors. "
+            "Copy this tensor to CPU before exporting it.");
+      }
       break;
     default:
       ORT_THROW("Cannot pack tensors on this device.");
@@ -176,12 +184,11 @@ DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
   ort_dlmanaged_tensor->tensor.dl_tensor.device = GetDlpackDevice(ort_value, tensor.Location().device.Id());
   ort_dlmanaged_tensor->tensor.dl_tensor.ndim = static_cast<int>(tensor.Shape().NumDimensions());
   ort_dlmanaged_tensor->tensor.dl_tensor.dtype = GetDlpackDataType(ort_value);
-  ort_dlmanaged_tensor->tensor.dl_tensor.shape =
-      tensor.Shape().NumDimensions() > 0 ? &const_cast<TensorShape&>(tensor.Shape())[0] : nullptr;
-  auto& strides = ort_dlmanaged_tensor->strides;
-  strides.reserve(tensor.Shape().NumDimensions());
-  // Empty tensors have no addressable elements, so zero strides avoid overflowing dimension products.
   const auto dims = tensor.Shape().GetDims();
+  ort_dlmanaged_tensor->tensor.dl_tensor.shape = dims.empty() ? nullptr : const_cast<int64_t*>(dims.data());
+  auto& strides = ort_dlmanaged_tensor->strides;
+  strides.reserve(dims.size());
+  // Empty tensors have no addressable elements, so zero strides avoid overflowing dimension products.
   const bool is_empty = std::find(dims.begin(), dims.end(), 0) != dims.end();
   SafeInt<int64_t> stride = 1;
   for (size_t i = tensor.Shape().NumDimensions(); i > 0; --i) {

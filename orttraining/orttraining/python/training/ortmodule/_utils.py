@@ -46,11 +46,20 @@ def set_random_states(states):
         torch.cuda.set_rng_state(torch_cuda_state)
 
 
-def _ortvalue_from_torch_tensor(torch_tensor: torch.Tensor) -> C.OrtValue:
+def _ortvalue_from_torch_tensor(torch_tensor: torch.Tensor, *, synchronize: bool = True) -> C.OrtValue:
     """Converts a torch tensor to an OrtValue."""
     if torch_tensor.device.type == "ort":
         return C.aten_ort_tensor_to_ort_value(torch_tensor)
-    return C.OrtValue.from_dlpack(to_dlpack(torch_tensor))
+    # The protocol rejects requires_grad tensors; ORTModule manages autograd separately.
+    return C.OrtValue.from_dlpack(
+        torch_tensor.detach() if torch_tensor.requires_grad else torch_tensor, synchronize=synchronize
+    )
+
+
+def _synchronize_torch_stream(device: torch.device):
+    # ORT may use a different, nonblocking stream. Wait once after preparing all inputs.
+    if device.type == "cuda":
+        torch.cuda.current_stream(device).synchronize()
 
 
 def _ortvalues_to_torch_tensor(
@@ -180,10 +189,13 @@ def _create_iobinding(io_binding, inputs, model, device: torch.device):
         io_binding.bind_ortvalue_input(
             value_info.name,
             OrtValue(
-                _ortvalue_from_torch_tensor(inputs[idx] if inputs[idx].is_contiguous() else inputs[idx].contiguous())
+                _ortvalue_from_torch_tensor(
+                    inputs[idx] if inputs[idx].is_contiguous() else inputs[idx].contiguous(), synchronize=False
+                )
             ),
         )
 
+    _synchronize_torch_stream(device)
     device_id = get_device_index(device)
     for value_info in model.graph.output:
         io_binding.bind_output(value_info.name, device.type, device_id=device_id)

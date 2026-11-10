@@ -38,6 +38,24 @@ EpFactoryInternal::EpFactoryInternal(std::unique_ptr<EpFactoryInternalImpl> impl
   OrtEpFactory::InitGraphicsInterop = Forward::InitGraphicsInterop;
   OrtEpFactory::DeinitGraphicsInterop = Forward::DeinitGraphicsInterop;
   OrtEpFactory::SelectBestModelCandidate = Forward::SelectBestModelCandidate;
+  if (auto* factory = GetDeviceInteropFactory(); factory != nullptr && factory->ort_version_supported >= 32) {
+    if (factory->SynchronizeDevice != nullptr) {
+      OrtEpFactory::SynchronizeDevice = [](OrtEpFactory* self, int device_id) noexcept -> OrtStatus* {
+        auto* inner = static_cast<EpFactoryInternal*>(self)->GetDeviceInteropFactory();
+        return inner->SynchronizeDevice(inner, device_id);
+      };
+    }
+    if (factory->GetCurrentDevice != nullptr && factory->SetCurrentDevice != nullptr) {
+      OrtEpFactory::GetCurrentDevice = [](OrtEpFactory* self, int* device_id) noexcept -> OrtStatus* {
+        auto* inner = static_cast<EpFactoryInternal*>(self)->GetDeviceInteropFactory();
+        return inner->GetCurrentDevice(inner, device_id);
+      };
+      OrtEpFactory::SetCurrentDevice = [](OrtEpFactory* self, int device_id) noexcept -> OrtStatus* {
+        auto* inner = static_cast<EpFactoryInternal*>(self)->GetDeviceInteropFactory();
+        return inner->SetCurrentDevice(inner, device_id);
+      };
+    }
+  }
 }
 
 InternalExecutionProviderFactory::InternalExecutionProviderFactory(EpFactoryInternal& ep_factory,

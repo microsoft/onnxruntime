@@ -23,6 +23,8 @@ class EpFactoryInternal : public OrtEpFactory {
  public:
   EpFactoryInternal(std::unique_ptr<EpFactoryInternalImpl> impl);
 
+  OrtEpFactory* GetDeviceInteropFactory() const noexcept { return impl_->GetDeviceInteropFactory(); }
+
   const char* GetName() const noexcept { return impl_->GetName(); }
   const char* GetVendor() const noexcept { return impl_->GetVendor(); }
   uint32_t GetVendorId() const noexcept { return impl_->GetVendorId(); }

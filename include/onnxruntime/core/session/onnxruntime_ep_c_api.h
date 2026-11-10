@@ -3358,6 +3358,47 @@ struct OrtEpFactory {
                   _In_ const OrtEpDevice* ep_device,
                   _In_ OrtDeviceMemoryType memory_type,
                   _Out_opt_ uint64_t* total_memory_bytes, _Out_opt_ uint64_t* available_memory_bytes);
+
+  /** \brief Wait for all outstanding work on a device without creating a session.
+   *
+   * Optional callback used for external tensor handoffs, including DLPack. This must wait for
+   * all streams on the specified device, not merely an EP-owned stream. Preserve the calling
+   * thread's current device on success and failure; report synchronization or restoration errors.
+   * Calls may occur concurrently on different threads. ORT retains the factory and its library
+   * for the duration of the call. Leave null if device-wide synchronization is unsupported.
+   *
+   * \param[in] this_ptr The factory instance.
+   * \param[in] device_id The device ID from the EP device's DEFAULT memory information.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(SynchronizeDevice, _In_ OrtEpFactory* this_ptr, _In_ int device_id);
+
+  /** \brief Get the calling thread's current device for this factory's runtime.
+   *
+   * Optional callback, paired with SetCurrentDevice. Device IDs use the same namespace as
+   * DEFAULT memory information. Do not modify the output on failure. ORT retains the factory
+   * and its library during a handoff, including intervening producer callbacks.
+   *
+   * \param[in] this_ptr The factory instance.
+   * \param[out] device_id The current device ID.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(GetCurrentDevice, _In_ OrtEpFactory* this_ptr, _Out_ int* device_id);
+
+  /** \brief Select the calling thread's current device for this factory's runtime.
+   *
+   * Optional callback, paired with GetCurrentDevice. Do not change the current device on
+   * failure. ORT uses this pair to select a producer's device and restore the original device
+   * after its callback, including on exception. Calls may occur concurrently on different threads.
+   *
+   * \param[in] this_ptr The factory instance.
+   * \param[in] device_id The device ID to select.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.32.
+   */
+  ORT_API2_STATUS(SetCurrentDevice, _In_ OrtEpFactory* this_ptr, _In_ int device_id);
 };
 
 #ifdef __cplusplus
