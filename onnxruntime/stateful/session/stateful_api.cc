@@ -5,6 +5,7 @@
 #include "core/session/ort_apis.h"
 
 #include "core/framework/error_code_helper.h"
+#include "stateful/bridge/stateful_bridge.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include <algorithm>
@@ -14,9 +15,9 @@
 
 #include "core/common/safeint.h"
 #include "core/session/allocator_adapters.h"
-#include "core/session/abi_stateful_impl.h"
+#include "stateful/session/abi_stateful_impl.h"
 #include "core/session/inference_session.h"
-#include "core/session/session_chain.h"
+#include "stateful/session/session_chain.h"
 
 using namespace onnxruntime;
 
@@ -994,7 +995,7 @@ static constexpr OrtStatefulApi stateful_api = {
 }  // namespace OrtStatefulAPI
 #endif  // !ORT_MINIMAL_BUILD
 
-ORT_API(const OrtStatefulApi*, OrtApis::GetStatefulApi) {
+ORT_API(const OrtStatefulApi*, OrtStatefulAPI::GetStatefulApiImpl) {
 #if !defined(ORT_MINIMAL_BUILD)
   return &OrtStatefulAPI::stateful_api;
 #else

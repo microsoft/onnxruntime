@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/generate/token_generation.h"
+#include "stateful/generate/token_generation.h"
 
 #include <algorithm>
 #include <cmath>
 
 #include "core/common/safeint.h"
-#include "core/framework/stateful_execution_utils.h"
+#include "stateful/framework/stateful_execution_utils.h"
 
 namespace onnxruntime {
 namespace {

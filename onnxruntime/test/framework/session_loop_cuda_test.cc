@@ -17,7 +17,7 @@
 #include "core/providers/cuda/cuda_provider_options.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session.h"
-#include "core/session/session_chain.h"
+#include "stateful/session/session_chain.h"
 #include "test/test_environment.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"

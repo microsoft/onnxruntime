@@ -20,6 +20,8 @@ import numpy as np
 import onnx
 from onnx import TensorProto, helper, numpy_helper
 
+from onnxruntime.capi import onnxruntime_pybind11_state as native
+
 _HAS_PILLOW = importlib.util.find_spec("PIL") is not None
 Image = importlib.import_module("PIL.Image") if _HAS_PILLOW else None
 _HAS_REFERENCE = _HAS_PILLOW and all(
@@ -333,6 +335,7 @@ class TestSD15Precision(unittest.TestCase):
 
 
 @unittest.skipUnless(_HAS_PILLOW, "SD image fixtures require optional Pillow; no dependency is installed implicitly")
+@unittest.skipUnless(native._stateful.available, "Stateful execution is unavailable in this build")
 class TestSD15Pipeline(unittest.TestCase):
     def test_typed_package_supplied_latents_isolation_cancel_and_reset(self):
         qualification = importlib.import_module("onnxruntime_test_python_sd15_demo_assets")

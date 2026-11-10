@@ -22,6 +22,8 @@ import numpy as np
 import onnx
 from onnx import TensorProto, helper, numpy_helper
 
+from onnxruntime.capi import onnxruntime_pybind11_state as native
+
 _PATH = Path(
     os.environ.get("ORT_STATEFUL_PHI3_DEMO", Path(__file__).resolve().parents[3] / "samples/python/phi3_demo.py")
 )
@@ -323,6 +325,7 @@ class TestPhi3Assets(unittest.TestCase):
                     demo.inspect_assets(root, "cpu")
 
 
+@unittest.skipUnless(native._stateful.available, "Stateful execution is unavailable in this build")
 class TestPhi3Execution(unittest.TestCase):
     def test_adapter_failures_and_native_cancel_reset_cleanup_remain_explicit(self):
         with toy_assets() as (root, _, _):

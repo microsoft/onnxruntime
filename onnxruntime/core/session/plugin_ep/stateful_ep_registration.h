@@ -3,8 +3,11 @@
 
 #pragma once
 
+#include <memory>
+
+#include "core/common/common.h"
 #include "core/common/inlined_containers.h"
-#include "core/framework/stateful_execution_provider.h"
+#include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
 

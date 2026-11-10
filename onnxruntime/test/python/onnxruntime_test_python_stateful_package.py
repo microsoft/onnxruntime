@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import onnx
 from onnx import TensorProto, helper, numpy_helper
-from onnxruntime_test_python_stateful import ddim_config, scalar
+from onnxruntime_test_python_stateful import STATEFUL_AVAILABLE, ddim_config, scalar
 
 import onnxruntime as ort
 from onnxruntime import stateful as sf
@@ -135,6 +135,7 @@ def ddim_chain(policy):
     }
 
 
+@unittest.skipUnless(STATEFUL_AVAILABLE, "Stateful execution is unavailable in this build")
 class TestStatefulPackage(unittest.TestCase):
     def test_inspection_selected_component_and_adopted_ordinary_session(self):
         with tempfile.TemporaryDirectory() as directory:

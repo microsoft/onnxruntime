@@ -10,12 +10,13 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from onnx import TensorProto, helper
-from onnxruntime_test_python_stateful import scalar
+from onnxruntime_test_python_stateful import STATEFUL_AVAILABLE, scalar
 
 import onnxruntime as ort
 from onnxruntime import stateful as sf
 
 
+@unittest.skipUnless(STATEFUL_AVAILABLE, "Stateful execution is unavailable in this build")
 class TestStatefulThreads(unittest.TestCase):
     def setUp(self):
         name = "stateful_test_barrier.dll" if sys.platform == "win32" else "libstateful_test_barrier.so"

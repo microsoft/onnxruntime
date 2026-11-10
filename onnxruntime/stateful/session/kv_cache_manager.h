@@ -5,7 +5,7 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/framework/ort_value.h"
-#include "core/framework/stateful_execution_provider.h"
+#include "stateful/framework/stateful_execution_provider.h"
 
 namespace onnxruntime {
 

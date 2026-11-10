@@ -8,7 +8,7 @@
 #include <string>
 #include <utility>
 
-#include "core/diffusion/ddim.h"
+#include "stateful/diffusion/ddim.h"
 #include "core/graph/onnx_protobuf.h"
 
 namespace onnxruntime {

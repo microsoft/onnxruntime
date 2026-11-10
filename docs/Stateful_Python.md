@@ -9,6 +9,9 @@ Use a locally built wheel with Python enabled. Minimal builds keep configuration
 types importable but report an explicit unavailable-feature error when execution
 is requested.
 
+Full builds configured with `onnxruntime_ENABLE_STATEFUL=OFF` have the same
+availability behavior. See [Stateful build boundaries](Stateful_Build.md).
+
 ## Executable examples
 
 For the real CPU INT4/CUDA FP16 model-package example, see

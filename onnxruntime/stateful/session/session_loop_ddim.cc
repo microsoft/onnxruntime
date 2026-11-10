@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/session/session_loop.h"
+#include "stateful/session/session_loop.h"
 
 #include "core/common/safeint.h"
 #include "core/framework/data_transfer.h"
 #include "core/framework/run_options.h"
 #include "core/framework/tensor.h"
-#include "core/framework/stateful_execution_utils.h"
+#include "stateful/framework/stateful_execution_utils.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session.h"
 

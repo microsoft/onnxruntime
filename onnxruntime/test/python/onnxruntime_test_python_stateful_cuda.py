@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import onnx
 from onnx import TensorProto, helper, numpy_helper
-from onnxruntime_test_python_stateful import ddim_config
+from onnxruntime_test_python_stateful import STATEFUL_AVAILABLE, ddim_config
 from onnxruntime_test_python_stateful_package import ddim_chain, denoiser_model
 
 import onnxruntime as ort
@@ -29,6 +29,10 @@ class TestStatefulCudaValues(unittest.TestCase):
         self._worker("--pipeline-worker", 180)
 
     def _worker(self, mode, timeout):
+        if not STATEFUL_AVAILABLE:
+            if os.environ.get("ORT_STATEFUL_REQUIRE_CUDA_PLUGIN") == "1":
+                self.fail("Qualification requires stateful execution")
+            self.skipTest("Stateful execution is unavailable in this build")
         if "cuda-plugin-ep=1" not in ort.get_build_info():
             if os.environ.get("ORT_STATEFUL_REQUIRE_CUDA_PLUGIN") == "1":
                 self.fail("Qualification requires the actual CUDA-plugin Python build")

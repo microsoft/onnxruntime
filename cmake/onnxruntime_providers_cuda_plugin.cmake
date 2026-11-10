@@ -39,6 +39,11 @@ list(APPEND CUDA_PLUGIN_EP_CU_SRCS
      ${CUDA_CONTRIB_OPS_CU_SRCS}
 )
 
+if(NOT onnxruntime_ENABLE_STATEFUL)
+  list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/cuda/plugin/cuda_(stateful|greedy_launch)\\.cc$")
+  list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX ".*/cuda/plugin/cuda_greedy\\.cu$")
+endif()
+
 list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX "onnxruntime/contrib_ops/cuda/aten_ops/.*")
 list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX "onnxruntime/contrib_ops/cuda/collective/.*")
 
@@ -146,6 +151,10 @@ onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_plugin
     ${CUDA_PLUGIN_EP_CC_SRCS}
     ${CUDA_PLUGIN_EP_CU_SRCS}
 )
+
+if(onnxruntime_ENABLE_STATEFUL)
+  target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE ORT_ENABLE_STATEFUL)
+endif()
 
 if(WIN32)
   # Add version information to the packaged plugin DLL.

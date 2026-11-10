@@ -567,6 +567,8 @@ if (onnxruntime_EXTENDED_MINIMAL_BUILD AND NOT onnxruntime_MINIMAL_BUILD)
   set(onnxruntime_MINIMAL_BUILD ON)
 endif()
 
+cmake_dependent_option(onnxruntime_ENABLE_STATEFUL "Build stateful execution support" ON "NOT onnxruntime_MINIMAL_BUILD" OFF)
+
 set(ONNXRUNTIME_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime)
 set(ORTTRAINING_ROOT ${PROJECT_SOURCE_DIR}/../orttraining)
 set(ORTTRAINING_SOURCE_DIR ${ORTTRAINING_ROOT}/orttraining)
@@ -1894,6 +1896,7 @@ set(ONNXRUNTIME_CMAKE_FILES
     onnxruntime_providers
     onnxruntime_optimizer
     onnxruntime_session
+    onnxruntime_stateful
     ${ONNXRUNTIME_EAGER_CMAKE_FILE_NAME}
     )
 
@@ -1975,6 +1978,12 @@ endif()
 foreach(onnxruntime_cmake_file ${ONNXRUNTIME_CMAKE_FILES})
   include(${onnxruntime_cmake_file}.cmake)
 endforeach()
+
+include(verify_stateful_target_boundary.cmake)
+onnxruntime_check_stateful_target_boundary(
+  onnxruntime_common onnxruntime_flatbuffers onnxruntime_mlas onnxruntime_graph onnxruntime_lora
+  onnxruntime_framework onnxruntime_util onnxruntime_optimizer onnxruntime_session
+  ${onnxruntime_providers_target} ${onnxruntime_INTERNAL_PROVIDER_LIBRARIES})
 
 if (UNIX)
   option(BUILD_PKGCONFIG_FILES "Build and install pkg-config files" ON)

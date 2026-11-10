@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/diffusion/ddim.h"
+#include "stateful/diffusion/ddim.h"
 
 #include <algorithm>
 #include <cmath>

@@ -25,6 +25,8 @@ from onnxruntime_test_python_sd15_demo import FakeTokenizer
 from onnxruntime_test_python_sd15_demo import demo as sd15
 from onnxruntime_test_python_sd15_demo import toy_assets as sd_assets
 
+from onnxruntime.capi import onnxruntime_pybind11_state as native
+
 _PATH = Path(__file__).resolve().parents[3] / "samples/python/stateful_qualification.py"
 _SPEC = importlib.util.spec_from_file_location("stateful_qualification", _PATH)
 assert _SPEC is not None and _SPEC.loader is not None
@@ -58,6 +60,7 @@ def fake_result(tokens=None, *, invocations=1, generated=1, completed=True):
 
 
 @unittest.skipUnless(sys.platform == "linux", "Qualification measurement tooling targets Linux")
+@unittest.skipUnless(native._stateful.available, "Stateful execution is unavailable in this build")
 class TestStatefulQualification(unittest.TestCase):
     def test_statistics_counts_percentiles_and_invalid_samples(self):
         actual = qual.statistics([5, 1, 3, 2, 4])

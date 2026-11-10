@@ -5,7 +5,7 @@
 
 #include <variant>
 
-#include "core/session/session_loop.h"
+#include "stateful/session/session_loop.h"
 
 namespace onnxruntime {
 

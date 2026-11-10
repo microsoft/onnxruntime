@@ -30,11 +30,15 @@
 #include "test/autoep/test_autoep_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/api_asserts.h"
+#if defined(ORT_ENABLE_STATEFUL)
 #include "test/util/include/stateful_execution_test_utils.h"
 #include "test/util/include/ddim_test_utils.h"
+#endif
 
 extern std::unique_ptr<Ort::Env> ort_env;
+#if defined(ORT_ENABLE_STATEFUL)
 extern "C" int StatefulApiCPackageChainTest(const OrtEnv* env, const ORTCHAR_T* path);
+#endif
 
 namespace onnxruntime {
 namespace test {
@@ -206,6 +210,7 @@ struct ProviderObservations {
   std::unordered_map<std::string, std::string> config;
 };
 
+#if defined(ORT_ENABLE_STATEFUL)
 nlohmann::ordered_json BuildDdimChainPackage(const std::filesystem::path& root, const DdimOptions& options) {
   const auto model = stateful::MakeDdimDenoiserModel(options);
   std::filesystem::create_directories(root.parent_path() / "models");
@@ -336,6 +341,7 @@ Ort::StatefulValue ChainTokens(const Ort::StatefulStepResult& result) {
   }
   ORT_THROW("Missing token output");
 }
+#endif
 
 class RecordingExecutionProvider : public IExecutionProvider {
  public:
@@ -458,6 +464,7 @@ TEST(ModelPackageApiTest, ExportedModelsRunWithoutSourcePackage) {
   }
 }
 
+#if defined(ORT_ENABLE_STATEFUL)
 TEST(ModelPackageDdimTest, ProgrammaticParityAllTimestepsInitializationAndOwnedExports) {
   for (const auto mode : {DdimGuidanceMode::Batched, DdimGuidanceMode::Sequential}) {
     for (const auto format : {DdimTimestepFormat::Int64Scalar, DdimTimestepFormat::Int64Vector,
@@ -1149,6 +1156,8 @@ TEST(ModelPackageChainTest, OrdinaryPrefillExplicitPromptAndNativeCachePolicies)
     std::filesystem::remove_all(root);
   }
 }
+
+#endif
 
 TEST(ModelPackageApiTest, LegacyProviderFactoryIsRetained) {
   const auto root = std::filesystem::temp_directory_path() / "ort_mp_legacy_factory";

@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/session/session_chain.h"
+#include "stateful/session/session_chain.h"
 
 namespace onnxruntime {
 

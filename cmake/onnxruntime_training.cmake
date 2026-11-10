@@ -105,6 +105,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   target_include_directories(onnxruntime_training_mnist PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
 
   set(ONNXRUNTIME_LIBS
+      ${onnxruntime_STATEFUL_LINK_ITEMS}
       onnxruntime_session
       ${onnxruntime_libs}
       ${PROVIDERS_MKLDNN}

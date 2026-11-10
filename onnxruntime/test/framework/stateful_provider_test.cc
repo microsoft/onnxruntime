@@ -10,7 +10,7 @@
 
 #include "gtest/gtest.h"
 #include "core/framework/error_code_helper.h"
-#include "core/framework/stateful_execution_provider.h"
+#include "stateful/framework/stateful_execution_provider.h"
 #include "core/framework/stateful_provider.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/inference_session.h"

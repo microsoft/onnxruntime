@@ -1,14 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/session/session_chain.h"
+#include "stateful/session/session_chain.h"
 
 #include <optional>
 
 #include "core/common/safeint.h"
 #include "core/session/inference_session.h"
 #include "core/session/IOBinding.h"
-#include "core/framework/stateful_execution_utils.h"
+#include "stateful/framework/stateful_execution_utils.h"
 
 namespace onnxruntime {
 using namespace stateful_execution;

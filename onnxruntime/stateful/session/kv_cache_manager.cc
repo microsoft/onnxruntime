@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/session/kv_cache_manager.h"
+#include "stateful/session/kv_cache_manager.h"
 
 #include <algorithm>
 #include <cstring>

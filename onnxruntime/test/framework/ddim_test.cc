@@ -6,7 +6,7 @@
 #include <limits>
 
 #include "gtest/gtest.h"
-#include "core/diffusion/ddim.h"
+#include "stateful/diffusion/ddim.h"
 #include "core/framework/tensor.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"

@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/generate/token_generation.h"
+#include "stateful/generate/token_generation.h"
 
 #include "core/framework/error_code_helper.h"
-#include "core/framework/stateful_execution_provider.h"
+#include "stateful/framework/stateful_execution_provider.h"
 
 namespace onnxruntime {
 namespace {

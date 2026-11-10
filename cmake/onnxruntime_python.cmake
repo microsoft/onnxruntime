@@ -76,6 +76,10 @@ endif()
 
 onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_pybind_srcs})
 
+if(onnxruntime_ENABLE_STATEFUL)
+  target_compile_definitions(onnxruntime_pybind11_state PRIVATE ORT_ENABLE_STATEFUL)
+endif()
+
 message(STATUS "Python_EXECUTABLE: ${Python_EXECUTABLE}")
 
 # Query Py_GIL_DISABLED (PEP 703)
@@ -221,6 +225,7 @@ if(WIN32)
   target_sources(onnxruntime_pybind11_state PRIVATE "${ONNXRUNTIME_ROOT}/core/dll/dllmain.cc")
 endif()
 target_link_libraries(onnxruntime_pybind11_state PRIVATE
+    ${onnxruntime_STATEFUL_LINK_ITEMS}
     onnxruntime_session
     ${onnxruntime_libs}
     ${onnxruntime_pybind11_state_static_providers}

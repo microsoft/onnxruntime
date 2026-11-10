@@ -15,6 +15,9 @@ from onnx import TensorProto, helper, numpy_helper
 import onnxruntime as ort
 from onnxruntime import OrtMemoryInfoDeviceType
 from onnxruntime import stateful as sf
+from onnxruntime.capi import onnxruntime_pybind11_state as native
+
+STATEFUL_AVAILABLE = native._stateful.available
 
 
 def ddim_config(**changes):
@@ -283,6 +286,7 @@ def ddim_session(policy):
     )
 
 
+@unittest.skipUnless(STATEFUL_AVAILABLE, "Stateful execution is unavailable in this build")
 class TestStatefulStandalone(unittest.TestCase):
     def test_cache_share_copy_append_reserve_reset_and_retained_views(self):
         for dtype, element in ((np.float32, sf.ElementType.FLOAT32), (np.float16, sf.ElementType.FLOAT16)):
@@ -392,6 +396,7 @@ class TestStatefulStandalone(unittest.TestCase):
                 manager.update("key", np.zeros((1, 1, 1, 2), dtype=np.float32), kind="copy")
 
 
+@unittest.skipUnless(STATEFUL_AVAILABLE, "Stateful execution is unavailable in this build")
 class TestStatefulExecution(unittest.TestCase):
     def test_native_children_are_destroyed_before_transitive_dependencies(self):
         events = []

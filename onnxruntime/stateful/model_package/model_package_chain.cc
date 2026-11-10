@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/session/model_package/model_package_chain.h"
+#include "stateful/model_package/model_package_chain.h"
 
 #include <algorithm>
 #include <array>

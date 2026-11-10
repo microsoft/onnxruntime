@@ -7723,7 +7723,8 @@ struct OrtApi {
   /** \brief Get the runtime-owned stateful execution API table.
    *
    * Request OrtApi with ORT_API_VERSION before accessing this appended member.
-   * The table must not be released. It is NULL in minimal builds.
+   * The table must not be released. It is NULL in minimal builds and builds
+   * with stateful execution disabled.
    *
    * \return The stateful API table, or NULL when unavailable.
    * \since Version 1.32.
@@ -9229,6 +9230,7 @@ struct OrtModelPackageApi {
    * and caller option handles may be released after this synchronous call.
    * Env and externally supplied buffers/allocators/streams/custom-op resources
    * keep their ordinary Session lifetime obligations. Failure preserves out.
+   * Returns ORT_NOT_IMPLEMENTED when stateful execution is unavailable.
    * \param[in] env Environment that outlives the owned Sessions.
    * \param[in] context Open package context.
    * \param[in] config Copied configuration with an explicit nonempty chain name.

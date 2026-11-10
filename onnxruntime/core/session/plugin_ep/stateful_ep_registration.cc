@@ -3,11 +3,13 @@
 
 #include "core/session/plugin_ep/stateful_ep_registration.h"
 
+#include "core/framework/stateful_provider_validation.h"
+
 namespace onnxruntime {
 
 Status RegisteredStatefulProvider::Create(
     const OrtStatefulProviderDescriptor& descriptor, std::shared_ptr<RegisteredStatefulProvider>& out) {
-  ORT_RETURN_IF_ERROR(StatefulProviderBinding::ValidateDescriptor(descriptor));
+  ORT_RETURN_IF_ERROR(ValidateStatefulProviderDescriptor(descriptor));
   auto value = std::shared_ptr<RegisteredStatefulProvider>(new RegisteredStatefulProvider());
   value->descriptor_ = descriptor;
   if (descriptor.context) {

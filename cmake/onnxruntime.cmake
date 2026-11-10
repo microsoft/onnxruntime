@@ -265,6 +265,7 @@ endif()
 # This list is a reversed topological ordering of library dependencies.
 # Earlier entries may depend on later ones. Later ones should not depend on earlier ones.
 set(onnxruntime_INTERNAL_LIBRARIES
+  ${onnxruntime_STATEFUL_LINK_ITEMS}
   onnxruntime_session
   ${onnxruntime_libs}
   ${onnxruntime_INTERNAL_PROVIDER_LIBRARIES}
@@ -306,6 +307,8 @@ if (onnxruntime_BUILD_SHARED_LIB)
 else()
   target_link_libraries(onnxruntime INTERFACE
     ${onnxruntime_INTERNAL_LIBRARIES}
+    $<BUILD_INTERFACE:$<TARGET_OBJECTS:onnxruntime_stateful_bridge>>
+    $<INSTALL_INTERFACE:$<TARGET_OBJECTS:${PROJECT_NAME}::onnxruntime_stateful_bridge>>
     ${onnxruntime_EXTERNAL_LIBRARIES}
   )
 endif()
@@ -452,6 +455,12 @@ if(onnxruntime_BUILD_APPLE_FRAMEWORK)
         COMMAND /usr/bin/ar ARGS -x $<TARGET_FILE:${_LIB}>
         WORKING_DIRECTORY ${CUR_STATIC_LIB_OBJ_DIR})
       endif()
+    elseif(_LIB_TYPE STREQUAL "OBJECT_LIBRARY")
+      set(CUR_STATIC_LIB_OBJ_DIR ${STATIC_LIB_TEMP_DIR}/${_LIB})
+      add_custom_command(TARGET onnxruntime POST_BUILD
+                         COMMAND ${CMAKE_COMMAND} -E make_directory ${CUR_STATIC_LIB_OBJ_DIR}
+                         COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_OBJECTS:${_LIB}> ${CUR_STATIC_LIB_OBJ_DIR}
+                         COMMAND_EXPAND_LISTS)
     endif()
   endforeach()
 

@@ -13,10 +13,10 @@
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
 #include "core/framework/ort_value.h"
-#include "core/diffusion/ddim.h"
+#include "stateful/diffusion/ddim.h"
 #include "core/graph/node_arg.h"
-#include "core/session/kv_cache_manager.h"
-#include "core/generate/token_generation.h"
+#include "stateful/session/kv_cache_manager.h"
+#include "stateful/generate/token_generation.h"
 
 namespace onnxruntime {
 

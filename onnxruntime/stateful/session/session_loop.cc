@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/session/session_loop.h"
+#include "stateful/session/session_loop.h"
 
 #include <algorithm>
 
@@ -12,7 +12,7 @@
 #include "core/graph/graph.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session.h"
-#include "core/framework/stateful_execution_utils.h"
+#include "stateful/framework/stateful_execution_utils.h"
 
 namespace onnxruntime {
 using namespace stateful_execution;
@@ -66,8 +66,8 @@ SessionLoop::SessionLoop(InferenceSession& session, SessionLoopOptions options,
 
 Status SessionLoop::Create(InferenceSession& session, SessionLoopOptions options,
                            std::shared_ptr<const SessionLoop>& out) {
-  std::unique_ptr<IOBinding> binding;
-  ORT_RETURN_IF_ERROR(session.NewIOBinding(&binding));
+  std::unique_ptr<IOBinding> io_binding;
+  ORT_RETURN_IF_ERROR(session.NewIOBinding(&io_binding));
   ORT_RETURN_IF(options.exit_conditions.empty(), "SessionLoop requires at least one explicit exit condition");
   ORT_RETURN_IF(options.output_names.empty(), "SessionLoop requires at least one selected output");
   const auto& inputs = *session.GetModelInputs().second;

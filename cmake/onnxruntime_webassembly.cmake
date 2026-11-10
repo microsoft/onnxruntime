@@ -106,6 +106,7 @@ include(node_helper.cmake)
 
 if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
     bundle_static_library(onnxruntime_webassembly
+      ${onnxruntime_STATEFUL_BUNDLE_TARGETS}
       ${PROTOBUF_LIB}
       onnx
       onnx_proto
@@ -195,6 +196,7 @@ else()
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_WEBNN}
     ${PROVIDERS_WEBGPU}
+    ${onnxruntime_STATEFUL_LINK_ITEMS}
     onnxruntime_session
     onnxruntime_util
     re2::re2

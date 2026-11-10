@@ -6,7 +6,7 @@
 
 #include <pybind11/stl.h>
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if defined(ORT_ENABLE_STATEFUL)
 #include <algorithm>
 #include <array>
 #include <optional>
@@ -15,14 +15,14 @@
 
 #include "core/common/path_string.h"
 #include "core/framework/data_transfer_manager.h"
-#include "core/session/abi_stateful_impl.h"
-#include "core/session/session_chain.h"
+#include "stateful/session/abi_stateful_impl.h"
+#include "stateful/session/session_chain.h"
 #endif
 
 namespace onnxruntime::python {
 namespace py = pybind11;
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if defined(ORT_ENABLE_STATEFUL)
 namespace {
 
 template <typename T>
@@ -729,7 +729,7 @@ std::shared_ptr<NativeComponent> NativePackage::Select(const std::string& name, 
 
 void addStatefulMethods(py::module& parent) {
   auto module = parent.def_submodule("_stateful");
-#if !defined(ORT_MINIMAL_BUILD)
+#if defined(ORT_ENABLE_STATEFUL)
   module.attr("available") = true;
   py::class_<NativeValue>(module, "Value")
       .def("copy", &NativeValue::Copy)

@@ -10,6 +10,23 @@ if(NOT CMAKE_CROSSCOMPILING)
   add_test(NAME onnxruntime_public_exports_test
     COMMAND "${Python_EXECUTABLE}" "${REPO_ROOT}/tools/ci_build/test_gen_def.py")
 endif()
+add_test(NAME onnxruntime_stateful_include_boundary_test
+  COMMAND "${CMAKE_COMMAND}" "-DONNXRUNTIME_ROOT=${ONNXRUNTIME_ROOT}"
+          "-DONNXRUNTIME_INCLUDE_ROOT=${ONNXRUNTIME_INCLUDE_DIR}"
+          -P "${PROJECT_SOURCE_DIR}/verify_stateful_includes.cmake")
+add_test(NAME onnxruntime_stateful_boundary_checker_test
+  COMMAND "${CMAKE_COMMAND}" "-DORT_CMAKE_DIR=${PROJECT_SOURCE_DIR}"
+          "-DTEST_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/stateful_boundary_test"
+          -P "${PROJECT_SOURCE_DIR}/tests/stateful_boundary_test.cmake")
+if(onnxruntime_ENABLE_PYTHON AND NOT CMAKE_CROSSCOMPILING)
+  add_test(NAME onnxruntime_stateful_python_availability_test
+    COMMAND "${CMAKE_COMMAND}" -E env
+            "PYTHONPATH=$<TARGET_FILE_DIR:onnxruntime_common>"
+            "ORT_BUILD_OUTPUT_DIR=$<TARGET_FILE_DIR:onnxruntime_common>"
+            "ORT_EXPECT_STATEFUL=$<BOOL:${onnxruntime_ENABLE_STATEFUL}>"
+            "${Python_EXECUTABLE}"
+            "${TEST_SRC_DIR}/python/onnxruntime_test_python_stateful_availability.py")
+endif()
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND TEST_INC_DIR ${ORTTRAINING_ROOT})
 endif()
@@ -748,6 +765,7 @@ if (onnxruntime_WEBGPU_LINKED_INTO_HOST)
 endif()
 
 set(ONNXRUNTIME_TEST_LIBS
+    ${onnxruntime_STATEFUL_LINK_ITEMS}
     onnxruntime_session
     ${ONNXRUNTIME_INTEROP_TEST_LIBS}
     ${onnxruntime_libs}
@@ -876,9 +894,20 @@ if (onnxruntime_USE_OPENVINO)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_shared)
 endif()
 
+list(APPEND onnxruntime_test_framework_src_patterns "${TEST_SRC_DIR}/framework/stateful_availability_test.cc")
+
 file(GLOB onnxruntime_test_framework_src CONFIGURE_DEPENDS
   ${onnxruntime_test_framework_src_patterns}
   )
+
+if(NOT onnxruntime_ENABLE_STATEFUL)
+  list(REMOVE_ITEM onnxruntime_test_framework_src
+    "${TEST_SRC_DIR}/framework/ddim_test.cc"
+    "${TEST_SRC_DIR}/framework/session_loop_test.cc"
+    "${TEST_SRC_DIR}/framework/session_loop_cuda_test.cc"
+    "${TEST_SRC_DIR}/framework/stateful_provider_test.cc"
+    "${TEST_SRC_DIR}/framework/session_chain_test.cc")
+endif()
 
 if(IOS)
   # The ONNX test runner library is not built for iOS.
@@ -954,6 +983,8 @@ endif()
 onnxruntime_add_static_library(onnxruntime_unittest_utils ${onnxruntime_unittest_utils_src})
 
 set(onnxruntime_unittest_utils_libs ${ONNXRUNTIME_TEST_LIBS})
+# Test executables link the composition bridge directly; don't copy it into this archive.
+list(REMOVE_ITEM onnxruntime_unittest_utils_libs onnxruntime_stateful_bridge)
 get_target_property(onnxruntime_providers_type ${onnxruntime_providers_target} TYPE)
 if (onnxruntime_providers_type STREQUAL "OBJECT_LIBRARY")
   # Linking an object library into a static library copies its objects into that archive. Every
@@ -1352,9 +1383,12 @@ AddTest(
   DEPENDS ${all_dependencies}
   TEST_ARGS ${test_all_args}
 )
+if(onnxruntime_ENABLE_STATEFUL)
+  target_compile_definitions(onnxruntime_test_all PRIVATE ORT_ENABLE_STATEFUL)
+endif()
 target_include_directories(onnxruntime_test_all PRIVATE ${ONNXRUNTIME_ROOT}/core/flatbuffers/schema) # ort.fbs.h
 
-if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING)
+if(onnxruntime_ENABLE_STATEFUL AND NOT onnxruntime_REDUCED_OPS_BUILD AND NOT CMAKE_CROSSCOMPILING)
   onnxruntime_add_shared_library(stateful_test_barrier
     "${TEST_SRC_DIR}/shared_lib/stateful_test_barrier.cc")
   target_include_directories(stateful_test_barrier PRIVATE
@@ -2238,7 +2272,10 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         list(APPEND onnxruntime_perf_test_libs ${android_shared_libs})
       endif()
       if (CMAKE_SYSTEM_NAME MATCHES "AIX")
-        list(APPEND onnxruntime_perf_test_libs onnxruntime_graph onnxruntime_session ${onnxruntime_providers_target} onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 gtest absl_failure_signal_handler absl_examine_stack absl_flags_parse  absl_flags_usage absl_flags_usage_internal)
+        list(APPEND onnxruntime_perf_test_libs ${onnxruntime_STATEFUL_LINK_ITEMS} onnxruntime_graph
+          onnxruntime_session ${onnxruntime_providers_target} onnxruntime_framework onnxruntime_util onnxruntime_mlas
+          onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 gtest absl_failure_signal_handler
+          absl_examine_stack absl_flags_parse absl_flags_usage absl_flags_usage_internal)
       endif()
       target_link_libraries(onnxruntime_perf_test PRIVATE ${onnxruntime_perf_test_libs} Threads::Threads)
       if (onnxruntime_USE_CUDA OR onnxruntime_USE_NV OR onnxruntime_USE_TENSORRT)
@@ -2458,7 +2495,9 @@ endif()
     endif()
 
     if (CMAKE_SYSTEM_NAME MATCHES "AIX")
-      list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_graph onnxruntime_session ${onnxruntime_providers_target} onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 onnx)
+      list(APPEND onnxruntime_shared_lib_test_LIBS ${onnxruntime_STATEFUL_LINK_ITEMS} onnxruntime_graph
+        onnxruntime_session ${onnxruntime_providers_target} onnxruntime_framework onnxruntime_util onnxruntime_mlas
+        onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 onnx)
     endif()
 
     AddTest(DYN
@@ -2636,6 +2675,7 @@ endif()
     )
 
     set(ONNXRUNTIME_TEST_LIBS
+      ${onnxruntime_STATEFUL_LINK_ITEMS}
       onnxruntime_session
       ${onnxruntime_libs}
       # CUDA is dynamically loaded at runtime
@@ -2786,7 +2826,9 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_CUDA_MINIMAL
       list(APPEND onnxruntime_customopregistration_test_LIBS ${TENSORRT_LIBRARY_INFER})
     endif()
     if (CMAKE_SYSTEM_NAME MATCHES "AIX")
-      list(APPEND onnxruntime_customopregistration_test_LIBS onnxruntime_graph onnxruntime_session ${onnxruntime_providers_target} onnxruntime_lora onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 ${PROTOBUF_LIB} onnx onnx_proto)
+      list(APPEND onnxruntime_customopregistration_test_LIBS ${onnxruntime_STATEFUL_LINK_ITEMS} onnxruntime_graph
+        onnxruntime_session ${onnxruntime_providers_target} onnxruntime_lora onnxruntime_framework onnxruntime_util
+        onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 ${PROTOBUF_LIB} onnx onnx_proto)
     endif()
     AddTest(DYN
             TARGET onnxruntime_customopregistration_test
@@ -3021,6 +3063,14 @@ if (onnxruntime_BUILD_SHARED_LIB AND
   file(GLOB onnxruntime_autoep_test_SRC "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.h"
                                       "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.c"
                                         "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.cc")
+  if(NOT onnxruntime_ENABLE_STATEFUL)
+    list(REMOVE_ITEM onnxruntime_autoep_test_SRC
+      "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/stateful_api_c_test.c"
+      "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/test_stateful_api.cc"
+      "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/test_stateful_plugin.cc"
+      "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/test_cuda_stateful.cc"
+      "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/test_cuda_stateful_integration.cc")
+  endif()
 
   set(onnxruntime_autoep_test_LIBS onnxruntime_mocked_allocator ${ONNXRUNTIME_TEST_LIBS} onnxruntime_test_utils
                                    onnx_proto onnx ${onnxruntime_EXTERNAL_LIBRARIES})
@@ -3056,6 +3106,9 @@ if (onnxruntime_BUILD_SHARED_LIB AND
           LIBS ${onnxruntime_autoep_test_LIBS}
           DEPENDS ${all_dependencies} example_plugin_ep example_plugin_ep_virt_gpu example_plugin_ep_kernel_registry
   )
+  if(onnxruntime_ENABLE_STATEFUL)
+    target_compile_definitions(onnxruntime_autoep_test PRIVATE ORT_ENABLE_STATEFUL)
+  endif()
   if(onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
     target_compile_definitions(onnxruntime_autoep_test PRIVATE
       ORT_UNIT_TEST_CUDA_PLUGIN_EP_PUBLIC_API_ONLY
@@ -3071,7 +3124,10 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
 
   set(onnxruntime_logging_apis_test_LIBS onnxruntime_common onnxruntime_test_utils)
   if (CMAKE_SYSTEM_NAME MATCHES "AIX")
-    list(APPEND onnxruntime_logging_apis_test_LIBS onnxruntime_session onnxruntime_util onnxruntime_lora onnxruntime_framework onnxruntime_common onnxruntime_graph  ${onnxruntime_providers_target} onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 ${PROTOBUF_LIB} onnx onnx_proto)
+    list(APPEND onnxruntime_logging_apis_test_LIBS ${onnxruntime_STATEFUL_LINK_ITEMS} onnxruntime_session
+      onnxruntime_util onnxruntime_lora onnxruntime_framework onnxruntime_common onnxruntime_graph
+      ${onnxruntime_providers_target} onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers
+      iconv re2 ${PROTOBUF_LIB} onnx onnx_proto)
      endif()
 
   if(NOT WIN32)
