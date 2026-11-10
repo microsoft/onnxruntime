@@ -263,6 +263,102 @@ TEST(MoETest, CudaReluSquaredQuantizedInt8) {
 }
 
 template <typename ElementType>
+static void RunCudaGeluWithFc3Test(int bias_mask, int top_k) {
+  SCOPED_TRACE(::testing::Message() << "bias_mask=" << bias_mask << ", top_k=" << top_k);
+  if (!HasCudaEnvironment(std::is_same_v<ElementType, BFloat16> ? 800 : 750)) {
+    GTEST_SKIP() << "CUDA architecture does not support the test element type";
+  }
+
+  constexpr int rows = 6;
+  constexpr int experts = 2;
+  constexpr int hidden = 128;
+  constexpr int inter = 128;
+  std::vector<ElementType> input(rows * hidden);
+  std::vector<ElementType> expected(rows * hidden);
+  std::vector<ElementType> router_probs(rows * experts);
+  std::vector<ElementType> fc1(experts * inter * hidden, ElementType(0.0f));
+  std::vector<ElementType> fc2(experts * hidden * inter, ElementType(0.0f));
+  std::vector<ElementType> fc3(fc1.size(), ElementType(0.0f));
+  std::vector<ElementType> fc1_bias(experts * inter);
+  std::vector<ElementType> fc3_bias(experts * inter);
+  for (int expert = 0; expert < experts; ++expert) {
+    for (int channel = 0; channel < hidden; ++channel) {
+      const int diagonal = (expert * inter + channel) * hidden + channel;
+      fc1[diagonal] = ElementType(static_cast<float>(expert + 1));
+      fc2[diagonal] = ElementType(1.0f);
+      fc3[diagonal] = ElementType(static_cast<float>(3 - expert));
+      fc1_bias[expert * inter + channel] = ElementType(0.125f * (expert + 1));
+      fc3_bias[expert * inter + channel] = ElementType(-0.25f * (expert + 1));
+    }
+  }
+  for (int row = 0; row < rows; ++row) {
+    router_probs[row * experts] = ElementType(row % 2 == 0 ? 1.0f : 0.0f);
+    router_probs[row * experts + 1] = ElementType(row % 2 == 0 ? 0.0f : 1.0f);
+    for (int channel = 0; channel < hidden; ++channel) {
+      const float value = static_cast<float>((channel + row) % 17 - 8) * 0.25f;
+      input[row * hidden + channel] = ElementType(value);
+      float result = 0.0f;
+      for (int expert = 0; expert < experts; ++expert) {
+        const float logit = static_cast<float>(router_probs[row * experts + expert]);
+        const float routing_weight = top_k == 1 ? (logit > 0.5f ? 1.0f : 0.0f)
+                                                : std::exp(logit) / (std::exp(1.0f) + 1.0f);
+        const float gate = value * (expert + 1) + ((bias_mask & 1) ? 0.125f * (expert + 1) : 0.0f);
+        const float up = value * (3 - expert) + ((bias_mask & 2) ? -0.25f * (expert + 1) : 0.0f);
+        const float gelu = 0.5f * gate *
+                           (1.0f + std::tanh(0.7978845608f * (gate + 0.044715f * gate * gate * gate)));
+        result += routing_weight * gelu * up;
+      }
+      expected[row * hidden + channel] = ElementType(result);
+    }
+  }
+
+  OpTester tester("MoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", top_k);
+  tester.AddAttribute<std::string>("activation_type", "gelu");
+  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  tester.AddInput<ElementType>("input", {rows, hidden}, input);
+  tester.AddInput<ElementType>("router_probs", {rows, experts}, router_probs);
+  tester.AddInput<ElementType>("fc1_experts_weights", {experts, inter, hidden}, fc1);
+  if (bias_mask & 1) {
+    tester.AddInput<ElementType>("fc1_experts_bias", {experts, inter}, fc1_bias);
+  } else {
+    tester.AddOptionalInputEdge<ElementType>();
+  }
+  tester.AddInput<ElementType>("fc2_experts_weights", {experts, hidden, inter}, fc2);
+  tester.AddOptionalInputEdge<ElementType>();
+  tester.AddInput<ElementType>("fc3_experts_weights", {experts, inter, hidden}, fc3);
+  if (bias_mask & 2) {
+    tester.AddInput<ElementType>("fc3_experts_bias", {experts, inter}, fc3_bias);
+  }
+  tester.AddOutput<ElementType>("output", {rows, hidden}, expected);
+  tester.SetOutputTolerance(std::is_same_v<ElementType, BFloat16> ? 0.02f : 0.001f);
+  if constexpr (std::is_same_v<ElementType, float>) {
+    tester.SetOutputAbsErr("output", 5e-5f);
+    tester.SetOutputRelErr("output", 0.0f);
+  }
+  SessionOptions options;
+  ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry("session.disable_cpu_ep_fallback", "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+TEST(MoETest, CudaGeluWithFc3Float32) {
+  for (int bias_mask : {0, 1, 2, 3})
+    for (int top_k : {1, 2}) RunCudaGeluWithFc3Test<float>(bias_mask, top_k);
+}
+
+TEST(MoETest, CudaGeluWithFc3Float16) {
+  for (int bias_mask : {0, 1, 2, 3})
+    for (int top_k : {1, 2}) RunCudaGeluWithFc3Test<MLFloat16>(bias_mask, top_k);
+}
+
+TEST(MoETest, CudaGeluWithFc3BFloat16) {
+  for (int bias_mask : {0, 1, 2, 3})
+    for (int top_k : {1, 2}) RunCudaGeluWithFc3Test<BFloat16>(bias_mask, top_k);
+}
+
+template <typename ElementType>
 static void RunCudaGegluTest(bool quantized, int fusion, int rows = 2, int top_k = 2,
                              const std::string& expected_failure = "", bool has_bias = false,
                              int fc1_bits = 4, int fc2_bits = 4) {
