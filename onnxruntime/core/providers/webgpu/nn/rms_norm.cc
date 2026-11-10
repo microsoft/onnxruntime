@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/common.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/webgpu_utils.h"
@@ -12,7 +13,7 @@ namespace webgpu {
 
 static size_t NormalizeAxis(int64_t axis, size_t tensor_rank) {
   int64_t rank = static_cast<int64_t>(tensor_rank);
-  if (axis < -rank && axis >= rank) {
+  if (axis < -rank || axis >= rank) {
     ORT_THROW("invalid axis: ", axis);
   }
   return onnxruntime::narrow<size_t>(axis < 0 ? axis + rank : axis);
@@ -22,6 +23,41 @@ static TensorShape GetOverrideShape(const TensorShape& shape, int components) {
   TensorShape override_shape{shape.Size() / components};
   return override_shape;
 }
+
+namespace {
+class RMSNormBroadcastProgram final : public Program<RMSNormBroadcastProgram> {
+ public:
+  RMSNormBroadcastProgram() : Program{"RMSNormBroadcast"} {}
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"norm_count", ProgramUniformVariableDataType::Uint32},
+      {"norm_size", ProgramUniformVariableDataType::Uint32},
+      {"epsilon", ProgramUniformVariableDataType::Float32});
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
+    const auto& scale = shader.AddInput("scale", ShaderUsage::UseUniform);
+    const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias);
+    shader.AdditionalImplementation() << "var<workgroup> partial: array<f32, workgroup_size_x>;\n";
+    auto& body = shader.MainFunctionBody();
+    body << "if (workgroup_idx >= uniforms.norm_count) { return; }\n"
+         << "let base = workgroup_idx * uniforms.norm_size;\n"
+         << "var squared = 0.0f;\n"
+         << "for (var j = local_idx; j < uniforms.norm_size; j += workgroup_size_x) {\n"
+         << "  let value = f32(" << input.GetByOffset("base + j") << "); squared += value * value;\n}\n"
+         << "partial[local_idx] = squared;\nworkgroupBarrier();\n"
+         << "for (var stride = workgroup_size_x / 2u; stride > 0u; stride /= 2u) {\n"
+         << "  if (local_idx < stride) { partial[local_idx] += partial[local_idx + stride]; }\n"
+         << "  workgroupBarrier();\n}\n"
+         << "let inv_rms = inverseSqrt(partial[0] / f32(uniforms.norm_size) + uniforms.epsilon);\n"
+         << "for (var j = local_idx; j < uniforms.norm_size; j += workgroup_size_x) {\n"
+         << "  let offset = base + j;\n"
+         << "  let indices = " << input.OffsetToIndices("offset") << ";\n"
+         << "  let scale_offset = " << scale.BroadcastedIndicesToOffset("indices", input) << ";\n"
+         << "  " << output.SetByOffset("offset", "output_value_t(f32(" + input.GetByOffset("offset") + ") * inv_rms) * " + scale.GetByOffset("scale_offset")) << "\n}\n";
+    return Status::OK();
+  }
+};
+}  // namespace
 
 Status RMSNorm::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const auto* x = context.Input(0);
@@ -37,20 +73,25 @@ Status RMSNorm::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) co
 
   const auto& scale_shape = scale->Shape();
   const auto scale_size = scale_shape.Size();
-  if (scale_shape.NumDimensions() > x_shape.NumDimensions()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Scale and (optional) bias must match X.shape[axis:] or be NumPy-broadcastable to it."
-                           " Scale/Bias rank cannot exceed Input rank.");
-  }
-  if (scale_size != norm_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Size of X.shape()[axis:] == ", norm_size,
-                           ". Size of scale must match this. Got scale size of ",
-                           scale_size);
-  }
+  ORT_RETURN_IF(scale_shape.NumDimensions() > x_shape.NumDimensions(),
+                "Scale/Bias rank cannot exceed Input rank.");
+  TensorShape broadcast_shape;
+  ORT_RETURN_IF_ERROR(ComputeBroadcastOutputShape(Node().Name(), x_shape, scale_shape, broadcast_shape));
+  ORT_RETURN_IF_NOT(broadcast_shape == x_shape, "Scale must be unidirectionally broadcastable to X.");
 
   // RMSNormalization outputs: Y (index 0), InvStdDev (index 1, optional)
   auto* y = context.Output(0, x_shape);
+  if (x_shape.Size() == 0) return Status::OK();
+  if (scale_size != norm_size || scale_shape.NumDimensions() > x_shape.NumDimensions() - axis) {
+    RMSNormBroadcastProgram program;
+    program.AddInput({x, ProgramTensorMetadataDependency::TypeAndRank})
+        .AddInput({scale, ProgramTensorMetadataDependency::TypeAndRank})
+        .AddOutput({y, ProgramTensorMetadataDependency::Type})
+        .AddUniformVariables({{norm_count}, {narrow<uint32_t>(norm_size)}, {epsilon_}})
+        .SetWorkgroupSize(256)
+        .SetDispatchGroupSize(norm_count);
+    return context.RunProgram(program);
+  }
 
   TensorShapeVector inv_std_dev_dim;
   for (size_t i = 0; i < x_shape.NumDimensions(); ++i) {
