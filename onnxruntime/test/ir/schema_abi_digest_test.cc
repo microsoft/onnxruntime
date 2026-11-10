@@ -99,8 +99,12 @@ std::vector<ONNX_NAMESPACE::OpSchema> CollectMSDomainSchemas() {
 }
 
 // Disabled by default: prints the regenerated manifest body to stdout so it can be
-// redirected into ms_schema_abi_manifest.inc.
+// redirected into ms_schema_abi_manifest.inc. Run it in a build that keeps float8 and float4 types.
 TEST(SchemaAbiDigestTest, DISABLED_GenerateMSManifest) {
+#if defined(DISABLE_FLOAT8_TYPES) || defined(DISABLE_FLOAT4_TYPES)
+  GTEST_SKIP() << "Generate the manifest from a build that does not define DISABLE_FLOAT8_TYPES or "
+                  "DISABLE_FLOAT4_TYPES.";
+#else
   std::printf("// Generated file. Do not edit individual digest entries by hand.\n");
   for (const auto& schema : CollectMSDomainSchemas()) {
     const auto digest = Digest(schema);
@@ -110,6 +114,7 @@ TEST(SchemaAbiDigestTest, DISABLED_GenerateMSManifest) {
     }
     std::printf("}},\n");
   }
+#endif
 }
 
 TEST(SchemaAbiDigestTest, MSManifestMatchesSchemas) {
@@ -136,11 +141,15 @@ TEST(SchemaAbiDigestTest, MSManifestMatchesSchemas) {
     });
     ASSERT_NE(schema, schemas.end()) << entry.op_type << "@" << entry.since_version;
 
+#if !defined(DISABLE_FLOAT8_TYPES) && !defined(DISABLE_FLOAT4_TYPES)
+    // Builds that disable float8 or float4 types register narrower type constraints for GemmFloat8 and
+    // GatherBlockQuantized, so only full-type builds can compare digests with the checked-in manifest.
     const auto digest = Digest(*schema);
     EXPECT_EQ(std::memcmp(digest.data(), entry.schema_abi_digest, digest.size()), 0)
         << entry.op_type << "@" << entry.since_version
         << " changed without regenerating the com.microsoft schema ABI manifest. "
         << kRegenerateHint;
+#endif
   }
 
 #if !defined(ENABLE_TRAINING_OPS) && !defined(ORT_USE_NCCL)

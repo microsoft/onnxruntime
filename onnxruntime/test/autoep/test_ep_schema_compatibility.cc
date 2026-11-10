@@ -404,8 +404,21 @@ TEST(PluginEpSchemaCompatibilityTest, AcceptsPublishedMSDomainManifest) {
   ASSERT_TRUE(compatibility->IsNegotiated());
 
   for (const auto& entry : contrib::kMSDomainSchemaAbiManifest) {
+#if !defined(DISABLE_FLOAT8_TYPES) && !defined(DISABLE_FLOAT4_TYPES)
     EXPECT_TRUE(compatibility->IsCompatible(entry.domain, entry.op_type, entry.since_version))
         << entry.op_type << "@" << entry.since_version;
+#else
+    // Builds that disable float8 or float4 types register narrower type constraints for operators such as
+    // GemmFloat8 and GatherBlockQuantized, while the manifest records the full-type contract. Negotiation
+    // must quarantine exactly the entries whose digests differ.
+    const auto* schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema(entry.op_type, entry.since_version, entry.domain);
+    ASSERT_NE(schema, nullptr) << entry.op_type << "@" << entry.since_version;
+    SchemaAbiDigest core_digest{};
+    ASSERT_STATUS_OK(ComputeSchemaAbiDigest(*schema, core_digest));
+    const bool digest_matches = std::memcmp(core_digest.data(), entry.schema_abi_digest, core_digest.size()) == 0;
+    EXPECT_EQ(compatibility->IsCompatible(entry.domain, entry.op_type, entry.since_version), digest_matches)
+        << entry.op_type << "@" << entry.since_version;
+#endif
   }
 }
 

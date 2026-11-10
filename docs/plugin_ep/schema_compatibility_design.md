@@ -822,6 +822,10 @@ aggregate before it is reported.
 - Load an opset-2 model on a build registering only `[1, 1]` and assert the error
   message names the domain, requested version, and supported maximum.
 - Regenerate digest manifests in CI and fail if a historical digest changes.
+- Compare the checked-in manifest with the live schemas only in builds that keep float8 and
+  float4 types. Builds that disable them (for example Android) register narrower type
+  constraints for `GemmFloat8` and `GatherBlockQuantized`, so those digests differ by design
+  and negotiation quarantines the entries.
 - Assert digests are unchanged by adding a new operator at `since_version 1`.
 - Assert digests are unchanged across an ONNX submodule bump that only reformats type
   strings.
