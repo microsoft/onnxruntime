@@ -52,6 +52,9 @@ def stage(build_dir: Path, output: Path):
 
     # CTest can reference ONNX fixtures outside the runtime output directory.
     cache = (build_dir / "CMakeCache.txt").read_text(encoding="utf-8")
+    cmake_command = re.search(r"^CMAKE_COMMAND:[^=]+=(.+)$", cache, re.MULTILINE)
+    if not cmake_command:
+        raise ValueError(f"CMAKE_COMMAND is missing from {build_dir / 'CMakeCache.txt'}")
     onnx_source = re.search(r"^onnx_SOURCE_DIR:[^=]+=(.+)$", cache, re.MULTILINE)
     if onnx_source:
         data = Path(onnx_source[1].strip()) / "onnx" / "backend" / "test" / "data"
@@ -62,7 +65,12 @@ def stage(build_dir: Path, output: Path):
 
     (output / MANIFEST).write_text(
         json.dumps(
-            {"build": build_dir.as_posix(), "repo": REPO_ROOT.as_posix(), "python": Path(sys.executable).as_posix()}
+            {
+                "build": build_dir.as_posix(),
+                "repo": REPO_ROOT.as_posix(),
+                "python": Path(sys.executable).as_posix(),
+                "cmake": Path(cmake_command[1].strip()).as_posix(),
+            }
         ),
         encoding="utf-8",
     )
@@ -71,16 +79,20 @@ def stage(build_dir: Path, output: Path):
 def prepare(build_dir: Path):
     require_runtime(build_dir)
     paths = json.loads((build_dir / MANIFEST).read_text(encoding="utf-8"))
+    cmake_command = shutil.which("cmake")
+    if cmake_command is None:
+        raise FileNotFoundError("CMake must be on PATH to run the relocated DirectML tests")
     replacements = {}
     for key, new in (
         ("build", build_dir.as_posix()),
         ("repo", REPO_ROOT.as_posix()),
         ("python", Path(sys.executable).as_posix()),
+        ("cmake", Path(cmake_command).as_posix()),
     ):
         replacements[paths[key]] = new
         replacements[paths[key].replace("/", "\\\\")] = new
     pattern = re.compile("|".join(re.escape(old) for old in sorted(replacements, key=len, reverse=True)))
-    # Nested CTest registrations and Python commands also contain producer-machine paths.
+    # Nested CTest registrations and tool commands also contain producer-machine paths.
     for ctest_file in build_dir.rglob("CTestTestfile.cmake"):
         text = ctest_file.read_text(encoding="utf-8")
         text = pattern.sub(lambda match: replacements[match[0]], text)
