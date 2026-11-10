@@ -2695,6 +2695,43 @@ Status PatternRewriter::ValidateOpsets(const Rule& rule) {
   return Status::OK();
 }
 
+Status PatternRewriter::ValidateRule(const Rule& rule) {
+  ORT_RETURN_IF_ERROR(ValidateOpsets(rule));
+  const auto* recipe = rule.replacement.Parsed();
+  if (!recipe || !recipe->Plan()) return Status::OK();
+  InlinedVector<const Pattern*, 1> patterns{&rule.pattern};
+  while (!patterns.empty()) {
+    const auto* pattern = patterns.back();
+    patterns.pop_back();
+    for (const auto& node : *recipe->Plan()) {
+      for (const auto& [name, binding] : node.attribute_bindings) {
+        const auto alias = pattern->aliases_.find(binding);
+        ORT_RETURN_IF_NOT(alias == pattern->aliases_.end() || pattern->IsAttribute(alias->second),
+                          "Replacement attribute binding conflicts with a pattern value: ", binding);
+        ORT_RETURN_IF_NOT(std::none_of(pattern->values_.begin(), pattern->values_.end(),
+                                       [&](const Value& value) {
+                                         return value.name == binding && !pattern->IsAttribute(value);
+                                       }),
+                          "Replacement attribute binding conflicts with a pattern value: ", binding);
+      }
+      for (const auto& input : node.inputs) {
+        if (const auto* name = std::get_if<std::string>(&input)) {
+          const auto alias = pattern->aliases_.find(*name);
+          const auto found = std::find_if(pattern->values_.begin(), pattern->values_.end(),
+                                          [&](const Value& value) { return value.name == *name; });
+          const Value* value = alias != pattern->aliases_.end()  ? &alias->second
+                               : found != pattern->values_.end() ? &*found
+                                                                 : nullptr;
+          ORT_RETURN_IF_NOT(!name->empty() && value && pattern->IsInput(*value) && !pattern->IsAttribute(*value),
+                            "Replacement inputs must be pattern tensor input variables: ", *name);
+        }
+      }
+    }
+    for (const auto& alternative : pattern->alternatives_) patterns.push_back(alternative.get());
+  }
+  return Status::OK();
+}
+
 PatternRewriter::PatternRewriter(Rules rules, Options options)
     : GraphTransformer("PatternRewriter"), options_(options) {
   // Expand in rule/branch order before indexing. Every attempt gets a fresh Match,
@@ -2715,7 +2752,7 @@ PatternRewriter::PatternRewriter(Rules rules, Options options)
     Rule& rule = rules_[i];
     ORT_ENFORCE(!rule.name.empty() && !rule.pattern.Nodes().empty() && rule.replacement,
                 "Rules need a name, at least one node and a recipe.");
-    ORT_THROW_IF_ERROR(ValidateOpsets(rule));
+    ORT_THROW_IF_ERROR(ValidateRule(rule));
     for (auto& requirement : rule.opsets) {
       if (requirement.domain == kOnnxDomainAlias) requirement.domain = kOnnxDomain;
     }
@@ -2723,21 +2760,9 @@ PatternRewriter::PatternRewriter(Rules rules, Options options)
       auto nodes = *recipe->plan_;
       for (auto& node : nodes) {
         if (node.domain == kOnnxDomainAlias) node.domain = kOnnxDomain;
-        for (const auto& [name, binding] : node.attribute_bindings) {
-          auto alias = rule.pattern.aliases_.find(binding);
-          ORT_ENFORCE(alias == rule.pattern.aliases_.end() || rule.pattern.IsAttribute(alias->second),
-                      "Replacement attribute binding conflicts with a pattern value: ", binding);
-          ORT_ENFORCE(std::none_of(rule.pattern.values_.begin(), rule.pattern.values_.end(),
-                                   [&](const Value& value) {
-                                     return value.name == binding && !rule.pattern.IsAttribute(value);
-                                   }),
-                      "Replacement attribute binding conflicts with a pattern value: ", binding);
-        }
         for (auto& input : node.inputs) {
           if (const auto* name = std::get_if<std::string>(&input)) {
             auto value = rule.pattern.NamedValue(*name);
-            ORT_ENFORCE(rule.pattern.IsInput(value) && !rule.pattern.IsAttribute(value),
-                        "Replacement inputs must be pattern tensor input variables: ", *name);
             input = std::move(value);
           }
         }

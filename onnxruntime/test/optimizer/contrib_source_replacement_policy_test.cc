@@ -312,6 +312,24 @@ TEST(ContribSourceReplacementPolicyTest, AcceptsOnnxOpsetAlias) {
   EXPECT_NO_THROW(rewrite::PatternRewriter({source.body.rule}));
 }
 
+TEST(ContribSourceReplacementPolicyTest, RejectsInvalidReplacementBindingsBeforeDiscovery) {
+  for (const auto* replacement : {
+           "(missing)=>com.microsoft.ScaledSiLU(missing)",
+           "(a)=>com.microsoft.ScaledSiLU(a)",
+           "(input,x)=>com.microsoft.ScaledSiLU(input,alpha=x)"}) {
+    SCOPED_TRACE(replacement);
+    auto source = ScaledSiLUSources().front();
+    source.body.rule.pattern = rewrite::Pattern("(x)=>{a=Swish(x);return a}");
+    source.body.rule.replacement = rewrite::Replacement(replacement);
+    const std::array schemas{source.target};
+    const std::array metadata{source.Metadata()};
+    const std::array<const SourceReplacement*, 1> sources{&source};
+    EXPECT_FALSE(ValidateSourceDeclarations(schemas, {}, metadata, {}).IsOK());
+    EXPECT_FALSE(ValidateCudaSourceReplacements(sources, schemas, {}, {}).IsOK());
+    EXPECT_THROW(rewrite::PatternRewriter({source.body.rule}), OnnxRuntimeException);
+  }
+}
+
 TEST(ContribSourceReplacementPolicyTest, LegacyCannotExemptMalformedExecutableMetadata) {
   const auto schemas = GetContribSchemaKeys();
   const auto policies = GetSourcePolicies();
@@ -474,6 +492,8 @@ TEST(ContribSourceReplacementPolicyTest, MultiTargetDAGDeclinesBeforeMutationOrK
   const std::array sources{source.Metadata()};
   const std::array schemas{source.target};
   ASSERT_STATUS_OK(ValidateSourceDeclarations(schemas, {}, sources, {}));
+  const std::array<const SourceReplacement*, 1> cuda_sources{&source};
+  EXPECT_FALSE(ValidateCudaSourceReplacements(cuda_sources, schemas, {}, {}).IsOK());
   auto swish = UnitSwishModel();
   const auto before = swish->MainGraph().ToGraphProto().SerializeAsString();
   std::vector<std::unique_ptr<ComputeCapability>> offers;
@@ -482,6 +502,33 @@ TEST(ContribSourceReplacementPolicyTest, MultiTargetDAGDeclinesBeforeMutationOrK
   EXPECT_TRUE(offers.empty());
   EXPECT_EQ(lookup.calls, 0u);
   EXPECT_EQ(swish->MainGraph().ToGraphProto().SerializeAsString(), before);
+}
+
+TEST(ContribSourceReplacementPolicyTest, NonIdentityAndExtraTargetOutputsDeclineBeforeMutationOrLookup) {
+  Model model("invalid-output-probe", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              {{kOnnxDomain, 24}, {kMSDomain, 1}}, {}, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  const auto before = graph.ToGraphProto().SerializeAsString();
+  NoProbeLookup lookup;
+  for (const auto* text : {
+           "(x,w,bias,h,dilation)=>{a,s=com.microsoft.CausalConvWithState(x,w,bias,h,dilation=dilation);return s,a}",
+           "(x,w,bias,h,dilation)=>{a,s,unused=com.microsoft.CausalConvWithState(x,w,bias,h,dilation=dilation);return a,s}"}) {
+    SCOPED_TRACE(text);
+    auto source = CausalConvWithStateSources().front();
+    source.body.rule.replacement = rewrite::Replacement(text);
+    const auto& recipe = *source.body.rule.replacement.Parsed();
+    EXPECT_FALSE(SupportsCudaReplacement(recipe, 2));
+    const std::array schemas{source.target};
+    const std::array metadata{source.Metadata()};
+    const std::array<const SourceReplacement*, 1> sources{&source};
+    ASSERT_STATUS_OK(ValidateSourceDeclarations(schemas, {}, metadata, {}));
+    EXPECT_FALSE(ValidateCudaSourceReplacements(sources, schemas, {}, {}).IsOK());
+    bool available = true;
+    ASSERT_STATUS_OK(cuda_runtime_fusion::detail::ProbeTarget(graph, recipe, {}, {}, 2, lookup, available));
+    EXPECT_FALSE(available);
+    EXPECT_EQ(lookup.calls, 0u);
+    EXPECT_EQ(graph.ToGraphProto().SerializeAsString(), before);
+  }
 }
 
 }  // namespace

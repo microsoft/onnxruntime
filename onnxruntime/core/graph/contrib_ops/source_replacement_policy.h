@@ -40,6 +40,8 @@ struct SourcePolicyRecord {
   SourcePolicy policy;
 };
 
+Status ValidateSourcePolicy(const SourcePolicy& policy);
+
 // Copies authored metadata. Identical duplicates are idempotent; conflicts are errors.
 // Call during schema registration, not through a static/linker registration mechanism.
 Status RecordSourcePolicy(const ONNX_NAMESPACE::OpSchema& schema, SourcePolicy policy);
