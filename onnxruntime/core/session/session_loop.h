@@ -48,6 +48,8 @@ struct SessionLoopOptions {
   std::string nonempty_input;
   InlinedVector<LoopKVCacheBinding, 1> kv_caches;
   std::optional<TokenGenerationOptions> generation;
+  StatefulProviderSelection cache_provider;
+  StatefulProviderSelection sampler_provider;
 };
 
 using LoopFeeds = InlinedHashMap<std::string, OrtValue>;
@@ -82,15 +84,19 @@ class SessionLoop : public std::enable_shared_from_this<SessionLoop> {
   friend class SessionLoopExecution;
   friend class SessionChain;
   friend class SessionChainExecution;
-  SessionLoop(InferenceSession& session, SessionLoopOptions options);
+  SessionLoop(InferenceSession& session, SessionLoopOptions options,
+              StatefulProviderBinding cache_provider, StatefulProviderBinding sampler_provider);
   Status ValidateInputs(const SessionLoopInputs& inputs) const;
   Status CreateExecutionWithCache(SessionLoopInputs inputs, std::shared_ptr<KVCacheManager> cache,
                                   std::shared_ptr<TokenGenerationState> generation,
+                                  std::shared_ptr<StatefulDispatch> sampler,
                                   std::unique_ptr<SessionLoopExecution>& out) const;
 
   InferenceSession& session_;
   const SessionLoopOptions options_;
   InlinedVector<std::string> fetch_names_;
+  const StatefulProviderBinding cache_provider_;
+  const StatefulProviderBinding sampler_provider_;
 };
 
 // Only Cancel may run concurrently with Step/Run. Reset and execution are sequential.
@@ -99,17 +105,22 @@ class SessionLoopExecution {
   Status Step(SessionLoopStepResult& out);
   Status Run(SessionLoopStepResult& out);
   void Cancel() noexcept { cancelled_.store(true); }
-  void Reset();
+  Status Reset();
   bool RequiresReset() const { return requires_reset_; }
   const KVCacheManager* Cache() const { return cache_.get(); }
   const TokenGenerationState* Generation() const { return generation_.get(); }
   Status GetState(LoopFeeds& out) const;
+  Status GetDispatchInfo(OrtStatefulProviderFeature feature, size_t component,
+                         OrtStatefulProviderOperation operation, OrtStatefulDispatchInfo& out) const;
+  Status GetStagingInfo(size_t component, OrtStatefulStagingInfo& out) const;
+  const OrtStatefulStagingInfo& StagingInfo() const { return staging_; }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionLoopExecution);
 
  private:
   friend class SessionLoop;
   SessionLoopExecution(std::shared_ptr<const SessionLoop> loop, SessionLoopInputs inputs,
                        std::shared_ptr<KVCacheManager> cache, std::shared_ptr<TokenGenerationState> generation,
+                       std::shared_ptr<StatefulDispatch> sampler,
                        bool owns_state);
   void EvaluateExits(const InlinedVector<OrtValue>& values);
 
@@ -117,11 +128,13 @@ class SessionLoopExecution {
   const SessionLoopInputs initial_inputs_;
   const std::shared_ptr<KVCacheManager> cache_;
   const std::shared_ptr<TokenGenerationState> generation_;
+  const std::shared_ptr<StatefulDispatch> sampler_;
   const bool owns_state_;
   InlinedVector<OrtValue> feedback_;
   SessionLoopStepResult progress_;
   std::atomic<bool> cancelled_{false};
   bool requires_reset_ = false;
+  OrtStatefulStagingInfo staging_{sizeof(OrtStatefulStagingInfo), 0, 0, 0};
 };
 
 }  // namespace onnxruntime

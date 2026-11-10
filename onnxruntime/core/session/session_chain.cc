@@ -60,6 +60,12 @@ Status SessionChain::Initialize() {
       options = loop->Options();
     }
     ORT_RETURN_IF_NOT(session, "Null Session component: ", component.name);
+    if (component.cache_provider) {
+      options.cache_provider = *component.cache_provider;
+    }
+    if (component.sampler_provider) {
+      options.sampler_provider = *component.sampler_provider;
+    }
     options.kv_caches.insert(options.kv_caches.end(), component.kv_caches.begin(), component.kv_caches.end());
     const auto [status, outputs] = session->GetModelOutputs();
     ORT_RETURN_IF_ERROR(status);
@@ -69,6 +75,13 @@ Status SessionChain::Initialize() {
     }
     std::shared_ptr<const SessionLoop> loop;
     ORT_RETURN_IF_ERROR(SessionLoop::Create(*session, std::move(options), loop));
+    if (!loop->Options().kv_caches.empty()) {
+      ORT_RETURN_IF(cache_provider_ && !cache_provider_->CacheCompatible(loop->cache_provider_),
+                    "Conflicting shared-cache provider/device requirements");
+      if (!cache_provider_) {
+        cache_provider_ = loop->cache_provider_;
+      }
+    }
     if (loop->Options().generation) {
       const auto phase = loop->Options().generation->phase;
       std::optional<int64_t> budget;
@@ -276,12 +289,15 @@ Status SessionChain::CreateExecution(SessionChainInputs inputs, std::unique_ptr<
     std::unique_ptr<IOBinding> binding;
     ORT_RETURN_IF_ERROR(sessions_[0]->NewIOBinding(&binding));
     std::unique_ptr<KVCacheManager> manager;
-    ORT_RETURN_IF_ERROR(KVCacheManager::Create(cache_specs_, binding->GetCPUAllocator(kCpuExecutionProvider), manager));
+    ORT_RETURN_IF_ERROR(KVCacheManager::Create(cache_specs_, binding->GetCPUAllocator(kCpuExecutionProvider),
+                                               manager, *cache_provider_));
     cache = std::move(manager);
   }
-  out = std::unique_ptr<SessionChainExecution>(
+  auto execution = std::unique_ptr<SessionChainExecution>(
       new SessionChainExecution(shared_from_this(), std::move(inputs), std::move(cache),
                                 has_generation_ ? std::make_shared<TokenGenerationState>() : nullptr));
+  ORT_RETURN_IF_ERROR(execution->Reset());
+  out = std::move(execution);
   return Status::OK();
 }
 
@@ -292,7 +308,11 @@ SessionChainExecution::SessionChainExecution(std::shared_ptr<const SessionChain>
       initial_inputs_(std::move(inputs)),
       cache_(std::move(cache)),
       generation_(std::move(generation)) {
-  Reset();
+  for (const auto& loop : chain_->loops_) {
+    auto sampler = loop->Options().generation ? std::make_shared<StatefulDispatch>(loop->sampler_provider_) : nullptr;
+    samplers_.push_back(std::move(sampler));
+    staging_.push_back({sizeof(OrtStatefulStagingInfo), 0, 0, 0});
+  }
 }
 
 Status SessionChainExecution::Resolve(const ChainValueSource& source, const OrtValue*& out) const {
@@ -352,9 +372,12 @@ Status SessionChainExecution::StepComponent(SessionChainStepResult& result) {
   if (!active_) {
     SessionLoopInputs inputs;
     ORT_RETURN_IF_ERROR(PrepareComponentInputs(inputs));
-    ORT_RETURN_IF_ERROR(loop->CreateExecutionWithCache(std::move(inputs), cache_, generation_, active_));
+    ORT_RETURN_IF_ERROR(loop->CreateExecutionWithCache(std::move(inputs), cache_, generation_,
+                                                       samplers_[component_index_], active_));
   }
-  ORT_RETURN_IF_ERROR(active_->Step(result.component_result));
+  const auto status = active_->Step(result.component_result);
+  staging_[component_index_] = active_->StagingInfo();
+  ORT_RETURN_IF_ERROR(status);
   ORT_RETURN_IF(cancelled_.load(), "SessionChain cancelled during a component; call Reset before reuse");
   result.component_name = component.name;
   result.executed = result.component_result.executed;
@@ -439,7 +462,31 @@ Status SessionChainExecution::Run(SessionChainStepResult& out) {
   return Status::OK();
 }
 
-void SessionChainExecution::Reset() {
+Status SessionChainExecution::GetDispatchInfo(
+    OrtStatefulProviderFeature feature, size_t component,
+    OrtStatefulProviderOperation operation, OrtStatefulDispatchInfo& out) const {
+  ORT_RETURN_IF(component >= samplers_.size(), "Invalid chain component index");
+  ORT_RETURN_IF(feature != ORT_STATEFUL_FEATURE_CACHE && feature != ORT_STATEFUL_FEATURE_SAMPLER,
+                "Unknown stateful provider feature");
+  ORT_RETURN_IF(feature == ORT_STATEFUL_FEATURE_CACHE ? operation == ORT_STATEFUL_SAMPLE_GREEDY
+                                                      : operation != ORT_STATEFUL_SAMPLE_GREEDY,
+                "Operation does not belong to the selected feature");
+  ORT_RETURN_IF(feature == ORT_STATEFUL_FEATURE_CACHE ? !cache_ : !samplers_[component],
+                "Stateful feature is not configured");
+  return (feature == ORT_STATEFUL_FEATURE_CACHE ? cache_->Dispatch() : *samplers_[component]).GetInfo(operation, out);
+}
+
+Status SessionChainExecution::GetStagingInfo(size_t component, OrtStatefulStagingInfo& out) const {
+  ORT_RETURN_IF(component >= staging_.size(), "Invalid chain component index");
+  out = staging_[component];
+  return Status::OK();
+}
+
+Status SessionChainExecution::Reset() {
+  requires_reset_ = true;
+  if (cache_) {
+    ORT_RETURN_IF_ERROR(cache_->Reset());
+  }
   active_.reset();
   if (generation_) {
     generation_->Reset();
@@ -453,15 +500,15 @@ void SessionChainExecution::Reset() {
   }
   state_ = initial_inputs_.initial_state;
   if (cache_) {
-    cache_->Reset();
     for (const auto& spec : chain_->cache_specs_) {
       KVCacheView view;
-      ORT_THROW_IF_ERROR(cache_->Get(spec.name, view));
+      ORT_RETURN_IF_ERROR(cache_->Get(spec.name, view));
       state_.emplace(spec.name, std::move(view.value));
     }
   }
   cancelled_.store(false);
   requires_reset_ = false;
+  return Status::OK();
 }
 
 }  // namespace onnxruntime

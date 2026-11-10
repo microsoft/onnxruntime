@@ -2942,6 +2942,24 @@ struct StatefulStepInfo {
   std::optional<int64_t> generated_token;
 };
 
+/** \brief Copied bounded dispatch diagnostics, including owned names. \since Version 1.32. */
+struct StatefulDispatchInfo {
+  std::string provider_name;
+  std::string requested_provider_name;
+  OrtStatefulProviderMode policy;
+  OrtStatefulDispatchOrigin origin;
+  OrtStatefulProviderOperation operation;
+  OrtMemoryInfoDeviceType device_type;
+  int device_id;
+  size_t cpu_calls;
+  size_t provider_calls;
+  size_t cpu_delegations;
+  size_t failures;
+};
+
+/** \brief Query registered provider capabilities without executing them. \since Version 1.32. */
+OrtStatefulProviderCapabilities QueryStatefulProviderCapabilities(const Session& session, const char* name);
+
 struct StatefulExecution;
 
 /** \brief Copyable immutable result; output views retain its shared C handle.
@@ -2974,6 +2992,9 @@ struct SessionLoopOptions : detail::Base<OrtSessionLoopOptions> {
   explicit SessionLoopOptions(std::nullptr_t) {}
   explicit SessionLoopOptions(const OrtStatefulLoopConfig& config);
   SessionLoopOptions& SetConfig(const OrtStatefulLoopConfig& config);
+  /// Copied policy; SetConfig resets it.
+  SessionLoopOptions& SetProvider(OrtStatefulProviderFeature feature,
+                                  const OrtStatefulProviderSelection& selection);
 };
 
 /** \brief Move-only immutable loop; its caller-owned Session must outlive the definition/executions.
@@ -2996,6 +3017,8 @@ struct SessionChainOptions : detail::Base<OrtSessionChainOptions> {
   explicit SessionChainOptions(std::nullptr_t) {}
   explicit SessionChainOptions(const OrtStatefulChainConfig& config);
   SessionChainOptions& SetConfig(const OrtStatefulChainConfig& config);
+  SessionChainOptions& SetComponentProvider(size_t component, OrtStatefulProviderFeature feature,
+                                            const OrtStatefulProviderSelection& selection);
 };
 
 /** \brief Move-only immutable chain; Sessions must outlive its definition/executions.
@@ -3026,6 +3049,9 @@ struct StatefulExecution : detail::Base<OrtStatefulExecution> {
   void Cancel();              ///< Atomic boundary request, not kernel preemption.
   bool RequiresReset() const;
   StatefulStepResult GetState() const;  ///< Retained named-state snapshot; reject invalidated contexts.
+  StatefulDispatchInfo GetDispatchInfo(OrtStatefulProviderFeature feature, OrtStatefulProviderOperation operation,
+                                       size_t component = 0) const;   ///< Safe after failure; owns metadata names.
+  OrtStatefulStagingInfo GetStagingInfo(size_t component = 0) const;  ///< CPU payloads, not inferred DMA bytes.
 };
 
 /** \brief Move-only CPU cache layouts; SetConfig atomically replaces copied records.
@@ -3037,6 +3063,8 @@ struct KVCacheOptions : detail::Base<OrtKVCacheOptions> {
   explicit KVCacheOptions(std::nullptr_t) {}
   explicit KVCacheOptions(const OrtStatefulKVCacheConfig& config);
   KVCacheOptions& SetConfig(const OrtStatefulKVCacheConfig& config);
+  KVCacheOptions& SetProvider(const OrtStatefulProviderSelection& selection,
+                              OrtSession* session = nullptr);  ///< Session required for non-CPU policy.
 };
 
 /** \brief Retained cache tensor and copied logical/allocation extents. \since Version 1.32. */
@@ -3077,6 +3105,8 @@ struct KVCacheManager : detail::Base<OrtKVCacheManager> {
   void Reserve(const char* name, int64_t capacity);
   void Reset();
   OrtStatefulKVCacheStats GetStats() const;  ///< Copy lifetime data-buffer operation counters.
+  bool RequiresReset() const;
+  StatefulDispatchInfo GetDispatchInfo(OrtStatefulProviderOperation operation) const;
 };
 
 /** \brief Move-only CPU greedy sampler; device logits/NaNs reject, ties choose the lowest ID.
@@ -3089,6 +3119,9 @@ struct SamplerOptions : detail::Base<OrtSamplerOptions> {
   explicit SamplerOptions(const OrtStatefulSamplerConfig& config);
   SamplerOptions& SetConfig(const OrtStatefulSamplerConfig& config);
   int64_t Sample(const OrtValue* logits) const;
+  SamplerOptions& SetProvider(const OrtStatefulProviderSelection& selection,
+                              OrtSession* session = nullptr);  ///< Session required for non-CPU policy.
+  StatefulDispatchInfo GetDispatchInfo() const;
 };
 
 namespace detail {

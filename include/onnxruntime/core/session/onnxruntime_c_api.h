@@ -9497,6 +9497,177 @@ typedef struct OrtStatefulKVCacheStats {
   size_t shared_updates;
 } OrtStatefulKVCacheStats;
 
+/** \brief Independent stateful provider policy. \since Version 1.32. */
+typedef enum OrtStatefulProviderMode {
+  ORT_STATEFUL_PROVIDER_CPU = 0,
+  ORT_STATEFUL_PROVIDER_PREFER = 1,
+  ORT_STATEFUL_PROVIDER_REQUIRE = 2
+} OrtStatefulProviderMode;
+
+/** \brief Operations with individually discoverable capabilities. \since Version 1.32. */
+typedef enum OrtStatefulProviderOperation {
+  ORT_STATEFUL_CACHE_INITIALIZE = 0,
+  ORT_STATEFUL_CACHE_SHARE = 1,
+  ORT_STATEFUL_CACHE_COPY = 2,
+  ORT_STATEFUL_CACHE_APPEND = 3,
+  ORT_STATEFUL_CACHE_RESERVE = 4,
+  ORT_STATEFUL_CACHE_RESET = 5,
+  ORT_STATEFUL_SAMPLE_GREEDY = 6
+} OrtStatefulProviderOperation;
+
+/** \brief Cache and sampler choices are independent. \since Version 1.32. */
+typedef enum OrtStatefulProviderFeature {
+  ORT_STATEFUL_FEATURE_CACHE = 0,
+  ORT_STATEFUL_FEATURE_SAMPLER = 1
+} OrtStatefulProviderFeature;
+
+/** \brief Actual invocation route, not the model's node assignment. \since Version 1.32. */
+typedef enum OrtStatefulDispatchOrigin {
+  ORT_STATEFUL_DISPATCH_CPU = 0,
+  ORT_STATEFUL_DISPATCH_PROVIDER = 1,
+  ORT_STATEFUL_DISPATCH_CPU_FALLBACK = 2,
+  ORT_STATEFUL_DISPATCH_NOT_INVOKED = 3
+} OrtStatefulDispatchOrigin;
+
+/** \brief Copied provider request. CPU requires a NULL/empty name and CPU device 0.
+ * Other policies require an initialized Session containing provider_name.
+ * No policy permits an undisclosed device transfer. \since Version 1.32.
+ */
+typedef struct OrtStatefulProviderSelection {
+  size_t struct_size;
+  OrtStatefulProviderMode mode;
+  const char* provider_name;
+  OrtMemoryInfoDeviceType device_type;
+  int device_id;
+} OrtStatefulProviderSelection;
+
+/** \brief Copied version-1 capability metadata.
+ * Operation bits are 1ULL << OrtStatefulProviderOperation; element-type bits
+ * are 1ULL << ONNXTensorElementDataType; memory bits are 1U << device type.
+ * A device_id of -1 requires an explicitly selected device.
+ * \since Version 1.32.
+ */
+typedef struct OrtStatefulProviderCapabilities {
+  size_t struct_size;
+  uint32_t version;
+  uint64_t operations;
+  uint64_t cache_element_types;
+  uint64_t sampler_element_types;
+  uint32_t memory_types;
+  int device_id;
+} OrtStatefulProviderCapabilities;
+
+/** \brief Owned callback result. Storage has capacity-sized shape but compact
+ * logical data; length/capacity describe the sequence axis. Unused stats are zero.
+ * Ownership of storage transfers to ORT, including cleanup after callback failure.
+ * \since Version 1.32.
+ */
+typedef struct OrtStatefulCacheOperationResult {
+  size_t struct_size;
+  OrtValue* storage;
+  int64_t length;
+  int64_t capacity;
+  size_t allocations;
+  size_t bytes_copied;
+  size_t shared_updates;
+} OrtStatefulCacheOperationResult;
+
+/** \brief Synchronous cache operation; all inputs are borrowed for this call only.
+ *
+ * Existing storage/logical values are immutable. Return new owned storage rather
+ * than writing a retained buffer. ORT retains allocator with returned storage.
+ * A callback may explicitly delegate once to cpu_reference for CPU-compatible operands;
+ * this is recorded as delegation, never hidden native-device work.
+ * \since Version 1.32.
+ */
+typedef struct OrtStatefulCacheOperationRequest {
+  size_t struct_size;
+  const OrtApi* api;
+  OrtStatefulProviderOperation operation;
+  const OrtStatefulKVCacheSpec* spec;
+  const OrtValue* storage;
+  const OrtValue* logical;
+  const OrtValue* value;
+  int64_t length;
+  int64_t capacity;
+  int64_t requested_capacity;
+  OrtAllocator* allocator;
+  void* cpu_context;
+  ORT_API2_STATUS(cpu_reference, void* context, OrtStatefulCacheOperationResult* out);
+} OrtStatefulCacheOperationRequest;
+
+/** \brief Borrowed synchronous greedy request; no CPU/device copies are inferred.
+ * cpu_reference may be called once and only for CPU logits. \since Version 1.32.
+ */
+typedef struct OrtStatefulGreedyRequest {
+  size_t struct_size;
+  const OrtApi* api;
+  const OrtValue* logits;
+  int has_position;
+  int64_t position;
+  void* cpu_context;
+  ORT_API2_STATUS(cpu_reference, void* context, int64_t* out);
+} OrtStatefulGreedyRequest;
+
+/** \brief Versioned provider descriptor, copied/retained by ORT.
+ *
+ * Capabilities describe individual supported operations. CacheOperation is
+ * required iff any cache bit is advertised; Greedy is required iff its bit is
+ * advertised. A non-NULL context requires both Retain and Release. Those void
+ * callbacks must not throw; Retain acquires a reference and Release drops it.
+ * The context must own all resources its callbacks/deleters need, independently
+ * of the caller's model Session. Published values remain immutable and valid.
+ *
+ * Status callbacks return NULL on success or an owned OrtStatus. They must not
+ * throw across the C boundary, and must complete work before returning. A failed
+ * advertised callback is never retried on CPU. Greedy must match the documented
+ * NaN/tie semantics and return a token in the logits vocabulary.
+ * \since Version 1.32.
+ */
+typedef struct OrtStatefulProviderDescriptor {
+  size_t struct_size;
+  OrtStatefulProviderCapabilities capabilities;
+  void* context;
+  ORT_API2_STATUS(CacheOperation, void* context, const OrtStatefulCacheOperationRequest* request,
+                  OrtStatefulCacheOperationResult* out);
+  ORT_API2_STATUS(Greedy, void* context, const OrtStatefulGreedyRequest* request, int64_t* token);
+  void(ORT_API_CALL* Retain)(void* context) NO_EXCEPTION;
+  void(ORT_API_CALL* Release)(void* context) NO_EXCEPTION;
+} OrtStatefulProviderDescriptor;
+
+/** \brief Bounded per-operation counters; name is borrowed from the queried object.
+ * C++ wrappers copy the name. CPU delegations are explicit calls by an override.
+ * Session I/O staging is not counted as stateful-operation data movement.
+ * \since Version 1.32.
+ */
+typedef struct OrtStatefulDispatchInfo {
+  size_t struct_size;
+  const char* provider_name;
+  const char* requested_provider_name;
+  OrtStatefulProviderMode policy;
+  OrtStatefulDispatchOrigin origin;
+  OrtStatefulProviderOperation operation;
+  OrtMemoryInfoDeviceType device_type;
+  int device_id;
+  size_t cpu_calls;
+  size_t provider_calls;
+  size_t cpu_delegations;
+  size_t failures;
+} OrtStatefulDispatchInfo;
+
+/** \brief Execution-lifetime CPU payload counters, separate from provider dispatch.
+ * Input counts cover successful CPU BindInput requests, including overwritten
+ * bindings. Outputs count CPU values observed after Run; snapshot bytes count
+ * successful stable-output copies. These are not measured DMA counters.
+ * \since Version 1.32.
+ */
+typedef struct OrtStatefulStagingInfo {
+  size_t struct_size;
+  size_t cpu_input_request_bytes;
+  size_t cpu_output_bytes;
+  size_t cpu_snapshot_copy_bytes;
+} OrtStatefulStagingInfo;
+
 /** \brief Append-only API for stateful execution.
  *
  * Obtain from OrtApi::GetStatefulApi. All status-returning calls contain C++
@@ -9747,6 +9918,94 @@ struct OrtStatefulApi {
    */
   ORT_API2_STATUS(SamplerSample, _In_ const OrtSamplerOptions* options, _In_ const OrtValue* logits,
                   _Out_ int64_t* token);
+
+  /** \brief Copy an independent loop cache/sampler policy; SetConfig resets policies to CPU.
+   * \param[in,out] options Mutable loop options.
+   * \param[in] feature Cache or sampler.
+   * \param[in] selection Copied request; resolved against the Session at definition creation.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(SessionLoopOptionsSetProvider, _Inout_ OrtSessionLoopOptions* options,
+                  OrtStatefulProviderFeature feature, _In_ const OrtStatefulProviderSelection* selection);
+  /** \brief Override one chain component's policy without changing nested array strides.
+   * \param[in,out] options Mutable chain options; SetConfig clears overrides.
+   * \param[in] component Zero-based component index.
+   * \param[in] feature Cache or sampler; unmodified choices inherit component loop configuration.
+   * \param[in] selection Copied policy.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(SessionChainOptionsSetComponentProvider, _Inout_ OrtSessionChainOptions* options,
+                  size_t component, OrtStatefulProviderFeature feature,
+                  _In_ const OrtStatefulProviderSelection* selection);
+  /** \brief Bind standalone cache options to retained provider resources.
+   * \param[in,out] options Mutable options; SetConfig restores CPU selection.
+   * \param[in] session Initialized Session, optional only for CPU policy.
+   * \param[in] selection Copied policy; allocator passed at manager creation must match its device.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(KVCacheOptionsSetProvider, _Inout_ OrtKVCacheOptions* options, _In_opt_ OrtSession* session,
+                  _In_ const OrtStatefulProviderSelection* selection);
+  /** \brief Bind standalone greedy sampling to retained provider resources.
+   * \param[in,out] options Mutable configuration; SetConfig restores CPU selection/counters.
+   * \param[in] session Initialized Session, optional only for CPU policy.
+   * \param[in] selection Copied policy.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(SamplerOptionsSetProvider, _Inout_ OrtSamplerOptions* options, _In_opt_ OrtSession* session,
+                  _In_ const OrtStatefulProviderSelection* selection);
+  /** \brief Query an already registered Session provider without executing an operation.
+   * \param[in] session Initialized Session.
+   * \param[in] provider_name Registered provider name; unknown names fail.
+   * \param[in] info_size At least sizeof(OrtStatefulProviderCapabilities).
+   * \param[out] out Copied metadata; zero operations means no overrides, not native support.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(QueryStatefulProviderCapabilities, _In_ const OrtSession* session, _In_z_ const char* provider_name,
+                  size_t info_size, _Out_ OrtStatefulProviderCapabilities* out);
+  /** \brief Inspect bounded execution dispatch counters; permitted after failure.
+   * \param[in] execution Context whose lifetime bounds borrowed provider_name.
+   * \param[in] feature Cache or sampler; chain cache is shared, sampling is per component.
+   * \param[in] component Zero for a loop, otherwise a chain component index.
+   * \param[in] operation Operation to inspect.
+   * \param[in] info_size At least sizeof(OrtStatefulDispatchInfo).
+   * \param[out] out Metadata; NOT_INVOKED distinguishes an unused operation.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(StatefulExecutionGetDispatchInfo, _In_ const OrtStatefulExecution* execution,
+                  OrtStatefulProviderFeature feature, size_t component, OrtStatefulProviderOperation operation,
+                  size_t info_size, _Out_ OrtStatefulDispatchInfo* out);
+  /** \brief Inspect cache dispatch, including failures; name is borrowed from the manager.
+   * \param[in] manager Manager.
+   * \param[in] operation Cache operation.
+   * \param[in] info_size At least sizeof(OrtStatefulDispatchInfo).
+   * \param[out] out Bounded counters.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(KVCacheManagerGetDispatchInfo, _In_ const OrtKVCacheManager* manager,
+                  OrtStatefulProviderOperation operation, size_t info_size, _Out_ OrtStatefulDispatchInfo* out);
+  /** \brief Inspect standalone greedy dispatch; name is borrowed until options change/release.
+   * \param[in] options Sampler options.
+   * \param[in] info_size At least sizeof(OrtStatefulDispatchInfo).
+   * \param[out] out Bounded greedy counters.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(SamplerOptionsGetDispatchInfo, _In_ const OrtSamplerOptions* options,
+                  size_t info_size, _Out_ OrtStatefulDispatchInfo* out);
+  /** \brief Inspect invalidation after a possibly mutating provider failure.
+   * \param[in] manager Cache manager.
+   * \param[out] out 0 or 1; failed reset leaves the flag set.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(KVCacheManagerRequiresReset, _In_ const OrtKVCacheManager* manager, _Out_ int* out);
+  /** \brief Inspect intentional CPU Session I/O/snapshot payloads separately from dispatch.
+   * \param[in] execution Context; counters survive Reset and remain readable after failure.
+   * \param[in] component Zero for a loop, otherwise a chain component index.
+   * \param[in] info_size At least sizeof(OrtStatefulStagingInfo).
+   * \param[out] out Copied counters; not inferred GPU transfer or native-dispatch evidence.
+   * \return NULL on success, otherwise an owned OrtStatus. \since Version 1.32.
+   */
+  ORT_API2_STATUS(StatefulExecutionGetStagingInfo, _In_ const OrtStatefulExecution* execution,
+                  size_t component, size_t info_size, _Out_ OrtStatefulStagingInfo* out);
 };
 
 /*

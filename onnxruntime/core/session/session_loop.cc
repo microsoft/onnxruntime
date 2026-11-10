@@ -29,8 +29,13 @@ Status CheckScalar(const NodeArg& arg, int element_type) {
 
 }  // namespace
 
-SessionLoop::SessionLoop(InferenceSession& session, SessionLoopOptions options)
-    : session_(session), options_(std::move(options)), fetch_names_(options_.output_names) {
+SessionLoop::SessionLoop(InferenceSession& session, SessionLoopOptions options,
+                         StatefulProviderBinding cache_provider, StatefulProviderBinding sampler_provider)
+    : session_(session),
+      options_(std::move(options)),
+      fetch_names_(options_.output_names),
+      cache_provider_(std::move(cache_provider)),
+      sampler_provider_(std::move(sampler_provider)) {
   auto add_output = [&](const std::string& name) {
     if (FindOutput(fetch_names_, name) == fetch_names_.size()) {
       fetch_names_.push_back(name);
@@ -170,7 +175,33 @@ Status SessionLoop::Create(InferenceSession& session, SessionLoopOptions options
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unknown SessionLoop exit kind");
     }
   }
-  out = std::shared_ptr<const SessionLoop>(new SessionLoop(session, std::move(options)));
+  StatefulProviderBinding cache_provider, sampler_provider;
+  ORT_RETURN_IF_ERROR(StatefulProviderBinding::Resolve(&session, options.cache_provider, cache_provider));
+  ORT_RETURN_IF_ERROR(StatefulProviderBinding::Resolve(&session, options.sampler_provider, sampler_provider));
+  ORT_RETURN_IF((options.kv_caches.empty() && options.cache_provider.mode != ORT_STATEFUL_PROVIDER_CPU) ||
+                    (!options.generation && options.sampler_provider.mode != ORT_STATEFUL_PROVIDER_CPU),
+                "Provider policy requires the corresponding managed cache/generation feature");
+  StatefulDispatch cache_dispatch(cache_provider), sampler_dispatch(sampler_provider);
+  bool provider_selected = false;
+  for (const auto& item : options.kv_caches) {
+    for (const auto operation : {ORT_STATEFUL_CACHE_INITIALIZE, ORT_STATEFUL_CACHE_RESET,
+                                 static_cast<OrtStatefulProviderOperation>(static_cast<int>(item.update_kind) + 1)}) {
+      ORT_RETURN_IF_ERROR(cache_dispatch.Select(operation, item.cache.element_type, true, provider_selected));
+    }
+  }
+  if (options.generation) {
+    const auto* logits = FindArgument(outputs, options.generation->logits_output);
+    const auto element_type = logits->TypeAsProto()->tensor_type().elem_type();
+    ORT_RETURN_IF_ERROR(
+        sampler_dispatch.Select(ORT_STATEFUL_SAMPLE_GREEDY, element_type, true, provider_selected));
+  }
+  if (options.cache_provider.device_type != OrtMemoryInfoDeviceType_CPU ||
+      options.sampler_provider.device_type != OrtMemoryInfoDeviceType_CPU) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, NOT_IMPLEMENTED, "Device-native cache/logits Session integration is unavailable");
+  }
+  out = std::shared_ptr<const SessionLoop>(
+      new SessionLoop(session, std::move(options), std::move(cache_provider), std::move(sampler_provider)));
   return Status::OK();
 }
 
@@ -222,32 +253,38 @@ Status SessionLoop::CreateExecution(SessionLoopInputs inputs, std::unique_ptr<Se
     std::unique_ptr<IOBinding> binding;
     ORT_RETURN_IF_ERROR(session_.NewIOBinding(&binding));
     std::unique_ptr<KVCacheManager> manager;
-    ORT_RETURN_IF_ERROR(
-        KVCacheManager::Create(std::move(specs), binding->GetCPUAllocator(kCpuExecutionProvider), manager));
+    auto allocator = binding->GetCPUAllocator(kCpuExecutionProvider);
+    ORT_RETURN_IF_ERROR(KVCacheManager::Create(std::move(specs), std::move(allocator), manager, cache_provider_));
     cache = std::move(manager);
   }
   auto generation = options_.generation ? std::make_shared<TokenGenerationState>() : nullptr;
+  auto sampler = options_.generation ? std::make_shared<StatefulDispatch>(sampler_provider_) : nullptr;
   out = std::unique_ptr<SessionLoopExecution>(
-      new SessionLoopExecution(shared_from_this(), std::move(inputs), std::move(cache), std::move(generation), true));
+      new SessionLoopExecution(shared_from_this(), std::move(inputs), std::move(cache), std::move(generation),
+                               std::move(sampler), true));
   return Status::OK();
 }
 
 Status SessionLoop::CreateExecutionWithCache(SessionLoopInputs inputs, std::shared_ptr<KVCacheManager> cache,
                                              std::shared_ptr<TokenGenerationState> generation,
+                                             std::shared_ptr<StatefulDispatch> sampler,
                                              std::unique_ptr<SessionLoopExecution>& out) const {
   ORT_RETURN_IF_ERROR(ValidateInputs(inputs));
   out = std::unique_ptr<SessionLoopExecution>(
-      new SessionLoopExecution(shared_from_this(), std::move(inputs), std::move(cache), std::move(generation), false));
+      new SessionLoopExecution(shared_from_this(), std::move(inputs), std::move(cache), std::move(generation),
+                               std::move(sampler), false));
   return Status::OK();
 }
 
 SessionLoopExecution::SessionLoopExecution(std::shared_ptr<const SessionLoop> loop, SessionLoopInputs inputs,
                                            std::shared_ptr<KVCacheManager> cache,
-                                           std::shared_ptr<TokenGenerationState> generation, bool owns_state)
+                                           std::shared_ptr<TokenGenerationState> generation,
+                                           std::shared_ptr<StatefulDispatch> sampler, bool owns_state)
     : loop_(std::move(loop)),
       initial_inputs_(std::move(inputs)),
       cache_(std::move(cache)),
       generation_(std::move(generation)),
+      sampler_(std::move(sampler)),
       owns_state_(owns_state) {}
 
 void SessionLoopExecution::EvaluateExits(const InlinedVector<OrtValue>& values) {
@@ -313,23 +350,31 @@ Status SessionLoopExecution::Step(SessionLoopStepResult& out) {
   requires_reset_ = true;
   std::unique_ptr<IOBinding> binding;
   ORT_RETURN_IF_ERROR(loop_->session_.NewIOBinding(&binding));
-  for (const auto& [name, value] : initial_inputs_.inputs) {
+  auto bind_input = [&](const std::string& name, const OrtValue& value) -> Status {
     ORT_RETURN_IF_ERROR(binding->BindInput(name, value));
+    const auto& tensor = value.Get<Tensor>();
+    if (tensor.Location().device.UsesCpuMemory()) {
+      staging_.cpu_input_request_bytes = SafeInt<size_t>(staging_.cpu_input_request_bytes) + tensor.SizeInBytes();
+    }
+    return Status::OK();
+  };
+  for (const auto& [name, value] : initial_inputs_.inputs) {
+    ORT_RETURN_IF_ERROR(bind_input(name, value));
   }
   if (!loop_->options_.finite_input_names.empty()) {
     for (const auto& [name, value] : initial_inputs_.batches[static_cast<size_t>(progress_.iterations)]) {
-      ORT_RETURN_IF_ERROR(binding->BindInput(name, value));
+      ORT_RETURN_IF_ERROR(bind_input(name, value));
     }
   }
   for (size_t i = 0; i < feedback_.size(); ++i) {
-    ORT_RETURN_IF_ERROR(binding->BindInput(loop_->options_.feedback[i].input_name, feedback_[i]));
+    ORT_RETURN_IF_ERROR(bind_input(loop_->options_.feedback[i].input_name, feedback_[i]));
   }
   for (const auto& item : loop_->options_.kv_caches) {
     KVCacheView view;
     ORT_RETURN_IF_ERROR(cache_->Get(item.cache.name, view));
     ORT_RETURN_IF(loop_->options_.generation && view.length != generation_->processed_tokens,
                   "KV length does not match the generation context before invocation");
-    ORT_RETURN_IF_ERROR(binding->BindInput(item.input_name, view.value));
+    ORT_RETURN_IF_ERROR(bind_input(item.input_name, view.value));
   }
   int64_t input_count = 0;
   LoopFeeds generated_feeds;
@@ -341,7 +386,7 @@ Status SessionLoopExecution::Step(SessionLoopStepResult& out) {
     ORT_RETURN_IF_ERROR(TokenGeneration::PrepareInputs(
         options, *generation_, prompt, binding->GetCPUAllocator(kCpuExecutionProvider), generated_feeds, input_count));
     for (const auto& [name, value] : generated_feeds) {
-      ORT_RETURN_IF_ERROR(binding->BindInput(name, value));
+      ORT_RETURN_IF_ERROR(bind_input(name, value));
     }
   }
   for (const auto& name : loop_->fetch_names_) {
@@ -359,10 +404,14 @@ Status SessionLoopExecution::Step(SessionLoopStepResult& out) {
   CPUDataTransfer transfer;
   for (const auto& value : binding->GetOutputs()) {
     const Tensor& source = value.Get<Tensor>();
+    if (source.Location().device.UsesCpuMemory()) {
+      staging_.cpu_output_bytes = SafeInt<size_t>(staging_.cpu_output_bytes) + source.SizeInBytes();
+    }
     OrtValue snapshot;
     Tensor::InitOrtValue(source.DataType(), source.Shape(), allocator, snapshot);
     if (source.SizeInBytes() != 0) {
       ORT_RETURN_IF_ERROR(transfer.CopyTensor(source, *snapshot.GetMutable<Tensor>()));
+      staging_.cpu_snapshot_copy_bytes = SafeInt<size_t>(staging_.cpu_snapshot_copy_bytes) + source.SizeInBytes();
     }
     snapshots.push_back(std::move(snapshot));
   }
@@ -379,8 +428,8 @@ Status SessionLoopExecution::Step(SessionLoopStepResult& out) {
   if (loop_->options_.generation) {
     const auto& options = *loop_->options_.generation;
     int64_t token = 0;
-    ORT_RETURN_IF_ERROR(Sampler::Greedy(snapshots[FindOutput(loop_->fetch_names_, options.logits_output)],
-                                        options.logits_position, token));
+    ORT_RETURN_IF_ERROR(Sampler::Sample(snapshots[FindOutput(loop_->fetch_names_, options.logits_output)],
+                                        options.logits_position, *sampler_, token));
     const auto& shape = snapshots[FindOutput(loop_->fetch_names_, options.logits_output)].Get<Tensor>().Shape();
     for (const auto& condition : loop_->options_.exit_conditions) {
       if (condition.kind == LoopExitKind::Eos) {
@@ -457,10 +506,30 @@ Status SessionLoopExecution::GetState(LoopFeeds& out) const {
   return Status::OK();
 }
 
-void SessionLoopExecution::Reset() {
+Status SessionLoopExecution::GetDispatchInfo(
+    OrtStatefulProviderFeature feature, size_t component,
+    OrtStatefulProviderOperation operation, OrtStatefulDispatchInfo& out) const {
+  ORT_RETURN_IF(component != 0, "Standalone loop component index must be zero");
+  ORT_RETURN_IF(feature != ORT_STATEFUL_FEATURE_CACHE && feature != ORT_STATEFUL_FEATURE_SAMPLER,
+                "Unknown stateful provider feature");
+  ORT_RETURN_IF(feature == ORT_STATEFUL_FEATURE_CACHE ? operation == ORT_STATEFUL_SAMPLE_GREEDY
+                                                      : operation != ORT_STATEFUL_SAMPLE_GREEDY,
+                "Operation does not belong to the selected feature");
+  ORT_RETURN_IF(feature == ORT_STATEFUL_FEATURE_CACHE ? !cache_ : !sampler_, "Stateful feature is not configured");
+  return (feature == ORT_STATEFUL_FEATURE_CACHE ? cache_->Dispatch() : *sampler_).GetInfo(operation, out);
+}
+
+Status SessionLoopExecution::GetStagingInfo(size_t component, OrtStatefulStagingInfo& out) const {
+  ORT_RETURN_IF(component != 0, "Standalone loop component index must be zero");
+  out = staging_;
+  return Status::OK();
+}
+
+Status SessionLoopExecution::Reset() {
+  requires_reset_ = true;
   if (owns_state_) {
     if (cache_) {
-      cache_->Reset();
+      ORT_RETURN_IF_ERROR(cache_->Reset());
     }
     if (generation_) {
       generation_->Reset();
@@ -470,6 +539,7 @@ void SessionLoopExecution::Reset() {
   progress_ = {};
   cancelled_.store(false);
   requires_reset_ = false;
+  return Status::OK();
 }
 
 }  // namespace onnxruntime

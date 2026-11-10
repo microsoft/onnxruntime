@@ -38,6 +38,8 @@ struct SessionChainComponent {
   InlinedVector<ChainInputBinding> inputs;
   InlinedVector<ChainStateBinding> state_outputs;
   InlinedVector<LoopKVCacheBinding, 1> kv_caches;
+  std::optional<StatefulProviderSelection> cache_provider;
+  std::optional<StatefulProviderSelection> sampler_provider;
 };
 
 enum class ChainOutputKind { ModelOutput,
@@ -95,6 +97,7 @@ class SessionChain : public std::enable_shared_from_this<SessionChain> {
   InlinedHashSet<std::string> initial_state_names_;
   InlinedVector<KVCacheSpec> cache_specs_;
   bool has_generation_ = false;
+  std::optional<StatefulProviderBinding> cache_provider_;
 };
 
 // Step/Run/Reset are sequential. Only Cancel may be called concurrently.
@@ -103,11 +106,14 @@ class SessionChainExecution {
   Status Step(SessionChainStepResult& out);
   Status Run(SessionChainStepResult& out);
   void Cancel() noexcept { cancelled_.store(true); }
-  void Reset();
+  Status Reset();
   bool RequiresReset() const { return requires_reset_; }
   const LoopFeeds& State() const { return state_; }
   const KVCacheManager* Cache() const { return cache_.get(); }
   const TokenGenerationState* Generation() const { return generation_.get(); }
+  Status GetDispatchInfo(OrtStatefulProviderFeature feature, size_t component,
+                         OrtStatefulProviderOperation operation, OrtStatefulDispatchInfo& out) const;
+  Status GetStagingInfo(size_t component, OrtStatefulStagingInfo& out) const;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionChainExecution);
 
  private:
@@ -122,6 +128,8 @@ class SessionChainExecution {
   const SessionChainInputs initial_inputs_;
   const std::shared_ptr<KVCacheManager> cache_;
   const std::shared_ptr<TokenGenerationState> generation_;
+  InlinedVector<std::shared_ptr<StatefulDispatch>> samplers_;
+  InlinedVector<OrtStatefulStagingInfo> staging_;
   InlinedVector<LoopFeeds> component_outputs_;
   LoopFeeds state_;
   std::unique_ptr<SessionLoopExecution> active_;

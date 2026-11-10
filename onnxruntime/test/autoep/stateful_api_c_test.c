@@ -37,6 +37,7 @@ int StatefulApiCConsumerTest(void) {
   void* mutable_data = NULL;
   int64_t length = -1, capacity = -1, token = -1;
   int code = 0;
+  int requires_reset = -1;
   float scores[3] = {1.0f, 4.0f, 2.0f};
   const int64_t logits_shape[2] = {1, 3};
   const int64_t cache_shape[4] = {1, 1, 0, 1};
@@ -44,6 +45,9 @@ int StatefulApiCConsumerTest(void) {
   OrtStatefulSamplerConfig sampler_config = {0};
   OrtStatefulKVCacheSpec spec = {"key", ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, cache_shape, 4, 2, 0};
   OrtStatefulKVCacheConfig cache_config = {0};
+  const OrtStatefulProviderSelection cpu = {
+      sizeof(cpu), ORT_STATEFUL_PROVIDER_CPU, NULL, OrtMemoryInfoDeviceType_CPU, 0};
+  OrtStatefulDispatchInfo dispatch = {0};
 
   sampler_config.struct_size = sizeof(sampler_config);
   sampler_config.algorithm = ORT_STATEFUL_GREEDY;
@@ -55,18 +59,31 @@ int StatefulApiCConsumerTest(void) {
   CHECK(api->CreateTensorWithDataAsOrtValue(memory, scores, sizeof(scores), logits_shape, 2,
                                             ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &logits));
   CHECK(stateful->CreateSamplerOptions(&sampler_config, &sampler));
+  CHECK(stateful->SamplerOptionsSetProvider(sampler, NULL, &cpu));
   CHECK(stateful->SamplerSample(sampler, logits, &token));
+  CHECK(stateful->SamplerOptionsGetDispatchInfo(sampler, sizeof(dispatch), &dispatch));
+  if (dispatch.origin != ORT_STATEFUL_DISPATCH_CPU || dispatch.cpu_calls != 1) {
+    code = 5;
+    goto cleanup;
+  }
   CHECK(api->GetTensorData(logits, &data));
   if (token != 1 || ((const float*)data)[1] != 4.0f) {
     code = 3;
     goto cleanup;
   }
   CHECK(stateful->CreateKVCacheOptions(&cache_config, &cache_options));
+  CHECK(stateful->KVCacheOptionsSetProvider(cache_options, NULL, &cpu));
   CHECK(stateful->CreateKVCacheManager(cache_options, allocator, &cache));
   CHECK(api->CreateTensorAsOrtValue(allocator, value_shape, 4, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &cache_tensor));
   CHECK(api->GetTensorMutableData(cache_tensor, &mutable_data));
   *(float*)mutable_data = 3.0f;
   CHECK(stateful->KVCacheManagerUpdate(cache, "key", cache_tensor, ORT_KV_CACHE_SHARE));
+  CHECK(stateful->KVCacheManagerGetDispatchInfo(cache, ORT_STATEFUL_CACHE_SHARE, sizeof(dispatch), &dispatch));
+  CHECK(stateful->KVCacheManagerRequiresReset(cache, &requires_reset));
+  if (dispatch.origin != ORT_STATEFUL_DISPATCH_CPU || dispatch.cpu_calls != 1 || requires_reset != 0) {
+    code = 6;
+    goto cleanup;
+  }
   CHECK(stateful->KVCacheManagerGetView(cache, "key", &view));
   stateful->ReleaseKVCacheManager(cache);
   cache = NULL;

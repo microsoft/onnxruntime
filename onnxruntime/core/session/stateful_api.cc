@@ -53,6 +53,7 @@ struct OrtStatefulStepResult {
 };
 struct OrtKVCacheOptions {
   std::unique_ptr<InlinedVector<KVCacheSpec>> value;
+  StatefulProviderBinding provider;
 };
 struct OrtKVCacheManager {
   std::unique_ptr<KVCacheManager> value;
@@ -62,6 +63,7 @@ struct OrtKVCacheView {
 };
 struct OrtSamplerOptions {
   std::optional<int64_t> position;
+  std::shared_ptr<StatefulDispatch> dispatch = std::make_shared<StatefulDispatch>();
 };
 
 namespace OrtStatefulAPI {
@@ -92,12 +94,23 @@ V1_PREFIX(OrtStatefulSamplerConfig, logits_position)
 V1_PREFIX(OrtStatefulGenerationConfig, logits_position)
 V1_PREFIX(OrtStatefulStepInfo, generated_token)
 V1_PREFIX(OrtStatefulKVCacheStats, shared_updates)
+V1_PREFIX(OrtStatefulProviderCapabilities, device_id)
+V1_PREFIX(OrtStatefulDispatchInfo, failures)
+V1_PREFIX(OrtStatefulStagingInfo, cpu_snapshot_copy_bytes)
 #undef V1_PREFIX
 
 template <typename T>
 Status Sized(const T* config) {
   return Require(config && config->struct_size >= V1Size<T>::value,
                  "Configuration is NULL or its struct_size is too small");
+}
+
+template <typename T>
+Status CopyInfo(T value, size_t size, T* out) {
+  ORT_RETURN_IF_ERROR(Require(out && size >= V1Size<T>::value, "Output buffer is NULL or too small"));
+  value.struct_size = std::min(size, sizeof(value));
+  std::memcpy(out, &value, value.struct_size);
+  return Status::OK();
 }
 
 template <typename T>
@@ -405,7 +418,7 @@ Status Advance(OrtStatefulExecution& execution, bool run, std::unique_ptr<OrtSta
 #define CHECK_POINTERS(condition) \
   ORT_API_RETURN_IF(!(condition), ORT_INVALID_ARGUMENT, "Required handle/configuration/output is NULL")
 
-#define DEFINE_OPTIONS(Name, Config, Native, Parse)                                \
+#define DEFINE_OPTIONS(Name, Config, Native, Parse, Reset)                         \
   ORT_API_STATUS_IMPL(Create##Name, const Config* config, Ort##Name** out) {       \
     API_IMPL_BEGIN                                                                 \
     CHECK_POINTERS(out);                                                           \
@@ -423,13 +436,15 @@ Status Advance(OrtStatefulExecution& execution, bool run, std::unique_ptr<OrtSta
     auto value = std::make_unique<Native>();                                       \
     ORT_API_RETURN_IF_STATUS_NOT_OK(Parse(config, *value));                        \
     options->value = std::move(value);                                             \
+    Reset;                                                                         \
     return nullptr;                                                                \
     API_IMPL_END                                                                   \
   }
 
-DEFINE_OPTIONS(SessionLoopOptions, OrtStatefulLoopConfig, SessionLoopOptions, LoopConfig)
-DEFINE_OPTIONS(SessionChainOptions, OrtStatefulChainConfig, SessionChainOptions, ChainConfig)
-DEFINE_OPTIONS(KVCacheOptions, OrtStatefulKVCacheConfig, InlinedVector<KVCacheSpec>, CacheConfig)
+DEFINE_OPTIONS(SessionLoopOptions, OrtStatefulLoopConfig, SessionLoopOptions, LoopConfig, {})
+DEFINE_OPTIONS(SessionChainOptions, OrtStatefulChainConfig, SessionChainOptions, ChainConfig, {})
+DEFINE_OPTIONS(KVCacheOptions, OrtStatefulKVCacheConfig, InlinedVector<KVCacheSpec>,
+               CacheConfig, options->provider = {})
 
 ORT_API_STATUS_IMPL(CreateSessionLoop,
                     OrtSession* session,
@@ -510,7 +525,7 @@ ORT_API_STATUS_IMPL(StatefulExecutionReset, OrtStatefulExecution* execution) {
   API_IMPL_BEGIN
   CHECK_POINTERS(execution);
   execution->requires_reset = true;
-  std::visit([](auto& value) { value->Reset(); }, execution->value);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(std::visit([](auto& value) { return value->Reset(); }, execution->value));
   execution->requires_reset = false;
   return nullptr;
   API_IMPL_END
@@ -592,7 +607,8 @@ ORT_API_STATUS_IMPL(CreateKVCacheManager, const OrtKVCacheOptions* options, OrtA
   ORT_API_RETURN_IF(!allocator->Info(allocator), ORT_INVALID_ARGUMENT, "Allocator memory information is NULL");
   auto result = std::make_unique<OrtKVCacheManager>();
   auto adapter = std::make_shared<IAllocatorImplWrappingOrtAllocator>(allocator);
-  ORT_API_RETURN_IF_STATUS_NOT_OK(KVCacheManager::Create(*options->value, std::move(adapter), result->value));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      KVCacheManager::Create(*options->value, std::move(adapter), result->value, options->provider));
   *out = result.release();
   return nullptr;
   API_IMPL_END
@@ -640,7 +656,7 @@ ORT_API_STATUS_IMPL(KVCacheManagerReserve, OrtKVCacheManager* manager, const cha
 ORT_API_STATUS_IMPL(KVCacheManagerReset, OrtKVCacheManager* manager) {
   API_IMPL_BEGIN
   CHECK_POINTERS(manager);
-  manager->value->Reset();
+  ORT_API_RETURN_IF_STATUS_NOT_OK(manager->value->Reset());
   return nullptr;
   API_IMPL_END
 }
@@ -673,7 +689,9 @@ ORT_API_STATUS_IMPL(SamplerOptionsSetConfig, OrtSamplerOptions* options, const O
   CHECK_POINTERS(options);
   std::optional<int64_t> position;
   ORT_API_RETURN_IF_STATUS_NOT_OK(SamplerConfig(config, position));
+  auto dispatch = std::make_shared<StatefulDispatch>();
   options->position = position;
+  options->dispatch = std::move(dispatch);
   return nullptr;
   API_IMPL_END
 }
@@ -682,8 +700,144 @@ ORT_API_STATUS_IMPL(SamplerSample, const OrtSamplerOptions* options, const OrtVa
   API_IMPL_BEGIN
   CHECK_POINTERS(options && logits && token);
   int64_t value = 0;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(Sampler::Greedy(*logits, options->position, value));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(Sampler::Sample(*logits, options->position, *options->dispatch, value));
   *token = value;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(SessionLoopOptionsSetProvider, OrtSessionLoopOptions* options,
+                    OrtStatefulProviderFeature feature, const OrtStatefulProviderSelection* selection) {
+  API_IMPL_BEGIN
+  CHECK_POINTERS(options);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(Enum(feature, 1));
+  StatefulProviderSelection parsed;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(StatefulProviderSelection::Parse(selection, parsed));
+  (feature == ORT_STATEFUL_FEATURE_CACHE ? options->value->cache_provider : options->value->sampler_provider) =
+      std::move(parsed);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(SessionChainOptionsSetComponentProvider, OrtSessionChainOptions* options, size_t component,
+                    OrtStatefulProviderFeature feature, const OrtStatefulProviderSelection* selection) {
+  API_IMPL_BEGIN
+  CHECK_POINTERS(options);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(Enum(feature, 1));
+  ORT_API_RETURN_IF(component >= options->value->components.size(), ORT_INVALID_ARGUMENT, "Invalid component index");
+  StatefulProviderSelection parsed;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(StatefulProviderSelection::Parse(selection, parsed));
+  auto& value = options->value->components[component];
+  (feature == ORT_STATEFUL_FEATURE_CACHE ? value.cache_provider : value.sampler_provider) = std::move(parsed);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(KVCacheOptionsSetProvider, OrtKVCacheOptions* options, OrtSession* session,
+                    const OrtStatefulProviderSelection* selection) {
+  API_IMPL_BEGIN
+  CHECK_POINTERS(options);
+  StatefulProviderSelection parsed;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(StatefulProviderSelection::Parse(selection, parsed));
+  StatefulProviderBinding binding;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      StatefulProviderBinding::Resolve(reinterpret_cast<InferenceSession*>(session), parsed, binding));
+  options->provider = std::move(binding);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(SamplerOptionsSetProvider, OrtSamplerOptions* options, OrtSession* session,
+                    const OrtStatefulProviderSelection* selection) {
+  API_IMPL_BEGIN
+  CHECK_POINTERS(options);
+  StatefulProviderSelection parsed;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(StatefulProviderSelection::Parse(selection, parsed));
+  StatefulProviderBinding binding;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      StatefulProviderBinding::Resolve(reinterpret_cast<InferenceSession*>(session), parsed, binding));
+  auto dispatch = std::make_shared<StatefulDispatch>(std::move(binding));
+  bool provider = false;
+  const auto types = dispatch->Binding().Descriptor().capabilities.sampler_element_types;
+  const int element_type = (types & (uint64_t{1} << ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT)) != 0
+                               ? ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT
+                               : ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      dispatch->Select(ORT_STATEFUL_SAMPLE_GREEDY, element_type, true, provider));
+  options->dispatch = std::move(dispatch);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(QueryStatefulProviderCapabilities, const OrtSession* session, const char* name,
+                    size_t size, OrtStatefulProviderCapabilities* out) {
+  API_IMPL_BEGIN
+  CHECK_POINTERS(session && name && out);
+  OrtStatefulProviderCapabilities caps{};
+  auto& native = *const_cast<InferenceSession*>(reinterpret_cast<const InferenceSession*>(session));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(StatefulProviderBinding::Query(native, name, caps));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(CopyInfo(caps, size, out));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(StatefulExecutionGetDispatchInfo, const OrtStatefulExecution* execution,
+                    OrtStatefulProviderFeature feature, size_t component, OrtStatefulProviderOperation operation,
+                    size_t size, OrtStatefulDispatchInfo* out) {
+  API_IMPL_BEGIN
+  CHECK_POINTERS(execution && out);
+  OrtStatefulDispatchInfo info{};
+  ORT_API_RETURN_IF_STATUS_NOT_OK(std::visit([&](const auto& value) {
+    return value->GetDispatchInfo(feature, component, operation, info);
+  },
+                                             execution->value));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(CopyInfo(info, size, out));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(KVCacheManagerGetDispatchInfo, const OrtKVCacheManager* manager,
+                    OrtStatefulProviderOperation operation, size_t size, OrtStatefulDispatchInfo* out) {
+  API_IMPL_BEGIN
+  CHECK_POINTERS(manager && out);
+  ORT_API_RETURN_IF(operation < ORT_STATEFUL_CACHE_INITIALIZE || operation > ORT_STATEFUL_CACHE_RESET,
+                    ORT_INVALID_ARGUMENT, "Invalid cache operation");
+  OrtStatefulDispatchInfo info{};
+  ORT_API_RETURN_IF_STATUS_NOT_OK(manager->value->Dispatch().GetInfo(operation, info));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(CopyInfo(info, size, out));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(SamplerOptionsGetDispatchInfo, const OrtSamplerOptions* options,
+                    size_t size, OrtStatefulDispatchInfo* out) {
+  API_IMPL_BEGIN
+  CHECK_POINTERS(options && out);
+  OrtStatefulDispatchInfo info{};
+  ORT_API_RETURN_IF_STATUS_NOT_OK(options->dispatch->GetInfo(ORT_STATEFUL_SAMPLE_GREEDY, info));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(CopyInfo(info, size, out));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(KVCacheManagerRequiresReset, const OrtKVCacheManager* manager, int* out) {
+  API_IMPL_BEGIN
+  CHECK_POINTERS(manager && out);
+  *out = manager->value->RequiresReset();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(StatefulExecutionGetStagingInfo, const OrtStatefulExecution* execution,
+                    size_t component, size_t size, OrtStatefulStagingInfo* out) {
+  API_IMPL_BEGIN
+  CHECK_POINTERS(execution && out);
+  OrtStatefulStagingInfo info{};
+  ORT_API_RETURN_IF_STATUS_NOT_OK(std::visit([&](const auto& value) {
+    return value->GetStagingInfo(component, info);
+  },
+                                             execution->value));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(CopyInfo(info, size, out));
   return nullptr;
   API_IMPL_END
 }
@@ -740,6 +894,16 @@ static constexpr OrtStatefulApi stateful_api = {
     &SamplerOptionsSetConfig,
     &ReleaseSamplerOptions,
     &SamplerSample,
+    &SessionLoopOptionsSetProvider,
+    &SessionChainOptionsSetComponentProvider,
+    &KVCacheOptionsSetProvider,
+    &SamplerOptionsSetProvider,
+    &QueryStatefulProviderCapabilities,
+    &StatefulExecutionGetDispatchInfo,
+    &KVCacheManagerGetDispatchInfo,
+    &SamplerOptionsGetDispatchInfo,
+    &KVCacheManagerRequiresReset,
+    &StatefulExecutionGetStagingInfo,
 };
 
 #undef CHECK_POINTERS

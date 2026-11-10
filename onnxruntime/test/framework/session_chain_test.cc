@@ -211,7 +211,7 @@ TEST_P(SessionChainTest, RetainedStateStepRunIsolationAndReset) {
   EXPECT_EQ(first->calls + second->calls, calls);
   ASSERT_STATUS_OK(execution->Run(result));
   EXPECT_FALSE(result.executed);
-  execution->Reset();
+  ASSERT_STATUS_OK(execution->Reset());
   EXPECT_EQ(*execution->State().at("cache").Get<Tensor>().Data<float>(), 0.f);
   ASSERT_STATUS_OK(execution->Run(result));
   EXPECT_EQ(*result.outputs.at("result").Get<Tensor>().Data<float>(), 9.f);
@@ -334,10 +334,10 @@ TEST_P(SessionChainTest, FailedComponentStopsDownstreamAndRequiresReset) {
   EXPECT_TRUE(execution->RequiresReset());
   EXPECT_FALSE(execution->Step(result).IsOK());
   failing->before_run = {};
-  execution->Reset();
+  ASSERT_STATUS_OK(execution->Reset());
   ASSERT_STATUS_OK(execution->Run(result));
   EXPECT_EQ(*result.outputs.at("result").Get<Tensor>().Data<float>(), 8.f);
-  execution->Reset();
+  ASSERT_STATUS_OK(execution->Reset());
   failing->before_run = []() -> Status { ORT_THROW("injected exception"); };
   EXPECT_THROW(ORT_THROW_IF_ERROR(execution->Run(result)), OnnxRuntimeException);
   EXPECT_TRUE(execution->RequiresReset());
@@ -351,7 +351,7 @@ TEST_P(SessionChainTest, CancellationBeforeAndDuringComponent) {
   EXPECT_FALSE(execution->Step(result).IsOK());
   EXPECT_TRUE(execution->RequiresReset());
   EXPECT_EQ(session->calls, 0u);
-  execution->Reset();
+  ASSERT_STATUS_OK(execution->Reset());
   std::promise<void> entered, resume;
   auto resumed = resume.get_future();
   session->before_run = [&] {
@@ -366,7 +366,7 @@ TEST_P(SessionChainTest, CancellationBeforeAndDuringComponent) {
   EXPECT_FALSE(status.get().IsOK());
   EXPECT_TRUE(execution->RequiresReset());
   session->before_run = {};
-  execution->Reset();
+  ASSERT_STATUS_OK(execution->Reset());
   ASSERT_STATUS_OK(execution->Run(result));
   EXPECT_TRUE(result.completed);
 }
@@ -621,7 +621,7 @@ TEST_P(SessionChainTest, DynamicCacheTensorsAndLogitsPassBetweenStages) {
   EXPECT_EQ(logits[1], 1.f);
   EXPECT_EQ(logits[2], 5.f);
   EXPECT_EQ(logits[3], -2.f);
-  execution->Reset();
+  ASSERT_STATUS_OK(execution->Reset());
   EXPECT_EQ(cache.Data<float>()[1], 1.f);
 }
 
@@ -718,7 +718,7 @@ TEST_F(KVCacheManagerTest, EmptyReserveGrowthResetAndOwnership) {
   ASSERT_STATUS_OK(manager->Reserve("key", 6));
   EXPECT_EQ(View(*manager).capacity, 6);
   EXPECT_EQ(View(*manager).value.Get<Tensor>().Data<float>()[1], 2.f);
-  manager->Reset();
+  ASSERT_STATUS_OK(manager->Reset());
   EXPECT_EQ(View(*manager).length, 0);
   EXPECT_EQ(View(*manager).value.Get<Tensor>().Shape()[2], 0);
   EXPECT_EQ(View(*manager).capacity, 6);
@@ -816,7 +816,7 @@ TEST_F(KVCacheManagerTest, MultipleLayersAndFloatingPointTypes) {
   }
   EXPECT_EQ(View(*manager, "layer0.key").value.Get<Tensor>().Data<MLFloat16>()[0].ToFloat(), 2.f);
   EXPECT_EQ(View(*manager, "layer0.value").value.Get<Tensor>().Data<BFloat16>()[0].ToFloat(), 3.f);
-  manager->Reset();
+  ASSERT_STATUS_OK(manager->Reset());
   EXPECT_EQ(View(*manager, "layer0.value").length, 0);
   ASSERT_STATUS_OK(manager->Update("layer1.key", Value<float>({1, 1, 0, 1}, {}), KVCacheUpdateKind::Copy));
 }
@@ -957,7 +957,7 @@ TEST_P(SessionChainTest, ManagedCpuCacheInLoopRetainsAndResets) {
   EXPECT_EQ(last.value.Get<Tensor>().Data<float>()[1], 1.f);
   EXPECT_EQ(first.value.Get<Tensor>().Shape()[2], 1);
   EXPECT_EQ(execution->Cache()->Stats().shared_updates, 2u);
-  execution->Reset();
+  ASSERT_STATUS_OK(execution->Reset());
   ASSERT_STATUS_OK(execution->Cache()->Get("key", last));
   EXPECT_EQ(last.length, 0);
   ASSERT_STATUS_OK(execution->Run(result));
@@ -1016,7 +1016,7 @@ TEST_P(SessionChainTest, ManagedCacheSharesAcrossPrefillDecodeAndIndependentCont
   EXPECT_EQ(execution->Cache()->Stats().bytes_copied, 0u);
   EXPECT_EQ(prefill_snapshot.Get<Tensor>().Shape()[2], 1);
   auto retained = result.outputs.at("cache");
-  execution->Reset();
+  ASSERT_STATUS_OK(execution->Reset());
   EXPECT_EQ(execution->State().at("key").Get<Tensor>().Shape()[2], 0);
   ASSERT_STATUS_OK(execution->Run(result));
   execution.reset();
@@ -1176,7 +1176,7 @@ TEST_P(SessionChainTest, InvalidManagedOutputRequiresResetWithoutCommittingCache
   EXPECT_EQ(view.length, 1);
   EXPECT_EQ(view.value.Get<Tensor>().Data<float>()[0], 0.f);
   session->after_run = {};
-  execution->Reset();
+  ASSERT_STATUS_OK(execution->Reset());
   ASSERT_STATUS_OK(execution->Run(result));
   ASSERT_STATUS_OK(execution->Cache()->Get("key", view));
   EXPECT_EQ(view.length, 3);
@@ -1421,7 +1421,7 @@ TEST_P(SessionChainTest, GreedyGenerationMatchesDirectSessionsAndFeedPolicies) {
   EXPECT_FALSE(result.component_result.generated_token.has_value());
   EXPECT_TRUE(result.outputs.empty());
   EXPECT_EQ(prefill->calls + decode->calls, calls);
-  execution->Reset();
+  ASSERT_STATUS_OK(execution->Reset());
   EXPECT_TRUE(execution->Generation()->token_ids.empty());
   EXPECT_EQ(execution->Generation()->processed_tokens, 0);
   ASSERT_STATUS_OK(execution->Run(result));
@@ -1497,7 +1497,7 @@ TEST_P(SessionChainTest, StandalonePrefillFloat16AndExplicitLogitsPosition) {
     EXPECT_EQ(result.generated_tokens, 1);
     ASSERT_NE(execution->Generation(), nullptr);
     EXPECT_EQ(execution->Generation()->processed_tokens, 2);
-    execution->Reset();
+    ASSERT_STATUS_OK(execution->Reset());
     EXPECT_TRUE(execution->Generation()->token_ids.empty());
     ASSERT_STATUS_OK(execution->Step(result));
     EXPECT_EQ(result.generated_token, 1);
@@ -1646,7 +1646,7 @@ TEST_P(SessionChainTest, GenerationFailuresRequireResetAndKeepCommittedState) {
   EXPECT_EQ(execution->Generation()->processed_tokens, 1);
   EXPECT_EQ(result.generated_tokens, 1);
   decode->after_run = {};
-  execution->Reset();
+  ASSERT_STATUS_OK(execution->Reset());
   ASSERT_STATUS_OK(execution->Run(result));
   EXPECT_EQ(result.generated_tokens, 3);
 
@@ -1654,7 +1654,7 @@ TEST_P(SessionChainTest, GenerationFailuresRequireResetAndKeepCommittedState) {
     binding.GetOutputs()[1] = Value<float>({1, 1, 0, 1}, {});
     return Status::OK();
   };
-  execution->Reset();
+  ASSERT_STATUS_OK(execution->Reset());
   EXPECT_FALSE(execution->Step(result).IsOK());
   EXPECT_TRUE(execution->RequiresReset());
   EXPECT_TRUE(execution->Generation()->token_ids.empty());

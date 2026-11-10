@@ -1152,3 +1152,229 @@ returns copied metadata, and GetState returns retained state snapshots.
 The public-API unit tests exercise all four Session/Loop chain combinations,
 explicit exits, reset/cancellation, prefill/decode and zero/one/multiple-token
 budgets on CPU and CUDA Sessions.
+
+## Appendix G. M07 provider capability and dispatch contract
+
+**Status:** Approved by the user on 2026-10-17 without changes. The behavior
+choices, M07a/M07b split and absence of additional specification input are
+confirmed. The detailed execution plan and both sequential sub-PRs were also
+approved without changes before implementation.
+
+This appendix refines EP-1 through EP-5 and Appendix A.5. It does not add native
+CUDA cache/sampling, new sampling algorithms, opaque/paged cache layouts,
+arbitrary heterogeneous pipelines or package configuration. Those existing
+scope boundaries and later milestones remain unchanged.
+
+### G.1 Independent selection and backward compatibility
+
+- Cache management and sampling have independent provider selections. Selecting
+  one does not implicitly select the other.
+- The default remains explicit CPU behavior, preserving M02-M06. Registering a
+  CUDA/plugin EP for model execution alone does not change stateful dispatch.
+- Expose CPU, PreferProvider and RequireProvider policies through native and
+  public C/C++ interfaces. Provider-backed choices identify an EP already
+  registered in an initialized Session and a compatible device.
+- CPU uses the reference implementation. PreferProvider uses an advertised,
+  compatible override; missing capabilities may use CPU only under G.3.
+  RequireProvider never substitutes CPU for a required provider operation.
+- Unknown provider names, ambiguous devices and incompatible memory/layout
+  requests report explicit errors rather than silently choosing CPU.
+- Existing Session-free standalone CPU cache/sampler APIs remain valid.
+  Provider-backed standalone use explicitly binds an initialized Session;
+  objects retain the required provider resources instead of an unsafe borrowed
+  callback pointer. Merely choosing a provider does not load an arbitrary DLL.
+
+### G.2 Per-feature capabilities and coherent cache state
+
+- Discovery distinguishes individual supported KV operations and greedy
+  sampling; providers need not implement an all-or-nothing manager or sampler.
+- KV capabilities cover initialization/allocation, full-output sharing/copy,
+  delta append, reserve/growth and reset, with retention/handoff supported by
+  the common tensor/resource ownership contract. Ordinary metadata inspection
+  and retaining an OrtValue are not falsely reported as native compute.
+- Advertise supported element types, layouts, memory/device contracts and the
+  callbacks needed for each claimed capability. Reject inconsistent descriptors
+  rather than advertising operations that cannot be invoked.
+- Partial support remains useful: a sampler-only provider leaves cache behavior
+  independent, and a compatible CPU-storage cache override may specialize only
+  some operations under PreferProvider.
+- Resolve one cache backend/device/storage contract for an entire chain
+  execution. Shared prefill/decode caches do not switch backend between stages.
+  Conflicting stage requirements fail clearly. Sampling may be selected per
+  stage independently of the shared cache.
+- Cache storage remains contiguous and tensor-backed with the validated M04
+  layout, ownership, length/capacity and retained-view guarantees. A partial
+  override cannot hide an incompatible private layout behind CPU fallback.
+- Validate required capabilities before execution when they are known, and
+  before each later requested operation. Absence of an unused optional
+  capability does not itself invalidate otherwise supported operations.
+
+### G.3 Fallback, movement and failure
+
+- CPU fallback is permitted only for a missing capability, when the policy
+  permits it and all operands/storage satisfy the CPU implementation's
+  declared memory and layout contract.
+- Do not transfer device data to CPU merely to make an otherwise incompatible
+  fallback appear successful. A device/backend mismatch is unsupported.
+- Existing, intentional CPU-mode Session I/O staging and stable CPU output
+  snapshots remain supported. Record that movement separately; it is not
+  evidence of native cache/sampler dispatch. Backend selection/fallback must
+  not introduce undisclosed transfers.
+- Once an advertised provider callback is invoked, propagate any failure,
+  including NOT_IMPLEMENTED. Never retry it on CPU or report CPU success after
+  a provider failure.
+- Preserve the existing reset-after-failure contract for execution contexts.
+  A failed provider operation that may have mutated standalone cache state
+  also prevents further mutable use until successful reset. Validation failures
+  before mutation do not pretend to be provider execution.
+- Reset/provider errors must be returned or raised explicitly; failed recovery
+  must not mark an invalidated object healthy.
+- Callbacks preserve retained immutable values/views and cannot mutate their
+  previously published storage through an unsafe alias. Cancellation remains
+  an atomic boundary request, not kernel preemption.
+
+### G.4 Built-in and shared-provider boundary
+
+- Extend IExecutionProvider with optional discovery/hooks; unchanged providers
+  advertise no overrides. No changes are required to deprecated EPs/backends.
+- Route CPU behavior through the same validated selection/dispatch contract,
+  reusing the existing CPU cache and greedy implementations rather than copying
+  their algorithms.
+- Wire the shared-provider bridge as necessary. Boundary-visible descriptors
+  use opaque C handles, primitive metadata and function pointers, not in-tree
+  graph/Tensor/C++ ownership types. Graph-specific validation stays in the
+  appropriate host-side wrappers.
+- M07 proves real built-in dispatch and callback invocation. CUDA may continue
+  to advertise no native stateful capabilities until M08/M09; RequireProvider
+  must then fail explicitly for those unavailable operations.
+
+### G.5 Plugin registration and ABI
+
+- Use an optional, versioned, size-tagged C descriptor registered through
+  appended OrtEpApi entry points, as approved in Appendix A.5.
+- Do not append mandatory callback fields to OrtEp or read beyond an older
+  plugin's allocation. Old plugins register no descriptor and continue with
+  their existing behavior.
+- Copy registration metadata/configuration; define callback/context ownership
+  and retain/release responsibilities. Active registrations are immutable while
+  dependent stateful objects use them.
+- Validate descriptor version/size, pointer/count pairs, capability/callback
+  consistency and memory contracts. Failed registration or failed EP creation
+  must not leak retained contexts/resources.
+- Negotiate through existing API/version mechanisms. Keep shipped entries and
+  signatures unchanged, append public functions/initializers only, and do not
+  bump ORT_API_VERSION or introduce release-boundary markers.
+- C callback errors use owned OrtStatus results with standard release rules;
+  C++ exceptions must not cross the callback boundary.
+
+### G.6 Lifetime and synchronous execution
+
+- Retain provider contexts, allocators, factory/library dependencies and any
+  callback-bearing resources for as long as dependent stateful objects need them.
+- Existing caller-owned model Sessions must still outlive referencing loop/
+  chain definitions and executions. Retained result/cache values may outlive
+  those contexts/Sessions without dangling provider deleters or unloaded code.
+- Unregistration must not unload callback code or release needed resources while
+  live objects still depend on them. Release each owned resource exactly once.
+- Retain the synchronous Step/Run observation contract. Do not claim native GPU
+  stream implementations from CPU-only overrides; M08/M09 must supply their
+  actual device and ordering guarantees.
+
+### G.7 Observability and acceptance
+
+- Query capabilities without executing the operation. Report selected policy,
+  provider/device, operation and whether CPU was explicitly selected, an
+  override ran, or a permitted missing-capability fallback occurred.
+- Expose required movement separately from implementation selection. Provider
+  callback/copy/allocation evidence must distinguish real dispatch from model
+  EP registration, a fallback, an empty test or an uncalled callback.
+- Tests cover default CPU, no overrides, independent and partial overrides,
+  RequireProvider failures, compatible fallback, rejected device fallback,
+  callback errors/reset, malformed registrations, release ordering and resource
+  retention after context release.
+- Plugin compatibility evidence includes a genuine older/shorter OrtEp contract,
+  not only a current-size plugin that happens not to register overrides.
+- Execute CPU and relevant CUDA-build tests, actual built-in/plugin callbacks,
+  public C/C++ parity and pure-C boundary compilation. Measure 100% new
+  executable host/glue lines without claiming unimplemented GPU coverage.
+
+### G.8 Reviewable delivery boundaries
+
+- M07a establishes native capability/selection contracts, real CPU routing,
+  C/C++ selection/observation surfaces and built-in test-provider evidence.
+- M07b adds plugin registration/adapters, retained plugin resources and legacy
+  ABI/partial-capability test-plugin evidence, stacked on M07a.
+- Each sub-PR is independently documented/tested and ready for human review.
+  Macro M07 is complete only after both satisfy their CPU/CUDA and measured
+  coverage gates. The detailed tasks/test plan is prepared after this appendix
+  is approved and reviewed before implementation.
+
+### G.9 M07a interface mapping and callback storage
+
+The implemented native hook returns an optional OrtStatefulProviderDescriptor,
+using only the public C types even in a shared-provider DLL. Its version-1
+capabilities describe six cache operations and greedy sampling independently.
+Initialization/growth callbacks return capacity-shaped storage containing
+compact logical data, together with explicit logical length/capacity and
+operation-buffer counters. Published buffers remain immutable. Share preserves
+the allocator-owned source buffer; the runtime validates result layout/extents.
+
+Callbacks may explicitly invoke the provided CPU reference once, only with
+CPU-compatible operands. This is a reported provider delegation, not native GPU
+work or an automatic retry. Request pointers/reference contexts are valid only
+during the synchronous call. ORT retains the supplied allocator adapter with
+returned storage, allowing CreateTensorAsOrtValue to retain its allocator safely.
+Providers must not otherwise save a borrowed request or CPU-reference context.
+
+Loop and component policy setters copy selections; standalone cache/sampler
+setters resolve and retain resources from the supplied initialized Session.
+SetConfig replaces the complete configuration and resets provider choices.
+Unmodified component choices inherit their immutable loop definition.
+The added C table entries and C++ wrappers do not change M06 record strides.
+
+Dispatch metadata distinguishes the actual provider from the requested provider,
+uses NOT_INVOKED before an operation runs, and keeps bounded per-operation
+CPU/provider/delegation/failure counters. C++ copies both names. Missing required
+capabilities and incompatible CPU fallback return explicit unsupported errors.
+
+Separate execution-lifetime staging counters report successful CPU BindInput
+request payloads (including overwritten bindings), CPU outputs observed after
+Run, and successful CPU stable-snapshot copies. They survive Reset and are
+readable after failure. They are not measured DMA bytes, do not imply a new
+fallback transfer, and do not prove native CUDA cache/sampling.
+
+This public-SDK example explicitly selects the registered CPU provider rather
+than merely relying on the default CPU path. Run from a build output directory
+containing the established testdata/mul_1.onnx fixture:
+
+```cpp
+#include "onnxruntime_cxx_api.h"
+
+int main() {
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "stateful-provider-example");
+  Ort::SessionOptions session_options;
+  session_options.SetIntraOpNumThreads(1);
+  Ort::Session session(env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
+  const auto capabilities = Ort::QueryStatefulProviderCapabilities(session, "CPUExecutionProvider");
+  const OrtStatefulProviderSelection selection{
+      sizeof(selection), ORT_STATEFUL_PROVIDER_REQUIRE, "CPUExecutionProvider",
+      OrtMemoryInfoDeviceType_CPU, 0};
+  const OrtStatefulSamplerConfig config{sizeof(config), ORT_STATEFUL_GREEDY, 0, 0};
+  Ort::SamplerOptions sampler(config);
+  sampler.SetProvider(selection, session);
+  Ort::AllocatorWithDefaultOptions allocator;
+  const int64_t shape[]{1, 3};
+  auto logits = Ort::Value::CreateTensor<float>(allocator, shape, 2);
+  auto* scores = logits.GetTensorMutableData<float>();
+  scores[0] = 1.f;
+  scores[1] = 4.f;
+  scores[2] = 2.f;
+  const auto token = sampler.Sample(logits);
+  const auto dispatch = sampler.GetDispatchInfo();
+  return capabilities.operations != 0 && token == 1 &&
+                 dispatch.origin == ORT_STATEFUL_DISPATCH_PROVIDER &&
+                 dispatch.provider_calls == 1 && dispatch.cpu_delegations == 1
+             ? 0
+             : 1;
+}
+```

@@ -490,6 +490,11 @@ class IExecutionProvider {
     return OrtEpContextDataCallbackSupportFlags_NONE;
   }
 
+  // Optional, immutable C descriptor. Context references must survive Session release.
+  virtual const OrtStatefulProviderDescriptor* GetStatefulProvider() const noexcept {
+    return nullptr;
+  }
+
  private:
   const std::string type_;
 
