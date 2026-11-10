@@ -14,6 +14,10 @@
 #include "core/graph/onnx_protobuf.h"
 #include "gsl/gsl"
 
+#if defined(_OPSCHEMA_LIB_)
+#include "core/graph/constants.h"
+#endif
+
 namespace onnxruntime::contrib {
 
 struct OpKey {
@@ -46,7 +50,11 @@ Status ValidateSourcePolicy(const SourcePolicy& policy);
 // Call during schema registration, not through a static/linker registration mechanism.
 Status RecordSourcePolicy(const ONNX_NAMESPACE::OpSchema& schema, SourcePolicy policy);
 #if defined(_OPSCHEMA_LIB_)
-static inline void RecordPendingSourcePolicy(ONNX_NAMESPACE::OpSchema&, const char*, int, std::string_view) {}
+static inline void RecordPendingSourcePolicy(ONNX_NAMESPACE::OpSchema& schema, const char* name, int since_version,
+                                             std::string_view) {
+  schema.SetName(name).SetDomain(kMSDomain).SinceVersion(since_version);
+  schema.Finalize();
+}
 #else
 // Schema builders run before the enclosing macro supplies the finalized schema key.
 void RecordPendingSourcePolicy(ONNX_NAMESPACE::OpSchema& schema, const char* name, int since_version,

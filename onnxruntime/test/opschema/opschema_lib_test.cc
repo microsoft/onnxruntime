@@ -21,5 +21,12 @@ int main() {
       return 1;
     }
   }
+  const auto& pending = schemas.back();
+  if (pending.max_input() != static_cast<int>(pending.inputs().size()) ||
+      pending.max_output() != static_cast<int>(pending.outputs().size()) ||
+      pending.inputs().empty() || pending.inputs()[0].GetTypes().empty()) {
+    std::cerr << "Standalone policy-authored schema was not finalized: " << pending.Name() << '\n';
+    return 1;
+  }
   return 0;
 }
