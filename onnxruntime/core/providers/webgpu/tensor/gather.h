@@ -10,6 +10,20 @@
 namespace onnxruntime {
 namespace webgpu {
 
+class GatherRowsProgram final : public Program<GatherRowsProgram> {
+ public:
+  GatherRowsProgram() : Program{"GatherRows"} {}
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
+                                          {"row_size", ProgramUniformVariableDataType::Uint32},
+                                          {"axis_dim", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GatherRowsProgram);
+};
+
 class GatherProgram final : public Program<GatherProgram> {
  public:
   GatherProgram(const uint32_t axis, bool is_int64) : Program{"Gather"}, axis_{axis}, is_int64_{is_int64} {}

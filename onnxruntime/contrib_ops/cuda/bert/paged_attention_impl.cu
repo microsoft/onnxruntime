@@ -46,9 +46,9 @@ Status LaunchSanitizeBlockTable(const int32_t* block_table, int32_t* sanitized_b
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "block_table element count exceeds the CUDA kernel indexing limit.");
   }
-  constexpr int kThreadsPerBlock = 256;
-  const size_t blocks = (element_count + kThreadsPerBlock - 1) / kThreadsPerBlock;
-  SanitizeBlockTableKernel<<<static_cast<unsigned int>(blocks), kThreadsPerBlock, 0, stream>>>(
+  constexpr int kBlockThreads = 256;
+  const size_t blocks = (element_count + kBlockThreads - 1) / kBlockThreads;
+  SanitizeBlockTableKernel<<<static_cast<unsigned int>(blocks), kBlockThreads, 0, stream>>>(
       block_table, sanitized_block_table, element_count, num_blocks);
   return CUDA_CALL(cudaGetLastError());
 }
@@ -81,7 +81,7 @@ __global__ void PrepareCudnnBlockTableKernel(
         cudnn_block_table[row_offset + block] = 0;
       }
       cudnn_seqlens_kv[batch] = mapped_length;
-      if (mapped_length == 0) {
+      if (mapped_length == 0 && sequence_validity != nullptr) {
         sequence_validity[batch] = 0;
       }
     }
@@ -132,11 +132,11 @@ Status LaunchMaskInvalidSequenceOutputs(
     T* output, const int32_t* sequence_validity,
     const int32_t* cumulative_seqlens_q, int batch_size,
     int v_hidden_size, cudaStream_t stream) {
-  constexpr int kThreadsPerBlock = 256;
+  constexpr int kBlockThreads = 256;
   constexpr int kMaxBlocks = 65535;
   if (batch_size > 0 && v_hidden_size > 0) {
     const int blocks = std::min(batch_size, kMaxBlocks);
-    MaskInvalidSequenceOutputs<<<blocks, kThreadsPerBlock, 0, stream>>>(
+    MaskInvalidSequenceOutputs<<<blocks, kBlockThreads, 0, stream>>>(
         output, sequence_validity, cumulative_seqlens_q, batch_size, v_hidden_size);
   }
   return CUDA_CALL(cudaGetLastError());
@@ -466,6 +466,46 @@ struct SaturatingAddInt32 {
   }
 };
 
+template <int kBlockSize>
+__global__ void GetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_t* cumulative_seqlens_q,
+                                       const int32_t* past_seqlens, const int batch_size) {
+  typedef cub::BlockScan<int, kBlockSize> BlockScan;
+  __shared__ typename BlockScan::TempStorage temp_storage;
+  __shared__ int running_total;
+
+  if (threadIdx.x == 0) {
+    cumulative_seqlens_kv[0] = 0;
+    running_total = 0;
+  }
+  __syncthreads();
+
+  for (int base = 0; base < batch_size; base += kBlockSize) {
+    const int id = base + static_cast<int>(threadIdx.x);
+    const int length = (id < batch_size)
+                           ? past_seqlens[id] + cumulative_seqlens_q[id + 1] - cumulative_seqlens_q[id]
+                           : 0;
+    int prefix = 0;
+    int aggregate = 0;
+    BlockScan(temp_storage).InclusiveSum(length, prefix, aggregate);
+    if (id < batch_size) {
+      cumulative_seqlens_kv[id + 1] = running_total + prefix;
+    }
+    __syncthreads();
+    if (threadIdx.x == 0) {
+      running_total += aggregate;
+    }
+    __syncthreads();
+  }
+}
+
+Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_t* cumulative_seqlens_q,
+                                    const int32_t* past_seqlens, const int batch_size, cudaStream_t stream) {
+  constexpr int kThreads = 256;
+  GetCumulativeSeqlensKV<kThreads><<<1, kThreads, 0, stream>>>(cumulative_seqlens_kv, cumulative_seqlens_q,
+                                                               past_seqlens, batch_size);
+  return CUDA_CALL(cudaGetLastError());
+}
+
 __global__ void ClampCumulativeSequenceLengths(int32_t* sanitized_cumulative_seqlens_q,
                                                const int32_t* cumulative_seqlens_q,
                                                int batch_size,
@@ -533,6 +573,10 @@ Status GetSanitizeSequenceLengthsWorkspaceSize(int batch_size,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "batch_size exceeds the sequence sanitizer indexing limit.");
   }
+  if (batch_size < 256) {
+    workspace_bytes = 0;
+    return Status::OK();
+  }
   const int element_count = batch_size + 1;
   int32_t* placeholder = nullptr;
   size_t max_scan_bytes = 0;
@@ -543,6 +587,84 @@ Status GetSanitizeSequenceLengthsWorkspaceSize(int batch_size,
       nullptr, sum_scan_bytes, placeholder, placeholder, SaturatingAddInt32{}, element_count, stream));
   workspace_bytes = std::max(max_scan_bytes, sum_scan_bytes);
   return Status::OK();
+}
+
+__global__ void __launch_bounds__(256) FusedSanitizeSequenceLengthsSmallBatchKernel(
+    int32_t* sanitized_cumulative_seqlens_q,
+    int32_t* sanitized_past_seqlens,
+    int32_t* sequence_validity,
+    int32_t* cumulative_seqlens_kv,
+    const int32_t* cumulative_seqlens_q,
+    const int32_t* past_seqlens,
+    int batch_size,
+    int max_num_blocks_per_seq,
+    int block_size,
+    int token_count) {
+  __shared__ int32_t s_q[256];
+  __shared__ int32_t s_kv[256];
+  const int tid = static_cast<int>(threadIdx.x);
+  if (tid <= batch_size) {
+    if (tid == 0) {
+      s_q[0] = 0;
+    } else if (tid == batch_size) {
+      s_q[tid] = token_count;
+    } else {
+      s_q[tid] = min(token_count, max(0, cumulative_seqlens_q[tid]));
+    }
+  }
+  __syncthreads();
+  for (int offset = 1; offset <= batch_size; offset <<= 1) {
+    int32_t val = tid <= batch_size ? s_q[tid] : 0;
+    if (tid >= offset && tid <= batch_size) {
+      val = max(s_q[tid - offset], val);
+    }
+    __syncthreads();
+    if (tid <= batch_size) {
+      s_q[tid] = val;
+    }
+    __syncthreads();
+  }
+  if (tid <= batch_size) {
+    sanitized_cumulative_seqlens_q[tid] = s_q[tid];
+  }
+  if (tid == 0) {
+    s_kv[0] = 0;
+  }
+  if (tid < batch_size) {
+    const int32_t query_length = s_q[tid + 1] - s_q[tid];
+    const int64_t mapped_capacity = static_cast<int64_t>(max_num_blocks_per_seq) * block_size;
+    const int64_t available_past_capacity = mapped_capacity - query_length;
+    const int64_t max_past_length = available_past_capacity > 0 ? available_past_capacity : 0;
+    const int64_t input_past_length = past_seqlens[tid];
+    if (query_length > mapped_capacity ||
+        input_past_length < 0 || input_past_length > max_past_length) {
+      sanitized_past_seqlens[tid] = 0;
+      sequence_validity[tid] = 0;
+      s_kv[tid + 1] = 0;
+    } else {
+      sequence_validity[tid] = 1;
+      sanitized_past_seqlens[tid] = static_cast<int32_t>(input_past_length);
+      const int64_t uncapped_kv_length = input_past_length + query_length;
+      const int64_t kv_length = uncapped_kv_length < mapped_capacity ? uncapped_kv_length : mapped_capacity;
+      s_kv[tid + 1] = static_cast<int32_t>(kv_length < INT32_MAX ? kv_length : INT32_MAX);
+    }
+  }
+  __syncthreads();
+  const SaturatingAddInt32 sat_add{};
+  for (int offset = 1; offset <= batch_size; offset <<= 1) {
+    int32_t val = tid <= batch_size ? s_kv[tid] : 0;
+    if (tid >= offset && tid <= batch_size) {
+      val = sat_add(s_kv[tid - offset], val);
+    }
+    __syncthreads();
+    if (tid <= batch_size) {
+      s_kv[tid] = val;
+    }
+    __syncthreads();
+  }
+  if (tid <= batch_size) {
+    cumulative_seqlens_kv[tid] = s_kv[tid];
+  }
 }
 
 Status LaunchSanitizeSequenceLengths(int32_t* sanitized_cumulative_seqlens_q,
@@ -562,10 +684,18 @@ Status LaunchSanitizeSequenceLengths(int32_t* sanitized_cumulative_seqlens_q,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "batch_size exceeds the sequence sanitizer indexing limit.");
   }
-  constexpr int kThreadsPerBlock = 256;
+  if (batch_size < 256) {
+    const int threads = ((batch_size + 1 + 31) / 32) * 32;
+    FusedSanitizeSequenceLengthsSmallBatchKernel<<<1, threads, 0, stream>>>(
+        sanitized_cumulative_seqlens_q, sanitized_past_seqlens, sequence_validity,
+        cumulative_seqlens_kv, cumulative_seqlens_q, past_seqlens, batch_size,
+        max_num_blocks_per_seq, block_size, token_count);
+    return CUDA_CALL(cudaGetLastError());
+  }
+  constexpr int kBlockThreads = 256;
   const int cumulative_element_count = batch_size + 1;
-  const int cumulative_blocks = (cumulative_element_count + kThreadsPerBlock - 1) / kThreadsPerBlock;
-  ClampCumulativeSequenceLengths<<<cumulative_blocks, kThreadsPerBlock, 0, stream>>>(
+  const int cumulative_blocks = (cumulative_element_count + kBlockThreads - 1) / kBlockThreads;
+  ClampCumulativeSequenceLengths<<<cumulative_blocks, kBlockThreads, 0, stream>>>(
       sanitized_cumulative_seqlens_q, cumulative_seqlens_q, batch_size, token_count);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
   CUDA_RETURN_IF_ERROR(cub::DeviceScan::InclusiveScan(
@@ -573,8 +703,8 @@ Status LaunchSanitizeSequenceLengths(int32_t* sanitized_cumulative_seqlens_q,
       sanitized_cumulative_seqlens_q, sanitized_cumulative_seqlens_q,
       MaxInt32{}, cumulative_element_count, stream));
 
-  const int batch_blocks = (batch_size + kThreadsPerBlock - 1) / kThreadsPerBlock;
-  SanitizePastSequenceLengths<<<batch_blocks, kThreadsPerBlock, 0, stream>>>(
+  const int batch_blocks = (batch_size + kBlockThreads - 1) / kBlockThreads;
+  SanitizePastSequenceLengths<<<batch_blocks, kBlockThreads, 0, stream>>>(
       sanitized_past_seqlens, sequence_validity, cumulative_seqlens_kv, sanitized_cumulative_seqlens_q,
       past_seqlens, batch_size, max_num_blocks_per_seq, block_size);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
@@ -621,7 +751,7 @@ struct DerivedSlotResolver {
 
   __device__ __forceinline__ int operator()(int token_id) const {
     const int batch_id = FindTokenBatch(token_id, cumulative_seqlens_q, batch_size);
-    if (batch_id < 0 || sequence_validity[batch_id] == 0) {
+    if (batch_id < 0 || (sequence_validity != nullptr && sequence_validity[batch_id] == 0)) {
       return -1;
     }
     const int position = past_seqlens[batch_id] + (token_id - cumulative_seqlens_q[batch_id]);
@@ -977,7 +1107,7 @@ Status LaunchGatherAndExpandPagedKVCache(const TCACHE* key_cache, const TCACHE* 
 
 constexpr int kPagedDecodeThreads = 128;
 constexpr int kPagedDecodeTile = 128;  // KV tokens scored per iteration
-constexpr int kPagedDecodeMaxSplits = 32;
+constexpr int kPagedDecodeMaxSplits = 64;
 
 // Cache element -> float. Identical to DequantizeFromCache with a scale of 1, kept separate because
 // the decode kernel folds the scales into Q and into the output instead of applying them per read.
@@ -991,6 +1121,39 @@ __device__ __forceinline__ float CacheToFloat(const TCACHE value) {
   {
     return static_cast<float>(value);
   }
+}
+
+template <typename TCACHE>
+__device__ __forceinline__ float4 ReadPagedCacheVec4(const TCACHE* cache, int64_t base_index) {
+  if constexpr (std::is_same_v<TCACHE, int8_t>) {
+    if ((base_index & 3) == 0) {
+      const char4 v = *reinterpret_cast<const char4*>(cache + base_index);
+      return make_float4(static_cast<float>(v.x), static_cast<float>(v.y),
+                         static_cast<float>(v.z), static_cast<float>(v.w));
+    }
+  } else if constexpr (std::is_same_v<TCACHE, half>) {
+    if ((base_index & 3) == 0) {
+      const uint2 raw = *reinterpret_cast<const uint2*>(cache + base_index);
+      const half2 h0 = *reinterpret_cast<const half2*>(&raw.x);
+      const half2 h1 = *reinterpret_cast<const half2*>(&raw.y);
+      const float2 f0 = __half22float2(h0);
+      const float2 f1 = __half22float2(h1);
+      return make_float4(f0.x, f0.y, f1.x, f1.y);
+    }
+  } else if constexpr (std::is_same_v<TCACHE, __nv_bfloat16>) {
+    if ((base_index & 3) == 0) {
+      const uint2 raw = *reinterpret_cast<const uint2*>(cache + base_index);
+      const __nv_bfloat162 b0 = *reinterpret_cast<const __nv_bfloat162*>(&raw.x);
+      const __nv_bfloat162 b1 = *reinterpret_cast<const __nv_bfloat162*>(&raw.y);
+      const float2 f0 = __bfloat1622float2(b0);
+      const float2 f1 = __bfloat1622float2(b1);
+      return make_float4(f0.x, f0.y, f1.x, f1.y);
+    }
+  }
+  return make_float4(ReadPagedCache(cache, base_index + 0),
+                     ReadPagedCache(cache, base_index + 1),
+                     ReadPagedCache(cache, base_index + 2),
+                     ReadPagedCache(cache, base_index + 3));
 }
 
 // Number of channel groups the PV accumulation is split into. When head_size < blockDim, several
@@ -1113,6 +1276,150 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
   float m_state = -FLT_MAX;
   float l_state = 0.0f;
 
+  // Fast register-resident online softmax path for head_size <= 256 (multiple of 4) and non-subbyte
+  // caches: each warp independently scans every kNumWarps-th KV token using vectorized 4-channel
+  // loads and combines across the 4 warps once after the loop, avoiding all per-tile barriers.
+  if constexpr (!std::is_same_v<TCACHE, uint8_t>) {
+    if (head_size <= 256 && (head_size & 3) == 0) {
+      const int c0 = lane_id * 4;
+      const int c1 = 128 + lane_id * 4;
+      const bool has0 = c0 < head_size;
+      const bool has1 = c1 < head_size;
+
+      float q0_x = 0.f, q0_y = 0.f, q0_z = 0.f, q0_w = 0.f;
+      float q1_x = 0.f, q1_y = 0.f, q1_z = 0.f, q1_w = 0.f;
+      if (has0) {
+        q0_x = q_sh[c0 + 0];
+        q0_y = q_sh[c0 + 1];
+        q0_z = q_sh[c0 + 2];
+        q0_w = q_sh[c0 + 3];
+      }
+      if (has1) {
+        q1_x = q_sh[c1 + 0];
+        q1_y = q_sh[c1 + 1];
+        q1_z = q_sh[c1 + 2];
+        q1_w = q_sh[c1 + 3];
+      }
+
+      float v0_x = 0.f, v0_y = 0.f, v0_z = 0.f, v0_w = 0.f;
+      float v1_x = 0.f, v1_y = 0.f, v1_z = 0.f, v1_w = 0.f;
+      float m_w = -FLT_MAX;
+      float l_w = 0.0f;
+
+      for (int pos = kv_begin + warp_id; pos < kv_end; pos += kNumWarps) {
+        const int block_index = pos / block_size;
+        const int block_id = block_index < max_num_blocks_per_seq
+                                 ? block_table[batch_id * max_num_blocks_per_seq + block_index]
+                                 : -1;
+        if (block_id < 0) {
+          continue;
+        }
+        const int64_t kv_offset =
+            (static_cast<int64_t>(block_id) * block_size + (pos % block_size)) * token_stride_in_page +
+            head_offset_in_page;
+
+        float dot = 0.0f;
+        if (has0) {
+          const float4 k0 = ReadPagedCacheVec4(key_cache, kv_offset + c0);
+          dot = fmaf(q0_x, k0.x, fmaf(q0_y, k0.y, fmaf(q0_z, k0.z, q0_w * k0.w)));
+        }
+        if (has1) {
+          const float4 k1 = ReadPagedCacheVec4(key_cache, kv_offset + c1);
+          dot = fmaf(q1_x, k1.x, fmaf(q1_y, k1.y, fmaf(q1_z, k1.z, fmaf(q1_w, k1.w, dot))));
+        }
+#pragma unroll
+        for (int offset = 16; offset > 0; offset >>= 1) {
+          dot += __shfl_xor_sync(0xFFFFFFFFU, dot, offset);
+        }
+
+        const float logit = softcap > 0.0f ? softcap * tanhf(dot * softcap_scale) : dot * scale;
+        const float m_new = fmaxf(m_w, logit);
+        const float alpha = (m_w == -FLT_MAX) ? 0.0f : __expf(m_w - m_new);
+        const float p = __expf(logit - m_new);
+        l_w = l_w * alpha + p;
+        m_w = m_new;
+
+        if (has0) {
+          const float4 fv0 = ReadPagedCacheVec4(value_cache, kv_offset + c0);
+          v0_x = fmaf(v0_x, alpha, p * fv0.x);
+          v0_y = fmaf(v0_y, alpha, p * fv0.y);
+          v0_z = fmaf(v0_z, alpha, p * fv0.z);
+          v0_w = fmaf(v0_w, alpha, p * fv0.w);
+        }
+        if (has1) {
+          const float4 fv1 = ReadPagedCacheVec4(value_cache, kv_offset + c1);
+          v1_x = fmaf(v1_x, alpha, p * fv1.x);
+          v1_y = fmaf(v1_y, alpha, p * fv1.y);
+          v1_z = fmaf(v1_z, alpha, p * fv1.z);
+          v1_w = fmaf(v1_w, alpha, p * fv1.w);
+        }
+      }
+
+      if (lane_id == 0) {
+        logits_sh[warp_id] = m_w;
+        logits_sh[kNumWarps + warp_id] = l_w;
+      }
+      __syncthreads();
+
+      m_state = -FLT_MAX;
+#pragma unroll
+      for (int w = 0; w < kNumWarps; ++w) {
+        if (logits_sh[kNumWarps + w] > 0.0f) {
+          m_state = fmaxf(m_state, logits_sh[w]);
+        }
+      }
+      l_state = 0.0f;
+      float w_scale = 0.0f;
+#pragma unroll
+      for (int w = 0; w < kNumWarps; ++w) {
+        const float lw = logits_sh[kNumWarps + w];
+        const float ws = (lw > 0.0f && m_state > -FLT_MAX) ? __expf(logits_sh[w] - m_state) : 0.0f;
+        l_state += lw * ws;
+        if (w == warp_id) {
+          w_scale = ws;
+        }
+      }
+
+      v0_x *= w_scale;
+      v0_y *= w_scale;
+      v0_z *= w_scale;
+      v0_w *= w_scale;
+      v1_x *= w_scale;
+      v1_y *= w_scale;
+      v1_z *= w_scale;
+      v1_w *= w_scale;
+
+      for (int w = 0; w < kNumWarps; ++w) {
+        if (warp_id == w) {
+          if (has0) {
+            acc_sh[c0 + 0] += v0_x;
+            acc_sh[c0 + 1] += v0_y;
+            acc_sh[c0 + 2] += v0_z;
+            acc_sh[c0 + 3] += v0_w;
+          }
+          if (has1) {
+            acc_sh[c1 + 0] += v1_x;
+            acc_sh[c1 + 1] += v1_y;
+            acc_sh[c1 + 2] += v1_z;
+            acc_sh[c1 + 3] += v1_w;
+          }
+        }
+        __syncthreads();
+      }
+
+      const int64_t out_base =
+          ((static_cast<int64_t>(split_id) * token_count + token_id) * num_heads + head_id) * head_size;
+      for (int c = tid; c < head_size; c += kPagedDecodeThreads) {
+        partial_out[out_base + c] = acc_sh[c];
+      }
+      if (tid == 0) {
+        partial_max[partial_head_index] = m_state;
+        partial_sum[partial_head_index] = l_state;
+      }
+      return;
+    }
+  }
+
   for (int tile_begin = kv_begin; tile_begin < kv_end; tile_begin += kPagedDecodeTile) {
     const int tile_len = min(kPagedDecodeTile, kv_end - tile_begin);
 
@@ -1191,20 +1498,48 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
 
     // ---- PV: consecutive threads own consecutive channels so the V reads stay coalesced ----
     if (channel_groups == 1) {
-      for (int c = tid; c < head_size; c += kPagedDecodeThreads) {
-        float acc = acc_sh[c] * alpha;
-        for (int t = 0; t < tile_len; ++t) {
-          const int block_id = block_id_sh[t];
-          if (block_id < 0) {
-            continue;
+      if (head_size <= 2 * kPagedDecodeThreads) {
+        const int c0 = tid;
+        const int c1 = tid + kPagedDecodeThreads;
+        const bool has_c0 = c0 < head_size;
+        const bool has_c1 = c1 < head_size;
+        float acc0 = has_c0 ? acc_sh[c0] * alpha : 0.0f;
+        float acc1 = has_c1 ? acc_sh[c1] * alpha : 0.0f;
+        if (has_c0) {
+          for (int t = 0; t < tile_len; ++t) {
+            const int block_id = block_id_sh[t];
+            if (block_id < 0) {
+              continue;
+            }
+            const int pos = tile_begin + t;
+            const int64_t value_offset =
+                (static_cast<int64_t>(block_id) * block_size + pos % block_size) * token_stride_in_page +
+                head_offset_in_page;
+            const float prob = logits_sh[t];
+            acc0 += prob * ReadPagedCache(value_cache, value_offset + c0);
+            if (has_c1) {
+              acc1 += prob * ReadPagedCache(value_cache, value_offset + c1);
+            }
           }
-          const int pos = tile_begin + t;
-          const int64_t value_offset =
-              (static_cast<int64_t>(block_id) * block_size + pos % block_size) * token_stride_in_page +
-              head_offset_in_page;
-          acc += logits_sh[t] * ReadPagedCache(value_cache, value_offset + c);
+          acc_sh[c0] = acc0;
+          if (has_c1) acc_sh[c1] = acc1;
         }
-        acc_sh[c] = acc;
+      } else {
+        for (int c = tid; c < head_size; c += kPagedDecodeThreads) {
+          float acc = acc_sh[c] * alpha;
+          for (int t = 0; t < tile_len; ++t) {
+            const int block_id = block_id_sh[t];
+            if (block_id < 0) {
+              continue;
+            }
+            const int pos = tile_begin + t;
+            const int64_t value_offset =
+                (static_cast<int64_t>(block_id) * block_size + pos % block_size) * token_stride_in_page +
+                head_offset_in_page;
+            acc += logits_sh[t] * ReadPagedCache(value_cache, value_offset + c);
+          }
+          acc_sh[c] = acc;
+        }
       }
     } else if (tid < acc_elems) {
       const int group = tid / head_size;
@@ -1269,16 +1604,15 @@ __global__ void PagedDecodeReduce(T* __restrict__ output,
 
   if (tid < num_splits) {
     const int64_t index = (static_cast<int64_t>(tid) * token_count + token_id) * num_heads + head_id;
-    max_sh[tid] = partial_max[index];
-    sum_sh[tid] = partial_sum[index];
+    const float s_val = partial_sum[index];
+    max_sh[tid] = s_val > 0.0f ? partial_max[index] : -FLT_MAX;
+    sum_sh[tid] = s_val;
   }
   __syncthreads();
 
   float m_final = -FLT_MAX;
   for (int s = 0; s < num_splits; ++s) {
-    if (sum_sh[s] > 0.0f) {
-      m_final = fmaxf(m_final, max_sh[s]);
-    }
+    m_final = fmaxf(m_final, max_sh[s]);
   }
 
   if (m_final == -FLT_MAX) {
@@ -1288,28 +1622,31 @@ __global__ void PagedDecodeReduce(T* __restrict__ output,
     return;
   }
 
+  if (tid < num_splits) {
+    weight_sh[tid] = sum_sh[tid] > 0.0f ? __expf(max_sh[tid] - m_final) : 0.0f;
+  }
+  __syncthreads();
+
   float l_final = 0.0f;
   for (int s = 0; s < num_splits; ++s) {
-    const float w = sum_sh[s] > 0.0f ? __expf(max_sh[s] - m_final) : 0.0f;
-    if (tid == 0) {
-      weight_sh[s] = w;
-    }
-    l_final += sum_sh[s] * w;
+    l_final += sum_sh[s] * weight_sh[s];
   }
   if (use_smooth_softmax) {
     const float sink = head_sink == nullptr ? 0.0f : static_cast<float>(head_sink[head_id]);
     l_final += __expf(sink - m_final);
   }
-  __syncthreads();
 
   const float inv_l = l_final > 0.0f ? (1.0f / l_final) : 0.0f;
   const int kv_head_id = head_id / (num_heads / kv_num_heads);
+  const int64_t head_stride = static_cast<int64_t>(token_count) * num_heads * head_size;
+  const int64_t base_offset = (static_cast<int64_t>(token_id) * num_heads + head_id) * head_size;
   for (int c = tid; c < head_size; c += blockDim.x) {
     float acc = 0.0f;
+    const float* col_ptr = partial_out + base_offset + c;
     for (int s = 0; s < num_splits; ++s) {
-      if (weight_sh[s] > 0.0f) {
-        acc += partial_out[((static_cast<int64_t>(s) * token_count + token_id) * num_heads + head_id) * head_size + c] *
-               weight_sh[s];
+      const float w = weight_sh[s];
+      if (w > 0.0f) {
+        acc = fmaf(__ldg(col_ptr + static_cast<int64_t>(s) * head_stride), w, acc);
       }
     }
     output[row_base + c] = static_cast<T>(acc * inv_l *
@@ -1323,10 +1660,10 @@ __global__ void PagedDecodeReduce(T* __restrict__ output,
 int ComputePagedDecodeSplits(const int token_count, const int num_heads, const int max_kv_len,
                              const int multi_processor_count) {
   const int base_ctas = token_count * num_heads;
-  if (base_ctas <= 0 || base_ctas >= 2 * multi_processor_count) {
+  if (base_ctas <= 0 || base_ctas >= 8 * multi_processor_count) {
     return 1;
   }
-  const int by_occupancy = (2 * multi_processor_count + base_ctas - 1) / base_ctas;
+  const int by_occupancy = (8 * multi_processor_count + base_ctas - 1) / base_ctas;
   const int by_length = (max_kv_len + kPagedDecodeTile - 1) / kPagedDecodeTile;
   return std::max(1, std::min(std::min(by_occupancy, by_length), kPagedDecodeMaxSplits));
 }
@@ -2342,9 +2679,12 @@ Status QkvToContext(
   }
 
   ORT_RETURN_IF_ERROR(attention_status);
-  return LaunchMaskInvalidSequenceOutputs(
-      data.output, data.sequence_validity, data.cumulative_seqlens_q,
-      parameters.batch_size, parameters.v_hidden_size, stream);
+  if (data.sequence_validity != nullptr) {
+    return LaunchMaskInvalidSequenceOutputs(
+        data.output, data.sequence_validity, data.cumulative_seqlens_q,
+        parameters.batch_size, parameters.v_hidden_size, stream);
+  }
+  return Status::OK();
 }
 
 #define INSTANTIATE_PAGED_ATTENTION(T, TCACHE)                   \

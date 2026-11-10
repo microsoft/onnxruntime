@@ -2958,6 +2958,76 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
     def test_int4_swiglu_interleaved_medium(self):
         self._run_one(hidden_size=128, inter_size=64, num_experts=8, top_k=2, swiglu_fusion=1, batch_size=16)
 
+    def test_int4_deterministic_prefill_tactic_parity(self):
+        torch.manual_seed(123)
+        numpy.random.seed(123)
+
+        hidden_size = 64
+        inter_size = 128
+        num_experts = 8
+        top_k = 2
+        # rows_per_expert = 256 * 2 / 8 = 64 selects the prefill tile under ORT_FORCE_DETERMINISTIC_MOE=1.
+        batch_size = 256
+        bits = 4
+        pack = 8 // bits
+        fc1_n = 2 * inter_size
+
+        fc1 = numpy.zeros((num_experts, hidden_size, fc1_n // pack), dtype=numpy.uint8)
+        fc2 = numpy.zeros((num_experts, inter_size, hidden_size // pack), dtype=numpy.uint8)
+        fc1_scales = numpy.zeros((num_experts, fc1_n), dtype=numpy.float16)
+        fc2_scales = numpy.zeros((num_experts, hidden_size), dtype=numpy.float16)
+        cuda_quantizer = CudaQuantizer()
+        for e in range(num_experts):
+            w1 = torch.from_numpy((torch.randn(fc1_n, hidden_size) * 0.05).numpy().astype(numpy.float16))
+            w2 = torch.from_numpy((torch.randn(hidden_size, inter_size) * 0.05).numpy().astype(numpy.float16))
+            q1, s1 = cuda_quantizer.qmoe_per_channel_quantize(w1, bits, True)
+            q2, s2 = cuda_quantizer.qmoe_per_channel_quantize(w2, bits, True)
+            fc1[e] = q1.numpy()
+            fc2[e] = q2.numpy()
+            fc1_scales[e] = s1.numpy().astype(numpy.float16)
+            fc2_scales[e] = s2.numpy().astype(numpy.float16)
+
+        x = numpy.random.randn(batch_size, hidden_size).astype(numpy.float16)
+        router = numpy.random.randn(batch_size, num_experts).astype(numpy.float16)
+
+        def run(deterministic):
+            previous = os.environ.get("ORT_FORCE_DETERMINISTIC_MOE")
+            if deterministic:
+                os.environ["ORT_FORCE_DETERMINISTIC_MOE"] = "1"
+            else:
+                os.environ.pop("ORT_FORCE_DETERMINISTIC_MOE", None)
+            try:
+                return self._run_default_prepacked_model(
+                    hidden_size=hidden_size,
+                    inter_size=inter_size,
+                    num_experts=num_experts,
+                    top_k=top_k,
+                    batch_size=batch_size,
+                    fc1_weights=fc1,
+                    fc2_weights=fc2,
+                    fc1_scales=fc1_scales,
+                    fc2_scales=fc2_scales,
+                    x=x,
+                    router=router,
+                )
+            finally:
+                if previous is None:
+                    os.environ.pop("ORT_FORCE_DETERMINISTIC_MOE", None)
+                else:
+                    os.environ["ORT_FORCE_DETERMINISTIC_MOE"] = previous
+
+        default_output = run(False)
+        deterministic_output = run(True)
+        self.assertFalse(numpy.isnan(deterministic_output).any(), "QMoE deterministic output has NaN")
+        max_diff = numpy.max(
+            numpy.abs(default_output.astype(numpy.float32) - deterministic_output.astype(numpy.float32))
+        )
+        self.assertLess(
+            max_diff,
+            0.05,
+            f"INT4 deterministic prefill output differs from default output: max_diff={max_diff:.6f}",
+        )
+
     def test_int4_grouped_moe_row_tiling_parity(self):
         shape = dict(
             hidden_size=128,
@@ -3346,6 +3416,239 @@ class TestQMoECudaGraph(unittest.TestCase):
         out_updated = y_ort.numpy().copy()
         self.assertFalse(numpy.isnan(out_updated).any(), "QMoE CUDA graph updated-input output has NaN")
         self.assertFalse(numpy.isinf(out_updated).any(), "QMoE CUDA graph updated-input output has Inf")
+
+
+class TestQMoEFusedRouteMapsRunnerParity(unittest.TestCase):
+    """Regression coverage for CutlassMoeFCRunner fused 512-expert routing and fallback paths.
+
+    Exercises S=8, E=512, K=10 in both FP16 and BF16 across:
+      1. Untiled 8-byte-aligned router logits (selects LaunchFusedRouteMaps on SM90+).
+      2. Untiled 2-byte-misaligned router logits via IOBinding (isFusedMoeRoutingSupported is true,
+         LaunchFusedRouteMaps declines, and launchFusedRoutingBuildExpertMaps falls back to
+         LaunchSoftmaxTopK + fusedBuildExpertMapsSortFirstToken).
+      3. Row-tiled unfused routing (qmoe_row_tile_size=4, forcing standalone LaunchSoftmaxTopK
+         before runMoe).
+      4. Dequantized PyTorch SwiGLU reference.
+    """
+
+    batch_size = 8
+    num_experts = 512
+    top_k = 10
+    hidden_size = 512
+    inter_size = 512
+    block_size = 64
+
+    def _build_case(self, onnx_dtype):
+        torch_dtype = onnx_to_torch_type_map[onnx_dtype]
+        rng = torch.Generator(device="cpu").manual_seed(20261025)
+        fc1_n = 2 * self.inter_size
+        k_blocks_fc1 = self.hidden_size // self.block_size
+        k_blocks_fc2 = self.inter_size // self.block_size
+
+        # Build 8 distinct expert templates and tile/roll across 512 experts so each expert has
+        # distinct weights while keeping test setup fast.
+        base_experts = 8
+        fc1_codes_base = torch.randint(0, 16, (base_experts, fc1_n, self.hidden_size), generator=rng, dtype=torch.uint8)
+        fc2_codes_base = torch.randint(
+            0, 16, (base_experts, self.hidden_size, self.inter_size), generator=rng, dtype=torch.uint8
+        )
+        fc1_packed_base = (fc1_codes_base[:, :, 0::2] | (fc1_codes_base[:, :, 1::2] << 4)).contiguous()
+        fc2_packed_base = (fc2_codes_base[:, :, 0::2] | (fc2_codes_base[:, :, 1::2] << 4)).contiguous()
+
+        repeat = self.num_experts // base_experts
+        fc1_packed = fc1_packed_base.repeat(repeat, 1, 1)
+        fc2_packed = fc2_packed_base.repeat(repeat, 1, 1)
+
+        expert_ids = torch.arange(self.num_experts, dtype=torch.float32).view(self.num_experts, 1, 1)
+        fc1_scales = ((0.003 + 0.0005 * (expert_ids % 13)) * torch.ones((1, fc1_n, k_blocks_fc1))).to(torch_dtype)
+        fc2_scales = ((0.003 + 0.0005 * ((expert_ids + 5) % 13)) * torch.ones((1, self.hidden_size, k_blocks_fc2))).to(
+            torch_dtype
+        )
+
+        qmoe = helper.make_node(
+            "QMoE",
+            inputs=["input", "router_probs", "fc1_W", "fc1_S", "", "fc2_W", "fc2_S", ""],
+            outputs=["output"],
+            name="qmoe_fused_route_512",
+            domain="com.microsoft",
+            k=self.top_k,
+            normalize_routing_weights=1,
+            activation_type="swiglu",
+            swiglu_fusion=1,
+            expert_weight_bits=4,
+            quant_type="int",
+            block_size=self.block_size,
+            weights_prepacked=0,
+        )
+        graph = helper.make_graph(
+            nodes=[qmoe],
+            name="qmoe_fused_route_512_graph",
+            inputs=[
+                helper.make_tensor_value_info("input", onnx_dtype, [self.batch_size, self.hidden_size]),
+                helper.make_tensor_value_info("router_probs", onnx_dtype, [self.batch_size, self.num_experts]),
+            ],
+            outputs=[helper.make_tensor_value_info("output", onnx_dtype, [self.batch_size, self.hidden_size])],
+            initializer=[
+                helper.make_tensor(
+                    "fc1_W", TensorProto.UINT8, list(fc1_packed.shape), fc1_packed.numpy().tobytes(), raw=True
+                ),
+                helper.make_tensor(
+                    "fc2_W", TensorProto.UINT8, list(fc2_packed.shape), fc2_packed.numpy().tobytes(), raw=True
+                ),
+                helper.make_tensor(
+                    "fc1_S",
+                    onnx_dtype,
+                    list(fc1_scales.shape),
+                    fc1_scales.view(torch.uint16).numpy().tobytes(),
+                    raw=True,
+                ),
+                helper.make_tensor(
+                    "fc2_S",
+                    onnx_dtype,
+                    list(fc2_scales.shape),
+                    fc2_scales.view(torch.uint16).numpy().tobytes(),
+                    raw=True,
+                ),
+            ],
+        )
+        model = helper.make_model(
+            graph, opset_imports=[helper.make_opsetid("", 20), helper.make_opsetid("com.microsoft", 1)]
+        )
+        model.ir_version = 10
+        return model.SerializeToString(), fc1_codes_base, fc2_codes_base, fc1_scales, fc2_scales
+
+    def _run_with_tensors(self, session, onnx_dtype, x_tensor, router_tensor):
+        torch_dtype = onnx_to_torch_type_map[onnx_dtype]
+        y_tensor = torch.empty((self.batch_size, self.hidden_size), dtype=torch_dtype, device=device)
+        io_binding = session.io_binding()
+        io_binding.bind_input(
+            name="input",
+            device_type="cuda",
+            device_id=device.index or 0,
+            element_type=onnx_dtype,
+            shape=list(x_tensor.shape),
+            buffer_ptr=x_tensor.data_ptr(),
+        )
+        io_binding.bind_input(
+            name="router_probs",
+            device_type="cuda",
+            device_id=device.index or 0,
+            element_type=onnx_dtype,
+            shape=list(router_tensor.shape),
+            buffer_ptr=router_tensor.data_ptr(),
+        )
+        io_binding.bind_output(
+            name="output",
+            device_type="cuda",
+            device_id=device.index or 0,
+            element_type=onnx_dtype,
+            shape=list(y_tensor.shape),
+            buffer_ptr=y_tensor.data_ptr(),
+        )
+        io_binding.synchronize_inputs()
+        session.run_with_iobinding(io_binding)
+        io_binding.synchronize_outputs()
+        return y_tensor
+
+    def _reference(self, onnx_dtype, fc1_codes_base, fc2_codes_base, fc1_scales, fc2_scales, x_tensor, router_tensor):
+        torch_dtype = onnx_to_torch_type_map[onnx_dtype]
+        x_f32 = x_tensor.detach().cpu().to(torch_dtype).float()
+        logits = router_tensor.detach().cpu().to(torch_dtype).float()
+        out = torch.zeros_like(x_f32)
+        base_experts = fc1_codes_base.shape[0]
+
+        for r in range(self.batch_size):
+            # Stable top-k matching SoftmaxTopKMergeKernel / FusedSoftmaxTopKMapsKernel
+            row_logits = logits[r]
+            max_val = row_logits.max()
+            probs = torch.exp(row_logits - max_val)
+            probs = probs / probs.sum()
+            # Sort descending by logit, ties broken by lower expert index
+            order = numpy.argsort(-row_logits.numpy(), kind="stable")[: self.top_k]
+            top_indices = [int(idx) for idx in order]
+            top_weights = probs[top_indices]
+            top_weights = top_weights / top_weights.sum()
+
+            for expert, weight in zip(top_indices, top_weights, strict=True):
+                base_e = expert % base_experts
+                w1_codes = fc1_codes_base[base_e].float() - 8.0
+                w1_s = fc1_scales[expert].float().repeat_interleave(self.block_size, dim=-1)
+                w1 = (w1_codes * w1_s).to(torch_dtype).float()
+
+                w2_codes = fc2_codes_base[base_e].float() - 8.0
+                w2_s = fc2_scales[expert].float().repeat_interleave(self.block_size, dim=-1)
+                w2 = (w2_codes * w2_s).to(torch_dtype).float()
+
+                fused = w1 @ x_f32[r]
+                gate, up = fused[0::2], fused[1::2]
+                act = (F.silu(gate) * up).to(torch_dtype).float()
+                out[r] += weight * (w2 @ act)
+
+        return out.to(torch_dtype).float()
+
+    @parameterized.expand(
+        [
+            ("fp16", TensorProto.FLOAT16),
+            ("bf16", TensorProto.BFLOAT16),
+        ]
+    )
+    @unittest.skipUnless(torch.cuda.is_available(), "CUDA is required for QMoE fused route maps parity test")
+    def test_s8_e512_k10_fused_routing_and_fallback_parity(self, _name, onnx_dtype):
+        if onnx_dtype == TensorProto.BFLOAT16 and not has_bf16_qmoe():
+            self.skipTest("BF16 QMoE requires Ampere+ GPU")
+
+        torch_dtype = onnx_to_torch_type_map[onnx_dtype]
+        model_bytes, fc1_codes_base, fc2_codes_base, fc1_scales, fc2_scales = self._build_case(onnx_dtype)
+
+        fused_opts = onnxruntime.SessionOptions()
+        fused_opts.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        fused_opts.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+        try:
+            fused_sess = onnxruntime.InferenceSession(
+                model_bytes, fused_opts, providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")]
+            )
+        except Exception as e:
+            if "Build configuration may be missing the corresponding kernel" in str(e):
+                self.skipTest(f"QMoE runner not enabled in this build (e.g. ORT_QUICK_BUILD): {e}")
+            raise
+
+        # Row-tiled session forces row_tile_plan.IsTiled() == True, taking the unfused
+        # LaunchSoftmaxTopK + fusedBuildExpertMapsSortFirstToken path.
+        unfused_opts = onnxruntime.SessionOptions()
+        unfused_opts.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        unfused_opts.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+        unfused_opts.add_session_config_entry("ep.cuda.qmoe_row_tile_size", "4")
+        unfused_sess = onnxruntime.InferenceSession(
+            model_bytes, unfused_opts, providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")]
+        )
+
+        gen = torch.Generator(device=device).manual_seed(33596)
+        x = torch.randn((self.batch_size, self.hidden_size), generator=gen, device=device, dtype=torch_dtype)
+        router_aligned = torch.randn(
+            (self.batch_size, self.num_experts), generator=gen, device=device, dtype=torch_dtype
+        )
+
+        # Create a 2-byte misaligned view of the exact same router logits so
+        # isFusedMoeRoutingSupported is True, LaunchFusedRouteMaps declines (% 8 != 0),
+        # and launchFusedRoutingBuildExpertMaps falls back to LaunchSoftmaxTopK + map building.
+        router_padded = torch.empty((self.batch_size * self.num_experts + 1,), device=device, dtype=torch_dtype)
+        router_unaligned = router_padded[1:].view(self.batch_size, self.num_experts)
+        router_unaligned.copy_(router_aligned)
+        self.assertNotEqual(router_unaligned.data_ptr() % 8, 0)
+
+        out_fused = self._run_with_tensors(fused_sess, onnx_dtype, x, router_aligned).float().cpu()
+        out_fallback = self._run_with_tensors(fused_sess, onnx_dtype, x, router_unaligned).float().cpu()
+        out_unfused = self._run_with_tensors(unfused_sess, onnx_dtype, x, router_aligned).float().cpu()
+        out_ref = self._reference(onnx_dtype, fc1_codes_base, fc2_codes_base, fc1_scales, fc2_scales, x, router_aligned)
+
+        self.assertFalse(torch.isnan(out_fused).any())
+        self.assertFalse(torch.isnan(out_fallback).any())
+        self.assertFalse(torch.isnan(out_unfused).any())
+
+        # Fused route maps, declined-launcher fallback, and unfused routing must agree.
+        torch.testing.assert_close(out_fused, out_fallback, rtol=1e-3, atol=1e-3)
+        torch.testing.assert_close(out_fused, out_unfused, rtol=1e-3, atol=1e-3)
+        torch.testing.assert_close(out_fused, out_ref, rtol=2e-2, atol=2e-2)
 
 
 if __name__ == "__main__":

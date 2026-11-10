@@ -74,9 +74,30 @@ the safe compatibility direction; it cannot enable concurrency on an unsupported
 
 Concurrent use of independent Sessions is supported only by the plugin WebGPU EP.
 Built-in WebGPU does not support concurrent use. Each Session has one command recording
-timeline without an internal mutex. ORT serializes Run calls on the same Session; callers
-must serialize explicit stream and I/O binding operations with that Session's Run.
-Streamless allocation, tensor release, and Env transfers can run concurrently on independent tensors.
+timeline protected by an operation-scoped recursive mutex. ORT serializes Run
+calls on the same Session; the recording mutex also protects allocation, transfer, explicit
+stream operations, and CPU I/O binding uploads outside Run. This protects recording access,
+not graph-buffer ownership or application-level input/output storage.
+Streamless allocation, tensor release, and Env transfers can run concurrently on independent tensors,
+subject to the graph-capture restrictions below.
+
+#### Graph capture and I/O binding
+
+CPU I/O binding updates and external Session allocator/stream operations must not overlap a
+graph-capturing Run on the same Session, even when each thread uses a separate IoBinding.
+Graph-private buffer-manager selection still spans the Run, so recording synchronization
+alone does not prevent external allocations from entering graph-private pools. Such overlap
+can return incorrect outputs without crashing; absence of a crash does not establish correctness.
+
+Callers must provide application-level synchronization. Conservatively, use the same lock for
+CPU binding updates, graph-enabled Run calls (including warmup, capture, and replay), and
+ReleaseCapturedGraph. Guard the complete binding-update/Run sequence and the graph
+release/recapture sequence, rather than only individual binding calls. Do not concurrently
+mutate one IoBinding or reuse input/output storage while it is in flight.
+
+Replay executes an already captured graph. Recapture means releasing a captured graph and
+recording it again on subsequent Runs; it is not replay. Successful replay-only concurrency
+tests do not establish that overlapping CPU binding with initial capture or recapture is safe.
 
 The WebGPU plugin implements `OrtEp::CreateSyncStreamForDevice`. Each stream references its
 owning EP's command state; kernels and stream-bearing data transfers use that same state.
@@ -120,6 +141,17 @@ Environment transfers with no stream use command state local to each CopyTensors
 without a stream submit before returning, but do not wait for GPU completion. A subsequent
 Session Run uses a different recording, so the transfer must submit its copy first; the shared
 device queue orders it before later Session work.
+
+Streamless GPU-to-GPU vectors on one WebGPU context use one recording and one submission.
+This path is available with or without `ORT_ENABLE_STREAM`; explicit Session streams require
+a stream-enabled host.
+Copies are encoded in array order, including dependencies between entries. Empty tensors
+enqueue no work. Single copies, CPU transfers, explicit Session streams, and vectors spanning
+contexts keep their existing paths; mixed contexts are not merged. The recording and retained
+context are local to the call, so independent streamless vectors can run concurrently in
+concurrent mode. A failed call reports an error, may leave destinations partially updated,
+and does not retain unsubmitted commands for a later call. This uses the existing
+`OrtApi::CopyTensors` API (available since ORT 1.23); it adds no public API or ABI.
 
 Stream flush and notification activation submit the owning Session's recording without a CPU
 wait. Submission is still needed before streamless readbacks, such as node I/O dumps, use a

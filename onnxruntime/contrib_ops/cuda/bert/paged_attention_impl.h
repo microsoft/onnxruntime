@@ -39,6 +39,12 @@ Status LaunchUnpackQKVCumulative(const T* packed_qkv, T* unpacked_q, T* unpacked
                                  const int kv_num_heads, const int head_size, const int token_count, cudaStream_t stream,
                                  const int max_threads_per_block);
 
+Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv,
+                                    const int32_t* cumulative_seqlens_q,
+                                    const int32_t* past_seqlens,
+                                    int batch_size,
+                                    cudaStream_t stream);
+
 Status GetSanitizeSequenceLengthsWorkspaceSize(int batch_size,
                                                size_t& workspace_bytes,
                                                cudaStream_t stream);

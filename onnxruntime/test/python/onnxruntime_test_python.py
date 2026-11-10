@@ -1478,15 +1478,13 @@ class TestInferenceSession(unittest.TestCase):
         ptr = ortvalue._ortvalue.data_ptr()
 
         dlp = ortvalue._ortvalue.to_dlpack()
-        self.assertFalse(C.is_dlpack_uint8_tensor(dlp))
-        ortvalue2 = C.OrtValue.from_dlpack(dlp, False)
+        ortvalue2 = C.OrtValue.from_dlpack(dlp)
         self.assertEqual(ptr, ortvalue2.data_ptr())
         new_array = ortvalue2.numpy()
         np.testing.assert_equal(numpy_arr_input, new_array)
 
         dlp = ortvalue._ortvalue.__dlpack__()
-        self.assertFalse(C.is_dlpack_uint8_tensor(dlp))
-        ortvalue2 = C.OrtValue.from_dlpack(dlp, False)
+        ortvalue2 = C.OrtValue.from_dlpack(dlp)
         self.assertEqual(ptr, ortvalue2.data_ptr())
         new_array = ortvalue2.numpy()
         np.testing.assert_equal(numpy_arr_input, new_array)
@@ -1509,12 +1507,12 @@ class TestInferenceSession(unittest.TestCase):
                 arr = np.zeros(shape, dtype=np.float32)
                 # Test via numpy __dlpack__ protocol
                 dlp = arr.__dlpack__()
-                ortvalue = C.OrtValue.from_dlpack(dlp, False)
+                ortvalue = C.OrtValue.from_dlpack(dlp)
                 self.assertEqual(list(shape), list(ortvalue.shape()))
                 # Test round-trip: OrtValue -> dlpack -> OrtValue
                 ort_input = onnxrt.OrtValue.ortvalue_from_numpy(arr)
                 dlp2 = ort_input._ortvalue.to_dlpack()
-                ortvalue2 = C.OrtValue.from_dlpack(dlp2, False)
+                ortvalue2 = C.OrtValue.from_dlpack(dlp2)
                 self.assertEqual(list(shape), list(ortvalue2.shape()))
 
     def test_ort_value_array_protocol(self):
@@ -1686,7 +1684,7 @@ class TestInferenceSession(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, error):
             onnxrt.OrtValue.from_dlpack(object())
         with self.assertRaisesRegex(TypeError, error):
-            C.OrtValue.from_dlpack(None, False)
+            C.OrtValue.from_dlpack(None)
 
         class InvalidDlpackProvider:
             def __dlpack__(self):
@@ -1697,13 +1695,13 @@ class TestInferenceSession(unittest.TestCase):
 
         source = onnxrt.OrtValue.ortvalue_from_numpy(np.array([1.0], dtype=np.float32))
         capsule = source._ortvalue.to_dlpack()
-        C.OrtValue.from_dlpack(capsule, False)
+        C.OrtValue.from_dlpack(capsule)
         with self.assertRaisesRegex(TypeError, error):
-            C.OrtValue.from_dlpack(capsule, False)
+            C.OrtValue.from_dlpack(capsule)
 
     @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
     def test_ort_value_from_dlpack_bool(self):
-        """Test that from_dlpack auto-detects boolean tensors."""
+        """DLPack bool metadata preserves dtype without inspecting the source object."""
         bool_arr = np.array([True, False, True, False], dtype=np.bool_)
         ortvalue_src = onnxrt.OrtValue.ortvalue_from_numpy(bool_arr)
 
@@ -1711,6 +1709,13 @@ class TestInferenceSession(unittest.TestCase):
         ortvalue_dst = onnxrt.OrtValue.from_dlpack(ortvalue_src)
         result = ortvalue_dst.numpy()
         np.testing.assert_equal(bool_arr, result)
+        self.assertEqual(result.dtype, np.bool_)
+        self.assertEqual(ortvalue_src.data_ptr(), ortvalue_dst.data_ptr())
+
+        capsule = ortvalue_src.__dlpack__()
+        from_capsule = onnxrt.OrtValue.from_dlpack(capsule)
+        self.assertEqual(from_capsule.numpy().dtype, np.bool_)
+        self.assertEqual(ortvalue_src.data_ptr(), from_capsule.data_ptr())
 
         # Ensure uint8 is NOT falsely detected as bool
         uint8_arr = np.array([1, 2, 255], dtype=np.uint8)
@@ -1719,6 +1724,16 @@ class TestInferenceSession(unittest.TestCase):
         result_uint8 = ortvalue_uint8_dst.numpy()
         np.testing.assert_equal(uint8_arr, result_uint8)
         self.assertEqual(result_uint8.dtype, np.uint8)
+
+        class LegacyBoolProvider:
+            dtype = np.dtype(bool)
+
+            def __dlpack__(self):
+                return ortvalue_uint8.__dlpack__()
+
+        legacy_result = onnxrt.OrtValue.from_dlpack(LegacyBoolProvider()).numpy()
+        self.assertEqual(legacy_result.dtype, np.uint8)
+        np.testing.assert_equal(uint8_arr, legacy_result)
 
     def test_sparse_tensor_coo_format(self):
         cpu_device = onnxrt.OrtDevice.make("cpu", 0)

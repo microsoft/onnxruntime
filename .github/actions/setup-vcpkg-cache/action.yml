@@ -13,6 +13,12 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Get vcpkg cache identity
+      id: tool-info
+      uses: ./.github/actions/get-build-tool-info
+      with:
+        vcpkg: 'true'
+
     - name: Configure Windows vcpkg binary cache
       if: runner.os == 'Windows'
       shell: pwsh
@@ -28,12 +34,11 @@ runs:
       uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
       with:
         key: >-
-          vcpkg-cache-v2-${{ runner.os }}-${{ runner.arch }}-${{ inputs.key }}-${{
+          vcpkg-cache-v2-${{ runner.os }}-${{ runner.arch }}-${{ inputs.key }}-${{ steps.tool-info.outputs.vcpkg-sha512 }}-${{
             hashFiles(
               'cmake/vcpkg.json',
               'cmake/vcpkg-configuration.json',
               'cmake/vcpkg-ports/**',
-              'tools/ci_build/vcpkg_tool_info.json',
               'tools/python/util/vcpkg_helpers.py'
             )
           }}
@@ -46,12 +51,11 @@ runs:
       uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
       with:
         key: >-
-          vcpkg-cache-v2-${{ runner.os }}-${{ runner.arch }}-${{ inputs.key }}-${{
+          vcpkg-cache-v2-${{ runner.os }}-${{ runner.arch }}-${{ inputs.key }}-${{ steps.tool-info.outputs.vcpkg-sha512 }}-${{
             hashFiles(
               'cmake/vcpkg.json',
               'cmake/vcpkg-configuration.json',
               'cmake/vcpkg-ports/**',
-              'tools/ci_build/vcpkg_tool_info.json',
               'tools/python/util/vcpkg_helpers.py'
             )
           }}

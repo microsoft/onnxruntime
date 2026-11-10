@@ -3,80 +3,60 @@
 
 #include "core/dlpack/dlpack_converter.h"
 
+#include <algorithm>
+
+#include "core/common/safeint.h"
+
 namespace onnxruntime {
 namespace dlpack {
 
 namespace {
 
+struct DataTypeMapping {
+  ONNX_NAMESPACE::TensorProto_DataType ort_type;
+  DLDataType dlpack_type;
+};
+
+// Sub-byte widths describe logical elements, not ORT's packed storage units.
+constexpr DataTypeMapping data_type_mappings[] = {
+    {ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {kDLFloat, 32, 1}},
+    {ONNX_NAMESPACE::TensorProto_DataType_UINT8, {kDLUInt, 8, 1}},
+    {ONNX_NAMESPACE::TensorProto_DataType_INT8, {kDLInt, 8, 1}},
+    {ONNX_NAMESPACE::TensorProto_DataType_UINT16, {kDLUInt, 16, 1}},
+    {ONNX_NAMESPACE::TensorProto_DataType_INT16, {kDLInt, 16, 1}},
+    {ONNX_NAMESPACE::TensorProto_DataType_INT32, {kDLInt, 32, 1}},
+    {ONNX_NAMESPACE::TensorProto_DataType_INT64, {kDLInt, 64, 1}},
+    {ONNX_NAMESPACE::TensorProto_DataType_BOOL, {kDLBool, 8, 1}},
+    {ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {kDLFloat, 16, 1}},
+    {ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, {kDLFloat, 64, 1}},
+    {ONNX_NAMESPACE::TensorProto_DataType_UINT32, {kDLUInt, 32, 1}},
+    {ONNX_NAMESPACE::TensorProto_DataType_UINT64, {kDLUInt, 64, 1}},
+    {ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16, {kDLBfloat, 16, 1}},
+#if !defined(DISABLE_FLOAT8_TYPES)
+    {ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN, {kDLFloat8_e4m3fn, 8, 1}},
+    {ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ, {kDLFloat8_e4m3fnuz, 8, 1}},
+    {ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2, {kDLFloat8_e5m2, 8, 1}},
+    {ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ, {kDLFloat8_e5m2fnuz, 8, 1}},
+    {ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E8M0, {kDLFloat8_e8m0fnu, 8, 1}},
+#endif
+    {ONNX_NAMESPACE::TensorProto_DataType_UINT4, {kDLUInt, 4, 1}},
+    {ONNX_NAMESPACE::TensorProto_DataType_INT4, {kDLInt, 4, 1}},
+#if !defined(DISABLE_FLOAT4_TYPES)
+    {ONNX_NAMESPACE::TensorProto_DataType_FLOAT4E2M1, {kDLFloat4_e2m1fn, 4, 1}},
+#endif
+    {ONNX_NAMESPACE::TensorProto_DataType_UINT2, {kDLUInt, 2, 1}},
+    {ONNX_NAMESPACE::TensorProto_DataType_INT2, {kDLInt, 2, 1}},
+};
+
 DLDataType GetDlpackDataType(const OrtValue& ort_value) {
   ORT_ENFORCE(ort_value.IsTensor(), "Only tensor-type OrtValues are supported");
-  DLDataType dtype;
-  dtype.lanes = 1;
-  const Tensor& tensor = ort_value.Get<Tensor>();
-  switch (tensor.GetElementType()) {
-    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
-      dtype.code = DLDataTypeCode::kDLFloat;
-      dtype.bits = sizeof(double);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      dtype.code = DLDataTypeCode::kDLFloat;
-      dtype.bits = sizeof(float);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-      dtype.code = DLDataTypeCode::kDLInt;
-      dtype.bits = sizeof(int8_t);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT16:
-      dtype.code = DLDataTypeCode::kDLInt;
-      dtype.bits = sizeof(int16_t);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      dtype.code = DLDataTypeCode::kDLInt;
-      dtype.bits = sizeof(int);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      dtype.code = DLDataTypeCode::kDLInt;
-      dtype.bits = sizeof(int64_t);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-      dtype.code = DLDataTypeCode::kDLFloat;
-      dtype.bits = sizeof(MLFloat16);
-      break;
-    // Currently bool is same as uint8 on both code and bits.
-    // PyTorch's to_dlpack also does this, but in from_dlpack,
-    // a torch.uint8 tensor is generated. This limitation from
-    // PyTorch means we cannot create a torch.bool tensor
-    // from a DLPack tensor.
-    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
-      dtype.code = DLDataTypeCode::kDLUInt;
-      dtype.bits = sizeof(bool);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-      dtype.code = DLDataTypeCode::kDLUInt;
-      dtype.bits = sizeof(uint8_t);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT16:
-      dtype.code = DLDataTypeCode::kDLUInt;
-      dtype.bits = sizeof(uint16_t);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
-      dtype.code = DLDataTypeCode::kDLUInt;
-      dtype.bits = sizeof(uint32_t);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
-      dtype.code = DLDataTypeCode::kDLUInt;
-      dtype.bits = sizeof(uint64_t);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
-      dtype.code = DLDataTypeCode::kDLBfloat;
-      dtype.bits = sizeof(BFloat16);
-      break;
-    default:
-      ORT_THROW("Unexpected data type of ", tensor.GetElementType());
+  const auto element_type = ort_value.Get<Tensor>().GetElementType();
+  for (const auto& mapping : data_type_mappings) {
+    if (mapping.ort_type == element_type) {
+      return mapping.dlpack_type;
+    }
   }
-
-  dtype.bits *= 8;  // bits.
-  return dtype;
+  ORT_THROW("Unsupported ORT data type for DLPack: ", element_type);
 }
 
 OrtDevice GetOrtDevice(const DLDevice& device) {
@@ -94,56 +74,15 @@ OrtDevice GetOrtDevice(const DLDevice& device) {
   }
 }
 
-MLDataType GetOrtValueDataType(const DLDataType& dtype, bool is_bool_tensor) {
+MLDataType GetOrtValueDataType(const DLDataType& dtype) {
   if (dtype.lanes != 1) ORT_THROW("ORT does not support lanes != 1");
-  switch (dtype.code) {
-    case DLDataTypeCode::kDLUInt:
-      switch (dtype.bits) {
-        case 8:
-          return is_bool_tensor ? DataTypeImpl::GetType<bool>() : DataTypeImpl::GetType<uint8_t>();
-        case 16:
-          return DataTypeImpl::GetType<uint16_t>();
-        case 32:
-          return DataTypeImpl::GetType<uint32_t>();
-        case 64:
-          return DataTypeImpl::GetType<uint64_t>();
-        default:
-          ORT_THROW("Unsupported kUInt bits " + std::to_string(dtype.bits));
-      }
-    case DLDataTypeCode::kDLInt:
-      switch (dtype.bits) {
-        case 8:
-          return DataTypeImpl::GetType<int8_t>();
-        case 16:
-          return DataTypeImpl::GetType<int16_t>();
-        case 32:
-          return DataTypeImpl::GetType<int32_t>();
-        case 64:
-          return DataTypeImpl::GetType<int64_t>();
-        default:
-          ORT_THROW("Unsupported kInt bits " + std::to_string(dtype.bits));
-      }
-    case DLDataTypeCode::kDLFloat:
-      switch (dtype.bits) {
-        case 16:
-          return DataTypeImpl::GetType<MLFloat16>();
-        case 32:
-          return DataTypeImpl::GetType<float>();
-        case 64:
-          return DataTypeImpl::GetType<double>();
-        default:
-          ORT_THROW("Unsupported kFloat bits " + std::to_string(dtype.bits));
-      }
-    case DLDataTypeCode::kDLBfloat:
-      switch (dtype.bits) {
-        case 16:
-          return DataTypeImpl::GetType<BFloat16>();
-        default:
-          ORT_THROW("Unsupported kBFloat bits " + std::to_string(dtype.bits));
-      }
-    default:
-      ORT_THROW("Unsupported code " + std::to_string(dtype.code));
+  for (const auto& mapping : data_type_mappings) {
+    if (mapping.dlpack_type.code == dtype.code && mapping.dlpack_type.bits == dtype.bits) {
+      return DataTypeImpl::TensorTypeFromONNXEnum(mapping.ort_type)->GetElementType();
+    }
   }
+  ORT_THROW("Unsupported DLPack data type: code ", static_cast<int>(dtype.code),
+            ", bits ", static_cast<int>(dtype.bits));
 }
 
 const char* GetOrtDeviceName(const OrtDevice& device) {
@@ -209,11 +148,11 @@ DLDevice GetDlpackDevice(const OrtValue& ort_value, const int64_t& device_id) {
 struct OrtDLManagedTensor {
   OrtValue handle;
   DLManagedTensor tensor;
+  TensorShapeVector strides;
 };
 
 static void DlpackDeleter(DLManagedTensor* arg) { delete static_cast<OrtDLManagedTensor*>(arg->manager_ctx); }
 
-// This function should use smart pointers inside
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #pragma warning(disable : 26409)
@@ -224,11 +163,14 @@ static void DlpackDeleter(DLManagedTensor* arg) { delete static_cast<OrtDLManage
 // When the consumer of DLManagedTensor is done with the tensor, it should invoke the deleter.
 DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
   ORT_ENFORCE(ort_value.IsTensor(), "Only tensor type OrtValues are supported");
-  OrtDLManagedTensor* ort_dlmanaged_tensor(new OrtDLManagedTensor);
+  auto ort_dlmanaged_tensor = std::make_unique<OrtDLManagedTensor>();
 
   Tensor& tensor = *ort_value.GetMutable<Tensor>();
+#ifdef ENABLE_STRIDED_TENSORS
+  ORT_ENFORCE(tensor.IsContiguous(), "DLPack export only supports contiguous tensors.");
+#endif
   ort_dlmanaged_tensor->handle = ort_value;
-  ort_dlmanaged_tensor->tensor.manager_ctx = ort_dlmanaged_tensor;
+  ort_dlmanaged_tensor->tensor.manager_ctx = ort_dlmanaged_tensor.get();
   ort_dlmanaged_tensor->tensor.deleter = &DlpackDeleter;
   ort_dlmanaged_tensor->tensor.dl_tensor.data = (tensor.MutableDataRaw());
   ort_dlmanaged_tensor->tensor.dl_tensor.device = GetDlpackDevice(ort_value, tensor.Location().device.Id());
@@ -236,29 +178,45 @@ DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
   ort_dlmanaged_tensor->tensor.dl_tensor.dtype = GetDlpackDataType(ort_value);
   ort_dlmanaged_tensor->tensor.dl_tensor.shape =
       tensor.Shape().NumDimensions() > 0 ? &const_cast<TensorShape&>(tensor.Shape())[0] : nullptr;
-  ort_dlmanaged_tensor->tensor.dl_tensor.strides = nullptr;
+  auto& strides = ort_dlmanaged_tensor->strides;
+  strides.reserve(tensor.Shape().NumDimensions());
+  // Empty tensors have no addressable elements, so zero strides avoid overflowing dimension products.
+  const auto dims = tensor.Shape().GetDims();
+  const bool is_empty = std::find(dims.begin(), dims.end(), 0) != dims.end();
+  SafeInt<int64_t> stride = 1;
+  for (size_t i = tensor.Shape().NumDimensions(); i > 0; --i) {
+    strides.push_back(is_empty ? 0 : static_cast<int64_t>(stride));
+    if (!is_empty) {
+      stride *= tensor.Shape()[i - 1];
+    }
+  }
+  std::reverse(strides.begin(), strides.end());
+  ort_dlmanaged_tensor->tensor.dl_tensor.strides = strides.empty() ? nullptr : strides.data();
   ort_dlmanaged_tensor->tensor.dl_tensor.byte_offset = 0;
-  return &(ort_dlmanaged_tensor->tensor);
+  auto* result = &ort_dlmanaged_tensor->tensor;
+  ort_dlmanaged_tensor.release();
+  return result;
 }
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
-OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
+OrtValue DlpackToOrtValue(DLManagedTensor* dlpack) {
   ORT_ENFORCE(dlpack != nullptr, "DLPack tensor must not be null.");
 
   // ORT only supports contiguous tensor for now.
   ORT_ENFORCE(IsContiguousTensor(dlpack->dl_tensor), "ORT only supports contiguous tensor for now.");
   OrtDevice device = GetOrtDevice(dlpack->dl_tensor.device);
-  MLDataType data_type = GetOrtValueDataType(dlpack->dl_tensor.dtype, is_bool_tensor);
+  MLDataType data_type = GetOrtValueDataType(dlpack->dl_tensor.dtype);
   OrtMemoryInfo info(GetOrtDeviceName(device), OrtDeviceAllocator, device);
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(
       data_type, TensorShape(dlpack->dl_tensor.shape, static_cast<size_t>(dlpack->dl_tensor.ndim)),
-      dlpack->dl_tensor.data, info);
+      dlpack->dl_tensor.data, info, SafeInt<ptrdiff_t>(dlpack->dl_tensor.byte_offset));
 
   OrtValue ort_value;
   std::function<void(void*)> deleter = [dlpack](void* p) {
-    ORT_ENFORCE(dlpack->deleter != NULL, "A dlpack structure must have a deleter.");
-    dlpack->deleter(dlpack);
+    if (dlpack->deleter != nullptr) {
+      dlpack->deleter(dlpack);
+    }
     auto deleter = DataTypeImpl::GetType<Tensor>()->GetDeleteFunc();
     if (deleter != NULL)
       deleter(p);
