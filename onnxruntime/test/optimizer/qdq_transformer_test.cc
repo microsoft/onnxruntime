@@ -6369,6 +6369,10 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQsCleanup) {
 
     auto add_session_options = [](SessionOptions& so) {
       ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsEnableQuantQDQCleanup, "1"));
+      // The Transposes only give the Q/DQ nodes non-QDQ neighbors. They have no perm, so they reverse the dims
+      // and cancel each other across the Q/DQ nodes. Keep the transpose optimizer out of this test.
+      ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableSpecifiedOptimizers,
+                                                        "TransposeOptimizer"));
     };
 
     // we increase the tolerance as removing the QDQ nodes means there's no round-trip to 8-bit and back
@@ -6555,6 +6559,10 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicDQQsCleanup) {
       ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1"));
 
       ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsEnableQuantQDQCleanup, "1"));
+      // The Transposes only give the Q/DQ nodes non-QDQ neighbors. They have no perm, so they reverse the dims
+      // and cancel each other across the Q/DQ nodes. Keep the transpose optimizer out of this test.
+      ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableSpecifiedOptimizers,
+                                                        "TransposeOptimizer"));
     };
 
     // we increase the tolerance as removing the QDQ nodes means there's no round-trip to 8-bit and back

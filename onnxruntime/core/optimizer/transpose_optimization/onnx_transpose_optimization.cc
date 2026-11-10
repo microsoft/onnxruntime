@@ -214,9 +214,27 @@ static bool IsValidPerm(const std::vector<int64_t>& perm) {
   return true;
 }
 
-static std::optional<std::vector<int64_t>> GetPermAttrIfValid(const api::NodeRef& node) {
+static std::optional<std::vector<int64_t>> GetPermAttrIfValid(const api::GraphRef& graph, const api::NodeRef& node) {
   std::optional<std::vector<int64_t>> perm = node.GetAttributeInts("perm");
-  if (perm.has_value() && !IsValidPerm(*perm)) {
+  if (!perm.has_value()) {
+    // Per the ONNX spec, an omitted perm reverses the dimensions. Derive it when the input rank is known.
+    std::vector<std::string_view> inputs = node.Inputs();
+    if (inputs.empty() || inputs[0].empty()) {
+      return std::nullopt;
+    }
+
+    std::optional<size_t> rank = graph.GetValueInfo(inputs[0])->ShapeRank();
+    if (!rank.has_value()) {
+      return std::nullopt;
+    }
+
+    perm = std::vector<int64_t>(*rank);
+    for (size_t i = 0; i < *rank; ++i) {
+      (*perm)[i] = gsl::narrow_cast<int64_t>(*rank - 1 - i);
+    }
+  }
+
+  if (!IsValidPerm(*perm)) {
     return std::nullopt;
   }
   return perm;
@@ -543,7 +561,7 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
   // Have to update the axis for newly inserted Q/DQ after a Transpose or Unsqueeze if using per-axis quantization.
   if (dq_quant_info->mode == QuantizationMode::kPerAxis) {
     if (is_transpose) {
-      auto perm = GetPermAttrIfValid(next_node);
+      auto perm = GetPermAttrIfValid(graph, next_node);
       if (!perm || !IsAxisInRangeForPerm(axis, *perm)) {
         return false;
       }
@@ -1157,7 +1175,7 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
   // is one of the few operations that violates the normal traversal order. If the input to the new Unsqueeze is
   // a Transpose, optimize it here.
   if (inp_node != nullptr && inp_node->IsOp("Transpose")) {
-    auto perm = GetPermAttrIfValid(*inp_node);
+    auto perm = GetPermAttrIfValid(ctx.graph, *inp_node);
     if (perm.has_value()) {
       auto perm_inv = InvertPerm(*perm);
       std::vector<size_t> indices = {0};
@@ -1325,7 +1343,7 @@ static bool TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
   }
 
   if (inp_node != nullptr && inp_node->IsOp("Transpose")) {
-    std::optional<std::vector<int64_t>> perm2 = GetPermAttrIfValid(*inp_node);
+    std::optional<std::vector<int64_t>> perm2 = GetPermAttrIfValid(graph, *inp_node);
     if (perm2 != std::nullopt && perm2->size() == perm.size()) {
       // If they cancel, use pre_transpose_value and remove Transpose if possible.
       if (*perm2 == perm_inv) {
@@ -1380,7 +1398,7 @@ static bool TransposeInputImpl(api::GraphRef& graph, api::NodeRef& node, size_t 
 
   // Case 3: A Transpose op with the same perms might already exist
   for (auto& consumer : consumers->nodes) {
-    if (consumer->IsOp("Transpose") && GetPermAttrIfValid(*consumer) == perm) {
+    if (consumer->IsOp("Transpose") && GetPermAttrIfValid(graph, *consumer) == perm) {
       node.SetInput(i, consumer->Outputs()[0]);
       return true;
     }
@@ -1623,7 +1641,7 @@ static int EstimateTransposeValueCost(const api::GraphRef& graph, std::string_vi
     }
 
     if (producer_node->IsOp("Transpose")) {
-      std::optional<std::vector<int64_t>> perm2 = GetPermAttrIfValid(*producer_node);
+      std::optional<std::vector<int64_t>> perm2 = GetPermAttrIfValid(graph, *producer_node);
       if (perm2 != std::nullopt) {
         if (*perm2 == perm_inv && CanLikelyRemoveTranspose(graph, *producer_node, extended_handlers)) {
           return -EstimateValueRank(graph, input);
@@ -2512,7 +2530,7 @@ static bool HandleTransposeImpl(HandlerArgs& args, const std::vector<int64_t>& n
 
 static bool HandleTranspose(HandlerArgs& args) {
   // In this handler a transpose leads to another transpose. "transpose" is the 1st and "node" is the 2nd.
-  std::optional<std::vector<int64_t>> node_perm = GetPermAttrIfValid(args.node);
+  std::optional<std::vector<int64_t>> node_perm = GetPermAttrIfValid(args.ctx.graph, args.node);
   if (node_perm == std::nullopt || node_perm->size() != args.perm.size()) {
     return false;
   }
@@ -2993,7 +3011,7 @@ static bool HasPathToCancelingTranspose(OptimizerCtx& ctx, std::string_view outp
     }
     for (auto& consumer : consumers->nodes) {
       if (consumer->IsOp("Transpose")) {
-        auto downstream_perm = GetPermAttrIfValid(*consumer);
+        auto downstream_perm = GetPermAttrIfValid(ctx.graph, *consumer);
         if (downstream_perm && *downstream_perm == perm_inv) {
           return true;
         }
@@ -3383,7 +3401,7 @@ static bool TryFixTransposeMissingDQ(OptimizerCtx& ctx, api::NodeRef& transpose_
 
   if (q_quant_info->mode == QuantizationMode::kPerAxis) {
     // Have to update the axis for newly inserted Q/DQ before a Transpose if using per-channel quantization.
-    auto perm = GetPermAttrIfValid(transpose_node);
+    auto perm = GetPermAttrIfValid(ctx.graph, transpose_node);
     if (!perm || !IsAxisInRangeForPerm(axis, *perm)) {
       return false;
     }
@@ -3512,7 +3530,7 @@ static bool TryConstantFoldNode(OptimizerCtx& ctx, api::NodeRef& node) {
   // Create new squeezed or transposed initializer.
   // Once we create this new initializer, we're committed to modifying the graph.
   if (is_transpose) {
-    std::optional<std::vector<int64_t>> perm = GetPermAttrIfValid(node);
+    std::optional<std::vector<int64_t>> perm = GetPermAttrIfValid(ctx.graph, node);
     if (perm == std::nullopt) {
       // Invalid transpose perm attribute. Should not happen. Skip.
       return false;
@@ -3668,7 +3686,7 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
       }
       std::unique_ptr<api::NodeRef> transpose = ctx.graph.GetNodeProducingOutput(inp);
       if (transpose != nullptr && transpose->IsOp("Transpose")) {
-        std::optional<std::vector<int64_t>> perm = GetPermAttrIfValid(*transpose);
+        std::optional<std::vector<int64_t>> perm = GetPermAttrIfValid(ctx.graph, *transpose);
         if (perm != std::nullopt) {
           if (ProcessTranspose(ctx, *transpose, node, *perm, j, outputs_leading_to_transpose)) {
             changed = true;
