@@ -7,8 +7,11 @@
 #include <cuda_runtime.h>
 #include <gtest/gtest.h>
 
+#include <array>
+#include <cmath>
 #include <vector>
 
+#include "contrib_ops/cuda/quantization/gguf_quant_cuda.cuh"
 #include "contrib_ops/cuda/quantization/matmul_packed.h"
 
 namespace onnxruntime::test {
@@ -29,6 +32,65 @@ class PackedProjectionBuffer {
  private:
   void* data_{nullptr};
 };
+
+__global__ void DecodeNvfp4OracleKernel(uint16_t* output) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+  const int index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (index >= 128 * 16) return;
+  const int scale = index / 16, first_code = index % 16;
+  uint2 raw = make_uint2(0, 0);
+  for (int position = 0; position < 16; ++position) {
+    const uint32_t code = (first_code + position) % 16;
+    const int shift = 8 * (position % 4) + 4 * (position / 8);
+    if (position % 8 < 4)
+      raw.x |= code << shift;
+    else
+      raw.y |= code << shift;
+  }
+  uint4 low, high;
+  contrib::cuda::gguf_cuda::DecodeNvfp4WordsBf16(raw, static_cast<uint8_t>(scale), low, high);
+  const auto* lo = reinterpret_cast<const uint32_t*>(&low);
+  const auto* hi = reinterpret_cast<const uint32_t*>(&high);
+  for (int s = 0; s < 4; ++s) {
+    output[index * 16 + s] = static_cast<uint16_t>(lo[s]);
+    output[index * 16 + s + 4] = static_cast<uint16_t>(lo[s] >> 16);
+    output[index * 16 + s + 8] = static_cast<uint16_t>(hi[s]);
+    output[index * 16 + s + 12] = static_cast<uint16_t>(hi[s] >> 16);
+  }
+#endif
+}
+
+TEST(CUDA_EP_Unittest, Nvfp4DecoderExhaustiveUnsignedScales) {
+  int device = 0;
+  ASSERT_EQ(cudaGetDevice(&device), cudaSuccess);
+  cudaDeviceProp properties{};
+  ASSERT_EQ(cudaGetDeviceProperties(&properties, device), cudaSuccess);
+  if (properties.major < 8) GTEST_SKIP() << "Requires CUDA SM80+";
+  std::vector<uint16_t> output(128 * 16 * 16);
+  PackedProjectionBuffer decoded(output.size() * sizeof(uint16_t));
+  DecodeNvfp4OracleKernel<<<8, 256>>>(static_cast<uint16_t*>(decoded.Data()));
+  ASSERT_EQ(cudaGetLastError(), cudaSuccess);
+  ASSERT_EQ(cudaMemcpy(output.data(), decoded.Data(), output.size() * sizeof(uint16_t),
+                       cudaMemcpyDeviceToHost),
+            cudaSuccess);
+  constexpr std::array<float, 16> values{
+      0.f, .5f, 1.f, 1.5f, 2.f, 3.f, 4.f, 6.f,
+      0.f, -.5f, -1.f, -1.5f, -2.f, -3.f, -4.f, -6.f};
+  for (int scale = 0; scale < 128; ++scale) {
+    const int exponent = scale >> 3, fraction = scale & 7;
+    const float d = scale == 127    ? 0.f
+                    : exponent == 0 ? std::ldexp(static_cast<float>(fraction), -9)
+                                    : std::ldexp(1.f + static_cast<float>(fraction) / 8.f, exponent - 7);
+    for (int first_code = 0; first_code < 16; ++first_code) {
+      for (int position = 0; position < 16; ++position) {
+        const int code = (first_code + position) % 16;
+        const __nv_bfloat16_raw expected = __float2bfloat16_rn(d * values[code]);
+        ASSERT_EQ(output[(scale * 16 + first_code) * 16 + position], expected.x)
+            << "scale=" << scale << " code=" << code << " position=" << position;
+      }
+    }
+  }
+}
 
 TEST(CUDA_EP_Unittest, MatMulPackedNvfp4WideContiguous128KCancellation) {
   int device = 0;
