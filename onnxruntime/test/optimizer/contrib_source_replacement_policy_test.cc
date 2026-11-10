@@ -263,6 +263,55 @@ TEST(ContribSourceReplacementPolicyTest, AvailableIsEPAndVariantScopedAndCanCoex
             InitializerTransformation::OwnedFlattenedBiasCopy);
 }
 
+TEST(ContribSourceReplacementPolicyTest, RejectsUncoveredAndDuplicateOpsetDomains) {
+  const auto original = ScaledSiLUSources().front();
+  const std::array schemas{original.target};
+  auto check_invalid = [&](const SourceReplacement& source, std::string_view reason) {
+    const std::array metadata{source.Metadata()};
+    const std::array<const SourceReplacement*, 1> sources{&source};
+    for (const auto& status : {ValidateSourceDeclarations(schemas, {}, metadata, {}),
+                               ValidateCudaSourceReplacements(sources, schemas, {}, {})}) {
+      EXPECT_FALSE(status.IsOK());
+      EXPECT_NE(status.ErrorMessage().find(reason), std::string::npos) << status.ErrorMessage();
+    }
+  };
+  auto source = original;
+  source.body.rule.opsets = {{kMSDomain, 1, 1}};
+  check_invalid(source, "Missing rule opset requirement for domain:");
+
+  source = original;
+  source.body.rule.replacement =
+      rewrite::Replacement("(x)=>{a=other.test::Identity(x); return com.microsoft.ScaledSiLU(a)}");
+  check_invalid(source, "Missing rule opset requirement for replacement domain: other.test");
+
+  source = original;
+  const rewrite::PatternLibrary library(R"(
+    interface Unary(x) -> (y)
+    pattern first implements Unary { a=Swish(x); return (y=a) }
+    pattern second implements Unary { a=other.test::Identity(x); return (y=a) }
+    pattern Forms = first | second
+  )");
+  source.body.rule.pattern = library.GetPattern("Forms");
+  check_invalid(source, "Missing rule opset requirement for domain: other.test");
+
+  source = original;
+  source.body.rule.opsets.push_back({kOnnxDomainAlias, 24, 24});
+  check_invalid(source, "Duplicate rule opset domain:");
+}
+
+TEST(ContribSourceReplacementPolicyTest, AcceptsOnnxOpsetAlias) {
+  auto source = ScaledSiLUSources().front();
+  for (auto& requirement : source.body.rule.opsets) {
+    if (requirement.domain == kOnnxDomain) requirement.domain = kOnnxDomainAlias;
+  }
+  const std::array schemas{source.target};
+  const std::array metadata{source.Metadata()};
+  const std::array<const SourceReplacement*, 1> sources{&source};
+  ASSERT_STATUS_OK(ValidateSourceDeclarations(schemas, {}, metadata, {}));
+  ASSERT_STATUS_OK(ValidateCudaSourceReplacements(sources, schemas, {}, {}));
+  EXPECT_NO_THROW(rewrite::PatternRewriter({source.body.rule}));
+}
+
 TEST(ContribSourceReplacementPolicyTest, LegacyCannotExemptMalformedExecutableMetadata) {
   const auto schemas = GetContribSchemaKeys();
   const auto policies = GetSourcePolicies();

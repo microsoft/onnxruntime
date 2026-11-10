@@ -69,10 +69,9 @@ Status ValidateBody(const ExecutableSource& source) {
   ORT_RETURN_IF(body.initializer_transformation != InitializerTransformation::None &&
                     !HasText(body.transformation_description),
                 "Initializer transformation requires a description.");
+  ORT_RETURN_IF_ERROR(rewrite::PatternRewriter::ValidateOpsets(rule));
   bool target_opset = false;
   for (const auto& opset : rule.opsets) {
-    ORT_RETURN_IF_NOT(opset.min_version > 0 && opset.max_version >= opset.min_version,
-                      "Invalid executable source opset range.");
     if (opset.domain == source.target.domain && opset.min_version == source.target.since_version &&
         opset.max_version == source.target.since_version) target_opset = true;
   }

@@ -2665,6 +2665,36 @@ bool Match::BindElementType(std::string_view name, int32_t value) {
   return it->second == value;
 }
 
+Status PatternRewriter::ValidateOpsets(const Rule& rule) {
+  const auto canonical_domain = [](std::string_view domain) {
+    return domain == kOnnxDomainAlias ? std::string_view(kOnnxDomain) : domain;
+  };
+  InlinedHashSet<std::string_view> domains;
+  for (const auto& requirement : rule.opsets) {
+    ORT_RETURN_IF_NOT(requirement.min_version > 0 && requirement.max_version >= requirement.min_version,
+                      "Rule opset requirements need a positive, nonempty inclusive range.");
+    const auto domain = canonical_domain(requirement.domain);
+    ORT_RETURN_IF_NOT(domains.insert(domain).second, "Duplicate rule opset domain: ", domain);
+  }
+  InlinedVector<const Pattern*, 1> patterns{&rule.pattern};
+  while (!patterns.empty()) {
+    const auto* pattern = patterns.back();
+    patterns.pop_back();
+    for (const auto& node : pattern->Nodes()) {
+      ORT_RETURN_IF_NOT(domains.count(canonical_domain(node.op.domain)),
+                        "Missing rule opset requirement for domain: ", node.op.domain);
+    }
+    for (const auto& alternative : pattern->alternatives_) patterns.push_back(alternative.get());
+  }
+  if (const auto* recipe = rule.replacement.Parsed(); recipe && recipe->Plan()) {
+    for (const auto& node : *recipe->Plan()) {
+      ORT_RETURN_IF_NOT(domains.count(canonical_domain(node.domain)),
+                        "Missing rule opset requirement for replacement domain: ", node.domain);
+    }
+  }
+  return Status::OK();
+}
+
 PatternRewriter::PatternRewriter(Rules rules, Options options)
     : GraphTransformer("PatternRewriter"), options_(options) {
   // Expand in rule/branch order before indexing. Every attempt gets a fresh Match,
@@ -2685,21 +2715,14 @@ PatternRewriter::PatternRewriter(Rules rules, Options options)
     Rule& rule = rules_[i];
     ORT_ENFORCE(!rule.name.empty() && !rule.pattern.Nodes().empty() && rule.replacement,
                 "Rules need a name, at least one node and a recipe.");
-    InlinedHashSet<std::string> domains;
+    ORT_THROW_IF_ERROR(ValidateOpsets(rule));
     for (auto& requirement : rule.opsets) {
       if (requirement.domain == kOnnxDomainAlias) requirement.domain = kOnnxDomain;
-      ORT_ENFORCE(requirement.min_version > 0 && requirement.max_version >= requirement.min_version,
-                  "Rule opset requirements need a positive, nonempty inclusive range.");
-      ORT_ENFORCE(domains.insert(requirement.domain).second, "Duplicate rule opset domain: ", requirement.domain);
-    }
-    for (const auto& node : rule.pattern.Nodes()) {
-      ORT_ENFORCE(domains.count(node.op.domain), "Missing rule opset requirement for domain: ", node.op.domain);
     }
     if (auto* recipe = rule.replacement.Parsed(); recipe && recipe->plan_) {
       auto nodes = *recipe->plan_;
       for (auto& node : nodes) {
         if (node.domain == kOnnxDomainAlias) node.domain = kOnnxDomain;
-        ORT_ENFORCE(domains.count(node.domain), "Missing rule opset requirement for replacement domain: ", node.domain);
         for (const auto& [name, binding] : node.attribute_bindings) {
           auto alias = rule.pattern.aliases_.find(binding);
           ORT_ENFORCE(alias == rule.pattern.aliases_.end() || rule.pattern.IsAttribute(alias->second),
