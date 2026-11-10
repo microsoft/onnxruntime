@@ -541,6 +541,7 @@ Status FlashAttentionPrefillSubgroupMatrixProgram::GenerateShaderCode(ShaderHelp
                              WGSL_TEMPLATE_PARAMETER(q_bnsh, q_bnsh_),
                              WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
                              WGSL_TEMPLATE_PARAMETER(use_seqlens_q, use_seqlens_q_),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(block_table, nullptr),
                              WGSL_TEMPLATE_VARIABLE(output, output));
 }
 
