@@ -36,7 +36,8 @@ Status GemmTransposeFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& m
   auto new_gemm_input_defs = gemm_node.MutableInputDefs();
 
   // check if input A is a Transpose
-  if (A_node_ptr != nullptr && A_node_ptr->OpType() == "Transpose" && IsMatrixTranspose(*A_node_ptr)) {
+  if (A_node_ptr != nullptr && A_node_ptr->OpType() == "Transpose" && IsMatrixTranspose(*A_node_ptr) &&
+      !graph.NodeProducesGraphOutput(*A_node_ptr)) {
     // make sure all consumers are gemm nodes to avoid possible double transpose
     std::vector<const Node*> gemm_nodes = graph_utils::FindChildrenByType(*A_node_ptr, "Gemm");
     if (gemm_nodes.size() == A_node_ptr->GetOutputEdgesCount()) {
@@ -55,7 +56,8 @@ Status GemmTransposeFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& m
     }
   }
   // check if input B is a Transpose
-  if (B_node_ptr != nullptr && B_node_ptr->OpType() == "Transpose" && IsMatrixTranspose(*B_node_ptr)) {
+  if (B_node_ptr != nullptr && B_node_ptr->OpType() == "Transpose" && IsMatrixTranspose(*B_node_ptr) &&
+      !graph.NodeProducesGraphOutput(*B_node_ptr)) {
     std::vector<const Node*> gemm_nodes = graph_utils::FindChildrenByType(*B_node_ptr, "Gemm");
     if (gemm_nodes.size() == B_node_ptr->GetOutputEdgesCount()) {
       Node& B_node = *graph.GetNode(B_node_ptr->Index());

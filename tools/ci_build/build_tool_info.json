@@ -1,0 +1,30 @@
+{
+  "vcpkg": {
+    "version": "2026.07.29",
+    "sha512": "af46e8608069258d8ead737553c765f013d6d8303b48e45c0fe0c49f765ca6a535a81c10cafa70999c8a4ccdf71bce770c36b01607a745c649a838e5d75c5806"
+  },
+  "cmake": {
+    "version": "3.31.8",
+    "sha512": {
+      "linux": {
+        "x64": "7939260931098c3f00d2b36de3bee6a0ee3bcae2dba001598c492ed5c82d295c9aa9969654f1ff937fec4d71679541238baaa648c5246f36e14f28f0a62337a0",
+        "arm64": "8eeb07e966a5340c122979dd2e371708a78adccc85200b22bc7e66028e65513bce5ced6c37fe65aedb94000d970186c5c7562d1ab3dbda911061de46b75345d9"
+      },
+      "windows": {
+        "x64": "807b774fcb12defff8ce869e602fc5b6279d5b7bf7229ebcf3f7490da3f887d516b9c49a00d50f9179e552ed8737d19835a19ef8f366d1ffda1ad6f3352a90c2",
+        "arm64": "86937dc89deabe0ff2a08fe198fcfc70764476b865cca4c6dc3bfc7fb9f7d44d4929af919e26e84aaedef17ad01ffb9683e42c39cb38b409100f723bc5ef1cc0"
+      },
+      "macos": {
+        "universal": "99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8"
+      }
+    }
+  },
+  "ccache": {
+    "version": "4.13.1",
+    "sha512": {
+      "linux": {
+        "x64": "626407a9b81dd86f8ec9867bff396b32dd1f00344f5b323526579a64f6d4104927f83e8d7a05ad9806fd78f4491e0adb4cff73388000a62050cb1b00766214ee"
+      }
+    }
+  }
+}

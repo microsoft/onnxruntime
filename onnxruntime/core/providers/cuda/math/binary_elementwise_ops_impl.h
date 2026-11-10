@@ -24,6 +24,7 @@ namespace cuda {
   BINARY_OP_NAME_EXPR(And, (a & b))                  \
   BINARY_OP_NAME_EXPR(Or, (a | b))                   \
   BINARY_OP_NAME_EXPR(Xor, (a ^ b))                  \
+  BINARY_OP_NAME_EXPR(BitwiseXor, (a ^ b))           \
   BINARY_OP_NAME_EXPR(PRelu, (a > (T)0 ? a : a * b)) \
   BINARY_OP_NAME_EXPR(Max, _Max(a, b))               \
   BINARY_OP_NAME_EXPR(Min, _Min(a, b))               \

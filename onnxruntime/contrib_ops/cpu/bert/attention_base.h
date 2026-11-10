@@ -14,6 +14,7 @@
 #endif
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
+#include "contrib_ops/cpu/bert/attention_validation.h"
 #ifndef SHARED_PROVIDER
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
 #endif
@@ -223,56 +224,12 @@ inline Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                            "Input 'bias' dimension 0 should have same length as dimension 1 of input 'weights'");
   }
 
-  // Q, K, V are packed along bias_dims[0]. When their hidden sizes are required to be equal,
-  // bias_dims[0] == 3 * hidden_size must be a multiple of 3.
-  if (require_same_hidden_size_ && bias_dims[0] % 3 != 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'bias' dimension 0 (", bias_dims[0],
-                           ") must be a multiple of 3 (Q, K, V are packed and have equal hidden sizes).");
-  }
-
-  int64_t q_hidden_size = bias_dims[0] / static_cast<int64_t>(3);
-  int64_t k_hidden_size = q_hidden_size;
-  int64_t v_hidden_size = k_hidden_size;
-  if (qkv_hidden_sizes_.size() != 0) {
-    if (qkv_hidden_sizes_.size() != 3) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "qkv_hidden_sizes attribute should have 3 elements");
-    }
-
-    for (size_t i = 0; i < qkv_hidden_sizes_.size(); i++) {
-      if (qkv_hidden_sizes_[i] % num_heads_ != 0) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "hidden_size should be divisible by num_heads:", qkv_hidden_sizes_[i]);
-      }
-    }
-
-    q_hidden_size = qkv_hidden_sizes_[0];
-    k_hidden_size = qkv_hidden_sizes_[1];
-    v_hidden_size = qkv_hidden_sizes_[2];
-  } else if (q_hidden_size % num_heads_ != 0) {
-    // Match the error message produced by the qkv_hidden_sizes path above.
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "hidden_size should be divisible by num_heads:", q_hidden_size);
-  }
-
-  int64_t kv_sequence_length = sequence_length;
-
-  if (q_hidden_size != k_hidden_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "qkv_hidden_sizes first element should be same as the second");
-  }
-
-  if (this->require_same_hidden_size_ && k_hidden_size != v_hidden_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Hidden size of Q, K and V shall be same");
-  }
-
-  if (bias_dims[0] != q_hidden_size + k_hidden_size + v_hidden_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'bias' dimension 0 should have same length as sum of Q/K/V hidden sizes:",
-                           " q_hidden_size=", q_hidden_size, " k_hidden_size=", k_hidden_size, " v_hidden_size=",
-                           v_hidden_size, "bias_dims[0]=", bias_dims[0]);
-  }
+  std::array<int64_t, 3> hidden_sizes{};
+  ORT_RETURN_IF_ERROR(attention::CheckAttentionWeights(weights_dims, qkv_hidden_sizes_, num_heads_,
+                                                       require_same_hidden_size_, hidden_sizes));
+  ORT_RETURN_IF_ERROR(attention::CheckAttentionProjectionSize(batch_size, sequence_length, weights_dims[1]));
+  const auto [q_hidden_size, k_hidden_size, v_hidden_size] = hidden_sizes;
+  const int64_t kv_sequence_length = sequence_length;
 
   int64_t past_sequence_length = 0;
   if (past != nullptr) {
@@ -316,14 +273,12 @@ inline Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     }
   }
 
-  int64_t total_sequence_length = kv_sequence_length + past_sequence_length;
-  if (past != nullptr && past_present_share_buffer_) {
-    const auto& past_dims = past->Shape().GetDims();
-    if (past_dims[3] < total_sequence_length) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "when past_present_share_buffer, past tensor sequence must not smaller than total_sequence_length ");
-    }
-  }
+  int64_t total_sequence_length = 0;
+  const std::optional<int64_t> cache_capacity = past != nullptr && past_present_share_buffer_
+                                                    ? std::make_optional(past->Shape().GetDims()[3])
+                                                    : std::nullopt;
+  ORT_RETURN_IF_ERROR(attention::CheckAttentionSequenceLengths(
+      kv_sequence_length, past_sequence_length, cache_capacity, total_sequence_length));
 
   int64_t max_sequence_length = -1;
   AttentionMaskType mask_type = AttentionMaskType::MASK_NONE;
@@ -358,6 +313,8 @@ inline Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                              "max_sequence_length not matching from mask and past when past_present_share_buffer_ is set");
     }
   }
+  ORT_RETURN_IF_NOT(max_sequence_length <= attention::kMaxAttentionDimension,
+                    "max_sequence_length must not exceed INT_MAX");
 
   if (parameters != nullptr) {
     AttentionParameters* output_parameters = reinterpret_cast<AttentionParameters*>(parameters);

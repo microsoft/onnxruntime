@@ -213,6 +213,28 @@ bool test_directory_hash_rejects_symlink() {
   return true;
 }
 
+bool test_directory_hash_reports_unreadable_subdirectory() {
+  Sandbox s;
+  s.Write("a.txt", "alpha");
+  s.Write("locked/b.txt", "beta");
+  const fs::path locked = s.root() / "locked";
+  std::error_code ec;
+  fs::permissions(locked, fs::perms::none, ec);
+  fs::directory_iterator probe(locked, ec);
+  if (!ec) {
+    fs::permissions(locked, fs::perms::owner_all, ec);
+    std::printf("[SKIP] %s (directory permissions not enforced)\n", g_current);
+    return true;
+  }
+  const char* uri = nullptr;
+  ModelPackageStatus* st = ModelPackage_ComputeDirectoryHash(s.root().u8string().c_str(), &uri);
+  fs::permissions(locked, fs::perms::owner_all, ec);
+  CHECK(st != nullptr);
+  CHECK(ModelPackageStatus_Code(st) == MODEL_PACKAGE_ERR_IO);
+  ModelPackageStatus_Release(st);
+  return true;
+}
+
 bool test_directory_hash_known_value_single_file() {
   // Known-answer check: the directory URI hashes a manifest of "<file_hex>  <name>\n"
   // lines, so compute the expected value the same way and compare.
@@ -340,6 +362,7 @@ const Test kTests[] = {
     {"directory_hash_content_change_differs", test_directory_hash_content_change_differs},
     {"directory_hash_empty_dirs_ignored", test_directory_hash_empty_dirs_ignored},
     {"directory_hash_rejects_symlink", test_directory_hash_rejects_symlink},
+    {"directory_hash_reports_unreadable_subdirectory", test_directory_hash_reports_unreadable_subdirectory},
     {"directory_hash_known_value_single_file", test_directory_hash_known_value_single_file},
     {"directory_hash_sorted_order_independent_of_walk", test_directory_hash_sorted_order_independent_of_walk},
     {"directory_hash_uses_forward_slash", test_directory_hash_uses_forward_slash},

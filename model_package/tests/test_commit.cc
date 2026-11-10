@@ -192,6 +192,48 @@ bool test_commit_pending_shared_asset_copy_in() {
   return true;
 }
 
+bool test_commit_shared_asset_copy_in_nested_directory() {
+  Sandbox s;
+  s.Write("src_asset/m.onnx", "hello world");
+  s.Write("src_asset/weights/w.bin", "weights");
+  PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
+
+  const char* uri = nullptr;
+  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("src_asset").u8string().c_str(),
+                                       nullptr, /*copy_in=*/true, &uri));
+  std::string uri_copy(uri);
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
+                               MODEL_PACKAGE_WRITE_PRESERVE));
+  fs::path landed = s.path("pkg") / "shared_assets" / ("sha256-" + uri_copy.substr(7));
+  CHECK(fs::is_regular_file(landed / "weights" / "w.bin"));
+  return true;
+}
+
+bool test_commit_reports_unreadable_copy_in_subdirectory() {
+  Sandbox s;
+  s.Write("src_asset/m.onnx", "hello world");
+  s.Write("src_asset/weights/w.bin", "weights");
+  PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
+
+  const char* uri = nullptr;
+  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("src_asset").u8string().c_str(),
+                                       nullptr, /*copy_in=*/true, &uri));
+  const fs::path locked = s.path("src_asset") / "weights";
+  std::error_code ec;
+  fs::permissions(locked, fs::perms::none, ec);
+  fs::directory_iterator probe(locked, ec);
+  if (!ec) {
+    fs::permissions(locked, fs::perms::owner_all, ec);
+    std::printf("[SKIP] %s (directory permissions not enforced)\n", g_current);
+    return true;
+  }
+  ModelPackageStatus* st = ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
+                                               MODEL_PACKAGE_WRITE_PRESERVE);
+  fs::permissions(locked, fs::perms::owner_all, ec);
+  CHECK_ERR(st, MODEL_PACKAGE_ERR_IO);
+  return true;
+}
+
 bool test_commit_dense_inlines_external_component() {
   Sandbox s;
   PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
@@ -355,6 +397,24 @@ bool test_prune_removes_stale_staging_dirs() {
   return true;
 }
 
+bool test_prune_reports_unstatable_shared_assets_entry() {
+  Sandbox s;
+  PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").u8string().c_str(),
+                               MODEL_PACKAGE_WRITE_PRESERVE));
+
+  fs::path loop = s.path("pkg") / "shared_assets" / "loop";
+  std::error_code ec;
+  fs::create_directories(loop.parent_path(), ec);
+  fs::create_directory_symlink("loop", loop, ec);
+  if (ec) {
+    std::printf("[SKIP] %s (symlink unsupported)\n", g_current);
+    return true;
+  }
+  CHECK_ERR(ModelPackage_Prune(p.get()), MODEL_PACKAGE_ERR_IO);
+  return true;
+}
+
 bool test_commit_accepts_unreferenced_shared_asset() {
   // Shared assets no longer require an in-manifest reference: AddSharedAsset
   // signals the user's intent to ship the asset, period. Commit materializes
@@ -442,6 +502,8 @@ const Test kTests[] = {
     {"commit_requires_package_root", test_commit_requires_package_root},
     {"commit_external_component_writes_file", test_commit_external_component_writes_file},
     {"commit_pending_shared_asset_copy_in", test_commit_pending_shared_asset_copy_in},
+    {"commit_shared_asset_copy_in_nested_directory", test_commit_shared_asset_copy_in_nested_directory},
+    {"commit_reports_unreadable_copy_in_subdirectory", test_commit_reports_unreadable_copy_in_subdirectory},
     {"commit_dense_inlines_external_component", test_commit_dense_inlines_external_component},
     {"commit_dense_rejects_external_executor_info", test_commit_dense_rejects_external_executor_info},
     {"commit_dest_root_self_contained", test_commit_dest_root_self_contained},
@@ -450,6 +512,7 @@ const Test kTests[] = {
     {"prune_never_touches_shared_assets", test_prune_never_touches_shared_assets},
     {"prune_reclaims_tracked_orphan_variant_dirs", test_prune_reclaims_tracked_orphan_variant_dirs},
     {"prune_removes_stale_staging_dirs", test_prune_removes_stale_staging_dirs},
+    {"prune_reports_unstatable_shared_assets_entry", test_prune_reports_unstatable_shared_assets_entry},
     {"commit_accepts_unreferenced_shared_asset", test_commit_accepts_unreferenced_shared_asset},
     {"commit_leaves_no_temp_files", test_commit_leaves_no_temp_files},
     {"commit_unicode_paths_and_assets", test_commit_unicode_paths_and_assets},

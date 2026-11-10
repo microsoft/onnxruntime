@@ -21,14 +21,6 @@ struct ProviderInfo {
 constexpr ProviderInfo kProvidersInPriorityOrder[] =
     {
         {
-            kNvTensorRTRTXExecutionProvider,
-#ifdef USE_NV
-            true,
-#else
-            false,
-#endif
-        },
-        {
             kTensorrtExecutionProvider,
 #ifdef USE_TENSORRT
             true,
@@ -111,14 +103,6 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
         {
             kCoreMLExecutionProvider,
 #ifdef USE_COREML
-            true,
-#else
-            false,
-#endif
-        },
-        {
-            kAclExecutionProvider,
-#ifdef USE_ACL
             true,
 #else
             false,

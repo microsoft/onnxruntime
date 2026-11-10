@@ -4,11 +4,17 @@
 #pragma once
 
 #include <cuda_fp16.h>
-#include "core/providers/cuda/cuda_common.h"
+#include <cuda_runtime_api.h>
+#include <limits>
+#include "contrib_ops/cuda/bert/causal_conv_with_state_validation.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+inline bool CausalConvDecodeFitsNativeIndex(int batch, int channels) {
+  return static_cast<int64_t>(batch) * channels <= std::numeric_limits<int>::max();
+}
 
 // Element strides of a (batch, position, channel) view over an activation or state tensor.
 // Both supported layouts are dense, so a single strided view covers them and one kernel body
@@ -30,6 +36,14 @@ inline CausalConvLayout MakeCausalConvLayout(bool channels_last, int64_t channel
   return channels_last ? CausalConvLayout{channels * length, channels, 1}
                        : CausalConvLayout{channels * length, 1, length};
 }
+
+template <typename T>
+Status LaunchCausalConvProjectionKernel(
+    cudaStream_t stream, const T* input, const T* weight, const T* bias, const T* past,
+    T* output, T* present, int batch, int channels, int length,
+    int kernel_size, int dilation, int input_width, int channel_offset,
+    int state_length, bool state_channels_last, bool apply_silu,
+    T* state_update = nullptr, int state_update_capacity = 0);
 
 // Fused causal depthwise conv1d + activation + state management.
 // One thread block per (batch, channel). For decode (L=1), this is a simple
@@ -53,6 +67,7 @@ Status LaunchCausalConvWithStateKernel(
     CausalConvLayout state_layout,  // strides within one past_state / present_state slot
     bool apply_silu,
     int max_threads_per_block,
+    size_t max_dynamic_shared_memory_bytes,
     // Axis-0 extent W of past_state / present_state (>= 1). The window axis leads the batch axis
     // so that a slot is one contiguous [B, C, (K-1)*dilation] block. Right-aligned: token t writes slot
     // t + W - seq_len and negative slots are skipped, so slot W-1 always holds the state after the

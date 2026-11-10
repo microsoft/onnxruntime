@@ -365,15 +365,19 @@ C (int32) = (A - A_zero_point) * (B - B_zero_point)
           c_type->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::INT32);
 
           auto a_type = ctx.getInputType(0);
-          auto b_type = ctx.getInputType(3);
+          auto b_type = ctx.getInputType(2);
           if (nullptr == a_type || nullptr == b_type ||
               a_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType ||
               b_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType) {
             fail_type_inference("inputs are expected to have tensor type.");
           }
 
-          ValidateTypeAndShapeForScaleAndZP(ctx, 1, a_type->tensor_type().elem_type(), QuantParamTensorType::Scalar);
-          ValidateTypeAndShapeForScaleAndZP(ctx, 3, b_type->tensor_type().elem_type(), QuantParamTensorType::Scalar);
+          if (ctx.getNumInputs() > 1 && ctx.getInputType(1) != nullptr) {
+            ValidateTypeAndShapeForScaleAndZP(ctx, 1, a_type->tensor_type().elem_type(), QuantParamTensorType::Scalar);
+          }
+          if (ctx.getNumInputs() > 3 && ctx.getInputType(3) != nullptr) {
+            ValidateTypeAndShapeForScaleAndZP(ctx, 3, b_type->tensor_type().elem_type(), QuantParamTensorType::Scalar);
+          }
 
           if (hasInputShape(ctx, 0) && hasInputShape(ctx, 2)) {
             bidirectionalBroadcastShapeInference(ctx.getInputType(0)->tensor_type().shape(),

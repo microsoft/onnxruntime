@@ -45,6 +45,7 @@
 #include "core/providers/webgpu/tensor/unsqueeze.h"
 #include "core/providers/webgpu/math/binary_elementwise_ops.h"
 #include "core/providers/webgpu/math/unary_elementwise_ops.h"
+#include "core/providers/webgpu/quantization/quantize_linear.h"
 #include "core/providers/webgpu/tensor/where.h"
 #include "core/providers/webgpu/reduction/reduction_ops.h"
 
@@ -76,9 +77,10 @@ class Memcpy final : public OpKernel {
   Memcpy(const OpKernelInfo& info) : OpKernel(info) {}
 
   Status Compute(OpKernelContext* ctx) const override {
+    const auto& ep = *static_cast<const WebGpuExecutionProvider*>(Info().GetExecutionProvider());
+    std::lock_guard<std::recursive_mutex> lock{ep.Recording().mutex};
     const auto* X = ctx->Input<Tensor>(0);
     Tensor* Y = ctx->Output(0, X->Shape());
-    const auto& ep = *static_cast<const WebGpuExecutionProvider*>(Info().GetExecutionProvider());
     DataTransfer transfer(ep.BufferManager(), ep.Recording(), ep.GetDeviceId());
     return transfer.CopyTensor(*X, *Y);
   }
@@ -140,6 +142,10 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO(13, Reciprocal),
     KERNEL_CREATE_INFO_VERSIONED(6, 12, Sqrt),
     KERNEL_CREATE_INFO(13, Sqrt),
+    KERNEL_CREATE_INFO_VERSIONED(11, 21, Round),
+    KERNEL_CREATE_INFO(22, Round),
+    KERNEL_CREATE_INFO_VERSIONED(9, 12, Sign),
+    KERNEL_CREATE_INFO(13, Sign),
     KERNEL_CREATE_INFO_VERSIONED(6, 12, Exp),
     KERNEL_CREATE_INFO(13, Exp),
     KERNEL_CREATE_INFO_VERSIONED(9, 12, Erf),
@@ -165,6 +171,11 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO_VERSIONED(6, 12, Tanh),
     KERNEL_CREATE_INFO(13, Tanh),
     KERNEL_CREATE_INFO(1, Not),
+    KERNEL_CREATE_INFO_VERSIONED(9, 12, IsNaN),
+    KERNEL_CREATE_INFO_VERSIONED(13, 19, IsNaN),
+    KERNEL_CREATE_INFO(20, IsNaN),
+    KERNEL_CREATE_INFO_VERSIONED(10, 19, IsInf),
+    KERNEL_CREATE_INFO(20, IsInf),
 
     // // activations
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 11, float, Clip)>,
@@ -188,10 +199,12 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO(20, Gelu),
     KERNEL_CREATE_INFO_VERSIONED(1, 21, Softplus),
     KERNEL_CREATE_INFO(22, Softplus),
+    KERNEL_CREATE_INFO_VERSIONED(1, 21, Softsign),
+    KERNEL_CREATE_INFO(22, Softsign),
 
     // // binary - math
     // All binary elementwise ops (Add, Sub, Mul, Div, Max, Min, Equal, Greater, Less,
-    // GreaterOrEqual, LessOrEqual, Pow, PRelu, And) are registered via RegisterKernels
+    // GreaterOrEqual, LessOrEqual, Pow, PRelu, And, Or, Xor) are registered via RegisterKernels
     // through RegisterBinaryElementwiseKernels, with conditional int64 support.
 
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 12, Shape)>,
@@ -278,9 +291,14 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 24, Transpose)>,
 
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, DepthToSpace)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, DepthToSpace)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain,
+                                                                          13, 27, DepthToSpace)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 28, DepthToSpace)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 11, 12, DepthToSpace)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 13, DepthToSpace)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider,
+                                                                          kMSInternalNHWCDomain, 13, 27, DepthToSpace)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider,
+                                                                kMSInternalNHWCDomain, 28, DepthToSpace)>,
 
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 10, Conv)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 21, Conv)>,
@@ -321,6 +339,15 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
 
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, GlobalMaxPool)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 1, GlobalMaxPool)>,
+
+    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 17, LpPool)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 11, 17, LpPool)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 18, 21, LpPool)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 18, LpPool)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 22, LpPool)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 2, 21, GlobalLpPool)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 22, GlobalLpPool)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 2, GlobalLpPool)>,
 
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 7, 8, Gemm)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 9, 10, Gemm)>,
@@ -394,7 +421,8 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 22, InstanceNormalization)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSInternalNHWCDomain, 22, InstanceNormalization)>,
 
-    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 12, Einsum)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 12, 27, Einsum)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 28, Einsum)>,
 
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 2, 10, Pad)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, Pad)>,
@@ -424,6 +452,14 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO_VERSIONED(19, 20, DequantizeLinear),
     KERNEL_CREATE_INFO_VERSIONED(21, 22, DequantizeLinear),
     KERNEL_CREATE_INFO(23, DequantizeLinear),
+    KERNEL_CREATE_INFO_VERSIONED(10, 12, QuantizeLinear),
+    KERNEL_CREATE_INFO_VERSIONED(13, 18, QuantizeLinear),
+    KERNEL_CREATE_INFO_VERSIONED(19, 20, QuantizeLinear),
+    KERNEL_CREATE_INFO_VERSIONED(21, 22, QuantizeLinear),
+    KERNEL_CREATE_INFO_VERSIONED(23, 23, QuantizeLinear),
+    KERNEL_CREATE_INFO_VERSIONED(24, 24, QuantizeLinear),
+    KERNEL_CREATE_INFO_VERSIONED(25, 27, QuantizeLinear),
+    KERNEL_CREATE_INFO(28, QuantizeLinear),
 
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 13, CumSum)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 14, CumSum)>,
@@ -496,7 +532,7 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateExpandKernelInfo(13, enable_int64)));
 
   // Register all binary elementwise kernels (Add, Sub, Mul, Div, Max, Min, Equal, Greater,
-  // Less, GreaterOrEqual, LessOrEqual, Pow, PRelu, And) with conditional int64 support.
+  // Less, GreaterOrEqual, LessOrEqual, Pow, PRelu, And, Or, Xor) with conditional int64 support.
   RegisterBinaryElementwiseKernels(*kernel_registry, enable_int64);
 
   // Register Reshape kernels with conditional int64 support
@@ -626,6 +662,7 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       multi_rotary_cache_concat_offset_{config.multi_rotary_cache_concat_offset},
       kv_cache_quantization_bits_{config.kv_cache_quantization_bits},
       enable_matmul_fp32_accumulation_{config.enable_matmul_fp32_accumulation},
+      feature_requests_{config.feature_requests},
       forced_matmul_algorithm_{config.forced_matmul_algorithm},
 #if defined(_WIN32) && defined(ENABLE_D3D12_FILE_LOADING)
       weight_load_acceleration_mode_{config.weight_load_acceleration_mode},
@@ -675,6 +712,13 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
   }
 
   WebGpuContextFactory::RetainContext(context_id_);
+}
+
+bool WebGpuExecutionProvider::DeviceHasFeature(wgpu::FeatureName feature) const {
+  constexpr auto index = static_cast<size_t>(WebGpuFeature::SubgroupMatrix);
+  return context_.DeviceHasFeature(feature) &&
+         (feature != wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix ||
+          feature_requests_[index].value_or(kWebGpuFeatures[index].enabled_by_default));
 }
 
 std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
@@ -797,6 +841,14 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
       }
     }
 
+    if (node.OpType() == "QuantizeLinear" && node.Domain() == kOnnxDomain) {
+      const auto& precision = node.GetAttributes().find("precision");
+      if (precision != node.GetAttributes().end() &&
+          !webgpu::IsQuantizeLinearPrecisionSupported(precision->second.i())) {
+        continue;
+      }
+    }
+
     candidates.push_back(node.Index());
     tenative_candidates.push_back(node.Index());
   }
@@ -912,6 +964,7 @@ std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetProfiler() {
 }
 
 Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
+  std::lock_guard<std::recursive_mutex> lock{recording_->mutex};
 #if defined(ORT_USE_EP_API_ADAPTERS)
   const bool serialized = webgpu::ep::UseSerializedExecutionMode();
   if (serialized) {
@@ -978,6 +1031,7 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
 }
 
 Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& run_options) {
+  std::lock_guard<std::recursive_mutex> lock{recording_->mutex};
   auto end_run = gsl::finally([&] {
     graph_buffer_mgr_active_ = false;
     run_active_.store(false);
@@ -987,7 +1041,7 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
     }
 #endif
   });
-  // When capturing, flushing creates the replay-ready CapturedCommandInfo entries before
+  // When capturing, flushing creates the replay-ready dispatch entries before
   // CaptureEnd() detaches their external storage.
   Status flush_status = context_.Flush(BufferManager(), *recording_);
 
@@ -1052,6 +1106,7 @@ bool WebGpuExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
 }
 
 Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id, bool /*sync*/) {
+  std::lock_guard<std::recursive_mutex> lock{recording_->mutex};
 #if defined(ORT_USE_EP_API_ADAPTERS)
   const bool serialized_replay = webgpu::ep::UseSerializedExecutionMode() && !IsRunActive();
   if (serialized_replay) {
@@ -1085,6 +1140,7 @@ Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id, bool /*sync
 }
 
 Status WebGpuExecutionProvider::ReleaseCapturedGraph(int graph_annotation_id) {
+  std::lock_guard<std::recursive_mutex> lock{recording_->mutex};
   // Release captured commands
   auto cmd_it = captured_graphs_.find(graph_annotation_id);
   if (cmd_it != captured_graphs_.end()) {

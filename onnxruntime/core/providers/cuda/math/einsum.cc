@@ -11,10 +11,22 @@
 namespace onnxruntime {
 namespace cuda {
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Einsum,
+    kOnnxDomain,
+    12, 27,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", std::vector<MLDataType>{
+                                 DataTypeImpl::GetTensorType<float>(),
+                                 DataTypeImpl::GetTensorType<double>(),
+                                 DataTypeImpl::GetTensorType<MLFloat16>()}),
+    Einsum);
+
 ONNX_OPERATOR_KERNEL_EX(
     Einsum,
     kOnnxDomain,
-    12,
+    28,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", std::vector<MLDataType>{

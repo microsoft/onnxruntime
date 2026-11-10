@@ -761,4 +761,22 @@ std::string GetCacheSuffix(const std::string& fused_node_name, const std::string
   }
   return "";
 }
+
+template <typename SubGraphCollectionT, typename CycleContainerT, typename SubgraphIndexContainerT>
+inline bool EraseCyclicTensorRTSubgraph(
+    SubGraphCollectionT& supported_nodes_vector,
+    const CycleContainerT& cycles,
+    const SubgraphIndexContainerT& trt_id_to_subgraph_index) {
+  for (size_t i = 0; i < cycles.size(); ++i) {
+    const size_t cycle_id = cycles[i];
+    if (cycle_id < trt_id_to_subgraph_index.size()) {
+      const size_t subgraph_index = trt_id_to_subgraph_index[cycle_id];
+      if (subgraph_index < supported_nodes_vector.size()) {
+        supported_nodes_vector.erase(supported_nodes_vector.begin() + subgraph_index);
+        return true;
+      }
+    }
+  }
+  return false;
+}
 }  // namespace onnxruntime

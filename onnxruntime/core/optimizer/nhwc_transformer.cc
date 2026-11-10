@@ -498,7 +498,7 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   for (std::unique_ptr<api::NodeRef>& node : api_graph->Nodes()) {
     // If the node is not supported in the CPU EP, skip it
     const auto ep = node->GetExecutionProviderType();
-    if ((ep != kCpuExecutionProvider) && (ep != kAclExecutionProvider)) {
+    if (ep != kCpuExecutionProvider) {
       continue;
     }
 

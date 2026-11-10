@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <limits>
@@ -9,6 +11,7 @@
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
+#include <utility>
 #include "gtest/gtest.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/kernel_registry.h"
@@ -24,6 +27,10 @@
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/test_environment.h"
+#ifdef USE_CUDA
+#include <cuda_runtime_api.h>
+#include "contrib_ops/cuda/bert/causal_conv_with_state_impl.h"
+#endif
 #ifdef USE_WEBGPU
 #include "core/providers/webgpu/webgpu_context.h"
 #endif
@@ -318,6 +325,251 @@ static void RunCausalConvWithStateTests(
 // =============================================================================
 // Basic tests - simple cases
 // =============================================================================
+
+template <typename T>
+void TestPackedChannelHistory(int length, bool state_last, bool use_past, bool use_bias, bool silu, int dilation,
+                              int capacity = 0, int channels = 7) {
+  constexpr int batch = 2, offset = 3, kernel = 4;
+  const int width = channels + 6;
+  const int history = (kernel - 1) * dilation + 1;
+  auto cuda = DefaultCudaExecutionProvider();
+  if (!cuda) GTEST_SKIP() << "CUDA is required for extended convolution";
+  const auto round = [](float value) { return static_cast<float>(T(value)); };
+  std::vector<T> input(batch * length * width), weight(channels * kernel), bias(channels);
+  std::vector<T> past(batch * channels * history), output(batch * length * channels);
+  std::vector<T> present(past.size());
+  for (size_t i = 0; i < input.size(); ++i) input[i] = T(float(int(i % 17) - 8) / 16);
+  for (size_t i = 0; i < weight.size(); ++i) weight[i] = T(float(int(i % 11) - 5) / 32);
+  for (size_t i = 0; i < bias.size(); ++i) bias[i] = T(float(i) / 64);
+  for (size_t i = 0; i < past.size(); ++i) past[i] = T(float(int(i % 13) - 6) / 8);
+  const auto state_index = [&](int b, int t, int c) {
+    return state_last ? (b * history + t) * channels + c : (b * channels + c) * history + t;
+  };
+  for (int b = 0; b < batch; ++b) {
+    for (int c = 0; c < channels; ++c) {
+      const auto value = [&](int t) {
+        return t >= 0 ? static_cast<float>(input[(b * length + t) * width + offset + c])
+                      : (use_past ? static_cast<float>(past[state_index(b, history + t, c)]) : 0.0f);
+      };
+      for (int t = 0; t < length; ++t) {
+        float sum = use_bias ? static_cast<float>(bias[c]) : 0.0f;
+        for (int j = 0; j < kernel; ++j) sum += value(t - (kernel - 1) * dilation + j * dilation) * static_cast<float>(weight[c * kernel + j]);
+        if (silu) sum /= 1.0f + std::exp(-sum);
+        output[(b * length + t) * channels + c] = T(round(sum));
+      }
+      for (int t = 0; t < history; ++t) {
+        present[state_index(b, t, c)] = T(value(length - history + t));
+      }
+    }
+  }
+  // Captured rows are the raw projected input; rows beyond min(length, capacity) are defined as zero.
+  std::vector<T> state_update(static_cast<size_t>(batch) * capacity * channels, T(0.0f));
+  for (int b = 0; b < batch; ++b) {
+    for (int t = 0; t < std::min(length, capacity); ++t) {
+      for (int c = 0; c < channels; ++c) {
+        state_update[(static_cast<size_t>(b) * capacity + t) * channels + c] = input[(b * length + t) * width + offset + c];
+      }
+    }
+  }
+  OpTester test("CausalConvWithState", 1, kMSDomain);
+  test.AddAttribute<int64_t>("channels_last", 1);
+  if (capacity > 0) test.AddAttribute<int64_t>("state_update_capacity", capacity);
+  test.AddAttribute<int64_t>("input_channels", channels);
+  test.AddAttribute<int64_t>("input_channel_offset", offset);
+  test.AddAttribute<int64_t>("state_length", history);
+  test.AddAttribute<int64_t>("state_channels_last", state_last ? 1 : 0);
+  test.AddAttribute<int64_t>("dilation", dilation);
+  test.AddAttribute<std::string>("activation", silu ? "silu" : "none");
+  test.AddInput<T>("input", {batch, length, width}, input);
+  test.AddInput<T>("weight", {channels, 1, kernel}, weight);
+  if (use_bias)
+    test.AddInput<T>("bias", {channels}, bias);
+  else
+    test.AddOptionalInputEdge<T>();
+  const std::vector<int64_t> state_shape = state_last ? std::vector<int64_t>{batch, history, channels}
+                                                      : std::vector<int64_t>{batch, channels, history};
+  if (use_past)
+    test.AddInput<T>("past", state_shape, past);
+  else
+    test.AddOptionalInputEdge<T>();
+  test.AddOutput<T>("output", {batch, length, channels}, output);
+  test.AddOutput<T>("present", state_shape, present);
+  if (capacity > 0) test.AddOutput<T>("state_update", {batch, capacity, channels}, state_update);
+  test.SetOutputTolerance(std::is_same_v<T, BFloat16> ? 0.01f : 0.001f, 0.001f);
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(std::move(cuda));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+TEST(CausalConvWithStateTest, PackedChannelsExtendedHistory) {
+  for (int length : {1, 2, 8, 9}) {
+    for (bool state_last : {false, true}) {
+      for (bool past : {false, true}) {
+        for (int dilation : {1, 2}) {
+          TestPackedChannelHistory<float>(length, state_last, past, true, true, dilation);
+          TestPackedChannelHistory<MLFloat16>(length, state_last, past, false, true, dilation);
+          TestPackedChannelHistory<BFloat16>(length, state_last, past, true, false, dilation);
+          TestPackedChannelHistory<BFloat16>(length, state_last, past, false, true, dilation);
+        }
+      }
+    }
+  }
+}
+
+// Lengths 16, 17 and 24 select CausalConvProjectionTiledK4Kernel (kernel 4, dilation 1, history 4):
+// two full eight-position tiles, a partial trailing tile, and three full tiles. 130 channels spans a full and a
+// partial 128-channel block. Positive capacities cover the captured rows in the tiled path and in
+// the per-position short-K4 path (lengths 1..8), including capacity above the sequence length.
+TEST(CausalConvWithStateTest, PackedChannelsTiledK4AndCapture) {
+  for (int length : {16, 17, 24}) {
+    for (bool state_last : {false, true}) {
+      for (bool past : {false, true}) {
+        for (int channels : {7, 130}) {
+          TestPackedChannelHistory<float>(length, state_last, past, true, true, 1, 0, channels);
+          TestPackedChannelHistory<MLFloat16>(length, state_last, past, false, true, 1, 7, channels);
+          TestPackedChannelHistory<BFloat16>(length, state_last, past, true, false, 1, 8, channels);
+        }
+      }
+    }
+  }
+  for (int length : {1, 3, 8}) {
+    for (bool state_last : {false, true}) {
+      for (bool past : {false, true}) {
+        TestPackedChannelHistory<float>(length, state_last, past, true, true, 1, 2);
+        TestPackedChannelHistory<MLFloat16>(length, state_last, past, false, true, 1, 8, 130);
+        TestPackedChannelHistory<BFloat16>(length, state_last, past, true, false, 1, 7);
+      }
+    }
+  }
+}
+
+// Capacity above the sequence length leaves rows the kernels never write; they are defined as zero.
+TEST(CausalConvWithStateTest, PackedChannelsStateUpdateCapacityExceedsLength) {
+  auto cuda = DefaultCudaExecutionProvider();
+  if (!cuda) GTEST_SKIP() << "CUDA is required for extended convolution";
+  OpTester test("CausalConvWithState", 1, kMSDomain);
+  test.AddAttribute<int64_t>("channels_last", 1);
+  test.AddAttribute<int64_t>("input_channels", 2);
+  test.AddAttribute<int64_t>("state_length", 1);
+  test.AddAttribute<int64_t>("state_channels_last", 0);
+  test.AddAttribute<int64_t>("state_update_capacity", 8);
+  test.AddAttribute<std::string>("activation", "none");
+  test.AddInput<float>("input", {1, 1, 2}, {3.f, 5.f});
+  test.AddInput<float>("weight", {2, 1, 2}, {1.f, 1.f, 1.f, 1.f});
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("output", {1, 1, 2}, {3.f, 5.f});
+  test.AddOutput<float>("present", {1, 2, 1}, {3.f, 5.f});
+  std::vector<float> expected_update(16, 0.f);
+  expected_update[0] = 3.f;
+  expected_update[1] = 5.f;
+  test.AddOutput<float>("state_update", {1, 8, 2}, expected_update, false, 1e-4f, 1e-4f);
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(std::move(cuda));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+TEST(CausalConvWithStateTest, PackedChannelsStateUpdateCapacity) {
+  auto cuda = DefaultCudaExecutionProvider();
+  if (!cuda) GTEST_SKIP() << "CUDA is required for extended convolution";
+  OpTester test("CausalConvWithState", 1, kMSDomain);
+  test.AddAttribute<int64_t>("channels_last", 1);
+  test.AddAttribute<int64_t>("input_channels", 2);
+  test.AddAttribute<int64_t>("input_channel_offset", 1);
+  test.AddAttribute<int64_t>("state_length", 3);
+  test.AddAttribute<int64_t>("state_channels_last", 0);
+  test.AddAttribute<int64_t>("state_update_capacity", 2);
+  test.AddAttribute<std::string>("activation", "none");
+  test.AddInput<float>("input", {1, 3, 4},
+                       {10.f, 1.f, 2.f, 99.f,
+                        20.f, 3.f, 4.f, 99.f,
+                        30.f, 7.f, 8.f, 99.f});
+  test.AddInput<float>("weight", {2, 1, 2}, {1.f, 1.f, 1.f, 1.f});
+  test.AddOptionalInputEdge<float>();
+  test.AddInput<float>("past", {1, 2, 3}, {0.f, 0.f, 5.f, 0.f, 0.f, 6.f});
+  test.AddOutput<float>("output", {1, 3, 2}, {6.f, 8.f, 4.f, 6.f, 10.f, 12.f});
+  test.AddOutput<float>("present", {1, 2, 3}, {1.f, 3.f, 7.f, 2.f, 4.f, 8.f});
+  test.AddOutput<float>("state_update", {1, 2, 2}, {1.f, 2.f, 3.f, 4.f}, false, 1e-4f, 1e-4f);
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(std::move(cuda));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+TEST(CausalConvWithStateTest, PackedChannelsInvalidConfigurations) {
+  const std::vector<std::string> errors{
+      "invalid extended attributes", "channel slice exceeds input width", "state_length is too short",
+      "extended attributes require", "past_state must match", "bias must match"};
+  for (size_t i = 0; i < errors.size(); ++i) {
+    SCOPED_TRACE(errors[i]);
+    auto cuda = DefaultCudaExecutionProvider();
+    if (!cuda) GTEST_SKIP() << "CUDA is required for extended convolution";
+    OpTester test("CausalConvWithState", 1, kMSDomain);
+    test.AddAttribute<int64_t>("channels_last", i == 3 ? 0 : 1);
+    test.AddAttribute<int64_t>("input_channels", i == 1 ? 14 : 7);
+    test.AddAttribute<int64_t>("input_channel_offset", 3);
+    test.AddAttribute<int64_t>("state_length", i == 2 ? 2 : 4);
+    test.AddAttribute<int64_t>("state_channels_last", i == 0 ? 2 : 0);
+    test.AddInput<float>("input", {2, 2, 13}, std::vector<float>(52));
+    test.AddInput<float>("weight", {7, 1, 4}, std::vector<float>(28));
+    test.AddInput<float>("bias", {i == 5 ? 6 : 7}, std::vector<float>(i == 5 ? 6 : 7));
+    test.AddInput<float>("past", {2, 7, i == 4 ? 5 : 4}, std::vector<float>(i == 4 ? 70 : 56));
+    test.AddOutput<float>("output", {2, 2, 7}, std::vector<float>(28));
+    test.AddOutput<float>("present", {2, 7, 4}, std::vector<float>(56));
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(std::move(cuda));
+    test.Run(OpTester::ExpectResult::kExpectFailure, errors[i], {}, nullptr, &providers);
+  }
+}
+
+// The per-position projection kernels launch one grid.z slice per token, and CUDA caps grid.z at 65535.
+TEST(CausalConvWithStateTest, PackedChannelsRejectsLengthBeyondGridLimit) {
+  auto cuda = DefaultCudaExecutionProvider();
+  if (!cuda) GTEST_SKIP() << "CUDA is required for extended convolution";
+  constexpr int64_t length = 65536;
+  OpTester test("CausalConvWithState", 1, kMSDomain);
+  test.AddAttribute<int64_t>("channels_last", 1);
+  test.AddAttribute<int64_t>("input_channels", 1);
+  test.AddInput<float>("input", {1, length, 1}, std::vector<float>(length));
+  test.AddInput<float>("weight", {1, 1, 2}, {1.0f, 1.0f});
+  test.AddOutput<float>("output", {1, length, 1}, std::vector<float>(length));
+  test.AddOutput<float>("present", {1, 1, 1}, {0.0f});
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(std::move(cuda));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "0 < length <= 65535", {}, nullptr, &providers);
+}
+
+TEST(CausalConvWithStateTest, PackedChannelsRejectsUnsupportedCpu) {
+  // Each extended attribute is rejected on its own; the CPU kernel implements only the base op.
+  const std::vector<std::pair<std::string, int64_t>> extended_attributes{
+      {"input_channels", 2}, {"state_update_capacity", 1}};
+  for (const auto& [name, value] : extended_attributes) {
+    SCOPED_TRACE(name);
+    OpTester test("CausalConvWithState", 1, kMSDomain);
+    test.AddAttribute<int64_t>("channels_last", 1);
+    test.AddAttribute<int64_t>(name, value);
+    test.AddInput<float>("input", {1, 1, 2}, {1.0f, 2.0f});
+    test.AddInput<float>("weight", {2, 1, 2}, {1.0f, 1.0f, 1.0f, 1.0f});
+    test.AddOutput<float>("output", {1, 1, 2}, {1.0f, 2.0f});
+    test.AddOutput<float>("present", {1, 1, 2}, {1.0f, 2.0f});
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectFailure, "does not support extended channel/state options",
+             {}, nullptr, &providers);
+  }
+}
+
+TEST(CausalConvWithStateTest, EmptyTrailingStateUpdateOutputIsOmitted) {
+  OpTester test("CausalConvWithState", 1, kMSDomain);
+  test.AddAttribute<std::string>("activation", "none");
+  test.AddInput<float>("input", {1, 1, 2}, {1.0f, 2.0f});
+  test.AddInput<float>("weight", {1, 1, 2}, {1.0f, 1.0f});
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("output", {1, 1, 2}, {1.0f, 3.0f});
+  test.AddOutput<float>("present", {1, 1, 1}, {2.0f});
+  test.AddOptionalOutputEdge<float>();
+  test.Run();
+}
 
 TEST(CausalConvWithStateTest, BasicNoStateNoBias) {
   // B=1, D=2, L=4, K=3, activation=none
@@ -1472,6 +1724,221 @@ TEST(CausalConvWithStateTest, BFloat16_Cuda) {
   execution_providers.push_back(std::move(ep));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
+template <typename T>
+static void RunResourceSafePrefillCase(int batch, int channels, int length, int dilation,
+                                       int window, bool channels_last, bool with_bias, bool with_past) {
+  const int kernel = 3;
+  const int pad = (kernel - 1) * dilation;
+  std::vector<float> input(static_cast<size_t>(batch) * channels * length);
+  std::vector<float> weight(static_cast<size_t>(channels) * kernel);
+  std::vector<float> bias(channels, 0.0625f);
+  std::vector<float> past(static_cast<size_t>(batch) * channels * pad);
+  for (size_t i = 0; i < input.size(); ++i) input[i] = static_cast<float>(static_cast<int>(i % 7) - 3) / 8;
+  constexpr float taps[]{0.25f, -0.5f, 0.125f};
+  for (size_t i = 0; i < weight.size(); ++i) weight[i] = taps[i % 3];
+  for (size_t i = 0; i < past.size(); ++i) past[i] = static_cast<float>(i % 5 + 1) / 8;
+  std::vector<float> output, unused_state;
+  // Dyadic inputs/products/sums are exactly representable in all three element types.
+  CausalConvWithStateReference(input, weight, with_bias ? &bias : nullptr, with_past ? &past : nullptr,
+                               output, unused_state, batch, channels, length, kernel, "none", dilation);
+  const size_t slot_size = past.size();
+  std::vector<float> state(static_cast<size_t>(window) * slot_size, 0);
+  for (int slot = 0; slot < window; ++slot) {
+    const int prefix = length - window + slot + 1;
+    if (prefix <= 0) continue;
+    for (int b = 0; b < batch; ++b) {
+      for (int c = 0; c < channels; ++c) {
+        const auto bc = static_cast<size_t>(b) * channels + c;
+        for (int p = 0; p < pad; ++p) {
+          const int virtual_position = prefix + p;
+          state[static_cast<size_t>(slot) * slot_size + bc * pad + p] =
+              virtual_position < pad ? (with_past ? past[bc * pad + virtual_position] : 0)
+                                     : input[bc * length + virtual_position - pad];
+        }
+      }
+    }
+  }
+  auto convert = [](const std::vector<float>& values) {
+    std::vector<T> result;
+    result.reserve(values.size());
+    for (float value : values) result.push_back(static_cast<T>(value));
+    return result;
+  };
+  auto layout = [&](const std::vector<float>& values, int positions) {
+    return convert(channels_last ? ToChannelsLast(values, batch, channels, positions) : values);
+  };
+  auto window_layout = [&](const std::vector<float>& values) {
+    std::vector<T> result;
+    result.reserve(values.size());
+    for (int slot = 0; slot < window; ++slot) {
+      const auto begin = values.begin() + static_cast<size_t>(slot) * slot_size;
+      const auto converted = layout(std::vector<float>(begin, begin + slot_size), pad);
+      result.insert(result.end(), converted.begin(), converted.end());
+    }
+    return result;
+  };
+  const std::vector<int64_t> input_shape = channels_last ? std::vector<int64_t>{batch, length, channels}
+                                                         : std::vector<int64_t>{batch, channels, length};
+  const std::vector<int64_t> state_shape = channels_last ? std::vector<int64_t>{window, batch, pad, channels}
+                                                         : std::vector<int64_t>{window, batch, channels, pad};
+  OpTester test("CausalConvWithState", 1, kMSDomain);
+  test.AddAttribute<std::string>("activation", "none");
+  test.AddAttribute<int64_t>("channels_last", channels_last);
+  test.AddAttribute<int64_t>("dilation", dilation);
+  test.AddAttribute<int64_t>("state_window", window);
+  test.AddInput<T>("input", input_shape, layout(input, length));
+  test.AddInput<T>("weight", {channels, 1, kernel}, convert(weight));
+  if (with_bias)
+    test.AddInput<T>("bias", {channels}, convert(bias));
+  else
+    test.AddOptionalInputEdge<T>();
+  if (with_past) {
+    // Poison all but the last slot to catch incorrect past-window selection.
+    std::vector<float> windowed_past(static_cast<size_t>(window) * slot_size, -16);
+    std::copy(past.begin(), past.end(), windowed_past.end() - slot_size);
+    test.AddInput<T>("past_state", state_shape, window_layout(windowed_past));
+  } else {
+    test.AddOptionalInputEdge<T>();
+  }
+  test.AddOutput<T>("output", input_shape, layout(output, length));
+  test.AddOutput<T>("present_state", state_shape, window_layout(state));
+  test.SetOutputAbsErr("output", 0);
+  test.SetOutputRelErr("output", 0);
+  test.SetOutputAbsErr("present_state", 0);
+  test.SetOutputRelErr("present_state", 0);
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+}
+
+template <typename T>
+static void RunResourceSafePrefillMatrix() {
+  int device = 0, shared_bytes = 0, optin_bytes = 0;
+  ASSERT_EQ(cudaGetDevice(&device), cudaSuccess);
+  ASSERT_EQ(cudaDeviceGetAttribute(&shared_bytes, cudaDevAttrMaxSharedMemoryPerBlock, device), cudaSuccess);
+  // C=3 selects the single-channel shared candidate: (2*dilation + L + K)*sizeof(float).
+  // Exercise the last fitting length and the first over-budget length on this device.
+  const int fitting_length = shared_bytes / static_cast<int>(sizeof(float)) - 9;
+  ASSERT_GT(fitting_length, 128);
+  RunResourceSafePrefillCase<T>(2, 3, fitting_length, 3, 3, false, true, true);
+  RunResourceSafePrefillCase<T>(2, 3, fitting_length + 1, 3, 3, false, true, true);
+  ASSERT_EQ(cudaDeviceGetAttribute(&optin_bytes, cudaDevAttrMaxSharedMemoryPerBlockOptin, device), cudaSuccess);
+  const int optin_length = std::max(shared_bytes, optin_bytes) / static_cast<int>(sizeof(float)) - 9;
+  RunResourceSafePrefillCase<T>(2, 3, optin_length, 3, 3, false, true, true);
+  RunResourceSafePrefillCase<T>(2, 3, optin_length + 1, 3, 3, false, true, true);
+  for (bool channels_last : {false, true}) {
+    for (int length : {65535, 65536}) {
+      RunResourceSafePrefillCase<T>(2, 3, length, 3, 3, channels_last, length == 65536, !channels_last);
+    }
+  }
+  // Small L but large dilated history exercises the batched candidate's resource limit.
+  // W>L also checks zero-initialized leading slots on that fallback.
+  RunResourceSafePrefillCase<T>(2, 4, 2, 10000, 4, false, false, true);
+  // Cross the CUDA grid.z limit without a large tensor.
+  RunResourceSafePrefillCase<T>(65536, 1, 2, 1, 3, true, true, false);
+}
+
+TEST(CausalConvWithStateTest, ResourceSafePrefillFloatCuda) {
+  if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA is required.";
+  RunResourceSafePrefillMatrix<float>();
+}
+
+TEST(CausalConvWithStateTest, ResourceSafePrefillFloat16Cuda) {
+  if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA is required.";
+  RunResourceSafePrefillMatrix<MLFloat16>();
+}
+
+TEST(CausalConvWithStateTest, ResourceSafePrefillBFloat16Cuda) {
+  if (!CudaHasBF16Support()) GTEST_SKIP() << "CUDA BF16 requires SM80 or newer.";
+  RunResourceSafePrefillMatrix<BFloat16>();
+}
+
+TEST(CausalConvWithStateTest, NativeIndexAndByteBoundariesWithoutAllocations) {
+  using contrib::cuda::CausalConvDecodeFitsNativeIndex;
+  using contrib::cuda::ValidateCausalConvNativeParameters;
+  const int64_t limit = std::numeric_limits<int>::max();
+  EXPECT_TRUE(CausalConvDecodeFitsNativeIndex(1, static_cast<int>(limit)));
+  EXPECT_TRUE(CausalConvDecodeFitsNativeIndex(65536, 32767));
+  EXPECT_FALSE(CausalConvDecodeFitsNativeIndex(65536, 32768));
+  EXPECT_TRUE(ValidateCausalConvNativeParameters(0, 3, limit, 1, limit, 1, 4).IsOK());
+  EXPECT_TRUE(ValidateCausalConvNativeParameters(1, 1, 1, 2, limit, 1, 2).IsOK());
+  for (auto dims : {std::array<int64_t, 6>{limit + 1, 1, 1, 1, 1, 1},
+                    {0, limit + 1, 1, 1, 1, 1},
+                    {0, 1, limit + 1, 1, 1, 1},
+                    {0, 1, 1, limit + 1, 1, 1},
+                    {0, 1, 1, 0, 1, 1},
+                    {0, 0, 1, 1, 1, 1},
+                    {0, 1, 0, 1, 1, 1},
+                    {0, 1, 1, 3, limit, 1},
+                    {limit, limit, 2, 1, 1, 1},
+                    {0, limit, limit, 1, 1, 1},
+                    {0, limit, 1, 2, limit, limit}}) {
+    EXPECT_FALSE(ValidateCausalConvNativeParameters(dims[0], dims[1], dims[2], dims[3], dims[4], dims[5], 4)
+                     .IsOK());
+  }
+}
+
+TEST(CausalConvWithStateTest, ChannelGridBoundaryAndGenericDecodeCuda) {
+  if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA is required.";
+  for (int channels : {65535, 65536}) {
+    RunResourceSafePrefillCase<float>(1, channels, 129, 1, 1, false, true, true);
+  }
+  for (int channels : {4 * 65535, 4 * 65535 + 1}) {
+    RunResourceSafePrefillCase<float>(1, channels, 2, 1, 1, false, true, true);
+  }
+  RunResourceSafePrefillCase<float>(2, 35, 1, 3, 1, false, true, true);
+}
+
+TEST(CausalConvWithStateTest, EmptyBatchCudaPreservesLayoutsAndWindows) {
+  if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA is required.";
+  for (bool channels_last : {false, true}) {
+    for (int window : {0, 3}) {
+      for (int length : {1, 2, 17}) {
+        const std::vector<int64_t> input_shape = channels_last ? std::vector<int64_t>{0, length, 1, 2}
+                                                               : std::vector<int64_t>{0, 2, length};
+        std::vector<int64_t> state_shape = channels_last ? std::vector<int64_t>{0, 4, 1, 2}
+                                                         : std::vector<int64_t>{0, 2, 4};
+        if (window) state_shape.insert(state_shape.begin(), window);
+        OpTester test("CausalConvWithState", 1, kMSDomain);
+        test.AddAttribute<int64_t>("channels_last", channels_last);
+        test.AddAttribute<int64_t>("dilation", 2);
+        test.AddAttribute<int64_t>("state_window", window);
+        test.AddInput<float>("input", input_shape, {});
+        test.AddInput<float>("weight", {2, 1, 3}, std::vector<float>(6, 0.25f));
+        test.AddInput<float>("bias", {2}, {0.25f, -0.25f});
+        test.AddInput<float>("past_state", state_shape, {});
+        test.AddOutput<float>("output", input_shape, {});
+        test.AddOutput<float>("present_state", state_shape, {});
+        std::vector<std::unique_ptr<IExecutionProvider>> eps;
+        eps.push_back(DefaultCudaExecutionProvider());
+        test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+      }
+    }
+  }
+}
+
+TEST(CausalConvWithStateTest, EmptyBatchCudaStillValidatesInputs) {
+  if (!HasCudaEnvironment(0)) GTEST_SKIP() << "CUDA is required.";
+  for (int invalid = 0; invalid < 4; ++invalid) {
+    OpTester test("CausalConvWithState", 1, kMSDomain);
+    test.AddAttribute<int64_t>("state_window", 3);
+    const int length = invalid == 3 ? 0 : 2;
+    const int weight_channels = invalid == 0 ? 3 : 2;
+    const int bias_channels = invalid == 1 ? 3 : 2;
+    test.AddInput<float>("input", {0, 2, length}, {});
+    test.AddInput<float>("weight", {weight_channels, 1, 3}, std::vector<float>(weight_channels * 3, 0.25f));
+    test.AddInput<float>("bias", {bias_channels}, std::vector<float>(bias_channels, 0.25f));
+    test.AddInput<float>("past_state", {3, 0, 2, invalid == 2 ? 3 : 2}, {});
+    test.AddOutput<float>("output", {0, 2, length}, {});
+    test.AddOutput<float>("present_state", {3, 0, 2, 2}, {});
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(DefaultCudaExecutionProvider());
+    const char* error = invalid == 0 ? "weight" : invalid == 1 ? "bias"
+                                              : invalid == 2   ? "past_state"
+                                                               : "positive";
+    test.Run(OpTester::ExpectResult::kExpectFailure, error, {}, nullptr, &eps);
+  }
+}
 #endif  // USE_CUDA
 
 // =============================================================================
@@ -1495,11 +1962,10 @@ TEST(ContribOpVarlenCausalConvWithStateTest, SchemaResolution) {
   EXPECT_EQ(schema->outputs()[2].GetTypes().count(bfloat16_type), 1u);
 }
 
-#if defined(USE_CUDA) || defined(USE_WEBGPU)
 namespace {
 
 // Returns a locally available EP with the VarlenCausalConvWithState kernel registered, or nullptr.
-// CUDA is preferred when present; otherwise the WebGPU EP is used. Both share the same tests.
+// CUDA is preferred when present, then WebGPU, then CPU.
 std::unique_ptr<IExecutionProvider> TryGetEpWithVarlenCausalConvWithState() {
   auto has_kernel = [](const IExecutionProvider& ep) {
     auto kernel_registry = ep.GetKernelRegistry();
@@ -1524,13 +1990,21 @@ std::unique_ptr<IExecutionProvider> TryGetEpWithVarlenCausalConvWithState() {
     return ep;
   }
 #endif
+  if (auto ep = DefaultCpuExecutionProvider(); ep && has_kernel(*ep)) {
+    return ep;
+  }
   return nullptr;
 }
 
-std::unique_ptr<IExecutionProvider> GetWebGpuEpWithTestStorageBufferBindingSize(uint64_t max_size) {
+std::unique_ptr<IExecutionProvider> GetWebGpuEpWithTestStorageBufferBindingSize(
+    [[maybe_unused]] uint64_t max_size) {
+#ifdef USE_WEBGPU
   WebGpuExecutionProviderTestOptions test_options{};
   test_options.max_storage_buffer_binding_size = max_size;
   return WebGpuExecutionProviderWithTestOptions(test_options);
+#else
+  return nullptr;
+#endif
 }
 
 // Transpose a single request's (channels, length) reference block to the token-major
@@ -1575,6 +2049,7 @@ struct VarlenCausalConvCase {
   bool verify_compact_replay = false;
   bool use_fp16 = false;
   bool use_bf16 = false;
+  bool force_cpu = false;
   uint64_t max_storage_buffer_binding_size = 0;
   // When true, every request is filled with one large constant value of alternating sign instead
   // of a smooth per-request waveform, so any accidental cross-request boundary read produces an
@@ -1583,9 +2058,11 @@ struct VarlenCausalConvCase {
 };
 
 void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
-  auto ep = c.max_storage_buffer_binding_size == 0
-                ? TryGetEpWithVarlenCausalConvWithState()
-                : GetWebGpuEpWithTestStorageBufferBindingSize(c.max_storage_buffer_binding_size);
+  auto ep = c.force_cpu
+                ? DefaultCpuExecutionProvider()
+                : (c.max_storage_buffer_binding_size == 0
+                       ? TryGetEpWithVarlenCausalConvWithState()
+                       : GetWebGpuEpWithTestStorageBufferBindingSize(c.max_storage_buffer_binding_size));
   if (!ep) {
     GTEST_SKIP() << "VarlenCausalConvWithState kernel not registered";
     return;
@@ -1611,13 +2088,23 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
   }
   const int total_tokens = cu_seqlens[B];
 
+  // Run the FP32 reference on the actual input precision, including cancellation-prone weights.
+  const auto round_input = [&c](float value) {
+    if (c.use_fp16) {
+      return MLFloat16(value).ToFloat();
+    }
+    if (c.use_bf16) {
+      return BFloat16(value).ToFloat();
+    }
+    return value;
+  };
   std::vector<float> weight(static_cast<size_t>(D) * K);
   for (size_t idx = 0; idx < weight.size(); idx++) {
-    weight[idx] = 0.25f * std::cos(static_cast<float>(idx) * 0.21f);
+    weight[idx] = round_input(0.25f * std::cos(static_cast<float>(idx) * 0.21f));
   }
   std::vector<float> bias(D, 0.0f);
   if (c.with_bias) {
-    for (int d = 0; d < D; d++) bias[d] = 0.01f * static_cast<float>(d) - 0.02f;
+    for (int d = 0; d < D; d++) bias[d] = round_input(0.01f * static_cast<float>(d) - 0.02f);
   }
   const std::vector<float>* bias_ptr = c.with_bias ? &bias : nullptr;
 
@@ -1633,11 +2120,11 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
     const int L = c.seq_lens[i];
     std::vector<float> input(static_cast<size_t>(D) * L);
     if (c.adversarial_constants) {
-      const float value = (i % 2 == 0) ? 1000.0f : -1000.0f;
+      const float value = round_input((i % 2 == 0) ? 1000.0f : -1000.0f);
       std::fill(input.begin(), input.end(), value);
     } else {
       for (size_t idx = 0; idx < input.size(); idx++) {
-        input[idx] = 0.5f * std::sin(static_cast<float>(idx + seed) * 0.37f);
+        input[idx] = round_input(0.5f * std::sin(static_cast<float>(idx + seed) * 0.37f));
       }
     }
     seed += 53;
@@ -1645,7 +2132,7 @@ void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
     std::vector<float> initial_state(slot_elems, 0.0f);
     if (c.with_initial_state) {
       for (size_t idx = 0; idx < initial_state.size(); idx++) {
-        initial_state[idx] = 0.1f * std::cos(static_cast<float>(idx + i * 11) * 0.3f);
+        initial_state[idx] = round_input(0.1f * std::cos(static_cast<float>(idx + i * 11) * 0.3f));
       }
     }
     const std::vector<float>* past = &initial_state;
@@ -1846,6 +2333,56 @@ TEST(ContribOpVarlenCausalConvWithStateTest, SingleRequestPrefill) {
   VarlenCausalConvCase c;
   c.seq_lens = {6};
   RunVarlenCausalConvCase(c);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, BatchedShortSequences) {
+  for (const auto& shape : {std::pair{128, 8}, std::pair{512, 2}}) {
+    for (int type = 0; type < 3; ++type) {
+      VarlenCausalConvCase c;
+      c.seq_lens.assign(static_cast<size_t>(shape.first), shape.second);
+      c.channels = 130;
+      c.kernel_size = 4;
+      c.with_initial_state = true;
+      c.use_fp16 = type == 1;
+      c.use_bf16 = type == 2;
+      RunVarlenCausalConvCase(c);
+    }
+  }
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, PackedTokenTilesRespectRequestBoundaries) {
+  for (const auto& kernel : {std::pair{4, 1}, std::pair{3, 2}, std::pair{1, 1}, std::pair{5, 3}}) {
+    for (int type = 0; type < 3; ++type) {
+      VarlenCausalConvCase c;
+      c.seq_lens = {1, 2, 33, 34, 49, 81};
+      c.channels = 130;
+      c.kernel_size = kernel.first;
+      c.dilation = kernel.second;
+      c.activation = "none";
+      c.with_bias = false;
+      c.with_initial_state = true;
+      c.adversarial_constants = true;
+      c.use_fp16 = type == 1;
+      c.use_bf16 = type == 2;
+      RunVarlenCausalConvCase(c);
+    }
+  }
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, PackedTokenTilesWithCompactCapture) {
+  for (const auto& kernel : {std::pair{4, 1}, std::pair{5, 3}}) {
+    VarlenCausalConvCase c;
+    c.seq_lens = {1, 2, 33, 34, 49, 81};
+    c.channels = 130;
+    c.kernel_size = kernel.first;
+    c.dilation = kernel.second;
+    c.with_initial_state = true;
+    c.state_update_capacity = 8;
+    c.capture_count = {0, 1, 4, 40, -1, 6};
+    c.request_state_update = true;
+    c.verify_compact_replay = true;
+    RunVarlenCausalConvCase(c);
+  }
 }
 
 TEST(ContribOpVarlenCausalConvWithStateTest, WithInitialState) {
@@ -2144,10 +2681,13 @@ static void RunAliasedStateTwoCallContinuationIOBinding(
     int kernel_size,
     const std::vector<float>& expected_output,
     const std::vector<float>& expected_state,
-    uint64_t max_storage_buffer_binding_size = 0) {
-  auto ep = max_storage_buffer_binding_size == 0
-                ? TryGetEpWithVarlenCausalConvWithState()
-                : GetWebGpuEpWithTestStorageBufferBindingSize(max_storage_buffer_binding_size);
+    uint64_t max_storage_buffer_binding_size = 0,
+    bool force_cpu = false) {
+  auto ep = force_cpu
+                ? DefaultCpuExecutionProvider()
+                : (max_storage_buffer_binding_size == 0
+                       ? TryGetEpWithVarlenCausalConvWithState()
+                       : GetWebGpuEpWithTestStorageBufferBindingSize(max_storage_buffer_binding_size));
   if (!ep) {
     GTEST_SKIP() << "VarlenCausalConvWithState execution provider not available";
     return;
@@ -2199,26 +2739,42 @@ static void RunAliasedStateTwoCallContinuationIOBinding(
   SessionOptions options;
   InferenceSession session(options, GetEnvironment());
   IExecutionProvider* ep_ptr = ep.get();
-  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(ep)));
-  auto allocators = ep_ptr->CreatePreferredAllocators();
-  const OrtMemoryInfo* gpu_info = nullptr;
-  for (const auto& allocator : allocators) {
-    if (allocator->Info().device.Type() == OrtDevice::GPU &&
-        allocator->Info().mem_type == OrtMemTypeDefault) {
-      gpu_info = &allocator->Info();
-    }
+  const bool is_cpu_ep = ep_ptr->Type() == kCpuExecutionProvider;
+  if (!is_cpu_ep) {
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(ep)));
   }
-  ASSERT_NE(gpu_info, nullptr);
-  const OrtMemoryInfo copied_gpu_info = *gpu_info;
+  auto cpu_alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  OrtMemoryInfo copied_device_info = cpu_alloc->Info();
+  if (!is_cpu_ep) {
+    auto allocators = ep_ptr->CreatePreferredAllocators();
+    const OrtMemoryInfo* device_info = nullptr;
+    for (const auto& allocator : allocators) {
+      if (allocator->Info().device.Type() == OrtDevice::GPU &&
+          allocator->Info().mem_type == OrtMemTypeDefault) {
+        device_info = &allocator->Info();
+      }
+    }
+    ASSERT_NE(device_info, nullptr);
+    copied_device_info = *device_info;
+  }
   ASSERT_STATUS_OK(session.Load(stream));
   ASSERT_STATUS_OK(session.Initialize());
-  auto gpu_alloc = session.GetAllocator(copied_gpu_info);
-  auto cpu_alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  auto device_alloc = is_cpu_ep ? cpu_alloc : session.GetAllocator(copied_device_info);
+  ASSERT_NE(device_alloc, nullptr);
 
-  auto make_gpu = [&](const auto& data, MLDataType data_type, const TensorShape& shape) {
+  auto make_device = [&](const auto& data, MLDataType data_type, const TensorShape& shape) {
     using Elem = typename std::decay_t<decltype(data)>::value_type;
+    if (is_cpu_ep) {
+      Tensor dst(data_type, shape, device_alloc);
+      if (!data.empty()) {
+        std::memcpy(dst.MutableDataRaw(), data.data(), data.size() * sizeof(Elem));
+      }
+      OrtValue result;
+      Tensor::InitOrtValue(std::move(dst), result);
+      return result;
+    }
     Tensor cpu(data_type, shape, const_cast<Elem*>(data.data()), cpu_alloc->Info());
-    Tensor gpu(data_type, shape, gpu_alloc);
+    Tensor gpu(data_type, shape, device_alloc);
     ORT_THROW_IF_ERROR(ep_ptr->GetDataTransfer()->CopyTensor(cpu, gpu));
     OrtValue result;
     Tensor::InitOrtValue(std::move(gpu), result);
@@ -2226,16 +2782,16 @@ static void RunAliasedStateTwoCallContinuationIOBinding(
   };
   std::vector<float> input(static_cast<size_t>(total_tokens));
   std::iota(input.begin(), input.end(), 1.0f);
-  auto input_value = make_gpu(input, DataTypeImpl::GetType<float>(),
-                              TensorShape({total_tokens, 1}));
-  auto weight_value = make_gpu(std::vector<float>(static_cast<size_t>(kernel_size), 1.0f),
-                               DataTypeImpl::GetType<float>(), TensorShape({1, 1, kernel_size}));
-  auto offsets_value = make_gpu(std::vector<int32_t>{0, total_tokens}, DataTypeImpl::GetType<int32_t>(),
-                                TensorShape({2}));
-  auto state_value = make_gpu(std::vector<float>(static_cast<size_t>(pad)),
-                              DataTypeImpl::GetType<float>(), TensorShape({1, 1, pad}));
-  auto output_value = make_gpu(std::vector<float>(static_cast<size_t>(total_tokens)),
-                               DataTypeImpl::GetType<float>(), TensorShape({total_tokens, 1}));
+  auto input_value = make_device(input, DataTypeImpl::GetType<float>(),
+                                 TensorShape({total_tokens, 1}));
+  auto weight_value = make_device(std::vector<float>(static_cast<size_t>(kernel_size), 1.0f),
+                                  DataTypeImpl::GetType<float>(), TensorShape({1, 1, kernel_size}));
+  auto offsets_value = make_device(std::vector<int32_t>{0, total_tokens}, DataTypeImpl::GetType<int32_t>(),
+                                   TensorShape({2}));
+  auto state_value = make_device(std::vector<float>(static_cast<size_t>(pad)),
+                                 DataTypeImpl::GetType<float>(), TensorShape({1, 1, pad}));
+  auto output_value = make_device(std::vector<float>(static_cast<size_t>(total_tokens)),
+                                  DataTypeImpl::GetType<float>(), TensorShape({total_tokens, 1}));
 
   std::unique_ptr<IOBinding> binding;
   ASSERT_STATUS_OK(session.NewIOBinding(&binding));
@@ -2253,21 +2809,48 @@ static void RunAliasedStateTwoCallContinuationIOBinding(
             state_value.Get<Tensor>().Data<float>());
 
   std::vector<float> actual_state(static_cast<size_t>(pad));
-  Tensor cpu_result(DataTypeImpl::GetType<float>(), TensorShape({1, 1, pad}),
-                    actual_state.data(), cpu_alloc->Info());
-  ASSERT_STATUS_OK(ep_ptr->GetDataTransfer()->CopyTensor(state_value.Get<Tensor>(), cpu_result));
+  if (is_cpu_ep) {
+    if (pad > 0) {
+      std::memcpy(actual_state.data(), state_value.Get<Tensor>().Data<float>(),
+                  static_cast<size_t>(pad) * sizeof(float));
+    }
+  } else {
+    Tensor cpu_result(DataTypeImpl::GetType<float>(), TensorShape({1, 1, pad}),
+                      actual_state.data(), cpu_alloc->Info());
+    ASSERT_STATUS_OK(ep_ptr->GetDataTransfer()->CopyTensor(state_value.Get<Tensor>(), cpu_result));
+  }
   EXPECT_EQ(actual_state, expected_state);
 
   std::vector<float> actual_output(static_cast<size_t>(total_tokens));
-  Tensor cpu_output(DataTypeImpl::GetType<float>(), TensorShape({total_tokens, 1}),
-                    actual_output.data(), cpu_alloc->Info());
-  ASSERT_STATUS_OK(ep_ptr->GetDataTransfer()->CopyTensor(output_value.Get<Tensor>(), cpu_output));
+  if (is_cpu_ep) {
+    std::memcpy(actual_output.data(), output_value.Get<Tensor>().Data<float>(),
+                static_cast<size_t>(total_tokens) * sizeof(float));
+  } else {
+    Tensor cpu_output(DataTypeImpl::GetType<float>(), TensorShape({total_tokens, 1}),
+                      actual_output.data(), cpu_alloc->Info());
+    ASSERT_STATUS_OK(ep_ptr->GetDataTransfer()->CopyTensor(output_value.Get<Tensor>(), cpu_output));
+  }
   EXPECT_EQ(actual_output, expected_output);
 }
 
 TEST(ContribOpVarlenCausalConvWithStateTest, AliasedGeneralKernelTwoCallContinuation) {
   RunAliasedStateTwoCallContinuationIOBinding(
       3, 3, {6.0f, 6.0f, 6.0f}, {2.0f, 3.0f});
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, AliasedPackedPrefillTwoCallContinuation) {
+  for (int length : {20, 33, 65}) {
+    std::vector<float> expected(static_cast<size_t>(length));
+    expected[0] = static_cast<float>(3 * length - 2);
+    expected[1] = static_cast<float>(2 * length + 2);
+    expected[2] = static_cast<float>(length + 6);
+    for (int t = 3; t < length; ++t) {
+      expected[static_cast<size_t>(t)] = static_cast<float>(4 * t - 2);
+    }
+    RunAliasedStateTwoCallContinuationIOBinding(
+        length, 4, expected,
+        {static_cast<float>(length - 2), static_cast<float>(length - 1), static_cast<float>(length)});
+  }
 }
 
 TEST(ContribOpVarlenCausalConvWithStateTest, AliasedDecodeKernelSize1TwoCallContinuation) {
@@ -2523,6 +3106,72 @@ TEST(ContribOpVarlenCausalConvWithStateTest, StateUpdateCapacityIsBounded) {
   tester.Run(OpTester::ExpectResult::kExpectFailure, "state_update_capacity must be in [0, 8]");
 }
 
+TEST(ContribOpVarlenCausalConvWithStateTest, CpuFloatFp16Bf16RaggedDilationAndCompactCapture) {
+  {
+    VarlenCausalConvCase c;
+    c.seq_lens = {5, 1, 0, 3};
+    c.channels = 5;
+    c.kernel_size = 3;
+    c.dilation = 2;
+    c.with_initial_state = true;
+    c.state_update_capacity = 4;
+    c.capture_count = {-1, 0, 3, 9};
+    c.verify_compact_replay = true;
+    c.force_cpu = true;
+    RunVarlenCausalConvCase(c);
+  }
+  for (bool use_bf16 : {false, true}) {
+    SCOPED_TRACE(use_bf16 ? "bf16" : "fp16");
+    VarlenCausalConvCase c;
+    c.seq_lens = {5, 1, 3};
+    c.channels = 5;
+    c.kernel_size = 3;
+    c.dilation = 2;
+    c.with_initial_state = true;
+    c.state_update_capacity = 4;
+    c.capture_count = {5, 0, 2};
+    c.use_fp16 = !use_bf16;
+    c.use_bf16 = use_bf16;
+    c.force_cpu = true;
+    RunVarlenCausalConvCase(c);
+  }
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, CpuAliasedStateTwoCallContinuation) {
+  RunAliasedStateTwoCallContinuationIOBinding(
+      3, 3, {6.0f, 6.0f, 6.0f}, {2.0f, 3.0f}, 0, /*force_cpu=*/true);
+  RunAliasedStateTwoCallContinuationIOBinding(
+      1, 3, {2.0f}, {1.0f, 1.0f}, 0, /*force_cpu=*/true);
+  RunAliasedStateTwoCallContinuationIOBinding(
+      1, 1, {1.0f}, {}, 0, /*force_cpu=*/true);
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, CpuRejectsMalformedOffsets) {
+  auto run_bad_offsets = [](const std::vector<int32_t>& cu_seqlens, int total_tokens) {
+    const int batch_size = static_cast<int>(cu_seqlens.size()) - 1;
+    OpTester tester("VarlenCausalConvWithState", 1, kMSDomain);
+    tester.AddInput<float>("input", {total_tokens, 1}, std::vector<float>(total_tokens, 1.0f));
+    tester.AddInput<float>("weight", {1, 1, 2}, {1.0f, 1.0f});
+    tester.AddInput<int32_t>("cumulative_sequence_length", {batch_size + 1}, cu_seqlens);
+    tester.AddOptionalInputEdge<float>();
+    tester.AddInput<float>("initial_state", {batch_size, 1, 1},
+                           std::vector<float>(batch_size, 7.0f));
+    tester.AddOutput<float>("output", {total_tokens, 1}, std::vector<float>(total_tokens));
+    tester.AddOutput<float>("final_state", {batch_size, 1, 1},
+                            std::vector<float>(batch_size));
+    tester.AddOptionalOutputEdge<float>();
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    tester.Run(OpTester::ExpectResult::kExpectFailure, "", {}, nullptr, &execution_providers);
+  };
+  run_bad_offsets({0, -1, 3}, 3);
+  run_bad_offsets({0, 2, 1, 3}, 3);
+  run_bad_offsets({0, 1, 4}, 3);
+  run_bad_offsets({1, 2, 3}, 3);
+  run_bad_offsets({0, 1, 2}, 3);
+  run_bad_offsets({0, 2, 1, 4}, 4);
+}
+
 #ifdef USE_WEBGPU
 TEST(ContribOpVarlenCausalConvWithStateTest, WebGpuRejectsPadAboveIntMax) {
   auto ep = DefaultWebGpuExecutionProvider();
@@ -2548,7 +3197,6 @@ TEST(ContribOpVarlenCausalConvWithStateTest, WebGpuRejectsPadAboveIntMax) {
              {}, nullptr, &execution_providers);
 }
 #endif
-#endif  // USE_CUDA || USE_WEBGPU
 
 }  // namespace test
 }  // namespace onnxruntime

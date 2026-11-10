@@ -127,15 +127,25 @@ Status LinearAttention<T>::Compute(OpKernelContext* context) const {
     ORT_RETURN_IF_NOT(key_shape[1] == seq_len && value_shape[1] == seq_len,
                       "sequence length mismatch");
 
-    d_k = query_hidden / q_num_heads_;
-    ORT_RETURN_IF_NOT(query_hidden == q_num_heads_ * d_k,
+    ORT_RETURN_IF_NOT(query_hidden > 0, "query hidden size must be positive");
+    ORT_RETURN_IF_NOT(query_hidden % q_num_heads_ == 0,
                       "query hidden size must be divisible by q_num_heads");
+    d_k = query_hidden / q_num_heads_;
+    ORT_RETURN_IF_NOT(d_k <= std::numeric_limits<int>::max(),
+                      "query head size exceeds INT_MAX");
+    ORT_RETURN_IF_NOT(key_shape[2] > 0, "key hidden size must be positive");
     ORT_RETURN_IF_NOT(key_shape[2] % d_k == 0,
                       "key hidden size must be divisible by d_k");
-    n_k_heads = static_cast<int>(key_shape[2] / d_k);
-    d_v = value_shape[2] / kv_num_heads_;
-    ORT_RETURN_IF_NOT(value_shape[2] == kv_num_heads_ * d_v,
+    const int64_t n_k_heads_i64 = key_shape[2] / d_k;
+    ORT_RETURN_IF_NOT(n_k_heads_i64 <= std::numeric_limits<int>::max(),
+                      "key head count exceeds INT_MAX");
+    n_k_heads = static_cast<int>(n_k_heads_i64);
+    ORT_RETURN_IF_NOT(value_shape[2] > 0, "value hidden size must be positive");
+    ORT_RETURN_IF_NOT(value_shape[2] % kv_num_heads_ == 0,
                       "value hidden size must be divisible by kv_num_heads");
+    d_v = value_shape[2] / kv_num_heads_;
+    ORT_RETURN_IF_NOT(d_v <= std::numeric_limits<int>::max(),
+                      "value head size exceeds INT_MAX");
 
     q_data = query_tensor->Data<float>();
     k_data = key_tensor->Data<float>();
