@@ -18,7 +18,10 @@ class Mamba2Verify final : public CudaKernel {
     heads_ = narrow<int>(info.GetAttrOrDefault<int64_t>("heads", 0));
     groups_ = narrow<int>(info.GetAttrOrDefault<int64_t>("n_groups", 0));
     ORT_ENFORCE(heads_ > 0 && groups_ > 0 && heads_ % groups_ == 0 &&
-                heads_ <= std::numeric_limits<int>::max() / 1024);
+                    heads_ <= std::numeric_limits<int>::max() / 1024,
+                "Mamba2Verify requires heads > 0, n_groups > 0, heads % n_groups == 0 "
+                "and heads <= INT_MAX / 1024, got heads=",
+                heads_, ", n_groups=", groups_);
     ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("head_dim", 64) == 64 &&
                     info.GetAttrOrDefault<int64_t>("d_state", 128) == 128,
                 "Mamba2Verify currently requires head_dim=64, d_state=128");
