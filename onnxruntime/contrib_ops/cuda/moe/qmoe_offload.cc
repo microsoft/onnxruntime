@@ -7610,6 +7610,7 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
       fc1_task_for_slot(static_cast<int>(task) / fc1_tasks, static_cast<int>(task) % fc1_tasks);
     };
     int slot_compact_row_base[CpuWork::kMaxGroupSlots]{};
+    const int group_compact_row_base = cpu_rows_written;
     if (compact) {
       for (int slot = 0; slot < group_size; ++slot) {
         if (static_cast<size_t>(slot) < CpuWork::kMaxGroupSlots) {
@@ -7758,15 +7759,13 @@ int QMoEOffload::RunColdExperts(CpuWork& work, int group_count, const ActT* host
     const auto t_write = timed ? now() : std::chrono::steady_clock::time_point{};
     if (compact && static_cast<size_t>(group_size) > CpuWork::kMaxGroupSlots) {
       for (size_t slot = CpuWork::kMaxGroupSlots; slot < static_cast<size_t>(group_size); ++slot) {
-        const auto& assignments = expert_routes[group[slot].expert];
-        int base_row = 0;
+        int base_row = group_compact_row_base;
         for (size_t prev = 0; prev < slot; ++prev) base_row += group[prev].count;
         for (int row = 0; row < group[slot].count; ++row) {
           const size_t destination = SafeInt<size_t>(static_cast<size_t>(base_row + row)) * hidden_size_;
           const float* source = work.result.data() + (slot * call_rows + row) * hidden_size_;
           FloatToActRow(source, host_result + destination, hidden_size_);
         }
-        (void)assignments;
       }
     }
     if (timed) {

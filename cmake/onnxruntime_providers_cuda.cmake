@@ -63,15 +63,12 @@
     list(APPEND onnxruntime_cuda_contrib_ops_cc_srcs
       "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/moe/qmoe_shared_layout.cc")
   endif()
-  if(MSVC)
+  # GCC/Clang enable AVX2 per function in moe_packed_cpu_avx2.cc; MSVC needs the flag for VEX-encoded scalar code.
+  # Callers dispatch to it only after a runtime CPU check.
+  if(MSVC AND onnxruntime_target_platform STREQUAL "x64")
     set_source_files_properties(
-      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/moe_packed.cc"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/moe_packed_cpu_avx2.cc"
       PROPERTIES COMPILE_FLAGS "/arch:AVX2"
-    )
-  elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
-    set_source_files_properties(
-      "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/moe_packed.cc"
-      PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c"
     )
   endif()
 

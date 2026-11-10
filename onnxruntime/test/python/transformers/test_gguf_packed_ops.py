@@ -1013,7 +1013,13 @@ class TestGgufPackedOps(unittest.TestCase):
                         ref = _moe_reference(x, logits, *weights, 2, dtype, True)
                         np.testing.assert_allclose(got, ref, rtol=2e-2, atol=2e-3)
 
+    def _require_moe_offload(self):
+        # MoE offload requires SM80+, which is exactly when BF16 activations are enabled for this suite.
+        if TensorProto.BFLOAT16 not in self.activation_dtypes:
+            self.skipTest("MoE offload requires compute capability 8.0 or higher")
+
     def test_moe_packed_cuda_offload_parity(self):
+        self._require_moe_offload()
         num_experts = 16
         hidden_size = 256
         inter_size = 64
@@ -1075,6 +1081,152 @@ class TestGgufPackedOps(unittest.TestCase):
                 got = sess_offload.run(None, {"X_f32": x, "R_f32": logits})[0]
                 ref = _moe_reference(x, logits, *weights, top_k, dtype, True)
                 np.testing.assert_allclose(got, ref, rtol=2e-2, atol=2e-3)
+
+    @staticmethod
+    def _offload_moe_weights(rng, num_experts, hidden_size, inter_size, formats, quant_scale=2**-7):
+        raw_weights, weights = [], []
+        for out_size, k, (gtype, bel, bbytes) in zip(
+            (inter_size, inter_size, hidden_size), (hidden_size, hidden_size, inter_size), formats, strict=True
+        ):
+            raw = _make_synthetic_gguf_rows(rng, num_experts * out_size, k, gtype, bel, bbytes, quant_scale)
+            raw = raw.reshape(num_experts, out_size, -1)
+            raw_weights.append(raw)
+            weights.append(_dequantize_weights(raw, k, gtype))
+        slot_bytes = sum(w[0].nbytes for w in raw_weights)
+        return raw_weights, weights, slot_bytes
+
+    @staticmethod
+    def _offload_moe_model(num_experts, hidden_size, top_k, dtype, formats, raw_weights):
+        # X, R and Y are graph inputs/outputs so that I/O binding controls their device addresses.
+        model = _model(
+            [
+                helper.make_node(
+                    "MoEPacked",
+                    ["X", "R", "G", "U", "D"],
+                    ["Y"],
+                    domain="com.microsoft",
+                    k=top_k,
+                    normalize_routing_weights=1,
+                    activation_type="swiglu",
+                    gate_type=formats[0][0],
+                    up_type=formats[1][0],
+                    down_type=formats[2][0],
+                )
+            ],
+            [
+                helper.make_tensor_value_info("X", dtype, ["M", hidden_size]),
+                helper.make_tensor_value_info("R", dtype, ["M", num_experts]),
+            ],
+            [helper.make_tensor_value_info("Y", dtype, ["M", hidden_size])],
+        )
+        for name, raw in zip(("G", "U", "D"), raw_weights, strict=True):
+            model.graph.initializer.append(numpy_helper.from_array(raw, name=name))
+        return model
+
+    @staticmethod
+    def _offload_session(model, resident_bytes, provider_options=None):
+        so = ort.SessionOptions()
+        so.add_session_config_entry("session.moe.offload.mode", "required")
+        so.add_session_config_entry("session.moe.offload.placement", "adaptive")
+        so.add_session_config_entry("session.moe.offload.cpu_execution", "auto")
+        so.add_session_config_entry("session.moe.offload.device_expert_bytes", str(resident_bytes))
+        return ort.InferenceSession(
+            model.SerializeToString(),
+            sess_options=so,
+            providers=[("CUDAExecutionProvider", provider_options or {})],
+        )
+
+    def test_moe_packed_cuda_offload_unaligned_buffers_and_small_prefill(self):
+        self._require_moe_offload()
+        # 64 experts with 8 resident: prefill with <= 128 routes checks the tile-descriptor workspace bound, and
+        # element-aligned I/O-bound buffers check the cold-input copy and both offload finalizers.
+        num_experts, hidden_size, inter_size, top_k = 64, 256, 64, 2
+        formats = ((16, 256, 66), (16, 256, 66), (42, 64, 18))
+        rng = np.random.default_rng(2024)
+        raw_weights, weights, slot_bytes = self._offload_moe_weights(rng, num_experts, hidden_size, inter_size, formats)
+        for dtype in self.activation_dtypes:
+            model = self._offload_moe_model(num_experts, hidden_size, top_k, dtype, formats, raw_weights)
+            session = self._offload_session(model, 8 * slot_bytes + 4096)
+            for m in (1, 4, 17, 48):
+                with self.subTest(dtype=dtype, m=m):
+                    x = rng.standard_normal((m, hidden_size), dtype=np.float32) * 0.2
+                    logits = rng.standard_normal((m, num_experts), dtype=np.float32)
+                    inputs = {
+                        "X": (dtype, _activation_storage(x, dtype), 2),
+                        "R": (dtype, _activation_storage(logits, dtype), 2),
+                    }
+                    got = _run_cuda_bound(session, inputs, (m, hidden_size), dtype)
+                    ref = _moe_reference(x, logits, *weights, top_k, dtype, True)
+                    np.testing.assert_allclose(got, ref, rtol=2e-2, atol=2e-3)
+
+    def test_moe_packed_cuda_offload_large_shapes(self):
+        self._require_moe_offload()
+        cases = [
+            # FP16 hidden_size=4096 needs 64 KiB of FC1 activation staging, above the default shared-memory limit.
+            (4, 4096, 64, 2, ((1, 1, 2), (1, 1, 2), (1, 1, 2)), 2**-7, (TensorProto.FLOAT16,)),
+            # inter_size > 4096 with a down type that has no AVX2 kernel uses the scalar CPU dot product. A small
+            # quantization scale bounds intermediate-rounding noise of the 4352-term sums.
+            (2, 256, 4352, 1, ((16, 256, 66), (16, 256, 66), (8, 32, 34)), 2**-10, self.activation_dtypes),
+        ]
+        rng = np.random.default_rng(2025)
+        for num_experts, hidden_size, inter_size, top_k, formats, quant_scale, dtypes in cases:
+            raw_weights, weights, slot_bytes = self._offload_moe_weights(
+                rng, num_experts, hidden_size, inter_size, formats, quant_scale
+            )
+            for dtype in dtypes:
+                model = self._offload_moe_model(num_experts, hidden_size, top_k, dtype, formats, raw_weights)
+                # No resident experts runs every decode route on the CPU; half resident mixes both paths.
+                for resident in (0, num_experts // 2):
+                    session = self._offload_session(model, resident * slot_bytes + 4096)
+                    for m in (1, 4, 48):
+                        with self.subTest(hidden=hidden_size, inter=inter_size, dtype=dtype, resident=resident, m=m):
+                            x = rng.standard_normal((m, hidden_size), dtype=np.float32) * 0.2
+                            logits = rng.standard_normal((m, num_experts), dtype=np.float32)
+                            inputs = {
+                                "X": (dtype, _activation_storage(x, dtype), 0),
+                                "R": (dtype, _activation_storage(logits, dtype), 0),
+                            }
+                            got = _run_cuda_bound(session, inputs, (m, hidden_size), dtype, output_offset=0)
+                            ref = _moe_reference(x, logits, *weights, top_k, dtype, True)
+                            self.assertTrue(np.all(np.isfinite(got)))
+                            self.assertGreater(np.max(np.abs(ref)), 1e-2)
+                            np.testing.assert_allclose(got, ref, rtol=2e-2, atol=2e-3)
+
+    def test_moe_packed_cuda_offload_graph_replay_after_warmup(self):
+        self._require_moe_offload()
+        # A CUDA graph captured during warm-up runs must still compute cold experts when replayed by live runs.
+        num_experts, hidden_size, inter_size, top_k, m = 16, 256, 64, 4, 2
+        formats = ((16, 256, 66), (16, 256, 66), (42, 64, 18))
+        rng = np.random.default_rng(2026)
+        raw_weights, weights, slot_bytes = self._offload_moe_weights(rng, num_experts, hidden_size, inter_size, formats)
+        dtype = TensorProto.FLOAT16
+        model = self._offload_moe_model(num_experts, hidden_size, top_k, dtype, formats, raw_weights)
+        session = self._offload_session(model, 4 * slot_bytes + 4096, {"enable_cuda_graph": "1"})
+
+        x_value = ort.OrtValue.ortvalue_from_numpy(np.zeros((m, hidden_size), dtype=np.float16), "cuda", 0)
+        r_value = ort.OrtValue.ortvalue_from_numpy(np.zeros((m, num_experts), dtype=np.float16), "cuda", 0)
+        y_value = ort.OrtValue.ortvalue_from_numpy(np.zeros((m, hidden_size), dtype=np.float16), "cuda", 0)
+        binding = session.io_binding()
+        binding.bind_ortvalue_input("X", x_value)
+        binding.bind_ortvalue_input("R", r_value)
+        binding.bind_ortvalue_output("Y", y_value)
+
+        warmup = ort.RunOptions()
+        warmup.add_run_config_entry("ep.cuda.qmoe_in_warmup", "1")
+        for _ in range(3):
+            x_value.update_inplace(rng.standard_normal((m, hidden_size), dtype=np.float32).astype(np.float16) * 0.2)
+            r_value.update_inplace(rng.standard_normal((m, num_experts), dtype=np.float32).astype(np.float16))
+            session.run_with_iobinding(binding, warmup)
+
+        for _ in range(3):
+            x = rng.standard_normal((m, hidden_size), dtype=np.float32) * 0.2
+            logits = rng.standard_normal((m, num_experts), dtype=np.float32)
+            x_value.update_inplace(x.astype(np.float16))
+            r_value.update_inplace(logits.astype(np.float16))
+            session.run_with_iobinding(binding)
+            got = y_value.numpy().astype(np.float32)
+            ref = _moe_reference(x, logits, *weights, top_k, dtype, True)
+            np.testing.assert_allclose(got, ref, rtol=2e-2, atol=2e-3)
 
 
 if __name__ == "__main__":

@@ -7,19 +7,23 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
-#include <condition_variable>
 #include <cstdio>
 #include <cstring>
+#include <map>
+#include <memory>
 #include <mutex>
 #include <new>
 #include <thread>
 #include <type_traits>
 #include <vector>
 
-#if defined(_M_AMD64) || defined(__x86_64__)
+#include "contrib_ops/cuda/moe/moe_packed_cpu.h"
+
+#if ORT_MOE_PACKED_CPU_X86_64
 #include <immintrin.h>
 #endif
 
+#include "contrib_ops/cpu/moe/qmoe_shared_layout.h"
 #include "contrib_ops/cpu/quantization/gguf_quant_tables.h"
 #include "contrib_ops/cuda/moe/qmoe_spin_pool.h"
 #include "core/common/parse_string.h"
@@ -45,283 +49,33 @@ size_t AlignUp256(size_t v) {
   return (v + 255u) & ~size_t{255u};
 }
 
-inline float RoundBf16Scalar(float x) {
+// Round-to-nearest-even BF16 bits. NaN keeps its sign and is forced quiet so that truncation cannot turn it into
+// infinity, and rounding cannot carry it into the sign bit.
+inline uint16_t FloatToBf16Bits(float x) {
   uint32_t bits = 0;
   std::memcpy(&bits, &x, sizeof(bits));
-  if ((bits & 0x7FFFu) < 0x7F800000u) {
-    bits += 0x7FFFu + ((bits >> 16) & 1u);
-    bits &= 0xFFFF0000u;
+  if ((bits & 0x7FFFFFFFu) > 0x7F800000u) {
+    return static_cast<uint16_t>((bits >> 16) | 0x0040u);
   }
+  bits += 0x7FFFu + ((bits >> 16) & 1u);
+  return static_cast<uint16_t>(bits >> 16);
+}
+
+inline float RoundBf16Scalar(float x) {
+  const uint32_t bits = static_cast<uint32_t>(FloatToBf16Bits(x)) << 16;
   float out = 0.0f;
   std::memcpy(&out, &bits, sizeof(out));
   return out;
 }
 
-inline uint16_t FloatToBf16Bits(float x) {
-  uint32_t bits = 0;
-  std::memcpy(&bits, &x, sizeof(bits));
-  if ((bits & 0x7FFFu) < 0x7F800000u) {
-    bits += 0x7FFFu + ((bits >> 16) & 1u);
-  }
-  return static_cast<uint16_t>(bits >> 16);
-}
-
-#if defined(_M_AMD64) || defined(__x86_64__)
-inline float Fp16ToFloatFast(uint16_t bits) {
-  return _mm_cvtss_f32(_mm_cvtph_ps(_mm_cvtsi32_si128(static_cast<int>(bits))));
-}
-
-inline float HorizontalSumAvx2(__m256 v) {
-  __m128 hi = _mm256_extractf128_ps(v, 1);
-  __m128 lo = _mm256_castps256_ps128(v);
-  __m128 s = _mm_add_ps(lo, hi);
-  s = _mm_add_ps(s, _mm_movehl_ps(s, s));
-  s = _mm_add_ss(s, _mm_shuffle_ps(s, s, 1));
-  return _mm_cvtss_f32(s);
-}
-
-struct SignXorLutAvx2 {
-  alignas(32) uint32_t table[256][8];
-  constexpr SignXorLutAvx2() : table{} {
-    for (int s = 0; s < 256; ++s) {
-      for (int j = 0; j < 8; ++j) {
-        table[s][j] = (s & (1 << j)) ? 0x80000000u : 0u;
-      }
-    }
-  }
-};
-static constexpr SignXorLutAvx2 kSignXorLutAvx2{};
-
-inline __m256 SignXorAvx2(uint8_t signs) {
-  return _mm256_load_ps(reinterpret_cast<const float*>(kSignXorLutAvx2.table[signs]));
-}
-
-template <int RT>
-void GgufDotRowAvx2Tpl(
-    const uint8_t* down_row,
-    int down_type,
-    int K,
-    const float* const* inter_rows,
-    float* down_dots) {
-  using namespace onnxruntime::contrib::gguf_quant;
-  __m256 acc0 = _mm256_setzero_ps();
-  __m256 acc1 = _mm256_setzero_ps();
-  const float* xr0 = inter_rows[0];
-  const float* xr1 = (RT >= 2) ? inter_rows[1] : nullptr;
-
-  if (down_type == kGgmlTypeIQ4_NL) {
-    const __m128i lut = _mm_loadu_si128(reinterpret_cast<const __m128i*>(kvalues_iq4nl));
-    const __m128i mask0f = _mm_set1_epi8(0x0F);
-    const int nb = K / 32;
-    for (int i = 0; i < nb; ++i) {
-      const uint8_t* blk = down_row + i * 18;
-      const __m256 vd = _mm256_set1_ps(Fp16ToFloatFast(ReadU16Le(blk)));
-      const __m128i raw16 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(blk + 2));
-      const __m128i v_lo = _mm_shuffle_epi8(lut, _mm_and_si128(raw16, mask0f));
-      const __m128i v_hi = _mm_shuffle_epi8(lut, _mm_and_si128(_mm_srli_epi16(raw16, 4), mask0f));
-      const __m256 w0 = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(v_lo)));
-      const __m256 w1 = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(v_lo, 8))));
-      const __m256 w2 = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(v_hi)));
-      const __m256 w3 = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(v_hi, 8))));
-      const int k_off = i * 32;
-      acc0 = _mm256_fmadd_ps(w0, _mm256_loadu_ps(xr0 + k_off + 0), acc0);
-      acc0 = _mm256_fmadd_ps(w1, _mm256_loadu_ps(xr0 + k_off + 8), acc0);
-      acc0 = _mm256_fmadd_ps(w2, _mm256_loadu_ps(xr0 + k_off + 16), acc0);
-      acc0 = _mm256_fmadd_ps(w3, _mm256_loadu_ps(xr0 + k_off + 24), acc0);
-      if constexpr (RT >= 2) {
-        acc1 = _mm256_fmadd_ps(w0, _mm256_loadu_ps(xr1 + k_off + 0), acc1);
-        acc1 = _mm256_fmadd_ps(w1, _mm256_loadu_ps(xr1 + k_off + 8), acc1);
-        acc1 = _mm256_fmadd_ps(w2, _mm256_loadu_ps(xr1 + k_off + 16), acc1);
-        acc1 = _mm256_fmadd_ps(w3, _mm256_loadu_ps(xr1 + k_off + 24), acc1);
-      }
-    }
-  } else if (down_type == kGgmlTypeQ2_0) {
-    const __m256i shifts = _mm256_setr_epi32(0, 2, 4, 6, 8, 10, 12, 14);
-    const __m256i mask3 = _mm256_set1_epi32(3);
-    const __m256i ones = _mm256_set1_epi32(1);
-    const int nb = K / 64;
-    for (int i = 0; i < nb; ++i) {
-      const uint8_t* blk = down_row + i * 18;
-      const __m256 vd = _mm256_set1_ps(Fp16ToFloatFast(ReadU16Le(blk)));
-      for (int w = 0; w < 8; ++w) {
-        const uint16_t q16 = ReadU16Le(blk + 2 + w * 2);
-        const __m256i qv = _mm256_sub_epi32(
-            _mm256_and_si256(_mm256_srlv_epi32(_mm256_set1_epi32(q16), shifts), mask3), ones);
-        const __m256 w_vec = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(qv));
-        const int k_off = i * 64 + w * 8;
-        acc0 = _mm256_fmadd_ps(w_vec, _mm256_loadu_ps(xr0 + k_off), acc0);
-        if constexpr (RT >= 2) {
-          acc1 = _mm256_fmadd_ps(w_vec, _mm256_loadu_ps(xr1 + k_off), acc1);
-        }
-      }
-    }
-  } else if (down_type == kGgmlTypeIQ2_S) {
-    const int nb = K / 256;
-    for (int i = 0; i < nb; ++i) {
-      const uint8_t* blk = down_row + i * 82;
-      const float d = Fp16ToFloatFast(ReadU16Le(blk)) * 0.25f;
-      const uint8_t* qs = blk + 2;
-      const uint8_t* signs = qs + 32;
-      const uint8_t* qh = blk + 66;
-      const uint8_t* scales = blk + 74;
-      for (int ib32 = 0; ib32 < 8; ++ib32) {
-        const float db0 = d * (0.5f + static_cast<float>(scales[ib32] & 0xF));
-        const float db1 = d * (0.5f + static_cast<float>(scales[ib32] >> 4));
-        const uint8_t qh_byte = qh[ib32];
-        for (int l = 0; l < 4; ++l) {
-          const __m256 v_dl = _mm256_set1_ps((l < 2) ? db0 : db1);
-          const int idx = qs[l] | ((static_cast<int>(qh_byte) << (8 - 2 * l)) & 0x300);
-          const __m128i g8 = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(iq2s_grid + idx));
-          const __m256 vf = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(g8));
-          const __m256 w = _mm256_mul_ps(v_dl, _mm256_xor_ps(vf, SignXorAvx2(signs[l])));
-          const int k_off = i * 256 + ib32 * 32 + l * 8;
-          acc0 = _mm256_fmadd_ps(w, _mm256_loadu_ps(xr0 + k_off), acc0);
-          if constexpr (RT >= 2) {
-            acc1 = _mm256_fmadd_ps(w, _mm256_loadu_ps(xr1 + k_off), acc1);
-          }
-        }
-        qs += 4;
-        signs += 4;
-      }
-    }
-  } else if (down_type == kGgmlTypeIQ2_XXS) {
-    const int nb = K / 256;
-    for (int i = 0; i < nb; ++i) {
-      const uint8_t* blk = down_row + i * 66;
-      const float d = Fp16ToFloatFast(ReadU16Le(blk)) * 0.25f;
-      const uint8_t* qs = blk + 2;
-      for (int ib32 = 0; ib32 < 8; ++ib32) {
-        const uint8_t* aux8 = qs + 8 * ib32;
-        const uint32_t aux32 = ReadU32Le(aux8 + 4);
-        const __m256 v_db = _mm256_set1_ps(d * (0.5f + static_cast<float>(aux32 >> 28)));
-        for (int l = 0; l < 4; ++l) {
-          const __m128i g8 = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(iq2xxs_grid + aux8[l]));
-          const __m256 vf = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(g8));
-          const uint8_t s = ksigns_iq2xs[(aux32 >> (7 * l)) & 127];
-          const __m256 w = _mm256_mul_ps(v_db, _mm256_xor_ps(vf, SignXorAvx2(s)));
-          const int k_off = i * 256 + ib32 * 32 + l * 8;
-          acc0 = _mm256_fmadd_ps(w, _mm256_loadu_ps(xr0 + k_off), acc0);
-          if constexpr (RT >= 2) {
-            acc1 = _mm256_fmadd_ps(w, _mm256_loadu_ps(xr1 + k_off), acc1);
-          }
-        }
-      }
-    }
-  } else if (down_type == kGgmlTypeIQ2_XS) {
-    const int nb = K / 256;
-    for (int i = 0; i < nb; ++i) {
-      const uint8_t* blk = down_row + i * 74;
-      const float d = Fp16ToFloatFast(ReadU16Le(blk)) * 0.25f;
-      const uint8_t* qs = blk + 2;
-      const uint8_t* scales = blk + 66;
-      for (int ib32 = 0; ib32 < 8; ++ib32) {
-        const float db0 = d * (0.5f + static_cast<float>(scales[ib32] & 0xF));
-        const float db1 = d * (0.5f + static_cast<float>(scales[ib32] >> 4));
-        for (int l = 0; l < 4; ++l) {
-          const uint16_t qval = ReadU16Le(qs + (4 * ib32 + l) * 2);
-          const __m128i g8 = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(iq2xs_grid + (qval & 511)));
-          const __m256 vf = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(g8));
-          const __m256 v_dl = _mm256_set1_ps((l < 2) ? db0 : db1);
-          const __m256 w = _mm256_mul_ps(v_dl, _mm256_xor_ps(vf, SignXorAvx2(ksigns_iq2xs[qval >> 9])));
-          const int k_off = i * 256 + ib32 * 32 + l * 8;
-          acc0 = _mm256_fmadd_ps(w, _mm256_loadu_ps(xr0 + k_off), acc0);
-          if constexpr (RT >= 2) {
-            acc1 = _mm256_fmadd_ps(w, _mm256_loadu_ps(xr1 + k_off), acc1);
-          }
-        }
-      }
-    }
-  } else if (down_type == kGgmlTypeIQ3_XXS) {
-    const int nb = K / 256;
-    for (int i = 0; i < nb; ++i) {
-      const uint8_t* blk = down_row + i * 98;
-      const float d = Fp16ToFloatFast(ReadU16Le(blk)) * 0.5f;
-      const uint8_t* qs = blk + 2;
-      const uint8_t* scales_and_signs = qs + 64;
-      for (int ib32 = 0; ib32 < 8; ++ib32) {
-        const uint32_t aux32 = ReadU32Le(scales_and_signs + 4 * ib32);
-        const __m256 v_db = _mm256_set1_ps(d * (0.5f + static_cast<float>(aux32 >> 28)));
-        for (int l = 0; l < 4; ++l) {
-          const uint64_t g64 = static_cast<uint64_t>(iq3xxs_grid[qs[2 * l + 0]]) |
-                               (static_cast<uint64_t>(iq3xxs_grid[qs[2 * l + 1]]) << 32);
-          const __m128i g8 = _mm_cvtsi64_si128(static_cast<int64_t>(g64));
-          const __m256 vf = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(g8));
-          const uint8_t s = ksigns_iq2xs[(aux32 >> (7 * l)) & 127];
-          const __m256 w = _mm256_mul_ps(v_db, _mm256_xor_ps(vf, SignXorAvx2(s)));
-          const int k_off = i * 256 + ib32 * 32 + l * 8;
-          acc0 = _mm256_fmadd_ps(w, _mm256_loadu_ps(xr0 + k_off), acc0);
-          if constexpr (RT >= 2) {
-            acc1 = _mm256_fmadd_ps(w, _mm256_loadu_ps(xr1 + k_off), acc1);
-          }
-        }
-        qs += 8;
-      }
-    }
-  } else if (down_type == kGgmlTypeIQ4_XS) {
-    const __m128i lut = _mm_loadu_si128(reinterpret_cast<const __m128i*>(kvalues_iq4nl));
-    const __m128i mask0f = _mm_set1_epi8(0x0F);
-    const int nb = K / 256;
-    for (int i = 0; i < nb; ++i) {
-      const uint8_t* blk = down_row + i * 136;
-      const float d = Fp16ToFloatFast(ReadU16Le(blk));
-      const uint16_t scales_h = ReadU16Le(blk + 2);
-      const uint8_t* scales_l = blk + 4;
-      const uint8_t* qs = blk + 8;
-      for (int ib = 0; ib < 8; ++ib) {
-        const int ls = ((scales_l[ib / 2] >> (4 * (ib % 2))) & 0xF) | (((scales_h >> (2 * ib)) & 3) << 4);
-        const __m256 vd = _mm256_set1_ps(d * static_cast<float>(ls - 32));
-        const __m128i raw16 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(qs + ib * 16));
-        const __m128i v_lo = _mm_shuffle_epi8(lut, _mm_and_si128(raw16, mask0f));
-        const __m128i v_hi = _mm_shuffle_epi8(lut, _mm_and_si128(_mm_srli_epi16(raw16, 4), mask0f));
-        const __m256 w0 = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(v_lo)));
-        const __m256 w1 = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(v_lo, 8))));
-        const __m256 w2 = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(v_hi)));
-        const __m256 w3 = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(v_hi, 8))));
-        const int k_off = i * 256 + ib * 32;
-        acc0 = _mm256_fmadd_ps(w0, _mm256_loadu_ps(xr0 + k_off + 0), acc0);
-        acc0 = _mm256_fmadd_ps(w1, _mm256_loadu_ps(xr0 + k_off + 8), acc0);
-        acc0 = _mm256_fmadd_ps(w2, _mm256_loadu_ps(xr0 + k_off + 16), acc0);
-        acc0 = _mm256_fmadd_ps(w3, _mm256_loadu_ps(xr0 + k_off + 24), acc0);
-        if constexpr (RT >= 2) {
-          acc1 = _mm256_fmadd_ps(w0, _mm256_loadu_ps(xr1 + k_off + 0), acc1);
-          acc1 = _mm256_fmadd_ps(w1, _mm256_loadu_ps(xr1 + k_off + 8), acc1);
-          acc1 = _mm256_fmadd_ps(w2, _mm256_loadu_ps(xr1 + k_off + 16), acc1);
-          acc1 = _mm256_fmadd_ps(w3, _mm256_loadu_ps(xr1 + k_off + 24), acc1);
-        }
-      }
-    }
-  } else if (down_type == kGgmlTypeQ5_0) {
-    const int nb = K / 32;
-    for (int i = 0; i < nb; ++i) {
-      const uint8_t* blk = down_row + i * 22;
-      const __m256 vd = _mm256_set1_ps(Fp16ToFloatFast(ReadU16Le(blk)));
-      const uint32_t qh = ReadU32Le(blk + 2);
-      const uint8_t* qs = blk + 6;
-      alignas(32) float w32[32];
-      for (int j = 0; j < 16; ++j) {
-        const uint8_t xh_0 = ((qh >> (j + 0)) << 4) & 0x10;
-        const uint8_t xh_1 = ((qh >> (j + 12))) & 0x10;
-        w32[j] = static_cast<float>(((qs[j] & 0x0F) | xh_0) - 16);
-        w32[j + 16] = static_cast<float>(((qs[j] >> 4) | xh_1) - 16);
-      }
-      const int k_off = i * 32;
-      for (int s = 0; s < 32; s += 8) {
-        const __m256 w_vec = _mm256_mul_ps(vd, _mm256_load_ps(w32 + s));
-        acc0 = _mm256_fmadd_ps(w_vec, _mm256_loadu_ps(xr0 + k_off + s), acc0);
-        if constexpr (RT >= 2) {
-          acc1 = _mm256_fmadd_ps(w_vec, _mm256_loadu_ps(xr1 + k_off + s), acc1);
-        }
-      }
-    }
-  }
-  down_dots[0] = HorizontalSumAvx2(acc0);
-  if constexpr (RT >= 2) {
-    down_dots[1] = HorizontalSumAvx2(acc1);
-  }
+#if ORT_MOE_PACKED_CPU_X86_64
+bool UseAvx2CpuKernels() {
+  static const bool use_avx2 = qmoe_shared::CpuHasAvx2FmaF16c();
+  return use_avx2;
 }
 #endif
 
-// AVX2 dot product of one GGUF quantized row against R vectors inter_rows[0..R-1] using pure register accumulators.
+// Dot product of one GGUF quantized row against R activation vectors x_rows[0..R-1].
 void GgufDotRowCpu(
     const uint8_t* down_row,
     int down_type,
@@ -329,23 +83,20 @@ void GgufDotRowCpu(
     const float* const* inter_rows,
     int R,
     float* down_dots) {
-  using namespace onnxruntime::contrib::gguf_quant;
-#if defined(_M_AMD64) || defined(__x86_64__)
-  if (down_type == kGgmlTypeIQ4_NL || down_type == kGgmlTypeQ2_0 || down_type == kGgmlTypeIQ2_S ||
-      down_type == kGgmlTypeIQ2_XXS || down_type == kGgmlTypeIQ2_XS || down_type == kGgmlTypeIQ3_XXS ||
-      down_type == kGgmlTypeIQ4_XS || down_type == kGgmlTypeQ5_0) {
-    int r = 0;
-    for (; r + 2 <= R; r += 2) {
-      GgufDotRowAvx2Tpl<2>(down_row, down_type, K, inter_rows + r, down_dots + r);
-    }
-    if (r < R) {
-      GgufDotRowAvx2Tpl<1>(down_row, down_type, K, inter_rows + r, down_dots + r);
-    }
+#if ORT_MOE_PACKED_CPU_X86_64
+  if (UseAvx2CpuKernels() && moe_packed_cpu::GgufDotRowAvx2(down_row, down_type, K, inter_rows, R, down_dots)) {
     return;
   }
 #endif
-  alignas(32) float buf_d[kMoEPackedMaxHiddenSize];
-  DequantizeGgufRowCpu(down_row, down_type, K, buf_d);
+  // FC2 passes K = inter_size, which kMoEPackedMaxHiddenSize does not bound.
+  alignas(32) float stack_buf[kMoEPackedMaxHiddenSize];
+  std::unique_ptr<float[]> heap_buf;
+  float* buf_d = stack_buf;
+  if (K > kMoEPackedMaxHiddenSize) {
+    heap_buf = std::make_unique<float[]>(static_cast<size_t>(K));
+    buf_d = heap_buf.get();
+  }
+  gguf_quant::DequantizeGgufRowCpu(down_row, down_type, K, buf_d);
   for (int r = 0; r < R; ++r) {
     float sd = 0.0f;
     const float* xr = inter_rows[r];
@@ -356,262 +107,7 @@ void GgufDotRowCpu(
   }
 }
 
-#if defined(_M_AMD64) || defined(__x86_64__)
-template <int RT>
-void GgufDualDotRowAvx2Tpl(
-    const uint8_t* gate_row,
-    const uint8_t* up_row,
-    int gate_type,
-    int K,
-    const float* const* x_rows,
-    float* gate_dots,
-    float* up_dots) {
-  using namespace onnxruntime::contrib::gguf_quant;
-  __m256 ag0 = _mm256_setzero_ps();
-  __m256 au0 = _mm256_setzero_ps();
-  __m256 ag1 = _mm256_setzero_ps();
-  __m256 au1 = _mm256_setzero_ps();
-  const float* xr0 = x_rows[0];
-  const float* xr1 = (RT >= 2) ? x_rows[1] : nullptr;
-  const int nb = K / 256;
-
-  if (gate_type == kGgmlTypeIQ2_S) {
-    for (int i = 0; i < nb; ++i) {
-      const uint8_t* blk_g = gate_row + i * 82;
-      const uint8_t* blk_u = up_row + i * 82;
-      const float d_g = Fp16ToFloatFast(ReadU16Le(blk_g)) * 0.25f;
-      const float d_u = Fp16ToFloatFast(ReadU16Le(blk_u)) * 0.25f;
-      const uint8_t* qs_g = blk_g + 2;
-      const uint8_t* signs_g = qs_g + 32;
-      const uint8_t* qh_g = blk_g + 66;
-      const uint8_t* scales_g = blk_g + 74;
-      const uint8_t* qs_u = blk_u + 2;
-      const uint8_t* signs_u = qs_u + 32;
-      const uint8_t* qh_u = blk_u + 66;
-      const uint8_t* scales_u = blk_u + 74;
-      for (int ib32 = 0; ib32 < 8; ++ib32) {
-        const float db0_g = d_g * (0.5f + static_cast<float>(scales_g[ib32] & 0xF));
-        const float db1_g = d_g * (0.5f + static_cast<float>(scales_g[ib32] >> 4));
-        const float db0_u = d_u * (0.5f + static_cast<float>(scales_u[ib32] & 0xF));
-        const float db1_u = d_u * (0.5f + static_cast<float>(scales_u[ib32] >> 4));
-        const uint8_t qh_byte_g = qh_g[ib32];
-        const uint8_t qh_byte_u = qh_u[ib32];
-        for (int l = 0; l < 4; ++l) {
-          const __m256 v_dl_g = _mm256_set1_ps((l < 2) ? db0_g : db1_g);
-          const __m256 v_dl_u = _mm256_set1_ps((l < 2) ? db0_u : db1_u);
-          const int idx_g = qs_g[l] | ((static_cast<int>(qh_byte_g) << (8 - 2 * l)) & 0x300);
-          const int idx_u = qs_u[l] | ((static_cast<int>(qh_byte_u) << (8 - 2 * l)) & 0x300);
-          const __m128i g8_g = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(iq2s_grid + idx_g));
-          const __m128i g8_u = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(iq2s_grid + idx_u));
-          const __m256 vf_g = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(g8_g));
-          const __m256 vf_u = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(g8_u));
-          const __m256 wg = _mm256_mul_ps(v_dl_g, _mm256_xor_ps(vf_g, SignXorAvx2(signs_g[l])));
-          const __m256 wu = _mm256_mul_ps(v_dl_u, _mm256_xor_ps(vf_u, SignXorAvx2(signs_u[l])));
-          const int k_off = i * 256 + ib32 * 32 + l * 8;
-          const __m256 xv0 = _mm256_loadu_ps(xr0 + k_off);
-          ag0 = _mm256_fmadd_ps(wg, xv0, ag0);
-          au0 = _mm256_fmadd_ps(wu, xv0, au0);
-          if constexpr (RT >= 2) {
-            const __m256 xv1 = _mm256_loadu_ps(xr1 + k_off);
-            ag1 = _mm256_fmadd_ps(wg, xv1, ag1);
-            au1 = _mm256_fmadd_ps(wu, xv1, au1);
-          }
-        }
-        qs_g += 4;
-        signs_g += 4;
-        qs_u += 4;
-        signs_u += 4;
-      }
-    }
-  } else if (gate_type == kGgmlTypeIQ2_XXS) {
-    for (int i = 0; i < nb; ++i) {
-      const uint8_t* blk_g = gate_row + i * 66;
-      const uint8_t* blk_u = up_row + i * 66;
-      const float d_g = Fp16ToFloatFast(ReadU16Le(blk_g)) * 0.25f;
-      const float d_u = Fp16ToFloatFast(ReadU16Le(blk_u)) * 0.25f;
-      const uint8_t* qs_g = blk_g + 2;
-      const uint8_t* qs_u = blk_u + 2;
-      for (int ib32 = 0; ib32 < 8; ++ib32) {
-        const uint8_t* aux8_g = qs_g + 8 * ib32;
-        const uint8_t* aux8_u = qs_u + 8 * ib32;
-        const uint32_t aux32_g = ReadU32Le(aux8_g + 4);
-        const uint32_t aux32_u = ReadU32Le(aux8_u + 4);
-        const __m256 v_db_g = _mm256_set1_ps(d_g * (0.5f + static_cast<float>(aux32_g >> 28)));
-        const __m256 v_db_u = _mm256_set1_ps(d_u * (0.5f + static_cast<float>(aux32_u >> 28)));
-        for (int l = 0; l < 4; ++l) {
-          const __m128i g8_g = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(iq2xxs_grid + aux8_g[l]));
-          const __m128i g8_u = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(iq2xxs_grid + aux8_u[l]));
-          const __m256 vf_g = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(g8_g));
-          const __m256 vf_u = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(g8_u));
-          const uint8_t sg = ksigns_iq2xs[(aux32_g >> (7 * l)) & 127];
-          const uint8_t su = ksigns_iq2xs[(aux32_u >> (7 * l)) & 127];
-          const __m256 wg = _mm256_mul_ps(v_db_g, _mm256_xor_ps(vf_g, SignXorAvx2(sg)));
-          const __m256 wu = _mm256_mul_ps(v_db_u, _mm256_xor_ps(vf_u, SignXorAvx2(su)));
-          const int k_off = i * 256 + ib32 * 32 + l * 8;
-          const __m256 xv0 = _mm256_loadu_ps(xr0 + k_off);
-          ag0 = _mm256_fmadd_ps(wg, xv0, ag0);
-          au0 = _mm256_fmadd_ps(wu, xv0, au0);
-          if constexpr (RT >= 2) {
-            const __m256 xv1 = _mm256_loadu_ps(xr1 + k_off);
-            ag1 = _mm256_fmadd_ps(wg, xv1, ag1);
-            au1 = _mm256_fmadd_ps(wu, xv1, au1);
-          }
-        }
-      }
-    }
-  } else if (gate_type == kGgmlTypeIQ3_XXS) {
-    for (int i = 0; i < nb; ++i) {
-      const uint8_t* blk_g = gate_row + i * 98;
-      const uint8_t* blk_u = up_row + i * 98;
-      const float d_g = Fp16ToFloatFast(ReadU16Le(blk_g)) * 0.5f;
-      const float d_u = Fp16ToFloatFast(ReadU16Le(blk_u)) * 0.5f;
-      const uint8_t* qs_g = blk_g + 2;
-      const uint8_t* sas_g = qs_g + 64;
-      const uint8_t* qs_u = blk_u + 2;
-      const uint8_t* sas_u = qs_u + 64;
-      for (int ib32 = 0; ib32 < 8; ++ib32) {
-        const uint32_t aux32_g = ReadU32Le(sas_g + 4 * ib32);
-        const uint32_t aux32_u = ReadU32Le(sas_u + 4 * ib32);
-        const __m256 v_db_g = _mm256_set1_ps(d_g * (0.5f + static_cast<float>(aux32_g >> 28)));
-        const __m256 v_db_u = _mm256_set1_ps(d_u * (0.5f + static_cast<float>(aux32_u >> 28)));
-        for (int l = 0; l < 4; ++l) {
-          const uint64_t g64_g = static_cast<uint64_t>(iq3xxs_grid[qs_g[2 * l + 0]]) |
-                                 (static_cast<uint64_t>(iq3xxs_grid[qs_g[2 * l + 1]]) << 32);
-          const uint64_t g64_u = static_cast<uint64_t>(iq3xxs_grid[qs_u[2 * l + 0]]) |
-                                 (static_cast<uint64_t>(iq3xxs_grid[qs_u[2 * l + 1]]) << 32);
-          const __m128i g8_g = _mm_cvtsi64_si128(static_cast<int64_t>(g64_g));
-          const __m128i g8_u = _mm_cvtsi64_si128(static_cast<int64_t>(g64_u));
-          const __m256 vf_g = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(g8_g));
-          const __m256 vf_u = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(g8_u));
-          const uint8_t sg = ksigns_iq2xs[(aux32_g >> (7 * l)) & 127];
-          const uint8_t su = ksigns_iq2xs[(aux32_u >> (7 * l)) & 127];
-          const __m256 wg = _mm256_mul_ps(v_db_g, _mm256_xor_ps(vf_g, SignXorAvx2(sg)));
-          const __m256 wu = _mm256_mul_ps(v_db_u, _mm256_xor_ps(vf_u, SignXorAvx2(su)));
-          const int k_off = i * 256 + ib32 * 32 + l * 8;
-          const __m256 xv0 = _mm256_loadu_ps(xr0 + k_off);
-          ag0 = _mm256_fmadd_ps(wg, xv0, ag0);
-          au0 = _mm256_fmadd_ps(wu, xv0, au0);
-          if constexpr (RT >= 2) {
-            const __m256 xv1 = _mm256_loadu_ps(xr1 + k_off);
-            ag1 = _mm256_fmadd_ps(wg, xv1, ag1);
-            au1 = _mm256_fmadd_ps(wu, xv1, au1);
-          }
-        }
-        qs_g += 8;
-        qs_u += 8;
-      }
-    }
-  } else if (gate_type == kGgmlTypeIQ4_XS) {
-    const __m128i lut = _mm_loadu_si128(reinterpret_cast<const __m128i*>(kvalues_iq4nl));
-    const __m128i mask0f = _mm_set1_epi8(0x0F);
-    for (int i = 0; i < nb; ++i) {
-      const uint8_t* blk_g = gate_row + i * 136;
-      const uint8_t* blk_u = up_row + i * 136;
-      const float d_g = Fp16ToFloatFast(ReadU16Le(blk_g));
-      const float d_u = Fp16ToFloatFast(ReadU16Le(blk_u));
-      const uint16_t scales_h_g = ReadU16Le(blk_g + 2);
-      const uint16_t scales_h_u = ReadU16Le(blk_u + 2);
-      const uint8_t* scales_l_g = blk_g + 4;
-      const uint8_t* scales_l_u = blk_u + 4;
-      const uint8_t* qs_g = blk_g + 8;
-      const uint8_t* qs_u = blk_u + 8;
-      for (int ib = 0; ib < 8; ++ib) {
-        const int ls_g = ((scales_l_g[ib / 2] >> (4 * (ib % 2))) & 0xF) | (((scales_h_g >> (2 * ib)) & 3) << 4);
-        const int ls_u = ((scales_l_u[ib / 2] >> (4 * (ib % 2))) & 0xF) | (((scales_h_u >> (2 * ib)) & 3) << 4);
-        const __m256 vd_g = _mm256_set1_ps(d_g * static_cast<float>(ls_g - 32));
-        const __m256 vd_u = _mm256_set1_ps(d_u * static_cast<float>(ls_u - 32));
-        const __m128i raw16_g = _mm_loadu_si128(reinterpret_cast<const __m128i*>(qs_g + ib * 16));
-        const __m128i raw16_u = _mm_loadu_si128(reinterpret_cast<const __m128i*>(qs_u + ib * 16));
-        const __m128i v_lo_g = _mm_shuffle_epi8(lut, _mm_and_si128(raw16_g, mask0f));
-        const __m128i v_hi_g = _mm_shuffle_epi8(lut, _mm_and_si128(_mm_srli_epi16(raw16_g, 4), mask0f));
-        const __m128i v_lo_u = _mm_shuffle_epi8(lut, _mm_and_si128(raw16_u, mask0f));
-        const __m128i v_hi_u = _mm_shuffle_epi8(lut, _mm_and_si128(_mm_srli_epi16(raw16_u, 4), mask0f));
-        const __m256 wg0 = _mm256_mul_ps(vd_g, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(v_lo_g)));
-        const __m256 wg1 = _mm256_mul_ps(vd_g, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(v_lo_g, 8))));
-        const __m256 wg2 = _mm256_mul_ps(vd_g, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(v_hi_g)));
-        const __m256 wg3 = _mm256_mul_ps(vd_g, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(v_hi_g, 8))));
-        const __m256 wu0 = _mm256_mul_ps(vd_u, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(v_lo_u)));
-        const __m256 wu1 = _mm256_mul_ps(vd_u, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(v_lo_u, 8))));
-        const __m256 wu2 = _mm256_mul_ps(vd_u, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(v_hi_u)));
-        const __m256 wu3 = _mm256_mul_ps(vd_u, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(v_hi_u, 8))));
-        const int k_off = i * 256 + ib * 32;
-        const __m256 x0 = _mm256_loadu_ps(xr0 + k_off + 0);
-        const __m256 x1 = _mm256_loadu_ps(xr0 + k_off + 8);
-        const __m256 x2 = _mm256_loadu_ps(xr0 + k_off + 16);
-        const __m256 x3 = _mm256_loadu_ps(xr0 + k_off + 24);
-        ag0 = _mm256_fmadd_ps(wg0, x0, ag0);
-        ag0 = _mm256_fmadd_ps(wg1, x1, ag0);
-        ag0 = _mm256_fmadd_ps(wg2, x2, ag0);
-        ag0 = _mm256_fmadd_ps(wg3, x3, ag0);
-        au0 = _mm256_fmadd_ps(wu0, x0, au0);
-        au0 = _mm256_fmadd_ps(wu1, x1, au0);
-        au0 = _mm256_fmadd_ps(wu2, x2, au0);
-        au0 = _mm256_fmadd_ps(wu3, x3, au0);
-        if constexpr (RT >= 2) {
-          const __m256 y0 = _mm256_loadu_ps(xr1 + k_off + 0);
-          const __m256 y1 = _mm256_loadu_ps(xr1 + k_off + 8);
-          const __m256 y2 = _mm256_loadu_ps(xr1 + k_off + 16);
-          const __m256 y3 = _mm256_loadu_ps(xr1 + k_off + 24);
-          ag1 = _mm256_fmadd_ps(wg0, y0, ag1);
-          ag1 = _mm256_fmadd_ps(wg1, y1, ag1);
-          ag1 = _mm256_fmadd_ps(wg2, y2, ag1);
-          ag1 = _mm256_fmadd_ps(wg3, y3, ag1);
-          au1 = _mm256_fmadd_ps(wu0, y0, au1);
-          au1 = _mm256_fmadd_ps(wu1, y1, au1);
-          au1 = _mm256_fmadd_ps(wu2, y2, au1);
-          au1 = _mm256_fmadd_ps(wu3, y3, au1);
-        }
-      }
-    }
-  } else {
-    for (int i = 0; i < nb; ++i) {
-      const uint8_t* blk_g = gate_row + i * 74;
-      const uint8_t* blk_u = up_row + i * 74;
-      const float d_g = Fp16ToFloatFast(ReadU16Le(blk_g)) * 0.25f;
-      const float d_u = Fp16ToFloatFast(ReadU16Le(blk_u)) * 0.25f;
-      const uint8_t* qs_g = blk_g + 2;
-      const uint8_t* scales_g = blk_g + 66;
-      const uint8_t* qs_u = blk_u + 2;
-      const uint8_t* scales_u = blk_u + 66;
-      for (int ib32 = 0; ib32 < 8; ++ib32) {
-        const float db0_g = d_g * (0.5f + static_cast<float>(scales_g[ib32] & 0xF));
-        const float db1_g = d_g * (0.5f + static_cast<float>(scales_g[ib32] >> 4));
-        const float db0_u = d_u * (0.5f + static_cast<float>(scales_u[ib32] & 0xF));
-        const float db1_u = d_u * (0.5f + static_cast<float>(scales_u[ib32] >> 4));
-        for (int l = 0; l < 4; ++l) {
-          const uint16_t qg = ReadU16Le(qs_g + (4 * ib32 + l) * 2);
-          const uint16_t qu = ReadU16Le(qs_u + (4 * ib32 + l) * 2);
-          const __m128i g8_g = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(iq2xs_grid + (qg & 511)));
-          const __m128i g8_u = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(iq2xs_grid + (qu & 511)));
-          const __m256 vf_g = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(g8_g));
-          const __m256 vf_u = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(g8_u));
-          const __m256 v_dl_g = _mm256_set1_ps((l < 2) ? db0_g : db1_g);
-          const __m256 v_dl_u = _mm256_set1_ps((l < 2) ? db0_u : db1_u);
-          const __m256 wg = _mm256_mul_ps(v_dl_g, _mm256_xor_ps(vf_g, SignXorAvx2(ksigns_iq2xs[qg >> 9])));
-          const __m256 wu = _mm256_mul_ps(v_dl_u, _mm256_xor_ps(vf_u, SignXorAvx2(ksigns_iq2xs[qu >> 9])));
-          const int k_off = i * 256 + ib32 * 32 + l * 8;
-          const __m256 xv0 = _mm256_loadu_ps(xr0 + k_off);
-          ag0 = _mm256_fmadd_ps(wg, xv0, ag0);
-          au0 = _mm256_fmadd_ps(wu, xv0, au0);
-          if constexpr (RT >= 2) {
-            const __m256 xv1 = _mm256_loadu_ps(xr1 + k_off);
-            ag1 = _mm256_fmadd_ps(wg, xv1, ag1);
-            au1 = _mm256_fmadd_ps(wu, xv1, au1);
-          }
-        }
-      }
-    }
-  }
-  gate_dots[0] = HorizontalSumAvx2(ag0);
-  up_dots[0] = HorizontalSumAvx2(au0);
-  if constexpr (RT >= 2) {
-    gate_dots[1] = HorizontalSumAvx2(ag1);
-    up_dots[1] = HorizontalSumAvx2(au1);
-  }
-}
-#endif
-
-// Fused AVX2 dot product of one (gate_row, up_row) pair against R token activation vectors x_rows[0..R-1].
+// Dot products of one (gate_row, up_row) pair against R token activation vectors x_rows[0..R-1].
 void GgufDualDotRowCpu(
     const uint8_t* gate_row,
     const uint8_t* up_row,
@@ -622,22 +118,9 @@ void GgufDualDotRowCpu(
     int R,
     float* gate_dots,
     float* up_dots) {
-  using namespace onnxruntime::contrib::gguf_quant;
-#if defined(_M_AMD64) || defined(__x86_64__)
-  if (gate_type != up_type) {
-    GgufDotRowCpu(gate_row, gate_type, K, x_rows, R, gate_dots);
-    GgufDotRowCpu(up_row, up_type, K, x_rows, R, up_dots);
-    return;
-  }
-  if (gate_type == kGgmlTypeIQ2_S || gate_type == kGgmlTypeIQ2_XXS || gate_type == kGgmlTypeIQ2_XS ||
-      gate_type == kGgmlTypeIQ3_XXS || gate_type == kGgmlTypeIQ4_XS) {
-    int r = 0;
-    for (; r + 2 <= R; r += 2) {
-      GgufDualDotRowAvx2Tpl<2>(gate_row, up_row, gate_type, K, x_rows + r, gate_dots + r, up_dots + r);
-    }
-    if (r < R) {
-      GgufDualDotRowAvx2Tpl<1>(gate_row, up_row, gate_type, K, x_rows + r, gate_dots + r, up_dots + r);
-    }
+#if ORT_MOE_PACKED_CPU_X86_64
+  if (gate_type == up_type && UseAvx2CpuKernels() &&
+      moe_packed_cpu::GgufDualDotRowAvx2(gate_row, up_row, gate_type, K, x_rows, R, gate_dots, up_dots)) {
     return;
   }
 #endif
@@ -645,176 +128,7 @@ void GgufDualDotRowCpu(
   GgufDotRowCpu(up_row, up_type, K, x_rows, R, up_dots);
 }
 
-#if defined(_M_AMD64) || defined(__x86_64__)
-template <int RT>
-void GgufDualDot2ChAvx2Tpl(
-    const uint8_t* gate_row0,
-    const uint8_t* up_row0,
-    const uint8_t* gate_row1,
-    const uint8_t* up_row1,
-    int gate_type,
-    int K,
-    const float* const* x_rows,
-    float* gate_dots0,
-    float* up_dots0,
-    float* gate_dots1,
-    float* up_dots1) {
-  using namespace onnxruntime::contrib::gguf_quant;
-  const int nb = K / 256;
-  const float* xr0 = x_rows[0];
-  const float* xr1 = (RT >= 2) ? x_rows[1] : nullptr;
-  __m256 ag0_0 = _mm256_setzero_ps();
-  __m256 au0_0 = _mm256_setzero_ps();
-  __m256 ag1_0 = _mm256_setzero_ps();
-  __m256 au1_0 = _mm256_setzero_ps();
-  __m256 ag0_1 = _mm256_setzero_ps();
-  __m256 au0_1 = _mm256_setzero_ps();
-  __m256 ag1_1 = _mm256_setzero_ps();
-  __m256 au1_1 = _mm256_setzero_ps();
-
-  if (gate_type == kGgmlTypeIQ2_S) {
-    for (int i = 0; i < nb; ++i) {
-      const uint8_t* bg0 = gate_row0 + i * 82;
-      const uint8_t* bu0 = up_row0 + i * 82;
-      const uint8_t* bg1 = gate_row1 + i * 82;
-      const uint8_t* bu1 = up_row1 + i * 82;
-      const float dg0 = Fp16ToFloatFast(ReadU16Le(bg0)) * 0.25f;
-      const float du0 = Fp16ToFloatFast(ReadU16Le(bu0)) * 0.25f;
-      const float dg1 = Fp16ToFloatFast(ReadU16Le(bg1)) * 0.25f;
-      const float du1 = Fp16ToFloatFast(ReadU16Le(bu1)) * 0.25f;
-      for (int ib32 = 0; ib32 < 8; ++ib32) {
-        const float db0_g0 = dg0 * (0.5f + static_cast<float>(bg0[74 + ib32] & 0xF));
-        const float db1_g0 = dg0 * (0.5f + static_cast<float>(bg0[74 + ib32] >> 4));
-        const float db0_u0 = du0 * (0.5f + static_cast<float>(bu0[74 + ib32] & 0xF));
-        const float db1_u0 = du0 * (0.5f + static_cast<float>(bu0[74 + ib32] >> 4));
-        const float db0_g1 = dg1 * (0.5f + static_cast<float>(bg1[74 + ib32] & 0xF));
-        const float db1_g1 = dg1 * (0.5f + static_cast<float>(bg1[74 + ib32] >> 4));
-        const float db0_u1 = du1 * (0.5f + static_cast<float>(bu1[74 + ib32] & 0xF));
-        const float db1_u1 = du1 * (0.5f + static_cast<float>(bu1[74 + ib32] >> 4));
-        const uint8_t qhg0 = bg0[66 + ib32];
-        const uint8_t qhu0 = bu0[66 + ib32];
-        const uint8_t qhg1 = bg1[66 + ib32];
-        const uint8_t qhu1 = bu1[66 + ib32];
-        const int q_off = 2 + ib32 * 4;
-        const int s_off = 34 + ib32 * 4;
-        for (int l = 0; l < 4; ++l) {
-          const int k_off = i * 256 + ib32 * 32 + l * 8;
-          const __m256 xv0 = _mm256_loadu_ps(xr0 + k_off);
-          __m256 xv1;
-          if constexpr (RT >= 2) xv1 = _mm256_loadu_ps(xr1 + k_off);
-          auto fma_iq2s = [&](const uint8_t* blk, uint8_t qh_b, float db, __m256& a0, __m256& a1) {
-            const int idx = blk[q_off + l] | ((static_cast<int>(qh_b) << (8 - 2 * l)) & 0x300);
-            const __m128i g8 = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(iq2s_grid + idx));
-            const __m256 vf = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(g8));
-            const __m256 w = _mm256_mul_ps(_mm256_set1_ps(db), _mm256_xor_ps(vf, SignXorAvx2(blk[s_off + l])));
-            a0 = _mm256_fmadd_ps(w, xv0, a0);
-            if constexpr (RT >= 2) a1 = _mm256_fmadd_ps(w, xv1, a1);
-          };
-          fma_iq2s(bg0, qhg0, (l < 2) ? db0_g0 : db1_g0, ag0_0, ag0_1);
-          fma_iq2s(bu0, qhu0, (l < 2) ? db0_u0 : db1_u0, au0_0, au0_1);
-          fma_iq2s(bg1, qhg1, (l < 2) ? db0_g1 : db1_g1, ag1_0, ag1_1);
-          fma_iq2s(bu1, qhu1, (l < 2) ? db0_u1 : db1_u1, au1_0, au1_1);
-        }
-      }
-    }
-  } else if (gate_type == kGgmlTypeIQ2_XXS) {
-    for (int i = 0; i < nb; ++i) {
-      const uint8_t* bg0 = gate_row0 + i * 66;
-      const uint8_t* bu0 = up_row0 + i * 66;
-      const uint8_t* bg1 = gate_row1 + i * 66;
-      const uint8_t* bu1 = up_row1 + i * 66;
-      const float dg0 = Fp16ToFloatFast(ReadU16Le(bg0)) * 0.25f;
-      const float du0 = Fp16ToFloatFast(ReadU16Le(bu0)) * 0.25f;
-      const float dg1 = Fp16ToFloatFast(ReadU16Le(bg1)) * 0.25f;
-      const float du1 = Fp16ToFloatFast(ReadU16Le(bu1)) * 0.25f;
-      for (int ib32 = 0; ib32 < 8; ++ib32) {
-        const int a_off = 2 + 8 * ib32;
-        const uint32_t aux_g0 = ReadU32Le(bg0 + a_off + 4);
-        const uint32_t aux_u0 = ReadU32Le(bu0 + a_off + 4);
-        const uint32_t aux_g1 = ReadU32Le(bg1 + a_off + 4);
-        const uint32_t aux_u1 = ReadU32Le(bu1 + a_off + 4);
-        const __m256 vdb_g0 = _mm256_set1_ps(dg0 * (0.5f + static_cast<float>(aux_g0 >> 28)));
-        const __m256 vdb_u0 = _mm256_set1_ps(du0 * (0.5f + static_cast<float>(aux_u0 >> 28)));
-        const __m256 vdb_g1 = _mm256_set1_ps(dg1 * (0.5f + static_cast<float>(aux_g1 >> 28)));
-        const __m256 vdb_u1 = _mm256_set1_ps(du1 * (0.5f + static_cast<float>(aux_u1 >> 28)));
-        for (int l = 0; l < 4; ++l) {
-          const int k_off = i * 256 + ib32 * 32 + l * 8;
-          const __m256 xv0 = _mm256_loadu_ps(xr0 + k_off);
-          __m256 xv1;
-          if constexpr (RT >= 2) xv1 = _mm256_loadu_ps(xr1 + k_off);
-          auto fma_iq2xxs = [&](const uint8_t* blk, uint32_t aux32, __m256 v_db, __m256& a0, __m256& a1) {
-            const __m128i g8 = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(iq2xxs_grid + blk[a_off + l]));
-            const __m256 vf = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(g8));
-            const uint8_t s = ksigns_iq2xs[(aux32 >> (7 * l)) & 127];
-            const __m256 w = _mm256_mul_ps(v_db, _mm256_xor_ps(vf, SignXorAvx2(s)));
-            a0 = _mm256_fmadd_ps(w, xv0, a0);
-            if constexpr (RT >= 2) a1 = _mm256_fmadd_ps(w, xv1, a1);
-          };
-          fma_iq2xxs(bg0, aux_g0, vdb_g0, ag0_0, ag0_1);
-          fma_iq2xxs(bu0, aux_u0, vdb_u0, au0_0, au0_1);
-          fma_iq2xxs(bg1, aux_g1, vdb_g1, ag1_0, ag1_1);
-          fma_iq2xxs(bu1, aux_u1, vdb_u1, au1_0, au1_1);
-        }
-      }
-    }
-  } else {
-    for (int i = 0; i < nb; ++i) {
-      const uint8_t* bg0 = gate_row0 + i * 98;
-      const uint8_t* bu0 = up_row0 + i * 98;
-      const uint8_t* bg1 = gate_row1 + i * 98;
-      const uint8_t* bu1 = up_row1 + i * 98;
-      const float dg0 = Fp16ToFloatFast(ReadU16Le(bg0)) * 0.5f;
-      const float du0 = Fp16ToFloatFast(ReadU16Le(bu0)) * 0.5f;
-      const float dg1 = Fp16ToFloatFast(ReadU16Le(bg1)) * 0.5f;
-      const float du1 = Fp16ToFloatFast(ReadU16Le(bu1)) * 0.5f;
-      for (int ib32 = 0; ib32 < 8; ++ib32) {
-        const int q_off = 2 + 8 * ib32;
-        const int s_off = 66 + 4 * ib32;
-        const uint32_t aux_g0 = ReadU32Le(bg0 + s_off);
-        const uint32_t aux_u0 = ReadU32Le(bu0 + s_off);
-        const uint32_t aux_g1 = ReadU32Le(bg1 + s_off);
-        const uint32_t aux_u1 = ReadU32Le(bu1 + s_off);
-        const __m256 vdb_g0 = _mm256_set1_ps(dg0 * (0.5f + static_cast<float>(aux_g0 >> 28)));
-        const __m256 vdb_u0 = _mm256_set1_ps(du0 * (0.5f + static_cast<float>(aux_u0 >> 28)));
-        const __m256 vdb_g1 = _mm256_set1_ps(dg1 * (0.5f + static_cast<float>(aux_g1 >> 28)));
-        const __m256 vdb_u1 = _mm256_set1_ps(du1 * (0.5f + static_cast<float>(aux_u1 >> 28)));
-        for (int l = 0; l < 4; ++l) {
-          const int k_off = i * 256 + ib32 * 32 + l * 8;
-          const __m256 xv0 = _mm256_loadu_ps(xr0 + k_off);
-          __m256 xv1;
-          if constexpr (RT >= 2) xv1 = _mm256_loadu_ps(xr1 + k_off);
-          auto fma_iq3xxs = [&](const uint8_t* blk, uint32_t aux32, __m256 v_db, __m256& a0, __m256& a1) {
-            const uint64_t g64 = static_cast<uint64_t>(iq3xxs_grid[blk[q_off + 2 * l + 0]]) |
-                                 (static_cast<uint64_t>(iq3xxs_grid[blk[q_off + 2 * l + 1]]) << 32);
-            const __m128i g8 = _mm_cvtsi64_si128(static_cast<int64_t>(g64));
-            const __m256 vf = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(g8));
-            const uint8_t s = ksigns_iq2xs[(aux32 >> (7 * l)) & 127];
-            const __m256 w = _mm256_mul_ps(v_db, _mm256_xor_ps(vf, SignXorAvx2(s)));
-            a0 = _mm256_fmadd_ps(w, xv0, a0);
-            if constexpr (RT >= 2) a1 = _mm256_fmadd_ps(w, xv1, a1);
-          };
-          fma_iq3xxs(bg0, aux_g0, vdb_g0, ag0_0, ag0_1);
-          fma_iq3xxs(bu0, aux_u0, vdb_u0, au0_0, au0_1);
-          fma_iq3xxs(bg1, aux_g1, vdb_g1, ag1_0, ag1_1);
-          fma_iq3xxs(bu1, aux_u1, vdb_u1, au1_0, au1_1);
-        }
-      }
-    }
-  }
-  gate_dots0[0] = HorizontalSumAvx2(ag0_0);
-  up_dots0[0] = HorizontalSumAvx2(au0_0);
-  gate_dots1[0] = HorizontalSumAvx2(ag1_0);
-  up_dots1[0] = HorizontalSumAvx2(au1_0);
-  if constexpr (RT >= 2) {
-    gate_dots0[1] = HorizontalSumAvx2(ag0_1);
-    up_dots0[1] = HorizontalSumAvx2(au0_1);
-    gate_dots1[1] = HorizontalSumAvx2(ag1_1);
-    up_dots1[1] = HorizontalSumAvx2(au1_1);
-  }
-}
-#endif
-
-// 2-channel fused AVX2 dot product using pure register accumulators (RT=1: 4 YMM regs, RT=2: 8 YMM regs).
+// Dot products of two adjacent (gate_row, up_row) channel pairs against R token activation vectors.
 void GgufDualDot2ChCpu(
     const uint8_t* gate_row0,
     const uint8_t* up_row0,
@@ -829,18 +143,10 @@ void GgufDualDot2ChCpu(
     float* up_dots0,
     float* gate_dots1,
     float* up_dots1) {
-  using namespace onnxruntime::contrib::gguf_quant;
-#if defined(_M_AMD64) || defined(__x86_64__)
-  if (gate_type == up_type && (gate_type == kGgmlTypeIQ2_S || gate_type == kGgmlTypeIQ2_XXS || gate_type == kGgmlTypeIQ3_XXS)) {
-    int r = 0;
-    for (; r + 2 <= R; r += 2) {
-      GgufDualDot2ChAvx2Tpl<2>(gate_row0, up_row0, gate_row1, up_row1, gate_type, K,
-                               x_rows + r, gate_dots0 + r, up_dots0 + r, gate_dots1 + r, up_dots1 + r);
-    }
-    if (r < R) {
-      GgufDualDot2ChAvx2Tpl<1>(gate_row0, up_row0, gate_row1, up_row1, gate_type, K,
-                               x_rows + r, gate_dots0 + r, up_dots0 + r, gate_dots1 + r, up_dots1 + r);
-    }
+#if ORT_MOE_PACKED_CPU_X86_64
+  if (gate_type == up_type && UseAvx2CpuKernels() &&
+      moe_packed_cpu::GgufDualDot2ChAvx2(gate_row0, up_row0, gate_row1, up_row1, gate_type, K, x_rows, R,
+                                         gate_dots0, up_dots0, gate_dots1, up_dots1)) {
     return;
   }
 #endif
@@ -902,10 +208,12 @@ class MoEPackedParallelPool {
 
 }  // namespace
 
-// Shared prefill double-buffered wave staging across MoEPacked layers on a device.
+// Prefill double-buffered wave staging shared by the MoEPacked layers on one CUDA device. All members are guarded by
+// `mu`. Device memory, streams and events belong to `device_id`.
 struct MoEPackedSharedPrefillWaveStaging {
   static constexpr int kWaveExperts = 32;
   std::mutex mu;
+  int device_id{-1};
   size_t bank_bytes{0};
   uint8_t* pinned_bank[2]{nullptr, nullptr};
   uint8_t* gpu_bank[2]{nullptr, nullptr};
@@ -913,6 +221,9 @@ struct MoEPackedSharedPrefillWaveStaging {
   cudaEvent_t h2d_done[2]{nullptr, nullptr};
   cudaEvent_t compute_done[2]{nullptr, nullptr};
   bool bank_in_flight[2]{false, false};
+  // Recorded on the caller stream after the last asynchronous read of the shared pinned route buffers.
+  cudaEvent_t last_use_done{nullptr};
+  bool last_use_pending{false};
   int32_t* pinned_topk_idx{nullptr};
   float* pinned_topk_scales{nullptr};
   int32_t* pinned_res_sorted_routes{nullptr};
@@ -925,8 +236,81 @@ struct MoEPackedSharedPrefillWaveStaging {
 
   ~MoEPackedSharedPrefillWaveStaging() = default;
 
+  static size_t MaxTilesForRoutes(size_t max_routes) {
+    return max_routes / 8 + 512;
+  }
+
+  // Pinned bytes of the routing buffers sized for max_routes, excluding the expert banks.
+  static size_t RoutePinnedBytes(size_t max_routes) {
+    const size_t tile_bytes = MaxTilesForRoutes(max_routes) * sizeof(MoEPackedTile);
+    return max_routes * (sizeof(int32_t) + sizeof(float)) + 3 * (max_routes * sizeof(int32_t) + tile_bytes + sizeof(int32_t));
+  }
+
+  template <typename P>
+  static void FreeHost(P*& ptr) {
+    if (ptr != nullptr) {
+      cudaFreeHost(ptr);
+      ptr = nullptr;
+    }
+  }
+
+  void FreeBanks() {
+    for (int b = 0; b < 2; ++b) {
+      FreeHost(pinned_bank[b]);
+      if (gpu_bank[b]) {
+        cudaFree(gpu_bank[b]);
+        gpu_bank[b] = nullptr;
+      }
+    }
+    bank_bytes = 0;
+  }
+
+  void FreeRouteBuffers() {
+    FreeHost(pinned_topk_idx);
+    FreeHost(pinned_topk_scales);
+    FreeHost(pinned_res_sorted_routes);
+    FreeHost(pinned_res_tiles);
+    FreeHost(pinned_res_num_tiles);
+    for (int b = 0; b < 2; ++b) {
+      FreeHost(pinned_sorted_routes[b]);
+      FreeHost(pinned_tiles[b]);
+      FreeHost(pinned_num_tiles[b]);
+    }
+    pinned_route_cap = 0;
+  }
+
+  // Waits until the previous user, possibly on another stream, no longer reads the shared pinned buffers.
+  Status WaitForPreviousUse() {
+    if (last_use_pending) {
+      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaEventSynchronize(last_use_done)));
+      last_use_pending = false;
+    }
+    return Status::OK();
+  }
+
+  Status WaitForBanks() {
+    for (int b = 0; b < 2; ++b) {
+      if (bank_in_flight[b]) {
+        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaEventSynchronize(compute_done[b])));
+        bank_in_flight[b] = false;
+      }
+    }
+    return Status::OK();
+  }
+
+  Status RecordUse(cudaStream_t stream) {
+    ORT_RETURN_IF_ERROR(CUDA_CALL(cudaEventRecord(last_use_done, stream)));
+    last_use_pending = true;
+    return Status::OK();
+  }
+
+  // Requires the owning device to be current.
   void ReleaseAll() {
     std::lock_guard<std::mutex> lk(mu);
+    static_cast<void>(WaitForPreviousUse());
+    static_cast<void>(WaitForBanks());
+    FreeBanks();
+    FreeRouteBuffers();
     for (int b = 0; b < 2; ++b) {
       if (h2d_done[b]) {
         cudaEventDestroy(h2d_done[b]);
@@ -936,110 +320,107 @@ struct MoEPackedSharedPrefillWaveStaging {
         cudaEventDestroy(compute_done[b]);
         compute_done[b] = nullptr;
       }
-      if (pinned_bank[b]) {
-        cudaFreeHost(pinned_bank[b]);
-        pinned_bank[b] = nullptr;
-      }
-      if (gpu_bank[b]) {
-        cudaFree(gpu_bank[b]);
-        gpu_bank[b] = nullptr;
-      }
-      if (pinned_sorted_routes[b]) {
-        cudaFreeHost(pinned_sorted_routes[b]);
-        pinned_sorted_routes[b] = nullptr;
-      }
-      if (pinned_tiles[b]) {
-        cudaFreeHost(pinned_tiles[b]);
-        pinned_tiles[b] = nullptr;
-      }
-      if (pinned_num_tiles[b]) {
-        cudaFreeHost(pinned_num_tiles[b]);
-        pinned_num_tiles[b] = nullptr;
-      }
       bank_in_flight[b] = false;
     }
+    if (last_use_done) {
+      cudaEventDestroy(last_use_done);
+      last_use_done = nullptr;
+    }
+    last_use_pending = false;
     if (copy_stream) {
       cudaStreamDestroy(copy_stream);
       copy_stream = nullptr;
     }
-    if (pinned_topk_idx) {
-      cudaFreeHost(pinned_topk_idx);
-      pinned_topk_idx = nullptr;
-    }
-    if (pinned_topk_scales) {
-      cudaFreeHost(pinned_topk_scales);
-      pinned_topk_scales = nullptr;
-    }
-    if (pinned_res_sorted_routes) {
-      cudaFreeHost(pinned_res_sorted_routes);
-      pinned_res_sorted_routes = nullptr;
-    }
-    if (pinned_res_tiles) {
-      cudaFreeHost(pinned_res_tiles);
-      pinned_res_tiles = nullptr;
-    }
-    if (pinned_res_num_tiles) {
-      cudaFreeHost(pinned_res_num_tiles);
-      pinned_res_num_tiles = nullptr;
-    }
-    bank_bytes = 0;
-    pinned_route_cap = 0;
   }
 
-  Status EnsureCapacity(size_t required_bank_bytes, size_t max_routes) {
-    if (required_bank_bytes > bank_bytes) {
-      for (int b = 0; b < 2; ++b) {
-        if (bank_in_flight[b] && compute_done[b]) {
-          ORT_RETURN_IF_ERROR(CUDA_CALL(cudaEventSynchronize(compute_done[b])));
-          bank_in_flight[b] = false;
-        }
-        if (pinned_bank[b]) {
-          cudaFreeHost(pinned_bank[b]);
-          pinned_bank[b] = nullptr;
-        }
-        if (gpu_bank[b]) {
-          cudaFree(gpu_bank[b]);
-          gpu_bank[b] = nullptr;
-        }
-        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_bank[b]), required_bank_bytes, cudaHostAllocDefault)));
-        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMalloc(reinterpret_cast<void**>(&gpu_bank[b]), required_bank_bytes)));
-      }
-      bank_bytes = required_bank_bytes;
-    }
+  Status EnsureStreamAndEvents() {
     if (!copy_stream) {
       ORT_RETURN_IF_ERROR(CUDA_CALL(cudaStreamCreateWithFlags(&copy_stream, cudaStreamNonBlocking)));
-      for (int b = 0; b < 2; ++b) {
+    }
+    for (int b = 0; b < 2; ++b) {
+      if (!h2d_done[b]) {
         ORT_RETURN_IF_ERROR(CUDA_CALL(cudaEventCreateWithFlags(&h2d_done[b], cudaEventDisableTiming)));
+      }
+      if (!compute_done[b]) {
         ORT_RETURN_IF_ERROR(CUDA_CALL(cudaEventCreateWithFlags(&compute_done[b], cudaEventDisableTiming)));
       }
     }
-    if (max_routes > pinned_route_cap) {
-      if (pinned_topk_idx) cudaFreeHost(pinned_topk_idx);
-      if (pinned_topk_scales) cudaFreeHost(pinned_topk_scales);
-      if (pinned_res_sorted_routes) cudaFreeHost(pinned_res_sorted_routes);
-      if (pinned_res_tiles) cudaFreeHost(pinned_res_tiles);
-      if (pinned_res_num_tiles) cudaFreeHost(pinned_res_num_tiles);
-      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_topk_idx), max_routes * sizeof(int32_t), cudaHostAllocDefault)));
-      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_topk_scales), max_routes * sizeof(float), cudaHostAllocDefault)));
-      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_res_sorted_routes), max_routes * sizeof(int32_t), cudaHostAllocDefault)));
-      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_res_tiles), (max_routes / 8 + 512) * sizeof(MoEPackedTile), cudaHostAllocDefault)));
-      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_res_num_tiles), sizeof(int32_t), cudaHostAllocDefault)));
-      for (int b = 0; b < 2; ++b) {
-        if (pinned_sorted_routes[b]) cudaFreeHost(pinned_sorted_routes[b]);
-        if (pinned_tiles[b]) cudaFreeHost(pinned_tiles[b]);
-        if (pinned_num_tiles[b]) cudaFreeHost(pinned_num_tiles[b]);
-        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_sorted_routes[b]), max_routes * sizeof(int32_t), cudaHostAllocDefault)));
-        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_tiles[b]), (max_routes / 8 + 512) * sizeof(MoEPackedTile), cudaHostAllocDefault)));
-        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_num_tiles[b]), sizeof(int32_t), cudaHostAllocDefault)));
-      }
-      pinned_route_cap = max_routes;
+    if (!last_use_done) {
+      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaEventCreateWithFlags(&last_use_done, cudaEventDisableTiming)));
     }
     return Status::OK();
   }
 
-  static MoEPackedSharedPrefillWaveStaging& Instance() {
-    static MoEPackedSharedPrefillWaveStaging inst;
-    return inst;
+  Status EnsureRouteCapacity(size_t max_routes) {
+    ORT_RETURN_IF_ERROR(EnsureStreamAndEvents());
+    if (max_routes <= pinned_route_cap) {
+      return Status::OK();
+    }
+    ORT_RETURN_IF_ERROR(WaitForPreviousUse());
+    ORT_RETURN_IF_ERROR(WaitForBanks());
+    FreeRouteBuffers();
+    const size_t tile_bytes = MaxTilesForRoutes(max_routes) * sizeof(MoEPackedTile);
+    ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_topk_idx), max_routes * sizeof(int32_t), cudaHostAllocDefault)));
+    ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_topk_scales), max_routes * sizeof(float), cudaHostAllocDefault)));
+    ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_res_sorted_routes), max_routes * sizeof(int32_t), cudaHostAllocDefault)));
+    ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_res_tiles), tile_bytes, cudaHostAllocDefault)));
+    ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_res_num_tiles), sizeof(int32_t), cudaHostAllocDefault)));
+    for (int b = 0; b < 2; ++b) {
+      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_sorted_routes[b]), max_routes * sizeof(int32_t), cudaHostAllocDefault)));
+      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_tiles[b]), tile_bytes, cudaHostAllocDefault)));
+      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_num_tiles[b]), sizeof(int32_t), cudaHostAllocDefault)));
+    }
+    pinned_route_cap = max_routes;
+    return Status::OK();
+  }
+
+  Status EnsureBankCapacity(size_t required_bank_bytes) {
+    if (required_bank_bytes <= bank_bytes) {
+      return Status::OK();
+    }
+    ORT_RETURN_IF_ERROR(WaitForBanks());
+    FreeBanks();
+    for (int b = 0; b < 2; ++b) {
+      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaHostAlloc(reinterpret_cast<void**>(&pinned_bank[b]), required_bank_bytes, cudaHostAllocDefault)));
+      ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMalloc(reinterpret_cast<void**>(&gpu_bank[b]), required_bank_bytes)));
+    }
+    bank_bytes = required_bank_bytes;
+    return Status::OK();
+  }
+
+  static MoEPackedSharedPrefillWaveStaging& ForDevice(int device_id) {
+    std::lock_guard<std::mutex> lk(RegistryMutex());
+    auto& entry = Registry()[device_id];
+    if (!entry) {
+      entry = std::make_unique<MoEPackedSharedPrefillWaveStaging>();
+      entry->device_id = device_id;
+    }
+    return *entry;
+  }
+
+  // Frees every device's staging under its owning device. Entries stay registered so references remain valid.
+  static void ReleaseAllDevices() {
+    std::lock_guard<std::mutex> lk(RegistryMutex());
+    int previous_device = -1;
+    const bool has_previous = cudaGetDevice(&previous_device) == cudaSuccess;
+    for (auto& [device, entry] : Registry()) {
+      if (!entry || cudaSetDevice(device) != cudaSuccess) continue;
+      entry->ReleaseAll();
+    }
+    if (has_previous) {
+      static_cast<void>(cudaSetDevice(previous_device));
+    }
+  }
+
+ private:
+  static std::mutex& RegistryMutex() {
+    static std::mutex m;
+    return m;
+  }
+
+  static std::map<int, std::unique_ptr<MoEPackedSharedPrefillWaveStaging>>& Registry() {
+    static std::map<int, std::unique_ptr<MoEPackedSharedPrefillWaveStaging>> registry;
+    return registry;
   }
 };
 
@@ -1092,7 +473,6 @@ struct MoEPackedOffloadState {
   bool skip_tail_cold_only{true};
 
   // Telemetry counters for ORT_QMOE_SHARED_CPU_TIMING / ORT_QMOE_SHARED_RESIDENT_LOG
-  std::atomic<bool> live_session_started{false};
   std::atomic<uint64_t> decode_calls{0};
   std::atomic<uint64_t> decode_routes{0};
   std::atomic<uint64_t> decode_cold_routes{0};
@@ -1126,36 +506,33 @@ class MoEPackedDoorbellService {
     return svc;
   }
 
+  // Register and Unregister hold lifecycle_mu_ for the whole transition, so a new worker is never started before a
+  // retiring one has been joined and the shared staging and CPU pool have been released. The worker only takes mu_.
   void Register(MoEPackedOffloadState* state) {
+    std::lock_guard<std::mutex> lifecycle_lk(lifecycle_mu_);
     std::lock_guard<std::mutex> lk(mu_);
     states_.push_back(state);
-    if (!running_.load(std::memory_order_relaxed)) {
-      stop_.store(false, std::memory_order_relaxed);
-      running_.store(true, std::memory_order_release);
+    if (!worker_.joinable()) {
+      stop_.store(false, std::memory_order_release);
       worker_ = std::thread([this]() { Loop(); });
     }
   }
 
   void Unregister(MoEPackedOffloadState* state) {
+    std::lock_guard<std::mutex> lifecycle_lk(lifecycle_mu_);
     std::thread to_join;
-    bool release_staging = false;
     {
       std::lock_guard<std::mutex> lk(mu_);
       states_.erase(std::remove(states_.begin(), states_.end(), state), states_.end());
-      if (states_.empty() && running_.load(std::memory_order_relaxed)) {
-        stop_.store(true, std::memory_order_release);
-        running_.store(false, std::memory_order_release);
-        to_join = std::move(worker_);
-        release_staging = true;
+      if (!states_.empty() || !worker_.joinable()) {
+        return;
       }
+      stop_.store(true, std::memory_order_release);
+      to_join = std::move(worker_);
     }
-    if (to_join.joinable()) {
-      to_join.join();
-    }
-    if (release_staging) {
-      MoEPackedSharedPrefillWaveStaging::Instance().ReleaseAll();
-      MoEPackedParallelPool::Instance().Shutdown();
-    }
+    to_join.join();
+    MoEPackedSharedPrefillWaveStaging::ReleaseAllDevices();
+    MoEPackedParallelPool::Instance().Shutdown();
   }
 
  private:
@@ -1181,8 +558,9 @@ class MoEPackedDoorbellService {
         std::lock_guard<std::mutex> lk(mu_);
         for (MoEPackedOffloadState* st : states_) {
           if (!st || !st->h_decode_pinned) continue;
+          // The sequence only advances, so inequality is a wrap-safe test for a new doorbell.
           const int32_t seq = st->h_decode_pinned->doorbell_seq;
-          if (seq > st->last_seen_seq) {
+          if (seq != st->last_seen_seq) {
             std::atomic_thread_fence(std::memory_order_acquire);
             st->last_seen_seq = seq;
             st->RunColdDecodeStep();
@@ -1198,7 +576,7 @@ class MoEPackedDoorbellService {
         if (std::chrono::steady_clock::now() - last_active > std::chrono::milliseconds(50)) {
           std::this_thread::sleep_for(std::chrono::microseconds(50));
         } else {
-#if defined(_M_AMD64) || defined(__x86_64__)
+#if ORT_MOE_PACKED_CPU_X86_64
           _mm_pause();
 #endif
         }
@@ -1206,10 +584,9 @@ class MoEPackedDoorbellService {
     }
   }
 
+  std::mutex lifecycle_mu_;
   std::mutex mu_;
-  std::condition_variable cv_;
   std::vector<MoEPackedOffloadState*> states_;
-  std::atomic<bool> running_{false};
   std::atomic<bool> stop_{false};
   std::thread worker_;
 };
@@ -1275,7 +652,8 @@ void MoEPackedOffloadState::RunColdDecodeStep() {
   const auto t0 = std::chrono::steady_clock::now();
   const int nrows = std::clamp<int>(h_decode_pinned->num_rows, 0, kMoEPackedMaxDecodeRows);
   const int ccount = std::clamp<int>(h_decode_pinned->cold_count, 0, kMoEPackedMaxDecodeRoutes);
-  if (!live_session_started.load(std::memory_order_acquire) || InWarmup()) {
+  // Query the run controls here instead of latching state in ComputeInternal, which CUDA graph replay never calls.
+  if (InWarmup()) {
     if (nrows > 0 && ccount > 0) {
       std::memset(h_decode_pinned->host_cold_output, 0, static_cast<size_t>(nrows * hidden_size) * sizeof(uint16_t));
     }
@@ -1415,11 +793,17 @@ void MoEPackedOffloadState::RunColdDecodeStep() {
   // 4. Pass 2: Parallel FC2 partitioned by 64-column output slices across all cold groups (lock-free, L1-resident inter_buf)
   constexpr int kFc2TileCols = 64;
   const int total_fc2_tasks = (hidden_size + kFc2TileCols - 1) / kFc2TileCols;
+#if ORT_MOE_PACKED_CPU_X86_64
+  const bool use_avx2 = UseAvx2CpuKernels();
+#endif
   MoEPackedParallelPool::Instance().ParallelFor(total_fc2_tasks, [&](int task_idx) {
     const int col_start = task_idx * kFc2TileCols;
     const int col_end = std::min(hidden_size, col_start + kFc2TileCols);
     const int col_cnt = col_end - col_start;
     float acc_out[kMoEPackedMaxDecodeRows][kFc2TileCols];
+#if ORT_MOE_PACKED_CPU_X86_64
+    float avx2_dots[kMoEPackedMaxDecodeRows][kFc2TileCols];
+#endif
     for (int r = 0; r < nrows; ++r) {
       for (int c = 0; c < col_cnt; ++c) acc_out[r][c] = 0.0f;
     }
@@ -1432,196 +816,17 @@ void MoEPackedOffloadState::RunColdDecodeStep() {
         inter_ptrs[r] = group_inter + static_cast<size_t>(r) * inter_size;
       }
       int c = 0;
-#if defined(_M_AMD64) || defined(__x86_64__)
-      if (down_type == gguf_quant::kGgmlTypeIQ4_NL) {
-        const __m128i lut = _mm_loadu_si128(reinterpret_cast<const __m128i*>(gguf_quant::kvalues_iq4nl));
-        const __m128i mask0f = _mm_set1_epi8(0x0F);
-        const int nb = inter_size / 32;
-        for (; c + 4 <= col_cnt; c += 4) {
-          const int col = col_start + c;
-          const uint8_t* dr0 = host_down_w + (static_cast<size_t>(exp) * hidden_size + col + 0) * down_row_bytes;
-          const uint8_t* dr1 = dr0 + down_row_bytes;
-          const uint8_t* dr2 = dr1 + down_row_bytes;
-          const uint8_t* dr3 = dr2 + down_row_bytes;
-          int r = 0;
-          for (; r + 2 <= R; r += 2) {
-            const float* xr0 = inter_ptrs[r + 0];
-            const float* xr1 = inter_ptrs[r + 1];
-            __m256 a0_0 = _mm256_setzero_ps(), a1_0 = _mm256_setzero_ps(), a2_0 = _mm256_setzero_ps(), a3_0 = _mm256_setzero_ps();
-            __m256 a0_1 = _mm256_setzero_ps(), a1_1 = _mm256_setzero_ps(), a2_1 = _mm256_setzero_ps(), a3_1 = _mm256_setzero_ps();
-            for (int i = 0; i < nb; ++i) {
-              const float* xb0 = xr0 + i * 32;
-              const float* xb1 = xr1 + i * 32;
-              const __m256 x0 = _mm256_loadu_ps(xb0 + 0), x1 = _mm256_loadu_ps(xb0 + 8), x2 = _mm256_loadu_ps(xb0 + 16), x3 = _mm256_loadu_ps(xb0 + 24);
-              const __m256 y0 = _mm256_loadu_ps(xb1 + 0), y1 = _mm256_loadu_ps(xb1 + 8), y2 = _mm256_loadu_ps(xb1 + 16), y3 = _mm256_loadu_ps(xb1 + 24);
-              auto step_row2 = [&](const uint8_t* blk, __m256& acc0, __m256& acc1) {
-                const __m256 vd = _mm256_set1_ps(Fp16ToFloatFast(gguf_quant::ReadU16Le(blk)));
-                const __m128i raw16 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(blk + 2));
-                const __m128i v_lo = _mm_shuffle_epi8(lut, _mm_and_si128(raw16, mask0f));
-                const __m128i v_hi = _mm_shuffle_epi8(lut, _mm_and_si128(_mm_srli_epi16(raw16, 4), mask0f));
-                const __m256 w0 = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(v_lo)));
-                const __m256 w1 = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(v_lo, 8))));
-                const __m256 w2 = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(v_hi)));
-                const __m256 w3 = _mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(v_hi, 8))));
-                acc0 = _mm256_fmadd_ps(w0, x0, _mm256_fmadd_ps(w1, x1, _mm256_fmadd_ps(w2, x2, _mm256_fmadd_ps(w3, x3, acc0))));
-                acc1 = _mm256_fmadd_ps(w0, y0, _mm256_fmadd_ps(w1, y1, _mm256_fmadd_ps(w2, y2, _mm256_fmadd_ps(w3, y3, acc1))));
-              };
-              step_row2(dr0 + i * 18, a0_0, a0_1);
-              step_row2(dr1 + i * 18, a1_0, a1_1);
-              step_row2(dr2 + i * 18, a2_0, a2_1);
-              step_row2(dr3 + i * 18, a3_0, a3_1);
-            }
-            const int tr0 = groups[g].token_rows[r + 0], tr1 = groups[g].token_rows[r + 1];
-            const float sc0 = groups[g].scales[r + 0], sc1 = groups[g].scales[r + 1];
-            const float d0_0 = HorizontalSumAvx2(a0_0), d1_0 = HorizontalSumAvx2(a1_0), d2_0 = HorizontalSumAvx2(a2_0), d3_0 = HorizontalSumAvx2(a3_0);
-            const float d0_1 = HorizontalSumAvx2(a0_1), d1_1 = HorizontalSumAvx2(a1_1), d2_1 = HorizontalSumAvx2(a2_1), d3_1 = HorizontalSumAvx2(a3_1);
-            acc_out[tr0][c + 0] += sc0 * (is_bf16 ? RoundBf16Scalar(d0_0) : d0_0);
-            acc_out[tr0][c + 1] += sc0 * (is_bf16 ? RoundBf16Scalar(d1_0) : d1_0);
-            acc_out[tr0][c + 2] += sc0 * (is_bf16 ? RoundBf16Scalar(d2_0) : d2_0);
-            acc_out[tr0][c + 3] += sc0 * (is_bf16 ? RoundBf16Scalar(d3_0) : d3_0);
-            acc_out[tr1][c + 0] += sc1 * (is_bf16 ? RoundBf16Scalar(d0_1) : d0_1);
-            acc_out[tr1][c + 1] += sc1 * (is_bf16 ? RoundBf16Scalar(d1_1) : d1_1);
-            acc_out[tr1][c + 2] += sc1 * (is_bf16 ? RoundBf16Scalar(d2_1) : d2_1);
-            acc_out[tr1][c + 3] += sc1 * (is_bf16 ? RoundBf16Scalar(d3_1) : d3_1);
-          }
-          for (; r < R; ++r) {
-            const float* xr = inter_ptrs[r];
-            const int trow = groups[g].token_rows[r];
-            const float sc = groups[g].scales[r];
-            __m256 a0 = _mm256_setzero_ps();
-            __m256 a1 = _mm256_setzero_ps();
-            __m256 a2 = _mm256_setzero_ps();
-            __m256 a3 = _mm256_setzero_ps();
-            for (int i = 0; i < nb; ++i) {
-              const float* x_blk = xr + i * 32;
-              const __m256 x0 = _mm256_loadu_ps(x_blk + 0);
-              const __m256 x1 = _mm256_loadu_ps(x_blk + 8);
-              const __m256 x2 = _mm256_loadu_ps(x_blk + 16);
-              const __m256 x3 = _mm256_loadu_ps(x_blk + 24);
-              auto step_row = [&](const uint8_t* blk, __m256& acc) {
-                const __m256 vd = _mm256_set1_ps(Fp16ToFloatFast(gguf_quant::ReadU16Le(blk)));
-                const __m128i raw16 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(blk + 2));
-                const __m128i v_lo = _mm_shuffle_epi8(lut, _mm_and_si128(raw16, mask0f));
-                const __m128i v_hi = _mm_shuffle_epi8(lut, _mm_and_si128(_mm_srli_epi16(raw16, 4), mask0f));
-                acc = _mm256_fmadd_ps(_mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(v_lo))), x0, acc);
-                acc = _mm256_fmadd_ps(_mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(v_lo, 8)))), x1, acc);
-                acc = _mm256_fmadd_ps(_mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(v_hi))), x2, acc);
-                acc = _mm256_fmadd_ps(_mm256_mul_ps(vd, _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(v_hi, 8)))), x3, acc);
-              };
-              step_row(dr0 + i * 18, a0);
-              step_row(dr1 + i * 18, a1);
-              step_row(dr2 + i * 18, a2);
-              step_row(dr3 + i * 18, a3);
-            }
-            const float d0 = HorizontalSumAvx2(a0);
-            const float d1 = HorizontalSumAvx2(a1);
-            const float d2 = HorizontalSumAvx2(a2);
-            const float d3 = HorizontalSumAvx2(a3);
-            acc_out[trow][c + 0] += sc * (is_bf16 ? RoundBf16Scalar(d0) : d0);
-            acc_out[trow][c + 1] += sc * (is_bf16 ? RoundBf16Scalar(d1) : d1);
-            acc_out[trow][c + 2] += sc * (is_bf16 ? RoundBf16Scalar(d2) : d2);
-            acc_out[trow][c + 3] += sc * (is_bf16 ? RoundBf16Scalar(d3) : d3);
-          }
-        }
-      } else if (down_type == gguf_quant::kGgmlTypeQ2_0) {
-        const __m256i shifts = _mm256_setr_epi32(0, 2, 4, 6, 8, 10, 12, 14);
-        const __m256i mask3 = _mm256_set1_epi32(3);
-        const __m256i ones = _mm256_set1_epi32(1);
-        const int nb = inter_size / 64;
-        for (; c + 4 <= col_cnt; c += 4) {
-          const int col = col_start + c;
-          const uint8_t* dr0 = host_down_w + (static_cast<size_t>(exp) * hidden_size + col + 0) * down_row_bytes;
-          const uint8_t* dr1 = dr0 + down_row_bytes;
-          const uint8_t* dr2 = dr1 + down_row_bytes;
-          const uint8_t* dr3 = dr2 + down_row_bytes;
-          int r = 0;
-          for (; r + 2 <= R; r += 2) {
-            const float* xr0 = inter_ptrs[r + 0];
-            const float* xr1 = inter_ptrs[r + 1];
-            __m256 a0_0 = _mm256_setzero_ps(), a1_0 = _mm256_setzero_ps(), a2_0 = _mm256_setzero_ps(), a3_0 = _mm256_setzero_ps();
-            __m256 a0_1 = _mm256_setzero_ps(), a1_1 = _mm256_setzero_ps(), a2_1 = _mm256_setzero_ps(), a3_1 = _mm256_setzero_ps();
-            for (int i = 0; i < nb; ++i) {
-              const uint8_t* b0 = dr0 + i * 18;
-              const uint8_t* b1 = dr1 + i * 18;
-              const uint8_t* b2 = dr2 + i * 18;
-              const uint8_t* b3 = dr3 + i * 18;
-              const __m256 vd0 = _mm256_set1_ps(Fp16ToFloatFast(gguf_quant::ReadU16Le(b0)));
-              const __m256 vd1 = _mm256_set1_ps(Fp16ToFloatFast(gguf_quant::ReadU16Le(b1)));
-              const __m256 vd2 = _mm256_set1_ps(Fp16ToFloatFast(gguf_quant::ReadU16Le(b2)));
-              const __m256 vd3 = _mm256_set1_ps(Fp16ToFloatFast(gguf_quant::ReadU16Le(b3)));
-              for (int w = 0; w < 8; ++w) {
-                const __m256 xv0 = _mm256_loadu_ps(xr0 + i * 64 + w * 8);
-                const __m256 xv1 = _mm256_loadu_ps(xr1 + i * 64 + w * 8);
-                auto q_f32 = [&](uint16_t q16, __m256 vd) {
-                  const __m256i qv = _mm256_sub_epi32(
-                      _mm256_and_si256(_mm256_srlv_epi32(_mm256_set1_epi32(q16), shifts), mask3), ones);
-                  return _mm256_mul_ps(vd, _mm256_cvtepi32_ps(qv));
-                };
-                const __m256 w0 = q_f32(gguf_quant::ReadU16Le(b0 + 2 + w * 2), vd0);
-                const __m256 w1 = q_f32(gguf_quant::ReadU16Le(b1 + 2 + w * 2), vd1);
-                const __m256 w2 = q_f32(gguf_quant::ReadU16Le(b2 + 2 + w * 2), vd2);
-                const __m256 w3 = q_f32(gguf_quant::ReadU16Le(b3 + 2 + w * 2), vd3);
-                a0_0 = _mm256_fmadd_ps(w0, xv0, a0_0);
-                a1_0 = _mm256_fmadd_ps(w1, xv0, a1_0);
-                a2_0 = _mm256_fmadd_ps(w2, xv0, a2_0);
-                a3_0 = _mm256_fmadd_ps(w3, xv0, a3_0);
-                a0_1 = _mm256_fmadd_ps(w0, xv1, a0_1);
-                a1_1 = _mm256_fmadd_ps(w1, xv1, a1_1);
-                a2_1 = _mm256_fmadd_ps(w2, xv1, a2_1);
-                a3_1 = _mm256_fmadd_ps(w3, xv1, a3_1);
-              }
-            }
-            const int tr0 = groups[g].token_rows[r + 0], tr1 = groups[g].token_rows[r + 1];
-            const float sc0 = groups[g].scales[r + 0], sc1 = groups[g].scales[r + 1];
-            const float d0_0 = HorizontalSumAvx2(a0_0), d1_0 = HorizontalSumAvx2(a1_0), d2_0 = HorizontalSumAvx2(a2_0), d3_0 = HorizontalSumAvx2(a3_0);
-            const float d0_1 = HorizontalSumAvx2(a0_1), d1_1 = HorizontalSumAvx2(a1_1), d2_1 = HorizontalSumAvx2(a2_1), d3_1 = HorizontalSumAvx2(a3_1);
-            acc_out[tr0][c + 0] += sc0 * (is_bf16 ? RoundBf16Scalar(d0_0) : d0_0);
-            acc_out[tr0][c + 1] += sc0 * (is_bf16 ? RoundBf16Scalar(d1_0) : d1_0);
-            acc_out[tr0][c + 2] += sc0 * (is_bf16 ? RoundBf16Scalar(d2_0) : d2_0);
-            acc_out[tr0][c + 3] += sc0 * (is_bf16 ? RoundBf16Scalar(d3_0) : d3_0);
-            acc_out[tr1][c + 0] += sc1 * (is_bf16 ? RoundBf16Scalar(d0_1) : d0_1);
-            acc_out[tr1][c + 1] += sc1 * (is_bf16 ? RoundBf16Scalar(d1_1) : d1_1);
-            acc_out[tr1][c + 2] += sc1 * (is_bf16 ? RoundBf16Scalar(d2_1) : d2_1);
-            acc_out[tr1][c + 3] += sc1 * (is_bf16 ? RoundBf16Scalar(d3_1) : d3_1);
-          }
-          for (; r < R; ++r) {
-            const float* xr = inter_ptrs[r];
-            const int trow = groups[g].token_rows[r];
-            const float sc = groups[g].scales[r];
-            __m256 a0 = _mm256_setzero_ps();
-            __m256 a1 = _mm256_setzero_ps();
-            __m256 a2 = _mm256_setzero_ps();
-            __m256 a3 = _mm256_setzero_ps();
-            for (int i = 0; i < nb; ++i) {
-              const uint8_t* b0 = dr0 + i * 18;
-              const uint8_t* b1 = dr1 + i * 18;
-              const uint8_t* b2 = dr2 + i * 18;
-              const uint8_t* b3 = dr3 + i * 18;
-              const __m256 vd0 = _mm256_set1_ps(Fp16ToFloatFast(gguf_quant::ReadU16Le(b0)));
-              const __m256 vd1 = _mm256_set1_ps(Fp16ToFloatFast(gguf_quant::ReadU16Le(b1)));
-              const __m256 vd2 = _mm256_set1_ps(Fp16ToFloatFast(gguf_quant::ReadU16Le(b2)));
-              const __m256 vd3 = _mm256_set1_ps(Fp16ToFloatFast(gguf_quant::ReadU16Le(b3)));
-              for (int w = 0; w < 8; ++w) {
-                const __m256 xv = _mm256_loadu_ps(xr + i * 64 + w * 8);
-                auto q_f32 = [&](uint16_t q16, __m256 vd) {
-                  const __m256i qv = _mm256_sub_epi32(
-                      _mm256_and_si256(_mm256_srlv_epi32(_mm256_set1_epi32(q16), shifts), mask3), ones);
-                  return _mm256_mul_ps(vd, _mm256_cvtepi32_ps(qv));
-                };
-                a0 = _mm256_fmadd_ps(q_f32(gguf_quant::ReadU16Le(b0 + 2 + w * 2), vd0), xv, a0);
-                a1 = _mm256_fmadd_ps(q_f32(gguf_quant::ReadU16Le(b1 + 2 + w * 2), vd1), xv, a1);
-                a2 = _mm256_fmadd_ps(q_f32(gguf_quant::ReadU16Le(b2 + 2 + w * 2), vd2), xv, a2);
-                a3 = _mm256_fmadd_ps(q_f32(gguf_quant::ReadU16Le(b3 + 2 + w * 2), vd3), xv, a3);
-              }
-            }
-            const float d0 = HorizontalSumAvx2(a0);
-            const float d1 = HorizontalSumAvx2(a1);
-            const float d2 = HorizontalSumAvx2(a2);
-            const float d3 = HorizontalSumAvx2(a3);
-            acc_out[trow][c + 0] += sc * (is_bf16 ? RoundBf16Scalar(d0) : d0);
-            acc_out[trow][c + 1] += sc * (is_bf16 ? RoundBf16Scalar(d1) : d1);
-            acc_out[trow][c + 2] += sc * (is_bf16 ? RoundBf16Scalar(d2) : d2);
-            acc_out[trow][c + 3] += sc * (is_bf16 ? RoundBf16Scalar(d3) : d3);
+#if ORT_MOE_PACKED_CPU_X86_64
+      if (use_avx2) {
+        const uint8_t* dr0 = host_down_w + (static_cast<size_t>(exp) * hidden_size + col_start) * down_row_bytes;
+        c = moe_packed_cpu::GgufDotRowsBy4Avx2(dr0, down_row_bytes, col_cnt, down_type, inter_size, inter_ptrs, R,
+                                               &avx2_dots[0][0], kFc2TileCols);
+        for (int r = 0; r < R; ++r) {
+          const int trow = groups[g].token_rows[r];
+          const float sc = groups[g].scales[r];
+          for (int j = 0; j < c; ++j) {
+            const float dv = avx2_dots[r][j];
+            acc_out[trow][j] += sc * (is_bf16 ? RoundBf16Scalar(dv) : dv);
           }
         }
       }
@@ -1787,7 +992,9 @@ MoEPacked<T>::MoEPacked(const OpKernelInfo& info) : CudaKernel(info) {
       offload_capabilities_.supports_full_gpu_resident = true;
       offload_capabilities_.supports_hybrid_doorbell_decode = true;
       offload_capabilities_.supports_gpu_streaming_prefill = true;
-      offload_capabilities_.supports_file_backed_bounded_host_cache = true;
+      // Cold experts are read directly from the initializer banks; there is no bounded host cache, so explicit
+      // host_expert_bytes caps below the cold complement must be rejected at admission.
+      offload_capabilities_.supports_file_backed_bounded_host_cache = false;
       offload_capabilities_.supports_cuda_graph_capture = true;
       offload_capabilities_.decode_kernel_skips_negative_slots = true;
       offload_capabilities_.source_bytes_per_expert = slot_bytes;
@@ -2010,21 +1217,8 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
     Tensor* output = context->Output(0, in_shape);
     if (num_rows == 0) return Status::OK();
     MoEPackedOffloadState& st = *offload_state_;
-    if (st.InWarmup()) {
-      st.live_session_started.store(false, std::memory_order_release);
-    } else {
-      st.live_session_started.store(true, std::memory_order_release);
-    }
-    // Read dynamic environment overrides if set (matching QMoEOffload test hooks)
-    float eff_tail_sub_thr = st.tail_sub_threshold;
-    int eff_tail_sub_rank = st.tail_sub_min_rank;
-    float eff_min_weight = st.min_expert_weight;
-    const std::string env_thr = GetEnvironmentVar("ORT_QMOE_TAIL_SUBSTITUTION_THRESHOLD");
-    if (!env_thr.empty()) static_cast<void>(TryParseStringWithClassicLocale(env_thr, eff_tail_sub_thr));
-    const std::string env_rnk = GetEnvironmentVar("ORT_QMOE_TAIL_SUBSTITUTION_MIN_RANK");
-    if (!env_rnk.empty()) static_cast<void>(TryParseStringWithClassicLocale(env_rnk, eff_tail_sub_rank));
-    const std::string env_mw = GetEnvironmentVar("ORT_QMOE_MIN_EXPERT_WEIGHT");
-    if (!env_mw.empty()) static_cast<void>(TryParseStringWithClassicLocale(env_mw, eff_min_weight));
+    // The session policy already resolved the ORT_QMOE_* environment fallbacks with config precedence and validation.
+    const float min_expert_weight = st.min_expert_weight;
 
     // 1. Decode path (num_rows <= 16, CUDA-graph-capturable)
     if (st.cpu_execution_enabled &&
@@ -2056,21 +1250,36 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
           st.d_expert_to_slot.get(),
           st.resident_slots,
           p,
-          eff_tail_sub_thr,
-          eff_tail_sub_rank,
-          eff_min_weight,
+          st.tail_sub_threshold,
+          st.tail_sub_min_rank,
+          min_expert_weight,
           st.skip_tail_cold_only,
           st.d_decode_ws.get(),
           st.d_decode_pinned,
           output->MutableDataRaw());
     }
 
-    // 2. Prefill path (num_rows > 16): resident Tensor-Core launch + double-buffered 32-expert wave streaming
-    // Use single-tile 8192-row prefill chunks so an 8K prefill streams cold experts once per layer instead of 4 times.
-    constexpr int64_t kMaxPrefillChunkRows = kMoEPackedMaxOffloadChunkRows;
-    const int64_t max_chunk = std::min<int64_t>(num_rows, kMaxPrefillChunkRows);
+    // 2. Prefill path (num_rows > 16): resident Tensor-Core launch + double-buffered wave streaming of cold experts.
+    // Single 8192-row chunks stream each cold expert once per 8K prefill. Explicitly configured budgets shrink the
+    // chunk and wave sizes; session.moe.offload.prefill_wave_experts caps the experts per wave.
+    const auto& policy = offload_policy_;
+    const bool needs_streaming = st.resident_slots < st.num_experts;
+    int wave_experts = std::clamp<int>(policy.prefill_wave_experts, 1, MoEPackedSharedPrefillWaveStaging::kWaveExperts);
+    int64_t max_chunk = std::min<int64_t>(num_rows, kMoEPackedMaxOffloadChunkRows);
+    if (needs_streaming && policy.pinned_bytes_explicit) {
+      const size_t route_bytes =
+          MoEPackedSharedPrefillWaveStaging::RoutePinnedBytes(static_cast<size_t>(max_chunk * k_));
+      const size_t pinned_limit = static_cast<size_t>(policy.pinned_bytes);
+      const size_t per_wave_expert = 2 * st.slot_bytes;
+      const size_t fit = pinned_limit > route_bytes ? (pinned_limit - route_bytes) / per_wave_expert : 0;
+      ORT_RETURN_IF(fit == 0, "MoEPacked prefill streaming needs ", route_bytes + per_wave_expert,
+                    " pinned bytes (two single-expert staging banks and routing buffers), which exceeds "
+                    "session.moe.offload.pinned_bytes (",
+                    pinned_limit, ").");
+      wave_experts = static_cast<int>(std::min<size_t>(static_cast<size_t>(wave_experts), fit));
+    }
+
     MoEPackedParams max_params{};
-    max_params.num_rows = static_cast<int>(max_chunk);
     max_params.num_experts = static_cast<int>(num_experts);
     max_params.hidden_size = static_cast<int>(hidden_size);
     max_params.inter_size = static_cast<int>(inter_size);
@@ -2085,26 +1294,43 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
     max_params.down_row_bytes = exp_down_rb;
 
     size_t ws_bytes = 0;
-    ORT_RETURN_IF_ERROR(GetMoEPackedWorkspaceBytes(max_params, sizeof(T), ws_bytes));
+    const size_t gpu_bank_bytes = needs_streaming ? 2 * static_cast<size_t>(wave_experts) * st.slot_bytes : 0;
+    for (;;) {
+      max_params.num_rows = static_cast<int>(max_chunk);
+      ORT_RETURN_IF_ERROR(GetMoEPackedWorkspaceBytes(max_params, sizeof(T), ws_bytes));
+      if (!policy.device_working_bytes_explicit || ws_bytes + gpu_bank_bytes <= policy.device_working_bytes) {
+        break;
+      }
+      ORT_RETURN_IF(max_chunk == 1, "MoEPacked prefill working set (", ws_bytes + gpu_bank_bytes,
+                    " bytes: one-row scratch and GPU staging banks) exceeds session.moe.offload.device_working_bytes (",
+                    policy.device_working_bytes, ").");
+      max_chunk = (max_chunk + 1) / 2;
+    }
     auto workspace = GetScratchBuffer<uint8_t>(ws_bytes, GetComputeStream(context));
 
-    auto& wave_staging = MoEPackedSharedPrefillWaveStaging::Instance();
+    auto& wave_staging = MoEPackedSharedPrefillWaveStaging::ForDevice(GetDeviceId());
     std::lock_guard<std::mutex> wave_lk(wave_staging.mu);
-    const int kWaveExperts = MoEPackedSharedPrefillWaveStaging::kWaveExperts;
-    const size_t wave_bank_bytes = static_cast<size_t>(kWaveExperts) * st.slot_bytes;
-    ORT_RETURN_IF_ERROR(wave_staging.EnsureCapacity(wave_bank_bytes, static_cast<size_t>(max_chunk * k_)));
+    ORT_RETURN_IF_ERROR(wave_staging.WaitForPreviousUse());
+    ORT_RETURN_IF_ERROR(wave_staging.EnsureRouteCapacity(static_cast<size_t>(max_chunk * k_)));
+    cudaStream_t stream = Stream(context);
+    // Copies enqueued below read the shared pinned buffers after this call returns, including on error paths.
+    auto record_staging_use = gsl::finally([&wave_staging, stream]() {
+      static_cast<void>(wave_staging.RecordUse(stream));
+    });
 
     const uint8_t* in_bytes = static_cast<const uint8_t*>(input->DataRaw());
     const uint8_t* rp_bytes = static_cast<const uint8_t*>(router_probs->DataRaw());
     uint8_t* out_bytes = static_cast<uint8_t*>(output->MutableDataRaw());
-    cudaStream_t stream = Stream(context);
+    const bool in_warmup = st.InWarmup();
 
-    for (int64_t r0 = 0; r0 < num_rows; r0 += kMaxPrefillChunkRows) {
-      const int chunk_rows = static_cast<int>(std::min<int64_t>(kMaxPrefillChunkRows, num_rows - r0));
+    for (int64_t r0 = 0; r0 < num_rows; r0 += max_chunk) {
+      const int chunk_rows = static_cast<int>(std::min<int64_t>(max_chunk, num_rows - r0));
       const int total_routes = chunk_rows * static_cast<int>(k_);
-      const bool use_prefill_tiles = is_bf16 && (total_routes >= 2048);
+      const bool use_prefill_tiles = is_bf16 && bf16_tc_supported_ && (total_routes >= 2048);
       const int tile_cap = use_prefill_tiles ? 32 : 8;
-      const int max_tiles_alloc = (total_routes + tile_cap - 1) / tile_cap + static_cast<int>(num_experts);
+      // Same bound as GetMoEPackedWorkspaceBytes; every tile holds at least one route.
+      const int max_tiles_alloc =
+          (total_routes <= 128) ? total_routes : ((total_routes + 7) / 8 + static_cast<int>(num_experts));
 
       MoEPackedParams chunk_params = max_params;
       chunk_params.num_rows = chunk_rows;
@@ -2135,7 +1361,8 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
       ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemcpyAsync(
           wave_staging.pinned_topk_idx, d_topk_indices, static_cast<size_t>(total_routes) * sizeof(int32_t),
           cudaMemcpyDeviceToHost, stream)));
-      if (eff_min_weight > 0.0f) {
+      const bool host_scales = min_expert_weight > 0.0f || (in_warmup && needs_streaming);
+      if (host_scales) {
         ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemcpyAsync(
             wave_staging.pinned_topk_scales, d_topk_scales, static_cast<size_t>(total_routes) * sizeof(float),
             cudaMemcpyDeviceToHost, stream)));
@@ -2147,8 +1374,8 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
       bool any_pruned = false;
       for (int r = 0; r < total_routes; ++r) {
         const int e = wave_staging.pinned_topk_idx[r];
-        if (eff_min_weight > 0.0f && (r % static_cast<int>(k_)) > 0 &&
-            wave_staging.pinned_topk_scales[r] < eff_min_weight) {
+        if (min_expert_weight > 0.0f && (r % static_cast<int>(k_)) > 0 &&
+            wave_staging.pinned_topk_scales[r] < min_expert_weight) {
           wave_staging.pinned_topk_scales[r] = 0.0f;
           any_pruned = true;
           continue;
@@ -2157,13 +1384,7 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
           exp_routes[static_cast<size_t>(e)].push_back(r);
         }
       }
-      if (any_pruned) {
-        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemcpyAsync(
-            d_topk_scales, wave_staging.pinned_topk_scales, static_cast<size_t>(total_routes) * sizeof(float),
-            cudaMemcpyHostToDevice, stream)));
-      }
 
-      const bool in_warmup = st.InWarmup();
       if (!in_warmup) {
         st.prefill_routes.fetch_add(static_cast<uint64_t>(total_routes), std::memory_order_relaxed);
         st.stream_tiles.fetch_add(1, std::memory_order_relaxed);
@@ -2244,9 +1465,23 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
 
       // 2d. Double-buffered streaming waves for cold experts (CPU parallel staging + H2D copy_stream + GPU Tensor-Core compute)
       // During dummy-token Warmup(), run at most 1 wave to warm wave buffers and Tensor-Core kernels without faulting 40 GiB.
-      const int num_cold = in_warmup ? std::min<int>(static_cast<int>(cold_experts.size()), kWaveExperts)
+      const int num_cold = in_warmup ? std::min<int>(static_cast<int>(cold_experts.size()), wave_experts)
                                      : static_cast<int>(cold_experts.size());
-      const int num_waves = (num_cold + kWaveExperts - 1) / kWaveExperts;
+      for (size_t i = static_cast<size_t>(num_cold); i < cold_experts.size(); ++i) {
+        for (int r : exp_routes[static_cast<size_t>(cold_experts[i])]) {
+          wave_staging.pinned_topk_scales[r] = 0.0f;
+          any_pruned = true;
+        }
+      }
+      if (any_pruned) {
+        ORT_RETURN_IF_ERROR(CUDA_CALL(cudaMemcpyAsync(
+            d_topk_scales, wave_staging.pinned_topk_scales, static_cast<size_t>(total_routes) * sizeof(float),
+            cudaMemcpyHostToDevice, stream)));
+      }
+      const int num_waves = (num_cold + wave_experts - 1) / wave_experts;
+      if (num_waves > 0) {
+        ORT_RETURN_IF_ERROR(wave_staging.EnsureBankCapacity(static_cast<size_t>(wave_experts) * st.slot_bytes));
+      }
       if (!in_warmup) {
         st.stream_experts.fetch_add(static_cast<uint64_t>(num_cold), std::memory_order_relaxed);
         st.stream_waves.fetch_add(static_cast<uint64_t>(num_waves), std::memory_order_relaxed);
@@ -2254,8 +1489,8 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
 
       auto stage_and_enqueue_wave = [&](int w_idx) -> Status {
         const int b = w_idx & 1;
-        const int e_begin = w_idx * kWaveExperts;
-        const int w_cnt = std::min(kWaveExperts, num_cold - e_begin);
+        const int e_begin = w_idx * wave_experts;
+        const int w_cnt = std::min(wave_experts, num_cold - e_begin);
         const size_t w_gate_bytes = static_cast<size_t>(w_cnt) * st.gate_exp_bytes;
         const size_t w_up_bytes = static_cast<size_t>(w_cnt) * st.up_exp_bytes;
         const size_t w_down_bytes = static_cast<size_t>(w_cnt) * st.down_exp_bytes;
@@ -2315,8 +1550,8 @@ Status MoEPacked<T>::ComputeInternal(OpKernelContext* context) const {
       }
       for (int w_idx = 0; w_idx < num_waves; ++w_idx) {
         const int b = w_idx & 1;
-        const int e_begin = w_idx * kWaveExperts;
-        const int w_cnt = std::min(kWaveExperts, num_cold - e_begin);
+        const int e_begin = w_idx * wave_experts;
+        const int w_cnt = std::min(wave_experts, num_cold - e_begin);
         const size_t w_gate_bytes = static_cast<size_t>(w_cnt) * st.gate_exp_bytes;
         const size_t w_up_bytes = static_cast<size_t>(w_cnt) * st.up_exp_bytes;
 
