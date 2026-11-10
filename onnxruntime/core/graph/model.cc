@@ -460,6 +460,25 @@ const Graph& Model::MainGraph() const noexcept {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
+ModelProto Model::ToProtoWithoutGraph() const {
+  ModelProto result;
+  result.set_ir_version(model_proto_.ir_version());
+  result.set_producer_name(model_proto_.producer_name());
+  result.set_producer_version(model_proto_.producer_version());
+  result.set_domain(model_proto_.domain());
+  result.set_model_version(model_proto_.model_version());
+  result.set_doc_string(model_proto_.doc_string());
+  *result.mutable_opset_import() = model_proto_.opset_import();
+  *result.mutable_functions() = model_proto_.functions();
+  *result.mutable_configuration() = model_proto_.configuration();
+  for (const auto& [key, value] : model_metadata_) {
+    auto* entry = result.add_metadata_props();
+    entry->set_key(key);
+    entry->set_value(value);
+  }
+  return result;
+}
+
 ModelProto Model::ToProto() const {
   // We want to return back the original proto
   // To that end invoke const overload of ToGraphProto()

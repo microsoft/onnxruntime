@@ -711,6 +711,24 @@ ORT_API_STATUS_IMPL(Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_res
 ORT_API_STATUS_IMPL(Graph_GetGraphView, _In_ const OrtGraph* graph, _In_ const OrtNode** nodes, _In_ size_t num_nodes,
                     _Outptr_ OrtGraph** subgraph);
 
+ORT_API_STATUS_IMPL(CreateGraphSerializationOptions, _Outptr_ OrtGraphSerializationOptions** out);
+ORT_API(void, ReleaseGraphSerializationOptions, _Frees_ptr_opt_ OrtGraphSerializationOptions* options);
+ORT_API_STATUS_IMPL(GraphSerializationOptions_SetExternalInitializerPolicy,
+                    _Inout_ OrtGraphSerializationOptions* options, OrtGraphExternalInitializerPolicy policy);
+ORT_API_STATUS_IMPL(GraphSerializationOptions_SetMinimumExternalInitializerSize,
+                    _Inout_ OrtGraphSerializationOptions* options, size_t min_bytes);
+ORT_API_STATUS_IMPL(GraphSerializationOptions_SetInitializerLocationFunc,
+                    _Inout_ OrtGraphSerializationOptions* options,
+                    _In_opt_ OrtGetInitializerLocationFunc get_initializer_location_func, _In_opt_ void* state);
+ORT_API_STATUS_IMPL(GraphSerializationOptions_SetMaximumWriteChunkSize,
+                    _Inout_ OrtGraphSerializationOptions* options, size_t max_chunk_bytes);
+ORT_API_STATUS_IMPL(Graph_SerializeToOnnxModelWithWriteFunc,
+                    _In_ const OrtGraph* graph, _In_opt_ const OrtGraphSerializationOptions* options,
+                    _In_ OrtWriteBufferFunc write_func, _In_opt_ void* write_state);
+ORT_API_STATUS_IMPL(Graph_SerializeToOnnxModel,
+                    _In_ const OrtGraph* graph, _In_opt_ const OrtGraphSerializationOptions* options,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ void** model_bytes, _Out_ size_t* model_bytes_len);
+
 // OrtNode
 ORT_API_STATUS_IMPL(Node_GetId, _In_ const OrtNode* node, _Out_ size_t* node_id);
 ORT_API_STATUS_IMPL(Node_GetName, _In_ const OrtNode* node, _Outptr_ const char** node_name);
