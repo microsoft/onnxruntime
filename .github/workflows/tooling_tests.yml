@@ -16,8 +16,8 @@ permissions:
   contents: read
 
 jobs:
-  tooling-tests:
-    name: Tooling Tests (${{ matrix.os }})
+  python-tooling-tests:
+    name: Python Tooling Tests (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -40,11 +40,13 @@ jobs:
       run: python -m pip install -r requirements-dev.txt
 
     - name: Run Python tooling tests
-      run: python -m pytest -c .github/workflows/tooling_tests.ini --rootdir=. -v --junitxml=tooling-test-results.xml
+      run: >-
+        python -m pytest -c .github/workflows/tooling_tests.pytest.ini --rootdir=. -v
+        --junitxml=python-tooling-test-results.xml
 
     - name: Upload test results
       if: always()
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
-        name: tooling-test-results-${{ matrix.os }}
-        path: tooling-test-results.xml
+        name: python-tooling-test-results-${{ matrix.os }}
+        path: python-tooling-test-results.xml
