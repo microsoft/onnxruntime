@@ -28,6 +28,7 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/test/test_environment.h"
 #ifdef USE_CUDA
@@ -149,6 +150,108 @@ static void RunMoETest(const std::vector<float>& input, const std::vector<float>
     cpu_execution_providers.push_back(DefaultCpuExecutionProvider());
     cpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cpu_execution_providers);
   }
+}
+
+template <typename T>
+static void RunMoEIntermediateInputOutputTest() {
+  const std::vector<int64_t> shape{3, 2};
+  const std::vector<float> tokens{1.0f, 2.0f, -1.0f, -2.0f, 0.5f, -1.5f};
+  std::vector<T> fc1(12, T(0.0f));
+  std::vector<T> fc2;
+  for (int expert = 0; expert < 3; ++expert) {
+    fc1[expert * 4] = T(static_cast<float>(expert + 1));
+    fc1[expert * 4 + 3] = T(1.0f);
+    fc2.push_back(T(static_cast<float>(expert + 1)));
+    fc2.push_back(T(static_cast<float>(-expert - 1)));
+  }
+
+  for (const std::string input_source : {"input", "add", "reshape(add)"}) {
+    for (bool expose_moe : {false, true}) {
+      for (bool normalize : {false, true}) {
+        SCOPED_TRACE(MakeString("input_source=", input_source, ", expose_moe=", expose_moe,
+                                ", normalize=", normalize));
+        Model model("MoEIntermediateInputOutput", false, ModelMetaData(), PathString(),
+                    IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 20}, {kMSDomain, 1}}, {},
+                    DefaultLoggingManager().DefaultLogger());
+        ModelTestBuilder builder(model.MainGraph());
+        std::vector<T> input;
+        for (float value : tokens) {
+          input.push_back(T(input_source == "input" ? value : value * 0.5f));
+        }
+        auto* moe_input = builder.MakeInput<T>(shape, input);
+        if (input_source != "input") {
+          auto* sum = builder.MakeIntermediate();
+          builder.AddNode("Add", {moe_input, moe_input}, {sum});
+          moe_input = sum;
+          if (input_source == "reshape(add)") {
+            moe_input = builder.MakeIntermediate();
+            builder.AddNode("Reshape", {sum, builder.MakeInitializer<int64_t>({2}, {-1, 2})}, {moe_input});
+          }
+        }
+        auto* logits = builder.MakeInput<T>({3, 3}, {T(0.0f), T(1.0f), T(2.0f),
+                                                     T(0.0f), T(1.0f), T(2.0f),
+                                                     T(0.0f), T(1.0f), T(2.0f)});
+        auto* y = builder.MakeOutput();
+        auto* moe_output = expose_moe ? builder.MakeOutput() : builder.MakeIntermediate();
+        auto& moe = builder.AddNode("MoE",
+                                    {moe_input, logits, builder.MakeInitializer<T>({3, 2, 2}, fc1),
+                                     builder.MakeOptionalTensor(), builder.MakeInitializer<T>({3, 2, 1}, fc2)},
+                                    {moe_output}, kMSDomain);
+        moe.AddAttribute("k", int64_t{2});
+        moe.AddAttribute("activation_type", std::string("swiglu"));
+        moe.AddAttribute("swiglu_fusion", int64_t{1});
+        moe.AddAttribute("activation_alpha", 1.0f);
+        moe.AddAttribute("activation_beta", 0.0f);
+        moe.AddAttribute("normalize_routing_weights", static_cast<int64_t>(normalize));
+        builder.AddNode("Relu", {moe_output}, {y});
+        builder.SetGraphOutputs();
+        ASSERT_STATUS_OK(model.MainGraph().Resolve());
+        const std::string model_data = model.ToProto().SerializeAsString();
+
+        SessionOptions options;
+        options.graph_optimization_level = TransformerLevel::Default;
+        options.intra_op_param.thread_pool_size = 1;
+        InferenceSession session(options, GetEnvironment());
+        ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCpuExecutionProvider()));
+        ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+        ASSERT_STATUS_OK(session.Initialize());
+
+        // The two largest logits select experts 1 and 2, with interleaved gate/up FC1 rows.
+        std::vector<float> expected(tokens.size(), 0.0f);
+        const float denominator = (normalize ? 0.0f : 1.0f) + std::exp(1.0f) + std::exp(2.0f);
+        for (size_t row = 0; row < 3; ++row) {
+          for (int expert = 1; expert < 3; ++expert) {
+            const float gate = static_cast<float>(expert + 1) * tokens[2 * row];
+            expected[2 * row] += std::exp(static_cast<float>(expert)) / denominator *
+                                 static_cast<float>(expert + 1) * gate / (1.0f + std::exp(-gate)) * tokens[2 * row + 1];
+          }
+          expected[2 * row + 1] = -expected[2 * row];
+        }
+        for (int run = 0; run < 2; ++run) {
+          std::vector<OrtValue> fetches;
+          ASSERT_STATUS_OK(session.Run(RunOptions(), builder.feeds_, builder.output_names_, &fetches));
+          ASSERT_EQ(fetches.size(), expose_moe ? 2U : 1U);
+          for (size_t output = 0; output < fetches.size(); ++output) {
+            const auto& tensor = fetches[output].Get<Tensor>();
+            ASSERT_EQ(tensor.Shape(), TensorShape(shape));
+            const T* actual = tensor.Data<T>();
+            for (size_t i = 0; i < expected.size(); ++i) {
+              const float value = output == 0 ? std::max(expected[i], 0.0f) : expected[i];
+              EXPECT_NEAR(static_cast<float>(actual[i]), value, (std::is_same_v<T, float> ? 1e-5f : 0.02f));
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST(MoETest, IntermediateInputOutputFloat32) {
+  RunMoEIntermediateInputOutputTest<float>();
+}
+
+TEST(MoETest, IntermediateInputOutputFloat16) {
+  RunMoEIntermediateInputOutputTest<MLFloat16>();
 }
 
 // TODO(wy): Add python parity tests that can serve as examples. Need cutlass upgrade to build cutlass extensions to
