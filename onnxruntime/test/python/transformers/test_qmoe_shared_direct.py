@@ -393,10 +393,7 @@ class TestQMoESharedDirect(unittest.TestCase):
     def test_cuda_int3_grouped_prefill_large_hidden(self):
         self._check_cuda_int3_grouped_prefill_shape(3584)
 
-    def test_cuda_int3_grouped_prefill_tensor_core_opt_in(self):
-        self._check_cuda_int3_grouped_prefill_shape(1536, tensor_core=True)
-
-    def _check_cuda_int3_grouped_prefill_shape(self, hidden, tensor_core=False):
+    def _check_cuda_int3_grouped_prefill_shape(self, hidden):
         if "CUDAExecutionProvider" not in ort.get_available_providers():
             if os.getenv("ORT_QMOE_REQUIRE_CUDA") == "1":
                 self.fail("CUDAExecutionProvider is required")
@@ -418,7 +415,6 @@ class TestQMoESharedDirect(unittest.TestCase):
                         os.environ,
                         {
                             "ORT_ENABLE_QMOE_INT3_GROUPED_PREFILL": "1" if enabled else "0",
-                            "ORT_ENABLE_QMOE_INT3_GROUPED_TENSOR_CORE": "1" if tensor_core else "0",
                             "ORT_DISABLE_INT3_TENSORCORE_PREFILL": "1",
                             "ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO": "1",
                         },
@@ -445,10 +441,7 @@ class TestQMoESharedDirect(unittest.TestCase):
                             debug_output = captured.read().decode()
                     if enabled and rows >= 32:
                         self.assertIn("Route=int3_grouped_prefill", debug_output)
-                        if hidden == 1536 and tensor_core:
-                            self.assertIn("TensorCore=1", debug_output)
-                        else:
-                            self.assertIn("TensorCore=0", debug_output)
+                        self.assertIn("TensorCore=0", debug_output)
                     else:
                         self.assertNotIn("Route=int3_grouped_prefill", debug_output)
                     relative_error = np.linalg.norm(outputs[-1] - expected) / max(np.linalg.norm(expected), 1e-6)
@@ -457,8 +450,7 @@ class TestQMoESharedDirect(unittest.TestCase):
                     np.linalg.norm(outputs[0]), 1e-6
                 )
                 self.assertLess(baseline_relative_error, 1e-3)
-                if not tensor_core:
-                    np.testing.assert_array_equal(outputs[1], outputs[0])
+                np.testing.assert_array_equal(outputs[1], outputs[0])
 
     def test_dynamic_banks_and_non_square_shapes(self):
         for hidden, inter in [(256, 64), (64, 128)]:

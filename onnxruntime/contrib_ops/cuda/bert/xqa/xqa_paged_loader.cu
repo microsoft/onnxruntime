@@ -15,8 +15,7 @@ namespace contrib {
 namespace cuda {
 
 constexpr bool IsXQAPagedSpecDecHeadSizeSupported(int head_size, XqaQuantType kv_quant_type) {
-  return head_size == 256 || (head_size == 128 &&
-                              (kv_quant_type == XqaQuantType::kInt8 || kv_quant_type == XqaQuantType::kNone));
+  return head_size == 256 || (head_size == 128 && kv_quant_type == XqaQuantType::kInt8);
 }
 
 static_assert(IsXQAPagedSpecDecHeadSizeSupported(256, XqaQuantType::kNone));
@@ -24,7 +23,7 @@ static_assert(IsXQAPagedSpecDecHeadSizeSupported(256, XqaQuantType::kInt8));
 static_assert(IsXQAPagedSpecDecHeadSizeSupported(256, XqaQuantType::kInt4));
 static_assert(IsXQAPagedSpecDecHeadSizeSupported(256, XqaQuantType::kFp8));
 static_assert(IsXQAPagedSpecDecHeadSizeSupported(128, XqaQuantType::kInt8));
-static_assert(IsXQAPagedSpecDecHeadSizeSupported(128, XqaQuantType::kNone));
+static_assert(!IsXQAPagedSpecDecHeadSizeSupported(128, XqaQuantType::kNone));
 static_assert(!IsXQAPagedSpecDecHeadSizeSupported(128, XqaQuantType::kInt4));
 static_assert(!IsXQAPagedSpecDecHeadSizeSupported(128, XqaQuantType::kFp8));
 static_assert(!IsXQAPagedSpecDecHeadSizeSupported(64, XqaQuantType::kInt8));
@@ -107,7 +106,6 @@ XQA_PAGED_DECL(LaunchXQAPagedFp8KernelBF16);
                             const int max_pages_per_seq, const int max_query_len)
 
 XQA_PAGED_SPEC_DEC_DECL(LaunchXQAPagedSpecDecInt8Kernel);
-XQA_PAGED_SPEC_DEC_DECL(LaunchXQAPagedSpecDecBf16Kernel);
 #undef XQA_PAGED_SPEC_DEC_DECL
 }  // namespace H128
 
@@ -271,19 +269,16 @@ Status LaunchXQAPagedSpecDecKernel(
     size_t workspace_size) {
   const bool h128_int8 =
       head_size == 128 && kv_quant_type == XqaQuantType::kInt8 && !is_bf16;
-  const bool h128_bf16_native =
-      head_size == 128 && kv_quant_type == XqaQuantType::kNone && is_bf16;
   const bool h256_bf16_int8 =
       head_size == 256 && kv_quant_type == XqaQuantType::kInt8 && is_bf16;
   const bool valid_group =
       kv_num_heads > 0 && (num_heads == 6 * kv_num_heads ||
                            (h256_bf16_int8 && num_heads == 16 * kv_num_heads));
   if (device_prop.major < 8 || !IsXQAPagedSpecDecHeadSizeSupported(head_size, kv_quant_type) ||
-      (head_size == 128 && !h128_int8 && !h128_bf16_native) || !valid_group) {
+      (head_size == 128 && !h128_int8) || !valid_group) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Speculative paged XQA requires SM80+, group size 6 (or 16 for H256 BF16/INT8), "
-                           "and either head_size 256, BF16 native cache with head_size 128, "
-                           "or FP16 query/output with INT8 KV cache and head_size 128.");
+                           "and either head_size 256 or FP16 query/output with INT8 KV cache and head_size 128.");
   }
 
 #define XQA_PAGED_SPEC_DEC_ARGS                                                                  \
@@ -293,9 +288,6 @@ Status LaunchXQAPagedSpecDecKernel(
       v_cache_scale, workspace, workspace_size
 
   if (kv_quant_type == XqaQuantType::kNone) {
-    if (head_size == 128) {
-      return H128::LaunchXQAPagedSpecDecBf16Kernel(XQA_PAGED_SPEC_DEC_ARGS);
-    }
     return is_bf16 ? H256::LaunchXQAPagedSpecDecBf16Kernel(XQA_PAGED_SPEC_DEC_ARGS)
                    : H256::LaunchXQAPagedSpecDecFp16Kernel(XQA_PAGED_SPEC_DEC_ARGS);
   }
@@ -350,12 +342,6 @@ size_t GetXQAPagedSpecDecWorkspaceSize(
   }
 #endif
   if (kv_quant_type == XqaQuantType::kNone) {
-    if (head_size == 128) {
-      return is_bf16
-                 ? H128::LaunchXQAPagedSpecDecBf16Kernel_WorkspaceSize(
-                       device_prop, batch_size, num_heads, kv_num_heads, max_pages_per_seq, max_query_len)
-                 : 0;
-    }
     return is_bf16
                ? H256::LaunchXQAPagedSpecDecBf16Kernel_WorkspaceSize(
                      device_prop, batch_size, num_heads, kv_num_heads, max_pages_per_seq, max_query_len)
@@ -406,9 +392,6 @@ size_t GetXQAPagedSpecDecRequiredSharedMemoryBytes(
   }
 #endif
   if (kv_quant_type == XqaQuantType::kNone) {
-    if (head_size == 128) {
-      return is_bf16 ? H128::LaunchXQAPagedSpecDecBf16Kernel_SmemSize(num_heads, kv_num_heads) : 0;
-    }
     return is_bf16
                ? H256::LaunchXQAPagedSpecDecBf16Kernel_SmemSize(num_heads, kv_num_heads)
                : H256::LaunchXQAPagedSpecDecFp16Kernel_SmemSize(num_heads, kv_num_heads);

@@ -558,12 +558,9 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       enable_native_xqa_ && has_metadata_bounds && kIsFp16Cache && device_prop.major >= 8 &&
       parameters.softcap == 0.0f && parameters.head_size == 256 && group_size == 6 &&
       (parameters.block_size % kXqaTokensPerPage) == 0;
-  const bool h128_bf16_native_spec =
-      std::is_same<T, BFloat16>::value && std::is_same<TCACHE, BFloat16>::value &&
-      parameters.head_size == 128 && parameters.is_causal;
   const bool native_spec_xqa_eligible =
       enable_native_xqa_ && has_metadata_bounds && kIsNativeSpecXqaCache && device_prop.major >= 8 &&
-      parameters.softcap == 0.0f && (parameters.head_size == 256 || h128_bf16_native_spec) && group_size == 6 &&
+      parameters.softcap == 0.0f && parameters.head_size == 256 && group_size == 6 &&
       (parameters.block_size % kXqaTokensPerPage) == 0;
   const bool is_fp8_cache = IsFp8CacheType<TCACHE>();
   const auto is_supported_quant_type = [](KVQuantizationType t) {
@@ -609,7 +606,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
        (native_spec_xqa_eligible && group_size == 6)) &&
       ((parameters.head_size == 256) ||
        (parameters.head_size == 128 && parameters.is_causal &&
-        ((kIsInt8Cache && std::is_same<T, MLFloat16>::value) || h128_bf16_native_spec))) &&
+        kIsInt8Cache && std::is_same<T, MLFloat16>::value)) &&
       max_query_len_bound > 1 && max_query_len_bound <= 8;
   const bool portable_spec_dec_candidate =
       has_metadata_bounds && max_query_len_bound > 1 && max_query_len_bound <= 8 &&

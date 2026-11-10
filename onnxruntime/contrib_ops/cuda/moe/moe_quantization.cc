@@ -4211,8 +4211,7 @@ Status QMoE::ComputeInt3(OpKernelContext* context) const {
       SafeInt<size_t>(params.grouped_rows) * hidden * element_size + params.grouped_rows * sizeof(int) <= GetDeviceProp().sharedMemPerBlockOptin &&
       SafeInt<size_t>(params.grouped_rows) * intermediate * element_size + params.grouped_rows * sizeof(int) <= GetDeviceProp().sharedMemPerBlockOptin &&
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_QMOE_INT3_GROUPED_PREFILL", 0) != 0;
-  if (grouped_prefill &&
-      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_QMOE_INT3_GROUPED_TENSOR_CORE", 0) == 0) {
+  if (grouped_prefill) {
     params.tensor_core_min_routes = 0;
   }
   const bool can_use_tc_prefill =

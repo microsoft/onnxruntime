@@ -66,7 +66,6 @@ struct Params {
   int top_k;
   int n;  // real output rows (2 * intermediate for FC1)
   int k;
-  int block_size = kBlockSize;
   float alpha;
   float beta;
   float limit;
@@ -582,13 +581,12 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcCoalescedKernel(c
 // the register footprint. The partial sums are kept per K partition (the super-steps s % kKPartitions, as in the
 // K-split kernel this schedule replaces) and added in partition order, so the results are bit-identical to it.
 // FC2 (one super-step plus a remainder) requests the weights of all its m-blocks up front.
-template <bool kSwiglu, int kWarps, int kM, int kMinCtas = 2, int kQuantBlock = kBlockSize>
+template <bool kSwiglu, int kWarps, int kM, int kMinCtas = 2>
 __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Params p) {
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
   static_assert(!kSwiglu || kM % 2 == 0, "the FC1 schedule handles items in pairs");
   constexpr int kThreads = kWarps * 32;
   constexpr int kTileN = kWarps * kM * 16;
-  constexpr int kScaleWords = 64 / kQuantBlock;
 
   const int lane = threadIdx.x & 31;
   const int warp = threadIdx.x >> 5;
@@ -659,12 +657,12 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
   const int nss = k / kStepK;
   const int rem = (k / 128) & 3;  // 128-code chunks past the last super-step, split over the quad as 32-code units
   const int64_t row_bytes = static_cast<int64_t>(k) * 3 / 8;
-  const int nb = k / kQuantBlock;
+  const int nb = k / kBlockSize;
   const int tile_row0 = blockIdx.y * kTileN;
   const int row_base = tile_row0 + warp * (kM * 16);
   const int64_t wrow = static_cast<int64_t>(expert) * n + row_base + 2 * g;
   const uint8_t* wptr = p.weights + wrow * row_bytes + 48 * t;
-  const __nv_bfloat16* sptr = p.scales + wrow * nb + (128 / kQuantBlock) * t;
+  const __nv_bfloat16* sptr = p.scales + wrow * nb + 2 * t;
 
   extern __shared__ uint4 smem_u4[];
   uint8_t* smem = reinterpret_cast<uint8_t*>(smem_u4);
@@ -673,8 +671,8 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
   constexpr int kSets = kSwiglu ? 2 : kM;
   uint32_t we[kSets][12];
   uint32_t wo[kSets][12];
-  uint32_t se[kSets][kScaleWords];
-  uint32_t so[kSets][kScaleWords];
+  uint32_t se[kSets];
+  uint32_t so[kSets];
   auto load_mb = [&](int set, int mb, int s) {
     const uint8_t* pe = wptr + static_cast<int64_t>(mb) * 16 * row_bytes + s * 192;
     const uint8_t* po = pe + row_bytes;
@@ -691,12 +689,8 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
       wo[set][4 * i + 2] = vo.z;
       wo[set][4 * i + 3] = vo.w;
     }
-#pragma unroll
-    for (int scale_word = 0; scale_word < kScaleWords; ++scale_word) {
-      const auto* scales = sptr + static_cast<int64_t>(mb) * 16 * nb + (kStepK / kQuantBlock) * s + 2 * scale_word;
-      se[set][scale_word] = LoadWord(scales);
-      so[set][scale_word] = LoadWord(scales + nb);
-    }
+    se[set] = LoadWord(sptr + static_cast<int64_t>(mb) * 16 * nb + 8 * s);
+    so[set] = LoadWord(sptr + static_cast<int64_t>(mb) * 16 * nb + nb + 8 * s);
   };
   if (nss > 0) {
     if constexpr (kSwiglu) {
@@ -807,9 +801,8 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
         for (int q = 0; q < 4; ++q) {
           bp[q] = *reinterpret_cast<const uint4*>(b_ss + (unit * 4 + q) * 128);
         }
-        const int scale_index = 32 * unit / kQuantBlock;
-        const uint32_t se_u = __byte_perm(se[set][scale_index / 2], 0, (scale_index & 1) == 0 ? 0x1010 : 0x3232);
-        const uint32_t so_u = __byte_perm(so[set][scale_index / 2], 0, (scale_index & 1) == 0 ? 0x1010 : 0x3232);
+        const uint32_t se_u = __byte_perm(se[set], 0, unit < 2 ? 0x1010 : 0x3232);
+        const uint32_t so_u = __byte_perm(so[set], 0, unit < 2 ? 0x1010 : 0x3232);
         GroupMma<0>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[0]);
         GroupMma<1>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[1]);
         GroupMma<2>(a, &we[set][3 * unit], &wo[set][3 * unit], se_u, so_u, bp[2]);
@@ -890,9 +883,8 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
         }
 #pragma unroll
         for (int mb = 0; mb < kM; ++mb) {
-          const int scale_index = 32 * unit / kQuantBlock;
-          const uint32_t se_u = __byte_perm(se[mb][scale_index / 2], 0, (scale_index & 1) == 0 ? 0x1010 : 0x3232);
-          const uint32_t so_u = __byte_perm(so[mb][scale_index / 2], 0, (scale_index & 1) == 0 ? 0x1010 : 0x3232);
+          const uint32_t se_u = __byte_perm(se[mb], 0, unit < 2 ? 0x1010 : 0x3232);
+          const uint32_t so_u = __byte_perm(so[mb], 0, unit < 2 ? 0x1010 : 0x3232);
           GroupMma<0>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[0]);
           GroupMma<1>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[1]);
           GroupMma<2>(acc[mb], &we[mb][3 * unit], &wo[mb][3 * unit], se_u, so_u, bp[2]);
@@ -923,8 +915,7 @@ __global__ void __launch_bounds__(kWarps * 32, kMinCtas) Int3TcKernel(const Para
           rwe[mb][c] = LoadWord(pe + 4 * c);
           rwo[mb][c] = LoadWord(po + 4 * c);
         }
-        const __nv_bfloat16* sb = sptr - (128 / kQuantBlock) * t + static_cast<int64_t>(mb) * 16 * nb +
-                                  (kStepK / kQuantBlock) * nss + 32 * q / kQuantBlock;
+        const __nv_bfloat16* sb = sptr - 2 * t + static_cast<int64_t>(mb) * 16 * nb + 8 * nss + (q >> 1);
         const uint32_t s_e = LoadHalfWord(sb);
         const uint32_t s_o = LoadHalfWord(sb + nb);
         rse[mb] = s_e | (s_e << 16);
@@ -1047,13 +1038,8 @@ inline cudaError_t LaunchFc1(const Params& fc1, int hidden, int grid_x, bool tc_
   } else {
     EnsureInt3TcCarveout();
     const dim3 grid(static_cast<unsigned>(grid_x), static_cast<unsigned>(fc1.n / kFc1TileN));
-    if (fc1.block_size == 32) {
-      Int3TcKernel<true, kFc1Warps, kFc1M, kFc1MinCtas, 32>
-          <<<grid, kFc1Warps * 32, static_cast<size_t>(hidden) * 16, stream>>>(fc1);
-    } else {
-      Int3TcKernel<true, kFc1Warps, kFc1M, kFc1MinCtas>
-          <<<grid, kFc1Warps * 32, static_cast<size_t>(hidden) * 16, stream>>>(fc1);
-    }
+    Int3TcKernel<true, kFc1Warps, kFc1M, kFc1MinCtas>
+        <<<grid, kFc1Warps * 32, static_cast<size_t>(hidden) * 16, stream>>>(fc1);
   }
   return cudaGetLastError();
 }
@@ -1075,13 +1061,8 @@ inline cudaError_t LaunchFc2(const Params& fc2, int intermediate, int grid_x, bo
     }
   } else {
     EnsureInt3TcCarveout();
-    if (fc2.block_size == 32) {
-      Int3TcKernel<false, kFc2Warps, kFc2M, kFc2MinCtas, 32>
-          <<<grid, kFc2Warps * 32, static_cast<size_t>(intermediate) * 16, stream>>>(fc2);
-    } else {
-      Int3TcKernel<false, kFc2Warps, kFc2M, kFc2MinCtas>
-          <<<grid, kFc2Warps * 32, static_cast<size_t>(intermediate) * 16, stream>>>(fc2);
-    }
+    Int3TcKernel<false, kFc2Warps, kFc2M, kFc2MinCtas>
+        <<<grid, kFc2Warps * 32, static_cast<size_t>(intermediate) * 16, stream>>>(fc2);
   }
   return cudaGetLastError();
 }
@@ -1144,7 +1125,6 @@ inline bool TryLaunchBf16(const Int3MoeParams& params, cudaStream_t stream, cuda
   fc1.top_k = params.top_k;
   fc1.n = 2 * params.intermediate;
   fc1.k = params.hidden;
-  fc1.block_size = params.block_size;
   fc1.alpha = params.alpha;
   fc1.beta = params.beta;
   fc1.limit = params.limit;
@@ -1168,7 +1148,6 @@ inline bool TryLaunchBf16(const Int3MoeParams& params, cudaStream_t stream, cuda
   fc2.top_k = params.top_k;
   fc2.n = params.hidden;
   fc2.k = params.intermediate;
-  fc2.block_size = params.block_size;
 
   status = LaunchFc2(fc2, params.intermediate, static_cast<int>(total_routes), params.tc_prepacked, stream);
   return true;
@@ -1179,8 +1158,7 @@ inline bool TryLaunchBf16Grouped(const Int3MoeParams& params, const int* sorted_
                                  int max_tiles, cudaStream_t stream, cudaError_t& status) {
   const int64_t total_routes = TotalRoutes(params);
   // The grouped kernels read the raw weight layout; prepacked weights only exist for the one-CTA-per-route kernels.
-  if (!params.is_bfloat16 || params.fc1.bits != 3 || params.fc2.bits != 3 ||
-      (params.block_size != kBlockSize && params.block_size != 32) ||
+  if (!params.is_bfloat16 || params.fc1.bits != 3 || params.fc2.bits != 3 || params.block_size != kBlockSize ||
       params.router_weights != nullptr || params.tc_prepacked || max_tiles <= 0 || max_tiles > 65535 ||
       params.hidden % kStepK != 0 || params.intermediate % 128 != 0 ||
       static_cast<int64_t>(params.hidden) * 16 > kMaxSharedBytes ||
@@ -1196,12 +1174,8 @@ inline bool TryLaunchBf16Grouped(const Int3MoeParams& params, const int* sorted_
   }
 
   cudaFuncAttributes fc1_attributes{}, fc2_attributes{};
-  const auto fc1_kernel = params.block_size == 32 ? Int3TcKernel<true, kFc1Warps, kFc1M, kFc1MinCtas, 32>
-                                                  : Int3TcKernel<true, kFc1Warps, kFc1M, kFc1MinCtas>;
-  const auto fc2_kernel = params.block_size == 32 ? Int3TcKernel<false, kFc2Warps, kFc2M, kFc2MinCtas, 32>
-                                                  : Int3TcKernel<false, kFc2Warps, kFc2M, kFc2MinCtas>;
-  if (cudaFuncGetAttributes(&fc1_attributes, fc1_kernel) != cudaSuccess ||
-      cudaFuncGetAttributes(&fc2_attributes, fc2_kernel) != cudaSuccess ||
+  if (cudaFuncGetAttributes(&fc1_attributes, Int3TcKernel<true, kFc1Warps, kFc1M, kFc1MinCtas>) != cudaSuccess ||
+      cudaFuncGetAttributes(&fc2_attributes, Int3TcKernel<false, kFc2Warps, kFc2M, kFc2MinCtas>) != cudaSuccess ||
       fc1_attributes.ptxVersion < 80 || fc2_attributes.ptxVersion < 80) {
     (void)cudaGetLastError();
     return false;
@@ -1224,7 +1198,6 @@ inline bool TryLaunchBf16Grouped(const Int3MoeParams& params, const int* sorted_
   fc1.top_k = params.top_k;
   fc1.n = 2 * params.intermediate;
   fc1.k = params.hidden;
-  fc1.block_size = params.block_size;
   fc1.alpha = params.alpha;
   fc1.beta = params.beta;
   fc1.limit = params.limit;
@@ -1251,7 +1224,6 @@ inline bool TryLaunchBf16Grouped(const Int3MoeParams& params, const int* sorted_
   fc2.top_k = params.top_k;
   fc2.n = params.hidden;
   fc2.k = params.intermediate;
-  fc2.block_size = params.block_size;
 
   status = LaunchFc2(fc2, params.intermediate, max_tiles, /*tc_prepacked=*/false, stream);
   return true;

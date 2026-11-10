@@ -21,7 +21,7 @@ from unittest.mock import patch
 import numpy
 import torch
 from einops import rearrange, repeat
-from onnx import TensorProto, helper, load_model_from_string
+from onnx import TensorProto, helper
 from packaging import version
 from parameterized import parameterized
 
@@ -3435,122 +3435,6 @@ class TestPagedAttentionXqaSpeculative(unittest.TestCase):
     def test_spec_dec_native_fp16_cache(self):
         with patch.dict(os.environ, {"ORT_ENABLE_XQA_NATIVE_KV": "1"}):
             self._check(kv_cache_type="float16", k_quant_type="NONE", v_quant_type="NONE", expect_xqa=True)
-
-    @parameterized.expand(
-        [(f"q{width}_full", width, -1, 1024, True, True) for width in range(2, 9)]
-        + [
-            ("local", 8, 64, 1024, True, True),
-            ("32k", 8, -1, 32768, True, True),
-            ("128k", 8, -1, 131072, True, True),
-            ("native_off", 8, -1, 1024, False, True),
-            ("noncausal_fallback", 8, -1, 1024, True, False),
-            ("q9_fallback", 9, -1, 1024, True, True),
-            ("local_native_off", 8, 64, 1024, False, True),
-        ]
-    )
-    def test_spec_dec_native_bf16_h128(self, _, query_width, window, context, native_enabled, causal):
-        config = Config(3, query_width, context, 12, 2, 128, 128, window >= 0, False, False, False, 0.0)
-        config.use_attention_metadata = True
-        config.is_causal = causal
-        new_lengths = [0, query_width, 1]
-        past_lengths = [context - 9, context - query_width, context - query_width - 5]
-        token_count = sum(new_lengths)
-        pages = math.ceil(context / config.paged_kv_block_size)
-        num_blocks = config.batch_size * pages + 5
-        model = load_model_from_string(
-            create_paged_attention_graph(config, token_count, num_blocks, pages, local_window_size=window)
-        )
-        for value_info in list(model.graph.input) + list(model.graph.output):
-            if value_info.type.tensor_type.elem_type == TensorProto.FLOAT16:
-                value_info.type.tensor_type.elem_type = TensorProto.BFLOAT16
-
-        query = torch.randn(token_count, config.num_heads * config.head_size, device="cuda", dtype=torch.bfloat16)
-        key = torch.randn(token_count, config.kv_num_heads * config.head_size, device="cuda", dtype=torch.bfloat16)
-        value = torch.arange(1, token_count + 1, device="cuda", dtype=torch.float32)
-        value = (
-            (16 * value[:, None])
-            .expand(token_count, config.kv_num_heads * config.head_size)
-            .to(torch.bfloat16)
-            .contiguous()
-        )
-        cache_shape = (num_blocks, config.paged_kv_block_size, config.kv_num_heads, config.head_size)
-        key_cache = torch.randn(cache_shape, device="cuda", dtype=torch.bfloat16)
-        value_cache = torch.randn(cache_shape, device="cuda", dtype=torch.bfloat16)
-        block_table = torch.randperm(num_blocks, device="cuda")[: config.batch_size * pages]
-        block_table = block_table.reshape(config.batch_size, pages).to(torch.int32)
-        cumulative = numpy.cumsum([0, *new_lengths], dtype=numpy.int32)
-        for batch, length in enumerate(new_lengths):
-            unused = torch.arange(past_lengths[batch] + length, pages * config.paged_kv_block_size, device="cuda")
-            blocks = block_table[batch, unused // config.paged_kv_block_size].long()
-            value_cache[blocks, unused % config.paged_kv_block_size] = 64
-        expected_key = key_cache.clone()
-        expected_value = value_cache.clone()
-        expected_output = torch.empty_like(query)
-        for batch, length in enumerate(new_lengths):
-            if length == 0:
-                continue
-            start = int(cumulative[batch])
-            positions = past_lengths[batch] + torch.arange(length, device="cuda")
-            blocks = block_table[batch, positions // config.paged_kv_block_size].long()
-            offsets = positions % config.paged_kv_block_size
-            expected_key[blocks, offsets] = key[start : start + length].reshape(
-                length, config.kv_num_heads, config.head_size
-            )
-            expected_value[blocks, offsets] = value[start : start + length].reshape(
-                length, config.kv_num_heads, config.head_size
-            )
-            total = past_lengths[batch] + length
-            physical_pages = block_table[batch].long()
-            dense_key = expected_key[physical_pages].reshape(-1, config.kv_num_heads, config.head_size)[:total]
-            dense_value = expected_value[physical_pages].reshape(-1, config.kv_num_heads, config.head_size)[:total]
-            query_rows = query[start : start + length].reshape(length, config.num_heads, config.head_size).float()
-            keys = dense_key.float().repeat_interleave(6, dim=1)
-            values = dense_value.float().repeat_interleave(6, dim=1)
-            scores = torch.einsum("qhd,khd->hqk", query_rows, keys) / math.sqrt(config.head_size)
-            key_positions = torch.arange(total, device="cuda")
-            visible = (
-                key_positions[None, :] <= positions[:, None]
-                if causal
-                else torch.ones((length, total), device="cuda", dtype=torch.bool)
-            )
-            if window >= 0:
-                visible &= key_positions[None, :] >= positions[:, None] - window + 1
-            scores.masked_fill_(~visible[None], float("-inf"))
-            reference = torch.einsum("hqk,khd->qhd", torch.softmax(scores, dim=-1), values)
-            expected_output[start : start + length] = reference.reshape(length, -1).to(torch.bfloat16)
-
-        environment = {
-            "ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO": "1",
-            "ORT_ENABLE_XQA": "1",
-            "ORT_ENABLE_XQA_NATIVE_KV": "1" if native_enabled else "0",
-        }
-        with patch.dict(os.environ, environment):
-            session = InferenceSession(model.SerializeToString(), providers=["CUDAExecutionProvider"])
-            binding = session.io_binding()
-            tensors = {"query": query, "key": key, "value": value, "key_cache": key_cache, "value_cache": value_cache}
-            for name, tensor in tensors.items():
-                binding.bind_input(name, "cuda", 0, TensorProto.BFLOAT16, tuple(tensor.shape), tensor.data_ptr())
-            cpu_inputs = {
-                "cumulative_sequence_length": cumulative,
-                "past_seqlens": numpy.asarray(past_lengths, dtype=numpy.int32),
-                "block_table": block_table.cpu().numpy(),
-                "attention_metadata": numpy.asarray([query_width, context], dtype=numpy.int32),
-            }
-            for name, array in cpu_inputs.items():
-                binding.bind_cpu_input(name, array)
-            output = torch.empty_like(query)
-            for name, tensor in (("output", output), ("key_cache_out", key_cache), ("value_cache_out", value_cache)):
-                binding.bind_output(name, "cuda", 0, TensorProto.BFLOAT16, tuple(tensor.shape), tensor.data_ptr())
-            torch.cuda.synchronize()
-            debug_output = capture_native_stdout(lambda: session.run_with_iobinding(binding))
-            torch.cuda.synchronize()
-        torch.testing.assert_close(output, expected_output, rtol=2e-2, atol=2e-2)
-        torch.testing.assert_close(key_cache, expected_key, rtol=0, atol=0)
-        torch.testing.assert_close(value_cache, expected_value, rtol=0, atol=0)
-        if native_enabled and causal and query_width <= 8:
-            self.assertIn("SdpaKernel=XQA", debug_output)
-        else:
-            self.assertNotIn("SdpaKernel=XQA", debug_output)
 
     def test_bound_above_specialization_falls_back(self):
         # A query bound of 9 is outside the 2..8 window, so this must land on the ragged backend
