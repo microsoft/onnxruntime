@@ -147,7 +147,7 @@ jobs:
           retention-days: 1
 
   test_x64_RelWithDebInfo:
-    name: Windows GPU DML CI Pipeline
+    name: Windows DML GPU Tests
     needs: build_x64_RelWithDebInfo
     runs-on: [ort-github-win-6-a10-scus-ss]
     timeout-minutes: 210
@@ -213,3 +213,28 @@ jobs:
             --use_vcpkg `
             --use_vcpkg_ms_internal_asset_cache
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  dml_results:
+    # Keep the required check failing when either dependency fails or is skipped.
+    name: Windows GPU DML CI Pipeline
+    needs:
+      - build_x64_RelWithDebInfo
+      - test_x64_RelWithDebInfo
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check build and test results
+        env:
+          BUILD_RESULT: ${{ needs.build_x64_RelWithDebInfo.result }}
+          TEST_RESULT: ${{ needs.test_x64_RelWithDebInfo.result }}
+        shell: bash
+        run: |
+          if [[ "$BUILD_RESULT" != "success" ]]; then
+            echo "::error::DirectML build result: $BUILD_RESULT"
+            exit 1
+          fi
+
+          if [[ "$TEST_RESULT" != "success" ]]; then
+            echo "::error::DirectML test result: $TEST_RESULT"
+            exit 1
+          fi
