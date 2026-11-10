@@ -443,11 +443,12 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
     set(_plugin_llm_extra_compile_options)
     if(MSVC)
       onnxruntime_filter_cuda_archs(_plugin_llm_cuda_architectures MIN_SM 75 REPLACE_SM120_REAL_WITH_VIRTUAL
-                                    REPLACED_SM120_CCS _plugin_llm_sm120_native_ccs)
+                                    REPLACED_SM120_CCS _plugin_llm_sm120_replaced_ccs)
       # Virtual compute_<cc> PTX alone needs a driver as new as the toolkit to JIT; add native non-"a" SASS
-      # (no tcgen05 path) so the ordinary LLM kernels (fpA_intB GEMV/GEMM) run without JIT. Do this for
-      # every requested native SM12x entry the filter turned into PTX, in any spelling ("120", "120a",
-      # "120f", "120f-real", "121a", ...).
+      # (no tcgen05 path) so the ordinary LLM kernels (fpA_intB GEMV/GEMM) run without JIT. Do this for the
+      # requested native SM12x entries the filter turned into PTX, in any spelling ("120", "120a", "120f",
+      # "120f-real", "121a", ...). sm_120 SASS also runs on 12.1, so "120;121" only needs sm_120.
+      onnxruntime_cuda_lowest_cc_per_major(_plugin_llm_sm120_native_ccs ${_plugin_llm_sm120_replaced_ccs})
       foreach(_plugin_llm_cc IN LISTS _plugin_llm_sm120_native_ccs)
         list(APPEND _plugin_llm_extra_compile_options
              "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-gencode=arch=compute_${_plugin_llm_cc},code=sm_${_plugin_llm_cc}>")

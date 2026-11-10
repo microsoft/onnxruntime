@@ -251,7 +251,8 @@ endfunction()
 #       [REUSE_SM80_SASS])
 #
 # REPLACED_SM120_CCS receives the compute capabilities (e.g. "120;121") of the SM120+ entries that
-# REPLACE_SM120_REAL_WITH_VIRTUAL turned into PTX, so callers can add non-"a" native SASS for them.
+# REPLACE_SM120_REAL_WITH_VIRTUAL turned into PTX, so callers can add non-"a" native SASS that covers them
+# (onnxruntime_cuda_lowest_cc_per_major gives the smallest such set).
 #
 # REUSE_SM80_SASS drops the SM86 and SM89 SASS entries when SM80 SASS is also requested and kept (MIN_SM
 # is at most 80): a cubin for compute capability 8.0 runs on 8.6 and 8.9 GPUs. Only use it for sources that

@@ -215,6 +215,22 @@ message(STATUS "RESULT SM12X=${ORT_HAS_SM12X}")
         # Kernels for SM80/SM86/SM89 are compiled for the SM87 and later entries, so nothing is excluded.
         self.assertEqual([d for d in definitions if d.startswith("EXCLUDE_SM_")], [])
 
+    def test_lowest_cc_per_major_keeps_one_compute_capability_per_major_version(self):
+        results = self._configure(
+            "90",
+            """
+onnxruntime_cuda_lowest_cc_per_major(none)
+onnxruntime_cuda_lowest_cc_per_major(one 121)
+onnxruntime_cuda_lowest_cc_per_major(several 121 103 120 100 121)
+message(STATUS "RESULT NONE=${none}")
+message(STATUS "RESULT ONE=${one}")
+message(STATUS "RESULT SEVERAL=${several}")
+""",
+        )
+        self.assertEqual(results["NONE"], "")
+        self.assertEqual(results["ONE"], "121")
+        self.assertEqual(results["SEVERAL"], "100;120")
+
     def test_family_specific_architectures_report_the_required_cmake_version(self):
         # CMake rejects the "f" suffix in CMAKE_CUDA_ARCHITECTURES before 3.31.8 and 4.0.2, when CUDA is enabled.
         # setup_cuda_architectures() reports that up front; pretend to be another CMake version to check it.

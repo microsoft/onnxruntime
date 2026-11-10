@@ -152,6 +152,28 @@ function(onnxruntime_cuda_archs_have_code OUTPUT_VAR MIN_CC)
   set(${OUTPUT_VAR} ${_result} PARENT_SCOPE)
 endfunction()
 
+# Set OUTPUT_VAR to the lowest compute capability of each major version in ARGN, in ascending order
+# (for example "120" for "121;120", and "100;120" for "103;121;100;120"). Except on Tegra, non-"a"
+# SASS for sm_<cc> also runs on the later minor versions of its major version (sm_120 runs on 12.1),
+# so native SASS for these compute capabilities covers every compute capability in ARGN.
+#
+# Usage:
+#   onnxruntime_cuda_lowest_cc_per_major(<output_var> <cc>...)
+function(onnxruntime_cuda_lowest_cc_per_major OUTPUT_VAR)
+  set(_ccs ${ARGN})
+  list(SORT _ccs COMPARE NATURAL)
+  set(_result)
+  set(_majors)
+  foreach(_cc IN LISTS _ccs)
+    math(EXPR _major "${_cc} / 10")
+    if(NOT _major IN_LIST _majors)
+      list(APPEND _majors ${_major})
+      list(APPEND _result ${_cc})
+    endif()
+  endforeach()
+  set(${OUTPUT_VAR} "${_result}" PARENT_SCOPE)
+endfunction()
+
 macro(setup_cuda_architectures)
   # cmake-format: off
   # Initialize and normalize CMAKE_CUDA_ARCHITECTURES before enabling CUDA.
