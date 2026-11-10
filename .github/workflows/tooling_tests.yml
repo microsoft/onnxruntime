@@ -21,7 +21,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2025]
+        os:
+        - ubuntu-24.04
+        - windows-2022  # Use this image because some tests hardcode use of the CMake VS2022 generator.
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
