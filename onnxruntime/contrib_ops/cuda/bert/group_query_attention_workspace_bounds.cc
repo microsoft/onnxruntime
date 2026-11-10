@@ -94,6 +94,7 @@ GQAWorkspaceProblem MakeProblem(const GQAWorkspaceBounds& bounds,
   problem.do_rotary = bounds.do_rotary;
   problem.is_packed_qkv = bounds.is_packed_qkv;
   problem.use_qk_norm = bounds.use_qk_norm;
+  problem.has_query_seqlens = bounds.has_query_seqlens;
   return problem;
 }
 
@@ -390,6 +391,27 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
   if (aggregate.status.IsOK() &&
       aggregate.sized_backends == GQAReachableBackend::None) {
     aggregate.status = Unavailable("No GQA backend route can be sized.");
+  }
+
+  // A non-windowed step that finds exactly one past/present K/V pair aliasing
+  // copies the full past cache into preservation scratch before the backend
+  // runs (group_query_attention.cc separate_past_buffer). That copy coexists
+  // with the selected route's workspace, so charge its worst case on top of the
+  // per-route maximum. present_kv_cache_capacity_bound covers the full allocated
+  // past capacity, which can exceed the active total KV length for a static cache.
+  // The stored per-head extent (halved for 4-bit) never exceeds head_size_bound.
+  if (aggregate.status.IsOK() && bounds.account_partial_alias_preservation) {
+    size_t preservation = 0;
+    auto status = Mul4(static_cast<size_t>(bounds.batch_size_bound),
+                       static_cast<size_t>(bounds.kv_num_heads),
+                       static_cast<size_t>(bounds.present_kv_cache_capacity_bound),
+                       static_cast<size_t>(bounds.head_size_bound), preservation);
+    if (status.IsOK()) status = Mul(preservation, bounds.cache_element_size, preservation);
+    if (status.IsOK()) {
+      status = Add(aggregate.total_workspace_bytes, preservation,
+                   aggregate.total_workspace_bytes);
+    }
+    if (!status.IsOK()) aggregate.status = status;
   }
   return aggregate;
 }

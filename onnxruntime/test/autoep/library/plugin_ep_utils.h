@@ -127,6 +127,19 @@ inline OrtStatus* GetSessionConfigEntryOrDefault(const OrtSessionOptions& sessio
   return nullptr;
 }
 
+inline OrtStatus* GetSessionConfigBoolOrDefault(const OrtSessionOptions& session_options,
+                                                const char* config_key, bool default_val,
+                                                /*out*/ bool& config_val) {
+  std::string value;
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(session_options, config_key, default_val ? "1" : "0", value));
+  if (value != "0" && value != "1") {
+    const std::string message = std::string(config_key) + " must be '0' or '1'.";
+    return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, message.c_str());
+  }
+  config_val = value == "1";
+  return nullptr;
+}
+
 // Returns true (via output parameter) if the given OrtValueInfo represents a float tensor.
 inline void IsFloatTensor(Ort::ConstValueInfo value_info, bool& result) {
   result = false;

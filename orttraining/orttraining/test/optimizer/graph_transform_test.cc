@@ -793,6 +793,27 @@ TEST_F(GraphTransformationTests, CastSceLossFusion) {
   ASSERT_EQ(op_to_count["Cast"], 9);
 }
 
+TEST_F(GraphTransformationTests, CastSceLossFusionWithGraphInput) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* scores = builder.MakeInput<float>({{2, 3}});
+    auto* labels = builder.MakeInput<int64_t>({{2}});
+    auto* loss = builder.MakeOutput<float>(std::vector<int64_t>{});
+    auto* log_prob = builder.MakeOutput<float>(std::vector<int64_t>{2, 3});
+    builder.AddNode("SoftmaxCrossEntropyLossInternal", {scores, labels}, {loss, log_prob}, kMSDomain)
+        .AddAttribute("reduction", "mean");
+  };
+
+  auto check_unchanged = [](Graph& graph) {
+    const auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count.at("com.microsoft.SoftmaxCrossEntropyLossInternal") == 1);
+    TEST_RETURN_IF(op_count.count("Cast") != 0);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::make_unique<CastSceLossFusion>(),
+                                        TransformerLevel::Level2, 1, check_unchanged, check_unchanged));
+}
+
 Node* GetNodeByName(Graph& graph, std::string node_name) {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
@@ -866,6 +887,27 @@ TEST_F(GraphTransformationTests, TransposeReplacement) {
     ASSERT_EQ(op_to_count["Transpose"], 1);
     ASSERT_EQ(op_to_count["Reshape"], 0);
   }
+}
+
+TEST_F(GraphTransformationTests, TransposeReplacementWithoutPerm) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{2, 3}});
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Transpose", {input}, {output});
+  };
+
+  auto check_not_replaced = [](Graph& graph) {
+    const auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count.at("Transpose") == 1);
+    TEST_RETURN_IF(op_count.count("Reshape") != 0);
+    return Status::OK();
+  };
+
+  auto transformer = std::make_unique<RuleBasedGraphTransformer>("TransposeReplacement");
+  ASSERT_STATUS_OK(transformer->Register(std::make_unique<TransposeReplacement>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer),
+                                        TransformerLevel::Level1, 1,
+                                        check_not_replaced, check_not_replaced));
 }
 
 TEST_F(GraphTransformationTests, MegatronMLPPartitionRank0) {
@@ -1207,10 +1249,13 @@ TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionWithoutCas
 
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  TypeProto tensor_float_matrix = tensor_float;
+  tensor_float_matrix.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+  tensor_float_matrix.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
   TypeProto tensor_int;
   tensor_int.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
-  onnxruntime::NodeArg x_def("X", &tensor_float);
-  onnxruntime::NodeArg ls_out_def("ls_out", &tensor_float);
+  onnxruntime::NodeArg x_def("X", &tensor_float_matrix);
+  onnxruntime::NodeArg ls_out_def("ls_out", &tensor_float_matrix);
   onnxruntime::NodeArg target_def("target", &tensor_int);
   onnxruntime::NodeArg weight_def("weight", &tensor_float);
   onnxruntime::NodeArg ignore_index_def("ignore_index", &tensor_int);
@@ -1243,13 +1288,19 @@ TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionWithCast) 
 
   TypeProto tensor_half;
   tensor_half.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
+  TypeProto tensor_half_matrix = tensor_half;
+  tensor_half_matrix.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+  tensor_half_matrix.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  TypeProto tensor_float_matrix = tensor_float;
+  tensor_float_matrix.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+  tensor_float_matrix.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
   TypeProto tensor_int;
   tensor_int.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
-  onnxruntime::NodeArg x_def("X", &tensor_half);
-  onnxruntime::NodeArg ls_out_def("ls_out", &tensor_half);
-  onnxruntime::NodeArg ct_out_def("ct_out", &tensor_float);
+  onnxruntime::NodeArg x_def("X", &tensor_half_matrix);
+  onnxruntime::NodeArg ls_out_def("ls_out", &tensor_half_matrix);
+  onnxruntime::NodeArg ct_out_def("ct_out", &tensor_float_matrix);
   onnxruntime::NodeArg target_def("target", &tensor_int);
   onnxruntime::NodeArg weight_def("weight", &tensor_float);
   onnxruntime::NodeArg ignore_index_def("ignore_index", &tensor_int);
@@ -1276,6 +1327,161 @@ TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionWithCast) 
   ASSERT_TRUE(op_to_count["LogSoftmax"] == 0);
   ASSERT_TRUE(op_to_count["com.microsoft.NegativeLogLikelihoodLossInternal"] == 0);
   ASSERT_TRUE(op_to_count["com.microsoft.SoftmaxCrossEntropyLossInternal"] == 1);
+}
+
+TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionGuards) {
+  struct TestCase {
+    int64_t axis;
+    bool public_log_prob;
+    bool should_fuse;
+  };
+
+  for (const auto test_case :
+       {TestCase{1, false, true}, TestCase{-1, false, true}, TestCase{0, false, false},
+        TestCase{1, true, false}}) {
+    auto build_test_case = [test_case](ModelTestBuilder& builder) {
+      auto* scores = builder.MakeInput<float>({{2, 3}});
+      auto* labels = builder.MakeInput<int64_t>({{2}});
+      NodeArg* log_prob = test_case.public_log_prob
+                              ? builder.MakeOutput<float>(std::vector<int64_t>{2, 3})
+                              : builder.MakeIntermediate<float>({{2, 3}});
+      auto* loss = builder.MakeOutput<float>(std::vector<int64_t>{});
+      builder.AddNode("LogSoftmax", {scores}, {log_prob}).AddAttribute("axis", test_case.axis);
+      builder.AddNode("NegativeLogLikelihoodLossInternal", {log_prob, labels}, {loss}, kMSDomain)
+          .AddAttribute("reduction", "mean");
+    };
+
+    auto check_before = [](Graph& graph) {
+      const auto op_count = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_count.at("LogSoftmax") == 1);
+      TEST_RETURN_IF_NOT(op_count.at("com.microsoft.NegativeLogLikelihoodLossInternal") == 1);
+      return Status::OK();
+    };
+    auto check_after = [test_case](Graph& graph) {
+      const auto op_count = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_count.count("LogSoftmax") == (test_case.should_fuse ? 0U : 1U));
+      TEST_RETURN_IF_NOT(op_count.count("com.microsoft.NegativeLogLikelihoodLossInternal") ==
+                         (test_case.should_fuse ? 0U : 1U));
+      TEST_RETURN_IF_NOT(op_count.count("com.microsoft.SoftmaxCrossEntropyLossInternal") ==
+                         (test_case.should_fuse ? 1U : 0U));
+      return Status::OK();
+    };
+
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_,
+                                          std::make_unique<SoftmaxCrossEntropyLossInternalFusion>(),
+                                          TransformerLevel::Level1, 1, check_before, check_after));
+  }
+}
+
+TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionPre13RequiresRankTwo) {
+  for (const auto& scores_shape : {std::vector<int64_t>{2, 3}, std::vector<int64_t>{2, 3, 4}}) {
+    const bool should_fuse = scores_shape.size() == 2;
+    auto build_test_case = [scores_shape](ModelTestBuilder& builder) {
+      auto labels_shape = scores_shape;
+      labels_shape.erase(labels_shape.begin() + 1);
+      auto* scores = builder.MakeInput<float>(scores_shape);
+      auto* labels = builder.MakeInput<int64_t>(labels_shape);
+      auto* log_prob = builder.MakeIntermediate<float>(scores_shape);
+      auto* loss = builder.MakeOutput<float>(std::vector<int64_t>{});
+      builder.AddNode("LogSoftmax", {scores}, {log_prob}).AddAttribute("axis", int64_t{1});
+      builder.AddNode("NegativeLogLikelihoodLossInternal", {log_prob, labels}, {loss}, kMSDomain)
+          .AddAttribute("reduction", "mean");
+    };
+
+    auto check_after = [should_fuse](Graph& graph) {
+      const auto op_count = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(OpCount(op_count, "LogSoftmax") == (should_fuse ? 0 : 1));
+      TEST_RETURN_IF_NOT(OpCount(op_count, "com.microsoft.NegativeLogLikelihoodLossInternal") ==
+                         (should_fuse ? 0 : 1));
+      TEST_RETURN_IF_NOT(OpCount(op_count, "com.microsoft.SoftmaxCrossEntropyLossInternal") ==
+                         (should_fuse ? 1 : 0));
+      return Status::OK();
+    };
+
+    ASSERT_STATUS_OK(TestGraphTransformer(
+        build_test_case, 12, *logger_, std::make_unique<SoftmaxCrossEntropyLossInternalFusion>(),
+        TransformerLevel::Level1, 1, nullptr, check_after));
+  }
+}
+
+TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionPre13RejectsUnknownRank) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* scores = builder.MakeInput<float>(std::nullopt);
+    auto* labels = builder.MakeInput<int64_t>(std::nullopt);
+    auto* log_prob = builder.MakeIntermediate<float>(std::nullopt);
+    auto* loss = builder.MakeOutput<float>(std::vector<int64_t>{});
+    builder.AddNode("LogSoftmax", {scores}, {log_prob}).AddAttribute("axis", int64_t{1});
+    builder.AddNode("NegativeLogLikelihoodLossInternal", {log_prob, labels}, {loss}, kMSDomain)
+        .AddAttribute("reduction", "mean");
+  };
+
+  auto check_unchanged = [](Graph& graph) {
+    const auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(OpCount(op_count, "LogSoftmax") == 1);
+    TEST_RETURN_IF_NOT(OpCount(op_count, "com.microsoft.NegativeLogLikelihoodLossInternal") == 1);
+    TEST_RETURN_IF_NOT(OpCount(op_count, "com.microsoft.SoftmaxCrossEntropyLossInternal") == 0);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 12, *logger_, std::make_unique<SoftmaxCrossEntropyLossInternalFusion>(),
+      TransformerLevel::Level1, 1, check_unchanged, check_unchanged));
+}
+
+TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionRejectsSharedIntermediates) {
+  enum class SharedValue {
+    DirectLogSoftmaxOutput,
+    LogSoftmaxOutput,
+    CastOutput,
+    PublicCastOutput,
+  };
+
+  for (const auto shared_value : {SharedValue::DirectLogSoftmaxOutput, SharedValue::LogSoftmaxOutput,
+                                  SharedValue::CastOutput, SharedValue::PublicCastOutput}) {
+    auto build_test_case = [shared_value](ModelTestBuilder& builder) {
+      const bool use_cast = shared_value != SharedValue::DirectLogSoftmaxOutput;
+      const bool public_cast_output = shared_value == SharedValue::PublicCastOutput;
+      auto* scores = use_cast ? builder.MakeInput<MLFloat16>({{2, 3}}) : builder.MakeInput<float>({{2, 3}});
+      auto* labels = builder.MakeInput<int64_t>({{2}});
+      auto* log_prob = use_cast ? builder.MakeIntermediate<MLFloat16>({{2, 3}})
+                                : builder.MakeIntermediate<float>({{2, 3}});
+      NodeArg* nll_input = log_prob;
+      NodeArg* cast_log_prob = nullptr;
+      auto* loss = builder.MakeOutput<float>(std::vector<int64_t>{});
+
+      builder.AddNode("LogSoftmax", {scores}, {log_prob}).AddAttribute("axis", int64_t{-1});
+      if (use_cast) {
+        cast_log_prob = public_cast_output
+                            ? builder.MakeOutput<float>(std::vector<int64_t>{2, 3})
+                            : builder.MakeIntermediate<float>(std::vector<int64_t>{2, 3});
+        builder.AddNode("Cast", {log_prob}, {cast_log_prob})
+            .AddAttribute("to", static_cast<int64_t>(TensorProto_DataType_FLOAT));
+        nll_input = cast_log_prob;
+      }
+      builder.AddNode("NegativeLogLikelihoodLossInternal", {nll_input, labels}, {loss}, kMSDomain)
+          .AddAttribute("reduction", "mean");
+      if (!public_cast_output) {
+        auto* shared_output = builder.MakeOutput();
+        builder.AddNode("Identity",
+                        {shared_value == SharedValue::CastOutput ? cast_log_prob : log_prob},
+                        {shared_output});
+      }
+    };
+
+    auto check_unchanged = [shared_value](Graph& graph) {
+      const auto op_count = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(OpCount(op_count, "LogSoftmax") == 1);
+      TEST_RETURN_IF_NOT(OpCount(op_count, "Cast") ==
+                         (shared_value == SharedValue::DirectLogSoftmaxOutput ? 0 : 1));
+      TEST_RETURN_IF_NOT(OpCount(op_count, "com.microsoft.NegativeLogLikelihoodLossInternal") == 1);
+      TEST_RETURN_IF_NOT(OpCount(op_count, "com.microsoft.SoftmaxCrossEntropyLossInternal") == 0);
+      return Status::OK();
+    };
+
+    ASSERT_STATUS_OK(TestGraphTransformer(
+        build_test_case, 13, *logger_, std::make_unique<SoftmaxCrossEntropyLossInternalFusion>(),
+        TransformerLevel::Level1, 1, check_unchanged, check_unchanged));
+  }
 }
 
 class LSTMReplacementTestsParameterized : public GraphTransformationTests,
@@ -1456,7 +1662,7 @@ INSTANTIATE_TEST_SUITE_P(
         std::make_tuple(2, true, true)));
 
 class QDQFusionTestsParameterized : public GraphTransformationTests,
-                                    public ::testing::WithParamInterface<std::tuple<PathString>> {
+                                    public ::testing::WithParamInterface<std::tuple<PathString, int64_t, int64_t>> {
 };
 
 TEST_P(QDQFusionTestsParameterized, CheckModelComposition) {
@@ -1477,6 +1683,135 @@ TEST_P(QDQFusionTestsParameterized, CheckModelComposition) {
   ASSERT_EQ(op_to_count_post_fusion["QuantizeLinear"], 0);
   ASSERT_EQ(op_to_count_post_fusion["DequantizeLinear"], 0);
   ASSERT_EQ(op_to_count_post_fusion["com.microsoft.FakeQuant"], 1);
+
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "FakeQuant") {
+      EXPECT_EQ(node.GetAttributes().at("quant_min").i(), std::get<1>(GetParam()));
+      EXPECT_EQ(node.GetAttributes().at("quant_max").i(), std::get<2>(GetParam()));
+    }
+  }
+}
+
+TEST_F(GraphTransformationTests, QDQFusionPreservesPublicQuantizeOutput) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{2}});
+    auto* scale = builder.MakeScalarInitializer<float>(0.1f);
+    auto* zero_point = builder.MakeScalarInitializer<uint8_t>(0);
+    auto* quantized = builder.MakeOutput<uint8_t>(std::vector<int64_t>{2});
+    auto* output = builder.MakeOutput<float>(std::vector<int64_t>{2});
+    builder.AddNode("QuantizeLinear", {input, scale, zero_point}, {quantized});
+    builder.AddNode("DequantizeLinear", {quantized, scale, zero_point}, {output});
+  };
+
+  auto check_not_fused = [](Graph& graph) {
+    const auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count.at("QuantizeLinear") == 1);
+    TEST_RETURN_IF_NOT(op_count.at("DequantizeLinear") == 1);
+    TEST_RETURN_IF(op_count.count("com.microsoft.FakeQuant") != 0);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::make_unique<QDQFusion>(),
+                                        TransformerLevel::Level1, 1, check_not_fused, check_not_fused));
+}
+
+TEST_F(GraphTransformationTests, QDQFusionPreservesSharedZeroPoint) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input_a = builder.MakeInput<float>({{2}});
+    auto* input_b = builder.MakeInput<float>({{2}});
+    auto* scale = builder.MakeScalarInitializer<float>(0.1f);
+    auto* zero_point = builder.MakeScalarInitializer<uint8_t>(0);
+    auto* quantized_a = builder.MakeIntermediate();
+    auto* quantized_b = builder.MakeIntermediate();
+    auto* output_a = builder.MakeOutput<float>(std::vector<int64_t>{2});
+    auto* output_b = builder.MakeOutput<float>(std::vector<int64_t>{2});
+    builder.AddNode("QuantizeLinear", {input_a, scale, zero_point}, {quantized_a});
+    builder.AddNode("DequantizeLinear", {quantized_a, scale, zero_point}, {output_a});
+    builder.AddNode("QuantizeLinear", {input_b, scale, zero_point}, {quantized_b});
+    builder.AddNode("DequantizeLinear", {quantized_b, scale, zero_point}, {output_b});
+  };
+
+  auto check_before = [](Graph& graph) {
+    const auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count.at("QuantizeLinear") == 2);
+    TEST_RETURN_IF_NOT(op_count.at("DequantizeLinear") == 2);
+    return Status::OK();
+  };
+  auto check_after = [](Graph& graph) {
+    const auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF(op_count.count("QuantizeLinear") != 0);
+    TEST_RETURN_IF(op_count.count("DequantizeLinear") != 0);
+    TEST_RETURN_IF_NOT(op_count.at("com.microsoft.FakeQuant") == 2);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::make_unique<QDQFusion>(),
+                                        TransformerLevel::Level1, 1, check_before, check_after));
+}
+
+TEST_F(GraphTransformationTests, QDQFusionRequiresMatchingQuantizationParameters) {
+  enum class Mismatch { Scale,
+                        ZeroPoint,
+                        Axis };
+
+  auto check_not_fused = [](Graph& graph) {
+    const auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count.at("QuantizeLinear") == 1);
+    TEST_RETURN_IF_NOT(op_count.at("DequantizeLinear") == 1);
+    TEST_RETURN_IF(op_count.count("com.microsoft.FakeQuant") != 0);
+    return Status::OK();
+  };
+
+  for (const auto mismatch : {Mismatch::Scale, Mismatch::ZeroPoint, Mismatch::Axis}) {
+    auto build_test_case = [mismatch](ModelTestBuilder& builder) {
+      auto* input = builder.MakeInput<float>({{2}});
+      auto* quantize_scale = builder.MakeScalarInitializer<float>(0.1f);
+      auto* dequantize_scale = mismatch == Mismatch::Scale
+                                   ? builder.MakeScalarInitializer<float>(0.2f)
+                                   : quantize_scale;
+      auto* quantize_zero_point = builder.MakeScalarInitializer<uint8_t>(0);
+      auto* dequantize_zero_point = mismatch == Mismatch::ZeroPoint
+                                        ? builder.MakeScalarInitializer<uint8_t>(1)
+                                        : quantize_zero_point;
+      auto* quantized = builder.MakeIntermediate();
+      auto* output = builder.MakeOutput<float>(std::vector<int64_t>{2});
+      auto& quantize = builder.AddNode(
+          "QuantizeLinear", {input, quantize_scale, quantize_zero_point}, {quantized});
+      builder.AddNode(
+          "DequantizeLinear", {quantized, dequantize_scale, dequantize_zero_point}, {output});
+      if (mismatch == Mismatch::Axis) {
+        quantize.AddAttribute("axis", static_cast<int64_t>(0));
+      }
+    };
+
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::make_unique<QDQFusion>(),
+                                          TransformerLevel::Level1, 1, check_not_fused, check_not_fused));
+  }
+}
+
+TEST_F(GraphTransformationTests, QDQFusionRejectsPerAxisParameters) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{2}});
+    auto* scale = builder.MakeInitializer<float>({2}, {0.1f, 0.2f});
+    auto* zero_point = builder.MakeInitializer<uint8_t>({2}, {0, 0});
+    auto* quantized = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput<float>(std::vector<int64_t>{2});
+    auto& quantize = builder.AddNode("QuantizeLinear", {input, scale, zero_point}, {quantized});
+    auto& dequantize = builder.AddNode("DequantizeLinear", {quantized, scale, zero_point}, {output});
+    quantize.AddAttribute("axis", static_cast<int64_t>(0));
+    dequantize.AddAttribute("axis", static_cast<int64_t>(0));
+  };
+
+  auto check_not_fused = [](Graph& graph) {
+    const auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count.at("QuantizeLinear") == 1);
+    TEST_RETURN_IF_NOT(op_count.at("DequantizeLinear") == 1);
+    TEST_RETURN_IF(op_count.count("com.microsoft.FakeQuant") != 0);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::make_unique<QDQFusion>(),
+                                        TransformerLevel::Level1, 1, check_not_fused, check_not_fused));
 }
 
 TEST_F(GraphTransformationTests, Conv1dReplacement_TakeEffect) {
@@ -1628,9 +1963,9 @@ INSTANTIATE_TEST_SUITE_P(
     QDQFusionTests,
     QDQFusionTestsParameterized,
     ::testing::Values(
-        std::make_tuple(MODEL_FOLDER "fusion/qdq_fusion_int8.onnx"),
-        std::make_tuple(MODEL_FOLDER "fusion/qdq_fusion_uint8.onnx"),
-        std::make_tuple(MODEL_FOLDER "fusion/qdq_fusion_zp_not_provided.onnx")));
+        std::make_tuple(MODEL_FOLDER "fusion/qdq_fusion_int8.onnx", -128, 127),
+        std::make_tuple(MODEL_FOLDER "fusion/qdq_fusion_uint8.onnx", 0, 255),
+        std::make_tuple(MODEL_FOLDER "fusion/qdq_fusion_zp_not_provided.onnx", 0, 255)));
 
 // We only tested on CUDA run.
 #if defined(USE_CUDA)
@@ -1907,6 +2242,9 @@ TEST_F(GraphTransformationTests, ScaledSumFusionThreeInputs_LastAddNotHaveScaleI
         TEST_RETURN_IF_NOT(1.0f / 0.5f == attrs.at("scale_0").f());
         TEST_RETURN_IF_NOT(1.0f / 0.3f == attrs.at("scale_1").f());
         TEST_RETURN_IF_NOT(1.0f == attrs.at("scale_2").f());
+        const Node* third_input_producer = graph.GetProducerNode(node.InputDefs()[2]->Name());
+        TEST_RETURN_IF_NOT(third_input_producer != nullptr);
+        TEST_RETURN_IF_NOT(third_input_producer->OpType() == "Sub");
       }
     }
 
@@ -1951,6 +2289,47 @@ TEST_F(GraphTransformationTests, ScaledSumFusionThreeInputs_LastAddNotHaveScaleI
                                             1, pre_graph_checker, post_graph_checker));
     }
   }
+}
+
+TEST_F(GraphTransformationTests, ScaledSumFusionWithGraphInputThirdTerm) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input_a = builder.MakeInput<float>({{2, 3}});
+    auto* input_b = builder.MakeInput<float>({{2, 3}});
+    auto* input_c = builder.MakeInput<float>({{2, 3}});
+    auto* scale_a = builder.MakeScalarInitializer<float>(0.5f);
+    auto* scale_b = builder.MakeScalarInitializer<float>(0.25f);
+    auto* scaled_a = builder.MakeIntermediate();
+    auto* scaled_b = builder.MakeIntermediate();
+    auto* sum_ab = builder.MakeIntermediate();
+    auto* sum_abc = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Div", {input_a, scale_a}, {scaled_a});
+    builder.AddNode("Div", {input_b, scale_b}, {scaled_b});
+    builder.AddNode("Add", {scaled_a, scaled_b}, {sum_ab});
+    builder.AddNode("Add", {sum_ab, input_c}, {sum_abc});
+    builder.AddNode("Identity", {sum_abc}, {output});
+  };
+
+  auto check_before = [](Graph& graph) {
+    const auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count.at("Div") == 2);
+    TEST_RETURN_IF_NOT(op_count.at("Add") == 2);
+    return Status::OK();
+  };
+  auto check_after = [](Graph& graph) {
+    const auto op_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_count.at("com.microsoft.ScaledSum") == 1);
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "ScaledSum") {
+        TEST_RETURN_IF_NOT(node.InputDefs().size() == 3U);
+        TEST_RETURN_IF(graph.GetProducerNode(node.InputDefs()[2]->Name()) != nullptr);
+      }
+    }
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::make_unique<ScaledSumFusion>(),
+                                        TransformerLevel::Level1, 1, check_before, check_after));
 }
 
 /*

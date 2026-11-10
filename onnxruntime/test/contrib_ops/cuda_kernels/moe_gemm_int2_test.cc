@@ -23,6 +23,7 @@
 #pragma GCC diagnostic ignored "-Wunused-local-typedefs"
 #endif
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_kernels.h"
+#include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif
@@ -579,6 +580,27 @@ TEST_F(Int2GroupedGemmTest, Bf16GptOssFc1SampledParity) {
 #endif
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN)
+TEST_F(Int2GroupedGemmTest, GegluInt4ProfilerAmpereTactic) {
+  using namespace llm::kernels::cutlass_kernels;
+  constexpr int rows = 17;
+  CutlassMoeFCRunner<half, cutlass::uint4b_t> runner(
+      properties_.major * 10 + properties_.minor, ActivationType::Geglu, true, false);
+  const auto tactics = runner.getTactics();
+  const auto tactic = std::find_if(tactics.begin(), tactics.end(),
+                                   [](const auto& config) { return !config.is_tma_warp_specialized; });
+  ASSERT_NE(tactic, tactics.end());
+
+  GemmProfilerBackend backend;
+  backend.init(runner, GemmProfilerBackend::GemmToProfile::GEMM_1,
+               llm::nvinfer::DataType::kHALF, llm::nvinfer::DataType::kINT4, llm::nvinfer::DataType::kHALF,
+               2, 1, 128, 128, 32, ActivationType::Geglu, false, true, MOEParallelismConfig{});
+  DeviceBuffer workspace(backend.getWorkspaceSize(rows));
+  backend.prepare(rows, workspace.Data<char>(), nullptr, stream_);
+  // The profiler supplies no split-K SwiGLU GEMV workspace, even on Hopper.
+  ASSERT_NO_THROW(backend.runProfiler(rows, *tactic, workspace.Data<char>(), nullptr, stream_));
+  ASSERT_EQ(cudaStreamSynchronize(stream_), cudaSuccess);
+}
+
 TEST_F(Int2GroupedGemmTest, Int4Block64EmptyExpertsAndPartialTiles) {
   RunCase({0, 1, 0, 39, 88, 0}, 64, 128, 4);
 }

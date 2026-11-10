@@ -38,6 +38,9 @@
 #include "core/graph/graph_proto_serializer.h"
 #include "core/graph/model.h"
 #include "core/optimizer/graph_optimizer_registry.h"
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+#include "core/optimizer/cuda_runtime_fusion.h"
+#endif
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
 #include "core/platform/env.h"
@@ -104,7 +107,6 @@ using EtwRegistrationManager_EtwInternalCallback = EtwRegistrationManager::EtwIn
 #include "core/providers/migraphx/migraphx_provider_factory_creator.h"
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
 #include "core/providers/tensorrt/tensorrt_provider_factory_creator.h"
-#include "core/providers/nv_tensorrt_rtx/nv_provider_factory_creator.h"
 #include "core/providers/vitisai/vitisai_provider_factory_creator.h"
 #include "core/providers/qnn/qnn_provider_factory_creator.h"
 
@@ -118,16 +120,13 @@ using EtwRegistrationManager_EtwInternalCallback = EtwRegistrationManager::EtwIn
 #include "core/providers/cuda/cuda_provider_options.h"
 #include "core/providers/cann/cann_provider_options.h"
 #include "core/providers/dnnl/dnnl_provider_options.h"
-#include "core/providers/nv_tensorrt_rtx/nv_provider_factory.h"
-#include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
 
 #if defined(_WIN32) && !defined(NDEBUG) && defined(ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
 #include "core/platform/windows/debug_alloc.h"
 #endif
 
-#if !defined(ORT_MINIMAL_BUILD) &&                                        \
-    (defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE) || \
-     defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE))
+#if !defined(ORT_MINIMAL_BUILD) && \
+    (defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE))
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #endif
 
@@ -160,8 +159,6 @@ ProviderInfo_Dnnl& GetProviderInfo_Dnnl();
 ProviderHostCPU& GetProviderHostCPU();
 ProviderInfo_MIGraphX* TryGetProviderInfo_MIGraphX();
 ProviderInfo_MIGraphX& GetProviderInfo_MIGraphX();
-ProviderInfo_Nv* TryGetProviderInfo_Nv();
-ProviderInfo_Nv& GetProviderInfo_Nv();
 ProviderInfo_OpenVINO* TryGetProviderInfo_OpenVINO();
 
 ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vector<const OrtCustomOp*>& ops);
@@ -1663,6 +1660,21 @@ struct ProviderHostImpl : ProviderHost {
   KernelPilot* OpKernelContext__GetKernelPilot(const OpKernelContext* p) override {
     return p->GetKernelPilot();
   }
+  Status SelectCudaRuntimeFusion(
+      const GraphViewer& graph, const IExecutionProvider::IKernelLookup& kernel_lookup,
+      const GraphOptimizerRegistry& registry, const std::string& rule_id,
+      std::vector<std::unique_ptr<ComputeCapability>>& capabilities) override {
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+    return cuda_runtime_fusion::Select(graph, kernel_lookup, registry, rule_id, capabilities);
+#else
+    ORT_UNUSED_PARAMETER(graph);
+    ORT_UNUSED_PARAMETER(kernel_lookup);
+    ORT_UNUSED_PARAMETER(registry);
+    ORT_UNUSED_PARAMETER(rule_id);
+    ORT_UNUSED_PARAMETER(capabilities);
+    return Status::OK();
+#endif
+  }
   // OpKernelInfo (wrapped)
   std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) override { return onnxruntime::CopyOpKernelInfo(info); }
   void OpKernelInfo__operator_delete(OpKernelInfo* p) override { delete p; }
@@ -1997,7 +2009,7 @@ ProviderLibrary::~ProviderLibrary() {
   // assert(!handle_); // We should already be unloaded at this point (disabled until Python shuts down deterministically)
 }
 
-Status ProviderLibrary::Load() {
+Status ProviderLibrary::Load(bool retain_library_on_missing_get_provider) {
   if (provider_) {
     return Status::OK();
   }
@@ -2007,21 +2019,25 @@ Status ProviderLibrary::Load() {
     if (!provider_) {
       ORT_RETURN_IF_ERROR(s_library_shared.Initialize());
 
-      if (absolute_) {
-        // If filename_ is not absolute it should not be loaded.
-        if (!std::filesystem::path{filename_}.is_absolute()) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "An absolute path must be specified.");
+      if (!handle_) {
+        if (absolute_) {
+          // If filename_ is not absolute it should not be loaded.
+          if (!std::filesystem::path{filename_}.is_absolute()) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "An absolute path must be specified.");
+          }
+          ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(filename_, false, &handle_));
+        } else {
+          auto full_path = Env::Default().GetRuntimePath() + filename_;
+          ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
         }
-        ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(filename_, false, &handle_));
-      } else {
-        auto full_path = Env::Default().GetRuntimePath() + filename_;
-        ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
       }
 
       Provider* (*PGetProvider)();
       auto status = Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider);
       if (!status.IsOK()) {
-        Unload();
+        if (!retain_library_on_missing_get_provider) {
+          Unload();
+        }
         return status;
       }
 
@@ -2130,7 +2146,6 @@ static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX ORT_TSTR("onnxruntime_p
                                           false
 #endif
 );
-static ProviderLibrary s_library_nv(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_nv_tensorrt_rtx") LIBRARY_EXTENSION);
 static ProviderLibrary s_library_migraphx(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_migraphx") LIBRARY_EXTENSION);
 
 // QNN EP can be built either as a static library or a shared library. Can safely define s_library_qnn even if static.
@@ -2147,7 +2162,6 @@ void UnloadSharedProviders() {
   s_library_shared.Unload();
   s_library_migraphx.Unload();
   s_library_qnn.Unload();
-  s_library_nv.Unload();
 }
 
 // Used by test code
@@ -2296,28 +2310,6 @@ std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Creat
   ORT_CATCH_LOG_RETURN_NULLPTR;
 }
 
-std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(int device_id) {
-  ORT_TRY {
-    return s_library_nv.Get().CreateExecutionProviderFactory(device_id);
-  }
-  ORT_CATCH_LOG_RETURN_NULLPTR;
-}
-
-std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(
-    const ProviderOptions& provider_options, const SessionOptions* session_options) {
-  ORT_TRY {
-    const ConfigOptions* config_options = nullptr;
-    if (session_options != nullptr) {
-      config_options = &session_options->config_options;
-    }
-
-    std::array<const void*, 2> configs_array = {&provider_options, config_options};
-    const void* arg = reinterpret_cast<const void*>(&configs_array);
-    return s_library_nv.Get().CreateExecutionProviderFactory(arg);
-  }
-  ORT_CATCH_LOG_RETURN_NULLPTR;
-}
-
 std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const ProviderOptions& provider_options) {
   return s_library_migraphx.Get().CreateExecutionProviderFactory(&provider_options);
 }
@@ -2435,20 +2427,6 @@ ProviderInfo_TensorRT& GetProviderInfo_TensorRT() {
     return *info;
 
   ORT_THROW("TensorRT Provider not available, can't get interface for it");
-}
-
-ProviderInfo_Nv* TryGetProviderInfo_Nv() {
-  ORT_TRY {
-    return reinterpret_cast<ProviderInfo_Nv*>(s_library_nv.Get().GetInfo());
-  }
-  ORT_CATCH_LOG_RETURN_NULLPTR;
-}
-
-ProviderInfo_Nv& GetProviderInfo_Nv() {
-  if (auto* info = TryGetProviderInfo_Nv())
-    return *info;
-
-  ORT_THROW("NV Provider not available, can't get interface for it");
 }
 
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA() {
@@ -2973,6 +2951,38 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2, _In_
     const auto message = onnxruntime::MakeString(
         "external_data_loader_reading_threads must be between 0 and ",
         OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderReadingThreadCount, ".");
+    return OrtApis::CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        message.c_str());
+  }
+  if (cuda_options->external_data_loader_pinned_memory_bytes <
+          OrtCUDAProviderOptionsV2::kMinExternalDataLoaderPinnedMemoryBytes ||
+      cuda_options->external_data_loader_pinned_memory_bytes >
+          OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderPinnedMemoryBytes ||
+      (cuda_options->external_data_loader_pinned_memory_bytes %
+       OrtCUDAProviderOptionsV2::kExternalDataLoaderPinnedMemoryAlignment) != 0) {
+    const auto message = onnxruntime::MakeString(
+        "external_data_loader_pinned_memory_bytes must be between ",
+        OrtCUDAProviderOptionsV2::kMinExternalDataLoaderPinnedMemoryBytes, " and ",
+        OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderPinnedMemoryBytes,
+        " bytes and a multiple of ",
+        OrtCUDAProviderOptionsV2::kExternalDataLoaderPinnedMemoryAlignment, ".");
+    return OrtApis::CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        message.c_str());
+  }
+  if (cuda_options->external_data_loader_chunk_bytes <
+          OrtCUDAProviderOptionsV2::kMinExternalDataLoaderChunkBytes ||
+      cuda_options->external_data_loader_chunk_bytes >
+          OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderChunkBytes ||
+      (cuda_options->external_data_loader_chunk_bytes %
+       OrtCUDAProviderOptionsV2::kExternalDataLoaderChunkAlignment) != 0) {
+    const auto message = onnxruntime::MakeString(
+        "external_data_loader_chunk_bytes must be between ",
+        OrtCUDAProviderOptionsV2::kMinExternalDataLoaderChunkBytes, " and ",
+        OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderChunkBytes,
+        " bytes and a multiple of ",
+        OrtCUDAProviderOptionsV2::kExternalDataLoaderChunkAlignment, ".");
     return OrtApis::CreateStatus(
         ORT_INVALID_ARGUMENT,
         message.c_str());
