@@ -30,8 +30,6 @@ std::unique_ptr<IExecutionProvider> GetExecutionProvider(const std::string& prov
     execution_provider = DefaultOpenVINOExecutionProvider();
   else if (provider_type == onnxruntime::kNnapiExecutionProvider)
     execution_provider = DefaultNnapiExecutionProvider();
-  else if (provider_type == onnxruntime::kAclExecutionProvider)
-    execution_provider = DefaultAclExecutionProvider();
   else if (provider_type == onnxruntime::kDmlExecutionProvider)
     execution_provider = DefaultDmlExecutionProvider();
   else if (provider_type == onnxruntime::kWebGpuExecutionProvider)

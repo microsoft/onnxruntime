@@ -30,9 +30,9 @@ parameters:
    - RelWithDebInfo
    - MinSizeRel
 
-- name: docker_base_image
+- name: docker_base_image_family
   type: string
-  default: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1'
+  default: cuda12_x64_almalinux8_gcc14
 
 - name: cuda_version
   type: string
@@ -113,10 +113,10 @@ stages:
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
           Context: tools/ci_build/github/linux/docker
+          BaseImageFamily: ${{ parameters.docker_base_image_family }}
           DockerBuildArgs: >-
             --network=host
             --secret id=PIP_INDEX_URL
-            --build-arg BASEIMAGE=${{ parameters.docker_base_image }}
             --build-arg TRT_VERSION=
             --build-arg BUILD_UID=$( id -u )
           Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}pluginbuild${{ parameters.arch }}
@@ -211,10 +211,10 @@ stages:
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
         Context: tools/ci_build/github/linux/docker
+        BaseImageFamily: ${{ parameters.docker_base_image_family }}
         DockerBuildArgs: >-
           --network=host
           --secret id=PIP_INDEX_URL
-          --build-arg BASEIMAGE=${{ parameters.docker_base_image }}
           --build-arg TRT_VERSION=
           --build-arg BUILD_UID=$( id -u )
         Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}pluginbuild${{ parameters.arch }}

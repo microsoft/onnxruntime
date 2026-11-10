@@ -9,6 +9,8 @@ set(TEST_INC_DIR ${ONNXRUNTIME_ROOT})
 if(NOT CMAKE_CROSSCOMPILING)
   add_test(NAME onnxruntime_public_exports_test
     COMMAND "${Python_EXECUTABLE}" "${REPO_ROOT}/tools/ci_build/test_gen_def.py")
+  add_test(NAME onnxruntime_cuda_contrib_sources_test
+    COMMAND "${Python_EXECUTABLE}" "${REPO_ROOT}/tools/ci_build/test_cuda_contrib_sources.py")
 endif()
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND TEST_INC_DIR ${ORTTRAINING_ROOT})
@@ -64,7 +66,7 @@ function(onnxruntime_disable_gtest_character_conversion_as_error target_name)
 endfunction()
 
 function(AddTest)
-  cmake_parse_arguments(_UT "DYN" "TARGET;TEST_NAME" "LIBS;SOURCES;DEPENDS;TEST_ARGS" ${ARGN})
+  cmake_parse_arguments(_UT "DYN;NO_GTEST_REPORT" "TARGET;TEST_NAME" "LIBS;SOURCES;DEPENDS;TEST_ARGS" ${ARGN})
   if (NOT _UT_TEST_NAME)
     set(_UT_TEST_NAME ${_UT_TARGET})
   endif()
@@ -185,7 +187,7 @@ function(AddTest)
   endif()
 
   set(TEST_ARGS ${_UT_TEST_ARGS})
-  if (onnxruntime_GENERATE_TEST_REPORTS)
+  if (onnxruntime_GENERATE_TEST_REPORTS AND NOT _UT_NO_GTEST_REPORT)
     # generate a report file next to the test program
     if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       # WebAssembly use a memory file system, so we do not use full path
@@ -718,10 +720,6 @@ if(onnxruntime_USE_COREML)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_coreml coreml_proto)
 endif()
 
-if(onnxruntime_USE_ACL)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_acl)
-endif()
-
 set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
     # CUDA, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime.
     # QNN EP can be built as either a dynamic and static libs.
@@ -731,7 +729,6 @@ set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
     ${PROVIDERS_SNPE}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
-    ${PROVIDERS_ACL}
     ${PROVIDERS_COREML}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_AZURE}
@@ -1351,6 +1348,9 @@ AddTest(
   TEST_ARGS ${test_all_args}
 )
 target_include_directories(onnxruntime_test_all PRIVATE ${ONNXRUNTIME_ROOT}/core/flatbuffers/schema) # ort.fbs.h
+if(onnxruntime_ENABLE_DLPACK)
+  target_link_libraries(onnxruntime_test_all PRIVATE dlpack::dlpack)
+endif()
 
 if(onnxruntime_USE_CUDA AND NOT onnxruntime_MINIMAL_BUILD)
   target_link_libraries(onnxruntime_test_all PRIVATE CUDA::cuda_driver)
@@ -1410,13 +1410,15 @@ endif()
 if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
   AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
   AND NOT CMAKE_SYSTEM_NAME STREQUAL "AIX")
-  foreach(fixture IN ITEMS shared valid missing_export)
+  foreach(fixture IN ITEMS shared valid missing_export plugin plugin_missing_export)
     set(probe_fixture onnxruntime_optional_probe_${fixture}_fixture)
     onnxruntime_add_shared_library(${probe_fixture}
       "${TEST_SRC_DIR}/shared_lib/optional_provider_probe_test_library.cc")
     target_include_directories(${probe_fixture} PRIVATE
       $<TARGET_PROPERTY:onnxruntime_session,INCLUDE_DIRECTORIES>)
-    target_link_libraries(${probe_fixture} PRIVATE onnxruntime_common onnx)
+    if(fixture STREQUAL "valid")
+      target_link_libraries(${probe_fixture} PRIVATE onnxruntime_common onnx)
+    endif()
     target_compile_definitions(${probe_fixture} PRIVATE ORT_TEST_OPTIONAL_PROVIDER_${fixture})
     set_target_properties(${probe_fixture} PROPERTIES FOLDER "ONNXRuntimeTest")
   endforeach()
@@ -1432,10 +1434,11 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT CMAKE_CROSSCOMPILING
       SOURCES ${probe_sources}
       LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
       DEPENDS onnxruntime_optional_probe_shared_fixture onnxruntime_optional_probe_valid_fixture
-              onnxruntime_optional_probe_missing_export_fixture)
+              onnxruntime_optional_probe_missing_export_fixture onnxruntime_optional_probe_plugin_fixture
+              onnxruntime_optional_probe_plugin_missing_export_fixture)
     set_target_properties(${probe_target} PROPERTIES
       RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${probe_target}")
-    foreach(fixture IN ITEMS shared valid missing_export)
+    foreach(fixture IN ITEMS shared valid missing_export plugin plugin_missing_export)
       target_compile_definitions(${probe_target} PRIVATE
         ORT_OPTIONAL_PROBE_${fixture}_LIBRARY="$<TARGET_FILE_NAME:onnxruntime_optional_probe_${fixture}_fixture>")
       add_custom_command(TARGET ${probe_target} POST_BUILD
@@ -2560,7 +2563,7 @@ endif()
     target_link_libraries(compare_two_sessions PRIVATE ${GETOPT_LIB_WIDE} tdh Advapi32)
   endif()
 
-  if(NOT onnxruntime_target_platform STREQUAL "ARM64EC")
+  if(NOT onnxruntime_target_platform STREQUAL "ARM64EC" AND NOT onnxruntime_target_platform STREQUAL "S390X")
     file(GLOB onnxruntime_mlas_test_src CONFIGURE_DEPENDS
       "${TEST_SRC_DIR}/mlas/unittest/*.h"
       "${TEST_SRC_DIR}/mlas/unittest/*.cpp"
@@ -3115,20 +3118,37 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_USE_OPENVINO AND
                ${ONNXRUNTIME_CUSTOM_OP_OPENVINO_WRAPPER_LIB_LINK_FLAG})
 endif()
 
-if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EXTERNAL_DAWN AND TARGET dawn::dawn_native)
+if (onnxruntime_USE_WEBGPU AND NOT onnxruntime_BUILD_DAWN_SHARED_LIBRARY AND TARGET dawn::dawn_native)
+  set(webgpu_dawn_test_args)
+  if (onnxruntime_WEBGPU_STATIC_PLUGIN)
+    list(APPEND webgpu_dawn_test_args --static_plugin)
+  elseif (onnxruntime_USE_EP_API_ADAPTERS)
+    list(APPEND webgpu_dawn_test_args --plugin $<TARGET_FILE:onnxruntime_providers_webgpu>)
+  endif()
   if (onnxruntime_BUILD_SHARED_LIB)
-    AddTest(DYN TARGET onnxruntime_webgpu_external_dawn_test
+    AddTest(DYN NO_GTEST_REPORT TARGET onnxruntime_webgpu_external_dawn_test
             SOURCES ${onnxruntime_webgpu_external_dawn_test_SRC}
             LIBS dawn::dawn_native dawn::dawn_proc
+            TEST_ARGS ${webgpu_dawn_test_args}
             DEPENDS ${all_dependencies})
   else()
-    AddTest(TARGET onnxruntime_webgpu_external_dawn_test
+    AddTest(NO_GTEST_REPORT TARGET onnxruntime_webgpu_external_dawn_test
             SOURCES ${onnxruntime_webgpu_external_dawn_test_SRC}
             LIBS dawn::dawn_native dawn::dawn_proc ${onnxruntime_test_providers_libs}
+            TEST_ARGS ${webgpu_dawn_test_args}
             DEPENDS ${all_dependencies})
   endif()
   onnxruntime_add_include_to_target(onnxruntime_webgpu_external_dawn_test dawn::dawncpp_headers dawn::dawn_headers)
+  # Dawn's generated C++ wrappers use type-punning casts that trigger GCC strict-aliasing warnings.
+  target_include_directories(onnxruntime_webgpu_external_dawn_test SYSTEM PRIVATE
+    $<TARGET_PROPERTY:dawn::dawncpp_headers,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:dawn::dawn_headers,INTERFACE_INCLUDE_DIRECTORIES>)
   target_compile_features(onnxruntime_webgpu_external_dawn_test PRIVATE cxx_std_20)
+  if (onnxruntime_USE_EP_API_ADAPTERS AND NOT onnxruntime_WEBGPU_STATIC_PLUGIN)
+    add_dependencies(onnxruntime_webgpu_external_dawn_test onnxruntime_providers_webgpu)
+  endif()
+  add_test(NAME onnxruntime_webgpu_owned_cache_test
+           COMMAND onnxruntime_webgpu_external_dawn_test --ort_owned_cache ${webgpu_dawn_test_args})
 endif()
 
 if (onnxruntime_USE_WEBGPU AND WIN32 AND onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)

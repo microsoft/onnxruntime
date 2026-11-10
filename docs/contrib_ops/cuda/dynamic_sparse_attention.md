@@ -12,7 +12,9 @@ four query rows (`sequence_length in {1, 2, 3, 4}`).
 
 The INT8 main cache is `tensor(int8)`: symmetric signed storage with no zero point,
 `q = clamp(rint(x / scale), -128, 127)` and `x = q * scale`, with one float32 scale per
-`kv_head * head_size` channel (`key_scale`, `value_scale`). This is the same encoding as the 8-bit
+`kv_head * head_size` channel (`key_scale`, `value_scale`). For an appended key, `x` is the FP32 result of the optional
+RMS normalization and RoPE, which is not rounded to the activation type before quantization (the FP16 and BF16 caches
+and the prepared query likewise round that FP32 result once). This is the same encoding as the 8-bit
 KV cache of `GroupQueryAttention` (`group_query_attention_qdq.cuh`) and `PagedAttention` /
 `SparsePagedAttention` (`paged_attention_impl.cu`), which also use `int8`. `uint8` is used by those
 operators only for packed 4-bit caches (`kv_cache_bit_width=4`), so `DynamicSparseAttention` does not
@@ -48,9 +50,9 @@ the code is only reported through `validation_status`.
 function-local statics) when the grouped decode path is first launched, so set them before the first
 operator invocation. Only `0` and `1` are accepted. Neither changes schemas or cache layouts.
 `ORT_DSA_PREFILL_KERNEL`, `ORT_DSA_PREFILL_INT8_TC` and `ORT_DSA_DECODE_INT8_TC` are read once at kernel
-construction. `ORT_DSA_PREFILL_KERNEL` defaults to `1`. The two INT8 tensor-core switches default to `0`: they are
-opt-in, and without them the operator runs the BF16-dequantizing prefill and the CUDA-core grouped decode, bit for
-bit as before (see [Rollout](#rollout)). Session options `ep.cuda.dsa_prefill_kernel`, `ep.cuda.dsa_prefill_int8_tc`
+construction. `ORT_DSA_PREFILL_KERNEL` and the two INT8 tensor-core switches default to `1`. Setting an INT8
+tensor-core switch to `0` restores the BF16-dequantizing prefill (the generic kernels for FP16 queries) or the
+CUDA-core grouped decode, bit for bit as before (see [Rollout](#rollout)). Session options `ep.cuda.dsa_prefill_kernel`, `ep.cuda.dsa_prefill_int8_tc`
 and `ep.cuda.dsa_decode_int8_tc` take precedence over their corresponding environment variables. Each of them
 accepts exactly the one-character string `0` or `1` (no whitespace, sign or leading zeros: `01`, `-0` and `true` are
 rejected); changing a value requires a new session. The loaded prefill and decode specializations must have a PTX
@@ -73,9 +75,9 @@ and 8 otherwise.
 | | | | `0` | `MergeGroupedDecodeDynamicSparseAttentionKernel<T, false>`: per-channel `expf` over all splits. |
 | `ORT_DSA_PREFILL_KERNEL` | `1` | BF16, not grouped decode, `sequence_length >= 8`, `head_size == 256`, `selected_only` from the main cache, `smooth_softmax = 0`, SM80+ with enough opt-in shared memory | `1` | `DynamicSparseAttentionPrefillKernel<quantized>` tensor-core prefill. |
 | | | | `0` | Generic fused/split or grouped prefill kernels. |
-| `ORT_DSA_PREFILL_INT8_TC` | `0` | The `ORT_DSA_PREFILL_KERNEL` conditions with an INT8 main cache, 16-byte-aligned `present_key` and `present_value`, an 8-byte-aligned `output`, a softmax `scale <= 1` and enough opt-in shared memory for `dsa_prefill::kInt8SharedBytes` | `1` | `DynamicSparseAttentionInt8TcKernel<false>` ([dynamic_sparse_attention_prefill_int8.cuh](../../../onnxruntime/contrib_ops/cuda/bert/dynamic_sparse_attention_prefill_int8.cuh)): the gathered K/V rows stay INT8 in shared memory and are converted exactly to FP16 in registers for FP16 `mma` with FP32 accumulation. `key_scale` is folded into the query once per block (`Q' = Q * key_scale`, rounded once to FP16) and `value_scale` is applied to the output once. Scores and the running maximum are kept in the natural-log domain. A softmax `scale > 1` (the default is `1 / sqrt(head_size)`) uses the kernel below, because the rounding bound grows with it. The FP16 probability tile holds `2^15 * p`, so a candidate keeps its contribution down to `p = 2^-40` (plain FP16 flushes below `2^-25`); the row sum stays unscaled FP32. Prefill keeps a single FP16 probability tile, as the BF16-dequantizing kernel does with a coarser BF16 one. A block whose query or value scales leave the validated range is evaluated by an FP32 path (`AttendRowFp32`) instead of being clipped or rounded, which would break the cancellation between large terms; the conditions, their cost and how likely they are are described under [Numerics and fallbacks](#numerics-and-fallbacks). |
-| | | | `0` | `DynamicSparseAttentionPrefillKernel<true>`: dequantizes every gathered tile to BF16 in shared memory. |
-| `ORT_DSA_DECODE_INT8_TC` | `0` | Grouped decode (conditions above) with BF16, an INT8 main cache, `head_size == 256`, `selected_only` from the main cache (no `local_plus_selected`), `smooth_softmax = 0`, a softmax `scale <= 1`, at most `kMaxGroup` query heads per KV head, 16-byte-aligned `prepared_query`, `present_key`, `present_value`, `key_scale`, `value_scale` and attention workspace, SM80+ and enough opt-in shared memory for `dsa_prefill::kInt8SplitKSharedBytes` (75,264 B) | `1` | `DynamicSparseAttentionInt8TcKernel<true>`: the tensor-core pipeline of the row above, split over the 64-candidate tiles of each (row, KV head). Each CTA of the (row, KV head, split) grid writes an un-normalized partial output, the natural-log row maximum and the row sum in the layout of the grouped decode merge kernel, which is reused unchanged. The probability tile is an FP16 high part plus an FP16 residual (about 22 significant bits) and both multiply the converted V fragments, because the signed sum of large value codes can cancel to a value far below the rounding of one FP16 probability. A partial is written as `(acc * 2^-15) * value_scale`. The split count follows `ORT_DSA_DECODE_INT8_TC_TILES_PER_SPLIT` below. A CTA that meets one of the conditions of [Numerics and fallbacks](#numerics-and-fallbacks) evaluates its candidates in FP32 (`AttendRowFp32<true>`) and publishes an FP32 partial in the same layout, so the fallback also holds for the splits. |
+| `ORT_DSA_PREFILL_INT8_TC` | `1` | The `ORT_DSA_PREFILL_KERNEL` conditions with an INT8 main cache, 16-byte-aligned `present_key` and `present_value`, an 8-byte-aligned `output`, a softmax `scale <= 1` and enough opt-in shared memory for `dsa_prefill::kInt8SharedBytes` | `1` | `DynamicSparseAttentionInt8TcKernel<false>` ([dynamic_sparse_attention_prefill_int8.cuh](../../../onnxruntime/contrib_ops/cuda/bert/dynamic_sparse_attention_prefill_int8.cuh)): the gathered K/V rows stay INT8 in shared memory and are converted exactly to FP16 in registers for FP16 `mma` with FP32 accumulation. `key_scale` is folded into the query once per block (`Q' = Q * key_scale`, rounded once to FP16) and `value_scale` is applied to the output once. Scores and the running maximum are kept in the natural-log domain. A softmax `scale > 1` (the default is `1 / sqrt(head_size)`) uses the kernel below, because the rounding bound grows with it. The FP16 probability tile holds `2^15 * p`, so a candidate keeps its contribution down to `p = 2^-40` (plain FP16 flushes below `2^-25`); the row sum stays unscaled FP32. Prefill keeps a single FP16 probability tile, as the BF16-dequantizing kernel does with a coarser BF16 one. A block whose query or value scales leave the validated range is evaluated by an FP32 path (`AttendRowFp32`) instead of being clipped or rounded, which would break the cancellation between large terms; the conditions, their cost and how likely they are are described under [Numerics and fallbacks](#numerics-and-fallbacks). |
+| | | | `0` | `DynamicSparseAttentionPrefillKernel<true>`: dequantizes every gathered tile to BF16 in shared memory. FP16 queries use the generic fused/split kernels instead, because rounding them to BF16 would lose precision. |
+| `ORT_DSA_DECODE_INT8_TC` | `1` | Grouped decode (conditions above) with BF16, an INT8 main cache, `head_size == 256`, `selected_only` from the main cache (no `local_plus_selected`), `smooth_softmax = 0`, a softmax `scale <= 1`, at most `kMaxGroup` query heads per KV head, 16-byte-aligned `prepared_query`, `present_key`, `present_value`, `key_scale`, `value_scale` and attention workspace, SM80+ and enough opt-in shared memory for `dsa_prefill::kInt8SplitKSharedBytes` (75,264 B) | `1` | `DynamicSparseAttentionInt8TcKernel<true>`: the tensor-core pipeline of the row above, split over the 64-candidate tiles of each (row, KV head). Each CTA of the (row, KV head, split) grid writes an un-normalized partial output, the natural-log row maximum and the row sum in the layout of the grouped decode merge kernel, which is reused unchanged. The probability tile is an FP16 high part plus an FP16 residual (about 22 significant bits) and both multiply the converted V fragments, because the signed sum of large value codes can cancel to a value far below the rounding of one FP16 probability. A partial is written as `(acc * 2^-15) * value_scale`. The split count follows `ORT_DSA_DECODE_INT8_TC_TILES_PER_SPLIT` below. A CTA that meets one of the conditions of [Numerics and fallbacks](#numerics-and-fallbacks) evaluates its candidates in FP32 (`AttendRowFp32<true>`) and publishes an FP32 partial in the same layout, so the fallback also holds for the splits. |
 | | | | `0` | The CUDA-core `GroupedDecodeDynamicSparseAttentionKernel`, bit for bit as before. |
 | `ORT_DSA_DECODE_INT8_TC_TILES_PER_SPLIT` | `0` | `ORT_DSA_DECODE_INT8_TC=1` and the conditions above | `0` | Automatic: the smallest power-of-two number of 64-candidate tiles per split for which all `ceil(max_selected / 64) * rows * kv_heads` tiles fit one wave of resident CTAs (`rows = batch_size * sequence_length`; resident CTAs = SM count times the CTAs per SM that the kernel's shared-memory and register footprint allow, queried with `cudaOccupancyMaxActiveBlocksPerMultiprocessor`: 396 on an H200). The split count is `ceil(tiles / tiles_per_split)`, at most 32 and never more than the grouped decode workspace was sized for. |
 | | | | `N > 0` | A requested `N` tiles per split instead of the automatic choice. The 32-split cap, the workspace size and the even distribution of the tiles over the splits still apply, so the number of tiles of a split can exceed `N` (8192 candidates are 128 tiles: `N = 1` asks for 128 splits and runs 32 splits of 4 tiles). Used by the tests to force many or few splits. |
@@ -182,13 +184,13 @@ queries above the budget, as the second group of rows shows. The unit tests exer
 
 ### Rollout
 
-`ORT_DSA_PREFILL_INT8_TC` and `ORT_DSA_DECODE_INT8_TC` are opt-in and independent, so prefill and decode can be enabled
-one at a time. The end-to-end accuracy measured for an earlier revision of these kernels (MMLU-Pro, 2400 items,
+`ORT_DSA_PREFILL_INT8_TC` and `ORT_DSA_DECODE_INT8_TC` are enabled by default and independent, so prefill and decode
+can be disabled one at a time. The end-to-end accuracy measured for an earlier revision of these kernels (MMLU-Pro, 2400 items,
 pooled difference +0.08 percentage points, 95% confidence interval -0.60 to +0.77) predates the numerics described above
 and does not cover the final revision. The end-to-end timings in [Benchmark](#benchmark) are preliminary for the same
-reason. Making a switch the default needs paired accuracy runs of the final revision with that switch toggled alone,
-including long contexts, and a stated bound on the degradation. Packages that qualify the kernels enable them in their
-session options (`ep.cuda.dsa_prefill_int8_tc` and `ep.cuda.dsa_decode_int8_tc` set to `1`).
+reason. Paired accuracy runs of the final revision with each switch toggled alone, including long contexts, and a
+stated bound on the degradation are still outstanding. Packages that need the previous kernels disable them in their
+session options (`ep.cuda.dsa_prefill_int8_tc` and `ep.cuda.dsa_decode_int8_tc` set to `0`).
 
 ### Buffer alignment
 
@@ -202,8 +204,8 @@ buffer is misaligned:
 | INT8 grouped decode vector staging (`ORT_DSA_INT8_VECTOR_STAGING=1`) | `key_scale`, `value_scale`, `auxiliary_key`, `auxiliary_value`: 16 bytes; `present_key`, `present_value`: 8 bytes | Scalar per-channel staging (`kVectorizedStaging=false`). |
 | Floating-point grouped decode and grouped prefill | Each staged K/V row: 16 bytes (checked per row in the kernel) | Element-wise copy into shared memory. |
 | Tensor-core BF16 prefill (`ORT_DSA_PREFILL_KERNEL=1`) | `present_key`, `present_value`: 16 bytes (8 for INT8); `key_scale`, `value_scale`: 16 bytes; `output`: 4 bytes | Generic fused/split or grouped prefill kernels. |
-| Tensor-core INT8-cache prefill (opt-in, `ORT_DSA_PREFILL_INT8_TC=1`) | In addition to the row above: `present_key`, `present_value`: 16 bytes; `output`: 8 bytes | `DynamicSparseAttentionPrefillKernel<true>`. |
-| Tensor-core INT8-cache decode (opt-in, `ORT_DSA_DECODE_INT8_TC=1`) | `prepared_query`, `present_key`, `present_value`, `key_scale`, `value_scale`, attention workspace: 16 bytes | The CUDA-core grouped decode kernel. |
+| Tensor-core INT8-cache prefill (`ORT_DSA_PREFILL_INT8_TC=1`, the default) | In addition to the row above: `present_key`, `present_value`: 16 bytes; `output`: 8 bytes | `DynamicSparseAttentionPrefillKernel<true>` (generic fused/split kernels for FP16 queries). |
+| Tensor-core INT8-cache decode (`ORT_DSA_DECODE_INT8_TC=1`, the default) | `prepared_query`, `present_key`, `present_value`, `key_scale`, `value_scale`, attention workspace: 16 bytes | The CUDA-core grouped decode kernel. |
 
 Buffers allocated by ONNX Runtime are 256-byte aligned, so only IOBinding with offset buffers takes a
 fallback. The `*MisalignedBuffers_CUDA` tests cover each case.
@@ -219,7 +221,7 @@ only as fallbacks:
 | `ORT_DSA_INT8_VECTOR_STAGING=0` | about +0.3 ms (+2%) slower |
 | `ORT_DSA_SHARED_SCALE_MERGE=0` | about +0.05 to +0.1 ms (+0.3 to 0.5%) slower |
 
-The INT8 tensor-core kernels (opt-in, see [Rollout](#rollout)) are measured at the operator level with
+The INT8 tensor-core kernels (enabled by default, see [Rollout](#rollout)) are measured at the operator level with
 [benchmark_dynamic_sparse_attention.py](../../../onnxruntime/test/python/transformers/benchmark_dynamic_sparse_attention.py)
 against the kernels that they replace (the BF16-dequantizing prefill and the CUDA-core grouped decode). The script builds
 a single-node `DynamicSparseAttention` model per case (24 query / 2 KV heads, head size 256, INT8 cache, scale 1/16,
@@ -277,7 +279,7 @@ confidence intervals and have not been reproduced for the current revision of th
 [Rollout](#rollout)). A shorter speculative-decoding cycle is not better user-visible throughput by itself: the accepted
 tokens per cycle and the time per accepted token were not measured.
 
-`ORT_DSA_PREFILL_INT8_TC=0` and `ORT_DSA_DECODE_INT8_TC=0` (the defaults) run the previous kernels exactly. The tests
+`ORT_DSA_PREFILL_INT8_TC=0` and `ORT_DSA_DECODE_INT8_TC=0` run the previous kernels exactly. The tests
 `Int8CachePrefillTensorCoreKernel_CUDA` and `Int8CacheDecodeTensorCoreKernel_CUDA` compare the tensor-core kernels with a
 reference over head counts, candidate counts, splits and invalid indices; `Int8DecodeQueryBeyondHalfRange_CUDA` covers
 the FP32 fallback of the splits, `Int8TensorCoreDecodeTilesPerSplitCaps_CUDA` the split caps, and

@@ -26,7 +26,8 @@ enum class UpdateRule : int { kLinear = 0,
                               kDelta = 2,
                               kGatedDelta = 3 };
 enum class GateActivation : int { kNone = 0,
-                                  kSoftplusDecay = 1 };
+                                  kSoftplusDecay = 1,
+                                  kSigmoidDecay = 2 };
 enum class BetaActivation : int { kNone = 0,
                                   kSigmoid = 1 };
 
@@ -77,13 +78,18 @@ struct Descriptor {
   UpdateRule update_rule = UpdateRule::kGatedDelta;
   GateActivation gate_activation = GateActivation::kNone;
   BetaActivation beta_activation = BetaActivation::kNone;
+  float gate_lower_bound = -5.0f;
   IoType io_type = IoType::kFloat16;
   bool qk_l2_norm = false;
   bool decay_per_key_dim = false;
+  bool dt_bias_per_key_dim = false;
   bool ragged = false;  // cu_seqlens supplied
   // Benchmarking override. kAuto lets the heuristic choose.
   Engine preferred_engine = Engine::kAuto;
   Bf16Precision bf16_precision = Bf16Precision::kFp32;
+  // float16 KDA prefill: protect oversized FP32 state and query factors narrowed to zero with a representable output
+  // contribution. false rounds the state/factors to float16 for every tensor-core product.
+  bool fp16_state_guard = true;
   int sm_major = 0;
 };
 
@@ -171,6 +177,38 @@ inline size_t SplitTileBytes(int bt, int dk, int dv) {
          sizeof(float) * (static_cast<size_t>(bt) * dv + 1);
 }
 
+// KDA (per-key-dimension decay, BT=16) split engine shared-memory and workspace sizes.
+inline size_t KdaSplitPrepareSmemBytes(int bt, int dk, int dv) {
+  (void)dv;
+  const int ld_kh = dk + 8;
+  const size_t f = sizeof(float) * static_cast<size_t>(bt * ld_kh + 2 * bt * bt + bt);
+  const size_t h = sizeof(uint16_t) * static_cast<size_t>(2 * bt * ld_kh);
+  return f + h;
+}
+
+inline size_t KdaSplitScanSmemBytes(int bt, int dk, int dvb) {
+  const int ld_kh = dk + 8;
+  const int ld_bh = dvb + 8;
+  const int ld_mh = bt + 8;
+  const int ld_sf = dvb + 4;
+  const int ld_f2 = (dvb > bt ? dvb : bt) + 4;
+  const size_t f = sizeof(float) * (static_cast<size_t>(dk) * ld_sf +
+                                    static_cast<size_t>(2 * bt) * ld_f2 + dk);
+  const size_t h = sizeof(uint16_t) * (static_cast<size_t>(dk) * ld_bh +
+                                       static_cast<size_t>(2 * bt) * ld_kh +
+                                       static_cast<size_t>(bt) * ld_bh +
+                                       static_cast<size_t>(bt) * ld_mh);
+  return f + h;
+}
+
+// One loss bound plus padding keeps the following workspace arrays 16-byte aligned.
+inline constexpr int kKdaSplitGuardMetadataFloats = 4;
+
+inline size_t KdaSplitTileBytes(int bt, int dk, int dv) {
+  return sizeof(uint16_t) * static_cast<size_t>(bt) * (3 * dk + bt) +
+         sizeof(float) * (static_cast<size_t>(bt) * dv + dk + kKdaSplitGuardMetadataFloats);
+}
+
 inline Plan SelectPlan(const Descriptor& desc, size_t smem_per_block_optin) {
   Plan plan;
   plan.chunk_size = desc.chunk_size > 0 ? desc.chunk_size : 64;
@@ -190,13 +228,55 @@ inline Plan SelectPlan(const Descriptor& desc, size_t smem_per_block_optin) {
                         desc.num_heads_q == desc.num_heads_k && desc.num_heads_q > 0 &&
                         desc.num_heads_v % desc.num_heads_q == 0;
 
-  // The chunked engine folds the decay into [BT x BT] gram matrices, which assumes one
-  // scalar decay per (token, v-head). Per-key-dim decay (KDA) stays sequential.
-  const bool rule_ok = !desc.decay_per_key_dim;
-
   // Its GEMM operands are 16-bit mma fragments (fp16 or bf16), so float input would be
   // silently narrowed; float stays on the scalar engine.
   const bool type_ok = desc.io_type == IoType::kFloat16 || desc.io_type == IoType::kBFloat16;
+
+  if (long_enough && shape_ok && desc.decay_per_key_dim && type_ok && desc.sm_major >= 8 &&
+      desc.preferred_engine != Engine::kChunked) {
+    constexpr int bt = 16;
+    const size_t prep = KdaSplitPrepareSmemBytes(bt, desc.head_size_qk, desc.head_size_v);
+    const int narrow = 16;
+    const size_t scan_narrow = KdaSplitScanSmemBytes(bt, desc.head_size_qk, narrow);
+    const int dvb = (2 * scan_narrow <= smem_per_block_optin) ? narrow : 32;
+    const size_t scan = KdaSplitScanSmemBytes(bt, desc.head_size_qk, dvb);
+    if (prep <= smem_per_block_optin && scan <= smem_per_block_optin) {
+      plan.engine = Engine::kChunkedSplit;
+      plan.chunk_size = bt;
+      plan.v_block = dvb;
+      plan.smem_bytes = scan;
+      plan.smem_bytes_prepare = prep;
+      plan.state_update_tail_pass = wants_state_update_tail_pass;
+      plan.short_row_tail_pass = wants_short_row_tail_pass;
+      const size_t tile = KdaSplitTileBytes(bt, desc.head_size_qk, desc.head_size_v);
+      const size_t per_chunk = tile * static_cast<size_t>(batch) * desc.num_heads_v;
+      const size_t carry_bytes = sizeof(float) * static_cast<size_t>(batch) *
+                                 desc.num_heads_v * desc.head_size_v * desc.head_size_qk;
+      const int64_t longest = desc.ragged ? desc.total_tokens : (desc.total_tokens + batch - 1) / batch;
+      const int total_chunks = static_cast<int>((longest + bt - 1) / bt);
+      const size_t kWorkspaceCap = 64u << 20;
+      const bool needs_multi_pass =
+          per_chunk > 0 && static_cast<size_t>(total_chunks) * per_chunk > kWorkspaceCap;
+      const size_t tile_budget =
+          (needs_multi_pass && kWorkspaceCap > carry_bytes) ? (kWorkspaceCap - carry_bytes)
+                                                            : kWorkspaceCap;
+      int per_pass = static_cast<int>(tile_budget / (per_chunk > 0 ? per_chunk : 1));
+      per_pass = per_pass < 1 ? 1 : per_pass;
+      per_pass = per_pass > total_chunks ? total_chunks : per_pass;
+      plan.chunks_per_pass = per_pass;
+      plan.workspace_bytes = per_chunk * static_cast<size_t>(per_pass);
+      if (per_pass < total_chunks) {
+        plan.workspace_bytes += carry_bytes;
+      }
+      plan.supported = true;
+      return plan;
+    }
+    plan.reject_reason = "KDA split engine exceeds the device shared-memory opt-in limit";
+  }
+
+  // The fused chunked engine folds the decay into [BT x BT] gram matrices, which assumes one
+  // scalar decay per (token, v-head). Per-key-dim decay (KDA) uses the BT=16 split engine above.
+  const bool rule_ok = !desc.decay_per_key_dim;
 
   if (long_enough && shape_ok && rule_ok && type_ok && desc.sm_major >= 8) {
     plan.v_block = 64;

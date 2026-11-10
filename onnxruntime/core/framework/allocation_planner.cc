@@ -513,13 +513,12 @@ class PlannerImpl {
     return true;
   }
 
-  /*! \brief Given a tensor-type, return the primitive element type of the tensor.
+  /*! \brief Given a tensor node arg, return the primitive element type of the tensor.
    */
-  static MLDataType GetPrimitiveElementType(DataType tensor_type) {
-    MLDataType ml_data_type = DataTypeImpl::GetDataType(*tensor_type);
-    const TensorTypeBase* tensor_type_base = ml_data_type->AsTensorType();
-    ORT_ENFORCE(nullptr != tensor_type_base);
-    return tensor_type_base->GetElementType();
+  static MLDataType GetPrimitiveElementType(const onnxruntime::NodeArg& arg) {
+    const auto* type_proto = arg.TypeAsProto();
+    ORT_ENFORCE(type_proto != nullptr && utils::HasTensorType(*type_proto));
+    return DataTypeImpl::TensorTypeFromONNXEnum(type_proto->tensor_type().elem_type())->GetElementType();
   }
 
   struct ElementStorage {
@@ -535,8 +534,8 @@ class PlannerImpl {
 
   static bool SameSize(const TensorShapeProto& shape1, const onnxruntime::NodeArg& arg1,
                        const TensorShapeProto& shape2, const onnxruntime::NodeArg& arg2) {
-    const auto storage1 = GetElementStorage(GetPrimitiveElementType(arg1.Type()));
-    const auto storage2 = GetElementStorage(GetPrimitiveElementType(arg2.Type()));
+    const auto storage1 = GetElementStorage(GetPrimitiveElementType(arg1));
+    const auto storage2 = GetElementStorage(GetPrimitiveElementType(arg2));
     bool is_type1_string = arg1.TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING;
     bool is_type2_string = arg2.TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING;
 
@@ -592,7 +591,7 @@ class PlannerImpl {
 #if !defined(ORT_MINIMAL_BUILD)
   std::optional<size_t> GetReuseKey(const NodeArg& arg, const TensorShapeProto& shape) {
     if (shape.dim_size() == 0) return std::nullopt;
-    const auto* element_type = GetPrimitiveElementType(arg.Type());
+    const auto* element_type = GetPrimitiveElementType(arg);
     if (element_type == DataTypeImpl::GetType<std::string>()) return std::nullopt;
 
     size_t key = AllocPlan(arg.Name()).location.Hash();
@@ -1999,6 +1998,13 @@ class PlannerImpl {
             int value_idx;
             ORT_RETURN_IF_ERROR(ort_value_name_idx_map_.GetIdx(name, value_idx));
             auto origin = AllocPlan(value_idx).reused_buffer;
+            // Per-stream plans can leave reuse chains crossing stream boundaries.
+            // Every alias consumer must keep the owning allocation alive.
+            for (size_t reuse_depth = 0; AllocPlan(origin).alloc_kind == AllocKind::kReuse; ++reuse_depth) {
+              ORT_RETURN_IF_NOT(reuse_depth < plan_.allocation_plan.size(),
+                                "Cycle in buffer reuse chain for value: ", name);
+              origin = AllocPlan(origin).reused_buffer;
+            }
             if (AllocPlan(origin).alloc_kind == AllocKind::kAllocate ||
                 AllocPlan(origin).alloc_kind == AllocKind::kAllocatedExternally) {
               // add current node as consumer for origin buffer

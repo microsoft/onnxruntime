@@ -4,6 +4,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 
+#include <algorithm>
 #include <charconv>
 #include <memory>
 #include <sstream>
@@ -2634,7 +2635,8 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
   // Create GraphOptimizerRegistry instance for providing predefined graph optimizers and selection functions for EPs to lookup
   auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(&sess_options,
                                                                            providers.Get(onnxruntime::kCpuExecutionProvider),
-                                                                           &logger);
+                                                                           &logger,
+                                                                           false /*capability_optimizations_supported*/);
 
   GraphPartitioner partitioner(kernel_registry_manager, providers, std::move(graph_optimizer_registry),
                                [&sess_options]() -> bool { return sess_options.IsLoadCancellationFlagSet(); });
@@ -2724,6 +2726,61 @@ common::Status InferenceSession::HasInvalidCombinationOfExecutionProviders() con
   return Status::OK();
 }
 
+// Validates the "ep.enable_weightless_mode" session option before the model is partitioned. Plugin EPs check it again
+// when they are created and when they compile nodes, but those checks don't run if the session uses no plugin EP or
+// compiles no nodes.
+static Status ValidateWeightlessMode(const SessionOptions& session_options) {
+  const std::optional<std::string> weightless_mode_entry =
+      session_options.config_options.GetConfigEntry(kOrtSessionOptionEpEnableWeightlessMode);
+  if (!weightless_mode_entry.has_value()) {
+    return Status::OK();
+  }
+
+  // An explicitly empty value is invalid.
+  OrtWeightlessSupport weightless_mode = OrtWeightlessSupport_NONE;
+  return epctx::ParseWeightlessMode(*weightless_mode_entry, weightless_mode);
+}
+
+#if !defined(ORT_MINIMAL_BUILD)
+// Warns if a model that may depend on the source model is loaded without one. The "external_dependencies" metadata
+// records whether a compiled model depends on the source model: e.g., an EP that loads the initializer data itself in
+// weightless mode OrtWeightlessSupport_ALL needs it, while an EP that lets ORT provide the initializers doesn't. Models
+// without that metadata (e.g., compiled by an earlier version) may depend on the source model if they were compiled
+// with OrtWeightlessSupport_ALL. An EP may still locate the source model via the "onnx_model_filename" EPContext node
+// attribute, so this is not an error.
+static void CheckWeightlessSourceModel(const SessionOptions& session_options, const Model& model,
+                                       const logging::Logger& logger) {
+  const auto& model_metadata = model.MetaData();
+  std::string reason;
+  if (auto it = model_metadata.find(kOrtModelMetadata_ExternalDependencies); it != model_metadata.end()) {
+    const auto dependencies = utils::SplitString(it->second, ";");
+    if (std::find(dependencies.begin(), dependencies.end(), "source_model") == dependencies.end()) {
+      return;
+    }
+    reason = MakeString("The model depends on the source model ('", kOrtModelMetadata_ExternalDependencies,
+                        "' metadata = '", it->second, "')");
+  } else {
+    it = model_metadata.find(kOrtModelMetadata_WeightlessMode);
+    if (it == model_metadata.end() || it->second != std::to_string(static_cast<int>(OrtWeightlessSupport_ALL))) {
+      return;
+    }
+    reason =
+        "The model was compiled with weightless mode OrtWeightlessSupport_ALL, so depending on the EP, it may "
+        "depend on the source model";
+  }
+
+  const bool has_source_model_path =
+      !session_options.config_options.GetConfigOrDefault(kOrtSessionOptionEpContextSourceModelPath, "").empty();
+  const bool has_source_model_buffer = session_options.weightless_source_model_data != nullptr;
+  if (!has_source_model_path && !has_source_model_buffer) {
+    LOGS(logger, WARNING)
+        << reason << ", but neither the '" << kOrtSessionOptionEpContextSourceModelPath
+        << "' session option nor a source model buffer (SessionOptionsSetWeightlessSourceModelBuffer) is set. "
+        << "An EP that needs it will try to locate it via the 'onnx_model_filename' EPContext node attribute.";
+  }
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 common::Status InferenceSession::Initialize() {
   const auto start_timing = [this]() {
     TimePoint start_time{};
@@ -2776,6 +2833,10 @@ common::Status InferenceSession::Initialize() {
   ORT_TRY {
     ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status)
     LOGS(*session_logger_, INFO) << "Initializing session.";
+    ORT_RETURN_IF_ERROR(ValidateWeightlessMode(session_options_));
+#if !defined(ORT_MINIMAL_BUILD)
+    CheckWeightlessSourceModel(session_options_, *model_, *session_logger_);
+#endif  // !defined(ORT_MINIMAL_BUILD)
 #if defined(ORT_MINIMAL_BUILD)
     for (const auto& [key, value] : session_options_.config_options.GetConfigOptionsMap()) {
       const std::string_view option = key;
@@ -2876,22 +2937,78 @@ common::Status InferenceSession::Initialize() {
     std::lock_guard<std::mutex> l(session_mutex_);
 
     auto clear_external_data_loaders = gsl::finally([this] { external_data_loader_mgr_.Clear(); });
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+    ExternalDataLoaderOptions session_loader_options;
+    session_loader_options.auto_reading_threads = ExternalDataLoaderOptions::GetDefaultReadingThreads();
+    if (const auto threads_opt = session_options_.config_options.GetConfigEntry(
+            kOrtSessionOptionsExternalDataLoaderThreads)) {
+      size_t parsed_threads = 0;
+      ORT_RETURN_IF_ERROR_SESSIONID_(ExternalDataLoaderOptions::ParseReadingThreads(
+          *threads_opt, kOrtSessionOptionsExternalDataLoaderThreads, parsed_threads));
+      session_loader_options.reading_threads = parsed_threads;
+    }
+    if (const auto pinned_opt = session_options_.config_options.GetConfigEntry(
+            kOrtSessionOptionsExternalDataLoaderPinnedMemoryBytes)) {
+      size_t parsed_pinned = 0;
+      ORT_RETURN_IF_ERROR_SESSIONID_(ExternalDataLoaderOptions::ParsePinnedMemoryBytes(
+          *pinned_opt, kOrtSessionOptionsExternalDataLoaderPinnedMemoryBytes, parsed_pinned));
+      session_loader_options.pinned_memory_bytes = parsed_pinned;
+    }
+    if (const auto chunk_opt = session_options_.config_options.GetConfigEntry(
+            kOrtSessionOptionsExternalDataLoaderChunkBytes)) {
+      size_t parsed_chunk = 0;
+      ORT_RETURN_IF_ERROR_SESSIONID_(ExternalDataLoaderOptions::ParseChunkBytes(
+          *chunk_opt, kOrtSessionOptionsExternalDataLoaderChunkBytes, parsed_chunk));
+      session_loader_options.chunk_bytes = parsed_chunk;
+    }
+    if (const auto min_size_opt = session_options_.config_options.GetConfigEntry(
+            kOrtSessionOptionsExternalDataLoaderMinSizeBytes)) {
+      size_t parsed_min_size = 0;
+      ORT_RETURN_IF_ERROR_SESSIONID_(ExternalDataLoaderOptions::ParseMinSizeBytes(
+          *min_size_opt, kOrtSessionOptionsExternalDataLoaderMinSizeBytes, parsed_min_size));
+      session_loader_options.min_size_bytes = parsed_min_size;
+    }
+    for (const auto& provider : execution_providers_) {
+      if (auto loader = provider->GetExternalDataLoader()) {
+        ORT_RETURN_IF_ERROR_SESSIONID_(loader->Configure(session_loader_options));
+        if (loader->IsEnabled()) {
+          ORT_RETURN_IF_ERROR_SESSIONID_(external_data_loader_mgr_.RegisterExternalDataLoader(std::move(loader)));
+        }
+      }
+    }
+#else
     for (const auto& provider : execution_providers_) {
       if (auto loader = provider->GetExternalDataLoader()) {
         ORT_RETURN_IF_ERROR_SESSIONID_(external_data_loader_mgr_.RegisterExternalDataLoader(std::move(loader)));
       }
     }
+#endif
 
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS) && !defined(ORT_MINIMAL_BUILD)
+    const bool use_buffers_directly = session_options_.config_options.GetConfigOrDefault(
+                                          kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, "0") ==
+                                      "1";
     if (!session_options_.external_initializers.empty()) {
-      ORT_RETURN_IF_ERROR_SESSIONID_(graph.InjectExternalInitializedTensors(session_options_.external_initializers));
+      for (auto& [name, value] : session_options_.external_initializers) {
+        const auto& tensor = value.Get<Tensor>();
+        if (tensor.Location().device.Type() != OrtDevice::CPU) {
+#ifdef ENABLE_STRIDED_TENSORS
+          ORT_RETURN_IF_NOT(tensor.IsContiguous(), "External initializer ", name, " must be contiguous.");
+#endif
+          ORT_RETURN_IF_NOT(!tensor.IsDataTypeString(),
+                            "External initializer ", name, " cannot be a device string tensor.");
+          // Graph optimizers and shape inference require host-readable initializer data.
+          Tensor cpu_tensor(tensor.DataType(), tensor.Shape(), CPUAllocator::DefaultInstance());
+          ORT_RETURN_IF_ERROR_SESSIONID_(data_transfer_mgr_.CopyTensor(tensor, cpu_tensor));
+          Tensor::InitOrtValue(std::move(cpu_tensor), value);
+        }
+      }
+      ORT_RETURN_IF_ERROR_SESSIONID_(
+          graph.InjectExternalInitializedTensors(session_options_.external_initializers, use_buffers_directly));
       InlinedHashMap<std::string, OrtValue>{}.swap(session_options_.external_initializers);
     }
 
     if (!session_options_.external_initializer_files_mmap.empty()) {
-      const bool use_buffers_directly = session_options_.config_options.GetConfigOrDefault(
-                                            kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, "0") ==
-                                        "1";
       ORT_RETURN_IF_ERROR_SESSIONID_(
           graph.InjectExternalInitializersFromFilesInMemory(session_options_.external_initializer_files_mmap,
                                                             use_buffers_directly));
@@ -3478,8 +3595,14 @@ common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::stri
       // check for shape
       const auto& opt_shape = iter->second.tensor_shape;
       if (opt_shape.has_value() && !opt_shape->GetDims().empty()) {
-        ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(name, input_output_tensor.Shape(),
-                                                   *opt_shape, input_output_moniker));
+        const auto& actual_shape = input_output_tensor.Shape();
+        const bool scalar_single_element_output_compatibility =
+            !is_inputs && actual_shape.NumDimensions() == 0 &&
+            std::all_of(opt_shape->GetDims().begin(), opt_shape->GetDims().end(),
+                        [](int64_t dimension) { return dimension < 0 || dimension == 1; });
+        if (!scalar_single_element_output_compatibility) {
+          ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(name, actual_shape, *opt_shape, input_output_moniker));
+        }
       }
     } else if (input_output_ml_value.IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
