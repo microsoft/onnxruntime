@@ -545,7 +545,12 @@
     set(onnxruntime_FLASH_NVCC_THREADS "1" CACHE STRING
         "Number of NVCC threads for Flash Attention compilation (memory-intensive, keep low).")
     if(onnxruntime_cuda_flash_attention_srcs)
-      onnxruntime_filter_cuda_archs(_ort_flash_cuda_architectures MIN_SM 80)
+      # With onnxruntime_FLASH_ATTENTION_REUSE_SM80, SM86/SM89 GPUs run the SM80 SASS (see CMakeLists.txt).
+      set(_ort_flash_filter_options)
+      if(onnxruntime_FLASH_ATTENTION_REUSE_SM80)
+        list(APPEND _ort_flash_filter_options REUSE_SM80_SASS)
+      endif()
+      onnxruntime_filter_cuda_archs(_ort_flash_cuda_architectures MIN_SM 80 ${_ort_flash_filter_options})
       if(_ort_flash_cuda_architectures)
         onnxruntime_add_cuda_object_library(
           NAME onnxruntime_providers_cuda_flash_attention

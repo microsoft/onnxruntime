@@ -246,12 +246,33 @@ endfunction()
 # Usage:
 #   onnxruntime_filter_cuda_archs(<output_var>
 #       MIN_SM <number>
-#       [EXCLUDE_SM120_REAL])
+#       [EXCLUDE_SM120_REAL]
+#       [REUSE_SM80_SASS])
+#
+# REUSE_SM80_SASS drops the SM86 and SM89 SASS entries when SM80 SASS is also requested and kept (MIN_SM
+# is at most 80): a cubin for compute capability 8.0 runs on 8.6 and 8.9 GPUs. Only use it for sources that
+# have no compile-time dependence on __CUDA_ARCH__ within the SM8x generation (FlashAttention). SM87 is kept
+# because Tegra GPUs do not follow the cubin minor-version compatibility rule, and -virtual entries are
+# never dropped.
 function(onnxruntime_filter_cuda_archs OUTPUT_VAR)
-  cmake_parse_arguments(PARSE_ARGV 1 _FCA "EXCLUDE_SM120_REAL;REPLACE_SM120_REAL_WITH_VIRTUAL" "MIN_SM" "")
+  cmake_parse_arguments(PARSE_ARGV 1 _FCA "EXCLUDE_SM120_REAL;REPLACE_SM120_REAL_WITH_VIRTUAL;REUSE_SM80_SASS"
+                        "MIN_SM" "")
+
+  # Every entry except "<cc>-virtual" generates SASS.
+  set(_reuse_sm80 OFF)
+  if(_FCA_REUSE_SM80_SASS AND _FCA_MIN_SM LESS_EQUAL 80)
+    foreach(_arch IN LISTS CMAKE_CUDA_ARCHITECTURES)
+      if(_arch MATCHES "^80[af]?(-real)?$")
+        set(_reuse_sm80 ON)
+      endif()
+    endforeach()
+  endif()
 
   set(_filtered)
   foreach(_arch IN LISTS CMAKE_CUDA_ARCHITECTURES)
+    if(_reuse_sm80 AND _arch MATCHES "^(86|89)[af]?(-real)?$")
+      continue()
+    endif()
     string(REGEX MATCH "^([0-9]+)" _arch_num "${_arch}")
     if(_arch_num GREATER_EQUAL "${_FCA_MIN_SM}")
       if(_FCA_REPLACE_SM120_REAL_WITH_VIRTUAL AND _arch_num GREATER_EQUAL 120 AND _arch MATCHES "-real$")
