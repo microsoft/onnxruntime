@@ -175,6 +175,38 @@ void RunCompactPaths() {
   RunCompactCase<T>(true, 1, false, true);
 }
 
+void RunCompactFailure(int experts, int k, int n_group, int topk_group,
+                       bool projected, bool compact, float scale, const std::string& error) {
+  for (bool cuda : {false, true}) {
+    auto provider = cuda ? DefaultCudaExecutionProvider() : DefaultCpuExecutionProvider();
+    if (!provider) continue;
+    SCOPED_TRACE(provider->Type());
+    SCOPED_TRACE(testing::Message() << "experts=" << experts << " k=" << k
+                                    << " n_group=" << n_group << " topk_group=" << topk_group);
+    const int width = projected ? 256 : experts;
+    OpTester test("MoEGroupRouter", 1, kMSDomain);
+    test.AddAttribute("top_k", int64_t{k});
+    test.AddAttribute("n_group", int64_t{n_group});
+    test.AddAttribute("topk_group", int64_t{topk_group});
+    test.AddAttribute("group_topk", int64_t{1});
+    test.AddAttribute("router_scale", scale);
+    test.AddInput<float>("logits", {1, width}, std::vector<float>(width, 0.f));
+    test.AddInput<float>("expert_bias", {experts}, std::vector<float>(experts, 0.f));
+    if (projected) {
+      test.AddInput<float>("projection_weight", {experts, width},
+                           std::vector<float>(experts * width, 0.f));
+    }
+    test.AddOutput<float>("router_probs", {1, experts}, std::vector<float>(experts, 0.f));
+    if (compact) {
+      test.AddOutput<int32_t>("expert_indices", {1, k}, std::vector<int32_t>(k, 0));
+      test.AddOutput<float>("expert_weights", {1, k}, std::vector<float>(k, 0.f));
+    }
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(std::move(provider));
+    test.Run(OpTester::ExpectResult::kExpectFailure, error, {}, nullptr, &eps);
+  }
+}
+
 }  // namespace
 
 TEST(MoEGroupRouterTest, CompactAndProjectedFloat) { RunCompactPaths<float>(); }
@@ -204,6 +236,25 @@ TEST(MoEGroupRouterTest, CompactOutputsMustBePaired) {
                "expert_indices and expert_weights must be requested together", {}, nullptr, &eps);
     }
   }
+}
+
+TEST(MoEGroupRouterTest, CompactRejectsGroupedRouting) {
+  for (int topk_group : {1, 2}) {
+    RunCompactFailure(4, 1, 2, topk_group, false, true, 1.f, "compact routing requires one group");
+  }
+}
+
+TEST(MoEGroupRouterTest, ProjectionRequiresCompactOutputs) {
+  RunCompactFailure(4, 1, 1, 1, true, false, 1.f, "projection_weight requires compact outputs");
+}
+
+TEST(MoEGroupRouterTest, ScaleRequiresCompactOutputs) {
+  RunCompactFailure(4, 1, 1, 1, false, false, 1.5f, "router_scale requires compact outputs");
+}
+
+TEST(MoEGroupRouterTest, CompactRejectsNonprojectedBounds) {
+  RunCompactFailure(64, 33, 1, 1, false, true, 1.f, "top_k<=32");
+  RunCompactFailure(513, 1, 1, 1, false, true, 1.f, "512");
 }
 
 TEST(MoEGroupRouterTest, GeneralAndSpecializedPathsFloat) {
