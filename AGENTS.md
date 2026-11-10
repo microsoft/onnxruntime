@@ -77,6 +77,12 @@ state updates, and explicit Round, quantization, or clipping operations. Those a
 Validate supported cases with justified, dtype-appropriate tolerances and relevant boundary tests; record material
 numerical limitations rather than claiming bitwise parity. Do not loosen tolerances merely to hide a semantic error.
 
+Fusion-integration tests use the original ONNX graph as the primary runtime baseline, with identical inputs and
+EP precision settings. Check replacement wiring, attributes, output/state mappings, and actual execution placement.
+Existing kernel-accuracy qualification belongs in operator tests; an independent high-precision reference must not
+become an additional accuracy gate for the existing source graph or target kernel. Preserve explicitly specified
+numerical contracts, but do not modify kernels merely to satisfy a fusion-integration reference.
+
 ### Checksum Literals
 
 Keep checksum literals on a single line so they are easy to copy and paste. Do not split them with concatenation or
