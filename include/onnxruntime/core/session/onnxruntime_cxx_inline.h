@@ -1496,6 +1496,190 @@ inline Session ModelPackageComponentContext::CreateSession(const Env& env,
   return Session{out};
 }
 
+inline SessionLoopOptions::SessionLoopOptions(const OrtStatefulLoopConfig& config) {
+  ThrowOnError(GetStatefulApi().CreateSessionLoopOptions(&config, &p_));
+}
+
+inline SessionLoopOptions& SessionLoopOptions::SetConfig(const OrtStatefulLoopConfig& config) {
+  ThrowOnError(GetStatefulApi().SessionLoopOptionsSetConfig(p_, &config));
+  return *this;
+}
+
+inline SessionLoop::SessionLoop(const Session& session, const SessionLoopOptions& options) {
+  ThrowOnError(GetStatefulApi().CreateSessionLoop(session, options, &p_));
+}
+
+inline StatefulExecution SessionLoop::CreateExecution(const OrtStatefulInputs& inputs) const {
+  OrtStatefulExecution* out = nullptr;
+  ThrowOnError(GetStatefulApi().CreateLoopExecution(p_, &inputs, &out));
+  return StatefulExecution{out};
+}
+
+inline SessionChainOptions::SessionChainOptions(const OrtStatefulChainConfig& config) {
+  ThrowOnError(GetStatefulApi().CreateSessionChainOptions(&config, &p_));
+}
+
+inline SessionChainOptions& SessionChainOptions::SetConfig(const OrtStatefulChainConfig& config) {
+  ThrowOnError(GetStatefulApi().SessionChainOptionsSetConfig(p_, &config));
+  return *this;
+}
+
+inline SessionChain::SessionChain(const SessionChainOptions& options) {
+  ThrowOnError(GetStatefulApi().CreateSessionChain(options, &p_));
+}
+
+inline StatefulExecution SessionChain::CreateExecution(const OrtStatefulInputs& inputs) const {
+  OrtStatefulExecution* out = nullptr;
+  ThrowOnError(GetStatefulApi().CreateChainExecution(p_, &inputs, &out));
+  return StatefulExecution{out};
+}
+
+inline StatefulStepResult StatefulExecution::Step() {
+  auto owner = std::make_shared<detail::Base<OrtStatefulStepResult>>();
+  OrtStatefulStepResult* out = nullptr;
+  ThrowOnError(GetStatefulApi().StatefulExecutionStep(p_, &out));
+  *owner = detail::Base<OrtStatefulStepResult>{out};
+  return StatefulStepResult{std::move(owner)};
+}
+
+inline StatefulStepResult StatefulExecution::Run() {
+  auto owner = std::make_shared<detail::Base<OrtStatefulStepResult>>();
+  OrtStatefulStepResult* out = nullptr;
+  ThrowOnError(GetStatefulApi().StatefulExecutionRun(p_, &out));
+  *owner = detail::Base<OrtStatefulStepResult>{out};
+  return StatefulStepResult{std::move(owner)};
+}
+
+inline void StatefulExecution::Reset() {
+  ThrowOnError(GetStatefulApi().StatefulExecutionReset(p_));
+}
+
+inline void StatefulExecution::Cancel() {
+  ThrowOnError(GetStatefulApi().StatefulExecutionCancel(p_));
+}
+
+inline bool StatefulExecution::RequiresReset() const {
+  int out = 0;
+  ThrowOnError(GetStatefulApi().StatefulExecutionRequiresReset(p_, &out));
+  return out != 0;
+}
+
+inline StatefulStepResult StatefulExecution::GetState() const {
+  auto owner = std::make_shared<detail::Base<OrtStatefulStepResult>>();
+  OrtStatefulStepResult* out = nullptr;
+  ThrowOnError(GetStatefulApi().StatefulExecutionGetState(p_, &out));
+  *owner = detail::Base<OrtStatefulStepResult>{out};
+  return StatefulStepResult{std::move(owner)};
+}
+
+inline StatefulStepResult::StatefulStepResult(OrtStatefulStepResult* result)
+    : owner_{std::make_shared<detail::Base<OrtStatefulStepResult>>(detail::Base<OrtStatefulStepResult>{result})} {}
+
+inline StatefulStepResult::operator const OrtStatefulStepResult*() const noexcept {
+  return owner_ ? static_cast<OrtStatefulStepResult*>(*owner_) : nullptr;
+}
+
+inline StatefulStepInfo StatefulStepResult::GetInfo() const {
+  OrtStatefulStepInfo info{};
+  ThrowOnError(GetStatefulApi().StatefulStepResultGetInfo(*this, sizeof(info), &info));
+  StatefulStepInfo out;
+  out.kind = info.kind;
+  out.executed = info.executed != 0;
+  out.completed = info.completed != 0;
+  out.invocations = info.invocations;
+  out.iterations = info.iterations;
+  out.generated_tokens = info.generated_tokens;
+  out.components_completed = info.components_completed;
+  out.component_name = info.component_name;
+  if (info.num_exit_reasons != 0) {
+    out.exit_reasons.assign(info.exit_reasons, info.exit_reasons + info.num_exit_reasons);
+  }
+  if (info.has_generated_token) {
+    out.generated_token = info.generated_token;
+  }
+  return out;
+}
+
+inline std::vector<StatefulNamedValue> StatefulStepResult::GetOutputs(OrtStatefulOutputGroup group) const {
+  const OrtStatefulNamedValue* values = nullptr;
+  size_t count = 0;
+  ThrowOnError(GetStatefulApi().StatefulStepResultGetOutputs(*this, group, &values, &count));
+  std::vector<StatefulNamedValue> out;
+  out.reserve(count);
+  for (size_t i = 0; i < count; ++i) {
+    out.push_back({values[i].name, StatefulValue{values[i].value, owner_}});
+  }
+  return out;
+}
+
+inline KVCacheOptions::KVCacheOptions(const OrtStatefulKVCacheConfig& config) {
+  ThrowOnError(GetStatefulApi().CreateKVCacheOptions(&config, &p_));
+}
+
+inline KVCacheOptions& KVCacheOptions::SetConfig(const OrtStatefulKVCacheConfig& config) {
+  ThrowOnError(GetStatefulApi().KVCacheOptionsSetConfig(p_, &config));
+  return *this;
+}
+
+inline KVCacheManager::KVCacheManager(const KVCacheOptions& options, OrtAllocator* allocator) {
+  ThrowOnError(GetStatefulApi().CreateKVCacheManager(options, allocator, &p_));
+}
+
+inline KVCacheView KVCacheManager::GetView(const char* name) const {
+  auto owner = std::make_shared<detail::Base<OrtKVCacheView>>();
+  OrtKVCacheView* out = nullptr;
+  ThrowOnError(GetStatefulApi().KVCacheManagerGetView(p_, name, &out));
+  *owner = detail::Base<OrtKVCacheView>{out};
+  return KVCacheView{std::move(owner)};
+}
+
+inline void KVCacheManager::Update(const char* name, const OrtValue* value, OrtKVCacheUpdateKind kind) {
+  ThrowOnError(GetStatefulApi().KVCacheManagerUpdate(p_, name, value, kind));
+}
+
+inline void KVCacheManager::Reserve(const char* name, int64_t capacity) {
+  ThrowOnError(GetStatefulApi().KVCacheManagerReserve(p_, name, capacity));
+}
+
+inline void KVCacheManager::Reset() {
+  ThrowOnError(GetStatefulApi().KVCacheManagerReset(p_));
+}
+
+inline OrtStatefulKVCacheStats KVCacheManager::GetStats() const {
+  OrtStatefulKVCacheStats out{};
+  ThrowOnError(GetStatefulApi().KVCacheManagerGetStats(p_, sizeof(out), &out));
+  return out;
+}
+
+inline KVCacheView::KVCacheView(OrtKVCacheView* view)
+    : owner_{std::make_shared<detail::Base<OrtKVCacheView>>(detail::Base<OrtKVCacheView>{view})} {}
+
+inline KVCacheView::operator const OrtKVCacheView*() const noexcept {
+  return owner_ ? static_cast<OrtKVCacheView*>(*owner_) : nullptr;
+}
+
+inline KVCacheViewInfo KVCacheView::GetInfo() const {
+  const OrtValue* value = nullptr;
+  int64_t length = 0, capacity = 0;
+  ThrowOnError(GetStatefulApi().KVCacheViewGetInfo(*this, &value, &length, &capacity));
+  return {StatefulValue{value, owner_}, length, capacity};
+}
+
+inline SamplerOptions::SamplerOptions(const OrtStatefulSamplerConfig& config) {
+  ThrowOnError(GetStatefulApi().CreateSamplerOptions(&config, &p_));
+}
+
+inline SamplerOptions& SamplerOptions::SetConfig(const OrtStatefulSamplerConfig& config) {
+  ThrowOnError(GetStatefulApi().SamplerOptionsSetConfig(p_, &config));
+  return *this;
+}
+
+inline int64_t SamplerOptions::Sample(const OrtValue* logits) const {
+  int64_t out = 0;
+  ThrowOnError(GetStatefulApi().SamplerSample(p_, logits, &out));
+  return out;
+}
+
 inline EpContextConfig::EpContextConfig(const SessionOptions& session_options)
     : EpContextConfig{session_options.GetConst()} {}
 

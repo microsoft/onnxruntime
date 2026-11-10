@@ -969,9 +969,9 @@ explicit host staging and this CPU sampler; native CUDA sampling remains M09.
 The measured line-coverage gate targets the Linux inference configuration, not
 unbuilt training-only strided-tensor paths.
 
-## Appendix F. Proposed M06 public C/C++ interface
+## Appendix F. M06 public C/C++ interface
 
-**Status:** Approved by the user on 2026-10-16; begin M06a, then review M06b.
+**Status:** Approved 2026-10-16; M06b authorized by the user on 2026-10-17.
 
 This contract preserves the approved runtime behavior and ownership model.
 It makes concrete the configuration, input and observation surfaces needed to
@@ -1087,3 +1087,68 @@ Before publication, fully document every public member's arguments, output
 ownership, failure behavior and release requirements. C-only compilation,
 public C/C++ parity, ABI table offsets and measured new-line coverage are
 mandatory gates for the two approved sub-PRs.
+
+### F.6 C++ ownership and executable example
+
+The header-only C++ API wraps every C operation. Configuration constructors and
+SetConfig take the same typed C records, including their explicit struct_size.
+Mutable resources are move-only; C status failures become Ort::Exception.
+Sessions and caller tensor buffers retain the C API lifetime requirements.
+
+StatefulStepResult and KVCacheView are copyable shared owners, not ordinary
+pointer-sized resources. Their const C pointer conversions are borrowed; they
+do not provide release(), which would conflict with retained views.
+StatefulValue reuses the SDK's const value operations with parent-retaining
+storage. Copies retain the owner; moves empty the source. It cannot implicitly
+slice to unowned ConstValue or convert to mutable OrtValue pointers.
+Raw tensor/metadata pointers remain borrowed from the retaining value view.
+
+StatefulStepInfo copies component names/exit reasons and represents emitted
+tokens with std::optional. These metadata copies do not depend on result
+lifetime. Step/Run allocate result ownership before native advancement, so an
+ownership allocation failure cannot lose an already-executed iteration.
+Empty resources can be destroyed even when the stateful API is unavailable;
+attempting an operation still throws explicitly.
+
+This standalone C++17 example uses only the public SDK. The cache tensor
+remains valid after the original tensor, manager and view are destroyed:
+
+```cpp
+#include "onnxruntime_cxx_api.h"
+
+int main() {
+  Ort::AllocatorWithDefaultOptions allocator;
+  const int64_t empty_shape[]{0}, value_shape[]{1}, logits_shape[]{1, 3};
+  const OrtStatefulKVCacheSpec spec{
+      "key", ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, empty_shape, 1, 0, 0};
+  const OrtStatefulKVCacheConfig cache_config{sizeof(cache_config), &spec, 1};
+  Ort::KVCacheOptions options(cache_config);
+  auto snapshot = [&] {
+    Ort::KVCacheManager cache(options, allocator);
+    auto key = Ort::Value::CreateTensor<float>(allocator, value_shape, 1);
+    key.GetTensorMutableData<float>()[0] = 3.f;
+    cache.Update("key", key, ORT_KV_CACHE_SHARE);
+    return cache.GetView("key").GetInfo();
+  }();
+
+  const OrtStatefulSamplerConfig config{sizeof(config), ORT_STATEFUL_GREEDY, 0, 0};
+  Ort::SamplerOptions sampler(config);
+  auto logits = Ort::Value::CreateTensor<float>(allocator, logits_shape, 2);
+  auto* scores = logits.GetTensorMutableData<float>();
+  scores[0] = 1.f;
+  scores[1] = 4.f;
+  scores[2] = 2.f;
+  return sampler.Sample(logits) == 1 && snapshot.length == 1 &&
+                 snapshot.value.GetTensorData<float>()[0] == 3.f
+             ? 0
+             : 1;
+}
+```
+
+For model execution, construct SessionLoop(session, options) or
+SessionChain(options), then CreateExecution(inputs). Step/Run return immutable
+results; GetOutputs returns owned names and retaining const values. GetInfo
+returns copied metadata, and GetState returns retained state snapshots.
+The public-API unit tests exercise all four Session/Loop chain combinations,
+explicit exits, reset/cancellation, prefill/decode and zero/one/multiple-token
+budgets on CPU and CUDA Sessions.
