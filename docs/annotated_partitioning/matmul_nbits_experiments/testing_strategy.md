@@ -65,10 +65,26 @@ CPU hardware gates:
 
 The [aligned INT8 follow-up](cpu_epyc_7v12_2026_11_09/report.md#follow-up-audit-aligned-int8-avx2-block-sum-path-november-10)
 now records the AVX2 quantizer/block-sum kernel and FMA3 correction GEMM, with candidate total
-`MK + 3MG + 14MNG + 9MN` (G=K/32). The original case and three new aligned/even-row/even-block held-out cases
+`MK + 3MG + 14MNG + 9MN`. Define B=`block_size` and G=ceil(K/B); audited B=32/full-block cases simplify to G=K/32.
+The original case and three new aligned/even-row/even-block held-out cases
 agree with recurring process counts to an approximately +2-operation residual. This corroborates a bounded
 total, not independently measured phase counts. Keep estimator formulas unchanged pending a deliberate refinement.
 Next audit M=1 INT8, which follows a different branch; quantizer/event semantics and tails remain unqualified.
+
+### General block geometry versus arithmetic coefficients
+
+Always express block count as `G = K // B + (1 if K % B else 0)` with B=`block_size`, and padded width as `Kp=B*G`.
+This definition is general; the audited coefficients are not. See the
+[report's applicability envelope](cpu_epyc_7v12_2026_11_09/report.md#general-block-notation-and-bounded-formula-applicability).
+For block-32 INT4/FP32-input effective INT8 non-VNNI AVX2 branches, the candidate totals are:
+
+- Multi-row: `MK + 3MG + 14MNG + 9MN`, for positive even M>=2.
+- Single-row: `K + 3G + 12NG + 7N`, for M=1; the separate correction GEMM is bypassed.
+
+Both assume full blocks, even G, N divisible by four, no bias/explicit zero points and the audited quantizer path.
+Substituting G for B=64/128, odd block counts, tails or all-zero activation blocks does not qualify those cases.
+Keep candidate references unvalidated/unavailable outside the envelope; preserve independently available logical
+counts. Do not change production estimators under this documentation generalization.
 
 1. FP32 M=1 and M=128, K=N=1024: identify selected symbols and reconstruction/scaling arithmetic.
 2. INT8 M=1 and M=32, K=128, N=64: isolate activation quantization, vector scaled accumulation, horizontal reductions

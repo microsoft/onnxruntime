@@ -158,7 +158,9 @@ The wrapper selects `MlasQ4Int8GemmKernelBlkLen32Avx2<false>` and its
 two K blocks at a time. Unlike the M=1 branch, the multi-row wrapper also calls a separate floating-point
 GEMM over the activation/weight block sums.
 
-Let G=K/32. The independent candidate ledger is:
+Let B denote the operator's `block_size` and G=ceil(K/B) the number of quantization blocks along K.
+G is determined by quantization geometry, not a fixed denominator. In every audited case here,
+B=32 and K is divisible by B, so G=K/32. The independent candidate ledger is:
 
 | Component | Bounded candidate formula | Original case FP ops |
 |---|---|---:|
@@ -215,9 +217,52 @@ Evidence is at `/datadisks/disk10/tommasoadani/tmp/matmul-int8-heldout-8EbLdy/`:
 `heldout-comparison.csv`, estimator reports, `hardware/metadata.json`, trial counters/summaries and
 `samples/*/symbols.txt`. Raw evidence remains outside the repository.
 
-No estimator refinements were made, as requested. Next qualify M=1 INT8 separately: the wrapper takes a different
-single-row branch and bypasses this separate correction GEMM. Odd block counts, row/column/K tails, other block
-sizes/ISAs, bias and explicit-zero-point variants also require their own accounting.
+No estimator refinements were made, as requested. M=1 INT8 uses a different single-row branch and bypasses this
+separate correction GEMM. Odd block counts, row/column/K tails, other block sizes/ISAs, bias and
+explicit-zero-point variants require their own accounting.
+
+### General block notation and bounded formula applicability
+
+Use these geometry definitions for any positive block size:
+
+```text
+B  = block_size
+G  = ceil(K / B) = K // B + (1 if K % B else 0)
+Kp = B * G
+```
+
+K is logical input width; Kp is block-padded width. Padding storage alone is not evidence of FP arithmetic.
+This block-count definition generalizes across block sizes; the following arithmetic coefficients do not.
+
+| Audited block-32 family | Candidate FP work |
+|---|---|
+| Multi-row INT8 AVX2 block-sum path | MK + 3MG + 14MNG + 9MN |
+| Single-row INT8 AVX2 midpoint path, M=1 | K + 3G + 12NG + 7N |
+
+The single-row candidate retains activation quantization, vector scaling/accumulation and reductions,
+but omits the separate correction GEMM used by the multi-row path.
+These are source-derived FP-work candidates, not replacements for the production estimator or claims of
+independently isolated phase measurements.
+
+Apply these candidates only within the audited applicability envelope:
+
+- B=32, INT4 weights, FP32 activation input, effective `sqnbit_int8` and the identified AVX2 non-VNNI branches.
+- Positive K divisible by B, even G, and positive N divisible by four: no partial K block, odd-block remainder
+  or column tail.
+- M=1 for the single-row candidate; positive even M>=2 for the two-row/four-column multi-row candidate.
+- No bias or explicit zero points; standard weights as generated in these experiments.
+- The quantizer's nonzero-block arithmetic path used by the synthetic inputs. All-zero blocks and other
+  data-dependent branches require separate validation.
+
+For example, B=64 changes G, but substituting ceil(K/64) into these formulas does not establish correctness:
+different block-size helpers can change scale reuse, vector partial sums, reductions and correction handling.
+Likewise, K not divisible by B can execute padded lanes or tail branches; replacing K with Kp without source
+evidence is not justified.
+
+For B!=32 or any case outside this envelope, report the route-specific candidate reference as unvalidated/
+unavailable, while retaining exact logical core/bias counts where supported. Qualify each new kernel family
+before supplying its coefficients. Do not add a universal block-size multiplier or fit coefficients to eliminate
+the approximately two-operation process residual. The production estimator remains unchanged.
 
 ## Results
 
