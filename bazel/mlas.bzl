@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-"""Native desktop MLAS targets, with ISA flags confined to dispatched kernels."""
+"""Native MLAS targets, with ISA flags confined to dispatched kernels."""
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
@@ -27,7 +27,7 @@ def _library(name, srcs, copts = [], windows_copts = []):
     )
 
 def mlas_libraries():
-    """Declare native desktop MLAS kernels with per-ISA compiler options."""
+    """Declare native MLAS kernels with per-ISA compiler options."""
     for suffix, features, sources in [
         ("fp16", "fp16", [
             "aarch64/HalfGemmKernelNeon.S",

@@ -8,7 +8,7 @@ load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
 load("@rules_python//python:defs.bzl", "py_binary", "py_test")
 
 def rust_release_package(cargo_tool):
-    """Package both Cargo crates and the selected source-built desktop runtime."""
+    """Package both Cargo crates and the selected source-built native runtime."""
     cpu_only = select({
         "//bazel:cuda_enabled": ["@platforms//:incompatible"],
         "//conditions:default": [],

@@ -16,7 +16,7 @@ load("//bazel:mlas.bzl", "mlas_libraries")
 load("//bazel:node_npm.bzl", "node_npm_package")
 load("//bazel:nuget_package.bzl", "csharp_nuget_package")
 load("//bazel:packaging.bzl", "runtime_sdk_package")
-load("//bazel:platforms.bzl", "ORIGIN_RPATH", "desktop_shared_library")
+load("//bazel:platforms.bzl", "ORIGIN_RPATH", "native_shared_library")
 load("//bazel:python_wheel.bzl", "python_wheel_package")
 load("//bazel:react_native_package.bzl", "react_native_javascript")
 load("//bazel:release_inventory.bzl", "release_inventory")
@@ -189,8 +189,15 @@ release_inventory(
     }),
 )
 
-release_inventory(
+alias(
     name = "desktop_release_inventory",
+    actual = ":native_release_inventory",
+    tags = ["manual"],
+)
+
+release_inventory(
+    name = "native_release_inventory",
+    output_name = "desktop_release_inventory.json",
     packages = [
         ":common_npm",
         ":csharp_nuget",
@@ -496,7 +503,7 @@ cc_library(
     alwayslink = True,
 )
 
-desktop_shared_library(
+native_shared_library(
     name = "runtime_library",
     additional_linker_inputs = ["//bazel:onnxruntime.lds"],
     data = select({
@@ -629,7 +636,7 @@ cc_test(
     ],
 )
 
-desktop_shared_library(
+native_shared_library(
     name = "providers_shared_library",
     srcs = [
         "onnxruntime/core/providers/shared/common.cc",

@@ -1,4 +1,4 @@
-name: Native Bazel desktop
+name: Native Bazel
 
 on:
   pull_request:
@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  desktop:
+  native:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
@@ -46,7 +46,7 @@ jobs:
             //:wasm_scalar_test //:wasm_simd_test \
             //:web_scalar_smoke_test //:web_simd_smoke_test \
             //:web_scalar_browser_test //:web_simd_browser_test -c opt --nobuild \
-            --lockfile_mode=error --jobs=3 --build_python_zip=false 2>&1 | tee bazel-desktop.log
+            --lockfile_mode=error --jobs=3 --build_python_zip=false 2>&1 | tee bazel-native.log
       - name: Test native bindings and package consumers
         shell: bash
         run: |
@@ -72,7 +72,7 @@ jobs:
             //js/react_native:data_policy_test \
             //js/react_native:package_test \
             --lockfile_mode=error --jobs=3 --local_test_jobs=1 \
-            --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-desktop.log
+            --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-native.log
       - name: Test selected existing C++ cases
         shell: bash
         run: |
@@ -88,20 +88,20 @@ jobs:
             //:global_threadpool_test //:custom_op_registration_test //:plugin_api_test \
             //:runtime_path_test //:provider_bridge_test //:optional_provider_probe_test //:autoep_tests \
             --test_filter="$filter" --lockfile_mode=error --jobs=3 --local_test_jobs=1 \
-            --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-desktop.log
+            --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-native.log
       - name: Test selected existing managed binding cases
         shell: bash
         run: |
           set -o pipefail
           flags=(-c opt --lockfile_mode=error --jobs=3 --local_test_jobs=1 --build_python_zip=false --test_output=errors)
           bazelisk ${BAZEL_STARTUP_OPTIONS:-} test //:java_tensor_test "${flags[@]}" \
-            --test_filter='ai.onnxruntime.OnnxTensorTest#testArrayCreation' 2>&1 | tee -a bazel-desktop.log
+            --test_filter='ai.onnxruntime.OnnxTensorTest#testArrayCreation' 2>&1 | tee -a bazel-native.log
           bazelisk ${BAZEL_STARTUP_OPTIONS:-} test //:python_inference_test "${flags[@]}" \
-            --test_filter=onnxruntime_test_python.TestInferenceSession.test_run_model 2>&1 | tee -a bazel-desktop.log
+            --test_filter=onnxruntime_test_python.TestInferenceSession.test_run_model 2>&1 | tee -a bazel-native.log
           bazelisk ${BAZEL_STARTUP_OPTIONS:-} test //:node_model_metadata_test "${flags[@]}" \
-            --test_filter='symbol shape$' 2>&1 | tee -a bazel-desktop.log
+            --test_filter='symbol shape$' 2>&1 | tee -a bazel-native.log
           bazelisk ${BAZEL_STARTUP_OPTIONS:-} test //:csharp_tests "${flags[@]}" \
-            --test_filter=Microsoft.ML.OnnxRuntime.Tests.InferenceTest.CanCreateAndDisposeSessionWithModelPath 2>&1 | tee -a bazel-desktop.log
+            --test_filter=Microsoft.ML.OnnxRuntime.Tests.InferenceTest.CanCreateAndDisposeSessionWithModelPath 2>&1 | tee -a bazel-native.log
       - name: Test CPU Python wheel
         if: runner.os != 'macOS'
         shell: bash
@@ -110,7 +110,7 @@ jobs:
           bazelisk ${BAZEL_STARTUP_OPTIONS:-} test --config=release \
             //:python_wheel_test //:native_release_payload_test \
             --lockfile_mode=error --jobs=3 --local_test_jobs=1 \
-            --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-desktop.log
+            --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-native.log
       - name: Test selected native Apple inference
         if: ${{ !cancelled() && runner.os == 'macOS' }}
         shell: bash
@@ -119,11 +119,11 @@ jobs:
           bazelisk ${BAZEL_STARTUP_OPTIONS:-} test -c opt //objectivec:inference_tests \
             --test_filter=ORTSessionTest/testInitAndRunOk \
             --lockfile_mode=error --jobs=3 --local_test_jobs=1 \
-            --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-desktop.log
+            --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-native.log
           bazelisk ${BAZEL_STARTUP_OPTIONS:-} test -c opt //objectivec:swift_inference_tests \
             --test_filter=ORTSwiftInferenceTest/testAddInference \
             --lockfile_mode=error --jobs=3 --local_test_jobs=1 \
-            --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-desktop.log
+            --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-native.log
       - name: Test standalone Windows runtime loading
         if: runner.os == 'Windows'
         shell: bash
@@ -131,7 +131,7 @@ jobs:
           set -o pipefail
           bazelisk ${BAZEL_STARTUP_OPTIONS:-} test -c opt //:runtime_dlopen_test \
             --lockfile_mode=error --jobs=3 --local_test_jobs=1 \
-            --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-desktop.log
+            --build_python_zip=false --test_output=errors 2>&1 | tee -a bazel-native.log
       - name: Build native iOS framework and existing test bundle
         if: ${{ !cancelled() && runner.os == 'macOS' }}
         shell: bash
@@ -142,7 +142,7 @@ jobs:
             //js/react_native:ios_adapter_framework \
             --ios_multi_cpus=sim_arm64 \
             --lockfile_mode=error --jobs=3 --build_python_zip=false \
-            2>&1 | tee -a bazel-desktop.log
+            2>&1 | tee -a bazel-native.log
       - name: Test native Apple release packages including Catalyst
         if: ${{ !cancelled() && runner.os == 'macOS' }}
         shell: bash
@@ -154,12 +154,12 @@ jobs:
             //objectivec:catalyst_xcframework_intermediates_test \
             --lockfile_mode=error --jobs=3 --local_test_jobs=1 \
             --build_python_zip=false --test_output=errors \
-            2>&1 | tee -a bazel-desktop.log
+            2>&1 | tee -a bazel-native.log
       - name: Preserve build and test diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bazel-${{ matrix.os }}
           path: |
-            bazel-desktop.log
+            bazel-native.log
             bazel-testlogs/**/test.log

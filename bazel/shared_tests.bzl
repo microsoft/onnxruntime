@@ -7,7 +7,7 @@ load("@rules_cc//cc:cc_import.bzl", "cc_import")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//bazel:loader_tests.bzl", "loader_tests")
-load("//bazel:platforms.bzl", "desktop_shared_library")
+load("//bazel:platforms.bzl", "native_shared_library")
 load("//bazel:shared_library_bundle.bzl", "shared_library_bundle")
 
 def shared_api_tests():
@@ -45,7 +45,7 @@ def shared_api_tests():
             "//conditions:default": [":runtime_shared"],
         }),
     )
-    desktop_shared_library(
+    native_shared_library(
         name = "custom_op_test_library",
         linux = "libcustom_op_library.so",
         windows = "custom_op_library.dll",
@@ -83,7 +83,7 @@ def shared_api_tests():
         ("example_plugin_ep_virt_gpu", "ep_lib.def"),
     ]:
         directory = "onnxruntime/test/autoep/library/" + plugin
-        desktop_shared_library(
+        native_shared_library(
             name = plugin,
             linux = "lib" + plugin + ".so",
             windows = plugin + ".dll",

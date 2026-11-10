@@ -7,11 +7,11 @@ load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_import.bzl", "cc_import")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@rules_python//python:defs.bzl", "py_test")
-load("//bazel:platforms.bzl", "desktop_shared_library")
+load("//bazel:platforms.bzl", "native_shared_library")
 
 def loader_tests(plugin_libraries):
     runtime_path_directory = "onnxruntime/test/shared_lib/runtime_path_test_shared_library"
-    desktop_shared_library(
+    native_shared_library(
         name = "runtime_path_test_library",
         linux = "libonnxruntime_runtime_path_test_shared_library.so",
         windows = "onnxruntime_runtime_path_test_shared_library.dll",
@@ -68,7 +68,7 @@ def loader_tests(plugin_libraries):
         defines = []
         for variant in (["valid", "missing_export"] if kind == "bridge" else ["shared", "valid", "missing_export"]):
             name = "onnxruntime_" + kind + "_" + variant + "_fixture"
-            desktop_shared_library(
+            native_shared_library(
                 name = name,
                 linux = "lib" + name + ".so",
                 windows = name + ".dll",

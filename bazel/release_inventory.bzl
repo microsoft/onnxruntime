@@ -4,7 +4,7 @@
 """Hash actual language-release outputs without implying an unbuilt platform matrix."""
 
 def _release_inventory_impl(ctx):
-    output = ctx.actions.declare_file(ctx.label.name + ".json")
+    output = ctx.actions.declare_file(ctx.attr.output_name or ctx.label.name + ".json")
     args = ctx.actions.args()
     args.add("--output", output)
     args.add("--version-file", ctx.file.version)
@@ -28,6 +28,7 @@ def _release_inventory_impl(ctx):
 release_inventory = rule(
     implementation = _release_inventory_impl,
     attrs = {
+        "output_name": attr.string(),
         "packages": attr.label_list(mandatory = True, allow_files = True),
         "version": attr.label(default = "//:VERSION_NUMBER", allow_single_file = True),
         "platform": attr.string(mandatory = True),

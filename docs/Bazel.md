@@ -25,8 +25,8 @@ claim that the executable was downloaded or independently pinned by Bazel.
 
 | Surface | Target | Output and boundary |
 | --- | --- | --- |
-| Python | `//:python_wheel` | Complete source-built wheel for selected CPython 3.11–3.14 and host ABI; default 3.12. CPU desktop or selected Linux x64 CUDA profile, whose CUDA/cuDNN extras derive from the selected toolkit. No untested manylinux compatibility claim. |
-| npm/common and Node | `//:common_npm`, `//:node_npm` | Offline-installable CJS/ESM/declaration packages and selected desktop native adapter/runtime. CUDA payload is explicit and Linux x64 only; common package has no native inference claim. |
+| Python | `//:python_wheel` | Complete source-built wheel for selected CPython 3.11–3.14 and host ABI; default 3.12. native CPU or selected Linux x64 CUDA profile, whose CUDA/cuDNN extras derive from the selected toolkit. No untested manylinux compatibility claim. |
+| npm/common and Node | `//:common_npm`, `//:node_npm` | Offline-installable CJS/ESM/declaration packages and selected native adapter/runtime. CUDA payload is explicit and Linux x64 only; common package has no native inference claim. |
 | npm/Web | `//:web_scalar_npm`, `//:web_simd_npm` | Separately selected source-built single-threaded CPU WASM packages, with declarations and exports. No WebGPU, WebNN, JSEP, or threads claim. |
 | NuGet | `//:csharp_nuget_managed`, `//:csharp_nuget`, `//:csharp_nuget_symbols` | Distinct netstandard2.0, net8.0, net9.0-android35.0, net9.0-ios18.0, and net9.0-maccatalyst18.0 assemblies/XML docs compiled against their actual reference packs, exact per-TFM dependencies, selected CPU/CUDA RID native SDK package, and separate genuine portable-PDB `.snupkg`. Native mobile packages are separate; managed compilation is not mobile device execution. One RID is not a universal release; normal `.nupkg` files stay PDB-free. |
 | Native mobile NuGet | `//:csharp_nuget_android`, `//:csharp_nuget_apple` | Android packages the exact ARM64/API-27+ source-built AAR with `AndroidLibrary Bind=false`. Apple packages the static XCFramework ZIP with build/buildTransitive NativeReference integration. Required slices, actual minimum-OS metadata and defined C API symbols are checked; an incomplete Apple framework is rejected. Native mobile consumption remains separately qualified. |
@@ -35,7 +35,7 @@ claim that the executable was downloaded or independently pinned by Bazel.
 | Apple | `//objectivec:onnxruntime_objc_xcframework`, `//objectivec:apple_release_packages` | Source-native static XCFramework graph for iOS device/simulator, macOS, and distinct arm64/x86_64 Catalyst compilation, plus local SwiftPM and CocoaPods ZIPs. Catalyst merging rejects objects without genuine platform-6/15.1 Mach-O proof; it never relabels macOS binaries. Actual Xcode-host compilation of this graph remains unverified; portable fixtures are not native validation. |
 | Go | `//:go_release_archive`, `//:go_module_proxy_artifacts` | First-party source/native SDK bundle and Go module-proxy artifacts; external installed consumers are separate from archive format checks. |
 | Rust | `//rust:release_archive`, `//rust:crates_io_artifacts` | First-party crate sources/native SDK and Cargo `.crate` archives; not a claim of registry publication or every Rust platform. |
-| Artifact inventory | `//:desktop_release_inventory`, `//:java_release_inventory` | Version/platform/variant, actual file sizes and SHA-256 values of built outputs, including tree artifacts. Desktop CUDA inventory excludes CPU-only Rust/Go SDK packages. Explicitly records artifact construction only, not inferred inference success. |
+| Artifact inventory | `//:native_release_inventory`, `//:java_release_inventory` | Version/platform/variant, actual file sizes and SHA-256 values of built outputs, including tree artifacts. Native CUDA inventory excludes CPU-only Rust/Go SDK packages. Explicitly records artifact construction only, not inferred inference success. The legacy `//:desktop_release_inventory` label and JSON filename remain compatible aliases/artifacts. |
 
 `//:java_maven_test` extracts the repository and uses the pinned Maven CLI to
 resolve ordinary primary coordinates offline before Java/JNI Add inference.
@@ -185,7 +185,7 @@ allocated at the fresh availability check. Loader success and provider
 advertisement do not establish CUDA or cuDNN kernel dispatch.
 
 The native graph targets Linux x86-64, Windows x86-64, and macOS on Intel and
-Apple Silicon. Foundation runtime and five desktop bindings passed native
+Apple Silicon. Foundation runtime and five native bindings passed native
 Linux, Windows, and Apple Silicon macOS CI at `a6de7b83a5`
 ([completed run](https://github.com/microsoft/onnxruntime/actions/runs/41977549518)):
 all nine selected targets passed on each OS. Dependent migration results are
@@ -495,7 +495,7 @@ g++ -std=c++20 -I../include sdk_inference_example.cc -L../lib -lonnxruntime '-Wl
 ./sdk_inference_example add_f32.onnx
 ```
 
-After integrating the desktop shared-provider bridge, the following source-native
+After integrating the native shared-provider bridge, the following source-native
 Windows command also passed: one SDK archive test and eight Rust selector-runner
 regressions. Only the small shared-provider bridge was freshly compiled; the
 runtime reused verified source-build actions, with no binary substitutions:
@@ -542,7 +542,7 @@ directory. A fresh subprocess verifies it imported that extracted package,
 not the source/runfiles package.
 
 Non-minimal Python initializes the shared-provider bridge even in a CPU-only
-build. The native graph therefore builds that small library on desktop
+build. The native graph therefore builds that small library on native host
 platforms without enabling CUDA, exports `Provider_GetHost` and
 `Provider_SetHost` on Windows, and installs it beside the Python extension.
 The SDK archive also includes it. The wheel test rejects the previously
@@ -643,10 +643,10 @@ and Android Java classes. NDK `llvm-nm -D --defined-only` confirmed
 both libraries require only Android system libraries otherwise (no
 `libc++_shared.so` to bundle). The host test command **passed** (three JUnit
 utility tests and three packaging regressions). With `ANDROID_NDK_HOME`
-unset, `bazel build //... --nobuild --jobs=16` **passed desktop analysis**;
-that check is not a desktop compilation or test run.
+unset, `bazel build //... --nobuild --jobs=16` **passed native analysis**;
+that check is not a native compilation or test run.
 
-After integration with the Apple/Rust/wheel targets, Windows desktop analysis
+After integration with the Apple/Rust/wheel targets, Windows native analysis
 also passed with no NDK configured: `bazel build //... -c opt --nobuild
 --lockfile_mode=error --build_python_zip=false --jobs=2` analyzed 210 targets
 (60,516 configured targets), with zero build actions. This host-only command
@@ -769,7 +769,7 @@ passed all 233 Linux targets with zero actions. The existing
 `//:node_model_metadata_test --test_filter='symbol shape$'` also completed
 one real case with no skips after the Node declaration dependency change.
 
-Both archive graphs define desktop Windows/Linux/macOS x64 and arm64 layouts,
+Both archive graphs define native Windows/Linux/macOS x64 and arm64 layouts,
 but package installation/execution evidence here is Linux x64 only. These are
 CPU, single-platform experimental artifacts, not universal packages or release
 registry publication. CUDA, mobile, and additional runtime variants are not
@@ -798,11 +798,11 @@ overriding only `ORT_LIB_PATH`. This retains `GO_TEST_RUN_FROM_BAZEL`, which
 the existing Go test uses to select its fixture working directory. Configured
 Windows `//:go_test` inspection confirms both variables; merged frozen
 wildcard/manual-WASM analysis passed 239 targets with zero actions.
-The foundation's fresh Linux source build passed all seven uncached desktop
+The foundation's fresh Linux source build passed all seven uncached native
 targets after this fix, and selected `TestGetVersion` executed and passed.
 No native rebuild was performed merely to integrate the unchanged package graph.
 
-### Desktop portability checks
+### Native portability checks
 
 Linux x86-64 portability validation used Bazel 8.4.2 with the frozen module
 lock and freshly source-built native artifacts. This focused command passed
@@ -902,7 +902,7 @@ Both browser variants executed Mul and MatMul in Chrome for Testing
 157.0.8103.38 with its sandbox enabled. Missing Azure Linux browser libraries
 were downloaded/extracted into the task's tools directory, not installed
 globally; `LD_LIBRARY_PATH` exposed those libraries to the browser. The
-`runtime_smoke_test` command freshly rebuilt and executed the native desktop
+`runtime_smoke_test` command freshly rebuilt and executed the native
 runtime as a regression check. Selecting `DefinitelyNoSuchCase` or `-*` on
 `//:wasm_scalar_test` failed with Bazel exit 3, as intended. No CMake, `build.py`,
 prebuilt ORT runtime, or release npm ORT package was used.
@@ -910,7 +910,7 @@ prebuilt ORT runtime, or release npm ORT package was used.
 After merging Android, CPU contrib, Rust, Apple, and packaging layers, the
 following frozen Windows analysis also passed: 226 targets, 74,380 configured
 targets, zero build actions. It checks the explicit manual WASM targets as well
-as the desktop wildcard, without claiming Windows WASM execution:
+as the native wildcard, without claiming Windows WASM execution:
 
 ```sh
 bazel build //... //:wasm_scalar_test //:wasm_simd_test //:web_scalar_smoke_test //:web_simd_smoke_test //:web_scalar_browser_test //:web_simd_browser_test -c opt --nobuild --lockfile_mode=error --build_python_zip=false --jobs=2
@@ -1533,7 +1533,7 @@ assembly with the existing Objective-C inference wrappers, public headers,
 and source-built CPU runtime. `//objectivec:ios_inference_tests` reuses the
 existing XCTest sources and ORT model resources in an iOS test bundle.
 Both require a macOS host with full Xcode and are manual, separate from the
-desktop wildcard; they do not invoke CocoaPods or a legacy runtime build.
+native wildcard; they do not invoke CocoaPods or a legacy runtime build.
 The deployment minimum is iOS 15.1. For example, on an Apple Silicon Mac:
 
 ```sh
@@ -1632,7 +1632,7 @@ Selecting a target avoids building other test binaries. `--test_filter` selects
 GoogleTest suites/cases at runtime; it does not reduce compilation within the
 selected binary. `--test_arg=--gtest_filter=Suite.Case` is also supported.
 Request `//:core_tests` only when intentionally running all sixteen binaries;
-`//...` includes these suites as well as the desktop binding tests.
+`//...` includes these suites as well as the native binding tests.
 
 Checked-in `onnxruntime/test/testdata/` files are declared as Bazel runfiles.
 The test entry point copies them into each test's writable `TEST_TMPDIR` before
@@ -2083,7 +2083,7 @@ Before cpuinfo integration,
 `bazel test //... -c opt --jobs=16 --keep_going --nocache_test_results` passed
 all seven default test targets on Azure Linux 3 with GCC 13.2, with
 `CUDA_PATH`, `CUDNN_PATH`, and `LD_LIBRARY_PATH` unset. This includes all five
-desktop-language smoke/unit targets and 20 existing C++ utility tests.
+native-language smoke/unit targets and 20 existing C++ utility tests.
 
 A fresh Linux source build also passed all seven explicit targets with frozen
 locks after the portability fixes below (2,390 build actions, followed by an
@@ -2108,7 +2108,7 @@ language smoke tests are integration tests, not replacements for each binding's
 complete test suite.
 
 The historical wildcard commands above applied to the seven-target foundation,
-not the expanded test graph. The `Native Bazel desktop` workflow now performs
+not the expanded test graph. The `Native Bazel` workflow now performs
 frozen wildcard and explicit manual WASM **analysis only**, then executes binding/package
 checks and selected existing C++ and managed-language cases. It never uses
 `bazel test //...` to run the migrated full suites. Apple native inference is

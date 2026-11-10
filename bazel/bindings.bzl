@@ -15,10 +15,10 @@ load("@rules_python//python:defs.bzl", "py_test")
 load("//bazel:csharp_tests.bzl", "csharp_runtime_tests")
 load("//bazel:node_tests.bzl", "node_runtime_tests")
 load("//bazel:python_tests.bzl", "python_runtime_tests")
-load(":go_desktop.bzl", "desktop_go_library", "desktop_go_test")
+load(":go_native.bzl", "native_go_library", "native_go_test")
 load(":jni_headers.bzl", "jni_headers")
 load(":js_env.bzl", "WINDOWS_JS_ENV")
-load(":platforms.bzl", "ORIGIN_RPATH", "desktop_shared_library")
+load(":platforms.bzl", "ORIGIN_RPATH", "native_shared_library")
 load(":shared_library_bundle.bzl", "shared_library_bundle")
 
 def language_bindings():
@@ -92,7 +92,7 @@ def language_bindings():
         importpath = "github.com/microsoft/onnxruntime/go/onnxruntime",
         target_compatible_with = cgo_compatible,
     )
-    desktop_go_library(
+    native_go_library(
         name = "go_binding",
         library = ":_go_binding",
         windows = windows,
@@ -109,7 +109,7 @@ def language_bindings():
         tags = ["manual"],
         target_compatible_with = cgo_compatible,
     )
-    desktop_go_test(
+    native_go_test(
         name = "go_test",
         test = ":_go_test",
         runtime = ":runtime_library",
@@ -127,7 +127,7 @@ def language_bindings():
         name = "java_native_headers",
         java = ":java_binding",
     )
-    desktop_shared_library(
+    native_shared_library(
         name = "java_native_library",
         linux = "libonnxruntime4j_jni.so",
         windows = "onnxruntime4j_jni.dll",
@@ -217,7 +217,7 @@ def language_bindings():
         name = "java_tests",
         tests = [":java_util_test", ":java_tensor_test"],
     )
-    desktop_shared_library(
+    native_shared_library(
         name = "python_native_library",
         linux = "onnxruntime_pybind11_state.so",
         windows = "onnxruntime_pybind11_state.dll",
@@ -289,7 +289,7 @@ def language_bindings():
         deps = ["@ort_pip//numpy"],
     )
     python_runtime_tests()
-    desktop_shared_library(
+    native_shared_library(
         name = "node_native_library",
         linux = "libonnxruntime_binding.so",
         windows = "onnxruntime_binding.dll",

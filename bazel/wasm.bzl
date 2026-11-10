@@ -75,7 +75,7 @@ _module = rule(
 )
 
 def wasm_targets():
-    """Declare CPU inference modules without changing the desktop default graph."""
+    """Declare CPU inference modules without changing the native default graph."""
     cc_binary(
         name = "ort_wasm",
         srcs = ["onnxruntime/wasm/api.cc"],

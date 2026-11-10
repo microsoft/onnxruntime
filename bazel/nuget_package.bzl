@@ -136,7 +136,7 @@ _package = rule(
 
 def csharp_nuget_package():
     """Create a managed package plus one explicitly identified native RID package."""
-    desktop = select({
+    native_platforms = select({
         "//bazel:windows": [],
         "//bazel:linux": [],
         "//bazel:macos": [],
@@ -383,7 +383,7 @@ def csharp_nuget_package():
         output = "Microsoft.ML.OnnxRuntime.Bazel.nupkg",
         packager = ":nuget_packager",
         rid = select(rids),
-        target_compatible_with = desktop,
+        target_compatible_with = native_platforms,
         version = "VERSION_NUMBER",
     )
     _package(
@@ -490,5 +490,5 @@ def csharp_nuget_package():
             "//bazel:cuda_enabled": [":cuda_provider_release_library"],
             "//conditions:default": [],
         }),
-        target_compatible_with = desktop,
+        target_compatible_with = native_platforms,
     )

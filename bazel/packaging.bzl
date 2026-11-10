@@ -8,7 +8,7 @@ load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
 load("@rules_python//python:py_test.bzl", "py_test")
 
 def runtime_sdk_package():
-    """Package the selected desktop runtime and standalone public API headers."""
+    """Package the selected native runtime and standalone public API headers."""
     pkg_files(
         name = "runtime_sdk_headers",
         srcs = native.glob(
