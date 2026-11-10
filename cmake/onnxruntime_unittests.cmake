@@ -1005,9 +1005,9 @@ set(all_tests
 set(onnxruntime_test_providers_runtime_dependencies)
 if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
   if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
-    set(onnxruntime_test_cuda_kernels_src_patterns "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/*.cc")
-    set_source_files_properties("${TEST_SRC_DIR}/contrib_ops/cuda_kernels/matmul_packed_kernel_test.cc"
-      PROPERTIES LANGUAGE CUDA)
+    set(onnxruntime_test_cuda_kernels_src_patterns
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/*.cc"
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/*.cu")
   endif()
 
   file(GLOB onnxruntime_test_providers_cuda_ut_src CONFIGURE_DEPENDS
