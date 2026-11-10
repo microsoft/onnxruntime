@@ -94,6 +94,8 @@ The packed layout is independent of the activation dtype and dispatch path. By d
 complete decoded weight is rounded to the activation dtype before multiplication, for both decode
 and prefill. Scale factors are combined in FP32 before that rounding, not rounded separately.
 This also applies to FP16 prefill when its scratch buffers store the rounded weights in FP32.
+Activation-dtype overflow and underflow apply to this rounding; for example, weights beyond the
+finite FP16 range can overflow even if an unrounded FP32 dot product would have been finite.
 
 The CUDA session option `ep.cuda.matmul_packed_allow_unrounded_gemv` controls an optional GEMV
 precision relaxation. It accepts only the strings `"0"` and `"1"` and is resolved when the kernel
