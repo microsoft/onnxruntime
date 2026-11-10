@@ -1068,7 +1068,7 @@ __device__ __forceinline__ void DecodeNvfp4WordsBf16(
 template <bool kAlignedRows>
 __device__ __forceinline__ void DecodeNvfp4SubBlock16Bf16(
     const uint8_t* row_ptr, int sb32_idx, int half16, uint4& low, uint4& high) {
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900 && __CUDA_ARCH__ < 1000
   const uint8_t* blk = row_ptr + static_cast<int64_t>(sb32_idx >> 1) * 36;
   const int group = 2 * (sb32_idx & 1) + half16;
   const uint8_t scale_byte = __ldg(blk + group);
