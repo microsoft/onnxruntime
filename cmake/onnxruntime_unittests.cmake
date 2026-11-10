@@ -3006,6 +3006,7 @@ if (onnxruntime_BUILD_SHARED_LIB AND
   # test library
   #
   file(GLOB onnxruntime_autoep_test_SRC "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.h"
+                                      "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.c"
                                         "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.cc")
 
   set(onnxruntime_autoep_test_LIBS onnxruntime_mocked_allocator ${ONNXRUNTIME_TEST_LIBS} onnxruntime_test_utils

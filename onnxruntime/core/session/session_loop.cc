@@ -440,6 +440,23 @@ Status SessionLoopExecution::Run(SessionLoopStepResult& out) {
   return Status::OK();
 }
 
+Status SessionLoopExecution::GetState(LoopFeeds& out) const {
+  ORT_RETURN_IF(requires_reset_, "SessionLoop state requires Reset after a failed execution");
+  LoopFeeds state;
+  for (size_t i = 0; i < loop_->options_.feedback.size(); ++i) {
+    const auto& name = loop_->options_.feedback[i].input_name;
+    state.emplace(name, feedback_.empty() ? initial_inputs_.inputs.at(name) : feedback_[i]);
+  }
+  for (const auto& binding : loop_->options_.kv_caches) {
+    KVCacheView view;
+    ORT_RETURN_IF_ERROR(cache_->Get(binding.cache.name, view));
+    ORT_RETURN_IF_NOT(state.emplace(binding.cache.name, std::move(view.value)).second,
+                      "Feedback and KV names collide in loop state inspection: ", binding.cache.name);
+  }
+  out = std::move(state);
+  return Status::OK();
+}
+
 void SessionLoopExecution::Reset() {
   if (owns_state_) {
     if (cache_) {

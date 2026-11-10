@@ -103,6 +103,7 @@ class SessionLoopExecution {
   bool RequiresReset() const { return requires_reset_; }
   const KVCacheManager* Cache() const { return cache_.get(); }
   const TokenGenerationState* Generation() const { return generation_.get(); }
+  Status GetState(LoopFeeds& out) const;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionLoopExecution);
 
  private:
