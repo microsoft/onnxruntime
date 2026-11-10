@@ -27,14 +27,16 @@ extern "C" {
 #endif
 
 // Native WebGPU session option: ep.webgpuexecutionprovider.dawnCacheInterface.
-// The value is the decimal address of this interface. Omitted or "0" disables
-// caching. Only trusted in-process pointers are supported; the interface,
+// The value is the decimal address of this interface. Omission inherits an
+// existing device's cache configuration, or disables caching on first creation.
+// "0" explicitly requests disabled caching. Only trusted in-process pointers are supported; the interface,
 // callback state and isolation key must outlive the WebGPU device and must not
 // be mutated while attached. Callbacks
 // may run concurrently and must not throw.
 //
 // Configure before the first session or shared allocation creates the device.
-// Sessions sharing a device must provide the same interface address. A cache
+// Sessions sharing a device may omit the option or provide the same interface
+// address. A different address, including "0" for a cached device, is rejected. A cache
 // cannot be attached to an externally supplied device; configure that device's
 // Dawn cache descriptor before passing it to ORT instead.
 // Invalid configuration follows ORT's no-exceptions fail-fast policy when built

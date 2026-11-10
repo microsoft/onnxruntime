@@ -31,6 +31,7 @@ REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
 sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
 import util.android as android  # noqa: E402
 from build_args import parse_arguments  # noqa: E402
+from build_tool_info import get_tool_info  # noqa: E402
 from util import (  # noqa: E402
     generate_android_triplets,
     generate_linux_triplets,
@@ -44,7 +45,6 @@ from util import (  # noqa: E402
     parse_qnn_version_from_sdk_yaml,
     run,
 )
-from vcpkg_tool_info import get_vcpkg_release_tag  # noqa: E402
 
 log = get_logger("build")
 
@@ -685,7 +685,7 @@ def generate_build_tree(
                         "git",
                         "clone",
                         "-b",
-                        get_vcpkg_release_tag(),
+                        get_tool_info("vcpkg").version,
                         "https://github.com/microsoft/vcpkg.git",
                         "--recursive",
                     ],

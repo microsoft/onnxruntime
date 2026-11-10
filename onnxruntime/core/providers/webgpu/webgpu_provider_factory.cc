@@ -323,6 +323,7 @@ WebGpuContextConfig ParseWebGpuContextConfig(
 #if !defined(__wasm__)
   if (std::string cache_interface_str;
       config_options.TryGetConfigEntry(kDawnCacheInterface, cache_interface_str)) {
+    config.dawn_cache_interface_explicitly_set = true;
     uintptr_t cache_address = 0;
     const auto result = std::from_chars(
         cache_interface_str.data(),

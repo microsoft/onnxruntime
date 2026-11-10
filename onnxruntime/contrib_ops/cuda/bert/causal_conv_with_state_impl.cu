@@ -18,8 +18,11 @@
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <math.h>
+#include <limits>
+#include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/bert/causal_conv_with_state_impl.h"
 #include "core/platform/env_var_utils.h"
+#include "core/common/safeint.h"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 
 namespace onnxruntime {
@@ -179,12 +182,12 @@ __global__ void CausalConvDecodeKernel(
 
   // Convolution window: [past_state(pad), input[0]]. Tap k reads window slot k*dilation.
   for (int k = 0; k < kernel_size - 1; ++k) {
-    float wk = to_float(weight[c * kernel_size + k]);
+    float wk = to_float(weight[static_cast<int64_t>(c) * kernel_size + k]);
     float xk = (ps_in != nullptr) ? to_float(ps_in[k * dilation * state_pos_stride]) : 0.0f;
     sum += wk * xk;
   }
   // Last tap is the current input
-  sum += to_float(weight[c * kernel_size + kernel_size - 1]) * input_val;
+  sum += to_float(weight[static_cast<int64_t>(c) * kernel_size + kernel_size - 1]) * input_val;
 
   if (apply_silu) {
     sum = silu_fn(sum);
@@ -192,7 +195,7 @@ __global__ void CausalConvDecodeKernel(
   output[act_offset] = from_float<T>(sum);
 
   // Update present_state: shift left by 1, append input
-  T* ps_out = present_state + state_offset;
+  T* ps_out = pad > 0 ? present_state + state_offset : nullptr;
   for (int k = 0; k < pad - 1; ++k) {
     ps_out[k * state_pos_stride] =
         (ps_in != nullptr) ? ps_in[(k + 1) * state_pos_stride] : from_float<T>(0.0f);
@@ -243,8 +246,8 @@ __global__ void CausalConvDecodeKernelFixedK(
   }
   output[static_cast<int64_t>(b) * channels + c] = from_float<T>(sum);
 
-  T* ps_out = present_state + state_offset;
   if constexpr (pad > 0) {
+    T* ps_out = present_state + state_offset;
 #pragma unroll
     for (int k = 0; k < pad - 1; ++k) {
       ps_out[k] = (ps_in != nullptr) ? ps_in[k + 1] : from_float<T>(0.0f);
@@ -333,8 +336,8 @@ __global__ void CausalConvPrefillKernel(
   // token always maps to slot W-1.
   __syncthreads();
   const int first = seq_len > state_window ? seq_len - state_window : 0;
-  for (int t = first + tid; t < seq_len; t += blockDim.x) {
-    T* ps = present_state + (int64_t)(t + state_window - seq_len) * slot_stride +
+  for (int t = first + tid; pad > 0 && t < seq_len; t += blockDim.x) {
+    T* ps = present_state + (static_cast<int64_t>(t) + state_window - seq_len) * slot_stride +
             state_layout.Offset(b, 0, c);
     for (int p = 0; p < pad; ++p) {
       ps[(int64_t)p * state_pos_stride] = from_float<T>(s_padded[t + 1 + p]);
@@ -437,8 +440,8 @@ __global__ void CausalConvPrefillKernelBatched(
     // Save the carry state after token t (window s_padded[t+1 .. t+pad]) into the right-aligned
     // slot t + W - seq_len; earlier tokens fall outside the window. The last token maps to W-1.
     const int first = seq_len > state_window ? seq_len - state_window : 0;
-    for (int t = first + local_tid; t < seq_len; t += threads_per_channel) {
-      T* ps = present_state + (int64_t)(t + state_window - seq_len) * slot_stride +
+    for (int t = first + local_tid; pad > 0 && t < seq_len; t += threads_per_channel) {
+      T* ps = present_state + (static_cast<int64_t>(t) + state_window - seq_len) * slot_stride +
               state_layout.Offset(b, 0, c);
       for (int p = 0; p < pad; ++p) {
         ps[(int64_t)p * state_pos_stride] = from_float<T>(s_padded[t + 1 + p]);
@@ -448,10 +451,10 @@ __global__ void CausalConvPrefillKernelBatched(
 }
 
 // =============================================================================
-// Channels-last prefill kernel: L>1, one thread per (batch, position, channel)
+// Direct prefill kernel: L>1, one thread per (batch, position, channel)
 // with the channel as the fastest-moving thread axis.
 //
-// Grid:  (ceil(channels / threads), seq_len, batch_size)
+// Grid:  (ceil(channels / threads), min(seq_len,65535), min(batch_size,65535))
 // Block: (threads, 1, 1)
 // Shared memory: none
 //
@@ -461,6 +464,8 @@ __global__ void CausalConvPrefillKernelBatched(
 // threads hold adjacent channels, so each convolution tap, each state read and every store is a
 // single contiguous transaction. Staging is unnecessary because the overlapping taps of
 // neighbouring positions are served by L1/L2 rather than shared memory.
+// The strided views also support channels-first as a resource-safe fallback. Grid-stride
+// loops cover all positions and batches without requiring extended shared memory.
 // =============================================================================
 template <typename T>
 __global__ void CausalConvPrefillKernelChannelsLast(
@@ -479,49 +484,47 @@ __global__ void CausalConvPrefillKernelChannelsLast(
     bool apply_silu,
     int batch_size,
     int state_window) {  // W: axis-0 extent of past_state / present_state (>= 1)
-  const int c = blockIdx.x * blockDim.x + threadIdx.x;
-  if (c >= channels) {
+  const int64_t channel = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (channel >= channels) {
     return;
   }
-  const int l = blockIdx.y;
-  const int b = blockIdx.z;
-
-  const int pad = (kernel_size - 1) * dilation;
+  const int c = static_cast<int>(channel);
+  const int64_t pad = (static_cast<int64_t>(kernel_size) - 1) * dilation;
   const int64_t state_pos_stride = state_layout.pos_stride;
   // Window-major: one slot spans the whole batch. Slot W-1 holds the state after the last token of
   // the previous step, which is the only slot past_state is read from.
   const int64_t slot_stride = (int64_t)batch_size * channels * pad;
-  const int64_t last_slot_offset =
-      (int64_t)(state_window - 1) * slot_stride + state_layout.Offset(b, 0, c);
+  for (int64_t batch = blockIdx.z; batch < batch_size; batch += gridDim.z) {
+    const int b = static_cast<int>(batch);
+    const int64_t last_slot_offset =
+        (static_cast<int64_t>(state_window) - 1) * slot_stride + state_layout.Offset(b, 0, c);
+    // Select history versus input before narrowing a virtual position to an input position.
+    auto sample = [&](int64_t vp) -> float {
+      if (vp >= pad) {
+        return to_float(input[act_layout.Offset(b, static_cast<int>(vp - pad), c)]);
+      }
+      return past_state != nullptr
+                 ? to_float(past_state[last_slot_offset + vp * state_pos_stride])
+                 : 0.0f;
+    };
+    for (int64_t l = blockIdx.y; l < seq_len; l += gridDim.y) {
+      float sum = (bias != nullptr) ? to_float(bias[c]) : 0.0f;
+      for (int k = 0; k < kernel_size; ++k) {
+        sum += to_float(weight[static_cast<int64_t>(c) * kernel_size + k]) *
+               sample(l + static_cast<int64_t>(k) * dilation);
+      }
+      if (apply_silu) sum = silu_fn(sum);
+      output[act_layout.Offset(b, static_cast<int>(l), c)] = from_float<T>(sum);
 
-  // Reads the virtual stream [past_state (pad samples), input (seq_len samples)] at index `vp`.
-  auto sample = [&](int vp) -> float {
-    if (vp >= pad) {
-      return to_float(input[act_layout.Offset(b, vp - pad, c)]);
-    }
-    return past_state != nullptr
-               ? to_float(past_state[last_slot_offset + (int64_t)vp * state_pos_stride])
-               : 0.0f;
-  };
-
-  float sum = (bias != nullptr) ? to_float(bias[c]) : 0.0f;
-  for (int k = 0; k < kernel_size; ++k) {
-    sum += to_float(weight[(int64_t)c * kernel_size + k]) * sample(l + k * dilation);
-  }
-  if (apply_silu) {
-    sum = silu_fn(sum);
-  }
-  output[act_layout.Offset(b, l, c)] = from_float<T>(sum);
-
-  // The carry state after token l is the pad-length window ending at that token, i.e. virtual
-  // stream positions [l + 1, l + pad]. It goes into the right-aligned slot l + W - seq_len;
-  // earlier tokens fall outside the window. The last token always maps to slot W-1.
-  const int first = seq_len > state_window ? seq_len - state_window : 0;
-  if (l >= first) {
-    T* ps = present_state + (int64_t)(l + state_window - seq_len) * slot_stride +
-            state_layout.Offset(b, 0, c);
-    for (int p = 0; p < pad; ++p) {
-      ps[(int64_t)p * state_pos_stride] = from_float<T>(sample(l + 1 + p));
+      // Exactly one writer per right-aligned state slot; leading W>L slots are initialized
+      // by the host. Widen before virtual-position and slot arithmetic.
+      const int64_t first = seq_len > state_window ? static_cast<int64_t>(seq_len) - state_window : 0;
+      if (pad > 0 && l >= first) {
+        T* ps = present_state + (l + state_window - seq_len) * slot_stride + state_layout.Offset(b, 0, c);
+        for (int64_t p = 0; p < pad; ++p) {
+          ps[p * state_pos_stride] = from_float<T>(sample(l + 1 + p));
+        }
+      }
     }
   }
 }
@@ -582,6 +585,32 @@ INSTANTIATE_PROJECTION(half)
 INSTANTIATE_PROJECTION(__nv_bfloat16)
 #undef INSTANTIATE_PROJECTION
 
+template <typename Kernel>
+Status ConfigureCausalConvSharedMemory(cudaStream_t stream, Kernel kernel, size_t required,
+                                       size_t per_block_limit, bool& available) {
+  available = false;
+  cudaFuncAttributes attributes{};
+  CUDA_RETURN_IF_ERROR(cudaFuncGetAttributes(&attributes, kernel));
+  if (attributes.sharedSizeBytes > per_block_limit ||
+      required > per_block_limit - attributes.sharedSizeBytes) return Status::OK();
+  ORT_RETURN_IF_NOT(attributes.maxDynamicSharedSizeBytes >= 0,
+                    "CausalConvWithState: invalid dynamic shared-memory capacity.");
+  if (required > static_cast<size_t>(attributes.maxDynamicSharedSizeBytes)) {
+    cudaStreamCaptureStatus capture_status;
+    CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture_status));
+    if (capture_status != cudaStreamCaptureStatusNone) return Status::OK();
+    // A fixed per-function/device capacity never lowers another concurrent launch's limit.
+    // Query the live function rather than caching across CUDA context lifetimes.
+    const size_t capacity = per_block_limit - attributes.sharedSizeBytes;
+    ORT_RETURN_IF_NOT(capacity <= static_cast<size_t>(std::numeric_limits<int>::max()),
+                      "CausalConvWithState: dynamic shared-memory capacity exceeds int.");
+    CUDA_RETURN_IF_ERROR(cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
+                                              static_cast<int>(capacity)));
+  }
+  available = true;
+  return Status::OK();
+}
+
 template <typename T>
 Status LaunchCausalConvWithStateKernel(
     cudaStream_t stream,
@@ -600,12 +629,13 @@ Status LaunchCausalConvWithStateKernel(
     CausalConvLayout state_layout,
     bool apply_silu,
     int max_threads_per_block,
+    size_t max_dynamic_shared_memory_bytes,
     int state_window) {
-  if (seq_len == 1) {
+  const int64_t total = static_cast<int64_t>(batch_size) * channels;
+  if (seq_len == 1 && CausalConvDecodeFitsNativeIndex(batch_size, channels)) {
     // Decode fast-path: one thread per (batch, channel)
-    int total = batch_size * channels;
     int threads = 256;
-    int blocks = (total + threads - 1) / threads;
+    int blocks = static_cast<int>((total - 1) / threads + 1);
     // The fixed-K decode kernels hard-code pad == K - 1 and a contiguous state row, so they only
     // apply to the undilated channels-first case (pos_stride is 1 there, and `channels` in the
     // channels-last one).
@@ -613,43 +643,61 @@ Status LaunchCausalConvWithStateKernel(
       case 2:
         CausalConvDecodeKernelFixedK<T, 2><<<blocks, threads, 0, stream>>>(
             input, weight, bias, past_state, output, present_state,
-            total, channels, apply_silu, state_window);
+            static_cast<int>(total), channels, apply_silu, state_window);
         break;
       case 3:
         CausalConvDecodeKernelFixedK<T, 3><<<blocks, threads, 0, stream>>>(
             input, weight, bias, past_state, output, present_state,
-            total, channels, apply_silu, state_window);
+            static_cast<int>(total), channels, apply_silu, state_window);
         break;
       case 4:
         CausalConvDecodeKernelFixedK<T, 4><<<blocks, threads, 0, stream>>>(
             input, weight, bias, past_state, output, present_state,
-            total, channels, apply_silu, state_window);
+            static_cast<int>(total), channels, apply_silu, state_window);
         break;
       case 5:
         CausalConvDecodeKernelFixedK<T, 5><<<blocks, threads, 0, stream>>>(
             input, weight, bias, past_state, output, present_state,
-            total, channels, apply_silu, state_window);
+            static_cast<int>(total), channels, apply_silu, state_window);
         break;
       default:
         CausalConvDecodeKernel<T><<<blocks, threads, 0, stream>>>(
             input, weight, bias, past_state, output, present_state,
-            total, channels, kernel_size, dilation, act_layout, state_layout, apply_silu,
+            static_cast<int>(total), channels, kernel_size, dilation, act_layout, state_layout, apply_silu,
             state_window);
         break;
     }
   } else {
     // Prefill path: choose between batched (short seq) or single-channel (long seq) kernel
-    int pad = (kernel_size - 1) * dilation;
+    constexpr int CPB = 4;
+    const bool batched = seq_len <= 128 && channels >= CPB;
+    const size_t smem_size = ((SafeInt<size_t>(kernel_size) - 1) * dilation + seq_len + kernel_size) *
+                             sizeof(float) * (batched ? CPB : 1);
 
     // Under channels_last the contiguous axis is the channel, so use the kernel whose fastest
     // thread axis is the channel; the shared-memory kernels below would gather every access.
-    // gridDim.y is capped at 65535; longer sequences fall through to the shared-memory kernels,
-    // which handle either layout correctly (just less efficiently).
-    constexpr int kMaxGridDimY = 65535;
-    if (act_layout.chan_stride == 1 && seq_len <= kMaxGridDimY) {
-      int threads = channels >= 256 ? 256 : ((channels + 31) / 32) * 32;
+    constexpr int kMaxGridDim = 65535;
+    const int channel_blocks = batched ? (channels - 1) / CPB + 1 : channels;
+    // Shared device indices (including CPB offsets) are int. The direct path also handles
+    // S=1 when B*C exceeds the decode kernel's native index domain.
+    const int64_t shared_elements = (static_cast<int64_t>(kernel_size) - 1) * dilation + seq_len + kernel_size;
+    bool use_shared = seq_len != 1 && act_layout.chan_stride != 1 && channel_blocks <= kMaxGridDim &&
+                      shared_elements <= std::numeric_limits<int>::max() / (batched ? CPB : 1) &&
+                      smem_size <= max_dynamic_shared_memory_bytes;
+    if (use_shared) {
+      if (batched) {
+        ORT_RETURN_IF_ERROR(ConfigureCausalConvSharedMemory(
+            stream, CausalConvPrefillKernelBatched<T, CPB>, smem_size, max_dynamic_shared_memory_bytes, use_shared));
+      } else {
+        ORT_RETURN_IF_ERROR(ConfigureCausalConvSharedMemory(
+            stream, CausalConvPrefillKernel<T>, smem_size, max_dynamic_shared_memory_bytes, use_shared));
+      }
+    }
+    if (!use_shared) {
+      int threads = channels >= 256 ? 256 : ((channels - 1) / 32 + 1) * 32;
       threads = std::min(threads, max_threads_per_block);
-      const dim3 grid((channels + threads - 1) / threads, seq_len, batch_size);
+      const dim3 grid((channels - 1) / threads + 1, std::min(seq_len, kMaxGridDim),
+                      std::min(batch_size, kMaxGridDim));
       CausalConvPrefillKernelChannelsLast<T><<<grid, threads, 0, stream>>>(
           input, weight, bias, past_state, output, present_state,
           seq_len, channels, kernel_size, dilation, act_layout, state_layout, apply_silu,
@@ -660,9 +708,7 @@ Status LaunchCausalConvWithStateKernel(
     // For short sequences, batch multiple channels per block to improve occupancy.
     // CPB=4: each block handles 4 channels, reducing block count by 4x.
     // Threshold: use batched when seq_len <= 128 (small per-channel work).
-    constexpr int CPB = 4;
-    if (seq_len <= 128 && channels >= CPB) {
-      int channel_blocks = (channels + CPB - 1) / CPB;
+    if (batched) {
       const dim3 grid(batch_size, channel_blocks, 1);
       // Each channel gets threads/CPB threads
       int threads_per_ch = std::min(seq_len, max_threads_per_block / CPB);
@@ -673,19 +719,6 @@ Status LaunchCausalConvWithStateKernel(
         total_threads = (max_threads_per_block / CPB) * CPB;  // round down to multiple of CPB
       }
       const dim3 block(total_threads, 1, 1);
-      size_t smem_size = static_cast<size_t>(CPB) * (static_cast<size_t>(pad + seq_len) + kernel_size) * sizeof(float);
-
-      // Request extended shared memory if needed (default limit is 48 KB)
-      if (smem_size > 48 * 1024) {
-        cudaError_t attr_err = cudaFuncSetAttribute(
-            CausalConvPrefillKernelBatched<T, CPB>,
-            cudaFuncAttributeMaxDynamicSharedMemorySize,
-            static_cast<int>(smem_size));
-        if (attr_err != cudaSuccess) {
-          return CUDA_CALL(attr_err);
-        }
-      }
-
       CausalConvPrefillKernelBatched<T, CPB><<<grid, block, smem_size, stream>>>(
           input, weight, bias, past_state, output, present_state,
           seq_len, channels, kernel_size, dilation, act_layout, state_layout, apply_silu,
@@ -697,19 +730,6 @@ Status LaunchCausalConvWithStateKernel(
       threads = ((threads + 31) / 32) * 32;  // round to warp
       if (threads > max_threads_per_block) threads = max_threads_per_block;
       const dim3 block(threads, 1, 1);
-
-      size_t smem_size = (static_cast<size_t>(pad + seq_len) + kernel_size) * sizeof(float);
-
-      // Request extended shared memory if needed (default limit is 48 KB)
-      if (smem_size > 48 * 1024) {
-        cudaError_t attr_err = cudaFuncSetAttribute(
-            CausalConvPrefillKernel<T>,
-            cudaFuncAttributeMaxDynamicSharedMemorySize,
-            static_cast<int>(smem_size));
-        if (attr_err != cudaSuccess) {
-          return CUDA_CALL(attr_err);
-        }
-      }
 
       CausalConvPrefillKernel<T><<<grid, block, smem_size, stream>>>(
           input, weight, bias, past_state, output, present_state,
@@ -724,17 +744,17 @@ Status LaunchCausalConvWithStateKernel(
 // Explicit instantiations
 template Status LaunchCausalConvWithStateKernel<float>(
     cudaStream_t, const float*, const float*, const float*, const float*,
-    float*, float*, int, int, int, int, int, CausalConvLayout, CausalConvLayout, bool, int, int);
+    float*, float*, int, int, int, int, int, CausalConvLayout, CausalConvLayout, bool, int, size_t, int);
 
 template Status LaunchCausalConvWithStateKernel<half>(
     cudaStream_t, const half*, const half*, const half*, const half*,
-    half*, half*, int, int, int, int, int, CausalConvLayout, CausalConvLayout, bool, int, int);
+    half*, half*, int, int, int, int, int, CausalConvLayout, CausalConvLayout, bool, int, size_t, int);
 
 #if __CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__)
 template Status LaunchCausalConvWithStateKernel<__nv_bfloat16>(
     cudaStream_t, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*, const __nv_bfloat16*,
     __nv_bfloat16*, __nv_bfloat16*, int, int, int, int, int, CausalConvLayout, CausalConvLayout,
-    bool, int, int);
+    bool, int, size_t, int);
 #endif
 
 }  // namespace cuda
