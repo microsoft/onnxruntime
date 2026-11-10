@@ -27,7 +27,7 @@ void RunMoeCuda(OpTester& test) {
 }
 
 template <typename T = BFloat16>
-void TestPreselectedReluSquared(int rows, int topk, int malformed = 0, bool sigmoid = false,
+void TestPreselectedReluSquared(int rows, int topk, int malformed = 0,
                                 const char* activation_type = "relu2") {
   constexpr int experts = 32;
   constexpr int hidden_size = 1024;
@@ -38,14 +38,6 @@ void TestPreselectedReluSquared(int rows, int topk, int malformed = 0, bool sigm
   std::vector<int32_t> indices(rows * topk);
   std::vector<float> weights(rows * topk);
   std::vector<float> sum8(experts);
-  const float sigmoid_scale = topk == 2 ? 5.03f : 5.01f;
-  const auto probability = [](int expert) {
-    return 1.f / (1.f + std::exp(expert & 1 ? 1.f : -1.f));
-  };
-  float sigmoid_sum = 0.f;
-  if (sigmoid) {
-    for (int rank = 0; rank < topk; ++rank) sigmoid_sum += probability(experts - 1 - rank);
-  }
   for (int expert = 0; expert < experts; ++expert) {
     const MLFloat16 d(expert & 1 ? .023f : .019f);
     sum8[expert] = T(d.ToFloat() * .125f * 43.f).ToFloat() +
@@ -78,10 +70,9 @@ void TestPreselectedReluSquared(int rows, int topk, int malformed = 0, bool sigm
     float mixed = 0.f;
     float narrowed_mixed = 0.f;
     for (int rank = 0; rank < topk; ++rank) {
-      const int expert = sigmoid || (row & 1) ? (experts - 1 - rank) : rank;
+      const int expert = row & 1 ? (experts - 1 - rank) : rank;
       indices[row * topk + rank] = expert;
-      const float weight = sigmoid ? (probability(expert) / (sigmoid_sum + 1e-20f) * sigmoid_scale)
-                                   : (rank == 0 ? .3301f : .501f);
+      const float weight = rank == 0 ? .3301f : .501f;
       weights[row * topk + rank] = weight;
       const float fc1 = expert % 5 == 4 ? 0.f : T(4.f * factor * sum8[expert]).ToFloat();
       const float activation = T(fc1 * fc1).ToFloat();
@@ -105,7 +96,7 @@ void TestPreselectedReluSquared(int rows, int topk, int malformed = 0, bool sigm
   }
   OpTester test("MoEPacked", 1, kMSDomain);
   test.AddAttribute("k", static_cast<int64_t>(topk));
-  test.AddAttribute("normalize_routing_weights", int64_t{sigmoid ? 1 : 0});
+  test.AddAttribute("normalize_routing_weights", int64_t{0});
   test.AddAttribute("activation_type", std::string(activation_type));
   test.AddAttribute("gate_type", int64_t{16});
   test.AddAttribute("down_type", int64_t{16});
@@ -114,27 +105,8 @@ void TestPreselectedReluSquared(int rows, int topk, int malformed = 0, bool sigm
   test.AddInput<uint8_t>("gate", {experts, inter_size, 264}, gate, true);
   test.AddOptionalInputEdge<uint8_t>();
   test.AddInput<uint8_t>("down", {experts, hidden_size, 66}, down, true);
-  if (sigmoid) {
-    constexpr int router_width = 256;
-    test.AddAttribute("routing_function", std::string("sigmoid"));
-    test.AddAttribute("router_scale", sigmoid_scale);
-    test.AddOptionalInputEdge<int32_t>();
-    test.AddOptionalInputEdge<float>();
-    std::vector<T> router_input(rows * router_width, T(0.f));
-    std::vector<T> router_weight(experts * router_width, T(0.f));
-    for (int row = 0; row < rows; ++row) router_input[row * router_width] = T(1.f);
-    for (int expert = 0; expert < experts; ++expert) {
-      router_weight[expert * router_width] = T(expert & 1 ? -1.f : 1.f);
-    }
-    test.AddInput<T>("router_input", {rows, router_width}, router_input);
-    test.AddInput<T>("router_weight", {experts, router_width}, router_weight, true);
-    std::vector<float> bias(experts);
-    for (int expert = 0; expert < experts; ++expert) bias[expert] = static_cast<float>(expert) * 2.f;
-    test.AddInput<float>("router_bias", {experts}, bias, true);
-  } else {
-    test.AddInput<int32_t>("expert_indices", {rows, topk}, indices);
-    test.AddInput<float>("expert_weights", {rows, topk}, weights);
-  }
+  test.AddInput<int32_t>("expert_indices", {rows, topk}, indices);
+  test.AddInput<float>("expert_weights", {rows, topk}, weights);
   test.AddOutput<T>("output", {1, rows, hidden_size}, expected);
   if (malformed) {
     // TensorCheck<BFloat16> checks expected NaNs, not actual NaNs.
@@ -185,18 +157,7 @@ TEST(MoEPackedRoutingTest, ReluSquaredPreservesPreselectedFp16Routing) {
 
 TEST(MoEPackedRoutingTest, ReluSquaredAliasRemainsSupported) {
   if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
-  TestPreselectedReluSquared(1, 2, 0, false, "relu_squared");
-}
-
-TEST(MoEPackedRoutingTest, SigmoidCorrectionBiasUsesUnbiasedWeights) {
-  if (!HasCudaEnvironment(800)) GTEST_SKIP() << "Requires CUDA SM80+";
-  for (int rows : {1, 8, 9, 17}) {
-    for (int topk : {2, 32}) {
-      SCOPED_TRACE(testing::Message() << "rows=" << rows << " k=" << topk);
-      TestPreselectedReluSquared(rows, topk, 0, true);
-      TestPreselectedReluSquared<MLFloat16>(rows, topk, 0, true);
-    }
-  }
+  TestPreselectedReluSquared(1, 2, 0, "relu_squared");
 }
 
 void TestSwigluRouting(int rows, int topk = 1, bool preselected = false) {
@@ -413,21 +374,14 @@ TEST(MoEPackedRoutingTest, RejectsInvalidRoutingContracts) {
     IndexShape,
     WeightShape,
     ProbsShape,
-    SigmoidSwiglu,
-    SigmoidNormalization,
-    SigmoidProbs,
-    SigmoidPreselected,
-    RouterWidth,
-    EmptyRouterWidth,
-    RouterWeightShape,
-    RouterBiasShape,
     ReluUpWeights,
     ReluGateFormat,
     ReluDownFormat,
     SoftmaxK,
     SwigluMissingUpType,
-    SoftmaxScale,
-    SigmoidNonfiniteScale,
+    IntegratedRoutingFunction,
+    IntegratedRouterScale,
+    IntegratedRouterInputs,
   };
   const std::pair<Invalid, const char*> cases[] = {
       {Invalid::ConflictingProbs, "preselected routing requires both"},
@@ -437,49 +391,24 @@ TEST(MoEPackedRoutingTest, RejectsInvalidRoutingContracts) {
       {Invalid::IndexShape, "indices and weights [num_rows, k]"},
       {Invalid::WeightShape, "indices and weights [num_rows, k]"},
       {Invalid::ProbsShape, "router_probs must be [num_rows, num_experts]"},
-      {Invalid::SigmoidSwiglu, "sigmoid routing requires relu2"},
-      {Invalid::SigmoidNormalization, "sigmoid routing requires relu2 and normalize_routing_weights=1"},
-      {Invalid::SigmoidProbs, "with no other routing inputs"},
-      {Invalid::SigmoidPreselected, "with no other routing inputs"},
-      {Invalid::RouterWidth, "width divisible by 256"},
-      {Invalid::EmptyRouterWidth, "width divisible by 256"},
-      {Invalid::RouterWeightShape, "router_weight[num_experts,width]"},
-      {Invalid::RouterBiasShape, "router_bias[num_experts]"},
       {Invalid::ReluUpWeights, "relu2 requires omitted up weights"},
       {Invalid::ReluGateFormat, "relu2 currently requires IQ2_XXS gate and down weights"},
       {Invalid::ReluDownFormat, "relu2 currently requires IQ2_XXS gate and down weights"},
       {Invalid::SoftmaxK, "internal routing requires router_probs and k <= 16"},
       {Invalid::SwigluMissingUpType, "swiglu requires up_type"},
-      {Invalid::SoftmaxScale, "non-default scaling requires sigmoid"},
-      {Invalid::SigmoidNonfiniteScale, "router_scale must be finite"},
+      {Invalid::IntegratedRoutingFunction, "Unrecognized attribute: routing_function"},
+      {Invalid::IntegratedRouterScale, "Unrecognized attribute: router_scale"},
+      {Invalid::IntegratedRouterInputs, "input size"},
   };
   for (const auto& [invalid, message] : cases) {
     SCOPED_TRACE(testing::Message() << "invalid=" << static_cast<int>(invalid));
     constexpr int experts = 32;
     constexpr int size = 256;
-    bool sigmoid = false, probs = false, indices = true, weights = true, up = false;
-    int topk = 2, normalize = 0, width = size, weight_width = size, bias_count = experts;
+    bool probs = false, indices = true, weights = true, up = false;
+    int topk = 2, normalize = 0;
     int index_width = topk, weights_width = topk, probs_width = experts;
     int gate_type = 16, down_type = 16;
-    float scale = 1.f;
     std::string activation = "relu2";
-    switch (invalid) {
-      case Invalid::SigmoidSwiglu:
-      case Invalid::SigmoidNormalization:
-      case Invalid::SigmoidProbs:
-      case Invalid::SigmoidPreselected:
-      case Invalid::RouterWidth:
-      case Invalid::EmptyRouterWidth:
-      case Invalid::RouterWeightShape:
-      case Invalid::RouterBiasShape:
-      case Invalid::SigmoidNonfiniteScale:
-        sigmoid = true;
-        normalize = 1;
-        indices = weights = false;
-        break;
-      default:
-        break;
-    }
     switch (invalid) {
       case Invalid::ConflictingProbs:
         probs = true;
@@ -504,31 +433,6 @@ TEST(MoEPackedRoutingTest, RejectsInvalidRoutingContracts) {
         probs = true;
         probs_width = experts - 1;
         break;
-      case Invalid::SigmoidSwiglu:
-        activation = "swiglu";
-        up = true;
-        break;
-      case Invalid::SigmoidNormalization:
-        normalize = 0;
-        break;
-      case Invalid::SigmoidProbs:
-        probs = true;
-        break;
-      case Invalid::SigmoidPreselected:
-        indices = weights = true;
-        break;
-      case Invalid::RouterWidth:
-        width = size - 1;
-        break;
-      case Invalid::EmptyRouterWidth:
-        width = 0;
-        break;
-      case Invalid::RouterWeightShape:
-        weight_width = size - 1;
-        break;
-      case Invalid::RouterBiasShape:
-        bias_count = experts - 1;
-        break;
       case Invalid::ReluUpWeights:
         up = true;
         break;
@@ -547,19 +451,19 @@ TEST(MoEPackedRoutingTest, RejectsInvalidRoutingContracts) {
         activation = "swiglu";
         up = true;
         break;
-      case Invalid::SoftmaxScale:
-        scale = 2.f;
-        break;
-      case Invalid::SigmoidNonfiniteScale:
-        scale = std::numeric_limits<float>::infinity();
+      case Invalid::IntegratedRoutingFunction:
+      case Invalid::IntegratedRouterScale:
+      case Invalid::IntegratedRouterInputs:
         break;
     }
     OpTester test("MoEPacked", 1, kMSDomain);
     test.AddAttribute("k", static_cast<int64_t>(topk));
     test.AddAttribute("activation_type", activation);
-    test.AddAttribute("routing_function", std::string(sigmoid ? "sigmoid" : "softmax"));
     test.AddAttribute("normalize_routing_weights", static_cast<int64_t>(normalize));
-    test.AddAttribute("router_scale", scale);
+    if (invalid == Invalid::IntegratedRoutingFunction) {
+      test.AddAttribute("routing_function", std::string("sigmoid"));
+    }
+    if (invalid == Invalid::IntegratedRouterScale) test.AddAttribute("router_scale", 1.f);
     test.AddAttribute("gate_type", static_cast<int64_t>(gate_type));
     test.AddAttribute("down_type", static_cast<int64_t>(down_type));
     if (up && invalid != Invalid::SwigluMissingUpType) test.AddAttribute("up_type", int64_t{16});
@@ -587,10 +491,10 @@ TEST(MoEPackedRoutingTest, RejectsInvalidRoutingContracts) {
     } else {
       test.AddOptionalInputEdge<float>();
     }
-    if (sigmoid) {
-      test.AddInput<BFloat16>("router_input", {1, width}, std::vector<BFloat16>(width));
-      test.AddInput<BFloat16>("router_weight", {experts, weight_width}, std::vector<BFloat16>(experts * weight_width), true);
-      test.AddInput<float>("router_bias", {bias_count}, std::vector<float>(bias_count), true);
+    if (invalid == Invalid::IntegratedRouterInputs) {
+      test.AddInput<BFloat16>("router_input", {1, size}, std::vector<BFloat16>(size));
+      test.AddInput<BFloat16>("router_weight", {experts, size}, std::vector<BFloat16>(experts * size), true);
+      test.AddInput<float>("router_bias", {experts}, std::vector<float>(experts), true);
     }
     test.AddOutput<BFloat16>("output", {1, size}, std::vector<BFloat16>(size));
     std::vector<std::unique_ptr<IExecutionProvider>> providers;

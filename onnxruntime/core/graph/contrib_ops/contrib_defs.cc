@@ -1083,6 +1083,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc("Mixture-of-Experts layer consuming 3D block-packed gate and down expert weight blobs, "
                 "plus up expert weights for SwiGLU. "
+                "A separate router can supply preselected expert IDs and FP32 per-token mixture coefficients; "
+                "these coefficients are consumed without normalization in the supplied expert order. "
                 "CUDA execution requires weights in device memory; host-backed external initializers are copied "
                 "to the device without changing their packed layout.\n"
                 "Supported format IDs and their stable byte layouts are defined in the "
@@ -1090,22 +1092,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "(https://github.com/microsoft/onnxruntime/blob/main/docs/PackedWeightFormats.md).")
         .Attr("k",
               "Number of selected experts per token: 1..16 for internal softmax routing, "
-              "1..32 for projected sigmoid or preselected routing; at most num_experts.",
+              "1..32 for preselected routing; at most num_experts.",
               AttributeProto::INT)
         .Attr("normalize_routing_weights",
-              "Whether to renormalize selected softmax probabilities. Must be 1 for projected sigmoid routing "
-              "and 0 for preselected routing.",
+              "Whether to renormalize selected softmax probabilities. Must be 0 for preselected routing.",
               AttributeProto::INT, static_cast<int64_t>(1))
         .Attr("activation_type",
               "Expert activation function: 'swiglu' or 'relu2' (squared ReLU; 'relu_squared' is an alias). "
               "relu2 requires IQ2_XXS (type 16) gate and down weights and omitted up weights.",
               AttributeProto::STRING, std::string("swiglu"))
-        .Attr("routing_function", "Internal routing: softmax logits or projected FP32 sigmoid with selection-only bias.",
-              AttributeProto::STRING, std::string("softmax"))
-        .Attr("router_scale",
-              "Finite post-normalization scale for projected sigmoid routing; "
-              "must be 1 for softmax or preselected routing.",
-              AttributeProto::FLOAT, 1.0f)
         .Attr("gate_type", "Stable packed-format ID of gate_experts_weights. Only contract-listed IDs are supported.",
               AttributeProto::INT)
         .Attr("up_type",
@@ -1116,7 +1111,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT)
         .Input(0, "input", "Input hidden states [..., hidden_size].", "T")
         .Input(1, "router_probs",
-               "Router logits [num_rows, num_experts]; omit for projected sigmoid or preselected routing.",
+               "Router logits [num_rows, num_experts]; omit for preselected routing.",
                "T", OpSchema::Optional)
         .Input(2, "gate_experts_weights", "3D packed gate weight blob [num_experts, inter_size, gate_row_bytes].", "T2")
         .Input(3, "up_experts_weights",
@@ -1128,21 +1123,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "and normalize_routing_weights=0. Invalid or duplicate IDs and nonfinite weights poison only their token row.",
                "Tind", OpSchema::Optional)
         .Input(6, "expert_weights",
-               "Preselected FP32 weights [num_rows, k], preserved without normalization and mixed in supplied order.",
-               "Tweight", OpSchema::Optional)
-        .Input(7, "router_input",
-               "Projected sigmoid routing input [num_rows, router_width]; omit other routing inputs. "
-               "router_width must be positive, fit int32 and be divisible by 256. "
-               "Requires relu2, routing_function='sigmoid' and normalize_routing_weights=1.",
-               "T", OpSchema::Optional)
-        .Input(8, "router_weight", "Sigmoid router weight [num_experts, router_width].", "T", OpSchema::Optional)
-        .Input(9, "router_bias", "FP32 correction bias [num_experts], used only for expert selection.",
+               "Preselected FP32 per-token mixture coefficients [num_rows, k], "
+               "preserved without normalization and mixed in supplied order.",
                "Tweight", OpSchema::Optional)
         .Output(0, "output", "Output hidden states [..., hidden_size].", "T")
         .TypeConstraint("T", {"tensor(bfloat16)", "tensor(float16)"}, "Activation type.")
         .TypeConstraint("T2", {"tensor(uint8)"}, "Packed byte storage.")
         .TypeConstraint("Tind", {"tensor(int32)"}, "Preselected expert index type.")
-        .TypeConstraint("Tweight", {"tensor(float)"}, "Routing weight and correction bias type.")
+        .TypeConstraint("Tweight", {"tensor(float)"}, "Preselected mixture coefficient type.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           if (hasInputShape(ctx, 0)) {
