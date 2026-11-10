@@ -468,9 +468,6 @@ class TritonCodegen(NodeVisitor):
             # Allocate output tensor.
             for output in kernel_node.outputs:
                 torch_dtype = output.dtype
-                # Workaround for DLPack which doesn't support bool.
-                if torch_dtype == torch.bool:
-                    torch_dtype = torch.uint8
                 code_buffer += (
                     f"{space_indent}{context.get_variable_name(output.name)} = "
                     f'torch.empty({tuple(output.shape)}, dtype={torch_dtype}, device="cuda")\n'

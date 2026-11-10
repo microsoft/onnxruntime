@@ -156,6 +156,11 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       m = a_shape.SizeToDimension(a_shape.NumDimensions() - 1);
       k = dim_k.dim_value();
       n = dim_n.dim_value();
+
+      // The inserted Reshape nodes interpret zero as copying an input dimension, not a literal zero extent.
+      if (m == 0 || k == 0 || n == 0) {
+        continue;
+      }
     }
 
     const auto& matmul_output = *matmul_node.OutputDefs()[0];

@@ -30,9 +30,8 @@ becomes the sole source of the node tree, and the permanent min-count tripwire
 backstop.
 
 Version parity: the materialized model.onnx opset/IR is stamped from the
-compiled onnx schema registry, so this test asserts the installed onnx equals
-the ``cmake/deps.txt`` pin (compared on the release base, so a pre-release rcN/.dev
-wheel of the pinned tag is accepted). numpy parity is NOT asserted -- the core
+compiled onnx schema registry, so this test asserts the installed onnx exactly
+equals the ``cmake/deps.txt`` pin. numpy parity is NOT asserted -- the core
 treats numpy as an informational soft-warning, and recomputed float outputs that
 differ by within a small ULP band are accepted as Class A numpy-gen skew.
 """
@@ -44,6 +43,7 @@ import re
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 # Make the sibling materializer importable regardless of CWD.
 _TOOLS_PYTHON = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "tools", "python"))
@@ -62,14 +62,14 @@ def _repo_root() -> str:
 
 
 def _expected_onnx_version() -> str | None:
-    """Parse the onnx pin (archive tag) from cmake/deps.txt."""
+    """Derive the expected wheel version from the archive pin in cmake/deps.txt."""
     deps = os.path.join(_repo_root(), "cmake", "deps.txt")
     if not os.path.isfile(deps):
         return None
     with open(deps) as f:
         for line in f:
             if line.startswith("onnx;"):
-                m = re.search(r"/tags/v([0-9]+\.[0-9]+\.[0-9]+)\.zip", line)
+                m = re.search(r"/v([0-9]+\.[0-9]+\.[0-9]+)\.zip;", line)
                 if m:
                     return m.group(1)
     return None
@@ -123,6 +123,14 @@ def _find_oracle_node_dir() -> str | None:
 
 
 class NodeTestEquivalence(unittest.TestCase):
+    def test_expected_version_comes_from_archive_pin(self) -> None:
+        deps = "# ONNX_VERSION=1.23.0\nonnx;https://github.com/onnx/onnx/archive/refs/tags/v1.23.1.zip;archive_hash\n"
+        with (
+            mock.patch("os.path.isfile", return_value=True),
+            mock.patch("builtins.open", mock.mock_open(read_data=deps)),
+        ):
+            self.assertEqual(_expected_onnx_version(), "1.23.1")
+
     def test_materialized_equals_on_disk_oracle(self) -> None:
         oracle = _find_oracle_node_dir()
         if oracle is None:
@@ -138,12 +146,11 @@ class NodeTestEquivalence(unittest.TestCase):
         except ImportError as exc:  # pragma: no cover
             self.skipTest(f"onnx not importable: {exc}")
 
-        if expected_onnx and mat._release_base(onnx.__version__) != mat._release_base(expected_onnx):
+        if expected_onnx and onnx.__version__ != expected_onnx:
             self.skipTest(
                 f"installed onnx=={onnx.__version__} != cmake/deps.txt pin "
                 f"{expected_onnx}; cannot certify equivalence under version skew. "
-                f"Install the pinned onnx to run this check. (A pre-release rcN/.dev "
-                f"of the same release base is accepted.)"
+                "Install the pinned onnx to run this check."
             )
 
         with tempfile.TemporaryDirectory(prefix="ort_node_mat_") as tmp:

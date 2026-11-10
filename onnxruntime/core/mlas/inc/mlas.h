@@ -165,6 +165,16 @@ MlasGetPreferredBufferAlignment(
     void
     );
 
+/**
+ * @brief Return whether the current CPU and OS support AVX-512 core features
+ *        (AVX512F, AVX512BW, AVX512DQ, AVX512VL) and F16C.
+ */
+bool
+MLASCALL
+MlasPlatformAvx512Supported(
+    void
+    );
+
 #ifdef MLAS_TARGET_AMD64_IX86
 
 /**
@@ -2028,6 +2038,12 @@ struct MLAS_HALF_GEMM_DATA_PARAMS {
      * Bias must be nullptr, and OutputProcessor must be nullptr.
      */
     bool BIsBackendNativePacked = false;
+    /**
+     * Unpacked fp16 B is stored as N x K instead of K x N.
+     * This requires a supporting backend. MlasHalfGemmBatch throws if the
+     * selected backend does not consume this layout.
+     */
+    bool BIsTransposed = false;
 };
 
 /**
@@ -2543,6 +2559,10 @@ struct MlasFlashAttentionGQAArgs {
     // per-(batch, head, q_block) partitioning is used.
     float* flash_decoding_partials;
     int kv_chunk_count;
+
+    // Valid rows per batch for this invocation; sequence_length remains the physical
+    // Q-head/output/bias stride. Negative means all sequence_length rows are valid.
+    int valid_query_length = -1;
 };
 
 /**
@@ -2765,7 +2785,7 @@ MlasComputeFP16Erf(
  * @param algo    GELU algorithm variant (exact erf or tanh approximation).
  */
 void
-MLASCALL 
+MLASCALL
 MlasComputeFP16Gelu(
     const MLAS_FP16* input,
     MLAS_FP16* output,

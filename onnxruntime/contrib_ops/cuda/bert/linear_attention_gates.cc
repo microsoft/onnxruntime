@@ -30,6 +30,9 @@ using namespace onnxruntime::cuda;  // CudaKernel, OrtToCudaType
 REGISTER_KERNEL_TYPED(LinearAttentionGate, float)
 REGISTER_KERNEL_TYPED(LinearAttentionGate, MLFloat16)
 REGISTER_KERNEL_TYPED(LinearAttentionGate, BFloat16)
+REGISTER_KERNEL_TYPED(MoEGroupRouter, float)
+REGISTER_KERNEL_TYPED(MoEGroupRouter, MLFloat16)
+REGISTER_KERNEL_TYPED(MoEGroupRouter, BFloat16)
 
 #undef REGISTER_KERNEL_TYPED
 
@@ -141,6 +144,61 @@ template class LinearAttentionGate<BFloat16>;
 template class GatedRMSNorm<float>;
 template class GatedRMSNorm<MLFloat16>;
 template class GatedRMSNorm<BFloat16>;
+
+template <typename T>
+MoEGroupRouter<T>::MoEGroupRouter(const OpKernelInfo& info) : CudaKernel(info) {
+  ORT_THROW_IF_ERROR(info.GetAttr<int64_t>("top_k", &top_k_));
+  n_group_ = info.GetAttrOrDefault<int64_t>("n_group", 1);
+  topk_group_ = info.GetAttrOrDefault<int64_t>("topk_group", 1);
+  group_topk_ = info.GetAttrOrDefault<int64_t>("group_topk", 2);
+  router_sentinel_ = info.GetAttrOrDefault<float>("router_sentinel", -10000.0f);
+  ORT_THROW_IF_ERROR(ValidateMoEGroupRouterAttributes(top_k_, n_group_, topk_group_, group_topk_));
+  ORT_ENFORCE(top_k_ <= std::numeric_limits<int>::max() &&
+                  n_group_ <= std::numeric_limits<int>::max() &&
+                  topk_group_ <= std::numeric_limits<int>::max() &&
+                  group_topk_ <= std::numeric_limits<int>::max(),
+              "MoEGroupRouter CUDA attributes must not exceed INT_MAX");
+}
+
+template <typename T>
+Status MoEGroupRouter<T>::ComputeInternal(OpKernelContext* context) const {
+  typedef typename OrtToCudaType<T>::type CudaT;
+
+  const Tensor* logits = context->Input<Tensor>(0);
+  const Tensor* expert_bias = context->Input<Tensor>(1);
+  const auto& in_shape = logits->Shape();
+  ORT_RETURN_IF_NOT(in_shape.NumDimensions() >= 2, "logits must have rank >= 2");
+  const int64_t num_experts = in_shape[in_shape.NumDimensions() - 1];
+  ORT_RETURN_IF_NOT(num_experts > 0 && num_experts <= 512 && expert_bias->Shape().Size() == num_experts,
+                    "expert_bias length must match num_experts (<= 512)");
+  ORT_RETURN_IF_NOT(n_group_ > 0 && num_experts % n_group_ == 0 && topk_group_ > 0 &&
+                        topk_group_ <= n_group_ && top_k_ <= num_experts,
+                    "Invalid MoEGroupRouter group/top_k parameters");
+
+  const int64_t num_rows = in_shape.Size() / num_experts;
+  TensorShape out_shape({num_rows, num_experts});
+  Tensor* output = context->Output(0, out_shape);
+  if (in_shape.Size() == 0) {
+    return Status::OK();
+  }
+
+  return LaunchMoEGroupRouterKernel<CudaT>(
+      Stream(context),
+      reinterpret_cast<CudaT*>(output->MutableData<T>()),
+      reinterpret_cast<const CudaT*>(logits->Data<T>()),
+      expert_bias->Data<float>(),
+      num_rows,
+      static_cast<int>(num_experts),
+      static_cast<int>(n_group_),
+      static_cast<int>(topk_group_),
+      static_cast<int>(group_topk_),
+      static_cast<int>(top_k_),
+      router_sentinel_);
+}
+
+template class MoEGroupRouter<float>;
+template class MoEGroupRouter<MLFloat16>;
+template class MoEGroupRouter<BFloat16>;
 
 }  // namespace cuda
 }  // namespace contrib

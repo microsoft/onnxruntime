@@ -94,14 +94,6 @@ std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
   return nullptr;
 }
 
-std::unique_ptr<IExecutionProvider> DefaultNvTensorRTRTXExecutionProvider() {
-#ifdef USE_NV
-  if (auto factory = NvProviderFactoryCreator::Create(0))
-    return factory->CreateProvider();
-#endif
-  return nullptr;
-}
-
 std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const OrtTensorRTProviderOptions* params) {
 #ifdef USE_TENSORRT
   if (auto factory = TensorrtProviderFactoryCreator::Create(params))
@@ -244,15 +236,6 @@ std::unique_ptr<IExecutionProvider> DefaultRknpuExecutionProvider() {
 #ifdef USE_RKNPU
   return RknpuProviderFactoryCreator::Create()->CreateProvider();
 #else
-  return nullptr;
-#endif
-}
-
-std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_fast_math) {
-#ifdef USE_ACL
-  return ACLProviderFactoryCreator::Create(enable_fast_math)->CreateProvider();
-#else
-  ORT_UNUSED_PARAMETER(enable_fast_math);
   return nullptr;
 #endif
 }

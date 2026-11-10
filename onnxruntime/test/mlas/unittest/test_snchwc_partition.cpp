@@ -89,20 +89,27 @@ struct PartitionShape {
 //
 // The shape grid. Output channel counts are chosen to cover every ragged tail
 // the mapping has to handle: 16 and 32 are shorter than one filter set, 64 and
-// 256 divide evenly, and 48/96/144/208 leave last sets of 3, 2, 1 and 1 blocks.
+// 256 divide evenly, and 48/96/144/208 leave last sets of 3, 2, 1 and 1 blocks
+// at FilterSetSize=4. The same channel counts are replayed at FilterSetSize=2
+// and 1 -- the sizes ChooseFilterSetSize falls back to under MLAS_NCHWC_FSS_TARGET
+// -- which lands on a different, independent set of ragged remainders (see the
+// comment on ChooseFilterSetSizeDispatch below for the worked-out remainders).
 //
 
 std::vector<PartitionShape> AllShapes() {
   const size_t OutputChannelValues[] = {16, 32, 48, 64, 96, 144, 208, 256};
   const size_t OutputHeightValues[] = {1, 2, 7, 13, 52};
   const size_t BatchGroupValues[] = {1, 2, 8};
+  const size_t FilterSetSizeValues[] = {4, 2, 1};
 
   std::vector<PartitionShape> Shapes;
 
-  for (size_t OutputChannels : OutputChannelValues) {
-    for (size_t OutputHeight : OutputHeightValues) {
-      for (size_t BatchGroupCount : BatchGroupValues) {
-        Shapes.push_back(PartitionShape{16, 4, OutputChannels, OutputHeight, BatchGroupCount});
+  for (size_t FilterSetSize : FilterSetSizeValues) {
+    for (size_t OutputChannels : OutputChannelValues) {
+      for (size_t OutputHeight : OutputHeightValues) {
+        for (size_t BatchGroupCount : BatchGroupValues) {
+          Shapes.push_back(PartitionShape{16, FilterSetSize, OutputChannels, OutputHeight, BatchGroupCount});
+        }
       }
     }
   }
@@ -292,4 +299,82 @@ TEST(SnchwcPartition, WorkedExampleFromDocumentation) {
 
   ASSERT_LE(Worst, Ideal + Shape.FilterSetSize)
       << "worst thread took " << Worst << " block-rows against ideal " << Ideal;
+}
+
+//
+// MlasNchwcChooseFilterSetSize halves MaximumFilterSetSize (4) down to 2 or 1
+// whenever the larger size would not produce Target work units per thread.
+// With MLAS_NCHWC_FSS_TARGET unset in every other test in this binary, Target
+// is always 0 and the function always takes its first-line early return --
+// the halving loop below is otherwise completely unexercised. Calling the
+// pure helper directly, rather than going through the environment variable,
+// makes every rung of that loop reachable regardless of what the process-wide
+// cached env var read elsewhere resolved to.
+//
+// Shape: BlockSize=16, OutputChannels=80 -> Blocks=5 (ragged at every size:
+// FilterSetCount/LastSetFilterCount are 2/1 at Size=4, 3/1 at Size=2, 5/1 at
+// Size=1), BatchCount=1, GroupCount=1, OutputHeight=10. WorkAt(Size) =
+// BatchCount * GroupCount * ceil(Blocks/Size) * OutputHeight:
+//   WorkAt(4) = 1 * 1 * ceil(5/4) * 10 = 20
+//   WorkAt(2) = 1 * 1 * ceil(5/2) * 10 = 30
+//   WorkAt(1) = 1 * 1 * ceil(5/1) * 10 = 50
+//
+
+TEST(SnchwcPartition, ChooseFilterSetSizeDispatch) {
+  constexpr size_t MaximumFilterSetSize = 4;
+  constexpr size_t BlockSize = 16;
+  constexpr size_t OutputChannels = 80;  // Blocks = 5, ragged at every size.
+  constexpr size_t BatchCount = 1;
+  constexpr size_t GroupCount = 1;
+  constexpr size_t OutputHeight = 10;
+
+  // Target == 0 (MLAS_NCHWC_FSS_TARGET unset) always short-circuits to the
+  // maximum, regardless of thread count or shape -- the one path every other
+  // test in this binary exercises.
+  EXPECT_EQ(MlasNchwcChooseFilterSetSize(MaximumFilterSetSize, /*Target=*/0, /*tids=*/8,
+                                         BlockSize, OutputChannels, BatchCount, GroupCount, OutputHeight),
+            MaximumFilterSetSize);
+
+  // Single-threaded also always short-circuits, even with a Target set: there
+  // is no second thread to starve.
+  EXPECT_EQ(MlasNchwcChooseFilterSetSize(MaximumFilterSetSize, /*Target=*/100, /*tids=*/1,
+                                         BlockSize, OutputChannels, BatchCount, GroupCount, OutputHeight),
+            MaximumFilterSetSize);
+
+  // WorkAt(4) = 20 >= Wanted: stays at the maximum.
+  EXPECT_EQ(MlasNchwcChooseFilterSetSize(MaximumFilterSetSize, /*Target=*/5, /*tids=*/4,
+                                         BlockSize, OutputChannels, BatchCount, GroupCount, OutputHeight),
+            size_t{4});
+
+  // Boundary: Wanted == WorkAt(4) exactly still satisfies ">=" and keeps 4.
+  EXPECT_EQ(MlasNchwcChooseFilterSetSize(MaximumFilterSetSize, /*Target=*/5, /*tids=*/4,
+                                         BlockSize, OutputChannels, BatchCount, GroupCount, OutputHeight),
+            size_t{4});
+
+  // Boundary: Wanted == WorkAt(4) + 1 falls one short, forcing exactly one
+  // halving; WorkAt(2) = 30 comfortably covers it.
+  EXPECT_EQ(MlasNchwcChooseFilterSetSize(MaximumFilterSetSize, /*Target=*/7, /*tids=*/3,
+                                         BlockSize, OutputChannels, BatchCount, GroupCount, OutputHeight),
+            size_t{2});
+
+  // WorkAt(4) = 20 and WorkAt(2) = 30 both fall short of Wanted = 35; only
+  // WorkAt(1) = 50 covers it, forcing the halving loop all the way to 1.
+  EXPECT_EQ(MlasNchwcChooseFilterSetSize(MaximumFilterSetSize, /*Target=*/7, /*tids=*/5,
+                                         BlockSize, OutputChannels, BatchCount, GroupCount, OutputHeight),
+            size_t{1});
+
+  // Even an unreasonably large Target cannot go below 1: the loop condition
+  // is "while (Size > 1)", so it always terminates at the floor.
+  EXPECT_EQ(MlasNchwcChooseFilterSetSize(MaximumFilterSetSize, /*Target=*/1000000, /*tids=*/32,
+                                         BlockSize, OutputChannels, BatchCount, GroupCount, OutputHeight),
+            size_t{1});
+
+  // BatchCount and GroupCount multiply into the same work-unit count as
+  // OutputHeight; scaling them instead of OutputHeight must dispatch
+  // identically to the WorkAt(2)=30-vs-Wanted=21 case above (2 * 1 * ceil(5/2) *
+  // 5 = 30, same as 1 * 1 * ceil(5/2) * 10).
+  EXPECT_EQ(MlasNchwcChooseFilterSetSize(MaximumFilterSetSize, /*Target=*/7, /*tids=*/3,
+                                         BlockSize, OutputChannels, /*BatchCount=*/2, /*GroupCount=*/1,
+                                         /*OutputHeight=*/5),
+            size_t{2});
 }
