@@ -6164,16 +6164,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           updateOutputShape(ctx, 0, out_shape);
         })
         .FillUsing([](OpSchema& schema) {
-          // The outer schema macro assigns the key after evaluating this builder.
-          schema.SetName("MoEGroupRouter").SetDomain(kMSDomain).SinceVersion(1);
-          schema.Finalize();
-#ifndef _OPSCHEMA_LIB_
-          ORT_THROW_IF_ERROR(RecordSourcePolicy(
-              schema, {NonExecutableState::PendingTodo,
-                       "MoEGroupRouter group-limited sigmoid routing source pattern/numerical "
-                       "qualification not yet provided.",
-                       std::nullopt}));
-#endif
+          RecordPendingSourcePolicy(
+              schema, "MoEGroupRouter", 1,
+              "MoEGroupRouter group-limited sigmoid routing source pattern/numerical qualification not yet provided.");
         }));
 
 constexpr const char* BranchwiseRMSNorm_ver1_doc = R"DOC(

@@ -9,6 +9,7 @@
 #include <mutex>
 
 #include "core/common/common.h"
+#include "core/graph/constants.h"
 
 namespace onnxruntime::contrib {
 namespace {
@@ -59,6 +60,14 @@ Status RecordSourcePolicy(const ONNX_NAMESPACE::OpSchema& schema, SourcePolicy p
   auto& metadata = Metadata();
   std::lock_guard lock(metadata.mutex);
   return RecordSourcePolicy(metadata.policies, schema, std::move(policy));
+}
+
+void RecordPendingSourcePolicy(ONNX_NAMESPACE::OpSchema& schema, const char* name, int since_version,
+                               std::string_view reason) {
+  schema.SetName(name).SetDomain(kMSDomain).SinceVersion(since_version);
+  schema.Finalize();
+  ORT_THROW_IF_ERROR(RecordSourcePolicy(
+      schema, {NonExecutableState::PendingTodo, std::string(reason), std::nullopt}));
 }
 
 Status RecordSourcePolicy(InlinedVector<SourcePolicyRecord>& records,
