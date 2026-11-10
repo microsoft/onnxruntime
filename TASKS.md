@@ -1,7 +1,7 @@
 # Stateful Session Execution: Execution Plan
 
 **Status:** Approved; M01-M05 complete.
-M05: [PR #15](https://github.com/onnxruntime/ort-state/pull/15).
+M05: [PR #34044](https://github.com/microsoft/onnxruntime/pull/34044).
 M05's requested generation-folder layout follow-up is complete in the same PR.
 **Source:** [Approved specification](SPEC.md), approved 2026-10-15.
 **Working memory:** [Shared scratchpad](SCRATCHPAD.md).
@@ -135,8 +135,8 @@ all binding, provider, coverage, and qualification gates remain part of delivery
 
 **Outcome:** Concrete interface decisions and a reproducible validation baseline,
 without prematurely publishing an ABI or starting a different product scope.
-**Status:** Complete; [PR #11](https://github.com/onnxruntime/ort-state/pull/11)
-is ready for review, targeting `ort-state`.
+**Status:** Complete; [PR #34040](https://github.com/microsoft/onnxruntime/pull/34040)
+is ready for review, targeting `state/stateful-base-1988019b`.
 
 - [x] Inventory existing Session/I/O binding, allocator, cancellation, provider,
   sampling, scheduler, package, and binding helpers before adding alternatives.
@@ -165,7 +165,7 @@ milestones; they need not prevent unrelated CPU development.
 
 **Execution evidence:**
 
-- First milestone branch created: `state/m01-contracts-fixtures`.
+- First milestone branch created: `stateful-M01-contracts-fixtures`.
 - Isolated `.venv` created with Python 3.12.9.
 - Clang/LLVM coverage tools 18.1.8, GCC 13.2.0, and CMake 4.1.2 are present.
 - Eight A100 GPUs and CUDA 13.0 are visible. Nsight Compute and Compute Sanitizer
@@ -272,17 +272,17 @@ CUDA_VISIBLE_DEVICES=0 \
   --gtest_output=xml:m01-tests.xml
 ```
 
-Published the unchanged `ort-state` baseline branch and
-`state/m01-contracts-fixtures`; the first PR targets the agreed `ort-state` base,
+Published the unchanged `state/stateful-base-1988019b` baseline branch and
+`stateful-M01-contracts-fixtures`; the first PR targets the agreed `state/stateful-base-1988019b` base,
 not `main`. Implementation commit: `64aa026b94`. The PR contains no stateful
 runtime production implementation; M02 is the next pending milestone.
 
 ### M02 - Execution context and SessionLoop
 
 **Outcome:** Internal sequential stateful execution with explicit control.
-**Status:** Complete; [PR #12](https://github.com/onnxruntime/ort-state/pull/12)
-is ready for review. Branch `state/m02-context-loop` stacks on
-`state/m01-contracts-fixtures`. Implementation commit: `a21ae23201`.
+**Status:** Complete; [PR #34041](https://github.com/microsoft/onnxruntime/pull/34041)
+is ready for review. Branch `stateful-M02-context-loop` stacks on
+`stateful-M01-contracts-fixtures`. Implementation commit: `a21ae23201`.
 
 - [x] Implement reusable loop definition plus isolated retained execution state.
 - [x] Implement Step/Next and Run-until-exit on the same stepping path.
@@ -380,9 +380,9 @@ not a claim of device-line coverage for unchanged kernels.
 ### M03 - SessionChain and tensor/state bindings
 
 **Outcome:** Internal linear composition without a manifest state machine.
-**Status:** Complete; [PR #13](https://github.com/onnxruntime/ort-state/pull/13)
-is ready for review. Branch `state/m03-chain-bindings` stacks on
-`state/m02-context-loop`. Implementation commit: `c4ad4d5389`.
+**Status:** Complete; [PR #34042](https://github.com/microsoft/onnxruntime/pull/34042)
+is ready for review. Branch `stateful-M03-chain-bindings` stacks on
+`stateful-M02-context-loop`. Implementation commit: `c4ad4d5389`.
 
 - [x] Implement ordered Session/SessionLoop composition and external/result ports.
 - [x] Implement renamed tensor mapping, iteration feedback, retained-state slots,
@@ -484,9 +484,9 @@ management, real-model qualification, or branch-complete coverage is made.
 ### M04 - CPU KVCacheManager
 
 **Outcome:** Safe contiguous caches shared across stages of one execution.
-**Status:** Complete; [PR #14](https://github.com/onnxruntime/ort-state/pull/14)
-is ready for review. Branch `state/m04-cpu-kv-cache` stacks on
-`state/m03-chain-bindings`. Implementation commit: `fffa292875`.
+**Status:** Complete; [PR #34043](https://github.com/microsoft/onnxruntime/pull/34043)
+is ready for review. Branch `stateful-M04-cpu-kv-cache` stacks on
+`stateful-M03-chain-bindings`. Implementation commit: `fffa292875`.
 
 - [x] Implement CPU cache initialization, model-declared layout/type/shape
   validation, logical length/capacity, append/update, retention, and reset.
@@ -592,9 +592,9 @@ introduced; the measured new-line gate is for Linux CPU inference code.
 ### M05 - CPU greedy sampling and decode integration
 
 **Outcome:** CPU token selection and a complete tiny prefill/decode chain.
-**Status:** Complete; [PR #15](https://github.com/onnxruntime/ort-state/pull/15)
-is ready for review. Branch `state/m05-cpu-greedy` stacks on
-`state/m04-cpu-kv-cache`. Implementation commit: `ddb8260691`.
+**Status:** Complete; [PR #34044](https://github.com/microsoft/onnxruntime/pull/34044)
+is ready for review. Branch `stateful-M05-cpu-greedy` stacks on
+`stateful-M04-cpu-kv-cache`. Implementation commit: `ddb8260691`.
 
 - [x] Implement documented greedy selection using existing suitable helpers.
 - [x] Validate supported logits shapes/dtypes/position, ties, non-finite behavior,
@@ -1163,12 +1163,12 @@ negative/error tests. Supporting milestones do not replace final qualification.
 
 ## 7. Stacked PR and checkpoint workflow
 
-- First branch: `state/m01-contracts-fixtures`, based on the current `ort-state`
+- First branch: `stateful-M01-contracts-fixtures`, based on the current `state/stateful-base-1988019b`
   branch at implementation start. Record the actual base commit then.
-- Subsequent branches: `state/m02-context-loop`, and so on using the table
+- Subsequent branches: `stateful-M02-context-loop`, and so on using the table
   suffixes, each based on the preceding milestone branch.
-- Target repository: `onnxruntime/ort-state`. Each PR's base is the previous
-  milestone branch; the first PR targets `ort-state`.
+- Target repository: `microsoft/onnxruntime`. Each PR's base is the previous
+  milestone branch; the first PR targets `state/stateful-base-1988019b`.
 - Each PR documents incremental outcome, prerequisites/stack position, directly
   related usage, exact build/test results, measured coverage, and known limits.
   Preserve the repository template's headings/comments/checklists/order.
