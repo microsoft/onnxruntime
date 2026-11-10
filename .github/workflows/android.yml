@@ -78,7 +78,8 @@ jobs:
       run: |
         set -e -x
         BINARY_SIZE_THRESHOLD_ARGS=""
-        BINARY_SIZE_THRESHOLD_IN_BYTES=1610752
+        # ORT-format compatibility for legacy MatMulNBitsMlp/Qkv nodes adds 1,920 bytes.
+        BINARY_SIZE_THRESHOLD_IN_BYTES=1612672
         echo "Binary size threshold in bytes: ${BINARY_SIZE_THRESHOLD_IN_BYTES}"
         BINARY_SIZE_THRESHOLD_ARGS="--threshold_size_in_bytes ${BINARY_SIZE_THRESHOLD_IN_BYTES}"
 

@@ -28,7 +28,7 @@ enum class MlpActivationKind : uint32_t {
 // Status for unsupported activations so the kernel rejects unknown values up front.
 Status ParseMlpActivation(std::string_view name, MlpActivationKind* out);
 
-class MatMulNBitsMlp final : public WebGpuKernel {
+class MatMulNBitsMlp : public WebGpuKernel {
  public:
   explicit MatMulNBitsMlp(const OpKernelInfo& info) : WebGpuKernel(info) {
     K_ = info.GetAttr<int64_t>("K");
@@ -37,6 +37,23 @@ class MatMulNBitsMlp final : public WebGpuKernel {
     bits_ = info.GetAttr<int64_t>("bits");
     accuracy_level_ = info.GetAttrOrDefault<int64_t>("accuracy_level", 4);
     epsilon_ = info.GetAttrOrDefault<float>("epsilon", 1e-5f);
+    lora_bits_ = info.GetAttrOrDefault<int64_t>("lora_bits", 8);
+    lora_block_size_ = info.GetAttrOrDefault<int64_t>("lora_block_size", 32);
+    // Trailing optional slots may be present in the node even when their edges
+    // are omitted. Inspect each edge rather than relying on GetInputCount().
+    bool all_adapter_inputs = true;
+    has_adapter_inputs_ = false;
+    for (size_t i = 9; i < 17; ++i) {
+#ifdef ORT_USE_EP_API_ADAPTERS
+      const bool exists = info.node().InputExists(i);
+#else
+      const bool exists = i < static_cast<size_t>(info.GetInputCount()) && info.node().InputDefs()[i]->Exists();
+#endif
+      has_adapter_inputs_ |= exists;
+      all_adapter_inputs &= exists;
+    }
+    ORT_ENFORCE(!has_adapter_inputs_ || all_adapter_inputs,
+                "MatMulNBitsMlp requires all adapter inputs when any is present.");
     std::string activation;
     ORT_ENFORCE(info.GetAttr<std::string>("activation", &activation).IsOK(),
                 "MatMulNBitsMlp requires the 'activation' attribute.");
@@ -49,6 +66,9 @@ class MatMulNBitsMlp final : public WebGpuKernel {
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
 
  private:
+  Status ComputeBase(onnxruntime::webgpu::ComputeContext& context) const;
+  Status ComputeWithAdapters(onnxruntime::webgpu::ComputeContext& context) const;
+
   int64_t K_;
   int64_t N_;
   int64_t block_size_;
@@ -56,6 +76,9 @@ class MatMulNBitsMlp final : public WebGpuKernel {
   int64_t bits_;
   float epsilon_;
   MlpActivationKind activation_kind_;
+  int64_t lora_bits_;
+  int64_t lora_block_size_;
+  bool has_adapter_inputs_;
 };
 
 }  // namespace webgpu

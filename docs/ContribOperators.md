@@ -4506,6 +4506,10 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   The operator contract includes a string attribute describing the fused gate activation.
   
+  Optional gate and up LoRA inputs apply MatMulNBitsQLoRA to each projection before the
+  activation. Empty adapter-up weights use the base projection. The adapter inputs are
+  runtime tensors and may change between calls.
+  
   When fused from SkipSimplifiedLayerNormalization, the optional residual-sum output may also be materialized:
   
     A_norm, input_skip_bias_sum = SkipSimplifiedLayerNormalization(A, skip, norm_scale, epsilon)
@@ -4534,9 +4538,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Size of each quantization block along the K dimension. Currently only block_size=32 is supported by the WebGPU kernel.</dd>
 <dt><tt>epsilon</tt> : float</dt>
 <dd>Epsilon used by the optional fused (Skip)SimplifiedLayerNormalization. Defaults to 1e-5.</dd>
+<dt><tt>lora_bits</tt> : int</dt>
+<dd>Bit-width of optional adapter weights.</dd>
+<dt><tt>lora_block_size</tt> : int</dt>
+<dd>Quantization block size of optional adapter weights.</dd>
 </dl>
 
-#### Inputs (8 - 9)
+#### Inputs (8 - 17)
 
 <dl>
 <dt><tt>A</tt> : T1</dt>
@@ -4557,6 +4565,22 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Per-block scaling factors for the up projection.</dd>
 <dt><tt>up_bias</tt> (optional) : T1</dt>
 <dd>Optional bias for the up projection with shape [N].</dd>
+<dt><tt>gate_lora_A</tt> (optional) : TAdapter</dt>
+<dd>Optional packed gate adapter-down weights.</dd>
+<dt><tt>gate_lora_A_scales</tt> (optional) : T1</dt>
+<dd>Optional gate adapter-down scales.</dd>
+<dt><tt>gate_lora_B</tt> (optional) : TAdapter</dt>
+<dd>Optional packed gate adapter-up weights; may be empty.</dd>
+<dt><tt>gate_lora_B_scales</tt> (optional) : T1</dt>
+<dd>Optional gate adapter-up scales.</dd>
+<dt><tt>up_lora_A</tt> (optional) : TAdapter</dt>
+<dd>Optional packed up adapter-down weights.</dd>
+<dt><tt>up_lora_A_scales</tt> (optional) : T1</dt>
+<dd>Optional up adapter-down scales.</dd>
+<dt><tt>up_lora_B</tt> (optional) : TAdapter</dt>
+<dd>Optional packed up adapter-up weights; may be empty.</dd>
+<dt><tt>up_lora_B_scales</tt> (optional) : T1</dt>
+<dd>Optional up adapter-up scales.</dd>
 </dl>
 
 #### Outputs (1 - 2)
@@ -4575,6 +4599,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>T2</tt> : tensor(uint8)</dt>
 <dd>Constrain quantized weight types to uint8.</dd>
+<dt><tt>TAdapter</tt> : tensor(uint8)</dt>
+<dd>Constrain packed adapter weights to uint8.</dd>
 </dl>
 
 
@@ -4656,6 +4682,8 @@ This version of the operator has been available since version 1 of the 'com.micr
   and may also return the input+skip residual sum as output 3.
   
   This operator is intended as a decode-oriented QKV fusion primitive.
+  Optional Q, K, and V LoRA inputs apply MatMulNBitsQLoRA to each projection. Empty
+  adapter-up weights use the base projection, and runtime adapters may change between calls.
 
 #### Version
 
@@ -4678,9 +4706,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Size of each quantization block along the K dimension. Currently only block_size=32 is supported by the WebGPU kernel.</dd>
 <dt><tt>epsilon</tt> : float</dt>
 <dd>Epsilon used by the simplified layer norm reduction.</dd>
+<dt><tt>lora_bits</tt> : int</dt>
+<dd>Bit-width of optional adapter weights.</dd>
+<dt><tt>lora_block_size</tt> : int</dt>
+<dd>Quantization block size of optional adapter weights.</dd>
 </dl>
 
-#### Inputs (11 - 12)
+#### Inputs (11 - 24)
 
 <dl>
 <dt><tt>A</tt> : T1</dt>
@@ -4707,6 +4739,30 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Per-block scaling factors for the V projection.</dd>
 <dt><tt>v_bias</tt> (optional) : T1</dt>
 <dd>Optional bias for the V projection with shape [Nkv].</dd>
+<dt><tt>q_lora_A</tt> (optional) : TAdapter</dt>
+<dd>Optional packed Q adapter-down weights.</dd>
+<dt><tt>q_lora_A_scales</tt> (optional) : T1</dt>
+<dd>Optional Q adapter-down scales.</dd>
+<dt><tt>q_lora_B</tt> (optional) : TAdapter</dt>
+<dd>Optional packed Q adapter-up weights; may be empty.</dd>
+<dt><tt>q_lora_B_scales</tt> (optional) : T1</dt>
+<dd>Optional Q adapter-up scales.</dd>
+<dt><tt>k_lora_A</tt> (optional) : TAdapter</dt>
+<dd>Optional packed K adapter-down weights.</dd>
+<dt><tt>k_lora_A_scales</tt> (optional) : T1</dt>
+<dd>Optional K adapter-down scales.</dd>
+<dt><tt>k_lora_B</tt> (optional) : TAdapter</dt>
+<dd>Optional packed K adapter-up weights; may be empty.</dd>
+<dt><tt>k_lora_B_scales</tt> (optional) : T1</dt>
+<dd>Optional K adapter-up scales.</dd>
+<dt><tt>v_lora_A</tt> (optional) : TAdapter</dt>
+<dd>Optional packed V adapter-down weights.</dd>
+<dt><tt>v_lora_A_scales</tt> (optional) : T1</dt>
+<dd>Optional V adapter-down scales.</dd>
+<dt><tt>v_lora_B</tt> (optional) : TAdapter</dt>
+<dd>Optional packed V adapter-up weights; may be empty.</dd>
+<dt><tt>v_lora_B_scales</tt> (optional) : T1</dt>
+<dd>Optional V adapter-up scales.</dd>
 </dl>
 
 #### Outputs (3 - 4)
@@ -4729,6 +4785,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>T2</tt> : tensor(uint8)</dt>
 <dd>Constrain quantized weight types to uint8.</dd>
+<dt><tt>TAdapter</tt> : tensor(uint8)</dt>
+<dd>Constrain packed adapter weights to uint8.</dd>
 </dl>
 
 
@@ -9550,3 +9608,5 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
+
+

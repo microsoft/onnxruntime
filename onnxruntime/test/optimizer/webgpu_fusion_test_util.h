@@ -6,15 +6,20 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "core/framework/execution_provider.h"
+#include "core/framework/execution_providers.h"
+#include "core/framework/kernel_registry.h"
 #include "core/framework/session_options.h"
 #include "core/graph/constants.h"
 #include "core/graph/model.h"
 #include "core/optimizer/graph_transformer.h"
+#include "core/optimizer/graph_transformer_utils.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
 #include "test/compare_ortvalue.h"
 #include "test/test_environment.h"
@@ -24,6 +29,49 @@
 
 namespace onnxruntime {
 namespace test {
+
+#if !defined(DISABLE_CONTRIB_OPS)
+// Exercise the real GenerateTransformers kernel probe without a GPU device.
+class RegistryOnlyWebGpuExecutionProvider final : public IExecutionProvider {
+ public:
+  explicit RegistryOnlyWebGpuExecutionProvider(bool adapter_aware)
+      : IExecutionProvider(kWebGpuExecutionProvider), registry_(std::make_shared<KernelRegistry>()) {
+    for (const char* op_type : {"MatMulNBitsMlp", "MatMulNBitsQkv"}) {
+      KernelDefBuilder builder;
+      builder.SetName(op_type)
+          .SetDomain(kMSDomain)
+          .SinceVersion(1)
+          .Provider(kWebGpuExecutionProvider)
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>());
+      if (adapter_aware) {
+        builder.TypeConstraint("TAdapter", DataTypeImpl::GetTensorType<uint8_t>());
+      }
+      ORT_THROW_IF_ERROR(registry_->Register(builder, {}));
+    }
+  }
+
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override { return registry_; }
+
+ private:
+  std::shared_ptr<KernelRegistry> registry_;
+};
+
+inline std::unique_ptr<GraphTransformer> GenerateWebGpuFusionTransformerForTest(
+    std::string_view name, bool adapter_aware) {
+  ExecutionProviders providers;
+  ORT_THROW_IF_ERROR(providers.Add(
+      kWebGpuExecutionProvider, std::make_shared<RegistryOnlyWebGpuExecutionProvider>(adapter_aware)));
+  CPUExecutionProvider cpu_ep{CPUExecutionProviderInfo{}};
+  auto transformers = optimizer_utils::GenerateTransformers(
+      TransformerLevel::Level2, {}, cpu_ep, DefaultLoggingManager().DefaultLogger(),
+      {}, nullptr, &providers);
+  for (auto& transformer : transformers) {
+    if (transformer->Name() == name) return std::move(transformer);
+  }
+  return nullptr;
+}
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 
 // Variant of TransformerTester for WebGPU fusion tests that creates a fresh execution provider
 // per session via the provided factory, instead of sharing one EP across the baseline and target
