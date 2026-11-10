@@ -151,7 +151,12 @@ static void RunCudaOnlyOnnxOpsetPadTest(
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.emplace_back(std::move(cuda_execution_provider));
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+  // The CPU EP also implements Pad for some of these types. Disable CPU fallback so that
+  // a missing CUDA kernel fails the test instead of silently running on the CPU EP.
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif
 
