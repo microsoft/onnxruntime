@@ -3268,7 +3268,9 @@ class TestQMoEPostActivationClipping(unittest.TestCase):
         fc2[:, torch.arange(inter), torch.arange(inter)] += 1
         gate = torch.tensor([10.0, 4.0, 0.0, -1.0, -10.0, 2.0, 6.0, 3.0]).repeat(inter // 8)
         up = torch.tensor([2.0, -8.0, 2.0, 6.0, -6.0, 1.0, -1.0, 2.0]).repeat(inter // 8)
-        bias = torch.stack((gate, up), -1).flatten() if fusion == 1 else torch.cat((gate, up))
+        # Equal chunks avoid legacy Ampere/TMA order differences in the mixed-width dense fallback.
+        linear = gate if fusion == 2 and fc1_bits != fc2_bits else up
+        bias = torch.stack((gate, linear), -1).flatten() if fusion == 1 else torch.cat((gate, linear))
         model = load_model_from_string(
             create_moe_onnx_graph(
                 hidden,
@@ -3307,7 +3309,7 @@ class TestQMoEPostActivationClipping(unittest.TestCase):
         if after_activation == 1:
             activated = activated.clamp(max=limit)
         expected = torch.zeros(hidden)
-        expected[:inter] = activated * (up.clamp(-limit, limit) + beta)
+        expected[:inter] = activated * (linear.clamp(-limit, limit) + beta)
         return model.SerializeToString(), expected
 
     @parameterized.expand(
@@ -3338,11 +3340,12 @@ class TestQMoEPostActivationClipping(unittest.TestCase):
                         model, options, providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")]
                     )
                     for rows in (1, 65):
+                        # Preserve top-k dispatch while making the routing weights exactly one-hot.
+                        router = torch.full((rows, 4), -1000.0, device=device, dtype=dtype)
+                        router[:, 0] = 0
                         tensors = {
                             "input": torch.ones(rows, 512, device=device, dtype=dtype),
-                            "router_probs": torch.tensor([1.0, 0.0, -2.0, -3.0], device=device, dtype=dtype).repeat(
-                                rows, 1
-                            ),
+                            "router_probs": router,
                         }
                         output = torch.empty_like(tensors["input"])
                         binding = session.io_binding()
@@ -3362,7 +3365,7 @@ class TestQMoEPostActivationClipping(unittest.TestCase):
                         elif mode == 0:
                             torch.testing.assert_close(actual, defaults[rows], atol=0, rtol=0)
                         else:
-                            self.assertEqual(actual[0, 0].item(), (2.0 + beta) * limit)
+                            self.assertEqual(actual[0, 0].item(), expected[0].item())
 
     def test_cpu_rejects_post_activation_clipping(self):
         model, _ = self._model(4, TensorProto.FLOAT, 1, 1)

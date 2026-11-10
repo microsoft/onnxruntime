@@ -469,6 +469,9 @@ class TestQMoEBlockFP8(unittest.TestCase):
             for fusion in (1, 2):
                 for rows in (1, 37):
                     tensors = self._inputs(hidden=128, inter=64, experts=4, tokens=rows, fusion=fusion, dtype=dtype)
+                    # Isolate clipping from low-precision accumulation across routed experts.
+                    tensors["router_probs"].fill_(-1000.0)
+                    tensors["router_probs"][:, 0] = 0
                     tensors["input"].zero_()
                     tensors["input"][:, 0] = 1
                     tensors["fc1_weights"].zero_()

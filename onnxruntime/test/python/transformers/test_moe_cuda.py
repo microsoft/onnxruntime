@@ -1640,7 +1640,9 @@ class TestSwigluMoE(unittest.TestCase):
                         options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
                         session = InferenceSession(model, options, providers=get_ort_provider())
                         x = torch.zeros(rows, hidden, device=device, dtype=dtype)
-                        router = torch.linspace(1.0, -3.0, experts, device=device, dtype=dtype).repeat(rows, 1)
+                        # Isolate clipping from low-precision accumulation across routed experts.
+                        router = torch.full((rows, experts), -1000.0, device=device, dtype=dtype)
+                        router[:, 0] = 0
                         output = torch.empty_like(x)
                         binding = session.io_binding()
                         for name, tensor in (("input", x), ("router_probs", router)):
