@@ -187,7 +187,13 @@ __global__ void __launch_bounds__(kThreads, ROWS >= 4 ? 4 : 5)
                  const T* __restrict__ norm_w, const T* __restrict__ w_down, const T* __restrict__ w_inject,
                  T* __restrict__ streams_out, float* __restrict__ partial, float* __restrict__ inv_rms_out,
                  DownParams p) {
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 1000 || __CUDA_ARCH__ < 900)
+  // On 100-164 KB smem/SM GPUs (e.g. SM 12.0/12.1 with 100 KB/SM), 5 async weight slots keep
+  // HcDownKernel shared memory at 30.8 KB (ROWS=4) / 23.1 KB (ROWS=1), fitting 3-4 CTAs/SM instead of 2.
+  constexpr int kLocalAsyncWeightSlots = 5;
+#else
   constexpr int kLocalAsyncWeightSlots = ROWS >= 4 ? 8 : kAsyncWeightSlots;
+#endif
   const int j = blockIdx.x;
   const int s = blockIdx.y;
   const int64_t row0 = static_cast<int64_t>(blockIdx.z) * ROWS;
@@ -229,10 +235,21 @@ __global__ void __launch_bounds__(kThreads, ROWS >= 4 ? 4 : 5)
   }
   CpCommit();
 
+  uint4 w_reg5 = make_uint4(0u, 0u, 0u, 0u);
+  uint4 w_reg6 = make_uint4(0u, 0u, 0u, 0u);
+  uint4 w_reg7 = make_uint4(0u, 0u, 0u, 0u);
   uint4 w_reg8 = make_uint4(0u, 0u, 0u, 0u);
   uint4 w_reg9 = make_uint4(0u, 0u, 0u, 0u);
   if (!is_inject && col < p.rank) {
     const T* base = w_down + k0 * p.rank + col;
+    if constexpr (kLocalAsyncWeightSlots <= 5) {
+      const int row5 = rp + 128 * 5;
+      if (row5 < len) w_reg5 = __ldcg(reinterpret_cast<const uint4*>(base + static_cast<int64_t>(row5) * p.rank));
+      const int row6 = rp + 128 * 6;
+      if (row6 < len) w_reg6 = __ldcg(reinterpret_cast<const uint4*>(base + static_cast<int64_t>(row6) * p.rank));
+      const int row7 = rp + 128 * 7;
+      if (row7 < len) w_reg7 = __ldcg(reinterpret_cast<const uint4*>(base + static_cast<int64_t>(row7) * p.rank));
+    }
     const int row8 = rp + 128 * 8;
     if (row8 < len) w_reg8 = __ldcg(reinterpret_cast<const uint4*>(base + static_cast<int64_t>(row8) * p.rank));
     const int row9 = rp + 128 * 9;
@@ -342,7 +359,7 @@ __global__ void __launch_bounds__(kThreads, ROWS >= 4 ? 4 : 5)
           float wf[8];
           const uint4 w_vec = (i < kLocalAsyncWeightSlots)
                                   ? wsm[i * kThreads + tid]
-                                  : (i == 8 ? w_reg8 : w_reg9);
+                                  : (i == 5 ? w_reg5 : (i == 6 ? w_reg6 : (i == 7 ? w_reg7 : (i == 8 ? w_reg8 : w_reg9))));
           Unpack8<T>(w_vec, wf);
 #pragma unroll
           for (int r = 0; r < ROWS; ++r) {
@@ -435,7 +452,13 @@ __global__ void __launch_bounds__(kThreads, (BRANCHES == 4 && RANK == 320 && ROW
                   const float* __restrict__ partial, const float* __restrict__ inv_rms_in,
                   T* __restrict__ pre_out, T* __restrict__ gate_out, UpParams p) {
   static_assert(ROWS <= 4, "the cross-warp gate reduction below assumes ROWS * 16 * branches <= kThreads");
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 1000 || __CUDA_ARCH__ < 900)
+  // On 100 KB smem/SM GPUs (SM 12.0/12.1), 5 weight slots keep HcUpPreKernel shared memory at
+  // 23.6 KB, fitting 4 CTAs/SM instead of 2.
+  constexpr int kLocalWeightSlots = 5;
+#else
   constexpr int kLocalWeightSlots = kWeightSlots;
+#endif
   const int hb = blockIdx.x;
   const int64_t row0 = static_cast<int64_t>(blockIdx.z) * ROWS;
   const int tid = threadIdx.x;

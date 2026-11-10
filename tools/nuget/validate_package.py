@@ -15,12 +15,11 @@ linux_gpu_package_libraries = [
     "libonnxruntime_providers_cuda.so",
     "libonnxruntime_providers_tensorrt.so",
 ]
+# CUDA and TensorRT are loaded dynamically, so their import libraries are not required.
 win_gpu_package_libraries = [
     "onnxruntime_providers_shared.lib",
     "onnxruntime_providers_shared.dll",
-    "onnxruntime_providers_cuda.lib",
     "onnxruntime_providers_cuda.dll",
-    "onnxruntime_providers_tensorrt.lib",
     "onnxruntime_providers_tensorrt.dll",
 ]
 gpu_related_header_files = [

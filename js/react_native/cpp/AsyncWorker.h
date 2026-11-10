@@ -57,14 +57,22 @@ class AsyncWorker : public HostObject, public std::enable_shared_from_this<Async
                   cancel_ = false;
                   worker_ = std::thread([this]() {
                     if (!cancel_) {
+                      bool finished = false;
                       try {
                         execute();
+                        // Dispatch can release the last worker reference on this thread.
+                        onFinished();
+                        finished = true;
                         dispatchResolve();
                       } catch (const std::exception& e) {
+                        if (!finished) {
+                          onFinished();
+                        }
                         dispatchReject(e.what());
                       }
+                    } else {
+                      onFinished();
                     }
-                    onFinished();
                   });
                   return Value::undefined();
                 }));

@@ -52,7 +52,7 @@ struct GatherBlockQuantizedParam {
   // For FP8/FP4 data this is the *effective* block size: block_size_ (attribute) if nonzero,
   // otherwise the full quantize_axis dimension (block_size == 0 means "one scale per row").
   int64_t block_size;
-  int64_t gather_axis;
+  int64_t quantize_axis_dim;
   int64_t N;
   int32_t max_blocks_per_grid;
 

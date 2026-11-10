@@ -88,7 +88,7 @@ namespace contrib {
 namespace cuda {
 namespace HEAD_DIM_NAMESPACE {
 
-#if !defined(XQA_PAGED_GROUP6_ONLY)
+#if !defined(XQA_PAGED_GROUP6_ONLY) && !defined(XQA_PAGED_GROUP6_AND_16)
 #define NAMESPACE_NAME XQA_PAGED_NS(grp4_)
 #define GRP_SIZE 4
 #define M_TILESIZE 8
@@ -110,7 +110,7 @@ namespace HEAD_DIM_NAMESPACE {
 #undef GRP_SIZE
 #undef M_TILESIZE
 
-#if !defined(XQA_PAGED_GROUP6_ONLY)
+#if !defined(XQA_PAGED_GROUP6_ONLY) && !defined(XQA_PAGED_GROUP6_AND_16)
 #define NAMESPACE_NAME XQA_PAGED_NS(grp8_)
 #define GRP_SIZE 8
 #define M_TILESIZE 8
@@ -118,15 +118,23 @@ namespace HEAD_DIM_NAMESPACE {
 #undef NAMESPACE_NAME
 #undef GRP_SIZE
 #undef M_TILESIZE
+#endif
 
+#if !defined(XQA_PAGED_GROUP6_ONLY)
 #define NAMESPACE_NAME XQA_PAGED_NS(grp16_)
 #define GRP_SIZE 16
+#if XQA_PAGED_SPEC_DEC
+#define M_TILESIZE 32
+#else
 #define M_TILESIZE 16
+#endif
 #include "xqa_paged_impl_gen.cuh"
 #undef NAMESPACE_NAME
 #undef GRP_SIZE
 #undef M_TILESIZE
+#endif
 
+#if !defined(XQA_PAGED_GROUP6_ONLY) && !defined(XQA_PAGED_GROUP6_AND_16)
 #define NAMESPACE_NAME XQA_PAGED_NS(grp32_)
 #define GRP_SIZE 32
 #define M_TILESIZE 32
@@ -178,17 +186,21 @@ Status XQA_PAGED_LAUNCH_FN(
     size_t workspace_size) {
   const int group_size = num_heads / kv_num_heads;
   switch (group_size) {
-#if !defined(XQA_PAGED_GROUP6_ONLY)
+#if !defined(XQA_PAGED_GROUP6_ONLY) && !defined(XQA_PAGED_GROUP6_AND_16)
     case 4:
       XQA_PAGED_DISPATCH(grp4_);
 #endif
     case 6:
       XQA_PAGED_DISPATCH(grp6_);
-#if !defined(XQA_PAGED_GROUP6_ONLY)
+#if !defined(XQA_PAGED_GROUP6_ONLY) && !defined(XQA_PAGED_GROUP6_AND_16)
     case 8:
       XQA_PAGED_DISPATCH(grp8_);
+#endif
+#if !defined(XQA_PAGED_GROUP6_ONLY)
     case 16:
       XQA_PAGED_DISPATCH(grp16_);
+#endif
+#if !defined(XQA_PAGED_GROUP6_ONLY) && !defined(XQA_PAGED_GROUP6_AND_16)
     case 32:
       XQA_PAGED_DISPATCH(grp32_);
 #endif
@@ -196,6 +208,9 @@ Status XQA_PAGED_LAUNCH_FN(
 #if defined(XQA_PAGED_GROUP6_ONLY)
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                              "This paged XQA specialization only supports group_size 6. Input has ", group_size);
+#elif defined(XQA_PAGED_GROUP6_AND_16)
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "This paged XQA specialization only supports group_size 6 or 16. Input has ", group_size);
 #else
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                              "Paged XQA only supports group_size 4, 6, 8, 16, 32. Input has ", group_size);
@@ -207,11 +222,23 @@ Status XQA_PAGED_LAUNCH_FN(
 size_t XQA_PAGED_CAT(XQA_PAGED_LAUNCH_FN, _, WorkspaceSize)(
     const cudaDeviceProp& device_prop,
     const int batch_size,
+    const int num_heads,
     const int kv_num_heads,
     const int max_pages_per_seq,
     const int max_query_len) {
-  return XQA_PAGED_NS(grp6_)::GetWorkspaceSize(
-      device_prop, batch_size, kv_num_heads, max_pages_per_seq, max_query_len);
+  const int group_size = kv_num_heads > 0 ? num_heads / kv_num_heads : 0;
+  switch (group_size) {
+    case 6:
+      return XQA_PAGED_NS(grp6_)::GetWorkspaceSize(
+          device_prop, batch_size, kv_num_heads, max_pages_per_seq, max_query_len);
+#if !defined(XQA_PAGED_GROUP6_ONLY)
+    case 16:
+      return XQA_PAGED_NS(grp16_)::GetWorkspaceSize(
+          device_prop, batch_size, kv_num_heads, max_pages_per_seq, max_query_len);
+#endif
+    default:
+      return 0;
+  }
 }
 #endif
 
@@ -220,17 +247,21 @@ size_t XQA_PAGED_CAT(XQA_PAGED_LAUNCH_FN, _, WorkspaceSize)(
 size_t XQA_PAGED_CAT(XQA_PAGED_LAUNCH_FN, _, SmemSize)(const int num_heads, const int kv_num_heads) {
   const int group_size = num_heads / kv_num_heads;
   switch (group_size) {
-#if !defined(XQA_PAGED_GROUP6_ONLY)
+#if !defined(XQA_PAGED_GROUP6_ONLY) && !defined(XQA_PAGED_GROUP6_AND_16)
     case 4:
       return XQA_PAGED_NS(grp4_)::GetSmemSize();
 #endif
     case 6:
       return XQA_PAGED_NS(grp6_)::GetSmemSize();
-#if !defined(XQA_PAGED_GROUP6_ONLY)
+#if !defined(XQA_PAGED_GROUP6_ONLY) && !defined(XQA_PAGED_GROUP6_AND_16)
     case 8:
       return XQA_PAGED_NS(grp8_)::GetSmemSize();
+#endif
+#if !defined(XQA_PAGED_GROUP6_ONLY)
     case 16:
       return XQA_PAGED_NS(grp16_)::GetSmemSize();
+#endif
+#if !defined(XQA_PAGED_GROUP6_ONLY) && !defined(XQA_PAGED_GROUP6_AND_16)
     case 32:
       return XQA_PAGED_NS(grp32_)::GetSmemSize();
 #endif

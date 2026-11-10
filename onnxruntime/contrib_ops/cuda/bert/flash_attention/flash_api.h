@@ -134,7 +134,8 @@ Status mha_fwd_kvcache(const cudaDeviceProp& dprops,
                        bool is_rotary_interleaved = false,
                        bool is_packed_qkv = false,
                        int max_num_blocks_per_seq = 0,
-                       int page_block_size = 1);
+                       int page_block_size = 1,
+                       const int* seqused_q = nullptr);
 
 size_t get_softmax_lse_size(size_t max_seqlen_q, size_t batch_size, size_t num_heads);
 size_t get_softmax_lse_size(size_t token_count, size_t num_heads);
